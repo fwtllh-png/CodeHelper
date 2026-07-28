@@ -1,0 +1,29 @@
+internal/platform/process/process_test.go
+  s_76c0534cc2c6d6::t_556dcd66f9f8fd 107-108,135-140
+internal/sandbox/backend.go
+  s_76c0534cc2c6d6::t_aa1ee39a0c4d45 522,524-528
+internal/sandbox/policy.go
+  s_76c0534cc2c6d6::t_3018f1da001598 53,224,248-254
+scripts/check-brand.sh
+  s_76c0534cc2c6d6::t_2413ed73498081 17-45,56,70
+scripts/test-brand-check.sh
+  s_76c0534cc2c6d6::t_604269f3cc8116 25,38,50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4ccbfdb6629cfa9eb693521eec1867cdd79e3d5c",
+  "prompts": {},
+  "sessions": {
+    "s_76c0534cc2c6d6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "26339afb-2f37-452c-be1f-c081de1bad7b",
+        "model": "unknown"
+      },
+      "human_author": "fuweiting.pro <fuweiting.pro@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
