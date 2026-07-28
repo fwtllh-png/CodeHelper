@@ -1,0 +1,25 @@
+.github/workflows/p45r.yml
+  s_76c0534cc2c6d6::t_a7ab5bddf481f3 75,94-103
+Makefile
+  s_76c0534cc2c6d6::t_4dd08b4e92f264 91-94
+scripts/test-secret-leak.sh
+  s_76c0534cc2c6d6::t_8a0bc998942745 23,27,40,44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e61b3663a33d349da43e83e3e8200da4b59530a6",
+  "prompts": {},
+  "sessions": {
+    "s_76c0534cc2c6d6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "26339afb-2f37-452c-be1f-c081de1bad7b",
+        "model": "unknown"
+      },
+      "human_author": "fuweiting.pro <fuweiting.pro@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
