@@ -1,0 +1,21 @@
+.github/workflows/p45r.yml
+  s_76c0534cc2c6d6::t_fc693b17ca7305 97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "74b88841d6c0bcac9157e52ecc8139355886f085",
+  "prompts": {},
+  "sessions": {
+    "s_76c0534cc2c6d6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "26339afb-2f37-452c-be1f-c081de1bad7b",
+        "model": "unknown"
+      },
+      "human_author": "fuweiting.pro <fuweiting.pro@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
