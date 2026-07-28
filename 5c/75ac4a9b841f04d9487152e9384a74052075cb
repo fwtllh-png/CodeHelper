@@ -1,0 +1,27 @@
+.github/workflows/p45r.yml
+  s_76c0534cc2c6d6::t_8df118431ef525 111
+internal/platform/process/process.go
+  s_76c0534cc2c6d6::t_9f304297bb8e47 180-183
+internal/sandbox/backend.go
+  s_76c0534cc2c6d6::t_9dfaf88226def8 299,548-567
+internal/sandbox/backend_test.go
+  s_76c0534cc2c6d6::t_d39b7d17b38f6b 77-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5c75ac4a9b841f04d9487152e9384a74052075cb",
+  "prompts": {},
+  "sessions": {
+    "s_76c0534cc2c6d6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "26339afb-2f37-452c-be1f-c081de1bad7b",
+        "model": "unknown"
+      },
+      "human_author": "fuweiting.pro <fuweiting.pro@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
