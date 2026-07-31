@@ -1,0 +1,83 @@
+.gitignore
+  s_deb1e0f2152c9b::t_0c2a0de3f0e6a7 4-6
+README.md
+  s_deb1e0f2152c9b::t_213590006848e7 1,3,5-10,12,14-24,27-29,31-41,44-56,58,60,63-73,76-83,87,89-101,104-124
+docs/ARCHITECTURE.zh-CN.md
+  s_deb1e0f2152c9b::t_ffac0107a7f92e 1,3-4,6-25,28-40,43,45-47,49-51,53,55,57-58,62,66-157,159-162,164-193,197-245,247-294
+docs/PROJECT_ANALYSIS.zh-CN.md
+  s_deb1e0f2152c9b::t_d2118c1885c529 1-135
+docs/USAGE.zh-CN.md
+  s_deb1e0f2152c9b::t_1bf927196b402a 1-441
+go.mod
+  s_deb1e0f2152c9b::t_c930aa2ae01b4c 8-11,19,25-26,28-37,44,46,49-50,53,60-63
+go.sum
+  s_deb1e0f2152c9b::t_91a488e2b9a61e 1-2,5-12,15-44,48-49,66-67,70-71,78-79,84-88,93-94,103,118-123,126-127,134-137
+internal/adapter/tool/file/file.go
+  s_deb1e0f2152c9b::t_b5e5b7bd1aee77 81-89,91-96,101,105
+internal/adapter/tool/guard/guard.go
+  s_deb1e0f2152c9b::t_3af2386be18392 391-394,415-504,757-761
+internal/adapter/tool/guard/guard_test.go
+  s_deb1e0f2152c9b::t_32289bae2ded7a 543-580
+internal/host/cli/exec.go
+  s_deb1e0f2152c9b::t_95c321a96ae018 359-367
+internal/host/cli/tui_cmd.go
+  s_deb1e0f2152c9b::t_e0a29086f11dc1 24-38,42-49,64-78
+internal/host/tui/app.go
+  s_deb1e0f2152c9b::t_61c2f60026daf1 19-20,129-132,135-152,209,211-214,241-264,274-287,289,292,311-323,325-326,330-334,339,370-381,384,387,389,393-397,399-411,413,415-426,428-443,445-476,483,490,492-493,496-513,531,534,542-549,551,554-561,564-616,620-623,632-633,640-651,653-657,663-700,703-705,714-720,723-742,761-762,785,787,804,806,828,834,838,848-849,858,860,869-870,887-888,898-899,903-907,909-913,964,966-967,969-975,1002,1028-1031,1070-1071,1074-1084,1642-1654,1656-1658,1660-1669,1673,1675,1677-1679,1681-1685,1687-1714,1717-1727,1729-1740,1742,1756,2210-2219,2232-2234,2244,2247-2284,2286-2325,2327,2332,2368-2374
+internal/host/tui/app_test.go
+  s_deb1e0f2152c9b::t_239d9a350c5547 15-66,75,78-80,144-150,216-217
+internal/host/tui/chrome.go
+  s_deb1e0f2152c9b::t_94ef6622dc10d8 1-189
+internal/host/tui/host.go
+  s_deb1e0f2152c9b::t_201c0a8f221db2 5,31-37,60-75,125,130,139-163,179-183,216,226,228-229,231-232,234,246,267-278
+internal/host/tui/host_cursor_test.go
+  s_deb1e0f2152c9b::t_6386a6a7479db3 1-97
+internal/host/tui/ledger.go
+  s_deb1e0f2152c9b::t_75b41d2f409f90 1-274
+internal/host/tui/ledger_test.go
+  s_deb1e0f2152c9b::t_4ca3883df30a0d 1-145
+internal/host/tui/markdown.go
+  s_deb1e0f2152c9b::t_1594fd50691045 1-224
+internal/host/tui/markdown_test.go
+  s_deb1e0f2152c9b::t_129589c69af4a7 1-66
+internal/host/tui/motion.go
+  s_deb1e0f2152c9b::t_93c0ffbd5b89a1 1-53
+internal/host/tui/overlay.go
+  s_deb1e0f2152c9b::t_fa98ff12bdbefb 1-84
+internal/host/tui/render.go
+  s_deb1e0f2152c9b::t_98e2373e89b584 1-406
+internal/host/tui/tools.go
+  s_deb1e0f2152c9b::t_188fe418f7230d 1-164
+internal/host/tui/viewport_scroll_test.go
+  s_deb1e0f2152c9b::t_0367d506e29781 1-56
+internal/host/tui/welcome.go
+  s_deb1e0f2152c9b::t_191b660dfab286 1-75
+internal/runtime/app/wire/runtime.go
+  s_deb1e0f2152c9b::t_53f169591bab39 219
+internal/security/sandbox/backend.go
+  s_deb1e0f2152c9b::t_0840f77686596a 294-296,382-388
+internal/security/sandbox/backend_test.go
+  s_deb1e0f2152c9b::t_d976668d8e7059 46-48,79-119
+internal/security/sandbox/policy.go
+  s_deb1e0f2152c9b::t_449d3c3c36c294 24-32,50,108-112,118,120-121,286-287,300-335
+testdata/README.md
+  s_deb1e0f2152c9b::t_989966a90f7323 3,5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "017d44434231a224696833cae9b13f167445b842",
+  "prompts": {},
+  "sessions": {
+    "s_deb1e0f2152c9b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "64c12015-8957-4d82-8959-8cc322601f6b",
+        "model": "unknown"
+      },
+      "human_author": "fuweiting.pro <fuweiting.pro@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
