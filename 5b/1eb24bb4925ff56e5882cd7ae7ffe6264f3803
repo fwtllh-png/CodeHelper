@@ -1,0 +1,629 @@
+Makefile
+  s_42e94828d2d144::t_2086e52d5539f9 14,75-85
+docs/ARCHITECTURE.zh-CN.md
+  s_42e94828d2d144::t_fc17fa16f5ac4c 89,103,109-114,125,127-133,137-151,212-234,295,300-301,356-360
+docs/ROADMAP.zh-CN.md
+  s_42e94828d2d144::t_e62ccbe0eb81aa 1-887
+docs/USAGE.zh-CN.md
+  s_42e94828d2d144::t_27064d9a17a28c 64-99,132-208,224-225,230-235,340,374-402,405-410,530-570
+docs/rfc/RFC-001-repo-context.zh-CN.md
+  s_42e94828d2d144::t_3bab2927806d5b 1-349
+docs/rfc/RFC-002-verify-gate.zh-CN.md
+  s_42e94828d2d144::t_b6cecdaf9111c4 1-176
+docs/rfc/RFC-003-vscode-transport.zh-CN.md
+  s_42e94828d2d144::t_fefb6e1e4ca85d 1-151
+docs/rfc/RFC-005-edit-transaction.zh-CN.md
+  s_42e94828d2d144::t_3d49b059a975f9 1-178
+docs/rfc/RFC-009-context-lifecycle.zh-CN.md
+  s_42e94828d2d144::t_6351bedc290e79 1-191
+internal/adapter/hooks/types.go
+  s_42e94828d2d144::t_6cc1501ea6de20 15-23
+internal/adapter/provider/httpclient/client.go
+  s_42e94828d2d144::t_87d7504f892ad4 501
+internal/adapter/provider/types.go
+  s_42e94828d2d144::t_06c869cbe99adf 98-101
+internal/adapter/tool/builtin/builtin.go
+  s_42e94828d2d144::t_df2e0f2d49deb4 18,36-49,116-118
+internal/adapter/tool/file/apply.go
+  s_42e94828d2d144::t_2d882818e4d798 1-459
+internal/adapter/tool/file/apply_test.go
+  s_42e94828d2d144::t_c5201bfed239a9 1-578
+internal/adapter/tool/file/file.go
+  s_42e94828d2d144::t_32e61174d4559f 60,111-153,181-183,204-215,238-240,245-247,250-254,256
+internal/adapter/tool/guard/changes_test.go
+  s_42e94828d2d144::t_d0905a746e1229 1-381
+internal/adapter/tool/guard/guard.go
+  s_42e94828d2d144::t_cd9c5bc8ff691e 20,26-35,42-71,231,341,415-418,501,510-514,517,528-534,544-553,562-639,1118-1132,1231-1265
+internal/adapter/tool/interact/interact.go
+  s_42e94828d2d144::t_d0772db2f7865d 17,34-113,115-126,220-232,336,409-417,436,457,461-463,467-469,471-474,476-480,482,484-487,490-493,508-532,688-694
+internal/adapter/tool/interact/interact_test.go
+  s_42e94828d2d144::t_c7798171ac4e0d 138-142,154,174-227,248-305
+internal/adapter/tool/quality/quality.go
+  s_42e94828d2d144::t_65ddcfe234212b 12,134,136
+internal/adapter/tool/search/evidence.go
+  s_42e94828d2d144::t_085bbc08bfe8a4 1-77
+internal/adapter/tool/search/evidence_test.go
+  s_42e94828d2d144::t_9f5e6820a62f49 1-128
+internal/adapter/tool/search/search.go
+  s_42e94828d2d144::t_5ff0ea20140454 14-15,24,27-28,30-38,50-53,57-65,75-81,161-166,168,170-171,175-178,180,182-183,185,187,189,191-193,195,197,199,242,245-249,254,256-263
+internal/adapter/tool/search/search_test.go
+  s_42e94828d2d144::t_239d5d8cc1720e 59-63,65,74-101
+internal/adapter/tool/search/symbol.go
+  s_42e94828d2d144::t_cf0c24129399ba 1-452
+internal/adapter/tool/search/symbol_test.go
+  s_42e94828d2d144::t_06ce758de03b18 1-264
+internal/adapter/tool/shell/session.go
+  s_42e94828d2d144::t_2310f14d0d6f7b 134
+internal/adapter/tool/tool.go
+  s_42e94828d2d144::t_74448d0e2810a9 22-57,123-126,170-199,332,340,507,511,530,540,544
+internal/adapter/tool/web/browser.go
+  s_42e94828d2d144::t_62aa5b871b7225 18-41
+internal/adapter/tool/web/browser_status_test.go
+  s_42e94828d2d144::t_f671451f535b3b 1-16
+internal/config/config.go
+  s_42e94828d2d144::t_a9a41678a756ea 37-55,75-80,121-190,208-223,240,262-279,299-304,312,344-366,372-377,454-511,563-565,572-610,652-659,677-706,746-799,839-845,884-975,1013-1027,1046-1093,1114-1120,1134-1140,1210-1223,1290-1307,1327-1332
+internal/config/config_test.go
+  s_42e94828d2d144::t_0c8a9ac7c187fb 11,360-687
+internal/host/bench/bench.go
+  s_42e94828d2d144::t_da6da31278b058 1-1107
+internal/host/bench/bench_test.go
+  s_42e94828d2d144::t_17842101a9558a 1-115
+internal/host/cli/diagnostics.go
+  s_42e94828d2d144::t_d33e88c9fc289d 14,31,67,113-120
+internal/host/cli/diagnostics_maturity_test.go
+  s_42e94828d2d144::t_7d058f9e06f63e 1-22
+internal/host/cli/exec.go
+  s_42e94828d2d144::t_259fde48babf42 84-85,187-192,197,318-366
+internal/host/cli/host.go
+  s_42e94828d2d144::t_dd5768c27a2573 62-64,100-101,177,198-201,253-254
+internal/host/cli/tui_cmd.go
+  s_42e94828d2d144::t_0c1bf8276a9b92 55,58
+internal/host/review/review.go
+  s_42e94828d2d144::t_8496c7a8a3efd3 23-25,29-33
+internal/host/runtimeapi/acp/interop_test.go
+  s_42e94828d2d144::t_3cef7bd73c53e6 13,19-20,149-498,503,506-508,512-516,524-528,548-554,556-560,574-578,580-583,595,655-689,722-725,728,731,737,739,741-754,756,760-794,796,842-859
+internal/host/runtimeapi/acp/server.go
+  s_42e94828d2d144::t_87fcf88e11c034 11,37-54,66,85-92,107-114,139-141,151,178-181,391-392,395-398,443-456,467-468,470-477,617-642,644,646-671,673,675-676,690-692,707-708,710-751,753-755,758-773,775,778-796,798-827,831-842,844-878,880-905,909-927,929,932-938,940-948,950-953,957-967,969-973,976,983-984,987-988,990-1121,1123-1126,1130-1182,1202,1238,1240-1242,1332,1339,1462-1474,1476-1477
+internal/host/runtimeapi/http/handler.go
+  s_42e94828d2d144::t_4e681f49b2305d 839
+internal/host/tui/app.go
+  s_42e94828d2d144::t_0170f4df40975e 21,139,328-332,448,504,701-703,777,780,823-825,1074,1099,1149,1168,1192,1252,1260,1303,1306,1308,1333,1340,1354,1376,1378,1385,1417,1454-1456,1458,1460,1482,1487,1528,1532,1551,1563,1572,1594,1599,1606,1618,1622,1625,1899,1931,1958,1970,2171,2201,2321-2330,2369,2380,2385,2394,2405,2408,2415,2418,2464,2495,2498,2507,2641,2643,2682
+internal/host/tui/approval_preview.go
+  s_42e94828d2d144::t_859e77c41d294d 6,45-49,106-174
+internal/host/tui/context_slash_test.go
+  s_42e94828d2d144::t_75678d984c668d 1-64
+internal/host/tui/host.go
+  s_42e94828d2d144::t_ce9234e3b42b9d 331-344,360-393
+internal/host/tui/ledger.go
+  s_42e94828d2d144::t_8fe5683fc173ce 52
+internal/host/tui/motion.go
+  s_42e94828d2d144::t_3ecc96b839e3c7 13-15
+internal/host/tui/theme.go
+  s_42e94828d2d144::t_b60f74302a972c 12-37
+internal/observability/telemetry/metrics.go
+  s_42e94828d2d144::t_2b4148735a23d5 14-36,48-54,109-154,159-162,164-171
+internal/observability/usage/repository.go
+  s_42e94828d2d144::t_b7968608294ca0 43-44,138-140,144,156,160-161,167,175-176,191-192,238-239
+internal/observability/usage/repository_test.go
+  s_42e94828d2d144::t_93fc062df4cbed 69-104
+internal/observability/verify/affected.go
+  s_42e94828d2d144::t_f31209a296c272 1-154
+internal/observability/verify/affected_test.go
+  s_42e94828d2d144::t_aeb4e76128061c 1-231
+internal/observability/verify/verify.go
+  s_42e94828d2d144::t_e0203d0a97d01e 1-387
+internal/observability/verify/verify_test.go
+  s_42e94828d2d144::t_4560cec9677d37 1-256
+internal/persist/repoindex/classify.go
+  s_42e94828d2d144::t_374aebc1f97b44 1-45
+internal/persist/repoindex/index.go
+  s_42e94828d2d144::t_4bb2a11efb240b 1-417
+internal/persist/repoindex/index_test.go
+  s_42e94828d2d144::t_3c80fe0b0a66d6 1-343
+internal/persist/repoindex/related.go
+  s_42e94828d2d144::t_19fa7516a751bb 1-189
+internal/persist/repoindex/store.go
+  s_42e94828d2d144::t_ea8e1fcd6e4d79 1-426
+internal/persist/repoindex/store_test.go
+  s_42e94828d2d144::t_f88d385b95b722 1-305
+internal/persist/session/ux/snapshot.go
+  s_42e94828d2d144::t_b807d26d52df07 23
+internal/persist/session/ux/snapshot_test.go
+  s_42e94828d2d144::t_c74750d854bf8e 18,20
+internal/persist/state/sqlite/store.go
+  s_42e94828d2d144::t_b7ae85bcd2cf6b 19,160-165,248-259,622-663
+internal/persist/state/sqlite/store_test.go
+  s_42e94828d2d144::t_d116ffc220254e 22,30,173-220
+internal/persist/workspacejournal/journal.go
+  s_42e94828d2d144::t_ea3564c4d1e939 218-250,280-283,304,394-446,495-497,501-505,507-509,511-521,542-543,545-546,577-579,609-624
+internal/persist/workspacejournal/journal_test.go
+  s_42e94828d2d144::t_6031504e18c081 4-5,77-298
+internal/platform/repowalk/repowalk.go
+  s_42e94828d2d144::t_27d3fa76673b96 1-343
+internal/platform/repowalk/repowalk_test.go
+  s_42e94828d2d144::t_057c7a1157fe79 1-282
+internal/platform/symbols/languages.go
+  s_42e94828d2d144::t_069c3ad23ede94 1-376
+internal/platform/symbols/symbols.go
+  s_42e94828d2d144::t_8cbaddb617da80 1-256
+internal/platform/symbols/symbols_test.go
+  s_42e94828d2d144::t_4981d9092f2e40 1-303
+internal/platform/textdiff/textdiff.go
+  s_42e94828d2d144::t_125a707ab7b5c3 1-321
+internal/platform/textdiff/textdiff_test.go
+  s_42e94828d2d144::t_3182406ac69f2c 1-208
+internal/runtime/agent/compact/compact.go
+  s_42e94828d2d144::t_d6b89080ff6012 1-447
+internal/runtime/agent/compact/compact_test.go
+  s_42e94828d2d144::t_af6b2d3f59ffc7 1-172
+internal/runtime/agent/compact/failures.go
+  s_42e94828d2d144::t_5feba2e98ff1f2 1-185
+internal/runtime/agent/compact/failures_test.go
+  s_42e94828d2d144::t_3c94fb527efe11 1-79
+internal/runtime/agent/engine/compaction.go
+  s_42e94828d2d144::t_5c03359b30de01 1-170
+internal/runtime/agent/engine/engine.go
+  s_42e94828d2d144::t_be6eb0734a09e1 23,25-26,28,45,77,81-93,134,136-143,148-162,171-180,196,234-237,239,244-273,278-301,333-341,345-350,353,356-358,360,466,468-470,508-510,521,545-546,586-599,605-624,631,696-700,727-731,757,814-819,888,921-922,947-954,956-959,965-966,984-1018,1058,1061-1063,1070-1077,1079,1084,1094-1095,1272-1280,1282,1289,1293-1300,1307,1345-1347,1349,1351-1362,1364-1368
+internal/runtime/agent/engine/engine_test.go
+  s_42e94828d2d144::t_ca8d34b81600ae 12,23,28,419-424,426,452,454-457,461-465,470,472-473,476-479,483-563
+internal/runtime/agent/engine/evidence.go
+  s_42e94828d2d144::t_d55a589175aa58 1-168
+internal/runtime/agent/engine/evidence_test.go
+  s_42e94828d2d144::t_c4de0cd491ed37 1-228
+internal/runtime/agent/engine/toolfailure.go
+  s_42e94828d2d144::t_ea9270f38f706d 1-45
+internal/runtime/agent/engine/toolfailure_test.go
+  s_42e94828d2d144::t_b7832a3405da00 1-163
+internal/runtime/agent/engine/turndiff.go
+  s_42e94828d2d144::t_ed49c7a6bbbc17 4,8-9,12,14-20,43,47-48,56,88-94,104-108,110-111,114-119,121-122
+internal/runtime/agent/engine/turndiff_test.go
+  s_42e94828d2d144::t_c0c7273de75762 6-7,13-15,17-23,30-48
+internal/runtime/agent/engine/usage_cost_test.go
+  s_42e94828d2d144::t_252b7e15986f8d 1-47
+internal/runtime/agent/engine/verify.go
+  s_42e94828d2d144::t_a1e161f841d62e 1-223
+internal/runtime/agent/engine/verify_gate_test.go
+  s_42e94828d2d144::t_445236f77769c0 1-502
+internal/runtime/agent/engine/workingset.go
+  s_42e94828d2d144::t_ded975605b8bf6 1-183
+internal/runtime/agent/engine/workingset_test.go
+  s_42e94828d2d144::t_90bc6dc179e4a1 1-259
+internal/runtime/agent/evidence/evidence.go
+  s_42e94828d2d144::t_bb85e9f0efe31f 1-618
+internal/runtime/agent/evidence/evidence_test.go
+  s_42e94828d2d144::t_9929643685de2f 1-279
+internal/runtime/agent/promptcontext/codingpolicy.go
+  s_42e94828d2d144::t_9e2eead565cf5a 1-41
+internal/runtime/agent/promptcontext/evidence_test.go
+  s_42e94828d2d144::t_b77161021f5f42 1-117
+internal/runtime/agent/promptcontext/turn.go
+  s_42e94828d2d144::t_d0340d900de83c 1-249
+internal/runtime/agent/promptcontext/turn_test.go
+  s_42e94828d2d144::t_58b3d6ef44ff1e 1-188
+internal/runtime/agent/repocontext/repocontext.go
+  s_42e94828d2d144::t_5999119caa43dc 1-96
+internal/runtime/agent/repocontext/repocontext_test.go
+  s_42e94828d2d144::t_4b447d20ab514e 1-135
+internal/runtime/agent/repomap/repomap.go
+  s_42e94828d2d144::t_674ed482e53357 1-298
+internal/runtime/agent/repomap/repomap_test.go
+  s_42e94828d2d144::t_31a4c3d1ac3732 1-206
+internal/runtime/agent/workingset/workingset.go
+  s_42e94828d2d144::t_c18ce71e55604e 1-304
+internal/runtime/agent/workingset/workingset_test.go
+  s_42e94828d2d144::t_7623f20d32be64 1-170
+internal/runtime/app/application.go
+  s_42e94828d2d144::t_928400a8907604 7,103,105,115-117,120-122,215-219,229-236,244-264,384-392,403-404
+internal/runtime/app/receipt.go
+  s_42e94828d2d144::t_abdd0350841081 1-301
+internal/runtime/app/receipt_test.go
+  s_42e94828d2d144::t_f79a42555c6a04 1-303
+internal/runtime/app/reconstruct.go
+  s_42e94828d2d144::t_1c46c422b07104 73,92,101,107,113,127,133,136,139-174
+internal/runtime/app/reconstruct_test.go
+  s_42e94828d2d144::t_1b3b757e2f27e1 63-134
+internal/runtime/app/runtime.go
+  s_42e94828d2d144::t_701cf84de79cad 294-336,993-994,997-998
+internal/runtime/app/runtime_test.go
+  s_42e94828d2d144::t_433c4df9b9c5f5 274-346,501
+internal/runtime/app/thread_manager_test.go
+  s_42e94828d2d144::t_d9c876058f930f 125
+internal/runtime/app/wire/evidence_test.go
+  s_42e94828d2d144::t_59cbcd8ea1c101 1-80
+internal/runtime/app/wire/helpers.go
+  s_42e94828d2d144::t_ed6103dbf1156e 15-16,20,23-26,63-190
+internal/runtime/app/wire/maturity.go
+  s_42e94828d2d144::t_c887af3e2fe08c 1-33
+internal/runtime/app/wire/repoindex_test.go
+  s_42e94828d2d144::t_92dadcab4e6a82 1-79
+internal/runtime/app/wire/route.go
+  s_42e94828d2d144::t_1e77bb3b997695 112-116,118-130
+internal/runtime/app/wire/runtime.go
+  s_42e94828d2d144::t_2f51c33988dd5f 13,40,45,75,81-95,230,234-236,254-273,404-413,531,536,542,548-555,563-572
+internal/runtime/protocol/message.go
+  s_42e94828d2d144::t_d0c8ee3bf566ef 56-58,71-73,94-99,112-114,127-129,152-154,188-190,211-213,226-228,247-249,295,302,406-409,691-704,718-959,1079-1081,1321-1418,1420-1421,1424,1428-1429,1432-1472,1480-1487,1490-1491
+internal/runtime/protocol/message_test.go
+  s_42e94828d2d144::t_afef38f4f32dfa 5,80-97,149-266
+internal/runtime/protocol/receipt_test.go
+  s_42e94828d2d144::t_07bf2a17a16d7f 1-115
+internal/security/sandbox/workspace_fs_unix.go
+  s_42e94828d2d144::t_8699c7da100b48 171-198
+internal/security/sandbox/workspace_fs_windows.go
+  s_42e94828d2d144::t_5280b381bbb977 26-31,60,172-201
+testdata/README.md
+  s_42e94828d2d144::t_3f34664dab330a 5-6
+testdata/benchmarks/README.md
+  s_42e94828d2d144::t_ca53e47bc57f85 1-70
+testdata/benchmarks/compact-priority-truncation/provider/edit.sse
+  s_42e94828d2d144::t_3433c0dc623aae 1-3
+testdata/benchmarks/compact-priority-truncation/provider/first-answer.sse
+  s_42e94828d2d144::t_9739bb9b8373a8 1-5
+testdata/benchmarks/compact-priority-truncation/provider/fixture.json
+  s_42e94828d2d144::t_c971acc44fcf4e 1-27
+testdata/benchmarks/compact-priority-truncation/provider/missing.sse
+  s_42e94828d2d144::t_38b218b2e8efb1 1-3
+testdata/benchmarks/compact-priority-truncation/provider/plan.sse
+  s_42e94828d2d144::t_7ba54b77ca4c4e 1-3
+testdata/benchmarks/compact-priority-truncation/provider/read.sse
+  s_42e94828d2d144::t_a87542566e8cfa 1-3
+testdata/benchmarks/compact-priority-truncation/provider/search.sse
+  s_42e94828d2d144::t_da55ba460e3989 1-3
+testdata/benchmarks/compact-priority-truncation/provider/second-answer.sse
+  s_42e94828d2d144::t_f6c03ea6bfecb0 1-5
+testdata/benchmarks/compact-priority-truncation/task.json
+  s_42e94828d2d144::t_8793c440d35e33 1-26
+testdata/benchmarks/compact-priority-truncation/workspace/service.py
+  s_42e94828d2d144::t_286a72a8ac6a0b 1-5
+testdata/benchmarks/compact-priority-truncation/workspace/settings.yaml
+  s_42e94828d2d144::t_c4682be26d31a5 1
+testdata/benchmarks/compact-recursive-carryover/provider/first-answer.sse
+  s_42e94828d2d144::t_95d97e37f441d1 1-5
+testdata/benchmarks/compact-recursive-carryover/provider/fixture.json
+  s_42e94828d2d144::t_e9388d39cd7071 1-30
+testdata/benchmarks/compact-recursive-carryover/provider/plan.sse
+  s_42e94828d2d144::t_555f738dce0f2b 1-3
+testdata/benchmarks/compact-recursive-carryover/provider/read-notes.sse
+  s_42e94828d2d144::t_55a84eaedefaf5 1-3
+testdata/benchmarks/compact-recursive-carryover/provider/read-service.sse
+  s_42e94828d2d144::t_5951e13208dce3 1-3
+testdata/benchmarks/compact-recursive-carryover/provider/second-answer.sse
+  s_42e94828d2d144::t_875fe16f77c95c 1-5
+testdata/benchmarks/compact-recursive-carryover/provider/third-answer.sse
+  s_42e94828d2d144::t_85eeebbc068b86 1-5
+testdata/benchmarks/compact-recursive-carryover/task.json
+  s_42e94828d2d144::t_42c26b4bf6a781 1-24
+testdata/benchmarks/compact-recursive-carryover/workspace/notes.md
+  s_42e94828d2d144::t_d0def51d3e9284 1-9
+testdata/benchmarks/compact-recursive-carryover/workspace/service.py
+  s_42e94828d2d144::t_c8f9ca6440be6e 1-5
+testdata/benchmarks/compact-recursive-carryover/workspace/settings.yaml
+  s_42e94828d2d144::t_ea697c782be6ce 1
+testdata/benchmarks/compact-structured-sections/provider/edit.sse
+  s_42e94828d2d144::t_3cdd37c93f6e83 1-3
+testdata/benchmarks/compact-structured-sections/provider/first-answer.sse
+  s_42e94828d2d144::t_7ffd7a6be6bf67 1-5
+testdata/benchmarks/compact-structured-sections/provider/fixture.json
+  s_42e94828d2d144::t_5fcdd603533351 1-35
+testdata/benchmarks/compact-structured-sections/provider/missing.sse
+  s_42e94828d2d144::t_359d1f6e246f4a 1-3
+testdata/benchmarks/compact-structured-sections/provider/plan.sse
+  s_42e94828d2d144::t_3f5468332daf9a 1-3
+testdata/benchmarks/compact-structured-sections/provider/read.sse
+  s_42e94828d2d144::t_fab38266257a9d 1-3
+testdata/benchmarks/compact-structured-sections/provider/search.sse
+  s_42e94828d2d144::t_13b7e13d76de48 1-3
+testdata/benchmarks/compact-structured-sections/provider/second-answer.sse
+  s_42e94828d2d144::t_09d84887342eea 1-5
+testdata/benchmarks/compact-structured-sections/task.json
+  s_42e94828d2d144::t_9eb516c97ea8e0 1-34
+testdata/benchmarks/compact-structured-sections/workspace/service.py
+  s_42e94828d2d144::t_372a2221e5e666 1-5
+testdata/benchmarks/compact-structured-sections/workspace/settings.yaml
+  s_42e94828d2d144::t_6dde73646d6324 1
+testdata/benchmarks/context-budget-truncation/provider/answer.sse
+  s_42e94828d2d144::t_867739516f6068 1-5
+testdata/benchmarks/context-budget-truncation/provider/fixture.json
+  s_42e94828d2d144::t_8e74074dd27780 1-10
+testdata/benchmarks/context-budget-truncation/task.json
+  s_42e94828d2d144::t_f9f8b2cef7331f 1-20
+testdata/benchmarks/context-budget-truncation/workspace/alpha/alpha.go
+  s_42e94828d2d144::t_f2eb268534ad12 1-7
+testdata/benchmarks/context-budget-truncation/workspace/bravo/bravo.go
+  s_42e94828d2d144::t_be0fff44f63ea1 1-7
+testdata/benchmarks/context-budget-truncation/workspace/charlie/charlie.go
+  s_42e94828d2d144::t_47b009be91a0a1 1-7
+testdata/benchmarks/context-budget-truncation/workspace/delta/delta.go
+  s_42e94828d2d144::t_302dac92e6a20e 1-7
+testdata/benchmarks/context-budget-truncation/workspace/echo/echo.go
+  s_42e94828d2d144::t_976f81282b2482 1-7
+testdata/benchmarks/context-budget-truncation/workspace/foxtrot/foxtrot.go
+  s_42e94828d2d144::t_f5ee6dfaf8a241 1-7
+testdata/benchmarks/context-budget-truncation/workspace/go.mod
+  s_42e94828d2d144::t_10c7e5f00f1930 1-3
+testdata/benchmarks/context-budget-truncation/workspace/golf/golf.go
+  s_42e94828d2d144::t_0bfb6aeae8ae56 1-7
+testdata/benchmarks/context-budget-truncation/workspace/hotel/hotel.go
+  s_42e94828d2d144::t_410905f9fd52cb 1-7
+testdata/benchmarks/edit-transaction-move/provider/complete.sse
+  s_42e94828d2d144::t_5f7e9af08ce90b 1-5
+testdata/benchmarks/edit-transaction-move/provider/fixture.json
+  s_42e94828d2d144::t_aad1758157939c 1-12
+testdata/benchmarks/edit-transaction-move/provider/move.sse
+  s_42e94828d2d144::t_34a63e27666dff 1-3
+testdata/benchmarks/edit-transaction-move/provider/read.sse
+  s_42e94828d2d144::t_08d6a3f5c17f1a 1-3
+testdata/benchmarks/edit-transaction-move/task.json
+  s_42e94828d2d144::t_782da0d43ca30b 1-19
+testdata/benchmarks/edit-transaction-move/workspace/old_name.py
+  s_42e94828d2d144::t_43d04bc740a417 1
+testdata/benchmarks/edit-transaction-multi-file/provider/apply.sse
+  s_42e94828d2d144::t_8380116984c3b8 1-3
+testdata/benchmarks/edit-transaction-multi-file/provider/complete.sse
+  s_42e94828d2d144::t_2efeb72f3e656d 1-5
+testdata/benchmarks/edit-transaction-multi-file/provider/fixture.json
+  s_42e94828d2d144::t_3e85aeda84b10a 1-13
+testdata/benchmarks/edit-transaction-multi-file/provider/read_api.sse
+  s_42e94828d2d144::t_f62d117f375e7f 1-3
+testdata/benchmarks/edit-transaction-multi-file/provider/read_legacy.sse
+  s_42e94828d2d144::t_04b643baa57f48 1-3
+testdata/benchmarks/edit-transaction-multi-file/task.json
+  s_42e94828d2d144::t_c98e5a1fb45146 1-21
+testdata/benchmarks/edit-transaction-multi-file/workspace/api.py
+  s_42e94828d2d144::t_cdb2d0765de91a 1-2
+testdata/benchmarks/edit-transaction-multi-file/workspace/legacy.py
+  s_42e94828d2d144::t_0d9515ee236d83 1-2
+testdata/benchmarks/edit-transaction-rollback/provider/apply.sse
+  s_42e94828d2d144::t_e00a7596d38906 1-3
+testdata/benchmarks/edit-transaction-rollback/provider/complete.sse
+  s_42e94828d2d144::t_fe104beb50a502 1-5
+testdata/benchmarks/edit-transaction-rollback/provider/fixture.json
+  s_42e94828d2d144::t_083ede524111eb 1-13
+testdata/benchmarks/edit-transaction-rollback/provider/read_first.sse
+  s_42e94828d2d144::t_0dab0419f57637 1-3
+testdata/benchmarks/edit-transaction-rollback/provider/read_second.sse
+  s_42e94828d2d144::t_d10a49f0699343 1-3
+testdata/benchmarks/edit-transaction-rollback/task.json
+  s_42e94828d2d144::t_8d10cfe9e2fb9a 1-16
+testdata/benchmarks/edit-transaction-rollback/workspace/first.py
+  s_42e94828d2d144::t_09d82202e62d6f 1
+testdata/benchmarks/edit-transaction-rollback/workspace/second.py
+  s_42e94828d2d144::t_8910f523f2a8b2 1-2
+testdata/benchmarks/evidence-search-classification/provider/answer.sse
+  s_42e94828d2d144::t_0db6e57ee8e2a9 1-5
+testdata/benchmarks/evidence-search-classification/provider/definition.sse
+  s_42e94828d2d144::t_5b112fea473a9e 1-3
+testdata/benchmarks/evidence-search-classification/provider/fixture.json
+  s_42e94828d2d144::t_5568ffcb2261d3 1-17
+testdata/benchmarks/evidence-search-classification/provider/references.sse
+  s_42e94828d2d144::t_37f259159d6b3c 1-3
+testdata/benchmarks/evidence-search-classification/task.json
+  s_42e94828d2d144::t_b6dcc3c9962a42 1-18
+testdata/benchmarks/evidence-search-classification/workspace/api/handler.go
+  s_42e94828d2d144::t_232a4882ebf58f 1-7
+testdata/benchmarks/evidence-search-classification/workspace/auth/token.go
+  s_42e94828d2d144::t_b69a51d0cba206 1-5
+testdata/benchmarks/evidence-search-classification/workspace/go.mod
+  s_42e94828d2d144::t_e8e05141d9836c 1-3
+testdata/benchmarks/evidence-unverified-change/provider/answer.sse
+  s_42e94828d2d144::t_83c7ad1d9322bb 1-5
+testdata/benchmarks/evidence-unverified-change/provider/edit.sse
+  s_42e94828d2d144::t_764e64e7115252 1-3
+testdata/benchmarks/evidence-unverified-change/provider/fixture.json
+  s_42e94828d2d144::t_a500ca248f5ace 1-17
+testdata/benchmarks/evidence-unverified-change/provider/read.sse
+  s_42e94828d2d144::t_bc34f79930fe45 1-3
+testdata/benchmarks/evidence-unverified-change/task.json
+  s_42e94828d2d144::t_f32124fd41933f 1-20
+testdata/benchmarks/evidence-unverified-change/workspace/server.py
+  s_42e94828d2d144::t_2fb19ee841138a 1-5
+testdata/benchmarks/index-degraded/provider/answer.sse
+  s_42e94828d2d144::t_30626e1755723e 1-6
+testdata/benchmarks/index-degraded/provider/fixture.json
+  s_42e94828d2d144::t_cd0eea1808d126 1-12
+testdata/benchmarks/index-degraded/provider/symbol.sse
+  s_42e94828d2d144::t_e1722f5ba5fcc9 1-4
+testdata/benchmarks/index-degraded/provider/text.sse
+  s_42e94828d2d144::t_60567a5b1576c0 1-4
+testdata/benchmarks/index-degraded/task.json
+  s_42e94828d2d144::t_28a2b1b38d4d25 1-19
+testdata/benchmarks/index-degraded/workspace/main.py
+  s_42e94828d2d144::t_d61fd3e956efac 1-5
+testdata/benchmarks/index-degraded/workspace/util.py
+  s_42e94828d2d144::t_c5af5e4c053277 1-2
+testdata/benchmarks/locate-symbol/provider/answer.sse
+  s_42e94828d2d144::t_864288dc02215a 1-6
+testdata/benchmarks/locate-symbol/provider/fixture.json
+  s_42e94828d2d144::t_adac13e006bed3 1-11
+testdata/benchmarks/locate-symbol/provider/search.sse
+  s_42e94828d2d144::t_4f45e7a40805da 1-4
+testdata/benchmarks/locate-symbol/task.json
+  s_42e94828d2d144::t_a0d93572cc839f 1-14
+testdata/benchmarks/locate-symbol/workspace/main.py
+  s_42e94828d2d144::t_d19892042f4022 1-5
+testdata/benchmarks/locate-symbol/workspace/util.py
+  s_42e94828d2d144::t_845308a51845bd 1-2
+testdata/benchmarks/policy-repeat-search-reminder/provider/answer.sse
+  s_42e94828d2d144::t_0ea7f7104bc87e 1-5
+testdata/benchmarks/policy-repeat-search-reminder/provider/first.sse
+  s_42e94828d2d144::t_d0cea3e8bb466c 1-3
+testdata/benchmarks/policy-repeat-search-reminder/provider/fixture.json
+  s_42e94828d2d144::t_7f724ad5c21fa0 1-16
+testdata/benchmarks/policy-repeat-search-reminder/provider/second.sse
+  s_42e94828d2d144::t_5184878c17d04c 1-3
+testdata/benchmarks/policy-repeat-search-reminder/task.json
+  s_42e94828d2d144::t_0ab691a373c5cb 1-19
+testdata/benchmarks/policy-repeat-search-reminder/workspace/app.py
+  s_42e94828d2d144::t_54d2d2912ca403 1-5
+testdata/benchmarks/policy-repeat-search-reminder/workspace/settings.yaml
+  s_42e94828d2d144::t_92b6c5ad165212 1-2
+testdata/benchmarks/related-tests-affected/provider/complete.sse
+  s_42e94828d2d144::t_acbb86f6ebb2dc 1-6
+testdata/benchmarks/related-tests-affected/provider/edit.sse
+  s_42e94828d2d144::t_0289fc7868e5c8 1-4
+testdata/benchmarks/related-tests-affected/provider/fixture.json
+  s_42e94828d2d144::t_0fed42953443bf 1-13
+testdata/benchmarks/related-tests-affected/provider/read.sse
+  s_42e94828d2d144::t_415db5c13ba56a 1-4
+testdata/benchmarks/related-tests-affected/provider/tests.sse
+  s_42e94828d2d144::t_5e43feb9b2f3e9 1-4
+testdata/benchmarks/related-tests-affected/task.json
+  s_42e94828d2d144::t_fddb3df6078d84 1-28
+testdata/benchmarks/related-tests-affected/workspace/pkg/calc.go
+  s_42e94828d2d144::t_ab668ad3362128 1-7
+testdata/benchmarks/related-tests-affected/workspace/pkg/calc_test.go
+  s_42e94828d2d144::t_87d20d7e85e98d 1-9
+testdata/benchmarks/repo-map-orientation/provider/answer.sse
+  s_42e94828d2d144::t_3d4be82844aa2e 1-5
+testdata/benchmarks/repo-map-orientation/provider/fixture.json
+  s_42e94828d2d144::t_f6069e19dcb347 1-16
+testdata/benchmarks/repo-map-orientation/task.json
+  s_42e94828d2d144::t_268ebbf63248ce 1-15
+testdata/benchmarks/repo-map-orientation/workspace/cmd/app/main.go
+  s_42e94828d2d144::t_cd43d9367df37c 1-7
+testdata/benchmarks/repo-map-orientation/workspace/go.mod
+  s_42e94828d2d144::t_4d094fee8860df 1-3
+testdata/benchmarks/repo-map-orientation/workspace/internal/auth/token.go
+  s_42e94828d2d144::t_06c35cda44a63a 1-13
+testdata/benchmarks/repo-map-orientation/workspace/internal/store/store.go
+  s_42e94828d2d144::t_e1a6e63248a542 1-13
+testdata/benchmarks/single-file-fix/provider/complete.sse
+  s_42e94828d2d144::t_1a3bd3bc6f9097 1-6
+testdata/benchmarks/single-file-fix/provider/edit.sse
+  s_42e94828d2d144::t_9c561843b92ab7 1-4
+testdata/benchmarks/single-file-fix/provider/fixture.json
+  s_42e94828d2d144::t_b78a86d95fc993 1-12
+testdata/benchmarks/single-file-fix/provider/read.sse
+  s_42e94828d2d144::t_2f29c76dd9f80d 1-4
+testdata/benchmarks/single-file-fix/task.json
+  s_42e94828d2d144::t_d1a66a9200e30d 1-17
+testdata/benchmarks/single-file-fix/workspace/calc.py
+  s_42e94828d2d144::t_b197839a8553d2 1-2
+testdata/benchmarks/symbol-lookup/provider/answer.sse
+  s_42e94828d2d144::t_2522f0305bae08 1-6
+testdata/benchmarks/symbol-lookup/provider/fixture.json
+  s_42e94828d2d144::t_d0d69dd5b7a3f3 1-11
+testdata/benchmarks/symbol-lookup/provider/symbol.sse
+  s_42e94828d2d144::t_211602ad1df3e3 1-4
+testdata/benchmarks/symbol-lookup/task.json
+  s_42e94828d2d144::t_1a5e7611e3f936 1-15
+testdata/benchmarks/symbol-lookup/workspace/main.go
+  s_42e94828d2d144::t_11c8ff10ff4776 1-8
+testdata/benchmarks/symbol-lookup/workspace/pkg/store.go
+  s_42e94828d2d144::t_25f22ecdcdee47 1-13
+testdata/benchmarks/symbol-references/provider/answer.sse
+  s_42e94828d2d144::t_5df69cd752c151 1-6
+testdata/benchmarks/symbol-references/provider/fixture.json
+  s_42e94828d2d144::t_d176b7979d56b6 1-11
+testdata/benchmarks/symbol-references/provider/references.sse
+  s_42e94828d2d144::t_b9e3914a892029 1-4
+testdata/benchmarks/symbol-references/task.json
+  s_42e94828d2d144::t_11c45d1399d50c 1-15
+testdata/benchmarks/symbol-references/workspace/calc.go
+  s_42e94828d2d144::t_f409b1ac0bff4d 1-10
+testdata/benchmarks/symbol-references/workspace/main.go
+  s_42e94828d2d144::t_143e820f29b625 1-12
+testdata/benchmarks/symbol-references/workspace/report.go
+  s_42e94828d2d144::t_da3d766e8ebe8a 1-7
+testdata/benchmarks/unread-edit-blocked/provider/complete.sse
+  s_42e94828d2d144::t_4e19dd1eae517e 1-4
+testdata/benchmarks/unread-edit-blocked/provider/edit.sse
+  s_42e94828d2d144::t_0cb523a8059d5c 1-4
+testdata/benchmarks/unread-edit-blocked/provider/fixture.json
+  s_42e94828d2d144::t_64d82b38b3f4d2 1-11
+testdata/benchmarks/unread-edit-blocked/provider/read.sse
+  s_42e94828d2d144::t_333e7f0de2f1ef 1-4
+testdata/benchmarks/unread-edit-blocked/provider/repair.sse
+  s_42e94828d2d144::t_e1ed71655e4873 1-4
+testdata/benchmarks/unread-edit-blocked/task.json
+  s_42e94828d2d144::t_6a7a5b8709db71 1-18
+testdata/benchmarks/unread-edit-blocked/workspace/settings.py
+  s_42e94828d2d144::t_763eed9323200b 1-2
+testdata/benchmarks/verify-gate-hard-fail/provider/complete.sse
+  s_42e94828d2d144::t_35e779963fbe04 1-4
+testdata/benchmarks/verify-gate-hard-fail/provider/edit.sse
+  s_42e94828d2d144::t_ac12346aad33b4 1-4
+testdata/benchmarks/verify-gate-hard-fail/provider/fixture.json
+  s_42e94828d2d144::t_21e5bf0df452a2 1-10
+testdata/benchmarks/verify-gate-hard-fail/provider/read.sse
+  s_42e94828d2d144::t_9ef0909f0f8383 1-4
+testdata/benchmarks/verify-gate-hard-fail/task.json
+  s_42e94828d2d144::t_af1ef21c7d2b0d 1-25
+testdata/benchmarks/verify-gate-hard-fail/workspace/config.txt
+  s_42e94828d2d144::t_2d09fb2cba28d9 1
+testdata/benchmarks/verify-gate-pass/provider/complete.sse
+  s_42e94828d2d144::t_8102f1dbf216b8 1-4
+testdata/benchmarks/verify-gate-pass/provider/edit.sse
+  s_42e94828d2d144::t_c9d5a22ca72116 1-4
+testdata/benchmarks/verify-gate-pass/provider/fixture.json
+  s_42e94828d2d144::t_1674d149fe5fba 1-10
+testdata/benchmarks/verify-gate-pass/provider/read.sse
+  s_42e94828d2d144::t_8dc09730a62634 1-4
+testdata/benchmarks/verify-gate-pass/task.json
+  s_42e94828d2d144::t_a2a841e575c154 1-27
+testdata/benchmarks/verify-gate-pass/workspace/status.txt
+  s_42e94828d2d144::t_5455506b1c9a78 1
+testdata/benchmarks/verify-gate-repair/provider/claim.sse
+  s_42e94828d2d144::t_cac4d0c628eaec 1-4
+testdata/benchmarks/verify-gate-repair/provider/complete.sse
+  s_42e94828d2d144::t_643722af4748ca 1-4
+testdata/benchmarks/verify-gate-repair/provider/edit-wrong.sse
+  s_42e94828d2d144::t_066262144a05eb 1-4
+testdata/benchmarks/verify-gate-repair/provider/edit.sse
+  s_42e94828d2d144::t_05356da062c90a 1-4
+testdata/benchmarks/verify-gate-repair/provider/fixture.json
+  s_42e94828d2d144::t_e18a31934aa8e8 1-15
+testdata/benchmarks/verify-gate-repair/provider/read.sse
+  s_42e94828d2d144::t_58e23625b3073b 1-4
+testdata/benchmarks/verify-gate-repair/provider/repair.sse
+  s_42e94828d2d144::t_a20d1b3420a3ff 1-4
+testdata/benchmarks/verify-gate-repair/provider/reread.sse
+  s_42e94828d2d144::t_1199c222dc0eb6 1-4
+testdata/benchmarks/verify-gate-repair/task.json
+  s_42e94828d2d144::t_18ddd73630078a 1-28
+testdata/benchmarks/verify-gate-repair/workspace/status.txt
+  s_42e94828d2d144::t_c80f5faf9d033d 1
+testdata/benchmarks/verify-gate-repair/workspace/version.txt
+  s_42e94828d2d144::t_85a8fe0f588b5a 1
+testdata/benchmarks/verify-gate-revert/provider/complete.sse
+  s_42e94828d2d144::t_91afb325e57ff1 1-4
+testdata/benchmarks/verify-gate-revert/provider/edit.sse
+  s_42e94828d2d144::t_7871f5fb105ecf 1-4
+testdata/benchmarks/verify-gate-revert/provider/fixture.json
+  s_42e94828d2d144::t_22c75ff9dce208 1-10
+testdata/benchmarks/verify-gate-revert/provider/read.sse
+  s_42e94828d2d144::t_72d431ef1082c9 1-4
+testdata/benchmarks/verify-gate-revert/task.json
+  s_42e94828d2d144::t_b29e090764ccad 1-25
+testdata/benchmarks/verify-gate-revert/workspace/config.txt
+  s_42e94828d2d144::t_e3a9c73fa4efb1 1
+testdata/benchmarks/working-set-evolution/provider/answer.sse
+  s_42e94828d2d144::t_930af930b40011 1-5
+testdata/benchmarks/working-set-evolution/provider/fixture.json
+  s_42e94828d2d144::t_1f2b6208f35a7d 1-11
+testdata/benchmarks/working-set-evolution/provider/read.sse
+  s_42e94828d2d144::t_b432359c90c681 1-3
+testdata/benchmarks/working-set-evolution/task.json
+  s_42e94828d2d144::t_9a781c66621e26 1-17
+testdata/benchmarks/working-set-evolution/workspace/config.py
+  s_42e94828d2d144::t_2df42d7f254916 1-6
+testdata/benchmarks/working-set-evolution/workspace/main.py
+  s_42e94828d2d144::t_eb9ecdd18c9cd8 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5b1eb24bb4925ff56e5882cd7ae7ffe6264f3803",
+  "prompts": {},
+  "sessions": {
+    "s_42e94828d2d144": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e8be2ace-fd7a-4efd-a78a-06843596dda1",
+        "model": "unknown"
+      },
+      "human_author": "fuweiting.pro <fuweiting.pro@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
