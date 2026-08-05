@@ -1,17 +1,49 @@
-# Scripts
+# Repository Scripts
 
-该目录保存可重复执行的构建、基线提取、验证和发布脚本。
+[简体中文](./README.zh-CN.md) | English
 
-脚本必须支持从仓库根目录运行，正确传递失败退出码，并避免写死个人绝对路径。
+Scripts in this directory are stable command-line entry points for validation,
+smoke tests, local setup, and release packaging. Run them from the repository
+root unless a script explicitly states otherwise.
 
-## VS Code 本地配置
+| Script | Network | Output / side effect |
+| --- | --- | --- |
+| `check-docs.sh` | no | validates Markdown links and bilingual mirrors |
+| `check-brand.sh` | no | scans tracked source for stale branding |
+| `test-brand-check.sh` | no | self-tests brand scanner behavior |
+| `test-secret-leak.sh` | no | validates binary redaction behavior |
+| `content-fixture-smoke.sh` | no | temporary content-dependency fixtures |
+| `live-model-smoke.sh` | yes | one real provider request; no persistent secret |
+| `package-release.sh` | no | `dist/release`: binaries, checksums, SBOM, manifest |
+| `deepseek-local.sh` | setup/package may use network | local DeepSeek build, Keychain config, TUI, and VS Code |
+| `setup-vscode-local.sh` | package build may install dependencies | installs a target VSIX into official macOS VS Code |
 
-`setup-vscode-local.sh` 在 macOS 上完成 CodeHelper target VSIX 的本地构建、DeepSeek
-Keychain 凭证、可信 TOML、官方 VS Code User Settings 与扩展安装：
+## Conventions
+
+Scripts must:
+
+- resolve the repository root instead of assuming the caller's directory;
+- use strict error handling and preserve failure exit codes;
+- expose machine-specific paths through environment variables;
+- avoid printing secrets or reading them from tracked repository documents;
+- treat the explicitly ignored local DeepSeek runbook as secret input only;
+- write generated artifacts only to documented build directories;
+- clean temporary files with traps;
+- provide `--help` when they accept options.
+
+## Common Commands
 
 ```bash
+make docs-check
+make brand-check
+make secret-leak-test
+make live-model-smoke
+VERSION=0.1.0 make package
+make deepseek-init
+make deepseek-tui
+make deepseek-vscode
 make vscode-local-setup
 ```
 
-该脚本固定使用官方 VS Code CLI，不使用可能指向 Cursor 的 `PATH` 中 `code`。完整说明见
-[`docs/VSCODE-LOCAL-INSTALL.zh-CN.md`](../docs/VSCODE-LOCAL-INSTALL.zh-CN.md)。
+Full development and release context is documented in
+[docs/en/development.md](../docs/en/development.md).

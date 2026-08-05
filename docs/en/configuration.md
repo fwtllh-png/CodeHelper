@@ -1,0 +1,260 @@
+# Configuration Reference
+
+[简体中文](../zh-CN/configuration.md) | English
+
+## Resolution Order
+
+Configuration is resolved from lowest to highest precedence:
+
+```text
+built-in defaults < TOML file < CODEHELPER_* environment < command flags
+```
+
+Use these commands to prevent guesswork:
+
+```bash
+codehelper config check --config ./codehelper.toml
+codehelper config show --config ./codehelper.toml
+```
+
+`config show` includes provenance, allowing an operator to see which source won
+for each field.
+
+## Complete Practical Example
+
+```toml
+[runtime]
+operation_buffer = 64
+event_history = 256
+subscriber_buffer = 64
+
+[state]
+data_dir = ".codehelper"
+busy_timeout = "5s"
+event_retention = 1000000
+
+[memory]
+enabled = false
+path = ".codehelper/memory"
+
+[telemetry]
+log_level = "info"
+
+[credential]
+kind = "env"                 # env | file | keyring
+name = "OPENAI_API_KEY"      # reference, never the secret value
+
+[execution]
+provider = "openai"
+model = "gpt-4.1"
+protocol = "openai_chat"
+mode = "act"                 # plan | act | operate
+workspace = "."
+tools = true
+max_output_tokens = 4096
+max_steps = 64
+timeout = "2m"
+idle_timeout = "1m"
+max_concurrent = 8
+rate_limit = 0
+budget_tokens = 0            # 0 means no additional token cap
+budget_usd = 0               # 0 means no additional cost cap
+reasoning_effort = ""
+native_search = false
+
+[execution.verify]
+mode = "soft"                # off | soft | hard
+scope = "diagnostics"        # diagnostics | repository | affected
+on_failure = "fail"          # fail | revert
+command = ""                 # optional explicit repository check
+max_repair_steps = 1
+timeout = "2m"
+
+[execution.journal]
+durable = true
+recover_on_start = true
+
+[execution.subagent]
+max_depth = 5
+max_parallel = 4
+max_steps = 8
+max_tokens = 0
+max_cost_usd = 0
+wall_time = "5m"
+workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
+
+[execution.worker]
+enabled = false
+max_parallel = 2
+max_attempts = 1
+lease = "30s"
+claim_interval = "1s"
+automation_interval = "30s"
+retry_backoff = "15s"
+retry_backoff_max = "10m"
+max_tokens = 0
+max_cost_usd = 0
+
+[context.index]
+enabled = true
+max_file_bytes = 1048576
+max_files = 20000
+
+[context.repo_map]
+enabled = true
+max_bytes = 8192
+max_directories = 24
+
+[context.working_set]
+enabled = true
+max_entries = 16
+max_bytes = 8192
+
+[context.evidence]
+enabled = true
+max_entries = 24
+max_bytes = 4096
+
+[context.coding_policy]
+enabled = true
+
+[context.compact]
+max_history_bytes = 262144
+summary_max_bytes = 8192
+max_digest_entries = 120
+
+[route]
+lock = false
+
+[route.plan]
+provider = "openai"
+model = "gpt-4.1-mini"
+
+[route.vision]
+provider = "openai-responses"
+model = "gpt-4.1"
+
+[route.subquery]
+provider = "openai"
+model = "gpt-4.1-mini"
+
+[web]
+search_backend = "duckduckgo"
+```
+
+Unknown TOML fields are rejected. This is intentional: a misspelled safety or
+budget field must not look configured while having no effect.
+
+## Provider and Model Selection
+
+The primary route is `[execution].provider` plus `[execution].model`.
+`protocol` describes the wire format, such as:
+
+- `openai_chat`
+- `openai_responses`
+- `anthropic`
+
+Use the catalog rather than guessing identifiers:
+
+```bash
+codehelper model list
+codehelper model resolve --provider openai --model gpt-4.1
+codehelper model resolve --provider openai-responses --model gpt-4.1
+```
+
+Provider IDs can be distinct even when model IDs are equal. Always specify the
+provider when resolution would otherwise be ambiguous.
+
+Purpose routes support `plan`, `vision`, and `subquery`. With `route.lock=true`,
+a missing purpose route is an error instead of falling back to the primary
+execution route.
+
+## Credentials
+
+`[credential]` contains only a reference:
+
+| Kind | Meaning | Recommendation |
+| --- | --- | --- |
+| `env` | `name` is an environment variable | easiest local/CI setup |
+| `file` | `name` is a protected file path | use mode `0600` and external secret management |
+| `keyring` | `name` is an OS keyring key | preferred interactive desktop setup |
+
+Manage references with `codehelper auth`. Secret values are redacted from normal
+configuration and diagnostic output.
+
+## Modes, Postures, and Verification
+
+Mode is configured in TOML; posture is a host/command decision supplied through
+flags. They are independent.
+
+Verification modes:
+
+- `off`: do not run the verify gate;
+- `soft`: collect and report a verdict without turning a successful edit into a
+  failed turn;
+- `hard`: enforce the verdict after repair attempts are exhausted.
+
+Scopes:
+
+- `diagnostics`: language/editor diagnostics;
+- `repository`: detected or explicit repository command;
+- `affected`: checks inferred from changed paths.
+
+Use `hard` only after the repository's verification command is deterministic in
+the intended sandbox.
+
+## State and Persistence
+
+The default user data directory is `~/.codehelper/v1`. A workspace can use a
+dedicated `--data-dir` or `[state].data_dir`.
+
+Persistent state includes runtime projections, events, content-addressed data,
+session metadata, usage, and journals. The current project is pre-release; do
+not depend on compatibility with development databases from older commits.
+
+`execution.journal.durable=true` stores enough edit evidence to recover
+interrupted turns. Keep it enabled for real repositories.
+
+## Context Controls
+
+- `index`: bounded symbol extraction for code navigation;
+- `repo_map`: bounded repository structure and entry-point summary;
+- `working_set`: paths touched or pinned during the session;
+- `evidence`: facts established, risks, and unverified changes;
+- `coding_policy`: stable method instructions;
+- `compact`: when and how long history is summarized.
+
+Disabling context sections can reduce input size but also increases repeated
+search and weakens continuity. Adjust bounds before disabling them.
+
+## Environment Variables
+
+Common overrides:
+
+| Variable family | Fields |
+| --- | --- |
+| `CODEHELPER_PROVIDER`, `CODEHELPER_MODEL`, `CODEHELPER_PROTOCOL` | primary model route |
+| `CODEHELPER_MODE`, `CODEHELPER_WORKSPACE`, `CODEHELPER_TOOLS` | execution behavior |
+| `CODEHELPER_MAX_*`, `CODEHELPER_TIMEOUT`, `CODEHELPER_IDLE_TIMEOUT` | limits |
+| `CODEHELPER_BUDGET_TOKENS`, `CODEHELPER_BUDGET_USD` | session budgets |
+| `CODEHELPER_VERIFY_*` | verification behavior |
+| `CODEHELPER_STATE_*` | persistence |
+| `CODEHELPER_CREDENTIAL_KIND`, `CODEHELPER_CREDENTIAL_NAME` | secret reference |
+| `CODEHELPER_INDEX_*`, `CODEHELPER_REPO_MAP_*` | repository context |
+| `CODEHELPER_WORKING_SET_*`, `CODEHELPER_EVIDENCE_*` | session context |
+| `CODEHELPER_COMPACT_*` | history compaction |
+| `CODEHELPER_VISION_*`, `CODEHELPER_WEB_SEARCH_BACKEND` | specialized adapters |
+
+The authoritative list is the environment application block in
+`internal/config/config.go`.
+
+## Configuration Hygiene
+
+- Commit a safe example, not a credential-bearing personal config.
+- Prefer workspace-relative paths in shared examples.
+- Keep production credentials outside the repository.
+- Run `config check` after every config change.
+- Use `config show` when a flag, environment variable, and TOML appear to
+  disagree.
+- Treat `bypass`, hard verification, worker enablement, and custom shell
+  commands as review-required changes.

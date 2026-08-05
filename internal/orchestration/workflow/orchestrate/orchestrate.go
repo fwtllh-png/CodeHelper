@@ -109,8 +109,8 @@ type bridgeDriver struct {
 
 // SpawnTask runs the task through the inner driver and writes what happened to
 // the audit trail. The ledger is not consulted to decide anything: the inner
-// driver owns execution, and a second opinion about who holds this task is
-// exactly what RFC-007 D10 removed.
+// driver owns execution, and consulting the ledger would create a second
+// scheduler that could disagree about who holds the task.
 func (d *bridgeDriver) SpawnTask(
 	ctx context.Context,
 	req workflow.TaskRequest,

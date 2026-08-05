@@ -169,7 +169,7 @@ func TestLosingTheLeaseStopsTheWork(t *testing.T) {
 
 // A worker that dies with a lease in hand leaves the task looking claimed. The
 // next process has to be able to finish it, and the dead owner must not be able
-// to settle it afterwards (RFC-007 §10).
+// to settle it afterwards.
 func TestAnotherProcessTakesOverWorkAbandonedWithALease(t *testing.T) {
 	tasks := testTasks(t)
 	created := mustCreate(t, tasks, "turn-1", 3)

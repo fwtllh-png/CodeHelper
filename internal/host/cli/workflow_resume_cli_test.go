@@ -12,7 +12,7 @@ import (
 )
 
 // A workflow that dies halfway must not redo the nodes that finished, and it must
-// refuse to continue against a spec that has changed underneath it (RFC-007 D8).
+// refuse to continue against a spec that has changed underneath it.
 func TestWorkflowRunResumesFromItsNodeCheckpoint(t *testing.T) {
 	root := t.TempDir()
 	specPath := filepath.Join(root, "wf.json")

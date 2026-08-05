@@ -85,7 +85,7 @@ type ExecOptions struct {
 	PersistentStore     *state.Store
 	Extensions          ExtensionOptions
 	// TrustProbe lets probe "supported" observations widen catalog capabilities.
-	// Without it, probes may only tighten (RFC-010 D3).
+	// Without it, probes may only tighten.
 	TrustProbe bool
 	// TrustedDynamicTools exposes the host-managed dynamic catalog. It is off by
 	// default and requires the normal tool/Guard runtime.
@@ -103,7 +103,7 @@ type ExecOptions struct {
 // stays in the working set for the rest of the session.
 //
 // Hosts express this in wire's own vocabulary rather than the agent's, because a
-// host must not depend on execution packages (ADR-0009).
+// host must not depend on execution packages.
 type ContextFile struct {
 	Path string
 	// Content replaces what is read from disk, for a buffer the user has not

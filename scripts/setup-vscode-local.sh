@@ -10,7 +10,6 @@ VSCODE_CLI="${VSCODE_CLI:-/Applications/Visual Studio Code.app/Contents/Resource
 SETTINGS_PATH="${CODEHELPER_VSCODE_SETTINGS_PATH:-$HOME/Library/Application Support/Code/User/settings.json}"
 CONFIG_DIR="${CODEHELPER_CONFIG_DIR:-$HOME/.config/codehelper}"
 CONFIG_PATH="$CONFIG_DIR/config.toml"
-KEY_SOURCE="${CODEHELPER_DEEPSEEK_KEY_SOURCE:-$ROOT/docs/DEEPSEEK-LIVE.zh-CN.md}"
 SKIP_BUILD=0
 OPEN_WORKSPACE=1
 
@@ -22,11 +21,10 @@ Build and install the target VSIX into official Visual Studio Code, configure
 DeepSeek Responses, store its API key in macOS Keychain, and update User Settings.
 
 Environment overrides:
-  DEEPSEEK_API_KEY              API key; otherwise read from the local live guide
+  DEEPSEEK_API_KEY              API key; otherwise requested without terminal echo
   VSCODE_CLI                    Official VS Code CLI path
   CODEHELPER_VSCODE_SETTINGS_PATH  VS Code User Settings path
   CODEHELPER_CONFIG_DIR            CodeHelper user configuration directory
-  CODEHELPER_DEEPSEEK_KEY_SOURCE   Local file containing an export assignment
 EOF
 }
 
@@ -81,9 +79,6 @@ if [[ -z "$VSIX" ]]; then
 fi
 
 api_key="${DEEPSEEK_API_KEY:-}"
-if [[ -z "$api_key" && -f "$KEY_SOURCE" ]]; then
-  api_key="$(awk -F"'" '/^export DEEPSEEK_API_KEY=/{print $2; exit}' "$KEY_SOURCE")"
-fi
 if [[ -z "$api_key" ]]; then
   read -r -s -p "DeepSeek API key: " api_key
   printf '\n'

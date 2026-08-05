@@ -64,8 +64,8 @@ func TestCostPanelReportsTheTurnFromItsReceipt(t *testing.T) {
 	}
 }
 
-// TestCostPanelKeepsAnUnpricedTurnApartFromAFreeOne is the §8.4 rule at the one
-// surface a person watches while spending money.
+// TestCostPanelKeepsAnUnpricedTurnApartFromAFreeOne covers the surface a person
+// watches while spending money.
 func TestCostPanelKeepsAnUnpricedTurnApartFromAFreeOne(t *testing.T) {
 	unpriced := costPanelView(t, receiptModel(t, &protocol.ExecutionReceiptData{
 		InputTokens: 900, OutputTokens: 100, CostKnown: false,

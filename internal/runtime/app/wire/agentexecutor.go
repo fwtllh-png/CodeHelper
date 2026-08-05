@@ -20,7 +20,7 @@ import (
 // AgentTurnPayloadVersion is the only payload shape the agent_turn executor
 // runs. A task carrying anything else fails closed rather than being guessed at:
 // the payload decides what an agent is told to do, so a misread field is a
-// misread instruction (RFC-007 D1).
+// misread instruction.
 const AgentTurnPayloadVersion = 1
 
 // AgentTurnPayload is what a queued agent turn says about the work.
@@ -33,7 +33,7 @@ type AgentTurnPayload struct {
 }
 
 // agentTurnExecutor runs a queued task as a real child agent turn. It reuses the
-// RFC-006 child runtime rather than spawning a subprocess, so a background turn
+// child runtime rather than spawning a subprocess, so a background turn
 // gets the same isolation, budget and fail-closed approvals as a foreground one,
 // and shows up in the same event stream.
 type agentTurnExecutor struct {

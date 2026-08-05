@@ -15,7 +15,7 @@ const MaturityLexical = "lexical"
 // MaturityNoMerge marks a capability that executes fully, including writes in
 // isolation, but cannot yet hand its work back to the host workspace.
 // Kept for diagnostics compatibility; subagent_child_turn no longer reports it
-// after agent_merge landed (RFC-006 D9).
+// after agent_merge landed.
 const MaturityNoMerge = "no_merge"
 
 // MaturityPartial marks a capability whose advertised surface is only partly
@@ -28,7 +28,7 @@ const MaturityPartial = "partial"
 // real execution; wire owns it because it is the layer that chooses the drivers.
 // Complete drivers are omitted — only incomplete ones appear.
 func MaturityStatus() map[string]string {
-	// RFC-012 ecosystem_runtime, mcp_runtime, plugin_registry, and
+	// ecosystem_runtime, mcp_runtime, plugin_registry, and
 	// skill_governance are intentionally absent: complete capabilities are
 	// omitted from this diagnostics map.
 	return map[string]string{
@@ -42,7 +42,7 @@ func MaturityStatus() map[string]string {
 // and judge are names with nothing behind them, because compaction and the verify
 // gate call no model at all. Configuring those two is refused rather than
 // ignored, but the enum still lists them, so a reader of the enum should know
-// which half is live (RFC-010 §D1).
+// which half is live.
 func modelRouteStatus() string { return MaturityPartial }
 
 // The index extracts symbols with per-language line rules, so it finds

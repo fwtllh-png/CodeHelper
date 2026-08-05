@@ -10,7 +10,7 @@ import (
 )
 
 // TestCLIDoesNotDependOnExecutionImplementations enforces host-layer boundaries
-// (ADR-0009 / docs/ARCHITECTURE.zh-CN.md): CLI must not import engine/tool/provider/sandbox.
+// (architecture rules): CLI must not import engine/tool/provider/sandbox.
 func TestCLIDoesNotDependOnExecutionImplementations(t *testing.T) {
 	forbidden := []string{
 		"github.com/fwtllh-png/CodeHelper/internal/runtime/agent",

@@ -12,7 +12,7 @@ import (
 
 func newFleetCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command {
 	// The ledger is an audit trail, not a queue: execution moved to the tasks
-	// table and `codehelper worker` (RFC-007 D10). The verbs that used to schedule
+	// table and `codehelper worker`. The verbs that used to schedule
 	// work here — create, enqueue, interrupt, resume — are gone rather than
 	// silently doing nothing.
 	cmd := &cobra.Command{Use: "fleet", Short: "Read the Fleet JSONL audit trail"}

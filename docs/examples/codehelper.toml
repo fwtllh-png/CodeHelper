@@ -1,0 +1,52 @@
+# Safe example: this file contains a credential reference, never a secret value.
+[credential]
+kind = "env"
+name = "OPENAI_API_KEY"
+
+[execution]
+provider = "openai"
+model = "gpt-4.1"
+protocol = "openai_chat"
+mode = "act"
+workspace = "."
+tools = true
+max_output_tokens = 4096
+max_steps = 64
+timeout = "2m"
+idle_timeout = "1m"
+
+[execution.verify]
+mode = "soft"
+scope = "diagnostics"
+on_failure = "fail"
+max_repair_steps = 1
+timeout = "2m"
+
+[execution.journal]
+durable = true
+recover_on_start = true
+
+[context.index]
+enabled = true
+max_file_bytes = 1048576
+max_files = 20000
+
+[context.repo_map]
+enabled = true
+max_bytes = 8192
+max_directories = 24
+
+[context.working_set]
+enabled = true
+max_entries = 16
+max_bytes = 8192
+
+[context.evidence]
+enabled = true
+max_entries = 24
+max_bytes = 4096
+
+[context.compact]
+max_history_bytes = 262144
+summary_max_bytes = 8192
+max_digest_entries = 120

@@ -2624,8 +2624,8 @@ func (e *Engine) Usage() (provider.Usage, float64) {
 // pool when it completes. A caller reporting "remaining" for the turn in flight
 // has to add that turn's own spend, which it has and the engine does not.
 //
-// Child agents and background turns run their own engines and so their own pools
-// (RFC-006 D7, RFC-007 D9); this reports one pool and never merges them.
+// Child agents and background turns run their own engines and therefore their
+// own pools; this reports one pool and never merges them.
 func (e *Engine) BudgetSnapshot() BudgetSnapshot {
 	if e == nil {
 		return BudgetSnapshot{}

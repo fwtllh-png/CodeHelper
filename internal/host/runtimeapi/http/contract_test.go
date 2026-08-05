@@ -24,7 +24,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-// The HTTP half of the shared protocol contract (RFC-003 T1). The scenarios live
+// The HTTP half of the shared protocol contract. The scenarios live
 // in the contract package; this file is only the translation between them and
 // routes, bodies and SSE frames.
 func TestHTTPHostMeetsTheProtocolContract(t *testing.T) {

@@ -33,7 +33,7 @@ type Options struct {
 	// OnRelease lets the host drop per-agent runtime state (thread engine, wall
 	// clock watchdog) when the model closes an agent.
 	OnRelease func(agentID string)
-	// Files applies merge writes into the parent workspace (RFC-006 D9).
+	// Files applies merge writes into the parent workspace.
 	Files *filetool.Tools
 	// Workspace is the parent workspace root used for baseline fingerprinting.
 	Workspace string

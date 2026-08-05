@@ -17,7 +17,7 @@ import (
 // a malformed or unknown call, or an edit that skipped the mandatory read.
 // Policy and sandbox rejections are deliberately not recoverable — replaying a
 // rejection invites the model to keep probing the permission boundary, which
-// needs a per-turn rejection budget before it is safe (see RFC-002).
+// would require a per-turn rejection budget before it is safe.
 func recoverableToolFailure(err error) (string, bool) {
 	if err == nil {
 		return "", false

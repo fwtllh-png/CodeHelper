@@ -9,8 +9,8 @@ const (
 	ErrorCategoryDigestMismatch   = "extension_digest_mismatch"
 )
 
-// ErrorCategory maps Registry verification failures onto the stable RFC-012
-// machine categories without exposing remote or filesystem error strings.
+// ErrorCategory maps Registry verification failures onto stable machine
+// categories without exposing remote or filesystem error strings.
 func ErrorCategory(err error) string {
 	switch {
 	case errors.Is(err, ErrUnknownPublisher), errors.Is(err, ErrInvalidSignature):

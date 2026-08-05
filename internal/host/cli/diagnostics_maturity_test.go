@@ -8,7 +8,7 @@ import (
 
 func TestDiagnosticsReportsStubMaturity(t *testing.T) {
 	report := DiagnosticsReport(t.TempDir())
-	// agent_merge landed (RFC-006 D9): child turns are no longer an incomplete
+	// agent_merge landed: child turns are no longer an incomplete
 	// maturity entry. Operators learn about other gaps from the remaining keys.
 	if _, ok := report.Maturity["subagent_child_turn"]; ok {
 		t.Fatalf("subagent_child_turn should be omitted once merge is available: %#v", report.Maturity)
@@ -27,9 +27,9 @@ func TestDiagnosticsReportsStubMaturity(t *testing.T) {
 	if got := report.Maturity["model_route"]; got != wire.MaturityPartial {
 		t.Fatalf("model_route maturity = %q want %q", got, wire.MaturityPartial)
 	}
-	// RFC-012 is production-governed after T6. Complete capabilities are omitted
-	// from this map, so reintroducing one of these keys would be a release
-	// regression rather than harmless diagnostic detail.
+	// Production-governed capabilities are omitted from this map, so
+	// reintroducing one of these keys would be a release regression rather than
+	// harmless diagnostic detail.
 	for _, complete := range []string{
 		"background_executor", "ecosystem_runtime", "mcp_runtime",
 		"plugin_registry", "skill_governance",

@@ -290,7 +290,7 @@ func TestApprovalQueueFIFOAdvances(t *testing.T) {
 
 // The fleet panel reads an audit trail. It used to create a run on Enter, which
 // invented work nothing would ever execute; scheduling now lives in the tasks
-// table (RFC-007 D10), so the panel must observe and not mutate.
+// table, so the panel must observe and not mutate.
 func TestFleetPanelReadsTheAuditTrailWithoutCreatingRuns(t *testing.T) {
 	root := t.TempDir()
 	fleetRoot := filepath.Join(root, "fleet")

@@ -5,6 +5,7 @@ extensions/vscode/.tmp-electron/
 extensions/vscode/dist/*.vsix
 /.tmp/
 /.codehelper/
+# Machine-local provider runbooks may contain real credentials.
 /docs/ARK-LIVE.zh-CN.md
 /docs/DEEPSEEK-LIVE.zh-CN.md
 *.cover

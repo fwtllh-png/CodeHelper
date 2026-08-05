@@ -1,6 +1,6 @@
 // Package checkpoint persists workflow runs and their per-node outcomes so that
 // a run interrupted by a crash or a restart can continue instead of repeating
-// work that already happened (RFC-007 D8).
+// work that already happened.
 package checkpoint
 
 import (

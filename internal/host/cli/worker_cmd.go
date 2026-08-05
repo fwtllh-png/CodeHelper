@@ -64,7 +64,7 @@ func newWorkerCommand(
 // newWorkerRunCommand is the deployment form of the scheduler: a foreground
 // process whose only job is to execute durable tasks. The other hosts can run one
 // too, but they exist to serve a user and stop when that user leaves; background
-// work needs a process that outlives them (RFC-007 D7).
+// work needs a process that outlives them.
 func newWorkerRunCommand(
 	ctx context.Context, stdout, stderr io.Writer, setCode func(int),
 ) *cobra.Command {
@@ -200,7 +200,7 @@ func runWorker(
 // newWorkerEnqueueCommand is how an operator creates executable work. It is
 // separate from the task tools on purpose: those write the model's own board,
 // which must never become live turns, so an executable task is something a person
-// asks for explicitly (RFC-007 D1).
+// asks for explicitly.
 func newWorkerEnqueueCommand(
 	stdout, stderr io.Writer, setCode func(int),
 	openTasks func(string) (*taskstate.Repository, *state.Store, bool),

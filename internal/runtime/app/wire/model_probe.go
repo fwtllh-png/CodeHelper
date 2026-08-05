@@ -31,7 +31,7 @@ type ProbeResult struct {
 	Source     string `json:"source"`
 }
 
-// ProbeOptions configures a manual capability probe (RFC-010 T4 / C5).
+// ProbeOptions configures a manual capability probe.
 type ProbeOptions struct {
 	ProviderID   string
 	ModelID      string

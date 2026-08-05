@@ -32,4 +32,4 @@ A dirty worktree or temporary dry-run signing key is reported as
 
 Remote SSH with an external Linux binary and Dev Containers are covered by
 official VS Code integration gates on Colima Linux arm64. WSL2 is outside the
-current RFC-014 T2 gate.
+current gate.

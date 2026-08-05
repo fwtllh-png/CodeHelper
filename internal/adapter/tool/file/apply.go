@@ -149,7 +149,7 @@ type AppliedChange struct {
 }
 
 // Apply runs a validate-then-apply transaction. dryRun renders a unified diff
-// and writes nothing. Used by file_apply and by agent_merge (RFC-006 D9).
+// and writes nothing. Used by file_apply and by agent_merge.
 func (t *Tools) Apply(
 	ctx context.Context, changes []Change, dryRun bool,
 ) ([]AppliedChange, string, error) {

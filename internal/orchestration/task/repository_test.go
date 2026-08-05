@@ -91,7 +91,7 @@ func TestInterruptedRecoveryIsIdempotentAndPreservesCompleteStates(t *testing.T)
 	}
 
 	// None of these tasks name an executor, so nothing can run them and failing
-	// them is still the only honest recovery (RFC-007 D5).
+	// them is still the only honest recovery.
 	recovered, err := repository.RecoverInterrupted(t.Context(), time.Now())
 	if err != nil {
 		t.Fatal(err)

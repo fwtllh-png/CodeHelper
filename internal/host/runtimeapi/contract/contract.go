@@ -1,6 +1,6 @@
 // Package contract holds the behaviours every runtime transport must show.
 //
-// ACP and HTTP are envelopes over one protocol (RFC-003 D1). Each has its own
+// ACP and HTTP are envelopes over one protocol. Each has its own
 // interop suite, and each suite grew its own idea of what "a turn works" means,
 // so the two transports could drift apart without any test noticing — the first
 // consumer to notice would be an external client. This package is the thing that

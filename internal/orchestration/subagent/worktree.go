@@ -17,7 +17,7 @@ type Worktree struct {
 	Isolated bool
 	// BaseRev is the git commit the worktree was created from (spawn-time HEAD).
 	// Merge compares the parent workspace against this revision so a parent
-	// drift after spawn is an apply-time conflict (RFC-006 D8 level 2).
+	// drift after spawn is an apply-time conflict.
 	BaseRev string
 	// Serialized marks the deliberate shared-workspace strategy. Such a root is
 	// protected by a whole-turn gate and is owned by the host, so Close must
@@ -27,7 +27,7 @@ type Worktree struct {
 
 // WorktreeProvider decides where an agent works. The default provider hands out
 // scratch directories; a host that can create real git worktrees injects its own
-// so writing children get a checkout of their own (RFC-006 §D3).
+// so writing children get a checkout of their own.
 //
 // Provision receives the stance because isolation is expensive — a git worktree
 // is a full checkout — and a read-only child never needs one.

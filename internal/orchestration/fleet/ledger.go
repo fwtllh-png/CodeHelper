@@ -4,7 +4,7 @@
 // reconciler, and workers that shelled out to `codehelper exec`. That was a second
 // scheduler with its own idea of what "running" means, and two schedulers cannot
 // both be right about the same task. Durable execution now lives in the tasks
-// table and the worker scheduler over it (RFC-007 D10), and this file keeps only
+// table and the worker scheduler over it, and this file keeps only
 // what an operator reads: run and task records, progress events, and receipts.
 //
 // Nothing here claims work or keeps a lease alive. The reader still understands

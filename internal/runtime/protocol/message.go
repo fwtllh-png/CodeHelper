@@ -1146,7 +1146,7 @@ type VerificationCheck struct {
 }
 
 // TurnVerificationData reports one evaluation of the verification gate that runs
-// before a turn commits its edits (RFC-002). Action records what the gate did
+// before a turn commits its edits. Action records what the gate did
 // with the verdict, so a failed status followed by action=repair reads as "the
 // model was asked to fix it" rather than as a failed turn.
 type TurnVerificationData struct {
@@ -1351,8 +1351,8 @@ type ReceiptSkill struct {
 	Locked  bool   `json:"locked"`
 }
 
-// ExecutionReceiptData is the per-turn audit record (roadmap §5.5): what the
-// turn was asked to do, what it touched, what verified it, and what it cost.
+// ExecutionReceiptData is the per-turn audit record: what the turn was asked to
+// do, what it touched, what verified it, and what it cost.
 // It is emitted for completed and failed turns alike, immediately before the
 // terminal event, so a host can render or persist one authoritative summary.
 //

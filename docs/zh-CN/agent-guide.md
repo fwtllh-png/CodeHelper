@@ -1,0 +1,162 @@
+# AI Coding Agent 指南
+
+简体中文 | [English](../en/agent-guide.md)
+
+本文给 AI Coding Agent 提供在本仓库可靠工作的最小上下文，也可作为人工 Review
+检查表。
+
+## 任务目标
+
+保持 CodeHelper 是“一套受治理的本地 Coding Agent Runtime + 多种 Host”。优先保证
+正确性、证据、安全边界和可维护性，而不是能力数量。
+
+## 开始工作
+
+1. 阅读根目录 `README.zh-CN.md`。
+2. 阅读[架构设计](./architecture.md)。
+3. 修改实现前先读最近的 Package Test。
+4. 从 `Makefile` 查找标准验证命令。
+5. 检查 `git status`，不能覆盖无关用户改动。
+
+## 所有权地图
+
+| 变更领域 | 起始路径 |
+| --- | --- |
+| CLI Command/Flag | `internal/host/cli` |
+| TUI Rendering | `internal/host/tui` |
+| HTTP/ACP | `internal/host/runtimeapi` |
+| Operation/Event Shape | `internal/runtime/protocol` |
+| Turn/Session State | `internal/runtime/app` |
+| Model/Tool Loop | `internal/runtime/agent` |
+| Dependency Construction | `internal/runtime/app/wire` |
+| Model/Provider | `internal/adapter/model`、`internal/adapter/provider` |
+| Tool | `internal/adapter/tool` |
+| Approval/Sandbox | `internal/security`、`internal/adapter/tool/guard` |
+| Task/Workflow | `internal/orchestration` |
+| Durable Data | `internal/persist` |
+| VS Code | `extensions/vscode` |
+
+## 不可破坏的约束
+
+- Host 不直接执行 Tool。
+- `wire` 不实现业务循环。
+- VS Code 不建立第二套 Runtime。
+- 不绕过 Guard、Policy、Constitution、Journal 或 Sandbox。
+- 受 Git 跟踪的 Config、Log、Fixture、Docs 中不保存原始凭证。
+- 不读取、打印、总结、Patch 或强制添加被忽略的
+  `docs/DEEPSEEK-LIVE.zh-CN.md` 本机 Runbook。
+- 有结构化 Parser 时，不用脆弱字符串逻辑解析结构化格式。
+- 不静默接受未知 Config Field 或 Protocol Variant。
+- 未实际执行验证时，不声称“验证通过”。
+- 没有明确需求时，不为未发布开发状态增加兼容 Migration。
+
+## 工作方法
+
+### 探索
+
+使用 `rg` 和定向读取，确认：
+
+- 所属 Package；
+- 当前测试；
+- Public/Persisted Contract；
+- 跨平台文件；
+- 生成文件；
+- 用户已修改文件。
+
+### 计划
+
+明确行为变化、不变量、文件和验证。变更应留在既有所有权边界内。
+
+### 实现
+
+- 遵循本地模式；
+- 做最小且完整的变更；
+- 使用领域语义名称；
+- 只为不明显约束添加注释；
+- 中英文文档同步更新；
+- 使用仓库命令重新生成 Artifact。
+
+### 验证
+
+先运行最窄测试，再按影响面扩大：
+
+```bash
+go test ./path/to/package
+make docs-check
+cd extensions/vscode && npm run check && npm test -- relevant-area
+```
+
+结束前运行 `git diff --check`。
+
+## 契约变更
+
+### Protocol
+
+修改 `internal/runtime/protocol` 时：
+
+1. 更新 Validation 与 Test；
+2. 重新生成 JSON Schema；
+3. 重新生成 VS Code Protocol Type；
+4. 运行 ACP 与 HTTP Contract Test；
+5. 更新中英文文档。
+
+### Persistence
+
+修改 Durable Schema 时：
+
+1. 明确兼容预期；
+2. 保证初始化就是最新 Schema；
+3. 公开发布后使用事务 Migration 与 Migration Test；
+4. 验证 Foreign Key、Index、Rollback 与 Corruption Handling；
+5. 更新运维文档。
+
+### Security
+
+修改 Guard、Policy、Permission、Constitution、Sandbox、Egress、Credential 或 Plugin
+Trust 时：
+
+1. 枚举攻击者可控输入；
+2. 保持 Fail-closed；
+3. 除成功路径外，测试拒绝与清理；
+4. 运行聚焦 Race/Security Test；
+5. 不弱化平台能力声明。
+
+## 测试预期
+
+| 风险 | 预期测试 |
+| --- | --- |
+| 局部逻辑 | Unit Test |
+| 共享组件 | Unit + Integration Consumer |
+| Protocol | Golden/Schema + Transport Contract |
+| Persistence | Create/Read/Update + Failure/Reopen |
+| Concurrency | 确定性同步 + Race |
+| Security | Allow、Deny、Malformed Input、Cleanup |
+| UI | State Projection + Message Validation |
+| Script | Happy Path、Invalid Input、Exit Status |
+
+仓库已有 Target 或 Fixture Framework 时，不创建脱离框架的私有测试脚本。
+
+## 文档预期
+
+文档属于功能的一部分：
+
+- 描述当前行为，不描述开发编年史；
+- 区分已交付能力与 Roadmap；
+- 示例命令必须存在于 `--help`；
+- 受 Git 跟踪的文档不嵌入真实凭证；
+- 操作仓库所有者的本机 DeepSeek 环境时，调用 `make deepseek-init`、
+  `make deepseek-tui` 或 `make deepseek-vscode`，不检查被忽略的 Runbook；
+- 保持本地链接有效；
+- 同步更新 `docs/en` 与 `docs/zh-CN`；
+- 删除过时材料，不保留互相矛盾的副本。
+
+## 完成报告
+
+说明：
+
+- 修改内容；
+- 关键文件或子系统；
+- 执行的测试；
+- 环境失败或跳过测试；
+- 兼容或 Migration 影响；
+- 未纳入任务的剩余 Untracked File。

@@ -1,6 +1,6 @@
 // Package worker executes durable tasks. It is the one place that claims work
 // from the task repository: leases, heartbeats, reclaim and retry all live here
-// so that no second scheduler can disagree with this one (RFC-007).
+// so that no second scheduler can disagree with this one.
 package worker
 
 import (

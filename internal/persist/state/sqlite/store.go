@@ -651,16 +651,15 @@ CREATE INDEX workflow_nodes_run_status ON workflow_nodes(run_id, status);
 // A trace is exactly one turn, so turn_id is the correlation key and there is no
 // separate trace id: a column that only ever repeated turn_id would be one more
 // thing to keep in agreement with it. Run-level traces spanning several turns
-// (RFC-008 §9.3) would add a parent id here, and until something reads one, not
-// having it is the honest state.
+// would require a parent id here. Until a consumer needs that relationship,
+// omitting it is the honest state.
 //
 // span_id is a per-turn counter rather than a random identifier so a trace reads
 // in the order it happened and a test can name a span.
 //
 // Deleting the turn deletes its spans, which is how a deleted session takes its
 // traces with it: turns cascade from threads, and threads from sessions. Nothing
-// else expires them — span retention is the wider event-retention question
-// (ROADMAP §8.5) and this table has the same gap the event log does.
+// else expires them; span retention follows the wider event-retention policy.
 const traceSchema = `
 CREATE TABLE spans (
     turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,

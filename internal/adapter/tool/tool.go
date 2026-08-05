@@ -235,7 +235,7 @@ type EditPlanner interface {
 
 // ArgumentExpander lets a tool rewrite its arguments after schema normalization
 // and before resource resolution. agent_merge uses it to expand agent_id into
-// the concrete file changes Guard must journal for turnDiff (RFC-006 D9).
+// the concrete file changes Guard must journal for turnDiff.
 type ArgumentExpander interface {
 	ExpandArguments(ctx context.Context, raw json.RawMessage) (json.RawMessage, error)
 }

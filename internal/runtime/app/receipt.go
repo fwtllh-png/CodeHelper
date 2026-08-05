@@ -13,9 +13,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-// receiptRecorder accumulates the per-turn execution receipt (roadmap §5.5)
-// from the engine event stream. It only records what it observes, so a receipt
-// never claims a check that did not run.
+// receiptRecorder accumulates the per-turn execution receipt from the engine
+// event stream. It only records what it observes, so a receipt never claims a
+// check that did not run.
 type receiptRecorder struct {
 	started         time.Time
 	goal            string

@@ -51,8 +51,8 @@ type Task struct {
 	Dir string `json:"-"`
 
 	Name string `json:"name"`
-	// Category maps the task onto a roadmap benchmark dimension (§11.1) so
-	// reports can show coverage rather than a single opaque score.
+	// Category maps the task onto a benchmark dimension so reports can show
+	// coverage rather than a single opaque score.
 	Category string `json:"category"`
 	// Note records why the task exists and, where it pins current behaviour
 	// rather than desired behaviour, says so.

@@ -20,7 +20,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-// The ACP half of the shared protocol contract (RFC-003 T1). The scenarios live
+// The ACP half of the shared protocol contract. The scenarios live
 // in the contract package; this file is only the translation between them and
 // JSON-RPC frames.
 func TestACPHostMeetsTheProtocolContract(t *testing.T) {

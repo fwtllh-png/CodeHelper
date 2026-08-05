@@ -23,8 +23,7 @@ const (
 // Open returns a journal whose ledger and before-images live in directory, so an
 // interrupted turn can be undone by whichever process comes next. Until this
 // existed, edit atomicity held only inside a live process: a process killed
-// mid-turn left the workspace half changed with nothing to undo it from
-// (RFC-005 §11).
+// mid-turn left the workspace half changed with nothing to undo it from.
 //
 // directory is the caller's to choose. Putting it under the workspace keeps the
 // guarantee for hosts started without a state directory, and lets a worktree's
@@ -135,7 +134,7 @@ func (m *Manager) Recover(ctx context.Context) (Recovery, error) {
 		case turn.Committed:
 			// A committed turn passed its verify gate; undoing it would throw away
 			// finished work. Its before-images are released because cross-restart
-			// revert is not offered (see RFC-005).
+			// revert is not offered.
 			recovery.Abandoned = append(recovery.Abandoned, turn.ID)
 			m.releaseRecords(turn)
 		case processAlive(turn.PID):

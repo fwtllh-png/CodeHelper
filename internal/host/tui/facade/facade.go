@@ -1,7 +1,7 @@
 // Package facade narrows orchestration/persist access for the TUI host.
 //
 // New TUI code should depend on this package (or RuntimeHost) rather than
-// importing fleet/mcp/workflow/task packages directly (ADR-0009).
+// importing fleet/mcp/workflow/task packages directly.
 package facade
 
 import (

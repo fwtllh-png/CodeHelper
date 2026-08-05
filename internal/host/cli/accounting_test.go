@@ -134,8 +134,8 @@ func TestScorecardRollsUpWithoutClaimingToBeThin(t *testing.T) {
 	}
 }
 
-// TestAccountingNarrowedToATurnRefusesToNameAnAmount is the §8.4 rule at the
-// surface: a turn whose model had no price reads as unknown, never as $0.00.
+// TestAccountingNarrowedToATurnRefusesToNameAnAmount ensures a turn whose model
+// had no price reads as unknown, never as $0.00.
 func TestAccountingNarrowedToATurnRefusesToNameAnAmount(t *testing.T) {
 	dataDir := seedAccounting(t, true)
 	var stdout, stderr bytes.Buffer

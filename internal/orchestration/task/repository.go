@@ -48,7 +48,7 @@ type Task struct {
 	UpdatedAt         time.Time
 	// Executor names who may run this task. An empty executor means nobody may:
 	// most tasks are the model's own work board, and a worker that executed them
-	// would turn a to-do list into live turns (RFC-007 D1).
+	// would turn a to-do list into live turns.
 	Executor      string
 	Attempt       int
 	MaxAttempts   int
@@ -377,9 +377,9 @@ type Recovery struct {
 // healthy worker. A repeated call is a no-op because only unleased running rows
 // are selected.
 //
-// The split matters because before RFC-007 nothing could execute a task, so
-// failing them all was the only honest answer. Now a task that a dead worker was
-// running is exactly the task another worker should take over.
+// The split matters because tasks without an executor are records, so failing
+// them is the only honest answer. A task that a dead worker was running is
+// executable work that another worker should take over.
 func (r *Repository) RecoverInterrupted(ctx context.Context, at time.Time) (Recovery, error) {
 	if r.db == nil {
 		return Recovery{}, errors.New("task repository database is required")
@@ -506,7 +506,7 @@ func CanTransition(from, to State) bool {
 		return to == StateRunning || to == StateCanceled
 	case StateRunning:
 		// running -> queued is how a lease that expired, a worker that drained,
-		// and a retryable failure all get back in line (RFC-007 D3). The wait for
+		// and a retryable failure all get back in line. The wait for
 		// the next attempt is next_attempt_at, not a state, so that "waiting" keeps
 		// meaning the one thing an operator has to act on: it is waiting for them.
 		return to == StateWaiting || to == StateFailed ||

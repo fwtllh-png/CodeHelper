@@ -16,7 +16,7 @@ import (
 )
 
 // childRuntime runs spawned agents as first-class runtime turns on their own
-// threads (RFC-006). It deliberately does not shortcut around Runtime: a child
+// threads. It deliberately does not shortcut around Runtime: a child
 // turn goes through Submit, so every tool call, approval and receipt it produces
 // is an ordinary event that the eventlog, replay and SSE already carry.
 //

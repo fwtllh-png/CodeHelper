@@ -2041,7 +2041,7 @@ func (m Model) panelAction() Model {
 	switch m.panel {
 	case PanelFleet:
 		// Refresh only. The ledger records what ran; it no longer schedules, so
-		// there is nothing here for a keypress to start (RFC-007 D10). Do not
+		// there is nothing here for a keypress to start. Do not
 		// append a status cell on every refresh — that flooded the transcript
 		// when users kept pressing Enter expecting the panel to "run" something.
 		m.panelBody = m.renderPanel(PanelFleet)

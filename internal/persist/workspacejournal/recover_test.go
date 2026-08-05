@@ -11,7 +11,7 @@ import (
 
 // A process killed between the before-image and the end of the turn used to
 // leave the workspace half changed with nothing to undo it from: the ledger and
-// before-images only existed in that process's heap (RFC-005 §11).
+// before-images only existed in that process's heap.
 func TestTheNextProcessUndoesATurnAKilledProcessLeftHalfApplied(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "value.txt")

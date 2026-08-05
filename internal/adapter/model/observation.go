@@ -14,7 +14,7 @@ type CapabilityObservation struct {
 	ObservedAt string // RFC3339
 }
 
-// ApplyProbe intersects catalog capabilities with observations (RFC-010 D3).
+// ApplyProbe intersects catalog capabilities with observations.
 //
 // supported=false always clears the bit (tighten). supported=true only sets the
 // bit when trustProbe is true (widen requires an explicit operator nod). Matching

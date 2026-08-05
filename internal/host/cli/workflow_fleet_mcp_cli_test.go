@@ -48,7 +48,7 @@ func TestWorkflowRuntimeDriver(t *testing.T) {
 }
 
 // The fleet CLI reads what already ran. Its scheduling verbs moved to
-// `codehelper worker` (RFC-007 D10) and must be gone rather than pretending.
+// `codehelper worker` and must be gone rather than pretending.
 func TestFleetReadsWorkflowHistoryAndNoLongerSchedules(t *testing.T) {
 	root := t.TempDir()
 	specPath := filepath.Join(root, "wf.json")

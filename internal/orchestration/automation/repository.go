@@ -415,9 +415,9 @@ func (r *Repository) ListRuns(ctx context.Context, automationID string) ([]Run, 
 var errDuplicateSlot = errors.New("automation slot already enqueued")
 
 // validateExecution rejects an executor no worker answers to. A schedule whose
-// tasks nothing can run is allowed, because that is what automations produced
-// before RFC-007 and those rows are records rather than work, but a misspelled
-// executor is not: it would silently become one of those records.
+// tasks nothing can run is allowed because those rows are records rather than
+// executable work. A misspelled executor is not allowed: it would silently
+// become one of those records.
 func validateExecution(executor string, maxAttempts int) (string, int, error) {
 	executor = strings.TrimSpace(executor)
 	if executor == "" {

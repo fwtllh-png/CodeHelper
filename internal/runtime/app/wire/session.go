@@ -125,7 +125,7 @@ func (s *Session) closeResources(ctx context.Context, closeRuntime bool) error {
 	// The scheduler stops first and drains: its tasks run as child turns, so
 	// stopping it after the child runtime would leave turns with nothing to settle
 	// them. Draining returns in-flight work to the queue without spending an
-	// attempt, so the next process picks it up (RFC-007 D7).
+	// attempt, so the next process picks it up.
 	if s.scheduler != nil {
 		closeErrors = append(closeErrors, s.scheduler.Close())
 	}

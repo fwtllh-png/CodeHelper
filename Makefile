@@ -13,7 +13,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.Date=$(BUILD_DATE)
 
-.PHONY: fmt verify test race build cross-build smoke brand-check \
+.PHONY: fmt verify test race build cross-build smoke docs-check brand-check \
 	security-test sandbox-attack-test secret-leak-test live-model-smoke \
 	cli-smoke tui-smoke acp-interop api-contract protocol-contract protocol-schema \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
@@ -23,6 +23,7 @@ LDFLAGS := -s -w \
 	vscode-build vscode-package vscode-release-dry-run \
 	vscode-multiroot-integration vscode-update-integration \
 	vscode-distribution vscode-local-setup vscode-matrix-report vscode-rc \
+	deepseek-init deepseek-tui deepseek-vscode \
 	bench catalog-bench package clean
 
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
@@ -33,7 +34,7 @@ RELEASE_STAGE ?= experimental
 fmt:
 	$(GO) fmt ./...
 
-verify: brand-check vscode-check vscode-test
+verify: docs-check brand-check vscode-check vscode-test
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
 	$(GO) vet ./...
 	$(GO) test ./...
@@ -60,6 +61,9 @@ smoke: build
 	./$(BINARY) help >/dev/null
 	./$(BINARY) version
 	./$(BINARY) version --json
+
+docs-check:
+	./scripts/check-docs.sh
 
 brand-check:
 	./scripts/check-brand.sh
@@ -221,6 +225,15 @@ vscode-distribution: vscode-release-dry-run
 vscode-local-setup: vscode-distribution
 	./scripts/setup-vscode-local.sh --skip-build
 
+deepseek-init:
+	./scripts/deepseek-local.sh init
+
+deepseek-tui:
+	./scripts/deepseek-local.sh tui
+
+deepseek-vscode:
+	./scripts/deepseek-local.sh vscode
+
 vscode-matrix-report:
 	cd $(VSCODE_DIR) && $(NPM) run matrix:report
 
@@ -241,7 +254,7 @@ bench:
 	CODEHELPER_BENCH_REPORT='$(BENCH_REPORT)' $(GO) test -count=1 -v ./internal/host/bench/...
 
 # catalog-bench tracks the M4 dynamic tool catalog's time, allocation, and
-# prompt-size baseline at 100/500/1000 tools (RFC-012 T0).
+# prompt-size baseline at 100/500/1000 tools.
 catalog-bench:
 	$(GO) test -run '^$$' \
 		-bench 'BenchmarkTool(Catalog|RegistryStartup)Scale' \
