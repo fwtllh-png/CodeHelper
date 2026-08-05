@@ -1,0 +1,11 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "what timeout does the config use",
+  "streams": ["read.sse", "answer.sse"],
+  "expected_request_fragments": [
+    ["[repo_map turn=1 index=ready]", "\"name\":\"file_read\""],
+    ["[working_set turn=1]", "config.py — read (turn 1)"]
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "rename the timeout constant in settings.py",
+  "streams": ["edit.sse", "read.sse", "repair.sse", "complete.sse"],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"file_edit\""],
+    ["read-before-edit", "file_read"]
+  ]
+}

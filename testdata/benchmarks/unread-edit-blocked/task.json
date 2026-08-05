@@ -1,0 +1,18 @@
+{
+  "name": "unread-edit-blocked",
+  "category": "edit_guardrail",
+  "note": "A blind edit is rejected by the read-before-edit guardrail, but the rejection is now a model-visible tool result instead of a turn failure. The model reads the file and retries, so the turn completes with the rename applied. The fixture asserts the rejection text reaches the second model request, which is what makes this a self-correction test rather than a plain edit test.",
+  "prompt": "rename the timeout constant in settings.py",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "files": {
+      "settings.py": "REQUEST_TIMEOUT = 30\nRETRIES = 3\n"
+    },
+    "tools_used": ["file_edit", "file_read"],
+    "receipt_changes": ["settings.py"],
+    "output_contains": ["renamed"]
+  }
+}

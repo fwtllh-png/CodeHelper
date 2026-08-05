@@ -1,0 +1,7 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": ["first.sse", "second.sse"],
+  "stream_delay_ms": 200
+}

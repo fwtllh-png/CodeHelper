@@ -1,0 +1,19 @@
+{
+  "name": "index-degraded",
+  "category": "symbol_locate",
+  "note": "With the index off the symbol tools must refuse the call and say why, and text search must keep working. This pins the degradation contract: a session without an index loses recall, not the ability to read the repository.",
+  "prompt": "where is normalize defined without an index",
+  "tools": true,
+  "max_steps": 8,
+  "timeout_ms": 60000,
+  "index": {
+    "enabled": false
+  },
+  "expect": {
+    "terminal": "completed",
+    "tools_failed": ["search_symbol"],
+    "tools_used": ["search_text"],
+    "unchanged": ["util.py", "main.py"],
+    "output_contains": ["util.py"]
+  }
+}

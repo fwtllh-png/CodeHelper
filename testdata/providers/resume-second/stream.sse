@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"second answer"},"finish_reason":null}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":8,"completion_tokens":2}}
+
+data: [DONE]

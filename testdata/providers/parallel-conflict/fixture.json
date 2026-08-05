@@ -1,0 +1,10 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "parallel conflict",
+  "streams": ["tool-call.sse"],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"file_write\""]
+  ]
+}

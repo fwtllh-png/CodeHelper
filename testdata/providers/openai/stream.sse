@@ -1,0 +1,8 @@
+data: {"choices":[{"delta":{"reasoning_content":"I should answer briefly. "},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"content":"hello"},"finish_reason":null}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1,"completion_tokens_details":{"reasoning_tokens":4}}}
+
+data: [DONE]
+

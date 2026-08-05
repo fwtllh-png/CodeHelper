@@ -1,0 +1,6 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": ["write.sse", "complete.sse", "write.sse", "complete.sse"]
+}

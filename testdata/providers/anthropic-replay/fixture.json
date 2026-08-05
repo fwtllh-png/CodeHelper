@@ -1,0 +1,18 @@
+{
+  "protocol": "anthropic",
+  "path": "/messages",
+  "model": "fixture-model",
+  "expected_prompt": "anthropic replay",
+  "streams": ["tool-call.sse", "complete.sse"],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"file_write\""],
+    [
+      "\"type\":\"thinking\"",
+      "\"thinking\":\"checking replay\"",
+      "\"signature\":\"fixture-replay-signature\"",
+      "\"type\":\"tool_use\"",
+      "\"type\":\"tool_result\"",
+      "\"tool_use_id\":\"call_write\""
+    ]
+  ]
+}

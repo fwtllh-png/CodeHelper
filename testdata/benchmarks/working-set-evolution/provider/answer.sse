@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"config.py sets TIMEOUT_SECONDS to 30."},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":91,"completion_tokens":12}}
+
+data: [DONE]

@@ -1,0 +1,12 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "fix add in calc.py",
+  "streams": ["read.sse", "edit.sse", "complete.sse"],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"file_read\"", "\"name\":\"file_edit\""],
+    ["\"role\":\"tool\"", "\"tool_call_id\":\"call_read\"", "content_sha256"],
+    ["\"role\":\"tool\"", "\"tool_call_id\":\"call_edit\""]
+  ]
+}

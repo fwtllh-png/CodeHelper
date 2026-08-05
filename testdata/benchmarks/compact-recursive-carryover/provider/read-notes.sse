@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_notes","function":{"name":"file_read","arguments":"{\"path\":\"notes.md\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

@@ -1,0 +1,6 @@
+data: {"choices":[{"delta":{"content":"fixed add to use addition"},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":48,"completion_tokens":6,"prompt_tokens_details":{"cached_tokens":16}}}
+
+data: [DONE]
+

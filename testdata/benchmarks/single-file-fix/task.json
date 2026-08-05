@@ -1,0 +1,17 @@
+{
+  "name": "single-file-fix",
+  "category": "single_file_fix",
+  "prompt": "fix add in calc.py",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "files": {
+      "calc.py": "def add(a, b):\n    return a + b\n"
+    },
+    "tools_used": ["file_read", "file_edit"],
+    "receipt_changes": ["calc.py"],
+    "output_contains": ["fixed"]
+  }
+}

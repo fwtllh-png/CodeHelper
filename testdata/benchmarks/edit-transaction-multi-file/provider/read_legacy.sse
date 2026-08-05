@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_read_legacy","function":{"name":"file_read","arguments":"{\"path\":\"legacy.py\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

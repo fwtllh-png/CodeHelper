@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_repair","function":{"name":"file_edit","arguments":"{\"path\":\"version.txt\",\"old\":\"version = 1.0\",\"new\":\"version = 1.0.0\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

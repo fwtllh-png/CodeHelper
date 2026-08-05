@@ -1,0 +1,6 @@
+data: {"choices":[{"delta":{"content":"the symbol index is off, so I used text search: normalize is defined in util.py"},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":80,"completion_tokens":16}}
+
+data: [DONE]
+

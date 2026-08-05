@@ -1,0 +1,27 @@
+{
+  "name": "verify-gate-pass",
+  "category": "verify_gate",
+  "note": "The gate runs the repository command after an edit and passes, so the turn commits normally. The command is given explicitly (shell test on the edited content) to keep the task hermetic instead of depending on a build tool being installed.",
+  "prompt": "set STATUS to ready in status.txt",
+  "tools": true,
+  "max_steps": 8,
+  "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "fail",
+    "command": "grep -q 'STATUS=ready' status.txt",
+    "max_repair_steps": 1
+  },
+  "expect": {
+    "terminal": "completed",
+    "files": {
+      "status.txt": "STATUS=ready\n"
+    },
+    "tools_used": ["file_read", "file_edit"],
+    "verify_status": "passed",
+    "verify_action": "passed",
+    "verify_repairs": 0,
+    "output_contains": ["ready"]
+  }
+}

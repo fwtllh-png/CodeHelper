@@ -1,0 +1,17 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "raise the timeout in server.py to 30",
+  "streams": ["read.sse", "edit.sse", "answer.sse"],
+  "expected_request_fragments": [
+    ["Coding method:", "verify the affected scope first"],
+    ["\"tool_call_id\":\"call_read\"", "content_sha256"],
+    [
+      "\"tool_call_id\":\"call_edit\"",
+      "[evidence turn=1]",
+      "unproved, and yours to close:",
+      "server.py — changed, nothing verified it (turn 1)"
+    ]
+  ]
+}

@@ -1,0 +1,6 @@
+data: {"choices":[{"delta":{"content":"NewStore is declared in pkg/store.go at line 7"},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":58,"completion_tokens":11}}
+
+data: [DONE]
+

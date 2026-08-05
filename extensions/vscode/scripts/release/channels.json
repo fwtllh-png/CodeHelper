@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "marketplace": {
+    "publisher": "codehelper",
+    "cli": "vsce"
+  },
+  "open_vsx": {
+    "namespace": "codehelper",
+    "cli": "ovsx"
+  },
+  "enterprise": {
+    "layout": "channels/enterprise"
+  },
+  "offline": {
+    "layout": "channels/offline"
+  }
+}

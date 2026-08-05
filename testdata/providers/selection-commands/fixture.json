@@ -1,0 +1,72 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": [
+    "explain.sse",
+    "edit.sse",
+    "refactor.sse",
+    "tests.sse",
+    "diagnostic-explain.sse",
+    "diagnostic-fix.sse",
+    "changes-call.sse",
+    "changes-complete.sse",
+    "changes-deny-call.sse",
+    "changes-deny-complete.sse"
+  ],
+  "expected_request_fragments": [
+    [
+      "Explain the selected code",
+      "selection_command",
+      "selection",
+      "return value;"
+    ],
+    [
+      "Edit the selected code",
+      "replace the return expression",
+      "selection_command",
+      "return value;"
+    ],
+    [
+      "Refactor the selected code",
+      "extract a helper",
+      "selection_command",
+      "return value;"
+    ],
+    [
+      "Generate focused tests",
+      "selection_command",
+      "return value;"
+    ],
+    [
+      "Explain the attached editor diagnostic",
+      "code_action",
+      "fixture code action diagnostic"
+    ],
+    [
+      "Fix the attached editor diagnostic",
+      "code_action",
+      "fixture code action diagnostic"
+    ],
+    [
+      "Generate focused tests",
+      "selection_command",
+      "\"name\":\"file_apply\""
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_changes\"",
+      "alpha.txt",
+      "nested/beta.txt"
+    ],
+    [
+      "Generate focused tests",
+      "selection_command",
+      "\"name\":\"file_apply\""
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_changes_deny\""
+    ]
+  ]
+}

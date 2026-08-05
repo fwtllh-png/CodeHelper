@@ -1,0 +1,258 @@
+// Package contract holds the behaviours every runtime transport must show.
+//
+// ACP and HTTP are envelopes over one protocol (RFC-003 D1). Each has its own
+// interop suite, and each suite grew its own idea of what "a turn works" means,
+// so the two transports could drift apart without any test noticing — the first
+// consumer to notice would be an external client. This package is the thing that
+// notices: one scenario list, run twice, once per transport.
+//
+// It imports testing because it is test support, in the same way net/http/httptest
+// is: the scenarios are assertions, and they belong next to each other rather than
+// copied into two _test files.
+package contract
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+// Receipt is what a host answers when it accepts an operation. Every transport
+// has to name the thread, turn and item it assigned, because a client that cannot
+// name the turn cannot cancel it or answer its approvals.
+type Receipt struct {
+	ThreadID protocol.ThreadID
+	TurnID   protocol.TurnID
+	ItemID   protocol.ItemID
+}
+
+// Refusal is a host declining an operation.
+//
+// The transports carry refusals differently — a JSON-RPC error object, an HTTP
+// status with a Problem body — so each driver translates its own into a protocol
+// error code. The translation is mechanical on purpose: the contract asserts the
+// two transports refuse the same thing with the same meaning, and a driver that
+// had to think in order to answer would be hiding the difference.
+type Refusal struct {
+	Code    protocol.ErrorCode
+	Message string
+	// Retryable is what the host told the client about trying again. A transport
+	// that says "retry" about something that can never succeed sends the client
+	// into a loop, so it is part of the contract rather than a detail.
+	Retryable bool
+}
+
+type ReadState struct {
+	Threads []runtimeview.Thread
+	Thread  runtimeview.Thread
+	Tasks   []runtimeview.Task
+	Agents  []runtimeview.Agent
+	Usage   []runtimeview.Usage
+	Rollup  runtimeview.UsageRollup
+}
+
+func (r *Refusal) Error() string {
+	return string(r.Code) + ": " + r.Message
+}
+
+// Setup is what a scenario needs from the host before it starts.
+type Setup struct {
+	// Fixture is a provider fixture directory. Every scenario names one, because
+	// what the model does is what the scenario is about.
+	Fixture string
+	// Prompt is what the fixture is waiting to be asked. A fixture rejects any
+	// other prompt, so it belongs next to the fixture rather than in a scenario.
+	Prompt string
+	// Workspace, Tools and RepositoryRules are for scenarios that need a real tool
+	// call — an approval only exists if something asked to write.
+	Workspace           string
+	WorkspaceIdentity   *protocol.WorkspaceIdentity
+	Tools               bool
+	RepositoryRules     string
+	MCPConfig           string
+	PluginWorkspaceRoot string
+	PluginUserRoot      string
+	PluginBuiltinRoot   string
+	PluginStatePath     string
+	PluginStagingRoot   string
+	TrustedDynamicTools bool
+	MaxSteps            int
+}
+
+// Host is one transport under test, in protocol vocabulary. A scenario written
+// against this cannot accidentally depend on a route shape or an RPC method name.
+type Host interface {
+	// Transport names the envelope, for failure messages.
+	Transport() string
+	StartTurn(ctx context.Context, prompt string) (Receipt, error)
+	StartTurnWithContext(
+		ctx context.Context,
+		prompt string,
+		workspaceIdentity *protocol.WorkspaceIdentity,
+		editorContext []protocol.EditorContextReference,
+	) (Receipt, error)
+	Cancel(ctx context.Context, turn Receipt, reason string) (Receipt, error)
+	Decide(
+		ctx context.Context,
+		turn Receipt,
+		requestID string,
+		decision protocol.ApprovalDecision,
+		planID string,
+	) (Receipt, error)
+	// Live delivers events as a client watching this host sees them, starting
+	// after since. The channel closes when the host stops.
+	Live(ctx context.Context, since protocol.Cursor) (<-chan protocol.Event, error)
+	// History returns persisted events after since, the way a client that
+	// reconnected with a stored cursor reads them.
+	History(ctx context.Context, since protocol.Cursor, limit int) ([]protocol.Event, error)
+	ReadState(ctx context.Context) (ReadState, error)
+	RegisterDynamic(
+		ctx context.Context,
+		spec protocol.DynamicToolSpec,
+	) (DynamicCatalog, error)
+	ReplaceDynamic(
+		ctx context.Context,
+		spec protocol.DynamicToolSpec,
+		expectedGeneration uint64,
+	) (DynamicCatalog, error)
+	RevokeDynamic(
+		ctx context.Context,
+		name string,
+		expectedGeneration uint64,
+	) (DynamicCatalog, error)
+}
+
+type DynamicCatalog struct {
+	CatalogID  string                     `json:"catalog_id"`
+	Generation uint64                     `json:"generation"`
+	Digest     string                     `json:"digest"`
+	Tools      []protocol.DynamicToolSpec `json:"tools"`
+}
+
+// Factory builds a host for one scenario. It registers its own cleanup.
+type Factory func(t *testing.T, setup Setup) Host
+
+// Scenario is one behaviour, plus what the host needs to show it.
+type Scenario struct {
+	Name string
+	// Setup runs per scenario so temporary directories are not shared.
+	Setup func(t *testing.T) Setup
+	Run   func(t *testing.T, host Host, setup Setup)
+}
+
+// Run executes every scenario against one transport.
+func Run(t *testing.T, newHost Factory) {
+	t.Helper()
+	for _, scenario := range Scenarios() {
+		t.Run(scenario.Name, func(t *testing.T) {
+			setup := scenario.Setup(t)
+			scenario.Run(t, newHost(t, setup), setup)
+		})
+	}
+}
+
+// waitTimeout bounds one scenario's wait for an event. Fixture-driven turns take
+// milliseconds; a second is generous enough that a failure here means something
+// is actually stuck.
+const waitTimeout = 20 * time.Second
+
+// terminal reports whether kind ends a turn. Exactly one of these per turn is a
+// protocol invariant, and it is the invariant clients build their state on.
+func terminal(kind protocol.EventKind) bool {
+	switch kind {
+	case protocol.EventTurnCompleted, protocol.EventTurnFailed, protocol.EventTurnCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+// collectUntilTerminal reads events for one turn until it ends, returning them in
+// arrival order. Events for other turns are ignored: a host may be running more
+// than the one thing a scenario cares about.
+func collectUntilTerminal(
+	t *testing.T,
+	host Host,
+	events <-chan protocol.Event,
+	turn protocol.TurnID,
+) []protocol.Event {
+	t.Helper()
+	deadline := time.After(waitTimeout)
+	var seen []protocol.Event
+	for {
+		select {
+		case event, open := <-events:
+			if !open {
+				t.Fatalf("%s: event stream closed before turn %s ended; saw %s",
+					host.Transport(), turn, kindsOf(seen))
+			}
+			if event.TurnID != turn {
+				continue
+			}
+			seen = append(seen, event)
+			if terminal(event.Kind) {
+				return seen
+			}
+		case <-deadline:
+			t.Fatalf("%s: turn %s did not end within %s; saw %s",
+				host.Transport(), turn, waitTimeout, kindsOf(seen))
+		}
+	}
+}
+
+// waitForKind reads until one event of kind arrives for turn.
+func waitForKind(
+	t *testing.T,
+	host Host,
+	events <-chan protocol.Event,
+	turn protocol.TurnID,
+	kind protocol.EventKind,
+) protocol.Event {
+	t.Helper()
+	deadline := time.After(waitTimeout)
+	var seen []protocol.Event
+	for {
+		select {
+		case event, open := <-events:
+			if !open {
+				t.Fatalf("%s: event stream closed before %s; saw %s",
+					host.Transport(), kind, kindsOf(seen))
+			}
+			if turn != "" && event.TurnID != turn {
+				continue
+			}
+			seen = append(seen, event)
+			if event.Kind == kind {
+				return event
+			}
+			if terminal(event.Kind) {
+				t.Fatalf("%s: turn ended with %s before %s arrived; saw %s",
+					host.Transport(), event.Kind, kind, kindsOf(seen))
+			}
+		case <-deadline:
+			t.Fatalf("%s: %s did not arrive within %s; saw %s",
+				host.Transport(), kind, waitTimeout, kindsOf(seen))
+		}
+	}
+}
+
+func kindsOf(events []protocol.Event) []protocol.EventKind {
+	kinds := make([]protocol.EventKind, 0, len(events))
+	for _, event := range events {
+		kinds = append(kinds, event.Kind)
+	}
+	return kinds
+}
+
+func countTerminals(events []protocol.Event) int {
+	count := 0
+	for _, event := range events {
+		if terminal(event.Kind) {
+			count++
+		}
+	}
+	return count
+}

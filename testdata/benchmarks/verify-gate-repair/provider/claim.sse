@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"content":"version bumped"},"finish_reason":"stop"}]}
+
+data: [DONE]
+

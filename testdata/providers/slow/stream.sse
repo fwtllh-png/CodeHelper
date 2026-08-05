@@ -1,0 +1,6 @@
+data: {"choices":[{"delta":{"content":"too late"},"finish_reason":null}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2}}
+
+data: [DONE]
+

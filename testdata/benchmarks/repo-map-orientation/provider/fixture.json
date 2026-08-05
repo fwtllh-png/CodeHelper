@@ -1,0 +1,16 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "which directory holds the auth code",
+  "streams": ["answer.sse"],
+  "expected_request_fragments": [
+    [
+      "[repo_map turn=1 index=ready]",
+      "build: go.mod",
+      "entry: cmd/app/main.go",
+      "internal/auth — 1 files",
+      "internal/store — 1 files"
+    ]
+  ]
+}

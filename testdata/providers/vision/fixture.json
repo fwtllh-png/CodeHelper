@@ -1,0 +1,11 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": ["tool-call.sse", "description.sse", "answer.sse"],
+  "expected_request_fragments": [
+    ["look at the screenshot"],
+    ["image_url", "data:image/png;base64,"],
+    ["a login form"]
+  ]
+}

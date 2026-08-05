@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_changes_deny","function":{"name":"file_apply","arguments":"{\"changes\":[{\"op\":\"write\",\"path\":\"denied-alpha.txt\",\"content\":\"alpha\\n\"},{\"op\":\"write\",\"path\":\"nested/denied-beta.txt\",\"content\":\"beta\\n\"}]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

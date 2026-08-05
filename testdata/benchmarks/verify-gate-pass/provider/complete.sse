@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"content":"status is now ready"},"finish_reason":"stop"}]}
+
+data: [DONE]
+

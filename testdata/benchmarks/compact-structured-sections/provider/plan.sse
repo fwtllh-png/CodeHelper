@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_plan","function":{"name":"update_plan","arguments":"{\"objective\":\"align the greeting in service.py with settings.yaml\",\"critical_files\":[\"service.py\"],\"steps\":[{\"title\":\"read the current greeting\",\"status\":\"in_progress\"},{\"title\":\"confirm the greeting matches settings.yaml\",\"status\":\"pending\"}]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

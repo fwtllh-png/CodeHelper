@@ -1,0 +1,13 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "raise the bonus to 2 in pkg/calc.go",
+  "streams": ["tests.sse", "read.sse", "edit.sse", "complete.sse"],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"search_related_tests\""],
+    ["\"role\":\"tool\"", "\"tool_call_id\":\"call_tests\"", "pkg/calc_test.go"],
+    ["\"tool_call_id\":\"call_read\"", "const Bonus = 1"],
+    ["\"tool_call_id\":\"call_edit\""]
+  ]
+}

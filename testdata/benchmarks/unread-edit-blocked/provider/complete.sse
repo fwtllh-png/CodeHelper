@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"content":"read settings.py first, then renamed TIMEOUT to REQUEST_TIMEOUT"},"finish_reason":"stop"}]}
+
+data: [DONE]
+

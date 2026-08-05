@@ -1,0 +1,25 @@
+{
+  "name": "verify-gate-hard-fail",
+  "category": "verify_gate",
+  "note": "No repair budget and on_failure = fail: the turn fails with a conflict problem and the uncommitted journal rolls the file back, so a CI run sees a non-zero outcome and a clean workspace.",
+  "prompt": "make config.txt valid",
+  "tools": true,
+  "max_steps": 8,
+  "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "fail",
+    "command": "grep -q '^mode = safe$' config.txt",
+    "max_repair_steps": 0
+  },
+  "expect": {
+    "terminal": "failed",
+    "terminal_contains": ["verification"],
+    "unchanged": ["config.txt"],
+    "tools_used": ["file_read", "file_edit"],
+    "verify_status": "failed",
+    "verify_action": "failed",
+    "verify_repairs": 0
+  }
+}

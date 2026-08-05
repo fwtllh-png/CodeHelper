@@ -1,0 +1,9 @@
+you: list the files
+
+assistant
+Here are the files:
+- wrap.go
+- app.go
+
+status:ok
+✓ read done · wrap.go

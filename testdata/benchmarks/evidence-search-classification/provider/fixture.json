@@ -1,0 +1,17 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "where is Verify declared and who calls it",
+  "streams": ["definition.sse", "references.sse", "answer.sse"],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"search_definition\"", "\"name\":\"search_references\""],
+    ["\"tool_call_id\":\"call_definition\"", "[evidence turn=1]", "auth/token.go:3 definition Verify"],
+    [
+      "\"tool_call_id\":\"call_references\"",
+      "[evidence turn=1]",
+      "auth/token.go:3 definition Verify",
+      "api/handler.go:6 reference Verify"
+    ]
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "edit-transaction-multi-file",
+  "category": "edit_transaction",
+  "note": "One file_apply call rewrites an import, renames a module and adds a note. It proves the transaction covers several paths and several operation kinds at once, and that the receipt reports every path the call really changed — including the source of a move, whose path never appears as a written file.",
+  "prompt": "move legacy.py to helpers.py and update the caller",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "files": {
+      "api.py": "def handler():\n    return helpers.legacy()\n",
+      "helpers.py": "def legacy():\n    return 1\n",
+      "NOTES.md": "legacy.py became helpers.py\n"
+    },
+    "absent": ["legacy.py"],
+    "tools_used": ["file_read", "file_apply"],
+    "receipt_changes": ["api.py", "helpers.py", "legacy.py", "NOTES.md"],
+    "output_contains": ["extracted"]
+  }
+}

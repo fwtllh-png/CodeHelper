@@ -1,0 +1,7 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "return structured package count",
+  "streams": ["complete.sse"]
+}

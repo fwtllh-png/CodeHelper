@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_edit","function":{"name":"file_edit","arguments":"{\"path\":\"pkg/calc.go\",\"old\":\"const Bonus = 1\",\"new\":\"const Bonus = 2\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

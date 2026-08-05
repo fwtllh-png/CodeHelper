@@ -1,0 +1,25 @@
+{
+  "name": "verify-gate-revert",
+  "category": "verify_gate",
+  "note": "Same failing gate as verify-gate-hard-fail but on_failure = revert: the turn completes so the model's explanation survives, while the workspace is restored. The difference between fail and revert is the terminal state, not the files.",
+  "prompt": "make config.txt valid",
+  "tools": true,
+  "max_steps": 8,
+  "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "revert",
+    "command": "grep -q '^mode = safe$' config.txt",
+    "max_repair_steps": 0
+  },
+  "expect": {
+    "terminal": "completed",
+    "unchanged": ["config.txt"],
+    "tools_used": ["file_read", "file_edit"],
+    "verify_status": "failed",
+    "verify_action": "reverted",
+    "verify_repairs": 0,
+    "output_contains": ["config updated"]
+  }
+}

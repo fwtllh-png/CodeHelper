@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"{\"packages\":1}"},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}
+
+data: [DONE]

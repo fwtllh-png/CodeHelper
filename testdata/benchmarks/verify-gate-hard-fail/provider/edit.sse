@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_edit","function":{"name":"file_edit","arguments":"{\"path\":\"config.txt\",\"old\":\"mode = unset\",\"new\":\"mode = unsafe\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

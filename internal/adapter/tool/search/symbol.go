@@ -1,0 +1,452 @@
+package search
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
+)
+
+// Symbol tool names.
+const (
+	KindSymbol       = "search_symbol"
+	KindDefinition   = "search_definition"
+	KindReferences   = "search_references"
+	KindRelatedTests = "search_related_tests"
+)
+
+// symbolTool answers a question about declarations from the repository index.
+// Every one of them is read-only over the repository tree and reports its
+// results as lexical, because that is what the index holds.
+type symbolTool struct {
+	kind   string
+	index  *repoindex.Index
+	walker *repowalk.Walker
+}
+
+// defaultSymbolResults and defaultReferenceResults bound a reply the caller did
+// not bound itself.
+const (
+	defaultSymbolResults    = 50
+	defaultReferenceResults = 200
+	maxReferenceFileBytes   = 1 << 20
+)
+
+func (t *symbolTool) Descriptor() tool.Descriptor {
+	descriptor := tool.Descriptor{
+		Name: t.kind, Description: symbolDescription(t.kind), Visibility: tool.VisibleModel,
+		Capability: tool.CapabilityRead, AccessMode: tool.AccessTree,
+		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
+			Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true,
+		}}},
+		ParallelPolicy:     tool.ParallelConcurrent,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+		InputSchema:        symbolSchema(t.kind),
+	}
+	// A tool the session cannot serve is declared unavailable rather than left to
+	// fail at call time, so the model never plans around it.
+	switch snapshot := t.index.Snapshot(); {
+	case snapshot.Status == repoindex.StatusDisabled:
+		descriptor.Availability = tool.AvailabilityUnavailable
+		descriptor.UnavailableReason = "the repository index is disabled for this session"
+	case snapshot.Status == repoindex.StatusDegraded:
+		descriptor.Availability = tool.AvailabilityUnavailable
+		descriptor.UnavailableReason = "the repository index is unavailable: " + snapshot.Detail
+	}
+	return descriptor
+}
+
+func symbolDescription(kind string) string {
+	switch kind {
+	case KindDefinition:
+		return "Find where a symbol is declared, by exact name. " +
+			"Lexical index, not a compiler: confirm the result before relying on it."
+	case KindReferences:
+		return "Find whole-word uses of a symbol across indexed files, excluding its " +
+			"declarations. Lexical: matches in comments and strings are included."
+	case KindRelatedTests:
+		return "List the test files that cover the given source paths, by the naming " +
+			"convention of each language. Paths with no known convention are omitted."
+	default:
+		return "Search declarations (functions, types, classes, constants) by name " +
+			"substring. Lexical index, not a compiler."
+	}
+}
+
+func symbolSchema(kind string) map[string]any {
+	switch kind {
+	case KindDefinition:
+		return map[string]any{
+			"type": "object", "additionalProperties": false,
+			"required": []string{"name"},
+			"properties": map[string]any{
+				"name":        map[string]any{"type": "string", "minLength": float64(1)},
+				"kinds":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"max_results": map[string]any{"type": "integer"},
+			},
+		}
+	case KindReferences:
+		return map[string]any{
+			"type": "object", "additionalProperties": false,
+			"required": []string{"name"},
+			"properties": map[string]any{
+				"name":                map[string]any{"type": "string", "minLength": float64(1)},
+				"include_definitions": map[string]any{"type": "boolean"},
+				"path_prefix":         map[string]any{"type": "string"},
+				"max_results":         map[string]any{"type": "integer"},
+			},
+		}
+	case KindRelatedTests:
+		return map[string]any{
+			"type": "object", "additionalProperties": false,
+			"required": []string{"paths"},
+			"properties": map[string]any{
+				"paths": map[string]any{
+					"type": "array", "minItems": float64(1),
+					"items": map[string]any{"type": "string", "minLength": float64(1)},
+				},
+			},
+		}
+	default:
+		return map[string]any{
+			"type": "object", "additionalProperties": false,
+			"required": []string{"query"},
+			"properties": map[string]any{
+				"query":         map[string]any{"type": "string", "minLength": float64(1)},
+				"kinds":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"exported_only": map[string]any{"type": "boolean"},
+				"path_prefix":   map[string]any{"type": "string"},
+				"max_results":   map[string]any{"type": "integer"},
+			},
+		}
+	}
+}
+
+func (t *symbolTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+	var input struct {
+		Query              string   `json:"query"`
+		Name               string   `json:"name"`
+		Kinds              []string `json:"kinds"`
+		ExportedOnly       bool     `json:"exported_only"`
+		PathPrefix         string   `json:"path_prefix"`
+		Paths              []string `json:"paths"`
+		IncludeDefinitions bool     `json:"include_definitions"`
+		MaxResults         int      `json:"max_results"`
+	}
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return tool.Result{}, err
+	}
+	snapshot, err := t.index.Ensure(ctx)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	if !snapshot.Ready() {
+		return unavailableResult(snapshot)
+	}
+	switch t.kind {
+	case KindDefinition:
+		return t.declarations(ctx, snapshot, repoindex.Query{
+			Name: input.Name, Exact: true, Kinds: input.Kinds,
+			Limit: results(input.MaxResults, defaultSymbolResults),
+		}, "", false)
+	case KindReferences:
+		return t.references(ctx, snapshot, input.Name, input.PathPrefix,
+			input.IncludeDefinitions, results(input.MaxResults, defaultReferenceResults))
+	case KindRelatedTests:
+		return t.relatedTests(ctx, snapshot, input.Paths)
+	default:
+		return t.declarations(ctx, snapshot, repoindex.Query{
+			Name: input.Query, Kinds: input.Kinds,
+			Limit: results(input.MaxResults, defaultSymbolResults),
+		}, input.PathPrefix, input.ExportedOnly)
+	}
+}
+
+type symbolMatch struct {
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	File      string `json:"file"`
+	Line      int    `json:"line"`
+	Container string `json:"container,omitempty"`
+	Exported  bool   `json:"exported"`
+}
+
+func (t *symbolTool) declarations(
+	ctx context.Context, snapshot repoindex.Snapshot,
+	query repoindex.Query, pathPrefix string, exportedOnly bool,
+) (tool.Result, error) {
+	// Ask for more rows than the reply needs, so filtering by path or visibility
+	// does not silently shrink a full page of results.
+	limit := query.Limit
+	query.Limit = limit * 4
+	found, current, err := t.index.Symbols(ctx, query)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	if !current.Ready() {
+		return unavailableResult(current)
+	}
+	matches := make([]symbolMatch, 0, min(limit, len(found)))
+	total := 0
+	for _, symbol := range found {
+		if exportedOnly && !symbol.Exported {
+			continue
+		}
+		if pathPrefix != "" && !strings.HasPrefix(symbol.Path, pathPrefix) {
+			continue
+		}
+		total++
+		if len(matches) >= limit {
+			continue
+		}
+		matches = append(matches, symbolMatch{
+			Name: symbol.Name, Kind: symbol.Kind, File: symbol.Path,
+			Line: symbol.Line, Container: symbol.Container, Exported: symbol.Exported,
+		})
+	}
+	truncated := total > len(matches)
+	hits := make([]tool.EvidenceHit, 0, min(len(matches), maxEvidenceHits))
+	for _, match := range matches {
+		if len(hits) == maxEvidenceHits {
+			break
+		}
+		hits = append(hits, tool.EvidenceHit{
+			Kind: tool.EvidenceDefinition, Path: match.File,
+			Line: match.Line, Symbol: match.Name,
+		})
+	}
+	return marshalResult(map[string]any{
+		"matches": matches, "total": total, "truncated": truncated,
+		"resolution": repoindex.Resolution,
+	}, truncated, attach(map[string]any{
+		"matches": total, "returned": len(matches),
+		"resolution": repoindex.Resolution, "index_source": snapshot.Meta.Source,
+		"index_files": snapshot.Meta.FileCount,
+	}, hits))
+}
+
+type referenceMatch struct {
+	File string `json:"file"`
+	Line int    `json:"line"`
+	Text string `json:"text"`
+}
+
+// references scans the files the index lists for whole-word uses of a name. It
+// rescans rather than keeping a token index: a reverse index of every identifier
+// costs more storage than the recall it would add over this scan.
+func (t *symbolTool) references(
+	ctx context.Context, snapshot repoindex.Snapshot,
+	name, pathPrefix string, includeDefinitions bool, limit int,
+) (tool.Result, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return tool.Result{}, tool.Precondition(errors.New("a symbol name is required"))
+	}
+	paths, current, err := t.index.Paths(ctx, "")
+	if err != nil {
+		return tool.Result{}, err
+	}
+	if !current.Ready() {
+		return unavailableResult(current)
+	}
+	declarations := map[string]struct{}{}
+	if !includeDefinitions {
+		declared, _, err := t.index.Symbols(ctx, repoindex.Query{
+			Name: name, Exact: true, Limit: 0,
+		})
+		if err != nil {
+			return tool.Result{}, err
+		}
+		for _, symbol := range declared {
+			declarations[fmt.Sprintf("%s:%d", symbol.Path, symbol.Line)] = struct{}{}
+		}
+	}
+	matches := make([]referenceMatch, 0, min(limit, 64))
+	total := 0
+	scanned := 0
+	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return tool.Result{}, err
+		}
+		if pathPrefix != "" && !strings.HasPrefix(path, pathPrefix) {
+			continue
+		}
+		content, reason, err := t.walker.Read(repowalk.Entry{Path: path}, maxReferenceFileBytes)
+		if err != nil {
+			return tool.Result{}, err
+		}
+		if reason != repowalk.SkipNone {
+			continue
+		}
+		scanned++
+		for offset, text := range strings.Split(string(content.Data), "\n") {
+			if !containsWord(text, name) {
+				continue
+			}
+			line := offset + 1
+			if _, declared := declarations[fmt.Sprintf("%s:%d", path, line)]; declared {
+				continue
+			}
+			total++
+			if len(matches) >= limit {
+				continue
+			}
+			matches = append(matches, referenceMatch{File: path, Line: line, Text: text})
+		}
+	}
+	truncated := total > len(matches)
+	hits := make([]tool.EvidenceHit, 0, min(len(matches), maxEvidenceHits))
+	seen := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		// One entry per file: a symbol used forty times in one file is one place
+		// the caller has to look at.
+		if _, found := seen[match.File]; found {
+			continue
+		}
+		seen[match.File] = struct{}{}
+		if len(hits) == maxEvidenceHits {
+			break
+		}
+		hits = append(hits, tool.EvidenceHit{
+			Kind: tool.EvidenceReference, Path: match.File, Line: match.Line, Symbol: name,
+		})
+	}
+	return marshalResult(map[string]any{
+		"matches": matches, "total": total, "truncated": truncated,
+		"resolution": repoindex.Resolution,
+	}, truncated, attach(map[string]any{
+		"matches": total, "returned": len(matches), "scanned_files": scanned,
+		"resolution": repoindex.Resolution, "index_source": snapshot.Meta.Source,
+	}, hits))
+}
+
+func (t *symbolTool) relatedTests(
+	ctx context.Context, snapshot repoindex.Snapshot, paths []string,
+) (tool.Result, error) {
+	if len(paths) == 0 {
+		return tool.Result{}, tool.Precondition(errors.New("at least one path is required"))
+	}
+	related, current, err := t.index.RelatedTests(ctx, normalizePaths(paths))
+	if err != nil {
+		return tool.Result{}, err
+	}
+	if !current.Ready() {
+		return unavailableResult(current)
+	}
+	sources := make([]string, 0, len(related))
+	for source := range related {
+		sources = append(sources, source)
+	}
+	sort.Strings(sources)
+	type coverage struct {
+		Source string   `json:"source"`
+		Tests  []string `json:"tests"`
+	}
+	entries := make([]coverage, 0, len(sources))
+	unmapped := make([]string, 0)
+	tests := 0
+	for _, source := range sources {
+		entries = append(entries, coverage{Source: source, Tests: related[source]})
+		tests += len(related[source])
+	}
+	for _, source := range normalizePaths(paths) {
+		if _, found := related[source]; !found {
+			unmapped = append(unmapped, source)
+		}
+	}
+	hits := make([]tool.EvidenceHit, 0, min(tests, maxEvidenceHits))
+	for _, entry := range entries {
+		for _, test := range entry.Tests {
+			if len(hits) == maxEvidenceHits {
+				break
+			}
+			hits = append(hits, tool.EvidenceHit{Kind: tool.EvidenceTest, Path: test})
+		}
+	}
+	return marshalResult(map[string]any{
+		"coverage": entries, "unmapped": unmapped, "resolution": repoindex.Resolution,
+	}, false, attach(map[string]any{
+		"sources": len(entries), "tests": tests, "unmapped": len(unmapped),
+		"resolution": repoindex.Resolution, "index_source": snapshot.Meta.Source,
+	}, hits))
+}
+
+// unavailableResult reports an index that cannot answer. It is a result rather
+// than an error so the model reads the reason and falls back to text search
+// within the same turn.
+func unavailableResult(snapshot repoindex.Snapshot) (tool.Result, error) {
+	detail := snapshot.Detail
+	if detail == "" {
+		detail = "the repository index is " + snapshot.Status
+	}
+	return marshalResult(map[string]any{
+		"status": "unavailable", "detail": detail, "matches": []any{},
+		"hint": "fall back to search_text or search_project for this question",
+	}, false, map[string]any{
+		"status": "unavailable", "index_status": snapshot.Status,
+	})
+}
+
+func marshalResult(payload any, truncated bool, metadata map[string]any) (tool.Result, error) {
+	content, err := json.Marshal(payload)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	return tool.Result{Content: string(content), Truncated: truncated, Metadata: metadata}, nil
+}
+
+// containsWord reports a whole-word occurrence, so searching for Serve does not
+// match Server or reserve.
+func containsWord(text, name string) bool {
+	for offset := 0; ; {
+		index := strings.Index(text[offset:], name)
+		if index < 0 {
+			return false
+		}
+		start := offset + index
+		end := start + len(name)
+		if !wordByte(text, start-1) && !wordByte(text, end) {
+			return true
+		}
+		offset = start + 1
+		if offset >= len(text) {
+			return false
+		}
+	}
+}
+
+func wordByte(text string, index int) bool {
+	if index < 0 || index >= len(text) {
+		return false
+	}
+	symbol := text[index]
+	return symbol == '_' || symbol == '$' ||
+		(symbol >= '0' && symbol <= '9') ||
+		(symbol >= 'a' && symbol <= 'z') ||
+		(symbol >= 'A' && symbol <= 'Z')
+}
+
+func normalizePaths(paths []string) []string {
+	result := make([]string, 0, len(paths))
+	for _, path := range paths {
+		trimmed := strings.TrimPrefix(strings.TrimSpace(strings.ReplaceAll(path, "\\", "/")), "./")
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+func results(requested, fallback int) int {
+	if requested <= 0 {
+		return fallback
+	}
+	return min(requested, 1000)
+}

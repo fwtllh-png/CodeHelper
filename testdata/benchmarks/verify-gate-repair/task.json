@@ -1,0 +1,28 @@
+{
+  "name": "verify-gate-repair",
+  "category": "verify_gate",
+  "note": "The model claims success after an incomplete edit; the gate fails, feeds the failure back, and the repair round fixes it. This is the task that proves self-correction actually happens instead of the gate merely reporting. The repair re-reads the file first because a successful write invalidates the read fingerprint.",
+  "prompt": "bump the version to 1.0.0 in version.txt",
+  "tools": true,
+  "max_steps": 8,
+  "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "fail",
+    "command": "grep -q '^version = 1.0.0$' version.txt",
+    "max_repair_steps": 1
+  },
+  "expect": {
+    "terminal": "completed",
+    "files": {
+      "version.txt": "version = 1.0.0\n"
+    },
+    "tools_used": ["file_read", "file_edit"],
+    "receipt_changes": ["version.txt"],
+    "verify_status": "passed",
+    "verify_action": "passed",
+    "verify_repairs": 1,
+    "output_contains": ["1.0.0"]
+  }
+}

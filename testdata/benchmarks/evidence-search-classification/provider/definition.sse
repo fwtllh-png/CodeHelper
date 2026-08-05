@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_definition","function":{"name":"search_definition","arguments":"{\"name\":\"Verify\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

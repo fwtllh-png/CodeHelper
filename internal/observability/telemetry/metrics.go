@@ -1,0 +1,181 @@
+package telemetry
+
+import "sync/atomic"
+
+type MetricSnapshot struct {
+	OperationsSubmitted uint64 `json:"operations_submitted"`
+	OperationsProcessed uint64 `json:"operations_processed"`
+	EventsPublished     uint64 `json:"events_published"`
+	SubscribersDropped  uint64 `json:"subscribers_dropped"`
+	ProviderRequests    uint64 `json:"provider_requests"`
+	AgentTurns          uint64 `json:"agent_turns"`
+	ToolExecutions      uint64 `json:"tool_executions"`
+	Errors              uint64 `json:"errors"`
+	// RepoIndexState is how the repository symbol index was configured for the
+	// session: a reader needs it to tell a run with no symbol tools from one whose
+	// index broke and fell back to text search.
+	RepoIndexState string `json:"repo_index_state,omitempty"`
+	// ContextTailBytes totals the repository map and working set bytes sent with
+	// requests, and ContextTailTruncations counts the sections a budget cut. The
+	// tail rides on every sample, so these are what tell an operator whether the
+	// ceilings are set sensibly for their repository.
+	ContextTailBytes       uint64 `json:"context_tail_bytes,omitempty"`
+	ContextTailTruncations uint64 `json:"context_tail_truncations,omitempty"`
+	// EvidenceRisks counts the unproved changes reported to the model, and
+	// PolicyReminders the wasteful call patterns. Both are per report rather than
+	// per distinct path, so they measure how often the agent had to be told
+	// something — which is the point of watching them.
+	EvidenceRisks   uint64 `json:"evidence_risks,omitempty"`
+	PolicyReminders uint64 `json:"policy_reminders,omitempty"`
+	// Compactions counts how many times a thread's history was replaced by a
+	// summary, and CompactionSavedBytes the history bytes that replacement
+	// removed. Together they say whether compaction is earning its complexity: a
+	// thread that compacts often while saving little is one whose budgets are
+	// wrong.
+	Compactions          uint64 `json:"compactions,omitempty"`
+	CompactionSavedBytes uint64 `json:"compaction_saved_bytes,omitempty"`
+}
+
+type Metrics struct {
+	operationsSubmitted atomic.Uint64
+	operationsProcessed atomic.Uint64
+	eventsPublished     atomic.Uint64
+	subscribersDropped  atomic.Uint64
+	providerRequests    atomic.Uint64
+	agentTurns          atomic.Uint64
+	toolExecutions      atomic.Uint64
+	errors              atomic.Uint64
+	repoIndexState      atomic.Pointer[string]
+	contextTailBytes    atomic.Uint64
+	contextTailCuts     atomic.Uint64
+	evidenceRisks       atomic.Uint64
+	policyReminders     atomic.Uint64
+	compactions         atomic.Uint64
+	compactionSaved     atomic.Uint64
+}
+
+func NewMetrics() *Metrics {
+	return &Metrics{}
+}
+
+func (m *Metrics) OperationSubmitted() {
+	if m != nil {
+		m.operationsSubmitted.Add(1)
+	}
+}
+
+func (m *Metrics) OperationProcessed() {
+	if m != nil {
+		m.operationsProcessed.Add(1)
+	}
+}
+
+func (m *Metrics) EventPublished() {
+	if m != nil {
+		m.eventsPublished.Add(1)
+	}
+}
+
+func (m *Metrics) SubscriberDropped() {
+	if m != nil {
+		m.subscribersDropped.Add(1)
+	}
+}
+
+func (m *Metrics) ProviderRequest() {
+	if m != nil {
+		m.providerRequests.Add(1)
+	}
+}
+
+func (m *Metrics) AgentTurn() {
+	if m != nil {
+		m.agentTurns.Add(1)
+	}
+}
+
+func (m *Metrics) ToolExecution() {
+	if m != nil {
+		m.toolExecutions.Add(1)
+	}
+}
+
+func (m *Metrics) Error() {
+	if m != nil {
+		m.errors.Add(1)
+	}
+}
+
+// ContextTail records one rendered volatile section: how many bytes it sent and
+// whether a budget cut it.
+func (m *Metrics) ContextTail(bytes int, truncated bool) {
+	if m == nil {
+		return
+	}
+	if bytes > 0 {
+		m.contextTailBytes.Add(uint64(bytes))
+	}
+	if truncated {
+		m.contextTailCuts.Add(1)
+	}
+}
+
+// Evidence records one reported evidence section: how many unproved changes and
+// wasteful call patterns the model was told about.
+func (m *Metrics) Evidence(risks, reminders int) {
+	if m == nil {
+		return
+	}
+	if risks > 0 {
+		m.evidenceRisks.Add(uint64(risks))
+	}
+	if reminders > 0 {
+		m.policyReminders.Add(uint64(reminders))
+	}
+}
+
+// Compaction records one history replacement and the bytes it saved.
+func (m *Metrics) Compaction(savedBytes int) {
+	if m == nil {
+		return
+	}
+	m.compactions.Add(1)
+	if savedBytes > 0 {
+		m.compactionSaved.Add(uint64(savedBytes))
+	}
+}
+
+// SetRepositoryIndexState records the state of the repository symbol index.
+func (m *Metrics) SetRepositoryIndexState(state string) {
+	if m != nil {
+		m.repoIndexState.Store(&state)
+	}
+}
+
+func (m *Metrics) Snapshot() MetricSnapshot {
+	if m == nil {
+		return MetricSnapshot{}
+	}
+	indexState := ""
+	if state := m.repoIndexState.Load(); state != nil {
+		indexState = *state
+	}
+	return MetricSnapshot{
+		RepoIndexState:         indexState,
+		ContextTailBytes:       m.contextTailBytes.Load(),
+		ContextTailTruncations: m.contextTailCuts.Load(),
+		EvidenceRisks:          m.evidenceRisks.Load(),
+		PolicyReminders:        m.policyReminders.Load(),
+		Compactions:            m.compactions.Load(),
+		CompactionSavedBytes:   m.compactionSaved.Load(),
+
+		OperationsSubmitted: m.operationsSubmitted.Load(),
+		OperationsProcessed: m.operationsProcessed.Load(),
+		EventsPublished:     m.eventsPublished.Load(),
+		SubscribersDropped:  m.subscribersDropped.Load(),
+		ProviderRequests:    m.providerRequests.Load(),
+		AgentTurns:          m.agentTurns.Load(),
+		ToolExecutions:      m.toolExecutions.Load(),
+		Errors:              m.errors.Load(),
+	}
+}

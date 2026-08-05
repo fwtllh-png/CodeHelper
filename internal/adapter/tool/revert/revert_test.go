@@ -1,0 +1,74 @@
+package revert
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+)
+
+func TestRevertTurnUnavailableWithoutReverter(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := Register(registry, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	var found *tool.Descriptor
+	for _, d := range registry.Descriptors(tool.VisibleModel) {
+		if d.Name == "revert_turn" {
+			copy := d
+			found = &copy
+			break
+		}
+	}
+	if found == nil || found.Availability != tool.AvailabilityUnavailable ||
+		found.UnavailableReason != UnavailableReason {
+		t.Fatalf("descriptor = %+v", found)
+	}
+	result, err := (&Tool{}).Execute(t.Context(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || result.Metadata["error_category"] != "unavailable" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestRevertTurnFakeHappyPath(t *testing.T) {
+	fake := &FakeReverter{
+		DefaultID: "turn_last",
+		Restored:  []string{"a.txt"},
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := Register(registry, Options{Reverter: fake}); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range registry.Descriptors(tool.VisibleModel) {
+		if d.Name == "revert_turn" && d.Availability != tool.AvailabilityAvailable {
+			t.Fatalf("expected available: %+v", d)
+		}
+	}
+	result, err := registry.Execute(t.Context(), tool.Call{
+		Name: "revert_turn", Arguments: json.RawMessage(`{}`), Authorized: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || !strings.Contains(result.Content, `"a.txt"`) ||
+		!strings.Contains(result.Content, `"turn_last"`) {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(fake.Calls) != 1 || fake.Calls[0] != "turn_last" {
+		t.Fatalf("calls = %+v", fake.Calls)
+	}
+	result, err = registry.Execute(t.Context(), tool.Call{
+		Name: "revert_turn", Arguments: json.RawMessage(`{"target_turn_id":"turn_x"}`),
+		Authorized: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || !strings.Contains(result.Content, `"turn_x"`) {
+		t.Fatalf("explicit = %+v", result)
+	}
+}

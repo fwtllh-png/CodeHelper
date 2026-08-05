@@ -1,0 +1,503 @@
+package interact_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
+	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	rlmlib "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+)
+
+func TestRequestUserInputRejectsBlankAndDuplicateOptions(t *testing.T) {
+	host := interact.NewHost(time.Minute)
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: host, Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := registry.Execute(t.Context(), tool.Call{
+		Name: "request_user_input", Authorized: true,
+		Arguments: mustJSON(map[string]any{
+			"prompt": "pick", "options": []string{"a", " ", "b"},
+		}),
+	})
+	if err == nil || !strings.Contains(err.Error(), "non-empty") {
+		t.Fatalf("blank option err = %v", err)
+	}
+	_, err = registry.Execute(t.Context(), tool.Call{
+		Name: "request_user_input", Authorized: true,
+		Arguments: mustJSON(map[string]any{
+			"prompt": "pick", "options": []string{"Yes", "yes"},
+		}),
+	})
+	if err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate option err = %v", err)
+	}
+}
+
+func TestRequestUserInputFailClosedWithoutHost(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := registry.Execute(t.Context(), tool.Call{
+		Name: "request_user_input", Authorized: true,
+		Arguments: mustJSON(map[string]any{"prompt": "hi"}),
+	})
+	var unavailable interact.HostUnavailableError
+	if !errors.As(err, &unavailable) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRequestUserInputBlocksUntilHostReply(t *testing.T) {
+	host := interact.NewHost(time.Minute)
+	seen := make(chan interact.Request, 1)
+	host.SetEmitter(func(_ context.Context, req interact.Request) error {
+		seen <- req
+		return nil
+	})
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: host, Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan tool.Result, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := registry.Execute(t.Context(), tool.Call{
+			Name: "request_user_input", Authorized: true,
+			Arguments: mustJSON(map[string]any{"prompt": "Continue?", "options": []any{"yes", "no"}}),
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		done <- result
+	}()
+	req := <-seen
+	if req.Prompt != "Continue?" {
+		t.Fatalf("req = %+v", req)
+	}
+	if err := host.Reply(interact.Reply{RequestID: req.RequestID, Answer: "yes"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-errCh:
+		t.Fatal(err)
+	case result := <-done:
+		if result.IsError || !strings.Contains(result.Content, `"answer":"yes"`) {
+			t.Fatalf("result = %+v", result)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out")
+	}
+}
+
+func TestUpdatePlanAppearsInContextReceipts(t *testing.T) {
+	var eng *agentengine.Engine
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+		OnPlan: func(plan interact.Plan) error {
+			eng.ApplyPlan(plan)
+			return nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	eng, err = agentengine.New(agentengine.Options{
+		Provider: &noopProvider{}, Route: testRoute(t), Tools: registry,
+		Metrics: telemetry.NewMetrics(), MaxOutputTokens: 64,
+		ContextReceipts: []promptcontext.Receipt{{
+			Kind: promptcontext.PartitionBase, SourcePath: "builtin://base-system",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := execute(t, registry, "update_plan", map[string]any{
+		"title": "P24",
+		"steps": []any{
+			map[string]any{"title": "wire input", "status": "done"},
+			map[string]any{"title": "wire plan", "status": "in_progress"},
+		},
+		"objective": "ship interact tools", "verification_plan": "go test ./internal/adapter/tool/interact",
+		"critical_files": []any{"internal/adapter/tool/interact/interact.go"},
+		"handoff_packet": "next: land relay",
+	})
+	if result.IsError || !strings.Contains(result.Content, "wire input") {
+		t.Fatalf("result = %+v", result)
+	}
+	if !strings.Contains(result.Content, "ship interact tools") {
+		t.Fatalf("rich fields missing: %+v", result)
+	}
+	rendered := interact.FormatPlan(interact.Plan{
+		Title: "P24", Steps: []interact.PlanStep{{Title: "wire input"}}, Objective: "ship interact tools",
+		VerificationPlan: "go test", CriticalFiles: []string{"interact.go"},
+		HandoffPacket: "next: land relay",
+	})
+	if !strings.Contains(rendered, "objective: ship interact tools") ||
+		!strings.Contains(rendered, "verification_plan: go test") ||
+		!strings.Contains(rendered, "handoff_packet: next: land relay") {
+		t.Fatalf("FormatPlan = %s", rendered)
+	}
+	found := false
+	for _, receipt := range eng.ContextReceipts() {
+		if receipt.Kind == promptcontext.PartitionPlan {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("receipts = %+v", eng.ContextReceipts())
+	}
+}
+
+// A plan written before steps carried a status still deserializes, which is what
+// lets a recorded history or an older model reply survive the schema change.
+func TestPlanStepsAcceptBothShapes(t *testing.T) {
+	var plan interact.Plan
+	raw := `{"steps":["bare step",{"title":"typed step","status":"in_progress"},{"title":"odd","status":"WAT"}]}`
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		t.Fatal(err)
+	}
+	want := []interact.PlanStep{
+		{Title: "bare step", Status: interact.StepPending},
+		{Title: "typed step", Status: interact.StepInProgress},
+		{Title: "odd", Status: interact.StepPending},
+	}
+	for index, step := range want {
+		if plan.Steps[index] != step {
+			t.Fatalf("step %d = %+v, want %+v", index, plan.Steps[index], step)
+		}
+	}
+	rendered := interact.FormatPlan(plan)
+	if !strings.Contains(rendered, "1. bare step\n") {
+		t.Fatalf("pending step was decorated: %s", rendered)
+	}
+	if !strings.Contains(rendered, "2. typed step [in_progress]") {
+		t.Fatalf("status missing: %s", rendered)
+	}
+}
+
+func TestOutstandingStepsCountsFinishedWork(t *testing.T) {
+	plan := interact.Plan{Steps: []interact.PlanStep{
+		{Title: "a", Status: interact.StepDone},
+		{Title: "b", Status: interact.StepInProgress},
+	}}
+	open, done := plan.OutstandingSteps()
+	if done != 1 || len(open) != 1 || open[0].Title != "b" {
+		t.Fatalf("open = %+v done = %d", open, done)
+	}
+}
+
+func TestUpdatePlanRejectsEmptyStepTitle(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := registry.Execute(t.Context(), tool.Call{
+		Name: "update_plan", Authorized: true,
+		Arguments: mustJSON(map[string]any{"steps": []any{map[string]any{"title": "  "}}}),
+	})
+	if err == nil || !strings.Contains(err.Error(), "must have a title") {
+		t.Fatalf("blank step title err = %v", err)
+	}
+}
+
+func TestProjectMapBounded(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "pkg", "a"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pkg", "a", "x.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: root,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result := execute(t, registry, "project_map", map[string]any{"max_depth": 3, "limit": 50})
+	if result.IsError || !strings.Contains(result.Content, "pkg/") {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestProjectMapSharesTheSearchEnumeration(t *testing.T) {
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"main.go":                        "package main\n",
+		"pkg/a/x.go":                     "package a\n",
+		"pkg/a/deep/deeper/y.go":         "package deeper\n",
+		"node_modules/dep/index.js":      "module.exports = 1\n",
+		".codehelper/tasks-ephemeral.db": "state\n",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: root,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result := execute(t, registry, "project_map", map[string]any{"max_depth": 2})
+	var payload struct {
+		Entries []string `json:"entries"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	// Dependency trees and the runtime's own state are left out, and the depth
+	// bound stops at directories rather than listing what is under them.
+	want := []string{"main.go", "pkg/", "pkg/a/"}
+	if len(payload.Entries) != len(want) {
+		t.Fatalf("entries = %#v", payload.Entries)
+	}
+	for index := range want {
+		if payload.Entries[index] != want[index] {
+			t.Fatalf("entries = %#v, want %#v", payload.Entries, want)
+		}
+	}
+
+	scoped := execute(t, registry, "project_map", map[string]any{
+		"path": "pkg/a/deep", "max_depth": 5,
+	})
+	if !strings.Contains(scoped.Content, "pkg/a/deep/deeper/y.go") ||
+		strings.Contains(scoped.Content, "main.go") {
+		t.Fatalf("scoped result = %+v", scoped)
+	}
+	if _, err := registry.Execute(t.Context(), tool.Call{
+		Name: "project_map", Authorized: true,
+		Arguments: []byte(`{"path":"../outside"}`),
+	}); err == nil {
+		t.Fatal("a path outside the workspace was accepted")
+	}
+}
+
+func TestCodeExecutionFailClosedWithoutSandbox(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range registry.Descriptors(tool.VisibleModel) {
+		if d.Name == "code_execution" {
+			if d.Availability != tool.AvailabilityUnavailable {
+				t.Fatalf("expected unavailable without sandbox: %+v", d)
+			}
+			return
+		}
+	}
+	t.Fatal("code_execution missing")
+}
+
+func TestImageAnalyzeUnavailable(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range registry.Descriptors(tool.VisibleModel) {
+		if d.Name == "image_analyze" {
+			if d.Availability != tool.AvailabilityUnavailable {
+				t.Fatalf("image_analyze should be unavailable: %+v", d)
+			}
+			if d.UnavailableReason != interact.VisionUnavailableReason {
+				t.Fatalf("reason = %q", d.UnavailableReason)
+			}
+			return
+		}
+	}
+	t.Fatal("image_analyze missing")
+}
+
+func TestImageAnalyzeAvailableWithFakeClient(t *testing.T) {
+	root := t.TempDir()
+	imagePath := filepath.Join(root, "shot.png")
+	if err := os.WriteFile(imagePath, []byte("png-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: root,
+		Vision: interact.FuncVision(func(_ context.Context, path, prompt string) (string, error) {
+			if !strings.HasSuffix(path, "shot.png") {
+				t.Fatalf("path = %q", path)
+			}
+			return "fixture:" + prompt, nil
+		}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range registry.Descriptors(tool.VisibleModel) {
+		if d.Name == "image_analyze" {
+			if d.Availability != tool.AvailabilityAvailable {
+				t.Fatalf("want available: %+v", d)
+			}
+			break
+		}
+	}
+	result, err := registry.Execute(t.Context(), tool.Call{
+		Name: "image_analyze", Authorized: true,
+		Arguments: mustJSON(map[string]any{"path": "shot.png", "prompt": "what"}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || result.Content != "fixture:what" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestImageAnalyzeRejectsEscapingPath(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+		Vision: interact.FuncVision(func(context.Context, string, string) (string, error) {
+			return "should-not-run", nil
+		}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := registry.Execute(t.Context(), tool.Call{
+		Name: "image_analyze", Authorized: true,
+		Arguments: mustJSON(map[string]any{"path": "../secret.png"}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || !strings.Contains(result.Content, "escapes") {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestCodeExecutionWithStrongPassthrough(t *testing.T) {
+	root := t.TempDir()
+	backend, err := sandbox.BindPolicy(passthroughBackend{}, sandbox.Options{WorkspaceRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := rlmlib.NewStore(rlmlib.StoreOptions{
+		Root: filepath.Join(root, "rlm"), Backend: backend, Workspace: workspace,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !store.PythonAvailable() {
+		t.Skip("python unavailable")
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: root,
+		Backend: backend, RLM: store, Governor: rlmlib.NewGovernor(rlmlib.Limits{}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result := execute(t, registry, "code_execution", map[string]any{"code": "print(2+2)"})
+	if result.Metadata["error_category"] == "sandbox_unavailable" {
+		t.Fatalf("unexpected sandbox fail: %+v", result)
+	}
+}
+
+func execute(t *testing.T, registry *tool.Registry, name string, input map[string]any) tool.Result {
+	t.Helper()
+	result, err := registry.Execute(t.Context(), tool.Call{
+		Name: name, Arguments: mustJSON(input), Authorized: true,
+	})
+	if err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return result
+}
+
+func mustJSON(value map[string]any) json.RawMessage {
+	data, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+type passthroughBackend struct{}
+
+func (passthroughBackend) Capability() sandbox.Capability {
+	return sandbox.Capability{
+		Platform: "fixture", Backend: "passthrough",
+		Strength: sandbox.StrengthStrong, Available: true,
+	}
+}
+
+func (passthroughBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
+	return command, nil
+}
+
+type noopProvider struct{}
+
+func (noopProvider) Stream(context.Context, provider.ModelRequest) (provider.Stream, error) {
+	return nil, errors.New("noop provider")
+}
+
+func testRoute(t *testing.T) model.ReadyRoute {
+	t.Helper()
+	catalog, err := model.NewCatalog(model.Provider{
+		ID: "test", Kind: model.ProviderCustom, Endpoint: "http://127.0.0.1:1",
+		Protocol: model.ProtocolOpenAIChat, Provenance: model.ProvenanceFixture,
+		Models: map[string]model.Model{"model": {
+			ID: "model", CanonicalID: "model", WireID: "model",
+			Limits:       model.Limits{ContextTokens: 4096, MaxOutputTokens: 1024},
+			Capabilities: model.Capabilities{Streaming: true, ToolCalls: true},
+			Pricing: model.Pricing{
+				InputPerMillion: 1, OutputPerMillion: 1,
+				Currency: "USD", Known: true, Provenance: model.ProvenanceFixture,
+			},
+			Provenance: model.ProvenanceFixture,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := model.NewResolver(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(model.RouteRequest{ProviderID: "test", ModelID: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return route
+}

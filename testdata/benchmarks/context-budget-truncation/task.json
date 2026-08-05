@@ -1,0 +1,20 @@
+{
+  "name": "context-budget-truncation",
+  "category": "context_assembly",
+  "note": "With the repository map squeezed to its floor the tail must report the cut and let the turn finish. The tail is appended to every request, so a budget that failed the turn instead of truncating would make a large repository unusable.",
+  "prompt": "give me a one line overview of this repository",
+  "tools": true,
+  "max_steps": 4,
+  "timeout_ms": 60000,
+  "context": {
+    "repo_map": {
+      "max_bytes": 256
+    }
+  },
+  "expect": {
+    "terminal": "completed",
+    "unchanged": ["go.mod", "alpha/alpha.go"],
+    "context_sections": ["repo_map"],
+    "context_truncated": ["repo_map"]
+  }
+}

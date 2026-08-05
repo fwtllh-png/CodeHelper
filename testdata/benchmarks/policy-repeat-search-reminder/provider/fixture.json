@@ -1,0 +1,16 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "where is retries configured",
+  "streams": ["first.sse", "second.sse", "answer.sse"],
+  "expected_request_fragments": [
+    ["Coding method:", "Do not repeat a search or a read you already have"],
+    ["\"tool_call_id\":\"call_first\""],
+    [
+      "\"tool_call_id\":\"call_second\"",
+      "wasted effort:",
+      "search_text ran 2 times this turn with identical arguments"
+    ]
+  ]
+}

@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_references","function":{"name":"search_references","arguments":"{\"name\":\"Total\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

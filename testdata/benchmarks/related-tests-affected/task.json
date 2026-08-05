@@ -1,0 +1,28 @@
+{
+  "name": "related-tests-affected",
+  "category": "verify_gate",
+  "note": "The affected scope narrows verification to the changed Go package. The command asserts the expanded {packages} placeholder instead of running go test, which keeps the task hermetic while still proving the change reached the command; search_related_tests covers the source-to-test mapping the scope uses when no command is configured.",
+  "prompt": "raise the bonus to 2 in pkg/calc.go",
+  "tools": true,
+  "max_steps": 8,
+  "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "affected",
+    "on_failure": "fail",
+    "command": "test \"{packages}\" = \"./pkg/...\"",
+    "max_repair_steps": 0
+  },
+  "expect": {
+    "terminal": "completed",
+    "files": {
+      "pkg/calc.go": "package pkg\n\nconst Bonus = 2\n\nfunc Award(points int) int {\n\treturn points + Bonus\n}\n"
+    },
+    "unchanged": ["pkg/calc_test.go"],
+    "tools_used": ["search_related_tests", "file_read", "file_edit"],
+    "verify_status": "passed",
+    "verify_action": "passed",
+    "verify_repairs": 0,
+    "output_contains": ["pkg/calc_test.go"]
+  }
+}

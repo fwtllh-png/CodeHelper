@@ -1,0 +1,35 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": [
+    "plan.sse",
+    "search.sse",
+    "read.sse",
+    "edit.sse",
+    "missing.sse",
+    "first-answer.sse",
+    "second-answer.sse"
+  ],
+  "expected_request_fragments": [
+    [],
+    ["\"tool_call_id\":\"call_plan\""],
+    ["\"tool_call_id\":\"call_search\""],
+    ["\"tool_call_id\":\"call_read\""],
+    ["\"tool_call_id\":\"call_edit\""],
+    ["\"tool_call_id\":\"call_missing\""],
+    [
+      "codehelper_summary",
+      "Goal: align the greeting in service.py with settings.yaml",
+      "Still to do",
+      "confirm the greeting matches settings.yaml",
+      "Already tried and failed, do not repeat blindly:",
+      "Changed so far:",
+      "service.py (turn 1)",
+      "nothing verified it",
+      "Critical paths: service.py",
+      "What lookups established:",
+      "Removed history, newest first:"
+    ]
+  ]
+}

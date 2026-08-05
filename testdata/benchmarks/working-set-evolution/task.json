@@ -1,0 +1,17 @@
+{
+  "name": "working-set-evolution",
+  "category": "context_assembly",
+  "note": "A file read in the first step must appear in the working set of the very next sample, inside the same turn. That is what makes the tail worth rebuilding per sample instead of per turn: the fixture asserts the second request names config.py with a read provenance.",
+  "prompt": "what timeout does the config use",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "tools_used": ["file_read"],
+    "unchanged": ["config.py", "main.py"],
+    "output_contains": ["30"],
+    "context_sections": ["repo_map", "working_set_ledger"],
+    "receipt_read_paths": ["config.py"]
+  }
+}

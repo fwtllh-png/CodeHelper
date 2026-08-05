@@ -1,0 +1,7 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "wait for interrupt",
+  "stream_delay_ms": 2000
+}

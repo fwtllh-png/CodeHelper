@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_cancel","function":{"name":"background_shell_cancel","arguments":"{\"session_id\":\"contract-job\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

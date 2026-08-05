@@ -1,0 +1,15 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "bump the version to 1.0.0 in version.txt",
+  "streams": ["read.sse", "edit.sse", "claim.sse", "reread.sse", "repair.sse", "complete.sse"],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"file_edit\""],
+    ["\"role\":\"tool\"", "\"tool_call_id\":\"call_read\""],
+    ["\"tool_call_id\":\"call_edit\""],
+    ["[verify]", "version = 1.0.0"],
+    ["\"tool_call_id\":\"call_reread\""],
+    ["\"tool_call_id\":\"call_repair\""]
+  ]
+}

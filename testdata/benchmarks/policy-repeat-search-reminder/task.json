@@ -1,0 +1,19 @@
+{
+  "name": "policy-repeat-search-reminder",
+  "category": "context_assembly",
+  "note": "The same search twice is waste, not an error: the second call still runs and the turn still completes, but the next sample says so. This pins the soft half of the contract — the only hard rule remains read-before-edit.",
+  "prompt": "where is retries configured",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "tools_used": ["search_text"],
+    "unchanged": ["app.py", "settings.yaml"],
+    "output_contains": ["app.py", "settings.yaml"],
+    "context_sections": ["evidence"],
+    "receipt_evidence_kinds": ["config", "text_match"],
+    "receipt_evidence_reminders": ["ran 2 times this turn"],
+    "receipt_not_collected_excludes": ["evidence"]
+  }
+}

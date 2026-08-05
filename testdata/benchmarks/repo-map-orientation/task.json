@@ -1,0 +1,15 @@
+{
+  "name": "repo-map-orientation",
+  "category": "context_assembly",
+  "note": "The repository map has to answer 'which directory holds the auth code' without a single tool call. This is the whole point of appending the map to every request: orientation questions should cost no round trip. The fixture asserts the map reached the provider, so the task fails if the tail block disappears rather than passing on a lucky answer.",
+  "prompt": "which directory holds the auth code",
+  "tools": true,
+  "max_steps": 4,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "unchanged": ["go.mod", "internal/auth/token.go", "internal/store/store.go"],
+    "output_contains": ["internal/auth"],
+    "context_sections": ["repo_map"]
+  }
+}

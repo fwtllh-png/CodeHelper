@@ -1,0 +1,258 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	store, err := Open(t.Context(), path, Options{BusyTimeout: 137 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	assertPragma(t, store.DB(), "user_version", "1")
+	assertPragma(t, store.DB(), "journal_mode", "wal")
+	assertPragma(t, store.DB(), "foreign_keys", "1")
+	assertPragma(t, store.DB(), "busy_timeout", "137")
+
+	wantTables := []string{
+		"workspaces", "sessions", "threads", "turns", "items", "operations",
+		"event_reservations", "event_index", "tasks", "task_lifecycle",
+		"snapshots", "usage", "usage_turn_context", "automations", "automation_runs",
+		"agent_spawn_edges", "repo_index_files", "repo_index_symbols", "repo_index_meta",
+		"task_attempts", "workflow_runs", "workflow_nodes", "spans",
+		"provider_capabilities",
+	}
+	for _, table := range wantTables {
+		var count int
+		err := store.DB().QueryRowContext(
+			t.Context(),
+			"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+			table,
+		).Scan(&count)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Errorf("table %q count = %d, want 1", table, count)
+		}
+	}
+
+	assertTableColumns(t, store.DB(), "threads", "source_cursor")
+	assertTableColumns(t, store.DB(), "tasks",
+		"executor", "attempt", "max_attempts", "next_attempt_at", "heartbeat_at")
+	assertTableColumns(t, store.DB(), "usage",
+		"sample", "source_sequence", "cost_known")
+	assertTableColumns(t, store.DB(), "automations",
+		"task_executor", "task_max_attempts")
+	assertTableColumns(t, store.DB(), "agent_spawn_edges",
+		"workspace_root", "session_id")
+}
+
+func TestTransactionCommitRollbackAndForeignKeys(t *testing.T) {
+	store := openTestStore(t, Options{})
+	ctx := t.Context()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	err := store.Transaction(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO workspaces(id, root_path, created_at, updated_at)
+			VALUES ('workspace-1', '/workspace', ?, ?)`, now, now)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rollbackMarker := errors.New("rollback")
+	err = store.Transaction(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO sessions(id, workspace_id, status, created_at, updated_at)
+			VALUES ('session-rollback', 'workspace-1', 'open', ?, ?)`, now, now); err != nil {
+			return err
+		}
+		return rollbackMarker
+	})
+	if !errors.Is(err, rollbackMarker) {
+		t.Fatalf("transaction error = %v, want rollback marker", err)
+	}
+	var count int
+	if err := store.DB().QueryRowContext(
+		ctx, "SELECT count(*) FROM sessions WHERE id = 'session-rollback'",
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("rolled-back rows = %d, want 0", count)
+	}
+
+	_, err = store.DB().ExecContext(ctx, `
+		INSERT INTO sessions(id, workspace_id, status, created_at, updated_at)
+		VALUES ('orphan', 'missing', 'open', ?, ?)`, now, now)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "foreign key") {
+		t.Fatalf("foreign-key insert error = %v", err)
+	}
+}
+
+func TestBusyTimeoutAcrossStores(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "busy.db")
+	timeout := 90 * time.Millisecond
+	first, err := Open(t.Context(), path, Options{BusyTimeout: timeout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	second, err := Open(t.Context(), path, Options{BusyTimeout: timeout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close() })
+
+	tx, err := first.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(t.Context(), `
+		INSERT INTO workspaces(id, root_path, created_at, updated_at)
+		VALUES ('held', '/held', ?, ?)`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+
+	started := time.Now()
+	_, err = second.DB().ExecContext(t.Context(), `
+		INSERT INTO workspaces(id, root_path, created_at, updated_at)
+		VALUES ('blocked', '/blocked', ?, ?)`, now, now)
+	elapsed := time.Since(started)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "locked") {
+		t.Fatalf("busy write error = %v", err)
+	}
+	if elapsed < timeout/2 {
+		t.Fatalf("busy write returned after %s, expected wait near %s", elapsed, timeout)
+	}
+}
+
+func TestOpenRejectsNewerSchemaWithoutChangingIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "future.db")
+	store, err := Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(t.Context(), "PRAGMA user_version = 99"); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Open(t.Context(), path)
+	var versionErr *SchemaVersionError
+	if !errors.As(err, &versionErr) {
+		t.Fatalf("Open error = %v, want SchemaVersionError", err)
+	}
+	if versionErr.Found != 99 || versionErr.Supported != SchemaVersion {
+		t.Fatalf("schema error = %+v", versionErr)
+	}
+	if !errors.Is(err, ErrUnsupportedSchema) {
+		t.Fatalf("schema error does not wrap ErrUnsupportedSchema: %v", err)
+	}
+
+	raw, err = sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	assertPragma(t, raw, "user_version", "99")
+}
+
+func TestOpenReportsCorruptDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "corrupt.db")
+	if err := os.WriteFile(path, []byte("not a sqlite database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Open(t.Context(), path)
+	var corruption *CorruptionError
+	if !errors.As(err, &corruption) {
+		t.Fatalf("Open error = %v, want CorruptionError", err)
+	}
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("corruption error does not wrap ErrCorrupt: %v", err)
+	}
+}
+
+func TestCloseIsIdempotent(t *testing.T) {
+	store := openTestStore(t, Options{})
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func openTestStore(t *testing.T, options Options) *Store {
+	t.Helper()
+	store, err := Open(t.Context(), filepath.Join(t.TempDir(), "state.db"), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+func assertPragma(t *testing.T, db *sql.DB, pragma, want string) {
+	t.Helper()
+	var got string
+	if err := db.QueryRowContext(context.Background(), "PRAGMA "+pragma).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(got, want) {
+		t.Fatalf("PRAGMA %s = %q, want %q", pragma, got, want)
+	}
+}
+
+func assertTableColumns(t *testing.T, db *sql.DB, table string, want ...string) {
+	t.Helper()
+	rows, err := db.QueryContext(t.Context(), "PRAGMA table_info("+table+")")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	found := make(map[string]bool)
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			t.Fatal(err)
+		}
+		found[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range want {
+		if !found[column] {
+			t.Errorf("table %q is missing column %q", table, column)
+		}
+	}
+}

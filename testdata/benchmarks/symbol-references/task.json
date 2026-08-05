@@ -1,0 +1,15 @@
+{
+  "name": "symbol-references",
+  "category": "symbol_locate",
+  "note": "search_references scans the files the index lists for whole-word uses, so Subtotal must not count as a use of Total. Matches in comments do count: the scan is lexical and the task pins that rather than pretending otherwise.",
+  "prompt": "which files call Total",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "tools_used": ["search_references"],
+    "unchanged": ["calc.go", "report.go", "main.go"],
+    "output_contains": ["report.go", "main.go"]
+  }
+}

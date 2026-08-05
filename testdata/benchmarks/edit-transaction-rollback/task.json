@@ -1,0 +1,16 @@
+{
+  "name": "edit-transaction-rollback",
+  "category": "edit_transaction",
+  "note": "The first operation of the transaction is applicable and the second one is not: its old text matches twice. The task pins that a partly applicable transaction writes nothing at all — the file the first operation would have rewritten stays byte-identical to the seed — and that the refusal reaches the model as a tool result instead of failing the turn.",
+  "prompt": "bump the value in first.py and rename the marker in second.py",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "unchanged": ["first.py", "second.py"],
+    "tools_used": ["file_read"],
+    "tools_failed": ["file_apply"],
+    "output_contains": ["nothing was written"]
+  }
+}

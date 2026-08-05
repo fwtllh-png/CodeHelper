@@ -1,0 +1,14 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "context-sentinel-4821",
+  "streams": ["stream.sse"],
+  "expected_request_fragments": [
+    [
+      "inspect active file",
+      "Explicit editor context follows as JSON",
+      "context-sentinel-4821"
+    ]
+  ]
+}

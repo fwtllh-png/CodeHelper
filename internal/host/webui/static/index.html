@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CodeHelper Control</title>
+  <link rel="stylesheet" href="/ui/app.css" />
+</head>
+<body>
+  <main>
+    <h1>CodeHelper</h1>
+    <p class="lede">Create a thread, stream events, approve, and cancel through the Runtime API.</p>
+    <section>
+      <button id="create-thread" type="button">Create thread</button>
+      <button id="start-turn" type="button" disabled>Start turn</button>
+      <button id="cancel-turn" type="button" disabled>Cancel</button>
+      <button id="approve" type="button" disabled>Approve</button>
+    </section>
+    <label>Prompt <input id="prompt" value="hello from web" /></label>
+    <pre id="log"></pre>
+  </main>
+  <script src="/ui/app.js"></script>
+</body>
+</html>

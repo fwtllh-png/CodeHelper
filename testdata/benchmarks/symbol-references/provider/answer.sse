@@ -1,0 +1,6 @@
+data: {"choices":[{"delta":{"content":"Total is called from report.go and main.go; the declaration in calc.go is excluded"},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":72,"completion_tokens":14}}
+
+data: [DONE]
+

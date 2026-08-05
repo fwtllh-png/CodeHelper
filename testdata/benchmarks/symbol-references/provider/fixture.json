@@ -1,0 +1,11 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "which files call Total",
+  "streams": ["references.sse", "answer.sse"],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"search_references\""],
+    ["\"role\":\"tool\"", "\"tool_call_id\":\"call_references\"", "report.go", "main.go", "lexical"]
+  ]
+}

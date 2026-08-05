@@ -1,0 +1,2 @@
+{"version":1,"id":"op_00000000000000000000000000000000","kind":"turn.start","created_at":"2026-07-27T00:00:00Z","payload":{"thread_id":"thread_test","turn_id":"turn_test","item_id":"item_test","prompt":"hello"}}
+{"version":1,"id":"evt_00000000000000000000000000000000","sequence":1,"operation_id":"op_00000000000000000000000000000000","thread_id":"thread_test","turn_id":"turn_test","item_id":"item_test","kind":"turn.completed","created_at":"2026-07-27T00:00:00Z","data":{"text":"hello"}}

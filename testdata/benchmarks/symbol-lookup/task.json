@@ -1,0 +1,15 @@
+{
+  "name": "symbol-lookup",
+  "category": "symbol_locate",
+  "note": "The repository index answers a declaration question in one call, where locate-symbol needs a text search and a guess about the pattern. Both tasks stay in the suite so the index can be compared against grep rather than replacing it silently.",
+  "prompt": "where is NewStore declared",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "tools_used": ["search_symbol"],
+    "unchanged": ["main.go", "pkg/store.go"],
+    "output_contains": ["pkg/store.go"]
+  }
+}

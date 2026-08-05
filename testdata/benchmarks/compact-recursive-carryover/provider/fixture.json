@@ -1,0 +1,30 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": [
+    "plan.sse",
+    "read-service.sse",
+    "first-answer.sse",
+    "read-notes.sse",
+    "second-answer.sse",
+    "third-answer.sse"
+  ],
+  "expected_request_fragments": [
+    [],
+    ["\"tool_call_id\":\"call_plan\""],
+    ["\"tool_call_id\":\"call_service\""],
+    [
+      "codehelper_summary",
+      "Goal: align the greeting in service.py with settings.yaml",
+      "Removed history, newest first:"
+    ],
+    ["\"tool_call_id\":\"call_notes\""],
+    [
+      "codehelper_summary",
+      "Goal: align the greeting in service.py with settings.yaml",
+      "Earlier summary:",
+      "service.py already greets with hello"
+    ]
+  ]
+}

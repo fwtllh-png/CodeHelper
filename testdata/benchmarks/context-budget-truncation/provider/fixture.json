@@ -1,0 +1,10 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "give me a one line overview of this repository",
+  "streams": ["answer.sse"],
+  "expected_request_fragments": [
+    ["[repo_map turn=1 index=ready]", "this section was cut to fit its budget"]
+  ]
+}

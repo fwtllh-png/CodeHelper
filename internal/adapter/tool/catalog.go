@@ -1,0 +1,885 @@
+package tool
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"maps"
+	"reflect"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
+)
+
+var (
+	catalogSequence atomic.Uint64
+	legacySequence  atomic.Uint64
+)
+
+const (
+	ErrorCategoryToolCatalogStale = "tool_catalog_stale"
+	ErrorCategoryToolRevoked      = "tool_revoked"
+	ErrorCategoryToolLoadFailed   = "tool_load_failed"
+	ErrorCategoryToolCatalogLimit = "tool_catalog_limit"
+
+	DefaultMaxMaterialized            = 32
+	DefaultMaxMaterializedSchemaBytes = 64 << 10
+)
+
+// ErrorCategory returns the stable model/telemetry category for managed
+// catalog failures.
+func ErrorCategory(err error) string {
+	switch {
+	case errors.Is(err, ErrCatalogStale):
+		return ErrorCategoryToolCatalogStale
+	case errors.Is(err, ErrToolRevoked):
+		return ErrorCategoryToolRevoked
+	case errors.Is(err, ErrToolLoadFailed):
+		return ErrorCategoryToolLoadFailed
+	case errors.Is(err, ErrCatalogLimit):
+		return ErrorCategoryToolCatalogLimit
+	default:
+		return ""
+	}
+}
+
+type CatalogBinding struct {
+	CatalogID  string
+	Generation uint64
+	Revision   uint64
+	// Authority is the Registry-private entry incarnation. It is intentionally
+	// absent from host/provider wire formats and changes on every replacement.
+	Authority uint64
+}
+
+func (s CatalogSnapshot) Binding(name string) (CatalogBinding, bool) {
+	entry, ok := s.Lookup(name)
+	if !ok {
+		return CatalogBinding{}, false
+	}
+	return CatalogBinding{
+		CatalogID: s.CatalogID, Generation: s.Generation,
+		Revision: entry.Revision, Authority: entry.authority,
+	}, true
+}
+
+func (r *Registry) SetMaterializeLimits(maxEntries, maxSchemaBytes int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if maxEntries <= 0 {
+		maxEntries = DefaultMaxMaterialized
+	}
+	if maxSchemaBytes <= 0 {
+		maxSchemaBytes = DefaultMaxMaterializedSchemaBytes
+	}
+	r.maxMaterialized = maxEntries
+	r.maxSchemaBytes = maxSchemaBytes
+}
+
+// Materialize loads or pins an entry for subsequent samples.
+func (r *Registry) Materialize(name string, expectedRevision uint64) (CatalogChange, error) {
+	r.mu.Lock()
+	if canonical := r.aliases[name]; canonical != "" {
+		name = canonical
+	}
+	item := r.tools[name]
+	if item == nil {
+		r.mu.Unlock()
+		if _, revoked := r.tombstones[name]; revoked {
+			return CatalogChange{}, fmt.Errorf("%w %q", ErrToolRevoked, name)
+		}
+		return CatalogChange{}, fmt.Errorf("%w %q", ErrUnknownTool, name)
+	}
+	if expectedRevision != 0 && item.revision != expectedRevision {
+		r.mu.Unlock()
+		return CatalogChange{}, fmt.Errorf(
+			"%w for tool %q: expected revision=%d current=%d",
+			ErrCatalogStale, name, expectedRevision, item.revision,
+		)
+	}
+	if item.state == CatalogEntryMaterialized {
+		change := CatalogChange{Name: name, Source: item.source, Revision: item.revision}
+		r.mu.Unlock()
+		return change, nil
+	}
+	if item.deferred == nil {
+		if err := r.checkMaterializeLimitLocked(item); err != nil {
+			r.mu.Unlock()
+			return CatalogChange{}, err
+		}
+		item.state = CatalogEntryMaterialized
+		item.revision++
+		r.generation++
+		change := CatalogChange{Name: name, Source: item.source, Revision: item.revision}
+		r.mu.Unlock()
+		return change, nil
+	}
+	r.mu.Unlock()
+
+	_, _, _, err := r.Resolve(name)
+	if err != nil {
+		if !errors.Is(err, ErrCatalogLimit) {
+			return CatalogChange{}, fmt.Errorf("%w: %v", ErrToolLoadFailed, err)
+		}
+		return CatalogChange{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current := r.tools[name]
+	if current == nil {
+		return CatalogChange{}, fmt.Errorf("%w %q", ErrToolRevoked, name)
+	}
+	if current != item {
+		return CatalogChange{}, fmt.Errorf("%w for tool %q", ErrCatalogStale, name)
+	}
+	if expectedRevision != 0 && current.revision < expectedRevision {
+		return CatalogChange{}, fmt.Errorf("%w for tool %q", ErrCatalogStale, name)
+	}
+	if current.state != CatalogEntryMaterialized {
+		current.state = CatalogEntryMaterialized
+		current.revision++
+		r.generation++
+	}
+	return CatalogChange{Name: name, Source: current.source, Revision: current.revision}, nil
+}
+
+func (r *Registry) checkMaterializeLimitLocked(candidate *registered) error {
+	count, schemaBytes := 0, 0
+	for _, item := range r.tools {
+		if item.state != CatalogEntryMaterialized && !item.loading {
+			continue
+		}
+		count++
+		data, _ := json.Marshal(item.descriptor.InputSchema)
+		schemaBytes += len(data)
+	}
+	data, _ := json.Marshal(candidate.descriptor.InputSchema)
+	if count+1 > r.maxMaterialized || schemaBytes+len(data) > r.maxSchemaBytes {
+		return fmt.Errorf(
+			"%w: entries=%d/%d schema_bytes=%d/%d",
+			ErrCatalogLimit, count+1, r.maxMaterialized,
+			schemaBytes+len(data), r.maxSchemaBytes,
+		)
+	}
+	return nil
+}
+
+// Registration is one desired entry in a source-owned catalog reconcile.
+// Constructors keep executor and loader mutually exclusive.
+type Registration struct {
+	descriptor Descriptor
+	executor   Executor
+	deferred   func() (Executor, error)
+	state      CatalogEntryState
+	payload    any
+	token      uint64
+}
+
+func NewRegistration(executor Executor) Registration {
+	return Registration{executor: executor}
+}
+
+func NewDeferredRegistration(
+	descriptor Descriptor,
+	loader func() (Executor, error),
+) Registration {
+	descriptor.DeferredLoading.Enabled = true
+	descriptor.Availability = AvailabilityDeferred
+	return Registration{
+		descriptor: descriptor, deferred: loader, state: CatalogEntryDeferred,
+	}
+}
+
+// WithPayload associates source-private immutable metadata with the entry.
+// Registry lifecycle decisions never inspect this value.
+func (r Registration) WithPayload(payload any) Registration {
+	r.payload = payload
+	return r
+}
+
+func (r Registration) Descriptor() Descriptor {
+	if r.descriptor.Name == "" && r.executor != nil {
+		return cloneDescriptor(r.executor.Descriptor())
+	}
+	return cloneDescriptor(r.descriptor)
+}
+func (r Registration) Executor() Executor { return r.executor }
+func (r Registration) Payload() any       { return r.payload }
+func (r Registration) State() CatalogEntryState {
+	return r.state
+}
+
+func nextCatalogID() string {
+	return fmt.Sprintf("catalog-%d", catalogSequence.Add(1))
+}
+
+func nextLegacySource(name string) string {
+	return fmt.Sprintf("legacy:%s:%d", name, legacySequence.Add(1))
+}
+
+// CatalogEntryState is the lifecycle state of one model-visible catalog entry.
+// It is separate from Descriptor.Availability: availability describes whether
+// an executor can be used, while state also records exposure and revocation.
+type CatalogEntryState string
+
+const (
+	CatalogEntryEager        CatalogEntryState = "eager"
+	CatalogEntryDeferred     CatalogEntryState = "deferred"
+	CatalogEntryMaterialized CatalogEntryState = "materialized"
+	CatalogEntryUnavailable  CatalogEntryState = "unavailable"
+	CatalogEntryRevoked      CatalogEntryState = "revoked"
+)
+
+// CatalogEntrySnapshot binds one descriptor to the source and revision that
+// supplied it. A tool call sampled from this entry must be checked against the
+// same revision before execution.
+type CatalogEntrySnapshot struct {
+	Name       string            `json:"name"`
+	Source     string            `json:"source"`
+	Revision   uint64            `json:"revision"`
+	State      CatalogEntryState `json:"state"`
+	Descriptor Descriptor        `json:"descriptor"`
+	authority  uint64
+}
+
+// CatalogSnapshot is an immutable, sorted view of the tool catalog used by one
+// model sampling attempt. CatalogID scopes generation comparisons to one
+// in-process catalog instance.
+type CatalogSnapshot struct {
+	CatalogID  string
+	Generation uint64
+	Digest     string
+
+	entries []CatalogEntrySnapshot
+}
+
+// NewCatalogSnapshot validates and isolates a catalog view. Descriptors are
+// deep-cloned so later registry mutations cannot change an in-flight sample.
+func NewCatalogSnapshot(
+	catalogID string,
+	generation uint64,
+	digest string,
+	entries []CatalogEntrySnapshot,
+) (CatalogSnapshot, error) {
+	if catalogID == "" {
+		return CatalogSnapshot{}, errors.New("catalog id is required")
+	}
+	if generation == 0 {
+		return CatalogSnapshot{}, errors.New("catalog generation must be positive")
+	}
+	if digest == "" {
+		return CatalogSnapshot{}, errors.New("catalog digest is required")
+	}
+	cloned := make([]CatalogEntrySnapshot, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for index, entry := range entries {
+		if entry.Name == "" || entry.Source == "" || entry.Revision == 0 {
+			return CatalogSnapshot{}, fmt.Errorf("catalog entry %d identity is incomplete", index)
+		}
+		if entry.Descriptor.Name != entry.Name {
+			return CatalogSnapshot{}, fmt.Errorf(
+				"catalog entry %q descriptor name is %q", entry.Name, entry.Descriptor.Name,
+			)
+		}
+		if !validCatalogEntryState(entry.State) {
+			return CatalogSnapshot{}, fmt.Errorf(
+				"catalog entry %q has invalid state %q", entry.Name, entry.State,
+			)
+		}
+		if _, duplicate := seen[entry.Name]; duplicate {
+			return CatalogSnapshot{}, fmt.Errorf("catalog entry %q is duplicated", entry.Name)
+		}
+		if err := validateDescriptor(entry.Descriptor); err != nil {
+			return CatalogSnapshot{}, fmt.Errorf("catalog entry %q: %w", entry.Name, err)
+		}
+		seen[entry.Name] = struct{}{}
+		entry.Descriptor = cloneDescriptor(entry.Descriptor)
+		cloned[index] = entry
+	}
+	sort.Slice(cloned, func(i, j int) bool { return cloned[i].Name < cloned[j].Name })
+	return CatalogSnapshot{
+		CatalogID: catalogID, Generation: generation, Digest: digest,
+		entries: cloned,
+	}, nil
+}
+
+// Entries returns a deep-cloned, name-sorted view.
+func (s CatalogSnapshot) Entries() []CatalogEntrySnapshot {
+	result := make([]CatalogEntrySnapshot, len(s.entries))
+	for index, entry := range s.entries {
+		entry.Descriptor = cloneDescriptor(entry.Descriptor)
+		result[index] = entry
+	}
+	return result
+}
+
+// Lookup returns an isolated entry by canonical tool name.
+func (s CatalogSnapshot) Lookup(name string) (CatalogEntrySnapshot, bool) {
+	index := sort.Search(len(s.entries), func(index int) bool {
+		return s.entries[index].Name >= name
+	})
+	if index == len(s.entries) || s.entries[index].Name != name {
+		return CatalogEntrySnapshot{}, false
+	}
+	entry := s.entries[index]
+	entry.Descriptor = cloneDescriptor(entry.Descriptor)
+	return entry, true
+}
+
+// CatalogChange identifies one entry affected by an atomic reconcile.
+type CatalogChange struct {
+	Name     string
+	Source   string
+	Revision uint64
+}
+
+// ChangeSet is the externally observable result of one catalog generation
+// transition. The slices are name-sorted by the reconciler.
+type ChangeSet struct {
+	CatalogID  string
+	Generation uint64
+	Digest     string
+	Added      []CatalogChange
+	Replaced   []CatalogChange
+	Revoked    []CatalogChange
+}
+
+func (r *Registry) CatalogID() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.catalogID
+}
+
+func (r *Registry) Generation() uint64 {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.generation
+}
+
+// Snapshot freezes the active catalog. Revoked names stay in the Registry's
+// tombstone set for error classification but are never model-visible.
+func (r *Registry) Snapshot() (CatalogSnapshot, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, item := range r.tools {
+		if err := r.refreshAvailabilityLocked(item); err != nil {
+			return CatalogSnapshot{}, err
+		}
+	}
+	entries := r.snapshotEntriesLocked()
+	return NewCatalogSnapshot(
+		r.catalogID, r.generation, catalogDigest(entries), entries,
+	)
+}
+
+// SourceRegistrations returns an isolated desired-state list suitable for a
+// compare-and-swap reconcile. The private token lets unchanged deferred
+// closures survive a round trip without being mistaken for replacements.
+func (r *Registry) SourceRegistrations(source string) []Registration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.sourceRegistrationsLocked(source)
+}
+
+// SourceState returns generation and registrations under one read lock so a
+// caller can safely feed them into a compare-and-swap reconcile.
+func (r *Registry) SourceState(source string) (uint64, []Registration) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.generation, r.sourceRegistrationsLocked(source)
+}
+
+// Reconcile atomically replaces every active entry owned by source.
+func (r *Registry) Reconcile(
+	source string,
+	expectedGeneration uint64,
+	registrations []Registration,
+) (ChangeSet, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return ChangeSet{}, errors.New("tool catalog source is required")
+	}
+	normalized := make([]Registration, len(registrations))
+	for index, registration := range registrations {
+		value, err := normalizeRegistration(registration)
+		if err != nil {
+			return ChangeSet{}, fmt.Errorf("registration %d: %w", index, err)
+		}
+		normalized[index] = value
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if expectedGeneration != 0 && expectedGeneration != r.generation {
+		return ChangeSet{}, fmt.Errorf(
+			"%w: expected=%d actual=%d",
+			ErrCatalogStale, expectedGeneration, r.generation,
+		)
+	}
+	return r.reconcileLocked(source, normalized)
+}
+
+// registerOne is the O(1) startup compatibility path behind Register and
+// RegisterDeferred. Its source is unique and immutable, so a full source
+// reconcile would only re-copy the entire startup catalog for every tool.
+func (r *Registry) registerOne(source string, registration Registration) error {
+	normalized, err := normalizeRegistration(registration)
+	if err != nil {
+		return err
+	}
+	name := normalized.descriptor.Name
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.tools[name]; exists || r.aliases[name] != "" {
+		return fmt.Errorf("tool %q is already registered", name)
+	}
+	for _, alias := range normalized.descriptor.Aliases {
+		if _, exists := r.tools[alias.Name]; exists || r.aliases[alias.Name] != "" {
+			return fmt.Errorf("tool alias %q is already registered", alias.Name)
+		}
+	}
+	r.nextToken++
+	item := &registered{
+		descriptor: cloneDescriptor(normalized.descriptor),
+		executor:   normalized.executor,
+		deferred:   normalized.deferred,
+		backend:    r.backend,
+		source:     source,
+		revision:   1,
+		state:      normalized.state,
+		payload:    normalized.payload,
+		token:      r.nextToken,
+	}
+	if item.deferred != nil {
+		item.executor = descriptorExecutor{descriptor: cloneDescriptor(item.descriptor)}
+	}
+	item.wait = sync.NewCond(&r.mu)
+	r.tools[name] = item
+	for _, alias := range item.descriptor.Aliases {
+		r.aliases[alias.Name] = name
+	}
+	delete(r.tombstones, name)
+	for _, alias := range item.descriptor.Aliases {
+		delete(r.tombstones, alias.Name)
+	}
+	r.generation++
+	return nil
+}
+
+// Replace changes one entry without discarding the source's other entries.
+func (r *Registry) Replace(
+	source string,
+	expectedGeneration uint64,
+	registration Registration,
+) (ChangeSet, error) {
+	normalized, err := normalizeRegistration(registration)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	name := normalized.descriptor.Name
+	r.mu.RLock()
+	registrations := r.sourceRegistrationsLocked(source)
+	generation := r.generation
+	found := false
+	for index := range registrations {
+		if registrations[index].descriptor.Name == name {
+			registrations[index] = normalized
+			found = true
+			break
+		}
+	}
+	r.mu.RUnlock()
+	if !found {
+		return ChangeSet{}, fmt.Errorf("%w %q for source %q", ErrUnknownTool, name, source)
+	}
+	if expectedGeneration == 0 {
+		expectedGeneration = generation
+	}
+	return r.Reconcile(source, expectedGeneration, registrations)
+}
+
+// Revoke removes one active entry and records canonical and alias tombstones.
+func (r *Registry) Revoke(
+	source string,
+	name string,
+	expectedGeneration uint64,
+) (ChangeSet, error) {
+	r.mu.RLock()
+	if canonical := r.aliases[name]; canonical != "" {
+		name = canonical
+	}
+	registrations := r.sourceRegistrationsLocked(source)
+	generation := r.generation
+	r.mu.RUnlock()
+	filtered := make([]Registration, 0, len(registrations))
+	found := false
+	for _, registration := range registrations {
+		if registration.descriptor.Name == name {
+			found = true
+			continue
+		}
+		filtered = append(filtered, registration)
+	}
+	if !found {
+		return ChangeSet{}, fmt.Errorf("%w %q for source %q", ErrUnknownTool, name, source)
+	}
+	if expectedGeneration == 0 {
+		expectedGeneration = generation
+	}
+	return r.Reconcile(source, expectedGeneration, filtered)
+}
+
+func (r *Registry) reconcileLocked(
+	source string,
+	registrations []Registration,
+) (ChangeSet, error) {
+	desired := make(map[string]Registration, len(registrations))
+	for _, registration := range registrations {
+		name := registration.descriptor.Name
+		if _, duplicate := desired[name]; duplicate {
+			return ChangeSet{}, fmt.Errorf("tool %q is duplicated in source %q", name, source)
+		}
+		desired[name] = registration
+		if current := r.tools[name]; current != nil && current.source != source {
+			return ChangeSet{}, fmt.Errorf("tool %q is already registered", name)
+		}
+	}
+
+	nextTools := make(map[string]*registered, len(r.tools)+len(desired))
+	currentSource := make(map[string]*registered)
+	for name, item := range r.tools {
+		if item.source == source {
+			currentSource[name] = item
+			continue
+		}
+		nextTools[name] = item
+	}
+	nextTombstones := cloneTombstones(r.tombstones)
+	changes := ChangeSet{CatalogID: r.catalogID}
+
+	names := sortedRegistrationNames(desired)
+	for _, name := range names {
+		registration := desired[name]
+		current := currentSource[name]
+		if current != nil && sameRegistered(current, registration) {
+			nextTools[name] = current
+			delete(currentSource, name)
+			continue
+		}
+		revision := uint64(1)
+		change := &changes.Added
+		if current != nil {
+			revision = current.revision + 1
+			change = &changes.Replaced
+			delete(currentSource, name)
+			for _, alias := range current.descriptor.Aliases {
+				nextTombstones[alias.Name] = catalogTombstone{
+					source: source, canonical: name, revision: revision,
+				}
+			}
+		} else if tombstone, ok := nextTombstones[name]; ok && tombstone.source == source {
+			revision = tombstone.revision + 1
+		}
+		r.nextToken++
+		item := &registered{
+			descriptor: cloneDescriptor(registration.descriptor),
+			executor:   registration.executor,
+			deferred:   registration.deferred,
+			backend:    r.backend,
+			source:     source,
+			revision:   revision,
+			state:      registration.state,
+			payload:    registration.payload,
+			token:      r.nextToken,
+		}
+		if item.deferred != nil {
+			item.executor = descriptorExecutor{descriptor: cloneDescriptor(item.descriptor)}
+		}
+		item.wait = sync.NewCond(&r.mu)
+		nextTools[name] = item
+		*change = append(*change, CatalogChange{Name: name, Source: source, Revision: revision})
+	}
+
+	for name, item := range currentSource {
+		revision := item.revision + 1
+		nextTombstones[name] = catalogTombstone{
+			source: source, canonical: name, revision: revision,
+		}
+		for _, alias := range item.descriptor.Aliases {
+			nextTombstones[alias.Name] = catalogTombstone{
+				source: source, canonical: name, revision: revision,
+			}
+		}
+		changes.Revoked = append(changes.Revoked, CatalogChange{
+			Name: name, Source: source, Revision: revision,
+		})
+	}
+
+	nextAliases, err := buildAliases(nextTools)
+	if err != nil {
+		return ChangeSet{}, err
+	}
+	for name, item := range nextTools {
+		delete(nextTombstones, name)
+		for _, alias := range item.descriptor.Aliases {
+			delete(nextTombstones, alias.Name)
+		}
+	}
+	if len(changes.Added) == 0 && len(changes.Replaced) == 0 && len(changes.Revoked) == 0 {
+		changes.Generation = r.generation
+		changes.Digest = catalogDigest(r.snapshotEntriesLocked())
+		return changes, nil
+	}
+	sortCatalogChanges(changes.Added)
+	sortCatalogChanges(changes.Replaced)
+	sortCatalogChanges(changes.Revoked)
+	r.tools = nextTools
+	r.aliases = nextAliases
+	r.tombstones = nextTombstones
+	r.generation++
+	changes.Generation = r.generation
+	changes.Digest = catalogDigest(r.snapshotEntriesLocked())
+	return changes, nil
+}
+
+func normalizeRegistration(registration Registration) (Registration, error) {
+	switch {
+	case registration.executor != nil && registration.deferred != nil:
+		return Registration{}, errors.New("tool registration cannot have both executor and loader")
+	case registration.executor == nil && registration.deferred == nil:
+		return Registration{}, errors.New("tool registration requires an executor or loader")
+	case registration.deferred != nil:
+		registration.descriptor.DeferredLoading.Enabled = true
+		registration.descriptor.Availability = AvailabilityDeferred
+		registration.state = CatalogEntryDeferred
+	default:
+		registration.descriptor = registration.executor.Descriptor()
+		switch registration.descriptor.Availability {
+		case AvailabilityUnavailable:
+			registration.state = CatalogEntryUnavailable
+		case AvailabilityDeferred:
+			return Registration{}, errors.New("deferred descriptor requires a loader")
+		default:
+			if registration.state != CatalogEntryMaterialized {
+				registration.state = CatalogEntryEager
+			}
+		}
+	}
+	if err := validateDescriptor(registration.descriptor); err != nil {
+		return Registration{}, err
+	}
+	registration.descriptor = cloneDescriptor(registration.descriptor)
+	return registration, nil
+}
+
+func (r *Registry) sourceRegistrationsLocked(source string) []Registration {
+	registrations := make([]Registration, 0)
+	for _, item := range r.tools {
+		if item.source != source {
+			continue
+		}
+		registration := Registration{
+			descriptor: cloneDescriptor(item.descriptor),
+			state:      item.state,
+			payload:    item.payload,
+			token:      item.token,
+		}
+		if item.deferred != nil {
+			registration.deferred = item.deferred
+		} else {
+			registration.executor = item.executor
+		}
+		registrations = append(registrations, registration)
+	}
+	sort.Slice(registrations, func(i, j int) bool {
+		return registrations[i].descriptor.Name < registrations[j].descriptor.Name
+	})
+	return registrations
+}
+
+func (r *Registry) snapshotEntriesLocked() []CatalogEntrySnapshot {
+	entries := make([]CatalogEntrySnapshot, 0, len(r.tools))
+	for name, item := range r.tools {
+		entries = append(entries, CatalogEntrySnapshot{
+			Name: name, Source: item.source, Revision: item.revision,
+			State: item.state, Descriptor: cloneDescriptor(item.descriptor),
+			authority: item.token,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+	return entries
+}
+
+// refreshAvailabilityLocked preserves the legacy self-degrading tool contract
+// while keeping capability, resource and schema policy owned by the Registry.
+// Executors may tighten availability at runtime, but cannot mutate aliases or
+// authority through Descriptor().
+func (r *Registry) refreshAvailabilityLocked(item *registered) error {
+	if item == nil || item.executor == nil || item.deferred != nil {
+		return nil
+	}
+	live := item.executor.Descriptor()
+	if live.Name != item.descriptor.Name {
+		return fmt.Errorf(
+			"registered tool %q now describes itself as %q",
+			item.descriptor.Name, live.Name,
+		)
+	}
+	if live.Availability == item.descriptor.Availability &&
+		live.UnavailableReason == item.descriptor.UnavailableReason {
+		return nil
+	}
+	candidate := cloneDescriptor(item.descriptor)
+	candidate.Availability = live.Availability
+	candidate.UnavailableReason = live.UnavailableReason
+	if err := validateDescriptor(candidate); err != nil {
+		return err
+	}
+	item.descriptor = candidate
+	switch candidate.Availability {
+	case AvailabilityUnavailable:
+		item.state = CatalogEntryUnavailable
+	default:
+		if item.state == CatalogEntryMaterialized {
+			item.state = CatalogEntryMaterialized
+		} else {
+			item.state = CatalogEntryEager
+		}
+	}
+	item.revision++
+	r.generation++
+	return nil
+}
+
+func catalogDigest(entries []CatalogEntrySnapshot) string {
+	data, _ := json.Marshal(entries)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func sameRegistered(current *registered, desired Registration) bool {
+	if current.state != desired.state ||
+		!reflect.DeepEqual(current.descriptor, desired.descriptor) {
+		return false
+	}
+	if current.deferred != nil || desired.deferred != nil {
+		return current.deferred != nil && desired.deferred != nil &&
+			desired.token != 0 && desired.token == current.token
+	}
+	return sameExecutor(current.executor, desired.executor)
+}
+
+func sameExecutor(left, right Executor) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	leftValue, rightValue := reflect.ValueOf(left), reflect.ValueOf(right)
+	if leftValue.Type() != rightValue.Type() {
+		return false
+	}
+	switch leftValue.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer,
+		reflect.Slice, reflect.UnsafePointer:
+		return leftValue.Pointer() == rightValue.Pointer()
+	default:
+		return leftValue.Type().Comparable() && leftValue.Interface() == rightValue.Interface()
+	}
+}
+
+func buildAliases(tools map[string]*registered) (map[string]string, error) {
+	aliases := make(map[string]string)
+	names := make([]string, 0, len(tools))
+	for name := range tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for _, alias := range tools[name].descriptor.Aliases {
+			if _, conflict := tools[alias.Name]; conflict {
+				return nil, fmt.Errorf("tool alias %q conflicts with tool name", alias.Name)
+			}
+			if canonical := aliases[alias.Name]; canonical != "" {
+				return nil, fmt.Errorf(
+					"tool alias %q is already registered by %q", alias.Name, canonical,
+				)
+			}
+			aliases[alias.Name] = name
+		}
+	}
+	return aliases, nil
+}
+
+func sameAliases(left, right []Alias) bool {
+	return reflect.DeepEqual(left, right)
+}
+
+func cloneTombstones(source map[string]catalogTombstone) map[string]catalogTombstone {
+	result := make(map[string]catalogTombstone, len(source))
+	maps.Copy(result, source)
+	return result
+}
+
+func sortedRegistrationNames(registrations map[string]Registration) []string {
+	names := make([]string, 0, len(registrations))
+	for name := range registrations {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func sortCatalogChanges(changes []CatalogChange) {
+	sort.Slice(changes, func(i, j int) bool { return changes[i].Name < changes[j].Name })
+}
+
+func validCatalogEntryState(state CatalogEntryState) bool {
+	switch state {
+	case CatalogEntryEager, CatalogEntryDeferred, CatalogEntryMaterialized,
+		CatalogEntryUnavailable, CatalogEntryRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+func cloneDescriptor(descriptor Descriptor) Descriptor {
+	descriptor.InputSchema = cloneStringMap(descriptor.InputSchema)
+	descriptor.Aliases = append([]Alias(nil), descriptor.Aliases...)
+	descriptor.ResourceResolver.Templates = append(
+		[]ResourceTemplate(nil), descriptor.ResourceResolver.Templates...,
+	)
+	return descriptor
+}
+
+func cloneStringMap(source map[string]any) map[string]any {
+	if source == nil {
+		return nil
+	}
+	result := make(map[string]any, len(source))
+	for key, value := range source {
+		result[key] = cloneCatalogValue(value)
+	}
+	return result
+}
+
+func cloneCatalogValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneStringMap(typed)
+	case []any:
+		result := make([]any, len(typed))
+		for index, item := range typed {
+			result[index] = cloneCatalogValue(item)
+		}
+		return result
+	case []string:
+		result := make([]string, len(typed))
+		copy(result, typed)
+		return result
+	default:
+		return typed
+	}
+}

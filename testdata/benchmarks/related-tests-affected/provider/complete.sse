@@ -1,0 +1,6 @@
+data: {"choices":[{"delta":{"content":"bonus is now 2; pkg/calc_test.go covers the change"},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":96,"completion_tokens":12}}
+
+data: [DONE]
+

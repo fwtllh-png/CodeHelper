@@ -1,0 +1,14 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "background lifecycle",
+  "streams": ["start.sse", "interact.sse", "wait.sse", "cancel.sse", "complete.sse"],
+  "expected_request_fragments": [
+    ["\"name\":\"background_shell_start\""],
+    ["\"role\":\"tool\"", "contract-job"],
+    ["\"name\":\"background_shell_wait\"", "contract-job"],
+    ["\"name\":\"background_shell_cancel\"", "contract-job"],
+    ["\"role\":\"tool\"", "canceled"]
+  ]
+}

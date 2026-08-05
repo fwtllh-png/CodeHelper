@@ -1,0 +1,447 @@
+package app
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+// The receipt now carries real line statistics, so diff_line_stats must be gone
+// from the not-collected list, and a rollback that could not restore a path has
+// to surface as an unresolved issue rather than a count inside an error string.
+func TestReceiptReportsLineStatsAndRollbackConflicts(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	receipt := recorder.build(turnObservations{
+		changes: []agentengine.TurnDiffEntry{
+			{Path: "calc.py", Tool: "file_apply", Kind: "modified", Added: 3, Removed: 1},
+			{Path: "gone.py", Tool: "file_apply", Kind: "deleted", Removed: 4},
+		},
+		conflicts: []string{"workspace rollback could not restore calc.py: content changed"},
+	})
+
+	if len(receipt.Changes) != 2 {
+		t.Fatalf("changes = %+v", receipt.Changes)
+	}
+	if receipt.Changes[0].Added != 3 || receipt.Changes[0].Removed != 1 {
+		t.Fatalf("line stats = %+v", receipt.Changes[0])
+	}
+	if receipt.Changes[1].Kind != "deleted" || receipt.Changes[1].Removed != 4 {
+		t.Fatalf("deletion = %+v", receipt.Changes[1])
+	}
+	found := false
+	for _, issue := range receipt.UnresolvedIssues {
+		if strings.Contains(issue, "could not restore calc.py") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("unresolved issues = %v, want the rollback conflict", receipt.UnresolvedIssues)
+	}
+	for _, section := range receipt.NotCollected {
+		if section == "diff_line_stats" {
+			t.Fatal("receipt still claims diff line stats are not collected")
+		}
+	}
+}
+
+func TestReceiptReportsReadPathsAndContextSections(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	recorder.editorContext = []protocol.EditorContextReceipt{{
+		Kind:   protocol.EditorContextSymbol,
+		Source: protocol.EditorContextSourceSelectionCommand,
+		Path:   "calc.py", Digest: strings.Repeat("a", 64),
+		Range: &protocol.EditorRange{
+			Start: protocol.EditorPosition{}, End: protocol.EditorPosition{Character: 12},
+		},
+		Symbol:        &protocol.EditorSymbol{Name: "calculate", Kind: "function"},
+		OriginalBytes: 12, RetainedBytes: 12,
+	}}
+	recorder.observe(agentengine.Event{State: agentengine.Preparing, Turn: 3})
+	receipt := recorder.build(turnObservations{
+		readPaths: []string{"calc.py"},
+		context: []promptcontext.Receipt{
+			{Kind: promptcontext.PartitionBase, OriginalBytes: 10, RetainedBytes: 10, Digest: "sha256:a"},
+			{
+				Kind: promptcontext.PartitionRepoMap, OriginalBytes: 400, RetainedBytes: 64,
+				Truncated: true, TruncationReason: "byte_budget", Digest: "sha256:b",
+			},
+		},
+	})
+
+	if recorder.turn != 3 {
+		t.Fatalf("turn = %d, want the turn the events carried", recorder.turn)
+	}
+	if len(receipt.ReadPaths) != 1 || receipt.ReadPaths[0] != "calc.py" {
+		t.Fatalf("read paths = %v", receipt.ReadPaths)
+	}
+	// read_paths is collected now, so claiming otherwise would be a lie.
+	for _, section := range receipt.NotCollected {
+		if section == "read_paths" {
+			t.Fatal("receipt still claims read paths are not collected")
+		}
+	}
+	if len(receipt.ContextSections) != 2 {
+		t.Fatalf("context sections = %+v", receipt.ContextSections)
+	}
+	if len(receipt.EditorContext) != 1 ||
+		receipt.EditorContext[0].Kind != protocol.EditorContextSymbol ||
+		receipt.EditorContext[0].Path != "calc.py" {
+		t.Fatalf("editor context = %+v", receipt.EditorContext)
+	}
+	truncated := receipt.ContextSections[1]
+	if truncated.Kind != promptcontext.PartitionRepoMap || !truncated.Truncated ||
+		truncated.TruncationReason != "byte_budget" || truncated.RetainedBytes != 64 ||
+		truncated.OriginalBytes != 400 || truncated.Digest != "sha256:b" {
+		t.Fatalf("truncated section = %+v", truncated)
+	}
+}
+
+// TestReceiptPrefersTerminalUsage pins that the turn-cumulative usage on the
+// terminal event replaces the streaming sum. Adding them together inflated
+// every receipt by the last call's tokens.
+func TestReceiptPrefersTerminalUsage(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	recorder.observe(agentengine.Event{
+		State: agentengine.Streaming, Sample: 1,
+		Usage: &provider.Usage{InputTokens: 48, OutputTokens: 6, CachedTokens: 16},
+	})
+	recorder.observe(agentengine.Event{
+		State:   agentengine.Completed,
+		Usage:   &provider.Usage{InputTokens: 48, OutputTokens: 6, CachedTokens: 16},
+		CostUSD: 0.000_5, CostKnown: true,
+	})
+	receipt := recorder.build(turnObservations{})
+	if receipt.InputTokens != 48 || receipt.OutputTokens != 6 || receipt.CachedTokens != 16 {
+		t.Fatalf("receipt usage = %+v", receipt)
+	}
+	if receipt.CostMicrounits != 500 || !receipt.CostKnown {
+		t.Fatalf("receipt cost = %d known=%v", receipt.CostMicrounits, receipt.CostKnown)
+	}
+}
+
+// TestReceiptCostKnownComesFromPricingNotAmount pins the distinction that makes
+// the flag worth having. A model with published pricing that happens to cost
+// nothing reports a known cost of zero; a model with no pricing metadata reports
+// unknown. Deriving the flag from the amount collapsed the two, so every free
+// call looked unpriced.
+func TestReceiptCostKnownComesFromPricingNotAmount(t *testing.T) {
+	free := newReceiptRecorder("ask something cheap")
+	free.observe(agentengine.Event{
+		State: agentengine.Completed,
+		Usage: &provider.Usage{InputTokens: 12, OutputTokens: 3},
+		// A priced model whose rates are zero: cost is known to be nothing.
+		CostUSD: 0, CostKnown: true,
+	})
+	receipt := free.build(turnObservations{})
+	if receipt.CostMicrounits != 0 || !receipt.CostKnown {
+		t.Fatalf("free call = %d known=%v, want a known zero", receipt.CostMicrounits, receipt.CostKnown)
+	}
+
+	unpriced := newReceiptRecorder("ask something unpriced")
+	unpriced.observe(agentengine.Event{
+		State: agentengine.Completed,
+		Usage: &provider.Usage{InputTokens: 12, OutputTokens: 3},
+	})
+	receipt = unpriced.build(turnObservations{})
+	if receipt.CostKnown {
+		t.Fatal("unpriced call reported a known cost")
+	}
+}
+
+// TestReceiptFallbackKeepsLastReportPerCall covers the streaming path with a
+// provider that reports input and output separately: the two events are
+// cumulative snapshots of one call, so the receipt keeps the later one instead of
+// adding them and counting the input twice.
+func TestReceiptFallbackKeepsLastReportPerCall(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	recorder.observe(agentengine.Event{
+		State: agentengine.Streaming, Sample: 1, CostKnown: true,
+		Usage: &provider.Usage{InputTokens: 100},
+	})
+	recorder.observe(agentengine.Event{
+		State: agentengine.Streaming, Sample: 1, CostKnown: true,
+		Usage: &provider.Usage{InputTokens: 100, OutputTokens: 50},
+	})
+	recorder.observe(agentengine.Event{
+		State: agentengine.Streaming, Sample: 2, CostKnown: true,
+		Usage: &provider.Usage{InputTokens: 30, OutputTokens: 8},
+	})
+	receipt := recorder.build(turnObservations{})
+	if receipt.InputTokens != 130 || receipt.OutputTokens != 58 {
+		t.Fatalf("receipt usage = %d in / %d out, want 130 / 58", receipt.InputTokens, receipt.OutputTokens)
+	}
+}
+
+// TestReceiptFallsBackToStreamingUsage covers failed turns, whose terminal
+// event carries no cumulative usage.
+func TestReceiptFallsBackToStreamingUsage(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	recorder.observe(agentengine.Event{
+		State: agentengine.Streaming,
+		Usage: &provider.Usage{InputTokens: 30, OutputTokens: 4},
+	})
+	recorder.observe(agentengine.Event{State: agentengine.Failed, Error: "tool file_edit failed"})
+	receipt := recorder.build(turnObservations{})
+	if receipt.InputTokens != 30 || receipt.OutputTokens != 4 {
+		t.Fatalf("receipt usage = %+v", receipt)
+	}
+	if receipt.CostKnown {
+		t.Fatal("cost reported as known without pricing")
+	}
+	if len(receipt.UnresolvedIssues) != 1 {
+		t.Fatalf("unresolved issues = %v", receipt.UnresolvedIssues)
+	}
+}
+
+// TestReceiptCarriesTheMeasuredLatencyPartition pins the two rules a reader of
+// the partition depends on: a phase that did not happen reports zero, and the
+// flat total agrees with the partition instead of measuring its own thing.
+func TestReceiptCarriesTheMeasuredLatencyPartition(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	firstToken := 250 * time.Millisecond
+	receipt := recorder.build(turnObservations{
+		latency: &trace.Latency{
+			Total: 6 * time.Second, FirstToken: &firstToken,
+			Provider: 1200 * time.Millisecond, Tool: 3 * time.Second,
+		},
+	})
+
+	if receipt.Latency == nil {
+		t.Fatal("a measured turn reported no latency partition")
+	}
+	if receipt.Latency.FirstTokenMS == nil || *receipt.Latency.FirstTokenMS != 250 {
+		t.Fatalf("first token = %v, want 250ms", receipt.Latency.FirstTokenMS)
+	}
+	if receipt.Latency.ProviderMS != 1200 || receipt.Latency.ToolMS != 3000 {
+		t.Fatalf("latency = %+v", receipt.Latency)
+	}
+	// Measured and zero: no approval was needed and no gate ran.
+	if receipt.Latency.ApprovalWaitMS != 0 || receipt.Latency.VerifyMS != 0 {
+		t.Fatalf("latency = %+v, want zero for the phases that did not happen", receipt.Latency)
+	}
+	if receipt.LatencyMS != 6000 {
+		t.Fatalf("flat latency = %dms, want the partition's total", receipt.LatencyMS)
+	}
+}
+
+// A turn measured by nothing must not claim zeros. Without the partition the flat
+// number falls back to the adapter's own wall clock, which is what an in-memory
+// runtime and the no-op engine still have.
+func TestReceiptWithoutMeasurementHasNoLatencyPartition(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	receipt := recorder.build(turnObservations{})
+	if receipt.Latency != nil {
+		t.Fatalf("latency = %+v, want no partition", receipt.Latency)
+	}
+	if receipt.Budget != nil {
+		t.Fatalf("budget = %+v, want no partition", receipt.Budget)
+	}
+}
+
+// TestReceiptBudgetIncludesThisTurn covers the off-by-one a reader would
+// otherwise hit: the engine folds a turn into its pool only once the turn
+// completes, and the receipt is written before that.
+func TestReceiptBudgetIncludesThisTurn(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	recorder.observe(agentengine.Event{
+		State: agentengine.Completed,
+		Usage: &provider.Usage{InputTokens: 300, OutputTokens: 100},
+		// testRoute-style pricing: 2 USD of spend on this turn.
+		CostUSD: 2, CostKnown: true,
+	})
+	receipt := recorder.build(turnObservations{
+		spend: agentengine.BudgetSnapshot{
+			TokensUsed: 1000, MaxTokens: 10_000, CostUSD: 3, MaxCostUSD: 25,
+		},
+	})
+
+	if receipt.Budget == nil {
+		t.Fatal("no budget partition")
+	}
+	if receipt.Budget.TokensUsed != 1400 || receipt.Budget.MaxTokens != 10_000 {
+		t.Fatalf("budget tokens = %+v, want this turn's 400 on top of the pool's 1000", receipt.Budget)
+	}
+	if receipt.Budget.CostMicrounits != 5_000_000 ||
+		receipt.Budget.MaxCostMicrounits != 25_000_000 {
+		t.Fatalf("budget cost = %+v, want 5 USD of 25", receipt.Budget)
+	}
+}
+
+// The receipt reports the gate's real verdict. Tests only claim a result when
+// the gate ran the repository's own commands, since the diagnostics scope runs
+// no tests at all.
+func TestReceiptReportsVerificationGateVerdict(t *testing.T) {
+	tests := map[string]struct {
+		receipt   *agentengine.VerificationReceipt
+		wantVerif string
+		wantTests string
+	}{
+		"no gate": {
+			wantVerif: protocol.ReceiptNotEvaluated, wantTests: protocol.ReceiptNotEvaluated,
+		},
+		"diagnostics passed": {
+			receipt: &agentengine.VerificationReceipt{
+				Receipt: verify.Receipt{Scope: verify.ScopeDiagnostics, Status: verify.StatusPassed},
+				Action:  "passed",
+			},
+			wantVerif: protocol.ReceiptPassed, wantTests: protocol.ReceiptNotEvaluated,
+		},
+		"repository failed": {
+			receipt: &agentengine.VerificationReceipt{
+				Receipt: verify.Receipt{Scope: verify.ScopeRepository, Status: verify.StatusFailed},
+				Action:  "failed",
+			},
+			wantVerif: protocol.ReceiptFailed, wantTests: protocol.ReceiptFailed,
+		},
+		"repository unavailable": {
+			receipt: &agentengine.VerificationReceipt{
+				Receipt: verify.Receipt{
+					Scope: verify.ScopeRepository, Status: verify.StatusUnavailable,
+				},
+				Action: "passed",
+			},
+			wantVerif: protocol.ReceiptUnavailable, wantTests: protocol.ReceiptUnavailable,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			recorder := newReceiptRecorder("fix add")
+			recorder.observe(agentengine.Event{
+				State: agentengine.Verifying, Verification: test.receipt,
+			})
+			receipt := recorder.build(turnObservations{})
+			if receipt.Verification.Verify != test.wantVerif ||
+				receipt.Verification.Tests != test.wantTests {
+				t.Fatalf("verification = %+v", receipt.Verification)
+			}
+		})
+	}
+}
+
+// A repair round is followed by another evaluation, and the receipt must report
+// the verdict the turn ended on.
+func TestReceiptReportsFinalVerificationAfterRepair(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	recorder.observe(agentengine.Event{
+		State: agentengine.Verifying,
+		Verification: &agentengine.VerificationReceipt{
+			Receipt: verify.Receipt{Scope: verify.ScopeDiagnostics, Status: verify.StatusFailed},
+			Action:  "repair",
+		},
+	})
+	recorder.observe(agentengine.Event{
+		State: agentengine.Verifying,
+		Verification: &agentengine.VerificationReceipt{
+			Receipt:     verify.Receipt{Scope: verify.ScopeDiagnostics, Status: verify.StatusPassed},
+			Action:      "passed",
+			RepairSteps: 1,
+		},
+	})
+
+	if receipt := recorder.build(turnObservations{}); receipt.Verification.Verify != protocol.ReceiptPassed {
+		t.Fatalf("verify = %q, want the post-repair verdict", receipt.Verification.Verify)
+	}
+}
+
+func TestVerificationDataCarriesChecksAndPaths(t *testing.T) {
+	data := verificationData(&agentengine.VerificationReceipt{
+		Receipt: verify.Receipt{
+			Scope: verify.ScopeRepository, Status: verify.StatusFailed, Errors: 1,
+			Checks: []verify.Check{{
+				Name: "go", Command: "go test ./...", Status: verify.StatusFailed,
+				ExitCode: 1, Stdout: "--- FAIL", Stderr: "exit status 1",
+			}},
+		},
+		Mode: "hard", Action: "failed", RepairSteps: 2, Paths: []string{"calc.py"},
+	})
+
+	if data.Scope != "repository" || data.Status != protocol.ReceiptFailed ||
+		data.Action != "failed" || data.RepairSteps != 2 || data.Errors != 1 {
+		t.Fatalf("verification data = %+v", data)
+	}
+	if len(data.Checks) != 1 || data.Checks[0].Name != "go" ||
+		!strings.Contains(data.Checks[0].Output, "FAIL") ||
+		!strings.Contains(data.Checks[0].Output, "exit status 1") {
+		t.Fatalf("checks = %+v", data.Checks)
+	}
+	if len(data.Paths) != 1 || data.Paths[0] != "calc.py" {
+		t.Fatalf("paths = %v", data.Paths)
+	}
+}
+
+func TestReceiptReportsEvidenceFactsRisksAndReminders(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	receipt := recorder.build(turnObservations{evidence: evidence.Snapshot{
+		Turn: 2,
+		Facts: []evidence.Fact{{
+			Kind: evidence.KindDefinition, Path: "auth/token.go", Line: 12,
+			Symbol: "Verify", Tool: "search_definition", Turn: 1,
+		}},
+		Risks: []evidence.Risk{
+			{Kind: evidence.RiskUnverifiedChange, Path: "auth/token.go", Turn: 2},
+		},
+		Reminders:    []evidence.Reminder{{Kind: evidence.ReminderRepeatedCall, Detail: "search_text ran twice"}},
+		OmittedFacts: 3,
+	}})
+
+	if receipt.Evidence == nil {
+		t.Fatal("the receipt carries no evidence")
+	}
+	if len(receipt.Evidence.Facts) != 1 || receipt.Evidence.Facts[0].Symbol != "Verify" ||
+		receipt.Evidence.Facts[0].Kind != "definition" || receipt.Evidence.Facts[0].Turn != 1 {
+		t.Fatalf("facts = %+v", receipt.Evidence.Facts)
+	}
+	if len(receipt.Evidence.Risks) != 1 ||
+		receipt.Evidence.Risks[0].Kind != evidence.RiskUnverifiedChange {
+		t.Fatalf("risks = %+v", receipt.Evidence.Risks)
+	}
+	if len(receipt.Evidence.Reminders) != 1 || receipt.Evidence.Reminders[0] != "search_text ran twice" {
+		t.Fatalf("reminders = %+v", receipt.Evidence.Reminders)
+	}
+	if receipt.Evidence.OmittedFacts != 3 {
+		t.Fatalf("omitted facts = %d", receipt.Evidence.OmittedFacts)
+	}
+}
+
+// An absent section says the session found nothing worth recording; an empty one
+// would look like a collection failure.
+func TestReceiptOmitsEvidenceWhenThereIsNone(t *testing.T) {
+	receipt := newReceiptRecorder("fix add").build(turnObservations{})
+	if receipt.Evidence != nil {
+		t.Fatalf("evidence = %+v, want it omitted", receipt.Evidence)
+	}
+}
+
+// TestReceiptDistinguishesUnavailableDiagnostics pins that a runner which never
+// ran leaves verification at not_evaluated rather than reporting a pass.
+func TestReceiptDistinguishesUnavailableDiagnostics(t *testing.T) {
+	for name, status := range map[string]string{"unavailable": "unavailable", "ok": "ok"} {
+		t.Run(name, func(t *testing.T) {
+			recorder := newReceiptRecorder("fix add")
+			recorder.observe(agentengine.Event{
+				State:       agentengine.RunningTools,
+				ToolCall:    &provider.ToolCall{Name: "file_edit", ID: "call_edit"},
+				Result:      &tool.Result{Content: "edited"},
+				Diagnostics: []diagnostics.Receipt{{Path: "calc.py", Status: status}},
+			})
+			receipt := recorder.build(turnObservations{})
+			want := protocol.ReceiptPassed
+			if status == "unavailable" {
+				want = protocol.ReceiptNotEvaluated
+			}
+			if receipt.Verification.Diagnostics != want {
+				t.Fatalf("diagnostics = %q want %q", receipt.Verification.Diagnostics, want)
+			}
+		})
+	}
+}

@@ -1,0 +1,11 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "where is normalize defined",
+  "streams": ["search.sse", "answer.sse"],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"search_text\""],
+    ["\"role\":\"tool\"", "\"tool_call_id\":\"call_search\"", "util.py"]
+  ]
+}

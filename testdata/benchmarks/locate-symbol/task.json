@@ -1,0 +1,14 @@
+{
+  "name": "locate-symbol",
+  "category": "symbol_locate",
+  "prompt": "where is normalize defined",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "tools_used": ["search_text"],
+    "unchanged": ["util.py", "main.py"],
+    "output_contains": ["util.py"]
+  }
+}

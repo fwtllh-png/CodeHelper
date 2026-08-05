@@ -1,0 +1,20 @@
+{
+  "name": "evidence-unverified-change",
+  "category": "context_assembly",
+  "note": "With the gate off nothing proves the edit, and the run must admit it rather than read as a clean finish: the risk shows up in the next sample's tail and in the receipt. The change is read first, so changed_without_read must not appear alongside it.",
+  "prompt": "raise the timeout in server.py to 30",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "files": {
+      "server.py": "TIMEOUT = 30\n\n\ndef timeout():\n    return TIMEOUT\n"
+    },
+    "tools_used": ["file_read", "file_edit"],
+    "receipt_changes": ["server.py"],
+    "context_sections": ["evidence"],
+    "receipt_evidence_risks": ["changed_without_verification"],
+    "receipt_not_collected_excludes": ["evidence"]
+  }
+}

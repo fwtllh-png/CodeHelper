@@ -1,0 +1,12 @@
+src/**
+scripts/**
+node_modules/**
+.tmp-*/**
+dist/**
+!dist/extension.js
+go.mod
+tsconfig.json
+eslint.config.mjs
+package-lock.json
+.vscodeignore
+.gitignore

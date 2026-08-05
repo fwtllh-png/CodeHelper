@@ -1,0 +1,18 @@
+{
+  "name": "evidence-search-classification",
+  "category": "context_assembly",
+  "note": "A declaration and a use of the same symbol must not read alike. The fixture asserts the tail of the next sample carries both, each labelled by the lookup that produced it, and the receipt reports the two kinds separately — which is what makes the evidence section more than a second copy of the working set.",
+  "prompt": "where is Verify declared and who calls it",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "tools_used": ["search_definition", "search_references"],
+    "unchanged": ["auth/token.go", "api/handler.go", "go.mod"],
+    "output_contains": ["auth/token.go", "api/handler.go"],
+    "context_sections": ["repo_map", "working_set_ledger", "evidence"],
+    "receipt_evidence_kinds": ["definition", "reference"],
+    "receipt_not_collected_excludes": ["evidence"]
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "protocol": "anthropic",
+  "path": "/messages",
+  "model": "fixture-model",
+  "expected_prompt": "search Go docs"
+}

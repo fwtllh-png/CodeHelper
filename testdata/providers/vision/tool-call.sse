@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_look","function":{"name":"image_analyze","arguments":"{\"path\":\"shot.png\",\"prompt\":\"what is on screen\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":5}}
+
+data: [DONE]

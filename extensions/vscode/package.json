@@ -1,0 +1,266 @@
+{
+  "name": "codehelper-vscode",
+  "displayName": "CodeHelper",
+  "description": "VS Code companion for the CodeHelper runtime",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "codehelper",
+  "icon": "media/codehelper.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fwtllh-png/CodeHelper.git"
+  },
+  "homepage": "https://github.com/fwtllh-png/CodeHelper",
+  "bugs": {
+    "url": "https://github.com/fwtllh-png/CodeHelper/issues"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "coding",
+    "codehelper",
+    "runtime"
+  ],
+  "categories": [
+    "Machine Learning",
+    "Programming Languages"
+  ],
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codehelper",
+          "title": "CodeHelper",
+          "icon": "media/codehelper.svg"
+        }
+      ]
+    },
+    "views": {
+      "codehelper": [
+        {
+          "id": "codehelper.chat",
+          "name": "Chat",
+          "type": "webview",
+          "icon": "media/codehelper.svg"
+        },
+        {
+          "id": "codehelper.changes",
+          "name": "Changes",
+          "icon": "media/codehelper.svg"
+        },
+        {
+          "id": "codehelper.threads",
+          "name": "Threads",
+          "icon": "media/codehelper.svg"
+        },
+        {
+          "id": "codehelper.agents",
+          "name": "Agents",
+          "icon": "media/codehelper.svg"
+        },
+        {
+          "id": "codehelper.tasks",
+          "name": "Tasks",
+          "icon": "media/codehelper.svg"
+        },
+        {
+          "id": "codehelper.jobs",
+          "name": "Jobs",
+          "icon": "media/codehelper.svg"
+        },
+        {
+          "id": "codehelper.approvals",
+          "name": "Approvals",
+          "icon": "media/codehelper.svg"
+        },
+        {
+          "id": "codehelper.usage",
+          "name": "Usage",
+          "icon": "media/codehelper.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codehelper.showStatus",
+        "title": "CodeHelper: Show Status"
+      },
+      {
+        "command": "codehelper.restartRuntime",
+        "title": "CodeHelper: Restart Runtime"
+      },
+      {
+        "command": "codehelper.checkBinaryUpdates",
+        "title": "CodeHelper: Check for Binary Updates"
+      },
+      {
+        "command": "codehelper.selectWorkspaceRoot",
+        "title": "CodeHelper: Select Workspace Root"
+      },
+      {
+        "command": "codehelper.newChat",
+        "title": "CodeHelper: New Chat"
+      },
+      {
+        "command": "codehelper.selectChat",
+        "title": "CodeHelper: Select Chat"
+      },
+      {
+        "command": "codehelper.explainSelection",
+        "title": "CodeHelper: Explain Selection",
+        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection"
+      },
+      {
+        "command": "codehelper.editSelection",
+        "title": "CodeHelper: Edit Selection",
+        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted"
+      },
+      {
+        "command": "codehelper.refactorSelection",
+        "title": "CodeHelper: Refactor Selection",
+        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted"
+      },
+      {
+        "command": "codehelper.generateTestsForSelection",
+        "title": "CodeHelper: Generate Tests for Selection",
+        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codehelper.explainSelection",
+          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection",
+          "group": "1_modification@10"
+        },
+        {
+          "command": "codehelper.editSelection",
+          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted",
+          "group": "1_modification@11"
+        },
+        {
+          "command": "codehelper.refactorSelection",
+          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted",
+          "group": "1_modification@12"
+        },
+        {
+          "command": "codehelper.generateTestsForSelection",
+          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted",
+          "group": "1_modification@13"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CodeHelper",
+      "properties": {
+        "codehelper.binaryPath": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Absolute path to the CodeHelper executable. Workspace values are ignored until the workspace is trusted."
+        },
+        "codehelper.binarySource": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "external",
+            "managed",
+            "bundled"
+          ],
+          "default": "auto",
+          "scope": "application",
+          "description": "Binary source. Auto selects verified bundled, managed, then external binaries."
+        },
+        "codehelper.update.channel": {
+          "type": "string",
+          "enum": [
+            "stable",
+            "preview"
+          ],
+          "default": "stable",
+          "scope": "application",
+          "description": "Official signed binary release channel."
+        },
+        "codehelper.update.policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "notify",
+            "auto"
+          ],
+          "default": "notify",
+          "scope": "application",
+          "description": "Signed managed binary update policy."
+        },
+        "codehelper.runtime.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "Start and recover the workspace CodeHelper Runtime when the extension activates."
+        },
+        "codehelper.runtime.configPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Host-local absolute path to a trusted CodeHelper TOML configuration containing the provider, model, and credential reference."
+        },
+        "codehelper.runtime.maxSteps": {
+          "type": "integer",
+          "default": 8,
+          "minimum": 1,
+          "maximum": 128,
+          "scope": "window",
+          "description": "Maximum model/tool steps per VS Code turn."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "clean": "node ./scripts/clean.mjs",
+    "generate:protocol": "node ./scripts/generate-protocol.mjs",
+    "generate:compatibility": "node ./scripts/generate-compatibility.mjs",
+    "release:binary": "node ./scripts/release/binary-release.mjs",
+    "release:vscode:dry-run": "npm run build && CODEHELPER_RELEASE_DRY_RUN=1 node ./scripts/release/prepare-vscode-release.mjs",
+    "release:vscode:channels": "node ./scripts/release/channel-dry-run.mjs",
+    "release:vscode:rc": "node ./scripts/release/rc-report.mjs",
+    "matrix:report": "node ./scripts/matrix/report.mjs",
+    "check:protocol": "node ./scripts/generate-protocol.mjs --check",
+    "check:compatibility": "node ./scripts/generate-compatibility.mjs --check",
+    "build": "node ./scripts/build.mjs",
+    "check": "npm run check:protocol && npm run check:compatibility && tsc --noEmit && eslint .",
+    "test": "node ./scripts/test.mjs",
+    "test:update": "node ./scripts/test.mjs binary",
+    "test:security": "node ./scripts/test.mjs security",
+    "test:performance": "node ./scripts/test.mjs performance",
+    "test:runtime-performance": "node ./scripts/runtime-ready.mjs",
+    "test:electron": "npm run build && node ./scripts/electron.mjs",
+    "test:remote-ssh": "npm run build && node ./scripts/remote-ssh.mjs",
+    "test:dev-container": "npm run build && node ./scripts/dev-container.mjs",
+    "package": "npm run clean && npm run check && npm run test && npm run build",
+    "package:vsix": "npm run package && node ./scripts/vsix.mjs && node ./scripts/vsix-install.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^24.1.0",
+    "@types/vscode": "^1.96.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.25.8",
+    "eslint": "^9.32.0",
+    "markdown-it": "^14.1.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.38.0"
+  }
+}

@@ -1,0 +1,4 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_edit","function":{"name":"file_edit","arguments":"{\"path\":\"settings.py\",\"old\":\"TIMEOUT = 30\",\"new\":\"REQUEST_TIMEOUT = 30\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

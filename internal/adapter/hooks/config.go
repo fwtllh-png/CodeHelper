@@ -1,0 +1,116 @@
+package hooks
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"time"
+)
+
+const ConfigVersion = 1
+
+const (
+	defaultTimeout        = 30 * time.Second
+	defaultMaxOutputBytes = 64 << 10
+)
+
+// Config is deliberately versioned independently from the application config
+// so hook process contracts can evolve without silently changing policy.
+type Config struct {
+	Version int                    `json:"version"`
+	Hooks   map[Event][]HookConfig `json:"hooks"`
+}
+
+type HookConfig struct {
+	ID               string        `json:"id"`
+	Command          string        `json:"command"`
+	Args             []string      `json:"args,omitempty"`
+	Env              []string      `json:"env,omitempty"`
+	WorkingDirectory string        `json:"working_directory,omitempty"`
+	ContinueOnError  bool          `json:"continue_on_error,omitempty"`
+	TimeoutText      string        `json:"timeout,omitempty"`
+	Timeout          time.Duration `json:"-"`
+	MaxOutputBytes   int           `json:"max_output_bytes,omitempty"`
+}
+
+func LoadConfig(path string) (Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+	return DecodeConfig(data)
+}
+
+func DecodeConfig(data []byte) (Config, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var config Config
+	if err := decoder.Decode(&config); err != nil {
+		return Config{}, fmt.Errorf("decode hooks config: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err == nil {
+		return Config{}, errors.New("decode hooks config: trailing JSON value")
+	} else if !errors.Is(err, io.EOF) {
+		return Config{}, fmt.Errorf("decode hooks config: %w", err)
+	}
+	if err := config.Validate(); err != nil {
+		return Config{}, err
+	}
+	return config, nil
+}
+
+func (c *Config) Validate() error {
+	if c.Version != ConfigVersion {
+		return fmt.Errorf("unsupported hooks config version %d", c.Version)
+	}
+	if c.Hooks == nil {
+		c.Hooks = make(map[Event][]HookConfig)
+	}
+	ids := make(map[string]Event)
+	for event, configured := range c.Hooks {
+		if _, ok := validEvents[event]; !ok {
+			return fmt.Errorf("unsupported hook event %q", event)
+		}
+		for index := range configured {
+			hook := &configured[index]
+			if strings.TrimSpace(hook.ID) == "" {
+				return fmt.Errorf("hook %s[%d]: id is required", event, index)
+			}
+			if previous, exists := ids[hook.ID]; exists {
+				return fmt.Errorf("hook id %q is duplicated in %s and %s", hook.ID, previous, event)
+			}
+			ids[hook.ID] = event
+			if strings.TrimSpace(hook.Command) == "" {
+				return fmt.Errorf("hook %q: command is required", hook.ID)
+			}
+			if strings.IndexByte(hook.Command, 0) >= 0 {
+				return fmt.Errorf("hook %q: command contains NUL", hook.ID)
+			}
+			for _, argument := range hook.Args {
+				if strings.IndexByte(argument, 0) >= 0 {
+					return fmt.Errorf("hook %q: argument contains NUL", hook.ID)
+				}
+			}
+			if hook.TimeoutText != "" {
+				timeout, err := time.ParseDuration(hook.TimeoutText)
+				if err != nil || timeout <= 0 {
+					return fmt.Errorf("hook %q: timeout must be a positive duration", hook.ID)
+				}
+				hook.Timeout = timeout
+			}
+			if hook.Timeout < 0 {
+				return fmt.Errorf("hook %q: timeout must be positive", hook.ID)
+			}
+			if hook.MaxOutputBytes < 0 {
+				return fmt.Errorf("hook %q: max_output_bytes must be positive", hook.ID)
+			}
+		}
+		c.Hooks[event] = configured
+	}
+	return nil
+}

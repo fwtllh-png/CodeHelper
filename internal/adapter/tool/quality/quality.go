@@ -1,0 +1,313 @@
+package quality
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+)
+
+type Tool struct {
+	root    string
+	kind    string
+	run     func(context.Context, process.Options) (process.Result, error)
+	sandbox sandbox.Backend
+}
+
+func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.Backend) error {
+	if backend == nil {
+		return fmt.Errorf("quality tools require an injected sandbox backend")
+	}
+	backend, err := sandbox.BindPolicy(backend, sandbox.Options{WorkspaceRoot: root})
+	if err != nil {
+		return err
+	}
+	workspace, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		return err
+	}
+	absolute := workspace.Root()
+	registry.SetSandboxBackend(backend)
+	for _, kind := range []string{"quality_test", "quality_diagnostics", "quality_review", "quality_verify"} {
+		if err := registry.Register(&Tool{
+			root: absolute, kind: kind, sandbox: backend,
+		}, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *Tool) Descriptor() tool.Descriptor {
+	description := map[string]string{
+		"quality_test":        "Run a test command and return a structured test result",
+		"quality_diagnostics": "Run a static diagnostics command and return a structured diagnostics result",
+		"quality_review":      "Run a read-only review command and return a structured review result",
+		"quality_verify":      "Run a verifier command and return a structured verifier result",
+	}[t.kind]
+	defaultCommand := map[string]string{
+		"quality_test":        "go test ./...",
+		"quality_diagnostics": "go vet ./...",
+		"quality_review":      "git diff --check",
+	}[t.kind]
+	commandSchema := map[string]any{"type": "string"}
+	if defaultCommand != "" {
+		commandSchema["default"] = defaultCommand
+	}
+	return tool.Descriptor{
+		Name: t.kind, Description: description, Visibility: tool.VisibleModel,
+		Capability: tool.CapabilityProcess, AccessMode: tool.AccessTree,
+		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{
+			{Kind: "repo", ID: ".", Access: tool.AccessWrite, Tree: true},
+			{Kind: "process", ID: "workspace", Access: tool.AccessWrite, Tree: true},
+		}},
+		ParallelPolicy:     tool.ParallelSerial,
+		SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"command": commandSchema,
+			},
+			"additionalProperties": false,
+		},
+	}
+}
+
+func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+	var input struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return tool.Result{}, err
+	}
+	if t.kind == "quality_verify" {
+		return t.executeVerifier(ctx, input.Command)
+	}
+	command := input.Command
+	if command == "" {
+		command = map[string]string{
+			"quality_test":        "go test ./...",
+			"quality_diagnostics": "go vet ./...",
+			"quality_review":      "git diff --check",
+		}[t.kind]
+	}
+	return t.executeSingle(ctx, command)
+}
+
+func (t *Tool) executeSingle(ctx context.Context, command string) (tool.Result, error) {
+	result, err := t.runProcess(ctx, command)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	status, reason := verify.CommandResultStatus(command, result)
+	kind := strings.TrimPrefix(t.kind, "quality_")
+	payload := map[string]any{
+		"schema_version": 1,
+		"kind":           kind,
+		"status":         status,
+		"exit_code":      result.ExitCode,
+		"stdout":         result.Stdout,
+		"stderr":         result.Stderr,
+	}
+	if reason != "" {
+		payload["message"] = reason
+		payload["error_category"] = verify.ErrorCategoryDependencyUnavailable
+	}
+	switch t.kind {
+	case "quality_test":
+		payload["summary"] = map[string]any{"passed": status == "passed"}
+	case "quality_diagnostics":
+		payload["diagnostics"] = parseDiagnostics(result.Stdout, result.Stderr)
+	case "quality_review":
+		payload["findings"] = parseFindings(result.Stdout, result.Stderr)
+	}
+	return encodeResult(payload, kind, status, result.ExitCode)
+}
+
+func (t *Tool) executeVerifier(ctx context.Context, command string) (tool.Result, error) {
+	checks := []verify.Command{{Name: "custom", Command: command}}
+	if command == "" {
+		checks = verify.Detect(t.root)
+	}
+	results := make([]map[string]any, 0, len(checks))
+	status := "passed"
+	exitCode := 0
+	var stdout, stderr strings.Builder
+	var unavailableReason string
+	for _, check := range checks {
+		result, err := t.runProcess(ctx, check.Command)
+		if err != nil {
+			return tool.Result{}, err
+		}
+		checkStatus, reason := verify.CommandResultStatus(check.Command, result)
+		switch checkStatus {
+		case verify.StatusFailed:
+			status = "failed"
+		case verify.StatusUnavailable:
+			if status == "passed" {
+				status = "unavailable"
+			}
+			if unavailableReason == "" {
+				unavailableReason = reason
+			}
+		}
+		if result.ExitCode != 0 && exitCode == 0 {
+			exitCode = result.ExitCode
+		}
+		checkResult := map[string]any{
+			"name": check.Name, "command": check.Command, "status": checkStatus,
+			"exit_code": result.ExitCode, "stdout": result.Stdout, "stderr": result.Stderr,
+		}
+		if reason != "" {
+			checkResult["message"] = reason
+			checkResult["error_category"] = verify.ErrorCategoryDependencyUnavailable
+		}
+		results = append(results, checkResult)
+		appendCheckOutput(&stdout, check.Name, result.Stdout)
+		appendCheckOutput(&stderr, check.Name, result.Stderr)
+	}
+	payload := map[string]any{
+		"schema_version": 1,
+		"kind":           "verify",
+		"status":         status,
+		"exit_code":      exitCode,
+		"stdout":         stdout.String(),
+		"stderr":         stderr.String(),
+		"checks":         results,
+	}
+	if unavailableReason != "" && status != "failed" {
+		payload["message"] = unavailableReason
+		payload["error_category"] = verify.ErrorCategoryDependencyUnavailable
+	}
+	return encodeResult(payload, "verify", status, exitCode)
+}
+
+func (t *Tool) runProcess(ctx context.Context, command string) (process.Result, error) {
+	options := process.Options{
+		Command: command, Dir: t.root, Sandbox: t.sandbox,
+		RequireStrongSandbox: true,
+	}
+	if t.run != nil {
+		return t.run(ctx, options)
+	}
+	directory, err := process.OpenPinnedDirectory(t.sandbox, t.root)
+	if err != nil {
+		return process.Result{}, err
+	}
+	defer directory.Close()
+	options.DirFile = directory
+	return process.Run(ctx, options)
+}
+
+func appendCheckOutput(target *strings.Builder, name, output string) {
+	if output == "" {
+		return
+	}
+	fmt.Fprintf(target, "[%s]\n%s", name, output)
+	if !strings.HasSuffix(output, "\n") {
+		target.WriteByte('\n')
+	}
+}
+
+var locationPattern = regexp.MustCompile(`^(.+?):([0-9]+)(?::([0-9]+))?:\s*(?:(critical|high|medium|low|info|error|warning|warn|note|hint)\s*:\s*)?(.+)$`)
+
+func parseDiagnostics(stdout, stderr string) []map[string]any {
+	items := make([]map[string]any, 0)
+	for _, line := range outputLines(stdout, stderr) {
+		match := locationPattern.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		item := map[string]any{
+			"file": match[1], "line": mustPositiveInt(match[2]),
+			"severity": diagnosticSeverity(match[4]), "message": strings.TrimSpace(match[5]),
+		}
+		if match[3] != "" {
+			item["column"] = mustPositiveInt(match[3])
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func parseFindings(stdout, stderr string) []map[string]any {
+	items := make([]map[string]any, 0)
+	for _, line := range outputLines(stdout, stderr) {
+		match := locationPattern.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		items = append(items, map[string]any{
+			"severity": reviewSeverity(match[4]), "file": match[1],
+			"line": mustPositiveInt(match[2]), "message": strings.TrimSpace(match[5]),
+		})
+	}
+	return items
+}
+
+func outputLines(outputs ...string) []string {
+	var lines []string
+	for _, output := range outputs {
+		for line := range strings.SplitSeq(output, "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				lines = append(lines, line)
+			}
+		}
+	}
+	return lines
+}
+
+func mustPositiveInt(value string) int {
+	parsed, _ := strconv.Atoi(value)
+	return max(1, parsed)
+}
+
+func diagnosticSeverity(value string) string {
+	switch value {
+	case "warning", "warn", "medium", "low":
+		return "warning"
+	case "info", "note":
+		return "info"
+	case "hint":
+		return "hint"
+	default:
+		return "error"
+	}
+}
+
+func reviewSeverity(value string) string {
+	switch value {
+	case "critical", "high", "medium", "low", "info":
+		return value
+	case "error":
+		return "high"
+	case "warning", "warn":
+		return "medium"
+	default:
+		return "medium"
+	}
+}
+
+func encodeResult(payload map[string]any, kind, status string, exitCode int) (tool.Result, error) {
+	content, err := json.Marshal(payload)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	metadata := map[string]any{
+		"schema_version": 1, "result_kind": kind, "status": status, "exit_code": exitCode,
+	}
+	if status == verify.StatusUnavailable {
+		metadata["error_category"] = verify.ErrorCategoryDependencyUnavailable
+	}
+	return tool.Result{
+		Content: string(content), IsError: status == verify.StatusFailed,
+		Metadata: metadata,
+	}, nil
+}

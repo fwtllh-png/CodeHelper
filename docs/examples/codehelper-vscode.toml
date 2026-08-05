@@ -1,0 +1,11 @@
+[execution]
+provider = "deepseek-v4-flash"
+model = "deepseek-v4-flash"
+protocol = "openai_responses"
+mode = "act"
+tools = true
+max_steps = 128
+
+[credential]
+kind = "keyring"
+name = "deepseek/default"

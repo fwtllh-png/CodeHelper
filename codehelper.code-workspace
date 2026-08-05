@@ -1,0 +1,18 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "eslint.useFlatConfig": true,
+    "eslint.workingDirectories": [
+      {
+        "directory": "./extensions/vscode",
+        "changeProcessCWD": true
+      }
+    ],
+    "typescript.tsdk": "extensions/vscode/node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true
+  }
+}

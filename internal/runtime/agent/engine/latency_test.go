@@ -1,0 +1,407 @@
+package engine
+
+import (
+	"context"
+	"encoding/json"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+)
+
+// latencyClock is the turn's only clock. The scripted provider, tool, verifier
+// and approver each advance it by a known amount, so every duration the turn
+// reports is exact instead of "about right".
+type latencyClock struct {
+	mu sync.Mutex
+	at time.Time
+}
+
+func newLatencyClock() *latencyClock {
+	return &latencyClock{at: time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC)}
+}
+
+func (c *latencyClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.at
+}
+
+func (c *latencyClock) advance(step time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.at = c.at.Add(step)
+}
+
+// timedEvent is a stream event and the time the provider spends before it.
+type timedEvent struct {
+	after time.Duration
+	event provider.StreamEvent
+}
+
+type timedProvider struct {
+	clock  *latencyClock
+	calls  [][]timedEvent
+	served int
+}
+
+func (p *timedProvider) Stream(
+	context.Context, provider.ModelRequest,
+) (provider.Stream, error) {
+	if p.served >= len(p.calls) {
+		return nil, context.DeadlineExceeded
+	}
+	events := p.calls[p.served]
+	p.served++
+	return &timedStream{clock: p.clock, events: events}, nil
+}
+
+type timedStream struct {
+	clock  *latencyClock
+	events []timedEvent
+	index  int
+}
+
+func (s *timedStream) Recv() (provider.StreamEvent, error) {
+	if s.index >= len(s.events) {
+		return provider.StreamEvent{}, context.DeadlineExceeded
+	}
+	next := s.events[s.index]
+	s.index++
+	s.clock.advance(next.after)
+	return next.event, nil
+}
+
+func (*timedStream) Close() error { return nil }
+
+// latencyTool needs approval (it writes) and takes a known amount of time. It
+// reports a file change without touching the disk so the verify gate has
+// something to verify.
+type latencyTool struct {
+	clock *latencyClock
+	spent time.Duration
+}
+
+func (latencyTool) Descriptor() tool.Descriptor {
+	return tool.Descriptor{
+		Name: "write", Description: "test write", Visibility: tool.VisibleModel,
+		Capability: tool.CapabilityWrite, AccessMode: tool.AccessWrite,
+		ParallelPolicy: tool.ParallelConcurrent, SandboxRequirement: tool.SandboxNone,
+		Availability: tool.AvailabilityAvailable,
+		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
+			Kind: "file", Field: "path", Access: tool.AccessWrite,
+		}}},
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{"type": "string"},
+			},
+			"required": []string{"path"}, "additionalProperties": false,
+		},
+	}
+}
+
+func (t latencyTool) Execute(_ context.Context, raw json.RawMessage) (tool.Result, error) {
+	t.clock.advance(t.spent)
+	return tool.Result{Content: string(raw), Metadata: map[string]any{
+		toolguard.MetadataChanges: []toolguard.FileChange{
+			{Path: "a.txt", Kind: toolguard.FileModified, Added: 1},
+		},
+	}}, nil
+}
+
+// timedVerifier spends a known amount of time in the gate.
+type timedVerifier struct {
+	clock *latencyClock
+	spent time.Duration
+	runs  int
+}
+
+func (v *timedVerifier) Verify(
+	context.Context, verify.Request,
+) (verify.Receipt, error) {
+	v.runs++
+	v.clock.advance(v.spent)
+	return passedReceipt(), nil
+}
+
+// recordingSink stands in for the spans table.
+type recordingSink struct {
+	mu     sync.Mutex
+	turnID string
+	spans  []trace.Record
+	writes int
+}
+
+func (s *recordingSink) Write(_ context.Context, turnID string, spans []trace.Record) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.turnID, s.spans, s.writes = turnID, spans, s.writes+1
+	return nil
+}
+
+func (s *recordingSink) snapshot() (string, []trace.Record, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.turnID, s.spans, s.writes
+}
+
+// TestTurnReportsEveryLatencyPhase is the T3 acceptance: a turn that called a
+// model, ran a tool, waited for a human and verified itself reports all five
+// numbers, and each one is the stretch that phase actually spent.
+func TestTurnReportsEveryLatencyPhase(t *testing.T) {
+	clock := newLatencyClock()
+	sink := &recordingSink{}
+	verifier := &timedVerifier{clock: clock, spent: 1500 * time.Millisecond}
+	engine := newLatencyEngine(t, latencyEngineOptions{
+		clock: clock, sink: sink, verifier: verifier,
+		posture: policy.PermissionSuggest,
+		tool:    latencyTool{clock: clock, spent: time.Second},
+		calls: [][]timedEvent{{
+			// 200ms to the first token, then 100ms to finish the call.
+			{after: 200 * time.Millisecond, event: provider.StreamEvent{
+				Type: provider.EventTextDelta, Text: "working",
+			}},
+			{after: 100 * time.Millisecond, event: provider.StreamEvent{
+				Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+					ID: "call-1", Name: "write", Arguments: `{"path":"a.txt"}`,
+				},
+			}},
+			{event: provider.StreamEvent{Type: provider.EventMessageStop}},
+		}, {
+			{after: 500 * time.Millisecond, event: provider.StreamEvent{
+				Type: provider.EventTextDelta, Text: "done",
+			}},
+			{event: provider.StreamEvent{Type: provider.EventMessageStop}},
+		}},
+	})
+
+	result, err := engine.RunForTurn(t.Context(), "turn-1", "edit the file",
+		approveAfter(t, engine, clock, 4*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed {
+		t.Fatalf("state = %q, want the turn to complete", result.State)
+	}
+	if verifier.runs != 1 {
+		t.Fatalf("verifier ran %d times, want once", verifier.runs)
+	}
+
+	latency := engine.TurnLatency()
+	if latency == nil {
+		t.Fatal("a turn that measured its phases reported no latency")
+	}
+	if latency.FirstToken == nil || *latency.FirstToken != 200*time.Millisecond {
+		t.Fatalf("first token = %v, want 200ms", latency.FirstToken)
+	}
+	if latency.Provider != 800*time.Millisecond {
+		t.Fatalf("provider = %s, want 800ms across both calls", latency.Provider)
+	}
+	if latency.Tool != 5*time.Second {
+		t.Fatalf("tool = %s, want 5s (1s of work behind a 4s wait)", latency.Tool)
+	}
+	if latency.ApprovalWait != 4*time.Second {
+		t.Fatalf("approval wait = %s, want 4s", latency.ApprovalWait)
+	}
+	if latency.ApprovalWait > latency.Tool {
+		t.Fatalf("approval wait %s is not inside its tool %s", latency.ApprovalWait, latency.Tool)
+	}
+	if latency.Verify != 1500*time.Millisecond {
+		t.Fatalf("verify = %s, want 1.5s", latency.Verify)
+	}
+	if latency.Total != 7300*time.Millisecond {
+		t.Fatalf("total = %s, want 7.3s", latency.Total)
+	}
+
+	turnID, spans, writes := sink.snapshot()
+	if writes != 1 || turnID != "turn-1" {
+		t.Fatalf("sink wrote %d times for turn %q, want one write for turn-1", writes, turnID)
+	}
+	byName := map[string]trace.Record{}
+	for _, span := range spans {
+		byName[span.Name] = span
+		if span.Open() {
+			t.Fatalf("persisted span %q was never closed", span.Name)
+		}
+	}
+	for _, name := range []string{
+		trace.NameTurn, trace.NameModelCall, trace.NameTool,
+		trace.NameApprovalWait, trace.NameVerify,
+	} {
+		if _, exists := byName[name]; !exists {
+			t.Fatalf("no %q span was persisted; got %+v", name, spans)
+		}
+	}
+	if byName[trace.NameApprovalWait].ParentID != byName[trace.NameTool].ID {
+		t.Fatalf("approval wait hangs off %d, want the tool span %d",
+			byName[trace.NameApprovalWait].ParentID, byName[trace.NameTool].ID)
+	}
+	if byName[trace.NameTool].Attributes["tool"] != "write" {
+		t.Fatalf("tool span attributes = %+v", byName[trace.NameTool].Attributes)
+	}
+	if byName[trace.NameTurn].Status != trace.StatusOK {
+		t.Fatalf("turn span status = %q, want ok", byName[trace.NameTurn].Status)
+	}
+}
+
+// TestTurnWithoutToolsSaysZeroRatherThanNothing is the honesty half of T3: a turn
+// that ran no tool and asked nobody reports zero for those phases, because zero
+// is a fact about the turn and a missing number would be a fact about us.
+func TestTurnWithoutToolsSaysZeroRatherThanNothing(t *testing.T) {
+	clock := newLatencyClock()
+	engine := newLatencyEngine(t, latencyEngineOptions{
+		clock: clock,
+		calls: [][]timedEvent{{
+			{after: 300 * time.Millisecond, event: provider.StreamEvent{
+				Type: provider.EventTextDelta, Text: "just an answer",
+			}},
+			{event: provider.StreamEvent{Type: provider.EventMessageStop}},
+		}},
+	})
+
+	if _, err := engine.RunForTurn(t.Context(), "turn-1", "answer me", nil); err != nil {
+		t.Fatal(err)
+	}
+	latency := engine.TurnLatency()
+	if latency == nil {
+		t.Fatal("no latency reported")
+	}
+	if latency.Tool != 0 || latency.ApprovalWait != 0 || latency.Verify != 0 {
+		t.Fatalf("phases that never happened reported time: %+v", latency)
+	}
+	if latency.FirstToken == nil || *latency.FirstToken != 300*time.Millisecond {
+		t.Fatalf("first token = %v, want 300ms", latency.FirstToken)
+	}
+	if latency.Provider != 300*time.Millisecond || latency.Total != 300*time.Millisecond {
+		t.Fatalf("provider/total = %s/%s, want 300ms", latency.Provider, latency.Total)
+	}
+}
+
+// TestTurnWithoutModelOutputReportsNoFirstToken is the other side of the pointer:
+// a model that produced nothing has no first token, and reporting zero would read
+// as one that arrived instantly.
+func TestTurnWithoutModelOutputReportsNoFirstToken(t *testing.T) {
+	clock := newLatencyClock()
+	engine := newLatencyEngine(t, latencyEngineOptions{
+		clock: clock,
+		calls: [][]timedEvent{{
+			{after: 700 * time.Millisecond, event: provider.StreamEvent{
+				Type: provider.EventUsage, Usage: &provider.Usage{InputTokens: 10},
+			}},
+		}},
+	})
+
+	if _, err := engine.RunForTurn(t.Context(), "turn-1", "answer me", nil); err == nil {
+		t.Fatal("a stream that never stopped should fail the turn")
+	}
+	latency := engine.TurnLatency()
+	if latency == nil {
+		t.Fatal("a failed turn reported no latency")
+	}
+	if latency.FirstToken != nil {
+		t.Fatalf("first token = %s, want unreported", *latency.FirstToken)
+	}
+	// Usage arrives before content on some providers, so the call still took time.
+	if latency.Provider != 700*time.Millisecond {
+		t.Fatalf("provider = %s, want the failed call's 700ms", latency.Provider)
+	}
+}
+
+// TestAnUnnamedTurnIsMeasuredButNotPersisted covers Run: there is no durable turn
+// row to hang spans off, so the trace stays in memory rather than failing a write.
+func TestAnUnnamedTurnIsMeasuredButNotPersisted(t *testing.T) {
+	clock := newLatencyClock()
+	sink := &recordingSink{}
+	engine := newLatencyEngine(t, latencyEngineOptions{
+		clock: clock, sink: sink,
+		calls: [][]timedEvent{{
+			{after: 250 * time.Millisecond, event: provider.StreamEvent{
+				Type: provider.EventTextDelta, Text: "done",
+			}},
+			{event: provider.StreamEvent{Type: provider.EventMessageStop}},
+		}},
+	})
+
+	if _, err := engine.Run(t.Context(), "answer me", nil); err != nil {
+		t.Fatal(err)
+	}
+	if latency := engine.TurnLatency(); latency == nil || latency.Total != 250*time.Millisecond {
+		t.Fatalf("latency = %+v, want 250ms measured in memory", latency)
+	}
+	if _, _, writes := sink.snapshot(); writes != 0 {
+		t.Fatalf("sink writes = %d, want none for a turn with no durable row", writes)
+	}
+	if spans := engine.TurnSpans(); len(spans) != 2 {
+		t.Fatalf("spans = %d, want the turn and its model call", len(spans))
+	}
+}
+
+type latencyEngineOptions struct {
+	clock    *latencyClock
+	sink     trace.Sink
+	verifier verify.Runner
+	posture  policy.Permission
+	tool     tool.Executor
+	calls    [][]timedEvent
+}
+
+func newLatencyEngine(t *testing.T, options latencyEngineOptions) *Engine {
+	t.Helper()
+	registry := tool.NewRegistry(nil, nil)
+	if options.tool != nil {
+		if err := registry.Register(options.tool, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	posture := options.posture
+	if posture == "" {
+		posture = policy.PermissionBypass
+	}
+	engineOptions := Options{
+		Provider: &timedProvider{clock: options.clock, calls: options.calls},
+		Route:    testRoute(t), Tools: registry, MaxOutputTokens: 128, MaxSteps: 8,
+		Security:    policy.DefaultRuntime(policy.ModeAct, posture),
+		Workspace:   t.TempDir(),
+		Now:         options.clock.now,
+		Trace:       options.sink,
+		Diagnostics: fakeDiagnosticRunner{},
+	}
+	if options.verifier != nil {
+		engineOptions.Verify = VerifyOptions{
+			Mode: VerifyModeSoft, OnFailure: VerifyOnFailureFail,
+			Scope: verify.ScopeDiagnostics, Runner: options.verifier,
+		}
+	}
+	engine, err := New(engineOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return engine
+}
+
+// approveAfter answers every approval request after the clock has moved on, which
+// is the wait the trace has to attribute to the human rather than to the tool.
+func approveAfter(
+	t *testing.T, engine *Engine, clock *latencyClock, waited time.Duration,
+) func(Event) error {
+	t.Helper()
+	return func(event Event) error {
+		if event.State != AwaitingApproval || event.Approval == nil {
+			return nil
+		}
+		clock.advance(waited)
+		// A zero expiry takes the request's own, which the guard requires the
+		// decision to stay inside.
+		return engine.DecideApproval(toolguard.ApprovalDecision{
+			RequestID: event.Approval.RequestID, Approved: true,
+			Scope: policy.ApprovalOnce,
+		})
+	}
+}

@@ -1,0 +1,10 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": ["child.sse"],
+  "stream_delay_ms": 200,
+  "expected_request_fragments": [
+    ["count the packages"]
+  ]
+}

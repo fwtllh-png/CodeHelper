@@ -1,0 +1,34 @@
+{
+  "name": "compact-structured-sections",
+  "category": "context_assembly",
+  "note": "A compaction cuts on whole turn groups, so it takes a second turn to reach one at all. What the second turn must still see is not a transcript: the goal, the outstanding steps, the failed attempt, the unverified change, the pinned path and what the lookups found are all rebuilt from ledgers, and the fixture fails the request if any of them is missing.",
+  "prompt": "align the greeting in service.py with settings.yaml",
+  "followups": ["what is left to do"],
+  "tools": true,
+  "max_steps": 12,
+  "timeout_ms": 60000,
+  "context": {
+    "compact": {
+      "max_history_bytes": 512,
+      "summary_max_bytes": 4096
+    }
+  },
+  "expect": {
+    "terminal": "completed",
+    "files": {
+      "service.py": "GREETING = \"hi\"\n\n\ndef greet(name):\n    return GREETING + \", \" + name\n"
+    },
+    "tools_used": ["update_plan", "search_text", "file_read", "file_edit"],
+    "tools_failed": ["file_rewrite"],
+    "compactions": 1,
+    "compaction_sections": [
+      "goals",
+      "todos",
+      "failures",
+      "changes",
+      "critical_paths",
+      "facts",
+      "digest"
+    ]
+  }
+}

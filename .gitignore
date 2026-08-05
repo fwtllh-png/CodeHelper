@@ -1,0 +1,11 @@
+/bin/
+/dist/
+extensions/vscode/.vscode-test/
+extensions/vscode/.tmp-electron/
+extensions/vscode/dist/*.vsix
+/.tmp/
+/.codehelper/
+/docs/ARK-LIVE.zh-CN.md
+/docs/DEEPSEEK-LIVE.zh-CN.md
+*.cover
+coverage.out

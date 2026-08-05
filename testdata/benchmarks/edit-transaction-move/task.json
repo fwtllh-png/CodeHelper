@@ -1,0 +1,19 @@
+{
+  "name": "edit-transaction-move",
+  "category": "edit_transaction",
+  "note": "A rename with no git and no strong sandbox. It pins that a move is observed as two changes — the source deleted and the destination created — so a turn that only renames files is still visible to the receipt and to the verification gate.",
+  "prompt": "rename old_name.py to new_name.py",
+  "tools": true,
+  "max_steps": 6,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "completed",
+    "files": {
+      "new_name.py": "VALUE = 1\n"
+    },
+    "absent": ["old_name.py"],
+    "tools_used": ["file_read", "file_apply"],
+    "receipt_changes": ["new_name.py", "old_name.py"],
+    "output_contains": ["renamed"]
+  }
+}

@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"a login form"},"finish_reason":null}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":1500,"completion_tokens":6}}
+
+data: [DONE]
