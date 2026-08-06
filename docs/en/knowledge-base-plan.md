@@ -337,15 +337,27 @@ separate gate.
 
 ### Stage 0: Standards and Skeleton
 
+Status: completed.
+
 - create `docs/book/en` and `docs/book/zh-CN`;
 - define templates, front matter schema, glossary, and navigation;
 - add recursive bilingual checks;
-- establish published, draft, and planned status.
+- establish planned, draft, and verified status.
 
 Acceptance: missing chapters are visible but cannot be mistaken for delivered
 content; the bilingual skeleton passes automated checks.
 
+Delivered artifacts:
+
+- `docs/book/catalog.json` as the structure and status source of truth;
+- bilingual book entry points, generated navigation, templates, and glossary;
+- `docs/book/schema/chapter.schema.json`;
+- `make book-navigation` and `make book-check`;
+- recursive bilingual mirror validation in `make docs-check`.
+
 ### Stage 1: Complete Introductory Path
+
+Status: completed.
 
 Deliver these chapters first:
 
@@ -359,7 +371,95 @@ Deliver these chapters first:
 Acceptance: a new reader can build the correct mental model and finish the
 first lab without reading the codebase in advance.
 
+Delivered as six verified bilingual chapters covering the governed Runtime
+motivation, system architecture, Turn lifecycle, Model/Context/Tool
+collaboration, security controls, and a Hermetic first-Turn lab.
+
+Quality pass completed on 2026-08-06: Part 1 now provides the full conceptual
+path from chatbot to feedback-loop Agent, LLM/token/context limits,
+ReAct/planning/tool/reflection control, Agent versus Workflow/Automation
+selection, and governed Runtime synthesis. Every chapter includes source
+anchors, failure analysis, review questions, and executable verification.
+
+Part 2 quality pass completed on 2026-08-06: the CodeHelper overview now forms
+a continuous path through positioning and non-goals, architecture views,
+package ownership, Runtime vocabulary, Turn lifecycle, and Model/Context/Tool
+collaboration. Missing chapters were delivered and existing chapters gained
+explicit control, data, construction, waiting-state, and snapshot invariants.
+
+Part 3 quality pass completed on 2026-08-06: Runtime Kernel chapters now make
+protocol compatibility, application linearization/locking, Agent iteration
+commit semantics, startup ownership transfer, streaming delivery and retry,
+and crash-window recovery rules explicit. Verification links point to
+delivered chapters and executable tests rather than planned placeholders.
+
+Part 4 quality pass completed on 2026-08-06: Model and Provider chapters now
+cover cross-protocol semantic mapping, opaque replay data, Catalog identity and
+metadata provenance, asymmetric capability evidence, Tool fragment assembly,
+Usage subset accounting, exact credential exposure boundaries, and phase-based
+retry/health behavior. Stale Fixture and credential claims were corrected.
+
+Part 5 quality pass completed on 2026-08-06: Context Engineering chapters now
+separate Message role from authority, stored/rendered/sampled state, Index/
+Editor/Tool freshness clocks, Evidence invalidation, capacity and information
+loss classes, Memory/Snapshot retention, and controlled quality experiments.
+Diagnostics connect Context symptoms to receipts rather than prompt intuition.
+
+Part 6 quality pass completed on 2026-08-06: Tool and controlled-execution
+chapters now define Descriptor contracts, Catalog authority layers, Resource/
+effect envelopes, Guard trust transitions, write crash windows, evidence
+strength, Verification status, and the no-side-effect proof required for model
+failure feedback. Stale verification commands were corrected.
+
+Part 7 quality pass completed on 2026-08-06: Security and Governance is now a
+complete seven-chapter bilingual part covering the Runtime threat model,
+Mode/Posture/Policy, Approval and Constitution, OS process isolation, Egress
+and credentials, extension supply-chain trust, and testable fail-closed
+platform claims. The previous single-chapter gap has been removed.
+
+Part 8 quality pass completed on 2026-08-06: State and Observability chapters
+now define record authority and lifetime, acceptance versus completion,
+SQLite/Event Log reservation and reconciliation, CAS/Journal crash windows,
+signal cardinality and clock semantics, Verification invalidation, and an
+evidence-first failure investigation worksheet.
+
+Part 9 quality pass completed on 2026-08-06: Tasks and Orchestration chapters
+now separate Task/Attempt/Turn identities, formalize lease fencing and
+effect-specific retry safety, define Automation slot and DAG wave semantics,
+document checkpoint commit windows, separate Lane/Fleet control and evidence,
+and model child-to-parent merge as guarded two-phase integration.
+
+Part 10 quality pass completed on 2026-08-06: Hosts and Protocols chapters now
+define CLI output-channel contracts, TUI reducer and reconstruction
+invariants, HTTP admission/idempotency and SSE replay-to-live handoff, ACP
+connection ordering, browser/deployment trust boundaries, and VS Code
+Supervisor, Cursor, multi-root Workspace, and compatibility recovery.
+
+Part 11 quality pass completed on 2026-08-06: Extension Ecosystem chapters now
+define Provider route and stream commit boundaries, Tool generation binding,
+MCP source-scoped reconciliation, distinct Skill/Plugin/Hook authorities,
+Host extension ownership tests, and a unified lifecycle covering activation,
+drain, revocation, quarantine, recovery, and failure-domain isolation.
+
+Part 12 quality pass completed on 2026-08-06: Agent Engineering Practice now
+defines Fixture fidelity and smoke interpretation, risk-driven test layers,
+concurrency linearization and cleanup evidence, comparable performance
+measurement and budget governance, buildable/runnable/supported platform
+claims, an artifact attestation chain, and a hypothesis/evidence-led change
+workflow for human and Agent contributors.
+
+Part 13 quality pass completed on 2026-08-06: all ten Hands-On Labs now use
+current commands and test names, explicit temporary-state isolation, evidence
+worksheets, adversarial controls, crash-window or authority matrices, measurable
+completion gates, failure diagnosis, and cleanup checks. The sequence forms a
+network-free path from a first Turn through Provider, Tool, governance,
+recovery, orchestration, VS Code, incident reconstruction, and capability
+rollout design.
+
 ### Stage 2: Runtime Core
+
+Status: complete. All 24 bilingual chapters across Runtime Kernel, Model and
+Provider, Context Engineering, and Tool/Execution are verified.
 
 - protocol, app, agent, and wire;
 - providers and models;
@@ -372,6 +472,9 @@ points.
 
 ### Stage 3: Persistence and Orchestration
 
+Status: complete. All 12 bilingual chapters across State and Observability and
+Tasks and Orchestration are verified.
+
 - SQLite, events, sessions, snapshots, and journal;
 - tasks, workers, automation, and workflows;
 - lanes, fleets, subagents, and worktrees;
@@ -382,6 +485,9 @@ background work.
 
 ### Stage 4: Hosts and Ecosystem
 
+Status: complete. All 12 bilingual chapters across Hosts and Protocols and the
+Extension Ecosystem are verified.
+
 - CLI, TUI, HTTP/SSE, ACP, Web, and VS Code;
 - MCP, skills, plugins, and hooks;
 - provider, tool, and host extension tutorials.
@@ -389,6 +495,9 @@ background work.
 Acceptance: readers can add an extension without violating runtime boundaries.
 
 ### Stage 5: Engineering Practice and Labs
+
+Status: complete. Seven bilingual engineering-practice chapters and all ten
+bilingual hands-on labs are verified.
 
 - testing, benchmarks, security, and release engineering;
 - systematic hands-on labs;
@@ -400,11 +509,27 @@ and cleanup, and is reproducible on supported platforms.
 
 ### Stage 6: Continuous Governance
 
-- map module owners to chapters;
-- add documentation impact to review checklists;
-- verify documentation facts before release;
-- inspect code links, commands, and screenshots for drift;
-- adjust reading paths from reader feedback.
+Status: complete. Documentation maintenance is now an executable repository
+contract rather than an editorial convention.
+
+- `docs/book/governance.json` maps 13 source domains and all delivered chapters
+  to maintainers, freshness policy, release facts, screenshots, and link
+  exceptions;
+- `.github/CODEOWNERS` is generated from that registry and checked for drift;
+- the PR impact gate maps changed source/test/fact paths to affected chapter
+  IDs and requires same-PR English and Chinese updates or a reviewed no-impact
+  rationale;
+- `make release-fact-check` verifies documentation, book metadata, runtime help,
+  protocol schema, and compatibility facts before release;
+- weekly governance checks enforce source/verification drift, the 180-day
+  freshness SLA, screenshot digests, and external links;
+- a dedicated reader feedback form and monthly navigation review close the
+  loop on factual, reproducibility, prerequisite, translation, and reading-path
+  problems.
+
+Acceptance: ownership and exceptions are tracked, factual source changes cannot
+silently bypass documentation review, and release claims have reproducible
+commands.
 
 ## 13. Chapter Definition of Done
 
@@ -457,11 +582,9 @@ The book will not:
 | Diagrams become unmaintainable | Mermaid source, layered views, text explanations |
 | Examples encourage unsafe execution | fixtures, least privilege, platform boundaries |
 
-## 17. Next Step
+## 17. Ongoing Operation
 
-After this plan is approved, execute Stage 0 first: commit the book directories,
-chapter template, glossary, navigation, and initial `book-check`. Then deliver
-the six Stage 1 chapters as the first complete learning path. Continue with the
-runtime core, persistence and orchestration, hosts and ecosystem, and finally
-engineering practice instead of creating many empty or unverifiable chapters
-at once.
+Stages 0 through 6 are complete. The knowledge system now operates through
+normal PR impact review, weekly drift checks, release fact verification, and a
+monthly reader-feedback/navigation pass. Future stages should be opened only
+for a new learning or governance capability, not for routine maintenance.

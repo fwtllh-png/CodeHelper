@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "default_owner": "maintainers",
+  "owners": [
+    {
+      "id": "maintainers",
+      "github": ["@fwtllh-png"],
+      "responsibility": "Final review for runtime contracts, security claims, and book governance"
+    }
+  ],
+  "freshness": {
+    "verified_max_age_days": 180,
+    "warning_age_days": 150
+  },
+  "domains": [
+    {
+      "id": "agent-engineering",
+      "owner": "maintainers",
+      "chapter_patterns": ["agent-*"],
+      "source_patterns": ["README*.md", "docs/*/overview.md"]
+    },
+    {
+      "id": "codehelper-overview",
+      "owner": "maintainers",
+      "chapter_patterns": ["overview-*"],
+      "source_patterns": ["AGENTS.md", "docs/*/architecture.md", "internal/architecture_test.go"]
+    },
+    {
+      "id": "runtime-kernel",
+      "owner": "maintainers",
+      "chapter_patterns": ["runtime-*"],
+      "source_patterns": ["internal/runtime/**", "docs/protocol/**"]
+    },
+    {
+      "id": "model-provider",
+      "owner": "maintainers",
+      "chapter_patterns": ["model-*"],
+      "source_patterns": ["internal/adapter/model/**", "internal/adapter/provider/**"]
+    },
+    {
+      "id": "context-engineering",
+      "owner": "maintainers",
+      "chapter_patterns": ["context-*"],
+      "source_patterns": [
+        "internal/adapter/memory/**",
+        "internal/persist/repoindex/**",
+        "internal/runtime/agent/compact/**",
+        "internal/runtime/agent/promptcontext/**",
+        "internal/runtime/agent/repocontext/**",
+        "internal/runtime/agent/repomap/**",
+        "internal/runtime/agent/workingset/**"
+      ]
+    },
+    {
+      "id": "tools-execution",
+      "owner": "maintainers",
+      "chapter_patterns": ["tool-*"],
+      "source_patterns": ["internal/adapter/tool/**"]
+    },
+    {
+      "id": "security-governance",
+      "owner": "maintainers",
+      "chapter_patterns": ["security-*"],
+      "source_patterns": ["internal/security/**", "internal/platform/process/**", "SECURITY*.md"]
+    },
+    {
+      "id": "state-observability",
+      "owner": "maintainers",
+      "chapter_patterns": ["state-*"],
+      "source_patterns": ["internal/observability/**", "internal/persist/**"]
+    },
+    {
+      "id": "task-orchestration",
+      "owner": "maintainers",
+      "chapter_patterns": ["task-*"],
+      "source_patterns": ["internal/orchestration/**"]
+    },
+    {
+      "id": "hosts-protocols",
+      "owner": "maintainers",
+      "chapter_patterns": ["host-*"],
+      "source_patterns": ["internal/host/**", "extensions/vscode/**"]
+    },
+    {
+      "id": "extension-ecosystem",
+      "owner": "maintainers",
+      "chapter_patterns": ["extension-*"],
+      "source_patterns": [
+        "internal/adapter/extension/**",
+        "internal/adapter/hooks/**",
+        "internal/adapter/mcp/**",
+        "internal/adapter/plugin/**",
+        "internal/adapter/skill/**"
+      ]
+    },
+    {
+      "id": "engineering-practice",
+      "owner": "maintainers",
+      "chapter_patterns": ["practice-*"],
+      "source_patterns": [".github/**", "Makefile", "scripts/**"]
+    },
+    {
+      "id": "hands-on-labs",
+      "owner": "maintainers",
+      "chapter_patterns": ["lab-*"],
+      "source_patterns": ["testdata/**"]
+    }
+  ],
+  "release_facts": [
+    {
+      "id": "documentation-contract",
+      "command": ["make", "docs-check"]
+    },
+    {
+      "id": "book-contract",
+      "command": ["make", "book-check"]
+    },
+    {
+      "id": "runtime-help",
+      "command": ["make", "smoke"]
+    },
+    {
+      "id": "protocol-schema",
+      "command": ["go", "test", "./internal/runtime/protocol", "-run", "TestTheCommittedSchemaMatchesThisBuild"]
+    },
+    {
+      "id": "compatibility-manifest",
+      "command": ["go", "test", "./internal/compatibility"]
+    }
+  ],
+  "screenshots": [],
+  "external_link_exclusions": [
+    "https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml/badge.svg",
+    "https://github.com/fwtllh-png/CodeHelper/security/advisories/new"
+  ]
+}

@@ -1,0 +1,68 @@
+name: Feature request / 功能建议
+description: Propose a scoped capability or improvement / 提议边界清晰的能力或改进
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the problem before proposing an implementation. Broader design discussions should start in [Discussions](https://github.com/fwtllh-png/CodeHelper/discussions).
+        请先说明问题，再提出实现方案。范围较大的设计讨论应先进入 [Discussions](https://github.com/fwtllh-png/CodeHelper/discussions)。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / 问题
+      description: What user, contributor, operator, or learner problem needs to be solved?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome / 期望结果
+      description: Describe observable behavior and acceptance criteria.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 领域
+      options:
+        - Runtime or protocol
+        - Provider or model
+        - Tool or guard
+        - Security or sandbox
+        - Persistence or observability
+        - Orchestration
+        - CLI or TUI
+        - VS Code
+        - HTTP/SSE, ACP, or Web
+        - Documentation or book
+        - Build, test, or release
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 已考虑的替代方案
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Supporting evidence / 支撑证据
+      description: Link related issues, specifications, examples, or reproducible experiments.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist / 检查项
+      options:
+        - label: I searched existing issues, Discussions, and the Roadmap. / 我已搜索现有 Issue、Discussion 和 Roadmap。
+          required: true
+        - label: I separated shipped behavior from proposed behavior. / 我已区分当前能力与建议能力。
+          required: true

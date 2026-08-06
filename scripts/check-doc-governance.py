@@ -1,0 +1,468 @@
+#!/usr/bin/env python3
+"""Validate and execute CodeHelper documentation governance contracts."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fnmatch
+import hashlib
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+BOOK = ROOT / "docs" / "book"
+CONFIG_PATH = BOOK / "governance.json"
+CATALOG_PATH = BOOK / "catalog.json"
+CODEOWNERS_PATH = ROOT / ".github" / "CODEOWNERS"
+CHAPTER_FIELDS = {
+    "id",
+    "title",
+    "audience",
+    "prerequisites",
+    "code_paths",
+    "test_paths",
+    "source_of_truth",
+    "status",
+    "last_verified",
+}
+
+
+def load_json(path: pathlib.Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def parse_front_matter(path: pathlib.Path) -> dict[str, object]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0] != "---":
+        raise ValueError(f"{path.relative_to(ROOT)}: missing Front Matter")
+    try:
+        end = lines.index("---", 1)
+    except ValueError as exc:
+        raise ValueError(f"{path.relative_to(ROOT)}: unclosed Front Matter") from exc
+    result: dict[str, object] = {}
+    active: str | None = None
+    for line in lines[1:end]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith("  - "):
+            if active is None:
+                raise ValueError(f"{path.relative_to(ROOT)}: orphan list item")
+            value = line[4:].strip()
+            values = result.setdefault(active, [])
+            if not isinstance(values, list):
+                raise ValueError(f"{path.relative_to(ROOT)}: invalid list {active}")
+            values.append(value)
+            continue
+        match = re.fullmatch(r"([a-z_]+):(?: (.*))?", line)
+        if not match:
+            raise ValueError(f"{path.relative_to(ROOT)}: unsupported Front Matter")
+        key, raw = match.groups()
+        if raw is None or raw == "":
+            result[key] = []
+            active = key
+        else:
+            active = None
+            result[key] = None if raw == "null" else raw.strip("'\"")
+    return result
+
+
+def chapters() -> dict[str, dict]:
+    result: dict[str, dict] = {}
+    for path in sorted((BOOK / "en").glob("*/*.md")):
+        if "_templates" in path.parts:
+            continue
+        metadata = parse_front_matter(path)
+        chapter_id = metadata.get("id")
+        if isinstance(chapter_id, str):
+            result[chapter_id] = {
+                "path": path,
+                "relative": path.relative_to(BOOK / "en"),
+                "metadata": metadata,
+            }
+    return result
+
+
+def matches(path: str, pattern: str) -> bool:
+    normalized = path.strip("/")
+    candidate = pattern.strip("/")
+    if any(char in candidate for char in "*?["):
+        return fnmatch.fnmatch(normalized, candidate)
+    absolute = ROOT / candidate
+    if absolute.is_dir():
+        return normalized == candidate or normalized.startswith(candidate + "/")
+    return normalized == candidate
+
+
+def expected_codeowners(config: dict) -> str:
+    owners = {item["id"]: " ".join(item["github"]) for item in config["owners"]}
+    lines = [
+        "# Generated from docs/book/governance.json by documentation governance.",
+        "# Keep ownership changes in the registry and regenerate this file.",
+        "",
+    ]
+    seen: set[tuple[str, str]] = set()
+    for domain in config["domains"]:
+        handles = owners[domain["owner"]]
+        for pattern in domain["source_patterns"]:
+            pair = (pattern, handles)
+            if pair not in seen:
+                lines.append(f"/{pattern} {handles}")
+                seen.add(pair)
+        for language in ("en", "zh-CN"):
+            part = next(
+                item["id"]
+                for item in load_json(CATALOG_PATH)["parts"]
+                if any(
+                    fnmatch.fnmatch(chapter["id"], chapter_pattern)
+                    for chapter in item["chapters"]
+                    for chapter_pattern in domain["chapter_patterns"]
+                )
+            )
+            lines.append(f"/docs/book/{language}/{part}/ {handles}")
+    default_handles = owners[config["default_owner"]]
+    lines.extend(
+        [
+            f"/docs/book/catalog.json {default_handles}",
+            f"/docs/book/governance.json {default_handles}",
+            f"/docs/book/schema/ {default_handles}",
+            f"/scripts/check-doc-governance.py {default_handles}",
+            f"/.github/CODEOWNERS {default_handles}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def check(strict_drift: bool) -> list[str]:
+    errors: list[str] = []
+    config = load_json(CONFIG_PATH)
+    catalog = load_json(CATALOG_PATH)
+    chapter_map = chapters()
+    owner_ids = {owner.get("id") for owner in config.get("owners", [])}
+    if config.get("schema_version") != 1:
+        errors.append("governance.json: schema_version must be 1")
+    if config.get("default_owner") not in owner_ids:
+        errors.append("governance.json: default_owner is unknown")
+    max_age = config.get("freshness", {}).get("verified_max_age_days")
+    warning_age = config.get("freshness", {}).get("warning_age_days")
+    if (
+        not isinstance(max_age, int)
+        or not isinstance(warning_age, int)
+        or not 0 < warning_age < max_age
+    ):
+        errors.append("governance.json: freshness must satisfy 0 < warning < maximum")
+        max_age = 0
+        warning_age = 0
+    assignments: dict[str, list[str]] = {chapter_id: [] for chapter_id in chapter_map}
+    domain_ids: set[str] = set()
+    for domain in config.get("domains", []):
+        domain_id = domain.get("id")
+        if domain_id in domain_ids:
+            errors.append(f"governance.json: duplicate domain {domain_id}")
+        domain_ids.add(domain_id)
+        if domain.get("owner") not in owner_ids:
+            errors.append(f"governance.json: domain {domain_id} has unknown owner")
+        for pattern in domain.get("chapter_patterns", []):
+            matched = [
+                chapter_id for chapter_id in chapter_map
+                if fnmatch.fnmatch(chapter_id, pattern)
+            ]
+            if not matched:
+                errors.append(f"governance.json: chapter pattern matches nothing: {pattern}")
+            for chapter_id in matched:
+                assignments[chapter_id].append(domain_id)
+        for pattern in domain.get("source_patterns", []):
+            if pattern.startswith("/") or ".." in pathlib.PurePosixPath(pattern).parts:
+                errors.append(f"governance.json: invalid source pattern {pattern}")
+    for chapter_id, domains in assignments.items():
+        if len(domains) != 1:
+            errors.append(
+                f"governance.json: chapter {chapter_id} must have one owner domain, got {domains}"
+            )
+    catalog_ids = {
+        chapter["id"]
+        for part in catalog["parts"]
+        for chapter in part["chapters"]
+        if chapter["status"] != "planned"
+    }
+    if catalog_ids != set(chapter_map):
+        errors.append("governance.json: delivered chapter set differs from catalog")
+    expected = expected_codeowners(config)
+    if not CODEOWNERS_PATH.is_file():
+        errors.append(".github/CODEOWNERS: missing")
+    elif CODEOWNERS_PATH.read_text(encoding="utf-8") != expected:
+        errors.append(".github/CODEOWNERS: drifted from docs/book/governance.json")
+    today = dt.date.today()
+    for chapter_id, chapter in chapter_map.items():
+        metadata = chapter["metadata"]
+        if set(metadata) != CHAPTER_FIELDS:
+            errors.append(f"{chapter['relative']}: metadata fields drifted")
+            continue
+        if metadata["status"] != "verified":
+            continue
+        try:
+            verified = dt.date.fromisoformat(str(metadata["last_verified"]))
+        except ValueError:
+            errors.append(f"{chapter['relative']}: invalid last_verified")
+            continue
+        if verified > today:
+            errors.append(f"{chapter['relative']}: last_verified is in the future")
+            continue
+        if (today - verified).days > max_age:
+            errors.append(
+                f"{chapter['relative']}: verification is older than {max_age} days"
+            )
+        elif (today - verified).days > warning_age:
+            print(
+                "documentation governance warning: "
+                f"{chapter['relative']} is older than {warning_age} days",
+                file=sys.stderr,
+            )
+        if strict_drift:
+            changed = source_changes_after(chapter, verified)
+            if changed:
+                errors.append(
+                    f"{chapter['relative']}: source changed after verification: {changed[0]}"
+                )
+    registered = {item["path"] for item in config.get("screenshots", [])}
+    image_paths = {
+        path.relative_to(ROOT).as_posix()
+        for path in BOOK.rglob("*")
+        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".svg", ".webp"}
+    }
+    if registered != image_paths:
+        errors.append("governance.json: screenshot manifest differs from book images")
+    for item in config.get("screenshots", []):
+        path = ROOT / item["path"]
+        digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
+        if digest != item.get("sha256"):
+            errors.append(f"governance.json: screenshot digest drifted: {item['path']}")
+    fact_ids: set[str] = set()
+    for fact in config.get("release_facts", []):
+        if fact.get("id") in fact_ids:
+            errors.append(f"governance.json: duplicate release fact {fact.get('id')}")
+        fact_ids.add(fact.get("id"))
+        if not fact.get("command") or not all(
+            isinstance(arg, str) and arg for arg in fact["command"]
+        ):
+            errors.append(f"governance.json: invalid release command {fact.get('id')}")
+    return errors
+
+
+def source_changes_after(chapter: dict, verified: dt.date) -> list[str]:
+    metadata = chapter["metadata"]
+    patterns = [
+        value
+        for field in ("code_paths", "test_paths", "source_of_truth")
+        for value in metadata[field]
+        if isinstance(value, str)
+    ]
+    changed: list[str] = []
+    for pattern in patterns:
+        command = ["git", "log", "-1", "--format=%cs", "--", pattern]
+        result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+        value = result.stdout.strip()
+        if value and dt.date.fromisoformat(value) > verified:
+            changed.append(pattern)
+    return changed
+
+
+def changed_paths(base: str, head: str) -> list[str]:
+    result = subprocess.run(
+        ["git", "diff", "--name-only", f"{base}...{head}"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def impacted_chapters(paths: list[str]) -> set[str]:
+    config = load_json(CONFIG_PATH)
+    chapter_map = chapters()
+    impacted: set[str] = set()
+    for path in paths:
+        direct: set[str] = set()
+        for chapter_id, chapter in chapter_map.items():
+            metadata = chapter["metadata"]
+            patterns = [
+                value
+                for field in ("code_paths", "test_paths", "source_of_truth")
+                for value in metadata[field]
+                if isinstance(value, str)
+            ]
+            if any(matches(path, pattern) for pattern in patterns):
+                direct.add(chapter_id)
+        if direct:
+            impacted.update(direct)
+            continue
+        for domain in config["domains"]:
+            if any(matches(path, pattern) for pattern in domain["source_patterns"]):
+                impacted.update(
+                    chapter_id
+                    for chapter_id in chapter_map
+                    if any(
+                        fnmatch.fnmatch(chapter_id, pattern)
+                        for pattern in domain["chapter_patterns"]
+                    )
+                )
+    return impacted
+
+
+def documentation_ids(paths: list[str]) -> set[str]:
+    by_language: dict[str, set[str]] = {"en": set(), "zh-CN": set()}
+    for language in ("en", "zh-CN"):
+        prefix = f"docs/book/{language}/"
+        for path in paths:
+            if path.startswith(prefix) and path.endswith(".md"):
+                file_path = ROOT / path
+                if file_path.is_file():
+                    chapter_id = parse_front_matter(file_path).get("id")
+                    if isinstance(chapter_id, str):
+                        by_language[language].add(chapter_id)
+    return by_language["en"] & by_language["zh-CN"]
+
+
+def pr_body() -> str:
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path or not pathlib.Path(event_path).is_file():
+        return ""
+    event = load_json(pathlib.Path(event_path))
+    return str(event.get("pull_request", {}).get("body") or "")
+
+
+def run_impact(base: str, head: str, body: str) -> int:
+    paths = changed_paths(base, head)
+    impacted = impacted_chapters(paths)
+    updated = documentation_ids(paths)
+    missing = sorted(impacted - updated)
+    override = re.search(r"(?mi)^Documentation-impact:\s*none\s*$", body)
+    rationale = re.search(r"(?mi)^Documentation-rationale:\s*(\S.+)$", body)
+    valid_rationale = bool(
+        rationale and rationale.group(1).strip().upper() not in {"N/A", "NA", "NONE"}
+    )
+    affected = re.search(r"(?mi)^Documentation-impact:\s*affected\s*$", body)
+    chapter_line = re.search(r"(?mi)^Documentation-chapters:\s*(\S.+)$", body)
+    declared = {
+        item.strip()
+        for item in chapter_line.group(1).split(",")
+        if item.strip() and item.strip().upper() != "N/A"
+    } if chapter_line else set()
+    print("changed paths:", len(paths))
+    print("affected chapters:", ", ".join(sorted(impacted)) or "none")
+    print("updated chapters:", ", ".join(sorted(updated)) or "none")
+    if missing and not (override and valid_rationale):
+        print(
+            "documentation impact check failed; update both language chapters or "
+            "declare Documentation-impact: none with a rationale",
+            file=sys.stderr,
+        )
+        print("missing chapter updates: " + ", ".join(missing), file=sys.stderr)
+        return 1
+    if impacted and not missing and (not affected or not impacted.issubset(declared)):
+        print(
+            "documentation impact check failed; declare Documentation-impact: "
+            "affected and list every affected chapter ID",
+            file=sys.stderr,
+        )
+        print(
+            "undeclared chapter IDs: " + ", ".join(sorted(impacted - declared)),
+            file=sys.stderr,
+        )
+        return 1
+    if missing:
+        assert rationale is not None
+        print("documented no-change rationale:", rationale.group(1))
+    return 0
+
+
+def run_release() -> int:
+    errors = check(strict_drift=True)
+    if errors:
+        print_errors(errors)
+        return 1
+    for fact in load_json(CONFIG_PATH)["release_facts"]:
+        print(f"release fact [{fact['id']}]: {' '.join(fact['command'])}", flush=True)
+        result = subprocess.run(fact["command"], cwd=ROOT)
+        if result.returncode:
+            return result.returncode
+    print("release documentation facts verified")
+    return 0
+
+
+def external_links() -> int:
+    config = load_json(CONFIG_PATH)
+    excluded = set(config.get("external_link_exclusions", []))
+    pattern = re.compile(r"!?\[[^\]]*\]\((https?://[^ )]+)")
+    links: set[str] = set()
+    for path in ROOT.rglob("*.md"):
+        if any(part in {".git", "node_modules", "dist", ".vscode-test"} for part in path.parts):
+            continue
+        links.update(pattern.findall(path.read_text(encoding="utf-8")))
+    errors: list[str] = []
+    for link in sorted(links - excluded):
+        request = urllib.request.Request(
+            link, headers={"User-Agent": "CodeHelper-doc-governance/1"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                if response.status >= 400:
+                    errors.append(f"{link}: HTTP {response.status}")
+        except (urllib.error.URLError, TimeoutError) as exc:
+            errors.append(f"{link}: {exc}")
+    if errors:
+        print_errors(errors)
+        return 1
+    print(f"external link check passed: {len(links - excluded)} links")
+    return 0
+
+
+def print_errors(errors: list[str]) -> None:
+    print("documentation governance check failed:", file=sys.stderr)
+    for error in errors:
+        print(f"  - {error}", file=sys.stderr)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    check_parser = subparsers.add_parser("check")
+    check_parser.add_argument("--strict-drift", action="store_true")
+    impact_parser = subparsers.add_parser("impact")
+    impact_parser.add_argument("--base", required=True)
+    impact_parser.add_argument("--head", default="HEAD")
+    impact_parser.add_argument("--body", default=None)
+    subparsers.add_parser("release")
+    subparsers.add_parser("external-links")
+    subparsers.add_parser("codeowners")
+    args = parser.parse_args()
+    if args.command == "check":
+        errors = check(args.strict_drift)
+        if errors:
+            print_errors(errors)
+            return 1
+        print("documentation governance check passed")
+        return 0
+    if args.command == "impact":
+        return run_impact(args.base, args.head, args.body if args.body is not None else pr_body())
+    if args.command == "release":
+        return run_release()
+    if args.command == "external-links":
+        return external_links()
+    if args.command == "codeowners":
+        sys.stdout.write(expected_codeowners(load_json(CONFIG_PATH)))
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

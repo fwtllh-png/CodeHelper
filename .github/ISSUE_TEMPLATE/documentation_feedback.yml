@@ -1,0 +1,66 @@
+name: Documentation feedback / 文档反馈
+description: Report drift, learning-path friction, or an unreproducible example / 报告漂移、阅读路径问题或不可复现实例
+title: "docs: "
+labels:
+  - documentation
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Feedback type / 反馈类型
+      options:
+        - Incorrect or stale fact / 错误或过期事实
+        - Command or lab cannot reproduce / 命令或实验无法复现
+        - Broken link or image / 链接或图片失效
+        - Missing prerequisite / 缺少前置知识
+        - Reading order or navigation / 阅读顺序或导航
+        - Translation divergence / 双语不一致
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Document and section / 文档与章节
+      description: Provide the path, chapter ID, heading, or URL.
+      placeholder: docs/book/en/03-runtime-kernel/01-protocol.md, runtime-protocol
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Reader goal / 阅读目标
+      description: What were you trying to understand or complete?
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed problem / 实际问题
+      description: Include the command, result, conflicting source, or point where the path became unclear.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected improvement / 期望改进
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Reproduction context / 复现环境
+      description: Commit, OS, architecture, toolchain, and sanitized output when relevant.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist / 检查项
+      options:
+        - label: I identified the exact document or reading-path step. / 我已定位具体文档或阅读路径步骤。
+          required: true
+        - label: I removed credentials, private source, and personal data. / 我已移除凭证、私有源码和个人数据。
+          required: true

@@ -320,14 +320,26 @@ last_verified: null
 
 ### 阶段 0：规范和骨架
 
+状态：已完成。
+
 - 创建 `docs/book/en` 与 `docs/book/zh-CN`；
 - 定义章节模板、Front Matter Schema、术语表和导航；
 - 扩展文档检查，支持递归双语镜像；
-- 建立“已发布、草稿、规划”状态标记。
+- 建立 `planned`、`draft`、`verified` 状态标记。
 
 验收：空缺章节可见但不会被误认为已交付；中英文骨架和自动检查通过。
 
+已交付：
+
+- `docs/book/catalog.json` 作为书籍结构与状态的事实来源；
+- 双语书籍入口、生成导航、章节模板和术语表；
+- `docs/book/schema/chapter.schema.json`；
+- `make book-navigation` 与 `make book-check`；
+- `make docs-check` 中的递归双语镜像检查。
+
 ### 阶段 1：全景阅读闭环
+
+状态：已完成。
 
 优先完成：
 
@@ -340,7 +352,80 @@ last_verified: null
 
 验收：新读者可以在不预读源码的情况下建立正确心智模型，并完成第一个实验。
 
+已交付六章通过验证的双语正文，覆盖受治理 Runtime 的必要性、全局架构、Turn
+生命周期、Model/Context/Tool 协作、安全控制和 Hermetic 首个 Turn 实验。
+
+2026-08-06 已完成质量提升：第一部分现在形成从 Chatbot 到反馈闭环 Agent、LLM/Token/
+Context 限制、ReAct/Planning/Tool/Reflection 控制、Agent 与 Workflow/Automation
+选择，再到受治理 Runtime 综合的完整路径。每章都包含源码锚点、失败分析、复习问题与
+可执行验证。
+
+2026-08-06 已完成第二部分质量提升：“认识 CodeHelper”现在形成定位与非目标、架构
+视图、Package Ownership、Runtime 词汇、Turn Lifecycle、Model/Context/Tool 协作的
+连续路径。缺失章节已交付，已有章节补充了 Control/Data/Construction、Waiting State
+与 Snapshot Scope 等明确不变量。
+
+2026-08-06 已完成第三部分质量提升：Runtime 内核章节现在明确 Protocol Compatibility、
+Application Linearization/Lock、Agent Iteration Commit、Startup Ownership Transfer、
+Streaming Delivery/Retry 和 Crash-window Recovery 规则；验证链接已指向实际交付章节
+与可执行测试，不再保留“规划中”占位。
+
+2026-08-06 已完成第四部分质量提升：模型与 Provider 章节现在覆盖 Cross-protocol
+Semantic Mapping、Opaque Replay、Catalog Identity/Metadata Provenance、Asymmetric
+Capability Evidence、Tool Fragment Assembly、Usage Subset Accounting、Credential
+Exposure Boundary 和 Phase-based Retry/Health；过时 Fixture/Credential 表述已纠正。
+
+2026-08-06 已完成第五部分质量提升：Context Engineering 章节现在区分 Message Role/
+Authority、Stored/Rendered/Sampled State、Index/Editor/Tool Freshness Clock、Evidence
+Invalidation、Capacity/Information Loss、Memory/Snapshot Retention 与 Controlled Quality
+Experiment；诊断通过 Receipt 连接 Context Symptom，不再依赖 Prompt Intuition。
+
+2026-08-06 已完成第六部分质量提升：Tool 与受控执行章节现在明确 Descriptor Contract、
+Catalog Authority、Resource/Effect Envelope、Guard Trust Transition、Write Crash Window、
+Evidence Strength、Verification Status，以及 Failure Feedback 所需的 No-side-effect Proof；
+过时验证命令已纠正。
+
+2026-08-06 已完成第七部分质量提升：安全与治理现为完整 7 章双语部分，覆盖 Runtime
+Threat Model、Mode/Posture/Policy、Approval/Constitution、OS Process Isolation、
+Egress/Credential、Extension Supply-chain Trust，以及可测试的 Fail-closed Platform
+Claim；原先仅有单章的缺口已补齐。
+
+2026-08-06 已完成第八部分质量提升：状态与可观测性章节现在明确 Record Authority/
+Lifetime、Acceptance/Completion、SQLite/Event Log Reservation/Reconciliation、
+CAS/Journal Crash Window、Signal Cardinality/Clock、Verification Invalidation，以及
+Evidence-first Failure Investigation Worksheet。
+
+2026-08-06 已完成第九部分质量提升：Task 与编排章节现在区分 Task/Attempt/Turn Identity，
+形式化 Lease Fence 与 Effect-specific Retry Safety，明确 Automation Slot/DAG Wave、
+Checkpoint Commit Window、Lane/Fleet Control/Evidence，并将 Child-to-parent Merge 建模为
+Guarded Two-phase Integration。
+
+2026-08-06 已完成第十部分质量提升：Host 与协议章节现在明确 CLI Output Channel、TUI
+Reducer/Reconstruction、HTTP Admission/Idempotency 与 SSE Replay-to-live、ACP Connection
+Ordering、Browser/Deployment Trust Boundary，以及 VS Code Supervisor、Cursor、Multi-root
+Workspace 与 Compatibility Recovery。
+
+2026-08-06 已完成第十一部分质量提升：扩展生态章节现在明确 Provider Route/Stream
+Commit Boundary、Tool Generation Binding、MCP Source-scoped Reconciliation、Skill/
+Plugin/Hook 的不同 Authority、Host Extension Ownership Test，以及覆盖 Activation、
+Drain、Revocation、Quarantine、Recovery 与 Failure Domain 的统一 Lifecycle。
+
+2026-08-06 已完成第十二部分质量提升：Agent 工程实践现在明确 Fixture Fidelity/Smoke
+Interpretation、Risk-driven Test Layer、Concurrency Linearization/Cleanup Evidence、
+Comparable Performance/Budget Governance、Buildable/Runnable/Supported Platform Claim、
+Artifact Attestation Chain，以及面向 Human/Agent Contributor 的 Hypothesis/Evidence-led
+Change Workflow。
+
+2026-08-06 已完成第十三部分质量提升：10 个动手实验均使用当前 Command/Test Name、
+Temporary State Isolation、Evidence Worksheet、Adversarial Control、Crash-window/
+Authority Matrix、Measurable Completion Gate、Failure Diagnosis 与 Cleanup Check；形成从
+First Turn 到 Provider、Tool、Governance、Recovery、Orchestration、VS Code、Incident
+Reconstruction 和 Capability Rollout 的无网络实践路径。
+
 ### 阶段 2：Runtime 核心
+
+状态：已完成。Runtime Kernel、Model/Provider、Context Engineering 和 Tool/Execution
+共 24 章双语正文均已验证。
 
 - Protocol、App、Agent、Wire；
 - Provider 与 Model；
@@ -352,6 +437,8 @@ last_verified: null
 
 ### 阶段 3：持久化与编排
 
+状态：已完成。状态与可观测性、Task 与编排共 12 章双语正文均已验证。
+
 - SQLite、Event、Session、Snapshot、Journal；
 - Task、Worker、Automation、Workflow；
 - Lane、Fleet、Subagent 与 Worktree；
@@ -361,6 +448,8 @@ last_verified: null
 
 ### 阶段 4：Host 与扩展生态
 
+状态：已完成。Host 与协议、扩展生态共 12 章双语正文均已验证。
+
 - CLI、TUI、HTTP/SSE、ACP、Web、VS Code；
 - MCP、Skill、Plugin、Hook；
 - Provider、Tool 和 Host 扩展教程。
@@ -368,6 +457,8 @@ last_verified: null
 验收：读者可以在不破坏 Runtime 边界的前提下完成一个扩展。
 
 ### 阶段 5：工程实践与 Lab
+
+状态：已完成。7 章双语工程实践正文和全部 10 个双语动手实验均已验证。
 
 - 测试、Benchmark、Security、Release；
 - 系统化动手实验；
@@ -378,11 +469,22 @@ last_verified: null
 
 ### 阶段 6：持续治理
 
-- 将模块 Owner 与章节关联；
-- PR Checklist 增加文档影响判断；
-- Release 前执行事实校验；
-- 定期检查代码引用、命令和截图漂移；
-- 根据读者反馈调整阅读顺序。
+状态：已完成。文档维护现已成为可执行的仓库契约，而不是编辑惯例。
+
+- `docs/book/governance.json` 将 13 个源码责任域和全部已交付章节映射到维护者、
+  新鲜度策略、发布事实、截图和外链例外；
+- `.github/CODEOWNERS` 由该注册表生成，并接受漂移检查；
+- PR Impact Gate 将 Source/Test/Fact 路径变更映射到受影响 Chapter ID，要求同一
+  PR 同步修改中英文，或提供经过 Review 的 No-impact 理由；
+- `make release-fact-check` 在 Release 前验证文档、书籍元数据、Runtime Help、
+  Protocol Schema 和 Compatibility 事实；
+- 每周治理检查执行 Source/Verification Drift、180 天 Freshness SLA、截图摘要和
+  外链校验；
+- 专用读者反馈表单与每月导航 Review 闭环处理事实、可复现性、前置知识、翻译和
+  阅读路径问题。
+
+验收：Ownership 与例外均被跟踪；事实来源变化无法静默绕过文档 Review；发布结论
+具有可复现命令。
 
 ## 13. 单章完成标准
 
@@ -431,9 +533,8 @@ last_verified: null
 | 图表复杂且难维护 | Mermaid 源码、分层视图、正文解释 |
 | 示例误导安全操作 | 使用 Fixture、最小权限和明确平台边界 |
 
-## 17. 下一步
+## 17. 持续运行
 
-方案获确认后，先执行阶段 0，提交书籍目录、章节模板、术语表、导航和
-`book-check` 基础能力；随后按阶段 1 的六章建立第一条完整学习路径。后续章节按
-Runtime 核心、持久化编排、Host 生态和工程实践依次推进，避免同时铺开大量只有标题
-而没有可验证内容的文档。
+阶段 0 至阶段 6 已完成。知识体系现在通过日常 PR Impact Review、每周漂移检查、
+Release Fact Verification 和每月读者反馈/导航 Review 持续运行。后续只有在引入
+新的学习能力或治理能力时才开启新阶段，常规维护不再定义为独立阶段。

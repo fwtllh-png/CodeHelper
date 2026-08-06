@@ -1,0 +1,93 @@
+name: Bug report / 缺陷报告
+description: Report a reproducible CodeHelper defect / 报告可复现的 CodeHelper 缺陷
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a defect. Do not include credentials, private source, or production data.
+        感谢提交缺陷。请勿包含凭证、私有源码或生产数据。
+
+        Security vulnerabilities must be reported through [GitHub Security Advisories](https://github.com/fwtllh-png/CodeHelper/security/advisories/new).
+        安全漏洞必须通过 [GitHub Security Advisories](https://github.com/fwtllh-png/CodeHelper/security/advisories/new) 私下报告。
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit / 版本或 Commit
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface / 入口
+      options:
+        - CLI
+        - TUI
+        - VS Code
+        - HTTP/SSE
+        - ACP
+        - Web
+        - Worker or orchestration
+        - Documentation or book
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 环境
+      description: OS, architecture, Go version, provider, model, and sandbox backend.
+      placeholder: macOS 15, arm64, Go 1.26.0, OpenAI-compatible provider, seatbelt
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction / 最小复现步骤
+      description: Provide the smallest sequence that reproduces the issue.
+      placeholder: |
+        1. Run ...
+        2. Configure ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 预期行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / 实际行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence / 已脱敏证据
+      description: Add logs, receipts, traces, or screenshots only after removing sensitive data.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist / 检查项
+      options:
+        - label: I searched existing issues and Discussions. / 我已搜索现有 Issue 和 Discussion。
+          required: true
+        - label: I removed credentials, private source, and production data. / 我已移除凭证、私有源码和生产数据。
+          required: true
+        - label: This is not a security vulnerability. / 这不是安全漏洞。
+          required: true

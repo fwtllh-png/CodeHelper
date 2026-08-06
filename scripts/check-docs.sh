@@ -52,6 +52,20 @@ for source_dir, mirror_dir, label in (
         if not mirror.is_file():
             errors.append(f"{label} document has no mirror: {source.relative_to(root)}")
 
+book_english = root / "docs" / "book" / "en"
+book_chinese = root / "docs" / "book" / "zh-CN"
+for source_dir, mirror_dir, label in (
+    (book_english, book_chinese, "English book"),
+    (book_chinese, book_english, "Chinese book"),
+):
+    for source in sorted(source_dir.rglob("*.md")):
+        relative = source.relative_to(source_dir)
+        mirror = mirror_dir / relative
+        if not mirror.is_file():
+            errors.append(
+                f"{label} document has no mirror: {source.relative_to(root)}"
+            )
+
 required_pairs = (
     ("README.md", "README.zh-CN.md"),
     ("CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"),

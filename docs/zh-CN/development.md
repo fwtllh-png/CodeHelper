@@ -57,6 +57,7 @@ npm test -- state runtime
 
 ```bash
 make docs-check
+make book-check # 修改 docs/book 或 Catalog 时
 ```
 
 交付前：
@@ -78,6 +79,8 @@ make brand-check
 | `make race` | 串行 Race Go 测试 |
 | `make smoke` | 构建并验证 Help/Version |
 | `make docs-check` | 检查 Markdown 本地链接与双语结构 |
+| `make book-check` | 检查知识书籍 Catalog、元数据、镜像和路径 |
+| `make book-navigation` | 根据 Catalog 重新生成双语书籍导航 |
 | `make verify` | Docs、Brand、VS Code、Vet、Test、Race 综合门禁 |
 | `make clean` | 删除生成的 Build/Release 目录 |
 
@@ -122,6 +125,8 @@ make brand-check
 | 脚本 | 行为 |
 | --- | --- |
 | `scripts/check-docs.sh` | 检查本地 Markdown 链接与双语镜像 |
+| `scripts/check-book.sh` | 检查 Agent 工程知识书籍契约 |
+| `scripts/render-book-navigation.py` | 根据书籍 Catalog 生成导航 |
 | `scripts/check-brand.sh` | 拒绝历史产品品牌残留 |
 | `scripts/test-brand-check.sh` | Brand Scanner 自测 |
 | `scripts/test-secret-leak.sh` | 对已构建二进制执行脱敏测试 |
@@ -177,7 +182,8 @@ npm run generate:compatibility
 | Guard/Security | 聚焦 Race Test + Attack Corpus |
 | VS Code State/UI | Typecheck、ESLint、相关 Node Test |
 | Release Script | Dry-run Package/Distribution Gate |
-| Documentation | `make docs-check` |
+| 产品文档 | `make docs-check` |
+| 知识书籍或 Catalog | `make docs-check && make book-check` |
 
 完整 `go test ./...` 包含平台敏感 Integration 和 Benchmark。出现环境失败时，应准确报告
 原因，并单独重跑对应 Package，再判断是否回归。

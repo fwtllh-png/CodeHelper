@@ -116,7 +116,7 @@ Before using a real provider, prove the runtime path without network access:
   --model gpt-fixture \
   --workspace . \
   --output-format stream-json \
-  "Reply with a short repository summary"
+  "say hello"
 ```
 
 Fixture runs exercise the real runtime and event stream but use deterministic

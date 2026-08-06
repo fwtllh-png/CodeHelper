@@ -9,6 +9,9 @@ root unless a script explicitly states otherwise.
 | Script | Network | Output / side effect |
 | --- | --- | --- |
 | `check-docs.sh` | no | validates Markdown links and bilingual mirrors |
+| `check-book.sh` | no | validates book catalog, metadata, mirrors, paths, and navigation |
+| `check-doc-governance.py` | external-link mode only | validates ownership, PR impact, freshness, release facts, images, and external links |
+| `render-book-navigation.py` | no | regenerates bilingual navigation from the book catalog |
 | `check-brand.sh` | no | scans tracked source for stale branding |
 | `test-brand-check.sh` | no | self-tests brand scanner behavior |
 | `test-secret-leak.sh` | no | validates binary redaction behavior |
@@ -35,6 +38,11 @@ Scripts must:
 
 ```bash
 make docs-check
+make book-check
+make book-navigation
+BASE_REF=origin/main make doc-impact
+make release-fact-check
+make doc-external-links
 make brand-check
 make secret-leak-test
 make live-model-smoke

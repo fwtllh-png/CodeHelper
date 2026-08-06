@@ -13,7 +13,9 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.Date=$(BUILD_DATE)
 
-.PHONY: fmt verify test race build cross-build smoke docs-check brand-check \
+.PHONY: fmt verify test race build cross-build smoke docs-check book-check \
+	book-navigation doc-governance-check doc-governance-test doc-impact \
+	doc-external-links release-fact-check brand-check \
 	security-test sandbox-attack-test secret-leak-test live-model-smoke \
 	cli-smoke tui-smoke acp-interop api-contract protocol-contract protocol-schema \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
@@ -34,7 +36,7 @@ RELEASE_STAGE ?= experimental
 fmt:
 	$(GO) fmt ./...
 
-verify: docs-check brand-check vscode-check vscode-test
+verify: docs-check book-check brand-check vscode-check vscode-test
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
 	$(GO) vet ./...
 	$(GO) test ./...
@@ -64,6 +66,30 @@ smoke: build
 
 docs-check:
 	./scripts/check-docs.sh
+	$(MAKE) doc-governance-check
+	$(MAKE) doc-governance-test
+
+book-check:
+	./scripts/check-book.sh
+
+book-navigation:
+	python3 scripts/render-book-navigation.py
+
+doc-governance-check:
+	python3 scripts/check-doc-governance.py check
+
+doc-governance-test:
+	python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+doc-impact:
+	@test -n "$(BASE_REF)" || { echo "BASE_REF is required" >&2; exit 2; }
+	python3 scripts/check-doc-governance.py impact --base "$(BASE_REF)" --head "$${HEAD_REF:-HEAD}"
+
+doc-external-links:
+	python3 scripts/check-doc-governance.py external-links
+
+release-fact-check:
+	python3 scripts/check-doc-governance.py release
 
 brand-check:
 	./scripts/check-brand.sh

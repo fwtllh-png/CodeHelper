@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check documentation
+        run: |
+          make docs-check
+          make book-check
+
+      - name: Check pull request documentation impact
+        if: github.event_name == 'pull_request'
+        run: |
+          python3 scripts/check-doc-governance.py impact \
+            --base '${{ github.event.pull_request.base.sha }}' \
+            --head '${{ github.event.pull_request.head.sha }}'
+
+  go:
+    name: Go build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Linux sandbox dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
+
+      - name: Check tracked-file whitespace
+        run: |
+          if git grep -n -I -E '[[:blank:]]+$' -- \
+            ':!go.sum' ':!extensions/vscode/package-lock.json'; then
+            echo "tracked files contain trailing whitespace" >&2
+            exit 1
+          fi
+
+      - name: Build
+        run: make build
+
+      - name: Test
+        run: make test

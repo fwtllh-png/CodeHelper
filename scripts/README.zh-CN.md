@@ -8,6 +8,9 @@ Root 运行。
 | 脚本 | 网络 | 输出或副作用 |
 | --- | --- | --- |
 | `check-docs.sh` | 无 | 检查 Markdown Link 与双语镜像 |
+| `check-book.sh` | 无 | 检查书籍 Catalog、元数据、镜像、路径和导航 |
+| `check-doc-governance.py` | 仅外链模式联网 | 检查 Ownership、PR Impact、Freshness、Release Fact、图片和外链 |
+| `render-book-navigation.py` | 无 | 根据书籍 Catalog 重新生成双语导航 |
 | `check-brand.sh` | 无 | 扫描已跟踪源码中的历史品牌 |
 | `test-brand-check.sh` | 无 | Brand Scanner 自测 |
 | `test-secret-leak.sh` | 无 | 验证 Binary Redaction |
@@ -34,6 +37,11 @@ Root 运行。
 
 ```bash
 make docs-check
+make book-check
+make book-navigation
+BASE_REF=origin/main make doc-impact
+make release-fact-check
+make doc-external-links
 make brand-check
 make secret-leak-test
 make live-model-smoke

@@ -2,30 +2,31 @@
 
 简体中文 | [English](./README.md)
 
-CodeHelper 是一个使用 Go 实现的、本地运行、终端优先的 AI 编程 Agent Runtime。
-它把仓库理解、模型调用、受控工具、审批、验证、持久化会话和任务编排统一在一套
-Runtime 协议之后，并同时服务 CLI、TUI、VS Code、HTTP/SSE、ACP 和轻量 Web
+[![CI](https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml/badge.svg)](https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
+[![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](./go.mod)
+[![Release](https://img.shields.io/github/v/release/fwtllh-png/CodeHelper?display_name=tag&sort=semver)](https://github.com/fwtllh-png/CodeHelper/releases)
+[![Discussions](https://img.shields.io/github/discussions/fwtllh-png/CodeHelper)](https://github.com/fwtllh-png/CodeHelper/discussions)
+
+**一个使用 Go 实现的、本地运行、受控执行的 AI Coding Agent Runtime，也是一套
+可执行的 Agent 工程知识书籍。**
+
+CodeHelper 把仓库理解、模型调用、受控工具、审批、验证、持久化会话和任务编排统一在
+一套 Runtime 协议之后，并同时服务 CLI、TUI、VS Code、HTTP/SSE、ACP 和轻量 Web
 控制页。
 
 > 项目状态：初始开发版本。首次公开稳定发布前，接口和持久化格式仍可能调整。
 
 ## Runtime 与可执行的知识书籍
 
-CodeHelper 有两个相互支撑的建设目标：
+| 交付物 | 提供的价值 |
+| --- | --- |
+| **面向真实工程的 Agent Runtime** | 模型接入、上下文工程、受控工具、持久化状态、任务编排、可观测性和多种 Host |
+| **可执行的 Agent 工程知识书籍** | 从基础原理进入真实源码、测试、架构图、失败模式和可复现实验的双语路径 |
 
-1. **面向真实工程的 Agent Runtime**：具体实现模型接入、上下文工程、受控工具、
-   持久化状态、任务编排、可观测性和多种 Host。
-2. **可执行的 Agent 工程知识书籍**：建立一套由浅入深、由外及里、持续与代码同步的
-   双语知识体系，同时解释 CodeHelper 本身和它背后的技术原理。
-
-因此，这个仓库不仅提供一个工具，也要成为希望系统学习现代 Agent 如何设计、实现、
-治理、测试和运行的开发者所使用的学习资料与实战参考项目。知识章节会把概念与真实的
-CodeHelper 源码、测试、架构图、失败模式和可复现实验关联起来，使文档与实现能够一起
-阅读和验证。
-
-`docs/en` 与 `docs/zh-CN` 下的产品手册负责描述当前行为；规划中的 `docs/book`
-负责把背景知识、设计推理、实现导读和动手实验组织为一条从入门到深入的连续阅读路径。
-建设边界、全书目录、章节规范和阶段计划见
+`docs/en` 与 `docs/zh-CN` 下的产品手册描述已交付行为。
+[Agent 工程知识书籍](./docs/book/zh-CN/README.md)把设计推理与 CodeHelper 实现和
+动手实验关联起来。建设边界、全书目录、章节规范和阶段计划见
 [知识文档体系建设方案](./docs/zh-CN/knowledge-base-plan.md)。
 
 ## 为什么建设 CodeHelper
@@ -50,7 +51,14 @@ CodeHelper 源码、测试、架构图、失败模式和可复现实验关联起
 - Go 1.26 或更高版本
 - Git
 - 仅开发 VS Code 插件时需要 Node.js 和 npm
-- 推荐 macOS 或 Linux，以获得更完整的沙箱能力
+
+支持平台边界：
+
+| 平台 | Runtime | 沙箱边界 |
+| --- | --- | --- |
+| macOS | 支持 | Seatbelt Backend 可用时为 Strong |
+| Linux | 支持 | 满足 Bubblewrap 和 Landlock 要求时为 Strong |
+| Windows | 支持，但存在平台特定限制 | Partial；需要 Strong Sandbox 的操作会拒绝执行 |
 
 ```bash
 git clone https://github.com/fwtllh-png/CodeHelper.git
@@ -69,7 +77,7 @@ make build
   --provider openai \
   --model gpt-fixture \
   --output-format stream-json \
-  "总结当前工作区"
+  "say hello"
 ```
 
 调用已配置的真实模型：
@@ -169,7 +177,9 @@ testdata/                Hermetic Provider 与 Benchmark Fixture
 | 本地开发 | [本地开发](./docs/zh-CN/development.md) | [Development](./docs/en/development.md) |
 | 本机 DeepSeek | [一键配置运行](./docs/zh-CN/deepseek-local.md) | [One-click setup](./docs/en/deepseek-local.md) |
 | Agent 上下文 | [Agent 指南](./docs/zh-CN/agent-guide.md) | [Agent guide](./docs/en/agent-guide.md) |
-| Agent 工程知识书籍 | [知识文档建设方案](./docs/zh-CN/knowledge-base-plan.md) | [Knowledge documentation plan](./docs/en/knowledge-base-plan.md) |
+| Agent 工程知识书籍 | [书籍与导航](./docs/book/zh-CN/README.md) | [Book and navigation](./docs/book/en/README.md) |
+| 知识体系方案 | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) | [Documentation plan](./docs/en/knowledge-base-plan.md) |
+| 文档治理 | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) | [Ownership and gates](./docs/en/documentation-governance.md) |
 | 产品方向 | [后续规划](./docs/zh-CN/roadmap.md) | [Roadmap](./docs/en/roadmap.md) |
 
 ## 开发
@@ -186,3 +196,8 @@ make verify
 
 修改 Runtime 契约、安全边界、持久化状态或生成协议文件前，请阅读
 [CONTRIBUTING.zh-CN.md](./CONTRIBUTING.zh-CN.md)。
+
+疑似安全漏洞必须按照 [SECURITY.zh-CN.md](./SECURITY.zh-CN.md) 私下报告，不应创建
+公开 Issue。
+
+CodeHelper 使用 [Apache License 2.0](./LICENSE)。

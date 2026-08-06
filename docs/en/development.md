@@ -58,6 +58,7 @@ Documentation change:
 
 ```bash
 make docs-check
+make book-check # when docs/book or its catalog changes
 ```
 
 Before handing off:
@@ -79,6 +80,8 @@ make brand-check
 | `make race` | serial race-enabled Go tests |
 | `make smoke` | build and verify help/version |
 | `make docs-check` | validate maintained Markdown links and bilingual structure |
+| `make book-check` | validate knowledge-book catalog, metadata, mirrors, and paths |
+| `make book-navigation` | regenerate bilingual book navigation from the catalog |
 | `make verify` | broad repository gate: docs, brand, VS Code, vet, tests, race |
 | `make clean` | remove generated build/release directories |
 
@@ -123,6 +126,8 @@ make brand-check
 | Script | Behavior |
 | --- | --- |
 | `scripts/check-docs.sh` | validates local Markdown links and bilingual mirrors |
+| `scripts/check-book.sh` | validates the Agent engineering book contract |
+| `scripts/render-book-navigation.py` | renders navigation from the book catalog |
 | `scripts/check-brand.sh` | rejects stale product branding |
 | `scripts/test-brand-check.sh` | self-tests the brand scanner |
 | `scripts/test-secret-leak.sh` | runs redaction checks against a built binary |
@@ -178,7 +183,8 @@ Choose tests by risk:
 | guard/security | focused race tests and attack corpus |
 | VS Code state/UI | typecheck, ESLint, relevant Node tests |
 | release scripts | dry-run package/distribution gate |
-| documentation | `make docs-check` |
+| product documentation | `make docs-check` |
+| knowledge book or catalog | `make docs-check && make book-check` |
 
 Full `go test ./...` can include platform-sensitive integration and benchmark
 tests. Report environmental failures precisely and rerun affected packages in

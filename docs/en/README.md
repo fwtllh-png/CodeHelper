@@ -18,10 +18,12 @@ architecture and delivery stages are defined in the
 ### I want to learn Agent engineering
 
 1. [Product and system overview](./overview.md)
-2. [Knowledge documentation plan](./knowledge-base-plan.md)
-3. [Architecture](./architecture.md)
-4. [Security model](./security.md)
-5. [Local development and scripts](./development.md)
+2. [Agent engineering book](../book/en/README.md)
+3. [Book navigation and chapter status](../book/en/NAVIGATION.md)
+4. [Knowledge documentation plan](./knowledge-base-plan.md)
+5. [Architecture](./architecture.md)
+6. [Security model](./security.md)
+7. [Local development and scripts](./development.md)
 
 ### I want to use CodeHelper
 
@@ -48,7 +50,8 @@ architecture and delivery stages are defined in the
 3. [Local development and scripts](./development.md)
 4. [Agent guide](./agent-guide.md)
 5. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-6. [Roadmap](./roadmap.md)
+6. [Documentation governance](./documentation-governance.md)
+7. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 
@@ -61,6 +64,8 @@ architecture and delivery stages are defined in the
 | Build/test commands | `Makefile` and package scripts |
 | VS Code compatibility | `extensions/vscode/compatibility.json` |
 | Knowledge book structure and delivery | `knowledge-base-plan.md` |
+| Book catalog and chapter status | `docs/book/catalog.json` |
+| Book ownership, freshness, and release facts | `docs/book/governance.json` |
 | Roadmap | desired outcomes, never a claim of shipped behavior |
 
 When implementation and documentation disagree, verify the implementation,

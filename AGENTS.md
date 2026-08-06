@@ -31,6 +31,12 @@ TUI, VS Code, HTTP/SSE, ACP, web, workers, and orchestration.
 - Do not overwrite unrelated worktree changes.
 - Do not add pre-release compatibility migrations without an explicit need.
 - Update `docs/en` and `docs/zh-CN` together.
+- Treat `docs/book/catalog.json` as the book structure and status source of
+  truth. Do not create empty files for `planned` chapters.
+- Treat `docs/book/governance.json` as the ownership, freshness, and release
+  fact source of truth. Do not hand-edit generated CODEOWNERS independently.
+- Book chapters move to `draft` or `verified` only with mirrored files and
+  valid Front Matter; regenerate navigation through the repository command.
 - Use repository commands for generated protocol and compatibility files.
 
 ## Ownership
@@ -51,6 +57,7 @@ VS Code                    extensions/vscode
 ```bash
 go test ./path/to/package
 make docs-check
+make book-check
 git diff --check
 ```
 

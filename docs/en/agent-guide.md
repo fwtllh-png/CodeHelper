@@ -156,6 +156,18 @@ Documentation is part of the feature:
 - update both `docs/en` and `docs/zh-CN`;
 - remove obsolete material instead of leaving contradictory copies.
 
+For the Agent engineering book:
+
+- treat `docs/book/catalog.json` as the structure, title, path, milestone, and
+  delivery-status source of truth;
+- do not create Markdown placeholders for `planned` chapters;
+- create English and Chinese files together when moving a chapter to `draft`;
+- copy the language templates and keep Front Matter aligned with the catalog;
+- use `docs/book/governance.json` for ownership, freshness, and release facts;
+- declare affected chapter IDs in the PR documentation-impact block;
+- run `make book-navigation` after catalog changes;
+- run `make book-check` before reporting completion.
+
 ## Completion Report
 
 State:

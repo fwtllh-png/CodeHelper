@@ -8,5 +8,7 @@ extensions/vscode/dist/*.vsix
 # Machine-local provider runbooks may contain real credentials.
 /docs/ARK-LIVE.zh-CN.md
 /docs/DEEPSEEK-LIVE.zh-CN.md
+# Local GitHub growth and launch plan.
+/docs/GITHUB-GROWTH-PLAN.zh-CN.md
 *.cover
 coverage.out

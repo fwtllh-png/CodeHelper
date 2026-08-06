@@ -58,6 +58,11 @@ Broaden tests according to blast radius. See
 - Use commands verified against `--help`.
 - Remove superseded documents instead of leaving conflicting copies.
 - Run `make docs-check`.
+- For `docs/book`, update `catalog.json`, regenerate navigation, and run
+  `make book-check`; never create empty files for planned chapters.
+- Complete the PR documentation-impact block. Source facts require mirrored
+  chapter updates or a concrete `Documentation-impact: none` rationale.
+- Run `make release-fact-check` before preparing a release.
 
 ## Commit Quality
 
@@ -78,6 +83,7 @@ committed with the source that produced it.
 - [ ] Security checks cannot be bypassed.
 - [ ] Persisted/protocol compatibility is intentional.
 - [ ] Tests match risk and pass in the supported environment.
+- [ ] Documentation impact is declared and affected chapter IDs are listed.
 - [ ] English and Chinese docs are synchronized.
 - [ ] No credential, machine path, or unrelated generated file is included.
 

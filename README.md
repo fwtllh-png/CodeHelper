@@ -2,38 +2,34 @@
 
 [简体中文](./README.zh-CN.md) | English
 
-CodeHelper is a local, terminal-first AI coding agent runtime written in Go. It
-combines repository understanding, model calls, guarded tools, approval,
+[![CI](https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml/badge.svg)](https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
+[![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](./go.mod)
+[![Release](https://img.shields.io/github/v/release/fwtllh-png/CodeHelper?display_name=tag&sort=semver)](https://github.com/fwtllh-png/CodeHelper/releases)
+[![Discussions](https://img.shields.io/github/discussions/fwtllh-png/CodeHelper)](https://github.com/fwtllh-png/CodeHelper/discussions)
+
+**A local, guarded AI coding-agent runtime and executable Agent engineering
+book, written in Go.**
+
+CodeHelper puts repository understanding, model calls, guarded tools, approval,
 verification, durable sessions, and orchestration behind one runtime protocol.
-The same runtime can be used from the CLI, TUI, VS Code, HTTP/SSE, ACP, or the
-embedded web control page.
+Use the same runtime from the CLI, TUI, VS Code, HTTP/SSE, ACP, or the embedded
+web control page.
 
 > Project status: initial development release. Interfaces and persisted formats
 > may still change before the first public stable release.
 
 ## Runtime and Executable Book
 
-CodeHelper has two complementary goals:
+| Deliverable | What it provides |
+| --- | --- |
+| **Production-oriented Agent runtime** | Model access, context engineering, governed tools, durable state, orchestration, observability, and multiple hosts |
+| **Executable Agent engineering book** | A bilingual path from first principles to real source, tests, diagrams, failure modes, and reproducible labs |
 
-1. **A production-oriented Agent runtime:** a concrete implementation of model
-   access, context engineering, governed tools, durable state, orchestration,
-   observability, and multiple hosts.
-2. **An executable Agent engineering book:** a progressively structured,
-   bilingual body of knowledge that explains both the system and the technical
-   foundations behind it, from first principles to package-level
-   implementation.
-
-The repository is therefore intended not only to provide a tool, but also to
-serve as a learning resource and practical reference project for people who
-want to understand how modern Agents are designed, implemented, secured,
-tested, and operated. Chapters will connect concepts to real CodeHelper source,
-tests, diagrams, failure modes, and reproducible labs so that the documentation
-and implementation can be studied together.
-
-The product manuals under `docs/en` and `docs/zh-CN` describe current behavior.
-The planned book under `docs/book` will organize background knowledge, design
-reasoning, implementation walkthroughs, and hands-on exercises into a
-continuous outside-in, beginner-to-advanced reading path. See the
+The product manuals under `docs/en` and `docs/zh-CN` document shipped behavior.
+The [Agent Engineering Book](./docs/book/en/README.md) connects design reasoning
+to CodeHelper implementation and hands-on exercises. Its structure and delivery
+rules are defined in the
 [Knowledge Documentation Plan](./docs/en/knowledge-base-plan.md).
 
 ## Why CodeHelper
@@ -60,7 +56,14 @@ Requirements:
 - Go 1.26 or newer
 - Git
 - Node.js and npm only when developing the VS Code extension
-- macOS or Linux recommended for the strongest sandbox support
+
+Supported platform boundary:
+
+| Platform | Runtime | Sandbox boundary |
+| --- | --- | --- |
+| macOS | Supported | Strong when the Seatbelt backend is available |
+| Linux | Supported | Strong when Bubblewrap and Landlock requirements are available |
+| Windows | Supported with platform-specific limits | Partial; operations requiring a strong sandbox fail closed |
 
 ```bash
 git clone https://github.com/fwtllh-png/CodeHelper.git
@@ -79,7 +82,7 @@ Run a network-free fixture:
   --provider openai \
   --model gpt-fixture \
   --output-format stream-json \
-  "Summarize the current workspace"
+  "say hello"
 ```
 
 Run against a configured model:
@@ -181,7 +184,9 @@ testdata/                hermetic provider and benchmark fixtures
 | Local development | [Development](./docs/en/development.md) | [本地开发](./docs/zh-CN/development.md) |
 | Local DeepSeek | [One-click setup](./docs/en/deepseek-local.md) | [一键配置运行](./docs/zh-CN/deepseek-local.md) |
 | AI agent context | [Agent guide](./docs/en/agent-guide.md) | [Agent 指南](./docs/zh-CN/agent-guide.md) |
-| Agent engineering book | [Knowledge documentation plan](./docs/en/knowledge-base-plan.md) | [知识文档建设方案](./docs/zh-CN/knowledge-base-plan.md) |
+| Agent engineering book | [Book and navigation](./docs/book/en/README.md) | [书籍与导航](./docs/book/zh-CN/README.md) |
+| Knowledge system plan | [Documentation plan](./docs/en/knowledge-base-plan.md) | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) |
+| Documentation governance | [Ownership and gates](./docs/en/documentation-governance.md) | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) |
 | Product direction | [Roadmap](./docs/en/roadmap.md) | [后续规划](./docs/zh-CN/roadmap.md) |
 
 ## Development
@@ -197,7 +202,12 @@ make verify
 capabilities. Use the focused targets documented in
 [Development](./docs/en/development.md) when working on one subsystem.
 
-## Contributing and License
+## Contributing, Security, and License
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before changing runtime contracts,
 security boundaries, persisted state, or generated protocol files.
+
+Report suspected vulnerabilities privately according to
+[SECURITY.md](./SECURITY.md), not through a public issue.
+
+CodeHelper is licensed under the [Apache License 2.0](./LICENSE).

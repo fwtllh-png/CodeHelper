@@ -114,7 +114,7 @@ make deepseek-vscode
   --model gpt-fixture \
   --workspace . \
   --output-format stream-json \
-  "简要总结当前仓库"
+  "say hello"
 ```
 
 Fixture 使用确定性的已记录响应，但会经过真实 Runtime 和事件流。
