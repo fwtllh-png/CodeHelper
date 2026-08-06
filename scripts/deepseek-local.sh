@@ -56,8 +56,17 @@ read_key_from_doc() {
 
 read_key_from_keychain() {
   local service=$1
-  security find-generic-password \
-    -s "$service" -a "$KEYRING_NAME" -w 2>/dev/null
+  local stored
+  stored="$(security find-generic-password \
+    -s "$service" -a "$KEYRING_NAME" -w 2>/dev/null)" || return 1
+  case "$stored" in
+    go-keyring-base64:*)
+      printf '%s' "${stored#go-keyring-base64:}" | /usr/bin/base64 -D
+      ;;
+    *)
+      printf '%s' "$stored"
+      ;;
+  esac
 }
 
 load_api_key() {
