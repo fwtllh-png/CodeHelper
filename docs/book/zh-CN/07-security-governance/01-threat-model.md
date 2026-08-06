@@ -48,7 +48,7 @@ Operator Mistake、Compromised Dependency、Malicious Repository 仍在 Scope �
 ## Untrusted Input
 
 User Prompt、Repository Text、Generated Code、Model Output、Tool Argument、Provider/MCP
-Response、Skill、Plugin、Hook、HTTP/ACP Request、Archive、Symlink、Environment、
+Response、Skill、Plugin、Hook、Host Protocol Request、Archive、Symlink、Environment、
 Foreign Persisted State、Process Output 都是不可信输入。
 
 ```mermaid

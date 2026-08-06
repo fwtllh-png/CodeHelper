@@ -45,18 +45,42 @@ make build VERSION=0.1.0
 ```
 
 `doctor` reports capabilities; it does not grant permission. A missing strong
-sandbox may cause mutating execution or verification to fail closed.
+sandbox reports `blocked` because mutating execution and verification must fail
+closed. Optional dependency gaps report `degraded`. The corresponding exit
+codes are `2` and `1`; `ready` exits `0`.
 
-## 4. Create Workspace Configuration
+## 4. Run Setup
 
 From the repository you want CodeHelper to operate on:
+
+```bash
+/path/to/codehelper setup \
+  --workspace . \
+  --provider openai \
+  --model gpt-4.1 \
+  --credential-kind env \
+  --credential-name OPENAI_API_KEY \
+  --json
+```
+
+`setup` writes only the credential reference, probes the actual sandbox, and
+runs a bundled network-free Runtime fixture. Add
+`--probe-capabilities reasoning` only when the referenced live credential and
+provider network are available. For a prompted flow, use:
+
+```bash
+/path/to/codehelper setup --workspace . --interactive
+```
+
+Automation can add `--require-ready` to make the exit code match the reported
+`ready`, `degraded`, or `blocked` status. `init` remains the minimal file-only
+alternative:
 
 ```bash
 /path/to/codehelper init --workspace .
 ```
 
-This creates a minimal `codehelper.toml` and workspace state directories. Review
-the file before use. To inspect the resolved configuration and provenance:
+To inspect the resolved configuration and provenance:
 
 ```bash
 /path/to/codehelper config check --config ./codehelper.toml
@@ -64,6 +88,19 @@ the file before use. To inspect the resolved configuration and provenance:
 ```
 
 See [Configuration](./configuration.md) for every supported section.
+
+### Network-free first journey
+
+Run the complete governed first-turn journey without a credential or network:
+
+```bash
+./bin/codehelper quickstart --json
+```
+
+The bundled fixture creates a temporary workspace and exercises a structured
+plan, file read, edit preview, explicit approval, verification, execution
+receipt, and terminal completion. Add `--keep` to retain the generated
+workspace, or `--workspace EMPTY_DIR` to use a chosen empty directory.
 
 ## 5. Configure Credentials
 
@@ -195,6 +232,11 @@ unset DEEPSEEK_API_KEY
 
 Read [VS Code Extension](./vscode.md) before using this script; it installs into
 the official VS Code application and stores the credential in macOS Keychain.
+
+For a portable first run, use `CodeHelper: Setup Workspace` from the Command
+Palette. If the Runtime does not start, the Chat failure panel and
+`CodeHelper: Repair Runtime` expose structured readiness issues and repair
+actions instead of requiring Output-channel inspection.
 
 ## 9. Recommended First Checks
 

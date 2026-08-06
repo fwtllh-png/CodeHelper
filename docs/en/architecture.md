@@ -9,6 +9,11 @@ presentation and integration surfaces. Hosts submit operations and observe
 events; they do not reimplement the agent loop or execute privileged tools
 directly.
 
+The supported product hosts are CLI, TUI, VS Code, and ACP. There is no
+`codehelper web` or `codehelper serve` product command, embedded browser UI,
+pairing/QR flow, or REST/SSE host. MCP stdio serving and internal loopback
+helpers are integration mechanisms, not product HTTP hosts.
+
 ```text
 CLI / TUI / VS Code / ACP
                  |
@@ -122,6 +127,12 @@ Context is split by stability and purpose:
 Bounds are part of correctness. An unbounded context system eventually becomes
 expensive, slow, and less coherent.
 
+The execution receipt explains every selected working-set file or test with its
+selection sources, supporting evidence, relevance score, and per-entry budget
+outcome. `included=false` with a truncation reason means the selector chose the
+path but the rendered context budget cut its line. Hosts project this same
+receipt rather than reconstructing selection reasons.
+
 ## Security Model
 
 Security is layered because no single control answers every question.
@@ -147,6 +158,10 @@ and edit evidence.
 ### 5. Edit journal and verification
 
 Provide recoverability and evidence after a write was authorized.
+The execution receipt preserves every verification attempt, command derivation,
+failure category, repair count, final gate action, and final workspace outcome.
+Rollback distinguishes restored paths, conflicts, and non-file side effects;
+the aggregate pass/fail fields remain only as compatibility summaries.
 
 ### 6. OS sandbox
 

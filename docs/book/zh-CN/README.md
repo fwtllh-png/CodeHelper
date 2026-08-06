@@ -30,7 +30,7 @@
 
 ## 阅读方式
 
-新读者应按[导航](./NAVIGATION.md)中的阶段 1 路径阅读。有经验的 Contributor
+新读者应按[导航](./NAVIGATION.md)中的核心阅读路径阅读。有经验的 Contributor
 可以从具体模块进入，但仍建议先阅读全局架构与 Runtime 术语。
 
 每一章都连接以下内容：

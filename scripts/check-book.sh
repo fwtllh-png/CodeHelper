@@ -76,7 +76,7 @@ part_orders: set[int] = set()
 chapter_ids: set[str] = set()
 catalog_chapters: dict[str, tuple[dict, dict]] = {}
 catalog_paths: set[pathlib.PurePosixPath] = set()
-stage_one: list[str] = []
+core_chapters: list[str] = []
 
 for part in parts:
     part_id = part.get("id")
@@ -127,19 +127,19 @@ for part in parts:
             error(f"catalog chapter {chapter_id}: titles must cover both languages")
         elif any(not isinstance(title, str) or not title.strip() for title in chapter_titles.values()):
             error(f"catalog chapter {chapter_id}: titles must be non-empty strings")
-        milestone = chapter.get("milestone")
-        if milestone is not None and milestone != "stage-1":
-            error(f"catalog chapter {chapter_id}: unsupported milestone {milestone!r}")
-        if milestone == "stage-1":
-            stage_one.append(chapter_id)
-        unexpected = set(chapter) - {"id", "slug", "status", "milestone", "titles"}
+        core_reading = chapter.get("core_reading")
+        if core_reading is not None and core_reading is not True:
+            error(f"catalog chapter {chapter_id}: core_reading must be true when present")
+        if core_reading is True:
+            core_chapters.append(chapter_id)
+        unexpected = set(chapter) - {"id", "slug", "status", "core_reading", "titles"}
         if unexpected:
             error(f"catalog chapter {chapter_id}: unexpected fields {sorted(unexpected)}")
 
 if part_orders and part_orders != set(range(1, len(parts) + 1)):
     error("catalog part order must be contiguous starting at 1")
-if len(stage_one) != 6:
-    error(f"catalog must declare exactly six stage-1 chapters, found {len(stage_one)}")
+if len(core_chapters) != 6:
+    error(f"catalog must declare exactly six core-reading chapters, found {len(core_chapters)}")
 
 
 def markdown_map(language: str) -> dict[pathlib.PurePosixPath, pathlib.Path]:

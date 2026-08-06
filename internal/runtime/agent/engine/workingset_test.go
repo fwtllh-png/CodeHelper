@@ -38,14 +38,18 @@ func (s *stubRepoContext) Build(
 	s.entries = append(s.entries, state.WorkingSet)
 	s.evidence = append(s.evidence, state.Evidence)
 	paths := make([]string, 0, len(state.WorkingSet))
+	selections := make([]promptcontext.Selection, 0, len(state.WorkingSet))
 	for _, entry := range state.WorkingSet {
 		paths = append(paths, entry.Path)
+		selections = append(selections, promptcontext.Selection{
+			Path: entry.Path, Kind: "file", Reasons: []string{"read"}, Included: true,
+		})
 	}
 	return promptcontext.TurnContext{
 		Messages: []provider.Message{provider.TextMessage(
 			provider.RoleSystem, "[working_set] "+strings.Join(paths, " "),
 		)},
-		Receipts: s.receipts,
+		Receipts: s.receipts, Selections: selections,
 	}
 }
 
@@ -247,6 +251,13 @@ func TestTurnContextReceiptsJoinTheContextReceipts(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("repo map receipts = %d, want one", count)
+	}
+	engine.observePath(workingset.SourceRead, "internal/value.go")
+	_, _ = engine.turnContextMessages(t.Context())
+	selections := engine.ContextSelections()
+	if len(selections) != 1 || selections[0].Path != "internal/value.go" ||
+		selections[0].Reasons[0] != "read" {
+		t.Fatalf("context selections = %+v", selections)
 	}
 }
 

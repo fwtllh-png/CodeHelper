@@ -12,37 +12,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const usage = `codehelper - terminal-first AI coding agent
-
-Usage:
-  codehelper --error-format=json COMMAND [ARGS]
-  codehelper help
-  codehelper version [--json]
-  codehelper config check|show|reload [flags]
-  codehelper auth status|login|logout|list|suggestions|set|clear [flags]
-  codehelper model list|resolve [--json]
-  codehelper thread list|resume|fork|archive|rename|read --data-dir DIR [flags]
-  codehelper fleet list|status|inspect|logs|profile --data-dir DIR [flags]
-  codehelper automation list|run|pause --data-dir DIR [flags]
-  codehelper workflow validate|run|status --spec PATH [--id RUN] [--data-dir DIR] [--driver runtime|fake] [--provider-fixture DIR] [--json]
-  codehelper lane start|list|status|stop|log|attach --data-dir DIR [flags]
-  codehelper doctor [--json]
-  codehelper completion bash|zsh|fish|powershell
-  codehelper tui [--config PATH]
-  codehelper plugin list|trust|enable|disable|revoke|install|update|rollback|security-revoke [flags] [NAME[@VERSION]]
-  codehelper skill list|enable|disable|revoke|lint|lock|verify [flags] [NAME]
-  codehelper exec [flags] PROMPT
-  codehelper worker run|enqueue|list --data-dir DIR [flags]
-  codehelper sandbox status|probe|check [--json]
-  codehelper init [--workspace DIR] [--config PATH] [--data-dir DIR]
-  codehelper setup [--workspace DIR] [--config PATH] [--data-dir DIR] [--json]
-  codehelper review [--workspace DIR] [--json]
-  codehelper apply --plan PATH [--dry-run] [--json]
-  codehelper mcp serve|list|add|test|status|enable|disable|remove|tools|validate [flags]
-  codehelper host --adapter acp [flags]
-  codehelper runtime-observe [--events N] [--config PATH] [--log-file PATH]
-`
-
 func Run(args []string, stdout, stderr io.Writer) int {
 	return RunContext(context.Background(), args, strings.NewReader(""), stdout, stderr)
 }

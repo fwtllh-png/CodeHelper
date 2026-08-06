@@ -25,6 +25,12 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
   assert.deepEqual(decodeWebviewMessage({ type: "new-chat" }), {
     type: "new-chat",
   });
+  assert.deepEqual(decodeWebviewMessage({ type: "repair-runtime" }), {
+    type: "repair-runtime",
+  });
+  assert.deepEqual(decodeWebviewMessage({ type: "run-setup" }), {
+    type: "run-setup",
+  });
   assert.deepEqual(decodeWebviewMessage({
     type: "merge-chat",
     planId: "b".repeat(64),

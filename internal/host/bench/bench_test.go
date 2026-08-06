@@ -1,3 +1,5 @@
+//go:build capability
+
 package bench_test
 
 import (
@@ -15,7 +17,8 @@ func suiteRoot() string {
 }
 
 // TestCodingBenchmarkSuite is the release gate: every checked-in task must pass
-// hermetically, with no network, API key, or live model.
+// with fixture models and no network or API key. Verify cases still require the
+// platform's real strong sandbox, so this file is outside the default lane.
 func TestCodingBenchmarkSuite(t *testing.T) {
 	report, err := bench.RunSuite(t.Context(), suiteRoot())
 	if err != nil {

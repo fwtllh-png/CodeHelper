@@ -46,8 +46,10 @@ ACP 使用 Newline-delimited JSON-RPC。Synchronized Writer 防止并发 Respons
 Notification Frame 交错。Initialize 只广告已实现 Method 并绑定 Compatibility。
 Session 绑定 Exact Workspace、Provider/Model、Thread 与 Event Cursor。
 
-Server 使用与 HTTP 相同的 Operation/Event Contract 支持 Mutation、Read Query、
+Server 使用共享 Runtime Operation/Event Contract 支持 Mutation、Read Query、
 Dynamic Tool 和 Notification。Replay Page/Live Notification 保持 Cursor 语义。
+Contract Test 覆盖 Start、Stream、Approve、Input、Cancel、Verify、Recover 和 Receipt，
+不定义 ACP 专属 Turn Loop。
 
 EOF/Shutdown 具有状态：Reject Final Half-line，按协议处理 Active Turn，给 Pending Call
 Terminal Error，并确定性关闭 Resource。

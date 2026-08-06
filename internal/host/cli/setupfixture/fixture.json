@@ -1,0 +1,6 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "setup-fixture-model",
+  "expected_prompt": "setup fixture check"
+}

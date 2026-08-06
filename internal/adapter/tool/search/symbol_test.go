@@ -1,6 +1,7 @@
 package search
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -11,7 +12,26 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
 )
+
+type fakeSemanticProvider struct {
+	definition symbols.SemanticResult
+	references symbols.SemanticResult
+	err        error
+}
+
+func (p fakeSemanticProvider) Definition(
+	context.Context, symbols.SemanticQuery,
+) (symbols.SemanticResult, error) {
+	return p.definition, p.err
+}
+
+func (p fakeSemanticProvider) References(
+	context.Context, symbols.SemanticQuery, bool,
+) (symbols.SemanticResult, error) {
+	return p.references, p.err
+}
 
 func TestSearchSymbolFindsDeclarationsBySubstring(t *testing.T) {
 	registry := indexedRegistry(t, map[string]string{
@@ -84,6 +104,55 @@ func TestSearchDefinitionMatchesTheWholeName(t *testing.T) {
 		if match["name"] != "Serve" && match["name"] != "serve" {
 			t.Fatalf("match = %#v", match)
 		}
+	}
+}
+
+func TestSymbolSearchPrefersSemanticProviderAndRecordsProvenance(t *testing.T) {
+	provider := fakeSemanticProvider{
+		definition: symbols.SemanticResult{
+			Locations: []symbols.Location{{Path: "api.go", Line: 3, Character: 6}},
+			Source:    "lsp:gopls", Version: "v0.20.0", Confidence: "high",
+		},
+		references: symbols.SemanticResult{
+			Locations: []symbols.Location{{Path: "call.go", Line: 4, Character: 2}},
+			Source:    "lsp:gopls", Version: "v0.20.0", Confidence: "high",
+		},
+	}
+	registry := indexedRegistryWithSemantic(t, map[string]string{
+		"api.go":  "package api\n\nfunc Serve() {}\n",
+		"call.go": "package api\n\nfunc run() {\n\tServe()\n}\n",
+	}, provider)
+	definition := execute(t, registry, "search_definition", map[string]any{
+		"name": "Serve", "path": "call.go", "line": 4, "character": 2,
+	})
+	if definition.Metadata["resolution"] != "semantic" ||
+		definition.Metadata["source"] != "lsp:gopls" ||
+		definition.Metadata["version"] != "v0.20.0" ||
+		definition.Metadata["confidence"] != "high" {
+		t.Fatalf("definition metadata = %#v", definition.Metadata)
+	}
+	references := execute(t, registry, "search_references", map[string]any{
+		"name": "Serve", "path": "api.go", "line": 3, "character": 6,
+	})
+	if matches := decodeMatches(t, references.Content); len(matches) != 1 ||
+		matches[0]["file"] != "call.go" {
+		t.Fatalf("semantic references = %#v", matches)
+	}
+}
+
+func TestSymbolSearchFallsBackToLexicalWithReason(t *testing.T) {
+	registry := indexedRegistryWithSemantic(t, map[string]string{
+		"api.go": "package api\n\nfunc Serve() {}\n",
+	}, fakeSemanticProvider{err: errors.New("gopls unavailable")})
+	result := execute(t, registry, "search_definition", map[string]any{
+		"name": "Serve", "path": "api.go", "line": 3, "character": 6,
+	})
+	if result.Metadata["resolution"] != repoindex.Resolution ||
+		result.Metadata["source"] != "repoindex" ||
+		result.Metadata["version"] != repoindex.IndexerVersion ||
+		result.Metadata["confidence"] != "low" ||
+		result.Metadata["semantic_fallback"] != "gopls unavailable" {
+		t.Fatalf("fallback metadata = %#v", result.Metadata)
 	}
 }
 
@@ -224,6 +293,12 @@ func TestSymbolToolsReportADegradedIndexAsUnavailable(t *testing.T) {
 }
 
 func indexedRegistry(t *testing.T, files map[string]string) *tool.Registry {
+	return indexedRegistryWithSemantic(t, files, nil)
+}
+
+func indexedRegistryWithSemantic(
+	t *testing.T, files map[string]string, semantic symbols.Provider,
+) *tool.Registry {
 	t.Helper()
 	root := t.TempDir()
 	for name, content := range files {
@@ -242,7 +317,9 @@ func indexedRegistry(t *testing.T, files map[string]string) *tool.Registry {
 		t.Fatal(err)
 	}
 	registry := tool.NewRegistry(nil, nil)
-	if err := RegisterWithIndex(registry, root, searchTestBackend{}, index); err != nil {
+	if err := RegisterWithProviders(
+		registry, root, searchTestBackend{}, index, semantic,
+	); err != nil {
 		t.Fatal(err)
 	}
 	return registry

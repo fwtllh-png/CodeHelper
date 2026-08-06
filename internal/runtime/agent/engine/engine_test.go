@@ -669,6 +669,51 @@ func TestEngineUnauthorizedToolHasSingleFailedTerminal(t *testing.T) {
 	assertOneTerminal(t, states, Failed)
 }
 
+func TestRequestCancelHasSingleCanceledTerminalAndNoCommittedHistory(t *testing.T) {
+	started := make(chan struct{})
+	engine, err := New(Options{
+		Provider: &steerProvider{started: started},
+		Route:    testRoute(t), MaxOutputTokens: 128,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var (
+		statesMu sync.Mutex
+		states   []State
+	)
+	done := make(chan error, 1)
+	go func() {
+		_, runErr := engine.Run(t.Context(), "cancel active turn", func(event Event) error {
+			statesMu.Lock()
+			states = append(states, event.State)
+			statesMu.Unlock()
+			return nil
+		})
+		done <- runErr
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("model stream did not start")
+	}
+	engine.RequestCancel()
+	select {
+	case runErr := <-done:
+		if !errors.Is(runErr, context.Canceled) {
+			t.Fatalf("Run() error = %v, want context.Canceled", runErr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RequestCancel did not stop the active turn")
+	}
+	statesMu.Lock()
+	defer statesMu.Unlock()
+	assertOneTerminal(t, states, Canceled)
+	if history := engine.History(); len(history) != 0 {
+		t.Fatalf("canceled turn committed history: %+v", history)
+	}
+}
+
 func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.options.MaxContextBytes = 600

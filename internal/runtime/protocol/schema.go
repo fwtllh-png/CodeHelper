@@ -68,6 +68,7 @@ func GenerateSchema() *Schema {
 	)
 	schema.Envelope["event"] = eventEnvelopeSchema()
 	schema.Envelope["problem"] = schemaOf(reflect.TypeOf(&Problem{}))
+	schema.Envelope["readiness"] = schemaOf(reflect.TypeOf(&Readiness{}))
 	return schema
 }
 

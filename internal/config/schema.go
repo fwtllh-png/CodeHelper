@@ -1,0 +1,340 @@
+package config
+
+import (
+	"time"
+)
+
+type SecretRef struct {
+	Kind string `json:"kind,omitempty" toml:"kind"`
+	Name string `json:"name,omitempty" toml:"name"`
+}
+
+func (r SecretRef) Empty() bool {
+	return r.Kind == "" && r.Name == ""
+}
+
+type Runtime struct {
+	OperationBuffer  int `json:"operation_buffer" toml:"operation_buffer"`
+	EventHistory     int `json:"event_history" toml:"event_history"`
+	SubscriberBuffer int `json:"subscriber_buffer" toml:"subscriber_buffer"`
+}
+
+type State struct {
+	DataDir        string        `json:"data_dir" toml:"data_dir"`
+	BusyTimeout    time.Duration `json:"busy_timeout" toml:"-"`
+	EventRetention int           `json:"event_retention" toml:"event_retention"`
+}
+
+type Memory struct {
+	Enabled bool   `json:"enabled" toml:"enabled"`
+	Path    string `json:"path" toml:"path"`
+}
+
+type Telemetry struct {
+	LogLevel string `json:"log_level" toml:"log_level"`
+}
+
+// Context configures what the agent knows about the repository before it starts
+// searching.
+type Context struct {
+	Index        Index        `json:"index" toml:"index"`
+	RepoMap      RepoMap      `json:"repo_map" toml:"repo_map"`
+	WorkingSet   WorkingSet   `json:"working_set" toml:"working_set"`
+	Evidence     Evidence     `json:"evidence" toml:"evidence"`
+	CodingPolicy CodingPolicy `json:"coding_policy" toml:"coding_policy"`
+	Compact      Compact      `json:"compact" toml:"compact"`
+}
+
+// Compact configures what happens when a thread outgrows its context window.
+//
+// MaxHistoryBytes is the threshold: history above it is replaced by a summary at
+// the next opportunity. SummaryMaxBytes caps the summary itself, and is the knob
+// that decides how much survives — a summary cut short drops its cheapest
+// sections first, keeping the goal and the outstanding work. MaxDigestEntries
+// bounds the per-message record of what was removed.
+type Compact struct {
+	MaxHistoryBytes  int `json:"max_history_bytes" toml:"max_history_bytes"`
+	SummaryMaxBytes  int `json:"summary_max_bytes" toml:"summary_max_bytes"`
+	MaxDigestEntries int `json:"max_digest_entries" toml:"max_digest_entries"`
+}
+
+// RepoMap configures the repository overview appended to every request: which
+// directories hold code, how the project is built, where it starts, and what the
+// files in play declare. MaxBytes is the ceiling per request, so it is the knob
+// that decides what the map costs on a long session.
+type RepoMap struct {
+	Enabled        bool `json:"enabled" toml:"enabled"`
+	MaxBytes       int  `json:"max_bytes" toml:"max_bytes"`
+	MaxDirectories int  `json:"max_directories" toml:"max_directories"`
+}
+
+// WorkingSet configures the ledger of paths the session has touched. MaxEntries
+// bounds the paths the runtime discovered on its own; paths the user pinned are
+// always reported.
+type WorkingSet struct {
+	Enabled    bool `json:"enabled" toml:"enabled"`
+	MaxEntries int  `json:"max_entries" toml:"max_entries"`
+	MaxBytes   int  `json:"max_bytes" toml:"max_bytes"`
+}
+
+// Evidence configures the section reporting what lookups established, which
+// changes nothing has verified, and which calls were wasted. MaxEntries bounds
+// only the facts: risks and reminders are the point of the section and are always
+// reported in full.
+type Evidence struct {
+	Enabled    bool `json:"enabled" toml:"enabled"`
+	MaxEntries int  `json:"max_entries" toml:"max_entries"`
+	MaxBytes   int  `json:"max_bytes" toml:"max_bytes"`
+}
+
+// CodingPolicy configures the working method carried in the stable prefix. It has
+// no ceiling because the text is a constant; disabling it removes the instruction
+// but not the mechanisms behind it, which the runtime enforces regardless.
+type CodingPolicy struct {
+	Enabled bool `json:"enabled" toml:"enabled"`
+}
+
+// Index configures the repository symbol index. The ceilings bound a first
+// build on a large repository: a file over MaxFileBytes is recorded without
+// symbols, and a repository over MaxFiles is indexed only that far, which the
+// symbol tools report as a truncated index rather than as complete results.
+type Index struct {
+	Enabled      bool  `json:"enabled" toml:"enabled"`
+	MaxFileBytes int64 `json:"max_file_bytes" toml:"max_file_bytes"`
+	MaxFiles     int   `json:"max_files" toml:"max_files"`
+}
+
+type Execution struct {
+	Provider        string        `json:"provider" toml:"provider"`
+	Model           string        `json:"model" toml:"model"`
+	Protocol        string        `json:"protocol" toml:"protocol"`
+	Mode            string        `json:"mode" toml:"mode"`
+	Workspace       string        `json:"workspace" toml:"workspace"`
+	Tools           bool          `json:"tools" toml:"tools"`
+	MaxOutputTokens uint64        `json:"max_output_tokens" toml:"max_output_tokens"`
+	MaxSteps        int           `json:"max_steps" toml:"max_steps"`
+	Timeout         time.Duration `json:"timeout" toml:"-"`
+	IdleTimeout     time.Duration `json:"idle_timeout" toml:"-"`
+	MaxConcurrent   int           `json:"max_concurrent" toml:"max_concurrent"`
+	RateLimit       float64       `json:"rate_limit" toml:"rate_limit"`
+	BudgetTokens    uint64        `json:"budget_tokens" toml:"budget_tokens"`
+	BudgetUSD       float64       `json:"budget_usd" toml:"budget_usd"`
+	ReasoningEffort string        `json:"reasoning_effort" toml:"reasoning_effort"`
+	NativeSearch    bool          `json:"native_search" toml:"native_search"`
+	Verify          Verify        `json:"verify" toml:"verify"`
+	Subagent        Subagent      `json:"subagent" toml:"subagent"`
+	Worker          Worker        `json:"worker" toml:"worker"`
+	Journal         Journal       `json:"journal" toml:"journal"`
+}
+
+// Journal configures the edit-transaction journal.
+//
+// Durable puts the turn ledger and before-images under the workspace state
+// directory so a process killed mid-turn can be undone by the next one. Turning
+// it off keeps atomicity inside the live process only, which is what a throwaway
+// workspace wants and what a workspace holding real work does not.
+type Journal struct {
+	Durable bool `json:"durable" toml:"durable"`
+	// RecoverOnStart undoes interrupted turns found at startup. Off leaves them
+	// in the ledger for a later, explicit recovery.
+	RecoverOnStart bool `json:"recover_on_start" toml:"recover_on_start"`
+}
+
+// Worker bounds the scheduler that executes durable background tasks. It is off
+// for one-shot hosts: a process that exists to run one command should not pick
+// up background work it would then have to finish before exiting.
+type Worker struct {
+	Enabled     bool `json:"enabled" toml:"enabled"`
+	MaxParallel int  `json:"max_parallel" toml:"max_parallel"`
+	// MaxAttempts is the default attempt budget for tasks that do not set one.
+	MaxAttempts int `json:"max_attempts" toml:"max_attempts"`
+	// Lease is how long a claim survives without a heartbeat. Shorter means a
+	// dead worker's task is taken over sooner, and a slow one loses it sooner.
+	Lease time.Duration `json:"lease" toml:"-"`
+	// ClaimInterval is how often the scheduler looks for runnable work, and
+	// AutomationInterval how often it checks for due schedules.
+	ClaimInterval      time.Duration `json:"claim_interval" toml:"-"`
+	AutomationInterval time.Duration `json:"automation_interval" toml:"-"`
+	// RetryBackoff is the first delay after a retryable failure; each further
+	// attempt doubles it up to RetryBackoffMax.
+	RetryBackoff    time.Duration `json:"retry_backoff" toml:"-"`
+	RetryBackoffMax time.Duration `json:"retry_backoff_max" toml:"-"`
+	// MaxTokens and MaxCostUSD bound all background tasks in this process
+	// together, separately from the session and child-agent ledgers, so that an
+	// operator can tell which pot was spent.
+	MaxTokens  uint64  `json:"max_tokens" toml:"max_tokens"`
+	MaxCostUSD float64 `json:"max_cost_usd" toml:"max_cost_usd"`
+}
+
+// Subagent bounds what a spawned child agent may spend and where it may write.
+// Child budgets are deliberately separate from the session budget: a runaway
+// child must not be able to consume the parent's whole allowance, and a child
+// that writes must not be able to write into the parent's workspace.
+type Subagent struct {
+	MaxDepth    int `json:"max_depth" toml:"max_depth"`
+	MaxParallel int `json:"max_parallel" toml:"max_parallel"`
+	// MaxSteps is the child's own step quota, independent of Execution.MaxSteps.
+	MaxSteps int `json:"max_steps" toml:"max_steps"`
+	// MaxTokens and MaxCostUSD bound all child agents in the session together,
+	// and each child is capped by the same number on its own: the shared ledger
+	// refuses the next child once the pot is spent, while the per-child ceiling
+	// stops a single runaway child during its turn. Zero means unbounded beyond
+	// the session budget the child inherits.
+	MaxTokens  uint64  `json:"max_tokens" toml:"max_tokens"`
+	MaxCostUSD float64 `json:"max_cost_usd" toml:"max_cost_usd"`
+	// WallTime is how long one child turn may run before it is canceled.
+	WallTime time.Duration `json:"wall_time" toml:"-"`
+	// Workspace selects the isolation strategy: auto picks per stance,
+	// read_only shares the parent workspace without a journal, worktree
+	// requires a git worktree per writing child.
+	Workspace string `json:"workspace" toml:"workspace"`
+}
+
+// Subagent workspace isolation strategies.
+const (
+	SubagentWorkspaceAuto       = "auto"
+	SubagentWorkspaceReadOnly   = "read_only"
+	SubagentWorkspaceWorktree   = "worktree"
+	SubagentWorkspaceSerialized = "same_workspace_serialized"
+)
+
+// Verify configures the gate that runs before a turn commits its edits.
+//
+// Mode off skips the gate; soft reports the verdict without changing the turn
+// outcome; hard applies OnFailure once the repair budget is spent.
+type Verify struct {
+	Mode      string `json:"mode" toml:"mode"`
+	Scope     string `json:"scope" toml:"scope"`
+	OnFailure string `json:"on_failure" toml:"on_failure"`
+	// Command overrides the repository scope's detected commands with one shell
+	// command, for workspaces whose entry point cannot be inferred.
+	Command        string        `json:"command,omitempty" toml:"command"`
+	MaxRepairSteps int           `json:"max_repair_steps" toml:"max_repair_steps"`
+	Timeout        time.Duration `json:"timeout" toml:"-"`
+}
+
+type Vision struct {
+	Enabled  bool   `json:"enabled" toml:"enabled"`
+	Provider string `json:"provider" toml:"provider"`
+	Model    string `json:"model" toml:"model"`
+}
+
+// RouteSlot is the provider and model one purpose samples on.
+type RouteSlot struct {
+	Provider string `json:"provider" toml:"provider"`
+	Model    string `json:"model" toml:"model"`
+}
+
+// Empty reports a slot nobody configured.
+func (s RouteSlot) Empty() bool { return s.Provider == "" && s.Model == "" }
+
+// Route is per-purpose model selection. Slots is keyed by purpose name and holds
+// only what configuration named; the act route stays in Execution, because
+// execution.provider and execution.model already are it.
+//
+// Lock forbids falling back to act, which is what a reproducible run wants: with
+// it on, a purpose without a slot is an error rather than a silent substitution.
+type Route struct {
+	Lock  bool                 `json:"lock" toml:"lock"`
+	Slots map[string]RouteSlot `json:"slots,omitempty" toml:"-"`
+}
+
+type Web struct {
+	SearchBackend string `json:"search_backend" toml:"search_backend"`
+}
+
+type Config struct {
+	Runtime    Runtime   `json:"runtime" toml:"runtime"`
+	State      State     `json:"state" toml:"state"`
+	Memory     Memory    `json:"memory" toml:"memory"`
+	Context    Context   `json:"context" toml:"context"`
+	Telemetry  Telemetry `json:"telemetry" toml:"telemetry"`
+	Credential SecretRef `json:"credential" toml:"credential"`
+	Execution  Execution `json:"execution" toml:"execution"`
+	Route      Route     `json:"route" toml:"route"`
+	Vision     Vision    `json:"vision" toml:"vision"`
+	Web        Web       `json:"web" toml:"web"`
+}
+
+type Overrides struct {
+	OperationBuffer  *int
+	EventHistory     *int
+	SubscriberBuffer *int
+	StateDataDir     *string
+	StateBusyTimeout *time.Duration
+	StateRetention   *int
+	MemoryEnabled    *bool
+	MemoryPath       *string
+	IndexEnabled     *bool
+	IndexMaxBytes    *int64
+	IndexMaxFiles    *int
+
+	RepoMapEnabled        *bool
+	RepoMapMaxBytes       *int
+	RepoMapMaxDirectories *int
+	WorkingSetEnabled     *bool
+	WorkingSetMaxEntries  *int
+	WorkingSetMaxBytes    *int
+	EvidenceEnabled       *bool
+	EvidenceMaxEntries    *int
+	EvidenceMaxBytes      *int
+	CodingPolicyEnabled   *bool
+	CompactMaxHistory     *int
+	CompactSummaryMax     *int
+	CompactMaxDigest      *int
+
+	LogLevel        *string
+	CredentialKind  *string
+	CredentialName  *string
+	Provider        *string
+	Model           *string
+	Protocol        *string
+	Mode            *string
+	Workspace       *string
+	Tools           *bool
+	MaxOutputTokens *uint64
+	MaxSteps        *int
+	Timeout         *time.Duration
+	IdleTimeout     *time.Duration
+	MaxConcurrent   *int
+	RateLimit       *float64
+	BudgetTokens    *uint64
+	BudgetUSD       *float64
+	ReasoningEffort *string
+	NativeSearch    *bool
+	VerifyMode      *string
+	VerifyScope     *string
+	VerifyOnFailure *string
+	VerifyCommand   *string
+	VerifyRepair    *int
+	VerifyTimeout   *time.Duration
+
+	SubagentMaxDepth    *int
+	SubagentMaxParallel *int
+	SubagentMaxSteps    *int
+	SubagentMaxTokens   *uint64
+	SubagentMaxCostUSD  *float64
+	SubagentWallTime    *time.Duration
+	SubagentWorkspace   *string
+
+	WorkerEnabled            *bool
+	WorkerMaxParallel        *int
+	WorkerMaxAttempts        *int
+	WorkerLease              *time.Duration
+	WorkerClaimInterval      *time.Duration
+	WorkerAutomationInterval *time.Duration
+	WorkerRetryBackoff       *time.Duration
+	WorkerRetryBackoffMax    *time.Duration
+	WorkerMaxTokens          *uint64
+	WorkerMaxCostUSD         *float64
+
+	VisionEnabled    *bool
+	VisionProvider   *string
+	VisionModel      *string
+	WebSearchBackend *string
+
+	// RouteLock forbids falling back to the act route. Slots themselves are
+	// configuration-only: six purposes worth of provider/model flags would crowd
+	// every command's help for something a reproducible run states in a file.
+	RouteLock *bool
+}

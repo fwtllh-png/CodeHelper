@@ -55,6 +55,23 @@ supporting persistence/resume. Other command groups inspect config, models,
 auth, threads, tasks, workflows, fleet/lane, MCP, skills, plugins, metrics, and
 diagnostics without duplicating Runtime logic.
 
+## Setup, Readiness, and Command Truth
+
+The onboarding path is an executable contract:
+
+- `setup` configures Provider, Model, Credential Reference, probe, sandbox, and
+  Fixture in interactive or scripted mode;
+- `config profile` selects `minimal`, `recommended`, or `advanced` disclosure;
+- `config explain FIELD` reports value, source, default, risk, and impact;
+- `quickstart` runs a no-network, no-secret governed Turn with verification
+  and Receipt;
+- Readiness reports `ready`, `degraded`, or `blocked` with repair actions.
+
+Cobra is the command source of truth. Root help and the bilingual command
+catalog are generated and checked by `make command-docs-check`; adding a
+hidden implementation without updating the tree is not a supported CLI
+feature.
+
 ## Three Output Channels
 
 | Channel | Contract |
@@ -93,6 +110,7 @@ winning source without printing secret values.
 ```bash
 go test ./internal/host/cli
 make cli-smoke
+make command-docs-check
 ```
 
 ## Hands-On Lab

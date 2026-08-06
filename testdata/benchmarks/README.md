@@ -23,8 +23,11 @@
 | `category` | 能力维度，用于报告分组 |
 | `note` | 任务意图；若断言锁定的是**当前行为**而非期望行为，必须在此说明 |
 | `prompt` | 用户 prompt，需与 `fixture.json` 的 `expected_prompt` 一致 |
+| `provider_fixture` | 可选；相对任务目录复用另一套 hermetic Provider Fixture |
 | `tools` | 是否启用内置工具 |
 | `posture` | 权限姿态（`suggest`/`auto`/`bypass`/`never`），缺省 `auto` |
+| `approval_decision` | 自动回答停驻 Approval；仅接受 Protocol Decision（如 `approve`） |
+| `budget_tokens` | Session Token Budget；用于验证首请求前的硬门禁 |
 | `mode` | 工具模式（`plan`/`act`/`operate`），缺省取配置默认 |
 | `max_steps` | Agent 步数上限 |
 | `timeout_ms` | 单任务超时，缺省 2 分钟 |
@@ -48,8 +51,11 @@
 | `verify_status` | 最后一次门禁结论：`passed` / `failed` / `unavailable` / `not_evaluated` |
 | `verify_action` | 门禁对结论的处置：`passed` / `repair` / `reported` / `failed` / `reverted` / `skipped` |
 | `verify_repairs` | 门禁实际消耗的修复轮数，用来证明"确实修了"而不是"恰好通过" |
+| `approvals` | 必须停驻并由 Harness 回答的 Approval 数量 |
+| `approval_decision` | Harness 实际提交的 Approval Decision |
 | `context_sections` | `turn.receipt` 必须报告的上下文分区（如 `repo_map` / `working_set_ledger`），用来证明尾块真的装配了而不是被静默跳过 |
 | `context_truncated` | 必须报告被预算截断的分区 |
+| `context_selections` | 路径 → 必须报告的 Kind、进入原因、Evidence Kind 与逐条截断状态 |
 | `receipt_read_paths` | `turn.receipt` 必须报告的读取路径全集 |
 | `receipt_evidence_kinds` | 收据的 `evidence.facts` 必须至少各出现一次的分类（`definition` / `reference` / `test` / `config` / `text_match`），用来证明命中被**分了类**而不只是被计了数 |
 | `receipt_evidence_risks` | 收据的 `evidence.risks` 必须报告的风险类型（如 `changed_without_verification`） |
@@ -68,3 +74,11 @@
 - **尾块片段怎么断言**：易变尾块以 `RoleSystem` 追加在 history 之后，段头是 `[repo_map turn=N index=<status>]` 与 `[working_set turn=N]`，可直接写进 `expected_request_fragments`。`turn` 从 1 开始；同一 turn 内每次采样都会重建尾块，所以「第一步读的文件出现在第二个请求的工作集里」是可断言的（见 `working-set-evolution`）。仓库地图每 turn 只取一次索引快照，因此**同 turn 内新读文件的符号轮廓不会立刻出现**。
 - **证据尾块与 coding policy 怎么断言**：段头是 `[evidence turn=N]`，内部顺序固定为 `wasted effort:` → `unproved, and yours to close:` → `what lookups established:`（截断保前缀，最该被读到的排最前）。事实行形如 `auth/token.go:3 definition Verify (search_definition, turn 1)`，写片段时只取前半段更抗改动。coding policy 是**稳定前缀**，从第一个请求起就在，可用 `Coding method:` 断言。证据只在非空时才成段，所以第一个请求不会有 `evidence` 分区。
 - **`file_patch` 不进基准**：它 shell out `git apply` 且要求强沙箱，macOS 沙箱会拦住 git 对临时文件的写入，任务只会超时。多文件事务的等价证明由 `edit-transaction-*` 三个任务承担——`file_apply` 不依赖 git，参数里也同样没有单一 `path` 字段。
+
+## Benchmark V2
+
+`docs/benchmark-v2.json` 是六条用户旅程及其能力分层的权威清单：
+Cross-file Edit、Test Selection、Crash Recovery、Approval、Budget 和 Host Replay。
+`make benchmark-v2` 先校验清单与 Evidence，再运行 Fixture Benchmark、Workspace
+Journal Recovery 和 ACP Replay。需要 Strong Sandbox 的任务明确归入
+`platform-capability`，不会在 Hermetic Lane 中静默伪装为绿色。

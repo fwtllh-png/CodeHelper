@@ -24,7 +24,11 @@ func newGitWorkspace(t *testing.T) string {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is unavailable")
 	}
-	workspace := t.TempDir()
+	workspace, err := os.MkdirTemp("", "codehelper-git-workspace-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { removeGitWorkspace(t, workspace) })
 	if err := os.WriteFile(
 		filepath.Join(workspace, "README.md"), []byte("fixture\n"), 0o600,
 	); err != nil {
@@ -35,6 +39,8 @@ func newGitWorkspace(t *testing.T) string {
 		{"config", "user.email", "fixture@example.com"},
 		{"config", "user.name", "Fixture"},
 		{"config", "commit.gpgsign", "false"},
+		{"config", "maintenance.auto", "false"},
+		{"config", "gc.auto", "0"},
 		{"add", "README.md"},
 		{"commit", "--quiet", "-m", "seed"},
 	} {
@@ -46,6 +52,26 @@ func newGitWorkspace(t *testing.T) string {
 		}
 	}
 	return workspace
+}
+
+func removeGitWorkspace(t *testing.T, workspace string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		removeErr := os.RemoveAll(workspace)
+		_, statErr := os.Lstat(workspace)
+		if os.IsNotExist(statErr) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Errorf(
+				"remove Git workspace %s: remove=%v stat=%v",
+				workspace, removeErr, statErr,
+			)
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func openWritingChildSession(t *testing.T, workspace string) *Session {

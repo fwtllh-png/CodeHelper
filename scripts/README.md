@@ -15,6 +15,11 @@ root unless a script explicitly states otherwise.
 | `check-brand.sh` | no | scans tracked source for stale branding |
 | `test-brand-check.sh` | no | self-tests brand scanner behavior |
 | `test-secret-leak.sh` | no | validates binary redaction behavior |
+| `run-test-lane.py` | command-dependent | writes passed, failed, or unavailable JSON lane evidence |
+| `check-hotspot-baseline.go` | no | validates the Stage 0 hotspot freeze and post-split responsibility owners |
+| `commanddocs` | no | generates or checks bilingual command lists from the Cobra tree |
+| `upgradebaseline` | no | writes Stage 0 benchmark metrics and capability availability |
+| `stage3experience` | no | validates the Host Journey contract, usability metrics, and removed product surfaces |
 | `content-fixture-smoke.sh` | no | temporary content-dependency fixtures |
 | `live-model-smoke.sh` | yes | one real provider request; no persistent secret |
 | `package-release.sh` | no | `dist/release`: binaries, checksums, SBOM, manifest |
@@ -40,6 +45,14 @@ Scripts must:
 make docs-check
 make book-check
 make book-navigation
+make command-docs
+make upgrade-baseline
+make test
+make architecture-freeze
+make host-journey-contract
+make experience-baseline
+make test-platform-capability
+make test-integration
 BASE_REF=origin/main make doc-impact
 make release-fact-check
 make doc-external-links

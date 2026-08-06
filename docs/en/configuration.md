@@ -15,10 +15,30 @@ Use these commands to prevent guesswork:
 ```bash
 codehelper config check --config ./codehelper.toml
 codehelper config show --config ./codehelper.toml
+codehelper config explain execution.verify.mode --config ./codehelper.toml
 ```
 
 `config show` includes provenance, allowing an operator to see which source won
-for each field.
+for each field. `config explain` returns the resolved value, built-in default,
+winning source, risk level, and behavioral impact.
+
+## Configuration Profiles
+
+Profiles control how many defaults are written explicitly; they do not create
+different runtime defaults.
+
+| Profile | Intended use |
+| --- | --- |
+| `minimal` | first successful local or fixture turn |
+| `recommended` | normal repository work with context, journal, and soft verification |
+| `advanced` | review of limits, workers, subagents, and context budgets |
+
+Render a profile or select one during setup:
+
+```bash
+codehelper config profile --profile minimal --workspace . --data-dir .codehelper
+codehelper setup --workspace . --profile recommended --interactive
+```
 
 ## Complete Practical Example
 
@@ -200,6 +220,12 @@ Scopes:
 - `repository`: detected or explicit repository command;
 - `affected`: checks inferred from changed paths.
 
+Affected verification supports Go package tests, JavaScript/TypeScript test
+files, Python pytest files, and Rust Cargo tests. Build or lock manifest changes
+widen to the language repository suite. Every `turn.verification` check includes
+the derivation reason for its command. Paths with no supported topology remain
+explicitly `unavailable`; they never become a silent green pass.
+
 Use `hard` only after the repository's verification command is deterministic in
 the intended sandbox.
 
@@ -223,6 +249,12 @@ interrupted turns. Keep it enabled for real repositories.
 - `evidence`: facts established, risks, and unverified changes;
 - `coding_policy`: stable method instructions;
 - `compact`: when and how long history is summarized.
+
+`search_definition` and `search_references` accept an optional `path`, `line`,
+and `character`. With a concrete position they prefer the injected language
+provider; otherwise, or when that provider is unavailable, they use the lexical
+repository index. Results always identify `resolution`, `source`, `version`,
+and `confidence`; a failed semantic attempt also records the fallback reason.
 
 Disabling context sections can reduce input size but also increases repeated
 search and weakens continuity. Adjust bounds before disabling them.

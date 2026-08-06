@@ -34,12 +34,16 @@ Event, projection, and safe Webview/native UI rendering.
 2. Capture bounded editor context with Workspace identity.
 3. Submit an existing typed Operation; extend generated Protocol only if needed.
 4. Project known and unknown Events without trusting display content.
-5. Add unit, architecture, and Runtime integration tests.
+5. Prefer Native Diff, Quick Pick, Progress, or Tree View for platform
+   interaction; keep Webview code limited to Chat presentation.
+6. Define Setup, loading, streaming, approval, verification, failure, recovery,
+   and completion feedback with keyboard-only and screen-reader paths.
+7. Add unit, architecture, experience, and Runtime integration tests.
 
 ```bash
 cd extensions/vscode
 npm run check
-npm test
+npm test -- experience
 ```
 
 Optionally run the Electron gate when its downloaded VS Code environment is

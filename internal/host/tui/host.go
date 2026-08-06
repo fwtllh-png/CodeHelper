@@ -361,7 +361,22 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 		if data == nil {
 			return nil
 		}
+		summary := ""
+		if data.VerificationDetail != nil {
+			workspace := "unknown"
+			if data.WorkspaceOutcome != nil {
+				workspace = data.WorkspaceOutcome.Status
+			}
+			summary = fmt.Sprintf(
+				"receipt verify=%s action=%s repairs=%d workspace=%s",
+				data.VerificationDetail.FinalStatus,
+				data.VerificationDetail.Action,
+				data.VerificationDetail.RepairSteps,
+				workspace,
+			)
+		}
 		return streamMsg{
+			text:           summary,
 			contextSummary: formatContextSections(data),
 			// The receipt settles the turn: it is the only carrier of the thread's
 			// budget pool and of the latency partition, and its totals supersede the
@@ -401,15 +416,35 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 // the turn read, and how close the history is to being summarized away. It is one
 // line because /context reports it inline rather than in a panel.
 func formatContextSections(receipt *protocol.ExecutionReceiptData) string {
-	if len(receipt.ContextSections) == 0 && len(receipt.ReadPaths) == 0 &&
+	if len(receipt.ContextSections) == 0 && len(receipt.ContextSelections) == 0 &&
+		len(receipt.ReadPaths) == 0 &&
 		receipt.ContextBudget == nil {
 		return ""
 	}
-	parts := make([]string, 0, len(receipt.ContextSections)+2)
+	parts := make(
+		[]string, 0, len(receipt.ContextSections)+len(receipt.ContextSelections)+2,
+	)
 	for _, section := range receipt.ContextSections {
 		part := fmt.Sprintf("%s %dB", section.Kind, section.RetainedBytes)
 		if section.Truncated {
 			part += " (cut:" + section.TruncationReason + ")"
+		}
+		parts = append(parts, part)
+	}
+	for _, selection := range receipt.ContextSelections {
+		part := fmt.Sprintf(
+			"%s [%s] via %s", selection.Path, selection.Kind,
+			strings.Join(selection.Reasons, ","),
+		)
+		if len(selection.Evidence) != 0 {
+			fact := selection.Evidence[0]
+			part += fmt.Sprintf(" evidence=%s", fact.Kind)
+			if fact.Tool != "" {
+				part += "/" + fact.Tool
+			}
+		}
+		if selection.Truncated {
+			part += " (cut:" + selection.TruncationReason + ")"
 		}
 		parts = append(parts, part)
 	}

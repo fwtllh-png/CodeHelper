@@ -1,0 +1,7 @@
+{
+  "root_files": ["package.json", "pnpm-lock.yaml"],
+  "paths": ["src/service.ts"],
+  "related": {"src/service.ts": ["src/service.test.ts"]},
+  "want_command": "pnpm test -- src/service.test.ts",
+  "want_reason": "test naming conventions"
+}

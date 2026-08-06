@@ -237,9 +237,31 @@ func openChatWorkspaceSession(t *testing.T, workspace string) *Session {
 		if session.Runtime == nil {
 			return
 		}
+		discardChatWorkspaces(t, session)
 		closeSession(t, session)
 	})
 	return session
+}
+
+func discardChatWorkspaces(t *testing.T, session *Session) {
+	t.Helper()
+	manager := session.chatWorkspaces
+	if manager == nil {
+		return
+	}
+	manager.mu.Lock()
+	workspaces := make([]chatWorkspace, 0, len(manager.sessions))
+	for _, workspace := range manager.sessions {
+		workspaces = append(workspaces, workspace)
+	}
+	manager.mu.Unlock()
+	for _, workspace := range workspaces {
+		if err := manager.Discard(
+			context.Background(), workspace.sessionID, workspace.threadID,
+		); err != nil {
+			t.Errorf("discard Chat worktree %s: %v", workspace.sessionID, err)
+		}
+	}
 }
 
 func closeSession(t *testing.T, session *Session) {

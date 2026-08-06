@@ -502,11 +502,16 @@ func runRuntimeTurn(
 				if err != nil {
 					return "", err
 				}
+				planID := ""
+				if request.EditPlan != nil {
+					planID = request.EditPlan.ID
+				}
 				decision, err := protocol.NewOperation(&protocol.ApprovalDecisionPayload{
 					ThreadID: threadID, TurnID: turnID, ItemID: decisionItemID,
 					RequestID: request.RequestID, Decision: decisionValue,
 					Scope: scope, ExpiresAt: request.ExpiresAt,
 					ReplacementArguments: replacement,
+					PlanID:               planID,
 				})
 				if err != nil {
 					return "", err

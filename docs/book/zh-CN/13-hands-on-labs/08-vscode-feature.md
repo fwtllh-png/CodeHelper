@@ -33,12 +33,16 @@ last_verified: 2026-08-06
 2. 携带 Workspace Identity 捕获 Bounded Editor Context。
 3. 提交 Existing Typed Operation；必要时才扩展 Generated Protocol。
 4. 投影 Known/Unknown Event，不信任 Display Content。
-5. 添加 Unit、Architecture、Runtime Integration Test。
+5. 平台交互优先使用 Native Diff、Quick Pick、Progress 或 Tree View；Webview 只承担
+   Chat Presentation。
+6. 定义 Setup、Loading、Streaming、Approval、Verification、Failure、Recovery、
+   Completion Feedback，并覆盖 Keyboard-only 与 Screen-reader Path。
+7. 添加 Unit、Architecture、Experience、Runtime Integration Test。
 
 ```bash
 cd extensions/vscode
 npm run check
-npm test
+npm test -- experience
 ```
 
 有下载好的 VS Code Environment 时，可选运行 Electron Gate。

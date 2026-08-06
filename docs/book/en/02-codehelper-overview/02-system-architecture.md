@@ -109,6 +109,11 @@ anything below.” For example, a Host may import protocol and application
 facades, but not concrete tool, provider, Agent Engine, or sandbox
 implementations.
 
+The supported product Hosts are CLI, TUI, VS Code, and ACP. Provider HTTP,
+MCP HTTP/SSE, and local fixture listeners are integration transports, not
+product Hosts. Root `web`/`serve`, embedded UI, pairing/QR, and REST/SSE are
+not supported product surfaces.
+
 ## Package Layers
 
 | Layer | Path | Owns |
@@ -137,6 +142,10 @@ implementations.
 `internal/host/cli/architecture_test.go` parses imports and fails when the CLI
 depends directly on execution implementations. Architecture is therefore a
 tested property.
+
+`docs/hotspot-baseline.json` freezes responsibility and file-size boundaries
+for TUI, Engine, Config, and Protocol. Characterization, Golden, Schema drift,
+and Race tests protect behavior while those responsibilities evolve.
 
 ## Runtime Protocol
 
@@ -230,7 +239,7 @@ encodes the same route described by the diagram.
 ## Review Questions
 
 1. Why is `wire` allowed to import concrete implementations while Hosts are not?
-2. What makes HTTP and ACP two transports rather than two runtimes?
+2. Why are Provider/MCP HTTP transports not CodeHelper product Hosts?
 3. Which durable component should own recovery from a half-applied edit?
 4. For a new capability, what are its control, data, and construction paths?
 

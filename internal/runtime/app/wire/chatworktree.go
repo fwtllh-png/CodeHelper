@@ -513,7 +513,7 @@ func (c *chatWorkspaces) git(
 	arguments ...string,
 ) (string, error) {
 	result, err := process.Run(ctx, process.Options{
-		Path: gitExecutable(), Args: arguments, Dir: directory,
+		Path: gitExecutable(), Args: managedGitArguments(arguments), Dir: directory,
 	})
 	if err != nil {
 		return "", err

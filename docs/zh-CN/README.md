@@ -45,9 +45,10 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 2. [安全模型](./security.md)
 3. [本地开发与脚本](./development.md)
 4. [Agent 指南](./agent-guide.md)
-5. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
-6. [文档治理](./documentation-governance.md)
-7. [后续规划](./roadmap.md)
+5. [TUI 与 VS Code 体验契约](./experience.md)
+6. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
+7. [文档治理](./documentation-governance.md)
+8. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 
@@ -59,6 +60,7 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 | 架构边界 | Import 图和 Architecture Test |
 | 构建测试命令 | `Makefile` 与扩展 package scripts |
 | VS Code 兼容范围 | `extensions/vscode/compatibility.json` |
+| TUI 与 VS Code 体验语义 | `docs/experience-contract.json` |
 | 知识书籍结构与建设阶段 | `knowledge-base-plan.md` |
 | 书籍目录与章节状态 | `docs/book/catalog.json` |
 | 书籍 Ownership、新鲜度与发布事实 | `docs/book/governance.json` |

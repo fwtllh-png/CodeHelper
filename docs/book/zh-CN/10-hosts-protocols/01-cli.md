@@ -50,6 +50,20 @@ Formal Command 提供稳定 Machine-readable Output 与 Structured Problem Code�
 Persistence/Resume。Config、Model、Auth、Thread、Task、Workflow、Fleet/Lane、MCP、
 Skill、Plugin、Metrics 等命令只调用共享 Runtime/Repository。
 
+## Setup、Readiness 与命令事实
+
+Onboarding Path 是可执行契约：
+
+- `setup` 以交互或脚本模式配置 Provider、Model、Credential Reference、Probe、
+  Sandbox 和 Fixture；
+- `config profile` 选择 `minimal`、`recommended` 或 `advanced` Disclosure；
+- `config explain FIELD` 返回 Value、Source、Default、Risk 和 Impact；
+- `quickstart` 在无网络、无 Secret 条件下运行带 Verification 与 Receipt 的受治理 Turn；
+- Readiness 返回 `ready`、`degraded` 或 `blocked` 及 Repair Action。
+
+Cobra 是命令事实源。Root Help 与双语命令清单由 `make command-docs-check` 生成和检查；
+只增加隐藏实现而不更新 Command Tree，不构成受支持的 CLI Feature。
+
 ## 三个 Output Channel
 
 | Channel | Contract |
@@ -85,6 +99,7 @@ Diagnostic 说明 Winning Source，但不打印 Secret Value。
 ```bash
 go test ./internal/host/cli
 make cli-smoke
+make command-docs-check
 ```
 
 ## 动手实验

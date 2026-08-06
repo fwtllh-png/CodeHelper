@@ -13,8 +13,13 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.Date=$(BUILD_DATE)
 
-.PHONY: fmt verify test race build cross-build smoke docs-check book-check \
-	book-navigation doc-governance-check doc-governance-test doc-impact \
+.PHONY: fmt verify test test-hermetic test-platform-capability test-integration \
+	test-release integration-gate release-gate race build cross-build smoke \
+	docs-check book-check experience-check experience-baseline \
+	experience-electron-baseline host-journey-contract \
+	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-freeze \
+	book-navigation command-docs command-docs-check \
+	doc-governance-check doc-governance-test doc-impact \
 	doc-external-links release-fact-check brand-check \
 	security-test sandbox-attack-test secret-leak-test live-model-smoke \
 	cli-smoke tui-smoke acp-interop protocol-contract protocol-schema \
@@ -26,12 +31,28 @@ LDFLAGS := -s -w \
 	vscode-multiroot-integration vscode-update-integration \
 	vscode-distribution vscode-local-setup vscode-matrix-report vscode-rc \
 	deepseek-init deepseek-tui deepseek-vscode \
-	bench catalog-bench package clean
+	bench upgrade-baseline catalog-bench package clean
 
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
 
 FUZZTIME ?= 30s
 RELEASE_STAGE ?= experimental
+TEST_LANE_REPORT_DIR ?= .tmp/test-lanes
+TEST_PACKAGE_PARALLELISM ?= 1
+TEST_HOME ?= $(CURDIR)/.tmp/test-home
+TEST_GOPATH ?= $(shell $(GO) env GOPATH)
+TEST_GOMODCACHE ?= $(shell $(GO) env GOMODCACHE)
+TEST_GOCACHE ?= $(shell $(GO) env GOCACHE)
+UPGRADE_BASELINE_REPORT ?= docs/upgrade-baseline.json
+TEST_HOME_ENV := HOME='$(TEST_HOME)' GOPATH='$(TEST_GOPATH)' \
+	GOMODCACHE='$(TEST_GOMODCACHE)' GOCACHE='$(TEST_GOCACHE)'
+PLATFORM_CAPABILITY_ARGS := --available-on darwin --available-on linux
+
+ifeq ($(shell uname -s 2>/dev/null),Darwin)
+PLATFORM_CAPABILITY_ARGS += --requires-command sandbox-exec
+else ifeq ($(shell uname -s 2>/dev/null),Linux)
+PLATFORM_CAPABILITY_ARGS += --requires-command bwrap
+endif
 
 fmt:
 	$(GO) fmt ./...
@@ -39,11 +60,68 @@ fmt:
 verify: docs-check book-check brand-check vscode-check vscode-test
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
 	$(GO) vet ./...
-	$(GO) test ./...
+	$(MAKE) test-hermetic
 	$(GO) test -race -p 1 ./...
 
-test:
-	$(GO) test ./...
+test: test-hermetic
+
+hotspot-baseline:
+	$(GO) test -count=1 ./scripts -run 'Test(RepositoryHotspotBaseline|CheckHotspot)'
+	$(GO) run ./scripts/check-hotspot-baseline.go -root .
+
+# Architecture behavior freeze. Package tests carry characterization, visual/wire
+# goldens, config provenance drift, state transitions, and schema drift. Race is
+# focused on the concurrent TUI and turn engine.
+architecture-freeze: hotspot-baseline
+	@mkdir -p '$(TEST_HOME)'
+	$(TEST_HOME_ENV) $(GO) test -count=1 \
+		./internal/host/tui \
+		./internal/runtime/agent/engine \
+		./internal/config \
+		./internal/runtime/protocol
+	$(TEST_HOME_ENV) $(GO) test -race -count=1 \
+		./internal/host/tui \
+		./internal/runtime/agent/engine
+
+# Hermetic is the default developer lane: no network, live credentials, GUI,
+# or host sandbox capability. Serial package execution avoids resource flakes.
+test-hermetic:
+	@mkdir -p '$(TEST_HOME)'
+	python3 scripts/run-test-lane.py hermetic \
+		--report '$(TEST_LANE_REPORT_DIR)/hermetic.json' \
+		-- env $(TEST_HOME_ENV) $(GO) test -count=1 \
+			-p '$(TEST_PACKAGE_PARALLELISM)' ./...
+
+# Capability tests are compiled only in this lane. Missing host prerequisites
+# produce an explicit unavailable report; CI sets CAPABILITY_REQUIRED.
+test-platform-capability:
+	CODEHELPER_SANDBOX_STAGE=1 python3 scripts/run-test-lane.py platform-capability \
+		--report '$(TEST_LANE_REPORT_DIR)/platform-capability.json' \
+		--unavailable-pattern sandbox_unavailable \
+		$(PLATFORM_CAPABILITY_ARGS) $(CAPABILITY_REQUIRED) \
+		-- $(GO) test -tags=capability -count=1 \
+			./internal/security/sandbox/... ./internal/platform/process/...
+
+test-integration:
+	python3 scripts/run-test-lane.py integration \
+		--report '$(TEST_LANE_REPORT_DIR)/integration.json' \
+		--requires-command go --requires-command npm \
+		$(INTEGRATION_REQUIRED) \
+		-- $(MAKE) integration-gate
+
+integration-gate: build vscode-install
+	$(MAKE) acp-interop
+	$(MAKE) vscode-runtime-integration
+
+test-release:
+	python3 scripts/run-test-lane.py release \
+		--report '$(TEST_LANE_REPORT_DIR)/release.json' \
+		--requires-command go --requires-command npm \
+		--unavailable-pattern sandbox_unavailable \
+		--require-available \
+		-- $(MAKE) release-gate
+
+release-gate: cross-build smoke race secret-leak-test benchmark-v2 vscode-release-dry-run
 
 race:
 	$(GO) test -race -p 1 ./...
@@ -64,7 +142,7 @@ smoke: build
 	./$(BINARY) version
 	./$(BINARY) version --json
 
-docs-check:
+docs-check: command-docs-check experience-check benchmark-v2-check
 	./scripts/check-docs.sh
 	$(MAKE) doc-governance-check
 	$(MAKE) doc-governance-test
@@ -74,6 +152,33 @@ book-check:
 
 book-navigation:
 	python3 scripts/render-book-navigation.py
+
+command-docs:
+	$(GO) run ./scripts/commanddocs
+
+command-docs-check:
+	$(GO) run ./scripts/commanddocs --check
+
+experience-check:
+	$(GO) run ./scripts/experiencecontract
+
+experience-baseline: experience-check vscode-install
+	$(GO) test ./internal/host/tui -run VisualSnapshot -count=1
+	cd $(VSCODE_DIR) && $(NPM) run check
+	cd $(VSCODE_DIR) && $(NPM) test -- experience
+
+experience-electron-baseline: build vscode-install
+	cd $(VSCODE_DIR) && \
+		CODEHELPER_VSCODE_BINARY='$(CURDIR)/$(BINARY)' \
+		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
+		CODEHELPER_ELECTRON_SCENARIOS=empty,workspace \
+		$(NPM) run test:electron
+
+host-journey-contract: vscode-install
+	$(GO) test -count=1 ./internal/host/runtimeapi/acp -run MeetsTheProtocolContract
+	$(GO) test -count=1 ./internal/host/cli -run Quickstart
+	$(GO) test -count=1 ./internal/host/tui -run HostJourney
+	cd $(VSCODE_DIR) && $(NPM) test -- experience
 
 doc-governance-check:
 	python3 scripts/check-doc-governance.py check
@@ -100,8 +205,11 @@ security-test:
 	$(GO) test -race ./internal/platform/process/... -run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunSanitizesRegularAndPTYEnvironments|RunPinsWorkingDirectoryToDescriptor|SanitizedEnvironment)'
 
 sandbox-attack-test:
-	$(GO) test -race ./internal/security/sandbox/... ./internal/adapter/tool/file/... ./internal/adapter/tool/shell/...
-	$(GO) test -race ./internal/platform/process/... -run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunPinsWorkingDirectoryToDescriptor|SessionCancellationKillsProcessGroup|RealSandboxAttackCorpus)'
+	CODEHELPER_SANDBOX_STAGE=1 $(GO) test -tags=capability -race \
+		./internal/security/sandbox/... ./internal/adapter/tool/file/... ./internal/adapter/tool/shell/...
+	CODEHELPER_SANDBOX_STAGE=1 $(GO) test -tags=capability -race \
+		./internal/platform/process/... \
+		-run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunPinsWorkingDirectoryToDescriptor|SessionCancellationKillsProcessGroup|RealSandboxAttackCorpus)'
 
 secret-leak-test: build
 	./scripts/test-secret-leak.sh ./$(BINARY)
@@ -269,7 +377,24 @@ vscode-rc:
 # bench runs the hermetic coding benchmark (fixture provider, no network/model).
 # Set BENCH_REPORT to write the JSON report for tracking across runs.
 bench:
-	CODEHELPER_BENCH_REPORT='$(BENCH_REPORT)' $(GO) test -count=1 -v ./internal/host/bench/...
+	CODEHELPER_BENCH_REPORT='$(BENCH_REPORT)' $(GO) test -tags=capability \
+		-count=1 -v ./internal/host/bench/...
+
+benchmark-v2-check:
+	$(GO) test -count=1 ./scripts/benchmarkv2
+	$(GO) run ./scripts/benchmarkv2 -root .
+
+benchmark-v2: benchmark-v2-check bench
+	$(GO) test -count=1 -run 'Recovery' ./internal/persist/workspacejournal
+	$(GO) test -count=1 \
+		-run 'TestBinaryInterop(ReplayPagesMatchLiveStream|RestartLoadsSessionAndReplays)' \
+		./internal/host/runtimeapi/acp
+
+# upgrade-baseline writes the versioned coding baseline. The report preserves
+# failed task evidence and exits non-zero unless every declared task passes.
+upgrade-baseline:
+	$(GO) run ./scripts/upgradebaseline \
+		--output '$(UPGRADE_BASELINE_REPORT)'
 
 # catalog-bench tracks the M4 dynamic tool catalog's time, allocation, and
 # prompt-size baseline at 100/500/1000 tools.

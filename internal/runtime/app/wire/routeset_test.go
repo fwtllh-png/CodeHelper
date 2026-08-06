@@ -17,6 +17,26 @@ func bundledAct() execRouteOptions {
 	return execRouteOptions{ProviderID: "anthropic", ModelID: "claude-sonnet"}
 }
 
+func TestExplicitCredentialReferenceOverridesCatalogRoute(t *testing.T) {
+	route, err := resolveExecRoute(execRouteOptions{
+		ProviderID: "openai",
+		ModelID:    "gpt-4.1",
+		Credential: model.CredentialRef{
+			Kind: "env",
+			Name: "WORKSPACE_OPENAI_KEY",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Credential() != (model.CredentialRef{
+		Kind: "env",
+		Name: "WORKSPACE_OPENAI_KEY",
+	}) {
+		t.Fatalf("credential=%+v", route.Credential())
+	}
+}
+
 func TestASessionWithoutSlotsRoutesEveryPurposeToAct(t *testing.T) {
 	routes, err := resolveRouteSet(routeSetOptions{Act: bundledAct()})
 	if err != nil {

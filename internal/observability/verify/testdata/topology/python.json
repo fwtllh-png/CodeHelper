@@ -1,0 +1,7 @@
+{
+  "root_files": ["pyproject.toml"],
+  "paths": ["app/service.py"],
+  "related": {"app/service.py": ["app/test_service.py"]},
+  "want_command": "python3 -m pytest app/test_service.py",
+  "want_reason": "test naming conventions"
+}

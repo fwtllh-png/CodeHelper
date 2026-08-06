@@ -1,0 +1,672 @@
+{
+  "schema_version": 1,
+  "platform": "darwin/arm64",
+  "total": 24,
+  "available": 24,
+  "unavailable": 0,
+  "failed": 0,
+  "passed": 24,
+  "results": [
+    {
+      "task": "budget-exhaustion",
+      "category": "budget",
+      "status": "passed",
+      "passed": true,
+      "terminal": "failed",
+      "duration_ms": 5,
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 0,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "compact-priority-truncation",
+      "category": "context_assembly",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 930,
+      "tools_succeeded": [
+        "update_plan",
+        "search_text",
+        "file_read",
+        "file_edit"
+      ],
+      "tools_failed": [
+        "file_rewrite"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "unavailable",
+      "verify_action": "passed",
+      "input_tokens": 160,
+      "output_tokens": 19,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 2,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "compact-recursive-carryover",
+      "category": "context_assembly",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 479,
+      "tools_succeeded": [
+        "update_plan",
+        "file_read"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 266,
+      "output_tokens": 33,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 3,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "compact-structured-sections",
+      "category": "context_assembly",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 516,
+      "tools_succeeded": [
+        "update_plan",
+        "search_text",
+        "file_read",
+        "file_edit"
+      ],
+      "tools_failed": [
+        "file_rewrite"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "unavailable",
+      "verify_action": "passed",
+      "input_tokens": 160,
+      "output_tokens": 19,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 2,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "context-budget-truncation",
+      "category": "context_assembly",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 374,
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 66,
+      "output_tokens": 14,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "edit-transaction-move",
+      "category": "edit_transaction",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 356,
+      "tools_succeeded": [
+        "file_read",
+        "file_apply"
+      ],
+      "receipt_changes": [
+        "new_name.py",
+        "old_name.py"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "unavailable",
+      "verify_action": "passed",
+      "input_tokens": 64,
+      "output_tokens": 8,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "edit-transaction-multi-file",
+      "category": "edit_transaction",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 469,
+      "tools_succeeded": [
+        "file_read",
+        "file_apply"
+      ],
+      "receipt_changes": [
+        "NOTES.md",
+        "api.py",
+        "helpers.py",
+        "legacy.py"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "unavailable",
+      "verify_action": "passed",
+      "input_tokens": 64,
+      "output_tokens": 8,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "edit-transaction-rollback",
+      "category": "edit_transaction",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 413,
+      "tools_succeeded": [
+        "file_read"
+      ],
+      "tools_failed": [
+        "file_apply"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 64,
+      "output_tokens": 8,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "evidence-search-classification",
+      "category": "context_assembly",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 514,
+      "tools_succeeded": [
+        "search_definition",
+        "search_references"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 96,
+      "output_tokens": 15,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "evidence-unverified-change",
+      "category": "context_assembly",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 401,
+      "tools_succeeded": [
+        "file_read",
+        "file_edit"
+      ],
+      "receipt_changes": [
+        "server.py"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "unavailable",
+      "verify_action": "passed",
+      "input_tokens": 64,
+      "output_tokens": 12,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "index-degraded",
+      "category": "symbol_locate",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 417,
+      "tools_succeeded": [
+        "search_text"
+      ],
+      "tools_failed": [
+        "search_symbol"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 80,
+      "output_tokens": 16,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "locate-symbol",
+      "category": "symbol_locate",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 324,
+      "tools_succeeded": [
+        "search_text"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 52,
+      "output_tokens": 9,
+      "cached_tokens": 24,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "policy-repeat-search-reminder",
+      "category": "context_assembly",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 453,
+      "tools_succeeded": [
+        "search_text"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 58,
+      "output_tokens": 10,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "related-tests-affected",
+      "category": "verify_gate",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 542,
+      "tools_succeeded": [
+        "search_related_tests",
+        "file_read",
+        "file_edit"
+      ],
+      "receipt_changes": [
+        "pkg/calc.go"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "passed",
+      "verify_action": "passed",
+      "input_tokens": 96,
+      "output_tokens": 12,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "repo-map-orientation",
+      "category": "context_assembly",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 498,
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 74,
+      "output_tokens": 18,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "single-file-fix",
+      "category": "single_file_fix",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 368,
+      "tools_succeeded": [
+        "file_read",
+        "file_edit"
+      ],
+      "receipt_changes": [
+        "calc.py"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "unavailable",
+      "verify_action": "passed",
+      "input_tokens": 48,
+      "output_tokens": 6,
+      "cached_tokens": 16,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 1,
+      "approval_decision": "approve",
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "symbol-lookup",
+      "category": "symbol_locate",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 438,
+      "tools_succeeded": [
+        "search_symbol"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 58,
+      "output_tokens": 11,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "symbol-references",
+      "category": "symbol_locate",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 442,
+      "tools_succeeded": [
+        "search_references"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 72,
+      "output_tokens": 14,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    },
+    {
+      "task": "unread-edit-blocked",
+      "category": "edit_guardrail",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 397,
+      "tools_succeeded": [
+        "file_read",
+        "file_edit"
+      ],
+      "tools_failed": [
+        "file_edit"
+      ],
+      "receipt_changes": [
+        "settings.py"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "unavailable",
+      "verify_action": "passed",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 0,
+      "unpriced_calls": 0,
+      "retry_attempts": 1,
+      "approvals": 0,
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "verify-gate-hard-fail",
+      "category": "verify_gate",
+      "status": "passed",
+      "passed": true,
+      "terminal": "failed",
+      "duration_ms": 442,
+      "tools_succeeded": [
+        "file_read",
+        "file_edit"
+      ],
+      "receipt_changes": [
+        "config.txt"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "failed",
+      "verify_action": "failed",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 0,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "verify-gate-pass",
+      "category": "verify_gate",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 446,
+      "tools_succeeded": [
+        "file_read",
+        "file_edit"
+      ],
+      "receipt_changes": [
+        "status.txt"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "passed",
+      "verify_action": "passed",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 0,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "verify-gate-repair",
+      "category": "verify_gate",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 516,
+      "tools_succeeded": [
+        "file_read",
+        "file_edit"
+      ],
+      "receipt_changes": [
+        "version.txt"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "passed",
+      "verify_action": "passed",
+      "verify_repairs": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 0,
+      "unpriced_calls": 0,
+      "retry_attempts": 1,
+      "approvals": 0,
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "verify-gate-revert",
+      "category": "verify_gate",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 411,
+      "tools_succeeded": [
+        "file_read",
+        "file_edit"
+      ],
+      "receipt_changes": [
+        "config.txt"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "verify_status": "failed",
+      "verify_action": "reverted",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 0,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": true,
+      "verification_covered": true
+    },
+    {
+      "task": "working-set-evolution",
+      "category": "context_assembly",
+      "status": "passed",
+      "passed": true,
+      "terminal": "completed",
+      "duration_ms": 255,
+      "tools_succeeded": [
+        "file_read"
+      ],
+      "receipt_diagnostics": "not_evaluated",
+      "input_tokens": 91,
+      "output_tokens": 12,
+      "cached_tokens": 0,
+      "cost_microunits": 0,
+      "usage_calls": 1,
+      "unpriced_calls": 0,
+      "retry_attempts": 0,
+      "approvals": 0,
+      "verification_applicable": false,
+      "verification_covered": false
+    }
+  ],
+  "categories": {
+    "budget": 1,
+    "context_assembly": 9,
+    "edit_guardrail": 1,
+    "edit_transaction": 3,
+    "single_file_fix": 1,
+    "symbol_locate": 4,
+    "verify_gate": 5
+  },
+  "input_tokens": 1633,
+  "output_tokens": 244,
+  "cached_tokens": 40,
+  "cost_microunits": 0,
+  "duration_ms": 10406,
+  "metrics": {
+    "task_success_rate": {
+      "value": 1,
+      "numerator": 24,
+      "denominator": 24
+    },
+    "latency": {
+      "samples": 24,
+      "p50_ms": 438,
+      "p95_ms": 542
+    },
+    "retry_rate": {
+      "value": 0.08333333333333333,
+      "numerator": 2,
+      "denominator": 24
+    },
+    "verification_coverage": {
+      "value": 1,
+      "numerator": 10,
+      "denominator": 10
+    },
+    "unknown_cost_rate": {
+      "value": 0,
+      "numerator": 0,
+      "denominator": 22
+    },
+    "recovery_success_rate": {
+      "value": 1,
+      "numerator": 2,
+      "denominator": 2
+    },
+    "retry_attempts": 2
+  },
+  "generated_at": "2026-08-06T10:48:41.863181Z"
+}

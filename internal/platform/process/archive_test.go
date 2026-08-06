@@ -44,6 +44,10 @@ func TestAPollerBehindTheBufferStillReadsWhatItMissed(t *testing.T) {
 			t.Fatal(err)
 		}
 		if next.Data == "" {
+			if next.Running {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
 			break
 		}
 		whole.WriteString(next.Data)

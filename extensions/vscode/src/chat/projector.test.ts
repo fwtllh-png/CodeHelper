@@ -151,6 +151,84 @@ void test("ChatProjector preserves unknown events as read-only cards and dedupli
   assert.match(unknown[0] ?? "", /future\.event/);
 });
 
+void test("ChatProjector exposes verification attribution and workspace outcome", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.verification", {
+    scope: "affected",
+    mode: "hard",
+    status: "failed",
+    action: "repair",
+    repair_steps: 1,
+    checks: [{
+      name: "go",
+      command: "go test ./pkg/...",
+      reason: "changed Go package",
+      category: "test_failure",
+      status: "failed",
+    }],
+  }));
+  projector.apply(event(2, "turn.receipt", {
+    goal: "fix package",
+    verification: {
+      diagnostics: "not_evaluated",
+      tests: "passed",
+      verify: "passed",
+    },
+    verification_detail: {
+      mode: "hard",
+      final_status: "passed",
+      action: "passed",
+      repair_steps: 1,
+      attempts: [],
+    },
+    workspace_outcome: {
+      status: "changed",
+      changed: ["pkg/value.go"],
+      non_file_side_effects_reverted: false,
+    },
+    context_selections: [{
+      path: "pkg/value.test.ts",
+      kind: "test",
+      reasons: ["search"],
+      evidence: [{
+        kind: "test",
+        tool: "search_related_tests",
+        turn: 1,
+      }],
+      score: 5,
+      first_turn: 1,
+      last_turn: 1,
+      included: false,
+      truncated: true,
+      truncation_reason: "byte_budget",
+    }],
+    diagnostic_count: 0,
+    approvals_requested: 0,
+    input_tokens: 10,
+    output_tokens: 4,
+    cost_microunits: 0,
+    cost_known: true,
+    latency_ms: 20,
+  }));
+
+  const turn = projector.snapshot().turns[0];
+  assert.match(turn?.verification ?? "", /go test \.\/pkg\/\.\.\.=failed/u);
+  assert.match(turn?.verification ?? "", /test_failure/u);
+  assert.match(turn?.verification ?? "", /changed Go package/u);
+  assert.match(turn?.receipt ?? "", /verify passed action=passed repairs=1/u);
+  assert.match(turn?.receipt ?? "", /workspace changed/u);
+  assert.ok(turn);
+  const selection = turn.contextSelections[0];
+  assert.ok(selection);
+  assert.equal(selection.kind, "test");
+  assert.deepEqual(selection.reasons, ["search"]);
+  assert.deepEqual(
+    selection.evidence,
+    ["test/search_related_tests"],
+  );
+  assert.equal(selection.truncationReason, "byte_budget");
+});
+
 function event(sequence: number, kind: string, data: unknown) {
   return decodeEvent({
     version: 1,

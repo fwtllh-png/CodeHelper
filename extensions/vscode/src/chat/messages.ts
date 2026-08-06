@@ -8,6 +8,8 @@ export type WebviewMessage =
   | { readonly type: "select-root"; readonly rootId: string }
   | { readonly type: "select-chat"; readonly sessionId: string }
   | { readonly type: "new-chat" }
+  | { readonly type: "repair-runtime" }
+  | { readonly type: "run-setup" }
   | { readonly type: "merge-chat"; readonly planId?: string }
   | { readonly type: "stop" }
   | {
@@ -43,6 +45,12 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
     case "new-chat":
       requireKeys(value, ["type"]);
       return { type: "new-chat" };
+    case "repair-runtime":
+      requireKeys(value, ["type"]);
+      return { type: "repair-runtime" };
+    case "run-setup":
+      requireKeys(value, ["type"]);
+      return { type: "run-setup" };
     case "merge-chat":
       requireAllowedMergeKeys(value);
       return {

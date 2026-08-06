@@ -13,6 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -35,6 +36,18 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 // the model is told why they are unavailable rather than left to guess.
 func RegisterWithIndex(
 	registry *tool.Registry, root string, backend sandbox.Backend, index *repoindex.Index,
+) error {
+	return RegisterWithProviders(registry, root, backend, index, nil)
+}
+
+// RegisterWithProviders adds a semantic symbol provider in front of the
+// repository index. The index remains the explicit lexical fallback.
+func RegisterWithProviders(
+	registry *tool.Registry,
+	root string,
+	backend sandbox.Backend,
+	index *repoindex.Index,
+	semantic symbols.Provider,
 ) error {
 	if backend == nil {
 		return fmt.Errorf("search tools require an injected sandbox backend")
@@ -62,7 +75,7 @@ func RegisterWithIndex(
 	}
 	for _, kind := range []string{KindSymbol, KindDefinition, KindReferences, KindRelatedTests} {
 		if err := registry.Register(&symbolTool{
-			kind: kind, index: index, walker: walker,
+			kind: kind, index: index, walker: walker, semantic: semantic,
 		}, nil); err != nil {
 			return err
 		}

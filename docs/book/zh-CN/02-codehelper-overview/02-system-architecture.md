@@ -100,6 +100,10 @@ flowchart TB
 图中的箭头不是“上层可任意调用所有下层”。Host 可以使用 Protocol 和 Application
 Facade，但不能直接依赖 Tool、Provider、Agent Engine 或 Sandbox 实现。
 
+受支持的产品 Host 是 CLI、TUI、VS Code 和 ACP。Provider HTTP、MCP HTTP/SSE 与本地
+Fixture Listener 是集成 Transport，不是产品 Host。Root `web`/`serve`、Embedded UI、
+Pairing/QR 和 REST/SSE 不属于受支持的产品面。
+
 ## Package 分层
 
 | 层 | 路径 | 职责 |
@@ -127,6 +131,9 @@ Facade，但不能直接依赖 Tool、Provider、Agent Engine 或 Sandbox 实现
 
 `internal/host/cli/architecture_test.go` 会解析 Import；CLI 直接依赖执行实现时测试失败。
 架构边界因此是可验证属性。
+
+`docs/hotspot-baseline.json` 冻结 TUI、Engine、Config、Protocol 的职责和文件体积
+边界。Characterization、Golden、Schema Drift 和 Race Test 在职责演进时保护行为。
 
 ## Runtime Protocol
 
@@ -197,7 +204,7 @@ Architecture Test，确认源码路径与架构图一致。
 ## 复习问题
 
 1. 为什么 `wire` 可以依赖具体实现而 Host 不可以？
-2. 什么使 HTTP 与 ACP 成为两个 Transport，而不是两个 Runtime？
+2. 为什么 Provider/MCP HTTP Transport 不是 CodeHelper 产品 Host？
 3. 半完成 Edit 的恢复应由哪个持久化组件负责？
 4. 新 Capability 的 Control、Data、Construction Path 分别是什么？
 

@@ -39,7 +39,10 @@ import {
 import { assertWorkspaceExtensionHost } from "../workspace/host.js";
 import { canonicalEditorURI } from "../workspace/uri.js";
 import { testBuildEnabled } from "../test-mode.js";
-import { resolveBinarySource } from "../binary/source.js";
+import {
+  resolveBinarySource,
+  type ResolvedBinary,
+} from "../binary/source.js";
 import type { BinarySource } from "../binary/store.js";
 import type { RpcNotification } from "./client.js";
 import {
@@ -162,6 +165,34 @@ export class RuntimeController {
 
   public async stop(): Promise<void> {
     await this.#supervisor.stop();
+  }
+
+  public async resolveBinary(): Promise<ResolvedBinary> {
+    const configuration = vscode.workspace.getConfiguration(
+      "codehelper",
+      this.#workspace.uri,
+    );
+    const configured = configuredBinaryPath(
+      configuration.inspect<string>("binaryPath"),
+      vscode.workspace.isTrusted,
+    );
+    const binarySource = configuration.get<BinarySource>("binarySource", "auto");
+    if (!["auto", "external", "managed", "bundled"].includes(binarySource)) {
+      throw new Error("codehelper.binarySource is invalid");
+    }
+    const developmentRoot = this.#context.extensionMode ===
+      vscode.ExtensionMode.Development
+      ? resolve(this.#context.extensionPath, "..", "..")
+      : undefined;
+    return resolveBinarySource({
+      source: binarySource,
+      ...(configured === undefined ? {} : { configuredPath: configured }),
+      ...(developmentRoot === undefined ? {} : { developmentRoot }),
+      extensionPath: this.#context.extensionPath,
+      ...(this.#context.globalStorageUri.scheme === "file"
+        ? { storageRoot: this.#context.globalStorageUri.fsPath }
+        : {}),
+    });
   }
 
   public hostSnapshot(): RuntimeHostSnapshot {
@@ -410,26 +441,7 @@ export class RuntimeController {
       "codehelper",
       this.#workspace.uri,
     );
-    const configured = configuredBinaryPath(
-      configuration.inspect<string>("binaryPath"),
-      vscode.workspace.isTrusted,
-    );
-    const binarySource = configuration.get<BinarySource>("binarySource", "auto");
-    if (!["auto", "external", "managed", "bundled"].includes(binarySource)) {
-      throw new Error("codehelper.binarySource is invalid");
-    }
-    const developmentRoot = this.#context.extensionMode === vscode.ExtensionMode.Development
-      ? resolve(this.#context.extensionPath, "..", "..")
-      : undefined;
-    const resolvedBinary = await resolveBinarySource({
-      source: binarySource,
-      ...(configured === undefined ? {} : { configuredPath: configured }),
-      ...(developmentRoot === undefined ? {} : { developmentRoot }),
-      extensionPath: this.#context.extensionPath,
-      ...(this.#context.globalStorageUri.scheme === "file"
-        ? { storageRoot: this.#context.globalStorageUri.fsPath }
-        : {}),
-    });
+    const resolvedBinary = await this.resolveBinary();
     const binaryPath = resolvedBinary.path;
     const binaryVersion = await verifyBinary(binaryPath);
     assertCompatibleBinary(

@@ -38,7 +38,7 @@ evidence from a live-provider test.
 
 - Go 1.26 or newer, Git, and Make;
 - a local clone of CodeHelper;
-- the four Stage 1 conceptual chapters;
+- the four foundational conceptual chapters in the core reading path;
 - no API key or network access.
 
 ## Why Start with a Fixture?

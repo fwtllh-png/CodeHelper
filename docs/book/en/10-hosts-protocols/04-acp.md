@@ -50,8 +50,10 @@ implemented methods and binds compatibility. Sessions bind exact Workspace
 identity, provider/model selection, Thread, and Event Cursor.
 
 The Server supports Runtime mutations, read queries, dynamic Tool lifecycle,
-and Event notifications using the same Operation/Event contracts as HTTP.
-Replay pages and live notifications preserve Cursor semantics.
+and Event notifications using the shared Runtime Operation/Event contracts.
+Replay pages and live notifications preserve Cursor semantics. Contract tests
+cover Start, Stream, Approve, Input, Cancel, Verify, Recover, and Receipt
+without defining an ACP-specific Turn loop.
 
 EOF and shutdown are stateful: final half-lines are rejected, active Turns are
 cancelled/settled according to protocol, pending calls receive terminal errors,

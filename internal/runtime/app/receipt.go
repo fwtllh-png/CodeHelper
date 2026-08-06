@@ -61,6 +61,8 @@ type turnObservations struct {
 	readPaths []string
 	// context is the prompt context as it was assembled for the turn.
 	context []promptcontext.Receipt
+	// selections explain each working-set path from that same prompt render.
+	selections []promptcontext.Selection
 	// catalog is the exact snapshot used by the turn's latest model sample.
 	catalog *protocol.ReceiptCatalog
 	// evidence is what the session has established and what it has not proved.
@@ -238,14 +240,17 @@ func (r *receiptRecorder) build(observed turnObservations) *protocol.ExecutionRe
 			Tests:       r.testsOutcome(),
 			Verify:      r.verifyOutcome(),
 		},
-		DiagnosticCount: r.diagnosticCount,
-		ContextSections: contextSections(observed.context),
-		EditorContext:   append([]protocol.EditorContextReceipt(nil), r.editorContext...),
-		Catalog:         observed.catalog,
-		ContextBudget:   observed.budget,
-		Evidence:        receiptEvidence(observed.evidence),
-		ReadPaths:       append([]string(nil), observed.readPaths...),
-		InputTokens:     r.usage.InputTokens, OutputTokens: r.usage.OutputTokens,
+		VerificationDetail: verificationDetail(r.verification),
+		WorkspaceOutcome:   workspaceOutcome(r.verification, observed.changes, observed.conflicts),
+		DiagnosticCount:    r.diagnosticCount,
+		ContextSections:    contextSections(observed.context),
+		ContextSelections:  contextSelections(observed.selections),
+		EditorContext:      append([]protocol.EditorContextReceipt(nil), r.editorContext...),
+		Catalog:            observed.catalog,
+		ContextBudget:      observed.budget,
+		Evidence:           receiptEvidence(observed.evidence),
+		ReadPaths:          append([]string(nil), observed.readPaths...),
+		InputTokens:        r.usage.InputTokens, OutputTokens: r.usage.OutputTokens,
 		ReasoningTokens: r.usage.ReasoningTokens, CachedTokens: r.usage.CachedTokens,
 		CostMicrounits: r.usage.CostMicrounits, CostKnown: r.costKnown,
 		LatencyMS:        time.Since(r.started).Milliseconds(),
@@ -328,6 +333,30 @@ func contextSections(receipts []promptcontext.Receipt) []protocol.ReceiptContext
 	return sections
 }
 
+func contextSelections(
+	selections []promptcontext.Selection,
+) []protocol.ReceiptContextSelection {
+	rendered := make([]protocol.ReceiptContextSelection, 0, len(selections))
+	for _, selection := range selections {
+		item := protocol.ReceiptContextSelection{
+			Path: selection.Path, Kind: selection.Kind,
+			Reasons: append([]string(nil), selection.Reasons...),
+			Score:   selection.Score, Critical: selection.Critical,
+			FirstTurn: selection.FirstTurn, LastTurn: selection.LastTurn,
+			Included: selection.Included, Truncated: selection.Truncated,
+			TruncationReason: selection.TruncationReason,
+		}
+		for _, fact := range selection.Evidence {
+			item.Evidence = append(item.Evidence, protocol.ReceiptContextSelectionEvidence{
+				Kind: fact.Kind, Line: fact.Line, Symbol: fact.Symbol,
+				Tool: fact.Tool, Turn: fact.Turn,
+			})
+		}
+		rendered = append(rendered, item)
+	}
+	return rendered
+}
+
 // receiptEvidence renders the evidence set for the audit record. A set with
 // nothing in it produces no section: an absent section says the session found
 // nothing worth recording, which an empty one would not.
@@ -365,11 +394,75 @@ func verificationData(receipt *agentengine.VerificationReceipt) *protocol.TurnVe
 	for _, check := range receipt.Checks {
 		output := strings.TrimSpace(check.Stdout + "\n" + check.Stderr)
 		data.Checks = append(data.Checks, protocol.VerificationCheck{
-			Name: check.Name, Command: check.Command, Status: check.Status,
-			ExitCode: check.ExitCode, Output: output,
+			Name: check.Name, Command: check.Command, Reason: check.Reason, Status: check.Status,
+			Category: check.Category, ExitCode: check.ExitCode, Output: output,
 		})
 	}
 	return data
+}
+
+func verificationDetail(
+	receipt *agentengine.VerificationReceipt,
+) *protocol.ReceiptVerificationDetail {
+	if receipt == nil {
+		return nil
+	}
+	attempts := receipt.Attempts
+	if len(attempts) == 0 {
+		attempts = []verify.Receipt{receipt.Receipt}
+	}
+	detail := &protocol.ReceiptVerificationDetail{
+		Mode: receipt.Mode, FinalStatus: receipt.Status,
+		Action: receipt.Action, RepairSteps: receipt.RepairSteps,
+		Attempts: make([]protocol.ReceiptVerificationAttempt, 0, len(attempts)),
+	}
+	for step, attempt := range attempts {
+		rendered := protocol.ReceiptVerificationAttempt{
+			Step: step, Scope: string(attempt.Scope),
+			Status: attempt.Status, Message: attempt.Message,
+		}
+		for _, check := range attempt.Checks {
+			rendered.Checks = append(rendered.Checks, protocol.VerificationCheck{
+				Name: check.Name, Command: check.Command, Reason: check.Reason,
+				Category: check.Category, Status: check.Status,
+				ExitCode: check.ExitCode,
+				Output:   strings.TrimSpace(check.Stdout + "\n" + check.Stderr),
+			})
+		}
+		detail.Attempts = append(detail.Attempts, rendered)
+	}
+	return detail
+}
+
+func workspaceOutcome(
+	verification *agentengine.VerificationReceipt,
+	changes []agentengine.TurnDiffEntry,
+	rollbackConflicts []string,
+) *protocol.ReceiptWorkspaceOutcome {
+	outcome := &protocol.ReceiptWorkspaceOutcome{Status: "unchanged"}
+	for _, change := range changes {
+		if change.Path != "" {
+			outcome.Changed = appendUniqueString(outcome.Changed, change.Path)
+		}
+	}
+	if len(outcome.Changed) != 0 {
+		outcome.Status = "changed"
+	}
+	if verification != nil && verification.Workspace != nil {
+		outcome.Status = verification.Workspace.Status
+		outcome.Restored = append([]string(nil), verification.Workspace.Restored...)
+		outcome.Conflicts = append([]string(nil), verification.Workspace.Conflicts...)
+		outcome.NonFileSideEffectsReverted =
+			verification.Workspace.NonFileSideEffectsReverted
+		outcome.Note = verification.Workspace.Note
+	}
+	for _, conflict := range rollbackConflicts {
+		outcome.Conflicts = appendUniqueString(outcome.Conflicts, conflict)
+	}
+	if len(outcome.Conflicts) != 0 {
+		outcome.Status = "conflicted"
+	}
+	return outcome
 }
 
 // verifyOutcome reports the verification gate's verdict for the turn.
@@ -392,7 +485,9 @@ func (r *receiptRecorder) verifyOutcome() string {
 // testsOutcome only reports a verdict when the gate actually ran the
 // repository's own commands; the diagnostics scope runs no tests.
 func (r *receiptRecorder) testsOutcome() string {
-	if r.verification == nil || r.verification.Scope != verify.ScopeRepository {
+	if r.verification == nil ||
+		(r.verification.Scope != verify.ScopeRepository &&
+			r.verification.Scope != verify.ScopeAffected) {
 		return protocol.ReceiptNotEvaluated
 	}
 	return r.verifyOutcome()

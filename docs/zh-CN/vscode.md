@@ -27,6 +27,33 @@ VS Code UI 与 Context Bridge
 - External、Managed 或 Bundled Runtime；
 - Signed Managed Update、Rollback 与 Revocation。
 
+## 工作台与键盘主路径
+
+Chat 是主界面；Changes、Threads 和 Approvals 是主要 Review 导航；Agents、Tasks、
+Jobs 和 Usage 默认折叠为 Detail View。Edit Plan 使用原生 Diff Editor，选项使用
+Quick Pick，Setup 使用 Progress，持久化集合使用 Tree View。
+
+使用 `Ctrl+Enter` 或 `Cmd+Enter` 发送，使用 `Escape` 停止活动 Turn。生命周期状态带
+明确展示 Setup、Empty、Loading、Streaming、Approval、Verify、Failure、Recovery 和
+Completed，并给出下一步动作。控件使用 VS Code Theme Token、可见键盘焦点、
+Forced-color Border 和 Reduced Motion。Reasoning 与 Tool Detail 默认折叠，仅在活动
+状态或用户打开时展开。
+
+## 内置 Setup 与 Repair
+
+在已打开且受信任的工作区中执行 `CodeHelper: Setup Workspace`。引导流程会选择
+Provider、Model 和 Credential Reference，将 `recommended` Profile 写入
+`codehelper.toml`，更新工作区 Runtime 设置并重启 Runtime。凭证输入框只接受环境变量
+名、受保护文件路径或 Keyring Key，不要输入 Secret 值。
+
+Runtime 启动失败或 Readiness 降级时，执行 `CodeHelper: Repair Runtime`。该命令会合并
+VS Code Supervisor 启动错误与 `doctor --json`，逐项展示缺失能力的状态、原因、影响和
+修复动作。Binary 解析失败时可直接进入 Settings、托管更新或 Output。Chat 失败面板也
+提供 Setup 和 Repair 按钮。
+
+`CodeHelper: Run Quickstart` 可从 VS Code 启动内置无网络首轮旅程，不修改当前选中的
+工作区。
+
 ## 开发配置
 
 ```bash

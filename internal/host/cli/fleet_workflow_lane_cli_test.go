@@ -151,10 +151,12 @@ func TestHelpSurfaces(t *testing.T) {
 	}
 	out := stdout.String()
 	for _, want := range []string{
-		"fleet list|status|inspect|logs|profile", "worker run|enqueue|list",
-		"workflow validate", "lane start",
-		"auth status|login|logout|list|suggestions|set|clear", "thread list|resume|fork",
-		"mcp serve|list|add|test|status|enable|disable|remove|tools|validate",
+		"codehelper fleet list", "codehelper fleet profile",
+		"codehelper worker run", "codehelper worker enqueue",
+		"codehelper workflow validate", "codehelper lane start",
+		"codehelper auth status", "codehelper auth suggestions",
+		"codehelper thread list", "codehelper thread fork",
+		"codehelper mcp serve", "codehelper mcp validate",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("usage missing %q in %q", want, out)

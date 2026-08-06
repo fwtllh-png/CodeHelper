@@ -71,6 +71,20 @@ Event Consumption 与 Terminal Paint 速率不同。Host 持续消费 Bounded Ev
 Paint。Streaming/Pagination/Overlay 有显式 Cap，避免 Slow Renderer 变成 Runtime
 Backpressure。真实 Subscription Gap 是 Protocol Error，不能猜测 State。
 
+## 交互与 Accessibility 契约
+
+Header、Transcript、Composer 和 Context/Task Detail 分别拥有明确职责。Reasoning 与
+Tool Detail 渐进披露；Approval、Input、Verification、Failure、Recovery 和 Receipt
+保持为可见 Lifecycle State。Responsive Golden 在 80、120、160 列验证同一信息层级。
+
+Send、Cancel、Approve/Reject、Input、Panel Navigation、Scroll 与 Transcript Access
+都可仅用键盘完成。Reduced/Still Motion 不丢失信息。CLI-only 或 No-op Slash Command
+不在 TUI 注册；`/context` 保持为可操作命令。
+
+`turn.canceled` 投影为 Failed/Recoverable State，不能成为 Successful Completion。
+Host Journey Contract 通过真实 Reducer 验证 Start、Stream、Approve、Input、Cancel、
+Verify、Recover 和 Receipt。
+
 ## 失败与安全边界
 
 - Cursor Gap 显式报告。
@@ -84,6 +98,7 @@ Backpressure。真实 Subscription Gap 是 Protocol Error，不能猜测 State�
 
 ```bash
 go test ./internal/host/tui/...
+go test ./internal/host/tui -run HostJourney
 make tui-smoke
 ```
 

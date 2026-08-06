@@ -1,0 +1,7 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "quickstart-fixture-model",
+  "expected_prompt": "complete the CodeHelper quickstart journey",
+  "streams": ["plan.sse", "read.sse", "edit.sse", "complete.sse"]
+}

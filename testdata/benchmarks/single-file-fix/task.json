@@ -3,6 +3,8 @@
   "category": "single_file_fix",
   "prompt": "fix add in calc.py",
   "tools": true,
+  "posture": "suggest",
+  "approval_decision": "approve",
   "max_steps": 6,
   "timeout_ms": 60000,
   "expect": {
@@ -12,6 +14,8 @@
     },
     "tools_used": ["file_read", "file_edit"],
     "receipt_changes": ["calc.py"],
+    "approvals": 1,
+    "approval_decision": "approve",
     "output_contains": ["fixed"]
   }
 }

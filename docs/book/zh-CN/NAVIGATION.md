@@ -10,9 +10,9 @@
 - `draft`：中英文正文已存在，但尚未完成全部验证。
 - `verified`：双语内容、源码引用和验证命令均通过章节门禁。
 
-## 阶段 1 阅读路径
+## 核心阅读路径
 
-第一批交付以下六章：
+建议先阅读以下六章：
 
 - [为什么 Agent 需要受治理的 Runtime](./01-agent-engineering/05-why-governed-runtime.md) — `agent-why-governed-runtime` — `verified` — 规划路径: `01-agent-engineering/05-why-governed-runtime.md`
 - [CodeHelper 全局架构](./02-codehelper-overview/02-system-architecture.md) — `overview-system-architecture` — `verified` — 规划路径: `02-codehelper-overview/02-system-architecture.md`

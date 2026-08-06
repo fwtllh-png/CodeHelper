@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -64,12 +65,18 @@ type Task struct {
 	// single-turn thread can never reach one however large it grows.
 	Followups []string `json:"followups,omitempty"`
 	Tools     bool     `json:"tools"`
+	// ProviderFixture may reuse another hermetic fixture relative to this task.
+	ProviderFixture string `json:"provider_fixture,omitempty"`
 	// Posture is the tool permission posture (suggest/auto/bypass/never). It is
 	// part of the task because permission blocking is itself a measured
 	// dimension, not harness plumbing.
 	Posture  string `json:"posture"`
 	Mode     string `json:"mode"`
 	MaxSteps int    `json:"max_steps"`
+	// ApprovalDecision lets a fixture exercise a parked approval journey.
+	// Empty leaves approvals for an external user.
+	ApprovalDecision string `json:"approval_decision,omitempty"`
+	BudgetTokens     uint64 `json:"budget_tokens,omitempty"`
 	// TimeoutMS bounds a single task so a stuck fixture fails instead of hanging.
 	TimeoutMS int `json:"timeout_ms"`
 	// Verify overrides the production soft/diagnostics defaults for tasks that
@@ -175,11 +182,14 @@ type Expectation struct {
 	VerifyAction string `json:"verify_action,omitempty"`
 	// VerifyRepairs requires the gate to have spent exactly this many repair
 	// rounds, which is how a task proves self-correction actually happened.
-	VerifyRepairs *int `json:"verify_repairs,omitempty"`
+	VerifyRepairs    *int   `json:"verify_repairs,omitempty"`
+	Approvals        *int   `json:"approvals,omitempty"`
+	ApprovalDecision string `json:"approval_decision,omitempty"`
 	// ContextSections requires the receipt to report each of these context
 	// partitions, which is how a task proves the volatile tail was assembled at
 	// all rather than silently skipped.
-	ContextSections []string `json:"context_sections,omitempty"`
+	ContextSections   []string                            `json:"context_sections,omitempty"`
+	ContextSelections map[string]ExpectedContextSelection `json:"context_selections,omitempty"`
 	// ContextTruncated requires each of these partitions to report a budget cut.
 	ContextTruncated []string `json:"context_truncated,omitempty"`
 	// ReceiptReadPaths requires the receipt to report exactly these read paths.
@@ -214,48 +224,77 @@ type Expectation struct {
 	CompactionTruncated *bool `json:"compaction_truncated,omitempty"`
 }
 
+type ExpectedContextSelection struct {
+	Kind          string   `json:"kind,omitempty"`
+	Reasons       []string `json:"reasons,omitempty"`
+	EvidenceKinds []string `json:"evidence_kinds,omitempty"`
+	Truncated     *bool    `json:"truncated,omitempty"`
+}
+
 // Result is the outcome and cost of one task run.
 type Result struct {
 	Task     string   `json:"task"`
 	Category string   `json:"category"`
+	Status   string   `json:"status"`
 	Passed   bool     `json:"passed"`
 	Failures []string `json:"failures,omitempty"`
 	// Error is set when the harness itself could not run the task, which is
 	// reported separately from an assertion failure.
-	Error          string   `json:"error,omitempty"`
-	Terminal       string   `json:"terminal"`
-	DurationMS     int64    `json:"duration_ms"`
-	ToolsSucceeded []string `json:"tools_succeeded,omitempty"`
-	ToolsFailed    []string `json:"tools_failed,omitempty"`
-	ReceiptChanges []string `json:"receipt_changes,omitempty"`
+	Error             string   `json:"error,omitempty"`
+	UnavailableReason string   `json:"unavailable_reason,omitempty"`
+	Terminal          string   `json:"terminal"`
+	DurationMS        int64    `json:"duration_ms"`
+	ToolsSucceeded    []string `json:"tools_succeeded,omitempty"`
+	ToolsFailed       []string `json:"tools_failed,omitempty"`
+	ReceiptChanges    []string `json:"receipt_changes,omitempty"`
 	// ReceiptDiagnostics is the receipt's diagnostics verdict, reported so a run
 	// shows whether changes were checked at all.
-	ReceiptDiagnostics string `json:"receipt_diagnostics,omitempty"`
-	VerifyStatus       string `json:"verify_status,omitempty"`
-	VerifyAction       string `json:"verify_action,omitempty"`
-	VerifyRepairs      int    `json:"verify_repairs,omitempty"`
-	InputTokens        uint64 `json:"input_tokens"`
-	OutputTokens       uint64 `json:"output_tokens"`
-	CachedTokens       uint64 `json:"cached_tokens"`
-	CostMicrounits     uint64 `json:"cost_microunits"`
+	ReceiptDiagnostics     string `json:"receipt_diagnostics,omitempty"`
+	VerifyStatus           string `json:"verify_status,omitempty"`
+	VerifyAction           string `json:"verify_action,omitempty"`
+	VerifyRepairs          int    `json:"verify_repairs,omitempty"`
+	InputTokens            uint64 `json:"input_tokens"`
+	OutputTokens           uint64 `json:"output_tokens"`
+	CachedTokens           uint64 `json:"cached_tokens"`
+	CostMicrounits         uint64 `json:"cost_microunits"`
+	UsageCalls             int    `json:"usage_calls"`
+	UnpricedCalls          int    `json:"unpriced_calls"`
+	RetryAttempts          int    `json:"retry_attempts"`
+	Approvals              int    `json:"approvals"`
+	ApprovalDecision       string `json:"approval_decision,omitempty"`
+	VerificationApplicable bool   `json:"verification_applicable"`
+	VerificationCovered    bool   `json:"verification_covered"`
 }
 
 // Report aggregates a suite run.
 type Report struct {
-	Total          int            `json:"total"`
-	Passed         int            `json:"passed"`
-	Results        []Result       `json:"results"`
-	Categories     map[string]int `json:"categories"`
-	InputTokens    uint64         `json:"input_tokens"`
-	OutputTokens   uint64         `json:"output_tokens"`
-	CachedTokens   uint64         `json:"cached_tokens"`
-	CostMicrounits uint64         `json:"cost_microunits"`
-	DurationMS     int64          `json:"duration_ms"`
-	GeneratedAt    time.Time      `json:"generated_at"`
+	SchemaVersion  int             `json:"schema_version"`
+	Platform       string          `json:"platform"`
+	Total          int             `json:"total"`
+	Available      int             `json:"available"`
+	Unavailable    int             `json:"unavailable"`
+	Failed         int             `json:"failed"`
+	Passed         int             `json:"passed"`
+	Results        []Result        `json:"results"`
+	Categories     map[string]int  `json:"categories"`
+	InputTokens    uint64          `json:"input_tokens"`
+	OutputTokens   uint64          `json:"output_tokens"`
+	CachedTokens   uint64          `json:"cached_tokens"`
+	CostMicrounits uint64          `json:"cost_microunits"`
+	DurationMS     int64           `json:"duration_ms"`
+	Metrics        BaselineMetrics `json:"metrics"`
+	GeneratedAt    time.Time       `json:"generated_at"`
 }
 
 // OK reports whether every task passed.
 func (r Report) OK() bool { return r.Total > 0 && r.Passed == r.Total }
+
+// BaselineOK reports that every runnable task passed. Capability-specific
+// unavailable tasks remain visible but do not turn a host baseline into a code
+// failure. Release gates use OK instead.
+func (r Report) BaselineOK() bool {
+	return r.Available > 0 && r.Failed == 0
+}
 
 // Encode writes the report as indented JSON.
 func (r Report) Encode(writer io.Writer) error {
@@ -324,14 +363,24 @@ func RunSuite(ctx context.Context, root string) (Report, error) {
 		return Report{}, err
 	}
 	report := Report{
-		Categories: make(map[string]int), GeneratedAt: time.Now().UTC(),
+		SchemaVersion: 1,
+		Platform:      runtime.GOOS + "/" + runtime.GOARCH,
+		Categories:    make(map[string]int),
+		GeneratedAt:   time.Now().UTC(),
 	}
 	for _, task := range tasks {
 		result := RunTask(ctx, task)
 		report.Results = append(report.Results, result)
 		report.Total++
+		if result.Status == "unavailable" {
+			report.Unavailable++
+		} else {
+			report.Available++
+		}
 		if result.Passed {
 			report.Passed++
+		} else if result.Status != "unavailable" {
+			report.Failed++
 		}
 		report.Categories[result.Category]++
 		report.InputTokens += result.InputTokens
@@ -340,6 +389,7 @@ func RunSuite(ctx context.Context, root string) (Report, error) {
 		report.CostMicrounits += result.CostMicrounits
 		report.DurationMS += result.DurationMS
 	}
+	report.Metrics = baselineMetrics(report.Results)
 	return report, nil
 }
 
@@ -352,6 +402,7 @@ func RunTask(ctx context.Context, task Task) Result {
 	observed, err := executeTask(ctx, task)
 	result.DurationMS = time.Since(started).Milliseconds()
 	if err != nil {
+		result.Status = "failed"
 		result.Error = err.Error()
 		result.Failures = append(result.Failures, "harness: "+err.Error())
 		return result
@@ -374,24 +425,49 @@ func RunTask(ctx context.Context, task Task) Result {
 	result.OutputTokens = observed.outputTokens
 	result.CachedTokens = observed.cachedTokens
 	result.CostMicrounits = observed.costMicrounits
+	result.UsageCalls = observed.usageCalls
+	result.UnpricedCalls = observed.unpricedCalls
+	result.RetryAttempts = observed.recoveredToolFailures + result.VerifyRepairs
+	result.Approvals = observed.approvals
+	result.ApprovalDecision = observed.approvalDecision
+	result.VerificationApplicable = task.Verify != nil ||
+		len(result.ReceiptChanges) > 0
+	result.VerificationCovered = result.VerificationApplicable &&
+		result.VerifyStatus != ""
 	result.Failures = evaluate(task, observed)
+	if strings.Contains(observed.terminalDetail, "sandbox_unavailable") {
+		result.Status = "unavailable"
+		result.UnavailableReason = observed.terminalDetail
+		result.Failures = nil
+		return result
+	}
 	result.Passed = len(result.Failures) == 0
+	if result.Passed {
+		result.Status = "passed"
+	} else {
+		result.Status = "failed"
+	}
 	return result
 }
 
 // observation is everything a run reveals about a task, gathered from the event
 // stream plus the workspace state after the turn.
 type observation struct {
-	terminal       string
-	terminalDetail string
-	output         string
-	succeeded      []string
-	failed         []string
-	inputTokens    uint64
-	outputTokens   uint64
-	cachedTokens   uint64
-	costMicrounits uint64
-	receipt        *protocol.ExecutionReceiptData
+	terminal              string
+	terminalDetail        string
+	output                string
+	succeeded             []string
+	failed                []string
+	inputTokens           uint64
+	outputTokens          uint64
+	cachedTokens          uint64
+	costMicrounits        uint64
+	usageCalls            int
+	unpricedCalls         int
+	recoveredToolFailures int
+	approvals             int
+	approvalDecision      string
+	receipt               *protocol.ExecutionReceiptData
 	// verification is the last gate evaluation of the turn.
 	verification *protocol.TurnVerificationData
 	// compactions counts the in-turn compact gates that fired, and compaction is
@@ -402,8 +478,9 @@ type observation struct {
 	// seed and final are workspace snapshots keyed by slash-separated relative
 	// path. Snapshotting before cleanup keeps evaluation independent of the
 	// throwaway directory's lifetime.
-	seed  map[string]string
-	final map[string]string
+	seed                map[string]string
+	final               map[string]string
+	pendingToolFailures map[string]int
 }
 
 func executeTask(ctx context.Context, task Task) (observation, error) {
@@ -438,6 +515,10 @@ func executeTask(ctx context.Context, task Task) (observation, error) {
 		mode := task.Mode
 		overrides.Mode = &mode
 	}
+	if task.BudgetTokens > 0 {
+		budget := task.BudgetTokens
+		overrides.BudgetTokens = &budget
+	}
 	posture := task.Posture
 	if posture == "" {
 		posture = DefaultPosture
@@ -445,8 +526,12 @@ func executeTask(ctx context.Context, task Task) (observation, error) {
 	applyVerifyOverrides(task.Verify, &overrides)
 	applyIndexOverrides(task.Index, &overrides)
 	applyContextOverrides(task.Context, &overrides)
+	fixturePath := filepath.Join(task.Dir, providerDir)
+	if task.ProviderFixture != "" {
+		fixturePath = filepath.Join(task.Dir, filepath.FromSlash(task.ProviderFixture))
+	}
 	session, err := wire.NewExec(ctx, wire.ExecOptions{
-		FixturePath: filepath.Join(task.Dir, providerDir), ConfigOverrides: overrides,
+		FixturePath: fixturePath, ConfigOverrides: overrides,
 		Permission: posture,
 	})
 	if err != nil {
@@ -459,7 +544,7 @@ func executeTask(ctx context.Context, task Task) (observation, error) {
 	}()
 
 	prompts := append([]string{task.Prompt}, task.Followups...)
-	observed, err := runThread(ctx, session.Runtime, prompts)
+	observed, err := runThread(ctx, session.Runtime, prompts, task.ApprovalDecision)
 	if err != nil {
 		return observation{}, err
 	}
@@ -598,7 +683,10 @@ func applyContextOverrides(settings *TaskContext, overrides *config.Overrides) {
 // into a single observation. A task with no followups sees exactly what it did
 // before: one turn, whose events are the whole record.
 func runThread(
-	ctx context.Context, runtime *app.Runtime, prompts []string,
+	ctx context.Context,
+	runtime *app.Runtime,
+	prompts []string,
+	approvalDecision string,
 ) (observation, error) {
 	threadID, err := protocol.NewThreadID()
 	if err != nil {
@@ -610,9 +698,11 @@ func runThread(
 	if err != nil {
 		return observation{}, err
 	}
-	var observed observation
+	observed := observation{pendingToolFailures: make(map[string]int)}
 	for _, prompt := range prompts {
-		if err := runTurn(ctx, runtime, events, threadID, prompt, &observed); err != nil {
+		if err := runTurn(
+			ctx, runtime, events, threadID, prompt, approvalDecision, &observed,
+		); err != nil {
 			return observation{}, err
 		}
 		// A turn that did not complete ends the thread: later prompts would measure
@@ -630,6 +720,7 @@ func runTurn(
 	events <-chan protocol.Event,
 	threadID protocol.ThreadID,
 	prompt string,
+	approvalDecision string,
 	observed *observation,
 ) error {
 	turnID, err := protocol.NewTurnID()
@@ -650,6 +741,19 @@ func runTurn(
 		return err
 	}
 	var output strings.Builder
+	usageSamples := make(map[uint32]protocol.UsageData)
+	foldUsage := func() {
+		for _, usage := range usageSamples {
+			observed.inputTokens += usage.InputTokens
+			observed.outputTokens += usage.OutputTokens
+			observed.cachedTokens += usage.CachedTokens
+			observed.costMicrounits += usage.CostMicrounits
+			observed.usageCalls++
+			if !usage.CostKnown {
+				observed.unpricedCalls++
+			}
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -673,9 +777,44 @@ func runTurn(
 				}
 				if data.IsError {
 					observed.failed = appendUnique(observed.failed, data.Tool)
+					observed.pendingToolFailures[data.Tool]++
 					continue
 				}
 				observed.succeeded = appendUnique(observed.succeeded, data.Tool)
+				if observed.pendingToolFailures[data.Tool] > 0 {
+					observed.recoveredToolFailures++
+					observed.pendingToolFailures[data.Tool]--
+				}
+			case protocol.EventApprovalRequired:
+				request, _ := event.Data.(*protocol.ApprovalRequiredData)
+				if request == nil || approvalDecision == "" {
+					continue
+				}
+				decisionItemID, itemErr := protocol.NewItemID()
+				if itemErr != nil {
+					return itemErr
+				}
+				planID := ""
+				if request.EditPlan != nil {
+					planID = request.EditPlan.ID
+				}
+				decision, decisionErr := protocol.NewOperation(
+					&protocol.ApprovalDecisionPayload{
+						ThreadID: threadID, TurnID: turnID, ItemID: decisionItemID,
+						RequestID: request.RequestID,
+						Decision:  protocol.ApprovalDecision(approvalDecision),
+						Scope:     protocol.ApprovalScopeOnce,
+						ExpiresAt: request.ExpiresAt, PlanID: planID,
+					},
+				)
+				if decisionErr != nil {
+					return decisionErr
+				}
+				if submitErr := runtime.Submit(ctx, decision); submitErr != nil {
+					return submitErr
+				}
+				observed.approvals++
+				observed.approvalDecision = approvalDecision
 			case protocol.EventExecutionReceipt:
 				if data, _ := event.Data.(*protocol.ExecutionReceiptData); data != nil {
 					observed.receipt = data
@@ -691,16 +830,15 @@ func runTurn(
 				}
 			case protocol.EventUsage:
 				if data, _ := event.Data.(*protocol.UsageData); data != nil {
-					observed.inputTokens += data.InputTokens
-					observed.outputTokens += data.OutputTokens
-					observed.cachedTokens += data.CachedTokens
-					observed.costMicrounits += data.CostMicrounits
+					usageSamples[data.Sample] = *data
 				}
 			case protocol.EventTurnCompleted:
+				foldUsage()
 				observed.terminal = TerminalCompleted
 				observed.output += output.String()
 				return nil
 			case protocol.EventTurnFailed:
+				foldUsage()
 				observed.terminal = TerminalFailed
 				observed.output += output.String()
 				if data, _ := event.Data.(*protocol.TurnFailedData); data != nil {
@@ -708,6 +846,7 @@ func runTurn(
 				}
 				return nil
 			case protocol.EventTurnCanceled:
+				foldUsage()
 				observed.terminal = TerminalCanceled
 				observed.output += output.String()
 				return nil
@@ -814,6 +953,18 @@ func evaluate(task Task, observed observation) []string {
 	failures = append(failures, evaluateEvidence(task.Expect, observed.receipt)...)
 	failures = append(failures, evaluateVerification(task.Expect, observed.verification)...)
 	failures = append(failures, evaluateCompaction(task.Expect, observed)...)
+	if task.Expect.Approvals != nil && observed.approvals != *task.Expect.Approvals {
+		failures = append(failures, fmt.Sprintf(
+			"approvals = %d want %d", observed.approvals, *task.Expect.Approvals,
+		))
+	}
+	if task.Expect.ApprovalDecision != "" &&
+		observed.approvalDecision != task.Expect.ApprovalDecision {
+		failures = append(failures, fmt.Sprintf(
+			"approval decision = %q want %q",
+			observed.approvalDecision, task.Expect.ApprovalDecision,
+		))
+	}
 	for _, want := range task.Expect.OutputContains {
 		if !strings.Contains(observed.output, want) {
 			failures = append(failures, fmt.Sprintf(
@@ -829,7 +980,7 @@ func evaluateContext(
 	expect Expectation, receipt *protocol.ExecutionReceiptData,
 ) []string {
 	if len(expect.ContextSections) == 0 && len(expect.ContextTruncated) == 0 &&
-		len(expect.ReceiptReadPaths) == 0 {
+		len(expect.ReceiptReadPaths) == 0 && len(expect.ContextSelections) == 0 {
 		return nil
 	}
 	if receipt == nil {
@@ -871,6 +1022,50 @@ func evaluateContext(
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			failures = append(failures, fmt.Sprintf(
 				"receipt read paths = %v want %v", got, want,
+			))
+		}
+	}
+	selections := make(map[string]protocol.ReceiptContextSelection)
+	for _, selection := range receipt.ContextSelections {
+		selections[selection.Path] = selection
+	}
+	for path, want := range expect.ContextSelections {
+		got, found := selections[path]
+		if !found {
+			failures = append(failures, fmt.Sprintf(
+				"context selection %s is missing", path,
+			))
+			continue
+		}
+		if want.Kind != "" && got.Kind != want.Kind {
+			failures = append(failures, fmt.Sprintf(
+				"context selection %s kind = %q want %q", path, got.Kind, want.Kind,
+			))
+		}
+		for _, reason := range want.Reasons {
+			if !contains(got.Reasons, reason) {
+				failures = append(failures, fmt.Sprintf(
+					"context selection %s reasons = %v, missing %s",
+					path, got.Reasons, reason,
+				))
+			}
+		}
+		var evidenceKinds []string
+		for _, fact := range got.Evidence {
+			evidenceKinds = appendUnique(evidenceKinds, fact.Kind)
+		}
+		for _, kind := range want.EvidenceKinds {
+			if !contains(evidenceKinds, kind) {
+				failures = append(failures, fmt.Sprintf(
+					"context selection %s evidence = %v, missing %s",
+					path, evidenceKinds, kind,
+				))
+			}
+		}
+		if want.Truncated != nil && got.Truncated != *want.Truncated {
+			failures = append(failures, fmt.Sprintf(
+				"context selection %s truncated = %t want %t",
+				path, got.Truncated, *want.Truncated,
 			))
 		}
 	}

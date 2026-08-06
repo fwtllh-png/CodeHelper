@@ -37,7 +37,7 @@ last_verified: 2026-08-06
 
 - Go 1.26+、Git、Make；
 - CodeHelper 本地仓库；
-- 阶段 1 的四篇概念章节；
+- 核心阅读路径中的四篇基础概念章节；
 - 不需要 API Key 或网络。
 
 ## 为什么先使用 Fixture

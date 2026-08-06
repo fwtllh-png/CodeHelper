@@ -71,6 +71,12 @@ truncation reason. Evidence reports Facts, Risks, Reminders, and Change marks.
 Turn Receipts combine these with usage, latency, verification, and changed
 paths.
 
+Working Set and affected-test entries also preserve selection explanation:
+entry kind, reason, supporting evidence, score, and per-entry truncation.
+Hosts project these fields from the Receipt. They must not reconstruct a
+plausible reason from a filename, because presentation inference would turn
+an observation into false authority.
+
 This allows questions such as:
 
 - Did a failed Turn lack the relevant file or ignore present evidence?

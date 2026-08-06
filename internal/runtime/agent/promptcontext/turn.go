@@ -36,8 +36,33 @@ type TurnOptions struct {
 
 // TurnContext is the volatile tail of a request.
 type TurnContext struct {
-	Messages []provider.Message `json:"messages"`
-	Receipts []Receipt          `json:"receipts"`
+	Messages   []provider.Message `json:"messages"`
+	Receipts   []Receipt          `json:"receipts"`
+	Selections []Selection        `json:"selections,omitempty"`
+}
+
+// Selection explains why one working-set path was offered to the model and
+// whether the section budget retained its line.
+type Selection struct {
+	Path             string              `json:"path"`
+	Kind             string              `json:"kind"`
+	Reasons          []string            `json:"reasons"`
+	Evidence         []SelectionEvidence `json:"evidence,omitempty"`
+	Score            int                 `json:"score"`
+	Critical         bool                `json:"critical,omitempty"`
+	FirstTurn        uint64              `json:"first_turn"`
+	LastTurn         uint64              `json:"last_turn"`
+	Included         bool                `json:"included"`
+	Truncated        bool                `json:"truncated,omitempty"`
+	TruncationReason string              `json:"truncation_reason,omitempty"`
+}
+
+type SelectionEvidence struct {
+	Kind   string `json:"kind"`
+	Line   int    `json:"line,omitempty"`
+	Symbol string `json:"symbol,omitempty"`
+	Tool   string `json:"tool,omitempty"`
+	Turn   uint64 `json:"turn"`
 }
 
 // TurnState is what the engine knows when a sample is about to go out. It is one
@@ -65,7 +90,7 @@ func AssembleTurn(options TurnOptions) TurnContext {
 		tokens = HeuristicTokenCounter{}
 	}
 	var result TurnContext
-	appendSection := func(kind, text, sourcePath string) {
+	appendSection := func(kind, text, sourcePath string) (string, string) {
 		// The notice is charged to the budget up front, so a section that runs out
 		// of room can still admit it: a model that cannot tell a cut from an
 		// absence will read the missing lines as missing code.
@@ -83,18 +108,22 @@ func AssembleTurn(options TurnOptions) TurnContext {
 				provider.TextMessage(provider.RoleSystem, retained),
 			)
 		}
+		return retained, reason
 	}
 	// A section the caller did not ask for is skipped whole, receipt included: a
 	// zero Map or an empty ledger means "not requested", which is different from
 	// "requested and empty" and should not read as a truncated section.
 	if options.RepoMap.Status != "" {
-		appendSection(PartitionRepoMap, renderRepoMap(options), "session://repo-map")
+		_, _ = appendSection(PartitionRepoMap, renderRepoMap(options), "session://repo-map")
 	}
 	if len(options.WorkingSet) != 0 {
-		appendSection(PartitionWorkingSetLedger, renderWorkingSet(options), "session://working-set")
+		retained, reason := appendSection(
+			PartitionWorkingSetLedger, renderWorkingSet(options), "session://working-set",
+		)
+		result.Selections = explainSelections(options, retained, reason)
 	}
 	if !options.Evidence.Empty() {
-		appendSection(PartitionEvidence, renderEvidence(options), "session://evidence")
+		_, _ = appendSection(PartitionEvidence, renderEvidence(options), "session://evidence")
 	}
 	return result
 }
@@ -166,14 +195,66 @@ func renderWorkingSet(options TurnOptions) string {
 			"Contents are not included; read what you need.\n",
 	)
 	for _, entry := range options.WorkingSet {
-		fmt.Fprintf(&b, "  %s — %s", entry.Path, joinSources(entry.Sources))
-		fmt.Fprintf(&b, " (turn %d)", entry.LastTurn)
-		if entry.Critical {
-			b.WriteString(" critical")
-		}
-		b.WriteByte('\n')
+		b.WriteString(renderWorkingSetEntry(entry))
 	}
 	return b.String()
+}
+
+func renderWorkingSetEntry(entry workingset.Entry) string {
+	line := fmt.Sprintf(
+		"  %s — %s (turn %d)", entry.Path, joinSources(entry.Sources), entry.LastTurn,
+	)
+	if entry.Critical {
+		line += " critical"
+	}
+	return line + "\n"
+}
+
+func explainSelections(options TurnOptions, retained, truncationReason string) []Selection {
+	explanations := make([]Selection, 0, len(options.WorkingSet))
+	for _, entry := range options.WorkingSet {
+		included := truncationReason == "" ||
+			strings.Contains(retained, renderWorkingSetEntry(entry))
+		selection := Selection{
+			Path: entry.Path, Kind: selectionKind(entry.Path, options.Evidence),
+			Score: entry.Score, Critical: entry.Critical,
+			FirstTurn: entry.FirstTurn, LastTurn: entry.LastTurn,
+			Included: included, Truncated: !included,
+		}
+		for _, source := range entry.Sources {
+			selection.Reasons = append(selection.Reasons, string(source))
+		}
+		for _, fact := range options.Evidence.Facts {
+			if fact.Path != entry.Path {
+				continue
+			}
+			selection.Evidence = append(selection.Evidence, SelectionEvidence{
+				Kind: string(fact.Kind), Line: fact.Line, Symbol: fact.Symbol,
+				Tool: fact.Tool, Turn: fact.Turn,
+			})
+		}
+		if selection.Truncated {
+			selection.TruncationReason = truncationReason
+		}
+		explanations = append(explanations, selection)
+	}
+	return explanations
+}
+
+func selectionKind(path string, snapshot evidence.Snapshot) string {
+	for _, fact := range snapshot.Facts {
+		if fact.Path == path && fact.Kind == evidence.KindTest {
+			return "test"
+		}
+	}
+	lower := strings.ToLower(path)
+	if strings.Contains(lower, "/tests/") ||
+		strings.Contains(lower, "_test.") ||
+		strings.Contains(lower, ".test.") ||
+		strings.Contains(lower, ".spec.") {
+		return "test"
+	}
+	return "file"
 }
 
 // renderEvidence reports what the thread knows and what it owes.

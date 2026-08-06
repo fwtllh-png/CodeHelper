@@ -58,6 +58,20 @@ approve mutations. Webview uses nonce-only CSP, finite decoded messages, safe
 DOM sinks, and read-only Runtime receipts. Edit previews remain bound to Runtime
 Plan IDs.
 
+## Workbench and Lifecycle Experience
+
+Setup, Repair, and Quickstart are first-class commands backed by Runtime
+Readiness. Chat, Changes, Threads, and Approvals are primary navigation;
+Agents, Tasks, Jobs, and Usage are collapsed detail views. Native Diff, Quick
+Pick, Progress, and Tree View carry platform behavior instead of being
+reimplemented in the Chat Webview.
+
+The lifecycle strip distinguishes Setup, Empty, Loading, Streaming, Approval,
+Verify, Failure, Recovery, and Completed, including the next available action.
+`Ctrl+Enter`/`Cmd+Enter` sends and `Escape` stops. Visible focus, screen-reader
+live regions, host theme tokens, forced colors, and reduced motion are tested
+contracts rather than optional styling.
+
 ## Supervisor and Session Recovery
 
 ```text
@@ -104,7 +118,7 @@ incompatible.
 ```bash
 cd extensions/vscode
 npm run check
-npm test
+npm test -- experience
 ```
 
 ## Hands-On Lab

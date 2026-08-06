@@ -49,6 +49,8 @@ identity, and evolve deliberately.
 - Cursor orders Events for replay.
 - Problem carries machine code, retryability, and sanitized details.
 - Receipt is evidence, not a terminal status.
+- Readiness carries `ready`, `degraded`, or `blocked` plus reason, impact, and
+  repair action.
 
 ## CodeHelper Design
 
@@ -122,7 +124,13 @@ version and schema remain authoritative for each build.
 
 | Concern | Source |
 | --- | --- |
-| Operation/Event unions | `message.go` |
+| Shared envelope | `message.go` |
+| Operations and payloads | `operation.go` |
+| Events and data | `event.go` |
+| Execution evidence | `receipt.go` |
+| Identity | `identity.go` |
+| Codec and strict validation | `codec.go`, `validate.go` |
+| Readiness | `readiness.go` |
 | Machine errors | `problem.go` |
 | Dynamic Tool protocol | `dynamic.go` |
 | Workspace identity | `workspace_identity.go` |
@@ -138,6 +146,11 @@ identity and monotonic Sequence.
 The Kind registries are copied when exposed, preventing callers from mutating
 global protocol state. Fuzz tests exercise JSON decoding so malformed input
 fails without panic.
+
+Protocol files are separated by contract role without changing the wire
+schema. The committed JSON Schema and generated VS Code types are the
+behavioral boundary; file layout is an implementation detail protected by
+the hotspot baseline.
 
 ## Tradeoffs and Alternatives
 

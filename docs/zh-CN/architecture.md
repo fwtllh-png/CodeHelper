@@ -7,6 +7,10 @@
 CodeHelper 保持一个权威执行 Runtime，同时允许多种呈现和集成入口。Host 提交
 Operation 并观察 Event，不复制 Agent 循环，也不直接执行特权工具。
 
+受支持的产品 Host 是 CLI、TUI、VS Code 和 ACP。项目不提供 `codehelper web`、
+`codehelper serve`、Embedded Browser UI、Pairing/QR Flow 或 REST/SSE Host。MCP
+Stdio Serving 和内部 Loopback Helper 属于集成机制，不是产品 HTTP Host。
+
 ```text
 CLI / TUI / VS Code / ACP
                  |
@@ -109,6 +113,11 @@ SQLite 当前是初始 Schema。未来公开版本变更必须使用显式 Migra
 
 上限是正确性的一部分。无界上下文最终会变贵、变慢并降低一致性。
 
+Execution Receipt 会逐条解释入选的 Working Set 文件或测试，包括选择来源、支撑
+Evidence、相关性分数和单条预算结果。`included=false` 加截断原因表示 Selector 选择了
+该路径，但渲染后的上下文预算裁掉了对应行。各 Host 投影同一份 Receipt，不自行反推
+选择原因。
+
 ## 安全模型
 
 安全采用分层结构，因为单一控制无法回答所有问题。
@@ -132,6 +141,9 @@ Tool Identity、Risk、Approval、Repository Policy 与 Edit Evidence 的统一�
 ### 5. Edit Journal 与 Verify
 
 授权写入后提供可恢复性和正确性证据。
+Execution Receipt 会保留每次 Verification Attempt、命令推导原因、失败分类、Repair
+次数、最终 Gate Action 和最终 Workspace Outcome。Rollback 会区分已恢复路径、冲突和
+无法回滚的非文件副作用；原有 Pass/Fail 聚合字段只作为兼容摘要保留。
 
 ### 6. OS Sandbox
 

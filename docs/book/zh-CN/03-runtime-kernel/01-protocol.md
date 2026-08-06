@@ -47,6 +47,8 @@ CLI、ACP、VS Code、Persistence 和 Test 都要描述同一份工作。消息�
 - Cursor 为 Replay 提供顺序。
 - Problem 提供 Machine Code、Retryable 和安全 Detail。
 - Receipt 是证据，不是 Terminal Status。
+- Readiness 提供 `ready`、`degraded` 或 `blocked`，以及 Reason、Impact 与 Repair
+  Action。
 
 ## CodeHelper 设计
 
@@ -109,7 +111,13 @@ Schema 都是 Authority。
 
 | 关注点 | 源码 |
 | --- | --- |
-| Operation/Event | `message.go` |
+| Shared Envelope | `message.go` |
+| Operation 与 Payload | `operation.go` |
+| Event 与 Data | `event.go` |
+| Execution Evidence | `receipt.go` |
+| Identity | `identity.go` |
+| Codec 与 Strict Validation | `codec.go`、`validate.go` |
+| Readiness | `readiness.go` |
 | Machine Error | `problem.go` |
 | Dynamic Tool | `dynamic.go` |
 | Workspace Identity | `workspace_identity.go` |
@@ -120,6 +128,9 @@ Schema 都是 Authority。
 `NewOperation`、`NewEvent` 创建 ID 并在返回前验证。Validation 检查 Version、Identity、
 Timestamp、Kind/Payload 一致性和 Payload 语义。公开 Kind 列表返回副本，防止 Caller
 修改全局 Protocol State。Fuzz Test 确保 Malformed JSON 不会 Panic。
+
+Protocol 文件按 Contract Role 拆分，同时保持 Wire Schema 不变。提交的 JSON Schema
+与生成的 VS Code Type 是行为边界；文件布局属于由 Hotspot Baseline 保护的实现细节。
 
 ## 设计取舍与替代方案
 

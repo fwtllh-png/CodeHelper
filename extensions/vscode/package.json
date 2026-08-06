@@ -67,17 +67,20 @@
         {
           "id": "codehelper.agents",
           "name": "Agents",
-          "icon": "media/codehelper.svg"
+          "icon": "media/codehelper.svg",
+          "visibility": "collapsed"
         },
         {
           "id": "codehelper.tasks",
           "name": "Tasks",
-          "icon": "media/codehelper.svg"
+          "icon": "media/codehelper.svg",
+          "visibility": "collapsed"
         },
         {
           "id": "codehelper.jobs",
           "name": "Jobs",
-          "icon": "media/codehelper.svg"
+          "icon": "media/codehelper.svg",
+          "visibility": "collapsed"
         },
         {
           "id": "codehelper.approvals",
@@ -87,7 +90,8 @@
         {
           "id": "codehelper.usage",
           "name": "Usage",
-          "icon": "media/codehelper.svg"
+          "icon": "media/codehelper.svg",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -99,6 +103,18 @@
       {
         "command": "codehelper.restartRuntime",
         "title": "CodeHelper: Restart Runtime"
+      },
+      {
+        "command": "codehelper.repairRuntime",
+        "title": "CodeHelper: Repair Runtime"
+      },
+      {
+        "command": "codehelper.runSetup",
+        "title": "CodeHelper: Setup Workspace"
+      },
+      {
+        "command": "codehelper.runQuickstart",
+        "title": "CodeHelper: Run Quickstart"
       },
       {
         "command": "codehelper.checkBinaryUpdates",

@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_plan","function":{"name":"update_plan","arguments":"{\"title\":\"Quickstart\",\"objective\":\"Complete a governed edit\",\"steps\":[{\"title\":\"Read sample.go\",\"status\":\"in_progress\"},{\"title\":\"Edit greeting\",\"status\":\"pending\"},{\"title\":\"Verify receipt\",\"status\":\"pending\"}],\"verification_plan\":\"Run diagnostics\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

@@ -1,0 +1,7 @@
+{
+  "root_files": ["Cargo.toml"],
+  "paths": ["tests/api.rs"],
+  "related": {},
+  "want_command": "cargo test --test api",
+  "want_reason": "integration tests"
+}

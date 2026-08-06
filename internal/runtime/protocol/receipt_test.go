@@ -67,6 +67,38 @@ func TestExecutionReceiptKeepsUnavailableVerification(t *testing.T) {
 	}
 }
 
+func TestExecutionReceiptValidatesDetailedVerificationAndWorkspace(t *testing.T) {
+	receipt := &ExecutionReceiptData{
+		VerificationDetail: &ReceiptVerificationDetail{
+			Mode: "hard", FinalStatus: ReceiptPassed, Action: "passed",
+			RepairSteps: 1,
+			Attempts: []ReceiptVerificationAttempt{
+				{Step: 0, Scope: "affected", Status: ReceiptFailed},
+				{Step: 1, Scope: "affected", Status: ReceiptPassed},
+			},
+		},
+		WorkspaceOutcome: &ReceiptWorkspaceOutcome{
+			Status: "changed", Changed: []string{"calc.go"},
+		},
+		ContextSelections: []ReceiptContextSelection{{
+			Path: "calc_test.go", Kind: "test", Reasons: []string{"search"},
+			Included: false, Truncated: true, TruncationReason: "byte_budget",
+		}},
+	}
+	if err := receipt.validate(); err != nil {
+		t.Fatal(err)
+	}
+	receipt.VerificationDetail.Attempts[0].Scope = ""
+	if err := receipt.validate(); err == nil {
+		t.Fatal("receipt accepted a detailed verification attempt without scope")
+	}
+	receipt.VerificationDetail.Attempts[0].Scope = "affected"
+	receipt.ContextSelections[0].TruncationReason = ""
+	if err := receipt.validate(); err == nil {
+		t.Fatal("receipt accepted a truncated context selection without reason")
+	}
+}
+
 // Evidence is collected now, so claiming otherwise would make the receipt lie
 // about its own coverage.
 func TestEvidenceIsNoLongerListedAsUncollected(t *testing.T) {

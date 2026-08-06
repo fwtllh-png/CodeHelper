@@ -58,6 +58,13 @@ func (r ReadyRoute) Credential() CredentialRef {
 	return r.credential
 }
 
+// WithCredential returns the resolved route with an explicit non-secret
+// credential reference selected by workspace configuration.
+func (r ReadyRoute) WithCredential(reference CredentialRef) ReadyRoute {
+	r.credential = reference
+	return r
+}
+
 func (r ReadyRoute) Model() Model {
 	return r.model
 }

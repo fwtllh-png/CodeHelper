@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -289,6 +290,40 @@ func TestCurrentReturnsIndependentProvenance(t *testing.T) {
 	first.Provenance[fieldLogLevel] = SourceCLI
 	if got := manager.Current().Provenance[fieldLogLevel]; got != SourceDefault {
 		t.Fatalf("manager provenance mutated through snapshot: %q", got)
+	}
+}
+
+func TestDefaultProvenanceFieldSetGolden(t *testing.T) {
+	provenance := defaultProvenance()
+	fields := make([]string, 0, len(provenance))
+	for field, source := range provenance {
+		if source != SourceDefault {
+			t.Fatalf("default provenance[%q] = %q", field, source)
+		}
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+	got := strings.Join(fields, "\n") + "\n"
+	path := filepath.Join("testdata", "default-provenance.golden")
+	if os.Getenv("UPDATE_GOLDEN") == "1" {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != string(want) {
+		t.Fatalf(
+			"default provenance field set drifted; review every source path and "+
+				"refresh with UPDATE_GOLDEN=1\ngot:\n%s\nwant:\n%s",
+			got, want,
+		)
 	}
 }
 

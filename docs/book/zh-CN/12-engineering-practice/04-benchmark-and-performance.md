@@ -80,17 +80,30 @@ Loading 必须保持 Catalog Authority。
 
 ## 验证
 
+提交的 Benchmark V2 Manifest 定义六条产品 Journey：
+
+| Journey | Lane | Required Capability |
+| --- | --- | --- |
+| Cross-file Edit | Platform Capability | Strong Sandbox |
+| Affected-test Selection | Platform Capability | Strong Sandbox |
+| Approval | Platform Capability | Strong Sandbox |
+| Budget Exhaustion | Platform Capability | Strong Sandbox |
+| Crash Recovery | Hermetic | 无 |
+| Host Replay | Integration | 无 |
+
+每条 Journey 都声明 Evidence 与 Executable Command。Validator 拒绝缺失 Evidence 或错误
+的 Lane/Capability Claim。
+
 ```bash
+make benchmark-v2
 make bench
 make catalog-bench
 make vscode-performance
 ```
 
-2026-08-06 在 macOS arm64 的验证记录：100、500、1000 个 Tool 的 Catalog Scale
-Benchmark 通过；Coding Suite 通过 18/23，另外 5 个 Verification-gate 场景因本机
-Seatbelt Probe 返回 `strength=none` 而 Fail Closed。不得关闭 Sandbox Enforcement
-来制造通过结果。VS Code Projector Budget 已通过；Electron/Runtime-ready Budget
-仍属于需要外部环境的门禁。
+Platform-capability Journey 只在声明的 Sandbox 前置条件可用时运行。Capability 缺失要
+报告为 Unavailable，不能通过关闭 Sandbox Enforcement 转成 Passed。Electron/
+Runtime-ready Budget 同样保持为 Environment-acquired Gate。
 
 ## 复习问题
 

@@ -28,6 +28,7 @@ import {
   readTrustRoots,
   type ManifestCache,
 } from "./binary/update.js";
+import { registerSetupCommands } from "./setup/commands.js";
 
 let registry: WorkspaceRuntimeRegistry | undefined;
 let updateCheckInFlight: Promise<void> | undefined;
@@ -110,6 +111,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
   context.subscriptions.push(
     ...registerSelectionCommands(registry, output),
     ...registerDiagnosticActions(registry, output),
+    ...registerSetupCommands(registry, output),
     vscode.commands.registerCommand("codehelper.selectWorkspaceRoot", async () => {
       const root = await registry?.pick("CodeHelper: Select Workspace Root");
       if (root !== undefined) await registry?.select(root.rootId);
@@ -406,9 +408,15 @@ function reportStartError(output: vscode.OutputChannel, value: unknown): void {
   output.appendLine(`[runtime] ${error.message}`);
   void vscode.window.showErrorMessage(
     `CodeHelper Runtime failed: ${error.message}`,
+    "Repair Runtime",
+    "Run Setup",
     "Show Output",
   ).then((selection) => {
-    if (selection === "Show Output") {
+    if (selection === "Repair Runtime") {
+      void vscode.commands.executeCommand("codehelper.repairRuntime");
+    } else if (selection === "Run Setup") {
+      void vscode.commands.executeCommand("codehelper.runSetup");
+    } else if (selection === "Show Output") {
       output.show(true);
     }
   });

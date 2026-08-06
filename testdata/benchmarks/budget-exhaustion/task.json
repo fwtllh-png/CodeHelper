@@ -1,0 +1,16 @@
+{
+  "name": "budget-exhaustion",
+  "category": "budget",
+  "note": "A token ceiling smaller than the first projected request must fail before provider execution. This proves budget enforcement is a Runtime gate rather than advisory UI.",
+  "prompt": "say hello",
+  "provider_fixture": "../single-file-fix/provider",
+  "tools": false,
+  "budget_tokens": 1,
+  "max_steps": 2,
+  "timeout_ms": 60000,
+  "expect": {
+    "terminal": "failed",
+    "terminal_contains": ["token budget exceeded"],
+    "approvals": 0
+  }
+}

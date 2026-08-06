@@ -27,8 +27,8 @@ LANGUAGE = {
             "- `draft`: bilingual chapter files exist but are not fully verified.",
             "- `verified`: bilingual content, source references, and commands passed the chapter gate.",
         ],
-        "priority": "## Stage 1 Reading Path",
-        "priority_intro": "The first delivery milestone contains these six chapters:",
+        "priority": "## Core Reading Path",
+        "priority_intro": "Start with these six foundational chapters:",
         "contents": "## Complete Planned Contents",
         "part": "Part",
         "path": "planned path",
@@ -50,8 +50,8 @@ LANGUAGE = {
             "- `draft`：中英文正文已存在，但尚未完成全部验证。",
             "- `verified`：双语内容、源码引用和验证命令均通过章节门禁。",
         ],
-        "priority": "## 阶段 1 阅读路径",
-        "priority_intro": "第一批交付以下六章：",
+        "priority": "## 核心阅读路径",
+        "priority_intro": "建议先阅读以下六章：",
         "contents": "## 完整规划目录",
         "part": "部分",
         "path": "规划路径",
@@ -105,7 +105,7 @@ def render(language: str, catalog: dict) -> str:
     ]
     for part in catalog["parts"]:
         for chapter in part["chapters"]:
-            if chapter.get("milestone") == "stage-1":
+            if chapter.get("core_reading") is True:
                 lines.append(chapter_line(language, part, chapter))
     lines.extend(["", text["contents"], ""])
     for part in catalog["parts"]:

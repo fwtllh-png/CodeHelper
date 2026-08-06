@@ -49,7 +49,7 @@ compromised dependencies, and a malicious repository remain in scope.
 ## Untrusted Inputs
 
 User prompts, repository text, generated code, model output, Tool arguments,
-Provider/MCP responses, Skills, Plugins, Hooks, HTTP/ACP requests, archives,
+Provider/MCP responses, Skills, Plugins, Hooks, Host protocol requests, archives,
 symlinks, environment variables, persisted foreign state, and process output
 are all untrusted until validated at the boundary that consumes them.
 

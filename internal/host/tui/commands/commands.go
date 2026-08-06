@@ -81,11 +81,11 @@ func AllKinds() []Kind {
 		KindHelp, KindModel, KindProvider, KindSession,
 		KindNew, KindLoad, KindSave, KindFork, KindExport,
 		KindMCP, KindFleet, KindWorkflow, KindSettings, KindHotbar,
-		KindClear, KindCompact, KindDiff, KindUndo, KindRestore, KindRedo, KindCopy,
+		KindClear, KindCompact, KindDiff, KindUndo, KindRestore,
 		KindCost, KindStatus, KindCancel, KindStop, KindQuit, KindExit,
-		KindPlugin, KindSkill, KindLane, KindAuth, KindSandbox,
-		KindReview, KindPlan, KindMode, KindGranular, KindUsage, KindDoctor,
-		KindMemory, KindContext, KindPermissions, KindInit, KindApply,
+		KindPlugin, KindSkill, KindLane, KindAuth,
+		KindReview, KindPlan, KindMode, KindGranular, KindUsage,
+		KindContext, KindPermissions,
 		KindThread, KindResume, KindContinue, KindAgent,
 		KindConstitution, KindTask, KindAutomation, KindRLM, KindRelay, KindJobs, KindAttach,
 		KindBacktrack, KindSearch,
@@ -145,10 +145,6 @@ func classify(name string) Kind {
 		return KindUndo
 	case "restore":
 		return KindRestore
-	case "redo":
-		return KindRedo
-	case "copy":
-		return KindCopy
 	case "cost":
 		return KindCost
 	case "status":
@@ -169,8 +165,6 @@ func classify(name string) Kind {
 		return KindLane
 	case "auth", "login", "logout":
 		return KindAuth
-	case "sandbox":
-		return KindSandbox
 	case "review":
 		return KindReview
 	case "backtrack":
@@ -185,18 +179,10 @@ func classify(name string) Kind {
 		return KindGranular
 	case "usage":
 		return KindUsage
-	case "doctor":
-		return KindDoctor
-	case "memory":
-		return KindMemory
 	case "context":
 		return KindContext
 	case "permissions":
 		return KindPermissions
-	case "init":
-		return KindInit
-	case "apply":
-		return KindApply
 	case "thread", "threads":
 		return KindThread
 	case "resume":
@@ -224,14 +210,14 @@ func classify(name string) Kind {
 	}
 }
 
-// StubKinds are parsed in TUI but redirect to CLI (no operable panel yet).
+// StubKinds names CLI capabilities that TUI help may mention but does not register.
 func StubKinds() []Kind {
 	return []Kind{
-		KindSandbox, KindDoctor, KindMemory, KindContext, KindInit, KindApply,
+		KindSandbox, KindDoctor, KindMemory, KindInit, KindApply,
 	}
 }
 
-// NoopKinds are kept out of HelpText (acknowledged but not advertised).
+// NoopKinds names legacy placeholders that the TUI no longer registers.
 func NoopKinds() []Kind {
 	return []Kind{KindRedo, KindCopy}
 }
@@ -245,6 +231,7 @@ func HelpText() string {
 		"/mcp /fleet /workflow /lane /plugin /skill",
 		"/agent /task /jobs (panels: child agents, durable tasks, background jobs)",
 		"/settings /hotbar /auth /mode /granular /automation /rlm /relay /attach /permissions /constitution /quit",
+		"/context",
 	}, " | ")
 	cliOnly := "CLI-only:"
 	for _, kind := range StubKinds() {

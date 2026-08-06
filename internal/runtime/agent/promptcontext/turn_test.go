@@ -6,6 +6,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/repomap"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 )
@@ -47,9 +48,13 @@ func TestAssembleTurnRendersBothSectionsAsSystemMessages(t *testing.T) {
 			{Path: "internal/store/store.go", Sources: []workingset.Source{workingset.SourceEdited, workingset.SourceRead}, LastTurn: 7},
 			{Path: "docs/plan.md", Sources: []workingset.Source{workingset.SourcePinned}, LastTurn: 2, Critical: true},
 		},
+		Evidence: evidence.Snapshot{Facts: []evidence.Fact{{
+			Kind: evidence.KindDefinition, Path: "internal/store/store.go",
+			Line: 10, Symbol: "Store", Tool: "search_definition", Turn: 7,
+		}}},
 	})
-	if len(assembled.Messages) != 2 {
-		t.Fatalf("messages = %d, want repo map and working set", len(assembled.Messages))
+	if len(assembled.Messages) != 3 {
+		t.Fatalf("messages = %d, want repo map, working set, and evidence", len(assembled.Messages))
 	}
 	for _, message := range assembled.Messages {
 		if message.Role != provider.RoleSystem {
@@ -80,6 +85,14 @@ func TestAssembleTurnRendersBothSectionsAsSystemMessages(t *testing.T) {
 	}
 	if strings.Contains(setText, "critical\n  internal/store") {
 		t.Fatalf("working set order changed:\n%s", setText)
+	}
+	if len(assembled.Selections) != 2 ||
+		assembled.Selections[0].Reasons[0] != "edited" ||
+		len(assembled.Selections[0].Evidence) != 1 ||
+		assembled.Selections[0].Evidence[0].Symbol != "Store" ||
+		!assembled.Selections[0].Included ||
+		assembled.Selections[0].Truncated {
+		t.Fatalf("selections = %+v", assembled.Selections)
 	}
 }
 
@@ -163,6 +176,47 @@ func TestAssembleTurnReportsBudgetTruncation(t *testing.T) {
 	})
 	if reason := receiptFor(t, limited.Receipts, PartitionRepoMap).TruncationReason; reason != "token_budget" {
 		t.Fatalf("reason = %q, want token_budget", reason)
+	}
+}
+
+func TestWorkingSetSelectionsExplainTestsAndPerEntryTruncation(t *testing.T) {
+	assembled := AssembleTurn(TurnOptions{
+		Turn: 4,
+		WorkingSet: []workingset.Entry{
+			{
+				Path:     "pkg/calc_test.go",
+				Sources:  []workingset.Source{workingset.SourceSearch},
+				LastTurn: 4, Score: 5,
+			},
+			{
+				Path:     strings.Repeat("very-long-directory/", 8) + "implementation.go",
+				Sources:  []workingset.Source{workingset.SourceRead},
+				LastTurn: 4, Score: 10,
+			},
+		},
+		Evidence: evidence.Snapshot{Facts: []evidence.Fact{{
+			Kind: evidence.KindTest, Path: "pkg/calc_test.go",
+			Tool: "search_related_tests", Turn: 4,
+		}}},
+		Budgets: map[string]Budget{
+			PartitionWorkingSetLedger: {MaxBytes: 220},
+		},
+	})
+	if len(assembled.Selections) != 2 {
+		t.Fatalf("selections = %+v", assembled.Selections)
+	}
+	if assembled.Selections[0].Kind != "test" ||
+		assembled.Selections[0].Evidence[0].Kind != "test" {
+		t.Fatalf("test selection = %+v", assembled.Selections[0])
+	}
+	truncated := 0
+	for _, selection := range assembled.Selections {
+		if selection.Truncated && selection.TruncationReason == "byte_budget" {
+			truncated++
+		}
+	}
+	if truncated == 0 {
+		t.Fatalf("no per-entry truncation in %+v", assembled.Selections)
 	}
 }
 

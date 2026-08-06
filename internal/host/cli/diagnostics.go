@@ -14,6 +14,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/contentdeps"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
 	"github.com/fwtllh-png/CodeHelper/internal/security/permissions"
 	"github.com/spf13/cobra"
@@ -21,6 +22,7 @@ import (
 
 // DiagnosticsReportPayload is the one-click readiness aggregate (DPV2-022).
 type DiagnosticsReportPayload struct {
+	protocol.Readiness
 	Product      string              `json:"product"`
 	OK           bool                `json:"ok"`
 	Workspace    string              `json:"workspace"`
@@ -40,7 +42,7 @@ func DiagnosticsReport(workspace string) DiagnosticsReportPayload {
 	if workspace == "" {
 		workspace = "."
 	}
-	doctor := DoctorReport()
+	doctor := DoctorReportFor(workspace)
 	probe := contentdeps.Probe()
 	content := map[string]string{
 		"ocr":            contentdeps.FeatureStatus(probe["ocr"]),
@@ -63,13 +65,75 @@ func DiagnosticsReport(workspace string) DiagnosticsReportPayload {
 		"quality_verify":      "ready",
 	}
 	bundle, _ := constitution.Load(workspace, "")
+	journal := journalStatus(workspace)
+	checks := append([]protocol.ReadinessCheck(nil), doctor.Checks...)
+	checks = append(checks, diagnosticsReadinessChecks(
+		policyStatus, lspBinary, journal,
+	)...)
+	readiness := protocol.MustReadiness(checks...)
 	return DiagnosticsReportPayload{
-		Product: buildinfo.Current().Name, OK: true, Workspace: workspace,
+		Readiness: readiness,
+		Product:   buildinfo.Current().Name,
+		OK:        readiness.Status == protocol.ReadinessReady, Workspace: workspace,
 		Sandbox: doctor.Sandbox, Features: doctor.Features, Content: content,
 		Policy: policyStatus, LSP: map[string]string{"stdio_client": lspBinary},
 		Quality: quality, Maturity: wire.MaturityStatus(),
-		Journal: journalStatus(workspace), Constitution: bundle.Status,
+		Journal: journal, Constitution: bundle.Status,
 	}
+}
+
+func diagnosticsReadinessChecks(
+	policyStatus map[string]string,
+	lspStatus string,
+	journal map[string]string,
+) []protocol.ReadinessCheck {
+	checks := make([]protocol.ReadinessCheck, 0, 3)
+	if lspStatus == "ready" {
+		checks = append(checks, protocol.ReadinessCheck{
+			ID: "host.lsp", Status: protocol.ReadinessReady,
+			Reason: "LSP binary is available",
+		})
+	} else {
+		checks = append(checks, protocol.ReadinessCheck{
+			ID: "host.lsp", Status: protocol.ReadinessDegraded,
+			Reason: "LSP binary is unavailable",
+			Impact: "semantic navigation and language diagnostics are unavailable",
+			Action: "install clangd or set CODEHELPER_LSP_BINARY",
+		})
+	}
+	if policyStatus["permissions_toml"] == "present" {
+		checks = append(checks, protocol.ReadinessCheck{
+			ID: "policy.permissions", Status: protocol.ReadinessReady,
+			Reason: "workspace permissions policy is present",
+		})
+	} else {
+		checks = append(checks, protocol.ReadinessCheck{
+			ID: "policy.permissions", Status: protocol.ReadinessReady,
+			Reason: "no workspace permissions file; built-in policy remains active",
+		})
+	}
+	switch journal["interrupted_turns"] {
+	case "0":
+		checks = append(checks, protocol.ReadinessCheck{
+			ID: "workspace.journal", Status: protocol.ReadinessReady,
+			Reason: "workspace has no interrupted turns",
+		})
+	case "unreadable":
+		checks = append(checks, protocol.ReadinessCheck{
+			ID: "workspace.journal", Status: protocol.ReadinessBlocked,
+			Reason: "workspace journal is unreadable",
+			Impact: "uncommitted workspace changes cannot be assessed safely",
+			Action: "inspect and repair .codehelper/journal before running write tools",
+		})
+	default:
+		checks = append(checks, protocol.ReadinessCheck{
+			ID: "workspace.journal", Status: protocol.ReadinessBlocked,
+			Reason: "workspace contains " + journal["interrupted_turns"] + " interrupted turns",
+			Impact: "the workspace may contain changes no turn committed",
+			Action: "recover or discard interrupted turns before continuing",
+		})
+	}
+	return checks
 }
 
 // journalStatus reports whether the workspace has a durable edit journal and
@@ -130,10 +194,11 @@ func newDiagnosticsCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.C
 				}
 				sort.Strings(keys)
 				_, _ = fmt.Fprintf(stdout,
-					"product=%s workspace=%s ok=%v content=%d policy_permissions=%s lsp=%s\n",
-					report.Product, report.Workspace, report.OK, len(report.Content),
+					"product=%s workspace=%s status=%s content=%d policy_permissions=%s lsp=%s\n",
+					report.Product, report.Workspace, report.Status, len(report.Content),
 					report.Policy["permissions_toml"], report.LSP["stdio_client"],
 				)
+				writeReadinessChecks(stdout, report.Checks)
 				for _, key := range keys {
 					_, _ = fmt.Fprintf(stdout, "content.%s\t%s\n", key, report.Content[key])
 				}
@@ -154,7 +219,7 @@ func newDiagnosticsCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.C
 					_, _ = fmt.Fprintf(stdout, "journal.%s\t%s\n", key, report.Journal[key])
 				}
 			}
-			setCode(0)
+			setCode(report.ExitCode())
 		},
 	}
 	cmd.Flags().Bool("json", false, "emit JSON")

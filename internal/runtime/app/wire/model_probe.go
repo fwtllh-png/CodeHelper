@@ -37,6 +37,7 @@ type ProbeOptions struct {
 	ModelID      string
 	Capabilities []model.Capability
 	Store        *state.Store
+	Credential   model.CredentialRef
 	// BaseURL overrides the catalog endpoint (hermetic fixture servers).
 	BaseURL string
 }
@@ -68,6 +69,9 @@ func ProbeModelCapabilities(ctx context.Context, options ProbeOptions) ([]ProbeR
 		route = route.WithEndpoint(strings.TrimRight(options.BaseURL, "/"))
 	} else if override := strings.TrimSpace(os.Getenv("CODEHELPER_MODEL_PROBE_BASE_URL")); override != "" {
 		route = route.WithEndpoint(strings.TrimRight(override, "/"))
+	}
+	if options.Credential.Kind != "" || options.Credential.Name != "" {
+		route = route.WithCredential(options.Credential)
 	}
 
 	gate := &egress.Gate{Enforce: true}
