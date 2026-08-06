@@ -127,9 +127,7 @@
       "chapters": [
         {"id": "host-cli", "slug": "01-cli", "status": "verified", "titles": {"en": "CLI and Machine-Readable Output", "zh-CN": "CLI 与 Machine-readable Output"}},
         {"id": "host-tui", "slug": "02-tui", "status": "verified", "titles": {"en": "TUI State Projection", "zh-CN": "TUI State Projection"}},
-        {"id": "host-http-sse", "slug": "03-http-sse", "status": "verified", "titles": {"en": "HTTP/SSE Runtime API", "zh-CN": "HTTP/SSE Runtime API"}},
         {"id": "host-acp", "slug": "04-acp", "status": "verified", "titles": {"en": "ACP Stdio and Editor Interoperability", "zh-CN": "ACP Stdio 与编辑器互操作"}},
-        {"id": "host-web", "slug": "05-web", "status": "verified", "titles": {"en": "Web Control Surface", "zh-CN": "Web Control Surface"}},
         {"id": "host-vscode", "slug": "06-vscode", "status": "verified", "titles": {"en": "VS Code Context Bridge, Trust, and Compatibility", "zh-CN": "VS Code Context Bridge、Trust 与 Compatibility"}}
       ]
     },

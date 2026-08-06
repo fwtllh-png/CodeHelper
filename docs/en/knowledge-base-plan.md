@@ -170,10 +170,8 @@ verifiable source of truth.
 
 1. CLI and machine-readable output
 2. TUI state projection
-3. HTTP/SSE runtime API
-4. ACP stdio and editor interoperability
-5. Web control surface
-6. VS Code context bridge, trust, and compatibility
+3. ACP stdio and editor interoperability
+4. VS Code context bridge, trust, and compatibility
 
 ### Part XI: Extension Ecosystem
 
@@ -485,10 +483,10 @@ background work.
 
 ### Stage 4: Hosts and Ecosystem
 
-Status: complete. All 12 bilingual chapters across Hosts and Protocols and the
+Status: complete. All 10 bilingual chapters across Hosts and Protocols and the
 Extension Ecosystem are verified.
 
-- CLI, TUI, HTTP/SSE, ACP, Web, and VS Code;
+- CLI, TUI, ACP, and VS Code;
 - MCP, skills, plugins, and hooks;
 - provider, tool, and host extension tutorials.
 

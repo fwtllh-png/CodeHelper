@@ -68,11 +68,8 @@ func newRoot(
 	addPassthrough(root, "skill", "Manage skills", func(args []string) int {
 		return runSkill(ctx, args, stdout, stderr)
 	}, setCode)
-	addPassthrough(root, "serve", "Serve the Runtime HTTP/SSE API", func(args []string) int {
-		return runServe(ctx, args, stdout, stderr)
-	}, setCode)
 	root.AddCommand(newMCPCommand(ctx, stdin, stdout, stderr, setCode))
-	addPassthrough(root, "host", "Host Runtime over HTTP or ACP", func(args []string) int {
+	addPassthrough(root, "host", "Host Runtime over ACP", func(args []string) int {
 		return runHost(ctx, args, stdin, stdout, stderr)
 	}, setCode)
 	addPassthrough(root, "runtime-observe", "Emit runtime metrics and redacted logs", func(args []string) int {
@@ -90,7 +87,6 @@ func newRoot(
 	root.AddCommand(newSandboxCommand(stdout, stderr, setCode))
 	root.AddCommand(newInitCommand(stdout, stderr, setCode))
 	root.AddCommand(newSetupCommand(stdout, stderr, setCode))
-	root.AddCommand(newWebCommand(ctx, stdout, stderr, setCode))
 	root.AddCommand(newReviewCommand(stdout, stderr, setCode))
 	root.AddCommand(newApplyCommand(stdout, stderr, setCode))
 	root.AddCommand(newDoctorCommand(stdout, stderr, setCode))

@@ -10,8 +10,8 @@ model, invokes governed tools, asks for approval when required, verifies the
 result, and records an auditable event stream.
 
 The product is terminal-first because terminals are portable and automation
-friendly. It is not terminal-only: VS Code, HTTP/SSE, ACP, and web surfaces are
-hosts over the same runtime.
+friendly. It is not terminal-only: VS Code and ACP are hosts over the same
+runtime.
 
 ## Problem It Solves
 
@@ -38,7 +38,7 @@ security, persistence, and evidence layers.
 
 ### For teams and platform engineers
 
-- a runtime that can be embedded behind ACP or HTTP/SSE;
+- an ACP runtime that editor and agent clients can embed;
 - structured events for observability, evaluation, and policy enforcement;
 - hermetic fixtures and contract tests for repeatable integration;
 - extensibility through MCP, skills, plugins, hooks, and workflows.
@@ -62,7 +62,7 @@ security, persistence, and evidence layers.
 | Persistence | SQLite projections, event log, snapshots, session metadata, journals |
 | Orchestration | durable tasks, worker, automations, workflows, lanes, fleet, subagents |
 | Ecosystem | model catalog, MCP, skills, plugins, hooks, memory |
-| Hosts | CLI, TUI, HTTP/SSE, ACP, Web UI, VS Code |
+| Hosts | CLI, TUI, ACP, VS Code |
 
 ## Product Boundaries
 

@@ -163,10 +163,8 @@ docs/book/
 
 1. CLI 和 Machine-readable Output
 2. TUI State Projection
-3. HTTP/SSE Runtime API
-4. ACP Stdio 与编辑器互操作
-5. Web Control Surface
-6. VS Code Context Bridge、Trust 与 Compatibility
+3. ACP Stdio 与编辑器互操作
+4. VS Code Context Bridge、Trust 与 Compatibility
 
 ### 第十一部分：扩展生态
 
@@ -448,9 +446,9 @@ Reconstruction 和 Capability Rollout 的无网络实践路径。
 
 ### 阶段 4：Host 与扩展生态
 
-状态：已完成。Host 与协议、扩展生态共 12 章双语正文均已验证。
+状态：已完成。Host 与协议、扩展生态共 10 章双语正文均已验证。
 
-- CLI、TUI、HTTP/SSE、ACP、Web、VS Code；
+- CLI、TUI、ACP、VS Code；
 - MCP、Skill、Plugin、Hook；
 - Provider、Tool 和 Host 扩展教程。
 

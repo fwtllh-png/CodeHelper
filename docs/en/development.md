@@ -93,8 +93,7 @@ make brand-check
 | `make sandbox-attack-test` | sandbox/file/shell attack corpus |
 | `make secret-leak-test` | release-binary secret redaction checks |
 | `make acp-interop` | real binary ACP stdio lifecycle |
-| `make api-contract` | real binary HTTP contract |
-| `make protocol-contract` | shared scenarios over ACP and HTTP |
+| `make protocol-contract` | shared runtime scenarios over ACP |
 | `make protocol-schema` | regenerate committed runtime protocol schema |
 
 ### VS Code

@@ -78,7 +78,7 @@ Source 与 Execution 留在 Workspace；Network Access 显式，Listening Servic
 
 ### 一个 Runtime，多种 Host
 
-CLI、TUI、VS Code、HTTP/SSE、ACP、Web、Worker、Child Agent 共享 Operation/Event。
+CLI、TUI、VS Code、ACP、Worker、Child Agent 共享 Operation/Event。
 只有 Host-side Execution 的功能在架构上不完整。
 
 ### Evidence 优先
@@ -97,7 +97,7 @@ Unknown Capability、Strong Sandbox 不可用、Stale Catalog、Missing Authorit
 
 ```mermaid
 flowchart TB
-    H[CLI / TUI / VS Code / HTTP / ACP / Web] --> R[Local Runtime]
+    H[CLI / TUI / VS Code / ACP] --> R[Local Runtime]
     R --> C[Context / Repository]
     R --> M[Model / Provider]
     R --> T[Governed Tools]

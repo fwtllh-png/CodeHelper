@@ -10,7 +10,7 @@ events; they do not reimplement the agent loop or execute privileged tools
 directly.
 
 ```text
-CLI / TUI / VS Code / HTTP / ACP / Web
+CLI / TUI / VS Code / ACP
                  |
            Operation / Event
                  |
@@ -70,8 +70,8 @@ The conceptual model is:
 - **Projection:** query-oriented state reconstructed from events and relational
   records.
 
-HTTP/SSE and ACP are transport envelopes over this shared model. A feature that
-exists only in one transport is incomplete unless it is intentionally
+ACP is the editor transport envelope over this shared model. A feature that
+exists only in one host is incomplete unless it is intentionally
 host-specific presentation.
 
 ## Turn Data Flow

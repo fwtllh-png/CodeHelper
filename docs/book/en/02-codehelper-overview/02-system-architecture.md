@@ -84,7 +84,7 @@ flowchart TB
       CLI
       TUI
       VSC[VS Code]
-      API[HTTP / ACP / Web]
+      API[ACP]
     end
     P[Runtime Protocol]
     APP[Application Runtime]
@@ -149,8 +149,8 @@ Operation -> ordered Events -> Projection
 
 `internal/runtime/protocol` defines tagged unions for Operations and Events.
 The generated schema in `docs/protocol/runtime-protocol.schema.json` is shared
-with transports and VS Code generation. HTTP/SSE and ACP wrap the same model;
-they are not separate runtimes.
+with ACP and VS Code generation. ACP wraps the same model rather than defining
+a separate runtime.
 
 An Event carries sequence, Operation, Thread, Turn, and Item identity. This
 allows a Host to reconnect, replay from a cursor, and distinguish output,

@@ -10,7 +10,7 @@ code_paths:
   - internal
   - extensions/vscode
 test_paths:
-  - internal/host/runtimeapi/http/contract_test.go
+  - internal/host/runtimeapi/acp/contract_test.go
   - extensions/vscode/src/runtime/integration.test.ts
 source_of_truth:
   - Makefile
@@ -31,13 +31,13 @@ Extension Host 或 Electron。
 | Layer | 证明 | 命令 |
 | --- | --- | --- |
 | Unit/Package | Local Invariant | `go test ./path` |
-| Contract | Transport 一致行为 | `make protocol-contract` |
-| Binary Integration | Framing/Process | `make api-contract`、`make acp-interop` |
+| Contract | 通过 ACP 验证共享 Runtime 行为 | `make protocol-contract` |
+| Binary Integration | ACP Framing/Process | `make acp-interop` |
 | VS Code Static/Runtime | TS/Real Runtime | `make vscode-check`、Runtime Integration |
 | Electron/Remote | Real VS Code Platform | Matrix Target |
 
-Unit Test 只在 Ownership Boundary 使用 Fake。Contract 在 HTTP/ACP 复用 Scenario；Binary
-Test 启动 Build Artifact。Electron/Remote SSH/Dev Container 因下载外部 Runtime 而显式
+Unit Test 只在 Ownership Boundary 使用 Fake。ACP Contract 验证共享 Runtime Scenario；
+Binary Test 启动 Build Artifact。Electron/Remote SSH/Dev Container 因下载外部 Runtime 而显式
 分离。
 
 ## Risk-to-test Matrix

@@ -1,10 +1,8 @@
-// Package contract holds the behaviours every runtime transport must show.
+// Package contract holds the behaviours every runtime host must show.
 //
-// ACP and HTTP are envelopes over one protocol. Each has its own
-// interop suite, and each suite grew its own idea of what "a turn works" means,
-// so the two transports could drift apart without any test noticing — the first
-// consumer to notice would be an external client. This package is the thing that
-// notices: one scenario list, run twice, once per transport.
+// ACP exposes one protocol-backed view of the shared runtime. These scenarios
+// keep its host semantics aligned with the runtime model and remain reusable by
+// any future host without copying assertions.
 //
 // It imports testing because it is test support, in the same way net/http/httptest
 // is: the scenarios are assertions, and they belong next to each other rather than
@@ -31,11 +29,9 @@ type Receipt struct {
 
 // Refusal is a host declining an operation.
 //
-// The transports carry refusals differently — a JSON-RPC error object, an HTTP
-// status with a Problem body — so each driver translates its own into a protocol
-// error code. The translation is mechanical on purpose: the contract asserts the
-// two transports refuse the same thing with the same meaning, and a driver that
-// had to think in order to answer would be hiding the difference.
+// A driver translates its wire refusal into a protocol error code. The
+// translation is mechanical on purpose so the contract checks runtime meaning,
+// not transport-specific framing.
 type Refusal struct {
 	Code    protocol.ErrorCode
 	Message string

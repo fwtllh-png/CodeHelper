@@ -1497,9 +1497,7 @@ func actsOnExistingTurn(kind protocol.OperationKind) bool {
 
 // requireTurn refuses an operation for a turn this session does not have. Without
 // it the submit is accepted and the refusal arrives later as an operation.rejected
-// event, so a client is told "accepted" about work that can never happen — and the
-// HTTP transport, which looks the turn up before submitting, answers differently
-// for the same request.
+// event, so a client is told "accepted" about work that can never happen.
 func (s *Server) requireTurn(binding sessionBinding, turn protocol.TurnID) error {
 	record, err := s.dependencies.Threads.GetTurn(s.ctx, turn)
 	if errors.Is(err, threadstate.ErrNotFound) {
@@ -2121,8 +2119,8 @@ func (s *Server) replyApplicationError(request rpcRequest, err error) {
 	case protocol.CodeOf(err) == protocol.CodeUnavailable:
 		code = codeUnavailable
 	// Something the request named does not exist. The protocol has no separate
-	// code for it — HTTP reports it as invalid_argument with a 404 — so reporting
-	// it as an internal error here would both lie and tell the client to retry.
+	// code for it, so reporting it as an internal error would both lie and tell
+	// the client to retry.
 	case errors.Is(err, threadstate.ErrNotFound),
 		errors.Is(err, sessionstate.ErrNotFound):
 		code = codeInvalidParams

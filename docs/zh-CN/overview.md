@@ -8,8 +8,8 @@ CodeHelper 是本地 Coding Agent Runtime，而不仅是一个聊天界面。用
 Runtime 会收集仓库证据、调用模型、执行受治理工具、在需要时请求审批、验证结果，并
 记录可审计事件流。
 
-“终端优先”意味着它优先保证可移植和可自动化，并不意味着“只有终端”。VS Code、
-HTTP/SSE、ACP 与 Web 都是同一 Runtime 之上的 Host。
+“终端优先”意味着它优先保证可移植和可自动化，并不意味着“只有终端”。VS Code 与
+ACP 都是同一 Runtime 之上的 Host。
 
 ## 要解决的问题
 
@@ -35,7 +35,7 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 
 ### 对团队与平台工程
 
-- 可通过 ACP 或 HTTP/SSE 嵌入的统一 Runtime；
+- 编辑器与 Agent 客户端可嵌入的 ACP Runtime；
 - 用于观测、评估和策略治理的结构化事件；
 - Hermetic Fixture 与契约测试支持可重复集成；
 - 通过 MCP、Skill、Plugin、Hook 和 Workflow 扩展。
@@ -59,7 +59,7 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 | 持久化 | SQLite Projection、Event Log、Snapshot、Session、Journal |
 | 编排 | Durable Task、Worker、Automation、Workflow、Lane、Fleet、Subagent |
 | 生态 | Model Catalog、MCP、Skill、Plugin、Hook、Memory |
-| Host | CLI、TUI、HTTP/SSE、ACP、Web UI、VS Code |
+| Host | CLI、TUI、ACP、VS Code |
 
 ## 产品边界
 

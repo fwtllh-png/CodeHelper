@@ -23,7 +23,7 @@ protocol names, and CLI flags remain in their source form.
 | Fixture | Deterministic recorded input/output used to exercise the real runtime without a live dependency. | Prefer “hermetic fixture” when no network is used. |
 | Fleet | Coordinated scheduling across multiple lanes or execution resources. | Use the CodeHelper domain meaning. |
 | Guard | The boundary that evaluates tools against policy, permissions, approval, constitution, journal, and sandbox requirements. | A host must not bypass it. |
-| Host | A user or client-facing adapter that submits operations and projects events. | CLI, TUI, HTTP, ACP, Web, and VS Code are hosts. |
+| Host | A user or client-facing adapter that submits operations and projects events. | CLI, TUI, ACP, and VS Code are hosts. |
 | Idempotency | The property that retrying an operation does not create unintended duplicate effects. | State the idempotency key or boundary. |
 | Journal | A durable record of intended and completed workspace effects used for evidence and recovery. | Not a general application log. |
 | Lane | An ordered execution boundary used to coordinate related work. | Distinguish from an OS thread. |

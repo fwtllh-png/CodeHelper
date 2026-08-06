@@ -29,7 +29,6 @@ body:
         - CLI
         - TUI
         - VS Code
-        - HTTP/SSE
         - ACP
         - Web
         - Worker or orchestration

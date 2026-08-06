@@ -10,7 +10,7 @@ code_paths:
   - internal
   - extensions/vscode
 test_paths:
-  - internal/host/runtimeapi/http/contract_test.go
+  - internal/host/runtimeapi/acp/contract_test.go
   - extensions/vscode/src/runtime/integration.test.ts
 source_of_truth:
   - Makefile
@@ -31,13 +31,13 @@ binary, transport, Extension Host, or Electron is required.
 | Layer | Proves | Typical command |
 | --- | --- | --- |
 | Unit/package | local invariants | `go test ./path` |
-| Contract | same behavior across transports | `make protocol-contract` |
-| Binary integration | framing/process lifecycle | `make api-contract`, `make acp-interop` |
+| Contract | shared runtime behavior through ACP | `make protocol-contract` |
+| Binary integration | ACP framing/process lifecycle | `make acp-interop` |
 | VS Code static/runtime | TS and real Runtime stdio | `make vscode-check`, `vscode-runtime-integration` |
 | Electron/remote | actual VS Code platform | `make vscode-integration` and matrix targets |
 
-Unit tests use fake clocks/backends only at ownership boundaries. Contract tests
-share scenarios across HTTP and ACP. Binary tests launch the built artifact.
+Unit tests use fake clocks/backends only at ownership boundaries. ACP contract
+tests exercise shared runtime scenarios. Binary tests launch the built artifact.
 Electron, Remote SSH, and Dev Container gates are explicit because they acquire
 large external runtimes.
 

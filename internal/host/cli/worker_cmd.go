@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
@@ -174,7 +175,7 @@ func runWorker(
 		return 1
 	}
 	ready := workerReady{
-		Type: "ready", PID: processID(), Owner: scheduler.Owner(),
+		Type: "ready", PID: os.Getpid(), Owner: scheduler.Owner(),
 		Executors: scheduler.Executors(), MaxParallel: scheduler.MaxParallel(),
 		DataDir: options.DataDir, Workspace: loaded.Config.Execution.Workspace,
 	}

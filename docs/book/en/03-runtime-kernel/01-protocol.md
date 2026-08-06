@@ -35,7 +35,7 @@ Read [The Complete Lifecycle of an Agent Turn](../02-codehelper-overview/05-turn
 
 ## Problem Background
 
-CLI, HTTP, ACP, VS Code, persistence, and tests all need to describe the same
+CLI, ACP, VS Code, persistence, and tests all need to describe the same
 work. Sharing Go structs is insufficient when messages cross process and
 language boundaries. A stable contract must reject unknown shapes, preserve
 identity, and evolve deliberately.

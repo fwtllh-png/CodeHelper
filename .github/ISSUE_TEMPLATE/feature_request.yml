@@ -39,7 +39,7 @@ body:
         - Orchestration
         - CLI or TUI
         - VS Code
-        - HTTP/SSE, ACP, or Web
+        - ACP or VS Code
         - Documentation or book
         - Build, test, or release
         - Other

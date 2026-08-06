@@ -51,7 +51,7 @@ func TestHelpTextOperableOnly(t *testing.T) {
 	if strings.Contains(main, "/sandbox") {
 		t.Fatalf("/sandbox must not be in operable list: %s", main)
 	}
-	for _, sample := range []string{"/sandbox", "/doctor", "/memory", "/context", "/init", "/apply", "/web"} {
+	for _, sample := range []string{"/sandbox", "/doctor", "/memory", "/context", "/init", "/apply"} {
 		action, ok := commands.Parse(sample)
 		if !ok || action.Kind == commands.KindUnknown {
 			t.Fatalf("stub parse %s => %+v", sample, action)
