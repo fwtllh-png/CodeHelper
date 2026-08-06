@@ -11,9 +11,8 @@
 **一个使用 Go 实现的、本地运行、受控执行的 AI Coding Agent Runtime，也是一套
 可执行的 Agent 工程知识书籍。**
 
-CodeHelper 把仓库理解、模型调用、受控工具、审批、验证、持久化会话和任务编排统一在
-一套 Runtime 协议之后，并同时服务 CLI、TUI、VS Code、HTTP/SSE、ACP 和轻量 Web
-控制页。
+CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、持久化会话与编排统一放在
+一套 Runtime 协议之后，并同时服务 CLI、TUI、VS Code、ACP、自动化与 Worker。
 
 > 项目状态：初始开发版本。首次公开稳定发布前，接口和持久化格式仍可能调整。
 
@@ -121,9 +120,7 @@ make deepseek-vscode
 | --- | --- | --- |
 | 单次 CLI | `codehelper exec` | 脚本、CI 实验、机器可读事件流 |
 | 终端界面 | `codehelper tui` | 交互式仓库开发 |
-| HTTP/SSE Runtime | `codehelper serve` | 本地客户端和集成 |
 | ACP Runtime | `codehelper host --adapter acp` | 编辑器与 Agent 协议客户端 |
-| Web 控制页 | `codehelper web` | 轻量本地检查 |
 | VS Code 插件 | `extensions/vscode` | 编辑器原生对话、上下文、变更、审批和任务 |
 | Worker 与编排 | `worker`、`automation`、`workflow`、`lane`、`fleet` | 持久化、多步骤执行 |
 
@@ -149,7 +146,7 @@ make deepseek-vscode
 
 ```text
 cmd/codehelper/          进程入口
-internal/host/           CLI、TUI、HTTP/SSE、ACP、Web UI
+internal/host/           CLI、TUI、ACP
 internal/runtime/        Operation/Event Runtime 与 Agent Engine
 internal/adapter/        Provider、Model、Tool、MCP、Skill、Plugin、Hook
 internal/security/       Policy、Permission、Constitution、Sandbox

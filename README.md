@@ -13,8 +13,8 @@ book, written in Go.**
 
 CodeHelper puts repository understanding, model calls, guarded tools, approval,
 verification, durable sessions, and orchestration behind one runtime protocol.
-Use the same runtime from the CLI, TUI, VS Code, HTTP/SSE, ACP, or the embedded
-web control page.
+Use the same runtime from the CLI, TUI, VS Code, ACP, automation, and worker
+surfaces.
 
 > Project status: initial development release. Interfaces and persisted formats
 > may still change before the first public stable release.
@@ -126,9 +126,7 @@ configuration, credentials, persistence, and VS Code setup.
 | --- | --- | --- |
 | One-shot CLI | `codehelper exec` | scripts, CI experiments, machine-readable event streams |
 | Terminal UI | `codehelper tui` | interactive repository work |
-| HTTP/SSE runtime | `codehelper serve` | local clients and integrations |
 | ACP runtime | `codehelper host --adapter acp` | editor/agent protocol clients |
-| Web control page | `codehelper web` | lightweight local inspection |
 | VS Code extension | `extensions/vscode` | editor-native chat, context, changes, approvals, jobs |
 | Worker and automation | `worker`, `automation`, `workflow`, `lane`, `fleet` | durable and multi-step execution |
 
@@ -156,7 +154,7 @@ variables, files, or OS keyrings; raw secrets do not belong in TOML files.
 
 ```text
 cmd/codehelper/          process entry point
-internal/host/           CLI, TUI, HTTP/SSE, ACP, Web UI
+internal/host/           CLI, TUI, ACP
 internal/runtime/        operation/event runtime and agent engine
 internal/adapter/        providers, models, tools, MCP, skills, plugins, hooks
 internal/security/       policy, permissions, constitution, sandbox

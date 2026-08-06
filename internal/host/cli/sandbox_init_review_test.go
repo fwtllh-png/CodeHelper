@@ -54,7 +54,7 @@ func TestExecResumeFlags(t *testing.T) {
 	}
 }
 
-func TestSandboxInitWebReview(t *testing.T) {
+func TestSandboxInitReview(t *testing.T) {
 	root := t.TempDir()
 	var stdout, stderr bytes.Buffer
 
@@ -71,13 +71,6 @@ func TestSandboxInitWebReview(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "codehelper.toml")); err != nil {
 		t.Fatal(err)
-	}
-
-	stdout.Reset()
-	stderr.Reset()
-	code = cli.Run([]string{"web", "--once", "--json"}, &stdout, &stderr)
-	if code != 0 || !strings.Contains(stdout.String(), "ui_url") {
-		t.Fatalf("web once code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 
 	stdout.Reset()

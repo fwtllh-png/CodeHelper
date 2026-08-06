@@ -161,7 +161,6 @@ Providers or Tool executors directly.
 | Add OpenAI frame type | `adapter/provider/openai` | normalized Stream |
 | Add file mutation Tool | `adapter/tool/file` | Descriptor, Guard, journal |
 | Add approval rule | `security/policy` | Guard and protocol Events |
-| Add HTTP endpoint | `host/runtimeapi/http` | existing Operation/read model |
 | Add Worker retry state | `orchestration/task` | persistence and executor |
 | Add SQLite table | `persist/state/sqlite` | repository owner and schema checks |
 | Add VS Code command | `extensions/vscode` | ACP Operation and trust |

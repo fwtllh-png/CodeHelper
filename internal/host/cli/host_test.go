@@ -6,11 +6,6 @@ import (
 )
 
 func TestValidateHostRequest(t *testing.T) {
-	httpRequest := hostRequest{Method: "POST", Path: "/v1/turns", Prompt: "hello"}
-	if prompt, err := validateHostRequest("http", httpRequest); err != nil || prompt != "hello" {
-		t.Fatalf("HTTP request prompt=%q err=%v", prompt, err)
-	}
-
 	acpRequest := hostRequest{
 		JSONRPC: "2.0",
 		ID:      json.RawMessage("1"),
@@ -21,8 +16,8 @@ func TestValidateHostRequest(t *testing.T) {
 		t.Fatalf("ACP request prompt=%q err=%v", prompt, err)
 	}
 
-	if _, err := validateHostRequest("http", hostRequest{Method: "GET"}); err == nil {
-		t.Fatal("malformed HTTP host envelope succeeded")
+	if _, err := validateHostRequest("http", hostRequest{}); err == nil {
+		t.Fatal("removed HTTP host envelope succeeded")
 	}
 	if _, err := validateHostRequest("acp", hostRequest{JSONRPC: "2.0"}); err == nil {
 		t.Fatal("malformed ACP host envelope succeeded")

@@ -45,17 +45,6 @@ codehelper tui --config ./codehelper.toml --workspace .
 TUI 与 `exec` 使用同一 Runtime，不存在独立工具策略。日常建议从
 `--posture suggest` 开始。
 
-### 持久化 HTTP/SSE 服务
-
-```bash
-codehelper serve \
-  --data-dir ./.codehelper \
-  --workspace . \
-  --listen 127.0.0.1:8080
-```
-
-默认监听 Loopback。未经认证和安全 Review 的网关，不应把服务暴露到不可信网络。
-
 ### ACP Host
 
 ```bash
@@ -67,14 +56,6 @@ codehelper host \
 
 ACP 面向编辑器与 Agent 客户端。Workspace Identity 把编辑器 URI 绑定到 Runtime Root，
 Host 不能自行放宽或伪造该身份。
-
-### Web 控制页
-
-```bash
-codehelper web --listen 127.0.0.1:0
-```
-
-这是本地控制面，不是托管式多租户服务。
 
 ## Mode 与 Posture
 

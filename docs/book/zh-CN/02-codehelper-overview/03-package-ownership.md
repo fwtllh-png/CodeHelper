@@ -125,7 +125,6 @@ Tool Executor。
 | OpenAI Frame | `adapter/provider/openai` | Normalized Stream |
 | File Tool | `adapter/tool/file` | Descriptor/Guard/Journal |
 | Approval Rule | `security/policy` | Guard/Protocol |
-| HTTP Endpoint | `host/runtimeapi/http` | Operation/Read Model |
 | Worker Retry | `orchestration/task` | Persist/Executor |
 | SQLite Table | `persist/state/sqlite` | Repository/Schema |
 | VS Code Command | `extensions/vscode` | ACP/Trust |

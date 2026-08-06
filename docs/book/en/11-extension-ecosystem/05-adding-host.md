@@ -6,7 +6,7 @@ audience:
 prerequisites:
   - overview-system-architecture
   - runtime-protocol
-  - host-http-sse
+  - host-acp
 code_paths:
   - internal/host
   - internal/runtime/app

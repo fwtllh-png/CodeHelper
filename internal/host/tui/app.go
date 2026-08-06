@@ -1596,7 +1596,7 @@ func (m Model) dispatchSlash(action commands.Action) Model {
 	case commands.KindContext:
 		m = m.noteStatus(m.contextStatusLine())
 	case commands.KindSandbox, commands.KindDoctor, commands.KindMemory,
-		commands.KindInit, commands.KindApply, commands.KindWeb:
+		commands.KindInit, commands.KindApply:
 		m = m.noteStatus("slash:/" + action.Name + " — use CLI for full control; TUI entry acknowledged")
 	default:
 		m = m.noteStatus("unknown slash: /" + action.Name)

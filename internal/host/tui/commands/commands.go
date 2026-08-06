@@ -51,7 +51,6 @@ const (
 	KindPermissions  Kind = "permissions"
 	KindInit         Kind = "init"
 	KindApply        Kind = "apply"
-	KindWeb          Kind = "web"
 	KindThread       Kind = "thread"
 	KindResume       Kind = "resume"
 	KindContinue     Kind = "continue"
@@ -87,7 +86,7 @@ func AllKinds() []Kind {
 		KindPlugin, KindSkill, KindLane, KindAuth, KindSandbox,
 		KindReview, KindPlan, KindMode, KindGranular, KindUsage, KindDoctor,
 		KindMemory, KindContext, KindPermissions, KindInit, KindApply,
-		KindWeb, KindThread, KindResume, KindContinue, KindAgent,
+		KindThread, KindResume, KindContinue, KindAgent,
 		KindConstitution, KindTask, KindAutomation, KindRLM, KindRelay, KindJobs, KindAttach,
 		KindBacktrack, KindSearch,
 	}
@@ -198,8 +197,6 @@ func classify(name string) Kind {
 		return KindInit
 	case "apply":
 		return KindApply
-	case "web":
-		return KindWeb
 	case "thread", "threads":
 		return KindThread
 	case "resume":
@@ -230,7 +227,7 @@ func classify(name string) Kind {
 // StubKinds are parsed in TUI but redirect to CLI (no operable panel yet).
 func StubKinds() []Kind {
 	return []Kind{
-		KindSandbox, KindDoctor, KindMemory, KindContext, KindInit, KindApply, KindWeb,
+		KindSandbox, KindDoctor, KindMemory, KindContext, KindInit, KindApply,
 	}
 }
 

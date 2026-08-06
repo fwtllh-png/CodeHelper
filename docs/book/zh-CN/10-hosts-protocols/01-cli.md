@@ -102,7 +102,7 @@ Receipt。
 
 ## 延伸阅读
 
-- [HTTP/SSE Runtime API](./03-http-sse.md)
+- [ACP Stdio 与编辑器互操作](./04-acp.md)
 
 ## 事实来源与验证
 

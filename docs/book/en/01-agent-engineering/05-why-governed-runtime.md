@@ -112,7 +112,7 @@ implementation:
 
 ```mermaid
 flowchart TD
-    H[CLI / TUI / VS Code / HTTP / ACP] --> O[Operation]
+    H[CLI / TUI / VS Code / ACP] --> O[Operation]
     O --> R[Application Runtime]
     R --> E[Agent Engine]
     E --> M[Provider]

@@ -92,8 +92,7 @@ make brand-check
 | `make sandbox-attack-test` | Sandbox/File/Shell Attack Corpus |
 | `make secret-leak-test` | 发布二进制 Secret 脱敏测试 |
 | `make acp-interop` | 真实二进制 ACP Stdio 生命周期 |
-| `make api-contract` | 真实二进制 HTTP Contract |
-| `make protocol-contract` | ACP 与 HTTP 共享场景 |
+| `make protocol-contract` | ACP 上的共享 Runtime 场景 |
 | `make protocol-schema` | 重新生成 Runtime Protocol Schema |
 
 ### VS Code

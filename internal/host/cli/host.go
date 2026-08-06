@@ -21,19 +21,16 @@ import (
 )
 
 type hostRequest struct {
-	Method  string          `json:"method,omitempty"`
-	Path    string          `json:"path,omitempty"`
-	Prompt  string          `json:"prompt,omitempty"`
 	JSONRPC string          `json:"jsonrpc,omitempty"`
 	ID      json.RawMessage `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
 	Params  struct {
 		Prompt string `json:"prompt"`
 	} `json:"params,omitempty"`
 }
 
 // runHost exposes the persistent ACP adapter and the release-binary legacy
-// envelope regression. The legacy path deliberately delegates to runExec;
-// persistent ACP bootstraps the same durable Runtime used by serve.
+// envelope regression. The legacy path deliberately delegates to runExec.
 func runHost(
 	ctx context.Context,
 	args []string,
@@ -42,7 +39,7 @@ func runHost(
 ) int {
 	flags := flag.NewFlagSet("host", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	adapter := flags.String("adapter", "", "host adapter: http or acp")
+	adapter := flags.String("adapter", "", "host adapter: acp")
 	legacyACP := flags.Bool(
 		"legacy-acp-envelope", false,
 		"run the one-shot ACP envelope compatibility path",
@@ -90,15 +87,15 @@ func runHost(
 		_, _ = fmt.Fprintln(stderr, "codehelper: host accepts flags only")
 		return 2
 	}
-	if *adapter != "http" && *adapter != "acp" {
-		_, _ = fmt.Fprintln(stderr, "codehelper: host --adapter must be http or acp")
+	if *adapter != "acp" {
+		_, _ = fmt.Fprintln(stderr, "codehelper: host --adapter must be acp")
 		return 2
 	}
 	if *legacyACP && *adapter != "acp" {
 		_, _ = fmt.Fprintln(stderr, "codehelper: --legacy-acp-envelope requires --adapter acp")
 		return 2
 	}
-	if *trustedDynamicTools && (*adapter != "acp" || *legacyACP) {
+	if *trustedDynamicTools && *legacyACP {
 		_, _ = fmt.Fprintln(
 			stderr,
 			"codehelper: --trusted-dynamic-tools requires the persistent ACP adapter",
@@ -310,7 +307,7 @@ func runPersistentACPHost(
 	}
 	repositories, err := wire.NewPersistentRepositories(store)
 	if err != nil {
-		closeApplication(application, stderr)
+		closeACPApplication(application, stderr)
 		_, _ = fmt.Fprintf(stderr, "codehelper: ACP repositories: %v\n", err)
 		return 1
 	}
@@ -328,7 +325,7 @@ func runPersistentACPHost(
 		Diagnostics: stderr,
 	})
 	if err != nil {
-		closeApplication(application, stderr)
+		closeACPApplication(application, stderr)
 		_, _ = fmt.Fprintf(stderr, "codehelper: ACP adapter: %v\n", err)
 		return 1
 	}
@@ -347,13 +344,16 @@ func runPersistentACPHost(
 	return 0
 }
 
+func closeACPApplication(application *wire.Session, stderr io.Writer) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := application.Close(ctx); err != nil {
+		_, _ = fmt.Fprintf(stderr, "codehelper: ACP cleanup: %v\n", err)
+	}
+}
+
 func validateHostRequest(adapter string, request hostRequest) (string, error) {
 	switch adapter {
-	case "http":
-		if request.Method != "POST" || request.Path != "/v1/turns" || request.Prompt == "" {
-			return "", errors.New("HTTP envelope requires POST /v1/turns and prompt")
-		}
-		return request.Prompt, nil
 	case "acp":
 		if request.JSONRPC != "2.0" || len(request.ID) == 0 ||
 			request.Method != "session/prompt" || request.Params.Prompt == "" {

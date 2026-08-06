@@ -46,18 +46,6 @@ codehelper tui --config ./codehelper.toml --workspace .
 The TUI is a host over the same runtime used by `exec`. It does not have a
 separate tool policy. Start with `--posture suggest`.
 
-### Persistent HTTP/SSE service
-
-```bash
-codehelper serve \
-  --data-dir ./.codehelper \
-  --workspace . \
-  --listen 127.0.0.1:8080
-```
-
-The default listen address is loopback. Do not expose the service to an
-untrusted network without an authenticated, reviewed gateway.
-
 ### ACP host
 
 ```bash
@@ -69,14 +57,6 @@ codehelper host \
 
 ACP is used by editor/agent clients. Workspace identity arguments bind an editor
 workspace URI to a runtime root; hosts must not invent or relax that identity.
-
-### Web control page
-
-```bash
-codehelper web --listen 127.0.0.1:0
-```
-
-This is a local control surface, not a hosted multi-user service.
 
 ## Mode and Posture
 

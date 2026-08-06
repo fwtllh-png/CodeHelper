@@ -110,7 +110,7 @@ sequence, terminal state, and receipt fields across both renderings.
 
 ## Further Reading
 
-- [HTTP/SSE Runtime API](./03-http-sse.md)
+- [ACP Stdio and Editor Interoperability](./04-acp.md)
 
 ## Sources and Verification
 

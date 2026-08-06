@@ -101,7 +101,7 @@ CodeHelper 在所有 Host 与有副作用实现之间放置一套共享 Runtime�
 
 ```mermaid
 flowchart TD
-    H[CLI / TUI / VS Code / HTTP / ACP] --> O[Operation]
+    H[CLI / TUI / VS Code / ACP] --> O[Operation]
     O --> R[Application Runtime]
     R --> E[Agent Engine]
     E --> M[Provider]

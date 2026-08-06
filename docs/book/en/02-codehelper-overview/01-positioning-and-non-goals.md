@@ -79,7 +79,7 @@ and listening services default to local boundaries.
 
 ### One Runtime, many Hosts
 
-CLI, TUI, VS Code, HTTP/SSE, ACP, Web, Workers, and child Agents share
+CLI, TUI, VS Code, ACP, Workers, and child Agents share
 Operation/Event semantics. A feature implemented only as Host-side execution is
 architecturally incomplete.
 
@@ -103,7 +103,7 @@ Runtime.
 
 ```mermaid
 flowchart TB
-    H[CLI / TUI / VS Code / HTTP / ACP / Web] --> R[Local Runtime]
+    H[CLI / TUI / VS Code / ACP] --> R[Local Runtime]
     R --> C[Context / Repository Understanding]
     R --> M[Model / Provider Routing]
     R --> T[Governed Tools]

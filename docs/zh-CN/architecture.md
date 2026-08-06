@@ -8,7 +8,7 @@ CodeHelper 保持一个权威执行 Runtime，同时允许多种呈现和集成�
 Operation 并观察 Event，不复制 Agent 循环，也不直接执行特权工具。
 
 ```text
-CLI / TUI / VS Code / HTTP / ACP / Web
+CLI / TUI / VS Code / ACP
                  |
            Operation / Event
                  |
@@ -63,8 +63,8 @@ Architecture Test 会检查重要 Import 限制。需要违反这些规则的设
 - **Receipt**：上下文、工具、变更、审批、验证或成本的结构化证据。
 - **Projection**：由 Event 和关系记录重建的查询状态。
 
-HTTP/SSE 与 ACP 是共享模型的 Transport Envelope。除非是有意的 Host 呈现差异，只在
-一种 Transport 中存在的功能都不完整。
+ACP 是共享模型的编辑器 Transport Envelope。除非是有意的 Host 呈现差异，只在一种
+Host 中存在的功能都不完整。
 
 ## Turn 数据流
 

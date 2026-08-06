@@ -32,16 +32,14 @@ Usage:
   codehelper plugin list|trust|enable|disable|revoke|install|update|rollback|security-revoke [flags] [NAME[@VERSION]]
   codehelper skill list|enable|disable|revoke|lint|lock|verify [flags] [NAME]
   codehelper exec [flags] PROMPT
-  codehelper serve --data-dir DIR [--listen 127.0.0.1:0] [--mobile] [--qr] [flags]
   codehelper worker run|enqueue|list --data-dir DIR [flags]
-  codehelper web [--listen 127.0.0.1:0] [--once] [--mobile] [--qr] [--json]
   codehelper sandbox status|probe|check [--json]
   codehelper init [--workspace DIR] [--config PATH] [--data-dir DIR]
   codehelper setup [--workspace DIR] [--config PATH] [--data-dir DIR] [--json]
   codehelper review [--workspace DIR] [--json]
   codehelper apply --plan PATH [--dry-run] [--json]
   codehelper mcp serve|list|add|test|status|enable|disable|remove|tools|validate [flags]
-  codehelper host --adapter http|acp [flags]
+  codehelper host --adapter acp [flags]
   codehelper runtime-observe [--events N] [--config PATH] [--log-file PATH]
 `
 

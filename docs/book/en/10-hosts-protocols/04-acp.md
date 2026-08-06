@@ -5,7 +5,7 @@ audience:
   - contributor
   - operator
 prerequisites:
-  - host-http-sse
+  - runtime-protocol
 code_paths:
   - internal/host/runtimeapi/acp
   - internal/compatibility

@@ -78,7 +78,7 @@ flowchart TB
       CLI
       TUI
       VSC[VS Code]
-      API[HTTP / ACP / Web]
+      API[ACP]
     end
     P[Runtime Protocol]
     APP[Application Runtime]
@@ -136,8 +136,8 @@ Operation -> ordered Events -> Projection
 ```
 
 `internal/runtime/protocol` 定义 Operation/Event Tagged Union，生成的
-`docs/protocol/runtime-protocol.schema.json` 被 Transport 和 VS Code 共用。
-HTTP/SSE 与 ACP 是同一模型的 Envelope，不是不同 Runtime。
+`docs/protocol/runtime-protocol.schema.json` 被 ACP 和 VS Code 共用。ACP 封装同一模型，
+而不是定义另一个 Runtime。
 
 Event 包含 Sequence、Operation、Thread、Turn 和 Item Identity，使 Host 可以按 Cursor
 重连，并区分 Output、Tool、Approval、Verification 与 Terminal Outcome。

@@ -22,7 +22,7 @@
 | Fixture（夹具） | 在没有真实依赖时驱动实际 Runtime 的确定性记录输入输出。 | 无网络时优先写作 Hermetic Fixture。 |
 | Fleet（执行集群） | 在多个 Lane 或执行资源间进行协调调度的领域对象。 | 使用 CodeHelper 领域含义。 |
 | Guard（执行守卫） | 按 Policy、Permission、Approval、Constitution、Journal 和 Sandbox 要求检查 Tool 的边界。 | Host 不能绕过。 |
-| Host（交互宿主） | 提交 Operation 并投影 Event 的用户或 Client Adapter。 | CLI、TUI、HTTP、ACP、Web、VS Code 都是 Host。 |
+| Host（交互宿主） | 提交 Operation 并投影 Event 的用户或 Client Adapter。 | CLI、TUI、ACP、VS Code 都是 Host。 |
 | Idempotency（幂等性） | 重试操作不会产生非预期重复副作用的性质。 | 必须说明幂等 Key 或边界。 |
 | Journal（工作区日志） | 记录预期和已完成 Workspace 副作用，用于证据与恢复的持久数据。 | 不是普通应用日志。 |
 | Lane（执行通道） | 协调相关工作的有序执行边界。 | 不是 OS Thread。 |

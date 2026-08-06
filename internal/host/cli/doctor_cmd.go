@@ -53,7 +53,7 @@ func DoctorReport() DoctorReportPayload {
 		Product: buildinfo.Current().Name, OK: true,
 		Sandbox: "strong-or-fail-closed",
 		Features: map[string]string{
-			"exec": "ready", "serve": "ready", "tui": "ready", "web": "ready",
+			"exec": "ready", "tui": "ready",
 			"workflow": "ready", "fleet": "ready", "mcp": "ready",
 			"constitution":           "ready",
 			"content.ocr":            contentdeps.FeatureStatus(probe["ocr"]),

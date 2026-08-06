@@ -8,7 +8,7 @@ guidance is in [docs/en/agent-guide.md](./docs/en/agent-guide.md).
 ## Objective
 
 Maintain CodeHelper as one local, guarded coding-agent runtime shared by CLI,
-TUI, VS Code, HTTP/SSE, ACP, web, workers, and orchestration.
+TUI, VS Code, ACP, workers, and orchestration.
 
 ## Read Before Editing
 

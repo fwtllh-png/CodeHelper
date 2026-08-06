@@ -17,7 +17,7 @@ LDFLAGS := -s -w \
 	book-navigation doc-governance-check doc-governance-test doc-impact \
 	doc-external-links release-fact-check brand-check \
 	security-test sandbox-attack-test secret-leak-test live-model-smoke \
-	cli-smoke tui-smoke acp-interop api-contract protocol-contract protocol-schema \
+	cli-smoke tui-smoke acp-interop protocol-contract protocol-schema \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
 	vscode-security vscode-performance vscode-runtime-integration \
 	vscode-integration vscode-remote-extensions vscode-remote-ssh-integration \
@@ -122,18 +122,10 @@ acp-interop: build
 	CODEHELPER_ACP_BINARY='$(CURDIR)/$(BINARY)' $(GO) test -count=1 -v \
 		./internal/host/runtimeapi/acp/... -run TestBinaryInterop
 
-# api-contract drives the release binary over real HTTP. Like acp-interop, the
-# tests skip themselves without the binary, so this target is the way to run them.
-api-contract: build
-	CODEHELPER_API_BINARY='$(CURDIR)/$(BINARY)' $(GO) test -count=1 -v \
-		./internal/host/runtimeapi/http/... -run TestServeBinaryContract
-
-# protocol-contract runs the shared scenarios against both transports. They run
-# under plain `go test` too; this target is for looking at the two side by side,
-# which is the point of the suite.
+# protocol-contract runs the shared runtime scenarios through the ACP host.
 protocol-contract:
 	$(GO) test -count=1 -v ./internal/host/runtimeapi/acp/... \
-		./internal/host/runtimeapi/http/... -run 'MeetsTheProtocolContract'
+		-run 'MeetsTheProtocolContract'
 
 # protocol-schema regenerates the published protocol shapes. The drift test in
 # internal/runtime/protocol fails when the committed copy is stale.
