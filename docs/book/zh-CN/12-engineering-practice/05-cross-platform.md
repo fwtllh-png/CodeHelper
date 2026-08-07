@@ -40,8 +40,8 @@ flowchart LR
     K --> G[Guard]
 ```
 
-VS Code 还绑定 Local、Remote SSH、Dev Container Workspace Identity，并打包
-Target-specific Binary。Remote Editor Path 不是 Local Filesystem Path。
+VS Code 绑定本地 `file:` Workspace Identity，并打包 Target-specific Binary。
+Remote Editor Environment 不在插件产品范围内。
 
 ## 三层 Platform Evidence
 

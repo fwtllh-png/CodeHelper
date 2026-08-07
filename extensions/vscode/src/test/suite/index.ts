@@ -40,12 +40,12 @@ export async function run(): Promise<void> {
   );
   await vscode.commands.executeCommand("codehelper.chat.focus");
 
-  const scenario = process.env["CODEHELPER_ELECTRON_SCENARIO"] ??
-    (vscode.env.remoteName === undefined
-      ? undefined
-      : vscode.workspace.workspaceFolders?.length === 2
-        ? "remote-multi"
-        : "remote");
+  assert.equal(
+    vscode.env.remoteName,
+    undefined,
+    "CodeHelper VS Code test host must be local",
+  );
+  const scenario = process.env["CODEHELPER_ELECTRON_SCENARIO"];
   if (scenario !== "empty") {
     await waitFor(
       () => api.chatWebviewReady?.() === true,
@@ -118,108 +118,6 @@ export async function run(): Promise<void> {
     assert.equal(api.runtimeAutoStartScheduled, true);
     await verifyMultiRootFlows(api);
     await verifyResourceNavigation();
-  } else if (scenario === "remote") {
-    const remoteName = vscode.env.remoteName ?? "";
-    assert.match(
-      remoteName,
-      /^(?:ssh-remote|dev-container)$/u,
-    );
-    assert.equal(vscode.workspace.workspaceFolders?.length, 1);
-    assert.equal(api.workspaceMode, "single");
-    assert.equal(
-      api.runtimeAutoStartScheduled,
-      true,
-      `remote activation failed: ${api.activationError ?? "unknown"}`,
-    );
-    assert.ok(api.runtimeHosts);
-    await waitFor(
-      () => api.runtimeSnapshot?.().state === "ready",
-      `remote Runtime did not become ready: ${
-        JSON.stringify(api.runtimeSnapshot?.())
-      }`,
-    );
-    const host = api.runtimeHosts()[0];
-    assert.ok(host);
-    assert.equal(host.platform, "linux");
-    assert.equal(host.architecture, process.arch);
-    assert.equal(host.remoteName, remoteName);
-    assert.equal(
-      host.binaryTarget,
-      `linux/${process.arch === "x64" ? "amd64" : process.arch}`,
-    );
-    assert.equal(
-      host.binarySource,
-      expectedRemoteBinarySource(),
-    );
-    assert.match(
-      host.editorURI,
-      new RegExp(
-        `^vscode-remote://${remoteName}\\+` +
-          "(?:[A-Za-z0-9._~-]+|[0-9a-f]{16})/",
-        "u",
-      ),
-    );
-    assert.ok(host.extensionHostPID > 0);
-    assert.ok(host.runtimePID !== undefined && host.runtimePID > 0);
-    assert.notEqual(host.extensionHostPID, host.runtimePID);
-    await verifyNativeFlows(api);
-    await verifyResourceNavigation();
-    await vscode.commands.executeCommand("codehelper.restartRuntime");
-    await waitFor(
-      () => api.runtimeSnapshot?.().state === "ready",
-      "remote Runtime did not recover after restart",
-    );
-  } else if (scenario === "remote-multi") {
-    const remoteName = vscode.env.remoteName ?? "";
-    assert.match(remoteName, /^(?:ssh-remote|dev-container)$/u);
-    assert.equal(vscode.workspace.workspaceFolders?.length, 2);
-    assert.equal(api.workspaceMode, "multi");
-    assert.equal(api.runtimeAutoStartScheduled, true);
-    assert.ok(api.runtimeHosts);
-    await waitFor(() => {
-      const hosts = api.runtimeHosts?.() ?? [];
-      return hosts.length === 2 && hosts.every(
-        (host) => host.runtimePID !== undefined,
-      );
-    }, "remote multi-root Runtime hosts did not become ready");
-    const expectedSource = expectedRemoteBinarySource();
-    for (const host of api.runtimeHosts()) {
-      assert.equal(host.platform, "linux");
-      assert.equal(host.architecture, process.arch);
-      assert.equal(host.remoteName, remoteName);
-      assert.equal(
-        host.binaryTarget,
-        `linux/${process.arch === "x64" ? "amd64" : process.arch}`,
-      );
-      assert.equal(host.binarySource, expectedSource);
-      assert.notEqual(host.extensionHostPID, host.runtimePID);
-    }
-    await verifyMultiRootFlows(api);
-  } else if (scenario === "remote-reconnect" ||
-    scenario === "remote-reconnect-multi") {
-    const roots = scenario === "remote-reconnect-multi" ? 2 : 1;
-    assert.equal(vscode.workspace.workspaceFolders?.length, roots);
-    assert.equal(api.workspaceMode, roots === 1 ? "single" : "multi");
-    assert.ok(api.runtimeHosts);
-    await waitFor(() => {
-      const hosts = api.runtimeHosts?.() ?? [];
-      return hosts.length === roots && hosts.every(
-        (host) => host.runtimePID !== undefined &&
-          host.sessionId !== undefined && host.threadId !== undefined,
-      );
-    }, "remote reconnect did not attach durable sessions: " +
-      JSON.stringify({
-        activationError: api.activationError,
-        hosts: api.runtimeHosts(),
-        snapshots: api.runtimeSnapshots?.(),
-      }), 30_000);
-    for (const host of api.runtimeHosts()) {
-      assert.equal(host.remoteName, vscode.env.remoteName);
-      assert.equal(host.binarySource, expectedRemoteBinarySource());
-      assert.ok(host.sessionId);
-      assert.ok(host.threadId);
-      assert.ok(host.replayedEvents !== undefined && host.replayedEvents >= 0);
-    }
   } else {
     throw new Error(`unknown Electron scenario ${String(scenario)}`);
   }
@@ -237,7 +135,7 @@ export async function run(): Promise<void> {
   assert.ok(typeof manifest === "object" && manifest !== null);
   assert.deepEqual(
     (manifest as Record<string, unknown>)["extensionKind"],
-    ["workspace"],
+    ["ui"],
   );
   const contributes = (manifest as Record<string, unknown>)["contributes"];
   assert.ok(typeof contributes === "object" && contributes !== null);
@@ -277,7 +175,7 @@ async function verifyResourceNavigation(): Promise<void> {
   assert.ok(folder);
   const roots = folders.map((candidate) => ({
     rootId: createHash("sha256")
-      .update(canonicalEditorURI(candidate.uri, vscode.env.remoteName))
+      .update(canonicalEditorURI(candidate.uri))
       .digest("hex"),
     folder: candidate,
   } as unknown as WorkspaceRuntime));
@@ -403,15 +301,6 @@ async function verifyResourceNavigation(): Promise<void> {
   }), /escapes the workspace/u);
 }
 
-function expectedRemoteBinarySource(): "external" | "managed" | "bundled" {
-  const configured = vscode.workspace.getConfiguration("codehelper")
-    .get<string>("binarySource", "auto");
-  return configured === "managed" || configured === "bundled" ||
-    configured === "external"
-    ? configured
-    : "external";
-}
-
 async function verifyMultiRootFlows(api: ExtensionAPI): Promise<void> {
   assert.ok(api.runtimeSnapshots);
   assert.ok(api.onRootRuntimeEvent);
@@ -472,7 +361,7 @@ async function verifyMultiRootFlows(api: ExtensionAPI): Promise<void> {
       const rootId = turnRoots.get(turnId);
       assert.ok(rootId);
       const expectedRootId = createHash("sha256")
-        .update(canonicalEditorURI(folder.uri, vscode.env.remoteName))
+        .update(canonicalEditorURI(folder.uri))
         .digest("hex");
       assert.equal(rootId, expectedRootId);
       observedRoots.add(rootId);
@@ -559,7 +448,7 @@ async function verifyMultiRootFlows(api: ExtensionAPI): Promise<void> {
       assert.equal(
         approval.rootId,
         createHash("sha256")
-          .update(canonicalEditorURI(folder.uri, vscode.env.remoteName))
+          .update(canonicalEditorURI(folder.uri))
           .digest("hex"),
       );
       assert.equal(await vscode.commands.executeCommand(
@@ -623,7 +512,7 @@ async function waitForMultiRootReceipt(
   const turnId = (raw as Record<string, unknown>)["turnId"];
   assert.ok(typeof turnId === "string" && turnId.length > 0);
   const expectedRoot = createHash("sha256")
-    .update(canonicalEditorURI(folder.uri, vscode.env.remoteName))
+    .update(canonicalEditorURI(folder.uri))
     .digest("hex");
   await waitFor(
     () => turnRoots.get(turnId) === expectedRoot &&
@@ -732,7 +621,7 @@ async function verifyNativeFlows(api: ExtensionAPI): Promise<void> {
     );
     await verifyChangesReview(
       createHash("sha256")
-        .update(canonicalEditorURI(workspace.uri, vscode.env.remoteName))
+        .update(canonicalEditorURI(workspace.uri))
         .digest("hex"),
       document,
       approvals,

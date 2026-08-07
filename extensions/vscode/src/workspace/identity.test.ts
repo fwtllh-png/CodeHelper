@@ -3,49 +3,31 @@ import test from "node:test";
 
 import { createWorkspaceIdentity } from "./identity.js";
 
-void test("workspace identity distinguishes local and remote editor roots", () => {
+void test("workspace identity binds a canonical local editor root", () => {
   const local = createWorkspaceIdentity("file:///workspace", "/workspace");
-  const remote = createWorkspaceIdentity(
-    "vscode-remote://ssh-remote+dev/workspace",
-    "/workspace",
-    "ssh-remote",
-  );
   assert.equal(local.version, 1);
   assert.equal(local.root_id.length, 64);
-  assert.equal(remote.remote_name, "ssh-remote");
-  assert.notEqual(remote.root_id, local.root_id);
+  assert.equal(local.remote_name, undefined);
 });
 
-void test("workspace identity rejects forged URI and runtime fields", () => {
+void test("workspace identity rejects remote, forged, and invalid fields", () => {
   assert.throws(
     () => createWorkspaceIdentity("file:///workspace?forged=true", "/workspace"),
-    /canonical/,
-  );
-  assert.throws(
-    () => createWorkspaceIdentity(
-      "vscode-remote://dev-container+forged/workspace",
-      "/workspace",
-      "ssh-remote",
-    ),
-    /authority/u,
-  );
-  assert.throws(
-    () => createWorkspaceIdentity("file:///workspace", "relative"),
-    /fields/,
+    /canonical/u,
   );
   assert.throws(
     () => createWorkspaceIdentity(
       "vscode-remote://ssh-remote+dev/workspace",
       "/workspace",
     ),
-    /authority/,
+    /local file URI/u,
   );
   assert.throws(
-    () => createWorkspaceIdentity(
-      "https://example.com/workspace",
-      "/workspace",
-      "ssh-remote",
-    ),
-    /unsupported/,
+    () => createWorkspaceIdentity("file:///workspace", "relative"),
+    /fields/u,
+  );
+  assert.throws(
+    () => createWorkspaceIdentity("https://example.com/workspace", "/workspace"),
+    /local file URI/u,
   );
 });

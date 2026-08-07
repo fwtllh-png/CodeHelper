@@ -4,7 +4,7 @@
 
 ## 设计
 
-插件是运行在 Workspace Extension Host 中的 TypeScript Client。它负责编辑器上下文和
+插件是运行在本地 UI Extension Host 中的 TypeScript Client。它负责编辑器上下文和
 呈现，不负责模型推理，也不直接修改工作区。
 
 ```text
@@ -25,7 +25,7 @@ VS Code UI 与 Context Bridge
 - Runtime 确认的 File、Range、Directory、Symbol、Diagnostic 和 Edit Plan Diff
   原生导航；
 - Background Task、Job、Agent、Usage 和 Change View；
-- Local、Remote SSH 与 Dev Container Workspace Host；
+- 本地 UI Extension Host 中的 `file:` Workspace；
 - External、Managed 或 Bundled Runtime；
 - Signed Managed Update、Rollback 与 Revocation。
 
@@ -51,8 +51,15 @@ Directory 在 Explorer 中定位；Plan 使用 Diff Editor 打开。
 Webview 永远不提交 URI、Path 或 Command。Extension Host 仅从当前 Snapshot 中解析
 Opaque ID，校验 Exact Workspace Root 与相对路径，然后调用固定的 VS Code Action。
 Absolute Path、Path Traversal、任意 URI Scheme、`command:`、Cross-root Definition、
-未知 ID 和过期 Diff Identity 都会 Fail Closed。Local、Multi-root、Remote SSH 与
-Dev Container 使用同一边界。
+未知 ID 和过期 Diff Identity 都会 Fail Closed。该边界适用于本地 Single-root 与
+Multi-root Workspace。
+
+## 本地工作区边界
+
+CodeHelper 将 VS Code 插件声明为 UI Extension，并且只支持本地 `file:` Workspace。
+Remote SSH、Dev Container、Codespaces、WSL Remote Workspace 和其他
+`vscode-remote:` 环境不在产品范围内。插件会拒绝 Remote Activation，不会在文件系统
+或 Workspace Identity 不匹配时启动 Runtime。
 
 ## 内置 Setup 与 Repair
 

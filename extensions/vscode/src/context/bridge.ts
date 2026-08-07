@@ -147,12 +147,13 @@ export class ContextBridge {
     } catch {
       throw new Error("diagnostic action URI is invalid");
     }
-    if (canonicalEditorURI(uri, vscode.env.remoteName) !== snapshot.uri) {
+    if (canonicalEditorURI(uri) !== snapshot.uri) {
       throw new Error("diagnostic action URI is not canonical");
     }
     const document = vscode.workspace.textDocuments.find(
       (candidate) =>
-        canonicalEditorURI(candidate.uri, vscode.env.remoteName) ===
+        candidate.uri.scheme === "file" &&
+        canonicalEditorURI(candidate.uri) ===
           snapshot.uri,
     );
     if (document === undefined) {
@@ -224,7 +225,7 @@ export class ContextBridge {
       throw new Error("active document is outside the current workspace");
     }
     return {
-      uri: canonicalEditorURI(document.uri, vscode.env.remoteName),
+      uri: canonicalEditorURI(document.uri),
       path: workspacePath.split(sep).join("/"),
       document_version: documentVersion,
       digest: createHash("sha256").update(content).digest("hex"),
@@ -234,7 +235,7 @@ export class ContextBridge {
 }
 
 function isWorkspaceDocumentScheme(value: string): boolean {
-  return value === "file" || value === "vscode-remote";
+  return value === "file";
 }
 
 function flattenSymbols(

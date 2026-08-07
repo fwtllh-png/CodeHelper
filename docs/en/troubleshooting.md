@@ -153,8 +153,8 @@ be made executable by manually changing database rows.
 6. Compare it with `extensions/vscode/compatibility.json`.
 7. Rebuild both runtime and extension from the same tree.
 
-Remote workspaces execute in the Workspace Extension Host. A local binary path
-does not automatically exist in Remote SSH or a container.
+CodeHelper supports only local `file:` Workspaces. Remote SSH, Dev Containers,
+and other `vscode-remote:` environments are rejected during activation.
 
 ## Tests Fail Only in Full Parallel Run
 

@@ -48,7 +48,7 @@ void test("Webview messages and editor context retain explicit size boundaries",
   assert.match(context, /const maxProviderSymbols = 4096/u);
   assert.match(context, /const maxProviderDiagnostics = 4096/u);
   assert.match(context, /isWorkspaceDocumentScheme\(document\.uri\.scheme\)/u);
-  assert.match(context, /value === "file" \|\| value === "vscode-remote"/u);
+  assert.match(context, /return value === "file"/u);
   assert.match(context, /document\.isDirty/u);
   assert.match(native, /const maxDiagnostics = 32/u);
   assert.match(native, /const maxDiagnosticMessageBytes = 8192/u);
@@ -56,7 +56,7 @@ void test("Webview messages and editor context retain explicit size boundaries",
   assert.match(projector, /values\.slice\(0, 8\)/u);
 });
 
-void test("remote execution remains inside the Workspace Extension Host", async () => {
+void test("Runtime execution is restricted to the local UI Extension Host", async () => {
   const controller = await sourceFile("runtime", "controller.ts");
   const processSource = await sourceFile("runtime", "process.ts");
   const compatibility = await sourceFile("compatibility", "policy.ts");
@@ -65,11 +65,12 @@ void test("remote execution remains inside the Workspace Extension Host", async 
     join(process.cwd(), "package.json"),
     "utf8",
   )) as Readonly<Record<string, unknown>>;
-  assert.deepEqual(manifest["extensionKind"], ["workspace"]);
-  assert.match(controller, /vscode\.ExtensionKind\.Workspace/u);
+  assert.deepEqual(manifest["extensionKind"], ["ui"]);
+  assert.match(controller, /vscode\.ExtensionKind\.UI/u);
   assert.match(controller, /assertWorkspaceExtensionHost/u);
   assert.match(host, /environment\.storageScheme !== "file"/u);
-  assert.match(host, /authorityMatchesRemoteName/u);
+  assert.match(host, /supports only local file workspaces/u);
+  assert.match(controller, /does not support Remote SSH or Dev Containers/u);
   assert.match(compatibility, /binary\.os !== expectedOS/u);
   assert.doesNotMatch(controller, /\bssh\b/u);
   assert.doesNotMatch(processSource, /\bssh\b/u);
@@ -88,7 +89,8 @@ void test("workspace identity and compatibility remain launch-bound", async () =
   assert.match(recovery, /requiredFeatures = compatibility\.required_features/u);
   assert.match(session, /workspace_identity: this\.#workspaceIdentity/u);
   assert.match(identity, /createHash\("sha256"\)\.update\(editorURI\)/u);
-  assert.match(identity, /parsed\.protocol === "vscode-remote:"/u);
+  assert.match(identity, /parsed\.protocol !== "file:"/u);
+  assert.doesNotMatch(process, /"--remote-name"/u);
   assert.match(compatibility, /development CodeHelper binary is unavailable in production/u);
   assert.match(store, /codehelper\.runtimeBindings\.v1/u);
 });

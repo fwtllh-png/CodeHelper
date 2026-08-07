@@ -78,7 +78,7 @@
 
 - 稳定的 Editor Context Synchronization；
 - 更完整的 Native Diff 与 Diagnostic Workflow；
-- 可靠的 Local/Remote/Dev-container Lifecycle；
+- 可靠的本地 Single-root/Multi-root Lifecycle；
 - 透明 Rollback 的 Managed Runtime Update；
 - 大型 Workspace 下的有界性能。
 

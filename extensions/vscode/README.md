@@ -14,7 +14,7 @@ Usage views.
 
 The extension supports `auto`, `external`, `managed`, and `bundled` binary
 sources. External binaries come from an absolute `codehelper.binaryPath` or the
-Workspace Extension Host `PATH`. Managed and bundled binaries require the
+local Extension Host `PATH`. Managed and bundled binaries require the
 target-specific artifact to match the built-in Ed25519-signed release manifest.
 Use `CodeHelper: Check for Binary Updates` for an explicit managed install.
 
@@ -30,6 +30,6 @@ key and must not be published.
 A dirty worktree or temporary dry-run signing key is reported as
 `publishable=false`; it is never presented as a public release candidate.
 
-Remote SSH with an external Linux binary and Dev Containers are covered by
-official VS Code integration gates on Colima Linux arm64. WSL2 is outside the
-current gate.
+The extension runs in the local UI Extension Host and accepts only local
+`file:` workspaces. Remote SSH, Dev Containers, Codespaces, and other
+`vscode-remote:` workspaces are not supported.

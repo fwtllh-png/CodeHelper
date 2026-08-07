@@ -45,9 +45,9 @@ flowchart LR
     R --> P[Chat / Changes / Background Projectors]
 ```
 
-The Workspace Extension Host discovers/verifies or manages the Runtime binary,
+The local UI Extension Host discovers/verifies or manages the Runtime binary,
 starts it with argv spawning, negotiates protocol/feature compatibility, and
-binds the exact local/remote Workspace identity. Crash recovery is bounded and
+binds the exact local Workspace identity. Crash recovery is bounded and
 last-known-good binaries are retained.
 
 Context Bridge captures explicit file, selection, symbol, and diagnostics with
@@ -121,7 +121,7 @@ incompatible.
 
 ## Failure Boundaries
 
-- Local/remote Workspace identities cannot be forged or mixed.
+- Only canonical local `file:` Workspace identities are accepted.
 - Protocol, version, target, and required feature must be compatible.
 - Runtime launch and stderr diagnostics are bounded.
 - Webview messages and context payloads are finite.

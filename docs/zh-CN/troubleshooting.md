@@ -150,8 +150,8 @@ codehelper automation list --data-dir ./.codehelper
 6. 与 `extensions/vscode/compatibility.json` 对比。
 7. 从同一代码树重建 Runtime 与 Extension。
 
-Remote Workspace 在 Workspace Extension Host 中运行，本地 Binary Path 不会自动存在
-于 Remote SSH 或 Container。
+CodeHelper 只支持本地 `file:` Workspace。Remote SSH、Dev Container 和其他
+`vscode-remote:` 环境会在 Activation 阶段被拒绝。
 
 ## 只在全仓并发测试中失败
 

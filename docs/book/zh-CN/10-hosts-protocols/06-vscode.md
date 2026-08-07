@@ -43,8 +43,8 @@ flowchart LR
     R --> P[Chat / Changes / Background Projection]
 ```
 
-Workspace Extension Host 发现/验证或管理 Runtime Binary，以 Argv Spawn 启动，协商
-Protocol/Feature Compatibility，并绑定 Exact Local/Remote Workspace Identity。Crash
+本地 UI Extension Host 发现/验证或管理 Runtime Binary，以 Argv Spawn 启动，协商
+Protocol/Feature Compatibility，并绑定 Exact Local Workspace Identity。Crash
 Recovery 有界，并保留 Last-known-good Binary。
 
 Context Bridge 捕获 Explicit File、Selection、Symbol、Diagnostics，携带 Canonical URI、
@@ -100,7 +100,7 @@ Projected State 供诊断。
 
 ## Multi-root/Remote Identity
 
-每个 Workspace Root 独立绑定 Canonical Editor URI、Runtime Path、Remote Authority。
+每个 Workspace Root 独立绑定 Canonical Local Editor URI 与 Runtime Path。
 UI-selected Root 不能伪造 Binding；Context/Command 路由到 Owning Root。
 
 Compatibility 包含 Binary Version、OS/Architecture Target、ACP Protocol、Required Feature；
@@ -108,7 +108,7 @@ Binary 能启动不代表 Compatible。
 
 ## 失败与安全边界
 
-- Local/Remote Workspace Identity 不可伪造/混用。
+- 只接受 Canonical Local `file:` Workspace Identity。
 - Protocol/Version/Target/Required Feature 必须兼容。
 - Runtime Launch/Stderr 有界。
 - Webview Message/Context Payload 有界。

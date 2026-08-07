@@ -30,7 +30,7 @@
     "vscode": "^1.96.0"
   },
   "extensionKind": [
-    "workspace"
+    "ui"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -135,44 +135,44 @@
       {
         "command": "codehelper.explainSelection",
         "title": "CodeHelper: Explain Selection",
-        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection"
+        "enablement": "resourceScheme == file && editorHasSelection"
       },
       {
         "command": "codehelper.editSelection",
         "title": "CodeHelper: Edit Selection",
-        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted"
+        "enablement": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted"
       },
       {
         "command": "codehelper.refactorSelection",
         "title": "CodeHelper: Refactor Selection",
-        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted"
+        "enablement": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted"
       },
       {
         "command": "codehelper.generateTestsForSelection",
         "title": "CodeHelper: Generate Tests for Selection",
-        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted"
+        "enablement": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "command": "codehelper.explainSelection",
-          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection",
+          "when": "resourceScheme == file && editorHasSelection",
           "group": "1_modification@10"
         },
         {
           "command": "codehelper.editSelection",
-          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted",
+          "when": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted",
           "group": "1_modification@11"
         },
         {
           "command": "codehelper.refactorSelection",
-          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted",
+          "when": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted",
           "group": "1_modification@12"
         },
         {
           "command": "codehelper.generateTestsForSelection",
-          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted",
+          "when": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted",
           "group": "1_modification@13"
         }
       ]
@@ -261,8 +261,6 @@
     "test:performance": "node ./scripts/test.mjs performance",
     "test:runtime-performance": "node ./scripts/runtime-ready.mjs",
     "test:electron": "npm run build && node ./scripts/electron.mjs",
-    "test:remote-ssh": "npm run build && node ./scripts/remote-ssh.mjs",
-    "test:dev-container": "npm run build && node ./scripts/dev-container.mjs",
     "package": "npm run clean && npm run check && npm run test && npm run build",
     "package:vsix": "npm run package && node ./scripts/vsix.mjs && node ./scripts/vsix-install.mjs"
   },

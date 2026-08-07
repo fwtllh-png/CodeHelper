@@ -4,7 +4,7 @@
 
 ## Design
 
-The extension is a workspace-hosted TypeScript client for the Go runtime. It
+The extension is a locally hosted TypeScript client for the Go runtime. It
 owns editor context and presentation; it does not own model reasoning or direct
 workspace mutation.
 
@@ -27,7 +27,7 @@ the CLI and TUI.
 - native navigation for Runtime-confirmed files, ranges, directories, symbols,
   diagnostics, and edit-plan diffs;
 - background task, job, agent, usage, and change views;
-- local, Remote SSH, and Dev Container workspace-host execution;
+- local `file:` workspace execution in the UI Extension Host;
 - external, managed, or bundled runtime selection;
 - signed managed updates, rollback, and revocation checks.
 
@@ -56,8 +56,16 @@ The Webview never submits a URI, path, or command. The Extension Host resolves
 the opaque ID from the current Snapshot, validates the exact Workspace root and
 relative path, then invokes a fixed VS Code action. Absolute paths, traversal,
 arbitrary URI schemes, `command:` values, cross-root definitions, unknown IDs,
-and stale Diff identities fail closed. This applies equally to local,
-multi-root, Remote SSH, and Dev Container Workspaces.
+and stale Diff identities fail closed. This applies to local single-root and
+multi-root Workspaces.
+
+## Local Workspace Boundary
+
+CodeHelper declares the VS Code extension as a UI extension and supports only
+local `file:` Workspaces. Remote SSH, Dev Containers, Codespaces, WSL remote
+Workspaces, and other `vscode-remote:` environments are outside the product
+scope. The extension rejects Remote activation instead of launching a Runtime
+against a mismatched filesystem or identity.
 
 ## Built-in Setup and Repair
 

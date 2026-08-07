@@ -21,7 +21,6 @@
 - `syft`：生成完整 CycloneDX SBOM；
 - `tmux`：可 Attach 的 Lane；
 - Linux Bubblewrap/Landlock 或 macOS Seatbelt；
-- Extension Matrix 所需 Docker/Remote SSH 依赖。
 
 ## 初始化
 

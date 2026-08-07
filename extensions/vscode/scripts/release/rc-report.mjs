@@ -134,7 +134,6 @@ const report = {
   dependency_audit: audit,
   limitations: [
     "Windows x64 and WSL2 have no dynamic runner",
-    "Dev Container disconnect reattach is not claimed",
     ...(publishable ? [] : [
       "This evidence is not publishable until a clean worktree and production signing identity are used",
     ]),
@@ -357,7 +356,7 @@ function markdown(report) {
     `- Source: \`${report.source.commit}\` (${report.source.state})`,
     `- Matrix: \`${report.gates.matrix}\``,
     "",
-    "Windows x64/WSL2 dynamic E2E and Dev Container disconnect reattach are not claimed.",
+    "Windows x64 and WSL2 dynamic E2E are not claimed.",
     "",
   ].join("\n");
 }

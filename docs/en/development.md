@@ -21,7 +21,6 @@ Optional tools:
 - `syft` for full CycloneDX SBOM generation;
 - `tmux` for attachable lanes;
 - `bubblewrap`/Landlock support on Linux or Seatbelt support on macOS;
-- Docker/remote SSH dependencies for extension matrix tests.
 
 ## Bootstrap
 

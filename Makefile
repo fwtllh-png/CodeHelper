@@ -4,7 +4,6 @@ BINARY := bin/codehelper
 MODULE := github.com/fwtllh-png/CodeHelper
 VSCODE_DIR := extensions/vscode
 VSCODE_CLI ?= /Applications/Visual Studio Code.app/Contents/Resources/app/bin/code
-VSCODE_REMOTE_EXTENSIONS := $(VSCODE_DIR)/.vscode-test/remote-extensions
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || printf unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -25,8 +24,7 @@ LDFLAGS := -s -w \
 	cli-smoke tui-smoke acp-interop protocol-contract protocol-schema \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
 	vscode-security vscode-performance vscode-runtime-integration \
-	vscode-integration vscode-remote-extensions vscode-remote-ssh-integration \
-	vscode-devcontainer-integration \
+	vscode-integration \
 	vscode-build vscode-package vscode-release-dry-run \
 	vscode-multiroot-integration vscode-update-integration \
 	vscode-distribution vscode-local-setup vscode-matrix-report vscode-rc \
@@ -306,36 +304,6 @@ vscode-update-integration: vscode-install
 	cd $(VSCODE_DIR) && node ./scripts/matrix/record.mjs \
 		update-integration static host n/a managed \
 		signature redirect truncation rollback revocation concurrency
-
-vscode-remote-extensions:
-	@mkdir -p '$(VSCODE_REMOTE_EXTENSIONS)' \
-		'$(VSCODE_DIR)/.vscode-test/remote-user-data'
-	'$(VSCODE_CLI)' \
-		--user-data-dir '$(VSCODE_DIR)/.vscode-test/remote-user-data' \
-		--extensions-dir '$(VSCODE_REMOTE_EXTENSIONS)' \
-		--install-extension ms-vscode-remote.remote-ssh --force
-	'$(VSCODE_CLI)' \
-		--user-data-dir '$(VSCODE_DIR)/.vscode-test/remote-user-data' \
-		--extensions-dir '$(VSCODE_REMOTE_EXTENSIONS)' \
-		--install-extension ms-vscode-remote.remote-containers --force
-
-vscode-remote-ssh-integration: vscode-install vscode-remote-extensions
-	@mkdir -p bin
-	GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' \
-		-o bin/codehelper-linux-arm64 ./cmd/codehelper
-	cd $(VSCODE_DIR) && \
-		CODEHELPER_VSCODE_REMOTE_BINARY='$(CURDIR)/bin/codehelper-linux-arm64' \
-		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
-		$(NPM) run test:remote-ssh
-
-vscode-devcontainer-integration: vscode-install vscode-remote-extensions
-	@mkdir -p bin
-	GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' \
-		-o bin/codehelper-linux-arm64 ./cmd/codehelper
-	cd $(VSCODE_DIR) && \
-		CODEHELPER_VSCODE_CONTAINER_BINARY='$(CURDIR)/bin/codehelper-linux-arm64' \
-		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
-		$(NPM) run test:dev-container
 
 vscode-package: vscode-install
 	cd $(VSCODE_DIR) && $(NPM) run package:vsix

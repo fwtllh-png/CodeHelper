@@ -84,7 +84,6 @@ export interface RuntimeHostSnapshot {
   readonly rootId: string;
   readonly editorURI: string;
   readonly runtimePath: string;
-  readonly remoteName?: string;
   readonly platform: NodeJS.Platform;
   readonly architecture: string;
   readonly extensionHostPID: number;
@@ -119,17 +118,20 @@ export class RuntimeController {
     workspace: vscode.WorkspaceFolder,
     output: vscode.OutputChannel,
   ) {
-    if (vscode.env.remoteName !== undefined &&
-      context.extension.extensionKind !== vscode.ExtensionKind.Workspace) {
-      throw new Error("CodeHelper must run in the Workspace Extension Host");
+    if (vscode.env.remoteName !== undefined) {
+      throw new Error(
+        "CodeHelper VS Code does not support Remote SSH or Dev Containers",
+      );
+    }
+    if (context.extension.extensionKind !== vscode.ExtensionKind.UI) {
+      throw new Error("CodeHelper must run in the local UI Extension Host");
     }
     this.#context = context;
     this.#workspace = workspace;
     this.#output = output;
     this.#workspaceIdentity = createWorkspaceIdentity(
-      canonicalEditorURI(workspace.uri, vscode.env.remoteName),
+      canonicalEditorURI(workspace.uri),
       workspace.uri.fsPath,
-      vscode.env.remoteName ?? undefined,
     );
     this.#bindingStore = new BindingStore(context.workspaceState);
     this.#supervisor = new RuntimeSupervisor(
@@ -204,9 +206,6 @@ export class RuntimeController {
       rootId: this.#workspaceIdentity.root_id,
       editorURI: this.#workspaceIdentity.editor_uri,
       runtimePath: this.#workspaceIdentity.runtime_path,
-      ...(this.#workspaceIdentity.remote_name === undefined
-        ? {}
-        : { remoteName: this.#workspaceIdentity.remote_name }),
       platform: process.platform,
       architecture: process.arch,
       extensionHostPID: process.pid,
@@ -421,14 +420,11 @@ export class RuntimeController {
       workspaceScheme: this.#workspace.uri.scheme,
       workspaceAuthority: this.#workspace.uri.authority,
       storageScheme: storage.scheme,
-      ...(vscode.env.remoteName === undefined
-        ? {}
-        : { remoteName: vscode.env.remoteName }),
     });
     const workspaceRoot = this.#workspace.uri.fsPath;
     if (!isAbsolute(workspaceRoot) ||
       !isAbsolute(storage.fsPath)) {
-      throw new Error("Workspace Extension Host paths must be absolute");
+      throw new Error("Local Extension Host paths must be absolute");
     }
     const dataDirectory = resolve(
       storage.fsPath,
@@ -463,7 +459,7 @@ export class RuntimeController {
       `[runtime:${this.#workspace.name}] launching ${binaryPath} ` +
       `(${binaryVersion.version}, ` +
       `source=${resolvedBinary.source}, ` +
-      `host=${vscode.env.remoteName ?? "local"}, ` +
+      "host=local, " +
       `target=${process.platform}/${process.arch}, ` +
       `posture=${runtimePosture(vscode.workspace.isTrusted)})`,
     );

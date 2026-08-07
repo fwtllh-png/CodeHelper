@@ -80,7 +80,7 @@ context window.
 
 - stable editor context synchronization;
 - richer native diff and diagnostic workflows;
-- reliable local/remote/dev-container lifecycle;
+- reliable local single-root and multi-root lifecycle;
 - managed runtime updates with transparent rollback;
 - bounded performance on large workspaces.
 

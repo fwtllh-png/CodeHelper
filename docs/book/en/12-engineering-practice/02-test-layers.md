@@ -34,12 +34,11 @@ binary, transport, Extension Host, or Electron is required.
 | Contract | shared runtime behavior through ACP | `make protocol-contract` |
 | Binary integration | ACP framing/process lifecycle | `make acp-interop` |
 | VS Code static/runtime | TS and real Runtime stdio | `make vscode-check`, `vscode-runtime-integration` |
-| Electron/remote | actual VS Code platform | `make vscode-integration` and matrix targets |
+| Electron | actual local VS Code platform | `make vscode-integration` and matrix targets |
 
 Unit tests use fake clocks/backends only at ownership boundaries. ACP contract
 tests exercise shared runtime scenarios. Binary tests launch the built artifact.
-Electron, Remote SSH, and Dev Container gates are explicit because they acquire
-large external runtimes.
+Electron gates are explicit because they acquire a large external runtime.
 
 Repository verification is reported through four lanes:
 

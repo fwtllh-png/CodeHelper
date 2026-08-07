@@ -225,9 +225,6 @@ export function runtimeArguments(options: RuntimeLaunchOptions): readonly string
     "--workspace", options.workspaceRoot,
     "--workspace-uri", options.workspaceIdentity.editor_uri,
     "--workspace-root-id", options.workspaceIdentity.root_id,
-    ...(options.workspaceIdentity.remote_name === undefined
-      ? []
-      : ["--remote-name", options.workspaceIdentity.remote_name]),
     "--posture", options.posture,
     "--max-steps", String(options.maxSteps),
     "--edit-plan-approvals",

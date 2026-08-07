@@ -42,9 +42,9 @@ flowchart LR
     K --> G[Guard allow/deny]
 ```
 
-VS Code additionally binds local, Remote SSH, and Dev Container Workspace
-identity and packages target-specific binaries. A remote editor path is not a
-local filesystem path.
+VS Code binds a local `file:` Workspace identity and packages target-specific
+binaries. Remote editor environments are outside the extension's product
+scope.
 
 ## Three Levels of Platform Evidence
 

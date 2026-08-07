@@ -34,11 +34,10 @@ Extension Host 或 Electron。
 | Contract | 通过 ACP 验证共享 Runtime 行为 | `make protocol-contract` |
 | Binary Integration | ACP Framing/Process | `make acp-interop` |
 | VS Code Static/Runtime | TS/Real Runtime | `make vscode-check`、Runtime Integration |
-| Electron/Remote | Real VS Code Platform | Matrix Target |
+| Electron | 本地 Real VS Code Platform | Matrix Target |
 
 Unit Test 只在 Ownership Boundary 使用 Fake。ACP Contract 验证共享 Runtime Scenario；
-Binary Test 启动 Build Artifact。Electron/Remote SSH/Dev Container 因下载外部 Runtime 而显式
-分离。
+Binary Test 启动 Build Artifact。Electron 因下载外部 Runtime 而显式分离。
 
 Repository Verification 通过四条 Lane 报告：
 
