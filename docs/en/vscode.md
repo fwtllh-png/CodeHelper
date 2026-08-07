@@ -236,24 +236,28 @@ Profile contract, and submit a new Turn. Autopilot requests `act` mode with
 `auto` approval posture; Host permission ceilings, Guard, policy, journal, and
 sandbox enforcement remain authoritative.
 
-The shared protocol also freezes future workflow requests. Retry and Continue
-always create a new Turn with an idempotency key and never replay historical
-Tool operations. Plan transitions explicitly target the current Session, a new
-Session, or a Checkpoint Fork. These request contracts do not imply that the
-current Chat UI already exposes every action.
+Retry and Continue are active Runtime workflows. They always create a new Turn
+with an idempotency key and never replay historical Tool, command, network, or
+file operations. Retry reuses the source Turn's durable model-visible request;
+Continue uses terminal history plus optional guidance. Plan transitions
+explicitly target the current Session, a Profile-preserving new Session, or a
+state-only Checkpoint Fork. The Runtime validates the source Artifact and
+builds the implementation prompt; the Webview never reconstructs it.
 
-The Host/Webview incremental contract is frozen but not active yet. Full
-Snapshots carry a monotonic projection Revision. A future Patch references its
-base Revision and is limited to typed Turn, Runtime, Composer, and Resource
-operations. Until the Webview Store can apply a Patch atomically, the active
-message set remains Snapshot plus terminal Error.
+The Host/Webview incremental contract is active. Full Snapshot hydration
+carries a monotonic projection Revision. Later Patches reference the exact
+base Revision and contain only typed Turn, Runtime, Composer, and Resource
+operations. The Webview Store applies a Patch atomically or requests a Full
+Snapshot resynchronization. Turn, Call, Request, and Session identities preserve
+expanded panels, focus, and scroll anchors across updates.
 
 ## Performance and Accessibility Contract
 
 The Session rail virtualizes grouped search results: the Runtime-owned list and
 search projection remain complete, while the Webview creates DOM only for the
-visible rows and a bounded overscan window. Transcript articles use browser
-content visibility so off-screen Turns do not consume layout and paint work.
+visible rows and a bounded overscan window. The Transcript Store likewise keeps
+the full projection while rendering only the viewport Turn window and bounded
+overscan.
 When the Chat view is hidden, the Extension Host continues updating the Runtime
 projection but stops assembling and posting DOM Snapshots. The latest
 projection is posted once when the view becomes visible again.
@@ -264,7 +268,7 @@ Release performance gates require:
 - first interactive Chat within 300 ms, excluding Runtime startup;
 - a 200-Turn Session Snapshot within 100 ms;
 - 1000-Session search and virtual first paint within 150 ms;
-- at most one streaming Snapshot per 16 ms frame.
+- at most one streaming Patch per 16 ms frame.
 
 Electron journeys dynamically switch Default Dark Modern, Default Light
 Modern, and Default High Contrast themes, apply Zoom Level 4 (approximately

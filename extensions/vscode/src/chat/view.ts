@@ -14,8 +14,10 @@ import type { EditPlanPreview } from "../edits/preview.js";
 import { decodeWebviewMessage } from "./messages.js";
 import {
   createChatErrorMessage,
+  createChatPatchMessage,
   createChatSnapshotMessage,
   type ChatHostMessage,
+  type ChatSnapshotMessage,
 } from "./contract.js";
 import {
   ChatProjector,
@@ -107,7 +109,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   #flushTimer: NodeJS.Timeout | undefined;
   #webviewReady = false;
   #snapshotPosts = 0;
+  #patchPosts = 0;
   #projectionRevision = 0;
+  #lastProjection: ChatSnapshotMessage | undefined;
   #deferredError: ChatHostMessage | undefined;
 
   public constructor(
@@ -149,6 +153,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.#view = view;
     this.#webviewReady = false;
     this.#projectionRevision = 0;
+    this.#lastProjection = undefined;
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: [chatWebviewResourceRoot(this.#extensionUri)],
@@ -166,6 +171,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       }),
       view.onDidChangeVisibility(() => {
         if (view.visible) {
+          this.#lastProjection = undefined;
           const deferredError = this.#deferredError;
           this.#deferredError = undefined;
           if (deferredError !== undefined) {
@@ -198,10 +204,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   public get projectionDiagnostics(): {
     readonly visible: boolean;
     readonly snapshotPosts: number;
+    readonly patchPosts: number;
   } {
     return {
       visible: this.#view?.visible ?? false,
       snapshotPosts: this.#snapshotPosts,
+      patchPosts: this.#patchPosts,
     };
   }
 
@@ -276,6 +284,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       switch (message.type) {
         case "ready":
           this.#webviewReady = true;
+          this.#lastProjection = undefined;
+          break;
+        case "resync":
+          this.#lastProjection = undefined;
+          this.#scheduleFlush();
           break;
         case "open-resource": {
           const reference = this.#resources.get(message.resourceId);
@@ -371,6 +384,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             });
             break;
           }
+          const destination = await vscode.window.showQuickPick([
+            {
+              label: "$(play) Current Session",
+              description: "Use the active Session and Profile",
+              value: "current" as const,
+            },
+            {
+              label: "$(add) New Session",
+              description: "Copy the Session Profile, then implement",
+              value: "new" as const,
+            },
+            {
+              label: "$(git-branch) Checkpoint Fork",
+              description: "Fork state-only history before implementation",
+              value: "fork" as const,
+            },
+          ], {
+            title: "Plan Destination",
+            placeHolder: "Choose where implementation starts",
+          });
+          if (destination === undefined) break;
           if (message.action === "autopilot") {
             const confirmation = await vscode.window.showWarningMessage(
               "Start this Plan with Autopilot?",
@@ -383,10 +417,75 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             );
             if (confirmation !== "Start Autopilot") break;
           }
+          let targetSessionId = session.sessionId;
+          let sourceSessionId: string | undefined;
+          if (destination.value === "new") {
+            const created = await root.controller.duplicateChat(
+              session.sessionId,
+            );
+            targetSessionId = created.sessionId;
+            sourceSessionId = session.sessionId;
+          } else if (destination.value === "fork") {
+            const checkpoints = await root.controller.checkpoints(
+              session.sessionId,
+            );
+            const selected = await vscode.window.showQuickPick(
+              checkpoints.checkpoints.filter((checkpoint) => checkpoint.can_fork)
+                .map((checkpoint) => ({
+                  label: checkpoint.summary,
+                  description: new Date(
+                    checkpoint.created_at,
+                  ).toLocaleString(),
+                  checkpoint,
+                })),
+              {
+                title: "Plan Checkpoint Fork",
+                placeHolder: "Choose a compatible Checkpoint",
+              },
+            );
+            if (selected === undefined) break;
+            await root.controller.forkCheckpoint(
+              session.sessionId,
+              selected.checkpoint.id,
+              `${session.title} · Plan`,
+            );
+            sourceSessionId = session.sessionId;
+          }
           await root.controller.implementPlan(
-            session.sessionId,
+            targetSessionId,
             message.planId,
             message.action,
+            sourceSessionId,
+          );
+          break;
+        }
+        case "turn-recovery": {
+          const session = this.#selectedSession(root);
+          const turn = this.#projector(
+            root.rootId,
+            session.sessionId,
+          ).snapshot().turns.find((candidate) => candidate.id === message.turnId);
+          if (turn === undefined ||
+            (turn.status !== "failed" && turn.status !== "canceled")) {
+            throw new Error("source Turn is unavailable or not recoverable");
+          }
+          let guidance: string | undefined;
+          if (message.action === "continue") {
+            guidance = await vscode.window.showInputBox({
+              title: "Continue Turn",
+              prompt: "Optional guidance for the new Turn",
+              placeHolder: "Continue from current workspace state",
+              validateInput: (value) => value.length > 64 << 10
+                ? "Guidance must be at most 65536 characters"
+                : null,
+            });
+            if (guidance === undefined) break;
+          }
+          await root.controller.recoverTurn(
+            session.sessionId,
+            turn.id,
+            message.action,
+            guidance,
           );
           break;
         }
@@ -981,7 +1080,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
               id: context.id, kind: context.kind, label: context.label,
             })),
           );
-      this.#post(createChatSnapshotMessage({
+      const projection = createChatSnapshotMessage({
         revision: ++this.#projectionRevision,
         snapshot: resources.snapshot,
         resources: resources.views,
@@ -1005,7 +1104,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           label: candidate.label,
         })),
         ...(composer === undefined ? {} : { composer }),
-      }));
+      });
+      const previous = this.#lastProjection;
+      const selectedChanged = previous?.runtime.selectedRootId !==
+          projection.runtime.selectedRootId ||
+        previous.runtime.selectedSessionId !==
+          projection.runtime.selectedSessionId;
+      if (previous === undefined || selectedChanged) {
+        this.#post(projection);
+        this.#lastProjection = projection;
+      } else {
+        const patch = createChatPatchMessage(previous, projection);
+        if (patch !== undefined) {
+          this.#post(patch);
+          this.#lastProjection = projection;
+        }
+      }
       state.revealTurnId = undefined;
     }, 16);
   }
@@ -1014,6 +1128,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (this.#view?.visible === true) {
       if (value.type === "snapshot") {
         this.#snapshotPosts++;
+      } else if (value.type === "patch") {
+        this.#patchPosts++;
       }
       void this.#view.webview.postMessage(value);
     } else if (value.type === "error") {

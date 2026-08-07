@@ -98,6 +98,7 @@ export interface ExtensionAPI {
   readonly chatProjectionDiagnostics?: () => {
     readonly visible: boolean;
     readonly snapshotPosts: number;
+    readonly patchPosts: number;
   };
   readonly testInvalidateChatProjection?: () => void;
   readonly onRootRuntimeEvent?: (
@@ -371,6 +372,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
             chatView?.projectionDiagnostics ?? {
               visible: false,
               snapshotPosts: 0,
+              patchPosts: 0,
             },
           testInvalidateChatProjection: () => {
             chatView?.invalidateProjection();

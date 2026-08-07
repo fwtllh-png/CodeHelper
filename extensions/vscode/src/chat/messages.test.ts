@@ -7,12 +7,24 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
   assert.deepEqual(decodeWebviewMessage({ type: "ready" }), {
     type: "ready",
   });
+  assert.deepEqual(decodeWebviewMessage({ type: "resync" }), {
+    type: "resync",
+  });
   assert.deepEqual(decodeWebviewMessage({
     type: "open-resource",
     resourceId: "a".repeat(64),
   }), {
     type: "open-resource",
     resourceId: "a".repeat(64),
+  });
+  assert.deepEqual(decodeWebviewMessage({
+    type: "turn-recovery",
+    turnId: "turn_9",
+    action: "continue",
+  }), {
+    type: "turn-recovery",
+    turnId: "turn_9",
+    action: "continue",
   });
   assert.deepEqual(decodeWebviewMessage({
     type: "resource-action",

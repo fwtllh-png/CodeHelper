@@ -163,6 +163,20 @@ void test("ChatProjector exposes only Runtime-confirmed context receipts", () =>
     goal: "inspect symbol",
     verification: { status: "not_run", checks: [] },
     diagnostic_count: 0,
+    latency: {
+      total_ms: 20,
+      provider_ms: 10,
+      tool_ms: 5,
+      approval_wait_ms: 3,
+      verify_ms: 2,
+    },
+    evidence: {
+      risks: [{
+        kind: "unverified_change",
+        path: "pkg/value.go",
+        turn: 1,
+      }],
+    },
     approvals_requested: 0,
     input_tokens: 10,
     output_tokens: 4,
@@ -185,6 +199,9 @@ void test("ChatProjector exposes only Runtime-confirmed context receipts", () =>
   assert.equal(terminal.kind, "diagnostics");
   assert.equal(terminal.diagnosticCount, 32);
   assert.equal(terminal.omittedDiagnostics, 8);
+  const receipt = projector.snapshot().turns[0]?.receipt ?? "";
+  assert.match(receipt, /latency total=20ms/u);
+  assert.match(receipt, /unverified_change:pkg\/value\.go/u);
 });
 
 void test("ChatProjector preserves unknown events as read-only cards and deduplicates", () => {

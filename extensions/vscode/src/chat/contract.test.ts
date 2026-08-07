@@ -6,13 +6,14 @@ import {
   chatPatchMessageType,
   chatViewProtocolVersion,
   createChatErrorMessage,
+  createChatPatchMessage,
   createChatSnapshotMessage,
 } from "./contract.js";
 import type { ChatPatchMessage } from "./contract.js";
 import { projectComposer } from "./composer.js";
 
-void test("Chat V1 active host protocol stays snapshot-only until Patch applies", () => {
-  assert.deepEqual(chatHostMessageTypes, ["snapshot", "error"]);
+void test("Chat V1 activates atomic Snapshot and Patch delivery", () => {
+  assert.deepEqual(chatHostMessageTypes, ["snapshot", "patch", "error"]);
   const futurePatch: ChatPatchMessage = {
     type: chatPatchMessageType,
     version: chatViewProtocolVersion,
@@ -21,6 +22,56 @@ void test("Chat V1 active host protocol stays snapshot-only until Patch applies"
     operations: [{ kind: "turn.remove", turnId: "turn_1" }],
   };
   assert.equal(futurePatch.baseRevision < futurePatch.revision, true);
+});
+
+void test("Chat Patch carries only changed Turns and replacement projections", () => {
+  const base = createChatSnapshotMessage({
+    revision: 1,
+    snapshot: { turns: [] },
+    state: "ready",
+    trusted: true,
+    selectedRootId: "a".repeat(64),
+    selectedRootLabel: "workspace",
+    sessions: [],
+    roots: [{ id: "a".repeat(64), label: "workspace" }],
+  });
+  const next = createChatSnapshotMessage({
+    revision: 2,
+    snapshot: {
+      turns: [{
+        id: "turn_1",
+        user: "hello",
+        status: "running",
+        output: "delta",
+        outputMarkdown: [],
+        reasoning: "",
+        reasoningMarkdown: [],
+        reasoningActive: false,
+        tools: [],
+        approvals: [],
+        inputs: [],
+        contextReceipts: [],
+        contextSelections: [],
+        diagnostics: [],
+        unknownEvents: [],
+      }],
+      activeTurnId: "turn_1",
+    },
+    state: "ready",
+    trusted: true,
+    selectedRootId: "a".repeat(64),
+    selectedRootLabel: "workspace",
+    sessions: [],
+    roots: [{ id: "a".repeat(64), label: "workspace" }],
+  });
+  const patch = createChatPatchMessage(base, next);
+  assert.ok(patch);
+  assert.equal(patch.baseRevision, 1);
+  assert.deepEqual(
+    patch.operations.map((operation) => operation.kind),
+    ["turn.upsert", "runtime.replace"],
+  );
+  assert.equal(JSON.stringify(patch).includes("\"turns\""), false);
 });
 
 void test("Chat host snapshot freezes the current Runtime and Session projection", () => {

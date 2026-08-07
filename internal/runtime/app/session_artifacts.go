@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -16,6 +17,89 @@ type PlanTransitionPreparation struct {
 	ProfileUpdate  protocol.SessionProfileUpdateResult
 	Prompt         string
 	IdempotencyKey string
+}
+
+type TurnRecoveryPreparation struct {
+	Prompt         string
+	IdempotencyKey string
+}
+
+func (r *Runtime) PrepareTurnRecovery(
+	ctx context.Context,
+	request protocol.TurnRecoveryRequest,
+) (TurnRecoveryPreparation, error) {
+	if err := request.Validate(); err != nil {
+		return TurnRecoveryPreparation{}, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			err.Error(),
+			false,
+			err,
+		)
+	}
+	current, err := r.SessionStatus(ctx, request.SessionID)
+	if err != nil {
+		return TurnRecoveryPreparation{}, err
+	}
+	if err := ensureSessionQuiescent(current, string(request.Action)); err != nil {
+		return TurnRecoveryPreparation{}, err
+	}
+	events, err := r.events.Replay(ctx, 0)
+	if err != nil {
+		return TurnRecoveryPreparation{}, err
+	}
+	var started *protocol.TurnStartedData
+	terminal := false
+	for _, event := range events {
+		if event.ThreadID != current.ThreadID ||
+			event.TurnID != request.SourceTurnID {
+			continue
+		}
+		switch data := event.Data.(type) {
+		case *protocol.TurnStartedData:
+			copy := *data
+			started = &copy
+		case *protocol.TurnCompletedData, *protocol.TurnFailedData,
+			*protocol.TurnCanceledData:
+			terminal = true
+		}
+	}
+	if started == nil || !terminal {
+		return TurnRecoveryPreparation{}, protocol.NewProblemWithDetails(
+			protocol.CodeConflict,
+			"source Turn is unavailable or not terminal",
+			false,
+			protocol.ProblemDetails{
+				Reason:     protocol.ProblemReasonSessionBusy,
+				ResourceID: string(request.SourceTurnID),
+			},
+			nil,
+		)
+	}
+	sourcePrompt := started.Prompt
+	if sourcePrompt == "" {
+		sourcePrompt = started.DisplayPrompt
+	}
+	if strings.TrimSpace(sourcePrompt) == "" {
+		return TurnRecoveryPreparation{}, protocol.NewProblem(
+			protocol.CodeConflict,
+			"source Turn has no durable model-visible request",
+			false,
+			nil,
+		)
+	}
+	prompt := sourcePrompt
+	if request.Action == protocol.TurnRecoveryContinue {
+		prompt = "Continue from the terminal Turn above. Inspect current " +
+			"workspace state before every consequential action and do not " +
+			"repeat completed Tool, command, network, or file effects."
+		if guidance := strings.TrimSpace(request.Guidance); guidance != "" {
+			prompt += "\n\nAdditional guidance:\n" + guidance
+		}
+	}
+	return TurnRecoveryPreparation{
+		Prompt:         prompt,
+		IdempotencyKey: request.IdempotencyKey,
+	}, nil
 }
 
 func (r *Runtime) Checkpoints(
@@ -428,6 +512,160 @@ func (r *Runtime) PreparePlanTransition(
 			transition,
 		),
 	}, nil
+}
+
+func (r *Runtime) PreparePlanTransitionTo(
+	ctx context.Context,
+	sourceSessionID, targetSessionID, planID string,
+	transition protocol.PlanTransition,
+) (PlanTransitionPreparation, error) {
+	if r.sessionArtifacts == nil {
+		return PlanTransitionPreparation{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"Session Plan Artifacts are unavailable",
+			false,
+			nil,
+		)
+	}
+	artifact, err := r.sessionArtifacts.GetPlan(ctx, planID)
+	if err != nil {
+		return PlanTransitionPreparation{}, err
+	}
+	if artifact.SessionID != sourceSessionID {
+		return PlanTransitionPreparation{}, protocol.NewProblemWithDetails(
+			protocol.CodeInvalidArgument,
+			"Plan Artifact does not belong to the source Session",
+			false,
+			protocol.ProblemDetails{
+				Reason:     protocol.ProblemReasonWrongSession,
+				ResourceID: planID,
+			},
+			nil,
+		)
+	}
+	sourceProfile, err := r.SessionProfile(ctx, sourceSessionID)
+	if err != nil {
+		return PlanTransitionPreparation{}, err
+	}
+	if sourceProfile.Profile.Revision != artifact.ProfileRevision {
+		return PlanTransitionPreparation{}, protocol.NewProblemWithDetails(
+			protocol.CodeConflict,
+			"Plan Artifact Profile Revision is stale",
+			true,
+			protocol.ProblemDetails{
+				Reason:           protocol.ProblemReasonStaleProfileRevision,
+				ResourceID:       planID,
+				ExpectedRevision: artifact.ProfileRevision,
+				ActualRevision:   sourceProfile.Profile.Revision,
+			},
+			nil,
+		)
+	}
+	current, err := r.SessionStatus(ctx, targetSessionID)
+	if err != nil {
+		return PlanTransitionPreparation{}, err
+	}
+	if err := ensureSessionQuiescent(current, "implement Plan"); err != nil {
+		return PlanTransitionPreparation{}, err
+	}
+	if sourceSessionID == targetSessionID &&
+		current.ParentThreadID != artifact.ThreadID {
+		return PlanTransitionPreparation{}, protocol.NewProblemWithDetails(
+			protocol.CodeInvalidArgument,
+			"Plan Artifact does not belong to the parent Fork Thread",
+			false,
+			protocol.ProblemDetails{
+				Reason:     protocol.ProblemReasonWrongSession,
+				ResourceID: planID,
+			},
+			nil,
+		)
+	}
+	profile, err := r.SessionProfile(ctx, targetSessionID)
+	if err != nil {
+		return PlanTransitionPreparation{}, err
+	}
+	if !samePlanTargetProfile(sourceProfile.Profile, profile.Profile) {
+		return PlanTransitionPreparation{}, protocol.NewProblemWithDetails(
+			protocol.CodeConflict,
+			"target Session Profile does not match the Plan source Profile",
+			false,
+			protocol.ProblemDetails{
+				Reason:     protocol.ProblemReasonWrongSession,
+				ResourceID: targetSessionID,
+			},
+			nil,
+		)
+	}
+	mode := "act"
+	patch := protocol.SessionProfilePatch{Mode: &mode}
+	switch transition {
+	case protocol.PlanTransitionImplement:
+		if !artifact.CanImplement {
+			return PlanTransitionPreparation{}, protocol.NewProblem(
+				protocol.CodeConflict,
+				"Plan Artifact cannot start implementation",
+				false,
+				nil,
+			)
+		}
+	case protocol.PlanTransitionAutopilot:
+		if !artifact.CanAutopilot {
+			return PlanTransitionPreparation{}, protocol.NewProblem(
+				protocol.CodeConflict,
+				"Plan Artifact cannot start Autopilot",
+				false,
+				nil,
+			)
+		}
+		posture := "auto"
+		patch.ApprovalPosture = &posture
+	default:
+		return PlanTransitionPreparation{}, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			"Plan transition is invalid",
+			false,
+			nil,
+		)
+	}
+	updated, err := r.UpdateSessionProfile(
+		ctx,
+		targetSessionID,
+		current.ThreadID,
+		profile.Profile.Revision,
+		patch,
+	)
+	if err != nil {
+		return PlanTransitionPreparation{}, err
+	}
+	prompt := "Implement the approved structured Plan below. " +
+		"Do not repeat completed external side effects; inspect current " +
+		"workspace state before each consequential action.\n\n" +
+		artifact.Body
+	return PlanTransitionPreparation{
+		Artifact:      artifact,
+		ProfileUpdate: updated,
+		Prompt:        prompt,
+		IdempotencyKey: fmt.Sprintf(
+			"plan:%s:%s:%s",
+			artifact.ID,
+			transition,
+			targetSessionID,
+		),
+	}, nil
+}
+
+func samePlanTargetProfile(
+	source, target protocol.SessionProfile,
+) bool {
+	return source.Mode == target.Mode &&
+		source.Provider == target.Provider &&
+		source.Model == target.Model &&
+		source.ReasoningEffort == target.ReasoningEffort &&
+		slices.Equal(source.EnabledToolIDs, target.EnabledToolIDs) &&
+		source.ApprovalPosture == target.ApprovalPosture &&
+		source.ExecutionTarget == target.ExecutionTarget &&
+		source.MaxSteps == target.MaxSteps
 }
 
 func (r *Runtime) checkpointState(

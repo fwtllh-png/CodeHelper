@@ -4,7 +4,10 @@ import test from "node:test";
 import { performance } from "node:perf_hooks";
 
 import { BackgroundProjector, type TaskRow } from "../background/model.js";
-import { createChatSnapshotMessage } from "../chat/contract.js";
+import {
+  createChatPatchMessage,
+  createChatSnapshotMessage,
+} from "../chat/contract.js";
 import { ChatProjector } from "../chat/projector.js";
 import { projectChatResources } from "../chat/resources.js";
 import {
@@ -176,6 +179,28 @@ void test("Chat assembles the maximum V1 transcript and Session list within budg
     bytes < 2 << 20,
     `200-turn Chat snapshot is ${String(bytes)} bytes`,
   );
+  const latest = message.snapshot.turns.at(-1);
+  assert.ok(latest);
+  const patchStarted = performance.now();
+  const next = {
+    ...message,
+    revision: 2,
+    snapshot: {
+      ...message.snapshot,
+      turns: [
+        ...message.snapshot.turns.slice(0, -1),
+        { ...latest, output: `${latest.output} patched` },
+      ],
+    },
+  };
+  const patch = createChatPatchMessage(message, next);
+  const patchDurationMS = performance.now() - patchStarted;
+  assert.ok(patch);
+  const patchBytes = Buffer.byteLength(JSON.stringify(patch));
+  metrics["chat_200_turn_patch_ms"] = Number(patchDurationMS.toFixed(1));
+  metrics["chat_200_turn_patch_bytes"] = patchBytes;
+  assert.ok(patchDurationMS < 100);
+  assert.ok(patchBytes < bytes / 4);
 });
 
 void test("1000 Session search and virtual first paint stay within budget", () => {

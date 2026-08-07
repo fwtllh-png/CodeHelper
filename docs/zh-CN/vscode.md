@@ -206,21 +206,24 @@ Artifact 与 Profile Revision，通过 Runtime Profile Contract 切换状态并�
 Turn。Autopilot 请求 `act` Mode 与 `auto` Approval Posture，但 Host Permission
 Ceiling、Guard、Policy、Journal 和 Sandbox 仍是最终权威。
 
-共享协议同时冻结后续 Workflow Request。Retry 与 Continue 始终使用 Idempotency Key
-创建新 Turn，绝不重放历史 Tool Operation。Plan Transition 显式指定当前 Session、
-新 Session 或 Checkpoint Fork。这些 Request Contract 不表示当前 Chat UI 已暴露全部
-动作。
+Retry 与 Continue 已成为可执行 Runtime Workflow。两者始终使用 Idempotency Key 创建
+新 Turn，绝不重放历史 Tool、Command、Network 或 File Operation。Retry 复用源 Turn
+的持久化 Model-visible Request；Continue 使用 Terminal History 与可选 Guidance。
+Plan Transition 可显式选择 Current Session、保留 Profile 的 New Session 或 State-only
+Checkpoint Fork。Runtime 校验源 Artifact 并构造 Implementation Prompt，Webview 不做
+反向推断。
 
-Host/Webview 增量契约已冻结但尚未激活。Full Snapshot 携带单调 Projection Revision；
-后续 Patch 引用 Base Revision，并且只允许类型化 Turn、Runtime、Composer 和 Resource
-操作。在 Webview Store 能原子应用 Patch 前，活动 Message Set 仍是 Snapshot 与
-Terminal Error。
+Host/Webview 增量契约已激活。Full Snapshot Hydration 携带单调 Projection Revision；
+后续 Patch 精确引用 Base Revision，并且只携带类型化 Turn、Runtime、Composer 和
+Resource Operation。Webview Store 原子应用 Patch，Revision 不匹配时请求 Full Snapshot
+Resync。Turn、Call、Request 与 Session Stable Identity 用于在更新后保持展开状态、
+Focus 与 Scroll Anchor。
 
 ## 性能与可访问性契约
 
 Session Rail 对分组搜索结果进行虚拟化：Runtime-owned 列表和搜索投影保持完整，
-Webview 只为可见行和有界 Overscan Window 创建 DOM。Transcript Article 使用浏览器
-Content Visibility，屏幕外 Turn 不参与 Layout 和 Paint。Chat View 隐藏时，
+Webview 只为可见行和有界 Overscan Window 创建 DOM。Transcript Store 保留完整投影，
+但 DOM 只创建 Viewport Turn Window 与有界 Overscan。Chat View 隐藏时，
 Extension Host 继续更新 Runtime Projection，但停止组装和发送 DOM Snapshot；重新
 显示时只发送一次最新 Projection。
 
@@ -230,7 +233,7 @@ Extension Host 继续更新 Runtime Projection，但停止组装和发送 DOM Sn
 - 首次 Chat 可交互时间不超过 300 ms，不含 Runtime 启动；
 - 200 Turn Session Snapshot 不超过 100 ms；
 - 1000 Session 搜索和虚拟首屏不超过 150 ms；
-- 流式 Snapshot 每 16 ms Frame 最多一次。
+- 流式 Patch 每 16 ms Frame 最多一次。
 
 Electron Journey 会动态切换 Default Dark Modern、Default Light Modern 和 Default
 High Contrast Theme，应用 Zoom Level 4（约 200%），并验证 Webview 仍可交互。

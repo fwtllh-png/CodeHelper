@@ -4,6 +4,7 @@ import type {
   CheckpointRestore,
   SessionPlan,
 } from "../protocol/generated.js";
+import { randomUUID } from "node:crypto";
 
 type JsonObject = Readonly<Record<string, unknown>>;
 export type SessionCheckpoint = CheckpointList["checkpoints"][number];
@@ -89,13 +90,46 @@ export class SessionArtifactCommands {
     sessionId: string,
     planId: string,
     transition: "implement" | "autopilot",
+    sourceSessionId?: string,
   ): Promise<AcceptedPlanTurn> {
     return decodeAcceptedPlanTurn(await this.#transport.request(
       "plan/implement",
       {
         sessionId: identifier(sessionId, "session id"),
+        ...(sourceSessionId === undefined
+          ? {}
+          : {
+              sourceSessionId: identifier(
+                sourceSessionId,
+                "source Session id",
+              ),
+            }),
         planId: identifier(planId, "Plan Artifact id"),
         transition,
+      },
+    ));
+  }
+
+  public async recoverTurn(
+    sessionId: string,
+    sourceTurnId: string,
+    action: "retry" | "continue",
+    guidance?: string,
+  ): Promise<AcceptedPlanTurn> {
+    const trimmed = guidance?.trim();
+    if (action === "retry" && trimmed !== undefined && trimmed.length > 0) {
+      throw new Error("Retry cannot replace the source request");
+    }
+    return decodeAcceptedPlanTurn(await this.#transport.request(
+      "turn/recover",
+      {
+        sessionId: identifier(sessionId, "session id"),
+        sourceTurnId: identifier(sourceTurnId, "source Turn id"),
+        action,
+        ...(trimmed === undefined || trimmed.length === 0
+          ? {}
+          : { guidance: boundedText(trimmed, "Continue guidance", 64 << 10) }),
+        idempotencyKey: `recover-${randomUUID()}`,
       },
     ));
   }

@@ -343,6 +343,17 @@ export class ChatProjector {
         turn.receipt = `tokens ${String(event.data.input_tokens)} in / ` +
           `${String(event.data.output_tokens)} out, cost ` +
           `${event.data.cost_known ? String(event.data.cost_microunits) : "unknown"} µ`;
+        if (event.data.latency !== undefined) {
+          turn.receipt += `; latency total=${String(event.data.latency.total_ms)}ms` +
+            ` provider=${String(event.data.latency.provider_ms)}ms` +
+            ` tools=${String(event.data.latency.tool_ms)}ms` +
+            ` approval=${String(event.data.latency.approval_wait_ms)}ms`;
+        }
+        const risks = event.data.evidence?.risks ?? [];
+        if (risks.length > 0) {
+          turn.receipt += `; risks ${risks.map((risk) =>
+            `${risk.kind}:${risk.path}`).join(",")}`;
+        }
         if (event.data.verification_detail !== undefined) {
           const verification = event.data.verification_detail;
           turn.receipt += `; verify ${verification.final_status}` +

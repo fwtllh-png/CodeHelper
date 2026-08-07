@@ -668,6 +668,13 @@ pre {
   contain-intrinsic-size: auto 180px;
 }
 
+.transcript-top-spacer,
+.transcript-bottom-spacer {
+  width: 1px;
+  min-height: 0;
+  pointer-events: none;
+}
+
 .session-item:disabled {
   color: var(--vscode-disabledForeground);
   cursor: default;

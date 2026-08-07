@@ -145,13 +145,13 @@ func TestCheckpointRestoreIsStateOnlyAndForkPreservesLineage(t *testing.T) {
 		history: encoded,
 		profile: profile,
 	}
-	lifecycle := artifactLifecycle()
 	engine := &artifactTestEngine{
 		profileTestEngine: profileTestEngine{},
 		history: []provider.Message{
 			provider.TextMessage(provider.RoleUser, "later work"),
 		},
 	}
+	lifecycle := artifactLifecycle()
 	runtime := NewRuntime(Options{
 		Engine:              engine,
 		SessionProfiles:     &memoryProfileStore{profile: profile},
@@ -220,12 +220,13 @@ func TestPlanTransitionUsesANewGuardedTurnProfile(t *testing.T) {
 			CreatedAt:       time.Now().UTC(),
 		},
 	}
+	lifecycle := artifactLifecycle()
 	runtime := NewRuntime(Options{
 		Engine:              &profileTestEngine{},
 		SessionProfiles:     profiles,
 		DefaultProfile:      profile,
 		ProfileCapabilities: runtimeTestCapabilities(profile),
-		SessionLifecycle:    artifactLifecycle(),
+		SessionLifecycle:    lifecycle,
 		SessionArtifacts:    artifacts,
 	})
 	t.Cleanup(func() { closeRuntime(t, runtime) })
@@ -254,19 +255,165 @@ func TestPlanTransitionUsesANewGuardedTurnProfile(t *testing.T) {
 	}
 }
 
+func TestPlanTransitionToRequiresMatchingProfileAndForkLineage(t *testing.T) {
+	profile := runtimeTestProfile()
+	profile.Mode = "plan"
+	profiles := &memoryProfileStore{profile: profile}
+	artifacts := &memoryArtifactStore{
+		plan: protocol.SessionPlanArtifact{
+			Version:         protocol.CheckpointProtocolVersion,
+			ID:              "plan-1",
+			SessionID:       "session-profile",
+			ThreadID:        "thread-profile",
+			TurnID:          "turn-plan",
+			Cursor:          7,
+			Status:          protocol.PlanArtifactReady,
+			Body:            "1. Update parser",
+			ProfileRevision: profile.Revision,
+			CanImplement:    true,
+			CanAutopilot:    true,
+			CreatedAt:       time.Now().UTC(),
+		},
+	}
+	lifecycle := artifactLifecycle()
+	lifecycle.summary.ThreadID = "thread-plan-fork"
+	lifecycle.summary.ParentThreadID = "thread-profile"
+	runtime := NewRuntime(Options{
+		Engine:              &profileTestEngine{},
+		SessionProfiles:     profiles,
+		DefaultProfile:      profile,
+		ProfileCapabilities: runtimeTestCapabilities(profile),
+		SessionLifecycle:    lifecycle,
+		SessionArtifacts:    artifacts,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	destination, err := runtime.PreparePlanTransitionTo(
+		t.Context(),
+		"session-profile",
+		"session-profile",
+		"plan-1",
+		protocol.PlanTransitionImplement,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(destination.Prompt, artifacts.plan.Body) ||
+		destination.IdempotencyKey !=
+			"plan:plan-1:implement:session-profile" {
+		t.Fatalf("Plan destination = %+v", destination)
+	}
+	if _, err := runtime.PreparePlanTransitionTo(
+		t.Context(),
+		"session-profile",
+		"session-profile",
+		"plan-1",
+		protocol.PlanTransitionImplement,
+	); protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("stale source Profile error = %v", err)
+	}
+	artifacts.plan.ProfileRevision = profiles.profile.Revision
+	lifecycle.summary.ParentThreadID = "thread-unrelated"
+	if _, err := runtime.PreparePlanTransitionTo(
+		t.Context(),
+		"session-profile",
+		"session-profile",
+		"plan-1",
+		protocol.PlanTransitionImplement,
+	); protocol.CodeOf(err) != protocol.CodeInvalidArgument {
+		t.Fatalf("unrelated Fork lineage error = %v", err)
+	}
+}
+
+func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
+	events := NewMemoryEventStore(16)
+	meta := protocol.EventMeta{
+		Sequence:    1,
+		OperationID: "operation-source",
+		ThreadID:    "thread-profile",
+		TurnID:      "turn-source",
+		ItemID:      "item-source",
+	}
+	started, err := protocol.NewEvent(meta, &protocol.TurnStartedData{
+		Provider: "fixture",
+		Model:    "fixture-model",
+		Prompt:   "Fix the parser",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), started); err != nil {
+		t.Fatal(err)
+	}
+	meta.Sequence = 2
+	completed, err := protocol.NewEvent(meta, &protocol.TurnCompletedData{
+		Text: "done",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), completed); err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{
+		EventStore:       events,
+		SessionLifecycle: artifactLifecycle(),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	retry, err := runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version:   protocol.WorkflowIntentVersion,
+			Action:    protocol.TurnRecoveryRetry,
+			SessionID: "session-profile", SourceTurnID: "turn-source",
+			IdempotencyKey: "retry-source",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retry.Prompt != "Fix the parser" ||
+		retry.IdempotencyKey != "retry-source" {
+		t.Fatalf("Retry preparation = %+v", retry)
+	}
+	continued, err := runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version:   protocol.WorkflowIntentVersion,
+			Action:    protocol.TurnRecoveryContinue,
+			SessionID: "session-profile", SourceTurnID: "turn-source",
+			Guidance: "Run focused tests", IdempotencyKey: "continue-source",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(continued.Prompt, "do not repeat completed Tool") ||
+		!strings.Contains(continued.Prompt, "Run focused tests") {
+		t.Fatalf("Continue preparation = %+v", continued)
+	}
+	replayed, err := events.Replay(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(replayed) != 2 {
+		t.Fatalf("Recovery preparation emitted historical operations: %+v", replayed)
+	}
+}
+
 func artifactLifecycle() *memorySessionLifecycleStore {
 	now := time.Now().UTC()
 	return &memorySessionLifecycleStore{summary: protocol.SessionSummary{
-		Version:        protocol.SessionLifecycleVersion,
-		Revision:       1,
-		SessionID:      "session-profile",
-		ThreadID:       "thread-profile",
-		Title:          "Artifacts",
-		Status:         protocol.SessionStatusIdle,
-		Isolation:      "shared",
-		WorkspaceRoot:  "/workspace",
-		WorkspaceLabel: "workspace",
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		Version:         protocol.SessionLifecycleVersion,
+		Revision:        1,
+		SessionID:       "session-profile",
+		ThreadID:        "thread-profile",
+		Title:           "Artifacts",
+		Status:          protocol.SessionStatusIdle,
+		Isolation:       "shared",
+		WorkspaceRoot:   "/workspace",
+		WorkspaceLabel:  "workspace",
+		ExecutionTarget: "local",
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}}
 }

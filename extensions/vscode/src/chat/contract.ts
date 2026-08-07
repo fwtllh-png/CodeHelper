@@ -9,7 +9,7 @@ import type { ResourceView } from "./resources.js";
 import type { ComposerView } from "./composer.js";
 
 export const chatViewProtocolVersion = 1;
-export const chatHostMessageTypes = ["snapshot", "error"] as const;
+export const chatHostMessageTypes = ["snapshot", "patch", "error"] as const;
 export const chatPatchMessageType = "patch" as const;
 
 export interface ChatRootView {
@@ -63,7 +63,10 @@ export interface ChatErrorMessage {
   readonly message: string;
 }
 
-export type ChatHostMessage = ChatSnapshotMessage | ChatErrorMessage;
+export type ChatHostMessage =
+  | ChatSnapshotMessage
+  | ChatPatchMessage
+  | ChatErrorMessage;
 
 export type ChatPatchOperation =
   | { readonly kind: "turn.upsert"; readonly turn: ChatTurn }
@@ -79,14 +82,72 @@ export type ChatPatchOperation =
       readonly resources: readonly ResourceView[];
     };
 
-// Patch is frozen for the incremental renderer but is not part of
-// ChatHostMessage until the Webview Store can apply it atomically.
 export interface ChatPatchMessage {
   readonly type: typeof chatPatchMessageType;
   readonly version: typeof chatViewProtocolVersion;
   readonly baseRevision: number;
   readonly revision: number;
   readonly operations: readonly ChatPatchOperation[];
+}
+
+export function createChatPatchMessage(
+  previous: ChatSnapshotMessage,
+  current: ChatSnapshotMessage,
+): ChatPatchMessage | undefined {
+  if (current.revision <= previous.revision) {
+    throw new Error("Chat projection Revision must increase");
+  }
+  const operations: ChatPatchOperation[] = [];
+  const previousTurns = new Map(
+    previous.snapshot.turns.map((turn) => [turn.id, turn]),
+  );
+  const currentTurns = new Map(
+    current.snapshot.turns.map((turn) => [turn.id, turn]),
+  );
+  for (const turn of current.snapshot.turns) {
+    if (!sameProjection(previousTurns.get(turn.id), turn)) {
+      operations.push({ kind: "turn.upsert", turn });
+    }
+  }
+  for (const turn of previous.snapshot.turns) {
+    if (!currentTurns.has(turn.id)) {
+      operations.push({ kind: "turn.remove", turnId: turn.id });
+    }
+  }
+  if (!sameProjection(previous.runtime, current.runtime) ||
+    !sameProjection(previous.presentation, current.presentation)) {
+    operations.push({
+      kind: "runtime.replace",
+      runtime: current.runtime,
+      presentation: current.presentation,
+    });
+  }
+  if (!sameProjection(previous.composer, current.composer)) {
+    operations.push({
+      kind: "composer.replace",
+      ...(current.composer === undefined
+        ? {}
+        : { composer: current.composer }),
+    });
+  }
+  if (!sameProjection(previous.resources, current.resources)) {
+    operations.push({
+      kind: "resources.replace",
+      resources: current.resources,
+    });
+  }
+  if (operations.length === 0) return undefined;
+  return {
+    type: chatPatchMessageType,
+    version: chatViewProtocolVersion,
+    baseRevision: previous.revision,
+    revision: current.revision,
+    operations,
+  };
+}
+
+function sameProjection(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export interface ChatSnapshotMessageOptions {

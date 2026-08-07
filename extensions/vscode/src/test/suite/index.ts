@@ -98,6 +98,10 @@ export async function run(): Promise<void> {
           .get<boolean>("runtime.autoStart"))}`,
     );
     await verifyNativeFlows(api);
+    assert.ok(
+      (api.chatProjectionDiagnostics?.().patchPosts ?? 0) > 0,
+      "streaming Runtime events did not produce incremental Chat Patches",
+    );
     await verifyMultipleChats(api);
     await verifyCheckpoints(api);
     await verifySessionLifecycle(api);
@@ -321,12 +325,14 @@ async function verifyResourceNavigation(): Promise<void> {
   assert.equal(vscode.window.activeTextEditor?.document.uri.path.endsWith(
     "/context.ts",
   ), true);
-  const primaryColumn = vscode.window.activeTextEditor?.viewColumn;
+  const primaryColumn = vscode.window.activeTextEditor.viewColumn;
   assert.ok(primaryColumn);
   await navigator.open({ ...base, kind: "file" }, { side: true });
   assert.ok(vscode.window.activeTextEditor);
-  assert.notEqual(vscode.window.activeTextEditor.viewColumn, primaryColumn);
-  assert.ok(vscode.window.activeTextEditor.viewColumn > primaryColumn);
+  const sideColumn = vscode.window.activeTextEditor.viewColumn;
+  assert.ok(sideColumn);
+  assert.notEqual(sideColumn, primaryColumn);
+  assert.ok(sideColumn > primaryColumn);
   await navigator.copyRelativePath({ ...base, kind: "file" });
   assert.equal(await vscode.env.clipboard.readText(), "context.ts");
   await navigator.open({

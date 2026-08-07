@@ -6,6 +6,7 @@ import type { ComposerControl } from "./composer.js";
 
 export type WebviewMessage =
   | { readonly type: "ready" }
+  | { readonly type: "resync" }
   | { readonly type: "open-resource"; readonly resourceId: string }
   | {
       readonly type: "resource-action";
@@ -31,6 +32,11 @@ export type WebviewMessage =
       readonly type: "plan-action";
       readonly planId: string;
       readonly action: "implement" | "autopilot" | "open";
+    }
+  | {
+      readonly type: "turn-recovery";
+      readonly turnId: string;
+      readonly action: "retry" | "continue";
     }
   | { readonly type: "new-chat" }
   | { readonly type: "repair-runtime" }
@@ -58,6 +64,9 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
     case "ready":
       requireKeys(value, ["type"]);
       return { type: "ready" };
+    case "resync":
+      requireKeys(value, ["type"]);
+      return { type: "resync" };
     case "open-resource":
       requireKeys(value, ["type", "resourceId"]);
       return {
@@ -108,6 +117,13 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
         type: "plan-action",
         planId: requireBoundedString(value["planId"], "planId", 256),
         action: requirePlanAction(value["action"]),
+      };
+    case "turn-recovery":
+      requireKeys(value, ["type", "turnId", "action"]);
+      return {
+        type: "turn-recovery",
+        turnId: requireBoundedString(value["turnId"], "turnId", 256),
+        action: requireTurnRecoveryAction(value["action"]),
       };
     case "new-chat":
       requireKeys(value, ["type"]);
@@ -171,6 +187,13 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
     default:
       throw new Error("unknown Webview message type");
   }
+}
+
+function requireTurnRecoveryAction(value: unknown): "retry" | "continue" {
+  if (value !== "retry" && value !== "continue") {
+    throw new Error("invalid Turn recovery action");
+  }
+  return value;
 }
 
 function requireResourceAction(

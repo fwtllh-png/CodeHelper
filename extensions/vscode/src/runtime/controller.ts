@@ -559,6 +559,7 @@ export class RuntimeController {
     sessionId: string,
     planId: string,
     transition: "implement" | "autopilot",
+    sourceSessionId?: string,
   ): Promise<void> {
     const runtime = this.#readyRuntime();
     this.#session(runtime, sessionId);
@@ -566,6 +567,23 @@ export class RuntimeController {
       sessionId,
       planId,
       transition,
+      sourceSessionId,
+    );
+  }
+
+  public async recoverTurn(
+    sessionId: string,
+    sourceTurnId: string,
+    action: "retry" | "continue",
+    guidance?: string,
+  ): Promise<void> {
+    const runtime = this.#readyRuntime();
+    this.#session(runtime, sessionId);
+    await new SessionArtifactCommands(runtime).recoverTurn(
+      sessionId,
+      sourceTurnId,
+      action,
+      guidance,
     );
   }
 

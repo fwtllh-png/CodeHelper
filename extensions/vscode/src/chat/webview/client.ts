@@ -3,6 +3,7 @@
 import type {
   ChatErrorMessage,
   ChatHostMessage,
+  ChatPatchMessage,
   ChatSessionView,
   ChatSnapshotMessage,
 } from "../contract.js";
@@ -15,6 +16,7 @@ import {
 import { element } from "./dom.js";
 import {
   renderTranscript,
+  patchTranscript,
   type TranscriptActions,
 } from "./transcript.js";
 import {
@@ -22,6 +24,11 @@ import {
   virtualItemOffset,
 } from "../virtual-list.js";
 import { routeChatKeyboard } from "../keyboard.js";
+import {
+  computeTranscriptWindow,
+  transcriptTurnEstimate,
+} from "../transcript-window.js";
+import { ChatWebviewStore } from "./store.js";
 
 interface VSCodeAPI {
   postMessage(message: unknown): void;
@@ -96,6 +103,9 @@ type SessionVirtualItem =
 
 let sessionVirtualItems: readonly SessionVirtualItem[] = [];
 let lastRevealedTurn = "";
+const chatStore = new ChatWebviewStore();
+let transcriptWindow = { start: 0, end: 0 };
+let transcriptRenderFrame: number | undefined;
 
 const transcriptActions: TranscriptActions = {
   openResource: (resourceId) => {
@@ -134,6 +144,9 @@ const transcriptActions: TranscriptActions = {
   },
   plan: (planId, action) => {
     post({ type: "plan-action", planId, action });
+  },
+  recover: (turnId, action) => {
+    post({ type: "turn-recovery", turnId, action });
   },
 };
 
@@ -288,6 +301,8 @@ sessionList.addEventListener("scroll", () => {
 new ResizeObserver(() => {
   scheduleVirtualSessionRender();
 }).observe(sessionList);
+turns.addEventListener("scroll", scheduleTranscriptWindow, { passive: true });
+new ResizeObserver(scheduleTranscriptWindow).observe(turns);
 
 function scheduleVirtualSessionRender(): void {
   if (sessionRenderFrame !== undefined) return;
@@ -352,7 +367,15 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
     renderError(message);
     return;
   }
-  renderSnapshot(message);
+  try {
+    const snapshot = chatStore.apply(message);
+    renderSnapshot(
+      snapshot,
+      message.type === "patch" ? message : undefined,
+    );
+  } catch {
+    post({ type: "resync" });
+  }
 });
 
 function renderError(message: ChatErrorMessage): void {
@@ -362,7 +385,10 @@ function renderError(message: ChatErrorMessage): void {
   turns.append(node);
 }
 
-function renderSnapshot(message: ChatSnapshotMessage): void {
+function renderSnapshot(
+  message: ChatSnapshotMessage,
+  patch?: ChatPatchMessage,
+): void {
   trusted = message.runtime.trusted;
   root.replaceChildren(...message.runtime.roots.map((candidate) => {
     const option = document.createElement("option");
@@ -403,14 +429,113 @@ function renderSnapshot(message: ChatSnapshotMessage): void {
   repairDetail.textContent = message.runtime.error ??
     "Run readiness checks to identify missing configuration or capabilities.";
   empty.hidden = !message.presentation.emptyVisible;
-  const stickToBottom = isNearBottom();
-  renderTranscript(turns, message.snapshot, trusted, transcriptActions);
+  const revealIndex = message.runtime.revealTurnId === undefined
+    ? -1
+    : message.snapshot.turns.findIndex(
+        (turn) => turn.id === message.runtime.revealTurnId,
+      );
+  if (revealIndex >= 0) {
+    turns.scrollTop = revealIndex * transcriptTurnEstimate;
+  }
+  const stickToBottom = isNearBottom() && revealIndex < 0;
+  renderTranscriptProjection(message, patch);
   if (stickToBottom) turns.scrollTo({ top: turns.scrollHeight });
   if (message.runtime.revealTurnId !== undefined) {
     revealTurn(message.runtime.selectedSessionId, message.runtime.revealTurnId);
   } else {
     lastRevealedTurn = "";
   }
+}
+
+function scheduleTranscriptWindow(): void {
+  if (transcriptRenderFrame !== undefined) return;
+  transcriptRenderFrame = requestAnimationFrame(() => {
+    transcriptRenderFrame = undefined;
+    const message = chatStore.current();
+    if (message !== undefined) {
+      renderTranscriptProjection(message, undefined, false);
+    }
+  });
+}
+
+function renderTranscriptProjection(
+  message: ChatSnapshotMessage,
+  patch?: ChatPatchMessage,
+  hydrate = patch === undefined,
+): void {
+  if (hydrate) {
+    turns.replaceChildren();
+    transcriptWindow = { start: 0, end: 0 };
+  }
+  const total = message.snapshot.turns.length;
+  const window = computeTranscriptWindow(
+    total,
+    turns.scrollTop,
+    turns.clientHeight || 600,
+  );
+  const { start, end } = window;
+  const visible = {
+    turns: message.snapshot.turns.slice(start, end),
+    ...(message.snapshot.activeTurnId === undefined
+      ? {}
+      : { activeTurnId: message.snapshot.activeTurnId }),
+  };
+  const windowChanged = start !== transcriptWindow.start ||
+    end !== transcriptWindow.end;
+  if (hydrate) {
+    renderTranscript(turns, visible, trusted, transcriptActions);
+  } else {
+    const visibleIDs = new Set(visible.turns.map((turn) => turn.id));
+    const existingIDs = new Set(
+      [...turns.querySelectorAll<HTMLElement>("article[data-turn-id]")]
+        .flatMap((article) =>
+          article.dataset["turnId"] === undefined
+            ? []
+            : [article.dataset["turnId"]]),
+    );
+    const changed = windowChanged
+      ? visibleIDs
+      : new Set(patch?.operations.flatMap((operation) =>
+          operation.kind === "turn.upsert" &&
+            visibleIDs.has(operation.turn.id)
+            ? [operation.turn.id]
+            : []) ?? []);
+    const removed = new Set([
+      ...[...existingIDs].filter((id) => !visibleIDs.has(id)),
+      ...(patch?.operations.flatMap((operation) =>
+        operation.kind === "turn.remove" ? [operation.turnId] : []) ?? []),
+    ]);
+    patchTranscript(
+      turns,
+      visible,
+      changed,
+      removed,
+      trusted,
+      transcriptActions,
+    );
+  }
+  transcriptWindow = { start, end };
+  updateTranscriptSpacers(window.paddingBefore, window.paddingAfter);
+}
+
+function updateTranscriptSpacers(
+  paddingBefore: number,
+  paddingAfter: number,
+): void {
+  let top = turns.querySelector<HTMLElement>(".transcript-top-spacer");
+  if (top === null) {
+    top = document.createElement("div");
+    top.className = "transcript-top-spacer";
+    turns.prepend(top);
+  }
+  let bottom = turns.querySelector<HTMLElement>(".transcript-bottom-spacer");
+  if (bottom === null) {
+    bottom = document.createElement("div");
+    bottom.className = "transcript-bottom-spacer";
+    turns.append(bottom);
+  }
+  top.style.height = `${String(paddingBefore)}px`;
+  bottom.style.height = `${String(paddingAfter)}px`;
 }
 
 function renderComposer(message: ChatSnapshotMessage): void {
@@ -713,7 +838,9 @@ function isChatHostMessage(value: unknown): value is ChatHostMessage {
   }
   const candidate = value as Readonly<Record<string, unknown>>;
   return candidate["version"] === 1 &&
-    (candidate["type"] === "snapshot" || candidate["type"] === "error");
+    (candidate["type"] === "snapshot" ||
+      candidate["type"] === "patch" ||
+      candidate["type"] === "error");
 }
 
 setSessionsOpen(false);

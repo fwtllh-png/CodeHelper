@@ -78,12 +78,58 @@ void test("submits only bounded Checkpoint and Plan intents", async () => {
     },
   });
   await commands.implementPlan("session_1", "plan_1", "autopilot");
-  assert.deepEqual(calls, [{
-    method: "plan/implement",
-    params: {
-      sessionId: "session_1",
-      planId: "plan_1",
-      transition: "autopilot",
-    },
-  }]);
+  await commands.implementPlan(
+    "session_2",
+    "plan_1",
+    "implement",
+    "session_1",
+  );
+  await commands.implementPlan(
+    "session_1",
+    "plan_1",
+    "implement",
+    "session_1",
+  );
+  await commands.recoverTurn(
+    "session_1",
+    "turn_1",
+    "continue",
+    "Run focused tests",
+  );
+  assert.deepEqual(calls.map((call) => call.method), [
+    "plan/implement",
+    "plan/implement",
+    "plan/implement",
+    "turn/recover",
+  ]);
+  assert.deepEqual(calls[0]?.params, {
+    sessionId: "session_1",
+    planId: "plan_1",
+    transition: "autopilot",
+  });
+  assert.deepEqual(calls[1]?.params, {
+    sessionId: "session_2",
+    sourceSessionId: "session_1",
+    planId: "plan_1",
+    transition: "implement",
+  });
+  assert.deepEqual(calls[2]?.params, {
+    sessionId: "session_1",
+    sourceSessionId: "session_1",
+    planId: "plan_1",
+    transition: "implement",
+  });
+  assert.deepEqual(calls[3]?.params, {
+    sessionId: "session_1",
+    sourceTurnId: "turn_1",
+    action: "continue",
+    guidance: "Run focused tests",
+    idempotencyKey: (calls[3]?.params as {
+      readonly idempotencyKey: string;
+    }).idempotencyKey,
+  });
+  assert.match(
+    (calls[3].params as { readonly idempotencyKey: string }).idempotencyKey,
+    /^recover-/u,
+  );
 });

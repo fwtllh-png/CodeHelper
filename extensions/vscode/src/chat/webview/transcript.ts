@@ -1,6 +1,7 @@
 import type {
   ApprovalCard,
   ChatSnapshot,
+  ChatTurn,
   ContextReceiptCard,
   ContextSelectionCard,
   InputCard,
@@ -22,6 +23,10 @@ export interface TranscriptActions {
     planId: string,
     action: "implement" | "autopilot" | "open",
   ) => void;
+  readonly recover: (
+    turnId: string,
+    action: "retry" | "continue",
+  ) => void;
 }
 
 export function renderTranscript(
@@ -32,13 +37,59 @@ export function renderTranscript(
 ): void {
   const fragment = document.createDocumentFragment();
   for (const turn of snapshot.turns) {
+    fragment.append(renderTurn(turn, trusted, actions));
+  }
+  container.replaceChildren(fragment);
+}
+
+export function patchTranscript(
+  container: HTMLElement,
+  snapshot: ChatSnapshot,
+  changedTurnIds: ReadonlySet<string>,
+  removedTurnIds: ReadonlySet<string>,
+  trusted: boolean,
+  actions: TranscriptActions,
+): void {
+  const state = captureTranscriptState(container);
+  for (const turnId of removedTurnIds) {
+    turnArticle(container, turnId)?.remove();
+  }
+  for (const turn of snapshot.turns) {
+    if (!changedTurnIds.has(turn.id)) continue;
+    const next = renderTurn(turn, trusted, actions);
+    const current = turnArticle(container, turn.id);
+    if (current === undefined) {
+      const nextTurn = snapshot.turns[
+        snapshot.turns.findIndex((candidate) => candidate.id === turn.id) + 1
+      ];
+      const nextArticle = nextTurn === undefined
+        ? undefined
+        : turnArticle(container, nextTurn.id);
+      const bottom = container.querySelector<HTMLElement>(
+        ".transcript-bottom-spacer",
+      );
+      container.insertBefore(next, nextArticle ?? bottom ?? null);
+    } else {
+      current.replaceWith(next);
+    }
+  }
+  restoreTranscriptState(container, state);
+}
+
+function renderTurn(
+  turn: ChatTurn,
+  trusted: boolean,
+  actions: TranscriptActions,
+): HTMLElement {
     const article = document.createElement("article");
     article.dataset["turnId"] = turn.id;
+    article.dataset["stateKey"] = `turn:${turn.id}`;
     appendText(article, "div", "user", turn.user || "(restored turn)");
     appendText(article, "div", "meta turn-status", turn.status);
     if (turn.reasoning.length > 0) {
       const reasoning = document.createElement("details");
       reasoning.className = "reasoning-panel";
+      reasoning.dataset["stateKey"] = `turn:${turn.id}:reasoning`;
       reasoning.open = turn.reasoningActive;
       appendText(
         reasoning,
@@ -72,6 +123,7 @@ export function renderTranscript(
     for (const tool of turn.tools) {
       const details = document.createElement("details");
       details.className = "tool-card";
+      details.dataset["stateKey"] = `turn:${turn.id}:tool:${tool.callId}`;
       appendText(details, "summary", "", `${tool.tool} · ${tool.status}`);
       if (tool.arguments !== undefined) {
         appendText(details, "pre", "", tool.arguments);
@@ -130,15 +182,21 @@ export function renderTranscript(
     if (turn.error !== undefined) {
       appendText(article, "div", "error", turn.error);
     }
+    if (turn.status === "failed" || turn.status === "canceled") {
+      article.append(actionButton("Retry", () => {
+        actions.recover(turn.id, "retry");
+      }));
+      article.append(actionButton("Continue", () => {
+        actions.recover(turn.id, "continue");
+      }));
+    }
     for (const unknown of turn.unknownEvents) {
       const details = document.createElement("details");
       appendText(details, "summary", "", "Unknown event");
       appendText(details, "pre", "", unknown);
       article.append(details);
     }
-    fragment.append(article);
-  }
-  container.replaceChildren(fragment);
+    return article;
 }
 
 function contextReceiptCard(
@@ -147,6 +205,7 @@ function contextReceiptCard(
 ): HTMLElement {
   const card = document.createElement("details");
   card.className = "context-receipt";
+  card.dataset["stateKey"] = `context:${receipt.kind}:${receipt.digest}`;
   let label = `Context: ${receipt.kind} · ${receipt.label ?? receipt.path}`;
   if (receipt.symbol !== undefined) label += ` · ${receipt.symbol}`;
   if (receipt.diagnosticCount > 0) {
@@ -182,6 +241,7 @@ function contextSelectionCard(
 ): HTMLElement {
   const card = document.createElement("details");
   card.className = "context-selection";
+  card.dataset["stateKey"] = `selection:${selection.kind}:${selection.path}`;
   let label = `Selected ${selection.kind}: ${selection.path}`;
   if (selection.truncated) label += " · cut";
   appendText(card, "summary", "", label);
@@ -221,6 +281,7 @@ function approvalCard(
 ): HTMLElement {
   const box = document.createElement("details");
   box.className = "approval-card";
+  box.dataset["stateKey"] = `approval:${approval.requestId}`;
   box.open = approval.resolved === undefined;
   appendText(
     box,
@@ -274,6 +335,7 @@ function inputCard(
 ): HTMLElement {
   const box = document.createElement("details");
   box.className = "input-card";
+  box.dataset["stateKey"] = `input:${input.requestId}`;
   box.open = input.resolved === undefined;
   appendText(box, "summary", "", "Input required");
   appendText(box, "div", "", input.prompt);
@@ -285,6 +347,108 @@ function inputCard(
     }
   }
   return box;
+}
+
+interface TranscriptState {
+  readonly open: ReadonlySet<string>;
+  readonly focused?: {
+    readonly owner: string;
+    readonly index: number;
+  };
+  readonly anchor?: {
+    readonly turnId: string;
+    readonly offset: number;
+  };
+}
+
+function captureTranscriptState(container: HTMLElement): TranscriptState {
+  const open = new Set(
+    [...container.querySelectorAll<HTMLDetailsElement>(
+      "details[data-state-key][open]",
+    )].flatMap((value) =>
+      value.dataset["stateKey"] === undefined
+        ? []
+        : [value.dataset["stateKey"]]),
+  );
+  const active = document.activeElement instanceof HTMLElement &&
+    container.contains(document.activeElement)
+    ? document.activeElement
+    : undefined;
+  const focusedOwner = active?.closest<HTMLElement>("[data-state-key]");
+  const focusedOwnerKey = focusedOwner?.dataset["stateKey"];
+  const focusedIndex = active === undefined || focusedOwner === null ||
+    focusedOwner === undefined
+    ? -1
+    : focusableElements(focusedOwner).indexOf(active);
+  const focused = focusedOwnerKey === undefined || focusedIndex < 0
+    ? undefined
+    : { owner: focusedOwnerKey, index: focusedIndex };
+  const articles = [...container.querySelectorAll<HTMLElement>(
+    "article[data-turn-id]",
+  )];
+  const anchor = articles.find((article) =>
+    article.getBoundingClientRect().bottom >=
+      container.getBoundingClientRect().top);
+  const turnId = anchor?.dataset["turnId"];
+  return {
+    open,
+    ...(focused === undefined ? {} : { focused }),
+    ...(anchor === undefined || turnId === undefined
+      ? {}
+      : {
+          anchor: {
+            turnId,
+            offset: anchor.getBoundingClientRect().top -
+              container.getBoundingClientRect().top,
+          },
+        }),
+  };
+}
+
+function restoreTranscriptState(
+  container: HTMLElement,
+  state: TranscriptState,
+): void {
+  for (const details of container.querySelectorAll<HTMLDetailsElement>(
+    "details[data-state-key]",
+  )) {
+    const key = details.dataset["stateKey"];
+    if (key !== undefined && state.open.has(key)) details.open = true;
+  }
+  if (state.anchor !== undefined) {
+    const anchor = turnArticle(container, state.anchor.turnId);
+    if (anchor !== undefined) {
+      container.scrollTop += anchor.getBoundingClientRect().top -
+        container.getBoundingClientRect().top - state.anchor.offset;
+    }
+  }
+  if (state.focused !== undefined) {
+    const owner = [...container.querySelectorAll<HTMLElement>(
+      "[data-state-key]",
+    )].find((value) => value.dataset["stateKey"] === state.focused?.owner);
+    focusableElements(owner)[state.focused.index]?.focus({
+      preventScroll: true,
+    });
+  }
+}
+
+function focusableElements(
+  container: HTMLElement | undefined,
+): HTMLElement[] {
+  return container === undefined
+    ? []
+    : [...container.querySelectorAll<HTMLElement>(
+        "button, input, textarea, select, summary, " +
+        "[tabindex]:not([tabindex='-1'])",
+      )];
+}
+
+function turnArticle(
+  container: HTMLElement,
+  turnId: string,
+): HTMLElement | undefined {
+  return [...container.querySelectorAll<HTMLElement>("article[data-turn-id]")]
+    .find((candidate) => candidate.dataset["turnId"] === turnId);
 }
 
 function actionButton(label: string, handler: () => void): HTMLButtonElement {

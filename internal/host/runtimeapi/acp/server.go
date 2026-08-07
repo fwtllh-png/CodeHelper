@@ -65,7 +65,7 @@ var methods = []string{
 	"session/rename", "session/profile/get", "session/profile/update",
 	"session/tool/catalog",
 	"checkpoint/list", "checkpoint/get", "checkpoint/restore", "checkpoint/fork",
-	"plan/get", "plan/implement", "shutdown",
+	"turn/recover", "plan/get", "plan/implement", "shutdown",
 }
 
 var dynamicMethods = []string{
@@ -526,6 +526,8 @@ func (s *Server) dispatch(request rpcRequest) bool {
 		s.checkpointRestore(request)
 	case "checkpoint/fork":
 		s.checkpointFork(request)
+	case "turn/recover":
+		s.turnRecover(request)
 	case "plan/get":
 		s.planGet(request)
 	case "plan/implement":
@@ -1684,6 +1686,46 @@ func (s *Server) checkpointFork(request rpcRequest) {
 	s.replyResult(request, result)
 }
 
+type turnRecoverParams struct {
+	SessionID      string                      `json:"sessionId"`
+	SourceTurnID   protocol.TurnID             `json:"sourceTurnId"`
+	Action         protocol.TurnRecoveryAction `json:"action"`
+	Guidance       string                      `json:"guidance,omitempty"`
+	IdempotencyKey string                      `json:"idempotencyKey"`
+}
+
+func (s *Server) turnRecover(request rpcRequest) {
+	var params turnRecoverParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	prepared, err := s.dependencies.Runtime.PrepareTurnRecovery(
+		s.ctx,
+		protocol.TurnRecoveryRequest{
+			Version:        protocol.WorkflowIntentVersion,
+			Action:         params.Action,
+			SessionID:      binding.ID,
+			SourceTurnID:   params.SourceTurnID,
+			Guidance:       params.Guidance,
+			IdempotencyKey: params.IdempotencyKey,
+		},
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.submitPrepared(request, binding, operationRequest{
+		kind:           protocol.OperationStartTurn,
+		payload:        &protocol.StartTurnPayload{Prompt: prepared.Prompt},
+		idempotencyKey: prepared.IdempotencyKey,
+	})
+}
+
 func (s *Server) planGet(request rpcRequest) {
 	var params sessionProfileParams
 	if err := decodeParams(request.Params, &params); err != nil {
@@ -1705,9 +1747,10 @@ func (s *Server) planGet(request rpcRequest) {
 }
 
 type planImplementParams struct {
-	SessionID  string                  `json:"sessionId"`
-	PlanID     string                  `json:"planId"`
-	Transition protocol.PlanTransition `json:"transition"`
+	SessionID       string                  `json:"sessionId"`
+	SourceSessionID string                  `json:"sourceSessionId,omitempty"`
+	PlanID          string                  `json:"planId"`
+	Transition      protocol.PlanTransition `json:"transition"`
 }
 
 func (s *Server) planImplement(request rpcRequest) {
@@ -1720,12 +1763,27 @@ func (s *Server) planImplement(request rpcRequest) {
 	if !ok {
 		return
 	}
-	prepared, err := s.dependencies.Runtime.PreparePlanTransition(
-		s.ctx,
-		binding.ID,
-		params.PlanID,
-		params.Transition,
-	)
+	var prepared app.PlanTransitionPreparation
+	var err error
+	if params.SourceSessionID == "" {
+		prepared, err = s.dependencies.Runtime.PreparePlanTransition(
+			s.ctx,
+			binding.ID,
+			params.PlanID,
+			params.Transition,
+		)
+	} else {
+		if _, ok := s.requireSession(request, params.SourceSessionID); !ok {
+			return
+		}
+		prepared, err = s.dependencies.Runtime.PreparePlanTransitionTo(
+			s.ctx,
+			params.SourceSessionID,
+			binding.ID,
+			params.PlanID,
+			params.Transition,
+		)
+	}
 	if err != nil {
 		s.replyApplicationError(request, err)
 		return
