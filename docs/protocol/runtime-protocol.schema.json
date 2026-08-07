@@ -450,6 +450,97 @@
         "prompt_cache_reset"
       ],
       "additionalProperties": false
+    },
+    "session_tool_catalog": {
+      "type": "object",
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "access_mode": {
+                "type": "string"
+              },
+              "availability": {
+                "type": "string"
+              },
+              "capability": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "guarded": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "sandbox_requirement": {
+                "type": "string"
+              },
+              "source_kind": {
+                "type": "string"
+              },
+              "source_label": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "unavailable_reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "access_mode",
+              "availability",
+              "capability",
+              "description",
+              "enabled",
+              "guarded",
+              "id",
+              "name",
+              "revision",
+              "sandbox_requirement",
+              "source_kind",
+              "source_label",
+              "state"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "catalog_id",
+        "digest",
+        "generation",
+        "tools",
+        "version"
+      ],
+      "additionalProperties": false
     }
   },
   "operations": {

@@ -173,6 +173,7 @@ function requireComposerControl(value: unknown): ComposerControl {
     value !== "provider" &&
     value !== "model" &&
     value !== "thinking" &&
+    value !== "tools" &&
     value !== "credential" &&
     value !== "approval") {
     throw new Error("Composer control is invalid");

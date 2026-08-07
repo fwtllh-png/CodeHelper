@@ -73,6 +73,16 @@ func Scenarios() []Scenario {
 			Run: sessionProfileRevisionIsShared,
 		},
 		{
+			Name: "session tool catalog and allowlist are shared",
+			Setup: func(t *testing.T) Setup {
+				return Setup{
+					Fixture:   fixturePath(t, "openai"),
+					Workspace: t.TempDir(), Tools: true,
+				}
+			},
+			Run: sessionToolCatalogIsShared,
+		},
+		{
 			Name:  "editor context receipts are shared and durable",
 			Setup: editorContextSetup,
 			Run:   editorContextReceiptsAreSharedAndDurable,
@@ -143,6 +153,49 @@ func Scenarios() []Scenario {
 			},
 			Run: approvalParksAndResumes,
 		},
+	}
+}
+
+func sessionToolCatalogIsShared(t *testing.T, host Host, _ Setup) {
+	snapshot, err := host.SessionProfile(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := host.SessionToolCatalog(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Validate(); err != nil {
+		t.Fatalf("%s: invalid tool catalog: %v", host.Transport(), err)
+	}
+	if len(catalog.Tools) < 2 {
+		t.Fatalf("%s: tool catalog = %+v", host.Transport(), catalog)
+	}
+	for _, entry := range catalog.Tools {
+		if !entry.Enabled || !entry.Guarded {
+			t.Fatalf("%s: default tool entry = %+v", host.Transport(), entry)
+		}
+	}
+	selected := []string{catalog.Tools[0].ID}
+	updated, err := host.UpdateSessionProfile(
+		t.Context(),
+		snapshot.Profile.Revision,
+		protocol.SessionProfilePatch{EnabledToolIDs: &selected},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.PromptCacheReset || updated.ResetReason != "enabled_tool_ids" {
+		t.Fatalf("%s: tool profile update = %+v", host.Transport(), updated)
+	}
+	catalog, err = host.SessionToolCatalog(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range catalog.Tools {
+		if entry.Enabled != (entry.ID == selected[0]) {
+			t.Fatalf("%s: selected tool entry = %+v", host.Transport(), entry)
+		}
 	}
 }
 

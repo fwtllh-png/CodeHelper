@@ -1,4 +1,7 @@
-import type { SessionProfileSnapshot } from "../runtime/session.js";
+import type {
+  SessionProfileSnapshot,
+  SessionToolCatalog,
+} from "../runtime/session.js";
 import type { CredentialView } from "../security/credentials.js";
 
 export type ComposerControl =
@@ -6,6 +9,7 @@ export type ComposerControl =
   | "provider"
   | "model"
   | "thinking"
+  | "tools"
   | "credential"
   | "approval";
 
@@ -22,12 +26,14 @@ export interface ComposerView {
   readonly provider: ComposerControlView;
   readonly model: ComposerControlView;
   readonly thinking?: ComposerControlView;
+  readonly tools: ComposerControlView;
   readonly credential: ComposerControlView;
   readonly approval: ComposerControlView;
 }
 
 export function projectComposer(
   snapshot: SessionProfileSnapshot,
+  catalog: SessionToolCatalog,
   credential: CredentialView,
   trusted: boolean,
 ): ComposerView {
@@ -68,6 +74,13 @@ export function projectComposer(
         : "Configure Model and restart the local Runtime",
     ),
     ...(thinking === undefined ? {} : { thinking }),
+    tools: control(
+      catalog.digest,
+      String(catalog.tools.filter((tool) => tool.enabled).length) +
+        `/${String(catalog.tools.length)} Tools`,
+      mutable.has("enabled_tool_ids") && catalog.tools.length > 0,
+      "Select the tools available to this Session; Guard still applies",
+    ),
     credential: control(
       credential.status,
       credential.status === "configured" ? "Key configured" : "Configure key",

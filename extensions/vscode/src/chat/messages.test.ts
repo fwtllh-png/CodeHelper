@@ -43,10 +43,10 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
   });
   assert.deepEqual(decodeWebviewMessage({
     type: "configure-composer",
-    control: "thinking",
+    control: "tools",
   }), {
     type: "configure-composer",
-    control: "thinking",
+    control: "tools",
   });
   assert.deepEqual(decodeWebviewMessage({
     type: "merge-chat",

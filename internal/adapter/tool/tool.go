@@ -372,6 +372,36 @@ func (r *Registry) ResolveBound(
 	return r.resolve(name, &binding)
 }
 
+// ResolveCatalogToolID validates a sampled binding without materializing or
+// executing the tool and returns the stable identity used by Session
+// allowlists.
+func (r *Registry) ResolveCatalogToolID(
+	name string,
+	binding CatalogBinding,
+) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if canonical := r.aliases[name]; canonical != "" {
+		name = canonical
+	}
+	item := r.tools[name]
+	if item == nil {
+		if tombstone, revoked := r.tombstones[name]; revoked {
+			return "", fmt.Errorf(
+				"%w %q (source=%s revision=%d)",
+				ErrToolRevoked, tombstone.canonical, tombstone.source, tombstone.revision,
+			)
+		}
+		return "", fmt.Errorf("%w %q", ErrUnknownTool, name)
+	}
+	if binding.CatalogID != "" {
+		if err := r.validateBindingLocked(name, item, &binding); err != nil {
+			return "", err
+		}
+	}
+	return CatalogToolID(name, item.source), nil
+}
+
 func (r *Registry) resolve(
 	name string,
 	binding *CatalogBinding,

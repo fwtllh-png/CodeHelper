@@ -31,6 +31,7 @@ import {
   type EditorContextReference,
   type SessionProfilePatch,
   type SessionProfileSnapshot,
+  type SessionToolCatalog,
   type SessionProfileUpdate,
   type SubmitReceipt,
 } from "./session.js";
@@ -383,6 +384,12 @@ export class RuntimeController {
     sessionId: string,
   ): Promise<SessionProfileSnapshot> {
     return this.#commands(sessionId).profile();
+  }
+
+  public async sessionToolCatalog(
+    sessionId: string,
+  ): Promise<SessionToolCatalog> {
+    return this.#commands(sessionId).toolCatalog();
   }
 
   public async updateSessionProfile(

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
@@ -29,6 +30,7 @@ type PersistentRuntimeOptions struct {
 	Logger              *slog.Logger
 	DefaultProfile      protocol.SessionProfile
 	ProfileCapabilities protocol.SessionProfileCapabilities
+	ToolCatalog         *tool.Registry
 }
 
 type PersistentRepositories struct {
@@ -83,6 +85,7 @@ func NewPersistentRuntime(
 		runtimeOptions.SessionProfiles = repositories.Sessions
 		runtimeOptions.DefaultProfile = options.DefaultProfile
 		runtimeOptions.ProfileCapabilities = options.ProfileCapabilities
+		runtimeOptions.ToolCatalog = options.ToolCatalog
 	}
 	return app.NewRuntimeWithRecovery(ctx, runtimeOptions)
 }

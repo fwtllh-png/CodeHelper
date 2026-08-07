@@ -206,6 +206,8 @@ Host 不能自行放宽或伪造该身份。
 `session/profile/get` 返回 Runtime 持有的 Session Profile 与 Model Capability；
 `session/profile/update` 使用 `expectedRevision` 乐观并发控制，活动 Turn 期间拒绝更新，
 并明确返回本次变化是否重置 Prompt Cache Identity。
+`session/tool/catalog` 返回统一 Runtime Tool Registry 的 Session 投影；其中 Enabled
+状态由 Profile Allowlist 控制，不替代 Guard 或 Approval 裁决。
 
 ## Mode 与 Posture
 

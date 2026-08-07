@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
-	"sync"
 )
 
 func (e *Engine) runTools(
@@ -68,11 +69,21 @@ func (e *Engine) runTools(
 		group.Add(1)
 		go func(index int, call provider.ToolCall) {
 			defer group.Done()
-			policyKind := tool.ParallelSerial
 			binding := tool.CatalogBinding{
 				CatalogID: call.CatalogID, Generation: call.CatalogGeneration,
 				Revision: call.CatalogRevision, Authority: call.CatalogAuthority,
 			}
+			if !e.toolCallEnabled(call.Name, binding) {
+				results[index] = tool.Result{
+					Content: "tool disabled by Session Profile: " + call.Name,
+					IsError: true,
+					Metadata: map[string]any{
+						"error_category": "tool_disabled",
+					},
+				}
+				return
+			}
+			policyKind := tool.ParallelSerial
 			if _, desc, _, err := e.options.Tools.ResolveBound(call.Name, binding); err == nil {
 				policyKind = desc.ParallelPolicy
 			}

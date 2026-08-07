@@ -76,6 +76,9 @@ func GenerateSchema() *Schema {
 	schema.Envelope["session_profile_update"] = schemaOf(
 		reflect.TypeOf(&SessionProfileUpdateResult{}),
 	)
+	schema.Envelope["session_tool_catalog"] = schemaOf(
+		reflect.TypeOf(&SessionToolCatalog{}),
+	)
 	return schema
 }
 

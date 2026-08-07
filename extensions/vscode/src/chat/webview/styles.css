@@ -437,13 +437,6 @@ pre {
   opacity: 0.7;
 }
 
-.composer-control.passive {
-  min-height: 24px;
-  padding: 3px 5px;
-  cursor: default;
-  border: 1px solid transparent;
-}
-
 #send {
   color: var(--vscode-button-foreground);
   background: var(--vscode-button-background);
@@ -669,10 +662,6 @@ summary:focus-visible,
   #composer-region {
     padding-right: 5px;
     padding-left: 5px;
-  }
-
-  .composer-control.passive:nth-of-type(n + 4) {
-    display: none;
   }
 
   #runtime {

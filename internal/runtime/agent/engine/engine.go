@@ -213,6 +213,7 @@ type Engine struct {
 	failures        *compact.Failures
 	promptCacheBase string
 	profileReadOnly bool
+	enabledTools    map[string]struct{}
 
 	// turnContextMu guards the receipts of the volatile tail of the last sample.
 	turnContextMu   sync.Mutex
@@ -414,6 +415,13 @@ func (e *Engine) ValidateSessionProfile(profile protocol.SessionProfile) error {
 	if profile.ReasoningEffort != "" && !route.Model().Capabilities.Reasoning {
 		return errors.New("session profile model does not support reasoning effort")
 	}
+	if len(profile.EnabledToolIDs) != 0 {
+		for _, id := range profile.EnabledToolIDs {
+			if _, _, ok := tool.ParseCatalogToolID(id); !ok {
+				return fmt.Errorf("session profile tool id %q is invalid", id)
+			}
+		}
+	}
 	return nil
 }
 
@@ -425,6 +433,10 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 	defer e.mu.Unlock()
 	e.options.ReasoningEffort = profile.ReasoningEffort
 	e.options.MaxSteps = profile.MaxSteps
+	e.enabledTools = make(map[string]struct{}, len(profile.EnabledToolIDs))
+	for _, id := range profile.EnabledToolIDs {
+		e.enabledTools[id] = struct{}{}
+	}
 	e.options.PromptCacheKey = fmt.Sprintf(
 		"%s-profile-%d",
 		e.promptCacheBase,
@@ -438,6 +450,31 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 		)
 	}
 	return nil
+}
+
+func (e *Engine) toolEnabled(entry tool.CatalogEntrySnapshot) bool {
+	if len(e.enabledTools) == 0 {
+		return true
+	}
+	id := tool.CatalogToolID(entry.Name, entry.Source)
+	_, enabled := e.enabledTools[id]
+	return enabled
+}
+
+func (e *Engine) toolCallEnabled(
+	name string,
+	binding tool.CatalogBinding,
+) bool {
+	if len(e.enabledTools) == 0 {
+		return true
+	}
+	id, err := e.options.Tools.ResolveCatalogToolID(name, binding)
+	if err != nil {
+		// Guard owns stale, revoked, and unknown binding classification.
+		return true
+	}
+	_, enabled := e.enabledTools[id]
+	return enabled
 }
 
 func effectiveProfilePermission(

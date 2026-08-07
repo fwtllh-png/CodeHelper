@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -156,6 +158,145 @@ func TestSessionProfileUpdateAppliesRevisionAndCacheReset(t *testing.T) {
 	}
 }
 
+func TestSessionToolCatalogProjectsProfileSelection(t *testing.T) {
+	defaults := runtimeTestProfile()
+	store := &memoryProfileStore{profile: defaults}
+	registry := tool.NewRegistry(nil, nil)
+	catalogTool := &profileCatalogTool{}
+	if err := registry.Register(catalogTool, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{
+		Engine: &profileTestEngine{}, SessionProfiles: store,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+		ToolCatalog:         registry,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	catalog, err := runtime.SessionToolCatalog(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Tools) < 2 {
+		t.Fatalf("catalog = %+v", catalog)
+	}
+	for _, entry := range catalog.Tools {
+		if !entry.Enabled || !entry.Guarded {
+			t.Fatalf("default catalog entry = %+v", entry)
+		}
+	}
+	enabled := []string{"builtin:catalog_read"}
+	if _, err := runtime.UpdateSessionProfile(
+		t.Context(), "session-profile", "thread-profile", 1,
+		protocol.SessionProfilePatch{EnabledToolIDs: &enabled},
+	); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err = runtime.SessionToolCatalog(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range catalog.Tools {
+		if entry.Enabled != (entry.ID == "builtin:catalog_read") {
+			t.Fatalf("selected catalog entry = %+v", entry)
+		}
+	}
+	generation := catalog.Generation
+	catalogTool.unavailable = true
+	catalog, err = runtime.SessionToolCatalog(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if catalog.Generation <= generation {
+		t.Fatalf("availability did not advance generation: %+v", catalog)
+	}
+	for _, entry := range catalog.Tools {
+		if entry.ID == "builtin:catalog_read" &&
+			(entry.Availability != "unavailable" ||
+				entry.UnavailableReason != "fixture disconnected" ||
+				!entry.Enabled) {
+			t.Fatalf("unavailable catalog entry = %+v", entry)
+		}
+	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := snapshot.Lookup("catalog_read")
+	if !ok {
+		t.Fatal("catalog_read is missing")
+	}
+	if _, err := registry.Revoke(
+		entry.Source,
+		"catalog_read",
+		registry.Generation(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err = runtime.SessionToolCatalog(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var revoked *protocol.SessionToolCatalogEntry
+	for index := range catalog.Tools {
+		if catalog.Tools[index].ID == "builtin:catalog_read" {
+			revoked = &catalog.Tools[index]
+			break
+		}
+	}
+	if revoked == nil || revoked.State != "revoked" ||
+		revoked.Availability != "unavailable" || !revoked.Enabled {
+		t.Fatalf("revoked catalog entry = %+v", revoked)
+	}
+}
+
+func TestProjectToolSourceCoversUnifiedFamilies(t *testing.T) {
+	tests := map[string]struct {
+		name, source, kind string
+	}{
+		"builtin": {name: "file_read", source: "builtin:file_read", kind: "builtin"},
+		"mcp":     {name: "issues", source: "mcp:github", kind: "mcp"},
+		"plugin":  {name: "plugin_demo_run", source: "plugin:lifecycle", kind: "plugin"},
+		"skill":   {name: "load_skill", source: "builtin:load_skill", kind: "skill"},
+		"dynamic": {name: "host_echo", source: "dynamic:3", kind: "dynamic"},
+	}
+	for label, test := range tests {
+		t.Run(label, func(t *testing.T) {
+			kind, _ := projectToolSource(test.name, test.source)
+			if kind != test.kind {
+				t.Fatalf("kind = %q, want %q", kind, test.kind)
+			}
+		})
+	}
+}
+
+type profileCatalogTool struct{ unavailable bool }
+
+func (t *profileCatalogTool) Descriptor() tool.Descriptor {
+	descriptor := tool.Descriptor{
+		Name: "catalog_read", Description: "Read the catalog fixture",
+		InputSchema: map[string]any{
+			"type": "object", "additionalProperties": false,
+		},
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+	}
+	if t.unavailable {
+		descriptor.Availability = tool.AvailabilityUnavailable
+		descriptor.UnavailableReason = "fixture disconnected"
+	}
+	return descriptor
+}
+
+func (*profileCatalogTool) Execute(
+	context.Context,
+	json.RawMessage,
+) (tool.Result, error) {
+	return tool.Result{Content: "ok"}, nil
+}
+
 func runtimeTestProfile() protocol.SessionProfile {
 	return protocol.SessionProfile{
 		Version:             protocol.SessionProfileVersion,
@@ -185,6 +326,7 @@ func runtimeTestCapabilities(
 		MutableFields: []string{
 			"mode",
 			"reasoning_effort",
+			"enabled_tool_ids",
 			"approval_posture",
 			"max_steps",
 		},

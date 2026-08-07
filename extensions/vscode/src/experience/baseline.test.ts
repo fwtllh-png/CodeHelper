@@ -114,6 +114,7 @@ void test("workbench keeps primary views prominent and uses native controls", as
   assert.match(preview, /"vscode\.diff"/u);
   assert.match(setup, /withProgress/u);
   assert.match(chat, /showQuickPick/u);
+  assert.match(chat, /createQuickPick<ToolPickItem>/u);
   assert.match(background, /createTreeView/u);
 });
 

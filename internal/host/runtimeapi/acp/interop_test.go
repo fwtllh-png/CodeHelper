@@ -242,6 +242,7 @@ func TestBinaryInteropStructuredInitialize(t *testing.T) {
 	for _, method := range []string{
 		"session/submit", "session/replay", "session/load",
 		"session/profile/get", "session/profile/update",
+		"session/tool/catalog",
 		"thread/list", "thread/get", "task/list", "agent/list", "usage/query",
 	} {
 		if !slices.Contains(negotiated.Methods, method) {

@@ -211,6 +211,9 @@ workspace URI to a runtime root; hosts must not invent or relax that identity.
 capabilities. `session/profile/update` uses `expectedRevision` optimistic
 concurrency, refuses updates during an active Turn, and reports whether the
 change reset the prompt-cache identity.
+`session/tool/catalog` returns the Session projection of the unified Runtime
+tool registry. Its enabled state is controlled by the Profile Allowlist and
+does not replace Guard or approval decisions.
 
 ## Mode and Posture
 

@@ -106,6 +106,7 @@ type Host interface {
 	History(ctx context.Context, since protocol.Cursor, limit int) ([]protocol.Event, error)
 	ReadState(ctx context.Context) (ReadState, error)
 	SessionProfile(ctx context.Context) (protocol.SessionProfileSnapshot, error)
+	SessionToolCatalog(ctx context.Context) (protocol.SessionToolCatalog, error)
 	UpdateSessionProfile(
 		ctx context.Context,
 		expectedRevision uint64,

@@ -364,6 +364,7 @@ function initializeResult(): Readonly<Record<string, unknown>> {
       "session/rename",
       "session/profile/get",
       "session/profile/update",
+      "session/tool/catalog",
       "thread/list",
       "thread/get",
       "task/list",
@@ -374,6 +375,7 @@ function initializeResult(): Readonly<Record<string, unknown>> {
     features: [
       "editor_context_v2",
       "session_profile_v1",
+      "unified_tool_catalog_v1",
       "workspace_identity_v1",
     ],
     operations: ["turn.start"],

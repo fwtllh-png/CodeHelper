@@ -17,6 +17,7 @@ import type {
 import type {
   SessionProfilePatch,
   SessionProfileSnapshot,
+  SessionToolCatalog,
   SessionProfileUpdate,
 } from "./runtime/session.js";
 import { registerDiagnosticActions } from "./diagnostics/actions.js";
@@ -53,6 +54,9 @@ export interface ExtensionAPI {
   readonly chatSessions?: () => readonly ChatSessionSummary[];
   readonly createChat?: () => Promise<ChatSessionSummary>;
   readonly sessionProfile?: (sessionId: string) => Promise<SessionProfileSnapshot>;
+  readonly sessionToolCatalog?: (
+    sessionId: string,
+  ) => Promise<SessionToolCatalog>;
   readonly updateSessionProfile?: (
     sessionId: string,
     expectedRevision: number,
@@ -279,6 +283,8 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
           createChat: async () => activeRegistry.selected.controller.createChat(),
           sessionProfile: async (sessionId) =>
             activeRegistry.selected.controller.sessionProfile(sessionId),
+          sessionToolCatalog: async (sessionId) =>
+            activeRegistry.selected.controller.sessionToolCatalog(sessionId),
           updateSessionProfile: async (sessionId, expectedRevision, patch) =>
             activeRegistry.selected.controller.updateSessionProfile(
               sessionId,

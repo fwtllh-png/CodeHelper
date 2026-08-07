@@ -49,6 +49,7 @@ const modeControl = element("mode-control") as HTMLButtonElement;
 const providerControl = element("provider-control") as HTMLButtonElement;
 const modelControl = element("model-control") as HTMLButtonElement;
 const thinkingControl = element("thinking-control") as HTMLButtonElement;
+const toolsControl = element("tools-control") as HTMLButtonElement;
 const credentialControl = element("credential-control") as HTMLButtonElement;
 const approvalControl = element("approval-control") as HTMLButtonElement;
 let trusted = false;
@@ -149,6 +150,7 @@ for (const [button, control] of [
   [providerControl, "provider"],
   [modelControl, "model"],
   [thinkingControl, "thinking"],
+  [toolsControl, "tools"],
   [credentialControl, "credential"],
   [approvalControl, "approval"],
 ] as const) {
@@ -255,6 +257,7 @@ function renderComposer(message: ChatSnapshotMessage): void {
       providerControl,
       modelControl,
       thinkingControl,
+      toolsControl,
       credentialControl,
       approvalControl,
     ]) {
@@ -273,6 +276,7 @@ function renderComposer(message: ChatSnapshotMessage): void {
     setControl(thinkingControl, composer.thinking);
   }
   setControl(credentialControl, composer.credential);
+  setControl(toolsControl, composer.tools);
   setControl(approvalControl, composer.approval);
 }
 

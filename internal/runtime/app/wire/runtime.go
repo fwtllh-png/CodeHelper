@@ -815,6 +815,9 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 	}
 	modelCapabilities := route.Model().Capabilities
 	mutableProfileFields := []string{"mode", "max_steps"}
+	if modelCapabilities.ToolCalls {
+		mutableProfileFields = append(mutableProfileFields, "enabled_tool_ids")
+	}
 	if approvalPosture != policy.PermissionNever {
 		mutableProfileFields = append(
 			mutableProfileFields,
@@ -934,6 +937,7 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			SubscriberBuffer: snapshot.Config.Runtime.SubscriberBuffer,
 			Metrics:          session.metrics, Logger: session.logger,
 			DefaultProfile:      defaultProfile,
+			ToolCatalog:         registry,
 			ProfileCapabilities: profileCapabilities,
 		})
 		if err != nil {

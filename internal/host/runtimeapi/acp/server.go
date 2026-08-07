@@ -61,7 +61,8 @@ var methods = []string{
 	"thread/list", "thread/get", "task/list", "agent/list", "usage/query",
 	"session/new", "session/load", "session/prompt", "session/submit",
 	"session/replay", "session/history", "session/cancel", "session/merge",
-	"session/rename", "session/profile/get", "session/profile/update", "shutdown",
+	"session/rename", "session/profile/get", "session/profile/update",
+	"session/tool/catalog", "shutdown",
 }
 
 var dynamicMethods = []string{
@@ -479,6 +480,8 @@ func (s *Server) dispatch(request rpcRequest) bool {
 		s.sessionProfileGet(request)
 	case "session/profile/update":
 		s.sessionProfileUpdate(request)
+	case "session/tool/catalog":
+		s.sessionToolCatalog(request)
 	case "tool/catalog":
 		s.dynamicCatalog(request)
 	case "tool/register":
@@ -1334,6 +1337,27 @@ func (s *Server) sessionProfileUpdate(request rpcRequest) {
 		"promptCacheReset": updated.PromptCacheReset,
 		"resetReason":      updated.ResetReason,
 	})
+}
+
+func (s *Server) sessionToolCatalog(request rpcRequest) {
+	var params sessionProfileParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	catalog, err := s.dependencies.Runtime.SessionToolCatalog(
+		s.ctx,
+		binding.ID,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, catalog)
 }
 
 type sessionPromptParams struct {

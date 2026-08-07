@@ -40,7 +40,10 @@ import {
   projectComposer,
   type ComposerControl,
 } from "./composer.js";
-import type { SessionProfileSnapshot } from "../runtime/session.js";
+import type {
+  SessionProfileSnapshot,
+  SessionToolCatalog,
+} from "../runtime/session.js";
 import type { CredentialView } from "../security/credentials.js";
 
 interface RootChatState {
@@ -51,6 +54,7 @@ interface RootChatState {
 
 interface SessionComposerState {
   readonly profile?: SessionProfileSnapshot;
+  readonly catalog?: SessionToolCatalog;
   readonly credential?: CredentialView;
   readonly error?: string;
 }
@@ -175,6 +179,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   ): void {
     const projector = this.#projector(root.rootId, sessionId);
     projector.apply(event);
+    if (!isUnknownEvent(event) && event.kind === "tool.catalog.changed") {
+      this.#state(root.rootId).composers.clear();
+    }
     this.#scheduleFlush();
     if (replayed || isUnknownEvent(event)) {
       return;
@@ -516,10 +523,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         void this.#loadComposer(root, selected.sessionId);
       }
       const composer = composerState?.profile === undefined ||
+        composerState.catalog === undefined ||
         composerState.credential === undefined
         ? undefined
         : projectComposer(
             composerState.profile,
+            composerState.catalog,
             composerState.credential,
             vscode.workspace.isTrusted,
           );
@@ -600,12 +609,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (this.#composerLoads.has(key)) return;
     this.#composerLoads.add(key);
     try {
-      const profile = await root.controller.sessionProfile(sessionId);
+      const [profile, catalog] = await Promise.all([
+        root.controller.sessionProfile(sessionId),
+        root.controller.sessionToolCatalog(sessionId),
+      ]);
       const credential = await root.controller.credentialStatus(
         profile.profile.provider,
       );
       this.#state(root.rootId).composers.set(sessionId, {
         profile,
+        catalog,
         credential,
       });
     } catch (error) {
@@ -624,12 +637,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     control: ComposerControl,
   ): Promise<void> {
     let state = this.#state(root.rootId).composers.get(session.sessionId);
-    if (state?.profile === undefined || state.credential === undefined) {
+    if (state?.profile === undefined ||
+      state.catalog === undefined ||
+      state.credential === undefined) {
       this.#state(root.rootId).composers.delete(session.sessionId);
       await this.#loadComposer(root, session.sessionId);
       state = this.#state(root.rootId).composers.get(session.sessionId);
     }
-    if (state?.profile === undefined || state.credential === undefined) {
+    if (state?.profile === undefined ||
+      state.catalog === undefined ||
+      state.credential === undefined) {
       throw new Error(state?.error ?? "Session Profile is unavailable");
     }
     if (control === "provider" || control === "model") {
@@ -657,6 +674,44 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
     const snapshot = state.profile;
     const mutable = new Set(snapshot.capabilities.mutable_fields);
+    if (control === "tools") {
+      if (!mutable.has("enabled_tool_ids")) {
+        throw new Error(
+          "Session Profile field enabled_tool_ids is fixed by this Runtime",
+        );
+      }
+      const selected = await pickTools(state.catalog);
+      if (selected === undefined) return;
+      try {
+        const enabledToolIDs = selected.length === state.catalog.tools.length
+          ? []
+          : selected;
+        const update = await root.controller.updateSessionProfile(
+          session.sessionId,
+          snapshot.profile.revision,
+          { enabled_tool_ids: enabledToolIDs },
+        );
+        const catalog = await root.controller.sessionToolCatalog(
+          session.sessionId,
+        );
+        this.#state(root.rootId).composers.set(session.sessionId, {
+          profile: { ...snapshot, profile: update.profile },
+          catalog,
+          credential: state.credential,
+        });
+        if (update.prompt_cache_reset) {
+          void vscode.window.showInformationMessage(
+            "CodeHelper prompt cache reset for the updated Tool selection.",
+          );
+        }
+        this.#scheduleFlush();
+      } catch (error) {
+        this.#state(root.rootId).composers.delete(session.sessionId);
+        await this.#loadComposer(root, session.sessionId);
+        throw error;
+      }
+      return;
+    }
     let field: "mode" | "reasoning_effort" | "approval_posture";
     let value: string | undefined;
     if (control === "mode") {
@@ -704,6 +759,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       );
       this.#state(root.rootId).composers.set(session.sessionId, {
         profile: { ...snapshot, profile: update.profile },
+        catalog: state.catalog,
         credential: state.credential,
       });
       if (update.prompt_cache_reset) {
@@ -750,6 +806,95 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     return root;
   }
+}
+
+interface ToolPickItem extends vscode.QuickPickItem {
+  readonly toolID?: string;
+}
+
+async function pickTools(
+  catalog: SessionToolCatalog,
+): Promise<readonly string[] | undefined> {
+  const picker = vscode.window.createQuickPick<ToolPickItem>();
+  picker.title = "CodeHelper: Session Tools";
+  picker.placeholder = "Search by tool, source, capability, or availability";
+  picker.canSelectMany = true;
+  picker.ignoreFocusOut = true;
+  picker.matchOnDescription = true;
+  picker.matchOnDetail = true;
+  const sourceOrder = ["builtin", "mcp", "plugin", "skill", "dynamic"];
+  const items: ToolPickItem[] = [];
+  for (const source of sourceOrder) {
+    const tools = catalog.tools.filter((tool) => tool.source_kind === source);
+    if (tools.length === 0) continue;
+    items.push({
+      label: source.toUpperCase(),
+      kind: vscode.QuickPickItemKind.Separator,
+    });
+    for (const tool of tools) {
+      const status = tool.availability === "available"
+        ? tool.state
+        : `${tool.availability}: ${tool.unavailable_reason ?? tool.state}`;
+      items.push({
+        toolID: tool.id,
+        label: tool.availability === "unavailable"
+          ? `$(warning) ${tool.name}`
+          : tool.name,
+        description: `${tool.source_label} · ${tool.capability}`,
+        detail: `${tool.description} · ${status} · Guarded`,
+        picked: tool.enabled,
+        alwaysShow: true,
+      });
+    }
+  }
+  picker.items = items;
+  const toolItems = items.filter(isToolPickItem);
+  const initial = toolItems.filter((item) => item.picked === true);
+  picker.selectedItems = initial;
+  const resetButton: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon("discard"),
+    tooltip: "Reset current selection",
+  };
+  const allButton: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon("check-all"),
+    tooltip: "Select all tools",
+  };
+  picker.buttons = [resetButton, allButton];
+  return new Promise((resolve) => {
+    let accepted = false;
+    const disposables = [
+      picker.onDidTriggerButton((button) => {
+        picker.selectedItems = button === allButton ? toolItems : initial;
+      }),
+      picker.onDidAccept(() => {
+        if (picker.selectedItems.length === 0) {
+          void vscode.window.showWarningMessage(
+            "Select at least one tool; an empty Runtime allowlist means all tools.",
+          );
+          return;
+        }
+        accepted = true;
+        const selected = picker.selectedItems
+          .filter(isToolPickItem)
+          .map((item) => item.toolID)
+          .sort();
+        picker.hide();
+        resolve(selected);
+      }),
+      picker.onDidHide(() => {
+        if (!accepted) resolve(undefined);
+        for (const disposable of disposables) disposable.dispose();
+        picker.dispose();
+      }),
+    ];
+    picker.show();
+  });
+}
+
+function isToolPickItem(
+  item: ToolPickItem,
+): item is ToolPickItem & { readonly toolID: string } {
+  return typeof item.toolID === "string";
 }
 
 function sessionKey(

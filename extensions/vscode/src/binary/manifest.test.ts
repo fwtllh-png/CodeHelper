@@ -157,6 +157,7 @@ function signedFixture(
       required_features: [
         "editor_context_v2",
         "session_profile_v1",
+        "unified_tool_catalog_v1",
         "workspace_identity_v1",
       ],
       extension_version_range: ">=0.0.1 <0.1.0",

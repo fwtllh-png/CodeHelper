@@ -83,10 +83,30 @@ through the restart-backed Setup flow. In-place switching is enabled only when
 a catalog-backed Runtime advertises those fields as mutable.
 
 The Composer projects this contract into native-style Mode, Provider, Model,
-Thinking, Credential, and Approval controls. Mode, Thinking, and Approval use
-Revision-checked Profile updates. Provider and Model use Setup plus a local
-Runtime restart. Controls remain disabled when the Runtime does not advertise
-the required capability.
+Thinking, Tools, Credential, and Approval controls. Mode, Thinking, Tools, and
+Approval use Revision-checked Profile updates. Provider and Model use Setup
+plus a local Runtime restart. Controls remain disabled when the Runtime does
+not advertise the required capability.
+
+## Unified Tool Catalog
+
+`session/tool/catalog` projects the Runtime registry for one Session. It
+combines built-in, MCP, Plugin, Skill, and trusted Dynamic tools with catalog
+identity, Generation, Digest, source, capability, access mode, sandbox
+requirement, Availability, and Session-enabled state. Registry Authority and
+input schemas do not cross this read boundary.
+
+Tool IDs are bound to their source family and, for MCP, the server identity, so
+a revoked tool cannot transfer an existing Session grant to a same-name tool
+from a different family or MCP server.
+
+The Tools control opens a native searchable multi-select grouped by source.
+Unavailable and deferred entries remain visible with their status. An empty
+`enabled_tool_ids` list means the Runtime-compatible default of all tools; a
+non-empty list is a strict Session Allowlist. The Engine applies that Allowlist
+both when advertising model tool definitions and before execution. Selection
+never grants permission: enabled calls still pass through Guard, policy,
+approval, journal, and sandbox enforcement.
 
 ## Built-in Setup and Repair
 

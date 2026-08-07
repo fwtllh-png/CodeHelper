@@ -437,6 +437,22 @@ func (h *contractACPHost) SessionProfile(
 	return result, nil
 }
 
+func (h *contractACPHost) SessionToolCatalog(
+	ctx context.Context,
+) (protocol.SessionToolCatalog, error) {
+	data, err := h.call(ctx, "session/tool/catalog", map[string]any{
+		"sessionId": h.sessionID,
+	})
+	if err != nil {
+		return protocol.SessionToolCatalog{}, err
+	}
+	var result protocol.SessionToolCatalog
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionToolCatalog{}, err
+	}
+	return result, nil
+}
+
 func (h *contractACPHost) UpdateSessionProfile(
 	ctx context.Context,
 	expectedRevision uint64,

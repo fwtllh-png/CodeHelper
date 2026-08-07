@@ -5,6 +5,7 @@ import type {
   SessionProfilePatch,
   SessionProfileSnapshot,
   SessionProfileUpdate,
+  SessionToolCatalog,
 } from "../protocol/generated.js";
 import type { WorkspaceIdentity } from "../workspace/identity.js";
 import {
@@ -12,6 +13,7 @@ import {
   decodeSessionProfileUpdate,
   validateSessionProfilePatch,
 } from "./profile.js";
+import { decodeSessionToolCatalog } from "./tools.js";
 
 export type ApprovalDecision = "approve" | "deny" | "cancel";
 export type ApprovalScope = "once" | "session" | "always";
@@ -20,6 +22,7 @@ export type {
   SessionProfilePatch,
   SessionProfileSnapshot,
   SessionProfileUpdate,
+  SessionToolCatalog,
 } from "../protocol/generated.js";
 
 export interface SubmitReceipt {
@@ -115,6 +118,13 @@ export class SessionCommands {
       sessionId: this.#sessionId,
     });
     return decodeSessionProfileSnapshot(raw);
+  }
+
+  public async toolCatalog(): Promise<SessionToolCatalog> {
+    const raw = await this.#transport.request("session/tool/catalog", {
+      sessionId: this.#sessionId,
+    });
+    return decodeSessionToolCatalog(raw);
   }
 
   public async updateProfile(

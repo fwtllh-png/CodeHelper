@@ -86,7 +86,8 @@ export async function run(): Promise<void> {
     await verifyNativeFlows(api);
     await verifyMultipleChats(api);
     await verifySessionProfile(api);
-  await verifyComposerCredential(api);
+    await verifySessionToolCatalog(api);
+    await verifyComposerCredential(api);
     await verifyResourceNavigation();
   } else if (scenario === "bundled") {
     assert.equal(vscode.workspace.workspaceFolders?.length, 1);
@@ -759,6 +760,45 @@ async function verifyComposerCredential(api: ExtensionAPI): Promise<void> {
   );
   const recovered = await api.testCredentialStatus(profile.profile.provider);
   assert.deepEqual(recovered, configured);
+}
+
+async function verifySessionToolCatalog(api: ExtensionAPI): Promise<void> {
+  assert.ok(api.chatSessions);
+  assert.ok(api.sessionProfile);
+  assert.ok(api.sessionToolCatalog);
+  assert.ok(api.updateSessionProfile);
+  const selected = api.chatSessions().find((session) => session.selected);
+  assert.ok(selected);
+  const profile = await api.sessionProfile(selected.sessionId);
+  const catalog = await api.sessionToolCatalog(selected.sessionId);
+  assert.equal(catalog.version, 1);
+  assert.equal(catalog.tools.length > 1, true);
+  assert.equal(catalog.tools.every((tool) => tool.guarded), true);
+  const enabled = catalog.tools[0];
+  assert.ok(enabled);
+  const updated = await api.updateSessionProfile(
+    selected.sessionId,
+    profile.profile.revision,
+    { enabled_tool_ids: [enabled.id] },
+  );
+  assert.equal(updated.prompt_cache_reset, true);
+  assert.equal(updated.reset_reason, "enabled_tool_ids");
+  let selectedCatalog = await api.sessionToolCatalog(selected.sessionId);
+  assert.deepEqual(
+    selectedCatalog.tools.filter((tool) => tool.enabled).map((tool) => tool.id),
+    [enabled.id],
+  );
+
+  await vscode.commands.executeCommand("codehelper.restartRuntime");
+  await waitFor(
+    () => api.runtimeSnapshot?.().state === "ready",
+    "Runtime did not recover after Session Tool Allowlist update",
+  );
+  selectedCatalog = await api.sessionToolCatalog(selected.sessionId);
+  assert.deepEqual(
+    selectedCatalog.tools.filter((tool) => tool.enabled).map((tool) => tool.id),
+    [enabled.id],
+  );
 }
 
 interface TestApproval {

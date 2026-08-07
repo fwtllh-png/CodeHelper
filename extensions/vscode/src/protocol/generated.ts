@@ -150,6 +150,29 @@ export type SessionProfileUpdate = {
   readonly "reset_reason"?: string;
 };
 
+export type SessionToolCatalog = {
+  readonly "catalog_id": string;
+  readonly "digest": string;
+  readonly "generation": number;
+  readonly "tools": ReadonlyArray<{
+      readonly "access_mode": string;
+      readonly "availability": string;
+      readonly "capability": string;
+      readonly "description": string;
+      readonly "enabled": boolean;
+      readonly "guarded": boolean;
+      readonly "id": string;
+      readonly "name": string;
+      readonly "revision": number;
+      readonly "sandbox_requirement": string;
+      readonly "source_kind": string;
+      readonly "source_label": string;
+      readonly "state": string;
+      readonly "unavailable_reason"?: string;
+    }>;
+  readonly "version": number;
+};
+
 export type ApprovalDecisionPayload = {
   readonly "decision": string;
   readonly "expires_at"?: string;

@@ -5,16 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"sort"
+	"strings"
+	"time"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"io"
-	"sort"
-	"strings"
-	"time"
 )
 
 func (e *Engine) modelStep(
@@ -501,7 +502,8 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 	var descriptors []tool.Descriptor
 	for _, entry := range snapshot.Entries() {
 		if entry.Descriptor.Visibility == tool.VisibleModel &&
-			entry.Descriptor.Availability != tool.AvailabilityUnavailable {
+			entry.Descriptor.Availability != tool.AvailabilityUnavailable &&
+			e.toolEnabled(entry) {
 			descriptors = append(descriptors, entry.Descriptor)
 		}
 	}
@@ -547,7 +549,8 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 	for _, entry := range snapshot.Entries() {
 		descriptor := entry.Descriptor
 		if descriptor.Visibility != tool.VisibleModel ||
-			descriptor.Availability == tool.AvailabilityUnavailable {
+			descriptor.Availability == tool.AvailabilityUnavailable ||
+			!e.toolEnabled(entry) {
 			continue
 		}
 		if descriptor.Name == toolsearch.ToolName {
@@ -566,6 +569,7 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 		descriptor := entry.Descriptor
 		if descriptor.Visibility != tool.VisibleModel ||
 			descriptor.Availability == tool.AvailabilityUnavailable ||
+			!e.toolEnabled(entry) ||
 			descriptor.Name == toolsearch.ToolName ||
 			entry.State == tool.CatalogEntryDeferred ||
 			entry.State == tool.CatalogEntryMaterialized {

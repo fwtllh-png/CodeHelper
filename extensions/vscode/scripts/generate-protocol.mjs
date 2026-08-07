@@ -97,6 +97,7 @@ const sessionProfileTypes = [
   "session_profile_snapshot",
   "session_profile_patch",
   "session_profile_update",
+  "session_tool_catalog",
 ].map((name) => ({
   kind: name,
   name: pascalCase(name),

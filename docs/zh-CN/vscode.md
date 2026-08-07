@@ -74,10 +74,26 @@ Request Shape 的字段会推进 Prompt Cache Revision。Capabilities 只公开�
 本地 Runtime 完成切换。后续 Catalog-backed Runtime 将这些字段广告为 Mutable 后，
 才能原地切换。
 
-Composer 将该契约投影为原生风格的 Mode、Provider、Model、Thinking、Credential 和
-Approval 控件。Mode、Thinking、Approval 使用带 Revision 的 Profile Update；
-Provider、Model 使用 Setup + Local Runtime Restart。Runtime 未广告对应 Capability
-时，控件保持禁用。
+Composer 将该契约投影为原生风格的 Mode、Provider、Model、Thinking、Tools、
+Credential 和 Approval 控件。Mode、Thinking、Tools、Approval 使用带 Revision 的
+Profile Update；Provider、Model 使用 Setup + Local Runtime Restart。Runtime 未广告
+对应 Capability 时，控件保持禁用。
+
+## Unified Tool Catalog
+
+`session/tool/catalog` 按 Session 投影 Runtime Registry。它统一返回 Built-in、MCP、
+Plugin、Skill 和受信任 Dynamic Tool，并包含 Catalog Identity、Generation、Digest、
+Source、Capability、Access Mode、Sandbox Requirement、Availability 与当前 Session
+Enabled 状态。Registry Authority 和 Input Schema 不越过该只读边界。
+
+Tool ID 与 Source Family 绑定，MCP Tool 还绑定 Server Identity；Tool 被 Revoke 后，
+既有 Session Grant 不会转移给另一 Family 或另一 MCP Server 的同名 Tool。
+
+Tools 控件打开按 Source 分组的原生可搜索多选框；Unavailable 和 Deferred 条目仍会展示
+对应状态。空 `enabled_tool_ids` 表示 Runtime 兼容默认值“全部工具”，非空列表表示严格
+Session Allowlist。Engine 在向 Model 广告 Tool Definition 和实际执行前都会应用该
+Allowlist。选择 Tool 不授予权限：已启用调用仍经过 Guard、Policy、Approval、Journal
+和 Sandbox。
 
 ## 内置 Setup 与 Repair
 

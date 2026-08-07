@@ -75,6 +75,12 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
         mutable_fields: ["mode", "approval_posture"],
       },
     }, {
+      version: 1,
+      catalog_id: "catalog-1",
+      generation: 1,
+      digest: "digest-1",
+      tools: [],
+    }, {
       status: "configured",
       provider: "fixture",
       source: "external",

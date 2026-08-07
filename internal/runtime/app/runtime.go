@@ -5,9 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -86,6 +90,10 @@ type SessionProfileEngine interface {
 	ApplySessionProfile(protocol.ThreadID, protocol.SessionProfile) error
 }
 
+type SessionToolCatalog interface {
+	Snapshot() (tool.CatalogSnapshot, error)
+}
+
 type Options struct {
 	OperationBuffer     int
 	EventHistory        int
@@ -100,6 +108,7 @@ type Options struct {
 	SessionProfiles     SessionProfileStore
 	DefaultProfile      protocol.SessionProfile
 	ProfileCapabilities protocol.SessionProfileCapabilities
+	ToolCatalog         SessionToolCatalog
 }
 
 type Snapshot struct {
@@ -133,6 +142,7 @@ type Runtime struct {
 	profiles            SessionProfileStore
 	defaultProfile      protocol.SessionProfile
 	profileCapabilities protocol.SessionProfileCapabilities
+	toolCatalog         SessionToolCatalog
 
 	operations chan acceptedOperation
 	done       chan struct{}
@@ -223,6 +233,7 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 		profiles:            options.SessionProfiles,
 		defaultProfile:      options.DefaultProfile,
 		profileCapabilities: options.ProfileCapabilities,
+		toolCatalog:         options.ToolCatalog,
 		operations:          make(chan acceptedOperation, options.OperationBuffer),
 		done:                make(chan struct{}),
 		subscribers:         make(map[uint64]chan protocol.Event),
@@ -248,6 +259,127 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	}
 	go runtime.loop()
 	return runtime, nil
+}
+
+func (r *Runtime) SessionToolCatalog(
+	ctx context.Context,
+	sessionID string,
+) (protocol.SessionToolCatalog, error) {
+	if r.toolCatalog == nil {
+		return protocol.SessionToolCatalog{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session tool catalog is unavailable",
+			false,
+			nil,
+		)
+	}
+	profile, err := r.SessionProfile(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionToolCatalog{}, err
+	}
+	snapshot, err := r.toolCatalog.Snapshot()
+	if err != nil {
+		return protocol.SessionToolCatalog{}, fmt.Errorf("snapshot tool catalog: %w", err)
+	}
+	enabled := make(map[string]bool, len(profile.Profile.EnabledToolIDs))
+	for _, id := range profile.Profile.EnabledToolIDs {
+		enabled[id] = true
+	}
+	allEnabled := len(enabled) == 0
+	result := protocol.SessionToolCatalog{
+		Version:   protocol.SessionToolCatalogVersion,
+		CatalogID: snapshot.CatalogID, Generation: snapshot.Generation,
+		Digest: snapshot.Digest,
+	}
+	entries := snapshot.Entries()
+	seen := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		descriptor := entry.Descriptor
+		if descriptor.Visibility != tool.VisibleModel {
+			continue
+		}
+		sourceKind, sourceLabel := projectToolSource(entry.Name, entry.Source)
+		id := tool.CatalogToolID(entry.Name, entry.Source)
+		seen[id] = true
+		result.Tools = append(result.Tools, protocol.SessionToolCatalogEntry{
+			ID: id, Name: boundedCatalogText(entry.Name, 256),
+			Description: boundedCatalogText(descriptor.Description, 4096),
+			SourceKind:  sourceKind, SourceLabel: sourceLabel,
+			Capability:         string(descriptor.Capability),
+			AccessMode:         string(descriptor.AccessMode),
+			SandboxRequirement: string(descriptor.SandboxRequirement),
+			Availability:       string(descriptor.Availability),
+			UnavailableReason:  boundedCatalogText(descriptor.UnavailableReason, 4096),
+			State:              string(entry.State), Revision: entry.Revision,
+			Enabled: allEnabled || enabled[id],
+			Guarded: true,
+		})
+	}
+	for _, id := range profile.Profile.EnabledToolIDs {
+		if seen[id] {
+			continue
+		}
+		sourceKind, name, ok := tool.ParseCatalogToolID(id)
+		if !ok {
+			continue
+		}
+		sourceLabel := strings.ToUpper(sourceKind[:1]) + sourceKind[1:]
+		if sourceKind == "mcp" {
+			sourceLabel = "MCP"
+		}
+		result.Tools = append(result.Tools, protocol.SessionToolCatalogEntry{
+			ID: id, Name: name,
+			Description:        "Tool is no longer registered in the Runtime catalog",
+			SourceKind:         sourceKind,
+			SourceLabel:        sourceLabel,
+			Capability:         "unknown",
+			AccessMode:         "unknown",
+			SandboxRequirement: "unknown",
+			Availability:       "unavailable",
+			UnavailableReason:  "Tool was revoked or its source is disconnected",
+			State:              "revoked",
+			Revision:           1,
+			Enabled:            true,
+			Guarded:            true,
+		})
+	}
+	sort.Slice(result.Tools, func(i, j int) bool {
+		return result.Tools[i].ID < result.Tools[j].ID
+	})
+	if err := result.Validate(); err != nil {
+		return protocol.SessionToolCatalog{}, err
+	}
+	return result, nil
+}
+
+func boundedCatalogText(value string, maximum int) string {
+	if len(value) <= maximum {
+		return value
+	}
+	end := maximum
+	for end > 0 && !utf8.ValidString(value[:end]) {
+		end--
+	}
+	return value[:end]
+}
+
+func projectToolSource(name, source string) (string, string) {
+	switch kind := tool.CatalogSourceKind(name, source); kind {
+	case "mcp":
+		label := strings.TrimPrefix(source, "mcp:")
+		if label == "helpers" {
+			label = "MCP"
+		}
+		return "mcp", label
+	case "plugin":
+		return "plugin", "Plugin"
+	case "dynamic":
+		return "dynamic", "Host"
+	case "skill":
+		return "skill", "Skills"
+	default:
+		return "builtin", "CodeHelper"
+	}
 }
 
 func (r *Runtime) SessionProfile(

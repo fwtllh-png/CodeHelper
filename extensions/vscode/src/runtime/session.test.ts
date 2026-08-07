@@ -105,6 +105,25 @@ void test("SessionCommands updates Runtime-owned profile by revision", async () 
   assert.equal(updated.prompt_cache_reset, true);
 });
 
+void test("SessionCommands queries the Session-bound tool catalog", async () => {
+  const transport: SessionTransport = {
+    request(method, params) {
+      assert.equal(method, "session/tool/catalog");
+      assert.deepEqual(params, { sessionId: "session_1" });
+      return Promise.resolve({
+        version: 1,
+        catalog_id: "catalog-1",
+        generation: 1,
+        digest: "digest-1",
+        tools: [],
+      });
+    },
+  };
+  const session = new SessionCommands(transport, "session_1", () => true);
+  const catalog = await session.toolCatalog();
+  assert.equal(catalog.catalog_id, "catalog-1");
+});
+
 void test("SessionCommands blocks untrusted profile escalation", async () => {
   const session = new SessionCommands(new FakeTransport(), "session_1", () => false);
   await assert.rejects(
