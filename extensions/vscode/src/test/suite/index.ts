@@ -321,6 +321,14 @@ async function verifyResourceNavigation(): Promise<void> {
   assert.equal(vscode.window.activeTextEditor?.document.uri.path.endsWith(
     "/context.ts",
   ), true);
+  const primaryColumn = vscode.window.activeTextEditor?.viewColumn;
+  assert.ok(primaryColumn);
+  await navigator.open({ ...base, kind: "file" }, { side: true });
+  assert.ok(vscode.window.activeTextEditor);
+  assert.notEqual(vscode.window.activeTextEditor.viewColumn, primaryColumn);
+  assert.ok(vscode.window.activeTextEditor.viewColumn > primaryColumn);
+  await navigator.copyRelativePath({ ...base, kind: "file" });
+  assert.equal(await vscode.env.clipboard.readText(), "context.ts");
   await navigator.open({
     ...base,
     kind: "directory",
@@ -761,6 +769,7 @@ async function verifyNativeFlows(api: ExtensionAPI): Promise<void> {
 async function verifyMultipleChats(api: ExtensionAPI): Promise<void> {
   assert.ok(api.chatSessions);
   assert.ok(api.createChat);
+  assert.ok(api.duplicateChat);
   await waitFor(
     () => {
       const title = api.chatSessions?.()[0]?.title;
@@ -773,18 +782,21 @@ async function verifyMultipleChats(api: ExtensionAPI): Promise<void> {
   assert.doesNotMatch(generatedTitle, /^Chat [0-9]+$/u);
   const created = await api.createChat();
   assert.equal(created.isolation, "worktree");
-  assert.equal(api.chatSessions().length, 2);
+  const duplicate = await api.duplicateChat(created.sessionId);
+  assert.equal(duplicate.title, `${created.title} · Copy`);
+  assert.equal(duplicate.executionEnvironment, "local");
+  assert.equal(api.chatSessions().length, 3);
   assert.equal(api.chatSessions().filter((session) => session.selected).length, 1);
 
   await vscode.commands.executeCommand("codehelper.restartRuntime");
   await waitFor(
     () => api.runtimeSnapshot?.().state === "ready" &&
-      api.chatSessions?.().length === 2,
+      api.chatSessions?.().length === 3,
     "multiple Chat sessions did not recover after Runtime restart",
   );
   const selected = api.chatSessions().find((session) => session.selected);
   assert.ok(selected);
-  assert.equal(selected.sessionId, created.sessionId);
+  assert.equal(selected.sessionId, duplicate.sessionId);
   assert.ok(
     api.chatSessions().some((session) => session.title === generatedTitle),
     `generated title was not restored: ${JSON.stringify(api.chatSessions())}`,

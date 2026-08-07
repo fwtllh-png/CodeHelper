@@ -143,6 +143,7 @@ export function decodeSessionSummary(
   requireKeys(object, [
     "version", "revision", "session_id", "thread_id", "title", "status",
     "pinned", "archived", "isolation", "workspace_root", "workspace_label",
+    "execution_target", "changed_files",
     "latest_sequence", "pending_approvals", "pending_inputs", "total_tokens",
     "checkpoint_count", "cost_microunits", "cost_known", "created_at",
     "updated_at",
@@ -176,6 +177,7 @@ export function decodeSessionSummary(
     ...optionalString(object, "provider"),
     ...optionalString(object, "model"),
     ...optionalString(object, "mode"),
+    execution_target: localExecutionTarget(object["execution_target"]),
     ...optionalString(object, "parent_thread_id"),
     ...optionalString(object, "latest_turn_id"),
     latest_sequence: nonNegativeInteger(
@@ -189,6 +191,9 @@ export function decodeSessionSummary(
     ),
     checkpoint_count: nonNegativeInteger(
       object["checkpoint_count"], "checkpoint count",
+    ),
+    changed_files: nonNegativeInteger(
+      object["changed_files"], "session changed files",
     ),
     total_tokens: nonNegativeInteger(object["total_tokens"], "total tokens"),
     cost_microunits: nonNegativeInteger(
@@ -329,6 +334,13 @@ function positiveInteger(value: unknown, name: string): number {
 
 function lifecycleVersion(value: unknown): 1 {
   if (value !== 1) throw new Error("session lifecycle version is unsupported");
+  return value;
+}
+
+function localExecutionTarget(value: unknown): "local" {
+  if (value !== "local") {
+    throw new Error("session execution target is invalid");
+  }
   return value;
 }
 

@@ -36,12 +36,14 @@ type SessionSummary struct {
 	Provider         string                 `json:"provider,omitempty"`
 	Model            string                 `json:"model,omitempty"`
 	Mode             string                 `json:"mode,omitempty"`
+	ExecutionTarget  string                 `json:"execution_target"`
 	ParentThreadID   ThreadID               `json:"parent_thread_id,omitempty"`
 	LatestTurnID     TurnID                 `json:"latest_turn_id,omitempty"`
 	LatestSequence   Cursor                 `json:"latest_sequence"`
 	PendingApprovals int                    `json:"pending_approvals"`
 	PendingInputs    int                    `json:"pending_inputs"`
 	CheckpointCount  int                    `json:"checkpoint_count"`
+	ChangedFiles     int                    `json:"changed_files"`
 	TotalTokens      uint64                 `json:"total_tokens"`
 	CostMicrounits   uint64                 `json:"cost_microunits"`
 	CostKnown        bool                   `json:"cost_known"`
@@ -72,6 +74,12 @@ func (s SessionSummary) Validate() error {
 		s.PendingApprovals < 0 || s.PendingInputs < 0 ||
 		s.CheckpointCount < 0 {
 		return errors.New("session summary projection is incomplete")
+	}
+	if s.ChangedFiles < 0 {
+		return errors.New("session summary changed files is invalid")
+	}
+	if s.ExecutionTarget != "local" {
+		return errors.New("session summary execution target must be local")
 	}
 	if s.UpdatedAt.Before(s.CreatedAt) ||
 		len(s.WorkspaceRoot) > 4096 ||

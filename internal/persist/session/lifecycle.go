@@ -43,9 +43,10 @@ type lifecycleMetadata struct {
 }
 
 type profileRoute struct {
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	Mode     string `json:"mode"`
+	Provider        string `json:"provider"`
+	Model           string `json:"model"`
+	Mode            string `json:"mode"`
+	ExecutionTarget string `json:"execution_target"`
 }
 
 func (r *Repository) ListLifecycle(
@@ -242,6 +243,10 @@ func (r *Repository) GetLifecycle(
 	summary.Provider = route.Provider
 	summary.Model = route.Model
 	summary.Mode = route.Mode
+	summary.ExecutionTarget = route.ExecutionTarget
+	if summary.ExecutionTarget == "" {
+		summary.ExecutionTarget = "local"
+	}
 	summary.Isolation = isolation
 	summary.WorkspaceLabel = strings.TrimSpace(workspaceLabel)
 	if summary.WorkspaceLabel == "" {

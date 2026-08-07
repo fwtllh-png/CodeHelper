@@ -246,10 +246,12 @@ export type SessionList = {
   readonly "query"?: string;
   readonly "sessions": ReadonlyArray<{
       readonly "archived": boolean;
+      readonly "changed_files": number;
       readonly "checkpoint_count": number;
       readonly "cost_known": boolean;
       readonly "cost_microunits": number;
       readonly "created_at": string;
+      readonly "execution_target": string;
       readonly "isolation": string;
       readonly "latest_sequence": number;
       readonly "latest_turn_id"?: string;
@@ -283,10 +285,12 @@ export type SessionLifecyclePatch = {
 export type SessionLifecycleUpdate = {
   readonly "session": {
       readonly "archived": boolean;
+      readonly "changed_files": number;
       readonly "checkpoint_count": number;
       readonly "cost_known": boolean;
       readonly "cost_microunits": number;
       readonly "created_at": string;
+      readonly "execution_target": string;
       readonly "isolation": string;
       readonly "latest_sequence": number;
       readonly "latest_turn_id"?: string;

@@ -49,11 +49,17 @@ import type {
   SessionToolCatalog,
 } from "../runtime/session.js";
 import type { CredentialView } from "../security/credentials.js";
+import {
+  createStructuredSessionReceipt,
+  renderSessionMarkdown,
+  validateStructuredSessionReceipt,
+} from "./export.js";
 
 interface RootChatState {
   readonly projectors: Map<string, ChatProjector>;
   readonly composers: Map<string, SessionComposerState>;
   runtime: SupervisorSnapshot;
+  revealTurnId: string | undefined;
   sessionSearchQuery: string;
   sessionSearch: {
     readonly query: string;
@@ -279,11 +285,39 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           await this.#resourceNavigator.open(reference);
           break;
         }
+        case "resource-action": {
+          const reference = this.#resources.get(message.resourceId);
+          if (reference === undefined) {
+            throw new Error("resource reference is unknown or stale");
+          }
+          let action = message.action;
+          if (action === "menu") {
+            const choice = await vscode.window.showQuickPick([
+              { label: "$(go-to-file) Open", action: "open" as const },
+              { label: "$(split-horizontal) Open to Side", action: "open-to-side" as const },
+              { label: "$(copy) Copy Relative Path", action: "copy-relative-path" as const },
+            ], {
+              title: reference.path,
+              placeHolder: "Choose a Resource action",
+            });
+            if (choice === undefined) break;
+            action = choice.action;
+          }
+          if (action === "copy-relative-path") {
+            await this.#resourceNavigator.copyRelativePath(reference);
+          } else {
+            await this.#resourceNavigator.open(reference, {
+              side: action === "open-to-side",
+            });
+          }
+          break;
+        }
         case "select-root":
           await this.#registry.select(message.rootId);
           break;
         case "select-chat":
           await root.controller.selectChat(message.sessionId);
+          this.#state(root.rootId).revealTurnId = message.turnId;
           break;
         case "search-chats": {
           const state = this.#state(root.rootId);
@@ -520,7 +554,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   async #manageChat(
     root: WorkspaceRuntime,
     sessionId: string,
-    action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete" | "checkpoints",
+    action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" |
+      "delete" | "checkpoints" | "duplicate" | "open-to-side" | "export" |
+      "reveal-approval",
   ): Promise<void> {
     const session = root.controller.sessions().find(
       (candidate) => candidate.sessionId === sessionId,
@@ -542,6 +578,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             label: `$(history) Checkpoints (${String(session.checkpointCount)})`,
             action: "checkpoints" as const,
           },
+          { label: "$(copy) Duplicate", action: "duplicate" as const },
+          { label: "$(split-horizontal) Open to Side", action: "open-to-side" as const },
+          { label: "$(export) Export", action: "export" as const },
+          ...(session.pendingApprovals > 0
+            ? [{
+                label: "$(shield) Reveal Pending Approval",
+                action: "reveal-approval" as const,
+              }]
+            : []),
           { label: "$(trash) Delete", action: "delete" as const },
         ], {
           title: session.title,
@@ -574,6 +619,70 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       case "restore":
         await root.controller.archiveChat(sessionId, action === "archive");
         break;
+      case "duplicate":
+        await root.controller.duplicateChat(sessionId);
+        break;
+      case "open-to-side": {
+        const markdown = renderSessionMarkdown(
+          session,
+          this.#projector(root.rootId, sessionId).snapshot(),
+        );
+        const document = await vscode.workspace.openTextDocument({
+          language: "markdown",
+          content: markdown,
+        });
+        await vscode.window.showTextDocument(document, {
+          preview: true,
+          viewColumn: vscode.ViewColumn.Beside,
+        });
+        break;
+      }
+      case "export": {
+        const snapshot = this.#projector(root.rootId, sessionId).snapshot();
+        const format = await vscode.window.showQuickPick([
+          { label: "Markdown", extension: "md" as const },
+          { label: "Structured Receipt", extension: "json" as const },
+        ], {
+          title: `Export · ${session.title}`,
+          placeHolder: "Choose an export format",
+        });
+        if (format === undefined) break;
+        const receipt = createStructuredSessionReceipt(session, snapshot);
+        validateStructuredSessionReceipt(receipt);
+        const content = format.extension === "md"
+          ? renderSessionMarkdown(session, snapshot)
+          : `${JSON.stringify(receipt, null, 2)}\n`;
+        const destination = await vscode.window.showSaveDialog({
+          title: `Export ${session.title}`,
+          filters: format.extension === "md"
+            ? { Markdown: ["md"] }
+            : { JSON: ["json"] },
+          defaultUri: vscode.Uri.joinPath(
+            root.folder.uri,
+            `${safeExportName(session.title)}.${format.extension}`,
+          ),
+        });
+        if (destination !== undefined) {
+          await vscode.workspace.fs.writeFile(
+            destination,
+            new TextEncoder().encode(content),
+          );
+        }
+        break;
+      }
+      case "reveal-approval": {
+        await root.controller.selectChat(sessionId);
+        const approval = this.#projector(
+          root.rootId,
+          sessionId,
+        ).pendingApprovals()[0];
+        if (approval === undefined) {
+          throw new Error("Session has no pending Approval");
+        }
+        this.#state(root.rootId).revealTurnId = approval.turnId;
+        await this.#showApproval(root, sessionId, approval);
+        break;
+      }
       case "delete": {
         const confirmation = await vscode.window.showWarningMessage(
           `Delete "${session.title}" permanently?`,
@@ -884,6 +993,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         selectedRootId: root.rootId,
         selectedRootLabel: root.label,
         sessions,
+        ...(state.revealTurnId === undefined
+          ? {}
+          : { revealTurnId: state.revealTurnId }),
         ...(state.sessionSearch === undefined
           ? {}
           : { sessionSearch: state.sessionSearch }),
@@ -894,6 +1006,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         })),
         ...(composer === undefined ? {} : { composer }),
       }));
+      state.revealTurnId = undefined;
     }, 16);
   }
 
@@ -916,6 +1029,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           projectors: new Map(),
           composers: new Map(),
           runtime: root.controller.snapshot,
+          revealTurnId: undefined,
           sessionSearchQuery: "",
           sessionSearch: undefined,
         });
@@ -1415,4 +1529,11 @@ async function pickValue(
     },
   );
   return selected?.value;
+}
+
+function safeExportName(value: string): string {
+  const safe = value.trim()
+    .replaceAll(/[^a-zA-Z0-9._-]+/gu, "-")
+    .replaceAll(/^-+|-+$/gu, "");
+  return safe.slice(0, 96) || "codehelper-session";
 }

@@ -18,9 +18,11 @@ const sessions: readonly ChatSessionView[] = [
     pinned: true,
     archived: false,
     workspaceLabel: "workspace",
+    executionEnvironment: "local",
     pendingApprovals: 0,
     pendingInputs: 0,
     checkpointCount: 0,
+    changedFiles: 0,
     totalTokens: 12,
     costMicrounits: 0,
     costKnown: false,
@@ -39,9 +41,11 @@ const sessions: readonly ChatSessionView[] = [
     pinned: false,
     archived: false,
     workspaceLabel: "workspace",
+    executionEnvironment: "local",
     pendingApprovals: 0,
     pendingInputs: 0,
     checkpointCount: 0,
+    changedFiles: 0,
     totalTokens: 4,
     costMicrounits: 1,
     costKnown: true,
@@ -90,6 +94,46 @@ void test("Session grouping keeps pinned and recent sessions distinct", () => {
     filterChatSessions(sessions, "", "completed").map(
       (session) => session.sessionId,
     ),
+    ["session_2"],
+  );
+});
+
+void test("Session Rail combines workspace, model, mode, and activity filters", () => {
+  const first = sessions[0];
+  const second = sessions[1];
+  assert.ok(first);
+  assert.ok(second);
+  const values: readonly ChatSessionView[] = [
+    {
+      ...first,
+      provider: "openai",
+      model: "gpt",
+      mode: "act",
+      changedFiles: 3,
+    },
+    {
+      ...second,
+      workspaceLabel: "other",
+      provider: "deepseek",
+      model: "chat",
+      mode: "plan",
+      parentThreadId: "thread-parent",
+    },
+  ];
+  assert.deepEqual(
+    filterChatSessions(values, "", "all", {
+      workspace: "workspace",
+      model: "openai/gpt",
+      mode: "act",
+      activity: "changed",
+    }).map((session) => session.sessionId),
+    ["session_1"],
+  );
+  assert.deepEqual(
+    filterChatSessions(values, "", "all", {
+      workspace: "other",
+      activity: "forked",
+    }).map((session) => session.sessionId),
     ["session_2"],
   );
 });

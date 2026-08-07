@@ -140,13 +140,27 @@ Allowlist。选择 Tool 不授予权限：已启用调用仍经过 Guard、Polic
 
 Runtime 是 Session 发现和生命周期状态的持久化权威。
 `session/list`、`session/status`、`session/lifecycle/update` 和
-`session/delete` 提供带 Revision CAS 的 Summary 与变更操作。Search 匹配标题和
-持久化 Turn Item Payload；Status 将持久化 Turn 状态与 Session 下全部 Thread 的
+`session/delete` 提供带 Revision CAS 的 Summary 与变更操作。Search 匹配标题、
+用户请求、Agent 输出、路径和符号证据；Status 将持久化 Turn 状态与 Session 下全部 Thread 的
 实时活动合并，包括待处理 Approval 和 Input。
 
 Durable Session Summary 不携带瞬时 Search State。`session/list` 单独返回按 Session
 与 Turn 标识的 Match、Match Kind 和可选 Snippet。Host 可以缓存 Durable Summary，
 但 Query 变化时必须丢弃或替换 Match。
+
+Summary 还投影最新不可变 Checkpoint 的 Changed File 数量、本地 Execution
+Environment、Parent Fork Thread 和 Latest Turn Identity。Rail 可组合 Workspace、
+Model、Mode、Status、Pending/Changed/Fork Activity 与文本过滤。选择 Match 后先切换
+Session，再聚焦 Runtime 标识的稳定 Turn Article。
+
+Session 操作通过 VS Code 原生 UI 提供 Duplicate、Open to Side、Markdown 或带完整性
+校验的 Structured Receipt Export，以及 Reveal Pending Approval。Duplicate 只将
+Runtime-owned Profile 复制到新 Session，绝不重放历史 Tool、Command、Network 或 File
+副作用。Export 仅从 Host Projection 生成，不读取 Webview DOM。
+
+Resource Action 继续只提交 Opaque Resource ID。Open、Open to Side 和 Copy Relative
+Path 在调用 VS Code API 前都由 Extension Host 重新校验 Root、Scheme、Canonical Path、
+Range 和 Diff Membership。
 
 Session Rail 按 Pinned、Today、Yesterday、Previous 7 Days、Older 和 Archived 分组，
 支持状态筛选，并展示 Workspace、Provider/Model、生命周期状态、Usage 与待处理交互数。

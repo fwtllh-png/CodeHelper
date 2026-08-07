@@ -114,6 +114,17 @@ export function renderChatHTML(
         <option value="failed">Failed or interrupted</option>
         <option value="archived">Archived</option>
       </select>
+      <div class="session-filter-grid">
+        <label>Workspace<select id="session-workspace-filter"><option value="">All</option></select></label>
+        <label>Model<select id="session-model-filter"><option value="">All</option></select></label>
+        <label>Mode<select id="session-mode-filter"><option value="">All</option></select></label>
+        <label>Activity<select id="session-activity-filter">
+          <option value="all">All</option>
+          <option value="attention">Pending</option>
+          <option value="changed">Changed files</option>
+          <option value="forked">Forks</option>
+        </select></label>
+      </div>
       <div class="session-group-label session-total">
         <span>SESSIONS</span>
         <span id="session-count">0</span>

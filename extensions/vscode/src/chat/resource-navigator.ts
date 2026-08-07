@@ -20,7 +20,10 @@ export class ResourceNavigator {
     this.#editPreview = editPreview;
   }
 
-  public async open(reference: ResourceReference): Promise<void> {
+  public async open(
+    reference: ResourceReference,
+    options: { readonly side?: boolean } = {},
+  ): Promise<void> {
     const safe = validateResourceReference(reference);
     const root = this.#registry.find(safe.rootId);
     if (root === undefined) {
@@ -43,23 +46,38 @@ export class ResourceNavigator {
           safe.fileIndex,
           false,
           safe.rootId,
+          options.side ?? false,
         );
         return;
       case "symbol":
-        await this.#openSymbol(uri, safe);
+        await this.#openSymbol(uri, safe, options.side ?? false);
         return;
       case "diagnostic":
-        await this.#openDiagnostic(uri, safe.range);
+        await this.#openDiagnostic(uri, safe.range, options.side ?? false);
         return;
       case "file":
       case "range":
-        await this.#openDocument(uri, safe.range);
+        await this.#openDocument(uri, safe.range, options.side ?? false);
     }
+  }
+
+  public async copyRelativePath(reference: ResourceReference): Promise<void> {
+    const safe = validateResourceReference(reference);
+    const root = this.#registry.find(safe.rootId);
+    if (root === undefined) {
+      throw new Error("resource workspace root is no longer open");
+    }
+    const uri = vscode.Uri.joinPath(root.folder.uri, ...safe.path.split("/"));
+    if (this.#registry.forURI(uri)?.rootId !== root.rootId) {
+      throw new Error("resource resolved outside its workspace root");
+    }
+    await vscode.env.clipboard.writeText(safe.path);
   }
 
   async #openSymbol(
     uri: vscode.Uri,
     reference: ResourceReference,
+    side: boolean,
   ): Promise<void> {
     const range = reference.range;
     if (range === undefined) {
@@ -81,17 +99,19 @@ export class ResourceNavigator {
           fromVSCodeRange(
             definition.targetSelectionRange ?? definition.targetRange,
           ),
+          side,
         );
       } else {
         this.#assertSameRoot(reference.rootId, definition.uri);
         await this.#openDocument(
           definition.uri,
           fromVSCodeRange(definition.range),
+          side,
         );
       }
       return;
     }
-    await this.#openDocument(uri, range);
+    await this.#openDocument(uri, range, side);
   }
 
   #assertSameRoot(rootId: string, uri: vscode.Uri): void {
@@ -103,22 +123,26 @@ export class ResourceNavigator {
   async #openDiagnostic(
     uri: vscode.Uri,
     fallback?: ResourceRange,
+    side = false,
   ): Promise<void> {
     const diagnostic = vscode.languages.getDiagnostics(uri)[0];
     await this.#openDocument(
       uri,
       diagnostic === undefined ? fallback : fromVSCodeRange(diagnostic.range),
+      side,
     );
   }
 
   async #openDocument(
     uri: vscode.Uri,
     range?: ResourceRange,
+    side = false,
   ): Promise<void> {
     const document = await vscode.workspace.openTextDocument(uri);
     const editor = await vscode.window.showTextDocument(document, {
       preview: true,
       preserveFocus: false,
+      ...(side ? { viewColumn: vscode.ViewColumn.Beside } : {}),
     });
     if (range === undefined) return;
     const selection = new vscode.Selection(

@@ -14,6 +14,15 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
     type: "open-resource",
     resourceId: "a".repeat(64),
   });
+  assert.deepEqual(decodeWebviewMessage({
+    type: "resource-action",
+    resourceId: "b".repeat(64),
+    action: "open-to-side",
+  }), {
+    type: "resource-action",
+    resourceId: "b".repeat(64),
+    action: "open-to-side",
+  });
   assert.deepEqual(decodeWebviewMessage({ type: "submit", text: "hello" }), {
     type: "submit",
     text: "hello",
@@ -28,9 +37,11 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
   assert.deepEqual(decodeWebviewMessage({
     type: "select-chat",
     sessionId: "session_2",
+    turnId: "turn_9",
   }), {
     type: "select-chat",
     sessionId: "session_2",
+    turnId: "turn_9",
   });
   assert.deepEqual(decodeWebviewMessage({
     type: "manage-chat",

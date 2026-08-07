@@ -116,9 +116,11 @@ void test("Chat assembles the maximum V1 transcript and Session list within budg
     pinned: index === 0,
     archived: false,
     workspaceLabel: "workspace",
+    executionEnvironment: "local" as const,
     pendingApprovals: 0,
     pendingInputs: 0,
     checkpointCount: 0,
+    changedFiles: 0,
     totalTokens: index,
     costMicrounits: 0,
     costKnown: false,
@@ -186,12 +188,14 @@ void test("1000 Session search and virtual first paint stay within budget", () =
     pinned: index < 5,
     archived: index > 980,
     workspaceLabel: "workspace",
+    executionEnvironment: "local" as const,
     provider: "fixture",
     model: "fixture-model",
     mode: "act",
     pendingApprovals: 0,
     pendingInputs: 0,
     checkpointCount: index % 4,
+    changedFiles: index % 7,
     totalTokens: index,
     costMicrounits: 0,
     costKnown: false,
@@ -204,7 +208,12 @@ void test("1000 Session search and virtual first paint stay within budget", () =
     active: index % 23 === 0,
   }));
   const started = performance.now();
-  const filtered = filterChatSessions(sessions, "parser", "all");
+  const filtered = filterChatSessions(sessions, "parser", "completed", {
+    workspace: "workspace",
+    model: "fixture/fixture-model",
+    mode: "act",
+    activity: "changed",
+  });
   const groups = groupChatSessions(filtered, new Date("2026-08-07T12:00:00Z"));
   const items = groups.flatMap((group) => [
     { height: 24 },
@@ -215,7 +224,7 @@ void test("1000 Session search and virtual first paint stay within budget", () =
   metrics["session_1000_search_virtual_ms"] = Number(durationMS.toFixed(1));
   metrics["session_1000_virtual_dom_items"] = window.end - window.start;
 
-  assert.equal(filtered.length, 1_000);
+  assert.equal(filtered.length, 820);
   assert.ok(
     durationMS < 150,
     `1000 Session search/virtualization took ${durationMS.toFixed(1)}ms`,

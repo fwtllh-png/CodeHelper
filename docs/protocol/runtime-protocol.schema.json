@@ -833,6 +833,9 @@
             "archived": {
               "type": "boolean"
             },
+            "changed_files": {
+              "type": "integer"
+            },
             "checkpoint_count": {
               "type": "integer"
             },
@@ -845,6 +848,9 @@
             "created_at": {
               "type": "string",
               "format": "date-time"
+            },
+            "execution_target": {
+              "type": "string"
             },
             "isolation": {
               "type": "string"
@@ -910,10 +916,12 @@
           },
           "required": [
             "archived",
+            "changed_files",
             "checkpoint_count",
             "cost_known",
             "cost_microunits",
             "created_at",
+            "execution_target",
             "isolation",
             "latest_sequence",
             "pending_approvals",
@@ -978,6 +986,9 @@
               "archived": {
                 "type": "boolean"
               },
+              "changed_files": {
+                "type": "integer"
+              },
               "checkpoint_count": {
                 "type": "integer"
               },
@@ -990,6 +1001,9 @@
               "created_at": {
                 "type": "string",
                 "format": "date-time"
+              },
+              "execution_target": {
+                "type": "string"
               },
               "isolation": {
                 "type": "string"
@@ -1055,10 +1069,12 @@
             },
             "required": [
               "archived",
+              "changed_files",
               "checkpoint_count",
               "cost_known",
               "cost_microunits",
               "created_at",
+              "execution_target",
               "isolation",
               "latest_sequence",
               "pending_approvals",

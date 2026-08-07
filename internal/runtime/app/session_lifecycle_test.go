@@ -16,8 +16,9 @@ func TestSessionLifecycleOverlaysLiveStateAndProtectsArchiveDelete(t *testing.T)
 		SessionID: "session-life", ThreadID: "thread-life",
 		Title: "Lifecycle", Status: protocol.SessionStatusCompleted,
 		Isolation: "shared", WorkspaceRoot: "/workspace",
-		WorkspaceLabel: "workspace",
-		CreatedAt:      time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		ExecutionTarget: "local",
+		WorkspaceLabel:  "workspace",
+		CreatedAt:       time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}}
 	runtime := NewRuntime(Options{SessionLifecycle: store})
 	t.Cleanup(func() { closeRuntime(t, runtime) })
@@ -89,6 +90,59 @@ func TestSessionLifecycleOverlaysLiveStateAndProtectsArchiveDelete(t *testing.T)
 	}
 }
 
+func TestSessionSearchProjectsPreciseTurnMatchAndSnippet(t *testing.T) {
+	now := time.Now().UTC()
+	store := &memorySessionLifecycleStore{searchMiss: true, summary: protocol.SessionSummary{
+		Version: protocol.SessionLifecycleVersion, Revision: 1,
+		SessionID: "session-search", ThreadID: "thread-search",
+		LatestTurnID: "turn-search",
+		Title:        "Parser", Status: protocol.SessionStatusCompleted,
+		Isolation: "shared", WorkspaceRoot: "/workspace",
+		WorkspaceLabel: "workspace", ExecutionTarget: "local",
+		CreatedAt: now, UpdatedAt: now,
+	}}
+	events := NewMemoryEventStore(16)
+	started, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "op-search", ThreadID: "thread-search",
+		TurnID: "turn-search", ItemID: "item-search",
+	}, &protocol.TurnStartedData{
+		Provider: "fixture", Model: "fixture",
+		DisplayPrompt: "Review the parser implementation",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), started); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 2, OperationID: "op-search", ThreadID: "thread-search",
+		TurnID: "turn-search", ItemID: "item-search",
+	}, &protocol.TurnCompletedData{Text: "The parser handles Unicode safely."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), completed); err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{
+		EventStore: events, SessionLifecycle: store,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	list, err := runtime.ListSessions(t.Context(), protocol.SessionListQuery{
+		Query: "Unicode",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Matches) != 1 ||
+		list.Matches[0].Kind != "agent_output" ||
+		list.Matches[0].TurnID != "turn-search" ||
+		list.Matches[0].Snippet != "The parser handles Unicode safely." {
+		t.Fatalf("search matches = %+v", list.Matches)
+	}
+}
+
 func TestDeleteSessionProtectsAndDiscardsWorktree(t *testing.T) {
 	store := &memorySessionLifecycleStore{summary: protocol.SessionSummary{
 		Version: protocol.SessionLifecycleVersion, Revision: 1,
@@ -133,8 +187,9 @@ func TestDeleteSessionProtectsAndDiscardsWorktree(t *testing.T) {
 }
 
 type memorySessionLifecycleStore struct {
-	summary protocol.SessionSummary
-	deleted bool
+	summary    protocol.SessionSummary
+	deleted    bool
+	searchMiss bool
 }
 
 type memorySessionWorkspaces struct {
@@ -189,11 +244,17 @@ func (m *memorySessionWorkspaces) ApplyMerge(
 }
 
 func (s *memorySessionLifecycleStore) ListLifecycle(
-	context.Context,
-	protocol.SessionListQuery,
+	_ context.Context,
+	query protocol.SessionListQuery,
 ) (protocol.SessionList, error) {
 	if s.deleted {
 		return protocol.SessionList{Version: protocol.SessionLifecycleVersion}, nil
+	}
+	if s.searchMiss && query.Query != "" {
+		return protocol.SessionList{
+			Version: protocol.SessionLifecycleVersion,
+			Query:   query.Query,
+		}, nil
 	}
 	return protocol.SessionList{
 		Version:  protocol.SessionLifecycleVersion,

@@ -52,6 +52,7 @@ export class EditPlanPreview implements vscode.TextDocumentContentProvider, vsco
     fileIndex: number,
     preview = false,
     rootId?: string,
+    side = false,
   ): Promise<void> {
     if (!Number.isSafeInteger(fileIndex) ||
       fileIndex < 0 || fileIndex >= plan.files.length) {
@@ -71,7 +72,10 @@ export class EditPlanPreview implements vscode.TextDocumentContentProvider, vsco
       before,
       after,
       `CodeHelper Plan: ${file.path} (${file.kind})`,
-      { preview },
+      {
+        preview,
+        ...(side ? { viewColumn: vscode.ViewColumn.Beside } : {}),
+      },
     );
   }
 

@@ -50,6 +50,7 @@ function markdownNode(
     const button = document.createElement("button");
     button.type = "button";
     button.className = "resource-link";
+    button.dataset["resourceId"] = resourceId;
     button.title = "Open in Editor";
     for (const child of value.children) {
       button.append(markdownNode(child, openResource));

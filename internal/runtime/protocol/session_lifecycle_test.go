@@ -10,7 +10,8 @@ func TestSessionLifecycleContractsRejectAmbiguousState(t *testing.T) {
 		Version: SessionLifecycleVersion, Revision: 1,
 		SessionID: "session-1", ThreadID: "thread-1", Title: "Fix login",
 		Status: SessionStatusIdle, Isolation: "shared",
-		WorkspaceRoot: "/workspace", WorkspaceLabel: "workspace",
+		ExecutionTarget: "local",
+		WorkspaceRoot:   "/workspace", WorkspaceLabel: "workspace",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	if err := summary.Validate(); err != nil {

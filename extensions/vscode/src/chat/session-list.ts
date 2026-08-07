@@ -14,15 +14,32 @@ export interface SessionGroup {
   readonly sessions: readonly ChatSessionView[];
 }
 
+export interface SessionCompositeFilter {
+  readonly workspace?: string;
+  readonly model?: string;
+  readonly mode?: string;
+  readonly activity?: "all" | "attention" | "changed" | "forked";
+}
+
 export function filterChatSessions(
   sessions: readonly ChatSessionView[],
   query: string,
   status: SessionStatusFilter = "all",
+  filter: SessionCompositeFilter = {},
 ): readonly ChatSessionView[] {
   const normalized = query.trim().toLocaleLowerCase();
-  if (normalized.length === 0 && status === "all") return sessions;
+  if (normalized.length === 0 && status === "all" &&
+    noCompositeFilter(filter)) return sessions;
   return sessions.filter((session) => {
     if (!matchesStatus(session, status)) return false;
+    if (filter.workspace !== undefined &&
+      session.workspaceLabel !== filter.workspace) return false;
+    if (filter.model !== undefined &&
+      `${session.provider ?? ""}/${session.model ?? ""}` !== filter.model) {
+      return false;
+    }
+    if (filter.mode !== undefined && session.mode !== filter.mode) return false;
+    if (!matchesActivity(session, filter.activity ?? "all")) return false;
     if (normalized.length === 0) return true;
     return [
       session.title,
@@ -33,6 +50,29 @@ export function filterChatSessions(
       session.status,
     ].some((value) => value?.toLocaleLowerCase().includes(normalized));
   });
+}
+
+function noCompositeFilter(filter: SessionCompositeFilter): boolean {
+  return filter.workspace === undefined &&
+    filter.model === undefined &&
+    filter.mode === undefined &&
+    (filter.activity === undefined || filter.activity === "all");
+}
+
+function matchesActivity(
+  session: ChatSessionView,
+  activity: NonNullable<SessionCompositeFilter["activity"]>,
+): boolean {
+  switch (activity) {
+    case "all":
+      return true;
+    case "attention":
+      return session.pendingApprovals > 0 || session.pendingInputs > 0;
+    case "changed":
+      return session.changedFiles > 0;
+    case "forked":
+      return session.parentThreadId !== undefined;
+  }
 }
 
 export function groupChatSessions(

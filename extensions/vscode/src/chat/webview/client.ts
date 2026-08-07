@@ -35,6 +35,10 @@ const chatTitle = element("chat-title");
 const sessionList = element("session-list");
 const sessionSearch = element("session-search") as HTMLInputElement;
 const sessionFilter = element("session-filter") as HTMLSelectElement;
+const sessionWorkspaceFilter = element("session-workspace-filter") as HTMLSelectElement;
+const sessionModelFilter = element("session-model-filter") as HTMLSelectElement;
+const sessionModeFilter = element("session-mode-filter") as HTMLSelectElement;
+const sessionActivityFilter = element("session-activity-filter") as HTMLSelectElement;
 const sessionCount = element("session-count");
 const sessionRail = element("session-rail");
 const sessionScrim = element("session-scrim") as HTMLButtonElement;
@@ -80,12 +84,18 @@ type SessionVirtualItem =
       readonly kind: "session";
       readonly key: string;
       readonly session: ChatSessionView;
+      readonly match?: {
+        readonly turnId: string;
+        readonly kind: string;
+        readonly snippet?: string;
+      };
       readonly position: number;
       readonly setSize: number;
       readonly height: 52;
     };
 
 let sessionVirtualItems: readonly SessionVirtualItem[] = [];
+let lastRevealedTurn = "";
 
 const transcriptActions: TranscriptActions = {
   openResource: (resourceId) => {
@@ -233,6 +243,15 @@ document.addEventListener("keydown", (event) => {
     first.focus();
   }
 }, { capture: true });
+document.addEventListener("contextmenu", (event) => {
+  const target = event.target instanceof Element
+    ? event.target.closest<HTMLElement>("[data-resource-id]")
+    : null;
+  const resourceId = target?.dataset["resourceId"];
+  if (resourceId === undefined) return;
+  event.preventDefault();
+  post({ type: "resource-action", resourceId, action: "menu" });
+});
 
 function keyboardAction(event: KeyboardEvent) {
   return routeChatKeyboard({
@@ -255,6 +274,14 @@ sessionSearch.addEventListener("input", () => {
 sessionFilter.addEventListener("change", () => {
   renderSessionList();
 });
+for (const filter of [
+  sessionWorkspaceFilter,
+  sessionModelFilter,
+  sessionModeFilter,
+  sessionActivityFilter,
+]) {
+  filter.addEventListener("change", renderSessionList);
+}
 sessionList.addEventListener("scroll", () => {
   scheduleVirtualSessionRender();
 }, { passive: true });
@@ -346,6 +373,7 @@ function renderSnapshot(message: ChatSnapshotMessage): void {
   }));
   root.hidden = message.runtime.roots.length < 2;
   sessions = message.runtime.sessions;
+  updateSessionFilterOptions();
   sessionSearchProjection = message.runtime.sessionSearch;
   renderSessionList();
   const selected = sessions.find((candidate) => candidate.selected);
@@ -378,6 +406,11 @@ function renderSnapshot(message: ChatSnapshotMessage): void {
   const stickToBottom = isNearBottom();
   renderTranscript(turns, message.snapshot, trusted, transcriptActions);
   if (stickToBottom) turns.scrollTo({ top: turns.scrollHeight });
+  if (message.runtime.revealTurnId !== undefined) {
+    revealTurn(message.runtime.selectedSessionId, message.runtime.revealTurnId);
+  } else {
+    lastRevealedTurn = "";
+  }
 }
 
 function renderComposer(message: ChatSnapshotMessage): void {
@@ -447,6 +480,9 @@ function renderSessionList(): void {
   const matchIDs = matchingProjection === undefined
     ? undefined
     : new Set(matchingProjection.sessionIds);
+  const matches = new Map(
+    matchingProjection?.matches.map((match) => [match.sessionId, match]) ?? [],
+  );
   const serverMatches = matchingProjection !== undefined;
   const source = matchIDs === undefined
     ? sessions
@@ -455,6 +491,19 @@ function renderSessionList(): void {
     source,
     serverMatches ? "" : query,
     sessionFilter.value as SessionStatusFilter,
+    {
+      ...(sessionWorkspaceFilter.value === ""
+        ? {}
+        : { workspace: sessionWorkspaceFilter.value }),
+      ...(sessionModelFilter.value === ""
+        ? {}
+        : { model: sessionModelFilter.value }),
+      ...(sessionModeFilter.value === ""
+        ? {}
+        : { mode: sessionModeFilter.value }),
+      activity: sessionActivityFilter.value as
+        "all" | "attention" | "changed" | "forked",
+    },
   );
   sessionCount.textContent = String(visible.length);
   const groups = groupChatSessions(visible);
@@ -466,16 +515,54 @@ function renderSessionList(): void {
       label: group.label.toLocaleUpperCase(),
       height: 24,
     },
-    ...group.sessions.map((session): SessionVirtualItem => ({
-      kind: "session",
-      key: `session:${session.sessionId}`,
-      session,
-      position: ++position,
-      setSize: visible.length,
-      height: 52,
-    })),
+    ...group.sessions.map((session): SessionVirtualItem => {
+      const match = matches.get(session.sessionId);
+      return {
+        kind: "session",
+        key: `session:${session.sessionId}`,
+        session,
+        ...(match === undefined ? {} : { match }),
+        position: ++position,
+        setSize: visible.length,
+        height: 52,
+      };
+    }),
   ]);
   renderVirtualSessionWindow();
+}
+
+function updateSessionFilterOptions(): void {
+  replaceFilterOptions(
+    sessionWorkspaceFilter,
+    sessions.map((session) => session.workspaceLabel),
+  );
+  replaceFilterOptions(
+    sessionModelFilter,
+    sessions.flatMap((session) =>
+      session.provider === undefined || session.model === undefined
+        ? []
+        : [`${session.provider}/${session.model}`]),
+  );
+  replaceFilterOptions(
+    sessionModeFilter,
+    sessions.flatMap((session) =>
+      session.mode === undefined ? [] : [session.mode]),
+  );
+}
+
+function replaceFilterOptions(
+  select: HTMLSelectElement,
+  values: readonly string[],
+): void {
+  const selected = select.value;
+  const options = [new Option("All", "")];
+  for (const value of [...new Set(values)].sort()) {
+    options.push(new Option(value, value));
+  }
+  select.replaceChildren(...options);
+  select.value = [...select.options].some((option) => option.value === selected)
+    ? selected
+    : "";
 }
 
 function renderVirtualSessionWindow(): void {
@@ -552,11 +639,18 @@ function sessionRow(
   );
   const meta = document.createElement("span");
   meta.className = "session-item-meta";
-  meta.textContent = status;
+  meta.textContent = item.match?.snippet === undefined
+    ? status
+    : `${item.match.kind.replaceAll("_", " ")}: ${item.match.snippet}`;
+  meta.title = item.match?.snippet ?? status;
   button.append(title, meta);
   button.disabled = session.archived;
   button.addEventListener("click", () => {
-    post({ type: "select-chat", sessionId: session.sessionId });
+    post({
+      type: "select-chat",
+      sessionId: session.sessionId,
+      ...(item.match === undefined ? {} : { turnId: item.match.turnId }),
+    });
     setSessionsOpen(false);
   });
   const manage = document.createElement("button");
@@ -574,6 +668,22 @@ function sessionRow(
   });
   row.append(button, manage);
   return row;
+}
+
+function revealTurn(sessionId: string | undefined, turnId: string): void {
+  const identity = `${sessionId ?? ""}:${turnId}`;
+  if (lastRevealedTurn === identity) return;
+  const target = [...turns.querySelectorAll<HTMLElement>("[data-turn-id]")]
+    .find((candidate) => candidate.dataset["turnId"] === turnId);
+  if (target === undefined) return;
+  lastRevealedTurn = identity;
+  target.tabIndex = -1;
+  target.classList.add("search-turn-match");
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.focus({ preventScroll: true });
+  setTimeout(() => {
+    target.classList.remove("search-turn-match");
+  }, 2_000);
 }
 
 function setSessionsOpen(open: boolean): void {

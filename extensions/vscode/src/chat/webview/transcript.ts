@@ -300,7 +300,10 @@ function resourceButton(
   actions: TranscriptActions,
   label = "Open in Editor",
 ): HTMLButtonElement {
-  return actionButton(label, () => {
+  const button = actionButton(label, () => {
     actions.openResource(resourceId);
   });
+  button.dataset["resourceId"] = resourceId;
+  button.title = "Open in Editor. Right-click for more actions.";
+  return button;
 }

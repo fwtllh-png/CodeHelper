@@ -7,14 +7,25 @@ import type { ComposerControl } from "./composer.js";
 export type WebviewMessage =
   | { readonly type: "ready" }
   | { readonly type: "open-resource"; readonly resourceId: string }
+  | {
+      readonly type: "resource-action";
+      readonly resourceId: string;
+      readonly action: "menu" | "open" | "open-to-side" | "copy-relative-path";
+    }
   | { readonly type: "submit"; readonly text: string }
   | { readonly type: "select-root"; readonly rootId: string }
-  | { readonly type: "select-chat"; readonly sessionId: string }
+  | {
+      readonly type: "select-chat";
+      readonly sessionId: string;
+      readonly turnId?: string;
+    }
   | { readonly type: "search-chats"; readonly query: string }
   | {
       readonly type: "manage-chat";
       readonly sessionId: string;
-      readonly action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete" | "checkpoints";
+      readonly action: "menu" | "rename" | "pin" | "unpin" | "archive" |
+        "restore" | "delete" | "checkpoints" | "duplicate" | "open-to-side" |
+        "export" | "reveal-approval";
     }
   | {
       readonly type: "plan-action";
@@ -53,6 +64,13 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
         type: "open-resource",
         resourceId: requireDigest(value["resourceId"], "resourceId"),
       };
+    case "resource-action":
+      requireKeys(value, ["type", "resourceId", "action"]);
+      return {
+        type: "resource-action",
+        resourceId: requireDigest(value["resourceId"], "resourceId"),
+        action: requireResourceAction(value["action"]),
+      };
     case "submit":
       requireKeys(value, ["type", "text"]);
       return { type: "submit", text: requireBoundedString(value["text"], "text", 64 << 10) };
@@ -63,10 +81,13 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
         rootId: requireRootID(value["rootId"]),
       };
     case "select-chat":
-      requireKeys(value, ["type", "sessionId"]);
+      requireOptionalKeys(value, ["type", "sessionId"], ["turnId"]);
       return {
         type: "select-chat",
         sessionId: requireBoundedString(value["sessionId"], "sessionId", 256),
+        ...(value["turnId"] === undefined
+          ? {}
+          : { turnId: requireBoundedString(value["turnId"], "turnId", 256) }),
       };
     case "search-chats":
       requireKeys(value, ["type", "query"]);
@@ -152,9 +173,24 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
   }
 }
 
+function requireResourceAction(
+  value: unknown,
+): "menu" | "open" | "open-to-side" | "copy-relative-path" {
+  switch (value) {
+    case "menu":
+    case "open":
+    case "open-to-side":
+    case "copy-relative-path":
+      return value;
+    default:
+      throw new Error("invalid Resource action");
+  }
+}
+
 function requireSessionAction(
   value: unknown,
-): "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete" | "checkpoints" {
+): "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete" |
+  "checkpoints" | "duplicate" | "open-to-side" | "export" | "reveal-approval" {
   switch (value) {
     case "menu":
     case "rename":
@@ -164,6 +200,10 @@ function requireSessionAction(
     case "restore":
     case "delete":
     case "checkpoints":
+    case "duplicate":
+    case "open-to-side":
+    case "export":
+    case "reveal-approval":
       return value;
     default:
       throw new Error("invalid Session action");
@@ -188,6 +228,18 @@ function requireAllowedMergeKeys(
 ): void {
   const keys = Object.keys(value);
   if (keys.some((key) => key !== "type" && key !== "planId")) {
+    throw new Error("Webview message contains unexpected fields");
+  }
+}
+
+function requireOptionalKeys(
+  value: Readonly<Record<string, unknown>>,
+  required: readonly string[],
+  optional: readonly string[],
+): void {
+  const allowed = [...required, ...optional];
+  if (Object.keys(value).some((key) => !allowed.includes(key)) ||
+    required.some((key) => !Object.hasOwn(value, key))) {
     throw new Error("Webview message contains unexpected fields");
   }
 }

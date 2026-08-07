@@ -128,9 +128,13 @@ export interface ChatSessionSummary extends RuntimeIdentity {
   readonly provider?: string;
   readonly model?: string;
   readonly mode?: string;
+  readonly executionEnvironment: "local";
+  readonly parentThreadId?: string;
+  readonly latestTurnId?: string;
   readonly pendingApprovals: number;
   readonly pendingInputs: number;
   readonly checkpointCount: number;
+  readonly changedFiles: number;
   readonly totalTokens: number;
   readonly costMicrounits: number;
   readonly costKnown: boolean;
@@ -362,6 +366,43 @@ export class RuntimeController {
     await this.#bindingStore.select(this.rootId, sessionId);
     this.#emitSessionsChange();
     return this.#chatSummary(runtime, summary);
+  }
+
+  public async duplicateChat(sessionId: string): Promise<ChatSessionSummary> {
+    const source = this.sessions().find((session) => session.sessionId === sessionId);
+    if (source === undefined) throw new Error("Chat session is unavailable");
+    const sourceProfile = await this.sessionProfile(sessionId);
+    const created = await this.createChat(`${source.title} · Copy`);
+    try {
+      const target = await this.sessionProfile(created.sessionId);
+      const mutable = new Set(target.capabilities.mutable_fields);
+      const profile = sourceProfile.profile;
+      const patch: SessionProfilePatch = {
+        ...(mutable.has("mode") ? { mode: profile.mode } : {}),
+        ...(mutable.has("reasoning_effort") &&
+          profile.reasoning_effort !== undefined
+          ? { reasoning_effort: profile.reasoning_effort }
+          : {}),
+        ...(mutable.has("enabled_tool_ids")
+          ? { enabled_tool_ids: profile.enabled_tool_ids ?? [] }
+          : {}),
+        ...(mutable.has("approval_posture")
+          ? { approval_posture: profile.approval_posture }
+          : {}),
+        ...(mutable.has("max_steps") ? { max_steps: profile.max_steps } : {}),
+      };
+      if (Object.keys(patch).length > 0) {
+        await this.updateSessionProfile(
+          created.sessionId,
+          target.profile.revision,
+          patch,
+        );
+      }
+      return created;
+    } catch (error) {
+      await this.deleteChat(created.sessionId).catch(() => undefined);
+      throw error;
+    }
   }
 
   public async selectChat(sessionId: string): Promise<void> {
@@ -1038,9 +1079,17 @@ export class RuntimeController {
       ...(summary.provider === undefined ? {} : { provider: summary.provider }),
       ...(summary.model === undefined ? {} : { model: summary.model }),
       ...(summary.mode === undefined ? {} : { mode: summary.mode }),
+      executionEnvironment: "local",
+      ...(summary.parent_thread_id === undefined
+        ? {}
+        : { parentThreadId: summary.parent_thread_id }),
+      ...(summary.latest_turn_id === undefined
+        ? {}
+        : { latestTurnId: summary.latest_turn_id }),
       pendingApprovals: summary.pending_approvals,
       pendingInputs: summary.pending_inputs,
       checkpointCount: summary.checkpoint_count,
+      changedFiles: summary.changed_files,
       totalTokens: summary.total_tokens,
       costMicrounits: summary.cost_microunits,
       costKnown: summary.cost_known,

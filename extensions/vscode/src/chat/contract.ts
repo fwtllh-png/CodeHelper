@@ -28,6 +28,7 @@ export interface ChatRuntimeView {
   readonly selectedRootId: string;
   readonly selectedRootLabel: string;
   readonly selectedSessionId?: string;
+  readonly revealTurnId?: string;
   readonly sessions: readonly ChatSessionView[];
   readonly sessionSearch?: {
     readonly query: string;
@@ -98,6 +99,7 @@ export interface ChatSnapshotMessageOptions {
   readonly selectedRootId: string;
   readonly selectedRootLabel: string;
   readonly sessions: readonly ChatSessionView[];
+  readonly revealTurnId?: string;
   readonly sessionSearch?: {
     readonly query: string;
     readonly sessionIds: readonly string[];
@@ -133,6 +135,9 @@ export function createChatSnapshotMessage(
       ...(selected === undefined
         ? {}
         : { selectedSessionId: selected.sessionId }),
+      ...(options.revealTurnId === undefined
+        ? {}
+        : { revealTurnId: options.revealTurnId }),
       sessions: options.sessions.map((session) => ({ ...session })),
       ...(options.sessionSearch === undefined
         ? {}

@@ -161,7 +161,7 @@ approval, journal, and sandbox enforcement.
 The Runtime is the durable authority for Session discovery and lifecycle state.
 `session/list`, `session/status`, `session/lifecycle/update`, and
 `session/delete` expose Revision-checked summaries and mutations. Search covers
-the title and persisted Turn Item payloads; status combines durable Turn state
+the title, user request, Agent output, path, and symbol evidence; status combines durable Turn state
 with live activity across every Thread in the Session, including pending
 approval and input.
 
@@ -169,6 +169,22 @@ Durable Session summaries never carry transient search state. `session/list`
 returns search matches separately, keyed by Session and Turn with a match kind
 and optional snippet. A Host may cache the durable summary, but must discard or
 replace matches when the query changes.
+
+The Summary also projects the latest immutable Checkpoint changed-file count,
+the local Execution Environment, parent Fork Thread, and latest Turn identity.
+The Rail combines Workspace, Model, Mode, Status, pending/changed/fork activity,
+and text filters. Selecting a Match switches Session and focuses the stable
+Turn article identified by the Runtime.
+
+Session actions use native VS Code UI for Duplicate, Open to Side, Markdown or
+integrity-checked Structured Receipt export, and pending Approval reveal.
+Duplicate copies the Runtime-owned Profile into a new Session; it never replays
+historical Tool, command, network, or file effects. Export is built from the
+Host projection and never reads Webview DOM.
+
+Resource actions continue to submit only an opaque Resource ID. Open, Open to
+Side, and Copy Relative Path all revalidate Root, Scheme, canonical path,
+Range, and Diff membership in the Extension Host before using VS Code APIs.
 
 The Session rail groups Pinned, Today, Yesterday, Previous 7 Days, Older, and
 Archived entries. It supports status filtering and projects workspace,

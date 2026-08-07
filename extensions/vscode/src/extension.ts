@@ -59,6 +59,7 @@ export interface ExtensionAPI {
   readonly runtimeHosts?: () => readonly RuntimeHostSnapshot[];
   readonly chatSessions?: () => readonly ChatSessionSummary[];
   readonly createChat?: () => Promise<ChatSessionSummary>;
+  readonly duplicateChat?: (sessionId: string) => Promise<ChatSessionSummary>;
   readonly renameChat?: (sessionId: string, title: string) => Promise<void>;
   readonly pinChat?: (sessionId: string, pinned: boolean) => Promise<void>;
   readonly archiveChat?: (sessionId: string, archived: boolean) => Promise<void>;
@@ -312,6 +313,8 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
           ),
           chatSessions: () => activeRegistry.selected.controller.sessions(),
           createChat: async () => activeRegistry.selected.controller.createChat(),
+          duplicateChat: async (sessionId) =>
+            activeRegistry.selected.controller.duplicateChat(sessionId),
           renameChat: async (sessionId, title) =>
             activeRegistry.selected.controller.renameChat(sessionId, title),
           pinChat: async (sessionId, pinned) =>
