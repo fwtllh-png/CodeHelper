@@ -85,6 +85,7 @@ export async function run(): Promise<void> {
     );
     await verifyNativeFlows(api);
     await verifyMultipleChats(api);
+    await verifySessionProfile(api);
     await verifyResourceNavigation();
   } else if (scenario === "bundled") {
     assert.equal(vscode.workspace.workspaceFolders?.length, 1);
@@ -666,6 +667,39 @@ async function verifyMultipleChats(api: ExtensionAPI): Promise<void> {
     api.chatSessions().some((session) => session.title === generatedTitle),
     `generated title was not restored: ${JSON.stringify(api.chatSessions())}`,
   );
+}
+
+async function verifySessionProfile(api: ExtensionAPI): Promise<void> {
+  assert.ok(api.chatSessions);
+  assert.ok(api.sessionProfile);
+  assert.ok(api.updateSessionProfile);
+  const selected = api.chatSessions().find((session) => session.selected);
+  assert.ok(selected);
+  const initial = await api.sessionProfile(selected.sessionId);
+  assert.equal(initial.profile.version, 1);
+  assert.equal(initial.profile.revision >= 1, true);
+  assert.equal(
+    initial.capabilities.provider,
+    initial.profile.provider,
+  );
+  const maxSteps = initial.profile.max_steps + 1;
+  const updated = await api.updateSessionProfile(
+    selected.sessionId,
+    initial.profile.revision,
+    { max_steps: maxSteps },
+  );
+  assert.equal(updated.profile.max_steps, maxSteps);
+  assert.equal(updated.profile.revision, initial.profile.revision + 1);
+  assert.equal(updated.prompt_cache_reset, false);
+
+  await vscode.commands.executeCommand("codehelper.restartRuntime");
+  await waitFor(
+    () => api.runtimeSnapshot?.().state === "ready",
+    "Runtime did not recover after Session Profile update",
+  );
+  const recovered = await api.sessionProfile(selected.sessionId);
+  assert.equal(recovered.profile.revision, updated.profile.revision);
+  assert.equal(recovered.profile.max_steps, maxSteps);
 }
 
 interface TestApproval {

@@ -241,6 +241,7 @@ func TestBinaryInteropStructuredInitialize(t *testing.T) {
 	}
 	for _, method := range []string{
 		"session/submit", "session/replay", "session/load",
+		"session/profile/get", "session/profile/update",
 		"thread/list", "thread/get", "task/list", "agent/list", "usage/query",
 	} {
 		if !slices.Contains(negotiated.Methods, method) {
@@ -254,6 +255,66 @@ func TestBinaryInteropStructuredInitialize(t *testing.T) {
 	if _, present := raw["capabilities"]; present {
 		t.Fatalf("boolean capabilities are still advertised: %s", frame.Result)
 	}
+
+	requireResult(t, host.call(t, "down", "shutdown", map[string]any{}))
+	host.wait(t)
+	host.requireClean(t)
+}
+
+func TestBinaryInteropSessionProfileRevisionAndCacheReset(t *testing.T) {
+	host := startHost(t, "testdata/providers/openai")
+	defer host.stop(t)
+	session := host.handshake(t)
+
+	frame := host.call(t, "profile-get", "session/profile/get", map[string]any{
+		"sessionId": session.SessionID,
+	})
+	requireResult(t, frame)
+	var snapshot protocol.SessionProfileSnapshot
+	if err := json.Unmarshal(frame.Result, &snapshot); err != nil {
+		t.Fatalf("decode profile snapshot=%s: %v", frame.Result, err)
+	}
+	if snapshot.Profile.Revision != 1 ||
+		snapshot.Profile.PromptCacheRevision != 1 ||
+		snapshot.Profile.Provider == "" ||
+		snapshot.Profile.Model == "" ||
+		!slices.Contains(snapshot.Capabilities.MutableFields, "mode") {
+		t.Fatalf("profile snapshot = %+v", snapshot)
+	}
+
+	mode := "plan"
+	updatedFrame := host.call(
+		t,
+		"profile-update",
+		"session/profile/update",
+		map[string]any{
+			"sessionId":        session.SessionID,
+			"expectedRevision": snapshot.Profile.Revision,
+			"patch":            protocol.SessionProfilePatch{Mode: &mode},
+		},
+	)
+	requireResult(t, updatedFrame)
+	var updated protocol.SessionProfileUpdateResult
+	if err := json.Unmarshal(updatedFrame.Result, &updated); err != nil {
+		t.Fatalf("decode profile update=%s: %v", updatedFrame.Result, err)
+	}
+	if updated.Profile.Revision != 2 ||
+		updated.Profile.PromptCacheRevision != 2 ||
+		!updated.PromptCacheReset ||
+		updated.ResetReason != "mode" {
+		t.Fatalf("profile update = %+v", updated)
+	}
+	notification := host.next(t)
+	if notification.Method != "session/profile/changed" {
+		t.Fatalf("profile notification = %+v", notification)
+	}
+
+	stale := host.call(t, "profile-stale", "session/profile/update", map[string]any{
+		"sessionId":        session.SessionID,
+		"expectedRevision": 1,
+		"patch":            protocol.SessionProfilePatch{Mode: &mode},
+	})
+	requireErrorCode(t, stale, -32001)
 
 	requireResult(t, host.call(t, "down", "shutdown", map[string]any{}))
 	host.wait(t)

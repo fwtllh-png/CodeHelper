@@ -145,6 +145,7 @@ type Session struct {
 	children           *childRuntime
 	childTools         *childToolsets
 	chatWorkspaces     *chatWorkspaces
+	threads            *app.ThreadManager
 	journal            *workspacejournal.Manager
 	journalRecovery    workspacejournal.Recovery
 	subagents          *subagent.Manager
@@ -793,18 +794,61 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			return out
 		},
 	}
+	approvalPosture := policy.PermissionBypass
+	if securityRuntime != nil {
+		approvalPosture = securityRuntime.Permission
+	} else if options.Permission != "" {
+		approvalPosture = policy.Permission(options.Permission)
+	}
+	defaultProfile := protocol.SessionProfile{
+		Version:             protocol.SessionProfileVersion,
+		Revision:            1,
+		Mode:                execution.Mode,
+		Provider:            route.ProviderID(),
+		Model:               route.Model().ID,
+		ReasoningEffort:     execution.ReasoningEffort,
+		ApprovalPosture:     string(approvalPosture),
+		ExecutionTarget:     "local",
+		MaxSteps:            execution.MaxSteps,
+		PromptCacheRevision: 1,
+	}
+	modelCapabilities := route.Model().Capabilities
+	mutableProfileFields := []string{"mode", "approval_posture", "max_steps"}
+	var reasoningEfforts []string
+	if modelCapabilities.Reasoning {
+		mutableProfileFields = append(mutableProfileFields, "reasoning_effort")
+		reasoningEfforts = []string{"minimal", "low", "medium", "high", "xhigh"}
+	}
+	profileCapabilities := protocol.SessionProfileCapabilities{
+		Provider: defaultProfile.Provider,
+		Model:    defaultProfile.Model,
+		ModelCapabilities: protocol.ModelCapabilities{
+			Streaming:        modelCapabilities.Streaming,
+			Reasoning:        modelCapabilities.Reasoning,
+			ToolCalls:        modelCapabilities.ToolCalls,
+			NativeSearch:     modelCapabilities.NativeSearch,
+			Vision:           modelCapabilities.Vision,
+			ImageInput:       modelCapabilities.ImageInput,
+			PromptCache:      modelCapabilities.PromptCache,
+			ReasoningEfforts: reasoningEfforts,
+		},
+		MutableFields: mutableProfileFields,
+	}
 	// Shared Guard is intentionally not passed into seedOptions: each thread
 	// Engine allocates its own Guard so approval handlers stay isolated.
 	// OnNetworkAllow still points at the session egress Gate so a mid-flight
 	// host approval actually Grants Dial, not just the approval cache.
 	workspaceIdentity := options.WorkspaceIdentity
 	threadManager := app.NewThreadManager(func() (*app.EngineAdapter, error) {
-		worker, err := agentengine.New(seedOptions)
+		threadOptions := seedOptions
+		threadOptions.Security = cloneThreadSecurity(seedOptions.Security)
+		worker, err := agentengine.New(threadOptions)
 		if err != nil {
 			return nil, err
 		}
 		return adaptEngine(worker, workspaceIdentity), nil
 	})
+	session.threads = threadManager
 	threadManager.SetChildFactory(func(spec app.ChildSpec) (*app.EngineAdapter, error) {
 		options := childEngineOptions(seedOptions, spec, securityRuntime)
 		if !spec.ReadOnly && !spec.Serialized {
@@ -882,6 +926,8 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			OperationBuffer:  snapshot.Config.Runtime.OperationBuffer,
 			SubscriberBuffer: snapshot.Config.Runtime.SubscriberBuffer,
 			Metrics:          session.metrics, Logger: session.logger,
+			DefaultProfile:      defaultProfile,
+			ProfileCapabilities: profileCapabilities,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create persistent runtime: %w", err)
@@ -906,6 +952,17 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		return nil, err
 	}
 	return session, nil
+}
+
+func cloneThreadSecurity(source *policy.Runtime) *policy.Runtime {
+	if source == nil {
+		return nil
+	}
+	cloned := *source
+	cloned.Grants = append([]policy.Rule(nil), source.Grants...)
+	cloned.Repository = append([]policy.Rule(nil), source.Repository...)
+	cloned.Approvals = policy.NewApprovalCache()
+	return &cloned
 }
 
 func adaptEngine(

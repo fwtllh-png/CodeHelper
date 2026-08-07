@@ -421,6 +421,42 @@ func (h *contractACPHost) ReadState(ctx context.Context) (contract.ReadState, er
 	return result, nil
 }
 
+func (h *contractACPHost) SessionProfile(
+	ctx context.Context,
+) (protocol.SessionProfileSnapshot, error) {
+	data, err := h.call(ctx, "session/profile/get", map[string]any{
+		"sessionId": h.sessionID,
+	})
+	if err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	var result protocol.SessionProfileSnapshot
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) UpdateSessionProfile(
+	ctx context.Context,
+	expectedRevision uint64,
+	patch protocol.SessionProfilePatch,
+) (protocol.SessionProfileUpdateResult, error) {
+	data, err := h.call(ctx, "session/profile/update", map[string]any{
+		"sessionId":        h.sessionID,
+		"expectedRevision": expectedRevision,
+		"patch":            patch,
+	})
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	var result protocol.SessionProfileUpdateResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	return result, nil
+}
+
 func (h *contractACPHost) call(
 	ctx context.Context, method string, params any,
 ) (json.RawMessage, error) {

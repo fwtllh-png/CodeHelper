@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -69,6 +70,42 @@ func (a *EngineAdapter) History() []provider.Message {
 		return nil
 	}
 	return a.engine.History()
+}
+
+func (a *EngineAdapter) ValidateSessionProfile(
+	profile protocol.SessionProfile,
+) error {
+	if a == nil || a.engine == nil {
+		return errors.New("engine is unavailable")
+	}
+	return a.engine.ValidateSessionProfile(profile)
+}
+
+func (a *EngineAdapter) ApplySessionProfile(
+	profile protocol.SessionProfile,
+) error {
+	if a == nil || a.engine == nil {
+		return errors.New("engine is unavailable")
+	}
+	return a.engine.ApplySessionProfile(profile)
+}
+
+func (a *EngineAdapter) SetPolicyMode(mode policy.Mode) {
+	if a != nil && a.engine != nil {
+		a.engine.SetPolicyMode(mode)
+	}
+}
+
+func (a *EngineAdapter) SetPermission(permission policy.Permission) {
+	if a != nil && a.engine != nil {
+		a.engine.SetPermission(permission)
+	}
+}
+
+func (a *EngineAdapter) SetGranular(granular policy.Granular) {
+	if a != nil && a.engine != nil {
+		a.engine.SetGranular(granular)
+	}
 }
 
 func AdaptEngine(value *agentengine.Engine) *EngineAdapter {

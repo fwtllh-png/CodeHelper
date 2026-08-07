@@ -21,12 +21,14 @@ import (
 )
 
 type PersistentRuntimeOptions struct {
-	Store            *state.Store
-	Engine           app.Engine
-	OperationBuffer  int
-	SubscriberBuffer int
-	Metrics          *telemetry.Metrics
-	Logger           *slog.Logger
+	Store               *state.Store
+	Engine              app.Engine
+	OperationBuffer     int
+	SubscriberBuffer    int
+	Metrics             *telemetry.Metrics
+	Logger              *slog.Logger
+	DefaultProfile      protocol.SessionProfile
+	ProfileCapabilities protocol.SessionProfileCapabilities
 }
 
 type PersistentRepositories struct {
@@ -67,7 +69,7 @@ func NewPersistentRuntime(
 	if _, err := repositories.Tasks.RecoverInterrupted(ctx, time.Time{}); err != nil {
 		return nil, fmt.Errorf("recover interrupted tasks: %w", err)
 	}
-	return app.NewRuntimeWithRecovery(ctx, app.Options{
+	runtimeOptions := app.Options{
 		Engine:           options.Engine,
 		EventStore:       options.Store,
 		ContentStore:     options.Store.Content(),
@@ -76,7 +78,13 @@ func NewPersistentRuntime(
 		SubscriberBuffer: options.SubscriberBuffer,
 		Metrics:          options.Metrics,
 		Logger:           options.Logger,
-	})
+	}
+	if options.DefaultProfile.Version != 0 {
+		runtimeOptions.SessionProfiles = repositories.Sessions
+		runtimeOptions.DefaultProfile = options.DefaultProfile
+		runtimeOptions.ProfileCapabilities = options.ProfileCapabilities
+	}
+	return app.NewRuntimeWithRecovery(ctx, runtimeOptions)
 }
 
 // EnsureThread creates workspace/session/thread seed rows when missing so

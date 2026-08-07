@@ -69,6 +69,13 @@ func GenerateSchema() *Schema {
 	schema.Envelope["event"] = eventEnvelopeSchema()
 	schema.Envelope["problem"] = schemaOf(reflect.TypeOf(&Problem{}))
 	schema.Envelope["readiness"] = schemaOf(reflect.TypeOf(&Readiness{}))
+	schema.Envelope["session_profile_snapshot"] = schemaOf(
+		reflect.TypeOf(&SessionProfileSnapshot{}),
+	)
+	schema.Envelope["session_profile_patch"] = schemaOf(reflect.TypeOf(&SessionProfilePatch{}))
+	schema.Envelope["session_profile_update"] = schemaOf(
+		reflect.TypeOf(&SessionProfileUpdateResult{}),
+	)
 	return schema
 }
 

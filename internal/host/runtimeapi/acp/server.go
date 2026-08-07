@@ -61,7 +61,7 @@ var methods = []string{
 	"thread/list", "thread/get", "task/list", "agent/list", "usage/query",
 	"session/new", "session/load", "session/prompt", "session/submit",
 	"session/replay", "session/history", "session/cancel", "session/merge",
-	"session/rename", "shutdown",
+	"session/rename", "session/profile/get", "session/profile/update", "shutdown",
 }
 
 var dynamicMethods = []string{
@@ -475,6 +475,10 @@ func (s *Server) dispatch(request rpcRequest) bool {
 		s.sessionMerge(request)
 	case "session/rename":
 		s.sessionRename(request)
+	case "session/profile/get":
+		s.sessionProfileGet(request)
+	case "session/profile/update":
+		s.sessionProfileUpdate(request)
 	case "tool/catalog":
 		s.dynamicCatalog(request)
 	case "tool/register":
@@ -1117,6 +1121,16 @@ func (s *Server) sessionNew(request rpcRequest) {
 		Provider: s.options.ProviderID, Model: s.options.ModelID,
 		Isolation: params.Isolation,
 	}
+	if s.dependencies.Runtime.SessionProfilesAvailable() {
+		if _, err := s.dependencies.Runtime.RestoreSessionProfile(
+			s.ctx,
+			binding.ID,
+			binding.ThreadID,
+		); err != nil {
+			s.replyApplicationError(request, err)
+			return
+		}
+	}
 	s.bind(binding)
 	s.replyResult(request, map[string]any{
 		"sessionId": sessionID, "threadId": threadID,
@@ -1196,6 +1210,16 @@ func (s *Server) sessionLoad(request rpcRequest) {
 		Provider: s.options.ProviderID, Model: s.options.ModelID,
 		Isolation: isolation,
 	}
+	if s.dependencies.Runtime.SessionProfilesAvailable() {
+		if _, err := s.dependencies.Runtime.RestoreSessionProfile(
+			s.ctx,
+			binding.ID,
+			binding.ThreadID,
+		); err != nil {
+			s.replyApplicationError(request, err)
+			return
+		}
+	}
 	s.bind(binding)
 	s.replyResult(request, map[string]any{
 		"sessionId": binding.ID, "threadId": binding.ThreadID,
@@ -1250,6 +1274,65 @@ func (s *Server) sessionRename(request rpcRequest) {
 		"sessionId": binding.ID,
 		"threadId":  binding.ThreadID,
 		"title":     title,
+	})
+}
+
+type sessionProfileParams struct {
+	SessionID string `json:"sessionId"`
+}
+
+func (s *Server) sessionProfileGet(request rpcRequest) {
+	var params sessionProfileParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	profile, err := s.dependencies.Runtime.SessionProfile(s.ctx, binding.ID)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, profile)
+}
+
+type sessionProfileUpdateParams struct {
+	SessionID        string                       `json:"sessionId"`
+	ExpectedRevision uint64                       `json:"expectedRevision"`
+	Patch            protocol.SessionProfilePatch `json:"patch"`
+}
+
+func (s *Server) sessionProfileUpdate(request rpcRequest) {
+	var params sessionProfileUpdateParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	updated, err := s.dependencies.Runtime.UpdateSessionProfile(
+		s.ctx,
+		binding.ID,
+		binding.ThreadID,
+		params.ExpectedRevision,
+		params.Patch,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, updated)
+	_ = s.writeNotification("session/profile/changed", map[string]any{
+		"sessionId":        binding.ID,
+		"threadId":         binding.ThreadID,
+		"profile":          updated.Profile,
+		"promptCacheReset": updated.PromptCacheReset,
+		"resetReason":      updated.ResetReason,
 	})
 }
 
@@ -2110,7 +2193,8 @@ func (s *Server) replyApplicationError(request rpcRequest, err error) {
 	code := codeInternalError
 	switch {
 	case errors.Is(err, threadstate.ErrActiveTurn),
-		errors.Is(err, app.ErrOperationConflict):
+		errors.Is(err, app.ErrOperationConflict),
+		errors.Is(err, sessionstate.ErrProfileRevisionConflict):
 		code = codeConflict
 	case protocol.CodeOf(err) == protocol.CodeInvalidArgument:
 		code = codeInvalidParams

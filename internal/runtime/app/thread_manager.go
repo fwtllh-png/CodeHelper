@@ -10,6 +10,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 // ThreadManager routes Engine operations to a per-ThreadID EngineAdapter so
@@ -195,6 +196,56 @@ func (m *ThreadManager) ReplyInput(
 		return err
 	}
 	return adapter.ReplyInput(ctx, payload, sink)
+}
+
+func (m *ThreadManager) ValidateSessionProfile(
+	threadID protocol.ThreadID,
+	profile protocol.SessionProfile,
+) error {
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return err
+	}
+	return adapter.ValidateSessionProfile(profile)
+}
+
+func (m *ThreadManager) ApplySessionProfile(
+	threadID protocol.ThreadID,
+	profile protocol.SessionProfile,
+) error {
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return err
+	}
+	return adapter.ApplySessionProfile(profile)
+}
+
+func (m *ThreadManager) SetPolicyMode(mode policy.Mode) {
+	for _, adapter := range m.adapters() {
+		adapter.SetPolicyMode(mode)
+	}
+}
+
+func (m *ThreadManager) SetPermission(permission policy.Permission) {
+	for _, adapter := range m.adapters() {
+		adapter.SetPermission(permission)
+	}
+}
+
+func (m *ThreadManager) SetGranular(granular policy.Granular) {
+	for _, adapter := range m.adapters() {
+		adapter.SetGranular(granular)
+	}
+}
+
+func (m *ThreadManager) adapters() []*EngineAdapter {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]*EngineAdapter, 0, len(m.threads))
+	for _, adapter := range m.threads {
+		result = append(result, adapter)
+	}
+	return result
 }
 
 func (m *ThreadManager) CompactThread(

@@ -14,6 +14,11 @@ import type {
   ChatSessionSummary,
   RuntimeHostSnapshot,
 } from "./runtime/controller.js";
+import type {
+  SessionProfilePatch,
+  SessionProfileSnapshot,
+  SessionProfileUpdate,
+} from "./runtime/session.js";
 import { registerDiagnosticActions } from "./diagnostics/actions.js";
 import { ChangesView, unavailableChangesView } from "./edits/changes.js";
 import { EditPlanPreview } from "./edits/preview.js";
@@ -46,6 +51,12 @@ export interface ExtensionAPI {
   readonly runtimeHosts?: () => readonly RuntimeHostSnapshot[];
   readonly chatSessions?: () => readonly ChatSessionSummary[];
   readonly createChat?: () => Promise<ChatSessionSummary>;
+  readonly sessionProfile?: (sessionId: string) => Promise<SessionProfileSnapshot>;
+  readonly updateSessionProfile?: (
+    sessionId: string,
+    expectedRevision: number,
+    patch: SessionProfilePatch,
+  ) => Promise<SessionProfileUpdate>;
   readonly chatWebviewReady?: () => boolean;
   readonly onRootRuntimeEvent?: (
     listener: (
@@ -260,6 +271,14 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
           ),
           chatSessions: () => activeRegistry.selected.controller.sessions(),
           createChat: async () => activeRegistry.selected.controller.createChat(),
+          sessionProfile: async (sessionId) =>
+            activeRegistry.selected.controller.sessionProfile(sessionId),
+          updateSessionProfile: async (sessionId, expectedRevision, patch) =>
+            activeRegistry.selected.controller.updateSessionProfile(
+              sessionId,
+              expectedRevision,
+              patch,
+            ),
           chatWebviewReady: () => chatView?.webviewReady ?? false,
           onRootRuntimeEvent: (
             listener: (

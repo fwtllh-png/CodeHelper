@@ -173,7 +173,11 @@ function releaseArtifact(content: Uint8Array): ReleaseArtifact {
     acpProtocolMin: 1,
     acpProtocolMax: 2,
     operationSchemaVersion: 1,
-    requiredFeatures: ["editor_context_v2", "workspace_identity_v1"],
+    requiredFeatures: [
+      "editor_context_v2",
+      "session_profile_v1",
+      "workspace_identity_v1",
+    ],
     extensionVersionRange: ">=0.0.1 <0.1.0",
     sbomSha256: "b".repeat(64),
     provenanceSha256: "c".repeat(64),

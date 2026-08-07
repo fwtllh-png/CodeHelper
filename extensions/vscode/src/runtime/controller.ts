@@ -29,6 +29,9 @@ import {
   type ApprovalDecision,
   type ApprovalScope,
   type EditorContextReference,
+  type SessionProfilePatch,
+  type SessionProfileSnapshot,
+  type SessionProfileUpdate,
   type SubmitReceipt,
 } from "./session.js";
 import { assertCompatibleBinary } from "../compatibility/policy.js";
@@ -362,6 +365,20 @@ export class RuntimeController {
     answer: string,
   ): Promise<SubmitReceipt> {
     return this.#commands(sessionId).replyInput(turnId, requestId, answer);
+  }
+
+  public async sessionProfile(
+    sessionId: string,
+  ): Promise<SessionProfileSnapshot> {
+    return this.#commands(sessionId).profile();
+  }
+
+  public async updateSessionProfile(
+    sessionId: string,
+    expectedRevision: number,
+    patch: SessionProfilePatch,
+  ): Promise<SessionProfileUpdate> {
+    return this.#commands(sessionId).updateProfile(expectedRevision, patch);
   }
 
   public async mergeChat(

@@ -1,0 +1,192 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+type memoryProfileStore struct {
+	mu      sync.Mutex
+	profile protocol.SessionProfile
+	writes  int
+}
+
+func (s *memoryProfileStore) Profile(
+	context.Context,
+	string,
+	protocol.SessionProfile,
+) (protocol.SessionProfile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.profile, nil
+}
+
+func (s *memoryProfileStore) EnsureProfile(
+	ctx context.Context,
+	sessionID string,
+	defaults protocol.SessionProfile,
+) (protocol.SessionProfile, error) {
+	return s.Profile(ctx, sessionID, defaults)
+}
+
+func (s *memoryProfileStore) UpdateProfile(
+	_ context.Context,
+	_ string,
+	expected uint64,
+	_ protocol.SessionProfile,
+	patch protocol.SessionProfilePatch,
+) (protocol.SessionProfileUpdateResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if expected != s.profile.Revision {
+		return protocol.SessionProfileUpdateResult{}, errors.New("stale revision")
+	}
+	updated, err := protocol.ApplySessionProfilePatch(s.profile, patch)
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	s.profile = updated.Profile
+	s.writes++
+	return updated, nil
+}
+
+type profileTestEngine struct {
+	testEngine
+	mu      sync.Mutex
+	applied protocol.SessionProfile
+}
+
+func (e *profileTestEngine) ValidateSessionProfile(
+	_ protocol.ThreadID,
+	profile protocol.SessionProfile,
+) error {
+	return profile.Validate()
+}
+
+func (e *profileTestEngine) ApplySessionProfile(
+	_ protocol.ThreadID,
+	profile protocol.SessionProfile,
+) error {
+	e.mu.Lock()
+	e.applied = profile
+	e.mu.Unlock()
+	return nil
+}
+
+func TestSessionProfileUpdateRejectsActiveTurnBeforePersistence(t *testing.T) {
+	defaults := runtimeTestProfile()
+	store := &memoryProfileStore{profile: defaults}
+	engine := &profileTestEngine{testEngine: testEngine{block: true}}
+	runtime := NewRuntime(Options{
+		Engine:              engine,
+		SessionProfiles:     store,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: "thread-profile",
+		TurnID:   "turn-profile",
+		ItemID:   "item-profile",
+		Prompt:   "wait",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	if event := receiveEvent(t, events); event.Kind != protocol.EventTurnStarted {
+		t.Fatalf("first event = %s", event.Kind)
+	}
+	mode := "plan"
+	_, err = runtime.UpdateSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+		1,
+		protocol.SessionProfilePatch{Mode: &mode},
+	)
+	if protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("active update error = %v", err)
+	}
+	if store.writes != 0 {
+		t.Fatalf("active update persisted %d writes", store.writes)
+	}
+}
+
+func TestSessionProfileUpdateAppliesRevisionAndCacheReset(t *testing.T) {
+	defaults := runtimeTestProfile()
+	store := &memoryProfileStore{profile: defaults}
+	engine := &profileTestEngine{}
+	runtime := NewRuntime(Options{
+		Engine:              engine,
+		SessionProfiles:     store,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	mode := "plan"
+	updated, err := runtime.UpdateSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+		1,
+		protocol.SessionProfilePatch{Mode: &mode},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Profile.Revision != 2 || !updated.PromptCacheReset {
+		t.Fatalf("updated profile = %+v", updated)
+	}
+	engine.mu.Lock()
+	applied := engine.applied
+	engine.mu.Unlock()
+	if applied.Revision != 2 || applied.Mode != mode {
+		t.Fatalf("applied profile = %+v", applied)
+	}
+}
+
+func runtimeTestProfile() protocol.SessionProfile {
+	return protocol.SessionProfile{
+		Version:             protocol.SessionProfileVersion,
+		Revision:            1,
+		Mode:                "act",
+		Provider:            "fixture",
+		Model:               "fixture-model",
+		ApprovalPosture:     "suggest",
+		ExecutionTarget:     "local",
+		MaxSteps:            32,
+		PromptCacheRevision: 1,
+	}
+}
+
+func runtimeTestCapabilities(
+	profile protocol.SessionProfile,
+) protocol.SessionProfileCapabilities {
+	return protocol.SessionProfileCapabilities{
+		Provider: profile.Provider,
+		Model:    profile.Model,
+		ModelCapabilities: protocol.ModelCapabilities{
+			Streaming:        true,
+			Reasoning:        true,
+			PromptCache:      true,
+			ReasoningEfforts: []string{"low", "medium", "high"},
+		},
+		MutableFields: []string{
+			"mode",
+			"reasoning_effort",
+			"approval_posture",
+			"max_steps",
+		},
+	}
+}

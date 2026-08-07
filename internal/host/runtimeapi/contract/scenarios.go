@@ -66,6 +66,13 @@ func Scenarios() []Scenario {
 			Run: readModelsExposeCompletedThread,
 		},
 		{
+			Name: "session profile revision and cache reset are shared",
+			Setup: func(t *testing.T) Setup {
+				return Setup{Fixture: fixturePath(t, "openai"), Prompt: "say hello"}
+			},
+			Run: sessionProfileRevisionIsShared,
+		},
+		{
 			Name:  "editor context receipts are shared and durable",
 			Setup: editorContextSetup,
 			Run:   editorContextReceiptsAreSharedAndDurable,
@@ -136,6 +143,52 @@ func Scenarios() []Scenario {
 			},
 			Run: approvalParksAndResumes,
 		},
+	}
+}
+
+func sessionProfileRevisionIsShared(t *testing.T, host Host, _ Setup) {
+	snapshot, err := host.SessionProfile(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Profile.Revision == 0 ||
+		snapshot.Profile.PromptCacheRevision == 0 ||
+		snapshot.Profile.Provider == "" ||
+		snapshot.Profile.Model == "" ||
+		snapshot.Capabilities.Provider != snapshot.Profile.Provider ||
+		snapshot.Capabilities.Model != snapshot.Profile.Model {
+		t.Fatalf("%s: session profile = %+v", host.Transport(), snapshot)
+	}
+	mode := "plan"
+	updated, err := host.UpdateSessionProfile(
+		t.Context(),
+		snapshot.Profile.Revision,
+		protocol.SessionProfilePatch{Mode: &mode},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Profile.Revision != snapshot.Profile.Revision+1 ||
+		updated.Profile.PromptCacheRevision !=
+			snapshot.Profile.PromptCacheRevision+1 ||
+		!updated.PromptCacheReset ||
+		updated.ResetReason != "mode" {
+		t.Fatalf("%s: profile update = %+v", host.Transport(), updated)
+	}
+	if _, err := host.UpdateSessionProfile(
+		t.Context(),
+		snapshot.Profile.Revision,
+		protocol.SessionProfilePatch{Mode: &mode},
+	); err == nil {
+		t.Fatalf("%s: stale session profile revision was accepted", host.Transport())
+	}
+	recovered, err := host.SessionProfile(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Profile.Revision != updated.Profile.Revision ||
+		recovered.Profile.Mode != mode {
+		t.Fatalf("%s: recovered profile = %+v", host.Transport(), recovered)
 	}
 }
 

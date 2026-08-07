@@ -67,6 +67,13 @@ Recovery、Completed，并显示可用的下一步动作。`Ctrl+Enter`/`Cmd+Ent
 `Escape` 停止。Visible Focus、Screen-reader Live Region、Host Theme Token、Forced
 Color 与 Reduced Motion 都是被测试的契约，不是可选样式。
 
+## Session Profile 契约
+
+Session Profile 是 Runtime-owned Durable State。VS Code 通过 ACP 严格解码 Profile、
+Revision、Capability 和 Prompt Cache Reset 结果，不把它们复制到 BindingStore 或
+Webview State。更新使用乐观并发控制，Owning Thread 存在 Active Turn 时拒绝；只有
+当前 Runtime 广告为 Mutable 的字段可以变化。
+
 ## 原生资源导航
 
 Runtime 确认的 Context Receipt、Context Selection 与 Edit Plan 在 Chat Projection

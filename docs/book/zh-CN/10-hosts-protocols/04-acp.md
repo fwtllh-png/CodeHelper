@@ -51,6 +51,10 @@ Dynamic Tool 和 Notification。Replay Page/Live Notification 保持 Cursor 语�
 Contract Test 覆盖 Start、Stream、Approve、Input、Cancel、Verify、Recover 和 Receipt，
 不定义 ACP 专属 Turn Loop。
 
+Session Profile Query/Update 使用同一份 Runtime-owned Durable State。更新携带
+`expectedRevision`，Session Thread 存在 Active Turn 时失败，并返回显式 Prompt Cache
+Reset 结果。Capability Projection 防止 Host 展示当前 Runtime 无法应用的配置。
+
 EOF/Shutdown 具有状态：Reject Final Half-line，按协议处理 Active Turn，给 Pending Call
 Terminal Error，并确定性关闭 Resource。
 

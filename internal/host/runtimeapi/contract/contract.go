@@ -105,6 +105,12 @@ type Host interface {
 	// reconnected with a stored cursor reads them.
 	History(ctx context.Context, since protocol.Cursor, limit int) ([]protocol.Event, error)
 	ReadState(ctx context.Context) (ReadState, error)
+	SessionProfile(ctx context.Context) (protocol.SessionProfileSnapshot, error)
+	UpdateSessionProfile(
+		ctx context.Context,
+		expectedRevision uint64,
+		patch protocol.SessionProfilePatch,
+	) (protocol.SessionProfileUpdateResult, error)
 	RegisterDynamic(
 		ctx context.Context,
 		spec protocol.DynamicToolSpec,

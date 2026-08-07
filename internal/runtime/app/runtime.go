@@ -69,17 +69,37 @@ type Engine interface {
 	RevertTurn(context.Context, *protocol.RevertTurnPayload, EngineSink) error
 }
 
+type SessionProfileStore interface {
+	Profile(context.Context, string, protocol.SessionProfile) (protocol.SessionProfile, error)
+	EnsureProfile(context.Context, string, protocol.SessionProfile) (protocol.SessionProfile, error)
+	UpdateProfile(
+		context.Context,
+		string,
+		uint64,
+		protocol.SessionProfile,
+		protocol.SessionProfilePatch,
+	) (protocol.SessionProfileUpdateResult, error)
+}
+
+type SessionProfileEngine interface {
+	ValidateSessionProfile(protocol.ThreadID, protocol.SessionProfile) error
+	ApplySessionProfile(protocol.ThreadID, protocol.SessionProfile) error
+}
+
 type Options struct {
-	OperationBuffer  int
-	EventHistory     int
-	SubscriberBuffer int
-	Engine           Engine
-	EventStore       EventStore
-	ContentStore     ContentStore
-	Lifecycle        DurableLifecycle
-	Recovery         *RecoveryState
-	Metrics          *telemetry.Metrics
-	Logger           *slog.Logger
+	OperationBuffer     int
+	EventHistory        int
+	SubscriberBuffer    int
+	Engine              Engine
+	EventStore          EventStore
+	ContentStore        ContentStore
+	Lifecycle           DurableLifecycle
+	Recovery            *RecoveryState
+	Metrics             *telemetry.Metrics
+	Logger              *slog.Logger
+	SessionProfiles     SessionProfileStore
+	DefaultProfile      protocol.SessionProfile
+	ProfileCapabilities protocol.SessionProfileCapabilities
 }
 
 type Snapshot struct {
@@ -101,15 +121,18 @@ type acceptedOperation struct {
 }
 
 type Runtime struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	opts      Options
-	engine    Engine
-	events    EventStore
-	content   ContentStore
-	lifecycle DurableLifecycle
-	metrics   *telemetry.Metrics
-	logger    *slog.Logger
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	opts                Options
+	engine              Engine
+	events              EventStore
+	content             ContentStore
+	lifecycle           DurableLifecycle
+	metrics             *telemetry.Metrics
+	logger              *slog.Logger
+	profiles            SessionProfileStore
+	defaultProfile      protocol.SessionProfile
+	profileCapabilities protocol.SessionProfileCapabilities
 
 	operations chan acceptedOperation
 	done       chan struct{}
@@ -170,6 +193,14 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	if options.ContentStore == nil {
 		options.ContentStore = NewMemoryContentStore()
 	}
+	if options.SessionProfiles != nil {
+		if err := options.DefaultProfile.Validate(); err != nil {
+			return nil, fmt.Errorf("default session profile: %w", err)
+		}
+		if err := options.ProfileCapabilities.Validate(options.DefaultProfile); err != nil {
+			return nil, fmt.Errorf("session profile capabilities: %w", err)
+		}
+	}
 	recovery := options.Recovery
 	if recoverDurable && options.Lifecycle != nil {
 		value, err := options.Lifecycle.Recover(ctx)
@@ -180,31 +211,34 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	}
 	runtimeContext, cancel := context.WithCancel(context.Background())
 	runtime := &Runtime{
-		ctx:           runtimeContext,
-		cancel:        cancel,
-		opts:          options,
-		engine:        options.Engine,
-		events:        options.EventStore,
-		content:       options.ContentStore,
-		lifecycle:     options.Lifecycle,
-		metrics:       options.Metrics,
-		logger:        options.Logger,
-		operations:    make(chan acceptedOperation, options.OperationBuffer),
-		done:          make(chan struct{}),
-		subscribers:   make(map[uint64]chan protocol.Event),
-		terminals:     make(map[protocol.TurnID]protocol.EventKind),
-		approvals:     make(map[string]PendingApproval),
-		inputs:        make(map[string]PendingInput),
-		accepted:      make(map[protocol.OperationID]PendingOperation),
-		acceptedKeys:  make(map[string]protocol.OperationID),
-		committed:     make(map[protocol.OperationID]PendingOperation),
-		active:        make(map[protocol.TurnID]context.CancelFunc),
-		activeThreads: make(map[protocol.ThreadID]protocol.TurnID),
-		cancels:       make(map[protocol.TurnID]cancelRecord),
-		toolItems:     make(map[string]protocol.ItemID),
-		approvalItems: make(map[string]protocol.ItemID),
-		inputItems:    make(map[string]protocol.ItemID),
-		accepting:     true,
+		ctx:                 runtimeContext,
+		cancel:              cancel,
+		opts:                options,
+		engine:              options.Engine,
+		events:              options.EventStore,
+		content:             options.ContentStore,
+		lifecycle:           options.Lifecycle,
+		metrics:             options.Metrics,
+		logger:              options.Logger,
+		profiles:            options.SessionProfiles,
+		defaultProfile:      options.DefaultProfile,
+		profileCapabilities: options.ProfileCapabilities,
+		operations:          make(chan acceptedOperation, options.OperationBuffer),
+		done:                make(chan struct{}),
+		subscribers:         make(map[uint64]chan protocol.Event),
+		terminals:           make(map[protocol.TurnID]protocol.EventKind),
+		approvals:           make(map[string]PendingApproval),
+		inputs:              make(map[string]PendingInput),
+		accepted:            make(map[protocol.OperationID]PendingOperation),
+		acceptedKeys:        make(map[string]protocol.OperationID),
+		committed:           make(map[protocol.OperationID]PendingOperation),
+		active:              make(map[protocol.TurnID]context.CancelFunc),
+		activeThreads:       make(map[protocol.ThreadID]protocol.TurnID),
+		cancels:             make(map[protocol.TurnID]cancelRecord),
+		toolItems:           make(map[string]protocol.ItemID),
+		approvalItems:       make(map[string]protocol.ItemID),
+		inputItems:          make(map[string]protocol.ItemID),
+		accepting:           true,
 	}
 	if last, err := runtime.events.LastSequence(context.Background()); err == nil {
 		runtime.lastSequence = last
@@ -214,6 +248,189 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	}
 	go runtime.loop()
 	return runtime, nil
+}
+
+func (r *Runtime) SessionProfile(
+	ctx context.Context,
+	sessionID string,
+) (protocol.SessionProfileSnapshot, error) {
+	if r.profiles == nil {
+		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session profiles are unavailable",
+			false,
+			nil,
+		)
+	}
+	profile, err := r.profiles.EnsureProfile(ctx, sessionID, r.defaultProfile)
+	if err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	capabilities := r.profileCapabilities
+	capabilities.Provider = profile.Provider
+	capabilities.Model = profile.Model
+	if err := capabilities.Validate(profile); err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	return protocol.SessionProfileSnapshot{
+		Profile:      profile,
+		Capabilities: capabilities,
+	}, nil
+}
+
+func (r *Runtime) SessionProfilesAvailable() bool {
+	return r != nil && r.profiles != nil
+}
+
+func (r *Runtime) RestoreSessionProfile(
+	ctx context.Context,
+	sessionID string,
+	threadID protocol.ThreadID,
+) (protocol.SessionProfileSnapshot, error) {
+	snapshot, err := r.SessionProfile(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	controller, ok := r.engine.(SessionProfileEngine)
+	if !ok {
+		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session profile updates are unsupported by this engine",
+			false,
+			nil,
+		)
+	}
+	r.activeMu.Lock()
+	defer r.activeMu.Unlock()
+	if _, active := r.activeThreads[threadID]; active {
+		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
+			protocol.CodeConflict,
+			"session profile cannot be restored while its thread has an active turn",
+			true,
+			nil,
+		)
+	}
+	if err := controller.ValidateSessionProfile(threadID, snapshot.Profile); err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	if err := controller.ApplySessionProfile(threadID, snapshot.Profile); err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	return snapshot, nil
+}
+
+func (r *Runtime) UpdateSessionProfile(
+	ctx context.Context,
+	sessionID string,
+	threadID protocol.ThreadID,
+	expectedRevision uint64,
+	patch protocol.SessionProfilePatch,
+) (protocol.SessionProfileUpdateResult, error) {
+	if r.profiles == nil {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session profiles are unavailable",
+			false,
+			nil,
+		)
+	}
+	controller, ok := r.engine.(SessionProfileEngine)
+	if !ok {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session profile updates are unsupported by this engine",
+			false,
+			nil,
+		)
+	}
+	r.activeMu.Lock()
+	defer r.activeMu.Unlock()
+	if _, active := r.activeThreads[threadID]; active {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeConflict,
+			"session profile cannot change while its thread has an active turn",
+			true,
+			nil,
+		)
+	}
+	current, err := r.profiles.Profile(ctx, sessionID, r.defaultProfile)
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	candidate, err := protocol.ApplySessionProfilePatch(current, patch)
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			err.Error(),
+			false,
+			err,
+		)
+	}
+	if err := validateMutableProfilePatch(
+		patch,
+		r.profileCapabilities.MutableFields,
+	); err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	if err := controller.ValidateSessionProfile(threadID, candidate.Profile); err != nil {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			err.Error(),
+			false,
+			err,
+		)
+	}
+	updated, err := r.profiles.UpdateProfile(
+		ctx,
+		sessionID,
+		expectedRevision,
+		r.defaultProfile,
+		patch,
+	)
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	if err := controller.ApplySessionProfile(threadID, updated.Profile); err != nil {
+		return protocol.SessionProfileUpdateResult{}, fmt.Errorf(
+			"apply persisted session profile: %w",
+			err,
+		)
+	}
+	return updated, nil
+}
+
+func validateMutableProfilePatch(
+	patch protocol.SessionProfilePatch,
+	mutable []string,
+) error {
+	allowed := make(map[string]bool, len(mutable))
+	for _, field := range mutable {
+		allowed[field] = true
+	}
+	fields := []struct {
+		name string
+		set  bool
+	}{
+		{"mode", patch.Mode != nil},
+		{"provider", patch.Provider != nil},
+		{"model", patch.Model != nil},
+		{"reasoning_effort", patch.ReasoningEffort != nil},
+		{"enabled_tool_ids", patch.EnabledToolIDs != nil},
+		{"approval_posture", patch.ApprovalPosture != nil},
+		{"execution_target", patch.ExecutionTarget != nil},
+		{"max_steps", patch.MaxSteps != nil},
+	}
+	for _, field := range fields {
+		if field.set && !allowed[field.name] {
+			return protocol.NewProblem(
+				protocol.CodeConflict,
+				fmt.Sprintf("session profile field %s is immutable in this runtime", field.name),
+				false,
+				nil,
+			)
+		}
+	}
+	return nil
 }
 
 func (r *Runtime) Submit(ctx context.Context, operation protocol.Operation) error {

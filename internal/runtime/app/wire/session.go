@@ -103,6 +103,9 @@ func (s *Session) SetPolicyMode(mode policy.Mode) {
 	// CloneSampling policy installed on Guard for the turn duration.
 	if s != nil && s.security != nil {
 		s.security.Mode = mode
+		if s.threads != nil {
+			s.threads.SetPolicyMode(mode)
+		}
 	}
 }
 
@@ -110,6 +113,9 @@ func (s *Session) SetPermission(permission policy.Permission) {
 	// Applies to the next turn only; see SetPolicyMode.
 	if s != nil && s.security != nil {
 		s.security.Permission = permission
+		if s.threads != nil {
+			s.threads.SetPermission(permission)
+		}
 	}
 }
 
@@ -117,6 +123,9 @@ func (s *Session) SetGranular(granular policy.Granular) {
 	// Applies to the next turn only; see SetPolicyMode.
 	if s != nil && s.security != nil {
 		s.security.Granular = granular
+		if s.threads != nil {
+			s.threads.SetGranular(granular)
+		}
 	}
 }
 

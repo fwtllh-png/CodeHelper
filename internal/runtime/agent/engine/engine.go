@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -205,7 +207,8 @@ type Engine struct {
 	// receipt's failed-tool list, the verify verdict and the diagnostics set are
 	// all rebuilt per turn, so once a turn is compacted away its dead ends are
 	// invisible and the model walks into them again.
-	failures *compact.Failures
+	failures        *compact.Failures
+	promptCacheBase string
 
 	// turnContextMu guards the receipts of the volatile tail of the last sample.
 	turnContextMu   sync.Mutex
@@ -363,12 +366,13 @@ func New(options Options) (*Engine, error) {
 	}
 	engine := &Engine{
 		options: options, guard: options.Guard, journal: options.Journal,
-		turnIDs:   make(map[string]uint64),
-		scheduler: NewToolScheduler(options.MaxToolConcurrent),
-		turnDiff:  NewTurnDiffTracker(),
-		working:   workingset.New(),
-		evidence:  evidence.New(),
-		failures:  compact.NewFailures(),
+		promptCacheBase: options.PromptCacheKey,
+		turnIDs:         make(map[string]uint64),
+		scheduler:       NewToolScheduler(options.MaxToolConcurrent),
+		turnDiff:        NewTurnDiffTracker(),
+		working:         workingset.New(),
+		evidence:        evidence.New(),
+		failures:        compact.NewFailures(),
 	}
 	engine.seedWorkingSet()
 	if engine.guard == nil {
@@ -387,6 +391,61 @@ func New(options Options) (*Engine, error) {
 	engine.guard.SetApprovalHandler(engine.emitApproval)
 	engine.guard.SetApprovalWaitObserver(engine.observeApprovalWait)
 	return engine, nil
+}
+
+func (e *Engine) ValidateSessionProfile(profile protocol.SessionProfile) error {
+	if err := profile.Validate(); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.running {
+		return errors.New("session profile cannot change while a turn is active")
+	}
+	route := e.options.Routes.Act()
+	if profile.Provider != route.ProviderID() || profile.Model != route.Model().ID {
+		return errors.New("session profile route is unavailable in this runtime")
+	}
+	if profile.ReasoningEffort != "" && !route.Model().Capabilities.Reasoning {
+		return errors.New("session profile model does not support reasoning effort")
+	}
+	return nil
+}
+
+func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
+	if err := e.ValidateSessionProfile(profile); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.options.ReasoningEffort = profile.ReasoningEffort
+	e.options.MaxSteps = profile.MaxSteps
+	e.options.PromptCacheKey = fmt.Sprintf(
+		"%s-profile-%d",
+		e.promptCacheBase,
+		profile.PromptCacheRevision,
+	)
+	e.options.Security.Mode = policy.Mode(profile.Mode)
+	e.options.Security.Permission = policy.Permission(profile.ApprovalPosture)
+	return nil
+}
+
+func (e *Engine) SetPolicyMode(mode policy.Mode) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.options.Security.Mode = mode
+}
+
+func (e *Engine) SetPermission(permission policy.Permission) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.options.Security.Permission = permission
+}
+
+func (e *Engine) SetGranular(granular policy.Granular) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.options.Security.Granular = granular
 }
 
 // CloneEmpty builds a sibling Engine with the same Options seed, empty history,

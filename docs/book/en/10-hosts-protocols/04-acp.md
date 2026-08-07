@@ -55,6 +55,11 @@ Replay pages and live notifications preserve Cursor semantics. Contract tests
 cover Start, Stream, Approve, Input, Cancel, Verify, Recover, and Receipt
 without defining an ACP-specific Turn loop.
 
+Session Profile queries and updates use the same Runtime-owned durable state.
+Updates carry `expectedRevision`, fail while the Session's Thread has an active
+Turn, and return an explicit prompt-cache reset result. Capability projection
+prevents a Host from presenting a setting the current Runtime cannot apply.
+
 EOF and shutdown are stateful: final half-lines are rejected, active Turns are
 cancelled/settled according to protocol, pending calls receive terminal errors,
 and resources close deterministically.

@@ -207,6 +207,10 @@ codehelper host \
 
 ACP is used by editor/agent clients. Workspace identity arguments bind an editor
 workspace URI to a runtime root; hosts must not invent or relax that identity.
+`session/profile/get` returns the Runtime-owned Session Profile and model
+capabilities. `session/profile/update` uses `expectedRevision` optimistic
+concurrency, refuses updates during an active Turn, and reports whether the
+change reset the prompt-cache identity.
 
 ## Mode and Posture
 

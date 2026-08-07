@@ -74,6 +74,14 @@ Verify, Failure, Recovery, and Completed, including the next available action.
 live regions, host theme tokens, forced colors, and reduced motion are tested
 contracts rather than optional styling.
 
+## Session Profile Contract
+
+Session Profile is Runtime-owned and durable. VS Code strictly decodes Profile,
+Revision, Capability, and prompt-cache reset results over ACP; it does not copy
+them into BindingStore or Webview state. Updates use optimistic concurrency and
+are rejected while the owning Thread has an active Turn. Only fields advertised
+as mutable by the current Runtime may change.
+
 ## Native Resource Navigation
 
 Runtime-confirmed context receipts, context selections, and Edit Plans become

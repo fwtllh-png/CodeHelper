@@ -90,6 +90,66 @@ export type ProtocolProblem = {
   readonly "version": number;
 };
 
+export type SessionProfileSnapshot = {
+  readonly "capabilities": {
+      readonly "model": string;
+      readonly "model_capabilities": {
+            readonly "image_input": boolean;
+            readonly "native_search": boolean;
+            readonly "prompt_cache": boolean;
+            readonly "reasoning": boolean;
+            readonly "reasoning_efforts"?: ReadonlyArray<string>;
+            readonly "streaming": boolean;
+            readonly "tool_calls": boolean;
+            readonly "vision": boolean;
+          };
+      readonly "mutable_fields": ReadonlyArray<string>;
+      readonly "provider": string;
+    };
+  readonly "profile": {
+      readonly "approval_posture": string;
+      readonly "enabled_tool_ids"?: ReadonlyArray<string>;
+      readonly "execution_target": string;
+      readonly "max_steps": number;
+      readonly "mode": string;
+      readonly "model": string;
+      readonly "prompt_cache_revision": number;
+      readonly "provider": string;
+      readonly "reasoning_effort"?: string;
+      readonly "revision": number;
+      readonly "version": number;
+    };
+};
+
+export type SessionProfilePatch = {
+  readonly "approval_posture"?: string;
+  readonly "enabled_tool_ids"?: ReadonlyArray<string>;
+  readonly "execution_target"?: string;
+  readonly "max_steps"?: number;
+  readonly "mode"?: string;
+  readonly "model"?: string;
+  readonly "provider"?: string;
+  readonly "reasoning_effort"?: string;
+};
+
+export type SessionProfileUpdate = {
+  readonly "profile": {
+      readonly "approval_posture": string;
+      readonly "enabled_tool_ids"?: ReadonlyArray<string>;
+      readonly "execution_target": string;
+      readonly "max_steps": number;
+      readonly "mode": string;
+      readonly "model": string;
+      readonly "prompt_cache_revision": number;
+      readonly "provider": string;
+      readonly "reasoning_effort"?: string;
+      readonly "revision": number;
+      readonly "version": number;
+    };
+  readonly "prompt_cache_reset": boolean;
+  readonly "reset_reason"?: string;
+};
+
 export type ApprovalDecisionPayload = {
   readonly "decision": string;
   readonly "expires_at"?: string;

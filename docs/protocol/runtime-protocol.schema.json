@@ -219,6 +219,237 @@
         "status"
       ],
       "additionalProperties": false
+    },
+    "session_profile_patch": {
+      "type": "object",
+      "properties": {
+        "approval_posture": {
+          "type": "string"
+        },
+        "enabled_tool_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "execution_target": {
+          "type": "string"
+        },
+        "max_steps": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "reasoning_effort": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "session_profile_snapshot": {
+      "type": "object",
+      "properties": {
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "model_capabilities": {
+              "type": "object",
+              "properties": {
+                "image_input": {
+                  "type": "boolean"
+                },
+                "native_search": {
+                  "type": "boolean"
+                },
+                "prompt_cache": {
+                  "type": "boolean"
+                },
+                "reasoning": {
+                  "type": "boolean"
+                },
+                "reasoning_efforts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "streaming": {
+                  "type": "boolean"
+                },
+                "tool_calls": {
+                  "type": "boolean"
+                },
+                "vision": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "image_input",
+                "native_search",
+                "prompt_cache",
+                "reasoning",
+                "streaming",
+                "tool_calls",
+                "vision"
+              ],
+              "additionalProperties": false
+            },
+            "mutable_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "model",
+            "model_capabilities",
+            "mutable_fields",
+            "provider"
+          ],
+          "additionalProperties": false
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "approval_posture": {
+              "type": "string"
+            },
+            "enabled_tool_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "execution_target": {
+              "type": "string"
+            },
+            "max_steps": {
+              "type": "integer"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "prompt_cache_revision": {
+              "type": "integer"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reasoning_effort": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "approval_posture",
+            "execution_target",
+            "max_steps",
+            "mode",
+            "model",
+            "prompt_cache_revision",
+            "provider",
+            "revision",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "capabilities",
+        "profile"
+      ],
+      "additionalProperties": false
+    },
+    "session_profile_update": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "object",
+          "properties": {
+            "approval_posture": {
+              "type": "string"
+            },
+            "enabled_tool_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "execution_target": {
+              "type": "string"
+            },
+            "max_steps": {
+              "type": "integer"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "prompt_cache_revision": {
+              "type": "integer"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reasoning_effort": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "approval_posture",
+            "execution_target",
+            "max_steps",
+            "mode",
+            "model",
+            "prompt_cache_revision",
+            "provider",
+            "revision",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "prompt_cache_reset": {
+          "type": "boolean"
+        },
+        "reset_reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile",
+        "prompt_cache_reset"
+      ],
+      "additionalProperties": false
     }
   },
   "operations": {

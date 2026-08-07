@@ -362,6 +362,8 @@ function initializeResult(): Readonly<Record<string, unknown>> {
       "session/history",
       "session/merge",
       "session/rename",
+      "session/profile/get",
+      "session/profile/update",
       "thread/list",
       "thread/get",
       "task/list",
@@ -369,7 +371,11 @@ function initializeResult(): Readonly<Record<string, unknown>> {
       "usage/query",
       "shutdown",
     ],
-    features: ["editor_context_v2", "workspace_identity_v1"],
+    features: [
+      "editor_context_v2",
+      "session_profile_v1",
+      "workspace_identity_v1",
+    ],
     operations: ["turn.start"],
     events: ["turn.started"],
   };

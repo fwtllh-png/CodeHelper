@@ -18,6 +18,8 @@ export const compatibility = {
     "session/history",
     "session/merge",
     "session/rename",
+    "session/profile/get",
+    "session/profile/update",
     "thread/list",
     "thread/get",
     "task/list",
@@ -27,6 +29,7 @@ export const compatibility = {
   ],
   "required_features": [
     "editor_context_v2",
+    "session_profile_v1",
     "workspace_identity_v1"
   ],
   "targets": [

@@ -203,6 +203,9 @@ codehelper host \
 
 ACP 面向编辑器与 Agent 客户端。Workspace Identity 把编辑器 URI 绑定到 Runtime Root，
 Host 不能自行放宽或伪造该身份。
+`session/profile/get` 返回 Runtime 持有的 Session Profile 与 Model Capability；
+`session/profile/update` 使用 `expectedRevision` 乐观并发控制，活动 Turn 期间拒绝更新，
+并明确返回本次变化是否重置 Prompt Cache Identity。
 
 ## Mode 与 Posture
 

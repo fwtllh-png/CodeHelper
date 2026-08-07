@@ -73,6 +73,46 @@ void test("SessionCommands binds approval to an edit plan identity", async () =>
   assert.equal(params.operation.payload["plan_id"], "a".repeat(64));
 });
 
+void test("SessionCommands updates Runtime-owned profile by revision", async () => {
+  const transport: SessionTransport = {
+    request(method, params) {
+      assert.equal(method, "session/profile/update");
+      assert.deepEqual(params, {
+        sessionId: "session_1",
+        expectedRevision: 3,
+        patch: { mode: "plan" },
+      });
+      return Promise.resolve({
+        profile: {
+          version: 1,
+          revision: 4,
+          mode: "plan",
+          provider: "fixture",
+          model: "fixture-model",
+          approval_posture: "suggest",
+          execution_target: "local",
+          max_steps: 32,
+          prompt_cache_revision: 2,
+        },
+        prompt_cache_reset: true,
+        reset_reason: "mode",
+      });
+    },
+  };
+  const session = new SessionCommands(transport, "session_1", () => true);
+  const updated = await session.updateProfile(3, { mode: "plan" });
+  assert.equal(updated.profile.revision, 4);
+  assert.equal(updated.prompt_cache_reset, true);
+});
+
+void test("SessionCommands blocks untrusted profile escalation", async () => {
+  const session = new SessionCommands(new FakeTransport(), "session_1", () => false);
+  await assert.rejects(
+    session.updateProfile(1, { approval_posture: "bypass" }),
+    /untrusted workspace/u,
+  );
+});
+
 class FakeTransport implements SessionTransport {
   public readonly calls: { readonly method: string; readonly params: unknown }[] = [];
 

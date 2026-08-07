@@ -67,6 +67,20 @@ Workspaces, and other `vscode-remote:` environments are outside the product
 scope. The extension rejects Remote activation instead of launching a Runtime
 against a mismatched filesystem or identity.
 
+## Session Profile Contract
+
+The Runtime owns each Session's mode, provider, model, reasoning effort,
+enabled Tool IDs, approval posture, execution target, step limit, Revision,
+and prompt-cache Revision. The Extension Host uses
+`session/profile/get`/`session/profile/update`; Webview state and
+`workspaceState` are not Profile stores.
+
+Updates require the observed Revision and fail on stale writes or an active
+Turn. Changes that alter model-visible request shape advance the prompt-cache
+Revision. Capabilities expose only fields the current Runtime can apply. The
+current Runtime route is immutable; Provider/Model switching is enabled only
+when a later catalog-backed Runtime advertises those fields as mutable.
+
 ## Built-in Setup and Repair
 
 Use `CodeHelper: Setup Workspace` to configure an open, trusted workspace. The

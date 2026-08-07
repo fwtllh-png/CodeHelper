@@ -61,6 +61,18 @@ Remote SSH、Dev Container、Codespaces、WSL Remote Workspace 和其他
 `vscode-remote:` 环境不在产品范围内。插件会拒绝 Remote Activation，不会在文件系统
 或 Workspace Identity 不匹配时启动 Runtime。
 
+## Session Profile 契约
+
+Runtime 持有每个 Session 的 Mode、Provider、Model、Reasoning Effort、Enabled Tool
+ID、Approval Posture、Execution Target、Step Limit、Revision 和 Prompt Cache
+Revision。Extension Host 通过 `session/profile/get`/`session/profile/update` 访问；
+Webview State 与 `workspaceState` 都不是 Profile Store。
+
+更新必须携带已观察到的 Revision；过期写入或活动 Turn 都会失败。改变 Model-visible
+Request Shape 的字段会推进 Prompt Cache Revision。Capabilities 只公开当前 Runtime
+真正可应用的字段。当前 Runtime Route 不可变；后续 Catalog-backed Runtime 将
+Provider/Model 广告为 Mutable 后才允许切换。
+
 ## 内置 Setup 与 Repair
 
 在已打开且受信任的工作区中执行 `CodeHelper: Setup Workspace`。引导流程会选择
