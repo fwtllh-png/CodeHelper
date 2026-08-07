@@ -15,6 +15,10 @@ import {
   groupChatSessions,
 } from "../chat/session-list.js";
 import { computeVirtualWindow } from "../chat/virtual-list.js";
+import {
+  computeTranscriptWindow,
+  restoredAnchorScrollTop,
+} from "../chat/transcript-window.js";
 import { decodeEvent } from "../protocol/decode.js";
 
 const eventCount = 10_000;
@@ -199,8 +203,23 @@ void test("Chat assembles the maximum V1 transcript and Session list within budg
   const patchBytes = Buffer.byteLength(JSON.stringify(patch));
   metrics["chat_200_turn_patch_ms"] = Number(patchDurationMS.toFixed(1));
   metrics["chat_200_turn_patch_bytes"] = patchBytes;
+  metrics["chat_200_turn_patch_operations"] = patch.operations.length;
+  metrics["chat_200_turn_affected_dom_nodes"] = patch.operations.filter(
+    (operation) =>
+      operation.kind === "turn.upsert" || operation.kind === "turn.remove",
+  ).length;
+  metrics["chat_200_turn_virtual_dom_nodes"] =
+    computeTranscriptWindow(200, 18_000, 720).end -
+    computeTranscriptWindow(200, 18_000, 720).start;
+  const restoredScroll = restoredAnchorScrollTop(9_000, 45, 15);
+  metrics["chat_scroll_anchor_error_px"] = Math.abs(
+    15 - (45 - (restoredScroll - 9_000)),
+  );
   assert.ok(patchDurationMS < 100);
   assert.ok(patchBytes < bytes / 4);
+  assert.equal(metrics["chat_200_turn_affected_dom_nodes"], 1);
+  assert.ok(metrics["chat_200_turn_virtual_dom_nodes"] <= 20);
+  assert.equal(metrics["chat_scroll_anchor_error_px"], 0);
 });
 
 void test("1000 Session search and virtual first paint stay within budget", () => {

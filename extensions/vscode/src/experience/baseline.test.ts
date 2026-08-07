@@ -207,6 +207,14 @@ void test("release matrix and RC consume one local job manifest", async () => {
     join(process.cwd(), "scripts", "matrix", "jobs.mjs"),
     "utf8",
   );
+  const journeys = await readFile(
+    join(process.cwd(), "scripts", "matrix", "journeys.mjs"),
+    "utf8",
+  );
+  const evidence = await readFile(
+    join(process.cwd(), "RELEASE-EVIDENCE.md"),
+    "utf8",
+  );
   const rc = await readFile(
     join(process.cwd(), "scripts", "release", "rc-report.mjs"),
     "utf8",
@@ -216,11 +224,17 @@ void test("release matrix and RC consume one local job manifest", async () => {
     "utf8",
   );
   assert.match(matrix, /matrixJobs as expected/u);
+  assert.match(matrix, /journeyEvidence/u);
+  assert.match(matrix, /missing_journeys/u);
   assert.match(rc, /requiredMatrixJobNames/u);
+  assert.match(rc, /journeyEvidence/u);
   assert.match(rc, /requiredMatrixJobs\.size/u);
   assert.doesNotMatch(rc, /15\/15/u);
   assert.match(jobs, /local-darwin-arm64-external/u);
   assert.match(jobs, /local-darwin-x64-external/u);
+  assert.match(journeys, /runtime\.retry-continue/u);
+  assert.match(journeys, /surface\.panel-move/u);
+  assert.match(evidence, /`surface\.panel-move`/u);
   assert.match(rc, /Remote SSH/u);
   assert.match(rc, /WSL remote workspaces/u);
   assert.match(packaging, /const extensionBundleFiles/u);

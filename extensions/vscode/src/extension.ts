@@ -7,11 +7,13 @@ import {
   unavailableBackgroundViews,
 } from "./background/views.js";
 import { ChatViewProvider } from "./chat/view.js";
+import type { ChatClientEvidence } from "./chat/messages.js";
 import { registerSelectionCommands } from "./selection/commands.js";
 import type { DecodedEvent } from "./protocol/decode.js";
 import type { SupervisorSnapshot } from "./runtime/supervisor.js";
 import type {
   ChatSessionSummary,
+  ChatSearchResult,
   RuntimeHostSnapshot,
 } from "./runtime/controller.js";
 import type {
@@ -19,7 +21,9 @@ import type {
   SessionProfileSnapshot,
   SessionToolCatalog,
   SessionProfileUpdate,
+  SubmitReceipt,
 } from "./runtime/session.js";
+import type { AcceptedPlanTurn } from "./runtime/artifacts.js";
 import { registerDiagnosticActions } from "./diagnostics/actions.js";
 import { ChangesView, unavailableChangesView } from "./edits/changes.js";
 import { EditPlanPreview } from "./edits/preview.js";
@@ -41,6 +45,7 @@ import type {
   CheckpointRestore,
   ModelCatalog,
   ProviderCatalog,
+  SessionPlan,
 } from "./protocol/generated.js";
 
 let registry: WorkspaceRuntimeRegistry | undefined;
@@ -95,12 +100,36 @@ export interface ExtensionAPI {
     validation: "valid" | "invalid",
   ) => Promise<void>;
   readonly chatWebviewReady?: () => boolean;
+  readonly chatClientEvidence?: () => ChatClientEvidence | undefined;
   readonly chatProjectionDiagnostics?: () => {
     readonly visible: boolean;
     readonly snapshotPosts: number;
     readonly patchPosts: number;
   };
   readonly testInvalidateChatProjection?: () => void;
+  readonly testDispatchChatIntent?: (value: unknown) => Promise<void>;
+  readonly testSubmitPrompt?: (
+    sessionId: string,
+    prompt: string,
+  ) => Promise<SubmitReceipt>;
+  readonly testCancelTurn?: (
+    sessionId: string,
+    turnId: string,
+  ) => Promise<SubmitReceipt>;
+  readonly testRecoverTurn?: (
+    sessionId: string,
+    turnId: string,
+    action: "retry" | "continue",
+    guidance?: string,
+  ) => Promise<AcceptedPlanTurn>;
+  readonly testSessionPlan?: (sessionId: string) => Promise<SessionPlan>;
+  readonly testImplementPlan?: (
+    sessionId: string,
+    planId: string,
+    transition: "implement" | "autopilot",
+    sourceSessionId?: string,
+  ) => Promise<AcceptedPlanTurn>;
+  readonly testSearchChats?: (query: string) => Promise<ChatSearchResult>;
   readonly onRootRuntimeEvent?: (
     listener: (
       rootId: string,
@@ -368,6 +397,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
               validation === "invalid" ? "authentication" : undefined,
             ),
           chatWebviewReady: () => chatView?.webviewReady ?? false,
+          chatClientEvidence: () => chatView?.clientEvidence,
           chatProjectionDiagnostics: () =>
             chatView?.projectionDiagnostics ?? {
               visible: false,
@@ -377,6 +407,46 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
           testInvalidateChatProjection: () => {
             chatView?.invalidateProjection();
           },
+          testDispatchChatIntent: async (value) => {
+            if (chatView === undefined) {
+              throw new Error("Chat View is unavailable");
+            }
+            await chatView.receiveTestIntent(value);
+          },
+          testSubmitPrompt: async (sessionId, prompt) =>
+            activeRegistry.selected.controller.submitPrompt(
+              sessionId,
+              prompt,
+              [],
+            ),
+          testCancelTurn: async (sessionId, turnId) =>
+            activeRegistry.selected.controller.cancelTurn(sessionId, turnId),
+          testRecoverTurn: async (
+            sessionId,
+            turnId,
+            action,
+            guidance,
+          ) => activeRegistry.selected.controller.recoverTurn(
+            sessionId,
+            turnId,
+            action,
+            guidance,
+          ),
+          testSessionPlan: async (sessionId) =>
+            activeRegistry.selected.controller.sessionPlan(sessionId),
+          testImplementPlan: async (
+            sessionId,
+            planId,
+            transition,
+            sourceSessionId,
+          ) => activeRegistry.selected.controller.implementPlan(
+            sessionId,
+            planId,
+            transition,
+            sourceSessionId,
+          ),
+          testSearchChats: async (query) =>
+            activeRegistry.selected.controller.searchChats({ query }),
           onRootRuntimeEvent: (
             listener: (
               rootId: string,

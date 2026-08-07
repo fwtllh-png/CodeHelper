@@ -6,6 +6,7 @@ import type {
   ContextSelectionCard,
   InputCard,
 } from "../projector.js";
+import { restoredAnchorScrollTop } from "../transcript-window.js";
 import { appendMarkdown, appendText } from "./dom.js";
 
 export interface TranscriptActions {
@@ -418,8 +419,12 @@ function restoreTranscriptState(
   if (state.anchor !== undefined) {
     const anchor = turnArticle(container, state.anchor.turnId);
     if (anchor !== undefined) {
-      container.scrollTop += anchor.getBoundingClientRect().top -
-        container.getBoundingClientRect().top - state.anchor.offset;
+      container.scrollTop = restoredAnchorScrollTop(
+        container.scrollTop,
+        anchor.getBoundingClientRect().top -
+          container.getBoundingClientRect().top,
+        state.anchor.offset,
+      );
     }
   }
   if (state.focused !== undefined) {

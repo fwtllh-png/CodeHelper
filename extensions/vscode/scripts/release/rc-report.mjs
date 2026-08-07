@@ -15,6 +15,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { requiredMatrixJobNames } from "../matrix/jobs.mjs";
+import { journeyEvidence } from "../matrix/journeys.mjs";
 import { sourceIdentity } from "./source-identity.mjs";
 
 const execute = promisify(execFile);
@@ -41,6 +42,14 @@ if (matrix.schema_version !== 1 || matrix.status !== "passed" ||
     `RC requires the complete local ${String(requiredMatrixJobs.size)}/` +
       `${String(requiredMatrixJobs.size)} E2E matrix`,
   );
+}
+if (matrix.journey_status !== "passed" ||
+  matrix.missing_journeys?.length !== 0 ||
+  !Array.isArray(matrix.journeys) ||
+  matrix.journeys.length !== journeyEvidence.length ||
+  matrix.journeys.some((journey) =>
+    journey?.status !== "passed" && journey?.status !== "documented")) {
+  throw new Error("RC requires complete automated and documented Journey evidence");
 }
 const provenancePath = join(
   releaseRoot,
@@ -132,6 +141,8 @@ const report = {
   },
   gates: {
     matrix: `${String(matrix.required)}/${String(matrix.required)}`,
+    journey_evidence: `${String(matrix.journeys.length)}/` +
+      `${String(journeyEvidence.length)}`,
     compatibility: "passed",
     performance: "passed",
     dependency_audit: "passed",
@@ -163,16 +174,43 @@ async function performanceReport() {
   const projectors = await readJSON(join(performanceRoot, "projectors.json"));
   const runtime = await readJSON(join(performanceRoot, "runtime-ready.json"));
   const electron = await readJSON(join(performanceRoot, "electron.json"));
+  for (const [name, value] of Object.entries({
+    chat_200_turn_snapshot_bytes: projectors.chat_200_turn_snapshot_bytes,
+    chat_200_turn_patch_ms: projectors.chat_200_turn_patch_ms,
+    chat_200_turn_patch_bytes: projectors.chat_200_turn_patch_bytes,
+    chat_200_turn_patch_operations:
+      projectors.chat_200_turn_patch_operations,
+    chat_200_turn_affected_dom_nodes:
+      projectors.chat_200_turn_affected_dom_nodes,
+    chat_200_turn_virtual_dom_nodes:
+      projectors.chat_200_turn_virtual_dom_nodes,
+    chat_scroll_anchor_error_px: projectors.chat_scroll_anchor_error_px,
+    hidden_projection_posts: electron.hidden_projection_posts,
+    hidden_resume_ms: electron.hidden_resume_ms,
+  })) {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      throw new Error(`performance evidence ${name} is missing or invalid`);
+    }
+  }
   if (projectors.chat_10k_duration_ms >= 1_000 ||
     projectors.chat_10k_heap_growth_bytes >= 32 << 20 ||
     projectors.tree_1000_duration_ms >= 100 ||
     projectors.chat_200_turn_snapshot_ms >= 100 ||
+    projectors.chat_200_turn_patch_ms >= 100 ||
+    projectors.chat_200_turn_patch_bytes >=
+      projectors.chat_200_turn_snapshot_bytes / 4 ||
+    projectors.chat_200_turn_patch_operations > 2 ||
+    projectors.chat_200_turn_affected_dom_nodes > 2 ||
+    projectors.chat_200_turn_virtual_dom_nodes > 30 ||
+    projectors.chat_scroll_anchor_error_px > 1 ||
     projectors.session_1000_search_virtual_ms >= 150 ||
     projectors.session_1000_virtual_dom_items >= 30 ||
     runtime.p95_ms >= 5_000 ||
     electron.activation_ms >= 20 ||
     electron.chat_interactive_ms >= 300 ||
-    electron.capture_1mib_ms >= 100) {
+    electron.capture_1mib_ms >= 100 ||
+    electron.hidden_projection_posts !== 0 ||
+    electron.hidden_resume_ms >= 300) {
     throw new Error("performance evidence exceeds an RC budget");
   }
   return {
@@ -180,6 +218,16 @@ async function performanceReport() {
     chat_10k_heap_growth_bytes: projectors.chat_10k_heap_growth_bytes,
     tree_1000_duration_ms: projectors.tree_1000_duration_ms,
     chat_200_turn_snapshot_ms: projectors.chat_200_turn_snapshot_ms,
+    chat_200_turn_snapshot_bytes: projectors.chat_200_turn_snapshot_bytes,
+    chat_200_turn_patch_ms: projectors.chat_200_turn_patch_ms,
+    chat_200_turn_patch_bytes: projectors.chat_200_turn_patch_bytes,
+    chat_200_turn_patch_operations:
+      projectors.chat_200_turn_patch_operations,
+    chat_200_turn_affected_dom_nodes:
+      projectors.chat_200_turn_affected_dom_nodes,
+    chat_200_turn_virtual_dom_nodes:
+      projectors.chat_200_turn_virtual_dom_nodes,
+    chat_scroll_anchor_error_px: projectors.chat_scroll_anchor_error_px,
     session_1000_search_virtual_ms:
       projectors.session_1000_search_virtual_ms,
     session_1000_virtual_dom_items:
@@ -189,6 +237,8 @@ async function performanceReport() {
     activation_ms: electron.activation_ms,
     chat_interactive_ms: electron.chat_interactive_ms,
     capture_1mib_ms: electron.capture_1mib_ms,
+    hidden_projection_posts: electron.hidden_projection_posts,
+    hidden_resume_ms: electron.hidden_resume_ms,
   };
 }
 

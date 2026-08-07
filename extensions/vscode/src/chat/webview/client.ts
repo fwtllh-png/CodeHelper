@@ -832,6 +832,38 @@ function post(message: unknown): void {
   vscode.postMessage(message);
 }
 
+function postClientEvidence(): void {
+  post({
+    type: "client-evidence",
+    themeKind: clientThemeKind(),
+    forcedColorsActive: window.matchMedia("(forced-colors: active)").matches,
+    imeGuardPassed: routeChatKeyboard({
+      key: "Enter",
+      ctrlKey: false,
+      metaKey: true,
+      isComposing: true,
+      sessionsOpen: false,
+      turnActive: false,
+    }) === "none",
+    viewportWidth: Math.max(1, window.innerWidth),
+    viewportHeight: Math.max(1, window.innerHeight),
+    devicePixelRatio: Math.max(0.1, window.devicePixelRatio),
+  });
+}
+
+function clientThemeKind():
+  "light" | "dark" | "high-contrast" | "high-contrast-light" | "unknown" {
+  if (document.body.classList.contains("vscode-high-contrast-light")) {
+    return "high-contrast-light";
+  }
+  if (document.body.classList.contains("vscode-high-contrast")) {
+    return "high-contrast";
+  }
+  if (document.body.classList.contains("vscode-light")) return "light";
+  if (document.body.classList.contains("vscode-dark")) return "dark";
+  return "unknown";
+}
+
 function isChatHostMessage(value: unknown): value is ChatHostMessage {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -845,3 +877,9 @@ function isChatHostMessage(value: unknown): value is ChatHostMessage {
 
 setSessionsOpen(false);
 post({ type: "ready" });
+postClientEvidence();
+new MutationObserver(postClientEvidence).observe(document.body, {
+  attributes: true,
+  attributeFilter: ["class"],
+});
+window.addEventListener("resize", postClientEvidence, { passive: true });

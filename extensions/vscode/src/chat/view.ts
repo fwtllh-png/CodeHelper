@@ -11,7 +11,10 @@ import type {
 } from "../runtime/session.js";
 import type { SupervisorSnapshot } from "../runtime/supervisor.js";
 import type { EditPlanPreview } from "../edits/preview.js";
-import { decodeWebviewMessage } from "./messages.js";
+import {
+  decodeWebviewMessage,
+  type ChatClientEvidence,
+} from "./messages.js";
 import {
   createChatErrorMessage,
   createChatPatchMessage,
@@ -108,6 +111,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   #view: vscode.WebviewView | undefined;
   #flushTimer: NodeJS.Timeout | undefined;
   #webviewReady = false;
+  #clientEvidence: ChatClientEvidence | undefined;
   #snapshotPosts = 0;
   #patchPosts = 0;
   #projectionRevision = 0;
@@ -152,6 +156,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   public resolveWebviewView(view: vscode.WebviewView): void {
     this.#view = view;
     this.#webviewReady = false;
+    this.#clientEvidence = undefined;
     this.#projectionRevision = 0;
     this.#lastProjection = undefined;
     view.webview.options = {
@@ -167,6 +172,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         if (this.#view === view) {
           this.#view = undefined;
           this.#webviewReady = false;
+          this.#clientEvidence = undefined;
         }
       }),
       view.onDidChangeVisibility(() => {
@@ -201,6 +207,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     return this.#webviewReady;
   }
 
+  public get clientEvidence(): ChatClientEvidence | undefined {
+    return this.#clientEvidence;
+  }
+
   public get projectionDiagnostics(): {
     readonly visible: boolean;
     readonly snapshotPosts: number;
@@ -215,6 +225,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   public invalidateProjection(): void {
     this.#scheduleFlush();
+  }
+
+  public receiveTestIntent(value: unknown): Promise<void> {
+    return this.#receive(value);
   }
 
   public async decidePlan(
@@ -285,6 +299,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "ready":
           this.#webviewReady = true;
           this.#lastProjection = undefined;
+          break;
+        case "client-evidence":
+          this.#clientEvidence = message;
           break;
         case "resync":
           this.#lastProjection = undefined;

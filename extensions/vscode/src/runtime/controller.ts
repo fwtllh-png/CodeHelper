@@ -65,6 +65,7 @@ import {
 } from "./lifecycle.js";
 import {
   SessionArtifactCommands,
+  type AcceptedPlanTurn,
   type SessionCheckpoint,
 } from "./artifacts.js";
 import type {
@@ -560,10 +561,10 @@ export class RuntimeController {
     planId: string,
     transition: "implement" | "autopilot",
     sourceSessionId?: string,
-  ): Promise<void> {
+  ): Promise<AcceptedPlanTurn> {
     const runtime = this.#readyRuntime();
     this.#session(runtime, sessionId);
-    await new SessionArtifactCommands(runtime).implementPlan(
+    return new SessionArtifactCommands(runtime).implementPlan(
       sessionId,
       planId,
       transition,
@@ -576,10 +577,10 @@ export class RuntimeController {
     sourceTurnId: string,
     action: "retry" | "continue",
     guidance?: string,
-  ): Promise<void> {
+  ): Promise<AcceptedPlanTurn> {
     const runtime = this.#readyRuntime();
     this.#session(runtime, sessionId);
-    await new SessionArtifactCommands(runtime).recoverTurn(
+    return new SessionArtifactCommands(runtime).recoverTurn(
       sessionId,
       sourceTurnId,
       action,

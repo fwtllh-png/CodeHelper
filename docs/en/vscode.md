@@ -267,14 +267,26 @@ Release performance gates require:
 - no more than 20 ms of added extension activation time;
 - first interactive Chat within 300 ms, excluding Runtime startup;
 - a 200-Turn Session Snapshot within 100 ms;
+- a single-Turn Patch within 100 ms and below one quarter of the Full Snapshot
+  payload;
+- no more than two affected Turn DOM nodes, 30 virtual Turn nodes, or one pixel
+  of scroll-anchor error per measured Patch;
 - 1000-Session search and virtual first paint within 150 ms;
+- zero Webview posts while hidden and resume within 300 ms;
 - at most one streaming Patch per 16 ms frame.
 
 Electron journeys dynamically switch Default Dark Modern, Default Light
 Modern, and Default High Contrast themes, apply Zoom Level 4 (approximately
-200%), and verify the Webview remains interactive. Keyboard evidence covers
-visible focus, Session Home/End/Arrow navigation across virtual rows, Escape,
-the narrow-rail focus trap, reduced motion, and forced-color borders.
+200%), and verify the Webview-reported theme class. A separate Chromium
+high-contrast process verifies the active `forced-colors` media query. The
+bundled Webview reports its IME composition guard, viewport, and device scale
+through a strictly decoded non-secret evidence message.
+
+The release Matrix aggregates required Journey IDs from Electron evidence, and
+the RC gate rejects missing Journey or performance fields. The one retained
+manual journey moves the same `WebviewView` between Sidebar and Panel; there is
+no Full Editor Chat. Reproduction steps are packaged in
+`extensions/vscode/RELEASE-EVIDENCE.md`.
 
 ## Built-in Setup and Repair
 

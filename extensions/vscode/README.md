@@ -9,10 +9,18 @@ Chat has an explicit root selector; editor commands route by the document's
 workspace root. Changes and background views group state by root.
 
 The Session rail uses a bounded virtual DOM window for large histories.
-Hidden Chat views keep the Runtime projection current without posting DOM
-snapshots, then render the latest projection when shown. Release gates cover
-200-Turn switching, 1000-Session search, first-interactive latency, Light,
-Dark, High Contrast, approximately 200% zoom, and local multi-root recovery.
+After initial hydration, the Webview applies revision-bound incremental Patches
+and requests a Full Snapshot when its base Revision is stale. Hidden Chat views
+keep the Runtime projection current without posting DOM updates, then render
+the latest projection when shown. Release gates cover Patch payload and
+affected nodes, scroll-anchor stability, 200-Turn switching, 1000-Session
+search, first-interactive latency, Light, Dark, High Contrast, Forced Colors,
+approximately 200% zoom, IME composition, and local multi-root recovery.
+
+Failed or canceled Turns expose Retry and Continue without replaying historical
+side effects. Structured Plans can start in the current Session, a
+Profile-preserving new Session, or a state-only Checkpoint Fork. The complete
+automated and manual journey map is in [RELEASE-EVIDENCE.md](./RELEASE-EVIDENCE.md).
 
 It also supports Chat, explicit `@file` / `@selection` context, approval-bound native
 diff previews, and workspace-scoped Threads, Agents, Tasks, Jobs, Approvals, and

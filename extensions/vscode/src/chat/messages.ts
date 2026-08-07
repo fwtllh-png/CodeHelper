@@ -4,8 +4,19 @@ import type {
 } from "../runtime/session.js";
 import type { ComposerControl } from "./composer.js";
 
+export interface ChatClientEvidence {
+  readonly themeKind:
+    "light" | "dark" | "high-contrast" | "high-contrast-light" | "unknown";
+  readonly forcedColorsActive: boolean;
+  readonly imeGuardPassed: boolean;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly devicePixelRatio: number;
+}
+
 export type WebviewMessage =
   | { readonly type: "ready" }
+  | ({ readonly type: "client-evidence" } & ChatClientEvidence)
   | { readonly type: "resync" }
   | { readonly type: "open-resource"; readonly resourceId: string }
   | {
@@ -64,6 +75,40 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
     case "ready":
       requireKeys(value, ["type"]);
       return { type: "ready" };
+    case "client-evidence":
+      requireKeys(value, [
+        "type",
+        "themeKind",
+        "forcedColorsActive",
+        "imeGuardPassed",
+        "viewportWidth",
+        "viewportHeight",
+        "devicePixelRatio",
+      ]);
+      return {
+        type: "client-evidence",
+        themeKind: requireThemeKind(value["themeKind"]),
+        forcedColorsActive: requireBoolean(
+          value["forcedColorsActive"],
+          "forcedColorsActive",
+        ),
+        imeGuardPassed: requireBoolean(
+          value["imeGuardPassed"],
+          "imeGuardPassed",
+        ),
+        viewportWidth: requirePositiveNumber(
+          value["viewportWidth"],
+          "viewportWidth",
+        ),
+        viewportHeight: requirePositiveNumber(
+          value["viewportHeight"],
+          "viewportHeight",
+        ),
+        devicePixelRatio: requirePositiveNumber(
+          value["devicePixelRatio"],
+          "devicePixelRatio",
+        ),
+      };
     case "resync":
       requireKeys(value, ["type"]);
       return { type: "resync" };
@@ -192,6 +237,36 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
 function requireTurnRecoveryAction(value: unknown): "retry" | "continue" {
   if (value !== "retry" && value !== "continue") {
     throw new Error("invalid Turn recovery action");
+  }
+  return value;
+}
+
+function requireThemeKind(
+  value: unknown,
+): ChatClientEvidence["themeKind"] {
+  switch (value) {
+    case "light":
+    case "dark":
+    case "high-contrast":
+    case "high-contrast-light":
+    case "unknown":
+      return value;
+    default:
+      throw new Error("themeKind is invalid");
+  }
+}
+
+function requireBoolean(value: unknown, name: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`${name} is invalid`);
+  }
+  return value;
+}
+
+function requirePositiveNumber(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) ||
+    value <= 0 || value > 100_000) {
+    throw new Error(`${name} is invalid`);
   }
   return value;
 }

@@ -9,6 +9,12 @@
   dynamic Light, Dark, High Contrast, 200% zoom, and multi-root recovery gates.
 - Added immutable Checkpoints, state-only Restore, Fork lineage, structured
   Plan Artifacts, and Plan-to-Implementation/Autopilot transitions.
+- Added atomic incremental Chat Patches, bounded Transcript virtualization,
+  stable scroll/focus/expanded-state restoration, and stale Revision resync.
+- Added guarded Retry/Continue and Current/New/Fork Plan destinations without
+  replaying completed side effects.
+- Added machine-readable Journey, accessibility, hidden-view, Patch, Matrix,
+  and release candidate evidence.
 - Added signed managed and target-bundled Runtime distribution with rollback.
 - Added ETag-revalidated update caching, disk/concurrency budgets, and
   machine-verifiable release candidate evidence.

@@ -34,6 +34,7 @@ for (const required of [
   "media/codehelper.png",
   "README.md",
   "CHANGELOG.md",
+  "RELEASE-EVIDENCE.md",
   "SECURITY.md",
   "PRIVACY.md",
   "SUPPORT.md",

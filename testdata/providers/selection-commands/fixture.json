@@ -12,8 +12,17 @@
     "changes-call.sse",
     "changes-complete.sse",
     "changes-deny-call.sse",
-    "changes-deny-complete.sse"
+    "changes-deny-complete.sse",
+    "recovery-source.sse",
+    "recovery-retry.sse",
+    "recovery-continue.sse",
+    "plan-a.sse",
+    "plan-implement-new.sse",
+    "plan-implement-fork.sse",
+    "plan-b.sse",
+    "plan-implement-current.sse"
   ],
+  "stream_delay_ms": 20,
   "expected_request_fragments": [
     [
       "Explain the selected code",
@@ -67,6 +76,34 @@
     [
       "\"role\":\"tool\"",
       "\"tool_call_id\":\"call_changes_deny\""
+    ],
+    [
+      "Electron recovery source"
+    ],
+    [
+      "Electron recovery source"
+    ],
+    [
+      "Continue from the terminal Turn above",
+      "Inspect the current parser state"
+    ],
+    [
+      "Electron plan destination A"
+    ],
+    [
+      "Implement the approved structured Plan below",
+      "Update parser from destination A"
+    ],
+    [
+      "Implement the approved structured Plan below",
+      "Update parser from destination A"
+    ],
+    [
+      "Electron plan destination B"
+    ],
+    [
+      "Implement the approved structured Plan below",
+      "Update parser from destination B"
     ]
   ]
 }

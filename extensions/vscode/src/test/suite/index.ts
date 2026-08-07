@@ -74,7 +74,7 @@ export async function run(): Promise<void> {
     await verifyNativeContextCapture();
     await verifyResourceNavigation();
     await verifyThemeAndZoomAccessibility(api);
-    await verifyHiddenProjectionSuspension(api);
+    const hiddenEvidence = await verifyHiddenProjectionSuspension(api);
     const captureDurationMS = await verifyContextCapturePerformance();
     const workspace = vscode.workspace.workspaceFolders[0];
     assert.ok(workspace);
@@ -85,8 +85,15 @@ export async function run(): Promise<void> {
         activation_ms: Number(api.activationDurationMS.toFixed(1)),
         chat_interactive_ms: Number(chatInteractiveMS.toFixed(1)),
         capture_1mib_ms: Number(captureDurationMS.toFixed(1)),
+        hidden_projection_posts: hiddenEvidence.hiddenPosts,
+        hidden_resume_ms: Number(hiddenEvidence.resumeMS.toFixed(1)),
       })),
     );
+  } else if (scenario === "accessibility") {
+    assert.equal(vscode.workspace.workspaceFolders?.length, 1);
+    assert.equal(api.workspaceMode, "single");
+    assert.equal(api.runtimeAutoStartScheduled, false);
+    await verifyForcedColorsAccessibility(api);
   } else if (scenario === "native") {
     assert.equal(vscode.workspace.workspaceFolders?.length, 1);
     assert.equal(api.workspaceMode, "single");
@@ -201,7 +208,10 @@ export async function run(): Promise<void> {
 
 async function verifyHiddenProjectionSuspension(
   api: ExtensionAPI,
-): Promise<void> {
+): Promise<{
+  readonly hiddenPosts: number;
+  readonly resumeMS: number;
+}> {
   assert.ok(api.chatProjectionDiagnostics);
   assert.ok(api.testInvalidateChatProjection);
   await vscode.commands.executeCommand("codehelper.chat.focus");
@@ -209,7 +219,9 @@ async function verifyHiddenProjectionSuspension(
     () => api.chatProjectionDiagnostics?.().visible === true,
     "Chat Webview did not become visible",
   );
-  const visiblePosts = api.chatProjectionDiagnostics().snapshotPosts;
+  const visible = api.chatProjectionDiagnostics();
+  const visiblePosts = visible.snapshotPosts;
+  const visibleTotal = visible.snapshotPosts + visible.patchPosts;
   await vscode.commands.executeCommand("workbench.action.closeSidebar");
   await waitFor(
     () => api.chatProjectionDiagnostics?.().visible === false,
@@ -224,6 +236,10 @@ async function verifyHiddenProjectionSuspension(
     visiblePosts,
     "hidden Chat Webview received a DOM Snapshot",
   );
+  const hidden = api.chatProjectionDiagnostics();
+  const hiddenPosts = hidden.snapshotPosts + hidden.patchPosts - visibleTotal;
+  assert.equal(hiddenPosts, 0, "hidden Chat Webview received a Patch");
+  const resumeStarted = performance.now();
   await vscode.commands.executeCommand("codehelper.chat.focus");
   await waitFor(
     () => {
@@ -233,6 +249,10 @@ async function verifyHiddenProjectionSuspension(
     },
     "visible Chat Webview did not receive the latest Projection",
   );
+  return {
+    hiddenPosts,
+    resumeMS: performance.now() - resumeStarted,
+  };
 }
 
 async function verifyThemeAndZoomAccessibility(
@@ -243,12 +263,12 @@ async function verifyThemeAndZoomAccessibility(
   const originalTheme = workbench.get<string>("colorTheme");
   const originalZoom = windowConfiguration.get<number>("zoomLevel");
   const themes = [
-    ["Default Dark Modern", vscode.ColorThemeKind.Dark],
-    ["Default Light Modern", vscode.ColorThemeKind.Light],
-    ["Default High Contrast", vscode.ColorThemeKind.HighContrast],
+    ["Default Dark Modern", vscode.ColorThemeKind.Dark, "dark"],
+    ["Default Light Modern", vscode.ColorThemeKind.Light, "light"],
+    ["Default High Contrast", vscode.ColorThemeKind.HighContrast, "high-contrast"],
   ] as const;
   try {
-    for (const [name, kind] of themes) {
+    for (const [name, kind, clientKind] of themes) {
       await workbench.update(
         "colorTheme",
         name,
@@ -258,7 +278,12 @@ async function verifyThemeAndZoomAccessibility(
         () => vscode.window.activeColorTheme.kind === kind,
         `VS Code did not activate ${name}`,
       );
+      await waitFor(
+        () => api.chatClientEvidence?.()?.themeKind === clientKind,
+        `Chat Webview did not project ${clientKind}`,
+      );
       assert.equal(api.chatWebviewReady?.(), true);
+      assert.equal(api.chatClientEvidence?.()?.imeGuardPassed, true);
     }
     await windowConfiguration.update(
       "zoomLevel",
@@ -271,6 +296,13 @@ async function verifyThemeAndZoomAccessibility(
       "VS Code did not apply the approximately 200% zoom level",
     );
     assert.equal(api.chatWebviewReady?.(), true);
+    const clientEvidence = api.chatClientEvidence?.();
+    assert.ok(clientEvidence);
+    assert.equal(clientEvidence.imeGuardPassed, true);
+    assert.equal(clientEvidence.forcedColorsActive, false);
+    assert.ok(clientEvidence.viewportWidth > 0);
+    assert.ok(clientEvidence.viewportHeight > 0);
+    assert.ok(clientEvidence.devicePixelRatio > 0);
     await vscode.commands.executeCommand("codehelper.chat.focus");
   } finally {
     await workbench.update(
@@ -284,6 +316,21 @@ async function verifyThemeAndZoomAccessibility(
       vscode.ConfigurationTarget.Global,
     );
   }
+}
+
+async function verifyForcedColorsAccessibility(
+  api: ExtensionAPI,
+): Promise<void> {
+  await waitFor(
+    () => api.chatClientEvidence?.()?.forcedColorsActive === true,
+    "Chat Webview did not activate the forced-colors media query",
+  );
+  const evidence = api.chatClientEvidence?.();
+  assert.ok(evidence);
+  assert.equal(evidence.imeGuardPassed, true);
+  assert.notEqual(evidence.themeKind, "unknown");
+  assert.ok(evidence.viewportWidth > 0);
+  assert.ok(evidence.viewportHeight > 0);
 }
 
 async function verifyResourceNavigation(): Promise<void> {
@@ -678,6 +725,7 @@ async function verifyNativeFlows(api: ExtensionAPI): Promise<void> {
   const started = new Map<string, unknown>();
   const receipts = new Map<string, unknown>();
   const terminals = new Map<string, string>();
+  const outputTurns = new Set<string>();
   const waiters = new Map<string, (kind: string) => void>();
   const approvals = new Map<string, TestApproval>();
   const approvalWaiters = new Map<string, (approval: TestApproval) => void>();
@@ -688,6 +736,8 @@ async function verifyNativeFlows(api: ExtensionAPI): Promise<void> {
     }
     if (event.kind === "turn.started") {
       started.set(event.turn_id, event.data.editor_context);
+    } else if (event.kind === "output.delta") {
+      outputTurns.add(event.turn_id);
     } else if (event.kind === "turn.receipt") {
       receipts.set(event.turn_id, event.data.editor_context);
     } else if (event.kind === "approval.required" &&
@@ -767,9 +817,181 @@ async function verifyNativeFlows(api: ExtensionAPI): Promise<void> {
       terminals,
       waiters,
     );
+    await verifyTurnRecovery(
+      api,
+      terminals,
+      waiters,
+      outputTurns,
+    );
+    await verifyPlanDestinations(api, terminals, waiters);
   } finally {
     subscription.dispose();
   }
+}
+
+async function verifyTurnRecovery(
+  api: ExtensionAPI,
+  terminals: ReadonlyMap<string, string>,
+  waiters: Map<string, (kind: string) => void>,
+  outputTurns: ReadonlySet<string>,
+): Promise<void> {
+  assert.ok(api.chatSessions);
+  assert.ok(api.testSubmitPrompt);
+  assert.ok(api.testCancelTurn);
+  assert.ok(api.testRecoverTurn);
+  assert.ok(api.testSearchChats);
+  const selected = api.chatSessions().find((session) => session.selected);
+  assert.ok(selected);
+  const source = await api.testSubmitPrompt(
+    selected.sessionId,
+    "Electron recovery source",
+  );
+  await waitFor(
+    () => outputTurns.has(source.turnId),
+    "recovery source did not begin streaming",
+  );
+  await api.testCancelTurn(selected.sessionId, source.turnId);
+  assert.equal(
+    await waitForTerminal(source.turnId, terminals, waiters),
+    "turn.canceled",
+  );
+  const retry = await api.testRecoverTurn(
+    selected.sessionId,
+    source.turnId,
+    "retry",
+  );
+  assert.equal(
+    await waitForTerminal(retry.turnId, terminals, waiters),
+    "turn.completed",
+  );
+  const continued = await api.testRecoverTurn(
+    selected.sessionId,
+    source.turnId,
+    "continue",
+    "Inspect the current parser state",
+  );
+  assert.equal(
+    await waitForTerminal(continued.turnId, terminals, waiters),
+    "turn.completed",
+  );
+  assert.notEqual(retry.turnId, source.turnId);
+  assert.notEqual(continued.turnId, source.turnId);
+  const search = await api.testSearchChats("Inspect the current parser state");
+  assert.ok(search.matches.some((match) =>
+    match.session_id === selected.sessionId &&
+    match.turn_id === continued.turnId &&
+    match.kind === "user_request"));
+}
+
+async function verifyPlanDestinations(
+  api: ExtensionAPI,
+  terminals: ReadonlyMap<string, string>,
+  waiters: Map<string, (kind: string) => void>,
+): Promise<void> {
+  assert.ok(api.chatSessions);
+  assert.ok(api.sessionProfile);
+  assert.ok(api.updateSessionProfile);
+  assert.ok(api.testSubmitPrompt);
+  assert.ok(api.testSessionPlan);
+  assert.ok(api.testImplementPlan);
+  assert.ok(api.duplicateChat);
+  assert.ok(api.checkpoints);
+  assert.ok(api.forkCheckpoint);
+  const source = api.chatSessions().find((session) => session.selected);
+  assert.ok(source);
+  await setSessionMode(api, source.sessionId, "plan");
+  const planTurn = await api.testSubmitPrompt(
+    source.sessionId,
+    "Electron plan destination A",
+  );
+  assert.equal(
+    await waitForTerminal(planTurn.turnId, terminals, waiters),
+    "turn.completed",
+  );
+  const firstPlan = (await api.testSessionPlan(source.sessionId)).artifact;
+  assert.ok(firstPlan);
+  assert.equal(firstPlan.turn_id, planTurn.turnId);
+
+  const newSession = await api.duplicateChat(source.sessionId);
+  const newTurn = await api.testImplementPlan(
+    newSession.sessionId,
+    firstPlan.id,
+    "implement",
+    source.sessionId,
+  );
+  assert.equal(
+    await waitForTerminal(newTurn.turnId, terminals, waiters),
+    "turn.completed",
+  );
+  const newProfile = await api.sessionProfile(newSession.sessionId);
+  assert.equal(newProfile.profile.mode, "act");
+
+  const checkpoints = await api.checkpoints(source.sessionId);
+  const checkpoint = checkpoints.checkpoints.find(
+    (candidate) => candidate.turn_id === planTurn.turnId &&
+      candidate.can_fork,
+  );
+  assert.ok(checkpoint);
+  const parentThread = source.threadId;
+  await api.forkCheckpoint(
+    source.sessionId,
+    checkpoint.id,
+    "Electron Plan Destination Fork",
+  );
+  const forked = api.chatSessions().find(
+    (session) => session.sessionId === source.sessionId,
+  );
+  assert.ok(forked);
+  assert.notEqual(forked.threadId, parentThread);
+  assert.equal(forked.parentThreadId, parentThread);
+  const forkTurn = await api.testImplementPlan(
+    source.sessionId,
+    firstPlan.id,
+    "implement",
+    source.sessionId,
+  );
+  assert.equal(
+    await waitForTerminal(forkTurn.turnId, terminals, waiters),
+    "turn.completed",
+  );
+
+  await setSessionMode(api, source.sessionId, "plan");
+  const currentPlanTurn = await api.testSubmitPrompt(
+    source.sessionId,
+    "Electron plan destination B",
+  );
+  assert.equal(
+    await waitForTerminal(currentPlanTurn.turnId, terminals, waiters),
+    "turn.completed",
+  );
+  const currentPlan = (await api.testSessionPlan(source.sessionId)).artifact;
+  assert.ok(currentPlan);
+  assert.equal(currentPlan.turn_id, currentPlanTurn.turnId);
+  const currentTurn = await api.testImplementPlan(
+    source.sessionId,
+    currentPlan.id,
+    "implement",
+  );
+  assert.equal(
+    await waitForTerminal(currentTurn.turnId, terminals, waiters),
+    "turn.completed",
+  );
+}
+
+async function setSessionMode(
+  api: ExtensionAPI,
+  sessionId: string,
+  mode: "plan" | "act",
+): Promise<void> {
+  assert.ok(api.sessionProfile);
+  assert.ok(api.updateSessionProfile);
+  const profile = await api.sessionProfile(sessionId);
+  if (profile.profile.mode === mode) return;
+  await api.updateSessionProfile(
+    sessionId,
+    profile.profile.revision,
+    { mode },
+  );
 }
 
 async function verifyMultipleChats(api: ExtensionAPI): Promise<void> {
@@ -786,18 +1008,19 @@ async function verifyMultipleChats(api: ExtensionAPI): Promise<void> {
   const generatedTitle = api.chatSessions()[0]?.title;
   assert.ok(generatedTitle);
   assert.doesNotMatch(generatedTitle, /^Chat [0-9]+$/u);
+  const initialCount = api.chatSessions().length;
   const created = await api.createChat();
   assert.equal(created.isolation, "worktree");
   const duplicate = await api.duplicateChat(created.sessionId);
   assert.equal(duplicate.title, `${created.title} · Copy`);
   assert.equal(duplicate.executionEnvironment, "local");
-  assert.equal(api.chatSessions().length, 3);
+  assert.equal(api.chatSessions().length, initialCount + 2);
   assert.equal(api.chatSessions().filter((session) => session.selected).length, 1);
 
   await vscode.commands.executeCommand("codehelper.restartRuntime");
   await waitFor(
     () => api.runtimeSnapshot?.().state === "ready" &&
-      api.chatSessions?.().length === 3,
+      api.chatSessions?.().length === initialCount + 2,
     "multiple Chat sessions did not recover after Runtime restart",
   );
   const selected = api.chatSessions().find((session) => session.selected);
@@ -977,6 +1200,7 @@ async function verifySessionProfile(api: ExtensionAPI): Promise<void> {
 async function verifyModelCatalog(api: ExtensionAPI): Promise<void> {
   assert.ok(api.providerCatalog);
   assert.ok(api.modelCatalog);
+  assert.ok(api.testDispatchChatIntent);
   const providers = await api.providerCatalog();
   const selectedProvider = providers.providers.find(
     (provider) => provider.selected,
@@ -988,6 +1212,22 @@ async function verifyModelCatalog(api: ExtensionAPI): Promise<void> {
   assert.equal(selectedModel.provider, selectedProvider.id);
   assert.equal(selectedModel.capabilities.selection_mode, "restart_required");
   assert.ok(models.models.length >= 1);
+  const picker = api.testDispatchChatIntent({
+    type: "configure-composer",
+    control: "model",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await vscode.commands.executeCommand(
+    "workbench.action.acceptSelectedQuickOpenItem",
+  );
+  await Promise.race([
+    picker,
+    new Promise<never>((_resolve, reject) => {
+      setTimeout(() => {
+        reject(new Error("native Model Picker did not accept its current item"));
+      }, 5_000);
+    }),
+  ]);
 }
 
 async function verifyComposerCredential(api: ExtensionAPI): Promise<void> {
@@ -1452,6 +1692,23 @@ async function verifyNativeContextCapture(): Promise<void> {
     assert.equal(diagnostic.diagnostics.length, 32);
     assert.equal(diagnostic.omitted_diagnostics, 8);
     assert.equal(diagnostic.diagnostics[0]?.severity, "error");
+    editor.selection = new vscode.Selection(2, 4, 2, 17);
+    const fileAndSelection = await bridge.capture(
+      new Set(["file", "selection"]),
+    );
+    assert.deepEqual(
+      fileAndSelection.map((reference) => reference.kind),
+      ["file", "selection"],
+    );
+    const imageURI = vscode.Uri.joinPath(workspace.uri, "context.png");
+    await vscode.workspace.fs.writeFile(
+      imageURI,
+      Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    const image = (await bridge.captureWorkspaceFile(imageURI, "image"))[0];
+    assert.ok(image);
+    assert.equal(image.kind, "image");
+    assert.equal(image.media_type, "image/png");
 
     await editor.edit((builder) => {
       builder.insert(new vscode.Position(0, 0), "// dirty\n");
@@ -1473,6 +1730,14 @@ async function verifyNativeContextCapture(): Promise<void> {
     assert.equal(terminal.source, "native_picker");
     assert.equal(terminal.kind, "terminal");
     assert.equal(terminal.path, "");
+    const gitDiff = bridge.captureInline(
+      "git_diff",
+      "Electron Git diff",
+      "diff --git a/context.ts b/context.ts\n+// evidence",
+    )[0];
+    assert.ok(gitDiff);
+    assert.equal(gitDiff.kind, "git_diff");
+    assert.equal(gitDiff.source, "native_picker");
   } finally {
     diagnostics.dispose();
   }

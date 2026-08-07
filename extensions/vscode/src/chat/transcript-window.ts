@@ -7,6 +7,17 @@ export interface TranscriptWindow {
 
 export const transcriptTurnEstimate = 180;
 
+export function restoredAnchorScrollTop(
+  scrollTop: number,
+  currentOffset: number,
+  expectedOffset: number,
+): number {
+  if (![scrollTop, currentOffset, expectedOffset].every(Number.isFinite)) {
+    throw new Error("Transcript anchor is invalid");
+  }
+  return Math.max(0, scrollTop + currentOffset - expectedOffset);
+}
+
 export function computeTranscriptWindow(
   total: number,
   scrollTop: number,

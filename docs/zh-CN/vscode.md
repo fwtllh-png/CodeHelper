@@ -232,13 +232,23 @@ Extension Host 继续更新 Runtime Projection，但停止组装和发送 DOM Sn
 - Extension Activation 新增开销不超过 20 ms；
 - 首次 Chat 可交互时间不超过 300 ms，不含 Runtime 启动；
 - 200 Turn Session Snapshot 不超过 100 ms；
+- 单 Turn Patch 不超过 100 ms，且 Payload 小于 Full Snapshot 的四分之一；
+- 每次测量 Patch 影响的 Turn DOM 节点不超过 2 个、虚拟 Turn 节点不超过 30 个、
+  Scroll Anchor 误差不超过 1 px；
 - 1000 Session 搜索和虚拟首屏不超过 150 ms；
+- Webview 隐藏期间 Post 数为 0，恢复不超过 300 ms；
 - 流式 Patch 每 16 ms Frame 最多一次。
 
 Electron Journey 会动态切换 Default Dark Modern、Default Light Modern 和 Default
-High Contrast Theme，应用 Zoom Level 4（约 200%），并验证 Webview 仍可交互。
-键盘证据覆盖可见 Focus、虚拟行间的 Session Home/End/Arrow 导航、Escape、窄 Rail
-Focus Trap、Reduced Motion 和 Forced-color Border。
+High Contrast Theme，应用 Zoom Level 4（约 200%），并验证 Webview 上报的 Theme
+Class。独立 Chromium High Contrast 进程验证 `forced-colors` Media Query 已激活。
+Bundled Webview 通过严格解码且不含敏感数据的 Evidence Message 上报 IME Composition
+Guard、Viewport 与 Device Scale。
+
+Release Matrix 汇总 Electron Evidence 中的必需 Journey ID；RC Gate 拒绝缺失的 Journey
+或性能字段。唯一保留的人工 Journey 是将同一个 `WebviewView` 在 Sidebar 与 Panel
+之间移动；产品不提供 Full Editor Chat。复现步骤随
+`extensions/vscode/RELEASE-EVIDENCE.md` 一同打包。
 
 ## 内置 Setup 与 Repair
 

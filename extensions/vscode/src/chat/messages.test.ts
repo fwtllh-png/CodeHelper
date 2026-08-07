@@ -7,6 +7,23 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
   assert.deepEqual(decodeWebviewMessage({ type: "ready" }), {
     type: "ready",
   });
+  assert.deepEqual(decodeWebviewMessage({
+    type: "client-evidence",
+    themeKind: "dark",
+    forcedColorsActive: false,
+    imeGuardPassed: true,
+    viewportWidth: 800,
+    viewportHeight: 600,
+    devicePixelRatio: 2,
+  }), {
+    type: "client-evidence",
+    themeKind: "dark",
+    forcedColorsActive: false,
+    imeGuardPassed: true,
+    viewportWidth: 800,
+    viewportHeight: 600,
+    devicePixelRatio: 2,
+  });
   assert.deepEqual(decodeWebviewMessage({ type: "resync" }), {
     type: "resync",
   });
@@ -139,6 +156,18 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
 });
 
 void test("decodeWebviewMessage rejects forged fields and commands", () => {
+  assert.throws(
+    () => decodeWebviewMessage({
+      type: "client-evidence",
+      themeKind: "dark",
+      forcedColorsActive: "yes",
+      imeGuardPassed: true,
+      viewportWidth: 800,
+      viewportHeight: 600,
+      devicePixelRatio: 2,
+    }),
+    /forcedColorsActive is invalid/,
+  );
   assert.throws(
     () => decodeWebviewMessage({ type: "submit", text: "hello", path: "/tmp/escape" }),
     /unexpected fields/,
