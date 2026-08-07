@@ -3,7 +3,8 @@
   "compilerOptions": {
     "lib": [
       "ES2022",
-      "DOM"
+      "DOM",
+      "DOM.Iterable"
     ],
     "types": [
       "node",
@@ -11,7 +12,9 @@
     ]
   },
   "include": [
-    "src/chat/webview/client.ts"
+    "src/chat/webview/client.ts",
+    "src/chat/webview/dom.ts",
+    "src/chat/webview/transcript.ts"
   ],
   "exclude": []
 }

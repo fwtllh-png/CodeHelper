@@ -43,7 +43,7 @@ void test("Chat covers theme, keyboard, focus, and explicit state baselines", as
   assert.doesNotMatch(styles, /#[0-9a-fA-F]{3,8}\b/u);
 
   assert.match(shell, /aria-label="Workspace root"/u);
-  assert.match(shell, /aria-label="Chat session"/u);
+  assert.match(shell, /aria-label="Sessions"/u);
   assert.match(shell, /aria-label="Chat transcript"/u);
   assert.match(shell, /aria-label="Prompt"/u);
   assert.match(shell, /aria-live="polite"/u);
@@ -120,12 +120,16 @@ void test("workbench keeps primary views prominent and uses native controls", as
 void test("Chat DOM keeps the pre-refactor journey structure and safe sinks", async () => {
   const shell = await sourceFile("chat", "webview", "shell.ts");
   const client = await sourceFile("chat", "webview", "client.ts");
+  const transcript = await sourceFile("chat", "webview", "transcript.ts");
   const ordered = [
-    '<div id="status">',
+    '<header id="chat-header">',
+    '<div id="chat-content">',
     '<section id="repair"',
     '<section id="empty"',
-    '<main id="turns" aria-label="Chat transcript">',
+    '<main id="turns" aria-label="Chat transcript"',
+    '<footer id="composer-region">',
     '<form id="composer">',
+    '<aside id="session-rail"',
   ];
   let cursor = -1;
   for (const marker of ordered) {
@@ -134,16 +138,39 @@ void test("Chat DOM keeps the pre-refactor journey structure and safe sinks", as
     cursor = next;
   }
   for (const id of [
-    "root", "chat", "new-chat", "merge-chat", "runtime", "journey-state",
-    "repair-runtime", "run-setup", "turns", "composer", "prompt", "send", "stop",
+    "root", "new-chat", "merge-chat", "toggle-sessions", "runtime",
+    "journey-state", "repair-runtime", "run-setup", "turns", "composer",
+    "prompt", "send", "stop", "session-rail", "session-list", "session-search",
   ]) {
     assert.match(shell, new RegExp(`id="${id}"`, "u"));
   }
   assert.match(shell, /role="status" aria-live="polite"/u);
-  assert.match(client, /document\.createDocumentFragment\(\)/u);
-  assert.match(client, /turns\.replaceChildren\(fragment\)/u);
+  assert.match(transcript, /document\.createDocumentFragment\(\)/u);
+  assert.match(transcript, /container\.replaceChildren\(fragment\)/u);
   assert.doesNotMatch(client, /\.innerHTML\s*=/u);
   assert.doesNotMatch(client, /insertAdjacentHTML/u);
+});
+
+void test("Chat exposes the native two-pane responsive layout contract", async () => {
+  const shell = await sourceFile("chat", "webview", "shell.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
+  const styles = await sourceFile("chat", "webview", "styles.css");
+
+  assert.match(shell, /id="chat-header"/u);
+  assert.match(shell, /id="composer-toolbar"/u);
+  assert.match(shell, /id="composer-status"/u);
+  assert.match(shell, /id="session-rail" aria-label="Sessions"/u);
+  assert.match(shell, /id="session-search" type="search"/u);
+  assert.match(shell, /id="session-list" aria-label="Recent Sessions"/u);
+  assert.match(styles, /grid-template-columns: minmax\(0, 1fr\)/u);
+  assert.match(styles, /@media \(max-width: 720px\)/u);
+  assert.match(styles, /body\.sessions-open #session-rail/u);
+  assert.match(styles, /var\(--vscode-list-activeSelectionBackground\)/u);
+  assert.match(client, /\["ArrowDown", "ArrowUp", "Home", "End"\]/u);
+  assert.match(client, /aria-current/u);
+  assert.match(client, /function isNearBottom\(\)/u);
+  assert.match(client, /if \(stickToBottom\) turns\.scrollTo/u);
+  assert.doesNotMatch(client, /window\.scrollTo/u);
 });
 
 void test("Setup and Repair preserve trust and consequential-action rules", async () => {

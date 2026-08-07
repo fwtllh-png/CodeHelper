@@ -43,6 +43,12 @@ export async function run(): Promise<void> {
       : vscode.workspace.workspaceFolders?.length === 2
         ? "remote-multi"
         : "remote");
+  if (scenario !== "empty") {
+    await waitFor(
+      () => api.chatWebviewReady?.() === true,
+      "Chat Webview client did not complete its ready handshake",
+    );
+  }
   if (scenario === "empty") {
     assert.equal(vscode.workspace.workspaceFolders, undefined);
     assert.equal(api.workspaceMode, "none");

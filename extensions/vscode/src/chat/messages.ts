@@ -4,6 +4,7 @@ import type {
 } from "../runtime/session.js";
 
 export type WebviewMessage =
+  | { readonly type: "ready" }
   | { readonly type: "submit"; readonly text: string }
   | { readonly type: "select-root"; readonly rootId: string }
   | { readonly type: "select-chat"; readonly sessionId: string }
@@ -27,6 +28,9 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
     throw new Error("invalid Webview message");
   }
   switch (value["type"]) {
+    case "ready":
+      requireKeys(value, ["type"]);
+      return { type: "ready" };
     case "submit":
       requireKeys(value, ["type", "text"]);
       return { type: "submit", text: requireBoundedString(value["text"], "text", 64 << 10) };

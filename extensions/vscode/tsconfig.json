@@ -21,6 +21,8 @@
     "src/**/*.ts"
   ],
   "exclude": [
-    "src/chat/webview/client.ts"
+    "src/chat/webview/client.ts",
+    "src/chat/webview/dom.ts",
+    "src/chat/webview/transcript.ts"
   ]
 }

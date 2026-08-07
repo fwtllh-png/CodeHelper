@@ -7,6 +7,7 @@ void test("Chat Webview keeps a nonce-only CSP and safe DOM sinks", async () => 
   const provider = await sourceFile("chat", "view.ts");
   const shell = await sourceFile("chat", "webview", "shell.ts");
   const client = await sourceFile("chat", "webview", "client.ts");
+  const dom = await sourceFile("chat", "webview", "dom.ts");
   const markdown = await sourceFile("chat", "markdown.ts");
   assert.match(shell, /"default-src 'none'"/u);
   assert.match(shell, /`style-src \$\{webview\.cspSource\}`/u);
@@ -21,8 +22,8 @@ void test("Chat Webview keeps a nonce-only CSP and safe DOM sinks", async () => 
   assert.doesNotMatch(client, /\beval\s*\(/u);
   assert.doesNotMatch(client, /\bnew Function\s*\(/u);
   assert.doesNotMatch(shell, /https?:\/\//u);
-  assert.match(client, /const markdownTags = new Set/u);
-  assert.match(client, /\^\(\?:https\?:\|mailto:\)/u);
+  assert.match(dom, /const markdownTags = new Set/u);
+  assert.match(dom, /\^\(\?:https\?:\|mailto:\)/u);
   assert.match(markdown, /html: false/u);
   assert.match(markdown, /const maxMarkdownNodes = 8192/u);
   assert.match(markdown, /\["http:", "https:", "mailto:"\]/u);
@@ -115,7 +116,7 @@ void test("multi-root routing remains root-bound and bounded", async () => {
 });
 
 void test("Runtime context receipts render as read-only text", async () => {
-  const source = await sourceFile("chat", "webview", "client.ts");
+  const source = await sourceFile("chat", "webview", "transcript.ts");
   const start = source.indexOf("function contextReceiptCard(");
   const end = source.indexOf("function approvalCard(", start);
   assert.ok(start >= 0 && end > start);

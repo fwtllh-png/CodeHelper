@@ -46,6 +46,7 @@ export interface ExtensionAPI {
   readonly runtimeHosts?: () => readonly RuntimeHostSnapshot[];
   readonly chatSessions?: () => readonly ChatSessionSummary[];
   readonly createChat?: () => Promise<ChatSessionSummary>;
+  readonly chatWebviewReady?: () => boolean;
   readonly onRootRuntimeEvent?: (
     listener: (
       rootId: string,
@@ -62,6 +63,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
   context.subscriptions.push(output, editPreview);
   const folders = vscode.workspace.workspaceFolders ?? [];
   let registryError: string | undefined;
+  let chatView: ChatViewProvider | undefined;
   if (folders.length > 0) {
     try {
       registry = new WorkspaceRuntimeRegistry(context, folders, output);
@@ -76,6 +78,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
       editPreview,
       context.extensionUri,
     );
+    chatView = chat;
     context.subscriptions.push(
       registry,
       chat,
@@ -257,6 +260,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
           ),
           chatSessions: () => activeRegistry.selected.controller.sessions(),
           createChat: async () => activeRegistry.selected.controller.createChat(),
+          chatWebviewReady: () => chatView?.webviewReady ?? false,
           onRootRuntimeEvent: (
             listener: (
               rootId: string,

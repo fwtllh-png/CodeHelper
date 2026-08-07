@@ -4,6 +4,9 @@ import test from "node:test";
 import { decodeWebviewMessage } from "./messages.js";
 
 void test("decodeWebviewMessage accepts the finite command surface", () => {
+  assert.deepEqual(decodeWebviewMessage({ type: "ready" }), {
+    type: "ready",
+  });
   assert.deepEqual(decodeWebviewMessage({ type: "submit", text: "hello" }), {
     type: "submit",
     text: "hello",
