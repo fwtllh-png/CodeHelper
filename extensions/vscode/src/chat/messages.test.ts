@@ -51,6 +51,25 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
     scope: "once",
     planId: "a".repeat(64),
   });
+  assert.deepEqual(decodeWebviewMessage({ type: "stop" }), {
+    type: "stop",
+  });
+  assert.deepEqual(decodeWebviewMessage({
+    type: "preview",
+    requestId: "approval_1",
+  }), {
+    type: "preview",
+    requestId: "approval_1",
+  });
+  assert.deepEqual(decodeWebviewMessage({
+    type: "input",
+    requestId: "input_1",
+    answer: "",
+  }), {
+    type: "input",
+    requestId: "input_1",
+    answer: "",
+  });
 });
 
 void test("decodeWebviewMessage rejects forged fields and commands", () => {
@@ -70,6 +89,20 @@ void test("decodeWebviewMessage rejects forged fields and commands", () => {
       scope: "always",
     }),
     /decision is invalid/,
+  );
+  assert.throws(
+    () => decodeWebviewMessage({
+      type: "select-root",
+      rootId: "../../outside",
+    }),
+    /workspace root id is invalid/,
+  );
+  assert.throws(
+    () => decodeWebviewMessage({
+      type: "merge-chat",
+      planId: "not-a-plan",
+    }),
+    /edit plan id is invalid/,
   );
 });
 

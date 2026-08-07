@@ -3,7 +3,7 @@ import { build } from "esbuild";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 
-const outputDirectory = ".tmp-tests";
+const outputDirectory = join(".tmp-tests", String(process.pid));
 await rm(outputDirectory, { force: true, recursive: true });
 
 const entryPoints = [];

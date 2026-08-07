@@ -11,6 +11,11 @@ import type { SupervisorSnapshot } from "../runtime/supervisor.js";
 import type { EditPlanPreview } from "../edits/preview.js";
 import { decodeWebviewMessage } from "./messages.js";
 import {
+  createChatErrorMessage,
+  createChatSnapshotMessage,
+  type ChatHostMessage,
+} from "./contract.js";
+import {
   ChatProjector,
   type ApprovalCard,
   type InputCard,
@@ -263,10 +268,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         }
       }
     } catch (error) {
-      this.#post({
-        type: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
+      this.#post(createChatErrorMessage(
+        error instanceof Error ? error.message : String(error),
+      ));
     }
   }
 
@@ -314,10 +318,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         );
       }
     } catch (error) {
-      this.#post({
-        type: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
+      this.#post(createChatErrorMessage(
+        error instanceof Error ? error.message : String(error),
+      ));
     } finally {
       this.#modalApprovals.delete(key);
     }
@@ -349,10 +352,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         );
       }
     } catch (error) {
-      this.#post({
-        type: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
+      this.#post(createChatErrorMessage(
+        error instanceof Error ? error.message : String(error),
+      ));
     } finally {
       this.#modalInputs.delete(key);
     }
@@ -443,30 +445,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         : this.#mergePlans.get(
             sessionKey(root.rootId, selected.sessionId, "merge"),
           );
-      this.#post({
-        type: "snapshot",
+      this.#post(createChatSnapshotMessage({
         snapshot: projector.snapshot(),
-        runtime: {
-          state: state.runtime.state,
-          ...(state.runtime.error === undefined
-            ? {}
-            : { error: state.runtime.error }),
-          trusted: vscode.workspace.isTrusted,
-          selectedRootId: root.rootId,
-          selectedRootLabel: root.label,
-          selectedSessionId: selected?.sessionId,
-          sessions,
-          mergePlanId: mergePlan?.id,
-          roots: this.#registry.roots.map((candidate) => ({
-            id: candidate.rootId,
-            label: candidate.label,
-          })),
-        },
-      });
+        state: state.runtime.state,
+        ...(state.runtime.error === undefined
+          ? {}
+          : { error: state.runtime.error }),
+        trusted: vscode.workspace.isTrusted,
+        selectedRootId: root.rootId,
+        selectedRootLabel: root.label,
+        sessions,
+        ...(mergePlan === undefined ? {} : { mergePlanId: mergePlan.id }),
+        roots: this.#registry.roots.map((candidate) => ({
+          id: candidate.rootId,
+          label: candidate.label,
+        })),
+      }));
     }, 16);
   }
 
-  #post(value: unknown): void {
+  #post(value: ChatHostMessage): void {
     void this.#view?.webview.postMessage(value);
   }
 
