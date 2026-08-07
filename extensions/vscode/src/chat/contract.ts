@@ -1,8 +1,13 @@
 import type { ChatSessionSummary } from "../runtime/controller.js";
 import type { SupervisorState } from "../runtime/supervisor.js";
+import {
+  deriveChatPresentation,
+  type ChatPresentation,
+} from "./presentation.js";
 import type { ChatSnapshot } from "./projector.js";
 
 export const chatViewProtocolVersion = 1;
+export const chatHostMessageTypes = ["snapshot", "error"] as const;
 
 export interface ChatRootView {
   readonly id: string;
@@ -30,6 +35,7 @@ export interface ChatSnapshotMessage {
   readonly version: typeof chatViewProtocolVersion;
   readonly snapshot: ChatSnapshot;
   readonly runtime: ChatRuntimeView;
+  readonly presentation: ChatPresentation;
 }
 
 export interface ChatErrorMessage {
@@ -60,6 +66,11 @@ export function createChatSnapshotMessage(
     type: "snapshot",
     version: chatViewProtocolVersion,
     snapshot: options.snapshot,
+    presentation: deriveChatPresentation(
+      options.state,
+      options.snapshot,
+      options.trusted,
+    ),
     runtime: {
       state: options.state,
       ...(options.error === undefined ? {} : { error: options.error }),

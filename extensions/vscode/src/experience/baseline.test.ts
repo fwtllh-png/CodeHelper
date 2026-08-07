@@ -30,6 +30,7 @@ void test("shared experience contract exposes the required baseline", async () =
 
 void test("Chat covers theme, keyboard, focus, and explicit state baselines", async () => {
   const source = await sourceFile("chat", "view.ts");
+  const presentation = await sourceFile("chat", "presentation.ts");
 
   assert.match(source, /color-scheme: light dark/u);
   assert.match(source, /var\(--vscode-foreground\)/u);
@@ -58,14 +59,20 @@ void test("Chat covers theme, keyboard, focus, and explicit state baselines", as
     "Setup", "Empty", "Loading", "Streaming", "Approval", "Verify",
     "Failure", "Recovery", "Completed",
   ]) {
-    assert.match(source, new RegExp(`${state} ·`, "u"));
+    assert.match(presentation, new RegExp(`${state} ·`, "u"));
   }
 
-  assert.match(source, /const runtimeReady = message\.runtime\.state === 'ready'/u);
-  assert.match(source, /prompt\.disabled = !runtimeReady/u);
-  assert.match(source, /send\.disabled = !runtimeReady/u);
-  assert.match(source, /stop\.disabled = !runtimeReady \|\| !message\.snapshot\.activeTurnId/u);
-  assert.match(source, /empty\.hidden = !runtimeReady/u);
+  assert.match(
+    source,
+    /prompt\.disabled = !message\.presentation\.promptEnabled/u,
+  );
+  assert.match(source, /send\.disabled = !message\.presentation\.sendEnabled/u);
+  assert.match(source, /stop\.disabled = !message\.presentation\.stopEnabled/u);
+  assert.match(source, /empty\.hidden = !message\.presentation\.emptyVisible/u);
+  assert.match(
+    presentation,
+    /const runtimeReady = runtimeState === "ready"/u,
+  );
 });
 
 void test("workbench keeps primary views prominent and uses native controls", async () => {
@@ -103,6 +110,34 @@ void test("workbench keeps primary views prominent and uses native controls", as
   assert.match(setup, /withProgress/u);
   assert.match(chat, /showQuickPick/u);
   assert.match(background, /createTreeView/u);
+});
+
+void test("Chat DOM keeps the pre-refactor journey structure and safe sinks", async () => {
+  const source = await sourceFile("chat", "view.ts");
+  const ordered = [
+    '<div id="status">',
+    '<section id="repair"',
+    '<section id="empty"',
+    '<main id="turns" aria-label="Chat transcript">',
+    '<form id="composer">',
+  ];
+  let cursor = -1;
+  for (const marker of ordered) {
+    const next = source.indexOf(marker);
+    assert.ok(next > cursor, `${marker} must retain its DOM order`);
+    cursor = next;
+  }
+  for (const id of [
+    "root", "chat", "new-chat", "merge-chat", "runtime", "journey-state",
+    "repair-runtime", "run-setup", "turns", "composer", "prompt", "send", "stop",
+  ]) {
+    assert.match(source, new RegExp(`id="${id}"`, "u"));
+  }
+  assert.match(source, /role="status" aria-live="polite"/u);
+  assert.match(source, /document\.createDocumentFragment\(\)/u);
+  assert.match(source, /turns\.replaceChildren\(fragment\)/u);
+  assert.doesNotMatch(source, /\.innerHTML\s*=/u);
+  assert.doesNotMatch(source, /insertAdjacentHTML/u);
 });
 
 void test("Setup and Repair preserve trust and consequential-action rules", async () => {

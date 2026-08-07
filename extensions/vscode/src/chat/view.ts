@@ -780,62 +780,24 @@ function renderHTML(): string {
       }));
       messageMergePlanId = message.runtime.mergePlanId;
       const mergeButton = document.getElementById('merge-chat');
-      const runtimeReady = message.runtime.state === 'ready';
       mergeButton.textContent =
         messageMergePlanId ? 'Apply' : 'Merge';
-      mergeButton.disabled = !runtimeReady ||
+      mergeButton.disabled = !message.presentation.runtimeReady ||
         (Boolean(messageMergePlanId) && !trusted);
-      prompt.disabled = !runtimeReady;
-      send.disabled = !runtimeReady;
-      stop.disabled = !runtimeReady || !message.snapshot.activeTurnId;
-      newChat.disabled = !runtimeReady;
+      prompt.disabled = !message.presentation.promptEnabled;
+      send.disabled = !message.presentation.sendEnabled;
+      stop.disabled = !message.presentation.stopEnabled;
+      newChat.disabled = !message.presentation.newChatEnabled;
       runtime.textContent = 'CodeHelper Runtime: ' + message.runtime.state +
         (trusted ? ' · trusted' : ' · read-only') +
         ' · ' + message.runtime.sessions.length + ' chats';
-      journeyState.textContent = journeyLabel(
-        message.runtime.state, message.snapshot, trusted);
-      repair.hidden = !['failed', 'stopped'].includes(message.runtime.state);
+      journeyState.textContent = message.presentation.journey;
+      repair.hidden = !message.presentation.repairVisible;
       repairDetail.textContent = message.runtime.error ||
         'Run readiness checks to identify missing configuration or capabilities.';
-      empty.hidden = !runtimeReady || message.snapshot.turns.length > 0;
+      empty.hidden = !message.presentation.emptyVisible;
       render(message.snapshot);
     });
-    function journeyLabel(runtimeState, snapshot, workspaceTrusted) {
-      if (runtimeState === 'recovering') {
-        return 'Recovery · Restoring Chat and cursor · Wait';
-      }
-      if (runtimeState === 'starting') {
-        return 'Loading · Runtime starting · Wait';
-      }
-      if (runtimeState === 'failed' || runtimeState === 'stopped') {
-        return 'Failure · Runtime unavailable · Inspect and Repair';
-      }
-      if (!workspaceTrusted) {
-        return 'Setup · Read-only workspace · Trust workspace or run Setup';
-      }
-      const active = snapshot.turns.find(turn =>
-        turn.id === snapshot.activeTurnId);
-      if (active?.status === 'awaiting_approval') {
-        return 'Approval · Review target and effect · Approve, Deny, or Cancel';
-      }
-      if (active?.status === 'awaiting_input') {
-        return 'Input · Answer required · Choose or type a response';
-      }
-      if (active?.status === 'running') {
-        return 'Streaming · Turn in progress · Stop is available';
-      }
-      const latest = snapshot.turns[snapshot.turns.length - 1];
-      if (latest?.verification) {
-        return 'Verify · Verdict available · Review checks and Receipt';
-      }
-      if (latest?.status === 'failed' || latest?.status === 'canceled') {
-        return 'Failure · Turn did not complete · Review reason and retry';
-      }
-      if (latest?.status === 'completed') {
-        return 'Completed · Turn finished · Review changes and Receipt';
-      }
-      return 'Empty · Ready for a task · Enter a prompt';
-    }
     function render(snapshot) {
       const fragment = document.createDocumentFragment();
       for (const turn of snapshot.turns) {

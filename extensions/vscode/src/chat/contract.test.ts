@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  chatHostMessageTypes,
   chatViewProtocolVersion,
   createChatErrorMessage,
   createChatSnapshotMessage,
 } from "./contract.js";
+
+void test("Chat V1 host protocol is snapshot-only between terminal errors", () => {
+  assert.deepEqual(chatHostMessageTypes, ["snapshot", "error"]);
+});
 
 void test("Chat host snapshot freezes the current Runtime and Session projection", () => {
   const message = createChatSnapshotMessage({
@@ -51,6 +56,11 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
   assert.equal(message.runtime.sessions[0]?.active, true);
   assert.equal(message.runtime.sessions[1]?.active, false);
   assert.equal(message.runtime.mergePlanId, "b".repeat(64));
+  assert.equal(message.presentation.stopEnabled, true);
+  assert.equal(
+    message.presentation.journey,
+    "Empty · Ready for a task · Enter a prompt",
+  );
   assert.deepEqual(
     message.runtime.roots.map((root) => root.label),
     ["workspace", "library"],

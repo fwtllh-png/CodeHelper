@@ -4,6 +4,7 @@ import test from "node:test";
 import { performance } from "node:perf_hooks";
 
 import { BackgroundProjector, type TaskRow } from "../background/model.js";
+import { createChatSnapshotMessage } from "../chat/contract.js";
 import { ChatProjector } from "../chat/projector.js";
 import { decodeEvent } from "../protocol/decode.js";
 
@@ -86,14 +87,70 @@ void test("ChatProjector ignores workspace agent events in the Chat transcript",
   assert.equal(projector.snapshot().turns.length, 0);
 });
 
-function event(sequence: number, kind: string, data: unknown) {
+void test("Chat assembles the maximum V1 transcript and Session list within budget", () => {
+  const projector = new ChatProjector();
+  let sequence = 0;
+  for (let index = 0; index < 200; index++) {
+    const turnID = `turn_${String(index)}`;
+    projector.apply(event(++sequence, "turn.started", {
+      provider: "fixture",
+      model: "fixture",
+      display_prompt: `inspect file ${String(index)}`,
+    }, turnID));
+    projector.apply(event(++sequence, "turn.completed", {
+      text: `result ${String(index)}`,
+    }, turnID));
+  }
+  const sessions = Array.from({ length: 32 }, (_, index) => ({
+    sessionId: `session_${String(index)}`,
+    threadId: `thread_${String(index)}`,
+    title: `Session ${String(index)}`,
+    isolation: index === 0 ? "shared" as const : "worktree" as const,
+    selected: index === 0,
+    replayedEvents: index,
+    active: index === 1,
+  }));
+
+  const started = performance.now();
+  const message = createChatSnapshotMessage({
+    snapshot: projector.snapshot(),
+    state: "ready",
+    trusted: true,
+    selectedRootId: "a".repeat(64),
+    selectedRootLabel: "workspace",
+    sessions,
+    roots: [{ id: "a".repeat(64), label: "workspace" }],
+  });
+  const durationMS = performance.now() - started;
+  const bytes = Buffer.byteLength(JSON.stringify(message));
+  metrics["chat_200_turn_snapshot_ms"] = Number(durationMS.toFixed(1));
+  metrics["chat_200_turn_snapshot_bytes"] = bytes;
+
+  assert.equal(message.snapshot.turns.length, 200);
+  assert.equal(message.runtime.sessions.length, 32);
+  assert.ok(
+    durationMS < 100,
+    `200-turn Chat snapshot assembly took ${durationMS.toFixed(1)}ms`,
+  );
+  assert.ok(
+    bytes < 2 << 20,
+    `200-turn Chat snapshot is ${String(bytes)} bytes`,
+  );
+});
+
+function event(
+  sequence: number,
+  kind: string,
+  data: unknown,
+  turnID = "turn_1",
+) {
   return decodeEvent({
     version: 1,
     id: `event_${String(sequence)}`,
     sequence,
     operation_id: "operation_1",
     thread_id: "thread_1",
-    turn_id: "turn_1",
+    turn_id: turnID,
     item_id: "item_1",
     kind,
     created_at: "2026-08-04T00:00:00Z",
