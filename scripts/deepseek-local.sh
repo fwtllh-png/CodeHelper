@@ -49,16 +49,8 @@ require_macos() {
   fi
 }
 
-read_key_from_doc() {
-  [[ -f "$LOCAL_DOC" ]] || return 1
-  sed -n "s/^export DEEPSEEK_API_KEY='\\([^']*\\)'$/\\1/p" "$LOCAL_DOC" | head -1
-}
-
-read_key_from_keychain() {
-  local service=$1
-  local stored
-  stored="$(security find-generic-password \
-    -s "$service" -a "$KEYRING_NAME" -w 2>/dev/null)" || return 1
+decode_stored_key() {
+  local stored=$1
   case "$stored" in
     go-keyring-base64:*)
       printf '%s' "${stored#go-keyring-base64:}" | /usr/bin/base64 -D
@@ -67,6 +59,22 @@ read_key_from_keychain() {
       printf '%s' "$stored"
       ;;
   esac
+}
+
+read_key_from_doc() {
+  [[ -f "$LOCAL_DOC" ]] || return 1
+  local stored
+  stored="$(sed -n "s/^export DEEPSEEK_API_KEY='\\([^']*\\)'$/\\1/p" "$LOCAL_DOC" | head -1)"
+  [[ -n "$stored" ]] || return 1
+  decode_stored_key "$stored"
+}
+
+read_key_from_keychain() {
+  local service=$1
+  local stored
+  stored="$(security find-generic-password \
+    -s "$service" -a "$KEYRING_NAME" -w 2>/dev/null)" || return 1
+  decode_stored_key "$stored"
 }
 
 load_api_key() {
