@@ -174,6 +174,64 @@ void test("Chat exposes the native two-pane responsive layout contract", async (
   assert.doesNotMatch(client, /window\.scrollTo/u);
 });
 
+void test("Chat hardening virtualizes Sessions and pauses hidden DOM work", async () => {
+  const client = await sourceFile("chat", "webview", "client.ts");
+  const styles = await sourceFile("chat", "webview", "styles.css");
+  const view = await sourceFile("chat", "view.ts");
+
+  assert.match(client, /computeVirtualWindow/u);
+  assert.match(client, /sessionVirtualItems/u);
+  assert.match(client, /aria-posinset/u);
+  assert.match(client, /aria-setsize/u);
+  assert.match(client, /indicator\.setAttribute\("aria-hidden", "true"\)/u);
+  assert.match(client, /event\.key === "Escape"/u);
+  assert.match(client, /event\.key !== "Tab"/u);
+  assert.match(client, /virtualItemOffset/u);
+  assert.match(styles, /contain: strict/u);
+  assert.match(styles, /content-visibility: auto/u);
+  assert.match(styles, /contain-intrinsic-size/u);
+
+  assert.match(view, /onDidChangeVisibility/u);
+  assert.match(view, /!this\.#view\.visible/u);
+  assert.match(view, /this\.#view\?\.visible === true/u);
+  assert.match(view, /#deferredError/u);
+  assert.match(view, /\}, 16\);/u);
+});
+
+void test("release matrix and RC consume one local job manifest", async () => {
+  const matrix = await readFile(
+    join(process.cwd(), "scripts", "matrix", "report.mjs"),
+    "utf8",
+  );
+  const jobs = await readFile(
+    join(process.cwd(), "scripts", "matrix", "jobs.mjs"),
+    "utf8",
+  );
+  const rc = await readFile(
+    join(process.cwd(), "scripts", "release", "rc-report.mjs"),
+    "utf8",
+  );
+  const packaging = await readFile(
+    join(process.cwd(), "scripts", "release", "vscode-matrix.mjs"),
+    "utf8",
+  );
+  assert.match(matrix, /matrixJobs as expected/u);
+  assert.match(rc, /requiredMatrixJobNames/u);
+  assert.match(rc, /requiredMatrixJobs\.size/u);
+  assert.doesNotMatch(rc, /15\/15/u);
+  assert.match(jobs, /local-darwin-arm64-external/u);
+  assert.match(jobs, /local-darwin-x64-external/u);
+  assert.match(rc, /Remote SSH/u);
+  assert.match(rc, /WSL remote workspaces/u);
+  assert.match(packaging, /const extensionBundleFiles/u);
+  assert.match(packaging, /"dist\/chat-webview\.js"/u);
+  assert.match(packaging, /"dist\/chat-webview\.css"/u);
+  assert.match(
+    packaging,
+    /for \(const file of extensionBundleFiles\)[\s\S]*copyFile/u,
+  );
+});
+
 void test("Setup and Repair preserve trust and consequential-action rules", async () => {
   const source = await sourceFile("setup", "commands.ts");
   const messages = await sourceFile("chat", "messages.ts");

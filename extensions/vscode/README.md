@@ -8,6 +8,12 @@ each root (maximum eight).
 Chat has an explicit root selector; editor commands route by the document's
 workspace root. Changes and background views group state by root.
 
+The Session rail uses a bounded virtual DOM window for large histories.
+Hidden Chat views keep the Runtime projection current without posting DOM
+snapshots, then render the latest projection when shown. Release gates cover
+200-Turn switching, 1000-Session search, first-interactive latency, Light,
+Dark, High Contrast, approximately 200% zoom, and local multi-root recovery.
+
 It also supports Chat, explicit `@file` / `@selection` context, approval-bound native
 diff previews, and workspace-scoped Threads, Agents, Tasks, Jobs, Approvals, and
 Usage views.

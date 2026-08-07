@@ -143,6 +143,27 @@ Artifact 与 Profile Revision，通过 Runtime Profile Contract 切换状态并�
 Turn。Autopilot 请求 `act` Mode 与 `auto` Approval Posture，但 Host Permission
 Ceiling、Guard、Policy、Journal 和 Sandbox 仍是最终权威。
 
+## 性能与可访问性契约
+
+Session Rail 对分组搜索结果进行虚拟化：Runtime-owned 列表和搜索投影保持完整，
+Webview 只为可见行和有界 Overscan Window 创建 DOM。Transcript Article 使用浏览器
+Content Visibility，屏幕外 Turn 不参与 Layout 和 Paint。Chat View 隐藏时，
+Extension Host 继续更新 Runtime Projection，但停止组装和发送 DOM Snapshot；重新
+显示时只发送一次最新 Projection。
+
+发布性能门禁要求：
+
+- Extension Activation 新增开销不超过 20 ms；
+- 首次 Chat 可交互时间不超过 300 ms，不含 Runtime 启动；
+- 200 Turn Session Snapshot 不超过 100 ms；
+- 1000 Session 搜索和虚拟首屏不超过 150 ms；
+- 流式 Snapshot 每 16 ms Frame 最多一次。
+
+Electron Journey 会动态切换 Default Dark Modern、Default Light Modern 和 Default
+High Contrast Theme，应用 Zoom Level 4（约 200%），并验证 Webview 仍可交互。
+键盘证据覆盖可见 Focus、虚拟行间的 Session Home/End/Arrow 导航、Escape、窄 Rail
+Focus Trap、Reduced Motion 和 Forced-color Border。
+
 ## 内置 Setup 与 Repair
 
 在已打开且受信任的工作区中执行 `CodeHelper: Setup Workspace`。引导流程会选择
@@ -292,6 +313,21 @@ make vscode-rc
 RC 流程包含 Static Check、Protocol Drift、Runtime Integration、Security、
 Performance、Electron、Update、Distribution、Matrix Evidence、SBOM、Provenance 与
 Report。
+
+必需的本地 Matrix 包含 7 个具名 Job：macOS arm64 External Single/Multi-root、
+macOS arm64 Bundled、Rosetta 下的 macOS x64 External、Update Integration、
+Distribution、Security 和 Performance。由于仓库没有 Windows Electron Runner，
+Windows x64 Package Evidence 为 Optional。Remote SSH、Dev Container、Codespaces
+与 WSL Remote Workspace 是不支持的产品环境，不是缺失的发布 Job。
+
+在 Apple Silicon 发布主机上，可独立运行必需的 Rosetta Evidence：
+
+```bash
+make vscode-rosetta-integration
+```
+
+该命令构建 amd64 Runtime，在固定版本的 x64 VS Code Extension Host 中执行 Journey，
+并在记录 Evidence 前同时断言 Host 与 Binary Architecture。
 
 正式签名材料必须位于仓库外：
 

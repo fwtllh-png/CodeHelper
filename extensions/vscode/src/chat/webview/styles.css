@@ -246,6 +246,14 @@ details.context-selection {
   margin-left: 6px;
 }
 
+.plan-card {
+  overflow: hidden;
+}
+
+.plan-card button {
+  margin-top: 4px;
+}
+
 .markdown {
   overflow-wrap: anywhere;
 }
@@ -475,7 +483,8 @@ pre {
   overflow: hidden;
   color: var(--vscode-descriptionForeground);
   font-size: 11px;
-  white-space: nowrap;
+  flex-wrap: wrap;
+  white-space: normal;
 }
 
 #composer-status > span:not(:last-child)::after {
@@ -494,7 +503,7 @@ pre {
   min-width: 0;
   min-height: 0;
   padding: 8px;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr);
   gap: 7px;
   background: var(--vscode-sideBar-background);
   border-left: 1px solid var(--vscode-panel-border);
@@ -554,10 +563,13 @@ pre {
 #session-list {
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
+  contain: strict;
 }
 
 .session-row {
   display: grid;
+  height: 52px;
   grid-template-columns: minmax(0, 1fr) 28px;
   gap: 2px;
   align-items: center;
@@ -566,7 +578,8 @@ pre {
 .session-item {
   display: flex;
   width: 100%;
-  min-height: 48px;
+  height: 50px;
+  min-height: 50px;
   padding: 6px 8px;
   margin-bottom: 2px;
   flex-direction: column;
@@ -576,6 +589,22 @@ pre {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
+}
+
+#session-list > .session-group-label {
+  height: 24px;
+  min-height: 24px;
+}
+
+.session-virtual-spacer {
+  width: 1px;
+  min-height: 0;
+  pointer-events: none;
+}
+
+#turns > article {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
 }
 
 .session-item:disabled {

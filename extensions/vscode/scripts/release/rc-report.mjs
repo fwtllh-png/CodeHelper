@@ -14,6 +14,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
+import { requiredMatrixJobNames } from "../matrix/jobs.mjs";
 import { sourceIdentity } from "./source-identity.mjs";
 
 const execute = promisify(execFile);
@@ -23,11 +24,23 @@ const releaseRoot = join(extensionRoot, "dist", "vscode-release");
 const matrixRoot = join(extensionRoot, "dist", "matrix");
 const performanceRoot = join(extensionRoot, "dist", "performance");
 const outputRoot = join(extensionRoot, "dist", "rc");
+const requiredMatrixJobs = new Set(requiredMatrixJobNames);
 
 const matrix = await readJSON(join(matrixRoot, "report.json"));
+const passedMatrixJobs = new Set(
+  Array.isArray(matrix.jobs)
+    ? matrix.jobs.filter((job) => job?.status === "passed")
+      .map((job) => job.job)
+    : [],
+);
 if (matrix.schema_version !== 1 || matrix.status !== "passed" ||
-  matrix.required !== 15 || matrix.missing?.length !== 0) {
-  throw new Error("RC requires a complete 15/15 E2E matrix");
+  matrix.required !== requiredMatrixJobs.size ||
+  matrix.missing?.length !== 0 ||
+  [...requiredMatrixJobs].some((job) => !passedMatrixJobs.has(job))) {
+  throw new Error(
+    `RC requires the complete local ${String(requiredMatrixJobs.size)}/` +
+      `${String(requiredMatrixJobs.size)} E2E matrix`,
+  );
 }
 const provenancePath = join(
   releaseRoot,
@@ -133,7 +146,7 @@ const report = {
   performance,
   dependency_audit: audit,
   limitations: [
-    "Windows x64 and WSL2 have no dynamic runner",
+    "Windows x64 has package evidence but no dynamic Electron runner",
     ...(publishable ? [] : [
       "This evidence is not publishable until a clean worktree and production signing identity are used",
     ]),
@@ -153,8 +166,12 @@ async function performanceReport() {
   if (projectors.chat_10k_duration_ms >= 1_000 ||
     projectors.chat_10k_heap_growth_bytes >= 32 << 20 ||
     projectors.tree_1000_duration_ms >= 100 ||
+    projectors.chat_200_turn_snapshot_ms >= 100 ||
+    projectors.session_1000_search_virtual_ms >= 150 ||
+    projectors.session_1000_virtual_dom_items >= 30 ||
     runtime.p95_ms >= 5_000 ||
-    electron.activation_ms >= 100 ||
+    electron.activation_ms >= 20 ||
+    electron.chat_interactive_ms >= 300 ||
     electron.capture_1mib_ms >= 100) {
     throw new Error("performance evidence exceeds an RC budget");
   }
@@ -162,9 +179,15 @@ async function performanceReport() {
     chat_10k_duration_ms: projectors.chat_10k_duration_ms,
     chat_10k_heap_growth_bytes: projectors.chat_10k_heap_growth_bytes,
     tree_1000_duration_ms: projectors.tree_1000_duration_ms,
+    chat_200_turn_snapshot_ms: projectors.chat_200_turn_snapshot_ms,
+    session_1000_search_virtual_ms:
+      projectors.session_1000_search_virtual_ms,
+    session_1000_virtual_dom_items:
+      projectors.session_1000_virtual_dom_items,
     runtime_ready_p50_ms: runtime.p50_ms,
     runtime_ready_p95_ms: runtime.p95_ms,
     activation_ms: electron.activation_ms,
+    chat_interactive_ms: electron.chat_interactive_ms,
     capture_1mib_ms: electron.capture_1mib_ms,
   };
 }
@@ -220,8 +243,10 @@ function buildCompatibilityReport(compatibility, matrixReport) {
     unsupported: [
       "win32-arm64",
       "linux-armhf",
-      "WSL2 dynamic E2E",
-      "Codespaces public service E2E",
+      "Remote SSH",
+      "Dev Containers",
+      "Codespaces",
+      "WSL remote workspaces",
     ],
   };
 }

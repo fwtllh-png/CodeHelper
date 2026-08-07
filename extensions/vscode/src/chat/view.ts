@@ -80,6 +80,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   #view: vscode.WebviewView | undefined;
   #flushTimer: NodeJS.Timeout | undefined;
   #webviewReady = false;
+  #snapshotPosts = 0;
+  #deferredError: ChatHostMessage | undefined;
 
   public constructor(
     registry: WorkspaceRuntimeRegistry,
@@ -134,6 +136,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           this.#webviewReady = false;
         }
       }),
+      view.onDidChangeVisibility(() => {
+        if (view.visible) {
+          const deferredError = this.#deferredError;
+          this.#deferredError = undefined;
+          if (deferredError !== undefined) {
+            this.#post(deferredError);
+          }
+          this.#scheduleFlush();
+        } else if (this.#flushTimer !== undefined) {
+          clearTimeout(this.#flushTimer);
+          this.#flushTimer = undefined;
+        }
+      }),
     );
     this.#scheduleFlush();
   }
@@ -150,6 +165,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   public get webviewReady(): boolean {
     return this.#webviewReady;
+  }
+
+  public get projectionDiagnostics(): {
+    readonly visible: boolean;
+    readonly snapshotPosts: number;
+  } {
+    return {
+      visible: this.#view?.visible ?? false,
+      snapshotPosts: this.#snapshotPosts,
+    };
+  }
+
+  public invalidateProjection(): void {
+    this.#scheduleFlush();
   }
 
   public async decidePlan(
@@ -700,11 +729,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   #scheduleFlush(): void {
-    if (this.#flushTimer !== undefined) {
+    if (this.#flushTimer !== undefined ||
+      this.#view === undefined ||
+      !this.#view.visible) {
       return;
     }
     this.#flushTimer = setTimeout(() => {
       this.#flushTimer = undefined;
+      if (this.#view === undefined || !this.#view.visible) {
+        return;
+      }
       const root = this.#registry.selected;
       const state = this.#state(root.rootId);
       const sessions = this.#availableSessions(root).map((session) => ({
@@ -774,7 +808,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   #post(value: ChatHostMessage): void {
-    void this.#view?.webview.postMessage(value);
+    if (this.#view?.visible === true) {
+      if (value.type === "snapshot") {
+        this.#snapshotPosts++;
+      }
+      void this.#view.webview.postMessage(value);
+    } else if (value.type === "error") {
+      this.#deferredError = value;
+    }
   }
 
   #syncRoots(): void {

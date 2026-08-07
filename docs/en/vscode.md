@@ -163,6 +163,30 @@ Profile contract, and submit a new Turn. Autopilot requests `act` mode with
 `auto` approval posture; Host permission ceilings, Guard, policy, journal, and
 sandbox enforcement remain authoritative.
 
+## Performance and Accessibility Contract
+
+The Session rail virtualizes grouped search results: the Runtime-owned list and
+search projection remain complete, while the Webview creates DOM only for the
+visible rows and a bounded overscan window. Transcript articles use browser
+content visibility so off-screen Turns do not consume layout and paint work.
+When the Chat view is hidden, the Extension Host continues updating the Runtime
+projection but stops assembling and posting DOM Snapshots. The latest
+projection is posted once when the view becomes visible again.
+
+Release performance gates require:
+
+- no more than 20 ms of added extension activation time;
+- first interactive Chat within 300 ms, excluding Runtime startup;
+- a 200-Turn Session Snapshot within 100 ms;
+- 1000-Session search and virtual first paint within 150 ms;
+- at most one streaming Snapshot per 16 ms frame.
+
+Electron journeys dynamically switch Default Dark Modern, Default Light
+Modern, and Default High Contrast themes, apply Zoom Level 4 (approximately
+200%), and verify the Webview remains interactive. Keyboard evidence covers
+visible focus, Session Home/End/Arrow navigation across virtual rows, Escape,
+the narrow-rail focus trap, reduced motion, and forced-color borders.
+
 ## Built-in Setup and Repair
 
 Use `CodeHelper: Setup Workspace` to configure an open, trusted workspace. The
@@ -320,6 +344,23 @@ make vscode-rc
 The RC flow covers static checks, protocol drift, runtime integration, security,
 performance, Electron behavior, updates, distribution, matrix evidence, SBOM,
 provenance, and report generation.
+
+The required local matrix has seven named jobs: macOS arm64 external
+single/multi-root, macOS arm64 bundled, macOS x64 external under Rosetta,
+update integration, distribution, security, and performance. Windows x64
+package evidence is optional because this repository has no Windows Electron
+runner. Remote SSH, Dev Containers, Codespaces, and WSL remote workspaces are
+unsupported product environments, not missing release jobs.
+
+On an Apple Silicon release host, the required Rosetta evidence can be run
+independently with:
+
+```bash
+make vscode-rosetta-integration
+```
+
+This builds an amd64 Runtime, runs the pinned x64 VS Code Extension Host, and
+asserts both host and binary architecture before recording the evidence.
 
 Formal release signing material must remain outside the repository:
 

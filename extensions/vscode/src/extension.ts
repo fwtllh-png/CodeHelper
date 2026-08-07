@@ -86,6 +86,11 @@ export interface ExtensionAPI {
     secret: string,
   ) => Promise<void>;
   readonly chatWebviewReady?: () => boolean;
+  readonly chatProjectionDiagnostics?: () => {
+    readonly visible: boolean;
+    readonly snapshotPosts: number;
+  };
+  readonly testInvalidateChatProjection?: () => void;
   readonly onRootRuntimeEvent?: (
     listener: (
       rootId: string,
@@ -341,6 +346,14 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
               .activateCredentialProvider(provider);
           },
           chatWebviewReady: () => chatView?.webviewReady ?? false,
+          chatProjectionDiagnostics: () =>
+            chatView?.projectionDiagnostics ?? {
+              visible: false,
+              snapshotPosts: 0,
+            },
+          testInvalidateChatProjection: () => {
+            chatView?.invalidateProjection();
+          },
           onRootRuntimeEvent: (
             listener: (
               rootId: string,

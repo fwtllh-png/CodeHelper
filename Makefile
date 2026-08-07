@@ -24,7 +24,7 @@ LDFLAGS := -s -w \
 	cli-smoke tui-smoke acp-interop protocol-contract protocol-schema \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
 	vscode-security vscode-performance vscode-runtime-integration \
-	vscode-integration \
+	vscode-integration vscode-rosetta-integration \
 	vscode-build vscode-package vscode-release-dry-run \
 	vscode-multiroot-integration vscode-update-integration \
 	vscode-distribution vscode-local-setup vscode-matrix-report vscode-rc \
@@ -292,6 +292,25 @@ vscode-integration: build vscode-install
 		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
 		$(NPM) run test:electron
 
+# Runs the x64 VS Code and Runtime under Rosetta on an Apple Silicon release
+# host. The pinned x64 Electron host downloads on first use.
+vscode-rosetta-integration: vscode-install
+	@test "$$(uname -s)" = Darwin && test "$$(uname -m)" = arm64 || \
+		{ printf '%s\n' 'Rosetta integration requires Apple Silicon macOS'; exit 1; }
+	@tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build -trimpath \
+		-ldflags '$(LDFLAGS)' -o "$$tmp/codehelper" ./cmd/codehelper; \
+	cd $(VSCODE_DIR) && \
+		CODEHELPER_VSCODE_BINARY="$$tmp/codehelper" \
+		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
+		CODEHELPER_VSCODE_TEST_PLATFORM=darwin \
+		CODEHELPER_EXPECTED_HOST_ARCH=x64 \
+		CODEHELPER_MATRIX_TARGET=darwin-x64 \
+		CODEHELPER_ELECTRON_SCENARIOS=native,multi \
+		CODEHELPER_VSCODE_DISABLE_GPU=1 \
+		$(NPM) run test:electron
+
 vscode-multiroot-integration: build vscode-install
 	cd $(VSCODE_DIR) && \
 		CODEHELPER_VSCODE_BINARY='$(CURDIR)/$(BINARY)' \
@@ -337,6 +356,7 @@ vscode-rc:
 	$(MAKE) vscode-security
 	$(MAKE) vscode-performance
 	$(MAKE) vscode-integration
+	$(MAKE) vscode-rosetta-integration
 	$(MAKE) vscode-update-integration
 	$(MAKE) vscode-distribution
 	$(MAKE) vscode-matrix-report

@@ -52,6 +52,11 @@ const sourceFingerprint = requireDigest(
   process.env["CODEHELPER_RELEASE_SOURCE_FINGERPRINT"],
   "source fingerprint",
 );
+const extensionBundleFiles = Object.freeze([
+  "dist/extension.js",
+  "dist/chat-webview.js",
+  "dist/chat-webview.css",
+]);
 const targets = [
   { os: "linux", arch: "amd64", vscode: "linux-x64", executable: "codehelper" },
   { os: "linux", arch: "arm64", vscode: "linux-arm64", executable: "codehelper" },
@@ -220,10 +225,9 @@ async function stageExtension(stage) {
     await copyFile(join(extensionRoot, file), join(stage, file));
   }
   await mkdir(join(stage, "dist"), { recursive: true });
-  await copyFile(
-    join(extensionRoot, "dist", "extension.js"),
-    join(stage, "dist", "extension.js"),
-  );
+  for (const file of extensionBundleFiles) {
+    await copyFile(join(extensionRoot, file), join(stage, file));
+  }
   await mkdir(join(stage, "media"), { recursive: true });
   await copyFile(
     join(extensionRoot, "media", "codehelper.svg"),
@@ -270,9 +274,7 @@ function auditFiles(files, expectedBinary) {
     "package.json",
     "compatibility.json",
     "resources/release-trust-roots.json",
-    "dist/extension.js",
-    "dist/chat-webview.js",
-    "dist/chat-webview.css",
+    ...extensionBundleFiles,
     "media/codehelper.svg",
     "media/codehelper.png",
     "README.md",

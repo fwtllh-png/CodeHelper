@@ -7,6 +7,11 @@ import { BackgroundProjector, type TaskRow } from "../background/model.js";
 import { createChatSnapshotMessage } from "../chat/contract.js";
 import { ChatProjector } from "../chat/projector.js";
 import { projectChatResources } from "../chat/resources.js";
+import {
+  filterChatSessions,
+  groupChatSessions,
+} from "../chat/session-list.js";
+import { computeVirtualWindow } from "../chat/virtual-list.js";
 import { decodeEvent } from "../protocol/decode.js";
 
 const eventCount = 10_000;
@@ -167,6 +172,56 @@ void test("Chat assembles the maximum V1 transcript and Session list within budg
   assert.ok(
     bytes < 2 << 20,
     `200-turn Chat snapshot is ${String(bytes)} bytes`,
+  );
+});
+
+void test("1000 Session search and virtual first paint stay within budget", () => {
+  const sessions = Array.from({ length: 1_000 }, (_, index) => ({
+    sessionId: `session_${String(index)}`,
+    threadId: `thread_${String(index)}`,
+    title: `Session ${String(index)} parser review`,
+    isolation: "worktree" as const,
+    status: index % 23 === 0 ? "running" as const : "completed" as const,
+    pinned: index < 5,
+    archived: index > 980,
+    workspaceLabel: "workspace",
+    provider: "fixture",
+    model: "fixture-model",
+    mode: "act",
+    pendingApprovals: 0,
+    pendingInputs: 0,
+    checkpointCount: index % 4,
+    totalTokens: index,
+    costMicrounits: 0,
+    costKnown: false,
+    createdAt: "2026-08-01T00:00:00Z",
+    updatedAt: `2026-08-07T00:${
+      String(index % 60).padStart(2, "0")
+    }:00Z`,
+    selected: index === 0,
+    replayedEvents: index,
+    active: index % 23 === 0,
+  }));
+  const started = performance.now();
+  const filtered = filterChatSessions(sessions, "parser", "all");
+  const groups = groupChatSessions(filtered, new Date("2026-08-07T12:00:00Z"));
+  const items = groups.flatMap((group) => [
+    { height: 24 },
+    ...group.sessions.map(() => ({ height: 52 })),
+  ]);
+  const window = computeVirtualWindow(items, 18_000, 600, 260);
+  const durationMS = performance.now() - started;
+  metrics["session_1000_search_virtual_ms"] = Number(durationMS.toFixed(1));
+  metrics["session_1000_virtual_dom_items"] = window.end - window.start;
+
+  assert.equal(filtered.length, 1_000);
+  assert.ok(
+    durationMS < 150,
+    `1000 Session search/virtualization took ${durationMS.toFixed(1)}ms`,
+  );
+  assert.ok(
+    window.end - window.start < 30,
+    `virtual Session DOM includes ${String(window.end - window.start)} rows`,
   );
 });
 

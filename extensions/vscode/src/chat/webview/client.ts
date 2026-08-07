@@ -17,6 +17,10 @@ import {
   renderTranscript,
   type TranscriptActions,
 } from "./transcript.js";
+import {
+  computeVirtualWindow,
+  virtualItemOffset,
+} from "../virtual-list.js";
 
 interface VSCodeAPI {
   postMessage(message: unknown): void;
@@ -55,11 +59,31 @@ const thinkingControl = element("thinking-control") as HTMLButtonElement;
 const toolsControl = element("tools-control") as HTMLButtonElement;
 const credentialControl = element("credential-control") as HTMLButtonElement;
 const approvalControl = element("approval-control") as HTMLButtonElement;
+const narrowMedia = window.matchMedia("(max-width: 720px)");
 let trusted = false;
 let messageMergePlanId: string | undefined;
 let sessions: readonly ChatSessionView[] = [];
 let sessionSearchProjection: ChatSnapshotMessage["runtime"]["sessionSearch"];
 let sessionSearchTimer: ReturnType<typeof setTimeout> | undefined;
+let sessionRenderFrame: number | undefined;
+
+type SessionVirtualItem =
+  | {
+      readonly kind: "heading";
+      readonly key: string;
+      readonly label: string;
+      readonly height: 24;
+    }
+  | {
+      readonly kind: "session";
+      readonly key: string;
+      readonly session: ChatSessionView;
+      readonly position: number;
+      readonly setSize: number;
+      readonly height: 52;
+    };
+
+let sessionVirtualItems: readonly SessionVirtualItem[] = [];
 
 const transcriptActions: TranscriptActions = {
   openResource: (resourceId) => {
@@ -175,6 +199,36 @@ element("close-sessions").addEventListener("click", () => {
 sessionScrim.addEventListener("click", () => {
   setSessionsOpen(false);
 });
+narrowMedia.addEventListener("change", () => {
+  setSessionsOpen(document.body.classList.contains("sessions-open"));
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" &&
+    document.body.classList.contains("sessions-open")) {
+    event.preventDefault();
+    setSessionsOpen(false);
+    toggleSessions.focus();
+    return;
+  }
+  if (event.key !== "Tab" || !isNarrow() ||
+    !document.body.classList.contains("sessions-open")) {
+    return;
+  }
+  const focusable = [...sessionRail.querySelectorAll<HTMLElement>(
+    "button:not(:disabled), input:not(:disabled), select:not(:disabled), " +
+      "[tabindex]:not([tabindex='-1'])",
+  )].filter((candidate) => !candidate.hasAttribute("hidden"));
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (first === undefined || last === undefined) return;
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
 sessionSearch.addEventListener("input", () => {
   renderSessionList();
   if (sessionSearchTimer !== undefined) clearTimeout(sessionSearchTimer);
@@ -186,23 +240,67 @@ sessionSearch.addEventListener("input", () => {
 sessionFilter.addEventListener("change", () => {
   renderSessionList();
 });
+sessionList.addEventListener("scroll", () => {
+  scheduleVirtualSessionRender();
+}, { passive: true });
+new ResizeObserver(() => {
+  scheduleVirtualSessionRender();
+}).observe(sessionList);
+
+function scheduleVirtualSessionRender(): void {
+  if (sessionRenderFrame !== undefined) return;
+  sessionRenderFrame = requestAnimationFrame(() => {
+    sessionRenderFrame = undefined;
+    renderVirtualSessionWindow();
+  });
+}
+
 sessionList.addEventListener("keydown", (event) => {
   if (!(event instanceof KeyboardEvent) ||
     !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
     return;
   }
-  const buttons = [...sessionList.querySelectorAll<HTMLButtonElement>(
-    ".session-item",
-  )];
-  if (buttons.length === 0) return;
-  const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
-  let next = current;
-  if (event.key === "Home") next = 0;
-  if (event.key === "End") next = buttons.length - 1;
-  if (event.key === "ArrowDown") next = Math.min(buttons.length - 1, current + 1);
-  if (event.key === "ArrowUp") next = Math.max(0, current - 1);
+  const indices = sessionVirtualItems.flatMap((item, index) =>
+    item.kind === "session" && !item.session.archived ? [index] : []);
+  if (indices.length === 0) return;
+  const active = document.activeElement instanceof Element
+    ? document.activeElement.closest<HTMLElement>(".session-row")
+    : null;
+  const currentIndex = Number(active?.dataset["virtualIndex"] ?? "-1");
+  const currentPosition = indices.indexOf(currentIndex);
+  let targetPosition = currentPosition;
+  if (event.key === "Home") targetPosition = 0;
+  if (event.key === "End") targetPosition = indices.length - 1;
+  if (event.key === "ArrowDown") {
+    targetPosition = Math.min(
+      indices.length - 1,
+      currentPosition < 0 ? 0 : currentPosition + 1,
+    );
+  }
+  if (event.key === "ArrowUp") {
+    targetPosition = Math.max(
+      0,
+      currentPosition < 0 ? indices.length - 1 : currentPosition - 1,
+    );
+  }
+  const targetIndex = indices[targetPosition];
+  if (targetIndex === undefined) return;
   event.preventDefault();
-  buttons[next]?.focus();
+  const top = virtualItemOffset(sessionVirtualItems, targetIndex);
+  const height = sessionVirtualItems[targetIndex]?.height ?? 0;
+  if (top < sessionList.scrollTop) {
+    sessionList.scrollTop = top;
+  } else if (top + height >
+    sessionList.scrollTop + sessionList.clientHeight) {
+    sessionList.scrollTop = top + height - sessionList.clientHeight;
+  }
+  renderVirtualSessionWindow();
+  requestAnimationFrame(() => {
+    sessionList.querySelector<HTMLButtonElement>(
+      `.session-row[data-virtual-index="${String(targetIndex)}"] ` +
+        ".session-item",
+    )?.focus();
+  });
 });
 
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
@@ -330,71 +428,135 @@ function renderSessionList(): void {
   );
   sessionCount.textContent = String(visible.length);
   const groups = groupChatSessions(visible);
-  sessionList.replaceChildren(...groups.flatMap((group) => {
-    const heading = document.createElement("div");
-    heading.className = "session-group-label";
-    heading.textContent = group.label.toLocaleUpperCase();
-    return [heading, ...group.sessions.map((session) => {
-      const row = document.createElement("div");
-      row.className = "session-row";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "session-item";
-    button.dataset["sessionId"] = session.sessionId;
-    button.setAttribute(
-      "aria-current",
-      session.selected ? "page" : "false",
-    );
-    const title = document.createElement("span");
-    title.className = "session-item-title";
-    const indicator = document.createElement("span");
-      indicator.className = [
-        "running", "awaiting_approval", "awaiting_input",
-      ].includes(session.status)
-      ? "session-indicator active"
-      : "session-indicator";
-    indicator.textContent = "•";
-      title.append(
-        indicator,
-        document.createTextNode(`${session.pinned ? "★ " : ""}${session.title}`),
-      );
-    const meta = document.createElement("span");
-    meta.className = "session-item-meta";
-    meta.textContent = sessionStatusLabel(session);
-      button.append(title, meta);
-      button.disabled = session.archived;
-    button.addEventListener("click", () => {
-      post({ type: "select-chat", sessionId: session.sessionId });
-      setSessionsOpen(false);
+  let position = 0;
+  sessionVirtualItems = groups.flatMap((group): SessionVirtualItem[] => [
+    {
+      kind: "heading",
+      key: `heading:${group.id}`,
+      label: group.label.toLocaleUpperCase(),
+      height: 24,
+    },
+    ...group.sessions.map((session): SessionVirtualItem => ({
+      kind: "session",
+      key: `session:${session.sessionId}`,
+      session,
+      position: ++position,
+      setSize: visible.length,
+      height: 52,
+    })),
+  ]);
+  renderVirtualSessionWindow();
+}
+
+function renderVirtualSessionWindow(): void {
+  if (sessionVirtualItems.length === 0) {
+    sessionList.replaceChildren();
+    return;
+  }
+  const window = computeVirtualWindow(
+    sessionVirtualItems,
+    sessionList.scrollTop,
+    sessionList.clientHeight || 480,
+    260,
+  );
+  const fragment = document.createDocumentFragment();
+  fragment.append(virtualSpacer(window.paddingBefore));
+  for (let index = window.start; index < window.end; index++) {
+    const item = sessionVirtualItems[index];
+    if (item === undefined) continue;
+    fragment.append(item.kind === "heading"
+      ? sessionHeading(item.label)
+      : sessionRow(item, index));
+  }
+  fragment.append(virtualSpacer(window.paddingAfter));
+  sessionList.replaceChildren(fragment);
+}
+
+function virtualSpacer(height: number): HTMLElement {
+  const spacer = document.createElement("div");
+  spacer.className = "session-virtual-spacer";
+  spacer.style.height = `${String(height)}px`;
+  spacer.setAttribute("aria-hidden", "true");
+  return spacer;
+}
+
+function sessionHeading(label: string): HTMLElement {
+  const heading = document.createElement("div");
+  heading.className = "session-group-label";
+  heading.textContent = label;
+  heading.setAttribute("role", "heading");
+  heading.setAttribute("aria-level", "3");
+  return heading;
+}
+
+function sessionRow(
+  item: Extract<SessionVirtualItem, { readonly kind: "session" }>,
+  virtualIndex: number,
+): HTMLElement {
+  const { session } = item;
+  const row = document.createElement("div");
+  row.className = "session-row";
+  row.dataset["virtualIndex"] = String(virtualIndex);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "session-item";
+  button.dataset["sessionId"] = session.sessionId;
+  button.setAttribute("aria-current", session.selected ? "page" : "false");
+  button.setAttribute("aria-posinset", String(item.position));
+  button.setAttribute("aria-setsize", String(item.setSize));
+  const status = sessionStatusLabel(session);
+  button.setAttribute("aria-label", `${session.title}, ${status}`);
+  const title = document.createElement("span");
+  title.className = "session-item-title";
+  const indicator = document.createElement("span");
+  indicator.className = [
+    "running", "awaiting_approval", "awaiting_input",
+  ].includes(session.status)
+    ? "session-indicator active"
+    : "session-indicator";
+  indicator.textContent = "•";
+  indicator.setAttribute("aria-hidden", "true");
+  title.append(
+    indicator,
+    document.createTextNode(`${session.pinned ? "★ " : ""}${session.title}`),
+  );
+  const meta = document.createElement("span");
+  meta.className = "session-item-meta";
+  meta.textContent = status;
+  button.append(title, meta);
+  button.disabled = session.archived;
+  button.addEventListener("click", () => {
+    post({ type: "select-chat", sessionId: session.sessionId });
+    setSessionsOpen(false);
+  });
+  const manage = document.createElement("button");
+  manage.type = "button";
+  manage.className = "session-manage icon-button";
+  manage.title = `Manage ${session.title}`;
+  manage.setAttribute("aria-label", `Manage ${session.title}`);
+  manage.textContent = "…";
+  manage.addEventListener("click", () => {
+    post({
+      type: "manage-chat",
+      sessionId: session.sessionId,
+      action: "menu",
     });
-      const manage = document.createElement("button");
-      manage.type = "button";
-      manage.className = "session-manage icon-button";
-      manage.title = `Manage ${session.title}`;
-      manage.setAttribute("aria-label", `Manage ${session.title}`);
-      manage.textContent = "…";
-      manage.addEventListener("click", () => {
-        post({
-          type: "manage-chat",
-          sessionId: session.sessionId,
-          action: "menu",
-        });
-      });
-      row.append(button, manage);
-      return row;
-    })];
-  }));
+  });
+  row.append(button, manage);
+  return row;
 }
 
 function setSessionsOpen(open: boolean): void {
   document.body.classList.toggle("sessions-open", open);
   toggleSessions.setAttribute("aria-expanded", String(open));
   sessionRail.setAttribute("aria-hidden", String(!open && isNarrow()));
-  if (open && isNarrow()) sessionSearch.focus();
+  if (open && isNarrow()) {
+    sessionSearch.focus();
+  }
 }
 
 function isNarrow(): boolean {
-  return window.matchMedia("(max-width: 720px)").matches;
+  return narrowMedia.matches;
 }
 
 function isNearBottom(): boolean {

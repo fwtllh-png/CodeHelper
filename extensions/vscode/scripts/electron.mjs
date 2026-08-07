@@ -26,6 +26,8 @@ const multiWorkspace = join(fixtureRoot, "multi.code-workspace");
 const nativeBinary = process.env["CODEHELPER_VSCODE_BINARY"];
 const nativeFixture = process.env["CODEHELPER_VSCODE_SELECTION_FIXTURE"];
 const testPlatform = process.env["CODEHELPER_VSCODE_TEST_PLATFORM"];
+const expectedHostArch = process.env["CODEHELPER_EXPECTED_HOST_ARCH"];
+const disableGPU = process.env["CODEHELPER_VSCODE_DISABLE_GPU"] === "1";
 const matrixTarget = process.env["CODEHELPER_MATRIX_TARGET"] ??
   `${process.platform}-${process.arch}`;
 let electronPerformance;
@@ -149,13 +151,19 @@ try {
         "--disable-workspace-trust",
         "--skip-release-notes",
         "--skip-welcome",
+        ...(disableGPU ? ["--disable-gpu"] : []),
       ];
       const exitCode = await runTests({
         version: process.env["CODEHELPER_VSCODE_TEST_VERSION"] ?? "1.96.4",
         ...(testPlatform === undefined ? {} : { platform: testPlatform }),
         extensionDevelopmentPath: extensionRoot,
         extensionTestsPath: testOutput,
-        extensionTestsEnv: { CODEHELPER_ELECTRON_SCENARIO: scenario },
+        extensionTestsEnv: {
+          CODEHELPER_ELECTRON_SCENARIO: scenario,
+          ...(expectedHostArch === undefined
+            ? {}
+            : { CODEHELPER_EXPECTED_HOST_ARCH: expectedHostArch }),
+        },
         launchArgs,
       });
       if (exitCode !== 0) {

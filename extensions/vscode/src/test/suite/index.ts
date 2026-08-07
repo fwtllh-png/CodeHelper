@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { performance } from "node:perf_hooks";
 
 import * as vscode from "vscode";
 
@@ -34,10 +35,12 @@ export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension<ExtensionAPI>(extensionID);
   assert.ok(extension, `${extensionID} was not installed in the test host`);
   const api = await extension.activate();
+  const expectedHostArch = process.env["CODEHELPER_EXPECTED_HOST_ARCH"];
   assert.ok(
-    api.activationDurationMS < 100,
+    api.activationDurationMS < (expectedHostArch === undefined ? 20 : 1_000),
     `extension activation took ${api.activationDurationMS.toFixed(1)}ms`,
   );
+  const chatInteractiveStarted = performance.now();
   await vscode.commands.executeCommand("codehelper.chat.focus");
 
   assert.equal(
@@ -46,12 +49,20 @@ export async function run(): Promise<void> {
     "CodeHelper VS Code test host must be local",
   );
   const scenario = process.env["CODEHELPER_ELECTRON_SCENARIO"];
+  if (expectedHostArch !== undefined) {
+    assert.equal(
+      process.arch,
+      expectedHostArch,
+      "Electron Extension Host architecture does not match the matrix target",
+    );
+  }
   if (scenario !== "empty") {
     await waitFor(
       () => api.chatWebviewReady?.() === true,
       "Chat Webview client did not complete its ready handshake",
     );
   }
+  const chatInteractiveMS = performance.now() - chatInteractiveStarted;
   if (scenario === "empty") {
     assert.equal(vscode.workspace.workspaceFolders, undefined);
     assert.equal(api.workspaceMode, "none");
@@ -62,6 +73,8 @@ export async function run(): Promise<void> {
     assert.equal(api.runtimeAutoStartScheduled, false);
     await verifyNativeContextCapture();
     await verifyResourceNavigation();
+    await verifyThemeAndZoomAccessibility(api);
+    await verifyHiddenProjectionSuspension(api);
     const captureDurationMS = await verifyContextCapturePerformance();
     const workspace = vscode.workspace.workspaceFolders[0];
     assert.ok(workspace);
@@ -70,6 +83,7 @@ export async function run(): Promise<void> {
       new TextEncoder().encode(JSON.stringify({
         schema_version: 1,
         activation_ms: Number(api.activationDurationMS.toFixed(1)),
+        chat_interactive_ms: Number(chatInteractiveMS.toFixed(1)),
         capture_1mib_ms: Number(captureDurationMS.toFixed(1)),
       })),
     );
@@ -91,6 +105,12 @@ export async function run(): Promise<void> {
     await verifySessionToolCatalog(api);
     await verifyComposerCredential(api);
     await verifyResourceNavigation();
+    if (expectedHostArch === "x64") {
+      const host = api.runtimeHosts?.()[0];
+      assert.ok(host);
+      assert.equal(host.architecture, "x64");
+      assert.equal(host.binaryTarget, "darwin/amd64");
+    }
   } else if (scenario === "bundled") {
     assert.equal(vscode.workspace.workspaceFolders?.length, 1);
     assert.equal(api.workspaceMode, "single");
@@ -172,6 +192,93 @@ export async function run(): Promise<void> {
     }),
     selectionCommands,
   );
+}
+
+async function verifyHiddenProjectionSuspension(
+  api: ExtensionAPI,
+): Promise<void> {
+  assert.ok(api.chatProjectionDiagnostics);
+  assert.ok(api.testInvalidateChatProjection);
+  await vscode.commands.executeCommand("codehelper.chat.focus");
+  await waitFor(
+    () => api.chatProjectionDiagnostics?.().visible === true,
+    "Chat Webview did not become visible",
+  );
+  const visiblePosts = api.chatProjectionDiagnostics().snapshotPosts;
+  await vscode.commands.executeCommand("workbench.action.closeSidebar");
+  await waitFor(
+    () => api.chatProjectionDiagnostics?.().visible === false,
+    "Chat Webview remained visible after closing the sidebar",
+  );
+  for (let attempt = 0; attempt < 20; attempt++) {
+    api.testInvalidateChatProjection();
+  }
+  await new Promise((resolve) => setTimeout(resolve, 75));
+  assert.equal(
+    api.chatProjectionDiagnostics().snapshotPosts,
+    visiblePosts,
+    "hidden Chat Webview received a DOM Snapshot",
+  );
+  await vscode.commands.executeCommand("codehelper.chat.focus");
+  await waitFor(
+    () => {
+      const diagnostics = api.chatProjectionDiagnostics?.();
+      return diagnostics?.visible === true &&
+        diagnostics.snapshotPosts > visiblePosts;
+    },
+    "visible Chat Webview did not receive the latest Projection",
+  );
+}
+
+async function verifyThemeAndZoomAccessibility(
+  api: ExtensionAPI,
+): Promise<void> {
+  const workbench = vscode.workspace.getConfiguration("workbench");
+  const windowConfiguration = vscode.workspace.getConfiguration("window");
+  const originalTheme = workbench.get<string>("colorTheme");
+  const originalZoom = windowConfiguration.get<number>("zoomLevel");
+  const themes = [
+    ["Default Dark Modern", vscode.ColorThemeKind.Dark],
+    ["Default Light Modern", vscode.ColorThemeKind.Light],
+    ["Default High Contrast", vscode.ColorThemeKind.HighContrast],
+  ] as const;
+  try {
+    for (const [name, kind] of themes) {
+      await workbench.update(
+        "colorTheme",
+        name,
+        vscode.ConfigurationTarget.Global,
+      );
+      await waitFor(
+        () => vscode.window.activeColorTheme.kind === kind,
+        `VS Code did not activate ${name}`,
+      );
+      assert.equal(api.chatWebviewReady?.(), true);
+    }
+    await windowConfiguration.update(
+      "zoomLevel",
+      4,
+      vscode.ConfigurationTarget.Global,
+    );
+    await waitFor(
+      () => vscode.workspace.getConfiguration("window")
+        .get<number>("zoomLevel") === 4,
+      "VS Code did not apply the approximately 200% zoom level",
+    );
+    assert.equal(api.chatWebviewReady?.(), true);
+    await vscode.commands.executeCommand("codehelper.chat.focus");
+  } finally {
+    await workbench.update(
+      "colorTheme",
+      originalTheme,
+      vscode.ConfigurationTarget.Global,
+    );
+    await windowConfiguration.update(
+      "zoomLevel",
+      originalZoom,
+      vscode.ConfigurationTarget.Global,
+    );
+  }
 }
 
 async function verifyResourceNavigation(): Promise<void> {
@@ -486,6 +593,16 @@ async function verifyMultiRootFlows(api: ExtensionAPI): Promise<void> {
       return snapshots.length === 2 &&
         snapshots.every((snapshot) => snapshot.state === "ready");
     }, "re-added Runtime root did not recover");
+    const recoveredDocument = await vscode.workspace.openTextDocument(
+      vscode.Uri.joinPath(removed.uri, "context.ts"),
+    );
+    await submitMultiRootSelection(
+      removed,
+      recoveredDocument,
+      ["codehelper.explainSelection"],
+      turnRoots,
+      terminals,
+    );
   } finally {
     subscription.dispose();
   }

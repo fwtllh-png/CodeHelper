@@ -6,22 +6,13 @@ import {
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { matrixJobs as expected } from "./jobs.mjs";
+
 const outputRoot = resolve(
   process.env["CODEHELPER_MATRIX_ROOT"] ??
     join(import.meta.dirname, "..", "..", "dist", "matrix"),
 );
 const evidenceRoot = join(outputRoot, "evidence");
-const expected = [
-  required("local-darwin-arm64-external", "macOS arm64 external single+multi"),
-  required("local-darwin-arm64-bundled", "macOS arm64 bundled handshake"),
-  required("local-darwin-x64-external", "macOS x64 external single+multi (Rosetta)"),
-  required("update-integration", "signed update, rollback, revocation"),
-  required("distribution", "universal and target VSIX distribution"),
-  required("security", "extension security gate"),
-  required("performance", "extension performance gate"),
-  optional("local-win32-x64", "Windows x64 runner unavailable"),
-];
-
 const evidence = new Map();
 for (const entry of await readdir(evidenceRoot, {
   withFileTypes: true,
@@ -75,17 +66,9 @@ if (missing.length > 0 &&
   process.exitCode = 1;
 }
 
-function required(job, description) {
-  return { job, description, required: true };
-}
-
-function optional(job, description) {
-  return { job, description, required: false };
-}
-
 function markdown(report) {
   const lines = [
-    "# VS Code V3 E2E Matrix",
+    "# VS Code Local E2E Matrix",
     "",
     `- Status: **${report.status}**`,
     `- Platform: \`${report.platform}\``,
