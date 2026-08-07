@@ -38,6 +38,24 @@ void test("Runtime launch uses argv spawning and bounded diagnostics", async () 
   assert.match(source, /const stderrLimit = 64 << 10/u);
 });
 
+void test("Composer credentials stay in SecretStorage and out of Webview state", async () => {
+  const credentials = await sourceFile("security", "credentials.ts");
+  const setup = await sourceFile("setup", "commands.ts");
+  const controller = await sourceFile("runtime", "controller.ts");
+  const processSource = await sourceFile("runtime", "process.ts");
+  const messages = await sourceFile("chat", "messages.ts");
+  const contract = await sourceFile("chat", "contract.ts");
+
+  assert.match(controller, /context\.secrets/u);
+  assert.match(credentials, /this\.#secrets\.store/u);
+  assert.match(setup, /password:\s*true/u);
+  assert.match(setup, /credentialReference/u);
+  assert.match(processSource, /env:\s*\{ \.\.\.process\.env, \.\.\.options\.environment \}/u);
+  assert.match(messages, /type: "configure-composer"/u);
+  assert.doesNotMatch(messages, /apiKey|secret:/u);
+  assert.doesNotMatch(contract, /credentialReference|credentialSecret/u);
+});
+
 void test("Webview messages and editor context retain explicit size boundaries", async () => {
   const messages = await sourceFile("chat", "messages.ts");
   const context = await sourceFile("context", "bridge.ts");

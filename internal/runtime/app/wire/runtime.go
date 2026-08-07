@@ -697,11 +697,18 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		// commit or rollback. Isolated child worktrees clear both journal and gate.
 		workspaceTurnGate = agentengine.NewWorkspaceTurnGate()
 	}
+	approvalPosture := policy.PermissionBypass
+	if securityRuntime != nil {
+		approvalPosture = securityRuntime.Permission
+	} else if options.Permission != "" {
+		approvalPosture = policy.Permission(options.Permission)
+	}
 	seedOptions := agentengine.Options{
 		Provider: client, Route: route, Routes: routes,
 		Tools: registry, PromptContext: prompt.Messages,
 		MaxOutputTokens: execution.MaxOutputTokens, Security: securityRuntime,
-		Workspace: execution.Workspace, Guard: nil,
+		ProfilePermissionCeiling: approvalPosture,
+		Workspace:                execution.Workspace, Guard: nil,
 		OnNetworkAllow: egressGate.Allow,
 		Journal:        journal, WorkspaceTurnGate: workspaceTurnGate,
 		Diagnostics: diagnosticRunner,
@@ -794,12 +801,6 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			return out
 		},
 	}
-	approvalPosture := policy.PermissionBypass
-	if securityRuntime != nil {
-		approvalPosture = securityRuntime.Permission
-	} else if options.Permission != "" {
-		approvalPosture = policy.Permission(options.Permission)
-	}
 	defaultProfile := protocol.SessionProfile{
 		Version:             protocol.SessionProfileVersion,
 		Revision:            1,
@@ -813,7 +814,13 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		PromptCacheRevision: 1,
 	}
 	modelCapabilities := route.Model().Capabilities
-	mutableProfileFields := []string{"mode", "approval_posture", "max_steps"}
+	mutableProfileFields := []string{"mode", "max_steps"}
+	if approvalPosture != policy.PermissionNever {
+		mutableProfileFields = append(
+			mutableProfileFields,
+			"approval_posture",
+		)
+	}
 	var reasoningEfforts []string
 	if modelCapabilities.Reasoning {
 		mutableProfileFields = append(mutableProfileFields, "reasoning_effort")

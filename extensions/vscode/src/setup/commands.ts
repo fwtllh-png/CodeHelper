@@ -33,9 +33,28 @@ export function registerSetupCommands(
     vscode.commands.registerCommand("codehelper.repairRuntime", async () => {
       await repairRuntime(registry, output);
     }),
-    vscode.commands.registerCommand("codehelper.runSetup", async () => {
-      await runSetup(registry, output);
-    }),
+    vscode.commands.registerCommand(
+      "codehelper.runSetup",
+      async (rootId?: unknown, provider?: unknown) => {
+        await runSetup(
+          registry,
+          output,
+          typeof rootId === "string" ? rootId : undefined,
+          typeof provider === "string" ? provider : undefined,
+        );
+      },
+    ),
+    vscode.commands.registerCommand(
+      "codehelper.configureCredential",
+      async (rootId?: unknown, sessionId?: unknown) => {
+        await configureCredential(
+          registry,
+          output,
+          rootId,
+          sessionId,
+        );
+      },
+    ),
     vscode.commands.registerCommand("codehelper.runQuickstart", async () => {
       const root = await registry?.pick("CodeHelper: Run Quickstart");
       if (root === undefined) return;
@@ -147,6 +166,8 @@ export async function repairRuntime(
 export async function runSetup(
   registry: WorkspaceRuntimeRegistry | undefined,
   output: vscode.LogOutputChannel,
+  requestedRootId?: string,
+  requestedProvider?: string,
 ): Promise<void> {
   if (!vscode.workspace.isTrusted) {
     void vscode.window.showErrorMessage(
@@ -154,7 +175,9 @@ export async function runSetup(
     );
     return;
   }
-  const root = await registry?.pick("CodeHelper: Setup Workspace");
+  const root = requestedRootId === undefined
+    ? await registry?.pick("CodeHelper: Setup Workspace")
+    : registry?.find(requestedRootId);
   if (root === undefined) {
     void vscode.window.showErrorMessage(
       "CodeHelper Setup requires an open workspace folder.",
@@ -171,18 +194,30 @@ export async function runSetup(
     throw new Error(modelResult.stderr || "CodeHelper model catalog failed");
   }
   const models = decodeModels(modelResult.value);
-  const provider = await vscode.window.showQuickPick(
-    models.map((row) => ({
-      label: row.provider,
-      description: `${String(row.models.length)} model(s)`,
-      row,
-    })),
-    {
-      title: "CodeHelper Setup: Provider",
-      placeHolder: "Select the live model provider",
-      ignoreFocusOut: true,
-    },
-  );
+  const requestedRow = requestedProvider === undefined
+    ? undefined
+    : models.find((row) => row.provider === requestedProvider);
+  if (requestedProvider !== undefined && requestedRow === undefined) {
+    throw new Error("The current Provider is unavailable in the model catalog");
+  }
+  const provider = requestedRow === undefined
+    ? await vscode.window.showQuickPick(
+        models.map((row) => ({
+          label: row.provider,
+          description: `${String(row.models.length)} model(s)`,
+          row,
+        })),
+        {
+          title: "CodeHelper Setup: Provider",
+          placeHolder: "Select the live model provider",
+          ignoreFocusOut: true,
+        },
+      )
+    : {
+        label: requestedRow.provider,
+        description: `${String(requestedRow.models.length)} model(s)`,
+        row: requestedRow,
+      };
   if (provider === undefined) return;
   const model = await vscode.window.showQuickPick(
     provider.row.models,
@@ -203,34 +238,61 @@ export async function runSetup(
       (candidate) => candidate.providerId === provider.row.provider,
     )
     : undefined;
-  const credentialKind = await vscode.window.showQuickPick(
-    ["env", "file", "keyring"] as const,
+  const credentialChoice = await vscode.window.showQuickPick(
+    [
+      {
+        label: "$(key) VS Code SecretStorage",
+        description: "Recommended",
+        credentialKind: "secret-storage" as const,
+      },
+      { label: "Environment variable", credentialKind: "env" as const },
+      { label: "Protected file", credentialKind: "file" as const },
+      { label: "OS keyring reference", credentialKind: "keyring" as const },
+    ],
     {
-      title: "CodeHelper Setup: Credential Reference Kind",
-      placeHolder: "Select a non-secret reference kind",
+      title: "CodeHelper Setup: Credential",
+      placeHolder: "Select where the credential is stored",
       ignoreFocusOut: true,
     },
   );
-  if (credentialKind === undefined) return;
-  if (!isCredentialKind(credentialKind)) {
-    throw new TypeError("CodeHelper credential reference kind is invalid");
+  if (credentialChoice === undefined) return;
+  let credentialKind: "env" | "file" | "keyring";
+  let credentialName: string;
+  let secret: string | undefined;
+  if (credentialChoice.credentialKind === "secret-storage") {
+    secret = await vscode.window.showInputBox({
+      title: `CodeHelper Setup: ${provider.row.provider} API Key`,
+      prompt: "Stored in VS Code SecretStorage. It is never sent to the Chat Webview.",
+      password: true,
+      ignoreFocusOut: true,
+      validateInput: validateSecret,
+    });
+    if (secret === undefined) return;
+    credentialKind = "env";
+    credentialName = root.controller.credentialReference(provider.row.provider);
+  } else {
+    credentialKind = credentialChoice.credentialKind;
+    const reference = await vscode.window.showInputBox({
+      title: "CodeHelper Setup: Credential Reference",
+      prompt: "Enter an environment variable, protected file path, or keyring key. Do not enter a secret value.",
+      value: suggestion?.kind === credentialKind ? suggestion.name : "",
+      ignoreFocusOut: true,
+      validateInput: (value) => value.trim().length === 0
+        ? "A non-secret credential reference is required"
+        : undefined,
+    });
+    if (reference === undefined) return;
+    credentialName = reference.trim();
   }
-  const credentialName = await vscode.window.showInputBox({
-    title: "CodeHelper Setup: Credential Reference",
-    prompt: "Enter an environment variable, protected file path, or keyring key. Do not enter a secret value.",
-    value: suggestion?.kind === credentialKind ? suggestion.name : "",
-    ignoreFocusOut: true,
-    validateInput: (value) => value.trim().length === 0
-      ? "A non-secret credential reference is required"
-      : undefined,
-  });
-  if (credentialName === undefined) return;
 
   const configPath = join(root.folder.uri.fsPath, "codehelper.toml");
   const force = await exists(configPath)
     ? await confirmReplace(configPath)
     : false;
   if (force === undefined) return;
+  if (secret !== undefined) {
+    await root.controller.storeCredential(provider.row.provider, secret);
+  }
   const args = setupArguments({
     workspace: root.folder.uri.fsPath,
     configPath,
@@ -245,13 +307,25 @@ export async function runSetup(
       location: vscode.ProgressLocation.Notification,
       title: `Configuring CodeHelper for ${root.label}`,
     },
-    async () => runJSON(binary.path, args, root.folder.uri.fsPath),
+    async () => runJSON(
+      binary.path,
+      args,
+      root.folder.uri.fsPath,
+      secret === undefined
+        ? undefined
+        : { ...process.env, [credentialName]: secret },
+    ),
   );
   output.info(`[setup:${root.label}] ${JSON.stringify(setupResult.value)}`);
   if (setupResult.code !== 0) {
     throw new Error(setupResult.stderr || "CodeHelper Setup failed");
   }
   const report = decodeReadiness(setupResult.value);
+  if (secret !== undefined) {
+    await root.controller.activateCredentialProvider(provider.row.provider);
+  } else {
+    await root.controller.activateCredentialProvider();
+  }
   await vscode.workspace.getConfiguration("codehelper", root.folder.uri)
     .update(
       "runtime.configPath",
@@ -267,6 +341,77 @@ export async function runSetup(
   );
 }
 
+async function configureCredential(
+  registry: WorkspaceRuntimeRegistry | undefined,
+  output: vscode.LogOutputChannel,
+  rootId: unknown,
+  sessionId: unknown,
+): Promise<void> {
+  if (!vscode.workspace.isTrusted) {
+    throw new Error(
+      "Trust this workspace before configuring a CodeHelper credential.",
+    );
+  }
+  const root = typeof rootId === "string"
+    ? registry?.find(rootId)
+    : await registry?.pick("CodeHelper: Configure Credential");
+  if (root === undefined) {
+    throw new Error("Credential configuration requires a workspace root");
+  }
+  const sessions = root.controller.sessions();
+  const resolvedSessionId = typeof sessionId === "string"
+    ? sessionId
+    : sessions.find((session) => session.selected)?.sessionId;
+  if (resolvedSessionId === undefined ||
+    !sessions.some((session) => session.sessionId === resolvedSessionId)) {
+    throw new Error("Credential configuration target is unknown or stale");
+  }
+  const profile = await root.controller.sessionProfile(resolvedSessionId);
+  const secret = await vscode.window.showInputBox({
+    title: `CodeHelper: ${profile.profile.provider} API Key`,
+    prompt: "Stored in VS Code SecretStorage. It is never sent to the Chat Webview.",
+    password: true,
+    ignoreFocusOut: true,
+    validateInput: validateSecret,
+  });
+  if (secret === undefined) return;
+  const configuration = vscode.workspace.getConfiguration(
+    "codehelper",
+    root.folder.uri,
+  );
+  const configPath = configuration.get<string>("runtime.configPath", "").trim();
+  if (configPath.length === 0) {
+    throw new Error(
+      "Run CodeHelper Setup before configuring a SecretStorage credential.",
+    );
+  }
+  const reference = root.controller.credentialReference(profile.profile.provider);
+  await root.controller.storeCredential(profile.profile.provider, secret);
+  const binary = await root.controller.resolveBinary();
+  const result = await runCommand(
+    binary.path,
+    [
+      "auth", "login",
+      "--config", configPath,
+      "--kind", "env",
+      "--name", reference,
+    ],
+    root.folder.uri.fsPath,
+  );
+  if (result.code !== 0) {
+    throw new Error(result.stderr || "CodeHelper credential configuration failed");
+  }
+  await root.controller.activateCredentialProvider(profile.profile.provider);
+  output.info(
+    `[credential:${root.label}] provider=${profile.profile.provider} ` +
+    "status=configured source=secret-storage",
+  );
+  await root.controller.restart();
+  void vscode.window.showInformationMessage(
+    `${root.label}: ${profile.profile.provider} credential configured.`,
+  );
+}
+
 interface JSONResult {
   readonly value: unknown;
   readonly code: number;
@@ -277,6 +422,7 @@ function runJSON(
   binary: string,
   args: readonly string[],
   cwd: string,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<JSONResult> {
   return new Promise((resolve, reject) => {
     execFile(
@@ -288,6 +434,7 @@ function runJSON(
         maxBuffer: 4 << 20,
         timeout: 60_000,
         windowsHide: true,
+        ...(environment === undefined ? {} : { env: environment }),
       },
       (error, stdout, stderr) => {
         if (stdout.trim().length === 0) {
@@ -311,6 +458,40 @@ function runJSON(
       },
     );
   });
+}
+
+function runCommand(
+  binary: string,
+  args: readonly string[],
+  cwd: string,
+): Promise<{ readonly code: number; readonly stderr: string }> {
+  return new Promise((resolve) => {
+    execFile(
+      binary,
+      [...args],
+      {
+        cwd,
+        encoding: "utf8",
+        maxBuffer: 64 << 10,
+        timeout: 30_000,
+        windowsHide: true,
+      },
+      (error, _stdout, stderr) => {
+        resolve({
+          code: error === null
+            ? 0
+            : typeof error.code === "number" ? error.code : 1,
+          stderr: stderr.trim(),
+        });
+      },
+    );
+  });
+}
+
+function validateSecret(value: string): string | undefined {
+  if (value.trim().length === 0) return "An API key is required";
+  if (value.length > 32 << 10) return "The API key is too large";
+  return undefined;
 }
 
 function decodeModels(value: unknown): readonly ModelRow[] {

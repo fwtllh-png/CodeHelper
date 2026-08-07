@@ -6,6 +6,7 @@ import {
 } from "./presentation.js";
 import type { ChatSnapshot } from "./projector.js";
 import type { ResourceView } from "./resources.js";
+import type { ComposerView } from "./composer.js";
 
 export const chatViewProtocolVersion = 1;
 export const chatHostMessageTypes = ["snapshot", "error"] as const;
@@ -38,6 +39,7 @@ export interface ChatSnapshotMessage {
   readonly resources: readonly ResourceView[];
   readonly runtime: ChatRuntimeView;
   readonly presentation: ChatPresentation;
+  readonly composer?: ComposerView;
 }
 
 export interface ChatErrorMessage {
@@ -59,6 +61,7 @@ export interface ChatSnapshotMessageOptions {
   readonly sessions: readonly ChatSessionView[];
   readonly mergePlanId?: string;
   readonly roots: readonly ChatRootView[];
+  readonly composer?: ComposerView;
 }
 
 export function createChatSnapshotMessage(
@@ -75,6 +78,7 @@ export function createChatSnapshotMessage(
       options.snapshot,
       options.trusted,
     ),
+    ...(options.composer === undefined ? {} : { composer: options.composer }),
     runtime: {
       state: options.state,
       ...(options.error === undefined ? {} : { error: options.error }),

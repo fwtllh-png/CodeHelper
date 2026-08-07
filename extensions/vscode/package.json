@@ -113,6 +113,10 @@
         "title": "CodeHelper: Setup Workspace"
       },
       {
+        "command": "codehelper.configureCredential",
+        "title": "CodeHelper: Configure Credential"
+      },
+      {
         "command": "codehelper.runQuickstart",
         "title": "CodeHelper: Run Quickstart"
       },

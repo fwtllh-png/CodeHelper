@@ -34,6 +34,7 @@ import {
   type ManifestCache,
 } from "./binary/update.js";
 import { registerSetupCommands } from "./setup/commands.js";
+import type { CredentialView } from "./security/credentials.js";
 
 let registry: WorkspaceRuntimeRegistry | undefined;
 let updateCheckInFlight: Promise<void> | undefined;
@@ -57,6 +58,11 @@ export interface ExtensionAPI {
     expectedRevision: number,
     patch: SessionProfilePatch,
   ) => Promise<SessionProfileUpdate>;
+  readonly testCredentialStatus?: (provider: string) => Promise<CredentialView>;
+  readonly testStoreCredential?: (
+    provider: string,
+    secret: string,
+  ) => Promise<void>;
   readonly chatWebviewReady?: () => boolean;
   readonly onRootRuntimeEvent?: (
     listener: (
@@ -279,6 +285,16 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
               expectedRevision,
               patch,
             ),
+          testCredentialStatus: async (provider) =>
+            activeRegistry.selected.controller.credentialStatus(provider),
+          testStoreCredential: async (provider, secret) => {
+            await activeRegistry.selected.controller.storeCredential(
+              provider,
+              secret,
+            );
+            await activeRegistry.selected.controller
+              .activateCredentialProvider(provider);
+          },
           chatWebviewReady: () => chatView?.webviewReady ?? false,
           onRootRuntimeEvent: (
             listener: (

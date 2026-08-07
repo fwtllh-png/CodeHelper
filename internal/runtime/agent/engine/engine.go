@@ -76,7 +76,10 @@ type Options struct {
 	ContextReceipts         []promptcontext.Receipt
 	Authorize               func(provider.ToolCall) bool
 	Security                *policy.Runtime
-	Guard                   *toolguard.Guard
+	// ProfilePermissionCeiling is fixed by the Host at construction. An empty
+	// value inherits Security.Permission for callers that do not use Profiles.
+	ProfilePermissionCeiling policy.Permission
+	Guard                    *toolguard.Guard
 	// OnNetworkAllow is wired into a Guard that New allocates when Guard is
 	// nil. Without it, mid-flight egress approvals update the approval cache
 	// but never Grant the session Gate, so the retry still gets egress denied.
@@ -209,6 +212,7 @@ type Engine struct {
 	// invisible and the model walks into them again.
 	failures        *compact.Failures
 	promptCacheBase string
+	profileReadOnly bool
 
 	// turnContextMu guards the receipts of the volatile tail of the last sample.
 	turnContextMu   sync.Mutex
@@ -367,6 +371,7 @@ func New(options Options) (*Engine, error) {
 	engine := &Engine{
 		options: options, guard: options.Guard, journal: options.Journal,
 		promptCacheBase: options.PromptCacheKey,
+		profileReadOnly: profileReadOnlyFromOptions(options),
 		turnIDs:         make(map[string]uint64),
 		scheduler:       NewToolScheduler(options.MaxToolConcurrent),
 		turnDiff:        NewTurnDiffTracker(),
@@ -425,27 +430,59 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 		e.promptCacheBase,
 		profile.PromptCacheRevision,
 	)
-	e.options.Security.Mode = policy.Mode(profile.Mode)
-	e.options.Security.Permission = policy.Permission(profile.ApprovalPosture)
+	if e.options.Security != nil {
+		e.options.Security.Mode = policy.Mode(profile.Mode)
+		e.options.Security.Permission = effectiveProfilePermission(
+			e.profileReadOnly,
+			policy.Permission(profile.ApprovalPosture),
+		)
+	}
 	return nil
+}
+
+func effectiveProfilePermission(
+	readOnly bool,
+	requested policy.Permission,
+) policy.Permission {
+	if readOnly {
+		return policy.PermissionNever
+	}
+	return requested
+}
+
+func profileReadOnlyFromOptions(options Options) bool {
+	ceiling := options.ProfilePermissionCeiling
+	if ceiling == "" && options.Security != nil {
+		ceiling = options.Security.Permission
+	}
+	return ceiling == policy.PermissionNever
 }
 
 func (e *Engine) SetPolicyMode(mode policy.Mode) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.options.Security.Mode = mode
+	if e.options.Security != nil {
+		e.options.Security.Mode = mode
+	}
 }
 
 func (e *Engine) SetPermission(permission policy.Permission) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.options.Security.Permission = permission
+	if e.options.Security != nil {
+		e.options.Security.Permission = effectiveProfilePermission(
+			e.profileReadOnly,
+			permission,
+		)
+	}
 }
 
 func (e *Engine) SetGranular(granular policy.Granular) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.options.Security.Granular = granular
+	if e.options.Security != nil {
+		e.options.Security.Granular = granular
+	}
 }
 
 // CloneEmpty builds a sibling Engine with the same Options seed, empty history,

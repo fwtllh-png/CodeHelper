@@ -2,6 +2,7 @@ import type {
   ApprovalDecision,
   ApprovalScope,
 } from "../runtime/session.js";
+import type { ComposerControl } from "./composer.js";
 
 export type WebviewMessage =
   | { readonly type: "ready" }
@@ -12,6 +13,7 @@ export type WebviewMessage =
   | { readonly type: "new-chat" }
   | { readonly type: "repair-runtime" }
   | { readonly type: "run-setup" }
+  | { readonly type: "configure-composer"; readonly control: ComposerControl }
   | { readonly type: "merge-chat"; readonly planId?: string }
   | { readonly type: "stop" }
   | {
@@ -62,6 +64,12 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
     case "run-setup":
       requireKeys(value, ["type"]);
       return { type: "run-setup" };
+    case "configure-composer":
+      requireKeys(value, ["type", "control"]);
+      return {
+        type: "configure-composer",
+        control: requireComposerControl(value["control"]),
+      };
     case "merge-chat":
       requireAllowedMergeKeys(value);
       return {
@@ -156,6 +164,18 @@ function requireDecision(value: unknown): ApprovalDecision {
 function requireScope(value: unknown): ApprovalScope {
   if (value !== "once" && value !== "session" && value !== "always") {
     throw new Error("approval scope is invalid");
+  }
+  return value;
+}
+
+function requireComposerControl(value: unknown): ComposerControl {
+  if (value !== "mode" &&
+    value !== "provider" &&
+    value !== "model" &&
+    value !== "thinking" &&
+    value !== "credential" &&
+    value !== "approval") {
+    throw new Error("Composer control is invalid");
   }
   return value;
 }

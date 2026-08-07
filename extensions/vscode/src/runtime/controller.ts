@@ -52,6 +52,10 @@ import {
   chatTitleFromPrompt,
   isPlaceholderChatTitle,
 } from "../chat/title.js";
+import {
+  WorkspaceCredentialStore,
+  type CredentialView,
+} from "../security/credentials.js";
 
 export type {
   ApprovalDecision,
@@ -103,6 +107,8 @@ export class RuntimeController {
   readonly #workspace: vscode.WorkspaceFolder;
   readonly #output: vscode.OutputChannel;
   readonly #bindingStore: BindingStore;
+  readonly #credentialStore: WorkspaceCredentialStore;
+  readonly #credentialProviderKey: string;
   readonly #workspaceIdentity: WorkspaceIdentity;
   readonly #supervisor: RuntimeSupervisor<ActiveRuntime>;
   readonly #eventListeners = new Set<
@@ -137,6 +143,12 @@ export class RuntimeController {
       workspace.uri.fsPath,
     );
     this.#bindingStore = new BindingStore(context.workspaceState);
+    this.#credentialStore = new WorkspaceCredentialStore(
+      context.secrets,
+      this.#workspaceIdentity.root_id,
+    );
+    this.#credentialProviderKey =
+      `codehelper.credentialProvider.v1:${this.#workspaceIdentity.root_id}`;
     this.#supervisor = new RuntimeSupervisor(
       async () => this.#launch(),
       {
@@ -381,6 +393,37 @@ export class RuntimeController {
     return this.#commands(sessionId).updateProfile(expectedRevision, patch);
   }
 
+  public credentialReference(provider: string): string {
+    return this.#credentialStore.reference(provider);
+  }
+
+  public async credentialStatus(provider: string): Promise<CredentialView> {
+    const managedProvider = this.#context.workspaceState.get<string>(
+      this.#credentialProviderKey,
+    );
+    return this.#credentialStore.status(
+      provider,
+      managedProvider !== provider,
+    );
+  }
+
+  public async storeCredential(
+    provider: string,
+    secret: string,
+  ): Promise<void> {
+    await this.#credentialStore.store(provider, secret);
+  }
+
+  public async activateCredentialProvider(provider?: string): Promise<void> {
+    if (provider !== undefined) {
+      this.#credentialStore.reference(provider);
+    }
+    await this.#context.workspaceState.update(
+      this.#credentialProviderKey,
+      provider,
+    );
+  }
+
   public async mergeChat(
     sessionId: string,
     action: "preview" | "apply",
@@ -472,6 +515,12 @@ export class RuntimeController {
     if (configuredConfigPath.length > 0 && !isAbsolute(configuredConfigPath)) {
       throw new Error("codehelper.runtime.configPath must be a Host-local absolute path");
     }
+    const credentialProvider = this.#context.workspaceState.get<string>(
+      this.#credentialProviderKey,
+    );
+    const credentialEnvironment = credentialProvider === undefined
+      ? {}
+      : await this.#credentialStore.environment(credentialProvider);
     this.#output.appendLine(
       `[runtime:${this.#workspace.name}] launching ${binaryPath} ` +
       `(${binaryVersion.version}, ` +
@@ -487,6 +536,7 @@ export class RuntimeController {
       ...(configuredConfigPath.length === 0
         ? {}
         : { configPath: configuredConfigPath }),
+      environment: credentialEnvironment,
       posture: runtimePosture(vscode.workspace.isTrusted),
       maxSteps,
       workspaceIdentity: this.#workspaceIdentity,

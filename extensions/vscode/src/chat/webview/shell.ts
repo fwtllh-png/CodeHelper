@@ -71,9 +71,12 @@ export function renderChatHTML(
           <div id="composer-toolbar" role="toolbar" aria-label="Prompt controls">
             <div class="composer-controls">
               <button type="button" id="add-context" class="composer-control" title="Attach editor context">＋</button>
-              <span class="composer-control passive" title="Current agent mode">Plan</span>
-              <span class="composer-control passive" title="Model configuration follows in Session Profile">Model</span>
-              <span class="composer-control passive" title="Thinking effort follows in Session Profile">High</span>
+              <button type="button" id="mode-control" class="composer-control" disabled>Mode</button>
+              <button type="button" id="provider-control" class="composer-control" disabled>Provider</button>
+              <button type="button" id="model-control" class="composer-control" disabled>Model</button>
+              <button type="button" id="thinking-control" class="composer-control" disabled>Thinking</button>
+              <button type="button" id="credential-control" class="composer-control" disabled>Key</button>
+              <button type="button" id="approval-control" class="composer-control" disabled>Approval</button>
               <span class="composer-control passive" title="Tool configuration follows in Session Profile">Tools</span>
             </div>
             <div class="composer-actions">

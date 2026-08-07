@@ -42,6 +42,13 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
     type: "run-setup",
   });
   assert.deepEqual(decodeWebviewMessage({
+    type: "configure-composer",
+    control: "thinking",
+  }), {
+    type: "configure-composer",
+    control: "thinking",
+  });
+  assert.deepEqual(decodeWebviewMessage({
     type: "merge-chat",
     planId: "b".repeat(64),
   }), {
@@ -120,6 +127,21 @@ void test("decodeWebviewMessage rejects forged fields and commands", () => {
       resourceId: "command:workbench.action.terminal.new",
     }),
     /resourceId is invalid/,
+  );
+  assert.throws(
+    () => decodeWebviewMessage({
+      type: "configure-composer",
+      control: "secret",
+    }),
+    /control is invalid/u,
+  );
+  assert.throws(
+    () => decodeWebviewMessage({
+      type: "configure-composer",
+      control: "credential",
+      secret: "must-not-cross-webview",
+    }),
+    /unexpected fields/u,
   );
 });
 

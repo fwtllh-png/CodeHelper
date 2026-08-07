@@ -70,15 +70,28 @@ Webview State 与 `workspaceState` 都不是 Profile Store。
 
 更新必须携带已观察到的 Revision；过期写入或活动 Turn 都会失败。改变 Model-visible
 Request Shape 的字段会推进 Prompt Cache Revision。Capabilities 只公开当前 Runtime
-真正可应用的字段。当前 Runtime Route 不可变；后续 Catalog-backed Runtime 将
-Provider/Model 广告为 Mutable 后才允许切换。
+真正可应用的字段。当前 Runtime Route 不可热切换；Provider/Model 通过 Setup 后重启
+本地 Runtime 完成切换。后续 Catalog-backed Runtime 将这些字段广告为 Mutable 后，
+才能原地切换。
+
+Composer 将该契约投影为原生风格的 Mode、Provider、Model、Thinking、Credential 和
+Approval 控件。Mode、Thinking、Approval 使用带 Revision 的 Profile Update；
+Provider、Model 使用 Setup + Local Runtime Restart。Runtime 未广告对应 Capability
+时，控件保持禁用。
 
 ## 内置 Setup 与 Repair
 
 在已打开且受信任的工作区中执行 `CodeHelper: Setup Workspace`。引导流程会选择
-Provider、Model 和 Credential Reference，将 `recommended` Profile 写入
-`codehelper.toml`，更新工作区 Runtime 设置并重启 Runtime。凭证输入框只接受环境变量
-名、受保护文件路径或 Keyring Key，不要输入 Secret 值。
+Provider、Model 和 Credential Source，将 `recommended` Profile 写入
+`codehelper.toml`，更新工作区 Runtime 设置并重启 Runtime。推荐选项使用 Password
+InputBox 与 VS Code SecretStorage；Runtime 配置只保存生成的 Environment Reference，
+Extension Host 仅向本地 Runtime Process 注入 Secret。Chat Webview、Profile、Log 与
+Setting 都不会接收 Secret。仍支持外部环境变量、受保护文件和 OS Keyring Reference。
+
+`CodeHelper: Configure Credential` 可替换当前 Provider 在 SecretStorage 中的凭证，
+不会向 Webview 暴露。Untrusted Workspace 不能配置 Credential 或提升 Approval
+Posture。以 Read-only Posture 启动的 Runtime 还会把恢复后的 Profile Clamp 到
+`never`，历史持久化的 `bypass` 不能跨越 Host Trust Boundary。
 
 Runtime 启动失败或 Readiness 降级时，执行 `CodeHelper: Repair Runtime`。该命令会合并
 VS Code Supervisor 启动错误与 `doctor --json`，逐项展示缺失能力的状态、原因、影响和

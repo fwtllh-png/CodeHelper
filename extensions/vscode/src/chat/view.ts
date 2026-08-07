@@ -36,10 +36,23 @@ import {
   projectChatResources,
   type ResourceReference,
 } from "./resources.js";
+import {
+  projectComposer,
+  type ComposerControl,
+} from "./composer.js";
+import type { SessionProfileSnapshot } from "../runtime/session.js";
+import type { CredentialView } from "../security/credentials.js";
 
 interface RootChatState {
   readonly projectors: Map<string, ChatProjector>;
+  readonly composers: Map<string, SessionComposerState>;
   runtime: SupervisorSnapshot;
+}
+
+interface SessionComposerState {
+  readonly profile?: SessionProfileSnapshot;
+  readonly credential?: CredentialView;
+  readonly error?: string;
 }
 
 export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -54,6 +67,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   readonly #submittedApprovals = new Set<string>();
   readonly #mergePlans = new Map<string, EditPlanCard>();
   readonly #resources = new Map<string, ResourceReference>();
+  readonly #composerLoads = new Set<string>();
   #view: vscode.WebviewView | undefined;
   #flushTimer: NodeJS.Timeout | undefined;
   #webviewReady = false;
@@ -74,6 +88,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       }),
       registry.onStateChange(({ root, snapshot }) => {
         this.#state(root.rootId).runtime = snapshot;
+        if (snapshot.state !== "ready") {
+          this.#state(root.rootId).composers.clear();
+        }
         this.#scheduleFlush();
       }),
       registry.onDidChangeRoots(() => {
@@ -214,6 +231,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "run-setup":
           await vscode.commands.executeCommand("codehelper.runSetup");
           break;
+        case "configure-composer": {
+          const session = this.#selectedSession(root);
+          await this.#configureComposer(root, session, message.control);
+          break;
+        }
         case "submit": {
           const session = this.#selectedSession(root);
           const parsed = parseContextDirectives(message.text);
@@ -485,6 +507,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         : this.#mergePlans.get(
             sessionKey(root.rootId, selected.sessionId, "merge"),
           );
+      const composerState = selected === undefined
+        ? undefined
+        : state.composers.get(selected.sessionId);
+      if (selected !== undefined &&
+        state.runtime.state === "ready" &&
+        composerState === undefined) {
+        void this.#loadComposer(root, selected.sessionId);
+      }
+      const composer = composerState?.profile === undefined ||
+        composerState.credential === undefined
+        ? undefined
+        : projectComposer(
+            composerState.profile,
+            composerState.credential,
+            vscode.workspace.isTrusted,
+          );
       this.#post(createChatSnapshotMessage({
         snapshot: resources.snapshot,
         resources: resources.views,
@@ -501,6 +539,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           id: candidate.rootId,
           label: candidate.label,
         })),
+        ...(composer === undefined ? {} : { composer }),
       }));
     }, 16);
   }
@@ -515,6 +554,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       if (!this.#roots.has(root.rootId)) {
         this.#roots.set(root.rootId, {
           projectors: new Map(),
+          composers: new Map(),
           runtime: root.controller.snapshot,
         });
       }
@@ -546,6 +586,136 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     for (const sessionId of state.projectors.keys()) {
       if (!live.has(sessionId)) state.projectors.delete(sessionId);
+    }
+    for (const sessionId of state.composers.keys()) {
+      if (!live.has(sessionId)) state.composers.delete(sessionId);
+    }
+  }
+
+  async #loadComposer(
+    root: WorkspaceRuntime,
+    sessionId: string,
+  ): Promise<void> {
+    const key = sessionKey(root.rootId, sessionId, "composer");
+    if (this.#composerLoads.has(key)) return;
+    this.#composerLoads.add(key);
+    try {
+      const profile = await root.controller.sessionProfile(sessionId);
+      const credential = await root.controller.credentialStatus(
+        profile.profile.provider,
+      );
+      this.#state(root.rootId).composers.set(sessionId, {
+        profile,
+        credential,
+      });
+    } catch (error) {
+      this.#state(root.rootId).composers.set(sessionId, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.#composerLoads.delete(key);
+      this.#scheduleFlush();
+    }
+  }
+
+  async #configureComposer(
+    root: WorkspaceRuntime,
+    session: ChatSessionSummary,
+    control: ComposerControl,
+  ): Promise<void> {
+    let state = this.#state(root.rootId).composers.get(session.sessionId);
+    if (state?.profile === undefined || state.credential === undefined) {
+      this.#state(root.rootId).composers.delete(session.sessionId);
+      await this.#loadComposer(root, session.sessionId);
+      state = this.#state(root.rootId).composers.get(session.sessionId);
+    }
+    if (state?.profile === undefined || state.credential === undefined) {
+      throw new Error(state?.error ?? "Session Profile is unavailable");
+    }
+    if (control === "provider" || control === "model") {
+      await vscode.commands.executeCommand(
+        "codehelper.runSetup",
+        root.rootId,
+        ...(control === "model"
+          ? [state.profile.profile.provider]
+          : []),
+      );
+      this.#state(root.rootId).composers.delete(session.sessionId);
+      this.#scheduleFlush();
+      return;
+    }
+    if (control === "credential") {
+      await vscode.commands.executeCommand(
+        "codehelper.configureCredential",
+        root.rootId,
+        session.sessionId,
+      );
+      this.#state(root.rootId).composers.delete(session.sessionId);
+      this.#scheduleFlush();
+      return;
+    }
+
+    const snapshot = state.profile;
+    const mutable = new Set(snapshot.capabilities.mutable_fields);
+    let field: "mode" | "reasoning_effort" | "approval_posture";
+    let value: string | undefined;
+    if (control === "mode") {
+      field = "mode";
+      value = await pickValue(
+        "CodeHelper: Agent Mode",
+        ["plan", "act", "operate"],
+        snapshot.profile.mode,
+      );
+    } else if (control === "thinking") {
+      field = "reasoning_effort";
+      const efforts = snapshot.capabilities.model_capabilities.reasoning_efforts;
+      if (efforts === undefined || efforts.length === 0) {
+        throw new Error("The current Model exposes no thinking effort options");
+      }
+      value = await pickValue(
+        "CodeHelper: Thinking Effort",
+        ["", ...efforts],
+        snapshot.profile.reasoning_effort ?? "",
+      );
+    } else {
+      field = "approval_posture";
+      const values = vscode.workspace.isTrusted
+        ? ["never", "suggest", "auto", "bypass"]
+        : ["never", "suggest"];
+      value = await pickValue(
+        "CodeHelper: Approval Posture",
+        values,
+        snapshot.profile.approval_posture,
+      );
+    }
+    if (value === undefined) return;
+    if (!mutable.has(field)) {
+      throw new Error(`Session Profile field ${field} is fixed by this Runtime`);
+    }
+    try {
+      const update = await root.controller.updateSessionProfile(
+        session.sessionId,
+        snapshot.profile.revision,
+        field === "mode"
+          ? { mode: value }
+          : field === "reasoning_effort"
+            ? { reasoning_effort: value }
+            : { approval_posture: value },
+      );
+      this.#state(root.rootId).composers.set(session.sessionId, {
+        profile: { ...snapshot, profile: update.profile },
+        credential: state.credential,
+      });
+      if (update.prompt_cache_reset) {
+        void vscode.window.showInformationMessage(
+          "CodeHelper prompt cache reset for the updated Session Profile.",
+        );
+      }
+      this.#scheduleFlush();
+    } catch (error) {
+      this.#state(root.rootId).composers.delete(session.sessionId);
+      await this.#loadComposer(root, session.sessionId);
+      throw error;
     }
   }
 
@@ -638,4 +808,26 @@ function approvalSummary(approval: ApprovalCard): string {
 function isExpired(value: string): boolean {
   const timestamp = Date.parse(value);
   return !Number.isFinite(timestamp) || timestamp <= Date.now();
+}
+
+async function pickValue(
+  title: string,
+  values: readonly string[],
+  current: string,
+): Promise<string | undefined> {
+  const selected = await vscode.window.showQuickPick(
+    values.map((value) => ({
+      label: value === ""
+        ? "Default"
+        : `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`,
+      ...(value === current ? { description: "Current" } : {}),
+      value,
+    })),
+    {
+      title,
+      placeHolder: "Select a Session Profile value",
+      ignoreFocusOut: true,
+    },
+  );
+  return selected?.value;
 }

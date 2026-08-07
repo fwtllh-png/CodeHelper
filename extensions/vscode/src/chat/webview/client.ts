@@ -45,6 +45,12 @@ const mergeChat = element("merge-chat") as HTMLButtonElement;
 const railNewChat = element("rail-new-chat") as HTMLButtonElement;
 const environment = element("environment");
 const approvalPosture = element("approval-posture");
+const modeControl = element("mode-control") as HTMLButtonElement;
+const providerControl = element("provider-control") as HTMLButtonElement;
+const modelControl = element("model-control") as HTMLButtonElement;
+const thinkingControl = element("thinking-control") as HTMLButtonElement;
+const credentialControl = element("credential-control") as HTMLButtonElement;
+const approvalControl = element("approval-control") as HTMLButtonElement;
 let trusted = false;
 let messageMergePlanId: string | undefined;
 let sessions: readonly ChatSessionView[] = [];
@@ -138,6 +144,18 @@ element("add-context").addEventListener("click", () => {
   );
   prompt.focus();
 });
+for (const [button, control] of [
+  [modeControl, "mode"],
+  [providerControl, "provider"],
+  [modelControl, "model"],
+  [thinkingControl, "thinking"],
+  [credentialControl, "credential"],
+  [approvalControl, "approval"],
+] as const) {
+  button.addEventListener("click", () => {
+    post({ type: "configure-composer", control });
+  });
+}
 toggleSessions.addEventListener("click", () => {
   setSessionsOpen(!document.body.classList.contains("sessions-open"));
 });
@@ -213,8 +231,9 @@ function renderSnapshot(message: ChatSnapshotMessage): void {
     ? message.runtime.selectedRootLabel
     : "Local";
   approvalPosture.textContent = trusted
-    ? "Default approvals"
+    ? message.composer?.approval.label ?? "Loading profile"
     : "Read-only";
+  renderComposer(message);
   runtime.textContent = `CodeHelper Runtime: ${message.runtime.state}` +
     (trusted ? " · trusted" : " · read-only") +
     ` · ${String(message.runtime.sessions.length)} chats`;
@@ -226,6 +245,48 @@ function renderSnapshot(message: ChatSnapshotMessage): void {
   const stickToBottom = isNearBottom();
   renderTranscript(turns, message.snapshot, trusted, transcriptActions);
   if (stickToBottom) turns.scrollTo({ top: turns.scrollHeight });
+}
+
+function renderComposer(message: ChatSnapshotMessage): void {
+  const composer = message.composer;
+  if (composer === undefined) {
+    for (const button of [
+      modeControl,
+      providerControl,
+      modelControl,
+      thinkingControl,
+      credentialControl,
+      approvalControl,
+    ]) {
+      button.disabled = true;
+    }
+    return;
+  }
+  setControl(modeControl, composer.mode);
+  setControl(providerControl, composer.provider);
+  setControl(modelControl, composer.model);
+  if (composer.thinking === undefined) {
+    thinkingControl.hidden = true;
+    thinkingControl.disabled = true;
+  } else {
+    thinkingControl.hidden = false;
+    setControl(thinkingControl, composer.thinking);
+  }
+  setControl(credentialControl, composer.credential);
+  setControl(approvalControl, composer.approval);
+}
+
+function setControl(
+  button: HTMLButtonElement,
+  control: {
+    readonly label: string;
+    readonly enabled: boolean;
+    readonly title: string;
+  },
+): void {
+  button.textContent = control.label;
+  button.disabled = !control.enabled;
+  button.title = control.title;
 }
 
 function renderSessionList(): void {

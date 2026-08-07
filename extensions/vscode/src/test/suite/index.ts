@@ -86,6 +86,7 @@ export async function run(): Promise<void> {
     await verifyNativeFlows(api);
     await verifyMultipleChats(api);
     await verifySessionProfile(api);
+  await verifyComposerCredential(api);
     await verifyResourceNavigation();
   } else if (scenario === "bundled") {
     assert.equal(vscode.workspace.workspaceFolders?.length, 1);
@@ -683,14 +684,43 @@ async function verifySessionProfile(api: ExtensionAPI): Promise<void> {
     initial.profile.provider,
   );
   const maxSteps = initial.profile.max_steps + 1;
+  const approvalPosture = initial.profile.approval_posture === "never"
+    ? "suggest"
+    : "never";
   const updated = await api.updateSessionProfile(
     selected.sessionId,
     initial.profile.revision,
-    { max_steps: maxSteps },
+    {
+      max_steps: maxSteps,
+      approval_posture: approvalPosture,
+    },
   );
   assert.equal(updated.profile.max_steps, maxSteps);
+  assert.equal(updated.profile.approval_posture, approvalPosture);
   assert.equal(updated.profile.revision, initial.profile.revision + 1);
   assert.equal(updated.prompt_cache_reset, false);
+  let expected = updated.profile;
+  const efforts =
+    initial.capabilities.model_capabilities.reasoning_efforts ?? [];
+  if (initial.capabilities.mutable_fields.includes("reasoning_effort") &&
+    efforts.length > 1) {
+    const effort = efforts.find(
+      (candidate) => candidate !== updated.profile.reasoning_effort,
+    );
+    assert.ok(effort);
+    const reasoning = await api.updateSessionProfile(
+      selected.sessionId,
+      updated.profile.revision,
+      { reasoning_effort: effort },
+    );
+    assert.equal(reasoning.profile.reasoning_effort, effort);
+    assert.equal(reasoning.prompt_cache_reset, true);
+    assert.equal(
+      reasoning.profile.prompt_cache_revision,
+      updated.profile.prompt_cache_revision + 1,
+    );
+    expected = reasoning.profile;
+  }
 
   await vscode.commands.executeCommand("codehelper.restartRuntime");
   await waitFor(
@@ -698,8 +728,37 @@ async function verifySessionProfile(api: ExtensionAPI): Promise<void> {
     "Runtime did not recover after Session Profile update",
   );
   const recovered = await api.sessionProfile(selected.sessionId);
-  assert.equal(recovered.profile.revision, updated.profile.revision);
+  assert.equal(recovered.profile.revision, expected.revision);
   assert.equal(recovered.profile.max_steps, maxSteps);
+  assert.equal(recovered.profile.approval_posture, approvalPosture);
+  assert.equal(
+    recovered.profile.reasoning_effort,
+    expected.reasoning_effort,
+  );
+}
+
+async function verifyComposerCredential(api: ExtensionAPI): Promise<void> {
+  assert.ok(api.chatSessions);
+  assert.ok(api.sessionProfile);
+  assert.ok(api.testCredentialStatus);
+  assert.ok(api.testStoreCredential);
+  const selected = api.chatSessions().find((session) => session.selected);
+  assert.ok(selected);
+  const profile = await api.sessionProfile(selected.sessionId);
+  const secret = "electron-secret-canary";
+  await api.testStoreCredential(profile.profile.provider, secret);
+  const configured = await api.testCredentialStatus(profile.profile.provider);
+  assert.equal(configured.status, "configured");
+  assert.equal(configured.source, "secret-storage");
+  assert.equal(JSON.stringify(configured).includes(secret), false);
+
+  await vscode.commands.executeCommand("codehelper.restartRuntime");
+  await waitFor(
+    () => api.runtimeSnapshot?.().state === "ready",
+    "Runtime did not recover with the SecretStorage credential environment",
+  );
+  const recovered = await api.testCredentialStatus(profile.profile.provider);
+  assert.deepEqual(recovered, configured);
 }
 
 interface TestApproval {

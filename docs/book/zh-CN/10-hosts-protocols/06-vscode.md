@@ -74,6 +74,16 @@ Revision、Capability 和 Prompt Cache Reset 结果，不把它们复制到 Bind
 Webview State。更新使用乐观并发控制，Owning Thread 存在 Active Turn 时拒绝；只有
 当前 Runtime 广告为 Mutable 的字段可以变化。
 
+Composer 从该 Projection 渲染 Mode、Provider、Model、Thinking、Credential Status
+和 Approval Posture。Mutable Field 使用带 Revision 的 ACP Update。当前 Single-route
+Runtime 通过 Native Setup 与有界 Restart 切换 Provider/Model，不伪装支持热切换。
+
+Credential 只在原生 Password InputBox 中输入，并按 Exact Workspace/Provider Identity
+保存到 VS Code SecretStorage。`codehelper.toml` 只保存生成的 Environment Reference，
+只有本地 Runtime Child 收到 Secret；Webview Snapshot 只包含 Status，不包含 Secret 或
+Reference。Untrusted Workspace 禁用 Credential 与 Approval Escalation；Runtime 的
+Read-only Startup 同时是恢复 Durable Profile 时不可突破的 Permission Ceiling。
+
 ## 原生资源导航
 
 Runtime 确认的 Context Receipt、Context Selection 与 Edit Plan 在 Chat Projection
@@ -105,7 +115,7 @@ Cursor 按 Exact Workspace/Session Binding Monotonic Persist。Replay 分页；F
 Workspace Event 仍推进 Connection Cursor；Live Event 排在 In-flight Replay 后。Gap 保留
 Projected State 供诊断。
 
-## Multi-root/Remote Identity
+## Multi-root/Local Identity
 
 每个 Workspace Root 独立绑定 Canonical Local Editor URI 与 Runtime Path。
 UI-selected Root 不能伪造 Binding；Context/Command 路由到 Owning Root。

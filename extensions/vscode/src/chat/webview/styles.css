@@ -418,13 +418,23 @@ pre {
 
 .composer-controls {
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .composer-control {
   flex: 0 0 auto;
+  max-width: 150px;
+  overflow: hidden;
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-control:disabled {
+  cursor: default;
+  opacity: 0.7;
 }
 
 .composer-control.passive {

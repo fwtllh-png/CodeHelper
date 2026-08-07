@@ -38,6 +38,7 @@ export interface RuntimeLaunchOptions {
   readonly workspaceRoot: string;
   readonly dataDirectory: string;
   readonly configPath?: string;
+  readonly environment?: Readonly<Record<string, string>>;
   readonly posture: RuntimePosture;
   readonly maxSteps: number;
   readonly workspaceIdentity: WorkspaceIdentity;
@@ -205,7 +206,7 @@ export async function launchRuntime(
   const args = runtimeArguments(options);
   const child = spawn(options.binaryPath, args, {
     cwd: options.workspaceRoot,
-    env: process.env,
+    env: { ...process.env, ...options.environment },
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
   });

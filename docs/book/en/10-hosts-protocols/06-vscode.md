@@ -82,6 +82,19 @@ them into BindingStore or Webview state. Updates use optimistic concurrency and
 are rejected while the owning Thread has an active Turn. Only fields advertised
 as mutable by the current Runtime may change.
 
+Composer renders Mode, Provider, Model, Thinking, Credential status, and
+Approval posture from this projection. Mutable fields use Revision-checked ACP
+updates. The current single-route Runtime changes Provider/Model through native
+Setup and a bounded restart rather than pretending to support hot switching.
+
+Credential entry stays in a native password InputBox. The value is stored in
+VS Code SecretStorage under the exact Workspace/Provider identity; only a
+generated environment reference enters `codehelper.toml`, and only the local
+Runtime child receives the secret. Webview snapshots contain status, never the
+secret or reference. Untrusted Workspaces disable credential and Approval
+escalation controls. Runtime read-only startup is also an immutable permission
+ceiling when a durable Profile is restored.
+
 ## Native Resource Navigation
 
 Runtime-confirmed context receipts, context selections, and Edit Plans become
@@ -117,10 +130,10 @@ paged, filtered Workspace Events still advance the connection Cursor, and live
 Events are ordered after in-flight replay. A gap preserves projected state for
 diagnosis.
 
-## Multi-root and Remote Identity
+## Multi-root and Local Identity
 
-Each Workspace root has a separate Host binding containing canonical editor
-URI, Runtime path, and remote authority. UI-selected roots cannot forge this
+Each local Workspace root has a separate Host binding containing canonical
+`file:` editor URI and Runtime path. UI-selected roots cannot forge this
 binding. Context capture and commands route through the owning root.
 
 Compatibility includes binary version, OS/architecture target, ACP protocol,

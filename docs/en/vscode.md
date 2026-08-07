@@ -79,16 +79,32 @@ Updates require the observed Revision and fail on stale writes or an active
 Turn. Changes that alter model-visible request shape advance the prompt-cache
 Revision. Capabilities expose only fields the current Runtime can apply. The
 current Runtime route is immutable; Provider/Model switching is enabled only
-when a later catalog-backed Runtime advertises those fields as mutable.
+through the restart-backed Setup flow. In-place switching is enabled only when
+a catalog-backed Runtime advertises those fields as mutable.
+
+The Composer projects this contract into native-style Mode, Provider, Model,
+Thinking, Credential, and Approval controls. Mode, Thinking, and Approval use
+Revision-checked Profile updates. Provider and Model use Setup plus a local
+Runtime restart. Controls remain disabled when the Runtime does not advertise
+the required capability.
 
 ## Built-in Setup and Repair
 
 Use `CodeHelper: Setup Workspace` to configure an open, trusted workspace. The
-guided flow selects a provider, model, and credential reference, writes the
+guided flow selects a provider, model, and credential source, writes the
 `recommended` profile to `codehelper.toml`, updates the workspace Runtime
-setting, and restarts the Runtime. The prompt accepts only an environment
-variable name, protected file path, or keyring key; do not enter a secret
-value.
+setting, and restarts the Runtime. The recommended credential option uses a
+password InputBox and VS Code SecretStorage. The Runtime configuration contains
+only a generated environment reference; the Extension Host injects the secret
+into the local Runtime process. The Chat Webview, Profile, logs, and settings
+never receive the secret. External environment, protected-file, and OS-keyring
+references remain available.
+
+`CodeHelper: Configure Credential` replaces the current Provider credential in
+SecretStorage without exposing it to the Webview. Untrusted Workspaces cannot
+configure credentials or raise Approval posture. A Runtime started with
+read-only posture also clamps restored Profiles to `never`, so a previously
+persisted `bypass` value cannot cross the Host trust boundary.
 
 Use `CodeHelper: Repair Runtime` when startup fails or readiness is degraded.
 The command combines the VS Code Supervisor failure with `doctor --json`, then

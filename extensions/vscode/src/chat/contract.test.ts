@@ -7,6 +7,7 @@ import {
   createChatErrorMessage,
   createChatSnapshotMessage,
 } from "./contract.js";
+import { projectComposer } from "./composer.js";
 
 void test("Chat V1 host protocol is snapshot-only between terminal errors", () => {
   assert.deepEqual(chatHostMessageTypes, ["snapshot", "error"]);
@@ -47,6 +48,37 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
       { id: "a".repeat(64), label: "workspace" },
       { id: "c".repeat(64), label: "library" },
     ],
+    composer: projectComposer({
+      profile: {
+        version: 1,
+        revision: 2,
+        mode: "act",
+        provider: "fixture",
+        model: "fixture-model",
+        approval_posture: "suggest",
+        execution_target: "local",
+        max_steps: 8,
+        prompt_cache_revision: 1,
+      },
+      capabilities: {
+        provider: "fixture",
+        model: "fixture-model",
+        model_capabilities: {
+          streaming: true,
+          reasoning: false,
+          tool_calls: true,
+          native_search: false,
+          vision: false,
+          image_input: false,
+          prompt_cache: false,
+        },
+        mutable_fields: ["mode", "approval_posture"],
+      },
+    }, {
+      status: "configured",
+      provider: "fixture",
+      source: "external",
+    }, true),
   });
 
   assert.equal(message.type, "snapshot");
@@ -57,6 +89,7 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
   assert.equal(message.runtime.sessions[1]?.active, false);
   assert.equal(message.runtime.mergePlanId, "b".repeat(64));
   assert.equal(message.presentation.stopEnabled, true);
+  assert.equal(message.composer?.model.value, "fixture-model");
   assert.equal(
     message.presentation.journey,
     "Empty · Ready for a task · Enter a prompt",
