@@ -23,6 +23,14 @@
     "verify_status": "passed",
     "verify_action": "passed",
     "verify_repairs": 0,
+    "context_selections": {
+      "pkg/calc_test.go": {
+        "kind": "test",
+        "reasons": ["search"],
+        "evidence_kinds": ["test"],
+        "truncated": false
+      }
+    },
     "output_contains": ["pkg/calc_test.go"]
   }
 }

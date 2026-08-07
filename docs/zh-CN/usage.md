@@ -9,6 +9,153 @@ codehelper help
 codehelper <command> --help
 ```
 
+<!-- BEGIN GENERATED COMMAND LIST -->
+## 生成的命令清单
+
+此清单从 Cobra Command Tree 生成，请勿手工编辑此区块。
+
+| 命令 | 说明 |
+| --- | --- |
+| `codehelper apply [flags]` | Apply a reviewed patch plan (dry-run by default) |
+| `codehelper auth` | Manage credential configuration references |
+| `codehelper auth clear [flags]` | Clear a named credential slot |
+| `codehelper auth list [flags]` | List named credential slots (non-secret refs only) |
+| `codehelper auth login [flags]` | Write a non-secret credential reference into a config file |
+| `codehelper auth logout [flags]` | Clear credential references from a config file |
+| `codehelper auth set [flags]` | Set a named credential slot (env/file/keyring ref only) |
+| `codehelper auth status [flags]` | Show credential source status without leaking secrets |
+| `codehelper auth suggestions [flags]` | Show bundled provider credential env slot suggestions |
+| `codehelper automation` | Manage recurring automations |
+| `codehelper automation list [flags]` | List automations under a data directory |
+| `codehelper automation pause [flags]` | Pause an active automation |
+| `codehelper automation run [flags]` | Manually enqueue a durable task for an automation |
+| `codehelper completion [bash|zsh|fish|powershell]` | Generate shell completion scripts |
+| `codehelper config` | Inspect and reload configuration |
+| `codehelper config check [flags]` | Validate configuration |
+| `codehelper config explain FIELD [flags]` | Explain a resolved configuration field |
+| `codehelper config profile [flags]` | Render a configuration profile |
+| `codehelper config reload [flags]` | Reload configuration |
+| `codehelper config show [flags]` | Show resolved configuration |
+| `codehelper diagnostics [flags]` | One-click readiness aggregate (sandbox/content/policy/LSP) |
+| `codehelper doctor [flags]` | Report unified runtime readiness |
+| `codehelper exec [flags] PROMPT` | Run a non-interactive agent turn |
+| `codehelper execpolicy [flags]` | Evaluate sandbox/approval decision for a tool invocation |
+| `codehelper features [flags]` | List feature readiness flags (read-only) |
+| `codehelper fleet` | Read the Fleet JSONL audit trail |
+| `codehelper fleet inspect [flags]` | Inspect a run with tasks and recent events |
+| `codehelper fleet list [flags]` | List runs from a fleet ledger |
+| `codehelper fleet logs [flags]` | Print recent ledger events for a run |
+| `codehelper fleet profile [flags]` | Show fleet roster/profile (workers, lease, heartbeat) |
+| `codehelper fleet status [flags]` | Show one fleet run and its tasks |
+| `codehelper help` | Show usage |
+| `codehelper host --adapter acp [flags]` | Host Runtime over ACP |
+| `codehelper init [flags]` | Create a minimal CodeHelper workspace config and data dirs |
+| `codehelper lane` | Manage inline/tmux worker lanes |
+| `codehelper lane attach [flags]` | Print tmux attach command for a lane (fail-closed without tmux) |
+| `codehelper lane list [flags]` | List durable lane records |
+| `codehelper lane log [flags]` | Print recent lane log lines |
+| `codehelper lane start --data-dir DIR --id ID -- COMMAND... [flags]` | Start a lane process |
+| `codehelper lane status [flags]` | Show one lane record |
+| `codehelper lane stop [flags]` | Stop a running lane |
+| `codehelper mcp` | MCP server and config management |
+| `codehelper mcp add [flags]` | Add or replace a stdio MCP server entry |
+| `codehelper mcp disable [flags]` | disable an MCP server entry |
+| `codehelper mcp enable [flags]` | enable an MCP server entry |
+| `codehelper mcp list [flags]` | List servers from an MCP config file |
+| `codehelper mcp remove [flags]` | Remove an MCP server entry |
+| `codehelper mcp serve` | Serve CodeHelper tools over MCP stdio |
+| `codehelper mcp status [flags]` | Connect to MCP servers and report isolated health |
+| `codehelper mcp test [flags]` | Hermetically validate an MCP config file |
+| `codehelper mcp tools [flags]` | List tool bindings for MCP servers |
+| `codehelper mcp validate [flags]` | Validate MCP config (alias of test) |
+| `codehelper metrics [flags]` | Report tokens, cost and latency per model and phase from the state database |
+| `codehelper model` | Inspect model catalog routes |
+| `codehelper model list [flags]` | List catalog providers and models |
+| `codehelper model probe [flags]` | Probe provider capabilities and store tighten-only observations |
+| `codehelper model resolve [flags]` | Resolve a provider/model against the catalog |
+| `codehelper plugin` | Manage plugin trust and enablement |
+| `codehelper plugin disable [flags] NAME` | Disable a plugin |
+| `codehelper plugin enable [flags] NAME` | Enable a plugin |
+| `codehelper plugin install [flags] NAME@VERSION` | Install a plugin |
+| `codehelper plugin list [flags]` | List plugins |
+| `codehelper plugin revoke [flags] NAME` | Revoke plugin trust |
+| `codehelper plugin rollback [flags] NAME` | Roll back a plugin |
+| `codehelper plugin security-revoke [flags] NAME` | Security-revoke a plugin |
+| `codehelper plugin trust [flags] NAME` | Trust a plugin |
+| `codehelper plugin update [flags] NAME@VERSION` | Update a plugin |
+| `codehelper pr [flags]` | Prefill an exec/TUI prompt from PR metadata (thin) |
+| `codehelper quickstart [flags]` | Run the network-free governed first-turn journey |
+| `codehelper review [uncommitted|base <ref>|commit <sha>|custom <text>] [flags]` | Build a reproducible code-review prompt from git scope |
+| `codehelper runtime-observe [flags]` | Emit runtime metrics and redacted logs |
+| `codehelper sandbox` | Inspect sandbox capability and posture |
+| `codehelper sandbox check [flags]` | Hermetic coherence check of declared sandbox posture |
+| `codehelper sandbox probe [flags]` | Probe runtime sandbox capability (may be expensive) |
+| `codehelper sandbox status [flags]` | Show declared sandbox capability for this platform |
+| `codehelper scorecard [flags]` | One-line-per-metric cost, cache and latency rollup from the state database |
+| `codehelper sessions` | List or search session snapshots |
+| `codehelper sessions list [flags]` | List session snapshots under --data-dir |
+| `codehelper sessions search [flags]` | Search session snapshots by substring |
+| `codehelper setup [flags]` | Configure and verify a CodeHelper workspace |
+| `codehelper skill` | Manage skills |
+| `codehelper skill disable [flags] NAME` | Disable a skill |
+| `codehelper skill enable [flags] NAME` | Enable a skill |
+| `codehelper skill lint [flags] PATH` | Lint a skill |
+| `codehelper skill list [flags]` | List skills |
+| `codehelper skill lock [flags]` | Write the skill lock |
+| `codehelper skill revoke [flags] NAME` | Revoke a skill |
+| `codehelper skill verify [flags]` | Verify the skill lock |
+| `codehelper thread` | Inspect and manage local thread metadata |
+| `codehelper thread archive [flags]` | Move a thread directory under archived/ |
+| `codehelper thread fork [flags]` | Copy a thread directory to a new thread id |
+| `codehelper thread list [flags]` | List threads under a data directory |
+| `codehelper thread read [flags]` | Read thread metadata and file listing |
+| `codehelper thread rename [flags]` | Rename a thread directory |
+| `codehelper thread resume [flags]` | Mark a thread as active for subsequent sessions |
+| `codehelper tui [flags]` | Start the interactive terminal UI |
+| `codehelper update [flags]` | Check for newer CodeHelper releases (no auto-replace) |
+| `codehelper update check [flags]` | Query latest release metadata |
+| `codehelper version [flags]` | Print version information |
+| `codehelper worker` | Execute durable background tasks |
+| `codehelper worker enqueue [flags]` | Queue a task for a worker to execute |
+| `codehelper worker list [flags]` | List executable tasks and their leases |
+| `codehelper worker run [flags]` | Run the scheduler in the foreground until interrupted |
+| `codehelper workflow` | Validate and run Workflow IR specs |
+| `codehelper workflow run [flags]` | Run a workflow (RuntimeDriver by default; --driver=fake for unit) |
+| `codehelper workflow status [flags]` | Show a workflow run and its node checkpoints |
+| `codehelper workflow validate [flags]` | Validate a workflow JSON spec |
+<!-- END GENERATED COMMAND LIST -->
+
+## Setup Flow
+
+`setup` 同时支持显式自动化和交互式本地配置：
+
+```bash
+codehelper setup \
+  --workspace . \
+  --provider openai \
+  --model gpt-4.1 \
+  --credential-kind env \
+  --credential-name OPENAI_API_KEY \
+  --json
+
+codehelper setup --workspace . --interactive
+```
+
+该流程会校验 Catalog Route、保存非 Secret 的 Credential Reference、探测宿主机
+Sandbox，并执行内置 Hermetic Runtime Fixture。`--probe-capabilities` 是显式的真实
+Provider 操作。`--require-ready` 把聚合状态映射为 Exit Code `0`、`1` 或 `2`；
+未设置时，只要配置流程本身成功就返回 `0`，Blocked 检查仍保留在报告中。
+
+## Quickstart Journey
+
+```bash
+codehelper quickstart --json
+```
+
+该命令通过内置、无网络 Fixture 依次执行计划、读取、编辑预览、批准、验证、Receipt
+与完成。自动批准只用于内置 Fixture，并绑定到准确展示的 Edit Plan ID；已有的
+`sample.go` 绝不会被覆盖。
+
 ## 核心工作流
 
 ### 单次执行
@@ -233,10 +380,16 @@ codehelper apply --plan plan.json --json
 
 ```bash
 codehelper doctor --json
+codehelper features --json
+codehelper diagnostics --workspace . --json
 codehelper runtime-observe --events 100 --log-file ./runtime.log
 codehelper metrics --data-dir ./.codehelper --json
 codehelper scorecard --data-dir ./.codehelper --json
 ```
+
+三个 Readiness 命令共享同一结果模型。`status` 为 `ready`、`degraded` 或
+`blocked`；每项检查都包含原因，并可包含影响和修复动作。三种状态的 Exit Code
+分别为 `0`、`1`、`2`，自动化判断不会再与 JSON 结论冲突。
 
 日志会脱敏，但仍可能包含敏感工程信息。
 

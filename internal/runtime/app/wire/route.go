@@ -55,9 +55,16 @@ func resolveExecRoute(options execRouteOptions) (model.ReadyRoute, error) {
 	if options.Fixture {
 		provenance = model.ProvenanceFixture
 	}
-	return resolver.Resolve(model.RouteRequest{
+	route, err := resolver.Resolve(model.RouteRequest{
 		ProviderID: options.ProviderID, ModelID: options.ModelID, Provenance: provenance,
 	})
+	if err != nil {
+		return model.ReadyRoute{}, err
+	}
+	if options.Credential.Kind != "" || options.Credential.Name != "" {
+		route = route.WithCredential(options.Credential)
+	}
+	return route, nil
 }
 
 func fixtureModel(id string) *model.Model {

@@ -33,7 +33,7 @@ work visible without filling the repository with empty placeholders.
 
 ## Reading Strategy
 
-New readers should follow the Stage 1 path in
+New readers should follow the core reading path in
 [Navigation](./NAVIGATION.md). Experienced contributors may enter through a
 module-specific part, but should read the system architecture and runtime
 vocabulary first.

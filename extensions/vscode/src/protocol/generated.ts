@@ -553,6 +553,25 @@ export type TurnReceiptData = {
       readonly "truncated"?: boolean;
       readonly "truncation_reason"?: string;
     }>;
+  readonly "context_selections"?: ReadonlyArray<{
+      readonly "critical"?: boolean;
+      readonly "evidence"?: ReadonlyArray<{
+            readonly "kind": string;
+            readonly "line"?: number;
+            readonly "symbol"?: string;
+            readonly "tool"?: string;
+            readonly "turn": number;
+          }>;
+      readonly "first_turn": number;
+      readonly "included": boolean;
+      readonly "kind": string;
+      readonly "last_turn": number;
+      readonly "path": string;
+      readonly "reasons": ReadonlyArray<string>;
+      readonly "score": number;
+      readonly "truncated"?: boolean;
+      readonly "truncation_reason"?: string;
+    }>;
   readonly "cost_known": boolean;
   readonly "cost_microunits": number;
   readonly "diagnostic_count": number;
@@ -648,7 +667,36 @@ export type TurnReceiptData = {
       readonly "tests": string;
       readonly "verify": string;
     };
+  readonly "verification_detail"?: {
+      readonly "action": string;
+      readonly "attempts": ReadonlyArray<{
+            readonly "checks"?: ReadonlyArray<{
+                    readonly "category"?: string;
+                    readonly "command"?: string;
+                    readonly "exit_code"?: number;
+                    readonly "name": string;
+                    readonly "output"?: string;
+                    readonly "reason"?: string;
+                    readonly "status": string;
+                  }>;
+            readonly "message"?: string;
+            readonly "scope": string;
+            readonly "status": string;
+            readonly "step": number;
+          }>;
+      readonly "final_status": string;
+      readonly "mode": string;
+      readonly "repair_steps": number;
+    };
   readonly "workspace"?: string;
+  readonly "workspace_outcome"?: {
+      readonly "changed"?: ReadonlyArray<string>;
+      readonly "conflicts"?: ReadonlyArray<string>;
+      readonly "non_file_side_effects_reverted": boolean;
+      readonly "note"?: string;
+      readonly "restored"?: ReadonlyArray<string>;
+      readonly "status": string;
+    };
 };
 
 export type TurnRevertedData = {
@@ -715,10 +763,12 @@ export type TurnSteeredData = {
 export type TurnVerificationData = {
   readonly "action": string;
   readonly "checks"?: ReadonlyArray<{
+      readonly "category"?: string;
       readonly "command"?: string;
       readonly "exit_code"?: number;
       readonly "name": string;
       readonly "output"?: string;
+      readonly "reason"?: string;
       readonly "status": string;
     }>;
   readonly "errors"?: number;

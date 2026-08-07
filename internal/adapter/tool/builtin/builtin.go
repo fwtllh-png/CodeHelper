@@ -3,6 +3,7 @@ package builtin
 import (
 	"errors"
 
+	language "github.com/fwtllh-png/CodeHelper/internal/adapter/lsp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	contenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/content"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
@@ -116,7 +117,10 @@ func NewWithIndex(
 	if err := webtool.RegisterWithOptions(registry, options); err != nil {
 		return nil, nil, err
 	}
-	if err := searchtool.RegisterWithIndex(registry, root, backend, index); err != nil {
+	if err := searchtool.RegisterWithProviders(
+		registry, root, backend, index,
+		language.Checker{Root: root, Sandbox: backend},
+	); err != nil {
 		return nil, nil, err
 	}
 	for _, register := range []func(*tool.Registry, string, sandbox.Backend) error{

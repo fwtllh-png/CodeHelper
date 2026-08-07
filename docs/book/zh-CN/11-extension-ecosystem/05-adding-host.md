@@ -40,7 +40,7 @@ flowchart LR
 ```
 
 1. 优先选择 Existing Operation/Read Model。
-2. 通过 Wire 构造或 HTTP/ACP 连接。
+2. 通过 Wire 构造或 ACP 连接。
 3. Validate/Bound Host-specific Input。
 4. 使用 Idempotency Identity 提交 Operation。
 5. 从 Cursor Replay，再消费 Live Event。
@@ -63,8 +63,9 @@ Capture；不得 Sample Model、Execute Tool、Resolve Credential、Construct Sa
 | Execution Capability | Governed Adapter/Tool |
 | Construction Choice | Wire |
 
-若两个 Host 都需要某 Behavior，它不能只存在于一个 Host。Shared Protocol Contract
-验证 HTTP/ACP Semantic Parity，其他 Formal Transport 也应复用此模式。
+若两个 Host 都需要某 Behavior，它不能只存在于一个 Host。Shared Contract 验证产品
+Host 的 Start、Stream、Approve、Input、Cancel、Verify、Recover、Receipt、Terminal
+Uniqueness 与 Cursor Continuity。
 
 ## Compatibility/Unknown Data
 
@@ -90,8 +91,8 @@ Shutdown 先停止 Admission，再 Drain/Cancel Active Interaction，关闭 Subs
 ## 测试与验证
 
 ```bash
-go test ./internal/host/runtimeapi/contract ./internal/runtime/app
-make protocol-contract
+go test ./internal/runtime/app
+make host-journey-contract
 ```
 
 ## 动手实验

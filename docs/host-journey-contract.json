@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "journey": [
+    {
+      "id": "start",
+      "runtime_events": ["turn.started"],
+      "required_feedback": ["current Chat", "active Turn", "stop action"]
+    },
+    {
+      "id": "stream",
+      "runtime_events": ["output.delta", "reasoning.delta", "tool.start", "tool.output", "tool.result"],
+      "required_feedback": ["incremental output", "progressive detail", "visible working state"]
+    },
+    {
+      "id": "approve",
+      "runtime_events": ["approval.required", "approval.resolved"],
+      "required_feedback": ["target and effect", "Runtime identity", "approve", "deny", "cancel"]
+    },
+    {
+      "id": "input",
+      "runtime_events": ["input.required", "input.resolved"],
+      "required_feedback": ["prompt", "available choices", "keyboard response"]
+    },
+    {
+      "id": "cancel",
+      "runtime_events": ["turn.canceled"],
+      "required_feedback": ["terminal state", "reason", "next action"]
+    },
+    {
+      "id": "verify",
+      "runtime_events": ["diagnostics.result", "turn.verification"],
+      "required_feedback": ["command or scope", "verdict", "failure detail"]
+    },
+    {
+      "id": "recover",
+      "runtime_events": ["turn.started", "turn.completed", "turn.failed", "turn.canceled"],
+      "required_feedback": ["restored Chat", "cursor continuity", "recovery state"]
+    },
+    {
+      "id": "receipt",
+      "runtime_events": ["turn.receipt"],
+      "required_feedback": ["changes", "verification", "usage", "unresolved issues"]
+    }
+  ],
+  "hosts": {
+    "cli": {
+      "transport": "runtime event stream",
+      "evidence": [
+        "internal/host/cli/quickstart_test.go",
+        "internal/host/runtimeapi/acp/interop_test.go"
+      ]
+    },
+    "tui": {
+      "transport": "RuntimeHost projection",
+      "evidence": [
+        "internal/host/tui/host_journey_test.go",
+        "internal/host/tui/visual_snapshot_test.go"
+      ]
+    },
+    "vscode": {
+      "transport": "ACP projection",
+      "evidence": [
+        "extensions/vscode/src/experience/journey.test.ts",
+        "extensions/vscode/src/runtime/integration.test.ts",
+        "extensions/vscode/src/test/suite/index.ts"
+      ]
+    },
+    "acp": {
+      "transport": "JSON-RPC",
+      "evidence": [
+        "internal/host/runtimeapi/acp/contract_test.go"
+      ]
+    }
+  },
+  "invariants": [
+    "each Turn reaches exactly one terminal event",
+    "resume from a persisted cursor has no gap or duplicate",
+    "approval decisions remain bound to request, Turn, item, and Edit Plan identities",
+    "verified completion is distinguishable from model output",
+    "failure and recovery preserve a visible next action"
+  ]
+}

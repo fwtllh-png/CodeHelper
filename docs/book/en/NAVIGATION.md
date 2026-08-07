@@ -10,9 +10,9 @@ This navigation is generated from `docs/book/catalog.json`. Planned chapters are
 - `draft`: bilingual chapter files exist but are not fully verified.
 - `verified`: bilingual content, source references, and commands passed the chapter gate.
 
-## Stage 1 Reading Path
+## Core Reading Path
 
-The first delivery milestone contains these six chapters:
+Start with these six foundational chapters:
 
 - [Why Agents Need a Governed Runtime](./01-agent-engineering/05-why-governed-runtime.md) — `agent-why-governed-runtime` — `verified` — planned path: `01-agent-engineering/05-why-governed-runtime.md`
 - [CodeHelper System Architecture](./02-codehelper-overview/02-system-architecture.md) — `overview-system-architecture` — `verified` — planned path: `02-codehelper-overview/02-system-architecture.md`

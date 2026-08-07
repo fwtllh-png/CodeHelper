@@ -159,6 +159,11 @@ func TestVerifyGateRepairRoundUsesExtraStepBudget(t *testing.T) {
 	if verifications[1].RepairSteps != 1 {
 		t.Fatalf("repair steps = %d, want 1", verifications[1].RepairSteps)
 	}
+	if len(result.Verification.Attempts) != 2 ||
+		result.Verification.Workspace == nil ||
+		result.Verification.Workspace.Status != "changed" {
+		t.Fatalf("verification receipt = %+v", result.Verification)
+	}
 	if fixture.contents(t) != "after\n" {
 		t.Fatalf("workspace = %q, want the passing edit kept", fixture.contents(t))
 	}
@@ -206,6 +211,11 @@ func TestVerifyGateHardFailureFailsTurnAndRollsBack(t *testing.T) {
 	if result.State != Failed {
 		t.Fatalf("result state = %q", result.State)
 	}
+	if result.Verification == nil || result.Verification.Workspace == nil ||
+		result.Verification.Workspace.Status != "restored" ||
+		len(result.Verification.Workspace.Restored) != 1 {
+		t.Fatalf("verification receipt = %+v", result.Verification)
+	}
 	assertOneTerminal(t, states, Failed)
 	if fixture.contents(t) != "before\n" {
 		t.Fatalf("workspace = %q, want the failed turn rolled back", fixture.contents(t))
@@ -240,6 +250,11 @@ func TestVerifyGateRevertCompletesButRestoresWorkspace(t *testing.T) {
 	}
 	if result.Verification == nil || result.Verification.Action != string(verifyActionReverted) {
 		t.Fatalf("verification = %+v", result.Verification)
+	}
+	if result.Verification.Workspace == nil ||
+		result.Verification.Workspace.Status != "restored" ||
+		len(result.Verification.Workspace.Restored) != 1 {
+		t.Fatalf("workspace receipt = %+v", result.Verification.Workspace)
 	}
 	assertOneTerminal(t, states, Completed)
 	if onCompletion != "before\n" {

@@ -87,6 +87,12 @@ Turn Diff 记录 Path、Tool、Created/Modified/Deleted 与累计 Line Count。
 Execution Receipt 汇总 Change、Rollback Conflict、Read Path、Approval、Verification、
 Evidence、Context、Catalog、Usage/Cost/Latency 与 Unresolved Issue。未测量不等于零。
 
+Verification 是 Attempt History，不是单个 Final Badge。每次 Attempt 记录 Scope、
+Command、Derivation、Outcome 与 Failure Category。Repair Round 追加新 Attempt，并再次
+验证最终 Workspace；后续 Write 会使之前的 Passing Evidence 失效。Receipt 还记录
+Repair Count、Rollback/Revert Result、Conflict 与最终 Workspace Outcome，使“模型结束”、
+“文件仍有改动”和“验证通过”不会折叠成同一状态。
+
 ## Evidence Scope
 
 - Edit Plan：某 Workspace State 下 Proposed Content；

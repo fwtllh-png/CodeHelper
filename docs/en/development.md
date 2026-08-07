@@ -76,7 +76,13 @@ make brand-check
 | --- | --- |
 | `make fmt` | run Go formatting |
 | `make build` | build `bin/codehelper` with metadata |
-| `make test` | run all Go tests |
+| `make test` | run the stable Hermetic lane |
+| `make test-hermetic` | run serial, network-free Go tests |
+| `make test-platform-capability` | run real host sandbox capability tests |
+| `make test-integration` | run ACP and VS Code against a real binary |
+| `make test-release` | run race, packaging, redaction, and release dry-run gates |
+| `make hotspot-baseline` | validate the IMP-006 responsibility, dependency, size, and test-asset contract |
+| `make architecture-freeze` | run the four hotspot characterization, golden, schema, and focused race gates |
 | `make race` | serial race-enabled Go tests |
 | `make smoke` | build and verify help/version |
 | `make docs-check` | validate maintained Markdown links and bilingual structure |
@@ -115,7 +121,8 @@ make brand-check
 
 | Target | Purpose |
 | --- | --- |
-| `make bench` | hermetic coding benchmark |
+| `make bench` | fixture coding benchmark on a strong host sandbox |
+| `make upgrade-baseline` | write the versioned coding metrics report |
 | `make catalog-bench` | dynamic tool catalog scale benchmark |
 | `make live-model-smoke` | explicit, non-hermetic provider smoke |
 | `make package VERSION=x.y.z` | multi-platform CLI package and SBOM |
@@ -130,11 +137,21 @@ make brand-check
 | `scripts/check-brand.sh` | rejects stale product branding |
 | `scripts/test-brand-check.sh` | self-tests the brand scanner |
 | `scripts/test-secret-leak.sh` | runs redaction checks against a built binary |
+| `scripts/run-test-lane.py` | runs a test lane and writes structured evidence |
+| `scripts/upgradebaseline` | aggregates benchmark results into the Stage 0 baseline |
 | `scripts/live-model-smoke.sh` | calls one explicitly configured live model |
 | `scripts/content-fixture-smoke.sh` | validates optional content dependency detection |
 | `scripts/package-release.sh` | builds five targets, checksums, SBOM, manifest, smoke |
 | `scripts/deepseek-local.sh` | builds/configures local DeepSeek and launches TUI or VS Code |
 | `scripts/setup-vscode-local.sh` | macOS official-VS-Code local installation |
+
+The committed `docs/upgrade-baseline.json` records task success rate,
+nearest-rank P50/P95 wall latency, retried-task rate, verification coverage,
+unpriced-call rate, and recovery success rate. Every rate carries its numerator
+and denominator; an empty denominator produces `null`, not a misleading zero.
+Tasks blocked only by a missing strong host sandbox are recorded as
+`unavailable` and excluded from metric denominators. `make bench` remains the
+strict release gate and does not accept unavailable tasks as passed.
 
 Extension scripts under `extensions/vscode/scripts` own TypeScript build,
 protocol/compatibility generation, Electron/remote integration, VSIX packaging,
@@ -171,6 +188,26 @@ Commit generated output with the source change.
 
 ## Test Strategy
 
+Tests are split into four explicit lanes:
+
+| Lane | Command | Contract |
+| --- | --- | --- |
+| Hermetic | `make test` | default PR-safe tests; no network, credentials, GUI, or host sandbox requirement |
+| Platform Capability | `make test-platform-capability` | real OS sandbox behavior; missing prerequisites produce `unavailable` |
+| Integration | `make test-integration` | real CLI/ACP and VS Code Runtime lifecycle |
+| Release | `make test-release` | expensive race, benchmark, cross-build, redaction, and packaging gates |
+
+Each lane writes a JSON result under `.tmp/test-lanes/` with a
+`passed`, `failed`, or `unavailable` status. CI requires the Linux platform
+capability; local unsupported environments report `unavailable` without
+pretending that the capability passed.
+
+The Stage 0 hotspot freeze is defined in `docs/hotspot-baseline.json`.
+Responsibilities begin as package-symbol contracts so a mechanical split can
+move code. After a hotspot is split, `responsibility_files` binds each domain to
+its owner file. Missing or misplaced responsibilities, new internal
+dependencies, hotspot growth, and removed test assets fail the baseline.
+
 Choose tests by risk:
 
 | Change | Minimum validation |
@@ -185,9 +222,10 @@ Choose tests by risk:
 | product documentation | `make docs-check` |
 | knowledge book or catalog | `make docs-check && make book-check` |
 
-Full `go test ./...` can include platform-sensitive integration and benchmark
-tests. Report environmental failures precisely and rerun affected packages in
-isolation before labeling a regression.
+Real platform capability tests use the `capability` Go build tag and therefore
+cannot enter the Hermetic lane accidentally. Integration tests that require a
+built binary are exercised by `make test-integration`, not inferred from a
+green unit-test run.
 
 ## Platform Notes
 

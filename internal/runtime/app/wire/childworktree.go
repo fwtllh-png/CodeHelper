@@ -176,7 +176,7 @@ func (c *childWorktrees) checkRepository(ctx context.Context) error {
 
 func (c *childWorktrees) git(ctx context.Context, arguments ...string) (string, error) {
 	result, err := process.Run(ctx, process.Options{
-		Path: gitExecutable(), Args: arguments, Dir: c.repository,
+		Path: gitExecutable(), Args: managedGitArguments(arguments), Dir: c.repository,
 	})
 	if err != nil {
 		return "", err
@@ -189,6 +189,19 @@ func (c *childWorktrees) git(ctx context.Context, arguments ...string) (string, 
 		return "", fmt.Errorf("git %s: %s", strings.Join(arguments, " "), message)
 	}
 	return result.Stdout, nil
+}
+
+// managedGitArguments prevents Git from starting maintenance after the command
+// has returned. Worktree lifecycle belongs to the session; a detached gc process
+// can otherwise outlive Close and race workspace cleanup.
+func managedGitArguments(arguments []string) []string {
+	result := []string{
+		"-c", "core.hooksPath=/dev/null",
+		"-c", "core.fsmonitor=false",
+		"-c", "maintenance.auto=false",
+		"-c", "gc.auto=0",
+	}
+	return append(result, arguments...)
 }
 
 // gitExecutable mirrors the git tool's choice of binary: Apple's /usr/bin/git

@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"Quickstart edit completed and verified."},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":32,"completion_tokens":6}}
+
+data: [DONE]

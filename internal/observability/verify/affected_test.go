@@ -2,13 +2,23 @@ package verify
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 )
+
+type topologyFixture struct {
+	RootFiles   []string            `json:"root_files"`
+	Paths       []string            `json:"paths"`
+	Related     map[string][]string `json:"related"`
+	WantCommand string              `json:"want_command"`
+	WantReason  string              `json:"want_reason"`
+}
 
 type stubMapper struct {
 	related map[string][]string
@@ -21,6 +31,48 @@ func (m *stubMapper) RelatedTests(
 ) (map[string][]string, error) {
 	m.asked = append(m.asked, paths...)
 	return m.related, m.err
+}
+
+func TestAffectedTopologyFixturesExplainEveryLanguageCommand(t *testing.T) {
+	fixtures, err := filepath.Glob(filepath.Join("testdata", "topology", "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fixtures) != 4 {
+		t.Fatalf("topology fixtures = %v, want Go, JS/TS, Python, and Rust", fixtures)
+	}
+	for _, fixturePath := range fixtures {
+		name := strings.TrimSuffix(filepath.Base(fixturePath), filepath.Ext(fixturePath))
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(fixturePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fixture topologyFixture
+			if err := json.Unmarshal(data, &fixture); err != nil {
+				t.Fatal(err)
+			}
+			root := t.TempDir()
+			for _, path := range fixture.RootFiles {
+				full := filepath.Join(root, path)
+				if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(full, []byte("{}"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			commands, unmapped := AffectedCommands(root, fixture.Paths, fixture.Related)
+			if len(unmapped) != 0 || len(commands) != 1 {
+				t.Fatalf("commands = %+v, unmapped = %v", commands, unmapped)
+			}
+			if commands[0].Command != fixture.WantCommand ||
+				!strings.Contains(commands[0].Reason, fixture.WantReason) {
+				t.Fatalf("command = %+v, want %q because %q",
+					commands[0], fixture.WantCommand, fixture.WantReason)
+			}
+		})
+	}
 }
 
 func TestAffectedScopeRunsOnlyTheChangedGoPackages(t *testing.T) {
@@ -50,6 +102,10 @@ func TestAffectedScopeRunsOnlyTheChangedGoPackages(t *testing.T) {
 	if len(ran) != 1 || ran[0] != want[0] {
 		t.Fatalf("ran %v, want %v", ran, want)
 	}
+	if len(receipt.Checks) != 1 ||
+		!strings.Contains(receipt.Checks[0].Reason, "package-scoped") {
+		t.Fatalf("checks = %+v, want a derivation reason", receipt.Checks)
+	}
 }
 
 func TestAffectedScopeRunsTheMappedPythonTests(t *testing.T) {
@@ -78,6 +134,9 @@ func TestAffectedScopeRunsTheMappedPythonTests(t *testing.T) {
 	want := "python3 -m pytest app/tests/test_service.py tests/test_models.py"
 	if len(ran) != 1 || ran[0] != want {
 		t.Fatalf("ran %v, want %q", ran, want)
+	}
+	if len(receipt.Checks) != 1 || receipt.Checks[0].Reason == "" {
+		t.Fatalf("checks = %+v, want a derivation reason", receipt.Checks)
 	}
 	if len(mapper.asked) != 2 {
 		t.Fatalf("asked the mapper for %v", mapper.asked)

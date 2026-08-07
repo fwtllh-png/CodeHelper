@@ -172,6 +172,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "new-chat":
           await root.controller.createChat();
           break;
+        case "repair-runtime":
+          await vscode.commands.executeCommand("codehelper.repairRuntime");
+          break;
+        case "run-setup":
+          await vscode.commands.executeCommand("codehelper.runSetup");
+          break;
         case "submit": {
           const session = this.#selectedSession(root);
           const parsed = parseContextDirectives(message.text);
@@ -442,6 +448,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         snapshot: projector.snapshot(),
         runtime: {
           state: state.runtime.state,
+          ...(state.runtime.error === undefined
+            ? {}
+            : { error: state.runtime.error }),
           trusted: vscode.workspace.isTrusted,
           selectedRootId: root.rootId,
           selectedRootLabel: root.label,
@@ -612,6 +621,7 @@ function renderHTML(): string {
     #status { position: sticky; top: 0; z-index: 2; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); color: var(--vscode-descriptionForeground); }
     #root, #chat { max-width: 42%; margin-right: 6px; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border: 1px solid var(--vscode-dropdown-border); }
     #status button { padding: 2px 6px; }
+    #journey-state { display: block; padding-top: 4px; color: var(--vscode-foreground); font-weight: 600; }
     #turns { padding: 8px 10px 150px; }
     article { border-bottom: 1px solid var(--vscode-panel-border); padding: 10px 0; }
     .user { white-space: pre-wrap; font-weight: 600; }
@@ -641,13 +651,25 @@ function renderHTML(): string {
     details { margin: 6px 0; padding: 4px 6px; background: var(--vscode-textCodeBlock-background); border-radius: 3px; }
     details.context-receipt { display: inline-block; max-width: 100%; margin-right: 5px; border: 1px solid var(--vscode-panel-border); overflow-wrap: anywhere; }
     details.context-receipt[open] { display: block; }
+    details.context-selection { border-left: 3px solid var(--vscode-focusBorder); }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; }
     .error { color: var(--vscode-errorForeground); white-space: pre-wrap; }
     button { margin: 3px 4px 3px 0; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; padding: 5px 8px; cursor: pointer; }
     button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+    button:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
     #composer { position: fixed; bottom: 0; left: 0; right: 0; padding: 8px; border-top: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
     textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertical; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); padding: 6px; }
     .hint { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
+    #repair { margin: 8px 0; padding: 8px; border: 1px solid var(--vscode-inputValidation-warningBorder); background: var(--vscode-inputValidation-warningBackground); }
+    #repair[hidden] { display: none; }
+    #empty { margin: 16px 10px; padding: 12px; border: 1px solid var(--vscode-panel-border); }
+    #empty[hidden] { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+    }
+    @media (forced-colors: active) {
+      button, select, textarea, details, #empty, #repair { border: 1px solid CanvasText; }
+    }
   </style>
 </head>
 <body>
@@ -656,14 +678,25 @@ function renderHTML(): string {
     <select id="chat" aria-label="Chat session"></select>
     <button type="button" id="new-chat" title="Create isolated Chat">New</button>
     <button type="button" id="merge-chat" title="Review Chat changes">Merge</button>
-    <span id="runtime">CodeHelper Runtime: starting</span>
+    <span id="runtime" role="status" aria-live="polite">CodeHelper Runtime: starting</span>
+    <span id="journey-state" role="status" aria-live="polite">Loading · Runtime starting · Wait</span>
   </div>
-  <main id="turns"></main>
+  <section id="repair" role="status" aria-live="polite" hidden>
+    <strong>CodeHelper Runtime needs attention</strong>
+    <p id="repair-detail"></p>
+    <button type="button" id="repair-runtime">Inspect and Repair</button>
+    <button type="button" class="secondary" id="run-setup">Run Setup</button>
+  </section>
+  <section id="empty" hidden>
+    <strong>Start a CodeHelper Chat</strong>
+    <p>Describe a task below, or attach saved editor context with @file, @selection, @symbol, or @diagnostics.</p>
+  </section>
+  <main id="turns" aria-label="Chat transcript"></main>
   <form id="composer">
     <textarea id="prompt" aria-label="Prompt" placeholder="Ask CodeHelper. Attach @file, @selection, @symbol, or @diagnostics."></textarea>
     <div>
-      <button type="submit">Send</button>
-      <button type="button" class="secondary" id="stop">Stop</button>
+      <button type="submit" id="send" aria-keyshortcuts="Control+Enter Meta+Enter">Send</button>
+      <button type="button" class="secondary" id="stop" aria-keyshortcuts="Escape">Stop</button>
     </div>
     <div class="hint">Editor context is explicit and must come from the saved active file.</div>
   </form>
@@ -672,16 +705,39 @@ function renderHTML(): string {
     const root = document.getElementById('root');
     const chat = document.getElementById('chat');
     const runtime = document.getElementById('runtime');
+    const journeyState = document.getElementById('journey-state');
+    const repair = document.getElementById('repair');
+    const repairDetail = document.getElementById('repair-detail');
+    const empty = document.getElementById('empty');
     const turns = document.getElementById('turns');
     const prompt = document.getElementById('prompt');
+    const send = document.getElementById('send');
+    const stop = document.getElementById('stop');
+    const newChat = document.getElementById('new-chat');
     let trusted = false;
     document.getElementById('composer').addEventListener('submit', event => {
       event.preventDefault();
+      if (!prompt.value.trim()) return;
       vscode.postMessage({ type: 'submit', text: prompt.value });
       prompt.value = '';
     });
-    document.getElementById('stop').addEventListener('click', () => {
+    prompt.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        send.click();
+      } else if (event.key === 'Escape' && !stop.disabled) {
+        event.preventDefault();
+        stop.click();
+      }
+    });
+    stop.addEventListener('click', () => {
       vscode.postMessage({ type: 'stop' });
+    });
+    document.getElementById('repair-runtime').addEventListener('click', () => {
+      vscode.postMessage({ type: 'repair-runtime' });
+    });
+    document.getElementById('run-setup').addEventListener('click', () => {
+      vscode.postMessage({ type: 'run-setup' });
     });
     root.addEventListener('change', () => {
       vscode.postMessage({ type: 'select-root', rootId: root.value });
@@ -689,7 +745,7 @@ function renderHTML(): string {
     chat.addEventListener('change', () => {
       vscode.postMessage({ type: 'select-chat', sessionId: chat.value });
     });
-    document.getElementById('new-chat').addEventListener('click', () => {
+    newChat.addEventListener('click', () => {
       vscode.postMessage({ type: 'new-chat' });
     });
     document.getElementById('merge-chat').addEventListener('click', () => {
@@ -726,14 +782,62 @@ function renderHTML(): string {
       }));
       messageMergePlanId = message.runtime.mergePlanId;
       const mergeButton = document.getElementById('merge-chat');
+      const runtimeReady = message.runtime.state === 'ready';
       mergeButton.textContent =
         messageMergePlanId ? 'Apply' : 'Merge';
-      mergeButton.disabled = Boolean(messageMergePlanId) && !trusted;
+      mergeButton.disabled = !runtimeReady ||
+        (Boolean(messageMergePlanId) && !trusted);
+      prompt.disabled = !runtimeReady;
+      send.disabled = !runtimeReady;
+      stop.disabled = !runtimeReady || !message.snapshot.activeTurnId;
+      newChat.disabled = !runtimeReady;
       runtime.textContent = 'CodeHelper Runtime: ' + message.runtime.state +
         (trusted ? ' · trusted' : ' · read-only') +
         ' · ' + message.runtime.sessions.length + ' chats';
+      journeyState.textContent = journeyLabel(
+        message.runtime.state, message.snapshot, trusted);
+      repair.hidden = !['failed', 'stopped'].includes(message.runtime.state);
+      repairDetail.textContent = message.runtime.error ||
+        'Run readiness checks to identify missing configuration or capabilities.';
+      empty.hidden = !runtimeReady || message.snapshot.turns.length > 0;
       render(message.snapshot);
     });
+    function journeyLabel(runtimeState, snapshot, workspaceTrusted) {
+      if (runtimeState === 'recovering') {
+        return 'Recovery · Restoring Chat and cursor · Wait';
+      }
+      if (runtimeState === 'starting') {
+        return 'Loading · Runtime starting · Wait';
+      }
+      if (runtimeState === 'failed' || runtimeState === 'stopped') {
+        return 'Failure · Runtime unavailable · Inspect and Repair';
+      }
+      if (!workspaceTrusted) {
+        return 'Setup · Read-only workspace · Trust workspace or run Setup';
+      }
+      const active = snapshot.turns.find(turn =>
+        turn.id === snapshot.activeTurnId);
+      if (active?.status === 'awaiting_approval') {
+        return 'Approval · Review target and effect · Approve, Deny, or Cancel';
+      }
+      if (active?.status === 'awaiting_input') {
+        return 'Input · Answer required · Choose or type a response';
+      }
+      if (active?.status === 'running') {
+        return 'Streaming · Turn in progress · Stop is available';
+      }
+      const latest = snapshot.turns[snapshot.turns.length - 1];
+      if (latest?.verification) {
+        return 'Verify · Verdict available · Review checks and Receipt';
+      }
+      if (latest?.status === 'failed' || latest?.status === 'canceled') {
+        return 'Failure · Turn did not complete · Review reason and retry';
+      }
+      if (latest?.status === 'completed') {
+        return 'Completed · Turn finished · Review changes and Receipt';
+      }
+      return 'Empty · Ready for a task · Enter a prompt';
+    }
     function render(snapshot) {
       const fragment = document.createDocumentFragment();
       for (const turn of snapshot.turns) {
@@ -755,6 +859,9 @@ function renderHTML(): string {
         }
         for (const receipt of turn.contextReceipts) {
           article.append(contextReceiptCard(receipt));
+        }
+        for (const selection of turn.contextSelections) {
+          article.append(contextSelectionCard(selection));
         }
         for (const tool of turn.tools) {
           const details = document.createElement('details');
@@ -799,6 +906,23 @@ function renderHTML(): string {
         appendText(card, 'div', 'meta',
           'Omitted diagnostics: ' + receipt.omittedDiagnostics);
       }
+      return card;
+    }
+    function contextSelectionCard(selection) {
+      const card = document.createElement('details');
+      card.className = 'context-selection';
+      let label = 'Selected ' + selection.kind + ': ' + selection.path;
+      if (selection.truncated) label += ' · cut';
+      appendText(card, 'summary', '', label);
+      appendText(card, 'div', 'meta', 'Why: ' + selection.reasons.join(', '));
+      appendText(card, 'div', 'meta', 'Score: ' + selection.score +
+        (selection.critical ? ' · critical' : ''));
+      if (selection.evidence.length) {
+        appendText(card, 'div', 'meta', 'Evidence: ' + selection.evidence.join(', '));
+      }
+      appendText(card, 'div', 'meta', selection.included ?
+        'Included in model context' :
+        'Not included: ' + (selection.truncationReason || 'context budget'));
       return card;
     }
     function approvalCard(approval, workspaceTrusted) {

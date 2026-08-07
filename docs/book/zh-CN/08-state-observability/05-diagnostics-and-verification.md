@@ -70,6 +70,11 @@ Affected Scope 将 Changed Go Directory 映射到 Package，将 Source Path 映�
 Test，报告 Unmapped Path，使用 Quoted Relative Path 扩展 Configured Command，并从
 Canonical Root 执行。它限制成本，但不证明完整 Dependency Analysis。
 
+Repository Test Topology 覆盖 Go、JavaScript/TypeScript、Python 和 Rust。每条
+Selected Command 都包含 Derivation Reason。Manifest Change 会扩大到
+Repository/Module Command；Unsupported 与 Unmapped Path 保持显式，不会静默返回空
+Test List。
+
 Feature/Chapter/Receipt 的成熟度只能达到实际 Verification Scope。Diagnostics Pass
 不能声称 Repository Test Pass；单包通过不能声称全平台通过。
 
@@ -94,6 +99,7 @@ Maturity 是 Tuple，不是 Badge：
 ```bash
 go test ./internal/observability/diagnostics ./internal/observability/verify
 go test ./internal/runtime/agent/engine -run TestVerifyGate
+make benchmark-v2
 ```
 
 ## 动手实验

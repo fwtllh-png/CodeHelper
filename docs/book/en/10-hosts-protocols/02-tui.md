@@ -80,6 +80,23 @@ output, pagination, and overlays use explicit caps so a slow renderer does not
 become Runtime execution backpressure. A true subscription gap is a protocol
 error, not a reason to guess state.
 
+## Interaction and Accessibility Contract
+
+Header, Transcript, Composer, and Context/Task detail have separate ownership.
+Reasoning and Tool detail are progressively disclosed, while approval, input,
+verification, failure, recovery, and Receipt remain visible lifecycle states.
+Responsive Goldens verify the same information hierarchy at 80, 120, and 160
+columns.
+
+Every journey is keyboard-operable, including send, cancel, approve/reject,
+input, panel navigation, scrolling, and transcript access. Reduced and still
+motion preserve information. Slash commands that are CLI-only or no-op are not
+registered in the TUI; `/context` remains an operable command.
+
+`turn.canceled` projects to a failed/recoverable state, never successful
+completion. The Host Journey contract tests Start, Stream, Approve, Input,
+Cancel, Verify, Recover, and Receipt through the real Reducer.
+
 ## Failure Boundaries
 
 - Cursor gaps are reported, not silently reset.
@@ -93,6 +110,7 @@ error, not a reason to guess state.
 
 ```bash
 go test ./internal/host/tui/...
+go test ./internal/host/tui -run HostJourney
 make tui-smoke
 ```
 

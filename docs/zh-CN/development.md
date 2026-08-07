@@ -75,7 +75,13 @@ make brand-check
 | --- | --- |
 | `make fmt` | Go 格式化 |
 | `make build` | 带 Build Metadata 构建 `bin/codehelper` |
-| `make test` | 全部 Go 测试 |
+| `make test` | 执行稳定的 Hermetic Lane |
+| `make test-hermetic` | 串行执行无网络 Go 测试 |
+| `make test-platform-capability` | 执行真实宿主机 Sandbox 能力测试 |
+| `make test-integration` | 用真实 Binary 执行 ACP 与 VS Code 集成测试 |
+| `make test-release` | 执行 Race、打包、脱敏与发布 Dry-run 门禁 |
+| `make hotspot-baseline` | 校验 IMP-006 职责、依赖、体积与测试资产契约 |
+| `make architecture-freeze` | 执行四热点 Characterization、Golden、Schema 与聚焦 Race 门禁 |
 | `make race` | 串行 Race Go 测试 |
 | `make smoke` | 构建并验证 Help/Version |
 | `make docs-check` | 检查 Markdown 本地链接与双语结构 |
@@ -114,7 +120,8 @@ make brand-check
 
 | Target | 作用 |
 | --- | --- |
-| `make bench` | Hermetic Coding Benchmark |
+| `make bench` | 在强宿主机 Sandbox 上执行 Fixture Coding Benchmark |
+| `make upgrade-baseline` | 写入带版本的 Coding 指标报告 |
 | `make catalog-bench` | Dynamic Tool Catalog Scale Benchmark |
 | `make live-model-smoke` | 显式、非 Hermetic 的真实模型冒烟 |
 | `make package VERSION=x.y.z` | 多平台 CLI Package 与 SBOM |
@@ -129,11 +136,19 @@ make brand-check
 | `scripts/check-brand.sh` | 拒绝历史产品品牌残留 |
 | `scripts/test-brand-check.sh` | Brand Scanner 自测 |
 | `scripts/test-secret-leak.sh` | 对已构建二进制执行脱敏测试 |
+| `scripts/run-test-lane.py` | 执行 Test Lane 并写入结构化证据 |
+| `scripts/upgradebaseline` | 将 Benchmark 结果聚合为 Stage 0 基线 |
 | `scripts/live-model-smoke.sh` | 调用一个显式配置的真实模型 |
 | `scripts/content-fixture-smoke.sh` | 验证可选内容依赖探测 |
 | `scripts/package-release.sh` | 构建五个平台、Checksum、SBOM、Manifest 与 Smoke |
 | `scripts/deepseek-local.sh` | 编译配置本机 DeepSeek，并启动 TUI 或 VS Code |
 | `scripts/setup-vscode-local.sh` | macOS 官方 VS Code 本地安装 |
+
+提交的 `docs/upgrade-baseline.json` 记录任务成功率、Nearest-rank P50/P95
+墙钟时延、发生重试任务率、验证覆盖率、未定价调用率和恢复成功率。每个比率都携带分子
+与分母；分母为空时输出 `null`，不会用 0 冒充已测量结果。仅因宿主机缺少强 Sandbox
+而阻塞的任务记为 `unavailable`，并从指标分母中排除。`make bench` 仍是严格 Release
+Gate，不会把 Unavailable 任务视为 Passed。
 
 `extensions/vscode/scripts` 管理 TypeScript Build、Protocol/Compatibility 生成、
 Electron/Remote Integration、VSIX、Release Manifest、Provenance、Matrix Evidence 和
@@ -170,6 +185,23 @@ npm run generate:compatibility
 
 ## 测试策略
 
+测试被明确分为四条 Lane：
+
+| Lane | 命令 | 契约 |
+| --- | --- | --- |
+| Hermetic | `make test` | 默认 PR 安全测试；不依赖网络、凭证、GUI 或宿主机 Sandbox |
+| Platform Capability | `make test-platform-capability` | 真实 OS Sandbox 行为；缺失前置条件时报告 `unavailable` |
+| Integration | `make test-integration` | 真实 CLI/ACP 与 VS Code Runtime 生命周期 |
+| Release | `make test-release` | 高成本 Race、Benchmark、Cross-build、脱敏与打包门禁 |
+
+每条 Lane 都在 `.tmp/test-lanes/` 下写入 JSON 结果，状态为 `passed`、`failed` 或
+`unavailable`。CI 强制要求 Linux 平台能力；本地不支持的环境明确报告
+`unavailable`，不会伪装成能力已通过。
+
+Stage 0 热点冻结契约定义在 `docs/hotspot-baseline.json`。职责先绑定到 Package Symbol，
+允许机械拆分移动代码；热点完成拆分后，`responsibility_files` 会把每个领域绑定到归属
+文件。职责丢失或错位、新增未审阅内部依赖、热点文件增长或测试资产删除都会使基线失败。
+
 按风险选择测试：
 
 | 变更 | 最低验证 |
@@ -184,8 +216,9 @@ npm run generate:compatibility
 | 产品文档 | `make docs-check` |
 | 知识书籍或 Catalog | `make docs-check && make book-check` |
 
-完整 `go test ./...` 包含平台敏感 Integration 和 Benchmark。出现环境失败时，应准确报告
-原因，并单独重跑对应 Package，再判断是否回归。
+真实平台能力测试使用 `capability` Go Build Tag，因此不会意外进入 Hermetic Lane。
+需要真实 Binary 的集成测试由 `make test-integration` 执行，不能从 Unit Test 绿灯推断
+其已通过。
 
 ## 平台说明
 

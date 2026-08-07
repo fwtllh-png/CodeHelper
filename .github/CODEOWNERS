@@ -19,7 +19,9 @@
 /docs/book/en/04-model-and-provider/ @fwtllh-png
 /docs/book/zh-CN/04-model-and-provider/ @fwtllh-png
 /internal/adapter/memory/** @fwtllh-png
+/internal/adapter/lsp/** @fwtllh-png
 /internal/persist/repoindex/** @fwtllh-png
+/internal/platform/symbols/** @fwtllh-png
 /internal/runtime/agent/compact/** @fwtllh-png
 /internal/runtime/agent/promptcontext/** @fwtllh-png
 /internal/runtime/agent/repocontext/** @fwtllh-png
@@ -44,6 +46,8 @@
 /docs/book/zh-CN/09-task-orchestration/ @fwtllh-png
 /internal/host/** @fwtllh-png
 /extensions/vscode/** @fwtllh-png
+/docs/experience-contract.json @fwtllh-png
+/docs/host-journey-contract.json @fwtllh-png
 /docs/book/en/10-hosts-protocols/ @fwtllh-png
 /docs/book/zh-CN/10-hosts-protocols/ @fwtllh-png
 /internal/adapter/extension/** @fwtllh-png
@@ -56,6 +60,8 @@
 /.github/** @fwtllh-png
 /Makefile @fwtllh-png
 /scripts/** @fwtllh-png
+/docs/benchmark-v2.json @fwtllh-png
+/docs/hotspot-baseline.json @fwtllh-png
 /docs/book/en/12-engineering-practice/ @fwtllh-png
 /docs/book/zh-CN/12-engineering-practice/ @fwtllh-png
 /testdata/** @fwtllh-png

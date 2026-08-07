@@ -10,14 +10,12 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/host/cli"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/session/ux"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestFeaturesJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := cli.Run([]string{"features", "--json"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("code=%d stderr=%q", code, stderr.String())
-	}
 	var payload map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
 		t.Fatal(err)
@@ -25,6 +23,14 @@ func TestFeaturesJSON(t *testing.T) {
 	features, ok := payload["features"].(map[string]any)
 	if !ok || len(features) == 0 {
 		t.Fatalf("features = %#v", payload)
+	}
+	var readiness protocol.Readiness
+	if err := json.Unmarshal(stdout.Bytes(), &readiness); err != nil {
+		t.Fatal(err)
+	}
+	if code != readiness.ExitCode() {
+		t.Fatalf("code=%d status=%s want=%d stderr=%q",
+			code, readiness.Status, readiness.ExitCode(), stderr.String())
 	}
 }
 

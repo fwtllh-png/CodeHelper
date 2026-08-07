@@ -60,6 +60,12 @@ current evidence.
 and snapshot status. It refreshes changed files, prunes deleted files, and
 reports pending/degraded/truncated states rather than pretending completeness.
 
+Symbol and reference queries prefer a language-level Semantic Provider.
+Results record semantic or lexical source, provider version,
+confidence, and fallback reason. Lexical matching remains available when the
+language service is absent, but the Receipt never relabels that fallback as a
+semantic answer.
+
 `repomap.Build` converts the full index into a bounded orientation: build
 manifests, entry points, directory counts/languages, and outlines for focused
 files. Directories with more declarations survive limits; final presentation
@@ -120,6 +126,7 @@ Receipts preserve retained bytes, digest, ranges, and diagnostic counts.
 | Workspace identity | `runtime/protocol/workspace_identity.go` |
 | Editor validation | `runtime/app/editor_context.go` |
 | Incremental index | `persist/repoindex` |
+| Semantic symbols/references | `adapter/lsp/semantic.go`, `platform/symbols/semantic.go` |
 | Bounded map | `runtime/agent/repomap` |
 | Per-sample provider | `runtime/agent/repocontext` |
 | Working-set ledger | `runtime/agent/workingset` |

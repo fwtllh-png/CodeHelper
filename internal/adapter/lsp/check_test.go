@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -55,6 +56,48 @@ func TestCheckerRunsJSONRPCLifecycleAndReturnsEditedDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCheckerReturnsSemanticLocationsWithProviderProvenance(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "main.go"),
+		[]byte("package main\n\nfunc Serve() {}\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	checker := Checker{
+		Binary: os.Args[0],
+		Args: []string{
+			"-test.run=^TestLSPFixtureProcess$",
+			"-lsp-fixture-log=" + filepath.Join(root, "semantic.log"),
+		},
+		Root: root, Sandbox: lspTestBackend{},
+	}
+	definition, err := checker.Definition(t.Context(), symbols.SemanticQuery{
+		Path: "main.go", Line: 3, Character: 6,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definition.Source != "lsp:fixture-lsp" ||
+		definition.Version != "1.2.3" || definition.Confidence != "high" ||
+		len(definition.Locations) != 1 ||
+		definition.Locations[0].Path != "main.go" ||
+		definition.Locations[0].Line != 3 {
+		t.Fatalf("definition = %+v", definition)
+	}
+	references, err := checker.References(t.Context(), symbols.SemanticQuery{
+		Path: "main.go", Line: 3, Character: 6,
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(references.Locations) != 2 ||
+		references.Locations[1].Line != 5 {
+		t.Fatalf("references = %+v", references)
+	}
+}
+
 type lspTestBackend struct{}
 
 func (lspTestBackend) Capability() sandbox.Capability {
@@ -72,6 +115,7 @@ func TestLSPFixtureProcess(t *testing.T) {
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
 	logPath := *lspFixtureLog
+	documentURI := ""
 	for {
 		message, err := readMessage(reader)
 		if err != nil {
@@ -85,7 +129,7 @@ func TestLSPFixtureProcess(t *testing.T) {
 				"jsonrpc": "2.0", "id": rawID(message.ID),
 				"result": map[string]any{"capabilities": map[string]any{
 					"textDocumentSync": map[string]any{"openClose": true, "change": 1},
-				}},
+				}, "serverInfo": map[string]any{"name": "fixture-lsp", "version": "1.2.3"}},
 			})
 		case "textDocument/didOpen":
 			var params struct {
@@ -94,6 +138,7 @@ func TestLSPFixtureProcess(t *testing.T) {
 				} `json:"textDocument"`
 			}
 			_ = json.Unmarshal(message.Params, &params)
+			documentURI = params.TextDocument.URI
 			writeFixtureDiagnostics(writer, params.TextDocument.URI, 1, "before edit")
 		case "textDocument/didChange":
 			var params struct {
@@ -104,6 +149,19 @@ func TestLSPFixtureProcess(t *testing.T) {
 			}
 			_ = json.Unmarshal(message.Params, &params)
 			writeFixtureDiagnostics(writer, params.TextDocument.URI, params.TextDocument.Version, "after edit")
+		case "textDocument/definition":
+			writeFixtureMessage(writer, map[string]any{
+				"jsonrpc": "2.0", "id": rawID(message.ID),
+				"result": []map[string]any{fixtureLocation(documentURI, 2)},
+			})
+		case "textDocument/references":
+			writeFixtureMessage(writer, map[string]any{
+				"jsonrpc": "2.0", "id": rawID(message.ID),
+				"result": []map[string]any{
+					fixtureLocation(documentURI, 2),
+					fixtureLocation(documentURI, 4),
+				},
+			})
 		case "shutdown":
 			writeFixtureMessage(writer, map[string]any{
 				"jsonrpc": "2.0", "id": rawID(message.ID), "result": nil,
@@ -111,6 +169,16 @@ func TestLSPFixtureProcess(t *testing.T) {
 		case "exit":
 			os.Exit(0)
 		}
+	}
+}
+
+func fixtureLocation(uri string, line int) map[string]any {
+	return map[string]any{
+		"uri": uri,
+		"range": map[string]any{
+			"start": map[string]any{"line": line, "character": 5},
+			"end":   map[string]any{"line": line, "character": 10},
+		},
 	}
 }
 

@@ -77,6 +77,11 @@ related tests, reports unmapped paths, expands configured commands with quoted
 relative paths, and runs from the canonical root. This bounds work but is not
 proof of complete dependency analysis.
 
+Repository test topology covers Go, JavaScript/TypeScript, Python, and Rust.
+Each selected command includes its derivation reason. Manifest changes widen
+to the repository/module command, while unsupported and unmapped paths remain
+explicit instead of silently returning an empty test list.
+
 ## Maturity Claims
 
 A chapter, feature, or receipt is mature only to the scope actually verified.
@@ -105,6 +110,7 @@ Changing any element can invalidate the claim.
 ```bash
 go test ./internal/observability/diagnostics ./internal/observability/verify
 go test ./internal/runtime/agent/engine -run TestVerifyGate
+make benchmark-v2
 ```
 
 ## Hands-On Lab

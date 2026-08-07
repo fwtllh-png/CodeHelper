@@ -96,6 +96,14 @@ Execution Receipt combines changes, rollback conflicts, read paths, approvals,
 verification, evidence, context sections, catalog identity, usage, cost,
 latency, and unresolved issues. Missing measurement is not reported as zero.
 
+Verification is an attempt history, not a single final badge. Each attempt
+records scope, command, derivation, outcome, and failure category. Repair
+rounds append new attempts and verify the final Workspace again; any later
+write invalidates earlier passing evidence. The Receipt also records repair
+count, rollback/revert result, conflicts, and final Workspace outcome so
+“model completed,” “files remain changed,” and “verification passed” cannot be
+collapsed into one status.
+
 ## Evidence Scope
 
 Different records prove different facts:

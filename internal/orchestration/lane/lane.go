@@ -228,6 +228,9 @@ func (r *Registry) startInline(ctx context.Context, record *Record, env []string
 			})
 		}
 		err := cmd.Wait()
+		if err == nil {
+			err = scanner.Err()
+		}
 		code := 0
 		if err != nil {
 			if exit, ok := err.(*exec.ExitError); ok {
@@ -236,6 +239,11 @@ func (r *Registry) startInline(ctx context.Context, record *Record, env []string
 				code = 1
 			}
 		}
+		// Publish the terminal event before the terminal status. Once callers
+		// observe exited/failed, the durable log must already be complete.
+		_ = appendLog(logPath, map[string]any{
+			"type": "lane.exited", "id": laneID, "exit_code": code,
+		})
 		r.mu.Lock()
 		var snapshot *Record
 		if current := r.records[laneID]; current != nil {
@@ -255,9 +263,6 @@ func (r *Registry) startInline(ctx context.Context, record *Record, env []string
 		if snapshot != nil {
 			_ = r.persist(snapshot)
 		}
-		_ = appendLog(logPath, map[string]any{
-			"type": "lane.exited", "id": laneID, "exit_code": code,
-		})
 	}()
 	return nil
 }

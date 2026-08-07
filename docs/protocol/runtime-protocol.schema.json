@@ -177,6 +177,48 @@
         "version"
       ],
       "additionalProperties": false
+    },
+    "readiness": {
+      "type": "object",
+      "properties": {
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "impact": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "reason",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "checks",
+        "status"
+      ],
+      "additionalProperties": false
     }
   },
   "operations": {
@@ -1854,6 +1896,85 @@
             "additionalProperties": false
           }
         },
+        "context_selections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "critical": {
+                "type": "boolean"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "integer"
+                    },
+                    "symbol": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "turn": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "turn"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "first_turn": {
+                "type": "integer"
+              },
+              "included": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "last_turn": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "score": {
+                "type": "integer"
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "truncation_reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "first_turn",
+              "included",
+              "kind",
+              "last_turn",
+              "path",
+              "reasons",
+              "score"
+            ],
+            "additionalProperties": false
+          }
+        },
         "cost_known": {
           "type": "boolean"
         },
@@ -2252,8 +2373,130 @@
           ],
           "additionalProperties": false
         },
+        "verification_detail": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "attempts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "checks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "category": {
+                          "type": "string"
+                        },
+                        "command": {
+                          "type": "string"
+                        },
+                        "exit_code": {
+                          "type": "integer"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "output": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "status"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "status",
+                  "step"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "final_status": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "repair_steps": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "action",
+            "attempts",
+            "final_status",
+            "mode",
+            "repair_steps"
+          ],
+          "additionalProperties": false
+        },
         "workspace": {
           "type": "string"
+        },
+        "workspace_outcome": {
+          "type": "object",
+          "properties": {
+            "changed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "conflicts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "non_file_side_effects_reverted": {
+              "type": "boolean"
+            },
+            "note": {
+              "type": "string"
+            },
+            "restored": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "non_file_side_effects_reverted",
+            "status"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -2527,6 +2770,9 @@
           "items": {
             "type": "object",
             "properties": {
+              "category": {
+                "type": "string"
+              },
               "command": {
                 "type": "string"
               },
@@ -2537,6 +2783,9 @@
                 "type": "string"
               },
               "output": {
+                "type": "string"
+              },
+              "reason": {
                 "type": "string"
               },
               "status": {

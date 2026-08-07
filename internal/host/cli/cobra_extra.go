@@ -66,7 +66,12 @@ func runWithCobra(
 	if err := root.ExecuteContext(ctx); err != nil {
 		message := err.Error()
 		if strings.Contains(message, "unknown command") {
-			_, _ = fmt.Fprintf(stderr, "codehelper: unknown command %q\n\n%s", firstArg(args), usage)
+			_, _ = fmt.Fprintf(
+				stderr,
+				"codehelper: unknown command %q\n\n%s",
+				firstArg(args),
+				renderRootHelp(root),
+			)
 			return 2
 		}
 		_, _ = fmt.Fprintf(stderr, "codehelper: %v\n", err)

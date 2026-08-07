@@ -54,6 +54,10 @@ Workspace 是 Authority Boundary；Index 给出全局结构，Editor Context 给
 `repoindex.Index` 增量记录 File、Language、Symbol 与 Snapshot Status；刷新变更文件、
 删除已消失文件，并显式报告 Pending/Degraded/Truncated。
 
+Symbol/Reference Query 优先使用语言级 Semantic Provider。结果记录 Semantic 或
+Lexical Source、Provider Version、Confidence 和 Fallback Reason。Language Service
+不可用时保留 Lexical Matching，但 Receipt 不会把降级结果标成 Semantic Answer。
+
 `repomap.Build` 将全量索引压缩为 Build Manifest、Entry Point、Directory
 Count/Language 和 Focused File Outline。限制内优先保留声明较多的目录，最终按路径展示。
 `repocontext.Provider` 每 Turn 最多构建一次昂贵 Repo Map，但每个 Sample 都重新渲染
@@ -106,6 +110,7 @@ Receipt 保留 Digest、Range、Diagnostic Count 和 Retained Bytes。
 | Workspace Identity | `runtime/protocol/workspace_identity.go` |
 | Editor Validation | `runtime/app/editor_context.go` |
 | Incremental Index | `persist/repoindex` |
+| Semantic Symbol/Reference | `adapter/lsp/semantic.go`、`platform/symbols/semantic.go` |
 | Repo Map | `runtime/agent/repomap` |
 | Per-sample Context | `runtime/agent/repocontext` |
 | Working Set | `runtime/agent/workingset` |

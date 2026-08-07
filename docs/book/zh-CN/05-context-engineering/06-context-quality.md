@@ -63,6 +63,10 @@ Prompt Receipt 记录 Source、Digest、Original/Retained Byte/Token 与 Truncat
 Evidence 记录 Fact、Risk、Reminder、Change Mark。Turn Receipt 再结合 Usage、Latency、
 Verification 与 Changed Path。
 
+Working Set 与 Affected-test Entry 还保留 Selection Explanation：Entry Kind、Reason、
+Supporting Evidence、Score 与逐条 Truncation。Host 从 Receipt 投影这些字段，不能根据
+文件名重建一个看似合理的原因，否则 Presentation Inference 会变成错误 Authority。
+
 因此可以回答：
 
 - Failed Turn 是否缺少 Relevant File，还是忽略了已有 Evidence？

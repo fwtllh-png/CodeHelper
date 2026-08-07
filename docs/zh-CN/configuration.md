@@ -15,9 +15,28 @@
 ```bash
 codehelper config check --config ./codehelper.toml
 codehelper config show --config ./codehelper.toml
+codehelper config explain execution.verify.mode --config ./codehelper.toml
 ```
 
-`config show` 会输出 Provenance，可确认每个字段最终由哪个来源覆盖。
+`config show` 会输出 Provenance，可确认每个字段最终由哪个来源覆盖。`config explain`
+返回最终值、内置默认值、胜出来源、风险级别和行为影响。
+
+## 配置 Profile
+
+Profile 只控制生成文件中显式写出的默认字段数量，不会形成不同的 Runtime 默认值。
+
+| Profile | 用途 |
+| --- | --- |
+| `minimal` | 首次本地或 Fixture 成功 Turn |
+| `recommended` | 带 Context、Journal 和 Soft Verify 的常规仓库工作 |
+| `advanced` | 审阅限制、Worker、Subagent 与 Context Budget |
+
+可以单独渲染 Profile，也可在 Setup 中选择：
+
+```bash
+codehelper config profile --profile minimal --workspace . --data-dir .codehelper
+codehelper setup --workspace . --profile recommended --interactive
+```
 
 ## 完整实用示例
 
@@ -194,6 +213,11 @@ Mode 写入 TOML；Posture 是 Host/命令级决策，通过参数提供。二�
 - `repository`：自动探测或显式指定的仓库命令；
 - `affected`：根据变更路径推断的检查。
 
+Affected Verification 支持 Go Package Test、JavaScript/TypeScript Test File、Python
+pytest File 和 Rust Cargo Test。Build/Lock Manifest 变更会扩大到对应语言的仓库级
+Suite。每个 `turn.verification` Check 都包含命令推导原因。无法识别 Topology 的路径会
+明确报告 `unavailable`，不会静默成为绿色结果。
+
 只有仓库验证命令在目标沙箱内稳定可复现时，才应使用 `hard`。
 
 ## 状态与持久化
@@ -215,6 +239,11 @@ Mode 写入 TOML；Posture 是 Host/命令级决策，通过参数提供。二�
 - `evidence`：已证明事实、风险和未验证变更；
 - `coding_policy`：稳定工作方法；
 - `compact`：长历史何时以及如何压缩。
+
+`search_definition` 和 `search_references` 可接收 `path`、`line`、`character`。提供
+具体位置时优先使用注入的 Language Provider；未提供位置或 Provider 不可用时，使用
+Lexical Repository Index。结果始终标注 `resolution`、`source`、`version` 和
+`confidence`；语义调用失败时还会记录降级原因。
 
 关闭上下文段可以减少输入，但通常会增加重复搜索并削弱连续性。优先调整上限，而不是
 直接关闭。

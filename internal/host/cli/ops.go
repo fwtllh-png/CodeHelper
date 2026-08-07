@@ -21,10 +21,14 @@ func newFeaturesCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Comm
 		Use: "features", Short: "List feature readiness flags (read-only)",
 		Run: func(cmd *cobra.Command, args []string) {
 			asJSON, _ := cmd.Flags().GetBool("json")
-			features := DoctorReport().Features
+			report := DoctorReport()
+			features := report.Features
 			if asJSON {
-				_ = json.NewEncoder(stdout).Encode(map[string]any{"features": features})
+				_ = json.NewEncoder(stdout).Encode(map[string]any{
+					"status": report.Status, "checks": report.Checks, "features": features,
+				})
 			} else {
+				_, _ = fmt.Fprintf(stdout, "status\t%s\n", report.Status)
 				names := make([]string, 0, len(features))
 				for name := range features {
 					names = append(names, name)
@@ -33,8 +37,9 @@ func newFeaturesCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Comm
 				for _, name := range names {
 					_, _ = fmt.Fprintf(stdout, "%s\t%s\n", name, features[name])
 				}
+				writeReadinessChecks(stdout, report.Checks)
 			}
-			setCode(0)
+			setCode(report.ExitCode())
 		},
 	}
 	cmd.Flags().Bool("json", false, "emit JSON")

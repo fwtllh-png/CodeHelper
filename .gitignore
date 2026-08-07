@@ -10,7 +10,7 @@ extensions/vscode/dist/*.vsix
 /docs/DEEPSEEK-LIVE.zh-CN.md
 # Local GitHub growth and launch plan.
 /docs/GITHUB-GROWTH-PLAN.zh-CN.md
-# Local CodeHelper improvement and experience upgrade plan.
-/docs/CODEHELPER-IMPROVEMENT-PLAN.zh-CN.md
+# Local VS Code Native Agent Chat design proposal.
+/docs/VSCODE-NATIVE-AGENT-CHAT-DESIGN.zh-CN.md
 *.cover
 coverage.out

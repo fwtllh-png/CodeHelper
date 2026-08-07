@@ -139,6 +139,29 @@ func (e *Engine) TurnContextReceipts() []promptcontext.Receipt {
 	return e.turnContextReceipts()
 }
 
+// ContextSelections reports the per-path explanation captured from the same
+// prompt render as the latest context receipts.
+func (e *Engine) ContextSelections() []promptcontext.Selection {
+	if e == nil {
+		return nil
+	}
+	e.turnContextMu.Lock()
+	defer e.turnContextMu.Unlock()
+	return cloneSelections(e.turnSelections)
+}
+
+func cloneSelections(input []promptcontext.Selection) []promptcontext.Selection {
+	cloned := make([]promptcontext.Selection, len(input))
+	for index, selection := range input {
+		cloned[index] = selection
+		cloned[index].Reasons = append([]string(nil), selection.Reasons...)
+		cloned[index].Evidence = append(
+			[]promptcontext.SelectionEvidence(nil), selection.Evidence...,
+		)
+	}
+	return cloned
+}
+
 func (e *Engine) CatalogReceipt() *protocol.ReceiptCatalog {
 	if e == nil {
 		return nil
@@ -224,6 +247,7 @@ func (e *Engine) turnContextMessagesForCatalog(
 	catalogCopy := catalog
 	e.turnContextMu.Lock()
 	e.catalogSeen = &catalogCopy
+	e.turnSelections = nil
 	e.turnContextMu.Unlock()
 	if e.options.RepoContext != nil {
 		snapshot := e.evidence.Snapshot(e.options.EvidenceLimit)
@@ -235,6 +259,9 @@ func (e *Engine) turnContextMessagesForCatalog(
 		e.options.Metrics.Evidence(len(snapshot.Risks), len(snapshot.Reminders))
 		messages = append(messages, built.Messages...)
 		receipts = append(receipts, built.Receipts...)
+		e.turnContextMu.Lock()
+		e.turnSelections = cloneSelections(built.Selections)
+		e.turnContextMu.Unlock()
 	}
 	// The plan sits at the very end: it is the most task-specific instruction,
 	// and keeping it out of the prefix means updating it no longer invalidates

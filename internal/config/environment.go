@@ -1,0 +1,287 @@
+package config
+
+import (
+	"fmt"
+	"strconv"
+	"time"
+)
+
+func applyEnvironment(lookup func(string) (string, bool), config *Config, provenance map[string]Source) error {
+	integerFields := []struct {
+		env    string
+		field  string
+		target *int
+	}{
+		{"CODEHELPER_RUNTIME_OPERATION_BUFFER", fieldOperationBuffer, &config.Runtime.OperationBuffer},
+		{"CODEHELPER_RUNTIME_EVENT_HISTORY", fieldEventHistory, &config.Runtime.EventHistory},
+		{"CODEHELPER_RUNTIME_SUBSCRIBER_BUFFER", fieldSubscriberBuffer, &config.Runtime.SubscriberBuffer},
+	}
+	for _, item := range integerFields {
+		value, exists := lookup(item.env)
+		if !exists {
+			continue
+		}
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return &FieldError{Field: item.field, Source: SourceEnv, Reason: fmt.Sprintf("%s must be an integer", item.env)}
+		}
+		*item.target = parsed
+		provenance[item.field] = SourceEnv
+	}
+	applyEnvString(lookup, "CODEHELPER_LOG_LEVEL", fieldLogLevel, &config.Telemetry.LogLevel, provenance)
+	applyEnvString(lookup, "CODEHELPER_CREDENTIAL_KIND", fieldCredentialKind, &config.Credential.Kind, provenance)
+	applyEnvString(lookup, "CODEHELPER_CREDENTIAL_NAME", fieldCredentialName, &config.Credential.Name, provenance)
+	applyEnvString(lookup, "CODEHELPER_STATE_DATA_DIR", fieldStateDataDir, &config.State.DataDir, provenance)
+	if err := applyEnvDuration(lookup, "CODEHELPER_STATE_BUSY_TIMEOUT", fieldStateBusyTimeout, &config.State.BusyTimeout, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvInt(lookup, "CODEHELPER_STATE_EVENT_RETENTION", fieldStateRetention, &config.State.EventRetention, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvBool(lookup, "CODEHELPER_MEMORY_ENABLED", fieldMemoryEnabled, &config.Memory.Enabled, provenance); err != nil {
+		return err
+	}
+	applyEnvString(lookup, "CODEHELPER_MEMORY_PATH", fieldMemoryPath, &config.Memory.Path, provenance)
+	index := &config.Context.Index
+	if err := applyEnvBool(lookup, "CODEHELPER_INDEX_ENABLED", fieldIndexEnabled, &index.Enabled, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvInt64(
+		lookup, "CODEHELPER_INDEX_MAX_FILE_BYTES", fieldIndexMaxBytes, &index.MaxFileBytes, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_INDEX_MAX_FILES", fieldIndexMaxFiles, &index.MaxFiles, provenance,
+	); err != nil {
+		return err
+	}
+	repoMap := &config.Context.RepoMap
+	if err := applyEnvBool(
+		lookup, "CODEHELPER_REPO_MAP_ENABLED", fieldRepoMapEnabled, &repoMap.Enabled, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_REPO_MAP_MAX_BYTES", fieldRepoMapMaxBytes, &repoMap.MaxBytes, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_REPO_MAP_MAX_DIRECTORIES", fieldRepoMapMaxDirectories,
+		&repoMap.MaxDirectories, provenance,
+	); err != nil {
+		return err
+	}
+	workingSet := &config.Context.WorkingSet
+	if err := applyEnvBool(
+		lookup, "CODEHELPER_WORKING_SET_ENABLED", fieldWorkingSetEnabled, &workingSet.Enabled, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_WORKING_SET_MAX_ENTRIES", fieldWorkingSetMaxEntries,
+		&workingSet.MaxEntries, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_WORKING_SET_MAX_BYTES", fieldWorkingSetMaxBytes,
+		&workingSet.MaxBytes, provenance,
+	); err != nil {
+		return err
+	}
+	evidence := &config.Context.Evidence
+	if err := applyEnvBool(
+		lookup, "CODEHELPER_EVIDENCE_ENABLED", fieldEvidenceEnabled, &evidence.Enabled, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_EVIDENCE_MAX_ENTRIES", fieldEvidenceMaxEntries,
+		&evidence.MaxEntries, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_EVIDENCE_MAX_BYTES", fieldEvidenceMaxBytes,
+		&evidence.MaxBytes, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvBool(
+		lookup, "CODEHELPER_CODING_POLICY_ENABLED", fieldCodingPolicyEnabled,
+		&config.Context.CodingPolicy.Enabled, provenance,
+	); err != nil {
+		return err
+	}
+	compaction := &config.Context.Compact
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_COMPACT_MAX_HISTORY_BYTES", fieldCompactMaxHistory,
+		&compaction.MaxHistoryBytes, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_COMPACT_SUMMARY_MAX_BYTES", fieldCompactSummaryMax,
+		&compaction.SummaryMaxBytes, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_COMPACT_MAX_DIGEST_ENTRIES", fieldCompactMaxDigest,
+		&compaction.MaxDigestEntries, provenance,
+	); err != nil {
+		return err
+	}
+	execution := &config.Execution
+	applyEnvString(lookup, "CODEHELPER_PROVIDER", fieldProvider, &execution.Provider, provenance)
+	applyEnvString(lookup, "CODEHELPER_MODEL", fieldModel, &execution.Model, provenance)
+	applyEnvString(lookup, "CODEHELPER_PROTOCOL", fieldProtocol, &execution.Protocol, provenance)
+	applyEnvString(lookup, "CODEHELPER_MODE", fieldMode, &execution.Mode, provenance)
+	applyEnvString(lookup, "CODEHELPER_WORKSPACE", fieldWorkspace, &execution.Workspace, provenance)
+	if err := applyEnvBool(lookup, "CODEHELPER_TOOLS", fieldTools, &execution.Tools, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvUint64(lookup, "CODEHELPER_MAX_OUTPUT_TOKENS", fieldMaxOutputTokens, &execution.MaxOutputTokens, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvInt(lookup, "CODEHELPER_MAX_STEPS", fieldMaxSteps, &execution.MaxSteps, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvDuration(lookup, "CODEHELPER_TIMEOUT", fieldTimeout, &execution.Timeout, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvDuration(lookup, "CODEHELPER_IDLE_TIMEOUT", fieldIdleTimeout, &execution.IdleTimeout, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvInt(lookup, "CODEHELPER_MAX_CONCURRENT", fieldMaxConcurrent, &execution.MaxConcurrent, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvFloat64(lookup, "CODEHELPER_RATE_LIMIT", fieldRateLimit, &execution.RateLimit, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvUint64(lookup, "CODEHELPER_BUDGET_TOKENS", fieldBudgetTokens, &execution.BudgetTokens, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvFloat64(lookup, "CODEHELPER_BUDGET_USD", fieldBudgetUSD, &execution.BudgetUSD, provenance); err != nil {
+		return err
+	}
+	applyEnvString(lookup, "CODEHELPER_REASONING_EFFORT", fieldReasoning, &execution.ReasoningEffort, provenance)
+	if err := applyEnvBool(lookup, "CODEHELPER_NATIVE_SEARCH", fieldNativeSearch, &execution.NativeSearch, provenance); err != nil {
+		return err
+	}
+	verify := &execution.Verify
+	applyEnvString(lookup, "CODEHELPER_VERIFY_MODE", fieldVerifyMode, &verify.Mode, provenance)
+	applyEnvString(lookup, "CODEHELPER_VERIFY_SCOPE", fieldVerifyScope, &verify.Scope, provenance)
+	applyEnvString(lookup, "CODEHELPER_VERIFY_ON_FAILURE", fieldVerifyOnFailure, &verify.OnFailure, provenance)
+	applyEnvString(lookup, "CODEHELPER_VERIFY_COMMAND", fieldVerifyCommand, &verify.Command, provenance)
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_VERIFY_MAX_REPAIR_STEPS", fieldVerifyRepair, &verify.MaxRepairSteps, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvDuration(
+		lookup, "CODEHELPER_VERIFY_TIMEOUT", fieldVerifyTimeout, &verify.Timeout, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvBool(lookup, "CODEHELPER_VISION_ENABLED", fieldVisionEnabled, &config.Vision.Enabled, provenance); err != nil {
+		return err
+	}
+	applyEnvString(lookup, "CODEHELPER_VISION_PROVIDER", fieldVisionProvider, &config.Vision.Provider, provenance)
+	applyEnvString(lookup, "CODEHELPER_VISION_MODEL", fieldVisionModel, &config.Vision.Model, provenance)
+	applyEnvString(lookup, "CODEHELPER_WEB_SEARCH_BACKEND", fieldWebSearchBackend, &config.Web.SearchBackend, provenance)
+	return nil
+}
+
+func applyEnvString(lookup func(string) (string, bool), env, field string, target *string, provenance map[string]Source) {
+	if value, exists := lookup(env); exists {
+		*target = value
+		provenance[field] = SourceEnv
+	}
+}
+
+func applyEnvInt(lookup func(string) (string, bool), env, field string, target *int, provenance map[string]Source) error {
+	value, exists := lookup(env)
+	if !exists {
+		return nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return &FieldError{Field: field, Source: SourceEnv, Reason: env + " must be an integer"}
+	}
+	*target = parsed
+	provenance[field] = SourceEnv
+	return nil
+}
+
+func applyEnvInt64(lookup func(string) (string, bool), env, field string, target *int64, provenance map[string]Source) error {
+	value, exists := lookup(env)
+	if !exists {
+		return nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return &FieldError{Field: field, Source: SourceEnv, Reason: env + " must be an integer"}
+	}
+	*target = parsed
+	provenance[field] = SourceEnv
+	return nil
+}
+
+func applyEnvUint64(lookup func(string) (string, bool), env, field string, target *uint64, provenance map[string]Source) error {
+	value, exists := lookup(env)
+	if !exists {
+		return nil
+	}
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return &FieldError{Field: field, Source: SourceEnv, Reason: env + " must be an unsigned integer"}
+	}
+	*target = parsed
+	provenance[field] = SourceEnv
+	return nil
+}
+
+func applyEnvFloat64(lookup func(string) (string, bool), env, field string, target *float64, provenance map[string]Source) error {
+	value, exists := lookup(env)
+	if !exists {
+		return nil
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return &FieldError{Field: field, Source: SourceEnv, Reason: env + " must be a number"}
+	}
+	*target = parsed
+	provenance[field] = SourceEnv
+	return nil
+}
+
+func applyEnvBool(lookup func(string) (string, bool), env, field string, target *bool, provenance map[string]Source) error {
+	value, exists := lookup(env)
+	if !exists {
+		return nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return &FieldError{Field: field, Source: SourceEnv, Reason: env + " must be a boolean"}
+	}
+	*target = parsed
+	provenance[field] = SourceEnv
+	return nil
+}
+
+func applyEnvDuration(lookup func(string) (string, bool), env, field string, target *time.Duration, provenance map[string]Source) error {
+	value, exists := lookup(env)
+	if !exists {
+		return nil
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return &FieldError{Field: field, Source: SourceEnv, Reason: env + " must be a duration"}
+	}
+	*target = parsed
+	provenance[field] = SourceEnv
+	return nil
+}

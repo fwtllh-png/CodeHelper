@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // Visual goldens: fixed width + MotionStill, ANSI stripped.
@@ -78,4 +81,41 @@ func TestVisualSnapshotOverlay(t *testing.T) {
 	m.cells[len(m.cells)-1].CacheWidth = 80
 	m = m.openTranscriptOverlay()
 	assertGolden(t, "overlay", m.buildOverlayTranscript())
+}
+
+func TestVisualSnapshotExperienceWidths(t *testing.T) {
+	for _, width := range []int{80, 120, 160} {
+		t.Run(fmt.Sprintf("%d", width), func(t *testing.T) {
+			m := NewModel(Options{
+				Provider: "openai", Model: "gpt-4.1", Workspace: "/workspace",
+			}, &fakeRuntime{})
+			updated, _ := m.Update(tea.WindowSizeMsg{Width: width, Height: 24})
+			m = updated.(Model)
+			m.showWelcome = false
+			m.motion = MotionStill
+			m = m.appendCell(
+				cellYou,
+				"inspect the current implementation, propose one guarded edit, and verify it",
+			)
+			m = m.appendCell(
+				cellAssistant,
+				"Inspection is complete. The edit remains bound to the displayed plan.",
+			)
+			m.settledTools = []ToolCard{
+				{ID: "read", Name: "file_read", Status: "done", Detail: "path=internal/host/tui/view.go"},
+				{ID: "verify", Name: "verify", Status: "failed", Detail: "error: focused test failed"},
+			}
+			m = m.rebuildToolCells()
+			m.approvalCard = &ApprovalCard{
+				ID:      "approval_1",
+				Message: "file_edit · internal/host/tui/view.go",
+				Status:  "pending",
+				Kind:    approvalKindPatch,
+				Preview: "--- view.go\n+++ view.go\n@@\n-old\n+new",
+			}
+			m.mode = ModeApprove
+			m = m.refreshViewport(true)
+			assertGolden(t, fmt.Sprintf("experience-%d", width), m.View())
+		})
+	}
 }

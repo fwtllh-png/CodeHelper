@@ -1,0 +1,47 @@
+{
+  "schema_version": 2,
+  "journeys": [
+    {
+      "id": "cross_file_edit",
+      "lane": "platform-capability",
+      "capabilities": ["strong_sandbox"],
+      "evidence": ["testdata/benchmarks/edit-transaction-multi-file/task.json"],
+      "command": "go test -tags=capability -run '^TestCodingBenchmarkSuite$' ./internal/host/bench"
+    },
+    {
+      "id": "test_selection",
+      "lane": "platform-capability",
+      "capabilities": ["strong_sandbox"],
+      "evidence": ["testdata/benchmarks/related-tests-affected/task.json"],
+      "command": "go test -tags=capability -run '^TestCodingBenchmarkSuite$' ./internal/host/bench"
+    },
+    {
+      "id": "approval",
+      "lane": "platform-capability",
+      "capabilities": ["strong_sandbox"],
+      "evidence": ["testdata/benchmarks/single-file-fix/task.json"],
+      "command": "go test -tags=capability -run '^TestCodingBenchmarkSuite$' ./internal/host/bench"
+    },
+    {
+      "id": "budget",
+      "lane": "platform-capability",
+      "capabilities": ["strong_sandbox"],
+      "evidence": ["testdata/benchmarks/budget-exhaustion/task.json"],
+      "command": "go test -tags=capability -run '^TestCodingBenchmarkSuite$' ./internal/host/bench"
+    },
+    {
+      "id": "crash_recovery",
+      "lane": "hermetic",
+      "capabilities": [],
+      "evidence": ["internal/persist/workspacejournal/recover_test.go"],
+      "command": "go test -run 'Recovery' ./internal/persist/workspacejournal"
+    },
+    {
+      "id": "host_replay",
+      "lane": "integration",
+      "capabilities": [],
+      "evidence": ["internal/host/runtimeapi/acp/interop_test.go"],
+      "command": "go test -run 'TestBinaryInterop(ReplayPagesMatchLiveStream|RestartLoadsSessionAndReplays)' ./internal/host/runtimeapi/acp"
+    }
+  ]
+}

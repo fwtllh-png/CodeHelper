@@ -41,12 +41,24 @@ tests exercise shared runtime scenarios. Binary tests launch the built artifact.
 Electron, Remote SSH, and Dev Container gates are explicit because they acquire
 large external runtimes.
 
+Repository verification is reported through four lanes:
+
+| Lane | Boundary |
+| --- | --- |
+| Hermetic | no network, live credentials, GUI, or real HOME |
+| Platform capability | explicit OS/sandbox prerequisites and unavailable evidence |
+| Integration | real binary, ACP, and VS Code Runtime integration |
+| Release | cross-build, Race, secrets, benchmark, and packaging |
+
+Unavailable, skipped, failed, and passed remain distinct. Each lane report
+preserves command, platform, duration, exit code, status, and reason.
+
 ## Risk-to-Test Matrix
 
 | Change risk | Minimum evidence |
 | --- | --- |
 | pure parser/formatter | table unit tests + malformed boundaries |
-| protocol shape | schema/golden + HTTP/ACP shared contract |
+| protocol shape | schema/golden + ACP and Host Journey contracts |
 | persistence/recovery | restart + corruption/crash-window tests |
 | consequential Tool | Guard/Policy/Sandbox + observed effect + rollback |
 | concurrency/lease | forced interleaving + Race |
@@ -80,6 +92,7 @@ requires an external environment records prerequisites and why it did not run.
 ```bash
 go test ./...
 make protocol-contract
+make test-hermetic
 cd extensions/vscode && npm run check && npm test
 ```
 

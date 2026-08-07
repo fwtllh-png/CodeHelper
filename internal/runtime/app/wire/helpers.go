@@ -233,6 +233,7 @@ type execRouteOptions struct {
 	BaseURL    string
 	Protocol   model.WireProtocol
 	APIKeyEnv  string
+	Credential model.CredentialRef
 	Fixture    bool
 	Model      *model.Model
 }

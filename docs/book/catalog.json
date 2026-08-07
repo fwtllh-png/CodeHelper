@@ -12,7 +12,7 @@
         {"id": "agent-llm-token-context", "slug": "02-llm-token-and-context", "status": "verified", "titles": {"en": "LLMs, Tokens, Context Windows, and Sampling", "zh-CN": "LLM、Token、Context Window 与 Sampling"}},
         {"id": "agent-react-planning-tools", "slug": "03-react-planning-and-tools", "status": "verified", "titles": {"en": "ReAct, Planning, Tool Calling, and Reflection", "zh-CN": "ReAct、Planning、Tool Calling 与 Reflection"}},
         {"id": "agent-workflow-boundaries", "slug": "04-agent-workflow-boundaries", "status": "verified", "titles": {"en": "Agents, Workflows, and Automation", "zh-CN": "Agent、Workflow 与 Automation 的边界"}},
-        {"id": "agent-why-governed-runtime", "slug": "05-why-governed-runtime", "status": "verified", "milestone": "stage-1", "titles": {"en": "Why Agents Need a Governed Runtime", "zh-CN": "为什么 Agent 需要受治理的 Runtime"}}
+        {"id": "agent-why-governed-runtime", "slug": "05-why-governed-runtime", "status": "verified", "core_reading": true, "titles": {"en": "Why Agents Need a Governed Runtime", "zh-CN": "为什么 Agent 需要受治理的 Runtime"}}
       ]
     },
     {
@@ -21,11 +21,11 @@
       "titles": {"en": "Understanding CodeHelper", "zh-CN": "认识 CodeHelper"},
       "chapters": [
         {"id": "overview-positioning", "slug": "01-positioning-and-non-goals", "status": "verified", "titles": {"en": "Positioning, Value, and Non-Goals", "zh-CN": "项目定位、价值与非目标"}},
-        {"id": "overview-system-architecture", "slug": "02-system-architecture", "status": "verified", "milestone": "stage-1", "titles": {"en": "CodeHelper System Architecture", "zh-CN": "CodeHelper 全局架构"}},
+        {"id": "overview-system-architecture", "slug": "02-system-architecture", "status": "verified", "core_reading": true, "titles": {"en": "CodeHelper System Architecture", "zh-CN": "CodeHelper 全局架构"}},
         {"id": "overview-package-ownership", "slug": "03-package-ownership", "status": "verified", "titles": {"en": "Package Ownership and Dependency Direction", "zh-CN": "Package 所有权与依赖方向"}},
         {"id": "overview-runtime-vocabulary", "slug": "04-runtime-vocabulary", "status": "verified", "titles": {"en": "Operation, Event, Receipt, and Projection", "zh-CN": "Operation、Event、Receipt 与 Projection"}},
-        {"id": "overview-turn-lifecycle", "slug": "05-turn-lifecycle", "status": "verified", "milestone": "stage-1", "titles": {"en": "The Complete Lifecycle of an Agent Turn", "zh-CN": "一次 Agent Turn 的完整生命周期"}},
-        {"id": "overview-model-context-tool", "slug": "06-model-context-and-tool", "status": "verified", "milestone": "stage-1", "titles": {"en": "How Models, Context, and Tools Cooperate", "zh-CN": "Model、Context 与 Tool 如何协作"}}
+        {"id": "overview-turn-lifecycle", "slug": "05-turn-lifecycle", "status": "verified", "core_reading": true, "titles": {"en": "The Complete Lifecycle of an Agent Turn", "zh-CN": "一次 Agent Turn 的完整生命周期"}},
+        {"id": "overview-model-context-tool", "slug": "06-model-context-and-tool", "status": "verified", "core_reading": true, "titles": {"en": "How Models, Context, and Tools Cooperate", "zh-CN": "Model、Context 与 Tool 如何协作"}}
       ]
     },
     {
@@ -87,7 +87,7 @@
       "chapters": [
         {"id": "security-threat-model", "slug": "01-threat-model", "status": "verified", "titles": {"en": "Agent Runtime Threat Model", "zh-CN": "Agent Runtime Threat Model"}},
         {"id": "security-mode-policy", "slug": "02-mode-posture-policy", "status": "verified", "titles": {"en": "Mode, Posture, Policy, and Permission", "zh-CN": "Mode、Posture、Policy 与 Permission"}},
-        {"id": "security-approval-sandbox", "slug": "03-approval-constitution-sandbox", "status": "verified", "milestone": "stage-1", "titles": {"en": "Guard, Approval, Constitution, and Sandbox", "zh-CN": "Guard、Approval、Constitution 与 Sandbox"}},
+        {"id": "security-approval-sandbox", "slug": "03-approval-constitution-sandbox", "status": "verified", "core_reading": true, "titles": {"en": "Guard, Approval, Constitution, and Sandbox", "zh-CN": "Guard、Approval、Constitution 与 Sandbox"}},
         {"id": "security-process-isolation", "slug": "04-process-isolation", "status": "verified", "titles": {"en": "OS Sandbox and Process Isolation", "zh-CN": "OS Sandbox 与 Process Isolation"}},
         {"id": "security-egress-credentials", "slug": "05-egress-and-credentials", "status": "verified", "titles": {"en": "Egress, Credentials, and Data Leakage", "zh-CN": "Egress、Credential 与数据泄漏"}},
         {"id": "security-extension-trust", "slug": "06-extension-trust", "status": "verified", "titles": {"en": "Trust for MCP, Skills, Plugins, and Hooks", "zh-CN": "MCP、Skill、Plugin 与 Hook Trust"}},
@@ -163,7 +163,7 @@
       "order": 13,
       "titles": {"en": "Hands-On Labs", "zh-CN": "动手实验"},
       "chapters": [
-        {"id": "lab-first-turn", "slug": "01-first-agent-turn", "status": "verified", "milestone": "stage-1", "titles": {"en": "Build and Trace the First Agent Turn", "zh-CN": "构建并追踪第一个 Agent Turn"}},
+        {"id": "lab-first-turn", "slug": "01-first-agent-turn", "status": "verified", "core_reading": true, "titles": {"en": "Build and Trace the First Agent Turn", "zh-CN": "构建并追踪第一个 Agent Turn"}},
         {"id": "lab-streaming-fixture", "slug": "02-streaming-fixture", "status": "verified", "titles": {"en": "Observe Streaming Events with a Fixture", "zh-CN": "使用 Fixture 观察 Streaming Event"}},
         {"id": "lab-provider-adapter", "slug": "03-provider-adapter", "status": "verified", "titles": {"en": "Implement a Provider Adapter", "zh-CN": "实现 Provider Adapter"}},
         {"id": "lab-governed-tool", "slug": "04-governed-tool", "status": "verified", "titles": {"en": "Implement a Governed Tool", "zh-CN": "实现通过 Guard 的 Tool"}},

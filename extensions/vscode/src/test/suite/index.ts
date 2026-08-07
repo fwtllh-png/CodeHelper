@@ -213,6 +213,9 @@ export async function run(): Promise<void> {
   const commands = new Set(await vscode.commands.getCommands(true));
   assert.equal(commands.has("codehelper.showStatus"), true);
   assert.equal(commands.has("codehelper.restartRuntime"), true);
+  assert.equal(commands.has("codehelper.repairRuntime"), true);
+  assert.equal(commands.has("codehelper.runSetup"), true);
+  assert.equal(commands.has("codehelper.runQuickstart"), true);
   for (const command of selectionCommands) {
     assert.equal(commands.has(command), true);
   }

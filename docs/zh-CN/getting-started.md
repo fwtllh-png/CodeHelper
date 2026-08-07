@@ -44,19 +44,40 @@ make build VERSION=0.1.0
 ./bin/codehelper sandbox probe
 ```
 
-`doctor` 只报告能力，不会授予权限。强沙箱不可用时，修改型执行或验证可能按
-fail-closed 原则失败。
+`doctor` 只报告能力，不会授予权限。强沙箱不可用时报告 `blocked`，因为修改型执行和
+验证必须按 fail-closed 原则失败；可选依赖缺失时报告 `degraded`。两者 Exit Code
+分别为 `2` 和 `1`，`ready` 返回 `0`。
 
-## 4. 创建工作区配置
+## 4. 执行 Setup
 
 进入希望 CodeHelper 操作的仓库：
+
+```bash
+/path/to/codehelper setup \
+  --workspace . \
+  --provider openai \
+  --model gpt-4.1 \
+  --credential-kind env \
+  --credential-name OPENAI_API_KEY \
+  --json
+```
+
+`setup` 只写入 Credential Reference，同时探测真实 Sandbox，并执行内置的无网络
+Runtime Fixture。只有已提供可用的真实凭证引用且允许访问 Provider 网络时，才增加
+`--probe-capabilities reasoning`。交互式流程使用：
+
+```bash
+/path/to/codehelper setup --workspace . --interactive
+```
+
+自动化可增加 `--require-ready`，让 Exit Code 与 `ready`、`degraded` 或 `blocked`
+状态一致。`init` 仍保留为只创建最小文件的入口：
 
 ```bash
 /path/to/codehelper init --workspace .
 ```
 
-命令会创建最小 `codehelper.toml` 和工作区状态目录。使用前先检查文件。查看最终配置
-及每个字段来源：
+查看最终配置及每个字段来源：
 
 ```bash
 /path/to/codehelper config check --config ./codehelper.toml
@@ -64,6 +85,18 @@ fail-closed 原则失败。
 ```
 
 完整字段见[配置说明](./configuration.md)。
+
+### 无网络首次旅程
+
+无需凭证和网络即可执行完整的受治理首轮：
+
+```bash
+./bin/codehelper quickstart --json
+```
+
+内置 Fixture 会创建临时工作区，依次执行结构化计划、文件读取、编辑预览、显式批准、
+验证、Execution Receipt 和终态完成。增加 `--keep` 可保留生成工作区，也可通过
+`--workspace EMPTY_DIR` 使用指定的空目录。
 
 ## 5. 配置凭证
 
@@ -192,6 +225,10 @@ unset DEEPSEEK_API_KEY
 
 执行前请阅读 [VS Code 插件指南](./vscode.md)。脚本会安装到官方 VS Code，并把凭证
 写入 macOS Keychain。
+
+通用首次运行可从 Command Palette 执行 `CodeHelper: Setup Workspace`。Runtime 无法
+启动时，Chat 失败面板和 `CodeHelper: Repair Runtime` 会直接展示结构化 Readiness
+缺失项与修复动作，无需只依赖 Output Channel 排查。
 
 ## 9. 推荐的首次验证
 

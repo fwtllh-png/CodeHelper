@@ -76,6 +76,14 @@ func TestReceiptReportsReadPathsAndContextSections(t *testing.T) {
 				Truncated: true, TruncationReason: "byte_budget", Digest: "sha256:b",
 			},
 		},
+		selections: []promptcontext.Selection{{
+			Path: "calc_test.py", Kind: "test", Reasons: []string{"search"},
+			Evidence: []promptcontext.SelectionEvidence{{
+				Kind: "test", Tool: "search_related_tests", Turn: 3,
+			}},
+			Score: 5, FirstTurn: 3, LastTurn: 3,
+			Included: false, Truncated: true, TruncationReason: "byte_budget",
+		}},
 	})
 
 	if recorder.turn != 3 {
@@ -92,6 +100,13 @@ func TestReceiptReportsReadPathsAndContextSections(t *testing.T) {
 	}
 	if len(receipt.ContextSections) != 2 {
 		t.Fatalf("context sections = %+v", receipt.ContextSections)
+	}
+	if len(receipt.ContextSelections) != 1 ||
+		receipt.ContextSelections[0].Kind != "test" ||
+		receipt.ContextSelections[0].Reasons[0] != "search" ||
+		receipt.ContextSelections[0].Evidence[0].Tool != "search_related_tests" ||
+		!receipt.ContextSelections[0].Truncated {
+		t.Fatalf("context selections = %+v", receipt.ContextSelections)
 	}
 	if len(receipt.EditorContext) != 1 ||
 		receipt.EditorContext[0].Kind != protocol.EditorContextSymbol ||
@@ -312,6 +327,13 @@ func TestReceiptReportsVerificationGateVerdict(t *testing.T) {
 			},
 			wantVerif: protocol.ReceiptUnavailable, wantTests: protocol.ReceiptUnavailable,
 		},
+		"affected passed": {
+			receipt: &agentengine.VerificationReceipt{
+				Receipt: verify.Receipt{Scope: verify.ScopeAffected, Status: verify.StatusPassed},
+				Action:  "passed",
+			},
+			wantVerif: protocol.ReceiptPassed, wantTests: protocol.ReceiptPassed,
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -345,11 +367,34 @@ func TestReceiptReportsFinalVerificationAfterRepair(t *testing.T) {
 			Receipt:     verify.Receipt{Scope: verify.ScopeDiagnostics, Status: verify.StatusPassed},
 			Action:      "passed",
 			RepairSteps: 1,
+			Attempts: []verify.Receipt{
+				{
+					Scope: verify.ScopeDiagnostics, Status: verify.StatusFailed,
+					Checks: []verify.Check{{
+						Name: "gopls", Command: "diagnostics calc.go",
+						Reason: "post-edit diagnostics", Category: "diagnostic_failure",
+						Status: verify.StatusFailed,
+					}},
+				},
+				{Scope: verify.ScopeDiagnostics, Status: verify.StatusPassed},
+			},
+			Workspace: &agentengine.VerificationWorkspace{Status: "changed"},
 		},
 	})
 
-	if receipt := recorder.build(turnObservations{}); receipt.Verification.Verify != protocol.ReceiptPassed {
+	receipt := recorder.build(turnObservations{
+		changes: []agentengine.TurnDiffEntry{{Path: "calc.go"}},
+	})
+	if receipt.Verification.Verify != protocol.ReceiptPassed {
 		t.Fatalf("verify = %q, want the post-repair verdict", receipt.Verification.Verify)
+	}
+	if receipt.VerificationDetail == nil ||
+		len(receipt.VerificationDetail.Attempts) != 2 ||
+		receipt.VerificationDetail.Attempts[0].Checks[0].Category != "diagnostic_failure" ||
+		receipt.WorkspaceOutcome == nil ||
+		receipt.WorkspaceOutcome.Status != "changed" {
+		t.Fatalf("detailed receipt = %+v workspace = %+v",
+			receipt.VerificationDetail, receipt.WorkspaceOutcome)
 	}
 }
 
@@ -358,7 +403,8 @@ func TestVerificationDataCarriesChecksAndPaths(t *testing.T) {
 		Receipt: verify.Receipt{
 			Scope: verify.ScopeRepository, Status: verify.StatusFailed, Errors: 1,
 			Checks: []verify.Check{{
-				Name: "go", Command: "go test ./...", Status: verify.StatusFailed,
+				Name: "go", Command: "go test ./...", Reason: "go.mod",
+				Category: "test_failure", Status: verify.StatusFailed,
 				ExitCode: 1, Stdout: "--- FAIL", Stderr: "exit status 1",
 			}},
 		},
@@ -370,6 +416,8 @@ func TestVerificationDataCarriesChecksAndPaths(t *testing.T) {
 		t.Fatalf("verification data = %+v", data)
 	}
 	if len(data.Checks) != 1 || data.Checks[0].Name != "go" ||
+		data.Checks[0].Reason != "go.mod" ||
+		data.Checks[0].Category != "test_failure" ||
 		!strings.Contains(data.Checks[0].Output, "FAIL") ||
 		!strings.Contains(data.Checks[0].Output, "exit status 1") {
 		t.Fatalf("checks = %+v", data.Checks)

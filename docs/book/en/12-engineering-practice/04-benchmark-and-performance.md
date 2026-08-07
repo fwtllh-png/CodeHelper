@@ -86,18 +86,31 @@ catalog authority.
 
 ## Verification
 
+The committed Benchmark V2 manifest defines six product journeys:
+
+| Journey | Lane | Required capability |
+| --- | --- | --- |
+| cross-file edit | platform capability | strong sandbox |
+| affected-test selection | platform capability | strong sandbox |
+| approval | platform capability | strong sandbox |
+| budget exhaustion | platform capability | strong sandbox |
+| crash recovery | Hermetic | none |
+| Host replay | Integration | none |
+
+Each journey names its evidence and executable command. The validator rejects
+missing evidence and incorrect lane/capability claims.
+
 ```bash
+make benchmark-v2
 make bench
 make catalog-bench
 make vscode-performance
 ```
 
-Verification on macOS arm64 on 2026-08-06: catalog scale benchmarks passed for
-100, 500, and 1000 Tools. The coding suite passed 18/23 scenarios; five
-verification-gate scenarios failed closed because the local Seatbelt probe
-reported `strength=none`. Do not disable sandbox enforcement to turn that
-platform limitation into a passing result. VS Code projector budgets passed;
-Electron/runtime-ready budgets remain environment-acquired gates.
+Platform-capability journeys run only when the declared sandbox prerequisite is
+available. A missing capability is reported as unavailable and must not be
+converted to pass by disabling sandbox enforcement. Electron/runtime-ready
+budgets likewise remain environment-acquired gates.
 
 ## Review Questions
 

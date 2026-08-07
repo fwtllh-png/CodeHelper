@@ -124,6 +124,14 @@ func TestShapesDescribeTheWireAndNotTheGoStructs(t *testing.T) {
 			t.Fatalf("event envelope field %q is not required: %+v", name, envelope)
 		}
 	}
+	readiness := schema.Envelope["readiness"]
+	if readiness == nil || readiness.Properties["status"] == nil ||
+		readiness.Properties["checks"] == nil ||
+		readiness.Properties["checks"].Items.Properties["reason"] == nil ||
+		readiness.Properties["checks"].Items.Properties["impact"] == nil ||
+		readiness.Properties["checks"].Items.Properties["action"] == nil {
+		t.Fatalf("readiness schema is incomplete: %+v", readiness)
+	}
 }
 
 // The document has to be valid JSON that a consumer can load without knowing Go.

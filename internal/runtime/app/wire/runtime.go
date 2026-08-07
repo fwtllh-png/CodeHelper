@@ -233,11 +233,19 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			return nil, fmt.Errorf("model metadata: %w", err)
 		}
 	}
+	credential := model.CredentialRef{
+		Kind: snapshot.Config.Credential.Kind,
+		Name: snapshot.Config.Credential.Name,
+	}
+	if session.fixture != nil {
+		credential = model.CredentialRef{}
+	}
 	routes, err := resolveRouteSet(routeSetOptions{
 		Act: execRouteOptions{
 			ProviderID: execution.Provider, ModelID: execution.Model, BaseURL: options.BaseURL,
 			Protocol: wireProtocol, APIKeyEnv: options.APIKeyEnv,
-			Fixture: session.fixture != nil, Model: routeModel,
+			Credential: credential,
+			Fixture:    session.fixture != nil, Model: routeModel,
 		},
 		Slots: snapshot.Config.Route.Slots, Lock: snapshot.Config.Route.Lock,
 	})

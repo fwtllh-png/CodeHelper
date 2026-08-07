@@ -5,13 +5,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 )
 
 func runConfig(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || (args[0] != "check" && args[0] != "show" && args[0] != "reload") {
-		_, _ = fmt.Fprintln(stderr, "codehelper: config requires check, show, or reload")
+	if len(args) == 0 || !configCommand(args[0]) {
+		_, _ = fmt.Fprintln(
+			stderr,
+			"codehelper: config requires check, show, reload, profile, or explain",
+		)
 		return 2
 	}
 	command := args[0]
@@ -24,12 +28,51 @@ func runConfig(args []string, stdout, stderr io.Writer) int {
 	logLevel := flags.String("log-level", "", "log level")
 	credentialKind := flags.String("credential-kind", "", "credential reference kind")
 	credentialName := flags.String("credential-name", "", "credential reference name")
-	if err := flags.Parse(args[1:]); err != nil {
+	profileName := flags.String("profile", "minimal", "minimal, recommended, or advanced")
+	workspace := flags.String("workspace", ".", "workspace used by generated profiles")
+	dataDir := flags.String("data-dir", ".codehelper", "state directory used by generated profiles")
+	asJSON := flags.Bool("json", false, "emit JSON")
+	parseArgs := args[1:]
+	explainField := ""
+	fieldBeforeFlags := false
+	if command == "explain" && len(parseArgs) > 0 &&
+		!strings.HasPrefix(parseArgs[0], "-") {
+		explainField = parseArgs[0]
+		fieldBeforeFlags = true
+		parseArgs = parseArgs[1:]
+	}
+	if err := flags.Parse(parseArgs); err != nil {
 		return 2
 	}
-	if flags.NArg() != 0 {
+	if command != "explain" && flags.NArg() != 0 {
 		_, _ = fmt.Fprintf(stderr, "codehelper: config %s does not accept positional arguments\n", command)
 		return 2
+	}
+	if command == "explain" && explainField == "" && flags.NArg() == 1 {
+		explainField = flags.Arg(0)
+	}
+	if command == "explain" &&
+		(explainField == "" || flags.NArg() > 1 ||
+			(fieldBeforeFlags && flags.NArg() != 0)) {
+		_, _ = fmt.Fprintln(stderr, "codehelper: config explain requires FIELD")
+		return 2
+	}
+	if command == "profile" {
+		profile, err := config.ParseProfile(*profileName)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "codehelper: config profile: %v\n", err)
+			return 2
+		}
+		rendered, err := config.RenderProfile(profile, config.ProfileOptions{
+			Workspace: *workspace,
+			DataDir:   *dataDir,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "codehelper: config profile: %v\n", err)
+			return 1
+		}
+		_, _ = stdout.Write(rendered)
+		return 0
 	}
 
 	overrides := config.Overrides{}
@@ -79,11 +122,45 @@ func runConfig(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stdout, "configuration is valid")
 		return 0
 	}
+	if command == "explain" {
+		explanation, err := snapshot.Explain(explainField)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "codehelper: config explain: %v\n", err)
+			return 2
+		}
+		if *asJSON {
+			if err := encodeJSON(stdout, explanation); err != nil {
+				_, _ = fmt.Fprintf(stderr, "codehelper: config explain: %v\n", err)
+				return 1
+			}
+		} else {
+			_, _ = fmt.Fprintf(
+				stdout,
+				"%s current=%v default=%v source=%s risk=%s impact=%s\n",
+				explanation.Field,
+				explanation.Current,
+				explanation.Default,
+				explanation.Source,
+				explanation.Risk,
+				explanation.Impact,
+			)
+		}
+		return 0
+	}
 	if err := encodeJSON(stdout, snapshot); err != nil {
 		_, _ = fmt.Fprintf(stderr, "codehelper: encode config: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+func configCommand(value string) bool {
+	switch value {
+	case "check", "show", "reload", "profile", "explain":
+		return true
+	default:
+		return false
+	}
 }
 
 func encodeJSON(writer io.Writer, value any) error {

@@ -368,11 +368,12 @@ func (a *EngineAdapter) StartTurn(
 func (a *EngineAdapter) emitReceipt(recorder *receiptRecorder, sink EngineSink) error {
 	historyBytes, maxHistoryBytes := a.engine.ContextBudget()
 	data := recorder.build(turnObservations{
-		changes:   a.engine.TurnDiff(),
-		readPaths: a.engine.ReadPaths(recorder.turn),
-		context:   a.engine.ContextReceipts(),
-		catalog:   a.engine.CatalogReceipt(),
-		evidence:  a.engine.EvidenceSnapshot(),
+		changes:    a.engine.TurnDiff(),
+		readPaths:  a.engine.ReadPaths(recorder.turn),
+		context:    a.engine.ContextReceipts(),
+		selections: a.engine.ContextSelections(),
+		catalog:    a.engine.CatalogReceipt(),
+		evidence:   a.engine.EvidenceSnapshot(),
 		budget: &protocol.ReceiptContextBudget{
 			HistoryBytes: historyBytes, MaxHistoryBytes: maxHistoryBytes,
 			Compactions: a.engine.Compactions(),
@@ -388,8 +389,9 @@ func (a *EngineAdapter) emitReceipt(recorder *receiptRecorder, sink EngineSink) 
 }
 
 func (a *EngineAdapter) CancelTurn(
-	context.Context, *protocol.CancelTurnPayload, EngineSink,
+	_ context.Context, payload *protocol.CancelTurnPayload, _ EngineSink,
 ) error {
+	a.engine.RequestCancelWithReason(protocol.NormalizeCancelReason(payload.Reason))
 	return nil
 }
 

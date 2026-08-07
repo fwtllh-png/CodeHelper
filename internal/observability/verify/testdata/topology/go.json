@@ -1,0 +1,7 @@
+{
+  "root_files": ["go.mod"],
+  "paths": ["pkg/service.go"],
+  "related": {"pkg/service.go": ["pkg/service_test.go"]},
+  "want_command": "go test ./pkg/...",
+  "want_reason": "package-scoped"
+}

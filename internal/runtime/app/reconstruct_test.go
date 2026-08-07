@@ -151,6 +151,51 @@ func TestReconstructThreadCommitsOnlyCompletedPairedToolHistory(t *testing.T) {
 	}
 }
 
+func TestReconstructThreadRetainsOnlyPairedUserInterruptedHistory(t *testing.T) {
+	events := []protocol.Event{
+		{
+			Kind: protocol.EventTurnStarted, ThreadID: "thread-a", TurnID: "interrupted", Sequence: 1,
+			Data: &protocol.TurnStartedData{Provider: "p", Model: "m", Prompt: "inspect vscode"},
+		},
+		{
+			Kind: protocol.EventToolStart, ThreadID: "thread-a", TurnID: "interrupted", Sequence: 2,
+			Data: &protocol.ToolStartData{Tool: "read", CallID: "paired", Arguments: []byte(`{}`)},
+		},
+		{
+			Kind: protocol.EventToolResult, ThreadID: "thread-a", TurnID: "interrupted", Sequence: 3,
+			Data: &protocol.ToolResultData{Tool: "read", CallID: "paired", Output: "result"},
+		},
+		{
+			Kind: protocol.EventToolStart, ThreadID: "thread-a", TurnID: "interrupted", Sequence: 4,
+			Data: &protocol.ToolStartData{Tool: "read", CallID: "orphan", Arguments: []byte(`{}`)},
+		},
+		{
+			Kind: protocol.EventTurnCanceled, ThreadID: "thread-a", TurnID: "interrupted", Sequence: 5,
+			Data: &protocol.TurnCanceledData{Reason: protocol.CancelReasonUserInterrupted},
+		},
+		{
+			Kind: protocol.EventTurnStarted, ThreadID: "thread-a", TurnID: "shutdown", Sequence: 6,
+			Data: &protocol.TurnStartedData{Provider: "p", Model: "m", Prompt: "discard me"},
+		},
+		{
+			Kind: protocol.EventTurnCanceled, ThreadID: "thread-a", TurnID: "shutdown", Sequence: 7,
+			Data: &protocol.TurnCanceledData{Reason: protocol.CancelReasonShutdown},
+		},
+	}
+	recon, err := ReconstructThread(events, "thread-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recon.History) != 3 {
+		t.Fatalf("history len=%d want 3: %+v", len(recon.History), recon.History)
+	}
+	if recon.History[0].Text() != "inspect vscode" ||
+		replayToolCallID(recon.History[1]) != "paired" ||
+		replayToolResultID(recon.History[2]) != "paired" {
+		t.Fatalf("interrupted history=%+v", recon.History)
+	}
+}
+
 func TestReconstructThreadRevertDropsOnlyTargetTurn(t *testing.T) {
 	events := []protocol.Event{
 		{

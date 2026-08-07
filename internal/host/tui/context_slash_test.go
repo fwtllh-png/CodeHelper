@@ -27,6 +27,13 @@ func TestContextSlashReportsTheLastReceiptSections(t *testing.T) {
 					OriginalBytes: 900, Truncated: true, TruncationReason: "budget",
 				},
 			},
+			ContextSelections: []protocol.ReceiptContextSelection{{
+				Path: "internal/a_test.go", Kind: "test", Reasons: []string{"search"},
+				Evidence: []protocol.ReceiptContextSelectionEvidence{{
+					Kind: "test", Tool: "search_related_tests",
+				}},
+				Included: false, Truncated: true, TruncationReason: "byte_budget",
+			}},
 			ReadPaths: []string{"internal/a.go", "internal/b.go"},
 		},
 	})
@@ -40,10 +47,13 @@ func TestContextSlashReportsTheLastReceiptSections(t *testing.T) {
 		Kind: commands.KindContext, Name: "context",
 	})
 	view := after.buildTranscriptView()
+	normalized := strings.Join(strings.Fields(view), " ")
 	for _, want := range []string{
 		"repo_map 512B", "working_set_ledger 64B", "(cut:budget)", "read 2 path(s)",
+		"internal/a_test.go [test] via search",
+		"evidence=test/search_related_tests", "(cut:byte_budget)",
 	} {
-		if !strings.Contains(view, want) {
+		if !strings.Contains(normalized, want) {
 			t.Fatalf("view %q missing %q", view, want)
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
 )
 
 // Symbol tool names.
@@ -25,9 +26,10 @@ const (
 // Every one of them is read-only over the repository tree and reports its
 // results as lexical, because that is what the index holds.
 type symbolTool struct {
-	kind   string
-	index  *repoindex.Index
-	walker *repowalk.Walker
+	kind     string
+	index    *repoindex.Index
+	walker   *repowalk.Walker
+	semantic symbols.Provider
 }
 
 // defaultSymbolResults and defaultReferenceResults bound a reply the caller did
@@ -88,6 +90,9 @@ func symbolSchema(kind string) map[string]any {
 			"required": []string{"name"},
 			"properties": map[string]any{
 				"name":        map[string]any{"type": "string", "minLength": float64(1)},
+				"path":        map[string]any{"type": "string", "minLength": float64(1)},
+				"line":        map[string]any{"type": "integer", "minimum": float64(1)},
+				"character":   map[string]any{"type": "integer", "minimum": float64(1)},
 				"kinds":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"max_results": map[string]any{"type": "integer"},
 			},
@@ -98,6 +103,9 @@ func symbolSchema(kind string) map[string]any {
 			"required": []string{"name"},
 			"properties": map[string]any{
 				"name":                map[string]any{"type": "string", "minLength": float64(1)},
+				"path":                map[string]any{"type": "string", "minLength": float64(1)},
+				"line":                map[string]any{"type": "integer", "minimum": float64(1)},
+				"character":           map[string]any{"type": "integer", "minimum": float64(1)},
 				"include_definitions": map[string]any{"type": "boolean"},
 				"path_prefix":         map[string]any{"type": "string"},
 				"max_results":         map[string]any{"type": "integer"},
@@ -135,10 +143,13 @@ func (t *symbolTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Res
 		Name               string   `json:"name"`
 		Kinds              []string `json:"kinds"`
 		ExportedOnly       bool     `json:"exported_only"`
+		Path               string   `json:"path"`
 		PathPrefix         string   `json:"path_prefix"`
 		Paths              []string `json:"paths"`
 		IncludeDefinitions bool     `json:"include_definitions"`
 		MaxResults         int      `json:"max_results"`
+		Line               int      `json:"line"`
+		Character          int      `json:"character"`
 	}
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
@@ -152,11 +163,37 @@ func (t *symbolTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Res
 	}
 	switch t.kind {
 	case KindDefinition:
+		if query, ok := semanticQuery(input.Path, input.Line, input.Character); ok &&
+			t.semantic != nil {
+			found, semanticErr := t.semantic.Definition(ctx, query)
+			if semanticErr == nil {
+				return semanticDefinitions(found, input.Name)
+			}
+			result, err := t.declarations(ctx, snapshot, repoindex.Query{
+				Name: input.Name, Exact: true, Kinds: input.Kinds,
+				Limit: results(input.MaxResults, defaultSymbolResults),
+			}, "", false)
+			return semanticFallback(result, semanticErr), err
+		}
 		return t.declarations(ctx, snapshot, repoindex.Query{
 			Name: input.Name, Exact: true, Kinds: input.Kinds,
 			Limit: results(input.MaxResults, defaultSymbolResults),
 		}, "", false)
 	case KindReferences:
+		if query, ok := semanticQuery(input.Path, input.Line, input.Character); ok &&
+			t.semantic != nil {
+			found, semanticErr := t.semantic.References(
+				ctx, query, input.IncludeDefinitions,
+			)
+			if semanticErr == nil {
+				return semanticReferences(found, input.Name)
+			}
+			result, err := t.references(
+				ctx, snapshot, input.Name, input.PathPrefix,
+				input.IncludeDefinitions, results(input.MaxResults, defaultReferenceResults),
+			)
+			return semanticFallback(result, semanticErr), err
+		}
 		return t.references(ctx, snapshot, input.Name, input.PathPrefix,
 			input.IncludeDefinitions, results(input.MaxResults, defaultReferenceResults))
 	case KindRelatedTests:
@@ -174,6 +211,7 @@ type symbolMatch struct {
 	Kind      string `json:"kind"`
 	File      string `json:"file"`
 	Line      int    `json:"line"`
+	Character int    `json:"character,omitempty"`
 	Container string `json:"container,omitempty"`
 	Exported  bool   `json:"exported"`
 }
@@ -224,18 +262,21 @@ func (t *symbolTool) declarations(
 	}
 	return marshalResult(map[string]any{
 		"matches": matches, "total": total, "truncated": truncated,
-		"resolution": repoindex.Resolution,
+		"resolution": repoindex.Resolution, "source": "repoindex",
+		"version": repoindex.IndexerVersion, "confidence": "low",
 	}, truncated, attach(map[string]any{
 		"matches": total, "returned": len(matches),
 		"resolution": repoindex.Resolution, "index_source": snapshot.Meta.Source,
-		"index_files": snapshot.Meta.FileCount,
+		"index_files": snapshot.Meta.FileCount, "source": "repoindex",
+		"version": repoindex.IndexerVersion, "confidence": "low",
 	}, hits))
 }
 
 type referenceMatch struct {
-	File string `json:"file"`
-	Line int    `json:"line"`
-	Text string `json:"text"`
+	File      string `json:"file"`
+	Line      int    `json:"line"`
+	Character int    `json:"character,omitempty"`
+	Text      string `json:"text,omitempty"`
 }
 
 // references scans the files the index lists for whole-word uses of a name. It
@@ -320,11 +361,102 @@ func (t *symbolTool) references(
 	}
 	return marshalResult(map[string]any{
 		"matches": matches, "total": total, "truncated": truncated,
-		"resolution": repoindex.Resolution,
+		"resolution": repoindex.Resolution, "source": "repoindex",
+		"version": repoindex.IndexerVersion, "confidence": "low",
 	}, truncated, attach(map[string]any{
 		"matches": total, "returned": len(matches), "scanned_files": scanned,
 		"resolution": repoindex.Resolution, "index_source": snapshot.Meta.Source,
+		"source": "repoindex", "version": repoindex.IndexerVersion, "confidence": "low",
 	}, hits))
+}
+
+func semanticQuery(path string, line, character int) (symbols.SemanticQuery, bool) {
+	path = strings.TrimSpace(path)
+	if path == "" || line < 1 || character < 1 {
+		return symbols.SemanticQuery{}, false
+	}
+	return symbols.SemanticQuery{
+		Path: path, Line: line, Character: character,
+	}, true
+}
+
+func semanticDefinitions(
+	found symbols.SemanticResult, name string,
+) (tool.Result, error) {
+	matches := make([]symbolMatch, 0, len(found.Locations))
+	hits := make([]tool.EvidenceHit, 0, min(len(found.Locations), maxEvidenceHits))
+	for _, location := range found.Locations {
+		matches = append(matches, symbolMatch{
+			Name: name, Kind: "semantic", File: location.Path,
+			Line: location.Line, Character: location.Character,
+		})
+		if len(hits) < maxEvidenceHits {
+			hits = append(hits, tool.EvidenceHit{
+				Kind: tool.EvidenceDefinition, Path: location.Path,
+				Line: location.Line, Symbol: name,
+			})
+		}
+	}
+	provenance := semanticProvenance(found)
+	payload := map[string]any{
+		"matches": matches, "total": len(matches), "truncated": false,
+	}
+	for key, value := range provenance {
+		payload[key] = value
+	}
+	provenance["matches"] = len(matches)
+	provenance["returned"] = len(matches)
+	return marshalResult(payload, false, attach(provenance, hits))
+}
+
+func semanticReferences(
+	found symbols.SemanticResult, name string,
+) (tool.Result, error) {
+	matches := make([]referenceMatch, 0, len(found.Locations))
+	hits := make([]tool.EvidenceHit, 0, min(len(found.Locations), maxEvidenceHits))
+	for _, location := range found.Locations {
+		matches = append(matches, referenceMatch{
+			File: location.Path, Line: location.Line, Character: location.Character,
+		})
+		if len(hits) < maxEvidenceHits {
+			hits = append(hits, tool.EvidenceHit{
+				Kind: tool.EvidenceReference, Path: location.Path,
+				Line: location.Line, Symbol: name,
+			})
+		}
+	}
+	provenance := semanticProvenance(found)
+	payload := map[string]any{
+		"matches": matches, "total": len(matches), "truncated": false,
+	}
+	for key, value := range provenance {
+		payload[key] = value
+	}
+	provenance["matches"] = len(matches)
+	provenance["returned"] = len(matches)
+	return marshalResult(payload, false, attach(provenance, hits))
+}
+
+func semanticProvenance(found symbols.SemanticResult) map[string]any {
+	return map[string]any{
+		"resolution": "semantic", "source": found.Source,
+		"version": found.Version, "confidence": found.Confidence,
+	}
+}
+
+func semanticFallback(result tool.Result, semanticErr error) tool.Result {
+	if semanticErr == nil {
+		return result
+	}
+	if result.Metadata == nil {
+		result.Metadata = make(map[string]any)
+	}
+	message := semanticErr.Error()
+	if len(message) > 512 {
+		message = message[:512]
+	}
+	result.Metadata["semantic_fallback"] = message
+	return result
 }
 
 func (t *symbolTool) relatedTests(

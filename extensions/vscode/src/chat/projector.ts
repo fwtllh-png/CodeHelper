@@ -2,7 +2,10 @@ import {
   isUnknownEvent,
   type DecodedEvent,
 } from "../protocol/decode.js";
-import type { TurnStartedData } from "../protocol/generated.js";
+import type {
+  TurnReceiptData,
+  TurnStartedData,
+} from "../protocol/generated.js";
 import {
   projectEditPlan,
   type EditPlanCard,
@@ -78,6 +81,21 @@ export interface ContextReceiptCard {
   readonly truncated: boolean;
 }
 
+type ContextSelection =
+  NonNullable<TurnReceiptData["context_selections"]>[number];
+
+export interface ContextSelectionCard {
+  readonly path: string;
+  readonly kind: string;
+  readonly reasons: readonly string[];
+  readonly evidence: readonly string[];
+  readonly score: number;
+  readonly critical: boolean;
+  readonly included: boolean;
+  readonly truncated: boolean;
+  readonly truncationReason?: string;
+}
+
 export interface ChatTurn {
   readonly id: string;
   readonly user: string;
@@ -91,6 +109,7 @@ export interface ChatTurn {
   readonly approvals: readonly ApprovalCard[];
   readonly inputs: readonly InputCard[];
   readonly contextReceipts: readonly ContextReceiptCard[];
+  readonly contextSelections: readonly ContextSelectionCard[];
   readonly diagnostics: readonly string[];
   readonly verification?: string;
   readonly receipt?: string;
@@ -146,6 +165,7 @@ interface MutableTurn {
   approvals: Map<string, MutableApproval>;
   inputs: Map<string, MutableInput>;
   contextReceipts: ContextReceiptCard[];
+  contextSelections: ContextSelectionCard[];
   diagnostics: string[];
   verification?: string;
   receipt?: string;
@@ -277,18 +297,42 @@ export class ChatProjector {
         break;
       case "turn.verification":
         turn.verification = truncate(
-          `${event.data.status}: ${(event.data.checks ?? []).map((check) =>
-            `${check.name}=${check.status}`).join(", ")}`,
+          `${event.data.status}: ${(event.data.checks ?? []).map((check) => {
+            const command = check.command ?? check.name;
+            const category = check.category === undefined
+              ? ""
+              : ` [${check.category}]`;
+            const reason = check.reason === undefined ? "" : ` because ${check.reason}`;
+            return `${command}=${check.status}${category}${reason}`;
+          }).join(", ")}`,
         );
         break;
-      case "turn.receipt":
+      case "turn.receipt": {
         turn.receipt = `tokens ${String(event.data.input_tokens)} in / ` +
           `${String(event.data.output_tokens)} out, cost ` +
           `${event.data.cost_known ? String(event.data.cost_microunits) : "unknown"} µ`;
+        if (event.data.verification_detail !== undefined) {
+          const verification = event.data.verification_detail;
+          turn.receipt += `; verify ${verification.final_status}` +
+            ` action=${verification.action}` +
+            ` repairs=${String(verification.repair_steps)}`;
+        }
+        if (event.data.workspace_outcome !== undefined) {
+          turn.receipt += `; workspace ${event.data.workspace_outcome.status}`;
+          const conflicts = event.data.workspace_outcome.conflicts ?? [];
+          if (conflicts.length > 0) {
+            turn.receipt += ` conflicts=${conflicts.join(",")}`;
+          }
+        }
+        turn.receipt = truncate(turn.receipt);
         if (event.data.editor_context !== undefined) {
           turn.contextReceipts = projectContextReceipts(event.data.editor_context);
         }
+        turn.contextSelections = projectContextSelections(
+          event.data.context_selections ?? [],
+        );
         break;
+      }
       case "turn.completed":
         if (turn.output.length === 0 && event.data.text.length > 0) {
           turn.output = truncate(event.data.text);
@@ -331,6 +375,11 @@ export class ChatProjector {
       approvals: [...turn.approvals.values()].map((approval) => ({ ...approval })),
       inputs: [...turn.inputs.values()].map((input) => ({ ...input })),
       contextReceipts: turn.contextReceipts.map((receipt) => ({ ...receipt })),
+      contextSelections: turn.contextSelections.map((selection) => ({
+        ...selection,
+        reasons: [...selection.reasons],
+        evidence: [...selection.evidence],
+      })),
       diagnostics: [...turn.diagnostics],
       ...(turn.verification === undefined ? {} : { verification: turn.verification }),
       ...(turn.receipt === undefined ? {} : { receipt: turn.receipt }),
@@ -371,6 +420,7 @@ export class ChatProjector {
         approvals: new Map(),
         inputs: new Map(),
         contextReceipts: [],
+        contextSelections: [],
         diagnostics: [],
         unknownEvents: [],
       };
@@ -409,6 +459,28 @@ export class ChatProjector {
       this.#activeTurnId = undefined;
     }
   }
+}
+
+function projectContextSelections(
+  selections: readonly ContextSelection[],
+): ContextSelectionCard[] {
+  return selections.map((selection) => ({
+    path: selection.path,
+    kind: selection.kind,
+    reasons: [...selection.reasons],
+    evidence: (selection.evidence ?? []).map((fact) => {
+      const tool = fact.tool === undefined ? "" : `/${fact.tool}`;
+      const symbol = fact.symbol === undefined ? "" : ` ${fact.symbol}`;
+      return `${fact.kind}${tool}${symbol}`;
+    }),
+    score: selection.score,
+    critical: selection.critical ?? false,
+    included: selection.included,
+    truncated: selection.truncated ?? false,
+    ...(selection.truncation_reason === undefined
+      ? {}
+      : { truncationReason: selection.truncation_reason }),
+  }));
 }
 
 function projectContextReceipts(

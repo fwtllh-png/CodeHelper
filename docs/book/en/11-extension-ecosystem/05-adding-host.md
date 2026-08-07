@@ -43,7 +43,7 @@ flowchart LR
 
 1. Choose existing Operations/read models; add protocol shape only when the
    Runtime lacks the behavior.
-2. Construct dependencies in Wire or connect through HTTP/ACP.
+2. Construct dependencies in Wire or connect through ACP.
 3. Validate and bound host-specific input.
 4. Submit Operations with idempotency identity.
 5. Replay Events from Cursor, then consume live.
@@ -69,8 +69,8 @@ Before adding a Host endpoint or command, classify the behavior:
 | new construction choice | Wire |
 
 If two Hosts need the behavior, it cannot live only in one Host. Shared
-protocol contract scenarios test semantic parity across HTTP and ACP; the same
-pattern should be applied to every formal transport.
+contract scenarios test Start, Stream, Approve, Input, Cancel, Verify, Recover,
+Receipt, terminal uniqueness, and Cursor continuity across product Hosts.
 
 ## Compatibility and Unknown Data
 
@@ -99,8 +99,8 @@ close Runtime resources still owned by another Host.
 ## Tests and Verification
 
 ```bash
-go test ./internal/host/runtimeapi/contract ./internal/runtime/app
-make protocol-contract
+go test ./internal/runtime/app
+make host-journey-contract
 ```
 
 ## Hands-On Lab

@@ -29,6 +29,37 @@ the CLI and TUI.
 - external, managed, or bundled runtime selection;
 - signed managed updates, rollback, and revocation checks.
 
+## Workbench and Keyboard Journey
+
+Chat is the primary surface. Changes, Threads, and Approvals are the primary
+review navigation; Agents, Tasks, Jobs, and Usage are collapsed detail views by
+default. Edit Plans use the native Diff editor, choices use Quick Pick, setup
+uses Progress, and durable collections use Tree View.
+
+Use `Ctrl+Enter` or `Cmd+Enter` to send and `Escape` to stop an active Turn.
+The lifecycle strip names Setup, Empty, Loading, Streaming, Approval, Verify,
+Failure, Recovery, and Completed states with a next action. Controls use VS
+Code theme tokens, visible keyboard focus, forced-color borders, and reduced
+motion. Reasoning and Tool details remain collapsed unless active or opened.
+
+## Built-in Setup and Repair
+
+Use `CodeHelper: Setup Workspace` to configure an open, trusted workspace. The
+guided flow selects a provider, model, and credential reference, writes the
+`recommended` profile to `codehelper.toml`, updates the workspace Runtime
+setting, and restarts the Runtime. The prompt accepts only an environment
+variable name, protected file path, or keyring key; do not enter a secret
+value.
+
+Use `CodeHelper: Repair Runtime` when startup fails or readiness is degraded.
+The command combines the VS Code Supervisor failure with `doctor --json`, then
+shows each missing capability with its status, reason, impact, and repair
+action. Binary-resolution failures offer Settings, managed update, and Output
+actions. The Chat failure panel provides direct Setup and Repair buttons.
+
+`CodeHelper: Run Quickstart` runs the bundled network-free first-turn journey
+from VS Code without changing the selected workspace.
+
 ## Development Setup
 
 ```bash

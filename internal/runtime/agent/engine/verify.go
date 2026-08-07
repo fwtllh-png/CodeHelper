@@ -42,10 +42,22 @@ func (o VerifyOptions) enabled() bool {
 // VerificationReceipt is one gate evaluation as the hosts see it.
 type VerificationReceipt struct {
 	verify.Receipt
-	Mode        string   `json:"mode"`
-	Action      string   `json:"action"`
-	RepairSteps int      `json:"repair_steps"`
-	Paths       []string `json:"paths,omitempty"`
+	Mode        string                 `json:"mode"`
+	Action      string                 `json:"action"`
+	RepairSteps int                    `json:"repair_steps"`
+	Paths       []string               `json:"paths,omitempty"`
+	Attempts    []verify.Receipt       `json:"attempts,omitempty"`
+	Workspace   *VerificationWorkspace `json:"workspace,omitempty"`
+}
+
+// VerificationWorkspace is the final observable workspace state after the
+// verification policy and any automatic rollback have settled.
+type VerificationWorkspace struct {
+	Status                     string   `json:"status"`
+	Restored                   []string `json:"restored,omitempty"`
+	Conflicts                  []string `json:"conflicts,omitempty"`
+	NonFileSideEffectsReverted bool     `json:"non_file_side_effects_reverted"`
+	Note                       string   `json:"note,omitempty"`
 }
 
 type verifyAction string
@@ -70,8 +82,9 @@ type verifyOutcome struct {
 // verifyGate holds the per-turn gate state: how much of the repair budget the
 // turn has spent, which is also the extra step allowance it has earned.
 type verifyGate struct {
-	engine  *Engine
-	repairs int
+	engine   *Engine
+	repairs  int
+	attempts []verify.Receipt
 }
 
 // extraSteps keeps repair rounds out of the model's normal step budget, so a
@@ -128,6 +141,7 @@ func (g *verifyGate) evaluate(
 		span.End(trace.StatusOK)
 	}
 	action := g.decide(options, receipt)
+	g.attempts = append(g.attempts, receipt)
 	// A verified path outranks one that was merely edited: it is the path the
 	// turn now owes an explanation for.
 	g.engine.observePaths(workingset.SourceVerified, paths)
@@ -144,6 +158,7 @@ func (g *verifyGate) evaluate(
 	observed := &VerificationReceipt{
 		Receipt: receipt, Mode: options.Mode, Action: string(action),
 		RepairSteps: g.repairs, Paths: paths,
+		Attempts: append([]verify.Receipt(nil), g.attempts...),
 	}
 	if err := send(Verifying, Event{Verification: observed}); err != nil {
 		return verifyOutcome{}, err

@@ -49,9 +49,10 @@ architecture and delivery stages are defined in the
 2. [Security model](./security.md)
 3. [Local development and scripts](./development.md)
 4. [Agent guide](./agent-guide.md)
-5. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-6. [Documentation governance](./documentation-governance.md)
-7. [Roadmap](./roadmap.md)
+5. [TUI and VS Code experience contract](./experience.md)
+6. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+7. [Documentation governance](./documentation-governance.md)
+8. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 
@@ -63,6 +64,7 @@ architecture and delivery stages are defined in the
 | Architecture boundaries | import graph and architecture tests |
 | Build/test commands | `Makefile` and package scripts |
 | VS Code compatibility | `extensions/vscode/compatibility.json` |
+| TUI and VS Code experience semantics | `docs/experience-contract.json` |
 | Knowledge book structure and delivery | `knowledge-base-plan.md` |
 | Book catalog and chapter status | `docs/book/catalog.json` |
 | Book ownership, freshness, and release facts | `docs/book/governance.json` |

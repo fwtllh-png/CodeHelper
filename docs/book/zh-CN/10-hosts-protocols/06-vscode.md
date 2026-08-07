@@ -53,6 +53,18 @@ Untrusted Workspace 强制 Read-only，不能选择 Executable 或批准 Mutatio
 Nonce-only CSP、Finite Message Decoder、Safe DOM Sink 与 Read-only Receipt。Edit
 Preview 绑定 Runtime Plan ID。
 
+## Workbench 与 Lifecycle Experience
+
+Setup、Repair、Quickstart 是由 Runtime Readiness 支持的一等命令。Chat、Changes、
+Threads、Approvals 是主导航；Agents、Tasks、Jobs、Usage 默认折叠为 Detail View。
+Native Diff、Quick Pick、Progress、Tree View 承担平台行为，不在 Chat Webview 中重复
+实现。
+
+Lifecycle Strip 区分 Setup、Empty、Loading、Streaming、Approval、Verify、Failure、
+Recovery、Completed，并显示可用的下一步动作。`Ctrl+Enter`/`Cmd+Enter` 发送，
+`Escape` 停止。Visible Focus、Screen-reader Live Region、Host Theme Token、Forced
+Color 与 Reduced Motion 都是被测试的契约，不是可选样式。
+
 ## Supervisor/Session Recovery
 
 ```text
@@ -95,7 +107,7 @@ Binary 能启动不代表 Compatible。
 ```bash
 cd extensions/vscode
 npm run check
-npm test
+npm test -- experience
 ```
 
 ## 动手实验

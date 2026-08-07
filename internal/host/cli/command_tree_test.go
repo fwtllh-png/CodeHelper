@@ -11,20 +11,27 @@ import (
 
 func TestCobraCommandTreeExposesNewSurfaces(t *testing.T) {
 	cases := []struct {
-		name string
-		args []string
-		want string
+		name            string
+		args            []string
+		want            string
+		readinessStatus bool
 	}{
 		{name: "auth", args: []string{"auth", "status", "--json"}, want: "credential_kind"},
 		{name: "model", args: []string{"model", "list", "--json"}, want: "provider"},
-		{name: "doctor", args: []string{"doctor", "--json"}, want: `"content.ocr"`},
+		{
+			name: "doctor", args: []string{"doctor", "--json"},
+			want: `"content.ocr"`, readinessStatus: true,
+		},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			code := cli.Run(test.args, &stdout, &stderr)
-			if code != 0 {
+			if code != 0 && !test.readinessStatus {
 				t.Fatalf("code=%d stderr=%q", code, stderr.String())
+			}
+			if test.readinessStatus && (code < 0 || code > 2) {
+				t.Fatalf("readiness code=%d stderr=%q", code, stderr.String())
 			}
 			if !strings.Contains(stdout.String(), test.want) {
 				t.Fatalf("stdout=%q", stdout.String())

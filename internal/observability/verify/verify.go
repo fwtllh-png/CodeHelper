@@ -42,6 +42,8 @@ const (
 type Check struct {
 	Name     string `json:"name"`
 	Command  string `json:"command"`
+	Reason   string `json:"reason"`
+	Category string `json:"category,omitempty"`
 	Status   string `json:"status,omitempty"`
 	ExitCode int    `json:"exit_code,omitempty"`
 	Stdout   string `json:"stdout,omitempty"`
@@ -106,6 +108,7 @@ type Runner interface {
 type Command struct {
 	Name    string
 	Command string
+	Reason  string
 }
 
 // Detect returns the verification commands for root, inferred from the build
@@ -114,22 +117,37 @@ type Command struct {
 func Detect(root string) []Command {
 	var commands []Command
 	if exists(filepath.Join(root, "go.mod")) {
-		commands = append(commands, Command{Name: "go", Command: "go test ./..."})
+		commands = append(commands, Command{
+			Name: "go", Command: "go test ./...",
+			Reason: "go.mod declares a Go module; run its repository test graph",
+		})
 	}
 	if exists(filepath.Join(root, "Cargo.toml")) {
-		commands = append(commands, Command{Name: "rust", Command: "cargo test --workspace"})
+		commands = append(commands, Command{
+			Name: "rust", Command: "cargo test --workspace",
+			Reason: "Cargo.toml declares a Rust workspace or crate",
+		})
 	}
 	if exists(filepath.Join(root, "package.json")) {
-		commands = append(commands, Command{Name: "node", Command: nodeCommand(root)})
+		commands = append(commands, Command{
+			Name: "node", Command: nodeCommand(root),
+			Reason: "package.json declares a JavaScript/TypeScript test script",
+		})
 	}
 	if exists(filepath.Join(root, "pyproject.toml")) ||
 		exists(filepath.Join(root, "setup.cfg")) ||
 		exists(filepath.Join(root, "pytest.ini")) ||
 		exists(filepath.Join(root, "requirements.txt")) {
-		commands = append(commands, Command{Name: "python", Command: "python3 -m pytest"})
+		commands = append(commands, Command{
+			Name: "python", Command: "python3 -m pytest",
+			Reason: "Python project metadata declares a pytest-compatible repository",
+		})
 	}
 	if len(commands) == 0 {
-		commands = append(commands, Command{Name: "workspace", Command: "make verify"})
+		commands = append(commands, Command{
+			Name: "workspace", Command: "make verify",
+			Reason: "no supported language manifest was found; use the repository verification entry point",
+		})
 	}
 	return commands
 }
@@ -219,7 +237,7 @@ func (r *CommandRunner) runAffected(ctx context.Context, request Request) (Recei
 		}
 		related = found
 	}
-	commands, unmapped := AffectedCommands(paths, related)
+	commands, unmapped := AffectedCommands(r.Root, paths, related)
 	if len(commands) == 0 {
 		return Receipt{
 			Scope: ScopeAffected, Status: StatusUnavailable,
@@ -247,15 +265,21 @@ func (r *CommandRunner) runCommands(
 			return Receipt{}, fmt.Errorf("verify %s: %w", command.Name, err)
 		}
 		status, reason := CommandResultStatus(command.Command, result)
+		derivation := command.Reason
+		if derivation == "" {
+			derivation = "the verification command was explicitly configured by the repository or operator"
+		}
 		check := Check{
-			Name: command.Name, Command: command.Command, Status: status,
+			Name: command.Name, Command: command.Command, Reason: derivation, Status: status,
 			ExitCode: result.ExitCode, Stdout: result.Stdout, Stderr: result.Stderr,
 		}
 		switch status {
 		case StatusFailed:
+			check.Category = "test_failure"
 			receipt.Status = StatusFailed
 			receipt.Errors++
 		case StatusUnavailable:
+			check.Category = ErrorCategoryDependencyUnavailable
 			if receipt.Status == StatusPassed {
 				receipt.Status = StatusUnavailable
 			}
@@ -353,7 +377,8 @@ func FromDiagnostics(receipts []diagnostics.Receipt, paths []string) Receipt {
 			evaluated++
 			receipt.Checks = append(receipt.Checks, Check{
 				Name: diagnosticsCheckName(item), Command: "diagnostics " + item.Path,
-				Status: StatusFailed, Stderr: item.Message,
+				Reason:   "post-edit diagnostics cover the changed file",
+				Category: "diagnostic_failure", Status: StatusFailed, Stderr: item.Message,
 			})
 			continue
 		}
@@ -376,7 +401,9 @@ func FromDiagnostics(receipts []diagnostics.Receipt, paths []string) Receipt {
 		receipt.Status = StatusFailed
 		receipt.Checks = append(receipt.Checks, Check{
 			Name: diagnosticsCheckName(item), Command: "diagnostics " + item.Path,
-			Status: StatusFailed, Stderr: strings.Join(messages, "\n"),
+			Reason:   "post-edit diagnostics cover the changed file",
+			Category: "diagnostic_failure",
+			Status:   StatusFailed, Stderr: strings.Join(messages, "\n"),
 		})
 	}
 	if evaluated == 0 {

@@ -61,11 +61,19 @@ func resolveSlotRoute(
 		if err != nil {
 			return model.ReadyRoute{}, err
 		}
-		return resolver.Resolve(model.RouteRequest{
+		route, err := resolver.Resolve(model.RouteRequest{
 			ProviderID: slot.Provider, ModelID: slot.Model,
 			Provenance: model.ProvenanceConfig,
 			Require:    model.PurposeRequiredCapabilities(purpose),
 		})
+		if err != nil {
+			return model.ReadyRoute{}, err
+		}
+		if slot.Provider == act.ProviderID &&
+			(act.Credential.Kind != "" || act.Credential.Name != "") {
+			route = route.WithCredential(act.Credential)
+		}
+		return route, nil
 	}
 	if !act.Fixture {
 		return model.ReadyRoute{}, errors.New(

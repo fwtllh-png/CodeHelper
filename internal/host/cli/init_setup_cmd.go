@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,12 +27,17 @@ func newInitCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command 
 	return cmd
 }
 
-func newSetupCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command {
+func newSetupCommand(
+	ctx context.Context,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	setCode func(int),
+) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Initialize workspace plus fleet/lanes dirs and sandbox check",
+		Short: "Configure and verify a CodeHelper workspace",
 		Run: func(cmd *cobra.Command, args []string) {
-			runWorkspaceBootstrap(cmd, stdout, stderr, setCode, true)
+			runSetupFlow(ctx, cmd, stdin, stdout, stderr, setCode)
 		},
 	}
 	cmd.Flags().String("workspace", ".", "workspace root")
@@ -39,6 +45,16 @@ func newSetupCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command
 	cmd.Flags().String("data-dir", "", "state directory (default: WORKSPACE/.codehelper)")
 	cmd.Flags().Bool("force", false, "overwrite existing config")
 	cmd.Flags().Bool("json", false, "emit JSON")
+	cmd.Flags().Bool("interactive", false, "prompt for provider, model, and credential reference")
+	cmd.Flags().String("provider", "", "catalog provider id")
+	cmd.Flags().String("model", "", "catalog model id")
+	cmd.Flags().String("credential-kind", "", "credential reference kind: env, file, or keyring")
+	cmd.Flags().String("credential-name", "", "credential reference name; never a secret value")
+	cmd.Flags().String("profile", "minimal", "config profile: minimal, recommended, or advanced")
+	cmd.Flags().String("probe-capabilities", "", "explicit live probe capabilities (for example reasoning)")
+	cmd.Flags().String("provider-fixture", "", "override bundled hermetic setup fixture")
+	cmd.Flags().Bool("skip-fixture", false, "skip the hermetic Runtime fixture verification")
+	cmd.Flags().Bool("require-ready", false, "return the readiness exit code after setup")
 	return cmd
 }
 

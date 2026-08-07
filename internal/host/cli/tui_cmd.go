@@ -6,7 +6,6 @@ import (
 	"io"
 
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui"
-	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
 	"github.com/spf13/cobra"
 )
 
@@ -91,12 +90,4 @@ func newTUICommand(
 	cmd.Flags().Float64("output-price-per-million", 0, "custom output price (default 2.0 with --base-url)")
 	cmd.Flags().String("pricing-currency", "", "pricing currency (default USD with --base-url)")
 	return cmd
-}
-
-type DoctorReportPayload struct {
-	Product      string              `json:"product"`
-	OK           bool                `json:"ok"`
-	Sandbox      string              `json:"sandbox"`
-	Features     map[string]string   `json:"features"`
-	Constitution constitution.Status `json:"constitution"`
 }

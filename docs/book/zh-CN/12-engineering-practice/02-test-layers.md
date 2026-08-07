@@ -40,12 +40,24 @@ Unit Test 只在 Ownership Boundary 使用 Fake。ACP Contract 验证共享 Runt
 Binary Test 启动 Build Artifact。Electron/Remote SSH/Dev Container 因下载外部 Runtime 而显式
 分离。
 
+Repository Verification 通过四条 Lane 报告：
+
+| Lane | Boundary |
+| --- | --- |
+| Hermetic | 不使用网络、真实凭证、GUI 或真实 HOME |
+| Platform Capability | 显式 OS/Sandbox 前置条件和 Unavailable Evidence |
+| Integration | 真实 Binary、ACP、VS Code Runtime Integration |
+| Release | Cross-build、Race、Secret、Benchmark 与 Packaging |
+
+Unavailable、Skipped、Failed、Passed 保持为不同结果。Lane Report 保留 Command、
+Platform、Duration、Exit Code、Status 和 Reason。
+
 ## Risk-to-test Matrix
 
 | Change Risk | Minimum Evidence |
 | --- | --- |
 | Parser/Formatter | Table Unit + Malformed Boundary |
-| Protocol Shape | Schema/Golden + HTTP/ACP Contract |
+| Protocol Shape | Schema/Golden + ACP 与 Host Journey Contract |
 | Persistence | Restart + Corruption/Crash Window |
 | Consequential Tool | Guard/Policy/Sandbox/Effect/Rollback |
 | Concurrency/Lease | Forced Interleaving + Race |
@@ -76,6 +88,7 @@ Skipped、Unavailable、Failed、Passed 是不同结果。外部环境 Gate 记�
 ```bash
 go test ./...
 make protocol-contract
+make test-hermetic
 cd extensions/vscode && npm run check && npm test
 ```
 

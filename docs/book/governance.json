@@ -43,7 +43,9 @@
       "chapter_patterns": ["context-*"],
       "source_patterns": [
         "internal/adapter/memory/**",
+        "internal/adapter/lsp/**",
         "internal/persist/repoindex/**",
+        "internal/platform/symbols/**",
         "internal/runtime/agent/compact/**",
         "internal/runtime/agent/promptcontext/**",
         "internal/runtime/agent/repocontext/**",
@@ -79,7 +81,12 @@
       "id": "hosts-protocols",
       "owner": "maintainers",
       "chapter_patterns": ["host-*"],
-      "source_patterns": ["internal/host/**", "extensions/vscode/**"]
+      "source_patterns": [
+        "internal/host/**",
+        "extensions/vscode/**",
+        "docs/experience-contract.json",
+        "docs/host-journey-contract.json"
+      ]
     },
     {
       "id": "extension-ecosystem",
@@ -97,7 +104,13 @@
       "id": "engineering-practice",
       "owner": "maintainers",
       "chapter_patterns": ["practice-*"],
-      "source_patterns": [".github/**", "Makefile", "scripts/**"]
+      "source_patterns": [
+        ".github/**",
+        "Makefile",
+        "scripts/**",
+        "docs/benchmark-v2.json",
+        "docs/hotspot-baseline.json"
+      ]
     },
     {
       "id": "hands-on-labs",
@@ -126,6 +139,26 @@
     {
       "id": "compatibility-manifest",
       "command": ["go", "test", "./internal/compatibility"]
+    },
+    {
+      "id": "command-tree",
+      "command": ["make", "command-docs-check"]
+    },
+    {
+      "id": "repository-test-topology",
+      "command": ["go", "test", "./internal/observability/verify"]
+    },
+    {
+      "id": "benchmark-journeys",
+      "command": ["make", "benchmark-v2"]
+    },
+    {
+      "id": "host-journey",
+      "command": ["make", "host-journey-contract"]
+    },
+    {
+      "id": "experience-contract",
+      "command": ["make", "experience-baseline"]
     }
   ],
   "screenshots": [],
