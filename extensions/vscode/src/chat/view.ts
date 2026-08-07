@@ -29,6 +29,10 @@ import type { ChatSessionSummary } from "../runtime/controller.js";
 import { projectEditPlan, type EditPlanCard } from "../edits/model.js";
 import type { ApprovalRequiredData } from "../protocol/generated.js";
 import { testBuildEnabled } from "../test-mode.js";
+import {
+  chatWebviewResourceRoot,
+  renderChatHTML,
+} from "./webview/shell.js";
 
 interface RootChatState {
   readonly projectors: Map<string, ChatProjector>;
@@ -37,6 +41,7 @@ interface RootChatState {
 
 export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   readonly #registry: WorkspaceRuntimeRegistry;
+  readonly #extensionUri: vscode.Uri;
   readonly #roots = new Map<string, RootChatState>();
   readonly #editPreview: EditPlanPreview;
   readonly #subscriptions: vscode.Disposable[];
@@ -50,9 +55,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   public constructor(
     registry: WorkspaceRuntimeRegistry,
     editPreview: EditPlanPreview,
+    extensionUri: vscode.Uri,
   ) {
     this.#registry = registry;
     this.#editPreview = editPreview;
+    this.#extensionUri = extensionUri;
     this.#syncRoots();
     this.#subscriptions = [
       registry.onEvent(({ root, sessionId, event, replayed }) => {
@@ -80,9 +87,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.#view = view;
     view.webview.options = {
       enableScripts: true,
-      localResourceRoots: [],
+      localResourceRoots: [chatWebviewResourceRoot(this.#extensionUri)],
     };
-    view.webview.html = renderHTML();
+    view.webview.html = renderChatHTML(view.webview, this.#extensionUri);
     this.#subscriptions.push(
       view.webview.onDidReceiveMessage((value: unknown) => {
         void this.#receive(value);
@@ -599,7 +606,7 @@ function isExpired(value: string): boolean {
   return !Number.isFinite(timestamp) || timestamp <= Date.now();
 }
 
-function renderHTML(): string {
+export function renderHTML(): string {
   const nonce = randomBytes(24).toString("base64");
   const csp = [
     "default-src 'none'",

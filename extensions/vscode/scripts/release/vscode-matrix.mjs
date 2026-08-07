@@ -271,6 +271,8 @@ function auditFiles(files, expectedBinary) {
     "compatibility.json",
     "resources/release-trust-roots.json",
     "dist/extension.js",
+    "dist/chat-webview.js",
+    "dist/chat-webview.css",
     "media/codehelper.svg",
     "media/codehelper.png",
     "README.md",

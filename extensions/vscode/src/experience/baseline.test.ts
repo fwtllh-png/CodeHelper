@@ -29,32 +29,37 @@ void test("shared experience contract exposes the required baseline", async () =
 });
 
 void test("Chat covers theme, keyboard, focus, and explicit state baselines", async () => {
-  const source = await sourceFile("chat", "view.ts");
+  const shell = await sourceFile("chat", "webview", "shell.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
+  const styles = await sourceFile("chat", "webview", "styles.css");
   const presentation = await sourceFile("chat", "presentation.ts");
 
-  assert.match(source, /color-scheme: light dark/u);
-  assert.match(source, /var\(--vscode-foreground\)/u);
-  assert.match(source, /var\(--vscode-focusBorder\)|var\(--vscode-input-border\)/u);
-  assert.doesNotMatch(source, /#[0-9a-fA-F]{3,8}\b/u);
+  assert.match(styles, /color-scheme: light dark/u);
+  assert.match(styles, /var\(--vscode-foreground\)/u);
+  assert.match(
+    styles,
+    /var\(--vscode-focusBorder\)|var\(--vscode-input-border\)/u,
+  );
+  assert.doesNotMatch(styles, /#[0-9a-fA-F]{3,8}\b/u);
 
-  assert.match(source, /aria-label="Workspace root"/u);
-  assert.match(source, /aria-label="Chat session"/u);
-  assert.match(source, /aria-label="Chat transcript"/u);
-  assert.match(source, /aria-label="Prompt"/u);
-  assert.match(source, /aria-live="polite"/u);
-  assert.match(source, /aria-keyshortcuts="Control\+Enter Meta\+Enter"/u);
-  assert.match(source, /aria-keyshortcuts="Escape"/u);
-  assert.match(source, /<form id="composer">/u);
-  assert.match(source, /<button type="submit" id="send"/u);
-  assert.match(source, /:focus-visible/u);
-  assert.match(source, /prefers-reduced-motion: reduce/u);
-  assert.match(source, /forced-colors: active/u);
+  assert.match(shell, /aria-label="Workspace root"/u);
+  assert.match(shell, /aria-label="Chat session"/u);
+  assert.match(shell, /aria-label="Chat transcript"/u);
+  assert.match(shell, /aria-label="Prompt"/u);
+  assert.match(shell, /aria-live="polite"/u);
+  assert.match(shell, /aria-keyshortcuts="Control\+Enter Meta\+Enter"/u);
+  assert.match(shell, /aria-keyshortcuts="Escape"/u);
+  assert.match(shell, /<form id="composer">/u);
+  assert.match(shell, /<button type="submit" id="send"/u);
+  assert.match(styles, /:focus-visible/u);
+  assert.match(styles, /prefers-reduced-motion: reduce/u);
+  assert.match(styles, /forced-colors: active/u);
 
-  assert.match(source, /Start a CodeHelper Chat/u);
-  assert.match(source, /CodeHelper Runtime: starting/u);
-  assert.match(source, /CodeHelper Runtime needs attention/u);
-  assert.match(source, /Inspect and Repair/u);
-  assert.match(source, /Run Setup/u);
+  assert.match(shell, /Start a CodeHelper Chat/u);
+  assert.match(shell, /CodeHelper Runtime: starting/u);
+  assert.match(shell, /CodeHelper Runtime needs attention/u);
+  assert.match(shell, /Inspect and Repair/u);
+  assert.match(shell, /Run Setup/u);
   for (const state of [
     "Setup", "Empty", "Loading", "Streaming", "Approval", "Verify",
     "Failure", "Recovery", "Completed",
@@ -63,12 +68,12 @@ void test("Chat covers theme, keyboard, focus, and explicit state baselines", as
   }
 
   assert.match(
-    source,
+    client,
     /prompt\.disabled = !message\.presentation\.promptEnabled/u,
   );
-  assert.match(source, /send\.disabled = !message\.presentation\.sendEnabled/u);
-  assert.match(source, /stop\.disabled = !message\.presentation\.stopEnabled/u);
-  assert.match(source, /empty\.hidden = !message\.presentation\.emptyVisible/u);
+  assert.match(client, /send\.disabled = !message\.presentation\.sendEnabled/u);
+  assert.match(client, /stop\.disabled = !message\.presentation\.stopEnabled/u);
+  assert.match(client, /empty\.hidden = !message\.presentation\.emptyVisible/u);
   assert.match(
     presentation,
     /const runtimeReady = runtimeState === "ready"/u,
@@ -113,7 +118,8 @@ void test("workbench keeps primary views prominent and uses native controls", as
 });
 
 void test("Chat DOM keeps the pre-refactor journey structure and safe sinks", async () => {
-  const source = await sourceFile("chat", "view.ts");
+  const shell = await sourceFile("chat", "webview", "shell.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
   const ordered = [
     '<div id="status">',
     '<section id="repair"',
@@ -123,7 +129,7 @@ void test("Chat DOM keeps the pre-refactor journey structure and safe sinks", as
   ];
   let cursor = -1;
   for (const marker of ordered) {
-    const next = source.indexOf(marker);
+    const next = shell.indexOf(marker);
     assert.ok(next > cursor, `${marker} must retain its DOM order`);
     cursor = next;
   }
@@ -131,13 +137,13 @@ void test("Chat DOM keeps the pre-refactor journey structure and safe sinks", as
     "root", "chat", "new-chat", "merge-chat", "runtime", "journey-state",
     "repair-runtime", "run-setup", "turns", "composer", "prompt", "send", "stop",
   ]) {
-    assert.match(source, new RegExp(`id="${id}"`, "u"));
+    assert.match(shell, new RegExp(`id="${id}"`, "u"));
   }
-  assert.match(source, /role="status" aria-live="polite"/u);
-  assert.match(source, /document\.createDocumentFragment\(\)/u);
-  assert.match(source, /turns\.replaceChildren\(fragment\)/u);
-  assert.doesNotMatch(source, /\.innerHTML\s*=/u);
-  assert.doesNotMatch(source, /insertAdjacentHTML/u);
+  assert.match(shell, /role="status" aria-live="polite"/u);
+  assert.match(client, /document\.createDocumentFragment\(\)/u);
+  assert.match(client, /turns\.replaceChildren\(fragment\)/u);
+  assert.doesNotMatch(client, /\.innerHTML\s*=/u);
+  assert.doesNotMatch(client, /insertAdjacentHTML/u);
 });
 
 void test("Setup and Repair preserve trust and consequential-action rules", async () => {

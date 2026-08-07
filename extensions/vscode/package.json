@@ -254,7 +254,7 @@
     "check:protocol": "node ./scripts/generate-protocol.mjs --check",
     "check:compatibility": "node ./scripts/generate-compatibility.mjs --check",
     "build": "node ./scripts/build.mjs",
-    "check": "npm run check:protocol && npm run check:compatibility && tsc --noEmit && eslint .",
+    "check": "npm run check:protocol && npm run check:compatibility && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json && eslint .",
     "test": "node ./scripts/test.mjs",
     "test:update": "node ./scripts/test.mjs binary",
     "test:security": "node ./scripts/test.mjs security",

@@ -4,20 +4,25 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 void test("Chat Webview keeps a nonce-only CSP and safe DOM sinks", async () => {
-  const source = await sourceFile("chat", "view.ts");
+  const provider = await sourceFile("chat", "view.ts");
+  const shell = await sourceFile("chat", "webview", "shell.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
   const markdown = await sourceFile("chat", "markdown.ts");
-  assert.match(source, /"default-src 'none'"/u);
-  assert.match(source, /`style-src 'nonce-\$\{nonce\}'`/u);
-  assert.match(source, /`script-src 'nonce-\$\{nonce\}'`/u);
-  assert.match(source, /"img-src data:"/u);
-  assert.match(source, /localResourceRoots: \[\]/u);
-  assert.match(source, /\.textContent =/u);
-  assert.doesNotMatch(source, /\.innerHTML\s*=/u);
-  assert.doesNotMatch(source, /\beval\s*\(/u);
-  assert.doesNotMatch(source, /\bnew Function\s*\(/u);
-  assert.doesNotMatch(source, /https?:\/\//u);
-  assert.match(source, /const markdownTags = new Set/u);
-  assert.match(source, /\^\(https\?:\|mailto:\)/u);
+  assert.match(shell, /"default-src 'none'"/u);
+  assert.match(shell, /`style-src \$\{webview\.cspSource\}`/u);
+  assert.match(shell, /`script-src 'nonce-\$\{nonce\}'`/u);
+  assert.match(shell, /"img-src data:"/u);
+  assert.match(
+    provider,
+    /localResourceRoots: \[chatWebviewResourceRoot\(this\.#extensionUri\)\]/u,
+  );
+  assert.match(client, /\.textContent =/u);
+  assert.doesNotMatch(client, /\.innerHTML\s*=/u);
+  assert.doesNotMatch(client, /\beval\s*\(/u);
+  assert.doesNotMatch(client, /\bnew Function\s*\(/u);
+  assert.doesNotMatch(shell, /https?:\/\//u);
+  assert.match(client, /const markdownTags = new Set/u);
+  assert.match(client, /\^\(\?:https\?:\|mailto:\)/u);
   assert.match(markdown, /html: false/u);
   assert.match(markdown, /const maxMarkdownNodes = 8192/u);
   assert.match(markdown, /\["http:", "https:", "mailto:"\]/u);
@@ -110,8 +115,8 @@ void test("multi-root routing remains root-bound and bounded", async () => {
 });
 
 void test("Runtime context receipts render as read-only text", async () => {
-  const source = await sourceFile("chat", "view.ts");
-  const start = source.indexOf("function contextReceiptCard(receipt)");
+  const source = await sourceFile("chat", "webview", "client.ts");
+  const start = source.indexOf("function contextReceiptCard(");
   const end = source.indexOf("function approvalCard(", start);
   assert.ok(start >= 0 && end > start);
   const receiptRenderer = source.slice(start, end);

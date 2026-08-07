@@ -35,6 +35,7 @@ export async function run(): Promise<void> {
     api.activationDurationMS < 100,
     `extension activation took ${api.activationDurationMS.toFixed(1)}ms`,
   );
+  await vscode.commands.executeCommand("codehelper.chat.focus");
 
   const scenario = process.env["CODEHELPER_ELECTRON_SCENARIO"] ??
     (vscode.env.remoteName === undefined

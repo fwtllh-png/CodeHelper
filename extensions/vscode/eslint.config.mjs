@@ -29,6 +29,16 @@ export default defineConfig(
     },
   },
   {
+    files: ["src/chat/webview/client.ts"],
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.webview.json",
+        projectService: false,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
     files: ["scripts/**/*.mjs"],
     languageOptions: {
       globals: {

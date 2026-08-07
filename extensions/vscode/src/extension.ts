@@ -71,7 +71,11 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
     }
   }
   if (registry !== undefined) {
-    const chat = new ChatViewProvider(registry, editPreview);
+    const chat = new ChatViewProvider(
+      registry,
+      editPreview,
+      context.extensionUri,
+    );
     context.subscriptions.push(
       registry,
       chat,
