@@ -120,6 +120,18 @@ type Host interface {
 		ctx context.Context,
 		expectedRevision uint64,
 	) (protocol.SessionDeleteResult, error)
+	ListCheckpoints(
+		ctx context.Context,
+		limit int,
+	) (protocol.CheckpointList, error)
+	RestoreCheckpoint(
+		ctx context.Context,
+		checkpointID string,
+	) (protocol.CheckpointRestoreResult, error)
+	ForkCheckpoint(
+		ctx context.Context,
+		checkpointID, title string,
+	) (protocol.CheckpointForkResult, error)
 	UpdateSessionProfile(
 		ctx context.Context,
 		expectedRevision uint64,

@@ -91,6 +91,18 @@ func GenerateSchema() *Schema {
 	schema.Envelope["session_delete"] = schemaOf(
 		reflect.TypeOf(&SessionDeleteResult{}),
 	)
+	schema.Envelope["checkpoint_list"] = schemaOf(
+		reflect.TypeOf(&CheckpointList{}),
+	)
+	schema.Envelope["checkpoint_restore"] = schemaOf(
+		reflect.TypeOf(&CheckpointRestoreResult{}),
+	)
+	schema.Envelope["checkpoint_fork"] = schemaOf(
+		reflect.TypeOf(&CheckpointForkResult{}),
+	)
+	schema.Envelope["session_plan"] = schemaOf(
+		reflect.TypeOf(&SessionPlanSnapshot{}),
+	)
 	return schema
 }
 

@@ -65,6 +65,15 @@ export interface InputCard {
   readonly resolved?: string;
 }
 
+export interface PlanCard {
+  readonly id?: string;
+  readonly body: string;
+  readonly bodyMarkdown: readonly MarkdownNode[];
+  readonly status: "drafting" | "ready";
+  readonly canImplement: boolean;
+  readonly canAutopilot: boolean;
+}
+
 type EditorContextReceipt =
   NonNullable<TurnStartedData["editor_context"]>[number];
 
@@ -113,6 +122,7 @@ export interface ChatTurn {
   readonly tools: readonly ToolCard[];
   readonly approvals: readonly ApprovalCard[];
   readonly inputs: readonly InputCard[];
+  readonly plan?: PlanCard;
   readonly contextReceipts: readonly ContextReceiptCard[];
   readonly contextSelections: readonly ContextSelectionCard[];
   readonly diagnostics: readonly string[];
@@ -169,6 +179,7 @@ interface MutableTurn {
   tools: Map<string, MutableTool>;
   approvals: Map<string, MutableApproval>;
   inputs: Map<string, MutableInput>;
+  plan?: Omit<PlanCard, "bodyMarkdown">;
   contextReceipts: ContextReceiptCard[];
   contextSelections: ContextSelectionCard[];
   diagnostics: string[];
@@ -176,6 +187,7 @@ interface MutableTurn {
   receipt?: string;
   error?: string;
   unknownEvents: string[];
+  lastSequence: number;
 }
 
 export class ChatProjector {
@@ -193,6 +205,20 @@ export class ChatProjector {
         event.kind === "agent.status" ||
         event.kind === "agent.message")) {
       return false;
+    }
+    if (!isUnknownEvent(event) && event.kind === "checkpoint.restored") {
+      for (const [turnId, candidate] of this.#turns) {
+        if (candidate.lastSequence > event.data.source_cursor) {
+          this.#turns.delete(turnId);
+        }
+      }
+      this.#activeTurnId = undefined;
+      return true;
+    }
+    if (!isUnknownEvent(event) &&
+      (event.kind === "checkpoint.created" ||
+        event.kind === "checkpoint.forked")) {
+      return true;
     }
     const turn = this.#turn(event.turn_id);
     if (isUnknownEvent(event)) {
@@ -338,6 +364,20 @@ export class ChatProjector {
         );
         break;
       }
+      case "plan.delta": {
+        const body = event.data.body ??
+          appendBounded(turn.plan?.body ?? "", event.data.text ?? "");
+        turn.plan = {
+          ...(event.data.artifact_id === undefined
+            ? {}
+            : { id: event.data.artifact_id }),
+          body: truncate(body),
+          status: event.data.status === "ready" ? "ready" : "drafting",
+          canImplement: event.data.can_implement === true,
+          canAutopilot: event.data.can_autopilot === true,
+        };
+        break;
+      }
       case "turn.completed":
         if (turn.output.length === 0 && event.data.text.length > 0) {
           turn.output = truncate(event.data.text);
@@ -363,6 +403,7 @@ export class ChatProjector {
       default:
         break;
     }
+    turn.lastSequence = event.sequence;
     return true;
   }
 
@@ -379,6 +420,14 @@ export class ChatProjector {
       tools: [...turn.tools.values()].map((tool) => ({ ...tool })),
       approvals: [...turn.approvals.values()].map((approval) => ({ ...approval })),
       inputs: [...turn.inputs.values()].map((input) => ({ ...input })),
+      ...(turn.plan === undefined
+        ? {}
+        : {
+            plan: {
+              ...turn.plan,
+              bodyMarkdown: projectMarkdown(turn.plan.body),
+            },
+          }),
       contextReceipts: turn.contextReceipts.map((receipt) => ({ ...receipt })),
       contextSelections: turn.contextSelections.map((selection) => ({
         ...selection,
@@ -428,6 +477,7 @@ export class ChatProjector {
         contextSelections: [],
         diagnostics: [],
         unknownEvents: [],
+        lastSequence: 0,
       };
       this.#turns.set(id, turn);
       if (this.#turns.size > maxChatTurns) {

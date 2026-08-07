@@ -3,6 +3,289 @@
   "title": "codehelper runtime protocol",
   "protocol_version": 1,
   "envelope": {
+    "checkpoint_fork": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "type": "object",
+          "properties": {
+            "can_fork": {
+              "type": "boolean"
+            },
+            "can_restore": {
+              "type": "boolean"
+            },
+            "changed_files": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "cursor": {
+              "type": "integer"
+            },
+            "external_side_effects": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "parent_checkpoint_id": {
+              "type": "string"
+            },
+            "profile_revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "side_effect_note": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "can_fork",
+            "can_restore",
+            "changed_files",
+            "created_at",
+            "cursor",
+            "external_side_effects",
+            "id",
+            "profile_revision",
+            "session_id",
+            "status",
+            "summary",
+            "thread_id",
+            "turn_id",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "parent_thread_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "checkpoint",
+        "parent_thread_id",
+        "session_id",
+        "thread_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint_list": {
+      "type": "object",
+      "properties": {
+        "checkpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "can_fork": {
+                "type": "boolean"
+              },
+              "can_restore": {
+                "type": "boolean"
+              },
+              "changed_files": {
+                "type": "integer"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "cursor": {
+                "type": "integer"
+              },
+              "external_side_effects": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "parent_checkpoint_id": {
+                "type": "string"
+              },
+              "profile_revision": {
+                "type": "integer"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "side_effect_note": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "turn_id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "can_fork",
+              "can_restore",
+              "changed_files",
+              "created_at",
+              "cursor",
+              "external_side_effects",
+              "id",
+              "profile_revision",
+              "session_id",
+              "status",
+              "summary",
+              "thread_id",
+              "turn_id",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "checkpoints",
+        "session_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint_restore": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "type": "object",
+          "properties": {
+            "can_fork": {
+              "type": "boolean"
+            },
+            "can_restore": {
+              "type": "boolean"
+            },
+            "changed_files": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "cursor": {
+              "type": "integer"
+            },
+            "external_side_effects": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "parent_checkpoint_id": {
+              "type": "string"
+            },
+            "profile_revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "side_effect_note": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "can_fork",
+            "can_restore",
+            "changed_files",
+            "created_at",
+            "cursor",
+            "external_side_effects",
+            "id",
+            "profile_revision",
+            "session_id",
+            "status",
+            "summary",
+            "thread_id",
+            "turn_id",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "restored_cursor": {
+          "type": "integer"
+        },
+        "side_effects_replayed": {
+          "type": "boolean"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "checkpoint",
+        "restored_cursor",
+        "side_effects_replayed",
+        "thread_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
     "event": {
       "type": "object",
       "description": "The event envelope. data is the schema in events[kind].",
@@ -51,6 +334,9 @@
             "thread.compacted",
             "thread.forked",
             "turn.reverted",
+            "checkpoint.created",
+            "checkpoint.restored",
+            "checkpoint.forked",
             "turn.compaction",
             "agent.spawned",
             "agent.status",
@@ -269,6 +555,9 @@
             "archived": {
               "type": "boolean"
             },
+            "checkpoint_count": {
+              "type": "integer"
+            },
             "cost_known": {
               "type": "boolean"
             },
@@ -346,6 +635,7 @@
           },
           "required": [
             "archived",
+            "checkpoint_count",
             "cost_known",
             "cost_microunits",
             "created_at",
@@ -386,6 +676,9 @@
             "properties": {
               "archived": {
                 "type": "boolean"
+              },
+              "checkpoint_count": {
+                "type": "integer"
               },
               "cost_known": {
                 "type": "boolean"
@@ -464,6 +757,7 @@
             },
             "required": [
               "archived",
+              "checkpoint_count",
               "cost_known",
               "cost_microunits",
               "created_at",
@@ -492,6 +786,75 @@
       },
       "required": [
         "sessions",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "session_plan": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string"
+            },
+            "can_autopilot": {
+              "type": "boolean"
+            },
+            "can_implement": {
+              "type": "boolean"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "cursor": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "profile_revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "body",
+            "can_autopilot",
+            "can_implement",
+            "created_at",
+            "cursor",
+            "id",
+            "profile_revision",
+            "session_id",
+            "status",
+            "thread_id",
+            "turn_id",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
         "version"
       ],
       "additionalProperties": false
@@ -1554,6 +1917,184 @@
       ],
       "additionalProperties": false
     },
+    "checkpoint.created": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "type": "object",
+          "properties": {
+            "can_fork": {
+              "type": "boolean"
+            },
+            "can_restore": {
+              "type": "boolean"
+            },
+            "changed_files": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "cursor": {
+              "type": "integer"
+            },
+            "external_side_effects": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "parent_checkpoint_id": {
+              "type": "string"
+            },
+            "profile_revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "side_effect_note": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "can_fork",
+            "can_restore",
+            "changed_files",
+            "created_at",
+            "cursor",
+            "external_side_effects",
+            "id",
+            "profile_revision",
+            "session_id",
+            "status",
+            "summary",
+            "thread_id",
+            "turn_id",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "checkpoint"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint.forked": {
+      "type": "object",
+      "properties": {
+        "checkpoint_id": {
+          "type": "string"
+        },
+        "new_thread_id": {
+          "type": "string"
+        },
+        "replacement_history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "description": "arbitrary JSON"
+              },
+              "role": {
+                "type": "string"
+              },
+              "turn": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "content",
+              "role"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "source_cursor": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "new_thread_id",
+        "replacement_history",
+        "source_cursor",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint.restored": {
+      "type": "object",
+      "properties": {
+        "checkpoint_id": {
+          "type": "string"
+        },
+        "replacement_history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "description": "arbitrary JSON"
+              },
+              "role": {
+                "type": "string"
+              },
+              "turn": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "content",
+              "role"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "side_effects_replayed": {
+          "type": "boolean"
+        },
+        "source_cursor": {
+          "type": "integer"
+        },
+        "source_thread_id": {
+          "type": "string"
+        },
+        "source_turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "replacement_history",
+        "side_effects_replayed",
+        "source_cursor",
+        "source_thread_id",
+        "source_turn_id"
+      ],
+      "additionalProperties": false
+    },
     "citation": {
       "type": "object",
       "properties": {
@@ -1929,11 +2470,26 @@
     "plan.delta": {
       "type": "object",
       "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
         "body": {
           "type": "string"
         },
+        "can_autopilot": {
+          "type": "boolean"
+        },
+        "can_implement": {
+          "type": "boolean"
+        },
         "done": {
           "type": "boolean"
+        },
+        "profile_revision": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
         },
         "text": {
           "type": "string"

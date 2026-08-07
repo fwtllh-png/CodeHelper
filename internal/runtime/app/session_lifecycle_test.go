@@ -219,6 +219,30 @@ func (s *memorySessionLifecycleStore) ThreadIDs(
 	return []protocol.ThreadID{s.summary.ThreadID}, nil
 }
 
+func (s *memorySessionLifecycleStore) SessionForThread(
+	_ context.Context,
+	threadID protocol.ThreadID,
+) (string, error) {
+	if threadID != s.summary.ThreadID {
+		return "", errors.New("thread not found")
+	}
+	return s.summary.SessionID, nil
+}
+
+func (s *memorySessionLifecycleStore) ActivateThread(
+	_ context.Context,
+	sessionID string,
+	threadID protocol.ThreadID,
+) (protocol.SessionSummary, error) {
+	if sessionID != s.summary.SessionID {
+		return protocol.SessionSummary{}, errors.New("session not found")
+	}
+	s.summary.ParentThreadID = s.summary.ThreadID
+	s.summary.ThreadID = threadID
+	s.summary.Revision++
+	return s.summary, nil
+}
+
 func (s *memorySessionLifecycleStore) UpdateLifecycle(
 	_ context.Context,
 	sessionID string,

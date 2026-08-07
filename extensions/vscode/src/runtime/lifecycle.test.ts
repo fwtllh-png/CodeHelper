@@ -24,6 +24,7 @@ const summary = {
   latest_sequence: 9,
   pending_approvals: 1,
   pending_inputs: 0,
+  checkpoint_count: 2,
   total_tokens: 42,
   cost_microunits: 3,
   cost_known: true,

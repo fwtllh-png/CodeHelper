@@ -113,6 +113,13 @@ The SQLite schema is currently the initial schema version. Future public schema
 changes must use explicit migrations; pre-release development histories were
 intentionally collapsed before the initial baseline.
 
+Session Checkpoints and Plan Artifacts reuse the Snapshot index and CAS. A
+Checkpoint stores only a verified model-visible history baseline and Profile
+snapshot; restoring it cannot execute historical events. Durable restore and
+fork events make restart reconstruction deterministic. Fork lineage and the
+active Session Thread remain relational lifecycle state rather than Host-local
+state.
+
 ## Context Architecture
 
 Context is split by stability and purpose:

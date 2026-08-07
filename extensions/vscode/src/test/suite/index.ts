@@ -85,6 +85,7 @@ export async function run(): Promise<void> {
     );
     await verifyNativeFlows(api);
     await verifyMultipleChats(api);
+    await verifyCheckpoints(api);
     await verifySessionLifecycle(api);
     await verifySessionProfile(api);
     await verifySessionToolCatalog(api);
@@ -719,6 +720,55 @@ async function verifySessionLifecycle(api: ExtensionAPI): Promise<void> {
     false,
   );
   assert.equal(api.chatSessions().length >= 1, true);
+}
+
+async function verifyCheckpoints(api: ExtensionAPI): Promise<void> {
+  assert.ok(api.chatSessions);
+  assert.ok(api.checkpoints);
+  assert.ok(api.restoreCheckpoint);
+  assert.ok(api.forkCheckpoint);
+  await waitFor(
+    () => api.chatSessions?.().some((session) => session.checkpointCount > 0) ===
+      true,
+    "completed Turn did not create a Session Checkpoint",
+  );
+  const selected = api.chatSessions().find(
+    (session) => session.checkpointCount > 0,
+  );
+  assert.ok(selected);
+  const list = await api.checkpoints(selected.sessionId);
+  const checkpoint = list.checkpoints[0];
+  assert.ok(checkpoint);
+  const restored = await api.restoreCheckpoint(
+    selected.sessionId,
+    checkpoint.id,
+  );
+  assert.equal(restored.side_effects_replayed, false);
+  const parentThreadID = selected.threadId;
+  await api.forkCheckpoint(
+    selected.sessionId,
+    checkpoint.id,
+    "Electron Checkpoint Fork",
+  );
+  let forked = api.chatSessions().find(
+    (session) => session.sessionId === selected.sessionId,
+  );
+  assert.ok(forked);
+  assert.notEqual(forked.threadId, parentThreadID);
+  const forkThreadID = forked.threadId;
+  await vscode.commands.executeCommand("codehelper.restartRuntime");
+  await waitFor(
+    () => api.runtimeSnapshot?.().state === "ready" &&
+      api.chatSessions?.().some(
+        (session) => session.sessionId === selected.sessionId &&
+          session.threadId === forkThreadID,
+      ) === true,
+    "active Checkpoint Fork did not recover after Runtime restart",
+  );
+  forked = api.chatSessions().find(
+    (session) => session.sessionId === selected.sessionId,
+  );
+  assert.equal(forked?.threadId, forkThreadID);
 }
 
 async function verifySessionProfile(api: ExtensionAPI): Promise<void> {

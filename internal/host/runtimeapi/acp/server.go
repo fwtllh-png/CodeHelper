@@ -63,7 +63,9 @@ var methods = []string{
 	"session/replay", "session/history", "session/cancel", "session/merge",
 	"session/list", "session/status", "session/lifecycle/update", "session/delete",
 	"session/rename", "session/profile/get", "session/profile/update",
-	"session/tool/catalog", "shutdown",
+	"session/tool/catalog",
+	"checkpoint/list", "checkpoint/get", "checkpoint/restore", "checkpoint/fork",
+	"plan/get", "plan/implement", "shutdown",
 }
 
 var dynamicMethods = []string{
@@ -491,6 +493,18 @@ func (s *Server) dispatch(request rpcRequest) bool {
 		s.sessionProfileUpdate(request)
 	case "session/tool/catalog":
 		s.sessionToolCatalog(request)
+	case "checkpoint/list":
+		s.checkpointList(request)
+	case "checkpoint/get":
+		s.checkpointGet(request)
+	case "checkpoint/restore":
+		s.checkpointRestore(request)
+	case "checkpoint/fork":
+		s.checkpointFork(request)
+	case "plan/get":
+		s.planGet(request)
+	case "plan/implement":
+		s.planImplement(request)
 	case "tool/catalog":
 		s.dynamicCatalog(request)
 	case "tool/register":
@@ -1503,6 +1517,174 @@ func (s *Server) sessionToolCatalog(request rpcRequest) {
 		return
 	}
 	s.replyResult(request, catalog)
+}
+
+type checkpointParams struct {
+	SessionID    string `json:"sessionId"`
+	CheckpointID string `json:"checkpointId,omitempty"`
+	Limit        int    `json:"limit,omitempty"`
+	Title        string `json:"title,omitempty"`
+}
+
+func (s *Server) checkpointList(request rpcRequest) {
+	var params checkpointParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if _, ok := s.sessionSummary(request, params.SessionID); !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.Checkpoints(
+		s.ctx,
+		params.SessionID,
+		params.Limit,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+func (s *Server) checkpointGet(request rpcRequest) {
+	var params checkpointParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if params.CheckpointID == "" {
+		s.invalidParams(request, errors.New("checkpointId is required"))
+		return
+	}
+	if _, ok := s.sessionSummary(request, params.SessionID); !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.Checkpoint(
+		s.ctx,
+		params.SessionID,
+		params.CheckpointID,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+func (s *Server) checkpointRestore(request rpcRequest) {
+	var params checkpointParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if params.CheckpointID == "" {
+		s.invalidParams(request, errors.New("checkpointId is required"))
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.RestoreCheckpoint(
+		s.ctx,
+		binding.ID,
+		params.CheckpointID,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+func (s *Server) checkpointFork(request rpcRequest) {
+	var params checkpointParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if params.CheckpointID == "" {
+		s.invalidParams(request, errors.New("checkpointId is required"))
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.ForkCheckpoint(
+		s.ctx,
+		binding.ID,
+		params.CheckpointID,
+		params.Title,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	binding.ThreadID = result.ThreadID
+	s.bind(binding)
+	s.replyResult(request, result)
+}
+
+func (s *Server) planGet(request rpcRequest) {
+	var params sessionProfileParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if _, ok := s.requireSession(request, params.SessionID); !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.SessionPlan(
+		s.ctx,
+		params.SessionID,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+type planImplementParams struct {
+	SessionID  string                  `json:"sessionId"`
+	PlanID     string                  `json:"planId"`
+	Transition protocol.PlanTransition `json:"transition"`
+}
+
+func (s *Server) planImplement(request rpcRequest) {
+	var params planImplementParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	prepared, err := s.dependencies.Runtime.PreparePlanTransition(
+		s.ctx,
+		binding.ID,
+		params.PlanID,
+		params.Transition,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	_ = s.writeNotification("session/profile/changed", map[string]any{
+		"sessionId":        binding.ID,
+		"threadId":         binding.ThreadID,
+		"profile":          prepared.ProfileUpdate.Profile,
+		"promptCacheReset": prepared.ProfileUpdate.PromptCacheReset,
+		"resetReason":      prepared.ProfileUpdate.ResetReason,
+	})
+	s.submitPrepared(request, binding, operationRequest{
+		kind:           protocol.OperationStartTurn,
+		payload:        &protocol.StartTurnPayload{Prompt: prepared.Prompt},
+		idempotencyKey: prepared.IdempotencyKey,
+	})
 }
 
 type sessionPromptParams struct {

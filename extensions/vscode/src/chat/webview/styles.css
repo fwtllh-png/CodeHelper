@@ -225,6 +225,27 @@ details.context-selection {
   border: 1px solid var(--vscode-panel-border);
 }
 
+.plan-card {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--vscode-chat-requestBorder, var(--vscode-panel-border));
+  border-radius: 6px;
+  background: var(--vscode-chat-requestBackground, var(--vscode-editorWidget-background));
+}
+
+.plan-card-title {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.plan-card-body {
+  margin-bottom: 8px;
+}
+
+.plan-card button + button {
+  margin-left: 6px;
+}
+
 .markdown {
   overflow-wrap: anywhere;
 }

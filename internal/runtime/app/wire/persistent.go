@@ -89,6 +89,7 @@ func NewPersistentRuntime(
 		runtimeOptions.ToolCatalog = options.ToolCatalog
 		runtimeOptions.SessionLifecycle = repositories.Sessions
 		runtimeOptions.SessionWorkspaces = options.SessionWorkspaces
+		runtimeOptions.SessionArtifacts = repositories.Snapshots
 	}
 	return app.NewRuntimeWithRecovery(ctx, runtimeOptions)
 }

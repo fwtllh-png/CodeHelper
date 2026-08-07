@@ -342,6 +342,60 @@ func (m *ThreadManager) ForkThread(
 	})
 }
 
+func (m *ThreadManager) RestoreCheckpoint(
+	threadID protocol.ThreadID,
+	history []provider.Message,
+) error {
+	if threadID == "" || len(history) == 0 {
+		return errors.New("checkpoint Thread and history are required")
+	}
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return err
+	}
+	engine := adapter.Underlying()
+	if engine == nil {
+		return errors.New("checkpoint Thread engine is unavailable")
+	}
+	engine.ReplaceHistory(history)
+	return nil
+}
+
+func (m *ThreadManager) ForkCheckpoint(
+	parentThreadID, newThreadID protocol.ThreadID,
+	history []provider.Message,
+) error {
+	if parentThreadID == "" || newThreadID == "" ||
+		parentThreadID == newThreadID || len(history) == 0 {
+		return errors.New("checkpoint Fork identity and history are invalid")
+	}
+	parent, err := m.forThread(parentThreadID)
+	if err != nil {
+		return err
+	}
+	engine := parent.Underlying()
+	if engine == nil {
+		return errors.New("checkpoint parent engine is unavailable")
+	}
+	childEngine := engine.Fork()
+	childEngine.ReplaceHistory(history)
+	child := AdaptEngineWithWorkspaceIdentity(
+		childEngine,
+		parent.workspaceIdentity,
+	)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.threads[newThreadID]; exists {
+		return fmt.Errorf("checkpoint Fork target Thread %s already exists", newThreadID)
+	}
+	m.threads[newThreadID] = child
+	if state := m.windows[parentThreadID]; state != nil {
+		copy := *state
+		m.windows[newThreadID] = &copy
+	}
+	return nil
+}
+
 func (m *ThreadManager) RevertTurn(
 	ctx context.Context, payload *protocol.RevertTurnPayload, sink EngineSink,
 ) error {

@@ -134,6 +134,35 @@ for an isolated Session with unmerged Worktree changes. A successful isolated
 delete removes its Worktree through the Runtime-owned lifecycle path. These
 checks preserve Guard, journal, sandbox, and durable Revision CAS boundaries.
 
+## Checkpoints, Forks, and Plans
+
+Completed Turns and safely user-interrupted Turns create immutable Session
+Checkpoints. `checkpoint/list`, `checkpoint/get`, `checkpoint/restore`, and
+`checkpoint/fork` expose the Runtime-owned objects. Metadata records Session,
+Thread, Turn, event cursor, Profile Revision, parent Checkpoint, changed-file
+count, and conservative side-effect status. Model-visible replacement history
+and the Profile snapshot are stored in CAS and verified before use.
+
+Restore is state-only. It replaces model-visible Runtime history and emits a
+durable `checkpoint.restored` event, but never replays or reverses completed
+file, Tool, command, or network effects. A stale Profile Revision, active Turn,
+pending approval/input, corrupt CAS object, or cross-Session identity fails
+closed. Restart reconstruction applies the same restore baseline.
+
+Fork creates an independent Engine history from a Checkpoint and persists both
+the parent Thread and parent Checkpoint lineage. The selected active Thread is
+stored in Session lifecycle metadata, so restart does not fall back to the root
+Thread. The Session menu opens a native Checkpoint Quick Pick for Restore and
+Fork.
+
+A completed streamed Plan is persisted as a structured Plan Artifact instead of
+being inferred from rendered Markdown. The Plan card can open the body in a
+native editor, start implementation, or request Autopilot. Both implementation
+actions validate Artifact and Profile Revision, switch through the Runtime
+Profile contract, and submit a new Turn. Autopilot requests `act` mode with
+`auto` approval posture; Host permission ceilings, Guard, policy, journal, and
+sandbox enforcement remain authoritative.
+
 ## Built-in Setup and Repair
 
 Use `CodeHelper: Setup Workspace` to configure an open, trusted workspace. The

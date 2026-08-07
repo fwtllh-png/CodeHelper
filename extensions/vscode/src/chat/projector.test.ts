@@ -84,6 +84,53 @@ void test("ChatProjector tracks approval identity and resolution", () => {
   assert.equal(projector.snapshot().turns[0]?.approvals[0]?.resolved, "approve");
 });
 
+void test("ChatProjector projects structured Plans and rolls back later Turns", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+    prompt: "plan parser",
+  }));
+  projector.apply(event(2, "plan.delta", {
+    body: "1. Update parser",
+    done: true,
+    artifact_id: "plan_1",
+    profile_revision: 2,
+    status: "ready",
+    can_implement: true,
+    can_autopilot: true,
+  }));
+  projector.apply(event(3, "turn.completed", { text: "" }));
+  projector.apply(event(5, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+    prompt: "later work",
+  }, "turn_2"));
+  projector.apply(event(6, "turn.completed", { text: "later" }, "turn_2"));
+
+  const plan = projector.snapshot().turns[0]?.plan;
+  assert.ok(plan);
+  assert.equal(plan.id, "plan_1");
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.canAutopilot, true);
+  projector.apply(event(7, "checkpoint.restored", {
+    checkpoint_id: "checkpoint_1",
+    source_thread_id: "thread_1",
+    source_turn_id: "turn_1",
+    source_cursor: 3,
+    replacement_history: [{
+      role: "user",
+      content: ["plan parser"],
+      turn: 1,
+    }],
+    side_effects_replayed: false,
+  }));
+  assert.deepEqual(
+    projector.snapshot().turns.map((turn) => turn.id),
+    ["turn_1"],
+  );
+});
+
 void test("ChatProjector exposes only Runtime-confirmed context receipts", () => {
   const projector = new ChatProjector();
   projector.apply(event(1, "turn.started", {
@@ -229,14 +276,19 @@ void test("ChatProjector exposes verification attribution and workspace outcome"
   assert.equal(selection.truncationReason, "byte_budget");
 });
 
-function event(sequence: number, kind: string, data: unknown) {
+function event(
+  sequence: number,
+  kind: string,
+  data: unknown,
+  turnId = "turn_1",
+) {
   return decodeEvent({
     version: 1,
     id: `event_${String(sequence)}`,
     sequence,
     operation_id: "operation_1",
     thread_id: "thread_1",
-    turn_id: "turn_1",
+    turn_id: turnId,
     item_id: "item_1",
     kind,
     created_at: "2026-08-04T00:00:00Z",

@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -108,6 +109,15 @@ type SessionLifecycleStore interface {
 		context.Context,
 		string,
 	) ([]protocol.ThreadID, error)
+	SessionForThread(
+		context.Context,
+		protocol.ThreadID,
+	) (string, error)
+	ActivateThread(
+		context.Context,
+		string,
+		protocol.ThreadID,
+	) (protocol.SessionSummary, error)
 	UpdateLifecycle(
 		context.Context,
 		string,
@@ -119,6 +129,51 @@ type SessionLifecycleStore interface {
 		string,
 		uint64,
 	) (protocol.SessionDeleteResult, error)
+}
+
+type SessionArtifactStore interface {
+	SaveCheckpoint(
+		context.Context,
+		protocol.SessionCheckpoint,
+		[]protocol.CompactedMessage,
+		protocol.SessionProfile,
+	) (protocol.SessionCheckpoint, error)
+	GetCheckpoint(
+		context.Context,
+		string,
+	) (
+		protocol.SessionCheckpoint,
+		[]protocol.CompactedMessage,
+		protocol.SessionProfile,
+		error,
+	)
+	ListCheckpoints(
+		context.Context,
+		string,
+		int,
+	) ([]protocol.SessionCheckpoint, error)
+	CountCheckpoints(context.Context, string) (int, error)
+	SavePlan(
+		context.Context,
+		protocol.SessionPlanArtifact,
+	) (protocol.SessionPlanArtifact, error)
+	GetPlan(context.Context, string) (protocol.SessionPlanArtifact, error)
+	LatestPlan(
+		context.Context,
+		string,
+		protocol.ThreadID,
+	) (protocol.SessionPlanArtifact, bool, error)
+}
+
+type CheckpointEngine interface {
+	History(protocol.ThreadID) ([]provider.Message, error)
+	RestoreCheckpoint(protocol.ThreadID, []provider.Message) error
+	ForkCheckpoint(
+		protocol.ThreadID,
+		protocol.ThreadID,
+		[]provider.Message,
+	) error
+	Release(protocol.ThreadID)
 }
 
 type Options struct {
@@ -138,6 +193,7 @@ type Options struct {
 	ToolCatalog         SessionToolCatalog
 	SessionLifecycle    SessionLifecycleStore
 	SessionWorkspaces   SessionWorkspaceManager
+	SessionArtifacts    SessionArtifactStore
 }
 
 type Snapshot struct {
@@ -174,6 +230,7 @@ type Runtime struct {
 	toolCatalog         SessionToolCatalog
 	sessionLifecycle    SessionLifecycleStore
 	sessionWorkspaces   SessionWorkspaceManager
+	sessionArtifacts    SessionArtifactStore
 
 	operations chan acceptedOperation
 	done       chan struct{}
@@ -267,6 +324,7 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 		toolCatalog:         options.ToolCatalog,
 		sessionLifecycle:    options.SessionLifecycle,
 		sessionWorkspaces:   options.SessionWorkspaces,
+		sessionArtifacts:    options.SessionArtifacts,
 		operations:          make(chan acceptedOperation, options.OperationBuffer),
 		done:                make(chan struct{}),
 		subscribers:         make(map[uint64]chan protocol.Event),
@@ -508,6 +566,16 @@ func (r *Runtime) projectSessionActivity(
 	threads := make(map[protocol.ThreadID]struct{}, len(threadIDs))
 	for _, threadID := range threadIDs {
 		threads[threadID] = struct{}{}
+	}
+	if r.sessionArtifacts != nil {
+		checkpointCount, err := r.sessionArtifacts.CountCheckpoints(
+			ctx,
+			summary.SessionID,
+		)
+		if err != nil {
+			return protocol.SessionSummary{}, err
+		}
+		summary.CheckpointCount = checkpointCount
 	}
 	r.activeMu.Lock()
 	active := false
@@ -1329,13 +1397,19 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 	r.workers.Add(1)
 	go func() {
 		defer r.workers.Done()
-		defer func() {
+		released := false
+		releaseActive := func() {
+			if released {
+				return
+			}
 			r.activeMu.Lock()
 			delete(r.active, payload.TurnID)
 			delete(r.activeThreads, payload.ThreadID)
 			r.activeMu.Unlock()
-			cancel()
-		}()
+			released = true
+		}
+		defer releaseActive()
+		defer cancel()
 		sink := &runtimeSink{runtime: r, operation: operation}
 		err := r.engine.StartTurn(turnContext, payload, sink)
 		var terminalErr error
@@ -1363,6 +1437,14 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 				&protocol.TurnCanceledData{Reason: reason},
 			)
 			if terminalErr == nil {
+				releaseActive()
+				r.persistTerminalArtifactForTurn(
+					context.Background(),
+					payload.ThreadID,
+					payload.TurnID,
+				)
+			}
+			if terminalErr == nil {
 				r.commit(operation.ID)
 			}
 			return // skip shared commit below — already handled
@@ -1379,6 +1461,14 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 			}
 		default:
 			terminalErr = sink.Emit(&protocol.TurnCompletedData{})
+		}
+		if terminalErr == nil {
+			releaseActive()
+			r.persistTerminalArtifactForTurn(
+				context.Background(),
+				payload.ThreadID,
+				payload.TurnID,
+			)
 		}
 		if terminalErr == nil {
 			r.commit(operation.ID)
@@ -1451,6 +1541,20 @@ func (r *Runtime) publish(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	itemID = r.eventOwnedItemID(data, itemID)
+	if plan, ok := data.(*protocol.PlanDeltaData); ok && plan.Done {
+		if err := r.decoratePlanArtifact(
+			context.Background(),
+			threadID,
+			turnID,
+			plan,
+		); err != nil {
+			r.logArtifactError(
+				"decorate Session Plan Artifact",
+				protocol.Event{ThreadID: threadID, TurnID: turnID},
+				err,
+			)
+		}
+	}
 	kind := eventKind(data)
 	if protocol.IsTerminalEvent(kind) {
 		if _, exists := r.terminals[turnID]; exists {
@@ -1458,23 +1562,32 @@ func (r *Runtime) publish(
 		}
 		r.terminals[turnID] = kind
 	}
-	event, err := protocol.NewEvent(protocol.EventMeta{
-		Sequence: r.lastSequence + 1, OperationID: operationID,
-		ThreadID: threadID, TurnID: turnID, ItemID: itemID,
-	}, data)
-	if err != nil {
-		if protocol.IsTerminalEvent(kind) {
-			delete(r.terminals, turnID)
+	var event protocol.Event
+	for attempt := 0; ; attempt++ {
+		var err error
+		event, err = protocol.NewEvent(protocol.EventMeta{
+			Sequence: r.lastSequence + 1, OperationID: operationID,
+			ThreadID: threadID, TurnID: turnID, ItemID: itemID,
+		}, data)
+		if err != nil {
+			if protocol.IsTerminalEvent(kind) {
+				delete(r.terminals, turnID)
+			}
+			r.metrics.Error()
+			return err
 		}
-		r.metrics.Error()
-		return err
-	}
-	if err := r.events.Append(context.Background(), event); err != nil {
-		if last, sequenceErr := r.events.LastSequence(context.Background()); sequenceErr == nil &&
-			last > r.lastSequence {
-			// Durable stores reserve sequence numbers before appending bytes.
-			// Failed reservations remain gaps and must never be reused.
+		if err = r.events.Append(context.Background(), event); err == nil {
+			break
+		}
+		last, sequenceErr := r.events.LastSequence(context.Background())
+		if sequenceErr == nil && last > r.lastSequence {
+			// Multiple Runtime instances may share a durable store. A failed
+			// reservation is still a permanent gap, so refresh the global
+			// high-watermark and mint a new Event identity.
 			r.lastSequence = last
+			if attempt < 3 {
+				continue
+			}
 		}
 		if protocol.IsTerminalEvent(kind) {
 			delete(r.terminals, turnID)
@@ -1489,6 +1602,9 @@ func (r *Runtime) publish(
 		if projectionErr != nil {
 			r.metrics.Error()
 		}
+	}
+	if projectionErr == nil && !protocol.IsTerminalEvent(kind) {
+		r.persistSessionArtifact(context.Background(), event)
 	}
 	switch value := data.(type) {
 	case *protocol.ApprovalRequiredData:
@@ -1649,6 +1765,12 @@ func eventKind(data protocol.EventData) protocol.EventKind {
 		return protocol.EventThreadForked
 	case *protocol.TurnRevertedData:
 		return protocol.EventTurnReverted
+	case *protocol.CheckpointCreatedData:
+		return protocol.EventCheckpointCreated
+	case *protocol.CheckpointRestoredData:
+		return protocol.EventCheckpointRestored
+	case *protocol.CheckpointForkedData:
+		return protocol.EventCheckpointForked
 	case *protocol.ExecutionReceiptData:
 		return protocol.EventExecutionReceipt
 	case *protocol.TurnCompactionData:

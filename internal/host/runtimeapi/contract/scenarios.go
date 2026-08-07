@@ -93,6 +93,17 @@ func Scenarios() []Scenario {
 			Run: sessionLifecycleIsShared,
 		},
 		{
+			Name: "Checkpoint Restore is state-only and Fork lineage is shared",
+			Setup: func(t *testing.T) Setup {
+				return Setup{
+					Fixture:   fixturePath(t, "openai"),
+					Prompt:    "say hello",
+					Workspace: t.TempDir(),
+				}
+			},
+			Run: checkpointRestoreAndForkAreShared,
+		},
+		{
 			Name:  "editor context receipts are shared and durable",
 			Setup: editorContextSetup,
 			Run:   editorContextReceiptsAreSharedAndDurable,
@@ -163,6 +174,73 @@ func Scenarios() []Scenario {
 			},
 			Run: approvalParksAndResumes,
 		},
+	}
+}
+
+func checkpointRestoreAndForkAreShared(
+	t *testing.T,
+	host Host,
+	setup Setup,
+) {
+	live, err := host.Live(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := host.StartTurn(t.Context(), setup.Prompt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created *protocol.CheckpointCreatedData
+	deadline := time.After(waitTimeout)
+	for created == nil {
+		select {
+		case event, open := <-live:
+			if !open {
+				t.Fatal("live stream closed before Checkpoint creation")
+			}
+			if event.TurnID != turn.TurnID {
+				continue
+			}
+			if data, ok := event.Data.(*protocol.CheckpointCreatedData); ok {
+				created = data
+			}
+		case <-deadline:
+			t.Fatal("Checkpoint creation was not observed")
+		}
+	}
+	list, err := host.ListCheckpoints(t.Context(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := list.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Checkpoints) != 1 ||
+		list.Checkpoints[0].ID != created.Checkpoint.ID {
+		t.Fatalf("%s: Checkpoints = %+v", host.Transport(), list)
+	}
+	restored, err := host.RestoreCheckpoint(
+		t.Context(),
+		created.Checkpoint.ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.SideEffectsReplayed {
+		t.Fatal("Checkpoint Restore replayed side effects")
+	}
+	forked, err := host.ForkCheckpoint(
+		t.Context(),
+		created.Checkpoint.ID,
+		"Contract Fork",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forked.ParentID != created.Checkpoint.ThreadID ||
+		forked.ThreadID == created.Checkpoint.ThreadID ||
+		forked.Checkpoint.ID != created.Checkpoint.ID {
+		t.Fatalf("%s: Checkpoint Fork = %+v", host.Transport(), forked)
 	}
 }
 

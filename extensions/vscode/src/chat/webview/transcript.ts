@@ -18,6 +18,10 @@ export interface TranscriptActions {
   readonly deny: (requestId: string) => void;
   readonly cancel: (requestId: string) => void;
   readonly answer: (requestId: string, answer: string) => void;
+  readonly plan: (
+    planId: string,
+    action: "implement" | "autopilot" | "open",
+  ) => void;
 }
 
 export function renderTranscript(
@@ -80,6 +84,39 @@ export function renderTranscript(
     }
     for (const input of turn.inputs) {
       article.append(inputCard(input, actions));
+    }
+    if (turn.plan !== undefined) {
+      const plan = document.createElement("section");
+      plan.className = "plan-card";
+      appendText(
+        plan,
+        "strong",
+        "plan-card-title",
+        turn.plan.status === "ready" ? "Implementation Plan" : "Drafting Plan",
+      );
+      appendMarkdown(
+        plan,
+        turn.plan.bodyMarkdown,
+        "plan-card-body",
+        actions.openResource,
+      );
+      if (turn.plan.id !== undefined && turn.plan.status === "ready") {
+        const planId = turn.plan.id;
+        plan.append(actionButton("Open in Editor", () => {
+          actions.plan(planId, "open");
+        }));
+        if (turn.plan.canImplement) {
+          plan.append(actionButton("Start Implementation", () => {
+            actions.plan(planId, "implement");
+          }));
+        }
+        if (trusted && turn.plan.canAutopilot) {
+          plan.append(actionButton("Start with Autopilot", () => {
+            actions.plan(planId, "autopilot");
+          }));
+        }
+      }
+      article.append(plan);
     }
     for (const diagnostic of turn.diagnostics) {
       appendText(article, "div", "meta", diagnostic);

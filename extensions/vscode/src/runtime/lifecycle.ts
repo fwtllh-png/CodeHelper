@@ -136,7 +136,8 @@ export function decodeSessionSummary(
     "version", "revision", "session_id", "thread_id", "title", "status",
     "pinned", "archived", "isolation", "workspace_root", "workspace_label",
     "latest_sequence", "pending_approvals", "pending_inputs", "total_tokens",
-    "cost_microunits", "cost_known", "created_at", "updated_at",
+    "checkpoint_count", "cost_microunits", "cost_known", "created_at",
+    "updated_at",
   ], [
     "provider", "model", "mode", "parent_thread_id", "latest_turn_id",
     "match_turn_id",
@@ -179,6 +180,9 @@ export function decodeSessionSummary(
     ),
     pending_inputs: nonNegativeInteger(
       object["pending_inputs"], "pending inputs",
+    ),
+    checkpoint_count: nonNegativeInteger(
+      object["checkpoint_count"], "checkpoint count",
     ),
     total_tokens: nonNegativeInteger(object["total_tokens"], "total tokens"),
     cost_microunits: nonNegativeInteger(

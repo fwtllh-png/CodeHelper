@@ -36,6 +36,10 @@ import {
 } from "./binary/update.js";
 import { registerSetupCommands } from "./setup/commands.js";
 import type { CredentialView } from "./security/credentials.js";
+import type {
+  CheckpointList,
+  CheckpointRestore,
+} from "./protocol/generated.js";
 
 let registry: WorkspaceRuntimeRegistry | undefined;
 let updateCheckInFlight: Promise<void> | undefined;
@@ -57,6 +61,16 @@ export interface ExtensionAPI {
   readonly pinChat?: (sessionId: string, pinned: boolean) => Promise<void>;
   readonly archiveChat?: (sessionId: string, archived: boolean) => Promise<void>;
   readonly deleteChat?: (sessionId: string) => Promise<void>;
+  readonly checkpoints?: (sessionId: string) => Promise<CheckpointList>;
+  readonly restoreCheckpoint?: (
+    sessionId: string,
+    checkpointId: string,
+  ) => Promise<CheckpointRestore>;
+  readonly forkCheckpoint?: (
+    sessionId: string,
+    checkpointId: string,
+    title: string,
+  ) => Promise<void>;
   readonly sessionProfile?: (sessionId: string) => Promise<SessionProfileSnapshot>;
   readonly sessionToolCatalog?: (
     sessionId: string,
@@ -293,6 +307,19 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
             activeRegistry.selected.controller.archiveChat(sessionId, archived),
           deleteChat: async (sessionId) =>
             activeRegistry.selected.controller.deleteChat(sessionId),
+          checkpoints: async (sessionId) =>
+            activeRegistry.selected.controller.checkpoints(sessionId),
+          restoreCheckpoint: async (sessionId, checkpointId) =>
+            activeRegistry.selected.controller.restoreCheckpoint(
+              sessionId,
+              checkpointId,
+            ),
+          forkCheckpoint: async (sessionId, checkpointId, title) =>
+            activeRegistry.selected.controller.forkCheckpoint(
+              sessionId,
+              checkpointId,
+              title,
+            ),
           sessionProfile: async (sessionId) =>
             activeRegistry.selected.controller.sessionProfile(sessionId),
           sessionToolCatalog: async (sessionId) =>

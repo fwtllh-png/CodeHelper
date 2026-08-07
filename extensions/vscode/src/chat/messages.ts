@@ -14,7 +14,12 @@ export type WebviewMessage =
   | {
       readonly type: "manage-chat";
       readonly sessionId: string;
-      readonly action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete";
+      readonly action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete" | "checkpoints";
+    }
+  | {
+      readonly type: "plan-action";
+      readonly planId: string;
+      readonly action: "implement" | "autopilot" | "open";
     }
   | { readonly type: "new-chat" }
   | { readonly type: "repair-runtime" }
@@ -74,6 +79,13 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
         sessionId: requireBoundedString(value["sessionId"], "sessionId", 256),
         action: requireSessionAction(value["action"]),
       };
+    case "plan-action":
+      requireKeys(value, ["type", "planId", "action"]);
+      return {
+        type: "plan-action",
+        planId: requireBoundedString(value["planId"], "planId", 256),
+        action: requirePlanAction(value["action"]),
+      };
     case "new-chat":
       requireKeys(value, ["type"]);
       return { type: "new-chat" };
@@ -131,7 +143,7 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
 
 function requireSessionAction(
   value: unknown,
-): "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete" {
+): "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete" | "checkpoints" {
   switch (value) {
     case "menu":
     case "rename":
@@ -140,9 +152,23 @@ function requireSessionAction(
     case "archive":
     case "restore":
     case "delete":
+    case "checkpoints":
       return value;
     default:
       throw new Error("invalid Session action");
+  }
+}
+
+function requirePlanAction(
+  value: unknown,
+): "implement" | "autopilot" | "open" {
+  switch (value) {
+    case "implement":
+    case "autopilot":
+    case "open":
+      return value;
+    default:
+      throw new Error("invalid Plan action");
   }
 }
 

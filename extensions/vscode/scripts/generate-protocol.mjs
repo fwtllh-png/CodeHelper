@@ -102,6 +102,10 @@ const sessionProfileTypes = [
   "session_lifecycle_patch",
   "session_lifecycle_update",
   "session_delete",
+  "checkpoint_list",
+  "checkpoint_restore",
+  "checkpoint_fork",
+  "session_plan",
 ].map((name) => ({
   kind: name,
   name: pascalCase(name),

@@ -118,6 +118,31 @@ Session 仍可发现，但 Restore 前不会建立连接。
 路径清理 Worktree；所有检查继续遵守 Guard、Journal、Sandbox 与持久化 Revision CAS
 边界。
 
+## Checkpoint、Fork 与 Plan
+
+Completed Turn 和安全的 User-interrupted Turn 会创建不可变 Session Checkpoint。
+`checkpoint/list`、`checkpoint/get`、`checkpoint/restore` 与 `checkpoint/fork`
+暴露 Runtime-owned 对象。Metadata 记录 Session、Thread、Turn、Event Cursor、
+Profile Revision、Parent Checkpoint、Changed File 数量和保守的 Side-effect 状态；
+Model-visible Replacement History 与 Profile Snapshot 存入 CAS，使用前必须完成
+完整性校验。
+
+Restore 只恢复状态：它替换 Model-visible Runtime History 并产生持久化
+`checkpoint.restored` Event，但绝不重放或回滚已完成的 File、Tool、Command 或
+Network Effect。Profile Revision 过期、活动 Turn、待处理 Approval/Input、CAS 损坏
+或 Cross-session Identity 都会 Fail Closed；重启重建使用相同 Restore Baseline。
+
+Fork 从 Checkpoint 创建独立 Engine History，并持久化 Parent Thread 与 Parent
+Checkpoint 血缘。当前 Active Thread 写入 Session Lifecycle Metadata，因此重启后
+不会回退到 Root Thread。Session 菜单使用原生 Checkpoint Quick Pick 提供 Restore
+和 Fork。
+
+完成的流式 Plan 会保存为结构化 Plan Artifact，而不是由 Webview 从 Markdown 推断。
+Plan Card 支持在原生 Editor 打开、开始实现或请求 Autopilot。两种实现操作都会校验
+Artifact 与 Profile Revision，通过 Runtime Profile Contract 切换状态并提交一个新的
+Turn。Autopilot 请求 `act` Mode 与 `auto` Approval Posture，但 Host Permission
+Ceiling、Guard、Policy、Journal 和 Sandbox 仍是最终权威。
+
 ## 内置 Setup 与 Repair
 
 在已打开且受信任的工作区中执行 `CodeHelper: Setup Workspace`。引导流程会选择

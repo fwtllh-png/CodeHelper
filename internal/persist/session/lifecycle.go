@@ -36,9 +36,10 @@ func (e *LifecycleRevisionConflictError) Unwrap() error {
 type LifecycleQuery = protocol.SessionListQuery
 
 type lifecycleMetadata struct {
-	Version  int    `json:"version"`
-	Revision uint64 `json:"revision"`
-	Pinned   bool   `json:"pinned"`
+	Version        int               `json:"version"`
+	Revision       uint64            `json:"revision"`
+	Pinned         bool              `json:"pinned"`
+	ActiveThreadID protocol.ThreadID `json:"active_thread_id,omitempty"`
 }
 
 type profileRoute struct {
@@ -70,10 +71,15 @@ func (r *Repository) ListLifecycle(
 		SELECT s.id
 		FROM sessions s
 		JOIN workspaces w ON w.id = s.workspace_id
-		JOIN threads root ON root.id = (
-			SELECT id FROM threads
-			WHERE session_id = s.id AND parent_thread_id IS NULL
-			ORDER BY created_at, id LIMIT 1
+		JOIN threads root ON root.id = COALESCE(
+			NULLIF(json_extract(
+				s.metadata_json, '$.lifecycle.active_thread_id'
+			), ''),
+			(
+				SELECT id FROM threads
+				WHERE session_id = s.id AND parent_thread_id IS NULL
+				ORDER BY created_at, id LIMIT 1
+			)
 		)
 		WHERE 1 = 1`
 	var arguments []any
@@ -172,10 +178,15 @@ func (r *Repository) GetLifecycle(
 		       t.id, t.parent_thread_id, t.title, t.status, t.updated_at
 		FROM sessions s
 		JOIN workspaces w ON w.id = s.workspace_id
-		JOIN threads t ON t.id = (
-			SELECT id FROM threads
-			WHERE session_id = s.id AND parent_thread_id IS NULL
-			ORDER BY created_at, id LIMIT 1
+		JOIN threads t ON t.id = COALESCE(
+			NULLIF(json_extract(
+				s.metadata_json, '$.lifecycle.active_thread_id'
+			), ''),
+			(
+				SELECT id FROM threads
+				WHERE session_id = s.id AND parent_thread_id IS NULL
+				ORDER BY created_at, id LIMIT 1
+			)
 		)
 		WHERE s.id = ?`,
 		sessionID,
@@ -270,6 +281,75 @@ func (r *Repository) ThreadIDs(
 	return result, rows.Err()
 }
 
+func (r *Repository) SessionForThread(
+	ctx context.Context,
+	threadID protocol.ThreadID,
+) (string, error) {
+	var sessionID string
+	err := r.db.QueryRowContext(
+		ctx,
+		`SELECT session_id FROM threads WHERE id = ?`,
+		threadID,
+	).Scan(&sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return sessionID, err
+}
+
+func (r *Repository) ActivateThread(
+	ctx context.Context,
+	sessionID string,
+	threadID protocol.ThreadID,
+) (protocol.SessionSummary, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var metadata []byte
+	err = tx.QueryRowContext(ctx, `
+		SELECT s.metadata_json
+		FROM sessions s
+		JOIN threads t ON t.session_id = s.id
+		WHERE s.id = ? AND t.id = ?`,
+		sessionID, threadID,
+	).Scan(&metadata)
+	if errors.Is(err, sql.ErrNoRows) {
+		return protocol.SessionSummary{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if lifecycle.ActiveThreadID == threadID {
+		if err := tx.Rollback(); err != nil {
+			return protocol.SessionSummary{}, err
+		}
+		return r.GetLifecycle(ctx, sessionID)
+	}
+	lifecycle.Version = protocol.SessionLifecycleVersion
+	lifecycle.Revision++
+	lifecycle.ActiveThreadID = threadID
+	updated, err := metadataWithLifecycle(metadata, lifecycle)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE sessions SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+		updated, timestamp(time.Now().UTC()), sessionID,
+	); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	return r.GetLifecycle(ctx, sessionID)
+}
+
 func (r *Repository) UpdateLifecycle(
 	ctx context.Context,
 	sessionID string,
@@ -293,10 +373,15 @@ func (r *Repository) UpdateLifecycle(
 	err = tx.QueryRowContext(ctx, `
 		SELECT s.metadata_json, s.status, t.id, t.title, t.status
 		FROM sessions s
-		JOIN threads t ON t.id = (
-			SELECT id FROM threads
-			WHERE session_id = s.id AND parent_thread_id IS NULL
-			ORDER BY created_at, id LIMIT 1
+		JOIN threads t ON t.id = COALESCE(
+			NULLIF(json_extract(
+				s.metadata_json, '$.lifecycle.active_thread_id'
+			), ''),
+			(
+				SELECT id FROM threads
+				WHERE session_id = s.id AND parent_thread_id IS NULL
+				ORDER BY created_at, id LIMIT 1
+			)
 		)
 		WHERE s.id = ?`,
 		sessionID,
@@ -398,10 +483,15 @@ func (r *Repository) DeleteLifecycle(
 		SELECT s.metadata_json, s.status, w.root_path, t.id
 		FROM sessions s
 		JOIN workspaces w ON w.id = s.workspace_id
-		JOIN threads t ON t.id = (
-			SELECT id FROM threads
-			WHERE session_id = s.id AND parent_thread_id IS NULL
-			ORDER BY created_at, id LIMIT 1
+		JOIN threads t ON t.id = COALESCE(
+			NULLIF(json_extract(
+				s.metadata_json, '$.lifecycle.active_thread_id'
+			), ''),
+			(
+				SELECT id FROM threads
+				WHERE session_id = s.id AND parent_thread_id IS NULL
+				ORDER BY created_at, id LIMIT 1
+			)
 		)
 		WHERE s.id = ?`,
 		sessionID,
@@ -491,6 +581,11 @@ func decodeLifecycleMetadata(
 			lifecycle.Revision == 0 {
 			return lifecycleMetadata{}, profileRoute{}, "",
 				errors.New("session lifecycle metadata is invalid")
+		}
+		if lifecycle.ActiveThreadID != "" &&
+			len(lifecycle.ActiveThreadID) > 256 {
+			return lifecycleMetadata{}, profileRoute{}, "",
+				errors.New("session lifecycle active Thread identity is invalid")
 		}
 	}
 	var route profileRoute

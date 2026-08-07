@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestSnapshotRoundTripVerifiesSchemaAndHash(t *testing.T) {
@@ -28,6 +30,94 @@ func TestSnapshotRoundTripVerifiesSchemaAndHash(t *testing.T) {
 		recovered.ContentHash != saved.ContentHash ||
 		string(recovered.Content) != `{"state":"ok"}` {
 		t.Fatalf("recovered snapshot = %+v", recovered)
+	}
+}
+
+func TestSessionCheckpointAndPlanArtifactsAreImmutableAndVerified(t *testing.T) {
+	repository, _, _ := testRepository(t)
+	profile := artifactProfile()
+	history := []protocol.CompactedMessage{{
+		Role: "user", Content: json.RawMessage(`["implement parser"]`), Turn: 1,
+	}}
+	first, err := repository.SaveCheckpoint(t.Context(), protocol.SessionCheckpoint{
+		Version: protocol.CheckpointProtocolVersion,
+		ID:      "checkpoint-1", SessionID: "session-1",
+		ThreadID: "thread-1", TurnID: "turn-1", Cursor: 7,
+		Status: protocol.CheckpointCompleted, Summary: "Implemented parser",
+		ProfileRevision: profile.Revision, CreatedAt: time.Now().UTC(),
+	}, history, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := repository.SaveCheckpoint(t.Context(), protocol.SessionCheckpoint{
+		Version: protocol.CheckpointProtocolVersion,
+		ID:      "checkpoint-2", SessionID: "session-1",
+		ThreadID: "thread-1", TurnID: "turn-1", Cursor: 8,
+		Status: protocol.CheckpointInterrupted, Summary: "Interrupted safely",
+		ProfileRevision: profile.Revision, CreatedAt: time.Now().UTC(),
+	}, history, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ParentCheckpointID != first.ID {
+		t.Fatalf("checkpoint parent = %q", second.ParentCheckpointID)
+	}
+	list, err := repository.ListCheckpoints(t.Context(), "session-1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].ID != second.ID {
+		t.Fatalf("checkpoint list = %+v", list)
+	}
+	count, err := repository.CountCheckpoints(t.Context(), "session-1")
+	if err != nil || count != 2 {
+		t.Fatalf("checkpoint count = %d, error = %v", count, err)
+	}
+	recovered, gotHistory, gotProfile, err := repository.GetCheckpoint(
+		t.Context(), first.ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.ID != first.ID || len(gotHistory) != 1 ||
+		gotProfile.Revision != profile.Revision {
+		t.Fatalf("recovered checkpoint = %+v, history=%+v", recovered, gotHistory)
+	}
+
+	plan, err := repository.SavePlan(t.Context(), protocol.SessionPlanArtifact{
+		Version: protocol.CheckpointProtocolVersion,
+		ID:      "plan-1", SessionID: "session-1",
+		ThreadID: "thread-1", TurnID: "turn-1", Cursor: 6,
+		Status: protocol.PlanArtifactReady, Body: "1. Update parser",
+		ProfileRevision: profile.Revision,
+		CanImplement:    true, CanAutopilot: true,
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest, found, err := repository.LatestPlan(
+		t.Context(), "session-1", "thread-1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || latest.ID != plan.ID || latest.Body != plan.Body {
+		t.Fatalf("latest plan = %+v", latest)
+	}
+}
+
+func artifactProfile() protocol.SessionProfile {
+	return protocol.SessionProfile{
+		Version:             protocol.SessionProfileVersion,
+		Revision:            2,
+		Mode:                "plan",
+		Provider:            "fixture",
+		Model:               "fixture-model",
+		ApprovalPosture:     "suggest",
+		ExecutionTarget:     "local",
+		MaxSteps:            8,
+		PromptCacheRevision: 1,
 	}
 }
 

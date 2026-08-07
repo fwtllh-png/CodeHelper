@@ -260,6 +260,43 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "manage-chat":
           await this.#manageChat(root, message.sessionId, message.action);
           break;
+        case "plan-action": {
+          const session = this.#selectedSession(root);
+          const plan = await root.controller.sessionPlan(session.sessionId);
+          if (plan.artifact === undefined ||
+            plan.artifact.id !== message.planId) {
+            throw new Error("Plan Artifact is unknown or stale");
+          }
+          if (message.action === "open") {
+            const document = await vscode.workspace.openTextDocument({
+              language: "markdown",
+              content: plan.artifact.body,
+            });
+            await vscode.window.showTextDocument(document, {
+              preview: false,
+              preserveFocus: false,
+            });
+            break;
+          }
+          if (message.action === "autopilot") {
+            const confirmation = await vscode.window.showWarningMessage(
+              "Start this Plan with Autopilot?",
+              {
+                modal: true,
+                detail: "The Runtime may approve eligible actions automatically, " +
+                  "but Host permission ceilings, Guard, Policy, and Sandbox remain active.",
+              },
+              "Start Autopilot",
+            );
+            if (confirmation !== "Start Autopilot") break;
+          }
+          await root.controller.implementPlan(
+            session.sessionId,
+            message.planId,
+            message.action,
+          );
+          break;
+        }
         case "new-chat":
           await root.controller.createChat();
           break;
@@ -368,7 +405,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   async #manageChat(
     root: WorkspaceRuntime,
     sessionId: string,
-    action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete",
+    action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete" | "checkpoints",
   ): Promise<void> {
     const session = root.controller.sessions().find(
       (candidate) => candidate.sessionId === sessionId,
@@ -385,6 +422,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           {
             label: session.archived ? "$(history) Restore" : "$(archive) Archive",
             action: session.archived ? "restore" as const : "archive" as const,
+          },
+          {
+            label: `$(history) Checkpoints (${String(session.checkpointCount)})`,
+            action: "checkpoints" as const,
           },
           { label: "$(trash) Delete", action: "delete" as const },
         ], {
@@ -426,6 +467,83 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         );
         if (confirmation === "Delete") {
           await root.controller.deleteChat(sessionId);
+        }
+        break;
+      }
+      case "checkpoints": {
+        const list = await root.controller.checkpoints(sessionId);
+        if (list.checkpoints.length === 0) {
+          await vscode.window.showInformationMessage(
+            "This Session has no restorable Checkpoints.",
+          );
+          break;
+        }
+        const selection = await vscode.window.showQuickPick(
+          list.checkpoints.map((checkpoint) => ({
+            label: checkpoint.summary,
+            description: `${checkpoint.status} · ${
+              new Date(checkpoint.created_at).toLocaleString()
+            }`,
+            detail: `${String(checkpoint.changed_files)} changed files` +
+              (checkpoint.external_side_effects
+                ? " · completed Tool effects remain applied"
+                : ""),
+            checkpoint,
+          })),
+          {
+            title: `Checkpoints · ${session.title}`,
+            placeHolder: "Select a Checkpoint",
+          },
+        );
+        if (selection === undefined) break;
+        const choices = [
+          ...(selection.checkpoint.can_restore
+            ? [{ label: "$(discard) Restore state", action: "restore" as const }]
+            : []),
+          ...(selection.checkpoint.can_fork
+            ? [{ label: "$(git-branch) Fork Session", action: "fork" as const }]
+            : []),
+        ];
+        if (choices.length === 0) {
+          throw new Error(
+            "Checkpoint is stale for the current Session Profile Revision",
+          );
+        }
+        const choice = await vscode.window.showQuickPick(choices, {
+          title: selection.checkpoint.summary,
+          placeHolder: "Choose a Checkpoint operation",
+        });
+        if (choice?.action === "restore") {
+          const confirmation = await vscode.window.showWarningMessage(
+            "Restore Runtime state to this Checkpoint?",
+            {
+              modal: true,
+              detail: "Completed file, command, Tool, and network effects are " +
+                "not reversed or replayed. Only model-visible Runtime state is restored.",
+            },
+            "Restore State",
+          );
+          if (confirmation === "Restore State") {
+            await root.controller.restoreCheckpoint(
+              sessionId,
+              selection.checkpoint.id,
+            );
+          }
+        } else if (choice?.action === "fork") {
+          const title = await vscode.window.showInputBox({
+            title: "Fork Checkpoint",
+            value: `${session.title} · Fork`,
+            validateInput: (value) => value.trim().length === 0
+              ? "Enter a Fork title"
+              : value.length > 256 ? "Title must be at most 256 characters" : null,
+          });
+          if (title !== undefined) {
+            await root.controller.forkCheckpoint(
+              sessionId,
+              selection.checkpoint.id,
+              title,
+            );
+          }
         }
         break;
       }

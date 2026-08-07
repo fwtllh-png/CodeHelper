@@ -96,6 +96,9 @@ const transcriptActions: TranscriptActions = {
   answer: (requestId, answer) => {
     post({ type: "input", requestId, answer });
   },
+  plan: (planId, action) => {
+    post({ type: "plan-action", planId, action });
+  },
 };
 
 (element("composer") as HTMLFormElement).addEventListener("submit", (event) => {

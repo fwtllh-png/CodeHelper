@@ -39,6 +39,9 @@ const (
 	EventThreadCompacted    EventKind = "thread.compacted"
 	EventThreadForked       EventKind = "thread.forked"
 	EventTurnReverted       EventKind = "turn.reverted"
+	EventCheckpointCreated  EventKind = "checkpoint.created"
+	EventCheckpointRestored EventKind = "checkpoint.restored"
+	EventCheckpointForked   EventKind = "checkpoint.forked"
 	EventTurnCompaction     EventKind = "turn.compaction"
 	EventTurnVerification   EventKind = "turn.verification"
 	EventAgentSpawned       EventKind = "agent.spawned"
@@ -654,6 +657,24 @@ type CompactedMessage struct {
 	Turn    uint64          `json:"turn,omitempty"`
 }
 
+func validateCompactedHistory(history []CompactedMessage) error {
+	if len(history) == 0 || len(history) > 4096 {
+		return errors.New("replacement history size is invalid")
+	}
+	for _, message := range history {
+		switch message.Role {
+		case "user", "assistant", "tool", "system":
+		default:
+			return errors.New("replacement history role is invalid")
+		}
+		if len(message.Content) == 0 || len(message.Content) > 4<<20 ||
+			!json.Valid(message.Content) {
+			return errors.New("replacement history content is invalid")
+		}
+	}
+	return nil
+}
+
 func (*ThreadCompactedData) eventKind() EventKind { return EventThreadCompacted }
 
 func (d *ThreadCompactedData) validate() error {
@@ -815,9 +836,14 @@ func (d *AgentMessageData) validate() error {
 
 // PlanDeltaData streams a <proposed_plan> body for TUI Plan cards (W5.1).
 type PlanDeltaData struct {
-	Text string `json:"text,omitempty"`
-	Body string `json:"body,omitempty"`
-	Done bool   `json:"done,omitempty"`
+	Text            string `json:"text,omitempty"`
+	Body            string `json:"body,omitempty"`
+	Done            bool   `json:"done,omitempty"`
+	ArtifactID      string `json:"artifact_id,omitempty"`
+	ProfileRevision uint64 `json:"profile_revision,omitempty"`
+	Status          string `json:"status,omitempty"`
+	CanImplement    bool   `json:"can_implement,omitempty"`
+	CanAutopilot    bool   `json:"can_autopilot,omitempty"`
 }
 
 func (*PlanDeltaData) eventKind() EventKind { return EventPlanDelta }
@@ -825,6 +851,17 @@ func (*PlanDeltaData) eventKind() EventKind { return EventPlanDelta }
 func (d *PlanDeltaData) validate() error {
 	if d.Text == "" && d.Body == "" && !d.Done {
 		return errors.New("plan delta text, body, or done is required")
+	}
+	if len(d.Body) > 64<<10 || strings.ContainsRune(d.Body, '\x00') {
+		return errors.New("plan delta body is invalid")
+	}
+	if d.ArtifactID != "" {
+		if !d.Done || !validProfileIdentifier(d.ArtifactID) ||
+			d.ProfileRevision == 0 ||
+			d.Status != string(PlanArtifactReady) ||
+			(!d.CanImplement && !d.CanAutopilot) {
+			return errors.New("plan delta Artifact projection is invalid")
+		}
 	}
 	return nil
 }
@@ -881,6 +918,59 @@ type ThreadForkedData struct {
 	NewThreadID        ThreadID           `json:"new_thread_id"`
 	SourceCursor       Cursor             `json:"source_cursor"`
 	ReplacementHistory []CompactedMessage `json:"replacement_history,omitempty"`
+}
+
+type CheckpointRestoredData struct {
+	CheckpointID        string             `json:"checkpoint_id"`
+	SourceThreadID      ThreadID           `json:"source_thread_id"`
+	SourceTurnID        TurnID             `json:"source_turn_id"`
+	SourceCursor        Cursor             `json:"source_cursor"`
+	ReplacementHistory  []CompactedMessage `json:"replacement_history"`
+	SideEffectsReplayed bool               `json:"side_effects_replayed"`
+}
+
+type CheckpointCreatedData struct {
+	Checkpoint SessionCheckpoint `json:"checkpoint"`
+}
+
+func (*CheckpointCreatedData) eventKind() EventKind { return EventCheckpointCreated }
+
+func (d *CheckpointCreatedData) validate() error {
+	return d.Checkpoint.Validate()
+}
+
+func (*CheckpointRestoredData) eventKind() EventKind { return EventCheckpointRestored }
+
+func (d *CheckpointRestoredData) validate() error {
+	if !validProfileIdentifier(d.CheckpointID) ||
+		!validProfileIdentifier(string(d.SourceThreadID)) ||
+		!validProfileIdentifier(string(d.SourceTurnID)) ||
+		len(d.ReplacementHistory) == 0 ||
+		d.SideEffectsReplayed {
+		return errors.New("checkpoint restore data is invalid")
+	}
+	return validateCompactedHistory(d.ReplacementHistory)
+}
+
+type CheckpointForkedData struct {
+	CheckpointID       string             `json:"checkpoint_id"`
+	NewThreadID        ThreadID           `json:"new_thread_id"`
+	Title              string             `json:"title"`
+	SourceCursor       Cursor             `json:"source_cursor"`
+	ReplacementHistory []CompactedMessage `json:"replacement_history"`
+}
+
+func (*CheckpointForkedData) eventKind() EventKind { return EventCheckpointForked }
+
+func (d *CheckpointForkedData) validate() error {
+	if !validProfileIdentifier(d.CheckpointID) ||
+		!validProfileIdentifier(string(d.NewThreadID)) ||
+		strings.TrimSpace(d.Title) == "" || len(d.Title) > 256 ||
+		strings.ContainsAny(d.Title, "\x00\r\n") ||
+		len(d.ReplacementHistory) == 0 {
+		return errors.New("checkpoint fork data is invalid")
+	}
+	return validateCompactedHistory(d.ReplacementHistory)
 }
 
 func (*ThreadForkedData) eventKind() EventKind { return EventThreadForked }

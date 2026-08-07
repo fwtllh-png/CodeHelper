@@ -100,6 +100,11 @@ Durable State 由多个明确组件组合：
 SQLite 当前是初始 Schema。未来公开版本变更必须使用显式 Migration；首次基线前的开发
 迁移历史已经有意压缩。
 
+Session Checkpoint 与 Plan Artifact 复用 Snapshot Index 和 CAS。Checkpoint 只保存
+经过校验的 Model-visible History Baseline 与 Profile Snapshot；Restore 不能执行历史
+Event。持久化 Restore/Fork Event 保证重启重建结果确定。Fork 血缘与当前 Active
+Session Thread 属于关系型 Lifecycle State，而不是 Host-local State。
+
 ## 上下文架构
 
 上下文按稳定性和用途拆分：

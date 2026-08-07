@@ -113,6 +113,7 @@ void test("Chat assembles the maximum V1 transcript and Session list within budg
     workspaceLabel: "workspace",
     pendingApprovals: 0,
     pendingInputs: 0,
+    checkpointCount: 0,
     totalTokens: index,
     costMicrounits: 0,
     costKnown: false,

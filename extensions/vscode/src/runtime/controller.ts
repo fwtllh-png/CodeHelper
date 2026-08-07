@@ -63,6 +63,15 @@ import {
   type SessionLifecycleSummary,
   type SessionListOptions,
 } from "./lifecycle.js";
+import {
+  SessionArtifactCommands,
+  type SessionCheckpoint,
+} from "./artifacts.js";
+import type {
+  CheckpointList,
+  CheckpointRestore,
+  SessionPlan,
+} from "../protocol/generated.js";
 
 export type {
   ApprovalDecision,
@@ -79,6 +88,9 @@ const lifecycleStatusEvents = new Set([
   "approval.resolved",
   "input.required",
   "input.resolved",
+  "checkpoint.created",
+  "checkpoint.restored",
+  "checkpoint.forked",
 ]);
 
 interface ActiveRuntime extends ManagedRuntime {
@@ -111,6 +123,7 @@ export interface ChatSessionSummary extends RuntimeIdentity {
   readonly mode?: string;
   readonly pendingApprovals: number;
   readonly pendingInputs: number;
+  readonly checkpointCount: number;
   readonly totalTokens: number;
   readonly costMicrounits: number;
   readonly costKnown: boolean;
@@ -428,6 +441,74 @@ export class RuntimeController {
       await this.#bindingStore.select(this.rootId, replacement);
     }
     this.#emitSessionsChange();
+  }
+
+  public async checkpoints(sessionId: string): Promise<CheckpointList> {
+    const runtime = this.#readyRuntime();
+    this.#session(runtime, sessionId);
+    return new SessionArtifactCommands(runtime).checkpoints(sessionId);
+  }
+
+  public async restoreCheckpoint(
+    sessionId: string,
+    checkpointId: SessionCheckpoint["id"],
+  ): Promise<CheckpointRestore> {
+    const runtime = this.#readyRuntime();
+    this.#session(runtime, sessionId);
+    const result = await new SessionArtifactCommands(runtime).restore(
+      sessionId,
+      checkpointId,
+    );
+    runtime.summaries.set(
+      sessionId,
+      await new SessionLifecycleCommands(runtime).status(sessionId),
+    );
+    this.#emitSessionsChange();
+    return result;
+  }
+
+  public async forkCheckpoint(
+    sessionId: string,
+    checkpointId: SessionCheckpoint["id"],
+    title: string,
+  ): Promise<void> {
+    const runtime = this.#readyRuntime();
+    const connected = this.#session(runtime, sessionId);
+    const result = await new SessionArtifactCommands(runtime).fork(
+      sessionId,
+      checkpointId,
+      title,
+    );
+    connected.binding = {
+      ...connected.binding,
+      threadId: result.thread_id,
+    };
+    await this.#bindingStore.save(connected.binding);
+    runtime.summaries.set(
+      sessionId,
+      await new SessionLifecycleCommands(runtime).status(sessionId),
+    );
+    this.#emitSessionsChange();
+  }
+
+  public async sessionPlan(sessionId: string): Promise<SessionPlan> {
+    const runtime = this.#readyRuntime();
+    this.#session(runtime, sessionId);
+    return new SessionArtifactCommands(runtime).plan(sessionId);
+  }
+
+  public async implementPlan(
+    sessionId: string,
+    planId: string,
+    transition: "implement" | "autopilot",
+  ): Promise<void> {
+    const runtime = this.#readyRuntime();
+    this.#session(runtime, sessionId);
+    await new SessionArtifactCommands(runtime).implementPlan(
+      sessionId,
+      planId,
+      transition,
+    );
   }
 
   public onStateChange(
@@ -887,6 +968,7 @@ export class RuntimeController {
       ...(summary.mode === undefined ? {} : { mode: summary.mode }),
       pendingApprovals: summary.pending_approvals,
       pendingInputs: summary.pending_inputs,
+      checkpointCount: summary.checkpoint_count,
       totalTokens: summary.total_tokens,
       costMicrounits: summary.cost_microunits,
       costKnown: summary.cost_known,

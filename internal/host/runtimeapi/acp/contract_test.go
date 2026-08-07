@@ -512,6 +512,62 @@ func (h *contractACPHost) DeleteSession(
 	return result, nil
 }
 
+func (h *contractACPHost) ListCheckpoints(
+	ctx context.Context,
+	limit int,
+) (protocol.CheckpointList, error) {
+	data, err := h.call(ctx, "checkpoint/list", map[string]any{
+		"sessionId": h.sessionID,
+		"limit":     limit,
+	})
+	if err != nil {
+		return protocol.CheckpointList{}, err
+	}
+	var result protocol.CheckpointList
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.CheckpointList{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) RestoreCheckpoint(
+	ctx context.Context,
+	checkpointID string,
+) (protocol.CheckpointRestoreResult, error) {
+	data, err := h.call(ctx, "checkpoint/restore", map[string]any{
+		"sessionId":    h.sessionID,
+		"checkpointId": checkpointID,
+	})
+	if err != nil {
+		return protocol.CheckpointRestoreResult{}, err
+	}
+	var result protocol.CheckpointRestoreResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.CheckpointRestoreResult{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) ForkCheckpoint(
+	ctx context.Context,
+	checkpointID, title string,
+) (protocol.CheckpointForkResult, error) {
+	data, err := h.call(ctx, "checkpoint/fork", map[string]any{
+		"sessionId":    h.sessionID,
+		"checkpointId": checkpointID,
+		"title":        title,
+	})
+	if err != nil {
+		return protocol.CheckpointForkResult{}, err
+	}
+	var result protocol.CheckpointForkResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.CheckpointForkResult{}, err
+	}
+	h.threadID = result.ThreadID
+	return result, nil
+}
+
 func (h *contractACPHost) UpdateSessionProfile(
 	ctx context.Context,
 	expectedRevision uint64,

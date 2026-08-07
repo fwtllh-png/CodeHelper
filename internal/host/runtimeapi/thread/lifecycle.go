@@ -353,6 +353,30 @@ func (l *Lifecycle) Project(ctx context.Context, event protocol.Event) error {
 			if err != nil {
 				return err
 			}
+		case protocol.EventCheckpointForked:
+			data, ok := event.Data.(*protocol.CheckpointForkedData)
+			if !ok {
+				return errors.New("checkpoint fork event has unexpected data")
+			}
+			var sessionID string
+			if err := tx.QueryRowContext(
+				ctx, "SELECT session_id FROM threads WHERE id = ?", event.ThreadID,
+			).Scan(&sessionID); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, `
+				INSERT INTO threads(
+					id, session_id, parent_thread_id, title, status,
+					source_cursor, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(id) DO NOTHING`,
+				data.NewThreadID, sessionID, event.ThreadID, data.Title,
+				ThreadOpen, int64(data.SourceCursor),
+				timestamp(event.CreatedAt), timestamp(event.CreatedAt),
+			)
+			if err != nil {
+				return err
+			}
 		case protocol.EventThreadCompacted:
 			_, err := tx.ExecContext(
 				ctx, "UPDATE threads SET updated_at = ? WHERE id = ?",

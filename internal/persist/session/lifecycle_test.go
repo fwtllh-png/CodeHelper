@@ -158,3 +158,63 @@ func TestLifecycleListSearchUpdateAndDeleteProtection(t *testing.T) {
 		t.Fatal("last open session was deleted")
 	}
 }
+
+func TestLifecyclePersistsTheActiveForkThread(t *testing.T) {
+	store, err := sqlitestate.Open(
+		t.Context(),
+		filepath.Join(t.TempDir(), "state.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	repository := session.NewSQLiteRepository(store)
+	workspace, err := repository.CreateWorkspace(t.Context(), session.Workspace{
+		ID: "workspace", RootPath: "/workspace", DisplayName: "fixture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := repository.Create(t.Context(), session.Session{
+		ID: "session", WorkspaceID: workspace.ID,
+		Metadata:  json.RawMessage(`{"transport":"acp"}`),
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().ExecContext(t.Context(), `
+		INSERT INTO threads(
+			id, session_id, parent_thread_id, title, status,
+			source_cursor, created_at, updated_at
+		) VALUES
+			('root', 'session', NULL, 'Root', 'open', 0, ?, ?),
+			('child', 'session', 'root', 'Checkpoint Fork', 'open', 8, ?, ?)`,
+		now, now, now, now,
+	); err != nil {
+		t.Fatal(err)
+	}
+	activated, err := repository.ActivateThread(
+		t.Context(),
+		"session",
+		"child",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if activated.ThreadID != "child" ||
+		activated.ParentThreadID != "root" ||
+		activated.Title != "Checkpoint Fork" ||
+		activated.Revision != 2 {
+		t.Fatalf("activated lifecycle = %+v", activated)
+	}
+	reopened := session.NewSQLiteRepository(store)
+	recovered, err := reopened.GetLifecycle(t.Context(), "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.ThreadID != "child" ||
+		recovered.ParentThreadID != "root" {
+		t.Fatalf("recovered active Thread = %+v", recovered)
+	}
+}

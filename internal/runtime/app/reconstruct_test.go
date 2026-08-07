@@ -72,6 +72,71 @@ func TestReconstructThreadAppliesPostCompactEvents(t *testing.T) {
 	}
 }
 
+func TestReconstructThreadUsesCheckpointRestoreAndForkAsHistoryBaselines(
+	t *testing.T,
+) {
+	baseline, err := EncodeCompactedHistory([]provider.Message{
+		provider.TextMessage(provider.RoleUser, "checkpoint prompt"),
+		provider.TextMessage(provider.RoleAssistant, "checkpoint result"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []protocol.Event{
+		{
+			Kind: protocol.EventTurnStarted, ThreadID: "thread-a",
+			TurnID: "later", Sequence: 1,
+			Data: &protocol.TurnStartedData{
+				Provider: "p", Model: "m", Prompt: "discard me",
+			},
+		},
+		{
+			Kind: protocol.EventTurnCompleted, ThreadID: "thread-a",
+			TurnID: "later", Sequence: 2,
+			Data: &protocol.TurnCompletedData{Text: "discarded"},
+		},
+		{
+			Kind: protocol.EventCheckpointRestored, ThreadID: "thread-a",
+			TurnID: "checkpoint-turn", Sequence: 3,
+			Data: &protocol.CheckpointRestoredData{
+				CheckpointID:       "checkpoint-1",
+				SourceThreadID:     "thread-a",
+				SourceTurnID:       "checkpoint-turn",
+				SourceCursor:       9,
+				ReplacementHistory: baseline,
+			},
+		},
+		{
+			Kind: protocol.EventCheckpointForked, ThreadID: "thread-a",
+			TurnID: "checkpoint-turn", Sequence: 4,
+			Data: &protocol.CheckpointForkedData{
+				CheckpointID:       "checkpoint-1",
+				NewThreadID:        "thread-child",
+				Title:              "Child",
+				SourceCursor:       9,
+				ReplacementHistory: baseline,
+			},
+		},
+	}
+	restored, err := ReconstructThread(events, "thread-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.History) != 2 ||
+		restored.History[0].Text() != "checkpoint prompt" ||
+		restored.History[1].Text() != "checkpoint result" {
+		t.Fatalf("restored history = %+v", restored.History)
+	}
+	forked, err := ReconstructThread(events, "thread-child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(forked.History) != 2 ||
+		forked.History[1].Text() != "checkpoint result" {
+		t.Fatalf("Fork history = %+v", forked.History)
+	}
+}
+
 func TestReconstructThreadCommitsOnlyCompletedPairedToolHistory(t *testing.T) {
 	events := []protocol.Event{
 		{
