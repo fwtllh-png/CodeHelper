@@ -220,6 +220,282 @@
       ],
       "additionalProperties": false
     },
+    "session_delete": {
+      "type": "object",
+      "properties": {
+        "deleted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deleted_at",
+        "session_id",
+        "thread_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "session_lifecycle_patch": {
+      "type": "object",
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "session_lifecycle_update": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "object",
+          "properties": {
+            "archived": {
+              "type": "boolean"
+            },
+            "cost_known": {
+              "type": "boolean"
+            },
+            "cost_microunits": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "isolation": {
+              "type": "string"
+            },
+            "latest_sequence": {
+              "type": "integer"
+            },
+            "latest_turn_id": {
+              "type": "string"
+            },
+            "match_turn_id": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "parent_thread_id": {
+              "type": "string"
+            },
+            "pending_approvals": {
+              "type": "integer"
+            },
+            "pending_inputs": {
+              "type": "integer"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "total_tokens": {
+              "type": "integer"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "version": {
+              "type": "integer"
+            },
+            "workspace_label": {
+              "type": "string"
+            },
+            "workspace_root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "archived",
+            "cost_known",
+            "cost_microunits",
+            "created_at",
+            "isolation",
+            "latest_sequence",
+            "pending_approvals",
+            "pending_inputs",
+            "pinned",
+            "revision",
+            "session_id",
+            "status",
+            "thread_id",
+            "title",
+            "total_tokens",
+            "updated_at",
+            "version",
+            "workspace_label",
+            "workspace_root"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "session"
+      ],
+      "additionalProperties": false
+    },
+    "session_list": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "archived": {
+                "type": "boolean"
+              },
+              "cost_known": {
+                "type": "boolean"
+              },
+              "cost_microunits": {
+                "type": "integer"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "isolation": {
+                "type": "string"
+              },
+              "latest_sequence": {
+                "type": "integer"
+              },
+              "latest_turn_id": {
+                "type": "string"
+              },
+              "match_turn_id": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "parent_thread_id": {
+                "type": "string"
+              },
+              "pending_approvals": {
+                "type": "integer"
+              },
+              "pending_inputs": {
+                "type": "integer"
+              },
+              "pinned": {
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "total_tokens": {
+                "type": "integer"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "workspace_label": {
+                "type": "string"
+              },
+              "workspace_root": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "archived",
+              "cost_known",
+              "cost_microunits",
+              "created_at",
+              "isolation",
+              "latest_sequence",
+              "pending_approvals",
+              "pending_inputs",
+              "pinned",
+              "revision",
+              "session_id",
+              "status",
+              "thread_id",
+              "title",
+              "total_tokens",
+              "updated_at",
+              "version",
+              "workspace_label",
+              "workspace_root"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sessions",
+        "version"
+      ],
+      "additionalProperties": false
+    },
     "session_profile_patch": {
       "type": "object",
       "properties": {

@@ -94,6 +94,33 @@ type SessionToolCatalog interface {
 	Snapshot() (tool.CatalogSnapshot, error)
 }
 
+type SessionLifecycleStore interface {
+	ListLifecycle(
+		context.Context,
+		protocol.SessionListQuery,
+	) ([]protocol.SessionSummary, error)
+	GetLifecycle(
+		context.Context,
+		string,
+		...string,
+	) (protocol.SessionSummary, error)
+	ThreadIDs(
+		context.Context,
+		string,
+	) ([]protocol.ThreadID, error)
+	UpdateLifecycle(
+		context.Context,
+		string,
+		uint64,
+		protocol.SessionLifecyclePatch,
+	) (protocol.SessionSummary, error)
+	DeleteLifecycle(
+		context.Context,
+		string,
+		uint64,
+	) (protocol.SessionDeleteResult, error)
+}
+
 type Options struct {
 	OperationBuffer     int
 	EventHistory        int
@@ -109,6 +136,8 @@ type Options struct {
 	DefaultProfile      protocol.SessionProfile
 	ProfileCapabilities protocol.SessionProfileCapabilities
 	ToolCatalog         SessionToolCatalog
+	SessionLifecycle    SessionLifecycleStore
+	SessionWorkspaces   SessionWorkspaceManager
 }
 
 type Snapshot struct {
@@ -143,6 +172,8 @@ type Runtime struct {
 	defaultProfile      protocol.SessionProfile
 	profileCapabilities protocol.SessionProfileCapabilities
 	toolCatalog         SessionToolCatalog
+	sessionLifecycle    SessionLifecycleStore
+	sessionWorkspaces   SessionWorkspaceManager
 
 	operations chan acceptedOperation
 	done       chan struct{}
@@ -234,6 +265,8 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 		defaultProfile:      options.DefaultProfile,
 		profileCapabilities: options.ProfileCapabilities,
 		toolCatalog:         options.ToolCatalog,
+		sessionLifecycle:    options.SessionLifecycle,
+		sessionWorkspaces:   options.SessionWorkspaces,
 		operations:          make(chan acceptedOperation, options.OperationBuffer),
 		done:                make(chan struct{}),
 		subscribers:         make(map[uint64]chan protocol.Event),
@@ -259,6 +292,280 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	}
 	go runtime.loop()
 	return runtime, nil
+}
+
+func (r *Runtime) SessionLifecycleAvailable() bool {
+	return r != nil && r.sessionLifecycle != nil
+}
+
+func (r *Runtime) ListSessions(
+	ctx context.Context,
+	query protocol.SessionListQuery,
+) (protocol.SessionList, error) {
+	if r.sessionLifecycle == nil {
+		return protocol.SessionList{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session lifecycle is unavailable",
+			false,
+			nil,
+		)
+	}
+	if err := query.Validate(); err != nil {
+		return protocol.SessionList{}, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			err.Error(),
+			false,
+			err,
+		)
+	}
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	storeQuery := query
+	if query.Status != "" {
+		storeQuery.Status = ""
+		storeQuery.Limit = 1000
+	}
+	values, err := r.sessionLifecycle.ListLifecycle(ctx, storeQuery)
+	if err != nil {
+		return protocol.SessionList{}, err
+	}
+	sessions := make([]protocol.SessionSummary, 0, min(len(values), limit))
+	for _, value := range values {
+		value, err = r.projectSessionActivity(ctx, value)
+		if err != nil {
+			return protocol.SessionList{}, err
+		}
+		if query.Status != "" && value.Status != query.Status {
+			continue
+		}
+		sessions = append(sessions, value)
+		if len(sessions) == limit {
+			break
+		}
+	}
+	result := protocol.SessionList{
+		Version:  protocol.SessionLifecycleVersion,
+		Query:    strings.TrimSpace(query.Query),
+		Sessions: sessions,
+	}
+	if err := result.Validate(); err != nil {
+		return protocol.SessionList{}, err
+	}
+	return result, nil
+}
+
+func (r *Runtime) SessionStatus(
+	ctx context.Context,
+	sessionID string,
+) (protocol.SessionSummary, error) {
+	if r.sessionLifecycle == nil {
+		return protocol.SessionSummary{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session lifecycle is unavailable",
+			false,
+			nil,
+		)
+	}
+	summary, err := r.sessionLifecycle.GetLifecycle(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	return r.projectSessionActivity(ctx, summary)
+}
+
+func (r *Runtime) UpdateSessionLifecycle(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+	patch protocol.SessionLifecyclePatch,
+) (protocol.SessionLifecycleUpdate, error) {
+	if r.sessionLifecycle == nil {
+		return protocol.SessionLifecycleUpdate{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session lifecycle is unavailable",
+			false,
+			nil,
+		)
+	}
+	current, err := r.SessionStatus(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	if patch.Archived != nil && *patch.Archived {
+		if err := ensureSessionQuiescent(current, "archive"); err != nil {
+			return protocol.SessionLifecycleUpdate{}, err
+		}
+	}
+	updated, err := r.sessionLifecycle.UpdateLifecycle(
+		ctx,
+		sessionID,
+		expectedRevision,
+		patch,
+	)
+	if err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	updated, err = r.projectSessionActivity(ctx, updated)
+	if err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	return protocol.SessionLifecycleUpdate{
+		Session: updated,
+	}, nil
+}
+
+func (r *Runtime) DeleteSession(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+) (protocol.SessionDeleteResult, error) {
+	if r.sessionLifecycle == nil {
+		return protocol.SessionDeleteResult{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session lifecycle is unavailable",
+			false,
+			nil,
+		)
+	}
+	current, err := r.SessionStatus(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	if err := ensureSessionQuiescent(current, "delete"); err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	if current.Isolation == SessionIsolationWorktree {
+		if r.sessionWorkspaces == nil {
+			return protocol.SessionDeleteResult{}, protocol.NewProblem(
+				protocol.CodeUnavailable,
+				"isolated Chat workspaces are unavailable",
+				false,
+				nil,
+			)
+		}
+		if _, err := r.sessionWorkspaces.Restore(
+			ctx,
+			current.SessionID,
+			current.ThreadID,
+		); err != nil {
+			return protocol.SessionDeleteResult{}, err
+		}
+		plan, err := r.sessionWorkspaces.PlanMerge(
+			ctx,
+			current.SessionID,
+			current.ThreadID,
+		)
+		if err != nil && !errors.Is(err, ErrSessionWorkspaceClean) {
+			return protocol.SessionDeleteResult{}, err
+		}
+		if err == nil && len(plan.Files) != 0 {
+			return protocol.SessionDeleteResult{}, protocol.NewProblem(
+				protocol.CodeConflict,
+				"cannot delete session with unmerged worktree changes",
+				false,
+				nil,
+			)
+		}
+	}
+	result, err := r.sessionLifecycle.DeleteLifecycle(
+		ctx,
+		sessionID,
+		expectedRevision,
+	)
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	if manager, ok := r.engine.(*ThreadManager); ok && manager != nil {
+		manager.Release(result.ThreadID)
+	}
+	if current.Isolation == SessionIsolationWorktree {
+		if discardErr := r.sessionWorkspaces.Discard(
+			ctx,
+			current.SessionID,
+			current.ThreadID,
+		); discardErr != nil {
+			r.logger.Error(
+				"discard deleted Session worktree",
+				"session_id", current.SessionID,
+				"thread_id", current.ThreadID,
+				"error", discardErr,
+			)
+		}
+	}
+	return result, nil
+}
+
+func (r *Runtime) projectSessionActivity(
+	ctx context.Context,
+	summary protocol.SessionSummary,
+) (protocol.SessionSummary, error) {
+	threadIDs, err := r.sessionLifecycle.ThreadIDs(ctx, summary.SessionID)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	threads := make(map[protocol.ThreadID]struct{}, len(threadIDs))
+	for _, threadID := range threadIDs {
+		threads[threadID] = struct{}{}
+	}
+	r.activeMu.Lock()
+	active := false
+	for threadID := range threads {
+		if _, ok := r.activeThreads[threadID]; ok {
+			active = true
+			break
+		}
+	}
+	r.activeMu.Unlock()
+	r.mu.Lock()
+	pendingApprovals := 0
+	for _, approval := range r.approvals {
+		if _, ok := threads[approval.ThreadID]; ok {
+			pendingApprovals++
+		}
+	}
+	pendingInputs := 0
+	for _, input := range r.inputs {
+		if _, ok := threads[input.ThreadID]; ok {
+			pendingInputs++
+		}
+	}
+	r.mu.Unlock()
+	summary.PendingApprovals = pendingApprovals
+	summary.PendingInputs = pendingInputs
+	switch {
+	case pendingApprovals > 0:
+		summary.Status = protocol.SessionStatusAwaitingApproval
+	case pendingInputs > 0:
+		summary.Status = protocol.SessionStatusAwaitingInput
+	case active:
+		summary.Status = protocol.SessionStatusRunning
+	}
+	return summary, nil
+}
+
+func ensureSessionQuiescent(
+	summary protocol.SessionSummary,
+	action string,
+) error {
+	switch summary.Status {
+	case protocol.SessionStatusRunning,
+		protocol.SessionStatusAwaitingApproval,
+		protocol.SessionStatusAwaitingInput:
+		return protocol.NewProblem(
+			protocol.CodeConflict,
+			fmt.Sprintf(
+				"cannot %s session while status is %s",
+				action,
+				summary.Status,
+			),
+			true,
+			nil,
+		)
+	default:
+		return nil
+	}
 }
 
 func (r *Runtime) SessionToolCatalog(

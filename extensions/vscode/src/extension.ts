@@ -53,6 +53,10 @@ export interface ExtensionAPI {
   readonly runtimeHosts?: () => readonly RuntimeHostSnapshot[];
   readonly chatSessions?: () => readonly ChatSessionSummary[];
   readonly createChat?: () => Promise<ChatSessionSummary>;
+  readonly renameChat?: (sessionId: string, title: string) => Promise<void>;
+  readonly pinChat?: (sessionId: string, pinned: boolean) => Promise<void>;
+  readonly archiveChat?: (sessionId: string, archived: boolean) => Promise<void>;
+  readonly deleteChat?: (sessionId: string) => Promise<void>;
   readonly sessionProfile?: (sessionId: string) => Promise<SessionProfileSnapshot>;
   readonly sessionToolCatalog?: (
     sessionId: string,
@@ -281,6 +285,14 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
           ),
           chatSessions: () => activeRegistry.selected.controller.sessions(),
           createChat: async () => activeRegistry.selected.controller.createChat(),
+          renameChat: async (sessionId, title) =>
+            activeRegistry.selected.controller.renameChat(sessionId, title),
+          pinChat: async (sessionId, pinned) =>
+            activeRegistry.selected.controller.pinChat(sessionId, pinned),
+          archiveChat: async (sessionId, archived) =>
+            activeRegistry.selected.controller.archiveChat(sessionId, archived),
+          deleteChat: async (sessionId) =>
+            activeRegistry.selected.controller.deleteChat(sessionId),
           sessionProfile: async (sessionId) =>
             activeRegistry.selected.controller.sessionProfile(sessionId),
           sessionToolCatalog: async (sessionId) =>

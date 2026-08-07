@@ -83,6 +83,16 @@ func Scenarios() []Scenario {
 			Run: sessionToolCatalogIsShared,
 		},
 		{
+			Name: "session lifecycle query and protection are shared",
+			Setup: func(t *testing.T) Setup {
+				return Setup{
+					Fixture:   fixturePath(t, "openai"),
+					Workspace: t.TempDir(),
+				}
+			},
+			Run: sessionLifecycleIsShared,
+		},
+		{
 			Name:  "editor context receipts are shared and durable",
 			Setup: editorContextSetup,
 			Run:   editorContextReceiptsAreSharedAndDurable,
@@ -153,6 +163,63 @@ func Scenarios() []Scenario {
 			},
 			Run: approvalParksAndResumes,
 		},
+	}
+}
+
+func sessionLifecycleIsShared(t *testing.T, host Host, _ Setup) {
+	list, err := host.ListSessions(t.Context(), protocol.SessionListQuery{
+		Query: "contract", Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := list.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Sessions) != 1 {
+		t.Fatalf("%s: lifecycle list = %+v", host.Transport(), list)
+	}
+	current := list.Sessions[0]
+	title := "Pinned lifecycle fixture"
+	pinned := true
+	updated, err := host.UpdateSessionLifecycle(
+		t.Context(),
+		current.Revision,
+		protocol.SessionLifecyclePatch{Title: &title, Pinned: &pinned},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Session.Title != title || !updated.Session.Pinned ||
+		updated.Session.Revision != current.Revision+1 {
+		t.Fatalf("%s: lifecycle update = %+v", host.Transport(), updated)
+	}
+	archived := true
+	updated, err = host.UpdateSessionLifecycle(
+		t.Context(),
+		updated.Session.Revision,
+		protocol.SessionLifecyclePatch{Archived: &archived},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Session.Archived {
+		t.Fatalf("%s: archived lifecycle = %+v", host.Transport(), updated)
+	}
+	list, err = host.ListSessions(t.Context(), protocol.SessionListQuery{
+		IncludeArchived: true, PinnedOnly: true, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Sessions) != 1 || !list.Sessions[0].Archived {
+		t.Fatalf("%s: archived list = %+v", host.Transport(), list)
+	}
+	if _, err := host.DeleteSession(
+		t.Context(),
+		updated.Session.Revision,
+	); err == nil {
+		t.Fatalf("%s: deleted the last session", host.Transport())
 	}
 }
 

@@ -32,6 +32,22 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
     type: "select-chat",
     sessionId: "session_2",
   });
+  assert.deepEqual(decodeWebviewMessage({
+    type: "manage-chat",
+    sessionId: "session_2",
+    action: "archive",
+  }), {
+    type: "manage-chat",
+    sessionId: "session_2",
+    action: "archive",
+  });
+  assert.deepEqual(decodeWebviewMessage({
+    type: "search-chats",
+    query: "payment",
+  }), {
+    type: "search-chats",
+    query: "payment",
+  });
   assert.deepEqual(decodeWebviewMessage({ type: "new-chat" }), {
     type: "new-chat",
   });

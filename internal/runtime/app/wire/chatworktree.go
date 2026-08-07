@@ -113,6 +113,19 @@ func (c *chatWorkspaces) Restore(
 	if err := c.validateIdentity(sessionID, threadID); err != nil {
 		return app.SessionWorkspace{}, err
 	}
+	c.mu.Lock()
+	if existing, ok := c.sessions[sessionID]; ok {
+		c.mu.Unlock()
+		if existing.threadID != threadID {
+			return app.SessionWorkspace{},
+				errors.New("Chat session thread identity mismatch")
+		}
+		return app.SessionWorkspace{
+			Mode: app.SessionIsolationWorktree,
+			Root: existing.worktree.Path,
+		}, nil
+	}
+	c.mu.Unlock()
 	path := filepath.Join(c.trees.root, "worktrees", chatWorktreeID(sessionID))
 	canonical, err := filepath.EvalSymlinks(path)
 	if err != nil {
@@ -271,7 +284,7 @@ func (c *chatWorkspaces) mergePlan(
 		return preparedChatMerge{}, err
 	}
 	if len(paths) == 0 {
-		return preparedChatMerge{}, errors.New("Chat worktree has no changes to merge")
+		return preparedChatMerge{}, app.ErrSessionWorkspaceClean
 	}
 	if len(paths) > maxChatMergeFiles {
 		return preparedChatMerge{}, fmt.Errorf(

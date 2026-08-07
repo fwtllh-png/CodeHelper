@@ -8,7 +8,9 @@ import type {
 } from "../contract.js";
 import {
   filterChatSessions,
+  groupChatSessions,
   sessionStatusLabel,
+  type SessionStatusFilter,
 } from "../session-list.js";
 import { element } from "./dom.js";
 import {
@@ -27,6 +29,7 @@ const root = element("root") as HTMLSelectElement;
 const chatTitle = element("chat-title");
 const sessionList = element("session-list");
 const sessionSearch = element("session-search") as HTMLInputElement;
+const sessionFilter = element("session-filter") as HTMLSelectElement;
 const sessionCount = element("session-count");
 const sessionRail = element("session-rail");
 const sessionScrim = element("session-scrim") as HTMLButtonElement;
@@ -55,6 +58,8 @@ const approvalControl = element("approval-control") as HTMLButtonElement;
 let trusted = false;
 let messageMergePlanId: string | undefined;
 let sessions: readonly ChatSessionView[] = [];
+let sessionSearchProjection: ChatSnapshotMessage["runtime"]["sessionSearch"];
+let sessionSearchTimer: ReturnType<typeof setTimeout> | undefined;
 
 const transcriptActions: TranscriptActions = {
   openResource: (resourceId) => {
@@ -169,6 +174,14 @@ sessionScrim.addEventListener("click", () => {
 });
 sessionSearch.addEventListener("input", () => {
   renderSessionList();
+  if (sessionSearchTimer !== undefined) clearTimeout(sessionSearchTimer);
+  sessionSearchTimer = setTimeout(() => {
+    sessionSearchTimer = undefined;
+    post({ type: "search-chats", query: sessionSearch.value });
+  }, 150);
+});
+sessionFilter.addEventListener("change", () => {
+  renderSessionList();
 });
 sessionList.addEventListener("keydown", (event) => {
   if (!(event instanceof KeyboardEvent) ||
@@ -217,6 +230,7 @@ function renderSnapshot(message: ChatSnapshotMessage): void {
   }));
   root.hidden = message.runtime.roots.length < 2;
   sessions = message.runtime.sessions;
+  sessionSearchProjection = message.runtime.sessionSearch;
   renderSessionList();
   const selected = sessions.find((candidate) => candidate.selected);
   chatTitle.textContent = selected?.title ?? "CodeHelper";
@@ -294,9 +308,32 @@ function setControl(
 }
 
 function renderSessionList(): void {
-  const visible = filterChatSessions(sessions, sessionSearch.value);
+  const query = sessionSearch.value.trim();
+  const matchingProjection = query.length > 0 &&
+    sessionSearchProjection?.query === query
+    ? sessionSearchProjection
+    : undefined;
+  const matchIDs = matchingProjection === undefined
+    ? undefined
+    : new Set(matchingProjection.sessionIds);
+  const serverMatches = matchingProjection !== undefined;
+  const source = matchIDs === undefined
+    ? sessions
+    : sessions.filter((session) => matchIDs.has(session.sessionId));
+  const visible = filterChatSessions(
+    source,
+    serverMatches ? "" : query,
+    sessionFilter.value as SessionStatusFilter,
+  );
   sessionCount.textContent = String(visible.length);
-  sessionList.replaceChildren(...visible.map((session) => {
+  const groups = groupChatSessions(visible);
+  sessionList.replaceChildren(...groups.flatMap((group) => {
+    const heading = document.createElement("div");
+    heading.className = "session-group-label";
+    heading.textContent = group.label.toLocaleUpperCase();
+    return [heading, ...group.sessions.map((session) => {
+      const row = document.createElement("div");
+      row.className = "session-row";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "session-item";
@@ -308,20 +345,41 @@ function renderSessionList(): void {
     const title = document.createElement("span");
     title.className = "session-item-title";
     const indicator = document.createElement("span");
-    indicator.className = session.active
+      indicator.className = [
+        "running", "awaiting_approval", "awaiting_input",
+      ].includes(session.status)
       ? "session-indicator active"
       : "session-indicator";
     indicator.textContent = "•";
-    title.append(indicator, document.createTextNode(session.title));
+      title.append(
+        indicator,
+        document.createTextNode(`${session.pinned ? "★ " : ""}${session.title}`),
+      );
     const meta = document.createElement("span");
     meta.className = "session-item-meta";
     meta.textContent = sessionStatusLabel(session);
-    button.append(title, meta);
+      button.append(title, meta);
+      button.disabled = session.archived;
     button.addEventListener("click", () => {
       post({ type: "select-chat", sessionId: session.sessionId });
       setSessionsOpen(false);
     });
-    return button;
+      const manage = document.createElement("button");
+      manage.type = "button";
+      manage.className = "session-manage icon-button";
+      manage.title = `Manage ${session.title}`;
+      manage.setAttribute("aria-label", `Manage ${session.title}`);
+      manage.textContent = "…";
+      manage.addEventListener("click", () => {
+        post({
+          type: "manage-chat",
+          sessionId: session.sessionId,
+          action: "menu",
+        });
+      });
+      row.append(button, manage);
+      return row;
+    })];
   }));
 }
 

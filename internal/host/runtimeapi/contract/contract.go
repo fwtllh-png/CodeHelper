@@ -107,6 +107,19 @@ type Host interface {
 	ReadState(ctx context.Context) (ReadState, error)
 	SessionProfile(ctx context.Context) (protocol.SessionProfileSnapshot, error)
 	SessionToolCatalog(ctx context.Context) (protocol.SessionToolCatalog, error)
+	ListSessions(
+		ctx context.Context,
+		query protocol.SessionListQuery,
+	) (protocol.SessionList, error)
+	UpdateSessionLifecycle(
+		ctx context.Context,
+		expectedRevision uint64,
+		patch protocol.SessionLifecyclePatch,
+	) (protocol.SessionLifecycleUpdate, error)
+	DeleteSession(
+		ctx context.Context,
+		expectedRevision uint64,
+	) (protocol.SessionDeleteResult, error)
 	UpdateSessionProfile(
 		ctx context.Context,
 		expectedRevision uint64,

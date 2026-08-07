@@ -173,6 +173,81 @@ export type SessionToolCatalog = {
   readonly "version": number;
 };
 
+export type SessionList = {
+  readonly "query"?: string;
+  readonly "sessions": ReadonlyArray<{
+      readonly "archived": boolean;
+      readonly "cost_known": boolean;
+      readonly "cost_microunits": number;
+      readonly "created_at": string;
+      readonly "isolation": string;
+      readonly "latest_sequence": number;
+      readonly "latest_turn_id"?: string;
+      readonly "match_turn_id"?: string;
+      readonly "mode"?: string;
+      readonly "model"?: string;
+      readonly "parent_thread_id"?: string;
+      readonly "pending_approvals": number;
+      readonly "pending_inputs": number;
+      readonly "pinned": boolean;
+      readonly "provider"?: string;
+      readonly "revision": number;
+      readonly "session_id": string;
+      readonly "status": string;
+      readonly "thread_id": string;
+      readonly "title": string;
+      readonly "total_tokens": number;
+      readonly "updated_at": string;
+      readonly "version": number;
+      readonly "workspace_label": string;
+      readonly "workspace_root": string;
+    }>;
+  readonly "version": number;
+};
+
+export type SessionLifecyclePatch = {
+  readonly "archived"?: boolean;
+  readonly "pinned"?: boolean;
+  readonly "title"?: string;
+};
+
+export type SessionLifecycleUpdate = {
+  readonly "session": {
+      readonly "archived": boolean;
+      readonly "cost_known": boolean;
+      readonly "cost_microunits": number;
+      readonly "created_at": string;
+      readonly "isolation": string;
+      readonly "latest_sequence": number;
+      readonly "latest_turn_id"?: string;
+      readonly "match_turn_id"?: string;
+      readonly "mode"?: string;
+      readonly "model"?: string;
+      readonly "parent_thread_id"?: string;
+      readonly "pending_approvals": number;
+      readonly "pending_inputs": number;
+      readonly "pinned": boolean;
+      readonly "provider"?: string;
+      readonly "revision": number;
+      readonly "session_id": string;
+      readonly "status": string;
+      readonly "thread_id": string;
+      readonly "title": string;
+      readonly "total_tokens": number;
+      readonly "updated_at": string;
+      readonly "version": number;
+      readonly "workspace_label": string;
+      readonly "workspace_root": string;
+    };
+};
+
+export type SessionDelete = {
+  readonly "deleted_at": string;
+  readonly "session_id": string;
+  readonly "thread_id": string;
+  readonly "version": number;
+};
+
 export type ApprovalDecisionPayload = {
   readonly "decision": string;
   readonly "expires_at"?: string;

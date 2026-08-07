@@ -10,6 +10,12 @@ export type WebviewMessage =
   | { readonly type: "submit"; readonly text: string }
   | { readonly type: "select-root"; readonly rootId: string }
   | { readonly type: "select-chat"; readonly sessionId: string }
+  | { readonly type: "search-chats"; readonly query: string }
+  | {
+      readonly type: "manage-chat";
+      readonly sessionId: string;
+      readonly action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete";
+    }
   | { readonly type: "new-chat" }
   | { readonly type: "repair-runtime" }
   | { readonly type: "run-setup" }
@@ -54,6 +60,19 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
       return {
         type: "select-chat",
         sessionId: requireBoundedString(value["sessionId"], "sessionId", 256),
+      };
+    case "search-chats":
+      requireKeys(value, ["type", "query"]);
+      return {
+        type: "search-chats",
+        query: requireBoundedString(value["query"], "query", 256, true),
+      };
+    case "manage-chat":
+      requireKeys(value, ["type", "sessionId", "action"]);
+      return {
+        type: "manage-chat",
+        sessionId: requireBoundedString(value["sessionId"], "sessionId", 256),
+        action: requireSessionAction(value["action"]),
       };
     case "new-chat":
       requireKeys(value, ["type"]);
@@ -107,6 +126,23 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
       };
     default:
       throw new Error("unknown Webview message type");
+  }
+}
+
+function requireSessionAction(
+  value: unknown,
+): "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete" {
+  switch (value) {
+    case "menu":
+    case "rename":
+    case "pin":
+    case "unpin":
+    case "archive":
+    case "restore":
+    case "delete":
+      return value;
+    default:
+      throw new Error("invalid Session action");
   }
 }
 

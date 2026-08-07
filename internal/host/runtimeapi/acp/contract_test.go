@@ -453,6 +453,65 @@ func (h *contractACPHost) SessionToolCatalog(
 	return result, nil
 }
 
+func (h *contractACPHost) ListSessions(
+	ctx context.Context,
+	query protocol.SessionListQuery,
+) (protocol.SessionList, error) {
+	data, err := h.call(ctx, "session/list", map[string]any{
+		"query":           query.Query,
+		"includeArchived": query.IncludeArchived,
+		"pinnedOnly":      query.PinnedOnly,
+		"status":          query.Status,
+		"limit":           query.Limit,
+	})
+	if err != nil {
+		return protocol.SessionList{}, err
+	}
+	var result protocol.SessionList
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionList{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) UpdateSessionLifecycle(
+	ctx context.Context,
+	expectedRevision uint64,
+	patch protocol.SessionLifecyclePatch,
+) (protocol.SessionLifecycleUpdate, error) {
+	data, err := h.call(ctx, "session/lifecycle/update", map[string]any{
+		"sessionId":        h.sessionID,
+		"expectedRevision": expectedRevision,
+		"patch":            patch,
+	})
+	if err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	var result protocol.SessionLifecycleUpdate
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) DeleteSession(
+	ctx context.Context,
+	expectedRevision uint64,
+) (protocol.SessionDeleteResult, error) {
+	data, err := h.call(ctx, "session/delete", map[string]any{
+		"sessionId":        h.sessionID,
+		"expectedRevision": expectedRevision,
+	})
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	var result protocol.SessionDeleteResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	return result, nil
+}
+
 func (h *contractACPHost) UpdateSessionProfile(
 	ctx context.Context,
 	expectedRevision uint64,

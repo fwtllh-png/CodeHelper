@@ -98,6 +98,10 @@ const sessionProfileTypes = [
   "session_profile_patch",
   "session_profile_update",
   "session_tool_catalog",
+  "session_list",
+  "session_lifecycle_patch",
+  "session_lifecycle_update",
+  "session_delete",
 ].map((name) => ({
   kind: name,
   name: pascalCase(name),

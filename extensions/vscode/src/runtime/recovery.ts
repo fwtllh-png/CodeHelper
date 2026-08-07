@@ -4,7 +4,6 @@ import {
 } from "./client.js";
 import {
   decodeEvent,
-  isUnknownEvent,
   type DecodedEvent,
 } from "../protocol/decode.js";
 import type { BindingStore, RuntimeBinding } from "../state/store.js";
@@ -12,10 +11,6 @@ import { compatibility } from "../compatibility/generated.js";
 import type { WorkspaceIdentity } from "../workspace/identity.js";
 import { createWorkspaceIdentity } from "../workspace/identity.js";
 import { pathToFileURL } from "node:url";
-import {
-  chatTitleFromPrompt,
-  isPlaceholderChatTitle,
-} from "../chat/title.js";
 
 const acpProtocolVersion = compatibility.acp_protocol.max;
 const replayLimit = 256;
@@ -220,9 +215,6 @@ export async function connectSession(
         sessionId: requireString(created["sessionId"], "sessionId"),
         threadId: requireString(created["threadId"], "threadId"),
         lastSeq: 0,
-        title,
-        isolation: optionalIsolation(created["isolation"]) ??
-          isolation,
       };
       await store.save(binding);
     } else {
@@ -237,34 +229,13 @@ export async function connectSession(
       if (!Array.isArray(history["events"])) {
         throw new TypeError("session/history events must be an array");
       }
-      let recoveredPrompt: string | undefined;
       for (const rawEvent of history["events"]) {
         const event = decodeEvent(rawEvent);
         if (event.thread_id !== binding.threadId) {
           throw new Error("session/history returned an event for another thread");
         }
-        if (recoveredPrompt === undefined && !isUnknownEvent(event) &&
-          event.kind === "turn.started") {
-          recoveredPrompt = event.data.display_prompt ?? event.data.prompt;
-        }
         await onEvent(event, true);
         replayedEvents++;
-      }
-      if (isPlaceholderChatTitle(binding.title) &&
-        recoveredPrompt !== undefined) {
-        const title = chatTitleFromPrompt(recoveredPrompt);
-        if (title !== undefined) {
-          try {
-            await client.request("session/rename", {
-              sessionId: binding.sessionId,
-              title,
-            });
-            await store.rename(binding.rootId, binding.sessionId, title);
-            binding = { ...binding, title };
-          } catch {
-            // Title migration is best-effort and must not block session recovery.
-          }
-        }
       }
       for (;;) {
         const sinceSeq = binding.lastSeq;
@@ -400,12 +371,6 @@ function requireNonNegativeInteger(value: unknown, name: string): number {
 
 function optionalInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : undefined;
-}
-
-function optionalIsolation(value: unknown): "worktree" | "shared" | undefined {
-  if (value === undefined || value === "") return undefined;
-  if (value === "worktree") return value;
-  throw new TypeError("session isolation is invalid");
 }
 
 function requireBoolean(value: unknown, name: string): boolean {

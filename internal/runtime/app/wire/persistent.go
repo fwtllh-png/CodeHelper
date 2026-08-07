@@ -31,6 +31,7 @@ type PersistentRuntimeOptions struct {
 	DefaultProfile      protocol.SessionProfile
 	ProfileCapabilities protocol.SessionProfileCapabilities
 	ToolCatalog         *tool.Registry
+	SessionWorkspaces   app.SessionWorkspaceManager
 }
 
 type PersistentRepositories struct {
@@ -86,6 +87,8 @@ func NewPersistentRuntime(
 		runtimeOptions.DefaultProfile = options.DefaultProfile
 		runtimeOptions.ProfileCapabilities = options.ProfileCapabilities
 		runtimeOptions.ToolCatalog = options.ToolCatalog
+		runtimeOptions.SessionLifecycle = repositories.Sessions
+		runtimeOptions.SessionWorkspaces = options.SessionWorkspaces
 	}
 	return app.NewRuntimeWithRecovery(ctx, runtimeOptions)
 }

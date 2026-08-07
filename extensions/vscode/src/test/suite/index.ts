@@ -85,6 +85,7 @@ export async function run(): Promise<void> {
     );
     await verifyNativeFlows(api);
     await verifyMultipleChats(api);
+    await verifySessionLifecycle(api);
     await verifySessionProfile(api);
     await verifySessionToolCatalog(api);
     await verifyComposerCredential(api);
@@ -669,6 +670,55 @@ async function verifyMultipleChats(api: ExtensionAPI): Promise<void> {
     api.chatSessions().some((session) => session.title === generatedTitle),
     `generated title was not restored: ${JSON.stringify(api.chatSessions())}`,
   );
+}
+
+async function verifySessionLifecycle(api: ExtensionAPI): Promise<void> {
+  assert.ok(api.chatSessions);
+  assert.ok(api.renameChat);
+  assert.ok(api.pinChat);
+  assert.ok(api.archiveChat);
+  assert.ok(api.deleteChat);
+  const selected = api.chatSessions().find((session) => session.selected);
+  assert.ok(selected);
+  const sessionID = selected.sessionId;
+  await api.renameChat(sessionID, "Pinned lifecycle session");
+  await api.pinChat(sessionID, true);
+  let lifecycle = api.chatSessions().find(
+    (session) => session.sessionId === sessionID,
+  );
+  assert.ok(lifecycle);
+  assert.equal(lifecycle.title, "Pinned lifecycle session");
+  assert.equal(lifecycle.pinned, true);
+  await api.archiveChat(sessionID, true);
+  lifecycle = api.chatSessions().find(
+    (session) => session.sessionId === sessionID,
+  );
+  assert.ok(lifecycle);
+  assert.equal(lifecycle.archived, true);
+  assert.equal(lifecycle.selected, false);
+
+  await vscode.commands.executeCommand("codehelper.restartRuntime");
+  await waitFor(
+    () => api.runtimeSnapshot?.().state === "ready" &&
+      api.chatSessions?.().some(
+        (session) => session.sessionId === sessionID &&
+          session.archived && session.pinned,
+      ) === true,
+    "archived Session lifecycle did not recover after Runtime restart",
+  );
+  await api.archiveChat(sessionID, false);
+  lifecycle = api.chatSessions().find(
+    (session) => session.sessionId === sessionID,
+  );
+  assert.ok(lifecycle);
+  assert.equal(lifecycle.archived, false);
+  assert.equal(lifecycle.selected, true);
+  await api.deleteChat(sessionID);
+  assert.equal(
+    api.chatSessions().some((session) => session.sessionId === sessionID),
+    false,
+  );
+  assert.equal(api.chatSessions().length >= 1, true);
 }
 
 async function verifySessionProfile(api: ExtensionAPI): Promise<void> {

@@ -79,6 +79,18 @@ func GenerateSchema() *Schema {
 	schema.Envelope["session_tool_catalog"] = schemaOf(
 		reflect.TypeOf(&SessionToolCatalog{}),
 	)
+	schema.Envelope["session_list"] = schemaOf(
+		reflect.TypeOf(&SessionList{}),
+	)
+	schema.Envelope["session_lifecycle_patch"] = schemaOf(
+		reflect.TypeOf(&SessionLifecyclePatch{}),
+	)
+	schema.Envelope["session_lifecycle_update"] = schemaOf(
+		reflect.TypeOf(&SessionLifecycleUpdate{}),
+	)
+	schema.Envelope["session_delete"] = schemaOf(
+		reflect.TypeOf(&SessionDeleteResult{}),
+	)
 	return schema
 }
 

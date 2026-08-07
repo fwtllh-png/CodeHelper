@@ -29,6 +29,17 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
         threadId: "thread_1",
         title: "Selected task",
         isolation: "shared",
+        status: "running",
+        pinned: true,
+        archived: false,
+        workspaceLabel: "workspace",
+        pendingApprovals: 0,
+        pendingInputs: 0,
+        totalTokens: 42,
+        costMicrounits: 0,
+        costKnown: false,
+        createdAt: "2026-08-07T00:00:00Z",
+        updatedAt: "2026-08-07T01:00:00Z",
         selected: true,
         replayedEvents: 12,
         active: true,
@@ -38,11 +49,26 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
         threadId: "thread_2",
         title: "Background task",
         isolation: "worktree",
+        status: "completed",
+        pinned: false,
+        archived: false,
+        workspaceLabel: "workspace",
+        pendingApprovals: 0,
+        pendingInputs: 0,
+        totalTokens: 12,
+        costMicrounits: 2,
+        costKnown: true,
+        createdAt: "2026-08-06T00:00:00Z",
+        updatedAt: "2026-08-06T01:00:00Z",
         selected: false,
         replayedEvents: 4,
         active: false,
       },
     ],
+    sessionSearch: {
+      query: "background",
+      sessionIds: ["session_2"],
+    },
     mergePlanId: "b".repeat(64),
     roots: [
       { id: "a".repeat(64), label: "workspace" },
@@ -94,6 +120,10 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
   assert.equal(message.runtime.sessions[0]?.active, true);
   assert.equal(message.runtime.sessions[1]?.active, false);
   assert.equal(message.runtime.mergePlanId, "b".repeat(64));
+  assert.deepEqual(message.runtime.sessionSearch, {
+    query: "background",
+    sessionIds: ["session_2"],
+  });
   assert.equal(message.presentation.stopEnabled, true);
   assert.equal(message.composer?.model.value, "fixture-model");
   assert.equal(
@@ -120,6 +150,7 @@ void test("Chat host snapshot omits absent optional state", () => {
   assert.equal("error" in message.runtime, false);
   assert.equal("selectedSessionId" in message.runtime, false);
   assert.equal("mergePlanId" in message.runtime, false);
+  assert.equal("sessionSearch" in message.runtime, false);
 });
 
 void test("Chat host errors use the same versioned finite protocol", () => {

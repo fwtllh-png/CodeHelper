@@ -95,6 +95,29 @@ Session Allowlist。Engine 在向 Model 广告 Tool Definition 和实际执行�
 Allowlist。选择 Tool 不授予权限：已启用调用仍经过 Guard、Policy、Approval、Journal
 和 Sandbox。
 
+## Session Lifecycle
+
+Runtime 是 Session 发现和生命周期状态的持久化权威。
+`session/list`、`session/status`、`session/lifecycle/update` 和
+`session/delete` 提供带 Revision CAS 的 Summary 与变更操作。Search 匹配标题和
+持久化 Turn Item Payload；Status 将持久化 Turn 状态与 Session 下全部 Thread 的
+实时活动合并，包括待处理 Approval 和 Input。
+
+Session Rail 按 Pinned、Today、Yesterday、Previous 7 Days、Older 和 Archived 分组，
+支持状态筛选，并展示 Workspace、Provider/Model、生命周期状态、Usage 与待处理交互数。
+Rename 使用原生 InputBox；Pin、Archive、Restore 和 Delete 使用原生 Quick Pick；
+Delete 还必须经过 Modal Confirmation。
+
+VS Code `workspaceState` 只保存连接身份、Replay Cursor 和当前选中的 Session。Title、
+Isolation、Profile、Status、Pin 和 Archive 都在每次重启后从 Runtime 查询。Archived
+Session 仍可发现，但 Restore 前不会建立连接。
+
+任一 Session Thread 处于 Running、Awaiting Approval 或 Awaiting Input 时，Archive
+和 Delete 都会失败。删除 Workspace 中最后一个 Session 或删除仍有未合并 Worktree
+变更的隔离 Session 也会失败。隔离 Session 删除成功后，由 Runtime-owned Lifecycle
+路径清理 Worktree；所有检查继续遵守 Guard、Journal、Sandbox 与持久化 Revision CAS
+边界。
+
 ## 内置 Setup 与 Repair
 
 在已打开且受信任的工作区中执行 `CodeHelper: Setup Workspace`。引导流程会选择

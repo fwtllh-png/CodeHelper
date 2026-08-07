@@ -50,6 +50,11 @@ interface RootChatState {
   readonly projectors: Map<string, ChatProjector>;
   readonly composers: Map<string, SessionComposerState>;
   runtime: SupervisorSnapshot;
+  sessionSearchQuery: string;
+  sessionSearch: {
+    readonly query: string;
+    readonly sessionIds: readonly string[];
+  } | undefined;
 }
 
 interface SessionComposerState {
@@ -229,6 +234,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "select-chat":
           await root.controller.selectChat(message.sessionId);
           break;
+        case "search-chats": {
+          const state = this.#state(root.rootId);
+          const query = message.query.trim();
+          state.sessionSearchQuery = query;
+          if (query.length === 0) {
+            state.sessionSearch = undefined;
+            this.#scheduleFlush();
+            break;
+          }
+          const matches = await root.controller.searchChats({
+            query,
+            includeArchived: true,
+            limit: 1000,
+          });
+          if (state.sessionSearchQuery === query) {
+            state.sessionSearch = {
+              query,
+              sessionIds: matches.map((session) => session.sessionId),
+            };
+            this.#scheduleFlush();
+          }
+          break;
+        }
+        case "manage-chat":
+          await this.#manageChat(root, message.sessionId, message.action);
+          break;
         case "new-chat":
           await root.controller.createChat();
           break;
@@ -332,6 +363,74 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         error instanceof Error ? error.message : String(error),
       ));
     }
+  }
+
+  async #manageChat(
+    root: WorkspaceRuntime,
+    sessionId: string,
+    action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" | "delete",
+  ): Promise<void> {
+    const session = root.controller.sessions().find(
+      (candidate) => candidate.sessionId === sessionId,
+    );
+    if (session === undefined) throw new Error("Chat session is unavailable");
+    switch (action) {
+      case "menu": {
+        const choice = await vscode.window.showQuickPick([
+          { label: "$(edit) Rename", action: "rename" as const },
+          {
+            label: session.pinned ? "$(pinned) Unpin" : "$(pin) Pin",
+            action: session.pinned ? "unpin" as const : "pin" as const,
+          },
+          {
+            label: session.archived ? "$(history) Restore" : "$(archive) Archive",
+            action: session.archived ? "restore" as const : "archive" as const,
+          },
+          { label: "$(trash) Delete", action: "delete" as const },
+        ], {
+          title: session.title,
+          placeHolder: "Manage Session",
+        });
+        if (choice !== undefined) {
+          await this.#manageChat(root, sessionId, choice.action);
+        }
+        break;
+      }
+      case "rename": {
+        const title = await vscode.window.showInputBox({
+          title: "Rename Chat Session",
+          value: session.title,
+          prompt: "Session title is stored by the CodeHelper Runtime",
+          validateInput: (value) => value.trim().length === 0
+            ? "Enter a session title"
+            : value.length > 256 ? "Title must be at most 256 characters" : null,
+        });
+        if (title !== undefined) {
+          await root.controller.renameChat(sessionId, title);
+        }
+        break;
+      }
+      case "pin":
+      case "unpin":
+        await root.controller.pinChat(sessionId, action === "pin");
+        break;
+      case "archive":
+      case "restore":
+        await root.controller.archiveChat(sessionId, action === "archive");
+        break;
+      case "delete": {
+        const confirmation = await vscode.window.showWarningMessage(
+          `Delete "${session.title}" permanently?`,
+          { modal: true, detail: "Runtime history and isolated workspace data will be removed." },
+          "Delete",
+        );
+        if (confirmation === "Delete") {
+          await root.controller.deleteChat(sessionId);
+        }
+        break;
+      }
+    }
+    this.#scheduleFlush();
   }
 
   async #showApproval(
@@ -543,6 +642,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         selectedRootId: root.rootId,
         selectedRootLabel: root.label,
         sessions,
+        ...(state.sessionSearch === undefined
+          ? {}
+          : { sessionSearch: state.sessionSearch }),
         ...(mergePlan === undefined ? {} : { mergePlanId: mergePlan.id }),
         roots: this.#registry.roots.map((candidate) => ({
           id: candidate.rootId,
@@ -565,6 +667,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           projectors: new Map(),
           composers: new Map(),
           runtime: root.controller.snapshot,
+          sessionSearchQuery: "",
+          sessionSearch: undefined,
         });
       }
       this.#syncSessions(root);

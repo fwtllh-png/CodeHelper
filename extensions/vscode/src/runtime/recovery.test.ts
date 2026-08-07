@@ -78,13 +78,12 @@ void test("connectSession creates and persists a new workspace binding", async (
   connection.dispose();
 });
 
-void test("connectSession migrates a placeholder title from durable history", async () => {
+void test("connectSession keeps bindings free of Runtime business state", async () => {
   const transport = new FakeTransport();
   transport.responses.set("session/load", [{}]);
   transport.responses.set("session/history", [{
     events: [runtimeEvent(1)],
   }]);
-  transport.responses.set("session/rename", [{}]);
   transport.responses.set("session/replay", [{
     events: [],
     nextSeq: 1,
@@ -99,8 +98,8 @@ void test("connectSession migrates a placeholder title from durable history", as
     async () => Promise.resolve(),
     () => undefined,
   );
-  assert.equal(connection.binding.title, "test");
-  assert.equal(store.load("/workspace")?.title, "test");
+  assert.equal("title" in connection.binding, false);
+  assert.equal("isolation" in connection.binding, false);
   connection.dispose();
 });
 
@@ -140,8 +139,6 @@ void test("connectSession loads, pages replay, and advances filtered cursors", a
   assert.equal(connection.replayedEvents, 1);
   assert.equal(store.load("/workspace")?.lastSeq, 10);
 
-  await store.rename(connection.binding.rootId, "session_1", "修复登录问题");
-  connection.binding = { ...connection.binding, title: "修复登录问题" };
   transport.notify({
     method: "session/update",
     params: {
@@ -151,7 +148,6 @@ void test("connectSession loads, pages replay, and advances filtered cursors", a
   });
   await connection.settled();
   assert.equal(store.load("/workspace")?.lastSeq, 11);
-  assert.equal(store.load("/workspace")?.title, "修复登录问题");
   assert.deepEqual(errors, []);
   connection.dispose();
 });
@@ -309,8 +305,6 @@ function binding(lastSeq: number): RuntimeBinding {
     sessionId: "session_1",
     threadId: "thread_1",
     lastSeq,
-    title: "Chat 1",
-    isolation: "shared",
   };
 }
 
@@ -360,6 +354,10 @@ function initializeResult(): Readonly<Record<string, unknown>> {
       "session/submit",
       "session/replay",
       "session/history",
+      "session/list",
+      "session/status",
+      "session/lifecycle/update",
+      "session/delete",
       "session/merge",
       "session/rename",
       "session/profile/get",
@@ -375,6 +373,7 @@ function initializeResult(): Readonly<Record<string, unknown>> {
     features: [
       "editor_context_v2",
       "session_profile_v1",
+      "session_lifecycle_v1",
       "unified_tool_catalog_v1",
       "workspace_identity_v1",
     ],

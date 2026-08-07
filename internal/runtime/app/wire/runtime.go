@@ -939,6 +939,7 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			DefaultProfile:      defaultProfile,
 			ToolCatalog:         registry,
 			ProfileCapabilities: profileCapabilities,
+			SessionWorkspaces:   session.chatWorkspaces,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create persistent runtime: %w", err)

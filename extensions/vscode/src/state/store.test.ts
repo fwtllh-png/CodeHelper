@@ -38,8 +38,6 @@ void test("BindingStore keeps multiple sessions and persists selection", async (
     ...runtimeBinding(4),
     sessionId: "session_2",
     threadId: "thread_2",
-    title: "Chat 2",
-    isolation: "worktree" as const,
   };
   await store.save(first);
   await store.save(second);
@@ -50,8 +48,6 @@ void test("BindingStore keeps multiple sessions and persists selection", async (
   assert.equal(store.load("/workspace")?.sessionId, "session_1");
   await store.select(first.rootId, second.sessionId);
   assert.equal(store.load("/workspace")?.sessionId, "session_2");
-  await store.rename(first.rootId, second.sessionId, "修复登录问题");
-  assert.equal(store.load("/workspace")?.title, "修复登录问题");
   await store.advanceCursor(first, 9);
   assert.equal(
     store.loadAll("/workspace").find(
@@ -94,7 +90,5 @@ function runtimeBinding(
     sessionId: "session_1",
     threadId: "thread_1",
     lastSeq,
-    title: "Chat 1",
-    isolation: "shared",
   };
 }

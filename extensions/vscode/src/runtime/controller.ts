@@ -57,6 +57,12 @@ import {
   WorkspaceCredentialStore,
   type CredentialView,
 } from "../security/credentials.js";
+import {
+  SessionLifecycleCommands,
+  type SessionLifecyclePatch,
+  type SessionLifecycleSummary,
+  type SessionListOptions,
+} from "./lifecycle.js";
 
 export type {
   ApprovalDecision,
@@ -64,12 +70,24 @@ export type {
   SubmitReceipt,
 } from "./session.js";
 
+const lifecycleStatusEvents = new Set([
+  "turn.started",
+  "turn.completed",
+  "turn.failed",
+  "turn.canceled",
+  "approval.required",
+  "approval.resolved",
+  "input.required",
+  "input.resolved",
+]);
+
 interface ActiveRuntime extends ManagedRuntime {
   readonly binaryPath: string;
   readonly binarySource: Exclude<BinarySource, "auto">;
   readonly binaryVersion: BinaryVersion;
   readonly negotiated: NegotiatedRuntime;
   readonly sessions: Map<string, ConnectedSession>;
+  readonly summaries: Map<string, SessionLifecycleSummary>;
   selectedSessionId: string;
   request(method: string, params?: unknown): Promise<unknown>;
   onNotification(listener: (notification: RpcNotification) => void): () => void;
@@ -84,6 +102,20 @@ export interface RuntimeIdentity {
 export interface ChatSessionSummary extends RuntimeIdentity {
   readonly title: string;
   readonly isolation: "worktree" | "shared";
+  readonly status: SessionLifecycleSummary["status"];
+  readonly pinned: boolean;
+  readonly archived: boolean;
+  readonly workspaceLabel: string;
+  readonly provider?: string;
+  readonly model?: string;
+  readonly mode?: string;
+  readonly pendingApprovals: number;
+  readonly pendingInputs: number;
+  readonly totalTokens: number;
+  readonly costMicrounits: number;
+  readonly costKnown: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
   readonly selected: boolean;
   readonly replayedEvents: number;
 }
@@ -268,19 +300,14 @@ export class RuntimeController {
 
   public sessions(): readonly ChatSessionSummary[] {
     const runtime = this.#readyRuntime();
-    return [...runtime.sessions.values()].map((session) => ({
-      sessionId: session.binding.sessionId,
-      threadId: session.binding.threadId,
-      title: session.binding.title,
-      isolation: session.binding.isolation,
-      selected: session.binding.sessionId === runtime.selectedSessionId,
-      replayedEvents: session.replayedEvents,
-    }));
+    return [...runtime.summaries.values()].map(
+      (summary) => this.#chatSummary(runtime, summary),
+    );
   }
 
   public async createChat(title?: string): Promise<ChatSessionSummary> {
     const runtime = this.#readyRuntime();
-    const ordinal = runtime.sessions.size + 1;
+    const ordinal = runtime.summaries.size + 1;
     const resolvedTitle = title?.trim() || `Chat ${String(ordinal)}`;
     let sessionId = "";
     const session = await connectSession(
@@ -302,26 +329,104 @@ export class RuntimeController {
     );
     sessionId = session.binding.sessionId;
     runtime.sessions.set(sessionId, session);
+    const summary = await new SessionLifecycleCommands(runtime).status(sessionId);
+    runtime.summaries.set(sessionId, summary);
     runtime.selectedSessionId = sessionId;
     await this.#bindingStore.select(this.rootId, sessionId);
     this.#emitSessionsChange();
-    return {
-      sessionId,
-      threadId: session.binding.threadId,
-      title: session.binding.title,
-      isolation: session.binding.isolation,
-      selected: true,
-      replayedEvents: session.replayedEvents,
-    };
+    return this.#chatSummary(runtime, summary);
   }
 
   public async selectChat(sessionId: string): Promise<void> {
     const runtime = this.#readyRuntime();
-    if (!runtime.sessions.has(sessionId)) {
+    const summary = runtime.summaries.get(sessionId);
+    if (summary === undefined || summary.archived ||
+      !runtime.sessions.has(sessionId)) {
       throw new Error("Chat session is unavailable");
     }
     runtime.selectedSessionId = sessionId;
     await this.#bindingStore.select(this.rootId, sessionId);
+    this.#emitSessionsChange();
+  }
+
+  public async searchChats(
+    options: SessionListOptions,
+  ): Promise<readonly ChatSessionSummary[]> {
+    const runtime = this.#readyRuntime();
+    const list = await new SessionLifecycleCommands(runtime).list({
+      ...options,
+      includeArchived: options.includeArchived ?? true,
+      limit: options.limit ?? 100,
+    });
+    for (const summary of list.sessions) {
+      runtime.summaries.set(summary.session_id, summary);
+    }
+    return list.sessions.map((summary) => this.#chatSummary(runtime, summary));
+  }
+
+  public async renameChat(sessionId: string, title: string): Promise<void> {
+    await this.#renameChat(this.#readyRuntime(), sessionId, title);
+  }
+
+  public async pinChat(sessionId: string, pinned: boolean): Promise<void> {
+    await this.#updateChat(sessionId, { pinned });
+  }
+
+  public async archiveChat(
+    sessionId: string,
+    archived: boolean,
+  ): Promise<void> {
+    const runtime = this.#readyRuntime();
+    const updated = await this.#updateChat(sessionId, { archived });
+    if (archived) {
+      const connected = runtime.sessions.get(sessionId);
+      if (connected !== undefined) {
+        connected.dispose();
+        await connected.settled();
+        runtime.sessions.delete(sessionId);
+      }
+      await this.#bindingStore.clear(this.rootId, sessionId);
+      if (runtime.selectedSessionId === sessionId) {
+        const replacement = runtime.sessions.keys().next().value;
+        if (replacement === undefined) {
+          await this.createChat();
+          return;
+        }
+        runtime.selectedSessionId = replacement;
+        await this.#bindingStore.select(this.rootId, replacement);
+      }
+    } else {
+      await this.#attachSummary(runtime, updated);
+      runtime.selectedSessionId = sessionId;
+      await this.#bindingStore.select(this.rootId, sessionId);
+    }
+    this.#emitSessionsChange();
+  }
+
+  public async deleteChat(sessionId: string): Promise<void> {
+    const runtime = this.#readyRuntime();
+    const summary = this.#requireSummary(runtime, sessionId);
+    await new SessionLifecycleCommands(runtime).delete(
+      sessionId,
+      summary.revision,
+    );
+    const connected = runtime.sessions.get(sessionId);
+    if (connected !== undefined) {
+      connected.dispose();
+      await connected.settled();
+      runtime.sessions.delete(sessionId);
+    }
+    runtime.summaries.delete(sessionId);
+    await this.#bindingStore.clear(this.rootId, sessionId);
+    if (runtime.selectedSessionId === sessionId) {
+      const replacement = runtime.sessions.keys().next().value;
+      if (replacement === undefined) {
+        await this.createChat();
+        return;
+      }
+      runtime.selectedSessionId = replacement;
+      await this.#bindingStore.select(this.rootId, replacement);
+    }
     this.#emitSessionsChange();
   }
 
@@ -343,11 +448,17 @@ export class RuntimeController {
   ): Promise<SubmitReceipt> {
     const receipt = await this.#commands(sessionId).submitPrompt(prompt, context);
     const runtime = this.#readyRuntime();
-    const session = this.#session(runtime, sessionId);
-    if (isPlaceholderChatTitle(session.binding.title)) {
+    this.#session(runtime, sessionId);
+    const summary = runtime.summaries.get(sessionId);
+    if (summary !== undefined && isPlaceholderChatTitle(summary.title)) {
       const title = chatTitleFromPrompt(prompt);
       if (title !== undefined) {
-        void this.#renameChat(runtime, session, title);
+        void this.#renameChat(runtime, sessionId, title).catch((error: unknown) => {
+          this.#output.appendLine(
+            `[runtime:${this.#workspace.name}] Chat title update failed: ` +
+              (error instanceof Error ? error.message : String(error)),
+          );
+        });
       }
     }
     return receipt;
@@ -557,9 +668,29 @@ export class RuntimeController {
         this.#workspaceIdentity,
       );
       const stored = this.#bindingStore.loadAll(this.#workspaceIdentity);
+      const storedBySession = new Map(
+        stored.map((binding) => [binding.sessionId, binding]),
+      );
+      const lifecycle = new SessionLifecycleCommands(runtimeProcess.client);
+      const durable = await lifecycle.list({
+        includeArchived: true,
+        limit: 1000,
+      });
+      const summaries = new Map(
+        durable.sessions.map((summary) => [summary.session_id, summary]),
+      );
       const sessions = new Map<string, ConnectedSession>();
-      const attach = async (binding?: RuntimeBinding): Promise<void> => {
+      const attach = async (
+        binding?: RuntimeBinding,
+        create = false,
+      ): Promise<void> => {
         let sessionId = binding?.sessionId ?? "";
+        if (!create && binding === undefined) {
+          throw new Error("Runtime session binding is required");
+        }
+        const connectOptions = create
+          ? { create: true, title: "Chat 1", isolation: "shared" as const }
+          : { binding: binding as RuntimeBinding };
         const session = await connectSession(
           runtimeProcess.client,
           this.#bindingStore,
@@ -571,26 +702,48 @@ export class RuntimeController {
           (error) => {
             this.#reportSessionError(error);
           },
-          binding === undefined
-            ? { create: true, title: "Chat 1", isolation: "shared" }
-            : { binding },
+          connectOptions,
         );
         sessionId = session.binding.sessionId;
         sessions.set(sessionId, session);
+        if (!summaries.has(sessionId)) {
+          summaries.set(sessionId, await lifecycle.status(sessionId));
+        }
       };
-      if (stored.length === 0) {
-        await attach();
-      } else {
-        for (const binding of stored) await attach(binding);
+      for (const summary of durable.sessions) {
+        if (summary.archived) continue;
+        const saved = storedBySession.get(summary.session_id);
+        await attach({
+          version: 1,
+          rootId: this.rootId,
+          workspaceURI: this.#workspaceIdentity.editor_uri,
+          workspaceRoot: this.#workspaceIdentity.runtime_path,
+          sessionId: summary.session_id,
+          threadId: summary.thread_id,
+          lastSeq: saved?.threadId === summary.thread_id
+            ? saved.lastSeq
+            : 0,
+        });
       }
+      for (const binding of stored) {
+        if (!summaries.has(binding.sessionId)) {
+          await this.#bindingStore.clear(this.rootId, binding.sessionId);
+        }
+      }
+      if (sessions.size === 0) await attach(undefined, true);
       const selectedSessionId = this.#bindingStore.load(this.#workspaceIdentity)
-        ?.sessionId ?? sessions.keys().next().value;
-      if (selectedSessionId === undefined) {
+        ?.sessionId;
+      const resolvedSelected = selectedSessionId !== undefined &&
+        sessions.has(selectedSessionId)
+        ? selectedSessionId
+        : sessions.keys().next().value;
+      if (resolvedSelected === undefined) {
         throw new Error("Runtime attached no Chat sessions");
       }
+      await this.#bindingStore.select(this.rootId, resolvedSelected);
       this.#output.appendLine(
         `[runtime:${this.#workspace.name}] attached ` +
-        `${String(sessions.size)} Chat session(s), selected=${selectedSessionId}`,
+        `${String(sessions.size)} Chat session(s), selected=${resolvedSelected}`,
       );
       if (resolvedBinary.managedDigest !== undefined) {
         await resolvedBinary.managedStore?.markHealthy(
@@ -604,7 +757,8 @@ export class RuntimeController {
         binaryVersion,
         negotiated,
         sessions,
-        selectedSessionId,
+        summaries,
+        resolvedSelected,
       );
     } catch (error) {
       const startupError = await runtimeProcess.startupFailure(error);
@@ -644,27 +798,104 @@ export class RuntimeController {
 
   async #renameChat(
     runtime: ActiveRuntime,
-    session: ConnectedSession,
+    sessionId: string,
     title: string,
   ): Promise<void> {
-    try {
-      await runtime.request("session/rename", {
-        sessionId: session.binding.sessionId,
-        title,
-      });
-      await this.#bindingStore.rename(
-        this.rootId,
-        session.binding.sessionId,
-        title,
-      );
-      session.binding = { ...session.binding, title };
-      this.#emitSessionsChange();
-    } catch (error) {
-      this.#output.appendLine(
-        `[runtime:${this.#workspace.name}] Chat title update failed: ` +
-          (error instanceof Error ? error.message : String(error)),
-      );
+    const resolved = title.trim();
+    if (resolved.length === 0 || resolved.length > 256) {
+      throw new Error("Chat title must contain between 1 and 256 characters");
     }
+    await this.#updateChat(sessionId, { title: resolved }, runtime);
+  }
+
+  async #updateChat(
+    sessionId: string,
+    patch: SessionLifecyclePatch,
+    runtime = this.#readyRuntime(),
+  ): Promise<SessionLifecycleSummary> {
+    const summary = this.#requireSummary(runtime, sessionId);
+    const updated = await new SessionLifecycleCommands(runtime).update(
+      sessionId,
+      summary.revision,
+      patch,
+    );
+    runtime.summaries.set(sessionId, updated.session);
+    this.#emitSessionsChange();
+    return updated.session;
+  }
+
+  async #attachSummary(
+    runtime: ActiveRuntime,
+    summary: SessionLifecycleSummary,
+  ): Promise<void> {
+    if (summary.archived) {
+      throw new Error("Archived Chat must be restored before connecting");
+    }
+    if (runtime.sessions.has(summary.session_id)) return;
+    let sessionId = summary.session_id;
+    const connected = await connectSession(
+      runtime,
+      this.#bindingStore,
+      this.#workspaceIdentity,
+      async (event, replayed) => {
+        await this.#emitEvent(sessionId, event, replayed);
+      },
+      (error) => {
+        this.#reportSessionError(error);
+      },
+      {
+        binding: {
+          version: 1,
+          rootId: this.rootId,
+          workspaceURI: this.#workspaceIdentity.editor_uri,
+          workspaceRoot: this.#workspaceIdentity.runtime_path,
+          sessionId,
+          threadId: summary.thread_id,
+          lastSeq: 0,
+        },
+      },
+    );
+    sessionId = connected.binding.sessionId;
+    runtime.sessions.set(sessionId, connected);
+    runtime.summaries.set(sessionId, summary);
+  }
+
+  #requireSummary(
+    runtime: ActiveRuntime,
+    sessionId: string,
+  ): SessionLifecycleSummary {
+    const summary = runtime.summaries.get(sessionId);
+    if (summary === undefined) throw new Error("Chat session is unavailable");
+    return summary;
+  }
+
+  #chatSummary(
+    runtime: ActiveRuntime,
+    summary: SessionLifecycleSummary,
+  ): ChatSessionSummary {
+    return {
+      sessionId: summary.session_id,
+      threadId: summary.thread_id,
+      title: summary.title,
+      isolation: summary.isolation as "worktree" | "shared",
+      status: summary.status,
+      pinned: summary.pinned,
+      archived: summary.archived,
+      workspaceLabel: summary.workspace_label,
+      ...(summary.provider === undefined ? {} : { provider: summary.provider }),
+      ...(summary.model === undefined ? {} : { model: summary.model }),
+      ...(summary.mode === undefined ? {} : { mode: summary.mode }),
+      pendingApprovals: summary.pending_approvals,
+      pendingInputs: summary.pending_inputs,
+      totalTokens: summary.total_tokens,
+      costMicrounits: summary.cost_microunits,
+      costKnown: summary.cost_known,
+      createdAt: summary.created_at,
+      updatedAt: summary.updated_at,
+      selected: summary.session_id === runtime.selectedSessionId,
+      replayedEvents: runtime.sessions.get(summary.session_id)
+        ?.replayedEvents ?? 0,
+    };
   }
 
   async #emitEvent(
@@ -674,6 +905,22 @@ export class RuntimeController {
   ): Promise<void> {
     for (const listener of this.#eventListeners) {
       await listener(sessionId, event, replayed);
+    }
+    if (!replayed && lifecycleStatusEvents.has(event.kind)) {
+      const runtime = this.#supervisor.runtime;
+      if (runtime !== undefined && runtime.summaries.has(sessionId)) {
+        try {
+          const summary = await new SessionLifecycleCommands(runtime)
+            .status(sessionId);
+          runtime.summaries.set(sessionId, summary);
+          this.#emitSessionsChange();
+        } catch (error) {
+          this.#output.appendLine(
+            `[runtime:${this.#workspace.name}] lifecycle refresh failed: ` +
+            (error instanceof Error ? error.message : String(error)),
+          );
+        }
+      }
     }
   }
 
@@ -719,6 +966,7 @@ class RuntimeConnection implements ActiveRuntime {
     public readonly binaryVersion: BinaryVersion,
     public readonly negotiated: NegotiatedRuntime,
     public readonly sessions: Map<string, ConnectedSession>,
+    public readonly summaries: Map<string, SessionLifecycleSummary>,
     public selectedSessionId: string,
   ) {
     this.#process = process;

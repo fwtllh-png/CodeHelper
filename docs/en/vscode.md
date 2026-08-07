@@ -108,6 +108,32 @@ both when advertising model tool definitions and before execution. Selection
 never grants permission: enabled calls still pass through Guard, policy,
 approval, journal, and sandbox enforcement.
 
+## Session Lifecycle
+
+The Runtime is the durable authority for Session discovery and lifecycle state.
+`session/list`, `session/status`, `session/lifecycle/update`, and
+`session/delete` expose Revision-checked summaries and mutations. Search covers
+the title and persisted Turn Item payloads; status combines durable Turn state
+with live activity across every Thread in the Session, including pending
+approval and input.
+
+The Session rail groups Pinned, Today, Yesterday, Previous 7 Days, Older, and
+Archived entries. It supports status filtering and projects workspace,
+provider/model, lifecycle status, usage, and pending interaction counts.
+Rename uses a native InputBox. Pin, Archive, Restore, and Delete use a native
+Quick Pick, and Delete requires a modal confirmation.
+
+VS Code `workspaceState` stores only connection identity, replay cursor, and
+the selected Session. Title, isolation, Profile, status, Pin, and Archive state
+are queried from the Runtime after every restart. Archived Sessions remain
+discoverable but are not connected until restored.
+
+Archive and Delete fail while any Session Thread is running, awaiting approval,
+or awaiting input. Delete also fails for the last Session in a Workspace and
+for an isolated Session with unmerged Worktree changes. A successful isolated
+delete removes its Worktree through the Runtime-owned lifecycle path. These
+checks preserve Guard, journal, sandbox, and durable Revision CAS boundaries.
+
 ## Built-in Setup and Repair
 
 Use `CodeHelper: Setup Workspace` to configure an open, trusted workspace. The

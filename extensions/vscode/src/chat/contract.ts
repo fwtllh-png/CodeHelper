@@ -28,6 +28,10 @@ export interface ChatRuntimeView {
   readonly selectedRootLabel: string;
   readonly selectedSessionId?: string;
   readonly sessions: readonly ChatSessionView[];
+  readonly sessionSearch?: {
+    readonly query: string;
+    readonly sessionIds: readonly string[];
+  };
   readonly mergePlanId?: string;
   readonly roots: readonly ChatRootView[];
 }
@@ -59,6 +63,10 @@ export interface ChatSnapshotMessageOptions {
   readonly selectedRootId: string;
   readonly selectedRootLabel: string;
   readonly sessions: readonly ChatSessionView[];
+  readonly sessionSearch?: {
+    readonly query: string;
+    readonly sessionIds: readonly string[];
+  };
   readonly mergePlanId?: string;
   readonly roots: readonly ChatRootView[];
   readonly composer?: ComposerView;
@@ -89,6 +97,14 @@ export function createChatSnapshotMessage(
         ? {}
         : { selectedSessionId: selected.sessionId }),
       sessions: options.sessions.map((session) => ({ ...session })),
+      ...(options.sessionSearch === undefined
+        ? {}
+        : {
+            sessionSearch: {
+              query: options.sessionSearch.query,
+              sessionIds: [...options.sessionSearch.sessionIds],
+            },
+          }),
       ...(options.mergePlanId === undefined
         ? {}
         : { mergePlanId: options.mergePlanId }),

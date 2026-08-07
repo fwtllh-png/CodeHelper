@@ -61,6 +61,7 @@ var methods = []string{
 	"thread/list", "thread/get", "task/list", "agent/list", "usage/query",
 	"session/new", "session/load", "session/prompt", "session/submit",
 	"session/replay", "session/history", "session/cancel", "session/merge",
+	"session/list", "session/status", "session/lifecycle/update", "session/delete",
 	"session/rename", "session/profile/get", "session/profile/update",
 	"session/tool/catalog", "shutdown",
 }
@@ -476,6 +477,14 @@ func (s *Server) dispatch(request rpcRequest) bool {
 		s.sessionMerge(request)
 	case "session/rename":
 		s.sessionRename(request)
+	case "session/list":
+		s.sessionList(request)
+	case "session/status":
+		s.sessionStatus(request)
+	case "session/lifecycle/update":
+		s.sessionLifecycleUpdate(request)
+	case "session/delete":
+		s.sessionDelete(request)
 	case "session/profile/get":
 		s.sessionProfileGet(request)
 	case "session/profile/update":
@@ -1175,6 +1184,13 @@ func (s *Server) sessionLoad(request rpcRequest) {
 		s.replyApplicationError(request, err)
 		return
 	}
+	if session.Status != sessionstate.StatusOpen {
+		s.replyError(request, &rpcError{
+			Code:    codeConflict,
+			Message: "archived session must be restored before loading",
+		})
+		return
+	}
 	thread, err := s.dependencies.Threads.GetInWorkspace(
 		s.ctx, params.ThreadID, s.options.WorkspaceRoot,
 	)
@@ -1265,19 +1281,148 @@ func (s *Server) sessionRename(request rpcRequest) {
 		s.invalidParams(request, errors.New("title must be one line and at most 256 bytes"))
 		return
 	}
-	binding, ok := s.requireSession(request, params.SessionID)
+	current, ok := s.sessionSummary(request, params.SessionID)
 	if !ok {
 		return
 	}
-	if err := s.dependencies.Threads.Rename(s.ctx, binding.ThreadID, title); err != nil {
+	updated, err := s.dependencies.Runtime.UpdateSessionLifecycle(
+		s.ctx,
+		params.SessionID,
+		current.Revision,
+		protocol.SessionLifecyclePatch{Title: &title},
+	)
+	if err != nil {
 		s.replyApplicationError(request, err)
 		return
 	}
 	s.replyResult(request, map[string]any{
-		"sessionId": binding.ID,
-		"threadId":  binding.ThreadID,
+		"sessionId": updated.Session.SessionID,
+		"threadId":  updated.Session.ThreadID,
 		"title":     title,
 	})
+}
+
+type sessionListParams struct {
+	Query           string                          `json:"query,omitempty"`
+	IncludeArchived bool                            `json:"includeArchived,omitempty"`
+	PinnedOnly      bool                            `json:"pinnedOnly,omitempty"`
+	Status          protocol.SessionLifecycleStatus `json:"status,omitempty"`
+	Limit           int                             `json:"limit,omitempty"`
+}
+
+func (s *Server) sessionList(request rpcRequest) {
+	var params sessionListParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	result, err := s.dependencies.Runtime.ListSessions(
+		s.ctx,
+		protocol.SessionListQuery{
+			WorkspaceRoot:   s.options.WorkspaceRoot,
+			Query:           strings.TrimSpace(params.Query),
+			IncludeArchived: params.IncludeArchived,
+			PinnedOnly:      params.PinnedOnly,
+			Status:          params.Status,
+			Limit:           params.Limit,
+		},
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+func (s *Server) sessionStatus(request rpcRequest) {
+	var params sessionProfileParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	summary, ok := s.sessionSummary(request, params.SessionID)
+	if !ok {
+		return
+	}
+	s.replyResult(request, summary)
+}
+
+type sessionLifecycleUpdateParams struct {
+	SessionID        string                         `json:"sessionId"`
+	ExpectedRevision uint64                         `json:"expectedRevision"`
+	Patch            protocol.SessionLifecyclePatch `json:"patch"`
+}
+
+func (s *Server) sessionLifecycleUpdate(request rpcRequest) {
+	var params sessionLifecycleUpdateParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if _, ok := s.sessionSummary(request, params.SessionID); !ok {
+		return
+	}
+	updated, err := s.dependencies.Runtime.UpdateSessionLifecycle(
+		s.ctx,
+		params.SessionID,
+		params.ExpectedRevision,
+		params.Patch,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	if updated.Session.Archived {
+		s.unbindSession(updated.Session.SessionID)
+	}
+	s.replyResult(request, updated)
+}
+
+type sessionDeleteParams struct {
+	SessionID        string `json:"sessionId"`
+	ExpectedRevision uint64 `json:"expectedRevision"`
+}
+
+func (s *Server) sessionDelete(request rpcRequest) {
+	var params sessionDeleteParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if _, ok := s.sessionSummary(request, params.SessionID); !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.DeleteSession(
+		s.ctx,
+		params.SessionID,
+		params.ExpectedRevision,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.unbindSession(params.SessionID)
+	s.replyResult(request, result)
+}
+
+func (s *Server) sessionSummary(
+	request rpcRequest,
+	sessionID string,
+) (protocol.SessionSummary, bool) {
+	if sessionID == "" {
+		s.invalidParams(request, errors.New("sessionId is required"))
+		return protocol.SessionSummary{}, false
+	}
+	summary, err := s.dependencies.Runtime.SessionStatus(s.ctx, sessionID)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return protocol.SessionSummary{}, false
+	}
+	if filepath.Clean(summary.WorkspaceRoot) != s.options.WorkspaceRoot {
+		s.invalidParams(request, errors.New("session belongs to another workspace"))
+		return protocol.SessionSummary{}, false
+	}
+	return summary, true
 }
 
 type sessionProfileParams struct {
@@ -1986,6 +2131,18 @@ func (s *Server) bindThread(threadID protocol.ThreadID, sessionID string) {
 	s.mu.Unlock()
 }
 
+func (s *Server) unbindSession(sessionID string) {
+	s.mu.Lock()
+	delete(s.sessions, sessionID)
+	delete(s.active, sessionID)
+	for threadID, owner := range s.threads {
+		if owner == sessionID {
+			delete(s.threads, threadID)
+		}
+	}
+	s.mu.Unlock()
+}
+
 func (s *Server) sessionForThread(threadID protocol.ThreadID) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -2218,7 +2375,8 @@ func (s *Server) replyApplicationError(request rpcRequest, err error) {
 	switch {
 	case errors.Is(err, threadstate.ErrActiveTurn),
 		errors.Is(err, app.ErrOperationConflict),
-		errors.Is(err, sessionstate.ErrProfileRevisionConflict):
+		errors.Is(err, sessionstate.ErrProfileRevisionConflict),
+		errors.Is(err, sessionstate.ErrLifecycleRevisionConflict):
 		code = codeConflict
 	case protocol.CodeOf(err) == protocol.CodeInvalidArgument:
 		code = codeInvalidParams

@@ -104,8 +104,17 @@ export function renderChatHTML(
         <span class="visually-hidden">Search Sessions</span>
         <input id="session-search" type="search" placeholder="Search Sessions" autocomplete="off">
       </label>
-      <div class="session-group-label">
-        <span>RECENT</span>
+      <label class="session-filter-label" for="session-filter">Status</label>
+      <select id="session-filter" class="session-filter">
+        <option value="all">All statuses</option>
+        <option value="active">Running</option>
+        <option value="attention">Needs attention</option>
+        <option value="completed">Completed</option>
+        <option value="failed">Failed or interrupted</option>
+        <option value="archived">Archived</option>
+      </select>
+      <div class="session-group-label session-total">
+        <span>SESSIONS</span>
         <span id="session-count">0</span>
       </div>
       <nav id="session-list" aria-label="Recent Sessions"></nav>

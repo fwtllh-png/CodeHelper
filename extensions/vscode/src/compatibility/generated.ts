@@ -16,6 +16,10 @@ export const compatibility = {
     "session/submit",
     "session/replay",
     "session/history",
+    "session/list",
+    "session/status",
+    "session/lifecycle/update",
+    "session/delete",
     "session/merge",
     "session/rename",
     "session/profile/get",
@@ -31,6 +35,7 @@ export const compatibility = {
   "required_features": [
     "editor_context_v2",
     "session_profile_v1",
+    "session_lifecycle_v1",
     "unified_tool_catalog_v1",
     "workspace_identity_v1"
   ],
