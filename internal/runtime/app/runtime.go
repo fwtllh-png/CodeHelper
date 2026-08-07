@@ -747,10 +747,11 @@ func (r *Runtime) cancelTurn(
 	if !exists {
 		return r.reject(operation, errors.New("turn is not active"))
 	}
-	cancel()
-	return r.invoke(operation, func(sink EngineSink) error {
+	invokeErr := r.invoke(operation, func(sink EngineSink) error {
 		return r.engine.CancelTurn(r.ctx, payload, sink)
 	})
+	cancel()
+	return invokeErr
 }
 
 func (r *Runtime) invoke(

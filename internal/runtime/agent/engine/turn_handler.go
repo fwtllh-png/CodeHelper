@@ -113,6 +113,12 @@ func (e *Engine) RunForTurn(
 		}
 	}
 	transaction := cloneMessages(e.history)
+	defer func() {
+		if result.State == Canceled &&
+			e.cancellationReason() == protocol.CancelReasonUserInterrupted {
+			e.history = retainCanceledHistory(transaction)
+		}
+	}()
 	terminal := newTerminalHandler(e.turn, emit)
 	send := terminal.send
 	defer terminal.finish(ctx, &result, &resultErr)

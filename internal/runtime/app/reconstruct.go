@@ -21,9 +21,9 @@ type reconstructWindow struct {
 
 // ReconstructThread rebuilds model-visible history for threadID from durable events.
 // It seeds from the newest compacted/fork ReplacementHistory, then forward-applies
-// completed turns and later compact checkpoints. A live Engine commits history
-// only after turn.completed, so failed/canceled/incomplete turns must not leak
-// their partial prompts or tool traffic into a resumed provider request.
+// completed turns, safely paired user-interrupted turns, and later compact
+// checkpoints. Failed, incomplete, and non-user cancellation traffic must not
+// leak into a resumed provider request.
 func ReconstructThread(events []protocol.Event, threadID protocol.ThreadID) (ThreadReconstruction, error) {
 	if threadID == "" {
 		return ThreadReconstruction{}, fmt.Errorf("thread id is required")
@@ -163,7 +163,16 @@ func ReconstructThread(events []protocol.Event, threadID protocol.ThreadID) (Thr
 				replay.append(event.TurnID, message)
 			}
 			delete(pending, event.TurnID)
-		case protocol.EventTurnFailed, protocol.EventTurnCanceled:
+		case protocol.EventTurnCanceled:
+			data, ok := event.Data.(*protocol.TurnCanceledData)
+			if ok && data != nil && data.Reason == protocol.CancelReasonUserInterrupted {
+				turn := turnForReplay(pending, event.TurnID)
+				for _, message := range turn.pairedMessages() {
+					replay.append(event.TurnID, message)
+				}
+			}
+			delete(pending, event.TurnID)
+		case protocol.EventTurnFailed:
 			delete(pending, event.TurnID)
 		case protocol.EventTurnReverted:
 			data, ok := event.Data.(*protocol.TurnRevertedData)

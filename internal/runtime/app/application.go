@@ -389,8 +389,9 @@ func (a *EngineAdapter) emitReceipt(recorder *receiptRecorder, sink EngineSink) 
 }
 
 func (a *EngineAdapter) CancelTurn(
-	context.Context, *protocol.CancelTurnPayload, EngineSink,
+	_ context.Context, payload *protocol.CancelTurnPayload, _ EngineSink,
 ) error {
+	a.engine.RequestCancelWithReason(protocol.NormalizeCancelReason(payload.Reason))
 	return nil
 }
 

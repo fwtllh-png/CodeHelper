@@ -3,6 +3,9 @@ package engine
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -19,8 +22,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"sync"
-	"time"
 )
 
 const (
@@ -155,14 +156,15 @@ type Engine struct {
 	// by turn and sample.
 	samples uint32
 	// toolSamples is the latest cumulative report per tool-initiated sample.
-	toolSamples map[uint32]toolSpend
-	running     bool
-	cancel      context.CancelFunc
-	usage       provider.Usage
-	costUSD     float64
-	guard       *toolguard.Guard
-	journal     *workspacejournal.Manager
-	turnIDs     map[string]uint64
+	toolSamples  map[uint32]toolSpend
+	running      bool
+	cancel       context.CancelFunc
+	cancelReason string
+	usage        provider.Usage
+	costUSD      float64
+	guard        *toolguard.Guard
+	journal      *workspacejournal.Manager
+	turnIDs      map[string]uint64
 
 	approvalMu   sync.Mutex
 	approvalEmit func(Event) error

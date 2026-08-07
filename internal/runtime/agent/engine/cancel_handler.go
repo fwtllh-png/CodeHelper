@@ -93,10 +93,57 @@ func (e *Engine) clearActiveCancel() {
 
 // RequestCancel aborts the active model/tool phase if one is running (N14 Abort).
 func (e *Engine) RequestCancel() {
+	e.RequestCancelWithReason("")
+}
+
+// RequestCancelWithReason aborts the active phase and records why the turn was
+// canceled so user-interrupted work can remain available to a continuation.
+func (e *Engine) RequestCancelWithReason(reason string) {
 	e.steerMu.Lock()
+	e.cancelReason = reason
 	cancel := e.cancel
 	e.steerMu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
+}
+
+func (e *Engine) cancellationReason() string {
+	e.steerMu.Lock()
+	defer e.steerMu.Unlock()
+	return e.cancelReason
+}
+
+func retainCanceledHistory(messages []provider.Message) []provider.Message {
+	calls := make(map[string]struct{})
+	results := make(map[string]struct{})
+	for _, message := range messages {
+		for _, block := range message.Blocks {
+			if block.ToolCall != nil {
+				calls[block.ToolCall.ID] = struct{}{}
+			}
+			if block.ToolResult != nil {
+				results[block.ToolResult.CallID] = struct{}{}
+			}
+		}
+	}
+	retained := make([]provider.Message, 0, len(messages))
+	for _, message := range messages {
+		paired := true
+		for _, block := range message.Blocks {
+			if block.ToolCall != nil {
+				_, paired = results[block.ToolCall.ID]
+			}
+			if paired && block.ToolResult != nil {
+				_, paired = calls[block.ToolResult.CallID]
+			}
+			if !paired {
+				break
+			}
+		}
+		if paired {
+			retained = append(retained, message)
+		}
+	}
+	return cloneMessages(retained)
 }

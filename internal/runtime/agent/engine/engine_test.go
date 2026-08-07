@@ -714,6 +714,90 @@ func TestRequestCancelHasSingleCanceledTerminalAndNoCommittedHistory(t *testing.
 	}
 }
 
+func TestCanceledTurnContinuationRetainsTaskContext(t *testing.T) {
+	started := make(chan struct{})
+	runtime := &steerProvider{started: started}
+	engine, err := New(Options{
+		Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, runErr := engine.Run(t.Context(), "inspect extensions/vscode", nil)
+		done <- runErr
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("model stream did not start")
+	}
+	engine.RequestCancelWithReason(protocol.CancelReasonUserInterrupted)
+	if runErr := <-done; !errors.Is(runErr, context.Canceled) {
+		t.Fatalf("canceled Run() error = %v, want context.Canceled", runErr)
+	}
+	if _, err := engine.Run(t.Context(), "继续", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if len(runtime.requests) != 2 {
+		t.Fatalf("provider requests=%d want 2", len(runtime.requests))
+	}
+	var userPrompts []string
+	for _, message := range runtime.requests[1].Messages {
+		if message.Role == provider.RoleUser {
+			userPrompts = append(userPrompts, message.Text())
+		}
+	}
+	if !slices.Contains(userPrompts, "inspect extensions/vscode") ||
+		!slices.Contains(userPrompts, "继续") {
+		t.Fatalf("continuation user prompts=%q", userPrompts)
+	}
+}
+
+func TestRetainCanceledHistoryDropsOrphanToolTraffic(t *testing.T) {
+	messages := []provider.Message{
+		provider.TextMessage(provider.RoleUser, "inspect vscode"),
+		{
+			Role: provider.RoleAssistant,
+			Blocks: []provider.ContentBlock{{
+				Type: provider.ContentToolCall,
+				ToolCall: &provider.ToolCall{
+					ID: "paired", Name: "read", Arguments: `{}`,
+				},
+			}},
+		},
+		{
+			Role: provider.RoleTool,
+			Blocks: []provider.ContentBlock{{
+				Type: provider.ContentToolResult,
+				ToolResult: &provider.ToolResult{
+					CallID: "paired", Content: "result",
+				},
+			}},
+		},
+		{
+			Role: provider.RoleAssistant,
+			Blocks: []provider.ContentBlock{{
+				Type: provider.ContentToolCall,
+				ToolCall: &provider.ToolCall{
+					ID: "orphan", Name: "read", Arguments: `{}`,
+				},
+			}},
+		},
+	}
+	retained := retainCanceledHistory(messages)
+	if len(retained) != 3 ||
+		retained[0].Text() != "inspect vscode" ||
+		retained[1].Blocks[0].ToolCall.ID != "paired" ||
+		retained[2].Blocks[0].ToolResult.CallID != "paired" {
+		t.Fatalf("retained history=%+v", retained)
+	}
+}
+
 func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.options.MaxContextBytes = 600

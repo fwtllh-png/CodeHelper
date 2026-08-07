@@ -41,6 +41,7 @@ func (e *Engine) beginTurn() error {
 		return errors.New("engine turn is already running")
 	}
 	e.running = true
+	e.cancelReason = ""
 
 	e.pending = append([]PendingInput(nil), e.mailboxHold...)
 	e.mailboxHold = nil
