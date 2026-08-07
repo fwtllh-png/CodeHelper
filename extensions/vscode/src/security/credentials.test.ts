@@ -33,6 +33,7 @@ void test("WorkspaceCredentialStore exposes status without leaking secrets", asy
     status: "configured",
     provider: "openai",
     source: "secret-storage",
+    validation: "not_validated",
   });
   assert.equal(JSON.stringify(status).includes(secret), false);
 
@@ -40,6 +41,19 @@ void test("WorkspaceCredentialStore exposes status without leaking secrets", asy
   assert.equal(Object.values(environment)[0], secret);
   assert.match(Object.keys(environment)[0] ?? "", /^CODEHELPER_VSCODE_CREDENTIAL_/u);
   assert.equal(JSON.stringify(status).includes(Object.keys(environment)[0] ?? ""), false);
+});
+
+void test("CredentialView exposes only non-secret validation metadata", () => {
+  const view = {
+    status: "configured",
+    provider: "openai",
+    source: "secret-storage",
+    validation: "invalid",
+    validatedAt: "2026-08-07T00:00:00.000Z",
+    validationFailure: "authentication",
+  } as const;
+  assert.equal(view.validation, "invalid");
+  assert.equal(JSON.stringify(view).includes("credential-value"), false);
 });
 
 void test("WorkspaceCredentialStore rejects empty secrets and forged providers", async () => {

@@ -76,6 +76,12 @@ func GenerateSchema() *Schema {
 	schema.Envelope["session_profile_update"] = schemaOf(
 		reflect.TypeOf(&SessionProfileUpdateResult{}),
 	)
+	schema.Envelope["provider_catalog"] = schemaOf(
+		reflect.TypeOf(&ProviderCatalog{}),
+	)
+	schema.Envelope["model_catalog"] = schemaOf(
+		reflect.TypeOf(&ModelCatalog{}),
+	)
 	schema.Envelope["session_tool_catalog"] = schemaOf(
 		reflect.TypeOf(&SessionToolCatalog{}),
 	)
@@ -102,6 +108,12 @@ func GenerateSchema() *Schema {
 	)
 	schema.Envelope["session_plan"] = schemaOf(
 		reflect.TypeOf(&SessionPlanSnapshot{}),
+	)
+	schema.Envelope["turn_recovery_request"] = schemaOf(
+		reflect.TypeOf(&TurnRecoveryRequest{}),
+	)
+	schema.Envelope["plan_transition_request"] = schemaOf(
+		reflect.TypeOf(&PlanTransitionRequest{}),
 	)
 	return schema
 }
@@ -189,12 +201,15 @@ func schemaOf(goType reflect.Type) *TypeSchema {
 		return &TypeSchema{Type: "string", Enum: []string{
 			string(EditorContextFile), string(EditorContextSelection),
 			string(EditorContextSymbol), string(EditorContextDiagnostics),
+			string(EditorContextImage), string(EditorContextTerminal),
+			string(EditorContextGitDiff),
 		}}
 	case goType == editorContextSourceType:
 		return &TypeSchema{Type: "string", Enum: []string{
 			string(EditorContextSourceComposer),
 			string(EditorContextSourceSelectionCommand),
 			string(EditorContextSourceCodeAction),
+			string(EditorContextSourceNativePicker),
 		}}
 	}
 	switch goType.Kind() {

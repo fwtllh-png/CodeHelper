@@ -24,6 +24,8 @@ export type WebviewMessage =
   | { readonly type: "new-chat" }
   | { readonly type: "repair-runtime" }
   | { readonly type: "run-setup" }
+  | { readonly type: "add-context" }
+  | { readonly type: "remove-context"; readonly contextId: string }
   | { readonly type: "configure-composer"; readonly control: ComposerControl }
   | { readonly type: "merge-chat"; readonly planId?: string }
   | { readonly type: "stop" }
@@ -95,6 +97,15 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
     case "run-setup":
       requireKeys(value, ["type"]);
       return { type: "run-setup" };
+    case "add-context":
+      requireKeys(value, ["type"]);
+      return { type: "add-context" };
+    case "remove-context":
+      requireKeys(value, ["type", "contextId"]);
+      return {
+        type: "remove-context",
+        contextId: requireBoundedString(value["contextId"], "contextId", 128),
+      };
     case "configure-composer":
       requireKeys(value, ["type", "control"]);
       return {

@@ -326,6 +326,18 @@ export async function runSetup(
   } else {
     await root.controller.activateCredentialProvider();
   }
+  const runtimeEnvironment = secret === undefined
+    ? undefined
+    : { ...process.env, [credentialName]: secret };
+  await validateProviderCredential(
+    root.controller,
+    binary.path,
+    root.folder.uri.fsPath,
+    configPath,
+    provider.row.provider,
+    runtimeEnvironment,
+    output,
+  );
   await vscode.workspace.getConfiguration("codehelper", root.folder.uri)
     .update(
       "runtime.configPath",
@@ -402,6 +414,18 @@ async function configureCredential(
     throw new Error(result.stderr || "CodeHelper credential configuration failed");
   }
   await root.controller.activateCredentialProvider(profile.profile.provider);
+  const environment = await root.controller.credentialEnvironment(
+    profile.profile.provider,
+  );
+  await validateProviderCredential(
+    root.controller,
+    binary.path,
+    root.folder.uri.fsPath,
+    configPath,
+    profile.profile.provider,
+    { ...process.env, ...environment },
+    output,
+  );
   output.info(
     `[credential:${root.label}] provider=${profile.profile.provider} ` +
     "status=configured source=secret-storage",
@@ -464,6 +488,7 @@ function runCommand(
   binary: string,
   args: readonly string[],
   cwd: string,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<{ readonly code: number; readonly stderr: string }> {
   return new Promise((resolve) => {
     execFile(
@@ -475,6 +500,7 @@ function runCommand(
         maxBuffer: 64 << 10,
         timeout: 30_000,
         windowsHide: true,
+        ...(environment === undefined ? {} : { env: environment }),
       },
       (error, _stdout, stderr) => {
         resolve({
@@ -486,6 +512,53 @@ function runCommand(
       },
     );
   });
+}
+
+async function validateProviderCredential(
+  controller: {
+    recordCredentialValidation(
+      provider: string,
+      validation: "valid" | "invalid",
+      failure?: "authentication" | "network" | "provider" | "unknown",
+    ): Promise<void>;
+  },
+  binary: string,
+  cwd: string,
+  configPath: string,
+  provider: string,
+  environment: NodeJS.ProcessEnv | undefined,
+  output: vscode.LogOutputChannel,
+): Promise<void> {
+  const result = await runCommand(
+    binary,
+    [
+      "model", "list", "--live", "--provider", provider,
+      "--config", configPath, "--json",
+    ],
+    cwd,
+    environment,
+  );
+  if (result.code === 0) {
+    await controller.recordCredentialValidation(provider, "valid");
+    output.info(`[credential:${provider}] validation=valid`);
+    return;
+  }
+  const failure = credentialFailure(result.stderr);
+  await controller.recordCredentialValidation(provider, "invalid", failure);
+  output.warn(`[credential:${provider}] validation=invalid category=${failure}`);
+}
+
+function credentialFailure(
+  diagnostic: string,
+): "authentication" | "network" | "provider" | "unknown" {
+  if (/\b(401|403|unauthorized|forbidden|credential)\b/iu.test(diagnostic)) {
+    return "authentication";
+  }
+  if (/\b(unreachable|timeout|network|ECONN|DNS)\b/iu.test(diagnostic)) {
+    return "network";
+  }
+  if (/\bHTTP\s+[45]\d\d\b/iu.test(diagnostic)) return "provider";
+  return "unknown";
 }
 
 function validateSecret(value: string): string | undefined {

@@ -16,7 +16,12 @@ const fixture = {
     source_label: "CodeHelper",
     capability: "read",
     access_mode: "read",
+    risk_level: "low",
     sandbox_requirement: "none",
+    policy_state: "deferred",
+    policy_reason: "evaluated at call time",
+    constitution_state: "deferred",
+    constitution_reason: "enforced by Tool Guard",
     availability: "available",
     state: "eager",
     revision: 1,
@@ -46,4 +51,8 @@ void test("session tool catalog decoder rejects forged fields and sources", () =
     ...fixture,
     tools: [{ ...fixture.tools[0], guarded: false }],
   }), /not guarded/u);
+  assert.throws(() => decodeSessionToolCatalog({
+    ...fixture,
+    tools: [{ ...fixture.tools[0], risk_level: "safe-enough" }],
+  }), /risk level/u);
 });

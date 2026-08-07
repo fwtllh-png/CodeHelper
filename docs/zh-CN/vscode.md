@@ -61,6 +61,20 @@ Remote SSH、Dev Container、Codespaces、WSL Remote Workspace 和其他
 `vscode-remote:` 环境不在产品范围内。插件会拒绝 Remote Activation，不会在文件系统
 或 Workspace Identity 不匹配时启动 Runtime。
 
+## Native Chat 契约决策
+
+Native Chat 契约固定四项产品边界：
+
+- Runtime 持久 Mode 是 `plan`、`act` 和 `operate`；Composer 分别显示 Plan、
+  Implement 和 Operate。Ask 是 Prompt 意图，不是第四种持久 Mode；
+- `execution_target` 当前只允许 `local`。在 Runtime 构造和 Policy 能真实应用前，
+  不把 Sandbox 宣称为可选 Target；
+- 同一个 `WebviewView` 可由用户在 Sidebar 与 Panel 之间移动。独立 Full Editor Chat
+  不在当前产品范围；
+- Checkpoint Restore 只恢复状态。Busy、Profile Revision 过期、不支持和
+  Wrong-session 使用结构化 Problem Details；文件冲突属于显式 Revert 或 Merge，
+  不属于 Restore。
+
 ## Session Profile 契约
 
 Runtime 持有每个 Session 的 Mode、Provider、Model、Reasoning Effort、Enabled Tool
@@ -79,12 +93,39 @@ Credential 和 Approval 控件。Mode、Thinking、Tools、Approval 使用带 Re
 Profile Update；Provider、Model 使用 Setup + Local Runtime Restart。Runtime 未广告
 对应 Capability 时，控件保持禁用。
 
+生成的 Model Capability 契约包含展示名、Context/Output Limit、Tool Calling、Image、
+Reasoning、Prompt Cache、Parallel Tool 支持状态、Reasoning 选项与默认值、
+Credential 状态、Availability、不可用原因和 Selection Mode。`provider/list` 与
+`model/list` 返回版本化 Catalog。当前单 Route 明确返回 `restart_required`，不宣称
+支持热切换。
+
+原生 Provider/Model Quick Pick 直接消费这些 Runtime Catalog，支持搜索，并展示
+Availability、Capability 和 Restart Required。选择非 Hot Route 会进入受保护的 Setup
+流程并重建本地 Runtime；Webview 不提交 Provider Capability 或 Profile Patch。
+
+Add Context 控件通过原生 Host Quick Pick 选择已保存的 Workspace File、活动 Selection、
+Symbol、Diagnostic、Image、显式 Clipboard Terminal Output 和当前 VS Code Git Diff。
+Webview 只提交 Add/Remove Intent，并接收不具权威性的显示 Chip；Path、Byte、Range 与
+Digest 均由 Extension Host 捕获。Runtime 随后重新解析 Workspace File、校验 Canonical
+Identity 与 SHA-256、限制 Text/Image 大小，并为每个接受项生成 Durable Receipt。PNG、
+JPEG、GIF 与 WebP 仅在当前模型广告 Image Input 时通过 Provider 原生 Image Content
+Block 发送。Terminal Text 必须经 Clipboard Modal 显式确认；Git Diff 来自 VS Code
+内置 Git API。
+
+Execution Environment 从 Session Profile 投影并固定为 Local。统一 Keyboard Router
+忽略 IME Composition；Escape 先关闭最上层 Session Drawer，再处理活动 Turn；
+Cmd/Ctrl+N 创建新 Chat。
+
 ## Unified Tool Catalog
 
 `session/tool/catalog` 按 Session 投影 Runtime Registry。它统一返回 Built-in、MCP、
 Plugin、Skill 和受信任 Dynamic Tool，并包含 Catalog Identity、Generation、Digest、
 Source、Capability、Access Mode、Sandbox Requirement、Availability 与当前 Session
 Enabled 状态。Registry Authority 和 Input Schema 不越过该只读边界。
+
+每个条目还返回静态 Risk Level，以及带原因的 Policy/Constitution State。Catalog
+Projection 在裁决依赖已校验调用参数和资源时返回 `deferred`。这些字段只用于解释；
+最终决定仍由 Tool Guard 作出。
 
 Tool ID 与 Source Family 绑定，MCP Tool 还绑定 Server Identity；Tool 被 Revoke 后，
 既有 Session Grant 不会转移给另一 Family 或另一 MCP Server 的同名 Tool。
@@ -102,6 +143,10 @@ Runtime 是 Session 发现和生命周期状态的持久化权威。
 `session/delete` 提供带 Revision CAS 的 Summary 与变更操作。Search 匹配标题和
 持久化 Turn Item Payload；Status 将持久化 Turn 状态与 Session 下全部 Thread 的
 实时活动合并，包括待处理 Approval 和 Input。
+
+Durable Session Summary 不携带瞬时 Search State。`session/list` 单独返回按 Session
+与 Turn 标识的 Match、Match Kind 和可选 Snippet。Host 可以缓存 Durable Summary，
+但 Query 变化时必须丢弃或替换 Match。
 
 Session Rail 按 Pinned、Today、Yesterday、Previous 7 Days、Older 和 Archived 分组，
 支持状态筛选，并展示 Workspace、Provider/Model、生命周期状态、Usage 与待处理交互数。
@@ -126,11 +171,15 @@ Completed Turn 和安全的 User-interrupted Turn 会创建不可变 Session Che
 Profile Revision、Parent Checkpoint、Changed File 数量和保守的 Side-effect 状态；
 Model-visible Replacement History 与 Profile Snapshot 存入 CAS，使用前必须完成
 完整性校验。
+存在 Turn Receipt 时，Checkpoint Metadata 保存 Event ID、Turn ID 和 Cursor 的不可变
+引用，不复制可变展示文本。
 
 Restore 只恢复状态：它替换 Model-visible Runtime History 并产生持久化
 `checkpoint.restored` Event，但绝不重放或回滚已完成的 File、Tool、Command 或
 Network Effect。Profile Revision 过期、活动 Turn、待处理 Approval/Input、CAS 损坏
 或 Cross-session Identity 都会 Fail Closed；重启重建使用相同 Restore Baseline。
+ACP 会在 JSON-RPC Error Data 中保留 Runtime Problem，包括机器可读 Reason 以及相关
+Status 或 Revision。
 
 Fork 从 Checkpoint 创建独立 Engine History，并持久化 Parent Thread 与 Parent
 Checkpoint 血缘。当前 Active Thread 写入 Session Lifecycle Metadata，因此重启后
@@ -142,6 +191,16 @@ Plan Card 支持在原生 Editor 打开、开始实现或请求 Autopilot。两�
 Artifact 与 Profile Revision，通过 Runtime Profile Contract 切换状态并提交一个新的
 Turn。Autopilot 请求 `act` Mode 与 `auto` Approval Posture，但 Host Permission
 Ceiling、Guard、Policy、Journal 和 Sandbox 仍是最终权威。
+
+共享协议同时冻结后续 Workflow Request。Retry 与 Continue 始终使用 Idempotency Key
+创建新 Turn，绝不重放历史 Tool Operation。Plan Transition 显式指定当前 Session、
+新 Session 或 Checkpoint Fork。这些 Request Contract 不表示当前 Chat UI 已暴露全部
+动作。
+
+Host/Webview 增量契约已冻结但尚未激活。Full Snapshot 携带单调 Projection Revision；
+后续 Patch 引用 Base Revision，并且只允许类型化 Turn、Runtime、Composer 和 Resource
+操作。在 Webview Store 能原子应用 Patch 前，活动 Message Set 仍是 Snapshot 与
+Terminal Error。
 
 ## 性能与可访问性契约
 
@@ -177,6 +236,9 @@ Setting 都不会接收 Secret。仍支持外部环境变量、受保护文件�
 不会向 Webview 暴露。Untrusted Workspace 不能配置 Credential 或提升 Approval
 Posture。以 Read-only Posture 启动的 Runtime 还会把恢复后的 Profile Clamp 到
 `never`，历史持久化的 `bypass` 不能跨越 Host Trust Boundary。
+Setup 或替换凭证后，Host 会通过 Runtime Credential 与 Egress 实现显式调用 Provider
+Model-list Endpoint。系统只持久化 Validation Result、Timestamp 和有界 Failure
+Category；Secret 与原始 Provider Response 不进入 Webview State 或 Log。
 
 Runtime 启动失败或 Readiness 降级时，执行 `CodeHelper: Repair Runtime`。该命令会合并
 VS Code Supervisor 启动错误与 `doctor --json`，逐项展示缺失能力的状态、原因、影响和

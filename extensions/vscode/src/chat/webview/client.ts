@@ -21,6 +21,7 @@ import {
   computeVirtualWindow,
   virtualItemOffset,
 } from "../virtual-list.js";
+import { routeChatKeyboard } from "../keyboard.js";
 
 interface VSCodeAPI {
   postMessage(message: unknown): void;
@@ -45,6 +46,7 @@ const repairDetail = element("repair-detail");
 const empty = element("empty");
 const turns = element("turns");
 const prompt = element("prompt") as HTMLTextAreaElement;
+const composerContexts = element("composer-contexts");
 const send = element("send") as HTMLButtonElement;
 const stop = element("stop") as HTMLButtonElement;
 const newChat = element("new-chat") as HTMLButtonElement;
@@ -133,11 +135,13 @@ const transcriptActions: TranscriptActions = {
 });
 
 prompt.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-    event.preventDefault();
+  const action = keyboardAction(event);
+  if (action !== "none") event.preventDefault();
+  if (action === "new-chat") {
+    post({ type: "new-chat" });
+  } else if (action === "send") {
     send.click();
-  } else if (event.key === "Escape" && !stop.disabled) {
-    event.preventDefault();
+  } else if (action === "stop") {
     stop.click();
   }
 });
@@ -166,16 +170,15 @@ mergeChat.addEventListener("click", () => {
     : { type: "merge-chat", planId: messageMergePlanId });
 });
 element("add-context").addEventListener("click", () => {
-  const prefix = prompt.value.length === 0 || /\s$/u.test(prompt.value)
-    ? ""
-    : " ";
-  prompt.setRangeText(
-    `${prefix}@file `,
-    prompt.selectionStart,
-    prompt.selectionEnd,
-    "end",
-  );
-  prompt.focus();
+  post({ type: "add-context" });
+});
+composerContexts.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement)) return;
+  const contextId = target.dataset["contextId"];
+  if (contextId !== undefined) {
+    post({ type: "remove-context", contextId });
+  }
 });
 for (const [button, control] of [
   [modeControl, "mode"],
@@ -204,8 +207,9 @@ narrowMedia.addEventListener("change", () => {
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" &&
-    document.body.classList.contains("sessions-open")) {
+    keyboardAction(event) === "close-sessions") {
     event.preventDefault();
+    event.stopPropagation();
     setSessionsOpen(false);
     toggleSessions.focus();
     return;
@@ -228,7 +232,18 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     first.focus();
   }
-});
+}, { capture: true });
+
+function keyboardAction(event: KeyboardEvent) {
+  return routeChatKeyboard({
+    key: event.key,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+    isComposing: event.isComposing,
+    sessionsOpen: document.body.classList.contains("sessions-open"),
+    turnActive: !stop.disabled,
+  });
+}
 sessionSearch.addEventListener("input", () => {
   renderSessionList();
   if (sessionSearchTimer !== undefined) clearTimeout(sessionSearchTimer);
@@ -344,9 +359,10 @@ function renderSnapshot(message: ChatSnapshotMessage): void {
   stop.disabled = !message.presentation.stopEnabled;
   newChat.disabled = !message.presentation.newChatEnabled;
   railNewChat.disabled = !message.presentation.newChatEnabled;
-  environment.textContent = message.runtime.roots.length > 1
-    ? message.runtime.selectedRootLabel
-    : "Local";
+  environment.textContent = message.composer?.environment.label ??
+    (message.runtime.roots.length > 1
+      ? message.runtime.selectedRootLabel
+      : "Local");
   approvalPosture.textContent = trusted
     ? message.composer?.approval.label ?? "Loading profile"
     : "Read-only";
@@ -367,6 +383,7 @@ function renderSnapshot(message: ChatSnapshotMessage): void {
 function renderComposer(message: ChatSnapshotMessage): void {
   const composer = message.composer;
   if (composer === undefined) {
+    composerContexts.replaceChildren();
     for (const button of [
       modeControl,
       providerControl,
@@ -393,6 +410,19 @@ function renderComposer(message: ChatSnapshotMessage): void {
   setControl(credentialControl, composer.credential);
   setControl(toolsControl, composer.tools);
   setControl(approvalControl, composer.approval);
+  composerContexts.replaceChildren(...composer.contexts.map((context) => {
+    const chip = document.createElement("span");
+    chip.className = "context-chip";
+    chip.textContent = context.label;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "context-remove";
+    remove.dataset["contextId"] = context.id;
+    remove.setAttribute("aria-label", `Remove ${context.label}`);
+    remove.textContent = "×";
+    chip.append(remove);
+    return chip;
+  }));
 }
 
 function setControl(

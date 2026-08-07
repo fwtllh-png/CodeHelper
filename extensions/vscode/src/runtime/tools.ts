@@ -9,6 +9,11 @@ const capabilities = new Set([
 ]);
 const accessModes = new Set(["read", "write", "tree", "unknown"]);
 const sandboxes = new Set(["none", "strong", "unknown"]);
+const risks = new Set(["low", "medium", "high", "critical", "unknown"]);
+const policyStates = new Set([
+  "allowed", "requires_approval", "denied", "deferred",
+]);
+const constitutionStates = new Set(["allowed", "denied", "deferred"]);
 const states = new Set([
   "eager", "deferred", "materialized", "unavailable", "revoked",
 ]);
@@ -41,8 +46,10 @@ function decodeTool(value: unknown): SessionToolCatalog["tools"][number] {
   const object = requireObject(value, "session tool");
   requireKeys(object, [
     "id", "name", "description", "source_kind", "source_label",
-    "capability", "access_mode", "sandbox_requirement", "availability",
-    "state", "revision", "enabled", "guarded",
+    "capability", "access_mode", "risk_level", "sandbox_requirement",
+    "policy_state", "policy_reason", "constitution_state",
+    "constitution_reason", "availability", "state", "revision", "enabled",
+    "guarded",
   ], ["unavailable_reason"]);
   const sourceKind = boundedString(object["source_kind"], "tool source kind");
   if (!sourceKinds.has(sourceKind)) {
@@ -72,6 +79,17 @@ function decodeTool(value: unknown): SessionToolCatalog["tools"][number] {
   const sandbox = finiteString(
     object["sandbox_requirement"], "tool sandbox requirement", sandboxes,
   );
+  const riskLevel = finiteString(
+    object["risk_level"], "tool risk level", risks,
+  );
+  const policyState = finiteString(
+    object["policy_state"], "tool policy state", policyStates,
+  );
+  const constitutionState = finiteString(
+    object["constitution_state"],
+    "tool constitution state",
+    constitutionStates,
+  );
   const state = finiteString(object["state"], "tool state", states);
   const guarded = boolean(object["guarded"], "tool guarded");
   if (!guarded) {
@@ -85,7 +103,16 @@ function decodeTool(value: unknown): SessionToolCatalog["tools"][number] {
     source_label: boundedString(object["source_label"], "tool source label"),
     capability,
     access_mode: accessMode,
+    risk_level: riskLevel,
     sandbox_requirement: sandbox,
+    policy_state: policyState,
+    policy_reason: boundedText(
+      object["policy_reason"], "tool policy reason", 4096,
+    ),
+    constitution_state: constitutionState,
+    constitution_reason: boundedText(
+      object["constitution_reason"], "tool constitution reason", 4096,
+    ),
     availability,
     ...(object["unavailable_reason"] === undefined
       ? {}

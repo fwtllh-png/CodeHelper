@@ -419,6 +419,40 @@ pre {
   border-radius: 7px;
 }
 
+#composer-contexts {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px 0;
+  overflow-x: auto;
+}
+
+#composer-contexts:empty {
+  display: none;
+}
+
+.context-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+  max-width: 260px;
+  padding: 2px 4px 2px 7px;
+  overflow: hidden;
+  color: var(--vscode-badge-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--vscode-badge-background);
+  border-radius: 10px;
+}
+
+.context-remove {
+  min-width: 18px;
+  padding: 0 3px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+}
+
 #prompt {
   display: block;
   width: 100%;

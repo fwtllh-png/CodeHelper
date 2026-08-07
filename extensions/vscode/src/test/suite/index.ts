@@ -102,6 +102,7 @@ export async function run(): Promise<void> {
     await verifyCheckpoints(api);
     await verifySessionLifecycle(api);
     await verifySessionProfile(api);
+    await verifyModelCatalog(api);
     await verifySessionToolCatalog(api);
     await verifyComposerCredential(api);
     await verifyResourceNavigation();
@@ -955,11 +956,28 @@ async function verifySessionProfile(api: ExtensionAPI): Promise<void> {
   );
 }
 
+async function verifyModelCatalog(api: ExtensionAPI): Promise<void> {
+  assert.ok(api.providerCatalog);
+  assert.ok(api.modelCatalog);
+  const providers = await api.providerCatalog();
+  const selectedProvider = providers.providers.find(
+    (provider) => provider.selected,
+  );
+  assert.ok(selectedProvider);
+  const models = await api.modelCatalog(selectedProvider.id);
+  const selectedModel = models.models.find((model) => model.selected);
+  assert.ok(selectedModel);
+  assert.equal(selectedModel.provider, selectedProvider.id);
+  assert.equal(selectedModel.capabilities.selection_mode, "restart_required");
+  assert.ok(models.models.length >= 1);
+}
+
 async function verifyComposerCredential(api: ExtensionAPI): Promise<void> {
   assert.ok(api.chatSessions);
   assert.ok(api.sessionProfile);
   assert.ok(api.testCredentialStatus);
   assert.ok(api.testStoreCredential);
+  assert.ok(api.testRecordCredentialValidation);
   const selected = api.chatSessions().find((session) => session.selected);
   assert.ok(selected);
   const profile = await api.sessionProfile(selected.sessionId);
@@ -969,6 +987,11 @@ async function verifyComposerCredential(api: ExtensionAPI): Promise<void> {
   assert.equal(configured.status, "configured");
   assert.equal(configured.source, "secret-storage");
   assert.equal(JSON.stringify(configured).includes(secret), false);
+  await api.testRecordCredentialValidation(profile.profile.provider, "valid");
+  const validated = await api.testCredentialStatus(profile.profile.provider);
+  assert.equal(validated.validation, "valid");
+  assert.ok(validated.validatedAt);
+  assert.equal(JSON.stringify(validated).includes(secret), false);
 
   await vscode.commands.executeCommand("codehelper.restartRuntime");
   await waitFor(
@@ -976,7 +999,7 @@ async function verifyComposerCredential(api: ExtensionAPI): Promise<void> {
     "Runtime did not recover with the SecretStorage credential environment",
   );
   const recovered = await api.testCredentialStatus(profile.profile.provider);
-  assert.deepEqual(recovered, configured);
+  assert.deepEqual(recovered, validated);
 }
 
 async function verifySessionToolCatalog(api: ExtensionAPI): Promise<void> {
@@ -1423,6 +1446,15 @@ async function verifyNativeContextCapture(): Promise<void> {
     assert.equal(await document.save(), true);
     const saved = await bridge.capture(new Set(["diagnostics"]));
     assert.equal(saved[0]?.kind, "diagnostics");
+    const terminal = bridge.captureInline(
+      "terminal",
+      "Electron terminal",
+      "go test ./...\nPASS",
+    )[0];
+    assert.ok(terminal);
+    assert.equal(terminal.source, "native_picker");
+    assert.equal(terminal.kind, "terminal");
+    assert.equal(terminal.path, "");
   } finally {
     diagnostics.dispose();
   }

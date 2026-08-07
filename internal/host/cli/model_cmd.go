@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -19,13 +20,27 @@ func newModelCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command
 			asJSON, _ := cmd.Flags().GetBool("json")
 			live, _ := cmd.Flags().GetBool("live")
 			providerID, _ := cmd.Flags().GetString("provider")
+			configPath, _ := cmd.Flags().GetString("config")
 			if live {
 				if providerID == "" {
 					_, _ = fmt.Fprintln(stderr, "codehelper: model list --live requires --provider")
 					setCode(2)
 					return
 				}
-				payload, err := listLiveModels(providerID)
+				var credential model.CredentialRef
+				if configPath != "" {
+					loaded, err := config.Load(config.LoadOptions{Path: configPath})
+					if err != nil {
+						_, _ = fmt.Fprintf(stderr, "codehelper: model list --live: %v\n", err)
+						setCode(1)
+						return
+					}
+					credential = model.CredentialRef{
+						Kind: loaded.Config.Credential.Kind,
+						Name: loaded.Config.Credential.Name,
+					}
+				}
+				payload, err := listLiveModels(providerID, credential)
 				if err != nil {
 					_, _ = fmt.Fprintf(stderr, "codehelper: model list --live: %v\n", err)
 					setCode(1)
@@ -71,6 +86,7 @@ func newModelCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command
 	list.Flags().Bool("json", false, "emit JSON")
 	list.Flags().Bool("live", false, "query provider /models endpoint")
 	list.Flags().String("provider", "", "provider id (required with --live)")
+	list.Flags().String("config", "", "trusted config used to resolve a non-secret credential reference")
 
 	resolve := &cobra.Command{
 		Use: "resolve", Short: "Resolve a provider/model against the catalog",

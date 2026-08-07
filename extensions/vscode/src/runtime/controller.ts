@@ -70,8 +70,15 @@ import {
 import type {
   CheckpointList,
   CheckpointRestore,
+  ModelCatalog,
+  ProviderCatalog,
+  SessionList,
   SessionPlan,
 } from "../protocol/generated.js";
+import {
+  decodeModelCatalog,
+  decodeProviderCatalog,
+} from "./models.js";
 
 export type {
   ApprovalDecision,
@@ -131,6 +138,13 @@ export interface ChatSessionSummary extends RuntimeIdentity {
   readonly updatedAt: string;
   readonly selected: boolean;
   readonly replayedEvents: number;
+}
+
+export interface ChatSearchResult {
+  readonly sessions: readonly ChatSessionSummary[];
+  readonly matches: ReadonlyArray<
+  NonNullable<SessionList["matches"]>[number]
+  >;
 }
 
 export interface RuntimeHostSnapshot {
@@ -364,7 +378,7 @@ export class RuntimeController {
 
   public async searchChats(
     options: SessionListOptions,
-  ): Promise<readonly ChatSessionSummary[]> {
+  ): Promise<ChatSearchResult> {
     const runtime = this.#readyRuntime();
     const list = await new SessionLifecycleCommands(runtime).list({
       ...options,
@@ -374,7 +388,10 @@ export class RuntimeController {
     for (const summary of list.sessions) {
       runtime.summaries.set(summary.session_id, summary);
     }
-    return list.sessions.map((summary) => this.#chatSummary(runtime, summary));
+    return {
+      sessions: list.sessions.map((summary) => this.#chatSummary(runtime, summary)),
+      matches: list.matches ?? [],
+    };
   }
 
   public async renameChat(sessionId: string, title: string): Promise<void> {
@@ -584,6 +601,21 @@ export class RuntimeController {
     return this.#commands(sessionId).toolCatalog();
   }
 
+  public async providerCatalog(): Promise<ProviderCatalog> {
+    return decodeProviderCatalog(
+      await this.#readyRuntime().request("provider/list", {}),
+    );
+  }
+
+  public async modelCatalog(provider?: string): Promise<ModelCatalog> {
+    return decodeModelCatalog(
+      await this.#readyRuntime().request(
+        "model/list",
+        provider === undefined ? {} : { provider },
+      ),
+    );
+  }
+
   public async updateSessionProfile(
     sessionId: string,
     expectedRevision: number,
@@ -600,10 +632,20 @@ export class RuntimeController {
     const managedProvider = this.#context.workspaceState.get<string>(
       this.#credentialProviderKey,
     );
-    return this.#credentialStore.status(
+    const status = await this.#credentialStore.status(
       provider,
       managedProvider !== provider,
     );
+    const validation = this.#context.workspaceState.get<{
+      readonly validation: "valid" | "invalid";
+      readonly validatedAt: string;
+      readonly validationFailure?: "authentication" | "network" | "provider" | "unknown";
+    }>(this.#credentialValidationKey(provider));
+    if (status.status !== "configured" || validation === undefined ||
+      Number.isNaN(Date.parse(validation.validatedAt))) {
+      return status;
+    }
+    return { ...status, ...validation };
   }
 
   public async storeCredential(
@@ -611,6 +653,32 @@ export class RuntimeController {
     secret: string,
   ): Promise<void> {
     await this.#credentialStore.store(provider, secret);
+    await this.#context.workspaceState.update(
+      this.#credentialValidationKey(provider),
+      undefined,
+    );
+  }
+
+  public async credentialEnvironment(
+    provider: string,
+  ): Promise<Readonly<Record<string, string>>> {
+    return this.#credentialStore.environment(provider);
+  }
+
+  public async recordCredentialValidation(
+    provider: string,
+    validation: "valid" | "invalid",
+    validationFailure?: "authentication" | "network" | "provider" | "unknown",
+  ): Promise<void> {
+    this.#credentialStore.reference(provider);
+    await this.#context.workspaceState.update(
+      this.#credentialValidationKey(provider),
+      {
+        validation,
+        validatedAt: new Date().toISOString(),
+        ...(validationFailure === undefined ? {} : { validationFailure }),
+      },
+    );
   }
 
   public async activateCredentialProvider(provider?: string): Promise<void> {
@@ -621,6 +689,10 @@ export class RuntimeController {
       this.#credentialProviderKey,
       provider,
     );
+  }
+
+  #credentialValidationKey(provider: string): string {
+    return `codehelper.credentialValidation.v1:${this.#workspaceIdentity.root_id}:${provider}`;
   }
 
   public async mergeChat(

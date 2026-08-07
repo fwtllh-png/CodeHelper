@@ -89,9 +89,12 @@ func TestLifecycleListSearchUpdateAndDeleteProtection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found) != 1 || found[0].SessionID != "session-a" ||
-		found[0].MatchTurnID != "turn-a" ||
-		found[0].Status != protocol.SessionStatusCompleted {
+	if len(found.Sessions) != 1 ||
+		found.Sessions[0].SessionID != "session-a" ||
+		len(found.Matches) != 1 ||
+		found.Matches[0].SessionID != "session-a" ||
+		found.Matches[0].TurnID != "turn-a" ||
+		found.Sessions[0].Status != protocol.SessionStatusCompleted {
 		t.Fatalf("search result = %+v", found)
 	}
 
@@ -126,7 +129,8 @@ func TestLifecycleListSearchUpdateAndDeleteProtection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(visible) != 1 || visible[0].SessionID != "session-b" {
+	if len(visible.Sessions) != 1 ||
+		visible.Sessions[0].SessionID != "session-b" {
 		t.Fatalf("visible sessions = %+v", visible)
 	}
 

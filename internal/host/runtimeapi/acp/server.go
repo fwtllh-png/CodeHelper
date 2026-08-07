@@ -86,6 +86,9 @@ type Dependencies struct {
 type Options struct {
 	ProviderID        string
 	ModelID           string
+	ModelCapabilities protocol.ModelCapabilities
+	ProviderCatalog   protocol.ProviderCatalog
+	ModelCatalog      protocol.ModelCatalog
 	WorkspaceRoot     string
 	WorkspaceIdentity protocol.WorkspaceIdentity
 	CleanupTimeout    time.Duration
@@ -159,6 +162,28 @@ func New(dependencies Dependencies, output io.Writer, options Options) (*Server,
 	}
 	if options.ProviderID == "" || options.ModelID == "" {
 		return nil, errors.New("ACP provider and model are required")
+	}
+	capabilities := protocol.SessionProfileCapabilities{
+		Provider: options.ProviderID, Model: options.ModelID,
+		ModelCapabilities: options.ModelCapabilities,
+	}
+	if err := capabilities.Validate(protocol.SessionProfile{
+		Version: protocol.SessionProfileVersion, Revision: 1,
+		Mode: "act", Provider: options.ProviderID, Model: options.ModelID,
+		ApprovalPosture: "never", ExecutionTarget: "local",
+		MaxSteps: 1, PromptCacheRevision: 1,
+	}); err != nil {
+		return nil, fmt.Errorf("ACP model capabilities: %w", err)
+	}
+	if len(options.ProviderCatalog.Providers) != 0 {
+		if err := options.ProviderCatalog.Validate(); err != nil {
+			return nil, fmt.Errorf("ACP provider catalog: %w", err)
+		}
+	}
+	if len(options.ModelCatalog.Models) != 0 {
+		if err := options.ModelCatalog.Validate(); err != nil {
+			return nil, fmt.Errorf("ACP model catalog: %w", err)
+		}
 	}
 	if options.WorkspaceRoot == "" {
 		options.WorkspaceRoot = "."
@@ -750,9 +775,17 @@ func (s *Server) providerList(request rpcRequest) {
 		s.invalidParams(request, err)
 		return
 	}
-	s.replyResult(request, map[string]any{"providers": []any{
-		map[string]any{"id": s.options.ProviderID, "selected": true},
-	}})
+	result := protocol.ProviderCatalog{
+		Version: protocol.ModelCatalogVersion,
+		Providers: []protocol.ProviderCatalogEntry{{
+			ID: s.options.ProviderID, DisplayName: s.options.ProviderID,
+			Selected: true, Availability: "available",
+		}},
+	}
+	if len(s.options.ProviderCatalog.Providers) != 0 {
+		result = s.options.ProviderCatalog
+	}
+	s.replyResult(request, result)
 }
 
 type providerParams struct {
@@ -786,14 +819,38 @@ func (s *Server) modelList(request rpcRequest) {
 		return
 	}
 	if params.Provider != "" && params.Provider != s.options.ProviderID {
-		s.invalidParams(request, errors.New("provider is unavailable"))
-		return
+		found := false
+		for _, provider := range s.options.ProviderCatalog.Providers {
+			if provider.ID == params.Provider && provider.Availability == "available" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.invalidParams(request, errors.New("provider is unavailable"))
+			return
+		}
 	}
-	s.replyResult(request, map[string]any{"models": []any{
-		map[string]any{
-			"id": s.options.ModelID, "provider": s.options.ProviderID, "selected": true,
-		},
-	}})
+	result := protocol.ModelCatalog{
+		Version: protocol.ModelCatalogVersion,
+		Models: []protocol.ModelCatalogEntry{{
+			ID: s.options.ModelID, Provider: s.options.ProviderID, Selected: true,
+			Capabilities: s.options.ModelCapabilities,
+		}},
+	}
+	if len(s.options.ModelCatalog.Models) != 0 {
+		result = s.options.ModelCatalog
+		if params.Provider != "" {
+			filtered := result.Models[:0]
+			for _, entry := range result.Models {
+				if entry.Provider == params.Provider {
+					filtered = append(filtered, entry)
+				}
+			}
+			result.Models = filtered
+		}
+	}
+	s.replyResult(request, result)
 }
 
 type modelParams struct {
@@ -2554,6 +2611,8 @@ func (s *Server) invalidParams(request rpcRequest, err error) {
 
 func (s *Server) replyApplicationError(request rpcRequest, err error) {
 	code := codeInternalError
+	var problem *protocol.Problem
+	_ = errors.As(err, &problem)
 	switch {
 	case errors.Is(err, threadstate.ErrActiveTurn),
 		errors.Is(err, app.ErrOperationConflict),
@@ -2573,7 +2632,11 @@ func (s *Server) replyApplicationError(request rpcRequest, err error) {
 		errors.Is(err, sessionstate.ErrNotFound):
 		code = codeInvalidParams
 	}
-	s.replyError(request, &rpcError{Code: code, Message: err.Error()})
+	rpcErr := &rpcError{Code: code, Message: err.Error()}
+	if problem != nil {
+		rpcErr.Data = problem
+	}
+	s.replyError(request, rpcErr)
 }
 
 func (s *Server) replyActiveResult(active *activeTurn, result any) {

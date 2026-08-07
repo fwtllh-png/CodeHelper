@@ -63,6 +63,35 @@ func TestProblemRateLimitMetadataJSON(t *testing.T) {
 	}
 }
 
+func TestProblemDetailsPreserveMachineReadableCheckpointReason(t *testing.T) {
+	problem := NewProblemWithDetails(
+		CodeConflict,
+		"Checkpoint Profile Revision is stale",
+		true,
+		ProblemDetails{
+			Reason:           ProblemReasonStaleProfileRevision,
+			ResourceID:       "checkpoint-1",
+			ExpectedRevision: 2,
+			ActualRevision:   3,
+		},
+		nil,
+	)
+	data, err := json.Marshal(problem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Problem
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Details == nil ||
+		decoded.Details.Reason != ProblemReasonStaleProfileRevision ||
+		decoded.Details.ExpectedRevision != 2 ||
+		decoded.Details.ActualRevision != 3 {
+		t.Fatalf("problem details = %+v", decoded.Details)
+	}
+}
+
 func TestCodeOfContextErrors(t *testing.T) {
 	if got := CodeOf(context.Canceled); got != CodeCanceled {
 		t.Fatalf("CodeOf(context.Canceled) = %q", got)

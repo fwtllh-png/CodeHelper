@@ -24,14 +24,22 @@ const snapshot: SessionProfileSnapshot = {
     provider: "openai",
     model: "gpt-coding",
     model_capabilities: {
+      display_name: "GPT Coding",
+      context_window: 128_000,
+      max_output_tokens: 8_192,
       streaming: true,
       reasoning: true,
       tool_calls: true,
+      parallel_tool_calls: "unknown",
       native_search: false,
       vision: false,
       image_input: false,
       prompt_cache: true,
       reasoning_efforts: ["low", "medium", "high"],
+      default_reasoning_effort: "high",
+      credential_status: "unknown",
+      availability: "available",
+      selection_mode: "restart_required",
     },
     mutable_fields: [
       "mode", "reasoning_effort", "enabled_tool_ids", "approval_posture",
@@ -47,7 +55,11 @@ const catalog: SessionToolCatalog = {
   tools: [{
     id: "builtin:file_read", name: "file_read", description: "Read files",
     source_kind: "builtin", source_label: "CodeHelper",
-    capability: "read", access_mode: "read", sandbox_requirement: "none",
+    capability: "read", access_mode: "read", risk_level: "low",
+    sandbox_requirement: "none",
+    policy_state: "deferred", policy_reason: "evaluated at call time",
+    constitution_state: "deferred",
+    constitution_reason: "enforced by Tool Guard",
     availability: "available", state: "eager", revision: 1,
     enabled: true, guarded: true,
   }],
@@ -58,10 +70,14 @@ void test("Composer projects Runtime profile and honest route capabilities", () 
     status: "configured",
     provider: "openai",
     source: "secret-storage",
+    validation: "not_validated",
   }, true);
 
   assert.equal(composer.revision, 4);
+  assert.equal(composer.environment.label, "Local");
+  assert.equal(composer.environment.enabled, false);
   assert.equal(composer.mode.enabled, true);
+  assert.equal(composer.mode.label, "Implement");
   assert.equal(composer.provider.enabled, true);
   assert.equal(composer.model.title.includes("restart"), true);
   assert.equal(composer.thinking?.label, "Thinking: High");
@@ -76,6 +92,7 @@ void test("Composer removes escalation controls from untrusted workspaces", () =
     status: "missing",
     provider: "openai",
     source: "external",
+    validation: "not_validated",
   }, false);
 
   assert.equal(composer.provider.enabled, false);

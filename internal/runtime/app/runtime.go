@@ -99,11 +99,10 @@ type SessionLifecycleStore interface {
 	ListLifecycle(
 		context.Context,
 		protocol.SessionListQuery,
-	) ([]protocol.SessionSummary, error)
+	) (protocol.SessionList, error)
 	GetLifecycle(
 		context.Context,
 		string,
-		...string,
 	) (protocol.SessionSummary, error)
 	ThreadIDs(
 		context.Context,
@@ -385,12 +384,13 @@ func (r *Runtime) ListSessions(
 		storeQuery.Status = ""
 		storeQuery.Limit = 1000
 	}
-	values, err := r.sessionLifecycle.ListLifecycle(ctx, storeQuery)
+	page, err := r.sessionLifecycle.ListLifecycle(ctx, storeQuery)
 	if err != nil {
 		return protocol.SessionList{}, err
 	}
-	sessions := make([]protocol.SessionSummary, 0, min(len(values), limit))
-	for _, value := range values {
+	sessions := make([]protocol.SessionSummary, 0, min(len(page.Sessions), limit))
+	included := make(map[string]struct{}, len(page.Sessions))
+	for _, value := range page.Sessions {
 		value, err = r.projectSessionActivity(ctx, value)
 		if err != nil {
 			return protocol.SessionList{}, err
@@ -399,14 +399,22 @@ func (r *Runtime) ListSessions(
 			continue
 		}
 		sessions = append(sessions, value)
+		included[value.SessionID] = struct{}{}
 		if len(sessions) == limit {
 			break
+		}
+	}
+	matches := make([]protocol.SessionSearchMatch, 0, len(page.Matches))
+	for _, match := range page.Matches {
+		if _, ok := included[match.SessionID]; ok {
+			matches = append(matches, match)
 		}
 	}
 	result := protocol.SessionList{
 		Version:  protocol.SessionLifecycleVersion,
 		Query:    strings.TrimSpace(query.Query),
 		Sessions: sessions,
+		Matches:  matches,
 	}
 	if err := result.Validate(); err != nil {
 		return protocol.SessionList{}, err
@@ -621,7 +629,7 @@ func ensureSessionQuiescent(
 	case protocol.SessionStatusRunning,
 		protocol.SessionStatusAwaitingApproval,
 		protocol.SessionStatusAwaitingInput:
-		return protocol.NewProblem(
+		return protocol.NewProblemWithDetails(
 			protocol.CodeConflict,
 			fmt.Sprintf(
 				"cannot %s session while status is %s",
@@ -629,6 +637,11 @@ func ensureSessionQuiescent(
 				summary.Status,
 			),
 			true,
+			protocol.ProblemDetails{
+				Reason:        protocol.ProblemReasonSessionBusy,
+				ResourceID:    summary.SessionID,
+				SessionStatus: string(summary.Status),
+			},
 			nil,
 		)
 	default:
@@ -682,7 +695,12 @@ func (r *Runtime) SessionToolCatalog(
 			SourceKind:  sourceKind, SourceLabel: sourceLabel,
 			Capability:         string(descriptor.Capability),
 			AccessMode:         string(descriptor.AccessMode),
+			RiskLevel:          catalogRiskLevel(descriptor.Capability, descriptor.AccessMode),
 			SandboxRequirement: string(descriptor.SandboxRequirement),
+			PolicyState:        "deferred",
+			PolicyReason:       "Final policy decision requires validated arguments and resources",
+			ConstitutionState:  "deferred",
+			ConstitutionReason: "Final constitution decision is enforced by the Tool Guard",
 			Availability:       string(descriptor.Availability),
 			UnavailableReason:  boundedCatalogText(descriptor.UnavailableReason, 4096),
 			State:              string(entry.State), Revision: entry.Revision,
@@ -709,7 +727,12 @@ func (r *Runtime) SessionToolCatalog(
 			SourceLabel:        sourceLabel,
 			Capability:         "unknown",
 			AccessMode:         "unknown",
+			RiskLevel:          "unknown",
 			SandboxRequirement: "unknown",
+			PolicyState:        "deferred",
+			PolicyReason:       "Revoked Tool has no executable policy decision",
+			ConstitutionState:  "deferred",
+			ConstitutionReason: "Revoked Tool cannot reach Constitution evaluation",
 			Availability:       "unavailable",
 			UnavailableReason:  "Tool was revoked or its source is disconnected",
 			State:              "revoked",
@@ -725,6 +748,22 @@ func (r *Runtime) SessionToolCatalog(
 		return protocol.SessionToolCatalog{}, err
 	}
 	return result, nil
+}
+
+func catalogRiskLevel(capability tool.Capability, access tool.AccessMode) string {
+	switch {
+	case capability == tool.CapabilityRead && access == tool.AccessRead:
+		return "low"
+	case capability == tool.CapabilityWrite:
+		return "medium"
+	case capability == tool.CapabilityProcess ||
+		capability == tool.CapabilityNetwork ||
+		capability == tool.CapabilityPlugin ||
+		access == tool.AccessTree:
+		return "high"
+	default:
+		return "unknown"
+	}
 }
 
 func boundedCatalogText(value string, maximum int) string {

@@ -191,17 +191,19 @@ func (m *memorySessionWorkspaces) ApplyMerge(
 func (s *memorySessionLifecycleStore) ListLifecycle(
 	context.Context,
 	protocol.SessionListQuery,
-) ([]protocol.SessionSummary, error) {
+) (protocol.SessionList, error) {
 	if s.deleted {
-		return nil, nil
+		return protocol.SessionList{Version: protocol.SessionLifecycleVersion}, nil
 	}
-	return []protocol.SessionSummary{s.summary}, nil
+	return protocol.SessionList{
+		Version:  protocol.SessionLifecycleVersion,
+		Sessions: []protocol.SessionSummary{s.summary},
+	}, nil
 }
 
 func (s *memorySessionLifecycleStore) GetLifecycle(
 	_ context.Context,
 	sessionID string,
-	_ ...string,
 ) (protocol.SessionSummary, error) {
 	if s.deleted || sessionID != s.summary.SessionID {
 		return protocol.SessionSummary{}, errors.New("session not found")

@@ -16,7 +16,12 @@ type SessionToolCatalogEntry struct {
 	SourceLabel        string `json:"source_label"`
 	Capability         string `json:"capability"`
 	AccessMode         string `json:"access_mode"`
+	RiskLevel          string `json:"risk_level"`
 	SandboxRequirement string `json:"sandbox_requirement"`
+	PolicyState        string `json:"policy_state"`
+	PolicyReason       string `json:"policy_reason"`
+	ConstitutionState  string `json:"constitution_state"`
+	ConstitutionReason string `json:"constitution_reason"`
 	Availability       string `json:"availability"`
 	UnavailableReason  string `json:"unavailable_reason,omitempty"`
 	State              string `json:"state"`
@@ -84,10 +89,33 @@ func (c SessionToolCatalog) Validate() error {
 		default:
 			return fmt.Errorf("session tool catalog entry %q has invalid access mode", entry.ID)
 		}
+		switch entry.RiskLevel {
+		case "low", "medium", "high", "critical", "unknown":
+		default:
+			return fmt.Errorf("session tool catalog entry %q has invalid risk level", entry.ID)
+		}
 		switch entry.SandboxRequirement {
 		case "none", "strong", "unknown":
 		default:
 			return fmt.Errorf("session tool catalog entry %q has invalid sandbox requirement", entry.ID)
+		}
+		switch entry.PolicyState {
+		case "allowed", "requires_approval", "denied", "deferred":
+		default:
+			return fmt.Errorf("session tool catalog entry %q has invalid policy state", entry.ID)
+		}
+		switch entry.ConstitutionState {
+		case "allowed", "denied", "deferred":
+		default:
+			return fmt.Errorf("session tool catalog entry %q has invalid constitution state", entry.ID)
+		}
+		if strings.TrimSpace(entry.PolicyReason) == "" ||
+			strings.TrimSpace(entry.ConstitutionReason) == "" ||
+			len(entry.PolicyReason) > 4096 ||
+			len(entry.ConstitutionReason) > 4096 ||
+			strings.ContainsRune(entry.PolicyReason, '\x00') ||
+			strings.ContainsRune(entry.ConstitutionReason, '\x00') {
+			return fmt.Errorf("session tool catalog entry %q has invalid decision reason", entry.ID)
 		}
 		switch entry.State {
 		case "eager", "deferred", "materialized", "unavailable", "revoked":

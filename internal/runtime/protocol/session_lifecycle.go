@@ -38,7 +38,6 @@ type SessionSummary struct {
 	Mode             string                 `json:"mode,omitempty"`
 	ParentThreadID   ThreadID               `json:"parent_thread_id,omitempty"`
 	LatestTurnID     TurnID                 `json:"latest_turn_id,omitempty"`
-	MatchTurnID      TurnID                 `json:"match_turn_id,omitempty"`
 	LatestSequence   Cursor                 `json:"latest_sequence"`
 	PendingApprovals int                    `json:"pending_approvals"`
 	PendingInputs    int                    `json:"pending_inputs"`
@@ -93,7 +92,6 @@ func (s SessionSummary) Validate() error {
 	for name, value := range map[string]string{
 		"parent thread": string(s.ParentThreadID),
 		"latest turn":   string(s.LatestTurnID),
-		"match turn":    string(s.MatchTurnID),
 	} {
 		if value != "" && !validProfileIdentifier(value) {
 			return fmt.Errorf("session summary %s identity is invalid", name)
@@ -102,10 +100,34 @@ func (s SessionSummary) Validate() error {
 	return nil
 }
 
+type SessionSearchMatch struct {
+	SessionID string `json:"session_id"`
+	TurnID    TurnID `json:"turn_id"`
+	Kind      string `json:"kind"`
+	Snippet   string `json:"snippet,omitempty"`
+}
+
+func (m SessionSearchMatch) Validate() error {
+	if !validProfileIdentifier(m.SessionID) ||
+		!validProfileIdentifier(string(m.TurnID)) {
+		return errors.New("session search match identity is invalid")
+	}
+	switch m.Kind {
+	case "title", "user_request", "agent_output", "path", "symbol", "content":
+	default:
+		return errors.New("session search match kind is invalid")
+	}
+	if len(m.Snippet) > 2048 || strings.ContainsRune(m.Snippet, '\x00') {
+		return errors.New("session search match snippet is invalid")
+	}
+	return nil
+}
+
 type SessionList struct {
-	Version  int              `json:"version"`
-	Query    string           `json:"query,omitempty"`
-	Sessions []SessionSummary `json:"sessions"`
+	Version  int                  `json:"version"`
+	Query    string               `json:"query,omitempty"`
+	Sessions []SessionSummary     `json:"sessions"`
+	Matches  []SessionSearchMatch `json:"matches,omitempty"`
 }
 
 type SessionListQuery struct {
@@ -133,6 +155,9 @@ func (l SessionList) Validate() error {
 		strings.ContainsRune(l.Query, '\x00') || len(l.Sessions) > 1000 {
 		return errors.New("session list is invalid")
 	}
+	if strings.TrimSpace(l.Query) == "" && len(l.Matches) != 0 {
+		return errors.New("session list without a query cannot contain matches")
+	}
 	seen := make(map[string]struct{}, len(l.Sessions))
 	for _, session := range l.Sessions {
 		if err := session.Validate(); err != nil {
@@ -142,6 +167,20 @@ func (l SessionList) Validate() error {
 			return fmt.Errorf("session %q is duplicated", session.SessionID)
 		}
 		seen[session.SessionID] = struct{}{}
+	}
+	matchSeen := make(map[string]struct{}, len(l.Matches))
+	for _, match := range l.Matches {
+		if err := match.Validate(); err != nil {
+			return err
+		}
+		if _, exists := seen[match.SessionID]; !exists {
+			return fmt.Errorf("session search match %q has no listed session", match.SessionID)
+		}
+		key := match.SessionID + "\x00" + string(match.TurnID)
+		if _, duplicate := matchSeen[key]; duplicate {
+			return fmt.Errorf("session search match %q is duplicated", key)
+		}
+		matchSeen[key] = struct{}{}
 	}
 	return nil
 }

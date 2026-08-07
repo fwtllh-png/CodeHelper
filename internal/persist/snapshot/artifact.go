@@ -24,15 +24,16 @@ type checkpointContent struct {
 }
 
 type checkpointMetadata struct {
-	Version             int                       `json:"version"`
-	SessionID           string                    `json:"session_id"`
-	Status              protocol.CheckpointStatus `json:"status"`
-	Summary             string                    `json:"summary"`
-	ProfileRevision     uint64                    `json:"profile_revision"`
-	ParentCheckpointID  string                    `json:"parent_checkpoint_id,omitempty"`
-	ChangedFiles        int                       `json:"changed_files"`
-	ExternalSideEffects bool                      `json:"external_side_effects"`
-	SideEffectNote      string                    `json:"side_effect_note,omitempty"`
+	Version             int                        `json:"version"`
+	SessionID           string                     `json:"session_id"`
+	Status              protocol.CheckpointStatus  `json:"status"`
+	Summary             string                     `json:"summary"`
+	ProfileRevision     uint64                     `json:"profile_revision"`
+	ParentCheckpointID  string                     `json:"parent_checkpoint_id,omitempty"`
+	ChangeReceipt       *protocol.ReceiptReference `json:"change_receipt,omitempty"`
+	ChangedFiles        int                        `json:"changed_files"`
+	ExternalSideEffects bool                       `json:"external_side_effects"`
+	SideEffectNote      string                     `json:"side_effect_note,omitempty"`
 }
 
 type planMetadata struct {
@@ -94,6 +95,7 @@ func (r *Repository) SaveCheckpoint(
 		Summary:             checkpoint.Summary,
 		ProfileRevision:     checkpoint.ProfileRevision,
 		ParentCheckpointID:  checkpoint.ParentCheckpointID,
+		ChangeReceipt:       checkpoint.ChangeReceipt,
 		ChangedFiles:        checkpoint.ChangedFiles,
 		ExternalSideEffects: checkpoint.ExternalSideEffects,
 		SideEffectNote:      checkpoint.SideEffectNote,
@@ -386,6 +388,7 @@ func decodeCheckpointSummary(
 		Summary:             metadata.Summary,
 		ProfileRevision:     metadata.ProfileRevision,
 		ParentCheckpointID:  metadata.ParentCheckpointID,
+		ChangeReceipt:       metadata.ChangeReceipt,
 		ChangedFiles:        metadata.ChangedFiles,
 		ExternalSideEffects: metadata.ExternalSideEffects,
 		SideEffectNote:      metadata.SideEffectNote,

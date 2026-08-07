@@ -67,6 +67,7 @@ export function renderChatHTML(
 
       <footer id="composer-region">
         <form id="composer">
+          <div id="composer-contexts" aria-label="Attached context"></div>
           <textarea id="prompt" aria-label="Prompt" placeholder="Ask CodeHelper or describe a coding task…"></textarea>
           <div id="composer-toolbar" role="toolbar" aria-label="Prompt controls">
             <div class="composer-controls">

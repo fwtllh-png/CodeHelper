@@ -20,10 +20,25 @@ func TestSessionLifecycleContractsRejectAmbiguousState(t *testing.T) {
 	if err := summary.Validate(); err == nil {
 		t.Fatal("unknown lifecycle status was accepted")
 	}
+	summary.Status = SessionStatusIdle
 	if err := (SessionLifecyclePatch{}).Validate(); err == nil {
 		t.Fatal("empty lifecycle patch was accepted")
 	}
 	if err := (SessionListQuery{Status: "forged"}).Validate(); err == nil {
 		t.Fatal("forged lifecycle status filter was accepted")
+	}
+	list := SessionList{
+		Version: SessionLifecycleVersion, Query: "login",
+		Sessions: []SessionSummary{summary},
+		Matches: []SessionSearchMatch{{
+			SessionID: summary.SessionID, TurnID: "turn-1", Kind: "content",
+		}},
+	}
+	if err := list.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	list.Matches[0].SessionID = "other-session"
+	if err := list.Validate(); err == nil {
+		t.Fatal("search match without a listed Session was accepted")
 	}
 }

@@ -87,6 +87,9 @@ func newContractHost(t *testing.T, setup contract.Setup) contract.Host {
 		SessionWorkspaces: session.SessionWorkspaces(),
 	}, serverWriter, acp.Options{
 		ProviderID: "fixture", ModelID: "fixture-model", WorkspaceRoot: workspace,
+		ModelCapabilities: session.ModelCapabilities(),
+		ProviderCatalog:   session.ProviderCatalog(),
+		ModelCatalog:      session.ModelCatalog(),
 		WorkspaceIdentity: workspaceIdentity,
 	})
 	if err != nil {

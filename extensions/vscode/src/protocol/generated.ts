@@ -81,6 +81,13 @@ export type EventEnvelope = {
 
 export type ProtocolProblem = {
   readonly "code": string;
+  readonly "details"?: {
+      readonly "actual_revision"?: number;
+      readonly "expected_revision"?: number;
+      readonly "reason": string;
+      readonly "resource_id"?: string;
+      readonly "session_status"?: string;
+    };
   readonly "http_status"?: number;
   readonly "message": string;
   readonly "rate_limit"?: {
@@ -97,13 +104,22 @@ export type SessionProfileSnapshot = {
   readonly "capabilities": {
       readonly "model": string;
       readonly "model_capabilities": {
+            readonly "availability": string;
+            readonly "context_window": number;
+            readonly "credential_status": string;
+            readonly "default_reasoning_effort"?: string;
+            readonly "display_name": string;
             readonly "image_input": boolean;
+            readonly "max_output_tokens": number;
             readonly "native_search": boolean;
+            readonly "parallel_tool_calls": string;
             readonly "prompt_cache": boolean;
             readonly "reasoning": boolean;
             readonly "reasoning_efforts"?: ReadonlyArray<string>;
+            readonly "selection_mode": string;
             readonly "streaming": boolean;
             readonly "tool_calls": boolean;
+            readonly "unavailable_reason"?: string;
             readonly "vision": boolean;
           };
       readonly "mutable_fields": ReadonlyArray<string>;
@@ -153,6 +169,45 @@ export type SessionProfileUpdate = {
   readonly "reset_reason"?: string;
 };
 
+export type ProviderCatalog = {
+  readonly "providers": ReadonlyArray<{
+      readonly "availability": string;
+      readonly "display_name": string;
+      readonly "id": string;
+      readonly "reason"?: string;
+      readonly "selected": boolean;
+    }>;
+  readonly "version": number;
+};
+
+export type ModelCatalog = {
+  readonly "models": ReadonlyArray<{
+      readonly "capabilities": {
+            readonly "availability": string;
+            readonly "context_window": number;
+            readonly "credential_status": string;
+            readonly "default_reasoning_effort"?: string;
+            readonly "display_name": string;
+            readonly "image_input": boolean;
+            readonly "max_output_tokens": number;
+            readonly "native_search": boolean;
+            readonly "parallel_tool_calls": string;
+            readonly "prompt_cache": boolean;
+            readonly "reasoning": boolean;
+            readonly "reasoning_efforts"?: ReadonlyArray<string>;
+            readonly "selection_mode": string;
+            readonly "streaming": boolean;
+            readonly "tool_calls": boolean;
+            readonly "unavailable_reason"?: string;
+            readonly "vision": boolean;
+          };
+      readonly "id": string;
+      readonly "provider": string;
+      readonly "selected": boolean;
+    }>;
+  readonly "version": number;
+};
+
 export type SessionToolCatalog = {
   readonly "catalog_id": string;
   readonly "digest": string;
@@ -161,12 +216,17 @@ export type SessionToolCatalog = {
       readonly "access_mode": string;
       readonly "availability": string;
       readonly "capability": string;
+      readonly "constitution_reason": string;
+      readonly "constitution_state": string;
       readonly "description": string;
       readonly "enabled": boolean;
       readonly "guarded": boolean;
       readonly "id": string;
       readonly "name": string;
+      readonly "policy_reason": string;
+      readonly "policy_state": string;
       readonly "revision": number;
+      readonly "risk_level": string;
       readonly "sandbox_requirement": string;
       readonly "source_kind": string;
       readonly "source_label": string;
@@ -177,6 +237,12 @@ export type SessionToolCatalog = {
 };
 
 export type SessionList = {
+  readonly "matches"?: ReadonlyArray<{
+      readonly "kind": string;
+      readonly "session_id": string;
+      readonly "snippet"?: string;
+      readonly "turn_id": string;
+    }>;
   readonly "query"?: string;
   readonly "sessions": ReadonlyArray<{
       readonly "archived": boolean;
@@ -187,7 +253,6 @@ export type SessionList = {
       readonly "isolation": string;
       readonly "latest_sequence": number;
       readonly "latest_turn_id"?: string;
-      readonly "match_turn_id"?: string;
       readonly "mode"?: string;
       readonly "model"?: string;
       readonly "parent_thread_id"?: string;
@@ -225,7 +290,6 @@ export type SessionLifecycleUpdate = {
       readonly "isolation": string;
       readonly "latest_sequence": number;
       readonly "latest_turn_id"?: string;
-      readonly "match_turn_id"?: string;
       readonly "mode"?: string;
       readonly "model"?: string;
       readonly "parent_thread_id"?: string;
@@ -257,6 +321,11 @@ export type CheckpointList = {
   readonly "checkpoints": ReadonlyArray<{
       readonly "can_fork": boolean;
       readonly "can_restore": boolean;
+      readonly "change_receipt"?: {
+            readonly "cursor": number;
+            readonly "event_id": string;
+            readonly "turn_id": string;
+          };
       readonly "changed_files": number;
       readonly "created_at": string;
       readonly "cursor": number;
@@ -280,6 +349,11 @@ export type CheckpointRestore = {
   readonly "checkpoint": {
       readonly "can_fork": boolean;
       readonly "can_restore": boolean;
+      readonly "change_receipt"?: {
+            readonly "cursor": number;
+            readonly "event_id": string;
+            readonly "turn_id": string;
+          };
       readonly "changed_files": number;
       readonly "created_at": string;
       readonly "cursor": number;
@@ -305,6 +379,11 @@ export type CheckpointFork = {
   readonly "checkpoint": {
       readonly "can_fork": boolean;
       readonly "can_restore": boolean;
+      readonly "change_receipt"?: {
+            readonly "cursor": number;
+            readonly "event_id": string;
+            readonly "turn_id": string;
+          };
       readonly "changed_files": number;
       readonly "created_at": string;
       readonly "cursor": number;
@@ -341,6 +420,26 @@ export type SessionPlan = {
       readonly "turn_id": string;
       readonly "version": number;
     };
+  readonly "version": number;
+};
+
+export type TurnRecoveryRequest = {
+  readonly "action": string;
+  readonly "guidance"?: string;
+  readonly "idempotency_key": string;
+  readonly "session_id": string;
+  readonly "source_turn_id": string;
+  readonly "version": number;
+};
+
+export type PlanTransitionRequest = {
+  readonly "checkpoint_id"?: string;
+  readonly "destination": string;
+  readonly "idempotency_key": string;
+  readonly "plan_id": string;
+  readonly "session_id": string;
+  readonly "title"?: string;
+  readonly "transition": string;
   readonly "version": number;
 };
 
@@ -394,6 +493,7 @@ export type TurnRevertPayload = {
 
 export type TurnStartPayload = {
   readonly "context"?: ReadonlyArray<{
+      readonly "content"?: string;
       readonly "diagnostics"?: ReadonlyArray<{
             readonly "code"?: string;
             readonly "message": string;
@@ -413,7 +513,9 @@ export type TurnStartPayload = {
       readonly "digest": string;
       readonly "document_version": number;
       readonly "explicit": boolean;
-      readonly "kind": "file" | "selection" | "symbol" | "diagnostics";
+      readonly "kind": "file" | "selection" | "symbol" | "diagnostics" | "image" | "terminal" | "git_diff";
+      readonly "label"?: string;
+      readonly "media_type"?: string;
       readonly "omitted_diagnostics"?: number;
       readonly "path": string;
       readonly "range"?: {
@@ -426,7 +528,7 @@ export type TurnStartPayload = {
                     readonly "line": number;
                   };
           };
-      readonly "source"?: "composer" | "selection_command" | "code_action";
+      readonly "source"?: "composer" | "selection_command" | "code_action" | "native_picker";
       readonly "symbol"?: {
             readonly "kind": string;
             readonly "name": string;
@@ -552,6 +654,11 @@ export type CheckpointCreatedData = {
   readonly "checkpoint": {
       readonly "can_fork": boolean;
       readonly "can_restore": boolean;
+      readonly "change_receipt"?: {
+            readonly "cursor": number;
+            readonly "event_id": string;
+            readonly "turn_id": string;
+          };
       readonly "changed_files": number;
       readonly "created_at": string;
       readonly "cursor": number;
@@ -883,7 +990,9 @@ export type TurnReceiptData = {
   readonly "editor_context"?: ReadonlyArray<{
       readonly "diagnostic_count"?: number;
       readonly "digest": string;
-      readonly "kind": "file" | "selection" | "symbol" | "diagnostics";
+      readonly "kind": "file" | "selection" | "symbol" | "diagnostics" | "image" | "terminal" | "git_diff";
+      readonly "label"?: string;
+      readonly "media_type"?: string;
       readonly "omitted_diagnostics"?: number;
       readonly "original_bytes": number;
       readonly "path": string;
@@ -898,7 +1007,7 @@ export type TurnReceiptData = {
                   };
           };
       readonly "retained_bytes": number;
-      readonly "source"?: "composer" | "selection_command" | "code_action";
+      readonly "source"?: "composer" | "selection_command" | "code_action" | "native_picker";
       readonly "symbol"?: {
             readonly "kind": string;
             readonly "name": string;
@@ -1020,7 +1129,9 @@ export type TurnStartedData = {
   readonly "editor_context"?: ReadonlyArray<{
       readonly "diagnostic_count"?: number;
       readonly "digest": string;
-      readonly "kind": "file" | "selection" | "symbol" | "diagnostics";
+      readonly "kind": "file" | "selection" | "symbol" | "diagnostics" | "image" | "terminal" | "git_diff";
+      readonly "label"?: string;
+      readonly "media_type"?: string;
       readonly "omitted_diagnostics"?: number;
       readonly "original_bytes": number;
       readonly "path": string;
@@ -1035,7 +1146,7 @@ export type TurnStartedData = {
                   };
           };
       readonly "retained_bytes": number;
-      readonly "source"?: "composer" | "selection_command" | "code_action";
+      readonly "source"?: "composer" | "selection_command" | "code_action" | "native_picker";
       readonly "symbol"?: {
             readonly "kind": string;
             readonly "name": string;

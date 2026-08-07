@@ -12,11 +12,19 @@ func TestCheckpointAndPlanArtifactValidation(t *testing.T) {
 		ThreadID: "thread-1", TurnID: "turn-1", Cursor: 4,
 		Status: CheckpointCompleted, Summary: "Implemented the parser",
 		ProfileRevision: 2, CanRestore: true, CanFork: true,
+		ChangeReceipt: &ReceiptReference{
+			EventID: "event-receipt-1", TurnID: "turn-1", Cursor: 3,
+		},
 		CreatedAt: time.Now().UTC(),
 	}
 	if err := checkpoint.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	checkpoint.ChangeReceipt.Cursor = 5
+	if err := checkpoint.Validate(); err == nil {
+		t.Fatal("Checkpoint accepted a receipt after its cursor")
+	}
+	checkpoint.ChangeReceipt.Cursor = 3
 	checkpoint.Status = "forged"
 	if err := checkpoint.Validate(); err == nil {
 		t.Fatal("forged checkpoint status was accepted")

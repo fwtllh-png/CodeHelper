@@ -3,18 +3,29 @@ import test from "node:test";
 
 import {
   chatHostMessageTypes,
+  chatPatchMessageType,
   chatViewProtocolVersion,
   createChatErrorMessage,
   createChatSnapshotMessage,
 } from "./contract.js";
+import type { ChatPatchMessage } from "./contract.js";
 import { projectComposer } from "./composer.js";
 
-void test("Chat V1 host protocol is snapshot-only between terminal errors", () => {
+void test("Chat V1 active host protocol stays snapshot-only until Patch applies", () => {
   assert.deepEqual(chatHostMessageTypes, ["snapshot", "error"]);
+  const futurePatch: ChatPatchMessage = {
+    type: chatPatchMessageType,
+    version: chatViewProtocolVersion,
+    baseRevision: 1,
+    revision: 2,
+    operations: [{ kind: "turn.remove", turnId: "turn_1" }],
+  };
+  assert.equal(futurePatch.baseRevision < futurePatch.revision, true);
 });
 
 void test("Chat host snapshot freezes the current Runtime and Session projection", () => {
   const message = createChatSnapshotMessage({
+    revision: 1,
     snapshot: {
       turns: [],
       activeTurnId: "turn_1",
@@ -70,6 +81,11 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
     sessionSearch: {
       query: "background",
       sessionIds: ["session_2"],
+      matches: [{
+        sessionId: "session_2",
+        turnId: "turn_2",
+        kind: "content",
+      }],
     },
     mergePlanId: "b".repeat(64),
     roots: [
@@ -92,13 +108,20 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
         provider: "fixture",
         model: "fixture-model",
         model_capabilities: {
+          display_name: "Fixture Model",
+          context_window: 128_000,
+          max_output_tokens: 8_192,
           streaming: true,
           reasoning: false,
           tool_calls: true,
+          parallel_tool_calls: "unknown",
           native_search: false,
           vision: false,
           image_input: false,
           prompt_cache: false,
+          credential_status: "unknown",
+          availability: "available",
+          selection_mode: "restart_required",
         },
         mutable_fields: ["mode", "approval_posture"],
       },
@@ -112,11 +135,13 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
       status: "configured",
       provider: "fixture",
       source: "external",
+      validation: "not_validated",
     }, true),
   });
 
   assert.equal(message.type, "snapshot");
   assert.equal(message.version, chatViewProtocolVersion);
+  assert.equal(message.revision, 1);
   assert.equal(message.runtime.state, "ready");
   assert.equal(message.runtime.selectedSessionId, "session_1");
   assert.equal(message.runtime.sessions[0]?.active, true);
@@ -125,6 +150,11 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
   assert.deepEqual(message.runtime.sessionSearch, {
     query: "background",
     sessionIds: ["session_2"],
+    matches: [{
+      sessionId: "session_2",
+      turnId: "turn_2",
+      kind: "content",
+    }],
   });
   assert.equal(message.presentation.stopEnabled, true);
   assert.equal(message.composer?.model.value, "fixture-model");
@@ -140,6 +170,7 @@ void test("Chat host snapshot freezes the current Runtime and Session projection
 
 void test("Chat host snapshot omits absent optional state", () => {
   const message = createChatSnapshotMessage({
+    revision: 1,
     snapshot: { turns: [] },
     state: "starting",
     trusted: false,

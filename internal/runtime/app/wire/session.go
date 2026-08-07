@@ -14,6 +14,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -31,6 +32,18 @@ func (s *Session) Close(ctx context.Context) error {
 func (s *Session) ProviderID() string { return s.providerID }
 
 func (s *Session) ModelID() string { return s.modelID }
+
+func (s *Session) ModelCapabilities() protocol.ModelCapabilities {
+	return s.modelCapabilities
+}
+
+func (s *Session) ProviderCatalog() protocol.ProviderCatalog {
+	return s.providerCatalog
+}
+
+func (s *Session) ModelCatalog() protocol.ModelCatalog {
+	return s.modelCatalog
+}
 
 func (s *Session) SessionWorkspaces() app.SessionWorkspaceManager {
 	if s == nil {

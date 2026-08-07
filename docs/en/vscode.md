@@ -67,6 +67,21 @@ Workspaces, and other `vscode-remote:` environments are outside the product
 scope. The extension rejects Remote activation instead of launching a Runtime
 against a mismatched filesystem or identity.
 
+## Native Chat Contract Decisions
+
+The native Chat contract fixes four product boundaries:
+
+- durable Runtime modes are `plan`, `act`, and `operate`; the Composer labels
+  them Plan, Implement, and Operate. Ask is prompt intent, not a fourth
+  persisted mode;
+- `execution_target` is currently `local` only. Sandbox is not advertised as a
+  selectable target until Runtime construction and policy can apply it;
+- one `WebviewView` may be moved by the user between the Sidebar and Panel. A
+  separate Full Editor Chat surface is outside the current product scope;
+- Checkpoint Restore is state-only. Busy, stale-Revision, unsupported, and
+  wrong-Session failures use structured Problem details. File conflicts belong
+  to explicit Revert or Merge, not Restore.
+
 ## Session Profile Contract
 
 The Runtime owns each Session's mode, provider, model, reasoning effort,
@@ -88,6 +103,34 @@ Approval use Revision-checked Profile updates. Provider and Model use Setup
 plus a local Runtime restart. Controls remain disabled when the Runtime does
 not advertise the required capability.
 
+The generated Model Capability contract includes display name, context and
+output limits, Tool Calling, Image, Reasoning, Prompt Cache, Parallel Tool
+support state, reasoning choices and default, Credential state, Availability,
+unavailable reason, and selection mode. `provider/list` and `model/list` return
+versioned catalogs. The current single route reports `restart_required`; it
+does not claim hot switching.
+
+The native Provider and Model Quick Picks consume these Runtime catalogs. They
+support search, show availability and capability details, and label every
+non-hot route as Restart Required. Selecting such a route enters the guarded
+Setup flow and reconstructs the local Runtime; the Webview never submits a
+Provider capability or Profile patch.
+
+The Add Context control opens a native Host Quick Pick for saved workspace
+files, the active selection, symbols, diagnostics, images, explicit clipboard
+terminal output, and the current VS Code Git diff. The Webview sends only
+add/remove intents and receives non-authoritative display chips. The Extension
+Host captures paths, bytes, ranges, and digests. Runtime then re-resolves
+workspace files, verifies canonical identity and SHA-256, bounds text and image
+sizes, and emits a durable Receipt for every accepted item. PNG, JPEG, GIF, and
+WebP are sent through provider-native image content blocks only when the
+selected model advertises image input. Terminal text requires an explicit
+clipboard confirmation; Git diff comes from the built-in VS Code Git API.
+
+Execution Environment is projected from the Session Profile and is fixed to
+Local. Keyboard routing ignores IME composition, gives Escape to the topmost
+Session drawer before an active Turn, and maps Cmd/Ctrl+N to New Chat.
+
 ## Unified Tool Catalog
 
 `session/tool/catalog` projects the Runtime registry for one Session. It
@@ -95,6 +138,11 @@ combines built-in, MCP, Plugin, Skill, and trusted Dynamic tools with catalog
 identity, Generation, Digest, source, capability, access mode, sandbox
 requirement, Availability, and Session-enabled state. Registry Authority and
 input schemas do not cross this read boundary.
+
+Each entry also exposes a static risk level and separate Policy and
+Constitution states with reasons. Catalog projection uses `deferred` when a
+decision requires validated call arguments and resources. This metadata is
+explanatory only; the Tool Guard remains the final decision point.
 
 Tool IDs are bound to their source family and, for MCP, the server identity, so
 a revoked tool cannot transfer an existing Session grant to a same-name tool
@@ -116,6 +164,11 @@ The Runtime is the durable authority for Session discovery and lifecycle state.
 the title and persisted Turn Item payloads; status combines durable Turn state
 with live activity across every Thread in the Session, including pending
 approval and input.
+
+Durable Session summaries never carry transient search state. `session/list`
+returns search matches separately, keyed by Session and Turn with a match kind
+and optional snippet. A Host may cache the durable summary, but must discard or
+replace matches when the query changes.
 
 The Session rail groups Pinned, Today, Yesterday, Previous 7 Days, Older, and
 Archived entries. It supports status filtering and projects workspace,
@@ -142,12 +195,16 @@ Checkpoints. `checkpoint/list`, `checkpoint/get`, `checkpoint/restore`, and
 Thread, Turn, event cursor, Profile Revision, parent Checkpoint, changed-file
 count, and conservative side-effect status. Model-visible replacement history
 and the Profile snapshot are stored in CAS and verified before use.
+When a Turn Receipt exists, Checkpoint metadata stores an immutable reference
+to its Event ID, Turn ID, and cursor instead of copying mutable display text.
 
 Restore is state-only. It replaces model-visible Runtime history and emits a
 durable `checkpoint.restored` event, but never replays or reverses completed
 file, Tool, command, or network effects. A stale Profile Revision, active Turn,
 pending approval/input, corrupt CAS object, or cross-Session identity fails
 closed. Restart reconstruction applies the same restore baseline.
+ACP preserves the Runtime Problem object in JSON-RPC error data, including the
+machine-readable reason and relevant status or Revision values.
 
 Fork creates an independent Engine history from a Checkpoint and persists both
 the parent Thread and parent Checkpoint lineage. The selected active Thread is
@@ -162,6 +219,18 @@ actions validate Artifact and Profile Revision, switch through the Runtime
 Profile contract, and submit a new Turn. Autopilot requests `act` mode with
 `auto` approval posture; Host permission ceilings, Guard, policy, journal, and
 sandbox enforcement remain authoritative.
+
+The shared protocol also freezes future workflow requests. Retry and Continue
+always create a new Turn with an idempotency key and never replay historical
+Tool operations. Plan transitions explicitly target the current Session, a new
+Session, or a Checkpoint Fork. These request contracts do not imply that the
+current Chat UI already exposes every action.
+
+The Host/Webview incremental contract is frozen but not active yet. Full
+Snapshots carry a monotonic projection Revision. A future Patch references its
+base Revision and is limited to typed Turn, Runtime, Composer, and Resource
+operations. Until the Webview Store can apply a Patch atomically, the active
+message set remains Snapshot plus terminal Error.
 
 ## Performance and Accessibility Contract
 
@@ -204,6 +273,10 @@ SecretStorage without exposing it to the Webview. Untrusted Workspaces cannot
 configure credentials or raise Approval posture. A Runtime started with
 read-only posture also clamps restored Profiles to `never`, so a previously
 persisted `bypass` value cannot cross the Host trust boundary.
+After Setup or replacement, the Host explicitly calls the Provider model-list
+endpoint through the Runtime credential and egress implementation. Only the
+validation result, timestamp, and a bounded failure category are persisted;
+the secret and raw Provider response never enter Webview state or logs.
 
 Use `CodeHelper: Repair Runtime` when startup fails or readiness is degraded.
 The command combines the VS Code Supervisor failure with `doctor --json`, then

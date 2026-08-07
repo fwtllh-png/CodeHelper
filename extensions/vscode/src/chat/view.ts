@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 
 import { parseContextDirectives } from "../context/directives.js";
+import {
+  pickNativeContext,
+  type NativeContextAttachment,
+} from "../context/picker.js";
 import type {
   ApprovalDecision,
   ApprovalScope,
@@ -54,6 +58,12 @@ interface RootChatState {
   sessionSearch: {
     readonly query: string;
     readonly sessionIds: readonly string[];
+    readonly matches: readonly {
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly kind: string;
+      readonly snippet?: string;
+    }[];
   } | undefined;
 }
 
@@ -61,7 +71,17 @@ interface SessionComposerState {
   readonly profile?: SessionProfileSnapshot;
   readonly catalog?: SessionToolCatalog;
   readonly credential?: CredentialView;
+  readonly contexts?: readonly NativeContextAttachment[];
   readonly error?: string;
+}
+
+interface ProviderPickItem extends vscode.QuickPickItem {
+  readonly providerId: string;
+}
+
+interface ModelPickItem extends vscode.QuickPickItem {
+  readonly modelId: string;
+  readonly selectionMode: string;
 }
 
 export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -81,6 +101,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   #flushTimer: NodeJS.Timeout | undefined;
   #webviewReady = false;
   #snapshotPosts = 0;
+  #projectionRevision = 0;
   #deferredError: ChatHostMessage | undefined;
 
   public constructor(
@@ -121,6 +142,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   public resolveWebviewView(view: vscode.WebviewView): void {
     this.#view = view;
     this.#webviewReady = false;
+    this.#projectionRevision = 0;
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: [chatWebviewResourceRoot(this.#extensionUri)],
@@ -272,7 +294,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             this.#scheduleFlush();
             break;
           }
-          const matches = await root.controller.searchChats({
+          const result = await root.controller.searchChats({
             query,
             includeArchived: true,
             limit: 1000,
@@ -280,7 +302,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           if (state.sessionSearchQuery === query) {
             state.sessionSearch = {
               query,
-              sessionIds: matches.map((session) => session.sessionId),
+              sessionIds: result.sessions.map((session) => session.sessionId),
+              matches: result.matches.map((match) => ({
+                sessionId: match.session_id,
+                turnId: match.turn_id,
+                kind: match.kind,
+                ...(match.snippet === undefined
+                  ? {}
+                  : { snippet: match.snippet }),
+              })),
             };
             this.#scheduleFlush();
           }
@@ -335,6 +365,47 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "run-setup":
           await vscode.commands.executeCommand("codehelper.runSetup");
           break;
+        case "add-context": {
+          const session = this.#selectedSession(root);
+          const state = this.#state(root.rootId).composers.get(session.sessionId);
+          if (state?.profile === undefined) {
+            throw new Error("Session Profile is unavailable");
+          }
+          const attachment = await pickNativeContext(
+            root.folder,
+            root.contextBridge,
+            state.profile,
+          );
+          if (attachment === undefined) break;
+          const contexts = state.contexts ?? [];
+          if (contexts.length >= 8) {
+            throw new Error("a turn can attach at most 8 context items");
+          }
+          if (contexts.some((candidate) =>
+            candidate.reference.kind === attachment.reference.kind &&
+            candidate.reference.digest === attachment.reference.digest)) {
+            throw new Error("this context is already attached");
+          }
+          this.#state(root.rootId).composers.set(session.sessionId, {
+            ...state,
+            contexts: [...contexts, attachment],
+          });
+          this.#scheduleFlush();
+          break;
+        }
+        case "remove-context": {
+          const session = this.#selectedSession(root);
+          const state = this.#state(root.rootId).composers.get(session.sessionId);
+          if (state === undefined) break;
+          this.#state(root.rootId).composers.set(session.sessionId, {
+            ...state,
+            contexts: (state.contexts ?? []).filter(
+              (context) => context.id !== message.contextId,
+            ),
+          });
+          this.#scheduleFlush();
+          break;
+        }
         case "configure-composer": {
           const session = this.#selectedSession(root);
           await this.#configureComposer(root, session, message.control);
@@ -346,10 +417,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           if (parsed.prompt.length === 0) {
             throw new Error("enter a prompt in addition to the context directive");
           }
-          const context = await root.contextBridge.capture(parsed.directives);
+          const context = [
+            ...(await root.contextBridge.capture(parsed.directives)),
+            ...((this.#state(root.rootId).composers.get(session.sessionId)
+              ?.contexts ?? []).map((attachment) => attachment.reference)),
+          ];
+          if (context.length > 8) {
+            throw new Error("a turn can attach at most 8 context items");
+          }
           await root.controller.submitPrompt(
             session.sessionId, parsed.prompt, context,
           );
+          const composer = this.#state(root.rootId).composers.get(session.sessionId);
+          if (composer !== undefined) {
+            this.#state(root.rootId).composers.set(session.sessionId, {
+              ...composer,
+              contexts: [],
+            });
+            this.#scheduleFlush();
+          }
           break;
         }
         case "stop": {
@@ -782,8 +868,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             composerState.catalog,
             composerState.credential,
             vscode.workspace.isTrusted,
+            (composerState.contexts ?? []).map((context) => ({
+              id: context.id, kind: context.kind, label: context.label,
+            })),
           );
       this.#post(createChatSnapshotMessage({
+        revision: ++this.#projectionRevision,
         snapshot: resources.snapshot,
         resources: resources.views,
         state: state.runtime.state,
@@ -883,6 +973,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         profile,
         catalog,
         credential,
+        contexts: this.#state(root.rootId).composers.get(sessionId)?.contexts ?? [],
       });
     } catch (error) {
       this.#state(root.rootId).composers.set(sessionId, {
@@ -913,15 +1004,85 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       throw new Error(state?.error ?? "Session Profile is unavailable");
     }
     if (control === "provider" || control === "model") {
-      await vscode.commands.executeCommand(
-        "codehelper.runSetup",
-        root.rootId,
-        ...(control === "model"
-          ? [state.profile.profile.provider]
-          : []),
-      );
-      this.#state(root.rootId).composers.delete(session.sessionId);
-      this.#scheduleFlush();
+      const providers = await root.controller.providerCatalog();
+      let provider = state.profile.profile.provider;
+      if (control === "provider") {
+        const providerItems: ProviderPickItem[] = [
+          ...providers.providers.map((candidate) => ({
+            label: candidate.display_name,
+            description: candidate.selected ? "Current" : candidate.availability,
+            ...(candidate.reason === undefined ? {} : { detail: candidate.reason }),
+            providerId: candidate.id,
+          })),
+          {
+            label: "$(gear) Configure another Provider",
+            description: "Runs local Setup and restarts Runtime",
+            providerId: "",
+          },
+        ];
+        const picked = await vscode.window.showQuickPick<ProviderPickItem>(providerItems, {
+          title: "CodeHelper: Provider Catalog",
+          placeHolder: "Search Runtime-advertised Providers",
+          ignoreFocusOut: true,
+        });
+        if (picked === undefined) return;
+        if (picked.providerId === "") {
+          await vscode.commands.executeCommand("codehelper.runSetup", root.rootId);
+          this.#state(root.rootId).composers.delete(session.sessionId);
+          this.#scheduleFlush();
+          return;
+        }
+        provider = picked.providerId;
+      }
+      const models = await root.controller.modelCatalog(provider);
+      const modelItems: ModelPickItem[] = [
+        ...models.models.map((candidate) => ({
+          label: candidate.capabilities.display_name,
+          description: candidate.selected
+            ? "Current"
+            : candidate.capabilities.selection_mode === "restart_required"
+              ? "Restart Required"
+              : candidate.capabilities.availability,
+          detail: modelCapabilityDetail(candidate.capabilities),
+          modelId: candidate.id,
+          selectionMode: candidate.capabilities.selection_mode,
+        })),
+        {
+          label: "$(gear) Configure another Model",
+          description: "Runs local Setup and restarts Runtime",
+          detail: "",
+          modelId: "",
+          selectionMode: "restart_required",
+        },
+      ];
+      const picked = await vscode.window.showQuickPick<ModelPickItem>(modelItems, {
+        title: "CodeHelper: Model Catalog",
+        placeHolder: "Search by Model name or capability",
+        matchOnDescription: true,
+        matchOnDetail: true,
+        ignoreFocusOut: true,
+      });
+      if (picked === undefined) return;
+      if (picked.modelId === "") {
+        await vscode.commands.executeCommand(
+          "codehelper.runSetup", root.rootId, provider,
+        );
+        this.#state(root.rootId).composers.delete(session.sessionId);
+        this.#scheduleFlush();
+        return;
+      }
+      if (provider !== state.profile.profile.provider ||
+        picked.modelId !== state.profile.profile.model) {
+        if (picked.selectionMode !== "hot") {
+          await vscode.commands.executeCommand(
+            "codehelper.runSetup", root.rootId, provider,
+          );
+          this.#state(root.rootId).composers.delete(session.sessionId);
+          this.#scheduleFlush();
+          return;
+        }
+        throw new Error("Runtime advertised hot selection without a mutable route");
+      }
       return;
     }
     if (control === "credential") {
@@ -961,6 +1122,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           profile: { ...snapshot, profile: update.profile },
           catalog,
           credential: state.credential,
+          contexts: state.contexts ?? [],
         });
         if (update.prompt_cache_reset) {
           void vscode.window.showInformationMessage(
@@ -1024,6 +1186,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         profile: { ...snapshot, profile: update.profile },
         catalog: state.catalog,
         credential: state.credential,
+        contexts: state.contexts ?? [],
       });
       if (update.prompt_cache_reset) {
         void vscode.window.showInformationMessage(
@@ -1069,6 +1232,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     return root;
   }
+}
+
+function modelCapabilityDetail(
+  capabilities: SessionProfileSnapshot["capabilities"]["model_capabilities"],
+): string {
+  const features = [
+    `${String(capabilities.context_window)} context`,
+    `${String(capabilities.max_output_tokens)} max output`,
+    capabilities.reasoning ? "reasoning" : undefined,
+    capabilities.image_input || capabilities.vision ? "image input" : undefined,
+    capabilities.tool_calls ? "tools" : undefined,
+    capabilities.parallel_tool_calls === "supported" ? "parallel tools" : undefined,
+  ].filter((value): value is string => value !== undefined);
+  return features.join(" · ");
 }
 
 interface ToolPickItem extends vscode.QuickPickItem {

@@ -24,6 +24,17 @@ func (e *Engine) Run(
 func (e *Engine) RunForTurn(
 	ctx context.Context, turnID, prompt string, emit func(Event) error,
 ) (result Result, resultErr error) {
+	return e.RunForTurnWithAttachments(ctx, turnID, prompt, nil, emit)
+}
+
+// RunForTurnWithAttachments starts one turn with native image content blocks.
+// Attachments have already been workspace-bound and digest-verified by Runtime.
+func (e *Engine) RunForTurnWithAttachments(
+	ctx context.Context,
+	turnID, prompt string,
+	attachments []provider.Attachment,
+	emit func(Event) error,
+) (result Result, resultErr error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if prompt == "" {
@@ -158,6 +169,12 @@ func (e *Engine) RunForTurn(
 		return result, err
 	}
 	user := provider.TextMessage(provider.RoleUser, prompt)
+	for index := range attachments {
+		attachment := attachments[index]
+		user.Blocks = append(user.Blocks, provider.ContentBlock{
+			Type: provider.ContentImage, Attachment: &attachment,
+		})
+	}
 	user.Turn = e.turn
 	transaction = append(transaction, user)
 	if err := e.runPreSamplingCompactGate(&transaction, send); err != nil {

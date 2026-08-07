@@ -37,11 +37,18 @@ void test("session lifecycle decoder preserves Runtime-owned status", () => {
     version: 1,
     query: "login",
     sessions: [summary],
+    matches: [{
+      session_id: "session-1",
+      turn_id: "turn-1",
+      kind: "content",
+      snippet: "Fix login",
+    }],
   });
   const decoded = list.sessions[0];
   assert.ok(decoded);
   assert.equal(decoded.status, "awaiting_approval");
   assert.equal(decoded.pinned, true);
+  assert.equal(list.matches?.[0]?.turn_id, "turn-1");
   const update = decodeSessionLifecycleUpdate({ session: summary });
   assert.equal(update.session.revision, 2);
 });
@@ -55,4 +62,14 @@ void test("session lifecycle decoder rejects drift and forged status", () => {
     version: 1,
     sessions: [{ ...summary, active: true }],
   }), /unknown fields/u);
+  assert.throws(() => decodeSessionList({
+    version: 1,
+    query: "login",
+    sessions: [summary],
+    matches: [{
+      session_id: "other-session",
+      turn_id: "turn-1",
+      kind: "content",
+    }],
+  }), /no listed Session/u);
 });

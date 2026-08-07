@@ -147,6 +147,7 @@ void test("Chat assembles the maximum V1 transcript and Session list within budg
     })),
   }, "a".repeat(64), "session_0");
   const message = createChatSnapshotMessage({
+    revision: 1,
     snapshot: resourceProjection.snapshot,
     resources: resourceProjection.views,
     state: "ready",

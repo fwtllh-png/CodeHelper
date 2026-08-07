@@ -57,6 +57,16 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
   assert.deepEqual(decodeWebviewMessage({ type: "run-setup" }), {
     type: "run-setup",
   });
+  assert.deepEqual(decodeWebviewMessage({ type: "add-context" }), {
+    type: "add-context",
+  });
+  assert.deepEqual(decodeWebviewMessage({
+    type: "remove-context",
+    contextId: "context-1",
+  }), {
+    type: "remove-context",
+    contextId: "context-1",
+  });
   assert.deepEqual(decodeWebviewMessage({
     type: "configure-composer",
     control: "tools",

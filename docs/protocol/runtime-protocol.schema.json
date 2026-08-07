@@ -15,6 +15,26 @@
             "can_restore": {
               "type": "boolean"
             },
+            "change_receipt": {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "integer"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "turn_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cursor",
+                "event_id",
+                "turn_id"
+              ],
+              "additionalProperties": false
+            },
             "changed_files": {
               "type": "integer"
             },
@@ -113,6 +133,26 @@
               "can_restore": {
                 "type": "boolean"
               },
+              "change_receipt": {
+                "type": "object",
+                "properties": {
+                  "cursor": {
+                    "type": "integer"
+                  },
+                  "event_id": {
+                    "type": "string"
+                  },
+                  "turn_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "cursor",
+                  "event_id",
+                  "turn_id"
+                ],
+                "additionalProperties": false
+              },
               "changed_files": {
                 "type": "integer"
               },
@@ -201,6 +241,26 @@
             },
             "can_restore": {
               "type": "boolean"
+            },
+            "change_receipt": {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "integer"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "turn_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cursor",
+                "event_id",
+                "turn_id"
+              ],
+              "additionalProperties": false
             },
             "changed_files": {
               "type": "integer"
@@ -378,6 +438,119 @@
       ],
       "additionalProperties": false
     },
+    "model_catalog": {
+      "type": "object",
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "availability": {
+                    "type": "string"
+                  },
+                  "context_window": {
+                    "type": "integer"
+                  },
+                  "credential_status": {
+                    "type": "string"
+                  },
+                  "default_reasoning_effort": {
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": "string"
+                  },
+                  "image_input": {
+                    "type": "boolean"
+                  },
+                  "max_output_tokens": {
+                    "type": "integer"
+                  },
+                  "native_search": {
+                    "type": "boolean"
+                  },
+                  "parallel_tool_calls": {
+                    "type": "string"
+                  },
+                  "prompt_cache": {
+                    "type": "boolean"
+                  },
+                  "reasoning": {
+                    "type": "boolean"
+                  },
+                  "reasoning_efforts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "selection_mode": {
+                    "type": "string"
+                  },
+                  "streaming": {
+                    "type": "boolean"
+                  },
+                  "tool_calls": {
+                    "type": "boolean"
+                  },
+                  "unavailable_reason": {
+                    "type": "string"
+                  },
+                  "vision": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "availability",
+                  "context_window",
+                  "credential_status",
+                  "display_name",
+                  "image_input",
+                  "max_output_tokens",
+                  "native_search",
+                  "parallel_tool_calls",
+                  "prompt_cache",
+                  "reasoning",
+                  "selection_mode",
+                  "streaming",
+                  "tool_calls",
+                  "vision"
+                ],
+                "additionalProperties": false
+              },
+              "id": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "selected": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "capabilities",
+              "id",
+              "provider",
+              "selected"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "models",
+        "version"
+      ],
+      "additionalProperties": false
+    },
     "operation": {
       "type": "object",
       "description": "The operation envelope. payload is the schema in operations[kind].",
@@ -419,11 +592,73 @@
       ],
       "additionalProperties": false
     },
+    "plan_transition_request": {
+      "type": "object",
+      "properties": {
+        "checkpoint_id": {
+          "type": "string"
+        },
+        "destination": {
+          "type": "string"
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "plan_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "transition": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "destination",
+        "idempotency_key",
+        "plan_id",
+        "session_id",
+        "transition",
+        "version"
+      ],
+      "additionalProperties": false
+    },
     "problem": {
       "type": "object",
       "properties": {
         "code": {
           "type": "string"
+        },
+        "details": {
+          "type": "object",
+          "properties": {
+            "actual_revision": {
+              "type": "integer"
+            },
+            "expected_revision": {
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "resource_id": {
+              "type": "string"
+            },
+            "session_status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false
         },
         "http_status": {
           "type": "integer"
@@ -460,6 +695,49 @@
         "code",
         "message",
         "retryable",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "provider_catalog": {
+      "type": "object",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "availability": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "selected": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "availability",
+              "display_name",
+              "id",
+              "selected"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "providers",
         "version"
       ],
       "additionalProperties": false
@@ -577,9 +855,6 @@
             "latest_turn_id": {
               "type": "string"
             },
-            "match_turn_id": {
-              "type": "string"
-            },
             "mode": {
               "type": "string"
             },
@@ -666,6 +941,32 @@
     "session_list": {
       "type": "object",
       "properties": {
+        "matches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "snippet": {
+                "type": "string"
+              },
+              "turn_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "session_id",
+              "turn_id"
+            ],
+            "additionalProperties": false
+          }
+        },
         "query": {
           "type": "string"
         },
@@ -697,9 +998,6 @@
                 "type": "integer"
               },
               "latest_turn_id": {
-                "type": "string"
-              },
-              "match_turn_id": {
                 "type": "string"
               },
               "mode": {
@@ -904,11 +1202,32 @@
             "model_capabilities": {
               "type": "object",
               "properties": {
+                "availability": {
+                  "type": "string"
+                },
+                "context_window": {
+                  "type": "integer"
+                },
+                "credential_status": {
+                  "type": "string"
+                },
+                "default_reasoning_effort": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": "string"
+                },
                 "image_input": {
                   "type": "boolean"
                 },
+                "max_output_tokens": {
+                  "type": "integer"
+                },
                 "native_search": {
                   "type": "boolean"
+                },
+                "parallel_tool_calls": {
+                  "type": "string"
                 },
                 "prompt_cache": {
                   "type": "boolean"
@@ -922,21 +1241,34 @@
                     "type": "string"
                   }
                 },
+                "selection_mode": {
+                  "type": "string"
+                },
                 "streaming": {
                   "type": "boolean"
                 },
                 "tool_calls": {
                   "type": "boolean"
                 },
+                "unavailable_reason": {
+                  "type": "string"
+                },
                 "vision": {
                   "type": "boolean"
                 }
               },
               "required": [
+                "availability",
+                "context_window",
+                "credential_status",
+                "display_name",
                 "image_input",
+                "max_output_tokens",
                 "native_search",
+                "parallel_tool_calls",
                 "prompt_cache",
                 "reasoning",
+                "selection_mode",
                 "streaming",
                 "tool_calls",
                 "vision"
@@ -1116,6 +1448,12 @@
               "capability": {
                 "type": "string"
               },
+              "constitution_reason": {
+                "type": "string"
+              },
+              "constitution_state": {
+                "type": "string"
+              },
               "description": {
                 "type": "string"
               },
@@ -1131,8 +1469,17 @@
               "name": {
                 "type": "string"
               },
+              "policy_reason": {
+                "type": "string"
+              },
+              "policy_state": {
+                "type": "string"
+              },
               "revision": {
                 "type": "integer"
+              },
+              "risk_level": {
+                "type": "string"
               },
               "sandbox_requirement": {
                 "type": "string"
@@ -1154,12 +1501,17 @@
               "access_mode",
               "availability",
               "capability",
+              "constitution_reason",
+              "constitution_state",
               "description",
               "enabled",
               "guarded",
               "id",
               "name",
+              "policy_reason",
+              "policy_state",
               "revision",
+              "risk_level",
               "sandbox_requirement",
               "source_kind",
               "source_label",
@@ -1177,6 +1529,37 @@
         "digest",
         "generation",
         "tools",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "turn_recovery_request": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "guidance": {
+          "type": "string"
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "source_turn_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action",
+        "idempotency_key",
+        "session_id",
+        "source_turn_id",
         "version"
       ],
       "additionalProperties": false
@@ -1355,6 +1738,9 @@
           "items": {
             "type": "object",
             "properties": {
+              "content": {
+                "type": "string"
+              },
               "diagnostics": {
                 "type": "array",
                 "items": {
@@ -1438,8 +1824,17 @@
                   "file",
                   "selection",
                   "symbol",
-                  "diagnostics"
+                  "diagnostics",
+                  "image",
+                  "terminal",
+                  "git_diff"
                 ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
               },
               "omitted_diagnostics": {
                 "type": "integer"
@@ -1494,7 +1889,8 @@
                 "enum": [
                   "composer",
                   "selection_command",
-                  "code_action"
+                  "code_action",
+                  "native_picker"
                 ]
               },
               "symbol": {
@@ -1928,6 +2324,26 @@
             },
             "can_restore": {
               "type": "boolean"
+            },
+            "change_receipt": {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "integer"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "turn_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cursor",
+                "event_id",
+                "turn_id"
+              ],
+              "additionalProperties": false
             },
             "changed_files": {
               "type": "integer"
@@ -3155,8 +3571,17 @@
                   "file",
                   "selection",
                   "symbol",
-                  "diagnostics"
+                  "diagnostics",
+                  "image",
+                  "terminal",
+                  "git_diff"
                 ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
               },
               "omitted_diagnostics": {
                 "type": "integer"
@@ -3217,7 +3642,8 @@
                 "enum": [
                   "composer",
                   "selection_command",
-                  "code_action"
+                  "code_action",
+                  "native_picker"
                 ]
               },
               "symbol": {
@@ -3736,8 +4162,17 @@
                   "file",
                   "selection",
                   "symbol",
-                  "diagnostics"
+                  "diagnostics",
+                  "image",
+                  "terminal",
+                  "git_diff"
                 ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
               },
               "omitted_diagnostics": {
                 "type": "integer"
@@ -3798,7 +4233,8 @@
                 "enum": [
                   "composer",
                   "selection_command",
-                  "code_action"
+                  "code_action",
+                  "native_picker"
                 ]
               },
               "symbol": {

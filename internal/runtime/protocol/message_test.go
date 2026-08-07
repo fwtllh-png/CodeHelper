@@ -1,6 +1,8 @@
 package protocol
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +10,37 @@ import (
 	"testing"
 	"time"
 )
+
+func TestNativeBinaryAndInlineContextValidation(t *testing.T) {
+	image := EditorContextReference{
+		Kind: EditorContextImage, Source: EditorContextSourceNativePicker,
+		URI: "file:///workspace/screen.png", Path: "screen.png",
+		DocumentVersion: 1, Digest: strings.Repeat("a", 64),
+		Label: "screen.png", MediaType: "image/png", Explicit: true,
+	}
+	terminalText := "go test ./...\nPASS"
+	terminalDigest := sha256.Sum256([]byte(terminalText))
+	terminal := EditorContextReference{
+		Kind: EditorContextTerminal, Source: EditorContextSourceNativePicker,
+		Digest: hex.EncodeToString(terminalDigest[:]), Label: "Terminal output",
+		MediaType: "text/plain", Content: terminalText, Explicit: true,
+	}
+	for _, reference := range []EditorContextReference{image, terminal} {
+		if _, err := NewOperation(&StartTurnPayload{
+			ThreadID: "thread", TurnID: "turn", ItemID: "item",
+			Prompt: "inspect", Context: []EditorContextReference{reference},
+		}); err != nil {
+			t.Fatalf("valid native context rejected: %v", err)
+		}
+	}
+	terminal.Content = "tampered"
+	if _, err := NewOperation(&StartTurnPayload{
+		ThreadID: "thread", TurnID: "turn", ItemID: "item",
+		Prompt: "inspect", Context: []EditorContextReference{terminal},
+	}); err == nil {
+		t.Fatal("inline context with a stale digest was accepted")
+	}
+}
 
 func TestOperationTaggedUnionRoundTrip(t *testing.T) {
 	references := func() (ThreadID, TurnID, ItemID) { return "thread_test", "turn_test", "item_test" }

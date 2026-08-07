@@ -53,6 +53,13 @@ func TestSessionProfileValidationRejectsUnsafeOrUnsupportedValues(t *testing.T) 
 	); err == nil {
 		t.Fatal("duplicate tool ids were accepted")
 	}
+	sandbox := "sandbox"
+	if _, err := ApplySessionProfilePatch(
+		current,
+		SessionProfilePatch{ExecutionTarget: &sandbox},
+	); err == nil {
+		t.Fatal("unimplemented sandbox execution target was accepted")
+	}
 }
 
 func testSessionProfile() SessionProfile {

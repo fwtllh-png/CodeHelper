@@ -128,10 +128,14 @@ func (r *Runtime) RestoreCheckpoint(
 	}
 	manager, ok := r.engine.(CheckpointEngine)
 	if !ok {
-		return protocol.CheckpointRestoreResult{}, protocol.NewProblem(
+		return protocol.CheckpointRestoreResult{}, protocol.NewProblemWithDetails(
 			protocol.CodeUnavailable,
 			"Checkpoint restore is unsupported by this engine",
 			false,
+			protocol.ProblemDetails{
+				Reason:     protocol.ProblemReasonUnsupported,
+				ResourceID: checkpointID,
+			},
 			nil,
 		)
 	}
@@ -203,10 +207,14 @@ func (r *Runtime) ForkCheckpoint(
 	}
 	manager, ok := r.engine.(CheckpointEngine)
 	if !ok {
-		return protocol.CheckpointForkResult{}, protocol.NewProblem(
+		return protocol.CheckpointForkResult{}, protocol.NewProblemWithDetails(
 			protocol.CodeUnavailable,
 			"Checkpoint Fork is unsupported by this engine",
 			false,
+			protocol.ProblemDetails{
+				Reason:     protocol.ProblemReasonUnsupported,
+				ResourceID: checkpointID,
+			},
 			nil,
 		)
 	}
@@ -454,10 +462,14 @@ func (r *Runtime) checkpointState(
 	}
 	if checkpoint.SessionID != sessionID {
 		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil,
-			protocol.NewProblem(
+			protocol.NewProblemWithDetails(
 				protocol.CodeInvalidArgument,
 				"Checkpoint does not belong to the Session",
 				false,
+				protocol.ProblemDetails{
+					Reason:     protocol.ProblemReasonWrongSession,
+					ResourceID: checkpointID,
+				},
 				nil,
 			)
 	}
@@ -468,10 +480,16 @@ func (r *Runtime) checkpointState(
 	if currentProfile.Profile.Revision != checkpoint.ProfileRevision ||
 		checkpointProfile.Revision != checkpoint.ProfileRevision {
 		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil,
-			protocol.NewProblem(
+			protocol.NewProblemWithDetails(
 				protocol.CodeConflict,
 				"Checkpoint Profile Revision is stale",
 				true,
+				protocol.ProblemDetails{
+					Reason:           protocol.ProblemReasonStaleProfileRevision,
+					ResourceID:       checkpointID,
+					ExpectedRevision: checkpoint.ProfileRevision,
+					ActualRevision:   currentProfile.Profile.Revision,
+				},
 				nil,
 			)
 	}
@@ -645,7 +663,7 @@ func (r *Runtime) persistTerminalCheckpoint(
 		r.logArtifactError("read Checkpoint Profile", event, err)
 		return
 	}
-	changed, external, note, parentCheckpointID := r.checkpointEffects(
+	changed, external, note, parentCheckpointID, receipt := r.checkpointEffects(
 		ctx,
 		event.ThreadID,
 		event.TurnID,
@@ -673,6 +691,7 @@ func (r *Runtime) persistTerminalCheckpoint(
 			Summary:             summary,
 			ProfileRevision:     profile.Revision,
 			ParentCheckpointID:  parentCheckpointID,
+			ChangeReceipt:       receipt,
 			ChangedFiles:        changed,
 			ExternalSideEffects: external,
 			SideEffectNote:      note,
@@ -706,14 +725,15 @@ func (r *Runtime) checkpointEffects(
 	ctx context.Context,
 	threadID protocol.ThreadID,
 	turnID protocol.TurnID,
-) (int, bool, string, string) {
+) (int, bool, string, string, *protocol.ReceiptReference) {
 	events, err := r.events.Replay(ctx, 0)
 	if err != nil {
-		return 0, true, "Side-effect receipt could not be read", ""
+		return 0, true, "Side-effect receipt could not be read", "", nil
 	}
 	changed := make(map[string]struct{})
 	external := false
 	parentCheckpointID := ""
+	var reference *protocol.ReceiptReference
 	for _, event := range events {
 		if fork, ok := event.Data.(*protocol.CheckpointForkedData); ok &&
 			fork.NewThreadID == threadID {
@@ -726,6 +746,9 @@ func (r *Runtime) checkpointEffects(
 		if !ok || receipt == nil {
 			continue
 		}
+		reference = &protocol.ReceiptReference{
+			EventID: event.ID, TurnID: event.TurnID, Cursor: event.Sequence,
+		}
 		for _, change := range receipt.Changes {
 			changed[change.Path] = struct{}{}
 		}
@@ -735,7 +758,7 @@ func (r *Runtime) checkpointEffects(
 	if external {
 		note = "Completed Tool effects remain applied and are never replayed by Restore"
 	}
-	return len(changed), external, note, parentCheckpointID
+	return len(changed), external, note, parentCheckpointID, reference
 }
 
 func (r *Runtime) logArtifactError(

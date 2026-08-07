@@ -39,6 +39,8 @@ import type { CredentialView } from "./security/credentials.js";
 import type {
   CheckpointList,
   CheckpointRestore,
+  ModelCatalog,
+  ProviderCatalog,
 } from "./protocol/generated.js";
 
 let registry: WorkspaceRuntimeRegistry | undefined;
@@ -75,6 +77,8 @@ export interface ExtensionAPI {
   readonly sessionToolCatalog?: (
     sessionId: string,
   ) => Promise<SessionToolCatalog>;
+  readonly providerCatalog?: () => Promise<ProviderCatalog>;
+  readonly modelCatalog?: (provider?: string) => Promise<ModelCatalog>;
   readonly updateSessionProfile?: (
     sessionId: string,
     expectedRevision: number,
@@ -84,6 +88,10 @@ export interface ExtensionAPI {
   readonly testStoreCredential?: (
     provider: string,
     secret: string,
+  ) => Promise<void>;
+  readonly testRecordCredentialValidation?: (
+    provider: string,
+    validation: "valid" | "invalid",
   ) => Promise<void>;
   readonly chatWebviewReady?: () => boolean;
   readonly chatProjectionDiagnostics?: () => {
@@ -329,6 +337,10 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
             activeRegistry.selected.controller.sessionProfile(sessionId),
           sessionToolCatalog: async (sessionId) =>
             activeRegistry.selected.controller.sessionToolCatalog(sessionId),
+          providerCatalog: async () =>
+            activeRegistry.selected.controller.providerCatalog(),
+          modelCatalog: async (provider) =>
+            activeRegistry.selected.controller.modelCatalog(provider),
           updateSessionProfile: async (sessionId, expectedRevision, patch) =>
             activeRegistry.selected.controller.updateSessionProfile(
               sessionId,
@@ -345,6 +357,12 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
             await activeRegistry.selected.controller
               .activateCredentialProvider(provider);
           },
+          testRecordCredentialValidation: async (provider, validation) =>
+            activeRegistry.selected.controller.recordCredentialValidation(
+              provider,
+              validation,
+              validation === "invalid" ? "authentication" : undefined,
+            ),
           chatWebviewReady: () => chatView?.webviewReady ?? false,
           chatProjectionDiagnostics: () =>
             chatView?.projectionDiagnostics ?? {

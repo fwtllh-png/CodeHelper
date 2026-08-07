@@ -127,6 +127,9 @@ type Session struct {
 	dynamicTools       *dynamictool.Manager
 	providerID         string
 	modelID            string
+	modelCapabilities  protocol.ModelCapabilities
+	providerCatalog    protocol.ProviderCatalog
+	modelCatalog       protocol.ModelCatalog
 	processes          *process.SessionManager
 	jobLogs            *joblog.Store
 	mcpPool            *mcpruntime.Pool
@@ -833,17 +836,31 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		Provider: defaultProfile.Provider,
 		Model:    defaultProfile.Model,
 		ModelCapabilities: protocol.ModelCapabilities{
-			Streaming:        modelCapabilities.Streaming,
-			Reasoning:        modelCapabilities.Reasoning,
-			ToolCalls:        modelCapabilities.ToolCalls,
-			NativeSearch:     modelCapabilities.NativeSearch,
-			Vision:           modelCapabilities.Vision,
-			ImageInput:       modelCapabilities.ImageInput,
-			PromptCache:      modelCapabilities.PromptCache,
-			ReasoningEfforts: reasoningEfforts,
+			DisplayName:            route.Model().ID,
+			ContextWindow:          route.Model().Limits.ContextTokens,
+			MaxOutputTokens:        route.Model().Limits.MaxOutputTokens,
+			Streaming:              modelCapabilities.Streaming,
+			Reasoning:              modelCapabilities.Reasoning,
+			ToolCalls:              modelCapabilities.ToolCalls,
+			ParallelToolCalls:      "unknown",
+			NativeSearch:           modelCapabilities.NativeSearch,
+			Vision:                 modelCapabilities.Vision,
+			ImageInput:             modelCapabilities.ImageInput,
+			PromptCache:            modelCapabilities.PromptCache,
+			ReasoningEfforts:       reasoningEfforts,
+			DefaultReasoningEffort: execution.ReasoningEffort,
+			CredentialStatus:       "unknown",
+			Availability:           "available",
+			SelectionMode:          "restart_required",
 		},
 		MutableFields: mutableProfileFields,
 	}
+	session.modelCapabilities = profileCapabilities.ModelCapabilities
+	session.providerCatalog, session.modelCatalog = runtimeModelCatalog(
+		session.providerID,
+		session.modelID,
+		profileCapabilities.ModelCapabilities,
+	)
 	// Shared Guard is intentionally not passed into seedOptions: each thread
 	// Engine allocates its own Guard so approval handlers stay isolated.
 	// OnNetworkAllow still points at the session egress Gate so a mid-flight

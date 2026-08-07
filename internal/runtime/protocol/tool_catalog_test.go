@@ -10,8 +10,11 @@ func TestSessionToolCatalogValidatesFiniteUnifiedSources(t *testing.T) {
 			ID: "builtin:file_read", Name: "file_read", Description: "Read a file",
 			SourceKind: "builtin", SourceLabel: "CodeHelper",
 			Capability: "read", AccessMode: "read",
-			SandboxRequirement: "none", Availability: "available",
-			State: "eager", Revision: 1, Enabled: true, Guarded: true,
+			RiskLevel: "low", SandboxRequirement: "none",
+			PolicyState: "deferred", PolicyReason: "requires validated resources",
+			ConstitutionState: "deferred", ConstitutionReason: "enforced at call time",
+			Availability: "available",
+			State:        "eager", Revision: 1, Enabled: true, Guarded: true,
 		}},
 	}
 	if err := catalog.Validate(); err != nil {

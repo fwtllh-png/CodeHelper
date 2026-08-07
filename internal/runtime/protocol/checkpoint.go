@@ -17,22 +17,38 @@ const (
 )
 
 type SessionCheckpoint struct {
-	Version             int              `json:"version"`
-	ID                  string           `json:"id"`
-	SessionID           string           `json:"session_id"`
-	ThreadID            ThreadID         `json:"thread_id"`
-	TurnID              TurnID           `json:"turn_id"`
-	Cursor              Cursor           `json:"cursor"`
-	Status              CheckpointStatus `json:"status"`
-	Summary             string           `json:"summary"`
-	ProfileRevision     uint64           `json:"profile_revision"`
-	ParentCheckpointID  string           `json:"parent_checkpoint_id,omitempty"`
-	ChangedFiles        int              `json:"changed_files"`
-	ExternalSideEffects bool             `json:"external_side_effects"`
-	SideEffectNote      string           `json:"side_effect_note,omitempty"`
-	CanRestore          bool             `json:"can_restore"`
-	CanFork             bool             `json:"can_fork"`
-	CreatedAt           time.Time        `json:"created_at"`
+	Version             int               `json:"version"`
+	ID                  string            `json:"id"`
+	SessionID           string            `json:"session_id"`
+	ThreadID            ThreadID          `json:"thread_id"`
+	TurnID              TurnID            `json:"turn_id"`
+	Cursor              Cursor            `json:"cursor"`
+	Status              CheckpointStatus  `json:"status"`
+	Summary             string            `json:"summary"`
+	ProfileRevision     uint64            `json:"profile_revision"`
+	ParentCheckpointID  string            `json:"parent_checkpoint_id,omitempty"`
+	ChangeReceipt       *ReceiptReference `json:"change_receipt,omitempty"`
+	ChangedFiles        int               `json:"changed_files"`
+	ExternalSideEffects bool              `json:"external_side_effects"`
+	SideEffectNote      string            `json:"side_effect_note,omitempty"`
+	CanRestore          bool              `json:"can_restore"`
+	CanFork             bool              `json:"can_fork"`
+	CreatedAt           time.Time         `json:"created_at"`
+}
+
+type ReceiptReference struct {
+	EventID EventID `json:"event_id"`
+	TurnID  TurnID  `json:"turn_id"`
+	Cursor  Cursor  `json:"cursor"`
+}
+
+func (r ReceiptReference) Validate() error {
+	if !validProfileIdentifier(string(r.EventID)) ||
+		!validProfileIdentifier(string(r.TurnID)) ||
+		r.Cursor == 0 {
+		return errors.New("receipt reference is invalid")
+	}
+	return nil
 }
 
 func (c SessionCheckpoint) Validate() error {
@@ -58,6 +74,15 @@ func (c SessionCheckpoint) Validate() error {
 	if c.ParentCheckpointID != "" &&
 		!validProfileIdentifier(c.ParentCheckpointID) {
 		return errors.New("session checkpoint parent identity is invalid")
+	}
+	if c.ChangeReceipt != nil {
+		if err := c.ChangeReceipt.Validate(); err != nil {
+			return err
+		}
+		if c.ChangeReceipt.TurnID != c.TurnID ||
+			c.ChangeReceipt.Cursor > c.Cursor {
+			return errors.New("session checkpoint receipt identity is inconsistent")
+		}
 	}
 	return nil
 }

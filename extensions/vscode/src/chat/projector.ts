@@ -81,6 +81,7 @@ export interface ContextReceiptCard {
   readonly kind: EditorContextReceipt["kind"];
   readonly source?: EditorContextReceipt["source"];
   readonly path: string;
+  readonly label?: string;
   readonly digest: string;
   readonly range?: string;
   readonly navigationRange?: ResourceRange;
@@ -545,6 +546,9 @@ function projectContextReceipts(
     kind: value.kind,
     ...(value.source === undefined ? {} : { source: value.source }),
     path: truncateField(value.path, 4096),
+    ...(value.label === undefined
+      ? {}
+      : { label: truncateField(value.label, 512) }),
     digest: truncateField(value.digest, 64),
     ...(value.range === undefined
       ? {}

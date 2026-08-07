@@ -147,7 +147,7 @@ function contextReceiptCard(
 ): HTMLElement {
   const card = document.createElement("details");
   card.className = "context-receipt";
-  let label = `Context: ${receipt.kind} · ${receipt.path}`;
+  let label = `Context: ${receipt.kind} · ${receipt.label ?? receipt.path}`;
   if (receipt.symbol !== undefined) label += ` · ${receipt.symbol}`;
   if (receipt.diagnosticCount > 0) {
     label += ` · ${String(receipt.diagnosticCount)} diagnostics`;

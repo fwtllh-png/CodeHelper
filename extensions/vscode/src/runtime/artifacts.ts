@@ -125,7 +125,7 @@ export function decodeCheckpoint(value: unknown): SessionCheckpoint {
     "version", "id", "session_id", "thread_id", "turn_id", "cursor", "status",
     "summary", "profile_revision", "changed_files", "external_side_effects",
     "can_restore", "can_fork", "created_at",
-  ], ["parent_checkpoint_id", "side_effect_note"]);
+  ], ["parent_checkpoint_id", "change_receipt", "side_effect_note"]);
   const status = boundedText(object["status"], "Checkpoint status", 32);
   if (status !== "completed" && status !== "interrupted") {
     throw new Error("Checkpoint status is invalid");
@@ -149,6 +149,15 @@ export function decodeCheckpoint(value: unknown): SessionCheckpoint {
             object["parent_checkpoint_id"], "parent Checkpoint id",
           ),
         }),
+    ...(object["change_receipt"] === undefined
+      ? {}
+      : {
+          change_receipt: decodeReceiptReference(
+            object["change_receipt"],
+            object["turn_id"],
+            object["cursor"],
+          ),
+        }),
     changed_files: integer(object["changed_files"], "changed files", 0),
     external_side_effects: boolean(
       object["external_side_effects"], "external side effects",
@@ -163,6 +172,27 @@ export function decodeCheckpoint(value: unknown): SessionCheckpoint {
     can_restore: boolean(object["can_restore"], "can restore"),
     can_fork: boolean(object["can_fork"], "can Fork"),
     created_at: timestamp(object["created_at"], "Checkpoint created_at"),
+  };
+}
+
+function decodeReceiptReference(
+  value: unknown,
+  checkpointTurn: unknown,
+  checkpointCursor: unknown,
+): NonNullable<SessionCheckpoint["change_receipt"]> {
+  const object = requireObject(value, "Checkpoint receipt reference");
+  requireKeys(object, ["event_id", "turn_id", "cursor"]);
+  const turnId = identifier(object["turn_id"], "receipt Turn id");
+  const cursor = integer(object["cursor"], "receipt cursor", 1);
+  if (turnId !== checkpointTurn ||
+    typeof checkpointCursor !== "number" ||
+    cursor > checkpointCursor) {
+    throw new Error("Checkpoint receipt reference is inconsistent");
+  }
+  return {
+    event_id: identifier(object["event_id"], "receipt Event id"),
+    turn_id: turnId,
+    cursor,
   };
 }
 

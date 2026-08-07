@@ -51,9 +51,9 @@ type profileRoute struct {
 func (r *Repository) ListLifecycle(
 	ctx context.Context,
 	filter LifecycleQuery,
-) ([]protocol.SessionSummary, error) {
+) (protocol.SessionList, error) {
 	if r.db == nil {
-		return nil, errors.New("session repository database is required")
+		return protocol.SessionList{}, errors.New("session repository database is required")
 	}
 	limit := filter.Limit
 	if limit <= 0 {
@@ -61,7 +61,7 @@ func (r *Repository) ListLifecycle(
 	}
 	if limit > 1000 || len(filter.Query) > 256 ||
 		strings.ContainsRune(filter.Query, '\x00') {
-		return nil, errors.New("session lifecycle query is invalid")
+		return protocol.SessionList{}, errors.New("session lifecycle query is invalid")
 	}
 	sqlLimit := limit
 	if filter.Status != "" {
@@ -125,41 +125,55 @@ func (r *Repository) ListLifecycle(
 	arguments = append(arguments, sqlLimit)
 	rows, err := r.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
-		return nil, fmt.Errorf("list session lifecycle: %w", err)
+		return protocol.SessionList{}, fmt.Errorf("list session lifecycle: %w", err)
 	}
 	defer rows.Close()
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, err
+			return protocol.SessionList{}, err
 		}
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return protocol.SessionList{}, err
 	}
 	result := make([]protocol.SessionSummary, 0, len(ids))
+	matches := make([]protocol.SessionSearchMatch, 0, len(ids))
 	for _, id := range ids {
-		summary, err := r.GetLifecycle(ctx, id, needle)
+		summary, err := r.GetLifecycle(ctx, id)
 		if err != nil {
-			return nil, err
+			return protocol.SessionList{}, err
 		}
 		if filter.Status != "" && summary.Status != filter.Status {
 			continue
 		}
 		result = append(result, summary)
+		if needle != "" {
+			turnID, matchErr := r.matchTurn(ctx, id, needle)
+			if matchErr != nil {
+				return protocol.SessionList{}, matchErr
+			}
+			if turnID != "" {
+				matches = append(matches, protocol.SessionSearchMatch{
+					SessionID: id, TurnID: turnID, Kind: "content",
+				})
+			}
+		}
 		if len(result) == limit {
 			break
 		}
 	}
-	return result, nil
+	return protocol.SessionList{
+		Version: protocol.SessionLifecycleVersion,
+		Query:   needle, Sessions: result, Matches: matches,
+	}, nil
 }
 
 func (r *Repository) GetLifecycle(
 	ctx context.Context,
 	sessionID string,
-	searchQuery ...string,
 ) (protocol.SessionSummary, error) {
 	if r.db == nil {
 		return protocol.SessionSummary{}, errors.New("session repository database is required")
@@ -241,16 +255,6 @@ func (r *Repository) GetLifecycle(
 	}
 	if err := r.projectUsage(ctx, &summary); err != nil {
 		return protocol.SessionSummary{}, err
-	}
-	if len(searchQuery) > 0 && strings.TrimSpace(searchQuery[0]) != "" {
-		summary.MatchTurnID, err = r.matchTurn(
-			ctx,
-			sessionID,
-			strings.TrimSpace(searchQuery[0]),
-		)
-		if err != nil {
-			return protocol.SessionSummary{}, err
-		}
 	}
 	if err := summary.Validate(); err != nil {
 		return protocol.SessionSummary{}, err

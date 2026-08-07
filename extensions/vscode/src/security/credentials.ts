@@ -12,6 +12,9 @@ export interface CredentialView {
   readonly status: CredentialStatus;
   readonly provider: string;
   readonly source: "secret-storage" | "external";
+  readonly validation: "not_validated" | "valid" | "invalid";
+  readonly validatedAt?: string;
+  readonly validationFailure?: "authentication" | "network" | "provider" | "unknown";
 }
 
 const providerPattern = /^[a-z0-9][a-z0-9._-]{0,127}$/u;
@@ -48,15 +51,26 @@ export class WorkspaceCredentialStore {
     try {
       secret = await this.#secrets.get(this.#key(provider));
     } catch {
-      return { status: "invalid", provider, source: "secret-storage" };
+      return {
+        status: "invalid",
+        provider,
+        source: "secret-storage",
+        validation: "not_validated",
+      };
     }
     if (secret !== undefined && secret.trim().length > 0) {
-      return { status: "configured", provider, source: "secret-storage" };
+      return {
+        status: "configured",
+        provider,
+        source: "secret-storage",
+        validation: "not_validated",
+      };
     }
     return {
       status: externalReference ? "configured" : "missing",
       provider,
       source: "external",
+      validation: "not_validated",
     };
   }
 

@@ -40,8 +40,24 @@ func TestBinaryInteropFramingConcurrencyAndShutdown(t *testing.T) {
 			`{"jsonrpc":"2.0","id":2,"method":"provider/list","params":{}}`+"\n"+
 			`{"jsonrpc":"2.0","id":3,"method":"model/list","params":{"provider":"fixture"}}`+"\n",
 	)
-	requireResult(t, host.waitID(t, "2"))
-	requireResult(t, host.waitID(t, "3"))
+	providerFrame := host.waitID(t, "2")
+	modelFrame := host.waitID(t, "3")
+	requireResult(t, providerFrame)
+	requireResult(t, modelFrame)
+	var providers protocol.ProviderCatalog
+	if err := json.Unmarshal(providerFrame.Result, &providers); err != nil ||
+		providers.Validate() != nil ||
+		len(providers.Providers) < 1 {
+		t.Fatalf("provider catalog=%s err=%v", providerFrame.Result, err)
+	}
+	var models protocol.ModelCatalog
+	if err := json.Unmarshal(modelFrame.Result, &models); err != nil ||
+		models.Validate() != nil ||
+		len(models.Models) != 1 ||
+		!models.Models[0].Selected ||
+		models.Models[0].Capabilities.SelectionMode != "restart_required" {
+		t.Fatalf("model catalog=%s err=%v", modelFrame.Result, err)
+	}
 
 	host.write(t, "{not json}\n")
 	requireErrorCode(t, host.next(t), -32700)

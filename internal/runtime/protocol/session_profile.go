@@ -35,14 +35,23 @@ type SessionProfilePatch struct {
 }
 
 type ModelCapabilities struct {
-	Streaming        bool     `json:"streaming"`
-	Reasoning        bool     `json:"reasoning"`
-	ToolCalls        bool     `json:"tool_calls"`
-	NativeSearch     bool     `json:"native_search"`
-	Vision           bool     `json:"vision"`
-	ImageInput       bool     `json:"image_input"`
-	PromptCache      bool     `json:"prompt_cache"`
-	ReasoningEfforts []string `json:"reasoning_efforts,omitempty"`
+	DisplayName            string   `json:"display_name"`
+	ContextWindow          uint64   `json:"context_window"`
+	MaxOutputTokens        uint64   `json:"max_output_tokens"`
+	Streaming              bool     `json:"streaming"`
+	Reasoning              bool     `json:"reasoning"`
+	ToolCalls              bool     `json:"tool_calls"`
+	ParallelToolCalls      string   `json:"parallel_tool_calls"`
+	NativeSearch           bool     `json:"native_search"`
+	Vision                 bool     `json:"vision"`
+	ImageInput             bool     `json:"image_input"`
+	PromptCache            bool     `json:"prompt_cache"`
+	ReasoningEfforts       []string `json:"reasoning_efforts,omitempty"`
+	DefaultReasoningEffort string   `json:"default_reasoning_effort,omitempty"`
+	CredentialStatus       string   `json:"credential_status"`
+	Availability           string   `json:"availability"`
+	UnavailableReason      string   `json:"unavailable_reason,omitempty"`
+	SelectionMode          string   `json:"selection_mode"`
 }
 
 type SessionProfileCapabilities struct {
@@ -88,10 +97,8 @@ func (p SessionProfile) Validate() error {
 	default:
 		return errors.New("session profile approval_posture is invalid")
 	}
-	switch p.ExecutionTarget {
-	case "local", "sandbox":
-	default:
-		return errors.New("session profile execution_target must be local or sandbox")
+	if p.ExecutionTarget != "local" {
+		return errors.New("session profile execution_target must be local")
 	}
 	if p.MaxSteps < 1 || p.MaxSteps > 1000 {
 		return errors.New("session profile max_steps must be between 1 and 1000")
@@ -190,6 +197,39 @@ func (c SessionProfileCapabilities) Validate(profile SessionProfile) error {
 	if c.Provider != profile.Provider || c.Model != profile.Model {
 		return errors.New("session profile capabilities do not match the profile route")
 	}
+	model := c.ModelCapabilities
+	if strings.TrimSpace(model.DisplayName) == "" ||
+		len(model.DisplayName) > 256 ||
+		strings.ContainsAny(model.DisplayName, "\x00\r\n") ||
+		model.ContextWindow == 0 ||
+		model.MaxOutputTokens == 0 ||
+		model.MaxOutputTokens > model.ContextWindow {
+		return errors.New("session model capability identity or limits are invalid")
+	}
+	switch model.ParallelToolCalls {
+	case "supported", "unsupported", "unknown":
+	default:
+		return errors.New("session model parallel tool capability is invalid")
+	}
+	switch model.CredentialStatus {
+	case "configured", "missing", "invalid", "unknown":
+	default:
+		return errors.New("session model credential status is invalid")
+	}
+	switch model.Availability {
+	case "available", "unavailable":
+	default:
+		return errors.New("session model availability is invalid")
+	}
+	if model.Availability == "unavailable" &&
+		strings.TrimSpace(model.UnavailableReason) == "" {
+		return errors.New("unavailable session model requires a reason")
+	}
+	switch model.SelectionMode {
+	case "hot", "restart_required", "fixed":
+	default:
+		return errors.New("session model selection mode is invalid")
+	}
 	for _, field := range c.MutableFields {
 		switch field {
 		case "mode", "provider", "model", "reasoning_effort",
@@ -198,9 +238,14 @@ func (c SessionProfileCapabilities) Validate(profile SessionProfile) error {
 			return fmt.Errorf("unknown mutable session profile field %q", field)
 		}
 	}
-	if !c.ModelCapabilities.Reasoning &&
-		len(c.ModelCapabilities.ReasoningEfforts) != 0 {
+	if !model.Reasoning &&
+		(len(model.ReasoningEfforts) != 0 ||
+			model.DefaultReasoningEffort != "") {
 		return errors.New("non-reasoning model cannot advertise reasoning efforts")
+	}
+	if model.DefaultReasoningEffort != "" &&
+		!slices.Contains(model.ReasoningEfforts, model.DefaultReasoningEffort) {
+		return errors.New("default reasoning effort is not advertised")
 	}
 	return nil
 }

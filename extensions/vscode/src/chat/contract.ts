@@ -4,12 +4,13 @@ import {
   deriveChatPresentation,
   type ChatPresentation,
 } from "./presentation.js";
-import type { ChatSnapshot } from "./projector.js";
+import type { ChatSnapshot, ChatTurn } from "./projector.js";
 import type { ResourceView } from "./resources.js";
 import type { ComposerView } from "./composer.js";
 
 export const chatViewProtocolVersion = 1;
 export const chatHostMessageTypes = ["snapshot", "error"] as const;
+export const chatPatchMessageType = "patch" as const;
 
 export interface ChatRootView {
   readonly id: string;
@@ -31,14 +32,23 @@ export interface ChatRuntimeView {
   readonly sessionSearch?: {
     readonly query: string;
     readonly sessionIds: readonly string[];
+    readonly matches: readonly ChatSearchMatchView[];
   };
   readonly mergePlanId?: string;
   readonly roots: readonly ChatRootView[];
 }
 
+export interface ChatSearchMatchView {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly kind: string;
+  readonly snippet?: string;
+}
+
 export interface ChatSnapshotMessage {
   readonly type: "snapshot";
   readonly version: typeof chatViewProtocolVersion;
+  readonly revision: number;
   readonly snapshot: ChatSnapshot;
   readonly resources: readonly ResourceView[];
   readonly runtime: ChatRuntimeView;
@@ -54,7 +64,32 @@ export interface ChatErrorMessage {
 
 export type ChatHostMessage = ChatSnapshotMessage | ChatErrorMessage;
 
+export type ChatPatchOperation =
+  | { readonly kind: "turn.upsert"; readonly turn: ChatTurn }
+  | { readonly kind: "turn.remove"; readonly turnId: string }
+  | {
+      readonly kind: "runtime.replace";
+      readonly runtime: ChatRuntimeView;
+      readonly presentation: ChatPresentation;
+    }
+  | { readonly kind: "composer.replace"; readonly composer?: ComposerView }
+  | {
+      readonly kind: "resources.replace";
+      readonly resources: readonly ResourceView[];
+    };
+
+// Patch is frozen for the incremental renderer but is not part of
+// ChatHostMessage until the Webview Store can apply it atomically.
+export interface ChatPatchMessage {
+  readonly type: typeof chatPatchMessageType;
+  readonly version: typeof chatViewProtocolVersion;
+  readonly baseRevision: number;
+  readonly revision: number;
+  readonly operations: readonly ChatPatchOperation[];
+}
+
 export interface ChatSnapshotMessageOptions {
+  readonly revision: number;
   readonly snapshot: ChatSnapshot;
   readonly resources?: readonly ResourceView[];
   readonly state: SupervisorState;
@@ -66,6 +101,7 @@ export interface ChatSnapshotMessageOptions {
   readonly sessionSearch?: {
     readonly query: string;
     readonly sessionIds: readonly string[];
+    readonly matches: readonly ChatSearchMatchView[];
   };
   readonly mergePlanId?: string;
   readonly roots: readonly ChatRootView[];
@@ -79,6 +115,7 @@ export function createChatSnapshotMessage(
   return {
     type: "snapshot",
     version: chatViewProtocolVersion,
+    revision: options.revision,
     snapshot: options.snapshot,
     resources: options.resources?.map((resource) => ({ ...resource })) ?? [],
     presentation: deriveChatPresentation(
@@ -103,6 +140,9 @@ export function createChatSnapshotMessage(
             sessionSearch: {
               query: options.sessionSearch.query,
               sessionIds: [...options.sessionSearch.sessionIds],
+              matches: options.sessionSearch.matches.map((match) => ({
+                ...match,
+              })),
             },
           }),
       ...(options.mergePlanId === undefined

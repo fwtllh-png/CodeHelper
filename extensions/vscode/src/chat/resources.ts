@@ -60,6 +60,9 @@ export function projectChatResources(
   const references = new Map<string, ResourceReference>();
   const turns = snapshot.turns.map((turn) => {
     const contextReceipts = turn.contextReceipts.map((receipt) => {
+      if (receipt.path.length === 0) {
+        return { ...receipt };
+      }
       const reference = receiptReference(rootId, sessionId, receipt);
       references.set(reference.id, reference);
       return { ...receipt, resourceId: reference.id };

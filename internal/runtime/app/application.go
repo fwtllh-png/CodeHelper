@@ -168,7 +168,7 @@ func (a *EngineAdapter) StartTurn(
 		// Engine executes tools in an isolated worktree.
 		contextWorkspace = a.workspaceIdentity.RuntimePath
 	}
-	modelPrompt, editorContext, resolveErr := resolveEditorContext(
+	modelPrompt, editorContext, attachments, resolveErr := resolveEditorContextWithAttachments(
 		contextWorkspace, payload.Prompt, payload.Context, identities...,
 	)
 	if resolveErr != nil {
@@ -178,7 +178,7 @@ func (a *EngineAdapter) StartTurn(
 	receipt.editorContext = append(
 		[]protocol.EditorContextReceipt(nil), editorContext...,
 	)
-	_, runErr := a.engine.RunForTurn(ctx, string(payload.TurnID), modelPrompt, func(event agentengine.Event) error {
+	emit := func(event agentengine.Event) error {
 		receipt.observe(event)
 		if event.CatalogChanged != nil {
 			convert := func(changes []tool.CatalogChange) []protocol.ToolCatalogChange {
@@ -396,7 +396,10 @@ func (a *EngineAdapter) StartTurn(
 			})
 		}
 		return sink.Emit(&protocol.ToolStateData{State: string(event.State), Text: event.Text})
-	})
+	}
+	_, runErr := a.engine.RunForTurnWithAttachments(
+		ctx, string(payload.TurnID), modelPrompt, attachments, emit,
+	)
 	return runErr
 }
 

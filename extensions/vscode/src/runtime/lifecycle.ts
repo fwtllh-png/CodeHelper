@@ -110,7 +110,7 @@ export class SessionLifecycleCommands {
 
 export function decodeSessionList(value: unknown): SessionList {
   const object = requireObject(value, "session list");
-  requireKeys(object, ["version", "sessions"], ["query"]);
+  requireKeys(object, ["version", "sessions"], ["query", "matches"]);
   if (!Array.isArray(object["sessions"]) || object["sessions"].length > 1000) {
     throw new Error("session list entries are invalid");
   }
@@ -119,12 +119,20 @@ export function decodeSessionList(value: unknown): SessionList {
     sessions.length) {
     throw new Error("session list contains duplicate identities");
   }
+  const matches = object["matches"] === undefined
+    ? []
+    : decodeSearchMatches(object["matches"], sessions);
+  const query = object["query"] === undefined
+    ? ""
+    : boundedText(object["query"], "session query", 256, true);
+  if (query.trim().length === 0 && matches.length > 0) {
+    throw new Error("session list without a query cannot contain matches");
+  }
   return {
     version: lifecycleVersion(object["version"]),
-    ...(object["query"] === undefined
-      ? {}
-      : { query: boundedText(object["query"], "session query", 256, true) }),
+    ...(object["query"] === undefined ? {} : { query }),
     sessions,
+    ...(matches.length === 0 ? {} : { matches }),
   };
 }
 
@@ -140,7 +148,6 @@ export function decodeSessionSummary(
     "updated_at",
   ], [
     "provider", "model", "mode", "parent_thread_id", "latest_turn_id",
-    "match_turn_id",
   ]);
   const status = boundedText(object["status"], "session status", 64);
   if (!lifecycleStatuses.has(status)) {
@@ -171,7 +178,6 @@ export function decodeSessionSummary(
     ...optionalString(object, "mode"),
     ...optionalString(object, "parent_thread_id"),
     ...optionalString(object, "latest_turn_id"),
-    ...optionalString(object, "match_turn_id"),
     latest_sequence: nonNegativeInteger(
       object["latest_sequence"], "latest sequence",
     ),
@@ -192,6 +198,47 @@ export function decodeSessionSummary(
     created_at: timestamp(object["created_at"], "session created_at"),
     updated_at: timestamp(object["updated_at"], "session updated_at"),
   };
+}
+
+function decodeSearchMatches(
+  value: unknown,
+  sessions: SessionList["sessions"],
+): NonNullable<SessionList["matches"]> {
+  if (!Array.isArray(value) || value.length > 1000) {
+    throw new Error("session search matches are invalid");
+  }
+  const sessionIDs = new Set(sessions.map((session) => session.session_id));
+  const keys = new Set<string>();
+  return value.map((candidate) => {
+    const object = requireObject(candidate, "session search match");
+    requireKeys(object, ["session_id", "turn_id", "kind"], ["snippet"]);
+    const sessionId = identifier(object["session_id"], "search match session");
+    const turnId = identifier(object["turn_id"], "search match turn");
+    if (!sessionIDs.has(sessionId)) {
+      throw new Error("session search match has no listed Session");
+    }
+    const key = `${sessionId}\0${turnId}`;
+    if (keys.has(key)) throw new Error("session search match is duplicated");
+    keys.add(key);
+    const kind = boundedText(object["kind"], "search match kind", 32);
+    if (!new Set([
+      "title", "user_request", "agent_output", "path", "symbol", "content",
+    ]).has(kind)) {
+      throw new Error("session search match kind is invalid");
+    }
+    return {
+      session_id: sessionId,
+      turn_id: turnId,
+      kind,
+      ...(object["snippet"] === undefined
+        ? {}
+        : {
+            snippet: boundedText(
+              object["snippet"], "search match snippet", 2048, true,
+            ),
+          }),
+    };
+  });
 }
 
 export function decodeSessionLifecycleUpdate(

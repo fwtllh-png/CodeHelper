@@ -97,6 +97,8 @@ const sessionProfileTypes = [
   "session_profile_snapshot",
   "session_profile_patch",
   "session_profile_update",
+  "provider_catalog",
+  "model_catalog",
   "session_tool_catalog",
   "session_list",
   "session_lifecycle_patch",
@@ -106,6 +108,8 @@ const sessionProfileTypes = [
   "checkpoint_restore",
   "checkpoint_fork",
   "session_plan",
+  "turn_recovery_request",
+  "plan_transition_request",
 ].map((name) => ({
   kind: name,
   name: pascalCase(name),
