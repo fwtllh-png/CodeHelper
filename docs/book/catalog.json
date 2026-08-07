@@ -128,7 +128,7 @@
         {"id": "host-cli", "slug": "01-cli", "status": "verified", "titles": {"en": "CLI and Machine-Readable Output", "zh-CN": "CLI 与 Machine-readable Output"}},
         {"id": "host-tui", "slug": "02-tui", "status": "verified", "titles": {"en": "TUI State Projection", "zh-CN": "TUI State Projection"}},
         {"id": "host-acp", "slug": "04-acp", "status": "verified", "titles": {"en": "ACP Stdio and Editor Interoperability", "zh-CN": "ACP Stdio 与编辑器互操作"}},
-        {"id": "host-vscode", "slug": "06-vscode", "status": "verified", "titles": {"en": "VS Code Context Bridge, Trust, and Compatibility", "zh-CN": "VS Code Context Bridge、Trust 与 Compatibility"}}
+        {"id": "host-vscode", "slug": "06-vscode", "status": "verified", "titles": {"en": "VS Code Native Agent Chat and Runtime Authority", "zh-CN": "VS Code Native Agent Chat 与 Runtime Authority"}}
       ]
     },
     {

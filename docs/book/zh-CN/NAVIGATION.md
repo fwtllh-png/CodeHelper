@@ -109,7 +109,7 @@
 - [CLI 与 Machine-readable Output](./10-hosts-protocols/01-cli.md) — `host-cli` — `verified` — 规划路径: `10-hosts-protocols/01-cli.md`
 - [TUI State Projection](./10-hosts-protocols/02-tui.md) — `host-tui` — `verified` — 规划路径: `10-hosts-protocols/02-tui.md`
 - [ACP Stdio 与编辑器互操作](./10-hosts-protocols/04-acp.md) — `host-acp` — `verified` — 规划路径: `10-hosts-protocols/04-acp.md`
-- [VS Code Context Bridge、Trust 与 Compatibility](./10-hosts-protocols/06-vscode.md) — `host-vscode` — `verified` — 规划路径: `10-hosts-protocols/06-vscode.md`
+- [VS Code Native Agent Chat 与 Runtime Authority](./10-hosts-protocols/06-vscode.md) — `host-vscode` — `verified` — 规划路径: `10-hosts-protocols/06-vscode.md`
 
 ### 部分 11: 扩展生态
 

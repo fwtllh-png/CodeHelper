@@ -14,14 +14,18 @@ code_paths:
   - internal/persist/state/cas
   - internal/persist/workspacejournal
 test_paths:
+  - internal/runtime/app/session_artifacts_test.go
+  - internal/persist/session/lifecycle_test.go
   - internal/persist/snapshot/repository_test.go
   - internal/persist/state/cas/store_test.go
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
+  - internal/runtime/app/session_artifacts.go
+  - internal/persist/session/lifecycle.go
   - internal/persist/snapshot/repository.go
   - internal/persist/workspacejournal/journal.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 ---
 
 # Sessions, Snapshots, CAS, and Workspace Journal
@@ -37,7 +41,7 @@ workspace side-effect recovery.
 
 | Store | Identity | Purpose |
 | --- | --- | --- |
-| Session repository | session/workspace ID | lifecycle and listing |
+| Session repository | session/workspace/thread ID | lifecycle, Profile, lineage, and listing |
 | Snapshot repository | snapshot/thread/sequence | fast state restore |
 | CAS | content hash | deduplicated immutable bytes |
 | Workspace Journal | Turn/path fingerprint | rollback and crash recovery |
@@ -60,6 +64,18 @@ The Journal records the first before-image and after fingerprint for each path
 in a Turn. Its durable ledger is written before the described workspace write.
 Recovery skips a still-live owner, restores abandoned work only when current
 state matches, and preserves conflicts for retry.
+
+Session Checkpoints and structured Plan Artifacts reuse Snapshot metadata and
+CAS, but they remain Runtime-owned typed artifacts. A Checkpoint binds a
+verified model-visible history baseline, Session Profile Revision, source
+Thread/Turn, and integrity metadata. Restore selects that state without
+executing historical Events. Fork adds explicit parent Session, parent Thread,
+and source Checkpoint lineage before a new Turn may run.
+
+Session lifecycle state also includes title, pin/archive status, active Thread,
+latest Turn, pending activity, and optimistic Revision. Hosts may cache only
+bindings and cursors; they query and mutate canonical Session state through
+Runtime operations.
 
 ## Commit and Reference Windows
 
@@ -86,9 +102,10 @@ references.
 ## Identity Boundaries
 
 Session identifies Workspace lifecycle; Thread/Turn identify causal history;
-Snapshot sequence identifies a reconstruction point; CAS ID identifies bytes;
-Journal Turn/path identifies an effect. Keeping these identities distinct
-prevents cross-Workspace restore and incorrect rollback.
+Checkpoint and Plan IDs identify immutable user-visible artifacts; Snapshot
+sequence identifies a reconstruction point; CAS ID identifies bytes; Journal
+Turn/path identifies an effect. Keeping these identities distinct prevents
+cross-Workspace restore, forged Fork lineage, and incorrect rollback.
 
 ## Tradeoffs
 
@@ -104,10 +121,13 @@ Journal remains necessary.
 - Last-reference release deletes content; retained content survives restart.
 - Journal before-image failure blocks the edit.
 - Recovery never clobbers an external edit.
+- State-only Restore cannot replay Tool, Command, Network, or file effects.
+- Fork/Plan execution fails when Profile Revision or lineage is stale.
 
 ## Tests and Verification
 
 ```bash
+go test ./internal/runtime/app -run 'Test(SessionCheckpoint|Restore|Fork|Plan)'
 go test ./internal/persist/session ./internal/persist/snapshot
 go test ./internal/persist/state/cas ./internal/persist/workspacejournal
 ```
@@ -124,6 +144,8 @@ with a Journal before-image. State what each can and cannot restore.
 3. What condition permits automatic rollback?
 4. Why must CAS Retain precede Snapshot metadata commit?
 5. Which identities prevent cross-Workspace recovery mistakes?
+6. Why is a Session Checkpoint not a Workflow progress checkpoint?
+7. Which lineage facts must survive a Checkpoint Fork restart?
 
 ## Further Reading
 
@@ -135,4 +157,4 @@ with a Journal before-image. State what each can and cannot restore.
 | --- | --- |
 | Catalog ID | `state-session-snapshot-journal` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-07 |

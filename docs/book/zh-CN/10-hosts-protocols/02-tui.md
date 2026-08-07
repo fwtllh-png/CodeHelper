@@ -117,7 +117,7 @@ Final Receipt。
 
 ## 延伸阅读
 
-- [VS Code Context Bridge](./06-vscode.md)
+- [VS Code Native Agent Chat](./06-vscode.md)
 
 ## 事实来源与验证
 

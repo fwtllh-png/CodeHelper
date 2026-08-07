@@ -10,14 +10,17 @@ prerequisites:
 code_paths:
   - internal/runtime/protocol
 test_paths:
+  - internal/runtime/protocol/checkpoint_test.go
   - internal/runtime/protocol/message_test.go
+  - internal/runtime/protocol/session_profile_test.go
+  - internal/runtime/protocol/tool_catalog_test.go
   - internal/runtime/protocol/schema_test.go
   - internal/runtime/protocol/fuzz_test.go
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
   - internal/runtime/protocol/message.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 ---
 
 # Protocol and Stable Data Contracts
@@ -51,6 +54,9 @@ identity, and evolve deliberately.
 - Receipt is evidence, not a terminal status.
 - Readiness carries `ready`, `degraded`, or `blocked` plus reason, impact, and
   repair action.
+- Session/Profile, Provider/Model, Tool Catalog, lifecycle/search, Checkpoint,
+  Plan, and Turn recovery contracts are shared Host data, not VS Code-local
+  state.
 
 ## CodeHelper Design
 
@@ -134,6 +140,9 @@ version and schema remain authoritative for each build.
 | Machine errors | `problem.go` |
 | Dynamic Tool protocol | `dynamic.go` |
 | Workspace identity | `workspace_identity.go` |
+| Session Profile/lifecycle | `session_profile.go`, `session_lifecycle.go` |
+| Provider/Model and Tool catalogs | `model_catalog.go`, `tool_catalog.go` |
+| Checkpoint and Plan intent | `checkpoint.go`, `workflow_intent.go` |
 | Schema reflection | `schema.go`, `schemagen` |
 
 ## Implementation Walkthrough
@@ -151,6 +160,12 @@ Protocol files are separated by contract role without changing the wire
 schema. The committed JSON Schema and generated VS Code types are the
 behavioral boundary; file layout is an implementation detail protected by
 the hotspot baseline.
+
+Session-facing contracts deliberately separate durable summary from transient
+search matches, immutable Checkpoint/Plan artifacts from mutable lifecycle
+state, and accepted Turn identity from terminal receipts. Recovery requests
+carry explicit source Turn, action, guidance, and idempotency identity; they do
+not carry reconstructed display text or historical effects.
 
 ## Tradeoffs and Alternatives
 
@@ -191,6 +206,8 @@ the schema entry for `turn.start` and map each required field to the Go type.
 3. What artifacts must change with a new public Event?
 4. Why can an optional JSON field still require compatibility review?
 5. Why may a Host preserve an unknown Event but not submit an unknown Operation?
+6. Why are durable Session summaries and search matches different shapes?
+7. Why must recovery name a source Turn instead of resubmitting rendered text?
 
 ## Further Reading
 
@@ -203,4 +220,4 @@ the schema entry for `turn.start` and map each required field to the Go type.
 | --- | --- |
 | Catalog ID | `runtime-protocol` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-07 |

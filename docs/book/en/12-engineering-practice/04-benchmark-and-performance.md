@@ -17,8 +17,9 @@ test_paths:
 source_of_truth:
   - testdata/benchmarks/README.md
   - Makefile
+  - extensions/vscode/scripts/release/rc-report.mjs
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 ---
 
 # Benchmarks and Performance Budgets
@@ -34,7 +35,8 @@ The Hermetic coding suite covers context truncation, compaction, working set,
 evidence, index degradation, edit transactions, and verification gates. Each
 task defines assertions, not just elapsed time. Catalog benchmarks measure
 large dynamic Tool sets with allocation data. VS Code gates bound 10k stream
-deltas, 1000 background rows, Runtime readiness, and Electron interaction.
+deltas, 1000 background rows, Runtime readiness, incremental Transcript cost,
+hidden-view behavior, and Electron interaction.
 
 ```mermaid
 flowchart LR
@@ -77,6 +79,28 @@ Performance work must retain bounds: caches need invalidation and capacity,
 parallelism needs cancellation and admission, and deferred loading must preserve
 catalog authority.
 
+## Native Chat Performance Contract
+
+The release gate measures behavior, not only elapsed time:
+
+| Metric | RC budget |
+| --- | --- |
+| extension activation | less than 20 ms |
+| first interactive Chat | less than 300 ms, excluding Runtime startup |
+| 200-Turn Full Snapshot | less than 100 ms |
+| single-Turn Patch | less than 100 ms and one quarter of Snapshot bytes |
+| affected/virtual DOM | at most 2 affected Turns and 30 virtual Turn nodes |
+| scroll-anchor error | at most 1 px |
+| hidden Webview posts | exactly 0 |
+| hidden resume | less than 300 ms |
+| 1000-Session search/virtual paint | less than 150 ms |
+| Runtime ready P95 | less than 5 s |
+
+RC first requires each metric to exist as a finite non-negative number. This
+prevents a missing JSON field from passing a comparison accidentally. Patch
+operations, payload bytes, affected nodes, virtual nodes, and scroll stability
+are distinct evidence; a fast Patch that rebuilds the entire DOM still fails.
+
 ## Failure Boundaries
 
 - Warmup and sample count are explicit.
@@ -105,6 +129,7 @@ make benchmark-v2
 make bench
 make catalog-bench
 make vscode-performance
+make vscode-rc
 ```
 
 Platform-capability journeys run only when the declared sandbox prerequisite is
@@ -119,6 +144,7 @@ budgets likewise remain environment-acquired gates.
 3. When may a budget be raised?
 4. What metadata makes two benchmark reports comparable?
 5. Why can a microbenchmark not replace an end-to-end gate?
+6. Why must RC validate metric presence before comparing budgets?
 
 ## Sources and Verification
 
@@ -126,4 +152,4 @@ budgets likewise remain environment-acquired gates.
 | --- | --- |
 | Catalog ID | `practice-benchmark` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-07 |

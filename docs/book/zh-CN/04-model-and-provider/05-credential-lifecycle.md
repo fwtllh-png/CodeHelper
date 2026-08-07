@@ -11,14 +11,16 @@ code_paths:
   - internal/adapter/model
   - internal/adapter/provider/httpclient
   - internal/security/keyring
+  - extensions/vscode/src/security
 test_paths:
   - internal/adapter/provider/httpclient/credentials_test.go
   - internal/security/keyring/store_test.go
+  - extensions/vscode/src/security/credentials.test.ts
 source_of_truth:
   - docs/zh-CN/security.md
   - internal/adapter/provider/httpclient/credentials.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 ---
 
 # Credential Reference 与 Secret Lifecycle
@@ -63,6 +65,15 @@ Capability，不是普通 Catalog Validation 自动开放的值；这防止 Conf
 
 CLI Auth Command 可以把 Env Value 写入 Keyring，但不会序列化到 TOML。
 
+在 VS Code 中，Native Password InputBox 收集 Value，SecretStorage 按 Exact
+Workspace/Provider Identity 保存。生成的 Runtime Config 只包含 Reference；只有 Local
+Runtime Child 收到解析后的 Value。Webview State 只包含 Credential Status 与 Sanitized
+Validation Metadata，不包含 Value/Reference。
+
+Credential Validation 通过 Runtime Wiring 调用 Provider Model-list Endpoint。持久化
+结果仅限 Validation Status、Timestamp 与 Sanitized Failure Category。Untrusted
+Workspace 不能配置 Credential，也不能把 Validation 当作 Egress Bypass。
+
 ## 生命周期与代码地图
 
 Secret 应在 Tracked Source 外 Provision，使用时解析，Diagnostic 中 Redact，疑似泄漏后
@@ -87,6 +98,7 @@ Raw Value 不得进入：
 - 面向用户的 Catalog/Route Description；
 - Retry Diagnostic、Response Dump、Command Argument；
 - 不显式拥有 Credential 的 Child Process Environment。
+- Webview Snapshot、Client Evidence、Session Export 或 Release Evidence。
 
 Redaction 是 Defense in Depth，不是“先记录 Secret”的许可。
 
@@ -106,6 +118,7 @@ Backend Message。
 | File Check | `credential_file_*.go` |
 | Keyring | `security/keyring` |
 | CLI | `host/cli/auth_cmd.go` |
+| VS Code SecretStorage | `extensions/vscode/src/security/credentials.ts` |
 
 ## 设计取舍与替代方案
 
@@ -127,6 +140,7 @@ Permission/Symlink Check；Keyring 适合 Desktop 但依赖 OS/UI。统一 Refer
 go test ./internal/adapter/provider/httpclient -run 'Test.*Credential'
 go test ./internal/security/keyring
 make secret-leak-test
+cd extensions/vscode && npm test -- credentials
 ```
 
 ## 动手实验
@@ -141,6 +155,7 @@ Reference/Provenance；不要发送 Provider Request，随后删除临时 Config
 3. Raw Value 最晚应在哪里解析？
 4. Resolver Support 为什么不自动代表 Catalog Support？
 5. Redaction 为什么不能成为记录 Secret 的理由？
+6. Provider Validation 为什么必须通过 Runtime Wiring？
 
 ## 延伸阅读
 
@@ -153,4 +168,4 @@ Reference/Provenance；不要发送 Provider Request，随后删除临时 Config
 | --- | --- |
 | Catalog ID | `model-credential-lifecycle` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-07 |

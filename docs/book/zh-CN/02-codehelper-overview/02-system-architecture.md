@@ -18,14 +18,16 @@ code_paths:
   - internal/persist
   - internal/observability
   - internal/platform
+  - extensions/vscode
 test_paths:
   - internal/host/cli/architecture_test.go
   - internal/runtime/protocol/schema_test.go
+  - extensions/vscode/src/security/gate.test.ts
 source_of_truth:
   - docs/zh-CN/architecture.md
   - docs/protocol/runtime-protocol.schema.json
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 ---
 
 # CodeHelper 全局架构
@@ -119,6 +121,13 @@ Pairing/QR 和 REST/SSE 不属于受支持的产品面。
 | Platform | `internal/platform` | Process 与 OS Integration |
 | VS Code | `extensions/vscode` | Editor UI 与 ACP Client |
 
+VS Code 是 Local UI Extension，Webview 与 Extension Host 之间有物理边界。Webview 只接收
+Immutable Projection 并提交 Finite Intent；Extension Host 拥有 VS Code API、Local
+Workspace Identity、SecretStorage、Native Control 与 ACP Transport；Runtime 是
+Session、Profile、Tool Policy、Lifecycle、Artifact 与 Execution 的唯一 Owner。
+产品只支持 Local `file:` Single-root/Multi-root；Remote SSH、Dev Container、Codespaces
+不属于该产品面。
+
 ## 硬依赖规则
 
 1. `runtime/protocol` 不依赖实现 Package。
@@ -186,6 +195,7 @@ Protocol 会增加版本管理成本；显式契约仍优于终端、插件和 E
 - 把 Projection 当事实会破坏 Replay 与 Recovery。
 - 绕过 Persistence Owner 写入会分裂关系状态与 Event/Journal。
 - Extension 直接执行会形成未治理控制面。
+- 把 Webview State 当成 Session Truth 会破坏 Revision、Replay 与 Recovery Contract。
 
 ## 测试与验证
 
@@ -220,4 +230,4 @@ Architecture Test，确认源码路径与架构图一致。
 | --- | --- |
 | Catalog ID | `overview-system-architecture` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-07 |

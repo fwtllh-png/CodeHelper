@@ -109,7 +109,7 @@ Start with these six foundational chapters:
 - [CLI and Machine-Readable Output](./10-hosts-protocols/01-cli.md) — `host-cli` — `verified` — planned path: `10-hosts-protocols/01-cli.md`
 - [TUI State Projection](./10-hosts-protocols/02-tui.md) — `host-tui` — `verified` — planned path: `10-hosts-protocols/02-tui.md`
 - [ACP Stdio and Editor Interoperability](./10-hosts-protocols/04-acp.md) — `host-acp` — `verified` — planned path: `10-hosts-protocols/04-acp.md`
-- [VS Code Context Bridge, Trust, and Compatibility](./10-hosts-protocols/06-vscode.md) — `host-vscode` — `verified` — planned path: `10-hosts-protocols/06-vscode.md`
+- [VS Code Native Agent Chat and Runtime Authority](./10-hosts-protocols/06-vscode.md) — `host-vscode` — `verified` — planned path: `10-hosts-protocols/06-vscode.md`
 
 ### Part 11: Extension Ecosystem
 

@@ -129,7 +129,7 @@ active Tool card, approval overlay, and final receipt.
 
 ## Further Reading
 
-- [VS Code Context Bridge](./06-vscode.md)
+- [VS Code Native Agent Chat](./06-vscode.md)
 
 ## Sources and Verification
 

@@ -10,14 +10,17 @@ prerequisites:
 code_paths:
   - internal/runtime/protocol
 test_paths:
+  - internal/runtime/protocol/checkpoint_test.go
   - internal/runtime/protocol/message_test.go
+  - internal/runtime/protocol/session_profile_test.go
+  - internal/runtime/protocol/tool_catalog_test.go
   - internal/runtime/protocol/schema_test.go
   - internal/runtime/protocol/fuzz_test.go
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
   - internal/runtime/protocol/message.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 ---
 
 # Protocol 与稳定数据契约
@@ -49,6 +52,8 @@ CLI、ACP、VS Code、Persistence 和 Test 都要描述同一份工作。消息�
 - Receipt 是证据，不是 Terminal Status。
 - Readiness 提供 `ready`、`degraded` 或 `blocked`，以及 Reason、Impact 与 Repair
   Action。
+- Session/Profile、Provider/Model、Tool Catalog、Lifecycle/Search、Checkpoint、Plan
+  与 Turn Recovery 是共享 Host Contract，不是 VS Code Local State。
 
 ## CodeHelper 设计
 
@@ -121,6 +126,9 @@ Schema 都是 Authority。
 | Machine Error | `problem.go` |
 | Dynamic Tool | `dynamic.go` |
 | Workspace Identity | `workspace_identity.go` |
+| Session Profile/Lifecycle | `session_profile.go`、`session_lifecycle.go` |
+| Provider/Model 与 Tool Catalog | `model_catalog.go`、`tool_catalog.go` |
+| Checkpoint/Plan Intent | `checkpoint.go`、`workflow_intent.go` |
 | Schema | `schema.go`、`schemagen` |
 
 ## 实现导读
@@ -131,6 +139,11 @@ Timestamp、Kind/Payload 一致性和 Payload 语义。公开 Kind 列表返回�
 
 Protocol 文件按 Contract Role 拆分，同时保持 Wire Schema 不变。提交的 JSON Schema
 与生成的 VS Code Type 是行为边界；文件布局属于由 Hotspot Baseline 保护的实现细节。
+
+Session Contract 有意区分 Durable Summary 与 Transient Search Match、Immutable
+Checkpoint/Plan Artifact 与 Mutable Lifecycle State、Accepted Turn Identity 与
+Terminal Receipt。Recovery Request 显式携带 Source Turn、Action、Guidance 与
+Idempotency Identity，不携带从 UI 展示文本重建的请求或历史 Effect。
 
 ## 设计取舍与替代方案
 
@@ -166,6 +179,8 @@ Decode Test 后撤销实验；再把 Schema 中的 `turn.start` Required Field �
 3. 新增 Public Event 需要同步哪些 Artifact？
 4. Optional JSON Field 为什么仍需 Compatibility Review？
 5. Host 为什么可保留 Unknown Event，却不能提交 Unknown Operation？
+6. Durable Session Summary 与 Search Match 为什么使用不同 Shape？
+7. Recovery 为什么必须指定 Source Turn，而不是重新提交 Display Text？
 
 ## 延伸阅读
 
@@ -178,4 +193,4 @@ Decode Test 后撤销实验；再把 Schema 中的 `turn.start` Required Field �
 | --- | --- |
 | Catalog ID | `runtime-protocol` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-07 |
