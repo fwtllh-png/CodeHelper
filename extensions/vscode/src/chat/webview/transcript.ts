@@ -8,15 +8,16 @@ import type {
 import { appendMarkdown, appendText } from "./dom.js";
 
 export interface TranscriptActions {
-  preview(requestId: string): void;
-  approve(
+  readonly openResource: (resourceId: string) => void;
+  readonly preview: (requestId: string) => void;
+  readonly approve: (
     requestId: string,
     scope: string,
     planId?: string,
-  ): void;
-  deny(requestId: string): void;
-  cancel(requestId: string): void;
-  answer(requestId: string, answer: string): void;
+  ) => void;
+  readonly deny: (requestId: string) => void;
+  readonly cancel: (requestId: string) => void;
+  readonly answer: (requestId: string, answer: string) => void;
 }
 
 export function renderTranscript(
@@ -41,18 +42,28 @@ export function renderTranscript(
         "",
         turn.reasoningActive ? "推理过程 · 生成中" : "推理过程",
       );
-      appendMarkdown(reasoning, turn.reasoningMarkdown, "reasoning-body");
+      appendMarkdown(
+        reasoning,
+        turn.reasoningMarkdown,
+        "reasoning-body",
+        actions.openResource,
+      );
       article.append(reasoning);
     }
     if (turn.output.length > 0) {
       appendText(article, "div", "section-label", "最终结论");
-      appendMarkdown(article, turn.outputMarkdown, "assistant");
+      appendMarkdown(
+        article,
+        turn.outputMarkdown,
+        "assistant",
+        actions.openResource,
+      );
     }
     for (const receipt of turn.contextReceipts) {
-      article.append(contextReceiptCard(receipt));
+      article.append(contextReceiptCard(receipt, actions));
     }
     for (const selection of turn.contextSelections) {
-      article.append(contextSelectionCard(selection));
+      article.append(contextSelectionCard(selection, actions));
     }
     for (const tool of turn.tools) {
       const details = document.createElement("details");
@@ -93,7 +104,10 @@ export function renderTranscript(
   container.replaceChildren(fragment);
 }
 
-function contextReceiptCard(receipt: ContextReceiptCard): HTMLElement {
+function contextReceiptCard(
+  receipt: ContextReceiptCard,
+  actions: TranscriptActions,
+): HTMLElement {
   const card = document.createElement("details");
   card.className = "context-receipt";
   let label = `Context: ${receipt.kind} · ${receipt.path}`;
@@ -119,10 +133,16 @@ function contextReceiptCard(receipt: ContextReceiptCard): HTMLElement {
       `Omitted diagnostics: ${String(receipt.omittedDiagnostics)}`,
     );
   }
+  if (receipt.resourceId !== undefined) {
+    card.append(resourceButton(receipt.resourceId, actions));
+  }
   return card;
 }
 
-function contextSelectionCard(selection: ContextSelectionCard): HTMLElement {
+function contextSelectionCard(
+  selection: ContextSelectionCard,
+  actions: TranscriptActions,
+): HTMLElement {
   const card = document.createElement("details");
   card.className = "context-selection";
   let label = `Selected ${selection.kind}: ${selection.path}`;
@@ -151,6 +171,9 @@ function contextSelectionCard(selection: ContextSelectionCard): HTMLElement {
       ? "Included in model context"
       : `Not included: ${selection.truncationReason ?? "context budget"}`,
   );
+  if (selection.resourceId !== undefined) {
+    card.append(resourceButton(selection.resourceId, actions));
+  }
   return card;
 }
 
@@ -182,6 +205,11 @@ function approvalCard(
     box.append(actionButton("Preview diff", () => {
       actions.preview(approval.requestId);
     }));
+    for (const file of approval.editPlan.files) {
+      if (file.resourceId !== undefined) {
+        box.append(resourceButton(file.resourceId, actions, `Open ${file.path} diff`));
+      }
+    }
   }
   if (trusted) {
     for (const scope of approval.allowedScopes) {
@@ -228,4 +256,14 @@ function actionButton(label: string, handler: () => void): HTMLButtonElement {
   button.textContent = label;
   button.addEventListener("click", handler);
   return button;
+}
+
+function resourceButton(
+  resourceId: string,
+  actions: TranscriptActions,
+  label = "Open in Editor",
+): HTMLButtonElement {
+  return actionButton(label, () => {
+    actions.openResource(resourceId);
+  });
 }

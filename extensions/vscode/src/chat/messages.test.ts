@@ -7,6 +7,13 @@ void test("decodeWebviewMessage accepts the finite command surface", () => {
   assert.deepEqual(decodeWebviewMessage({ type: "ready" }), {
     type: "ready",
   });
+  assert.deepEqual(decodeWebviewMessage({
+    type: "open-resource",
+    resourceId: "a".repeat(64),
+  }), {
+    type: "open-resource",
+    resourceId: "a".repeat(64),
+  });
   assert.deepEqual(decodeWebviewMessage({ type: "submit", text: "hello" }), {
     type: "submit",
     text: "hello",
@@ -106,6 +113,13 @@ void test("decodeWebviewMessage rejects forged fields and commands", () => {
       planId: "not-a-plan",
     }),
     /edit plan id is invalid/,
+  );
+  assert.throws(
+    () => decodeWebviewMessage({
+      type: "open-resource",
+      resourceId: "command:workbench.action.terminal.new",
+    }),
+    /resourceId is invalid/,
   );
 });
 

@@ -31,6 +31,11 @@ import {
   chatWebviewResourceRoot,
   renderChatHTML,
 } from "./webview/shell.js";
+import { ResourceNavigator } from "./resource-navigator.js";
+import {
+  projectChatResources,
+  type ResourceReference,
+} from "./resources.js";
 
 interface RootChatState {
   readonly projectors: Map<string, ChatProjector>;
@@ -42,11 +47,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   readonly #extensionUri: vscode.Uri;
   readonly #roots = new Map<string, RootChatState>();
   readonly #editPreview: EditPlanPreview;
+  readonly #resourceNavigator: ResourceNavigator;
   readonly #subscriptions: vscode.Disposable[];
   readonly #modalApprovals = new Set<string>();
   readonly #modalInputs = new Set<string>();
   readonly #submittedApprovals = new Set<string>();
   readonly #mergePlans = new Map<string, EditPlanCard>();
+  readonly #resources = new Map<string, ResourceReference>();
   #view: vscode.WebviewView | undefined;
   #flushTimer: NodeJS.Timeout | undefined;
   #webviewReady = false;
@@ -58,6 +65,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   ) {
     this.#registry = registry;
     this.#editPreview = editPreview;
+    this.#resourceNavigator = new ResourceNavigator(registry, editPreview);
     this.#extensionUri = extensionUri;
     this.#syncRoots();
     this.#subscriptions = [
@@ -183,6 +191,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "ready":
           this.#webviewReady = true;
           break;
+        case "open-resource": {
+          const reference = this.#resources.get(message.resourceId);
+          if (reference === undefined) {
+            throw new Error("resource reference is unknown or stale");
+          }
+          await this.#resourceNavigator.open(reference);
+          break;
+        }
         case "select-root":
           await this.#registry.select(message.rootId);
           break;
@@ -455,13 +471,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       const projector = selected === undefined
         ? new ChatProjector()
         : this.#projector(root.rootId, selected.sessionId);
+      const resources = projectChatResources(
+        projector.snapshot(),
+        root.rootId,
+        selected?.sessionId ?? "unavailable",
+      );
+      this.#resources.clear();
+      for (const reference of resources.references) {
+        this.#resources.set(reference.id, reference);
+      }
       const mergePlan = selected === undefined
         ? undefined
         : this.#mergePlans.get(
             sessionKey(root.rootId, selected.sessionId, "merge"),
           );
       this.#post(createChatSnapshotMessage({
-        snapshot: projector.snapshot(),
+        snapshot: resources.snapshot,
+        resources: resources.views,
         state: state.runtime.state,
         ...(state.runtime.error === undefined
           ? {}

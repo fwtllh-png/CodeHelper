@@ -15,11 +15,13 @@ test_paths:
   - extensions/vscode/src/runtime/integration.test.ts
   - extensions/vscode/src/security/gate.test.ts
   - extensions/vscode/src/context/native.test.ts
+  - extensions/vscode/src/chat/resources.test.ts
 source_of_truth:
   - extensions/vscode/src/context/bridge.ts
   - extensions/vscode/src/runtime/controller.ts
+  - extensions/vscode/src/chat/resource-navigator.ts
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 ---
 
 # VS Code Context Bridge, Trust, and Compatibility
@@ -72,6 +74,19 @@ Verify, Failure, Recovery, and Completed, including the next available action.
 live regions, host theme tokens, forced colors, and reduced motion are tested
 contracts rather than optional styling.
 
+## Native Resource Navigation
+
+Runtime-confirmed context receipts, context selections, and Edit Plans become
+opaque resource IDs in the Chat projection. The Webview returns only an ID; the
+Extension Host resolves it from the current Snapshot, validates its exact
+Workspace root and relative path, and invokes fixed APIs for editor ranges,
+definitions, diagnostics, Explorer reveal, or Diff.
+
+Arbitrary URI schemes, `command:` values, absolute or traversing paths,
+cross-root definitions, stale IDs, and forged Diff identities fail closed.
+Path text in model output becomes interactive only when it uniquely matches a
+confirmed resource.
+
 ## Supervisor and Session Recovery
 
 ```text
@@ -110,6 +125,7 @@ incompatible.
 - Protocol, version, target, and required feature must be compatible.
 - Runtime launch and stderr diagnostics are bounded.
 - Webview messages and context payloads are finite.
+- Resource navigation cannot supply a URI, command, or cross-root target.
 - Untrusted Workspace blocks mutation before capture/submit.
 - Replay Cursor gaps preserve state for diagnosis.
 

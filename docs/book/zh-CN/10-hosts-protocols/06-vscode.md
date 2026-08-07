@@ -15,11 +15,13 @@ test_paths:
   - extensions/vscode/src/runtime/integration.test.ts
   - extensions/vscode/src/security/gate.test.ts
   - extensions/vscode/src/context/native.test.ts
+  - extensions/vscode/src/chat/resources.test.ts
 source_of_truth:
   - extensions/vscode/src/context/bridge.ts
   - extensions/vscode/src/runtime/controller.ts
+  - extensions/vscode/src/chat/resource-navigator.ts
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 ---
 
 # VS Code Context Bridge、Trust 与 Compatibility
@@ -65,6 +67,17 @@ Recovery、Completed，并显示可用的下一步动作。`Ctrl+Enter`/`Cmd+Ent
 `Escape` 停止。Visible Focus、Screen-reader Live Region、Host Theme Token、Forced
 Color 与 Reduced Motion 都是被测试的契约，不是可选样式。
 
+## 原生资源导航
+
+Runtime 确认的 Context Receipt、Context Selection 与 Edit Plan 在 Chat Projection
+中转换为 Opaque Resource ID。Webview 只能回传 ID；Extension Host 从当前 Snapshot
+解析 ID，校验 Exact Workspace Root 与相对路径，再通过固定 API 打开 Editor Range、
+Definition、Diagnostic、Explorer 或 Diff。
+
+任意 URI Scheme、`command:`、Absolute/Traversing Path、Cross-root Definition、
+Stale ID 与伪造 Diff Identity 都会 Fail Closed。模型输出中的路径文本只有在唯一匹配
+Runtime 确认资源时才具备交互能力。
+
 ## Supervisor/Session Recovery
 
 ```text
@@ -99,6 +112,7 @@ Binary 能启动不代表 Compatible。
 - Protocol/Version/Target/Required Feature 必须兼容。
 - Runtime Launch/Stderr 有界。
 - Webview Message/Context Payload 有界。
+- Resource Navigation 不能提交 URI、Command 或 Cross-root Target。
 - Untrusted Workspace 在 Capture/Submit 前阻止 Mutation。
 - Cursor Gap 保留 State 供诊断。
 

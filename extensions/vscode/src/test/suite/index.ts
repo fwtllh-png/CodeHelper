@@ -8,6 +8,9 @@ import { ContextBridge } from "../../context/bridge.js";
 import { isUnknownEvent } from "../../protocol/decode.js";
 import { DiagnosticCodeActionProvider } from "../../diagnostics/actions.js";
 import { canonicalEditorURI } from "../../workspace/uri.js";
+import { ResourceNavigator } from "../../chat/resource-navigator.js";
+import type { WorkspaceRuntime } from "../../workspace/registry.js";
+import type { EditPlanPreview } from "../../edits/preview.js";
 
 const extensionID = "codehelper.codehelper-vscode";
 const expectedViews = [
@@ -58,6 +61,7 @@ export async function run(): Promise<void> {
     assert.equal(api.workspaceMode, "single");
     assert.equal(api.runtimeAutoStartScheduled, false);
     await verifyNativeContextCapture();
+    await verifyResourceNavigation();
     const captureDurationMS = await verifyContextCapturePerformance();
     const workspace = vscode.workspace.workspaceFolders[0];
     assert.ok(workspace);
@@ -81,6 +85,7 @@ export async function run(): Promise<void> {
     );
     await verifyNativeFlows(api);
     await verifyMultipleChats(api);
+    await verifyResourceNavigation();
   } else if (scenario === "bundled") {
     assert.equal(vscode.workspace.workspaceFolders?.length, 1);
     assert.equal(api.workspaceMode, "single");
@@ -112,6 +117,7 @@ export async function run(): Promise<void> {
     assert.equal(api.workspaceMode, "multi");
     assert.equal(api.runtimeAutoStartScheduled, true);
     await verifyMultiRootFlows(api);
+    await verifyResourceNavigation();
   } else if (scenario === "remote") {
     const remoteName = vscode.env.remoteName ?? "";
     assert.match(
@@ -157,6 +163,7 @@ export async function run(): Promise<void> {
     assert.ok(host.runtimePID !== undefined && host.runtimePID > 0);
     assert.notEqual(host.extensionHostPID, host.runtimePID);
     await verifyNativeFlows(api);
+    await verifyResourceNavigation();
     await vscode.commands.executeCommand("codehelper.restartRuntime");
     await waitFor(
       () => api.runtimeSnapshot?.().state === "ready",
@@ -262,6 +269,138 @@ export async function run(): Promise<void> {
     }),
     selectionCommands,
   );
+}
+
+async function verifyResourceNavigation(): Promise<void> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const folder = folders[0];
+  assert.ok(folder);
+  const roots = folders.map((candidate) => ({
+    rootId: createHash("sha256")
+      .update(canonicalEditorURI(candidate.uri, vscode.env.remoteName))
+      .digest("hex"),
+    folder: candidate,
+  } as unknown as WorkspaceRuntime));
+  const root = roots[0];
+  assert.ok(root);
+  const rootId = root.rootId;
+  let diffOpened = false;
+  const navigator = new ResourceNavigator({
+    find: (candidate) => roots.find((value) => value.rootId === candidate),
+    forURI: (uri) => {
+      if (uri === undefined) return undefined;
+      const owner = vscode.workspace.getWorkspaceFolder(uri);
+      return owner === undefined
+        ? undefined
+        : roots.find((value) => value.folder.uri.toString() === owner.uri.toString());
+    },
+  }, {
+    showFile: () => {
+      diffOpened = true;
+      return Promise.resolve();
+    },
+  } as unknown as EditPlanPreview);
+  const base = {
+    id: "a".repeat(64),
+    rootId,
+    path: "context.ts",
+  } as const;
+
+  await navigator.open({ ...base, kind: "file" });
+  assert.equal(vscode.window.activeTextEditor?.document.uri.path.endsWith(
+    "/context.ts",
+  ), true);
+  await navigator.open({
+    ...base,
+    kind: "directory",
+    path: ".vscode",
+  });
+  for (const candidate of roots.slice(1)) {
+    await navigator.open({
+      ...base,
+      rootId: candidate.rootId,
+      kind: "file",
+    });
+    const currentEditor: vscode.TextEditor | undefined =
+      vscode.window.activeTextEditor;
+    assert.ok(currentEditor);
+    assert.equal(
+      vscode.workspace.getWorkspaceFolder(
+        currentEditor.document.uri,
+      )?.uri.toString(),
+      candidate.folder.uri.toString(),
+    );
+  }
+  await navigator.open({
+    ...base,
+    kind: "range",
+    range: {
+      start: { line: 1, character: 2 },
+      end: { line: 1, character: 10 },
+    },
+  });
+  assert.equal(vscode.window.activeTextEditor.selection.start.line, 1);
+  await navigator.open({
+    ...base,
+    kind: "symbol",
+    symbol: "inner",
+    range: {
+      start: { line: 1, character: 11 },
+      end: { line: 1, character: 16 },
+    },
+  });
+  assert.equal(vscode.window.activeTextEditor.document.uri.path.endsWith(
+    "/context.ts",
+  ), true);
+
+  const collection = vscode.languages.createDiagnosticCollection(
+    "codehelper-resource-navigation",
+  );
+  try {
+    const uri = vscode.Uri.joinPath(folder.uri, "context.ts");
+    collection.set(uri, [new vscode.Diagnostic(
+      new vscode.Range(2, 2, 2, 8),
+      "resource diagnostic",
+      vscode.DiagnosticSeverity.Warning,
+    )]);
+    await navigator.open({ ...base, kind: "diagnostic" });
+    assert.equal(vscode.window.activeTextEditor.selection.start.line, 2);
+  } finally {
+    collection.dispose();
+  }
+
+  const plan = {
+    id: "b".repeat(64),
+    diff: "diff",
+    files: [{
+      path: "context.ts",
+      kind: "modified" as const,
+      before: "before",
+      after: "after",
+      beforeExists: true,
+      afterExists: true,
+      beforeDigest: "c".repeat(64),
+      afterDigest: "d".repeat(64),
+    }],
+  };
+  await navigator.open({
+    ...base,
+    kind: "diff",
+    plan,
+    fileIndex: 0,
+  });
+  assert.equal(diffOpened, true);
+
+  await assert.rejects(navigator.open({
+    ...base,
+    rootId: "f".repeat(64),
+    kind: "file",
+  }), /root is no longer open/u);
+  await assert.rejects(navigator.open({
+    ...base,
+    kind: "file",
+    path: "../outside",
+  }), /escapes the workspace/u);
 }
 
 function expectedRemoteBinarySource(): "external" | "managed" | "bundled" {

@@ -126,6 +126,26 @@ void test("Runtime context receipts render as read-only text", async () => {
   assert.doesNotMatch(receiptRenderer, /actionButton/u);
 });
 
+void test("Chat resource navigation remains opaque and workspace-bound", async () => {
+  const messages = await sourceFile("chat", "messages.ts");
+  const resources = await sourceFile("chat", "resources.ts");
+  const navigator = await sourceFile("chat", "resource-navigator.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
+
+  assert.match(messages, /\^\[0-9a-f\]\{64\}\$/u);
+  assert.match(client, /type: "open-resource", resourceId/u);
+  assert.doesNotMatch(client, /vscode\.Uri/u);
+  assert.doesNotMatch(client, /command:/u);
+  assert.match(resources, /value\.includes\(":"\)/u);
+  assert.match(resources, /normalized\.startsWith\("\.\.\/"\)/u);
+  assert.match(navigator, /vscode\.Uri\.joinPath/u);
+  assert.match(navigator, /this\.#registry\.forURI\(uri\)/u);
+  assert.match(navigator, /"vscode\.executeDefinitionProvider"/u);
+  assert.match(navigator, /"revealInExplorer"/u);
+  assert.doesNotMatch(navigator, /vscode\.Uri\.parse/u);
+  assert.doesNotMatch(navigator, /executeCommand\(\s*reference/u);
+});
+
 void test("Native selection commands retain trust and Runtime authority", async () => {
   const commands = await sourceFile("selection", "commands.ts");
   const flow = await sourceFile("selection", "flow.ts");

@@ -5,6 +5,7 @@ import {
   type ChatPresentation,
 } from "./presentation.js";
 import type { ChatSnapshot } from "./projector.js";
+import type { ResourceView } from "./resources.js";
 
 export const chatViewProtocolVersion = 1;
 export const chatHostMessageTypes = ["snapshot", "error"] as const;
@@ -34,6 +35,7 @@ export interface ChatSnapshotMessage {
   readonly type: "snapshot";
   readonly version: typeof chatViewProtocolVersion;
   readonly snapshot: ChatSnapshot;
+  readonly resources: readonly ResourceView[];
   readonly runtime: ChatRuntimeView;
   readonly presentation: ChatPresentation;
 }
@@ -48,6 +50,7 @@ export type ChatHostMessage = ChatSnapshotMessage | ChatErrorMessage;
 
 export interface ChatSnapshotMessageOptions {
   readonly snapshot: ChatSnapshot;
+  readonly resources?: readonly ResourceView[];
   readonly state: SupervisorState;
   readonly error?: string;
   readonly trusted: boolean;
@@ -66,6 +69,7 @@ export function createChatSnapshotMessage(
     type: "snapshot",
     version: chatViewProtocolVersion,
     snapshot: options.snapshot,
+    resources: options.resources?.map((resource) => ({ ...resource })) ?? [],
     presentation: deriveChatPresentation(
       options.state,
       options.snapshot,

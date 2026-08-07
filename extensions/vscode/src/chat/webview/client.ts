@@ -50,6 +50,9 @@ let messageMergePlanId: string | undefined;
 let sessions: readonly ChatSessionView[] = [];
 
 const transcriptActions: TranscriptActions = {
+  openResource: (resourceId) => {
+    post({ type: "open-resource", resourceId });
+  },
   preview: (requestId) => {
     post({ type: "preview", requestId });
   },

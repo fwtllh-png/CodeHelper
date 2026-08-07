@@ -29,16 +29,36 @@ export function appendMarkdown(
   parent: HTMLElement,
   nodes: readonly MarkdownNode[],
   className: string,
+  openResource: (resourceId: string) => void,
 ): void {
   const container = document.createElement("div");
   container.className = `markdown ${className}`;
-  for (const node of nodes) container.append(markdownNode(node));
+  for (const node of nodes) {
+    container.append(markdownNode(node, openResource));
+  }
   parent.append(container);
 }
 
-function markdownNode(value: MarkdownNode): Node {
+function markdownNode(
+  value: MarkdownNode,
+  openResource: (resourceId: string) => void,
+): Node {
   if (value.kind === "text") return document.createTextNode(value.text);
   if (!markdownTags.has(value.tag)) return document.createTextNode("");
+  if (value.resourceId !== undefined) {
+    const resourceId = value.resourceId;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "resource-link";
+    button.title = "Open in Editor";
+    for (const child of value.children) {
+      button.append(markdownNode(child, openResource));
+    }
+    button.addEventListener("click", () => {
+      openResource(resourceId);
+    });
+    return button;
+  }
   const node = document.createElement(value.tag);
   if (value.tag === "a" && value.href !== undefined &&
     /^(?:https?:|mailto:)/u.test(value.href)) {
@@ -55,6 +75,8 @@ function markdownNode(value: MarkdownNode): Node {
     /^[\w+.-]{1,64}$/u.test(value.language)) {
     node.className = `language-${value.language}`;
   }
-  for (const child of value.children) node.append(markdownNode(child));
+  for (const child of value.children) {
+    node.append(markdownNode(child, openResource));
+  }
   return node;
 }

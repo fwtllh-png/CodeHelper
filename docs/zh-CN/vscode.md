@@ -22,6 +22,8 @@ VS Code UI 与 Context Bridge
 - Reasoning/Output 分离的流式 Chat；
 - Selection 与 Diagnostic Action；
 - Edit Plan Preview 与 Approval；
+- Runtime 确认的 File、Range、Directory、Symbol、Diagnostic 和 Edit Plan Diff
+  原生导航；
 - Background Task、Job、Agent、Usage 和 Change View；
 - Local、Remote SSH 与 Dev Container Workspace Host；
 - External、Managed 或 Bundled Runtime；
@@ -38,6 +40,19 @@ Quick Pick，Setup 使用 Progress，持久化集合使用 Tree View。
 Completed，并给出下一步动作。控件使用 VS Code Theme Token、可见键盘焦点、
 Forced-color Border 和 Reduced Motion。Reasoning 与 Tool Detail 默认折叠，仅在活动
 状态或用户打开时展开。
+
+## 原生资源导航
+
+Runtime 确认的 Editor Context、Context Selection 和 Edit Plan 会投影为不透明的
+Resource ID。Chat 中的文件引用通过 VS Code 原生 API 打开；Range 与 Diagnostic
+定位对应选区；Symbol 使用 Definition Provider，并在无定义结果时回退到文件内范围；
+Directory 在 Explorer 中定位；Plan 使用 Diff Editor 打开。
+
+Webview 永远不提交 URI、Path 或 Command。Extension Host 仅从当前 Snapshot 中解析
+Opaque ID，校验 Exact Workspace Root 与相对路径，然后调用固定的 VS Code Action。
+Absolute Path、Path Traversal、任意 URI Scheme、`command:`、Cross-root Definition、
+未知 ID 和过期 Diff Identity 都会 Fail Closed。Local、Multi-root、Remote SSH 与
+Dev Container 使用同一边界。
 
 ## 内置 Setup 与 Repair
 

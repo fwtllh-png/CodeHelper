@@ -19,6 +19,7 @@ export interface EditPlanFileCard {
   readonly afterExists: boolean;
   readonly beforeDigest: string;
   readonly afterDigest: string;
+  readonly resourceId?: string;
 }
 
 export interface PlanAnnotation {

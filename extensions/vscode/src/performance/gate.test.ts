@@ -6,6 +6,7 @@ import { performance } from "node:perf_hooks";
 import { BackgroundProjector, type TaskRow } from "../background/model.js";
 import { createChatSnapshotMessage } from "../chat/contract.js";
 import { ChatProjector } from "../chat/projector.js";
+import { projectChatResources } from "../chat/resources.js";
 import { decodeEvent } from "../protocol/decode.js";
 
 const eventCount = 10_000;
@@ -112,8 +113,25 @@ void test("Chat assembles the maximum V1 transcript and Session list within budg
   }));
 
   const started = performance.now();
+  const resourceProjection = projectChatResources({
+    ...projector.snapshot(),
+    turns: projector.snapshot().turns.map((turn, index) => ({
+      ...turn,
+      contextSelections: [{
+        path: `src/file-${String(index)}.ts`,
+        kind: "source",
+        reasons: ["search"],
+        evidence: ["search"],
+        score: 1,
+        critical: false,
+        included: true,
+        truncated: false,
+      }],
+    })),
+  }, "a".repeat(64), "session_0");
   const message = createChatSnapshotMessage({
-    snapshot: projector.snapshot(),
+    snapshot: resourceProjection.snapshot,
+    resources: resourceProjection.views,
     state: "ready",
     trusted: true,
     selectedRootId: "a".repeat(64),
@@ -125,9 +143,11 @@ void test("Chat assembles the maximum V1 transcript and Session list within budg
   const bytes = Buffer.byteLength(JSON.stringify(message));
   metrics["chat_200_turn_snapshot_ms"] = Number(durationMS.toFixed(1));
   metrics["chat_200_turn_snapshot_bytes"] = bytes;
+  metrics["chat_200_resource_count"] = resourceProjection.references.length;
 
   assert.equal(message.snapshot.turns.length, 200);
   assert.equal(message.runtime.sessions.length, 32);
+  assert.equal(message.resources.length, 200);
   assert.ok(
     durationMS < 100,
     `200-turn Chat snapshot assembly took ${durationMS.toFixed(1)}ms`,

@@ -5,6 +5,7 @@ import type {
 
 export type WebviewMessage =
   | { readonly type: "ready" }
+  | { readonly type: "open-resource"; readonly resourceId: string }
   | { readonly type: "submit"; readonly text: string }
   | { readonly type: "select-root"; readonly rootId: string }
   | { readonly type: "select-chat"; readonly sessionId: string }
@@ -31,6 +32,12 @@ export function decodeWebviewMessage(value: unknown): WebviewMessage {
     case "ready":
       requireKeys(value, ["type"]);
       return { type: "ready" };
+    case "open-resource":
+      requireKeys(value, ["type", "resourceId"]);
+      return {
+        type: "open-resource",
+        resourceId: requireDigest(value["resourceId"], "resourceId"),
+      };
     case "submit":
       requireKeys(value, ["type", "text"]);
       return { type: "submit", text: requireBoundedString(value["text"], "text", 64 << 10) };
@@ -156,6 +163,13 @@ function requireScope(value: unknown): ApprovalScope {
 function requirePlanID(value: unknown): string {
   if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
     throw new Error("edit plan id is invalid");
+  }
+  return value;
+}
+
+function requireDigest(value: unknown, name: string): string {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
+    throw new Error(`${name} is invalid`);
   }
   return value;
 }

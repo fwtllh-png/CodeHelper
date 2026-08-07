@@ -14,6 +14,7 @@ import {
   projectMarkdown,
   type MarkdownNode,
 } from "./markdown.js";
+import type { ResourceRange } from "./resources.js";
 
 export type {
   EditPlanCard,
@@ -73,7 +74,10 @@ export interface ContextReceiptCard {
   readonly path: string;
   readonly digest: string;
   readonly range?: string;
+  readonly navigationRange?: ResourceRange;
   readonly symbol?: string;
+  readonly symbolName?: string;
+  readonly resourceId?: string;
   readonly diagnosticCount: number;
   readonly omittedDiagnostics: number;
   readonly originalBytes: number;
@@ -94,6 +98,7 @@ export interface ContextSelectionCard {
   readonly included: boolean;
   readonly truncated: boolean;
   readonly truncationReason?: string;
+  readonly resourceId?: string;
 }
 
 export interface ChatTurn {
@@ -498,6 +503,10 @@ function projectContextReceipts(
             `${String(value.range.start.character + 1)}-` +
             `${String(value.range.end.line + 1)}:` +
             String(value.range.end.character + 1),
+          navigationRange: {
+            start: { ...value.range.start },
+            end: { ...value.range.end },
+          },
         }),
     ...(value.symbol === undefined
       ? {}
@@ -506,6 +515,7 @@ function projectContextReceipts(
             `${value.symbol.kind} ${value.symbol.name}`,
             640,
           ),
+          symbolName: truncateField(value.symbol.name, 512),
         }),
     diagnosticCount: value.diagnostic_count ?? 0,
     omittedDiagnostics: value.omitted_diagnostics ?? 0,

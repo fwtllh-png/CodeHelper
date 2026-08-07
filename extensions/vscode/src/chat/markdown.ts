@@ -44,6 +44,7 @@ export interface MarkdownElementNode {
   readonly tag: MarkdownTag;
   readonly children: readonly MarkdownNode[];
   readonly href?: string;
+  readonly resourceId?: string;
   readonly language?: string;
   readonly start?: number;
 }

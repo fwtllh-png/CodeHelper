@@ -24,6 +24,8 @@ the CLI and TUI.
 - streaming chat with separate reasoning/output presentation;
 - selection and diagnostic actions;
 - edit-plan preview and approval;
+- native navigation for Runtime-confirmed files, ranges, directories, symbols,
+  diagnostics, and edit-plan diffs;
 - background task, job, agent, usage, and change views;
 - local, Remote SSH, and Dev Container workspace-host execution;
 - external, managed, or bundled runtime selection;
@@ -41,6 +43,21 @@ The lifecycle strip names Setup, Empty, Loading, Streaming, Approval, Verify,
 Failure, Recovery, and Completed states with a next action. Controls use VS
 Code theme tokens, visible keyboard focus, forced-color borders, and reduced
 motion. Reasoning and Tool details remain collapsed unless active or opened.
+
+## Native Resource Navigation
+
+Runtime-confirmed editor context, context selections, and Edit Plans are
+projected into opaque resource IDs. File references in Chat open through native
+VS Code APIs; ranges and diagnostics reveal the relevant selection, symbols use
+the definition provider with an in-file fallback, directories reveal in
+Explorer, and plans open in the Diff editor.
+
+The Webview never submits a URI, path, or command. The Extension Host resolves
+the opaque ID from the current Snapshot, validates the exact Workspace root and
+relative path, then invokes a fixed VS Code action. Absolute paths, traversal,
+arbitrary URI schemes, `command:` values, cross-root definitions, unknown IDs,
+and stale Diff identities fail closed. This applies equally to local,
+multi-root, Remote SSH, and Dev Container Workspaces.
 
 ## Built-in Setup and Repair
 
