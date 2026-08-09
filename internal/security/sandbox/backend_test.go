@@ -155,15 +155,30 @@ func TestSeatbeltShellHereDocumentGrantIsNarrow(t *testing.T) {
 	}
 	shellProfile := seatbeltProfile(policy, "/bin/sh")
 	for _, rule := range []string{
+		`(allow file-write* (literal "/var/tmp"))`,
+		`(allow file-write* (regex #"^/var/tmp/sh-thd-[0-9]+$"))`,
+		`(allow file-read* (regex #"^/var/tmp/sh-thd-[0-9]+$"))`,
+		`(allow file-write* (literal "/private/var/tmp"))`,
+		`(allow file-write* (regex #"^/private/var/tmp/sh-thd-[0-9]+$"))`,
+		`(allow file-read-metadata (subpath "/private/var/tmp"))`,
+		`(allow file-read* (regex #"^/private/var/tmp/sh-thd-[0-9]+$"))`,
 		`(allow file-write* (literal "/private/tmp"))`,
 		`(allow file-write* (regex #"^/private/tmp/sh-thd-[0-9]+$"))`,
+		`(allow file-read* (regex #"^/private/tmp/sh-thd-[0-9]+$"))`,
 	} {
 		if !strings.Contains(shellProfile, rule) {
 			t.Fatalf("shell profile missing narrow heredoc rule %q:\n%s", rule, shellProfile)
 		}
 	}
-	if strings.Contains(shellProfile, `(allow file-write* (subpath "/private/tmp"))`) {
-		t.Fatalf("shell profile broadly permits host temp writes:\n%s", shellProfile)
+	for _, broadRule := range []string{
+		`(allow file-write* (subpath "/var/tmp"))`,
+		`(allow file-write* (subpath "/private/var/tmp"))`,
+		`(allow file-write* (subpath "/private/tmp"))`,
+		`(allow file-read* (subpath "/private/var/tmp"))`,
+	} {
+		if strings.Contains(shellProfile, broadRule) {
+			t.Fatalf("shell profile broadly permits host temp writes:\n%s", shellProfile)
+		}
 	}
 	nonShellProfile := seatbeltProfile(policy, "/usr/bin/python3")
 	if strings.Contains(nonShellProfile, `sh-thd-`) ||

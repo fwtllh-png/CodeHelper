@@ -82,6 +82,8 @@ EOF
 		{"external-read", "cat " + shellQuote(secret)},
 		{"external-write", "printf escaped > " + shellQuote(filepath.Join(external, "escaped"))},
 		{"host-temp-write", `printf escaped > "/private/tmp/codehelper-sandbox-attack-$$"`},
+		{"host-var-temp-lexical-write", `printf escaped > "/var/tmp/codehelper-sandbox-attack-$$"`},
+		{"host-var-temp-write", `printf escaped > "/private/var/tmp/codehelper-sandbox-attack-$$"`},
 		{"symlink-read", "ln -s " + shellQuote(external) + " link && cat link/secret"},
 		{"network", "/usr/bin/nc -w 1 127.0.0.1 9"},
 		{"environment", `test -z "$CODEHELPER_ATTACK_SECRET"`},

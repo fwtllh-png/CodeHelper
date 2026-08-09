@@ -413,12 +413,33 @@ func seatbeltProfileForCommand(
 		seatbeltQuote(policy.PrivateTemp),
 	)
 	if filepath.Clean(executable) == "/bin/sh" {
-		// Darwin's /bin/sh ignores TMPDIR for here-document backing files and
-		// creates /private/tmp/sh-thd-<digits>. Grant only that implementation
-		// detail; arbitrary host-temp children remain outside the sandbox.
+		// Darwin's /bin/sh ignores TMPDIR for here-document backing files. The
+		// system bash opens /var/tmp, which lsof reports as /private/var/tmp.
+		// Retain /private/tmp for compatible sh variants. Keep every grant
+		// filename-scoped.
+		profile.WriteString("(allow file-write* (literal \"/var/tmp\"))\n")
+		profile.WriteString(
+			"(allow file-write* (regex #\"^/var/tmp/sh-thd-[0-9]+$\"))\n",
+		)
+		profile.WriteString(
+			"(allow file-read* (regex #\"^/var/tmp/sh-thd-[0-9]+$\"))\n",
+		)
+		profile.WriteString("(allow file-write* (literal \"/private/var/tmp\"))\n")
+		profile.WriteString(
+			"(allow file-write* (regex #\"^/private/var/tmp/sh-thd-[0-9]+$\"))\n",
+		)
+		profile.WriteString(
+			"(allow file-read-metadata (subpath \"/private/var/tmp\"))\n",
+		)
+		profile.WriteString(
+			"(allow file-read* (regex #\"^/private/var/tmp/sh-thd-[0-9]+$\"))\n",
+		)
 		profile.WriteString("(allow file-write* (literal \"/private/tmp\"))\n")
 		profile.WriteString(
 			"(allow file-write* (regex #\"^/private/tmp/sh-thd-[0-9]+$\"))\n",
+		)
+		profile.WriteString(
+			"(allow file-read* (regex #\"^/private/tmp/sh-thd-[0-9]+$\"))\n",
 		)
 	}
 	// macOS tools often lstat ancestors (/private, /private/var, …) while
@@ -752,7 +773,7 @@ func runAttackProbe(helperPath string) Capability {
 		`set -eu; test "$(cat input)" = workspace; test "$(cat <<'EOF'
 heredoc
 EOF
-)" = heredoc; printf ok > output; sh -c 'test "$(cat input)" = workspace'; ! cat %q >/dev/null 2>&1; ! printf bad > %q; ! printf bad > /private/tmp/codehelper-sandbox-probe; %s`,
+)" = heredoc; printf ok > output; sh -c 'test "$(cat input)" = workspace'; ! cat %q >/dev/null 2>&1; ! printf bad > %q; ! printf bad > /private/tmp/codehelper-sandbox-probe; ! printf bad > /var/tmp/codehelper-sandbox-probe; ! printf bad > /private/var/tmp/codehelper-sandbox-probe; %s`,
 		secret, outsideWrite, networkTest,
 	)
 	if runtime.GOOS == "linux" {

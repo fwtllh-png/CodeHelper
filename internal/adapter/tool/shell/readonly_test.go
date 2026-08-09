@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -35,14 +37,14 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 	read, err := registry.Execute(t.Context(), tool.Call{
 		Name: "shell_read",
 		Arguments: json.RawMessage(
-			`{"command":"cat input.txt; printf temp > \"$TMPDIR/probe\"; cat \"$TMPDIR/probe\""}`,
+			`{"command":"cat input.txt; printf temp > \"$TMPDIR/probe\"; cat \"$TMPDIR/probe\"; python3 - <<'PY'\nprint('heredoc')\nPY"}`,
 		),
 		Authorized: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if read.IsError || read.Content != "originaltemp" {
+	if read.IsError || read.Content != "originaltempheredoc\n" {
 		t.Fatalf("read result = %+v", read)
 	}
 
@@ -63,6 +65,63 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 	}
 	if string(content) != "original" {
 		t.Fatalf("workspace content changed to %q", content)
+	}
+
+	if runtime.GOOS == "darwin" {
+		hostTemp, err := os.CreateTemp("/private/var/tmp", "codehelper-shell-read-secret-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		hostTempPath := hostTemp.Name()
+		t.Cleanup(func() { _ = os.Remove(hostTempPath) })
+		if _, err := hostTemp.WriteString("host-secret"); err != nil {
+			t.Fatal(err)
+		}
+		if err := hostTemp.Close(); err != nil {
+			t.Fatal(err)
+		}
+		arguments, err := json.Marshal(map[string]string{"command": "cat " + hostTempPath})
+		if err != nil {
+			t.Fatal(err)
+		}
+		hostRead, err := registry.Execute(t.Context(), tool.Call{
+			Name:       "shell_read",
+			Arguments:  arguments,
+			Authorized: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hostRead.IsError || strings.Contains(hostRead.Content, "host-secret") {
+			t.Fatalf("host temp read unexpectedly succeeded: %+v", hostRead)
+		}
+	}
+
+	modeBefore, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chmod, err := registry.Execute(t.Context(), tool.Call{
+		Name:       "shell_read",
+		Arguments:  json.RawMessage(`{"command":"chmod 700 ."}`),
+		Authorized: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !chmod.IsError {
+		t.Fatalf("workspace mode change unexpectedly succeeded: %+v", chmod)
+	}
+	modeAfter, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if modeAfter.Mode().Perm() != modeBefore.Mode().Perm() {
+		t.Fatalf(
+			"workspace mode changed from %o to %o",
+			modeBefore.Mode().Perm(),
+			modeAfter.Mode().Perm(),
+		)
 	}
 }
 
