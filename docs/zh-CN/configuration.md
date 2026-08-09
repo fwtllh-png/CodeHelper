@@ -158,6 +158,10 @@ model = "gpt-4.1-mini"
 
 [web]
 search_backend = "duckduckgo"
+
+[diagnostics.commands.".md"]
+name = "markdownlint-cli2"
+args = ["--no-globs", "--", "{path}"]
 ```
 
 未知 TOML 字段会被拒绝。这是有意设计：拼错的安全或预算字段不能“看起来已配置但
@@ -219,6 +223,24 @@ Suite。每个 `turn.verification` Check 都包含命令推导原因。无法识
 明确报告 `unavailable`，不会静默成为绿色结果。
 
 只有仓库验证命令在目标沙箱内稳定可复现时，才应使用 `hard`。
+
+## 编辑后诊断
+
+`[diagnostics.commands]` 将小写文件扩展名映射到可信的、通过 PATH 解析的可执行程序。
+每个命令的有界参数列表必须包含 `{path}`。这些命令会在受 Guard 管理的文件编辑后
+执行，因此仓库本地配置只有在被显式信任后才能定义它们。
+
+Markdown 可通过 `make vscode-install` 安装仓库锁定的开发依赖，也可以在 Host PATH
+中安装相同版本：
+
+```bash
+npm install --global markdownlint-cli2@0.23.2
+```
+
+仓库的 `.markdownlint-cli2.jsonc` 让单文件编辑后检查与仓库级
+`markdownlint-cli2` 检查保持一致。Markdown Lint 只作为补充，不替代
+`make docs-check` 和 `make book-check`；双语一致性、导航、治理与书籍结构仍以这两个
+命令为权威门禁。
 
 ## 状态与持久化
 

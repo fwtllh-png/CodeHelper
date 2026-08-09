@@ -4,6 +4,7 @@ import type {
   ChatErrorMessage,
   ChatHostMessage,
   ChatPatchMessage,
+  ChatRecoveryStatusMessage,
   ChatSessionView,
   ChatSnapshotMessage,
 } from "../contract.js";
@@ -11,7 +12,6 @@ import {
   filterChatSessions,
   groupChatSessions,
   sessionStatusLabel,
-  type SessionStatusFilter,
 } from "../session-list.js";
 import { element } from "./dom.js";
 import {
@@ -41,12 +41,6 @@ const root = element("root") as HTMLSelectElement;
 const chatTitle = element("chat-title");
 const sessionList = element("session-list");
 const sessionSearch = element("session-search") as HTMLInputElement;
-const sessionFilter = element("session-filter") as HTMLSelectElement;
-const sessionWorkspaceFilter = element("session-workspace-filter") as HTMLSelectElement;
-const sessionModelFilter = element("session-model-filter") as HTMLSelectElement;
-const sessionModeFilter = element("session-mode-filter") as HTMLSelectElement;
-const sessionActivityFilter = element("session-activity-filter") as HTMLSelectElement;
-const sessionCount = element("session-count");
 const sessionRail = element("session-rail");
 const sessionScrim = element("session-scrim") as HTMLButtonElement;
 const toggleSessions = element("toggle-sessions") as HTMLButtonElement;
@@ -59,7 +53,6 @@ const turns = element("turns");
 const prompt = element("prompt") as HTMLTextAreaElement;
 const composerContexts = element("composer-contexts");
 const send = element("send") as HTMLButtonElement;
-const stop = element("stop") as HTMLButtonElement;
 const newChat = element("new-chat") as HTMLButtonElement;
 const mergeChat = element("merge-chat") as HTMLButtonElement;
 const railNewChat = element("rail-new-chat") as HTMLButtonElement;
@@ -67,18 +60,17 @@ const environment = element("environment");
 const approvalPosture = element("approval-posture");
 const modeControl = element("mode-control") as HTMLButtonElement;
 const providerControl = element("provider-control") as HTMLButtonElement;
-const modelControl = element("model-control") as HTMLButtonElement;
-const thinkingControl = element("thinking-control") as HTMLButtonElement;
 const toolsControl = element("tools-control") as HTMLButtonElement;
 const credentialControl = element("credential-control") as HTMLButtonElement;
 const approvalControl = element("approval-control") as HTMLButtonElement;
-const narrowMedia = window.matchMedia("(max-width: 720px)");
+const narrowMedia = window.matchMedia("(max-width: 900px)");
 let trusted = false;
 let messageMergePlanId: string | undefined;
 let sessions: readonly ChatSessionView[] = [];
 let sessionSearchProjection: ChatSnapshotMessage["runtime"]["sessionSearch"];
 let sessionSearchTimer: ReturnType<typeof setTimeout> | undefined;
 let sessionRenderFrame: number | undefined;
+let turnActive = false;
 
 type SessionVirtualItem =
   | {
@@ -104,8 +96,21 @@ type SessionVirtualItem =
 let sessionVirtualItems: readonly SessionVirtualItem[] = [];
 let lastRevealedTurn = "";
 const chatStore = new ChatWebviewStore();
-let transcriptWindow = { start: 0, end: 0 };
 let transcriptRenderFrame: number | undefined;
+let transcriptPatchTimer: ReturnType<typeof setTimeout> | undefined;
+let transcriptInteractionTimer: ReturnType<typeof setTimeout> | undefined;
+let pendingTranscriptMessage: ChatSnapshotMessage | undefined;
+const pendingChangedTurns = new Set<string>();
+const pendingRemovedTurns = new Set<string>();
+let followLatest = true;
+let programmaticTranscriptScroll = false;
+let transcriptInteracting = false;
+let selectedTranscriptSession = "";
+const recoveryStates = new Map<string, {
+  readonly action: "retry" | "continue";
+  readonly status: "pending" | "accepted" | "failed";
+  readonly message?: string;
+}>();
 
 const transcriptActions: TranscriptActions = {
   openResource: (resourceId) => {
@@ -146,31 +151,44 @@ const transcriptActions: TranscriptActions = {
     post({ type: "plan-action", planId, action });
   },
   recover: (turnId, action) => {
+    if (recoveryStates.get(turnId)?.status === "pending" ||
+      recoveryStates.get(turnId)?.status === "accepted") {
+      return;
+    }
+    recoveryStates.set(turnId, { action, status: "pending" });
+    applyRecoveryState(turnId);
     post({ type: "turn-recovery", turnId, action });
   },
 };
 
-(element("composer") as HTMLFormElement).addEventListener("submit", (event) => {
-  event.preventDefault();
+function submitPrompt(): void {
   if (prompt.value.trim().length === 0) return;
+  followLatest = true;
+  scrollTranscriptToBottom();
   post({ type: "submit", text: prompt.value });
   prompt.value = "";
-});
+  resizePrompt();
+}
 
+prompt.addEventListener("input", resizePrompt);
 prompt.addEventListener("keydown", (event) => {
   const action = keyboardAction(event);
   if (action !== "none") event.preventDefault();
   if (action === "new-chat") {
     post({ type: "new-chat" });
   } else if (action === "send") {
-    send.click();
+    submitPrompt();
   } else if (action === "stop") {
-    stop.click();
+    post({ type: "stop" });
   }
 });
 
-stop.addEventListener("click", () => {
-  post({ type: "stop" });
+send.addEventListener("click", () => {
+  if (turnActive) {
+    post({ type: "stop" });
+  } else {
+    submitPrompt();
+  }
 });
 element("repair-runtime").addEventListener("click", () => {
   post({ type: "repair-runtime" });
@@ -206,8 +224,6 @@ composerContexts.addEventListener("click", (event) => {
 for (const [button, control] of [
   [modeControl, "mode"],
   [providerControl, "provider"],
-  [modelControl, "model"],
-  [thinkingControl, "thinking"],
   [toolsControl, "tools"],
   [credentialControl, "credential"],
   [approvalControl, "approval"],
@@ -271,9 +287,10 @@ function keyboardAction(event: KeyboardEvent) {
     key: event.key,
     ctrlKey: event.ctrlKey,
     metaKey: event.metaKey,
+    shiftKey: event.shiftKey,
     isComposing: event.isComposing,
     sessionsOpen: document.body.classList.contains("sessions-open"),
-    turnActive: !stop.disabled,
+    turnActive,
   });
 }
 sessionSearch.addEventListener("input", () => {
@@ -284,24 +301,19 @@ sessionSearch.addEventListener("input", () => {
     post({ type: "search-chats", query: sessionSearch.value });
   }, 150);
 });
-sessionFilter.addEventListener("change", () => {
-  renderSessionList();
-});
-for (const filter of [
-  sessionWorkspaceFilter,
-  sessionModelFilter,
-  sessionModeFilter,
-  sessionActivityFilter,
-]) {
-  filter.addEventListener("change", renderSessionList);
-}
 sessionList.addEventListener("scroll", () => {
   scheduleVirtualSessionRender();
 }, { passive: true });
 new ResizeObserver(() => {
   scheduleVirtualSessionRender();
 }).observe(sessionList);
-turns.addEventListener("scroll", scheduleTranscriptWindow, { passive: true });
+turns.addEventListener("wheel", suspendTranscriptFollow, { passive: true });
+turns.addEventListener("touchstart", suspendTranscriptFollow, { passive: true });
+turns.addEventListener("pointerdown", suspendTranscriptFollow, { passive: true });
+turns.addEventListener("scroll", () => {
+  if (!programmaticTranscriptScroll) followLatest = isNearBottom();
+  scheduleTranscriptWindow();
+}, { passive: true });
 new ResizeObserver(scheduleTranscriptWindow).observe(turns);
 
 function scheduleVirtualSessionRender(): void {
@@ -367,6 +379,10 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
     renderError(message);
     return;
   }
+  if (message.type === "recovery-status") {
+    applyRecoveryStatus(message);
+    return;
+  }
   try {
     const snapshot = chatStore.apply(message);
     renderSnapshot(
@@ -399,18 +415,29 @@ function renderSnapshot(
   }));
   root.hidden = message.runtime.roots.length < 2;
   sessions = message.runtime.sessions;
-  updateSessionFilterOptions();
   sessionSearchProjection = message.runtime.sessionSearch;
   renderSessionList();
   const selected = sessions.find((candidate) => candidate.selected);
+  const selectedSession = message.runtime.selectedSessionId ?? "";
+  if (selectedSession !== selectedTranscriptSession) {
+    selectedTranscriptSession = selectedSession;
+    followLatest = true;
+  }
   chatTitle.textContent = selected?.title ?? "CodeHelper";
   messageMergePlanId = message.runtime.mergePlanId;
   mergeChat.textContent = messageMergePlanId === undefined ? "Merge" : "Apply";
   mergeChat.disabled = !message.presentation.runtimeReady ||
     (messageMergePlanId !== undefined && !trusted);
   prompt.disabled = !message.presentation.promptEnabled;
-  send.disabled = !message.presentation.sendEnabled;
-  stop.disabled = !message.presentation.stopEnabled;
+  turnActive = message.presentation.stopEnabled;
+  send.disabled = turnActive
+    ? !message.presentation.stopEnabled
+    : !message.presentation.sendEnabled;
+  send.textContent = turnActive ? "■" : "↵";
+  send.classList.toggle("stop-state", turnActive);
+  send.title = turnActive ? "Stop (Escape)" : "Send (Enter)";
+  send.setAttribute("aria-label", turnActive ? "Stop" : "Send");
+  send.setAttribute("aria-keyshortcuts", turnActive ? "Escape" : "Enter");
   newChat.disabled = !message.presentation.newChatEnabled;
   railNewChat.disabled = !message.presentation.newChatEnabled;
   environment.textContent = message.composer?.environment.label ??
@@ -437,14 +464,60 @@ function renderSnapshot(
   if (revealIndex >= 0) {
     turns.scrollTop = revealIndex * transcriptTurnEstimate;
   }
-  const stickToBottom = isNearBottom() && revealIndex < 0;
-  renderTranscriptProjection(message, patch);
-  if (stickToBottom) turns.scrollTo({ top: turns.scrollHeight });
+  if (patch === undefined || revealIndex >= 0) {
+    flushPendingTranscriptPatch();
+    renderTranscriptProjection(message, patch);
+    if (followLatest && revealIndex < 0) scrollTranscriptToBottom();
+  } else {
+    scheduleTranscriptPatch(message, patch);
+  }
   if (message.runtime.revealTurnId !== undefined) {
     revealTurn(message.runtime.selectedSessionId, message.runtime.revealTurnId);
   } else {
     lastRevealedTurn = "";
   }
+}
+
+function scheduleTranscriptPatch(
+  message: ChatSnapshotMessage,
+  patch: ChatPatchMessage,
+): void {
+  pendingTranscriptMessage = message;
+  for (const operation of patch.operations) {
+    if (operation.kind === "turn.upsert") {
+      pendingChangedTurns.add(operation.turn.id);
+      pendingRemovedTurns.delete(operation.turn.id);
+    } else if (operation.kind === "turn.remove") {
+      pendingRemovedTurns.add(operation.turnId);
+      pendingChangedTurns.delete(operation.turnId);
+    }
+  }
+  if (transcriptInteracting || transcriptPatchTimer !== undefined) return;
+  transcriptPatchTimer = setTimeout(() => {
+    transcriptPatchTimer = undefined;
+    flushPendingTranscriptPatch();
+  }, followLatest ? 50 : 100);
+}
+
+function flushPendingTranscriptPatch(): void {
+  if (transcriptPatchTimer !== undefined) {
+    clearTimeout(transcriptPatchTimer);
+    transcriptPatchTimer = undefined;
+  }
+  const message = pendingTranscriptMessage;
+  if (message === undefined) return;
+  pendingTranscriptMessage = undefined;
+  const changed = new Set(pendingChangedTurns);
+  const removed = new Set(pendingRemovedTurns);
+  pendingChangedTurns.clear();
+  pendingRemovedTurns.clear();
+  const shouldFollowLatest = followLatest;
+  programmaticTranscriptScroll = true;
+  renderTranscriptProjection(message, undefined, false, changed, removed);
+  if (shouldFollowLatest) turns.scrollTop = turns.scrollHeight;
+  requestAnimationFrame(() => {
+    programmaticTranscriptScroll = false;
+  });
 }
 
 function scheduleTranscriptWindow(): void {
@@ -462,10 +535,11 @@ function renderTranscriptProjection(
   message: ChatSnapshotMessage,
   patch?: ChatPatchMessage,
   hydrate = patch === undefined,
+  explicitChanged?: ReadonlySet<string>,
+  explicitRemoved?: ReadonlySet<string>,
 ): void {
   if (hydrate) {
     turns.replaceChildren();
-    transcriptWindow = { start: 0, end: 0 };
   }
   const total = message.snapshot.turns.length;
   const window = computeTranscriptWindow(
@@ -480,8 +554,6 @@ function renderTranscriptProjection(
       ? {}
       : { activeTurnId: message.snapshot.activeTurnId }),
   };
-  const windowChanged = start !== transcriptWindow.start ||
-    end !== transcriptWindow.end;
   if (hydrate) {
     renderTranscript(turns, visible, trusted, transcriptActions);
   } else {
@@ -493,15 +565,18 @@ function renderTranscriptProjection(
             ? []
             : [article.dataset["turnId"]]),
     );
-    const changed = windowChanged
-      ? visibleIDs
-      : new Set(patch?.operations.flatMap((operation) =>
-          operation.kind === "turn.upsert" &&
-            visibleIDs.has(operation.turn.id)
-            ? [operation.turn.id]
-            : []) ?? []);
+    const changed = new Set([
+      ...[...visibleIDs].filter((id) => !existingIDs.has(id)),
+      ...[...(explicitChanged ?? [])].filter((id) => visibleIDs.has(id)),
+      ...(patch?.operations.flatMap((operation) =>
+        operation.kind === "turn.upsert" &&
+          visibleIDs.has(operation.turn.id)
+          ? [operation.turn.id]
+          : []) ?? []),
+    ]);
     const removed = new Set([
       ...[...existingIDs].filter((id) => !visibleIDs.has(id)),
+      ...(explicitRemoved ?? []),
       ...(patch?.operations.flatMap((operation) =>
         operation.kind === "turn.remove" ? [operation.turnId] : []) ?? []),
     ]);
@@ -514,8 +589,58 @@ function renderTranscriptProjection(
       transcriptActions,
     );
   }
-  transcriptWindow = { start, end };
   updateTranscriptSpacers(window.paddingBefore, window.paddingAfter);
+  applyRecoveryStates();
+}
+
+function applyRecoveryStatus(message: ChatRecoveryStatusMessage): void {
+  if (message.status === "canceled") {
+    recoveryStates.delete(message.turnId);
+  } else {
+    recoveryStates.set(message.turnId, {
+      action: message.action,
+      status: message.status,
+      ...(message.message === undefined ? {} : { message: message.message }),
+    });
+  }
+  applyRecoveryState(message.turnId);
+}
+
+function applyRecoveryStates(): void {
+  for (const turnId of recoveryStates.keys()) applyRecoveryState(turnId);
+}
+
+function applyRecoveryState(turnId: string): void {
+  const recovery = [...turns.querySelectorAll<HTMLElement>(
+    ".recovery-actions[data-recovery-turn-id]",
+  )].find((candidate) => candidate.dataset["recoveryTurnId"] === turnId);
+  if (recovery === undefined) return;
+  const state = recoveryStates.get(turnId);
+  const buttons = recovery.querySelectorAll<HTMLButtonElement>("button");
+  const status = recovery.querySelector<HTMLElement>(".recovery-status");
+  if (state === undefined) {
+    for (const button of buttons) button.disabled = false;
+    if (status !== null) status.hidden = true;
+    return;
+  }
+  for (const button of buttons) {
+    button.disabled = state.status !== "failed";
+    button.hidden = state.status === "accepted";
+  }
+  if (status === null) return;
+  status.hidden = false;
+  status.classList.toggle("error", state.status === "failed");
+  if (state.status === "pending") {
+    status.textContent = state.action === "retry"
+      ? "Retrying…"
+      : "Continuing…";
+  } else if (state.status === "accepted") {
+    status.textContent = state.action === "retry"
+      ? "Retry started"
+      : "Continue started";
+  } else {
+    status.textContent = state.message ?? "Recovery failed";
+  }
 }
 
 function updateTranscriptSpacers(
@@ -545,8 +670,6 @@ function renderComposer(message: ChatSnapshotMessage): void {
     for (const button of [
       modeControl,
       providerControl,
-      modelControl,
-      thinkingControl,
       toolsControl,
       credentialControl,
       approvalControl,
@@ -557,14 +680,6 @@ function renderComposer(message: ChatSnapshotMessage): void {
   }
   setControl(modeControl, composer.mode);
   setControl(providerControl, composer.provider);
-  setControl(modelControl, composer.model);
-  if (composer.thinking === undefined) {
-    thinkingControl.hidden = true;
-    thinkingControl.disabled = true;
-  } else {
-    thinkingControl.hidden = false;
-    setControl(thinkingControl, composer.thinking);
-  }
   setControl(credentialControl, composer.credential);
   setControl(toolsControl, composer.tools);
   setControl(approvalControl, composer.approval);
@@ -612,25 +727,7 @@ function renderSessionList(): void {
   const source = matchIDs === undefined
     ? sessions
     : sessions.filter((session) => matchIDs.has(session.sessionId));
-  const visible = filterChatSessions(
-    source,
-    serverMatches ? "" : query,
-    sessionFilter.value as SessionStatusFilter,
-    {
-      ...(sessionWorkspaceFilter.value === ""
-        ? {}
-        : { workspace: sessionWorkspaceFilter.value }),
-      ...(sessionModelFilter.value === ""
-        ? {}
-        : { model: sessionModelFilter.value }),
-      ...(sessionModeFilter.value === ""
-        ? {}
-        : { mode: sessionModeFilter.value }),
-      activity: sessionActivityFilter.value as
-        "all" | "attention" | "changed" | "forked",
-    },
-  );
-  sessionCount.textContent = String(visible.length);
+  const visible = filterChatSessions(source, serverMatches ? "" : query);
   const groups = groupChatSessions(visible);
   let position = 0;
   sessionVirtualItems = groups.flatMap((group): SessionVirtualItem[] => [
@@ -654,40 +751,6 @@ function renderSessionList(): void {
     }),
   ]);
   renderVirtualSessionWindow();
-}
-
-function updateSessionFilterOptions(): void {
-  replaceFilterOptions(
-    sessionWorkspaceFilter,
-    sessions.map((session) => session.workspaceLabel),
-  );
-  replaceFilterOptions(
-    sessionModelFilter,
-    sessions.flatMap((session) =>
-      session.provider === undefined || session.model === undefined
-        ? []
-        : [`${session.provider}/${session.model}`]),
-  );
-  replaceFilterOptions(
-    sessionModeFilter,
-    sessions.flatMap((session) =>
-      session.mode === undefined ? [] : [session.mode]),
-  );
-}
-
-function replaceFilterOptions(
-  select: HTMLSelectElement,
-  values: readonly string[],
-): void {
-  const selected = select.value;
-  const options = [new Option("All", "")];
-  for (const value of [...new Set(values)].sort()) {
-    options.push(new Option(value, value));
-  }
-  select.replaceChildren(...options);
-  select.value = [...select.options].some((option) => option.value === selected)
-    ? selected
-    : "";
 }
 
 function renderVirtualSessionWindow(): void {
@@ -814,10 +877,25 @@ function revealTurn(sessionId: string | undefined, turnId: string): void {
 function setSessionsOpen(open: boolean): void {
   document.body.classList.toggle("sessions-open", open);
   toggleSessions.setAttribute("aria-expanded", String(open));
-  sessionRail.setAttribute("aria-hidden", String(!open && isNarrow()));
+  toggleSessions.title = open ? "Hide Sessions" : "Show Sessions";
+  toggleSessions.setAttribute(
+    "aria-label",
+    open ? "Hide Sessions" : "Show Sessions",
+  );
+  sessionRail.setAttribute("aria-hidden", String(!open));
+  sessionScrim.tabIndex = open && isNarrow() ? 0 : -1;
+  if (open) scheduleVirtualSessionRender();
   if (open && isNarrow()) {
     sessionSearch.focus();
   }
+}
+
+function resizePrompt(): void {
+  prompt.style.height = "auto";
+  const maxHeight = Math.min(window.innerHeight * 0.4, 320);
+  const height = Math.max(58, Math.min(prompt.scrollHeight, maxHeight));
+  prompt.style.height = `${String(height)}px`;
+  prompt.style.overflowY = prompt.scrollHeight > maxHeight ? "auto" : "hidden";
 }
 
 function isNarrow(): boolean {
@@ -826,6 +904,31 @@ function isNarrow(): boolean {
 
 function isNearBottom(): boolean {
   return turns.scrollHeight - turns.scrollTop - turns.clientHeight < 48;
+}
+
+function suspendTranscriptFollow(): void {
+  followLatest = false;
+  transcriptInteracting = true;
+  if (transcriptPatchTimer !== undefined) {
+    clearTimeout(transcriptPatchTimer);
+    transcriptPatchTimer = undefined;
+  }
+  if (transcriptInteractionTimer !== undefined) {
+    clearTimeout(transcriptInteractionTimer);
+  }
+  transcriptInteractionTimer = setTimeout(() => {
+    transcriptInteractionTimer = undefined;
+    transcriptInteracting = false;
+    flushPendingTranscriptPatch();
+  }, 300);
+}
+
+function scrollTranscriptToBottom(): void {
+  programmaticTranscriptScroll = true;
+  turns.scrollTop = turns.scrollHeight;
+  requestAnimationFrame(() => {
+    programmaticTranscriptScroll = false;
+  });
 }
 
 function post(message: unknown): void {
@@ -841,6 +944,7 @@ function postClientEvidence(): void {
       key: "Enter",
       ctrlKey: false,
       metaKey: true,
+      shiftKey: false,
       isComposing: true,
       sessionsOpen: false,
       turnActive: false,
@@ -872,14 +976,19 @@ function isChatHostMessage(value: unknown): value is ChatHostMessage {
   return candidate["version"] === 1 &&
     (candidate["type"] === "snapshot" ||
       candidate["type"] === "patch" ||
-      candidate["type"] === "error");
+      candidate["type"] === "error" ||
+      candidate["type"] === "recovery-status");
 }
 
 setSessionsOpen(false);
+resizePrompt();
 post({ type: "ready" });
 postClientEvidence();
 new MutationObserver(postClientEvidence).observe(document.body, {
   attributes: true,
   attributeFilter: ["class"],
 });
-window.addEventListener("resize", postClientEvidence, { passive: true });
+window.addEventListener("resize", () => {
+  resizePrompt();
+  postClientEvidence();
+}, { passive: true });

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -130,6 +131,66 @@ func TestRuntimeCancelActuallyCancelsActiveTurn(t *testing.T) {
 	}
 	if terminal.ItemID != "cancel_item" {
 		t.Fatalf("ItemID = %q, want cancel_item", terminal.ItemID)
+	}
+}
+
+type missingTerminalEngine struct{ testEngine }
+
+func (*missingTerminalEngine) StartTurn(
+	_ context.Context, _ *protocol.StartTurnPayload, sink EngineSink,
+) error {
+	return sink.Emit(&protocol.TurnStartedData{Provider: "test", Model: "test"})
+}
+
+func TestRuntimeFailsClosedWhenEngineReturnsWithoutTerminal(t *testing.T) {
+	runtime := NewRuntime(Options{Engine: &missingTerminalEngine{}})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), startOperation(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if started := receiveEvent(t, events); started.Kind != protocol.EventTurnStarted {
+		t.Fatalf("first event = %s", started.Kind)
+	}
+	failed := receiveEvent(t, events)
+	if failed.Kind != protocol.EventTurnFailed {
+		t.Fatalf("terminal = %s, want %s", failed.Kind, protocol.EventTurnFailed)
+	}
+	data, ok := failed.Data.(*protocol.TurnFailedData)
+	if !ok || !strings.Contains(data.Message, "without a terminal event") {
+		t.Fatalf("terminal data = %+v", failed.Data)
+	}
+}
+
+type panickingEngine struct{ testEngine }
+
+func (*panickingEngine) StartTurn(
+	context.Context, *protocol.StartTurnPayload, EngineSink,
+) error {
+	panic("intentional panic")
+}
+
+func TestRuntimeContainsEnginePanicAsFailedTurn(t *testing.T) {
+	runtime := NewRuntime(Options{Engine: &panickingEngine{}})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), startOperation(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	failed := receiveEvent(t, events)
+	if failed.Kind != protocol.EventTurnFailed {
+		t.Fatalf("terminal = %s, want %s", failed.Kind, protocol.EventTurnFailed)
+	}
+	data, ok := failed.Data.(*protocol.TurnFailedData)
+	if !ok || data.Code != protocol.CodeInternal ||
+		!strings.Contains(data.Message, "engine panicked") {
+		t.Fatalf("terminal data = %+v", failed.Data)
 	}
 }
 
@@ -508,7 +569,7 @@ func (*itemOwningEngine) StartTurn(
 	}); err != nil {
 		return err
 	}
-	return nil
+	return sink.Emit(&protocol.TurnCompletedData{})
 }
 func (*itemOwningEngine) CancelTurn(context.Context, *protocol.CancelTurnPayload, EngineSink) error {
 	return nil

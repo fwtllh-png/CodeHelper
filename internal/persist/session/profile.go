@@ -89,7 +89,44 @@ func (r *Repository) EnsureProfile(
 			)
 		}
 		if len(values["profile"]) != 0 {
-			return profileFromMetadata(metadata, defaults)
+			current, err := profileFromMetadata(metadata, defaults)
+			if err != nil {
+				return protocol.SessionProfile{}, err
+			}
+			migrated, ok, err := migrateLegacyDefaultMaxSteps(current, defaults)
+			if err != nil {
+				return protocol.SessionProfile{}, err
+			}
+			if !ok {
+				return current, nil
+			}
+			next, err := metadataWithProfile(metadata, migrated)
+			if err != nil {
+				return protocol.SessionProfile{}, err
+			}
+			result, err := r.db.ExecContext(ctx, `
+				UPDATE sessions
+				SET metadata_json = ?, updated_at = ?
+				WHERE id = ? AND metadata_json = ?`,
+				next,
+				timestamp(time.Now().UTC()),
+				sessionID,
+				metadata,
+			)
+			if err != nil {
+				return protocol.SessionProfile{}, fmt.Errorf(
+					"migrate session profile max steps: %w",
+					err,
+				)
+			}
+			affected, err := result.RowsAffected()
+			if err != nil {
+				return protocol.SessionProfile{}, err
+			}
+			if affected == 1 {
+				return migrated, nil
+			}
+			continue
 		}
 		next, err := metadataWithProfile(metadata, defaults)
 		if err != nil {
@@ -116,6 +153,23 @@ func (r *Repository) EnsureProfile(
 		}
 	}
 	return protocol.SessionProfile{}, ErrProfileRevisionConflict
+}
+
+func migrateLegacyDefaultMaxSteps(
+	current, defaults protocol.SessionProfile,
+) (protocol.SessionProfile, bool, error) {
+	if current.Revision != 1 || current.MaxSteps != 8 || defaults.MaxSteps != 64 {
+		return current, false, nil
+	}
+	maxSteps := defaults.MaxSteps
+	updated, err := protocol.ApplySessionProfilePatch(
+		current,
+		protocol.SessionProfilePatch{MaxSteps: &maxSteps},
+	)
+	if err != nil {
+		return protocol.SessionProfile{}, false, err
+	}
+	return updated.Profile, true, nil
 }
 
 func (r *Repository) UpdateProfile(

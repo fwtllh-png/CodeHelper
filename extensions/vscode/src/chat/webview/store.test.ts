@@ -22,6 +22,7 @@ function snapshot(revision: number, output = "") {
             reasoning: "",
             reasoningMarkdown: [],
             reasoningActive: false,
+            timeline: [],
             tools: [],
             approvals: [],
             inputs: [],

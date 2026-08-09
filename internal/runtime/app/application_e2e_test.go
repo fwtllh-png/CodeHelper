@@ -18,6 +18,39 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
+func TestValidToolArgumentsOmitsMalformedProviderPayload(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "valid", value: `{"path":"a.go"}`, want: `{"path":"a.go"}`},
+		{name: "empty", value: ""},
+		{name: "whitespace", value: "  \n"},
+		{name: "truncated", value: `{"path":`},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := validToolArguments(testCase.value)
+			if string(got) != testCase.want {
+				t.Fatalf(
+					"validToolArguments(%q) = %q, want %q",
+					testCase.value, got, testCase.want,
+				)
+			}
+			data, err := json.Marshal(&protocol.ToolStartData{
+				Tool: "read", CallID: "call-1", Arguments: got,
+			})
+			if err != nil {
+				t.Fatalf("marshal safe ToolStartData: %v", err)
+			}
+			if !json.Valid(data) {
+				t.Fatalf("encoded ToolStartData is invalid: %s", data)
+			}
+		})
+	}
+}
+
 func TestRuntimeApprovalPauseResumeE2E(t *testing.T) {
 	for _, decision := range []protocol.ApprovalDecision{
 		protocol.ApprovalApprove, protocol.ApprovalDeny, protocol.ApprovalCancel,
@@ -155,6 +188,11 @@ func (p *runtimeApprovalProvider) Stream(
 			{Type: provider.EventMessageStop},
 		}}, nil
 	case 2:
+		return &provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "done"},
+			{Type: provider.EventMessageStop},
+		}}, nil
+	case 3:
 		return &provider.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},

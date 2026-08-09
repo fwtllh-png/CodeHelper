@@ -17,10 +17,7 @@ const extensionID = "codehelper.codehelper-vscode";
 const expectedViews = [
   "codehelper.chat",
   "codehelper.changes",
-  "codehelper.threads",
   "codehelper.agents",
-  "codehelper.tasks",
-  "codehelper.jobs",
   "codehelper.approvals",
   "codehelper.usage",
 ] as const;
@@ -1001,15 +998,19 @@ async function verifyMultipleChats(api: ExtensionAPI): Promise<void> {
   await waitFor(
     () => {
       const title = api.chatSessions?.()[0]?.title;
-      return title !== undefined && !/^Chat [0-9]+$/u.test(title);
+      return title !== undefined &&
+        title !== "New Chat" &&
+        !/^Chat [0-9]+$/u.test(title);
     },
     "Chat title was not generated from the first prompt",
   );
   const generatedTitle = api.chatSessions()[0]?.title;
   assert.ok(generatedTitle);
+  assert.notEqual(generatedTitle, "New Chat");
   assert.doesNotMatch(generatedTitle, /^Chat [0-9]+$/u);
   const initialCount = api.chatSessions().length;
   const created = await api.createChat();
+  assert.equal(created.title, "New Chat");
   assert.equal(created.isolation, "worktree");
   const duplicate = await api.duplicateChat(created.sessionId);
   assert.equal(duplicate.title, `${created.title} · Copy`);

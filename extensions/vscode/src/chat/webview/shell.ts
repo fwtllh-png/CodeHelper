@@ -20,9 +20,12 @@ export function renderChatHTML(
   const script = webview.asWebviewUri(
     vscode.Uri.joinPath(resourceRoot, "chat-webview.js"),
   );
+  const mermaidRenderer = webview.asWebviewUri(
+    vscode.Uri.joinPath(resourceRoot, "mermaid-renderer.js"),
+  );
   const csp = [
     "default-src 'none'",
-    `style-src ${webview.cspSource}`,
+    `style-src ${webview.cspSource} 'nonce-${nonce}'`,
     `script-src 'nonce-${nonce}'`,
     "img-src data:",
   ].join("; ");
@@ -31,6 +34,8 @@ export function renderChatHTML(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="codehelper-csp-nonce" content="${escapeAttribute(nonce)}">
+  <meta name="codehelper-mermaid-renderer" content="${escapeAttribute(mermaidRenderer.toString())}">
   <meta http-equiv="Content-Security-Policy" content="${escapeAttribute(csp)}">
   <link rel="stylesheet" href="${escapeAttribute(stylesheet.toString())}">
   <title>CodeHelper Chat</title>
@@ -40,7 +45,6 @@ export function renderChatHTML(
     <section id="chat-pane" aria-label="CodeHelper Chat">
       <header id="chat-header">
         <div class="header-identity">
-          <span class="header-eyebrow">CHAT</span>
           <strong id="chat-title">CodeHelper</strong>
         </div>
         <div class="header-actions" role="toolbar" aria-label="Chat actions">
@@ -73,16 +77,13 @@ export function renderChatHTML(
             <div class="composer-controls">
               <button type="button" id="add-context" class="composer-control" title="Attach editor context">＋</button>
               <button type="button" id="mode-control" class="composer-control" disabled>Mode</button>
-              <button type="button" id="provider-control" class="composer-control" disabled>Provider</button>
-              <button type="button" id="model-control" class="composer-control" disabled>Model</button>
-              <button type="button" id="thinking-control" class="composer-control" disabled>Thinking</button>
+              <button type="button" id="provider-control" class="composer-control route-control" disabled>Provider · Model</button>
               <button type="button" id="tools-control" class="composer-control" disabled>Tools</button>
               <button type="button" id="credential-control" class="composer-control" disabled>Key</button>
               <button type="button" id="approval-control" class="composer-control" disabled>Approval</button>
             </div>
             <div class="composer-actions">
-              <button type="button" id="stop" class="secondary" aria-keyshortcuts="Escape">Stop</button>
-              <button type="submit" id="send" aria-keyshortcuts="Control+Enter Meta+Enter" title="Send">↵</button>
+              <button type="button" id="send" aria-label="Send" aria-keyshortcuts="Enter" title="Send (Enter)">↵</button>
             </div>
           </div>
         </form>
@@ -105,30 +106,6 @@ export function renderChatHTML(
         <span class="visually-hidden">Search Sessions</span>
         <input id="session-search" type="search" placeholder="Search Sessions" autocomplete="off">
       </label>
-      <label class="session-filter-label" for="session-filter">Status</label>
-      <select id="session-filter" class="session-filter">
-        <option value="all">All statuses</option>
-        <option value="active">Running</option>
-        <option value="attention">Needs attention</option>
-        <option value="completed">Completed</option>
-        <option value="failed">Failed or interrupted</option>
-        <option value="archived">Archived</option>
-      </select>
-      <div class="session-filter-grid">
-        <label>Workspace<select id="session-workspace-filter"><option value="">All</option></select></label>
-        <label>Model<select id="session-model-filter"><option value="">All</option></select></label>
-        <label>Mode<select id="session-mode-filter"><option value="">All</option></select></label>
-        <label>Activity<select id="session-activity-filter">
-          <option value="all">All</option>
-          <option value="attention">Pending</option>
-          <option value="changed">Changed files</option>
-          <option value="forked">Forks</option>
-        </select></label>
-      </div>
-      <div class="session-group-label session-total">
-        <span>SESSIONS</span>
-        <span id="session-count">0</span>
-      </div>
       <nav id="session-list" aria-label="Recent Sessions"></nav>
     </aside>
     <button type="button" id="session-scrim" aria-label="Close Sessions"></button>

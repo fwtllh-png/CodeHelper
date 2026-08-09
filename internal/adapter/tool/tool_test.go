@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -61,6 +62,24 @@ func TestRegistryRepairsFencedJSONArguments(t *testing.T) {
 	}
 	if executor.calls.Load() != 1 {
 		t.Fatalf("executor calls = %d", executor.calls.Load())
+	}
+}
+
+func TestRecoveryHintSurvivesPreconditionWrapping(t *testing.T) {
+	err := Precondition(WithRecoveryHint(errors.New("stale edit"), RecoveryHint{
+		ErrorCategory:  "edit_precondition_failed",
+		RequiredAction: "file_read",
+		Path:           "docs/chapter.md",
+		RetryOriginal:  false,
+	}))
+
+	hint, ok := RecoveryHintFromError(fmt.Errorf("plan workspace edit: %w", err))
+
+	if !ok || hint.ErrorCategory != "edit_precondition_failed" ||
+		hint.RequiredAction != "file_read" ||
+		hint.Path != "docs/chapter.md" ||
+		hint.RetryOriginal {
+		t.Fatalf("hint = %+v, found = %v", hint, ok)
 	}
 }
 

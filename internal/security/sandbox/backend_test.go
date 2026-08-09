@@ -120,6 +120,58 @@ func TestSeatbeltAllowsNetworkWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestSeatbeltCommandCanRestrictWorkspaceAndNetwork(t *testing.T) {
+	root := t.TempDir()
+	privateTemp := t.TempDir()
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: root, PrivateTemp: privateTemp,
+		AllowNetwork: true, SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := seatbeltProfileForCommand(policy, "/bin/sh", true, true)
+	workspaceWrite := "(allow file-write* (subpath " + seatbeltQuote(policy.WorkspaceRoot) + "))"
+	if strings.Contains(profile, workspaceWrite) {
+		t.Fatalf("read-only profile permits workspace writes:\n%s", profile)
+	}
+	privateWrite := "(allow file-write* (subpath " + seatbeltQuote(policy.PrivateTemp) + "))"
+	if !strings.Contains(profile, privateWrite) {
+		t.Fatalf("read-only profile blocks private temp writes:\n%s", profile)
+	}
+	if !strings.Contains(profile, "(deny network*)") ||
+		strings.Contains(profile, "(allow network-outbound)") {
+		t.Fatalf("network-restricted profile permits network:\n%s", profile)
+	}
+}
+
+func TestSeatbeltShellHereDocumentGrantIsNarrow(t *testing.T) {
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: t.TempDir(), PrivateTemp: t.TempDir(),
+		SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shellProfile := seatbeltProfile(policy, "/bin/sh")
+	for _, rule := range []string{
+		`(allow file-write* (literal "/private/tmp"))`,
+		`(allow file-write* (regex #"^/private/tmp/sh-thd-[0-9]+$"))`,
+	} {
+		if !strings.Contains(shellProfile, rule) {
+			t.Fatalf("shell profile missing narrow heredoc rule %q:\n%s", rule, shellProfile)
+		}
+	}
+	if strings.Contains(shellProfile, `(allow file-write* (subpath "/private/tmp"))`) {
+		t.Fatalf("shell profile broadly permits host temp writes:\n%s", shellProfile)
+	}
+	nonShellProfile := seatbeltProfile(policy, "/usr/bin/python3")
+	if strings.Contains(nonShellProfile, `sh-thd-`) ||
+		strings.Contains(nonShellProfile, `(allow file-write* (literal "/private/tmp"))`) {
+		t.Fatalf("non-shell profile inherited heredoc permissions:\n%s", nonShellProfile)
+	}
+}
+
 func TestBubblewrapPreservesCanonicalRuntimeSymlinkAliases(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("bubblewrap runtime aliases are Linux-specific")

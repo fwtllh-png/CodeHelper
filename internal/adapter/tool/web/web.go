@@ -32,6 +32,8 @@ const (
 	defaultBingURL = "https://www.bing.com/search"
 )
 
+var errRedirectLimit = errors.New("redirect limit exceeded")
+
 type Tool struct {
 	kind          string
 	searchBackend string
@@ -539,7 +541,7 @@ func request(
 			Timeout: timeout,
 			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 				if len(via) >= maxRedirects {
-					return errors.New("redirect limit exceeded")
+					return errRedirectLimit
 				}
 				return nil
 			},
@@ -551,7 +553,7 @@ func request(
 		if clone.CheckRedirect == nil {
 			clone.CheckRedirect = func(_ *http.Request, via []*http.Request) error {
 				if len(via) >= maxRedirects {
-					return errors.New("redirect limit exceeded")
+					return errRedirectLimit
 				}
 				return nil
 			}
@@ -574,13 +576,13 @@ func request(
 		category := "http_error"
 		message := strings.TrimSpace(string(body))
 		switch {
-		case response.StatusCode == http.StatusTooManyRequests || isRateLimitMessage(message):
+		case response.StatusCode == http.StatusTooManyRequests:
 			category = "rate_limited"
 			message = "HTTP rate limited — wait before retrying; do not immediately re-fetch the same URL"
 			if retry := strings.TrimSpace(response.Header.Get("Retry-After")); retry != "" {
 				message += " (Retry-After: " + retry + ")"
 			}
-		case message == "" || looksLikeHTML(message):
+		case message == "" || hasHTMLDocumentSignature(message):
 			message = fmt.Sprintf("HTTP %d %s", response.StatusCode, http.StatusText(response.StatusCode))
 		case len(message) > 512:
 			message = message[:512] + "…"
@@ -612,17 +614,11 @@ func request(
 	return body, response, nil, nil
 }
 
-func looksLikeHTML(value string) bool {
+func hasHTMLDocumentSignature(value string) bool {
 	trimmed := strings.TrimSpace(strings.ToLower(value))
 	return strings.HasPrefix(trimmed, "<!doctype") ||
 		strings.HasPrefix(trimmed, "<html") ||
 		strings.Contains(trimmed[:min(len(trimmed), 256)], "<head")
-}
-
-func isRateLimitMessage(value string) bool {
-	lower := strings.ToLower(value)
-	return strings.Contains(lower, "rate limit exceeded") ||
-		strings.Contains(lower, "api rate limit")
 }
 
 func webFailure(category string, status int, message string) tool.Result {
@@ -654,7 +650,7 @@ func httpTransportFailure(err error, requestURL string) tool.Result {
 		} else {
 			message = "egress denied"
 		}
-	case strings.Contains(err.Error(), "redirect limit exceeded"):
+	case errors.Is(err, errRedirectLimit):
 		category = "redirect_limit"
 		meta["error_category"] = category
 	}
@@ -662,21 +658,11 @@ func httpTransportFailure(err error, requestURL string) tool.Result {
 }
 
 func hostFromDeniedRequest(err error, requestURL string) (host, protocol string) {
-	protocol = "https"
-	msg := err.Error()
-	if _, after, ok := strings.Cut(msg, "host "); ok {
-		fields := strings.Fields(after)
-		if len(fields) > 0 {
-			host = strings.ToLower(strings.TrimSpace(fields[0]))
-		}
-		if _, protoAfter, ok := strings.Cut(after, "protocol "); ok {
-			protoFields := strings.Fields(protoAfter)
-			if len(protoFields) > 0 {
-				protocol = strings.ToLower(strings.TrimSpace(protoFields[0]))
-			}
-		}
+	if host, protocol, ok := egress.DeniedTarget(err); ok {
+		return host, protocol
 	}
-	if host == "" && requestURL != "" {
+	protocol = "https"
+	if requestURL != "" {
 		if parsed, parseErr := url.Parse(requestURL); parseErr == nil {
 			if h, p, ok := egress.HostOf(parsed); ok {
 				return h, p

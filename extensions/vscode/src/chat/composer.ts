@@ -8,7 +8,6 @@ export type ComposerControl =
   | "mode"
   | "provider"
   | "model"
-  | "thinking"
   | "tools"
   | "credential"
   | "approval";
@@ -26,7 +25,6 @@ export interface ComposerView {
   readonly mode: ComposerControlView;
   readonly provider: ComposerControlView;
   readonly model: ComposerControlView;
-  readonly thinking?: ComposerControlView;
   readonly tools: ComposerControlView;
   readonly credential: ComposerControlView;
   readonly approval: ComposerControlView;
@@ -48,18 +46,6 @@ export function projectComposer(
 ): ComposerView {
   const { profile, capabilities } = snapshot;
   const mutable = new Set(capabilities.mutable_fields);
-  const thinking = capabilities.model_capabilities.reasoning
-    ? {
-        value: profile.reasoning_effort ?? "",
-        label: profile.reasoning_effort === ""
-          ? "Thinking: Default"
-          : `Thinking: ${title(profile.reasoning_effort ?? "")}`,
-        enabled: mutable.has("reasoning_effort"),
-        title: mutable.has("reasoning_effort")
-          ? "Select thinking effort; changing it may reset the prompt cache"
-          : "Thinking effort is fixed by this Runtime",
-      }
-    : undefined;
   return {
     revision: profile.revision,
     environment: control(
@@ -76,9 +62,9 @@ export function projectComposer(
     ),
     provider: control(
       profile.provider,
-      profile.provider,
+      `${providerLabel(profile.provider)} · ${profile.model}`,
       trusted,
-      "Configure Provider through local Runtime Setup",
+      "Select Provider and Model",
     ),
     model: control(
       profile.model,
@@ -88,7 +74,6 @@ export function projectComposer(
         ? "Select Model"
         : "Configure Model and restart the local Runtime",
     ),
-    ...(thinking === undefined ? {} : { thinking }),
     tools: control(
       catalog.digest,
       String(catalog.tools.filter((tool) => tool.enabled).length) +
@@ -141,6 +126,13 @@ function modeLabel(value: string): string {
     default:
       return title(value);
   }
+}
+
+function providerLabel(value: string): string {
+  if (value === "deepseek" || value.startsWith("deepseek-")) {
+    return "DeepSeek";
+  }
+  return title(value);
 }
 
 function control(

@@ -54,6 +54,54 @@ func newGitWorkspace(t *testing.T) string {
 	return workspace
 }
 
+func TestWorktreeGitReadRootsRejectsEscapingGitDir(t *testing.T) {
+	base := t.TempDir()
+	common := filepath.Join(base, "repository.git")
+	root := filepath.Join(base, "worktree")
+	outside := filepath.Join(base, "outside.git")
+	for _, directory := range []string{common, root, outside} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".git"), []byte("gitdir: "+outside+"\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := worktreeGitReadRoots(root, common); err == nil ||
+		!strings.Contains(err.Error(), "escapes") {
+		t.Fatalf("worktreeGitReadRoots error = %v", err)
+	}
+}
+
+func TestWorktreeGitReadRootsRejectsMismatchedCommonDir(t *testing.T) {
+	base := t.TempDir()
+	common := filepath.Join(base, "repository.git")
+	gitDir := filepath.Join(common, "worktrees", "chat")
+	root := filepath.Join(base, "worktree")
+	other := filepath.Join(base, "other.git")
+	for _, directory := range []string{gitDir, root, other} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".git"), []byte("gitdir: "+gitDir+"\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(gitDir, "commondir"), []byte(other+"\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := worktreeGitReadRoots(root, common); err == nil ||
+		!strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("worktreeGitReadRoots error = %v", err)
+	}
+}
+
 func removeGitWorkspace(t *testing.T, workspace string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

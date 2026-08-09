@@ -181,7 +181,7 @@ func TestCommandRunnerRunsDetectedCommands(t *testing.T) {
 	}
 }
 
-func TestCommandRunnerClassifiesGoModuleNetworkFailureAsUnavailable(t *testing.T) {
+func TestCommandRunnerDoesNotInferFailureKindFromCommandOutput(t *testing.T) {
 	runner := &CommandRunner{
 		Root:     t.TempDir(),
 		Commands: []Command{{Name: "go", Command: "go test ./..."}},
@@ -199,11 +199,10 @@ func TestCommandRunnerClassifiesGoModuleNetworkFailureAsUnavailable(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.Status != StatusUnavailable || receipt.Failed() || receipt.Errors != 0 {
+	if receipt.Status != StatusFailed || !receipt.Failed() || receipt.Errors != 1 {
 		t.Fatalf("Verify() = %+v", receipt)
 	}
-	if len(receipt.Checks) != 1 || receipt.Checks[0].Status != StatusUnavailable ||
-		!strings.Contains(receipt.Message, "GOPROXY") {
+	if len(receipt.Checks) != 1 || receipt.Checks[0].Status != StatusFailed {
 		t.Fatalf("receipt = %+v", receipt)
 	}
 }

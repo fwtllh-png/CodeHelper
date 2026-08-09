@@ -225,14 +225,25 @@ func (d *ToolStartData) validate() error {
 	if d.Tool == "" || d.CallID == "" {
 		return errors.New("tool start tool and call_id are required")
 	}
+	if len(d.Arguments) != 0 && !json.Valid(d.Arguments) {
+		return errors.New("tool start arguments must be valid JSON")
+	}
 	return nil
 }
 
 type ToolResultData struct {
-	Tool    string `json:"tool"`
-	CallID  string `json:"call_id"`
-	Output  string `json:"output"`
-	IsError bool   `json:"is_error"`
+	Tool    string       `json:"tool"`
+	CallID  string       `json:"call_id"`
+	Output  string       `json:"output"`
+	IsError bool         `json:"is_error"`
+	Changes []FileChange `json:"changes,omitempty"`
+}
+
+type FileChange struct {
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`
+	Added   int    `json:"added"`
+	Removed int    `json:"removed"`
 }
 
 type ToolCatalogChange struct {
@@ -361,6 +372,16 @@ func (*ToolResultData) eventKind() EventKind { return EventToolResult }
 func (d *ToolResultData) validate() error {
 	if d.Tool == "" || d.CallID == "" {
 		return errors.New("tool result tool and call_id are required")
+	}
+	for _, change := range d.Changes {
+		if strings.TrimSpace(change.Path) == "" ||
+			(change.Kind != "created" &&
+				change.Kind != "modified" &&
+				change.Kind != "deleted") ||
+			change.Added < 0 ||
+			change.Removed < 0 {
+			return errors.New("tool result contains an invalid file change")
+		}
 	}
 	return nil
 }

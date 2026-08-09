@@ -18,6 +18,28 @@ export function restoredAnchorScrollTop(
   return Math.max(0, scrollTop + currentOffset - expectedOffset);
 }
 
+export function restoredViewportScrollTop(
+  scrollTop: number,
+  viewportHeight: number,
+  currentOffset?: number,
+  expectedOffset?: number,
+): number {
+  if (!Number.isFinite(scrollTop) || scrollTop < 0 ||
+    !Number.isFinite(viewportHeight) || viewportHeight < 0) {
+    throw new Error("Transcript viewport anchor is invalid");
+  }
+  if (currentOffset === undefined || expectedOffset === undefined) {
+    return scrollTop;
+  }
+  if (!Number.isFinite(currentOffset) || !Number.isFinite(expectedOffset)) {
+    throw new Error("Transcript viewport anchor is invalid");
+  }
+  if (Math.abs(currentOffset - expectedOffset) >= viewportHeight) {
+    return scrollTop;
+  }
+  return restoredAnchorScrollTop(scrollTop, currentOffset, expectedOffset);
+}
+
 export function computeTranscriptWindow(
   total: number,
   scrollTop: number,

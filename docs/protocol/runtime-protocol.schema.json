@@ -3196,6 +3196,33 @@
         "call_id": {
           "type": "string"
         },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "added": {
+                "type": "integer"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "removed": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "added",
+              "kind",
+              "path",
+              "removed"
+            ],
+            "additionalProperties": false
+          }
+        },
         "is_error": {
           "type": "boolean"
         },

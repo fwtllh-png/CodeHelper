@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/usage"
@@ -222,7 +221,7 @@ func (l *Lifecycle) Accept(
 	if errors.Is(err, ErrOperationConflict) {
 		return app.Acceptance{}, app.ErrOperationConflict
 	}
-	if errors.Is(err, ErrActiveTurn) || isUniqueActiveError(err) {
+	if errors.Is(err, ErrActiveTurn) {
 		return app.Acceptance{}, ErrActiveTurn
 	}
 	return acceptance, err
@@ -279,6 +278,20 @@ func (l *Lifecycle) Project(ctx context.Context, event protocol.Event) error {
 		return errors.New("thread lifecycle database is required")
 	}
 	return withTx(ctx, l.db, func(tx *sql.Tx) error {
+		var threadExists int
+		if err := tx.QueryRowContext(
+			ctx,
+			"SELECT COUNT(*) FROM threads WHERE id = ?",
+			event.ThreadID,
+		).Scan(&threadExists); err != nil {
+			return err
+		}
+		// Session deletion intentionally keeps the durable event log for audit.
+		// Recovery must not recreate or re-project relational state for events
+		// whose owning Thread has since been deleted.
+		if threadExists == 0 {
+			return nil
+		}
 		if err := usage.ProjectTx(ctx, tx, event); err != nil {
 			return fmt.Errorf("project usage lifecycle: %w", err)
 		}
@@ -418,32 +431,28 @@ func acceptTurn(
 	canonical json.RawMessage,
 	now time.Time,
 ) error {
-	var active int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM turns WHERE thread_id = ? AND status = ?`,
-		threadID, TurnActive,
-	).Scan(&active); err != nil {
-		return err
-	}
-	if active != 0 {
-		return ErrActiveTurn
-	}
-	var ordinal uint64
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(ordinal) + 1, 0) FROM turns WHERE thread_id = ?`,
-		threadID,
-	).Scan(&ordinal); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO turns(
 			id, thread_id, operation_id, ordinal, status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		turnID, threadID, operation.ID, ordinal, TurnActive,
-		timestamp(operation.CreatedAt), timestamp(now),
+		)
+		SELECT ?, ?, ?,
+			COALESCE((SELECT MAX(ordinal) + 1 FROM turns WHERE thread_id = ?), 0),
+			?, ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1 FROM turns WHERE thread_id = ? AND status = ?
+		)`,
+		turnID, threadID, operation.ID, threadID, TurnActive,
+		timestamp(operation.CreatedAt), timestamp(now), threadID, TurnActive,
 	)
 	if err != nil {
 		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return ErrActiveTurn
 	}
 	return acceptItem(ctx, tx, turnID, itemID, string(operation.Kind), canonical, now)
 }
@@ -575,15 +584,6 @@ func confirmsOperation(kind protocol.EventKind) bool {
 		kind == protocol.EventThreadCompacted ||
 		kind == protocol.EventThreadForked ||
 		kind == protocol.EventTurnReverted
-}
-
-func isUniqueActiveError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "turns_one_active_per_thread") ||
-		strings.Contains(message, "unique constraint failed: turns.thread_id")
 }
 
 func withTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) (err error) {

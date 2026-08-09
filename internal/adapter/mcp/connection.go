@@ -10,6 +10,20 @@ import (
 	"time"
 )
 
+var ErrNotAdvertised = errors.New("MCP catalog entry was not advertised")
+
+type NotAdvertisedError struct {
+	Kind   string
+	Name   string
+	Server string
+}
+
+func (e *NotAdvertisedError) Error() string {
+	return fmt.Sprintf("MCP %s %q was not advertised by %q", e.Kind, e.Name, e.Server)
+}
+
+func (*NotAdvertisedError) Unwrap() error { return ErrNotAdvertised }
+
 type Connection struct {
 	name            string
 	transport       Transport
@@ -371,7 +385,9 @@ func (c *Connection) CallTool(
 	}
 	c.mu.RUnlock()
 	if !advertised {
-		return CallToolResult{}, fmt.Errorf("MCP tool %q was not advertised by %q", name, c.name)
+		return CallToolResult{}, &NotAdvertisedError{
+			Kind: "tool", Name: name, Server: c.name,
+		}
 	}
 	callCtx, cancel := c.executionContext(ctx)
 	defer cancel()
@@ -410,11 +426,9 @@ func (c *Connection) ReadResource(
 	}
 	c.mu.RUnlock()
 	if !advertised {
-		return ReadResourceResult{}, fmt.Errorf(
-			"MCP resource %q was not advertised by %q",
-			uri,
-			c.name,
-		)
+		return ReadResourceResult{}, &NotAdvertisedError{
+			Kind: "resource", Name: uri, Server: c.name,
+		}
 	}
 	callCtx, cancel := c.executionContext(ctx)
 	defer cancel()
@@ -453,11 +467,9 @@ func (c *Connection) GetPrompt(
 	}
 	c.mu.RUnlock()
 	if !advertised {
-		return GetPromptResult{}, fmt.Errorf(
-			"MCP prompt %q was not advertised by %q",
-			name,
-			c.name,
-		)
+		return GetPromptResult{}, &NotAdvertisedError{
+			Kind: "prompt", Name: name, Server: c.name,
+		}
 	}
 	callCtx, cancel := c.executionContext(ctx)
 	defer cancel()

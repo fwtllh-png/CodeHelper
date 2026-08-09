@@ -295,6 +295,26 @@ const (
 	EventMessageStop        StreamEventType = "message_stop"
 )
 
+type StopReason string
+
+const (
+	StopReasonEndTurn       StopReason = "end_turn"
+	StopReasonToolUse       StopReason = "tool_use"
+	StopReasonMaxTokens     StopReason = "max_tokens"
+	StopReasonContentFilter StopReason = "content_filter"
+	StopReasonIncomplete    StopReason = "incomplete"
+	StopReasonUnknown       StopReason = "unknown"
+)
+
+func (r StopReason) Incomplete() bool {
+	switch r {
+	case StopReasonMaxTokens, StopReasonContentFilter, StopReasonIncomplete:
+		return true
+	default:
+		return false
+	}
+}
+
 // Usage counts one provider call. Two of the four fields are breakdowns of the
 // other two rather than additions to them:
 //
@@ -354,15 +374,16 @@ type Citation struct {
 }
 
 type StreamEvent struct {
-	Type      StreamEventType   `json:"type"`
-	Index     int               `json:"index,omitempty"`
-	Block     *ContentBlock     `json:"block,omitempty"`
-	Text      string            `json:"text,omitempty"`
-	Signature string            `json:"signature,omitempty"`
-	ToolCall  *ToolCallFragment `json:"tool_call,omitempty"`
-	Search    *SearchResult     `json:"search,omitempty"`
-	Citation  *Citation         `json:"citation,omitempty"`
-	Usage     *Usage            `json:"usage,omitempty"`
+	Type       StreamEventType   `json:"type"`
+	StopReason StopReason        `json:"stop_reason,omitempty"`
+	Index      int               `json:"index,omitempty"`
+	Block      *ContentBlock     `json:"block,omitempty"`
+	Text       string            `json:"text,omitempty"`
+	Signature  string            `json:"signature,omitempty"`
+	ToolCall   *ToolCallFragment `json:"tool_call,omitempty"`
+	Search     *SearchResult     `json:"search,omitempty"`
+	Citation   *Citation         `json:"citation,omitempty"`
+	Usage      *Usage            `json:"usage,omitempty"`
 }
 
 func (e StreamEvent) Validate() error {
@@ -372,7 +393,18 @@ func (e StreamEvent) Validate() error {
 		}
 	}
 	switch e.Type {
-	case EventMessageStart, EventMessageStop:
+	case EventMessageStart:
+		if e.StopReason != "" {
+			return errors.New("message start cannot have a stop reason")
+		}
+		return nil
+	case EventMessageStop:
+		switch e.StopReason {
+		case "", StopReasonEndTurn, StopReasonToolUse, StopReasonMaxTokens,
+			StopReasonContentFilter, StopReasonIncomplete, StopReasonUnknown:
+		default:
+			return fmt.Errorf("unknown stop reason %q", e.StopReason)
+		}
 		return nil
 	case EventTextDelta, EventReasoningDelta:
 		if e.Text == "" && e.Block == nil {

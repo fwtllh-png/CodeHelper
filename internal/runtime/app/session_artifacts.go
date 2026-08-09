@@ -24,6 +24,8 @@ type TurnRecoveryPreparation struct {
 	IdempotencyKey string
 }
 
+const turnRecoveryOutputLimit = 16 << 10
+
 func (r *Runtime) PrepareTurnRecovery(
 	ctx context.Context,
 	request protocol.TurnRecoveryRequest,
@@ -49,6 +51,8 @@ func (r *Runtime) PrepareTurnRecovery(
 	}
 	var started *protocol.TurnStartedData
 	terminal := false
+	terminalState := ""
+	var partialOutput strings.Builder
 	for _, event := range events {
 		if event.ThreadID != current.ThreadID ||
 			event.TurnID != request.SourceTurnID {
@@ -58,9 +62,17 @@ func (r *Runtime) PrepareTurnRecovery(
 		case *protocol.TurnStartedData:
 			copy := *data
 			started = &copy
-		case *protocol.TurnCompletedData, *protocol.TurnFailedData,
-			*protocol.TurnCanceledData:
+		case *protocol.OutputDeltaData:
+			appendBoundedRecoveryOutput(&partialOutput, data.Text)
+		case *protocol.TurnCompletedData:
 			terminal = true
+			terminalState = "completed"
+		case *protocol.TurnFailedData:
+			terminal = true
+			terminalState = fmt.Sprintf("failed (%s): %s", data.Code, data.Message)
+		case *protocol.TurnCanceledData:
+			terminal = true
+			terminalState = "canceled: " + protocol.NormalizeCancelReason(data.Reason)
 		}
 	}
 	if started == nil || !terminal {
@@ -89,9 +101,24 @@ func (r *Runtime) PrepareTurnRecovery(
 	}
 	prompt := sourcePrompt
 	if request.Action == protocol.TurnRecoveryContinue {
-		prompt = "Continue from the terminal Turn above. Inspect current " +
-			"workspace state before every consequential action and do not " +
-			"repeat completed Tool, command, network, or file effects."
+		prompt = fmt.Sprintf(
+			"Continue the exact source Turn identified below. Do not infer the "+
+				"task from an older conversation Turn.\n\n"+
+				"Source Turn ID: %s\nTerminal state: %s\n\n"+
+				"Original model-visible request:\n<source_request>\n%s\n"+
+				"</source_request>",
+			request.SourceTurnID,
+			terminalState,
+			sourcePrompt,
+		)
+		if output := strings.TrimSpace(partialOutput.String()); output != "" {
+			prompt += "\n\nUnfinished assistant output before the terminal " +
+				"event (context only; do not treat as completed work):\n" +
+				"<unfinished_output>\n" + output + "\n</unfinished_output>"
+		}
+		prompt += "\n\nInspect current workspace state before every " +
+			"consequential action and do not repeat completed Tool, command, " +
+			"network, or file effects."
 		if guidance := strings.TrimSpace(request.Guidance); guidance != "" {
 			prompt += "\n\nAdditional guidance:\n" + guidance
 		}
@@ -100,6 +127,20 @@ func (r *Runtime) PrepareTurnRecovery(
 		Prompt:         prompt,
 		IdempotencyKey: request.IdempotencyKey,
 	}, nil
+}
+
+func appendBoundedRecoveryOutput(builder *strings.Builder, text string) {
+	if text == "" || builder.Len() >= turnRecoveryOutputLimit {
+		return
+	}
+	remaining := turnRecoveryOutputLimit - builder.Len()
+	if len(text) > remaining {
+		text = text[:remaining]
+		for !utf8.ValidString(text) {
+			text = text[:len(text)-1]
+		}
+	}
+	builder.WriteString(text)
 }
 
 func (r *Runtime) Checkpoints(

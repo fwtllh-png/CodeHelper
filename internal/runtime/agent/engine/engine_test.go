@@ -95,6 +95,347 @@ func TestEngineExecutesToolAndFeedsResultOnce(t *testing.T) {
 	assertOneTerminal(t, states, Completed)
 }
 
+func TestEngineFailsWhenCompletionRepairRemainsEmpty(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+		}},
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+		}},
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+		}},
+	}}
+	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", nil)
+	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("result=%+v err=%v, want explicit completion failure", result, err)
+	}
+	if result.State == Completed {
+		t.Fatalf("incomplete result reported completed: %+v", result)
+	}
+}
+
+func TestEngineRepairsEmptyFinalResponse(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+		}},
+		textStream("无法继续执行，但已明确说明原因。"),
+	}}
+	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "无法继续执行，但已明确说明原因。" ||
+		len(runtime.requests) != 2 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	var foundFeedback bool
+	for _, message := range runtime.requests[1].Messages {
+		if message.Role == provider.RoleUser &&
+			strings.Contains(message.Text(), "[completion_required]") {
+			foundFeedback = true
+			break
+		}
+	}
+	if !foundFeedback {
+		t.Fatalf("completion feedback missing from request: %+v", runtime.requests[1].Messages)
+	}
+}
+
+func TestCompletionRepairHasIndependentStepBudget(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_1", Name: "echo", Arguments: `{"text":"evidence"}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+		}},
+		textStream("最终结论：验证完成。"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := New(Options{
+		Provider: runtime, Route: testRoute(t), Tools: registry,
+		MaxOutputTokens: 128, MaxSteps: 2,
+		Authorize: func(provider.ToolCall) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := engine.Run(t.Context(), "review", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "最终结论：验证完成。" || len(runtime.requests) != 3 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+}
+
+func TestEngineContinuesIncompleteProviderStop(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "partial"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		textStream(" answer"),
+	}}
+	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "partial answer" || len(runtime.requests) != 2 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	var partialReplay, continuationFeedback bool
+	for _, message := range runtime.requests[1].Messages {
+		switch {
+		case message.Role == provider.RoleAssistant && message.Text() == "partial":
+			partialReplay = true
+		case message.Role == provider.RoleUser &&
+			strings.Contains(message.Text(), "[continue_after_incomplete"):
+			continuationFeedback = true
+		}
+	}
+	if !partialReplay || !continuationFeedback {
+		t.Fatalf("continuation request = %+v", runtime.requests[1].Messages)
+	}
+}
+
+func TestEngineFailsAfterBoundedIncompleteContinuations(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "one"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonIncomplete},
+		}},
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: " two"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: " three"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonIncomplete},
+		}},
+	}}
+	var states []State
+	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", func(event Event) error {
+		states = append(states, event.State)
+		return nil
+	})
+	if err == nil || protocol.CodeOf(err) != protocol.CodeResourceExhausted {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if len(runtime.requests) != maxOutputContinuations+1 {
+		t.Fatalf("requests=%d", len(runtime.requests))
+	}
+	assertOneTerminal(t, states, Failed)
+}
+
+func TestEngineDoesNotContinueContentFilterStop(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "blocked"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonContentFilter},
+		}},
+	}}
+	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", nil)
+	if err == nil || protocol.CodeOf(err) != protocol.CodeInvalidArgument {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if len(runtime.requests) != 1 {
+		t.Fatalf("requests=%d", len(runtime.requests))
+	}
+}
+
+func TestEngineIncompleteContinuationCanResumeWithToolCall(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "checking"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_1", Name: "echo", Arguments: `{"text":"evidence"}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("done"),
+	}}
+	executor := &echoTool{}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "done" || len(result.Tools) != 1 ||
+		executor.calls.Load() != 1 || len(runtime.requests) != 3 {
+		t.Fatalf(
+			"result=%+v calls=%d requests=%d",
+			result,
+			executor.calls.Load(),
+			len(runtime.requests),
+		)
+	}
+}
+
+func TestEngineRepairsInterruptedPostToolNarrationBeforeCompletion(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_1", Name: "echo", Arguments: `{"text":"evidence"}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "所有事实齐备，现在提交修改："},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		textStream("继续提交 file_apply 事务："),
+		textStream("最终结论：修改未执行，工作区保持不变。"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var completedText string
+	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", func(event Event) error {
+		if event.State == Completed {
+			completedText = event.Text
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "最终结论：修改未执行，工作区保持不变。" ||
+		completedText != result.Text || len(runtime.requests) != 4 {
+		t.Fatalf(
+			"result=%+v completed=%q requests=%d",
+			result,
+			completedText,
+			len(runtime.requests),
+		)
+	}
+	var foundFeedback bool
+	for _, message := range runtime.requests[3].Messages {
+		if message.Role == provider.RoleUser &&
+			strings.Contains(message.Text(), "[completion_required]") {
+			foundFeedback = true
+			break
+		}
+	}
+	if !foundFeedback {
+		t.Fatalf("completion feedback missing from request: %+v", runtime.requests[3].Messages)
+	}
+}
+
+func TestEngineRepairsNarrationAfterStructuredToolFailure(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_1", Name: "result_error", Arguments: `{}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("小笔误，修正后重跑："),
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_2", Name: "echo", Arguments: `{"text":"fixed"}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("最终结论：修正后的检查已通过。"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(resultErrorTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "最终结论：修正后的检查已通过。" ||
+		len(result.Tools) != 2 || len(runtime.requests) != 4 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	var foundFeedback bool
+	for _, message := range runtime.requests[2].Messages {
+		if message.Role == provider.RoleUser &&
+			strings.Contains(message.Text(), "[tool_failure_resolution_required]") {
+			foundFeedback = true
+			break
+		}
+	}
+	if !foundFeedback {
+		t.Fatalf("tool failure feedback missing from request: %+v", runtime.requests[2].Messages)
+	}
+}
+
+func TestEngineRetainsFailureUntilPostRecoveryCompletionCheck(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_1", Name: "result_error", Arguments: `{}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_2", Name: "echo", Arguments: `{"text":"recovered"}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("与预期有出入，直接精确核实："),
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_3", Name: "echo", Arguments: `{"text":"verified"}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("最终结论：恢复和核实均已完成。"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(resultErrorTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", nil)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "最终结论：恢复和核实均已完成。" ||
+		len(result.Tools) != 3 || len(runtime.requests) != 5 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	var foundFeedback bool
+	for _, message := range runtime.requests[3].Messages {
+		if message.Role == provider.RoleUser &&
+			strings.Contains(message.Text(), "[tool_failure_resolution_required]") {
+			foundFeedback = true
+			break
+		}
+	}
+	if !foundFeedback {
+		t.Fatalf("tool failure feedback missing from request: %+v", runtime.requests[3].Messages)
+	}
+}
+
 func TestRunToolsDoesNotEmitPartialBatchResults(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := registry.Register(&echoTool{}, nil); err != nil {
@@ -128,6 +469,30 @@ func TestRunToolsDoesNotEmitPartialBatchResults(t *testing.T) {
 	if emittedResults != 0 {
 		t.Fatalf("runTools() emitted %d partial results, want 0", emittedResults)
 	}
+}
+
+func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_1", Name: "panic_tool", Arguments: `{}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(panickingTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var states []State
+	result, err := newEngine(t, runtime, registry).Run(t.Context(), "run it", func(event Event) error {
+		states = append(states, event.State)
+		return nil
+	})
+	if err == nil || protocol.CodeOf(err) != protocol.CodeInternal {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	assertOneTerminal(t, states, Failed)
 }
 
 func TestToolDefinitionsAreEmptyWhenToolsAreDisabled(t *testing.T) {
@@ -305,6 +670,7 @@ func TestSamplingSnapshotRejectsToolReplacedBeforeExecution(t *testing.T) {
 				{Type: provider.EventTextDelta, Text: "recovered"},
 				{Type: provider.EventMessageStop},
 			}},
+			textStream("recovered"),
 		},
 		mutate: func() error {
 			_, err := registry.Replace(
@@ -1609,6 +1975,32 @@ func (failingTool) Descriptor() tool.Descriptor {
 
 func (failingTool) Execute(context.Context, json.RawMessage) (tool.Result, error) {
 	return tool.Result{}, errors.New("intentional failure")
+}
+
+type resultErrorTool struct{}
+
+func (resultErrorTool) Descriptor() tool.Descriptor {
+	descriptor := failingTool{}.Descriptor()
+	descriptor.Name = "result_error"
+	descriptor.Description = "return a structured tool failure"
+	return descriptor
+}
+
+func (resultErrorTool) Execute(context.Context, json.RawMessage) (tool.Result, error) {
+	return tool.Result{Content: "structured failure", IsError: true}, nil
+}
+
+type panickingTool struct{}
+
+func (panickingTool) Descriptor() tool.Descriptor {
+	descriptor := failingTool{}.Descriptor()
+	descriptor.Name = "panic_tool"
+	descriptor.Description = "panic fixture"
+	return descriptor
+}
+
+func (panickingTool) Execute(context.Context, json.RawMessage) (tool.Result, error) {
+	panic("intentional panic")
 }
 
 func (*echoTool) Descriptor() tool.Descriptor {

@@ -44,6 +44,7 @@ const snapshot = {
     reasoning: "",
     reasoningMarkdown: [],
     reasoningActive: false,
+      timeline: [],
     tools: [],
     approvals: [],
     inputs: [],

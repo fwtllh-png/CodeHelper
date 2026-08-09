@@ -56,6 +56,31 @@ func recoverableToolFailure(err error) (string, bool) {
 	return "", false
 }
 
+func toolFailureRecoveryMetadata(err error) map[string]any {
+	if hint, ok := tool.RecoveryHintFromError(err); ok {
+		return map[string]any{
+			"error_category":  hint.ErrorCategory,
+			"required_action": hint.RequiredAction,
+			"path":            hint.Path,
+			"retry_original":  hint.RetryOriginal,
+		}
+	}
+	var validation *workspacejournal.ReadValidationError
+	if !errors.As(err, &validation) {
+		return nil
+	}
+	category := "read_before_edit_required"
+	if errors.Is(err, workspacejournal.ErrStale) {
+		category = "read_before_edit_stale"
+	}
+	return map[string]any{
+		"error_category":  category,
+		"required_action": "file_read",
+		"path":            validation.Path,
+		"retry_original":  true,
+	}
+}
+
 func toolFailureCategory(err error) string {
 	if category := tool.ErrorCategory(err); category != "" {
 		return category

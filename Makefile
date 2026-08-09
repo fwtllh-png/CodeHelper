@@ -20,6 +20,7 @@ LDFLAGS := -s -w \
 	book-navigation command-docs command-docs-check \
 	doc-governance-check doc-governance-test doc-impact \
 	doc-external-links release-fact-check brand-check \
+	markdownlint-check \
 	security-test sandbox-attack-test secret-leak-test live-model-smoke \
 	cli-smoke tui-smoke acp-interop protocol-contract protocol-schema \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
@@ -55,7 +56,7 @@ endif
 fmt:
 	$(GO) fmt ./...
 
-verify: docs-check book-check brand-check vscode-check vscode-test
+verify: markdownlint-check docs-check book-check brand-check vscode-check vscode-test
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
 	$(GO) vet ./...
 	$(MAKE) test-hermetic
@@ -144,6 +145,9 @@ docs-check: command-docs-check experience-check benchmark-v2-check
 	./scripts/check-docs.sh
 	$(MAKE) doc-governance-check
 	$(MAKE) doc-governance-test
+
+markdownlint-check: vscode-install
+	./extensions/vscode/node_modules/.bin/markdownlint-cli2
 
 book-check:
 	./scripts/check-book.sh

@@ -2,6 +2,7 @@ package openai
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -231,6 +232,77 @@ func TestChatStreamAcceptsEOFOnlyAfterFinishReason(t *testing.T) {
 		events[1].Type != provider.EventTextDelta ||
 		events[2].Type != provider.EventMessageStop {
 		t.Fatalf("events = %+v", events)
+	}
+}
+
+func TestChatStreamPreservesLengthStopReason(t *testing.T) {
+	input := "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"length\"}]}\n\n"
+	stream, err := NewStream(io.NopCloser(strings.NewReader(input)), model.ProtocolOpenAIChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := events[len(events)-1]; got.Type != provider.EventMessageStop ||
+		got.StopReason != provider.StopReasonMaxTokens {
+		t.Fatalf("terminal event = %+v", got)
+	}
+}
+
+func TestResponsesStreamPreservesIncompleteStopReason(t *testing.T) {
+	input := "data: {\"type\":\"response.incomplete\",\"response\":{}}\n\n"
+	stream, err := NewStream(io.NopCloser(strings.NewReader(input)), model.ProtocolOpenAIResponses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := events[len(events)-1]; got.Type != provider.EventMessageStop ||
+		got.StopReason != provider.StopReasonIncomplete {
+		t.Fatalf("terminal event = %+v", got)
+	}
+}
+
+func TestResponsesStreamClassifiesIncompleteDetails(t *testing.T) {
+	for name, test := range map[string]struct {
+		reason string
+		want   provider.StopReason
+	}{
+		"max output tokens": {
+			reason: "max_output_tokens",
+			want:   provider.StopReasonMaxTokens,
+		},
+		"content filter": {
+			reason: "content_filter",
+			want:   provider.StopReasonContentFilter,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := fmt.Sprintf(
+				"data: {\"type\":\"response.incomplete\",\"response\":"+
+					"{\"incomplete_details\":{\"reason\":%q}}}\n\n",
+				test.reason,
+			)
+			stream, err := NewStream(
+				io.NopCloser(strings.NewReader(input)),
+				model.ProtocolOpenAIResponses,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			events, err := provider.Drain(stream)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := events[len(events)-1]; got.Type != provider.EventMessageStop ||
+				got.StopReason != test.want {
+				t.Fatalf("terminal event = %+v", got)
+			}
+		})
 	}
 }
 

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   computeTranscriptWindow,
   restoredAnchorScrollTop,
+  restoredViewportScrollTop,
 } from "./transcript-window.js";
 
 void test("200 Turn Transcript DOM is bounded by viewport and overscan", () => {
@@ -39,4 +40,21 @@ void test("Transcript anchor restoration preserves its viewport offset", () => {
   assert.equal(45 - (restored - 9_000), 15);
   assert.equal(restoredAnchorScrollTop(5, 0, 20), 0);
   assert.throws(() => restoredAnchorScrollTop(Number.NaN, 0, 0));
+});
+
+void test("Transcript viewport stays put when a streamed Turn anchor collapses", () => {
+  assert.equal(
+    restoredViewportScrollTop(4_200, 700, 0, -4_200),
+    4_200,
+  );
+  assert.equal(
+    restoredViewportScrollTop(4_200, 700),
+    4_200,
+  );
+  assert.equal(
+    restoredViewportScrollTop(4_200, 700, 40, 10),
+    4_230,
+  );
+  assert.throws(() =>
+    restoredViewportScrollTop(Number.NaN, 700, 0, 0));
 });

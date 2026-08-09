@@ -42,8 +42,277 @@ void test("ChatProjector separates streamed reasoning from Markdown output", () 
   assert.equal(turn.outputMarkdown[0]?.kind, "element");
   assert.equal(turn.reasoningMarkdown[0]?.kind, "element");
   assert.equal(turn.tools[0]?.status, "completed");
+  assert.deepEqual(
+    turn.timeline.map((item) => item.kind),
+    ["reasoning", "output", "tool"],
+  );
   assert.equal(turn.status, "completed");
   assert.equal(snapshot.activeTurnId, undefined);
+});
+
+void test("ChatProjector preserves output around grouped tool activity", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+    prompt: "inspect",
+  }));
+  projector.apply(event(2, "output.delta", { text: "先检查代码。" }));
+  projector.apply(event(3, "tool.start", {
+    tool: "file_read",
+    call_id: "call_1",
+    arguments: { path: "value.go" },
+  }));
+  projector.apply(event(4, "tool.result", {
+    tool: "file_read",
+    call_id: "call_1",
+    output: "package value",
+    is_error: false,
+  }));
+  projector.apply(event(5, "output.delta", { text: "\n\n最终结论。" }));
+  projector.apply(event(6, "turn.completed", {
+    text: "先检查代码。\n\n最终结论。",
+  }));
+
+  const turn = projector.snapshot().turns[0];
+  assert.ok(turn);
+  assert.deepEqual(
+    turn.timeline.map((item) => item.kind),
+    ["output", "tool", "output"],
+  );
+  assert.equal(turn.timeline[0]?.kind === "output" &&
+    turn.timeline[0].text, "先检查代码。");
+  assert.equal(turn.timeline[2]?.kind === "output" &&
+    turn.timeline[2].final, true);
+  assert.equal(turn.tools.length, 1);
+});
+
+void test("ChatProjector preserves model and tool chronology", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+    prompt: "inspect",
+  }));
+  projector.apply(event(2, "output.delta", { text: "先检查目录。" }));
+  projector.apply(event(3, "tool.start", {
+    tool: "file_list",
+    call_id: "call_1",
+    arguments: { path: "docs/book" },
+  }));
+  projector.apply(event(4, "tool.result", {
+    tool: "file_list",
+    call_id: "call_1",
+    output: "catalog.json",
+    is_error: false,
+  }));
+  projector.apply(event(5, "output.delta", { text: "\n继续核对测试。" }));
+  projector.apply(event(6, "tool.start", {
+    tool: "search",
+    call_id: "call_2",
+    arguments: { query: "book-check" },
+  }));
+  projector.apply(event(7, "tool.result", {
+    tool: "search",
+    call_id: "call_2",
+    output: "Makefile: book-check",
+    is_error: false,
+  }));
+  projector.apply(event(8, "output.delta", { text: "\n结论：文档与代码一致。" }));
+  projector.apply(event(9, "turn.completed", {
+    text: "先检查目录。\n继续核对测试。\n结论：文档与代码一致。",
+  }));
+
+  const turn = projector.snapshot().turns[0];
+  assert.ok(turn);
+  assert.deepEqual(
+    turn.timeline.map((item) => item.kind),
+    ["output", "tool", "output", "tool", "output"],
+  );
+  assert.equal(turn.timeline[0]?.sequence, 2);
+  assert.equal(turn.timeline[1]?.sequence, 3);
+  assert.equal(turn.timeline[2]?.sequence, 5);
+  assert.equal(turn.timeline[3]?.sequence, 6);
+  assert.equal(turn.timeline[4]?.sequence, 8);
+  assert.equal(turn.timeline[4].kind === "output" &&
+    turn.timeline[4].final, true);
+});
+
+void test("ChatProjector preserves progress when completion identifies its final suffix", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+    prompt: "inspect",
+  }));
+  projector.apply(event(2, "tool.start", {
+    tool: "search",
+    call_id: "call_1",
+    arguments: { query: "tests" },
+  }));
+  projector.apply(event(3, "tool.result", {
+    tool: "search",
+    call_id: "call_1",
+    output: "found",
+    is_error: false,
+  }));
+  projector.apply(event(4, "output.delta", {
+    text: "现在检查剩余测试，确认它是否被执行。",
+  }));
+  projector.apply(event(5, "output.delta", {
+    text: "最终结论：校验通过。",
+  }));
+  projector.apply(event(6, "turn.completed", {
+    text: "最终结论：校验通过。",
+  }));
+
+  const turn = projector.snapshot().turns[0];
+  assert.ok(turn);
+  assert.equal(
+    turn.output,
+    "现在检查剩余测试，确认它是否被执行。最终结论：校验通过。",
+  );
+  assert.deepEqual(
+    turn.timeline.map((item) => item.kind),
+    ["tool", "output", "output"],
+  );
+  assert.equal(turn.timeline[1]?.kind === "output" &&
+    turn.timeline[1].text, "现在检查剩余测试，确认它是否被执行。");
+  assert.equal(turn.timeline[1]?.kind === "output" &&
+    turn.timeline[1].final, false);
+  assert.equal(turn.timeline[2]?.kind === "output" &&
+    turn.timeline[2].text, "最终结论：校验通过。");
+  assert.equal(turn.timeline[2]?.kind === "output" &&
+    turn.timeline[2].final, true);
+});
+
+void test("ChatProjector appends a resampled completion without removing output", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+    prompt: "inspect",
+  }));
+  projector.apply(event(2, "output.delta", {
+    text: "已经完成代码检查，接下来整理结果。",
+  }));
+  projector.apply(event(3, "turn.completed", {
+    text: "最终结论：发现并修复了一个问题。",
+  }));
+
+  const turn = projector.snapshot().turns[0];
+  assert.ok(turn);
+  assert.deepEqual(
+    turn.timeline.map((item) => item.kind),
+    ["output", "output"],
+  );
+  assert.equal(turn.timeline[0]?.kind === "output" &&
+    turn.timeline[0].text, "已经完成代码检查，接下来整理结果。");
+  assert.equal(turn.timeline[0]?.kind === "output" &&
+    turn.timeline[0].final, false);
+  assert.equal(turn.timeline[1]?.kind === "output" &&
+    turn.timeline[1].text, "最终结论：发现并修复了一个问题。");
+  assert.equal(turn.timeline[1]?.kind === "output" &&
+    turn.timeline[1].final, true);
+});
+
+void test("ChatProjector creates a new reasoning phase after tool activity", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+    prompt: "inspect",
+  }));
+  projector.apply(event(2, "reasoning.delta", { text: "先定位问题。" }));
+  projector.apply(event(3, "tool.start", {
+    tool: "search",
+    call_id: "call_1",
+    arguments: { query: "timeline" },
+  }));
+  projector.apply(event(4, "tool.result", {
+    tool: "search",
+    call_id: "call_1",
+    output: "found",
+    is_error: false,
+  }));
+  projector.apply(event(5, "reasoning.delta", { text: "再验证修复。" }));
+  projector.apply(event(6, "output.delta", { text: "修复完成。" }));
+  projector.apply(event(7, "turn.completed", { text: "修复完成。" }));
+
+  const turn = projector.snapshot().turns[0];
+  assert.ok(turn);
+  assert.deepEqual(
+    turn.timeline.map((item) => item.kind),
+    ["reasoning", "tool", "reasoning", "output"],
+  );
+  assert.equal(turn.timeline[0]?.kind === "reasoning" &&
+    turn.timeline[0].text, "先定位问题。");
+  assert.equal(turn.timeline[2]?.kind === "reasoning" &&
+    turn.timeline[2].text, "再验证修复。");
+});
+
+void test("ChatProjector preserves structured file change statistics", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "tool.start", {
+    tool: "file_apply",
+    call_id: "call_edit",
+    arguments: { changes: [{ op: "edit", path: "src/value.ts" }] },
+  }));
+  projector.apply(event(2, "tool.result", {
+    tool: "file_apply",
+    call_id: "call_edit",
+    output: "modified src/value.ts +6 -4",
+    is_error: false,
+    changes: [{
+      path: "src/value.ts",
+      kind: "modified",
+      added: 6,
+      removed: 4,
+    }],
+  }));
+
+  const tool = projector.snapshot().turns[0]?.tools[0];
+  assert.ok(tool);
+  assert.deepEqual(tool.changes, [{
+    path: "src/value.ts",
+    kind: "modified",
+    added: 6,
+    removed: 4,
+  }]);
+});
+
+void test("ChatProjector aggregates unconfigured post-edit diagnostics", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+    prompt: "edit docs",
+  }));
+  projector.apply(event(2, "diagnostics.result", {
+    tool: "file_write",
+    call_id: "call_1",
+    receipts: [
+      unavailableDiagnostics("docs/book/en/01-intro.md"),
+      unavailableDiagnostics("docs/book/en/02-context.md"),
+      unavailableDiagnostics("docs/book/en/02-context.md"),
+      {
+        path: "internal/runtime/app/runtime.go",
+        status: "failed",
+        runner: "gopls",
+        diagnostics: [],
+        message: "compile error",
+      },
+    ],
+  }));
+
+  const turn = projector.snapshot().turns[0];
+  assert.ok(turn);
+  assert.deepEqual(turn.diagnostics, [
+    "internal/runtime/app/runtime.go: failed (compile error)",
+    ".md 文件未配置编辑后诊断（2 个文件）",
+  ]);
+  assert.equal(turn.timeline[0]?.kind, "diagnostics");
+  assert.deepEqual(turn.timeline[0].messages, turn.diagnostics);
 });
 
 void test("ChatProjector tracks approval identity and resolution", () => {
@@ -311,4 +580,13 @@ function event(
     created_at: "2026-08-04T00:00:00Z",
     data,
   });
+}
+
+function unavailableDiagnostics(path: string) {
+  return {
+    path,
+    status: "unavailable",
+    diagnostics: [],
+    message: "no post-edit diagnostics command is configured for .md",
+  };
 }

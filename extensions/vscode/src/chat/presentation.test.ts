@@ -143,6 +143,7 @@ function turn(
     reasoning: "",
     reasoningMarkdown: [],
     reasoningActive: false,
+    timeline: [],
     tools: [],
     approvals: [],
     inputs: [],

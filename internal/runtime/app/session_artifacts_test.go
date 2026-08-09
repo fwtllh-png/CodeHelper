@@ -345,13 +345,23 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	meta.Sequence = 2
-	completed, err := protocol.NewEvent(meta, &protocol.TurnCompletedData{
-		Text: "done",
+	output, err := protocol.NewEvent(meta, &protocol.OutputDeltaData{
+		Text: "I inspected the parser and reached validation.",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := events.Append(t.Context(), completed); err != nil {
+	if err := events.Append(t.Context(), output); err != nil {
+		t.Fatal(err)
+	}
+	meta.Sequence = 3
+	failed, err := protocol.NewEvent(meta, &protocol.TurnFailedData{
+		Code: protocol.CodeConflict, Message: "validation failed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), failed); err != nil {
 		t.Fatal(err)
 	}
 	runtime := NewRuntime(Options{
@@ -388,6 +398,10 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(continued.Prompt, "do not repeat completed Tool") ||
+		!strings.Contains(continued.Prompt, "Source Turn ID: turn-source") ||
+		!strings.Contains(continued.Prompt, "<source_request>\nFix the parser") ||
+		!strings.Contains(continued.Prompt, "failed (conflict): validation failed") ||
+		!strings.Contains(continued.Prompt, "I inspected the parser") ||
 		!strings.Contains(continued.Prompt, "Run focused tests") {
 		t.Fatalf("Continue preparation = %+v", continued)
 	}
@@ -395,7 +409,7 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(replayed) != 2 {
+	if len(replayed) != 3 {
 		t.Fatalf("Recovery preparation emitted historical operations: %+v", replayed)
 	}
 }

@@ -204,6 +204,98 @@ func managedGitArguments(arguments []string) []string {
 	return append(result, arguments...)
 }
 
+func (c *childWorktrees) commonGitDir(ctx context.Context) (string, error) {
+	value, err := c.git(ctx, "rev-parse", "--git-common-dir")
+	if err != nil {
+		if _, markerErr := os.Lstat(filepath.Join(c.repository, ".git")); errors.Is(markerErr, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	path := strings.TrimSpace(value)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(c.repository, path)
+	}
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(canonical)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", errors.New("Git common directory is not a directory")
+	}
+	return filepath.Clean(canonical), nil
+}
+
+func worktreeGitReadRoots(root, expectedCommonDir string) ([]string, error) {
+	if expectedCommonDir == "" {
+		return nil, nil
+	}
+	common, err := filepath.EvalSymlinks(expectedCommonDir)
+	if err != nil {
+		return nil, err
+	}
+	gitFile, err := os.ReadFile(filepath.Join(root, ".git"))
+	if err != nil {
+		return nil, err
+	}
+	const prefix = "gitdir: "
+	value := strings.TrimSpace(string(gitFile))
+	if !strings.HasPrefix(value, prefix) {
+		return nil, errors.New("worktree .git file has no gitdir")
+	}
+	gitDirPath := strings.TrimSpace(strings.TrimPrefix(value, prefix))
+	if !filepath.IsAbs(gitDirPath) {
+		gitDirPath = filepath.Join(root, gitDirPath)
+	}
+	gitDir, err := filepath.EvalSymlinks(gitDirPath)
+	if err != nil {
+		return nil, err
+	}
+	relative, err := filepath.Rel(common, gitDir)
+	if err != nil || relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return nil, errors.New("worktree gitdir escapes the repository Git directory")
+	}
+	commonRef, err := os.ReadFile(filepath.Join(gitDir, "commondir"))
+	if err != nil {
+		return nil, err
+	}
+	resolvedCommon := strings.TrimSpace(string(commonRef))
+	if !filepath.IsAbs(resolvedCommon) {
+		resolvedCommon = filepath.Join(gitDir, resolvedCommon)
+	}
+	resolvedCommon, err = filepath.EvalSymlinks(resolvedCommon)
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Clean(resolvedCommon) != filepath.Clean(common) {
+		return nil, errors.New("worktree commondir does not match the repository")
+	}
+	candidates := []string{
+		gitDir,
+		filepath.Join(common, "objects"),
+		filepath.Join(common, "refs"),
+		filepath.Join(common, "packed-refs"),
+		filepath.Join(common, "HEAD"),
+		filepath.Join(common, "shallow"),
+		filepath.Join(common, "config"),
+		filepath.Join(common, "config.worktree"),
+	}
+	roots := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, err := os.Lstat(candidate); err == nil {
+			roots = append(roots, candidate)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+	return roots, nil
+}
+
 // gitExecutable mirrors the git tool's choice of binary: Apple's /usr/bin/git
 // shim wants xcrun cache writes that a sandboxed command cannot make.
 func gitExecutable() string {
@@ -252,11 +344,14 @@ func (t *childToolset) close() {
 
 // childToolsets builds and owns one toolset per isolated child root.
 type childToolsets struct {
-	helperPath string
-	content    contentstore.Store
-	web        webtool.Options
-	verify     config.Verify
-	journals   config.Journal
+	helperPath          string
+	content             contentstore.Store
+	web                 webtool.Options
+	verify              config.Verify
+	journals            config.Journal
+	diagnosticCommands  map[string]diagnostics.Command
+	diagnosticReadRoots []string
+	gitCommonDir        string
 
 	mu    sync.Mutex
 	built map[string]*childToolset
@@ -265,10 +360,16 @@ type childToolsets struct {
 func newChildToolsets(
 	helperPath string, content contentstore.Store, web webtool.Options,
 	verifyConfig config.Verify, journals config.Journal,
+	diagnosticCommands map[string]diagnostics.Command,
+	diagnosticReadRoots []string,
+	gitCommonDir string,
 ) *childToolsets {
 	return &childToolsets{
 		helperPath: helperPath, content: content, web: web, verify: verifyConfig,
-		journals: journals, built: make(map[string]*childToolset),
+		journals: journals, diagnosticCommands: diagnosticCommands,
+		diagnosticReadRoots: append([]string(nil), diagnosticReadRoots...),
+		gitCommonDir:        gitCommonDir,
+		built:               make(map[string]*childToolset),
 	}
 }
 
@@ -281,8 +382,15 @@ func (c *childToolsets) open(root string) (*childToolset, error) {
 	if existing, ok := c.built[root]; ok {
 		return existing, nil
 	}
+	hostReadRoots := append([]string(nil), c.diagnosticReadRoots...)
+	gitRoots, err := worktreeGitReadRoots(root, c.gitCommonDir)
+	if err != nil {
+		return nil, fmt.Errorf("child Git metadata: %w", err)
+	}
+	hostReadRoots = append(hostReadRoots, gitRoots...)
 	backend, err := newPlatformBackend(sandbox.Options{
 		WorkspaceRoot: root, HelperPath: c.helperPath, AllowNetwork: true,
+		HostReadRoots: hostReadRoots,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("child sandbox: %w", err)
@@ -315,7 +423,7 @@ func (c *childToolsets) open(root string) (*childToolset, error) {
 	toolset := &childToolset{
 		registry: registry, backend: backend, processes: processes, journal: journal,
 		jobLogs:     jobs,
-		diagnostics: diagnostics.NewCommandRunner(root, backend, nil),
+		diagnostics: diagnostics.NewCommandRunner(root, backend, c.diagnosticCommands),
 		verify:      runner,
 	}
 	c.built[root] = toolset

@@ -395,7 +395,6 @@ function requireComposerControl(value: unknown): ComposerControl {
   if (value !== "mode" &&
     value !== "provider" &&
     value !== "model" &&
-    value !== "thinking" &&
     value !== "tools" &&
     value !== "credential" &&
     value !== "approval") {

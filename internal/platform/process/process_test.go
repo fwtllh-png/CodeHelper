@@ -228,9 +228,54 @@ func TestRunFailsClosedWithoutStrongSandbox(t *testing.T) {
 	}
 }
 
+func TestRunPropagatesAndVerifiesReadOnlyRestrictions(t *testing.T) {
+	root := t.TempDir()
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	backend := &recordingBackend{root: root}
+	result, err := Run(t.Context(), Options{
+		Command: "printf ok", Dir: root, DirFile: directoryFile,
+		Sandbox: backend, RequireStrongSandbox: true,
+		WorkspaceReadOnly: true, DenyNetwork: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Stdout != "ok" || !backend.command.WorkspaceReadOnly ||
+		!backend.command.DenyNetwork {
+		t.Fatalf("result=%+v command=%+v", result, backend.command)
+	}
+	if environmentValue(backend.command.Env, "GIT_OPTIONAL_LOCKS") != "0" ||
+		environmentValue(backend.command.Env, "PYTHONDONTWRITEBYTECODE") != "1" {
+		t.Fatalf("read-only environment = %v", backend.command.Env)
+	}
+}
+
+func TestRunRejectsBackendThatDoesNotAcknowledgeRestrictions(t *testing.T) {
+	root := t.TempDir()
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	_, err = Run(t.Context(), Options{
+		Command: "true", Dir: root, DirFile: directoryFile,
+		Sandbox:              &recordingBackend{root: root, ignoreRestrictions: true},
+		RequireStrongSandbox: true,
+		WorkspaceReadOnly:    true, DenyNetwork: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "read-only workspace") {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
 type recordingBackend struct {
-	command sandbox.Command
-	root    string
+	command            sandbox.Command
+	root               string
+	ignoreRestrictions bool
 }
 
 func (b *recordingBackend) Capability() sandbox.Capability {
@@ -244,6 +289,10 @@ func (b *recordingBackend) Prepare(_ context.Context, command sandbox.Command) (
 	b.command = command
 	command.PreparedPolicyID = "fixture-policy"
 	command.PreparedStrength = sandbox.StrengthStrong
+	if !b.ignoreRestrictions {
+		command.PreparedReadOnly = command.WorkspaceReadOnly
+		command.PreparedNetworkDenied = command.DenyNetwork
+	}
 	return command, nil
 }
 
@@ -281,5 +330,28 @@ func TestEnsureGoToolchainPrependsGOROOTBin(t *testing.T) {
 	}
 	if !strings.Contains(string(out), root) {
 		t.Fatalf("output=%q", out)
+	}
+}
+
+func TestShellRestoresSelectedGitToolchainAfterLoginProfile(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS login shell behavior")
+	}
+	const git = "/Library/Developer/CommandLineTools/usr/bin/git"
+	if _, err := os.Stat(git); err != nil {
+		t.Skip("Command Line Tools Git is unavailable")
+	}
+	result, err := Run(t.Context(), Options{
+		Command: `printf '%s|%s\n' "$1" "$2"; command -v git`,
+		Dir:     t.TempDir(),
+		Env:     []string{"PATH=/usr/bin:/bin", "LANG=C"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 0 ||
+		!strings.HasPrefix(result.Stdout, "|\n") ||
+		!strings.Contains(result.Stdout, filepath.Dir(git)+"/git") {
+		t.Fatalf("result = %+v", result)
 	}
 }

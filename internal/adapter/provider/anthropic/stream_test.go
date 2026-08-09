@@ -109,6 +109,27 @@ func TestStreamCountsCachedInputTokens(t *testing.T) {
 	}
 }
 
+func TestStreamPreservesMaxTokensStopReason(t *testing.T) {
+	input := strings.Join([]string{
+		`event: message_delta`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":4}}`,
+		"",
+		"",
+	}, "\n")
+	stream, err := NewStream(io.NopCloser(strings.NewReader(input)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := events[len(events)-1]; got.Type != provider.EventMessageStop ||
+		got.StopReason != provider.StopReasonMaxTokens {
+		t.Fatalf("terminal event = %+v", got)
+	}
+}
+
 func TestStreamNormalizesSearchCitationAndRegularTool(t *testing.T) {
 	input := strings.Join([]string{
 		`data: {"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srv_1","name":"web_search"}}`,

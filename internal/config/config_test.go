@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -466,6 +468,67 @@ command = "make verify"
 	if fromCLI.Provenance[fieldVerifyScope] != SourceEnv ||
 		fromCLI.Provenance[fieldVerifyMode] != SourceCLI {
 		t.Fatalf("provenance = %+v", fromCLI.Provenance)
+	}
+}
+
+func TestDiagnosticCommandsLoadAndValidate(t *testing.T) {
+	path := writeConfig(t, `
+[diagnostics.commands.".md"]
+name = "markdownlint-cli2"
+args = ["--no-globs", "--", "{path}"]
+`)
+	snapshot, err := Load(LoadOptions{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := snapshot.Config.Diagnostics.Commands[".md"]
+	if command.Name != "markdownlint-cli2" ||
+		!slices.Equal(command.Args, []string{"--no-globs", "--", "{path}"}) {
+		t.Fatalf("Markdown diagnostics command = %+v", command)
+	}
+	if snapshot.Provenance[fieldDiagnosticCommandName(".md")] != SourceFile ||
+		snapshot.Provenance[fieldDiagnosticCommandArgs(".md")] != SourceFile {
+		t.Fatalf("diagnostics provenance = %+v", snapshot.Provenance)
+	}
+
+	tests := map[string]struct {
+		table     string
+		wantField string
+	}{
+		"uppercase extension": {
+			table:     `[diagnostics.commands.".MD"]`,
+			wantField: fieldDiagnosticCommandName(".MD"),
+		},
+		"path command": {
+			table:     `[diagnostics.commands.".md"]`,
+			wantField: fieldDiagnosticCommandName(".md"),
+		},
+		"missing path argument": {
+			table:     `[diagnostics.commands.".md"]`,
+			wantField: fieldDiagnosticCommandArgs(".md"),
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			commandName := "markdownlint-cli2"
+			args := `["--no-globs"]`
+			if name == "path command" {
+				commandName = "./node_modules/.bin/markdownlint-cli2"
+				args = `["{path}"]`
+			}
+			configPath := writeConfig(
+				t,
+				test.table+"\nname = "+strconv.Quote(commandName)+"\nargs = "+args+"\n",
+			)
+			_, loadErr := Load(LoadOptions{Path: configPath})
+			var fieldErr *FieldError
+			if !errors.As(loadErr, &fieldErr) {
+				t.Fatalf("Load() error = %v, want field error", loadErr)
+			}
+			if fieldErr.Field != test.wantField {
+				t.Fatalf("field = %q, want %q", fieldErr.Field, test.wantField)
+			}
+		})
 	}
 }
 

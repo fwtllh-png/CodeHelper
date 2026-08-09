@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui/commands"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/session/ux"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type tickMsg time.Time
@@ -653,7 +654,8 @@ func (m Model) submitChatPrompt(prompt string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if err := m.runtime.StartTurn(context.Background(), prompt); err != nil {
-		if m.dataDir != "" && (errors.Is(err, app.ErrQueueFull) || strings.Contains(err.Error(), "active turn")) {
+		if m.dataDir != "" &&
+			(errors.Is(err, app.ErrQueueFull) || errors.Is(err, app.ErrActiveTurn)) {
 			_ = ux.Enqueue(m.dataDir, ux.QueueItem{ThreadID: m.session, Prompt: prompt})
 			m = m.noteStatus("offline-queue:enqueued")
 		} else {

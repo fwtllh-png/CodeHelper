@@ -24,6 +24,22 @@ var (
 	ErrStale  = errors.New("file changed since last successful read")
 )
 
+// ReadValidationError identifies the exact workspace-relative path whose
+// read fingerprint is missing or stale. Callers can use the structured path
+// for recovery without parsing the human-readable error string.
+type ReadValidationError struct {
+	Path  string
+	Cause error
+}
+
+func (e *ReadValidationError) Error() string {
+	return fmt.Sprintf("read validation %q: %v", e.Path, e.Cause)
+}
+
+func (e *ReadValidationError) Unwrap() error {
+	return e.Cause
+}
+
 type Identity struct {
 	Device      uint64 `json:"device,omitempty"`
 	Inode       uint64 `json:"inode,omitempty"`

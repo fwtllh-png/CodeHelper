@@ -58,7 +58,9 @@ type CommandRunner struct {
 	Commands map[string]Command
 }
 
-var locationPattern = regexp.MustCompile(`^(.+?):(\d+):(\d+)(?::(\d+))?:\s*(.*)$`)
+var locationPattern = regexp.MustCompile(
+	`^(.+?):(\d+):(\d+)(?::(\d+))?(?::|\s)\s*(.*)$`,
+)
 
 func NewCommandRunner(root string, backend sandbox.Backend, configured map[string]Command) *CommandRunner {
 	commands := make(map[string]Command, len(configured)+1)
@@ -115,7 +117,8 @@ func (r *CommandRunner) Run(ctx context.Context, path string) (Receipt, error) {
 		return Receipt{}, ctx.Err()
 	}
 	exitCode := process.ExitCode(runErr)
-	if exitCode == -1 {
+	var exitError *exec.ExitError
+	if runErr != nil && !errors.As(runErr, &exitError) {
 		return Receipt{}, runErr
 	}
 	values := parse(stdout.String()+"\n"+stderr.String(), command.Name, path)
@@ -125,7 +128,11 @@ func (r *CommandRunner) Run(ctx context.Context, path string) (Receipt, error) {
 		status = "failed"
 		message = strings.TrimSpace(stderr.String())
 		if message == "" {
-			message = fmt.Sprintf("%s exited with code %d", command.Name, exitCode)
+			if runErr != nil {
+				message = runErr.Error()
+			} else {
+				message = fmt.Sprintf("%s exited with code %d", command.Name, exitCode)
+			}
 		}
 	}
 	return Receipt{

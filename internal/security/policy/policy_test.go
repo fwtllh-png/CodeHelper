@@ -22,7 +22,8 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		{name: "plan write denied", mode: ModePlan, permission: PermissionBypass, tool: "file_write", wantCode: "mode_denied"},
 		{name: "plan request_user_input", mode: ModePlan, permission: PermissionSuggest, tool: "request_user_input"},
 		{name: "act auto write", mode: ModeAct, permission: PermissionAuto, tool: "file_write"},
-		{name: "act auto process denied", mode: ModeAct, permission: PermissionAuto, tool: "shell_run", wantCode: "permission_denied"},
+		{name: "act auto read-only shell", mode: ModeAct, permission: PermissionAuto, tool: "shell_read"},
+		{name: "act auto process asks", mode: ModeAct, permission: PermissionAuto, tool: "shell_run", wantCode: "approval_required"},
 		{name: "operate auto process", mode: ModeOperate, permission: PermissionAuto, tool: "shell_run"},
 		{name: "never write denied", mode: ModeAct, permission: PermissionNever, tool: "file_write", wantCode: "permission_denied"},
 		{name: "unknown denied", mode: ModeAct, permission: PermissionBypass, tool: "future_tool", wantCode: "policy_unknown_capability"},
@@ -50,12 +51,12 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		err := runtime.Authorize(t.Context(), call)
 		assertDecisionCode(t, err, "approval_required")
 	})
-	t.Run("act auto network denied", func(t *testing.T) {
+	t.Run("act auto network asks", func(t *testing.T) {
 		runtime := DefaultRuntime(ModeAct, PermissionAuto)
 		call := invocation("file_read", "net-act", `{}`)
 		call.Capability = CapabilityNetwork
 		err := runtime.Authorize(t.Context(), call)
-		assertDecisionCode(t, err, "permission_denied")
+		assertDecisionCode(t, err, "approval_required")
 	})
 
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
@@ -79,6 +80,23 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 	runtime.Repository = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
 	err = runtime.Authorize(t.Context(), invocation("file_write", "call-plan", `{"path":"notes.txt"}`))
 	assertDecisionCode(t, err, "mode_denied")
+
+	runtime = DefaultRuntime(ModeAct, PermissionSuggest)
+	err = runtime.Authorize(t.Context(), invocation(
+		"file_write", "call-auto-write", `{"path":"notes.txt","content":"done"}`,
+	))
+	assertDecisionCode(t, err, "")
+	edit := invocation("file_edit", "call-edit", `{"path":"notes.txt"}`)
+	edit.Capability = CapabilityWrite
+	err = runtime.Authorize(t.Context(), edit)
+	assertDecisionCode(t, err, "approval_required")
+	runtime.Repository = []Rule{{
+		Tool: "file_write", Resource: "notes.txt", Action: ActionAsk,
+	}}
+	err = runtime.Authorize(t.Context(), invocation(
+		"file_write", "call-repository-ask", `{"path":"notes.txt","content":"done"}`,
+	))
+	assertDecisionCode(t, err, "approval_required")
 }
 
 func TestLifecycleGrantsForceAskUnderAutoAndBypass(t *testing.T) {
@@ -150,9 +168,15 @@ func TestPolicyCompleteModePermissionCapabilityTruthTable(t *testing.T) {
 						default:
 							want = "permission_denied"
 						}
-					case permission == PermissionAuto &&
-						capability != CapabilityRead && capability != CapabilityWrite:
-						want = "permission_denied"
+					case permission == PermissionAuto:
+						switch capability {
+						case CapabilityRead, CapabilityWrite:
+							want = ""
+						case CapabilityProcess, CapabilityNetwork, CapabilityPlugin:
+							want = "approval_required"
+						default:
+							want = "permission_denied"
+						}
 					case permission == PermissionNever && capability != CapabilityRead:
 						want = "permission_denied"
 					}
@@ -269,7 +293,8 @@ func TestApprovalIsBoundToCallArgumentsResourcesScopeAndExpiry(t *testing.T) {
 
 func TestSuggestApprovalRequiresAsyncHost(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionSuggest)
-	call := invocation("file_write", "call-approval", `{"path":"a","content":"x"}`)
+	call := invocation("file_edit", "call-approval", `{"path":"a"}`)
+	call.Capability = CapabilityWrite
 	assertDecisionCode(t, runtime.Authorize(t.Context(), call), "approval_required")
 }
 
@@ -309,8 +334,9 @@ func invocation(toolName, callID, arguments string) Invocation {
 	raw := json.RawMessage(arguments)
 	capability := map[string]Capability{
 		"file_read": CapabilityRead, "file_write": CapabilityWrite,
-		"shell_run": CapabilityProcess, "request_user_input": CapabilityRead,
-		"update_plan": CapabilityWrite,
+		"shell_read": CapabilityRead, "shell_run": CapabilityProcess,
+		"request_user_input": CapabilityRead,
+		"update_plan":        CapabilityWrite,
 	}[toolName]
 	var resources []tool.Resource
 	var value struct {

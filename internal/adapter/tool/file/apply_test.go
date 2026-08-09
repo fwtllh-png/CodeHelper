@@ -166,6 +166,44 @@ func TestFileApplyValidationFailureWritesNothing(t *testing.T) {
 	}
 }
 
+func TestFileApplyEditMismatchCarriesStructuredRecoveryHint(t *testing.T) {
+	_, registry := applyTools(t, map[string]string{
+		"chapter.md": "# Current title\n",
+	})
+	_, _, executor, err := registry.Resolve("file_apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	planner, ok := executor.(tool.EditPlanner)
+	if !ok {
+		t.Fatal("file_apply does not implement EditPlanner")
+	}
+	arguments, err := json.Marshal(map[string]any{
+		"changes": []map[string]any{{
+			"op":   "edit",
+			"path": "chapter.md",
+			"old":  "# Stale title",
+			"new":  "# New title",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = planner.PlanEdit(t.Context(), arguments)
+
+	if !errors.Is(err, tool.ErrPrecondition) {
+		t.Fatalf("PlanEdit() error = %v, want ErrPrecondition", err)
+	}
+	hint, ok := tool.RecoveryHintFromError(err)
+	if !ok || hint.ErrorCategory != "edit_precondition_failed" ||
+		hint.RequiredAction != "file_read" ||
+		hint.Path != "chapter.md" ||
+		hint.RetryOriginal {
+		t.Fatalf("hint = %+v, found = %v", hint, ok)
+	}
+}
+
 // The apply phase can still fail on I/O. What is already written must be put
 // back, so the turn never observes half a transaction.
 func TestFileApplyRollsBackWritesWhenALaterWriteFails(t *testing.T) {
@@ -484,7 +522,7 @@ func TestPlannedWriteAppliesOnlyTheDisplayedContent(t *testing.T) {
 				PlanID: request.EditPlan.ID,
 			})
 		},
-		Workspace: root,
+		Workspace: root, ForceEditPlanApproval: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -501,6 +539,30 @@ func TestPlannedWriteAppliesOnlyTheDisplayedContent(t *testing.T) {
 	}
 	if result.Content != "written" {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestSuggestFileWriteUsesGuardedWriteWithoutApproval(t *testing.T) {
+	root, registry := applyTools(t, nil)
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry: registry,
+		Policy:   policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
+		Approvals: func(_ context.Context, _ toolguard.ApprovalRequest) error {
+			return errors.New("file_write unexpectedly requested approval")
+		},
+		Workspace: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guarded.Execute(
+		t.Context(), "call-auto-write", "file_write",
+		json.RawMessage(`{"path":"automatic.txt","content":"written\n"}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, root, "automatic.txt"); got != "written\n" {
+		t.Fatalf("automatic.txt = %q", got)
 	}
 }
 
@@ -559,7 +621,7 @@ func TestPlannedWriteRejectsWorkspaceDriftWithZeroWrites(t *testing.T) {
 				PlanID: request.EditPlan.ID,
 			})
 		},
-		Workspace: root,
+		Workspace: root, ForceEditPlanApproval: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -590,7 +652,7 @@ func TestPlannedWriteRejectsWrongPlanIdentity(t *testing.T) {
 				PlanID: strings.Repeat("0", 64),
 			})
 		},
-		Workspace: root,
+		Workspace: root, ForceEditPlanApproval: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -649,6 +711,11 @@ func TestFileApplyRequiresEveryExistingPathToBeRead(t *testing.T) {
 	readTool("read-first", "first.txt")
 	if err := apply("half-read", editFirst, editSecond); !errors.Is(err, workspacejournal.ErrUnread) {
 		t.Fatalf("error = %v, want ErrUnread for the unread second file", err)
+	} else {
+		var validation *workspacejournal.ReadValidationError
+		if !errors.As(err, &validation) || validation.Path != "second.txt" {
+			t.Fatalf("read validation = %#v, want second.txt", validation)
+		}
 	}
 	if got := read(t, root, "first.txt"); got != "first\n" {
 		t.Fatalf("first.txt = %q, want the refused transaction to have written nothing", got)

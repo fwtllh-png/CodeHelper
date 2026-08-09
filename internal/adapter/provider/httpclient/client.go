@@ -173,7 +173,6 @@ func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (pro
 		sleep = wait
 	}
 	idempotencyKey := requestKey(body)
-	reasoningRepaired := false
 
 	for attempt := 1; attempt <= attempts; attempt++ {
 		httpRequest, createErr := http.NewRequestWithContext(
@@ -220,21 +219,6 @@ func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (pro
 			}, nil
 		}
 		errorText := boundedBody(response.Body)
-		if !reasoningRepaired &&
-			request.Route.Protocol() == model.ProtocolOpenAIResponses &&
-			looksLikeReasoningReplayError(errorText) {
-			if hydrated, changed := hydrateReasoningText(request.Messages); changed {
-				repaired := request
-				repaired.Messages = hydrated
-				if repairedBody, repairedPath, encodeErr := encodeRequest(repaired); encodeErr == nil {
-					reasoningRepaired = true
-					request = repaired
-					body, path = repairedBody, repairedPath
-					idempotencyKey = requestKey(body)
-					continue
-				}
-			}
-		}
 		retryable := retryableStatus(response.StatusCode)
 		serverDelay, hasRetryAfter := retryAfter(response.Header.Get("Retry-After"), now())
 		rateLimit := rateLimitMetadata(response.Header, serverDelay, hasRetryAfter)
@@ -257,9 +241,9 @@ func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (pro
 		if errorText != "" {
 			message += ": " + errorText
 		}
-		if shouldDumpProvider(response.StatusCode, errorText) {
+		if shouldDumpProvider(response.StatusCode) {
 			if dumpPath, dumpErr := dumpProviderFailure(
-				request, body, path, response.StatusCode, errorText, reasoningRepaired,
+				request, body, path, response.StatusCode, errorText,
 			); dumpErr == nil && dumpPath != "" {
 				message += " [diagnostic: " + dumpPath + "]"
 			}

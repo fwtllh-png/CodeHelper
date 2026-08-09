@@ -160,6 +160,10 @@ model = "gpt-4.1-mini"
 
 [web]
 search_backend = "duckduckgo"
+
+[diagnostics.commands.".md"]
+name = "markdownlint-cli2"
+args = ["--no-globs", "--", "{path}"]
 ```
 
 Unknown TOML fields are rejected. This is intentional: a misspelled safety or
@@ -228,6 +232,26 @@ explicitly `unavailable`; they never become a silent green pass.
 
 Use `hard` only after the repository's verification command is deterministic in
 the intended sandbox.
+
+## Post-Edit Diagnostics
+
+`[diagnostics.commands]` maps lowercase file extensions to trusted, PATH-resolved
+executables. Each command must include `{path}` in its bounded argument list.
+These commands execute after guarded file edits, so repository-local config
+cannot define them unless that config was explicitly trusted.
+
+For Markdown, install the pinned development dependency with
+`make vscode-install`, or install the same CLI on the Host PATH:
+
+```bash
+npm install --global markdownlint-cli2@0.23.2
+```
+
+The repository's `.markdownlint-cli2.jsonc` keeps single-file post-edit checks
+consistent with the repository-wide `markdownlint-cli2` run. Markdown linting
+supplements rather than replaces `make docs-check` and `make book-check`; those
+commands remain authoritative for bilingual parity, navigation, governance, and
+book structure.
 
 ## State and Persistence
 

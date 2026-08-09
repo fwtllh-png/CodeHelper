@@ -982,6 +982,12 @@ func (r *Runtime) SessionProfile(
 	if err != nil {
 		return protocol.SessionProfileSnapshot{}, err
 	}
+	if !profileFieldMutable(
+		r.profileCapabilities.MutableFields,
+		"reasoning_effort",
+	) {
+		profile.ReasoningEffort = r.defaultProfile.ReasoningEffort
+	}
 	capabilities := r.profileCapabilities
 	capabilities.Provider = profile.Provider
 	capabilities.Model = profile.Model
@@ -992,6 +998,15 @@ func (r *Runtime) SessionProfile(
 		Profile:      profile,
 		Capabilities: capabilities,
 	}, nil
+}
+
+func profileFieldMutable(fields []string, target string) bool {
+	for _, field := range fields {
+		if field == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Runtime) SessionProfilesAvailable() bool {
@@ -1619,8 +1634,10 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 		}
 		defer releaseActive()
 		defer cancel()
-		sink := &runtimeSink{runtime: r, operation: operation}
-		err := r.engine.StartTurn(turnContext, payload, sink)
+		sink := &runtimeSink{
+			runtime: r, operation: operation, deferTerminal: true,
+		}
+		err := startTurnSafely(r.engine, turnContext, payload, sink)
 		var terminalErr error
 		switch {
 		case errors.Is(turnContext.Err(), context.Canceled):
@@ -1639,6 +1656,7 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 				delete(r.cancels, payload.TurnID)
 			}
 			r.activeMu.Unlock()
+			releaseActive()
 			// Pin ItemID (and cancel OperationID when present) so Persist/lifecycle
 			// can update the cancel item rather than the start-turn item (F5).
 			terminalErr = r.publish(
@@ -1646,7 +1664,6 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 				&protocol.TurnCanceledData{Reason: reason},
 			)
 			if terminalErr == nil {
-				releaseActive()
 				r.persistTerminalArtifactForTurn(
 					context.Background(),
 					payload.ThreadID,
@@ -1660,19 +1677,27 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 		case err != nil:
 			var decision *policy.DecisionError
 			if errors.As(err, &decision) && decision.Code == "approval_canceled" {
-				terminalErr = sink.Emit(&protocol.TurnCanceledData{
+				sink.terminal = &protocol.TurnCanceledData{
 					Reason: protocol.CancelReasonApprovalCanceled,
-				})
+				}
 			} else {
-				terminalErr = sink.Emit(&protocol.TurnFailedData{
-					Code: protocol.CodeOf(err), Message: err.Error(),
-				})
+				if _, failed := sink.terminal.(*protocol.TurnFailedData); !failed {
+					sink.terminal = &protocol.TurnFailedData{
+						Code: protocol.CodeOf(err), Message: err.Error(),
+					}
+				}
 			}
 		default:
-			terminalErr = sink.Emit(&protocol.TurnCompletedData{})
+			if sink.terminal == nil {
+				sink.terminal = &protocol.TurnFailedData{
+					Code:    protocol.CodeInternal,
+					Message: "turn engine returned without a terminal event",
+				}
+			}
 		}
+		releaseActive()
+		terminalErr = sink.publishTerminal()
 		if terminalErr == nil {
-			releaseActive()
 			r.persistTerminalArtifactForTurn(
 				context.Background(),
 				payload.ThreadID,
@@ -1683,6 +1708,25 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 			r.commit(operation.ID)
 		}
 	}()
+}
+
+func startTurnSafely(
+	engine Engine,
+	ctx context.Context,
+	payload *protocol.StartTurnPayload,
+	sink EngineSink,
+) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = protocol.NewProblem(
+				protocol.CodeInternal,
+				"turn engine panicked",
+				false,
+				fmt.Errorf("turn engine panic: %v", recovered),
+			)
+		}
+	}()
+	return engine.StartTurn(ctx, payload, sink)
 }
 
 func (r *Runtime) cancelTurn(
@@ -1731,13 +1775,31 @@ func (r *Runtime) reject(operation protocol.Operation, err error) error {
 }
 
 type runtimeSink struct {
-	runtime   *Runtime
-	operation protocol.Operation
+	runtime       *Runtime
+	operation     protocol.Operation
+	deferTerminal bool
+	terminal      protocol.EventData
 }
 
 func (s *runtimeSink) Emit(data protocol.EventData) error {
+	if s.deferTerminal && protocol.IsTerminalEvent(eventKind(data)) {
+		if s.terminal == nil {
+			s.terminal = data
+		}
+		return nil
+	}
 	threadID, turnID, itemID := protocol.OperationReferences(s.operation)
 	return s.runtime.publish(s.operation.ID, threadID, turnID, itemID, data)
+}
+
+func (s *runtimeSink) publishTerminal() error {
+	if s.terminal == nil {
+		return errors.New("turn finished without a terminal event")
+	}
+	threadID, turnID, itemID := protocol.OperationReferences(s.operation)
+	return s.runtime.publish(
+		s.operation.ID, threadID, turnID, itemID, s.terminal,
+	)
 }
 
 func (r *Runtime) publish(

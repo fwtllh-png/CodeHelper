@@ -50,3 +50,7 @@ max_bytes = 4096
 max_history_bytes = 262144
 summary_max_bytes = 8192
 max_digest_entries = 120
+
+[diagnostics.commands.".md"]
+name = "markdownlint-cli2"
+args = ["--no-globs", "--", "{path}"]

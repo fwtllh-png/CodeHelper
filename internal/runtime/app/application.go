@@ -326,13 +326,21 @@ func (a *EngineAdapter) StartTurn(
 				return sink.Emit(&protocol.ToolStartData{
 					Tool:      event.ToolCall.Name,
 					CallID:    event.ToolCall.ID,
-					Arguments: json.RawMessage(event.ToolCall.Arguments),
+					Arguments: validToolArguments(event.ToolCall.Arguments),
 				})
 			}
 			if event.ToolCall != nil && event.Result != nil {
+				changes := make([]protocol.FileChange, len(event.FileChanges))
+				for index, change := range event.FileChanges {
+					changes[index] = protocol.FileChange{
+						Path: change.Path, Kind: change.Kind,
+						Added: change.Added, Removed: change.Removed,
+					}
+				}
 				if err := sink.Emit(&protocol.ToolResultData{
 					Tool: event.ToolCall.Name, CallID: event.ToolCall.ID,
 					Output: event.Result.Content, IsError: event.Result.IsError,
+					Changes: changes,
 				}); err != nil {
 					return err
 				}
@@ -664,6 +672,14 @@ func protocolNetwork(value *toolguard.NetworkApprovalContext) *protocol.NetworkA
 	return &protocol.NetworkApprovalPayload{
 		Host: value.Host, Protocol: value.Protocol, Mode: value.Mode,
 	}
+}
+
+func validToolArguments(value string) json.RawMessage {
+	raw := json.RawMessage(value)
+	if !json.Valid(raw) {
+		return nil
+	}
+	return raw
 }
 
 func nonEmptyCode(value, fallback protocol.ErrorCode) protocol.ErrorCode {

@@ -76,6 +76,11 @@ type routeSlotFileConfig struct {
 	Model    *string `toml:"model"`
 }
 
+type diagnosticCommandFileConfig struct {
+	Name *string   `toml:"name"`
+	Args *[]string `toml:"args"`
+}
+
 type fileConfig struct {
 	Runtime struct {
 		OperationBuffer  *int `toml:"operation_buffer"`
@@ -138,6 +143,9 @@ type fileConfig struct {
 	Web struct {
 		SearchBackend *string `toml:"search_backend"`
 	} `toml:"web"`
+	Diagnostics struct {
+		Commands map[string]diagnosticCommandFileConfig `toml:"commands"`
+	} `toml:"diagnostics"`
 }
 
 func applyFile(
@@ -226,7 +234,35 @@ func applyFile(
 	applyString(input.Vision.Provider, &config.Vision.Provider, fieldVisionProvider, source, provenance)
 	applyString(input.Vision.Model, &config.Vision.Model, fieldVisionModel, source, provenance)
 	applyString(input.Web.SearchBackend, &config.Web.SearchBackend, fieldWebSearchBackend, source, provenance)
+	applyDiagnosticsFile(input.Diagnostics.Commands, config, provenance, source, trusted)
 	return nil
+}
+
+func applyDiagnosticsFile(
+	input map[string]diagnosticCommandFileConfig,
+	config *Config,
+	provenance map[string]Source,
+	source Source,
+	trusted bool,
+) {
+	if !trusted || len(input) == 0 {
+		return
+	}
+	if config.Diagnostics.Commands == nil {
+		config.Diagnostics.Commands = make(map[string]DiagnosticCommand)
+	}
+	for extension, value := range input {
+		command := config.Diagnostics.Commands[extension]
+		if value.Name != nil {
+			command.Name = *value.Name
+			provenance[fieldDiagnosticCommandName(extension)] = source
+		}
+		if value.Args != nil {
+			command.Args = append([]string(nil), (*value.Args)...)
+			provenance[fieldDiagnosticCommandArgs(extension)] = source
+		}
+		config.Diagnostics.Commands[extension] = command
+	}
 }
 
 func applyExecutionFile(

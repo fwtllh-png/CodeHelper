@@ -228,8 +228,10 @@ Host 不能自行放宽或伪造该身份。
 | 隔离的本地实验 | `act` | `bypass` |
 | 运维调查 | `operate` | `suggest` |
 
-`auto` 不表示“自动同意一切”，策略仍可能拒绝高风险工具。`bypass` 也不会关闭
-Constitution 或 Sandbox 硬边界。
+`auto` 不表示“自动同意一切”。在 `act` Mode 下，低风险操作自动放行，Process、
+Network 和 Plugin Tool 会先请求审批；在 `operate` Mode 下，沙箱进程可自动执行，
+Network 和 Plugin Tool 仍会请求审批。`bypass` 也不会关闭 Constitution 或 Sandbox
+硬边界。
 
 ## Session 与 Thread
 

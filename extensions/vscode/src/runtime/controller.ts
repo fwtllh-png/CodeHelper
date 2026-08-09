@@ -51,6 +51,7 @@ import type { BinarySource } from "../binary/store.js";
 import type { RpcNotification } from "./client.js";
 import {
   chatTitleFromPrompt,
+  defaultChatTitle,
   isPlaceholderChatTitle,
 } from "../chat/title.js";
 import {
@@ -339,8 +340,7 @@ export class RuntimeController {
 
   public async createChat(title?: string): Promise<ChatSessionSummary> {
     const runtime = this.#readyRuntime();
-    const ordinal = runtime.summaries.size + 1;
-    const resolvedTitle = title?.trim() || `Chat ${String(ordinal)}`;
+    const resolvedTitle = title?.trim() || defaultChatTitle;
     let sessionId = "";
     const session = await connectSession(
       runtime,
@@ -478,10 +478,20 @@ export class RuntimeController {
   public async deleteChat(sessionId: string): Promise<void> {
     const runtime = this.#readyRuntime();
     const summary = this.#requireSummary(runtime, sessionId);
-    await new SessionLifecycleCommands(runtime).delete(
-      sessionId,
-      summary.revision,
-    );
+    const replacement = runtime.summaries.size === 1
+      ? await this.createChat()
+      : undefined;
+    try {
+      await new SessionLifecycleCommands(runtime).delete(
+        sessionId,
+        summary.revision,
+      );
+    } catch (error) {
+      if (replacement !== undefined) {
+        await this.deleteChat(replacement.sessionId).catch(() => undefined);
+      }
+      throw error;
+    }
     const connected = runtime.sessions.get(sessionId);
     if (connected !== undefined) {
       connected.dispose();
@@ -836,7 +846,7 @@ export class RuntimeController {
       this.#context.extensionMode !== vscode.ExtensionMode.Production ||
         testBuildEnabled,
     );
-    const maxSteps = configuration.get<number>("runtime.maxSteps", 8);
+    const maxSteps = configuration.get<number>("runtime.maxSteps", 64);
     if (!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 128) {
       throw new Error("codehelper.runtime.maxSteps must be an integer between 1 and 128");
     }
@@ -902,7 +912,7 @@ export class RuntimeController {
           throw new Error("Runtime session binding is required");
         }
         const connectOptions = create
-          ? { create: true, title: "Chat 1", isolation: "shared" as const }
+          ? { create: true, title: defaultChatTitle, isolation: "shared" as const }
           : { binding: binding as RuntimeBinding };
         const session = await connectSession(
           runtimeProcess.client,
@@ -1089,7 +1099,9 @@ export class RuntimeController {
     return {
       sessionId: summary.session_id,
       threadId: summary.thread_id,
-      title: summary.title,
+      title: isPlaceholderChatTitle(summary.title)
+        ? defaultChatTitle
+        : summary.title,
       isolation: summary.isolation as "worktree" | "shared",
       status: summary.status,
       pinned: summary.pinned,

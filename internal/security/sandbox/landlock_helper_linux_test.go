@@ -6,9 +6,54 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestLandlockReadOnlyRequestSeparatesWorkspaceFromWritableTemp(t *testing.T) {
+	workspace := t.TempDir()
+	privateTemp := t.TempDir()
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: workspace, PrivateTemp: privateTemp,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestRoot, err := createLandlockRequestRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(requestRoot)
+	_, requestPath, err := prepareLandlockInvocation(
+		policy, helper, requestRoot, "/bin/sh", []string{"-c", "true"},
+		[]string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
+		true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(requestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	request, err := decodeLandlockRequest(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(request.ReadOnly, policy.WorkspaceRoot) {
+		t.Fatalf("workspace missing from read-only paths: %+v", request)
+	}
+	if slices.Contains(request.ReadWrite, policy.WorkspaceRoot) ||
+		!slices.Contains(request.ReadWrite, policy.PrivateTemp) {
+		t.Fatalf("unexpected read-write paths: %+v", request)
+	}
+}
 
 func TestLandlockHelperAppliesStrictPolicy(t *testing.T) {
 	if os.Getenv("CODEHELPER_SANDBOX_STAGE") != "1" {
@@ -47,6 +92,7 @@ func TestLandlockHelperAppliesStrictPolicy(t *testing.T) {
 	helper, requestPath, err := prepareLandlockInvocation(
 		policy, helper, requestRoot, "/bin/sh", []string{"-c", script},
 		[]string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
+		false,
 	)
 	if err != nil {
 		t.Fatal(err)

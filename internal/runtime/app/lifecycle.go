@@ -10,11 +10,19 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-var ErrOperationConflict = protocol.NewProblem(
-	protocol.CodeConflict,
-	"operation identity was reused with a different payload",
-	false,
-	nil,
+var (
+	ErrOperationConflict = protocol.NewProblem(
+		protocol.CodeConflict,
+		"operation identity was reused with a different payload",
+		false,
+		nil,
+	)
+	ErrActiveTurn = protocol.NewProblem(
+		protocol.CodeConflict,
+		"thread already has an active turn",
+		true,
+		nil,
+	)
 )
 
 // Acceptance is the durable result of accepting an operation. Duplicate

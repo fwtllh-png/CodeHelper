@@ -228,7 +228,6 @@ export function runtimeArguments(options: RuntimeLaunchOptions): readonly string
     "--workspace-root-id", options.workspaceIdentity.root_id,
     "--posture", options.posture,
     "--max-steps", String(options.maxSteps),
-    "--edit-plan-approvals",
     "--enable-tools",
   ];
 }

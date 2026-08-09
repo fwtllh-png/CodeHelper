@@ -12,12 +12,13 @@ import (
 
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 var (
 	ErrNotFound          = errors.New("thread record not found")
-	ErrActiveTurn        = errors.New("thread already has an active turn")
+	ErrActiveTurn        = app.ErrActiveTurn
 	ErrTerminal          = errors.New("turn already has a terminal state")
 	ErrOperationConflict = errors.New("operation identity was reused with a different payload")
 )

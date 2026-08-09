@@ -214,9 +214,7 @@ func (t *Tools) transact(
 	// caller can safely retry with different changes.
 	for index, request := range requests {
 		if err := transaction.compose(request); err != nil {
-			return nil, "", tool.Precondition(fmt.Errorf(
-				"change %d (%s %s): %w", index, request.Op, request.Path, err,
-			))
+			return nil, "", changePrecondition(index, request, err)
 		}
 	}
 	changes, diff, err := transaction.summarize()
@@ -255,9 +253,7 @@ func (t *Tools) plan(
 	transaction := &transaction{tools: t, files: make(map[string]*plannedFile)}
 	for index, request := range requests {
 		if err := transaction.compose(request); err != nil {
-			return tool.EditPlan{}, tool.Precondition(fmt.Errorf(
-				"change %d (%s %s): %w", index, request.Op, request.Path, err,
-			))
+			return tool.EditPlan{}, changePrecondition(index, request, err)
 		}
 	}
 	_, diff, err := transaction.summarize()
@@ -523,6 +519,34 @@ func (t *Tools) readFile(name string) ([]byte, fs.FileMode, error) {
 	return data, info.Mode().Perm(), nil
 }
 
+func changePrecondition(index int, request changeRequest, err error) error {
+	wrapped := fmt.Errorf(
+		"change %d (%s %s): %w",
+		index,
+		request.Op,
+		request.Path,
+		err,
+	)
+	var match *editMatchError
+	if errors.As(err, &match) {
+		wrapped = tool.WithRecoveryHint(wrapped, tool.RecoveryHint{
+			ErrorCategory:  "edit_precondition_failed",
+			RequiredAction: "file_read",
+			Path:           request.Path,
+			RetryOriginal:  false,
+		})
+	}
+	return tool.Precondition(wrapped)
+}
+
+type editMatchError struct {
+	count int
+}
+
+func (e *editMatchError) Error() string {
+	return fmt.Sprintf("old text matched %d times, want exactly once", e.count)
+}
+
 // replaceOnce replaces the single occurrence of old. Anything else is a failed
 // precondition: zero matches means the model is editing text it never read, and
 // several means it cannot know which one it hit.
@@ -532,7 +556,7 @@ func replaceOnce(data []byte, old, new string) ([]byte, error) {
 	}
 	content := string(data)
 	if count := strings.Count(content, old); count != 1 {
-		return nil, fmt.Errorf("old text matched %d times, want exactly once", count)
+		return nil, &editMatchError{count: count}
 	}
 	return []byte(strings.Replace(content, old, new, 1)), nil
 }

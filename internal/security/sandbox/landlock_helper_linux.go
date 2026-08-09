@@ -31,6 +31,7 @@ func prepareLandlockInvocation(
 	executable string,
 	arguments []string,
 	environment []string,
+	workspaceReadOnly bool,
 ) (string, string, error) {
 	if helperPath == "" {
 		return "", "", errors.New("Linux strong sandbox requires an injected helper executable")
@@ -44,9 +45,15 @@ func prepareLandlockInvocation(
 	}
 	readOnly := append(append([]string{}, policy.RuntimeReadRoots...), policy.HostReadRoots...)
 	readOnly = append(readOnly, executable, helper)
+	if workspaceReadOnly {
+		readOnly = append(readOnly, policy.WorkspaceRoot)
+	}
 	slices.Sort(readOnly)
 	readOnly = slices.Compact(readOnly)
-	readWrite := []string{policy.PrivateTemp, policy.WorkspaceRoot}
+	readWrite := []string{policy.PrivateTemp}
+	if !workspaceReadOnly {
+		readWrite = append(readWrite, policy.WorkspaceRoot)
+	}
 	slices.Sort(readWrite)
 	request := landlockRequest{
 		SchemaVersion: landlockSchemaVersion,

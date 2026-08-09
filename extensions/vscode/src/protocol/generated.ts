@@ -890,6 +890,12 @@ export type ToolOutputData = {
 
 export type ToolResultData = {
   readonly "call_id": string;
+  readonly "changes"?: ReadonlyArray<{
+      readonly "added": number;
+      readonly "kind": string;
+      readonly "path": string;
+      readonly "removed": number;
+    }>;
   readonly "is_error": boolean;
   readonly "output": string;
   readonly "tool": string;

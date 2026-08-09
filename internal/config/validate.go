@@ -4,11 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
 
 var secretNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_./:@-]*$`)
+var diagnosticExtensionPattern = regexp.MustCompile(`^\.[A-Za-z0-9][A-Za-z0-9._+-]{0,15}$`)
+var diagnosticCommandPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`)
 
 type FieldError struct {
 	Field  string
@@ -166,7 +169,67 @@ func (s Snapshot) Validate() error {
 	if err := s.validateRoute(); err != nil {
 		return err
 	}
+	if err := s.validateDiagnostics(); err != nil {
+		return err
+	}
 	return s.validateWeb()
+}
+
+func (s Snapshot) validateDiagnostics() error {
+	extensions := make([]string, 0, len(s.Config.Diagnostics.Commands))
+	for extension := range s.Config.Diagnostics.Commands {
+		extensions = append(extensions, extension)
+	}
+	slices.Sort(extensions)
+	if len(extensions) > 32 {
+		return fieldError(
+			"diagnostics.commands",
+			s.Provenance,
+			"must contain at most 32 file-extension commands",
+		)
+	}
+	for _, extension := range extensions {
+		command := s.Config.Diagnostics.Commands[extension]
+		nameField := fieldDiagnosticCommandName(extension)
+		argsField := fieldDiagnosticCommandArgs(extension)
+		if extension != strings.ToLower(extension) ||
+			!diagnosticExtensionPattern.MatchString(extension) {
+			return fieldError(
+				nameField,
+				s.Provenance,
+				"extension must be a lowercase suffix such as .md",
+			)
+		}
+		if !diagnosticCommandPattern.MatchString(command.Name) ||
+			strings.ContainsAny(command.Name, `/\`) {
+			return fieldError(
+				nameField,
+				s.Provenance,
+				"name must be a PATH-resolved executable without directory separators",
+			)
+		}
+		if len(command.Args) == 0 || len(command.Args) > 32 {
+			return fieldError(argsField, s.Provenance, "args must contain between 1 and 32 entries")
+		}
+		hasPath := false
+		totalBytes := 0
+		for _, argument := range command.Args {
+			totalBytes += len(argument)
+			if strings.ContainsRune(argument, 0) || len(argument) > 4096 {
+				return fieldError(argsField, s.Provenance, "arguments must be bounded text without NUL")
+			}
+			if strings.Contains(argument, "{path}") {
+				hasPath = true
+			}
+		}
+		if totalBytes > 16<<10 {
+			return fieldError(argsField, s.Provenance, "arguments exceed 16384 bytes")
+		}
+		if !hasPath {
+			return fieldError(argsField, s.Provenance, "one argument must contain {path}")
+		}
+	}
+	return nil
 }
 
 // validateSubagent rejects a child configuration that cannot be honored, rather

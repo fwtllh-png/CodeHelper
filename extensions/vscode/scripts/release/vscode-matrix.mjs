@@ -56,6 +56,7 @@ const extensionBundleFiles = Object.freeze([
   "dist/extension.js",
   "dist/chat-webview.js",
   "dist/chat-webview.css",
+  "dist/mermaid-renderer.js",
 ]);
 const targets = [
   { os: "linux", arch: "amd64", vscode: "linux-x64", executable: "codehelper" },

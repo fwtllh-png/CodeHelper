@@ -60,25 +60,8 @@
           "icon": "media/codehelper.svg"
         },
         {
-          "id": "codehelper.threads",
-          "name": "Threads",
-          "icon": "media/codehelper.svg"
-        },
-        {
           "id": "codehelper.agents",
           "name": "Agents",
-          "icon": "media/codehelper.svg",
-          "visibility": "collapsed"
-        },
-        {
-          "id": "codehelper.tasks",
-          "name": "Tasks",
-          "icon": "media/codehelper.svg",
-          "visibility": "collapsed"
-        },
-        {
-          "id": "codehelper.jobs",
-          "name": "Jobs",
           "icon": "media/codehelper.svg",
           "visibility": "collapsed"
         },
@@ -237,7 +220,7 @@
         },
         "codehelper.runtime.maxSteps": {
           "type": "integer",
-          "default": 8,
+          "default": 64,
           "minimum": 1,
           "maximum": 128,
           "scope": "window",
@@ -271,13 +254,15 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@types/markdown-it": "^14.1.2",
-    "@types/node": "^24.1.0",
+    "@types/node": "24.1.0",
     "@types/vscode": "^1.96.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.25.8",
     "eslint": "^9.32.0",
     "markdown-it": "^14.1.0",
+    "markdownlint-cli2": "0.23.2",
+    "mermaid": "^11.16.1",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.38.0"
   }

@@ -21,6 +21,7 @@ type Tool struct {
 	workspace *sandbox.Workspace
 	backend   sandbox.Backend
 	pty       bool
+	readOnly  bool
 }
 
 func RegisterWithManagerAndBackend(
@@ -55,6 +56,7 @@ func registerWithBackend(
 	registry.SetSandboxBackend(backend)
 	for _, executor := range []tool.Executor{
 		&Tool{workspace: workspace, backend: backend},
+		&Tool{workspace: workspace, backend: backend, readOnly: true},
 		&Tool{workspace: workspace, backend: backend, pty: true},
 	} {
 		if err := registry.Register(executor, nil); err != nil {
@@ -68,19 +70,32 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	name := "shell_run"
 	description := "Run a shell command in the workspace sandbox. " +
 		"cwd must be workspace-relative (or omitted). Host /tmp is blocked — use $TMPDIR. " +
-		"Do not cd outside the workspace."
+		"Do not cd outside the workspace. Use shell_read instead when the command only inspects data."
 	aliases := []tool.Alias{{Name: "bash", Hidden: true}}
-	if t.pty {
+	capability := tool.CapabilityProcess
+	access := tool.AccessWrite
+	accessMode := tool.AccessTree
+	if t.readOnly {
+		name = "shell_read"
+		description = "Run a read-only, network-isolated shell command. " +
+			"The OS sandbox permits workspace reads and private temporary files, " +
+			"but rejects workspace writes and all network access. " +
+			"Use this for grep, sed, sort, inventory, and inspection pipelines."
+		aliases = nil
+		capability = tool.CapabilityRead
+		access = tool.AccessRead
+		accessMode = tool.AccessRead
+	} else if t.pty {
 		name = "terminal_run"
 		description = "Run a command in a pseudo-terminal inside the workspace sandbox"
 		aliases = []tool.Alias{{Name: "run_terminal", Hidden: true}}
 	}
 	return tool.Descriptor{
 		Name: name, Description: description, Visibility: tool.VisibleModel, Aliases: aliases,
-		Capability: tool.CapabilityProcess, AccessMode: tool.AccessTree,
+		Capability: capability, AccessMode: accessMode,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{
-			{Kind: "repo", ID: ".", Access: tool.AccessWrite, Tree: true},
-			{Kind: "process", ID: "workspace", Access: tool.AccessWrite, Tree: true},
+			{Kind: "repo", ID: ".", Access: access, Tree: true},
+			{Kind: "process", ID: "workspace", Access: access, Tree: true},
 		}},
 		ParallelPolicy:     tool.ParallelSerial,
 		SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
@@ -144,13 +159,15 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		Command: command, Dir: directory, PTY: t.pty,
 		DirFile: directoryFile,
 		Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
-		OnOutput: streamOutput(ctx),
+		WorkspaceReadOnly: t.readOnly,
+		DenyNetwork:       t.readOnly,
+		OnOutput:          streamOutput(ctx),
 	})
 	durationMS := time.Since(started).Milliseconds()
 	timedOut := errors.Is(err, context.DeadlineExceeded) ||
 		errors.Is(ctx.Err(), context.DeadlineExceeded)
 	if err != nil && !timedOut {
-		if requireStrong && (errors.Is(err, guard.ErrSandboxDenied) || guard.LooksLikeSandboxBlock(err.Error())) {
+		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
 			return tool.Result{}, guard.MarkSandboxDenial(err, "shell")
 		}
 		return tool.Result{}, err
@@ -196,13 +213,6 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		metadata["timed_out"] = true
 		metadata["timeout_hint"] = ForegroundTimeoutHint
 		return tool.Result{Content: content, IsError: true, Metadata: metadata}, nil
-	}
-	if requireStrong && result.ExitCode != 0 &&
-		guard.LooksLikeSandboxBlock(result.Stdout+"\n"+result.Stderr) {
-		metadata["sandbox_denied"] = true
-		return tool.Result{}, guard.MarkSandboxDenial(
-			nil, fmt.Sprintf("shell exit %d", result.ExitCode),
-		)
 	}
 	return tool.Result{
 		Content:  content,

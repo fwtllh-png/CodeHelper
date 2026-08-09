@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -163,7 +162,7 @@ func TestQualityVerifierDetectsAndAuditsMixedEcosystems(t *testing.T) {
 	}
 }
 
-func TestQualityVerifierReportsModuleProxyTimeoutAsUnavailable(t *testing.T) {
+func TestQualityVerifierDoesNotInferFailureKindFromOutput(t *testing.T) {
 	quality := &Tool{
 		root: t.TempDir(), kind: "quality_verify",
 		run: func(context.Context, process.Options) (process.Result, error) {
@@ -181,9 +180,7 @@ func TestQualityVerifierReportsModuleProxyTimeoutAsUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.IsError ||
-		result.Metadata["status"] != "unavailable" ||
-		result.Metadata["error_category"] != verify.ErrorCategoryDependencyUnavailable {
+	if !result.IsError || result.Metadata["status"] != "failed" {
 		t.Fatalf("result = %+v", result)
 	}
 	var payload map[string]any
@@ -191,12 +188,11 @@ func TestQualityVerifierReportsModuleProxyTimeoutAsUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	checks, _ := payload["checks"].([]any)
-	if payload["status"] != "unavailable" || len(checks) != 1 {
+	if payload["status"] != "failed" || len(checks) != 1 {
 		t.Fatalf("payload = %+v", payload)
 	}
 	check, _ := checks[0].(map[string]any)
-	if check["status"] != "unavailable" ||
-		check["error_category"] != verify.ErrorCategoryDependencyUnavailable {
+	if check["status"] != "failed" {
 		t.Fatalf("check = %+v", check)
 	}
 }

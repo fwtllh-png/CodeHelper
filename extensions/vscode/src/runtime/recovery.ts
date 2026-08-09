@@ -11,6 +11,7 @@ import { compatibility } from "../compatibility/generated.js";
 import type { WorkspaceIdentity } from "../workspace/identity.js";
 import { createWorkspaceIdentity } from "../workspace/identity.js";
 import { pathToFileURL } from "node:url";
+import { defaultChatTitle } from "../chat/title.js";
 
 const acpProtocolVersion = compatibility.acp_protocol.max;
 const replayLimit = 256;
@@ -200,7 +201,7 @@ export async function connectSession(
   let replayedEvents = 0;
   try {
     if (binding === undefined) {
-      const title = options.title?.trim() || "Chat 1";
+      const title = options.title?.trim() || defaultChatTitle;
       const isolation = options.isolation ?? "shared";
       const created = requireObject(await client.request("session/new", {
         cwd: workspaceIdentity.runtime_path,

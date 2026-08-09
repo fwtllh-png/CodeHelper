@@ -194,6 +194,12 @@ func (r *Runtime) Evaluate(invocation Invocation) Decision {
 	if err != nil {
 		return decisionFromError(err)
 	}
+	// A workspace-bound file_write still passes schema/resource validation,
+	// repository policy, read-before-write, journaling, and atomic commit. Under
+	// suggest posture it does not need an additional interactive confirmation.
+	if r.Permission == PermissionSuggest && invocation.Tool == "file_write" {
+		permissionAction = ActionAllow
+	}
 	needsApproval := repositoryAsk || permissionAction == ActionAsk || grant.Action == ActionAsk
 	decision := Decision{Action: ActionAllow}
 	if needsApproval {
@@ -244,12 +250,9 @@ func permissionDecision(mode Mode, permission Permission, capability tool.Capabi
 			if mode == ModeOperate {
 				return ActionAllow, nil
 			}
-			return ActionDeny, decisionError("permission_denied", "auto posture denies high-risk unapproved execution")
+			return ActionAsk, nil
 		case tool.CapabilityNetwork, tool.CapabilityPlugin:
-			if mode == ModeOperate {
-				return ActionAsk, nil
-			}
-			return ActionDeny, decisionError("permission_denied", "auto posture denies high-risk unapproved execution")
+			return ActionAsk, nil
 		default:
 			return ActionDeny, decisionError("permission_denied", "auto posture denies high-risk unapproved execution")
 		}

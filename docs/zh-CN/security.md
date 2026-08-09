@@ -56,6 +56,9 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - Tool Contract 要求时先读后写。
 - 修改写入 Journal 并保持 Atomicity。
 - 配置后，写入型 Subagent 使用 Worktree。
+- 隔离 Worktree 仅可只读访问经过校验的自身 Git Administration Directory，以及
+  Repository Common Git Directory 中必要的 Object、Ref 与配置路径；这不会授予
+  Parent Worktree 或 Git Metadata 写权限。
 - 使用 `apply --dry-run` 检查生成计划。
 - 重要仓库必须纳入版本控制并维护备份。
 
@@ -65,6 +68,11 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - Working Directory 与 Executable Path 必须显式。
 - 必须支持 Timeout、Cancel 和 Process Group Cleanup。
 - PTY 与非 PTY 共享 Policy Boundary。
+- `shell_read` 是检查类 Pipeline 的自动执行路径。Strong Sandbox 将 Workspace
+  强制挂载为只读、禁用网络，只允许写入 Private Temporary Directory，并且绝不进行
+  Unsandboxed Retry。
+- `shell_run`、Terminal 与 Background Process Tool 保留 Process Capability 和原有
+  审批行为，因为它们可以修改 Workspace 或外部系统。
 - 缺少所需 Strong Sandbox 是失败，不是允许 Unsandboxed Execution。
 
 ## 凭证

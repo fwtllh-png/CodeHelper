@@ -3,6 +3,7 @@ import {
   type DecodedEvent,
 } from "../protocol/decode.js";
 import type {
+  DiagnosticsResultData,
   TurnReceiptData,
   TurnStartedData,
 } from "../protocol/generated.js";
@@ -39,6 +40,15 @@ export interface ToolCard {
   readonly status: "running" | "completed" | "failed";
   readonly arguments?: string;
   readonly output: string;
+  readonly changes: readonly FileChangeCard[];
+}
+
+export interface FileChangeCard {
+  readonly path: string;
+  readonly kind: "created" | "modified" | "deleted";
+  readonly added: number;
+  readonly removed: number;
+  readonly resourceId?: string;
 }
 
 export interface ApprovalCard {
@@ -73,6 +83,60 @@ export interface PlanCard {
   readonly canImplement: boolean;
   readonly canAutopilot: boolean;
 }
+
+export type TurnTimelineItem =
+  | {
+      readonly id: string;
+      readonly sequence: number;
+      readonly kind: "output";
+      readonly text: string;
+      readonly markdown: readonly MarkdownNode[];
+      readonly final: boolean;
+    }
+  | {
+      readonly id: string;
+      readonly sequence: number;
+      readonly kind: "reasoning";
+      readonly text: string;
+      readonly markdown: readonly MarkdownNode[];
+      readonly active: boolean;
+    }
+  | {
+      readonly id: string;
+      readonly sequence: number;
+      readonly kind: "tool";
+      readonly callId: string;
+    }
+  | {
+      readonly id: string;
+      readonly sequence: number;
+      readonly kind: "approval";
+      readonly requestId: string;
+    }
+  | {
+      readonly id: string;
+      readonly sequence: number;
+      readonly kind: "input";
+      readonly requestId: string;
+    }
+  | {
+      readonly id: string;
+      readonly sequence: number;
+      readonly kind: "diagnostics";
+      readonly messages: readonly string[];
+    }
+  | {
+      readonly id: string;
+      readonly sequence: number;
+      readonly kind: "verification";
+      readonly text: string;
+    }
+  | {
+      readonly id: string;
+      readonly sequence: number;
+      readonly kind: "notice";
+      readonly text: string;
+    };
 
 type EditorContextReceipt =
   NonNullable<TurnStartedData["editor_context"]>[number];
@@ -120,6 +184,7 @@ export interface ChatTurn {
   readonly reasoning: string;
   readonly reasoningMarkdown: readonly MarkdownNode[];
   readonly reasoningActive: boolean;
+  readonly timeline: readonly TurnTimelineItem[];
   readonly tools: readonly ToolCard[];
   readonly approvals: readonly ApprovalCard[];
   readonly inputs: readonly InputCard[];
@@ -144,6 +209,7 @@ interface MutableTool {
   status: "running" | "completed" | "failed";
   arguments?: string;
   output: string;
+  changes: FileChangeCard[];
 }
 
 interface MutableApproval {
@@ -170,6 +236,52 @@ interface MutableInput {
   resolved?: string;
 }
 
+type DiagnosticReceipt = DiagnosticsResultData["receipts"][number];
+
+type MutableTimelineItem =
+  | {
+      id: string;
+      sequence: number;
+      kind: "output";
+      text: string;
+    }
+  | {
+      id: string;
+      sequence: number;
+      kind: "reasoning";
+      text: string;
+    }
+  | {
+      id: string;
+      sequence: number;
+      kind: "tool";
+      callId: string;
+    }
+  | {
+      id: string;
+      sequence: number;
+      kind: "approval";
+      requestId: string;
+    }
+  | {
+      id: string;
+      sequence: number;
+      kind: "input";
+      requestId: string;
+    }
+  | {
+      id: string;
+      sequence: number;
+      kind: "diagnostics";
+      messages: string[];
+    }
+  | {
+      id: string;
+      sequence: number;
+      kind: "verification" | "notice";
+      text: string;
+    };
+
 interface MutableTurn {
   id: string;
   user: string;
@@ -177,13 +289,15 @@ interface MutableTurn {
   output: string;
   reasoning: string;
   reasoningActive: boolean;
+  timeline: MutableTimelineItem[];
   tools: Map<string, MutableTool>;
   approvals: Map<string, MutableApproval>;
   inputs: Map<string, MutableInput>;
   plan?: Omit<PlanCard, "bodyMarkdown">;
   contextReceipts: ContextReceiptCard[];
   contextSelections: ContextSelectionCard[];
-  diagnostics: string[];
+  diagnostics: Map<string, DiagnosticReceipt>;
+  diagnosticNotices: string[];
   verification?: string;
   receipt?: string;
   error?: string;
@@ -237,15 +351,19 @@ export class ChatProjector {
         break;
       case "output.delta":
         turn.output = appendBounded(turn.output, event.data.text);
+        appendTimelineText(turn, "output", event.sequence, event.data.text);
         turn.reasoningActive = false;
         break;
       case "reasoning.delta":
         turn.reasoning = appendReasoning(turn.reasoning, event.data.text);
+        appendTimelineText(turn, "reasoning", event.sequence, event.data.text);
         turn.reasoningActive = true;
         break;
       case "reasoning.signature":
+        turn.reasoningActive = false;
         break;
       case "tool.start": {
+        turn.reasoningActive = false;
         turn.tools.set(event.data.call_id, {
           callId: event.data.call_id,
           tool: event.data.tool,
@@ -254,21 +372,39 @@ export class ChatProjector {
             ? {}
             : { arguments: stringify(event.data.arguments) }),
           output: "",
+          changes: [],
         });
+        ensureToolTimelineItem(turn, event.sequence, event.data.call_id);
         break;
       }
       case "tool.output": {
         const tool = this.#tool(turn, event.data.call_id, event.data.tool);
+        ensureToolTimelineItem(turn, event.sequence, event.data.call_id);
         tool.output = appendBounded(tool.output, event.data.chunk);
         break;
       }
       case "tool.result": {
         const tool = this.#tool(turn, event.data.call_id, event.data.tool);
+        ensureToolTimelineItem(turn, event.sequence, event.data.call_id);
         tool.output = truncate(event.data.output);
         tool.status = event.data.is_error ? "failed" : "completed";
+        tool.changes = (event.data.changes ?? []).flatMap((change) => {
+          const kind = fileChangeKind(change.kind);
+          return kind === undefined ||
+            change.added < 0 ||
+            change.removed < 0
+            ? []
+            : [{
+                path: truncateField(change.path, 4096),
+                kind,
+                added: change.added,
+                removed: change.removed,
+              }];
+        });
         break;
       }
       case "approval.required":
+        turn.reasoningActive = false;
         turn.status = "awaiting_approval";
         turn.approvals.set(event.data.request_id, {
           requestId: event.data.request_id,
@@ -293,6 +429,12 @@ export class ChatProjector {
                 editPlan: projectEditPlan(event.data.edit_plan),
               }),
         });
+        turn.timeline.push({
+          id: `approval:${event.data.request_id}`,
+          sequence: event.sequence,
+          kind: "approval",
+          requestId: event.data.request_id,
+        });
         break;
       case "approval.resolved": {
         const approval = turn.approvals.get(event.data.request_id);
@@ -303,6 +445,7 @@ export class ChatProjector {
         break;
       }
       case "input.required":
+        turn.reasoningActive = false;
         turn.status = "awaiting_input";
         turn.inputs.set(event.data.request_id, {
           requestId: event.data.request_id,
@@ -311,6 +454,12 @@ export class ChatProjector {
           prompt: event.data.prompt,
           options: [...(event.data.options ?? [])],
           expiresAt: event.data.expires_at,
+        });
+        turn.timeline.push({
+          id: `input:${event.data.request_id}`,
+          sequence: event.sequence,
+          kind: "input",
+          requestId: event.data.request_id,
         });
         break;
       case "input.resolved": {
@@ -323,12 +472,22 @@ export class ChatProjector {
       }
       case "diagnostics.result":
         for (const receipt of event.data.receipts) {
-          const detail = receipt.message ?? `${String(receipt.diagnostics.length)} diagnostics`;
-          turn.diagnostics.push(truncate(`${receipt.path}: ${receipt.status} (${detail})`));
+          const detail = receipt.message ??
+            `${String(receipt.diagnostics.length)} diagnostics`;
+          turn.diagnostics.set(
+            `${receipt.path}\u0000${receipt.status}\u0000${detail}`,
+            receipt,
+          );
         }
+        turn.timeline.push({
+          id: `diagnostics:${String(event.sequence)}`,
+          sequence: event.sequence,
+          kind: "diagnostics",
+          messages: summarizeDiagnostics(event.data.receipts),
+        });
         break;
-      case "turn.verification":
-        turn.verification = truncate(
+      case "turn.verification": {
+        const verification = truncate(
           `${event.data.status}: ${(event.data.checks ?? []).map((check) => {
             const command = check.command ?? check.name;
             const category = check.category === undefined
@@ -338,7 +497,15 @@ export class ChatProjector {
             return `${command}=${check.status}${category}${reason}`;
           }).join(", ")}`,
         );
+        turn.verification = verification;
+        turn.timeline.push({
+          id: `verification:${String(event.sequence)}`,
+          sequence: event.sequence,
+          kind: "verification",
+          text: verification,
+        });
         break;
+      }
       case "turn.receipt": {
         turn.receipt = `tokens ${String(event.data.input_tokens)} in / ` +
           `${String(event.data.output_tokens)} out, cost ` +
@@ -391,8 +558,8 @@ export class ChatProjector {
         break;
       }
       case "turn.completed":
-        if (turn.output.length === 0 && event.data.text.length > 0) {
-          turn.output = truncate(event.data.text);
+        if (event.data.text.length > 0) {
+          reconcileCompletedOutput(turn, event.sequence, event.data.text);
         }
         this.#terminal(turn, "completed");
         break;
@@ -409,7 +576,14 @@ export class ChatProjector {
         break;
       case "tool.state":
         if (event.data.text !== undefined) {
-          turn.diagnostics.push(truncate(`tool: ${event.data.state} ${event.data.text}`));
+          const notice = truncate(`tool: ${event.data.state} ${event.data.text}`);
+          turn.diagnosticNotices.push(notice);
+          turn.timeline.push({
+            id: `notice:${String(event.sequence)}`,
+            sequence: event.sequence,
+            kind: "notice",
+            text: notice,
+          });
         }
         break;
       default:
@@ -429,7 +603,11 @@ export class ChatProjector {
       reasoning: turn.reasoning,
       reasoningMarkdown: projectMarkdown(turn.reasoning),
       reasoningActive: turn.reasoningActive,
-      tools: [...turn.tools.values()].map((tool) => ({ ...tool })),
+      timeline: projectTimeline(turn),
+      tools: [...turn.tools.values()].map((tool) => ({
+        ...tool,
+        changes: tool.changes.map((change) => ({ ...change })),
+      })),
       approvals: [...turn.approvals.values()].map((approval) => ({ ...approval })),
       inputs: [...turn.inputs.values()].map((input) => ({ ...input })),
       ...(turn.plan === undefined
@@ -446,7 +624,10 @@ export class ChatProjector {
         reasons: [...selection.reasons],
         evidence: [...selection.evidence],
       })),
-      diagnostics: [...turn.diagnostics],
+      diagnostics: [
+        ...turn.diagnosticNotices,
+        ...summarizeDiagnostics(turn.diagnostics.values()),
+      ],
       ...(turn.verification === undefined ? {} : { verification: turn.verification }),
       ...(turn.receipt === undefined ? {} : { receipt: turn.receipt }),
       ...(turn.error === undefined ? {} : { error: turn.error }),
@@ -482,12 +663,14 @@ export class ChatProjector {
         output: "",
         reasoning: "",
         reasoningActive: false,
+        timeline: [],
         tools: new Map(),
         approvals: new Map(),
         inputs: new Map(),
         contextReceipts: [],
         contextSelections: [],
-        diagnostics: [],
+        diagnostics: new Map(),
+        diagnosticNotices: [],
         unknownEvents: [],
         lastSequence: 0,
       };
@@ -513,6 +696,7 @@ export class ChatProjector {
         tool: toolName,
         status: "running",
         output: "",
+        changes: [],
       };
       turn.tools.set(callId, tool);
     }
@@ -594,6 +778,50 @@ function truncateField(value: string, maximum: number): string {
   return value.length <= maximum ? value : `${value.slice(0, maximum - 1)}…`;
 }
 
+function fileChangeKind(
+  value: string,
+): FileChangeCard["kind"] | undefined {
+  return value === "created" || value === "modified" || value === "deleted"
+    ? value
+    : undefined;
+}
+
+function summarizeDiagnostics(
+  receipts: Iterable<DiagnosticReceipt>,
+): string[] {
+  const result: string[] = [];
+  const unconfigured = new Map<string, Set<string>>();
+  for (const receipt of receipts) {
+    const extension = unconfiguredDiagnosticsExtension(receipt);
+    if (extension !== undefined) {
+      const paths = unconfigured.get(extension) ?? new Set<string>();
+      paths.add(receipt.path);
+      unconfigured.set(extension, paths);
+      continue;
+    }
+    const detail = receipt.message ??
+      `${String(receipt.diagnostics.length)} diagnostics`;
+    result.push(truncate(`${receipt.path}: ${receipt.status} (${detail})`));
+  }
+  for (const [extension, paths] of unconfigured) {
+    result.push(
+      `${extension} 文件未配置编辑后诊断（${String(paths.size)} 个文件）`,
+    );
+  }
+  return result;
+}
+
+function unconfiguredDiagnosticsExtension(
+  receipt: DiagnosticReceipt,
+): string | undefined {
+  if (receipt.status !== "unavailable" || receipt.message === undefined) {
+    return undefined;
+  }
+  const matched = /^no post-edit diagnostics command is configured for (\.[a-z0-9]+)$/iu
+    .exec(receipt.message);
+  return matched?.[1]?.toLowerCase();
+}
+
 function displayPrompt(prompt: string): string {
   const marker = prompt.indexOf(expandedContextMarker);
   return marker < 0 ? truncate(prompt) : truncate(prompt.slice(0, marker));
@@ -601,6 +829,126 @@ function displayPrompt(prompt: string): string {
 
 function appendBounded(current: string, addition: string): string {
   return truncate(`${current}${addition}`);
+}
+
+function appendTimelineText(
+  turn: MutableTurn,
+  kind: "output" | "reasoning",
+  sequence: number,
+  text: string,
+): void {
+  const last = turn.timeline.at(-1);
+  if (last?.kind === kind) {
+    last.text = kind === "reasoning"
+      ? appendReasoning(last.text, text)
+      : appendBounded(last.text, text);
+    return;
+  }
+  turn.timeline.push({
+    id: `${kind}:${String(sequence)}`,
+    sequence,
+    kind,
+    text: truncate(text),
+  });
+}
+
+function reconcileCompletedOutput(
+  turn: MutableTurn,
+  sequence: number,
+  completedText: string,
+): void {
+  const completed = truncate(completedText);
+  if (completed === turn.output) {
+    if (!turn.timeline.some((item) => item.kind === "output")) {
+      appendTimelineText(turn, "output", sequence, completed);
+    }
+    return;
+  }
+  let lastOutputIndex = -1;
+  for (let index = turn.timeline.length - 1; index >= 0; index -= 1) {
+    if (turn.timeline[index]?.kind === "output") {
+      lastOutputIndex = index;
+      break;
+    }
+  }
+  const last = turn.timeline[lastOutputIndex];
+  if (last?.kind === "output" && last.text.endsWith(completed)) {
+    const progress = last.text.slice(0, -completed.length);
+    if (progress.length > 0) {
+      last.text = progress;
+      turn.timeline.splice(lastOutputIndex + 1, 0, {
+        id: `output:${String(sequence)}`,
+        sequence,
+        kind: "output",
+        text: completed,
+      });
+    }
+  } else if (last?.kind !== "output" || last.text !== completed) {
+    turn.timeline.push({
+      id: `output:${String(sequence)}`,
+      sequence,
+      kind: "output",
+      text: completed,
+    });
+  }
+  if (turn.output.length === 0) {
+    turn.output = completed;
+  } else if (!turn.output.endsWith(completed)) {
+    const separator = turn.output.endsWith("\n") ? "" : "\n\n";
+    turn.output = appendBounded(turn.output, `${separator}${completed}`);
+  }
+}
+
+function ensureToolTimelineItem(
+  turn: MutableTurn,
+  sequence: number,
+  callId: string,
+): void {
+  if (turn.timeline.some(
+    (item) => item.kind === "tool" && item.callId === callId,
+  )) {
+    return;
+  }
+  turn.timeline.push({
+    id: `tool:${callId}`,
+    sequence,
+    kind: "tool",
+    callId,
+  });
+}
+
+function projectTimeline(turn: MutableTurn): TurnTimelineItem[] {
+  let lastActivity = -1;
+  let lastOutput = -1;
+  for (let index = 0; index < turn.timeline.length; index += 1) {
+    if (turn.timeline[index]?.kind === "output") {
+      lastOutput = index;
+    } else {
+      lastActivity = index;
+    }
+  }
+  return turn.timeline.map((item, index): TurnTimelineItem => {
+    switch (item.kind) {
+      case "output":
+        return {
+          ...item,
+          markdown: projectMarkdown(item.text),
+          final: turn.status === "completed" &&
+            index === lastOutput &&
+            index > lastActivity,
+        };
+      case "reasoning":
+        return {
+          ...item,
+          markdown: projectMarkdown(item.text),
+          active: turn.reasoningActive && index === turn.timeline.length - 1,
+        };
+      case "diagnostics":
+        return { ...item, messages: [...item.messages] };
+      default:
+        return { ...item };
+    }
+  });
 }
 
 function appendReasoning(current: string, addition: string): string {

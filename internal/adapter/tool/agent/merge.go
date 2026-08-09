@@ -258,7 +258,31 @@ func gitBlobHash(ctx context.Context, worktree, baseRev, relPath string) (bool, 
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 	}
-	spec := strings.TrimSpace(baseRev) + ":" + filepath.ToSlash(relPath)
+	revision := strings.TrimSpace(baseRev)
+	baseSpec := revision + "^{commit}"
+	base, err := process.Run(ctx, process.Options{
+		Path: gitMergeExecutable(),
+		Args: []string{"cat-file", "-e", baseSpec},
+		Dir:  worktree,
+	})
+	if err != nil {
+		return false, "", fmt.Errorf("git cat-file %s: %w", baseSpec, err)
+	}
+	if base.ExitCode != 0 {
+		return false, "", gitCommandError("cat-file", baseSpec, base)
+	}
+	spec := revision + ":" + filepath.ToSlash(relPath)
+	exists, err := process.Run(ctx, process.Options{
+		Path: gitMergeExecutable(),
+		Args: []string{"cat-file", "-e", spec},
+		Dir:  worktree,
+	})
+	if err != nil {
+		return false, "", fmt.Errorf("git cat-file %s: %w", spec, err)
+	}
+	if exists.ExitCode != 0 {
+		return false, "", nil
+	}
 	result, err := process.Run(ctx, process.Options{
 		Path: gitMergeExecutable(),
 		Args: []string{"show", spec},
@@ -268,22 +292,18 @@ func gitBlobHash(ctx context.Context, worktree, baseRev, relPath string) (bool, 
 		return false, "", fmt.Errorf("git show %s: %w", spec, err)
 	}
 	if result.ExitCode != 0 {
-		lower := strings.ToLower(result.Stderr + result.Stdout)
-		if strings.Contains(lower, "does not exist") ||
-			strings.Contains(lower, "exists on disk") ||
-			strings.Contains(lower, "bad revision") ||
-			strings.Contains(lower, "path") && strings.Contains(lower, "not in") ||
-			strings.Contains(lower, "fatal: path") {
-			return false, "", nil
-		}
-		message := strings.TrimSpace(result.Stderr)
-		if message == "" {
-			message = strings.TrimSpace(result.Stdout)
-		}
-		return false, "", fmt.Errorf("git show %s: %s", spec, message)
+		return false, "", gitCommandError("show", spec, result)
 	}
 	sum := sha256.Sum256([]byte(result.Stdout))
 	return true, hex.EncodeToString(sum[:]), nil
+}
+
+func gitCommandError(command, spec string, result process.Result) error {
+	message := strings.TrimSpace(result.Stderr)
+	if message == "" {
+		message = strings.TrimSpace(result.Stdout)
+	}
+	return fmt.Errorf("git %s %s exited with code %d: %s", command, spec, result.ExitCode, message)
 }
 
 func gitMergeExecutable() string {

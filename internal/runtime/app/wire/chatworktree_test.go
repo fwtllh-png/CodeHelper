@@ -2,12 +2,15 @@ package wire
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -77,6 +80,61 @@ func TestChatWorkspacesProvisionMergeAndRestore(t *testing.T) {
 	}
 	if restored.Root != first.Root {
 		t.Fatalf("restored root = %q, want %q", restored.Root, first.Root)
+	}
+}
+
+func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
+	workspace := newGitWorkspace(t)
+	session := openChatWorkspaceSession(t, workspace)
+	isolated, err := session.SessionWorkspaces().Provision(
+		t.Context(), "session-chat-git", protocol.ThreadID("thread-chat-git"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolset, err := session.childTools.open(isolated.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shown, err := toolset.registry.Execute(t.Context(), tool.Call{
+		Name: "git_show", Arguments: json.RawMessage(`{"revision":"HEAD"}`),
+		Authorized: true,
+	})
+	if err != nil || shown.IsError ||
+		!strings.Contains(shown.Content, "codehelper chat baseline") {
+		t.Fatalf("git_show result=%+v err=%v", shown, err)
+	}
+	shell, err := toolset.registry.Execute(t.Context(), tool.Call{
+		Name: "shell_run",
+		Arguments: json.RawMessage(
+			`{"command":"git rev-parse --is-inside-work-tree && git log -1 --format=%s"}`,
+		),
+		Authorized: true,
+	})
+	if err != nil || shell.IsError ||
+		!strings.Contains(shell.Content, "true") ||
+		!strings.Contains(shell.Content, "codehelper chat baseline") ||
+		strings.Contains(shell.Content, "xcrun_db") {
+		t.Fatalf("shell Git result=%+v err=%v", shell, err)
+	}
+	escaped := filepath.Join(workspace, "sandbox-escape.txt")
+	arguments, err := json.Marshal(map[string]string{
+		"command": fmt.Sprintf(
+			"printf escaped > '%s'",
+			strings.ReplaceAll(escaped, "'", "'\"'\"'"),
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write, err := toolset.registry.Execute(t.Context(), tool.Call{
+		Name: "shell_run", Arguments: arguments, Authorized: true,
+	})
+	if err == nil && !write.IsError {
+		t.Fatalf("main workspace write unexpectedly succeeded: %+v", write)
+	}
+	if _, err := os.Stat(escaped); !os.IsNotExist(err) {
+		t.Fatalf("main workspace escape exists: %v", err)
 	}
 }
 

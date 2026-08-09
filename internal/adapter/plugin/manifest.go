@@ -57,7 +57,7 @@ func ReadManifest(bundleRoot string) (Manifest, error) {
 	for _, name := range []string{TOMLManifestName, ManifestName} {
 		if _, err := workspace.Resolve(name, sandbox.MustExist); err == nil {
 			found = append(found, name)
-		} else if !errors.Is(err, os.ErrNotExist) && !strings.Contains(err.Error(), "file does not exist") {
+		} else if !errors.Is(err, os.ErrNotExist) {
 			return Manifest{}, fmt.Errorf("resolve plugin manifest %s: %w", name, err)
 		}
 	}

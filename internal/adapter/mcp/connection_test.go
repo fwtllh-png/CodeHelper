@@ -3,7 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"strings"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -64,15 +64,15 @@ func TestConnectionToleratesUnsupportedOptionalCapabilities(t *testing.T) {
 		t.Fatalf("unexpected discovery = %+v", discovery)
 	}
 	_, err = connection.ReadResource(context.Background(), "fixture://missing")
-	if err == nil || !strings.Contains(err.Error(), "not advertised") {
+	if !errors.Is(err, ErrNotAdvertised) {
 		t.Fatalf("read error = %v", err)
 	}
 	_, err = connection.GetPrompt(context.Background(), "missing", nil)
-	if err == nil || !strings.Contains(err.Error(), "not advertised") {
+	if !errors.Is(err, ErrNotAdvertised) {
 		t.Fatalf("prompt error = %v", err)
 	}
 	_, err = connection.CallTool(context.Background(), "missing", json.RawMessage(`{}`))
-	if err == nil || !strings.Contains(err.Error(), "not advertised") {
+	if !errors.Is(err, ErrNotAdvertised) {
 		t.Fatalf("tool error = %v", err)
 	}
 	if transport.executeCalls.Load() != 0 {

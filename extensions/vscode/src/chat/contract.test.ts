@@ -7,13 +7,16 @@ import {
   chatViewProtocolVersion,
   createChatErrorMessage,
   createChatPatchMessage,
+  createChatRecoveryStatusMessage,
   createChatSnapshotMessage,
 } from "./contract.js";
 import type { ChatPatchMessage } from "./contract.js";
 import { projectComposer } from "./composer.js";
 
 void test("Chat V1 activates atomic Snapshot and Patch delivery", () => {
-  assert.deepEqual(chatHostMessageTypes, ["snapshot", "patch", "error"]);
+  assert.deepEqual(chatHostMessageTypes, [
+    "snapshot", "patch", "error", "recovery-status",
+  ]);
   const futurePatch: ChatPatchMessage = {
     type: chatPatchMessageType,
     version: chatViewProtocolVersion,
@@ -22,6 +25,31 @@ void test("Chat V1 activates atomic Snapshot and Patch delivery", () => {
     operations: [{ kind: "turn.remove", turnId: "turn_1" }],
   };
   assert.equal(futurePatch.baseRevision < futurePatch.revision, true);
+});
+
+void test("Chat recovery status acknowledges accepted and failed actions", () => {
+  assert.deepEqual(
+    createChatRecoveryStatusMessage("turn_1", "retry", "accepted", {
+      newTurnId: "turn_2",
+    }),
+    {
+      type: "recovery-status",
+      version: chatViewProtocolVersion,
+      turnId: "turn_1",
+      action: "retry",
+      status: "accepted",
+      newTurnId: "turn_2",
+    },
+  );
+  assert.equal(
+    createChatRecoveryStatusMessage(
+      "turn_1",
+      "continue",
+      "failed",
+      { message: "Session is running" },
+    ).message,
+    "Session is running",
+  );
 });
 
 void test("Chat Patch carries only changed Turns and replacement projections", () => {
@@ -47,6 +75,7 @@ void test("Chat Patch carries only changed Turns and replacement projections", (
         reasoning: "",
         reasoningMarkdown: [],
         reasoningActive: false,
+        timeline: [],
         tools: [],
         approvals: [],
         inputs: [],

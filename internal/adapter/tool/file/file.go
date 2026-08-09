@@ -127,11 +127,14 @@ func (o *operation) Descriptor() tool.Descriptor {
 		properties["max_lines"] = map[string]any{"type": "integer"}
 		properties["pages"] = map[string]any{"type": "string"}
 	case "file_write":
-		description = "Atomically write a UTF-8 text file. path is workspace-relative."
+		description = "Atomically write a UTF-8 text file. path is workspace-relative. " +
+			"If the path already exists, call file_read for that exact path first; " +
+			"new paths do not require a prior read."
 		properties["content"] = map[string]any{"type": "string"}
 		required = append(required, "content")
 	case "file_edit":
-		description = "Atomically replace one exact text occurrence. path is workspace-relative."
+		description = "Atomically replace one exact text occurrence. path is workspace-relative. " +
+			"Call file_read for that exact path before editing it."
 		properties["old"] = map[string]any{"type": "string"}
 		properties["new"] = map[string]any{"type": "string"}
 		required = append(required, "old", "new")
@@ -140,7 +143,9 @@ func (o *operation) Descriptor() tool.Descriptor {
 			"move and delete across several workspace-relative paths. Every change is " +
 			"validated first, so nothing is written unless all of them can be applied. " +
 			"Later changes see earlier ones, so the same file can be edited twice in " +
-			"one call. Set dry_run to get the unified diff without writing."
+			"one call. Before calling, use file_read on every existing source or " +
+			"destination path named by the transaction; new paths need no prior read. " +
+			"Set dry_run to get the unified diff without writing."
 		delete(properties, "path")
 		properties["changes"] = map[string]any{
 			"type": "array", "minItems": float64(1),
@@ -179,7 +184,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 		}
 		required = []string{"changes"}
 	case "file_patch":
-		description = "Atomically apply a standard unified diff across workspace files"
+		description = "Atomically apply a standard unified diff across workspace files. " +
+			"Call file_read for every existing file changed or deleted by the patch first."
 		delete(properties, "path")
 		properties["patch"] = map[string]any{"type": "string", "minLength": float64(1)}
 		required = []string{"patch"}
@@ -501,7 +507,7 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 		Dir: t.root, DirFile: directory, Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
 	})
 	if err != nil {
-		if requireStrong && guard.LooksLikeSandboxBlock(err.Error()) {
+		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
 			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch check")
 		}
 		return tool.Result{}, err
@@ -509,9 +515,6 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 	check.Stdin = strings.NewReader(patch)
 	if output, err := check.CombinedOutput(); err != nil {
 		msg := strings.TrimSpace(string(output))
-		if requireStrong && guard.LooksLikeSandboxBlock(msg+"\n"+err.Error()) {
-			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch check: "+msg)
-		}
 		return tool.Result{}, fmt.Errorf("patch conflict: %s", msg)
 	}
 	apply, err := process.NewCommand(ctx, process.Options{
@@ -519,7 +522,7 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 		Dir: t.root, DirFile: directory, Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
 	})
 	if err != nil {
-		if requireStrong && guard.LooksLikeSandboxBlock(err.Error()) {
+		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
 			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch apply")
 		}
 		return tool.Result{}, err
@@ -527,9 +530,6 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 	apply.Stdin = strings.NewReader(patch)
 	if output, err := apply.CombinedOutput(); err != nil {
 		msg := strings.TrimSpace(string(output))
-		if requireStrong && guard.LooksLikeSandboxBlock(msg+"\n"+err.Error()) {
-			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch apply: "+msg)
-		}
 		return tool.Result{}, fmt.Errorf("apply patch: %s", msg)
 	}
 	return tool.Result{Content: "patched", Metadata: map[string]any{"format": "unified"}}, nil

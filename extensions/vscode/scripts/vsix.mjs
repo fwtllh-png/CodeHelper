@@ -18,6 +18,7 @@ const forbidden = files.filter((file) =>
     "dist/extension.js",
     "dist/chat-webview.js",
     "dist/chat-webview.css",
+    "dist/mermaid-renderer.js",
   ].includes(file)
 );
 if (forbidden.length > 0) {
@@ -30,6 +31,7 @@ for (const required of [
   "dist/extension.js",
   "dist/chat-webview.js",
   "dist/chat-webview.css",
+  "dist/mermaid-renderer.js",
   "media/codehelper.svg",
   "media/codehelper.png",
   "README.md",

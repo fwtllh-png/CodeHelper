@@ -160,6 +160,7 @@ func parseChunk(data []byte) ([]provider.StreamEvent, error) {
 			Thinking    string `json:"thinking"`
 			Signature   string `json:"signature"`
 			PartialJSON string `json:"partial_json"`
+			StopReason  string `json:"stop_reason"`
 			Citation    struct {
 				Type           string `json:"type"`
 				EncryptedIndex string `json:"encrypted_index"`
@@ -256,13 +257,20 @@ func parseChunk(data []byte) ([]provider.StreamEvent, error) {
 			return nil, nil
 		}
 	case "message_delta":
-		if chunk.Usage.OutputTokens == 0 {
-			return nil, nil
+		var events []provider.StreamEvent
+		if chunk.Usage.OutputTokens != 0 {
+			events = append(events, provider.StreamEvent{
+				Type:  provider.EventUsage,
+				Usage: &provider.Usage{OutputTokens: chunk.Usage.OutputTokens},
+			})
 		}
-		return []provider.StreamEvent{{
-			Type:  provider.EventUsage,
-			Usage: &provider.Usage{OutputTokens: chunk.Usage.OutputTokens},
-		}}, nil
+		if chunk.Delta.StopReason != "" {
+			events = append(events, provider.StreamEvent{
+				Type:       provider.EventMessageStop,
+				StopReason: anthropicStopReason(chunk.Delta.StopReason),
+			})
+		}
+		return events, nil
 	case "message_stop":
 		return []provider.StreamEvent{{Type: provider.EventMessageStop}}, nil
 	case "ping", "content_block_stop":
@@ -271,6 +279,19 @@ func parseChunk(data []byte) ([]provider.StreamEvent, error) {
 		return nil, fmt.Errorf("Anthropic stream error: %s", chunk.Error.Message)
 	default:
 		return nil, nil
+	}
+}
+
+func anthropicStopReason(value string) provider.StopReason {
+	switch value {
+	case "end_turn", "stop_sequence", "refusal":
+		return provider.StopReasonEndTurn
+	case "tool_use":
+		return provider.StopReasonToolUse
+	case "max_tokens", "model_context_window_exceeded", "pause_turn":
+		return provider.StopReasonMaxTokens
+	default:
+		return provider.StopReasonUnknown
 	}
 }
 

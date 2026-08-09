@@ -235,6 +235,18 @@ func TestEditorContextReceiptValidationFailsClosed(t *testing.T) {
 	}
 }
 
+func TestToolStartRejectsMalformedArgumentsBeforeEncoding(t *testing.T) {
+	_, err := NewEvent(EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &ToolStartData{
+		Tool: "read", CallID: "call-1", Arguments: json.RawMessage(`{"path":`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "valid JSON") {
+		t.Fatalf("NewEvent() error = %v, want invalid arguments rejection", err)
+	}
+}
+
 func TestEventTaggedUnionRoundTrip(t *testing.T) {
 	dataValues := []EventData{
 		&TurnStartedData{
@@ -255,7 +267,12 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 		&UsageData{},
 		&ToolStateData{State: "running"},
 		&ToolStartData{Tool: "read_file", CallID: "call_0", Arguments: json.RawMessage(`{"path":"a.go"}`)},
-		&ToolResultData{Tool: "file_edit", CallID: "call_1", Output: "edited"},
+		&ToolResultData{
+			Tool: "file_edit", CallID: "call_1", Output: "edited",
+			Changes: []FileChange{{
+				Path: "value.go", Kind: "modified", Added: 1, Removed: 1,
+			}},
+		},
 		&ExtensionLifecycleData{
 			ExtensionKind: "plugin", Name: "review", Action: "updated",
 			Version: "2.0.0", PreviousVersion: "1.0.0", Source: "builtin",

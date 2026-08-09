@@ -88,7 +88,7 @@ func (p SessionProfile) Validate() error {
 		return errors.New("session profile provider and model are invalid")
 	}
 	switch p.ReasoningEffort {
-	case "", "minimal", "low", "medium", "high", "xhigh":
+	case "", "minimal", "low", "medium", "high", "max", "xhigh":
 	default:
 		return errors.New("session profile reasoning_effort is invalid")
 	}

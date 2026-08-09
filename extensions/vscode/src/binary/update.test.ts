@@ -150,7 +150,9 @@ function fakeFetch(
         headers: { location: "https://attacker.invalid/binary" },
       }));
     }
-    return Promise.resolve(new Response(content, {
+    const body = new Uint8Array(content.byteLength);
+    body.set(content);
+    return Promise.resolve(new Response(body.buffer, {
       status: 200,
       headers: { "content-length": String(content.byteLength) },
     }));

@@ -51,22 +51,24 @@ type Options struct {
 	// only has one model can leave it zero: New then builds a table from Route,
 	// which resolves every purpose to it. When both are given, Routes wins and
 	// Route is set from its act slot, so there is one source of truth afterwards.
-	Routes          model.RouteSet
-	Tools           *tool.Registry
-	PromptContext   []provider.Message
-	MaxOutputTokens uint64
-	MaxSteps        int
-	MaxRetries      int
+	Routes           model.RouteSet
+	Tools            *tool.Registry
+	PromptContext    []provider.Message
+	ModePromptBudget promptcontext.Budget
+	MaxOutputTokens  uint64
+	MaxSteps         int
+	MaxRetries       int
 	// MaxContextBytes is the history size that triggers a compaction.
 	MaxContextBytes int
 	// SummaryMaxBytes caps a rendered compaction summary. Zero derives it from
 	// MaxContextBytes.
 	SummaryMaxBytes int
 	// MaxDigestEntries bounds the per-message running record a summary carries.
-	MaxDigestEntries int
-	ReasoningEffort  string
-	NativeSearch     bool
-	Budget           Budget
+	MaxDigestEntries     int
+	ReasoningEffort      string
+	FixedReasoningEffort string
+	NativeSearch         bool
+	Budget               Budget
 	// BudgetReminderThreshold is remaining tokens that trigger a one-shot reminder
 	// (0 → max(256, MaxTokens/10)).
 	BudgetReminderThreshold uint64
@@ -432,6 +434,9 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.options.ReasoningEffort = profile.ReasoningEffort
+	if e.options.FixedReasoningEffort != "" {
+		e.options.ReasoningEffort = e.options.FixedReasoningEffort
+	}
 	e.options.MaxSteps = profile.MaxSteps
 	e.enabledTools = make(map[string]struct{}, len(profile.EnabledToolIDs))
 	for _, id := range profile.EnabledToolIDs {
@@ -449,6 +454,7 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 			policy.Permission(profile.ApprovalPosture),
 		)
 	}
+	e.refreshPromptMode(profile.Mode)
 	return nil
 }
 
@@ -501,6 +507,16 @@ func (e *Engine) SetPolicyMode(mode policy.Mode) {
 	if e.options.Security != nil {
 		e.options.Security.Mode = mode
 	}
+	e.refreshPromptMode(string(mode))
+}
+
+func (e *Engine) refreshPromptMode(mode string) {
+	e.options.PromptContext, e.options.ContextReceipts = promptcontext.RefreshMode(
+		e.options.PromptContext,
+		e.options.ContextReceipts,
+		mode,
+		e.options.ModePromptBudget,
+	)
 }
 
 func (e *Engine) SetPermission(permission policy.Permission) {

@@ -9,8 +9,10 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func (e *Engine) runTools(
@@ -69,6 +71,16 @@ func (e *Engine) runTools(
 		group.Add(1)
 		go func(index int, call provider.ToolCall) {
 			defer group.Done()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					errorsByIndex[index] = protocol.NewProblem(
+						protocol.CodeInternal,
+						"tool execution panicked",
+						false,
+						fmt.Errorf("tool %s panic: %v", call.Name, recovered),
+					)
+				}
+			}()
 			binding := tool.CatalogBinding{
 				CatalogID: call.CatalogID, Generation: call.CatalogGeneration,
 				Revision: call.CatalogRevision, Authority: call.CatalogAuthority,
@@ -100,14 +112,16 @@ func (e *Engine) runTools(
 			e.options.Metrics.ToolExecution()
 
 			callCtx := tool.WithOutputObserver(toolCtx, stream.observe(call))
-			result, err := e.guard.ExecuteBound(
+			result, err := e.executeToolBound(
 				callCtx, call.ID, call.Name, json.RawMessage(call.Arguments), binding,
 			)
 			e.endToolSpan(call, span, result, err)
 			if err != nil {
 				if content, recoverable := recoverableToolFailure(err); recoverable {
 					results[index] = tool.Result{Content: content, IsError: true}
-					if category := toolFailureCategory(err); category != "" {
+					if metadata := toolFailureRecoveryMetadata(err); metadata != nil {
+						results[index].Metadata = metadata
+					} else if category := toolFailureCategory(err); category != "" {
 						results[index].Metadata = map[string]any{"error_category": category}
 					}
 					return
@@ -149,16 +163,38 @@ func (e *Engine) runTools(
 			e.observeToolFailure(call, copy)
 		}
 		var diagnosticReceipts []diagnostics.Receipt
+		var fileChanges []toolguard.FileChange
 		if copy.Metadata != nil {
 			diagnosticReceipts, _ = copy.Metadata["diagnostics"].([]diagnostics.Receipt)
+			fileChanges = observedFileChanges(copy.Metadata)
 		}
 		e.recordTurnDiagnostics(diagnosticReceipts)
 		e.observeDiagnosticsEvidence(diagnosticReceipts)
 		if err := send(RunningTools, Event{
 			ToolCall: &call, Result: &copy, Diagnostics: diagnosticReceipts,
+			FileChanges: fileChanges,
 		}); err != nil {
 			return nil, err
 		}
 	}
 	return results, nil
+}
+
+func (e *Engine) executeToolBound(
+	ctx context.Context,
+	callID, name string,
+	arguments json.RawMessage,
+	binding tool.CatalogBinding,
+) (result tool.Result, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = protocol.NewProblem(
+				protocol.CodeInternal,
+				"tool execution panicked",
+				false,
+				fmt.Errorf("tool %s panic: %v", name, recovered),
+			)
+		}
+	}()
+	return e.guard.ExecuteBound(ctx, callID, name, arguments, binding)
 }

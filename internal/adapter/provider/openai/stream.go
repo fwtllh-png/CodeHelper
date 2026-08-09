@@ -13,14 +13,15 @@ import (
 )
 
 type stream struct {
-	body     io.ReadCloser
-	decoder  *provider.SSEDecoder
-	protocol model.WireProtocol
-	queue    []provider.StreamEvent
-	started  bool
-	finished bool
-	stopped  bool
-	closed   bool
+	body       io.ReadCloser
+	decoder    *provider.SSEDecoder
+	protocol   model.WireProtocol
+	queue      []provider.StreamEvent
+	started    bool
+	finished   bool
+	stopReason provider.StopReason
+	stopped    bool
+	closed     bool
 }
 
 func NewStream(body io.ReadCloser, protocol model.WireProtocol) (provider.Stream, error) {
@@ -51,7 +52,7 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 		record, err := s.decoder.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) && s.protocol == model.ProtocolOpenAIChat && s.finished {
-				s.enqueueStop()
+				s.enqueueStop(s.stopReason)
 				continue
 			}
 			if errors.Is(err, io.EOF) && !s.stopped {
@@ -60,7 +61,7 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 			return provider.StreamEvent{}, err
 		}
 		if record.Data == "[DONE]" {
-			s.enqueueStop()
+			s.enqueueStop(s.stopReason)
 			continue
 		}
 		var events []provider.StreamEvent
@@ -72,30 +73,33 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 		if err != nil {
 			return provider.StreamEvent{}, err
 		}
-		sawStop := false
+		var stopReason provider.StopReason
 		for _, event := range events {
 			if event.Type == provider.EventMessageStop {
 				if s.protocol == model.ProtocolOpenAIChat {
 					s.finished = true
+					s.stopReason = event.StopReason
 					continue
 				}
-				sawStop = true
+				stopReason = event.StopReason
 				continue
 			}
 			s.queue = append(s.queue, event)
 		}
-		if sawStop {
-			s.enqueueStop()
+		if stopReason != "" {
+			s.enqueueStop(stopReason)
 		}
 	}
 }
 
-func (s *stream) enqueueStop() {
+func (s *stream) enqueueStop(reason provider.StopReason) {
 	if s.stopped {
 		return
 	}
 	s.stopped = true
-	s.queue = append(s.queue, provider.StreamEvent{Type: provider.EventMessageStop})
+	s.queue = append(s.queue, provider.StreamEvent{
+		Type: provider.EventMessageStop, StopReason: reason,
+	})
 }
 
 func (s *stream) Close() error {
@@ -132,7 +136,7 @@ func parseChatChunk(data []byte) ([]provider.StreamEvent, error) {
 					} `json:"function"`
 				} `json:"tool_calls"`
 			} `json:"delta"`
-			FinishReason any `json:"finish_reason"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage *struct {
 			PromptTokens     uint64 `json:"prompt_tokens"`
@@ -184,8 +188,11 @@ func parseChatChunk(data []byte) ([]provider.StreamEvent, error) {
 			block := provider.ContentBlock{Type: provider.ContentCitation, Citation: &citation}
 			events = append(events, provider.StreamEvent{Type: provider.EventCitation, Block: &block, Citation: &citation})
 		}
-		if choice.FinishReason != nil {
-			events = append(events, provider.StreamEvent{Type: provider.EventMessageStop})
+		if choice.FinishReason != "" {
+			events = append(events, provider.StreamEvent{
+				Type:       provider.EventMessageStop,
+				StopReason: openAIStopReason(choice.FinishReason),
+			})
 		}
 	}
 	if chunk.Usage != nil {
@@ -200,6 +207,21 @@ func parseChatChunk(data []byte) ([]provider.StreamEvent, error) {
 		})
 	}
 	return events, nil
+}
+
+func openAIStopReason(value string) provider.StopReason {
+	switch value {
+	case "stop":
+		return provider.StopReasonEndTurn
+	case "tool_calls", "function_call":
+		return provider.StopReasonToolUse
+	case "length", "max_tokens":
+		return provider.StopReasonMaxTokens
+	case "content_filter":
+		return provider.StopReasonContentFilter
+	default:
+		return provider.StopReasonUnknown
+	}
 }
 
 func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
@@ -304,7 +326,23 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 				})
 			}
 		}
-		return append(events, provider.StreamEvent{Type: provider.EventMessageStop}), nil
+		reason := provider.StopReasonEndTurn
+		if eventType == "response.incomplete" {
+			reason = provider.StopReasonIncomplete
+			if response, ok := chunk["response"].(map[string]any); ok {
+				if details, ok := response["incomplete_details"].(map[string]any); ok {
+					switch stringValue(details["reason"]) {
+					case "max_output_tokens":
+						reason = provider.StopReasonMaxTokens
+					case "content_filter":
+						reason = provider.StopReasonContentFilter
+					}
+				}
+			}
+		}
+		return append(events, provider.StreamEvent{
+			Type: provider.EventMessageStop, StopReason: reason,
+		}), nil
 	case "error", "response.failed":
 		message := stringValue(chunk["message"])
 		if message == "" {

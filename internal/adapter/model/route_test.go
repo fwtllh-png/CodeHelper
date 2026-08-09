@@ -116,6 +116,22 @@ func TestBundledResponsesRouteIsReachableWithoutACustomEndpoint(t *testing.T) {
 	}
 }
 
+func TestDeepSeekV4FlashKeepsResponsesProtocol(t *testing.T) {
+	resolver, err := NewResolver(DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(RouteRequest{
+		ProviderID: "deepseek-v4-flash", ModelID: "deepseek-v4-flash",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Protocol() != ProtocolOpenAIResponses {
+		t.Fatalf("protocol = %q, want openai_responses", route.Protocol())
+	}
+}
+
 func TestZeroReadyRouteIsInvalid(t *testing.T) {
 	var route ReadyRoute
 	if err := route.Validate(); err == nil {

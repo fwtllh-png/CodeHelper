@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -377,5 +378,92 @@ func TestGuardRefusesWritesWhenTheBeforeImageCannotBeStored(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(path); string(data) != "0123456789" {
 		t.Fatalf("file = %q, want it untouched", data)
+	}
+}
+
+type failingDiagnosticRunner struct {
+	calls atomic.Int32
+}
+
+func (r *failingDiagnosticRunner) Run(context.Context, string) (diagnostics.Receipt, error) {
+	r.calls.Add(1)
+	return diagnostics.Receipt{}, errors.New("diagnostic process failed")
+}
+
+func TestGuardKeepsSuccessfulWritesWhenPostEditDiagnosticsFail(t *testing.T) {
+	workspace := t.TempDir()
+	paths := []string{
+		filepath.Join(workspace, "first.md"),
+		filepath.Join(workspace, "second.md"),
+	}
+	journal, err := workspacejournal.New(
+		workspace,
+		contentstore.NewMemory(contentstore.Options{}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Begin("turn-1"); err != nil {
+		t.Fatal(err)
+	}
+	expected := make(map[string]workspacejournal.Fingerprint, len(paths))
+	for _, path := range paths {
+		if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fingerprint, _, _, err := workspacejournal.Snapshot(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected[path] = fingerprint
+		if err := journal.Before(t.Context(), path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runner := &failingDiagnosticRunner{}
+	guard := &Guard{
+		workspace:   workspace,
+		journal:     journal,
+		readTracker: workspacejournal.NewReadTracker(),
+		diagnostics: runner,
+	}
+
+	result := &tool.Result{}
+	err = guard.finishFileWrites(
+		t.Context(),
+		paths,
+		expected,
+		result,
+		true,
+		true,
+	)
+
+	if err != nil || runner.calls.Load() != int32(len(paths)) {
+		t.Fatalf("finishFileWrites() error = %v, diagnostic calls = %d", err, runner.calls.Load())
+	}
+	receipts, ok := result.Metadata["diagnostics"].([]diagnostics.Receipt)
+	if !ok || len(receipts) != len(paths) {
+		t.Fatalf("diagnostic receipts = %#v", result.Metadata["diagnostics"])
+	}
+	for _, receipt := range receipts {
+		if receipt.Status != "failed" ||
+			receipt.Message != "diagnostic process failed" {
+			t.Fatalf("diagnostic receipt = %+v", receipt)
+		}
+	}
+	if err := journal.Commit("turn-1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "after\n" {
+			t.Fatalf("%s = %q, want successful write retained", path, data)
+		}
 	}
 }

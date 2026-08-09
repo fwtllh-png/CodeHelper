@@ -20,7 +20,7 @@ func TestGranularTightensAllowToAsk(t *testing.T) {
 	}
 }
 
-func TestGranularDoesNotWeakenDeny(t *testing.T) {
+func TestGranularAllowDoesNotBypassAutoApproval(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionAuto)
 	runtime.Granular.Sandbox = SurfaceAllow
 	call := Invocation{
@@ -29,8 +29,8 @@ func TestGranularDoesNotWeakenDeny(t *testing.T) {
 		Resources: []tool.Resource{{Kind: "process", ID: "shell", Access: tool.AccessWrite}},
 	}
 	decision := runtime.Evaluate(call)
-	if decision.Action != ActionDeny {
-		t.Fatalf("decision = %+v, want deny preserved under act+auto", decision)
+	if decision.Action != ActionAsk {
+		t.Fatalf("decision = %+v, want ask preserved under act+auto", decision)
 	}
 }
 
@@ -43,6 +43,9 @@ func TestClassifySurface(t *testing.T) {
 	}
 	if got := ClassifySurface("shell_run", CapabilityProcess); got != SurfaceSandbox {
 		t.Fatalf("sandbox = %s", got)
+	}
+	if got := ClassifySurface("shell_read", CapabilityRead); got != SurfaceSandbox {
+		t.Fatalf("read-only sandbox = %s", got)
 	}
 	if got := ClassifySurface("file_write", CapabilityWrite); got != SurfaceRules {
 		t.Fatalf("rules = %s", got)

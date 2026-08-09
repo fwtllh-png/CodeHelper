@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { chatTitleFromPrompt } from "./title.js";
+import {
+  chatTitleFromPrompt,
+  defaultChatTitle,
+  isPlaceholderChatTitle,
+} from "./title.js";
+
+void test("placeholder Chat titles include the current and legacy defaults", () => {
+  assert.equal(defaultChatTitle, "New Chat");
+  assert.equal(isPlaceholderChatTitle("New Chat"), true);
+  assert.equal(isPlaceholderChatTitle("新对话"), true);
+  assert.equal(isPlaceholderChatTitle("Chat 2"), true);
+  assert.equal(isPlaceholderChatTitle("修复登录问题"), false);
+});
 
 void test("chatTitleFromPrompt derives a concise Chinese title", () => {
   assert.equal(

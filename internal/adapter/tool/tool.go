@@ -60,6 +60,39 @@ func (e preconditionError) Unwrap() []error { return []error{ErrPrecondition, e.
 // checks they run before touching the workspace.
 func Precondition(err error) error { return preconditionError{err: err} }
 
+// RecoveryHint is structured guidance for correcting a recoverable tool call.
+// It travels only through the error chain and becomes model-visible Result
+// metadata at the engine boundary.
+type RecoveryHint struct {
+	ErrorCategory  string
+	RequiredAction string
+	Path           string
+	RetryOriginal  bool
+}
+
+type recoveryHintError struct {
+	err  error
+	hint RecoveryHint
+}
+
+func (e recoveryHintError) Error() string { return e.err.Error() }
+func (e recoveryHintError) Unwrap() error { return e.err }
+
+func WithRecoveryHint(err error, hint RecoveryHint) error {
+	if err == nil {
+		return nil
+	}
+	return recoveryHintError{err: err, hint: hint}
+}
+
+func RecoveryHintFromError(err error) (RecoveryHint, bool) {
+	var hinted recoveryHintError
+	if !errors.As(err, &hinted) {
+		return RecoveryHint{}, false
+	}
+	return hinted.hint, true
+}
+
 type Visibility string
 
 const (

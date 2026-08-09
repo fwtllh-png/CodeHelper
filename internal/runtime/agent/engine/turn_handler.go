@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -189,13 +190,16 @@ func (e *Engine) RunForTurnWithAttachments(
 	var toolSpent toolSpend
 	toolSpent.known = true
 	gate := &verifyGate{engine: e}
-	for step := 0; step < e.options.MaxSteps+gate.extraSteps(); step++ {
+	completionRepairs := 0
+	unresolvedToolFailure := false
+	for step := 0; step < e.options.MaxSteps+gate.extraSteps()+completionRepairs; step++ {
 		e.appendSteering(&transaction)
 		if err := send(CallingModel, Event{}); err != nil {
 			return result, err
 		}
+		var modelOutputContinued bool
 		blocks, calls, usage, estimatedInput, err := e.modelStep(
-			ctx, &transaction, result.Usage, emitState(send),
+			ctx, &transaction, result.Usage, &modelOutputContinued, emitState(send),
 		)
 		if err != nil {
 			return result, err
@@ -224,6 +228,61 @@ func (e *Engine) RunForTurnWithAttachments(
 					})
 				}
 				finalText += text
+				continue
+			}
+			if unresolvedToolFailure {
+				if completionRepairs >= maxCompletionRepairs {
+					return result, protocol.NewProblem(
+						protocol.CodeConflict,
+						"model stopped after a tool failure without resolving it or producing a complete final answer",
+						true,
+						nil,
+					)
+				}
+				if len(blocks) != 0 {
+					transaction = append(transaction, provider.Message{
+						Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
+					})
+				}
+				transaction = append(transaction, toolFailureCompletionFeedback(e.turn))
+				unresolvedToolFailure = false
+				completionRepairs++
+				continue
+			}
+			if modelOutputContinued && len(result.Tools) != 0 {
+				if completionRepairs >= maxCompletionRepairs {
+					return result, protocol.NewProblem(
+						protocol.CodeConflict,
+						"model stopped after an interrupted post-tool response without producing a complete final answer",
+						true,
+						nil,
+					)
+				}
+				if len(blocks) != 0 {
+					transaction = append(transaction, provider.Message{
+						Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
+					})
+				}
+				transaction = append(transaction, completionFeedback(e.turn))
+				completionRepairs++
+				continue
+			}
+			if strings.TrimSpace(text) == "" {
+				if completionRepairs >= maxCompletionRepairs {
+					return result, protocol.NewProblem(
+						protocol.CodeConflict,
+						"model stopped without producing a complete final answer",
+						true,
+						nil,
+					)
+				}
+				if len(blocks) != 0 {
+					transaction = append(transaction, provider.Message{
+						Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
+					})
+				}
+				transaction = append(transaction, completionFeedback(e.turn))
+				completionRepairs++
 				continue
 			}
 			transaction = append(transaction, provider.Message{
@@ -314,6 +373,11 @@ func (e *Engine) RunForTurnWithAttachments(
 		if err != nil {
 			return result, err
 		}
+		for _, toolResult := range results {
+			if toolResult.IsError {
+				unresolvedToolFailure = true
+			}
+		}
 		result.Tools = append(result.Tools, calls...)
 		if err := send(FeedingResults, Event{}); err != nil {
 			return result, err
@@ -346,6 +410,27 @@ func (e *Engine) RunForTurnWithAttachments(
 		false,
 		nil,
 	)
+}
+
+const maxCompletionRepairs = 2
+
+func completionFeedback(turn uint64) provider.Message {
+	message := provider.TextMessage(provider.RoleUser, `[completion_required]
+Your previous response did not contain a complete user-facing final answer.
+Do not stop at reasoning or narration of future work. Either call the required
+tool now, or provide a concise final answer based on the available evidence.`)
+	message.Turn = turn
+	return message
+}
+
+func toolFailureCompletionFeedback(turn uint64) provider.Message {
+	message := provider.TextMessage(provider.RoleUser, `[tool_failure_resolution_required]
+The latest tool batch contained an explicit failure. Do not stop after
+describing a future retry. Either call the required tool now to resolve the
+failure, or provide a concise final answer that clearly reports the unresolved
+failure and its impact.`)
+	message.Turn = turn
+	return message
 }
 
 func emitState(send func(State, Event) error) func(State, Event) error {

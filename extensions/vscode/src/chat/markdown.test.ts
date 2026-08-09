@@ -47,6 +47,27 @@ void test("projectMarkdown disables raw HTML and unsafe link protocols", () => {
   assert.equal(links[1]?.href, "https://example.com/path");
 });
 
+void test("projectMarkdown preserves local resources and Mermaid fences", () => {
+  const nodes = projectMarkdown([
+    "[source](src/chat/view.ts#L10-L20)",
+    "",
+    "```mermaid",
+    "flowchart TD",
+    "  A --> B",
+    "```",
+  ].join("\n"));
+  const values = elements(nodes);
+  assert.equal(
+    values.find((node) => node.tag === "a")?.href,
+    "src/chat/view.ts#L10-L20",
+  );
+  assert.equal(
+    values.find((node) => node.tag === "code" && node.language === "mermaid")
+      ?.children[0]?.kind,
+    "text",
+  );
+});
+
 function elementTags(nodes: readonly MarkdownNode[]): string[] {
   return elements(nodes).map((node) => node.tag);
 }

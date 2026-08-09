@@ -79,40 +79,9 @@ func IsSandboxDenial(err error, result tool.Result) bool {
 		if errors.Is(err, ErrSandboxDenied) {
 			return true
 		}
-		if LooksLikeSandboxBlock(err.Error()) {
-			return true
-		}
 	}
 	if result.Metadata != nil {
 		if denied, ok := result.Metadata["sandbox_denied"].(bool); ok && denied {
-			return true
-		}
-	}
-	return false
-}
-
-// LooksLikeSandboxBlock reports OS/sandbox denial language in process output.
-func LooksLikeSandboxBlock(text string) bool {
-	msg := strings.ToLower(text)
-	if msg == "" {
-		return false
-	}
-	if strings.Contains(msg, "sandbox") &&
-		(strings.Contains(msg, "denied") ||
-			strings.Contains(msg, "blocked") ||
-			strings.Contains(msg, "unavailable") ||
-			strings.Contains(msg, "reject")) {
-		return true
-	}
-	for _, needle := range []string{
-		"operation not permitted",
-		"permission denied",
-		"landlock",
-		"seccomp",
-		"seatbelt",
-		"eperm",
-	} {
-		if strings.Contains(msg, needle) {
 			return true
 		}
 	}

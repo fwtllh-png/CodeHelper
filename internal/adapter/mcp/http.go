@@ -987,12 +987,7 @@ func staleResponse(response Response) bool {
 	if response.Error == nil {
 		return false
 	}
-	if response.Error.Code == -32001 {
-		return true
-	}
-	message := strings.ToLower(response.Error.Message)
-	return strings.Contains(message, "session") &&
-		(strings.Contains(message, "stale") || strings.Contains(message, "expired"))
+	return response.Error.Code == -32001
 }
 
 func isStaleSession(err error) bool {

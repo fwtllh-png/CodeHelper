@@ -234,8 +234,11 @@ Recommended combinations:
 | isolated local experiment | `act` | `bypass` |
 | operational investigation | `operate` | `suggest` |
 
-`auto` is not equivalent to “approve everything”; policy may deny high-risk
-tools. `bypass` is not equivalent to disabling constitution or sandbox checks.
+`auto` is not equivalent to “approve everything”. In `act` mode it automatically
+allows low-risk work and asks for approval before process, network, or plugin
+tools. In `operate` mode, sandboxed process tools may run automatically while
+network and plugin tools still ask. `bypass` is not equivalent to disabling
+constitution or sandbox checks.
 
 ## Session and Thread Management
 

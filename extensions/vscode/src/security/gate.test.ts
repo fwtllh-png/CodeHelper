@@ -8,10 +8,15 @@ void test("Chat Webview keeps a nonce-only CSP and safe DOM sinks", async () => 
   const shell = await sourceFile("chat", "webview", "shell.ts");
   const client = await sourceFile("chat", "webview", "client.ts");
   const dom = await sourceFile("chat", "webview", "dom.ts");
+  const mermaid = await sourceFile("chat", "webview", "mermaid-renderer.ts");
   const markdown = await sourceFile("chat", "markdown.ts");
   assert.match(shell, /"default-src 'none'"/u);
-  assert.match(shell, /`style-src \$\{webview\.cspSource\}`/u);
+  assert.match(
+    shell,
+    /`style-src \$\{webview\.cspSource\} 'nonce-\$\{nonce\}'`/u,
+  );
   assert.match(shell, /`script-src 'nonce-\$\{nonce\}'`/u);
+  assert.doesNotMatch(shell, /unsafe-inline/u);
   assert.match(shell, /"img-src data:"/u);
   assert.match(
     provider,
@@ -23,6 +28,10 @@ void test("Chat Webview keeps a nonce-only CSP and safe DOM sinks", async () => 
   assert.doesNotMatch(client, /\bnew Function\s*\(/u);
   assert.doesNotMatch(shell, /https?:\/\//u);
   assert.match(dom, /const markdownTags = new Set/u);
+  assert.match(mermaid, /securityLevel: "strict"/u);
+  assert.match(dom, /"script, foreignObject, iframe, object, embed, a"/u);
+  assert.doesNotMatch(dom, /\.innerHTML\s*=/u);
+  assert.doesNotMatch(mermaid, /https?:\/\//u);
   assert.match(dom, /\^\(\?:https\?:\|mailto:\)/u);
   assert.match(markdown, /html: false/u);
   assert.match(markdown, /const maxMarkdownNodes = 8192/u);

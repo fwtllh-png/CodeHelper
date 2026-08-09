@@ -128,9 +128,9 @@ func TestWebFetchTruncatesOverLimit(t *testing.T) {
 	}
 }
 
-func TestWebFetchRateLimitMessage(t *testing.T) {
+func TestWebFetchRateLimitStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		writer.WriteHeader(http.StatusForbidden)
+		writer.WriteHeader(http.StatusTooManyRequests)
 		_, _ = writer.Write([]byte(`{"message":"API rate limit exceeded for 1.2.3.4"}`))
 	}))
 	defer server.Close()

@@ -247,6 +247,8 @@ function safeHref(value: string | null): string | undefined {
       ? url.toString()
       : undefined;
   } catch {
-    return undefined;
+    return value.startsWith("./") || /^[\w@()+,./#:-]+$/u.test(value)
+      ? value
+      : undefined;
   }
 }

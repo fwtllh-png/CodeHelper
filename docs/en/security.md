@@ -59,6 +59,10 @@ No layer should be described as a replacement for another.
 - Read before editing when the tool contract requires it.
 - Journal mutating changes and preserve atomicity.
 - Use worktrees for writing subagents when configured.
+- An isolated worktree may read only its validated Git administration directory
+  and the required object, ref, and configuration paths in the repository common
+  Git directory. This does not grant write access to the parent worktree or Git
+  metadata.
 - Review generated plans with `apply --dry-run`.
 - Keep valuable repositories under version control and maintain backups.
 
@@ -68,6 +72,13 @@ No layer should be described as a replacement for another.
 - Working directories and executable paths must be explicit.
 - Timeouts, cancellation, and process-group cleanup are required.
 - PTY and non-PTY execution must share policy boundaries.
+- `shell_read` is the automatic path for inspection pipelines. Its strong
+  sandbox mounts the workspace read-only, denies network access, and permits
+  writes only in the private temporary directory. It never retries
+  unsandboxed.
+- `shell_run`, terminal, and background process tools retain process
+  capability and their normal approval behavior because they can mutate the
+  workspace or external systems.
 - A missing required strong sandbox is a failure, not permission to run
   unsandboxed.
 

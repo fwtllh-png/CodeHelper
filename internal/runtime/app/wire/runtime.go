@@ -7,7 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -170,6 +173,10 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		return nil, fmt.Errorf("load execution config: %w", err)
 	}
 	execution := snapshot.Config.Execution
+	diagnosticCommands := configuredDiagnosticCommands(
+		snapshot.Config.Diagnostics.Commands,
+	)
+	diagnosticReadRoots := diagnosticCommandReadRoots(diagnosticCommands)
 	if !execution.Tools &&
 		(options.RepositoryRulesPath != "" || options.PluginBundle != "" ||
 			options.PluginReceipt != "" || options.MCPConfigPath != "") {
@@ -315,7 +322,7 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		}
 		backend, err := newPlatformBackend(sandbox.Options{
 			WorkspaceRoot: execution.Workspace, HelperPath: helperPath,
-			AllowNetwork: true,
+			AllowNetwork: true, HostReadRoots: diagnosticReadRoots,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create sandbox: %w", err)
@@ -483,7 +490,11 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		if err != nil {
 			return nil, err
 		}
-		diagnosticRunner = diagnostics.NewCommandRunner(execution.Workspace, backend, nil)
+		diagnosticRunner = diagnostics.NewCommandRunner(
+			execution.Workspace,
+			backend,
+			diagnosticCommands,
+		)
 		commandRunner := &verify.CommandRunner{
 			Root: execution.Workspace, Sandbox: backend,
 			Tests: repoindex.TestMapper{Index: repositoryIndex},
@@ -557,8 +568,19 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		if err != nil {
 			return nil, fmt.Errorf("child worktrees: %w", err)
 		}
+		gitCommonDir, err := childTrees.commonGitDir(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("resolve repository Git metadata: %w", err)
+		}
 		childToolsets = newChildToolsets(
-			helperPath, content, webOpts, execution.Verify, execution.Journal,
+			helperPath,
+			content,
+			webOpts,
+			execution.Verify,
+			execution.Journal,
+			diagnosticCommands,
+			diagnosticReadRoots,
+			gitCommonDir,
 		)
 		session.childTools = childToolsets
 		chatRoot := filepath.Join(execution.Workspace, ".codehelper", "chats")
@@ -706,10 +728,17 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 	} else if options.Permission != "" {
 		approvalPosture = policy.Permission(options.Permission)
 	}
+	modelCapabilities := route.Model().Capabilities
+	reasoningEffort := maximumReasoningEffort(
+		route.ProviderID(),
+		route.Model().ID,
+		modelCapabilities.Reasoning,
+	)
 	seedOptions := agentengine.Options{
 		Provider: client, Route: route, Routes: routes,
 		Tools: registry, PromptContext: prompt.Messages,
-		MaxOutputTokens: execution.MaxOutputTokens, Security: securityRuntime,
+		ModePromptBudget: budgets[promptcontext.PartitionMode],
+		MaxOutputTokens:  execution.MaxOutputTokens, Security: securityRuntime,
 		ProfilePermissionCeiling: approvalPosture,
 		Workspace:                execution.Workspace, Guard: nil,
 		OnNetworkAllow: egressGate.Allow,
@@ -724,8 +753,9 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			Runner:         verifyRunner,
 		},
 		Metrics: session.metrics, Trace: traceSink,
-		ReasoningEffort: execution.ReasoningEffort,
-		NativeSearch:    execution.NativeSearch,
+		ReasoningEffort:      reasoningEffort,
+		FixedReasoningEffort: reasoningEffort,
+		NativeSearch:         execution.NativeSearch,
 		Budget: agentengine.Budget{
 			MaxTokens: execution.BudgetTokens, MaxCostUSD: execution.BudgetUSD,
 		},
@@ -810,13 +840,12 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		Mode:                execution.Mode,
 		Provider:            route.ProviderID(),
 		Model:               route.Model().ID,
-		ReasoningEffort:     execution.ReasoningEffort,
+		ReasoningEffort:     reasoningEffort,
 		ApprovalPosture:     string(approvalPosture),
 		ExecutionTarget:     "local",
 		MaxSteps:            execution.MaxSteps,
 		PromptCacheRevision: 1,
 	}
-	modelCapabilities := route.Model().Capabilities
 	mutableProfileFields := []string{"mode", "max_steps"}
 	if modelCapabilities.ToolCalls {
 		mutableProfileFields = append(mutableProfileFields, "enabled_tool_ids")
@@ -829,8 +858,7 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 	}
 	var reasoningEfforts []string
 	if modelCapabilities.Reasoning {
-		mutableProfileFields = append(mutableProfileFields, "reasoning_effort")
-		reasoningEfforts = []string{"minimal", "low", "medium", "high", "xhigh"}
+		reasoningEfforts = []string{reasoningEffort}
 	}
 	profileCapabilities := protocol.SessionProfileCapabilities{
 		Provider: defaultProfile.Provider,
@@ -848,7 +876,7 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			ImageInput:             modelCapabilities.ImageInput,
 			PromptCache:            modelCapabilities.PromptCache,
 			ReasoningEfforts:       reasoningEfforts,
-			DefaultReasoningEffort: execution.ReasoningEffort,
+			DefaultReasoningEffort: reasoningEffort,
 			CredentialStatus:       "unknown",
 			Availability:           "available",
 			SelectionMode:          "restart_required",
@@ -981,6 +1009,61 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		return nil, err
 	}
 	return session, nil
+}
+
+func configuredDiagnosticCommands(
+	configured map[string]config.DiagnosticCommand,
+) map[string]diagnostics.Command {
+	commands := make(map[string]diagnostics.Command, len(configured))
+	for extension, command := range configured {
+		commands[extension] = diagnostics.Command{
+			Name: command.Name,
+			Args: append([]string(nil), command.Args...),
+		}
+	}
+	return commands
+}
+
+func diagnosticCommandReadRoots(
+	commands map[string]diagnostics.Command,
+) []string {
+	seen := make(map[string]struct{})
+	addExecutableTree := func(name string, includePackageRoot bool) {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			return
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return
+		}
+		root := filepath.Dir(resolved)
+		if includePackageRoot {
+			root = filepath.Dir(root)
+		}
+		seen[root] = struct{}{}
+	}
+	for _, command := range commands {
+		path, err := exec.LookPath(command.Name)
+		if err != nil {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			continue
+		}
+		seen[filepath.Dir(resolved)] = struct{}{}
+		switch filepath.Ext(resolved) {
+		case ".js", ".cjs", ".mjs":
+			addExecutableTree("node", true)
+		}
+	}
+	roots := make([]string, 0, len(seen))
+	for root := range seen {
+		roots = append(roots, root)
+	}
+	slices.Sort(roots)
+	return roots
 }
 
 func cloneThreadSecurity(source *policy.Runtime) *policy.Runtime {
@@ -1133,4 +1216,15 @@ func stickyPromptCacheKey(sessionID, workspace string) string {
 		return "workspace:" + filepath.Base(workspace)
 	}
 	return "codehelper-default"
+}
+
+func maximumReasoningEffort(providerID, modelID string, reasoning bool) string {
+	if !reasoning {
+		return ""
+	}
+	if strings.HasPrefix(providerID, "deepseek-v4") ||
+		strings.HasPrefix(modelID, "deepseek-v4") {
+		return "max"
+	}
+	return "xhigh"
 }

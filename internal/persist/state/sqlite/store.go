@@ -13,7 +13,8 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	modernsqlite "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 const SchemaVersion = 1
@@ -22,6 +23,33 @@ var (
 	ErrCorrupt           = errors.New("sqlite database is corrupt")
 	ErrUnsupportedSchema = errors.New("sqlite schema is newer than supported")
 )
+
+func IsUniqueConstraintViolation(err error) bool {
+	code, ok := errorCode(err)
+	return ok && (code == sqlite3.SQLITE_CONSTRAINT_UNIQUE ||
+		code == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY)
+}
+
+func isCorruption(err error) bool {
+	code, ok := errorCode(err)
+	if !ok {
+		return false
+	}
+	switch code & 0xff {
+	case sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB:
+		return true
+	default:
+		return false
+	}
+}
+
+func errorCode(err error) (int, bool) {
+	var sqliteErr *modernsqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return 0, false
+	}
+	return sqliteErr.Code(), true
+}
 
 // CorruptionError reports database content that SQLite cannot safely read.
 type CorruptionError struct {
@@ -226,10 +254,7 @@ func (s *Store) classify(operation string, err error) error {
 	if err == nil {
 		return nil
 	}
-	message := strings.ToLower(err.Error())
-	if strings.Contains(message, "database disk image is malformed") ||
-		strings.Contains(message, "file is not a database") ||
-		strings.Contains(message, "database corruption") {
+	if isCorruption(err) {
 		return &CorruptionError{Path: s.path, Err: err}
 	}
 	return fmt.Errorf("%s: %w", operation, err)

@@ -22,8 +22,12 @@ func (e *Engine) modelStep(
 	ctx context.Context,
 	history *[]provider.Message,
 	turnUsage provider.Usage,
+	continued *bool,
 	send func(State, Event) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, uint64, error) {
+	if continued != nil {
+		*continued = false
+	}
 	if err := e.emitExtensionLifecycleChanges(send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
@@ -55,10 +59,14 @@ func (e *Engine) modelStep(
 	}
 	var totalUsage provider.Usage
 	var lastEstimate uint64
+	var continuationMessages []provider.Message
+	var continuedBlocks []provider.ContentBlock
+	continuations := 0
 	for attempt := 0; ; attempt++ {
 		messages := append(e.promptMessages(), cloneMessages(*history)...)
 		turnContext, turnReceipts := e.turnContextMessagesForCatalog(ctx, catalog, advertised)
 		messages = append(messages, turnContext...)
+		messages = append(messages, cloneMessages(continuationMessages)...)
 		e.recordTurnContextReceipts(turnReceipts)
 
 		estimatedInput, err := e.checkBudget(messages, turnUsage, totalUsage)
@@ -118,12 +126,47 @@ func (e *Engine) modelStep(
 		totalUsage.Add(usage)
 		pending := e.drainPending()
 		if ctx.Err() == nil && len(pending) != 0 {
-			if len(blocks) != 0 {
+			pendingBlocks := appendContinuedBlocks(continuedBlocks, blocks)
+			if len(pendingBlocks) != 0 {
 				*history = append(*history, provider.Message{
-					Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
+					Role: provider.RoleAssistant, Blocks: pendingBlocks, Turn: e.turn,
 				})
 			}
 			e.appendPendingInputs(history, pending)
+			continuationMessages = nil
+			continuedBlocks = nil
+			continuations = 0
+			attempt = -1
+			continue
+		}
+		var incomplete *incompleteModelOutputError
+		if errors.As(err, &incomplete) && ctx.Err() == nil {
+			if continued != nil {
+				*continued = true
+			}
+			continuedBlocks = appendContinuedBlocks(continuedBlocks, blocks)
+			if continuations >= maxOutputContinuations {
+				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
+					protocol.CodeResourceExhausted,
+					fmt.Sprintf(
+						"model output remained incomplete after %d continuation attempts (%s)",
+						maxOutputContinuations,
+						incomplete.Reason,
+					),
+					true,
+					err,
+				)
+			}
+			if len(blocks) != 0 {
+				continuationMessages = append(continuationMessages, provider.Message{
+					Role: provider.RoleAssistant, Blocks: cloneBlocks(blocks), Turn: e.turn,
+				})
+			}
+			continuationMessages = append(
+				continuationMessages,
+				incompleteOutputFeedback(incomplete.Reason, e.turn),
+			)
+			continuations++
 			attempt = -1
 			continue
 		}
@@ -145,12 +188,48 @@ func (e *Engine) modelStep(
 				calls[index].CatalogRevision = binding.Revision
 				calls[index].CatalogAuthority = binding.Authority
 			}
-			return blocks, calls, totalUsage, lastEstimate, nil
+			return appendContinuedBlocks(continuedBlocks, blocks),
+				calls, totalUsage, lastEstimate, nil
 		}
 		if meaningful || attempt >= e.options.MaxRetries || ctx.Err() != nil {
 			return blocks, nil, totalUsage, lastEstimate, err
 		}
 	}
+}
+
+const maxOutputContinuations = 2
+
+type incompleteModelOutputError struct {
+	Reason provider.StopReason
+}
+
+func (e *incompleteModelOutputError) Error() string {
+	return fmt.Sprintf("model output stopped before completion (%s)", e.Reason)
+}
+
+func incompleteOutputFeedback(
+	reason provider.StopReason,
+	turn uint64,
+) provider.Message {
+	message := provider.TextMessage(provider.RoleUser, fmt.Sprintf(
+		`[continue_after_incomplete stop_reason=%s]
+The provider stopped the previous response before completion. Continue exactly
+from the captured response. Do not repeat completed content. Finish the pending
+tool call or user-facing answer.`,
+		reason,
+	))
+	message.Turn = turn
+	return message
+}
+
+func appendContinuedBlocks(
+	current []provider.ContentBlock,
+	next []provider.ContentBlock,
+) []provider.ContentBlock {
+	for _, block := range cloneBlocks(next) {
+		current = appendStreamBlock(current, -1, block)
+	}
+	return current
 }
 
 func (e *Engine) emitExtensionLifecycleChanges(send func(State, Event) error) error {
@@ -464,6 +543,35 @@ func consume(
 			call.Arguments += event.ToolCall.Arguments
 			fragments[event.ToolCall.Index] = call
 		case provider.EventMessageStop:
+			switch event.StopReason {
+			case provider.StopReasonMaxTokens, provider.StopReasonIncomplete:
+				return blocks, nil, usage, meaningful, &incompleteModelOutputError{
+					Reason: event.StopReason,
+				}
+			case provider.StopReasonContentFilter:
+				return blocks, nil, usage, meaningful, protocol.NewProblem(
+					protocol.CodeInvalidArgument,
+					"model output was blocked by the provider content filter",
+					false,
+					nil,
+				)
+			}
+			if event.StopReason == provider.StopReasonUnknown {
+				return blocks, nil, usage, meaningful, protocol.NewProblem(
+					protocol.CodeUnavailable,
+					"provider returned an unknown model stop reason",
+					true,
+					nil,
+				)
+			}
+			if event.StopReason == provider.StopReasonToolUse && len(fragments) == 0 {
+				return blocks, nil, usage, meaningful, protocol.NewProblem(
+					protocol.CodeUnavailable,
+					"provider stopped for tool use without emitting a tool call",
+					true,
+					nil,
+				)
+			}
 			indexes := make([]int, 0, len(fragments))
 			for index := range fragments {
 				indexes = append(indexes, index)

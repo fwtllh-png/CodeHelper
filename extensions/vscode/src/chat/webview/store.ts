@@ -12,7 +12,10 @@ export class ChatWebviewStore {
   }
 
   public apply(
-    message: Exclude<ChatHostMessage, { readonly type: "error" }>,
+    message: Extract<
+      ChatHostMessage,
+      { readonly type: "snapshot" | "patch" }
+    >,
   ): ChatSnapshotMessage {
     if (message.type === "snapshot") {
       if (this.#snapshot !== undefined &&

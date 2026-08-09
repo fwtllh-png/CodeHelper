@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { ChatTurn } from "./projector.js";
+import { projectMarkdown } from "./markdown.js";
 import {
   projectChatResources,
   validateResourceReference,
@@ -23,6 +24,14 @@ void test("Resource projection covers file, range, symbol, diagnostic, directory
           { kind: "element", tag: "code", children: [{ kind: "text", text: "calculate" }] },
         ],
       }],
+      timeline: [{
+        id: "output:1",
+        sequence: 1,
+        kind: "output",
+        text: "`README.md` `calculate`",
+        markdown: projectMarkdown("`README.md` `calculate`"),
+        final: true,
+      }],
       contextReceipts: [
         receipt("file", "README.md"),
         receipt("selection", "src/value.ts", range()),
@@ -32,6 +41,18 @@ void test("Resource projection covers file, range, symbol, diagnostic, directory
       contextSelections: [
         selection("internal/runtime", "directory"),
       ],
+      tools: [{
+        callId: "call_edit",
+        tool: "file_edit",
+        status: "completed",
+        output: "modified",
+        changes: [{
+          path: "src/edited.ts",
+          kind: "modified",
+          added: 6,
+          removed: 4,
+        }],
+      }],
       approvals: [{
         requestId: "approval_1",
         turnId: "turn_1",
@@ -71,6 +92,10 @@ void test("Resource projection covers file, range, symbol, diagnostic, directory
     projected.approvals[0]?.editPlan?.files[0]?.resourceId ?? "",
     /^[0-9a-f]{64}$/u,
   );
+  assert.match(
+    projected.tools[0]?.changes[0]?.resourceId ?? "",
+    /^[0-9a-f]{64}$/u,
+  );
   const paragraph = projected.outputMarkdown[0];
   assert.ok(paragraph);
   assert.equal(paragraph.kind, "element");
@@ -82,6 +107,12 @@ void test("Resource projection covers file, range, symbol, diagnostic, directory
   assert.equal(symbolCode.kind, "element");
   assert.match(pathCode.resourceId ?? "", /^[0-9a-f]{64}$/u);
   assert.match(symbolCode.resourceId ?? "", /^[0-9a-f]{64}$/u);
+  const timeline = projected.timeline[0];
+  assert.ok(timeline);
+  if (timeline.kind !== "output") {
+    assert.fail(`timeline kind = ${timeline.kind}`);
+  }
+  assert.match(JSON.stringify(timeline.markdown), /resourceId/u);
 });
 
 void test("Resource projection refuses ambiguous basenames", () => {
@@ -110,6 +141,35 @@ void test("Resource projection refuses ambiguous basenames", () => {
   assert.ok(code);
   assert.equal(code.kind, "element");
   assert.equal(code.resourceId, undefined);
+});
+
+void test("Resource projection links workspace paths and exact code ranges", () => {
+  const markdown = projectMarkdown(
+    "Open `extensions/vscode`, `src/chat/view.ts:120-145`, or " +
+      "[the protocol](src/protocol/generated.ts#L10-L20).",
+  );
+  const projection = projectChatResources({
+    turns: [turn({
+      output: "resources",
+      outputMarkdown: markdown,
+    })],
+  }, rootId, "session_1");
+
+  assert.deepEqual(
+    projection.references.map((reference) => ({
+      kind: reference.kind,
+      path: reference.path,
+      start: reference.range?.start.line,
+      end: reference.range?.end.line,
+    })),
+    [
+      { kind: "directory", path: "extensions/vscode", start: undefined, end: undefined },
+      { kind: "range", path: "src/chat/view.ts", start: 119, end: 145 },
+      { kind: "range", path: "src/protocol/generated.ts", start: 9, end: 20 },
+    ],
+  );
+  const encoded = JSON.stringify(projection.snapshot.turns[0]?.outputMarkdown);
+  assert.equal((encoded.match(/resourceId/gu) ?? []).length, 3);
 });
 
 void test("Resource validation rejects absolute, traversal, command, and forged diff input", () => {
@@ -148,6 +208,7 @@ function turn(overrides: Partial<ChatTurn>): ChatTurn {
     reasoning: "",
     reasoningMarkdown: [],
     reasoningActive: false,
+    timeline: [],
     tools: [],
     approvals: [],
     inputs: [],

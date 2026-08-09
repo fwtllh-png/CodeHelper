@@ -9,7 +9,9 @@ import type { ResourceView } from "./resources.js";
 import type { ComposerView } from "./composer.js";
 
 export const chatViewProtocolVersion = 1;
-export const chatHostMessageTypes = ["snapshot", "patch", "error"] as const;
+export const chatHostMessageTypes = [
+  "snapshot", "patch", "error", "recovery-status",
+] as const;
 export const chatPatchMessageType = "patch" as const;
 
 export interface ChatRootView {
@@ -63,10 +65,21 @@ export interface ChatErrorMessage {
   readonly message: string;
 }
 
+export interface ChatRecoveryStatusMessage {
+  readonly type: "recovery-status";
+  readonly version: typeof chatViewProtocolVersion;
+  readonly turnId: string;
+  readonly action: "retry" | "continue";
+  readonly status: "accepted" | "failed" | "canceled";
+  readonly newTurnId?: string;
+  readonly message?: string;
+}
+
 export type ChatHostMessage =
   | ChatSnapshotMessage
   | ChatPatchMessage
-  | ChatErrorMessage;
+  | ChatErrorMessage
+  | ChatRecoveryStatusMessage;
 
 export type ChatPatchOperation =
   | { readonly kind: "turn.upsert"; readonly turn: ChatTurn }
@@ -224,5 +237,21 @@ export function createChatErrorMessage(message: string): ChatErrorMessage {
     type: "error",
     version: chatViewProtocolVersion,
     message,
+  };
+}
+
+export function createChatRecoveryStatusMessage(
+  turnId: string,
+  action: "retry" | "continue",
+  status: ChatRecoveryStatusMessage["status"],
+  options: { readonly newTurnId?: string; readonly message?: string } = {},
+): ChatRecoveryStatusMessage {
+  return {
+    type: "recovery-status",
+    version: chatViewProtocolVersion,
+    turnId,
+    action,
+    status,
+    ...options,
   };
 }

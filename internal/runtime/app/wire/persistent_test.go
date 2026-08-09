@@ -490,6 +490,60 @@ func TestPersistentRepositoriesProjectThreadLifecycleEvents(t *testing.T) {
 	}
 }
 
+func TestPersistentRecoveryIgnoresEventsFromDeletedSessions(t *testing.T) {
+	store := seedPersistentState(t, t.TempDir())
+	defer store.CloseAll(context.Background())
+	event, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "operation-deleted",
+		ThreadID: "thread-1", TurnID: "turn-deleted", ItemID: "item-deleted",
+	}, &protocol.TurnStartedData{Provider: "test", Model: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Append(t.Context(), event); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SQLite().DB().ExecContext(
+		t.Context(),
+		"DELETE FROM sessions WHERE id = 'session-1'",
+	); err != nil {
+		t.Fatal(err)
+	}
+	repositories, err := NewPersistentRepositories(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = repositories.Sessions.Create(t.Context(), sessionstate.Session{
+		ID: "session-replacement", WorkspaceID: "workspace-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = repositories.Threads.Create(t.Context(), threadstate.Thread{
+		ID: "thread-replacement", SessionID: "session-replacement",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recovery, err := repositories.Lifecycle.Recover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovery.LastSequence != 1 {
+		t.Fatalf("last sequence = %d, want 1", recovery.LastSequence)
+	}
+	var usageContexts int
+	if err := store.SQLite().DB().QueryRowContext(
+		t.Context(),
+		"SELECT COUNT(*) FROM usage_turn_context",
+	).Scan(&usageContexts); err != nil {
+		t.Fatal(err)
+	}
+	if usageContexts != 0 {
+		t.Fatalf("deleted Session usage contexts = %d, want 0", usageContexts)
+	}
+}
+
 func seedPersistentState(t *testing.T, root string) *state.Store {
 	t.Helper()
 	store, err := state.Open(t.Context(), state.Options{DataDir: root})

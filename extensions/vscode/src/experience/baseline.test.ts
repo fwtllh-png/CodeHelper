@@ -47,10 +47,10 @@ void test("Chat covers theme, keyboard, focus, and explicit state baselines", as
   assert.match(shell, /aria-label="Chat transcript"/u);
   assert.match(shell, /aria-label="Prompt"/u);
   assert.match(shell, /aria-live="polite"/u);
-  assert.match(shell, /aria-keyshortcuts="Control\+Enter Meta\+Enter"/u);
-  assert.match(shell, /aria-keyshortcuts="Escape"/u);
+  assert.match(shell, /aria-keyshortcuts="Enter"/u);
   assert.match(shell, /<form id="composer">/u);
-  assert.match(shell, /<button type="submit" id="send"/u);
+  assert.match(shell, /<button type="button" id="send"/u);
+  assert.doesNotMatch(shell, /id="stop"/u);
   assert.match(styles, /:focus-visible/u);
   assert.match(styles, /prefers-reduced-motion: reduce/u);
   assert.match(styles, /forced-colors: active/u);
@@ -71,8 +71,11 @@ void test("Chat covers theme, keyboard, focus, and explicit state baselines", as
     client,
     /prompt\.disabled = !message\.presentation\.promptEnabled/u,
   );
-  assert.match(client, /send\.disabled = !message\.presentation\.sendEnabled/u);
-  assert.match(client, /stop\.disabled = !message\.presentation\.stopEnabled/u);
+  assert.match(client, /turnActive = message\.presentation\.stopEnabled/u);
+  assert.match(
+    client,
+    /send\.disabled = turnActive\s*\? !message\.presentation\.stopEnabled\s*: !message\.presentation\.sendEnabled/su,
+  );
   assert.match(client, /empty\.hidden = !message\.presentation\.emptyVisible/u);
   assert.match(
     presentation,
@@ -95,16 +98,18 @@ void test("workbench keeps primary views prominent and uses native controls", as
     };
   };
   const views = manifest.contributes.views.codehelper;
-  assert.deepEqual(views.slice(0, 4).map((view) => view.id), [
+  assert.deepEqual(views.slice(0, 3).map((view) => view.id), [
     "codehelper.chat",
     "codehelper.changes",
-    "codehelper.threads",
     "codehelper.agents",
   ]);
-  for (const id of [
-    "codehelper.agents", "codehelper.tasks", "codehelper.jobs", "codehelper.usage",
-  ]) {
+  for (const id of ["codehelper.agents", "codehelper.usage"]) {
     assert.equal(views.find((view) => view.id === id)?.visibility, "collapsed");
+  }
+  for (const id of [
+    "codehelper.threads", "codehelper.tasks", "codehelper.jobs",
+  ]) {
+    assert.equal(views.some((view) => view.id === id), false);
   }
 
   const preview = await sourceFile("edits", "preview.ts");
@@ -116,6 +121,50 @@ void test("workbench keeps primary views prominent and uses native controls", as
   assert.match(chat, /showQuickPick/u);
   assert.match(chat, /createQuickPick<ToolPickItem>/u);
   assert.match(background, /createTreeView/u);
+});
+
+void test("VS Code turns default to 64 model and tool steps", async () => {
+  const manifest = JSON.parse(await readFile(
+    join(process.cwd(), "package.json"),
+    "utf8",
+  )) as {
+    readonly contributes: {
+      readonly configuration: {
+        readonly properties: Readonly<Record<string, { readonly default?: unknown }>>;
+      };
+    };
+  };
+  assert.equal(
+    manifest.contributes.configuration.properties[
+      "codehelper.runtime.maxSteps"
+    ]?.default,
+    64,
+  );
+  const controller = await sourceFile("runtime", "controller.ts");
+  assert.match(
+    controller,
+    /configuration\.get<number>\("runtime\.maxSteps", 64\)/u,
+  );
+});
+
+void test("deleting the last Session replaces it with an empty Session", async () => {
+  const controller = await sourceFile("runtime", "controller.ts");
+  const start = controller.indexOf("public async deleteChat(");
+  const end = controller.indexOf("public async checkpoints(", start);
+  assert.ok(start >= 0 && end > start);
+  const deletion = controller.slice(start, end);
+  assert.match(
+    deletion,
+    /runtime\.summaries\.size === 1\s*\? await this\.createChat\(\)/u,
+  );
+  assert.match(
+    deletion,
+    /await this\.deleteChat\(replacement\.sessionId\)\.catch/u,
+  );
+  assert.ok(
+    deletion.indexOf("await this.createChat()") <
+      deletion.indexOf("SessionLifecycleCommands(runtime).delete"),
+  );
 });
 
 void test("Chat DOM keeps the pre-refactor journey structure and safe sinks", async () => {
@@ -141,7 +190,7 @@ void test("Chat DOM keeps the pre-refactor journey structure and safe sinks", as
   for (const id of [
     "root", "new-chat", "merge-chat", "toggle-sessions", "runtime",
     "journey-state", "repair-runtime", "run-setup", "turns", "composer",
-    "prompt", "send", "stop", "session-rail", "session-list", "session-search",
+    "prompt", "send", "session-rail", "session-list", "session-search",
   ]) {
     assert.match(shell, new RegExp(`id="${id}"`, "u"));
   }
@@ -152,9 +201,10 @@ void test("Chat DOM keeps the pre-refactor journey structure and safe sinks", as
   assert.doesNotMatch(client, /insertAdjacentHTML/u);
 });
 
-void test("Chat exposes the native two-pane responsive layout contract", async () => {
+void test("Chat exposes a collapsible responsive Sessions layout", async () => {
   const shell = await sourceFile("chat", "webview", "shell.ts");
   const client = await sourceFile("chat", "webview", "client.ts");
+  const transcript = await sourceFile("chat", "webview", "transcript.ts");
   const styles = await sourceFile("chat", "webview", "styles.css");
 
   assert.match(shell, /id="chat-header"/u);
@@ -163,15 +213,164 @@ void test("Chat exposes the native two-pane responsive layout contract", async (
   assert.match(shell, /id="session-rail" aria-label="Sessions"/u);
   assert.match(shell, /id="session-search" type="search"/u);
   assert.match(shell, /id="session-list" aria-label="Recent Sessions"/u);
+  assert.doesNotMatch(shell, /session-filter/u);
+  assert.doesNotMatch(shell, /session-count/u);
+  assert.doesNotMatch(shell, /header-eyebrow/u);
+  assert.match(styles, /body\.sessions-open #app/u);
   assert.match(styles, /grid-template-columns: minmax\(0, 1fr\)/u);
-  assert.match(styles, /@media \(max-width: 720px\)/u);
+  assert.match(styles, /grid-template-rows: minmax\(0, 1fr\)/u);
+  assert.match(styles, /@media \(max-width: 900px\)/u);
+  assert.doesNotMatch(styles, /#app\s*\{\s*display: block/u);
   assert.match(styles, /body\.sessions-open #session-rail/u);
+  assert.match(
+    styles,
+    /grid-template-rows: auto auto auto minmax\(0, 1fr\)/u,
+  );
   assert.match(styles, /var\(--vscode-list-activeSelectionBackground\)/u);
+  assert.match(client, /sessionRail\.setAttribute\("aria-hidden", String\(!open\)\)/u);
+  assert.match(client, /if \(open\) scheduleVirtualSessionRender\(\)/u);
+  assert.match(styles, /\.composer-controls\s*\{[^}]*flex-wrap: wrap/su);
+  assert.match(styles, /#environment,\s*#approval-posture\s*\{\s*display: none/su);
   assert.match(client, /\["ArrowDown", "ArrowUp", "Home", "End"\]/u);
   assert.match(client, /aria-current/u);
   assert.match(client, /function isNearBottom\(\)/u);
-  assert.match(client, /if \(stickToBottom\) turns\.scrollTo/u);
+  assert.match(client, /followLatest = true;\n\s{2}scrollTranscriptToBottom\(\)/u);
+  assert.match(client, /turns\.addEventListener\("wheel", suspendTranscriptFollow/u);
+  assert.match(client, /function scheduleTranscriptPatch\(/u);
+  assert.match(client, /\}, followLatest \? 50 : 100\);/u);
+  assert.match(client, /transcriptInteracting = false;\n\s{4}flushPendingTranscriptPatch/u);
+  assert.match(client, /!\s*existingIDs\.has\(id\)/u);
+  assert.match(styles, /#turns\s*\{[^}]*overflow-anchor: none/su);
+  assert.match(transcript, /"active-turn",\s*turn\.status === "running"/su);
+  assert.match(
+    styles,
+    /#turns > article\.active-turn\s*\{[^}]*content-visibility: visible/su,
+  );
+  assert.match(client, /const shouldFollowLatest = followLatest/u);
+  assert.match(
+    client,
+    /if \(shouldFollowLatest\) turns\.scrollTop = turns\.scrollHeight/u,
+  );
   assert.doesNotMatch(client, /window\.scrollTo/u);
+});
+
+void test("Chat composer grows with content and resets after submit", async () => {
+  const client = await sourceFile("chat", "webview", "client.ts");
+  const styles = await sourceFile("chat", "webview", "styles.css");
+
+  assert.match(client, /prompt\.addEventListener\("input", resizePrompt\)/u);
+  assert.match(client, /prompt\.style\.height = "auto"/u);
+  assert.match(client, /Math\.min\(window\.innerHeight \* 0\.4, 320\)/u);
+  assert.match(client, /prompt\.value = "";\n\s{2}resizePrompt\(\);/u);
+  assert.match(styles, /max-height: min\(40vh, 320px\)/u);
+  assert.match(styles, /resize: none/u);
+});
+
+void test("Chat composer sends on Enter and uses one stateful action", async () => {
+  const shell = await sourceFile("chat", "webview", "shell.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
+  const keyboard = await sourceFile("chat", "keyboard.ts");
+
+  assert.doesNotMatch(shell, /id="stop"/u);
+  assert.match(keyboard, /state\.key === "Enter" && !state\.shiftKey/u);
+  assert.match(client, /if \(turnActive\) \{\s*post\(\{ type: "stop" \}\)/su);
+  assert.match(client, /send\.classList\.toggle\("stop-state", turnActive\)/u);
+  assert.match(client, /turnActive \? "Stop \(Escape\)" : "Send \(Enter\)"/u);
+});
+
+void test("Chat presents Provider and Model as one route control", async () => {
+  const shell = await sourceFile("chat", "webview", "shell.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
+  const composer = await sourceFile("chat", "composer.ts");
+
+  assert.match(shell, /id="provider-control"[^>]*>Provider · Model</u);
+  assert.doesNotMatch(shell, /id="model-control"/u);
+  assert.doesNotMatch(client, /element\("model-control"\)/u);
+  assert.match(composer, /return "DeepSeek"/u);
+  assert.match(composer, /`\$\{providerLabel\(profile\.provider\)\} · \$\{profile\.model\}`/u);
+  assert.doesNotMatch(shell, /id="thinking-control"/u);
+  assert.doesNotMatch(client, /configure-composer", control: "thinking"/u);
+});
+
+void test("Chat renders process activity as an ordered collapsible timeline", async () => {
+  const transcript = await sourceFile("chat", "webview", "transcript.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
+  const projector = await sourceFile("chat", "projector.ts");
+  const styles = await sourceFile("chat", "webview", "styles.css");
+
+  assert.match(projector, /readonly timeline: readonly TurnTimelineItem\[\]/u);
+  assert.match(projector, /appendTimelineText\(turn, "output"/u);
+  assert.match(projector, /appendTimelineText\(turn, "reasoning"/u);
+  assert.match(projector, /ensureToolTimelineItem\(turn/u);
+  assert.match(transcript, /appendTimeline\(stream, turn, trusted, actions\)/u);
+  assert.match(transcript, /className = "turn-stream"/u);
+  assert.match(transcript, /group\.className = "activity-group"/u);
+  assert.match(
+    transcript,
+    /item\.kind === "output" \|\| item\.kind === "approval" \|\|/u,
+  );
+  assert.match(transcript, /item\.kind === "input"/u);
+  assert.match(transcript, /groupItems\.push\(item\)/u);
+  assert.match(transcript, /`Activity · \$\{count\} · Issues found`/u);
+  assert.match(transcript, /`\$\{active \? "Working" : "Activity"\} · \$\{count\}`/u);
+  assert.doesNotMatch(transcript, /group\.open\s*=/u);
+  assert.match(transcript, /item\.active \? "Thinking…" : "Reasoning"/u);
+  assert.match(transcript, /reasoning\.open = true/u);
+  assert.match(transcript, /function reasoningIsLong\(text: string\)/u);
+  assert.match(transcript, /text\.length > 1200/u);
+  assert.match(transcript, /content\.classList\.add\("long"\)/u);
+  assert.match(transcript, /setReasoningExpanded\(content, false\)/u);
+  assert.match(transcript, /readonly expanded: ReadonlySet<string>/u);
+  assert.match(styles, /\.reasoning-content\.long:not\(\.expanded\) \.reasoning-body/u);
+  assert.match(styles, /\.reasoning-toggle\s*\{/u);
+  assert.match(transcript, /recovery\.className = "recovery-actions"/u);
+  assert.match(transcript, /recovery\.dataset\["recoveryTurnId"\] = turn\.id/u);
+  assert.match(transcript, /actionButton\("Retry"/u);
+  assert.match(transcript, /actionButton\("Continue"/u);
+  assert.match(transcript, /status\.className = "recovery-status"/u);
+  assert.match(client, /recoveryStates\.set\(turnId, \{ action, status: "pending" \}\)/u);
+  assert.match(client, /state\.status === "accepted"/u);
+  assert.match(client, /"Retry started"/u);
+  assert.match(client, /"Continue started"/u);
+  assert.match(client, /button\.disabled = state\.status !== "failed"/u);
+  assert.match(styles, /\.recovery-action\.primary\s*\{/u);
+  assert.match(styles, /var\(--vscode-button-background\)/u);
+  assert.match(styles, /\.recovery-action\.secondary\s*\{/u);
+  assert.match(styles, /\.recovery-action:disabled\s*\{/u);
+  assert.match(styles, /\.recovery-status\.error\s*\{/u);
+  assert.match(transcript, /receipt\.className = "receipt"/u);
+  assert.match(transcript, /appendText\(receipt, "summary", "", "Run Details"\)/u);
+  assert.match(
+    transcript,
+    /if \(item\.final\) \{\s*appendText\(output, "div", "section-label", "Final Result"\)/su,
+  );
+  assert.doesNotMatch(transcript, /"meta turn-status", turn\.status/u);
+  assert.match(transcript, /group\.className = "reference-group"/u);
+  assert.match(transcript, /`References\$\{count > 1/u);
+  assert.match(styles, /\.reference-group-body\s*\{/u);
+  assert.match(styles, /\.activity-group,\s*\.reference-group\s*\{/u);
+  assert.match(styles, /\.activity-group > summary::after/u);
+  assert.match(styles, /\.activity-group\.running > summary::before\s*\{/u);
+  assert.match(styles, /\.timeline-item::before\s*\{[^}]*background: var\(--vscode-panel-border\)/su);
+  assert.match(styles, /\.timeline-item > summary::before\s*\{/u);
+  assert.match(styles, /\.timeline-item\.running > summary::before\s*\{/u);
+  assert.match(styles, /@keyframes timeline-spin/u);
+  assert.match(styles, /\.tool-target\s*\{/u);
+  assert.match(transcript, /"command-section-label", "Full Command"/u);
+  assert.match(transcript, /"command-section-label", "Output"/u);
+  assert.match(transcript, /"pre", "command-full", `\$ \$\{presentation\.command\}`/u);
+  assert.doesNotMatch(
+    transcript,
+    /presentation\.command[\s\S]{0,500}details\.open\s*=/u,
+  );
+  assert.match(styles, /\.command-full,\s*\.command-output,\s*\.command-metadata/u);
+  assert.match(transcript, /presentation\.files !== undefined/u);
+  assert.match(transcript, /resourceButton\(\s*file\.resourceId/su);
+  assert.match(transcript, /"file-lines added", `\+\$\{String\(file\.added\)\}`/u);
+  assert.match(transcript, /"file-lines removed", `-\$\{String\(file\.removed\)\}`/u);
+  assert.match(styles, /\.file-change-row\s*\{/u);
+  assert.match(styles, /\.file-type-icon\.type-ts/u);
+  assert.match(styles, /button\.file-change-name:hover/u);
 });
 
 void test("Chat hardening virtualizes Sessions and pauses hidden DOM work", async () => {

@@ -39,7 +39,8 @@ func ClassifySurface(toolName string, capability Capability) Surface {
 		return SurfaceMCP
 	case name == "load_skill" || name == "skill" || strings.HasPrefix(name, "skill_"):
 		return SurfaceSkills
-	case name == "shell_run" || name == "shell" || capability == CapabilityProcess:
+	case name == "shell_run" || name == "shell_read" || name == "shell" ||
+		capability == CapabilityProcess:
 		return SurfaceSandbox
 	default:
 		return SurfaceRules

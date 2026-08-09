@@ -62,6 +62,24 @@ type profileTestEngine struct {
 	applied protocol.SessionProfile
 }
 
+type observingEventStore struct {
+	EventStore
+	onAppend func(protocol.Event)
+}
+
+func (s *observingEventStore) Append(
+	ctx context.Context,
+	event protocol.Event,
+) error {
+	if err := s.EventStore.Append(ctx, event); err != nil {
+		return err
+	}
+	if s.onAppend != nil {
+		s.onAppend(event)
+	}
+	return nil
+}
+
 func (e *profileTestEngine) ValidateSessionProfile(
 	_ protocol.ThreadID,
 	profile protocol.SessionProfile,
@@ -122,6 +140,52 @@ func TestSessionProfileUpdateRejectsActiveTurnBeforePersistence(t *testing.T) {
 	}
 	if store.writes != 0 {
 		t.Fatalf("active update persisted %d writes", store.writes)
+	}
+}
+
+func TestTerminalEventIsPublishedAfterActiveTurnIsReleased(t *testing.T) {
+	defaults := runtimeTestProfile()
+	profiles := &memoryProfileStore{profile: defaults}
+	observed := make(chan error, 1)
+	store := &observingEventStore{EventStore: NewMemoryEventStore(16)}
+	var runtime *Runtime
+	store.onAppend = func(event protocol.Event) {
+		if !protocol.IsTerminalEvent(event.Kind) {
+			return
+		}
+		mode := "plan"
+		_, err := runtime.UpdateSessionProfile(
+			context.Background(),
+			"session-profile",
+			event.ThreadID,
+			defaults.Revision,
+			protocol.SessionProfilePatch{Mode: &mode},
+		)
+		observed <- err
+	}
+	runtime = NewRuntime(Options{
+		Engine:              &profileTestEngine{},
+		EventStore:          store,
+		SessionProfiles:     profiles,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), startOperation(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		event := receiveEvent(t, events)
+		if protocol.IsTerminalEvent(event.Kind) {
+			break
+		}
+	}
+	if err := <-observed; err != nil {
+		t.Fatalf("profile update at terminal publication = %v", err)
 	}
 }
 

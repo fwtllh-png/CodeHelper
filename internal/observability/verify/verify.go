@@ -292,44 +292,11 @@ func (r *CommandRunner) runCommands(
 	return receipt, nil
 }
 
-// CommandResultStatus separates code/test failures from dependency bootstrap
-// failures. A model cannot repair an unreachable module proxy by editing the
-// repository, so reporting that condition as failed only causes retry loops.
 func CommandResultStatus(_ string, result process.Result) (status, reason string) {
 	if result.ExitCode == 0 {
 		return StatusPassed, ""
 	}
-	output := strings.ToLower(result.Stdout + "\n" + result.Stderr)
-	if goModuleNetworkFailure(output) {
-		return StatusUnavailable,
-			"Go module dependencies are unavailable; check GOPROXY/GOPRIVATE or prewarm GOMODCACHE"
-	}
 	return StatusFailed, ""
-}
-
-func goModuleNetworkFailure(output string) bool {
-	moduleLookup := strings.Contains(output, "/@v/") ||
-		strings.Contains(output, "go: downloading") ||
-		strings.Contains(output, "proxy.golang.org") ||
-		strings.Contains(output, "module lookup disabled by goproxy")
-	if !moduleLookup {
-		return false
-	}
-	for _, marker := range []string{
-		"context deadline exceeded",
-		"i/o timeout",
-		"no such host",
-		"network is unreachable",
-		"connection refused",
-		"temporary failure in name resolution",
-		"tls handshake timeout",
-		"module lookup disabled by goproxy",
-	} {
-		if strings.Contains(output, marker) {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *CommandRunner) runProcess(ctx context.Context, command string) (process.Result, error) {

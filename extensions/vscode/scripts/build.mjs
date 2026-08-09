@@ -28,6 +28,16 @@ await Promise.all([
     target: "es2022",
     logLevel: "info",
   }),
+  build({
+    entryPoints: ["src/chat/webview/mermaid-renderer.ts"],
+    outfile: "dist/mermaid-renderer.js",
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    sourcemap: false,
+    target: "es2022",
+    logLevel: "info",
+  }),
   copyFile(
     "src/chat/webview/styles.css",
     "dist/chat-webview.css",

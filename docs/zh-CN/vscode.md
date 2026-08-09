@@ -24,6 +24,7 @@ VS Code UI 与 Context Bridge
 - Edit Plan Preview 与 Approval；
 - Runtime 确认的 File、Range、Directory、Symbol、Diagnostic 和 Edit Plan Diff
   原生导航；
+- Chat 内联 Mermaid 架构图，使用本地惰性渲染并支持源码回退；
 - Background Task、Job、Agent、Usage 和 Change View；
 - 本地 UI Extension Host 中的 `file:` Workspace；
 - External、Managed 或 Bundled Runtime；
@@ -38,8 +39,29 @@ Quick Pick，Setup 使用 Progress，持久化集合使用 Tree View。
 使用 `Ctrl+Enter` 或 `Cmd+Enter` 发送，使用 `Escape` 停止活动 Turn。生命周期状态带
 明确展示 Setup、Empty、Loading、Streaming、Approval、Verify、Failure、Recovery 和
 Completed，并给出下一步动作。控件使用 VS Code Theme Token、可见键盘焦点、
-Forced-color Border 和 Reduced Motion。Reasoning 与 Tool Detail 默认折叠，仅在活动
-状态或用户打开时展开。
+Forced-color Border 和 Reduced Motion。活动详情默认折叠；展开思考详情后，长
+Reasoning 正文仍提供独立的限高展开控制。
+
+Turn 内容严格遵循 Runtime Event 顺序。模型输出继续作为普通 Markdown 展示。模型正文、
+Approval 或待输入节点之间连续出现的所有非正文事件，统一收口为一个默认折叠的
+`Activity · N items` 紧凑入口，避免重复的 Reasoning 和 Tool 行挤占正文空间。展开后仍按
+原始顺序展示 Reasoning、Commands、Edited Files 和 Verification 节点；References 使用
+独立的单个折叠入口。Approval 和待输入节点仍在原位置直接展示。Tool 节点在 `tool.start`
+时固定位置，后续流式输出与终态结果
+只更新该节点，不改变顺序。只有 Completed Turn 中最后一次活动之后的权威输出才标记为
+`Final Result`。完成事件收口时不会删除用户已经看到的正文：已存在的最终后缀会被拆分为
+独立结论，重新采样的最终回答则追加展示。
+Runtime 不根据模型输出中的措辞推断是否完成。结构化 `max_tokens` 或 `incomplete`
+Stop Reason 最多触发两次自动续写；已捕获的 Blocks 会作为上下文重放，并合并进权威
+最终正文。第三次仍未完成时明确失败；Content Filter 停止则不续写并立即失败。可见
+正文为空时触发有界收口修复；Engine 未发布终态便返回时按失败收口。Tool 或 Engine
+Panic 以及类型化 Tool 错误会被限制在 Turn 边界，并投影为唯一且明确的失败终态。
+权限、重试和终态只由类型化错误、协议字段与显式 Metadata 驱动。
+命令节点默认折叠：标题只显示执行状态和有界的单行命令缩略内容；展开后分区展示完整
+命令、附加参数与输出。
+已完成的文件编辑节点按 Guard 实际观察到的文件逐行展示，包含语言感知的类型标识和
+`+新增/-删除` 行数。点击文件名只提交不透明 Resource ID，并沿用其他 Chat Resource
+相同的 Host 校验与原生导航路径。
 
 ## 原生资源导航
 
@@ -47,6 +69,15 @@ Runtime 确认的 Editor Context、Context Selection 和 Edit Plan 会投影为�
 Resource ID。Chat 中的文件引用通过 VS Code 原生 API 打开；Range 与 Diagnostic
 定位对应选区；Symbol 使用 Definition Provider，并在无定义结果时回退到文件内范围；
 Directory 在 Explorer 中定位；Plan 使用 Diff Editor 打开。
+
+Agent Markdown 也可以直接引用工作区相对目录或代码位置。行内代码
+`extensions/vscode`、`src/chat/view.ts:120-145`，以及
+`src/protocol/generated.ts#L10-L20` 形式的链接，都会投影到相同的不透明 Resource
+契约。只有现有上下文能够唯一确定资源时，才会链接不带目录的文件名。
+
+`mermaid` Fenced Code Block 会在 Chat 内渲染为架构图。渲染器是本地惰性加载的
+Bundle，运行于 Strict Mode，会清理 SVG 中的主动内容；渲染失败时回退为原始图表
+源码。它不会从网络加载 Script、Style、Image 或图表数据。
 
 Webview 永远不提交 URI、Path 或 Command。Extension Host 仅从当前 Snapshot 中解析
 Opaque ID，校验 Exact Workspace Root 与相对路径，然后调用固定的 VS Code Action。
@@ -81,6 +112,9 @@ Runtime 持有每个 Session 的 Mode、Provider、Model、Reasoning Effort、En
 ID、Approval Posture、Execution Target、Step Limit、Revision 和 Prompt Cache
 Revision。Extension Host 通过 `session/profile/get`/`session/profile/update` 访问；
 Webview State 与 `workspaceState` 都不是 Profile Store。
+
+推理模型统一使用 Runtime 选择的最高推理档位，Webview 不再提供 Session 级
+Reasoning Effort 选择器。
 
 更新必须携带已观察到的 Revision；过期写入或活动 Turn 都会失败。改变 Model-visible
 Request Shape 的字段会推进 Prompt Cache Revision。Capabilities 只公开当前 Runtime
@@ -136,6 +170,18 @@ Session Allowlist。Engine 在向 Model 广告 Tool Definition 和实际执行�
 Allowlist。选择 Tool 不授予权限：已启用调用仍经过 Guard、Policy、Approval、Journal
 和 Sandbox。
 
+在 Act Mode 与 `suggest` Posture 下，受 Workspace 约束的 `file_write` 默认不再请求
+交互式审批。它仍然经过 Resource 校验、Repository Rule、已有文件的
+Read-before-write、Journal 与原子提交。显式 Repository ask/deny Rule、Plan Mode、
+Granular Deny 和可选的强制 Edit Plan 模式仍具有最终约束力。其他写入和高风险操作
+继续采用原有审批行为。
+只读检查 Pipeline 使用 `shell_read`：OS Strong Sandbox 强制 Workspace 只读并禁用
+网络，因此 Auto Posture 可在不审批的情况下执行。任意 `shell_run`、Terminal 和
+Background Command 继续保留 Process Approval 边界。
+
+Chat Approval 卡片只展示有界的语义摘要。文件正文、Patch 和其他长参数以目标及大小
+表示，不再完整展开；Edit Plan Approval 仍保留原生 Diff Preview 操作。
+
 ## Session Lifecycle
 
 Runtime 是 Session 发现和生命周期状态的持久化权威。
@@ -172,10 +218,16 @@ Isolation、Profile、Status、Pin 和 Archive 都在每次重启后从 Runtime 
 Session 仍可发现，但 Restore 前不会建立连接。
 
 任一 Session Thread 处于 Running、Awaiting Approval 或 Awaiting Input 时，Archive
-和 Delete 都会失败。删除 Workspace 中最后一个 Session 或删除仍有未合并 Worktree
-变更的隔离 Session 也会失败。隔离 Session 删除成功后，由 Runtime-owned Lifecycle
-路径清理 Worktree；所有检查继续遵守 Guard、Journal、Sandbox 与持久化 Revision CAS
-边界。
+和 Delete 都会失败。删除 Workspace 中最后一个 Session 时，扩展会先创建并选中一个
+新的空 Session，再删除目标 Session；如果删除失败，则回滚新建的替代 Session。删除
+仍有未合并 Worktree 变更的隔离 Session 依然会失败。隔离 Session 删除成功后，由
+Runtime-owned Lifecycle 路径清理 Worktree；所有检查继续遵守 Guard、Journal、
+Sandbox 与持久化 Revision CAS 边界。
+
+隔离 Chat Worktree 内的 Git Command 仅保留对已校验 Worktree Administration
+Directory 和 Repository Common Git Directory 最小必要路径的只读访问。Strong
+Sandbox 仍拒绝写入 Parent Workspace，并拒绝通过 `.git` 或 `commondir` 越出可信
+Repository Metadata Root。
 
 ## Checkpoint、Fork 与 Plan
 
@@ -204,11 +256,15 @@ Checkpoint 血缘。当前 Active Thread 写入 Session Lifecycle Metadata，因
 Plan Card 支持在原生 Editor 打开、开始实现或请求 Autopilot。两种实现操作都会校验
 Artifact 与 Profile Revision，通过 Runtime Profile Contract 切换状态并提交一个新的
 Turn。Autopilot 请求 `act` Mode 与 `auto` Approval Posture，但 Host Permission
-Ceiling、Guard、Policy、Journal 和 Sandbox 仍是最终权威。
+Ceiling、Guard、Policy、Journal 和 Sandbox 仍是最终权威。低风险操作自动执行，
+可修改状态的 Process、Network 和 Plugin Tool 则暂停并请求审批。沙箱化
+`shell_read` 检查会自动执行，因为 Workspace Write 与 Network Access 在机制上不可用。
 
 Retry 与 Continue 已成为可执行 Runtime Workflow。两者始终使用 Idempotency Key 创建
 新 Turn，绝不重放历史 Tool、Command、Network 或 File Operation。Retry 复用源 Turn
-的持久化 Model-visible Request；Continue 使用 Terminal History 与可选 Guidance。
+的持久化 Model-visible Request；Continue 使用 Terminal History 与可选 Guidance。提交后
+按钮立即禁用；Runtime 接受后替换为 `Retry started` 或 `Continue started`，提交失败则
+恢复按钮并显示真实错误。
 Plan Transition 可显式选择 Current Session、保留 Profile 的 New Session 或 State-only
 Checkpoint Fork。Runtime 校验源 Artifact 并构造 Implementation Prompt，Webview 不做
 反向推断。

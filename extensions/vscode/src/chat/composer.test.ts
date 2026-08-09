@@ -42,7 +42,7 @@ const snapshot: SessionProfileSnapshot = {
       selection_mode: "restart_required",
     },
     mutable_fields: [
-      "mode", "reasoning_effort", "enabled_tool_ids", "approval_posture",
+      "mode", "enabled_tool_ids", "approval_posture",
     ],
   },
 };
@@ -80,11 +80,31 @@ void test("Composer projects Runtime profile and honest route capabilities", () 
   assert.equal(composer.mode.label, "Implement");
   assert.equal(composer.provider.enabled, true);
   assert.equal(composer.model.title.includes("restart"), true);
-  assert.equal(composer.thinking?.label, "Thinking: High");
   assert.equal(composer.tools.label, "1/1 Tools");
   assert.equal(composer.tools.enabled, true);
   assert.equal(composer.credential.label, "Key configured");
   assert.equal(composer.approval.label, "Suggest");
+});
+
+void test("Composer presents a DeepSeek Provider and Model as one route", () => {
+  const composer = projectComposer({
+    ...snapshot,
+    profile: {
+      ...snapshot.profile,
+      provider: "deepseek-v4-flash",
+      model: "deepseek-v4-flash",
+    },
+  }, catalog, {
+    status: "configured",
+    provider: "deepseek-v4-flash",
+    source: "secret-storage",
+    validation: "valid",
+  }, true);
+
+  assert.equal(
+    composer.provider.label,
+    "DeepSeek · deepseek-v4-flash",
+  );
 });
 
 void test("Composer removes escalation controls from untrusted workspaces", () => {

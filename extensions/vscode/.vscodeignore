@@ -6,6 +6,7 @@ dist/**
 !dist/extension.js
 !dist/chat-webview.js
 !dist/chat-webview.css
+!dist/mermaid-renderer.js
 go.mod
 tsconfig*.json
 eslint.config.mjs

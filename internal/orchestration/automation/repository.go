@@ -520,7 +520,7 @@ func enqueue(
 		current.TaskKind, task.StateQueued, string(payload), timestamp(at), timestamp(at),
 		nullable(current.TaskExecutor), attempts,
 	); err != nil {
-		if isUniqueViolation(err) {
+		if sqlitestate.IsUniqueConstraintViolation(err) {
 			return Run{}, errDuplicateSlot
 		}
 		return Run{}, err
@@ -547,7 +547,7 @@ func enqueue(
 		timestamp(run.CreatedAt), timestamp(run.UpdatedAt),
 	)
 	if err != nil {
-		if isUniqueViolation(err) {
+		if sqlitestate.IsUniqueConstraintViolation(err) {
 			return Run{}, errDuplicateSlot
 		}
 		return Run{}, err
@@ -726,12 +726,4 @@ func nullableTime(value *time.Time) any {
 		return nil
 	}
 	return timestamp(*value)
-}
-
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "unique") || strings.Contains(message, "constraint")
 }

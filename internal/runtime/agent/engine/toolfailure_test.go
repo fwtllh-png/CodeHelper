@@ -53,9 +53,9 @@ func (unreadTool) Descriptor() tool.Descriptor {
 }
 
 func (unreadTool) Execute(context.Context, json.RawMessage) (tool.Result, error) {
-	return tool.Result{}, fmt.Errorf(
-		"read-before-edit final check %q: %w", "sample.txt", workspacejournal.ErrUnread,
-	)
+	return tool.Result{}, &workspacejournal.ReadValidationError{
+		Path: "sample.txt", Cause: workspacejournal.ErrUnread,
+	}
 }
 
 func TestRecoverableToolFailureClassification(t *testing.T) {
@@ -168,6 +168,26 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 	}
 }
 
+func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
+	err := fmt.Errorf("plan workspace edit: %w", tool.Precondition(
+		tool.WithRecoveryHint(errors.New("old text did not match"), tool.RecoveryHint{
+			ErrorCategory:  "edit_precondition_failed",
+			RequiredAction: "file_read",
+			Path:           "docs/chapter.md",
+			RetryOriginal:  false,
+		}),
+	))
+
+	metadata := toolFailureRecoveryMetadata(err)
+
+	if metadata["error_category"] != "edit_precondition_failed" ||
+		metadata["required_action"] != "file_read" ||
+		metadata["path"] != "docs/chapter.md" ||
+		metadata["retry_original"] != false {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
 // Read-before-edit violations are the model's own mistake, so runTools reports
 // them as failed tool results and lets the turn continue.
 func TestRunToolsFeedsRecoverableFailureBackToModel(t *testing.T) {
@@ -197,6 +217,12 @@ func TestRunToolsFeedsRecoverableFailureBackToModel(t *testing.T) {
 	if len(results) != 1 || !results[0].IsError ||
 		!strings.Contains(results[0].Content, "read-before-edit") {
 		t.Fatalf("results = %+v", results)
+	}
+	if results[0].Metadata["error_category"] != "read_before_edit_required" ||
+		results[0].Metadata["required_action"] != "file_read" ||
+		results[0].Metadata["path"] != "sample.txt" ||
+		results[0].Metadata["retry_original"] != true {
+		t.Fatalf("recovery metadata = %#v", results[0].Metadata)
 	}
 	if len(emitted) != 1 || !emitted[0].IsError {
 		t.Fatalf("emitted results = %+v", emitted)
@@ -264,6 +290,7 @@ func TestEngineFeedsSampledUnknownToolBackToModel(t *testing.T) {
 			{Type: provider.EventTextDelta, Text: "recovered"},
 			{Type: provider.EventMessageStop},
 		}},
+		textStream("recovered"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
 	if err := registry.Register(&echoTool{}, nil); err != nil {
@@ -278,8 +305,8 @@ func TestEngineFeedsSampledUnknownToolBackToModel(t *testing.T) {
 	if result.State != Completed || result.Text != "recovered" {
 		t.Fatalf("result = %+v", result)
 	}
-	if len(runtime.requests) != 2 {
-		t.Fatalf("provider requests = %d, want 2", len(runtime.requests))
+	if len(runtime.requests) != 3 {
+		t.Fatalf("provider requests = %d, want 3", len(runtime.requests))
 	}
 	var failure *provider.ToolResult
 	for _, message := range runtime.requests[1].Messages {
@@ -306,6 +333,7 @@ func TestEngineDoesNotExecuteUnadvertisedCatalogTool(t *testing.T) {
 			{Type: provider.EventTextDelta, Text: "recovered"},
 			{Type: provider.EventMessageStop},
 		}},
+		textStream("recovered"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
 	descriptor := (&echoTool{}).Descriptor()

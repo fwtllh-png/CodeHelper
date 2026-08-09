@@ -552,7 +552,8 @@ func (g *Guard) ExecuteBound(
 
 func (g *Guard) canEscalate(invocation Invocation) bool {
 	return g.escalation.EscalateOnFailure &&
-		invocation.Descriptor.SandboxRequirement == tool.SandboxStrong
+		invocation.Descriptor.SandboxRequirement == tool.SandboxStrong &&
+		invocation.Descriptor.Capability != tool.CapabilityRead
 }
 
 // egressDeniedTarget extracts a host that RoundTrip refused for policy reasons.
@@ -581,19 +582,9 @@ func egressDeniedTarget(result tool.Result, executeErr error) (host, protocol st
 }
 
 func hostProtocolFromEgressError(err error) (host, protocol string) {
-	protocol = "https"
-	msg := err.Error()
-	if _, after, ok := strings.Cut(msg, "host "); ok {
-		fields := strings.Fields(after)
-		if len(fields) > 0 {
-			host = strings.ToLower(strings.TrimSpace(fields[0]))
-		}
-		if _, protoAfter, ok := strings.Cut(after, "protocol "); ok {
-			protoFields := strings.Fields(protoAfter)
-			if len(protoFields) > 0 {
-				protocol = strings.ToLower(strings.TrimSpace(protoFields[0]))
-			}
-		}
+	host, protocol, ok := egress.DeniedTarget(err)
+	if !ok {
+		return "", ""
 	}
 	return host, protocol
 }
@@ -681,7 +672,7 @@ func (g *Guard) prepareFileWrites(
 	for _, path := range paths {
 		if requireRead {
 			if _, err := g.readTracker.ValidateWrite(path); err != nil {
-				return nil, fmt.Errorf("read-before-edit %q: %w", path, err)
+				return nil, g.readValidationError(path, err)
 			}
 		}
 		if g.journal != nil {
@@ -690,7 +681,7 @@ func (g *Guard) prepareFileWrites(
 			}
 			if requireRead {
 				if _, err := g.readTracker.ValidateWrite(path); err != nil {
-					return nil, fmt.Errorf("read-before-edit race %q: %w", path, err)
+					return nil, g.readValidationError(path, err)
 				}
 			}
 		}
@@ -700,12 +691,22 @@ func (g *Guard) prepareFileWrites(
 		}
 		if requireRead {
 			if _, err := g.readTracker.ValidateWrite(path); err != nil {
-				return nil, fmt.Errorf("read-before-edit final check %q: %w", path, err)
+				return nil, g.readValidationError(path, err)
 			}
 		}
 		expected[path] = current
 	}
 	return expected, nil
+}
+
+func (g *Guard) readValidationError(path string, cause error) error {
+	relative, err := filepath.Rel(g.workspace, path)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		relative = path
+	}
+	return &workspacejournal.ReadValidationError{
+		Path: filepath.ToSlash(relative), Cause: cause,
+	}
 }
 
 func (g *Guard) recordFileRead(
@@ -760,14 +761,6 @@ func (g *Guard) finishFileWrites(
 		if changed {
 			changes = append(changes, change)
 		}
-		if !runDiagnostics {
-			continue
-		}
-		receipt, err := g.diagnostics.Run(ctx, path)
-		if err != nil {
-			return fmt.Errorf("post-edit diagnostics %q: %w", path, err)
-		}
-		receipts = append(receipts, receipt)
 	}
 	if !succeeded {
 		return nil
@@ -779,6 +772,24 @@ func (g *Guard) finishFileWrites(
 		result.Metadata[MetadataChanges] = changes
 	}
 	if runDiagnostics {
+		// Seal every journal record before invoking an external checker. A
+		// multi-file tool has already written all paths, so returning after the
+		// first diagnostic failure must not leave the remaining records with
+		// stale after-images that make automatic rollback conflict.
+		for _, path := range paths {
+			receipt, err := g.diagnostics.Run(ctx, path)
+			if err != nil {
+				if errors.Is(err, context.Canceled) ||
+					errors.Is(err, context.DeadlineExceeded) {
+					return fmt.Errorf("post-edit diagnostics %q: %w", path, err)
+				}
+				receipt = diagnostics.Receipt{
+					Path: path, Status: "failed", Diagnostics: []diagnostics.Diagnostic{},
+					Message: err.Error(),
+				}
+			}
+			receipts = append(receipts, receipt)
+		}
 		if result.Metadata == nil {
 			result.Metadata = make(map[string]any)
 		}

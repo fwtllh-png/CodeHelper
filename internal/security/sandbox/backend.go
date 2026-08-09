@@ -37,13 +37,17 @@ type Capability struct {
 }
 
 type Command struct {
-	Path             string
-	Args             []string
-	Dir              string
-	Env              []string
-	DirectoryFD      int
-	PreparedPolicyID string
-	PreparedStrength Strength
+	Path                  string
+	Args                  []string
+	Dir                   string
+	Env                   []string
+	DirectoryFD           int
+	WorkspaceReadOnly     bool
+	DenyNetwork           bool
+	PreparedPolicyID      string
+	PreparedStrength      Strength
+	PreparedReadOnly      bool
+	PreparedNetworkDenied bool
 }
 
 type Backend interface {
@@ -225,7 +229,12 @@ func (b *seatbeltBackend) Prepare(_ context.Context, command Command) (Command, 
 	if err != nil {
 		return Command{}, err
 	}
-	profile := seatbeltProfile(b.policy, executable)
+	profile := seatbeltProfileForCommand(
+		b.policy,
+		executable,
+		command.WorkspaceReadOnly,
+		command.DenyNetwork,
+	)
 	sandboxExec, err := resolveExecutableLiteral("/usr/bin/sandbox-exec", command.Env)
 	if err != nil {
 		return Command{}, err
@@ -235,7 +244,11 @@ func (b *seatbeltBackend) Prepare(_ context.Context, command Command) (Command, 
 	return Command{
 		Path: sandboxExec, Args: args, Dir: command.Dir, Env: command.Env,
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
-		PreparedStrength: b.capability.Strength,
+		PreparedStrength:      b.capability.Strength,
+		WorkspaceReadOnly:     command.WorkspaceReadOnly,
+		DenyNetwork:           command.DenyNetwork,
+		PreparedReadOnly:      command.WorkspaceReadOnly,
+		PreparedNetworkDenied: command.DenyNetwork,
 	}, nil
 }
 
@@ -282,7 +295,7 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 	if b.useLandlock {
 		helper, requestPath, err = prepareLandlockInvocation(
 			b.policy, b.helperPath, b.requestRoot,
-			executable, command.Args[1:], command.Env,
+			executable, command.Args[1:], command.Env, command.WorkspaceReadOnly,
 		)
 		if err != nil {
 			return Command{}, err
@@ -291,7 +304,7 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 	args := []string{
 		bwrap, "--die-with-parent", "--new-session", "--unshare-all",
 	}
-	if b.policy.AllowNetwork {
+	if b.policy.AllowNetwork && !command.DenyNetwork {
 		args = append(args, "--share-net")
 	}
 	args = append(args, "--tmpfs", "/", "--proc", "/proc", "--dev", "/dev")
@@ -303,7 +316,13 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 	for _, root := range b.probeReads {
 		args = appendMount(args, created, root, root, true)
 	}
-	args = appendMount(args, created, b.policy.WorkspaceRoot, b.policy.WorkspaceRoot, false)
+	args = appendMount(
+		args,
+		created,
+		b.policy.WorkspaceRoot,
+		b.policy.WorkspaceRoot,
+		command.WorkspaceReadOnly,
+	)
 	args = appendMount(args, created, b.policy.PrivateTemp, b.policy.PrivateTemp, false)
 	executableMountedLiteral := !coveredByRoots(
 		executable, append(b.policy.RuntimeReadRoots, b.policy.HostReadRoots...),
@@ -332,7 +351,11 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 	return Command{
 		Path: bwrap, Args: args, Dir: command.Dir, Env: command.Env,
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
-		PreparedStrength: b.capability.Strength,
+		PreparedStrength:      b.capability.Strength,
+		WorkspaceReadOnly:     command.WorkspaceReadOnly,
+		DenyNetwork:           command.DenyNetwork,
+		PreparedReadOnly:      command.WorkspaceReadOnly,
+		PreparedNetworkDenied: command.DenyNetwork,
 	}, nil
 }
 
@@ -353,6 +376,15 @@ func CloseBackend(backend Backend) error {
 }
 
 func seatbeltProfile(policy Policy, executable string) string {
+	return seatbeltProfileForCommand(policy, executable, false, false)
+}
+
+func seatbeltProfileForCommand(
+	policy Policy,
+	executable string,
+	workspaceReadOnly bool,
+	denyNetwork bool,
+) string {
 	var profile strings.Builder
 	profile.WriteString("(version 1)\n(deny default)\n")
 	profile.WriteString("(import \"system.sb\")\n")
@@ -368,13 +400,33 @@ func seatbeltProfile(policy Policy, executable string) string {
 			fmt.Fprintf(&profile, "(allow file-read* (literal %s))\n", seatbeltQuote(root))
 		}
 	}
-	for _, root := range []string{policy.WorkspaceRoot, policy.PrivateTemp} {
-		fmt.Fprintf(&profile, "(allow file-write* (subpath %s))\n", seatbeltQuote(root))
+	if !workspaceReadOnly {
+		fmt.Fprintf(
+			&profile,
+			"(allow file-write* (subpath %s))\n",
+			seatbeltQuote(policy.WorkspaceRoot),
+		)
+	}
+	fmt.Fprintf(
+		&profile,
+		"(allow file-write* (subpath %s))\n",
+		seatbeltQuote(policy.PrivateTemp),
+	)
+	if filepath.Clean(executable) == "/bin/sh" {
+		// Darwin's /bin/sh ignores TMPDIR for here-document backing files and
+		// creates /private/tmp/sh-thd-<digits>. Grant only that implementation
+		// detail; arbitrary host-temp children remain outside the sandbox.
+		profile.WriteString("(allow file-write* (literal \"/private/tmp\"))\n")
+		profile.WriteString(
+			"(allow file-write* (regex #\"^/private/tmp/sh-thd-[0-9]+$\"))\n",
+		)
 	}
 	// macOS tools often lstat ancestors (/private, /private/var, …) while
-	// resolving realpaths under PrivateTemp. subpath grants do not cover those
-	// parents, which surfaces as "lstat /private: operation not permitted".
-	writeSeatbeltAncestorMetadata(&profile, policy.WorkspaceRoot, policy.PrivateTemp)
+	// resolving realpaths. subpath grants do not cover those parents, which
+	// surfaces as "lstat /private: operation not permitted". Metadata-only
+	// grants preserve read isolation while allowing a permitted root to be
+	// resolved.
+	writeSeatbeltAncestorMetadata(&profile, readRoots...)
 	if home, err := os.UserHomeDir(); err == nil {
 		for _, sensitive := range []string{
 			filepath.Join(home, ".ssh"), filepath.Join(home, ".gnupg"),
@@ -383,7 +435,7 @@ func seatbeltProfile(policy Policy, executable string) string {
 			fmt.Fprintf(&profile, "(deny file-read* file-write* (subpath %s))\n", seatbeltQuote(sensitive))
 		}
 	}
-	if policy.AllowNetwork {
+	if policy.AllowNetwork && !denyNetwork {
 		profile.WriteString("(allow network-outbound)\n")
 		profile.WriteString("(allow network-inbound)\n")
 		profile.WriteString("(allow system-socket)\n")
@@ -697,7 +749,10 @@ func runAttackProbe(helperPath string) Capability {
 		}
 	}
 	script := fmt.Sprintf(
-		`set -eu; test "$(cat input)" = workspace; printf ok > output; sh -c 'test "$(cat input)" = workspace'; ! cat %q >/dev/null 2>&1; ! printf bad > %q; %s`,
+		`set -eu; test "$(cat input)" = workspace; test "$(cat <<'EOF'
+heredoc
+EOF
+)" = heredoc; printf ok > output; sh -c 'test "$(cat input)" = workspace'; ! cat %q >/dev/null 2>&1; ! printf bad > %q; ! printf bad > /private/tmp/codehelper-sandbox-probe; %s`,
 		secret, outsideWrite, networkTest,
 	)
 	if runtime.GOOS == "linux" {

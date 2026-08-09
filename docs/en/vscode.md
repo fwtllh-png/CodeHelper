@@ -26,6 +26,8 @@ the CLI and TUI.
 - edit-plan preview and approval;
 - native navigation for Runtime-confirmed files, ranges, directories, symbols,
   diagnostics, and edit-plan diffs;
+- inline Mermaid architecture diagrams with local lazy rendering and source
+  fallback;
 - background task, job, agent, usage, and change views;
 - local `file:` workspace execution in the UI Extension Host;
 - external, managed, or bundled runtime selection;
@@ -42,7 +44,39 @@ Use `Ctrl+Enter` or `Cmd+Enter` to send and `Escape` to stop an active Turn.
 The lifecycle strip names Setup, Empty, Loading, Streaming, Approval, Verify,
 Failure, Recovery, and Completed states with a next action. Controls use VS
 Code theme tokens, visible keyboard focus, forced-color borders, and reduced
-motion. Reasoning and Tool details remain collapsed unless active or opened.
+motion. Activity details are collapsed by default; long reasoning bodies retain
+an additional height-limited expand control inside their detail view.
+
+Turn content follows Runtime event order. Model output remains normal Markdown.
+All consecutive non-output events between model output, approval, or input
+boundaries are represented by one compact `Activity · N items` row. The row is
+collapsed by default so repeated Reasoning and Tool events do not crowd out the
+answer. Expanding it reveals the original ordered Reasoning, Commands, Edited
+Files, and Verification nodes. References use one separate collapsed row.
+Approvals and required input remain directly visible at their original
+positions. A Tool node keeps
+the position assigned by `tool.start`; streamed output and the terminal result
+update that node without moving it. Only authoritative output emitted after the
+last activity of a completed Turn receives the Final Result label. Completion
+reconciliation never removes output already shown to the user: an existing
+final suffix is split out, while a newly sampled final response is appended.
+The Runtime never infers completion from wording in model output. Structured
+`max_tokens` and `incomplete` stop reasons trigger at most two continuation
+samples; captured blocks are replayed as context and merged into the
+authoritative final text. A third incomplete stop fails explicitly, while a
+content-filter stop fails immediately without continuation. An empty visible
+answer triggers bounded repair, and an Engine that returns without a terminal
+event fails closed. Tool or Engine panics and typed Tool failures are contained
+at the Turn boundary and projected as one explicit failure. Permissions,
+retries, and terminal state are driven only by typed errors, protocol fields,
+and explicit metadata.
+Command nodes are collapsed by default: their title contains only execution
+state and a bounded single-line command preview, while the expanded body shows
+the full command, auxiliary parameters, and output in separate sections.
+Completed file-edit nodes show one row per observed file with a language-aware
+type marker and `+added/-removed` line counts. The filename submits only its
+opaque Resource ID and opens through the same Host-validated native navigation
+path as other Chat resources.
 
 ## Native Resource Navigation
 
@@ -51,6 +85,18 @@ projected into opaque resource IDs. File references in Chat open through native
 VS Code APIs; ranges and diagnostics reveal the relevant selection, symbols use
 the definition provider with an in-file fallback, directories reveal in
 Explorer, and plans open in the Diff editor.
+
+Agent Markdown may also reference a workspace-relative directory or location
+directly. Inline code such as `extensions/vscode`,
+`src/chat/view.ts:120-145`, and links such as
+`src/protocol/generated.ts#L10-L20` are projected to the same opaque resource
+contract. Bare basenames are linked only when existing context identifies one
+unique resource.
+
+Fenced `mermaid` blocks render as inline architecture diagrams. The renderer is
+a local lazy-loaded bundle, runs in strict mode, strips active SVG content, and
+falls back to the original diagram source when rendering fails. It does not load
+scripts, styles, images, or diagram data from the network.
 
 The Webview never submits a URI, path, or command. The Extension Host resolves
 the opaque ID from the current Snapshot, validates the exact Workspace root and
@@ -89,6 +135,9 @@ enabled Tool IDs, approval posture, execution target, step limit, Revision,
 and prompt-cache Revision. The Extension Host uses
 `session/profile/get`/`session/profile/update`; Webview state and
 `workspaceState` are not Profile stores.
+
+Reasoning models use the Runtime-selected maximum effort. The Webview does not
+offer a per-Session reasoning-effort selector.
 
 Updates require the observed Revision and fail on stale writes or an active
 Turn. Changes that alter model-visible request shape advance the prompt-cache
@@ -156,6 +205,21 @@ both when advertising model tool definitions and before execution. Selection
 never grants permission: enabled calls still pass through Guard, policy,
 approval, journal, and sandbox enforcement.
 
+In Act mode with `suggest` posture, the workspace-bound `file_write` operation
+does not request interactive approval by default. It still passes resource
+validation, repository rules, read-before-write checks for existing files,
+journaling, and atomic commit. Explicit repository ask/deny rules, Plan mode,
+granular denial, and the optional forced edit-plan mode remain authoritative.
+Other write and high-risk operations retain their normal approval behavior.
+Read-only inspection pipelines use `shell_read`: the strong OS sandbox enforces
+a read-only workspace and disabled network, so Auto posture can execute them
+without approval. Arbitrary `shell_run`, terminal, and background commands keep
+their process approval boundary.
+
+Chat approval cards show a bounded semantic summary. File bodies, patches, and
+other long arguments are represented by their target and size rather than
+rendered in full; edit-plan approvals retain the native diff preview action.
+
 ## Session Lifecycle
 
 The Runtime is the durable authority for Session discovery and lifecycle state.
@@ -198,10 +262,18 @@ are queried from the Runtime after every restart. Archived Sessions remain
 discoverable but are not connected until restored.
 
 Archive and Delete fail while any Session Thread is running, awaiting approval,
-or awaiting input. Delete also fails for the last Session in a Workspace and
-for an isolated Session with unmerged Worktree changes. A successful isolated
-delete removes its Worktree through the Runtime-owned lifecycle path. These
-checks preserve Guard, journal, sandbox, and durable Revision CAS boundaries.
+or awaiting input. Deleting the last Session first creates and selects a new
+empty Session, then deletes the requested Session; if deletion fails, the
+replacement is rolled back. Delete still fails for an isolated Session with
+unmerged Worktree changes. A successful isolated delete removes its Worktree
+through the Runtime-owned lifecycle path. These checks preserve Guard, journal,
+sandbox, and durable Revision CAS boundaries.
+
+Git commands inside an isolated Chat Worktree retain read-only access to the
+validated Worktree administration directory and the minimum required paths in
+the repository common Git directory. The Strong Sandbox still rejects writes to
+the parent workspace and rejects `.git` or `commondir` paths that escape the
+trusted repository metadata root.
 
 ## Checkpoints, Forks, and Plans
 
@@ -233,13 +305,20 @@ being inferred from rendered Markdown. The Plan card can open the body in a
 native editor, start implementation, or request Autopilot. Both implementation
 actions validate Artifact and Profile Revision, switch through the Runtime
 Profile contract, and submit a new Turn. Autopilot requests `act` mode with
-`auto` approval posture; Host permission ceilings, Guard, policy, journal, and
-sandbox enforcement remain authoritative.
+`auto` approval posture. Low-risk operations proceed automatically, while
+mutating process, network, and plugin tools pause for approval. Sandboxed
+`shell_read` inspection proceeds automatically because workspace writes and
+network access are mechanically unavailable. Host permission ceilings, Guard,
+policy, journal, and sandbox enforcement remain authoritative.
 
 Retry and Continue are active Runtime workflows. They always create a new Turn
 with an idempotency key and never replay historical Tool, command, network, or
 file operations. Retry reuses the source Turn's durable model-visible request;
-Continue uses terminal history plus optional guidance. Plan transitions
+Continue uses terminal history plus optional guidance. The recovery controls
+disable immediately after submission. An accepted
+recovery replaces the buttons with `Retry started` or `Continue started`;
+submission failure restores the controls with the actual error.
+Plan transitions
 explicitly target the current Session, a Profile-preserving new Session, or a
 state-only Checkpoint Fork. The Runtime validates the source Artifact and
 builds the implementation prompt; the Webview never reconstructs it.

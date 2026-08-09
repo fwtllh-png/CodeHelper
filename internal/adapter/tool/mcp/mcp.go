@@ -473,7 +473,7 @@ func (e *helperExecutor) Execute(
 					"server": entry.Server, "uri": input.URI, "result": result,
 				})
 			}
-			if strings.Contains(err.Error(), "was not advertised") {
+			if errors.Is(err, mcpruntime.ErrNotAdvertised) {
 				continue
 			}
 			return tool.Result{}, err

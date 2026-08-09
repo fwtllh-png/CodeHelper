@@ -99,6 +99,14 @@ func fieldRouteProvider(purpose string) string { return "route." + purpose + ".p
 
 func fieldRouteModel(purpose string) string { return "route." + purpose + ".model" }
 
+func fieldDiagnosticCommandName(extension string) string {
+	return "diagnostics.commands." + extension + ".name"
+}
+
+func fieldDiagnosticCommandArgs(extension string) string {
+	return "diagnostics.commands." + extension + ".args"
+}
+
 type Source string
 
 type Snapshot struct {

@@ -6,6 +6,17 @@ const markdownTags = new Set([
   "li", "ol", "p", "pre", "span", "strong",
   "table", "tbody", "td", "th", "thead", "tr", "ul",
 ]);
+let diagramSequence = 0;
+let mermaidLoader: Promise<void> | undefined;
+
+declare global {
+  interface Window {
+    CodeHelperMermaidRender?: (
+      id: string,
+      source: string,
+    ) => Promise<string>;
+  }
+}
 
 export function element(id: string): HTMLElement {
   const value = document.getElementById(id);
@@ -60,6 +71,14 @@ function markdownNode(
     });
     return button;
   }
+  if (value.tag === "pre" && value.children.length === 1) {
+    const code = value.children[0];
+    if (code?.kind === "element" && code.tag === "code" &&
+      code.language === "mermaid" && code.children.length === 1 &&
+      code.children[0]?.kind === "text") {
+      return mermaidDiagram(code.children[0].text);
+    }
+  }
   const node = document.createElement(value.tag);
   if (value.tag === "a" && value.href !== undefined &&
     /^(?:https?:|mailto:)/u.test(value.href)) {
@@ -80,4 +99,101 @@ function markdownNode(
     node.append(markdownNode(child, openResource));
   }
   return node;
+}
+
+function mermaidDiagram(source: string): HTMLElement {
+  const figure = document.createElement("figure");
+  figure.className = "mermaid-diagram";
+  figure.setAttribute("aria-label", "Architecture diagram");
+  const status = document.createElement("div");
+  status.className = "meta";
+  status.textContent = "正在绘制架构图…";
+  figure.append(status);
+  void renderMermaid(figure, source);
+  return figure;
+}
+
+async function renderMermaid(figure: HTMLElement, source: string): Promise<void> {
+  try {
+    await loadMermaid();
+    const id = `codehelper-mermaid-${String(++diagramSequence)}`;
+    const render = window.CodeHelperMermaidRender;
+    if (render === undefined) throw new Error("Mermaid renderer unavailable");
+    const rendered = await render(id, source);
+    const document = new DOMParser().parseFromString(
+      rendered,
+      "image/svg+xml",
+    );
+    const svg = document.documentElement;
+    if (svg.nodeName.toLowerCase() !== "svg" ||
+      document.querySelector("parsererror") !== null) {
+      throw new Error("Mermaid returned invalid SVG");
+    }
+    for (const unsafe of svg.querySelectorAll(
+      "script, foreignObject, iframe, object, embed, a",
+    )) {
+      unsafe.remove();
+    }
+    for (const element of [svg, ...svg.querySelectorAll("*")]) {
+      for (const attribute of [...element.attributes]) {
+        if (/^on/iu.test(attribute.name) ||
+          /^(?:href|xlink:href)$/iu.test(attribute.name)) {
+          element.removeAttribute(attribute.name);
+        }
+      }
+    }
+    const nonce = documentNonce();
+    if (nonce !== undefined) {
+      for (const style of svg.querySelectorAll("style")) {
+        style.setAttribute("nonce", nonce);
+      }
+    }
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Architecture diagram");
+    figure.replaceChildren(globalThis.document.importNode(svg, true));
+  } catch {
+    const fallback = globalThis.document.createElement("pre");
+    const code = globalThis.document.createElement("code");
+    code.className = "language-mermaid";
+    code.textContent = source;
+    fallback.append(code);
+    figure.classList.add("mermaid-fallback");
+    figure.replaceChildren(fallback);
+  }
+}
+
+function loadMermaid(): Promise<void> {
+  if (window.CodeHelperMermaidRender !== undefined) return Promise.resolve();
+  mermaidLoader ??= new Promise<void>((resolve, reject) => {
+    const source = globalThis.document.querySelector<HTMLMetaElement>(
+      'meta[name="codehelper-mermaid-renderer"]',
+    )?.content;
+    const nonce = documentNonce();
+    if (source === undefined || source === "" || nonce === undefined) {
+      reject(new Error("Mermaid renderer metadata is missing"));
+      return;
+    }
+    const script = globalThis.document.createElement("script");
+    script.src = source;
+    script.nonce = nonce;
+    script.addEventListener("load", () => {
+      if (window.CodeHelperMermaidRender === undefined) {
+        reject(new Error("Mermaid renderer did not register"));
+      } else {
+        resolve();
+      }
+    }, { once: true });
+    script.addEventListener("error", () => {
+      reject(new Error("Mermaid renderer failed to load"));
+    }, { once: true });
+    globalThis.document.head.append(script);
+  });
+  return mermaidLoader;
+}
+
+function documentNonce(): string | undefined {
+  const value = globalThis.document.querySelector<HTMLMetaElement>(
+    'meta[name="codehelper-csp-nonce"]',
+  )?.content;
+  return value === undefined || value === "" ? undefined : value;
 }
