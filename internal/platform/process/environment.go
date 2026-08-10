@@ -15,7 +15,8 @@ var allowedEnvironment = map[string]bool{
 	"GOTOOLCHAIN": true, "GOFLAGS": true, "GO111MODULE": true,
 	"GOPROXY": true, "GOPRIVATE": true, "GONOPROXY": true,
 	"GOSUMDB": true, "GONOSUMDB": true, "GOVCS": true,
-	"SYSTEMROOT": true, "COMSPEC": true, "PATHEXT": true, "WINDIR": true,
+	"OPENSSL_CONF": true,
+	"SYSTEMROOT":   true, "COMSPEC": true, "PATHEXT": true, "WINDIR": true,
 }
 
 func SanitizedEnvironment(extra []string) ([]string, error) {

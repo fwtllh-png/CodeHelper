@@ -177,6 +177,7 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		snapshot.Config.Diagnostics.Commands,
 	)
 	diagnosticReadRoots := diagnosticCommandReadRoots(diagnosticCommands)
+	diagnosticReadFiles := diagnosticCommandReadFiles(diagnosticCommands)
 	if !execution.Tools &&
 		(options.RepositoryRulesPath != "" || options.PluginBundle != "" ||
 			options.PluginReceipt != "" || options.MCPConfigPath != "") {
@@ -323,6 +324,7 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		backend, err := newPlatformBackend(sandbox.Options{
 			WorkspaceRoot: execution.Workspace, HelperPath: helperPath,
 			AllowNetwork: true, HostReadRoots: diagnosticReadRoots,
+			HostReadFiles: diagnosticReadFiles,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create sandbox: %w", err)
@@ -580,6 +582,7 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			execution.Journal,
 			diagnosticCommands,
 			diagnosticReadRoots,
+			diagnosticReadFiles,
 			gitCommonDir,
 		)
 		session.childTools = childToolsets
@@ -687,7 +690,9 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 	}
 	toolPrefix := ""
 	if execution.Tools {
-		toolPrefix = "Use only the supplied tools and honor their schemas and policy decisions."
+		toolPrefix = "Use only the supplied tools and honor their schemas and policy decisions. " +
+			"A workspace_change is not complete until turn_complete is called after the last " +
+			"mutation and every required quality check."
 	}
 	budgets := options.PromptBudgets
 	if budgets == nil {
@@ -750,8 +755,9 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		MaxOutputTokens:  maxOutputTokens, Security: securityRuntime,
 		ProfilePermissionCeiling: approvalPosture,
 		Workspace:                execution.Workspace, Guard: nil,
-		OnNetworkAllow: egressGate.Allow,
-		Journal:        journal, WorkspaceTurnGate: workspaceTurnGate,
+		WorkspaceIsolation: "shared",
+		OnNetworkAllow:     egressGate.Allow,
+		Journal:            journal, WorkspaceTurnGate: workspaceTurnGate,
 		Diagnostics: diagnosticRunner,
 		Verify: agentengine.VerifyOptions{
 			Mode:           execution.Verify.Mode,
@@ -761,7 +767,8 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			Timeout:        execution.Verify.Timeout,
 			Runner:         verifyRunner,
 		},
-		Metrics: session.metrics, Trace: traceSink,
+		RequireCompletionDeclaration: execution.Tools,
+		Metrics:                      session.metrics, Trace: traceSink,
 		ReasoningEffort:      reasoningEffort,
 		FixedReasoningEffort: reasoningEffort,
 		NativeSearch:         execution.NativeSearch,
@@ -1062,9 +1069,18 @@ func diagnosticCommandReadRoots(
 			continue
 		}
 		seen[filepath.Dir(resolved)] = struct{}{}
+		for _, dependency := range diagnosticDependencyReadFiles(resolved) {
+			seen[filepath.Dir(dependency)] = struct{}{}
+		}
 		switch filepath.Ext(resolved) {
 		case ".js", ".cjs", ".mjs":
 			addExecutableTree("node", true)
+			node, nodeErr := exec.LookPath("node")
+			if nodeErr == nil {
+				for _, dependency := range diagnosticDependencyReadFiles(node) {
+					seen[filepath.Dir(dependency)] = struct{}{}
+				}
+			}
 		}
 	}
 	roots := make([]string, 0, len(seen))
@@ -1073,6 +1089,41 @@ func diagnosticCommandReadRoots(
 	}
 	slices.Sort(roots)
 	return roots
+}
+
+func diagnosticCommandReadFiles(
+	commands map[string]diagnostics.Command,
+) []string {
+	seen := make(map[string]struct{})
+	add := func(name string) {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			return
+		}
+		for _, dependency := range diagnosticDependencyReadFiles(path) {
+			seen[dependency] = struct{}{}
+		}
+	}
+	for _, command := range commands {
+		add(command.Name)
+		path, err := exec.LookPath(command.Name)
+		if err != nil {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			switch filepath.Ext(resolved) {
+			case ".js", ".cjs", ".mjs":
+				add("node")
+			}
+		}
+	}
+	files := make([]string, 0, len(seen))
+	for path := range seen {
+		files = append(files, path)
+	}
+	slices.Sort(files)
+	return files
 }
 
 func cloneThreadSecurity(source *policy.Runtime) *policy.Runtime {
@@ -1196,6 +1247,7 @@ func childEngineOptions(
 	}
 	if spec.Workspace != "" {
 		options.Workspace = spec.Workspace
+		options.WorkspaceIsolation = app.SessionIsolationWorktree
 	}
 	if spec.ReadOnly && security != nil {
 		// Plan mode is the existing, tested read-only enforcement: everything

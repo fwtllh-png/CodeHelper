@@ -416,6 +416,7 @@ func seatbeltProfileForCommand(
 	profile.WriteString("(allow process-exec process-fork process-info* signal)\n")
 	profile.WriteString("(allow sysctl-read)\n")
 	readRoots := append(append([]string{}, policy.RuntimeReadRoots...), policy.HostReadRoots...)
+	readRoots = append(readRoots, policy.HostReadFiles...)
 	readRoots = append(readRoots, policy.WorkspaceRoot, policy.PrivateTemp, executable)
 	for _, root := range readRoots {
 		info, err := os.Stat(root)

@@ -23,10 +23,14 @@ func (e *Engine) modelStep(
 	history *[]provider.Message,
 	turnUsage provider.Usage,
 	continued *bool,
+	pendingInputInjected *bool,
 	send func(State, Event) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, uint64, error) {
 	if continued != nil {
 		*continued = false
+	}
+	if pendingInputInjected != nil {
+		*pendingInputInjected = false
 	}
 	if err := e.emitExtensionLifecycleChanges(send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
@@ -138,6 +142,9 @@ func (e *Engine) modelStep(
 		totalUsage.Add(usage)
 		pending := e.drainPending()
 		if ctx.Err() == nil && len(pending) != 0 {
+			if pendingInputInjected != nil {
+				*pendingInputInjected = true
+			}
 			pendingBlocks := appendContinuedBlocks(continuedBlocks, blocks)
 			if len(pendingBlocks) != 0 {
 				*history = append(*history, provider.Message{

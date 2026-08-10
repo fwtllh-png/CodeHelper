@@ -41,11 +41,12 @@ type ReceiptVerificationAttempt struct {
 // ReceiptVerificationDetail preserves the complete gate history rather than
 // reducing repair to the final pass/fail bit.
 type ReceiptVerificationDetail struct {
-	Mode        string                       `json:"mode"`
-	FinalStatus string                       `json:"final_status"`
-	Action      string                       `json:"action"`
-	RepairSteps int                          `json:"repair_steps"`
-	Attempts    []ReceiptVerificationAttempt `json:"attempts"`
+	Mode           string                       `json:"mode"`
+	FinalStatus    string                       `json:"final_status"`
+	Action         string                       `json:"action"`
+	RepairSteps    int                          `json:"repair_steps"`
+	UncoveredPaths []string                     `json:"uncovered_paths,omitempty"`
+	Attempts       []ReceiptVerificationAttempt `json:"attempts"`
 }
 
 // ReceiptWorkspaceOutcome is the final workspace state after verification and
@@ -247,14 +248,16 @@ type ReceiptSkill struct {
 // Every field reflects observed execution. Sections the runtime cannot yet
 // determine are listed in NotCollected rather than left silently empty.
 type ExecutionReceiptData struct {
-	Goal      string      `json:"goal"`
-	Intent    TurnIntent  `json:"intent,omitempty"`
-	Outcome   TurnOutcome `json:"outcome,omitempty"`
-	Plan      string      `json:"plan,omitempty"`
-	Mode      string      `json:"mode,omitempty"`
-	Posture   string      `json:"posture,omitempty"`
-	Sandbox   string      `json:"sandbox,omitempty"`
-	Workspace string      `json:"workspace,omitempty"`
+	Goal               string                 `json:"goal"`
+	Intent             TurnIntent             `json:"intent,omitempty"`
+	Outcome            TurnOutcome            `json:"outcome,omitempty"`
+	Plan               string                 `json:"plan,omitempty"`
+	Mode               string                 `json:"mode,omitempty"`
+	Posture            string                 `json:"posture,omitempty"`
+	Sandbox            string                 `json:"sandbox,omitempty"`
+	Workspace          string                 `json:"workspace,omitempty"`
+	WorkspaceIsolation string                 `json:"workspace_isolation,omitempty"`
+	Completion         *CompletionDeclaration `json:"completion,omitempty"`
 
 	// Routes are the routes the turn actually sampled on, one entry per purpose.
 	// It is what the turn did, not the table it could have used: a slot the turn
@@ -353,6 +356,19 @@ func (d *ExecutionReceiptData) validate() error {
 	if d.Catalog != nil &&
 		(d.Catalog.CatalogID == "" || d.Catalog.Generation == 0 || d.Catalog.Digest == "") {
 		return errors.New("receipt catalog requires catalog_id, generation, and digest")
+	}
+	if d.WorkspaceIsolation != "" &&
+		d.WorkspaceIsolation != "shared" &&
+		d.WorkspaceIsolation != "worktree" {
+		return errors.New("receipt workspace isolation is invalid")
+	}
+	if d.Completion != nil {
+		if err := d.Completion.validate(); err != nil {
+			return err
+		}
+		if !d.Completion.Accepted {
+			return errors.New("receipt completion declaration must be accepted")
+		}
 	}
 	for _, change := range d.Changes {
 		if change.Path == "" {

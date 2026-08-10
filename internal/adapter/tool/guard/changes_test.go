@@ -450,7 +450,8 @@ func TestGuardKeepsSuccessfulWritesWhenPostEditDiagnosticsFail(t *testing.T) {
 		t.Fatalf("diagnostic receipts = %#v", result.Metadata["diagnostics"])
 	}
 	for _, receipt := range receipts {
-		if receipt.Status != "failed" ||
+		if receipt.Status != "unavailable" ||
+			receipt.ErrorCategory != "runner_failure" ||
 			receipt.Message != "diagnostic process failed" {
 			t.Fatalf("diagnostic receipt = %+v", receipt)
 		}

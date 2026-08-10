@@ -217,7 +217,9 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		Provider: turnContext.Provider, Model: turnContext.Model,
 		Purpose: string(turnContext.Purpose),
 		Mode:    string(turnContext.Mode), Posture: string(turnContext.Posture),
-		Workspace: turnContext.Workspace, Sandbox: turnContext.Sandbox,
+		Workspace:          turnContext.Workspace,
+		WorkspaceIsolation: e.options.WorkspaceIsolation,
+		Sandbox:            turnContext.Sandbox,
 	}); err != nil {
 		return result, err
 	}
@@ -247,19 +249,43 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		requirePassed: intent == protocol.TurnIntentWorkspaceChange,
 	}
 	completionRepairs := 0
+	workspaceChangeRepairs := 0
+	declarationRepairs := 0
 	unresolvedToolFailure := false
 	recoveryToolSucceeded := false
-	for step := 0; step < e.options.MaxSteps+gate.extraSteps()+completionRepairs; step++ {
-		e.appendSteering(&transaction)
+	var completionVerification *verifyOutcome
+	var verifiedCompletionCallID string
+	var verifiedCompletionRevision uint64
+	invalidateCompletion := func() {
+		e.clearCompletionDeclaration()
+		completionVerification = nil
+		verifiedCompletionCallID = ""
+		verifiedCompletionRevision = 0
+	}
+	for step := 0; step <
+		e.options.MaxSteps+gate.extraSteps()+completionRepairs+
+			workspaceChangeRepairs+declarationRepairs; step++ {
+		if e.appendSteering(&transaction) && e.completionDeclaration != nil {
+			invalidateCompletion()
+		}
 		if err := send(CallingModel, Event{}); err != nil {
 			return result, err
 		}
 		var modelOutputContinued bool
+		var pendingInputInjected bool
 		blocks, calls, usage, estimatedInput, err := e.modelStep(
-			ctx, &transaction, result.Usage, &modelOutputContinued, emitState(send),
+			ctx,
+			&transaction,
+			result.Usage,
+			&modelOutputContinued,
+			&pendingInputInjected,
+			emitState(send),
 		)
 		if err != nil {
 			return result, err
+		}
+		if pendingInputInjected && e.completionDeclaration != nil {
+			invalidateCompletion()
 		}
 		result.Usage.Add(usage)
 		sampled.Add(usage)
@@ -279,6 +305,9 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		}
 		if len(calls) == 0 {
 			if e.appendSteering(&transaction) {
+				if e.completionDeclaration != nil {
+					invalidateCompletion()
+				}
 				if len(blocks) != 0 {
 					transaction = append(transaction, provider.Message{
 						Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
@@ -349,12 +378,46 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			}
 			if intent == protocol.TurnIntentWorkspaceChange &&
 				len(e.TurnDiff()) == 0 {
+				if workspaceChangeRepairs < maxWorkspaceChangeRepairs {
+					transaction = append(transaction, provider.Message{
+						Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
+					})
+					transaction = append(
+						transaction,
+						workspaceChangeRequiredFeedback(e.turn),
+					)
+					workspaceChangeRepairs++
+					continue
+				}
 				return result, protocol.NewProblem(
 					protocol.CodeConflict,
 					"workspace_change turn produced no observed workspace changes",
 					false,
 					nil,
 				)
+			}
+			if intent == protocol.TurnIntentWorkspaceChange &&
+				e.options.RequireCompletionDeclaration &&
+				!e.hasCurrentCompletionDeclaration() {
+				if declarationRepairs >= maxDeclarationRepairs {
+					return result, protocol.NewProblem(
+						protocol.CodeConflict,
+						"workspace_change completion requires an accepted turn_complete declaration",
+						true,
+						nil,
+					)
+				}
+				if len(blocks) != 0 {
+					transaction = append(transaction, provider.Message{
+						Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
+					})
+				}
+				transaction = append(
+					transaction,
+					completionDeclarationFeedback(changedPaths(e.TurnDiff()), e.turn),
+				)
+				declarationRepairs++
+				continue
 			}
 			transaction = append(transaction, provider.Message{
 				Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
@@ -363,20 +426,43 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			if err := e.runMidTurnCompactGate(&transaction, send); err != nil {
 				return result, err
 			}
-			outcome, err := gate.evaluate(ctx, send)
-			if err != nil {
-				return result, err
+			var outcome verifyOutcome
+			if intent == protocol.TurnIntentWorkspaceChange &&
+				e.options.RequireCompletionDeclaration {
+				if completionVerification == nil ||
+					e.completionDeclaration == nil ||
+					e.completionDeclaration.CallID != verifiedCompletionCallID ||
+					e.completionDeclaration.MutationRevision != verifiedCompletionRevision {
+					return result, protocol.NewProblem(
+						protocol.CodeConflict,
+						"workspace_change final answer was not preverified",
+						true,
+						nil,
+					)
+				}
+				outcome = *completionVerification
+			} else {
+				outcome, err = gate.evaluate(ctx, send)
+				if err != nil {
+					return result, err
+				}
+				result.Verification = outcome.receipt
+				switch outcome.action {
+				case verifyActionRepair:
+					transaction = append(
+						transaction, verifyFeedback(outcome.receipt, e.turn),
+					)
+					continue
+				case verifyActionFailed:
+					return result, protocol.NewProblem(
+						protocol.CodeConflict,
+						outcome.receipt.problemMessage(),
+						false,
+						nil,
+					)
+				}
 			}
 			result.Verification = outcome.receipt
-			switch outcome.action {
-			case verifyActionRepair:
-				transaction = append(transaction, verifyFeedback(outcome.receipt, e.turn))
-				continue
-			case verifyActionFailed:
-				return result, protocol.NewProblem(
-					protocol.CodeConflict, outcome.receipt.problemMessage(), false, nil,
-				)
-			}
 			if intent == protocol.TurnIntentWorkspaceChange &&
 				(outcome.action != verifyActionPassed ||
 					outcome.receipt == nil ||
@@ -437,6 +523,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 				EstimatedInputTokens: result.EstimatedInputTokens,
 				InputTokenDelta:      result.InputTokenDelta,
 				Verification:         outcome.receipt,
+				Completion:           e.completionDeclaration,
 			}); err != nil {
 				e.history = previousHistory
 				contextFinalized = false
@@ -448,6 +535,9 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		}
 		if err := send(PreparingTools, Event{}); err != nil {
 			return result, err
+		}
+		if e.completionDeclaration != nil {
+			invalidateCompletion()
 		}
 		for _, call := range calls {
 			callCopy := call
@@ -503,6 +593,44 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		if err := e.runMidTurnCompactGate(&transaction, send); err != nil {
 			return result, err
 		}
+		if intent == protocol.TurnIntentWorkspaceChange &&
+			e.options.RequireCompletionDeclaration &&
+			e.hasCurrentCompletionDeclaration() {
+			outcome, err := gate.evaluate(ctx, send)
+			if err != nil {
+				return result, err
+			}
+			result.Verification = outcome.receipt
+			switch outcome.action {
+			case verifyActionRepair:
+				if outcome.receipt != nil &&
+					outcome.receipt.Scope == verify.ScopeQuality &&
+					outcome.receipt.Status == verify.StatusUnavailable {
+					e.qualityEvidenceRequired = true
+				}
+				e.clearCompletionDeclaration()
+				completionVerification = nil
+				verifiedCompletionCallID = ""
+				verifiedCompletionRevision = 0
+				transaction = append(
+					transaction, verifyFeedback(outcome.receipt, e.turn),
+				)
+				continue
+			case verifyActionFailed:
+				return result, protocol.NewProblem(
+					protocol.CodeConflict,
+					outcome.receipt.problemMessage(),
+					false,
+					nil,
+				)
+			}
+			completionVerification = &outcome
+			verifiedCompletionCallID = e.completionDeclaration.CallID
+			verifiedCompletionRevision = e.completionDeclaration.MutationRevision
+			transaction = append(
+				transaction, completionVerifiedFeedback(e.turn),
+			)
+		}
 	}
 	return result, protocol.NewProblem(
 		protocol.CodeResourceExhausted,
@@ -516,6 +644,51 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 }
 
 const maxCompletionRepairs = 2
+const maxWorkspaceChangeRepairs = 1
+const maxDeclarationRepairs = 2
+
+func workspaceChangeRequiredFeedback(turn uint64) provider.Message {
+	message := provider.TextMessage(
+		provider.RoleUser,
+		"[completion_check]\n"+
+			"required_action=perform_workspace_mutation\n"+
+			"observed_changes=0\n"+
+			"retry_original=false\n"+
+			"The workspace_change contract is not complete. Use a guarded mutation tool, "+
+			"then verify the observed changed paths before answering.",
+	)
+	message.Turn = turn
+	return message
+}
+
+func completionDeclarationFeedback(paths []string, turn uint64) provider.Message {
+	encoded, _ := json.Marshal(paths)
+	message := provider.TextMessage(
+		provider.RoleUser,
+		"[completion_declaration_required]\n"+
+			"required_action=turn_complete\n"+
+			"retry_original=false\n"+
+			"changed_paths="+string(encoded)+"\n"+
+			"Call turn_complete with status=complete, these exact changed_paths, "+
+			"pending_actions=[], and the accepted quality verification call IDs. "+
+			"Do not describe future work; execute every pending action before declaring completion.",
+	)
+	message.Turn = turn
+	return message
+}
+
+func completionVerifiedFeedback(turn uint64) provider.Message {
+	message := provider.TextMessage(
+		provider.RoleUser,
+		"[completion_verified]\n"+
+			"required_action=final_answer\n"+
+			"pending_actions=0\n"+
+			"Structured completion and verification passed. Provide one concise "+
+			"user-facing final answer without calling another tool.",
+	)
+	message.Turn = turn
+	return message
+}
 
 func completionFeedback(turn uint64) provider.Message {
 	message := provider.TextMessage(provider.RoleUser, `[completion_required]

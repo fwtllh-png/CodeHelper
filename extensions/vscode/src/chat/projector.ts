@@ -298,6 +298,8 @@ interface MutableTurn {
   contextSelections: ContextSelectionCard[];
   diagnostics: Map<string, DiagnosticReceipt>;
   diagnosticNotices: string[];
+  workspace?: string;
+  workspaceIsolation?: string;
   verification?: string;
   receipt?: string;
   error?: string;
@@ -344,6 +346,12 @@ export class ChatProjector {
       case "turn.started":
         turn.user = displayPrompt(event.data.display_prompt ?? event.data.prompt ?? "");
         turn.status = "running";
+        if (event.data.workspace !== undefined) {
+          turn.workspace = event.data.workspace;
+        }
+        if (event.data.workspace_isolation !== undefined) {
+          turn.workspaceIsolation = event.data.workspace_isolation;
+        }
         turn.contextReceipts = projectContextReceipts(
           event.data.editor_context ?? [],
         );
@@ -532,6 +540,13 @@ export class ChatProjector {
           const conflicts = event.data.workspace_outcome.conflicts ?? [];
           if (conflicts.length > 0) {
             turn.receipt += ` conflicts=${conflicts.join(",")}`;
+          }
+          if (turn.workspaceIsolation === "worktree" &&
+            event.data.workspace_outcome.status === "changed") {
+            turn.receipt += "; isolated changes pending Merge → Apply";
+            if (turn.workspace !== undefined) {
+              turn.receipt += `; worktree ${turn.workspace}`;
+            }
           }
         }
         turn.receipt = truncate(turn.receipt);

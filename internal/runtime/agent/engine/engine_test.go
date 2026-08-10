@@ -203,6 +203,7 @@ func TestEngineRepairsEmptyFinalResponse(t *testing.T) {
 func TestWorkspaceChangeIntentRejectsTextOnlyCompletion(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		textStream("I will make the change next."),
+		textStream("I still did not change it."),
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
 	var states []State
@@ -1686,6 +1687,32 @@ func TestTerminalCompletionFailsClosedWhenFinalMessageExceedsContextBudget(t *te
 	}
 	if completed || result.State == Completed {
 		t.Fatalf("over-budget terminal was completed: result=%+v emitted=%v", result, completed)
+	}
+}
+
+func TestWorkspaceChangeGetsOneStructuredRepairBeforeNoChangeConflict(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		textStream("done without changing"),
+		textStream("still done without changing"),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.MaxSteps = 1
+
+	_, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-no-change", "change it",
+		protocol.TurnIntentWorkspaceChange, nil, func(Event) error { return nil },
+	)
+
+	if err == nil || !strings.Contains(err.Error(), "no observed workspace changes") {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(runtime.requests) != 2 {
+		t.Fatalf("provider requests = %d, want one repair sample", len(runtime.requests))
+	}
+	feedback := runtime.requests[1].Messages[len(runtime.requests[1].Messages)-1].Text()
+	if !strings.Contains(feedback, "required_action=perform_workspace_mutation") ||
+		!strings.Contains(feedback, "observed_changes=0") {
+		t.Fatalf("repair feedback = %q", feedback)
 	}
 }
 

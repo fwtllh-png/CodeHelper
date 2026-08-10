@@ -82,6 +82,15 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   Structured Result；
 - 未解决的结构化 Tool Failure 不能由承诺未来动作的文本清除；`workspace_change`
   与 `operation` Turn 必须有后续成功 Tool Batch 及恢复后的 Completion Check；
+- Provider `end_turn` 只表示一次模型采样结束。`workspace_change` 只有在
+  `turn_complete` Declaration 已绑定当前 Mutation Revision 与精确 Changed Paths、
+  Pending Actions 为空、Verification Passed 且 Journal Commit 后才能完成；
+- `turn_complete` 必须是所在 Tool Batch 的唯一 Call。Gate 必须在模型收到
+  `required_action=final_answer` 前完成；User-facing Final Answer 之后不得再启动
+  新的 Verification Pass；
+- 后续任何 Mutation 或 Verification Repair 都会使 Completion Declaration 失效。
+  当 Gate 要求 Quality Evidence 时，新 Declaration 必须引用当前 Revision 的全部
+  Accepted Quality Call ID，否则必须拒绝；
 - Completed `workspace_change` 必须具有 `status=passed` 的 Verification Receipt；
   `off`、`skipped`、`unavailable` 和 Soft-reported 结果都必须 Fail Closed；
 - 成功的受保护 File Edit 必须使用 Journal After-image 刷新 ReadTracker，从而在
@@ -93,10 +102,27 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   使用 Terminal Event 冻结的 Budget Snapshot，不能读取可变的旧 History；
 - Failed Terminal 可以在最后一个 Durable Completed Turn 内按闭合 Tool Pair
   Boundary 压缩，但不得持久化当前 Failed Transaction；
+- 纯文本 `workspace_change` 在 No-change Contract Fail Closed 前必须获得一次结构化
+  Completion Repair（`required_action=perform_workspace_mutation`）；
+- `shell_run.write_globs` 必须在 Approval 前展开为最多 512 个已存在的精确文件；
+  Guard、Journal、Sandbox、Reconciliation 和 Receipt 不得接收 Runtime Wildcard
+  Grant；
+- Edit Match Miss 必须在 Tool Result Event 中提供结构化恢复信息：
+  `edit_precondition_miss`、`reread_exact_range`、`retry_original=false`；
+- Diagnostics Process Failure 在没有解析出 Diagnostic 时必须标记为
+  `unavailable/error_category=runner_failure`，不能标记为源码 Finding；Receipt
+  使用 `failed > unavailable > passed > not_evaluated` 聚合优先级；
+- Strict `workspace_change` Verification 在 Repair Budget 用尽后不能降级为 Soft
+  `reported`；
 - Post-edit Diagnostics 不可用时，`workspace_change` 只能使用最后一次 Mutation
   之后运行的 `quality_test` 或 `quality_verify` Passed Evidence 完成；Evidence
-  必须声明精确 `covered_paths` 并覆盖全部 Changed Paths，普通 Shell Success
-  永远不能作为 Verification Evidence；
+  必须声明精确 `covered_paths` 并覆盖全部 Changed Paths；Repair Feedback 必须
+  携带机器可读的 `uncovered_paths`，不得从整个 Dirty Worktree 推导 Coverage；
+  普通 Shell Success 永远不能作为 Verification Evidence；
+- `turn.started.workspace_isolation=worktree` 与 Terminal Receipt 必须保留隔离
+  Chat Worktree Path。成功的隔离变更在执行 `Merge Chat Changes` 和
+  `Apply to Workspace` 前保持 Pending；主 Worktree 的 `git status` 不能证明隔离
+  变更已丢失；
 - Terminal Cleanup Failure 必须记录为结构化 `secondary_issues`，不能替换 Primary
   Turn Failure，也不能继续通过换行拼接到 Primary Message；
 - Reasoning-only `max_tokens` 最多执行一次 Low-reasoning、No-tool Finish Sample；

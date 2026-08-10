@@ -425,7 +425,9 @@ function renderSnapshot(
   }
   chatTitle.textContent = selected?.title ?? "CodeHelper";
   messageMergePlanId = message.runtime.mergePlanId;
-  mergeChat.textContent = messageMergePlanId === undefined ? "Merge" : "Apply";
+  mergeChat.textContent = messageMergePlanId === undefined
+    ? "Merge Chat Changes"
+    : "Apply to Workspace";
   mergeChat.disabled = !message.presentation.runtimeReady ||
     (messageMergePlanId !== undefined && !trusted);
   prompt.disabled = !message.presentation.promptEnabled;

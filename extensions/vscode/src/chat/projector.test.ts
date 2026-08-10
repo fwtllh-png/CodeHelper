@@ -486,7 +486,13 @@ void test("ChatProjector preserves unknown events as read-only cards and dedupli
 
 void test("ChatProjector exposes verification attribution and workspace outcome", () => {
   const projector = new ChatProjector();
-  projector.apply(event(1, "turn.verification", {
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+    workspace: "/repo/.codehelper/chats/worktrees/chat-1",
+    workspace_isolation: "worktree",
+  }));
+  projector.apply(event(2, "turn.verification", {
     scope: "affected",
     mode: "hard",
     status: "failed",
@@ -500,7 +506,7 @@ void test("ChatProjector exposes verification attribution and workspace outcome"
       status: "failed",
     }],
   }));
-  projector.apply(event(2, "turn.receipt", {
+  projector.apply(event(3, "turn.receipt", {
     goal: "fix package",
     verification: {
       diagnostics: "not_evaluated",
@@ -550,6 +556,8 @@ void test("ChatProjector exposes verification attribution and workspace outcome"
   assert.match(turn?.verification ?? "", /changed Go package/u);
   assert.match(turn?.receipt ?? "", /verify passed action=passed repairs=1/u);
   assert.match(turn?.receipt ?? "", /workspace changed/u);
+  assert.match(turn?.receipt ?? "", /isolated changes pending Merge → Apply/u);
+  assert.match(turn?.receipt ?? "", /chat-1/u);
   assert.ok(turn);
   const selection = turn.contextSelections[0];
   assert.ok(selection);

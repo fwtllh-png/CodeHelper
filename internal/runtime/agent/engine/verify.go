@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -43,12 +44,13 @@ func (o VerifyOptions) enabled() bool {
 // VerificationReceipt is one gate evaluation as the hosts see it.
 type VerificationReceipt struct {
 	verify.Receipt
-	Mode        string                 `json:"mode"`
-	Action      string                 `json:"action"`
-	RepairSteps int                    `json:"repair_steps"`
-	Paths       []string               `json:"paths,omitempty"`
-	Attempts    []verify.Receipt       `json:"attempts,omitempty"`
-	Workspace   *VerificationWorkspace `json:"workspace,omitempty"`
+	Mode           string                 `json:"mode"`
+	Action         string                 `json:"action"`
+	RepairSteps    int                    `json:"repair_steps"`
+	Paths          []string               `json:"paths,omitempty"`
+	UncoveredPaths []string               `json:"uncovered_paths,omitempty"`
+	Attempts       []verify.Receipt       `json:"attempts,omitempty"`
+	Workspace      *VerificationWorkspace `json:"workspace,omitempty"`
 }
 
 // VerificationWorkspace is the final observable workspace state after the
@@ -174,7 +176,8 @@ func (g *verifyGate) evaluate(
 	observed := &VerificationReceipt{
 		Receipt: receipt, Mode: options.Mode, Action: string(action),
 		RepairSteps: g.repairs, Paths: paths,
-		Attempts: append([]verify.Receipt(nil), g.attempts...),
+		UncoveredPaths: append([]string(nil), uncovered...),
+		Attempts:       append([]verify.Receipt(nil), g.attempts...),
 	}
 	if err := send(Verifying, Event{Verification: observed}); err != nil {
 		return verifyOutcome{}, err
@@ -204,6 +207,9 @@ func (g *verifyGate) decide(
 		g.repairs++
 		return verifyActionRepair
 	}
+	if g.requirePassed {
+		return verifyActionFailed
+	}
 	if options.Mode == VerifyModeSoft {
 		return verifyActionReported
 	}
@@ -220,12 +226,16 @@ func (g *verifyGate) decide(
 // checks.
 func verifyFeedback(receipt *VerificationReceipt, turn uint64) provider.Message {
 	if receipt != nil && receipt.Status == verify.StatusUnavailable {
+		paths, _ := json.Marshal(receipt.UncoveredPaths)
 		message := provider.TextMessage(
 			provider.RoleUser,
 			"[verify] structured verification is required before workspace_change completion.\n"+
 				"required_action=quality_verify\n"+
+				"retry_original=false\n"+
+				"uncovered_paths="+string(paths)+"\n"+
 				"Call quality_verify or quality_test after the last mutation with covered_paths "+
-				"listing every changed path. Do not retry the original edit.",
+				"set to these exact uncovered_paths. Then call turn_complete again. "+
+				"Do not enumerate the whole worktree and do not retry the original edit.",
 		)
 		message.Turn = turn
 		return message

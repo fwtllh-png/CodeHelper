@@ -2677,6 +2677,12 @@
                   "additionalProperties": false
                 }
               },
+              "error_category": {
+                "type": "string"
+              },
+              "exit_code": {
+                "type": "integer"
+              },
               "message": {
                 "type": "string"
               },
@@ -3226,13 +3232,94 @@
             "additionalProperties": false
           }
         },
+        "completion": {
+          "type": "object",
+          "properties": {
+            "accepted": {
+              "type": "boolean"
+            },
+            "call_id": {
+              "type": "string"
+            },
+            "changed_paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mutation_revision": {
+              "type": "integer"
+            },
+            "pending_actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rejection": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "verification_call_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "accepted",
+            "call_id",
+            "changed_paths",
+            "mutation_revision",
+            "pending_actions",
+            "status",
+            "summary",
+            "verification_call_ids"
+          ],
+          "additionalProperties": false
+        },
         "is_error": {
           "type": "boolean"
+        },
+        "observed_changes": {
+          "type": "integer"
         },
         "output": {
           "type": "string"
         },
+        "recovery": {
+          "type": "object",
+          "properties": {
+            "error_category": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "required_action": {
+              "type": "string"
+            },
+            "retry_original": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "error_category",
+            "required_action",
+            "retry_original"
+          ],
+          "additionalProperties": false
+        },
         "tool": {
+          "type": "string"
+        },
+        "workspace_write_scope": {
           "type": "string"
         }
       },
@@ -3485,6 +3572,58 @@
             ],
             "additionalProperties": false
           }
+        },
+        "completion": {
+          "type": "object",
+          "properties": {
+            "accepted": {
+              "type": "boolean"
+            },
+            "call_id": {
+              "type": "string"
+            },
+            "changed_paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mutation_revision": {
+              "type": "integer"
+            },
+            "pending_actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rejection": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "verification_call_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "accepted",
+            "call_id",
+            "changed_paths",
+            "mutation_revision",
+            "pending_actions",
+            "status",
+            "summary",
+            "verification_call_ids"
+          ],
+          "additionalProperties": false
         },
         "context_budget": {
           "type": "object",
@@ -4134,6 +4273,12 @@
             },
             "repair_steps": {
               "type": "integer"
+            },
+            "uncovered_paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           "required": [
@@ -4146,6 +4291,9 @@
           "additionalProperties": false
         },
         "workspace": {
+          "type": "string"
+        },
+        "workspace_isolation": {
           "type": "string"
         },
         "workspace_outcome": {
@@ -4439,6 +4587,9 @@
         },
         "workspace": {
           "type": "string"
+        },
+        "workspace_isolation": {
+          "type": "string"
         }
       },
       "required": [
@@ -4522,6 +4673,12 @@
         },
         "status": {
           "type": "string"
+        },
+        "uncovered_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "warnings": {
           "type": "integer"

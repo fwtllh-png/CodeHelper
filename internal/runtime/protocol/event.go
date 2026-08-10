@@ -59,13 +59,14 @@ type EventData interface {
 }
 
 type TurnStartedData struct {
-	Provider  string     `json:"provider"`
-	Model     string     `json:"model"`
-	Intent    TurnIntent `json:"intent,omitempty"`
-	Mode      string     `json:"mode,omitempty"`
-	Posture   string     `json:"posture,omitempty"`
-	Workspace string     `json:"workspace,omitempty"`
-	Sandbox   string     `json:"sandbox,omitempty"`
+	Provider           string     `json:"provider"`
+	Model              string     `json:"model"`
+	Intent             TurnIntent `json:"intent,omitempty"`
+	Mode               string     `json:"mode,omitempty"`
+	Posture            string     `json:"posture,omitempty"`
+	Workspace          string     `json:"workspace,omitempty"`
+	WorkspaceIsolation string     `json:"workspace_isolation,omitempty"`
+	Sandbox            string     `json:"sandbox,omitempty"`
 	// Prompt is model-visible durable reconstruction input. Optional for older events.
 	Prompt string `json:"prompt,omitempty"`
 	// DisplayPrompt omits expanded editor context and is safe for chat projection.
@@ -82,6 +83,11 @@ func (d *TurnStartedData) validate() error {
 	}
 	if !NormalizeTurnIntent(d.Intent).Valid() {
 		return errors.New("turn started intent is invalid")
+	}
+	if d.WorkspaceIsolation != "" &&
+		d.WorkspaceIsolation != "shared" &&
+		d.WorkspaceIsolation != "worktree" {
+		return errors.New("turn started workspace isolation is invalid")
 	}
 	return validateEditorContextReceipts(d.EditorContext)
 }
@@ -236,11 +242,34 @@ func (d *ToolStartData) validate() error {
 }
 
 type ToolResultData struct {
-	Tool    string       `json:"tool"`
-	CallID  string       `json:"call_id"`
-	Output  string       `json:"output"`
-	IsError bool         `json:"is_error"`
-	Changes []FileChange `json:"changes,omitempty"`
+	Tool                string                 `json:"tool"`
+	CallID              string                 `json:"call_id"`
+	Output              string                 `json:"output"`
+	IsError             bool                   `json:"is_error"`
+	Changes             []FileChange           `json:"changes,omitempty"`
+	Recovery            *ToolRecovery          `json:"recovery,omitempty"`
+	Completion          *CompletionDeclaration `json:"completion,omitempty"`
+	WorkspaceWriteScope string                 `json:"workspace_write_scope,omitempty"`
+	ObservedChanges     *int                   `json:"observed_changes,omitempty"`
+}
+
+type CompletionDeclaration struct {
+	Status              string   `json:"status"`
+	Summary             string   `json:"summary"`
+	ChangedPaths        []string `json:"changed_paths"`
+	VerificationCallIDs []string `json:"verification_call_ids"`
+	PendingActions      []string `json:"pending_actions"`
+	MutationRevision    uint64   `json:"mutation_revision"`
+	CallID              string   `json:"call_id"`
+	Accepted            bool     `json:"accepted"`
+	Rejection           string   `json:"rejection,omitempty"`
+}
+
+type ToolRecovery struct {
+	ErrorCategory  string `json:"error_category"`
+	RequiredAction string `json:"required_action"`
+	Path           string `json:"path,omitempty"`
+	RetryOriginal  bool   `json:"retry_original"`
 }
 
 type FileChange struct {
@@ -387,6 +416,35 @@ func (d *ToolResultData) validate() error {
 			return errors.New("tool result contains an invalid file change")
 		}
 	}
+	if d.Recovery != nil &&
+		(d.Recovery.ErrorCategory == "" || d.Recovery.RequiredAction == "") {
+		return errors.New("tool result recovery requires category and action")
+	}
+	if d.Completion != nil {
+		if err := d.Completion.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *CompletionDeclaration) validate() error {
+	if d.Status != "complete" || strings.TrimSpace(d.Summary) == "" ||
+		len(d.ChangedPaths) == 0 || len(d.PendingActions) != 0 {
+		return errors.New("completion declaration is incomplete")
+	}
+	for _, path := range d.ChangedPaths {
+		if strings.TrimSpace(path) == "" {
+			return errors.New("completion declaration changed path is required")
+		}
+	}
+	if d.Accepted {
+		if d.CallID == "" || d.MutationRevision == 0 || d.Rejection != "" {
+			return errors.New("accepted completion declaration is inconsistent")
+		}
+	} else if d.Rejection == "" {
+		return errors.New("rejected completion declaration requires a reason")
+	}
 	return nil
 }
 
@@ -442,11 +500,13 @@ type Diagnostic struct {
 }
 
 type DiagnosticReceipt struct {
-	Path        string       `json:"path"`
-	Status      string       `json:"status"`
-	Runner      string       `json:"runner,omitempty"`
-	Diagnostics []Diagnostic `json:"diagnostics"`
-	Message     string       `json:"message,omitempty"`
+	Path          string       `json:"path"`
+	Status        string       `json:"status"`
+	Runner        string       `json:"runner,omitempty"`
+	Diagnostics   []Diagnostic `json:"diagnostics"`
+	Message       string       `json:"message,omitempty"`
+	ErrorCategory string       `json:"error_category,omitempty"`
+	ExitCode      int          `json:"exit_code,omitempty"`
 }
 
 type DiagnosticsData struct {
@@ -781,16 +841,17 @@ type VerificationCheck struct {
 // with the verdict, so a failed status followed by action=repair reads as "the
 // model was asked to fix it" rather than as a failed turn.
 type TurnVerificationData struct {
-	Scope       string              `json:"scope"`
-	Mode        string              `json:"mode"`
-	Status      string              `json:"status"`
-	Action      string              `json:"action"`
-	RepairSteps int                 `json:"repair_steps"`
-	Errors      int                 `json:"errors,omitempty"`
-	Warnings    int                 `json:"warnings,omitempty"`
-	Paths       []string            `json:"paths,omitempty"`
-	Checks      []VerificationCheck `json:"checks,omitempty"`
-	Message     string              `json:"message,omitempty"`
+	Scope          string              `json:"scope"`
+	Mode           string              `json:"mode"`
+	Status         string              `json:"status"`
+	Action         string              `json:"action"`
+	RepairSteps    int                 `json:"repair_steps"`
+	Errors         int                 `json:"errors,omitempty"`
+	Warnings       int                 `json:"warnings,omitempty"`
+	Paths          []string            `json:"paths,omitempty"`
+	UncoveredPaths []string            `json:"uncovered_paths,omitempty"`
+	Checks         []VerificationCheck `json:"checks,omitempty"`
+	Message        string              `json:"message,omitempty"`
 }
 
 func (*TurnVerificationData) eventKind() EventKind { return EventTurnVerification }

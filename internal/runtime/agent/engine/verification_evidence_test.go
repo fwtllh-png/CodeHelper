@@ -130,6 +130,16 @@ func TestVerifyGateRequestsStructuredRepairForMissingCoverage(t *testing.T) {
 	}
 }
 
+func TestStrictVerifyGateDoesNotReportFailedVerification(t *testing.T) {
+	gate := verifyGate{requirePassed: true, repairs: 1}
+	action := gate.decide(VerifyOptions{
+		Mode: VerifyModeSoft, MaxRepairSteps: 1,
+	}, failedReceipt("broken"))
+	if action != verifyActionFailed {
+		t.Fatalf("strict failed verification action = %q", action)
+	}
+}
+
 func qualityEvidenceResult(status string, paths []string) tool.Result {
 	return tool.Result{Metadata: map[string]any{
 		verify.EvidenceMetadataKey: verify.Evidence{

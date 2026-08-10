@@ -89,6 +89,16 @@ During every Turn, check structured invariants:
 - an unresolved structured Tool failure cannot be cleared by text that promises
   future work; a later successful Tool batch and post-recovery completion check
   are required for `workspace_change` and `operation` Turns;
+- Provider `end_turn` means only that one model sample ended. A
+  `workspace_change` completes only when an accepted `turn_complete`
+  declaration is bound to the current Mutation Revision and exact Changed
+  Paths, has no Pending Actions, Verification passes, and the Journal commits;
+- `turn_complete` is the only call in its Tool batch. The Gate evaluates it
+  before the model receives `required_action=final_answer`; no new verification
+  pass may begin after the user-facing Final Answer;
+- any later Mutation or Verification Repair invalidates the Completion
+  Declaration. When Quality Evidence is required, a new declaration is rejected
+  until it references every accepted current-revision Quality Call ID;
 - a completed `workspace_change` has a Verification Receipt whose status is
   `passed`; `off`, `skipped`, `unavailable`, and soft-reported results fail
   closed;
@@ -103,10 +113,29 @@ During every Turn, check structured invariants:
   Event rather than reading mutable History;
 - a Failed terminal path may compact within the last durable completed Turn at
   a closed Tool-pair boundary, but never persists the failed transaction;
+- a text-only `workspace_change` receives one structured completion repair
+  (`required_action=perform_workspace_mutation`) before the no-change contract
+  fails closed;
+- `shell_run.write_globs` expands before Approval to at most 512 existing exact
+  files; Guard, Journal, Sandbox, reconciliation, and Receipt never receive a
+  runtime wildcard grant;
+- an edit match miss reports structured recovery (`edit_precondition_miss`,
+  `reread_exact_range`, `retry_original=false`) in the Tool Result Event;
+- a Diagnostics process failure with no parsed diagnostics is `unavailable`
+  with `error_category=runner_failure`, not a source-code finding; Receipt
+  aggregates `failed > unavailable > passed > not_evaluated`;
+- strict `workspace_change` verification never degrades an exhausted failed
+  check to soft `reported`;
 - when post-edit Diagnostics are unavailable, `workspace_change` may complete
   only from passed `quality_test` or `quality_verify` evidence that declares
   exact `covered_paths`, runs after the last Mutation, and covers every changed
-  path; ordinary Shell success is never verification evidence;
+  path; repair feedback carries machine-readable `uncovered_paths` and must not
+  derive coverage from the whole dirty Worktree; ordinary Shell success is
+  never verification evidence;
+- `turn.started.workspace_isolation=worktree` and the terminal Receipt preserve
+  the isolated Chat Worktree path. A changed isolated Turn remains pending
+  `Merge Chat Changes` then `Apply to Workspace`; main-Workspace `git status`
+  is not evidence that the isolated change disappeared;
 - terminal cleanup failures are reported as structured `secondary_issues`; they
   do not replace or get newline-joined into the primary Turn failure;
 - a reasoning-only `max_tokens` stop uses at most one low-reasoning, no-tool

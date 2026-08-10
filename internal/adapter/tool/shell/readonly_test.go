@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -230,6 +231,125 @@ func TestShellRunExactWriteScopeIsGuardedAndObserved(t *testing.T) {
 	data, err = os.ReadFile(undeclared)
 	if err != nil || string(data) != "protected\n" {
 		t.Fatalf("undeclared content = %q, error = %v", data, err)
+	}
+}
+
+func TestShellRunWriteGlobsExpandToExistingExactFiles(t *testing.T) {
+	root := t.TempDir()
+	for _, path := range []string{
+		"docs/en/a.md", "docs/zh-CN/a.md", "docs/en/ignored.txt",
+	} {
+		absolute := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(absolute, []byte("before\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	workspace, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := &Tool{workspace: workspace}
+	expanded, err := shell.ExpandArguments(t.Context(), json.RawMessage(
+		`{"command":"true","write_globs":["docs/**/*.md"]}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values struct {
+		WritePaths []string `json:"write_paths"`
+		WriteGlobs []string `json:"write_globs"`
+	}
+	if err := json.Unmarshal(expanded, &values); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"docs/en/a.md", "docs/zh-CN/a.md"}
+	if !reflect.DeepEqual(values.WritePaths, want) || len(values.WriteGlobs) != 0 {
+		t.Fatalf("expanded arguments = %s", expanded)
+	}
+}
+
+func TestShellRunWriteGlobsRejectMissingAndEscapingPatterns(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := &Tool{workspace: workspace}
+	for _, pattern := range []string{"../*.md", "missing/**/*.md"} {
+		raw, err := json.Marshal(map[string]any{
+			"command": "true", "write_globs": []string{pattern},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := shell.ExpandArguments(t.Context(), raw); err == nil {
+			t.Fatalf("write glob %q was accepted", pattern)
+		}
+	}
+}
+
+func TestShellRunWriteGlobsAreJournaledAsExactFiles(t *testing.T) {
+	root := t.TempDir()
+	for _, path := range []string{"docs/en/a.md", "docs/zh-CN/a.md"} {
+		absolute := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(absolute, []byte("before\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	backend, err := sandbox.NewPlatformBackend(sandbox.Options{WorkspaceRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
+	if err := sandbox.RequireStrong(backend); err != nil {
+		t.Skipf("strong sandbox unavailable: %v", err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	manager := process.NewSessionManager(4096)
+	t.Cleanup(manager.CloseAll)
+	if err := RegisterWithManagerAndBackend(registry, root, manager, backend); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := workspacejournal.New(
+		root, contentstore.NewMemory(contentstore.Options{}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Begin("turn-glob"); err != nil {
+		t.Fatal(err)
+	}
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct, policy.PermissionBypass,
+		),
+		Workspace: root, Journal: journal,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := guarded.Execute(
+		t.Context(), "call-glob", "shell_run", json.RawMessage(
+			`{"command":"for f in docs/*/*.md; do printf 'after\n' > \"$f\"; done",`+
+				`"write_globs":["docs/**/*.md"]}`,
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes, _ := result.Metadata[toolguard.MetadataChanges].([]toolguard.FileChange)
+	if result.IsError || len(changes) != 2 {
+		t.Fatalf("glob write result = %+v changes = %+v", result, changes)
+	}
+	if count, _ := result.Metadata["observed_changes"].(int); count != 2 {
+		t.Fatalf("observed changes metadata = %#v", result.Metadata)
 	}
 }
 

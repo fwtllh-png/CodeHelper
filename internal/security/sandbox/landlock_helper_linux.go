@@ -46,6 +46,7 @@ func prepareLandlockInvocation(
 		return "", "", fmt.Errorf("resolve Landlock helper: %w", err)
 	}
 	readOnly := append(append([]string{}, policy.RuntimeReadRoots...), policy.HostReadRoots...)
+	readOnly = append(readOnly, policy.HostReadFiles...)
 	readOnly = append(readOnly, executable, helper)
 	if workspaceReadOnly {
 		readOnly = append(readOnly, policy.WorkspaceRoot)

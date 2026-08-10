@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"time"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
@@ -8,7 +10,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"time"
 )
 
 type State string
@@ -20,43 +21,45 @@ type Event struct {
 	Model    string `json:"model,omitempty"`
 	// Purpose is which route the turn's samples go to, and so why this provider
 	// and model rather than the session's default pair.
-	Purpose   string                 `json:"purpose,omitempty"`
-	Mode      string                 `json:"mode,omitempty"`
-	Posture   string                 `json:"posture,omitempty"`
-	Workspace string                 `json:"workspace,omitempty"`
-	Sandbox   string                 `json:"sandbox,omitempty"`
-	Text      string                 `json:"text,omitempty"`
-	Block     *provider.ContentBlock `json:"block,omitempty"`
-	ToolCall  *provider.ToolCall     `json:"tool_call,omitempty"`
-	Result    *tool.Result           `json:"result,omitempty"`
-	Search    *provider.SearchResult `json:"search,omitempty"`
-	Citation  *provider.Citation     `json:"citation,omitempty"`
-	Usage     *provider.Usage        `json:"usage,omitempty"`
-	CostUSD   float64                `json:"cost_usd,omitempty"`
+	Purpose            string                 `json:"purpose,omitempty"`
+	Mode               string                 `json:"mode,omitempty"`
+	Posture            string                 `json:"posture,omitempty"`
+	Workspace          string                 `json:"workspace,omitempty"`
+	WorkspaceIsolation string                 `json:"workspace_isolation,omitempty"`
+	Sandbox            string                 `json:"sandbox,omitempty"`
+	Text               string                 `json:"text,omitempty"`
+	Block              *provider.ContentBlock `json:"block,omitempty"`
+	ToolCall           *provider.ToolCall     `json:"tool_call,omitempty"`
+	Result             *tool.Result           `json:"result,omitempty"`
+	Search             *provider.SearchResult `json:"search,omitempty"`
+	Citation           *provider.Citation     `json:"citation,omitempty"`
+	Usage              *provider.Usage        `json:"usage,omitempty"`
+	CostUSD            float64                `json:"cost_usd,omitempty"`
 	// CostKnown reports whether the model has pricing at all, so a consumer can
 	// tell a free call from an unpriced one instead of reading both as zero.
 	CostKnown bool `json:"cost_known,omitempty"`
 	// Sample is which provider call within the turn a usage report belongs to.
 	// Usage is cumulative within a sample, so a consumer keeps the last report
 	// per sample rather than adding them up.
-	Sample               uint32                     `json:"sample,omitempty"`
-	EstimatedInputTokens uint64                     `json:"estimated_input_tokens,omitempty"`
-	InputTokenDelta      int64                      `json:"input_token_delta,omitempty"`
-	ErrorCode            protocol.ErrorCode         `json:"error_code,omitempty"`
-	Error                string                     `json:"error,omitempty"`
-	SecondaryIssues      []TerminalIssue            `json:"secondary_issues,omitempty"`
-	Compaction           *CompactionReceipt         `json:"compaction,omitempty"`
-	ContextBudget        *ContextBudgetSnapshot     `json:"context_budget,omitempty"`
-	Approval             *toolguard.ApprovalRequest `json:"approval,omitempty"`
-	Input                *interact.Request          `json:"input,omitempty"`
-	Diagnostics          []diagnostics.Receipt      `json:"diagnostics,omitempty"`
-	FileChanges          []toolguard.FileChange     `json:"file_changes,omitempty"`
-	Plan                 *ProposedPlanUpdate        `json:"plan,omitempty"`
-	Verification         *VerificationReceipt       `json:"verification,omitempty"`
-	ToolOutput           *ToolOutput                `json:"tool_output,omitempty"`
-	CatalogChanged       *CatalogChanged            `json:"catalog_changed,omitempty"`
-	MCPHealthChanged     *MCPHealthChanged          `json:"mcp_health_changed,omitempty"`
-	ExtensionLifecycle   *ExtensionLifecycleChanged `json:"extension_lifecycle,omitempty"`
+	Sample               uint32                      `json:"sample,omitempty"`
+	EstimatedInputTokens uint64                      `json:"estimated_input_tokens,omitempty"`
+	InputTokenDelta      int64                       `json:"input_token_delta,omitempty"`
+	ErrorCode            protocol.ErrorCode          `json:"error_code,omitempty"`
+	Error                string                      `json:"error,omitempty"`
+	SecondaryIssues      []TerminalIssue             `json:"secondary_issues,omitempty"`
+	Compaction           *CompactionReceipt          `json:"compaction,omitempty"`
+	ContextBudget        *ContextBudgetSnapshot      `json:"context_budget,omitempty"`
+	Approval             *toolguard.ApprovalRequest  `json:"approval,omitempty"`
+	Input                *interact.Request           `json:"input,omitempty"`
+	Diagnostics          []diagnostics.Receipt       `json:"diagnostics,omitempty"`
+	FileChanges          []toolguard.FileChange      `json:"file_changes,omitempty"`
+	Plan                 *ProposedPlanUpdate         `json:"plan,omitempty"`
+	Verification         *VerificationReceipt        `json:"verification,omitempty"`
+	Completion           *tool.CompletionDeclaration `json:"completion,omitempty"`
+	ToolOutput           *ToolOutput                 `json:"tool_output,omitempty"`
+	CatalogChanged       *CatalogChanged             `json:"catalog_changed,omitempty"`
+	MCPHealthChanged     *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
+	ExtensionLifecycle   *ExtensionLifecycleChanged  `json:"extension_lifecycle,omitempty"`
 }
 
 // TerminalIssue is a cleanup/finalization failure that happened after the

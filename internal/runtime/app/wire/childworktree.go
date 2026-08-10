@@ -351,6 +351,7 @@ type childToolsets struct {
 	journals            config.Journal
 	diagnosticCommands  map[string]diagnostics.Command
 	diagnosticReadRoots []string
+	diagnosticReadFiles []string
 	gitCommonDir        string
 
 	mu    sync.Mutex
@@ -362,12 +363,14 @@ func newChildToolsets(
 	verifyConfig config.Verify, journals config.Journal,
 	diagnosticCommands map[string]diagnostics.Command,
 	diagnosticReadRoots []string,
+	diagnosticReadFiles []string,
 	gitCommonDir string,
 ) *childToolsets {
 	return &childToolsets{
 		helperPath: helperPath, content: content, web: web, verify: verifyConfig,
 		journals: journals, diagnosticCommands: diagnosticCommands,
 		diagnosticReadRoots: append([]string(nil), diagnosticReadRoots...),
+		diagnosticReadFiles: append([]string(nil), diagnosticReadFiles...),
 		gitCommonDir:        gitCommonDir,
 		built:               make(map[string]*childToolset),
 	}
@@ -389,8 +392,9 @@ func (c *childToolsets) open(root string) (*childToolset, error) {
 	}
 	hostReadRoots = append(hostReadRoots, gitRoots...)
 	backend, err := newPlatformBackend(sandbox.Options{
-		WorkspaceRoot: root, HelperPath: c.helperPath, AllowNetwork: true,
-		HostReadRoots: hostReadRoots,
+		WorkspaceRoot: root, HelperPath: c.helperPath,
+		AllowNetwork: true, HostReadRoots: hostReadRoots,
+		HostReadFiles: c.diagnosticReadFiles,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("child sandbox: %w", err)

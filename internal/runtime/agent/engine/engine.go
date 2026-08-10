@@ -85,9 +85,10 @@ type Options struct {
 	// OnNetworkAllow is wired into a Guard that New allocates when Guard is
 	// nil. Without it, mid-flight egress approvals update the approval cache
 	// but never Grant the session Gate, so the retry still gets egress denied.
-	OnNetworkAllow func(host, protocol string)
-	Workspace      string
-	Metrics        *telemetry.Metrics
+	OnNetworkAllow     func(host, protocol string)
+	Workspace          string
+	WorkspaceIsolation string
+	Metrics            *telemetry.Metrics
 	// Now is the clock every duration the turn reports is measured against
 	// (nil → time.Now). One clock rather than several is what lets a test assert
 	// a latency exactly.
@@ -104,9 +105,12 @@ type Options struct {
 	WorkspaceTurnGate *WorkspaceTurnGate
 	Diagnostics       diagnostics.Runner
 	Verify            VerifyOptions
-	Hooks             *hooks.Manager
-	SessionID         string
-	InputHost         *interact.Host
+	// RequireCompletionDeclaration makes workspace_change completion depend on
+	// a turn_complete tool result bound to the current mutation revision.
+	RequireCompletionDeclaration bool
+	Hooks                        *hooks.Manager
+	SessionID                    string
+	InputHost                    *interact.Host
 	// PromptCacheKey is the session sticky hint; samples only attach it when
 	// StickyPromptCacheKey drops the session default when the route lacks
 	// prompt_cache, so Validate/encode stay consistent across protocols.
@@ -232,8 +236,10 @@ type Engine struct {
 
 	// mutationRevision binds successful quality evidence to the exact workspace
 	// state it checked. A later observed mutation clears the evidence.
-	mutationRevision     uint64
-	verificationEvidence []verify.Evidence
+	mutationRevision        uint64
+	verificationEvidence    []verify.Evidence
+	completionDeclaration   *tool.CompletionDeclaration
+	qualityEvidenceRequired bool
 
 	// rollbackMu guards the conflicts an automatic rollback of the active turn
 	// left unresolved.
@@ -304,6 +310,13 @@ func New(options Options) (*Engine, error) {
 	}
 	if options.Tools == nil {
 		options.Tools = tool.NewRegistry(nil, nil)
+	}
+	if options.RequireCompletionDeclaration {
+		if _, _, _, err := options.Tools.Resolve("turn_complete"); err != nil {
+			return nil, fmt.Errorf(
+				"completion declaration requires turn_complete: %w", err,
+			)
+		}
 	}
 	if options.Routes.Ready() {
 		options.Route = options.Routes.Act()
@@ -464,6 +477,13 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 }
 
 func (e *Engine) toolEnabled(entry tool.CatalogEntrySnapshot) bool {
+	if e.options.RequireCompletionDeclaration && entry.Name == "turn_complete" {
+		return true
+	}
+	if e.qualityEvidenceRequired &&
+		(entry.Name == "quality_verify" || entry.Name == "quality_test") {
+		return true
+	}
 	if len(e.enabledTools) == 0 {
 		return true
 	}
@@ -476,6 +496,13 @@ func (e *Engine) toolCallEnabled(
 	name string,
 	binding tool.CatalogBinding,
 ) bool {
+	if e.options.RequireCompletionDeclaration && name == "turn_complete" {
+		return true
+	}
+	if e.qualityEvidenceRequired &&
+		(name == "quality_verify" || name == "quality_test") {
+		return true
+	}
 	if len(e.enabledTools) == 0 {
 		return true
 	}

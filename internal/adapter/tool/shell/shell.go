@@ -97,7 +97,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	} else {
 		description = "Run a shell command in the workspace sandbox. " +
 			"cwd must be workspace-relative (or omitted). Host /tmp is blocked — use $TMPDIR. " +
-			"Workspace files are read-only unless write_paths declares existing exact files. " +
+			"Workspace files are read-only unless write_paths declares existing exact files " +
+			"or write_globs expands to a bounded set of existing files. " +
 			"Declared writes pass through approval, journal, and receipt tracking. " +
 			"Use file_edit, file_write, or file_apply for ordinary persistent changes."
 	}
@@ -118,6 +119,12 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			},
 			"maxItems": float64(128), "uniqueItems": true,
 		}
+		properties["write_globs"] = map[string]any{
+			"type": "array", "items": map[string]any{
+				"type": "string", "minLength": float64(1),
+			},
+			"maxItems": float64(32), "uniqueItems": true,
+		}
 		resolver.PathsField = "write_paths"
 	}
 	return tool.Descriptor{
@@ -133,6 +140,16 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"additionalProperties": false,
 		},
 	}
+}
+
+func (t *Tool) ExpandArguments(
+	_ context.Context,
+	raw json.RawMessage,
+) (json.RawMessage, error) {
+	if t.readOnly || t.pty {
+		return raw, nil
+	}
+	return t.expandWriteGlobs(raw)
 }
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
@@ -225,6 +242,12 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	callID := identity.CallID
 	metadata := map[string]any{
 		"stdout": result.Stdout, "stderr": result.Stderr, "exit_code": result.ExitCode, "pty": t.pty,
+		"workspace_write_scope": func() string {
+			if len(input.WritePaths) == 0 {
+				return "none"
+			}
+			return "exact"
+		}(),
 		"command_execution": map[string]any{
 			"command": input.Command, "status": status, "exit_code": exitCode,
 			"duration_ms": durationMS, "output_tail": tail, "call_id": callID,

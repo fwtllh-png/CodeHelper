@@ -221,6 +221,21 @@ type Result struct {
 	Handle        string         `json:"handle,omitempty"`
 }
 
+const MetadataCompletionDeclaration = "completion_declaration"
+
+// CompletionDeclaration is the model's structured assertion that a workspace
+// change has no pending work. The engine binds it to observed paths and the
+// current mutation revision before it can authorize a terminal transition.
+type CompletionDeclaration struct {
+	Status              string   `json:"status"`
+	Summary             string   `json:"summary"`
+	ChangedPaths        []string `json:"changed_paths"`
+	VerificationCallIDs []string `json:"verification_call_ids"`
+	PendingActions      []string `json:"pending_actions"`
+	MutationRevision    uint64   `json:"mutation_revision,omitempty"`
+	CallID              string   `json:"call_id,omitempty"`
+}
+
 // MetadataEvidence is the result metadata key carrying []EvidenceHit: the paths a
 // lookup found and what it found them to be.
 //

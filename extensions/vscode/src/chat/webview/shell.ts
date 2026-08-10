@@ -50,7 +50,7 @@ export function renderChatHTML(
         <div class="header-actions" role="toolbar" aria-label="Chat actions">
           <select id="root" aria-label="Workspace root"></select>
           <button type="button" id="new-chat" class="icon-button" title="New Session" aria-label="New Session">＋</button>
-          <button type="button" id="merge-chat" class="compact-button" title="Review Chat changes">Merge</button>
+          <button type="button" id="merge-chat" class="compact-button" title="Preview isolated Chat worktree changes before applying them to the main workspace">Merge Chat Changes</button>
           <button type="button" id="toggle-sessions" class="icon-button" title="Show Sessions" aria-label="Show Sessions" aria-controls="session-rail" aria-expanded="false">☰</button>
         </div>
       </header>

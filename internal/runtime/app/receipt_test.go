@@ -556,25 +556,54 @@ func TestReceiptOmitsEvidenceWhenThereIsNone(t *testing.T) {
 	}
 }
 
-// TestReceiptDistinguishesUnavailableDiagnostics pins that a runner which never
-// ran leaves verification at not_evaluated rather than reporting a pass.
+func TestReceiptCarriesOnlyTerminalCompletionDeclaration(t *testing.T) {
+	recorder := newReceiptRecorder("change a.go")
+	recorder.observe(agentengine.Event{
+		State: agentengine.Preparing, Workspace: "/tmp/chat-worktree",
+		WorkspaceIsolation: "worktree",
+	})
+	recorder.observe(agentengine.Event{
+		State: agentengine.Completed,
+		Completion: &tool.CompletionDeclaration{
+			Status: "complete", Summary: "implemented and verified",
+			ChangedPaths: []string{"a.go"}, VerificationCallIDs: []string{"verify-1"},
+			MutationRevision: 1, CallID: "complete-1",
+		},
+	})
+	receipt := recorder.build(turnObservations{})
+	if receipt.WorkspaceIsolation != "worktree" ||
+		receipt.Completion == nil || !receipt.Completion.Accepted ||
+		receipt.Completion.CallID != "complete-1" ||
+		receipt.Completion.Summary != "implemented and verified" {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+}
+
+// TestReceiptDistinguishesUnavailableDiagnostics pins that infrastructure
+// failure is neither a pass nor a source-code diagnostic.
 func TestReceiptDistinguishesUnavailableDiagnostics(t *testing.T) {
-	for name, status := range map[string]string{"unavailable": "unavailable", "ok": "ok"} {
+	for name, test := range map[string]struct {
+		status string
+		want   string
+	}{
+		"unavailable": {status: "unavailable", want: protocol.ReceiptUnavailable},
+		"failed":      {status: "failed", want: protocol.ReceiptFailed},
+		"ok":          {status: "ok", want: protocol.ReceiptPassed},
+	} {
 		t.Run(name, func(t *testing.T) {
 			recorder := newReceiptRecorder("fix add")
 			recorder.observe(agentengine.Event{
 				State:       agentengine.RunningTools,
 				ToolCall:    &provider.ToolCall{Name: "file_edit", ID: "call_edit"},
 				Result:      &tool.Result{Content: "edited"},
-				Diagnostics: []diagnostics.Receipt{{Path: "calc.py", Status: status}},
+				Diagnostics: []diagnostics.Receipt{{Path: "calc.py", Status: test.status}},
 			})
 			receipt := recorder.build(turnObservations{})
-			want := protocol.ReceiptPassed
-			if status == "unavailable" {
-				want = protocol.ReceiptNotEvaluated
-			}
-			if receipt.Verification.Diagnostics != want {
-				t.Fatalf("diagnostics = %q want %q", receipt.Verification.Diagnostics, want)
+			if receipt.Verification.Diagnostics != test.want {
+				t.Fatalf(
+					"diagnostics = %q want %q",
+					receipt.Verification.Diagnostics, test.want,
+				)
 			}
 		})
 	}

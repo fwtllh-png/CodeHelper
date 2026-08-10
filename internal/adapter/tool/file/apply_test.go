@@ -196,8 +196,8 @@ func TestFileApplyEditMismatchCarriesStructuredRecoveryHint(t *testing.T) {
 		t.Fatalf("PlanEdit() error = %v, want ErrPrecondition", err)
 	}
 	hint, ok := tool.RecoveryHintFromError(err)
-	if !ok || hint.ErrorCategory != "edit_precondition_failed" ||
-		hint.RequiredAction != "file_read" ||
+	if !ok || hint.ErrorCategory != "edit_precondition_miss" ||
+		hint.RequiredAction != "reread_exact_range" ||
 		hint.Path != "chapter.md" ||
 		hint.RetryOriginal {
 		t.Fatalf("hint = %+v, found = %v", hint, ok)

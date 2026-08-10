@@ -15,11 +15,14 @@ import (
 func (e *Engine) resetVerificationEvidence() {
 	e.mutationRevision = 0
 	e.verificationEvidence = nil
+	e.clearCompletionDeclaration()
+	e.qualityEvidenceRequired = false
 }
 
 func (e *Engine) advanceMutationRevision() {
 	e.mutationRevision++
 	e.verificationEvidence = nil
+	e.clearCompletionDeclaration()
 }
 
 func (e *Engine) bindVerificationEvidence(

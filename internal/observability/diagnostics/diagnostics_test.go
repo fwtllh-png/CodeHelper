@@ -73,7 +73,7 @@ func (passthroughBackend) Prepare(
 	return command, nil
 }
 
-func TestCommandRunnerReportsSignaledProcessAsFailedReceipt(t *testing.T) {
+func TestCommandRunnerReportsSignaledProcessAsUnavailableReceipt(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("signal fixture requires a POSIX shell")
 	}
@@ -95,7 +95,10 @@ func TestCommandRunnerReportsSignaledProcessAsFailedReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v, want a structured failed receipt", err)
 	}
-	if receipt.Status != "failed" || receipt.Message == "" {
+	if receipt.Status != "unavailable" ||
+		receipt.ErrorCategory != "runner_failure" ||
+		receipt.ExitCode == 0 ||
+		receipt.Message == "" {
 		t.Fatalf("receipt = %+v", receipt)
 	}
 }

@@ -251,6 +251,9 @@ func (e *Engine) runToolsWithReplay(
 	}
 	for index := range calls {
 		e.bindVerificationEvidence(calls[index], &results[index], batchMutated)
+		e.bindCompletionDeclaration(
+			calls[index], &results[index], batchMutated, len(calls),
+		)
 		executed[calls[index].ID] = results[index]
 		copy := results[index]
 		call := calls[index]

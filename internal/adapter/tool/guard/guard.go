@@ -789,6 +789,10 @@ func (g *Guard) finishFileWrites(
 		}
 		result.Metadata[MetadataChanges] = changes
 	}
+	if result.Metadata == nil {
+		result.Metadata = make(map[string]any)
+	}
+	result.Metadata["observed_changes"] = len(changes)
 	if runDiagnostics {
 		// Seal every journal record before invoking an external checker. A
 		// multi-file tool has already written all paths, so returning after the
@@ -802,8 +806,8 @@ func (g *Guard) finishFileWrites(
 					return fmt.Errorf("post-edit diagnostics %q: %w", path, err)
 				}
 				receipt = diagnostics.Receipt{
-					Path: path, Status: "failed", Diagnostics: []diagnostics.Diagnostic{},
-					Message: err.Error(),
+					Path: path, Status: "unavailable", Diagnostics: []diagnostics.Diagnostic{},
+					Message: err.Error(), ErrorCategory: "runner_failure",
 				}
 			}
 			receipts = append(receipts, receipt)

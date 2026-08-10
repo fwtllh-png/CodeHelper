@@ -745,6 +745,8 @@ export type DiagnosticsResultData = {
             readonly "severity": string;
             readonly "source": string;
           }>;
+      readonly "error_category"?: string;
+      readonly "exit_code"?: number;
       readonly "message"?: string;
       readonly "path": string;
       readonly "runner"?: string;
@@ -897,9 +899,28 @@ export type ToolResultData = {
       readonly "path": string;
       readonly "removed": number;
     }>;
+  readonly "completion"?: {
+      readonly "accepted": boolean;
+      readonly "call_id": string;
+      readonly "changed_paths": ReadonlyArray<string>;
+      readonly "mutation_revision": number;
+      readonly "pending_actions": ReadonlyArray<string>;
+      readonly "rejection"?: string;
+      readonly "status": string;
+      readonly "summary": string;
+      readonly "verification_call_ids": ReadonlyArray<string>;
+    };
   readonly "is_error": boolean;
+  readonly "observed_changes"?: number;
   readonly "output": string;
+  readonly "recovery"?: {
+      readonly "error_category": string;
+      readonly "path"?: string;
+      readonly "required_action": string;
+      readonly "retry_original": boolean;
+    };
   readonly "tool": string;
+  readonly "workspace_write_scope"?: string;
 };
 
 export type ToolStartData = {
@@ -969,6 +990,17 @@ export type TurnReceiptData = {
       readonly "summary"?: string;
       readonly "tool": string;
     }>;
+  readonly "completion"?: {
+      readonly "accepted": boolean;
+      readonly "call_id": string;
+      readonly "changed_paths": ReadonlyArray<string>;
+      readonly "mutation_revision": number;
+      readonly "pending_actions": ReadonlyArray<string>;
+      readonly "rejection"?: string;
+      readonly "status": string;
+      readonly "summary": string;
+      readonly "verification_call_ids": ReadonlyArray<string>;
+    };
   readonly "context_budget"?: {
       readonly "compactions": number;
       readonly "estimated_tokens"?: number;
@@ -1127,8 +1159,10 @@ export type TurnReceiptData = {
       readonly "final_status": string;
       readonly "mode": string;
       readonly "repair_steps": number;
+      readonly "uncovered_paths"?: ReadonlyArray<string>;
     };
   readonly "workspace"?: string;
+  readonly "workspace_isolation"?: string;
   readonly "workspace_outcome"?: {
       readonly "changed"?: ReadonlyArray<string>;
       readonly "conflicts"?: ReadonlyArray<string>;
@@ -1197,6 +1231,7 @@ export type TurnStartedData = {
   readonly "provider": string;
   readonly "sandbox"?: string;
   readonly "workspace"?: string;
+  readonly "workspace_isolation"?: string;
 };
 
 export type TurnSteeredData = {
@@ -1221,6 +1256,7 @@ export type TurnVerificationData = {
   readonly "repair_steps": number;
   readonly "scope": string;
   readonly "status": string;
+  readonly "uncovered_paths"?: ReadonlyArray<string>;
   readonly "warnings"?: number;
 };
 

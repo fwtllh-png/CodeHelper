@@ -237,8 +237,10 @@ func (a *EngineAdapter) StartTurn(
 				Provider: event.Provider, Model: event.Model,
 				Intent: intent,
 				Mode:   event.Mode, Posture: event.Posture,
-				Workspace: event.Workspace, Sandbox: event.Sandbox,
-				Prompt: modelPrompt, DisplayPrompt: payload.Prompt,
+				Workspace:          event.Workspace,
+				WorkspaceIsolation: event.WorkspaceIsolation,
+				Sandbox:            event.Sandbox,
+				Prompt:             modelPrompt, DisplayPrompt: payload.Prompt,
 				EditorContext: editorContext,
 			})
 		case agentengine.Completed:
@@ -350,10 +352,46 @@ func (a *EngineAdapter) StartTurn(
 						Added: change.Added, Removed: change.Removed,
 					}
 				}
+				var recovery *protocol.ToolRecovery
+				var completion *protocol.CompletionDeclaration
+				var observedChanges *int
+				var workspaceWriteScope string
+				if metadata := event.Result.Metadata; metadata != nil {
+					category, _ := metadata["error_category"].(string)
+					action, _ := metadata["required_action"].(string)
+					if category != "" && action != "" {
+						path, _ := metadata["path"].(string)
+						retry, _ := metadata["retry_original"].(bool)
+						recovery = &protocol.ToolRecovery{
+							ErrorCategory: category, RequiredAction: action,
+							Path: path, RetryOriginal: retry,
+						}
+					}
+					if count, ok := metadata["observed_changes"].(int); ok {
+						observedChanges = &count
+					}
+					workspaceWriteScope, _ = metadata["workspace_write_scope"].(string)
+					if declaration, ok := metadata[tool.MetadataCompletionDeclaration].(tool.CompletionDeclaration); ok {
+						accepted, _ := metadata["completion_declaration_accepted"].(bool)
+						rejection, _ := metadata["completion_declaration_rejection"].(string)
+						completion = &protocol.CompletionDeclaration{
+							Status: declaration.Status, Summary: declaration.Summary,
+							ChangedPaths: append([]string(nil), declaration.ChangedPaths...),
+							VerificationCallIDs: append(
+								[]string(nil), declaration.VerificationCallIDs...,
+							),
+							PendingActions:   append([]string(nil), declaration.PendingActions...),
+							MutationRevision: declaration.MutationRevision,
+							CallID:           declaration.CallID, Accepted: accepted, Rejection: rejection,
+						}
+					}
+				}
 				if err := sink.Emit(&protocol.ToolResultData{
 					Tool: event.ToolCall.Name, CallID: event.ToolCall.ID,
 					Output: event.Result.Content, IsError: event.Result.IsError,
-					Changes: changes,
+					Changes: changes, Recovery: recovery, Completion: completion,
+					WorkspaceWriteScope: workspaceWriteScope,
+					ObservedChanges:     observedChanges,
 				}); err != nil {
 					return err
 				}
@@ -384,6 +422,7 @@ func (a *EngineAdapter) StartTurn(
 						receipts[index] = protocol.DiagnosticReceipt{
 							Path: receipt.Path, Status: receipt.Status, Runner: receipt.Runner,
 							Diagnostics: diagnostics, Message: receipt.Message,
+							ErrorCategory: receipt.ErrorCategory, ExitCode: receipt.ExitCode,
 						}
 					}
 					return sink.Emit(&protocol.DiagnosticsData{
