@@ -23,8 +23,8 @@ source_of_truth:
   - docs/zh-CN/security.md
   - internal/adapter/tool/guard/guard.go
   - internal/security/policy/policy.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Guard、Approval、Constitution 与 Sandbox

@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/security/policy/policy.go
   - internal/runtime/protocol/message.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 构造 Approval 与 Denial

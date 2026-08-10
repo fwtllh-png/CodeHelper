@@ -19,7 +19,7 @@ source_of_truth:
   - internal/orchestration/workflow/checkpoint/checkpoint.go
   - internal/orchestration/workflow/runtime.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Checkpoint 与恢复

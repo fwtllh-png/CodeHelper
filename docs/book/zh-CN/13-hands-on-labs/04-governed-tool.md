@@ -15,8 +15,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/adapter/tool/guard/guard.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 实现通过 Guard 的 Tool

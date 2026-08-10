@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - Makefile
   - internal/security/sandbox/backend.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Cross-Platform Builds and Capability Probing

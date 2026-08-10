@@ -187,18 +187,18 @@ function renderTurn(
       });
       preview.className = "workspace-change-action primary";
       actionsRow.append(preview);
-      const apply = actionButton("Apply", () => {
-        actions.applyWorkspaceChanges();
-      });
-      apply.className = "workspace-change-action secondary";
       const canApply = actions.canApplyWorkspaceChanges();
-      apply.disabled = !trusted || !canApply;
-      apply.title = !trusted
-        ? "Trust this workspace before applying changes"
-        : canApply
+      if (canApply) {
+        const apply = actionButton("Apply", () => {
+          actions.applyWorkspaceChanges();
+        });
+        apply.className = "workspace-change-action secondary";
+        apply.disabled = !trusted;
+        apply.title = trusted
           ? "Apply the current previewed merge plan"
-          : "Preview changes first to create a current merge plan";
-      actionsRow.append(apply);
+          : "Trust this workspace before applying changes";
+        actionsRow.append(apply);
+      }
       workspace.append(actionsRow);
       article.append(workspace);
     }

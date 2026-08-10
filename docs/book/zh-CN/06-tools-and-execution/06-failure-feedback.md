@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/engine/toolfailure.go
   - internal/runtime/agent/engine/engine.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Tool Failure 如何反馈给模型

@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/orchestration/automation/repository.go
   - internal/orchestration/workflow/runtime.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Automation and Workflows

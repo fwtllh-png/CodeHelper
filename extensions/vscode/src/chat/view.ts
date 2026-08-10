@@ -111,6 +111,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   readonly #submittedApprovals = new Set<string>();
   readonly #submittedRecoveries = new Set<string>();
   readonly #mergePlans = new Map<string, EditPlanCard>();
+  readonly #mergeOperations = new Set<string>();
   readonly #resources = new Map<string, ResourceReference>();
   readonly #composerLoads = new Set<string>();
   #view: vscode.WebviewView | undefined;
@@ -706,23 +707,60 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "merge-chat": {
           const session = this.#selectedSession(root);
           const key = sessionKey(root.rootId, session.sessionId, "merge");
-          if (message.planId === undefined) {
-            const result = await root.controller.mergeChat(
-              session.sessionId, "preview",
-            );
-            const plan = decodeMergePlan(result);
-            this.#mergePlans.set(key, plan);
-            await this.#editPreview.showPatch(plan, root.rootId);
-          } else {
-            if (this.#mergePlans.get(key)?.id !== message.planId) {
-              throw new Error("Chat merge plan is unknown or stale");
-            }
-            await root.controller.mergeChat(
-              session.sessionId, "apply", message.planId,
-            );
-            this.#mergePlans.delete(key);
+          if (this.#mergeOperations.has(key)) {
+            throw new Error("Chat merge is already in progress");
           }
-          this.#scheduleFlush();
+          this.#mergeOperations.add(key);
+          try {
+            if (message.planId === undefined) {
+              const result = await vscode.window.withProgress(
+                {
+                  location: vscode.ProgressLocation.Notification,
+                  title: "Preparing Chat merge preview...",
+                },
+                async () => root.controller.mergeChat(
+                  session.sessionId, "preview",
+                ),
+              );
+              const plan = decodeMergePlan(result);
+              this.#mergePlans.set(key, plan);
+              await this.#editPreview.showPatch(plan, root.rootId);
+            } else {
+              const plan = this.#mergePlans.get(key);
+              if (plan?.id !== message.planId) {
+                throw new Error(
+                  "Chat merge plan is unknown or stale; review changes again",
+                );
+              }
+              await vscode.window.withProgress(
+                {
+                  location: vscode.ProgressLocation.Notification,
+                  title: `Applying ${String(plan.files.length)} Chat changes...`,
+                },
+                async () => root.controller.mergeChat(
+                  session.sessionId, "apply", message.planId,
+                ),
+              );
+              this.#mergePlans.delete(key);
+              void vscode.window.showInformationMessage(
+                `Applied ${String(plan.files.length)} Chat changes to the workspace.`,
+              );
+            }
+          } catch (error) {
+            const detail = error instanceof Error
+              ? error.message
+              : String(error);
+            if (detail.includes("unknown or stale")) {
+              this.#mergePlans.delete(key);
+            }
+            void vscode.window.showErrorMessage(
+              `CodeHelper Chat merge failed: ${detail}`,
+            );
+            throw error;
+          } finally {
+            this.#mergeOperations.delete(key);
+            this.#scheduleFlush();
+          }
           break;
         }
       }

@@ -146,6 +146,10 @@ During every Turn, check structured invariants:
   the complete change set, previews one bounded unified Diff, and applies the
   plan in batches of at most 64 files inside one Journal transaction; any batch
   failure rolls back the whole Merge;
+- when the main Workspace changed after the Chat baseline, Merge performs a
+  side-effect-free three-way text merge during planning. Non-overlapping edits
+  are preserved from both sides; overlapping edits, delete/modify conflicts,
+  and binary paths still fail closed before Approval;
 - retryable Provider transport failures, including a structured connection
   reset, are `unavailable`, not `internal`. Before any meaningful output, the
   Engine permits one bounded retry even when optional retries are disabled;

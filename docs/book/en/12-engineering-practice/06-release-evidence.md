@@ -19,8 +19,8 @@ source_of_truth:
   - extensions/vscode/scripts/release/vscode-matrix.mjs
   - extensions/vscode/scripts/matrix/journeys.mjs
   - extensions/vscode/RELEASE-EVIDENCE.md
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # VSIX, SBOM, Provenance, and Release Evidence

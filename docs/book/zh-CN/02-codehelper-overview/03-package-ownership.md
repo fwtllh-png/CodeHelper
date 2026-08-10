@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - AGENTS.md
   - docs/zh-CN/architecture.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Package 所有权与依赖方向

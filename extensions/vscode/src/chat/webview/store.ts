@@ -36,6 +36,27 @@ export class ChatWebviewStore {
   }
 }
 
+export function transcriptTurnsAffectedByPatch(
+  snapshot: ChatSnapshotMessage,
+  patch: ChatPatchMessage,
+): ReadonlySet<string> {
+  const affected = new Set<string>();
+  let runtimeChanged = false;
+  for (const operation of patch.operations) {
+    if (operation.kind === "turn.upsert") {
+      affected.add(operation.turn.id);
+    } else if (operation.kind === "runtime.replace") {
+      runtimeChanged = true;
+    }
+  }
+  if (runtimeChanged) {
+    for (const turn of snapshot.snapshot.turns) {
+      if (turn.workspaceChange !== undefined) affected.add(turn.id);
+    }
+  }
+  return affected;
+}
+
 function applyPatch(
   current: ChatSnapshotMessage,
   patch: ChatPatchMessage,

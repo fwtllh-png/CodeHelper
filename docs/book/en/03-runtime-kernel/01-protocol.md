@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
   - internal/runtime/protocol/message.go
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # Protocol and Stable Data Contracts

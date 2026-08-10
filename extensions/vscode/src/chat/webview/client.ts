@@ -28,7 +28,10 @@ import {
   computeTranscriptWindow,
   transcriptTurnEstimate,
 } from "../transcript-window.js";
-import { ChatWebviewStore } from "./store.js";
+import {
+  ChatWebviewStore,
+  transcriptTurnsAffectedByPatch,
+} from "./store.js";
 
 interface VSCodeAPI {
   postMessage(message: unknown): void;
@@ -494,11 +497,12 @@ function scheduleTranscriptPatch(
   patch: ChatPatchMessage,
 ): void {
   pendingTranscriptMessage = message;
+  for (const turnId of transcriptTurnsAffectedByPatch(message, patch)) {
+    pendingChangedTurns.add(turnId);
+    pendingRemovedTurns.delete(turnId);
+  }
   for (const operation of patch.operations) {
-    if (operation.kind === "turn.upsert") {
-      pendingChangedTurns.add(operation.turn.id);
-      pendingRemovedTurns.delete(operation.turn.id);
-    } else if (operation.kind === "turn.remove") {
+    if (operation.kind === "turn.remove") {
       pendingRemovedTurns.add(operation.turnId);
       pendingChangedTurns.delete(operation.turnId);
     }

@@ -16,7 +16,7 @@ test_paths:
 source_of_truth:
   - internal/host/runtimeapi/acp/server.go
 status: verified
-last_verified: 2026-08-07
+last_verified: 2026-08-10
 ---
 
 # ACP Stdio and Editor Interoperability

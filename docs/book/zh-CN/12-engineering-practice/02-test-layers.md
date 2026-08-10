@@ -17,8 +17,8 @@ source_of_truth:
   - Makefile
   - extensions/vscode/package.json
   - extensions/vscode/scripts/matrix/journeys.mjs
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # Unit、Contract、Integration 与 Electron Test

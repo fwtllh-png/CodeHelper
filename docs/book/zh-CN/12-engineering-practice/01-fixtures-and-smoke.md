@@ -15,8 +15,8 @@ test_paths:
 source_of_truth:
   - scripts/live-model-smoke.sh
   - testdata/README.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Hermetic Fixture 与真实 Provider Smoke

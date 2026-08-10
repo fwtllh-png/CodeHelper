@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/orchestration/subagent/subagent.go
   - internal/orchestration/subagent/worktree.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Subagents, Worktrees, and Topology

@@ -20,8 +20,8 @@ source_of_truth:
   - internal/orchestration/workflow/spec.go
   - internal/orchestration/automation/types.go
   - internal/orchestration/task/repository.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Agent、Workflow 与 Automation 的边界

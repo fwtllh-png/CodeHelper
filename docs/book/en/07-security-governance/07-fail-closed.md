@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/security/sandbox/backend.go
   - internal/security/policy/policy.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Fail-Closed Behavior and Platform Claims

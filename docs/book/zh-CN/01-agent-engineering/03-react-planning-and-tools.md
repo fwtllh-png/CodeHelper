@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/engine/engine.go
   - internal/adapter/tool/tool.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # ReAct、Planning、Tool Calling 与 Reflection

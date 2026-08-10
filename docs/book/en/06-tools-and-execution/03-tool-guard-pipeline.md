@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/tool/guard/guard.go
   - internal/security/policy/policy.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # The Tool Guard Pipeline

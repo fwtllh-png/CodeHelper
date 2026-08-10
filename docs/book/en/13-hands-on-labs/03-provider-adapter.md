@@ -14,8 +14,8 @@ test_paths:
   - internal/adapter/provider/fault_injection_test.go
 source_of_truth:
   - internal/adapter/provider/types.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Implement a Provider Adapter

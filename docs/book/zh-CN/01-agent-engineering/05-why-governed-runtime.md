@@ -21,8 +21,8 @@ source_of_truth:
   - README.zh-CN.md
   - docs/zh-CN/architecture.md
   - docs/zh-CN/security.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 为什么 Agent 需要受治理的 Runtime

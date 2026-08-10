@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/orchestration/task/repository.go
   - internal/orchestration/worker/worker.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Task、Worker 与 Executor

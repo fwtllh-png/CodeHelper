@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/provider/httpclient/client.go
   - internal/runtime/protocol/problem.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Retry、Rate Limit、Timeout 与故障分类

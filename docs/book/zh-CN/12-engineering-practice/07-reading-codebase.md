@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - AGENTS.md
   - docs/zh-CN/architecture.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 如何阅读和修改大型 Agent 工程

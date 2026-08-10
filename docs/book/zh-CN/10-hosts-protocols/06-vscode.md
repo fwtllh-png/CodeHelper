@@ -24,8 +24,8 @@ source_of_truth:
   - extensions/vscode/src/runtime/controller.ts
   - extensions/vscode/src/chat/resource-navigator.ts
   - extensions/vscode/RELEASE-EVIDENCE.md
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # VS Code Native Agent Chat 与 Runtime Authority

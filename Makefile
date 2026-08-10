@@ -19,6 +19,7 @@ LDFLAGS := -s -w \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-freeze \
 	book-navigation command-docs command-docs-check \
 	doc-governance-check doc-governance-test doc-impact \
+	doc-reverify doc-reverify-dry-run \
 	doc-external-links release-fact-check brand-check \
 	markdownlint-check \
 	security-test sandbox-attack-test secret-leak-test live-model-smoke \
@@ -187,6 +188,12 @@ doc-governance-check:
 
 doc-governance-test:
 	python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+doc-reverify:
+	python3 scripts/check-doc-governance.py reverify
+
+doc-reverify-dry-run:
+	python3 scripts/check-doc-governance.py reverify --dry-run
 
 doc-impact:
 	@test -n "$(BASE_REF)" || { echo "BASE_REF is required" >&2; exit 2; }

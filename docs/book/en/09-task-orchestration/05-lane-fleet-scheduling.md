@@ -19,7 +19,7 @@ source_of_truth:
   - internal/orchestration/lane/lane.go
   - internal/orchestration/fleet/ledger.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Lanes, Fleets, and Scheduling

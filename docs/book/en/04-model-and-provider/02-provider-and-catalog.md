@@ -15,8 +15,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/model/catalog.go
   - internal/adapter/model/route.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Provider Adapters, Model Catalog, and Wire IDs

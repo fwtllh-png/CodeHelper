@@ -20,8 +20,8 @@ source_of_truth:
   - internal/adapter/tool/builtin/builtin.go
   - internal/adapter/tool/file/file.go
   - internal/adapter/tool/shell/shell.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # File, Shell, and Agent Tools

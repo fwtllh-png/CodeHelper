@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - docs/zh-CN/security.md
   - internal/security/egress/gate.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Egress、Credential 与数据泄漏

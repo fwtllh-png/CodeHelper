@@ -18,8 +18,8 @@ source_of_truth:
   - testdata/benchmarks/README.md
   - Makefile
   - extensions/vscode/scripts/release/rc-report.mjs
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # Benchmarks and Performance Budgets

@@ -22,8 +22,8 @@ source_of_truth:
   - internal/runtime/app/lifecycle.go
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/wire/persistent.go
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # Resume, Recovery, and Idempotency

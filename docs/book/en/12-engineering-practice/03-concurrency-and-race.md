@@ -15,8 +15,8 @@ test_paths:
   - internal/orchestration/task/execution_test.go
 source_of_truth:
   - Makefile
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Concurrency Tests and Race Detection

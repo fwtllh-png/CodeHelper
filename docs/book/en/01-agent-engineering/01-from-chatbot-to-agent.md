@@ -17,8 +17,8 @@ source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/agent/engine/engine.go
   - internal/runtime/protocol/message.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # From Chatbot to Agent

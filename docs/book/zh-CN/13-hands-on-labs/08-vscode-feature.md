@@ -18,8 +18,8 @@ source_of_truth:
   - extensions/vscode/src/runtime/controller.ts
   - extensions/vscode/src/context/bridge.ts
   - extensions/vscode/scripts/matrix/journeys.mjs
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # 完成 VS Code 端到端功能

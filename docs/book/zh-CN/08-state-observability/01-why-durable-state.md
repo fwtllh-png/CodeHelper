@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/persist/state/store.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Durable State 的必要性

@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/host/tui/host.go
   - internal/host/tui/app.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # TUI State Projection

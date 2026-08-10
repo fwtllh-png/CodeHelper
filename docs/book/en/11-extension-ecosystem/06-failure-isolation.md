@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/mcp/health.go
   - internal/adapter/plugin/registry.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Extension Failure and Isolation

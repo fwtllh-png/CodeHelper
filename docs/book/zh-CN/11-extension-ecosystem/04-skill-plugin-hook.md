@@ -19,8 +19,8 @@ source_of_truth:
   - internal/adapter/skill/catalog.go
   - internal/adapter/plugin/registry.go
   - internal/adapter/hooks/manager.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 编写 Skill、Plugin 与 Hook

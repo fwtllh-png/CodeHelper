@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/model/capability.go
   - internal/adapter/model/routeset.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Capability Negotiation 与 Route Resolution

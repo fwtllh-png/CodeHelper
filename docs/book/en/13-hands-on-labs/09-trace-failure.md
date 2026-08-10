@@ -18,7 +18,7 @@ source_of_truth:
   - internal/observability/trace/trace.go
   - internal/persist/state/eventlog/log.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Investigate a Failure from Traces

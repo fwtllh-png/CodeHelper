@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/persist/state/sqlite/store.go
   - internal/persist/state/eventlog/log.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # SQLite, Event Logs, and Projections

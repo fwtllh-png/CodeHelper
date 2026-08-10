@@ -17,7 +17,7 @@ source_of_truth:
   - internal/orchestration/task/execution.go
   - internal/orchestration/worker/worker.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # 调试 Worker Lease 与 Retry

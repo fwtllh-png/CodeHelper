@@ -131,6 +131,9 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
 - Chat Merge 最多接受 512 个 Path。Runtime 必须用一个 Aggregate Plan ID 绑定完整
   Change Set，使用一个有界 Unified Diff 进行 Preview，并在同一个 Journal
   Transaction 中按每批最多 64 个文件 Apply；任一 Batch 失败必须回滚整个 Merge；
+- Main Workspace 在 Chat Baseline 后变化时，Merge 必须在 Plan 阶段执行无副作用的
+  Three-way Text Merge。非重叠修改必须保留双方结果；重叠修改、Delete/Modify
+  冲突与 Binary Path 仍须在 Approval 前 Fail Closed；
 - 可重试 Provider Transport Failure（包括结构化 Connection Reset）必须标记为
   `unavailable`，不能标记为 `internal`。在没有任何 Meaningful Output 时，即使
   Optional Retry 被禁用，Engine 也允许一次有界重试；已经输出有效内容或 Tool Call

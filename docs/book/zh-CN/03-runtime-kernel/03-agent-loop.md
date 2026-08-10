@@ -15,8 +15,8 @@ test_paths:
   - internal/runtime/agent/engine/verify_gate_test.go
 source_of_truth:
   - internal/runtime/agent/engine/engine.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 模型与工具执行循环

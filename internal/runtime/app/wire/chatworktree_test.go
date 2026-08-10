@@ -234,6 +234,82 @@ func TestChatWorkspaceMergeRejectsParentDrift(t *testing.T) {
 	}
 }
 
+func TestChatWorkspaceMergeCombinesNonOverlappingParentDrift(t *testing.T) {
+	workspace := newGitWorkspace(t)
+	session := openChatWorkspaceSession(t, workspace)
+	manager := session.SessionWorkspaces()
+	base := "first\nsecond\nthird\n"
+	if err := os.WriteFile(
+		filepath.Join(workspace, "README.md"), []byte(base), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.chatWorkspaces.git(
+		t.Context(), workspace, "add", "README.md",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.chatWorkspaces.git(
+		t.Context(), workspace,
+		"-c", "user.name=Fixture", "-c", "user.email=fixture@example.com",
+		"commit", "--no-gpg-sign", "-m", "three-way base",
+	); err != nil {
+		t.Fatal(err)
+	}
+	isolated, err := manager.Provision(
+		t.Context(), "session-chat-three-way", protocol.ThreadID("thread-chat-three-way"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(workspace, "README.md"),
+		[]byte("first from main\nsecond\nthird\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(isolated.Root, "README.md"),
+		[]byte("first\nsecond\nthird from chat\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := session.chatWorkspaces.chatBaselineFile(
+		t.Context(), isolated.Root, "README.md",
+	)
+	if err != nil || !baseline.exists || string(baseline.data) != base {
+		t.Fatalf("baseline=%q exists=%t err=%v", baseline.data, baseline.exists, err)
+	}
+
+	plan, err := manager.PlanMerge(
+		t.Context(), "session-chat-three-way", protocol.ThreadID("thread-chat-three-way"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Files) != 1 || !strings.Contains(plan.Diff, "third from chat") {
+		t.Fatalf("three-way plan = %+v", plan)
+	}
+	if _, err := manager.ApplyMerge(
+		t.Context(), "session-chat-three-way",
+		protocol.ThreadID("thread-chat-three-way"), plan.ID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	want := "first from main\nsecond\nthird from chat\n"
+	for _, root := range []string{workspace, isolated.Root} {
+		body, err := os.ReadFile(filepath.Join(root, "README.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(body) != want {
+			t.Fatalf("%s README = %q, want %q", root, body, want)
+		}
+	}
+}
+
 func TestChatWorkspaceMergeApplyRejectsReadOnlyPosture(t *testing.T) {
 	workspace := newGitWorkspace(t)
 	session := openChatWorkspaceSession(t, workspace)

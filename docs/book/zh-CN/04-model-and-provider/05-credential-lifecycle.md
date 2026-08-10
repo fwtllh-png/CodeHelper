@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - docs/zh-CN/security.md
   - internal/adapter/provider/httpclient/credentials.go
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # Credential Reference 与 Secret Lifecycle

@@ -24,8 +24,8 @@ source_of_truth:
   - internal/persist/session/lifecycle.go
   - internal/persist/snapshot/repository.go
   - internal/persist/workspacejournal/journal.go
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # Sessions, Snapshots, CAS, and Workspace Journal

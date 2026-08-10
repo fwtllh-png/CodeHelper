@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/plugin/trust.go
   - internal/adapter/plugin/distribution.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Trust for MCP, Skills, Plugins, and Hooks

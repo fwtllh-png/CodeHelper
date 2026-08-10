@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - docs/zh-CN/getting-started.md
   - testdata/providers/openai
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 构建并追踪第一个 Agent Turn

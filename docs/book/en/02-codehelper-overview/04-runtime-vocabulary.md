@@ -19,8 +19,8 @@ source_of_truth:
   - internal/runtime/protocol/message.go
   - internal/runtime/app/runtime.go
   - docs/protocol/runtime-protocol.schema.json
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Operation, Event, Receipt, and Projection

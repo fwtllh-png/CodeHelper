@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/editor_context.go
   - internal/runtime/agent/repocontext/repocontext.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Workspace, Repository Index, and Editor Context

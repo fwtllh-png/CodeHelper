@@ -16,7 +16,7 @@ source_of_truth:
   - internal/orchestration/workflow/runtime.go
   - internal/orchestration/workflow/checkpoint/checkpoint.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Build a Recoverable Workflow

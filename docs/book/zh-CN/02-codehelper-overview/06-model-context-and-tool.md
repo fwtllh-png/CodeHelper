@@ -21,8 +21,8 @@ source_of_truth:
   - internal/adapter/provider/types.go
   - internal/runtime/agent/engine/engine.go
   - internal/runtime/app/wire/route.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Model、Context 与 Tool 如何协作

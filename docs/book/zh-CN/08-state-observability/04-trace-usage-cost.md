@@ -19,7 +19,7 @@ source_of_truth:
   - internal/observability/trace/trace.go
   - internal/observability/usage/repository.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Trace、Span、Usage 与 Cost

@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - docs/zh-CN/security.md
   - internal/adapter/tool/guard/guard.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Agent Runtime Threat Model

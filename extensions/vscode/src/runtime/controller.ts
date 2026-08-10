@@ -837,11 +837,33 @@ export class RuntimeController {
     if (!runtime.sessions.has(sessionId)) {
       throw new Error("Chat session is unavailable");
     }
-    return runtime.request("session/merge", {
-      sessionId,
-      action,
-      ...(planId === undefined ? {} : { planId }),
-    });
+    const started = performance.now();
+    this.#output.appendLine(
+      `[runtime:${this.#workspace.name}] session/merge started ` +
+      `session=${sessionId} action=${action}`,
+    );
+    try {
+      const result = await runtime.request("session/merge", {
+        sessionId,
+        action,
+        ...(planId === undefined ? {} : { planId }),
+      });
+      this.#output.appendLine(
+        `[runtime:${this.#workspace.name}] session/merge completed ` +
+        `session=${sessionId} action=${action} ` +
+        `duration_ms=${String(Math.round(performance.now() - started))}`,
+      );
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.#output.appendLine(
+        `[runtime:${this.#workspace.name}] session/merge failed ` +
+        `session=${sessionId} action=${action} ` +
+        `duration_ms=${String(Math.round(performance.now() - started))}: ` +
+        message,
+      );
+      throw error;
+    }
   }
 
   public statusMessage(): string {

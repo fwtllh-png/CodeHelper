@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/receipt.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 从失败运行还原系统行为

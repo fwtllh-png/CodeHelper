@@ -26,8 +26,8 @@ test_paths:
 source_of_truth:
   - docs/zh-CN/architecture.md
   - docs/protocol/runtime-protocol.schema.json
-status: verified
-last_verified: 2026-08-07
+status: draft
+last_verified: null
 ---
 
 # CodeHelper 全局架构

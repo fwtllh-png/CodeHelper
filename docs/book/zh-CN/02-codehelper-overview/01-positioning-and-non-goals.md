@@ -18,8 +18,8 @@ source_of_truth:
   - README.zh-CN.md
   - docs/zh-CN/overview.md
   - docs/zh-CN/roadmap.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 项目定位、价值与非目标

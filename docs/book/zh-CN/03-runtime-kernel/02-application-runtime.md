@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/application.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Application Runtime 与状态投影

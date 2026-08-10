@@ -21,8 +21,8 @@ source_of_truth:
   - README.md
   - docs/en/architecture.md
   - docs/en/security.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Why Agents Need a Governed Runtime
