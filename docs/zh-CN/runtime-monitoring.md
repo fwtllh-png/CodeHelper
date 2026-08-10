@@ -82,6 +82,12 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   Structured Result；
 - 未解决的结构化 Tool Failure 不能由承诺未来动作的文本清除；`workspace_change`
   与 `operation` Turn 必须有后续成功 Tool Batch 及恢复后的 Completion Check；
+- Shell Tool 必须向模型声明实际执行方言为 POSIX `sh`；模型不得对
+  `shell_read`、`shell_run` 或 `terminal_run` 使用 Bash-only Process
+  Substitution 等不受支持的语法；
+- Tool Failure Completion Repair 只按连续无结构化进展的次数耗费预算。新的 Tool
+  Batch 必须重置 No-progress Counter；累计 Repair Step 仍计入有界 Turn Step，
+  连续文本承诺不能无限延长 Turn；
 - Provider `end_turn` 只表示一次模型采样结束。`workspace_change` 只有在
   `turn_complete` Declaration 已绑定当前 Mutation Revision 与精确 Changed Paths、
   Pending Actions 为空、Verification Passed 且 Journal Commit 后才能完成；

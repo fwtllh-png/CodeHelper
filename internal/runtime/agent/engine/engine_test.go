@@ -628,6 +628,60 @@ func TestEngineRetainsFailureUntilPostRecoveryCompletionCheck(t *testing.T) {
 	}
 }
 
+func TestEngineResetsCompletionRepairBudgetAfterToolProgress(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_1", Name: "result_error", Arguments: `{}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("I will retry the first failed check."),
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_2", Name: "echo", Arguments: `{"text":"first recovered"}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("I will verify the first recovery."),
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_3", Name: "result_error", Arguments: `{}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("I will retry the second failed check."),
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_4", Name: "echo", Arguments: `{"text":"second recovered"}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("I will verify the second recovery."),
+		textStream("Final result: both independent failures were recovered."),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(resultErrorTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := newEngine(t, runtime, registry).RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-two-failures", "inspect it",
+		protocol.TurnIntentOperation, nil, nil,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "Final result: both independent failures were recovered." ||
+		len(result.Tools) != 4 || len(runtime.requests) != 9 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+}
+
 func TestRunToolsClosesEveryStartedCallBeforeFatalBatchFailure(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := registry.Register(&echoTool{}, nil); err != nil {

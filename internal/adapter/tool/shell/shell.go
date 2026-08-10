@@ -102,6 +102,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"Declared writes pass through approval, journal, and receipt tracking. " +
 			"Use file_edit, file_write, or file_apply for ordinary persistent changes."
 	}
+	description += " Commands run under POSIX sh, not Bash. Do not use Bash-only " +
+		"syntax such as process substitution (<(...))."
 	properties := map[string]any{
 		"command":     map[string]any{"type": "string", "minLength": float64(1)},
 		"cwd":         map[string]any{"type": "string"},

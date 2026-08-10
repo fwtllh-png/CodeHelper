@@ -89,6 +89,13 @@ During every Turn, check structured invariants:
 - an unresolved structured Tool failure cannot be cleared by text that promises
   future work; a later successful Tool batch and post-recovery completion check
   are required for `workspace_change` and `operation` Turns;
+- Shell Tools advertise POSIX `sh` as their actual execution dialect; models
+  must not use unsupported Bash-only syntax such as Process Substitution with
+  `shell_read`, `shell_run`, or `terminal_run`;
+- Tool Failure Completion Repair spends its budget only on consecutive attempts
+  without structured progress. A new Tool batch resets the no-progress counter;
+  cumulative Repair Steps still count toward the bounded Turn step budget, so
+  repeated textual promises cannot extend a Turn indefinitely;
 - Provider `end_turn` means only that one model sample ended. A
   `workspace_change` completes only when an accepted `turn_complete`
   declaration is bound to the current Mutation Revision and exact Changed

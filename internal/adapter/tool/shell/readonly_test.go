@@ -138,7 +138,9 @@ func TestShellReadDescriptorIsReadOnly(t *testing.T) {
 		descriptor.Capability != tool.CapabilityRead ||
 		descriptor.AccessMode != tool.AccessRead ||
 		descriptor.SandboxRequirement != tool.SandboxStrong ||
-		!strings.Contains(descriptor.Description, "single quotes") {
+		!strings.Contains(descriptor.Description, "single quotes") ||
+		!strings.Contains(descriptor.Description, "POSIX sh") ||
+		!strings.Contains(descriptor.Description, "process substitution") {
 		t.Fatalf("descriptor = %+v", descriptor)
 	}
 	for _, resource := range descriptor.ResourceResolver.Templates {

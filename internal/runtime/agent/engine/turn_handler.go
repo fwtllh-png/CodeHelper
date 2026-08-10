@@ -248,7 +248,8 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		engine:        e,
 		requirePassed: intent == protocol.TurnIntentWorkspaceChange,
 	}
-	completionRepairs := 0
+	completionRepairSteps := 0
+	completionRepairNoProgress := 0
 	workspaceChangeRepairs := 0
 	declarationRepairSteps := 0
 	declarationNoProgress := 0
@@ -265,7 +266,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		verifiedCompletionRevision = 0
 	}
 	for step := 0; step <
-		e.options.MaxSteps+gate.extraSteps()+completionRepairs+
+		e.options.MaxSteps+gate.extraSteps()+completionRepairSteps+
 			workspaceChangeRepairs+declarationRepairSteps; step++ {
 		if e.appendSteering(&transaction) && e.completionDeclaration != nil {
 			invalidateCompletion()
@@ -319,7 +320,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 				continue
 			}
 			if unresolvedToolFailure {
-				if completionRepairs >= maxCompletionRepairs {
+				if completionRepairNoProgress >= maxCompletionRepairs {
 					return result, protocol.NewProblem(
 						protocol.CodeConflict,
 						"model stopped after a tool failure without resolving it or producing a complete final answer",
@@ -339,11 +340,12 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 					unresolvedToolFailure = false
 					recoveryToolSucceeded = false
 				}
-				completionRepairs++
+				completionRepairNoProgress++
+				completionRepairSteps++
 				continue
 			}
 			if modelOutputContinued && len(result.Tools) != 0 {
-				if completionRepairs >= maxCompletionRepairs {
+				if completionRepairNoProgress >= maxCompletionRepairs {
 					return result, protocol.NewProblem(
 						protocol.CodeConflict,
 						"model stopped after an interrupted post-tool response without producing a complete final answer",
@@ -357,11 +359,12 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 					})
 				}
 				transaction = append(transaction, completionFeedback(e.turn))
-				completionRepairs++
+				completionRepairNoProgress++
+				completionRepairSteps++
 				continue
 			}
 			if strings.TrimSpace(text) == "" {
-				if completionRepairs >= maxCompletionRepairs {
+				if completionRepairNoProgress >= maxCompletionRepairs {
 					return result, protocol.NewProblem(
 						protocol.CodeConflict,
 						"model stopped without producing a complete final answer",
@@ -375,7 +378,8 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 					})
 				}
 				transaction = append(transaction, completionFeedback(e.turn))
-				completionRepairs++
+				completionRepairNoProgress++
+				completionRepairSteps++
 				continue
 			}
 			if intent == protocol.TurnIntentWorkspaceChange &&
@@ -541,6 +545,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			e.costUSD += cost
 			return result, nil
 		}
+		completionRepairNoProgress = 0
 		if err := send(PreparingTools, Event{}); err != nil {
 			return result, err
 		}
