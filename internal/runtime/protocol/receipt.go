@@ -319,7 +319,10 @@ type ExecutionReceiptData struct {
 	// UnresolvedIssues records why a turn did not end clean, such as the failure
 	// message or a tool error the model never recovered from.
 	UnresolvedIssues []string `json:"unresolved_issues,omitempty"`
-	NotCollected     []string `json:"not_collected,omitempty"`
+	// SecondaryIssues preserves cleanup/finalization failures separately from
+	// the primary terminal error.
+	SecondaryIssues []TerminalIssue `json:"secondary_issues,omitempty"`
+	NotCollected    []string        `json:"not_collected,omitempty"`
 }
 
 type ReceiptCatalog struct {

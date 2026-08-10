@@ -44,6 +44,7 @@ type Event struct {
 	InputTokenDelta      int64                      `json:"input_token_delta,omitempty"`
 	ErrorCode            protocol.ErrorCode         `json:"error_code,omitempty"`
 	Error                string                     `json:"error,omitempty"`
+	SecondaryIssues      []TerminalIssue            `json:"secondary_issues,omitempty"`
 	Compaction           *CompactionReceipt         `json:"compaction,omitempty"`
 	ContextBudget        *ContextBudgetSnapshot     `json:"context_budget,omitempty"`
 	Approval             *toolguard.ApprovalRequest `json:"approval,omitempty"`
@@ -56,6 +57,14 @@ type Event struct {
 	CatalogChanged       *CatalogChanged            `json:"catalog_changed,omitempty"`
 	MCPHealthChanged     *MCPHealthChanged          `json:"mcp_health_changed,omitempty"`
 	ExtensionLifecycle   *ExtensionLifecycleChanged `json:"extension_lifecycle,omitempty"`
+}
+
+// TerminalIssue is a cleanup/finalization failure that happened after the
+// primary turn outcome was already known.
+type TerminalIssue struct {
+	Phase   string             `json:"phase"`
+	Code    protocol.ErrorCode `json:"code"`
+	Message string             `json:"message"`
 }
 
 type CatalogChanged struct {

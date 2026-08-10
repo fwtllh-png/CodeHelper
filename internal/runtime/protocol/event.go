@@ -486,8 +486,9 @@ func (d *TurnCompletedData) validate() error {
 }
 
 type TurnFailedData struct {
-	Code    ErrorCode `json:"code"`
-	Message string    `json:"message"`
+	Code            ErrorCode       `json:"code"`
+	Message         string          `json:"message"`
+	SecondaryIssues []TerminalIssue `json:"secondary_issues,omitempty"`
 }
 
 func (*TurnFailedData) eventKind() EventKind { return EventTurnFailed }
@@ -496,7 +497,20 @@ func (d *TurnFailedData) validate() error {
 	if d.Code == "" || d.Message == "" {
 		return errors.New("turn failure code and message are required")
 	}
+	for _, issue := range d.SecondaryIssues {
+		if issue.Phase == "" || issue.Code == "" || issue.Message == "" {
+			return errors.New("turn failure secondary issue requires phase, code, and message")
+		}
+	}
 	return nil
+}
+
+// TerminalIssue records a failure in cleanup or finalization after the primary
+// turn result was already known.
+type TerminalIssue struct {
+	Phase   string    `json:"phase"`
+	Code    ErrorCode `json:"code"`
+	Message string    `json:"message"`
 }
 
 type TurnCanceledData struct {

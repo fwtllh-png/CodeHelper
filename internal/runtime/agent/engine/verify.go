@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -82,9 +83,10 @@ type verifyOutcome struct {
 // verifyGate holds the per-turn gate state: how much of the repair budget the
 // turn has spent, which is also the extra step allowance it has earned.
 type verifyGate struct {
-	engine   *Engine
-	repairs  int
-	attempts []verify.Receipt
+	engine        *Engine
+	requirePassed bool
+	repairs       int
+	attempts      []verify.Receipt
 }
 
 // extraSteps keeps repair rounds out of the model's normal step budget, so a
@@ -140,6 +142,20 @@ func (g *verifyGate) evaluate(
 		span.Set("status", receipt.Status)
 		span.End(trace.StatusOK)
 	}
+	var uncovered []string
+	if g.requirePassed && receipt.Status == verify.StatusUnavailable {
+		qualityReceipt, missing := g.engine.qualityVerificationReceipt(paths)
+		g.attempts = append(g.attempts, receipt)
+		if qualityReceipt.Status == verify.StatusPassed {
+			receipt = qualityReceipt
+		} else {
+			uncovered = missing
+			if len(uncovered) != 0 {
+				qualityReceipt.Message += "; uncovered_paths=" + strings.Join(uncovered, ",")
+			}
+			receipt = qualityReceipt
+		}
+	}
 	action := g.decide(options, receipt)
 	g.attempts = append(g.attempts, receipt)
 	// A verified path outranks one that was merely edited: it is the path the
@@ -167,7 +183,20 @@ func (g *verifyGate) evaluate(
 }
 
 // decide maps a receipt to an action and spends the repair budget.
-func (g *verifyGate) decide(options VerifyOptions, receipt verify.Receipt) verifyAction {
+func (g *verifyGate) decide(
+	options VerifyOptions,
+	receipt verify.Receipt,
+) verifyAction {
+	if receipt.Status == verify.StatusPassed {
+		return verifyActionPassed
+	}
+	if g.requirePassed && receipt.Status == verify.StatusUnavailable {
+		if g.repairs < options.MaxRepairSteps {
+			g.repairs++
+			return verifyActionRepair
+		}
+		return verifyActionFailed
+	}
 	if !receipt.Failed() {
 		return verifyActionPassed
 	}
@@ -190,6 +219,17 @@ func (g *verifyGate) decide(options VerifyOptions, receipt verify.Receipt) verif
 // tool_result pair pollutes the history and can trip provider-side pairing
 // checks.
 func verifyFeedback(receipt *VerificationReceipt, turn uint64) provider.Message {
+	if receipt != nil && receipt.Status == verify.StatusUnavailable {
+		message := provider.TextMessage(
+			provider.RoleUser,
+			"[verify] structured verification is required before workspace_change completion.\n"+
+				"required_action=quality_verify\n"+
+				"Call quality_verify or quality_test after the last mutation with covered_paths "+
+				"listing every changed path. Do not retry the original edit.",
+		)
+		message.Turn = turn
+		return message
+	}
 	message := provider.TextMessage(
 		provider.RoleUser,
 		"[verify] "+receipt.Feedback(verifyFeedbackLimit)+

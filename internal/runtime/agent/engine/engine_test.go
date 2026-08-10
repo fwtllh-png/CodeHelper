@@ -1689,6 +1689,35 @@ func TestTerminalCompletionFailsClosedWhenFinalMessageExceedsContextBudget(t *te
 	}
 }
 
+func TestTerminalSeparatesPrimaryAndContextFinalizationFailure(t *testing.T) {
+	var terminal Event
+	handler := newTerminalHandler(2, func(event Event) error {
+		terminal = event
+		return nil
+	})
+	primary := protocol.NewProblem(
+		protocol.CodeConflict, "primary verification conflict", false, nil,
+	)
+	secondary := protocol.NewProblem(
+		protocol.CodeResourceExhausted, "history compaction failed", false, nil,
+	)
+	handler.setPrimary(primary)
+	handler.addSecondary("terminal_context", secondary)
+	resultErr := errors.Join(primary, secondary)
+	result := Result{}
+	handler.finish(t.Context(), &result, &resultErr)
+
+	if terminal.ErrorCode != protocol.CodeConflict ||
+		terminal.Error != "primary verification conflict" {
+		t.Fatalf("primary terminal error = %+v", terminal)
+	}
+	if len(terminal.SecondaryIssues) != 1 ||
+		terminal.SecondaryIssues[0].Phase != "terminal_context" ||
+		terminal.SecondaryIssues[0].Code != protocol.CodeResourceExhausted {
+		t.Fatalf("secondary issues = %+v", terminal.SecondaryIssues)
+	}
+}
+
 func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&errorStream{err: errors.New("provider failed")},
@@ -1734,6 +1763,55 @@ func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
 			"durable history = %d/%d, terminal snapshot = %+v",
 			historyBytes, maxHistoryBytes, terminalBudget,
 		)
+	}
+}
+
+func TestFailedTurnCompactsWithinOversizedDurableLastTurn(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&errorStream{err: errors.New("provider failed")},
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.MaxContextBytes = 500
+	engine.options.SummaryMaxBytes = 160
+	engine.history = []provider.Message{
+		messageWithText(provider.RoleUser, strings.Repeat("durable request ", 20), 1),
+		toolCallMessage(1, "call_1", "read", `{}`),
+		toolResultMessage(1, "call_1", strings.Repeat("first result ", 40)),
+		toolCallMessage(1, "call_2", "read", `{}`),
+		toolResultMessage(1, "call_2", strings.Repeat("second result ", 40)),
+		toolCallMessage(1, "call_3", "read", `{}`),
+		toolResultMessage(1, "call_3", "latest result"),
+	}
+	engine.turn = 1
+	var terminalBudget *ContextBudgetSnapshot
+	var postTurn *CompactionReceipt
+
+	_, err := engine.Run(t.Context(), "new request", func(event Event) error {
+		if event.Compaction != nil &&
+			event.Compaction.Phase == CompactionPhasePostTurn {
+			postTurn = event.Compaction
+		}
+		if event.State == Failed {
+			terminalBudget = event.ContextBudget
+		}
+		return nil
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "provider failed") {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if postTurn == nil || postTurn.OriginalBytes <= postTurn.RetainedBytes {
+		t.Fatalf("post-turn compaction = %+v", postTurn)
+	}
+	if terminalBudget == nil ||
+		terminalBudget.HistoryBytes > terminalBudget.MaxHistoryBytes {
+		t.Fatalf("terminal context budget = %+v", terminalBudget)
+	}
+	assertToolPairs(t, engine.history)
+	for _, message := range engine.history {
+		if strings.Contains(message.Text(), "new request") {
+			t.Fatalf("failed transaction entered durable history: %+v", engine.history)
+		}
 	}
 }
 

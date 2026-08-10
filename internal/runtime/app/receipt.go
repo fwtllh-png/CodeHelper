@@ -43,6 +43,7 @@ type receiptRecorder struct {
 	// the fallback path sums. It is dropped once a terminal total arrives.
 	samples       map[uint32]protocol.UsageData
 	issues        []string
+	secondary     []protocol.TerminalIssue
 	skills        []protocol.ReceiptSkill
 	editorContext []protocol.EditorContextReceipt
 	// verification is the last gate evaluation of the turn; repair rounds
@@ -105,6 +106,11 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 	case agentengine.Failed:
 		if event.Error != "" {
 			r.issues = append(r.issues, event.Error)
+		}
+		for _, issue := range event.SecondaryIssues {
+			r.secondary = append(r.secondary, protocol.TerminalIssue{
+				Phase: issue.Phase, Code: issue.Code, Message: issue.Message,
+			})
 		}
 	}
 	if event.Verification != nil {
@@ -270,6 +276,7 @@ func (r *receiptRecorder) build(observed turnObservations) *protocol.ExecutionRe
 		Latency:          receiptLatency(observed.latency),
 		Budget:           r.receiptBudget(observed.spend),
 		UnresolvedIssues: append(append([]string(nil), r.issues...), observed.conflicts...),
+		SecondaryIssues:  append([]protocol.TerminalIssue(nil), r.secondary...),
 		NotCollected:     protocol.UncollectedReceiptSections,
 	}
 	// The engine's clock is the better boundary when there is one: it starts when

@@ -253,9 +253,16 @@ func (a *EngineAdapter) StartTurn(
 			if err := a.emitReceipt(receipt, sink, false); err != nil {
 				return err
 			}
+			secondary := make([]protocol.TerminalIssue, len(event.SecondaryIssues))
+			for index, issue := range event.SecondaryIssues {
+				secondary[index] = protocol.TerminalIssue{
+					Phase: issue.Phase, Code: issue.Code, Message: issue.Message,
+				}
+			}
 			return sink.Emit(&protocol.TurnFailedData{
-				Code:    nonEmptyCode(event.ErrorCode, protocol.CodeInternal),
-				Message: nonEmpty(event.Error, "turn failed"),
+				Code:            nonEmptyCode(event.ErrorCode, protocol.CodeInternal),
+				Message:         nonEmpty(event.Error, "turn failed"),
+				SecondaryIssues: secondary,
 			})
 		case agentengine.Canceled:
 			// Runtime owns the terminal turn.canceled event so CancelTurn reason

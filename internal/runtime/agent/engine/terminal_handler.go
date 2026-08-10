@@ -16,6 +16,9 @@ type terminalHandler struct {
 	turn          uint64
 	emitted       bool
 	contextBudget *ContextBudgetSnapshot
+	primaryCode   protocol.ErrorCode
+	primaryError  string
+	secondary     []TerminalIssue
 	emitFunc      func(Event) error
 }
 
@@ -45,20 +48,54 @@ func (h *terminalHandler) setContextBudget(snapshot ContextBudgetSnapshot) {
 	h.contextBudget = &snapshot
 }
 
+func (h *terminalHandler) setPrimary(err error) {
+	if err == nil || h.primaryError != "" {
+		return
+	}
+	primary := firstJoinedError(err)
+	h.primaryCode = protocol.CodeOf(primary)
+	h.primaryError = errorText(primary)
+}
+
+func (h *terminalHandler) addSecondary(phase string, err error) {
+	if err == nil {
+		return
+	}
+	h.secondary = append(h.secondary, TerminalIssue{
+		Phase: phase, Code: protocol.CodeOf(err), Message: errorText(err),
+	})
+}
+
+func firstJoinedError(err error) error {
+	for err != nil {
+		joined, ok := err.(interface{ Unwrap() []error })
+		if !ok {
+			return err
+		}
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return err
+		}
+		err = children[0]
+	}
+	return nil
+}
+
 func (e *Engine) finalizeTerminalContext(
 	transaction []provider.Message,
 	completed, canceled bool,
 	send func(State, Event) error,
 ) (ContextBudgetSnapshot, error) {
 	candidate := cloneMessages(e.history)
-	allowCurrentTurn := false
+	// A failed transaction is deliberately excluded from candidate. Its last turn
+	// is therefore the most recent durable completed turn, which is safe to compact
+	// within as long as the compactor preserves closed tool pairs.
+	allowCurrentTurn := true
 	switch {
 	case completed:
 		candidate = cloneMessages(transaction)
-		allowCurrentTurn = true
 	case canceled:
 		candidate = retainCanceledHistory(transaction)
-		allowCurrentTurn = true
 	}
 	if err := e.runTerminalCompactGate(&candidate, allowCurrentTurn, send); err != nil {
 		return e.contextBudgetSnapshot(candidate), err
@@ -83,6 +120,10 @@ func (h *terminalHandler) finish(ctx context.Context, result *Result, resultErr 
 		result.State = Canceled
 		return
 	}
-	_ = h.send(Failed, Event{ErrorCode: protocol.CodeOf(err), Error: errorText(err)})
+	h.setPrimary(err)
+	_ = h.send(Failed, Event{
+		ErrorCode: h.primaryCode, Error: h.primaryError,
+		SecondaryIssues: append([]TerminalIssue(nil), h.secondary...),
+	})
 	result.State = Failed
 }

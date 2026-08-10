@@ -101,6 +101,14 @@ During every Turn, check structured invariants:
 - Completed, Failed, and Canceled terminal paths pass the same byte and token
   Context gate, and Receipt uses the Budget snapshot frozen on the terminal
   Event rather than reading mutable History;
+- a Failed terminal path may compact within the last durable completed Turn at
+  a closed Tool-pair boundary, but never persists the failed transaction;
+- when post-edit Diagnostics are unavailable, `workspace_change` may complete
+  only from passed `quality_test` or `quality_verify` evidence that declares
+  exact `covered_paths`, runs after the last Mutation, and covers every changed
+  path; ordinary Shell success is never verification evidence;
+- terminal cleanup failures are reported as structured `secondary_issues`; they
+  do not replace or get newline-joined into the primary Turn failure;
 - a reasoning-only `max_tokens` stop uses at most one low-reasoning, no-tool
   Finish sample; incomplete Tool Call fragments stay on the ordinary bounded
   continuation route;

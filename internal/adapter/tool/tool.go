@@ -169,6 +169,10 @@ type ResourceResolver struct {
 	// exact file write resource; directory trees and globs are intentionally not
 	// supported by this resolver.
 	PathsField string `json:"paths_field,omitempty"`
+	// ReadPathsField is the read-only counterpart to PathsField. It is used by
+	// verification tools to bind an explicit coverage claim to canonical
+	// workspace paths without granting write access to those paths.
+	ReadPathsField string `json:"read_paths_field,omitempty"`
 	// ChangesField names an array-of-objects argument whose every "path" and "to"
 	// entry is a file the call may write. Transaction tools carry their paths
 	// there instead of in a single top-level field.

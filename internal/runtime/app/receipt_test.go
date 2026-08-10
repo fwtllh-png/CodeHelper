@@ -283,6 +283,27 @@ func TestReceiptFallsBackToStreamingUsage(t *testing.T) {
 	}
 }
 
+func TestReceiptSeparatesTerminalSecondaryIssues(t *testing.T) {
+	recorder := newReceiptRecorder("fix add")
+	recorder.observe(agentengine.Event{
+		State: agentengine.Failed, Error: "verification conflict",
+		SecondaryIssues: []agentengine.TerminalIssue{{
+			Phase: "terminal_context", Code: protocol.CodeResourceExhausted,
+			Message: "history compaction failed",
+		}},
+	})
+	receipt := recorder.build(turnObservations{})
+	if len(receipt.UnresolvedIssues) != 1 ||
+		receipt.UnresolvedIssues[0] != "verification conflict" {
+		t.Fatalf("primary issues = %v", receipt.UnresolvedIssues)
+	}
+	if len(receipt.SecondaryIssues) != 1 ||
+		receipt.SecondaryIssues[0].Phase != "terminal_context" ||
+		receipt.SecondaryIssues[0].Code != protocol.CodeResourceExhausted {
+		t.Fatalf("secondary issues = %+v", receipt.SecondaryIssues)
+	}
+}
+
 // TestReceiptCarriesTheMeasuredLatencyPartition pins the two rules a reader of
 // the partition depends on: a phase that did not happen reports zero, and the
 // flat total agrees with the partition instead of measuring its own thing.

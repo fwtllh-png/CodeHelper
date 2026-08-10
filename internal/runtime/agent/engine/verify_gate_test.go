@@ -215,7 +215,7 @@ func TestWorkspaceChangeFailsClosedWhenVerificationIsUnavailable(t *testing.T) {
 	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
 		t.Fatalf("result = %+v, error = %v, want conflict", result, err)
 	}
-	if !strings.Contains(err.Error(), "requires a passed verification receipt") {
+	if !strings.Contains(err.Error(), "uncovered_paths=value.txt") {
 		t.Fatalf("error = %v", err)
 	}
 	if result.State == Completed {

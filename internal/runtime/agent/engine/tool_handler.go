@@ -237,6 +237,7 @@ func (e *Engine) runToolsWithReplay(
 	if batchMutated {
 		replay.revision++
 		clear(replay.entries)
+		e.advanceMutationRevision()
 	} else {
 		for index, fingerprint := range fingerprints {
 			if fingerprint == "" || replaySources[index] != "" || results[index].IsError {
@@ -249,6 +250,7 @@ func (e *Engine) runToolsWithReplay(
 		}
 	}
 	for index := range calls {
+		e.bindVerificationEvidence(calls[index], &results[index], batchMutated)
 		executed[calls[index].ID] = results[index]
 		copy := results[index]
 		call := calls[index]

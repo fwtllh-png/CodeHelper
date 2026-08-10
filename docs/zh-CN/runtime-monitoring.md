@@ -91,6 +91,14 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
 - Compaction 必须减少 Retained Bytes，并把 History 降回配置预算；
 - Completed、Failed、Canceled 必须经过同一个 Byte/Token Context Gate；Receipt
   使用 Terminal Event 冻结的 Budget Snapshot，不能读取可变的旧 History；
+- Failed Terminal 可以在最后一个 Durable Completed Turn 内按闭合 Tool Pair
+  Boundary 压缩，但不得持久化当前 Failed Transaction；
+- Post-edit Diagnostics 不可用时，`workspace_change` 只能使用最后一次 Mutation
+  之后运行的 `quality_test` 或 `quality_verify` Passed Evidence 完成；Evidence
+  必须声明精确 `covered_paths` 并覆盖全部 Changed Paths，普通 Shell Success
+  永远不能作为 Verification Evidence；
+- Terminal Cleanup Failure 必须记录为结构化 `secondary_issues`，不能替换 Primary
+  Turn Failure，也不能继续通过换行拼接到 Primary Message；
 - Reasoning-only `max_tokens` 最多执行一次 Low-reasoning、No-tool Finish Sample；
   包含不完整 Tool Call Fragment 的输出继续使用普通有界 Continuation；
 - 同一 Workspace Snapshot 上的相同只读 Tool Call 不应被重复执行；

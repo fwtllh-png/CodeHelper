@@ -27,6 +27,9 @@ const (
 	// needs a mapping from source paths to tests, and reports itself unavailable
 	// for the languages that mapping does not know rather than passing silently.
 	ScopeAffected Scope = "affected"
+	// ScopeQuality is a model-invoked quality command whose exact covered paths
+	// the engine bound to the current workspace mutation revision.
+	ScopeQuality Scope = "quality"
 )
 
 const (

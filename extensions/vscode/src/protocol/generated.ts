@@ -936,6 +936,11 @@ export type TurnCompletedData = {
 export type TurnFailedData = {
   readonly "code": string;
   readonly "message": string;
+  readonly "secondary_issues"?: ReadonlyArray<{
+      readonly "code": string;
+      readonly "message": string;
+      readonly "phase": string;
+    }>;
 };
 
 export type TurnReceiptData = {
@@ -1081,6 +1086,11 @@ export type TurnReceiptData = {
       readonly "purpose": string;
     }>;
   readonly "sandbox"?: string;
+  readonly "secondary_issues"?: ReadonlyArray<{
+      readonly "code": string;
+      readonly "message": string;
+      readonly "phase": string;
+    }>;
   readonly "skills"?: ReadonlyArray<{
       readonly "digest": string;
       readonly "locked": boolean;

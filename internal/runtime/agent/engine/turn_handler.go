@@ -148,6 +148,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	journalRolledBack := false
 	e.turnDiff.Reset()
 	e.resetTurnDiagnostics()
+	e.resetVerificationEvidence()
 	e.resetRollbackConflicts()
 	e.evidence.BeginTurn(e.turn)
 	if e.journal != nil {
@@ -175,11 +176,13 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			e.cancellationReason() != protocol.CancelReasonUserInterrupted {
 			canceled = false
 		}
+		terminal.setPrimary(resultErr)
 		snapshot, err := e.finalizeTerminalContext(
 			transaction, false, canceled, send,
 		)
 		terminal.setContextBudget(snapshot)
 		if err != nil {
+			terminal.addSecondary("terminal_context", err)
 			resultErr = errors.Join(resultErr, err)
 		}
 	}()
@@ -239,7 +242,10 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	var sampled provider.Usage
 	var toolSpent toolSpend
 	toolSpent.known = true
-	gate := &verifyGate{engine: e}
+	gate := &verifyGate{
+		engine:        e,
+		requirePassed: intent == protocol.TurnIntentWorkspaceChange,
+	}
 	completionRepairs := 0
 	unresolvedToolFailure := false
 	recoveryToolSucceeded := false

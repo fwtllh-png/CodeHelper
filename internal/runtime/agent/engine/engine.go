@@ -230,6 +230,11 @@ type Engine struct {
 	diagnosticsMu       sync.Mutex
 	turnDiagnosticsSeen []diagnostics.Receipt
 
+	// mutationRevision binds successful quality evidence to the exact workspace
+	// state it checked. A later observed mutation clears the evidence.
+	mutationRevision     uint64
+	verificationEvidence []verify.Evidence
+
 	// rollbackMu guards the conflicts an automatic rollback of the active turn
 	// left unresolved.
 	rollbackMu        sync.Mutex
