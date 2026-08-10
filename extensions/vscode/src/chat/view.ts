@@ -55,6 +55,7 @@ import {
 import type {
   SessionProfileSnapshot,
   SessionToolCatalog,
+  TurnIntent,
 } from "../runtime/session.js";
 import type { CredentialView } from "../security/credentials.js";
 import {
@@ -635,7 +636,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             throw new Error("a turn can attach at most 8 context items");
           }
           await root.controller.submitPrompt(
-            session.sessionId, parsed.prompt, context,
+            session.sessionId,
+            parsed.prompt,
+            context,
+            turnIntentForMode(
+              this.#state(root.rootId).composers.get(session.sessionId)
+                ?.profile?.profile.mode,
+            ),
           );
           const composer = this.#state(root.rootId).composers.get(session.sessionId);
           if (composer !== undefined) {
@@ -1527,6 +1534,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       throw new Error("workspace root is unknown or no longer open");
     }
     return root;
+  }
+}
+
+function turnIntentForMode(mode: string | undefined): TurnIntent {
+  switch (mode) {
+    case "act":
+      return "workspace_change";
+    case "plan":
+      return "plan";
+    case "operate":
+      return "operation";
+    default:
+      return "answer";
   }
 }
 

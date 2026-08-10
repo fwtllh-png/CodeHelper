@@ -5,7 +5,7 @@
   "expected_prompt": "create result",
   "streams": ["tool-call.sse", "complete.sse"],
   "expected_request_fragments": [
-    ["\"tools\"", "\"name\":\"file_write\""],
+    ["\"tools\"", "\"name\":\"file_apply\""],
     ["\"tool_calls\"", "\"role\":\"tool\"", "\"tool_call_id\":\"call_write\""]
   ]
 }

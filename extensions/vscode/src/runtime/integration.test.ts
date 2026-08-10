@@ -152,6 +152,7 @@ void test(
         store,
         workspace,
         (event) => {
+          traceIntegrationEvent(event);
           projector.apply(event);
           const pending = projector.pendingApprovals()[0];
           if (pending !== undefined) {
@@ -171,7 +172,7 @@ void test(
         session.binding.sessionId,
         () => true,
       );
-      await commands.submitPrompt("create result", []);
+      await commands.submitPrompt("create result", [], "workspace_change");
       const request = await approval.promise;
       assert.ok(request.editPlan);
       assert.deepEqual(request.allowedScopes, ["once"]);
@@ -234,6 +235,7 @@ void test(
         new BindingStore(new MemoryMemento()),
         workspace,
         (event) => {
+          traceIntegrationEvent(event);
           projector.apply(event);
           if (!isUnknownEvent(event) && event.kind === "turn.started") {
             startedContext = event.data.editor_context;
@@ -333,7 +335,7 @@ void test(
         session.binding.sessionId,
         () => true,
       );
-      await commands.submitPrompt("create result", []);
+      await commands.submitPrompt("create result", [], "workspace_change");
       const request = await approval.promise;
       assert.ok(request.editPlan);
       await writeFile(join(workspace, "result.txt"), "external change\n");
@@ -375,7 +377,11 @@ async function start(
       pathToFileURL(workspaceRoot).toString(),
       workspaceRoot,
     ),
-    diagnostics: () => undefined,
+    diagnostics: (text) => {
+      if (process.env["CODEHELPER_TEST_RUNTIME_DIAGNOSTICS"] === "1") {
+        process.stderr.write(text);
+      }
+    },
   });
 }
 
@@ -414,6 +420,12 @@ class MemoryMemento implements Memento {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function traceIntegrationEvent(event: unknown): void {
+  if (process.env["CODEHELPER_TEST_RUNTIME_DIAGNOSTICS"] === "1") {
+    process.stderr.write(`[runtime-event] ${JSON.stringify(event)}\n`);
+  }
 }
 
 function deferred<T>(): {

@@ -80,7 +80,9 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		description = "Run a read-only, network-isolated shell command. " +
 			"The OS sandbox permits workspace reads and private temporary files, " +
 			"but rejects workspace writes and all network access. " +
-			"Use this for grep, sed, sort, inventory, and inspection pipelines."
+			"Use this for grep, sed, sort, inventory, and inspection pipelines. " +
+			"Prefer search_text for source or Markdown text. Quote literal backticks " +
+			"and other shell metacharacters with single quotes."
 		aliases = nil
 		capability = tool.CapabilityRead
 		access = tool.AccessRead

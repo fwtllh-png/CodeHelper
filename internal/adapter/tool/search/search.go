@@ -119,7 +119,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 			Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true,
 		}}},
-		ParallelPolicy:     tool.ParallelConcurrent,
+		ParallelPolicy: tool.ParallelConcurrent, RepeatPolicy: tool.RepeatReplaySameTurn,
 		SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object", "properties": properties,

@@ -85,6 +85,16 @@ func TestOperationTaggedUnionRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStartTurnRejectsUnknownIntent(t *testing.T) {
+	_, err := NewOperation(&StartTurnPayload{
+		ThreadID: "thread_test", TurnID: "turn_test", ItemID: "item_test",
+		Prompt: "fix it", Intent: TurnIntent("guess"),
+	})
+	if err == nil {
+		t.Fatal("unknown turn intent was accepted")
+	}
+}
+
 func TestEditorContextValidationFailsClosed(t *testing.T) {
 	valid := EditorContextReference{
 		Kind: EditorContextSelection, URI: "file:///workspace/value.go",

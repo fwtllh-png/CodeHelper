@@ -112,7 +112,8 @@ make brand-check
 | `make vscode-integration` | official VS Code Electron flow |
 | `make vscode-security` | extension security tests |
 | `make vscode-performance` | projection and runtime readiness budgets |
-| `make vscode-package` | build/install a local VSIX |
+| `make vscode-package` | build/install and handshake the current Host target VSIX |
+| `make vscode-package-universal` | build/install-audit the static universal VSIX |
 | `make vscode-distribution` | create multi-target dry-run release artifacts |
 | `make vscode-rc` | complete release-candidate gate |
 

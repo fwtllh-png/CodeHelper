@@ -120,6 +120,48 @@ func TestResponsesStreamHarvestsReasoningFromCompleted(t *testing.T) {
 	}
 }
 
+func TestResponsesStreamDoesNotReplayCompletedReasoning(t *testing.T) {
+	input := strings.Join([]string{
+		`data: {"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_1","delta":"think"}`,
+		"",
+		`data: {"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_1","delta":"ing"}`,
+		"",
+		`data: {"type":"response.reasoning_text.done","output_index":0,"item_id":"rs_1","text":"thinking"}`,
+		"",
+		`data: {"type":"response.completed","response":{"output":[{"type":"reasoning","id":"rs_1","content":[{"type":"reasoning_text","text":"thinking"}]}]}}`,
+		"",
+		"",
+	}, "\n")
+	stream, err := NewStream(
+		io.NopCloser(strings.NewReader(input)),
+		model.ProtocolOpenAIResponses,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visible strings.Builder
+	var providerData int
+	for _, event := range events {
+		if event.Type != provider.EventReasoningDelta {
+			continue
+		}
+		visible.WriteString(event.Text)
+		if event.Block != nil && len(event.Block.ProviderData) != 0 {
+			providerData++
+		}
+	}
+	if visible.String() != "thinking" {
+		t.Fatalf("visible reasoning = %q, events = %+v", visible.String(), events)
+	}
+	if providerData != 1 {
+		t.Fatalf("provider data events = %d, want 1", providerData)
+	}
+}
+
 func TestResponsesStreamNormalizesSearchCitationAndRegularTool(t *testing.T) {
 	input := strings.Join([]string{
 		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"read"}}`,

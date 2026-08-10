@@ -1,10 +1,13 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"maps"
 	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -15,11 +18,34 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
+type toolReplayEntry struct {
+	callID string
+	result tool.Result
+}
+
+type toolReplayCache struct {
+	revision uint64
+	entries  map[string]toolReplayEntry
+}
+
 func (e *Engine) runTools(
 	ctx context.Context,
 	turnID string,
 	calls []provider.ToolCall,
 	executed map[string]tool.Result,
+	send func(State, Event) error,
+) ([]tool.Result, error) {
+	return e.runToolsWithReplay(
+		ctx, turnID, calls, executed, &toolReplayCache{}, send,
+	)
+}
+
+func (e *Engine) runToolsWithReplay(
+	ctx context.Context,
+	turnID string,
+	calls []provider.ToolCall,
+	executed map[string]tool.Result,
+	replay *toolReplayCache,
 	send func(State, Event) error,
 ) ([]tool.Result, error) {
 	if err := send(RunningTools, Event{}); err != nil {
@@ -52,6 +78,44 @@ func (e *Engine) runTools(
 	}
 	results := make([]tool.Result, len(calls))
 	errorsByIndex := make([]error, len(calls))
+	skipExecution := make([]bool, len(calls))
+	fingerprints := make([]string, len(calls))
+	replaySources := make([]string, len(calls))
+	batchOwners := make(map[string]int)
+	duplicateOwners := make(map[int]int)
+	if replay.entries == nil {
+		replay.entries = make(map[string]toolReplayEntry)
+	}
+	for index, call := range calls {
+		if previous, exists := executed[call.ID]; exists {
+			results[index] = previous
+			skipExecution[index] = true
+			continue
+		}
+		binding := bindingForCall(call)
+		_, descriptor, _, err := e.options.Tools.ResolveBound(call.Name, binding)
+		if err != nil || descriptor.RepeatPolicy != tool.RepeatReplaySameTurn {
+			continue
+		}
+		fingerprint, err := replayFingerprint(call, binding, replay.revision)
+		if err != nil {
+			continue
+		}
+		fingerprints[index] = fingerprint
+		if cached, exists := replay.entries[fingerprint]; exists {
+			results[index] = replayedToolResult(cached.result, cached.callID)
+			replaySources[index] = cached.callID
+			skipExecution[index] = true
+			continue
+		}
+		if owner, exists := batchOwners[fingerprint]; exists {
+			duplicateOwners[index] = owner
+			replaySources[index] = calls[owner].ID
+			skipExecution[index] = true
+			continue
+		}
+		batchOwners[fingerprint] = index
+	}
 	for _, call := range calls {
 		if _, exists := executed[call.ID]; exists {
 			continue
@@ -64,8 +128,7 @@ func (e *Engine) runTools(
 	}
 	var group sync.WaitGroup
 	for index, call := range calls {
-		if previous, exists := executed[call.ID]; exists {
-			results[index] = previous
+		if skipExecution[index] {
 			continue
 		}
 		group.Add(1)
@@ -81,10 +144,7 @@ func (e *Engine) runTools(
 					)
 				}
 			}()
-			binding := tool.CatalogBinding{
-				CatalogID: call.CatalogID, Generation: call.CatalogGeneration,
-				Revision: call.CatalogRevision, Authority: call.CatalogAuthority,
-			}
+			binding := bindingForCall(call)
 			if !e.toolCallEnabled(call.Name, binding) {
 				results[index] = tool.Result{
 					Content: "tool disabled by Session Profile: " + call.Name,
@@ -139,9 +199,33 @@ func (e *Engine) runTools(
 		}(index, call)
 	}
 	group.Wait()
+	for index, owner := range duplicateOwners {
+		results[index] = replayedToolResult(results[owner], calls[owner].ID)
+	}
 	for index, err := range errorsByIndex {
 		if err != nil {
 			return nil, fmt.Errorf("tool %s: %w", calls[index].Name, err)
+		}
+	}
+	batchMutated := false
+	for _, result := range results {
+		if len(observedFileChanges(result.Metadata)) != 0 {
+			batchMutated = true
+			break
+		}
+	}
+	if batchMutated {
+		replay.revision++
+		clear(replay.entries)
+	} else {
+		for index, fingerprint := range fingerprints {
+			if fingerprint == "" || replaySources[index] != "" || results[index].IsError {
+				continue
+			}
+			replay.entries[fingerprint] = toolReplayEntry{
+				callID: calls[index].ID,
+				result: results[index],
+			}
 		}
 	}
 	for index := range calls {
@@ -178,6 +262,64 @@ func (e *Engine) runTools(
 		}
 	}
 	return results, nil
+}
+
+func bindingForCall(call provider.ToolCall) tool.CatalogBinding {
+	return tool.CatalogBinding{
+		CatalogID: call.CatalogID, Generation: call.CatalogGeneration,
+		Revision: call.CatalogRevision, Authority: call.CatalogAuthority,
+	}
+}
+
+func replayFingerprint(
+	call provider.ToolCall,
+	binding tool.CatalogBinding,
+	revision uint64,
+) (string, error) {
+	decoder := json.NewDecoder(bytes.NewBufferString(call.Arguments))
+	decoder.UseNumber()
+	var arguments any
+	if err := decoder.Decode(&arguments); err != nil {
+		return "", err
+	}
+	if err := ensureJSONEOF(decoder); err != nil {
+		return "", err
+	}
+	canonical, err := json.Marshal(arguments)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(
+		"%s\x00%s\x00%d\x00%d\x00%d\x00%d\x00%s",
+		call.Name,
+		binding.CatalogID,
+		binding.Generation,
+		binding.Revision,
+		revision,
+		binding.Authority,
+		canonical,
+	), nil
+}
+
+func ensureJSONEOF(decoder *json.Decoder) error {
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("tool arguments contain multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
+func replayedToolResult(result tool.Result, sourceCallID string) tool.Result {
+	copy := result
+	copy.Metadata = maps.Clone(result.Metadata)
+	if copy.Metadata == nil {
+		copy.Metadata = make(map[string]any)
+	}
+	copy.Metadata["replayed_from_call_id"] = sourceCallID
+	return copy
 }
 
 func (e *Engine) executeToolBound(

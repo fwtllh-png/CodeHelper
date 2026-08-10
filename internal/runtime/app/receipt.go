@@ -19,6 +19,8 @@ import (
 type receiptRecorder struct {
 	started         time.Time
 	goal            string
+	intent          protocol.TurnIntent
+	outcome         protocol.TurnOutcome
 	plan            string
 	mode            string
 	posture         string
@@ -229,7 +231,8 @@ func (r *receiptRecorder) build(observed turnObservations) *protocol.ExecutionRe
 		return nil
 	}
 	receipt := &protocol.ExecutionReceiptData{
-		Goal: r.goal, Plan: r.plan, Mode: r.mode, Posture: r.posture,
+		Goal: r.goal, Intent: r.intent, Outcome: r.outcome,
+		Plan: r.plan, Mode: r.mode, Posture: r.posture,
 		Sandbox: r.sandbox, Workspace: r.workspace,
 		Routes:         append([]protocol.ReceiptRoute(nil), r.routes...),
 		ToolsSucceeded: r.toolsSucceeded, ToolsFailed: r.toolsFailed,

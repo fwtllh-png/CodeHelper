@@ -37,7 +37,8 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 2. [本机 DeepSeek 一键配置与运行](./deepseek-local.md)
 3. [VS Code 插件](./vscode.md)
 4. [配置说明](./configuration.md)
-5. [排障指南](./troubleshooting.md)
+5. [VS Code Runtime 标准监测](./runtime-monitoring.md)
+6. [排障指南](./troubleshooting.md)
 
 ### 我要参与开发
 
@@ -46,9 +47,10 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 3. [本地开发与脚本](./development.md)
 4. [Agent 指南](./agent-guide.md)
 5. [TUI 与 VS Code 体验契约](./experience.md)
-6. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
-7. [文档治理](./documentation-governance.md)
-8. [后续规划](./roadmap.md)
+6. [VS Code Runtime 标准监测](./runtime-monitoring.md)
+7. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
+8. [文档治理](./documentation-governance.md)
+9. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 

@@ -18,6 +18,7 @@ import { decodeSessionToolCatalog } from "./tools.js";
 export type ApprovalDecision = "approve" | "deny" | "cancel";
 export type ApprovalScope = "once" | "session" | "always";
 export type EditorContextReference = NonNullable<TurnStartPayload["context"]>[number];
+export type TurnIntent = NonNullable<TurnStartPayload["intent"]>;
 export type {
   SessionProfilePatch,
   SessionProfileSnapshot,
@@ -56,6 +57,7 @@ export class SessionCommands {
   public async submitPrompt(
     prompt: string,
     context: readonly EditorContextReference[],
+    intent: TurnIntent = "answer",
   ): Promise<SubmitReceipt> {
     const trimmed = prompt.trim();
     if (trimmed.length === 0 || trimmed.length > 64 << 10) {
@@ -63,6 +65,7 @@ export class SessionCommands {
     }
     return this.#submit("turn.start", {
       prompt: trimmed,
+      intent,
       ...(this.#workspaceIdentity === undefined
         ? {}
         : { workspace_identity: this.#workspaceIdentity }),

@@ -1985,6 +1985,9 @@
         "idle": {
           "type": "boolean"
         },
+        "intent": {
+          "type": "string"
+        },
         "item_id": {
           "type": "string"
         },
@@ -3330,6 +3333,9 @@
     "turn.completed": {
       "type": "object",
       "properties": {
+        "outcome": {
+          "type": "string"
+        },
         "text": {
           "type": "string"
         }
@@ -3837,6 +3843,9 @@
         "input_tokens": {
           "type": "integer"
         },
+        "intent": {
+          "type": "string"
+        },
         "latency": {
           "type": "object",
           "properties": {
@@ -3879,6 +3888,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "outcome": {
+          "type": "string"
         },
         "output_tokens": {
           "type": "integer"
@@ -4351,6 +4363,9 @@
             ],
             "additionalProperties": false
           }
+        },
+        "intent": {
+          "type": "string"
         },
         "mode": {
           "type": "string"

@@ -32,9 +32,10 @@ local Extension Host `PATH`. Managed and bundled binaries require the
 target-specific artifact to match the built-in Ed25519-signed release manifest.
 Use `CodeHelper: Check for Binary Updates` for an explicit managed install.
 
-Build and verify the installable package from the repository root with
-`make vscode-package`. The universal VSIX intentionally does not bundle the
-Runtime executable; target-specific bundles are produced by the release flow.
+Build, install, and complete the Runtime Ready handshake for the current Host
+target with `make vscode-package`. The universal VSIX intentionally does not
+bundle the Runtime executable; build and install-audit that static package with
+`make vscode-package-universal`.
 `make vscode-release-dry-run` creates the universal and five target VSIX files,
 SBOM, provenance, checksums, and non-uploading plans for Marketplace, Open VSX,
 enterprise, and offline distribution. Dry-run artifacts use a temporary signing

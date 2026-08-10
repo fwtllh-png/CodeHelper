@@ -126,6 +126,13 @@ const (
 	ParallelSerial     ParallelPolicy = "serial"
 )
 
+type RepeatPolicy string
+
+const (
+	RepeatExecute        RepeatPolicy = "execute"
+	RepeatReplaySameTurn RepeatPolicy = "replay_same_turn"
+)
+
 type SandboxRequirement string
 
 const (
@@ -177,6 +184,7 @@ type Descriptor struct {
 	ResourceResolver   ResourceResolver   `json:"resource_resolver"`
 	AccessMode         AccessMode         `json:"access_mode"`
 	ParallelPolicy     ParallelPolicy     `json:"parallel_policy"`
+	RepeatPolicy       RepeatPolicy       `json:"repeat_policy,omitempty"`
 	SandboxRequirement SandboxRequirement `json:"sandbox_requirement"`
 	Aliases            []Alias            `json:"aliases,omitempty"`
 	DeferredLoading    DeferredLoading    `json:"deferred_loading"`
@@ -673,6 +681,11 @@ func validateDescriptor(descriptor Descriptor) error {
 	}
 	if descriptor.ParallelPolicy != ParallelConcurrent && descriptor.ParallelPolicy != ParallelSerial {
 		return fmt.Errorf("tool %q has invalid parallel policy", descriptor.Name)
+	}
+	if descriptor.RepeatPolicy != "" &&
+		descriptor.RepeatPolicy != RepeatExecute &&
+		descriptor.RepeatPolicy != RepeatReplaySameTurn {
+		return fmt.Errorf("tool %q has invalid repeat policy", descriptor.Name)
 	}
 	if descriptor.SandboxRequirement != SandboxNone &&
 		descriptor.SandboxRequirement != SandboxStrong {

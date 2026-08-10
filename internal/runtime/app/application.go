@@ -146,6 +146,7 @@ func (a *EngineAdapter) StartTurn(
 			return err
 		}
 	}
+	intent := protocol.NormalizeTurnIntent(payload.Intent)
 	identity := a.workspaceIdentity
 	if payload.WorkspaceIdentity != nil {
 		if identity.Version != 0 && identity != *payload.WorkspaceIdentity {
@@ -175,6 +176,8 @@ func (a *EngineAdapter) StartTurn(
 		return resolveErr
 	}
 	receipt := newReceiptRecorder(payload.Prompt)
+	receipt.intent = intent
+	receipt.outcome = protocol.OutcomeForIntent(intent)
 	receipt.editorContext = append(
 		[]protocol.EditorContextReceipt(nil), editorContext...,
 	)
@@ -233,7 +236,8 @@ func (a *EngineAdapter) StartTurn(
 		case agentengine.Preparing:
 			return sink.Emit(&protocol.TurnStartedData{
 				Provider: event.Provider, Model: event.Model,
-				Mode: event.Mode, Posture: event.Posture,
+				Intent: intent,
+				Mode:   event.Mode, Posture: event.Posture,
 				Workspace: event.Workspace, Sandbox: event.Sandbox,
 				Prompt: modelPrompt, DisplayPrompt: payload.Prompt,
 				EditorContext: editorContext,
@@ -242,7 +246,9 @@ func (a *EngineAdapter) StartTurn(
 			if err := a.emitReceipt(receipt, sink); err != nil {
 				return err
 			}
-			return sink.Emit(&protocol.TurnCompletedData{Text: event.Text})
+			return sink.Emit(&protocol.TurnCompletedData{
+				Text: event.Text, Outcome: protocol.OutcomeForIntent(intent),
+			})
 		case agentengine.Failed:
 			if err := a.emitReceipt(receipt, sink); err != nil {
 				return err
@@ -405,8 +411,8 @@ func (a *EngineAdapter) StartTurn(
 		}
 		return sink.Emit(&protocol.ToolStateData{State: string(event.State), Text: event.Text})
 	}
-	_, runErr := a.engine.RunForTurnWithAttachments(
-		ctx, string(payload.TurnID), modelPrompt, attachments, emit,
+	_, runErr := a.engine.RunForTurnWithIntentAndAttachments(
+		ctx, string(payload.TurnID), modelPrompt, intent, attachments, emit,
 	)
 	return runErr
 }

@@ -36,8 +36,21 @@ void test("SessionCommands submits structured editor context", async () => {
   assert.equal(params.sessionId, "session_1");
   assert.equal(params.operation.kind, "turn.start");
   assert.equal(params.operation.payload["prompt"], "inspect");
+  assert.equal(params.operation.payload["intent"], "answer");
   assert.equal(Array.isArray(params.operation.payload["context"]), true);
   assert.deepEqual(params.operation.payload["workspace_identity"], identity);
+});
+
+void test("SessionCommands submits an explicit workspace-change intent", async () => {
+  const transport = new FakeTransport();
+  const session = new SessionCommands(transport, "session_1", () => true);
+  await session.submitPrompt("fix it", [], "workspace_change");
+  const params = transport.calls[0]?.params as {
+    readonly operation: {
+      readonly payload: Readonly<Record<string, unknown>>;
+    };
+  };
+  assert.equal(params.operation.payload["intent"], "workspace_change");
 });
 
 void test("SessionCommands refuses approve when workspace is untrusted", async () => {

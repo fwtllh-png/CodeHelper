@@ -179,11 +179,11 @@ func TestDiagnosticsOnAnUnchangedPathIsNotARisk(t *testing.T) {
 func TestRepeatedCallRemindsOnceAndClearsNextTurn(t *testing.T) {
 	set := New()
 	set.BeginTurn(1)
-	set.NoteCall("search_text", `{"query":"Verify"}`)
+	set.NoteCall("search_text", `{"query":"Verify","regex":false}`)
 	if reminders := set.Snapshot(0).Reminders; len(reminders) != 0 {
 		t.Fatalf("a single call reminded: %+v", reminders)
 	}
-	set.NoteCall("search_text", ` {"query":"Verify"} `)
+	set.NoteCall("search_text", ` { "regex": false, "query": "Verify" } `)
 	reminders := set.Snapshot(0).Reminders
 	if len(reminders) != 1 || reminders[0].Kind != ReminderRepeatedCall {
 		t.Fatalf("expected one repeated-call reminder, got %+v", reminders)

@@ -88,6 +88,14 @@
         "title": "CodeHelper: Restart Runtime"
       },
       {
+        "command": "codehelper.startRuntimeCapture",
+        "title": "CodeHelper: Start Runtime Capture"
+      },
+      {
+        "command": "codehelper.stopRuntimeCapture",
+        "title": "CodeHelper: Stop Runtime Capture"
+      },
+      {
         "command": "codehelper.repairRuntime",
         "title": "CodeHelper: Repair Runtime"
       },
@@ -249,7 +257,8 @@
     "test:runtime-performance": "node ./scripts/runtime-ready.mjs",
     "test:electron": "npm run build && node ./scripts/electron.mjs",
     "package": "npm run clean && npm run check && npm run test && npm run build",
-    "package:vsix": "npm run package && node ./scripts/vsix.mjs && node ./scripts/vsix-install.mjs"
+    "package:vsix": "npm run release:vscode:dry-run",
+    "package:vsix:universal": "npm run package && node ./scripts/vsix.mjs && node ./scripts/vsix-install.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",

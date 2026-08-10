@@ -191,6 +191,7 @@ func (o *operation) Descriptor() tool.Descriptor {
 		required = []string{"patch"}
 	}
 	capability, access := tool.CapabilityRead, tool.AccessRead
+	repeat := tool.RepeatExecute
 	requirement := tool.SandboxNone
 	resolver := tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 		Kind: "file", Field: "path", Access: tool.AccessRead,
@@ -198,8 +199,10 @@ func (o *operation) Descriptor() tool.Descriptor {
 	var aliases []tool.Alias
 	switch o.kind {
 	case "file_read":
+		repeat = tool.RepeatReplaySameTurn
 		aliases = []tool.Alias{{Name: "read_file", Hidden: true}}
 	case "file_list":
+		repeat = tool.RepeatReplaySameTurn
 		resolver.Templates[0].Kind = "directory"
 		resolver.Templates[0].Tree = true
 		aliases = []tool.Alias{{Name: "list_files", Hidden: true}}
@@ -224,7 +227,7 @@ func (o *operation) Descriptor() tool.Descriptor {
 		Name: o.kind, Description: description, Visibility: tool.VisibleModel,
 		Capability: capability, AccessMode: access,
 		ResourceResolver: resolver, Aliases: aliases,
-		ParallelPolicy:     tool.ParallelConcurrent,
+		ParallelPolicy: tool.ParallelConcurrent, RepeatPolicy: repeat,
 		SandboxRequirement: requirement, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object", "properties": properties, "required": required, "additionalProperties": false,

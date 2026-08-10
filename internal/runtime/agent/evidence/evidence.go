@@ -21,6 +21,7 @@
 package evidence
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -325,9 +326,8 @@ func (s *Set) MarkDiagnostics(path string, open bool) {
 	}
 }
 
-// NoteCall counts one tool call inside the current turn. Arguments are compared
-// as the model spelled them, so two calls that mean the same thing with
-// different key order or spacing are not recognized as repeats.
+// NoteCall counts one tool call inside the current turn. Valid JSON arguments
+// are canonicalized so whitespace and object key order do not hide repeats.
 func (s *Set) NoteCall(tool, arguments string) {
 	if s == nil || tool == "" {
 		return
@@ -338,9 +338,22 @@ func (s *Set) NoteCall(tool, arguments string) {
 		s.calls = make(map[string]int)
 		s.callTools = make(map[string]string)
 	}
-	key := tool + "\x00" + strings.TrimSpace(arguments)
+	key := tool + "\x00" + canonicalArguments(arguments)
 	s.calls[key]++
 	s.callTools[key] = tool
+}
+
+func canonicalArguments(arguments string) string {
+	trimmed := strings.TrimSpace(arguments)
+	var value any
+	if json.Unmarshal([]byte(trimmed), &value) != nil {
+		return trimmed
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return trimmed
+	}
+	return string(canonical)
 }
 
 // NoteRead records a read of path whose content hashed to digest. A read that

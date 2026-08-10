@@ -550,6 +550,7 @@ export type TurnStartPayload = {
       readonly "uri": string;
     }>;
   readonly "idle"?: boolean;
+  readonly "intent"?: string;
   readonly "item_id": string;
   readonly "prompt": string;
   readonly "thread_id": string;
@@ -928,6 +929,7 @@ export type TurnCompactionData = {
 };
 
 export type TurnCompletedData = {
+  readonly "outcome"?: string;
   readonly "text": string;
 };
 
@@ -1053,6 +1055,7 @@ export type TurnReceiptData = {
     };
   readonly "goal": string;
   readonly "input_tokens": number;
+  readonly "intent"?: string;
   readonly "latency"?: {
       readonly "approval_wait_ms": number;
       readonly "first_token_ms"?: number;
@@ -1064,6 +1067,7 @@ export type TurnReceiptData = {
   readonly "latency_ms": number;
   readonly "mode"?: string;
   readonly "not_collected"?: ReadonlyArray<string>;
+  readonly "outcome"?: string;
   readonly "output_tokens": number;
   readonly "plan"?: string;
   readonly "posture"?: string;
@@ -1173,6 +1177,7 @@ export type TurnStartedData = {
           };
       readonly "truncated"?: boolean;
     }>;
+  readonly "intent"?: string;
   readonly "mode"?: string;
   readonly "model": string;
   readonly "posture"?: string;

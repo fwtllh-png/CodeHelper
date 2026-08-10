@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -95,6 +96,61 @@ func TestEngineExecutesToolAndFeedsResultOnce(t *testing.T) {
 	assertOneTerminal(t, states, Completed)
 }
 
+func TestEngineReplaysCanonicalDuplicateToolCallsWithinTurn(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_1", Name: "lookup",
+				Arguments: `{"a":1,"b":2}`,
+			}},
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 1, ID: "call_2", Name: "lookup",
+				Arguments: `{ "b": 2, "a": 1 }`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("done"),
+	}}
+	executor := &countingCatalogExecutor{descriptor: tool.Descriptor{
+		Name: "lookup", Description: "deterministic lookup",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+		RepeatPolicy:       tool.RepeatReplaySameTurn,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"a": map[string]any{"type": "number"},
+				"b": map[string]any{"type": "number"},
+			},
+			"required":             []string{"a", "b"},
+			"additionalProperties": false,
+		},
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
+	var results []Event
+	if _, err := engine.Run(t.Context(), "look up twice", func(event Event) error {
+		if event.ToolCall != nil && event.Result != nil {
+			results = append(results, event)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if executor.calls.Load() != 1 {
+		t.Fatalf("lookup executions = %d, want 1", executor.calls.Load())
+	}
+	if len(results) != 2 ||
+		results[1].Result.Metadata["replayed_from_call_id"] != "call_1" {
+		t.Fatalf("tool results = %+v", results)
+	}
+}
+
 func TestEngineFailsWhenCompletionRepairRemainsEmpty(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&provider.SliceStream{Events: []provider.StreamEvent{
@@ -141,6 +197,35 @@ func TestEngineRepairsEmptyFinalResponse(t *testing.T) {
 	}
 	if !foundFeedback {
 		t.Fatalf("completion feedback missing from request: %+v", runtime.requests[1].Messages)
+	}
+}
+
+func TestWorkspaceChangeIntentRejectsTextOnlyCompletion(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		textStream("I will make the change next."),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	var states []State
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"turn-1",
+		"fix the bug",
+		protocol.TurnIntentWorkspaceChange,
+		nil,
+		func(event Event) error {
+			states = append(states, event.State)
+			return nil
+		},
+	)
+	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("Run() error = %v, want conflict", err)
+	}
+	if result.State != Failed {
+		t.Fatalf("result state = %q, want failed", result.State)
+	}
+	assertOneTerminal(t, states, Failed)
+	if len(engine.History()) != 0 {
+		t.Fatalf("failed workspace change committed history: %+v", engine.History())
 	}
 }
 
@@ -1263,14 +1348,14 @@ func TestEngineCompactionDropsTheOldestDigestLinesFirst(t *testing.T) {
 // down to one line, which is how a long session loses its early history.
 func TestEngineSecondCompactionCarriesTheFirstSummaryVerbatim(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 300
-	engine.options.SummaryMaxBytes = 8 << 10
+	engine.options.MaxContextBytes = 1000
+	engine.options.SummaryMaxBytes = 800
 	engine.ApplyPlan(interact.Plan{
 		Objective: "teach the parser about trailing commas",
 		Steps:     []interact.PlanStep{{Title: "update the lexer", Status: interact.StepInProgress}},
 	})
 	engine.history = []provider.Message{
-		messageWithText(provider.RoleUser, strings.Repeat("early ", 60), 1),
+		messageWithText(provider.RoleUser, strings.Repeat("early ", 300), 1),
 		messageWithText(provider.RoleAssistant, "the first answer", 1),
 		messageWithText(provider.RoleUser, "second request", 2),
 	}
@@ -1290,7 +1375,7 @@ func TestEngineSecondCompactionCarriesTheFirstSummaryVerbatim(t *testing.T) {
 		Steps:     []interact.PlanStep{{Title: "update the parser", Status: interact.StepPending}},
 	})
 	engine.history = append(engine.history,
-		messageWithText(provider.RoleAssistant, strings.Repeat("later ", 80), 2),
+		messageWithText(provider.RoleAssistant, strings.Repeat("later ", 250), 2),
 		messageWithText(provider.RoleUser, "third request", 3),
 	)
 	if receipt := engine.compact(); receipt == nil {
@@ -1356,7 +1441,7 @@ func TestEngineCompactStripsFragmentsAndPromptContextReinjects(t *testing.T) {
 	}
 }
 
-func TestEngineCompactForcedSummarizesUnderBudget(t *testing.T) {
+func TestEngineCompactForcedRejectsAReplacementThatWouldGrowHistory(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.options.MaxContextBytes = 256 << 10
 	engine.history = []provider.Message{
@@ -1368,12 +1453,12 @@ func TestEngineCompactForcedSummarizesUnderBudget(t *testing.T) {
 	if receipt := engine.Compact(); receipt != nil {
 		t.Fatalf("auto Compact under budget = %+v", receipt)
 	}
-	receipt := engine.CompactForced()
-	if receipt == nil || receipt.RemovedMessages < 1 {
-		t.Fatalf("CompactForced receipt = %+v", receipt)
+	before := engine.History()
+	if receipt := engine.CompactForced(); receipt != nil {
+		t.Fatalf("CompactForced receipt = %+v, want no-growth rejection", receipt)
 	}
-	if len(engine.history) < 1 || engine.history[0].Role != provider.RoleSystem {
-		t.Fatalf("forced compacted history = %+v", engine.history)
+	if !reflect.DeepEqual(engine.History(), before) {
+		t.Fatalf("rejected compaction changed history: %+v", engine.History())
 	}
 }
 
@@ -1409,6 +1494,65 @@ func TestEngineCompactionRetainsToolPairingAtomically(t *testing.T) {
 		if message.Turn == 1 {
 			t.Fatalf("compaction retained a partial old turn: %+v", engine.history)
 		}
+	}
+}
+
+func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.MaxContextBytes = 600
+	engine.options.SummaryMaxBytes = 400
+	history := []provider.Message{
+		messageWithText(provider.RoleUser, "fix the parser "+strings.Repeat("context ", 80), 1),
+		toolCallMessage(1, "call_1", "read", `{}`),
+		toolResultMessage(1, "call_1", strings.Repeat("first ", 100)),
+		toolCallMessage(1, "call_2", "read", `{}`),
+		toolResultMessage(1, "call_2", strings.Repeat("second ", 100)),
+		toolCallMessage(1, "call_3", "read", `{}`),
+		toolResultMessage(1, "call_3", "latest"),
+	}
+	original := historyBytes(history)
+	var receipt *CompactionReceipt
+	err := engine.runMidTurnCompactGate(&history, func(_ State, event Event) error {
+		receipt = event.Compaction
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt == nil || receipt.RetainedBytes >= receipt.OriginalBytes ||
+		receipt.RetainedBytes > engine.options.MaxContextBytes ||
+		receipt.OriginalBytes != original {
+		t.Fatalf("mid-turn receipt = %+v", receipt)
+	}
+	if !strings.Contains(history[0].Text(), "Goal: fix the parser") {
+		t.Fatalf("summary lost active goal: %q", history[0].Text())
+	}
+	assertToolPairs(t, history)
+	if len(history) != 3 ||
+		messageToolCalls(history[1])[0].ID != "call_3" ||
+		messageToolResultID(history[2]) != "call_3" {
+		t.Fatalf("mid-turn history = %+v", history)
+	}
+}
+
+func TestMidTurnCompactionFailsClosedWhenNoSafeCandidateFits(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.MaxContextBytes = 200
+	engine.options.SummaryMaxBytes = 100
+	history := []provider.Message{
+		messageWithText(provider.RoleUser, strings.Repeat("goal ", 100), 1),
+		messageWithText(provider.RoleAssistant, strings.Repeat("active ", 100), 1),
+	}
+	before := cloneMessages(history)
+	err := engine.runMidTurnCompactGate(&history, func(State, Event) error {
+		t.Fatal("failed compaction emitted an event")
+		return nil
+	})
+	if err == nil || protocol.CodeOf(err) != protocol.CodeResourceExhausted {
+		t.Fatalf("compaction error = %v", err)
+	}
+	if !reflect.DeepEqual(history, before) {
+		t.Fatalf("failed compaction changed history: %+v", history)
 	}
 }
 
@@ -1473,7 +1617,7 @@ func TestEnginePreSamplingGateBeforeModelCall(t *testing.T) {
 		}},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 180
+	engine.options.MaxContextBytes = 400
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("old ", 80), 1),
 		messageWithText(provider.RoleAssistant, strings.Repeat("ans ", 80), 1),
@@ -1795,6 +1939,35 @@ func messageWithText(role provider.Role, text string, turn uint64) provider.Mess
 	message := provider.TextMessage(role, text)
 	message.Turn = turn
 	return message
+}
+
+func toolCallMessage(
+	turn uint64,
+	id string,
+	name string,
+	arguments string,
+) provider.Message {
+	return provider.Message{
+		Role: provider.RoleAssistant, Turn: turn,
+		Blocks: []provider.ContentBlock{{
+			Type: provider.ContentToolCall,
+			ToolCall: &provider.ToolCall{
+				ID: id, Name: name, Arguments: arguments,
+			},
+		}},
+	}
+}
+
+func toolResultMessage(turn uint64, id string, content string) provider.Message {
+	return provider.Message{
+		Role: provider.RoleTool, Turn: turn,
+		Blocks: []provider.ContentBlock{{
+			Type: provider.ContentToolResult,
+			ToolResult: &provider.ToolResult{
+				CallID: id, Content: content,
+			},
+		}},
+	}
 }
 
 func testRoute(t *testing.T) model.ReadyRoute {

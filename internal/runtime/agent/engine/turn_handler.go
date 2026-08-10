@@ -36,10 +36,39 @@ func (e *Engine) RunForTurnWithAttachments(
 	attachments []provider.Attachment,
 	emit func(Event) error,
 ) (result Result, resultErr error) {
+	return e.RunForTurnWithIntentAndAttachments(
+		ctx,
+		turnID,
+		prompt,
+		protocol.TurnIntentAnswer,
+		attachments,
+		emit,
+	)
+}
+
+// RunForTurnWithIntentAndAttachments starts one turn under an explicit
+// completion contract. Intent is host-supplied structured data, never inferred
+// from prompt text.
+func (e *Engine) RunForTurnWithIntentAndAttachments(
+	ctx context.Context,
+	turnID, prompt string,
+	intent protocol.TurnIntent,
+	attachments []provider.Attachment,
+	emit func(Event) error,
+) (result Result, resultErr error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if prompt == "" {
 		return Result{}, errors.New("prompt is required")
+	}
+	intent = protocol.NormalizeTurnIntent(intent)
+	if !intent.Valid() {
+		return Result{}, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			fmt.Sprintf("turn intent %q is invalid", intent),
+			false,
+			nil,
+		)
 	}
 	if emit == nil {
 		emit = func(Event) error { return nil }
@@ -182,6 +211,7 @@ func (e *Engine) RunForTurnWithAttachments(
 		return result, err
 	}
 	executed := make(map[string]tool.Result)
+	replay := &toolReplayCache{}
 	var finalText string
 	// sampled is what the turn's own sampling used, kept apart from what its
 	// tools sampled: the turn is priced at its own route's rates, and a tool's
@@ -285,6 +315,15 @@ func (e *Engine) RunForTurnWithAttachments(
 				completionRepairs++
 				continue
 			}
+			if intent == protocol.TurnIntentWorkspaceChange &&
+				len(e.TurnDiff()) == 0 {
+				return result, protocol.NewProblem(
+					protocol.CodeConflict,
+					"workspace_change turn produced no observed workspace changes",
+					false,
+					nil,
+				)
+			}
 			transaction = append(transaction, provider.Message{
 				Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
 			})
@@ -360,7 +399,7 @@ func (e *Engine) RunForTurnWithAttachments(
 		transaction = append(transaction, provider.Message{
 			Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
 		})
-		results, err := e.runTools(ctx, turnID, calls, executed, send)
+		results, err := e.runToolsWithReplay(ctx, turnID, calls, executed, replay, send)
 
 		spend := e.drainToolSpend()
 		result.Usage.Add(spend.usage)

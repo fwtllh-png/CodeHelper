@@ -156,6 +156,22 @@ be made executable by manually changing database rows.
 CodeHelper supports only local `file:` Workspaces. Remote SSH, Dev Containers,
 and other `vscode-remote:` environments are rejected during activation.
 
+## Capture a VS Code Runtime Failure
+
+Run `CodeHelper: Start Runtime Capture` before reproducing the problem, then run
+`CodeHelper: Stop Runtime Capture` when the test is complete. The completion
+message reports the JSONL path under the extension's private Workspace storage.
+
+The capture correlates all live protocol Events, replay markers, ACP request
+lifecycle and IDs, Runtime stderr, process exit code or signal, automatic
+restart state, and Session synchronization errors. It is opt-in and uses mode
+`0600` because model output, Tool arguments/results, and diagnostics may contain
+sensitive Workspace data. Review and redact the file before sharing it.
+
+Use the [VS Code Runtime Monitoring Runbook](./runtime-monitoring.md) for the
+standard test matrix, structured invariants, evidence freeze, and report
+contract.
+
 ## Tests Fail Only in Full Parallel Run
 
 Some fixture lifecycle and process tests are resource-sensitive. Rerun the

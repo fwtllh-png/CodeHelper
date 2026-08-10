@@ -128,7 +128,10 @@ function registerActionCommand(
         submit: async (prompt, editorContext) => {
           const { sessionId } = target.controller.identity();
           return target.controller.submitPrompt(
-            sessionId, prompt, editorContext,
+            sessionId,
+            prompt,
+            editorContext,
+            action === "fix" ? "workspace_change" : "answer",
           );
         },
       });

@@ -41,7 +41,8 @@ architecture and delivery stages are defined in the
 2. [One-click local DeepSeek](./deepseek-local.md)
 3. [VS Code extension](./vscode.md)
 4. [Configuration](./configuration.md)
-5. [Troubleshooting](./troubleshooting.md)
+5. [VS Code Runtime monitoring](./runtime-monitoring.md)
+6. [Troubleshooting](./troubleshooting.md)
 
 ### I want to contribute
 
@@ -50,9 +51,10 @@ architecture and delivery stages are defined in the
 3. [Local development and scripts](./development.md)
 4. [Agent guide](./agent-guide.md)
 5. [TUI and VS Code experience contract](./experience.md)
-6. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-7. [Documentation governance](./documentation-governance.md)
-8. [Roadmap](./roadmap.md)
+6. [VS Code Runtime monitoring](./runtime-monitoring.md)
+7. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+8. [Documentation governance](./documentation-governance.md)
+9. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 

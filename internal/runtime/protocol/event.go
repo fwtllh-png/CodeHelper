@@ -59,12 +59,13 @@ type EventData interface {
 }
 
 type TurnStartedData struct {
-	Provider  string `json:"provider"`
-	Model     string `json:"model"`
-	Mode      string `json:"mode,omitempty"`
-	Posture   string `json:"posture,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
-	Sandbox   string `json:"sandbox,omitempty"`
+	Provider  string     `json:"provider"`
+	Model     string     `json:"model"`
+	Intent    TurnIntent `json:"intent,omitempty"`
+	Mode      string     `json:"mode,omitempty"`
+	Posture   string     `json:"posture,omitempty"`
+	Workspace string     `json:"workspace,omitempty"`
+	Sandbox   string     `json:"sandbox,omitempty"`
 	// Prompt is model-visible durable reconstruction input. Optional for older events.
 	Prompt string `json:"prompt,omitempty"`
 	// DisplayPrompt omits expanded editor context and is safe for chat projection.
@@ -78,6 +79,9 @@ func (*TurnStartedData) eventKind() EventKind { return EventTurnStarted }
 func (d *TurnStartedData) validate() error {
 	if d.Provider == "" || d.Model == "" {
 		return errors.New("turn started provider and model are required")
+	}
+	if !NormalizeTurnIntent(d.Intent).Valid() {
+		return errors.New("turn started intent is invalid")
 	}
 	return validateEditorContextReceipts(d.EditorContext)
 }
@@ -466,12 +470,20 @@ func (d *DiagnosticsData) validate() error {
 }
 
 type TurnCompletedData struct {
-	Text string `json:"text"`
+	Text    string      `json:"text"`
+	Outcome TurnOutcome `json:"outcome,omitempty"`
 }
 
 func (*TurnCompletedData) eventKind() EventKind { return EventTurnCompleted }
 
-func (*TurnCompletedData) validate() error { return nil }
+func (d *TurnCompletedData) validate() error {
+	switch d.Outcome {
+	case "", TurnOutcomeAnswered, TurnOutcomePlanned, TurnOutcomeChanged, TurnOutcomeOperated:
+		return nil
+	default:
+		return errors.New("turn completed outcome is invalid")
+	}
+}
 
 type TurnFailedData struct {
 	Code    ErrorCode `json:"code"`

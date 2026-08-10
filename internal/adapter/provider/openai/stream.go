@@ -13,15 +13,17 @@ import (
 )
 
 type stream struct {
-	body       io.ReadCloser
-	decoder    *provider.SSEDecoder
-	protocol   model.WireProtocol
-	queue      []provider.StreamEvent
-	started    bool
-	finished   bool
-	stopReason provider.StopReason
-	stopped    bool
-	closed     bool
+	body           io.ReadCloser
+	decoder        *provider.SSEDecoder
+	protocol       model.WireProtocol
+	queue          []provider.StreamEvent
+	started        bool
+	finished       bool
+	stopReason     provider.StopReason
+	stopped        bool
+	closed         bool
+	reasoning      map[int]string
+	reasoningFinal map[int]bool
 }
 
 func NewStream(body io.ReadCloser, protocol model.WireProtocol) (provider.Stream, error) {
@@ -69,6 +71,7 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 			events, err = parseChatChunk([]byte(record.Data))
 		} else {
 			events, err = parseResponsesChunk([]byte(record.Data))
+			events = s.reconcileResponsesReasoning(events)
 		}
 		if err != nil {
 			return provider.StreamEvent{}, err
@@ -90,6 +93,45 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 			s.enqueueStop(stopReason)
 		}
 	}
+}
+
+func (s *stream) reconcileResponsesReasoning(
+	events []provider.StreamEvent,
+) []provider.StreamEvent {
+	if s.reasoning == nil {
+		s.reasoning = make(map[int]string)
+		s.reasoningFinal = make(map[int]bool)
+	}
+	reconciled := make([]provider.StreamEvent, 0, len(events))
+	for _, event := range events {
+		if event.Type != provider.EventReasoningDelta {
+			reconciled = append(reconciled, event)
+			continue
+		}
+		seen := s.reasoning[event.Index]
+		visible := event.Text
+		if strings.HasPrefix(visible, seen) {
+			visible = strings.TrimPrefix(visible, seen)
+		} else if seen != "" && strings.HasSuffix(seen, visible) {
+			visible = ""
+		}
+		if visible != "" {
+			s.reasoning[event.Index] = seen + visible
+		}
+		event.Text = visible
+		if event.Block != nil && len(event.Block.ProviderData) == 0 {
+			event.Block.Text = visible
+		}
+		hasProviderData := event.Block != nil && len(event.Block.ProviderData) != 0
+		if visible == "" && (!hasProviderData || s.reasoningFinal[event.Index]) {
+			continue
+		}
+		if hasProviderData {
+			s.reasoningFinal[event.Index] = true
+		}
+		reconciled = append(reconciled, event)
+	}
+	return reconciled
 }
 
 func (s *stream) enqueueStop(reason provider.StopReason) {
@@ -234,11 +276,11 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 	case "response.output_text.delta":
 		return textEvent(provider.EventTextDelta, chunk["delta"]), nil
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
-		return textEvent(provider.EventReasoningDelta, chunk["delta"]), nil
+		return responsesReasoningTextEvent(chunk, chunk["delta"]), nil
 	case "response.reasoning_text.done", "response.reasoning_summary_text.done":
 		// Some providers only put the full chain on *.done (delta may be empty).
 		if text := firstString(chunk["text"], chunk["delta"]); text != "" {
-			return textEvent(provider.EventReasoningDelta, text), nil
+			return responsesReasoningTextEvent(chunk, text), nil
 		}
 		return nil, nil
 	case "response.output_item.added":
@@ -364,6 +406,20 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 	default:
 		return nil, nil
 	}
+}
+
+func responsesReasoningTextEvent(
+	chunk map[string]any,
+	value any,
+) []provider.StreamEvent {
+	events := textEvent(provider.EventReasoningDelta, value)
+	for index := range events {
+		events[index].Index = int(number(chunk["output_index"]))
+		if events[index].Block != nil {
+			events[index].Block.ID = firstString(chunk["item_id"], chunk["id"])
+		}
+	}
+	return events
 }
 
 func reasoningItemEvents(item map[string]any, index int) ([]provider.StreamEvent, error) {

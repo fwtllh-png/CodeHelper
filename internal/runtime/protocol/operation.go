@@ -37,6 +37,53 @@ const (
 	ApprovalScopeAlways  ApprovalScope = "always"
 )
 
+type TurnIntent string
+
+const (
+	TurnIntentAnswer          TurnIntent = "answer"
+	TurnIntentPlan            TurnIntent = "plan"
+	TurnIntentWorkspaceChange TurnIntent = "workspace_change"
+	TurnIntentOperation       TurnIntent = "operation"
+)
+
+func NormalizeTurnIntent(intent TurnIntent) TurnIntent {
+	if intent == "" {
+		return TurnIntentAnswer
+	}
+	return intent
+}
+
+func (i TurnIntent) Valid() bool {
+	switch i {
+	case TurnIntentAnswer, TurnIntentPlan, TurnIntentWorkspaceChange, TurnIntentOperation:
+		return true
+	default:
+		return false
+	}
+}
+
+type TurnOutcome string
+
+const (
+	TurnOutcomeAnswered TurnOutcome = "answered"
+	TurnOutcomePlanned  TurnOutcome = "planned"
+	TurnOutcomeChanged  TurnOutcome = "changed"
+	TurnOutcomeOperated TurnOutcome = "operated"
+)
+
+func OutcomeForIntent(intent TurnIntent) TurnOutcome {
+	switch NormalizeTurnIntent(intent) {
+	case TurnIntentPlan:
+		return TurnOutcomePlanned
+	case TurnIntentWorkspaceChange:
+		return TurnOutcomeChanged
+	case TurnIntentOperation:
+		return TurnOutcomeOperated
+	default:
+		return TurnOutcomeAnswered
+	}
+}
+
 type OperationPayload interface {
 	operationKind() OperationKind
 	validate() error
@@ -50,6 +97,7 @@ type StartTurnPayload struct {
 	TurnID            TurnID                   `json:"turn_id"`
 	ItemID            ItemID                   `json:"item_id"`
 	Prompt            string                   `json:"prompt"`
+	Intent            TurnIntent               `json:"intent,omitempty"`
 	WorkspaceIdentity *WorkspaceIdentity       `json:"workspace_identity,omitempty"`
 	Context           []EditorContextReference `json:"context,omitempty"`
 	// Idle marks extension/automation-initiated work. Plan mode rejects it (W6 / C4).
@@ -68,6 +116,9 @@ func (p *StartTurnPayload) validate() error {
 	}
 	if p.Prompt == "" {
 		return errors.New("start turn prompt is required")
+	}
+	if !NormalizeTurnIntent(p.Intent).Valid() {
+		return fmt.Errorf("start turn intent %q is invalid", p.Intent)
 	}
 	if p.WorkspaceIdentity != nil {
 		if err := p.WorkspaceIdentity.Validate(); err != nil {

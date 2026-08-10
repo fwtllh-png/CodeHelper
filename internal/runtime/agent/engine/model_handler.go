@@ -462,6 +462,7 @@ func consume(
 	emit func(Event) error,
 	firstOutput func(),
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, bool, error) {
+	stream = newDeltaCoalescingStream(stream)
 	defer stream.Close()
 	var blocks []provider.ContentBlock
 	var usage provider.Usage
@@ -489,7 +490,9 @@ func consume(
 			output()
 			block := eventBlock(event, provider.ContentText)
 			blocks = appendStreamBlock(blocks, event.Index, block)
-			if err := emit(Event{Text: event.Text, Block: &block}); err != nil {
+			visible := block
+			visible.Text = event.Text
+			if err := emit(Event{Text: event.Text, Block: &visible}); err != nil {
 				return nil, nil, usage, meaningful, err
 			}
 			for _, update := range planParser.Feed(event.Text) {
@@ -502,7 +505,12 @@ func consume(
 			output()
 			block := eventBlock(event, provider.ContentReasoning)
 			blocks = appendStreamBlock(blocks, event.Index, block)
-			if err := emit(Event{Text: event.Text, Block: &block}); err != nil {
+			visible := block
+			visible.Text = event.Text
+			if visible.Text == "" && visible.Signature == "" {
+				continue
+			}
+			if err := emit(Event{Text: event.Text, Block: &visible}); err != nil {
 				return nil, nil, usage, meaningful, err
 			}
 		case provider.EventReasoningSignature:

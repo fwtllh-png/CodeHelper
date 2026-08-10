@@ -34,6 +34,7 @@ import {
   type SessionToolCatalog,
   type SessionProfileUpdate,
   type SubmitReceipt,
+  type TurnIntent,
 } from "./session.js";
 import { assertCompatibleBinary } from "../compatibility/policy.js";
 import {
@@ -43,6 +44,7 @@ import {
 import { assertWorkspaceExtensionHost } from "../workspace/host.js";
 import { canonicalEditorURI } from "../workspace/uri.js";
 import { testBuildEnabled } from "../test-mode.js";
+import { hostLocalStoragePath } from "./host-storage.js";
 import {
   resolveBinarySource,
   type ResolvedBinary,
@@ -81,6 +83,13 @@ import {
   decodeModelCatalog,
   decodeProviderCatalog,
 } from "./models.js";
+import {
+  clearRuntimeCaptureRequest,
+  requestRuntimeCapture,
+  RuntimeCapture,
+  runtimeCaptureRequested,
+} from "./capture.js";
+import { AcpRequestCapture } from "./request-capture.js";
 
 export type {
   ApprovalDecision,
@@ -187,6 +196,7 @@ export class RuntimeController {
   readonly #sessionListeners = new Set<() => void>();
   readonly #stateListeners = new Set<(snapshot: SupervisorSnapshot) => void>();
   #lastSessionError: string | undefined;
+  #capture: RuntimeCapture | undefined;
 
   public constructor(
     context: vscode.ExtensionContext,
@@ -239,6 +249,9 @@ export class RuntimeController {
 
   public async start(): Promise<void> {
     await this.#supervisor.start();
+    if (await runtimeCaptureRequested(this.#dataDirectory())) {
+      await this.startRuntimeCapture();
+    }
   }
 
   public async restart(): Promise<void> {
@@ -248,6 +261,46 @@ export class RuntimeController {
 
   public async stop(): Promise<void> {
     await this.#supervisor.stop();
+    await this.#stopRuntimeCapture("controller_stopped");
+  }
+
+  public async startRuntimeCapture(): Promise<string> {
+    if (this.#capture !== undefined) {
+      await requestRuntimeCapture(this.#dataDirectory());
+      return this.#capture.path;
+    }
+    const capture = await RuntimeCapture.open(
+      this.#dataDirectory(),
+      {
+        workspace_root_id: this.rootId,
+        host: this.hostSnapshot(),
+      },
+      {
+        onError: (error) => {
+          this.#output.appendLine(
+            `[runtime:${this.#workspace.name}] capture failed: ${error.message}`,
+          );
+        },
+      },
+    );
+    try {
+      await requestRuntimeCapture(this.#dataDirectory());
+    } catch (error) {
+      await capture.close("capture_request_failed");
+      throw error;
+    }
+    this.#capture = capture;
+    capture.record("runtime.state", this.#supervisor.snapshot);
+    this.#output.appendLine(
+      `[runtime:${this.#workspace.name}] capture started: ${capture.path}`,
+    );
+    return capture.path;
+  }
+
+  public async stopRuntimeCapture(): Promise<string | undefined> {
+    const path = await this.#stopRuntimeCapture("user_stopped");
+    await clearRuntimeCaptureRequest(this.#dataDirectory());
+    return path;
   }
 
   public async resolveBinary(): Promise<ResolvedBinary> {
@@ -267,14 +320,19 @@ export class RuntimeController {
       vscode.ExtensionMode.Development
       ? resolve(this.#context.extensionPath, "..", "..")
       : undefined;
+    const storageRoot = await hostLocalStoragePath({
+      uiExtensionHost:
+        this.#context.extension.extensionKind === vscode.ExtensionKind.UI,
+      remoteName: vscode.env.remoteName,
+      scheme: this.#context.globalStorageUri.scheme,
+      fsPath: this.#context.globalStorageUri.fsPath,
+    });
     return resolveBinarySource({
       source: binarySource,
       ...(configured === undefined ? {} : { configuredPath: configured }),
       ...(developmentRoot === undefined ? {} : { developmentRoot }),
       extensionPath: this.#context.extensionPath,
-      ...(this.#context.globalStorageUri.scheme === "file"
-        ? { storageRoot: this.#context.globalStorageUri.fsPath }
-        : {}),
+      storageRoot,
     });
   }
 
@@ -613,8 +671,13 @@ export class RuntimeController {
     sessionId: string,
     prompt: string,
     context: readonly EditorContextReference[],
+    intent: TurnIntent = "answer",
   ): Promise<SubmitReceipt> {
-    const receipt = await this.#commands(sessionId).submitPrompt(prompt, context);
+    const receipt = await this.#commands(sessionId).submitPrompt(
+      prompt,
+      context,
+      intent,
+    );
     const runtime = this.#readyRuntime();
     this.#session(runtime, sessionId);
     const summary = runtime.summaries.get(sessionId);
@@ -813,25 +876,11 @@ export class RuntimeController {
   }
 
   async #launch(): Promise<ActiveRuntime> {
-    const storage = this.#context.storageUri;
-    if (storage === undefined) {
-      throw new Error("CodeHelper Runtime requires Extension Host workspace storage");
-    }
-    assertWorkspaceExtensionHost({
-      workspaceScheme: this.#workspace.uri.scheme,
-      workspaceAuthority: this.#workspace.uri.authority,
-      storageScheme: storage.scheme,
-    });
     const workspaceRoot = this.#workspace.uri.fsPath;
-    if (!isAbsolute(workspaceRoot) ||
-      !isAbsolute(storage.fsPath)) {
+    if (!isAbsolute(workspaceRoot)) {
       throw new Error("Local Extension Host paths must be absolute");
     }
-    const dataDirectory = resolve(
-      storage.fsPath,
-      "runtime",
-      this.#workspaceIdentity.root_id,
-    );
+    const dataDirectory = this.#dataDirectory();
     await mkdir(dataDirectory, { recursive: true });
 
     const configuration = vscode.workspace.getConfiguration(
@@ -882,8 +931,15 @@ export class RuntimeController {
       maxSteps,
       workspaceIdentity: this.#workspaceIdentity,
       diagnostics: (text) => {
+        this.#capture?.record("runtime.stderr", { text });
         this.#output.append(text);
       },
+    });
+    void runtimeProcess.exited.then((exit) => {
+      this.#capture?.record("runtime.exit", {
+        code: exit.code,
+        signal: exit.signal,
+      });
     });
     try {
       const negotiated = await negotiateRuntime(
@@ -982,6 +1038,9 @@ export class RuntimeController {
         sessions,
         summaries,
         resolvedSelected,
+        (kind, data) => {
+          this.#capture?.record(kind, data);
+        },
       );
     } catch (error) {
       const startupError = await runtimeProcess.startupFailure(error);
@@ -992,6 +1051,7 @@ export class RuntimeController {
   }
 
   #writeState(snapshot: SupervisorSnapshot): void {
+    this.#capture?.record("runtime.state", snapshot);
     const suffix = snapshot.error === undefined ? "" : `: ${snapshot.error}`;
     this.#output.appendLine(
       `[runtime:${this.#workspace.name}] state=${snapshot.state} ` +
@@ -1137,6 +1197,11 @@ export class RuntimeController {
     event: DecodedEvent,
     replayed: boolean,
   ): Promise<void> {
+    this.#capture?.record("runtime.event", {
+      session_id: sessionId,
+      replayed,
+      event,
+    });
     for (const listener of this.#eventListeners) {
       await listener(sessionId, event, replayed);
     }
@@ -1171,6 +1236,7 @@ export class RuntimeController {
   }
 
   #reportSessionError(error: Error): void {
+    this.#capture?.record("session.error", { message: error.message });
     const firstReport = this.#lastSessionError === undefined;
     this.#lastSessionError = error.message;
     this.#output.appendLine(
@@ -1187,11 +1253,43 @@ export class RuntimeController {
       });
     }
   }
+
+  #dataDirectory(): string {
+    const storage = this.#context.storageUri;
+    if (storage === undefined) {
+      throw new Error("CodeHelper Runtime requires Extension Host workspace storage");
+    }
+    assertWorkspaceExtensionHost({
+      workspaceScheme: this.#workspace.uri.scheme,
+      workspaceAuthority: this.#workspace.uri.authority,
+      storageScheme: storage.scheme,
+    });
+    if (!isAbsolute(storage.fsPath)) {
+      throw new Error("Local Extension Host paths must be absolute");
+    }
+    return resolve(
+      storage.fsPath,
+      "runtime",
+      this.#workspaceIdentity.root_id,
+    );
+  }
+
+  async #stopRuntimeCapture(reason: string): Promise<string | undefined> {
+    const capture = this.#capture;
+    if (capture === undefined) return undefined;
+    this.#capture = undefined;
+    await capture.close(reason);
+    this.#output.appendLine(
+      `[runtime:${this.#workspace.name}] capture stopped: ${capture.path}`,
+    );
+    return capture.path;
+  }
 }
 
 class RuntimeConnection implements ActiveRuntime {
   public readonly exited;
   readonly #process: RuntimeProcess;
+  readonly #requestCapture: AcpRequestCapture;
 
   public constructor(
     process: RuntimeProcess,
@@ -1202,8 +1300,10 @@ class RuntimeConnection implements ActiveRuntime {
     public readonly sessions: Map<string, ConnectedSession>,
     public readonly summaries: Map<string, SessionLifecycleSummary>,
     public selectedSessionId: string,
+    observe: (kind: string, data: unknown) => void,
   ) {
     this.#process = process;
+    this.#requestCapture = new AcpRequestCapture(observe);
     this.exited = process.exited.then(async () => {
       for (const session of sessions.values()) session.dispose();
       await Promise.all([...sessions.values()].map(
@@ -1224,8 +1324,8 @@ class RuntimeConnection implements ActiveRuntime {
     return this.#process.pid;
   }
 
-  public request(method: string, params?: unknown): Promise<unknown> {
-    return this.#process.client.request(method, params);
+  public async request(method: string, params?: unknown): Promise<unknown> {
+    return this.#requestCapture.request(this.#process.client, method, params);
   }
 
   public onNotification(

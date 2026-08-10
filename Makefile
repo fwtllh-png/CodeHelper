@@ -26,7 +26,7 @@ LDFLAGS := -s -w \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
 	vscode-security vscode-performance vscode-runtime-integration \
 	vscode-integration vscode-rosetta-integration \
-	vscode-build vscode-package vscode-release-dry-run \
+	vscode-build vscode-package vscode-package-universal vscode-release-dry-run \
 	vscode-multiroot-integration vscode-update-integration \
 	vscode-distribution vscode-local-setup vscode-matrix-report vscode-rc \
 	deepseek-init deepseek-tui deepseek-vscode \
@@ -328,8 +328,10 @@ vscode-update-integration: vscode-install
 		update-integration static host n/a managed \
 		signature redirect truncation rollback revocation concurrency
 
-vscode-package: vscode-install
-	cd $(VSCODE_DIR) && $(NPM) run package:vsix
+vscode-package: vscode-release-dry-run
+
+vscode-package-universal: vscode-install
+	cd $(VSCODE_DIR) && $(NPM) run package:vsix:universal
 
 vscode-release-dry-run: vscode-install
 	cd $(VSCODE_DIR) && $(NPM) run release:vscode:dry-run

@@ -153,6 +153,20 @@ codehelper automation list --data-dir ./.codehelper
 CodeHelper 只支持本地 `file:` Workspace。Remote SSH、Dev Container 和其他
 `vscode-remote:` 环境会在 Activation 阶段被拒绝。
 
+## 采集 VS Code Runtime 故障
+
+复现前执行 `CodeHelper: Start Runtime Capture`，实测结束后执行
+`CodeHelper: Stop Runtime Capture`。完成提示会给出 Extension 私有 Workspace
+Storage 下的 JSONL 路径。
+
+Capture 会关联全部 Live Protocol Event、Replay 标记、ACP Request 生命周期与 ID、
+Runtime stderr、进程退出 Code 或 Signal、自动重启状态和 Session 同步错误。该功能
+默认关闭；采集文件权限为 `0600`，因为 Model Output、Tool Arguments/Results 和
+Diagnostics 可能包含敏感 Workspace 数据。分享前必须检查并脱敏。
+
+标准测试矩阵、结构化不变量、证据冻结与报告契约见
+[VS Code Runtime 标准监测 Runbook](./runtime-monitoring.md)。
+
 ## 只在全仓并发测试中失败
 
 部分 Fixture Lifecycle 与 Process Test 对资源敏感。单独重跑：

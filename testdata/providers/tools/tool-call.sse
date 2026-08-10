@@ -1,6 +1,5 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_write","function":{"name":"file_write","arguments":"{\"path\":\"result.txt\","}}]},"finish_reason":null}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_write","function":{"name":"file_apply","arguments":"{\"changes\":[{\"op\":\"write\",\"path\":\"result.txt\","}}]},"finish_reason":null}]}
 
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"content\":\"created by engine\\n\"}"}}]},"finish_reason":"tool_calls"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"content\":\"created by engine\\n\"}]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: [DONE]
-

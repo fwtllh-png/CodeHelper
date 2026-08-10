@@ -47,6 +47,7 @@ import type {
   ProviderCatalog,
   SessionPlan,
 } from "./protocol/generated.js";
+import { hostLocalStoragePath } from "./runtime/host-storage.js";
 
 let registry: WorkspaceRuntimeRegistry | undefined;
 let updateCheckInFlight: Promise<void> | undefined;
@@ -255,6 +256,37 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
         await root.controller.restart();
         void vscode.window.showInformationMessage(
           `${root.label}: ${root.controller.statusMessage()}`,
+        );
+      } catch (error) {
+        reportStartError(output, error);
+      }
+    }),
+    vscode.commands.registerCommand("codehelper.startRuntimeCapture", async () => {
+      const root = await registry?.pick("CodeHelper: Start Runtime Capture");
+      if (root === undefined) {
+        void vscode.window.showErrorMessage(
+          "Runtime capture requires an open workspace folder.",
+        );
+        return;
+      }
+      try {
+        const path = await root.controller.startRuntimeCapture();
+        void vscode.window.showInformationMessage(
+          `${root.label}: Runtime capture started at ${path}`,
+        );
+      } catch (error) {
+        reportStartError(output, error);
+      }
+    }),
+    vscode.commands.registerCommand("codehelper.stopRuntimeCapture", async () => {
+      const root = await registry?.pick("CodeHelper: Stop Runtime Capture");
+      if (root === undefined) return;
+      try {
+        const path = await root.controller.stopRuntimeCapture();
+        void vscode.window.showInformationMessage(
+          path === undefined
+            ? `${root.label}: Runtime capture is not active.`
+            : `${root.label}: Runtime capture stopped at ${path}`,
         );
       } catch (error) {
         reportStartError(output, error);
@@ -484,9 +516,13 @@ async function performBinaryUpdate(
   interactive: boolean,
 ): Promise<void> {
   try {
-    if (context.globalStorageUri.scheme !== "file") {
-      throw new Error("binary updates require Host-local file storage");
-    }
+    const storageRoot = await hostLocalStoragePath({
+      uiExtensionHost:
+        context.extension.extensionKind === vscode.ExtensionKind.UI,
+      remoteName: vscode.env.remoteName,
+      scheme: context.globalStorageUri.scheme,
+      fsPath: context.globalStorageUri.fsPath,
+    });
     const configuration = vscode.workspace.getConfiguration("codehelper");
     const policy = configuration.get<"off" | "notify" | "auto">(
       "update.policy",
@@ -504,7 +540,7 @@ async function performBinaryUpdate(
       "release-trust-roots.json",
     ));
     const store = new ManagedBinaryStore(join(
-      context.globalStorageUri.fsPath,
+      storageRoot,
       "managed-binary",
     ));
     const client = new BinaryUpdateClient({

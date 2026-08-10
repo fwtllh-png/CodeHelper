@@ -245,12 +245,14 @@ type ReceiptSkill struct {
 // Every field reflects observed execution. Sections the runtime cannot yet
 // determine are listed in NotCollected rather than left silently empty.
 type ExecutionReceiptData struct {
-	Goal      string `json:"goal"`
-	Plan      string `json:"plan,omitempty"`
-	Mode      string `json:"mode,omitempty"`
-	Posture   string `json:"posture,omitempty"`
-	Sandbox   string `json:"sandbox,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
+	Goal      string      `json:"goal"`
+	Intent    TurnIntent  `json:"intent,omitempty"`
+	Outcome   TurnOutcome `json:"outcome,omitempty"`
+	Plan      string      `json:"plan,omitempty"`
+	Mode      string      `json:"mode,omitempty"`
+	Posture   string      `json:"posture,omitempty"`
+	Sandbox   string      `json:"sandbox,omitempty"`
+	Workspace string      `json:"workspace,omitempty"`
 
 	// Routes are the routes the turn actually sampled on, one entry per purpose.
 	// It is what the turn did, not the table it could have used: a slot the turn
@@ -332,6 +334,14 @@ func (*ExecutionReceiptData) eventKind() EventKind { return EventExecutionReceip
 
 func (d *ExecutionReceiptData) validate() error {
 	d.Verification.normalize()
+	if !NormalizeTurnIntent(d.Intent).Valid() {
+		return errors.New("receipt turn intent is invalid")
+	}
+	switch d.Outcome {
+	case "", TurnOutcomeAnswered, TurnOutcomePlanned, TurnOutcomeChanged, TurnOutcomeOperated:
+	default:
+		return errors.New("receipt turn outcome is invalid")
+	}
 	if err := validateEditorContextReceipts(d.EditorContext); err != nil {
 		return err
 	}

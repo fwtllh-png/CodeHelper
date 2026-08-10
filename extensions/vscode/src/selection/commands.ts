@@ -33,7 +33,12 @@ export function registerSelectionCommands(
             submit: async (prompt, editorContext) => {
               const { sessionId } = target.controller.identity();
               return target.controller.submitPrompt(
-                sessionId, prompt, editorContext,
+                sessionId,
+                prompt,
+                editorContext,
+                spec.id === "codehelper.explainSelection"
+                  ? "answer"
+                  : "workspace_change",
               );
             },
             focusChat: async () => {

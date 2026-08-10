@@ -427,8 +427,18 @@ verification.
 
 ## Build a VSIX
 
+Build, install, and complete the Runtime Ready handshake for the current Host
+target:
+
 ```bash
 make vscode-package
+```
+
+The static universal package intentionally contains no Runtime and has a
+separate install audit:
+
+```bash
+make vscode-package-universal
 ```
 
 For multi-target dry-run artifacts:

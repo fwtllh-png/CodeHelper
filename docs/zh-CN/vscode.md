@@ -359,8 +359,16 @@ Electron 首次使用时下载，并有意不放入默认 Verify。
 
 ## 构建 VSIX
 
+构建、安装并完成当前 Host Target 的 Runtime Ready Handshake：
+
 ```bash
 make vscode-package
+```
+
+静态 Universal Package 有意不包含 Runtime，使用独立的安装审计入口：
+
+```bash
+make vscode-package-universal
 ```
 
 多目标 Dry-run Artifact：

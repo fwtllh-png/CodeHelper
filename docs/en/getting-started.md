@@ -216,11 +216,15 @@ make vscode-test
 make vscode-build
 ```
 
-Build a local VSIX:
+Build, install, and complete the Runtime Ready handshake for the current Host
+target VSIX:
 
 ```bash
 make vscode-package
 ```
+
+Use `make vscode-package-universal` only for the static universal package. It
+does not contain a Runtime executable.
 
 On macOS, the repository also provides an opinionated local setup script:
 
