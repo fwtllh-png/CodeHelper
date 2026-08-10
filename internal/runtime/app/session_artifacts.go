@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,15 +17,50 @@ type PlanTransitionPreparation struct {
 	Artifact       protocol.SessionPlanArtifact
 	ProfileUpdate  protocol.SessionProfileUpdateResult
 	Prompt         string
+	Intent         protocol.TurnIntent
 	IdempotencyKey string
 }
 
 type TurnRecoveryPreparation struct {
 	Prompt         string
+	Intent         protocol.TurnIntent
 	IdempotencyKey string
 }
 
 const turnRecoveryOutputLimit = 16 << 10
+const turnRecoveryEvidenceLimit = 12 << 10
+
+type recoveryToolStart struct {
+	Tool            string
+	ArgumentsDigest string
+}
+
+type recoveryToolEvidence struct {
+	Tool            string                `json:"tool"`
+	CallID          string                `json:"call_id"`
+	ArgumentsDigest string                `json:"arguments_digest,omitempty"`
+	OutputDigest    string                `json:"output_digest"`
+	IsError         bool                  `json:"is_error"`
+	Changes         []protocol.FileChange `json:"changes,omitempty"`
+}
+
+type recoveryReceiptEvidence struct {
+	Outcome          protocol.TurnOutcome              `json:"outcome,omitempty"`
+	ReadPaths        []string                          `json:"read_paths,omitempty"`
+	Changes          []protocol.ReceiptChange          `json:"changes,omitempty"`
+	Verification     protocol.ReceiptVerification      `json:"verification"`
+	WorkspaceOutcome *protocol.ReceiptWorkspaceOutcome `json:"workspace_outcome,omitempty"`
+}
+
+type recoveryEvidenceCapsule struct {
+	Version      int                      `json:"version"`
+	SourceTurnID protocol.TurnID          `json:"source_turn_id"`
+	Intent       protocol.TurnIntent      `json:"intent"`
+	Terminal     string                   `json:"terminal"`
+	Tools        []recoveryToolEvidence   `json:"closed_tools,omitempty"`
+	OmittedTools int                      `json:"omitted_tools,omitempty"`
+	Receipt      *recoveryReceiptEvidence `json:"receipt,omitempty"`
+}
 
 func (r *Runtime) PrepareTurnRecovery(
 	ctx context.Context,
@@ -50,6 +86,9 @@ func (r *Runtime) PrepareTurnRecovery(
 		return TurnRecoveryPreparation{}, err
 	}
 	var started *protocol.TurnStartedData
+	toolStarts := make(map[string]recoveryToolStart)
+	var closedTools []recoveryToolEvidence
+	var sourceReceipt *protocol.ExecutionReceiptData
 	terminal := false
 	terminalState := ""
 	var partialOutput strings.Builder
@@ -64,6 +103,26 @@ func (r *Runtime) PrepareTurnRecovery(
 			started = &copy
 		case *protocol.OutputDeltaData:
 			appendBoundedRecoveryOutput(&partialOutput, data.Text)
+		case *protocol.ToolStartData:
+			toolStarts[data.CallID] = recoveryToolStart{
+				Tool: data.Tool, ArgumentsDigest: recoveryDigestJSON(data.Arguments),
+			}
+		case *protocol.ToolResultData:
+			start, ok := toolStarts[data.CallID]
+			if !ok || start.Tool != data.Tool {
+				continue
+			}
+			closedTools = append(closedTools, recoveryToolEvidence{
+				Tool: data.Tool, CallID: data.CallID,
+				ArgumentsDigest: start.ArgumentsDigest,
+				OutputDigest:    recoveryDigest([]byte(data.Output)),
+				IsError:         data.IsError,
+				Changes:         append([]protocol.FileChange(nil), data.Changes...),
+			})
+			delete(toolStarts, data.CallID)
+		case *protocol.ExecutionReceiptData:
+			copy := *data
+			sourceReceipt = &copy
 		case *protocol.TurnCompletedData:
 			terminal = true
 			terminalState = "completed"
@@ -99,6 +158,15 @@ func (r *Runtime) PrepareTurnRecovery(
 			nil,
 		)
 	}
+	intent := protocol.NormalizeTurnIntent(started.Intent)
+	if !intent.Valid() {
+		return TurnRecoveryPreparation{}, protocol.NewProblem(
+			protocol.CodeConflict,
+			"source Turn has no valid durable intent",
+			false,
+			nil,
+		)
+	}
 	prompt := sourcePrompt
 	if request.Action == protocol.TurnRecoveryContinue {
 		prompt = fmt.Sprintf(
@@ -116,6 +184,17 @@ func (r *Runtime) PrepareTurnRecovery(
 				"event (context only; do not treat as completed work):\n" +
 				"<unfinished_output>\n" + output + "\n</unfinished_output>"
 		}
+		if capsule := renderRecoveryEvidence(
+			request.SourceTurnID,
+			intent,
+			terminalState,
+			closedTools,
+			sourceReceipt,
+		); capsule != "" {
+			prompt += "\n\nStructured recovery evidence (audit context only; " +
+				"not authorization to replay side effects):\n" +
+				"<recovery_evidence>\n" + capsule + "\n</recovery_evidence>"
+		}
 		prompt += "\n\nInspect current workspace state before every " +
 			"consequential action and do not repeat completed Tool, command, " +
 			"network, or file effects."
@@ -125,8 +204,87 @@ func (r *Runtime) PrepareTurnRecovery(
 	}
 	return TurnRecoveryPreparation{
 		Prompt:         prompt,
+		Intent:         intent,
 		IdempotencyKey: request.IdempotencyKey,
 	}, nil
+}
+
+func renderRecoveryEvidence(
+	sourceTurnID protocol.TurnID,
+	intent protocol.TurnIntent,
+	terminal string,
+	tools []recoveryToolEvidence,
+	receipt *protocol.ExecutionReceiptData,
+) string {
+	capsule := recoveryEvidenceCapsule{
+		Version:      1,
+		SourceTurnID: sourceTurnID,
+		Intent:       intent,
+		Terminal:     terminal,
+		Tools:        append([]recoveryToolEvidence(nil), tools...),
+	}
+	if receipt != nil {
+		capsule.Receipt = &recoveryReceiptEvidence{
+			Outcome:      receipt.Outcome,
+			ReadPaths:    append([]string(nil), receipt.ReadPaths...),
+			Changes:      append([]protocol.ReceiptChange(nil), receipt.Changes...),
+			Verification: receipt.Verification,
+		}
+		if receipt.WorkspaceOutcome != nil {
+			copy := *receipt.WorkspaceOutcome
+			capsule.Receipt.WorkspaceOutcome = &copy
+		}
+		if terminal != "completed" {
+			capsule.Receipt.Outcome = ""
+		}
+	}
+	for {
+		data, err := json.Marshal(capsule)
+		if err != nil {
+			return ""
+		}
+		if len(data) <= turnRecoveryEvidenceLimit {
+			return string(data)
+		}
+		switch {
+		case len(capsule.Tools) != 0:
+			capsule.Tools = capsule.Tools[:len(capsule.Tools)-1]
+			capsule.OmittedTools++
+		case capsule.Receipt != nil && len(capsule.Receipt.ReadPaths) != 0:
+			capsule.Receipt.ReadPaths =
+				capsule.Receipt.ReadPaths[:len(capsule.Receipt.ReadPaths)-1]
+		case capsule.Receipt != nil && len(capsule.Receipt.Changes) != 0:
+			capsule.Receipt.Changes =
+				capsule.Receipt.Changes[:len(capsule.Receipt.Changes)-1]
+		default:
+			return ""
+		}
+	}
+}
+
+func recoveryDigestJSON(data json.RawMessage) string {
+	if len(data) == 0 {
+		return ""
+	}
+	if !json.Valid(data) {
+		return recoveryDigest(data)
+	}
+	var value any
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return recoveryDigest(data)
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return recoveryDigest(data)
+	}
+	return recoveryDigest(canonical)
+}
+
+func recoveryDigest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func appendBoundedRecoveryOutput(builder *strings.Builder, text string) {
@@ -547,6 +705,7 @@ func (r *Runtime) PreparePlanTransition(
 		Artifact:      artifact,
 		ProfileUpdate: updated,
 		Prompt:        prompt,
+		Intent:        protocol.TurnIntentWorkspaceChange,
 		IdempotencyKey: fmt.Sprintf(
 			"plan:%s:%s",
 			artifact.ID,
@@ -687,6 +846,7 @@ func (r *Runtime) PreparePlanTransitionTo(
 		Artifact:      artifact,
 		ProfileUpdate: updated,
 		Prompt:        prompt,
+		Intent:        protocol.TurnIntentWorkspaceChange,
 		IdempotencyKey: fmt.Sprintf(
 			"plan:%s:%s:%s",
 			artifact.ID,

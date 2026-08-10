@@ -193,6 +193,25 @@ func (t *ReadTracker) Record(path string) (Fingerprint, error) {
 	return fingerprint, nil
 }
 
+func (t *ReadTracker) RecordFingerprint(fingerprint Fingerprint) error {
+	if !fingerprint.Exists {
+		t.Invalidate(fingerprint.Path)
+		return nil
+	}
+	current, _, _, err := Snapshot(fingerprint.Path)
+	if err != nil {
+		return err
+	}
+	if !Equal(fingerprint, current) {
+		t.Invalidate(fingerprint.Path)
+		return ErrStale
+	}
+	t.mu.Lock()
+	t.reads[current.Path] = current
+	t.mu.Unlock()
+	return nil
+}
+
 func (t *ReadTracker) ValidateWrite(path string) (Fingerprint, error) {
 	path = filepath.Clean(path)
 	current, _, _, err := Snapshot(path)
@@ -410,30 +429,38 @@ func (m *Manager) Before(ctx context.Context, path string) error {
 }
 
 func (m *Manager) After(path string) error {
+	_, err := m.AfterFingerprint(path)
+	return err
+}
+
+func (m *Manager) AfterFingerprint(path string) (Fingerprint, error) {
 	var err error
 	path, err = canonicalPath(path)
 	if err != nil {
-		return err
+		return Fingerprint{}, err
 	}
 	after, _, _, err := Snapshot(path)
 	if err != nil {
-		return err
+		return Fingerprint{}, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.active == nil {
-		return errors.New("workspace journal has no active turn")
+		return Fingerprint{}, errors.New("workspace journal has no active turn")
 	}
 	record := m.active.records[path]
 	if record == nil {
-		return errors.New("workspace journal before-image is missing")
+		return Fingerprint{}, errors.New("workspace journal before-image is missing")
 	}
 	record.After = after
 	// Rollback compares the file on disk against this fingerprint, so a recovering
 	// process needs it as much as this one does.
-	return m.ledger.append(entry{
+	if err := m.ledger.append(entry{
 		Phase: phaseAfter, TurnID: m.active.id, Record: record,
-	})
+	}); err != nil {
+		return Fingerprint{}, err
+	}
+	return after, nil
 }
 
 // Changes lists the paths the active turn has changed so far, in write order.

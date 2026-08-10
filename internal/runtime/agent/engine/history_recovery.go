@@ -50,11 +50,19 @@ func (e *Engine) runMidTurnCompactGate(
 ) error {
 	needed := historyBytes(*history) > e.options.MaxContextBytes
 	receipt := e.compactHistoryForGate(history, false, true)
+	if receipt == nil && e.contextTokenLimitReached(*history) {
+		needed = true
+		receipt = e.compactHistoryForGate(history, true, true)
+	}
 	if receipt == nil {
 		if needed {
 			return compactionBudgetError(*history, e.options.MaxContextBytes)
 		}
 		return nil
+	}
+	if historyBytes(*history) > e.options.MaxContextBytes ||
+		e.contextTokenLimitReached(*history) {
+		return compactionBudgetError(*history, e.options.MaxContextBytes)
 	}
 	receipt.Phase = CompactionPhaseMidTurn
 	return send(Compacting, Event{Compaction: receipt})

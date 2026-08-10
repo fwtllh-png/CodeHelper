@@ -92,11 +92,8 @@ func TestReadBeforeEditContract(t *testing.T) {
 	if _, err := execute("edit", "file_edit", `{"path":"sample.txt","old":"one","new":"two"}`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := execute("reuse", "file_write", `{"path":"sample.txt","content":"three\n"}`); !errors.Is(err, workspacejournal.ErrUnread) {
-		t.Fatalf("reused fingerprint error = %v", err)
-	}
-	if _, err := execute("read-stale", "file_read", `{"path":"sample.txt"}`); err != nil {
-		t.Fatal(err)
+	if _, err := execute("sequential-edit", "file_edit", `{"path":"sample.txt","old":"two","new":"three"}`); err != nil {
+		t.Fatalf("sequential edit error = %v", err)
 	}
 	if err := os.WriteFile(path, []byte("external\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -128,8 +125,22 @@ func TestReadBeforeEditContract(t *testing.T) {
 	if _, err := guard.Execute(t.Context(), "patch", "file_patch", patchArguments); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := guard.Execute(t.Context(), "patch-reuse", "file_patch", patchArguments); !errors.Is(err, workspacejournal.ErrUnread) {
-		t.Fatalf("patch reused fingerprint error = %v", err)
+	secondPatch := "--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-patched\n+twice\n"
+	secondPatchArguments, _ := json.Marshal(map[string]string{"patch": secondPatch})
+	if _, err := guard.Execute(
+		t.Context(), "patch-sequential", "file_patch", secondPatchArguments,
+	); err != nil {
+		t.Fatalf("sequential patch error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte("external-again\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stalePatch := "--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-external-again\n+unsafe\n"
+	stalePatchArguments, _ := json.Marshal(map[string]string{"patch": stalePatch})
+	if _, err := guard.Execute(
+		t.Context(), "patch-stale", "file_patch", stalePatchArguments,
+	); !errors.Is(err, workspacejournal.ErrStale) {
+		t.Fatalf("stale patch fingerprint error = %v", err)
 	}
 }
 

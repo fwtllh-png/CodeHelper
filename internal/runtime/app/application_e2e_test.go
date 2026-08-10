@@ -12,7 +12,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -49,6 +51,129 @@ func TestValidToolArgumentsOmitsMalformedProviderPayload(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWorkspaceChangeReceiptMatchesTerminalOutcome(t *testing.T) {
+	t.Run("failed_without_changes", func(t *testing.T) {
+		worker, err := agentengine.New(agentengine.Options{
+			Provider: &singleAnswerProvider{}, Route: runtimeTestRoute(t),
+			Tools: tool.NewRegistry(nil, nil),
+			Security: policy.DefaultRuntime(
+				policy.ModeAct,
+				policy.PermissionSuggest,
+			),
+			Workspace: t.TempDir(), Metrics: telemetry.NewMetrics(),
+			MaxOutputTokens: 128,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt, terminal := runWorkspaceChangeTurn(t, worker)
+		if terminal.Kind != protocol.EventTurnFailed {
+			t.Fatalf("terminal = %s, want turn.failed", terminal.Kind)
+		}
+		if receipt.Outcome != "" || len(receipt.Changes) != 0 ||
+			receipt.WorkspaceOutcome == nil ||
+			receipt.WorkspaceOutcome.Status != "unchanged" {
+			t.Fatalf("failed receipt = %+v", receipt)
+		}
+	})
+
+	t.Run("completed_with_changes", func(t *testing.T) {
+		registry := tool.NewRegistry(nil, nil)
+		if err := registry.Register(&runtimeWriteTool{}, nil); err != nil {
+			t.Fatal(err)
+		}
+		worker, err := agentengine.New(agentengine.Options{
+			Provider: &runtimeApprovalProvider{}, Route: runtimeTestRoute(t),
+			Tools: registry, Security: policy.DefaultRuntime(
+				policy.ModeAct,
+				policy.PermissionBypass,
+			),
+			Workspace: t.TempDir(), Metrics: telemetry.NewMetrics(),
+			MaxOutputTokens: 128,
+			Verify: agentengine.VerifyOptions{
+				Mode: agentengine.VerifyModeHard, Scope: verify.ScopeDiagnostics,
+				Runner: passingVerifier{},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt, terminal := runWorkspaceChangeTurn(t, worker)
+		if terminal.Kind != protocol.EventTurnCompleted {
+			t.Fatalf("terminal = %s, want turn.completed", terminal.Kind)
+		}
+		if receipt.Outcome != protocol.TurnOutcomeChanged ||
+			len(receipt.Changes) != 1 ||
+			receipt.WorkspaceOutcome == nil ||
+			receipt.WorkspaceOutcome.Status != "changed" {
+			t.Fatalf("completed receipt = %+v", receipt)
+		}
+	})
+}
+
+type passingVerifier struct{}
+
+func (passingVerifier) Verify(
+	context.Context, verify.Request,
+) (verify.Receipt, error) {
+	return verify.Receipt{
+		Scope: verify.ScopeDiagnostics, Status: verify.StatusPassed,
+	}, nil
+}
+
+func runWorkspaceChangeTurn(
+	t *testing.T,
+	worker *agentengine.Engine,
+) (*protocol.ExecutionReceiptData, protocol.Event) {
+	t.Helper()
+	runtime := NewRuntime(Options{Engine: AdaptEngine(worker)})
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: "thread", TurnID: "turn", ItemID: "prompt",
+		Prompt: "change the workspace", Intent: protocol.TurnIntentWorkspaceChange,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), start); err != nil {
+		t.Fatal(err)
+	}
+	var receipt *protocol.ExecutionReceiptData
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			if data, ok := event.Data.(*protocol.ExecutionReceiptData); ok {
+				receipt = data
+			}
+			if protocol.IsTerminalEvent(event.Kind) {
+				if receipt == nil {
+					t.Fatal("terminal event arrived without an execution receipt")
+				}
+				return receipt, event
+			}
+		case <-deadline:
+			t.Fatal("turn did not reach a terminal event")
+		}
+	}
+}
+
+type singleAnswerProvider struct{}
+
+func (*singleAnswerProvider) Stream(
+	context.Context,
+	provider.ModelRequest,
+) (provider.Stream, error) {
+	return &provider.SliceStream{Events: []provider.StreamEvent{
+		{Type: provider.EventTextDelta, Text: "no changes needed"},
+		{Type: provider.EventMessageStop},
+	}}, nil
 }
 
 func TestRuntimeApprovalPauseResumeE2E(t *testing.T) {
@@ -165,7 +290,14 @@ func (*runtimeWriteTool) Descriptor() tool.Descriptor {
 
 func (t *runtimeWriteTool) Execute(context.Context, json.RawMessage) (tool.Result, error) {
 	t.calls.Add(1)
-	return tool.Result{Content: "written"}, nil
+	return tool.Result{
+		Content: "written",
+		Metadata: map[string]any{
+			toolguard.MetadataChanges: []toolguard.FileChange{{
+				Path: "out.txt", Kind: toolguard.FileCreated, Added: 1,
+			}},
+		},
+	}, nil
 }
 
 type runtimeApprovalProvider struct {

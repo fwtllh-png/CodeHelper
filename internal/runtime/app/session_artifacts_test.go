@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -242,6 +244,7 @@ func TestPlanTransitionUsesANewGuardedTurnProfile(t *testing.T) {
 	if prepared.ProfileUpdate.Profile.Mode != "act" ||
 		prepared.ProfileUpdate.Profile.ApprovalPosture != "auto" ||
 		!strings.Contains(prepared.Prompt, artifacts.plan.Body) ||
+		prepared.Intent != protocol.TurnIntentWorkspaceChange ||
 		prepared.IdempotencyKey != "plan:plan-1:autopilot" {
 		t.Fatalf("Plan transition = %+v", prepared)
 	}
@@ -297,7 +300,8 @@ func TestPlanTransitionToRequiresMatchingProfileAndForkLineage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(destination.Prompt, artifacts.plan.Body) ||
+	if destination.Intent != protocol.TurnIntentWorkspaceChange ||
+		!strings.Contains(destination.Prompt, artifacts.plan.Body) ||
 		destination.IdempotencyKey !=
 			"plan:plan-1:implement:session-profile" {
 		t.Fatalf("Plan destination = %+v", destination)
@@ -337,6 +341,7 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		Provider: "fixture",
 		Model:    "fixture-model",
 		Prompt:   "Fix the parser",
+		Intent:   protocol.TurnIntentWorkspaceChange,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -355,6 +360,43 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	meta.Sequence = 3
+	toolStarted, err := protocol.NewEvent(meta, &protocol.ToolStartData{
+		Tool: "file_read", CallID: "call-read",
+		Arguments: json.RawMessage(`{"path":"parser.go"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), toolStarted); err != nil {
+		t.Fatal(err)
+	}
+	meta.Sequence = 4
+	toolResult, err := protocol.NewEvent(meta, &protocol.ToolResultData{
+		Tool: "file_read", CallID: "call-read", Output: "package parser",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), toolResult); err != nil {
+		t.Fatal(err)
+	}
+	meta.Sequence = 5
+	receipt, err := protocol.NewEvent(meta, &protocol.ExecutionReceiptData{
+		Intent:       protocol.TurnIntentWorkspaceChange,
+		Outcome:      protocol.TurnOutcomeChanged,
+		ReadPaths:    []string{"parser.go"},
+		Verification: protocol.ReceiptVerification{},
+		WorkspaceOutcome: &protocol.ReceiptWorkspaceOutcome{
+			Status: "unchanged",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), receipt); err != nil {
+		t.Fatal(err)
+	}
+	meta.Sequence = 6
 	failed, err := protocol.NewEvent(meta, &protocol.TurnFailedData{
 		Code: protocol.CodeConflict, Message: "validation failed",
 	})
@@ -382,6 +424,7 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	if retry.Prompt != "Fix the parser" ||
+		retry.Intent != protocol.TurnIntentWorkspaceChange ||
 		retry.IdempotencyKey != "retry-source" {
 		t.Fatalf("Retry preparation = %+v", retry)
 	}
@@ -398,10 +441,16 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(continued.Prompt, "do not repeat completed Tool") ||
+		continued.Intent != protocol.TurnIntentWorkspaceChange ||
 		!strings.Contains(continued.Prompt, "Source Turn ID: turn-source") ||
 		!strings.Contains(continued.Prompt, "<source_request>\nFix the parser") ||
 		!strings.Contains(continued.Prompt, "failed (conflict): validation failed") ||
 		!strings.Contains(continued.Prompt, "I inspected the parser") ||
+		!strings.Contains(continued.Prompt, "<recovery_evidence>") ||
+		!strings.Contains(continued.Prompt, `"intent":"workspace_change"`) ||
+		!strings.Contains(continued.Prompt, `"tool":"file_read"`) ||
+		!strings.Contains(continued.Prompt, `"read_paths":["parser.go"]`) ||
+		strings.Contains(continued.Prompt, `"outcome":"changed"`) ||
 		!strings.Contains(continued.Prompt, "Run focused tests") {
 		t.Fatalf("Continue preparation = %+v", continued)
 	}
@@ -409,8 +458,111 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(replayed) != 3 {
+	if len(replayed) != 6 {
 		t.Fatalf("Recovery preparation emitted historical operations: %+v", replayed)
+	}
+}
+
+func TestTurnRecoveryDefaultsLegacyEmptyIntentToAnswer(t *testing.T) {
+	events := NewMemoryEventStore(4)
+	meta := protocol.EventMeta{
+		Sequence:    1,
+		OperationID: "operation-source",
+		ThreadID:    "thread-profile",
+		TurnID:      "turn-source",
+		ItemID:      "item-source",
+	}
+	started, err := protocol.NewEvent(meta, &protocol.TurnStartedData{
+		Provider: "fixture",
+		Model:    "fixture-model",
+		Prompt:   "Explain the parser",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), started); err != nil {
+		t.Fatal(err)
+	}
+	meta.Sequence++
+	completed, err := protocol.NewEvent(meta, &protocol.TurnCompletedData{
+		Text: "The parser validates input.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), completed); err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{
+		EventStore:       events,
+		SessionLifecycle: artifactLifecycle(),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	prepared, err := runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version:        protocol.WorkflowIntentVersion,
+			Action:         protocol.TurnRecoveryContinue,
+			SessionID:      "session-profile",
+			SourceTurnID:   "turn-source",
+			IdempotencyKey: "continue-source",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Intent != protocol.TurnIntentAnswer {
+		t.Fatalf("Recovery intent = %q, want answer", prepared.Intent)
+	}
+}
+
+func TestRecoveryEvidenceIsCanonicalAndBounded(t *testing.T) {
+	first := recoveryDigestJSON(
+		[]byte(`{"b":9223372036854775807,"a":1}`),
+	)
+	second := recoveryDigestJSON(
+		[]byte(`{"a":1,"b":9223372036854775807}`),
+	)
+	if first == "" || first != second {
+		t.Fatalf("canonical argument digests = %q and %q", first, second)
+	}
+	tools := make([]recoveryToolEvidence, 200)
+	for index := range tools {
+		tools[index] = recoveryToolEvidence{
+			Tool:            "file_read",
+			CallID:          fmt.Sprintf("call-%03d", index),
+			ArgumentsDigest: first,
+			OutputDigest:    recoveryDigest([]byte(strings.Repeat("x", index+1))),
+		}
+	}
+	rendered := renderRecoveryEvidence(
+		"turn-source",
+		protocol.TurnIntentWorkspaceChange,
+		"failed (conflict): no changes",
+		tools,
+		&protocol.ExecutionReceiptData{
+			ReadPaths:    []string{"parser.go", "parser_test.go"},
+			Verification: protocol.ReceiptVerification{},
+			WorkspaceOutcome: &protocol.ReceiptWorkspaceOutcome{
+				Status: "unchanged",
+			},
+		},
+	)
+	if rendered == "" || len(rendered) > turnRecoveryEvidenceLimit {
+		t.Fatalf("rendered recovery evidence bytes = %d", len(rendered))
+	}
+	var capsule recoveryEvidenceCapsule
+	if err := json.Unmarshal([]byte(rendered), &capsule); err != nil {
+		t.Fatal(err)
+	}
+	if capsule.Intent != protocol.TurnIntentWorkspaceChange ||
+		capsule.SourceTurnID != "turn-source" ||
+		capsule.OmittedTools == 0 ||
+		len(capsule.Tools)+capsule.OmittedTools != len(tools) ||
+		capsule.Receipt == nil ||
+		len(capsule.Receipt.ReadPaths) != 2 {
+		t.Fatalf("recovery evidence = %+v", capsule)
 	}
 }
 

@@ -163,7 +163,7 @@ func Scenarios() []Scenario {
 				workspace := t.TempDir()
 				rules := filepath.Join(workspace, "repository-rules.json")
 				if err := os.WriteFile(
-					rules, []byte(`[{"tool":"file_write","action":"ask"}]`), 0o600,
+					rules, []byte(`[{"tool":"file_apply","action":"ask"}]`), 0o600,
 				); err != nil {
 					t.Fatal(err)
 				}

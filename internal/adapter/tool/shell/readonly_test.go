@@ -48,23 +48,25 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 		t.Fatalf("read result = %+v", read)
 	}
 
-	write, err := registry.Execute(t.Context(), tool.Call{
-		Name:       "shell_read",
-		Arguments:  json.RawMessage(`{"command":"printf changed > input.txt"}`),
-		Authorized: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !write.IsError {
-		t.Fatalf("workspace write unexpectedly succeeded: %+v", write)
-	}
-	content, err := os.ReadFile(inputPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(content) != "original" {
-		t.Fatalf("workspace content changed to %q", content)
+	for _, name := range []string{"shell_read", "shell_run", "terminal_run"} {
+		write, err := registry.Execute(t.Context(), tool.Call{
+			Name:       name,
+			Arguments:  json.RawMessage(`{"command":"printf changed > input.txt"}`),
+			Authorized: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !write.IsError {
+			t.Fatalf("%s workspace write unexpectedly succeeded: %+v", name, write)
+		}
+		content, err := os.ReadFile(inputPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(content) != "original" {
+			t.Fatalf("%s changed workspace content to %q", name, content)
+		}
 	}
 
 	if runtime.GOOS == "darwin" {

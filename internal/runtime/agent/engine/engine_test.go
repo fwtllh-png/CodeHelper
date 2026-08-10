@@ -468,6 +468,36 @@ func TestEngineRepairsNarrationAfterStructuredToolFailure(t *testing.T) {
 	}
 }
 
+func TestEngineDoesNotClearToolFailureWithTextOnlyPromises(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call_1", Name: "result_error", Arguments: `{}`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}},
+		textStream("I will retry the failed edit next."),
+		textStream("The remaining fix still needs to be applied."),
+		textStream("Continuing with the repair."),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(resultErrorTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := newEngine(t, runtime, registry).RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-failure", "fix it",
+		protocol.TurnIntentOperation, nil, nil,
+	)
+
+	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("result=%+v error=%v, want conflict", result, err)
+	}
+	if result.State == Completed {
+		t.Fatalf("text-only promises cleared a structured tool failure: %+v", result)
+	}
+}
+
 func TestEngineRetainsFailureUntilPostRecoveryCompletionCheck(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&provider.SliceStream{Events: []provider.StreamEvent{
@@ -1553,6 +1583,28 @@ func TestMidTurnCompactionFailsClosedWhenNoSafeCandidateFits(t *testing.T) {
 	}
 	if !reflect.DeepEqual(history, before) {
 		t.Fatalf("failed compaction changed history: %+v", history)
+	}
+}
+
+func TestTerminalCompletionFailsClosedWhenFinalMessageExceedsContextBudget(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		textStream(strings.Repeat("final ", 200)),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.MaxContextBytes = 128
+	engine.options.SummaryMaxBytes = 64
+	var completed bool
+
+	result, err := engine.Run(t.Context(), "short request", func(event Event) error {
+		completed = completed || event.State == Completed
+		return nil
+	})
+
+	if err == nil || protocol.CodeOf(err) != protocol.CodeResourceExhausted {
+		t.Fatalf("result=%+v error=%v, want resource_exhausted", result, err)
+	}
+	if completed || result.State == Completed {
+		t.Fatalf("over-budget terminal was completed: result=%+v emitted=%v", result, completed)
 	}
 }
 

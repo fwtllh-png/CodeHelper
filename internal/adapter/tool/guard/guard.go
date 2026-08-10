@@ -512,7 +512,9 @@ func (g *Guard) ExecuteBound(
 			if len(writePaths) != 0 {
 				if err := g.finishFileWrites(
 					ctx, writePaths, expectedWrites, &result,
-					executeErr == nil, mediatedFileWriter(invocation.Tool),
+					executeErr == nil,
+					mediatedFileWriter(invocation.Tool),
+					mediatedFileWriter(invocation.Tool),
 				); err != nil && executeErr == nil {
 					executeErr = err
 				}
@@ -740,20 +742,36 @@ func (g *Guard) finishFileWrites(
 	paths []string,
 	expected map[string]workspacejournal.Fingerprint,
 	result *tool.Result,
-	succeeded, runDiagnostics bool,
+	succeeded, refreshRead, runDiagnostics bool,
 ) error {
 	var receipts []diagnostics.Receipt
 	var changes []FileChange
 	for _, path := range paths {
+		var after workspacejournal.Fingerprint
 		if g.journal != nil {
-			if err := g.journal.After(path); err != nil {
+			var err error
+			after, err = g.journal.AfterFingerprint(path)
+			if err != nil {
 				return fmt.Errorf("journal commit record %q: %w", path, err)
+			}
+		} else {
+			var err error
+			after, _, _, err = workspacejournal.Snapshot(path)
+			if err != nil {
+				return fmt.Errorf("snapshot write result %q: %w", path, err)
 			}
 		}
 		if !succeeded {
+			g.readTracker.Invalidate(path)
 			continue
 		}
-		g.readTracker.Invalidate(path)
+		if refreshRead {
+			if err := g.readTracker.RecordFingerprint(after); err != nil {
+				return fmt.Errorf("record post-write fingerprint %q: %w", path, err)
+			}
+		} else {
+			g.readTracker.Invalidate(path)
+		}
 		change, changed, err := g.observeFileChange(ctx, expected[path], path)
 		if err != nil {
 			return fmt.Errorf("observe write %q: %w", path, err)

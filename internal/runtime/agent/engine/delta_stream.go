@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	deltaFlushBytes  = 128
-	deltaFlushWindow = 16 * time.Millisecond
+	deltaFlushBytes  = 256
+	deltaFlushWindow = 32 * time.Millisecond
 )
 
 type streamResult struct {

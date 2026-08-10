@@ -439,6 +439,7 @@ func TestGuardKeepsSuccessfulWritesWhenPostEditDiagnosticsFail(t *testing.T) {
 		result,
 		true,
 		true,
+		true,
 	)
 
 	if err != nil || runner.calls.Load() != int32(len(paths)) {

@@ -16,6 +16,71 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
+func TestValidateTerminalReceipt(t *testing.T) {
+	validChanged := &protocol.ExecutionReceiptData{
+		Intent:  protocol.TurnIntentWorkspaceChange,
+		Outcome: protocol.TurnOutcomeChanged,
+		Changes: []protocol.ReceiptChange{{
+			Path: "calc.go", Kind: "modified",
+		}},
+		WorkspaceOutcome: &protocol.ReceiptWorkspaceOutcome{Status: "changed"},
+	}
+	tests := []struct {
+		name      string
+		receipt   *protocol.ExecutionReceiptData
+		completed bool
+		wantError bool
+	}{
+		{
+			name: "failed_without_outcome",
+			receipt: &protocol.ExecutionReceiptData{
+				Intent: protocol.TurnIntentWorkspaceChange,
+			},
+		},
+		{
+			name: "failed_with_success_outcome",
+			receipt: &protocol.ExecutionReceiptData{
+				Intent:  protocol.TurnIntentWorkspaceChange,
+				Outcome: protocol.TurnOutcomeChanged,
+			},
+			wantError: true,
+		},
+		{
+			name: "completed_answer",
+			receipt: &protocol.ExecutionReceiptData{
+				Intent:  protocol.TurnIntentAnswer,
+				Outcome: protocol.TurnOutcomeAnswered,
+			},
+			completed: true,
+		},
+		{
+			name:      "completed_workspace_change",
+			receipt:   validChanged,
+			completed: true,
+		},
+		{
+			name: "completed_workspace_change_without_changes",
+			receipt: &protocol.ExecutionReceiptData{
+				Intent:  protocol.TurnIntentWorkspaceChange,
+				Outcome: protocol.TurnOutcomeChanged,
+				WorkspaceOutcome: &protocol.ReceiptWorkspaceOutcome{
+					Status: "unchanged",
+				},
+			},
+			completed: true,
+			wantError: true,
+		},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := validateTerminalReceipt(testCase.receipt, testCase.completed)
+			if (err != nil) != testCase.wantError {
+				t.Fatalf("validateTerminalReceipt() error = %v", err)
+			}
+		})
+	}
+}
+
 // The receipt now carries real line statistics, so diff_line_stats must be gone
 // from the not-collected list, and a rollback that could not restore a path has
 // to surface as an unresolved issue rather than a count inside an error string.

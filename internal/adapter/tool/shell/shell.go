@@ -70,11 +70,13 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	name := "shell_run"
 	description := "Run a shell command in the workspace sandbox. " +
 		"cwd must be workspace-relative (or omitted). Host /tmp is blocked — use $TMPDIR. " +
-		"Do not cd outside the workspace. Use shell_read instead when the command only inspects data."
+		"Do not cd outside the workspace. Workspace files are read-only: use file_edit, " +
+		"file_write, or file_apply for persistent changes. Use shell_read when the command " +
+		"only inspects data."
 	aliases := []tool.Alias{{Name: "bash", Hidden: true}}
 	capability := tool.CapabilityProcess
-	access := tool.AccessWrite
-	accessMode := tool.AccessTree
+	access := tool.AccessRead
+	accessMode := tool.AccessRead
 	if t.readOnly {
 		name = "shell_read"
 		description = "Run a read-only, network-isolated shell command. " +
@@ -85,11 +87,10 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"and other shell metacharacters with single quotes."
 		aliases = nil
 		capability = tool.CapabilityRead
-		access = tool.AccessRead
-		accessMode = tool.AccessRead
 	} else if t.pty {
 		name = "terminal_run"
-		description = "Run a command in a pseudo-terminal inside the workspace sandbox"
+		description = "Run a command in a pseudo-terminal inside the workspace sandbox. " +
+			"Workspace files are read-only; persistent changes must use guarded file tools."
 		aliases = []tool.Alias{{Name: "run_terminal", Hidden: true}}
 	}
 	return tool.Descriptor{
@@ -161,7 +162,7 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		Command: command, Dir: directory, PTY: t.pty,
 		DirFile: directoryFile,
 		Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
-		WorkspaceReadOnly: t.readOnly,
+		WorkspaceReadOnly: true,
 		DenyNetwork:       t.readOnly,
 		OnOutput:          streamOutput(ctx),
 	})

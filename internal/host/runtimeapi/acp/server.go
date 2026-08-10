@@ -1719,11 +1719,11 @@ func (s *Server) turnRecover(request rpcRequest) {
 		s.replyApplicationError(request, err)
 		return
 	}
-	s.submitPrepared(request, binding, operationRequest{
-		kind:           protocol.OperationStartTurn,
-		payload:        &protocol.StartTurnPayload{Prompt: prepared.Prompt},
-		idempotencyKey: prepared.IdempotencyKey,
-	})
+	s.submitPrepared(
+		request,
+		binding,
+		preparedStartTurn(prepared.Prompt, prepared.Intent, prepared.IdempotencyKey),
+	)
 }
 
 func (s *Server) planGet(request rpcRequest) {
@@ -1795,11 +1795,26 @@ func (s *Server) planImplement(request rpcRequest) {
 		"promptCacheReset": prepared.ProfileUpdate.PromptCacheReset,
 		"resetReason":      prepared.ProfileUpdate.ResetReason,
 	})
-	s.submitPrepared(request, binding, operationRequest{
-		kind:           protocol.OperationStartTurn,
-		payload:        &protocol.StartTurnPayload{Prompt: prepared.Prompt},
-		idempotencyKey: prepared.IdempotencyKey,
-	})
+	s.submitPrepared(
+		request,
+		binding,
+		preparedStartTurn(prepared.Prompt, prepared.Intent, prepared.IdempotencyKey),
+	)
+}
+
+func preparedStartTurn(
+	prompt string,
+	intent protocol.TurnIntent,
+	idempotencyKey string,
+) operationRequest {
+	return operationRequest{
+		kind: protocol.OperationStartTurn,
+		payload: &protocol.StartTurnPayload{
+			Prompt: prompt,
+			Intent: intent,
+		},
+		idempotencyKey: idempotencyKey,
+	}
 }
 
 type sessionPromptParams struct {

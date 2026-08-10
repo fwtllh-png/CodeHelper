@@ -12,6 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -222,6 +223,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	gate := &verifyGate{engine: e}
 	completionRepairs := 0
 	unresolvedToolFailure := false
+	recoveryToolSucceeded := false
 	for step := 0; step < e.options.MaxSteps+gate.extraSteps()+completionRepairs; step++ {
 		e.appendSteering(&transaction)
 		if err := send(CallingModel, Event{}); err != nil {
@@ -275,7 +277,12 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 					})
 				}
 				transaction = append(transaction, toolFailureCompletionFeedback(e.turn))
-				unresolvedToolFailure = false
+				if recoveryToolSucceeded ||
+					intent == protocol.TurnIntentAnswer ||
+					intent == protocol.TurnIntentPlan {
+					unresolvedToolFailure = false
+					recoveryToolSucceeded = false
+				}
 				completionRepairs++
 				continue
 			}
@@ -328,6 +335,9 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 				Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
 			})
 			finalText += text
+			if err := e.runMidTurnCompactGate(&transaction, send); err != nil {
+				return result, err
+			}
 			outcome, err := gate.evaluate(ctx, send)
 			if err != nil {
 				return result, err
@@ -340,6 +350,18 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			case verifyActionFailed:
 				return result, protocol.NewProblem(
 					protocol.CodeConflict, outcome.receipt.problemMessage(), false, nil,
+				)
+			}
+			if intent == protocol.TurnIntentWorkspaceChange &&
+				(outcome.action != verifyActionPassed ||
+					outcome.receipt == nil ||
+					outcome.receipt.Status != verify.StatusPassed) {
+				message := "workspace_change completion requires a passed verification receipt"
+				if outcome.receipt != nil && outcome.receipt.Message != "" {
+					message += ": " + outcome.receipt.Message
+				}
+				return result, protocol.NewProblem(
+					protocol.CodeConflict, message, false, nil,
 				)
 			}
 			pricing := e.activeRoute().Model().Pricing
@@ -412,10 +434,17 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		if err != nil {
 			return result, err
 		}
+		batchFailed := false
 		for _, toolResult := range results {
 			if toolResult.IsError {
-				unresolvedToolFailure = true
+				batchFailed = true
 			}
+		}
+		if batchFailed {
+			unresolvedToolFailure = true
+			recoveryToolSucceeded = false
+		} else if unresolvedToolFailure {
+			recoveryToolSucceeded = true
 		}
 		result.Tools = append(result.Tools, calls...)
 		if err := send(FeedingResults, Event{}); err != nil {

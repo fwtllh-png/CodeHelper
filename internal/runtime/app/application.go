@@ -177,7 +177,6 @@ func (a *EngineAdapter) StartTurn(
 	}
 	receipt := newReceiptRecorder(payload.Prompt)
 	receipt.intent = intent
-	receipt.outcome = protocol.OutcomeForIntent(intent)
 	receipt.editorContext = append(
 		[]protocol.EditorContextReceipt(nil), editorContext...,
 	)
@@ -243,14 +242,15 @@ func (a *EngineAdapter) StartTurn(
 				EditorContext: editorContext,
 			})
 		case agentengine.Completed:
-			if err := a.emitReceipt(receipt, sink); err != nil {
+			receipt.outcome = protocol.OutcomeForIntent(intent)
+			if err := a.emitReceipt(receipt, sink, true); err != nil {
 				return err
 			}
 			return sink.Emit(&protocol.TurnCompletedData{
 				Text: event.Text, Outcome: protocol.OutcomeForIntent(intent),
 			})
 		case agentengine.Failed:
-			if err := a.emitReceipt(receipt, sink); err != nil {
+			if err := a.emitReceipt(receipt, sink, false); err != nil {
 				return err
 			}
 			return sink.Emit(&protocol.TurnFailedData{
@@ -419,7 +419,11 @@ func (a *EngineAdapter) StartTurn(
 
 // emitReceipt publishes the turn's execution receipt before the terminal event
 // so hosts observe one authoritative summary per turn.
-func (a *EngineAdapter) emitReceipt(recorder *receiptRecorder, sink EngineSink) error {
+func (a *EngineAdapter) emitReceipt(
+	recorder *receiptRecorder,
+	sink EngineSink,
+	completed bool,
+) error {
 	historyBytes, maxHistoryBytes := a.engine.ContextBudget()
 	data := recorder.build(turnObservations{
 		changes:    a.engine.TurnDiff(),
@@ -439,7 +443,52 @@ func (a *EngineAdapter) emitReceipt(recorder *receiptRecorder, sink EngineSink) 
 	if data == nil {
 		return nil
 	}
+	if err := validateTerminalReceipt(data, completed); err != nil {
+		return err
+	}
 	return sink.Emit(data)
+}
+
+func validateTerminalReceipt(
+	receipt *protocol.ExecutionReceiptData,
+	completed bool,
+) error {
+	if receipt == nil {
+		return nil
+	}
+	if !completed {
+		if receipt.Outcome != "" {
+			return fmt.Errorf(
+				"failed turn receipt carries success outcome %q",
+				receipt.Outcome,
+			)
+		}
+		return nil
+	}
+	want := protocol.OutcomeForIntent(receipt.Intent)
+	if receipt.Outcome != want {
+		return fmt.Errorf(
+			"completed turn receipt outcome %q does not match intent %q",
+			receipt.Outcome,
+			receipt.Intent,
+		)
+	}
+	if protocol.NormalizeTurnIntent(receipt.Intent) !=
+		protocol.TurnIntentWorkspaceChange {
+		return nil
+	}
+	if len(receipt.Changes) == 0 {
+		return errors.New(
+			"completed workspace_change receipt has no observed changes",
+		)
+	}
+	if receipt.WorkspaceOutcome == nil ||
+		receipt.WorkspaceOutcome.Status != "changed" {
+		return errors.New(
+			"completed workspace_change receipt has no changed workspace outcome",
+		)
+	}
+	return nil
 }
 
 func (a *EngineAdapter) CancelTurn(

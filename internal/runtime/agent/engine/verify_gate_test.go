@@ -15,6 +15,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -190,6 +191,35 @@ func TestVerifyGateRepairRoundUsesExtraStepBudget(t *testing.T) {
 	if feedback.Role != provider.RoleUser || !strings.Contains(feedback.Text(), "[verify]") ||
 		!strings.Contains(feedback.Text(), "still wrong") {
 		t.Fatalf("repair feedback = %+v", feedback)
+	}
+}
+
+func TestWorkspaceChangeFailsClosedWhenVerificationIsUnavailable(t *testing.T) {
+	verifier := &scriptedVerifier{receipts: []verify.Receipt{{
+		Scope: verify.ScopeDiagnostics, Status: verify.StatusUnavailable,
+		Message: "no post-edit diagnostics covered the changed files",
+	}}}
+	fixture := newVerifyGateFixture(t, VerifyOptions{
+		Mode: VerifyModeSoft, Scope: verify.ScopeDiagnostics,
+	}, verifier, 0, 3)
+
+	result, err := fixture.engine.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"turn-unavailable",
+		"edit",
+		protocol.TurnIntentWorkspaceChange,
+		nil,
+		func(Event) error { return nil },
+	)
+
+	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("result = %+v, error = %v, want conflict", result, err)
+	}
+	if !strings.Contains(err.Error(), "requires a passed verification receipt") {
+		t.Fatalf("error = %v", err)
+	}
+	if result.State == Completed {
+		t.Fatalf("unavailable verification completed the turn: %+v", result)
 	}
 }
 

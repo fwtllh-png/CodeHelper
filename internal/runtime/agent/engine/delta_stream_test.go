@@ -43,8 +43,8 @@ func TestDeltaCoalescingStreamPreservesTextAndReducesEvents(t *testing.T) {
 	if text.Len() != count || text.String() != strings.Repeat("x", count) {
 		t.Fatalf("coalesced text length = %d", text.Len())
 	}
-	if deltas >= count/5 {
-		t.Fatalf("delta events = %d, want at least 80%% reduction", deltas)
+	if deltas >= count/20 {
+		t.Fatalf("delta events = %d, want at least 95%% reduction", deltas)
 	}
 }
 
