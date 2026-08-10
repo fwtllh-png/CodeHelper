@@ -4069,6 +4069,26 @@
         "posture": {
           "type": "string"
         },
+        "provider_retry": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer"
+            },
+            "last_category": {
+              "type": "string"
+            },
+            "last_code": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "count",
+            "last_category",
+            "last_code"
+          ],
+          "additionalProperties": false
+        },
         "read_paths": {
           "type": "array",
           "items": {

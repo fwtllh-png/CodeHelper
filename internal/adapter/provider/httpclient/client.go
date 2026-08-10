@@ -821,6 +821,7 @@ type receiveResult struct {
 func (s *managedStream) Recv() (provider.StreamEvent, error) {
 	if s.idleTimeout <= 0 {
 		event, err := s.stream.Recv()
+		err = normalizeStreamError(err)
 		s.observe(event, err)
 		return event, err
 	}
@@ -833,8 +834,9 @@ func (s *managedStream) Recv() (provider.StreamEvent, error) {
 	defer timer.Stop()
 	select {
 	case value := <-result:
-		s.observe(value.event, value.err)
-		return value.event, value.err
+		err := normalizeStreamError(value.err)
+		s.observe(value.event, err)
+		return value.event, err
 	case <-timer.C:
 		err := protocol.NewProblem(
 			protocol.CodeUnavailable,
@@ -850,6 +852,21 @@ func (s *managedStream) Recv() (provider.StreamEvent, error) {
 		_ = s.Close()
 		return provider.StreamEvent{}, err
 	}
+}
+
+func normalizeStreamError(err error) error {
+	if err == nil || errors.Is(err, io.EOF) || protocol.CodeOf(err) != protocol.CodeInternal {
+		return err
+	}
+	if retryableTransportError(err) {
+		return protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"provider stream transport failed",
+			true,
+			err,
+		)
+	}
+	return err
 }
 
 func (s *managedStream) observe(event provider.StreamEvent, err error) {

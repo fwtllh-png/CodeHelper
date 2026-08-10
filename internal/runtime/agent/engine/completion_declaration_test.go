@@ -85,8 +85,6 @@ func TestWorkspaceChangeRequiresCompletionDeclaration(t *testing.T) {
 		toolCallStream("complete-1", completiontool.Name, `{
 			"status":"complete",
 			"summary":"implemented and verified",
-			"changed_paths":["a.go"],
-			"verification_call_ids":[],
 			"pending_actions":[]
 		}`),
 		textStream("Implemented and verified."),
@@ -142,8 +140,13 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.turnDiff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
 	engine.advanceMutationRevision()
+	engine.verificationEvidence = append(engine.verificationEvidence, verify.Evidence{
+		SchemaVersion: 1, Kind: "verify", Status: verify.StatusPassed,
+		CoveredPaths: []string{"a.go"}, CallID: "verify-1",
+		MutationRevision: engine.mutationRevision,
+	})
 	declaration := tool.CompletionDeclaration{
-		Status: "complete", Summary: "done", ChangedPaths: []string{"a.go"},
+		Status: "complete", Summary: "done",
 	}
 	sameBatch := tool.Result{Metadata: map[string]any{
 		tool.MetadataCompletionDeclaration: declaration,
@@ -164,6 +167,13 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	if !engine.hasCurrentCompletionDeclaration() {
 		t.Fatalf("exact declaration rejected: %#v", accepted.Metadata)
 	}
+	if got := engine.completionDeclaration.ChangedPaths; len(got) != 1 || got[0] != "a.go" {
+		t.Fatalf("runtime-bound changed paths = %v", got)
+	}
+	if got := engine.completionDeclaration.VerificationCallIDs; len(got) != 1 ||
+		got[0] != "verify-1" {
+		t.Fatalf("runtime-bound verification call IDs = %v", got)
+	}
 	engine.advanceMutationRevision()
 	if engine.hasCurrentCompletionDeclaration() {
 		t.Fatal("declaration survived a later mutation")
@@ -177,15 +187,11 @@ func TestVerificationRepairInvalidatesCompletionDeclaration(t *testing.T) {
 		toolCallStream("complete-1", completiontool.Name, `{
 			"status":"complete",
 			"summary":"mutation complete",
-			"changed_paths":["a.go"],
-			"verification_call_ids":[],
 			"pending_actions":[]
 		}`),
 		toolCallStream("complete-premature", completiontool.Name, `{
 			"status":"complete",
 			"summary":"declared without quality evidence",
-			"changed_paths":["a.go"],
-			"verification_call_ids":[],
 			"pending_actions":[]
 		}`),
 		textStream("I will finish now."),
@@ -193,8 +199,6 @@ func TestVerificationRepairInvalidatesCompletionDeclaration(t *testing.T) {
 		toolCallStream("complete-2", completiontool.Name, `{
 			"status":"complete",
 			"summary":"implemented and verified",
-			"changed_paths":["a.go"],
-			"verification_call_ids":["verify-1"],
 			"pending_actions":[]
 		}`),
 		textStream("Implemented and verified."),
@@ -220,6 +224,49 @@ func TestVerificationRepairInvalidatesCompletionDeclaration(t *testing.T) {
 		!requestContains(runtime.requests[4], "[completion_declaration_required]") ||
 		!requestContains(runtime.requests[6], "[completion_verified]") {
 		t.Fatalf("repair sequence = %+v", runtime.requests)
+	}
+}
+
+func TestCompletionRepairBudgetResetsAfterAcceptedQualityEvidence(t *testing.T) {
+	registry := declarationRegistry(t, true)
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("write-1", "write_fixture", `{}`),
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"mutation complete",
+			"pending_actions":[]
+		}`),
+		textStream("I still need to declare completion."),
+		textStream("I still need to declare completion."),
+		toolCallStream("verify-1", "quality_verify", `{"covered_paths":["a.go"]}`),
+		textStream("Quality evidence is now available."),
+		toolCallStream("complete-2", completiontool.Name, `{
+			"status":"complete",
+			"summary":"implemented and verified",
+			"pending_actions":[]
+		}`),
+		textStream("Implemented and verified."),
+	}}
+	engine := declarationEngine(t, runtime, registry, verify.Receipt{
+		Scope: verify.ScopeDiagnostics, Status: verify.StatusUnavailable,
+		Message: "no diagnostics covered a.go",
+	})
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-progress", "change a.go",
+		protocol.TurnIntentWorkspaceChange, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed || result.Verification == nil ||
+		result.Verification.Status != verify.StatusPassed {
+		t.Fatalf("result = %+v", result)
+	}
+	if engine.completionDeclaration == nil ||
+		len(engine.completionDeclaration.VerificationCallIDs) != 1 ||
+		engine.completionDeclaration.VerificationCallIDs[0] != "verify-1" {
+		t.Fatalf("completion = %#v", engine.completionDeclaration)
 	}
 }
 

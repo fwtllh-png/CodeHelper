@@ -23,7 +23,11 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const maxChatMergeFiles = 64
+const (
+	maxChatMergeFiles     = 512
+	chatMergeBatchFiles   = 64
+	maxChatMergeDiffBytes = 3 << 20
+)
 
 type chatWorkspace struct {
 	sessionID string
@@ -241,8 +245,13 @@ func (c *chatWorkspaces) ApplyMerge(
 		}
 	}
 	applyContext := workspacejournal.WithExpectedWrites(ctx, plan.expected)
-	if _, _, err := c.parent.Apply(applyContext, plan.changes, false); err != nil {
-		return tool.EditPlan{}, err
+	for index, batch := range plan.batches {
+		if _, _, err := c.parent.Apply(applyContext, batch, false); err != nil {
+			return tool.EditPlan{}, fmt.Errorf(
+				"apply Chat merge batch %d/%d: %w",
+				index+1, len(plan.batches), err,
+			)
+		}
 	}
 	for _, path := range plan.paths {
 		if err := c.journal.After(filepath.Join(c.repository, filepath.FromSlash(path))); err != nil {
@@ -265,7 +274,7 @@ func (c *chatWorkspaces) ApplyMerge(
 type preparedChatMerge struct {
 	workspace chatWorkspace
 	edit      tool.EditPlan
-	changes   []filetool.Change
+	batches   [][]filetool.Change
 	paths     []string
 	expected  map[string]workspacejournal.Fingerprint
 }
@@ -323,14 +332,53 @@ func (c *chatWorkspaces) mergePlan(
 		}
 	}
 	planContext := workspacejournal.WithExpectedWrites(ctx, expected)
-	edit, err := c.parent.PlanApply(planContext, changes)
-	if err != nil {
-		return preparedChatMerge{}, err
+	batches := chunkChatMergeChanges(changes)
+	edit := tool.EditPlan{}
+	digest := sha256.New()
+	var diff strings.Builder
+	for index, batch := range batches {
+		batchPlan, err := c.parent.PlanApply(planContext, batch)
+		if err != nil {
+			return preparedChatMerge{}, fmt.Errorf(
+				"plan Chat merge batch %d/%d: %w",
+				index+1, len(batches), err,
+			)
+		}
+		_, _ = digest.Write([]byte(batchPlan.ID))
+		if diff.Len() != 0 && !strings.HasSuffix(diff.String(), "\n") {
+			diff.WriteByte('\n')
+		}
+		diff.WriteString(batchPlan.Diff)
+		if diff.Len() > maxChatMergeDiffBytes {
+			return preparedChatMerge{}, fmt.Errorf(
+				"Chat merge diff exceeds %d bytes", maxChatMergeDiffBytes,
+			)
+		}
+		for _, file := range batchPlan.Files {
+			edit.Files = append(edit.Files, compactChatMergePlanFile(file))
+		}
 	}
+	edit.ID = hex.EncodeToString(digest.Sum(nil))
+	edit.Diff = diff.String()
 	return preparedChatMerge{
-		workspace: workspace, edit: edit, changes: changes,
+		workspace: workspace, edit: edit, batches: batches,
 		paths: paths, expected: expected,
 	}, nil
+}
+
+func chunkChatMergeChanges(changes []filetool.Change) [][]filetool.Change {
+	batches := make([][]filetool.Change, 0, (len(changes)+chatMergeBatchFiles-1)/chatMergeBatchFiles)
+	for start := 0; start < len(changes); start += chatMergeBatchFiles {
+		end := min(start+chatMergeBatchFiles, len(changes))
+		batches = append(batches, changes[start:end])
+	}
+	return batches
+}
+
+func compactChatMergePlanFile(file tool.EditPlanFile) tool.EditPlanFile {
+	file.Before = ""
+	file.After = ""
+	return file
 }
 
 func (c *chatWorkspaces) register(value chatWorkspace) error {

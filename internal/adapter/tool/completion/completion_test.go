@@ -17,8 +17,6 @@ func TestCompletionToolReturnsStructuredDeclaration(t *testing.T) {
 		Arguments: json.RawMessage(`{
 			"status":"complete",
 			"summary":"implemented and verified",
-			"changed_paths":["a.go"],
-			"verification_call_ids":["verify-1"],
 			"pending_actions":[]
 		}`),
 		Authorized: true,
@@ -28,8 +26,8 @@ func TestCompletionToolReturnsStructuredDeclaration(t *testing.T) {
 	}
 	declaration, ok := result.Metadata[tool.MetadataCompletionDeclaration].(tool.CompletionDeclaration)
 	if !ok || declaration.Status != "complete" ||
-		len(declaration.ChangedPaths) != 1 ||
-		declaration.ChangedPaths[0] != "a.go" {
+		len(declaration.ChangedPaths) != 0 ||
+		len(declaration.VerificationCallIDs) != 0 {
 		t.Fatalf("declaration = %#v", result.Metadata)
 	}
 }
@@ -44,8 +42,6 @@ func TestCompletionToolRejectsPendingActions(t *testing.T) {
 		Arguments: json.RawMessage(`{
 			"status":"complete",
 			"summary":"not actually complete",
-			"changed_paths":["a.go"],
-			"verification_call_ids":[],
 			"pending_actions":["run tests"]
 		}`),
 		Authorized: true,

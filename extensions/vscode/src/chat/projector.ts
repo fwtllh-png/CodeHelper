@@ -84,6 +84,11 @@ export interface PlanCard {
   readonly canAutopilot: boolean;
 }
 
+export interface WorkspaceChangeCard {
+  readonly changedCount: number;
+  readonly workspace?: string;
+}
+
 export type TurnTimelineItem =
   | {
       readonly id: string;
@@ -193,6 +198,7 @@ export interface ChatTurn {
   readonly contextSelections: readonly ContextSelectionCard[];
   readonly diagnostics: readonly string[];
   readonly verification?: string;
+  readonly workspaceChange?: WorkspaceChangeCard;
   readonly receipt?: string;
   readonly error?: string;
   readonly unknownEvents: readonly string[];
@@ -300,6 +306,7 @@ interface MutableTurn {
   diagnosticNotices: string[];
   workspace?: string;
   workspaceIsolation?: string;
+  workspaceChange?: WorkspaceChangeCard;
   verification?: string;
   receipt?: string;
   error?: string;
@@ -543,6 +550,12 @@ export class ChatProjector {
           }
           if (turn.workspaceIsolation === "worktree" &&
             event.data.workspace_outcome.status === "changed") {
+            turn.workspaceChange = {
+              changedCount: event.data.workspace_outcome.changed?.length ?? 0,
+              ...(turn.workspace === undefined
+                ? {}
+                : { workspace: turn.workspace }),
+            };
             turn.receipt += "; isolated changes pending Merge → Apply";
             if (turn.workspace !== undefined) {
               turn.receipt += `; worktree ${turn.workspace}`;
@@ -644,6 +657,9 @@ export class ChatProjector {
         ...summarizeDiagnostics(turn.diagnostics.values()),
       ],
       ...(turn.verification === undefined ? {} : { verification: turn.verification }),
+      ...(turn.workspaceChange === undefined
+        ? {}
+        : { workspaceChange: { ...turn.workspaceChange } }),
       ...(turn.receipt === undefined ? {} : { receipt: turn.receipt }),
       ...(turn.error === undefined ? {} : { error: turn.error }),
       unknownEvents: [...turn.unknownEvents],

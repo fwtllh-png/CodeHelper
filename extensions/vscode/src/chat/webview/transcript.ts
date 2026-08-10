@@ -31,6 +31,9 @@ export interface TranscriptActions {
     turnId: string,
     action: "retry" | "continue",
   ) => void;
+  readonly previewWorkspaceChanges: () => void;
+  readonly applyWorkspaceChanges: () => void;
+  readonly canApplyWorkspaceChanges: () => boolean;
 }
 
 export function renderTranscript(
@@ -139,6 +142,65 @@ function renderTurn(
         }
       }
       article.append(plan);
+    }
+    if (turn.workspaceChange !== undefined) {
+      const workspace = document.createElement("section");
+      workspace.className = "workspace-change-card";
+      const header = document.createElement("div");
+      header.className = "workspace-change-header";
+      const copy = document.createElement("div");
+      copy.className = "workspace-change-copy";
+      appendText(
+        copy,
+        "strong",
+        "workspace-change-title",
+        "Changes ready to review",
+      );
+      const fileLabel = turn.workspaceChange.changedCount === 1 ? "file" : "files";
+      appendText(
+        copy,
+        "span",
+        "workspace-change-summary",
+        `${String(turn.workspaceChange.changedCount)} ${fileLabel} · Isolated worktree`,
+      );
+      header.append(copy);
+      appendText(header, "span", "workspace-change-badge", "Pending apply");
+      workspace.append(header);
+
+      if (turn.workspaceChange.workspace !== undefined) {
+        const details = document.createElement("details");
+        details.className = "workspace-change-details";
+        appendText(details, "summary", "", "Worktree details");
+        appendText(
+          details,
+          "code",
+          "workspace-change-path",
+          turn.workspaceChange.workspace,
+        );
+        workspace.append(details);
+      }
+
+      const actionsRow = document.createElement("div");
+      actionsRow.className = "workspace-change-actions";
+      const preview = actionButton("Review Changes", () => {
+        actions.previewWorkspaceChanges();
+      });
+      preview.className = "workspace-change-action primary";
+      actionsRow.append(preview);
+      const apply = actionButton("Apply", () => {
+        actions.applyWorkspaceChanges();
+      });
+      apply.className = "workspace-change-action secondary";
+      const canApply = actions.canApplyWorkspaceChanges();
+      apply.disabled = !trusted || !canApply;
+      apply.title = !trusted
+        ? "Trust this workspace before applying changes"
+        : canApply
+          ? "Apply the current previewed merge plan"
+          : "Preview changes first to create a current merge plan";
+      actionsRow.append(apply);
+      workspace.append(actionsRow);
+      article.append(workspace);
     }
     if (turn.receipt !== undefined) {
       const receipt = document.createElement("details");

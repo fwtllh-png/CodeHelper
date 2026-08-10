@@ -119,6 +119,24 @@ func TestReceiptReportsLineStatsAndRollbackConflicts(t *testing.T) {
 	}
 }
 
+func TestReceiptReportsProviderRetrySummary(t *testing.T) {
+	recorder := newReceiptRecorder("retry provider")
+	recorder.observe(agentengine.Event{ProviderRetry: &agentengine.ProviderRetry{
+		Attempt: 1, Code: protocol.CodeUnavailable, Category: "connection_reset",
+	}})
+	recorder.observe(agentengine.Event{ProviderRetry: &agentengine.ProviderRetry{
+		Attempt: 2, Code: protocol.CodeUnavailable, Category: "unexpected_eof",
+	}})
+
+	receipt := recorder.build(turnObservations{})
+	if receipt.ProviderRetry == nil ||
+		receipt.ProviderRetry.Count != 2 ||
+		receipt.ProviderRetry.LastCode != protocol.CodeUnavailable ||
+		receipt.ProviderRetry.LastCategory != "unexpected_eof" {
+		t.Fatalf("provider retry = %#v", receipt.ProviderRetry)
+	}
+}
+
 func TestReceiptReportsReadPathsAndContextSections(t *testing.T) {
 	recorder := newReceiptRecorder("fix add")
 	recorder.editorContext = []protocol.EditorContextReceipt{{

@@ -712,7 +712,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             );
             const plan = decodeMergePlan(result);
             this.#mergePlans.set(key, plan);
-            await this.#editPreview.show(plan, root.rootId);
+            await this.#editPreview.showPatch(plan, root.rootId);
           } else {
             if (this.#mergePlans.get(key)?.id !== message.planId) {
               throw new Error("Chat merge plan is unknown or stale");

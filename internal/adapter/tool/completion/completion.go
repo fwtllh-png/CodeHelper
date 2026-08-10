@@ -36,23 +36,13 @@ func (*Tool) Descriptor() tool.Descriptor {
 				"summary": map[string]any{
 					"type": "string", "minLength": 1, "maxLength": 4096,
 				},
-				"changed_paths": map[string]any{
-					"type": "array", "minItems": 1, "maxItems": 512,
-					"uniqueItems": true,
-					"items":       map[string]any{"type": "string", "minLength": 1},
-				},
-				"verification_call_ids": map[string]any{
-					"type": "array", "maxItems": 128, "uniqueItems": true,
-					"items": map[string]any{"type": "string", "minLength": 1},
-				},
 				"pending_actions": map[string]any{
 					"type": "array", "maxItems": 0,
 					"items": map[string]any{"type": "string"},
 				},
 			},
 			"required": []string{
-				"status", "summary", "changed_paths",
-				"verification_call_ids", "pending_actions",
+				"status", "summary", "pending_actions",
 			},
 			"additionalProperties": false,
 		},

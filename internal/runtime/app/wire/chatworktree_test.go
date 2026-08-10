@@ -3,6 +3,7 @@ package wire
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -80,6 +82,65 @@ func TestChatWorkspacesProvisionMergeAndRestore(t *testing.T) {
 	}
 	if restored.Root != first.Root {
 		t.Fatalf("restored root = %q, want %q", restored.Root, first.Root)
+	}
+}
+
+func TestChatWorkspaceMergeBatchesLargeChangeSet(t *testing.T) {
+	workspace := newGitWorkspace(t)
+	session := openChatWorkspaceSession(t, workspace)
+	manager := session.SessionWorkspaces()
+	isolated, err := manager.Provision(
+		t.Context(), "session-chat-large", protocol.ThreadID("thread-chat-large"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const fileCount = 170
+	for index := range fileCount {
+		name := fmt.Sprintf("generated/file-%03d.txt", index)
+		path := filepath.Join(isolated.Root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(name+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	plan, err := manager.PlanMerge(
+		t.Context(), "session-chat-large", protocol.ThreadID("thread-chat-large"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Files) != fileCount || len(plan.ID) != 64 {
+		t.Fatalf("large merge plan: files=%d id=%q", len(plan.Files), plan.ID)
+	}
+	for _, file := range plan.Files {
+		if file.Before != "" || file.After != "" {
+			t.Fatalf("merge plan retained full file content for %s", file.Path)
+		}
+	}
+	if _, err := manager.ApplyMerge(
+		t.Context(), "session-chat-large",
+		protocol.ThreadID("thread-chat-large"), plan.ID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range []int{0, 63, 64, 127, 128, 169} {
+		name := fmt.Sprintf("generated/file-%03d.txt", index)
+		body, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(body) != name+"\n" {
+			t.Fatalf("%s body = %q", name, body)
+		}
+	}
+	if _, err := manager.PlanMerge(
+		t.Context(), "session-chat-large", protocol.ThreadID("thread-chat-large"),
+	); !errors.Is(err, app.ErrSessionWorkspaceClean) {
+		t.Fatalf("post-merge PlanMerge error = %v", err)
 	}
 }
 

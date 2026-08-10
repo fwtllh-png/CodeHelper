@@ -159,6 +159,15 @@ const transcriptActions: TranscriptActions = {
     applyRecoveryState(turnId);
     post({ type: "turn-recovery", turnId, action });
   },
+  previewWorkspaceChanges: () => {
+    post({ type: "merge-chat" });
+  },
+  applyWorkspaceChanges: () => {
+    if (messageMergePlanId !== undefined) {
+      post({ type: "merge-chat", planId: messageMergePlanId });
+    }
+  },
+  canApplyWorkspaceChanges: () => messageMergePlanId !== undefined,
 };
 
 function submitPrompt(): void {

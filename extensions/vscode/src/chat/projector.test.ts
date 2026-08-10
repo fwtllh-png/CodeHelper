@@ -559,6 +559,10 @@ void test("ChatProjector exposes verification attribution and workspace outcome"
   assert.match(turn?.receipt ?? "", /isolated changes pending Merge → Apply/u);
   assert.match(turn?.receipt ?? "", /chat-1/u);
   assert.ok(turn);
+  assert.deepEqual(turn.workspaceChange, {
+    changedCount: 1,
+    workspace: "/repo/.codehelper/chats/worktrees/chat-1",
+  });
   const selection = turn.contextSelections[0];
   assert.ok(selection);
   assert.equal(selection.kind, "test");

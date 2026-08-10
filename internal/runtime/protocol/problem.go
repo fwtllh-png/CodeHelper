@@ -129,6 +129,11 @@ func IsCode(err error, code ErrorCode) bool {
 	return CodeOf(err) == code
 }
 
+func IsRetryable(err error) bool {
+	var problem *Problem
+	return errors.As(err, &problem) && problem.Retryable
+}
+
 func WrapProblem(code ErrorCode, message string, retryable bool, cause error) error {
 	if cause == nil {
 		return nil

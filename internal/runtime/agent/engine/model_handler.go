@@ -8,6 +8,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
@@ -120,7 +121,13 @@ func (e *Engine) modelStep(
 				attempt = -1
 				continue
 			}
-			if attempt < e.options.MaxRetries && ctx.Err() == nil {
+			if attempt < providerRetryLimit(e.options.MaxRetries, err) &&
+				ctx.Err() == nil {
+				if sendErr := send(CallingModel, Event{
+					ProviderRetry: providerRetryEvent(attempt+1, err),
+				}); sendErr != nil {
+					return nil, nil, totalUsage, lastEstimate, sendErr
+				}
 				continue
 			}
 			return nil, nil, totalUsage, lastEstimate, err
@@ -246,10 +253,41 @@ func (e *Engine) modelStep(
 			return appendContinuedBlocks(continuedBlocks, blocks),
 				calls, totalUsage, lastEstimate, nil
 		}
-		if meaningful || attempt >= e.options.MaxRetries || ctx.Err() != nil {
+		if meaningful ||
+			attempt >= providerRetryLimit(e.options.MaxRetries, err) ||
+			ctx.Err() != nil {
 			return blocks, nil, totalUsage, lastEstimate, err
 		}
+		if sendErr := send(CallingModel, Event{
+			ProviderRetry: providerRetryEvent(attempt+1, err),
+		}); sendErr != nil {
+			return nil, nil, totalUsage, lastEstimate, sendErr
+		}
 	}
+}
+
+func providerRetryEvent(attempt int, err error) *ProviderRetry {
+	category := "provider_unavailable"
+	switch {
+	case errors.Is(err, syscall.ECONNRESET):
+		category = "connection_reset"
+	case errors.Is(err, syscall.EPIPE):
+		category = "broken_pipe"
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		category = "unexpected_eof"
+	case errors.Is(err, context.DeadlineExceeded):
+		category = "deadline_exceeded"
+	}
+	return &ProviderRetry{
+		Attempt: attempt, Code: protocol.CodeOf(err), Category: category,
+	}
+}
+
+func providerRetryLimit(configured int, err error) int {
+	if configured < 1 && protocol.IsRetryable(err) {
+		return 1
+	}
+	return configured
 }
 
 const maxOutputContinuations = 2
@@ -558,7 +596,12 @@ func consume(
 	for {
 		event, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			return blocks, nil, usage, meaningful, errors.New("model stream ended without stop")
+			return blocks, nil, usage, meaningful, protocol.NewProblem(
+				protocol.CodeUnavailable,
+				"model stream ended without a valid stop event",
+				true,
+				io.ErrUnexpectedEOF,
+			)
 		}
 		if err != nil {
 			return blocks, nil, usage, meaningful, err

@@ -231,7 +231,7 @@ void test("Changes review cannot bypass plan-bound Runtime approval", async () =
   assert.match(changes, /this\.#find\(\s*target\.rootId/u);
   assert.match(changes, /this\.#projector\(root\.rootId, sessionId\)/u);
   assert.match(chat, /current\.editPlan\?\.id/u);
-  assert.match(model, /const maxPlanFiles = 128/u);
+  assert.match(model, /const maxPlanFiles = 512/u);
   assert.match(model, /const maxPlanHistory = 16/u);
   assert.match(model, /const maxPlanTotalBytes = 8 << 20/u);
   assert.match(preview, /const maxPreviewDocuments = 256/u);

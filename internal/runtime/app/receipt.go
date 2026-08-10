@@ -28,6 +28,7 @@ type receiptRecorder struct {
 	workspace          string
 	workspaceIsolation string
 	completion         *protocol.CompletionDeclaration
+	providerRetry      *protocol.ReceiptProviderRetry
 	toolsSucceeded     []string
 	toolsFailed        []string
 	approvals          int
@@ -131,6 +132,14 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 			MutationRevision: declaration.MutationRevision,
 			CallID:           declaration.CallID, Accepted: true,
 		}
+	}
+	if event.ProviderRetry != nil {
+		if r.providerRetry == nil {
+			r.providerRetry = &protocol.ReceiptProviderRetry{}
+		}
+		r.providerRetry.Count++
+		r.providerRetry.LastCode = event.ProviderRetry.Code
+		r.providerRetry.LastCategory = event.ProviderRetry.Category
 	}
 	if event.Plan != nil && event.Plan.Body != "" {
 		r.plan = event.Plan.Body
@@ -272,6 +281,7 @@ func (r *receiptRecorder) build(observed turnObservations) *protocol.ExecutionRe
 		Sandbox: r.sandbox, Workspace: r.workspace,
 		WorkspaceIsolation: r.workspaceIsolation,
 		Completion:         r.completion,
+		ProviderRetry:      r.providerRetry,
 		Routes:             append([]protocol.ReceiptRoute(nil), r.routes...),
 		ToolsSucceeded:     r.toolsSucceeded, ToolsFailed: r.toolsFailed,
 		Skills:             append([]protocol.ReceiptSkill(nil), r.skills...),

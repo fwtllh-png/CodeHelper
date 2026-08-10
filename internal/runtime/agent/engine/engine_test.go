@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -840,6 +841,38 @@ func TestEngineRetriesOnlyBeforeMeaningfulStreamData(t *testing.T) {
 	}
 	if result.Text != "ok" || len(runtime.requests) != 2 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+}
+
+func TestEngineGuaranteesOneRetryForStructuredTransportFailure(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"provider stream transport failed",
+			true,
+			syscall.ECONNRESET,
+		)},
+		textStream("ok"),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	var retries []*ProviderRetry
+
+	result, err := engine.Run(t.Context(), "retry transport", func(event Event) error {
+		if event.ProviderRetry != nil {
+			retries = append(retries, event.ProviderRetry)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "ok" || len(runtime.requests) != 2 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	if len(retries) != 1 || retries[0].Attempt != 1 ||
+		retries[0].Code != protocol.CodeUnavailable ||
+		retries[0].Category != "connection_reset" {
+		t.Fatalf("provider retries = %+v", retries)
 	}
 }
 

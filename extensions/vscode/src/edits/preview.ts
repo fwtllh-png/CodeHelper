@@ -47,6 +47,23 @@ export class EditPlanPreview implements vscode.TextDocumentContentProvider, vsco
     }
   }
 
+  public async showPatch(
+    plan: EditPlanCard,
+    rootId?: string,
+  ): Promise<void> {
+    if (plan.diff === "") {
+      throw new Error("edit plan contains no diff");
+    }
+    const uri = vscode.Uri.from({
+      scheme: previewScheme,
+      authority: previewAuthority(plan.id, rootId),
+      path: "/chat-merge.diff",
+    });
+    this.#set(uri, plan.diff);
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, { preview: true });
+  }
+
   public async showFile(
     plan: EditPlanCard,
     fileIndex: number,

@@ -89,8 +89,12 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   `required_action=final_answer` 前完成；User-facing Final Answer 之后不得再启动
   新的 Verification Pass；
 - 后续任何 Mutation 或 Verification Repair 都会使 Completion Declaration 失效。
-  当 Gate 要求 Quality Evidence 时，新 Declaration 必须引用当前 Revision 的全部
-  Accepted Quality Call ID，否则必须拒绝；
+  模型只声明 `status`、`summary` 与空 `pending_actions`；Runtime 自动绑定精确
+  Changed Paths、当前 Revision 的 Accepted Quality Call ID、Mutation Revision
+  和 Completion Call ID。模型不得复制或构造这些 Runtime Facts；
+- Completion Repair Budget 只在 Mutation Revision 与 Accepted Quality Evidence
+  均未变化时累计重复尝试；新的 Mutation Revision 或新 Accepted Quality Evidence
+  必须重置 No-progress Counter；
 - Completed `workspace_change` 必须具有 `status=passed` 的 Verification Receipt；
   `off`、`skipped`、`unavailable` 和 Soft-reported 结果都必须 Fail Closed；
 - 成功的受保护 File Edit 必须使用 Journal After-image 刷新 ReadTracker，从而在
@@ -122,7 +126,15 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
 - `turn.started.workspace_isolation=worktree` 与 Terminal Receipt 必须保留隔离
   Chat Worktree Path。成功的隔离变更在执行 `Merge Chat Changes` 和
   `Apply to Workspace` 前保持 Pending；主 Worktree 的 `git status` 不能证明隔离
-  变更已丢失；
+  变更已丢失。VS Code 必须在 Final Answer 下方使用不可折叠的 Workspace Change
+  Card 显示该 Pending 状态；
+- Chat Merge 最多接受 512 个 Path。Runtime 必须用一个 Aggregate Plan ID 绑定完整
+  Change Set，使用一个有界 Unified Diff 进行 Preview，并在同一个 Journal
+  Transaction 中按每批最多 64 个文件 Apply；任一 Batch 失败必须回滚整个 Merge；
+- 可重试 Provider Transport Failure（包括结构化 Connection Reset）必须标记为
+  `unavailable`，不能标记为 `internal`。在没有任何 Meaningful Output 时，即使
+  Optional Retry 被禁用，Engine 也允许一次有界重试；已经输出有效内容或 Tool Call
+  Fragment 后不得 Replay；
 - Terminal Cleanup Failure 必须记录为结构化 `secondary_issues`，不能替换 Primary
   Turn Failure，也不能继续通过换行拼接到 Primary Message；
 - Reasoning-only `max_tokens` 最多执行一次 Low-reasoning、No-tool Finish Sample；

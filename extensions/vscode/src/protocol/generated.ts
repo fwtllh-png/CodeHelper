@@ -1110,6 +1110,11 @@ export type TurnReceiptData = {
   readonly "output_tokens": number;
   readonly "plan"?: string;
   readonly "posture"?: string;
+  readonly "provider_retry"?: {
+      readonly "count": number;
+      readonly "last_category": string;
+      readonly "last_code": string;
+    };
   readonly "read_paths"?: ReadonlyArray<string>;
   readonly "reasoning_tokens"?: number;
   readonly "routes"?: ReadonlyArray<{

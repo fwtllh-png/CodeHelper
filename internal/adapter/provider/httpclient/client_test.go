@@ -1099,6 +1099,15 @@ func TestClientDoesNotReplayAfterStreamStarts(t *testing.T) {
 	}
 }
 
+func TestNormalizeStreamErrorClassifiesConnectionReset(t *testing.T) {
+	err := normalizeStreamError(fmt.Errorf("read stream: %w", syscall.ECONNRESET))
+	if !protocol.IsCode(err, protocol.CodeUnavailable) ||
+		!protocol.IsRetryable(err) ||
+		!errors.Is(err, syscall.ECONNRESET) {
+		t.Fatalf("normalizeStreamError() = %#v", err)
+	}
+}
+
 func TestClientStreamIdleTimeoutAndNonIdempotentRetry(t *testing.T) {
 	t.Run("idle timeout", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

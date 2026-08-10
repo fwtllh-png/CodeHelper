@@ -56,10 +56,17 @@ type Event struct {
 	Plan                 *ProposedPlanUpdate         `json:"plan,omitempty"`
 	Verification         *VerificationReceipt        `json:"verification,omitempty"`
 	Completion           *tool.CompletionDeclaration `json:"completion,omitempty"`
+	ProviderRetry        *ProviderRetry              `json:"provider_retry,omitempty"`
 	ToolOutput           *ToolOutput                 `json:"tool_output,omitempty"`
 	CatalogChanged       *CatalogChanged             `json:"catalog_changed,omitempty"`
 	MCPHealthChanged     *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
 	ExtensionLifecycle   *ExtensionLifecycleChanged  `json:"extension_lifecycle,omitempty"`
+}
+
+type ProviderRetry struct {
+	Attempt  int                `json:"attempt"`
+	Code     protocol.ErrorCode `json:"code"`
+	Category string             `json:"category"`
 }
 
 // TerminalIssue is a cleanup/finalization failure that happened after the

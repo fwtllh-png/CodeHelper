@@ -97,8 +97,13 @@ During every Turn, check structured invariants:
   before the model receives `required_action=final_answer`; no new verification
   pass may begin after the user-facing Final Answer;
 - any later Mutation or Verification Repair invalidates the Completion
-  Declaration. When Quality Evidence is required, a new declaration is rejected
-  until it references every accepted current-revision Quality Call ID;
+  Declaration. The model declares only `status`, `summary`, and empty
+  `pending_actions`; Runtime binds exact Changed Paths, accepted
+  current-revision Quality Call IDs, Mutation Revision, and Completion Call ID.
+  Models never copy or invent these Runtime facts;
+- Completion repair budgets count repeated attempts only while Mutation Revision
+  and accepted Quality Evidence remain unchanged. A new Mutation Revision or
+  newly accepted Quality Evidence resets the no-progress counter;
 - a completed `workspace_change` has a Verification Receipt whose status is
   `passed`; `off`, `skipped`, `unavailable`, and soft-reported results fail
   closed;
@@ -135,7 +140,16 @@ During every Turn, check structured invariants:
 - `turn.started.workspace_isolation=worktree` and the terminal Receipt preserve
   the isolated Chat Worktree path. A changed isolated Turn remains pending
   `Merge Chat Changes` then `Apply to Workspace`; main-Workspace `git status`
-  is not evidence that the isolated change disappeared;
+  is not evidence that the isolated change disappeared. VS Code shows this
+  pending state in a non-collapsed Workspace Change card below the Final Answer;
+- Chat Merge accepts at most 512 paths. Runtime binds one aggregate Plan ID to
+  the complete change set, previews one bounded unified Diff, and applies the
+  plan in batches of at most 64 files inside one Journal transaction; any batch
+  failure rolls back the whole Merge;
+- retryable Provider transport failures, including a structured connection
+  reset, are `unavailable`, not `internal`. Before any meaningful output, the
+  Engine permits one bounded retry even when optional retries are disabled;
+  after meaningful output or a Tool Call fragment, it does not replay;
 - terminal cleanup failures are reported as structured `secondary_issues`; they
   do not replace or get newline-joined into the primary Turn failure;
 - a reasoning-only `max_tokens` stop uses at most one low-reasoning, no-tool

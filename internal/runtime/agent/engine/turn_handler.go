@@ -250,7 +250,9 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	}
 	completionRepairs := 0
 	workspaceChangeRepairs := 0
-	declarationRepairs := 0
+	declarationRepairSteps := 0
+	declarationNoProgress := 0
+	declarationProgressKey := e.completionProgressKey()
 	unresolvedToolFailure := false
 	recoveryToolSucceeded := false
 	var completionVerification *verifyOutcome
@@ -264,7 +266,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	}
 	for step := 0; step <
 		e.options.MaxSteps+gate.extraSteps()+completionRepairs+
-			workspaceChangeRepairs+declarationRepairs; step++ {
+			workspaceChangeRepairs+declarationRepairSteps; step++ {
 		if e.appendSteering(&transaction) && e.completionDeclaration != nil {
 			invalidateCompletion()
 		}
@@ -399,10 +401,15 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			if intent == protocol.TurnIntentWorkspaceChange &&
 				e.options.RequireCompletionDeclaration &&
 				!e.hasCurrentCompletionDeclaration() {
-				if declarationRepairs >= maxDeclarationRepairs {
+				progressKey := e.completionProgressKey()
+				if progressKey != declarationProgressKey {
+					declarationProgressKey = progressKey
+					declarationNoProgress = 0
+				}
+				if declarationNoProgress >= maxDeclarationRepairs {
 					return result, protocol.NewProblem(
 						protocol.CodeConflict,
-						"workspace_change completion requires an accepted turn_complete declaration",
+						"completion_repair_no_progress: workspace_change completion requires an accepted turn_complete declaration",
 						true,
 						nil,
 					)
@@ -414,9 +421,10 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 				}
 				transaction = append(
 					transaction,
-					completionDeclarationFeedback(changedPaths(e.TurnDiff()), e.turn),
+					completionDeclarationFeedback(e.turn),
 				)
-				declarationRepairs++
+				declarationNoProgress++
+				declarationRepairSteps++
 				continue
 			}
 			transaction = append(transaction, provider.Message{
@@ -661,16 +669,14 @@ func workspaceChangeRequiredFeedback(turn uint64) provider.Message {
 	return message
 }
 
-func completionDeclarationFeedback(paths []string, turn uint64) provider.Message {
-	encoded, _ := json.Marshal(paths)
+func completionDeclarationFeedback(turn uint64) provider.Message {
 	message := provider.TextMessage(
 		provider.RoleUser,
 		"[completion_declaration_required]\n"+
 			"required_action=turn_complete\n"+
 			"retry_original=false\n"+
-			"changed_paths="+string(encoded)+"\n"+
-			"Call turn_complete with status=complete, these exact changed_paths, "+
-			"pending_actions=[], and the accepted quality verification call IDs. "+
+			"Call turn_complete with status=complete and pending_actions=[]. "+
+			"The runtime binds changed paths and accepted verification evidence automatically. "+
 			"Do not describe future work; execute every pending action before declaring completion.",
 	)
 	message.Turn = turn

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -49,15 +50,9 @@ func (e *Engine) bindCompletionDeclaration(
 		reject("incomplete_declaration")
 		return
 	}
-	declared, ok := canonicalCompletionPaths(declaration.ChangedPaths)
-	if !ok {
-		reject("invalid_changed_path")
-		return
-	}
 	observed := changedPaths(e.TurnDiff())
-	if !slices.Equal(declared, observed) {
-		result.Metadata["completion_expected_paths"] = observed
-		reject("changed_paths_mismatch")
+	if len(observed) == 0 {
+		reject("no_observed_changes")
 		return
 	}
 	currentEvidence := make(map[string]struct{}, len(e.verificationEvidence))
@@ -70,19 +65,8 @@ func (e *Engine) bindCompletionDeclaration(
 		reject("quality_verification_required")
 		return
 	}
-	for _, callID := range declaration.VerificationCallIDs {
-		if _, exists := currentEvidence[callID]; !exists {
-			reject("unknown_verification_call_id")
-			return
-		}
-	}
-	if len(declaration.VerificationCallIDs) != len(currentEvidence) {
-		result.Metadata["completion_expected_verification_call_ids"] =
-			sortedMapKeys(currentEvidence)
-		reject("verification_call_ids_mismatch")
-		return
-	}
 	declaration.ChangedPaths = observed
+	declaration.VerificationCallIDs = sortedMapKeys(currentEvidence)
 	declaration.MutationRevision = e.mutationRevision
 	declaration.CallID = call.ID
 	e.completionDeclaration = &declaration
@@ -114,19 +98,18 @@ func decodeCompletionDeclaration(value any) (tool.CompletionDeclaration, bool) {
 	return declaration, true
 }
 
-func canonicalCompletionPaths(paths []string) ([]string, bool) {
-	canonical := make([]string, 0, len(paths))
-	for _, path := range paths {
-		value, ok := canonicalEvidencePath(path)
-		if !ok {
-			return nil, false
-		}
-		if !slices.Contains(canonical, value) {
-			canonical = append(canonical, value)
+func (e *Engine) completionProgressKey() string {
+	callIDs := make([]string, 0, len(e.verificationEvidence))
+	for _, evidence := range e.verificationEvidence {
+		if evidence.MutationRevision == e.mutationRevision && evidence.CallID != "" {
+			callIDs = append(callIDs, evidence.CallID)
 		}
 	}
-	slices.Sort(canonical)
-	return canonical, len(canonical) != 0
+	slices.Sort(callIDs)
+	return strings.Join(append(
+		[]string{strconv.FormatUint(e.mutationRevision, 10)},
+		callIDs...,
+	), "\x00")
 }
 
 func (e *Engine) hasCurrentCompletionDeclaration() bool {
