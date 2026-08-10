@@ -3469,7 +3469,13 @@
             "compactions": {
               "type": "integer"
             },
+            "estimated_tokens": {
+              "type": "integer"
+            },
             "history_bytes": {
+              "type": "integer"
+            },
+            "max_context_tokens": {
               "type": "integer"
             },
             "max_history_bytes": {

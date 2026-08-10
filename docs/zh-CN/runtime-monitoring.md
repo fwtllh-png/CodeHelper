@@ -46,6 +46,8 @@ Capture 文件存在且持续增长前，不开始被测操作。
 | Read-only Analysis | Search/Read/Command 行为 | 配对的 Tool Event |
 | Multi-Turn Follow-up | Context 保留与目标连续性 | 有序 Turn ID |
 | Write/Fix Request | 修改与验证路径 | Change Receipt 或显式失败 |
+| Retry/Continue | 保持 Source Turn Intent | 一致的 `turn.started.intent` |
+| Implement Plan | 启动受治理的 Workspace Change | `intent=workspace_change` |
 | Approval | 高风险操作治理 | Required/Resolved 配对 |
 | Recoverable Tool Failure | 错误反馈与续行 | Failed Result 与后续终态 |
 | Cancellation | 有界中断 | Canceled Terminal Event |
@@ -66,7 +68,31 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
 - Runtime Exit、stderr、Restart 与 Session Synchronization Error 被保留；
 - `turn.receipt` 与 Terminal Event、Workspace Outcome、Changed Files、
   Verification、Usage 和 Cost 一致；
+- Retry/Continue 保持 Source `turn.started.intent`；缺少 Intent 的旧 Event 使用
+  已定义的 `answer` 兼容缺省值；
+- Plan Implement/Autopilot 必须以 `intent=workspace_change` 启动；
+- Failed Turn Receipt 不携带成功 Outcome；Completed `workspace_change` Receipt
+  必须同时具有 `outcome=changed`、Observed Changes 和 Changed Workspace Outcome；
+- `shell_read` 与 `terminal_run` 不能修改 Workspace 文件；`shell_run` 默认仍为
+  Read-only，仅可通过 `write_paths` 声明最多 128 个已存在的精确文件，并且所有
+  声明写入必须经过 Approval、Journal、TurnDiff、Sandbox Enforcement 与 Receipt；
+- File Mutation Tool 的 Preview、Approval、Revalidation 与 Commit 必须整体串行；
+  `edit_plan_stale` 只能通过新的 Read、Plan 与 Approval 恢复；
+- Fatal Tool Batch 必须在 Turn Failed 前为每个已 Start Call 发出且仅发出一个
+  Structured Result；
+- 未解决的结构化 Tool Failure 不能由承诺未来动作的文本清除；`workspace_change`
+  与 `operation` Turn 必须有后续成功 Tool Batch 及恢复后的 Completion Check；
+- Completed `workspace_change` 必须具有 `status=passed` 的 Verification Receipt；
+  `off`、`skipped`、`unavailable` 和 Soft-reported 结果都必须 Fail Closed；
+- 成功的受保护 File Edit 必须使用 Journal After-image 刷新 ReadTracker，从而在
+  保留 Stale-write 检查的同时支持连续编辑；
+- Structured Recovery Evidence 必须遵守独立 Byte Budget，且只能作为审计上下文，
+  不能授权 Replay 历史副作用；
 - Compaction 必须减少 Retained Bytes，并把 History 降回配置预算；
+- Completed、Failed、Canceled 必须经过同一个 Byte/Token Context Gate；Receipt
+  使用 Terminal Event 冻结的 Budget Snapshot，不能读取可变的旧 History；
+- Reasoning-only `max_tokens` 最多执行一次 Low-reasoning、No-tool Finish Sample；
+  包含不完整 Tool Call Fragment 的输出继续使用普通有界 Continuation；
 - 同一 Workspace Snapshot 上的相同只读 Tool Call 不应被重复执行；
 - Fix Request 在没有 Change 和 Verification 时不能成功完成，除非结构化 Outcome
   明确解释原因。

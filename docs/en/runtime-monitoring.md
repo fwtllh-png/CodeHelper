@@ -48,6 +48,8 @@ Use the smallest set that exercises the changed behavior:
 | Read-only analysis | search/read/command behavior | paired Tool Events |
 | Multi-Turn follow-up | retained context and goal continuity | ordered Turn IDs |
 | Write or fix request | mutation and verification path | change Receipt or explicit failure |
+| Retry or Continue | preserve the source Turn Intent | matching `turn.started.intent` |
+| Implement Plan | start a governed Workspace change | `intent=workspace_change` |
 | Approval | guarded consequential action | required/resolved pair |
 | Recoverable Tool failure | error feedback and continuation | failed result plus later terminal Event |
 | Cancellation | bounded interruption | canceled terminal Event |
@@ -69,8 +71,39 @@ During every Turn, check structured invariants:
   preserved;
 - `turn.receipt` agrees with the terminal Event, Workspace outcome, changed
   files, verification, usage, and cost;
+- Retry and Continue preserve the source `turn.started.intent`; an old Event
+  without Intent uses the documented `answer` compatibility default;
+- Plan Implement and Autopilot start with `intent=workspace_change`;
+- a failed Turn Receipt has no success Outcome, while a completed
+  `workspace_change` Receipt has `outcome=changed`, observed Changes, and a
+  changed Workspace outcome;
+- `shell_read` and `terminal_run` cannot mutate Workspace files; `shell_run`
+  remains read-only unless `write_paths` declares at most 128 existing exact
+  files, and every declared write passes through Approval, Journal, TurnDiff,
+  Sandbox enforcement, and Receipt;
+- mutating File Tools are serialized across Preview, Approval, Revalidation,
+  and Commit; `edit_plan_stale` is recoverable only by a new read, Plan, and
+  Approval;
+- a fatal Tool batch emits exactly one structured Result for every started Call
+  before the Turn fails;
+- an unresolved structured Tool failure cannot be cleared by text that promises
+  future work; a later successful Tool batch and post-recovery completion check
+  are required for `workspace_change` and `operation` Turns;
+- a completed `workspace_change` has a Verification Receipt whose status is
+  `passed`; `off`, `skipped`, `unavailable`, and soft-reported results fail
+  closed;
+- a successful guarded File edit refreshes the ReadTracker from the Journal
+  After-image, allowing sequential edits while preserving stale-write checks;
+- structured Recovery evidence stays within its byte budget and is audit
+  context, not authorization to replay prior side effects;
 - a Compaction reduces retained bytes and returns history to its configured
   budget;
+- Completed, Failed, and Canceled terminal paths pass the same byte and token
+  Context gate, and Receipt uses the Budget snapshot frozen on the terminal
+  Event rather than reading mutable History;
+- a reasoning-only `max_tokens` stop uses at most one low-reasoning, no-tool
+  Finish sample; incomplete Tool Call fragments stay on the ordinary bounded
+  continuation route;
 - identical read-only Tool calls are not repeatedly executed against the same
   Workspace snapshot;
 - a fix request does not complete successfully with no change and no
