@@ -165,6 +165,10 @@ type ResourceTemplate struct {
 type ResourceResolver struct {
 	Templates  []ResourceTemplate `json:"templates,omitempty"`
 	PatchField string             `json:"patch_field,omitempty"`
+	// PathsField names an array of workspace file paths. Every entry becomes an
+	// exact file write resource; directory trees and globs are intentionally not
+	// supported by this resolver.
+	PathsField string `json:"paths_field,omitempty"`
 	// ChangesField names an array-of-objects argument whose every "path" and "to"
 	// entry is a file the call may write. Transaction tools carry their paths
 	// there instead of in a single top-level field.

@@ -961,6 +961,24 @@ func (g *Guard) rewriteAbsolutePathArgs(
 		values[template.Field] = rel
 		changed = true
 	}
+	if field := descriptor.ResourceResolver.PathsField; field != "" {
+		rawPaths, exists := values[field].([]any)
+		if exists {
+			for index, raw := range rawPaths {
+				path, ok := raw.(string)
+				if !ok || path == "" || !filepath.IsAbs(path) {
+					continue
+				}
+				rel, err := g.workspaceRelative(path)
+				if err != nil {
+					return nil, err
+				}
+				rawPaths[index] = rel
+				changed = true
+			}
+			values[field] = rawPaths
+		}
+	}
 	if !changed {
 		return arguments, nil
 	}
@@ -1435,6 +1453,21 @@ func (g *Guard) resolveResources(
 			})
 		}
 	}
+	if field := descriptor.ResourceResolver.PathsField; field != "" {
+		paths, err := exactWritePaths(values[field])
+		if err != nil {
+			return nil, err
+		}
+		for _, path := range paths {
+			canonical, err := g.canonicalPath(path, false)
+			if err != nil {
+				return nil, err
+			}
+			resources = append(resources, tool.Resource{
+				Kind: "file", Path: canonical, Access: tool.AccessWrite,
+			})
+		}
+	}
 	if field := descriptor.ResourceResolver.ChangesField; field != "" {
 		paths, err := changePaths(values[field])
 		if err != nil {
@@ -1458,6 +1491,25 @@ func (g *Guard) resolveResources(
 		}
 	}
 	return result, nil
+}
+
+func exactWritePaths(value any) ([]string, error) {
+	if value == nil {
+		return nil, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("exact write paths must be an array")
+	}
+	paths := make([]string, 0, len(items))
+	for _, item := range items {
+		path, ok := item.(string)
+		if !ok || strings.TrimSpace(path) == "" {
+			return nil, errors.New("exact write path must be a non-empty string")
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
 }
 
 func (g *Guard) canonicalPath(value string, glob bool) (string, error) {

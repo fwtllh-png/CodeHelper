@@ -191,6 +191,7 @@ func (o *operation) Descriptor() tool.Descriptor {
 		required = []string{"patch"}
 	}
 	capability, access := tool.CapabilityRead, tool.AccessRead
+	parallel := tool.ParallelConcurrent
 	repeat := tool.RepeatExecute
 	requirement := tool.SandboxNone
 	resolver := tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -208,17 +209,21 @@ func (o *operation) Descriptor() tool.Descriptor {
 		aliases = []tool.Alias{{Name: "list_files", Hidden: true}}
 	case "file_write":
 		capability, access = tool.CapabilityWrite, tool.AccessWrite
+		parallel = tool.ParallelSerial
 		resolver.Templates[0].Access = tool.AccessWrite
 		aliases = []tool.Alias{{Name: "write_file", Hidden: true}}
 	case "file_edit":
 		capability, access = tool.CapabilityWrite, tool.AccessWrite
+		parallel = tool.ParallelSerial
 		resolver.Templates[0].Access = tool.AccessWrite
 		aliases = []tool.Alias{{Name: "edit_file", Hidden: true}}
 	case "file_apply":
 		capability, access = tool.CapabilityWrite, tool.AccessTree
+		parallel = tool.ParallelSerial
 		resolver = tool.ResourceResolver{ChangesField: "changes"}
 	case "file_patch":
 		capability, access = tool.CapabilityWrite, tool.AccessTree
+		parallel = tool.ParallelSerial
 		requirement = tool.SandboxStrong
 		resolver = tool.ResourceResolver{PatchField: "patch"}
 		aliases = []tool.Alias{{Name: "apply_patch", Hidden: true}}
@@ -227,7 +232,7 @@ func (o *operation) Descriptor() tool.Descriptor {
 		Name: o.kind, Description: description, Visibility: tool.VisibleModel,
 		Capability: capability, AccessMode: access,
 		ResourceResolver: resolver, Aliases: aliases,
-		ParallelPolicy: tool.ParallelConcurrent, RepeatPolicy: repeat,
+		ParallelPolicy: parallel, RepeatPolicy: repeat,
 		SandboxRequirement: requirement, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object", "properties": properties, "required": required, "additionalProperties": false,

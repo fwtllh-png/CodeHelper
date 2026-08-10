@@ -32,7 +32,7 @@ func TestLandlockReadOnlyRequestSeparatesWorkspaceFromWritableTemp(t *testing.T)
 	_, requestPath, err := prepareLandlockInvocation(
 		policy, helper, requestRoot, "/bin/sh", []string{"-c", "true"},
 		[]string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
-		true,
+		true, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestLandlockHelperAppliesStrictPolicy(t *testing.T) {
 	helper, requestPath, err := prepareLandlockInvocation(
 		policy, helper, requestRoot, "/bin/sh", []string{"-c", script},
 		[]string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
-		false,
+		false, nil,
 	)
 	if err != nil {
 		t.Fatal(err)

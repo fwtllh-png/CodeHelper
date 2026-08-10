@@ -15,6 +15,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 func (e *Engine) Run(
@@ -155,15 +156,33 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		}
 	}
 	transaction := cloneMessages(e.history)
-	defer func() {
-		if result.State == Canceled &&
-			e.cancellationReason() == protocol.CancelReasonUserInterrupted {
-			e.history = retainCanceledHistory(transaction)
-		}
-	}()
 	terminal := newTerminalHandler(e.turn, emit)
 	send := terminal.send
 	defer terminal.finish(ctx, &result, &resultErr)
+	contextFinalized := false
+	defer func() {
+		if contextFinalized {
+			return
+		}
+		canceled := errors.Is(resultErr, context.Canceled) ||
+			errors.Is(ctx.Err(), context.Canceled)
+		var decision *policy.DecisionError
+		if errors.As(resultErr, &decision) &&
+			decision.Code == "approval_canceled" {
+			canceled = true
+		}
+		if canceled &&
+			e.cancellationReason() != protocol.CancelReasonUserInterrupted {
+			canceled = false
+		}
+		snapshot, err := e.finalizeTerminalContext(
+			transaction, false, canceled, send,
+		)
+		terminal.setContextBudget(snapshot)
+		if err != nil {
+			resultErr = errors.Join(resultErr, err)
+		}
+	}()
 	if e.journal != nil {
 		defer func() {
 			if journalRolledBack {
@@ -397,6 +416,15 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			if outcome.receipt != nil && outcome.receipt.Workspace == nil {
 				outcome.receipt.Workspace = &VerificationWorkspace{Status: "changed"}
 			}
+			previousHistory := cloneMessages(e.history)
+			snapshot, err := e.finalizeTerminalContext(
+				transaction, true, false, send,
+			)
+			if err != nil {
+				return result, err
+			}
+			contextFinalized = true
+			terminal.setContextBudget(snapshot)
 			if err := send(Completed, Event{
 				Text: finalText, Usage: &result.Usage, CostUSD: cost,
 				CostKnown:            costKnown,
@@ -404,9 +432,10 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 				InputTokenDelta:      result.InputTokenDelta,
 				Verification:         outcome.receipt,
 			}); err != nil {
+				e.history = previousHistory
+				contextFinalized = false
 				return result, err
 			}
-			e.history = cloneMessages(transaction)
 			e.usage.Add(result.Usage)
 			e.costUSD += cost
 			return result, nil

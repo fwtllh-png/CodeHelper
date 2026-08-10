@@ -412,6 +412,35 @@ func TestFilePatchRequiresStrongSandbox(t *testing.T) {
 	}
 }
 
+func TestFileMutationToolsAreSerial(t *testing.T) {
+	tools, err := NewWithBackend(t.TempDir(), fileTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := tools.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"file_write", "file_edit", "file_apply", "file_patch"} {
+		_, descriptor, _, err := registry.Resolve(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if descriptor.ParallelPolicy != tool.ParallelSerial {
+			t.Fatalf("%s parallel policy = %q, want serial", name, descriptor.ParallelPolicy)
+		}
+	}
+	for _, name := range []string{"file_read", "file_list"} {
+		_, descriptor, _, err := registry.Resolve(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if descriptor.ParallelPolicy != tool.ParallelConcurrent {
+			t.Fatalf("%s parallel policy = %q, want concurrent", name, descriptor.ParallelPolicy)
+		}
+	}
+}
+
 func TestFilePatchHonorsUnsandboxAttempt(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "sample.txt"), []byte("one\n"), 0o644); err != nil {

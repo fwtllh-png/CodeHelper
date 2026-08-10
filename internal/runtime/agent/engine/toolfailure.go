@@ -24,8 +24,12 @@ func recoverableToolFailure(err error) (string, bool) {
 	}
 	var decision *policy.DecisionError
 	if errors.As(err, &decision) {
-		if decision.Code == "approval_denied" {
+		switch decision.Code {
+		case "approval_denied":
 			return decision.Reason, true
+		case "edit_plan_stale":
+			return decision.Reason +
+				"; re-read the affected file and submit a new edit for approval", true
 		}
 		return "", false
 	}
@@ -63,6 +67,15 @@ func toolFailureRecoveryMetadata(err error) map[string]any {
 			"required_action": hint.RequiredAction,
 			"path":            hint.Path,
 			"retry_original":  hint.RetryOriginal,
+		}
+	}
+	var decision *policy.DecisionError
+	if errors.As(err, &decision) && decision.Code == "edit_plan_stale" {
+		return map[string]any{
+			"error_category":    "edit_plan_stale",
+			"required_action":   "file_read",
+			"retry_original":    false,
+			"approval_required": true,
 		}
 	}
 	var validation *workspacejournal.ReadValidationError

@@ -166,9 +166,11 @@ type ReceiptEvidence struct {
 // lost it to a budget that is about to bite again. A thread on its fourth
 // compaction is one whose early history now exists only as summary.
 type ReceiptContextBudget struct {
-	HistoryBytes    int `json:"history_bytes"`
-	MaxHistoryBytes int `json:"max_history_bytes"`
-	Compactions     int `json:"compactions"`
+	HistoryBytes     int    `json:"history_bytes"`
+	MaxHistoryBytes  int    `json:"max_history_bytes"`
+	EstimatedTokens  uint64 `json:"estimated_tokens,omitempty"`
+	MaxContextTokens uint64 `json:"max_context_tokens,omitempty"`
+	Compactions      int    `json:"compactions"`
 }
 
 // ReceiptLatency is where the turn spent its wall clock.

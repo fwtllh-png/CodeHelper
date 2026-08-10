@@ -50,8 +50,9 @@ type receiptRecorder struct {
 	// turn ended on.
 	verification *agentengine.VerificationReceipt
 	// turn is the turn the observed events belong to, which a caller needs to ask
-	// the engine what that turn read.
-	turn uint64
+	// the engine what that turn read. budget is frozen on the terminal event.
+	turn   uint64
+	budget *protocol.ReceiptContextBudget
 }
 
 // turnObservations is what the engine knows at the end of a turn that the event
@@ -114,6 +115,15 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 	}
 	if event.Turn > r.turn {
 		r.turn = event.Turn
+	}
+	if event.ContextBudget != nil {
+		r.budget = &protocol.ReceiptContextBudget{
+			HistoryBytes:     event.ContextBudget.HistoryBytes,
+			MaxHistoryBytes:  event.ContextBudget.MaxHistoryBytes,
+			EstimatedTokens:  event.ContextBudget.EstimatedTokens,
+			MaxContextTokens: event.ContextBudget.MaxContextTokens,
+			Compactions:      event.ContextBudget.Compactions,
+		}
 	}
 	// Any event that names a purpose contributes to the route summary, not just
 	// the turn's opening one: a tool that samples a model of its own reports it

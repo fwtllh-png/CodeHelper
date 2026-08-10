@@ -130,7 +130,7 @@ func TestSeatbeltCommandCanRestrictWorkspaceAndNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile := seatbeltProfileForCommand(policy, "/bin/sh", true, true)
+	profile := seatbeltProfileForCommand(policy, "/bin/sh", true, nil, true)
 	workspaceWrite := "(allow file-write* (subpath " + seatbeltQuote(policy.WorkspaceRoot) + "))"
 	if strings.Contains(profile, workspaceWrite) {
 		t.Fatalf("read-only profile permits workspace writes:\n%s", profile)
@@ -142,6 +142,40 @@ func TestSeatbeltCommandCanRestrictWorkspaceAndNetwork(t *testing.T) {
 	if !strings.Contains(profile, "(deny network*)") ||
 		strings.Contains(profile, "(allow network-outbound)") {
 		t.Fatalf("network-restricted profile permits network:\n%s", profile)
+	}
+}
+
+func TestSeatbeltCommandAllowsOnlyDeclaredWorkspaceFiles(t *testing.T) {
+	root := t.TempDir()
+	privateTemp := t.TempDir()
+	declared := filepath.Join(root, "declared.txt")
+	undeclared := filepath.Join(root, "undeclared.txt")
+	for _, path := range []string{declared, undeclared} {
+		if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: root, PrivateTemp: privateTemp,
+		SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := seatbeltProfileForCommand(
+		policy, "/bin/sh", true, []string{declared}, true,
+	)
+	declaredWrite := "(allow file-write* (literal " + seatbeltQuote(declared) + "))"
+	if !strings.Contains(profile, declaredWrite) {
+		t.Fatalf("declared file grant missing:\n%s", profile)
+	}
+	undeclaredWrite := "(allow file-write* (literal " + seatbeltQuote(undeclared) + "))"
+	if strings.Contains(profile, undeclaredWrite) {
+		t.Fatalf("undeclared file grant present:\n%s", profile)
+	}
+	workspaceWrite := "(allow file-write* (subpath " + seatbeltQuote(root) + "))"
+	if strings.Contains(profile, workspaceWrite) {
+		t.Fatalf("workspace-wide write grant present:\n%s", profile)
 	}
 }
 

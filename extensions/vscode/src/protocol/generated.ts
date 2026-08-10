@@ -966,7 +966,9 @@ export type TurnReceiptData = {
     }>;
   readonly "context_budget"?: {
       readonly "compactions": number;
+      readonly "estimated_tokens"?: number;
       readonly "history_bytes": number;
+      readonly "max_context_tokens"?: number;
       readonly "max_history_bytes": number;
     };
   readonly "context_sections"?: ReadonlyArray<{

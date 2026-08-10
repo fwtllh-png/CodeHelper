@@ -62,6 +62,8 @@ func (e *Engine) modelStep(
 	var continuationMessages []provider.Message
 	var continuedBlocks []provider.ContentBlock
 	continuations := 0
+	finishAttempted := false
+	finishMode := false
 	for attempt := 0; ; attempt++ {
 		messages := append(e.promptMessages(), cloneMessages(*history)...)
 		turnContext, turnReceipts := e.turnContextMessagesForCatalog(ctx, catalog, advertised)
@@ -88,10 +90,20 @@ func (e *Engine) modelStep(
 			"provider": call.provider, "model": call.model,
 			"sample": call.index, "attempt": attempt + 1,
 		})
+		maxOutputTokens := e.maxOutputFor(route)
+		requestTools := definitions
+		reasoningEffort := e.options.ReasoningEffort
+		nativeSearch := e.options.NativeSearch
+		if finishMode {
+			maxOutputTokens = min(maxOutputTokens, uint64(4096))
+			requestTools = nil
+			reasoningEffort = "low"
+			nativeSearch = false
+		}
 		stream, err := e.options.Provider.Stream(requestContext, provider.ModelRequest{
 			Route: route, Messages: messages,
-			MaxOutputTokens: e.maxOutputFor(route), Tools: definitions,
-			ReasoningEffort: e.options.ReasoningEffort, NativeSearch: e.options.NativeSearch,
+			MaxOutputTokens: maxOutputTokens, Tools: requestTools,
+			ReasoningEffort: reasoningEffort, NativeSearch: nativeSearch,
 			Idempotent:     true,
 			PromptCacheKey: provider.StickyPromptCacheKey(e.options.PromptCacheKey, route),
 		})
@@ -136,6 +148,8 @@ func (e *Engine) modelStep(
 			continuationMessages = nil
 			continuedBlocks = nil
 			continuations = 0
+			finishAttempted = false
+			finishMode = false
 			attempt = -1
 			continue
 		}
@@ -145,6 +159,32 @@ func (e *Engine) modelStep(
 				*continued = true
 			}
 			continuedBlocks = appendContinuedBlocks(continuedBlocks, blocks)
+			if finishMode {
+				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
+					protocol.CodeResourceExhausted,
+					"model finish route remained incomplete after one bounded attempt",
+					true,
+					err,
+				)
+			}
+			if incomplete.Reason == provider.StopReasonMaxTokens &&
+				!incomplete.HasToolCallFragment &&
+				reasoningOnlyBlocks(continuedBlocks) &&
+				!finishAttempted {
+				if len(blocks) != 0 {
+					continuationMessages = append(continuationMessages, provider.Message{
+						Role: provider.RoleAssistant, Blocks: cloneBlocks(blocks), Turn: e.turn,
+					})
+				}
+				continuationMessages = append(
+					continuationMessages,
+					finishOutputFeedback(e.turn),
+				)
+				finishAttempted = true
+				finishMode = true
+				attempt = -1
+				continue
+			}
 			if continuations >= maxOutputContinuations {
 				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
 					protocol.CodeResourceExhausted,
@@ -171,6 +211,14 @@ func (e *Engine) modelStep(
 			continue
 		}
 		if err == nil {
+			if finishMode && len(calls) != 0 {
+				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
+					protocol.CodeConflict,
+					"model finish route attempted a new tool call",
+					false,
+					nil,
+				)
+			}
 			for index := range calls {
 				binding, known := catalog.Binding(calls[index].Name)
 				entry, _ := catalog.Lookup(calls[index].Name)
@@ -200,7 +248,8 @@ func (e *Engine) modelStep(
 const maxOutputContinuations = 2
 
 type incompleteModelOutputError struct {
-	Reason provider.StopReason
+	Reason              provider.StopReason
+	HasToolCallFragment bool
 }
 
 func (e *incompleteModelOutputError) Error() string {
@@ -220,6 +269,29 @@ tool call or user-facing answer.`,
 	))
 	message.Turn = turn
 	return message
+}
+
+func finishOutputFeedback(turn uint64) provider.Message {
+	message := provider.TextMessage(provider.RoleUser, `[finish_after_reasoning_limit]
+The reasoning phase reached its output limit. Do not call tools or start new
+analysis. Produce one concise user-facing final answer from the evidence already
+present. If the requested operation is not complete, report that blocked outcome
+and its structured failure instead of claiming success.`)
+	message.Turn = turn
+	return message
+}
+
+func reasoningOnlyBlocks(blocks []provider.ContentBlock) bool {
+	meaningful := false
+	for _, block := range blocks {
+		if block.Type != provider.ContentReasoning {
+			return false
+		}
+		if block.Text != "" || block.Signature != "" || len(block.ProviderData) != 0 {
+			meaningful = true
+		}
+	}
+	return meaningful
 }
 
 func appendContinuedBlocks(
@@ -554,7 +626,8 @@ func consume(
 			switch event.StopReason {
 			case provider.StopReasonMaxTokens, provider.StopReasonIncomplete:
 				return blocks, nil, usage, meaningful, &incompleteModelOutputError{
-					Reason: event.StopReason,
+					Reason:              event.StopReason,
+					HasToolCallFragment: len(fragments) != 0,
 				}
 			case provider.StopReasonContentFilter:
 				return blocks, nil, usage, meaningful, protocol.NewProblem(

@@ -45,6 +45,7 @@ type Event struct {
 	ErrorCode            protocol.ErrorCode         `json:"error_code,omitempty"`
 	Error                string                     `json:"error,omitempty"`
 	Compaction           *CompactionReceipt         `json:"compaction,omitempty"`
+	ContextBudget        *ContextBudgetSnapshot     `json:"context_budget,omitempty"`
 	Approval             *toolguard.ApprovalRequest `json:"approval,omitempty"`
 	Input                *interact.Request          `json:"input,omitempty"`
 	Diagnostics          []diagnostics.Receipt      `json:"diagnostics,omitempty"`
@@ -140,7 +141,19 @@ type CompactionReceipt struct {
 const (
 	CompactionPhasePreSampling = "pre_sampling"
 	CompactionPhaseMidTurn     = "mid_turn"
+	CompactionPhasePostTurn    = "post_turn"
 )
+
+// ContextBudgetSnapshot freezes the exact retained context visible when a
+// terminal event is emitted. Receipts consume this snapshot instead of racing
+// a later read of mutable engine history.
+type ContextBudgetSnapshot struct {
+	HistoryBytes     int    `json:"history_bytes"`
+	MaxHistoryBytes  int    `json:"max_history_bytes"`
+	EstimatedTokens  uint64 `json:"estimated_tokens,omitempty"`
+	MaxContextTokens uint64 `json:"max_context_tokens,omitempty"`
+	Compactions      int    `json:"compactions"`
+}
 
 type Budget struct {
 	MaxTokens  uint64

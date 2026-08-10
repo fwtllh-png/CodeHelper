@@ -202,10 +202,30 @@ func (e *Engine) runToolsWithReplay(
 	for index, owner := range duplicateOwners {
 		results[index] = replayedToolResult(results[owner], calls[owner].ID)
 	}
+	var batchErr error
 	for index, err := range errorsByIndex {
-		if err != nil {
-			return nil, fmt.Errorf("tool %s: %w", calls[index].Name, err)
+		if err == nil {
+			continue
 		}
+		if batchErr == nil {
+			batchErr = fmt.Errorf("tool %s: %w", calls[index].Name, err)
+		}
+		result := results[index]
+		result.IsError = true
+		if result.Content == "" {
+			result.Content = err.Error()
+		}
+		result.Metadata = maps.Clone(result.Metadata)
+		if result.Metadata == nil {
+			result.Metadata = make(map[string]any)
+		}
+		category := toolFailureCategory(err)
+		if category == "" {
+			category = "tool_execution_failed"
+		}
+		result.Metadata["error_category"] = category
+		result.Metadata["fatal"] = true
+		results[index] = result
 	}
 	batchMutated := false
 	for _, result := range results {
@@ -260,6 +280,9 @@ func (e *Engine) runToolsWithReplay(
 		}); err != nil {
 			return nil, err
 		}
+	}
+	if batchErr != nil {
+		return results, batchErr
 	}
 	return results, nil
 }

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,10 +44,12 @@ type Command struct {
 	Env                   []string
 	DirectoryFD           int
 	WorkspaceReadOnly     bool
+	WorkspaceWritePaths   []string
 	DenyNetwork           bool
 	PreparedPolicyID      string
 	PreparedStrength      Strength
 	PreparedReadOnly      bool
+	PreparedWritePaths    []string
 	PreparedNetworkDenied bool
 }
 
@@ -229,10 +232,17 @@ func (b *seatbeltBackend) Prepare(_ context.Context, command Command) (Command, 
 	if err != nil {
 		return Command{}, err
 	}
+	writePaths, err := validateExactWorkspaceWritePaths(
+		b.workspace, command.WorkspaceReadOnly, command.WorkspaceWritePaths,
+	)
+	if err != nil {
+		return Command{}, err
+	}
 	profile := seatbeltProfileForCommand(
 		b.policy,
 		executable,
 		command.WorkspaceReadOnly,
+		writePaths,
 		command.DenyNetwork,
 	)
 	sandboxExec, err := resolveExecutableLiteral("/usr/bin/sandbox-exec", command.Env)
@@ -246,8 +256,10 @@ func (b *seatbeltBackend) Prepare(_ context.Context, command Command) (Command, 
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
 		PreparedStrength:      b.capability.Strength,
 		WorkspaceReadOnly:     command.WorkspaceReadOnly,
+		WorkspaceWritePaths:   append([]string(nil), writePaths...),
 		DenyNetwork:           command.DenyNetwork,
 		PreparedReadOnly:      command.WorkspaceReadOnly,
+		PreparedWritePaths:    append([]string(nil), writePaths...),
 		PreparedNetworkDenied: command.DenyNetwork,
 	}, nil
 }
@@ -291,11 +303,18 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 	if err != nil {
 		return Command{}, err
 	}
+	writePaths, err := validateExactWorkspaceWritePaths(
+		b.workspace, command.WorkspaceReadOnly, command.WorkspaceWritePaths,
+	)
+	if err != nil {
+		return Command{}, err
+	}
 	var helper, requestPath string
 	if b.useLandlock {
 		helper, requestPath, err = prepareLandlockInvocation(
 			b.policy, b.helperPath, b.requestRoot,
 			executable, command.Args[1:], command.Env, command.WorkspaceReadOnly,
+			writePaths,
 		)
 		if err != nil {
 			return Command{}, err
@@ -323,6 +342,9 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 		b.policy.WorkspaceRoot,
 		command.WorkspaceReadOnly,
 	)
+	for _, path := range writePaths {
+		args = appendMount(args, created, path, path, false)
+	}
 	args = appendMount(args, created, b.policy.PrivateTemp, b.policy.PrivateTemp, false)
 	executableMountedLiteral := !coveredByRoots(
 		executable, append(b.policy.RuntimeReadRoots, b.policy.HostReadRoots...),
@@ -353,8 +375,10 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
 		PreparedStrength:      b.capability.Strength,
 		WorkspaceReadOnly:     command.WorkspaceReadOnly,
+		WorkspaceWritePaths:   append([]string(nil), writePaths...),
 		DenyNetwork:           command.DenyNetwork,
 		PreparedReadOnly:      command.WorkspaceReadOnly,
+		PreparedWritePaths:    append([]string(nil), writePaths...),
 		PreparedNetworkDenied: command.DenyNetwork,
 	}, nil
 }
@@ -376,13 +400,14 @@ func CloseBackend(backend Backend) error {
 }
 
 func seatbeltProfile(policy Policy, executable string) string {
-	return seatbeltProfileForCommand(policy, executable, false, false)
+	return seatbeltProfileForCommand(policy, executable, false, nil, false)
 }
 
 func seatbeltProfileForCommand(
 	policy Policy,
 	executable string,
 	workspaceReadOnly bool,
+	workspaceWritePaths []string,
 	denyNetwork bool,
 ) string {
 	var profile strings.Builder
@@ -405,6 +430,13 @@ func seatbeltProfileForCommand(
 			&profile,
 			"(allow file-write* (subpath %s))\n",
 			seatbeltQuote(policy.WorkspaceRoot),
+		)
+	}
+	for _, path := range workspaceWritePaths {
+		fmt.Fprintf(
+			&profile,
+			"(allow file-write* (literal %s))\n",
+			seatbeltQuote(path),
 		)
 	}
 	fmt.Fprintf(
@@ -464,6 +496,44 @@ func seatbeltProfileForCommand(
 		profile.WriteString("(deny network*)\n")
 	}
 	return profile.String()
+}
+
+func validateExactWorkspaceWritePaths(
+	workspace *Workspace,
+	workspaceReadOnly bool,
+	paths []string,
+) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	if !workspaceReadOnly {
+		return nil, errors.New("exact write paths require a read-only workspace base")
+	}
+	if len(paths) > 128 {
+		return nil, errors.New("exact write paths exceed the 128-file limit")
+	}
+	canonical := make([]string, 0, len(paths))
+	for _, path := range paths {
+		resolved, err := workspace.Resolve(path, MustExist)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Lstat(resolved)
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("exact write path %q is not a regular file", path)
+		}
+		canonical = append(canonical, resolved)
+	}
+	sort.Strings(canonical)
+	for index := 1; index < len(canonical); index++ {
+		if canonical[index] == canonical[index-1] {
+			return nil, fmt.Errorf("duplicate exact write path %q", canonical[index])
+		}
+	}
+	return canonical, nil
 }
 
 func writeSeatbeltAncestorMetadata(profile *strings.Builder, roots ...string) {

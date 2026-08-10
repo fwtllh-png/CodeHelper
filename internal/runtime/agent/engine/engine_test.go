@@ -293,6 +293,81 @@ func TestEngineContinuesIncompleteProviderStop(t *testing.T) {
 	}
 }
 
+func TestEngineUsesBoundedFinishRouteAfterReasoningOnlyMaxTokens(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventReasoningDelta, Text: "completed analysis"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		textStream("final answer"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
+	engine.options.ReasoningEffort = "max"
+
+	result, err := engine.Run(t.Context(), "review", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "final answer" ||
+		result.Reasoning != "completed analysis" ||
+		len(runtime.requests) != 2 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	if len(runtime.requests[0].Tools) == 0 {
+		t.Fatal("normal reasoning sample did not receive tools")
+	}
+	finish := runtime.requests[1]
+	if finish.ReasoningEffort != "low" || len(finish.Tools) != 0 ||
+		finish.MaxOutputTokens > 4096 {
+		t.Fatalf("finish request = %+v", finish)
+	}
+	var foundFeedback bool
+	for _, message := range finish.Messages {
+		if message.Role == provider.RoleUser &&
+			strings.Contains(message.Text(), "[finish_after_reasoning_limit]") {
+			foundFeedback = true
+		}
+	}
+	if !foundFeedback {
+		t.Fatalf("finish feedback missing from %+v", finish.Messages)
+	}
+}
+
+func TestEngineDoesNotUseFinishRouteForPartialToolCall(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&provider.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "partial", Name: "echo", Arguments: `{"text":`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		textStream("recovered without replaying the partial call"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
+	engine.options.ReasoningEffort = "max"
+
+	result, err := engine.Run(t.Context(), "review", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "recovered without replaying the partial call" ||
+		len(runtime.requests) != 2 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	continuation := runtime.requests[1]
+	if continuation.ReasoningEffort != "max" || len(continuation.Tools) == 0 {
+		t.Fatalf("partial tool continuation entered finish route: %+v", continuation)
+	}
+}
+
 func TestEngineFailsAfterBoundedIncompleteContinuations(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&provider.SliceStream{Events: []provider.StreamEvent{
@@ -551,7 +626,7 @@ func TestEngineRetainsFailureUntilPostRecoveryCompletionCheck(t *testing.T) {
 	}
 }
 
-func TestRunToolsDoesNotEmitPartialBatchResults(t *testing.T) {
+func TestRunToolsClosesEveryStartedCallBeforeFatalBatchFailure(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := registry.Register(&echoTool{}, nil); err != nil {
 		t.Fatal(err)
@@ -560,7 +635,7 @@ func TestRunToolsDoesNotEmitPartialBatchResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
-	var emittedResults int
+	var emitted []tool.Result
 
 	_, err := engine.runTools(
 		t.Context(),
@@ -572,7 +647,7 @@ func TestRunToolsDoesNotEmitPartialBatchResults(t *testing.T) {
 		make(map[string]tool.Result),
 		func(_ State, event Event) error {
 			if event.Result != nil {
-				emittedResults++
+				emitted = append(emitted, *event.Result)
 			}
 			return nil
 		},
@@ -581,8 +656,14 @@ func TestRunToolsDoesNotEmitPartialBatchResults(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "intentional failure") {
 		t.Fatalf("runTools() error = %v", err)
 	}
-	if emittedResults != 0 {
-		t.Fatalf("runTools() emitted %d partial results, want 0", emittedResults)
+	if len(emitted) != 2 {
+		t.Fatalf("runTools() emitted %d results, want 2", len(emitted))
+	}
+	if emitted[0].IsError || !emitted[1].IsError {
+		t.Fatalf("emitted results = %+v", emitted)
+	}
+	if category, _ := emitted[1].Metadata["error_category"].(string); category != "tool_execution_failed" {
+		t.Fatalf("fatal error_category = %q", category)
 	}
 }
 
@@ -1605,6 +1686,54 @@ func TestTerminalCompletionFailsClosedWhenFinalMessageExceedsContextBudget(t *te
 	}
 	if completed || result.State == Completed {
 		t.Fatalf("over-budget terminal was completed: result=%+v emitted=%v", result, completed)
+	}
+}
+
+func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&errorStream{err: errors.New("provider failed")},
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.MaxContextBytes = 500
+	engine.options.SummaryMaxBytes = 160
+	engine.history = []provider.Message{
+		messageWithText(provider.RoleUser, strings.Repeat("old request ", 10), 1),
+		messageWithText(provider.RoleAssistant, strings.Repeat("old answer ", 10), 1),
+		messageWithText(provider.RoleUser, strings.Repeat("recent request ", 10), 2),
+		messageWithText(provider.RoleAssistant, strings.Repeat("recent answer ", 10), 2),
+	}
+	engine.turn = 2
+	var terminalBudget *ContextBudgetSnapshot
+	var postTurnCompaction bool
+
+	_, err := engine.Run(t.Context(), "new request", func(event Event) error {
+		if event.Compaction != nil &&
+			event.Compaction.Phase == CompactionPhasePostTurn {
+			postTurnCompaction = true
+		}
+		if event.State == Failed {
+			terminalBudget = event.ContextBudget
+		}
+		return nil
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "provider failed") {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !postTurnCompaction {
+		t.Fatal("failed turn did not emit post-turn compaction")
+	}
+	if terminalBudget == nil ||
+		terminalBudget.HistoryBytes > terminalBudget.MaxHistoryBytes {
+		t.Fatalf("terminal context budget = %+v", terminalBudget)
+	}
+	historyBytes, maxHistoryBytes := engine.ContextBudget()
+	if historyBytes != terminalBudget.HistoryBytes ||
+		maxHistoryBytes != terminalBudget.MaxHistoryBytes {
+		t.Fatalf(
+			"durable history = %d/%d, terminal snapshot = %+v",
+			historyBytes, maxHistoryBytes, terminalBudget,
+		)
 	}
 }
 

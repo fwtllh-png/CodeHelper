@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -28,6 +29,7 @@ type Options struct {
 	Sandbox              sandbox.Backend
 	RequireStrongSandbox bool
 	WorkspaceReadOnly    bool
+	WorkspaceWritePaths  []string
 	DenyNetwork          bool
 	// OnOutput, when set, is called with each chunk as the process produces it,
 	// before the command finishes. A caller that only wants the final Result can
@@ -122,8 +124,9 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 	}
 	commandSpec := sandbox.Command{
 		Dir: options.Dir, Env: environment,
-		WorkspaceReadOnly: options.WorkspaceReadOnly,
-		DenyNetwork:       options.DenyNetwork,
+		WorkspaceReadOnly:   options.WorkspaceReadOnly,
+		WorkspaceWritePaths: append([]string(nil), options.WorkspaceWritePaths...),
+		DenyNetwork:         options.DenyNetwork,
 	}
 	if options.DirFile != nil {
 		commandSpec.DirectoryFD = 3
@@ -155,7 +158,11 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 			return nil, errors.New("strong sandbox execution requires a pinned workspace cwd descriptor")
 		}
 	}
-	if (options.WorkspaceReadOnly || options.DenyNetwork) && options.Sandbox == nil {
+	if len(options.WorkspaceWritePaths) != 0 && !options.WorkspaceReadOnly {
+		return nil, errors.New("workspace write paths require a read-only workspace base")
+	}
+	if (options.WorkspaceReadOnly || options.DenyNetwork ||
+		len(options.WorkspaceWritePaths) != 0) && options.Sandbox == nil {
 		return nil, errors.New("process restrictions require a sandbox backend")
 	}
 	if options.Sandbox != nil {
@@ -183,6 +190,9 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		}
 		if options.WorkspaceReadOnly && !commandSpec.PreparedReadOnly {
 			return nil, errors.New("sandbox backend did not enforce a read-only workspace")
+		}
+		if !slices.Equal(options.WorkspaceWritePaths, commandSpec.PreparedWritePaths) {
+			return nil, errors.New("sandbox backend did not enforce exact workspace write paths")
 		}
 		if options.DenyNetwork && !commandSpec.PreparedNetworkDenied {
 			return nil, errors.New("sandbox backend did not enforce network isolation")

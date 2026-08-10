@@ -230,6 +230,10 @@ func TestRunFailsClosedWithoutStrongSandbox(t *testing.T) {
 
 func TestRunPropagatesAndVerifiesReadOnlyRestrictions(t *testing.T) {
 	root := t.TempDir()
+	writePath := filepath.Join(root, "generated.txt")
+	if err := os.WriteFile(writePath, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	directoryFile, err := os.Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -240,17 +244,44 @@ func TestRunPropagatesAndVerifiesReadOnlyRestrictions(t *testing.T) {
 		Command: "printf ok", Dir: root, DirFile: directoryFile,
 		Sandbox: backend, RequireStrongSandbox: true,
 		WorkspaceReadOnly: true, DenyNetwork: true,
+		WorkspaceWritePaths: []string{writePath},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Stdout != "ok" || !backend.command.WorkspaceReadOnly ||
-		!backend.command.DenyNetwork {
+		!backend.command.DenyNetwork ||
+		!slices.Equal(backend.command.WorkspaceWritePaths, []string{writePath}) {
 		t.Fatalf("result=%+v command=%+v", result, backend.command)
 	}
 	if environmentValue(backend.command.Env, "GIT_OPTIONAL_LOCKS") != "0" ||
 		environmentValue(backend.command.Env, "PYTHONDONTWRITEBYTECODE") != "1" {
 		t.Fatalf("read-only environment = %v", backend.command.Env)
+	}
+}
+
+func TestRunRejectsBackendThatDoesNotAcknowledgeExactWritePaths(t *testing.T) {
+	root := t.TempDir()
+	writePath := filepath.Join(root, "generated.txt")
+	if err := os.WriteFile(writePath, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	_, err = Run(t.Context(), Options{
+		Command: "true", Dir: root, DirFile: directoryFile,
+		Sandbox: &recordingBackend{
+			root: root, ignoreWritePaths: true,
+		},
+		RequireStrongSandbox: true,
+		WorkspaceReadOnly:    true,
+		WorkspaceWritePaths:  []string{writePath},
+	})
+	if err == nil || !strings.Contains(err.Error(), "exact workspace write paths") {
+		t.Fatalf("Run() error = %v", err)
 	}
 }
 
@@ -276,6 +307,7 @@ type recordingBackend struct {
 	command            sandbox.Command
 	root               string
 	ignoreRestrictions bool
+	ignoreWritePaths   bool
 }
 
 func (b *recordingBackend) Capability() sandbox.Capability {
@@ -292,6 +324,11 @@ func (b *recordingBackend) Prepare(_ context.Context, command sandbox.Command) (
 	if !b.ignoreRestrictions {
 		command.PreparedReadOnly = command.WorkspaceReadOnly
 		command.PreparedNetworkDenied = command.DenyNetwork
+		if !b.ignoreWritePaths {
+			command.PreparedWritePaths = append(
+				[]string(nil), command.WorkspaceWritePaths...,
+			)
+		}
 	}
 	return command, nil
 }

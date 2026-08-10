@@ -9,7 +9,11 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -139,6 +143,115 @@ func TestShellReadDescriptorIsReadOnly(t *testing.T) {
 	for _, resource := range descriptor.ResourceResolver.Templates {
 		if resource.Access != tool.AccessRead {
 			t.Fatalf("resource = %+v", resource)
+		}
+	}
+}
+
+func TestShellRunExactWriteScopeIsGuardedAndObserved(t *testing.T) {
+	root := t.TempDir()
+	declared := filepath.Join(root, "declared.txt")
+	undeclared := filepath.Join(root, "undeclared.txt")
+	for path, content := range map[string]string{
+		declared: "before\n", undeclared: "protected\n",
+	} {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	backend, err := sandbox.NewPlatformBackend(sandbox.Options{WorkspaceRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
+	if err := sandbox.RequireStrong(backend); err != nil {
+		t.Skipf("strong sandbox unavailable: %v", err)
+	}
+	manager := process.NewSessionManager(4096)
+	t.Cleanup(manager.CloseAll)
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithManagerAndBackend(registry, root, manager, backend); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := workspacejournal.New(
+		root, contentstore.NewMemory(contentstore.Options{}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Begin("turn-shell-write"); err != nil {
+		t.Fatal(err)
+	}
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct, policy.PermissionBypass,
+		),
+		Workspace: root, Journal: journal,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := guarded.Execute(
+		t.Context(), "call-declared", "shell_run",
+		json.RawMessage(
+			`{"command":"printf 'after\n' > declared.txt","write_paths":["declared.txt"]}`,
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("declared write failed: %+v", result)
+	}
+	changes, _ := result.Metadata[toolguard.MetadataChanges].([]toolguard.FileChange)
+	if len(changes) != 1 ||
+		changes[0].Path != "declared.txt" ||
+		changes[0].Kind != toolguard.FileModified {
+		t.Fatalf("observed changes = %+v", changes)
+	}
+	data, err := os.ReadFile(declared)
+	if err != nil || string(data) != "after\n" {
+		t.Fatalf("declared content = %q, error = %v", data, err)
+	}
+
+	escaped, err := guarded.Execute(
+		t.Context(), "call-escaped", "shell_run",
+		json.RawMessage(
+			`{"command":"printf escaped > undeclared.txt","write_paths":["declared.txt"]}`,
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !escaped.IsError {
+		t.Fatalf("undeclared write unexpectedly succeeded: %+v", escaped)
+	}
+	data, err = os.ReadFile(undeclared)
+	if err != nil || string(data) != "protected\n" {
+		t.Fatalf("undeclared content = %q, error = %v", data, err)
+	}
+}
+
+func TestOnlyShellRunAdvertisesExactWritePaths(t *testing.T) {
+	run := (&Tool{}).Descriptor()
+	if run.ResourceResolver.PathsField != "write_paths" {
+		t.Fatalf("shell_run paths field = %q", run.ResourceResolver.PathsField)
+	}
+	properties, _ := run.InputSchema["properties"].(map[string]any)
+	if _, exists := properties["write_paths"]; !exists {
+		t.Fatal("shell_run does not advertise write_paths")
+	}
+	for _, descriptor := range []tool.Descriptor{
+		(&Tool{readOnly: true}).Descriptor(),
+		(&Tool{pty: true}).Descriptor(),
+	} {
+		if descriptor.ResourceResolver.PathsField != "" {
+			t.Fatalf("%s advertises write paths", descriptor.Name)
+		}
+		properties, _ := descriptor.InputSchema["properties"].(map[string]any)
+		if _, exists := properties["write_paths"]; exists {
+			t.Fatalf("%s schema accepts write_paths", descriptor.Name)
 		}
 	}
 }

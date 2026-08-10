@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -92,24 +94,41 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		description = "Run a command in a pseudo-terminal inside the workspace sandbox. " +
 			"Workspace files are read-only; persistent changes must use guarded file tools."
 		aliases = []tool.Alias{{Name: "run_terminal", Hidden: true}}
+	} else {
+		description = "Run a shell command in the workspace sandbox. " +
+			"cwd must be workspace-relative (or omitted). Host /tmp is blocked — use $TMPDIR. " +
+			"Workspace files are read-only unless write_paths declares existing exact files. " +
+			"Declared writes pass through approval, journal, and receipt tracking. " +
+			"Use file_edit, file_write, or file_apply for ordinary persistent changes."
+	}
+	properties := map[string]any{
+		"command":     map[string]any{"type": "string", "minLength": float64(1)},
+		"cwd":         map[string]any{"type": "string"},
+		"timeout_ms":  map[string]any{"type": "integer"},
+		"description": map[string]any{"type": "string"},
+	}
+	resolver := tool.ResourceResolver{Templates: []tool.ResourceTemplate{
+		{Kind: "repo", ID: ".", Access: access, Tree: true},
+		{Kind: "process", ID: "workspace", Access: access, Tree: true},
+	}}
+	if !t.readOnly && !t.pty {
+		properties["write_paths"] = map[string]any{
+			"type": "array", "items": map[string]any{
+				"type": "string", "minLength": float64(1),
+			},
+			"maxItems": float64(128), "uniqueItems": true,
+		}
+		resolver.PathsField = "write_paths"
 	}
 	return tool.Descriptor{
 		Name: name, Description: description, Visibility: tool.VisibleModel, Aliases: aliases,
 		Capability: capability, AccessMode: accessMode,
-		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{
-			{Kind: "repo", ID: ".", Access: access, Tree: true},
-			{Kind: "process", ID: "workspace", Access: access, Tree: true},
-		}},
+		ResourceResolver:   resolver,
 		ParallelPolicy:     tool.ParallelSerial,
 		SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"command":     map[string]any{"type": "string", "minLength": float64(1)},
-				"cwd":         map[string]any{"type": "string"},
-				"timeout_ms":  map[string]any{"type": "integer"},
-				"description": map[string]any{"type": "string"},
-			},
+			"type":                 "object",
+			"properties":           properties,
 			"required":             []string{"command"},
 			"additionalProperties": false,
 		},
@@ -118,10 +137,11 @@ func (t *Tool) Descriptor() tool.Descriptor {
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
 	var input struct {
-		Command     string `json:"command"`
-		CWD         string `json:"cwd"`
-		TimeoutMS   int64  `json:"timeout_ms"`
-		Description string `json:"description"`
+		Command     string   `json:"command"`
+		CWD         string   `json:"cwd"`
+		TimeoutMS   int64    `json:"timeout_ms"`
+		Description string   `json:"description"`
+		WritePaths  []string `json:"write_paths"`
 	}
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
@@ -147,6 +167,10 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		}, nil
 	}
 	defer directoryFile.Close()
+	writePaths, err := t.resolveWritePaths(input.WritePaths)
+	if err != nil {
+		return tool.Result{}, fmt.Errorf("resolve shell write paths: %w", err)
+	}
 	if input.TimeoutMS > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(input.TimeoutMS)*time.Millisecond)
@@ -162,9 +186,10 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		Command: command, Dir: directory, PTY: t.pty,
 		DirFile: directoryFile,
 		Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
-		WorkspaceReadOnly: true,
-		DenyNetwork:       t.readOnly,
-		OnOutput:          streamOutput(ctx),
+		WorkspaceReadOnly:   true,
+		WorkspaceWritePaths: writePaths,
+		DenyNetwork:         t.readOnly,
+		OnOutput:            streamOutput(ctx),
 	})
 	durationMS := time.Since(started).Milliseconds()
 	timedOut := errors.Is(err, context.DeadlineExceeded) ||
@@ -208,6 +233,9 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	if input.Description != "" {
 		metadata["description"] = input.Description
 	}
+	if len(input.WritePaths) != 0 {
+		metadata["write_paths"] = append([]string(nil), input.WritePaths...)
+	}
 	if timedOut {
 		if content != "" {
 			content += "\n"
@@ -222,6 +250,40 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		IsError:  result.ExitCode != 0,
 		Metadata: metadata,
 	}, nil
+}
+
+func (t *Tool) resolveWritePaths(paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	if t.readOnly || t.pty {
+		return nil, errors.New("this shell tool does not accept workspace write paths")
+	}
+	if len(paths) > 128 {
+		return nil, errors.New("shell write paths exceed the 128-file limit")
+	}
+	resolved := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		canonical, err := t.workspace.Resolve(path, sandbox.MustExist)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Lstat(canonical)
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("write path %q is not a regular file", path)
+		}
+		if _, exists := seen[canonical]; exists {
+			return nil, fmt.Errorf("duplicate shell write path %q", path)
+		}
+		seen[canonical] = struct{}{}
+		resolved = append(resolved, canonical)
+	}
+	sort.Strings(resolved)
+	return resolved, nil
 }
 
 // streamOutput bridges a running command's output to whoever is watching this

@@ -734,11 +734,20 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		route.Model().ID,
 		modelCapabilities.Reasoning,
 	)
+	maxOutputTokens, err := reasoningAwareMaxOutputTokens(
+		execution.MaxOutputTokens,
+		snapshot.MaxOutputTokensSource(),
+		route,
+		reasoningEffort,
+	)
+	if err != nil {
+		return nil, err
+	}
 	seedOptions := agentengine.Options{
 		Provider: client, Route: route, Routes: routes,
 		Tools: registry, PromptContext: prompt.Messages,
 		ModePromptBudget: budgets[promptcontext.PartitionMode],
-		MaxOutputTokens:  execution.MaxOutputTokens, Security: securityRuntime,
+		MaxOutputTokens:  maxOutputTokens, Security: securityRuntime,
 		ProfilePermissionCeiling: approvalPosture,
 		Workspace:                execution.Workspace, Guard: nil,
 		OnNetworkAllow: egressGate.Allow,
@@ -1227,4 +1236,34 @@ func maximumReasoningEffort(providerID, modelID string, reasoning bool) string {
 		return "max"
 	}
 	return "xhigh"
+}
+
+const minimumReasoningOutputTokens uint64 = 16_384
+
+func reasoningAwareMaxOutputTokens(
+	configured uint64,
+	source config.Source,
+	route model.ReadyRoute,
+	reasoningEffort string,
+) (uint64, error) {
+	if reasoningEffort == "" {
+		return configured, nil
+	}
+	minimum := minimumReasoningOutputTokens
+	if limit := route.Model().Limits.MaxOutputTokens; limit != 0 && minimum > limit {
+		minimum = limit
+	}
+	if configured >= minimum {
+		return configured, nil
+	}
+	if source == "" || source == config.SourceDefault {
+		return minimum, nil
+	}
+	return 0, fmt.Errorf(
+		"execution.max_output_tokens=%d from %s is below the %d-token minimum for reasoning_effort=%s",
+		configured,
+		source,
+		minimum,
+		reasoningEffort,
+	)
 }

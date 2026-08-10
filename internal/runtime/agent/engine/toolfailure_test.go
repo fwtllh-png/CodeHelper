@@ -83,6 +83,12 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 			err:             &policy.DecisionError{Code: "approval_denied", Reason: "user declined"},
 			wantRecoverable: true, wantContains: "user declined",
 		},
+		"edit plan stale": {
+			err: &policy.DecisionError{
+				Code: "edit_plan_stale", Reason: "workspace changed after edit preview",
+			},
+			wantRecoverable: true, wantContains: "re-read",
+		},
 		"permission denied": {
 			err: &policy.DecisionError{Code: "permission_denied", Reason: "write is denied"},
 		},
@@ -165,6 +171,19 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 				t.Fatalf("content = %q, want it to mention %q", content, test.wantContains)
 			}
 		})
+	}
+}
+
+func TestEditPlanStaleRecoveryMetadataRequiresNewPlan(t *testing.T) {
+	err := &policy.DecisionError{
+		Code: "edit_plan_stale", Reason: "workspace changed after edit preview",
+	}
+	metadata := toolFailureRecoveryMetadata(err)
+	if metadata["error_category"] != "edit_plan_stale" ||
+		metadata["required_action"] != "file_read" ||
+		metadata["retry_original"] != false ||
+		metadata["approval_required"] != true {
+		t.Fatalf("metadata = %#v", metadata)
 	}
 }
 

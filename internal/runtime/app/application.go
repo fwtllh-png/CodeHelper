@@ -424,7 +424,9 @@ func (a *EngineAdapter) emitReceipt(
 	sink EngineSink,
 	completed bool,
 ) error {
-	historyBytes, maxHistoryBytes := a.engine.ContextBudget()
+	if recorder == nil || recorder.budget == nil {
+		return errors.New("terminal event is missing a frozen context budget")
+	}
 	data := recorder.build(turnObservations{
 		changes:    a.engine.TurnDiff(),
 		readPaths:  a.engine.ReadPaths(recorder.turn),
@@ -432,13 +434,10 @@ func (a *EngineAdapter) emitReceipt(
 		selections: a.engine.ContextSelections(),
 		catalog:    a.engine.CatalogReceipt(),
 		evidence:   a.engine.EvidenceSnapshot(),
-		budget: &protocol.ReceiptContextBudget{
-			HistoryBytes: historyBytes, MaxHistoryBytes: maxHistoryBytes,
-			Compactions: a.engine.Compactions(),
-		},
-		conflicts: a.engine.RollbackConflicts(),
-		latency:   a.engine.TurnLatency(),
-		spend:     a.engine.BudgetSnapshot(),
+		budget:     recorder.budget,
+		conflicts:  a.engine.RollbackConflicts(),
+		latency:    a.engine.TurnLatency(),
+		spend:      a.engine.BudgetSnapshot(),
 	})
 	if data == nil {
 		return nil

@@ -68,6 +68,34 @@ func (e *Engine) runMidTurnCompactGate(
 	return send(Compacting, Event{Compaction: receipt})
 }
 
+// runTerminalCompactGate enforces the same byte and token limits for every
+// terminal path. Failed turns pass durable history while completed and canceled
+// turns pass a tool-pair-safe transaction candidate.
+func (e *Engine) runTerminalCompactGate(
+	history *[]provider.Message,
+	allowCurrentTurn bool,
+	send func(State, Event) error,
+) error {
+	needed := historyBytes(*history) > e.options.MaxContextBytes
+	receipt := e.compactHistoryForGate(history, false, allowCurrentTurn)
+	if receipt == nil && e.contextTokenLimitReached(*history) {
+		needed = true
+		receipt = e.compactHistoryForGate(history, true, allowCurrentTurn)
+	}
+	if receipt == nil {
+		if needed {
+			return compactionBudgetError(*history, e.options.MaxContextBytes)
+		}
+		return nil
+	}
+	if historyBytes(*history) > e.options.MaxContextBytes ||
+		e.contextTokenLimitReached(*history) {
+		return compactionBudgetError(*history, e.options.MaxContextBytes)
+	}
+	receipt.Phase = CompactionPhasePostTurn
+	return send(Compacting, Event{Compaction: receipt})
+}
+
 func (e *Engine) contextTokenLimitReached(history []provider.Message) bool {
 	route := e.activeRoute()
 	limit := route.Model().Limits.ContextTokens
@@ -80,6 +108,20 @@ func (e *Engine) contextTokenLimitReached(history []provider.Message) bool {
 		return false
 	}
 	return estimated+e.maxOutputFor(route) > limit
+}
+
+func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudgetSnapshot {
+	snapshot := ContextBudgetSnapshot{
+		HistoryBytes:     historyBytes(history),
+		MaxHistoryBytes:  e.options.MaxContextBytes,
+		Compactions:      e.compactions,
+		MaxContextTokens: e.activeRoute().Model().Limits.ContextTokens,
+	}
+	messages := append(e.promptMessages(), cloneMessages(history)...)
+	if estimated, err := e.options.TokenEstimator.Estimate(messages); err == nil {
+		snapshot.EstimatedTokens = estimated
+	}
+	return snapshot
 }
 
 // Compact applies the auto budget policy under the engine lock.
