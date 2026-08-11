@@ -6,7 +6,7 @@
       "id": "tui",
       "package": "./internal/host/tui",
       "hotspot_file": "internal/host/tui/app.go",
-      "baseline_lines": 3007,
+      "baseline_lines": 294,
       "responsibilities": {
         "model_orchestration": ["Model", "NewModel"],
         "runtime_adapter": ["RuntimeHost", "Run", "openRuntimeHost"],
@@ -72,7 +72,7 @@
       "id": "engine",
       "package": "./internal/runtime/agent/engine",
       "hotspot_file": "internal/runtime/agent/engine/engine.go",
-      "baseline_lines": 2659,
+      "baseline_lines": 640,
       "responsibilities": {
         "engine_core": ["Engine", "New", "OptionsSeed"],
         "turn_orchestration": ["Run", "RunForTurn"],
@@ -144,7 +144,7 @@
       "id": "config",
       "package": "./internal/config",
       "hotspot_file": "internal/config/config.go",
-      "baseline_lines": 1902,
+      "baseline_lines": 22,
       "responsibilities": {
         "schema": ["Config", "Execution", "Overrides"],
         "defaults": ["Defaults", "defaultDataDir"],
@@ -189,7 +189,7 @@
       "id": "protocol",
       "package": "./internal/runtime/protocol",
       "hotspot_file": "internal/runtime/protocol/message.go",
-      "baseline_lines": 2135,
+      "baseline_lines": 24,
       "responsibilities": {
         "operation_wire": ["Operation", "OperationPayload", "NewOperation"],
         "event_wire": ["Event", "EventData", "NewEvent", "IsTerminalEvent"],

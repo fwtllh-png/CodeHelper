@@ -202,11 +202,26 @@ Each lane writes a JSON result under `.tmp/test-lanes/` with a
 capability; local unsupported environments report `unavailable` without
 pretending that the capability passed.
 
-The Stage 0 hotspot freeze is defined in `docs/hotspot-baseline.json`.
-Responsibilities begin as package-symbol contracts so a mechanical split can
-move code. After a hotspot is split, `responsibility_files` binds each domain to
-its owner file. Missing or misplaced responsibilities, new internal
-dependencies, hotspot growth, and removed test assets fail the baseline.
+Architecture regression uses two complementary contracts:
+
+- `docs/hotspot-baseline.json` binds responsibilities to package symbols and
+  owner files. Missing or misplaced responsibilities, unreviewed internal
+  dependencies, hotspot growth, and removed test assets fail
+  `make hotspot-baseline`.
+- `docs/architecture-metrics-baseline.json` limits direct internal package
+  fanout, production lines, Options and Mutex fields, hotspot file/function
+  size, and duplicated Protocol Event switch sites. `make
+  architecture-ratchet` measures the repository and compares limits with
+  `ARCHITECTURE_BASE_REF` when that ref contains a baseline.
+
+Architecture limits are monotonic. Increasing a limit requires a non-empty
+per-metric `relaxations` reason; removing a target or metric requires an
+explicit `retirements` reason. Stale exceptions fail the Ratchet so a temporary
+allowance cannot silently become permanent. Discrete state metrics have no
+headroom; package lines, file lines, and function lines allow at most 100, 20,
+and 5 lines respectively. A larger gap between the measured value and its limit
+also fails, forcing the baseline downward after a split. The measured report is
+written to `.tmp/architecture/metrics.json`.
 
 Choose tests by risk:
 

@@ -16,7 +16,8 @@ LDFLAGS := -s -w \
 	test-release integration-gate release-gate race build cross-build smoke \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
-	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-freeze \
+	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
+	architecture-ratchet architecture-freeze \
 	book-navigation command-docs command-docs-check \
 	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
 	doc-governance-check doc-governance-test doc-impact \
@@ -35,6 +36,9 @@ LDFLAGS := -s -w \
 	bench upgrade-baseline catalog-bench package clean
 
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
+ARCHITECTURE_METRICS_BASELINE := docs/architecture-metrics-baseline.json
+ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
+ARCHITECTURE_BASE_REF ?= origin/main
 
 FUZZTIME ?= 30s
 RELEASE_STAGE ?= experimental
@@ -58,7 +62,7 @@ endif
 fmt:
 	$(GO) fmt ./...
 
-verify: markdownlint-check docs-check book-check brand-check vscode-check vscode-test
+verify: architecture-ratchet markdownlint-check docs-check book-check brand-check vscode-check vscode-test
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
 	$(GO) vet ./...
 	$(MAKE) test-hermetic
@@ -70,10 +74,26 @@ hotspot-baseline:
 	$(GO) test -count=1 ./scripts -run 'Test(RepositoryHotspotBaseline|CheckHotspot)'
 	$(GO) run ./scripts/check-hotspot-baseline.go -root .
 
+architecture-metrics:
+	$(GO) test -count=1 ./scripts/architecturemetrics
+	$(GO) run ./scripts/architecturemetrics -root . \
+		-baseline '$(ARCHITECTURE_METRICS_BASELINE)' \
+		-report '$(ARCHITECTURE_METRICS_REPORT)'
+
+architecture-ratchet: architecture-metrics
+	@if test -n '$(ARCHITECTURE_BASE_REF)' && \
+		git cat-file -e '$(ARCHITECTURE_BASE_REF):$(ARCHITECTURE_METRICS_BASELINE)' 2>/dev/null; then \
+		$(GO) run ./scripts/architecturemetrics -root . \
+			-baseline '$(ARCHITECTURE_METRICS_BASELINE)' \
+			-base-ref '$(ARCHITECTURE_BASE_REF)'; \
+	else \
+		printf '%s\n' 'architecture ratchet comparison skipped: base baseline is unavailable'; \
+	fi
+
 # Architecture behavior freeze. Package tests carry characterization, visual/wire
 # goldens, config provenance drift, state transitions, and schema drift. Race is
 # focused on the concurrent TUI and turn engine.
-architecture-freeze: hotspot-baseline
+architecture-freeze: hotspot-baseline architecture-ratchet
 	@mkdir -p '$(TEST_HOME)'
 	$(TEST_HOME_ENV) $(GO) test -count=1 \
 		./internal/host/tui \

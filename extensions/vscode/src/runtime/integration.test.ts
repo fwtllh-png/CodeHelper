@@ -139,10 +139,13 @@ void test(
     await mkdir(workspace);
     await mkdir(dataDirectory);
     const wrapper = await fixtureWrapper(root, integrationBinary, integrationFixture);
-    const runtime = await start(wrapper, workspace, dataDirectory, "suggest");
+    // This fixture exercises write, declaration repair, quality,
+    // final declaration, and final answer as five distinct samples.
+    const runtime = await start(wrapper, workspace, dataDirectory, "suggest", 5);
     const store = new BindingStore(new MemoryMemento());
     const projector = new ChatProjector();
     const approval = deferred<ApprovalCard>();
+    const qualityApproval = deferred<ApprovalCard>();
     const completed = deferred<true>();
     let session: ConnectedSession | undefined;
     try {
@@ -155,8 +158,10 @@ void test(
           traceIntegrationEvent(event);
           projector.apply(event);
           const pending = projector.pendingApprovals()[0];
-          if (pending !== undefined) {
+          if (pending?.tool === "file_apply") {
             approval.resolve(pending);
+          } else if (pending?.tool === "quality_verify") {
+            qualityApproval.resolve(pending);
           }
           if (projector.snapshot().turns.some((turn) => turn.status === "completed")) {
             completed.resolve(true);
@@ -188,6 +193,16 @@ void test(
         "once",
         request.expiresAt,
         request.editPlan.id,
+      );
+      const qualityRequest = await qualityApproval.promise;
+      assert.equal(qualityRequest.editPlan, undefined);
+      assert.deepEqual(qualityRequest.allowedScopes, ["once", "session", "always"]);
+      await commands.decideApproval(
+        qualityRequest.turnId,
+        qualityRequest.requestId,
+        "approve",
+        "once",
+        qualityRequest.expiresAt,
       );
       await completed.promise;
       await session.settled();
@@ -366,13 +381,14 @@ async function start(
   workspaceRoot: string,
   dataDirectory: string,
   posture: RuntimePosture = "never",
+  maxSteps = 2,
 ): Promise<RuntimeProcess> {
   return launchRuntime({
     binaryPath,
     workspaceRoot,
     dataDirectory,
     posture,
-    maxSteps: 2,
+    maxSteps,
     workspaceIdentity: createWorkspaceIdentity(
       pathToFileURL(workspaceRoot).toString(),
       workspaceRoot,

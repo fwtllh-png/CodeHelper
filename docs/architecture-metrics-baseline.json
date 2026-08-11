@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "requirement_id": "ARCH-RATCHET-001",
+  "targets": [
+    {
+      "id": "runtime_app_wire_package",
+      "kind": "package",
+      "path": "internal/runtime/app/wire",
+      "limits": {
+        "internal_fanout": 67,
+        "production_lines": 6881,
+        "options_fields": 80,
+        "mutex_fields": 5
+      }
+    },
+    {
+      "id": "agent_engine_package",
+      "kind": "package",
+      "path": "internal/runtime/agent/engine",
+      "limits": {
+        "internal_fanout": 22,
+        "production_lines": 8567,
+        "options_fields": 63,
+        "mutex_fields": 16
+      }
+    },
+    {
+      "id": "runtime_app_package",
+      "kind": "package",
+      "path": "internal/runtime/app",
+      "limits": {
+        "internal_fanout": 17,
+        "production_lines": 7635,
+        "options_fields": 18,
+        "mutex_fields": 5
+      }
+    },
+    {
+      "id": "tui_package",
+      "kind": "package",
+      "path": "internal/host/tui",
+      "limits": {
+        "internal_fanout": 24,
+        "production_lines": 7516,
+        "options_fields": 28,
+        "mutex_fields": 2
+      }
+    },
+    {
+      "id": "protocol_package",
+      "kind": "package",
+      "path": "internal/runtime/protocol",
+      "limits": {
+        "internal_fanout": 0,
+        "production_lines": 4684,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "acp_package",
+      "kind": "package",
+      "path": "internal/host/runtimeapi/acp",
+      "limits": {
+        "internal_fanout": 12,
+        "production_lines": 3028,
+        "options_fields": 10,
+        "mutex_fields": 2
+      }
+    },
+    {
+      "id": "runtime_file",
+      "kind": "file",
+      "path": "internal/runtime/app/runtime.go",
+      "limits": {
+        "lines": 2829,
+        "max_function_lines": 149
+      }
+    },
+    {
+      "id": "wire_runtime_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/runtime.go",
+      "limits": {
+        "lines": 1359,
+        "max_function_lines": 884
+      }
+    },
+    {
+      "id": "acp_server_file",
+      "kind": "file",
+      "path": "internal/host/runtimeapi/acp/server.go",
+      "limits": {
+        "lines": 2948,
+        "max_function_lines": 124
+      }
+    },
+    {
+      "id": "engine_file",
+      "kind": "file",
+      "path": "internal/runtime/agent/engine/engine.go",
+      "limits": {
+        "lines": 640,
+        "max_function_lines": 129
+      }
+    },
+    {
+      "id": "vscode_chat_view_file",
+      "kind": "file",
+      "path": "extensions/vscode/src/chat/view.ts",
+      "limits": {
+        "lines": 1868
+      }
+    },
+    {
+      "id": "vscode_runtime_controller_file",
+      "kind": "file",
+      "path": "extensions/vscode/src/runtime/controller.ts",
+      "limits": {
+        "lines": 1378
+      }
+    },
+    {
+      "id": "vscode_chat_projector_file",
+      "kind": "file",
+      "path": "extensions/vscode/src/chat/projector.ts",
+      "limits": {
+        "lines": 1026
+      }
+    },
+    {
+      "id": "repository_event_switches",
+      "kind": "repository",
+      "path": ".",
+      "limits": {
+        "event_switch_sites": 29
+      }
+    }
+  ]
+}
