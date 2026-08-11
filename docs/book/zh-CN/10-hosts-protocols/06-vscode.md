@@ -37,6 +37,8 @@ last_verified: null
 理解 Native Agent Chat 如何在集成 Session 管理、Composer、Editor Context、增量渲染、
 恢复工作流、Trust Gate 和发布证据的同时，保持 Runtime Authority。
 
+## Integration Path
+
 ```mermaid
 flowchart LR
     E[Extension Host] --> S[Runtime Supervisor]

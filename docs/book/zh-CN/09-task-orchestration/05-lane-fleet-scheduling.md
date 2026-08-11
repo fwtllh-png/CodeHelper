@@ -31,6 +31,8 @@ last_verified: 2026-08-10
 理解 Lane Process Placement、Fleet Durable Projection、Profile Limit，以及它们与
 Workflow Execution 的 Bridge。
 
+## Responsibilities
+
 - **Lane**：管理 Inline/Tmux Worker 的 Start/Stop/Status/Attach/Log，绑定 Worktree
   与 NDJSON Contract。
 - **Fleet**：Append-only Run/Task/Terminal Ledger 和 Replay Inspection View。

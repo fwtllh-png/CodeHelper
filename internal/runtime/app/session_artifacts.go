@@ -23,12 +23,14 @@ type PlanTransitionPreparation struct {
 
 type TurnRecoveryPreparation struct {
 	Prompt         string
+	DisplayPrompt  string
 	Intent         protocol.TurnIntent
 	IdempotencyKey string
 }
 
 const turnRecoveryOutputLimit = 16 << 10
 const turnRecoveryEvidenceLimit = 12 << 10
+const turnRecoveryPromptPrefix = "Continue the exact source Turn identified below."
 
 type recoveryToolStart struct {
 	Tool            string
@@ -170,6 +172,10 @@ func (r *Runtime) PrepareTurnRecovery(
 			nil,
 		)
 	}
+	sourceDisplayPrompt := recoveryDisplayPrompt(
+		sourcePrompt,
+		started.DisplayPrompt,
+	)
 	intent := protocol.NormalizeTurnIntent(started.Intent)
 	if !intent.Valid() {
 		return TurnRecoveryPreparation{}, protocol.NewProblem(
@@ -180,9 +186,11 @@ func (r *Runtime) PrepareTurnRecovery(
 		)
 	}
 	prompt := sourcePrompt
+	displayPrompt := sourceDisplayPrompt
 	if request.Action == protocol.TurnRecoveryContinue {
+		displayPrompt = "Continue: " + sourceDisplayPrompt
 		prompt = fmt.Sprintf(
-			"Continue the exact source Turn identified below. Do not infer the "+
+			turnRecoveryPromptPrefix+" Do not infer the "+
 				"task from an older conversation Turn.\n\n"+
 				"Source Turn ID: %s\nTerminal state: %s\n\n"+
 				"Original model-visible request:\n<source_request>\n%s\n"+
@@ -212,13 +220,51 @@ func (r *Runtime) PrepareTurnRecovery(
 			"network, or file effects."
 		if guidance := strings.TrimSpace(request.Guidance); guidance != "" {
 			prompt += "\n\nAdditional guidance:\n" + guidance
+			displayPrompt += "\n\nGuidance: " + guidance
 		}
 	}
 	return TurnRecoveryPreparation{
 		Prompt:         prompt,
+		DisplayPrompt:  displayPrompt,
 		Intent:         intent,
 		IdempotencyKey: request.IdempotencyKey,
 	}, nil
+}
+
+func recoveryDisplayPrompt(modelPrompt string, displayPrompt string) string {
+	value := strings.TrimSpace(displayPrompt)
+	if value == "" {
+		value = strings.TrimSpace(modelPrompt)
+	}
+	for range 8 {
+		if !strings.HasPrefix(value, turnRecoveryPromptPrefix) {
+			break
+		}
+		extracted, ok := recoveryTaggedSection(value, "source_request")
+		if !ok {
+			break
+		}
+		value = strings.TrimSpace(extracted)
+	}
+	for strings.HasPrefix(value, "Continue: ") {
+		value = strings.TrimSpace(strings.TrimPrefix(value, "Continue: "))
+	}
+	return value
+}
+
+func recoveryTaggedSection(prompt string, tag string) (string, bool) {
+	open := "<" + tag + ">"
+	close := "</" + tag + ">"
+	start := strings.Index(prompt, open)
+	if start < 0 {
+		return "", false
+	}
+	start += len(open)
+	end := strings.Index(prompt[start:], close)
+	if end < 0 {
+		return "", false
+	}
+	return prompt[start : start+end], true
 }
 
 func renderRecoveryEvidence(

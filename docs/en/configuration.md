@@ -72,7 +72,7 @@ mode = "act"                 # plan | act | operate
 workspace = "."
 tools = true
 max_output_tokens = 4096
-max_steps = 64
+max_steps = 256
 timeout = "2m"
 idle_timeout = "1m"
 max_concurrent = 8
@@ -165,6 +165,22 @@ search_backend = "duckduckgo"
 name = "markdownlint-cli2"
 args = ["--no-globs", "--", "{path}"]
 ```
+
+`execution.max_steps` is a hard safety and cost bound, not a target. The
+default is 256 for coding Turns and the supported range is 1-1000. For budgets
+of at least 64 steps, Runtime injects one convergence warning with 16-32 steps
+remaining so the model can finish a coherent result or declare concrete
+`pending_actions` instead of being terminated without notice.
+
+The Agent also tracks consecutive samples without structured progress. This is
+not a 16-step execution limit. At 16 no-progress samples it asks the model to
+converge, at 32 it limits further exploration while retaining exact file reads,
+workspace mutations, quality checks, plan updates, and completion, and at 48 it
+stops the Turn with an explicit no-progress error. Any mutation, completed plan
+step, verification, or completion resets the counter immediately. Answer and
+Plan Turns additionally count newly read paths and new evidence; Operation
+Turns count successful business Tool results. The progress state is durable
+across Runtime recovery.
 
 Unknown TOML fields are rejected. This is intentional: a misspelled safety or
 budget field must not look configured while having no effect.

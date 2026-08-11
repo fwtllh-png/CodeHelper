@@ -32,6 +32,11 @@ last_verified: null
 用 Coverage、Precision、Freshness、Provenance、Budget Efficiency 与 Outcome Evidence
 替代“Prompt 看起来不错”的主观评价。
 
+## 前置知识
+
+阅读 [Context Source、优先级与生命周期](./03-source-priority-lifecycle.md) 与
+[Token Budget、Compaction 与信息损失](./04-budget-and-compaction.md)。
+
 ## Quality Dimension
 
 | 维度 | 问题 | 可观测信号 |
@@ -46,6 +51,8 @@ last_verified: null
 
 Token 数量不能单独衡量 Quality：小 Context 可能遗漏 Critical File，大 Context 可能埋没
 唯一 Relevant Diagnostic。
+
+## Measurement Loop
 
 ```mermaid
 flowchart LR

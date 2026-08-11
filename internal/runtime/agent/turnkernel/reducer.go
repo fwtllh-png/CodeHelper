@@ -145,6 +145,11 @@ func (Reducer) Apply(current State, command Command) (Transition, error) {
 			return Transition{}, err
 		}
 
+	case ObserveProgress:
+		if err := applyObserveProgress(&transition, current, value); err != nil {
+			return Transition{}, err
+		}
+
 	case ToolCallsProposed:
 		if err := applyToolCalls(&transition, current, value); err != nil {
 			return Transition{}, err
@@ -1011,7 +1016,7 @@ func applyEvaluateTurnStep(
 			return err
 		}
 	case current.Policy.CompletionRequired &&
-		current.MutationRevision != 0 &&
+		len(current.ClosedCalls) != 0 &&
 		(current.Completion == nil || !current.Completion.Accepted):
 		if err := spend(
 			RepairDeclaration,
@@ -1030,6 +1035,54 @@ func applyEvaluateTurnStep(
 	default:
 		transition.State.NextAction = StepActionComplete
 	}
+	return nil
+}
+
+const (
+	progressConvergeSamples   = 16
+	progressFinishOnlySamples = 32
+	progressExhaustedSamples  = 48
+)
+
+func applyObserveProgress(
+	transition *Transition,
+	current State,
+	command ObserveProgress,
+) error {
+	if err := requirePhase(current, command, PhaseSampling); err != nil {
+		return err
+	}
+	if current.ActiveSampleID != "" {
+		return illegal(current, command, "model sample is active")
+	}
+	signature := strings.TrimSpace(command.Signature)
+	if signature == "" {
+		return illegal(current, command, "progress signature is empty")
+	}
+	progress := current.Progress
+	if command.CompletedSamples < progress.ObservedSamples {
+		return illegal(current, command, "completed samples regressed")
+	}
+	if progress.Signature == "" || progress.Signature != signature {
+		progress.Signature = signature
+		progress.NoProgressSamples = 0
+		progress.Stage = ProgressStageNone
+	} else {
+		progress.NoProgressSamples +=
+			command.CompletedSamples - progress.ObservedSamples
+	}
+	progress.ObservedSamples = command.CompletedSamples
+	switch {
+	case progress.NoProgressSamples >= progressExhaustedSamples:
+		progress.Stage = ProgressStageExhausted
+	case progress.NoProgressSamples >= progressFinishOnlySamples:
+		progress.Stage = ProgressStageFinishOnly
+	case progress.NoProgressSamples >= progressConvergeSamples:
+		progress.Stage = ProgressStageConverge
+	default:
+		progress.Stage = ProgressStageNone
+	}
+	transition.State.Progress = progress
 	return nil
 }
 
@@ -1329,12 +1382,17 @@ func applyCompletion(
 		decision.Reason = "declaration_must_be_only_call"
 	case !candidate.DeclarationValid:
 		decision.Reason = "invalid_declaration"
+	case candidate.Status == "incomplete" &&
+		strings.TrimSpace(candidate.Summary) != "" &&
+		len(candidate.PendingActions) != 0:
+		decision.Reason = "pending_actions"
 	case candidate.ToolError ||
 		candidate.Status != "complete" ||
 		strings.TrimSpace(candidate.Summary) == "" ||
 		len(candidate.PendingActions) != 0:
 		decision.Reason = "incomplete_declaration"
-	case current.MutationRevision == 0:
+	case current.Intent == protocol.TurnIntentWorkspaceChange &&
+		current.MutationRevision == 0:
 		decision.Reason = "no_observed_changes"
 	case candidate.QualityRequired && len(candidate.QualityCalls) == 0:
 		decision.Reason = "quality_verification_required"
@@ -1384,6 +1442,8 @@ func completionRejectionAction(reason string) string {
 		return "perform_workspace_mutation"
 	case "quality_verification_required":
 		return "run_quality_verification"
+	case "pending_actions":
+		return "continue_work"
 	default:
 		return "correct_and_retry_turn_complete"
 	}

@@ -32,6 +32,8 @@ last_verified: null
 区分 Recoverable Call Feedback、Soft Tool Result、Cancellation 与 Terminal
 Guard/Runtime Failure，避免诱导模型反复探测边界。
 
+## Failure Channels
+
 ```mermaid
 flowchart TD
     E[Tool Outcome] --> S{Result.IsError?}
@@ -89,6 +91,8 @@ Policy Rule 或无助于下一有效 Action 的 Backend Detail。
 
 Failure Feedback 会进入 Model-visible History 与 Evidence/Compaction。它解释 Boundary，
 绝不是削弱 Boundary 的指令。
+
+## Pairing 与 Scheduling
 
 每个 Result 保留 Call ID。Scheduler 遵守 Serial/Concurrent Policy，并在返回前 Join
 全部 Goroutine。Executed Map 以 Call ID 防止 Turn 内重复执行；Recoverable Failure

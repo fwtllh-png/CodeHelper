@@ -91,6 +91,26 @@ func Validate(state State) error {
 			return fmt.Errorf("invalid %s repair budget", kind)
 		}
 	}
+	switch state.Progress.Stage {
+	case ProgressStageNone,
+		ProgressStageConverge,
+		ProgressStageFinishOnly,
+		ProgressStageExhausted:
+	default:
+		return fmt.Errorf(
+			"invalid progress stage %q",
+			state.Progress.Stage,
+		)
+	}
+	if state.Progress.Signature == "" &&
+		(state.Progress.ObservedSamples != 0 ||
+			state.Progress.NoProgressSamples != 0 ||
+			state.Progress.Stage != ProgressStageNone) {
+		return errors.New("progress state has no signature")
+	}
+	if state.Progress.NoProgressSamples > state.Progress.ObservedSamples {
+		return errors.New("no-progress samples exceed observed samples")
+	}
 	switch state.NextAction {
 	case StepActionNone,
 		StepActionRepairToolFailure,
@@ -177,8 +197,7 @@ func Validate(state State) error {
 	}
 	if state.Completion != nil {
 		if state.Completion.Accepted {
-			if state.MutationRevision == 0 ||
-				state.Completion.Mutation != state.MutationRevision {
+			if state.Completion.Mutation != state.MutationRevision {
 				return errors.New("accepted completion is not bound to current mutation")
 			}
 			if strings.TrimSpace(state.Completion.CompletionCall) == "" {
@@ -276,6 +295,11 @@ func validateTerminalState(state State) error {
 			return errors.New("completed workspace_change has no mutation")
 		}
 		if !hasChanges {
+			if state.Policy.CompletionRequired &&
+				len(state.ClosedCalls) != 0 &&
+				(state.Completion == nil || !state.Completion.Accepted) {
+				return errors.New("completed tool turn has no accepted completion")
+			}
 			expected := JournalNone
 			if state.Policy.JournalRequired {
 				expected = JournalCommitted

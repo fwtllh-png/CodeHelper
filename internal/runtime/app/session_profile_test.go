@@ -143,6 +143,65 @@ func TestSessionProfileUpdateRejectsActiveTurnBeforePersistence(t *testing.T) {
 	}
 }
 
+func TestSessionProfileRestoreIsIdempotentDuringRecoveredActiveTurn(
+	t *testing.T,
+) {
+	defaults := runtimeTestProfile()
+	store := &memoryProfileStore{profile: defaults}
+	engine := &profileTestEngine{testEngine: testEngine{block: true}}
+	runtime := NewRuntime(Options{
+		Engine:              engine,
+		SessionProfiles:     store,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	if _, err := runtime.RestoreSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+	); err != nil {
+		t.Fatal(err)
+	}
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: "thread-profile",
+		TurnID:   "turn-profile",
+		ItemID:   "item-profile",
+		Prompt:   "wait",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	if event := receiveEvent(t, events); event.Kind != protocol.EventTurnStarted {
+		t.Fatalf("first event = %s", event.Kind)
+	}
+	if _, err := runtime.RestoreSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+	); err != nil {
+		t.Fatalf("same profile restore during active turn: %v", err)
+	}
+
+	store.mu.Lock()
+	store.profile.Revision++
+	store.mu.Unlock()
+	if _, err := runtime.RestoreSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+	); protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("changed profile restore during active turn error = %v", err)
+	}
+}
+
 func TestTerminalEventIsPublishedAfterActiveTurnIsReleased(t *testing.T) {
 	defaults := runtimeTestProfile()
 	profiles := &memoryProfileStore{profile: defaults}

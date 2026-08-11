@@ -30,6 +30,8 @@ last_verified: 2026-08-10
 
 理解 Workflow Fingerprint、Node Checkpoint、Output Handle 与 Resume-only-unfinished。
 
+## Checkpoint Contract
+
 ```mermaid
 sequenceDiagram
     participant R as Workflow Runtime
@@ -79,6 +81,8 @@ Status/Output Handle 分离，使系统可表达“Completed but Output Unavaila
 | Absent + Dependency Ready | Next Wave Eligible |
 | Failed Dependency Skip | Preserve |
 | Fingerprint Mismatch | Refuse Resume |
+
+## Recovery Layers
 
 Task Recovery 恢复 Ownership/Queue；Workflow Checkpoint 恢复 Graph Progress；Runtime
 Event 恢复 Child Turn；Workspace Journal 恢复 File Effect。它们协调但互不替代。

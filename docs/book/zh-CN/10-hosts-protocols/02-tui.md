@@ -29,6 +29,8 @@ last_verified: null
 理解 Runtime Event 如何成为 Bubble Tea Interactive Model，而不把 Business Logic 移入
 Terminal UI。
 
+## Projection Pipeline
+
 ```mermaid
 flowchart LR
     R[Runtime Operations/Events] --> H[SessionHost]

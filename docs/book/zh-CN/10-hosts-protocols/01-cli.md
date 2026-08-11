@@ -29,6 +29,8 @@ last_verified: null
 理解 CLI Command Surface、Formal JSON Output、Streaming Execution、Config
 Precedence 与 Host/Runtime Ownership Boundary。
 
+## Host Flow
+
 ```mermaid
 flowchart LR
     A[argv / stdin] --> C[Cobra Command]

@@ -68,6 +68,12 @@ type RecoveryHint struct {
 	RequiredAction string
 	Path           string
 	RetryOriginal  bool
+	FailedChange   int
+	MatchCount     int
+	StartLine      int
+	EndLine        int
+	CurrentExcerpt string
+	CandidatePaths []string
 }
 
 type recoveryHintError struct {
@@ -223,8 +229,8 @@ type Result struct {
 
 const MetadataCompletionDeclaration = "completion_declaration"
 
-// CompletionDeclaration is the model's structured assertion that a workspace
-// change has no pending work. The engine binds it to observed paths and the
+// CompletionDeclaration reports whether tool-assisted work has pending actions.
+// The engine binds an accepted complete declaration to observed paths and the
 // current mutation revision before it can authorize a terminal transition.
 type CompletionDeclaration struct {
 	Status              string   `json:"status"`

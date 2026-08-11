@@ -69,7 +69,7 @@ Under-declare 是 Security Defect；Over-declare 会导致不必要 Serializatio
 Hierarchical Claim 允许 Read/Read Overlap，但阻止 Canonical Target 上的 Write/Tree
 Conflict。`ParallelSerial` 即使参数指向不同 File，也增加 Synthetic Serial Claim。
 
-## Shell 与 Agent Tool
+## Shell Tool
 
 `shell_run`/`terminal_run` 声明 Process Capability、Serial Policy、Whole-workspace/
 Process Resource 与 Strong Sandbox。执行包含 Validated CWD、Sanitized Environment、
@@ -78,6 +78,8 @@ Timeout/Cancellation、Bounded Streaming 和 Exit Metadata。
 Shell Tool 不会因 Argument Schema 合法就安全。Command Language 很宽，因此必须同时有
 Strong OS Sandbox、Sanitized Environment、Canonical CWD、Process-group Cancellation、
 Output Limit 与 Explicit Network Policy。Platform 无法满足 Strength 时 Fail Closed。
+
+## Agent Tool
 
 Agent Tool 通过 Orchestration Manager/Governor 实现 spawn、wait、followup、interrupt、
 close 与 merge，约束 Depth、Parallelism、Token、Cost、Wall-clock、Stance、Worktree

@@ -11,7 +11,7 @@ mode = "act"
 workspace = "."
 tools = true
 max_output_tokens = 4096
-max_steps = 64
+max_steps = 256
 timeout = "2m"
 idle_timeout = "1m"
 

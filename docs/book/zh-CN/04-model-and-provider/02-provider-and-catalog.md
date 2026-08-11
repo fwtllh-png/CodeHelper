@@ -52,6 +52,8 @@ flowchart LR
 Provider Descriptor 定义 Kind、Endpoint、Protocol、Credential Reference 与 Models；
 Model Descriptor 定义 Wire ID、Context/Output Limit、Capability、Pricing 与 Alias。
 
+## IDs 与 Persistence
+
 Catalog Provider/Model ID 是本地稳定选择 Key；Wire ID 发送给 Remote API。Persisted
 Route Evidence 同时记录 Selection 与 Actual Route，避免后续 Cost/Debug 从 Alias 猜测。
 
@@ -78,10 +80,12 @@ Catalog 在 Insert 时 Normalize/Validate Provider，并在 Lookup 时返回 Cop
 Probe Overlay 返回带调整 Capability 的 Route Copy，不重写 Bundled Catalog 或共享
 Descriptor。
 
-## Validation 与代码地图
+## Validation
 
 Catalog 拒绝 Duplicate ID、缺失 Endpoint/Protocol、Invalid Limit、Capability/Limit
 矛盾与无效 Credential Reference。Golden Test 检测 Built-in Route 的意外变化。
+
+## 代码地图
 
 | 关注点 | 源码 |
 | --- | --- |

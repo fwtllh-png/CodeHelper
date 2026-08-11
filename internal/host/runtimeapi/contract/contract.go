@@ -224,6 +224,13 @@ func collectUntilTerminal(
 			if terminal(event.Kind) {
 				return seen
 			}
+			if event.Kind == protocol.EventOperationRejected {
+				t.Fatalf(
+					"%s: operation was rejected while waiting for terminal: %+v",
+					host.Transport(),
+					event.Data,
+				)
+			}
 		case <-deadline:
 			t.Fatalf("%s: turn %s did not end within %s; saw %s",
 				host.Transport(), turn, waitTimeout, kindsOf(seen))
@@ -255,6 +262,14 @@ func waitForKind(
 			seen = append(seen, event)
 			if event.Kind == kind {
 				return event
+			}
+			if event.Kind == protocol.EventOperationRejected {
+				t.Fatalf(
+					"%s: operation was rejected before %s: %+v",
+					host.Transport(),
+					kind,
+					event.Data,
+				)
 			}
 			if terminal(event.Kind) {
 				t.Fatalf("%s: turn ended with %s before %s arrived; saw %s",

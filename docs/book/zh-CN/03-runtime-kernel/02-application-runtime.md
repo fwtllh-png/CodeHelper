@@ -39,6 +39,15 @@ Agent Engine 知道如何运行 Turn，但多个 Caller 还需要 Queue、Idempo
 Cancellation、Replay、Pending Approval/Input 和一致的 Terminal Outcome。这些能力
 如果放进 Host，会产生多套 Runtime。
 
+## 核心概念
+
+- **Acceptance** 在执行前校验并拥有 Operation。
+- **Dispatch** 将 Operation Kind 映射到 Application Engine Interface。
+- **Projection** 从有序 Event 推导当前查询状态。
+- **Active Map** 将一个 Turn 绑定到 Cancellation Function，将一个 Thread 绑定到其
+  Active Turn。
+- **Pending Work** 表示可恢复的 Approval、Input 与 Operation 状态。
+
 ## 核心流程
 
 ```mermaid
@@ -88,15 +97,19 @@ Order；Turn 可异步运行，但所有 Event 都回到 Central Publish Path。
 这样不会因 Model Latency 全局串行，同时保留单一 Event Order。Submit/Close Race Test
 说明 Shutdown 是 State Machine 的一部分，不是 Process Afterthought。
 
-## Dispatch、Active Turn 与 Projection
+## Dispatch 与 Active Turn
 
 Runtime 将 Start、Cancel、Steer、Approval、Input、Compact、Fork 和 Revert 分发到
 `app.Engine` Interface。异步执行前注册 Turn CancelFunc，并限制一个 Thread 同时只有
 一个 Active Turn。Terminal Map 拒绝重复终态。
 
+## Event Projection
+
 Sequence 由中心路径分配，Event 写入 Store、更新 Pending/Terminal Map 并发布。
 Replay 按 Cursor 查询；History Gap 明确返回 Recovery Cursor。Slow Subscriber 被移除，
 不会阻塞排序路径。
+
+## Thread 与 Engine 管理
 
 `ThreadManager` 按 Thread 创建/恢复 `EngineAdapter`。Adapter 解析 Workspace/Editor
 Context，将 Engine Event 转为 Protocol Event，并记录 Receipt。App 层不解析 Provider

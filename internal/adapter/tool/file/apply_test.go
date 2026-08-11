@@ -204,6 +204,52 @@ func TestFileApplyEditMismatchCarriesStructuredRecoveryHint(t *testing.T) {
 	}
 }
 
+func TestFileApplyRejectsReconstructedNonContiguousOldText(t *testing.T) {
+	content := "Policy 合并 Repository Rule、Tool Grant、Mode。\n" +
+		"Deny/Hold 立即失败；Ask 可命中 Cache，或异步\n" +
+		"请求 Host。Replacement Argument 必须重新 Prepare/Evaluate。\n"
+	old := "或异步请求 Host。Replacement Argument 必须重新 Prepare/Evaluate。\n\n" +
+		"Policy 合并 Repository Rule"
+
+	_, err := replaceOnce([]byte(content), old, "replacement")
+	if err == nil || !strings.Contains(err.Error(), "matched 0 times") {
+		t.Fatalf("replaceOnce error = %v", err)
+	}
+}
+
+func TestFileApplyMismatchReturnsBoundedCurrentExcerpt(t *testing.T) {
+	content := "## Trust Transition\n\n" +
+		"Policy 合并 Repository Rule、Tool Grant、Mode。\n" +
+		"Deny/Hold 立即失败；Ask 可命中 Cache，或异步\n" +
+		"请求 Host。Replacement Argument 必须重新 Prepare/Evaluate。\n" +
+		"Edit Plan 是 One-shot。\n"
+	_, registry := applyTools(t, map[string]string{"guard.md": content})
+	_, _, executor, err := registry.Resolve("file_apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	planner := executor.(tool.EditPlanner)
+	arguments, err := json.Marshal(map[string]any{"changes": []map[string]any{{
+		"op": "edit", "path": "guard.md",
+		"old": "或异步请求 Host。Replacement Argument 必须重新 Prepare/Evaluate。\n\n" +
+			"Policy 合并 Repository Rule",
+		"new": "replacement",
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = planner.PlanEdit(t.Context(), arguments)
+	hint, ok := tool.RecoveryHintFromError(err)
+	if !ok || hint.RequiredAction != "replace_failed_change" ||
+		hint.FailedChange != 1 || hint.MatchCount != 0 ||
+		hint.StartLine != 2 || hint.EndLine != 7 ||
+		!strings.Contains(hint.CurrentExcerpt, "Policy 合并") ||
+		!strings.Contains(hint.CurrentExcerpt, "请求 Host") {
+		t.Fatalf("hint = %+v, found = %v", hint, ok)
+	}
+}
+
 // The apply phase can still fail on I/O. What is already written must be put
 // back, so the turn never observes half a transaction.
 func TestFileApplyRollsBackWritesWhenALaterWriteFails(t *testing.T) {

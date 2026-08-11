@@ -663,6 +663,98 @@ func (s *engineTurnKernel) repairProgressKey() string {
 	)
 }
 
+func (s *engineTurnKernel) intent() protocol.TurnIntent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state.Intent
+}
+
+func (s *engineTurnKernel) progressSignature(
+	planDone int,
+	evidenceDigest string,
+) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	completionCall := ""
+	completionAccepted := false
+	operationCalls := 0
+	if s.state.Completion != nil {
+		completionCall = s.state.Completion.CompletionCall
+		completionAccepted = s.state.Completion.Accepted
+	}
+	if s.state.Intent == protocol.TurnIntentOperation {
+		for _, result := range s.state.ClosedCalls {
+			if !result.IsError {
+				operationCalls++
+			}
+		}
+	}
+	return fmt.Sprintf(
+		"intent=%s;mutation=%d;plan_done=%d;verification=%s/%s/%d;"+
+			"completion=%t/%s;operation_calls=%d;evidence=%s",
+		s.state.Intent,
+		s.state.MutationRevision,
+		planDone,
+		s.state.Verification.Status,
+		s.state.Verification.Action,
+		s.state.Verification.Mutation,
+		completionAccepted,
+		completionCall,
+		operationCalls,
+		evidenceDigest,
+	)
+}
+
+func (s *engineTurnKernel) observeProgress(
+	signature string,
+) (progressObservation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	completed := uint32(0)
+	for _, sample := range s.state.SampleLedger {
+		if sample.Status == turnkernel.SampleCompleted {
+			completed++
+		}
+	}
+	current := s.state.Progress
+	if completed < current.ObservedSamples {
+		return progressObservation{}, fmt.Errorf(
+			"completed model samples regressed from %d to %d",
+			current.ObservedSamples,
+			completed,
+		)
+	}
+	if current.Signature != "" &&
+		current.Signature == signature &&
+		completed-current.ObservedSamples < progressEpochSamples {
+		return progressObservation{
+			stage:             current.Stage,
+			noProgressSamples: current.NoProgressSamples,
+		}, nil
+	}
+	previousStage := current.Stage
+	if err := s.applyAuthoritativeLocked(turnkernel.ObserveProgress{
+		Signature:        signature,
+		CompletedSamples: completed,
+	}); err != nil {
+		return progressObservation{}, err
+	}
+	return progressObservation{
+		stage:             s.state.Progress.Stage,
+		noProgressSamples: s.state.Progress.NoProgressSamples,
+		stageChanged:      s.state.Progress.Stage != previousStage,
+	}, nil
+}
+
+func (s *engineTurnKernel) progressObservation() progressObservation {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return progressObservation{
+		stage:             s.state.Progress.Stage,
+		noProgressSamples: s.state.Progress.NoProgressSamples,
+	}
+}
+
 func kernelObservedChanges(
 	fileChanges []toolguard.FileChange,
 ) []turnkernel.ObservedChange {

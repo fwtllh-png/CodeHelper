@@ -31,6 +31,8 @@ last_verified: null
 理解 Post-edit Diagnostics、Scoped Verification、Repair Round、Soft/Hard Outcome、
 Rollback，以及 Evidence 与 Claim 的区别。
 
+## Gate Lifecycle
+
 ```mermaid
 stateDiagram-v2
     [*] --> Changed

@@ -5,8 +5,9 @@
 ## 1. 文档状态
 
 本文定义 CodeHelper 知识书籍的目标、信息架构、写作契约、建设顺序和验收标准。它是
-文档建设方案，不代表其中列出的章节已经完成。已经交付的能力仍以当前代码、测试和
-`docs/zh-CN` 产品手册为事实来源。
+文档建设方案，不代表其中列出的章节已经完成。单章交付状态以 `docs/book/catalog.json`
+为准；当本文各阶段的说明与 catalog 不一致时，以 catalog 为准。已经交付的能力仍以
+当前代码、测试和 `docs/zh-CN` 产品手册为事实来源。
 
 ## 2. 建设目标
 
@@ -89,11 +90,11 @@ docs/book/
 ### 第二部分：认识 CodeHelper
 
 1. 项目定位、价值和非目标
-2. 一套 Runtime、多种 Host
+2. CodeHelper 系统架构
 3. Package Ownership 与依赖方向
 4. Operation、Event、Receipt、Projection
-5. 一次 Turn 的完整生命周期
-6. 从 CLI 到模型再到 Tool 的第一条数据流
+5. 一次 Agent Turn 的完整生命周期
+6. Model、Context 与 Tool 如何协作
 
 ### 第三部分：Runtime 内核
 
@@ -164,7 +165,7 @@ docs/book/
 1. CLI 和 Machine-readable Output
 2. TUI State Projection
 3. ACP Stdio 与编辑器互操作
-4. VS Code Context Bridge、Trust 与 Compatibility
+4. VS Code 原生 Agent Chat 与 Runtime Authority
 
 ### 第十一部分：扩展生态
 
@@ -337,7 +338,8 @@ last_verified: null
 
 ### 阶段 1：全景阅读闭环
 
-状态：已完成。
+状态：进行中。全景阅读路径的六章正文已全部交付，但 `docs/book/catalog.json` 中
+均标记为 `draft`，验证门禁尚未通过。
 
 优先完成：
 
@@ -350,8 +352,8 @@ last_verified: null
 
 验收：新读者可以在不预读源码的情况下建立正确心智模型，并完成第一个实验。
 
-已交付六章通过验证的双语正文，覆盖受治理 Runtime 的必要性、全局架构、Turn
-生命周期、Model/Context/Tool 协作、安全控制和 Hermetic 首个 Turn 实验。
+已交付六章双语正文，覆盖受治理 Runtime 的必要性、全局架构、Turn 生命周期、
+Model/Context/Tool 协作、安全控制和 Hermetic 首个 Turn 实验。内容完整，验证待完成。
 
 2026-08-06 已完成质量提升：第一部分现在形成从 Chatbot 到反馈闭环 Agent、LLM/Token/
 Context 限制、ReAct/Planning/Tool/Reflection 控制、Agent 与 Workflow/Automation
@@ -399,9 +401,8 @@ Checkpoint Commit Window、Lane/Fleet Control/Evidence，并将 Child-to-parent 
 Guarded Two-phase Integration。
 
 2026-08-06 已完成第十部分质量提升：Host 与协议章节现在明确 CLI Output Channel、TUI
-Reducer/Reconstruction、HTTP Admission/Idempotency 与 SSE Replay-to-live、ACP Connection
-Ordering、Browser/Deployment Trust Boundary，以及 VS Code Supervisor、Cursor、Multi-root
-Workspace 与 Compatibility Recovery。
+Reducer/Reconstruction、ACP Connection Ordering，以及 VS Code Supervisor、Cursor、
+Multi-root Workspace 与 Compatibility Recovery。
 
 2026-08-06 已完成第十一部分质量提升：扩展生态章节现在明确 Provider Route/Stream
 Commit Boundary、Tool Generation Binding、MCP Source-scoped Reconciliation、Skill/
@@ -422,8 +423,8 @@ Reconstruction 和 Capability Rollout 的无网络实践路径。
 
 ### 阶段 2：Runtime 核心
 
-状态：已完成。Runtime Kernel、Model/Provider、Context Engineering 和 Tool/Execution
-共 24 章双语正文均已验证。
+状态：进行中。Runtime Kernel、Model/Provider、Context Engineering 和 Tool/Execution
+共 24 章双语正文均已交付，但 `docs/book/catalog.json` 中均未标记为 `verified`。
 
 - Protocol、App、Agent、Wire；
 - Provider 与 Model；
@@ -435,7 +436,9 @@ Reconstruction 和 Capability Rollout 的无网络实践路径。
 
 ### 阶段 3：持久化与编排
 
-状态：已完成。状态与可观测性、Task 与编排共 12 章双语正文均已验证。
+状态：进行中。状态与可观测性、Task 与编排共 12 章双语正文均已交付，其中 4 章在
+`docs/book/catalog.json` 中标记为 `verified`（state-trace-usage-cost、
+task-lease-retry、task-checkpoint-recovery、task-lane-fleet）。
 
 - SQLite、Event、Session、Snapshot、Journal；
 - Task、Worker、Automation、Workflow；
@@ -446,7 +449,8 @@ Reconstruction 和 Capability Rollout 的无网络实践路径。
 
 ### 阶段 4：Host 与扩展生态
 
-状态：已完成。Host 与协议、扩展生态共 10 章双语正文均已验证。
+状态：进行中。Host 与协议、扩展生态共 10 章双语正文均已交付，其中 1 章在
+`docs/book/catalog.json` 中标记为 `verified`（host-acp）。
 
 - CLI、TUI、ACP、VS Code；
 - MCP、Skill、Plugin、Hook；
@@ -456,7 +460,9 @@ Reconstruction 和 Capability Rollout 的无网络实践路径。
 
 ### 阶段 5：工程实践与 Lab
 
-状态：已完成。7 章双语工程实践正文和全部 10 个双语动手实验均已验证。
+状态：进行中。7 章双语工程实践正文和全部 10 个双语动手实验均已交付，其中 3 章在
+`docs/book/catalog.json` 中标记为 `verified`（lab-recoverable-workflow、
+lab-worker-retry、lab-trace-failure）。
 
 - 测试、Benchmark、Security、Release；
 - 系统化动手实验；
@@ -533,6 +539,7 @@ Reconstruction 和 Capability Rollout 的无网络实践路径。
 
 ## 17. 持续运行
 
-阶段 0 至阶段 6 已完成。知识体系现在通过日常 PR Impact Review、每周漂移检查、
-Release Fact Verification 和每月读者反馈/导航 Review 持续运行。后续只有在引入
-新的学习能力或治理能力时才开启新阶段，常规维护不再定义为独立阶段。
+阶段 0 和阶段 6 已完成；阶段 1 至阶段 5 处于进行中，各阶段状态见上文，单章状态以
+`docs/book/catalog.json` 为准。知识体系现在通过日常 PR Impact Review、每周漂移
+检查、Release Fact Verification 和每月读者反馈/导航 Review 持续运行。后续只有在
+引入新的学习能力或治理能力时才开启新阶段，常规维护不再定义为独立阶段。

@@ -137,7 +137,8 @@ func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
 		textStream("I changed the file without declaring completion."),
 		toolCallStream("complete-1", completiontool.Name, `{
 			"status":"complete",
-			"summary":"implemented and verified"
+			"summary":"implemented and verified",
+			"pending_actions":[]
 		}`),
 		textStream("Implemented and verified."),
 	}}
@@ -166,6 +167,112 @@ func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
 		if event.Text == "I changed the file without declaring completion." {
 			t.Fatalf("pre-declaration text reached the stable output stream: %+v", events)
 		}
+	}
+}
+
+func TestReadOnlyToolTurnRequiresCompletionDeclaration(t *testing.T) {
+	registry := declarationRegistry(t, false)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("read-1", "echo", `{"text":"evidence"}`),
+		textStream("I will continue the remaining checks."),
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"read-only review completed",
+			"pending_actions":[]
+		}`),
+		textStream("The review is complete and the findings are ready."),
+	}}
+	engine := declarationEngine(t, runtime, registry, passedReceipt())
+	var events []Event
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-read-only", "review the evidence",
+		protocol.TurnIntentAnswer, nil,
+		func(event Event) error {
+			events = append(events, event)
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed ||
+		result.Text != "The review is complete and the findings are ready." {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(runtime.requests) != 4 ||
+		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
+		t.Fatalf("read-only tool turn bypassed completion gate: %+v", runtime.requests)
+	}
+	for _, event := range events {
+		if event.Text == "I will continue the remaining checks." {
+			t.Fatalf("future-work promise reached stable output: %+v", events)
+		}
+	}
+}
+
+func TestIncompleteDeclarationContinuesCurrentTurn(t *testing.T) {
+	registry := declarationRegistry(t, false)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("read-1", "echo", `{"text":"first evidence"}`),
+		textStream("I still need to inspect the second piece of evidence."),
+		toolCallStream("incomplete-1", completiontool.Name, `{
+			"status":"incomplete",
+			"summary":"the second evidence check remains",
+			"pending_actions":["inspect the second piece of evidence"]
+		}`),
+		toolCallStream("read-2", "echo", `{"text":"second evidence"}`),
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"both evidence checks completed",
+			"pending_actions":[]
+		}`),
+		textStream("Both evidence checks are complete."),
+	}}
+	engine := declarationEngine(t, runtime, registry, passedReceipt())
+	var events []Event
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-incomplete", "review both pieces of evidence",
+		protocol.TurnIntentAnswer, nil,
+		func(event Event) error {
+			events = append(events, event)
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed ||
+		result.Text != "Both evidence checks are complete." {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(runtime.requests) != 6 ||
+		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
+		t.Fatalf("incomplete declaration did not continue the turn: %+v",
+			runtime.requests)
+	}
+	sawIncompleteRejection := false
+	for _, event := range events {
+		if event.Text == "I still need to inspect the second piece of evidence." {
+			t.Fatalf("future-work promise reached stable output: %+v", events)
+		}
+		if event.ToolCall != nil &&
+			event.ToolCall.ID == "incomplete-1" &&
+			event.Result != nil {
+			accepted, _ := event.Result.Metadata["completion_declaration_accepted"].(bool)
+			rejection, _ := event.Result.Metadata["completion_declaration_rejection"].(string)
+			sawIncompleteRejection = !accepted && rejection == "pending_actions"
+		}
+	}
+	if !sawIncompleteRejection {
+		t.Fatalf("incomplete declaration was not rejected: %+v", events)
 	}
 }
 
@@ -267,6 +374,72 @@ func TestRejectedCompletionResultExposesTheRuntimeDecision(t *testing.T) {
 	}
 	if accepted, _ := result.Metadata["completion_declaration_accepted"].(bool); accepted {
 		t.Fatalf("rejected completion metadata = %#v", result.Metadata)
+	}
+}
+
+func TestMalformedCompletionResultPreservesSchemaError(t *testing.T) {
+	tests := map[string]string{
+		"missing arguments": "",
+		"nested arguments": `{
+			"arguments":"{\"status\":\"incomplete\",\"summary\":\"work remains\",\"pending_actions\":[\"continue\"]}"
+		}`,
+	}
+	for name, arguments := range tests {
+		t.Run(name, func(t *testing.T) {
+			engine := newEngine(
+				t,
+				&scriptedProvider{},
+				declarationRegistry(t, false),
+			)
+			var emitted *tool.Result
+
+			results, err := engine.runTools(
+				t.Context(),
+				"turn-malformed-completion",
+				[]provider.ToolCall{{
+					ID: "complete-malformed", Name: completiontool.Name,
+					Arguments: arguments,
+				}},
+				make(map[string]tool.Result),
+				func(_ State, event Event) error {
+					if event.Result != nil {
+						copy := *event.Result
+						emitted = &copy
+					}
+					return nil
+				},
+			)
+			if err != nil {
+				t.Fatalf("runTools() error = %v", err)
+			}
+			if len(results) != 1 || !results[0].IsError {
+				t.Fatalf("results = %+v", results)
+			}
+			var output struct {
+				Status         string `json:"status"`
+				Reason         string `json:"reason"`
+				RequiredAction string `json:"required_action"`
+				ErrorDetail    string `json:"error_detail"`
+			}
+			if err := json.Unmarshal([]byte(results[0].Content), &output); err != nil {
+				t.Fatalf("decode result %q: %v", results[0].Content, err)
+			}
+			if output.Status != "rejected" ||
+				output.Reason != "invalid_declaration" ||
+				output.RequiredAction != "correct_and_retry_turn_complete" ||
+				!strings.Contains(output.ErrorDetail, "status") ||
+				!strings.Contains(output.ErrorDetail, "summary") ||
+				!strings.Contains(output.ErrorDetail, "pending_actions") {
+				t.Fatalf("output = %+v", output)
+			}
+			detail, _ := results[0].Metadata["completion_declaration_error"].(string)
+			if detail != output.ErrorDetail {
+				t.Fatalf("metadata detail = %q, output detail = %q", detail, output.ErrorDetail)
+			}
+			if emitted == nil || emitted.Content != results[0].Content {
+				t.Fatalf("emitted = %+v, results = %+v", emitted, results)
+			}
+		})
 	}
 }
 

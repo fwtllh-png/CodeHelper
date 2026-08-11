@@ -223,20 +223,38 @@ export async function connectSession(
         sessionId: binding.sessionId,
         threadId: binding.threadId,
       });
-      const history = requireObject(await client.request("session/history", {
-        sessionId: binding.sessionId,
-        turnLimit: 200,
-      }), "session/history result");
-      if (!Array.isArray(history["events"])) {
-        throw new TypeError("session/history events must be an array");
-      }
-      for (const rawEvent of history["events"]) {
-        const event = decodeEvent(rawEvent);
-        if (event.thread_id !== binding.threadId) {
-          throw new Error("session/history returned an event for another thread");
+      let historySinceSeq: number | undefined;
+      for (;;) {
+        const history = requireObject(await client.request("session/history", {
+          sessionId: binding.sessionId,
+          turnLimit: 200,
+          ...(historySinceSeq === undefined ? {} : { sinceSeq: historySinceSeq }),
+        }), "session/history result");
+        if (!Array.isArray(history["events"])) {
+          throw new TypeError("session/history events must be an array");
         }
-        await onEvent(event, true);
-        replayedEvents++;
+        for (const rawEvent of history["events"]) {
+          const event = decodeEvent(rawEvent);
+          if (event.thread_id !== binding.threadId) {
+            throw new Error("session/history returned an event for another thread");
+          }
+          await onEvent(event, true);
+          replayedEvents++;
+        }
+        const truncated = history["truncated"] === undefined
+          ? false
+          : requireBoolean(history["truncated"], "history truncated");
+        if (!truncated) {
+          break;
+        }
+        const nextSeq = requireNonNegativeInteger(
+          history["nextSeq"],
+          "history nextSeq",
+        );
+        if (historySinceSeq !== undefined && nextSeq <= historySinceSeq) {
+          throw new Error("session/history did not advance its cursor");
+        }
+        historySinceSeq = nextSeq;
       }
       for (;;) {
         const sinceSeq = binding.lastSeq;

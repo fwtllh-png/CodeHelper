@@ -31,6 +31,8 @@ last_verified: null
 理解 Durable Task State、Worker Scheduling、Executor Contract，以及 Background Work
 为何仍必须进入 Production Runtime。
 
+## Lifecycle
+
 ```mermaid
 stateDiagram-v2
     [*] --> queued

@@ -10,9 +10,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
@@ -529,18 +531,30 @@ func changePrecondition(index int, request changeRequest, err error) error {
 	)
 	var match *editMatchError
 	if errors.As(err, &match) {
+		requiredAction := "reread_exact_range"
+		if match.excerpt != "" {
+			requiredAction = "replace_failed_change"
+		}
 		wrapped = tool.WithRecoveryHint(wrapped, tool.RecoveryHint{
 			ErrorCategory:  "edit_precondition_miss",
-			RequiredAction: "reread_exact_range",
+			RequiredAction: requiredAction,
 			Path:           request.Path,
 			RetryOriginal:  false,
+			FailedChange:   index + 1,
+			MatchCount:     match.count,
+			StartLine:      match.startLine,
+			EndLine:        match.endLine,
+			CurrentExcerpt: match.excerpt,
 		})
 	}
 	return tool.Precondition(wrapped)
 }
 
 type editMatchError struct {
-	count int
+	count     int
+	startLine int
+	endLine   int
+	excerpt   string
 }
 
 func (e *editMatchError) Error() string {
@@ -556,9 +570,69 @@ func replaceOnce(data []byte, old, new string) ([]byte, error) {
 	}
 	content := string(data)
 	if count := strings.Count(content, old); count != 1 {
-		return nil, &editMatchError{count: count}
+		excerpt, startLine, endLine := closestEditExcerpt(content, old)
+		// #region debug-point A-C:edit-match-shape
+		fields := strings.Fields(old)
+		firstTokenCount := 0
+		if len(fields) != 0 {
+			firstTokenCount = strings.Count(content, fields[0])
+		}
+		payload, _ := json.Marshal(map[string]any{"sessionId": "file-apply-precondition-miss", "runId": "post-fix", "hypothesisId": "A-C", "location": "internal/adapter/tool/file/apply.go:replaceOnce", "msg": "[DEBUG] Exact edit match failed", "data": map[string]any{"content_bytes": len(content), "old_bytes": len(old), "exact_matches": count, "normalized_matches": strings.Count(strings.Join(strings.Fields(content), " "), strings.Join(fields, " ")), "first_token_matches": firstTokenCount, "excerpt_available": excerpt != "", "excerpt_start_line": startLine, "excerpt_end_line": endLine}})
+		go func() { _, _ = http.Post("http://127.0.0.1:7778/event", "application/json", bytes.NewReader(payload)) }()
+		// #endregion
+		return nil, &editMatchError{
+			count: count, startLine: startLine, endLine: endLine, excerpt: excerpt,
+		}
 	}
 	return []byte(strings.Replace(content, old, new, 1)), nil
+}
+
+func closestEditExcerpt(content, old string) (string, int, int) {
+	lines := strings.Split(content, "\n")
+	compactLines := make([]string, len(lines))
+	starts := make([]int, len(lines))
+	var compact strings.Builder
+	for index, line := range lines {
+		starts[index] = compact.Len()
+		compactLines[index] = strings.Map(func(value rune) rune {
+			if unicode.IsSpace(value) {
+				return -1
+			}
+			return value
+		}, line)
+		compact.WriteString(compactLines[index])
+	}
+	compactContent := compact.String()
+	for _, sourceLine := range strings.Split(old, "\n") {
+		candidate := []rune(strings.Map(func(value rune) rune {
+			if unicode.IsSpace(value) {
+				return -1
+			}
+			return value
+		}, sourceLine))
+		for _, limit := range []int{48, 32, 24, 16, 12, 8} {
+			if len(candidate) < limit {
+				continue
+			}
+			anchor := string(candidate[:limit])
+			if strings.Count(compactContent, anchor) != 1 {
+				continue
+			}
+			offset := strings.Index(compactContent, anchor)
+			lineIndex := 0
+			for index := 1; index < len(starts) && starts[index] <= offset; index++ {
+				lineIndex = index
+			}
+			first := max(0, lineIndex-2)
+			last := min(len(lines), lineIndex+4)
+			excerpt := strings.Join(lines[first:last], "\n")
+			if len(excerpt) > 2000 {
+				excerpt = excerpt[:2000]
+			}
+			return excerpt, first + 1, last
+		}
+	}
+	return "", 0, 0
 }
 
 // formatApplied renders the model-visible summary of a committed transaction.

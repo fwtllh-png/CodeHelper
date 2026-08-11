@@ -42,6 +42,50 @@ void test("approval dialog bounds malformed generic arguments", () => {
   assert.match(content.detail, /Full request details/u);
 });
 
+void test("approval dialog receives structured multi-file apply context", () => {
+  const request = approval({
+    tool: "file_apply",
+    arguments: JSON.stringify({
+      changes: Array.from({ length: 14 }, (_, index) => ({
+        op: "edit",
+        path: `docs/book/chapter-${String(index % 6 + 1)}.md`,
+        old: "old",
+        new: "new",
+      })),
+    }),
+    resources: Array.from(
+      { length: 7 },
+      (_, index) => `write:/workspace/docs/book/chapter-${String(index + 1)}.md`,
+    ),
+    editPlan: {
+      id: "plan-1",
+      diff: "--- a/docs/book/chapter-1.md\n+++ b/docs/book/chapter-1.md\n",
+      files: Array.from({ length: 6 }, (_, index) => ({
+        path: `docs/book/chapter-${String(index + 1)}.md`,
+        kind: "modified" as const,
+        before: "old",
+        after: "new",
+        beforeExists: true,
+        afterExists: true,
+        beforeDigest: "before",
+        afterDigest: "after",
+      })),
+    },
+  });
+  const content = approvalDialogContent(request);
+  const card = approvalCardContent(request);
+
+  assert.equal(content.title, "file_apply: 14 edits across 6 files");
+  assert.match(content.detail, /Request\nApply 14 edits across 6 files/u);
+  assert.match(content.detail, /chapter-1\.md \(3 edits\)/u);
+  assert.match(content.detail, /Access\n• Write 6 files in workspace/u);
+  assert.match(content.detail, /diff preview is open in Changes/u);
+  assert.doesNotMatch(content.detail, /changes:|old|new|\/workspace/u);
+  assert.equal(card.summary, "Approval: file_apply · 14 edits across 6 files");
+  assert.match(card.detail, /Changes: 14 edits across 6 files/u);
+  assert.doesNotMatch(card.detail, /changes:|old|new|\/workspace/u);
+});
+
 void test("approval card summarizes file content instead of rendering it", () => {
   const body = "# Heading\n\n" + "long content\n".repeat(200);
   const content = approvalCardContent(approval({

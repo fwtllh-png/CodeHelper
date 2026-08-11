@@ -117,7 +117,10 @@ func (o *operation) Descriptor() tool.Descriptor {
 		properties["offset"] = map[string]any{"type": "integer"}
 		properties["limit"] = map[string]any{"type": "integer"}
 	case "file_read":
-		description = "Read a bounded UTF-8 line range or extract selected PDF pages. path is workspace-relative (absolute paths inside workspace are rewritten)."
+		description = "Read a bounded UTF-8 line range or extract selected PDF pages. " +
+			"path is workspace-relative (absolute paths inside workspace are rewritten). " +
+			"Use an exact path returned by file_list or another tool; never infer a " +
+			"filename from a title or topic."
 		properties["path"] = map[string]any{
 			"type":        "string",
 			"minLength":   float64(1),
@@ -145,6 +148,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 			"Later changes see earlier ones, so the same file can be edited twice in " +
 			"one call. Before calling, use file_read on every existing source or " +
 			"destination path named by the transaction; new paths need no prior read. " +
+			"For every edit, copy old as one contiguous exact substring from file_read; " +
+			"preserve whitespace and order, and never reconstruct or reorder it. " +
 			"Set dry_run to get the unified diff without writing."
 		delete(properties, "path")
 		properties["changes"] = map[string]any{
@@ -265,7 +270,7 @@ func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Resu
 	case "file_read":
 		file, err := o.tools.workspace.OpenFile(input.Path)
 		if err != nil {
-			return tool.Result{}, err
+			return tool.Result{}, o.tools.recoverMissingPath(err, input.Path)
 		}
 		defer file.Close()
 		if strings.EqualFold(filepath.Ext(input.Path), ".pdf") || input.Pages != "" {
@@ -298,13 +303,69 @@ func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Resu
 	case "file_list":
 		directory, err := o.tools.workspace.OpenDirectory(input.Path)
 		if err != nil {
-			return tool.Result{}, err
+			return tool.Result{}, o.tools.recoverMissingPath(err, input.Path)
 		}
 		defer directory.Close()
 		return listDirectory(directory, input.Offset, input.Limit)
 	default:
 		return tool.Result{}, errors.New("unknown file operation")
 	}
+}
+
+func (t *Tools) recoverMissingPath(err error, path string) error {
+	if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	candidates := t.siblingCandidates(path, 12)
+	requiredAction := "file_list"
+	if len(candidates) != 0 {
+		requiredAction = "use_existing_path"
+	}
+	return tool.Precondition(tool.WithRecoveryHint(err, tool.RecoveryHint{
+		ErrorCategory:  "file_not_found",
+		RequiredAction: requiredAction,
+		Path:           path,
+		RetryOriginal:  false,
+		CandidatePaths: candidates,
+	}))
+}
+
+func (t *Tools) siblingCandidates(path string, limit int) []string {
+	parent := filepath.Dir(filepath.Clean(path))
+	if parent == "" {
+		parent = "."
+	}
+	resolved, err := t.workspace.ResolveDirectory(parent)
+	if err != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(resolved)
+	if err != nil {
+		return nil
+	}
+	requestedExtension := strings.ToLower(filepath.Ext(path))
+	sort.Slice(entries, func(i, j int) bool {
+		leftMatch := strings.ToLower(filepath.Ext(entries[i].Name())) ==
+			requestedExtension
+		rightMatch := strings.ToLower(filepath.Ext(entries[j].Name())) ==
+			requestedExtension
+		if leftMatch != rightMatch {
+			return leftMatch
+		}
+		return entries[i].Name() < entries[j].Name()
+	})
+	candidates := make([]string, 0, min(len(entries), limit))
+	for _, entry := range entries {
+		candidate := entry.Name()
+		if parent != "." {
+			candidate = filepath.Join(parent, candidate)
+		}
+		candidates = append(candidates, filepath.ToSlash(candidate))
+		if len(candidates) == limit {
+			break
+		}
+	}
+	return candidates
 }
 
 func readTextRange(file *os.File, startLine, maxLines int) (tool.Result, error) {

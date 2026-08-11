@@ -95,11 +95,13 @@ Unknown Capability、Strong Sandbox 不可用、Stale Catalog、Missing Authorit
 
 新能力通过 Adapter/Wire 接入，不绕过 Runtime。
 
+## 5. 能力面
+
 ```mermaid
 flowchart TB
     H[CLI / TUI / VS Code / ACP] --> R[Local Runtime]
-    R --> C[Context / Repository]
-    R --> M[Model / Provider]
+    R --> C[Context / Repository Understanding]
+    R --> M[Model / Provider Routing]
     R --> T[Governed Tools]
     R --> D[Durable State / Evidence]
     R --> O[Tasks / Workflows / Subagents]
@@ -108,7 +110,7 @@ flowchart TB
 
 能力数量不如共享语义重要：一条 Guarded Path 上的少量 Tool，比大量 Host Shortcut 更可信。
 
-## 5. 明确的非目标
+## 6. 明确的非目标
 
 CodeHelper 不是：
 
@@ -124,7 +126,7 @@ CodeHelper 不是：
 
 非目标防止 Marketing Language 稀释 Engineering Contract。
 
-## 6. Trust 与责任
+## 7. Trust 与责任
 
 | CodeHelper 提供 | 用户/Operator 仍负责 |
 | --- | --- |
@@ -137,7 +139,7 @@ CodeHelper 不是：
 
 Governance 降低并暴露风险，不消除责任。
 
-## 7. 成熟度与兼容性
+## 8. 成熟度与兼容性
 
 仓库是 Initial Development Baseline。Public Contract 显式 Versioned，但 Stable Release
 前 Internal API 与未发布 Persisted Format 仍可变化。当前优先级是 Correctness、
@@ -145,7 +147,7 @@ Documentation、Cross-platform Evidence、Repeatable Release。
 
 Roadmap 不得写成 Shipped Behavior；Catalog Status 与 Executable Test 比愿景 Prose 更强。
 
-## 8. 评估 Feature Request
+## 9. 评估 Feature Request
 
 1. 它加强单一本地 Runtime，还是创建第二路径？
 2. 谁拥有 State/Authority？
@@ -157,7 +159,7 @@ Roadmap 不得写成 Shipped Behavior；Catalog Status 与 Executable Test 比�
 
 Ownership 模糊时不应开始实现。
 
-## 9. 源码实验
+## 10. 源码实验
 
 ```bash
 make build
@@ -175,7 +177,7 @@ rm -rf "$tmp"
 将输出分类为 Capability、Environment Fact、Runtime Event、Evidence、Terminal Result。
 这些都不能证明任意生成程序正确。
 
-## 10. 复习问题
+## 11. 复习问题
 
 1. CodeHelper 为什么是 Runtime 而非 Chat Application？
 2. 多 Host 共享 Authority Path 的收益是什么？

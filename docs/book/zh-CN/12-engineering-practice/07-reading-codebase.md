@@ -28,6 +28,8 @@ last_verified: null
 
 按 Ownership/Contract 导航，先取得 Evidence 再编辑，并按风险扩大验证。
 
+## Working Method
+
 1. 读 `AGENTS.md`、README、Architecture、Nearest Test、Makefile 与 Status。
 2. 找 Stable Contract：Protocol、Descriptor、Repository 或 Interface。
 3. 沿 `internal/runtime/app/wire` 查看 Construction。

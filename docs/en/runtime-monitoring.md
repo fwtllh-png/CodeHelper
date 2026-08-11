@@ -76,6 +76,11 @@ During every Turn, check structured invariants:
 - Retry and Continue preserve Source Intent but reapply the current durable
   Session Profile before the new Turn starts. Mode, Approval Posture, Reasoning,
   and Tool Selection must not drift from the failed Source Turn into recovery;
+- recovery keeps model and UI text separate: `turn.started.prompt` may contain
+  the bounded recovery evidence capsule, while `turn.started.display_prompt`
+  contains only a concise user-visible Retry or Continue request. Hosts must
+  never project source Turn IDs, Tool call IDs, digests, or
+  `<recovery_evidence>` as a user message;
 - Plan Implement and Autopilot start with `intent=workspace_change`;
 - Mode and Intent are orthogonal contracts. Ordinary Chat in `mode=act` still
   starts with `intent=answer`; only explicit mutation entry points such as
@@ -101,36 +106,62 @@ During every Turn, check structured invariants:
   `shell_read`, `shell_run`, or `terminal_run`;
 - Shell Tools structurally reject known Bash-only Process Substitution before
   starting a process; descriptor prose is not the only enforcement layer;
+- a missing `file_read` or `file_list` path is a recoverable Tool Failure with
+  `error_category=file_not_found`, `required_action=file_list`, and
+  `retry_original=false`. It returns to the model for path correction and must
+  not become an `internal` Terminal;
+- if strong Sandbox validation observes a Workspace path disappear before a
+  Shell command starts, the command remains blocked and the failure is
+  recoverable with `error_category=workspace_changed`,
+  `required_action=<same shell tool>`, and `retry_original=true`. Concurrent
+  dependency installation or cleanup must not turn this pre-execution race into
+  an `internal` Terminal;
 - Tool Failure Completion Repair spends its budget only on consecutive attempts
   without structured progress. A new Tool batch resets the no-progress counter;
   cumulative Repair Steps still count toward the bounded Turn step budget, so
   repeated textual promises cannot extend a Turn indefinitely;
-- Provider `end_turn` means only that one model sample ended. A
-  `workspace_change` completes only when an accepted `turn_complete`
-  declaration is bound to the current Mutation Revision and exact Changed
-  Paths, has no Pending Actions, Verification passes, and the Journal commits;
+- Provider `end_turn` means only that one model sample ended. Any
+  Tool-assisted Turn completes only after an accepted `turn_complete`
+  declaration with no Pending Actions. Read-only declarations bind to Mutation
+  Revision zero and no Changed Paths. A `workspace_change` additionally binds
+  the current nonzero Mutation Revision and exact Changed Paths, requires
+  Verification to pass, and commits the Journal;
 - `turn_complete` is the only call in its Tool batch. The Gate evaluates it
   before the model receives `required_action=final_answer`; no new verification
   pass may begin after the user-facing Final Answer;
-- the Completion/Verification Gate activates for explicit `workspace_change`
-  Intent or any observed Workspace Mutation. An ordinary Answer with no Mutation
-  completes directly; an Answer that mutates cannot bypass Declaration,
-  Verification, Journal, or Receipt;
+- the Completion Gate activates after any Tool execution. A text-only Answer
+  completes directly, but a Tool-assisted Answer must declare structured
+  completion even when it is read-only. The Verification Gate activates for
+  explicit `workspace_change` Intent or any observed Workspace Mutation; an
+  Answer that mutates cannot bypass Declaration, Verification, Journal, or
+  Receipt;
 - model Text before that Gate passes is Provisional Output and does not enter
   the stable Transcript. Final Answer publication follows accepted Declaration,
   Verification, and Journal Commit;
 - a rejected `turn_complete` emits its paired `tool.result` with
   `accepted=false` and a structured `rejection`. Only an accepted Declaration
-  requires Runtime-bound Changed Paths, Mutation Revision, and Completion Call
-  ID; missing bindings on a rejection must not become an `internal` Failure;
+  requires a Runtime-bound Completion Call ID. A read-only acceptance binds
+  Revision zero with no Changed Paths; a mutating acceptance also binds exact
+  Changed Paths and a nonzero Mutation Revision. Missing bindings on a rejection
+  must not become an `internal` Failure;
 - model-visible `turn_complete` Content, Event Metadata, and UI Projection state
   the same accepted/rejected decision. The Executor never claims that a
   Declaration is recorded or requests a Final Answer before Runtime validation;
+- a malformed `turn_complete` remains rejected rather than being silently
+  normalized. Its structured Result uses `reason=invalid_declaration`, preserves
+  the JSON Schema failure in `error_detail` and
+  `completion_declaration_error`, and requires the model to retry with
+  top-level `status`, `summary`, and `pending_actions`;
 - any later Mutation or Verification Repair invalidates the Completion
-  Declaration. The model declares only `status` and `summary`; optional
-  `pending_actions` must be empty. Runtime binds exact Changed Paths, accepted
-  current-revision Quality Call IDs, Mutation Revision, and Completion Call ID.
-  Models never copy or invent these Runtime facts;
+  Declaration. The model must declare `status`, `summary`, and
+  `pending_actions`. `status=complete` requires an explicit empty array.
+  `status=incomplete` requires concrete Pending Actions, is rejected with
+  `required_action=continue_work`, and continues the same Turn without
+  authorizing Terminal completion. Runtime binds the Completion Call ID and
+  either the read-only zero revision or exact Changed Paths, accepted
+  current-revision Quality Call IDs, and a nonzero Mutation Revision only for
+  an accepted complete Declaration. Models never copy or invent these Runtime
+  facts;
 - Completion repair budgets count repeated attempts only while Mutation Revision
   and accepted Quality Evidence remain unchanged. A new Mutation Revision or
   newly accepted Quality Evidence resets the no-progress counter;
@@ -154,8 +185,12 @@ During every Turn, check structured invariants:
 - `shell_run.write_globs` expands before Approval to at most 512 existing exact
   files; Guard, Journal, Sandbox, reconciliation, and Receipt never receive a
   runtime wildcard grant;
-- an edit match miss reports structured recovery (`edit_precondition_miss`,
-  `reread_exact_range`, `retry_original=false`) in the Tool Result Event;
+- an edit match miss never falls back to fuzzy replacement. When a unique
+  nearby source anchor exists, the Tool Result reports
+  `edit_precondition_miss`, `replace_failed_change`, the one-based failed
+  Change index, Match Count, and a bounded line-numbered current excerpt. When
+  no safe anchor exists it reports `reread_exact_range`. Both paths use
+  `retry_original=false` and leave the entire transaction unwritten;
 - a Diagnostics process failure with no parsed diagnostics is `unavailable`
   with `error_category=runner_failure`, not a source-code finding; Receipt
   aggregates `failed > unavailable > passed > not_evaluated`;

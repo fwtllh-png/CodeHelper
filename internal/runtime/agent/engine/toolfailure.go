@@ -2,6 +2,8 @@ package engine
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
@@ -21,6 +23,33 @@ import (
 func recoverableToolFailure(err error) (string, bool) {
 	if err == nil {
 		return "", false
+	}
+	if hint, ok := tool.RecoveryHintFromError(err); ok &&
+		hint.ErrorCategory != "" && hint.RequiredAction != "" {
+		content := fmt.Sprintf(
+			"%s; required_action=%s; retry_original=%t",
+			err.Error(),
+			hint.RequiredAction,
+			hint.RetryOriginal,
+		)
+		if hint.Path != "" {
+			content += "; path=" + hint.Path
+		}
+		if hint.FailedChange > 0 {
+			content += fmt.Sprintf("; failed_change=%d; match_count=%d",
+				hint.FailedChange, hint.MatchCount)
+		}
+		if hint.CurrentExcerpt != "" {
+			content += fmt.Sprintf(
+				"; current_excerpt_lines=%d-%d:\n%s",
+				hint.StartLine, hint.EndLine, hint.CurrentExcerpt,
+			)
+		}
+		if len(hint.CandidatePaths) != 0 {
+			content += "; candidate_paths=" +
+				strings.Join(hint.CandidatePaths, ",")
+		}
+		return content, true
 	}
 	var decision *policy.DecisionError
 	if errors.As(err, &decision) {
@@ -62,12 +91,28 @@ func recoverableToolFailure(err error) (string, bool) {
 
 func toolFailureRecoveryMetadata(err error) map[string]any {
 	if hint, ok := tool.RecoveryHintFromError(err); ok {
-		return map[string]any{
+		metadata := map[string]any{
 			"error_category":  hint.ErrorCategory,
 			"required_action": hint.RequiredAction,
 			"path":            hint.Path,
 			"retry_original":  hint.RetryOriginal,
 		}
+		if hint.FailedChange > 0 {
+			metadata["failed_change"] = hint.FailedChange
+			metadata["match_count"] = hint.MatchCount
+		}
+		if hint.CurrentExcerpt != "" {
+			metadata["start_line"] = hint.StartLine
+			metadata["end_line"] = hint.EndLine
+			metadata["current_excerpt"] = hint.CurrentExcerpt
+		}
+		if len(hint.CandidatePaths) != 0 {
+			metadata["candidate_paths"] = append(
+				[]string(nil),
+				hint.CandidatePaths...,
+			)
+		}
+		return metadata
 	}
 	var decision *policy.DecisionError
 	if errors.As(err, &decision) && decision.Code == "edit_plan_stale" {

@@ -110,6 +110,22 @@ type RepairBudget struct {
 	Steps       uint32 `json:"steps"`
 }
 
+type ProgressStage string
+
+const (
+	ProgressStageNone       ProgressStage = ""
+	ProgressStageConverge   ProgressStage = "converge"
+	ProgressStageFinishOnly ProgressStage = "finish_only"
+	ProgressStageExhausted  ProgressStage = "exhausted"
+)
+
+type ProgressState struct {
+	Signature         string        `json:"signature,omitempty"`
+	ObservedSamples   uint32        `json:"observed_samples"`
+	NoProgressSamples uint32        `json:"no_progress_samples"`
+	Stage             ProgressStage `json:"stage,omitempty"`
+}
+
 type Policy struct {
 	CompletionRequired      bool   `json:"completion_required"`
 	VerificationRequired    bool   `json:"verification_required"`
@@ -245,6 +261,7 @@ type State struct {
 	FinalOutput           []string                    `json:"final_output,omitempty"`
 	OutputEligibility     bool                        `json:"output_eligibility"`
 	RepairBudgets         map[RepairKind]RepairBudget `json:"repair_budgets"`
+	Progress              ProgressState               `json:"progress"`
 	NextAction            StepAction                  `json:"next_action,omitempty"`
 	LastModelContinued    bool                        `json:"last_model_continued,omitempty"`
 	UnresolvedToolFailure bool                        `json:"unresolved_tool_failure,omitempty"`

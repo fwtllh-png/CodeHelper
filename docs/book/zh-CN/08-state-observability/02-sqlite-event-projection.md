@@ -31,6 +31,8 @@ last_verified: null
 理解 Initial SQLite Schema、Append-only Event Evidence 与 Transactional Idempotent
 Projection。
 
+## Storage Roles
+
 ```mermaid
 flowchart LR
     E[Protocol Event] --> L[Durable JSONL Event Log]
@@ -44,15 +46,23 @@ flowchart LR
 SQLite 负责 Relational Query State；Event Log 负责 Ordered Durable Evidence；
 Projection 将 Event 转为当前查询视图，不改变 Event 语义。
 
+## SQLite Store
+
 `sqlite.Open` 解析 Absolute Path，启用 Foreign Key、Busy Timeout、WAL，原子创建
 Schema v1，验证 Pragma 并运行 `quick_check`。Newer Schema 在任何写入前被拒绝；
 Multi-statement Write 使用 `WithTx`。
+
+## Event Log
 
 Event Append 校验 Next Cursor，并记录 Offset/Size/Digest Evidence。Replay 校验 Committed
 Bytes。Torn Final Write 可以安全截断，Committed Region Corruption 必须 Fail Closed；
 Append Rollback 也失败时返回 Indeterminate。
 
-`ShouldPersist` 省略部分 Noise Stream Event，但保留 Lifecycle/Audit Fact。Projection 以
+`ShouldPersist` 省略部分 Noise Stream Event，但保留 Lifecycle/Audit Fact。
+
+## Projection Rules
+
+Projection 以
 Event Identity/Sequence 幂等执行；Metadata Patch 与 Event Append 保持独立。Recovery
 拒绝没有对应 Durable Event 的 Committed Projection。
 

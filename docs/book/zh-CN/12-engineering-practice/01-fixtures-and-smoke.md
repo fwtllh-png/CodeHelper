@@ -28,6 +28,8 @@ last_verified: null
 使用 Deterministic Fixture 验证正确性，用最小 Live Smoke 验证 Provider/Environment，
 并明确两者不能互相替代。
 
+## Test Pyramid
+
 Provider Fixture 定义 Expected Prompt/Model 与 Replayable SSE，覆盖 Text、Tool、
 Malformed Call、Cancellation、Editor Context、Subagent、Workflow 和 Multi-sample，
 不依赖网络/凭证。

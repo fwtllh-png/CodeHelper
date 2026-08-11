@@ -32,6 +32,8 @@ last_verified: null
 理解 Child Agent Role、Topology、Mailbox/Control、Budget、Isolated Worktree、Write
 Claim 与 Guarded Merge。
 
+## Topology
+
 ```mermaid
 flowchart TD
     P[Parent Runtime] --> M[Subagent Manager]

@@ -125,13 +125,17 @@ Fact、未验证 Change、Blind Change、Open Diagnostics 与重复工作的 Rem
 
 Risk 排在 Fact 前面，因为 Prefix-preserving Budget Cut 应优先保留可行动的不确定性。
 
-## Tool Discovery、Binding 与 Feedback
+## Tool Discovery 与 Binding
 
 Registry 暴露 Eager Tool Definition，并可将大型 Catalog 延迟到 Tool Search。每个
 Snapshot 有 Catalog ID、Generation、Revision 与 Authority；Provider 只看到公共 Schema。
 
 Tool Call 在执行前绑定到曾展示它的 Snapshot。Executor 被 Replace/Revoked 时 Fail
-Closed。Engine 按 Concurrency/Resource Rule 调度 Call，并统一经过 Guard。
+Closed。
+
+## Tool Execution 与 Feedback
+
+Engine 按 Concurrency/Resource Rule 调度 Call，并统一经过 Guard。
 
 Result 可以包含 Content、Metadata、File Change、Error Category 和大输出 Handle。
 成功或 Recoverable Failure 作为 Tool Message 进入下一次 Sample，Model 可以继续、

@@ -10,23 +10,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
-
-func (e *Engine) completionGateRequired(intent protocol.TurnIntent) bool {
-	return e.options.RequireCompletionDeclaration &&
-		e.strictWorkspaceVerificationRequired(intent)
-}
-
-func (e *Engine) strictWorkspaceVerificationRequired(
-	intent protocol.TurnIntent,
-) bool {
-	if protocol.NormalizeTurnIntent(intent) ==
-		protocol.TurnIntentWorkspaceChange {
-		return true
-	}
-	return e.options.RequireCompletionDeclaration && len(e.TurnDiff()) != 0
-}
 
 func (e *Engine) completionCandidate(
 	call provider.ToolCall,
@@ -77,6 +61,13 @@ func bindCompletionDecision(
 	}
 	result.Metadata["completion_declaration_accepted"] = decision.Accepted
 	result.Metadata["completion_declaration_rejection"] = decision.Reason
+	errorDetail := ""
+	if result.IsError {
+		errorDetail = strings.TrimSpace(result.Content)
+		if errorDetail != "" {
+			result.Metadata["completion_declaration_error"] = errorDetail
+		}
+	}
 	if decision.Accepted {
 		declaration, ok := decodeCompletionDeclaration(
 			result.Metadata[tool.MetadataCompletionDeclaration],
@@ -99,6 +90,7 @@ func bindCompletionDecision(
 		decision.Accepted,
 		decision.Reason,
 		decision.RequiredAction,
+		errorDetail,
 	)
 }
 
@@ -106,17 +98,22 @@ func completionDecisionContent(
 	accepted bool,
 	reason string,
 	requiredAction string,
+	errorDetail string,
 ) string {
 	status := "rejected"
 	if accepted {
 		status = "accepted"
 	}
-	content, err := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"status":          status,
 		"accepted":        accepted,
 		"reason":          reason,
 		"required_action": requiredAction,
-	})
+	}
+	if errorDetail != "" {
+		payload["error_detail"] = errorDetail
+	}
+	content, err := json.Marshal(payload)
 	if err != nil {
 		return `{"status":"rejected","accepted":false,"reason":"encode_decision_failed"}`
 	}
@@ -133,6 +130,9 @@ func sortedMapKeys(values map[string]struct{}) []string {
 }
 
 func decodeCompletionDeclaration(value any) (tool.CompletionDeclaration, bool) {
+	if value == nil {
+		return tool.CompletionDeclaration{}, false
+	}
 	if declaration, ok := value.(tool.CompletionDeclaration); ok {
 		return declaration, true
 	}

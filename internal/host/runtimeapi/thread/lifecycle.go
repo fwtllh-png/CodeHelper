@@ -116,7 +116,7 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 	}
 
 	rows, err := l.db.QueryContext(ctx, `
-		SELECT id, COALESCE(idempotency_key, ''), request_json
+		SELECT id, session_id, COALESCE(idempotency_key, ''), request_json
 		FROM operations WHERE status = ?`, OperationAccepted,
 	)
 	if err != nil {
@@ -126,7 +126,53 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 	for rows.Next() {
 		var pending app.PendingOperation
 		var canonical string
-		if err := rows.Scan(&pending.ID, &pending.IdempotencyKey, &canonical); err != nil {
+		if err := rows.Scan(
+			&pending.ID,
+			&pending.SessionID,
+			&pending.IdempotencyKey,
+			&canonical,
+		); err != nil {
+			return app.RecoveryState{}, err
+		}
+		pending.Canonical = json.RawMessage(canonical)
+		recovery.PendingOperations[pending.ID] = pending
+	}
+	if err := rows.Err(); err != nil {
+		return app.RecoveryState{}, err
+	}
+	if err := rows.Close(); err != nil {
+		return app.RecoveryState{}, err
+	}
+	rows, err = l.db.QueryContext(ctx, `
+		SELECT operation.id, operation.session_id,
+			COALESCE(operation.idempotency_key, ''), operation.request_json
+		FROM turns AS turn
+		JOIN operations AS operation ON operation.id = turn.operation_id
+		LEFT JOIN turn_terminal_envelopes AS terminal ON terminal.turn_id = turn.id
+		WHERE turn.status = 'active'
+			AND operation.kind = ?
+			AND operation.status = ?
+			AND terminal.turn_id IS NULL
+		ORDER BY turn.created_at, turn.id`,
+		protocol.OperationStartTurn,
+		OperationCommitted,
+	)
+	if err != nil {
+		return app.RecoveryState{}, fmt.Errorf(
+			"read interrupted active turns: %w",
+			err,
+		)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pending app.PendingOperation
+		var canonical string
+		if err := rows.Scan(
+			&pending.ID,
+			&pending.SessionID,
+			&pending.IdempotencyKey,
+			&canonical,
+		); err != nil {
 			return app.RecoveryState{}, err
 		}
 		pending.Canonical = json.RawMessage(canonical)

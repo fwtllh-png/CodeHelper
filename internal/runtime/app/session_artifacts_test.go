@@ -433,6 +433,7 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	if retry.Prompt != "Fix the parser" ||
+		retry.DisplayPrompt != "Fix the parser" ||
 		retry.Intent != protocol.TurnIntentWorkspaceChange ||
 		retry.IdempotencyKey != "retry-source" {
 		t.Fatalf("Retry preparation = %+v", retry)
@@ -469,6 +470,25 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		strings.Contains(continued.Prompt, `"outcome":"changed"`) ||
 		!strings.Contains(continued.Prompt, "Run focused tests") {
 		t.Fatalf("Continue preparation = %+v", continued)
+	}
+	if continued.DisplayPrompt !=
+		"Continue: Fix the parser\n\nGuidance: Run focused tests" {
+		t.Fatalf("Continue display prompt = %q", continued.DisplayPrompt)
+	}
+	for _, internal := range []string{
+		"Source Turn ID",
+		"<source_request>",
+		"<recovery_evidence>",
+		`"call_id"`,
+		`"arguments_digest"`,
+	} {
+		if strings.Contains(continued.DisplayPrompt, internal) {
+			t.Fatalf(
+				"Continue display prompt leaked %q: %q",
+				internal,
+				continued.DisplayPrompt,
+			)
+		}
 	}
 	replayed, err := events.Replay(t.Context(), 0)
 	if err != nil {
@@ -530,6 +550,28 @@ func TestTurnRecoveryDefaultsLegacyEmptyIntentToAnswer(t *testing.T) {
 	}
 	if prepared.Intent != protocol.TurnIntentAnswer {
 		t.Fatalf("Recovery intent = %q, want answer", prepared.Intent)
+	}
+}
+
+func TestRecoveryDisplayPromptUnwrapsLegacyInternalPrompt(t *testing.T) {
+	legacy := turnRecoveryPromptPrefix + ` Do not infer the task.
+
+Original model-visible request:
+<source_request>
+Fix the parser
+</source_request>
+
+<recovery_evidence>
+{"source_turn_id":"turn-source","closed_tools":[{"call_id":"call-read"}]}
+</recovery_evidence>`
+	if got := recoveryDisplayPrompt(legacy, legacy); got != "Fix the parser" {
+		t.Fatalf("legacy recovery display prompt = %q", got)
+	}
+	if got := recoveryDisplayPrompt(
+		"internal recovery context",
+		"Continue: Continue: Fix the parser",
+	); got != "Fix the parser" {
+		t.Fatalf("nested recovery display prompt = %q", got)
 	}
 }
 

@@ -277,6 +277,46 @@ func TestRejectedCompletionDeclarationCanOmitRuntimeBindings(t *testing.T) {
 	}
 }
 
+func TestAcceptedReadOnlyCompletionDeclarationUsesRevisionZero(t *testing.T) {
+	_, err := NewEvent(EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &ToolResultData{
+		Tool: "turn_complete", CallID: "call-complete",
+		Output: "declaration accepted",
+		Completion: &CompletionDeclaration{
+			Status:         "complete",
+			Summary:        "read-only analysis completed",
+			PendingActions: []string{},
+			Accepted:       true,
+			CallID:         "call-complete",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEvent() rejected read-only completion: %v", err)
+	}
+}
+
+func TestRejectedIncompleteDeclarationCarriesPendingActions(t *testing.T) {
+	_, err := NewEvent(EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &ToolResultData{
+		Tool: "turn_complete", CallID: "call-complete",
+		Output: "continue current turn",
+		Completion: &CompletionDeclaration{
+			Status:         "incomplete",
+			Summary:        "workspace edits remain",
+			PendingActions: []string{"apply the workspace edits"},
+			Accepted:       false,
+			Rejection:      "pending_actions",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEvent() rejected an incomplete declaration: %v", err)
+	}
+}
+
 func TestEventTaggedUnionRoundTrip(t *testing.T) {
 	dataValues := []EventData{
 		&TurnStartedData{

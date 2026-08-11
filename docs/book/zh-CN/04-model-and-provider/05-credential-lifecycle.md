@@ -51,6 +51,8 @@ flowchart LR
 TOML 只包含 `kind` 与 `name`。Value 在 Provider HTTP 使用前解析，Prompt Context、
 Event、Receipt 与 ModelRequest 不需要 Raw Secret。
 
+## Reference Kinds
+
 Reference Kind：
 
 - `env`：读取显式命名 Environment Variable；
@@ -63,6 +65,8 @@ Reference Kind：
 Capability，不是普通 Catalog Validation 自动开放的值；这防止 Config 将任意 Path
 变成 Credential Source。
 
+## 生命周期
+
 CLI Auth Command 可以把 Env Value 写入 Keyring，但不会序列化到 TOML。
 
 在 VS Code 中，Native Password InputBox 收集 Value，SecretStorage 按 Exact
@@ -74,7 +78,7 @@ Credential Validation 通过 Runtime Wiring 调用 Provider Model-list Endpoint�
 结果仅限 Validation Status、Timestamp 与 Sanitized Failure Category。Untrusted
 Workspace 不能配置 Credential，也不能把 Validation 当作 Egress Bypass。
 
-## 生命周期与代码地图
+## 代码地图
 
 Secret 应在 Tracked Source 外 Provision，使用时解析，Diagnostic 中 Redact，疑似泄漏后
 Rotate，不再使用时 Delete/Revoke。Debug Dump 不得包含 Authorization。

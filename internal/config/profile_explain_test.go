@@ -74,7 +74,7 @@ name = "WORKSPACE_API_KEY"
 		t.Fatal(err)
 	}
 	if explanation.Current != float64(12) ||
-		explanation.Default != float64(64) ||
+		explanation.Default != float64(256) ||
 		explanation.Source != SourceFile ||
 		explanation.Risk != "medium" {
 		t.Fatalf("explanation=%+v", explanation)

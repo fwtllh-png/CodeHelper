@@ -68,7 +68,7 @@ Meaningful Stream 之前的失败，在 Request Idempotent 时可能 Retry；产
 Sequence 生成 Request-scoped Idempotency Key；它可帮助 Provider，但不能使任意 Remote
 Behavior Transactional。
 
-## Control 与代码地图
+## Controls
 
 - Concurrency Semaphore 限制 In-flight Request；
 - Local Rate Limiter 控制 Burst；
@@ -76,6 +76,8 @@ Behavior Transactional。
 - Retry Policy 只处理选定 Transport/Status Failure；
 - Retry-After 与 Cancellation 影响 Wait；
 - Body/SSE Limit 限制 Remote Input。
+
+## 代码地图
 
 | 关注点 | 源码 |
 | --- | --- |

@@ -97,6 +97,7 @@ type StartTurnPayload struct {
 	TurnID            TurnID                   `json:"turn_id"`
 	ItemID            ItemID                   `json:"item_id"`
 	Prompt            string                   `json:"prompt"`
+	DisplayPrompt     string                   `json:"display_prompt,omitempty"`
 	Intent            TurnIntent               `json:"intent,omitempty"`
 	WorkspaceIdentity *WorkspaceIdentity       `json:"workspace_identity,omitempty"`
 	Context           []EditorContextReference `json:"context,omitempty"`

@@ -53,6 +53,8 @@ flowchart LR
 Option、Tool Definition 与 Cache Hint。`Provider.Stream` 返回统一 Text、Reasoning、
 Tool Fragment、Search、Citation、Usage 与 Terminal Information。
 
+## Wire 差异
+
 Chat Completion 使用 choices/delta 和 Indexed Function Fragment；Responses 使用
 Typed Output Item；Anthropic 使用 Content-block Lifecycle。Encoder 保持各协议要求的
 History Shape，Decoder 输出同一 StreamEvent。
@@ -93,6 +95,12 @@ Attachment 携带 Bytes/Media Type，而不是 Local Path。Encoder 获得 Conte
 | OpenAI Decode | `provider/openai/stream.go` |
 | Anthropic Decode | `provider/anthropic/stream.go` |
 | SSE | `provider/sse.go` |
+
+## 实现导读
+
+HTTP Client 在编码前校验 Route 与 ModelRequest：按 Route Protocol 选择 Encoder、
+应用受治理的 Header 与 Credential，并用有界 Line/Event 处理解析 SSE。各协议 Decoder
+先校验 Fragment，再向 Engine 返回 Normalized Event。
 
 ## 设计取舍与替代方案
 

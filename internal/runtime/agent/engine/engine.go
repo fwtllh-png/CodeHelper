@@ -106,8 +106,9 @@ type Options struct {
 	WorkspaceTurnGate *WorkspaceTurnGate
 	Diagnostics       diagnostics.Runner
 	Verify            VerifyOptions
-	// RequireCompletionDeclaration makes workspace_change completion depend on
-	// a turn_complete tool result bound to the current mutation revision.
+	// RequireCompletionDeclaration makes tool-assisted completion depend on an
+	// accepted turn_complete result. Mutating declarations bind to the current
+	// mutation revision; read-only declarations bind to revision zero.
 	RequireCompletionDeclaration bool
 	// TurnKernelObserver receives deterministic records after Coordinator
 	// commits a transition. The callback is diagnostics-only: panics are
@@ -349,7 +350,7 @@ func New(options Options) (*Engine, error) {
 		options.MaxOutputTokens = min(4096, options.Route.Model().Limits.MaxOutputTokens)
 	}
 	if options.MaxSteps == 0 {
-		options.MaxSteps = 64
+		options.MaxSteps = 256
 	}
 	if options.MaxSteps < 1 {
 		return nil, errors.New("max steps must be positive")

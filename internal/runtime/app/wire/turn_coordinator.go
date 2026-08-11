@@ -117,7 +117,11 @@ func (r *durableCoordinatorRuntime) Open(
 	if err := r.health(); err != nil {
 		return turnkernel.CoordinatorHandle{}, err
 	}
-	if err := r.store.ClaimTurn(ctx, turnID, r.owner, r.lease); err != nil {
+	facts, err := r.store.LoadDomainFacts(ctx, turnID)
+	if err != nil {
+		return turnkernel.CoordinatorHandle{}, err
+	}
+	if err := r.claimTurn(ctx, turnID, len(facts) != 0); err != nil {
 		return turnkernel.CoordinatorHandle{}, err
 	}
 	r.track(turnID)
@@ -132,6 +136,34 @@ func (r *durableCoordinatorRuntime) Open(
 		return turnkernel.CoordinatorHandle{}, err
 	}
 	return handle, nil
+}
+
+func (r *durableCoordinatorRuntime) claimTurn(
+	ctx context.Context,
+	turnID string,
+	waitForExpiredLease bool,
+) error {
+	retry := min(r.lease/10, 250*time.Millisecond)
+	retry = max(retry, 10*time.Millisecond)
+	timeout := time.NewTimer(r.lease + r.lease/3)
+	defer timeout.Stop()
+	for {
+		err := r.store.ClaimTurn(ctx, turnID, r.owner, r.lease)
+		if !errors.Is(err, turnstate.ErrTurnLeaseHeld) ||
+			!waitForExpiredLease {
+			return err
+		}
+		timer := time.NewTimer(retry)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timeout.C:
+			timer.Stop()
+			return err
+		case <-timer.C:
+		}
+	}
 }
 
 func (r *durableCoordinatorRuntime) Restore(

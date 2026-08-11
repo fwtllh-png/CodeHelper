@@ -83,9 +83,11 @@ Replay 明确；Verification Evidence 完整。
 Authority 模糊时停止并重构设计；只有 Live Dependency 时添加 Contract Fixture；
 Rollback 不能恢复 Durable Compatibility 时不得 Rollout。
 
-## 清理与验证
+## 清理
 
 删除实验 Registration/Artifact，或作为已 Review 的生产代码保留。
+
+## 验证
 
 ```bash
 go test ./path/to/changed/package

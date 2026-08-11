@@ -55,6 +55,10 @@ Replay pages and live notifications preserve Cursor semantics. Contract tests
 cover Start, Stream, Approve, Input, Cancel, Verify, Recover, and Receipt
 without defining an ACP-specific Turn loop.
 
+Session history hydration is bounded by both Turn count and encoded bytes.
+Responses expose `nextSeq` and `truncated`, so a tool-heavy Turn or a long-lived
+Session is projected page by page without exceeding the ACP frame limit.
+
 Session Profile queries and updates use the same Runtime-owned durable state.
 Updates carry `expectedRevision`, fail while the Session's Thread has an active
 Turn, and return an explicit prompt-cache reset result. Capability projection

@@ -45,6 +45,8 @@ flowchart LR
     R --> N[Recovered Runtime]
 ```
 
+## Durable Facts
+
 Event Sequence/Terminal Outcome 说明发生了什么；Projection 支持 Session/Task/Usage/Trace
 查询；Snapshot 加速恢复；CAS 保存 Immutable Payload；Journal 保存 Before-image；
 Lease 区分 Live Owner 与 Abandoned Work。
@@ -77,10 +79,12 @@ submit -> durable acceptance/reservation -> engine work
 Durability 不是序列化所有对象。Subscriber、Network Stream、Mutex 与 Process Handle
 属于 Ephemeral State，只能重建或明确丢失。
 
-## 正确性与取舍
+## Correctness Properties
 
 Durable Write 需要 Atomicity、Ordering、Integrity、Idempotent Projection 和
 Indeterminate Outcome。Recovery 不能仅因为 Result 未被观察就再次执行 Agent Turn。
+
+## 设计取舍
 
 Event-only Replay 权威但可能慢；Snapshot-only 快却缺少审计。CodeHelper 组合 Ordered
 Event、Typed Projection、Integrity-checked Snapshot 与 Side-effect Journal。

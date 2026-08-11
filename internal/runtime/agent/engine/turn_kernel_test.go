@@ -11,6 +11,71 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
+func TestEngineRecoveryProjectsAlreadyTerminalKernelWithoutProvider(t *testing.T) {
+	store := turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
+	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := coordinators.Open(
+		t.Context(),
+		"terminal-recovery",
+		turnkernel.NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []turnkernel.Command{
+		turnkernel.StartTurn{},
+		turnkernel.PreparationFinished{},
+		turnkernel.TerminalRequested{CancelReason: "client input EOF"},
+		turnkernel.FinishTerminal{},
+	} {
+		if err := handle.Coordinator.Submit(t.Context(), command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := coordinators.Release(t.Context(), "terminal-recovery"); err != nil {
+		t.Fatal(err)
+	}
+
+	second := newEngine(
+		t,
+		&scriptedProvider{},
+		tool.NewRegistry(nil, nil),
+	)
+	journal := newTestWorkspaceJournal(t, t.TempDir())
+	second.journal = journal
+	second.options.Journal = journal
+	second.options.TurnCoordinatorRuntime = coordinators
+	var terminal Event
+	result, err := second.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"terminal-recovery",
+		"must not sample",
+		protocol.TurnIntentAnswer,
+		nil,
+		func(event Event) error {
+			if event.State == Canceled {
+				terminal = event
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Canceled || terminal.State != Canceled {
+		t.Fatalf("recovered result = %+v, terminal = %+v", result, terminal)
+	}
+	if err := journal.Begin("next-turn"); err != nil {
+		t.Fatalf("restored terminal leaked active journal: %v", err)
+	}
+	if _, err := journal.Rollback(t.Context(), "next-turn"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEngineRunsTurnKernelObserverWithoutChangingResult(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		textStream("done"),
@@ -63,7 +128,8 @@ func TestEngineMutationTurnHasNoKernelDecisionDrift(t *testing.T) {
 		toolCallStream("write-1", "write_fixture", `{}`),
 		toolCallStream("complete-1", "turn_complete", `{
 			"status":"complete",
-			"summary":"implemented and verified"
+			"summary":"implemented and verified",
+			"pending_actions":[]
 		}`),
 		textStream("Implemented and verified."),
 	}}

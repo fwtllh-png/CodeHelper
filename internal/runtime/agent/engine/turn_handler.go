@@ -186,7 +186,8 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	e.resetVerificationEvidence()
 	e.resetRollbackConflicts()
 	e.evidence.BeginTurn(e.turn)
-	if e.journal != nil {
+	_, restoredTerminal := kernel.terminalDecision()
+	if e.journal != nil && !restoredTerminal {
 		if err := e.journal.Begin(turnID); err != nil {
 			return result, err
 		}
@@ -350,6 +351,36 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			return result, nil
 		}
 	}
+	if decision, terminalized := kernel.terminalDecision(); terminalized {
+		kernelTerminalStarted = true
+		kernelTerminalFinalized = true
+		contextFinalized = true
+		terminal.setContextBudget(ContextBudgetSnapshot{})
+		switch decision.Kind {
+		case turnkernel.TerminalCompleted:
+			result.Text = kernel.frozenOutput()
+			result.State = Completed
+			if err := send(Completed, Event{Text: result.Text}); err != nil {
+				return result, err
+			}
+		case turnkernel.TerminalCanceled:
+			result.State = Canceled
+			if err := send(Canceled, Event{
+				CancelReason: decision.Message,
+			}); err != nil {
+				return result, err
+			}
+		default:
+			result.State = Failed
+			if err := send(Failed, Event{
+				ErrorCode: protocol.ErrorCode(decision.Code),
+				Error:     decision.Message,
+			}); err != nil {
+				return result, err
+			}
+		}
+		return result, nil
+	}
 	if err := send(Preparing, Event{
 		Provider: turnContext.Provider, Model: turnContext.Model,
 		Purpose: string(turnContext.Purpose),
@@ -375,6 +406,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	executed := make(map[string]tool.Result)
 	cache := &toolResultCache{}
 	var finalText string
+	progress := kernel.progressObservation()
 	if recoveredCalls := kernel.pendingToolCalls(); len(recoveredCalls) != 0 {
 		blocks := make([]provider.ContentBlock, 0, len(recoveredCalls))
 		for _, call := range recoveredCalls {
@@ -386,8 +418,12 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		transaction = append(transaction, provider.Message{
 			Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
 		})
+		toolCtx := ctx
+		if progress.stage == turnkernel.ProgressStageFinishOnly {
+			toolCtx = withFinishOnly(ctx)
+		}
 		results, err := e.runToolsWithCache(
-			ctx,
+			toolCtx,
 			turnID,
 			recoveredCalls,
 			executed,
@@ -438,6 +474,23 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			if err := invalidateCompletion("turn_steered"); err != nil {
 				return result, err
 			}
+		}
+		if remaining := stepBudgetWarningRemaining(e.options.MaxSteps, step); remaining > 0 {
+			transaction = append(transaction, stepBudgetFeedback(e.turn, remaining))
+		}
+		progress, err = kernel.observeProgress(e.progressSignature(kernel))
+		if err != nil {
+			return result, err
+		}
+		if progress.stage == turnkernel.ProgressStageExhausted {
+			return result, noProgressProblem(progress)
+		}
+		if progress.stageChanged &&
+			progress.stage != turnkernel.ProgressStageNone {
+			transaction = append(
+				transaction,
+				noProgressFeedback(e.turn, progress),
+			)
 		}
 		if err := send(CallingModel, Event{}); err != nil {
 			return result, err
@@ -649,14 +702,8 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			}
 			contextFinalized = true
 			terminal.setContextBudget(snapshot)
-			if e.completionGateRequired(intent) {
-				if _, err := kernel.releaseOutput(); err != nil {
-					return result, err
-				}
-			} else {
-				if _, err := kernel.releaseOutput(); err != nil {
-					return result, err
-				}
+			if _, err := kernel.releaseOutput(); err != nil {
+				return result, err
 			}
 			if err := finalizeKernel(
 				turnkernel.TerminalRequested{},
@@ -693,8 +740,12 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		transaction = append(transaction, provider.Message{
 			Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
 		})
+		toolCtx := ctx
+		if progress.stage == turnkernel.ProgressStageFinishOnly {
+			toolCtx = withFinishOnly(ctx)
+		}
 		results, err := e.runToolsWithCache(
-			ctx,
+			toolCtx,
 			turnID,
 			calls,
 			executed,
@@ -752,6 +803,33 @@ const maxCompletionRepairs = 2
 const maxWorkspaceChangeRepairs = 1
 const maxDeclarationRepairs = 2
 
+func stepBudgetWarningRemaining(maxSteps, step int) int {
+	if maxSteps < 64 {
+		return 0
+	}
+	warning := min(32, max(16, maxSteps/4))
+	if step != maxSteps-warning {
+		return 0
+	}
+	return warning
+}
+
+func stepBudgetFeedback(turn uint64, remaining int) provider.Message {
+	message := provider.TextMessage(
+		provider.RoleUser,
+		fmt.Sprintf(
+			"[step_budget]\nremaining_steps=%d\nhard_limit=true\n"+
+				"Prioritize the requested deliverable now. Stop broad exploration, "+
+				"finish the smallest coherent verified result, and call turn_complete. "+
+				"If required work cannot fit, call turn_complete with status=incomplete "+
+				"and concrete pending_actions instead of waiting for forced termination.",
+			remaining,
+		),
+	)
+	message.Turn = turn
+	return message
+}
+
 func workspaceChangeRequiredFeedback(turn uint64) provider.Message {
 	message := provider.TextMessage(
 		provider.RoleUser,
@@ -772,9 +850,12 @@ func completionDeclarationFeedback(turn uint64) provider.Message {
 		"[completion_declaration_required]\n"+
 			"required_action=turn_complete\n"+
 			"retry_original=false\n"+
-			"Call turn_complete with status=complete and a non-empty summary. "+
-			"The runtime binds changed paths and accepted verification evidence automatically. "+
-			"Do not describe future work; execute every pending action before declaring completion.",
+			"Report the actual work state through turn_complete. Use status=complete, "+
+			"a non-empty summary, and pending_actions=[] only when every requested action "+
+			"is finished. If any work remains, use status=incomplete and list each concrete "+
+			"pending action; the runtime will continue this same turn. "+
+			"The runtime binds any changed paths and accepted verification evidence automatically. "+
+			"Do not move requested work to a future turn.",
 	)
 	message.Turn = turn
 	return message

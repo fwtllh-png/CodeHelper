@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -163,6 +164,97 @@ func TestFileToolsRejectTraversalAndBinary(t *testing.T) {
 		}); err == nil {
 			t.Fatalf("read %s succeeded", arguments)
 		}
+	}
+}
+
+func TestMissingFilePathsCarryStructuredRecoveryHints(t *testing.T) {
+	root := t.TempDir()
+	tools, err := NewWithBackend(root, fileTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := tools.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, testCase := range []struct {
+		name string
+		args string
+	}{
+		{name: "file_read", args: `{"path":"missing/chapter.md"}`},
+		{name: "file_list", args: `{"path":"missing"}`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := registry.Execute(t.Context(), tool.Call{
+				Name: testCase.name, Arguments: json.RawMessage(testCase.args),
+				Authorized: true,
+			})
+			if err == nil || !errors.Is(err, tool.ErrPrecondition) {
+				t.Fatalf("%s error = %v, want recoverable precondition",
+					testCase.name, err)
+			}
+			hint, ok := tool.RecoveryHintFromError(err)
+			if !ok ||
+				hint.ErrorCategory != "file_not_found" ||
+				hint.RequiredAction != "file_list" ||
+				hint.RetryOriginal {
+				t.Fatalf("%s recovery hint = %+v, found=%v",
+					testCase.name, hint, ok)
+			}
+		})
+	}
+}
+
+func TestMissingFileSuggestsBoundedExistingSiblingPaths(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "docs", "context")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"01-prompt-message-context.md",
+		"02-workspace-index-editor.md",
+		"notes.txt",
+	} {
+		if err := os.WriteFile(
+			filepath.Join(directory, name),
+			[]byte(name),
+			0o600,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tools, err := NewWithBackend(root, fileTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := tools.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = registry.Execute(t.Context(), tool.Call{
+		Name: "file_read",
+		Arguments: json.RawMessage(
+			`{"path":"docs/context/01-prompt-context.md"}`,
+		),
+		Authorized: true,
+	})
+	if err == nil {
+		t.Fatal("missing read succeeded")
+	}
+	hint, ok := tool.RecoveryHintFromError(err)
+	if !ok || hint.RequiredAction != "use_existing_path" {
+		t.Fatalf("recovery hint = %+v, found=%v", hint, ok)
+	}
+	want := []string{
+		"docs/context/01-prompt-message-context.md",
+		"docs/context/02-workspace-index-editor.md",
+		"docs/context/notes.txt",
+	}
+	if !reflect.DeepEqual(hint.CandidatePaths, want) {
+		t.Fatalf("candidate paths = %#v, want %#v", hint.CandidatePaths, want)
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 )
 
 type unreadTool struct{}
+type missingPathTool struct{}
 
 type catalogFixtureTool string
 
@@ -56,6 +57,22 @@ func (unreadTool) Execute(context.Context, json.RawMessage) (tool.Result, error)
 	return tool.Result{}, &workspacejournal.ReadValidationError{
 		Path: "sample.txt", Cause: workspacejournal.ErrUnread,
 	}
+}
+
+func (missingPathTool) Descriptor() tool.Descriptor {
+	return catalogFixtureTool("missing_path").Descriptor()
+}
+
+func (missingPathTool) Execute(context.Context, json.RawMessage) (tool.Result, error) {
+	return tool.Result{}, tool.Precondition(tool.WithRecoveryHint(
+		errors.New("file does not exist"),
+		tool.RecoveryHint{
+			ErrorCategory:  "file_not_found",
+			RequiredAction: "file_list",
+			Path:           "docs/book/_templates/chapter.md",
+			RetryOriginal:  false,
+		},
+	))
 }
 
 func TestRecoverableToolFailureClassification(t *testing.T) {
@@ -148,6 +165,18 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 			)),
 			wantRecoverable: true, wantContains: "the workspace was not changed",
 		},
+		"missing file recovery hint": {
+			err: tool.Precondition(tool.WithRecoveryHint(
+				errors.New("file does not exist"),
+				tool.RecoveryHint{
+					ErrorCategory:  "file_not_found",
+					RequiredAction: "file_list",
+					Path:           "docs/book/_templates/chapter.md",
+					RetryOriginal:  false,
+				},
+			)),
+			wantRecoverable: true, wantContains: "required_action=file_list",
+		},
 		"tool execution failure": {err: errors.New("intentional failure")},
 		"canceled":               {err: context.Canceled},
 		"nil":                    {},
@@ -191,19 +220,36 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 	err := fmt.Errorf("plan workspace edit: %w", tool.Precondition(
 		tool.WithRecoveryHint(errors.New("old text did not match"), tool.RecoveryHint{
 			ErrorCategory:  "edit_precondition_failed",
-			RequiredAction: "file_read",
+			RequiredAction: "replace_failed_change",
 			Path:           "docs/chapter.md",
 			RetryOriginal:  false,
+			FailedChange:   6,
+			MatchCount:     0,
+			StartLine:      74,
+			EndLine:        80,
+			CurrentExcerpt: "current text",
 		}),
 	))
 
 	metadata := toolFailureRecoveryMetadata(err)
 
 	if metadata["error_category"] != "edit_precondition_failed" ||
-		metadata["required_action"] != "file_read" ||
+		metadata["required_action"] != "replace_failed_change" ||
 		metadata["path"] != "docs/chapter.md" ||
-		metadata["retry_original"] != false {
+		metadata["retry_original"] != false ||
+		metadata["failed_change"] != 6 ||
+		metadata["match_count"] != 0 ||
+		metadata["start_line"] != 74 ||
+		metadata["end_line"] != 80 ||
+		metadata["current_excerpt"] != "current text" {
 		t.Fatalf("metadata = %#v", metadata)
+	}
+
+	content, recoverable := recoverableToolFailure(err)
+	if !recoverable ||
+		!strings.Contains(content, "failed_change=6; match_count=0") ||
+		!strings.Contains(content, "current_excerpt_lines=74-80:\ncurrent text") {
+		t.Fatalf("content = %q, recoverable = %v", content, recoverable)
 	}
 }
 
@@ -248,6 +294,70 @@ func TestRunToolsFeedsRecoverableFailureBackToModel(t *testing.T) {
 	}
 	if len(engine.TurnDiff()) != 0 {
 		t.Fatalf("failed edit recorded a turn diff: %+v", engine.TurnDiff())
+	}
+}
+
+func TestMissingPathRecoveryExposesExactCandidatesToModel(t *testing.T) {
+	err := tool.Precondition(tool.WithRecoveryHint(
+		errors.New("file does not exist"),
+		tool.RecoveryHint{
+			ErrorCategory:  "file_not_found",
+			RequiredAction: "use_existing_path",
+			Path:           "docs/01-prompt-context.md",
+			RetryOriginal:  false,
+			CandidatePaths: []string{
+				"docs/01-prompt-message-context.md",
+				"docs/02-workspace-index-editor.md",
+			},
+		},
+	))
+
+	content, recoverable := recoverableToolFailure(err)
+	if !recoverable ||
+		!strings.Contains(
+			content,
+			"candidate_paths=docs/01-prompt-message-context.md,"+
+				"docs/02-workspace-index-editor.md",
+		) {
+		t.Fatalf("content = %q, recoverable = %v", content, recoverable)
+	}
+	metadata := toolFailureRecoveryMetadata(err)
+	candidates, ok := metadata["candidate_paths"].([]string)
+	if !ok || len(candidates) != 2 ||
+		candidates[0] != "docs/01-prompt-message-context.md" {
+		t.Fatalf("candidate metadata = %#v", metadata["candidate_paths"])
+	}
+}
+
+func TestRunToolsFeedsMissingPathRecoveryBackToModel(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(missingPathTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+
+	results, err := engine.runTools(
+		t.Context(),
+		"turn-test",
+		[]provider.ToolCall{{
+			ID: "call_missing", Name: "missing_path", Arguments: `{}`,
+		}},
+		make(map[string]tool.Result),
+		func(State, Event) error { return nil },
+	)
+
+	if err != nil {
+		t.Fatalf("runTools() error = %v, want recoverable result", err)
+	}
+	if len(results) != 1 || !results[0].IsError ||
+		!strings.Contains(results[0].Content, "required_action=file_list") {
+		t.Fatalf("results = %+v", results)
+	}
+	if results[0].Metadata["error_category"] != "file_not_found" ||
+		results[0].Metadata["required_action"] != "file_list" ||
+		results[0].Metadata["path"] != "docs/book/_templates/chapter.md" ||
+		results[0].Metadata["retry_original"] != false {
+		t.Fatalf("recovery metadata = %#v", results[0].Metadata)
 	}
 }
 

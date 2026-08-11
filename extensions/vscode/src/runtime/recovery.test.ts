@@ -245,6 +245,46 @@ void test("connectSession projects workspace agent events across graph threads",
   connection.dispose();
 });
 
+void test("connectSession hydrates paginated session history", async () => {
+  const transport = new FakeTransport();
+  transport.responses.set("session/load", [{}]);
+  transport.responses.set("session/history", [
+    {
+      events: [runtimeEvent(1)],
+      nextSeq: 1,
+      truncated: true,
+    },
+    {
+      events: [runtimeEvent(2)],
+      nextSeq: 2,
+      truncated: false,
+    },
+  ]);
+  transport.responses.set("session/replay", [{
+    events: [],
+    nextSeq: 2,
+    truncated: false,
+  }]);
+  const store = new BindingStore(new MemoryMemento());
+  await store.save(binding(0));
+  const seen: number[] = [];
+
+  const connection = await connectSession(
+    transport,
+    store,
+    "/workspace",
+    (event) => {
+      seen.push(event.sequence);
+      return Promise.resolve();
+    },
+    () => undefined,
+  );
+
+  assert.deepEqual(seen, [1, 2]);
+  assert.equal(connection.replayedEvents, 2);
+  connection.dispose();
+});
+
 class FakeTransport implements AcpTransport {
   public readonly responses = new Map<string, unknown[]>();
   readonly #listeners = new Set<(notification: RpcNotification) => void>();

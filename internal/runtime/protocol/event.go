@@ -429,9 +429,25 @@ func (d *ToolResultData) validate() error {
 }
 
 func (d *CompletionDeclaration) validate() error {
-	if d.Status != "complete" || strings.TrimSpace(d.Summary) == "" ||
-		len(d.PendingActions) != 0 {
+	if strings.TrimSpace(d.Summary) == "" {
 		return errors.New("completion declaration is incomplete")
+	}
+	switch d.Status {
+	case "complete":
+		if len(d.PendingActions) != 0 {
+			return errors.New("complete declaration has pending actions")
+		}
+	case "incomplete":
+		if len(d.PendingActions) == 0 || d.Accepted {
+			return errors.New("incomplete declaration is inconsistent")
+		}
+		for _, action := range d.PendingActions {
+			if strings.TrimSpace(action) == "" {
+				return errors.New("completion pending action is required")
+			}
+		}
+	default:
+		return errors.New("completion declaration has invalid status")
 	}
 	for _, path := range d.ChangedPaths {
 		if strings.TrimSpace(path) == "" {
@@ -439,8 +455,12 @@ func (d *CompletionDeclaration) validate() error {
 		}
 	}
 	if d.Accepted {
-		if len(d.ChangedPaths) == 0 || d.CallID == "" ||
-			d.MutationRevision == 0 || d.Rejection != "" {
+		if d.Status != "complete" {
+			return errors.New("accepted completion declaration is not complete")
+		}
+		readOnly := d.MutationRevision == 0 && len(d.ChangedPaths) == 0
+		mutated := d.MutationRevision != 0 && len(d.ChangedPaths) != 0
+		if (!readOnly && !mutated) || d.CallID == "" || d.Rejection != "" {
 			return errors.New("accepted completion declaration is inconsistent")
 		}
 	} else if d.Rejection == "" {

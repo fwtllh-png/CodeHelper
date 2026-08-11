@@ -31,6 +31,8 @@ last_verified: null
 
 选择正确扩展机制，理解其 Authority、Lifecycle、Integrity 与 Execution Limit。
 
+## Mechanisms
+
 | Mechanism | Purpose | Execution |
 | --- | --- | --- |
 | Skill | Versioned Instruction/Dependency Plan | Bounded Context |

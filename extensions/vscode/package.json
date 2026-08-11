@@ -228,11 +228,11 @@
         },
         "codehelper.runtime.maxSteps": {
           "type": "integer",
-          "default": 64,
+          "default": 256,
           "minimum": 1,
-          "maximum": 128,
+          "maximum": 1000,
           "scope": "window",
-          "description": "Maximum model/tool steps per VS Code turn."
+          "description": "Hard maximum model/tool steps per VS Code turn. CodeHelper emits a convergence warning before exhausting this budget."
         }
       }
     }

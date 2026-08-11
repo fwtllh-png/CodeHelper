@@ -738,6 +738,53 @@ func TestRunToolsClosesEveryStartedCallBeforeFatalBatchFailure(t *testing.T) {
 	}
 }
 
+func TestFinishOnlyClosesExplorationCallWithoutExecutingIt(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &echoTool{}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentWorkspaceChange,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+
+	results, err := engine.runToolsWithCache(
+		withFinishOnly(t.Context()),
+		"turn-finish-only",
+		[]provider.ToolCall{{
+			ID: "call_read", Name: "echo",
+			Arguments: `{"text":"keep exploring"}`,
+		}},
+		make(map[string]tool.Result),
+		&toolResultCache{},
+		kernel,
+		func(State, Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executor.calls.Load() != 0 ||
+		len(results) != 1 ||
+		!results[0].IsError ||
+		results[0].Metadata["error_category"] != "no_progress_finish_only" {
+		t.Fatalf(
+			"calls=%d results=%+v",
+			executor.calls.Load(),
+			results,
+		)
+	}
+	if len(kernel.state.OpenCalls) != 0 ||
+		len(kernel.state.ClosedCalls) != 1 {
+		t.Fatalf("tool lifecycle not closed: %+v", kernel.state)
+	}
+}
+
 func TestRunToolsRejectsDuplicateCallIdentityBeforeExecution(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &echoTool{}
@@ -2134,6 +2181,34 @@ func TestWorkspaceChangeGetsOneStructuredRepairBeforeNoChangeConflict(t *testing
 	if !strings.Contains(feedback, "required_action=perform_workspace_mutation") ||
 		!strings.Contains(feedback, "observed_changes=0") {
 		t.Fatalf("repair feedback = %q", feedback)
+	}
+}
+
+func TestStepBudgetWarningProvidesGracefulCompletionWindow(t *testing.T) {
+	tests := []struct {
+		maxSteps int
+		step     int
+		want     int
+	}{
+		{maxSteps: 32, step: 24, want: 0},
+		{maxSteps: 64, step: 48, want: 16},
+		{maxSteps: 128, step: 96, want: 32},
+		{maxSteps: 256, step: 224, want: 32},
+		{maxSteps: 256, step: 225, want: 0},
+	}
+	for _, test := range tests {
+		if got := stepBudgetWarningRemaining(test.maxSteps, test.step); got != test.want {
+			t.Fatalf(
+				"stepBudgetWarningRemaining(%d, %d) = %d, want %d",
+				test.maxSteps, test.step, got, test.want,
+			)
+		}
+	}
+	feedback := stepBudgetFeedback(7, 32)
+	if feedback.Turn != 7 ||
+		!strings.Contains(feedback.Text(), "remaining_steps=32") ||
+		!strings.Contains(feedback.Text(), "status=incomplete") {
+		t.Fatalf("feedback = %+v", feedback)
 	}
 }
 

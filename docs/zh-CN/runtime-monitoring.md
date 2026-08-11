@@ -73,6 +73,10 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
 - Retry/Continue 在保留 Source Intent 的同时，必须在新 Turn 启动前重新应用当前
   持久化 Session Profile；Mode、Approval Posture、Reasoning 和 Tool Selection
   不能从失败 Source Turn 漂移到恢复 Turn；
+- 恢复流程必须分离模型文本与 UI 文本：`turn.started.prompt` 可以包含有界的
+  Recovery Evidence Capsule，`turn.started.display_prompt` 只能包含简洁、用户
+  可见的 Retry/Continue 请求。Host 不得将 Source Turn ID、Tool Call ID、Digest
+  或 `<recovery_evidence>` 投影为用户消息；
 - Plan Implement/Autopilot 必须以 `intent=workspace_change` 启动；
 - Mode 与 Intent 是正交契约。普通 Chat 的 `mode=act` 仍以 `intent=answer`
   启动；只有 Diagnostics Fix、Implement Plan、Autopilot 等显式变更入口提交
@@ -93,31 +97,51 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   Substitution 等不受支持的语法；
 - Shell Tool 必须在启动进程前结构化拒绝已知 Bash-only Process Substitution；
   Descriptor 的自然语言提示不能作为唯一防线；
+- `file_read` 或 `file_list` 路径不存在时，必须返回可恢复 Tool Failure，携带
+  `error_category=file_not_found`、`required_action=file_list` 和
+  `retry_original=false`。Runtime 将其回流给模型修正路径，不得升级为 `internal`
+  Terminal；
+- Strong Sandbox 校验若在 Shell Command 启动前观察到 Workspace Path 消失，必须
+  继续阻止 Command 执行，并返回携带 `error_category=workspace_changed`、
+  `required_action=<same shell tool>` 和 `retry_original=true` 的可恢复失败。并发
+  Dependency Installation 或 Cleanup 不得将该执行前竞争升级为 `internal`
+  Terminal；
 - Tool Failure Completion Repair 只按连续无结构化进展的次数耗费预算。新的 Tool
   Batch 必须重置 No-progress Counter；累计 Repair Step 仍计入有界 Turn Step，
   连续文本承诺不能无限延长 Turn；
-- Provider `end_turn` 只表示一次模型采样结束。`workspace_change` 只有在
-  `turn_complete` Declaration 已绑定当前 Mutation Revision 与精确 Changed Paths、
-  Pending Actions 为空、Verification Passed 且 Journal Commit 后才能完成；
+- Provider `end_turn` 只表示一次模型采样结束。任何执行过 Tool 的 Turn 只有在
+  `turn_complete` Declaration 被接受且 Pending Actions 为空后才能完成。只读
+  Declaration 绑定 Mutation Revision 0 且不含 Changed Paths；`workspace_change`
+  还必须绑定当前非零 Mutation Revision 与精确 Changed Paths、Verification Passed
+  且 Journal Commit；
 - `turn_complete` 必须是所在 Tool Batch 的唯一 Call。Gate 必须在模型收到
   `required_action=final_answer` 前完成；User-facing Final Answer 之后不得再启动
   新的 Verification Pass；
-- Completion/Verification Gate 在显式 `workspace_change` 或任意实际 Workspace
-  Mutation 后启用。普通 Answer 没有 Mutation 时可直接完成；Answer 一旦发生 Mutation，
-  不能绕过 Declaration、Verification、Journal 或 Receipt；
+- Completion Gate 在任意 Tool 执行后启用。纯文本 Answer 可直接完成，但执行过 Tool
+  的 Answer 即使只读，也必须提交结构化 Completion Declaration。Verification Gate
+  在显式 `workspace_change` 或任意实际 Workspace Mutation 后启用；Answer 一旦发生
+  Mutation，不能绕过 Declaration、Verification、Journal 或 Receipt；
 - Gate 通过前的模型 Text 是 Provisional Output，不能投影到稳定 Transcript。
   Accepted Declaration、Verification 和 Journal Commit 完成后才能发布 Final Answer；
 - rejected `turn_complete` 必须产生配对的 `tool.result`，携带
   `accepted=false` 和结构化 `rejection`。只有 accepted Declaration 才要求 Runtime
-  绑定 Changed Paths、Mutation Revision 和 Completion Call ID；拒绝结果不能因缺少
-  这些绑定字段转成 `internal` Failure；
+  绑定 Completion Call ID。只读接受结果绑定 Revision 0 且不含 Changed Paths；修改型
+  接受结果还绑定精确 Changed Paths 和非零 Mutation Revision。拒绝结果不能因缺少这些
+  绑定字段转成 `internal` Failure；
 - `turn_complete` 的模型可见 Content、Event Metadata 和 UI Projection 必须表达同一
   accepted/rejected 决策。Executor 不得在 Runtime Validation 前声称 Declaration
   已记录或要求输出 Final Answer；
+- malformed `turn_complete` 必须保持拒绝，不能静默规范化。结构化 Result 使用
+  `reason=invalid_declaration`，在 `error_detail` 和
+  `completion_declaration_error` 中保留 JSON Schema 失败详情，并要求模型使用顶层
+  `status`、`summary` 和 `pending_actions` 重试；
 - 后续任何 Mutation 或 Verification Repair 都会使 Completion Declaration 失效。
-  模型只声明 `status`、`summary`，可选的 `pending_actions` 只能为空；Runtime 自动绑定精确
-  Changed Paths、当前 Revision 的 Accepted Quality Call ID、Mutation Revision
-  和 Completion Call ID。模型不得复制或构造这些 Runtime Facts；
+  模型必须声明 `status`、`summary` 和 `pending_actions`。`status=complete` 要求显式
+  空数组；`status=incomplete` 要求列出具体 Pending Actions，Runtime 以
+  `required_action=continue_work` 拒绝该声明并继续同一个 Turn，且不得授权 Terminal
+  Completion。Runtime 只为 accepted complete Declaration 绑定 Completion Call ID，
+  以及只读 Revision 0，或精确 Changed Paths、当前 Revision 的 Accepted Quality Call ID
+  和非零 Mutation Revision。模型不得复制或构造这些 Runtime Facts；
 - Completion Repair Budget 只在 Mutation Revision 与 Accepted Quality Evidence
   均未变化时累计重复尝试；新的 Mutation Revision 或新 Accepted Quality Evidence
   必须重置 No-progress Counter；
@@ -137,8 +161,11 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
 - `shell_run.write_globs` 必须在 Approval 前展开为最多 512 个已存在的精确文件；
   Guard、Journal、Sandbox、Reconciliation 和 Receipt 不得接收 Runtime Wildcard
   Grant；
-- Edit Match Miss 必须在 Tool Result Event 中提供结构化恢复信息：
-  `edit_precondition_miss`、`reread_exact_range`、`retry_original=false`；
+- Edit Match Miss 不得降级为模糊替换。存在唯一邻近 Source Anchor 时，Tool Result
+  必须提供 `edit_precondition_miss`、`replace_failed_change`、从 1 开始的失败
+  Change Index、Match Count 和带行号的有界当前原文；无法安全定位 Anchor 时使用
+  `reread_exact_range`。两条路径均设置 `retry_original=false`，并保证整个
+  Transaction 零写入；
 - Diagnostics Process Failure 在没有解析出 Diagnostic 时必须标记为
   `unavailable/error_category=runner_failure`，不能标记为源码 Finding；Receipt
   使用 `failed > unavailable > passed > not_evaluated` 聚合优先级；

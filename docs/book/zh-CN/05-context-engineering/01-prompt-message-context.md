@@ -29,6 +29,10 @@ last_verified: null
 区分 User Prompt、Normalized Message History 与 Assembled Context，理解 Context
 为何是 Runtime 生成的受预算约束产品，而不是一段字符串。
 
+## 前置知识
+
+阅读 [Model、Context 与 Tool 如何协作](../02-codehelper-overview/06-model-context-and-tool.md)。
+
 ## 问题背景
 
 把发给模型的所有字节都称作 Prompt，会掩盖所有权：用户提供意图，Runtime 提供
@@ -53,7 +57,7 @@ flowchart LR
     A --> M[ModelRequest.Messages]
 ```
 
-## Message 与稳定 Context
+## Message Model
 
 Provider Message 使用 system、user、assistant、tool Role 和 Typed Block。Tool Call 与
 Result 通过 Call ID 配对；Reasoning/Signature 与 Visible Text 分离。
@@ -85,6 +89,8 @@ Data。真正 Authority 由 Prompt 外的 Policy、Guard、Sandbox 强制。
 Volatile Turn Context 用于 Sample，但不 Commit 到 Durable Conversation History。否则
 每次 Sample 都会重复 Repo Map/Evidence，Compaction 还会把 Stale Observation 当成
 Conversation。
+
+## Stable Context Assembly
 
 `promptcontext.Assemble` 按确定顺序生成 Base、Mode、Repository Instruction、Pinned
 File、Skill、User Memory、Plan、Constitution、World State 与 Tool Prefix。Repository

@@ -472,6 +472,88 @@ func TestC5RuntimeResumesStartedModelEffectThroughAgentEngine(t *testing.T) {
 	}
 }
 
+func TestRuntimeRecoveryCommitsEnvelopeForAlreadyTerminalKernel(t *testing.T) {
+	operation := startOperation(t, 74)
+	canonical, err := CanonicalOperationPayload(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, turnID, _ := protocol.OperationReferences(operation)
+	terminalStore := &c5AtomicTerminalStore{
+		MemoryTerminalEnvelopeStore: turnkernel.NewMemoryTerminalEnvelopeStore(
+			nil,
+			nil,
+		),
+	}
+	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(terminalStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := coordinators.Open(
+		t.Context(),
+		string(turnID),
+		turnkernel.NewState(protocol.TurnIntentAnswer, string(policy.ModeAct), 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []turnkernel.Command{
+		turnkernel.StartTurn{},
+		turnkernel.PreparationFinished{},
+		turnkernel.TerminalRequested{CancelReason: "client input EOF"},
+		turnkernel.FinishTerminal{},
+	} {
+		if err := handle.Coordinator.Submit(t.Context(), command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := coordinators.Release(t.Context(), string(turnID)); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := newTestAgentEngine(agentengine.Options{
+		Provider: &singleAnswerProvider{},
+		Route:    runtimeTestRoute(t),
+		Tools:    tool.NewRegistry(nil, nil),
+		Security: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionBypass,
+		),
+		Workspace:              t.TempDir(),
+		Metrics:                telemetry.NewMetrics(),
+		MaxOutputTokens:        128,
+		ProfileRevision:        1,
+		TurnCoordinatorRuntime: coordinators,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := NewRuntimeWithRecovery(t.Context(), Options{
+		Engine:        AdaptEngine(worker),
+		EventStore:    NewMemoryEventStore(16),
+		ContentStore:  NewMemoryContentStore(),
+		TerminalStore: terminalStore,
+		Lifecycle: &c5RecoveryLifecycle{recovery: RecoveryState{
+			PendingOperations: map[protocol.OperationID]PendingOperation{
+				operation.ID: {
+					ID:        operation.ID,
+					Canonical: canonical,
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	waitForCondition(t, func() bool {
+		_, _, loadErr := terminalStore.LoadTerminal(
+			t.Context(),
+			string(turnID),
+		)
+		return loadErr == nil
+	})
+}
+
 func TestC5RuntimeResumesStartedToolEffectThroughAgentEngine(t *testing.T) {
 	operation := startOperation(t, 73)
 	canonical, err := CanonicalOperationPayload(operation)

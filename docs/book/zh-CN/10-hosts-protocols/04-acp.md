@@ -28,6 +28,8 @@ last_verified: 2026-08-10
 理解 Stdio JSON-RPC Framing、Initialize/Capability Negotiation、Session Binding、
 Concurrent Call、Notification 与 Clean Shutdown。
 
+## Transport
+
 ```mermaid
 sequenceDiagram
     participant E as Editor
@@ -50,6 +52,10 @@ Server 使用共享 Runtime Operation/Event Contract 支持 Mutation、Read Quer
 Dynamic Tool 和 Notification。Replay Page/Live Notification 保持 Cursor 语义。
 Contract Test 覆盖 Start、Stream、Approve、Input、Cancel、Verify、Recover 和 Receipt，
 不定义 ACP 专属 Turn Loop。
+
+Session History Hydration 同时受 Turn 数量和编码字节数约束。Response 暴露
+`nextSeq` 与 `truncated`，使 Tool 密集型 Turn 或长期 Session 可以逐页投影，不会超过
+ACP Frame 上限。
 
 Session Profile Query/Update 使用同一份 Runtime-owned Durable State。更新携带
 `expectedRevision`，Session Thread 存在 Active Turn 时失败，并返回显式 Prompt Cache

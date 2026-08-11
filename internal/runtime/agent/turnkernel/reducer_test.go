@@ -159,6 +159,7 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 		candidate CompletionCandidate
 		accepted  bool
 		reason    string
+		action    string
 	}{
 		{
 			name:      "accepted",
@@ -187,10 +188,31 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 			reason: "quality_verification_required",
 		},
 		{
-			name:      "no mutation",
+			name:      "read only answer",
 			state:     startSampling(t, protocol.TurnIntentAnswer),
 			candidate: base,
+			accepted:  true,
+		},
+		{
+			name:      "workspace change without mutation",
+			state:     startSampling(t, protocol.TurnIntentWorkspaceChange),
+			candidate: base,
 			reason:    "no_observed_changes",
+			action:    "perform_workspace_mutation",
+		},
+		{
+			name:  "incomplete work continues current turn",
+			state: startSampling(t, protocol.TurnIntentAnswer),
+			candidate: CompletionCandidate{
+				DeclarationValid: true,
+				Status:           "incomplete",
+				Summary:          "workspace edits remain",
+				PendingActions:   []string{"apply the workspace edits"},
+				CompletionCall:   "complete-incomplete",
+				BatchSize:        1,
+			},
+			reason: "pending_actions",
+			action: "continue_work",
 		},
 	}
 	for _, testCase := range tests {
@@ -203,9 +225,17 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 				state.Completion.Reason != testCase.reason {
 				t.Fatalf("completion decision = %+v", state.Completion)
 			}
+			if testCase.action != "" &&
+				state.Completion.RequiredAction != testCase.action {
+				t.Fatalf("required action = %q, want %q",
+					state.Completion.RequiredAction, testCase.action)
+			}
 			if testCase.accepted &&
-				(state.Completion.Mutation != 1 ||
-					!samePaths(state.Completion.ChangedPaths, []string{"a.go"}) ||
+				(state.Completion.Mutation != testCase.state.MutationRevision ||
+					!samePaths(
+						state.Completion.ChangedPaths,
+						changedPaths(testCase.state.Changes),
+					) ||
 					state.Completion.CompletionCall != "complete-1") {
 				t.Fatalf("runtime bindings = %+v", state.Completion)
 			}
@@ -230,6 +260,77 @@ func TestMutationInvalidatesCompletionAndVerification(t *testing.T) {
 	_, err := (Reducer{}).Apply(state, TerminalRequested{})
 	if !errors.Is(err, ErrIllegalTransition) {
 		t.Fatalf("error = %v, want illegal transition", err)
+	}
+}
+
+func TestToolAssistedReadOnlyTurnRequiresStructuredCompletion(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state = apply(t, state, ToolCallsProposed{
+		Calls: []ToolCallState{{ID: "read-1", Name: "file_read"}},
+	}).State
+	state = apply(t, state, ToolResultReceived{CallID: "read-1"}).State
+	state.ProvisionalOutput = []string{"I will continue checking."}
+
+	transition := apply(t, state, EvaluateTurnStep{ProgressKey: "read-only"})
+	if transition.State.NextAction != StepActionRepairDeclaration {
+		t.Fatalf("next action = %q, want %q",
+			transition.State.NextAction, StepActionRepairDeclaration)
+	}
+
+	state = apply(t, transition.State, CompletionEvaluated{
+		Candidate: CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "complete",
+			Summary:          "read-only review completed",
+			CompletionCall:   "complete-1",
+			BatchSize:        1,
+		},
+	}).State
+	transition = apply(t, state, EvaluateTurnStep{ProgressKey: "completed"})
+	if transition.State.NextAction != StepActionComplete {
+		t.Fatalf("next action = %q, want %q",
+			transition.State.NextAction, StepActionComplete)
+	}
+}
+
+func TestObserveProgressUsesConservativeDurableThresholds(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentWorkspaceChange)
+	state = apply(t, state, ObserveProgress{
+		Signature: "mutation=0;plan_done=0",
+	}).State
+
+	for _, test := range []struct {
+		samples uint32
+		want    ProgressStage
+	}{
+		{samples: 8, want: ProgressStageNone},
+		{samples: 16, want: ProgressStageConverge},
+		{samples: 24, want: ProgressStageConverge},
+		{samples: 32, want: ProgressStageFinishOnly},
+		{samples: 48, want: ProgressStageExhausted},
+	} {
+		state = apply(t, state, ObserveProgress{
+			Signature:        "mutation=0;plan_done=0",
+			CompletedSamples: test.samples,
+		}).State
+		if state.Progress.Stage != test.want ||
+			state.Progress.NoProgressSamples != test.samples {
+			t.Fatalf(
+				"samples=%d progress=%+v, want stage=%s",
+				test.samples,
+				state.Progress,
+				test.want,
+			)
+		}
+	}
+
+	state = apply(t, state, ObserveProgress{
+		Signature:        "mutation=1;plan_done=0",
+		CompletedSamples: 56,
+	}).State
+	if state.Progress.Stage != ProgressStageNone ||
+		state.Progress.NoProgressSamples != 0 {
+		t.Fatalf("progress did not reset: %+v", state.Progress)
 	}
 }
 

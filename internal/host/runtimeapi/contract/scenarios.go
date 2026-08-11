@@ -138,7 +138,7 @@ func Scenarios() []Scenario {
 				return Setup{
 					Fixture: fixturePath(t, "dynamic-tools"), Prompt: "call host echo",
 					Workspace: t.TempDir(), Tools: true, TrustedDynamicTools: true,
-					MaxSteps: 2,
+					MaxSteps: 4,
 				}
 			},
 			Run: dynamicToolsCompleteLifecycle,

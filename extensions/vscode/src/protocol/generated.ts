@@ -549,6 +549,7 @@ export type TurnStartPayload = {
           };
       readonly "uri": string;
     }>;
+  readonly "display_prompt"?: string;
   readonly "idle"?: boolean;
   readonly "intent"?: string;
   readonly "item_id": string;

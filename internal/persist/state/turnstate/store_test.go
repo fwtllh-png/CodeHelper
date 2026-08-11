@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
@@ -266,6 +267,69 @@ func TestC4SQLiteAtomicCommitRollsBackEnvelopeWhenOperationIsMissing(
 	}
 	if len(facts) != 0 {
 		t.Fatalf("domain facts leaked after rollback: %+v", facts)
+	}
+}
+
+func TestSQLiteTerminalCommitUpgradesCommittedReceiptForActiveTurn(
+	t *testing.T,
+) {
+	database, err := sqlitestate.Open(
+		t.Context(),
+		t.TempDir()+"/state.db",
+		sqlitestate.Options{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	envelope := sqliteEnvelopeFixture(t)
+	seedActiveTurn(
+		t,
+		database,
+		envelope.TurnID,
+		string(envelope.Outbox[0].ThreadID),
+	)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := database.DB().ExecContext(t.Context(), `
+		INSERT INTO operations(
+			id, session_id, kind, status, request_json, response_json,
+			created_at, updated_at
+		) VALUES (?, 'session-lease', 'turn.start', 'committed', '{}',
+			'{"status":"committed","last_sequence":1}', ?, ?)`,
+		envelope.OperationCommit.OperationID,
+		now,
+		now,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().ExecContext(t.Context(), `
+		UPDATE turns SET operation_id = ? WHERE id = ?`,
+		envelope.OperationCommit.OperationID,
+		envelope.TurnID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	envelope.OperationCommit.Receipt = []byte(
+		`{"status":"committed","last_sequence":2}`,
+	)
+
+	store := NewSQLiteRepository(database)
+	if _, err := store.CommitTerminalOperation(
+		t.Context(),
+		envelope,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var response string
+	if err := database.DB().QueryRowContext(
+		t.Context(),
+		`SELECT response_json FROM operations WHERE id = ?`,
+		envelope.OperationCommit.OperationID,
+	).Scan(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response != string(envelope.OperationCommit.Receipt) {
+		t.Fatalf("operation response = %s", response)
 	}
 }
 

@@ -1729,7 +1729,12 @@ func (s *Server) turnRecover(request rpcRequest) {
 	s.submitPrepared(
 		request,
 		binding,
-		preparedStartTurn(prepared.Prompt, prepared.Intent, prepared.IdempotencyKey),
+		preparedStartTurn(
+			prepared.Prompt,
+			prepared.DisplayPrompt,
+			prepared.Intent,
+			prepared.IdempotencyKey,
+		),
 	)
 }
 
@@ -1805,20 +1810,27 @@ func (s *Server) planImplement(request rpcRequest) {
 	s.submitPrepared(
 		request,
 		binding,
-		preparedStartTurn(prepared.Prompt, prepared.Intent, prepared.IdempotencyKey),
+		preparedStartTurn(
+			prepared.Prompt,
+			prepared.Prompt,
+			prepared.Intent,
+			prepared.IdempotencyKey,
+		),
 	)
 }
 
 func preparedStartTurn(
 	prompt string,
+	displayPrompt string,
 	intent protocol.TurnIntent,
 	idempotencyKey string,
 ) operationRequest {
 	return operationRequest{
 		kind: protocol.OperationStartTurn,
 		payload: &protocol.StartTurnPayload{
-			Prompt: prompt,
-			Intent: intent,
+			Prompt:        prompt,
+			DisplayPrompt: displayPrompt,
+			Intent:        intent,
 		},
 		idempotencyKey: idempotencyKey,
 	}
@@ -2138,13 +2150,17 @@ func (s *Server) sessionReplay(request rpcRequest) {
 }
 
 type sessionHistoryParams struct {
-	SessionID string `json:"sessionId"`
-	TurnLimit int    `json:"turnLimit,omitempty"`
+	SessionID string           `json:"sessionId"`
+	TurnLimit int              `json:"turnLimit,omitempty"`
+	SinceSeq  *protocol.Cursor `json:"sinceSeq,omitempty"`
 }
 
+const sessionHistoryMaxPayloadBytes = 2 << 20
+
 // sessionHistory hydrates a new client projection independently of its live
-// replay cursor. The response is bounded by turn count and contains only the
-// session's primary thread events.
+// replay cursor. The first page is bounded by turn count; every response is
+// also byte-bounded so a long tool-heavy Turn cannot exceed the ACP frame
+// limit. Continuation pages use nextSeq and contain only primary-thread events.
 func (s *Server) sessionHistory(request rpcRequest) {
 	var params sessionHistoryParams
 	if err := decodeParams(request.Params, &params); err != nil {
@@ -2166,14 +2182,22 @@ func (s *Server) sessionHistory(request rpcRequest) {
 	if !ok {
 		return
 	}
-	cursor, err := s.dependencies.Threads.HistoryCursor(
-		s.ctx, binding.ThreadID, params.TurnLimit,
-	)
-	if err != nil {
-		s.replyApplicationError(request, err)
-		return
+	cursor := protocol.Cursor(0)
+	if params.SinceSeq == nil {
+		var err error
+		cursor, err = s.dependencies.Threads.HistoryCursor(
+			s.ctx, binding.ThreadID, params.TurnLimit,
+		)
+		if err != nil {
+			s.replyApplicationError(request, err)
+			return
+		}
+	} else {
+		cursor = *params.SinceSeq
 	}
 	events := make([]protocol.Event, 0, params.TurnLimit*8)
+	payloadBytes := 0
+	truncated := false
 	for {
 		page, more, err := s.dependencies.Runtime.ReplayEvents(s.ctx, cursor, 1000)
 		if err != nil {
@@ -2181,10 +2205,25 @@ func (s *Server) sessionHistory(request rpcRequest) {
 			return
 		}
 		for _, event := range page {
-			cursor = event.Sequence
 			if event.ThreadID == binding.ThreadID {
-				events = append(events, event)
+				appended, appendErr := appendSessionHistoryEvent(
+					&events,
+					&payloadBytes,
+					event,
+				)
+				if appendErr != nil {
+					s.replyApplicationError(request, appendErr)
+					return
+				}
+				if !appended {
+					truncated = true
+					break
+				}
 			}
+			cursor = event.Sequence
+		}
+		if truncated {
+			break
 		}
 		if !more {
 			break
@@ -2200,7 +2239,27 @@ func (s *Server) sessionHistory(request rpcRequest) {
 		"sessionId": binding.ID,
 		"threadId":  binding.ThreadID,
 		"events":    events,
+		"nextSeq":   cursor,
+		"truncated": truncated,
 	})
+}
+
+func appendSessionHistoryEvent(
+	events *[]protocol.Event,
+	payloadBytes *int,
+	event protocol.Event,
+) (bool, error) {
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		return false, err
+	}
+	if len(*events) != 0 &&
+		*payloadBytes+len(encoded) > sessionHistoryMaxPayloadBytes {
+		return false, nil
+	}
+	*events = append(*events, event)
+	*payloadBytes += len(encoded)
+	return true, nil
 }
 
 func (s *Server) replyReplayError(request rpcRequest, err error) {

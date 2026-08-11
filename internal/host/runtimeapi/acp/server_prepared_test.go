@@ -8,7 +8,8 @@ import (
 
 func TestPreparedStartTurnPreservesIntent(t *testing.T) {
 	request := preparedStartTurn(
-		"continue the source turn",
+		"internal recovery context",
+		"Continue: fix the parser",
 		protocol.TurnIntentWorkspaceChange,
 		"recover-source",
 	)
@@ -19,7 +20,8 @@ func TestPreparedStartTurnPreservesIntent(t *testing.T) {
 	if !ok {
 		t.Fatalf("payload type = %T", request.payload)
 	}
-	if payload.Prompt != "continue the source turn" ||
+	if payload.Prompt != "internal recovery context" ||
+		payload.DisplayPrompt != "Continue: fix the parser" ||
 		payload.Intent != protocol.TurnIntentWorkspaceChange ||
 		request.idempotencyKey != "recover-source" {
 		t.Fatalf("prepared request = %+v, payload = %+v", request, payload)

@@ -32,6 +32,8 @@ last_verified: null
 设计 Extension Failure Domain、Stable Error Category、Revocation、Timeout、Resource
 Cleanup 与 Degraded Operation。
 
+## Isolation Layers
+
 ```mermaid
 flowchart TD
     X[Extension] --> I[Identity / Authority]

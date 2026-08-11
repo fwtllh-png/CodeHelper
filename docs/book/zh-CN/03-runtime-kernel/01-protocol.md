@@ -70,6 +70,8 @@ flowchart LR
 `internal/runtime/protocol` 不依赖 Runtime 实现。Registry 将每个 Kind 映射为构造器；
 Custom JSON Decode 严格拒绝 Unknown Field，再验证语义不变量。
 
+## Identity 与 Ordering
+
 Event 包含 Sequence、Operation、Thread、Turn 和 Item Identity。Sequence 服务 Cursor
 Replay，其余 ID 保存因果关系。Tool、Approval、Input Item 与 Prompt Item 分离。
 

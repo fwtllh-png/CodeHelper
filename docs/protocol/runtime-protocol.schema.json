@@ -1982,6 +1982,9 @@
             "additionalProperties": false
           }
         },
+        "display_prompt": {
+          "type": "string"
+        },
         "idle": {
           "type": "boolean"
         },

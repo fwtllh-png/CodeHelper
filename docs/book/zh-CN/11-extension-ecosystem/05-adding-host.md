@@ -30,6 +30,8 @@ last_verified: null
 将新 UI/Transport 构建为 Operation Submitter 与 Event/Read-model Projector，同时保持
 Single Runtime。
 
+## Host Contract
+
 ```mermaid
 flowchart LR
     I[Host Input] --> O[Protocol Operation]

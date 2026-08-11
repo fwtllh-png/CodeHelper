@@ -31,6 +31,8 @@ last_verified: 2026-08-10
 理解 Phase Span、Latency Rollup、Multi-sample Usage Projection、Pricing Provenance 与
 Redacted Telemetry。
 
+## Observation Model
+
 ```mermaid
 flowchart LR
     T[Turn Span] --> P[Provider / Tool / Approval / Verify]

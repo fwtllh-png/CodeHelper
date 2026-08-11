@@ -31,6 +31,8 @@ last_verified: null
 配置 Stdio/HTTP MCP、Discovery、Catalog Reconcile、Auth、Permission、Health Isolation
 与 Shutdown。
 
+## Integration Flow
+
 ```mermaid
 flowchart LR
     C[Strict MCP Config] --> P[Pool]

@@ -32,6 +32,10 @@ last_verified: null
 理解 Workspace Identity、Repository 全局索引、Editor 显式焦点，以及防止 Context
 Drift 与 Path Escape 的验证链路。
 
+## 前置知识
+
+阅读 [Prompt、Message 与 Context](./01-prompt-message-context.md)。
+
 ## Repository 的三种视图
 
 ```mermaid

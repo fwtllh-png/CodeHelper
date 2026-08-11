@@ -83,7 +83,7 @@ func TestProfilePersistsWithRevisionCASAndPreservesMetadata(t *testing.T) {
 	}
 }
 
-func TestEnsureProfileMigratesOnlyTheUntouchedLegacyStepDefault(t *testing.T) {
+func TestEnsureProfileMigratesOnlyUntouchedLegacyStepDefaults(t *testing.T) {
 	store, err := sqlitestate.Open(t.Context(), filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestEnsureProfileMigratesOnlyTheUntouchedLegacyStepDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacy := persistedProfile()
-	legacy.MaxSteps = 8
+	legacy.MaxSteps = 64
 	encoded, err := json.Marshal(map[string]any{"profile": legacy})
 	if err != nil {
 		t.Fatal(err)
@@ -109,16 +109,17 @@ func TestEnsureProfileMigratesOnlyTheUntouchedLegacyStepDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	defaults := persistedProfile()
-	defaults.MaxSteps = 64
+	defaults.MaxSteps = 256
 	migrated, err := repository.EnsureProfile(t.Context(), "legacy", defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if migrated.MaxSteps != 64 || migrated.Revision != 2 {
+	if migrated.MaxSteps != 256 || migrated.Revision != 2 {
 		t.Fatalf("migrated profile = %+v", migrated)
 	}
 
 	explicit := legacy
+	explicit.MaxSteps = 64
 	explicit.Revision = 2
 	encoded, err = json.Marshal(map[string]any{"profile": explicit})
 	if err != nil {
@@ -134,7 +135,7 @@ func TestEnsureProfileMigratesOnlyTheUntouchedLegacyStepDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preserved.MaxSteps != 8 || preserved.Revision != 2 {
+	if preserved.MaxSteps != 64 || preserved.Revision != 2 {
 		t.Fatalf("explicit profile = %+v", preserved)
 	}
 }

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -238,6 +240,9 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
 			return tool.Result{}, guard.MarkSandboxDenial(err, "shell")
 		}
+		if recovery := t.recoverWorkspaceChange(err); recovery != nil {
+			return tool.Result{}, recovery
+		}
 		return tool.Result{}, err
 	}
 	content := formatShellOutput(result.Stdout, result.Stderr)
@@ -296,6 +301,60 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		IsError:  result.ExitCode != 0,
 		Metadata: metadata,
 	}, nil
+}
+
+func (t *Tool) recoverWorkspaceChange(err error) error {
+	if !errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	var pathError *os.PathError
+	if !errors.As(err, &pathError) {
+		return nil
+	}
+	missingPath := canonicalMissingPath(pathError.Path)
+	relative, relErr := filepath.Rel(t.workspace.Root(), missingPath)
+	if relErr != nil || relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return nil
+	}
+	requiredAction := "shell_run"
+	if t.readOnly {
+		requiredAction = "shell_read"
+	} else if t.pty {
+		requiredAction = "terminal_run"
+	}
+	return tool.Precondition(tool.WithRecoveryHint(
+		fmt.Errorf("workspace changed during sandbox validation: %w", err),
+		tool.RecoveryHint{
+			ErrorCategory:  "workspace_changed",
+			RequiredAction: requiredAction,
+			Path:           filepath.ToSlash(relative),
+			RetryOriginal:  true,
+		},
+	))
+}
+
+func canonicalMissingPath(path string) string {
+	current := filepath.Clean(path)
+	var missing []string
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for index := len(missing) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, missing[index])
+			}
+			return resolved
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return filepath.Clean(path)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return filepath.Clean(path)
+		}
+		missing = append(missing, filepath.Base(current))
+		current = parent
+	}
 }
 
 func (t *Tool) resolveWritePaths(paths []string) ([]string, error) {

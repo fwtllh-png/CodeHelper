@@ -264,6 +264,10 @@ func (a *EngineAdapter) StartTurn(
 		}
 		switch event.State {
 		case agentengine.Preparing:
+			displayPrompt := payload.DisplayPrompt
+			if displayPrompt == "" {
+				displayPrompt = payload.Prompt
+			}
 			return sink.Emit(&protocol.TurnStartedData{
 				Provider: event.Provider, Model: event.Model,
 				Intent: intent,
@@ -271,7 +275,7 @@ func (a *EngineAdapter) StartTurn(
 				Workspace:          event.Workspace,
 				WorkspaceIsolation: event.WorkspaceIsolation,
 				Sandbox:            event.Sandbox,
-				Prompt:             modelPrompt, DisplayPrompt: payload.Prompt,
+				Prompt:             modelPrompt, DisplayPrompt: displayPrompt,
 				EditorContext: editorContext,
 			})
 		case agentengine.Completed:
@@ -517,7 +521,7 @@ func (a *EngineAdapter) commitTerminal(
 	if err != nil {
 		return err
 	}
-	frozen, err := a.engine.FrozenTerminalState(ctx)
+	frozen, err := a.engine.FrozenTerminalState(context.WithoutCancel(ctx))
 	if err != nil {
 		return err
 	}

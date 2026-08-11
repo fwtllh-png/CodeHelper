@@ -18,15 +18,27 @@ export function approvalCardContent(
   approval: ApprovalCard,
 ): ApprovalCardContent {
   const input = parseArguments(approval.arguments);
+  const fileApply = fileApplySummary(approval, input);
   const path = stringField(input, "path");
   const purpose = stringField(input, "description") ??
     stringField(input, "reason") ??
     approval.reason;
-  const target = path ?? purpose;
+  const target = fileApply?.label ?? path ?? purpose;
   const summary = `Approval: ${approval.tool}` +
     (target === undefined ? "" : ` · ${singleLine(target, 100)}`) +
     (approval.resolved === undefined ? "" : ` · ${approval.resolved}`);
   const lines: string[] = [];
+  if (fileApply !== undefined) {
+    lines.push(`Changes: ${fileApply.label}`);
+    lines.push(...fileApply.files.slice(0, 3).map((file) => `• ${file}`));
+    if (fileApply.fileCount > 3) {
+      lines.push(`• +${String(fileApply.fileCount - 3)} more files`);
+    }
+    return {
+      summary,
+      detail: truncate(lines.join("\n"), maxCardPreview),
+    };
+  }
   if (path !== undefined) {
     lines.push(`File: ${singleLine(path, 180)}`);
   }
@@ -60,16 +72,27 @@ export function approvalDialogContent(
   approval: ApprovalCard,
 ): ApprovalDialogContent {
   const input = parseArguments(approval.arguments);
+  const fileApply = fileApplySummary(approval, input);
   const purpose = stringField(input, "description") ??
     stringField(input, "reason") ??
     approval.reason;
   const command = stringField(input, "command");
   const resources = summarizeResources(approval.resources);
-  const title = purpose === undefined
+  // #region debug-point A-C-D:approval-dialog-input-shape
+  void fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "approval-content-formatting", runId: "post-fix", hypothesisId: "A-C-D", location: "extensions/vscode/src/chat/approval-summary.ts:approvalDialogContent", msg: "[DEBUG] Approval dialog input shape", data: { tool: approval.tool, argumentsChars: approval.arguments.length, parsed: input !== undefined, changes: Array.isArray(input?.["changes"]) ? input["changes"].length : 0, hasEditPlan: approval.editPlan !== undefined, resources: approval.resources.length, presentationBranch: fileApply !== undefined ? "file-apply" : command === undefined ? "generic-request" : "command" }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
+  const title = fileApply !== undefined
+    ? `file_apply: ${fileApply.label}`
+    : purpose === undefined
     ? `${approval.tool} needs approval`
     : `${approval.tool}: ${singleLine(purpose, 140)}`;
   const sections: string[] = [];
-  if (command !== undefined) {
+  if (fileApply !== undefined) {
+    sections.push(`Request\nApply ${fileApply.label}`);
+    sections.push(`Files\n${fileApply.files.map((file) => `• ${file}`).join("\n")}`);
+    sections.push(`Access\n• Write ${plural(fileApply.fileCount, "file")} in workspace`);
+    sections.push("A diff preview is open in Changes.");
+  } else if (command !== undefined) {
     sections.push(`Command\n${truncate(command.trim(), maxCommandPreview)}`);
   } else {
     const preview = readableArguments(input, approval.arguments);
@@ -77,11 +100,49 @@ export function approvalDialogContent(
       sections.push(`Request\n${truncate(preview, maxGenericPreview)}`);
     }
   }
-  if (resources.length > 0) {
+  if (fileApply === undefined && resources.length > 0) {
     sections.push(`Access\n${resources.map((value) => `• ${value}`).join("\n")}`);
   }
   sections.push("Full request details are available in the Chat approval card.");
   return { title, detail: sections.join("\n\n") };
+}
+
+interface FileApplySummary {
+  readonly label: string;
+  readonly fileCount: number;
+  readonly files: readonly string[];
+}
+
+function fileApplySummary(
+  approval: ApprovalCard,
+  input: Readonly<Record<string, unknown>> | undefined,
+): FileApplySummary | undefined {
+  if (approval.tool !== "file_apply") return undefined;
+  const changes = Array.isArray(input?.["changes"]) ? input["changes"] : [];
+  const counts = new Map<string, number>();
+  for (const change of changes) {
+    if (typeof change !== "object" || change === null || Array.isArray(change)) {
+      continue;
+    }
+    const path = stringField(change as Readonly<Record<string, unknown>>, "path");
+    if (path !== undefined) counts.set(path, (counts.get(path) ?? 0) + 1);
+  }
+  const paths = approval.editPlan?.files.map((file) => file.path) ??
+    [...counts.keys()];
+  if (changes.length === 0 && paths.length === 0) return undefined;
+  const files = paths.slice(0, 8).map((path) => {
+    const count = counts.get(path);
+    return count === undefined ? singleLine(path, 180) :
+      `${singleLine(path, 160)} (${plural(count, "edit")})`;
+  });
+  if (paths.length > files.length) {
+    files.push(`+${String(paths.length - files.length)} more files`);
+  }
+  return {
+    label: `${plural(changes.length, "edit")} across ${plural(paths.length, "file")}`,
+    fileCount: paths.length,
+    files,
+  };
 }
 
 function parseArguments(value: string): Readonly<Record<string, unknown>> | undefined {
@@ -159,4 +220,8 @@ function title(value: string | undefined): string {
 function textSize(value: string): string {
   const lines = value === "" ? 0 : value.split(/\r?\n/u).length;
   return `${String(lines)} lines · ${String(value.length)} characters`;
+}
+
+function plural(count: number, noun: string): string {
+  return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 }

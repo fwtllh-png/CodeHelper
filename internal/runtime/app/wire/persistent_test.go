@@ -134,6 +134,84 @@ func TestC1DurableCoordinatorRuntimeScansRestoresAndLeasesActiveTurn(
 	}
 }
 
+func TestDurableCoordinatorOpenWaitsForInterruptedTurnLease(t *testing.T) {
+	store := seedPersistentState(t, t.TempDir())
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	repositories, err := NewPersistentRepositories(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := persistentStartOperation(t, "turn-reload", "item-reload")
+	canonical, err := app.CanonicalOperationPayload(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repositories.Lifecycle.Accept(
+		t.Context(),
+		operation,
+		"request-reload",
+		canonical,
+	); err != nil {
+		t.Fatal(err)
+	}
+	factStore := turnstate.NewSQLiteRepository(store.SQLite())
+	seed, err := turnkernel.NewStoreCoordinatorRuntime(factStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := seed.Open(
+		t.Context(),
+		"turn-reload",
+		turnkernel.NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handle.Coordinator.Submit(
+		t.Context(),
+		turnkernel.StartTurn{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Release(t.Context(), "turn-reload"); err != nil {
+		t.Fatal(err)
+	}
+	lease := 80 * time.Millisecond
+	if err := factStore.ClaimTurn(
+		t.Context(),
+		"turn-reload",
+		"interrupted-owner",
+		lease,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime, err := newDurableCoordinatorRuntime(
+		factStore,
+		"replacement-owner",
+		lease,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	started := time.Now()
+	restored, err := runtime.Open(
+		t.Context(),
+		"turn-reload",
+		turnkernel.NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored.Restored {
+		t.Fatal("interrupted turn was opened as a new coordinator")
+	}
+	if elapsed := time.Since(started); elapsed < lease/2 {
+		t.Fatalf("restored before stale lease expired: %s", elapsed)
+	}
+}
+
 func TestC1DurableCoordinatorRuntimeFailsClosedOnIncompleteFacts(
 	t *testing.T,
 ) {

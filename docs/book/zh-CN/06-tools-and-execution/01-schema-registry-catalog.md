@@ -84,6 +84,8 @@ Source 的 Desired State。Replace/Revoke 更换 Authority，并留下 Tombstone
 
 只匹配 Name 无法回答这些问题。
 
+## Deferred Tools 与 Search
+
 Deferred Entry 在 Executor 加载前公开 Descriptor。`tool_search` 搜索、排序并
 Materialize 匹配 Tool；Entry Count/Schema Byte Limit 控制增长。并发加载合并，加载时
 Schema/Authority Drift 失败。

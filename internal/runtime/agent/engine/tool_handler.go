@@ -191,6 +191,26 @@ func (e *Engine) runToolsWithCache(
 				}
 			}()
 			binding := bindingForCall(call)
+			if finishOnlyEnabled(toolCtx) {
+				canonical, descriptor, _, resolveErr :=
+					e.options.Tools.ResolveBound(call.Name, binding)
+				if resolveErr == nil &&
+					!finishOnlyToolAllowed(canonical, descriptor) {
+					results[index] = tool.Result{
+						Content: "read-only exploration is disabled after 32 " +
+							"model steps without structured progress; apply a " +
+							"workspace change, run a quality tool, update the " +
+							"plan, or call turn_complete",
+						IsError: true,
+						Metadata: map[string]any{
+							"error_category":  "no_progress_finish_only",
+							"required_action": "finish_current_batch",
+							"retry_original":  false,
+						},
+					}
+					return
+				}
+			}
 			if !e.toolCallEnabled(call.Name, binding) {
 				results[index] = tool.Result{
 					Content: "tool disabled by Session Profile: " + call.Name,

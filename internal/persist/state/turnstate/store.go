@@ -159,7 +159,12 @@ func (s *Store) commitTerminal(
 				return turnkernel.ErrTerminalEnvelopeConflict
 			}
 			if commitOperation {
-				return commitOperationTx(ctx, tx, envelope.OperationCommit)
+				return commitOperationTx(
+					ctx,
+					tx,
+					envelope.TurnID,
+					envelope.OperationCommit,
+				)
 			}
 			return nil
 		case !errors.Is(err, sql.ErrNoRows):
@@ -262,6 +267,7 @@ func (s *Store) commitTerminal(
 			if err := commitOperationTx(
 				ctx,
 				tx,
+				envelope.TurnID,
 				envelope.OperationCommit,
 			); err != nil {
 				return err
@@ -275,6 +281,7 @@ func (s *Store) commitTerminal(
 func commitOperationTx(
 	ctx context.Context,
 	tx *sql.Tx,
+	turnID string,
 	fact turnkernel.OperationCommitFact,
 ) error {
 	var status string
@@ -291,7 +298,31 @@ func commitOperationTx(
 		return err
 	}
 	if status == "committed" {
-		if !response.Valid || response.String != string(fact.Receipt) {
+		if response.Valid && response.String == string(fact.Receipt) {
+			return nil
+		}
+		result, err := tx.ExecContext(ctx, `
+			UPDATE operations
+			SET response_json = ?, updated_at = ?
+			WHERE id = ? AND status = 'committed'
+				AND EXISTS (
+					SELECT 1 FROM turns
+					WHERE id = ? AND operation_id = operations.id
+						AND status = 'active'
+				)`,
+			string(fact.Receipt),
+			time.Now().UTC().Format(time.RFC3339Nano),
+			fact.OperationID,
+			turnID,
+		)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected != 1 {
 			return turnkernel.ErrTerminalEnvelopeConflict
 		}
 		return nil

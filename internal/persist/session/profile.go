@@ -158,7 +158,8 @@ func (r *Repository) EnsureProfile(
 func migrateLegacyDefaultMaxSteps(
 	current, defaults protocol.SessionProfile,
 ) (protocol.SessionProfile, bool, error) {
-	if current.Revision != 1 || current.MaxSteps != 8 || defaults.MaxSteps != 64 {
+	if current.Revision != 1 || defaults.MaxSteps != 256 ||
+		(current.MaxSteps != 8 && current.MaxSteps != 64) {
 		return current, false, nil
 	}
 	maxSteps := defaults.MaxSteps

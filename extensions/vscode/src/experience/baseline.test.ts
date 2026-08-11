@@ -123,7 +123,7 @@ void test("workbench keeps primary views prominent and uses native controls", as
   assert.match(background, /createTreeView/u);
 });
 
-void test("VS Code turns default to 64 model and tool steps", async () => {
+void test("VS Code turns default to 256 model and tool steps", async () => {
   const manifest = JSON.parse(await readFile(
     join(process.cwd(), "package.json"),
     "utf8",
@@ -138,12 +138,12 @@ void test("VS Code turns default to 64 model and tool steps", async () => {
     manifest.contributes.configuration.properties[
       "codehelper.runtime.maxSteps"
     ]?.default,
-    64,
+    256,
   );
   const controller = await sourceFile("runtime", "controller.ts");
   assert.match(
     controller,
-    /configuration\.get<number>\("runtime\.maxSteps", 64\)/u,
+    /configuration\.get<number>\("runtime\.maxSteps", 256\)/u,
   );
 });
 

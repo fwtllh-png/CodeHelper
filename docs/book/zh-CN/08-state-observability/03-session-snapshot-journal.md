@@ -37,6 +37,8 @@ last_verified: null
 区分 Session Metadata、Snapshot Checkpoint、Immutable Content Store 与 Workspace
 Side-effect Recovery。
 
+## Four Complementary Stores
+
 | Store | Identity | Purpose |
 | --- | --- | --- |
 | Session Repository | Session/Workspace/Thread ID | Lifecycle/Profile/Lineage/List |

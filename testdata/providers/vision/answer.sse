@@ -1,4 +1,4 @@
-data: {"choices":[{"delta":{"content":"The screenshot shows a login form."},"finish_reason":null}]}
+data: {"choices":[{"delta":{"content":"I will now finish the screenshot review."},"finish_reason":null}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":30,"completion_tokens":8}}
 

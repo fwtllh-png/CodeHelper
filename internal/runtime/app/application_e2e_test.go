@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -52,6 +53,55 @@ func TestValidToolArgumentsOmitsMalformedProviderPayload(t *testing.T) {
 				t.Fatalf("encoded ToolStartData is invalid: %s", data)
 			}
 		})
+	}
+}
+
+func TestStartTurnSeparatesModelAndDisplayPrompts(t *testing.T) {
+	worker, err := newTestAgentEngine(agentengine.Options{
+		Provider:        &singleAnswerProvider{},
+		Route:           runtimeTestRoute(t),
+		Tools:           tool.NewRegistry(nil, nil),
+		Workspace:       t.TempDir(),
+		Metrics:         telemetry.NewMetrics(),
+		MaxOutputTokens: 128,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{Engine: AdaptEngine(worker)})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: "thread-prompt", TurnID: "turn-prompt", ItemID: "item-prompt",
+		Prompt:        "internal recovery context\n<recovery_evidence>{}</recovery_evidence>",
+		DisplayPrompt: "Continue: fix the parser",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		event := receiveEvent(t, events)
+		if event.Kind != protocol.EventTurnStarted {
+			continue
+		}
+		started, ok := event.Data.(*protocol.TurnStartedData)
+		if !ok {
+			t.Fatalf("turn.started data = %T", event.Data)
+		}
+		if !strings.Contains(started.Prompt, "<recovery_evidence>") {
+			t.Fatalf("model prompt lost recovery evidence: %q", started.Prompt)
+		}
+		if started.DisplayPrompt != "Continue: fix the parser" ||
+			strings.Contains(started.DisplayPrompt, "<recovery_evidence>") {
+			t.Fatalf("display prompt leaked recovery evidence: %q", started.DisplayPrompt)
+		}
+		return
 	}
 }
 

@@ -71,6 +71,8 @@ Incomplete Buffer 提升为 Tool Call。
 Reasoning Text、Visible Text、Opaque Signature/Provider Data、Tool Argument 保持独立
 Content Block，避免 Replay 改变其 Role。
 
+## Usage 与 Cost
+
 一个 Turn 可产生多个 Provider Sample，包括 Tool-side Model Call。Usage 在一个 Sample
 内是 Cumulative，因此 Aggregation 保留每个 Sample 的最后报告，而不是累加所有 Delta。
 Sample Index 与 Purpose 区分 Main Act、Vision 等调用。

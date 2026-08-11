@@ -1,3 +1,3 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete_first","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"updated sample.go\"}"}}]},"finish_reason":"tool_calls"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete_first","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"updated sample.go\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: [DONE]

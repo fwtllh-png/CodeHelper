@@ -51,6 +51,7 @@ type PendingInput struct {
 
 type PendingOperation struct {
 	ID             protocol.OperationID
+	SessionID      string
 	IdempotencyKey string
 	Canonical      json.RawMessage
 }

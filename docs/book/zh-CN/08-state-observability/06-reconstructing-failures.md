@@ -33,6 +33,8 @@ last_verified: null
 使用 Event、Projection、Snapshot、Journal、Trace、Usage、Evidence 与 Receipt 还原
 Failure，避免猜测。
 
+## Reconstruction Order
+
 ```mermaid
 flowchart TD
     I[Workspace / Thread / Turn] --> E[Durable Event Sequence]

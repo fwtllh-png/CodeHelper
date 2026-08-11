@@ -110,6 +110,13 @@ type EvaluateTurnStep struct {
 
 func (EvaluateTurnStep) commandName() string { return "evaluate_turn_step" }
 
+type ObserveProgress struct {
+	Signature        string
+	CompletedSamples uint32
+}
+
+func (ObserveProgress) commandName() string { return "observe_progress" }
+
 type ToolCallsProposed struct {
 	Calls []ToolCallState
 }

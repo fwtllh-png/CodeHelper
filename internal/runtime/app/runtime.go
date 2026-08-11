@@ -264,10 +264,11 @@ type Runtime struct {
 	accepting        bool
 	closed           bool
 
-	activeMu      sync.Mutex
-	active        map[protocol.TurnID]context.CancelFunc
-	activeThreads map[protocol.ThreadID]protocol.TurnID
-	cancels       map[protocol.TurnID]cancelRecord
+	activeMu        sync.Mutex
+	active          map[protocol.TurnID]context.CancelFunc
+	activeThreads   map[protocol.ThreadID]protocol.TurnID
+	appliedProfiles map[protocol.ThreadID]uint64
+	cancels         map[protocol.TurnID]cancelRecord
 
 	// Event-owned items (F5): tool/approval/input get stable ItemIDs distinct
 	// from the turn.start operation item.
@@ -361,6 +362,7 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 		committed:           make(map[protocol.OperationID]PendingOperation),
 		active:              make(map[protocol.TurnID]context.CancelFunc),
 		activeThreads:       make(map[protocol.ThreadID]protocol.TurnID),
+		appliedProfiles:     make(map[protocol.ThreadID]uint64),
 		cancels:             make(map[protocol.TurnID]cancelRecord),
 		toolItems:           make(map[string]protocol.ItemID),
 		approvalItems:       make(map[string]protocol.ItemID),
@@ -1073,6 +1075,9 @@ func (r *Runtime) RestoreSessionProfile(
 	r.activeMu.Lock()
 	defer r.activeMu.Unlock()
 	if _, active := r.activeThreads[threadID]; active {
+		if r.appliedProfiles[threadID] == snapshot.Profile.Revision {
+			return snapshot, nil
+		}
 		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
 			protocol.CodeConflict,
 			"session profile cannot be restored while its thread has an active turn",
@@ -1086,6 +1091,7 @@ func (r *Runtime) RestoreSessionProfile(
 	if err := controller.ApplySessionProfile(threadID, snapshot.Profile); err != nil {
 		return protocol.SessionProfileSnapshot{}, err
 	}
+	r.appliedProfiles[threadID] = snapshot.Profile.Revision
 	return snapshot, nil
 }
 
@@ -1166,6 +1172,7 @@ func (r *Runtime) UpdateSessionProfile(
 			err,
 		)
 	}
+	r.appliedProfiles[threadID] = updated.Profile.Revision
 	return updated, nil
 }
 
@@ -2132,7 +2139,20 @@ func (r *Runtime) recoverPendingTurns(ctx context.Context) error {
 		if operation.Kind != protocol.OperationStartTurn {
 			continue
 		}
-		_, turnID, _ := protocol.OperationReferences(operation)
+		threadID, turnID, _ := protocol.OperationReferences(operation)
+		if pendingOperation.SessionID != "" && r.profiles != nil {
+			if _, err := r.RestoreSessionProfile(
+				ctx,
+				pendingOperation.SessionID,
+				threadID,
+			); err != nil {
+				return fmt.Errorf(
+					"restore profile before interrupted turn %s: %w",
+					turnID,
+					err,
+				)
+			}
+		}
 		facts, err := r.terminalStore.LoadDomainFacts(
 			ctx,
 			string(turnID),
@@ -2140,7 +2160,7 @@ func (r *Runtime) recoverPendingTurns(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if len(facts) == 0 || facts[len(facts)-1].State.Phase.Terminal() {
+		if len(facts) == 0 {
 			continue
 		}
 		select {
