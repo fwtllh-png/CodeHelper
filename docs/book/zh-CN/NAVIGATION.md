@@ -129,6 +129,7 @@
 - [跨平台构建与能力探测](./12-engineering-practice/05-cross-platform.md) — `practice-cross-platform` — `draft` — 规划路径: `12-engineering-practice/05-cross-platform.md`
 - [VSIX、SBOM、Provenance 与 Release Evidence](./12-engineering-practice/06-release-evidence.md) — `practice-release-evidence` — `draft` — 规划路径: `12-engineering-practice/06-release-evidence.md`
 - [如何阅读和修改大型 Agent 工程](./12-engineering-practice/07-reading-codebase.md) — `practice-reading-codebase` — `draft` — 规划路径: `12-engineering-practice/07-reading-codebase.md`
+- [架构度量与回归棘轮](./12-engineering-practice/08-architecture-ratchet.md) — `practice-architecture-ratchet` — `draft` — 规划路径: `12-engineering-practice/08-architecture-ratchet.md`
 
 ### 部分 13: 动手实验
 

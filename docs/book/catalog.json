@@ -155,7 +155,8 @@
         {"id": "practice-benchmark", "slug": "04-benchmark-and-performance", "status": "draft", "titles": {"en": "Benchmarks and Performance Budgets", "zh-CN": "Benchmark、性能预算与回归"}},
         {"id": "practice-cross-platform", "slug": "05-cross-platform", "status": "draft", "titles": {"en": "Cross-Platform Builds and Capability Probing", "zh-CN": "跨平台构建与能力探测"}},
         {"id": "practice-release-evidence", "slug": "06-release-evidence", "status": "draft", "titles": {"en": "VSIX, SBOM, Provenance, and Release Evidence", "zh-CN": "VSIX、SBOM、Provenance 与 Release Evidence"}},
-        {"id": "practice-reading-codebase", "slug": "07-reading-codebase", "status": "draft", "titles": {"en": "Reading and Changing a Large Agent Codebase", "zh-CN": "如何阅读和修改大型 Agent 工程"}}
+        {"id": "practice-reading-codebase", "slug": "07-reading-codebase", "status": "draft", "titles": {"en": "Reading and Changing a Large Agent Codebase", "zh-CN": "如何阅读和修改大型 Agent 工程"}},
+        {"id": "practice-architecture-ratchet", "slug": "08-architecture-ratchet", "status": "draft", "titles": {"en": "Architecture Metrics and the Regression Ratchet", "zh-CN": "架构度量与回归棘轮"}}
       ]
     },
     {

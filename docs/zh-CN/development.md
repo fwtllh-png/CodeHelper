@@ -198,9 +198,20 @@ npm run generate:compatibility
 `unavailable`。CI 强制要求 Linux 平台能力；本地不支持的环境明确报告
 `unavailable`，不会伪装成能力已通过。
 
-Stage 0 热点冻结契约定义在 `docs/hotspot-baseline.json`。职责先绑定到 Package Symbol，
-允许机械拆分移动代码；热点完成拆分后，`responsibility_files` 会把每个领域绑定到归属
-文件。职责丢失或错位、新增未审阅内部依赖、热点文件增长或测试资产删除都会使基线失败。
+架构回归由两个互补契约约束：
+
+- `docs/hotspot-baseline.json` 将职责绑定到 Package Symbol 和 Owner File。职责丢失或
+  错位、未审阅内部依赖、热点增长和测试资产删除都会使 `make hotspot-baseline` 失败。
+- `docs/architecture-metrics-baseline.json` 限制直接内部 Package Fanout、生产代码行数、
+  Options/Mutex 字段、热点文件/函数体积以及重复的 Protocol Event Switch 站点。
+  `make architecture-ratchet` 会测量当前仓库，并在
+  `ARCHITECTURE_BASE_REF` 包含旧基线时比较新旧阈值。
+
+架构阈值只能单调收紧。提高阈值必须为对应指标填写非空 `relaxations` 理由；删除目标或
+指标必须填写显式 `retirements` 理由。过期豁免会使 Ratchet 失败，避免临时额度静默变成
+永久例外。离散状态指标不留 Headroom；Package、文件和函数行数分别最多保留 100、20
+和 5 行额度。实际值下降后若与阈值差距超过该额度，检查也会失败并要求同步下调基线。
+实际测量报告写入 `.tmp/architecture/metrics.json`。
 
 按风险选择测试：
 
