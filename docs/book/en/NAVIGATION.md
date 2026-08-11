@@ -129,6 +129,7 @@ Start with these six foundational chapters:
 - [Cross-Platform Builds and Capability Probing](./12-engineering-practice/05-cross-platform.md) — `practice-cross-platform` — `draft` — planned path: `12-engineering-practice/05-cross-platform.md`
 - [VSIX, SBOM, Provenance, and Release Evidence](./12-engineering-practice/06-release-evidence.md) — `practice-release-evidence` — `draft` — planned path: `12-engineering-practice/06-release-evidence.md`
 - [Reading and Changing a Large Agent Codebase](./12-engineering-practice/07-reading-codebase.md) — `practice-reading-codebase` — `draft` — planned path: `12-engineering-practice/07-reading-codebase.md`
+- [Architecture Metrics and the Regression Ratchet](./12-engineering-practice/08-architecture-ratchet.md) — `practice-architecture-ratchet` — `draft` — planned path: `12-engineering-practice/08-architecture-ratchet.md`
 
 ### Part 13: Hands-On Labs
 
