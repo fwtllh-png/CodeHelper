@@ -91,3 +91,4 @@ Machine Corruption。
 | --- | --- |
 | Catalog ID | `lab-worker-retry` |
 | 状态 | `verified` |
+| 最后验证 | 2026-08-10 |

@@ -97,3 +97,11 @@ go test ./internal/adapter/mcp ./internal/adapter/skill
 ## Further Reading
 
 - [Skills, Plugins, and Hooks](../11-extension-ecosystem/04-skill-plugin-hook.md)
+
+## Sources and Verification
+
+| Item | Value |
+| --- | --- |
+| Catalog ID | `security-extension-trust` |
+| Status | `draft` |
+| Last verified | Not yet verified |

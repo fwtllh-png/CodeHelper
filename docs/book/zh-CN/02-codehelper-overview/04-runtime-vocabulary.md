@@ -197,5 +197,5 @@ go test ./internal/persist/state \
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `overview-runtime-vocabulary` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

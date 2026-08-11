@@ -136,5 +136,5 @@ active Tool card, approval overlay, and final receipt.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `host-tui` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

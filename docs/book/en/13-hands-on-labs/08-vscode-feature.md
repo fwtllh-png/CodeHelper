@@ -125,4 +125,5 @@ Remove temporary VSIX/test output with `npm run clean`.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-vscode-feature` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

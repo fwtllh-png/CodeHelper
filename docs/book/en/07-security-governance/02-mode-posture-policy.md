@@ -100,3 +100,11 @@ go test ./internal/security/permissions
 ## Further Reading
 
 - [Guard, Approval, Constitution, and Sandbox](./03-approval-constitution-sandbox.md)
+
+## Sources and Verification
+
+| Item | Value |
+| --- | --- |
+| Catalog ID | `security-mode-policy` |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -75,6 +75,7 @@ func TestMetricsAreAtomic(t *testing.T) {
 				metrics.AgentTurn()
 				metrics.ToolExecution()
 				metrics.Error()
+				metrics.TurnKernelObserver(true, true)
 			}
 		}()
 	}
@@ -89,8 +90,25 @@ func TestMetricsAreAtomic(t *testing.T) {
 		got.ProviderRequests != want ||
 		got.AgentTurns != want ||
 		got.ToolExecutions != want ||
-		got.Errors != want {
+		got.Errors != want ||
+		got.TurnKernelTransitions != want ||
+		got.TurnKernelDrifts != want ||
+		got.TurnKernelDigestErrors != want {
 		t.Fatalf("metric snapshot = %+v, want every counter %d", got, want)
+	}
+}
+
+func TestTurnKernelObserverMetricsSeparateHealthyTransitions(t *testing.T) {
+	metrics := NewMetrics()
+	metrics.TurnKernelObserver(false, false)
+	metrics.TurnKernelObserver(true, false)
+	metrics.TurnKernelObserver(true, true)
+
+	snapshot := metrics.Snapshot()
+	if snapshot.TurnKernelTransitions != 3 ||
+		snapshot.TurnKernelDrifts != 2 ||
+		snapshot.TurnKernelDigestErrors != 1 {
+		t.Fatalf("turn kernel metrics = %+v", snapshot)
 	}
 }
 

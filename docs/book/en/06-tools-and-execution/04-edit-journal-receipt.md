@@ -175,5 +175,5 @@ expected-after, and current fingerprints that turn a rollback into a conflict.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `tool-edit-journal-receipt` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

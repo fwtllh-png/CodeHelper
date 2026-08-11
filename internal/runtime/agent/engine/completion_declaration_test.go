@@ -11,6 +11,7 @@ import (
 	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -107,8 +108,7 @@ func TestWorkspaceChangeRequiresCompletionDeclaration(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 	if len(runtime.requests) != 4 ||
-		!requestContains(runtime.requests[2], "[completion_declaration_required]") ||
-		!requestContains(runtime.requests[3], "[completion_verified]") {
+		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
 		t.Fatalf("requests did not contain declaration repair: %+v", runtime.requests)
 	}
 	verifyIndex, finalIndex := -1, -1
@@ -122,6 +122,50 @@ func TestWorkspaceChangeRequiresCompletionDeclaration(t *testing.T) {
 	}
 	if verifyIndex < 0 || finalIndex < 0 || verifyIndex >= finalIndex {
 		t.Fatalf("verification must precede final answer: %+v", events)
+	}
+	for _, event := range events {
+		if event.Text == "Next I will run the remaining validation." {
+			t.Fatalf("pre-declaration text reached the stable output stream: %+v", events)
+		}
+	}
+}
+
+func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
+	registry := declarationRegistry(t, false)
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("write-1", "write_fixture", `{}`),
+		textStream("I changed the file without declaring completion."),
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"implemented and verified"
+		}`),
+		textStream("Implemented and verified."),
+	}}
+	engine := declarationEngine(t, runtime, registry, passedReceipt())
+	var events []Event
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-answer", "fix a.go",
+		protocol.TurnIntentAnswer, nil,
+		func(event Event) error {
+			events = append(events, event)
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed || result.Text != "Implemented and verified." {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(runtime.requests) != 4 ||
+		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
+		t.Fatalf("mutation did not activate completion gate: %+v", runtime.requests)
+	}
+	for _, event := range events {
+		if event.Text == "I changed the file without declaring completion." {
+			t.Fatalf("pre-declaration text reached the stable output stream: %+v", events)
+		}
 	}
 }
 
@@ -139,11 +183,10 @@ func TestEngineRejectsRequiredCompletionToolMissing(t *testing.T) {
 func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.turnDiff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
-	engine.advanceMutationRevision()
-	engine.verificationEvidence = append(engine.verificationEvidence, verify.Evidence{
+	engine.verificationInputs = append(engine.verificationInputs, verify.Evidence{
 		SchemaVersion: 1, Kind: "verify", Status: verify.StatusPassed,
 		CoveredPaths: []string{"a.go"}, CallID: "verify-1",
-		MutationRevision: engine.mutationRevision,
+		MutationRevision: 1,
 	})
 	declaration := tool.CompletionDeclaration{
 		Status: "complete", Summary: "done",
@@ -151,9 +194,22 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	sameBatch := tool.Result{Metadata: map[string]any{
 		tool.MetadataCompletionDeclaration: declaration,
 	}}
-	engine.bindCompletionDeclaration(provider.ToolCall{
-		ID: "complete-same-batch", Name: completiontool.Name,
-	}, &sameBatch, true, 1)
+	sameBatchCandidate := engine.completionCandidate(
+		provider.ToolCall{
+			ID: "complete-same-batch", Name: completiontool.Name,
+		},
+		sameBatch,
+		true,
+		1,
+		1,
+	)
+	if !sameBatchCandidate.BatchMutated {
+		t.Fatalf("same-batch candidate = %+v", sameBatchCandidate)
+	}
+	bindCompletionDecision(&sameBatch, turnkernel.CompletionDecision{
+		Reason:         "same_batch_mutation",
+		RequiredAction: "correct_and_retry_turn_complete",
+	})
 	if accepted, _ := sameBatch.Metadata["completion_declaration_accepted"].(bool); accepted {
 		t.Fatalf("same-batch declaration accepted: %#v", sameBatch.Metadata)
 	}
@@ -161,22 +217,56 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	accepted := tool.Result{Metadata: map[string]any{
 		tool.MetadataCompletionDeclaration: declaration,
 	}}
-	engine.bindCompletionDeclaration(provider.ToolCall{
-		ID: "complete-1", Name: completiontool.Name,
-	}, &accepted, false, 1)
-	if !engine.hasCurrentCompletionDeclaration() {
+	bindCompletionDecision(&accepted, turnkernel.CompletionDecision{
+		Accepted:       true,
+		Summary:        "done",
+		RequiredAction: "final_answer",
+		Mutation:       1,
+		ChangedPaths:   []string{"a.go"},
+		QualityCalls:   []string{"verify-1"},
+		CompletionCall: "complete-1",
+	})
+	bound, ok := decodeCompletionDeclaration(
+		accepted.Metadata[tool.MetadataCompletionDeclaration],
+	)
+	if !ok {
 		t.Fatalf("exact declaration rejected: %#v", accepted.Metadata)
 	}
-	if got := engine.completionDeclaration.ChangedPaths; len(got) != 1 || got[0] != "a.go" {
+	if got := bound.ChangedPaths; len(got) != 1 || got[0] != "a.go" {
 		t.Fatalf("runtime-bound changed paths = %v", got)
 	}
-	if got := engine.completionDeclaration.VerificationCallIDs; len(got) != 1 ||
+	if got := bound.VerificationCallIDs; len(got) != 1 ||
 		got[0] != "verify-1" {
 		t.Fatalf("runtime-bound verification call IDs = %v", got)
 	}
-	engine.advanceMutationRevision()
-	if engine.hasCurrentCompletionDeclaration() {
-		t.Fatal("declaration survived a later mutation")
+	if bound.MutationRevision != 1 {
+		t.Fatalf("bound mutation revision = %d, want 1", bound.MutationRevision)
+	}
+}
+
+func TestRejectedCompletionResultExposesTheRuntimeDecision(t *testing.T) {
+	result := tool.Result{
+		Content: `{"status":"pending_runtime_validation"}`,
+		Metadata: map[string]any{
+			tool.MetadataCompletionDeclaration: tool.CompletionDeclaration{
+				Status: "complete", Summary: "read-only review complete",
+			},
+		},
+	}
+
+	bindCompletionDecision(&result, turnkernel.CompletionDecision{
+		Reason:         "no_observed_changes",
+		RequiredAction: "perform_workspace_mutation",
+		CompletionCall: "complete-read-only",
+	})
+
+	if !strings.Contains(result.Content, `"status":"rejected"`) ||
+		!strings.Contains(result.Content, `"reason":"no_observed_changes"`) ||
+		!strings.Contains(result.Content, `"required_action":"perform_workspace_mutation"`) {
+		t.Fatalf("rejected completion result = %s", result.Content)
+	}
+	if accepted, _ := result.Metadata["completion_declaration_accepted"].(bool); accepted {
+		t.Fatalf("rejected completion metadata = %#v", result.Metadata)
 	}
 }
 
@@ -207,10 +297,17 @@ func TestVerificationRepairInvalidatesCompletionDeclaration(t *testing.T) {
 		Scope: verify.ScopeDiagnostics, Status: verify.StatusUnavailable,
 		Message: "no diagnostics covered a.go",
 	})
+	var completion *tool.CompletionDeclaration
 
 	result, err := engine.RunForTurnWithIntentAndAttachments(
 		t.Context(), "turn-1", "change a.go",
-		protocol.TurnIntentWorkspaceChange, nil, nil,
+		protocol.TurnIntentWorkspaceChange, nil, func(event Event) error {
+			if event.Completion != nil {
+				copy := *event.Completion
+				completion = &copy
+			}
+			return nil
+		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -220,9 +317,9 @@ func TestVerificationRepairInvalidatesCompletionDeclaration(t *testing.T) {
 		t.Fatalf("result = %+v", result)
 	}
 	if len(runtime.requests) != 7 ||
-		!requestContains(runtime.requests[2], `"a.go"`) ||
-		!requestContains(runtime.requests[4], "[completion_declaration_required]") ||
-		!requestContains(runtime.requests[6], "[completion_verified]") {
+		!requestContains(runtime.requests[4], "[verify]") ||
+		completion == nil ||
+		completion.CallID != "complete-2" {
 		t.Fatalf("repair sequence = %+v", runtime.requests)
 	}
 }
@@ -263,11 +360,6 @@ func TestCompletionRepairBudgetResetsAfterAcceptedQualityEvidence(t *testing.T) 
 		result.Verification.Status != verify.StatusPassed {
 		t.Fatalf("result = %+v", result)
 	}
-	if engine.completionDeclaration == nil ||
-		len(engine.completionDeclaration.VerificationCallIDs) != 1 ||
-		engine.completionDeclaration.VerificationCallIDs[0] != "verify-1" {
-		t.Fatalf("completion = %#v", engine.completionDeclaration)
-	}
 }
 
 func declarationRegistry(t *testing.T, quality bool) *tool.Registry {
@@ -295,9 +387,11 @@ func declarationEngine(
 	receipt verify.Receipt,
 ) *Engine {
 	t.Helper()
+	root := t.TempDir()
 	engine, err := New(Options{
 		Provider: runtime, Route: testRoute(t), Tools: registry,
 		MaxOutputTokens: 256, MaxSteps: 12,
+		Workspace: root, Journal: newTestWorkspaceJournal(t, root),
 		Authorize:                    func(provider.ToolCall) bool { return true },
 		RequireCompletionDeclaration: true,
 		Verify: VerifyOptions{

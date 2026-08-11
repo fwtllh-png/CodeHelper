@@ -119,7 +119,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"type": "array", "items": map[string]any{
 				"type": "string", "minLength": float64(1),
 			},
-			"maxItems": float64(128), "uniqueItems": true,
+			"maxItems":    float64(sandbox.MaxExactWorkspaceWritePaths),
+			"uniqueItems": true,
 		}
 		properties["write_globs"] = map[string]any{
 			"type": "array", "items": map[string]any{
@@ -164,6 +165,26 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	}
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
+	}
+	if token := unsupportedPOSIXShellSyntax(input.Command); token != "" {
+		content, _ := json.Marshal(map[string]any{
+			"status":          "rejected",
+			"error_category":  "unsupported_shell_syntax",
+			"shell_dialect":   "posix_sh",
+			"syntax":          token,
+			"required_action": "rewrite_without_process_substitution",
+		})
+		return tool.Result{
+			Content: string(content),
+			IsError: true,
+			Metadata: map[string]any{
+				"exit_code":       -1,
+				"error_category":  "unsupported_shell_syntax",
+				"shell_dialect":   "posix_sh",
+				"syntax":          token,
+				"required_action": "rewrite_without_process_substitution",
+			},
+		}, nil
 	}
 	directory, err := t.workspace.ResolveDirectory(input.CWD)
 	if err != nil {
@@ -284,8 +305,11 @@ func (t *Tool) resolveWritePaths(paths []string) ([]string, error) {
 	if t.readOnly || t.pty {
 		return nil, errors.New("this shell tool does not accept workspace write paths")
 	}
-	if len(paths) > 128 {
-		return nil, errors.New("shell write paths exceed the 128-file limit")
+	if len(paths) > sandbox.MaxExactWorkspaceWritePaths {
+		return nil, fmt.Errorf(
+			"shell write paths exceed the %d-file limit",
+			sandbox.MaxExactWorkspaceWritePaths,
+		)
 	}
 	resolved := make([]string, 0, len(paths))
 	seen := make(map[string]struct{}, len(paths))
@@ -324,6 +348,48 @@ func streamOutput(ctx context.Context) func(process.Chunk) {
 			Stream: string(chunk.Stream), Data: string(chunk.Data), Cursor: chunk.Cursor,
 		})
 	}
+}
+
+func unsupportedPOSIXShellSyntax(command string) string {
+	var singleQuoted, doubleQuoted, escaped, comment bool
+	for index := 0; index < len(command); index++ {
+		current := command[index]
+		if comment {
+			if current == '\n' {
+				comment = false
+			}
+			continue
+		}
+		if escaped {
+			escaped = false
+			continue
+		}
+		if current == '\\' && !singleQuoted {
+			escaped = true
+			continue
+		}
+		if current == '\'' && !doubleQuoted {
+			singleQuoted = !singleQuoted
+			continue
+		}
+		if current == '"' && !singleQuoted {
+			doubleQuoted = !doubleQuoted
+			continue
+		}
+		if singleQuoted {
+			continue
+		}
+		if current == '#' &&
+			(index == 0 || strings.ContainsRune(" \t\r\n;|&()", rune(command[index-1]))) {
+			comment = true
+			continue
+		}
+		if (current == '<' || current == '>') &&
+			index+1 < len(command) && command[index+1] == '(' {
+			return command[index : index+2]
+		}
+	}
+	return ""
 }
 
 func formatShellOutput(stdout, stderr string) string {

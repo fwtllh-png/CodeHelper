@@ -110,3 +110,11 @@ make secret-leak-test
 
 - [Mode, Posture, Policy, and Permission](./02-mode-posture-policy.md)
 - [Security manual](../../../en/security.md)
+
+## Sources and Verification
+
+| Item | Value |
+| --- | --- |
+| Catalog ID | `security-threat-model` |
+| Status | `draft` |
+| Last verified | Not yet verified |

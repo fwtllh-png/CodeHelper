@@ -119,4 +119,4 @@ go test ./internal/orchestration/worker -run 'Test.*(Lease|Retry|Takeover)'
 | --- | --- |
 | Catalog ID | `task-lease-retry` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-10 |

@@ -151,5 +151,5 @@ protocol, endpoint, limits, capabilities, and credential reference. Then follow
 | Item | Value |
 | --- | --- |
 | Catalog ID | `model-provider-catalog` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

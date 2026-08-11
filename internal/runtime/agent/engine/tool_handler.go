@@ -18,36 +18,33 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-type toolReplayEntry struct {
+type toolResultCacheEntry struct {
 	callID string
 	result tool.Result
 }
 
-type toolReplayCache struct {
+type toolResultCache struct {
 	revision uint64
-	entries  map[string]toolReplayEntry
+	entries  map[string]toolResultCacheEntry
 }
 
-func (e *Engine) runTools(
+func (e *Engine) runToolsWithCache(
 	ctx context.Context,
 	turnID string,
 	calls []provider.ToolCall,
 	executed map[string]tool.Result,
+	cache *toolResultCache,
+	kernel *engineTurnKernel,
 	send func(State, Event) error,
 ) ([]tool.Result, error) {
-	return e.runToolsWithReplay(
-		ctx, turnID, calls, executed, &toolReplayCache{}, send,
-	)
-}
-
-func (e *Engine) runToolsWithReplay(
-	ctx context.Context,
-	turnID string,
-	calls []provider.ToolCall,
-	executed map[string]tool.Result,
-	replay *toolReplayCache,
-	send func(State, Event) error,
-) ([]tool.Result, error) {
+	if kernel == nil {
+		return nil, protocol.NewProblem(
+			protocol.CodeInternal,
+			"turn kernel is required for tool execution",
+			false,
+			nil,
+		)
+	}
 	if err := send(RunningTools, Event{}); err != nil {
 		return nil, err
 	}
@@ -79,17 +76,19 @@ func (e *Engine) runToolsWithReplay(
 	results := make([]tool.Result, len(calls))
 	errorsByIndex := make([]error, len(calls))
 	skipExecution := make([]bool, len(calls))
+	alreadyExecuted := make([]bool, len(calls))
 	fingerprints := make([]string, len(calls))
-	replaySources := make([]string, len(calls))
+	cacheSources := make([]string, len(calls))
 	batchOwners := make(map[string]int)
 	duplicateOwners := make(map[int]int)
-	if replay.entries == nil {
-		replay.entries = make(map[string]toolReplayEntry)
+	if cache.entries == nil {
+		cache.entries = make(map[string]toolResultCacheEntry)
 	}
 	for index, call := range calls {
 		if previous, exists := executed[call.ID]; exists {
 			results[index] = previous
 			skipExecution[index] = true
+			alreadyExecuted[index] = true
 			continue
 		}
 		binding := bindingForCall(call)
@@ -97,34 +96,81 @@ func (e *Engine) runToolsWithReplay(
 		if err != nil || descriptor.RepeatPolicy != tool.RepeatReplaySameTurn {
 			continue
 		}
-		fingerprint, err := replayFingerprint(call, binding, replay.revision)
+		fingerprint, err := resultCacheFingerprint(call, binding, cache.revision)
 		if err != nil {
 			continue
 		}
 		fingerprints[index] = fingerprint
-		if cached, exists := replay.entries[fingerprint]; exists {
-			results[index] = replayedToolResult(cached.result, cached.callID)
-			replaySources[index] = cached.callID
+		if cached, exists := cache.entries[fingerprint]; exists {
+			results[index] = cachedToolResult(cached.result, cached.callID)
+			cacheSources[index] = cached.callID
 			skipExecution[index] = true
 			continue
 		}
 		if owner, exists := batchOwners[fingerprint]; exists {
 			duplicateOwners[index] = owner
-			replaySources[index] = calls[owner].ID
+			cacheSources[index] = calls[owner].ID
 			skipExecution[index] = true
 			continue
 		}
 		batchOwners[fingerprint] = index
 	}
+	plannedCalls := make([]provider.ToolCall, 0, len(calls))
+	for _, call := range calls {
+		if _, exists := executed[call.ID]; !exists {
+			plannedCalls = append(plannedCalls, call)
+		}
+	}
+	if err := kernel.validateToolStarts(plannedCalls); err != nil {
+		return nil, err
+	}
+	publishedCalls := make([]provider.ToolCall, 0, len(calls))
 	for _, call := range calls {
 		if _, exists := executed[call.ID]; exists {
 			continue
 		}
 		e.noteToolCall(call)
 		callCopy := call
-		if err := send(RunningTools, Event{ToolCall: &callCopy}); err != nil {
-			return nil, err
+		if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+			closeErr := publishAbortedToolResults(
+				publishedCalls,
+				"tool batch aborted during lifecycle registration",
+				send,
+			)
+			abortErr := kernel.abortTools(
+				"tool lifecycle registration failed",
+			)
+			return nil, errors.Join(
+				err,
+				closeErr,
+				abortErr,
+			)
 		}
+		if err := kernel.startTool(call.ID); err != nil {
+			closeErr := publishAbortedToolResults(
+				publishedCalls,
+				"tool batch aborted before execution",
+				send,
+			)
+			abortErr := kernel.abortTools(
+				"tool durable start failed",
+			)
+			return nil, errors.Join(err, closeErr, abortErr)
+		}
+		if err := send(RunningTools, Event{ToolCall: &callCopy}); err != nil {
+			closeErr := publishAbortedToolResults(
+				publishedCalls,
+				"tool batch aborted before execution",
+				send,
+			)
+			abortErr := kernel.abortTools("tool start publication failed")
+			return nil, errors.Join(
+				err,
+				abortErr,
+				closeErr,
+			)
+		}
+		publishedCalls = append(publishedCalls, call)
 	}
 	var group sync.WaitGroup
 	for index, call := range calls {
@@ -200,7 +246,7 @@ func (e *Engine) runToolsWithReplay(
 	}
 	group.Wait()
 	for index, owner := range duplicateOwners {
-		results[index] = replayedToolResult(results[owner], calls[owner].ID)
+		results[index] = cachedToolResult(results[owner], calls[owner].ID)
 	}
 	var batchErr error
 	for index, err := range errorsByIndex {
@@ -234,27 +280,18 @@ func (e *Engine) runToolsWithReplay(
 			break
 		}
 	}
-	if batchMutated {
-		replay.revision++
-		clear(replay.entries)
-		e.advanceMutationRevision()
-	} else {
-		for index, fingerprint := range fingerprints {
-			if fingerprint == "" || replaySources[index] != "" || results[index].IsError {
-				continue
-			}
-			replay.entries[fingerprint] = toolReplayEntry{
-				callID: calls[index].ID,
-				result: results[index],
-			}
-		}
-	}
+	var resultPublishErr error
 	for index := range calls {
-		e.bindVerificationEvidence(calls[index], &results[index], batchMutated)
-		e.bindCompletionDeclaration(
-			calls[index], &results[index], batchMutated, len(calls),
+		if alreadyExecuted[index] {
+			continue
+		}
+		mutationRevision := kernel.mutationRevision()
+		e.bindVerificationEvidence(
+			calls[index],
+			&results[index],
+			batchMutated,
+			mutationRevision,
 		)
-		executed[calls[index].ID] = results[index]
 		copy := results[index]
 		call := calls[index]
 		if !copy.IsError {
@@ -279,17 +316,83 @@ func (e *Engine) runToolsWithReplay(
 		}
 		e.recordTurnDiagnostics(diagnosticReceipts)
 		e.observeDiagnosticsEvidence(diagnosticReceipts)
+		if err := kernel.closeTool(call, copy, fileChanges); err != nil {
+			resultPublishErr = errors.Join(resultPublishErr, err)
+			continue
+		}
+		if call.Name == "turn_complete" {
+			decision, err := kernel.evaluateCompletion(
+				e.completionCandidate(
+					call,
+					results[index],
+					batchMutated,
+					len(calls),
+					mutationRevision,
+				),
+			)
+			if err != nil {
+				resultPublishErr = errors.Join(resultPublishErr, err)
+				continue
+			}
+			bindCompletionDecision(&results[index], decision)
+			copy = results[index]
+		}
+		executed[calls[index].ID] = results[index]
 		if err := send(RunningTools, Event{
 			ToolCall: &call, Result: &copy, Diagnostics: diagnosticReceipts,
 			FileChanges: fileChanges,
 		}); err != nil {
-			return nil, err
+			resultPublishErr = errors.Join(resultPublishErr, err)
+			continue
+		}
+	}
+	if resultPublishErr != nil {
+		return results, resultPublishErr
+	}
+	if batchMutated {
+		cache.revision++
+		clear(cache.entries)
+	} else {
+		for index, fingerprint := range fingerprints {
+			if fingerprint == "" || cacheSources[index] != "" || results[index].IsError {
+				continue
+			}
+			cache.entries[fingerprint] = toolResultCacheEntry{
+				callID: calls[index].ID,
+				result: results[index],
+			}
 		}
 	}
 	if batchErr != nil {
 		return results, batchErr
 	}
 	return results, nil
+}
+
+func publishAbortedToolResults(
+	calls []provider.ToolCall,
+	reason string,
+	send func(State, Event) error,
+) error {
+	var publishErr error
+	for index := range calls {
+		call := calls[index]
+		result := tool.Result{
+			Content: reason,
+			IsError: true,
+			Metadata: map[string]any{
+				"error_category": "tool_batch_aborted",
+				"fatal":          true,
+			},
+		}
+		if err := send(RunningTools, Event{
+			ToolCall: &call,
+			Result:   &result,
+		}); err != nil {
+			publishErr = errors.Join(publishErr, err)
+		}
+	}
+	return publishErr
 }
 
 func bindingForCall(call provider.ToolCall) tool.CatalogBinding {
@@ -299,7 +402,7 @@ func bindingForCall(call provider.ToolCall) tool.CatalogBinding {
 	}
 }
 
-func replayFingerprint(
+func resultCacheFingerprint(
 	call provider.ToolCall,
 	binding tool.CatalogBinding,
 	revision uint64,
@@ -340,7 +443,7 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 	return nil
 }
 
-func replayedToolResult(result tool.Result, sourceCallID string) tool.Result {
+func cachedToolResult(result tool.Result, sourceCallID string) tool.Result {
 	copy := result
 	copy.Metadata = maps.Clone(result.Metadata)
 	if copy.Metadata == nil {

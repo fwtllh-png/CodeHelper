@@ -3,5 +3,13 @@
   "path": "/chat/completions",
   "model": "quickstart-fixture-model",
   "expected_prompt": "complete the CodeHelper quickstart journey",
-  "streams": ["plan.sse", "read.sse", "edit.sse", "complete.sse"]
+  "streams": [
+    "plan.sse",
+    "read.sse",
+    "edit.sse",
+    "declare-first.sse",
+    "quality.sse",
+    "declare-final.sse",
+    "complete.sse"
+  ]
 }

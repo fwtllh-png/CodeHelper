@@ -57,6 +57,7 @@ type receiptRecorder struct {
 	// the engine what that turn read. budget is frozen on the terminal event.
 	turn   uint64
 	budget *protocol.ReceiptContextBudget
+	frozen *turnObservations
 }
 
 // turnObservations is what the engine knows at the end of a turn that the event
@@ -162,6 +163,24 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 	// omit the model that produced part of the bill.
 	r.observeRoute(event)
 	r.observeUsage(event)
+}
+
+func (r *receiptRecorder) freeze(engine *agentengine.Engine) {
+	if r == nil || engine == nil || r.frozen != nil {
+		return
+	}
+	r.frozen = &turnObservations{
+		changes:    engine.TurnDiff(),
+		readPaths:  engine.ReadPaths(r.turn),
+		context:    engine.ContextReceipts(),
+		selections: engine.ContextSelections(),
+		catalog:    engine.CatalogReceipt(),
+		evidence:   engine.EvidenceSnapshot(),
+		budget:     r.budget,
+		conflicts:  engine.RollbackConflicts(),
+		latency:    engine.TurnLatency(),
+		spend:      engine.BudgetSnapshot(),
+	}
 }
 
 // observeRoute records which route a purpose sampled on. A purpose is recorded
@@ -271,8 +290,19 @@ func (r *receiptRecorder) observeTool(event agentengine.Event) {
 
 // build renders the receipt from the events it folded plus what the engine
 // observed outside the stream.
-func (r *receiptRecorder) build(observed turnObservations) *protocol.ExecutionReceiptData {
+func (r *receiptRecorder) build(
+	supplied ...turnObservations,
+) *protocol.ExecutionReceiptData {
 	if r == nil {
+		return nil
+	}
+	var observed turnObservations
+	switch {
+	case len(supplied) != 0:
+		observed = supplied[0]
+	case r.frozen != nil:
+		observed = *r.frozen
+	default:
 		return nil
 	}
 	receipt := &protocol.ExecutionReceiptData{

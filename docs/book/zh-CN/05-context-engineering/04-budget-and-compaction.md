@@ -156,5 +156,5 @@ Goal/Todo 比可重复的 Fact/Digest 更晚丢失。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `context-budget-compaction` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

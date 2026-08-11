@@ -123,5 +123,5 @@ invalid schema, traversal, and unadvertised catalog binding fail before Execute.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `extension-tool` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

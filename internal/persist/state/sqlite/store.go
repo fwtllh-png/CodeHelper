@@ -383,6 +383,37 @@ CREATE INDEX turns_thread_created ON turns(thread_id, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS turns_one_active_per_thread
 ON turns(thread_id) WHERE status = 'active';
 
+CREATE TABLE turn_domain_facts (
+    turn_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence > 0),
+    fact_json TEXT NOT NULL CHECK (json_valid(fact_json)),
+    PRIMARY KEY (turn_id, sequence)
+);
+
+CREATE TABLE turn_terminal_envelopes (
+    turn_id TEXT PRIMARY KEY,
+    effect_id TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    envelope_json TEXT NOT NULL CHECK (json_valid(envelope_json)),
+    marker_json TEXT NOT NULL CHECK (json_valid(marker_json))
+);
+
+CREATE TABLE turn_terminal_outbox (
+    turn_id TEXT NOT NULL,
+    entry_id TEXT NOT NULL,
+    published INTEGER NOT NULL DEFAULT 0 CHECK (published IN (0, 1)),
+    PRIMARY KEY (turn_id, entry_id)
+);
+
+CREATE TABLE turn_coordinator_leases (
+    turn_id TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
+    owner TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX turn_coordinator_leases_expiry
+ON turn_coordinator_leases(expires_at);
+
 CREATE TABLE items (
     id TEXT PRIMARY KEY,
     turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,

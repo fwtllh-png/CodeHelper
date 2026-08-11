@@ -178,5 +178,5 @@ send a Provider request and delete the temporary config afterward.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `model-credential-lifecycle` |
-| Status | `verified` |
-| Last verified | 2026-08-07 |
+| Status | `draft` |
+| Last verified | Not yet verified |

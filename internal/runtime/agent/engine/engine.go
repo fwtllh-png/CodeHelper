@@ -21,6 +21,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -108,13 +109,23 @@ type Options struct {
 	// RequireCompletionDeclaration makes workspace_change completion depend on
 	// a turn_complete tool result bound to the current mutation revision.
 	RequireCompletionDeclaration bool
-	Hooks                        *hooks.Manager
-	SessionID                    string
-	InputHost                    *interact.Host
+	// TurnKernelObserver receives deterministic records after Coordinator
+	// commits a transition. The callback is diagnostics-only: panics are
+	// contained and it cannot fail or alter the active Turn.
+	TurnKernelObserver func(turnkernel.TransitionRecord)
+	// TurnCoordinatorRuntime owns per-Turn Coordinator construction and
+	// persistence. Production hosts inject it from runtime/app/wire.
+	TurnCoordinatorRuntime turnkernel.CoordinatorRuntime
+	Hooks                  *hooks.Manager
+	SessionID              string
+	InputHost              *interact.Host
 	// PromptCacheKey is the session sticky hint; samples only attach it when
 	// StickyPromptCacheKey drops the session default when the route lacks
 	// prompt_cache, so Validate/encode stay consistent across protocols.
 	PromptCacheKey string
+	// ProfileRevision is the durable Session Profile revision frozen into each
+	// TurnCoordinator snapshot. Hosts without a profile store use revision 1.
+	ProfileRevision uint64
 	// MaxToolConcurrent bounds simultaneous concurrent-policy tools (0 → 8).
 	MaxToolConcurrent int
 	// MaxToolStreamBytes bounds how much of one tool call's output is delivered as
@@ -180,6 +191,9 @@ type Engine struct {
 	approvalMu   sync.Mutex
 	approvalEmit func(Event) error
 
+	turnKernelMu sync.Mutex
+	turnKernel   *engineTurnKernel
+
 	// routeMu guards the route the active turn samples on. It is nil between
 	// turns, when the act route is the only sensible answer.
 	routeMu   sync.RWMutex
@@ -234,11 +248,9 @@ type Engine struct {
 	diagnosticsMu       sync.Mutex
 	turnDiagnosticsSeen []diagnostics.Receipt
 
-	// mutationRevision binds successful quality evidence to the exact workspace
-	// state it checked. A later observed mutation clears the evidence.
-	mutationRevision        uint64
-	verificationEvidence    []verify.Evidence
-	completionDeclaration   *tool.CompletionDeclaration
+	// verificationInputs are Effect Executor inputs. Kernel owns their
+	// acceptance, mutation binding, and completion decision.
+	verificationInputs      []verify.Evidence
 	qualityEvidenceRequired bool
 
 	// rollbackMu guards the conflicts an automatic rollback of the active turn
@@ -252,6 +264,8 @@ type Engine struct {
 
 	budgetReminderDelivered bool
 }
+
+var testTurnCoordinatorRuntimeFactory func() turnkernel.CoordinatorRuntime
 
 // activeRoute is the route to charge, measure and size the context against.
 //
@@ -351,6 +365,16 @@ func New(options Options) (*Engine, error) {
 	}
 	if options.Security == nil {
 		options.Security = policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
+	}
+	if options.ProfileRevision == 0 {
+		options.ProfileRevision = 1
+	}
+	if options.TurnCoordinatorRuntime == nil {
+		if testTurnCoordinatorRuntimeFactory == nil {
+			return nil, errors.New("turn coordinator runtime is required")
+		}
+		options.TurnCoordinatorRuntime =
+			testTurnCoordinatorRuntimeFactory()
 	}
 	if options.Verify.Mode == "" {
 
@@ -456,6 +480,7 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 		e.options.ReasoningEffort = e.options.FixedReasoningEffort
 	}
 	e.options.MaxSteps = profile.MaxSteps
+	e.options.ProfileRevision = profile.Revision
 	e.enabledTools = make(map[string]struct{}, len(profile.EnabledToolIDs))
 	for _, id := range profile.EnabledToolIDs {
 		e.enabledTools[id] = struct{}{}

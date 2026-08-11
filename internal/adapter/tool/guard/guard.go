@@ -197,6 +197,7 @@ type Guard struct {
 	mu           sync.Mutex
 	pending      map[string]*pending
 	completed    map[string]struct{}
+	recovered    map[string]ApprovalRequest
 	approvalWait func(ApprovalWait)
 }
 
@@ -266,6 +267,7 @@ func New(options Options) (*Guard, error) {
 		escalation:            escalation,
 		forceEditPlanApproval: options.ForceEditPlanApproval,
 		pending:               make(map[string]*pending), completed: make(map[string]struct{}),
+		recovered: make(map[string]ApprovalRequest),
 	}, nil
 }
 
@@ -913,7 +915,12 @@ func (g *Guard) prepare(
 	if expander, ok := executor.(tool.ArgumentExpander); ok {
 		arguments, err = expander.ExpandArguments(ctx, arguments)
 		if err != nil {
-			return Invocation{}, nil, fmt.Errorf("tool %q expand: %w", canonical, err)
+			return Invocation{}, nil, fmt.Errorf(
+				"%w: tool %q expand: %v",
+				tool.ErrInvalidArguments,
+				canonical,
+				err,
+			)
 		}
 	}
 	arguments, err = g.rewriteAbsolutePathArgs(descriptor, arguments)
@@ -1073,6 +1080,13 @@ func (g *Guard) waitForApproval(
 		opts = ask[0]
 	}
 	expiresAt := now.Add(g.approvalTTL)
+	g.mu.Lock()
+	recovered, recovering := g.recovered[invocation.CallID]
+	if recovering {
+		delete(g.recovered, invocation.CallID)
+		expiresAt = recovered.ExpiresAt
+	}
+	g.mu.Unlock()
 	request, err := policy.NewApprovalRequestForScope(
 		policyInvocation, policy.ApprovalOnce, expiresAt,
 	)
@@ -1080,6 +1094,9 @@ func (g *Guard) waitForApproval(
 		return ApprovalDecision{}, err
 	}
 	requestID := randomID("approval_")
+	if recovering {
+		requestID = recovered.RequestID
+	}
 	request.RequestID = requestID
 	fields := schemaProperties(invocation.Descriptor.InputSchema)
 	scopes := []policy.ApprovalScope{
@@ -1100,6 +1117,9 @@ func (g *Guard) waitForApproval(
 		ExpiresAt: expiresAt, ReplacementAllowed: replacementAllowed,
 		ModifiableArguments: modifiable, Reason: opts.Reason, Network: opts.Network,
 		EditPlan: opts.EditPlan,
+	}
+	if recovering {
+		event = recovered
 	}
 	entry := &pending{
 		callID: invocation.CallID, decision: make(chan ApprovalDecision, 1),
@@ -1124,8 +1144,10 @@ func (g *Guard) waitForApproval(
 			Waited: g.now().Sub(parked), Outcome: outcome,
 		})
 	}
-	if err := handler(ctx, event); err != nil {
-		return ApprovalDecision{}, fmt.Errorf("emit approval request: %w", err)
+	if !recovering {
+		if err := handler(ctx, event); err != nil {
+			return ApprovalDecision{}, fmt.Errorf("emit approval request: %w", err)
+		}
 	}
 	timer := time.NewTimer(max(time.Millisecond, expiresAt.Sub(g.now())))
 	defer timer.Stop()
@@ -1189,6 +1211,20 @@ func (g *Guard) waitForApproval(
 		}
 		return decision, nil
 	}
+}
+
+func (g *Guard) RestoreApproval(request ApprovalRequest) error {
+	if request.RequestID == "" || request.CallID == "" ||
+		request.ExpiresAt.IsZero() {
+		return errors.New("restored approval request is incomplete")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, pending := g.pending[request.RequestID]; pending {
+		return errors.New("restored approval request is already pending")
+	}
+	g.recovered[request.CallID] = request
+	return nil
 }
 
 func (g *Guard) cacheApproval(

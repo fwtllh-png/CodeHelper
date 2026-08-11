@@ -135,5 +135,5 @@ Explain why their statuses differ.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `state-diagnostics-verification` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

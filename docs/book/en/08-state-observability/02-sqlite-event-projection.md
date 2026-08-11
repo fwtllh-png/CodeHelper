@@ -140,5 +140,5 @@ repairable while the second must stop startup.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `state-sqlite-event-projection` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

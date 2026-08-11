@@ -42,6 +42,8 @@ const (
 	NameApprovalWait = "approval_wait"
 	// NameVerify is one verification gate evaluation.
 	NameVerify = "verify"
+	// NameTurnKernelTransition records one Coordinator-committed transition.
+	NameTurnKernelTransition = "turn_kernel_transition"
 )
 
 // Record is one span as a reader sees it: the recorder's own state is not

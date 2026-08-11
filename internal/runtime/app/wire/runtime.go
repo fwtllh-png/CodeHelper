@@ -55,11 +55,13 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
@@ -152,6 +154,7 @@ type Session struct {
 	childTools         *childToolsets
 	chatWorkspaces     *chatWorkspaces
 	threads            *app.ThreadManager
+	turnCoordinators   *durableCoordinatorRuntime
 	journal            *workspacejournal.Manager
 	journalRecovery    workspacejournal.Recovery
 	subagents          *subagent.Manager
@@ -691,8 +694,8 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 	toolPrefix := ""
 	if execution.Tools {
 		toolPrefix = "Use only the supplied tools and honor their schemas and policy decisions. " +
-			"A workspace_change is not complete until turn_complete is called after the last " +
-			"mutation and every required quality check."
+			"A turn that mutates the workspace is not complete until turn_complete is called " +
+			"after the last mutation and every required quality check."
 	}
 	budgets := options.PromptBudgets
 	if budgets == nil {
@@ -748,6 +751,20 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 	if err != nil {
 		return nil, err
 	}
+	var coordinatorRuntime turnkernel.CoordinatorRuntime
+	if options.PersistentStore != nil {
+		session.turnCoordinators, err = newDurableCoordinatorRuntime(
+			turnstate.NewSQLiteRepository(options.PersistentStore.SQLite()),
+			hookSessionID,
+			defaultTurnCoordinatorLease,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create durable turn coordinator runtime: %w", err)
+		}
+		coordinatorRuntime = session.turnCoordinators
+	} else {
+		coordinatorRuntime = turnkernel.NewEphemeralCoordinatorRuntime()
+	}
 	seedOptions := agentengine.Options{
 		Provider: client, Route: route, Routes: routes,
 		Tools: registry, PromptContext: prompt.Messages,
@@ -769,9 +786,10 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		},
 		RequireCompletionDeclaration: execution.Tools,
 		Metrics:                      session.metrics, Trace: traceSink,
-		ReasoningEffort:      reasoningEffort,
-		FixedReasoningEffort: reasoningEffort,
-		NativeSearch:         execution.NativeSearch,
+		TurnCoordinatorRuntime: coordinatorRuntime,
+		ReasoningEffort:        reasoningEffort,
+		FixedReasoningEffort:   reasoningEffort,
+		NativeSearch:           execution.NativeSearch,
 		Budget: agentengine.Budget{
 			MaxTokens: execution.BudgetTokens, MaxCostUSD: execution.BudgetUSD,
 		},

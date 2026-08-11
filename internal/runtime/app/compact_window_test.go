@@ -14,7 +14,7 @@ import (
 
 func TestCompactWindowChainAndResume(t *testing.T) {
 	store := NewMemoryEventStore(256)
-	seed, err := agentengine.New(agentengine.Options{
+	seed, err := newTestAgentEngine(agentengine.Options{
 		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
 		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
 		MaxOutputTokens: 128,
@@ -122,7 +122,7 @@ func TestCompactWindowChainAndResume(t *testing.T) {
 
 func TestCompactForkResume(t *testing.T) {
 	store := NewMemoryEventStore(256)
-	seed, err := agentengine.New(agentengine.Options{
+	seed, err := newTestAgentEngine(agentengine.Options{
 		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
 		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
 		MaxOutputTokens: 128,

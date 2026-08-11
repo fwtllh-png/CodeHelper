@@ -83,4 +83,5 @@ Duplicate Terminal 是 Lifecycle Error；不完整 Tool Argument 是 Fragment As
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `lab-provider-adapter` |
-| 状态 | `verified` |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

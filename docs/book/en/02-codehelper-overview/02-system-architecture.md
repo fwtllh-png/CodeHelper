@@ -266,5 +266,5 @@ encodes the same route described by the diagram.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `overview-system-architecture` |
-| Status | `verified` |
-| Last verified | 2026-08-07 |
+| Status | `draft` |
+| Last verified | Not yet verified |

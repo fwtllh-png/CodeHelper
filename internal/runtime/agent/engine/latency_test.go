@@ -338,8 +338,20 @@ func TestAnUnnamedTurnIsMeasuredButNotPersisted(t *testing.T) {
 	if _, _, writes := sink.snapshot(); writes != 0 {
 		t.Fatalf("sink writes = %d, want none for a turn with no durable row", writes)
 	}
-	if spans := engine.TurnSpans(); len(spans) != 2 {
-		t.Fatalf("spans = %d, want the turn and its model call", len(spans))
+	var core, transitions int
+	for _, span := range engine.TurnSpans() {
+		if span.Name == trace.NameTurnKernelTransition {
+			transitions++
+		} else {
+			core++
+		}
+	}
+	if core != 2 || transitions == 0 {
+		t.Fatalf(
+			"spans = core:%d transitions:%d, want two latency spans and kernel transitions",
+			core,
+			transitions,
+		)
 	}
 }
 
@@ -364,11 +376,13 @@ func newLatencyEngine(t *testing.T, options latencyEngineOptions) *Engine {
 	if posture == "" {
 		posture = policy.PermissionBypass
 	}
+	root := t.TempDir()
 	engineOptions := Options{
 		Provider: &timedProvider{clock: options.clock, calls: options.calls},
 		Route:    testRoute(t), Tools: registry, MaxOutputTokens: 128, MaxSteps: 8,
 		Security:    policy.DefaultRuntime(policy.ModeAct, posture),
-		Workspace:   t.TempDir(),
+		Workspace:   root,
+		Journal:     newTestWorkspaceJournal(t, root),
 		Now:         options.clock.now,
 		Trace:       options.sink,
 		Diagnostics: fakeDiagnosticRunner{},

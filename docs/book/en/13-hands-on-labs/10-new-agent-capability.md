@@ -115,4 +115,5 @@ git diff --check
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-new-capability` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

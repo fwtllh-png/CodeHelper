@@ -162,5 +162,5 @@ Complete Accounting；再分析 Dropped Subscriber 如何通过 `ReplayEvents` �
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `runtime-app` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

@@ -252,5 +252,5 @@ the deterministic Fixture contract, not a general model limitation.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `overview-model-context-tool` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

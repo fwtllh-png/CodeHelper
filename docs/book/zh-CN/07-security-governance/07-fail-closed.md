@@ -101,3 +101,11 @@ go test ./internal/runtime/app/wire -run 'Test(ProcessToolsCannotConstructOrDisa
 
 - [安全手册](../../../zh-CN/security.md)
 - [Failure Isolation](../11-extension-ecosystem/06-failure-isolation.md)
+
+## 事实来源与验证
+
+| 项目 | 值 |
+| --- | --- |
+| Catalog ID | `security-fail-closed` |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

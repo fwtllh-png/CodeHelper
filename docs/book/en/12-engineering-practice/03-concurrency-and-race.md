@@ -100,5 +100,5 @@ go test ./internal/runtime/app -run 'TestRuntimeConcurrent|TestRuntimeSubmitClos
 | Item | Value |
 | --- | --- |
 | Catalog ID | `practice-concurrency-race` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

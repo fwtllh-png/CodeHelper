@@ -121,5 +121,5 @@ malformed frame; verify normalization without network access.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `extension-provider` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

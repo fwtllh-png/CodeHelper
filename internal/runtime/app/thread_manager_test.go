@@ -15,7 +15,7 @@ import (
 )
 
 func TestThreadManagerIsolatesHistory(t *testing.T) {
-	seed, err := agentengine.New(agentengine.Options{
+	seed, err := newTestAgentEngine(agentengine.Options{
 		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
 		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
 		MaxOutputTokens: 128,

@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
-const maxExpandedWritePaths = 512
+const maxExpandedWritePaths = sandbox.MaxExactWorkspaceWritePaths
 
 func (t *Tool) expandWriteGlobs(raw json.RawMessage) (json.RawMessage, error) {
 	var values map[string]any

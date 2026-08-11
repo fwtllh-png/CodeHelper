@@ -173,5 +173,5 @@ Facts/Digest.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `context-budget-compaction` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

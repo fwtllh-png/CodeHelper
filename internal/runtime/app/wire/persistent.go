@@ -17,6 +17,7 @@ import (
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	snapshotstate "github.com/fwtllh-png/CodeHelper/internal/persist/snapshot"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -81,6 +82,7 @@ func NewPersistentRuntime(
 		SubscriberBuffer: options.SubscriberBuffer,
 		Metrics:          options.Metrics,
 		Logger:           options.Logger,
+		TerminalStore:    turnstate.NewSQLiteRepository(options.Store.SQLite()),
 	}
 	if options.DefaultProfile.Version != 0 {
 		runtimeOptions.SessionProfiles = repositories.Sessions

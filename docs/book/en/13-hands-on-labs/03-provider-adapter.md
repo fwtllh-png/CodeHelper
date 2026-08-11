@@ -90,4 +90,5 @@ Remove the temporary test/fixture files and confirm `git status --short`.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-provider-adapter` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

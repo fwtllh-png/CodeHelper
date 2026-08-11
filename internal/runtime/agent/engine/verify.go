@@ -11,7 +11,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 const (
@@ -85,10 +87,9 @@ type verifyOutcome struct {
 // verifyGate holds the per-turn gate state: how much of the repair budget the
 // turn has spent, which is also the extra step allowance it has earned.
 type verifyGate struct {
-	engine        *Engine
-	requirePassed bool
-	repairs       int
-	attempts      []verify.Receipt
+	engine   *Engine
+	kernel   *engineTurnKernel
+	attempts []verify.Receipt
 }
 
 // extraSteps keeps repair rounds out of the model's normal step budget, so a
@@ -97,7 +98,7 @@ func (g *verifyGate) extraSteps() int {
 	if g == nil {
 		return 0
 	}
-	return g.repairs
+	return int(g.kernel.repairSteps(turnkernel.RepairVerification))
 }
 
 // evaluate runs one verification pass over the files the turn changed.
@@ -112,6 +113,17 @@ func (g *verifyGate) evaluate(
 	if len(paths) == 0 {
 		return verifyOutcome{action: verifyActionSkipped}, nil
 	}
+	if g.kernel == nil {
+		return verifyOutcome{}, protocol.NewProblem(
+			protocol.CodeInternal,
+			"turn kernel is required for verification",
+			false,
+			nil,
+		)
+	}
+	if err := g.kernel.beginVerification(); err != nil {
+		return verifyOutcome{}, err
+	}
 	scope := options.Scope
 	if scope == "" {
 		scope = verify.ScopeDiagnostics
@@ -123,7 +135,7 @@ func (g *verifyGate) evaluate(
 		defer cancel()
 	}
 	span := g.engine.tracer().Start(trace.NameVerify, 0, map[string]any{
-		"scope": string(scope), "repair_step": g.repairs,
+		"scope": string(scope), "repair_step": g.extraSteps(),
 	})
 	receipt, err := options.Runner.Verify(verifyCtx, verify.Request{
 		Scope: scope, Paths: paths, Diagnostics: g.engine.turnDiagnostics(),
@@ -135,6 +147,13 @@ func (g *verifyGate) evaluate(
 		// not run is reported as unavailable. A hard gate cannot be honoured
 		// without a working runner, so the error stands.
 		if options.Mode != VerifyModeSoft {
+			_, _ = g.kernel.finishVerification(
+				g.verificationCommand(
+					turnkernel.VerificationUnavailable,
+					nil,
+					err.Error(),
+				),
+			)
 			return verifyOutcome{}, fmt.Errorf("verification (%s): %w", scope, err)
 		}
 		receipt = verify.Receipt{
@@ -145,8 +164,13 @@ func (g *verifyGate) evaluate(
 		span.End(trace.StatusOK)
 	}
 	var uncovered []string
-	if g.requirePassed && receipt.Status == verify.StatusUnavailable {
-		qualityReceipt, missing := g.engine.qualityVerificationReceipt(paths)
+	mutationRevision := g.kernel.mutationRevision()
+	if g.kernel.verificationMustPass() &&
+		receipt.Status == verify.StatusUnavailable {
+		qualityReceipt, missing := g.engine.qualityVerificationReceipt(
+			paths,
+			mutationRevision,
+		)
 		g.attempts = append(g.attempts, receipt)
 		if qualityReceipt.Status == verify.StatusPassed {
 			receipt = qualityReceipt
@@ -158,7 +182,17 @@ func (g *verifyGate) evaluate(
 			receipt = qualityReceipt
 		}
 	}
-	action := g.decide(options, receipt)
+	actionValue, err := g.kernel.finishVerification(
+		g.verificationCommand(
+			kernelVerificationStatus(receipt.Status),
+			currentVerificationCallIDs(g.engine, mutationRevision),
+			receipt.Message,
+		),
+	)
+	if err != nil {
+		return verifyOutcome{}, err
+	}
+	action := verifyAction(actionValue)
 	g.attempts = append(g.attempts, receipt)
 	// A verified path outranks one that was merely edited: it is the path the
 	// turn now owes an explanation for.
@@ -175,7 +209,7 @@ func (g *verifyGate) evaluate(
 	}
 	observed := &VerificationReceipt{
 		Receipt: receipt, Mode: options.Mode, Action: string(action),
-		RepairSteps: g.repairs, Paths: paths,
+		RepairSteps: g.extraSteps(), Paths: paths,
 		UncoveredPaths: append([]string(nil), uncovered...),
 		Attempts:       append([]verify.Receipt(nil), g.attempts...),
 	}
@@ -185,38 +219,51 @@ func (g *verifyGate) evaluate(
 	return verifyOutcome{action: action, receipt: observed}, nil
 }
 
-// decide maps a receipt to an action and spends the repair budget.
-func (g *verifyGate) decide(
-	options VerifyOptions,
-	receipt verify.Receipt,
-) verifyAction {
-	if receipt.Status == verify.StatusPassed {
-		return verifyActionPassed
+func (g *verifyGate) verificationCommand(
+	status turnkernel.VerificationStatus,
+	evidenceCalls []string,
+	message string,
+) turnkernel.VerificationFinished {
+	key := fmt.Sprintf(
+		"mutation=%d;status=%s;evidence=%s",
+		g.kernel.mutationRevision(),
+		status,
+		strings.Join(evidenceCalls, ","),
+	)
+	return turnkernel.VerificationFinished{
+		Status:        status,
+		EvidenceCalls: evidenceCalls,
+		Message:       message,
+		RepairKey:     key,
 	}
-	if g.requirePassed && receipt.Status == verify.StatusUnavailable {
-		if g.repairs < options.MaxRepairSteps {
-			g.repairs++
-			return verifyActionRepair
+}
+
+func kernelVerificationStatus(
+	status string,
+) turnkernel.VerificationStatus {
+	switch status {
+	case verify.StatusPassed:
+		return turnkernel.VerificationPassed
+	case verify.StatusFailed:
+		return turnkernel.VerificationFailed
+	default:
+		return turnkernel.VerificationUnavailable
+	}
+}
+
+func currentVerificationCallIDs(
+	engine *Engine,
+	mutationRevision uint64,
+) []string {
+	var callIDs []string
+	for _, evidence := range engine.verificationInputs {
+		if evidence.MutationRevision == mutationRevision &&
+			evidence.CallID != "" {
+			callIDs = append(callIDs, evidence.CallID)
 		}
-		return verifyActionFailed
 	}
-	if !receipt.Failed() {
-		return verifyActionPassed
-	}
-	if g.repairs < options.MaxRepairSteps {
-		g.repairs++
-		return verifyActionRepair
-	}
-	if g.requirePassed {
-		return verifyActionFailed
-	}
-	if options.Mode == VerifyModeSoft {
-		return verifyActionReported
-	}
-	if options.OnFailure == VerifyOnFailureRevert {
-		return verifyActionReverted
-	}
-	return verifyActionFailed
+	sort.Strings(callIDs)
+	return callIDs
 }
 
 // feedback is the repair prompt for the model. It uses a user message with the

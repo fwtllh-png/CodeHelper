@@ -119,5 +119,5 @@ make vscode-rc
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `practice-release-evidence` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-07 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

@@ -121,4 +121,4 @@ go test ./internal/orchestration/workflow -run 'TestResume|TestFingerprint'
 | --- | --- |
 | Catalog ID | `task-checkpoint-recovery` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-10 |

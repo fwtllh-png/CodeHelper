@@ -1512,7 +1512,14 @@ func (s *Server) sessionProfileGet(request rpcRequest) {
 	if !ok {
 		return
 	}
-	profile, err := s.dependencies.Runtime.SessionProfile(s.ctx, binding.ID)
+	// The Extension Host calls profile/get after reconnecting. Reading without
+	// applying would leave the newly constructed thread Engine on CLI defaults
+	// even while the UI displays the durable profile.
+	profile, err := s.dependencies.Runtime.RestoreSessionProfile(
+		s.ctx,
+		binding.ID,
+		binding.ThreadID,
+	)
 	if err != nil {
 		s.replyApplicationError(request, err)
 		return

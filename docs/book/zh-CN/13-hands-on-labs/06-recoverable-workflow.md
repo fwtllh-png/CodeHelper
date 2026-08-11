@@ -86,3 +86,4 @@ Execute 重复表示 Idempotency/Checkpoint Commit 缺失；Graph 不兼容必�
 | --- | --- |
 | Catalog ID | `lab-recoverable-workflow` |
 | 状态 | `verified` |
+| 最后验证 | 2026-08-10 |

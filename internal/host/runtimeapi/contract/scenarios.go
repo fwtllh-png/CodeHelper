@@ -169,7 +169,7 @@ func Scenarios() []Scenario {
 				}
 				return Setup{
 					Fixture: fixturePath(t, "tools"), Prompt: "create result",
-					Workspace: workspace, Tools: true, RepositoryRules: rules, MaxSteps: 2,
+					Workspace: workspace, Tools: true, RepositoryRules: rules, MaxSteps: 8,
 				}
 			},
 			Run: approvalParksAndResumes,

@@ -177,5 +177,5 @@ the separate semantic checks in `TestReconstructThreadCommitsOnlyCompletedPaired
 | Item | Value |
 | --- | --- |
 | Catalog ID | `context-memory-snapshot` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

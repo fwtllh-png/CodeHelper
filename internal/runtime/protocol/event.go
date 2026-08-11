@@ -430,7 +430,7 @@ func (d *ToolResultData) validate() error {
 
 func (d *CompletionDeclaration) validate() error {
 	if d.Status != "complete" || strings.TrimSpace(d.Summary) == "" ||
-		len(d.ChangedPaths) == 0 || len(d.PendingActions) != 0 {
+		len(d.PendingActions) != 0 {
 		return errors.New("completion declaration is incomplete")
 	}
 	for _, path := range d.ChangedPaths {
@@ -439,7 +439,8 @@ func (d *CompletionDeclaration) validate() error {
 		}
 	}
 	if d.Accepted {
-		if d.CallID == "" || d.MutationRevision == 0 || d.Rejection != "" {
+		if len(d.ChangedPaths) == 0 || d.CallID == "" ||
+			d.MutationRevision == 0 || d.Rejection != "" {
 			return errors.New("accepted completion declaration is inconsistent")
 		}
 	} else if d.Rejection == "" {
@@ -1154,6 +1155,30 @@ func NewEvent(meta EventMeta, data EventData) (Event, error) {
 		ItemID:      meta.ItemID,
 		Kind:        data.eventKind(),
 		CreatedAt:   time.Now().UTC(),
+		Data:        data,
+	}
+	return event, event.Validate()
+}
+
+func NewEventWithIdentity(
+	meta EventMeta,
+	id EventID,
+	createdAt time.Time,
+	data EventData,
+) (Event, error) {
+	if data == nil {
+		return Event{}, errors.New("event data is required")
+	}
+	event := Event{
+		Version:     Version,
+		ID:          id,
+		Sequence:    meta.Sequence,
+		OperationID: meta.OperationID,
+		ThreadID:    meta.ThreadID,
+		TurnID:      meta.TurnID,
+		ItemID:      meta.ItemID,
+		Kind:        data.eventKind(),
+		CreatedAt:   createdAt.UTC(),
 		Data:        data,
 	}
 	return event, event.Validate()

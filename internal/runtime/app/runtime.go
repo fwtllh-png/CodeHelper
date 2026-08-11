@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,8 +16,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 var (
@@ -61,6 +63,17 @@ func (e *ReplayLimitError) Unwrap() error { return ErrReplayLimit }
 
 type EngineSink interface {
 	Emit(protocol.EventData) error
+}
+
+type TerminalMaterial struct {
+	FrozenState turnkernel.State
+	DomainFacts []turnkernel.DomainFact
+	Receipt     *protocol.ExecutionReceiptData
+	Terminal    protocol.EventData
+}
+
+type TerminalCommitSink interface {
+	CommitTerminal(TerminalMaterial) error
 }
 
 type Engine interface {
@@ -193,6 +206,7 @@ type Options struct {
 	SessionLifecycle    SessionLifecycleStore
 	SessionWorkspaces   SessionWorkspaceManager
 	SessionArtifacts    SessionArtifactStore
+	TerminalStore       turnkernel.TerminalEnvelopeStore
 }
 
 type Snapshot struct {
@@ -230,6 +244,7 @@ type Runtime struct {
 	sessionLifecycle    SessionLifecycleStore
 	sessionWorkspaces   SessionWorkspaceManager
 	sessionArtifacts    SessionArtifactStore
+	terminalStore       turnkernel.TerminalEnvelopeStore
 
 	operations chan acceptedOperation
 	done       chan struct{}
@@ -263,7 +278,6 @@ type Runtime struct {
 
 // cancelRecord captures CancelTurn provenance for the terminal turn.canceled event.
 type cancelRecord struct {
-	reason string
 	itemID protocol.ItemID
 	opID   protocol.OperationID
 }
@@ -281,6 +295,14 @@ func NewRuntimeWithRecovery(ctx context.Context, options Options) (*Runtime, err
 
 func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Runtime, error) {
 	options = withDefaults(options)
+	if recoverDurable && options.Lifecycle != nil &&
+		(options.EventStore == nil ||
+			options.ContentStore == nil ||
+			options.TerminalStore == nil) {
+		return nil, errors.New(
+			"durable runtime requires event, content, and terminal stores",
+		)
+	}
 	if options.Metrics == nil {
 		options.Metrics = telemetry.NewMetrics()
 	}
@@ -289,6 +311,9 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	}
 	if options.ContentStore == nil {
 		options.ContentStore = NewMemoryContentStore()
+	}
+	if options.TerminalStore == nil {
+		options.TerminalStore = turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
 	}
 	if options.SessionProfiles != nil {
 		if err := options.DefaultProfile.Validate(); err != nil {
@@ -324,6 +349,7 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 		sessionLifecycle:    options.SessionLifecycle,
 		sessionWorkspaces:   options.SessionWorkspaces,
 		sessionArtifacts:    options.SessionArtifacts,
+		terminalStore:       options.TerminalStore,
 		operations:          make(chan acceptedOperation, options.OperationBuffer),
 		done:                make(chan struct{}),
 		subscribers:         make(map[uint64]chan protocol.Event),
@@ -347,7 +373,20 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	if recovery != nil {
 		runtime.restore(*recovery)
 	}
+	if recoverDurable {
+		if err := runtime.recoverTerminalProjections(ctx); err != nil {
+			cancel()
+			return nil, fmt.Errorf("recover terminal projections: %w", err)
+		}
+	}
 	go runtime.loop()
+	if recoverDurable {
+		if err := runtime.recoverPendingTurns(ctx); err != nil {
+			cancel()
+			<-runtime.done
+			return nil, fmt.Errorf("recover pending turns: %w", err)
+		}
+	}
 	return runtime, nil
 }
 
@@ -1638,15 +1677,35 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 			runtime: r, operation: operation, deferTerminal: true,
 		}
 		err := startTurnSafely(r.engine, turnContext, payload, sink)
+		if r.lifecycle != nil && !sink.terminalCommitAttempted {
+			releaseActive()
+			if err == nil {
+				err = errors.New(
+					"durable turn returned without atomic terminal commit",
+				)
+			}
+			if rejectErr := r.reject(operation, err); rejectErr == nil {
+				r.commit(operation.ID)
+			}
+			return
+		}
+		if sink.terminalCommitAttempted && sink.terminal == nil {
+			releaseActive()
+			if err == nil {
+				err = errors.New("terminal envelope commit failed")
+			}
+			if rejectErr := r.reject(operation, err); rejectErr == nil {
+				r.commit(operation.ID)
+			}
+			return
+		}
 		var terminalErr error
 		switch {
 		case errors.Is(turnContext.Err(), context.Canceled):
-			reason := protocol.CancelReasonInterrupted
 			itemID := payload.ItemID
 			opID := operation.ID
 			r.activeMu.Lock()
 			if stored, ok := r.cancels[payload.TurnID]; ok {
-				reason = stored.reason
 				if stored.itemID != "" {
 					itemID = stored.itemID
 				}
@@ -1657,12 +1716,9 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 			}
 			r.activeMu.Unlock()
 			releaseActive()
-			// Pin ItemID (and cancel OperationID when present) so Persist/lifecycle
-			// can update the cancel item rather than the start-turn item (F5).
-			terminalErr = r.publish(
-				opID, payload.ThreadID, payload.TurnID, itemID,
-				&protocol.TurnCanceledData{Reason: reason},
-			)
+			// Engine/Coordinator owns the canceled decision. Runtime only binds
+			// the accepted cancel Operation and Item identity to its projection.
+			terminalErr = sink.publishTerminalAs(opID, itemID)
 			if terminalErr == nil {
 				r.persistTerminalArtifactForTurn(
 					context.Background(),
@@ -1671,29 +1727,19 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 				)
 			}
 			if terminalErr == nil {
-				r.commit(operation.ID)
+				sink.commitOperation()
 			}
 			return // skip shared commit below — already handled
-		case err != nil:
-			var decision *policy.DecisionError
-			if errors.As(err, &decision) && decision.Code == "approval_canceled" {
-				sink.terminal = &protocol.TurnCanceledData{
-					Reason: protocol.CancelReasonApprovalCanceled,
-				}
-			} else {
-				if _, failed := sink.terminal.(*protocol.TurnFailedData); !failed {
-					sink.terminal = &protocol.TurnFailedData{
-						Code: protocol.CodeOf(err), Message: err.Error(),
-					}
-				}
+		}
+		if sink.terminal == nil {
+			releaseActive()
+			if err == nil {
+				err = errors.New("turn engine returned without terminal material")
 			}
-		default:
-			if sink.terminal == nil {
-				sink.terminal = &protocol.TurnFailedData{
-					Code:    protocol.CodeInternal,
-					Message: "turn engine returned without a terminal event",
-				}
+			if rejectErr := r.reject(operation, err); rejectErr == nil {
+				r.commit(operation.ID)
 			}
+			return
 		}
 		releaseActive()
 		terminalErr = sink.publishTerminal()
@@ -1705,7 +1751,11 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 			)
 		}
 		if terminalErr == nil {
-			r.commit(operation.ID)
+			sink.commitOperation()
+		} else {
+			if rejectErr := r.reject(operation, terminalErr); rejectErr == nil {
+				r.commit(operation.ID)
+			}
 		}
 	}()
 }
@@ -1735,22 +1785,26 @@ func (r *Runtime) cancelTurn(
 ) error {
 	r.activeMu.Lock()
 	cancel, exists := r.active[payload.TurnID]
-	if exists {
-		r.cancels[payload.TurnID] = cancelRecord{
-			reason: protocol.NormalizeCancelReason(payload.Reason),
-			itemID: payload.ItemID,
-			opID:   operation.ID,
-		}
-	}
 	r.activeMu.Unlock()
 	if !exists {
 		return r.reject(operation, errors.New("turn is not active"))
 	}
-	invokeErr := r.invoke(operation, func(sink EngineSink) error {
-		return r.engine.CancelTurn(r.ctx, payload, sink)
-	})
+	sink := &runtimeSink{runtime: r, operation: operation}
+	if err := r.engine.CancelTurn(r.ctx, payload, sink); err != nil {
+		if rejectErr := r.reject(operation, err); rejectErr != nil {
+			return rejectErr
+		}
+		r.commit(operation.ID)
+		return err
+	}
+	r.activeMu.Lock()
+	r.cancels[payload.TurnID] = cancelRecord{
+		itemID: payload.ItemID,
+		opID:   operation.ID,
+	}
+	r.activeMu.Unlock()
 	cancel()
-	return invokeErr
+	return nil
 }
 
 func (r *Runtime) invoke(
@@ -1775,10 +1829,13 @@ func (r *Runtime) reject(operation protocol.Operation, err error) error {
 }
 
 type runtimeSink struct {
-	runtime       *Runtime
-	operation     protocol.Operation
-	deferTerminal bool
-	terminal      protocol.EventData
+	runtime                 *Runtime
+	operation               protocol.Operation
+	deferTerminal           bool
+	terminal                protocol.EventData
+	material                *TerminalMaterial
+	terminalCommitAttempted bool
+	operationCommitted      bool
 }
 
 func (s *runtimeSink) Emit(data protocol.EventData) error {
@@ -1792,14 +1849,507 @@ func (s *runtimeSink) Emit(data protocol.EventData) error {
 	return s.runtime.publish(s.operation.ID, threadID, turnID, itemID, data)
 }
 
+func (s *runtimeSink) CommitTerminal(material TerminalMaterial) error {
+	s.terminalCommitAttempted = true
+	if !material.FrozenState.Phase.Terminal() ||
+		material.FrozenState.Terminal == nil ||
+		material.Receipt == nil ||
+		material.Terminal == nil ||
+		len(material.DomainFacts) == 0 {
+		return errors.New("terminal material is incomplete")
+	}
+	_, turnID, _ := protocol.OperationReferences(s.operation)
+	if string(turnID) != material.DomainFacts[0].TurnID {
+		return errors.New("terminal material turn identity mismatch")
+	}
+	receiptPayload, err := json.Marshal(material.Receipt)
+	if err != nil {
+		return err
+	}
+	terminalPayload, err := json.Marshal(material.Terminal)
+	if err != nil {
+		return err
+	}
+	decision := *material.FrozenState.Terminal
+	commitReceipt := s.runtime.operationCommitReceipt(s.operation.ID)
+	operationReceipt, err := json.Marshal(commitReceipt)
+	if err != nil {
+		return err
+	}
+	threadID, _, itemID := protocol.OperationReferences(s.operation)
+	projectionOperationID := s.operation.ID
+	s.runtime.activeMu.Lock()
+	if stored, ok := s.runtime.cancels[turnID]; ok {
+		if stored.opID != "" {
+			projectionOperationID = stored.opID
+		}
+		if stored.itemID != "" {
+			itemID = stored.itemID
+		}
+	}
+	s.runtime.activeMu.Unlock()
+	entry := func(
+		id string,
+		kind protocol.EventKind,
+		payload json.RawMessage,
+	) turnkernel.ProjectionOutboxEntry {
+		return turnkernel.ProjectionOutboxEntry{
+			ID:          id,
+			EventID:     terminalOutboxEventID(turnID, id),
+			OperationID: projectionOperationID,
+			ThreadID:    threadID,
+			TurnID:      turnID,
+			ItemID:      itemID,
+			Kind:        string(kind),
+			Payload:     payload,
+		}
+	}
+	outbox := make([]turnkernel.ProjectionOutboxEntry, 0,
+		len(material.FrozenState.FinalOutput)+2)
+	for index, text := range material.FrozenState.FinalOutput {
+		payload, err := json.Marshal(&protocol.OutputDeltaData{Text: text})
+		if err != nil {
+			return err
+		}
+		id := fmt.Sprintf("output:%06d", index+1)
+		outbox = append(
+			outbox,
+			entry(id, protocol.EventOutputDelta, payload),
+		)
+	}
+	outbox = append(outbox,
+		entry(
+			"receipt",
+			protocol.EventExecutionReceipt,
+			receiptPayload,
+		),
+		entry(
+			"terminal",
+			eventKind(material.Terminal),
+			terminalPayload,
+		),
+	)
+	envelope := turnkernel.TerminalEnvelope{
+		TurnID:      string(turnID),
+		EffectID:    "terminal:" + string(turnID),
+		FrozenState: material.FrozenState,
+		DomainFacts: material.DomainFacts,
+		Receipt:     material.Receipt,
+		FinalOutput: append(
+			[]string(nil),
+			material.FrozenState.FinalOutput...,
+		),
+		TerminalEvent: turnkernel.Event{
+			Kind:     turnkernel.EventTerminalCommitted,
+			Terminal: &decision,
+		},
+		OperationCommit: turnkernel.OperationCommitFact{
+			OperationID: s.operation.ID,
+			Status:      "committed",
+			Receipt:     operationReceipt,
+		},
+		Outbox: outbox,
+	}
+	if s.runtime.lifecycle != nil {
+		atomicStore, ok := s.runtime.terminalStore.(turnkernel.AtomicTerminalOperationStore)
+		if !ok {
+			return errors.New(
+				"durable lifecycle requires atomic terminal operation store",
+			)
+		}
+		_, err = atomicStore.CommitTerminalOperation(
+			context.Background(),
+			envelope,
+		)
+		s.operationCommitted = err == nil
+	} else {
+		_, err = s.runtime.terminalStore.CommitTerminal(
+			context.Background(),
+			envelope,
+		)
+		s.operationCommitted = err == nil
+	}
+	if err != nil {
+		return err
+	}
+	cloned := material
+	s.material = &cloned
+	s.terminal = material.Terminal
+	return nil
+}
+
 func (s *runtimeSink) publishTerminal() error {
+	return s.publishTerminalAs(s.operation.ID, s.operationItemID())
+}
+
+func (s *runtimeSink) operationItemID() protocol.ItemID {
+	_, _, itemID := protocol.OperationReferences(s.operation)
+	return itemID
+}
+
+func (s *runtimeSink) commitOperation() {
+	if s.operationCommitted {
+		s.runtime.commitLocal(s.operation.ID)
+		return
+	}
+	s.runtime.commit(s.operation.ID)
+}
+
+func terminalOutboxEventID(
+	turnID protocol.TurnID,
+	entryID string,
+) protocol.EventID {
+	sum := sha256.Sum256(
+		[]byte("terminal-outbox\x00" + string(turnID) + "\x00" + entryID),
+	)
+	return protocol.EventID(fmt.Sprintf("evt_%x", sum[:16]))
+}
+
+func (s *runtimeSink) publishTerminalAs(
+	operationID protocol.OperationID,
+	itemID protocol.ItemID,
+) error {
 	if s.terminal == nil {
 		return errors.New("turn finished without a terminal event")
 	}
-	threadID, turnID, itemID := protocol.OperationReferences(s.operation)
-	return s.runtime.publish(
-		s.operation.ID, threadID, turnID, itemID, s.terminal,
+	threadID, turnID, _ := protocol.OperationReferences(s.operation)
+	if s.material == nil {
+		return s.runtime.publish(
+			operationID,
+			threadID,
+			turnID,
+			itemID,
+			s.terminal,
+		)
+	}
+	entries, err := s.runtime.terminalStore.PendingOutbox(
+		context.Background(),
+		string(turnID),
 	)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.OperationID != operationID || entry.ItemID != itemID {
+			return errors.New("terminal outbox projection identity mismatch")
+		}
+		if err := s.runtime.publishTerminalOutboxEntry(entry); err != nil {
+			return err
+		}
+		if err := s.runtime.terminalStore.MarkOutboxPublished(
+			context.Background(),
+			string(turnID),
+			[]string{entry.ID},
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runtime) recoverTerminalProjections(ctx context.Context) error {
+	store, ok := r.terminalStore.(turnkernel.TerminalProjectionRecoveryStore)
+	if !ok {
+		if r.lifecycle != nil {
+			return errors.New(
+				"durable lifecycle requires terminal projection recovery store",
+			)
+		}
+		return nil
+	}
+	projections, err := store.PendingTerminalProjections(ctx)
+	if err != nil {
+		return err
+	}
+	for _, projection := range projections {
+		for _, entry := range projection.Entries {
+			if err := r.publishTerminalOutboxEntry(entry); err != nil {
+				return fmt.Errorf(
+					"project terminal outbox %s/%s: %w",
+					projection.Envelope.TurnID,
+					entry.ID,
+					err,
+				)
+			}
+			if err := r.terminalStore.MarkOutboxPublished(
+				ctx,
+				projection.Envelope.TurnID,
+				[]string{entry.ID},
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *Runtime) recoverPendingTurns(ctx context.Context) error {
+	if restorer, ok := r.engine.(interface {
+		RestorePendingApproval(PendingApproval) error
+		RestorePendingInput(PendingInput) error
+	}); ok {
+		r.mu.Lock()
+		approvals := make([]PendingApproval, 0, len(r.approvals))
+		for _, approval := range r.approvals {
+			approvals = append(approvals, approval)
+		}
+		inputs := make([]PendingInput, 0, len(r.inputs))
+		for _, input := range r.inputs {
+			inputs = append(inputs, input)
+		}
+		r.mu.Unlock()
+		sort.Slice(approvals, func(i, j int) bool {
+			return approvals[i].RequestID < approvals[j].RequestID
+		})
+		sort.Slice(inputs, func(i, j int) bool {
+			return inputs[i].RequestID < inputs[j].RequestID
+		})
+		for _, approval := range approvals {
+			if err := restorer.RestorePendingApproval(approval); err != nil {
+				return err
+			}
+		}
+		for _, input := range inputs {
+			if err := restorer.RestorePendingInput(input); err != nil {
+				return err
+			}
+		}
+	}
+	r.mu.Lock()
+	pending := make([]PendingOperation, 0, len(r.accepted))
+	for _, operation := range r.accepted {
+		pending = append(pending, operation)
+	}
+	r.mu.Unlock()
+	sort.Slice(pending, func(i, j int) bool {
+		return pending[i].ID < pending[j].ID
+	})
+	for _, pendingOperation := range pending {
+		operation, err := decodePendingOperation(pendingOperation)
+		if err != nil {
+			return err
+		}
+		if operation.Kind != protocol.OperationStartTurn {
+			continue
+		}
+		_, turnID, _ := protocol.OperationReferences(operation)
+		facts, err := r.terminalStore.LoadDomainFacts(
+			ctx,
+			string(turnID),
+		)
+		if err != nil {
+			return err
+		}
+		if len(facts) == 0 || facts[len(facts)-1].State.Phase.Terminal() {
+			continue
+		}
+		select {
+		case r.operations <- acceptedOperation{
+			operation:      operation,
+			idempotencyKey: pendingOperation.IdempotencyKey,
+			canonical: append(
+				[]byte(nil),
+				pendingOperation.Canonical...,
+			),
+		}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+func decodePendingOperation(
+	pending PendingOperation,
+) (protocol.Operation, error) {
+	var envelope struct {
+		Kind    protocol.OperationKind `json:"kind"`
+		Payload json.RawMessage        `json:"payload"`
+	}
+	if err := json.Unmarshal(pending.Canonical, &envelope); err != nil {
+		return protocol.Operation{}, fmt.Errorf(
+			"decode pending operation %s: %w",
+			pending.ID,
+			err,
+		)
+	}
+	payload, err := protocol.DecodeOperationPayload(
+		envelope.Kind,
+		envelope.Payload,
+	)
+	if err != nil {
+		return protocol.Operation{}, err
+	}
+	operation := protocol.Operation{
+		Version:   protocol.Version,
+		ID:        pending.ID,
+		Kind:      envelope.Kind,
+		CreatedAt: time.Unix(0, 1).UTC(),
+		Payload:   payload,
+	}
+	return operation, operation.Validate()
+}
+
+func (r *Runtime) publishTerminalOutboxEntry(
+	entry turnkernel.ProjectionOutboxEntry,
+) error {
+	data, err := decodeTerminalOutboxEntry(entry)
+	if err != nil {
+		return err
+	}
+	if entry.EventID == "" ||
+		entry.OperationID == "" ||
+		entry.ThreadID == "" ||
+		entry.TurnID == "" ||
+		entry.ItemID == "" {
+		return errors.New("terminal outbox event identity is incomplete")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	identityStore, ok := r.events.(EventIdentityStore)
+	if !ok {
+		return errors.New("terminal outbox requires event identity store")
+	}
+	existing, exists, err := identityStore.EventByID(
+		context.Background(),
+		entry.EventID,
+	)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if existing.OperationID != entry.OperationID ||
+			existing.ThreadID != entry.ThreadID ||
+			existing.TurnID != entry.TurnID ||
+			existing.ItemID != entry.ItemID ||
+			string(existing.Kind) != entry.Kind {
+			return errors.New("terminal outbox event identity conflict")
+		}
+		if existing.Sequence > r.lastSequence {
+			r.lastSequence = existing.Sequence
+		}
+		if protocol.IsTerminalEvent(existing.Kind) {
+			r.terminals[existing.TurnID] = existing.Kind
+		}
+		if r.lifecycle != nil {
+			return r.lifecycle.Project(context.Background(), existing)
+		}
+		return nil
+	}
+	var event protocol.Event
+	for attempt := 0; ; attempt++ {
+		event, err = protocol.NewEventWithIdentity(
+			protocol.EventMeta{
+				Sequence:    r.lastSequence + 1,
+				OperationID: entry.OperationID,
+				ThreadID:    entry.ThreadID,
+				TurnID:      entry.TurnID,
+				ItemID:      entry.ItemID,
+			},
+			entry.EventID,
+			time.Now(),
+			data,
+		)
+		if err != nil {
+			return err
+		}
+		if err = r.events.Append(context.Background(), event); err == nil {
+			break
+		}
+		existing, exists, lookupErr := identityStore.EventByID(
+			context.Background(),
+			entry.EventID,
+		)
+		if lookupErr != nil {
+			return errors.Join(err, lookupErr)
+		}
+		if exists {
+			if existing.OperationID != entry.OperationID ||
+				existing.ThreadID != entry.ThreadID ||
+				existing.TurnID != entry.TurnID ||
+				existing.ItemID != entry.ItemID ||
+				string(existing.Kind) != entry.Kind {
+				return errors.New("terminal outbox event identity conflict")
+			}
+			event = existing
+			break
+		}
+		last, sequenceErr := r.events.LastSequence(context.Background())
+		if sequenceErr != nil || attempt >= 3 {
+			return err
+		}
+		if last > r.lastSequence {
+			r.lastSequence = last
+		}
+	}
+	if event.Sequence > r.lastSequence {
+		r.lastSequence = event.Sequence
+	}
+	var projectionErr error
+	if r.lifecycle != nil {
+		projectionErr = r.lifecycle.Project(context.Background(), event)
+	}
+	if projectionErr == nil && !protocol.IsTerminalEvent(event.Kind) {
+		r.persistSessionArtifact(context.Background(), event)
+	}
+	if protocol.IsTerminalEvent(event.Kind) {
+		r.terminals[event.TurnID] = event.Kind
+	}
+	r.metrics.EventPublished()
+	for id, subscriber := range r.subscribers {
+		select {
+		case subscriber <- event:
+		default:
+			close(subscriber)
+			delete(r.subscribers, id)
+			r.metrics.SubscriberDropped()
+		}
+	}
+	return projectionErr
+}
+
+func decodeTerminalOutboxEntry(
+	entry turnkernel.ProjectionOutboxEntry,
+) (protocol.EventData, error) {
+	var data protocol.EventData
+	switch protocol.EventKind(entry.Kind) {
+	case protocol.EventOutputDelta:
+		data = &protocol.OutputDeltaData{}
+	case protocol.EventExecutionReceipt:
+		data = &protocol.ExecutionReceiptData{}
+	case protocol.EventTurnCompleted:
+		data = &protocol.TurnCompletedData{}
+	case protocol.EventTurnFailed:
+		data = &protocol.TurnFailedData{}
+	case protocol.EventTurnCanceled:
+		data = &protocol.TurnCanceledData{}
+	default:
+		return nil, fmt.Errorf(
+			"unsupported terminal outbox kind %q",
+			entry.Kind,
+		)
+	}
+	if err := json.Unmarshal(entry.Payload, data); err != nil {
+		return nil, fmt.Errorf(
+			"decode terminal outbox %s: %w",
+			entry.ID,
+			err,
+		)
+	}
+	return data, nil
+}
+
+func (r *Runtime) operationCommitReceipt(
+	operationID protocol.OperationID,
+) CommitReceipt {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return CommitReceipt{
+		OperationID:  operationID,
+		Status:       "committed",
+		LastSequence: r.lastSequence,
+		CompletedAt:  time.Now().UTC(),
+	}
 }
 
 func (r *Runtime) publish(
@@ -1851,14 +2401,17 @@ func (r *Runtime) publish(
 			break
 		}
 		last, sequenceErr := r.events.LastSequence(context.Background())
-		if sequenceErr == nil && last > r.lastSequence {
-			// Multiple Runtime instances may share a durable store. A failed
-			// reservation is still a permanent gap, so refresh the global
-			// high-watermark and mint a new Event identity.
-			r.lastSequence = last
-			if attempt < 3 {
-				continue
+		if sequenceErr == nil && attempt < 3 {
+			if last > r.lastSequence {
+				// Multiple Runtime instances may share a durable store. A failed
+				// reservation is still a permanent gap, so refresh the global
+				// high-watermark and mint a new Event identity.
+				r.lastSequence = last
 			}
+			// If the high-watermark did not move, Append failed before creating
+			// a reservation. Retrying the same sequence is safe and prevents a
+			// transient persistence error from splitting a Tool lifecycle.
+			continue
 		}
 		if protocol.IsTerminalEvent(kind) {
 			delete(r.terminals, turnID)
@@ -2210,6 +2763,10 @@ func (r *Runtime) commit(operationID protocol.OperationID) {
 			return
 		}
 	}
+	r.commitLocal(operationID)
+}
+
+func (r *Runtime) commitLocal(operationID protocol.OperationID) {
 	r.mu.Lock()
 	if pending, exists := r.accepted[operationID]; exists {
 		r.committed[operationID] = pending

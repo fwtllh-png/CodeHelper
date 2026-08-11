@@ -88,4 +88,5 @@ rm -rf "$tmp"
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-streaming-fixture` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

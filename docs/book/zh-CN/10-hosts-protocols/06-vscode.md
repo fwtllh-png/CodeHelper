@@ -214,5 +214,5 @@ Incremental Patch 与 Resource Navigation。再追踪 Canceled Turn 的 Retry/Co
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `host-vscode` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-07 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

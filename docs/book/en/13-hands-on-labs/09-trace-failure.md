@@ -98,3 +98,4 @@ Delete retained temporary state after redacted evidence is recorded.
 | --- | --- |
 | Catalog ID | `lab-trace-failure` |
 | Status | `verified` |
+| Last verified | 2026-08-10 |

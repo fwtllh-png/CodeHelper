@@ -162,5 +162,5 @@ Policy decisions for the original strong attempt and the unsandboxed retry.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `tool-guard-pipeline` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

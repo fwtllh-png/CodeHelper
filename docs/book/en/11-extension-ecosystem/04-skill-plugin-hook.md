@@ -128,5 +128,5 @@ manifest. Compare what each is allowed to influence.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `extension-skill-plugin-hook` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

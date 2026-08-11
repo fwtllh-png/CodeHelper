@@ -97,3 +97,11 @@ make sandbox-attack-test
 ## Further Reading
 
 - [Fail-Closed Behavior and Platform Claims](./07-fail-closed.md)
+
+## Sources and Verification
+
+| Item | Value |
+| --- | --- |
+| Catalog ID | `security-process-isolation` |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -38,6 +39,36 @@ func TestPolicyRejectsBroadAndSensitiveReadRoots(t *testing.T) {
 		}); err == nil {
 			t.Fatal("user home was accepted as a host read root")
 		}
+	}
+}
+
+func TestExactWorkspaceWritePathLimitMatchesToolExpansion(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, 0, MaxExactWorkspaceWritePaths+1)
+	for index := range MaxExactWorkspaceWritePaths + 1 {
+		path := fmt.Sprintf("file-%03d.txt", index)
+		if err := os.WriteFile(filepath.Join(root, path), []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, path)
+	}
+	if _, err := validateExactWorkspaceWritePaths(
+		workspace,
+		true,
+		paths[:MaxExactWorkspaceWritePaths],
+	); err != nil {
+		t.Fatalf("bounded exact writes were rejected: %v", err)
+	}
+	if _, err := validateExactWorkspaceWritePaths(
+		workspace,
+		true,
+		paths,
+	); err == nil {
+		t.Fatal("write set beyond the limit was accepted")
 	}
 }
 

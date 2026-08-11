@@ -2,5 +2,16 @@
   "protocol": "openai_chat",
   "path": "/chat/completions",
   "model": "fixture-model",
-  "streams": ["write.sse", "complete.sse", "write.sse", "complete.sse"]
+  "streams": [
+    "write.sse",
+    "declare-first.sse",
+    "quality.sse",
+    "declare-final.sse",
+    "complete.sse",
+    "write.sse",
+    "declare-first.sse",
+    "quality.sse",
+    "declare-final.sse",
+    "complete.sse"
+  ]
 }

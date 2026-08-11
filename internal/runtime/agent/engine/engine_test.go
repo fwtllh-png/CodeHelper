@@ -30,6 +30,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -691,9 +692,17 @@ func TestRunToolsClosesEveryStartedCallBeforeFatalBatchFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
 	var emitted []tool.Result
 
-	_, err := engine.runTools(
+	_, err := engine.runToolsWithCache(
 		t.Context(),
 		"turn-test",
 		[]provider.ToolCall{
@@ -701,6 +710,8 @@ func TestRunToolsClosesEveryStartedCallBeforeFatalBatchFailure(t *testing.T) {
 			{ID: "call_fail", Name: "fail", Arguments: `{}`},
 		},
 		make(map[string]tool.Result),
+		&toolResultCache{},
+		kernel,
 		func(_ State, event Event) error {
 			if event.Result != nil {
 				emitted = append(emitted, *event.Result)
@@ -721,6 +732,304 @@ func TestRunToolsClosesEveryStartedCallBeforeFatalBatchFailure(t *testing.T) {
 	if category, _ := emitted[1].Metadata["error_category"].(string); category != "tool_execution_failed" {
 		t.Fatalf("fatal error_category = %q", category)
 	}
+	if len(kernel.state.OpenCalls) != 0 ||
+		len(kernel.state.ClosedCalls) != 2 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	}
+}
+
+func TestRunToolsRejectsDuplicateCallIdentityBeforeExecution(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &echoTool{}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	var starts, results int
+	_, err := engine.runToolsWithCache(
+		t.Context(),
+		"turn-duplicate",
+		[]provider.ToolCall{
+			{ID: "duplicate", Name: "echo", Arguments: `{"text":"first"}`},
+			{ID: "duplicate", Name: "echo", Arguments: `{"text":"second"}`},
+		},
+		make(map[string]tool.Result),
+		&toolResultCache{},
+		kernel,
+		func(_ State, event Event) error {
+			if event.ToolCall != nil && event.Result == nil {
+				starts++
+			}
+			if event.Result != nil {
+				results++
+			}
+			return nil
+		},
+	)
+	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("runToolsWithCache() error = %v", err)
+	}
+	if executor.calls.Load() != 0 || starts != 0 || results != 0 {
+		t.Fatalf(
+			"execution leaked: calls=%d starts=%d results=%d",
+			executor.calls.Load(),
+			starts,
+			results,
+		)
+	}
+}
+
+func TestRunToolsDoesNotRepublishAlreadyClosedCall(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &echoTool{}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	executed := make(map[string]tool.Result)
+	cache := &toolResultCache{}
+	call := provider.ToolCall{
+		ID: "stable-id", Name: "echo", Arguments: `{"text":"same"}`,
+	}
+	var starts, results int
+	send := func(_ State, event Event) error {
+		if event.ToolCall != nil && event.Result == nil {
+			starts++
+		}
+		if event.Result != nil {
+			results++
+		}
+		return nil
+	}
+	for range 2 {
+		got, err := engine.runToolsWithCache(
+			t.Context(),
+			"turn-cache",
+			[]provider.ToolCall{call},
+			executed,
+			cache,
+			kernel,
+			send,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0].IsError {
+			t.Fatalf("results = %+v", got)
+		}
+	}
+	if executor.calls.Load() != 1 || starts != 1 || results != 1 {
+		t.Fatalf(
+			"replayed lifecycle: calls=%d starts=%d results=%d",
+			executor.calls.Load(),
+			starts,
+			results,
+		)
+	}
+	if len(kernel.state.OpenCalls) != 0 ||
+		len(kernel.state.ClosedCalls) != 1 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	}
+}
+
+func TestRunToolsClosesPublishedCallsWhenStartPublicationFails(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &echoTool{}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	var starts, results int
+	_, err := engine.runToolsWithCache(
+		t.Context(),
+		"turn-publish-failure",
+		[]provider.ToolCall{
+			{ID: "first", Name: "echo", Arguments: `{"text":"first"}`},
+			{ID: "second", Name: "echo", Arguments: `{"text":"second"}`},
+		},
+		make(map[string]tool.Result),
+		&toolResultCache{},
+		kernel,
+		func(_ State, event Event) error {
+			if event.ToolCall != nil && event.Result == nil {
+				starts++
+				if starts == 2 {
+					return errors.New("start sink failed")
+				}
+			}
+			if event.Result != nil {
+				results++
+				if !event.Result.IsError {
+					t.Fatalf("aborted result = %+v", event.Result)
+				}
+			}
+			return nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "start sink failed") {
+		t.Fatalf("runToolsWithCache() error = %v", err)
+	}
+	if executor.calls.Load() != 0 || starts != 2 || results != 1 {
+		t.Fatalf(
+			"publication lifecycle: calls=%d starts=%d results=%d",
+			executor.calls.Load(),
+			starts,
+			results,
+		)
+	}
+	if len(kernel.state.OpenCalls) != 0 ||
+		len(kernel.state.ClosedCalls) != 2 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	}
+	for _, callID := range []string{"first", "second"} {
+		if _, closed := kernel.state.ClosedCalls[callID]; !closed {
+			t.Fatalf("durable start %q was not closed: %+v", callID, kernel.state)
+		}
+	}
+}
+
+func TestRunToolsContinuesResultPublicationAfterSinkFailure(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &echoTool{}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	var results int
+	executed := make(map[string]tool.Result)
+	_, err := engine.runToolsWithCache(
+		t.Context(),
+		"turn-result-publication-failure",
+		[]provider.ToolCall{
+			{ID: "first", Name: "echo", Arguments: `{"text":"first"}`},
+			{ID: "second", Name: "echo", Arguments: `{"text":"second"}`},
+		},
+		executed,
+		&toolResultCache{},
+		kernel,
+		func(_ State, event Event) error {
+			if event.Result == nil {
+				return nil
+			}
+			results++
+			if results == 1 {
+				return errors.New("result sink failed")
+			}
+			return nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "result sink failed") {
+		t.Fatalf("runToolsWithCache() error = %v", err)
+	}
+	if executor.calls.Load() != 2 || results != 2 {
+		t.Fatalf(
+			"result publication: calls=%d results=%d",
+			executor.calls.Load(),
+			results,
+		)
+	}
+	if len(kernel.state.OpenCalls) != 0 ||
+		len(kernel.state.ClosedCalls) != 2 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	}
+	for _, callID := range []string{"first", "second"} {
+		if _, closed := kernel.state.ClosedCalls[callID]; !closed {
+			t.Fatalf("durable result did not close %q: %+v", callID, kernel.state)
+		}
+		if _, cached := executed[callID]; !cached {
+			t.Fatalf("durable result missing from execution cache: %+v", executed)
+		}
+	}
+}
+
+func TestRunToolsCancellationClosesKernelLifecycle(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &echoTool{}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	var starts, results int
+	got, err := engine.runToolsWithCache(
+		ctx,
+		"turn-canceled",
+		[]provider.ToolCall{{
+			ID: "canceled", Name: "echo", Arguments: `{"text":"never"}`,
+		}},
+		make(map[string]tool.Result),
+		&toolResultCache{},
+		kernel,
+		func(_ State, event Event) error {
+			if event.ToolCall != nil && event.Result == nil {
+				starts++
+			}
+			if event.Result != nil {
+				results++
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !got[0].IsError ||
+		executor.calls.Load() != 0 ||
+		starts != 1 ||
+		results != 1 {
+		t.Fatalf(
+			"canceled lifecycle: got=%+v calls=%d starts=%d results=%d",
+			got,
+			executor.calls.Load(),
+			starts,
+			results,
+		)
+	}
+	if len(kernel.state.OpenCalls) != 0 ||
+		len(kernel.state.ClosedCalls) != 1 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	}
 }
 
 func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
@@ -736,8 +1045,13 @@ func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
 	if err := registry.Register(panickingTool{}, nil); err != nil {
 		t.Fatal(err)
 	}
+	engine := newEngine(t, runtime, registry)
+	var kernelRecords []turnkernel.TransitionRecord
+	engine.options.TurnKernelObserver = func(record turnkernel.TransitionRecord) {
+		kernelRecords = append(kernelRecords, record)
+	}
 	var states []State
-	result, err := newEngine(t, runtime, registry).Run(t.Context(), "run it", func(event Event) error {
+	result, err := engine.Run(t.Context(), "run it", func(event Event) error {
 		states = append(states, event.State)
 		return nil
 	})
@@ -745,6 +1059,26 @@ func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	assertOneTerminal(t, states, Failed)
+	var started, closed int
+	for _, record := range kernelRecords {
+		if record.Drift != "" {
+			t.Fatalf("kernel drift = %+v", record)
+		}
+		switch record.Command {
+		case "model_sample_result_received":
+			started++
+		case "tool_result_received":
+			closed++
+		}
+	}
+	if started != 1 || closed != 1 {
+		t.Fatalf(
+			"kernel lifecycle starts=%d results=%d records=%+v",
+			started,
+			closed,
+			kernelRecords,
+		)
+	}
 }
 
 func TestToolDefinitionsAreEmptyWhenToolsAreDisabled(t *testing.T) {
@@ -1805,7 +2139,7 @@ func TestWorkspaceChangeGetsOneStructuredRepairBeforeNoChangeConflict(t *testing
 
 func TestTerminalSeparatesPrimaryAndContextFinalizationFailure(t *testing.T) {
 	var terminal Event
-	handler := newTerminalHandler(2, func(event Event) error {
+	handler := newTurnEmitter(2, func(event Event) error {
 		terminal = event
 		return nil
 	})

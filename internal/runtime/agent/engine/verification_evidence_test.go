@@ -7,7 +7,10 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type unavailableVerifier struct{}
@@ -23,15 +26,14 @@ func (unavailableVerifier) Verify(
 
 func TestQualityEvidenceCoversCurrentMutationRevision(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.advanceMutationRevision()
 	result := qualityEvidenceResult(
 		verify.StatusPassed, []string{"a.go", "b.go"},
 	)
 	engine.bindVerificationEvidence(provider.ToolCall{
 		ID: "verify-1", Name: "quality_verify",
-	}, &result, false)
+	}, &result, false, 1)
 
-	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go", "b.go"})
+	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go", "b.go"}, 1)
 	if receipt.Status != verify.StatusPassed || len(uncovered) != 0 {
 		t.Fatalf("receipt = %+v, uncovered = %v", receipt, uncovered)
 	}
@@ -43,19 +45,17 @@ func TestQualityEvidenceCoversCurrentMutationRevision(t *testing.T) {
 
 func TestQualityEvidenceRejectsPartialAndStaleCoverage(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.advanceMutationRevision()
 	result := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
 	engine.bindVerificationEvidence(provider.ToolCall{
 		ID: "verify-1", Name: "quality_test",
-	}, &result, false)
+	}, &result, false, 1)
 
-	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go", "b.go"})
+	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go", "b.go"}, 1)
 	if receipt.Status != verify.StatusUnavailable ||
 		len(uncovered) != 1 || uncovered[0] != "b.go" {
 		t.Fatalf("receipt = %+v, uncovered = %v", receipt, uncovered)
 	}
-	engine.advanceMutationRevision()
-	receipt, uncovered = engine.qualityVerificationReceipt([]string{"a.go"})
+	receipt, uncovered = engine.qualityVerificationReceipt([]string{"a.go"}, 2)
 	if receipt.Status != verify.StatusUnavailable ||
 		len(uncovered) != 1 || uncovered[0] != "a.go" {
 		t.Fatalf("stale receipt = %+v, uncovered = %v", receipt, uncovered)
@@ -64,19 +64,18 @@ func TestQualityEvidenceRejectsPartialAndStaleCoverage(t *testing.T) {
 
 func TestQualityEvidenceRejectsSameBatchMutationAndGenericShell(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.advanceMutationRevision()
 	result := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
 	engine.bindVerificationEvidence(provider.ToolCall{
 		ID: "verify-1", Name: "quality_verify",
-	}, &result, true)
+	}, &result, true, 1)
 	if accepted, _ := result.Metadata["verification_evidence_accepted"].(bool); accepted {
 		t.Fatalf("same-batch evidence was accepted: %#v", result.Metadata)
 	}
 	shellResult := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
 	engine.bindVerificationEvidence(provider.ToolCall{
 		ID: "shell-1", Name: "shell_run",
-	}, &shellResult, false)
-	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go"})
+	}, &shellResult, false, 1)
+	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go"}, 1)
 	if receipt.Status != verify.StatusUnavailable || len(uncovered) != 1 {
 		t.Fatalf("generic shell produced evidence: %+v, %v", receipt, uncovered)
 	}
@@ -89,12 +88,18 @@ func TestVerifyGateAcceptsFullCurrentQualityCoverage(t *testing.T) {
 		Runner: unavailableVerifier{}, MaxRepairSteps: 1,
 	}
 	engine.turnDiff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
-	engine.advanceMutationRevision()
 	result := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
 	engine.bindVerificationEvidence(provider.ToolCall{
 		ID: "verify-1", Name: "quality_verify",
-	}, &result, false)
-	gate := verifyGate{engine: engine, requirePassed: true}
+	}, &result, false, 1)
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer, "act", nil, 0, nil, nil,
+	)
+	seedKernelMutation(t, kernel)
+	gate := verifyGate{
+		engine: engine,
+		kernel: kernel,
+	}
 
 	outcome, err := gate.evaluate(t.Context(), func(State, Event) error { return nil })
 	if err != nil {
@@ -114,7 +119,13 @@ func TestVerifyGateRequestsStructuredRepairForMissingCoverage(t *testing.T) {
 		Runner: unavailableVerifier{}, MaxRepairSteps: 1,
 	}
 	engine.turnDiff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
-	gate := verifyGate{engine: engine, requirePassed: true}
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer, "act", nil, 0, nil, nil,
+	)
+	seedKernelMutation(t, kernel)
+	gate := verifyGate{
+		engine: engine, kernel: kernel,
+	}
 
 	outcome, err := gate.evaluate(t.Context(), func(State, Event) error { return nil })
 	if err != nil {
@@ -130,12 +141,59 @@ func TestVerifyGateRequestsStructuredRepairForMissingCoverage(t *testing.T) {
 	}
 }
 
+func seedKernelMutation(t *testing.T, kernel *engineTurnKernel) {
+	t.Helper()
+	call := provider.ToolCall{ID: "write-1", Name: "file_write"}
+	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.startTool(call.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.closeTool(
+		call,
+		tool.Result{},
+		[]toolguard.FileChange{{
+			Path: "a.go",
+			Kind: toolguard.FileModified,
+		}},
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStrictVerifyGateDoesNotReportFailedVerification(t *testing.T) {
-	gate := verifyGate{requirePassed: true, repairs: 1}
-	action := gate.decide(VerifyOptions{
-		Mode: VerifyModeSoft, MaxRepairSteps: 1,
-	}, failedReceipt("broken"))
-	if action != verifyActionFailed {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer, "act", nil, 0, nil, nil,
+	)
+	seedKernelMutation(t, kernel)
+	gate := verifyGate{
+		engine: engine, kernel: kernel,
+	}
+	if err := kernel.beginVerification(); err != nil {
+		t.Fatal(err)
+	}
+	command := gate.verificationCommand(
+		turnkernel.VerificationFailed,
+		nil,
+		"broken",
+	)
+	action, err := kernel.finishVerification(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action != turnkernel.VerificationActionRepair {
+		t.Fatalf("first strict failed verification action = %q", action)
+	}
+	if err := kernel.beginVerification(); err != nil {
+		t.Fatal(err)
+	}
+	action, err = kernel.finishVerification(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action != turnkernel.VerificationActionFailed {
 		t.Fatalf("strict failed verification action = %q", action)
 	}
 }

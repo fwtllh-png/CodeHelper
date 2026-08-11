@@ -149,5 +149,5 @@ non-reasoning descriptor in a local test and observe local validation.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `model-capability-routing` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

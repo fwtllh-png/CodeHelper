@@ -257,6 +257,26 @@ func TestToolStartRejectsMalformedArgumentsBeforeEncoding(t *testing.T) {
 	}
 }
 
+func TestRejectedCompletionDeclarationCanOmitRuntimeBindings(t *testing.T) {
+	_, err := NewEvent(EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &ToolResultData{
+		Tool: "turn_complete", CallID: "call-complete",
+		Output: "declaration rejected",
+		Completion: &CompletionDeclaration{
+			Status:         "complete",
+			Summary:        "analysis completed",
+			PendingActions: []string{},
+			Accepted:       false,
+			Rejection:      "no_observed_changes",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEvent() rejected a structured completion rejection: %v", err)
+	}
+}
+
 func TestEventTaggedUnionRoundTrip(t *testing.T) {
 	dataValues := []EventData{
 		&TurnStartedData{

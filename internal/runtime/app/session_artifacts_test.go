@@ -406,9 +406,18 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	if err := events.Append(t.Context(), failed); err != nil {
 		t.Fatal(err)
 	}
+	profile := runtimeTestProfile()
+	profile.Revision = 2
+	profile.ApprovalPosture = "bypass"
+	profiles := &memoryProfileStore{profile: profile}
+	engine := &profileTestEngine{}
 	runtime := NewRuntime(Options{
-		EventStore:       events,
-		SessionLifecycle: artifactLifecycle(),
+		EventStore:          events,
+		SessionLifecycle:    artifactLifecycle(),
+		Engine:              engine,
+		SessionProfiles:     profiles,
+		DefaultProfile:      profile,
+		ProfileCapabilities: runtimeTestCapabilities(profile),
 	})
 	t.Cleanup(func() { closeRuntime(t, runtime) })
 	retry, err := runtime.PrepareTurnRecovery(
@@ -427,6 +436,13 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		retry.Intent != protocol.TurnIntentWorkspaceChange ||
 		retry.IdempotencyKey != "retry-source" {
 		t.Fatalf("Retry preparation = %+v", retry)
+	}
+	engine.mu.Lock()
+	applied := engine.applied
+	engine.mu.Unlock()
+	if applied.Revision != profile.Revision ||
+		applied.ApprovalPosture != "bypass" {
+		t.Fatalf("Recovery applied profile = %+v, want %+v", applied, profile)
 	}
 	continued, err := runtime.PrepareTurnRecovery(
 		t.Context(),

@@ -19,6 +19,11 @@ import (
 
 const ErrUnavailableCode = "sandbox_unavailable"
 
+// MaxExactWorkspaceWritePaths bounds one explicitly approved sandbox policy.
+// Argument expansion, tool schema validation, and backend policy generation
+// share this value so an approved call cannot fail at a later boundary.
+const MaxExactWorkspaceWritePaths = 512
+
 type Strength string
 
 const (
@@ -510,8 +515,11 @@ func validateExactWorkspaceWritePaths(
 	if !workspaceReadOnly {
 		return nil, errors.New("exact write paths require a read-only workspace base")
 	}
-	if len(paths) > 128 {
-		return nil, errors.New("exact write paths exceed the 128-file limit")
+	if len(paths) > MaxExactWorkspaceWritePaths {
+		return nil, fmt.Errorf(
+			"exact write paths exceed the %d-file limit",
+			MaxExactWorkspaceWritePaths,
+		)
 	}
 	canonical := make([]string, 0, len(paths))
 	for _, path := range paths {

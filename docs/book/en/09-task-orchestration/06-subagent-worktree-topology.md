@@ -133,5 +133,5 @@ baseline fingerprints, and the guarded merge decision.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `task-subagent-worktree` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -185,5 +185,5 @@ go test ./internal/runtime/app -run TestRuntimeApprovalPauseResumeE2E
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `agent-from-chatbot-to-agent` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

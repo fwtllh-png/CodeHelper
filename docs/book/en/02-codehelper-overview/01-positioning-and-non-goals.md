@@ -209,5 +209,5 @@ positioning to layers and dependency direction.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `overview-positioning` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -27,6 +27,8 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 	wantTables := []string{
 		"workspaces", "sessions", "threads", "turns", "items", "operations",
 		"event_reservations", "event_index", "tasks", "task_lifecycle",
+		"turn_domain_facts", "turn_terminal_envelopes",
+		"turn_terminal_outbox", "turn_coordinator_leases",
 		"snapshots", "usage", "usage_turn_context", "automations", "automation_runs",
 		"agent_spawn_edges", "repo_index_files", "repo_index_symbols", "repo_index_meta",
 		"task_attempts", "workflow_runs", "workflow_nodes", "spans",

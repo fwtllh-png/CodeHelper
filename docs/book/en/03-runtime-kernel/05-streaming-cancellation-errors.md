@@ -197,5 +197,5 @@ created by the Runtime.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-stream-cancel-errors` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

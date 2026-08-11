@@ -131,4 +131,4 @@ that resume executes only the remaining wave.
 | --- | --- |
 | Catalog ID | `task-checkpoint-recovery` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-10 |

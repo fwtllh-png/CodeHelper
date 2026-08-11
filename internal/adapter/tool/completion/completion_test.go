@@ -32,6 +32,28 @@ func TestCompletionToolReturnsStructuredDeclaration(t *testing.T) {
 	}
 }
 
+func TestCompletionToolDefaultsPendingActionsToEmpty(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	result, err := registry.Execute(t.Context(), tool.Call{
+		Name: Name,
+		Arguments: json.RawMessage(`{
+			"status":"complete",
+			"summary":"implemented and verified"
+		}`),
+		Authorized: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	declaration, ok := result.Metadata[tool.MetadataCompletionDeclaration].(tool.CompletionDeclaration)
+	if !ok || len(declaration.PendingActions) != 0 {
+		t.Fatalf("declaration = %#v", result.Metadata)
+	}
+}
+
 func TestCompletionToolRejectsPendingActions(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := Register(registry); err != nil {

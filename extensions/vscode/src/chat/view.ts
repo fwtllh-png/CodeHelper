@@ -52,10 +52,10 @@ import {
   projectComposer,
   type ComposerControl,
 } from "./composer.js";
+import { turnIntentForMode } from "./turn-intent.js";
 import type {
   SessionProfileSnapshot,
   SessionToolCatalog,
-  TurnIntent,
 } from "../runtime/session.js";
 import type { CredentialView } from "../security/credentials.js";
 import {
@@ -1572,19 +1572,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       throw new Error("workspace root is unknown or no longer open");
     }
     return root;
-  }
-}
-
-function turnIntentForMode(mode: string | undefined): TurnIntent {
-  switch (mode) {
-    case "act":
-      return "workspace_change";
-    case "plan":
-      return "plan";
-    case "operate":
-      return "operation";
-    default:
-      return "answer";
   }
 }
 

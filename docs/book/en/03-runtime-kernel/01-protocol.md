@@ -219,5 +219,5 @@ the schema entry for `turn.start` and map each required field to the Go type.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-protocol` |
-| Status | `verified` |
-| Last verified | 2026-08-07 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -105,3 +105,11 @@ go test ./internal/runtime/app/wire -run 'Test(ProcessToolsCannotConstructOrDisa
 
 - [Security manual](../../../en/security.md)
 - [Failure Isolation](../11-extension-ecosystem/06-failure-isolation.md)
+
+## Sources and Verification
+
+| Item | Value |
+| --- | --- |
+| Catalog ID | `security-fail-closed` |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -91,3 +91,11 @@ make secret-leak-test
 ## 延伸阅读
 
 - [Credential Reference 与 Secret Lifecycle](../04-model-and-provider/05-credential-lifecycle.md)
+
+## 事实来源与验证
+
+| 项目 | 值 |
+| --- | --- |
+| Catalog ID | `security-egress-credentials` |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

@@ -129,4 +129,4 @@ Predict the final token/cost rollup before running the repository tests.
 | --- | --- |
 | Catalog ID | `state-trace-usage-cost` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-10 |

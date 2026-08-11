@@ -199,5 +199,5 @@ subscriber catches up.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-app` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

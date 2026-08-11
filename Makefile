@@ -18,6 +18,7 @@ LDFLAGS := -s -w \
 	experience-electron-baseline host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-freeze \
 	book-navigation command-docs command-docs-check \
+	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
 	doc-governance-check doc-governance-test doc-impact \
 	doc-reverify doc-reverify-dry-run \
 	doc-external-links release-fact-check brand-check \
@@ -161,6 +162,23 @@ command-docs:
 
 command-docs-check:
 	$(GO) run ./scripts/commanddocs --check
+
+turn-kernel-convergence-baseline:
+	$(GO) test -count=1 \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app \
+		./internal/runtime/app/wire \
+		./internal/persist/state/sqlite \
+		./internal/persist/state/turnstate \
+		-run 'Test(C0|C1|C2|C3|C4|C5|C6|Phase4R)'
+
+# Final production ownership gate.
+turn-kernel-convergence-exit-gate:
+	CODEHELPER_TURN_KERNEL_CONVERGENCE_EXIT_GATE=1 $(GO) test -count=1 \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/app \
+		-run '^TestC0.*ExitGate$$'
 
 experience-check:
 	$(GO) run ./scripts/experiencecontract

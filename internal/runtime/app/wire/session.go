@@ -159,6 +159,10 @@ func (s *Session) closeResources(ctx context.Context, closeRuntime bool) error {
 	if closeRuntime && s.Runtime != nil {
 		closeErrors = append(closeErrors, s.Runtime.Close(ctx))
 	}
+	if s.turnCoordinators != nil {
+		closeErrors = append(closeErrors, s.turnCoordinators.Close(ctx))
+		s.turnCoordinators = nil
+	}
 	if s.processes != nil {
 		s.processes.CloseAll()
 	}

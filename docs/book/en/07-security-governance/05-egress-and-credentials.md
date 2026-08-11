@@ -97,3 +97,11 @@ make secret-leak-test
 ## Further Reading
 
 - [Credential References and Secret Lifecycle](../04-model-and-provider/05-credential-lifecycle.md)
+
+## Sources and Verification
+
+| Item | Value |
+| --- | --- |
+| Catalog ID | `security-egress-credentials` |
+| Status | `draft` |
+| Last verified | Not yet verified |

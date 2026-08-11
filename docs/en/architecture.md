@@ -85,13 +85,42 @@ host-specific presentation.
 2. The application resolves session, thread, workspace, and policy state.
 3. Prompt context assembles repository map, pinned files, working set, evidence,
    policy, and compacted history.
-4. A provider streams model output and tool requests.
-5. Tool requests enter the registry and guard.
-6. The guard evaluates mode, posture, permissions, constitution, approvals, and
-   sandbox requirements.
-7. Mutating tools write through journaled/transactional adapters.
-8. Verification collects diagnostics or executes repository checks.
-9. Events and receipts are persisted and projected to each host.
+4. Coordinator requests a Provider Sample Effect; `DurableEffectDispatcher`
+   persists
+   `EffectStarted` before the Engine calls the provider.
+5. Model text, usage, and tool proposals return together through
+   `ModelSampleResultReceived`.
+6. Reducer persists the sample result and turns tool proposals into Tool
+   Effects before executor projection.
+7. The Tool executor enters the registry and guard, which evaluate mode,
+   posture, permissions, constitution, approvals, and sandbox requirements.
+8. Tool, Approval, and Input results return as one retained Result Command;
+   Coordinator persists logical closure before host projection.
+9. Mutating tools write through journaled/transactional adapters.
+10. `EvaluateTurnStep` makes Reducer select Repair, Verification, or Complete.
+11. The Verification executor returns evidence through
+    `VerificationFinished`; Reducer selects Passed, Repair, Reported, Failed, or
+    Reverted and owns the repair budget.
+12. Engine submits `TerminalRequested`; Reducer selects Completed, Failed, or
+    Canceled. Journal Commit/Rollback then runs as a durable Effect and returns
+    `JournalResultReceived`.
+13. Persistent Runtime atomically commits frozen state, final output, receipt,
+    terminal event, outbox, and the real operation receipt in one SQLite
+    transaction.
+14. Output, receipt, and terminal projections run only after that commit.
+15. On restart, Runtime scans pending terminal projections and appends each
+    entry with its stable Event ID before marking that entry published.
+16. Accepted StartTurn operations resume automatically only when matching
+    non-terminal Domain Facts exist; Coordinator requeues running Effects and
+    Engine resumes Provider, Tool, or Journal execution from durable payloads.
+17. Approval and Input recovery primes the original request IDs before resumed
+    execution, so hosts replay one wait rather than receiving a replacement.
+
+`TurnCoordinator` is the only production entry to `Reducer.Apply`. Engine
+events are projection-only and never feed Commands back into the state machine.
+Durable Runtime construction requires explicit Event, Content, and Terminal
+stores; ephemeral Memory stores are selected only by explicit `NewRuntime`
+construction.
 
 Cancellation and failure are terminal state transitions, not exceptional
 absence of data.
@@ -112,6 +141,11 @@ Durable state is composed rather than hidden behind one file:
 The SQLite schema is currently the initial schema version. Future public schema
 changes must use explicit migrations; pre-release development histories were
 intentionally collapsed before the initial baseline.
+
+Persistent runtime wiring injects the SQLite Turn Coordinator Store before any
+Engine is created. Each accepted transition appends a Domain Fact before state
+commit or Effect dispatch. Startup recovery uses renewable active-Turn leases;
+invalid or duplicate recovery fails closed.
 
 Session Checkpoints and Plan Artifacts reuse the Snapshot index and CAS. A
 Checkpoint stores only a verified model-visible history baseline and Profile

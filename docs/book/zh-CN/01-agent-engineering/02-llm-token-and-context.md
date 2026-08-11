@@ -191,5 +191,5 @@ Adapter 证明 Provider 发出了什么；Budget 决定请求可包含什么；�
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `agent-llm-token-context` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

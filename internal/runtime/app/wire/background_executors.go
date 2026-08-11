@@ -410,11 +410,30 @@ func (d *backgroundWorkflowDriver) runTurn(ctx context.Context, prompt string) (
 		return "", err
 	}
 	var content strings.Builder
+	ctxDone := ctx.Done()
+	var canceledErr error
+	var cancelTimer *time.Timer
+	var cancelDeadline <-chan time.Time
+	defer func() {
+		if cancelTimer != nil {
+			cancelTimer.Stop()
+		}
+	}()
 	for {
 		select {
-		case <-ctx.Done():
-			_ = d.cancel(threadID, turnID)
-			return content.String(), ctx.Err()
+		case <-ctxDone:
+			canceledErr = ctx.Err()
+			if err := d.cancel(threadID, turnID); err != nil {
+				return content.String(), errors.Join(canceledErr, err)
+			}
+			ctxDone = nil
+			cancelTimer = time.NewTimer(2 * time.Second)
+			cancelDeadline = cancelTimer.C
+		case <-cancelDeadline:
+			return content.String(), errors.Join(
+				canceledErr,
+				errors.New("timed out waiting for canceled turn terminal"),
+			)
 		case event, ok := <-events:
 			if !ok {
 				return content.String(), errors.New("workflow runtime event stream closed")
@@ -428,6 +447,9 @@ func (d *backgroundWorkflowDriver) runTurn(ctx context.Context, prompt string) (
 					content.WriteString(data.Text)
 				}
 			case protocol.EventTurnCompleted:
+				if canceledErr != nil {
+					return content.String(), canceledErr
+				}
 				if content.Len() == 0 {
 					if data, _ := event.Data.(*protocol.TurnCompletedData); data != nil {
 						content.WriteString(data.Text)
@@ -435,14 +457,23 @@ func (d *backgroundWorkflowDriver) runTurn(ctx context.Context, prompt string) (
 				}
 				return strings.TrimSpace(content.String()), nil
 			case protocol.EventTurnFailed:
+				if canceledErr != nil {
+					return content.String(), canceledErr
+				}
 				data, _ := event.Data.(*protocol.TurnFailedData)
 				if data != nil {
 					return content.String(), errors.New(data.Message)
 				}
 				return content.String(), errors.New("workflow turn failed")
 			case protocol.EventTurnCanceled:
+				if canceledErr != nil {
+					return content.String(), canceledErr
+				}
 				return content.String(), errors.New("workflow turn canceled")
 			case protocol.EventOperationRejected:
+				if canceledErr != nil {
+					return content.String(), canceledErr
+				}
 				data, _ := event.Data.(*protocol.OperationRejectedData)
 				if data != nil {
 					return content.String(), errors.New(data.Message)

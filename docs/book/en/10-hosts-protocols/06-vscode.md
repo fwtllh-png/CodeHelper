@@ -240,5 +240,5 @@ through Retry or Continue and prove the new Turn does not replay side effects.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `host-vscode` |
-| Status | `verified` |
-| Last verified | 2026-08-07 |
+| Status | `draft` |
+| Last verified | Not yet verified |

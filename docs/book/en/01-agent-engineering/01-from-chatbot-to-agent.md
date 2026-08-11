@@ -201,5 +201,5 @@ explains the probabilistic component inside the loop and the limits it imposes.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `agent-from-chatbot-to-agent` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

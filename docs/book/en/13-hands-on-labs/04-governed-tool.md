@@ -90,4 +90,5 @@ Tool only with focused tests and Wire registration.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-governed-tool` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

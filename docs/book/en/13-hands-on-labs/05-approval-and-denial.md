@@ -91,4 +91,5 @@ All state is test-local; remove temporary policy files if manually created.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-approval-denial` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -73,7 +73,14 @@ During every Turn, check structured invariants:
   files, verification, usage, and cost;
 - Retry and Continue preserve the source `turn.started.intent`; an old Event
   without Intent uses the documented `answer` compatibility default;
+- Retry and Continue preserve Source Intent but reapply the current durable
+  Session Profile before the new Turn starts. Mode, Approval Posture, Reasoning,
+  and Tool Selection must not drift from the failed Source Turn into recovery;
 - Plan Implement and Autopilot start with `intent=workspace_change`;
+- Mode and Intent are orthogonal contracts. Ordinary Chat in `mode=act` still
+  starts with `intent=answer`; only explicit mutation entry points such as
+  Diagnostics Fix, Implement Plan, and Autopilot submit `workspace_change`.
+  Mode and natural-language keyword guesses never determine mutation Intent;
 - a failed Turn Receipt has no success Outcome, while a completed
   `workspace_change` Receipt has `outcome=changed`, observed Changes, and a
   changed Workspace outcome;
@@ -92,6 +99,8 @@ During every Turn, check structured invariants:
 - Shell Tools advertise POSIX `sh` as their actual execution dialect; models
   must not use unsupported Bash-only syntax such as Process Substitution with
   `shell_read`, `shell_run`, or `terminal_run`;
+- Shell Tools structurally reject known Bash-only Process Substitution before
+  starting a process; descriptor prose is not the only enforcement layer;
 - Tool Failure Completion Repair spends its budget only on consecutive attempts
   without structured progress. A new Tool batch resets the no-progress counter;
   cumulative Repair Steps still count toward the bounded Turn step budget, so
@@ -103,9 +112,23 @@ During every Turn, check structured invariants:
 - `turn_complete` is the only call in its Tool batch. The Gate evaluates it
   before the model receives `required_action=final_answer`; no new verification
   pass may begin after the user-facing Final Answer;
+- the Completion/Verification Gate activates for explicit `workspace_change`
+  Intent or any observed Workspace Mutation. An ordinary Answer with no Mutation
+  completes directly; an Answer that mutates cannot bypass Declaration,
+  Verification, Journal, or Receipt;
+- model Text before that Gate passes is Provisional Output and does not enter
+  the stable Transcript. Final Answer publication follows accepted Declaration,
+  Verification, and Journal Commit;
+- a rejected `turn_complete` emits its paired `tool.result` with
+  `accepted=false` and a structured `rejection`. Only an accepted Declaration
+  requires Runtime-bound Changed Paths, Mutation Revision, and Completion Call
+  ID; missing bindings on a rejection must not become an `internal` Failure;
+- model-visible `turn_complete` Content, Event Metadata, and UI Projection state
+  the same accepted/rejected decision. The Executor never claims that a
+  Declaration is recorded or requests a Final Answer before Runtime validation;
 - any later Mutation or Verification Repair invalidates the Completion
-  Declaration. The model declares only `status`, `summary`, and empty
-  `pending_actions`; Runtime binds exact Changed Paths, accepted
+  Declaration. The model declares only `status` and `summary`; optional
+  `pending_actions` must be empty. Runtime binds exact Changed Paths, accepted
   current-revision Quality Call IDs, Mutation Revision, and Completion Call ID.
   Models never copy or invent these Runtime facts;
 - Completion repair budgets count repeated attempts only while Mutation Revision

@@ -125,5 +125,5 @@ projects one unknown Event without importing any Adapter executor.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `extension-host` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

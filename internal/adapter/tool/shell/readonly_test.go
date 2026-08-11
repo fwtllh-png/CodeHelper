@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -51,6 +52,23 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 	}
 	if read.IsError || read.Content != "originaltempheredoc\n" {
 		t.Fatalf("read result = %+v", read)
+	}
+
+	unsupported, err := registry.Execute(t.Context(), tool.Call{
+		Name: "shell_read",
+		Arguments: json.RawMessage(
+			`{"command":"diff <(printf left) <(printf right)"}`,
+		),
+		Authorized: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !unsupported.IsError ||
+		unsupported.Metadata["error_category"] != "unsupported_shell_syntax" ||
+		unsupported.Metadata["required_action"] !=
+			"rewrite_without_process_substitution" {
+		t.Fatalf("unsupported syntax result = %+v", unsupported)
 	}
 
 	for _, name := range []string{"shell_read", "shell_run", "terminal_run"} {
@@ -146,6 +164,27 @@ func TestShellReadDescriptorIsReadOnly(t *testing.T) {
 	for _, resource := range descriptor.ResourceResolver.Templates {
 		if resource.Access != tool.AccessRead {
 			t.Fatalf("resource = %+v", resource)
+		}
+	}
+}
+
+func TestUnsupportedPOSIXShellSyntaxIgnoresLiteralText(t *testing.T) {
+	for _, command := range []string{
+		`printf '%s\n' '<(literal)'`,
+		`printf '%s\n' \<\(escaped\)`,
+		"printf ok # <(comment)\n",
+	} {
+		if got := unsupportedPOSIXShellSyntax(command); got != "" {
+			t.Fatalf("unsupportedPOSIXShellSyntax(%q) = %q", command, got)
+		}
+	}
+	for _, command := range []string{
+		`diff <(printf left) file`,
+		`cat >(consumer)`,
+		`printf "%s" <(producer)`,
+	} {
+		if got := unsupportedPOSIXShellSyntax(command); got == "" {
+			t.Fatalf("unsupportedPOSIXShellSyntax(%q) accepted process substitution", command)
 		}
 	}
 }
@@ -290,6 +329,34 @@ func TestShellRunWriteGlobsRejectMissingAndEscapingPatterns(t *testing.T) {
 		if _, err := shell.ExpandArguments(t.Context(), raw); err == nil {
 			t.Fatalf("write glob %q was accepted", pattern)
 		}
+	}
+}
+
+func TestShellRunAcceptsBoundedLargeExactWriteSet(t *testing.T) {
+	root := t.TempDir()
+	paths := make([]string, 0, 129)
+	for index := range 129 {
+		path := filepath.Join("docs", "chapter-"+strconv.Itoa(index)+".md")
+		absolute := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(absolute, []byte("before\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, path)
+	}
+	workspace, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := &Tool{workspace: workspace}
+	resolved, err := shell.resolveWritePaths(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved) != len(paths) {
+		t.Fatalf("resolved paths = %d, want %d", len(resolved), len(paths))
 	}
 }
 

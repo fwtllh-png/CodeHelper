@@ -195,5 +195,5 @@ text. Confirm that Tool Call ID pairs the Assistant and Tool messages.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-agent-loop` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

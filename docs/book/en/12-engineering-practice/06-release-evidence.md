@@ -136,5 +136,5 @@ make vscode-rc
 | Item | Value |
 | --- | --- |
 | Catalog ID | `practice-release-evidence` |
-| Status | `verified` |
-| Last verified | 2026-08-07 |
+| Status | `draft` |
+| Last verified | Not yet verified |

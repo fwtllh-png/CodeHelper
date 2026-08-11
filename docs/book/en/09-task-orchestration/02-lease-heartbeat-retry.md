@@ -130,4 +130,4 @@ attempt heartbeat and settle from the old owner. Explain each fence.
 | --- | --- |
 | Catalog ID | `task-lease-retry` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-10 |

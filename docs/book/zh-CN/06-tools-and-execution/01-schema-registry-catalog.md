@@ -144,5 +144,5 @@ go test ./internal/adapter/tool/toolsearch ./internal/adapter/tool/mcp
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `tool-schema-registry` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

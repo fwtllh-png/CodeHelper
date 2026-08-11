@@ -246,5 +246,5 @@ never place a raw key in tracked documentation or command output.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-first-turn` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -14,7 +14,9 @@ import (
 )
 
 type testEngine struct {
-	block bool
+	block        bool
+	cancelMu     sync.Mutex
+	cancelReason string
 }
 
 func (e *testEngine) StartTurn(
@@ -25,7 +27,13 @@ func (e *testEngine) StartTurn(
 	}
 	if e.block {
 		<-ctx.Done()
-		return ctx.Err()
+		e.cancelMu.Lock()
+		reason := e.cancelReason
+		e.cancelMu.Unlock()
+		if reason == "" {
+			return ctx.Err()
+		}
+		return sink.Emit(&protocol.TurnCanceledData{Reason: reason})
 	}
 	if err := sink.Emit(&protocol.OutputDeltaData{Text: payload.Prompt}); err != nil {
 		return err
@@ -33,7 +41,14 @@ func (e *testEngine) StartTurn(
 	return sink.Emit(&protocol.TurnCompletedData{Text: payload.Prompt})
 }
 
-func (*testEngine) CancelTurn(context.Context, *protocol.CancelTurnPayload, EngineSink) error {
+func (e *testEngine) CancelTurn(
+	_ context.Context,
+	payload *protocol.CancelTurnPayload,
+	_ EngineSink,
+) error {
+	e.cancelMu.Lock()
+	e.cancelReason = protocol.NormalizeCancelReason(payload.Reason)
+	e.cancelMu.Unlock()
 	return nil
 }
 func (*testEngine) SteerTurn(_ context.Context, payload *protocol.SteerTurnPayload, sink EngineSink) error {
@@ -155,13 +170,13 @@ func TestRuntimeFailsClosedWhenEngineReturnsWithoutTerminal(t *testing.T) {
 	if started := receiveEvent(t, events); started.Kind != protocol.EventTurnStarted {
 		t.Fatalf("first event = %s", started.Kind)
 	}
-	failed := receiveEvent(t, events)
-	if failed.Kind != protocol.EventTurnFailed {
-		t.Fatalf("terminal = %s, want %s", failed.Kind, protocol.EventTurnFailed)
+	rejected := receiveEvent(t, events)
+	if rejected.Kind != protocol.EventOperationRejected {
+		t.Fatalf("result = %s, want %s", rejected.Kind, protocol.EventOperationRejected)
 	}
-	data, ok := failed.Data.(*protocol.TurnFailedData)
-	if !ok || !strings.Contains(data.Message, "without a terminal event") {
-		t.Fatalf("terminal data = %+v", failed.Data)
+	data, ok := rejected.Data.(*protocol.OperationRejectedData)
+	if !ok || !strings.Contains(data.Message, "without terminal material") {
+		t.Fatalf("rejection data = %+v", rejected.Data)
 	}
 }
 
@@ -173,7 +188,7 @@ func (*panickingEngine) StartTurn(
 	panic("intentional panic")
 }
 
-func TestRuntimeContainsEnginePanicAsFailedTurn(t *testing.T) {
+func TestRuntimeRejectsEnginePanicWithoutSyntheticTerminal(t *testing.T) {
 	runtime := NewRuntime(Options{Engine: &panickingEngine{}})
 	t.Cleanup(func() { closeRuntime(t, runtime) })
 	events, err := runtime.Events(t.Context(), 0)
@@ -183,14 +198,14 @@ func TestRuntimeContainsEnginePanicAsFailedTurn(t *testing.T) {
 	if err := runtime.Submit(t.Context(), startOperation(t, 1)); err != nil {
 		t.Fatal(err)
 	}
-	failed := receiveEvent(t, events)
-	if failed.Kind != protocol.EventTurnFailed {
-		t.Fatalf("terminal = %s, want %s", failed.Kind, protocol.EventTurnFailed)
+	rejected := receiveEvent(t, events)
+	if rejected.Kind != protocol.EventOperationRejected {
+		t.Fatalf("result = %s, want %s", rejected.Kind, protocol.EventOperationRejected)
 	}
-	data, ok := failed.Data.(*protocol.TurnFailedData)
-	if !ok || data.Code != protocol.CodeInternal ||
+	data, ok := rejected.Data.(*protocol.OperationRejectedData)
+	if !ok || data.Code != protocol.CodeConflict ||
 		!strings.Contains(data.Message, "engine panicked") {
-		t.Fatalf("terminal data = %+v", failed.Data)
+		t.Fatalf("rejection data = %+v", rejected.Data)
 	}
 }
 
@@ -614,7 +629,10 @@ func mustFindKind(t *testing.T, events []protocol.Event, kind protocol.EventKind
 			return event
 		}
 	}
-	t.Fatalf("missing event kind %s in %+v", kind, events)
+	for _, event := range events {
+		t.Logf("observed event kind=%s data=%+v", event.Kind, event.Data)
+	}
+	t.Fatalf("missing event kind %s", kind)
 	return protocol.Event{}
 }
 

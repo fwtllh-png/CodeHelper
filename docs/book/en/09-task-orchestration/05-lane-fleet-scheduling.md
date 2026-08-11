@@ -122,4 +122,4 @@ Fleet state and compare process state with projected task state.
 | --- | --- |
 | Catalog ID | `task-lane-fleet` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-10 |

@@ -25,6 +25,31 @@ func subagentFixture(t *testing.T, name string) string {
 	return path
 }
 
+func TestChildTurnIntentUsesEffectiveWorkspaceAuthority(t *testing.T) {
+	testCases := []struct {
+		role     subagent.Role
+		readOnly bool
+		want     protocol.TurnIntent
+	}{
+		{subagent.RoleImplementer, false, protocol.TurnIntentWorkspaceChange},
+		{subagent.RoleGeneral, false, protocol.TurnIntentWorkspaceChange},
+		{subagent.RoleImplementer, true, protocol.TurnIntentAnswer},
+		{subagent.RoleExplore, true, protocol.TurnIntentAnswer},
+		{subagent.RolePlan, true, protocol.TurnIntentPlan},
+	}
+	for _, testCase := range testCases {
+		if got := childTurnIntent(testCase.role, testCase.readOnly); got != testCase.want {
+			t.Fatalf(
+				"childTurnIntent(%q, %v) = %q, want %q",
+				testCase.role,
+				testCase.readOnly,
+				got,
+				testCase.want,
+			)
+		}
+	}
+}
+
 // openChildSession builds a tools-enabled session against a subagent fixture.
 // Each fixture serves exactly one stream, so the only provider request a test
 // may produce is the child's — which is also the assertion that the child really

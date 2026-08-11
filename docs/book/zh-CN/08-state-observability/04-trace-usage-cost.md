@@ -122,4 +122,4 @@ go test ./internal/observability/telemetry
 | --- | --- |
 | Catalog ID | `state-trace-usage-cost` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-10 |

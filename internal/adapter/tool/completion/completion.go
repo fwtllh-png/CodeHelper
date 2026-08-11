@@ -42,7 +42,7 @@ func (*Tool) Descriptor() tool.Descriptor {
 				},
 			},
 			"required": []string{
-				"status", "summary", "pending_actions",
+				"status", "summary",
 			},
 			"additionalProperties": false,
 		},
@@ -55,8 +55,8 @@ func (*Tool) Execute(_ context.Context, raw json.RawMessage) (tool.Result, error
 		return tool.Result{}, err
 	}
 	content, err := json.Marshal(map[string]any{
-		"status":  "recorded",
-		"message": "completion declaration recorded; provide the final answer",
+		"status":  "pending_runtime_validation",
+		"message": "completion declaration submitted for runtime validation",
 	})
 	if err != nil {
 		return tool.Result{}, err

@@ -156,5 +156,5 @@ with a Journal before-image. State what each can and cannot restore.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `state-session-snapshot-journal` |
-| Status | `verified` |
-| Last verified | 2026-08-07 |
+| Status | `draft` |
+| Last verified | Not yet verified |

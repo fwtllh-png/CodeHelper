@@ -137,5 +137,5 @@ drift. Compare catalog visibility, active cancellation, and model feedback.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `extension-failure-isolation` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

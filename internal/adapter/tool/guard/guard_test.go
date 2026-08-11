@@ -32,6 +32,27 @@ func TestMalformedArgumentsFailBeforePolicy(t *testing.T) {
 	}
 }
 
+func TestArgumentExpansionFailureIsRecoverableInvalidArguments(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &failingExpanderExecutor{testExecutor: testExecutor{
+		descriptor: readDescriptor("expand"),
+	}}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	guard := newTestGuard(
+		t,
+		registry,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		nil,
+		nil,
+	)
+	_, err := guard.Execute(t.Context(), "call", "expand", json.RawMessage(`{}`))
+	if !errors.Is(err, tool.ErrInvalidArguments) {
+		t.Fatalf("error = %v, want ErrInvalidArguments", err)
+	}
+}
+
 func TestDefaultsNormalizeBeforeCanonicalResources(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
@@ -568,6 +589,17 @@ func TestPatchRenameAndSymlinkTargetsCanonicalizeIdentically(t *testing.T) {
 type testExecutor struct {
 	descriptor tool.Descriptor
 	calls      atomic.Int32
+}
+
+type failingExpanderExecutor struct {
+	testExecutor
+}
+
+func (*failingExpanderExecutor) ExpandArguments(
+	context.Context,
+	json.RawMessage,
+) (json.RawMessage, error) {
+	return nil, errors.New("expanded beyond the bounded set")
 }
 
 func (e *testExecutor) Descriptor() tool.Descriptor { return e.descriptor }

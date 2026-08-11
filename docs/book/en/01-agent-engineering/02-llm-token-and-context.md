@@ -211,5 +211,5 @@ turns model sampling into a bounded action loop.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `agent-llm-token-context` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

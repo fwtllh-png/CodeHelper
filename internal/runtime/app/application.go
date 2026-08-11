@@ -72,6 +72,37 @@ func (a *EngineAdapter) History() []provider.Message {
 	return a.engine.History()
 }
 
+func (a *EngineAdapter) RestorePendingApproval(
+	pending PendingApproval,
+) error {
+	if a == nil || a.engine == nil {
+		return errors.New("engine is unavailable")
+	}
+	encoded, err := json.Marshal(pending.Data)
+	if err != nil {
+		return err
+	}
+	var request toolguard.ApprovalRequest
+	if err := json.Unmarshal(encoded, &request); err != nil {
+		return err
+	}
+	return a.engine.RestoreApprovalRequest(request)
+}
+
+func (a *EngineAdapter) RestorePendingInput(pending PendingInput) error {
+	if a == nil || a.engine == nil {
+		return errors.New("engine is unavailable")
+	}
+	return a.engine.RestoreInputRequest(interact.Request{
+		RequestID: pending.Data.RequestID,
+		CallID:    pending.Data.CallID,
+		Tool:      pending.Data.Tool,
+		Prompt:    pending.Data.Prompt,
+		Options:   append([]string(nil), pending.Data.Options...),
+		ExpiresAt: pending.Data.ExpiresAt,
+	})
+}
+
 func (a *EngineAdapter) ValidateSessionProfile(
 	profile protocol.SessionProfile,
 ) error {
@@ -245,31 +276,25 @@ func (a *EngineAdapter) StartTurn(
 			})
 		case agentengine.Completed:
 			receipt.outcome = protocol.OutcomeForIntent(intent)
-			if err := a.emitReceipt(receipt, sink, true); err != nil {
-				return err
-			}
-			return sink.Emit(&protocol.TurnCompletedData{
+			return a.commitTerminal(ctx, receipt, sink, true, &protocol.TurnCompletedData{
 				Text: event.Text, Outcome: protocol.OutcomeForIntent(intent),
 			})
 		case agentengine.Failed:
-			if err := a.emitReceipt(receipt, sink, false); err != nil {
-				return err
-			}
 			secondary := make([]protocol.TerminalIssue, len(event.SecondaryIssues))
 			for index, issue := range event.SecondaryIssues {
 				secondary[index] = protocol.TerminalIssue{
 					Phase: issue.Phase, Code: issue.Code, Message: issue.Message,
 				}
 			}
-			return sink.Emit(&protocol.TurnFailedData{
+			return a.commitTerminal(ctx, receipt, sink, false, &protocol.TurnFailedData{
 				Code:            nonEmptyCode(event.ErrorCode, protocol.CodeInternal),
 				Message:         nonEmpty(event.Error, "turn failed"),
 				SecondaryIssues: secondary,
 			})
 		case agentengine.Canceled:
-			// Runtime owns the terminal turn.canceled event so CancelTurn reason
-			// (stored on the Runtime) is the authoritative audit payload.
-			return nil
+			return a.commitTerminal(ctx, receipt, sink, false, &protocol.TurnCanceledData{
+				Reason: protocol.NormalizeCancelReason(event.CancelReason),
+			})
 		case agentengine.AwaitingApproval:
 			if event.Approval == nil {
 				return nil
@@ -463,35 +488,48 @@ func (a *EngineAdapter) StartTurn(
 	return runErr
 }
 
-// emitReceipt publishes the turn's execution receipt before the terminal event
-// so hosts observe one authoritative summary per turn.
-func (a *EngineAdapter) emitReceipt(
+func (a *EngineAdapter) buildReceipt(
+	recorder *receiptRecorder,
+	completed bool,
+) (*protocol.ExecutionReceiptData, error) {
+	if recorder == nil || recorder.budget == nil {
+		return nil, errors.New("terminal event is missing a frozen context budget")
+	}
+	data := recorder.build()
+	if data == nil {
+		return nil, nil
+	}
+	if err := validateTerminalReceipt(data, completed); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func (a *EngineAdapter) commitTerminal(
+	ctx context.Context,
 	recorder *receiptRecorder,
 	sink EngineSink,
 	completed bool,
+	terminal protocol.EventData,
 ) error {
-	if recorder == nil || recorder.budget == nil {
-		return errors.New("terminal event is missing a frozen context budget")
-	}
-	data := recorder.build(turnObservations{
-		changes:    a.engine.TurnDiff(),
-		readPaths:  a.engine.ReadPaths(recorder.turn),
-		context:    a.engine.ContextReceipts(),
-		selections: a.engine.ContextSelections(),
-		catalog:    a.engine.CatalogReceipt(),
-		evidence:   a.engine.EvidenceSnapshot(),
-		budget:     recorder.budget,
-		conflicts:  a.engine.RollbackConflicts(),
-		latency:    a.engine.TurnLatency(),
-		spend:      a.engine.BudgetSnapshot(),
-	})
-	if data == nil {
-		return nil
-	}
-	if err := validateTerminalReceipt(data, completed); err != nil {
+	recorder.freeze(a.engine)
+	receipt, err := a.buildReceipt(recorder, completed)
+	if err != nil {
 		return err
 	}
-	return sink.Emit(data)
+	frozen, err := a.engine.FrozenTerminalState(ctx)
+	if err != nil {
+		return err
+	}
+	if commitSink, ok := sink.(TerminalCommitSink); ok {
+		return commitSink.CommitTerminal(TerminalMaterial{
+			FrozenState: frozen.State,
+			DomainFacts: frozen.DomainFacts,
+			Receipt:     receipt,
+			Terminal:    terminal,
+		})
+	}
+	return errors.New("terminal commit sink is required")
 }
 
 func validateTerminalReceipt(
@@ -539,7 +577,11 @@ func validateTerminalReceipt(
 func (a *EngineAdapter) CancelTurn(
 	_ context.Context, payload *protocol.CancelTurnPayload, _ EngineSink,
 ) error {
-	a.engine.RequestCancelWithReason(protocol.NormalizeCancelReason(payload.Reason))
+	reason := protocol.NormalizeCancelReason(payload.Reason)
+	if err := a.engine.AcceptCancel(reason); err != nil {
+		return err
+	}
+	a.engine.RequestCancelWithReason(reason)
 	return nil
 }
 
@@ -569,10 +611,15 @@ func (a *EngineAdapter) DecideApproval(
 	if err := a.engine.StageApprovalDecision(decision); err != nil {
 		return err
 	}
+	if err := a.engine.AcceptApprovalResult(
+		payload.RequestID,
+		payload.Decision == protocol.ApprovalCancel,
+	); err != nil {
+		return err
+	}
 	if err := sink.Emit(&protocol.ApprovalResolvedData{
 		RequestID: payload.RequestID, Decision: payload.Decision,
 	}); err != nil {
-		_ = a.engine.ResumeApproval(payload.RequestID)
 		return err
 	}
 	return a.engine.ResumeApproval(payload.RequestID)
@@ -587,10 +634,12 @@ func (a *EngineAdapter) ReplyInput(
 	if err := a.engine.StageInputReply(reply); err != nil {
 		return err
 	}
+	if err := a.engine.AcceptInputResult(payload.RequestID); err != nil {
+		return err
+	}
 	if err := sink.Emit(&protocol.InputResolvedData{
 		RequestID: payload.RequestID, Answer: payload.Answer,
 	}); err != nil {
-		_ = a.engine.ResumeInput(payload.RequestID)
 		return err
 	}
 	return a.engine.ResumeInput(payload.RequestID)

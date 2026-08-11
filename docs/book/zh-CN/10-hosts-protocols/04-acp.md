@@ -138,4 +138,4 @@ Replay 与 Shutdown。
 | --- | --- |
 | Catalog ID | `host-acp` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-07 |
+| 最后验证 | 2026-08-10 |

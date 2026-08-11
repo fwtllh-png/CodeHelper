@@ -70,7 +70,13 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   Verification、Usage 和 Cost 一致；
 - Retry/Continue 保持 Source `turn.started.intent`；缺少 Intent 的旧 Event 使用
   已定义的 `answer` 兼容缺省值；
+- Retry/Continue 在保留 Source Intent 的同时，必须在新 Turn 启动前重新应用当前
+  持久化 Session Profile；Mode、Approval Posture、Reasoning 和 Tool Selection
+  不能从失败 Source Turn 漂移到恢复 Turn；
 - Plan Implement/Autopilot 必须以 `intent=workspace_change` 启动；
+- Mode 与 Intent 是正交契约。普通 Chat 的 `mode=act` 仍以 `intent=answer`
+  启动；只有 Diagnostics Fix、Implement Plan、Autopilot 等显式变更入口提交
+  `workspace_change`。不得使用 Mode 或自然语言关键词猜测变更 Intent；
 - Failed Turn Receipt 不携带成功 Outcome；Completed `workspace_change` Receipt
   必须同时具有 `outcome=changed`、Observed Changes 和 Changed Workspace Outcome；
 - `shell_read` 与 `terminal_run` 不能修改 Workspace 文件；`shell_run` 默认仍为
@@ -85,6 +91,8 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
 - Shell Tool 必须向模型声明实际执行方言为 POSIX `sh`；模型不得对
   `shell_read`、`shell_run` 或 `terminal_run` 使用 Bash-only Process
   Substitution 等不受支持的语法；
+- Shell Tool 必须在启动进程前结构化拒绝已知 Bash-only Process Substitution；
+  Descriptor 的自然语言提示不能作为唯一防线；
 - Tool Failure Completion Repair 只按连续无结构化进展的次数耗费预算。新的 Tool
   Batch 必须重置 No-progress Counter；累计 Repair Step 仍计入有界 Turn Step，
   连续文本承诺不能无限延长 Turn；
@@ -94,8 +102,20 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
 - `turn_complete` 必须是所在 Tool Batch 的唯一 Call。Gate 必须在模型收到
   `required_action=final_answer` 前完成；User-facing Final Answer 之后不得再启动
   新的 Verification Pass；
+- Completion/Verification Gate 在显式 `workspace_change` 或任意实际 Workspace
+  Mutation 后启用。普通 Answer 没有 Mutation 时可直接完成；Answer 一旦发生 Mutation，
+  不能绕过 Declaration、Verification、Journal 或 Receipt；
+- Gate 通过前的模型 Text 是 Provisional Output，不能投影到稳定 Transcript。
+  Accepted Declaration、Verification 和 Journal Commit 完成后才能发布 Final Answer；
+- rejected `turn_complete` 必须产生配对的 `tool.result`，携带
+  `accepted=false` 和结构化 `rejection`。只有 accepted Declaration 才要求 Runtime
+  绑定 Changed Paths、Mutation Revision 和 Completion Call ID；拒绝结果不能因缺少
+  这些绑定字段转成 `internal` Failure；
+- `turn_complete` 的模型可见 Content、Event Metadata 和 UI Projection 必须表达同一
+  accepted/rejected 决策。Executor 不得在 Runtime Validation 前声称 Declaration
+  已记录或要求输出 Final Answer；
 - 后续任何 Mutation 或 Verification Repair 都会使 Completion Declaration 失效。
-  模型只声明 `status`、`summary` 与空 `pending_actions`；Runtime 自动绑定精确
+  模型只声明 `status`、`summary`，可选的 `pending_actions` 只能为空；Runtime 自动绑定精确
   Changed Paths、当前 Revision 的 Accepted Quality Call ID、Mutation Revision
   和 Completion Call ID。模型不得复制或构造这些 Runtime Facts；
 - Completion Repair Budget 只在 Mutation Revision 与 Accepted Quality Evidence

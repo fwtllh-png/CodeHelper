@@ -92,3 +92,4 @@ Delete the temporary state directory; do not reuse its checkpoint IDs.
 | --- | --- |
 | Catalog ID | `lab-recoverable-workflow` |
 | Status | `verified` |
+| Last verified | 2026-08-10 |

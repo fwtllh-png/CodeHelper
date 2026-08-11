@@ -133,5 +133,5 @@ Capability 与 Credential Reference，再跟踪 `Resolver.Resolve` 生成 `Ready
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `model-provider-catalog` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

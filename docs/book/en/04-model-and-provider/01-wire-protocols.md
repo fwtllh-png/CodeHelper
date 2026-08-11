@@ -157,5 +157,5 @@ wire fields that produce the same normalized Event types.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `model-wire-protocols` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

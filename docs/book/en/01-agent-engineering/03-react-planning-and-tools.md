@@ -219,5 +219,5 @@ the better design.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `agent-react-planning-tools` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

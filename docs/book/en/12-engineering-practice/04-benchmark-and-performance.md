@@ -151,5 +151,5 @@ budgets likewise remain environment-acquired gates.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `practice-benchmark` |
-| Status | `verified` |
-| Last verified | 2026-08-07 |
+| Status | `draft` |
+| Last verified | Not yet verified |

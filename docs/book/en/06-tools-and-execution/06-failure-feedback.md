@@ -160,5 +160,5 @@ become failed Tool Results.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `tool-failure-feedback` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

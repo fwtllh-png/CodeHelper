@@ -238,5 +238,5 @@ recovery, lease recovery, or effect recovery.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-resume-recovery` |
-| Status | `verified` |
-| Last verified | 2026-08-07 |
+| Status | `draft` |
+| Last verified | Not yet verified |

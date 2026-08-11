@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,9 +16,163 @@ import (
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
+
+func TestC1DurableCoordinatorRuntimeScansRestoresAndLeasesActiveTurn(
+	t *testing.T,
+) {
+	store := seedPersistentState(t, t.TempDir())
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	repositories, err := NewPersistentRepositories(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := persistentStartOperation(t, "turn-c1", "item-c1")
+	canonical, err := app.CanonicalOperationPayload(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repositories.Lifecycle.Accept(
+		t.Context(),
+		operation,
+		"request-c1",
+		canonical,
+	); err != nil {
+		t.Fatal(err)
+	}
+	factStore := turnstate.NewSQLiteRepository(store.SQLite())
+	seed, err := turnkernel.NewStoreCoordinatorRuntime(factStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := seed.Open(
+		t.Context(),
+		"turn-c1",
+		turnkernel.NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []turnkernel.Command{
+		turnkernel.StartTurn{},
+		turnkernel.PreparationFinished{},
+		turnkernel.ModelTextReceived{Text: "partial"},
+	} {
+		if err := handle.Coordinator.Submit(t.Context(), command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantDigest, err := turnkernel.Digest(handle.Coordinator.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Release(t.Context(), "turn-c1"); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := newDurableCoordinatorRuntime(
+		factStore,
+		"owner-c1-first",
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close(context.Background()) })
+	restored, err := first.RecoverActiveTurns(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored) != 1 || restored[0].TurnID != "turn-c1" {
+		t.Fatalf("restored turns = %+v", restored)
+	}
+	if _, err := first.RecoverActiveTurns(
+		t.Context(),
+	); !errors.Is(err, turnkernel.ErrCoordinatorAlreadyActive) {
+		t.Fatalf("duplicate recovery error = %v", err)
+	}
+
+	facts, err := factStore.LoadDomainFacts(t.Context(), "turn-c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotDigest := facts[len(facts)-1].StateDigest
+	if gotDigest != wantDigest {
+		t.Fatalf("restored digest = %s, want %s", gotDigest, wantDigest)
+	}
+
+	second, err := newDurableCoordinatorRuntime(
+		factStore,
+		"owner-c1-second",
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = second.Close(context.Background()) })
+	concurrent, err := second.RecoverActiveTurns(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(concurrent) != 0 {
+		t.Fatalf("concurrent recovery claimed %+v", concurrent)
+	}
+	if err := first.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	afterShutdown, err := second.RecoverActiveTurns(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(afterShutdown) != 1 ||
+		afterShutdown[0].TurnID != "turn-c1" {
+		t.Fatalf("post-shutdown recovery = %+v", afterShutdown)
+	}
+}
+
+func TestC1DurableCoordinatorRuntimeFailsClosedOnIncompleteFacts(
+	t *testing.T,
+) {
+	store := seedPersistentState(t, t.TempDir())
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	repositories, err := NewPersistentRepositories(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := persistentStartOperation(
+		t,
+		"turn-c1-incomplete",
+		"item-c1-incomplete",
+	)
+	canonical, err := app.CanonicalOperationPayload(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repositories.Lifecycle.Accept(
+		t.Context(),
+		operation,
+		"request-c1-incomplete",
+		canonical,
+	); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := newDurableCoordinatorRuntime(
+		turnstate.NewSQLiteRepository(store.SQLite()),
+		"owner-c1-incomplete",
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	if _, err := runtime.RecoverActiveTurns(t.Context()); err == nil {
+		t.Fatal("active turn without Domain Facts restored")
+	}
+}
 
 type persistentTestEngine struct {
 	starts      atomic.Int64
@@ -37,9 +192,93 @@ func (e *persistentTestEngine) StartTurn(
 	e.sideEffects.Add(1)
 	if e.block {
 		<-ctx.Done()
-		return ctx.Err()
+		return commitPersistentTestTerminal(
+			payload,
+			sink,
+			protocol.CancelReasonShutdown,
+		)
 	}
-	return sink.Emit(&protocol.TurnCompletedData{Text: payload.Prompt})
+	return commitPersistentTestTerminal(payload, sink, "")
+}
+
+func commitPersistentTestTerminal(
+	payload *protocol.StartTurnPayload,
+	sink app.EngineSink,
+	cancelReason string,
+) error {
+	commitSink, ok := sink.(app.TerminalCommitSink)
+	if !ok {
+		return errors.New("persistent test engine requires terminal commit sink")
+	}
+	state := turnkernel.NewStateWithPolicy(
+		protocol.TurnIntentAnswer,
+		"act",
+		1,
+		turnkernel.Policy{},
+	)
+	apply := func(command turnkernel.Command) error {
+		transition, err := (turnkernel.Reducer{}).Apply(state, command)
+		if err != nil {
+			return err
+		}
+		state = transition.State
+		return nil
+	}
+	if err := apply(turnkernel.StartTurn{}); err != nil {
+		return err
+	}
+	if err := apply(turnkernel.PreparationFinished{}); err != nil {
+		return err
+	}
+	var terminal protocol.EventData
+	receipt := &protocol.ExecutionReceiptData{
+		Goal:   payload.Prompt,
+		Intent: protocol.TurnIntentAnswer,
+	}
+	if cancelReason == "" {
+		if err := apply(turnkernel.ModelTextReceived{
+			Text: payload.Prompt,
+		}); err != nil {
+			return err
+		}
+		if err := apply(turnkernel.ReleaseProvisionalOutput{}); err != nil {
+			return err
+		}
+		if err := apply(turnkernel.TerminalRequested{}); err != nil {
+			return err
+		}
+		receipt.Outcome = protocol.TurnOutcomeAnswered
+		terminal = &protocol.TurnCompletedData{
+			Text:    payload.Prompt,
+			Outcome: protocol.TurnOutcomeAnswered,
+		}
+	} else {
+		if err := apply(turnkernel.TerminalRequested{
+			CancelReason: cancelReason,
+		}); err != nil {
+			return err
+		}
+		terminal = &protocol.TurnCanceledData{Reason: cancelReason}
+	}
+	if err := apply(turnkernel.FinishTerminal{}); err != nil {
+		return err
+	}
+	digest, err := turnkernel.Digest(state)
+	if err != nil {
+		return err
+	}
+	return commitSink.CommitTerminal(app.TerminalMaterial{
+		FrozenState: state,
+		DomainFacts: []turnkernel.DomainFact{{
+			TurnID:      string(payload.TurnID),
+			Sequence:    1,
+			Command:     "finish_terminal",
+			State:       state,
+			StateDigest: digest,
+		}},
+		Receipt:  receipt,
+		Terminal: terminal,
+	})
 }
 
 func (*persistentTestEngine) CancelTurn(
@@ -161,6 +400,264 @@ func TestPersistentRuntimeRestartIsIdempotentAndKeepsOneTerminal(t *testing.T) {
 		t.Fatalf("operation status=%q receipt=%+v", operationStatus, receipt)
 	}
 	closePersistentRuntime(t, recovered)
+}
+
+func TestC5SQLiteConcurrentOutboxRecoveryProjectsStableEventsOnce(
+	t *testing.T,
+) {
+	store := seedPersistentState(t, t.TempDir())
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	repositories, err := NewPersistentRepositories(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := persistentStartOperation(
+		t,
+		"turn-round13-outbox",
+		"item-round13-outbox",
+	)
+	canonical, err := app.CanonicalOperationPayload(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repositories.Lifecycle.Accept(
+		t.Context(),
+		operation,
+		"round13-outbox",
+		canonical,
+	); err != nil {
+		t.Fatal(err)
+	}
+	envelope := round13TerminalEnvelope(t, operation)
+	terminalStore := turnstate.NewSQLiteRepository(store.SQLite())
+	if _, err := terminalStore.CommitTerminalOperation(
+		t.Context(),
+		envelope,
+	); err != nil {
+		t.Fatal(err)
+	}
+	receiptEntry := envelope.Outbox[0]
+	var receiptData protocol.ExecutionReceiptData
+	if err := json.Unmarshal(receiptEntry.Payload, &receiptData); err != nil {
+		t.Fatal(err)
+	}
+	interruptedEvent, err := protocol.NewEventWithIdentity(
+		protocol.EventMeta{
+			Sequence:    1,
+			OperationID: receiptEntry.OperationID,
+			ThreadID:    receiptEntry.ThreadID,
+			TurnID:      receiptEntry.TurnID,
+			ItemID:      receiptEntry.ItemID,
+		},
+		receiptEntry.EventID,
+		time.Now(),
+		&receiptData,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Append(t.Context(), interruptedEvent); err != nil {
+		t.Fatal(err)
+	}
+
+	var wait sync.WaitGroup
+	results := make(chan *app.Runtime, 2)
+	errs := make(chan error, 2)
+	for range 2 {
+		wait.Go(func() {
+			runtime, openErr := NewPersistentRuntime(
+				t.Context(),
+				PersistentRuntimeOptions{
+					Store:  store,
+					Engine: app.NoopEngine{},
+				},
+			)
+			if openErr == nil {
+				results <- runtime
+			}
+			errs <- openErr
+		})
+	}
+	wait.Wait()
+	close(results)
+	close(errs)
+	var runtimes []*app.Runtime
+	for runtime := range results {
+		runtimes = append(runtimes, runtime)
+	}
+	for openErr := range errs {
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+	}
+	t.Cleanup(func() {
+		for _, runtime := range runtimes {
+			_ = runtime.Close(context.Background())
+		}
+	})
+
+	events, err := store.Replay(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipts, terminals int
+	eventIDs := make(map[protocol.EventID]struct{}, len(events))
+	for _, event := range events {
+		eventIDs[event.ID] = struct{}{}
+		switch event.Kind {
+		case protocol.EventExecutionReceipt:
+			receipts++
+		case protocol.EventTurnCompleted:
+			terminals++
+		}
+	}
+	if len(events) != 2 || len(eventIDs) != 2 ||
+		receipts != 1 || terminals != 1 {
+		t.Fatalf(
+			"concurrent SQLite projection events=%+v ids=%v receipts=%d terminals=%d",
+			events,
+			eventIDs,
+			receipts,
+			terminals,
+		)
+	}
+	var pending int
+	if err := store.SQLite().DB().QueryRowContext(
+		t.Context(),
+		`SELECT COUNT(*) FROM turn_terminal_outbox WHERE published = 0`,
+	).Scan(&pending); err != nil {
+		t.Fatal(err)
+	}
+	if pending != 0 {
+		t.Fatalf("pending terminal outbox rows = %d", pending)
+	}
+	var status string
+	var response sql.NullString
+	if err := store.SQLite().DB().QueryRowContext(
+		t.Context(),
+		`SELECT status, response_json FROM operations WHERE id = ?`,
+		operation.ID,
+	).Scan(&status, &response); err != nil {
+		t.Fatal(err)
+	}
+	if status != string(threadstate.OperationCommitted) ||
+		!response.Valid ||
+		!json.Valid([]byte(response.String)) {
+		t.Fatalf("operation status=%q response=%+v", status, response)
+	}
+}
+
+func round13TerminalEnvelope(
+	t *testing.T,
+	operation protocol.Operation,
+) turnkernel.TerminalEnvelope {
+	t.Helper()
+	_, turnID, itemID := protocol.OperationReferences(operation)
+	threadID, _, _ := protocol.OperationReferences(operation)
+	state := turnkernel.NewStateWithPolicy(
+		protocol.TurnIntentAnswer,
+		"act",
+		1,
+		turnkernel.Policy{},
+	)
+	apply := func(command turnkernel.Command) {
+		t.Helper()
+		transition, err := (turnkernel.Reducer{}).Apply(state, command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state = transition.State
+	}
+	apply(turnkernel.StartTurn{})
+	apply(turnkernel.PreparationFinished{})
+	apply(turnkernel.ModelTextReceived{Text: "done"})
+	apply(turnkernel.ReleaseProvisionalOutput{})
+	apply(turnkernel.TerminalRequested{})
+	apply(turnkernel.FinishTerminal{})
+	digest, err := turnkernel.Digest(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := &protocol.ExecutionReceiptData{
+		Goal:    "round13",
+		Intent:  protocol.TurnIntentAnswer,
+		Outcome: protocol.TurnOutcomeAnswered,
+	}
+	receiptPayload, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal := &protocol.TurnCompletedData{
+		Text:    "done",
+		Outcome: protocol.TurnOutcomeAnswered,
+	}
+	terminalPayload, err := json.Marshal(terminal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationReceipt, err := json.Marshal(app.CommitReceipt{
+		OperationID: operation.ID,
+		Status:      "committed",
+		CompletedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := *state.Terminal
+	entry := func(
+		id string,
+		eventID protocol.EventID,
+		kind protocol.EventKind,
+		payload json.RawMessage,
+	) turnkernel.ProjectionOutboxEntry {
+		return turnkernel.ProjectionOutboxEntry{
+			ID:          id,
+			EventID:     eventID,
+			OperationID: operation.ID,
+			ThreadID:    threadID,
+			TurnID:      turnID,
+			ItemID:      itemID,
+			Kind:        string(kind),
+			Payload:     payload,
+		}
+	}
+	return turnkernel.TerminalEnvelope{
+		TurnID:      string(turnID),
+		EffectID:    "terminal:" + string(turnID),
+		FrozenState: state,
+		DomainFacts: []turnkernel.DomainFact{{
+			TurnID:      string(turnID),
+			Sequence:    1,
+			Command:     "finish_terminal",
+			State:       state,
+			StateDigest: digest,
+		}},
+		Receipt:     receipt,
+		FinalOutput: append([]string(nil), state.FinalOutput...),
+		TerminalEvent: turnkernel.Event{
+			Kind:     turnkernel.EventTerminalCommitted,
+			Terminal: &decision,
+		},
+		OperationCommit: turnkernel.OperationCommitFact{
+			OperationID: operation.ID,
+			Status:      "committed",
+			Receipt:     operationReceipt,
+		},
+		Outbox: []turnkernel.ProjectionOutboxEntry{
+			entry(
+				"receipt",
+				"evt_11111111111111111111111111111111",
+				protocol.EventExecutionReceipt,
+				receiptPayload,
+			),
+			entry(
+				"terminal",
+				"evt_22222222222222222222222222222222",
+				protocol.EventTurnCompleted,
+				terminalPayload,
+			),
+		},
+	}
 }
 
 func TestPersistentRuntimeEnforcesOneActiveTurnPerThread(t *testing.T) {

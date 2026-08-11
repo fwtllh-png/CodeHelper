@@ -81,6 +81,18 @@ func (r *Runtime) PrepareTurnRecovery(
 	if err := ensureSessionQuiescent(current, string(request.Action)); err != nil {
 		return TurnRecoveryPreparation{}, err
 	}
+	if r.SessionProfilesAvailable() {
+		if _, err := r.RestoreSessionProfile(
+			ctx,
+			request.SessionID,
+			current.ThreadID,
+		); err != nil {
+			return TurnRecoveryPreparation{}, fmt.Errorf(
+				"restore current session profile for Turn recovery: %w",
+				err,
+			)
+		}
+	}
 	events, err := r.events.Replay(ctx, 0)
 	if err != nil {
 		return TurnRecoveryPreparation{}, err

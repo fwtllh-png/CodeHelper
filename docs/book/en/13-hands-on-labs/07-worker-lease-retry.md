@@ -97,3 +97,4 @@ Delete the temporary Task database and stop both Worker loops.
 | --- | --- |
 | Catalog ID | `lab-worker-retry` |
 | Status | `verified` |
+| Last verified | 2026-08-10 |

@@ -169,5 +169,5 @@ observe a body omitted while its receipt remains.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `context-source-lifecycle` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

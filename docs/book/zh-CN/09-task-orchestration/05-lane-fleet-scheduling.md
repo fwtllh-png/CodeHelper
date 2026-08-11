@@ -116,4 +116,4 @@ State 与 Projected Task State。
 | --- | --- |
 | Catalog ID | `task-lane-fleet` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-10 |

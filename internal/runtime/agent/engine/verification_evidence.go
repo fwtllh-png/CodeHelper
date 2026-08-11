@@ -13,22 +13,15 @@ import (
 )
 
 func (e *Engine) resetVerificationEvidence() {
-	e.mutationRevision = 0
-	e.verificationEvidence = nil
-	e.clearCompletionDeclaration()
+	e.verificationInputs = nil
 	e.qualityEvidenceRequired = false
-}
-
-func (e *Engine) advanceMutationRevision() {
-	e.mutationRevision++
-	e.verificationEvidence = nil
-	e.clearCompletionDeclaration()
 }
 
 func (e *Engine) bindVerificationEvidence(
 	call provider.ToolCall,
 	result *tool.Result,
 	batchMutated bool,
+	mutationRevision uint64,
 ) {
 	if result == nil || result.Metadata == nil ||
 		(call.Name != "quality_test" && call.Name != "quality_verify") {
@@ -66,10 +59,10 @@ func (e *Engine) bindVerificationEvidence(
 	slices.Sort(covered)
 	evidence.CoveredPaths = covered
 	evidence.CallID = call.ID
-	evidence.MutationRevision = e.mutationRevision
+	evidence.MutationRevision = mutationRevision
 	result.Metadata[verify.EvidenceMetadataKey] = evidence
 	result.Metadata["verification_evidence_accepted"] = true
-	e.verificationEvidence = append(e.verificationEvidence, evidence)
+	e.verificationInputs = append(e.verificationInputs, evidence)
 }
 
 func decodeVerificationEvidence(value any) (verify.Evidence, bool) {
@@ -106,12 +99,13 @@ func canonicalEvidencePath(path string) (string, bool) {
 
 func (e *Engine) qualityVerificationReceipt(
 	paths []string,
+	mutationRevision uint64,
 ) (verify.Receipt, []string) {
 	covered := make(map[string]struct{})
-	checks := make([]verify.Check, 0, len(e.verificationEvidence))
-	for _, evidence := range e.verificationEvidence {
+	checks := make([]verify.Check, 0, len(e.verificationInputs))
+	for _, evidence := range e.verificationInputs {
 		if evidence.Status != verify.StatusPassed ||
-			evidence.MutationRevision != e.mutationRevision {
+			evidence.MutationRevision != mutationRevision {
 			continue
 		}
 		for _, path := range evidence.CoveredPaths {

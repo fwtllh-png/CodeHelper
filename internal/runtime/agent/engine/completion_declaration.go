@@ -9,69 +9,118 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-func (e *Engine) clearCompletionDeclaration() {
-	e.completionDeclaration = nil
+func (e *Engine) completionGateRequired(intent protocol.TurnIntent) bool {
+	return e.options.RequireCompletionDeclaration &&
+		e.strictWorkspaceVerificationRequired(intent)
 }
 
-func (e *Engine) bindCompletionDeclaration(
+func (e *Engine) strictWorkspaceVerificationRequired(
+	intent protocol.TurnIntent,
+) bool {
+	if protocol.NormalizeTurnIntent(intent) ==
+		protocol.TurnIntentWorkspaceChange {
+		return true
+	}
+	return e.options.RequireCompletionDeclaration && len(e.TurnDiff()) != 0
+}
+
+func (e *Engine) completionCandidate(
 	call provider.ToolCall,
-	result *tool.Result,
+	result tool.Result,
 	batchMutated bool,
 	batchSize int,
-) {
-	if call.Name != "turn_complete" || result == nil || result.Metadata == nil {
-		return
-	}
-	result.Metadata = maps.Clone(result.Metadata)
-	reject := func(reason string) {
-		result.Metadata["completion_declaration_accepted"] = false
-		result.Metadata["completion_declaration_rejection"] = reason
-	}
-	if batchMutated {
-		reject("same_batch_mutation")
-		return
-	}
-	if batchSize != 1 {
-		reject("declaration_must_be_only_call")
-		return
+	mutationRevision uint64,
+) turnkernel.CompletionCandidate {
+	candidate := turnkernel.CompletionCandidate{
+		CompletionCall:  call.ID,
+		BatchMutated:    batchMutated,
+		BatchSize:       batchSize,
+		ToolError:       result.IsError,
+		QualityRequired: e.qualityEvidenceRequired,
 	}
 	declaration, ok := decodeCompletionDeclaration(
 		result.Metadata[tool.MetadataCompletionDeclaration],
 	)
-	if !ok {
-		reject("invalid_declaration")
-		return
+	if ok {
+		candidate.DeclarationValid = true
+		candidate.Status = declaration.Status
+		candidate.Summary = declaration.Summary
+		candidate.PendingActions = append(
+			[]string(nil),
+			declaration.PendingActions...,
+		)
 	}
-	if result.IsError || declaration.Status != "complete" ||
-		strings.TrimSpace(declaration.Summary) == "" ||
-		len(declaration.PendingActions) != 0 {
-		reject("incomplete_declaration")
-		return
-	}
-	observed := changedPaths(e.TurnDiff())
-	if len(observed) == 0 {
-		reject("no_observed_changes")
-		return
-	}
-	currentEvidence := make(map[string]struct{}, len(e.verificationEvidence))
-	for _, evidence := range e.verificationEvidence {
-		if evidence.MutationRevision == e.mutationRevision && evidence.CallID != "" {
+	currentEvidence := make(map[string]struct{}, len(e.verificationInputs))
+	for _, evidence := range e.verificationInputs {
+		if evidence.MutationRevision == mutationRevision && evidence.CallID != "" {
 			currentEvidence[evidence.CallID] = struct{}{}
 		}
 	}
-	if e.qualityEvidenceRequired && len(currentEvidence) == 0 {
-		reject("quality_verification_required")
+	candidate.QualityCalls = sortedMapKeys(currentEvidence)
+	return candidate
+}
+
+func bindCompletionDecision(
+	result *tool.Result,
+	decision turnkernel.CompletionDecision,
+) {
+	if result == nil {
 		return
 	}
-	declaration.ChangedPaths = observed
-	declaration.VerificationCallIDs = sortedMapKeys(currentEvidence)
-	declaration.MutationRevision = e.mutationRevision
-	declaration.CallID = call.ID
-	e.completionDeclaration = &declaration
-	result.Metadata[tool.MetadataCompletionDeclaration] = declaration
-	result.Metadata["completion_declaration_accepted"] = true
+	result.Metadata = maps.Clone(result.Metadata)
+	if result.Metadata == nil {
+		result.Metadata = make(map[string]any)
+	}
+	result.Metadata["completion_declaration_accepted"] = decision.Accepted
+	result.Metadata["completion_declaration_rejection"] = decision.Reason
+	if decision.Accepted {
+		declaration, ok := decodeCompletionDeclaration(
+			result.Metadata[tool.MetadataCompletionDeclaration],
+		)
+		if ok {
+			declaration.ChangedPaths = append(
+				[]string(nil),
+				decision.ChangedPaths...,
+			)
+			declaration.VerificationCallIDs = append(
+				[]string(nil),
+				decision.QualityCalls...,
+			)
+			declaration.MutationRevision = decision.Mutation
+			declaration.CallID = decision.CompletionCall
+			result.Metadata[tool.MetadataCompletionDeclaration] = declaration
+		}
+	}
+	result.Content = completionDecisionContent(
+		decision.Accepted,
+		decision.Reason,
+		decision.RequiredAction,
+	)
+}
+
+func completionDecisionContent(
+	accepted bool,
+	reason string,
+	requiredAction string,
+) string {
+	status := "rejected"
+	if accepted {
+		status = "accepted"
+	}
+	content, err := json.Marshal(map[string]any{
+		"status":          status,
+		"accepted":        accepted,
+		"reason":          reason,
+		"required_action": requiredAction,
+	})
+	if err != nil {
+		return `{"status":"rejected","accepted":false,"reason":"encode_decision_failed"}`
+	}
+	return string(content)
 }
 
 func sortedMapKeys(values map[string]struct{}) []string {
@@ -98,25 +147,16 @@ func decodeCompletionDeclaration(value any) (tool.CompletionDeclaration, bool) {
 	return declaration, true
 }
 
-func (e *Engine) completionProgressKey() string {
-	callIDs := make([]string, 0, len(e.verificationEvidence))
-	for _, evidence := range e.verificationEvidence {
-		if evidence.MutationRevision == e.mutationRevision && evidence.CallID != "" {
+func (e *Engine) completionProgressKey(mutationRevision uint64) string {
+	callIDs := make([]string, 0, len(e.verificationInputs))
+	for _, evidence := range e.verificationInputs {
+		if evidence.MutationRevision == mutationRevision && evidence.CallID != "" {
 			callIDs = append(callIDs, evidence.CallID)
 		}
 	}
 	slices.Sort(callIDs)
 	return strings.Join(append(
-		[]string{strconv.FormatUint(e.mutationRevision, 10)},
+		[]string{strconv.FormatUint(mutationRevision, 10)},
 		callIDs...,
 	), "\x00")
-}
-
-func (e *Engine) hasCurrentCompletionDeclaration() bool {
-	declaration := e.completionDeclaration
-	return declaration != nil &&
-		declaration.Status == "complete" &&
-		len(declaration.PendingActions) == 0 &&
-		declaration.MutationRevision == e.mutationRevision &&
-		slices.Equal(declaration.ChangedPaths, changedPaths(e.TurnDiff()))
 }
