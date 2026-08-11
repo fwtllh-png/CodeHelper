@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/orchestration/automation/repository.go
   - internal/orchestration/workflow/runtime.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Automation and Workflows
@@ -121,5 +121,5 @@ resulting node status graph.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `task-automation-workflow` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

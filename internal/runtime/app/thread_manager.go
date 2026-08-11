@@ -10,6 +10,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 // ThreadManager routes Engine operations to a per-ThreadID EngineAdapter so
@@ -197,6 +198,56 @@ func (m *ThreadManager) ReplyInput(
 	return adapter.ReplyInput(ctx, payload, sink)
 }
 
+func (m *ThreadManager) ValidateSessionProfile(
+	threadID protocol.ThreadID,
+	profile protocol.SessionProfile,
+) error {
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return err
+	}
+	return adapter.ValidateSessionProfile(profile)
+}
+
+func (m *ThreadManager) ApplySessionProfile(
+	threadID protocol.ThreadID,
+	profile protocol.SessionProfile,
+) error {
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return err
+	}
+	return adapter.ApplySessionProfile(profile)
+}
+
+func (m *ThreadManager) SetPolicyMode(mode policy.Mode) {
+	for _, adapter := range m.adapters() {
+		adapter.SetPolicyMode(mode)
+	}
+}
+
+func (m *ThreadManager) SetPermission(permission policy.Permission) {
+	for _, adapter := range m.adapters() {
+		adapter.SetPermission(permission)
+	}
+}
+
+func (m *ThreadManager) SetGranular(granular policy.Granular) {
+	for _, adapter := range m.adapters() {
+		adapter.SetGranular(granular)
+	}
+}
+
+func (m *ThreadManager) adapters() []*EngineAdapter {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]*EngineAdapter, 0, len(m.threads))
+	for _, adapter := range m.threads {
+		result = append(result, adapter)
+	}
+	return result
+}
+
 func (m *ThreadManager) CompactThread(
 	ctx context.Context, payload *protocol.CompactThreadPayload, sink EngineSink,
 ) error {
@@ -289,6 +340,60 @@ func (m *ThreadManager) ForkThread(
 		SourceCursor:       sourceCursor,
 		ReplacementHistory: history,
 	})
+}
+
+func (m *ThreadManager) RestoreCheckpoint(
+	threadID protocol.ThreadID,
+	history []provider.Message,
+) error {
+	if threadID == "" || len(history) == 0 {
+		return errors.New("checkpoint Thread and history are required")
+	}
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return err
+	}
+	engine := adapter.Underlying()
+	if engine == nil {
+		return errors.New("checkpoint Thread engine is unavailable")
+	}
+	engine.ReplaceHistory(history)
+	return nil
+}
+
+func (m *ThreadManager) ForkCheckpoint(
+	parentThreadID, newThreadID protocol.ThreadID,
+	history []provider.Message,
+) error {
+	if parentThreadID == "" || newThreadID == "" ||
+		parentThreadID == newThreadID || len(history) == 0 {
+		return errors.New("checkpoint Fork identity and history are invalid")
+	}
+	parent, err := m.forThread(parentThreadID)
+	if err != nil {
+		return err
+	}
+	engine := parent.Underlying()
+	if engine == nil {
+		return errors.New("checkpoint parent engine is unavailable")
+	}
+	childEngine := engine.Fork()
+	childEngine.ReplaceHistory(history)
+	child := AdaptEngineWithWorkspaceIdentity(
+		childEngine,
+		parent.workspaceIdentity,
+	)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.threads[newThreadID]; exists {
+		return fmt.Errorf("checkpoint Fork target Thread %s already exists", newThreadID)
+	}
+	m.threads[newThreadID] = child
+	if state := m.windows[parentThreadID]; state != nil {
+		copy := *state
+		m.windows[newThreadID] = &copy
+	}
+	return nil
 }
 
 func (m *ThreadManager) RevertTurn(

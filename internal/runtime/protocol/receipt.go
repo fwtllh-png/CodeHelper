@@ -41,11 +41,12 @@ type ReceiptVerificationAttempt struct {
 // ReceiptVerificationDetail preserves the complete gate history rather than
 // reducing repair to the final pass/fail bit.
 type ReceiptVerificationDetail struct {
-	Mode        string                       `json:"mode"`
-	FinalStatus string                       `json:"final_status"`
-	Action      string                       `json:"action"`
-	RepairSteps int                          `json:"repair_steps"`
-	Attempts    []ReceiptVerificationAttempt `json:"attempts"`
+	Mode           string                       `json:"mode"`
+	FinalStatus    string                       `json:"final_status"`
+	Action         string                       `json:"action"`
+	RepairSteps    int                          `json:"repair_steps"`
+	UncoveredPaths []string                     `json:"uncovered_paths,omitempty"`
+	Attempts       []ReceiptVerificationAttempt `json:"attempts"`
 }
 
 // ReceiptWorkspaceOutcome is the final workspace state after verification and
@@ -166,9 +167,11 @@ type ReceiptEvidence struct {
 // lost it to a budget that is about to bite again. A thread on its fourth
 // compaction is one whose early history now exists only as summary.
 type ReceiptContextBudget struct {
-	HistoryBytes    int `json:"history_bytes"`
-	MaxHistoryBytes int `json:"max_history_bytes"`
-	Compactions     int `json:"compactions"`
+	HistoryBytes     int    `json:"history_bytes"`
+	MaxHistoryBytes  int    `json:"max_history_bytes"`
+	EstimatedTokens  uint64 `json:"estimated_tokens,omitempty"`
+	MaxContextTokens uint64 `json:"max_context_tokens,omitempty"`
+	Compactions      int    `json:"compactions"`
 }
 
 // ReceiptLatency is where the turn spent its wall clock.
@@ -237,6 +240,12 @@ type ReceiptSkill struct {
 	Locked  bool   `json:"locked"`
 }
 
+type ReceiptProviderRetry struct {
+	Count        int       `json:"count"`
+	LastCode     ErrorCode `json:"last_code"`
+	LastCategory string    `json:"last_category"`
+}
+
 // ExecutionReceiptData is the per-turn audit record: what the turn was asked to
 // do, what it touched, what verified it, and what it cost.
 // It is emitted for completed and failed turns alike, immediately before the
@@ -245,12 +254,17 @@ type ReceiptSkill struct {
 // Every field reflects observed execution. Sections the runtime cannot yet
 // determine are listed in NotCollected rather than left silently empty.
 type ExecutionReceiptData struct {
-	Goal      string `json:"goal"`
-	Plan      string `json:"plan,omitempty"`
-	Mode      string `json:"mode,omitempty"`
-	Posture   string `json:"posture,omitempty"`
-	Sandbox   string `json:"sandbox,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
+	Goal               string                 `json:"goal"`
+	Intent             TurnIntent             `json:"intent,omitempty"`
+	Outcome            TurnOutcome            `json:"outcome,omitempty"`
+	Plan               string                 `json:"plan,omitempty"`
+	Mode               string                 `json:"mode,omitempty"`
+	Posture            string                 `json:"posture,omitempty"`
+	Sandbox            string                 `json:"sandbox,omitempty"`
+	Workspace          string                 `json:"workspace,omitempty"`
+	WorkspaceIsolation string                 `json:"workspace_isolation,omitempty"`
+	Completion         *CompletionDeclaration `json:"completion,omitempty"`
+	ProviderRetry      *ReceiptProviderRetry  `json:"provider_retry,omitempty"`
 
 	// Routes are the routes the turn actually sampled on, one entry per purpose.
 	// It is what the turn did, not the table it could have used: a slot the turn
@@ -315,7 +329,10 @@ type ExecutionReceiptData struct {
 	// UnresolvedIssues records why a turn did not end clean, such as the failure
 	// message or a tool error the model never recovered from.
 	UnresolvedIssues []string `json:"unresolved_issues,omitempty"`
-	NotCollected     []string `json:"not_collected,omitempty"`
+	// SecondaryIssues preserves cleanup/finalization failures separately from
+	// the primary terminal error.
+	SecondaryIssues []TerminalIssue `json:"secondary_issues,omitempty"`
+	NotCollected    []string        `json:"not_collected,omitempty"`
 }
 
 type ReceiptCatalog struct {
@@ -332,12 +349,33 @@ func (*ExecutionReceiptData) eventKind() EventKind { return EventExecutionReceip
 
 func (d *ExecutionReceiptData) validate() error {
 	d.Verification.normalize()
+	if !NormalizeTurnIntent(d.Intent).Valid() {
+		return errors.New("receipt turn intent is invalid")
+	}
+	switch d.Outcome {
+	case "", TurnOutcomeAnswered, TurnOutcomePlanned, TurnOutcomeChanged, TurnOutcomeOperated:
+	default:
+		return errors.New("receipt turn outcome is invalid")
+	}
 	if err := validateEditorContextReceipts(d.EditorContext); err != nil {
 		return err
 	}
 	if d.Catalog != nil &&
 		(d.Catalog.CatalogID == "" || d.Catalog.Generation == 0 || d.Catalog.Digest == "") {
 		return errors.New("receipt catalog requires catalog_id, generation, and digest")
+	}
+	if d.WorkspaceIsolation != "" &&
+		d.WorkspaceIsolation != "shared" &&
+		d.WorkspaceIsolation != "worktree" {
+		return errors.New("receipt workspace isolation is invalid")
+	}
+	if d.Completion != nil {
+		if err := d.Completion.validate(); err != nil {
+			return err
+		}
+		if !d.Completion.Accepted {
+			return errors.New("receipt completion declaration must be accepted")
+		}
 	}
 	for _, change := range d.Changes {
 		if change.Path == "" {

@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/host/tui/host.go
   - internal/host/tui/app.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # TUI State Projection
@@ -28,6 +28,8 @@ last_verified: 2026-08-06
 
 理解 Runtime Event 如何成为 Bubble Tea Interactive Model，而不把 Business Logic 移入
 Terminal UI。
+
+## Projection Pipeline
 
 ```mermaid
 flowchart LR
@@ -117,12 +119,12 @@ Final Receipt。
 
 ## 延伸阅读
 
-- [VS Code Context Bridge](./06-vscode.md)
+- [VS Code Native Agent Chat](./06-vscode.md)
 
 ## 事实来源与验证
 
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `host-tui` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

@@ -39,6 +39,9 @@ const (
 	EventThreadCompacted    EventKind = "thread.compacted"
 	EventThreadForked       EventKind = "thread.forked"
 	EventTurnReverted       EventKind = "turn.reverted"
+	EventCheckpointCreated  EventKind = "checkpoint.created"
+	EventCheckpointRestored EventKind = "checkpoint.restored"
+	EventCheckpointForked   EventKind = "checkpoint.forked"
 	EventTurnCompaction     EventKind = "turn.compaction"
 	EventTurnVerification   EventKind = "turn.verification"
 	EventAgentSpawned       EventKind = "agent.spawned"
@@ -56,12 +59,14 @@ type EventData interface {
 }
 
 type TurnStartedData struct {
-	Provider  string `json:"provider"`
-	Model     string `json:"model"`
-	Mode      string `json:"mode,omitempty"`
-	Posture   string `json:"posture,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
-	Sandbox   string `json:"sandbox,omitempty"`
+	Provider           string     `json:"provider"`
+	Model              string     `json:"model"`
+	Intent             TurnIntent `json:"intent,omitempty"`
+	Mode               string     `json:"mode,omitempty"`
+	Posture            string     `json:"posture,omitempty"`
+	Workspace          string     `json:"workspace,omitempty"`
+	WorkspaceIsolation string     `json:"workspace_isolation,omitempty"`
+	Sandbox            string     `json:"sandbox,omitempty"`
 	// Prompt is model-visible durable reconstruction input. Optional for older events.
 	Prompt string `json:"prompt,omitempty"`
 	// DisplayPrompt omits expanded editor context and is safe for chat projection.
@@ -75,6 +80,14 @@ func (*TurnStartedData) eventKind() EventKind { return EventTurnStarted }
 func (d *TurnStartedData) validate() error {
 	if d.Provider == "" || d.Model == "" {
 		return errors.New("turn started provider and model are required")
+	}
+	if !NormalizeTurnIntent(d.Intent).Valid() {
+		return errors.New("turn started intent is invalid")
+	}
+	if d.WorkspaceIsolation != "" &&
+		d.WorkspaceIsolation != "shared" &&
+		d.WorkspaceIsolation != "worktree" {
+		return errors.New("turn started workspace isolation is invalid")
 	}
 	return validateEditorContextReceipts(d.EditorContext)
 }
@@ -222,14 +235,48 @@ func (d *ToolStartData) validate() error {
 	if d.Tool == "" || d.CallID == "" {
 		return errors.New("tool start tool and call_id are required")
 	}
+	if len(d.Arguments) != 0 && !json.Valid(d.Arguments) {
+		return errors.New("tool start arguments must be valid JSON")
+	}
 	return nil
 }
 
 type ToolResultData struct {
-	Tool    string `json:"tool"`
-	CallID  string `json:"call_id"`
-	Output  string `json:"output"`
-	IsError bool   `json:"is_error"`
+	Tool                string                 `json:"tool"`
+	CallID              string                 `json:"call_id"`
+	Output              string                 `json:"output"`
+	IsError             bool                   `json:"is_error"`
+	Changes             []FileChange           `json:"changes,omitempty"`
+	Recovery            *ToolRecovery          `json:"recovery,omitempty"`
+	Completion          *CompletionDeclaration `json:"completion,omitempty"`
+	WorkspaceWriteScope string                 `json:"workspace_write_scope,omitempty"`
+	ObservedChanges     *int                   `json:"observed_changes,omitempty"`
+}
+
+type CompletionDeclaration struct {
+	Status              string   `json:"status"`
+	Summary             string   `json:"summary"`
+	ChangedPaths        []string `json:"changed_paths"`
+	VerificationCallIDs []string `json:"verification_call_ids"`
+	PendingActions      []string `json:"pending_actions"`
+	MutationRevision    uint64   `json:"mutation_revision"`
+	CallID              string   `json:"call_id"`
+	Accepted            bool     `json:"accepted"`
+	Rejection           string   `json:"rejection,omitempty"`
+}
+
+type ToolRecovery struct {
+	ErrorCategory  string `json:"error_category"`
+	RequiredAction string `json:"required_action"`
+	Path           string `json:"path,omitempty"`
+	RetryOriginal  bool   `json:"retry_original"`
+}
+
+type FileChange struct {
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`
+	Added   int    `json:"added"`
+	Removed int    `json:"removed"`
 }
 
 type ToolCatalogChange struct {
@@ -359,6 +406,66 @@ func (d *ToolResultData) validate() error {
 	if d.Tool == "" || d.CallID == "" {
 		return errors.New("tool result tool and call_id are required")
 	}
+	for _, change := range d.Changes {
+		if strings.TrimSpace(change.Path) == "" ||
+			(change.Kind != "created" &&
+				change.Kind != "modified" &&
+				change.Kind != "deleted") ||
+			change.Added < 0 ||
+			change.Removed < 0 {
+			return errors.New("tool result contains an invalid file change")
+		}
+	}
+	if d.Recovery != nil &&
+		(d.Recovery.ErrorCategory == "" || d.Recovery.RequiredAction == "") {
+		return errors.New("tool result recovery requires category and action")
+	}
+	if d.Completion != nil {
+		if err := d.Completion.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *CompletionDeclaration) validate() error {
+	if strings.TrimSpace(d.Summary) == "" {
+		return errors.New("completion declaration is incomplete")
+	}
+	switch d.Status {
+	case "complete":
+		if len(d.PendingActions) != 0 {
+			return errors.New("complete declaration has pending actions")
+		}
+	case "incomplete":
+		if len(d.PendingActions) == 0 || d.Accepted {
+			return errors.New("incomplete declaration is inconsistent")
+		}
+		for _, action := range d.PendingActions {
+			if strings.TrimSpace(action) == "" {
+				return errors.New("completion pending action is required")
+			}
+		}
+	default:
+		return errors.New("completion declaration has invalid status")
+	}
+	for _, path := range d.ChangedPaths {
+		if strings.TrimSpace(path) == "" {
+			return errors.New("completion declaration changed path is required")
+		}
+	}
+	if d.Accepted {
+		if d.Status != "complete" {
+			return errors.New("accepted completion declaration is not complete")
+		}
+		readOnly := d.MutationRevision == 0 && len(d.ChangedPaths) == 0
+		mutated := d.MutationRevision != 0 && len(d.ChangedPaths) != 0
+		if (!readOnly && !mutated) || d.CallID == "" || d.Rejection != "" {
+			return errors.New("accepted completion declaration is inconsistent")
+		}
+	} else if d.Rejection == "" {
+		return errors.New("rejected completion declaration requires a reason")
+	}
 	return nil
 }
 
@@ -414,11 +521,13 @@ type Diagnostic struct {
 }
 
 type DiagnosticReceipt struct {
-	Path        string       `json:"path"`
-	Status      string       `json:"status"`
-	Runner      string       `json:"runner,omitempty"`
-	Diagnostics []Diagnostic `json:"diagnostics"`
-	Message     string       `json:"message,omitempty"`
+	Path          string       `json:"path"`
+	Status        string       `json:"status"`
+	Runner        string       `json:"runner,omitempty"`
+	Diagnostics   []Diagnostic `json:"diagnostics"`
+	Message       string       `json:"message,omitempty"`
+	ErrorCategory string       `json:"error_category,omitempty"`
+	ExitCode      int          `json:"exit_code,omitempty"`
 }
 
 type DiagnosticsData struct {
@@ -442,16 +551,25 @@ func (d *DiagnosticsData) validate() error {
 }
 
 type TurnCompletedData struct {
-	Text string `json:"text"`
+	Text    string      `json:"text"`
+	Outcome TurnOutcome `json:"outcome,omitempty"`
 }
 
 func (*TurnCompletedData) eventKind() EventKind { return EventTurnCompleted }
 
-func (*TurnCompletedData) validate() error { return nil }
+func (d *TurnCompletedData) validate() error {
+	switch d.Outcome {
+	case "", TurnOutcomeAnswered, TurnOutcomePlanned, TurnOutcomeChanged, TurnOutcomeOperated:
+		return nil
+	default:
+		return errors.New("turn completed outcome is invalid")
+	}
+}
 
 type TurnFailedData struct {
-	Code    ErrorCode `json:"code"`
-	Message string    `json:"message"`
+	Code            ErrorCode       `json:"code"`
+	Message         string          `json:"message"`
+	SecondaryIssues []TerminalIssue `json:"secondary_issues,omitempty"`
 }
 
 func (*TurnFailedData) eventKind() EventKind { return EventTurnFailed }
@@ -460,7 +578,20 @@ func (d *TurnFailedData) validate() error {
 	if d.Code == "" || d.Message == "" {
 		return errors.New("turn failure code and message are required")
 	}
+	for _, issue := range d.SecondaryIssues {
+		if issue.Phase == "" || issue.Code == "" || issue.Message == "" {
+			return errors.New("turn failure secondary issue requires phase, code, and message")
+		}
+	}
 	return nil
+}
+
+// TerminalIssue records a failure in cleanup or finalization after the primary
+// turn result was already known.
+type TerminalIssue struct {
+	Phase   string    `json:"phase"`
+	Code    ErrorCode `json:"code"`
+	Message string    `json:"message"`
 }
 
 type TurnCanceledData struct {
@@ -654,6 +785,24 @@ type CompactedMessage struct {
 	Turn    uint64          `json:"turn,omitempty"`
 }
 
+func validateCompactedHistory(history []CompactedMessage) error {
+	if len(history) == 0 || len(history) > 4096 {
+		return errors.New("replacement history size is invalid")
+	}
+	for _, message := range history {
+		switch message.Role {
+		case "user", "assistant", "tool", "system":
+		default:
+			return errors.New("replacement history role is invalid")
+		}
+		if len(message.Content) == 0 || len(message.Content) > 4<<20 ||
+			!json.Valid(message.Content) {
+			return errors.New("replacement history content is invalid")
+		}
+	}
+	return nil
+}
+
 func (*ThreadCompactedData) eventKind() EventKind { return EventThreadCompacted }
 
 func (d *ThreadCompactedData) validate() error {
@@ -713,16 +862,17 @@ type VerificationCheck struct {
 // with the verdict, so a failed status followed by action=repair reads as "the
 // model was asked to fix it" rather than as a failed turn.
 type TurnVerificationData struct {
-	Scope       string              `json:"scope"`
-	Mode        string              `json:"mode"`
-	Status      string              `json:"status"`
-	Action      string              `json:"action"`
-	RepairSteps int                 `json:"repair_steps"`
-	Errors      int                 `json:"errors,omitempty"`
-	Warnings    int                 `json:"warnings,omitempty"`
-	Paths       []string            `json:"paths,omitempty"`
-	Checks      []VerificationCheck `json:"checks,omitempty"`
-	Message     string              `json:"message,omitempty"`
+	Scope          string              `json:"scope"`
+	Mode           string              `json:"mode"`
+	Status         string              `json:"status"`
+	Action         string              `json:"action"`
+	RepairSteps    int                 `json:"repair_steps"`
+	Errors         int                 `json:"errors,omitempty"`
+	Warnings       int                 `json:"warnings,omitempty"`
+	Paths          []string            `json:"paths,omitempty"`
+	UncoveredPaths []string            `json:"uncovered_paths,omitempty"`
+	Checks         []VerificationCheck `json:"checks,omitempty"`
+	Message        string              `json:"message,omitempty"`
 }
 
 func (*TurnVerificationData) eventKind() EventKind { return EventTurnVerification }
@@ -815,9 +965,14 @@ func (d *AgentMessageData) validate() error {
 
 // PlanDeltaData streams a <proposed_plan> body for TUI Plan cards (W5.1).
 type PlanDeltaData struct {
-	Text string `json:"text,omitempty"`
-	Body string `json:"body,omitempty"`
-	Done bool   `json:"done,omitempty"`
+	Text            string `json:"text,omitempty"`
+	Body            string `json:"body,omitempty"`
+	Done            bool   `json:"done,omitempty"`
+	ArtifactID      string `json:"artifact_id,omitempty"`
+	ProfileRevision uint64 `json:"profile_revision,omitempty"`
+	Status          string `json:"status,omitempty"`
+	CanImplement    bool   `json:"can_implement,omitempty"`
+	CanAutopilot    bool   `json:"can_autopilot,omitempty"`
 }
 
 func (*PlanDeltaData) eventKind() EventKind { return EventPlanDelta }
@@ -825,6 +980,17 @@ func (*PlanDeltaData) eventKind() EventKind { return EventPlanDelta }
 func (d *PlanDeltaData) validate() error {
 	if d.Text == "" && d.Body == "" && !d.Done {
 		return errors.New("plan delta text, body, or done is required")
+	}
+	if len(d.Body) > 64<<10 || strings.ContainsRune(d.Body, '\x00') {
+		return errors.New("plan delta body is invalid")
+	}
+	if d.ArtifactID != "" {
+		if !d.Done || !validProfileIdentifier(d.ArtifactID) ||
+			d.ProfileRevision == 0 ||
+			d.Status != string(PlanArtifactReady) ||
+			(!d.CanImplement && !d.CanAutopilot) {
+			return errors.New("plan delta Artifact projection is invalid")
+		}
 	}
 	return nil
 }
@@ -881,6 +1047,59 @@ type ThreadForkedData struct {
 	NewThreadID        ThreadID           `json:"new_thread_id"`
 	SourceCursor       Cursor             `json:"source_cursor"`
 	ReplacementHistory []CompactedMessage `json:"replacement_history,omitempty"`
+}
+
+type CheckpointRestoredData struct {
+	CheckpointID        string             `json:"checkpoint_id"`
+	SourceThreadID      ThreadID           `json:"source_thread_id"`
+	SourceTurnID        TurnID             `json:"source_turn_id"`
+	SourceCursor        Cursor             `json:"source_cursor"`
+	ReplacementHistory  []CompactedMessage `json:"replacement_history"`
+	SideEffectsReplayed bool               `json:"side_effects_replayed"`
+}
+
+type CheckpointCreatedData struct {
+	Checkpoint SessionCheckpoint `json:"checkpoint"`
+}
+
+func (*CheckpointCreatedData) eventKind() EventKind { return EventCheckpointCreated }
+
+func (d *CheckpointCreatedData) validate() error {
+	return d.Checkpoint.Validate()
+}
+
+func (*CheckpointRestoredData) eventKind() EventKind { return EventCheckpointRestored }
+
+func (d *CheckpointRestoredData) validate() error {
+	if !validProfileIdentifier(d.CheckpointID) ||
+		!validProfileIdentifier(string(d.SourceThreadID)) ||
+		!validProfileIdentifier(string(d.SourceTurnID)) ||
+		len(d.ReplacementHistory) == 0 ||
+		d.SideEffectsReplayed {
+		return errors.New("checkpoint restore data is invalid")
+	}
+	return validateCompactedHistory(d.ReplacementHistory)
+}
+
+type CheckpointForkedData struct {
+	CheckpointID       string             `json:"checkpoint_id"`
+	NewThreadID        ThreadID           `json:"new_thread_id"`
+	Title              string             `json:"title"`
+	SourceCursor       Cursor             `json:"source_cursor"`
+	ReplacementHistory []CompactedMessage `json:"replacement_history"`
+}
+
+func (*CheckpointForkedData) eventKind() EventKind { return EventCheckpointForked }
+
+func (d *CheckpointForkedData) validate() error {
+	if !validProfileIdentifier(d.CheckpointID) ||
+		!validProfileIdentifier(string(d.NewThreadID)) ||
+		strings.TrimSpace(d.Title) == "" || len(d.Title) > 256 ||
+		strings.ContainsAny(d.Title, "\x00\r\n") ||
+		len(d.ReplacementHistory) == 0 {
+		return errors.New("checkpoint fork data is invalid")
+	}
+	return validateCompactedHistory(d.ReplacementHistory)
 }
 
 func (*ThreadForkedData) eventKind() EventKind { return EventThreadForked }
@@ -956,6 +1175,30 @@ func NewEvent(meta EventMeta, data EventData) (Event, error) {
 		ItemID:      meta.ItemID,
 		Kind:        data.eventKind(),
 		CreatedAt:   time.Now().UTC(),
+		Data:        data,
+	}
+	return event, event.Validate()
+}
+
+func NewEventWithIdentity(
+	meta EventMeta,
+	id EventID,
+	createdAt time.Time,
+	data EventData,
+) (Event, error) {
+	if data == nil {
+		return Event{}, errors.New("event data is required")
+	}
+	event := Event{
+		Version:     Version,
+		ID:          id,
+		Sequence:    meta.Sequence,
+		OperationID: meta.OperationID,
+		ThreadID:    meta.ThreadID,
+		TurnID:      meta.TurnID,
+		ItemID:      meta.ItemID,
+		Kind:        data.eventKind(),
+		CreatedAt:   createdAt.UTC(),
 		Data:        data,
 	}
 	return event, event.Validate()

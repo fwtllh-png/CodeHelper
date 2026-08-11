@@ -38,6 +38,7 @@ export interface RuntimeLaunchOptions {
   readonly workspaceRoot: string;
   readonly dataDirectory: string;
   readonly configPath?: string;
+  readonly environment?: Readonly<Record<string, string>>;
   readonly posture: RuntimePosture;
   readonly maxSteps: number;
   readonly workspaceIdentity: WorkspaceIdentity;
@@ -205,7 +206,7 @@ export async function launchRuntime(
   const args = runtimeArguments(options);
   const child = spawn(options.binaryPath, args, {
     cwd: options.workspaceRoot,
-    env: process.env,
+    env: { ...process.env, ...options.environment },
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
   });
@@ -225,12 +226,8 @@ export function runtimeArguments(options: RuntimeLaunchOptions): readonly string
     "--workspace", options.workspaceRoot,
     "--workspace-uri", options.workspaceIdentity.editor_uri,
     "--workspace-root-id", options.workspaceIdentity.root_id,
-    ...(options.workspaceIdentity.remote_name === undefined
-      ? []
-      : ["--remote-name", options.workspaceIdentity.remote_name]),
     "--posture", options.posture,
     "--max-steps", String(options.maxSteps),
-    "--edit-plan-approvals",
     "--enable-tools",
   ];
 }

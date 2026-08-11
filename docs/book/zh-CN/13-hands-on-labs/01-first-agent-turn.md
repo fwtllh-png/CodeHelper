@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - docs/zh-CN/getting-started.md
   - testdata/providers/openai
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 构建并追踪第一个 Agent Turn
@@ -220,5 +220,5 @@ make deepseek-init
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `lab-first-turn` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

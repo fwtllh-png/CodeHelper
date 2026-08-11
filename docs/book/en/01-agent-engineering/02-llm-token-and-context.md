@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/provider/types.go
   - internal/runtime/agent/promptcontext/context.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # LLMs, Tokens, Context Windows, and Sampling
@@ -211,5 +211,5 @@ turns model sampling into a bounded action loop.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `agent-llm-token-context` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -99,11 +99,31 @@ func fieldRouteProvider(purpose string) string { return "route." + purpose + ".p
 
 func fieldRouteModel(purpose string) string { return "route." + purpose + ".model" }
 
+func fieldDiagnosticCommandName(extension string) string {
+	return "diagnostics.commands." + extension + ".name"
+}
+
+func fieldDiagnosticCommandArgs(extension string) string {
+	return "diagnostics.commands." + extension + ".args"
+}
+
 type Source string
 
 type Snapshot struct {
 	Config     Config            `json:"config"`
 	Provenance map[string]Source `json:"provenance"`
+}
+
+// MaxOutputTokensSource reports whether the output ceiling is still the
+// repository default or an operator-supplied cost boundary.
+func (s Snapshot) MaxOutputTokensSource() Source {
+	if s.Provenance == nil {
+		return SourceDefault
+	}
+	if source := s.Provenance[fieldMaxOutputTokens]; source != "" {
+		return source
+	}
+	return SourceDefault
 }
 
 func defaultProvenance() map[string]Source {

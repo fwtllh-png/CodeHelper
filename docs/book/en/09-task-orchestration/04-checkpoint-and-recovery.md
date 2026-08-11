@@ -19,7 +19,7 @@ source_of_truth:
   - internal/orchestration/workflow/checkpoint/checkpoint.go
   - internal/orchestration/workflow/runtime.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Checkpoints and Recovery
@@ -131,4 +131,4 @@ that resume executes only the remaining wave.
 | --- | --- |
 | Catalog ID | `task-checkpoint-recovery` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-10 |

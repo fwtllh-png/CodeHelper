@@ -16,6 +16,13 @@ type EventStore interface {
 	Close(context.Context) error
 }
 
+type EventIdentityStore interface {
+	EventByID(
+		context.Context,
+		protocol.EventID,
+	) (protocol.Event, bool, error)
+}
+
 type ContentStore interface {
 	Put(context.Context, string, []byte) error
 	Get(context.Context, string) ([]byte, error)
@@ -93,6 +100,26 @@ func (s *MemoryEventStore) Replay(ctx context.Context, cursor protocol.Cursor) (
 		}
 	}
 	return result, nil
+}
+
+func (s *MemoryEventStore) EventByID(
+	ctx context.Context,
+	eventID protocol.EventID,
+) (protocol.Event, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return protocol.Event{}, false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return protocol.Event{}, false, ErrClosed
+	}
+	for _, event := range s.events {
+		if event.ID == eventID {
+			return event, true, nil
+		}
+	}
+	return protocol.Event{}, false, nil
 }
 
 func (s *MemoryEventStore) LastSequence(ctx context.Context) (protocol.Cursor, error) {

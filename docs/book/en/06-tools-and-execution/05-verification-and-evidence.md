@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/engine/verify.go
   - internal/runtime/agent/evidence/evidence.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Verification Gates and Evidence
@@ -156,5 +156,5 @@ Receipts, added model feedback, step accounting, and final Workspace state.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `tool-verification` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

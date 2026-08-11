@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,6 +18,11 @@ import (
 )
 
 const ErrUnavailableCode = "sandbox_unavailable"
+
+// MaxExactWorkspaceWritePaths bounds one explicitly approved sandbox policy.
+// Argument expansion, tool schema validation, and backend policy generation
+// share this value so an approved call cannot fail at a later boundary.
+const MaxExactWorkspaceWritePaths = 512
 
 type Strength string
 
@@ -37,13 +43,19 @@ type Capability struct {
 }
 
 type Command struct {
-	Path             string
-	Args             []string
-	Dir              string
-	Env              []string
-	DirectoryFD      int
-	PreparedPolicyID string
-	PreparedStrength Strength
+	Path                  string
+	Args                  []string
+	Dir                   string
+	Env                   []string
+	DirectoryFD           int
+	WorkspaceReadOnly     bool
+	WorkspaceWritePaths   []string
+	DenyNetwork           bool
+	PreparedPolicyID      string
+	PreparedStrength      Strength
+	PreparedReadOnly      bool
+	PreparedWritePaths    []string
+	PreparedNetworkDenied bool
 }
 
 type Backend interface {
@@ -225,7 +237,19 @@ func (b *seatbeltBackend) Prepare(_ context.Context, command Command) (Command, 
 	if err != nil {
 		return Command{}, err
 	}
-	profile := seatbeltProfile(b.policy, executable)
+	writePaths, err := validateExactWorkspaceWritePaths(
+		b.workspace, command.WorkspaceReadOnly, command.WorkspaceWritePaths,
+	)
+	if err != nil {
+		return Command{}, err
+	}
+	profile := seatbeltProfileForCommand(
+		b.policy,
+		executable,
+		command.WorkspaceReadOnly,
+		writePaths,
+		command.DenyNetwork,
+	)
 	sandboxExec, err := resolveExecutableLiteral("/usr/bin/sandbox-exec", command.Env)
 	if err != nil {
 		return Command{}, err
@@ -235,7 +259,13 @@ func (b *seatbeltBackend) Prepare(_ context.Context, command Command) (Command, 
 	return Command{
 		Path: sandboxExec, Args: args, Dir: command.Dir, Env: command.Env,
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
-		PreparedStrength: b.capability.Strength,
+		PreparedStrength:      b.capability.Strength,
+		WorkspaceReadOnly:     command.WorkspaceReadOnly,
+		WorkspaceWritePaths:   append([]string(nil), writePaths...),
+		DenyNetwork:           command.DenyNetwork,
+		PreparedReadOnly:      command.WorkspaceReadOnly,
+		PreparedWritePaths:    append([]string(nil), writePaths...),
+		PreparedNetworkDenied: command.DenyNetwork,
 	}, nil
 }
 
@@ -278,11 +308,18 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 	if err != nil {
 		return Command{}, err
 	}
+	writePaths, err := validateExactWorkspaceWritePaths(
+		b.workspace, command.WorkspaceReadOnly, command.WorkspaceWritePaths,
+	)
+	if err != nil {
+		return Command{}, err
+	}
 	var helper, requestPath string
 	if b.useLandlock {
 		helper, requestPath, err = prepareLandlockInvocation(
 			b.policy, b.helperPath, b.requestRoot,
-			executable, command.Args[1:], command.Env,
+			executable, command.Args[1:], command.Env, command.WorkspaceReadOnly,
+			writePaths,
 		)
 		if err != nil {
 			return Command{}, err
@@ -291,7 +328,7 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 	args := []string{
 		bwrap, "--die-with-parent", "--new-session", "--unshare-all",
 	}
-	if b.policy.AllowNetwork {
+	if b.policy.AllowNetwork && !command.DenyNetwork {
 		args = append(args, "--share-net")
 	}
 	args = append(args, "--tmpfs", "/", "--proc", "/proc", "--dev", "/dev")
@@ -303,7 +340,16 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 	for _, root := range b.probeReads {
 		args = appendMount(args, created, root, root, true)
 	}
-	args = appendMount(args, created, b.policy.WorkspaceRoot, b.policy.WorkspaceRoot, false)
+	args = appendMount(
+		args,
+		created,
+		b.policy.WorkspaceRoot,
+		b.policy.WorkspaceRoot,
+		command.WorkspaceReadOnly,
+	)
+	for _, path := range writePaths {
+		args = appendMount(args, created, path, path, false)
+	}
 	args = appendMount(args, created, b.policy.PrivateTemp, b.policy.PrivateTemp, false)
 	executableMountedLiteral := !coveredByRoots(
 		executable, append(b.policy.RuntimeReadRoots, b.policy.HostReadRoots...),
@@ -332,7 +378,13 @@ func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command
 	return Command{
 		Path: bwrap, Args: args, Dir: command.Dir, Env: command.Env,
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
-		PreparedStrength: b.capability.Strength,
+		PreparedStrength:      b.capability.Strength,
+		WorkspaceReadOnly:     command.WorkspaceReadOnly,
+		WorkspaceWritePaths:   append([]string(nil), writePaths...),
+		DenyNetwork:           command.DenyNetwork,
+		PreparedReadOnly:      command.WorkspaceReadOnly,
+		PreparedWritePaths:    append([]string(nil), writePaths...),
+		PreparedNetworkDenied: command.DenyNetwork,
 	}, nil
 }
 
@@ -353,12 +405,23 @@ func CloseBackend(backend Backend) error {
 }
 
 func seatbeltProfile(policy Policy, executable string) string {
+	return seatbeltProfileForCommand(policy, executable, false, nil, false)
+}
+
+func seatbeltProfileForCommand(
+	policy Policy,
+	executable string,
+	workspaceReadOnly bool,
+	workspaceWritePaths []string,
+	denyNetwork bool,
+) string {
 	var profile strings.Builder
 	profile.WriteString("(version 1)\n(deny default)\n")
 	profile.WriteString("(import \"system.sb\")\n")
 	profile.WriteString("(allow process-exec process-fork process-info* signal)\n")
 	profile.WriteString("(allow sysctl-read)\n")
 	readRoots := append(append([]string{}, policy.RuntimeReadRoots...), policy.HostReadRoots...)
+	readRoots = append(readRoots, policy.HostReadFiles...)
 	readRoots = append(readRoots, policy.WorkspaceRoot, policy.PrivateTemp, executable)
 	for _, root := range readRoots {
 		info, err := os.Stat(root)
@@ -368,13 +431,61 @@ func seatbeltProfile(policy Policy, executable string) string {
 			fmt.Fprintf(&profile, "(allow file-read* (literal %s))\n", seatbeltQuote(root))
 		}
 	}
-	for _, root := range []string{policy.WorkspaceRoot, policy.PrivateTemp} {
-		fmt.Fprintf(&profile, "(allow file-write* (subpath %s))\n", seatbeltQuote(root))
+	if !workspaceReadOnly {
+		fmt.Fprintf(
+			&profile,
+			"(allow file-write* (subpath %s))\n",
+			seatbeltQuote(policy.WorkspaceRoot),
+		)
+	}
+	for _, path := range workspaceWritePaths {
+		fmt.Fprintf(
+			&profile,
+			"(allow file-write* (literal %s))\n",
+			seatbeltQuote(path),
+		)
+	}
+	fmt.Fprintf(
+		&profile,
+		"(allow file-write* (subpath %s))\n",
+		seatbeltQuote(policy.PrivateTemp),
+	)
+	if filepath.Clean(executable) == "/bin/sh" {
+		// Darwin's /bin/sh ignores TMPDIR for here-document backing files. The
+		// system bash opens /var/tmp, which lsof reports as /private/var/tmp.
+		// Retain /private/tmp for compatible sh variants. Keep every grant
+		// filename-scoped.
+		profile.WriteString("(allow file-write* (literal \"/var/tmp\"))\n")
+		profile.WriteString(
+			"(allow file-write* (regex #\"^/var/tmp/sh-thd-[0-9]+$\"))\n",
+		)
+		profile.WriteString(
+			"(allow file-read* (regex #\"^/var/tmp/sh-thd-[0-9]+$\"))\n",
+		)
+		profile.WriteString("(allow file-write* (literal \"/private/var/tmp\"))\n")
+		profile.WriteString(
+			"(allow file-write* (regex #\"^/private/var/tmp/sh-thd-[0-9]+$\"))\n",
+		)
+		profile.WriteString(
+			"(allow file-read-metadata (subpath \"/private/var/tmp\"))\n",
+		)
+		profile.WriteString(
+			"(allow file-read* (regex #\"^/private/var/tmp/sh-thd-[0-9]+$\"))\n",
+		)
+		profile.WriteString("(allow file-write* (literal \"/private/tmp\"))\n")
+		profile.WriteString(
+			"(allow file-write* (regex #\"^/private/tmp/sh-thd-[0-9]+$\"))\n",
+		)
+		profile.WriteString(
+			"(allow file-read* (regex #\"^/private/tmp/sh-thd-[0-9]+$\"))\n",
+		)
 	}
 	// macOS tools often lstat ancestors (/private, /private/var, …) while
-	// resolving realpaths under PrivateTemp. subpath grants do not cover those
-	// parents, which surfaces as "lstat /private: operation not permitted".
-	writeSeatbeltAncestorMetadata(&profile, policy.WorkspaceRoot, policy.PrivateTemp)
+	// resolving realpaths. subpath grants do not cover those parents, which
+	// surfaces as "lstat /private: operation not permitted". Metadata-only
+	// grants preserve read isolation while allowing a permitted root to be
+	// resolved.
+	writeSeatbeltAncestorMetadata(&profile, readRoots...)
 	if home, err := os.UserHomeDir(); err == nil {
 		for _, sensitive := range []string{
 			filepath.Join(home, ".ssh"), filepath.Join(home, ".gnupg"),
@@ -383,7 +494,7 @@ func seatbeltProfile(policy Policy, executable string) string {
 			fmt.Fprintf(&profile, "(deny file-read* file-write* (subpath %s))\n", seatbeltQuote(sensitive))
 		}
 	}
-	if policy.AllowNetwork {
+	if policy.AllowNetwork && !denyNetwork {
 		profile.WriteString("(allow network-outbound)\n")
 		profile.WriteString("(allow network-inbound)\n")
 		profile.WriteString("(allow system-socket)\n")
@@ -391,6 +502,47 @@ func seatbeltProfile(policy Policy, executable string) string {
 		profile.WriteString("(deny network*)\n")
 	}
 	return profile.String()
+}
+
+func validateExactWorkspaceWritePaths(
+	workspace *Workspace,
+	workspaceReadOnly bool,
+	paths []string,
+) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	if !workspaceReadOnly {
+		return nil, errors.New("exact write paths require a read-only workspace base")
+	}
+	if len(paths) > MaxExactWorkspaceWritePaths {
+		return nil, fmt.Errorf(
+			"exact write paths exceed the %d-file limit",
+			MaxExactWorkspaceWritePaths,
+		)
+	}
+	canonical := make([]string, 0, len(paths))
+	for _, path := range paths {
+		resolved, err := workspace.Resolve(path, MustExist)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Lstat(resolved)
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("exact write path %q is not a regular file", path)
+		}
+		canonical = append(canonical, resolved)
+	}
+	sort.Strings(canonical)
+	for index := 1; index < len(canonical); index++ {
+		if canonical[index] == canonical[index-1] {
+			return nil, fmt.Errorf("duplicate exact write path %q", canonical[index])
+		}
+	}
+	return canonical, nil
 }
 
 func writeSeatbeltAncestorMetadata(profile *strings.Builder, roots ...string) {
@@ -697,7 +849,10 @@ func runAttackProbe(helperPath string) Capability {
 		}
 	}
 	script := fmt.Sprintf(
-		`set -eu; test "$(cat input)" = workspace; printf ok > output; sh -c 'test "$(cat input)" = workspace'; ! cat %q >/dev/null 2>&1; ! printf bad > %q; %s`,
+		`set -eu; test "$(cat input)" = workspace; test "$(cat <<'EOF'
+heredoc
+EOF
+)" = heredoc; printf ok > output; sh -c 'test "$(cat input)" = workspace'; ! cat %q >/dev/null 2>&1; ! printf bad > %q; ! printf bad > /private/tmp/codehelper-sandbox-probe; ! printf bad > /var/tmp/codehelper-sandbox-probe; ! printf bad > /private/var/tmp/codehelper-sandbox-probe; %s`,
 		secret, outsideWrite, networkTest,
 	)
 	if runtime.GOOS == "linux" {

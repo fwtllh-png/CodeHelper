@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -475,5 +476,42 @@ func TestRegistryMaterializeRejectsLoadedSchemaDrift(t *testing.T) {
 	entry, _ := snapshot.Lookup("schema_drift")
 	if _, err := registry.Materialize("schema_drift", entry.Revision); !errors.Is(err, ErrToolLoadFailed) {
 		t.Fatalf("materialize schema drift error = %v, want load failed", err)
+	}
+}
+
+func TestCatalogToolIDIsStableAndBindingChecked(t *testing.T) {
+	registry := NewRegistry(nil, nil)
+	descriptor := catalogTestDescriptor("stable_id")
+	if err := registry.Register(&catalogExecutor{descriptor: descriptor}, nil); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := snapshot.Lookup("stable_id")
+	if !ok {
+		t.Fatal("stable_id is missing")
+	}
+	if !strings.HasPrefix(entry.Source, "legacy:stable_id:") {
+		t.Fatalf("source = %q", entry.Source)
+	}
+	binding, ok := snapshot.Binding("stable_id")
+	if !ok {
+		t.Fatal("stable_id binding is missing")
+	}
+	id, err := registry.ResolveCatalogToolID("stable_id", binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "builtin:stable_id" {
+		t.Fatalf("tool id = %q", id)
+	}
+	binding.Revision++
+	if _, err := registry.ResolveCatalogToolID(
+		"stable_id",
+		binding,
+	); !errors.Is(err, ErrCatalogStale) {
+		t.Fatalf("stale binding error = %v", err)
 	}
 }

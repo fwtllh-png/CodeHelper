@@ -3,6 +3,349 @@
   "title": "codehelper runtime protocol",
   "protocol_version": 1,
   "envelope": {
+    "checkpoint_fork": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "type": "object",
+          "properties": {
+            "can_fork": {
+              "type": "boolean"
+            },
+            "can_restore": {
+              "type": "boolean"
+            },
+            "change_receipt": {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "integer"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "turn_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cursor",
+                "event_id",
+                "turn_id"
+              ],
+              "additionalProperties": false
+            },
+            "changed_files": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "cursor": {
+              "type": "integer"
+            },
+            "external_side_effects": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "parent_checkpoint_id": {
+              "type": "string"
+            },
+            "profile_revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "side_effect_note": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "can_fork",
+            "can_restore",
+            "changed_files",
+            "created_at",
+            "cursor",
+            "external_side_effects",
+            "id",
+            "profile_revision",
+            "session_id",
+            "status",
+            "summary",
+            "thread_id",
+            "turn_id",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "parent_thread_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "checkpoint",
+        "parent_thread_id",
+        "session_id",
+        "thread_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint_list": {
+      "type": "object",
+      "properties": {
+        "checkpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "can_fork": {
+                "type": "boolean"
+              },
+              "can_restore": {
+                "type": "boolean"
+              },
+              "change_receipt": {
+                "type": "object",
+                "properties": {
+                  "cursor": {
+                    "type": "integer"
+                  },
+                  "event_id": {
+                    "type": "string"
+                  },
+                  "turn_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "cursor",
+                  "event_id",
+                  "turn_id"
+                ],
+                "additionalProperties": false
+              },
+              "changed_files": {
+                "type": "integer"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "cursor": {
+                "type": "integer"
+              },
+              "external_side_effects": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "parent_checkpoint_id": {
+                "type": "string"
+              },
+              "profile_revision": {
+                "type": "integer"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "side_effect_note": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "turn_id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "can_fork",
+              "can_restore",
+              "changed_files",
+              "created_at",
+              "cursor",
+              "external_side_effects",
+              "id",
+              "profile_revision",
+              "session_id",
+              "status",
+              "summary",
+              "thread_id",
+              "turn_id",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "checkpoints",
+        "session_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint_restore": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "type": "object",
+          "properties": {
+            "can_fork": {
+              "type": "boolean"
+            },
+            "can_restore": {
+              "type": "boolean"
+            },
+            "change_receipt": {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "integer"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "turn_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cursor",
+                "event_id",
+                "turn_id"
+              ],
+              "additionalProperties": false
+            },
+            "changed_files": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "cursor": {
+              "type": "integer"
+            },
+            "external_side_effects": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "parent_checkpoint_id": {
+              "type": "string"
+            },
+            "profile_revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "side_effect_note": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "can_fork",
+            "can_restore",
+            "changed_files",
+            "created_at",
+            "cursor",
+            "external_side_effects",
+            "id",
+            "profile_revision",
+            "session_id",
+            "status",
+            "summary",
+            "thread_id",
+            "turn_id",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "restored_cursor": {
+          "type": "integer"
+        },
+        "side_effects_replayed": {
+          "type": "boolean"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "checkpoint",
+        "restored_cursor",
+        "side_effects_replayed",
+        "thread_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
     "event": {
       "type": "object",
       "description": "The event envelope. data is the schema in events[kind].",
@@ -51,6 +394,9 @@
             "thread.compacted",
             "thread.forked",
             "turn.reverted",
+            "checkpoint.created",
+            "checkpoint.restored",
+            "checkpoint.forked",
             "turn.compaction",
             "agent.spawned",
             "agent.status",
@@ -88,6 +434,119 @@
         "sequence",
         "thread_id",
         "turn_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "model_catalog": {
+      "type": "object",
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "availability": {
+                    "type": "string"
+                  },
+                  "context_window": {
+                    "type": "integer"
+                  },
+                  "credential_status": {
+                    "type": "string"
+                  },
+                  "default_reasoning_effort": {
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": "string"
+                  },
+                  "image_input": {
+                    "type": "boolean"
+                  },
+                  "max_output_tokens": {
+                    "type": "integer"
+                  },
+                  "native_search": {
+                    "type": "boolean"
+                  },
+                  "parallel_tool_calls": {
+                    "type": "string"
+                  },
+                  "prompt_cache": {
+                    "type": "boolean"
+                  },
+                  "reasoning": {
+                    "type": "boolean"
+                  },
+                  "reasoning_efforts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "selection_mode": {
+                    "type": "string"
+                  },
+                  "streaming": {
+                    "type": "boolean"
+                  },
+                  "tool_calls": {
+                    "type": "boolean"
+                  },
+                  "unavailable_reason": {
+                    "type": "string"
+                  },
+                  "vision": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "availability",
+                  "context_window",
+                  "credential_status",
+                  "display_name",
+                  "image_input",
+                  "max_output_tokens",
+                  "native_search",
+                  "parallel_tool_calls",
+                  "prompt_cache",
+                  "reasoning",
+                  "selection_mode",
+                  "streaming",
+                  "tool_calls",
+                  "vision"
+                ],
+                "additionalProperties": false
+              },
+              "id": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "selected": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "capabilities",
+              "id",
+              "provider",
+              "selected"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "models",
         "version"
       ],
       "additionalProperties": false
@@ -133,11 +592,73 @@
       ],
       "additionalProperties": false
     },
+    "plan_transition_request": {
+      "type": "object",
+      "properties": {
+        "checkpoint_id": {
+          "type": "string"
+        },
+        "destination": {
+          "type": "string"
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "plan_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "transition": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "destination",
+        "idempotency_key",
+        "plan_id",
+        "session_id",
+        "transition",
+        "version"
+      ],
+      "additionalProperties": false
+    },
     "problem": {
       "type": "object",
       "properties": {
         "code": {
           "type": "string"
+        },
+        "details": {
+          "type": "object",
+          "properties": {
+            "actual_revision": {
+              "type": "integer"
+            },
+            "expected_revision": {
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "resource_id": {
+              "type": "string"
+            },
+            "session_status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false
         },
         "http_status": {
           "type": "integer"
@@ -174,6 +695,49 @@
         "code",
         "message",
         "retryable",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "provider_catalog": {
+      "type": "object",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "availability": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "selected": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "availability",
+              "display_name",
+              "id",
+              "selected"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "providers",
         "version"
       ],
       "additionalProperties": false
@@ -217,6 +781,802 @@
       "required": [
         "checks",
         "status"
+      ],
+      "additionalProperties": false
+    },
+    "session_delete": {
+      "type": "object",
+      "properties": {
+        "deleted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deleted_at",
+        "session_id",
+        "thread_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "session_lifecycle_patch": {
+      "type": "object",
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "session_lifecycle_update": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "object",
+          "properties": {
+            "archived": {
+              "type": "boolean"
+            },
+            "changed_files": {
+              "type": "integer"
+            },
+            "checkpoint_count": {
+              "type": "integer"
+            },
+            "cost_known": {
+              "type": "boolean"
+            },
+            "cost_microunits": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "execution_target": {
+              "type": "string"
+            },
+            "isolation": {
+              "type": "string"
+            },
+            "latest_sequence": {
+              "type": "integer"
+            },
+            "latest_turn_id": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "parent_thread_id": {
+              "type": "string"
+            },
+            "pending_approvals": {
+              "type": "integer"
+            },
+            "pending_inputs": {
+              "type": "integer"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "total_tokens": {
+              "type": "integer"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "version": {
+              "type": "integer"
+            },
+            "workspace_label": {
+              "type": "string"
+            },
+            "workspace_root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "archived",
+            "changed_files",
+            "checkpoint_count",
+            "cost_known",
+            "cost_microunits",
+            "created_at",
+            "execution_target",
+            "isolation",
+            "latest_sequence",
+            "pending_approvals",
+            "pending_inputs",
+            "pinned",
+            "revision",
+            "session_id",
+            "status",
+            "thread_id",
+            "title",
+            "total_tokens",
+            "updated_at",
+            "version",
+            "workspace_label",
+            "workspace_root"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "session"
+      ],
+      "additionalProperties": false
+    },
+    "session_list": {
+      "type": "object",
+      "properties": {
+        "matches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "snippet": {
+                "type": "string"
+              },
+              "turn_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "session_id",
+              "turn_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "query": {
+          "type": "string"
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "archived": {
+                "type": "boolean"
+              },
+              "changed_files": {
+                "type": "integer"
+              },
+              "checkpoint_count": {
+                "type": "integer"
+              },
+              "cost_known": {
+                "type": "boolean"
+              },
+              "cost_microunits": {
+                "type": "integer"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "execution_target": {
+                "type": "string"
+              },
+              "isolation": {
+                "type": "string"
+              },
+              "latest_sequence": {
+                "type": "integer"
+              },
+              "latest_turn_id": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "parent_thread_id": {
+                "type": "string"
+              },
+              "pending_approvals": {
+                "type": "integer"
+              },
+              "pending_inputs": {
+                "type": "integer"
+              },
+              "pinned": {
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "total_tokens": {
+                "type": "integer"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "workspace_label": {
+                "type": "string"
+              },
+              "workspace_root": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "archived",
+              "changed_files",
+              "checkpoint_count",
+              "cost_known",
+              "cost_microunits",
+              "created_at",
+              "execution_target",
+              "isolation",
+              "latest_sequence",
+              "pending_approvals",
+              "pending_inputs",
+              "pinned",
+              "revision",
+              "session_id",
+              "status",
+              "thread_id",
+              "title",
+              "total_tokens",
+              "updated_at",
+              "version",
+              "workspace_label",
+              "workspace_root"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sessions",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "session_plan": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "string"
+            },
+            "can_autopilot": {
+              "type": "boolean"
+            },
+            "can_implement": {
+              "type": "boolean"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "cursor": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "profile_revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "body",
+            "can_autopilot",
+            "can_implement",
+            "created_at",
+            "cursor",
+            "id",
+            "profile_revision",
+            "session_id",
+            "status",
+            "thread_id",
+            "turn_id",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "session_profile_patch": {
+      "type": "object",
+      "properties": {
+        "approval_posture": {
+          "type": "string"
+        },
+        "enabled_tool_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "execution_target": {
+          "type": "string"
+        },
+        "max_steps": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "reasoning_effort": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "session_profile_snapshot": {
+      "type": "object",
+      "properties": {
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "model_capabilities": {
+              "type": "object",
+              "properties": {
+                "availability": {
+                  "type": "string"
+                },
+                "context_window": {
+                  "type": "integer"
+                },
+                "credential_status": {
+                  "type": "string"
+                },
+                "default_reasoning_effort": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": "string"
+                },
+                "image_input": {
+                  "type": "boolean"
+                },
+                "max_output_tokens": {
+                  "type": "integer"
+                },
+                "native_search": {
+                  "type": "boolean"
+                },
+                "parallel_tool_calls": {
+                  "type": "string"
+                },
+                "prompt_cache": {
+                  "type": "boolean"
+                },
+                "reasoning": {
+                  "type": "boolean"
+                },
+                "reasoning_efforts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "selection_mode": {
+                  "type": "string"
+                },
+                "streaming": {
+                  "type": "boolean"
+                },
+                "tool_calls": {
+                  "type": "boolean"
+                },
+                "unavailable_reason": {
+                  "type": "string"
+                },
+                "vision": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "availability",
+                "context_window",
+                "credential_status",
+                "display_name",
+                "image_input",
+                "max_output_tokens",
+                "native_search",
+                "parallel_tool_calls",
+                "prompt_cache",
+                "reasoning",
+                "selection_mode",
+                "streaming",
+                "tool_calls",
+                "vision"
+              ],
+              "additionalProperties": false
+            },
+            "mutable_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "model",
+            "model_capabilities",
+            "mutable_fields",
+            "provider"
+          ],
+          "additionalProperties": false
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "approval_posture": {
+              "type": "string"
+            },
+            "enabled_tool_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "execution_target": {
+              "type": "string"
+            },
+            "max_steps": {
+              "type": "integer"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "prompt_cache_revision": {
+              "type": "integer"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reasoning_effort": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "approval_posture",
+            "execution_target",
+            "max_steps",
+            "mode",
+            "model",
+            "prompt_cache_revision",
+            "provider",
+            "revision",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "capabilities",
+        "profile"
+      ],
+      "additionalProperties": false
+    },
+    "session_profile_update": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "object",
+          "properties": {
+            "approval_posture": {
+              "type": "string"
+            },
+            "enabled_tool_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "execution_target": {
+              "type": "string"
+            },
+            "max_steps": {
+              "type": "integer"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "prompt_cache_revision": {
+              "type": "integer"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reasoning_effort": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "approval_posture",
+            "execution_target",
+            "max_steps",
+            "mode",
+            "model",
+            "prompt_cache_revision",
+            "provider",
+            "revision",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "prompt_cache_reset": {
+          "type": "boolean"
+        },
+        "reset_reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile",
+        "prompt_cache_reset"
+      ],
+      "additionalProperties": false
+    },
+    "session_tool_catalog": {
+      "type": "object",
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "access_mode": {
+                "type": "string"
+              },
+              "availability": {
+                "type": "string"
+              },
+              "capability": {
+                "type": "string"
+              },
+              "constitution_reason": {
+                "type": "string"
+              },
+              "constitution_state": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "guarded": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "policy_reason": {
+                "type": "string"
+              },
+              "policy_state": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "risk_level": {
+                "type": "string"
+              },
+              "sandbox_requirement": {
+                "type": "string"
+              },
+              "source_kind": {
+                "type": "string"
+              },
+              "source_label": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "unavailable_reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "access_mode",
+              "availability",
+              "capability",
+              "constitution_reason",
+              "constitution_state",
+              "description",
+              "enabled",
+              "guarded",
+              "id",
+              "name",
+              "policy_reason",
+              "policy_state",
+              "revision",
+              "risk_level",
+              "sandbox_requirement",
+              "source_kind",
+              "source_label",
+              "state"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "catalog_id",
+        "digest",
+        "generation",
+        "tools",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "turn_recovery_request": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "guidance": {
+          "type": "string"
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "source_turn_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action",
+        "idempotency_key",
+        "session_id",
+        "source_turn_id",
+        "version"
       ],
       "additionalProperties": false
     }
@@ -394,6 +1754,9 @@
           "items": {
             "type": "object",
             "properties": {
+              "content": {
+                "type": "string"
+              },
               "diagnostics": {
                 "type": "array",
                 "items": {
@@ -477,8 +1840,17 @@
                   "file",
                   "selection",
                   "symbol",
-                  "diagnostics"
+                  "diagnostics",
+                  "image",
+                  "terminal",
+                  "git_diff"
                 ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
               },
               "omitted_diagnostics": {
                 "type": "integer"
@@ -533,7 +1905,8 @@
                 "enum": [
                   "composer",
                   "selection_command",
-                  "code_action"
+                  "code_action",
+                  "native_picker"
                 ]
               },
               "symbol": {
@@ -609,8 +1982,14 @@
             "additionalProperties": false
           }
         },
+        "display_prompt": {
+          "type": "string"
+        },
         "idle": {
           "type": "boolean"
+        },
+        "intent": {
+          "type": "string"
         },
         "item_id": {
           "type": "string"
@@ -956,6 +2335,204 @@
       ],
       "additionalProperties": false
     },
+    "checkpoint.created": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "type": "object",
+          "properties": {
+            "can_fork": {
+              "type": "boolean"
+            },
+            "can_restore": {
+              "type": "boolean"
+            },
+            "change_receipt": {
+              "type": "object",
+              "properties": {
+                "cursor": {
+                  "type": "integer"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "turn_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cursor",
+                "event_id",
+                "turn_id"
+              ],
+              "additionalProperties": false
+            },
+            "changed_files": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "cursor": {
+              "type": "integer"
+            },
+            "external_side_effects": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "parent_checkpoint_id": {
+              "type": "string"
+            },
+            "profile_revision": {
+              "type": "integer"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "side_effect_note": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": "string"
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "can_fork",
+            "can_restore",
+            "changed_files",
+            "created_at",
+            "cursor",
+            "external_side_effects",
+            "id",
+            "profile_revision",
+            "session_id",
+            "status",
+            "summary",
+            "thread_id",
+            "turn_id",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "checkpoint"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint.forked": {
+      "type": "object",
+      "properties": {
+        "checkpoint_id": {
+          "type": "string"
+        },
+        "new_thread_id": {
+          "type": "string"
+        },
+        "replacement_history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "description": "arbitrary JSON"
+              },
+              "role": {
+                "type": "string"
+              },
+              "turn": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "content",
+              "role"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "source_cursor": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "new_thread_id",
+        "replacement_history",
+        "source_cursor",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "checkpoint.restored": {
+      "type": "object",
+      "properties": {
+        "checkpoint_id": {
+          "type": "string"
+        },
+        "replacement_history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "description": "arbitrary JSON"
+              },
+              "role": {
+                "type": "string"
+              },
+              "turn": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "content",
+              "role"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "side_effects_replayed": {
+          "type": "boolean"
+        },
+        "source_cursor": {
+          "type": "integer"
+        },
+        "source_thread_id": {
+          "type": "string"
+        },
+        "source_turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "replacement_history",
+        "side_effects_replayed",
+        "source_cursor",
+        "source_thread_id",
+        "source_turn_id"
+      ],
+      "additionalProperties": false
+    },
     "citation": {
       "type": "object",
       "properties": {
@@ -1102,6 +2679,12 @@
                   ],
                   "additionalProperties": false
                 }
+              },
+              "error_category": {
+                "type": "string"
+              },
+              "exit_code": {
+                "type": "integer"
               },
               "message": {
                 "type": "string"
@@ -1331,11 +2914,26 @@
     "plan.delta": {
       "type": "object",
       "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
         "body": {
           "type": "string"
         },
+        "can_autopilot": {
+          "type": "boolean"
+        },
+        "can_implement": {
+          "type": "boolean"
+        },
         "done": {
           "type": "boolean"
+        },
+        "profile_revision": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
         },
         "text": {
           "type": "string"
@@ -1610,13 +3208,121 @@
         "call_id": {
           "type": "string"
         },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "added": {
+                "type": "integer"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "removed": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "added",
+              "kind",
+              "path",
+              "removed"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "completion": {
+          "type": "object",
+          "properties": {
+            "accepted": {
+              "type": "boolean"
+            },
+            "call_id": {
+              "type": "string"
+            },
+            "changed_paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mutation_revision": {
+              "type": "integer"
+            },
+            "pending_actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rejection": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "verification_call_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "accepted",
+            "call_id",
+            "changed_paths",
+            "mutation_revision",
+            "pending_actions",
+            "status",
+            "summary",
+            "verification_call_ids"
+          ],
+          "additionalProperties": false
+        },
         "is_error": {
           "type": "boolean"
+        },
+        "observed_changes": {
+          "type": "integer"
         },
         "output": {
           "type": "string"
         },
+        "recovery": {
+          "type": "object",
+          "properties": {
+            "error_category": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "required_action": {
+              "type": "string"
+            },
+            "retry_original": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "error_category",
+            "required_action",
+            "retry_original"
+          ],
+          "additionalProperties": false
+        },
         "tool": {
+          "type": "string"
+        },
+        "workspace_write_scope": {
           "type": "string"
         }
       },
@@ -1717,6 +3423,9 @@
     "turn.completed": {
       "type": "object",
       "properties": {
+        "outcome": {
+          "type": "string"
+        },
         "text": {
           "type": "string"
         }
@@ -1734,6 +3443,29 @@
         },
         "message": {
           "type": "string"
+        },
+        "secondary_issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "phase": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "phase"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -1844,13 +3576,71 @@
             "additionalProperties": false
           }
         },
+        "completion": {
+          "type": "object",
+          "properties": {
+            "accepted": {
+              "type": "boolean"
+            },
+            "call_id": {
+              "type": "string"
+            },
+            "changed_paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mutation_revision": {
+              "type": "integer"
+            },
+            "pending_actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rejection": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "verification_call_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "accepted",
+            "call_id",
+            "changed_paths",
+            "mutation_revision",
+            "pending_actions",
+            "status",
+            "summary",
+            "verification_call_ids"
+          ],
+          "additionalProperties": false
+        },
         "context_budget": {
           "type": "object",
           "properties": {
             "compactions": {
               "type": "integer"
             },
+            "estimated_tokens": {
+              "type": "integer"
+            },
             "history_bytes": {
+              "type": "integer"
+            },
+            "max_context_tokens": {
               "type": "integer"
             },
             "max_history_bytes": {
@@ -2001,8 +3791,17 @@
                   "file",
                   "selection",
                   "symbol",
-                  "diagnostics"
+                  "diagnostics",
+                  "image",
+                  "terminal",
+                  "git_diff"
                 ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
               },
               "omitted_diagnostics": {
                 "type": "integer"
@@ -2063,7 +3862,8 @@
                 "enum": [
                   "composer",
                   "selection_command",
-                  "code_action"
+                  "code_action",
+                  "native_picker"
                 ]
               },
               "symbol": {
@@ -2214,6 +4014,9 @@
         "input_tokens": {
           "type": "integer"
         },
+        "intent": {
+          "type": "string"
+        },
         "latency": {
           "type": "object",
           "properties": {
@@ -2257,6 +4060,9 @@
             "type": "string"
           }
         },
+        "outcome": {
+          "type": "string"
+        },
         "output_tokens": {
           "type": "integer"
         },
@@ -2265,6 +4071,26 @@
         },
         "posture": {
           "type": "string"
+        },
+        "provider_retry": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer"
+            },
+            "last_category": {
+              "type": "string"
+            },
+            "last_code": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "count",
+            "last_category",
+            "last_code"
+          ],
+          "additionalProperties": false
         },
         "read_paths": {
           "type": "array",
@@ -2300,6 +4126,29 @@
         },
         "sandbox": {
           "type": "string"
+        },
+        "secondary_issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "phase": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "phase"
+            ],
+            "additionalProperties": false
+          }
         },
         "skills": {
           "type": "array",
@@ -2447,6 +4296,12 @@
             },
             "repair_steps": {
               "type": "integer"
+            },
+            "uncovered_paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           "required": [
@@ -2459,6 +4314,9 @@
           "additionalProperties": false
         },
         "workspace": {
+          "type": "string"
+        },
+        "workspace_isolation": {
           "type": "string"
         },
         "workspace_outcome": {
@@ -2582,8 +4440,17 @@
                   "file",
                   "selection",
                   "symbol",
-                  "diagnostics"
+                  "diagnostics",
+                  "image",
+                  "terminal",
+                  "git_diff"
                 ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
               },
               "omitted_diagnostics": {
                 "type": "integer"
@@ -2644,7 +4511,8 @@
                 "enum": [
                   "composer",
                   "selection_command",
-                  "code_action"
+                  "code_action",
+                  "native_picker"
                 ]
               },
               "symbol": {
@@ -2719,6 +4587,9 @@
             "additionalProperties": false
           }
         },
+        "intent": {
+          "type": "string"
+        },
         "mode": {
           "type": "string"
         },
@@ -2738,6 +4609,9 @@
           "type": "string"
         },
         "workspace": {
+          "type": "string"
+        },
+        "workspace_isolation": {
           "type": "string"
         }
       },
@@ -2822,6 +4696,12 @@
         },
         "status": {
           "type": "string"
+        },
+        "uncovered_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "warnings": {
           "type": "integer"

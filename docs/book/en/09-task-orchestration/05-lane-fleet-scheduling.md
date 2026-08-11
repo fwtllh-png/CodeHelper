@@ -19,7 +19,7 @@ source_of_truth:
   - internal/orchestration/lane/lane.go
   - internal/orchestration/fleet/ledger.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Lanes, Fleets, and Scheduling
@@ -122,4 +122,4 @@ Fleet state and compare process state with projected task state.
 | --- | --- |
 | Catalog ID | `task-lane-fleet` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-10 |

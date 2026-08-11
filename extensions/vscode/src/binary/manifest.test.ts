@@ -154,7 +154,12 @@ function signedFixture(
       url: "https://releases.example.test/codehelper-linux-arm64",
       acp_protocol: { min: 1, max: 2 },
       operation_schema_version: 1,
-      required_features: ["editor_context_v2", "workspace_identity_v1"],
+      required_features: [
+        "editor_context_v2",
+        "session_profile_v1",
+        "unified_tool_catalog_v1",
+        "workspace_identity_v1",
+      ],
       extension_version_range: ">=0.0.1 <0.1.0",
       sbom_sha256: "b".repeat(64),
       provenance_sha256: "c".repeat(64),

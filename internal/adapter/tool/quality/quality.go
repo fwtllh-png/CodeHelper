@@ -2,9 +2,13 @@ package quality
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -61,20 +65,26 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	if defaultCommand != "" {
 		commandSchema["default"] = defaultCommand
 	}
+	properties := map[string]any{"command": commandSchema}
+	resolver := tool.ResourceResolver{Templates: []tool.ResourceTemplate{
+		{Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true},
+		{Kind: "process", ID: "workspace", Access: tool.AccessRead, Tree: true},
+	}}
+	if t.kind == "quality_test" || t.kind == "quality_verify" {
+		properties["covered_paths"] = map[string]any{
+			"type": "array", "maxItems": 128,
+			"items": map[string]any{"type": "string", "minLength": 1},
+		}
+		resolver.ReadPathsField = "covered_paths"
+	}
 	return tool.Descriptor{
 		Name: t.kind, Description: description, Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityProcess, AccessMode: tool.AccessTree,
-		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{
-			{Kind: "repo", ID: ".", Access: tool.AccessWrite, Tree: true},
-			{Kind: "process", ID: "workspace", Access: tool.AccessWrite, Tree: true},
-		}},
+		ResourceResolver:   resolver,
 		ParallelPolicy:     tool.ParallelSerial,
 		SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"command": commandSchema,
-			},
+			"type": "object", "properties": properties,
 			"additionalProperties": false,
 		},
 	}
@@ -82,13 +92,18 @@ func (t *Tool) Descriptor() tool.Descriptor {
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
 	var input struct {
-		Command string `json:"command"`
+		Command      string   `json:"command"`
+		CoveredPaths []string `json:"covered_paths"`
 	}
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
 	}
+	coveredPaths, err := t.canonicalCoveredPaths(input.CoveredPaths)
+	if err != nil {
+		return tool.Result{}, err
+	}
 	if t.kind == "quality_verify" {
-		return t.executeVerifier(ctx, input.Command)
+		return t.executeVerifier(ctx, input.Command, coveredPaths)
 	}
 	command := input.Command
 	if command == "" {
@@ -98,10 +113,14 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 			"quality_review":      "git diff --check",
 		}[t.kind]
 	}
-	return t.executeSingle(ctx, command)
+	return t.executeSingle(ctx, command, coveredPaths)
 }
 
-func (t *Tool) executeSingle(ctx context.Context, command string) (tool.Result, error) {
+func (t *Tool) executeSingle(
+	ctx context.Context,
+	command string,
+	coveredPaths []string,
+) (tool.Result, error) {
 	result, err := t.runProcess(ctx, command)
 	if err != nil {
 		return tool.Result{}, err
@@ -128,10 +147,16 @@ func (t *Tool) executeSingle(ctx context.Context, command string) (tool.Result, 
 	case "quality_review":
 		payload["findings"] = parseFindings(result.Stdout, result.Stderr)
 	}
-	return encodeResult(payload, kind, status, result.ExitCode)
+	return encodeResult(
+		payload, kind, status, result.ExitCode, command, coveredPaths,
+	)
 }
 
-func (t *Tool) executeVerifier(ctx context.Context, command string) (tool.Result, error) {
+func (t *Tool) executeVerifier(
+	ctx context.Context,
+	command string,
+	coveredPaths []string,
+) (tool.Result, error) {
 	checks := []verify.Command{{Name: "custom", Command: command}}
 	if command == "" {
 		checks = verify.Detect(t.root)
@@ -186,13 +211,19 @@ func (t *Tool) executeVerifier(ctx context.Context, command string) (tool.Result
 		payload["message"] = unavailableReason
 		payload["error_category"] = verify.ErrorCategoryDependencyUnavailable
 	}
-	return encodeResult(payload, "verify", status, exitCode)
+	commands := make([]string, 0, len(checks))
+	for _, check := range checks {
+		commands = append(commands, check.Command)
+	}
+	return encodeResult(
+		payload, "verify", status, exitCode, strings.Join(commands, "\n"), coveredPaths,
+	)
 }
 
 func (t *Tool) runProcess(ctx context.Context, command string) (process.Result, error) {
 	options := process.Options{
 		Command: command, Dir: t.root, Sandbox: t.sandbox,
-		RequireStrongSandbox: true,
+		RequireStrongSandbox: true, WorkspaceReadOnly: true,
 	}
 	if t.run != nil {
 		return t.run(ctx, options)
@@ -295,7 +326,16 @@ func reviewSeverity(value string) string {
 	}
 }
 
-func encodeResult(payload map[string]any, kind, status string, exitCode int) (tool.Result, error) {
+func encodeResult(
+	payload map[string]any,
+	kind, status string,
+	exitCode int,
+	command string,
+	coveredPaths []string,
+) (tool.Result, error) {
+	if len(coveredPaths) != 0 {
+		payload["covered_paths"] = append([]string(nil), coveredPaths...)
+	}
 	content, err := json.Marshal(payload)
 	if err != nil {
 		return tool.Result{}, err
@@ -306,8 +346,51 @@ func encodeResult(payload map[string]any, kind, status string, exitCode int) (to
 	if status == verify.StatusUnavailable {
 		metadata["error_category"] = verify.ErrorCategoryDependencyUnavailable
 	}
+	if (kind == "test" || kind == "verify") && len(coveredPaths) != 0 {
+		metadata[verify.EvidenceMetadataKey] = verify.Evidence{
+			SchemaVersion: 1,
+			Kind:          kind,
+			Status:        status,
+			CoveredPaths:  append([]string(nil), coveredPaths...),
+			CommandDigest: fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(command))),
+			ExitCode:      exitCode,
+		}
+	}
 	return tool.Result{
 		Content: string(content), IsError: status == verify.StatusFailed,
 		Metadata: metadata,
 	}, nil
+}
+
+func (t *Tool) canonicalCoveredPaths(paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	if len(paths) > 128 {
+		return nil, errors.New("covered_paths exceeds 128 entries")
+	}
+	workspace, err := sandbox.NewWorkspace(t.root)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(paths))
+	canonical := make([]string, 0, len(paths))
+	for _, path := range paths {
+		resolved, err := workspace.Resolve(strings.TrimSpace(path), sandbox.AllowMissing)
+		if err != nil {
+			return nil, fmt.Errorf("covered path %q: %w", path, err)
+		}
+		relative, err := filepath.Rel(workspace.Root(), resolved)
+		if err != nil {
+			return nil, err
+		}
+		relative = filepath.ToSlash(relative)
+		if _, exists := seen[relative]; exists {
+			continue
+		}
+		seen[relative] = struct{}{}
+		canonical = append(canonical, relative)
+	}
+	sort.Strings(canonical)
+	return canonical, nil
 }

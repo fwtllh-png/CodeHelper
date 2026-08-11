@@ -348,6 +348,7 @@ func TestRunExecExportsProviderAgentAndToolMetrics(t *testing.T) {
 		"--provider-fixture", fixturePath,
 		"--enable-tools",
 		"--workspace", workspace,
+		"--posture", "bypass",
 		"--metrics-file", metricsPath,
 		"create result",
 	}, &stdout, &stderr)
@@ -363,7 +364,7 @@ func TestRunExecExportsProviderAgentAndToolMetrics(t *testing.T) {
 	if err := json.Unmarshal(data, &metrics); err != nil {
 		t.Fatal(err)
 	}
-	if metrics.ProviderRequests != 2 || metrics.AgentTurns != 1 || metrics.ToolExecutions != 1 {
+	if metrics.ProviderRequests != 5 || metrics.AgentTurns != 1 || metrics.ToolExecutions != 4 {
 		t.Fatalf("metrics = %+v", metrics)
 	}
 }
@@ -424,14 +425,15 @@ budget_tokens = 1
 [execution]
 tools = true
 workspace = %q
-max_steps = 2
+max_steps = 8
 `, workspace)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		fixturePath := filepath.Join("..", "..", "..", "testdata", "providers", "tools")
 		var enabledOut, enabledErr bytes.Buffer
 		if code := Run([]string{
-			"exec", "--config", configPath, "--provider-fixture", fixturePath, "create result",
+			"exec", "--config", configPath, "--provider-fixture", fixturePath,
+			"--posture", "bypass", "create result",
 		}, &enabledOut, &enabledErr); code != 0 {
 			t.Fatalf("file tools code=%d stderr=%q", code, enabledErr.String())
 		}
@@ -439,7 +441,7 @@ max_steps = 2
 		var disabledOut, disabledErr bytes.Buffer
 		if code := Run([]string{
 			"exec", "--config", configPath, "--provider-fixture", fixturePath,
-			"--enable-tools=false", "create result",
+			"--enable-tools=false", "--posture", "bypass", "create result",
 		}, &disabledOut, &disabledErr); code != 1 {
 			t.Fatalf("disabled tools code=%d stderr=%q", code, disabledErr.String())
 		}

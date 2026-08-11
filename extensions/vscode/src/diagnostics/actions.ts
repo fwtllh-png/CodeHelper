@@ -24,7 +24,7 @@ export function registerDiagnosticActions(
   ];
   if (registry !== undefined) {
     result.push(vscode.languages.registerCodeActionsProvider(
-      [{ scheme: "file" }, { scheme: "vscode-remote" }],
+      [{ scheme: "file" }],
       new DiagnosticCodeActionProvider(
         () => registry.roots.map((root) => root.folder),
       ),
@@ -90,7 +90,7 @@ export class DiagnosticCodeActionProvider implements vscode.CodeActionProvider {
 }
 
 function isWorkspaceDocumentScheme(value: string): boolean {
-  return value === "file" || value === "vscode-remote";
+  return value === "file";
 }
 
 function registerActionCommand(
@@ -107,7 +107,8 @@ function registerActionCommand(
       const snapshot = decodeDiagnosticSnapshot(value);
       const document = vscode.workspace.textDocuments.find(
         (candidate) =>
-          canonicalEditorURI(candidate.uri, vscode.env.remoteName) ===
+          candidate.uri.scheme === "file" &&
+          canonicalEditorURI(candidate.uri) ===
             snapshot.uri,
       );
       if (document === undefined) {
@@ -127,7 +128,10 @@ function registerActionCommand(
         submit: async (prompt, editorContext) => {
           const { sessionId } = target.controller.identity();
           return target.controller.submitPrompt(
-            sessionId, prompt, editorContext,
+            sessionId,
+            prompt,
+            editorContext,
+            action === "fix" ? "workspace_change" : "answer",
           );
         },
       });
@@ -158,7 +162,7 @@ function diagnosticSnapshot(
   diagnostic: vscode.Diagnostic,
 ): DiagnosticSnapshot {
   return {
-    uri: canonicalEditorURI(document.uri, vscode.env.remoteName),
+    uri: canonicalEditorURI(document.uri),
     documentVersion: document.version,
     diagnostic: nativeDiagnostic(diagnostic),
   };

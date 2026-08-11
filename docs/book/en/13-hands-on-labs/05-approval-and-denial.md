@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/security/policy/policy.go
   - internal/runtime/protocol/message.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Exercise Approval and Denial
@@ -91,4 +91,5 @@ All state is test-local; remove temporary policy files if manually created.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-approval-denial` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

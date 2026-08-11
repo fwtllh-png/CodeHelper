@@ -272,6 +272,40 @@ func (s *Store) Replay(ctx context.Context, cursor protocol.Cursor) ([]protocol.
 	return s.events.Replay(ctx, cursor)
 }
 
+func (s *Store) EventByID(
+	ctx context.Context,
+	eventID protocol.EventID,
+) (protocol.Event, bool, error) {
+	var sequence protocol.Cursor
+	err := s.sqlite.DB().QueryRowContext(
+		ctx,
+		`SELECT sequence FROM event_index WHERE event_id = ?`,
+		eventID,
+	).Scan(&sequence)
+	if errors.Is(err, sql.ErrNoRows) {
+		return protocol.Event{}, false, nil
+	}
+	if err != nil {
+		return protocol.Event{}, false, err
+	}
+	events, err := s.events.Replay(ctx, sequence-1)
+	if err != nil {
+		return protocol.Event{}, false, err
+	}
+	for _, event := range events {
+		if event.Sequence == sequence && event.ID == eventID {
+			return event, true, nil
+		}
+		if event.Sequence > sequence {
+			break
+		}
+	}
+	return protocol.Event{}, false, fmt.Errorf(
+		"event index %q has no matching log event",
+		eventID,
+	)
+}
+
 // ReplayLimit bounds durable replay while preserving the store lock used to
 // serialize replay with appends.
 func (s *Store) ReplayLimit(

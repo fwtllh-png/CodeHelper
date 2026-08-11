@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { isAbsolute, relative, sep } from "node:path";
+import { basename, extname, isAbsolute, relative, sep } from "node:path";
 
 import * as vscode from "vscode";
 
@@ -30,6 +30,7 @@ interface DocumentIdentity {
 }
 
 const maxContextFileBytes = 1 << 20;
+const maxContextImageBytes = 5 << 20;
 const maxProviderSymbols = 4096;
 const maxProviderDiagnostics = 4096;
 
@@ -138,6 +139,66 @@ export class ContextBridge {
     return references;
   }
 
+  public async captureWorkspaceFile(
+    uri: vscode.Uri,
+    kind: "file" | "image",
+  ): Promise<readonly EditorContextReference[]> {
+    this.#validateURI(uri);
+    const content = await vscode.workspace.fs.readFile(uri);
+    const limit = kind === "image" ? maxContextImageBytes : maxContextFileBytes;
+    if (content.byteLength === 0 || content.byteLength > limit) {
+      throw new Error(`${kind} context must be between 1 and ${String(limit)} bytes`);
+    }
+    if (kind === "file") {
+      new TextDecoder("utf-8", { fatal: true }).decode(content);
+    }
+    const open = vscode.workspace.textDocuments.find(
+      (document) => canonicalEditorURI(document.uri) === canonicalEditorURI(uri),
+    );
+    if (open?.isDirty === true) {
+      throw new Error("save the selected file before attaching it");
+    }
+    const common = {
+      source: "native_picker" as const,
+      uri: canonicalEditorURI(uri),
+      path: this.#workspacePath(uri),
+      document_version: open?.version ?? 1,
+      digest: createHash("sha256").update(content).digest("hex"),
+      explicit: true as const,
+    };
+    if (kind === "file") return [{ ...common, kind }];
+    return [{
+      ...common,
+      kind,
+      label: basename(uri.fsPath),
+      media_type: imageMediaType(uri),
+    }];
+  }
+
+  public captureInline(
+    kind: "terminal" | "git_diff",
+    label: string,
+    content: string,
+  ): readonly EditorContextReference[] {
+    const normalized = content.replaceAll("\r\n", "\n").trim();
+    if (normalized.length === 0 || Buffer.byteLength(normalized) > 64 << 10 ||
+      normalized.includes("\0")) {
+      throw new Error("inline context must contain at most 64 KiB of plain text");
+    }
+    return [{
+      kind,
+      source: "native_picker",
+      uri: "",
+      path: "",
+      document_version: 0,
+      digest: createHash("sha256").update(normalized).digest("hex"),
+      label: label.slice(0, 512),
+      media_type: "text/plain",
+      content: normalized,
+      explicit: true,
+    }];
+  }
+
   public async captureDiagnostic(
     snapshot: DiagnosticSnapshot,
   ): Promise<readonly EditorContextReference[]> {
@@ -147,12 +208,13 @@ export class ContextBridge {
     } catch {
       throw new Error("diagnostic action URI is invalid");
     }
-    if (canonicalEditorURI(uri, vscode.env.remoteName) !== snapshot.uri) {
+    if (canonicalEditorURI(uri) !== snapshot.uri) {
       throw new Error("diagnostic action URI is not canonical");
     }
     const document = vscode.workspace.textDocuments.find(
       (candidate) =>
-        canonicalEditorURI(candidate.uri, vscode.env.remoteName) ===
+        candidate.uri.scheme === "file" &&
+        canonicalEditorURI(candidate.uri) ===
           snapshot.uri,
     );
     if (document === undefined) {
@@ -203,6 +265,24 @@ export class ContextBridge {
     }
   }
 
+  #validateURI(uri: vscode.Uri): void {
+    if (uri.scheme !== "file" ||
+      vscode.workspace.getWorkspaceFolder(uri)?.uri.toString() !==
+        this.#workspace.uri.toString()) {
+      throw new Error("context must be a file in the current workspace");
+    }
+    this.#workspacePath(uri);
+  }
+
+  #workspacePath(uri: vscode.Uri): string {
+    const workspacePath = relative(this.#workspace.uri.fsPath, uri.fsPath);
+    if (workspacePath === "" || isAbsolute(workspacePath) ||
+      workspacePath === ".." || workspacePath.startsWith(`..${sep}`)) {
+      throw new Error("context is outside the current workspace");
+    }
+    return workspacePath.split(sep).join("/");
+  }
+
   async #captureIdentity(
     document: vscode.TextDocument,
     documentVersion: number,
@@ -218,14 +298,9 @@ export class ContextBridge {
     if (decoded !== document.getText()) {
       throw new Error("active document is not canonical UTF-8 workspace content");
     }
-    const workspacePath = relative(this.#workspace.uri.fsPath, document.uri.fsPath);
-    if (workspacePath === "" || isAbsolute(workspacePath) ||
-      workspacePath === ".." || workspacePath.startsWith(`..${sep}`)) {
-      throw new Error("active document is outside the current workspace");
-    }
     return {
-      uri: canonicalEditorURI(document.uri, vscode.env.remoteName),
-      path: workspacePath.split(sep).join("/"),
+      uri: canonicalEditorURI(document.uri),
+      path: this.#workspacePath(document.uri),
       document_version: documentVersion,
       digest: createHash("sha256").update(content).digest("hex"),
       explicit: true,
@@ -233,8 +308,24 @@ export class ContextBridge {
   }
 }
 
+function imageMediaType(uri: vscode.Uri): "image/png" | "image/jpeg" | "image/gif" | "image/webp" {
+  switch (extname(uri.fsPath).toLowerCase()) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".webp":
+      return "image/webp";
+    default:
+      throw new Error("image context must be PNG, JPEG, GIF, or WebP");
+  }
+}
+
 function isWorkspaceDocumentScheme(value: string): boolean {
-  return value === "file" || value === "vscode-remote";
+  return value === "file";
 }
 
 function flattenSymbols(

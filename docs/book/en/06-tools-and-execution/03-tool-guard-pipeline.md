@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/tool/guard/guard.go
   - internal/security/policy/policy.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # The Tool Guard Pipeline
@@ -162,5 +162,5 @@ Policy decisions for the original strong attempt and the unsandboxed retry.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `tool-guard-pipeline` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -117,7 +117,10 @@ func (o *operation) Descriptor() tool.Descriptor {
 		properties["offset"] = map[string]any{"type": "integer"}
 		properties["limit"] = map[string]any{"type": "integer"}
 	case "file_read":
-		description = "Read a bounded UTF-8 line range or extract selected PDF pages. path is workspace-relative (absolute paths inside workspace are rewritten)."
+		description = "Read a bounded UTF-8 line range or extract selected PDF pages. " +
+			"path is workspace-relative (absolute paths inside workspace are rewritten). " +
+			"Use an exact path returned by file_list or another tool; never infer a " +
+			"filename from a title or topic."
 		properties["path"] = map[string]any{
 			"type":        "string",
 			"minLength":   float64(1),
@@ -127,11 +130,14 @@ func (o *operation) Descriptor() tool.Descriptor {
 		properties["max_lines"] = map[string]any{"type": "integer"}
 		properties["pages"] = map[string]any{"type": "string"}
 	case "file_write":
-		description = "Atomically write a UTF-8 text file. path is workspace-relative."
+		description = "Atomically write a UTF-8 text file. path is workspace-relative. " +
+			"If the path already exists, call file_read for that exact path first; " +
+			"new paths do not require a prior read."
 		properties["content"] = map[string]any{"type": "string"}
 		required = append(required, "content")
 	case "file_edit":
-		description = "Atomically replace one exact text occurrence. path is workspace-relative."
+		description = "Atomically replace one exact text occurrence. path is workspace-relative. " +
+			"Call file_read for that exact path before editing it."
 		properties["old"] = map[string]any{"type": "string"}
 		properties["new"] = map[string]any{"type": "string"}
 		required = append(required, "old", "new")
@@ -140,7 +146,11 @@ func (o *operation) Descriptor() tool.Descriptor {
 			"move and delete across several workspace-relative paths. Every change is " +
 			"validated first, so nothing is written unless all of them can be applied. " +
 			"Later changes see earlier ones, so the same file can be edited twice in " +
-			"one call. Set dry_run to get the unified diff without writing."
+			"one call. Before calling, use file_read on every existing source or " +
+			"destination path named by the transaction; new paths need no prior read. " +
+			"For every edit, copy old as one contiguous exact substring from file_read; " +
+			"preserve whitespace and order, and never reconstruct or reorder it. " +
+			"Set dry_run to get the unified diff without writing."
 		delete(properties, "path")
 		properties["changes"] = map[string]any{
 			"type": "array", "minItems": float64(1),
@@ -179,12 +189,15 @@ func (o *operation) Descriptor() tool.Descriptor {
 		}
 		required = []string{"changes"}
 	case "file_patch":
-		description = "Atomically apply a standard unified diff across workspace files"
+		description = "Atomically apply a standard unified diff across workspace files. " +
+			"Call file_read for every existing file changed or deleted by the patch first."
 		delete(properties, "path")
 		properties["patch"] = map[string]any{"type": "string", "minLength": float64(1)}
 		required = []string{"patch"}
 	}
 	capability, access := tool.CapabilityRead, tool.AccessRead
+	parallel := tool.ParallelConcurrent
+	repeat := tool.RepeatExecute
 	requirement := tool.SandboxNone
 	resolver := tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 		Kind: "file", Field: "path", Access: tool.AccessRead,
@@ -192,24 +205,30 @@ func (o *operation) Descriptor() tool.Descriptor {
 	var aliases []tool.Alias
 	switch o.kind {
 	case "file_read":
+		repeat = tool.RepeatReplaySameTurn
 		aliases = []tool.Alias{{Name: "read_file", Hidden: true}}
 	case "file_list":
+		repeat = tool.RepeatReplaySameTurn
 		resolver.Templates[0].Kind = "directory"
 		resolver.Templates[0].Tree = true
 		aliases = []tool.Alias{{Name: "list_files", Hidden: true}}
 	case "file_write":
 		capability, access = tool.CapabilityWrite, tool.AccessWrite
+		parallel = tool.ParallelSerial
 		resolver.Templates[0].Access = tool.AccessWrite
 		aliases = []tool.Alias{{Name: "write_file", Hidden: true}}
 	case "file_edit":
 		capability, access = tool.CapabilityWrite, tool.AccessWrite
+		parallel = tool.ParallelSerial
 		resolver.Templates[0].Access = tool.AccessWrite
 		aliases = []tool.Alias{{Name: "edit_file", Hidden: true}}
 	case "file_apply":
 		capability, access = tool.CapabilityWrite, tool.AccessTree
+		parallel = tool.ParallelSerial
 		resolver = tool.ResourceResolver{ChangesField: "changes"}
 	case "file_patch":
 		capability, access = tool.CapabilityWrite, tool.AccessTree
+		parallel = tool.ParallelSerial
 		requirement = tool.SandboxStrong
 		resolver = tool.ResourceResolver{PatchField: "patch"}
 		aliases = []tool.Alias{{Name: "apply_patch", Hidden: true}}
@@ -218,7 +237,7 @@ func (o *operation) Descriptor() tool.Descriptor {
 		Name: o.kind, Description: description, Visibility: tool.VisibleModel,
 		Capability: capability, AccessMode: access,
 		ResourceResolver: resolver, Aliases: aliases,
-		ParallelPolicy:     tool.ParallelConcurrent,
+		ParallelPolicy: parallel, RepeatPolicy: repeat,
 		SandboxRequirement: requirement, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object", "properties": properties, "required": required, "additionalProperties": false,
@@ -251,7 +270,7 @@ func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Resu
 	case "file_read":
 		file, err := o.tools.workspace.OpenFile(input.Path)
 		if err != nil {
-			return tool.Result{}, err
+			return tool.Result{}, o.tools.recoverMissingPath(err, input.Path)
 		}
 		defer file.Close()
 		if strings.EqualFold(filepath.Ext(input.Path), ".pdf") || input.Pages != "" {
@@ -284,13 +303,69 @@ func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Resu
 	case "file_list":
 		directory, err := o.tools.workspace.OpenDirectory(input.Path)
 		if err != nil {
-			return tool.Result{}, err
+			return tool.Result{}, o.tools.recoverMissingPath(err, input.Path)
 		}
 		defer directory.Close()
 		return listDirectory(directory, input.Offset, input.Limit)
 	default:
 		return tool.Result{}, errors.New("unknown file operation")
 	}
+}
+
+func (t *Tools) recoverMissingPath(err error, path string) error {
+	if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	candidates := t.siblingCandidates(path, 12)
+	requiredAction := "file_list"
+	if len(candidates) != 0 {
+		requiredAction = "use_existing_path"
+	}
+	return tool.Precondition(tool.WithRecoveryHint(err, tool.RecoveryHint{
+		ErrorCategory:  "file_not_found",
+		RequiredAction: requiredAction,
+		Path:           path,
+		RetryOriginal:  false,
+		CandidatePaths: candidates,
+	}))
+}
+
+func (t *Tools) siblingCandidates(path string, limit int) []string {
+	parent := filepath.Dir(filepath.Clean(path))
+	if parent == "" {
+		parent = "."
+	}
+	resolved, err := t.workspace.ResolveDirectory(parent)
+	if err != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(resolved)
+	if err != nil {
+		return nil
+	}
+	requestedExtension := strings.ToLower(filepath.Ext(path))
+	sort.Slice(entries, func(i, j int) bool {
+		leftMatch := strings.ToLower(filepath.Ext(entries[i].Name())) ==
+			requestedExtension
+		rightMatch := strings.ToLower(filepath.Ext(entries[j].Name())) ==
+			requestedExtension
+		if leftMatch != rightMatch {
+			return leftMatch
+		}
+		return entries[i].Name() < entries[j].Name()
+	})
+	candidates := make([]string, 0, min(len(entries), limit))
+	for _, entry := range entries {
+		candidate := entry.Name()
+		if parent != "." {
+			candidate = filepath.Join(parent, candidate)
+		}
+		candidates = append(candidates, filepath.ToSlash(candidate))
+		if len(candidates) == limit {
+			break
+		}
+	}
+	return candidates
 }
 
 func readTextRange(file *os.File, startLine, maxLines int) (tool.Result, error) {
@@ -501,7 +576,7 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 		Dir: t.root, DirFile: directory, Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
 	})
 	if err != nil {
-		if requireStrong && guard.LooksLikeSandboxBlock(err.Error()) {
+		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
 			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch check")
 		}
 		return tool.Result{}, err
@@ -509,9 +584,6 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 	check.Stdin = strings.NewReader(patch)
 	if output, err := check.CombinedOutput(); err != nil {
 		msg := strings.TrimSpace(string(output))
-		if requireStrong && guard.LooksLikeSandboxBlock(msg+"\n"+err.Error()) {
-			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch check: "+msg)
-		}
 		return tool.Result{}, fmt.Errorf("patch conflict: %s", msg)
 	}
 	apply, err := process.NewCommand(ctx, process.Options{
@@ -519,7 +591,7 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 		Dir: t.root, DirFile: directory, Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
 	})
 	if err != nil {
-		if requireStrong && guard.LooksLikeSandboxBlock(err.Error()) {
+		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
 			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch apply")
 		}
 		return tool.Result{}, err
@@ -527,9 +599,6 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 	apply.Stdin = strings.NewReader(patch)
 	if output, err := apply.CombinedOutput(); err != nil {
 		msg := strings.TrimSpace(string(output))
-		if requireStrong && guard.LooksLikeSandboxBlock(msg+"\n"+err.Error()) {
-			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch apply: "+msg)
-		}
 		return tool.Result{}, fmt.Errorf("apply patch: %s", msg)
 	}
 	return tool.Result{Content: "patched", Metadata: map[string]any{"format": "unified"}}, nil

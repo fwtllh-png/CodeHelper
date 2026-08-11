@@ -209,11 +209,14 @@ make vscode-test
 make vscode-build
 ```
 
-构建本地 VSIX：
+构建、安装并完成当前 Host Target VSIX 的 Runtime Ready Handshake：
 
 ```bash
 make vscode-package
 ```
+
+`make vscode-package-universal` 仅用于静态 Universal Package；该产物不包含 Runtime
+Executable。
 
 macOS 还提供带固定 Provider 配置的一键脚本：
 

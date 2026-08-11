@@ -18,14 +18,16 @@ code_paths:
   - internal/persist
   - internal/observability
   - internal/platform
+  - extensions/vscode
 test_paths:
   - internal/host/cli/architecture_test.go
   - internal/runtime/protocol/schema_test.go
+  - extensions/vscode/src/security/gate.test.ts
 source_of_truth:
   - docs/en/architecture.md
   - docs/protocol/runtime-protocol.schema.json
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # CodeHelper System Architecture
@@ -129,6 +131,14 @@ not supported product surfaces.
 | Platform | `internal/platform` | process and OS integration |
 | VS Code | `extensions/vscode` | editor presentation and ACP client |
 
+VS Code is a local UI Extension with a physical boundary between Webview and
+Extension Host. Webview receives immutable projections and emits finite
+intents. Extension Host owns VS Code APIs, local Workspace identity,
+SecretStorage, native controls, and ACP transport. Runtime remains the only
+owner of Session, Profile, Tool policy, lifecycle, artifacts, and execution.
+Only local `file:` single-root and multi-root workspaces are supported; Remote
+SSH, Dev Containers, and Codespaces are outside this product surface.
+
 ## Hard Dependency Rules
 
 1. `runtime/protocol` is independent of implementation packages.
@@ -210,6 +220,8 @@ and execution engine.
   from events or journals.
 - An extension adapter that executes directly would become an ungoverned
   control plane.
+- Treating Webview state as Session truth would break Revision, replay, and
+  recovery contracts.
 
 ## Tests and Verification
 
@@ -254,5 +266,5 @@ encodes the same route described by the diagram.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `overview-system-architecture` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

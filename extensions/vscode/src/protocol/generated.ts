@@ -21,6 +21,9 @@ export const eventKinds = [
   "agent.status",
   "approval.required",
   "approval.resolved",
+  "checkpoint.created",
+  "checkpoint.forked",
+  "checkpoint.restored",
   "citation",
   "command.execution",
   "diagnostics.result",
@@ -68,7 +71,7 @@ export type EventEnvelope = {
   readonly "data": Readonly<Record<string, unknown>>;
   readonly "id": string;
   readonly "item_id": string;
-  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "reasoning.signature" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
+  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "reasoning.signature" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "checkpoint.created" | "checkpoint.restored" | "checkpoint.forked" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
   readonly "operation_id": string;
   readonly "sequence": number;
   readonly "thread_id": string;
@@ -78,6 +81,13 @@ export type EventEnvelope = {
 
 export type ProtocolProblem = {
   readonly "code": string;
+  readonly "details"?: {
+      readonly "actual_revision"?: number;
+      readonly "expected_revision"?: number;
+      readonly "reason": string;
+      readonly "resource_id"?: string;
+      readonly "session_status"?: string;
+    };
   readonly "http_status"?: number;
   readonly "message": string;
   readonly "rate_limit"?: {
@@ -87,6 +97,353 @@ export type ProtocolProblem = {
       readonly "retry_after_ms"?: number;
     };
   readonly "retryable": boolean;
+  readonly "version": number;
+};
+
+export type SessionProfileSnapshot = {
+  readonly "capabilities": {
+      readonly "model": string;
+      readonly "model_capabilities": {
+            readonly "availability": string;
+            readonly "context_window": number;
+            readonly "credential_status": string;
+            readonly "default_reasoning_effort"?: string;
+            readonly "display_name": string;
+            readonly "image_input": boolean;
+            readonly "max_output_tokens": number;
+            readonly "native_search": boolean;
+            readonly "parallel_tool_calls": string;
+            readonly "prompt_cache": boolean;
+            readonly "reasoning": boolean;
+            readonly "reasoning_efforts"?: ReadonlyArray<string>;
+            readonly "selection_mode": string;
+            readonly "streaming": boolean;
+            readonly "tool_calls": boolean;
+            readonly "unavailable_reason"?: string;
+            readonly "vision": boolean;
+          };
+      readonly "mutable_fields": ReadonlyArray<string>;
+      readonly "provider": string;
+    };
+  readonly "profile": {
+      readonly "approval_posture": string;
+      readonly "enabled_tool_ids"?: ReadonlyArray<string>;
+      readonly "execution_target": string;
+      readonly "max_steps": number;
+      readonly "mode": string;
+      readonly "model": string;
+      readonly "prompt_cache_revision": number;
+      readonly "provider": string;
+      readonly "reasoning_effort"?: string;
+      readonly "revision": number;
+      readonly "version": number;
+    };
+};
+
+export type SessionProfilePatch = {
+  readonly "approval_posture"?: string;
+  readonly "enabled_tool_ids"?: ReadonlyArray<string>;
+  readonly "execution_target"?: string;
+  readonly "max_steps"?: number;
+  readonly "mode"?: string;
+  readonly "model"?: string;
+  readonly "provider"?: string;
+  readonly "reasoning_effort"?: string;
+};
+
+export type SessionProfileUpdate = {
+  readonly "profile": {
+      readonly "approval_posture": string;
+      readonly "enabled_tool_ids"?: ReadonlyArray<string>;
+      readonly "execution_target": string;
+      readonly "max_steps": number;
+      readonly "mode": string;
+      readonly "model": string;
+      readonly "prompt_cache_revision": number;
+      readonly "provider": string;
+      readonly "reasoning_effort"?: string;
+      readonly "revision": number;
+      readonly "version": number;
+    };
+  readonly "prompt_cache_reset": boolean;
+  readonly "reset_reason"?: string;
+};
+
+export type ProviderCatalog = {
+  readonly "providers": ReadonlyArray<{
+      readonly "availability": string;
+      readonly "display_name": string;
+      readonly "id": string;
+      readonly "reason"?: string;
+      readonly "selected": boolean;
+    }>;
+  readonly "version": number;
+};
+
+export type ModelCatalog = {
+  readonly "models": ReadonlyArray<{
+      readonly "capabilities": {
+            readonly "availability": string;
+            readonly "context_window": number;
+            readonly "credential_status": string;
+            readonly "default_reasoning_effort"?: string;
+            readonly "display_name": string;
+            readonly "image_input": boolean;
+            readonly "max_output_tokens": number;
+            readonly "native_search": boolean;
+            readonly "parallel_tool_calls": string;
+            readonly "prompt_cache": boolean;
+            readonly "reasoning": boolean;
+            readonly "reasoning_efforts"?: ReadonlyArray<string>;
+            readonly "selection_mode": string;
+            readonly "streaming": boolean;
+            readonly "tool_calls": boolean;
+            readonly "unavailable_reason"?: string;
+            readonly "vision": boolean;
+          };
+      readonly "id": string;
+      readonly "provider": string;
+      readonly "selected": boolean;
+    }>;
+  readonly "version": number;
+};
+
+export type SessionToolCatalog = {
+  readonly "catalog_id": string;
+  readonly "digest": string;
+  readonly "generation": number;
+  readonly "tools": ReadonlyArray<{
+      readonly "access_mode": string;
+      readonly "availability": string;
+      readonly "capability": string;
+      readonly "constitution_reason": string;
+      readonly "constitution_state": string;
+      readonly "description": string;
+      readonly "enabled": boolean;
+      readonly "guarded": boolean;
+      readonly "id": string;
+      readonly "name": string;
+      readonly "policy_reason": string;
+      readonly "policy_state": string;
+      readonly "revision": number;
+      readonly "risk_level": string;
+      readonly "sandbox_requirement": string;
+      readonly "source_kind": string;
+      readonly "source_label": string;
+      readonly "state": string;
+      readonly "unavailable_reason"?: string;
+    }>;
+  readonly "version": number;
+};
+
+export type SessionList = {
+  readonly "matches"?: ReadonlyArray<{
+      readonly "kind": string;
+      readonly "session_id": string;
+      readonly "snippet"?: string;
+      readonly "turn_id": string;
+    }>;
+  readonly "query"?: string;
+  readonly "sessions": ReadonlyArray<{
+      readonly "archived": boolean;
+      readonly "changed_files": number;
+      readonly "checkpoint_count": number;
+      readonly "cost_known": boolean;
+      readonly "cost_microunits": number;
+      readonly "created_at": string;
+      readonly "execution_target": string;
+      readonly "isolation": string;
+      readonly "latest_sequence": number;
+      readonly "latest_turn_id"?: string;
+      readonly "mode"?: string;
+      readonly "model"?: string;
+      readonly "parent_thread_id"?: string;
+      readonly "pending_approvals": number;
+      readonly "pending_inputs": number;
+      readonly "pinned": boolean;
+      readonly "provider"?: string;
+      readonly "revision": number;
+      readonly "session_id": string;
+      readonly "status": string;
+      readonly "thread_id": string;
+      readonly "title": string;
+      readonly "total_tokens": number;
+      readonly "updated_at": string;
+      readonly "version": number;
+      readonly "workspace_label": string;
+      readonly "workspace_root": string;
+    }>;
+  readonly "version": number;
+};
+
+export type SessionLifecyclePatch = {
+  readonly "archived"?: boolean;
+  readonly "pinned"?: boolean;
+  readonly "title"?: string;
+};
+
+export type SessionLifecycleUpdate = {
+  readonly "session": {
+      readonly "archived": boolean;
+      readonly "changed_files": number;
+      readonly "checkpoint_count": number;
+      readonly "cost_known": boolean;
+      readonly "cost_microunits": number;
+      readonly "created_at": string;
+      readonly "execution_target": string;
+      readonly "isolation": string;
+      readonly "latest_sequence": number;
+      readonly "latest_turn_id"?: string;
+      readonly "mode"?: string;
+      readonly "model"?: string;
+      readonly "parent_thread_id"?: string;
+      readonly "pending_approvals": number;
+      readonly "pending_inputs": number;
+      readonly "pinned": boolean;
+      readonly "provider"?: string;
+      readonly "revision": number;
+      readonly "session_id": string;
+      readonly "status": string;
+      readonly "thread_id": string;
+      readonly "title": string;
+      readonly "total_tokens": number;
+      readonly "updated_at": string;
+      readonly "version": number;
+      readonly "workspace_label": string;
+      readonly "workspace_root": string;
+    };
+};
+
+export type SessionDelete = {
+  readonly "deleted_at": string;
+  readonly "session_id": string;
+  readonly "thread_id": string;
+  readonly "version": number;
+};
+
+export type CheckpointList = {
+  readonly "checkpoints": ReadonlyArray<{
+      readonly "can_fork": boolean;
+      readonly "can_restore": boolean;
+      readonly "change_receipt"?: {
+            readonly "cursor": number;
+            readonly "event_id": string;
+            readonly "turn_id": string;
+          };
+      readonly "changed_files": number;
+      readonly "created_at": string;
+      readonly "cursor": number;
+      readonly "external_side_effects": boolean;
+      readonly "id": string;
+      readonly "parent_checkpoint_id"?: string;
+      readonly "profile_revision": number;
+      readonly "session_id": string;
+      readonly "side_effect_note"?: string;
+      readonly "status": string;
+      readonly "summary": string;
+      readonly "thread_id": string;
+      readonly "turn_id": string;
+      readonly "version": number;
+    }>;
+  readonly "session_id": string;
+  readonly "version": number;
+};
+
+export type CheckpointRestore = {
+  readonly "checkpoint": {
+      readonly "can_fork": boolean;
+      readonly "can_restore": boolean;
+      readonly "change_receipt"?: {
+            readonly "cursor": number;
+            readonly "event_id": string;
+            readonly "turn_id": string;
+          };
+      readonly "changed_files": number;
+      readonly "created_at": string;
+      readonly "cursor": number;
+      readonly "external_side_effects": boolean;
+      readonly "id": string;
+      readonly "parent_checkpoint_id"?: string;
+      readonly "profile_revision": number;
+      readonly "session_id": string;
+      readonly "side_effect_note"?: string;
+      readonly "status": string;
+      readonly "summary": string;
+      readonly "thread_id": string;
+      readonly "turn_id": string;
+      readonly "version": number;
+    };
+  readonly "restored_cursor": number;
+  readonly "side_effects_replayed": boolean;
+  readonly "thread_id": string;
+  readonly "version": number;
+};
+
+export type CheckpointFork = {
+  readonly "checkpoint": {
+      readonly "can_fork": boolean;
+      readonly "can_restore": boolean;
+      readonly "change_receipt"?: {
+            readonly "cursor": number;
+            readonly "event_id": string;
+            readonly "turn_id": string;
+          };
+      readonly "changed_files": number;
+      readonly "created_at": string;
+      readonly "cursor": number;
+      readonly "external_side_effects": boolean;
+      readonly "id": string;
+      readonly "parent_checkpoint_id"?: string;
+      readonly "profile_revision": number;
+      readonly "session_id": string;
+      readonly "side_effect_note"?: string;
+      readonly "status": string;
+      readonly "summary": string;
+      readonly "thread_id": string;
+      readonly "turn_id": string;
+      readonly "version": number;
+    };
+  readonly "parent_thread_id": string;
+  readonly "session_id": string;
+  readonly "thread_id": string;
+  readonly "version": number;
+};
+
+export type SessionPlan = {
+  readonly "artifact"?: {
+      readonly "body": string;
+      readonly "can_autopilot": boolean;
+      readonly "can_implement": boolean;
+      readonly "created_at": string;
+      readonly "cursor": number;
+      readonly "id": string;
+      readonly "profile_revision": number;
+      readonly "session_id": string;
+      readonly "status": string;
+      readonly "thread_id": string;
+      readonly "turn_id": string;
+      readonly "version": number;
+    };
+  readonly "version": number;
+};
+
+export type TurnRecoveryRequest = {
+  readonly "action": string;
+  readonly "guidance"?: string;
+  readonly "idempotency_key": string;
+  readonly "session_id": string;
+  readonly "source_turn_id": string;
+  readonly "version": number;
+};
+
+export type PlanTransitionRequest = {
+  readonly "checkpoint_id"?: string;
+  readonly "destination": string;
+  readonly "idempotency_key": string;
+  readonly "plan_id": string;
+  readonly "session_id": string;
+  readonly "title"?: string;
+  readonly "transition": string;
   readonly "version": number;
 };
 
@@ -140,6 +497,7 @@ export type TurnRevertPayload = {
 
 export type TurnStartPayload = {
   readonly "context"?: ReadonlyArray<{
+      readonly "content"?: string;
       readonly "diagnostics"?: ReadonlyArray<{
             readonly "code"?: string;
             readonly "message": string;
@@ -159,7 +517,9 @@ export type TurnStartPayload = {
       readonly "digest": string;
       readonly "document_version": number;
       readonly "explicit": boolean;
-      readonly "kind": "file" | "selection" | "symbol" | "diagnostics";
+      readonly "kind": "file" | "selection" | "symbol" | "diagnostics" | "image" | "terminal" | "git_diff";
+      readonly "label"?: string;
+      readonly "media_type"?: string;
       readonly "omitted_diagnostics"?: number;
       readonly "path": string;
       readonly "range"?: {
@@ -172,7 +532,7 @@ export type TurnStartPayload = {
                     readonly "line": number;
                   };
           };
-      readonly "source"?: "composer" | "selection_command" | "code_action";
+      readonly "source"?: "composer" | "selection_command" | "code_action" | "native_picker";
       readonly "symbol"?: {
             readonly "kind": string;
             readonly "name": string;
@@ -189,7 +549,9 @@ export type TurnStartPayload = {
           };
       readonly "uri": string;
     }>;
+  readonly "display_prompt"?: string;
   readonly "idle"?: boolean;
+  readonly "intent"?: string;
   readonly "item_id": string;
   readonly "prompt": string;
   readonly "thread_id": string;
@@ -294,6 +656,57 @@ export type ApprovalResolvedData = {
   readonly "request_id": string;
 };
 
+export type CheckpointCreatedData = {
+  readonly "checkpoint": {
+      readonly "can_fork": boolean;
+      readonly "can_restore": boolean;
+      readonly "change_receipt"?: {
+            readonly "cursor": number;
+            readonly "event_id": string;
+            readonly "turn_id": string;
+          };
+      readonly "changed_files": number;
+      readonly "created_at": string;
+      readonly "cursor": number;
+      readonly "external_side_effects": boolean;
+      readonly "id": string;
+      readonly "parent_checkpoint_id"?: string;
+      readonly "profile_revision": number;
+      readonly "session_id": string;
+      readonly "side_effect_note"?: string;
+      readonly "status": string;
+      readonly "summary": string;
+      readonly "thread_id": string;
+      readonly "turn_id": string;
+      readonly "version": number;
+    };
+};
+
+export type CheckpointForkedData = {
+  readonly "checkpoint_id": string;
+  readonly "new_thread_id": string;
+  readonly "replacement_history": ReadonlyArray<{
+      readonly "content": unknown;
+      readonly "role": string;
+      readonly "turn"?: number;
+    }>;
+  readonly "source_cursor": number;
+  readonly "title": string;
+};
+
+export type CheckpointRestoredData = {
+  readonly "checkpoint_id": string;
+  readonly "replacement_history": ReadonlyArray<{
+      readonly "content": unknown;
+      readonly "role": string;
+      readonly "turn"?: number;
+    }>;
+  readonly "side_effects_replayed": boolean;
+  readonly "source_cursor": number;
+  readonly "source_thread_id": string;
+  readonly "source_turn_id": string;
+};
+
 export type CitationData = {
   readonly "end": number;
   readonly "source_id": string;
@@ -333,6 +746,8 @@ export type DiagnosticsResultData = {
             readonly "severity": string;
             readonly "source": string;
           }>;
+      readonly "error_category"?: string;
+      readonly "exit_code"?: number;
       readonly "message"?: string;
       readonly "path": string;
       readonly "runner"?: string;
@@ -397,8 +812,13 @@ export type OutputDeltaData = {
 };
 
 export type PlanDeltaData = {
+  readonly "artifact_id"?: string;
   readonly "body"?: string;
+  readonly "can_autopilot"?: boolean;
+  readonly "can_implement"?: boolean;
   readonly "done"?: boolean;
+  readonly "profile_revision"?: number;
+  readonly "status"?: string;
   readonly "text"?: string;
 };
 
@@ -474,9 +894,34 @@ export type ToolOutputData = {
 
 export type ToolResultData = {
   readonly "call_id": string;
+  readonly "changes"?: ReadonlyArray<{
+      readonly "added": number;
+      readonly "kind": string;
+      readonly "path": string;
+      readonly "removed": number;
+    }>;
+  readonly "completion"?: {
+      readonly "accepted": boolean;
+      readonly "call_id": string;
+      readonly "changed_paths": ReadonlyArray<string>;
+      readonly "mutation_revision": number;
+      readonly "pending_actions": ReadonlyArray<string>;
+      readonly "rejection"?: string;
+      readonly "status": string;
+      readonly "summary": string;
+      readonly "verification_call_ids": ReadonlyArray<string>;
+    };
   readonly "is_error": boolean;
+  readonly "observed_changes"?: number;
   readonly "output": string;
+  readonly "recovery"?: {
+      readonly "error_category": string;
+      readonly "path"?: string;
+      readonly "required_action": string;
+      readonly "retry_original": boolean;
+    };
   readonly "tool": string;
+  readonly "workspace_write_scope"?: string;
 };
 
 export type ToolStartData = {
@@ -506,12 +951,18 @@ export type TurnCompactionData = {
 };
 
 export type TurnCompletedData = {
+  readonly "outcome"?: string;
   readonly "text": string;
 };
 
 export type TurnFailedData = {
   readonly "code": string;
   readonly "message": string;
+  readonly "secondary_issues"?: ReadonlyArray<{
+      readonly "code": string;
+      readonly "message": string;
+      readonly "phase": string;
+    }>;
 };
 
 export type TurnReceiptData = {
@@ -540,9 +991,22 @@ export type TurnReceiptData = {
       readonly "summary"?: string;
       readonly "tool": string;
     }>;
+  readonly "completion"?: {
+      readonly "accepted": boolean;
+      readonly "call_id": string;
+      readonly "changed_paths": ReadonlyArray<string>;
+      readonly "mutation_revision": number;
+      readonly "pending_actions": ReadonlyArray<string>;
+      readonly "rejection"?: string;
+      readonly "status": string;
+      readonly "summary": string;
+      readonly "verification_call_ids": ReadonlyArray<string>;
+    };
   readonly "context_budget"?: {
       readonly "compactions": number;
+      readonly "estimated_tokens"?: number;
       readonly "history_bytes": number;
+      readonly "max_context_tokens"?: number;
       readonly "max_history_bytes": number;
     };
   readonly "context_sections"?: ReadonlyArray<{
@@ -578,7 +1042,9 @@ export type TurnReceiptData = {
   readonly "editor_context"?: ReadonlyArray<{
       readonly "diagnostic_count"?: number;
       readonly "digest": string;
-      readonly "kind": "file" | "selection" | "symbol" | "diagnostics";
+      readonly "kind": "file" | "selection" | "symbol" | "diagnostics" | "image" | "terminal" | "git_diff";
+      readonly "label"?: string;
+      readonly "media_type"?: string;
       readonly "omitted_diagnostics"?: number;
       readonly "original_bytes": number;
       readonly "path": string;
@@ -593,7 +1059,7 @@ export type TurnReceiptData = {
                   };
           };
       readonly "retained_bytes": number;
-      readonly "source"?: "composer" | "selection_command" | "code_action";
+      readonly "source"?: "composer" | "selection_command" | "code_action" | "native_picker";
       readonly "symbol"?: {
             readonly "kind": string;
             readonly "name": string;
@@ -629,6 +1095,7 @@ export type TurnReceiptData = {
     };
   readonly "goal": string;
   readonly "input_tokens": number;
+  readonly "intent"?: string;
   readonly "latency"?: {
       readonly "approval_wait_ms": number;
       readonly "first_token_ms"?: number;
@@ -640,9 +1107,15 @@ export type TurnReceiptData = {
   readonly "latency_ms": number;
   readonly "mode"?: string;
   readonly "not_collected"?: ReadonlyArray<string>;
+  readonly "outcome"?: string;
   readonly "output_tokens": number;
   readonly "plan"?: string;
   readonly "posture"?: string;
+  readonly "provider_retry"?: {
+      readonly "count": number;
+      readonly "last_category": string;
+      readonly "last_code": string;
+    };
   readonly "read_paths"?: ReadonlyArray<string>;
   readonly "reasoning_tokens"?: number;
   readonly "routes"?: ReadonlyArray<{
@@ -651,6 +1124,11 @@ export type TurnReceiptData = {
       readonly "purpose": string;
     }>;
   readonly "sandbox"?: string;
+  readonly "secondary_issues"?: ReadonlyArray<{
+      readonly "code": string;
+      readonly "message": string;
+      readonly "phase": string;
+    }>;
   readonly "skills"?: ReadonlyArray<{
       readonly "digest": string;
       readonly "locked": boolean;
@@ -687,8 +1165,10 @@ export type TurnReceiptData = {
       readonly "final_status": string;
       readonly "mode": string;
       readonly "repair_steps": number;
+      readonly "uncovered_paths"?: ReadonlyArray<string>;
     };
   readonly "workspace"?: string;
+  readonly "workspace_isolation"?: string;
   readonly "workspace_outcome"?: {
       readonly "changed"?: ReadonlyArray<string>;
       readonly "conflicts"?: ReadonlyArray<string>;
@@ -715,7 +1195,9 @@ export type TurnStartedData = {
   readonly "editor_context"?: ReadonlyArray<{
       readonly "diagnostic_count"?: number;
       readonly "digest": string;
-      readonly "kind": "file" | "selection" | "symbol" | "diagnostics";
+      readonly "kind": "file" | "selection" | "symbol" | "diagnostics" | "image" | "terminal" | "git_diff";
+      readonly "label"?: string;
+      readonly "media_type"?: string;
       readonly "omitted_diagnostics"?: number;
       readonly "original_bytes": number;
       readonly "path": string;
@@ -730,7 +1212,7 @@ export type TurnStartedData = {
                   };
           };
       readonly "retained_bytes": number;
-      readonly "source"?: "composer" | "selection_command" | "code_action";
+      readonly "source"?: "composer" | "selection_command" | "code_action" | "native_picker";
       readonly "symbol"?: {
             readonly "kind": string;
             readonly "name": string;
@@ -747,6 +1229,7 @@ export type TurnStartedData = {
           };
       readonly "truncated"?: boolean;
     }>;
+  readonly "intent"?: string;
   readonly "mode"?: string;
   readonly "model": string;
   readonly "posture"?: string;
@@ -754,6 +1237,7 @@ export type TurnStartedData = {
   readonly "provider": string;
   readonly "sandbox"?: string;
   readonly "workspace"?: string;
+  readonly "workspace_isolation"?: string;
 };
 
 export type TurnSteeredData = {
@@ -778,6 +1262,7 @@ export type TurnVerificationData = {
   readonly "repair_steps": number;
   readonly "scope": string;
   readonly "status": string;
+  readonly "uncovered_paths"?: ReadonlyArray<string>;
   readonly "warnings"?: number;
 };
 
@@ -799,6 +1284,9 @@ export interface EventDataByKind {
   readonly "agent.status": AgentStatusData;
   readonly "approval.required": ApprovalRequiredData;
   readonly "approval.resolved": ApprovalResolvedData;
+  readonly "checkpoint.created": CheckpointCreatedData;
+  readonly "checkpoint.forked": CheckpointForkedData;
+  readonly "checkpoint.restored": CheckpointRestoredData;
   readonly "citation": CitationData;
   readonly "command.execution": CommandExecutionData;
   readonly "diagnostics.result": DiagnosticsResultData;

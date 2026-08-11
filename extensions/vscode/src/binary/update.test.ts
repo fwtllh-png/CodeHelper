@@ -150,7 +150,9 @@ function fakeFetch(
         headers: { location: "https://attacker.invalid/binary" },
       }));
     }
-    return Promise.resolve(new Response(content, {
+    const body = new Uint8Array(content.byteLength);
+    body.set(content);
+    return Promise.resolve(new Response(body.buffer, {
       status: 200,
       headers: { "content-length": String(content.byteLength) },
     }));
@@ -173,7 +175,14 @@ function releaseArtifact(content: Uint8Array): ReleaseArtifact {
     acpProtocolMin: 1,
     acpProtocolMax: 2,
     operationSchemaVersion: 1,
-    requiredFeatures: ["editor_context_v2", "workspace_identity_v1"],
+    requiredFeatures: [
+      "editor_context_v2",
+      "session_profile_v1",
+      "session_lifecycle_v1",
+      "checkpoint_plan_v1",
+      "unified_tool_catalog_v1",
+      "workspace_identity_v1",
+    ],
     extensionVersionRange: ">=0.0.1 <0.1.0",
     sbomSha256: "b".repeat(64),
     provenanceSha256: "c".repeat(64),

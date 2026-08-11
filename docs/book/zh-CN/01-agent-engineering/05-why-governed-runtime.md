@@ -21,8 +21,8 @@ source_of_truth:
   - README.zh-CN.md
   - docs/zh-CN/architecture.md
   - docs/zh-CN/security.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 为什么 Agent 需要受治理的 Runtime
@@ -225,5 +225,5 @@ Fixture Contract 明确要求输入 `say hello`。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `agent-why-governed-runtime` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

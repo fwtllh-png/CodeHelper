@@ -16,6 +16,40 @@ import (
 // has not granted. The string is stable for CLI / probe callers.
 var ErrDenied = errors.New("egress denied")
 
+type DeniedError struct {
+	Host     string
+	Protocol string
+	Reason   string
+}
+
+func (e *DeniedError) Error() string {
+	if e == nil {
+		return ErrDenied.Error()
+	}
+	if e.Host != "" {
+		return fmt.Sprintf(
+			"%s: host %s protocol %s is not granted",
+			ErrDenied,
+			e.Host,
+			e.Protocol,
+		)
+	}
+	if e.Reason != "" {
+		return fmt.Sprintf("%s: %s", ErrDenied, e.Reason)
+	}
+	return ErrDenied.Error()
+}
+
+func (*DeniedError) Unwrap() error { return ErrDenied }
+
+func DeniedTarget(err error) (host, protocol string, ok bool) {
+	var denied *DeniedError
+	if !errors.As(err, &denied) || denied == nil || denied.Host == "" {
+		return "", "", false
+	}
+	return denied.Host, denied.Protocol, true
+}
+
 // Gate is a session-scoped host allowlist. A zero Gate denies everything once
 // Enforce is true; with Enforce false (or a nil *Gate on WrapClient) traffic
 // passes through unchanged so unit tests that never wired a broker keep working.
@@ -81,7 +115,7 @@ func (g *Gate) Check(req *http.Request) error {
 		return nil
 	}
 	if req == nil || req.URL == nil {
-		return fmt.Errorf("%w: missing request URL", ErrDenied)
+		return &DeniedError{Reason: "missing request URL"}
 	}
 	host := req.URL.Hostname()
 	if host == "" {
@@ -97,7 +131,7 @@ func (g *Gate) Check(req *http.Request) error {
 	if g.Allowed(host, protocol) {
 		return nil
 	}
-	return fmt.Errorf("%w: host %s protocol %s is not granted", ErrDenied, strings.ToLower(host), protocol)
+	return &DeniedError{Host: strings.ToLower(host), Protocol: protocol}
 }
 
 // RoundTripper wraps base and refuses ungranted hosts when Enforce is on.

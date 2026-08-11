@@ -19,7 +19,7 @@ source_of_truth:
   - internal/orchestration/workflow/checkpoint/checkpoint.go
   - internal/orchestration/workflow/runtime.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Checkpoint 与恢复
@@ -29,6 +29,8 @@ last_verified: 2026-08-06
 ## 学习目标
 
 理解 Workflow Fingerprint、Node Checkpoint、Output Handle 与 Resume-only-unfinished。
+
+## Checkpoint Contract
 
 ```mermaid
 sequenceDiagram
@@ -80,6 +82,8 @@ Status/Output Handle 分离，使系统可表达“Completed but Output Unavaila
 | Failed Dependency Skip | Preserve |
 | Fingerprint Mismatch | Refuse Resume |
 
+## Recovery Layers
+
 Task Recovery 恢复 Ownership/Queue；Workflow Checkpoint 恢复 Graph Progress；Runtime
 Event 恢复 Child Turn；Workspace Journal 恢复 File Effect。它们协调但互不替代。
 
@@ -121,4 +125,4 @@ go test ./internal/orchestration/workflow -run 'TestResume|TestFingerprint'
 | --- | --- |
 | Catalog ID | `task-checkpoint-recovery` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-10 |

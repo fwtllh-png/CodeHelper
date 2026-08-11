@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/engine/verify.go
   - internal/runtime/agent/evidence/evidence.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Verification Gate 与证据
@@ -30,6 +30,8 @@ last_verified: 2026-08-06
 
 理解 Post-edit Diagnostics、Scoped Verification、Repair Round、Soft/Hard Outcome、
 Rollback，以及 Evidence 与 Claim 的区别。
+
+## Gate Lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -146,5 +148,5 @@ Step Accounting 与最终 Workspace State。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `tool-verification` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

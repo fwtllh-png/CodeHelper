@@ -146,6 +146,7 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 	}
 	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
 		ThreadID: threadID, TurnID: turnID, ItemID: itemID, Prompt: prompt,
+		Intent: childTurnIntent(agent.Role, spec.ReadOnly),
 	})
 	if err != nil {
 		return "", err
@@ -173,6 +174,20 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 	}
 	c.armDeadline(threadID, turnID)
 	return string(turnID), nil
+}
+
+func childTurnIntent(role subagent.Role, readOnly bool) protocol.TurnIntent {
+	switch role {
+	case subagent.RolePlan:
+		return protocol.TurnIntentPlan
+	case subagent.RoleImplementer, subagent.RoleGeneral:
+		if !readOnly {
+			return protocol.TurnIntentWorkspaceChange
+		}
+		return protocol.TurnIntentAnswer
+	default:
+		return protocol.TurnIntentAnswer
+	}
 }
 
 // CancelTurn interrupts a child turn through the same cancel operation a host
@@ -479,6 +494,12 @@ func (c *childRuntime) observe(event protocol.Event) {
 		if turn.timedOut {
 			status = subagent.StatusErrored
 		}
+	case *protocol.OperationRejectedData:
+		turn.notes = append(turn.notes, fmt.Sprintf(
+			"operation rejected: %s",
+			data.Message,
+		))
+		settle, status = true, subagent.StatusErrored
 	}
 	if !settle {
 		runtime := c.runtime

@@ -34,24 +34,34 @@ type MetricSnapshot struct {
 	// wrong.
 	Compactions          uint64 `json:"compactions,omitempty"`
 	CompactionSavedBytes uint64 `json:"compaction_saved_bytes,omitempty"`
+	// TurnKernelTransitions counts Coordinator-committed transitions. Drifts are
+	// rejected transitions or terminal decisions that disagree with the
+	// committed Kernel state. DigestErrors mean the transition state could not be
+	// validated and hashed, so Replay comparison is not trustworthy.
+	TurnKernelTransitions  uint64 `json:"turn_kernel_transitions,omitempty"`
+	TurnKernelDrifts       uint64 `json:"turn_kernel_drifts,omitempty"`
+	TurnKernelDigestErrors uint64 `json:"turn_kernel_digest_errors,omitempty"`
 }
 
 type Metrics struct {
-	operationsSubmitted atomic.Uint64
-	operationsProcessed atomic.Uint64
-	eventsPublished     atomic.Uint64
-	subscribersDropped  atomic.Uint64
-	providerRequests    atomic.Uint64
-	agentTurns          atomic.Uint64
-	toolExecutions      atomic.Uint64
-	errors              atomic.Uint64
-	repoIndexState      atomic.Pointer[string]
-	contextTailBytes    atomic.Uint64
-	contextTailCuts     atomic.Uint64
-	evidenceRisks       atomic.Uint64
-	policyReminders     atomic.Uint64
-	compactions         atomic.Uint64
-	compactionSaved     atomic.Uint64
+	operationsSubmitted    atomic.Uint64
+	operationsProcessed    atomic.Uint64
+	eventsPublished        atomic.Uint64
+	subscribersDropped     atomic.Uint64
+	providerRequests       atomic.Uint64
+	agentTurns             atomic.Uint64
+	toolExecutions         atomic.Uint64
+	errors                 atomic.Uint64
+	repoIndexState         atomic.Pointer[string]
+	contextTailBytes       atomic.Uint64
+	contextTailCuts        atomic.Uint64
+	evidenceRisks          atomic.Uint64
+	policyReminders        atomic.Uint64
+	compactions            atomic.Uint64
+	compactionSaved        atomic.Uint64
+	turnKernelTransitions  atomic.Uint64
+	turnKernelDrifts       atomic.Uint64
+	turnKernelDigestErrors atomic.Uint64
 }
 
 func NewMetrics() *Metrics {
@@ -145,6 +155,19 @@ func (m *Metrics) Compaction(savedBytes int) {
 	}
 }
 
+func (m *Metrics) TurnKernelObserver(drift, digestError bool) {
+	if m == nil {
+		return
+	}
+	m.turnKernelTransitions.Add(1)
+	if drift {
+		m.turnKernelDrifts.Add(1)
+	}
+	if digestError {
+		m.turnKernelDigestErrors.Add(1)
+	}
+}
+
 // SetRepositoryIndexState records the state of the repository symbol index.
 func (m *Metrics) SetRepositoryIndexState(state string) {
 	if m != nil {
@@ -168,6 +191,9 @@ func (m *Metrics) Snapshot() MetricSnapshot {
 		PolicyReminders:        m.policyReminders.Load(),
 		Compactions:            m.compactions.Load(),
 		CompactionSavedBytes:   m.compactionSaved.Load(),
+		TurnKernelTransitions:  m.turnKernelTransitions.Load(),
+		TurnKernelDrifts:       m.turnKernelDrifts.Load(),
+		TurnKernelDigestErrors: m.turnKernelDigestErrors.Load(),
 
 		OperationsSubmitted: m.operationsSubmitted.Load(),
 		OperationsProcessed: m.operationsProcessed.Load(),

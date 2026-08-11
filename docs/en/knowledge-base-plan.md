@@ -7,8 +7,10 @@
 This document defines the goals, information architecture, chapter contract,
 delivery sequence, and acceptance criteria for the CodeHelper knowledge book.
 It is a construction plan, not a claim that the listed chapters already exist.
-Current code, tests, and the product manuals under `docs/en` remain the source
-of truth for shipped behavior.
+Individual chapter delivery status is tracked in `docs/book/catalog.json`;
+where the stage notes below and the catalog disagree, the catalog is
+authoritative. Current code, tests, and the product manuals under `docs/en`
+remain the source of truth for shipped behavior.
 
 ## 2. Objective
 
@@ -96,11 +98,11 @@ verifiable source of truth.
 ### Part II: Understanding CodeHelper
 
 1. Positioning, value, and non-goals
-2. One runtime and many hosts
+2. CodeHelper system architecture
 3. Package ownership and dependency direction
 4. Operation, Event, Receipt, and Projection
-5. The complete lifecycle of one turn
-6. The first data flow from CLI to model to tool
+5. The complete lifecycle of an Agent turn
+6. How models, context, and tools cooperate
 
 ### Part III: Runtime Kernel
 
@@ -171,7 +173,7 @@ verifiable source of truth.
 1. CLI and machine-readable output
 2. TUI state projection
 3. ACP stdio and editor interoperability
-4. VS Code context bridge, trust, and compatibility
+4. VS Code native agent chat and runtime authority
 
 ### Part XI: Extension Ecosystem
 
@@ -355,7 +357,9 @@ Delivered artifacts:
 
 ### Stage 1: Complete Introductory Path
 
-Status: completed.
+Status: in progress. The introductory reading path is fully drafted, but all
+six chapters are still marked `draft` in `docs/book/catalog.json`; the
+verification gate is not yet passed.
 
 Deliver these chapters first:
 
@@ -369,9 +373,10 @@ Deliver these chapters first:
 Acceptance: a new reader can build the correct mental model and finish the
 first lab without reading the codebase in advance.
 
-Delivered as six verified bilingual chapters covering the governed Runtime
-motivation, system architecture, Turn lifecycle, Model/Context/Tool
-collaboration, security controls, and a Hermetic first-Turn lab.
+Delivered as six bilingual chapters covering the governed Runtime motivation,
+system architecture, Turn lifecycle, Model/Context/Tool collaboration, security
+controls, and a Hermetic first-Turn lab. Content is complete; verification is
+pending.
 
 Quality pass completed on 2026-08-06: Part 1 now provides the full conceptual
 path from chatbot to feedback-loop Agent, LLM/token/context limits,
@@ -429,9 +434,8 @@ and model child-to-parent merge as guarded two-phase integration.
 
 Part 10 quality pass completed on 2026-08-06: Hosts and Protocols chapters now
 define CLI output-channel contracts, TUI reducer and reconstruction
-invariants, HTTP admission/idempotency and SSE replay-to-live handoff, ACP
-connection ordering, browser/deployment trust boundaries, and VS Code
-Supervisor, Cursor, multi-root Workspace, and compatibility recovery.
+invariants, ACP connection ordering, and VS Code Supervisor, Cursor,
+multi-root Workspace, and compatibility recovery.
 
 Part 11 quality pass completed on 2026-08-06: Extension Ecosystem chapters now
 define Provider route and stream commit boundaries, Tool generation binding,
@@ -456,8 +460,9 @@ rollout design.
 
 ### Stage 2: Runtime Core
 
-Status: complete. All 24 bilingual chapters across Runtime Kernel, Model and
-Provider, Context Engineering, and Tool/Execution are verified.
+Status: in progress. All 24 bilingual chapters across Runtime Kernel, Model and
+Provider, Context Engineering, and Tool/Execution are drafted; none is marked
+verified in `docs/book/catalog.json`.
 
 - protocol, app, agent, and wire;
 - providers and models;
@@ -470,8 +475,10 @@ points.
 
 ### Stage 3: Persistence and Orchestration
 
-Status: complete. All 12 bilingual chapters across State and Observability and
-Tasks and Orchestration are verified.
+Status: in progress. All 12 bilingual chapters across State and Observability
+and Tasks and Orchestration are drafted; 4 of 12 are marked verified in
+`docs/book/catalog.json` (state-trace-usage-cost, task-lease-retry,
+task-checkpoint-recovery, task-lane-fleet).
 
 - SQLite, events, sessions, snapshots, and journal;
 - tasks, workers, automation, and workflows;
@@ -483,8 +490,9 @@ background work.
 
 ### Stage 4: Hosts and Ecosystem
 
-Status: complete. All 10 bilingual chapters across Hosts and Protocols and the
-Extension Ecosystem are verified.
+Status: in progress. All 10 bilingual chapters across Hosts and Protocols and
+the Extension Ecosystem are drafted; 1 of 10 is marked verified in
+`docs/book/catalog.json` (host-acp).
 
 - CLI, TUI, ACP, and VS Code;
 - MCP, skills, plugins, and hooks;
@@ -494,8 +502,10 @@ Acceptance: readers can add an extension without violating runtime boundaries.
 
 ### Stage 5: Engineering Practice and Labs
 
-Status: complete. Seven bilingual engineering-practice chapters and all ten
-bilingual hands-on labs are verified.
+Status: in progress. All seven bilingual engineering-practice chapters and all
+ten bilingual hands-on labs are drafted; 3 of 17 are marked verified in
+`docs/book/catalog.json` (lab-recoverable-workflow, lab-worker-retry,
+lab-trace-failure).
 
 - testing, benchmarks, security, and release engineering;
 - systematic hands-on labs;
@@ -582,7 +592,9 @@ The book will not:
 
 ## 17. Ongoing Operation
 
-Stages 0 through 6 are complete. The knowledge system now operates through
-normal PR impact review, weekly drift checks, release fact verification, and a
-monthly reader-feedback/navigation pass. Future stages should be opened only
-for a new learning or governance capability, not for routine maintenance.
+Stages 0 and 6 are complete; Stages 1 through 5 are in progress, with per-stage
+status above and live chapter status in `docs/book/catalog.json`. The knowledge
+system now operates through normal PR impact review, weekly drift checks,
+release fact verification, and a monthly reader-feedback/navigation pass.
+Future stages should be opened only for a new learning or governance
+capability, not for routine maintenance.

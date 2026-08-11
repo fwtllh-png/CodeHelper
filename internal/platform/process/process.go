@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -27,6 +28,9 @@ type Options struct {
 	Env                  []string
 	Sandbox              sandbox.Backend
 	RequireStrongSandbox bool
+	WorkspaceReadOnly    bool
+	WorkspaceWritePaths  []string
+	DenyNetwork          bool
 	// OnOutput, when set, is called with each chunk as the process produces it,
 	// before the command finishes. A caller that only wants the final Result can
 	// leave it nil; a caller that has to show progress on a command that runs for
@@ -107,13 +111,23 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		return nil, err
 	}
 	environment = ensureGoToolchain(environment)
+	environment = ensureGitToolchain(environment)
+	if options.WorkspaceReadOnly {
+		environment = setEnvironmentValue(environment, "GIT_OPTIONAL_LOCKS", "0")
+		environment = setEnvironmentValue(environment, "PYTHONDONTWRITEBYTECODE", "1")
+	}
 	if strings.TrimSpace(options.Dir) == "" {
 		return nil, errors.New("child process directory is required")
 	}
 	if (options.Command == "") == (options.Path == "") {
 		return nil, errors.New("exactly one of shell command or executable path is required")
 	}
-	commandSpec := sandbox.Command{Dir: options.Dir, Env: environment}
+	commandSpec := sandbox.Command{
+		Dir: options.Dir, Env: environment,
+		WorkspaceReadOnly:   options.WorkspaceReadOnly,
+		WorkspaceWritePaths: append([]string(nil), options.WorkspaceWritePaths...),
+		DenyNetwork:         options.DenyNetwork,
+	}
 	if options.DirFile != nil {
 		commandSpec.DirectoryFD = 3
 	}
@@ -125,7 +139,16 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		commandSpec.Args = append([]string{options.Path}, options.Args...)
 	} else {
 		commandSpec.Path = "sh"
-		commandSpec.Args = []string{"sh", "-lc", options.Command}
+		// A macOS login shell runs path_helper and reorders PATH, which can put
+		// Apple's /usr/bin tool shims ahead of the concrete toolchains selected
+		// above. Restore the sanitized PATH after profile loading. Passing both
+		// values positionally keeps the caller's command out of this wrapper.
+		commandSpec.Args = []string{
+			"sh", "-lc",
+			`codehelper_path=$1; codehelper_command=$2; shift 2; ` +
+				`PATH=$codehelper_path; export PATH; eval "$codehelper_command"`,
+			"sh", environmentValue(environment, "PATH"), options.Command,
+		}
 	}
 	if options.RequireStrongSandbox {
 		if err := sandbox.RequireStrong(options.Sandbox); err != nil {
@@ -134,6 +157,13 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		if options.DirFile == nil {
 			return nil, errors.New("strong sandbox execution requires a pinned workspace cwd descriptor")
 		}
+	}
+	if len(options.WorkspaceWritePaths) != 0 && !options.WorkspaceReadOnly {
+		return nil, errors.New("workspace write paths require a read-only workspace base")
+	}
+	if (options.WorkspaceReadOnly || options.DenyNetwork ||
+		len(options.WorkspaceWritePaths) != 0) && options.Sandbox == nil {
+		return nil, errors.New("process restrictions require a sandbox backend")
 	}
 	if options.Sandbox != nil {
 		resolved, resolveErr := sandbox.ResolveExecutable(commandSpec.Path, environment)
@@ -157,6 +187,15 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 				commandSpec.PreparedPolicyID != policy.ID ||
 				commandSpec.PreparedStrength != sandbox.StrengthStrong) {
 			return nil, errors.New("strong sandbox backend returned an unverified prepared policy")
+		}
+		if options.WorkspaceReadOnly && !commandSpec.PreparedReadOnly {
+			return nil, errors.New("sandbox backend did not enforce a read-only workspace")
+		}
+		if !slices.Equal(options.WorkspaceWritePaths, commandSpec.PreparedWritePaths) {
+			return nil, errors.New("sandbox backend did not enforce exact workspace write paths")
+		}
+		if options.DenyNetwork && !commandSpec.PreparedNetworkDenied {
+			return nil, errors.New("sandbox backend did not enforce network isolation")
 		}
 	}
 	if commandSpec.Path == "" || len(commandSpec.Args) == 0 {
@@ -226,6 +265,22 @@ func ensureGoToolchain(environment []string) []string {
 	return prependPATH(environment, prepend...)
 }
 
+func ensureGitToolchain(environment []string) []string {
+	if runtime.GOOS != "darwin" {
+		return environment
+	}
+	for _, candidate := range []string{
+		"/Library/Developer/CommandLineTools/usr/bin/git",
+		"/Applications/Xcode.app/Contents/Developer/usr/bin/git",
+	} {
+		info, err := os.Stat(candidate)
+		if err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+			return prependPATH(environment, filepath.Dir(candidate))
+		}
+	}
+	return environment
+}
+
 func prependPATH(environment []string, directories ...string) []string {
 	if len(directories) == 0 {
 		return environment
@@ -276,6 +331,26 @@ func environmentValue(environment []string, name string) string {
 		}
 	}
 	return ""
+}
+
+func setEnvironmentValue(environment []string, name, value string) []string {
+	prefix := name + "="
+	result := make([]string, 0, len(environment)+1)
+	replaced := false
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, prefix) {
+			if !replaced {
+				result = append(result, prefix+value)
+				replaced = true
+			}
+			continue
+		}
+		result = append(result, entry)
+	}
+	if !replaced {
+		result = append(result, prefix+value)
+	}
+	return result
 }
 
 // observedBuffer accumulates everything written to it, and hands each write to an

@@ -21,8 +21,8 @@ source_of_truth:
   - internal/adapter/provider/types.go
   - internal/runtime/agent/engine/engine.go
   - internal/runtime/app/wire/route.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # How Models, Context, and Tools Cooperate
@@ -252,5 +252,5 @@ the deterministic Fixture contract, not a general model limitation.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `overview-model-context-tool` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

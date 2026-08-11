@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/host/cli/run.go
   - internal/host/cli/exec.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # CLI and Machine-Readable Output
@@ -135,5 +135,5 @@ sequence, terminal state, and receipt fields across both renderings.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `host-cli` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

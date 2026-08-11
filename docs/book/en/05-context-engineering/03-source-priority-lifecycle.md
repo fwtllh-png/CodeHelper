@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/promptcontext/context.go
   - internal/runtime/agent/promptcontext/turn.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Context Sources, Priority, and Lifecycle
@@ -169,5 +169,5 @@ observe a body omitted while its receipt remains.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `context-source-lifecycle` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

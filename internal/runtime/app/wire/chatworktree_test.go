@@ -2,13 +2,18 @@ package wire
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -80,6 +85,120 @@ func TestChatWorkspacesProvisionMergeAndRestore(t *testing.T) {
 	}
 }
 
+func TestChatWorkspaceMergeBatchesLargeChangeSet(t *testing.T) {
+	workspace := newGitWorkspace(t)
+	session := openChatWorkspaceSession(t, workspace)
+	manager := session.SessionWorkspaces()
+	isolated, err := manager.Provision(
+		t.Context(), "session-chat-large", protocol.ThreadID("thread-chat-large"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const fileCount = 170
+	for index := range fileCount {
+		name := fmt.Sprintf("generated/file-%03d.txt", index)
+		path := filepath.Join(isolated.Root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(name+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	plan, err := manager.PlanMerge(
+		t.Context(), "session-chat-large", protocol.ThreadID("thread-chat-large"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Files) != fileCount || len(plan.ID) != 64 {
+		t.Fatalf("large merge plan: files=%d id=%q", len(plan.Files), plan.ID)
+	}
+	for _, file := range plan.Files {
+		if file.Before != "" || file.After != "" {
+			t.Fatalf("merge plan retained full file content for %s", file.Path)
+		}
+	}
+	if _, err := manager.ApplyMerge(
+		t.Context(), "session-chat-large",
+		protocol.ThreadID("thread-chat-large"), plan.ID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range []int{0, 63, 64, 127, 128, 169} {
+		name := fmt.Sprintf("generated/file-%03d.txt", index)
+		body, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(body) != name+"\n" {
+			t.Fatalf("%s body = %q", name, body)
+		}
+	}
+	if _, err := manager.PlanMerge(
+		t.Context(), "session-chat-large", protocol.ThreadID("thread-chat-large"),
+	); !errors.Is(err, app.ErrSessionWorkspaceClean) {
+		t.Fatalf("post-merge PlanMerge error = %v", err)
+	}
+}
+
+func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
+	workspace := newGitWorkspace(t)
+	session := openChatWorkspaceSession(t, workspace)
+	isolated, err := session.SessionWorkspaces().Provision(
+		t.Context(), "session-chat-git", protocol.ThreadID("thread-chat-git"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolset, err := session.childTools.open(isolated.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shown, err := toolset.registry.Execute(t.Context(), tool.Call{
+		Name: "git_show", Arguments: json.RawMessage(`{"revision":"HEAD"}`),
+		Authorized: true,
+	})
+	if err != nil || shown.IsError ||
+		!strings.Contains(shown.Content, "codehelper chat baseline") {
+		t.Fatalf("git_show result=%+v err=%v", shown, err)
+	}
+	shell, err := toolset.registry.Execute(t.Context(), tool.Call{
+		Name: "shell_run",
+		Arguments: json.RawMessage(
+			`{"command":"git rev-parse --is-inside-work-tree && git log -1 --format=%s"}`,
+		),
+		Authorized: true,
+	})
+	if err != nil || shell.IsError ||
+		!strings.Contains(shell.Content, "true") ||
+		!strings.Contains(shell.Content, "codehelper chat baseline") ||
+		strings.Contains(shell.Content, "xcrun_db") {
+		t.Fatalf("shell Git result=%+v err=%v", shell, err)
+	}
+	escaped := filepath.Join(workspace, "sandbox-escape.txt")
+	arguments, err := json.Marshal(map[string]string{
+		"command": fmt.Sprintf(
+			"printf escaped > '%s'",
+			strings.ReplaceAll(escaped, "'", "'\"'\"'"),
+		),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write, err := toolset.registry.Execute(t.Context(), tool.Call{
+		Name: "shell_run", Arguments: arguments, Authorized: true,
+	})
+	if err == nil && !write.IsError {
+		t.Fatalf("main workspace write unexpectedly succeeded: %+v", write)
+	}
+	if _, err := os.Stat(escaped); !os.IsNotExist(err) {
+		t.Fatalf("main workspace escape exists: %v", err)
+	}
+}
+
 func TestChatWorkspaceMergeRejectsParentDrift(t *testing.T) {
 	workspace := newGitWorkspace(t)
 	session := openChatWorkspaceSession(t, workspace)
@@ -112,6 +231,82 @@ func TestChatWorkspaceMergeRejectsParentDrift(t *testing.T) {
 	}
 	if string(body) != "editor version\n" {
 		t.Fatalf("conflict changed main workspace: %q", body)
+	}
+}
+
+func TestChatWorkspaceMergeCombinesNonOverlappingParentDrift(t *testing.T) {
+	workspace := newGitWorkspace(t)
+	session := openChatWorkspaceSession(t, workspace)
+	manager := session.SessionWorkspaces()
+	base := "first\nsecond\nthird\n"
+	if err := os.WriteFile(
+		filepath.Join(workspace, "README.md"), []byte(base), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.chatWorkspaces.git(
+		t.Context(), workspace, "add", "README.md",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := session.chatWorkspaces.git(
+		t.Context(), workspace,
+		"-c", "user.name=Fixture", "-c", "user.email=fixture@example.com",
+		"commit", "--no-gpg-sign", "-m", "three-way base",
+	); err != nil {
+		t.Fatal(err)
+	}
+	isolated, err := manager.Provision(
+		t.Context(), "session-chat-three-way", protocol.ThreadID("thread-chat-three-way"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(workspace, "README.md"),
+		[]byte("first from main\nsecond\nthird\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(isolated.Root, "README.md"),
+		[]byte("first\nsecond\nthird from chat\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := session.chatWorkspaces.chatBaselineFile(
+		t.Context(), isolated.Root, "README.md",
+	)
+	if err != nil || !baseline.exists || string(baseline.data) != base {
+		t.Fatalf("baseline=%q exists=%t err=%v", baseline.data, baseline.exists, err)
+	}
+
+	plan, err := manager.PlanMerge(
+		t.Context(), "session-chat-three-way", protocol.ThreadID("thread-chat-three-way"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Files) != 1 || !strings.Contains(plan.Diff, "third from chat") {
+		t.Fatalf("three-way plan = %+v", plan)
+	}
+	if _, err := manager.ApplyMerge(
+		t.Context(), "session-chat-three-way",
+		protocol.ThreadID("thread-chat-three-way"), plan.ID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	want := "first from main\nsecond\nthird from chat\n"
+	for _, root := range []string{workspace, isolated.Root} {
+		body, err := os.ReadFile(filepath.Join(root, "README.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(body) != want {
+			t.Fatalf("%s README = %q, want %q", root, body, want)
+		}
 	}
 }
 

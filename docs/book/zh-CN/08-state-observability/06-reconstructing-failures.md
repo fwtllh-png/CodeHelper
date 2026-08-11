@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/receipt.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 从失败运行还原系统行为
@@ -32,6 +32,8 @@ last_verified: 2026-08-06
 
 使用 Event、Projection、Snapshot、Journal、Trace、Usage、Evidence 与 Receipt 还原
 Failure，避免猜测。
+
+## Reconstruction Order
 
 ```mermaid
 flowchart TD
@@ -135,5 +137,5 @@ Recovery Action 与 Unresolved Claim 的 Timeline。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `state-reconstruct-failure` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

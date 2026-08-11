@@ -319,6 +319,9 @@ func runPersistentACPHost(
 		SessionWorkspaces: application.SessionWorkspaces(),
 	}, stdout, acp.Options{
 		ProviderID: application.ProviderID(), ModelID: application.ModelID(),
+		ModelCapabilities: application.ModelCapabilities(),
+		ProviderCatalog:   application.ProviderCatalog(),
+		ModelCatalog:      application.ModelCatalog(),
 		WorkspaceRoot:     loaded.Config.Execution.Workspace,
 		WorkspaceIdentity: workspaceIdentity,
 		CleanupTimeout:    5 * time.Second, ReplayLimit: options.ReplayLimit,

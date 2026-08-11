@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/orchestration/task/repository.go
   - internal/orchestration/worker/worker.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Task、Worker 与 Executor
@@ -30,6 +30,8 @@ last_verified: 2026-08-06
 
 理解 Durable Task State、Worker Scheduling、Executor Contract，以及 Background Work
 为何仍必须进入 Production Runtime。
+
+## Lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -108,5 +110,5 @@ go test ./internal/runtime/app/wire -run 'TestScheduler|TestQueuedTask'
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `task-worker-executor` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

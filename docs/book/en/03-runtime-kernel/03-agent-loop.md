@@ -15,8 +15,8 @@ test_paths:
   - internal/runtime/agent/engine/verify_gate_test.go
 source_of_truth:
   - internal/runtime/agent/engine/engine.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # The Model and Tool Execution Loop
@@ -195,5 +195,5 @@ text. Confirm that Tool Call ID pairs the Assistant and Tool messages.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-agent-loop` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

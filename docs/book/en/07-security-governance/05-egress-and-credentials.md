@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - docs/en/security.md
   - internal/security/egress/gate.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Egress, Credentials, and Data Leakage
@@ -97,3 +97,11 @@ make secret-leak-test
 ## Further Reading
 
 - [Credential References and Secret Lifecycle](../04-model-and-provider/05-credential-lifecycle.md)
+
+## Sources and Verification
+
+| Item | Value |
+| --- | --- |
+| Catalog ID | `security-egress-credentials` |
+| Status | `draft` |
+| Last verified | Not yet verified |

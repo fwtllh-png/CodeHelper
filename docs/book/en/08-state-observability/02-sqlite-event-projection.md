@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/persist/state/sqlite/store.go
   - internal/persist/state/eventlog/log.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # SQLite, Event Logs, and Projections
@@ -140,5 +140,5 @@ repairable while the second must stop startup.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `state-sqlite-event-projection` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/promptcontext/context.go
   - internal/persist/snapshot/repository.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Memory, Snapshots, and Recovery
@@ -177,5 +177,5 @@ the separate semantic checks in `TestReconstructThreadCommitsOnlyCompletedPaired
 | Item | Value |
 | --- | --- |
 | Catalog ID | `context-memory-snapshot` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

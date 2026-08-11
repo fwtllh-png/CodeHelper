@@ -69,6 +69,52 @@ func GenerateSchema() *Schema {
 	schema.Envelope["event"] = eventEnvelopeSchema()
 	schema.Envelope["problem"] = schemaOf(reflect.TypeOf(&Problem{}))
 	schema.Envelope["readiness"] = schemaOf(reflect.TypeOf(&Readiness{}))
+	schema.Envelope["session_profile_snapshot"] = schemaOf(
+		reflect.TypeOf(&SessionProfileSnapshot{}),
+	)
+	schema.Envelope["session_profile_patch"] = schemaOf(reflect.TypeOf(&SessionProfilePatch{}))
+	schema.Envelope["session_profile_update"] = schemaOf(
+		reflect.TypeOf(&SessionProfileUpdateResult{}),
+	)
+	schema.Envelope["provider_catalog"] = schemaOf(
+		reflect.TypeOf(&ProviderCatalog{}),
+	)
+	schema.Envelope["model_catalog"] = schemaOf(
+		reflect.TypeOf(&ModelCatalog{}),
+	)
+	schema.Envelope["session_tool_catalog"] = schemaOf(
+		reflect.TypeOf(&SessionToolCatalog{}),
+	)
+	schema.Envelope["session_list"] = schemaOf(
+		reflect.TypeOf(&SessionList{}),
+	)
+	schema.Envelope["session_lifecycle_patch"] = schemaOf(
+		reflect.TypeOf(&SessionLifecyclePatch{}),
+	)
+	schema.Envelope["session_lifecycle_update"] = schemaOf(
+		reflect.TypeOf(&SessionLifecycleUpdate{}),
+	)
+	schema.Envelope["session_delete"] = schemaOf(
+		reflect.TypeOf(&SessionDeleteResult{}),
+	)
+	schema.Envelope["checkpoint_list"] = schemaOf(
+		reflect.TypeOf(&CheckpointList{}),
+	)
+	schema.Envelope["checkpoint_restore"] = schemaOf(
+		reflect.TypeOf(&CheckpointRestoreResult{}),
+	)
+	schema.Envelope["checkpoint_fork"] = schemaOf(
+		reflect.TypeOf(&CheckpointForkResult{}),
+	)
+	schema.Envelope["session_plan"] = schemaOf(
+		reflect.TypeOf(&SessionPlanSnapshot{}),
+	)
+	schema.Envelope["turn_recovery_request"] = schemaOf(
+		reflect.TypeOf(&TurnRecoveryRequest{}),
+	)
+	schema.Envelope["plan_transition_request"] = schemaOf(
+		reflect.TypeOf(&PlanTransitionRequest{}),
+	)
 	return schema
 }
 
@@ -155,12 +201,15 @@ func schemaOf(goType reflect.Type) *TypeSchema {
 		return &TypeSchema{Type: "string", Enum: []string{
 			string(EditorContextFile), string(EditorContextSelection),
 			string(EditorContextSymbol), string(EditorContextDiagnostics),
+			string(EditorContextImage), string(EditorContextTerminal),
+			string(EditorContextGitDiff),
 		}}
 	case goType == editorContextSourceType:
 		return &TypeSchema{Type: "string", Enum: []string{
 			string(EditorContextSourceComposer),
 			string(EditorContextSourceSelectionCommand),
 			string(EditorContextSourceCodeAction),
+			string(EditorContextSourceNativePicker),
 		}}
 	}
 	switch goType.Kind() {

@@ -20,8 +20,8 @@ source_of_truth:
   - internal/adapter/tool/builtin/builtin.go
   - internal/adapter/tool/file/file.go
   - internal/adapter/tool/shell/shell.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # File, Shell, and Agent Tools
@@ -163,5 +163,5 @@ preconditions, resources, and resulting change metadata across both paths.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `tool-builtins` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

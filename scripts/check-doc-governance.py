@@ -275,6 +275,133 @@ def source_changes_after(chapter: dict, verified: dt.date) -> list[str]:
     return changed
 
 
+def set_front_matter_fields(path: pathlib.Path, fields: dict[str, str | None]) -> bool:
+    """Rewrite scalar Front Matter fields in place; returns True when changed.
+
+    Only ``key: value`` lines inside the Front Matter block are touched; the
+    rest of the file is preserved byte-for-byte, including the trailing
+    newline.
+    """
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    if not lines or lines[0] != "---":
+        raise ValueError(f"{path.relative_to(ROOT)}: missing Front Matter")
+    try:
+        end = lines.index("---", 1)
+    except ValueError as exc:
+        raise ValueError(f"{path.relative_to(ROOT)}: unclosed Front Matter") from exc
+    changed = False
+    for index in range(1, end):
+        match = re.fullmatch(r"([a-z_]+):( .*)?", lines[index])
+        if not match or match.group(1) not in fields:
+            continue
+        value = fields[match.group(1)]
+        replacement = (
+            f"{match.group(1)}: null" if value is None else f"{match.group(1)}: {value}"
+        )
+        if lines[index] != replacement:
+            lines[index] = replacement
+            changed = True
+    if not changed:
+        return False
+    joined = "\n".join(lines)
+    path.write_text(joined + ("\n" if text.endswith("\n") else ""), encoding="utf-8")
+    return True
+
+
+def set_catalog_status(
+    chapter_id: str, status: str, path: pathlib.Path = CATALOG_PATH
+) -> bool:
+    """Rewrite one chapter status in catalog.json without reformatting the file."""
+    text = path.read_text(encoding="utf-8")
+    pattern = re.compile(
+        r'(\{"id": "' + re.escape(chapter_id) + r'", "slug": "[^"]*", )"status": "[a-z]+"'
+    )
+    updated, count = pattern.subn(r'\1"status": "' + status + '"', text)
+    if count == 0:
+        raise ValueError(f"{path.relative_to(ROOT)}: chapter {chapter_id} status not found")
+    if updated == text:
+        return False
+    path.write_text(updated, encoding="utf-8")
+    return True
+
+
+def run_reverify(dry_run: bool) -> int:
+    """Reconcile verified chapters with their sources.
+
+    A chapter whose declared source paths changed after ``last_verified`` is
+    downgraded to ``draft`` in both language files and in the catalog; a
+    chapter whose sources are unchanged is re-stamped with today's date.
+    """
+    today = dt.date.today()
+    restamped: list[str] = []
+    downgraded: list[str] = []
+    skipped: list[str] = []
+    for chapter_id, chapter in sorted(chapters().items()):
+        metadata = chapter["metadata"]
+        if metadata.get("status") != "verified":
+            continue
+        try:
+            verified = dt.date.fromisoformat(str(metadata["last_verified"]))
+        except (TypeError, ValueError):
+            skipped.append(chapter_id)
+            print(
+                f"reverify: skip {chapter['relative']}: invalid last_verified",
+                file=sys.stderr,
+            )
+            continue
+        if verified > today:
+            skipped.append(chapter_id)
+            print(
+                f"reverify: skip {chapter['relative']}: last_verified is in the future",
+                file=sys.stderr,
+            )
+            continue
+        drifted = bool(source_changes_after(chapter, verified))
+        fields = (
+            {"status": "draft", "last_verified": None}
+            if drifted
+            else {"last_verified": today.isoformat()}
+        )
+        action = "downgrade to draft" if drifted else f"re-stamp {today.isoformat()}"
+        if dry_run:
+            print(f"reverify: {chapter['relative']}: {action}")
+            if drifted:
+                downgraded.append(chapter_id)
+            else:
+                restamped.append(chapter_id)
+            continue
+        en_path = BOOK / "en" / chapter["relative"]
+        zh_path = BOOK / "zh-CN" / chapter["relative"]
+        try:
+            en_metadata = parse_front_matter(en_path)
+            zh_metadata = parse_front_matter(zh_path)
+        except ValueError as exc:
+            skipped.append(chapter_id)
+            print(f"reverify: {chapter['relative']}: {exc}", file=sys.stderr)
+            continue
+        if not fields.keys() <= en_metadata.keys() or not fields.keys() <= zh_metadata.keys():
+            skipped.append(chapter_id)
+            print(
+                f"reverify: {chapter['relative']}: Front Matter fields not found",
+                file=sys.stderr,
+            )
+            continue
+        set_front_matter_fields(en_path, fields)
+        set_front_matter_fields(zh_path, fields)
+        if drifted:
+            set_catalog_status(chapter_id, "draft")
+            downgraded.append(chapter_id)
+        else:
+            restamped.append(chapter_id)
+        print(f"reverify: {chapter['relative']}: {action}")
+    print(
+        f"reverify: {len(restamped)} re-stamped, {len(downgraded)} downgraded to draft, "
+        f"{len(skipped)} skipped"
+    )
+    return 1 if skipped else 0
+
+
 def changed_paths(base: str, head: str) -> list[str]:
     result = subprocess.run(
         ["git", "diff", "--name-only", f"{base}...{head}"],
@@ -437,6 +564,8 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     check_parser = subparsers.add_parser("check")
     check_parser.add_argument("--strict-drift", action="store_true")
+    reverify_parser = subparsers.add_parser("reverify")
+    reverify_parser.add_argument("--dry-run", action="store_true")
     impact_parser = subparsers.add_parser("impact")
     impact_parser.add_argument("--base", required=True)
     impact_parser.add_argument("--head", default="HEAD")
@@ -452,6 +581,8 @@ def main() -> int:
             return 1
         print("documentation governance check passed")
         return 0
+    if args.command == "reverify":
+        return run_reverify(args.dry_run)
     if args.command == "impact":
         return run_impact(args.base, args.head, args.body if args.body is not None else pr_body())
     if args.command == "release":

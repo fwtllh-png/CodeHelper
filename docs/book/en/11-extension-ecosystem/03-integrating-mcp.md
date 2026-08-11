@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/mcp/config.go
   - internal/adapter/mcp/pool.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Integrating an MCP Server
@@ -124,5 +124,5 @@ trigger a catalog notification, then verify revision-safe refresh.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `extension-mcp` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

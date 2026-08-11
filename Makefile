@@ -4,7 +4,6 @@ BINARY := bin/codehelper
 MODULE := github.com/fwtllh-png/CodeHelper
 VSCODE_DIR := extensions/vscode
 VSCODE_CLI ?= /Applications/Visual Studio Code.app/Contents/Resources/app/bin/code
-VSCODE_REMOTE_EXTENSIONS := $(VSCODE_DIR)/.vscode-test/remote-extensions
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || printf unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -19,15 +18,17 @@ LDFLAGS := -s -w \
 	experience-electron-baseline host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-freeze \
 	book-navigation command-docs command-docs-check \
+	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
 	doc-governance-check doc-governance-test doc-impact \
+	doc-reverify doc-reverify-dry-run \
 	doc-external-links release-fact-check brand-check \
+	markdownlint-check \
 	security-test sandbox-attack-test secret-leak-test live-model-smoke \
 	cli-smoke tui-smoke acp-interop protocol-contract protocol-schema \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
 	vscode-security vscode-performance vscode-runtime-integration \
-	vscode-integration vscode-remote-extensions vscode-remote-ssh-integration \
-	vscode-devcontainer-integration \
-	vscode-build vscode-package vscode-release-dry-run \
+	vscode-integration vscode-rosetta-integration \
+	vscode-build vscode-package vscode-package-universal vscode-release-dry-run \
 	vscode-multiroot-integration vscode-update-integration \
 	vscode-distribution vscode-local-setup vscode-matrix-report vscode-rc \
 	deepseek-init deepseek-tui deepseek-vscode \
@@ -57,7 +58,7 @@ endif
 fmt:
 	$(GO) fmt ./...
 
-verify: docs-check book-check brand-check vscode-check vscode-test
+verify: markdownlint-check docs-check book-check brand-check vscode-check vscode-test
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
 	$(GO) vet ./...
 	$(MAKE) test-hermetic
@@ -147,6 +148,9 @@ docs-check: command-docs-check experience-check benchmark-v2-check
 	$(MAKE) doc-governance-check
 	$(MAKE) doc-governance-test
 
+markdownlint-check: vscode-install
+	./extensions/vscode/node_modules/.bin/markdownlint-cli2
+
 book-check:
 	./scripts/check-book.sh
 
@@ -158,6 +162,23 @@ command-docs:
 
 command-docs-check:
 	$(GO) run ./scripts/commanddocs --check
+
+turn-kernel-convergence-baseline:
+	$(GO) test -count=1 \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app \
+		./internal/runtime/app/wire \
+		./internal/persist/state/sqlite \
+		./internal/persist/state/turnstate \
+		-run 'Test(C0|C1|C2|C3|C4|C5|C6|Phase4R)'
+
+# Final production ownership gate.
+turn-kernel-convergence-exit-gate:
+	CODEHELPER_TURN_KERNEL_CONVERGENCE_EXIT_GATE=1 $(GO) test -count=1 \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/app \
+		-run '^TestC0.*ExitGate$$'
 
 experience-check:
 	$(GO) run ./scripts/experiencecontract
@@ -185,6 +206,12 @@ doc-governance-check:
 
 doc-governance-test:
 	python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+doc-reverify:
+	python3 scripts/check-doc-governance.py reverify
+
+doc-reverify-dry-run:
+	python3 scripts/check-doc-governance.py reverify --dry-run
 
 doc-impact:
 	@test -n "$(BASE_REF)" || { echo "BASE_REF is required" >&2; exit 2; }
@@ -294,6 +321,25 @@ vscode-integration: build vscode-install
 		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
 		$(NPM) run test:electron
 
+# Runs the x64 VS Code and Runtime under Rosetta on an Apple Silicon release
+# host. The pinned x64 Electron host downloads on first use.
+vscode-rosetta-integration: vscode-install
+	@test "$$(uname -s)" = Darwin && test "$$(uname -m)" = arm64 || \
+		{ printf '%s\n' 'Rosetta integration requires Apple Silicon macOS'; exit 1; }
+	@tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build -trimpath \
+		-ldflags '$(LDFLAGS)' -o "$$tmp/codehelper" ./cmd/codehelper; \
+	cd $(VSCODE_DIR) && \
+		CODEHELPER_VSCODE_BINARY="$$tmp/codehelper" \
+		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
+		CODEHELPER_VSCODE_TEST_PLATFORM=darwin \
+		CODEHELPER_EXPECTED_HOST_ARCH=x64 \
+		CODEHELPER_MATRIX_TARGET=darwin-x64 \
+		CODEHELPER_ELECTRON_SCENARIOS=native,multi \
+		CODEHELPER_VSCODE_DISABLE_GPU=1 \
+		$(NPM) run test:electron
+
 vscode-multiroot-integration: build vscode-install
 	cd $(VSCODE_DIR) && \
 		CODEHELPER_VSCODE_BINARY='$(CURDIR)/$(BINARY)' \
@@ -307,38 +353,10 @@ vscode-update-integration: vscode-install
 		update-integration static host n/a managed \
 		signature redirect truncation rollback revocation concurrency
 
-vscode-remote-extensions:
-	@mkdir -p '$(VSCODE_REMOTE_EXTENSIONS)' \
-		'$(VSCODE_DIR)/.vscode-test/remote-user-data'
-	'$(VSCODE_CLI)' \
-		--user-data-dir '$(VSCODE_DIR)/.vscode-test/remote-user-data' \
-		--extensions-dir '$(VSCODE_REMOTE_EXTENSIONS)' \
-		--install-extension ms-vscode-remote.remote-ssh --force
-	'$(VSCODE_CLI)' \
-		--user-data-dir '$(VSCODE_DIR)/.vscode-test/remote-user-data' \
-		--extensions-dir '$(VSCODE_REMOTE_EXTENSIONS)' \
-		--install-extension ms-vscode-remote.remote-containers --force
+vscode-package: vscode-release-dry-run
 
-vscode-remote-ssh-integration: vscode-install vscode-remote-extensions
-	@mkdir -p bin
-	GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' \
-		-o bin/codehelper-linux-arm64 ./cmd/codehelper
-	cd $(VSCODE_DIR) && \
-		CODEHELPER_VSCODE_REMOTE_BINARY='$(CURDIR)/bin/codehelper-linux-arm64' \
-		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
-		$(NPM) run test:remote-ssh
-
-vscode-devcontainer-integration: vscode-install vscode-remote-extensions
-	@mkdir -p bin
-	GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' \
-		-o bin/codehelper-linux-arm64 ./cmd/codehelper
-	cd $(VSCODE_DIR) && \
-		CODEHELPER_VSCODE_CONTAINER_BINARY='$(CURDIR)/bin/codehelper-linux-arm64' \
-		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
-		$(NPM) run test:dev-container
-
-vscode-package: vscode-install
-	cd $(VSCODE_DIR) && $(NPM) run package:vsix
+vscode-package-universal: vscode-install
+	cd $(VSCODE_DIR) && $(NPM) run package:vsix:universal
 
 vscode-release-dry-run: vscode-install
 	cd $(VSCODE_DIR) && $(NPM) run release:vscode:dry-run
@@ -369,6 +387,7 @@ vscode-rc:
 	$(MAKE) vscode-security
 	$(MAKE) vscode-performance
 	$(MAKE) vscode-integration
+	$(MAKE) vscode-rosetta-integration
 	$(MAKE) vscode-update-integration
 	$(MAKE) vscode-distribution
 	$(MAKE) vscode-matrix-report

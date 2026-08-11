@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
+
+var credentialReferenceName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+var environmentVariableName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // CredentialSlot is a named non-secret credential reference.
 type CredentialSlot struct {
@@ -65,13 +69,21 @@ func setCredentialSlot(configPath string, slot CredentialSlot) error {
 	if !oneOf(slot.Kind, "env", "file", "keyring") {
 		return fmt.Errorf("kind must be env, file, or keyring")
 	}
-	if slot.Env == "" && slot.Ref == "" {
-		return fmt.Errorf("env or ref is required (no raw secrets)")
+	if !credentialReferenceName.MatchString(slot.Name) {
+		return fmt.Errorf("slot name must be a credential reference name")
 	}
-	// Reject values that look like raw secrets.
-	for _, value := range []string{slot.Env, slot.Ref, slot.Name} {
-		if looksLikeSecret(value) {
-			return fmt.Errorf("refusing to store secret-like value")
+	switch slot.Kind {
+	case "env":
+		if !environmentVariableName.MatchString(slot.Env) || slot.Ref != "" {
+			return fmt.Errorf("env slots require only a valid environment variable name")
+		}
+	case "file":
+		if slot.Env != "" || !validCredentialFileReference(slot.Ref) {
+			return fmt.Errorf("file slots require only a relative credential file reference")
+		}
+	case "keyring":
+		if slot.Env != "" || !credentialReferenceName.MatchString(slot.Ref) {
+			return fmt.Errorf("keyring slots require only a keyring entry name")
 		}
 	}
 	slots, err := loadCredentialSlots(configPath)
@@ -107,20 +119,10 @@ func clearCredentialSlot(configPath, name string) error {
 	return saveCredentialSlots(configPath, out)
 }
 
-func looksLikeSecret(value string) bool {
-	value = strings.TrimSpace(value)
-	if value == "" {
+func validCredentialFileReference(value string) bool {
+	if value == "" || filepath.IsAbs(value) || filepath.Clean(value) != value {
 		return false
 	}
-	if strings.Contains(value, " ") {
-		return true
-	}
-	if len(value) > 80 {
-		return true
-	}
-	lower := strings.ToLower(value)
-	if strings.HasPrefix(lower, "sk-") || strings.HasPrefix(lower, "Bearer ") {
-		return true
-	}
-	return false
+	return value != "." && value != ".." &&
+		!strings.HasPrefix(value, ".."+string(filepath.Separator))
 }

@@ -87,6 +87,9 @@ func newContractHost(t *testing.T, setup contract.Setup) contract.Host {
 		SessionWorkspaces: session.SessionWorkspaces(),
 	}, serverWriter, acp.Options{
 		ProviderID: "fixture", ModelID: "fixture-model", WorkspaceRoot: workspace,
+		ModelCapabilities: session.ModelCapabilities(),
+		ProviderCatalog:   session.ProviderCatalog(),
+		ModelCatalog:      session.ModelCatalog(),
 		WorkspaceIdentity: workspaceIdentity,
 	})
 	if err != nil {
@@ -418,6 +421,173 @@ func (h *contractACPHost) ReadState(ctx context.Context) (contract.ReadState, er
 		return result, err
 	}
 	result.Usage, result.Rollup = usagePage.Usage, usagePage.Rollup
+	return result, nil
+}
+
+func (h *contractACPHost) SessionProfile(
+	ctx context.Context,
+) (protocol.SessionProfileSnapshot, error) {
+	data, err := h.call(ctx, "session/profile/get", map[string]any{
+		"sessionId": h.sessionID,
+	})
+	if err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	var result protocol.SessionProfileSnapshot
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) SessionToolCatalog(
+	ctx context.Context,
+) (protocol.SessionToolCatalog, error) {
+	data, err := h.call(ctx, "session/tool/catalog", map[string]any{
+		"sessionId": h.sessionID,
+	})
+	if err != nil {
+		return protocol.SessionToolCatalog{}, err
+	}
+	var result protocol.SessionToolCatalog
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionToolCatalog{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) ListSessions(
+	ctx context.Context,
+	query protocol.SessionListQuery,
+) (protocol.SessionList, error) {
+	data, err := h.call(ctx, "session/list", map[string]any{
+		"query":           query.Query,
+		"includeArchived": query.IncludeArchived,
+		"pinnedOnly":      query.PinnedOnly,
+		"status":          query.Status,
+		"limit":           query.Limit,
+	})
+	if err != nil {
+		return protocol.SessionList{}, err
+	}
+	var result protocol.SessionList
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionList{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) UpdateSessionLifecycle(
+	ctx context.Context,
+	expectedRevision uint64,
+	patch protocol.SessionLifecyclePatch,
+) (protocol.SessionLifecycleUpdate, error) {
+	data, err := h.call(ctx, "session/lifecycle/update", map[string]any{
+		"sessionId":        h.sessionID,
+		"expectedRevision": expectedRevision,
+		"patch":            patch,
+	})
+	if err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	var result protocol.SessionLifecycleUpdate
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) DeleteSession(
+	ctx context.Context,
+	expectedRevision uint64,
+) (protocol.SessionDeleteResult, error) {
+	data, err := h.call(ctx, "session/delete", map[string]any{
+		"sessionId":        h.sessionID,
+		"expectedRevision": expectedRevision,
+	})
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	var result protocol.SessionDeleteResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) ListCheckpoints(
+	ctx context.Context,
+	limit int,
+) (protocol.CheckpointList, error) {
+	data, err := h.call(ctx, "checkpoint/list", map[string]any{
+		"sessionId": h.sessionID,
+		"limit":     limit,
+	})
+	if err != nil {
+		return protocol.CheckpointList{}, err
+	}
+	var result protocol.CheckpointList
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.CheckpointList{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) RestoreCheckpoint(
+	ctx context.Context,
+	checkpointID string,
+) (protocol.CheckpointRestoreResult, error) {
+	data, err := h.call(ctx, "checkpoint/restore", map[string]any{
+		"sessionId":    h.sessionID,
+		"checkpointId": checkpointID,
+	})
+	if err != nil {
+		return protocol.CheckpointRestoreResult{}, err
+	}
+	var result protocol.CheckpointRestoreResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.CheckpointRestoreResult{}, err
+	}
+	return result, nil
+}
+
+func (h *contractACPHost) ForkCheckpoint(
+	ctx context.Context,
+	checkpointID, title string,
+) (protocol.CheckpointForkResult, error) {
+	data, err := h.call(ctx, "checkpoint/fork", map[string]any{
+		"sessionId":    h.sessionID,
+		"checkpointId": checkpointID,
+		"title":        title,
+	})
+	if err != nil {
+		return protocol.CheckpointForkResult{}, err
+	}
+	var result protocol.CheckpointForkResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.CheckpointForkResult{}, err
+	}
+	h.threadID = result.ThreadID
+	return result, nil
+}
+
+func (h *contractACPHost) UpdateSessionProfile(
+	ctx context.Context,
+	expectedRevision uint64,
+	patch protocol.SessionProfilePatch,
+) (protocol.SessionProfileUpdateResult, error) {
+	data, err := h.call(ctx, "session/profile/update", map[string]any{
+		"sessionId":        h.sessionID,
+		"expectedRevision": expectedRevision,
+		"patch":            patch,
+	})
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	var result protocol.SessionProfileUpdateResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
 	return result, nil
 }
 

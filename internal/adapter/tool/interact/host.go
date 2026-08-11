@@ -36,11 +36,12 @@ func (HostUnavailableError) Error() string {
 }
 
 type Host struct {
-	mu      sync.Mutex
-	ttl     time.Duration
-	now     func() time.Time
-	emit    func(context.Context, Request) error
-	pending map[string]*pending
+	mu        sync.Mutex
+	ttl       time.Duration
+	now       func() time.Time
+	emit      func(context.Context, Request) error
+	pending   map[string]*pending
+	recovered map[string]Request
 }
 
 type pending struct {
@@ -55,6 +56,7 @@ func NewHost(ttl time.Duration) *Host {
 	}
 	return &Host{
 		ttl: ttl, now: time.Now, pending: make(map[string]*pending),
+		recovered: make(map[string]Request),
 	}
 }
 
@@ -81,6 +83,14 @@ func (h *Host) Wait(
 	}
 	requestID := randomID("input_")
 	expiresAt := now().Add(ttl)
+	h.mu.Lock()
+	recovered, recovering := h.recovered[callID]
+	if recovering {
+		delete(h.recovered, callID)
+		requestID = recovered.RequestID
+		expiresAt = recovered.ExpiresAt
+	}
+	h.mu.Unlock()
 	entry := &pending{
 		callID: callID, reply: make(chan Reply, 1), resume: make(chan struct{}),
 	}
@@ -93,8 +103,10 @@ func (h *Host) Wait(
 		RequestID: requestID, CallID: callID, Tool: "request_user_input",
 		Prompt: prompt, Options: append([]string(nil), options...), ExpiresAt: expiresAt,
 	}
-	if err := emit(ctx, req); err != nil {
-		return Reply{}, fmt.Errorf("emit input request: %w", err)
+	if !recovering {
+		if err := emit(ctx, req); err != nil {
+			return Reply{}, fmt.Errorf("emit input request: %w", err)
+		}
 	}
 	timer := time.NewTimer(max(time.Millisecond, expiresAt.Sub(now())))
 	defer timer.Stop()
@@ -112,6 +124,17 @@ func (h *Host) Wait(
 		reply.RequestID = requestID
 		return reply, nil
 	}
+}
+
+func (h *Host) RestoreRequest(request Request) error {
+	if request.RequestID == "" || request.CallID == "" ||
+		request.ExpiresAt.IsZero() {
+		return errors.New("restored input request is incomplete")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.recovered[request.CallID] = request
+	return nil
 }
 
 func (h *Host) StageReply(reply Reply) error {

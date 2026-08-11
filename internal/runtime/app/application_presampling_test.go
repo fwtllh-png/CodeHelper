@@ -14,7 +14,7 @@ import (
 )
 
 func TestRuntimeEmitsTurnCompactionOnPreSamplingGate(t *testing.T) {
-	worker, err := agentengine.New(agentengine.Options{
+	worker, err := newTestAgentEngine(agentengine.Options{
 		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
 		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
 		MaxOutputTokens: 128, MaxContextBytes: 200,

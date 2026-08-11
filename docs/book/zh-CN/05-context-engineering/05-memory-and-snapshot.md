@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/promptcontext/context.go
   - internal/persist/snapshot/repository.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Memory、Snapshot 与恢复
@@ -32,6 +32,11 @@ last_verified: 2026-08-06
 
 区分 User Memory、Conversation History、Compact Summary、Session Metadata 与 State
 Snapshot，并理解哪些数据会进入 Model Context。
+
+## 前置知识
+
+阅读 [Token Budget、Compaction 与信息损失](./04-budget-and-compaction.md) 与
+[Resume、Recovery 与幂等边界](../03-runtime-kernel/06-resume-and-recovery.md)。
 
 ## 五种不同的持久化概念
 
@@ -44,6 +49,8 @@ Snapshot，并理解哪些数据会进入 Model Context。
 | Snapshot | 经过校验的恢复/Checkpoint Payload | Reconstruction 后按需 |
 
 全部称作“记忆”会掩盖各自的 Authority 与 Retention Rule。
+
+## Data Flow
 
 ```mermaid
 flowchart LR
@@ -164,5 +171,5 @@ go test ./internal/runtime/app -run TestReconstructThread
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `context-memory-snapshot` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

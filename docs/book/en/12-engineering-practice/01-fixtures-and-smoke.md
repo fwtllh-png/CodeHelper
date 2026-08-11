@@ -15,8 +15,8 @@ test_paths:
 source_of_truth:
   - scripts/live-model-smoke.sh
   - testdata/README.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Hermetic Fixtures and Live-Provider Smoke
@@ -103,5 +103,5 @@ make live-model-smoke  # optional, requires credential
 | Item | Value |
 | --- | --- |
 | Catalog ID | `practice-fixtures-smoke` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

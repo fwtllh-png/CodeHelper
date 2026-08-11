@@ -197,6 +197,7 @@ type Guard struct {
 	mu           sync.Mutex
 	pending      map[string]*pending
 	completed    map[string]struct{}
+	recovered    map[string]ApprovalRequest
 	approvalWait func(ApprovalWait)
 }
 
@@ -266,6 +267,7 @@ func New(options Options) (*Guard, error) {
 		escalation:            escalation,
 		forceEditPlanApproval: options.ForceEditPlanApproval,
 		pending:               make(map[string]*pending), completed: make(map[string]struct{}),
+		recovered: make(map[string]ApprovalRequest),
 	}, nil
 }
 
@@ -512,7 +514,9 @@ func (g *Guard) ExecuteBound(
 			if len(writePaths) != 0 {
 				if err := g.finishFileWrites(
 					ctx, writePaths, expectedWrites, &result,
-					executeErr == nil, mediatedFileWriter(invocation.Tool),
+					executeErr == nil,
+					mediatedFileWriter(invocation.Tool),
+					mediatedFileWriter(invocation.Tool),
 				); err != nil && executeErr == nil {
 					executeErr = err
 				}
@@ -552,7 +556,8 @@ func (g *Guard) ExecuteBound(
 
 func (g *Guard) canEscalate(invocation Invocation) bool {
 	return g.escalation.EscalateOnFailure &&
-		invocation.Descriptor.SandboxRequirement == tool.SandboxStrong
+		invocation.Descriptor.SandboxRequirement == tool.SandboxStrong &&
+		invocation.Descriptor.Capability != tool.CapabilityRead
 }
 
 // egressDeniedTarget extracts a host that RoundTrip refused for policy reasons.
@@ -581,19 +586,9 @@ func egressDeniedTarget(result tool.Result, executeErr error) (host, protocol st
 }
 
 func hostProtocolFromEgressError(err error) (host, protocol string) {
-	protocol = "https"
-	msg := err.Error()
-	if _, after, ok := strings.Cut(msg, "host "); ok {
-		fields := strings.Fields(after)
-		if len(fields) > 0 {
-			host = strings.ToLower(strings.TrimSpace(fields[0]))
-		}
-		if _, protoAfter, ok := strings.Cut(after, "protocol "); ok {
-			protoFields := strings.Fields(protoAfter)
-			if len(protoFields) > 0 {
-				protocol = strings.ToLower(strings.TrimSpace(protoFields[0]))
-			}
-		}
+	host, protocol, ok := egress.DeniedTarget(err)
+	if !ok {
+		return "", ""
 	}
 	return host, protocol
 }
@@ -681,7 +676,7 @@ func (g *Guard) prepareFileWrites(
 	for _, path := range paths {
 		if requireRead {
 			if _, err := g.readTracker.ValidateWrite(path); err != nil {
-				return nil, fmt.Errorf("read-before-edit %q: %w", path, err)
+				return nil, g.readValidationError(path, err)
 			}
 		}
 		if g.journal != nil {
@@ -690,7 +685,7 @@ func (g *Guard) prepareFileWrites(
 			}
 			if requireRead {
 				if _, err := g.readTracker.ValidateWrite(path); err != nil {
-					return nil, fmt.Errorf("read-before-edit race %q: %w", path, err)
+					return nil, g.readValidationError(path, err)
 				}
 			}
 		}
@@ -700,12 +695,22 @@ func (g *Guard) prepareFileWrites(
 		}
 		if requireRead {
 			if _, err := g.readTracker.ValidateWrite(path); err != nil {
-				return nil, fmt.Errorf("read-before-edit final check %q: %w", path, err)
+				return nil, g.readValidationError(path, err)
 			}
 		}
 		expected[path] = current
 	}
 	return expected, nil
+}
+
+func (g *Guard) readValidationError(path string, cause error) error {
+	relative, err := filepath.Rel(g.workspace, path)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		relative = path
+	}
+	return &workspacejournal.ReadValidationError{
+		Path: filepath.ToSlash(relative), Cause: cause,
+	}
 }
 
 func (g *Guard) recordFileRead(
@@ -739,20 +744,36 @@ func (g *Guard) finishFileWrites(
 	paths []string,
 	expected map[string]workspacejournal.Fingerprint,
 	result *tool.Result,
-	succeeded, runDiagnostics bool,
+	succeeded, refreshRead, runDiagnostics bool,
 ) error {
 	var receipts []diagnostics.Receipt
 	var changes []FileChange
 	for _, path := range paths {
+		var after workspacejournal.Fingerprint
 		if g.journal != nil {
-			if err := g.journal.After(path); err != nil {
+			var err error
+			after, err = g.journal.AfterFingerprint(path)
+			if err != nil {
 				return fmt.Errorf("journal commit record %q: %w", path, err)
+			}
+		} else {
+			var err error
+			after, _, _, err = workspacejournal.Snapshot(path)
+			if err != nil {
+				return fmt.Errorf("snapshot write result %q: %w", path, err)
 			}
 		}
 		if !succeeded {
+			g.readTracker.Invalidate(path)
 			continue
 		}
-		g.readTracker.Invalidate(path)
+		if refreshRead {
+			if err := g.readTracker.RecordFingerprint(after); err != nil {
+				return fmt.Errorf("record post-write fingerprint %q: %w", path, err)
+			}
+		} else {
+			g.readTracker.Invalidate(path)
+		}
 		change, changed, err := g.observeFileChange(ctx, expected[path], path)
 		if err != nil {
 			return fmt.Errorf("observe write %q: %w", path, err)
@@ -760,14 +781,6 @@ func (g *Guard) finishFileWrites(
 		if changed {
 			changes = append(changes, change)
 		}
-		if !runDiagnostics {
-			continue
-		}
-		receipt, err := g.diagnostics.Run(ctx, path)
-		if err != nil {
-			return fmt.Errorf("post-edit diagnostics %q: %w", path, err)
-		}
-		receipts = append(receipts, receipt)
 	}
 	if !succeeded {
 		return nil
@@ -778,7 +791,29 @@ func (g *Guard) finishFileWrites(
 		}
 		result.Metadata[MetadataChanges] = changes
 	}
+	if result.Metadata == nil {
+		result.Metadata = make(map[string]any)
+	}
+	result.Metadata["observed_changes"] = len(changes)
 	if runDiagnostics {
+		// Seal every journal record before invoking an external checker. A
+		// multi-file tool has already written all paths, so returning after the
+		// first diagnostic failure must not leave the remaining records with
+		// stale after-images that make automatic rollback conflict.
+		for _, path := range paths {
+			receipt, err := g.diagnostics.Run(ctx, path)
+			if err != nil {
+				if errors.Is(err, context.Canceled) ||
+					errors.Is(err, context.DeadlineExceeded) {
+					return fmt.Errorf("post-edit diagnostics %q: %w", path, err)
+				}
+				receipt = diagnostics.Receipt{
+					Path: path, Status: "unavailable", Diagnostics: []diagnostics.Diagnostic{},
+					Message: err.Error(), ErrorCategory: "runner_failure",
+				}
+			}
+			receipts = append(receipts, receipt)
+		}
 		if result.Metadata == nil {
 			result.Metadata = make(map[string]any)
 		}
@@ -880,7 +915,12 @@ func (g *Guard) prepare(
 	if expander, ok := executor.(tool.ArgumentExpander); ok {
 		arguments, err = expander.ExpandArguments(ctx, arguments)
 		if err != nil {
-			return Invocation{}, nil, fmt.Errorf("tool %q expand: %w", canonical, err)
+			return Invocation{}, nil, fmt.Errorf(
+				"%w: tool %q expand: %v",
+				tool.ErrInvalidArguments,
+				canonical,
+				err,
+			)
 		}
 	}
 	arguments, err = g.rewriteAbsolutePathArgs(descriptor, arguments)
@@ -931,6 +971,31 @@ func (g *Guard) rewriteAbsolutePathArgs(
 		}
 		values[template.Field] = rel
 		changed = true
+	}
+	for _, field := range []string{
+		descriptor.ResourceResolver.PathsField,
+		descriptor.ResourceResolver.ReadPathsField,
+	} {
+		if field == "" {
+			continue
+		}
+		rawPaths, exists := values[field].([]any)
+		if !exists {
+			continue
+		}
+		for index, raw := range rawPaths {
+			path, ok := raw.(string)
+			if !ok || path == "" || !filepath.IsAbs(path) {
+				continue
+			}
+			rel, err := g.workspaceRelative(path)
+			if err != nil {
+				return nil, err
+			}
+			rawPaths[index] = rel
+			changed = true
+		}
+		values[field] = rawPaths
 	}
 	if !changed {
 		return arguments, nil
@@ -1015,6 +1080,13 @@ func (g *Guard) waitForApproval(
 		opts = ask[0]
 	}
 	expiresAt := now.Add(g.approvalTTL)
+	g.mu.Lock()
+	recovered, recovering := g.recovered[invocation.CallID]
+	if recovering {
+		delete(g.recovered, invocation.CallID)
+		expiresAt = recovered.ExpiresAt
+	}
+	g.mu.Unlock()
 	request, err := policy.NewApprovalRequestForScope(
 		policyInvocation, policy.ApprovalOnce, expiresAt,
 	)
@@ -1022,6 +1094,9 @@ func (g *Guard) waitForApproval(
 		return ApprovalDecision{}, err
 	}
 	requestID := randomID("approval_")
+	if recovering {
+		requestID = recovered.RequestID
+	}
 	request.RequestID = requestID
 	fields := schemaProperties(invocation.Descriptor.InputSchema)
 	scopes := []policy.ApprovalScope{
@@ -1042,6 +1117,9 @@ func (g *Guard) waitForApproval(
 		ExpiresAt: expiresAt, ReplacementAllowed: replacementAllowed,
 		ModifiableArguments: modifiable, Reason: opts.Reason, Network: opts.Network,
 		EditPlan: opts.EditPlan,
+	}
+	if recovering {
+		event = recovered
 	}
 	entry := &pending{
 		callID: invocation.CallID, decision: make(chan ApprovalDecision, 1),
@@ -1066,8 +1144,10 @@ func (g *Guard) waitForApproval(
 			Waited: g.now().Sub(parked), Outcome: outcome,
 		})
 	}
-	if err := handler(ctx, event); err != nil {
-		return ApprovalDecision{}, fmt.Errorf("emit approval request: %w", err)
+	if !recovering {
+		if err := handler(ctx, event); err != nil {
+			return ApprovalDecision{}, fmt.Errorf("emit approval request: %w", err)
+		}
 	}
 	timer := time.NewTimer(max(time.Millisecond, expiresAt.Sub(g.now())))
 	defer timer.Stop()
@@ -1131,6 +1211,20 @@ func (g *Guard) waitForApproval(
 		}
 		return decision, nil
 	}
+}
+
+func (g *Guard) RestoreApproval(request ApprovalRequest) error {
+	if request.RequestID == "" || request.CallID == "" ||
+		request.ExpiresAt.IsZero() {
+		return errors.New("restored approval request is incomplete")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, pending := g.pending[request.RequestID]; pending {
+		return errors.New("restored approval request is already pending")
+	}
+	g.recovered[request.CallID] = request
+	return nil
 }
 
 func (g *Guard) cacheApproval(
@@ -1406,6 +1500,36 @@ func (g *Guard) resolveResources(
 			})
 		}
 	}
+	if field := descriptor.ResourceResolver.PathsField; field != "" {
+		paths, err := exactPaths(values[field], "write")
+		if err != nil {
+			return nil, err
+		}
+		for _, path := range paths {
+			canonical, err := g.canonicalPath(path, false)
+			if err != nil {
+				return nil, err
+			}
+			resources = append(resources, tool.Resource{
+				Kind: "file", Path: canonical, Access: tool.AccessWrite,
+			})
+		}
+	}
+	if field := descriptor.ResourceResolver.ReadPathsField; field != "" {
+		paths, err := exactPaths(values[field], "read")
+		if err != nil {
+			return nil, err
+		}
+		for _, path := range paths {
+			canonical, err := g.canonicalPath(path, false)
+			if err != nil {
+				return nil, err
+			}
+			resources = append(resources, tool.Resource{
+				Kind: "file", Path: canonical, Access: tool.AccessRead,
+			})
+		}
+	}
 	if field := descriptor.ResourceResolver.ChangesField; field != "" {
 		paths, err := changePaths(values[field])
 		if err != nil {
@@ -1429,6 +1553,25 @@ func (g *Guard) resolveResources(
 		}
 	}
 	return result, nil
+}
+
+func exactPaths(value any, access string) ([]string, error) {
+	if value == nil {
+		return nil, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("exact %s paths must be an array", access)
+	}
+	paths := make([]string, 0, len(items))
+	for _, item := range items {
+		path, ok := item.(string)
+		if !ok || strings.TrimSpace(path) == "" {
+			return nil, fmt.Errorf("exact %s path must be a non-empty string", access)
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
 }
 
 func (g *Guard) canonicalPath(value string, glob bool) (string, error) {

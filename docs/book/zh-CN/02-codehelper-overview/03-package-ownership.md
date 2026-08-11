@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - AGENTS.md
   - docs/zh-CN/architecture.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Package 所有权与依赖方向
@@ -179,5 +179,5 @@ go test ./internal/runtime/app/wire -run TestOnlyWireConstructsPlatformBackend
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `overview-package-ownership` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

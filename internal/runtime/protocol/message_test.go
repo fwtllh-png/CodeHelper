@@ -1,6 +1,8 @@
 package protocol
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +10,37 @@ import (
 	"testing"
 	"time"
 )
+
+func TestNativeBinaryAndInlineContextValidation(t *testing.T) {
+	image := EditorContextReference{
+		Kind: EditorContextImage, Source: EditorContextSourceNativePicker,
+		URI: "file:///workspace/screen.png", Path: "screen.png",
+		DocumentVersion: 1, Digest: strings.Repeat("a", 64),
+		Label: "screen.png", MediaType: "image/png", Explicit: true,
+	}
+	terminalText := "go test ./...\nPASS"
+	terminalDigest := sha256.Sum256([]byte(terminalText))
+	terminal := EditorContextReference{
+		Kind: EditorContextTerminal, Source: EditorContextSourceNativePicker,
+		Digest: hex.EncodeToString(terminalDigest[:]), Label: "Terminal output",
+		MediaType: "text/plain", Content: terminalText, Explicit: true,
+	}
+	for _, reference := range []EditorContextReference{image, terminal} {
+		if _, err := NewOperation(&StartTurnPayload{
+			ThreadID: "thread", TurnID: "turn", ItemID: "item",
+			Prompt: "inspect", Context: []EditorContextReference{reference},
+		}); err != nil {
+			t.Fatalf("valid native context rejected: %v", err)
+		}
+	}
+	terminal.Content = "tampered"
+	if _, err := NewOperation(&StartTurnPayload{
+		ThreadID: "thread", TurnID: "turn", ItemID: "item",
+		Prompt: "inspect", Context: []EditorContextReference{terminal},
+	}); err == nil {
+		t.Fatal("inline context with a stale digest was accepted")
+	}
+}
 
 func TestOperationTaggedUnionRoundTrip(t *testing.T) {
 	references := func() (ThreadID, TurnID, ItemID) { return "thread_test", "turn_test", "item_test" }
@@ -49,6 +82,16 @@ func TestOperationTaggedUnionRoundTrip(t *testing.T) {
 		if decoded.Kind != operation.Kind {
 			t.Fatalf("kind = %q, want %q", decoded.Kind, operation.Kind)
 		}
+	}
+}
+
+func TestStartTurnRejectsUnknownIntent(t *testing.T) {
+	_, err := NewOperation(&StartTurnPayload{
+		ThreadID: "thread_test", TurnID: "turn_test", ItemID: "item_test",
+		Prompt: "fix it", Intent: TurnIntent("guess"),
+	})
+	if err == nil {
+		t.Fatal("unknown turn intent was accepted")
 	}
 }
 
@@ -202,6 +245,78 @@ func TestEditorContextReceiptValidationFailsClosed(t *testing.T) {
 	}
 }
 
+func TestToolStartRejectsMalformedArgumentsBeforeEncoding(t *testing.T) {
+	_, err := NewEvent(EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &ToolStartData{
+		Tool: "read", CallID: "call-1", Arguments: json.RawMessage(`{"path":`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "valid JSON") {
+		t.Fatalf("NewEvent() error = %v, want invalid arguments rejection", err)
+	}
+}
+
+func TestRejectedCompletionDeclarationCanOmitRuntimeBindings(t *testing.T) {
+	_, err := NewEvent(EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &ToolResultData{
+		Tool: "turn_complete", CallID: "call-complete",
+		Output: "declaration rejected",
+		Completion: &CompletionDeclaration{
+			Status:         "complete",
+			Summary:        "analysis completed",
+			PendingActions: []string{},
+			Accepted:       false,
+			Rejection:      "no_observed_changes",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEvent() rejected a structured completion rejection: %v", err)
+	}
+}
+
+func TestAcceptedReadOnlyCompletionDeclarationUsesRevisionZero(t *testing.T) {
+	_, err := NewEvent(EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &ToolResultData{
+		Tool: "turn_complete", CallID: "call-complete",
+		Output: "declaration accepted",
+		Completion: &CompletionDeclaration{
+			Status:         "complete",
+			Summary:        "read-only analysis completed",
+			PendingActions: []string{},
+			Accepted:       true,
+			CallID:         "call-complete",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEvent() rejected read-only completion: %v", err)
+	}
+}
+
+func TestRejectedIncompleteDeclarationCarriesPendingActions(t *testing.T) {
+	_, err := NewEvent(EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &ToolResultData{
+		Tool: "turn_complete", CallID: "call-complete",
+		Output: "continue current turn",
+		Completion: &CompletionDeclaration{
+			Status:         "incomplete",
+			Summary:        "workspace edits remain",
+			PendingActions: []string{"apply the workspace edits"},
+			Accepted:       false,
+			Rejection:      "pending_actions",
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEvent() rejected an incomplete declaration: %v", err)
+	}
+}
+
 func TestEventTaggedUnionRoundTrip(t *testing.T) {
 	dataValues := []EventData{
 		&TurnStartedData{
@@ -222,7 +337,12 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 		&UsageData{},
 		&ToolStateData{State: "running"},
 		&ToolStartData{Tool: "read_file", CallID: "call_0", Arguments: json.RawMessage(`{"path":"a.go"}`)},
-		&ToolResultData{Tool: "file_edit", CallID: "call_1", Output: "edited"},
+		&ToolResultData{
+			Tool: "file_edit", CallID: "call_1", Output: "edited",
+			Changes: []FileChange{{
+				Path: "value.go", Kind: "modified", Added: 1, Removed: 1,
+			}},
+		},
 		&ExtensionLifecycleData{
 			ExtensionKind: "plugin", Name: "review", Action: "updated",
 			Version: "2.0.0", PreviousVersion: "1.0.0", Source: "builtin",

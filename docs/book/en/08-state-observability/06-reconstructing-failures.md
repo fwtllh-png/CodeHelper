@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/receipt.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Reconstructing a Failed Run
@@ -142,5 +142,5 @@ claims.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `state-reconstruct-failure` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -64,6 +64,36 @@ func ReconstructThread(events []protocol.Event, threadID protocol.ThreadID) (Thr
 			baseIndex = i
 			windowID := "fork:" + string(threadID)
 			window = reconstructWindow{Number: 1, FirstID: windowID, Current: windowID}
+		case protocol.EventCheckpointRestored:
+			if event.ThreadID != threadID {
+				continue
+			}
+			data, ok := event.Data.(*protocol.CheckpointRestoredData)
+			if !ok || data == nil || len(data.ReplacementHistory) == 0 {
+				continue
+			}
+			messages, err := DecodeCompactedHistory(data.ReplacementHistory)
+			if err != nil {
+				return ThreadReconstruction{}, err
+			}
+			baseHistory = messages
+			baseIndex = i
+			windowID := "checkpoint:" + data.CheckpointID
+			window = reconstructWindow{Number: 1, FirstID: windowID, Current: windowID}
+		case protocol.EventCheckpointForked:
+			data, ok := event.Data.(*protocol.CheckpointForkedData)
+			if !ok || data == nil || data.NewThreadID != threadID ||
+				len(data.ReplacementHistory) == 0 {
+				continue
+			}
+			messages, err := DecodeCompactedHistory(data.ReplacementHistory)
+			if err != nil {
+				return ThreadReconstruction{}, err
+			}
+			baseHistory = messages
+			baseIndex = i
+			windowID := "checkpoint-fork:" + data.CheckpointID
+			window = reconstructWindow{Number: 1, FirstID: windowID, Current: windowID}
 		default:
 			continue
 		}
@@ -97,6 +127,19 @@ func ReconstructThread(events []protocol.Event, threadID protocol.ThreadID) (Thr
 			window = reconstructWindow{
 				Number: data.WindowNumber, FirstID: data.FirstWindowID, Current: data.WindowID,
 			}
+		case protocol.EventCheckpointRestored:
+			data, ok := event.Data.(*protocol.CheckpointRestoredData)
+			if !ok || data == nil || len(data.ReplacementHistory) == 0 {
+				continue
+			}
+			messages, err := DecodeCompactedHistory(data.ReplacementHistory)
+			if err != nil {
+				return ThreadReconstruction{}, err
+			}
+			replay = newReplayHistory(messages)
+			clear(pending)
+			windowID := "checkpoint:" + data.CheckpointID
+			window = reconstructWindow{Number: 1, FirstID: windowID, Current: windowID}
 		case protocol.EventTurnStarted:
 			data, ok := event.Data.(*protocol.TurnStartedData)
 			if !ok || data == nil || data.Prompt == "" {

@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/protocol/message.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Adding a Host Without Duplicating Runtime
@@ -125,5 +125,5 @@ projects one unknown Event without importing any Adapter executor.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `extension-host` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

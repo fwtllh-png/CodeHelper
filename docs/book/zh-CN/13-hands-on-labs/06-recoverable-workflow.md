@@ -16,7 +16,7 @@ source_of_truth:
   - internal/orchestration/workflow/runtime.go
   - internal/orchestration/workflow/checkpoint/checkpoint.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # 构建可恢复 Workflow
@@ -86,3 +86,4 @@ Execute 重复表示 Idempotency/Checkpoint Commit 缺失；Graph 不兼容必�
 | --- | --- |
 | Catalog ID | `lab-recoverable-workflow` |
 | 状态 | `verified` |
+| 最后验证 | 2026-08-10 |

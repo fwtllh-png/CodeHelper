@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - AGENTS.md
   - docs/zh-CN/architecture.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 设计并验证新的 Agent 能力
@@ -83,9 +83,11 @@ Replay 明确；Verification Evidence 完整。
 Authority 模糊时停止并重构设计；只有 Live Dependency 时添加 Contract Fixture；
 Rollback 不能恢复 Durable Compatibility 时不得 Rollout。
 
-## 清理与验证
+## 清理
 
 删除实验 Registration/Artifact，或作为已 Review 的生产代码保留。
+
+## 验证
 
 ```bash
 go test ./path/to/changed/package
@@ -104,4 +106,5 @@ git diff --check
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `lab-new-capability` |
-| 状态 | `verified` |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

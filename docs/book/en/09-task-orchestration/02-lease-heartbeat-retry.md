@@ -18,7 +18,7 @@ source_of_truth:
   - internal/orchestration/task/execution.go
   - internal/orchestration/worker/worker.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Leases, Heartbeats, Retries, and Idempotency
@@ -130,4 +130,4 @@ attempt heartbeat and settle from the old owner. Explain each fence.
 | --- | --- |
 | Catalog ID | `task-lease-retry` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-10 |

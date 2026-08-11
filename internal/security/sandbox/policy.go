@@ -20,6 +20,7 @@ const policyVersion = 1
 type Options struct {
 	WorkspaceRoot string
 	HostReadRoots []string
+	HostReadFiles []string
 	PrivateTemp   string
 	HelperPath    string
 	// AllowNetwork permits outbound/inbound sockets inside the OS sandbox.
@@ -47,6 +48,7 @@ type Policy struct {
 	PrivateTemp      string   `json:"private_temp"`
 	RuntimeReadRoots []string `json:"runtime_read_roots"`
 	HostReadRoots    []string `json:"host_read_roots"`
+	HostReadFiles    []string `json:"host_read_files,omitempty"`
 	AllowNetwork     bool     `json:"allow_network,omitempty"`
 	Controls         Controls `json:"controls"`
 	ownsPrivateTemp  bool
@@ -103,15 +105,33 @@ func BuildPolicy(options Options) (Policy, error) {
 	}
 	hostRoots := make([]string, 0, len(options.HostReadRoots))
 	for _, root := range options.HostReadRoots {
-		canonical, canonicalErr := canonicalExisting(root)
+		lexical, canonical, canonicalErr := canonicalHostReadRoot(root)
 		if canonicalErr != nil {
 			return Policy{}, fmt.Errorf("canonicalize host read root %q: %w", root, canonicalErr)
 		}
 		if err := validateInjectedRoot(canonical, workspace); err != nil {
 			return Policy{}, fmt.Errorf("host read root %q: %w", root, err)
 		}
-		if !slices.Contains(runtimeRoots, canonical) && !slices.Contains(hostRoots, canonical) {
-			hostRoots = append(hostRoots, canonical)
+		for _, candidate := range []string{lexical, canonical} {
+			if !slices.Contains(runtimeRoots, candidate) &&
+				!slices.Contains(hostRoots, candidate) {
+				hostRoots = append(hostRoots, candidate)
+			}
+		}
+	}
+	hostFiles := make([]string, 0, len(options.HostReadFiles)*2)
+	for _, path := range options.HostReadFiles {
+		lexical, canonical, fileErr := canonicalHostReadFile(path)
+		if fileErr != nil {
+			return Policy{}, fmt.Errorf("canonicalize host read file %q: %w", path, fileErr)
+		}
+		if err := validateInjectedRoot(filepath.Dir(canonical), workspace); err != nil {
+			return Policy{}, fmt.Errorf("host read file %q: %w", path, err)
+		}
+		for _, candidate := range []string{lexical, canonical} {
+			if !slices.Contains(hostFiles, candidate) {
+				hostFiles = append(hostFiles, candidate)
+			}
 		}
 	}
 	if !options.SkipPATHReadRoots {
@@ -124,10 +144,12 @@ func BuildPolicy(options Options) (Policy, error) {
 	}
 	slices.Sort(runtimeRoots)
 	slices.Sort(hostRoots)
+	slices.Sort(hostFiles)
 	policy := Policy{
 		Version: policyVersion, WorkspaceRoot: workspace, PrivateTemp: privateTemp,
 		RuntimeReadRoots: runtimeRoots, HostReadRoots: hostRoots,
-		AllowNetwork: options.AllowNetwork,
+		HostReadFiles: hostFiles,
+		AllowNetwork:  options.AllowNetwork,
 		Controls: Controls{
 			ReadIsolation: true, WriteIsolation: true,
 			NetworkIsolation: !options.AllowNetwork,
@@ -247,6 +269,48 @@ func canonicalExisting(path string) (string, error) {
 		return "", err
 	}
 	return filepath.Clean(resolved), nil
+}
+
+func canonicalHostReadFile(path string) (string, string, error) {
+	if path == "" || strings.IndexByte(path, 0) >= 0 {
+		return "", "", errors.New("path is empty or contains NUL")
+	}
+	lexical, err := filepath.Abs(path)
+	if err != nil {
+		return "", "", err
+	}
+	lexical = filepath.Clean(lexical)
+	canonical, err := filepath.EvalSymlinks(lexical)
+	if err != nil {
+		return "", "", err
+	}
+	info, err := os.Stat(canonical)
+	if err != nil {
+		return "", "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", "", errors.New("host read file is not regular")
+	}
+	return lexical, filepath.Clean(canonical), nil
+}
+
+func canonicalHostReadRoot(path string) (string, string, error) {
+	if path == "" || strings.IndexByte(path, 0) >= 0 {
+		return "", "", errors.New("path is empty or contains NUL")
+	}
+	lexical, err := filepath.Abs(path)
+	if err != nil {
+		return "", "", err
+	}
+	lexical = filepath.Clean(lexical)
+	canonical, err := filepath.EvalSymlinks(lexical)
+	if err != nil {
+		return "", "", err
+	}
+	if _, err := os.Stat(canonical); err != nil {
+		return "", "", err
+	}
+	return lexical, filepath.Clean(canonical), nil
 }
 
 func validateInjectedRoot(root, workspace string) error {

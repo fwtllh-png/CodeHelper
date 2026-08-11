@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/compact/compact.go
   - internal/runtime/agent/engine/compaction.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Token Budgets, Compaction, and Information Loss
@@ -173,5 +173,5 @@ Facts/Digest.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `context-budget-compaction` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -36,11 +36,13 @@ type Diagnostic struct {
 }
 
 type Receipt struct {
-	Path        string       `json:"path"`
-	Status      string       `json:"status"`
-	Runner      string       `json:"runner,omitempty"`
-	Diagnostics []Diagnostic `json:"diagnostics"`
-	Message     string       `json:"message,omitempty"`
+	Path          string       `json:"path"`
+	Status        string       `json:"status"`
+	Runner        string       `json:"runner,omitempty"`
+	Diagnostics   []Diagnostic `json:"diagnostics"`
+	Message       string       `json:"message,omitempty"`
+	ErrorCategory string       `json:"error_category,omitempty"`
+	ExitCode      int          `json:"exit_code,omitempty"`
 }
 
 type Runner interface {
@@ -58,7 +60,9 @@ type CommandRunner struct {
 	Commands map[string]Command
 }
 
-var locationPattern = regexp.MustCompile(`^(.+?):(\d+):(\d+)(?::(\d+))?:\s*(.*)$`)
+var locationPattern = regexp.MustCompile(
+	`^(.+?):(\d+):(\d+)(?::(\d+))?(?::|\s)\s*(.*)$`,
+)
 
 func NewCommandRunner(root string, backend sandbox.Backend, configured map[string]Command) *CommandRunner {
 	commands := make(map[string]Command, len(configured)+1)
@@ -103,7 +107,7 @@ func (r *CommandRunner) Run(ctx context.Context, path string) (Receipt, error) {
 	defer directory.Close()
 	invocation, err := process.NewCommand(ctx, process.Options{
 		Path: binary, Args: args, Dir: policy.WorkspaceRoot, DirFile: directory, Sandbox: backend,
-		RequireStrongSandbox: true,
+		RequireStrongSandbox: true, Env: []string{"OPENSSL_CONF=/dev/null"},
 	})
 	if err != nil {
 		return Receipt{}, err
@@ -115,22 +119,34 @@ func (r *CommandRunner) Run(ctx context.Context, path string) (Receipt, error) {
 		return Receipt{}, ctx.Err()
 	}
 	exitCode := process.ExitCode(runErr)
-	if exitCode == -1 {
+	var exitError *exec.ExitError
+	if runErr != nil && !errors.As(runErr, &exitError) {
 		return Receipt{}, runErr
 	}
 	values := parse(stdout.String()+"\n"+stderr.String(), command.Name, path)
 	status := "completed"
 	message := ""
 	if exitCode != 0 && len(values) == 0 {
-		status = "failed"
+		status = "unavailable"
 		message = strings.TrimSpace(stderr.String())
 		if message == "" {
-			message = fmt.Sprintf("%s exited with code %d", command.Name, exitCode)
+			if runErr != nil {
+				message = runErr.Error()
+			} else {
+				message = fmt.Sprintf("%s exited with code %d", command.Name, exitCode)
+			}
 		}
 	}
 	return Receipt{
 		Path: path, Status: status, Runner: command.Name,
 		Diagnostics: values, Message: message,
+		ErrorCategory: func() string {
+			if status == "unavailable" {
+				return "runner_failure"
+			}
+			return ""
+		}(),
+		ExitCode: exitCode,
 	}, nil
 }
 

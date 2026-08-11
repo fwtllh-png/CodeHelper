@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/promptcontext/context.go
   - internal/runtime/agent/evidence/evidence.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Evaluating Context Quality
@@ -192,5 +192,5 @@ smaller.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `context-quality` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

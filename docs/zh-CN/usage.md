@@ -203,6 +203,11 @@ codehelper host \
 
 ACP 面向编辑器与 Agent 客户端。Workspace Identity 把编辑器 URI 绑定到 Runtime Root，
 Host 不能自行放宽或伪造该身份。
+`session/profile/get` 返回 Runtime 持有的 Session Profile 与 Model Capability；
+`session/profile/update` 使用 `expectedRevision` 乐观并发控制，活动 Turn 期间拒绝更新，
+并明确返回本次变化是否重置 Prompt Cache Identity。
+`session/tool/catalog` 返回统一 Runtime Tool Registry 的 Session 投影；其中 Enabled
+状态由 Profile Allowlist 控制，不替代 Guard 或 Approval 裁决。
 
 ## Mode 与 Posture
 
@@ -223,8 +228,10 @@ Host 不能自行放宽或伪造该身份。
 | 隔离的本地实验 | `act` | `bypass` |
 | 运维调查 | `operate` | `suggest` |
 
-`auto` 不表示“自动同意一切”，策略仍可能拒绝高风险工具。`bypass` 也不会关闭
-Constitution 或 Sandbox 硬边界。
+`auto` 不表示“自动同意一切”。在 `act` Mode 下，低风险操作自动放行，Process、
+Network 和 Plugin Tool 会先请求审批；在 `operate` Mode 下，沙箱进程可自动执行，
+Network 和 Plugin Tool 仍会请求审批。`bypass` 也不会关闭 Constitution 或 Sandbox
+硬边界。
 
 ## Session 与 Thread
 

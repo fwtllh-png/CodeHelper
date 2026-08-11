@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/orchestration/task/repository.go
   - internal/orchestration/worker/worker.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Tasks, Workers, and Executors
@@ -118,5 +118,5 @@ Turn and final Task/receipt settlement.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `task-worker-executor` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

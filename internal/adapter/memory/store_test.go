@@ -52,6 +52,15 @@ func TestAppendRejectsSecretsTraversalAndConcurrentWrites(t *testing.T) {
 	if err := store.Append("api_key=secret-value"); err == nil {
 		t.Fatal("expected secret rejection")
 	}
+	if err := store.Append("password rotation policy uses short-lived credentials"); err != nil {
+		t.Fatalf("ordinary security guidance was rejected: %v", err)
+	}
+	if err := store.Append("Authorization: Bearer credential-value"); err == nil {
+		t.Fatal("expected authorization header rejection")
+	}
+	if err := store.Append("-----BEGIN PRIVATE KEY-----\nYWJj\n-----END PRIVATE KEY-----"); err == nil {
+		t.Fatal("expected private key rejection")
+	}
 	if err := store.Append(""); err != ErrEmptyNote {
 		t.Fatalf("empty note error = %v", err)
 	}
@@ -71,7 +80,7 @@ func TestAppendRejectsSecretsTraversalAndConcurrentWrites(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("load = (%v, %v)", ok, err)
 	}
-	if strings.Count(content, "- (") != 32 {
+	if strings.Count(content, "- (") != 33 {
 		t.Fatalf("bullet count = %d, content=%q", strings.Count(content, "- ("), content)
 	}
 }

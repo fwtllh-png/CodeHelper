@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -92,11 +93,8 @@ func TestReadBeforeEditContract(t *testing.T) {
 	if _, err := execute("edit", "file_edit", `{"path":"sample.txt","old":"one","new":"two"}`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := execute("reuse", "file_write", `{"path":"sample.txt","content":"three\n"}`); !errors.Is(err, workspacejournal.ErrUnread) {
-		t.Fatalf("reused fingerprint error = %v", err)
-	}
-	if _, err := execute("read-stale", "file_read", `{"path":"sample.txt"}`); err != nil {
-		t.Fatal(err)
+	if _, err := execute("sequential-edit", "file_edit", `{"path":"sample.txt","old":"two","new":"three"}`); err != nil {
+		t.Fatalf("sequential edit error = %v", err)
 	}
 	if err := os.WriteFile(path, []byte("external\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -128,8 +126,22 @@ func TestReadBeforeEditContract(t *testing.T) {
 	if _, err := guard.Execute(t.Context(), "patch", "file_patch", patchArguments); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := guard.Execute(t.Context(), "patch-reuse", "file_patch", patchArguments); !errors.Is(err, workspacejournal.ErrUnread) {
-		t.Fatalf("patch reused fingerprint error = %v", err)
+	secondPatch := "--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-patched\n+twice\n"
+	secondPatchArguments, _ := json.Marshal(map[string]string{"patch": secondPatch})
+	if _, err := guard.Execute(
+		t.Context(), "patch-sequential", "file_patch", secondPatchArguments,
+	); err != nil {
+		t.Fatalf("sequential patch error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte("external-again\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stalePatch := "--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-external-again\n+unsafe\n"
+	stalePatchArguments, _ := json.Marshal(map[string]string{"patch": stalePatch})
+	if _, err := guard.Execute(
+		t.Context(), "patch-stale", "file_patch", stalePatchArguments,
+	); !errors.Is(err, workspacejournal.ErrStale) {
+		t.Fatalf("stale patch fingerprint error = %v", err)
 	}
 }
 
@@ -152,6 +164,97 @@ func TestFileToolsRejectTraversalAndBinary(t *testing.T) {
 		}); err == nil {
 			t.Fatalf("read %s succeeded", arguments)
 		}
+	}
+}
+
+func TestMissingFilePathsCarryStructuredRecoveryHints(t *testing.T) {
+	root := t.TempDir()
+	tools, err := NewWithBackend(root, fileTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := tools.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, testCase := range []struct {
+		name string
+		args string
+	}{
+		{name: "file_read", args: `{"path":"missing/chapter.md"}`},
+		{name: "file_list", args: `{"path":"missing"}`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := registry.Execute(t.Context(), tool.Call{
+				Name: testCase.name, Arguments: json.RawMessage(testCase.args),
+				Authorized: true,
+			})
+			if err == nil || !errors.Is(err, tool.ErrPrecondition) {
+				t.Fatalf("%s error = %v, want recoverable precondition",
+					testCase.name, err)
+			}
+			hint, ok := tool.RecoveryHintFromError(err)
+			if !ok ||
+				hint.ErrorCategory != "file_not_found" ||
+				hint.RequiredAction != "file_list" ||
+				hint.RetryOriginal {
+				t.Fatalf("%s recovery hint = %+v, found=%v",
+					testCase.name, hint, ok)
+			}
+		})
+	}
+}
+
+func TestMissingFileSuggestsBoundedExistingSiblingPaths(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "docs", "context")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"01-prompt-message-context.md",
+		"02-workspace-index-editor.md",
+		"notes.txt",
+	} {
+		if err := os.WriteFile(
+			filepath.Join(directory, name),
+			[]byte(name),
+			0o600,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tools, err := NewWithBackend(root, fileTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := tools.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = registry.Execute(t.Context(), tool.Call{
+		Name: "file_read",
+		Arguments: json.RawMessage(
+			`{"path":"docs/context/01-prompt-context.md"}`,
+		),
+		Authorized: true,
+	})
+	if err == nil {
+		t.Fatal("missing read succeeded")
+	}
+	hint, ok := tool.RecoveryHintFromError(err)
+	if !ok || hint.RequiredAction != "use_existing_path" {
+		t.Fatalf("recovery hint = %+v, found=%v", hint, ok)
+	}
+	want := []string{
+		"docs/context/01-prompt-message-context.md",
+		"docs/context/02-workspace-index-editor.md",
+		"docs/context/notes.txt",
+	}
+	if !reflect.DeepEqual(hint.CandidatePaths, want) {
+		t.Fatalf("candidate paths = %#v, want %#v", hint.CandidatePaths, want)
 	}
 }
 
@@ -397,6 +500,35 @@ func TestFilePatchRequiresStrongSandbox(t *testing.T) {
 		}
 		if descriptor.SandboxRequirement != tool.SandboxNone {
 			t.Fatalf("%s sandbox = %q, want none", name, descriptor.SandboxRequirement)
+		}
+	}
+}
+
+func TestFileMutationToolsAreSerial(t *testing.T) {
+	tools, err := NewWithBackend(t.TempDir(), fileTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := tools.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"file_write", "file_edit", "file_apply", "file_patch"} {
+		_, descriptor, _, err := registry.Resolve(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if descriptor.ParallelPolicy != tool.ParallelSerial {
+			t.Fatalf("%s parallel policy = %q, want serial", name, descriptor.ParallelPolicy)
+		}
+	}
+	for _, name := range []string{"file_read", "file_list"} {
+		_, descriptor, _, err := registry.Resolve(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if descriptor.ParallelPolicy != tool.ParallelConcurrent {
+			t.Fatalf("%s parallel policy = %q, want concurrent", name, descriptor.ParallelPolicy)
 		}
 	}
 }

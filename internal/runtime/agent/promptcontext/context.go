@@ -107,6 +107,54 @@ type Context struct {
 	CriticalPaths []string           `json:"critical_paths,omitempty"`
 }
 
+// RefreshMode replaces the mode partition while preserving the stable prompt
+// ordering and its audit receipt. Session Profile changes call this between
+// turns so the model instructions match the frozen policy mode.
+func RefreshMode(
+	messages []provider.Message,
+	receipts []Receipt,
+	mode string,
+	budget Budget,
+) ([]provider.Message, []Receipt) {
+	text := ModeInstructionPack(mode)
+	tokens := HeuristicTokenCounter{}
+	retained, reason := retain(text, budget, 0, 0, tokens)
+	receipt := newReceipt(
+		PartitionMode,
+		"session://profile.mode",
+		text,
+		retained,
+		reason,
+		tokens,
+	)
+	nextMessages := append([]provider.Message(nil), messages...)
+	replacement := provider.TextMessage(provider.RoleSystem, retained)
+	replaced := false
+	for index, message := range nextMessages {
+		if message.Role == provider.RoleSystem &&
+			strings.HasPrefix(strings.TrimSpace(message.Text()), "Mode:") {
+			if strings.TrimSpace(retained) == "" {
+				nextMessages = append(nextMessages[:index], nextMessages[index+1:]...)
+			} else {
+				nextMessages[index] = replacement
+			}
+			replaced = true
+			break
+		}
+	}
+	if !replaced && strings.TrimSpace(retained) != "" {
+		nextMessages = append(nextMessages, replacement)
+	}
+	nextReceipts := append([]Receipt(nil), receipts...)
+	for index := range nextReceipts {
+		if nextReceipts[index].Kind == PartitionMode {
+			nextReceipts[index] = receipt
+			return nextMessages, nextReceipts
+		}
+	}
+	return nextMessages, append(nextReceipts, receipt)
+}
+
 // Assemble builds system context in a stable order and reads instructions only
 // from fixed paths rooted inside Workspace.
 func Assemble(options Options) (Context, error) {

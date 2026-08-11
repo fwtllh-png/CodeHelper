@@ -15,8 +15,8 @@ test_paths:
 source_of_truth:
   - scripts/live-model-smoke.sh
   - testdata/README.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Hermetic Fixture 与真实 Provider Smoke
@@ -27,6 +27,8 @@ last_verified: 2026-08-06
 
 使用 Deterministic Fixture 验证正确性，用最小 Live Smoke 验证 Provider/Environment，
 并明确两者不能互相替代。
+
+## Test Pyramid
 
 Provider Fixture 定义 Expected Prompt/Model 与 Replayable SSE，覆盖 Text、Tool、
 Malformed Call、Cancellation、Editor Context、Subagent、Workflow 和 Multi-sample，
@@ -90,5 +92,5 @@ make live-model-smoke  # 可选，需要凭证
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `practice-fixtures-smoke` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

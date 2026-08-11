@@ -120,7 +120,11 @@ func runQuickstart(
 	fixturePath, fixtureCleanup, err := materializeEmbeddedFixture(
 		bundledQuickstartFixture,
 		"quickstartfixture",
-		[]string{"fixture.json", "plan.sse", "read.sse", "edit.sse", "complete.sse"},
+		[]string{
+			"fixture.json", "plan.sse", "read.sse", "edit.sse",
+			"declare-first.sse", "quality.sse", "declare-final.sse",
+			"complete.sse",
+		},
 	)
 	if err != nil {
 		return report, err
@@ -150,6 +154,7 @@ func runQuickstart(
 
 	approvals := strings.NewReader(
 		"{\"decision\":\"approve\",\"scope\":\"once\"}\n" +
+			"{\"decision\":\"approve\",\"scope\":\"once\"}\n" +
 			"{\"decision\":\"approve\",\"scope\":\"once\"}\n",
 	)
 	var events, errors bytes.Buffer

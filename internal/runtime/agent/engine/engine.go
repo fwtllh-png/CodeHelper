@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -20,7 +21,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -49,22 +52,24 @@ type Options struct {
 	// only has one model can leave it zero: New then builds a table from Route,
 	// which resolves every purpose to it. When both are given, Routes wins and
 	// Route is set from its act slot, so there is one source of truth afterwards.
-	Routes          model.RouteSet
-	Tools           *tool.Registry
-	PromptContext   []provider.Message
-	MaxOutputTokens uint64
-	MaxSteps        int
-	MaxRetries      int
+	Routes           model.RouteSet
+	Tools            *tool.Registry
+	PromptContext    []provider.Message
+	ModePromptBudget promptcontext.Budget
+	MaxOutputTokens  uint64
+	MaxSteps         int
+	MaxRetries       int
 	// MaxContextBytes is the history size that triggers a compaction.
 	MaxContextBytes int
 	// SummaryMaxBytes caps a rendered compaction summary. Zero derives it from
 	// MaxContextBytes.
 	SummaryMaxBytes int
 	// MaxDigestEntries bounds the per-message running record a summary carries.
-	MaxDigestEntries int
-	ReasoningEffort  string
-	NativeSearch     bool
-	Budget           Budget
+	MaxDigestEntries     int
+	ReasoningEffort      string
+	FixedReasoningEffort string
+	NativeSearch         bool
+	Budget               Budget
 	// BudgetReminderThreshold is remaining tokens that trigger a one-shot reminder
 	// (0 → max(256, MaxTokens/10)).
 	BudgetReminderThreshold uint64
@@ -74,13 +79,17 @@ type Options struct {
 	ContextReceipts         []promptcontext.Receipt
 	Authorize               func(provider.ToolCall) bool
 	Security                *policy.Runtime
-	Guard                   *toolguard.Guard
+	// ProfilePermissionCeiling is fixed by the Host at construction. An empty
+	// value inherits Security.Permission for callers that do not use Profiles.
+	ProfilePermissionCeiling policy.Permission
+	Guard                    *toolguard.Guard
 	// OnNetworkAllow is wired into a Guard that New allocates when Guard is
 	// nil. Without it, mid-flight egress approvals update the approval cache
 	// but never Grant the session Gate, so the retry still gets egress denied.
-	OnNetworkAllow func(host, protocol string)
-	Workspace      string
-	Metrics        *telemetry.Metrics
+	OnNetworkAllow     func(host, protocol string)
+	Workspace          string
+	WorkspaceIsolation string
+	Metrics            *telemetry.Metrics
 	// Now is the clock every duration the turn reports is measured against
 	// (nil → time.Now). One clock rather than several is what lets a test assert
 	// a latency exactly.
@@ -97,13 +106,27 @@ type Options struct {
 	WorkspaceTurnGate *WorkspaceTurnGate
 	Diagnostics       diagnostics.Runner
 	Verify            VerifyOptions
-	Hooks             *hooks.Manager
-	SessionID         string
-	InputHost         *interact.Host
+	// RequireCompletionDeclaration makes tool-assisted completion depend on an
+	// accepted turn_complete result. Mutating declarations bind to the current
+	// mutation revision; read-only declarations bind to revision zero.
+	RequireCompletionDeclaration bool
+	// TurnKernelObserver receives deterministic records after Coordinator
+	// commits a transition. The callback is diagnostics-only: panics are
+	// contained and it cannot fail or alter the active Turn.
+	TurnKernelObserver func(turnkernel.TransitionRecord)
+	// TurnCoordinatorRuntime owns per-Turn Coordinator construction and
+	// persistence. Production hosts inject it from runtime/app/wire.
+	TurnCoordinatorRuntime turnkernel.CoordinatorRuntime
+	Hooks                  *hooks.Manager
+	SessionID              string
+	InputHost              *interact.Host
 	// PromptCacheKey is the session sticky hint; samples only attach it when
 	// StickyPromptCacheKey drops the session default when the route lacks
 	// prompt_cache, so Validate/encode stay consistent across protocols.
 	PromptCacheKey string
+	// ProfileRevision is the durable Session Profile revision frozen into each
+	// TurnCoordinator snapshot. Hosts without a profile store use revision 1.
+	ProfileRevision uint64
 	// MaxToolConcurrent bounds simultaneous concurrent-policy tools (0 → 8).
 	MaxToolConcurrent int
 	// MaxToolStreamBytes bounds how much of one tool call's output is delivered as
@@ -169,6 +192,9 @@ type Engine struct {
 	approvalMu   sync.Mutex
 	approvalEmit func(Event) error
 
+	turnKernelMu sync.Mutex
+	turnKernel   *engineTurnKernel
+
 	// routeMu guards the route the active turn samples on. It is nil between
 	// turns, when the act route is the only sensible answer.
 	routeMu   sync.RWMutex
@@ -205,7 +231,10 @@ type Engine struct {
 	// receipt's failed-tool list, the verify verdict and the diagnostics set are
 	// all rebuilt per turn, so once a turn is compacted away its dead ends are
 	// invisible and the model walks into them again.
-	failures *compact.Failures
+	failures        *compact.Failures
+	promptCacheBase string
+	profileReadOnly bool
+	enabledTools    map[string]struct{}
 
 	// turnContextMu guards the receipts of the volatile tail of the last sample.
 	turnContextMu   sync.Mutex
@@ -220,6 +249,11 @@ type Engine struct {
 	diagnosticsMu       sync.Mutex
 	turnDiagnosticsSeen []diagnostics.Receipt
 
+	// verificationInputs are Effect Executor inputs. Kernel owns their
+	// acceptance, mutation binding, and completion decision.
+	verificationInputs      []verify.Evidence
+	qualityEvidenceRequired bool
+
 	// rollbackMu guards the conflicts an automatic rollback of the active turn
 	// left unresolved.
 	rollbackMu        sync.Mutex
@@ -231,6 +265,8 @@ type Engine struct {
 
 	budgetReminderDelivered bool
 }
+
+var testTurnCoordinatorRuntimeFactory func() turnkernel.CoordinatorRuntime
 
 // activeRoute is the route to charge, measure and size the context against.
 //
@@ -290,6 +326,13 @@ func New(options Options) (*Engine, error) {
 	if options.Tools == nil {
 		options.Tools = tool.NewRegistry(nil, nil)
 	}
+	if options.RequireCompletionDeclaration {
+		if _, _, _, err := options.Tools.Resolve("turn_complete"); err != nil {
+			return nil, fmt.Errorf(
+				"completion declaration requires turn_complete: %w", err,
+			)
+		}
+	}
 	if options.Routes.Ready() {
 		options.Route = options.Routes.Act()
 	}
@@ -307,7 +350,7 @@ func New(options Options) (*Engine, error) {
 		options.MaxOutputTokens = min(4096, options.Route.Model().Limits.MaxOutputTokens)
 	}
 	if options.MaxSteps == 0 {
-		options.MaxSteps = 64
+		options.MaxSteps = 256
 	}
 	if options.MaxSteps < 1 {
 		return nil, errors.New("max steps must be positive")
@@ -323,6 +366,16 @@ func New(options Options) (*Engine, error) {
 	}
 	if options.Security == nil {
 		options.Security = policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
+	}
+	if options.ProfileRevision == 0 {
+		options.ProfileRevision = 1
+	}
+	if options.TurnCoordinatorRuntime == nil {
+		if testTurnCoordinatorRuntimeFactory == nil {
+			return nil, errors.New("turn coordinator runtime is required")
+		}
+		options.TurnCoordinatorRuntime =
+			testTurnCoordinatorRuntimeFactory()
 	}
 	if options.Verify.Mode == "" {
 
@@ -363,12 +416,14 @@ func New(options Options) (*Engine, error) {
 	}
 	engine := &Engine{
 		options: options, guard: options.Guard, journal: options.Journal,
-		turnIDs:   make(map[string]uint64),
-		scheduler: NewToolScheduler(options.MaxToolConcurrent),
-		turnDiff:  NewTurnDiffTracker(),
-		working:   workingset.New(),
-		evidence:  evidence.New(),
-		failures:  compact.NewFailures(),
+		promptCacheBase: options.PromptCacheKey,
+		profileReadOnly: profileReadOnlyFromOptions(options),
+		turnIDs:         make(map[string]uint64),
+		scheduler:       NewToolScheduler(options.MaxToolConcurrent),
+		turnDiff:        NewTurnDiffTracker(),
+		working:         workingset.New(),
+		evidence:        evidence.New(),
+		failures:        compact.NewFailures(),
 	}
 	engine.seedWorkingSet()
 	if engine.guard == nil {
@@ -387,6 +442,158 @@ func New(options Options) (*Engine, error) {
 	engine.guard.SetApprovalHandler(engine.emitApproval)
 	engine.guard.SetApprovalWaitObserver(engine.observeApprovalWait)
 	return engine, nil
+}
+
+func (e *Engine) ValidateSessionProfile(profile protocol.SessionProfile) error {
+	if err := profile.Validate(); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.running {
+		return errors.New("session profile cannot change while a turn is active")
+	}
+	route := e.options.Routes.Act()
+	if profile.Provider != route.ProviderID() || profile.Model != route.Model().ID {
+		return errors.New("session profile route is unavailable in this runtime")
+	}
+	if profile.ReasoningEffort != "" && !route.Model().Capabilities.Reasoning {
+		return errors.New("session profile model does not support reasoning effort")
+	}
+	if len(profile.EnabledToolIDs) != 0 {
+		for _, id := range profile.EnabledToolIDs {
+			if _, _, ok := tool.ParseCatalogToolID(id); !ok {
+				return fmt.Errorf("session profile tool id %q is invalid", id)
+			}
+		}
+	}
+	return nil
+}
+
+func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
+	if err := e.ValidateSessionProfile(profile); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.options.ReasoningEffort = profile.ReasoningEffort
+	if e.options.FixedReasoningEffort != "" {
+		e.options.ReasoningEffort = e.options.FixedReasoningEffort
+	}
+	e.options.MaxSteps = profile.MaxSteps
+	e.options.ProfileRevision = profile.Revision
+	e.enabledTools = make(map[string]struct{}, len(profile.EnabledToolIDs))
+	for _, id := range profile.EnabledToolIDs {
+		e.enabledTools[id] = struct{}{}
+	}
+	e.options.PromptCacheKey = fmt.Sprintf(
+		"%s-profile-%d",
+		e.promptCacheBase,
+		profile.PromptCacheRevision,
+	)
+	if e.options.Security != nil {
+		e.options.Security.Mode = policy.Mode(profile.Mode)
+		e.options.Security.Permission = effectiveProfilePermission(
+			e.profileReadOnly,
+			policy.Permission(profile.ApprovalPosture),
+		)
+	}
+	e.refreshPromptMode(profile.Mode)
+	return nil
+}
+
+func (e *Engine) toolEnabled(entry tool.CatalogEntrySnapshot) bool {
+	if e.options.RequireCompletionDeclaration && entry.Name == "turn_complete" {
+		return true
+	}
+	if e.qualityEvidenceRequired &&
+		(entry.Name == "quality_verify" || entry.Name == "quality_test") {
+		return true
+	}
+	if len(e.enabledTools) == 0 {
+		return true
+	}
+	id := tool.CatalogToolID(entry.Name, entry.Source)
+	_, enabled := e.enabledTools[id]
+	return enabled
+}
+
+func (e *Engine) toolCallEnabled(
+	name string,
+	binding tool.CatalogBinding,
+) bool {
+	if e.options.RequireCompletionDeclaration && name == "turn_complete" {
+		return true
+	}
+	if e.qualityEvidenceRequired &&
+		(name == "quality_verify" || name == "quality_test") {
+		return true
+	}
+	if len(e.enabledTools) == 0 {
+		return true
+	}
+	id, err := e.options.Tools.ResolveCatalogToolID(name, binding)
+	if err != nil {
+		// Guard owns stale, revoked, and unknown binding classification.
+		return true
+	}
+	_, enabled := e.enabledTools[id]
+	return enabled
+}
+
+func effectiveProfilePermission(
+	readOnly bool,
+	requested policy.Permission,
+) policy.Permission {
+	if readOnly {
+		return policy.PermissionNever
+	}
+	return requested
+}
+
+func profileReadOnlyFromOptions(options Options) bool {
+	ceiling := options.ProfilePermissionCeiling
+	if ceiling == "" && options.Security != nil {
+		ceiling = options.Security.Permission
+	}
+	return ceiling == policy.PermissionNever
+}
+
+func (e *Engine) SetPolicyMode(mode policy.Mode) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.options.Security != nil {
+		e.options.Security.Mode = mode
+	}
+	e.refreshPromptMode(string(mode))
+}
+
+func (e *Engine) refreshPromptMode(mode string) {
+	e.options.PromptContext, e.options.ContextReceipts = promptcontext.RefreshMode(
+		e.options.PromptContext,
+		e.options.ContextReceipts,
+		mode,
+		e.options.ModePromptBudget,
+	)
+}
+
+func (e *Engine) SetPermission(permission policy.Permission) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.options.Security != nil {
+		e.options.Security.Permission = effectiveProfilePermission(
+			e.profileReadOnly,
+			permission,
+		)
+	}
+}
+
+func (e *Engine) SetGranular(granular policy.Granular) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.options.Security != nil {
+		e.options.Security.Granular = granular
+	}
 }
 
 // CloneEmpty builds a sibling Engine with the same Options seed, empty history,

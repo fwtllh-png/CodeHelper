@@ -141,3 +141,74 @@ func TestApprovalWaitIsReportedWhenNobodyAnswers(t *testing.T) {
 		t.Fatalf("expired wait = %s, want the time it spent waiting", waits[0].Waited)
 	}
 }
+
+func TestC5GuardRestoresApprovalWaitWithoutDuplicateEmission(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := testExecutor{descriptor: writeDescriptor()}
+	if err := registry.Register(&executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	var emissions int
+	guard, err := New(Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionSuggest,
+		),
+		Workspace: t.TempDir(),
+		Approvals: func(context.Context, ApprovalRequest) error {
+			emissions++
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := ApprovalRequest{
+		RequestID: "approval-restored",
+		CallID:    "call-restored",
+		Tool:      "write",
+		Arguments: json.RawMessage(`{"path":"a","value":"x"}`),
+		AllowedScopes: []policy.ApprovalScope{
+			policy.ApprovalOnce,
+		},
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	if err := guard.RestoreApproval(request); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, executeErr := guard.Execute(
+			context.Background(),
+			request.CallID,
+			request.Tool,
+			request.Arguments,
+		)
+		done <- executeErr
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		err := guard.StageDecision(ApprovalDecision{
+			RequestID: request.RequestID,
+			Approved:  true,
+			Scope:     policy.ApprovalOnce,
+		})
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := guard.Resume(request.RequestID); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if emissions != 0 {
+		t.Fatalf("restored approval emissions = %d", emissions)
+	}
+}

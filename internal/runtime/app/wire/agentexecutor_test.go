@@ -159,7 +159,12 @@ func TestSchedulerMergesACompletedWritingAgentIntoTheWorkspace(t *testing.T) {
 
 	settled := awaitTerminal(t, session, id)
 	if settled.State != taskstate.StateCompleted {
-		t.Fatalf("task state = %s reason=%q", settled.State, settled.FailureReason)
+		t.Fatalf(
+			"task state = %s reason=%q result=%s",
+			settled.State,
+			settled.FailureReason,
+			settled.Result,
+		)
 	}
 	var result agentTurnResult
 	if err := json.Unmarshal(settled.Result, &result); err != nil {

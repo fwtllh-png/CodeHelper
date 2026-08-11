@@ -82,7 +82,7 @@ func newTUICommand(
 	cmd.Flags().Bool("enable-tools", false, "enable built-in workspace tools")
 	cmd.Flags().String("mode", "act", "tool mode: plan, act, or operate")
 	cmd.Flags().String("posture", "auto", "tool permission posture: suggest, auto, bypass")
-	cmd.Flags().Int("max-steps", 0, "maximum model+tool steps per turn (default 64; 0 keeps config/env)")
+	cmd.Flags().Int("max-steps", 0, "maximum model+tool steps per turn (default 256; 0 keeps config/env)")
 	cmd.Flags().Uint64("context-tokens", 0, "custom model context window (default 262144 with --base-url)")
 	cmd.Flags().Uint64("model-max-output-tokens", 0, "custom model output limit (default 131072 with --base-url)")
 	cmd.Flags().String("model-capabilities", "", "comma-separated capabilities (default streaming,reasoning,tool_calls with --base-url)")

@@ -27,6 +27,8 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 	wantTables := []string{
 		"workspaces", "sessions", "threads", "turns", "items", "operations",
 		"event_reservations", "event_index", "tasks", "task_lifecycle",
+		"turn_domain_facts", "turn_terminal_envelopes",
+		"turn_terminal_outbox", "turn_coordinator_leases",
 		"snapshots", "usage", "usage_turn_context", "automations", "automation_runs",
 		"agent_spawn_edges", "repo_index_files", "repo_index_symbols", "repo_index_meta",
 		"task_attempts", "workflow_runs", "workflow_nodes", "spans",
@@ -254,5 +256,39 @@ func assertTableColumns(t *testing.T, db *sql.DB, table string, want ...string) 
 		if !found[column] {
 			t.Errorf("table %q is missing column %q", table, column)
 		}
+	}
+}
+
+func TestIsUniqueConstraintViolationUsesSQLiteCodes(t *testing.T) {
+	store, err := Open(t.Context(), filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	db := store.DB()
+	if _, err := db.ExecContext(t.Context(), `
+		CREATE TABLE error_class_parent(id TEXT PRIMARY KEY);
+		CREATE TABLE error_class_child(
+			id TEXT PRIMARY KEY,
+			parent_id TEXT REFERENCES error_class_parent(id)
+		);
+		INSERT INTO error_class_parent(id) VALUES ('parent');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	_, duplicateErr := db.ExecContext(
+		t.Context(), `INSERT INTO error_class_parent(id) VALUES ('parent')`,
+	)
+	if !IsUniqueConstraintViolation(duplicateErr) {
+		t.Fatalf("duplicate error was not classified: %v", duplicateErr)
+	}
+	_, foreignKeyErr := db.ExecContext(
+		t.Context(), `INSERT INTO error_class_child(id, parent_id) VALUES ('child', 'missing')`,
+	)
+	if foreignKeyErr == nil {
+		t.Fatal("expected foreign key error")
+	}
+	if IsUniqueConstraintViolation(foreignKeyErr) {
+		t.Fatalf("foreign key error was classified as unique: %v", foreignKeyErr)
 	}
 }

@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/observability/diagnostics/diagnostics.go
   - internal/observability/verify/verify.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Diagnostics、Maturity 与 Verification
@@ -30,6 +30,8 @@ last_verified: 2026-08-06
 
 区分 Diagnostics 与 Verification，理解 Affected-test Mapping，以及 Passed、Failed、
 Unavailable、Not-evaluated 对 Maturity Claim 的含义。
+
+## Evidence Levels
 
 | Level | 含义 |
 | --- | --- |
@@ -74,6 +76,8 @@ Repository Test Topology 覆盖 Go、JavaScript/TypeScript、Python 和 Rust。�
 Selected Command 都包含 Derivation Reason。Manifest Change 会扩大到
 Repository/Module Command；Unsupported 与 Unmapped Path 保持显式，不会静默返回空
 Test List。
+
+## Maturity Claims
 
 Feature/Chapter/Receipt 的成熟度只能达到实际 Verification Scope。Diagnostics Pass
 不能声称 Repository Test Pass；单包通过不能声称全平台通过。
@@ -123,5 +127,5 @@ make benchmark-v2
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `state-diagnostics-verification` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

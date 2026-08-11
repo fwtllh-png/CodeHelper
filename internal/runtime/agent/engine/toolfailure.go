@@ -2,6 +2,8 @@ package engine
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
@@ -22,10 +24,41 @@ func recoverableToolFailure(err error) (string, bool) {
 	if err == nil {
 		return "", false
 	}
+	if hint, ok := tool.RecoveryHintFromError(err); ok &&
+		hint.ErrorCategory != "" && hint.RequiredAction != "" {
+		content := fmt.Sprintf(
+			"%s; required_action=%s; retry_original=%t",
+			err.Error(),
+			hint.RequiredAction,
+			hint.RetryOriginal,
+		)
+		if hint.Path != "" {
+			content += "; path=" + hint.Path
+		}
+		if hint.FailedChange > 0 {
+			content += fmt.Sprintf("; failed_change=%d; match_count=%d",
+				hint.FailedChange, hint.MatchCount)
+		}
+		if hint.CurrentExcerpt != "" {
+			content += fmt.Sprintf(
+				"; current_excerpt_lines=%d-%d:\n%s",
+				hint.StartLine, hint.EndLine, hint.CurrentExcerpt,
+			)
+		}
+		if len(hint.CandidatePaths) != 0 {
+			content += "; candidate_paths=" +
+				strings.Join(hint.CandidatePaths, ",")
+		}
+		return content, true
+	}
 	var decision *policy.DecisionError
 	if errors.As(err, &decision) {
-		if decision.Code == "approval_denied" {
+		switch decision.Code {
+		case "approval_denied":
 			return decision.Reason, true
+		case "edit_plan_stale":
+			return decision.Reason +
+				"; re-read the affected file and submit a new edit for approval", true
 		}
 		return "", false
 	}
@@ -54,6 +87,56 @@ func recoverableToolFailure(err error) (string, bool) {
 		return err.Error() + "; the workspace was not changed", true
 	}
 	return "", false
+}
+
+func toolFailureRecoveryMetadata(err error) map[string]any {
+	if hint, ok := tool.RecoveryHintFromError(err); ok {
+		metadata := map[string]any{
+			"error_category":  hint.ErrorCategory,
+			"required_action": hint.RequiredAction,
+			"path":            hint.Path,
+			"retry_original":  hint.RetryOriginal,
+		}
+		if hint.FailedChange > 0 {
+			metadata["failed_change"] = hint.FailedChange
+			metadata["match_count"] = hint.MatchCount
+		}
+		if hint.CurrentExcerpt != "" {
+			metadata["start_line"] = hint.StartLine
+			metadata["end_line"] = hint.EndLine
+			metadata["current_excerpt"] = hint.CurrentExcerpt
+		}
+		if len(hint.CandidatePaths) != 0 {
+			metadata["candidate_paths"] = append(
+				[]string(nil),
+				hint.CandidatePaths...,
+			)
+		}
+		return metadata
+	}
+	var decision *policy.DecisionError
+	if errors.As(err, &decision) && decision.Code == "edit_plan_stale" {
+		return map[string]any{
+			"error_category":    "edit_plan_stale",
+			"required_action":   "file_read",
+			"retry_original":    false,
+			"approval_required": true,
+		}
+	}
+	var validation *workspacejournal.ReadValidationError
+	if !errors.As(err, &validation) {
+		return nil
+	}
+	category := "read_before_edit_required"
+	if errors.Is(err, workspacejournal.ErrStale) {
+		category = "read_before_edit_stale"
+	}
+	return map[string]any{
+		"error_category":  category,
+		"required_action": "file_read",
+		"path":            validation.Path,
+		"retry_original":  true,
+	}
 }
 
 func toolFailureCategory(err error) string {

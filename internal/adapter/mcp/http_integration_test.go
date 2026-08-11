@@ -13,6 +13,19 @@ import (
 	"time"
 )
 
+func TestStaleResponseRequiresStructuredCode(t *testing.T) {
+	if staleResponse(Response{Error: &RPCError{
+		Code: -32000, Message: "session expired",
+	}}) {
+		t.Fatal("error message must not drive stale-session replay")
+	}
+	if !staleResponse(Response{Error: &RPCError{
+		Code: -32001, Message: "opaque",
+	}}) {
+		t.Fatal("structured stale-session code was ignored")
+	}
+}
+
 func TestHTTPConnectionFixtureCapabilitiesAndStaleReconnect(t *testing.T) {
 	url, command := startHTTPFixture(
 		t,

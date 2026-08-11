@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/persist/workspacejournal/journal.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Edit Plan、Journal 与 Receipt
@@ -32,6 +32,8 @@ last_verified: 2026-08-06
 
 理解 Preview-bound Edit、Read-before-edit Fingerprint、Durable Before-image、
 Observed Turn Diff、Rollback Conflict 与 Audit Receipt。
+
+## Write Lifecycle
 
 ```mermaid
 sequenceDiagram
@@ -51,11 +53,13 @@ sequenceDiagram
     G-->>M: result + observed changes
 ```
 
-## Edit Plan 与 Read-before-edit
+## Edit Plan
 
 `EditPlan` 是无副作用 Preview，包含精确 File、Before/After Content/Digest 与 Unified
 Diff。Approval 指定 Plan ID；执行前 Guard 重新 Plan，Workspace 变化产生
 `edit_plan_stale`。Plan Approval 为 One-shot。
+
+## Read-before-edit 与 Journal
 
 `file_read` 记录 Content 与 Filesystem Identity。Mediated Edit 前，现有文件必须仍匹配
 Fingerprint。Journal 在写入前保存该 Turn 的 First Before-image，之后记录 After
@@ -116,6 +120,11 @@ Joined Receipt 方便查询，但不替代 Source Record。没有 Journal 时即
 | Turn Diff | `agent/engine/turndiff.go` |
 | Receipt | `runtime/app/receipt.go` |
 
+## 设计取舍
+
+基于 Argument 的变更报告会漏掉 Patch 与隐藏副作用；Executor 自报可能意外失真。
+比较 Fingerprint 观察 Workspace；Journal Before-image 额外使 Rollback 成为可能。
+
 ## 失败模式与安全边界
 
 - Existing File 要求 Fresh Read。
@@ -156,5 +165,5 @@ Current Fingerprint，解释为何产生 Conflict。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `tool-edit-journal-receipt` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

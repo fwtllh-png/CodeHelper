@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/provider/types.go
   - internal/runtime/agent/promptcontext/context.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Prompts, Messages, and Context
@@ -173,5 +173,5 @@ data, and dynamic evidence.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `context-prompt-message` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

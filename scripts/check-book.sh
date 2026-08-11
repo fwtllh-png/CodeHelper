@@ -236,6 +236,44 @@ def path_matches(pattern: str) -> bool:
     return bool(glob.glob(str(root / pattern), recursive=True))
 
 
+def verify_footer(language: str, path: pathlib.Path, metadata: dict) -> None:
+    if language == "en":
+        heading = "Sources and Verification"
+        status_label = "Status"
+        date_label = "Last verified"
+        pending = "Not yet verified"
+    else:
+        heading = "事实来源与验证"
+        status_label = "状态"
+        date_label = "最后验证"
+        pending = "尚未验证"
+    section = f"## {heading}"
+    text = path.read_text(encoding="utf-8")
+    if text.count(section) != 1:
+        error(f"{path.relative_to(root)}: chapter must contain exactly one '{section}' section")
+        return
+    tail = text[text.index(section):]
+    expected_status = f"| {status_label} | `{metadata['status']}` |"
+    expected_value = pending if metadata["status"] == "draft" else metadata["last_verified"]
+    expected_date = f"| {date_label} | {expected_value} |"
+    status_rows = re.findall(
+        rf"^\| {re.escape(status_label)} \| `(?:draft|verified)` \|$", tail, re.MULTILINE
+    )
+    date_rows = re.findall(
+        rf"^\| {re.escape(date_label)} \| [^|\n]+ \|$", tail, re.MULTILINE
+    )
+    if status_rows != [expected_status]:
+        error(
+            f"{path.relative_to(root)}: status footer row must be '{expected_status}', "
+            f"found {status_rows or 'none'}"
+        )
+    if date_rows != [expected_date]:
+        error(
+            f"{path.relative_to(root)}: verification date footer row must be '{expected_date}', "
+            f"found {date_rows or 'none'}"
+        )
+
+
 def validate_chapter(language: str, relative: pathlib.PurePosixPath, part: dict, chapter: dict) -> None:
     path = book / language / relative
     metadata = parse_front_matter(path)
@@ -286,6 +324,7 @@ def validate_chapter(language: str, relative: pathlib.PurePosixPath, part: dict,
                 error(f"{path.relative_to(root)}: invalid last_verified date")
     elif last_verified is not None:
         error(f"{path.relative_to(root)}: draft chapter last_verified must be null")
+    verify_footer(language, path, metadata)
 
 
 for chapter_id, (part, chapter) in catalog_chapters.items():

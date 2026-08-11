@@ -16,7 +16,7 @@ source_of_truth:
   - internal/orchestration/workflow/runtime.go
   - internal/orchestration/workflow/checkpoint/checkpoint.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Build a Recoverable Workflow
@@ -92,3 +92,4 @@ Delete the temporary state directory; do not reuse its checkpoint IDs.
 | --- | --- |
 | Catalog ID | `lab-recoverable-workflow` |
 | Status | `verified` |
+| Last verified | 2026-08-10 |

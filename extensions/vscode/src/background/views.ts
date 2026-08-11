@@ -13,11 +13,10 @@ import type {
   WorkspaceRuntimeRegistry,
 } from "../workspace/registry.js";
 
-const viewIds: Readonly<Record<BackgroundView, string>> = {
-  threads: "codehelper.threads",
+type VisibleBackgroundView = "agents" | "approvals" | "usage";
+
+const viewIds: Readonly<Record<VisibleBackgroundView, string>> = {
   agents: "codehelper.agents",
-  tasks: "codehelper.tasks",
-  jobs: "codehelper.jobs",
   approvals: "codehelper.approvals",
   usage: "codehelper.usage",
 };
@@ -52,7 +51,7 @@ export class BackgroundViews implements vscode.Disposable {
     this.#registry = registry;
     this.#output = output;
     this.#syncRoots();
-    for (const kind of Object.keys(viewIds) as BackgroundView[]) {
+    for (const kind of Object.keys(viewIds) as VisibleBackgroundView[]) {
       const provider = new SnapshotProvider(kind, () => this.#snapshots());
       this.#providers.set(kind, provider);
       const tree = vscode.window.createTreeView(viewIds[kind], {
@@ -93,7 +92,6 @@ export class BackgroundViews implements vscode.Disposable {
       registry.onStateChange(({ root, snapshot }) => {
         if (snapshot.state === "ready") {
           for (const kind of this.#visible) this.#schedule(root.rootId, kind);
-          this.#schedule(root.rootId, "tasks");
         }
       }),
       registry.onDidChangeRoots(() => {
@@ -146,7 +144,7 @@ export class BackgroundViews implements vscode.Disposable {
     this.#notify(root, background.projector.applyEvent(event, replayed));
     this.#providers.get("approvals")?.refresh();
     for (const kind of affectedViews(event.kind)) {
-      if (this.#visible.has(kind) || kind === "tasks" || kind === "jobs") {
+      if (this.#visible.has(kind)) {
         this.#schedule(root.rootId, kind);
       }
     }
@@ -237,7 +235,7 @@ export class BackgroundViews implements vscode.Disposable {
 
 export function unavailableBackgroundViews(message: string): vscode.Disposable {
   const subscriptions: vscode.Disposable[] = [];
-  for (const kind of Object.keys(viewIds) as BackgroundView[]) {
+  for (const kind of Object.keys(viewIds) as VisibleBackgroundView[]) {
     const provider: vscode.TreeDataProvider<TreeNode> = {
       getTreeItem: (element) => treeItem(element),
       getChildren: () => [{ kind: "info", label: message }],

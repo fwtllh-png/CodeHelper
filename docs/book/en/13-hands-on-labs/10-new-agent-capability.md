@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - AGENTS.md
   - docs/en/architecture.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Design and Verify a New Agent Capability
@@ -115,4 +115,5 @@ git diff --check
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-new-capability` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

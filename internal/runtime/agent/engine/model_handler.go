@@ -5,24 +5,34 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"sort"
+	"strings"
+	"syscall"
+	"time"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"io"
-	"sort"
-	"strings"
-	"time"
 )
 
 func (e *Engine) modelStep(
 	ctx context.Context,
 	history *[]provider.Message,
 	turnUsage provider.Usage,
+	continued *bool,
+	pendingInputInjected *bool,
 	send func(State, Event) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, uint64, error) {
+	if continued != nil {
+		*continued = false
+	}
+	if pendingInputInjected != nil {
+		*pendingInputInjected = false
+	}
 	if err := e.emitExtensionLifecycleChanges(send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
@@ -54,10 +64,16 @@ func (e *Engine) modelStep(
 	}
 	var totalUsage provider.Usage
 	var lastEstimate uint64
+	var continuationMessages []provider.Message
+	var continuedBlocks []provider.ContentBlock
+	continuations := 0
+	finishAttempted := false
+	finishMode := false
 	for attempt := 0; ; attempt++ {
 		messages := append(e.promptMessages(), cloneMessages(*history)...)
 		turnContext, turnReceipts := e.turnContextMessagesForCatalog(ctx, catalog, advertised)
 		messages = append(messages, turnContext...)
+		messages = append(messages, cloneMessages(continuationMessages)...)
 		e.recordTurnContextReceipts(turnReceipts)
 
 		estimatedInput, err := e.checkBudget(messages, turnUsage, totalUsage)
@@ -79,10 +95,20 @@ func (e *Engine) modelStep(
 			"provider": call.provider, "model": call.model,
 			"sample": call.index, "attempt": attempt + 1,
 		})
+		maxOutputTokens := e.maxOutputFor(route)
+		requestTools := definitions
+		reasoningEffort := e.options.ReasoningEffort
+		nativeSearch := e.options.NativeSearch
+		if finishMode {
+			maxOutputTokens = min(maxOutputTokens, uint64(4096))
+			requestTools = nil
+			reasoningEffort = "low"
+			nativeSearch = false
+		}
 		stream, err := e.options.Provider.Stream(requestContext, provider.ModelRequest{
 			Route: route, Messages: messages,
-			MaxOutputTokens: e.maxOutputFor(route), Tools: definitions,
-			ReasoningEffort: e.options.ReasoningEffort, NativeSearch: e.options.NativeSearch,
+			MaxOutputTokens: maxOutputTokens, Tools: requestTools,
+			ReasoningEffort: reasoningEffort, NativeSearch: nativeSearch,
 			Idempotent:     true,
 			PromptCacheKey: provider.StickyPromptCacheKey(e.options.PromptCacheKey, route),
 		})
@@ -95,7 +121,13 @@ func (e *Engine) modelStep(
 				attempt = -1
 				continue
 			}
-			if attempt < e.options.MaxRetries && ctx.Err() == nil {
+			if attempt < providerRetryLimit(e.options.MaxRetries, err) &&
+				ctx.Err() == nil {
+				if sendErr := send(CallingModel, Event{
+					ProviderRetry: providerRetryEvent(attempt+1, err),
+				}); sendErr != nil {
+					return nil, nil, totalUsage, lastEstimate, sendErr
+				}
 				continue
 			}
 			return nil, nil, totalUsage, lastEstimate, err
@@ -117,16 +149,90 @@ func (e *Engine) modelStep(
 		totalUsage.Add(usage)
 		pending := e.drainPending()
 		if ctx.Err() == nil && len(pending) != 0 {
-			if len(blocks) != 0 {
+			if pendingInputInjected != nil {
+				*pendingInputInjected = true
+			}
+			pendingBlocks := appendContinuedBlocks(continuedBlocks, blocks)
+			if len(pendingBlocks) != 0 {
 				*history = append(*history, provider.Message{
-					Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
+					Role: provider.RoleAssistant, Blocks: pendingBlocks, Turn: e.turn,
 				})
 			}
 			e.appendPendingInputs(history, pending)
+			continuationMessages = nil
+			continuedBlocks = nil
+			continuations = 0
+			finishAttempted = false
+			finishMode = false
+			attempt = -1
+			continue
+		}
+		var incomplete *incompleteModelOutputError
+		if errors.As(err, &incomplete) && ctx.Err() == nil {
+			if continued != nil {
+				*continued = true
+			}
+			continuedBlocks = appendContinuedBlocks(continuedBlocks, blocks)
+			if finishMode {
+				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
+					protocol.CodeResourceExhausted,
+					"model finish route remained incomplete after one bounded attempt",
+					true,
+					err,
+				)
+			}
+			if incomplete.Reason == provider.StopReasonMaxTokens &&
+				!incomplete.HasToolCallFragment &&
+				reasoningOnlyBlocks(continuedBlocks) &&
+				!finishAttempted {
+				if len(blocks) != 0 {
+					continuationMessages = append(continuationMessages, provider.Message{
+						Role: provider.RoleAssistant, Blocks: cloneBlocks(blocks), Turn: e.turn,
+					})
+				}
+				continuationMessages = append(
+					continuationMessages,
+					finishOutputFeedback(e.turn),
+				)
+				finishAttempted = true
+				finishMode = true
+				attempt = -1
+				continue
+			}
+			if continuations >= maxOutputContinuations {
+				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
+					protocol.CodeResourceExhausted,
+					fmt.Sprintf(
+						"model output remained incomplete after %d continuation attempts (%s)",
+						maxOutputContinuations,
+						incomplete.Reason,
+					),
+					true,
+					err,
+				)
+			}
+			if len(blocks) != 0 {
+				continuationMessages = append(continuationMessages, provider.Message{
+					Role: provider.RoleAssistant, Blocks: cloneBlocks(blocks), Turn: e.turn,
+				})
+			}
+			continuationMessages = append(
+				continuationMessages,
+				incompleteOutputFeedback(incomplete.Reason, e.turn),
+			)
+			continuations++
 			attempt = -1
 			continue
 		}
 		if err == nil {
+			if finishMode && len(calls) != 0 {
+				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
+					protocol.CodeConflict,
+					"model finish route attempted a new tool call",
+					false,
+					nil,
+				)
+			}
 			for index := range calls {
 				binding, known := catalog.Binding(calls[index].Name)
 				entry, _ := catalog.Lookup(calls[index].Name)
@@ -144,12 +250,103 @@ func (e *Engine) modelStep(
 				calls[index].CatalogRevision = binding.Revision
 				calls[index].CatalogAuthority = binding.Authority
 			}
-			return blocks, calls, totalUsage, lastEstimate, nil
+			return appendContinuedBlocks(continuedBlocks, blocks),
+				calls, totalUsage, lastEstimate, nil
 		}
-		if meaningful || attempt >= e.options.MaxRetries || ctx.Err() != nil {
+		if meaningful ||
+			attempt >= providerRetryLimit(e.options.MaxRetries, err) ||
+			ctx.Err() != nil {
 			return blocks, nil, totalUsage, lastEstimate, err
 		}
+		if sendErr := send(CallingModel, Event{
+			ProviderRetry: providerRetryEvent(attempt+1, err),
+		}); sendErr != nil {
+			return nil, nil, totalUsage, lastEstimate, sendErr
+		}
 	}
+}
+
+func providerRetryEvent(attempt int, err error) *ProviderRetry {
+	category := "provider_unavailable"
+	switch {
+	case errors.Is(err, syscall.ECONNRESET):
+		category = "connection_reset"
+	case errors.Is(err, syscall.EPIPE):
+		category = "broken_pipe"
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		category = "unexpected_eof"
+	case errors.Is(err, context.DeadlineExceeded):
+		category = "deadline_exceeded"
+	}
+	return &ProviderRetry{
+		Attempt: attempt, Code: protocol.CodeOf(err), Category: category,
+	}
+}
+
+func providerRetryLimit(configured int, err error) int {
+	if configured < 1 && protocol.IsRetryable(err) {
+		return 1
+	}
+	return configured
+}
+
+const maxOutputContinuations = 2
+
+type incompleteModelOutputError struct {
+	Reason              provider.StopReason
+	HasToolCallFragment bool
+}
+
+func (e *incompleteModelOutputError) Error() string {
+	return fmt.Sprintf("model output stopped before completion (%s)", e.Reason)
+}
+
+func incompleteOutputFeedback(
+	reason provider.StopReason,
+	turn uint64,
+) provider.Message {
+	message := provider.TextMessage(provider.RoleUser, fmt.Sprintf(
+		`[continue_after_incomplete stop_reason=%s]
+The provider stopped the previous response before completion. Continue exactly
+from the captured response. Do not repeat completed content. Finish the pending
+tool call or user-facing answer.`,
+		reason,
+	))
+	message.Turn = turn
+	return message
+}
+
+func finishOutputFeedback(turn uint64) provider.Message {
+	message := provider.TextMessage(provider.RoleUser, `[finish_after_reasoning_limit]
+The reasoning phase reached its output limit. Do not call tools or start new
+analysis. Produce one concise user-facing final answer from the evidence already
+present. If the requested operation is not complete, report that blocked outcome
+and its structured failure instead of claiming success.`)
+	message.Turn = turn
+	return message
+}
+
+func reasoningOnlyBlocks(blocks []provider.ContentBlock) bool {
+	meaningful := false
+	for _, block := range blocks {
+		if block.Type != provider.ContentReasoning {
+			return false
+		}
+		if block.Text != "" || block.Signature != "" || len(block.ProviderData) != 0 {
+			meaningful = true
+		}
+	}
+	return meaningful
+}
+
+func appendContinuedBlocks(
+	current []provider.ContentBlock,
+	next []provider.ContentBlock,
+) []provider.ContentBlock {
+	for _, block := range cloneBlocks(next) {
+		current = appendStreamBlock(current, -1, block)
+	}
+	return current
 }
 
 func (e *Engine) emitExtensionLifecycleChanges(send func(State, Event) error) error {
@@ -382,6 +579,7 @@ func consume(
 	emit func(Event) error,
 	firstOutput func(),
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, bool, error) {
+	stream = newDeltaCoalescingStream(stream)
 	defer stream.Close()
 	var blocks []provider.ContentBlock
 	var usage provider.Usage
@@ -398,7 +596,12 @@ func consume(
 	for {
 		event, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			return blocks, nil, usage, meaningful, errors.New("model stream ended without stop")
+			return blocks, nil, usage, meaningful, protocol.NewProblem(
+				protocol.CodeUnavailable,
+				"model stream ended without a valid stop event",
+				true,
+				io.ErrUnexpectedEOF,
+			)
 		}
 		if err != nil {
 			return blocks, nil, usage, meaningful, err
@@ -409,7 +612,9 @@ func consume(
 			output()
 			block := eventBlock(event, provider.ContentText)
 			blocks = appendStreamBlock(blocks, event.Index, block)
-			if err := emit(Event{Text: event.Text, Block: &block}); err != nil {
+			visible := block
+			visible.Text = event.Text
+			if err := emit(Event{Text: event.Text, Block: &visible}); err != nil {
 				return nil, nil, usage, meaningful, err
 			}
 			for _, update := range planParser.Feed(event.Text) {
@@ -422,7 +627,12 @@ func consume(
 			output()
 			block := eventBlock(event, provider.ContentReasoning)
 			blocks = appendStreamBlock(blocks, event.Index, block)
-			if err := emit(Event{Text: event.Text, Block: &block}); err != nil {
+			visible := block
+			visible.Text = event.Text
+			if visible.Text == "" && visible.Signature == "" {
+				continue
+			}
+			if err := emit(Event{Text: event.Text, Block: &visible}); err != nil {
 				return nil, nil, usage, meaningful, err
 			}
 		case provider.EventReasoningSignature:
@@ -463,6 +673,36 @@ func consume(
 			call.Arguments += event.ToolCall.Arguments
 			fragments[event.ToolCall.Index] = call
 		case provider.EventMessageStop:
+			switch event.StopReason {
+			case provider.StopReasonMaxTokens, provider.StopReasonIncomplete:
+				return blocks, nil, usage, meaningful, &incompleteModelOutputError{
+					Reason:              event.StopReason,
+					HasToolCallFragment: len(fragments) != 0,
+				}
+			case provider.StopReasonContentFilter:
+				return blocks, nil, usage, meaningful, protocol.NewProblem(
+					protocol.CodeInvalidArgument,
+					"model output was blocked by the provider content filter",
+					false,
+					nil,
+				)
+			}
+			if event.StopReason == provider.StopReasonUnknown {
+				return blocks, nil, usage, meaningful, protocol.NewProblem(
+					protocol.CodeUnavailable,
+					"provider returned an unknown model stop reason",
+					true,
+					nil,
+				)
+			}
+			if event.StopReason == provider.StopReasonToolUse && len(fragments) == 0 {
+				return blocks, nil, usage, meaningful, protocol.NewProblem(
+					protocol.CodeUnavailable,
+					"provider stopped for tool use without emitting a tool call",
+					true,
+					nil,
+				)
+			}
 			indexes := make([]int, 0, len(fragments))
 			for index := range fragments {
 				indexes = append(indexes, index)
@@ -501,7 +741,8 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 	var descriptors []tool.Descriptor
 	for _, entry := range snapshot.Entries() {
 		if entry.Descriptor.Visibility == tool.VisibleModel &&
-			entry.Descriptor.Availability != tool.AvailabilityUnavailable {
+			entry.Descriptor.Availability != tool.AvailabilityUnavailable &&
+			e.toolEnabled(entry) {
 			descriptors = append(descriptors, entry.Descriptor)
 		}
 	}
@@ -547,7 +788,8 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 	for _, entry := range snapshot.Entries() {
 		descriptor := entry.Descriptor
 		if descriptor.Visibility != tool.VisibleModel ||
-			descriptor.Availability == tool.AvailabilityUnavailable {
+			descriptor.Availability == tool.AvailabilityUnavailable ||
+			!e.toolEnabled(entry) {
 			continue
 		}
 		if descriptor.Name == toolsearch.ToolName {
@@ -566,6 +808,7 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 		descriptor := entry.Descriptor
 		if descriptor.Visibility != tool.VisibleModel ||
 			descriptor.Availability == tool.AvailabilityUnavailable ||
+			!e.toolEnabled(entry) ||
 			descriptor.Name == toolsearch.ToolName ||
 			entry.State == tool.CatalogEntryDeferred ||
 			entry.State == tool.CatalogEntryMaterialized {

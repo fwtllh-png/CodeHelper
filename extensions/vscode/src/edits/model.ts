@@ -19,6 +19,7 @@ export interface EditPlanFileCard {
   readonly afterExists: boolean;
   readonly beforeDigest: string;
   readonly afterDigest: string;
+  readonly resourceId?: string;
 }
 
 export interface PlanAnnotation {
@@ -51,7 +52,7 @@ interface MutableReview {
   annotations: Map<string, PlanAnnotation[]>;
 }
 
-const maxPlanFiles = 128;
+const maxPlanFiles = 512;
 const maxPlanHistory = 16;
 const maxPlanContentBytes = 1 << 20;
 const maxPlanTotalBytes = 8 << 20;

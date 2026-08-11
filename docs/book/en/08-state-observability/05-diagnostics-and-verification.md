@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/observability/diagnostics/diagnostics.go
   - internal/observability/verify/verify.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Diagnostics, Maturity, and Verification
@@ -135,5 +135,5 @@ Explain why their statuses differ.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `state-diagnostics-verification` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

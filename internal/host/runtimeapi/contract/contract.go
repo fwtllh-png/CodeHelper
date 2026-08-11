@@ -105,6 +105,38 @@ type Host interface {
 	// reconnected with a stored cursor reads them.
 	History(ctx context.Context, since protocol.Cursor, limit int) ([]protocol.Event, error)
 	ReadState(ctx context.Context) (ReadState, error)
+	SessionProfile(ctx context.Context) (protocol.SessionProfileSnapshot, error)
+	SessionToolCatalog(ctx context.Context) (protocol.SessionToolCatalog, error)
+	ListSessions(
+		ctx context.Context,
+		query protocol.SessionListQuery,
+	) (protocol.SessionList, error)
+	UpdateSessionLifecycle(
+		ctx context.Context,
+		expectedRevision uint64,
+		patch protocol.SessionLifecyclePatch,
+	) (protocol.SessionLifecycleUpdate, error)
+	DeleteSession(
+		ctx context.Context,
+		expectedRevision uint64,
+	) (protocol.SessionDeleteResult, error)
+	ListCheckpoints(
+		ctx context.Context,
+		limit int,
+	) (protocol.CheckpointList, error)
+	RestoreCheckpoint(
+		ctx context.Context,
+		checkpointID string,
+	) (protocol.CheckpointRestoreResult, error)
+	ForkCheckpoint(
+		ctx context.Context,
+		checkpointID, title string,
+	) (protocol.CheckpointForkResult, error)
+	UpdateSessionProfile(
+		ctx context.Context,
+		expectedRevision uint64,
+		patch protocol.SessionProfilePatch,
+	) (protocol.SessionProfileUpdateResult, error)
 	RegisterDynamic(
 		ctx context.Context,
 		spec protocol.DynamicToolSpec,
@@ -192,6 +224,13 @@ func collectUntilTerminal(
 			if terminal(event.Kind) {
 				return seen
 			}
+			if event.Kind == protocol.EventOperationRejected {
+				t.Fatalf(
+					"%s: operation was rejected while waiting for terminal: %+v",
+					host.Transport(),
+					event.Data,
+				)
+			}
 		case <-deadline:
 			t.Fatalf("%s: turn %s did not end within %s; saw %s",
 				host.Transport(), turn, waitTimeout, kindsOf(seen))
@@ -223,6 +262,14 @@ func waitForKind(
 			seen = append(seen, event)
 			if event.Kind == kind {
 				return event
+			}
+			if event.Kind == protocol.EventOperationRejected {
+				t.Fatalf(
+					"%s: operation was rejected before %s: %+v",
+					host.Transport(),
+					kind,
+					event.Data,
+				)
 			}
 			if terminal(event.Kind) {
 				t.Fatalf("%s: turn ended with %s before %s arrived; saw %s",

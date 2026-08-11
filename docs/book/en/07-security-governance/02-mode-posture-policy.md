@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/security/policy/policy.go
   - internal/security/permissions/permissions.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Mode, Posture, Policy, and Permission
@@ -100,3 +100,11 @@ go test ./internal/security/permissions
 ## Further Reading
 
 - [Guard, Approval, Constitution, and Sandbox](./03-approval-constitution-sandbox.md)
+
+## Sources and Verification
+
+| Item | Value |
+| --- | --- |
+| Catalog ID | `security-mode-policy` |
+| Status | `draft` |
+| Last verified | Not yet verified |

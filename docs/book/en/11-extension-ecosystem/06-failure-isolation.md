@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/mcp/health.go
   - internal/adapter/plugin/registry.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Extension Failure and Isolation
@@ -137,5 +137,5 @@ drift. Compare catalog visibility, active cancellation, and model feedback.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `extension-failure-isolation` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

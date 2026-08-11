@@ -191,7 +191,7 @@ func toolResultContent(message provider.Message) string {
 
 // A tool that streams nothing must behave exactly as it did before this existed.
 func TestATurnWithoutStreamedOutputEmitsNoOutputEvents(t *testing.T) {
-	engine, _ := streamingTurn(t, &echoTool{}, nil)
+	engine, _ := streamingTurn(t, &streamingTool{}, nil)
 	var chunks int
 	if _, err := engine.Run(t.Context(), "work", func(event Event) error {
 		if event.ToolOutput != nil {

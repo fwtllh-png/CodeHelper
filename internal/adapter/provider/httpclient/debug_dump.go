@@ -13,41 +13,30 @@ import (
 )
 
 // providerDumpMode controls when request diagnostics are written to disk.
-// CODEHELPER_PROVIDER_DUMP=off|error|reasoning|always (default: reasoning).
+// CODEHELPER_PROVIDER_DUMP=off|error|always (default: off).
 func providerDumpMode() string {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("CODEHELPER_PROVIDER_DUMP")))
 	switch mode {
-	case "off", "0", "false", "never":
+	case "off", "0", "false", "never", "", "reasoning":
 		return "off"
 	case "always", "all", "1", "true":
 		return "always"
 	case "error", "errors":
 		return "error"
-	case "", "reasoning":
-		return "reasoning"
 	default:
-		return "reasoning"
+		return "off"
 	}
 }
 
-func shouldDumpProvider(status int, errorText string) bool {
+func shouldDumpProvider(status int) bool {
 	switch providerDumpMode() {
 	case "off":
 		return false
 	case "always":
 		return true
-	case "error":
+	default:
 		return status >= 400
-	default: // reasoning
-		return status >= 400 && looksLikeReasoningReplayError(errorText)
 	}
-}
-
-func looksLikeReasoningReplayError(errorText string) bool {
-	lower := strings.ToLower(errorText)
-	return strings.Contains(lower, "reasoning_text") ||
-		strings.Contains(lower, "thinking mode") ||
-		strings.Contains(lower, "must be passed back")
 }
 
 func providerDebugDir() string {
@@ -62,19 +51,17 @@ func providerDebugDir() string {
 }
 
 type providerDump struct {
-	Time            string           `json:"time"`
-	Status          int              `json:"status"`
-	Error           string           `json:"error"`
-	Protocol        string           `json:"protocol"`
-	Model           string           `json:"model"`
-	Provider        string           `json:"provider"`
-	Path            string           `json:"request_path"`
-	Messages        []messageSummary `json:"messages_summary"`
-	EncodedInput    []inputSummary   `json:"encoded_input_summary"`
-	EncodedRaw      json.RawMessage  `json:"encoded_body,omitempty"`
-	HowToShare      string           `json:"how_to_share"`
-	DumpHint        string           `json:"dump_hint"`
-	RepairAttempted bool             `json:"repair_attempted,omitempty"`
+	Time         string           `json:"time"`
+	Status       int              `json:"status"`
+	Error        string           `json:"error"`
+	Protocol     string           `json:"protocol"`
+	Model        string           `json:"model"`
+	Provider     string           `json:"provider"`
+	Path         string           `json:"request_path"`
+	Messages     []messageSummary `json:"messages_summary"`
+	EncodedInput []inputSummary   `json:"encoded_input_summary"`
+	HowToShare   string           `json:"how_to_share"`
+	DumpHint     string           `json:"dump_hint"`
 }
 
 type messageSummary struct {
@@ -87,7 +74,6 @@ type messageSummary struct {
 type blockSummary struct {
 	Type            string `json:"type"`
 	TextLen         int    `json:"text_len,omitempty"`
-	TextPrefix      string `json:"text_prefix,omitempty"`
 	ID              string `json:"id,omitempty"`
 	ProviderType    string `json:"provider_type,omitempty"`
 	ProviderDataLen int    `json:"provider_data_len,omitempty"`
@@ -115,7 +101,6 @@ func dumpProviderFailure(
 	path string,
 	status int,
 	errorText string,
-	repairAttempted bool,
 ) (string, error) {
 	dir := providerDebugDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -126,24 +111,18 @@ func dumpProviderFailure(
 	filePath := filepath.Join(dir, name)
 
 	dump := providerDump{
-		Time:            time.Now().UTC().Format(time.RFC3339),
-		Status:          status,
-		Error:           truncateDump(errorText, 2<<10),
-		Protocol:        string(request.Route.Protocol()),
-		Model:           request.Route.Model().ID,
-		Provider:        request.Route.ProviderID(),
-		Path:            path,
-		Messages:        summarizeMessages(request.Messages),
-		EncodedInput:    summarizeEncodedBody(body, request.Route.Protocol()),
-		RepairAttempted: repairAttempted,
-		HowToShare:      "Attach this JSON (no API keys) when reporting provider 400 / reasoning_text issues.",
-		DumpHint:        "CODEHELPER_PROVIDER_DUMP=reasoning|error|always  CODEHELPER_DEBUG_DIR=/path",
+		Time:         time.Now().UTC().Format(time.RFC3339),
+		Status:       status,
+		Error:        truncateDump(errorText, 2<<10),
+		Protocol:     string(request.Route.Protocol()),
+		Model:        request.Route.Model().ID,
+		Provider:     request.Route.ProviderID(),
+		Path:         path,
+		Messages:     summarizeMessages(request.Messages),
+		EncodedInput: summarizeEncodedBody(body, request.Route.Protocol()),
+		HowToShare:   "Review this diagnostic before attaching it to a provider error report.",
+		DumpHint:     "CODEHELPER_PROVIDER_DUMP=error|always  CODEHELPER_DEBUG_DIR=/path",
 	}
-	// Keep full encoded body for reasoning 400s — no secrets in Responses input.
-	if len(body) > 0 && len(body) <= 512<<10 {
-		dump.EncodedRaw = append(json.RawMessage(nil), body...)
-	}
-
 	data, err := json.MarshalIndent(dump, "", "  ")
 	if err != nil {
 		return "", err
@@ -167,9 +146,6 @@ func summarizeMessages(messages []provider.Message) []messageSummary {
 				ID: block.ID, ProviderType: block.ProviderType,
 				ProviderDataLen: len(block.ProviderData),
 				HasSignature:    block.Signature != "",
-			}
-			if block.Text != "" {
-				item.TextPrefix = truncateDump(block.Text, 120)
 			}
 			if block.ToolCall != nil {
 				item.ToolName = block.ToolCall.Name
@@ -228,58 +204,6 @@ func summarizeEncodedBody(body []byte, wire model.WireProtocol) []inputSummary {
 	default:
 		return nil
 	}
-}
-
-// hydrateReasoningText copies plaintext out of ProviderData onto ContentReasoning
-// blocks that have empty Text. Used for a one-shot repair retry after DeepSeek
-// rejects a tool-loop request for missing reasoning_text.
-func hydrateReasoningText(messages []provider.Message) ([]provider.Message, bool) {
-	changed := false
-	out := cloneProviderMessages(messages)
-	for i := range out {
-		for j := range out[i].Blocks {
-			block := &out[i].Blocks[j]
-			if block.Type != provider.ContentReasoning {
-				continue
-			}
-			if strings.TrimSpace(block.Text) != "" {
-				continue
-			}
-			if len(block.ProviderData) == 0 {
-				continue
-			}
-			var item map[string]any
-			if err := json.Unmarshal(block.ProviderData, &item); err != nil {
-				continue
-			}
-			text := strings.TrimSpace(reasoningTextFromItem(item))
-			if text == "" {
-				continue
-			}
-			block.Text = text
-			changed = true
-		}
-	}
-	return out, changed
-}
-
-func cloneProviderMessages(messages []provider.Message) []provider.Message {
-	out := make([]provider.Message, len(messages))
-	for i, message := range messages {
-		out[i] = message
-		if len(message.Blocks) == 0 {
-			continue
-		}
-		blocks := make([]provider.ContentBlock, len(message.Blocks))
-		copy(blocks, message.Blocks)
-		for j := range blocks {
-			if len(blocks[j].ProviderData) != 0 {
-				blocks[j].ProviderData = append([]byte(nil), blocks[j].ProviderData...)
-			}
-		}
-		out[i].Blocks = blocks
-	}
-	return out
 }
 
 func truncateDump(value string, limit int) string {

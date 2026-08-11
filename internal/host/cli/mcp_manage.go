@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
@@ -445,5 +444,5 @@ func writeMCPConfig(path string, config mcp.Config) error {
 }
 
 func errorsIsNotExist(err error) bool {
-	return err != nil && (os.IsNotExist(err) || strings.Contains(err.Error(), "no such file"))
+	return err != nil && os.IsNotExist(err)
 }

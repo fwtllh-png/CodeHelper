@@ -60,6 +60,10 @@
 /.github/** @fwtllh-png
 /Makefile @fwtllh-png
 /scripts/** @fwtllh-png
+/extensions/vscode/RELEASE-EVIDENCE.md @fwtllh-png
+/extensions/vscode/scripts/** @fwtllh-png
+/extensions/vscode/src/performance/** @fwtllh-png
+/extensions/vscode/src/test/suite/** @fwtllh-png
 /docs/benchmark-v2.json @fwtllh-png
 /docs/hotspot-baseline.json @fwtllh-png
 /docs/book/en/12-engineering-practice/ @fwtllh-png

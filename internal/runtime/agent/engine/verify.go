@@ -2,14 +2,18 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 const (
@@ -42,12 +46,13 @@ func (o VerifyOptions) enabled() bool {
 // VerificationReceipt is one gate evaluation as the hosts see it.
 type VerificationReceipt struct {
 	verify.Receipt
-	Mode        string                 `json:"mode"`
-	Action      string                 `json:"action"`
-	RepairSteps int                    `json:"repair_steps"`
-	Paths       []string               `json:"paths,omitempty"`
-	Attempts    []verify.Receipt       `json:"attempts,omitempty"`
-	Workspace   *VerificationWorkspace `json:"workspace,omitempty"`
+	Mode           string                 `json:"mode"`
+	Action         string                 `json:"action"`
+	RepairSteps    int                    `json:"repair_steps"`
+	Paths          []string               `json:"paths,omitempty"`
+	UncoveredPaths []string               `json:"uncovered_paths,omitempty"`
+	Attempts       []verify.Receipt       `json:"attempts,omitempty"`
+	Workspace      *VerificationWorkspace `json:"workspace,omitempty"`
 }
 
 // VerificationWorkspace is the final observable workspace state after the
@@ -83,7 +88,7 @@ type verifyOutcome struct {
 // turn has spent, which is also the extra step allowance it has earned.
 type verifyGate struct {
 	engine   *Engine
-	repairs  int
+	kernel   *engineTurnKernel
 	attempts []verify.Receipt
 }
 
@@ -93,7 +98,7 @@ func (g *verifyGate) extraSteps() int {
 	if g == nil {
 		return 0
 	}
-	return g.repairs
+	return int(g.kernel.repairSteps(turnkernel.RepairVerification))
 }
 
 // evaluate runs one verification pass over the files the turn changed.
@@ -108,6 +113,17 @@ func (g *verifyGate) evaluate(
 	if len(paths) == 0 {
 		return verifyOutcome{action: verifyActionSkipped}, nil
 	}
+	if g.kernel == nil {
+		return verifyOutcome{}, protocol.NewProblem(
+			protocol.CodeInternal,
+			"turn kernel is required for verification",
+			false,
+			nil,
+		)
+	}
+	if err := g.kernel.beginVerification(); err != nil {
+		return verifyOutcome{}, err
+	}
 	scope := options.Scope
 	if scope == "" {
 		scope = verify.ScopeDiagnostics
@@ -119,7 +135,7 @@ func (g *verifyGate) evaluate(
 		defer cancel()
 	}
 	span := g.engine.tracer().Start(trace.NameVerify, 0, map[string]any{
-		"scope": string(scope), "repair_step": g.repairs,
+		"scope": string(scope), "repair_step": g.extraSteps(),
 	})
 	receipt, err := options.Runner.Verify(verifyCtx, verify.Request{
 		Scope: scope, Paths: paths, Diagnostics: g.engine.turnDiagnostics(),
@@ -131,6 +147,13 @@ func (g *verifyGate) evaluate(
 		// not run is reported as unavailable. A hard gate cannot be honoured
 		// without a working runner, so the error stands.
 		if options.Mode != VerifyModeSoft {
+			_, _ = g.kernel.finishVerification(
+				g.verificationCommand(
+					turnkernel.VerificationUnavailable,
+					nil,
+					err.Error(),
+				),
+			)
 			return verifyOutcome{}, fmt.Errorf("verification (%s): %w", scope, err)
 		}
 		receipt = verify.Receipt{
@@ -140,7 +163,36 @@ func (g *verifyGate) evaluate(
 		span.Set("status", receipt.Status)
 		span.End(trace.StatusOK)
 	}
-	action := g.decide(options, receipt)
+	var uncovered []string
+	mutationRevision := g.kernel.mutationRevision()
+	if g.kernel.verificationMustPass() &&
+		receipt.Status == verify.StatusUnavailable {
+		qualityReceipt, missing := g.engine.qualityVerificationReceipt(
+			paths,
+			mutationRevision,
+		)
+		g.attempts = append(g.attempts, receipt)
+		if qualityReceipt.Status == verify.StatusPassed {
+			receipt = qualityReceipt
+		} else {
+			uncovered = missing
+			if len(uncovered) != 0 {
+				qualityReceipt.Message += "; uncovered_paths=" + strings.Join(uncovered, ",")
+			}
+			receipt = qualityReceipt
+		}
+	}
+	actionValue, err := g.kernel.finishVerification(
+		g.verificationCommand(
+			kernelVerificationStatus(receipt.Status),
+			currentVerificationCallIDs(g.engine, mutationRevision),
+			receipt.Message,
+		),
+	)
+	if err != nil {
+		return verifyOutcome{}, err
+	}
+	action := verifyAction(actionValue)
 	g.attempts = append(g.attempts, receipt)
 	// A verified path outranks one that was merely edited: it is the path the
 	// turn now owes an explanation for.
@@ -157,8 +209,9 @@ func (g *verifyGate) evaluate(
 	}
 	observed := &VerificationReceipt{
 		Receipt: receipt, Mode: options.Mode, Action: string(action),
-		RepairSteps: g.repairs, Paths: paths,
-		Attempts: append([]verify.Receipt(nil), g.attempts...),
+		RepairSteps: g.extraSteps(), Paths: paths,
+		UncoveredPaths: append([]string(nil), uncovered...),
+		Attempts:       append([]verify.Receipt(nil), g.attempts...),
 	}
 	if err := send(Verifying, Event{Verification: observed}); err != nil {
 		return verifyOutcome{}, err
@@ -166,22 +219,51 @@ func (g *verifyGate) evaluate(
 	return verifyOutcome{action: action, receipt: observed}, nil
 }
 
-// decide maps a receipt to an action and spends the repair budget.
-func (g *verifyGate) decide(options VerifyOptions, receipt verify.Receipt) verifyAction {
-	if !receipt.Failed() {
-		return verifyActionPassed
+func (g *verifyGate) verificationCommand(
+	status turnkernel.VerificationStatus,
+	evidenceCalls []string,
+	message string,
+) turnkernel.VerificationFinished {
+	key := fmt.Sprintf(
+		"mutation=%d;status=%s;evidence=%s",
+		g.kernel.mutationRevision(),
+		status,
+		strings.Join(evidenceCalls, ","),
+	)
+	return turnkernel.VerificationFinished{
+		Status:        status,
+		EvidenceCalls: evidenceCalls,
+		Message:       message,
+		RepairKey:     key,
 	}
-	if g.repairs < options.MaxRepairSteps {
-		g.repairs++
-		return verifyActionRepair
+}
+
+func kernelVerificationStatus(
+	status string,
+) turnkernel.VerificationStatus {
+	switch status {
+	case verify.StatusPassed:
+		return turnkernel.VerificationPassed
+	case verify.StatusFailed:
+		return turnkernel.VerificationFailed
+	default:
+		return turnkernel.VerificationUnavailable
 	}
-	if options.Mode == VerifyModeSoft {
-		return verifyActionReported
+}
+
+func currentVerificationCallIDs(
+	engine *Engine,
+	mutationRevision uint64,
+) []string {
+	var callIDs []string
+	for _, evidence := range engine.verificationInputs {
+		if evidence.MutationRevision == mutationRevision &&
+			evidence.CallID != "" {
+			callIDs = append(callIDs, evidence.CallID)
+		}
 	}
-	if options.OnFailure == VerifyOnFailureRevert {
-		return verifyActionReverted
-	}
-	return verifyActionFailed
+	sort.Strings(callIDs)
+	return callIDs
 }
 
 // feedback is the repair prompt for the model. It uses a user message with the
@@ -190,6 +272,21 @@ func (g *verifyGate) decide(options VerifyOptions, receipt verify.Receipt) verif
 // tool_result pair pollutes the history and can trip provider-side pairing
 // checks.
 func verifyFeedback(receipt *VerificationReceipt, turn uint64) provider.Message {
+	if receipt != nil && receipt.Status == verify.StatusUnavailable {
+		paths, _ := json.Marshal(receipt.UncoveredPaths)
+		message := provider.TextMessage(
+			provider.RoleUser,
+			"[verify] structured verification is required before workspace_change completion.\n"+
+				"required_action=quality_verify\n"+
+				"retry_original=false\n"+
+				"uncovered_paths="+string(paths)+"\n"+
+				"Call quality_verify or quality_test after the last mutation with covered_paths "+
+				"set to these exact uncovered_paths. Then call turn_complete again. "+
+				"Do not enumerate the whole worktree and do not retry the original edit.",
+		)
+		message.Turn = turn
+		return message
+	}
 	message := provider.TextMessage(
 		provider.RoleUser,
 		"[verify] "+receipt.Feedback(verifyFeedbackLimit)+

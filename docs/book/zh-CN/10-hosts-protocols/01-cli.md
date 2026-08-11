@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/host/cli/run.go
   - internal/host/cli/exec.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # CLI 与 Machine-readable Output
@@ -28,6 +28,8 @@ last_verified: 2026-08-06
 
 理解 CLI Command Surface、Formal JSON Output、Streaming Execution、Config
 Precedence 与 Host/Runtime Ownership Boundary。
+
+## Host Flow
 
 ```mermaid
 flowchart LR
@@ -124,5 +126,5 @@ Receipt。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `host-cli` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

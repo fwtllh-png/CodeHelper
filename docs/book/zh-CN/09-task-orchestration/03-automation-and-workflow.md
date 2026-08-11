@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/orchestration/automation/repository.go
   - internal/orchestration/workflow/runtime.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Automation 与 Workflow
@@ -30,12 +30,16 @@ last_verified: 2026-08-06
 理解 Recurring Automation Slot、DAG Workflow、Capability Default、Structured Output
 与 Deterministic JavaScript Host。
 
+## Automation
+
 Automation 保存 Trigger、Canonical RRULE Subset、Creation Anchor、Next Run、Status、
 Payload、Version 与 Run Record。`Tick` 在 Transaction 中为每个 Due Slot 只创建一次，
 即使 Concurrent Process/Restart；Resume 使用 Persisted Creation Anchor，不漂移 Schedule。
 
 Logical Dedup Key 是 Automation Identity + Scheduled Slot，而不是 Worker Tick Time。
 Pause/Resume 改 Eligibility，不改变 Anchor；`RunNow` 创建 Explicit Run Identity。
+
+## Workflow
 
 ```mermaid
 flowchart LR
@@ -106,5 +110,5 @@ go test ./internal/orchestration/workflow/...
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `task-automation-workflow` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

@@ -1,11 +1,30 @@
 import { randomUUID } from "node:crypto";
 
 import type { TurnStartPayload } from "../protocol/generated.js";
+import type {
+  SessionProfilePatch,
+  SessionProfileSnapshot,
+  SessionProfileUpdate,
+  SessionToolCatalog,
+} from "../protocol/generated.js";
 import type { WorkspaceIdentity } from "../workspace/identity.js";
+import {
+  decodeSessionProfileSnapshot,
+  decodeSessionProfileUpdate,
+  validateSessionProfilePatch,
+} from "./profile.js";
+import { decodeSessionToolCatalog } from "./tools.js";
 
 export type ApprovalDecision = "approve" | "deny" | "cancel";
 export type ApprovalScope = "once" | "session" | "always";
 export type EditorContextReference = NonNullable<TurnStartPayload["context"]>[number];
+export type TurnIntent = NonNullable<TurnStartPayload["intent"]>;
+export type {
+  SessionProfilePatch,
+  SessionProfileSnapshot,
+  SessionProfileUpdate,
+  SessionToolCatalog,
+} from "../protocol/generated.js";
 
 export interface SubmitReceipt {
   readonly operationId: string;
@@ -38,6 +57,7 @@ export class SessionCommands {
   public async submitPrompt(
     prompt: string,
     context: readonly EditorContextReference[],
+    intent: TurnIntent = "answer",
   ): Promise<SubmitReceipt> {
     const trimmed = prompt.trim();
     if (trimmed.length === 0 || trimmed.length > 64 << 10) {
@@ -45,6 +65,7 @@ export class SessionCommands {
     }
     return this.#submit("turn.start", {
       prompt: trimmed,
+      intent,
       ...(this.#workspaceIdentity === undefined
         ? {}
         : { workspace_identity: this.#workspaceIdentity }),
@@ -93,6 +114,42 @@ export class SessionCommands {
       request_id: requireIdentifier(requestId, "input request id"),
       answer,
     });
+  }
+
+  public async profile(): Promise<SessionProfileSnapshot> {
+    const raw = await this.#transport.request("session/profile/get", {
+      sessionId: this.#sessionId,
+    });
+    return decodeSessionProfileSnapshot(raw);
+  }
+
+  public async toolCatalog(): Promise<SessionToolCatalog> {
+    const raw = await this.#transport.request("session/tool/catalog", {
+      sessionId: this.#sessionId,
+    });
+    return decodeSessionToolCatalog(raw);
+  }
+
+  public async updateProfile(
+    expectedRevision: number,
+    patch: SessionProfilePatch,
+  ): Promise<SessionProfileUpdate> {
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision <= 0) {
+      throw new Error("expected profile revision is invalid");
+    }
+    if (!this.#trusted() &&
+      (patch.approval_posture === "auto" ||
+        patch.approval_posture === "bypass")) {
+      throw new Error(
+        "approval escalation is unavailable in an untrusted workspace",
+      );
+    }
+    const raw = await this.#transport.request("session/profile/update", {
+      sessionId: this.#sessionId,
+      expectedRevision,
+      patch: validateSessionProfilePatch(patch),
+    });
+    return decodeSessionProfileUpdate(raw);
   }
 
   async #submit(kind: string, payload: unknown): Promise<SubmitReceipt> {

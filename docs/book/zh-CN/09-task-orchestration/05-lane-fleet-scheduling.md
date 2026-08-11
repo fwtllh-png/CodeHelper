@@ -19,7 +19,7 @@ source_of_truth:
   - internal/orchestration/lane/lane.go
   - internal/orchestration/fleet/ledger.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Lane、Fleet 与调度
@@ -30,6 +30,8 @@ last_verified: 2026-08-06
 
 理解 Lane Process Placement、Fleet Durable Projection、Profile Limit，以及它们与
 Workflow Execution 的 Bridge。
+
+## Responsibilities
 
 - **Lane**：管理 Inline/Tmux Worker 的 Start/Stop/Status/Attach/Log，绑定 Worktree
   与 NDJSON Contract。
@@ -116,4 +118,4 @@ State 与 Projected Task State。
 | --- | --- |
 | Catalog ID | `task-lane-fleet` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-10 |

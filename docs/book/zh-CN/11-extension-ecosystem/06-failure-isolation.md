@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/mcp/health.go
   - internal/adapter/plugin/registry.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Extension Failure 与隔离策略
@@ -31,6 +31,8 @@ last_verified: 2026-08-06
 
 设计 Extension Failure Domain、Stable Error Category、Revocation、Timeout、Resource
 Cleanup 与 Degraded Operation。
+
+## Isolation Layers
 
 ```mermaid
 flowchart TD
@@ -129,5 +131,5 @@ Visibility、Cancellation 与 Model Feedback。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `extension-failure-isolation` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

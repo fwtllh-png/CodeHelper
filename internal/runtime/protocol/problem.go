@@ -27,8 +27,24 @@ type Problem struct {
 	Retryable  bool               `json:"retryable"`
 	HTTPStatus int                `json:"http_status,omitempty"`
 	RateLimit  *RateLimitMetadata `json:"rate_limit,omitempty"`
+	Details    *ProblemDetails    `json:"details,omitempty"`
 	cause      error
 }
+
+type ProblemDetails struct {
+	Reason           string `json:"reason"`
+	ResourceID       string `json:"resource_id,omitempty"`
+	SessionStatus    string `json:"session_status,omitempty"`
+	ExpectedRevision uint64 `json:"expected_revision,omitempty"`
+	ActualRevision   uint64 `json:"actual_revision,omitempty"`
+}
+
+const (
+	ProblemReasonSessionBusy          = "session_busy"
+	ProblemReasonStaleProfileRevision = "stale_profile_revision"
+	ProblemReasonUnsupported          = "unsupported"
+	ProblemReasonWrongSession         = "wrong_session"
+)
 
 type RateLimitMetadata struct {
 	Limit        string `json:"limit,omitempty"`
@@ -45,6 +61,20 @@ func NewProblem(code ErrorCode, message string, retryable bool, cause error) *Pr
 	return &Problem{
 		Version: ProblemVersion, Code: code, Message: message, Retryable: retryable, cause: cause,
 	}
+}
+
+func NewProblemWithDetails(
+	code ErrorCode,
+	message string,
+	retryable bool,
+	details ProblemDetails,
+	cause error,
+) *Problem {
+	problem := NewProblem(code, message, retryable, cause)
+	if details.Reason != "" {
+		problem.Details = &details
+	}
+	return problem
 }
 
 func (p *Problem) Error() string {
@@ -97,6 +127,11 @@ func ValidErrorCode(code ErrorCode) bool {
 
 func IsCode(err error, code ErrorCode) bool {
 	return CodeOf(err) == code
+}
+
+func IsRetryable(err error) bool {
+	var problem *Problem
+	return errors.As(err, &problem) && problem.Retryable
 }
 
 func WrapProblem(code ErrorCode, message string, retryable bool, cause error) error {

@@ -63,7 +63,14 @@ func (builtinTestBackend) Capability() sandbox.Capability {
 	}
 }
 
-func (builtinTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
+func (builtinTestBackend) Prepare(
+	_ context.Context, command sandbox.Command,
+) (sandbox.Command, error) {
+	command.PreparedReadOnly = command.WorkspaceReadOnly
+	command.PreparedWritePaths = append(
+		[]string(nil), command.WorkspaceWritePaths...,
+	)
+	command.PreparedNetworkDenied = command.DenyNetwork
 	return command, nil
 }
 

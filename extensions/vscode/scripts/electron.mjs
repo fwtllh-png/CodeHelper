@@ -26,9 +26,12 @@ const multiWorkspace = join(fixtureRoot, "multi.code-workspace");
 const nativeBinary = process.env["CODEHELPER_VSCODE_BINARY"];
 const nativeFixture = process.env["CODEHELPER_VSCODE_SELECTION_FIXTURE"];
 const testPlatform = process.env["CODEHELPER_VSCODE_TEST_PLATFORM"];
+const expectedHostArch = process.env["CODEHELPER_EXPECTED_HOST_ARCH"];
+const disableGPU = process.env["CODEHELPER_VSCODE_DISABLE_GPU"] === "1";
 const matrixTarget = process.env["CODEHELPER_MATRIX_TARGET"] ??
   `${process.platform}-${process.arch}`;
 let electronPerformance;
+const completedJourneys = new Set(["surface.webview-view"]);
 
 try {
   await rm(testOutput, { recursive: true, force: true });
@@ -60,6 +63,7 @@ try {
   const availableScenarios = [
     "empty",
     "workspace",
+    "accessibility",
     ...(nativeWrapper === undefined ? [] : ["native"]),
     ...(nativeWrapper === undefined ? [] : ["multi"]),
   ];
@@ -149,17 +153,27 @@ try {
         "--disable-workspace-trust",
         "--skip-release-notes",
         "--skip-welcome",
+        ...(scenario === "accessibility" ? ["--force-high-contrast"] : []),
+        ...(disableGPU ? ["--disable-gpu"] : []),
       ];
       const exitCode = await runTests({
         version: process.env["CODEHELPER_VSCODE_TEST_VERSION"] ?? "1.96.4",
         ...(testPlatform === undefined ? {} : { platform: testPlatform }),
         extensionDevelopmentPath: extensionRoot,
         extensionTestsPath: testOutput,
-        extensionTestsEnv: { CODEHELPER_ELECTRON_SCENARIO: scenario },
+        extensionTestsEnv: {
+          CODEHELPER_ELECTRON_SCENARIO: scenario,
+          ...(expectedHostArch === undefined
+            ? {}
+            : { CODEHELPER_EXPECTED_HOST_ARCH: expectedHostArch }),
+        },
         launchArgs,
       });
       if (exitCode !== 0) {
         throw new Error(`VS Code ${scenario} scenario exited with ${String(exitCode)}`);
+      }
+      for (const journey of scenarioJourneys(scenario)) {
+        completedJourneys.add(journey);
       }
       if (scenario === "workspace") {
         electronPerformance = JSON.parse(await readFile(
@@ -185,6 +199,7 @@ try {
       status: "passed",
       duration_ms: Date.now() - startedAt,
       scenarios,
+      journeys: [...completedJourneys].sort(),
     }, null, 2)}\n`);
   if (electronPerformance !== undefined) {
     const performanceRoot = join(extensionRoot, "dist", "performance");
@@ -213,4 +228,40 @@ async function fixtureWrapper(root, binary, fixture) {
 
 function shellQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function scenarioJourneys(scenario) {
+  switch (scenario) {
+    case "empty":
+      return ["empty"];
+    case "workspace":
+      return [
+        "context.native",
+        "resource.navigation",
+        "theme.light-dark-high-contrast",
+        "zoom.200",
+        "hidden.resume",
+      ];
+    case "accessibility":
+      return ["forced-colors", "ime.composition"];
+    case "native":
+      return [
+        "runtime.streaming-stop",
+        "runtime.retry-continue",
+        "composer.model-thinking",
+        "composer.tools",
+        "composer.credential",
+        "approval-verification-receipt",
+        "session.lifecycle",
+        "session.search-to-turn",
+        "plan.destinations",
+        "resource.navigation",
+      ];
+    case "multi":
+      return ["workspace.multi-root", "resource.navigation"];
+    case "bundled":
+      return [];
+    default:
+      throw new Error(`unknown Electron journey scenario ${String(scenario)}`);
+  }
 }

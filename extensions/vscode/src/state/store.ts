@@ -16,8 +16,6 @@ export interface RuntimeBinding {
   readonly sessionId: string;
   readonly threadId: string;
   readonly lastSeq: number;
-  readonly title: string;
-  readonly isolation: "worktree" | "shared";
 }
 
 interface StoredRootBindings {
@@ -93,32 +91,6 @@ export class BindingStore {
         roots: {
           ...stored.roots,
           [rootId]: { ...root, selectedSessionId: sessionId },
-        },
-      };
-    });
-  }
-
-  public rename(rootId: string, sessionId: string, title: string): Promise<void> {
-    if (title.length === 0 || title.length > 256) {
-      return Promise.reject(new TypeError("Chat title is invalid"));
-    }
-    return this.#enqueue((stored) => {
-      const root = stored.roots[rootId];
-      const binding = root?.bindings[sessionId];
-      if (root === undefined || binding === undefined) {
-        throw new Error("Chat session binding is unavailable");
-      }
-      return {
-        version: 1,
-        roots: {
-          ...stored.roots,
-          [rootId]: {
-            ...root,
-            bindings: {
-              ...root.bindings,
-              [sessionId]: { ...binding, title },
-            },
-          },
         },
       };
     });
@@ -238,7 +210,15 @@ function decodeBindings(value: unknown): StoredBindings {
     for (const [sessionId, binding] of Object.entries(candidate["bindings"])) {
       if (isBinding(binding) && binding.rootId === rootId &&
         binding.sessionId === sessionId) {
-        bindings[sessionId] = binding;
+        bindings[sessionId] = {
+          version: 1,
+          rootId: binding.rootId,
+          workspaceURI: binding.workspaceURI,
+          workspaceRoot: binding.workspaceRoot,
+          sessionId: binding.sessionId,
+          threadId: binding.threadId,
+          lastSeq: binding.lastSeq,
+        };
       }
     }
     if (Object.keys(bindings).length > 0 &&
@@ -267,10 +247,6 @@ function isBinding(value: unknown): value is RuntimeBinding {
     value["sessionId"].length > 0 &&
     typeof value["threadId"] === "string" &&
     value["threadId"].length > 0 &&
-    typeof value["title"] === "string" &&
-    value["title"].length > 0 &&
-    value["title"].length <= 256 &&
-    (value["isolation"] === "worktree" || value["isolation"] === "shared") &&
     typeof value["lastSeq"] === "number" &&
     Number.isSafeInteger(value["lastSeq"]) &&
     value["lastSeq"] >= 0;

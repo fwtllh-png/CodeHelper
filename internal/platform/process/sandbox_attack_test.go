@@ -69,7 +69,10 @@ func TestRealSandboxAttackCorpus(t *testing.T) {
 	if runtime.GOOS == "linux" {
 		activationCheck = `test "$CODEHELPER_LANDLOCK_ACTIVE" = 1`
 	}
-	if result := run(t, activationCheck+"; cat workspace; printf written > created; sh -c 'cat workspace'"); result.ExitCode != 0 {
+	if result := run(t, activationCheck+`; cat workspace; test "$(cat <<'EOF'
+heredoc
+EOF
+)" = heredoc; printf written > created; sh -c 'cat workspace'`); result.ExitCode != 0 {
 		t.Fatalf("workspace/child command failed: %+v", result)
 	}
 	attacks := []struct {
@@ -78,6 +81,9 @@ func TestRealSandboxAttackCorpus(t *testing.T) {
 	}{
 		{"external-read", "cat " + shellQuote(secret)},
 		{"external-write", "printf escaped > " + shellQuote(filepath.Join(external, "escaped"))},
+		{"host-temp-write", `printf escaped > "/private/tmp/codehelper-sandbox-attack-$$"`},
+		{"host-var-temp-lexical-write", `printf escaped > "/var/tmp/codehelper-sandbox-attack-$$"`},
+		{"host-var-temp-write", `printf escaped > "/private/var/tmp/codehelper-sandbox-attack-$$"`},
 		{"symlink-read", "ln -s " + shellQuote(external) + " link && cat link/secret"},
 		{"network", "/usr/bin/nc -w 1 127.0.0.1 9"},
 		{"environment", `test -z "$CODEHELPER_ATTACK_SECRET"`},

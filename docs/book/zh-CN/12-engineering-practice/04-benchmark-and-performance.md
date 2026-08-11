@@ -17,8 +17,9 @@ test_paths:
 source_of_truth:
   - testdata/benchmarks/README.md
   - Makefile
-status: verified
-last_verified: 2026-08-06
+  - extensions/vscode/scripts/release/rc-report.mjs
+status: draft
+last_verified: null
 ---
 
 # Benchmark、性能预算与回归
@@ -32,7 +33,8 @@ last_verified: 2026-08-06
 Hermetic Coding Suite 覆盖 Context Truncation、Compaction、Working Set、Evidence、
 Index Degradation、Edit Transaction 与 Verification Gate；每个 Task 具有 Assertion。
 Catalog Benchmark 测量大 Tool Set 的时间与 Allocation。VS Code Gate 约束 10k Delta、
-1000 Background Row、Runtime Ready 与 Electron Interaction。
+1000 Background Row、Runtime Ready、Incremental Transcript、Hidden View 与 Electron
+Interaction。
 
 ```mermaid
 flowchart LR
@@ -71,6 +73,27 @@ Parity 与 Review。先按 Trace/Profile 优化 Dominant Phase。
 Cache 需要 Invalidation/Capacity；Parallelism 需要 Cancellation/Admission；Deferred
 Loading 必须保持 Catalog Authority。
 
+## Native Chat Performance Contract
+
+Release Gate 同时测量行为和耗时：
+
+| Metric | RC Budget |
+| --- | --- |
+| Extension Activation | 小于 20 ms |
+| First Interactive Chat | 小于 300 ms，不含 Runtime Startup |
+| 200-Turn Full Snapshot | 小于 100 ms |
+| Single-Turn Patch | 小于 100 ms，且 Byte 小于 Snapshot 四分之一 |
+| Affected/Virtual DOM | 最多 2 个 Affected Turn、30 个 Virtual Turn Node |
+| Scroll-anchor Error | 最多 1 px |
+| Hidden Webview Post | 必须为 0 |
+| Hidden Resume | 小于 300 ms |
+| 1000-Session Search/Virtual Paint | 小于 150 ms |
+| Runtime Ready P95 | 小于 5 s |
+
+RC 先要求每个 Metric 存在且为有限非负数，再比较 Budget，避免缺失 JSON Field 因比较
+语义意外通过。Patch Operation、Payload Byte、Affected Node、Virtual Node 与 Scroll
+Stability 是不同证据；即使耗时快，重建完整 DOM 仍应失败。
+
 ## 失败边界
 
 - Warmup/Sample Count 显式。
@@ -99,6 +122,7 @@ make benchmark-v2
 make bench
 make catalog-bench
 make vscode-performance
+make vscode-rc
 ```
 
 Platform-capability Journey 只在声明的 Sandbox 前置条件可用时运行。Capability 缺失要
@@ -110,11 +134,12 @@ Runtime-ready Budget 同样保持为 Environment-acquired Gate。
 1. 什么 Metadata 使 Benchmark 可比较？
 2. Microbenchmark 为什么不能替代 E2E Gate？
 3. 提高 Budget 需要哪些 Evidence？
+4. RC 为什么必须先验证 Metric Presence？
 
 ## 事实来源与验证
 
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `practice-benchmark` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

@@ -15,8 +15,8 @@ test_paths:
   - internal/orchestration/task/execution_test.go
 source_of_truth:
   - Makefile
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Concurrency Tests and Race Detection
@@ -100,5 +100,5 @@ go test ./internal/runtime/app -run 'TestRuntimeConcurrent|TestRuntimeSubmitClos
 | Item | Value |
 | --- | --- |
 | Catalog ID | `practice-concurrency-race` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

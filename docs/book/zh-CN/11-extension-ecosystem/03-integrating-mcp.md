@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/mcp/config.go
   - internal/adapter/mcp/pool.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 接入 MCP Server
@@ -30,6 +30,8 @@ last_verified: 2026-08-06
 
 配置 Stdio/HTTP MCP、Discovery、Catalog Reconcile、Auth、Permission、Health Isolation
 与 Shutdown。
+
+## Integration Flow
 
 ```mermaid
 flowchart LR
@@ -116,5 +118,5 @@ go test ./internal/runtime/app/wire -run TestMCP
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `extension-mcp` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

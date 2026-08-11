@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -23,7 +24,11 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const maxChatMergeFiles = 64
+const (
+	maxChatMergeFiles     = 512
+	chatMergeBatchFiles   = 64
+	maxChatMergeDiffBytes = 3 << 20
+)
 
 type chatWorkspace struct {
 	sessionID string
@@ -113,6 +118,19 @@ func (c *chatWorkspaces) Restore(
 	if err := c.validateIdentity(sessionID, threadID); err != nil {
 		return app.SessionWorkspace{}, err
 	}
+	c.mu.Lock()
+	if existing, ok := c.sessions[sessionID]; ok {
+		c.mu.Unlock()
+		if existing.threadID != threadID {
+			return app.SessionWorkspace{},
+				errors.New("Chat session thread identity mismatch")
+		}
+		return app.SessionWorkspace{
+			Mode: app.SessionIsolationWorktree,
+			Root: existing.worktree.Path,
+		}, nil
+	}
+	c.mu.Unlock()
 	path := filepath.Join(c.trees.root, "worktrees", chatWorktreeID(sessionID))
 	canonical, err := filepath.EvalSymlinks(path)
 	if err != nil {
@@ -228,8 +246,13 @@ func (c *chatWorkspaces) ApplyMerge(
 		}
 	}
 	applyContext := workspacejournal.WithExpectedWrites(ctx, plan.expected)
-	if _, _, err := c.parent.Apply(applyContext, plan.changes, false); err != nil {
-		return tool.EditPlan{}, err
+	for index, batch := range plan.batches {
+		if _, _, err := c.parent.Apply(applyContext, batch, false); err != nil {
+			return tool.EditPlan{}, fmt.Errorf(
+				"apply Chat merge batch %d/%d: %w",
+				index+1, len(plan.batches), err,
+			)
+		}
 	}
 	for _, path := range plan.paths {
 		if err := c.journal.After(filepath.Join(c.repository, filepath.FromSlash(path))); err != nil {
@@ -241,6 +264,13 @@ func (c *chatWorkspaces) ApplyMerge(
 		return tool.EditPlan{}, err
 	}
 	committed = true
+	if err := c.syncChatWorktreeFromParent(
+		plan.workspace.worktree.Path, plan.paths,
+	); err != nil {
+		return tool.EditPlan{}, fmt.Errorf(
+			"Chat changes reached the main workspace but worktree refresh failed: %w", err,
+		)
+	}
 	if err := c.commitBaseline(ctx, plan.workspace.worktree.Path, plan.paths); err != nil {
 		return tool.EditPlan{}, fmt.Errorf(
 			"Chat changes reached the main workspace but baseline refresh failed: %w", err,
@@ -252,7 +282,7 @@ func (c *chatWorkspaces) ApplyMerge(
 type preparedChatMerge struct {
 	workspace chatWorkspace
 	edit      tool.EditPlan
-	changes   []filetool.Change
+	batches   [][]filetool.Change
 	paths     []string
 	expected  map[string]workspacejournal.Fingerprint
 }
@@ -271,7 +301,7 @@ func (c *chatWorkspaces) mergePlan(
 		return preparedChatMerge{}, err
 	}
 	if len(paths) == 0 {
-		return preparedChatMerge{}, errors.New("Chat worktree has no changes to merge")
+		return preparedChatMerge{}, app.ErrSessionWorkspaceClean
 	}
 	if len(paths) > maxChatMergeFiles {
 		return preparedChatMerge{}, fmt.Errorf(
@@ -281,9 +311,6 @@ func (c *chatWorkspaces) mergePlan(
 	changes := make([]filetool.Change, 0, len(paths))
 	expected := make(map[string]workspacejournal.Fingerprint, len(paths))
 	for _, path := range paths {
-		if err := c.checkParentBaseline(ctx, workspace.worktree.Path, path); err != nil {
-			return preparedChatMerge{}, err
-		}
 		parentPath := filepath.Join(c.repository, filepath.FromSlash(path))
 		fingerprint, _, _, err := workspacejournal.Snapshot(parentPath)
 		if err != nil {
@@ -291,33 +318,67 @@ func (c *chatWorkspaces) mergePlan(
 		}
 		fingerprint.Path = parentPath
 		expected[fingerprint.Path] = fingerprint
-		childPath := filepath.Join(workspace.worktree.Path, filepath.FromSlash(path))
-		data, err := os.ReadFile(childPath)
-		switch {
-		case err == nil:
-			if !utf8.Valid(data) {
-				return preparedChatMerge{}, fmt.Errorf(
-					"Chat merge path %q is not UTF-8 text", path,
-				)
-			}
-			changes = append(changes, filetool.Change{
-				Op: "write", Path: path, Content: string(data),
-			})
-		case errors.Is(err, os.ErrNotExist):
-			changes = append(changes, filetool.Change{Op: "delete", Path: path})
-		default:
+		change, required, err := c.mergeChatPath(
+			ctx, workspace.worktree.Path, path,
+		)
+		if err != nil {
 			return preparedChatMerge{}, err
 		}
+		if required {
+			changes = append(changes, change)
+		}
+	}
+	if len(changes) == 0 {
+		return preparedChatMerge{}, app.ErrSessionWorkspaceClean
 	}
 	planContext := workspacejournal.WithExpectedWrites(ctx, expected)
-	edit, err := c.parent.PlanApply(planContext, changes)
-	if err != nil {
-		return preparedChatMerge{}, err
+	batches := chunkChatMergeChanges(changes)
+	edit := tool.EditPlan{}
+	digest := sha256.New()
+	var diff strings.Builder
+	for index, batch := range batches {
+		batchPlan, err := c.parent.PlanApply(planContext, batch)
+		if err != nil {
+			return preparedChatMerge{}, fmt.Errorf(
+				"plan Chat merge batch %d/%d: %w",
+				index+1, len(batches), err,
+			)
+		}
+		_, _ = digest.Write([]byte(batchPlan.ID))
+		if diff.Len() != 0 && !strings.HasSuffix(diff.String(), "\n") {
+			diff.WriteByte('\n')
+		}
+		diff.WriteString(batchPlan.Diff)
+		if diff.Len() > maxChatMergeDiffBytes {
+			return preparedChatMerge{}, fmt.Errorf(
+				"Chat merge diff exceeds %d bytes", maxChatMergeDiffBytes,
+			)
+		}
+		for _, file := range batchPlan.Files {
+			edit.Files = append(edit.Files, compactChatMergePlanFile(file))
+		}
 	}
+	edit.ID = hex.EncodeToString(digest.Sum(nil))
+	edit.Diff = diff.String()
 	return preparedChatMerge{
-		workspace: workspace, edit: edit, changes: changes,
+		workspace: workspace, edit: edit, batches: batches,
 		paths: paths, expected: expected,
 	}, nil
+}
+
+func chunkChatMergeChanges(changes []filetool.Change) [][]filetool.Change {
+	batches := make([][]filetool.Change, 0, (len(changes)+chatMergeBatchFiles-1)/chatMergeBatchFiles)
+	for start := 0; start < len(changes); start += chatMergeBatchFiles {
+		end := min(start+chatMergeBatchFiles, len(changes))
+		batches = append(batches, changes[start:end])
+	}
+	return batches
+}
+
+func compactChatMergePlanFile(file tool.EditPlanFile) tool.EditPlanFile {
+	file.Before = ""
+	file.After = ""
+	return file
 }
 
 func (c *chatWorkspaces) register(value chatWorkspace) error {
@@ -454,33 +515,188 @@ func (c *chatWorkspaces) changedPaths(
 	return result, nil
 }
 
-func (c *chatWorkspaces) checkParentBaseline(
+type chatMergeFile struct {
+	exists bool
+	data   []byte
+}
+
+func (c *chatWorkspaces) mergeChatPath(
 	ctx context.Context,
 	worktree string,
 	path string,
-) error {
-	parent, _, _, err := workspacejournal.Snapshot(
+) (filetool.Change, bool, error) {
+	base, err := c.chatBaselineFile(ctx, worktree, path)
+	if err != nil {
+		return filetool.Change{}, false, err
+	}
+	parent, err := readChatMergeFile(
 		filepath.Join(c.repository, filepath.FromSlash(path)),
 	)
 	if err != nil {
-		return err
+		return filetool.Change{}, false, err
+	}
+	child, err := readChatMergeFile(
+		filepath.Join(worktree, filepath.FromSlash(path)),
+	)
+	if err != nil {
+		return filetool.Change{}, false, err
+	}
+	if equalChatMergeFile(parent, child) {
+		return filetool.Change{}, false, nil
+	}
+	if equalChatMergeFile(parent, base) {
+		return chatMergeChange(path, child), true, nil
+	}
+	if equalChatMergeFile(child, base) {
+		return filetool.Change{}, false, nil
+	}
+	if !base.exists || !parent.exists || !child.exists {
+		return filetool.Change{}, false, fmt.Errorf(
+			"Chat merge conflict on %s: main workspace drifted with overlapping changes",
+			path,
+		)
+	}
+	merged, err := c.mergeChatText(ctx, path, parent.data, base.data, child.data)
+	if err != nil {
+		return filetool.Change{}, false, err
+	}
+	desired := chatMergeFile{exists: true, data: merged}
+	if equalChatMergeFile(parent, desired) {
+		return filetool.Change{}, false, nil
+	}
+	return chatMergeChange(path, desired), true, nil
+}
+
+func (c *chatWorkspaces) chatBaselineFile(
+	ctx context.Context,
+	worktree string,
+	path string,
+) (chatMergeFile, error) {
+	result, err := process.Run(ctx, process.Options{
+		Path: gitExecutable(),
+		Args: managedGitArguments([]string{"show", "HEAD:" + path}),
+		Dir:  worktree,
+	})
+	if err != nil {
+		return chatMergeFile{}, err
+	}
+	if result.ExitCode != 0 {
+		return chatMergeFile{}, nil
+	}
+	data := []byte(result.Stdout)
+	if !utf8.Valid(data) {
+		return chatMergeFile{}, fmt.Errorf(
+			"Chat merge baseline %q is not UTF-8 text", path,
+		)
+	}
+	return chatMergeFile{exists: true, data: data}, nil
+}
+
+func readChatMergeFile(path string) (chatMergeFile, error) {
+	data, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		if !utf8.Valid(data) {
+			return chatMergeFile{}, fmt.Errorf(
+				"Chat merge path %q is not UTF-8 text", path,
+			)
+		}
+		return chatMergeFile{exists: true, data: data}, nil
+	case errors.Is(err, os.ErrNotExist):
+		return chatMergeFile{}, nil
+	default:
+		return chatMergeFile{}, err
+	}
+}
+
+func equalChatMergeFile(left, right chatMergeFile) bool {
+	return left.exists == right.exists &&
+		(!left.exists || bytes.Equal(left.data, right.data))
+}
+
+func chatMergeChange(path string, file chatMergeFile) filetool.Change {
+	if !file.exists {
+		return filetool.Change{Op: "delete", Path: path}
+	}
+	return filetool.Change{Op: "write", Path: path, Content: string(file.data)}
+}
+
+func (c *chatWorkspaces) mergeChatText(
+	ctx context.Context,
+	path string,
+	parent []byte,
+	base []byte,
+	child []byte,
+) ([]byte, error) {
+	directory, err := os.MkdirTemp(c.trees.root, "chat-merge-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(directory)
+	files := []struct {
+		name string
+		data []byte
+	}{
+		{name: "parent", data: parent},
+		{name: "base", data: base},
+		{name: "child", data: child},
+	}
+	for _, file := range files {
+		if err := os.WriteFile(
+			filepath.Join(directory, file.name), file.data, 0o600,
+		); err != nil {
+			return nil, err
+		}
 	}
 	result, err := process.Run(ctx, process.Options{
-		Path: gitExecutable(), Args: []string{"show", "HEAD:" + path}, Dir: worktree,
+		Path: gitExecutable(),
+		Args: managedGitArguments([]string{
+			"merge-file", "-p",
+			filepath.Join(directory, "parent"),
+			filepath.Join(directory, "base"),
+			filepath.Join(directory, "child"),
+		}),
+		Dir: c.repository,
 	})
-	baselineExists := err == nil && result.ExitCode == 0
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if parent.Exists != baselineExists {
-		return fmt.Errorf("Chat merge conflict on %s: main workspace drifted", path)
+	switch result.ExitCode {
+	case 0:
+		return []byte(result.Stdout), nil
+	case 1:
+		return nil, fmt.Errorf(
+			"Chat merge conflict on %s: main workspace drifted with overlapping changes",
+			path,
+		)
+	default:
+		return nil, fmt.Errorf(
+			"Chat merge failed on %s: %s",
+			path, strings.TrimSpace(result.Stderr),
+		)
 	}
-	if !baselineExists {
-		return nil
-	}
-	sum := sha256.Sum256([]byte(result.Stdout))
-	if parent.SHA256 != hex.EncodeToString(sum[:]) {
-		return fmt.Errorf("Chat merge conflict on %s: main workspace drifted", path)
+}
+
+func (c *chatWorkspaces) syncChatWorktreeFromParent(
+	worktree string,
+	paths []string,
+) error {
+	for _, path := range paths {
+		source := filepath.Join(c.repository, filepath.FromSlash(path))
+		target := filepath.Join(worktree, filepath.FromSlash(path))
+		_, err := os.Lstat(source)
+		switch {
+		case err == nil:
+			if err := copyRegularFile(c.repository, worktree, path); err != nil {
+				return err
+			}
+		case errors.Is(err, os.ErrNotExist):
+			if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		default:
+			return err
+		}
 	}
 	return nil
 }

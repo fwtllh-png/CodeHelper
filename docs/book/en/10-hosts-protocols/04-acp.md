@@ -16,7 +16,7 @@ test_paths:
 source_of_truth:
   - internal/host/runtimeapi/acp/server.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # ACP Stdio and Editor Interoperability
@@ -54,6 +54,27 @@ and Event notifications using the shared Runtime Operation/Event contracts.
 Replay pages and live notifications preserve Cursor semantics. Contract tests
 cover Start, Stream, Approve, Input, Cancel, Verify, Recover, and Receipt
 without defining an ACP-specific Turn loop.
+
+Session history hydration is bounded by both Turn count and encoded bytes.
+Responses expose `nextSeq` and `truncated`, so a tool-heavy Turn or a long-lived
+Session is projected page by page without exceeding the ACP frame limit.
+
+Session Profile queries and updates use the same Runtime-owned durable state.
+Updates carry `expectedRevision`, fail while the Session's Thread has an active
+Turn, and return an explicit prompt-cache reset result. Capability projection
+prevents a Host from presenting a setting the current Runtime cannot apply.
+
+The negotiated surface also exposes Provider/Model catalogs, Session
+lifecycle/status/search projections, Session-scoped Tool catalogs,
+Checkpoints, structured Plans, and `turn/recover`. These methods remain thin
+transport facades: Checkpoint Restore/Fork and Retry/Continue are validated by
+Runtime and never implemented as Host-side Event replay.
+
+Checkpoint and Plan responses preserve immutable artifact identity and
+lineage. `turn/recover` returns the accepted new Turn identity, allowing a Host
+to follow completion without guessing from Transcript text. Structured
+Problem Details preserve Busy, Stale, Unsupported, and identity failures
+across JSON-RPC.
 
 EOF and shutdown are stateful: final half-lines are rejected, active Turns are
 cancelled/settled according to protocol, pending calls receive terminal errors,
@@ -97,6 +118,8 @@ required mutation method prevents session use.
 - Concurrent requests retain response IDs.
 - Unknown methods return JSON-RPC error, not process crash.
 - Compatibility manifest must match advertised surface.
+- Checkpoint/Plan/recovery methods cannot bypass Runtime Profile, lineage, or
+  quiescence validation.
 
 ## Tests and Verification
 
@@ -118,10 +141,12 @@ response correlation, notifications, replay, and shutdown.
 3. How does ACP preserve Workspace isolation?
 4. What is ordered by RPC ID versus Event Cursor?
 5. Why is initialization distinct from Session binding?
+6. Why does `turn/recover` return a new Turn identity?
+7. Why must Checkpoint Restore remain a Runtime method instead of Event replay?
 
 ## Further Reading
 
-- [VS Code Context Bridge](./06-vscode.md)
+- [VS Code Native Agent Chat](./06-vscode.md)
 
 ## Sources and Verification
 
@@ -129,4 +154,4 @@ response correlation, notifications, replay, and shutdown.
 | --- | --- |
 | Catalog ID | `host-acp` |
 | Status | `verified` |
-| Last verified | 2026-08-06 |
+| Last verified | 2026-08-10 |

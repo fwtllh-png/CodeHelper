@@ -17,20 +17,25 @@ import (
 // event stream. It only records what it observes, so a receipt never claims a
 // check that did not run.
 type receiptRecorder struct {
-	started         time.Time
-	goal            string
-	plan            string
-	mode            string
-	posture         string
-	sandbox         string
-	workspace       string
-	toolsSucceeded  []string
-	toolsFailed     []string
-	approvals       int
-	diagnosticCount int
-	diagnosticsRan  bool
-	usage           protocol.UsageData
-	costKnown       bool
+	started            time.Time
+	goal               string
+	intent             protocol.TurnIntent
+	outcome            protocol.TurnOutcome
+	plan               string
+	mode               string
+	posture            string
+	sandbox            string
+	workspace          string
+	workspaceIsolation string
+	completion         *protocol.CompletionDeclaration
+	providerRetry      *protocol.ReceiptProviderRetry
+	toolsSucceeded     []string
+	toolsFailed        []string
+	approvals          int
+	diagnosticCount    int
+	diagnosticsStatus  string
+	usage              protocol.UsageData
+	costKnown          bool
 	// routes is which model answered for which purpose, in the order the turn
 	// used them.
 	routes []protocol.ReceiptRoute
@@ -41,6 +46,7 @@ type receiptRecorder struct {
 	// the fallback path sums. It is dropped once a terminal total arrives.
 	samples       map[uint32]protocol.UsageData
 	issues        []string
+	secondary     []protocol.TerminalIssue
 	skills        []protocol.ReceiptSkill
 	editorContext []protocol.EditorContextReceipt
 	// verification is the last gate evaluation of the turn; repair rounds
@@ -48,8 +54,10 @@ type receiptRecorder struct {
 	// turn ended on.
 	verification *agentengine.VerificationReceipt
 	// turn is the turn the observed events belong to, which a caller needs to ask
-	// the engine what that turn read.
-	turn uint64
+	// the engine what that turn read. budget is frozen on the terminal event.
+	turn   uint64
+	budget *protocol.ReceiptContextBudget
+	frozen *turnObservations
 }
 
 // turnObservations is what the engine knows at the end of a turn that the event
@@ -93,6 +101,7 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 	case agentengine.Preparing:
 		r.mode, r.posture = event.Mode, event.Posture
 		r.sandbox, r.workspace = event.Sandbox, event.Workspace
+		r.workspaceIsolation = event.WorkspaceIsolation
 	case agentengine.AwaitingApproval:
 		if event.Approval != nil {
 			r.approvals++
@@ -103,9 +112,35 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 		if event.Error != "" {
 			r.issues = append(r.issues, event.Error)
 		}
+		for _, issue := range event.SecondaryIssues {
+			r.secondary = append(r.secondary, protocol.TerminalIssue{
+				Phase: issue.Phase, Code: issue.Code, Message: issue.Message,
+			})
+		}
 	}
 	if event.Verification != nil {
 		r.verification = event.Verification
+	}
+	if event.Completion != nil {
+		declaration := event.Completion
+		r.completion = &protocol.CompletionDeclaration{
+			Status: declaration.Status, Summary: declaration.Summary,
+			ChangedPaths: append([]string(nil), declaration.ChangedPaths...),
+			VerificationCallIDs: append(
+				[]string(nil), declaration.VerificationCallIDs...,
+			),
+			PendingActions:   append([]string(nil), declaration.PendingActions...),
+			MutationRevision: declaration.MutationRevision,
+			CallID:           declaration.CallID, Accepted: true,
+		}
+	}
+	if event.ProviderRetry != nil {
+		if r.providerRetry == nil {
+			r.providerRetry = &protocol.ReceiptProviderRetry{}
+		}
+		r.providerRetry.Count++
+		r.providerRetry.LastCode = event.ProviderRetry.Code
+		r.providerRetry.LastCategory = event.ProviderRetry.Category
 	}
 	if event.Plan != nil && event.Plan.Body != "" {
 		r.plan = event.Plan.Body
@@ -113,12 +148,39 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 	if event.Turn > r.turn {
 		r.turn = event.Turn
 	}
+	if event.ContextBudget != nil {
+		r.budget = &protocol.ReceiptContextBudget{
+			HistoryBytes:     event.ContextBudget.HistoryBytes,
+			MaxHistoryBytes:  event.ContextBudget.MaxHistoryBytes,
+			EstimatedTokens:  event.ContextBudget.EstimatedTokens,
+			MaxContextTokens: event.ContextBudget.MaxContextTokens,
+			Compactions:      event.ContextBudget.Compactions,
+		}
+	}
 	// Any event that names a purpose contributes to the route summary, not just
 	// the turn's opening one: a tool that samples a model of its own reports it
 	// with its usage, and a receipt that listed only the turn's own route would
 	// omit the model that produced part of the bill.
 	r.observeRoute(event)
 	r.observeUsage(event)
+}
+
+func (r *receiptRecorder) freeze(engine *agentengine.Engine) {
+	if r == nil || engine == nil || r.frozen != nil {
+		return
+	}
+	r.frozen = &turnObservations{
+		changes:    engine.TurnDiff(),
+		readPaths:  engine.ReadPaths(r.turn),
+		context:    engine.ContextReceipts(),
+		selections: engine.ContextSelections(),
+		catalog:    engine.CatalogReceipt(),
+		evidence:   engine.EvidenceSnapshot(),
+		budget:     r.budget,
+		conflicts:  engine.RollbackConflicts(),
+		latency:    engine.TurnLatency(),
+		spend:      engine.BudgetSnapshot(),
+	}
 }
 
 // observeRoute records which route a purpose sampled on. A purpose is recorded
@@ -212,31 +274,50 @@ func (r *receiptRecorder) observeTool(event agentengine.Event) {
 		}
 	}
 	for _, receipt := range event.Diagnostics {
-		// An unavailable runner means nothing was checked, so it must not count
-		// as a diagnostics run.
-		if receipt.Status == "unavailable" {
-			continue
+		status := protocol.ReceiptPassed
+		switch {
+		case receipt.Status == "failed":
+			status = protocol.ReceiptFailed
+		case receipt.Status == "unavailable":
+			status = protocol.ReceiptUnavailable
+		case len(receipt.Diagnostics) != 0:
+			status = protocol.ReceiptFailed
 		}
-		r.diagnosticsRan = true
+		r.diagnosticsStatus = mergeReceiptStatus(r.diagnosticsStatus, status)
 		r.diagnosticCount += len(receipt.Diagnostics)
 	}
 }
 
 // build renders the receipt from the events it folded plus what the engine
 // observed outside the stream.
-func (r *receiptRecorder) build(observed turnObservations) *protocol.ExecutionReceiptData {
+func (r *receiptRecorder) build(
+	supplied ...turnObservations,
+) *protocol.ExecutionReceiptData {
 	if r == nil {
 		return nil
 	}
+	var observed turnObservations
+	switch {
+	case len(supplied) != 0:
+		observed = supplied[0]
+	case r.frozen != nil:
+		observed = *r.frozen
+	default:
+		return nil
+	}
 	receipt := &protocol.ExecutionReceiptData{
-		Goal: r.goal, Plan: r.plan, Mode: r.mode, Posture: r.posture,
+		Goal: r.goal, Intent: r.intent, Outcome: r.outcome,
+		Plan: r.plan, Mode: r.mode, Posture: r.posture,
 		Sandbox: r.sandbox, Workspace: r.workspace,
-		Routes:         append([]protocol.ReceiptRoute(nil), r.routes...),
-		ToolsSucceeded: r.toolsSucceeded, ToolsFailed: r.toolsFailed,
+		WorkspaceIsolation: r.workspaceIsolation,
+		Completion:         r.completion,
+		ProviderRetry:      r.providerRetry,
+		Routes:             append([]protocol.ReceiptRoute(nil), r.routes...),
+		ToolsSucceeded:     r.toolsSucceeded, ToolsFailed: r.toolsFailed,
 		Skills:             append([]protocol.ReceiptSkill(nil), r.skills...),
 		ApprovalsRequested: r.approvals,
 		Verification: protocol.ReceiptVerification{
-			Diagnostics: diagnosticsOutcome(r.diagnosticsRan, r.diagnosticCount),
+			Diagnostics: diagnosticsOutcome(r.diagnosticsStatus),
 			Tests:       r.testsOutcome(),
 			Verify:      r.verifyOutcome(),
 		},
@@ -257,6 +338,7 @@ func (r *receiptRecorder) build(observed turnObservations) *protocol.ExecutionRe
 		Latency:          receiptLatency(observed.latency),
 		Budget:           r.receiptBudget(observed.spend),
 		UnresolvedIssues: append(append([]string(nil), r.issues...), observed.conflicts...),
+		SecondaryIssues:  append([]protocol.TerminalIssue(nil), r.secondary...),
 		NotCollected:     protocol.UncollectedReceiptSections,
 	}
 	// The engine's clock is the better boundary when there is one: it starts when
@@ -389,7 +471,9 @@ func verificationData(receipt *agentengine.VerificationReceipt) *protocol.TurnVe
 		Scope: string(receipt.Scope), Mode: receipt.Mode, Action: receipt.Action,
 		Status: receipt.Status, RepairSteps: receipt.RepairSteps,
 		Errors: receipt.Errors, Warnings: receipt.Warnings,
-		Paths: append([]string(nil), receipt.Paths...), Message: receipt.Message,
+		Paths:          append([]string(nil), receipt.Paths...),
+		UncoveredPaths: append([]string(nil), receipt.UncoveredPaths...),
+		Message:        receipt.Message,
 	}
 	for _, check := range receipt.Checks {
 		output := strings.TrimSpace(check.Stdout + "\n" + check.Stderr)
@@ -414,7 +498,8 @@ func verificationDetail(
 	detail := &protocol.ReceiptVerificationDetail{
 		Mode: receipt.Mode, FinalStatus: receipt.Status,
 		Action: receipt.Action, RepairSteps: receipt.RepairSteps,
-		Attempts: make([]protocol.ReceiptVerificationAttempt, 0, len(attempts)),
+		UncoveredPaths: append([]string(nil), receipt.UncoveredPaths...),
+		Attempts:       make([]protocol.ReceiptVerificationAttempt, 0, len(attempts)),
 	}
 	for step, attempt := range attempts {
 		rendered := protocol.ReceiptVerificationAttempt{
@@ -493,15 +578,24 @@ func (r *receiptRecorder) testsOutcome() string {
 	return r.verifyOutcome()
 }
 
-func diagnosticsOutcome(ran bool, count int) string {
-	switch {
-	case !ran:
+func diagnosticsOutcome(status string) string {
+	if status == "" {
 		return protocol.ReceiptNotEvaluated
-	case count > 0:
-		return protocol.ReceiptFailed
-	default:
-		return protocol.ReceiptPassed
 	}
+	return status
+}
+
+func mergeReceiptStatus(current, next string) string {
+	priority := map[string]int{
+		protocol.ReceiptNotEvaluated: 0,
+		protocol.ReceiptPassed:       1,
+		protocol.ReceiptUnavailable:  2,
+		protocol.ReceiptFailed:       3,
+	}
+	if priority[next] > priority[current] {
+		return next
+	}
+	return current
 }
 
 func appendUniqueString(values []string, value string) []string {

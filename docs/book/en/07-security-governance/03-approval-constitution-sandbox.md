@@ -23,8 +23,8 @@ source_of_truth:
   - docs/en/security.md
   - internal/adapter/tool/guard/guard.go
   - internal/security/policy/policy.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Guard, Approval, Constitution, and Sandbox
@@ -270,5 +270,5 @@ layers and with different evidence.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `security-approval-sandbox` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

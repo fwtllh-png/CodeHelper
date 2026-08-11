@@ -21,8 +21,8 @@ source_of_truth:
   - README.md
   - docs/en/architecture.md
   - docs/en/security.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Why Agents Need a Governed Runtime
@@ -257,5 +257,5 @@ Record one example of each control line:
 | Item | Value |
 | --- | --- |
 | Catalog ID | `agent-why-governed-runtime` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/provider/types.go
   - internal/runtime/agent/engine/engine.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Streaming, Reasoning, Tool Calls, and Usage
@@ -157,5 +157,5 @@ effect.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `model-stream-reasoning-usage` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

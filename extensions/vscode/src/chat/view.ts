@@ -1,20 +1,35 @@
-import { randomBytes } from "node:crypto";
-
 import * as vscode from "vscode";
 
 import { parseContextDirectives } from "../context/directives.js";
+import {
+  pickNativeContext,
+  type NativeContextAttachment,
+} from "../context/picker.js";
 import type {
   ApprovalDecision,
   ApprovalScope,
 } from "../runtime/session.js";
 import type { SupervisorSnapshot } from "../runtime/supervisor.js";
 import type { EditPlanPreview } from "../edits/preview.js";
-import { decodeWebviewMessage } from "./messages.js";
+import {
+  decodeWebviewMessage,
+  type ChatClientEvidence,
+} from "./messages.js";
+import {
+  createChatErrorMessage,
+  createChatPatchMessage,
+  createChatRecoveryStatusMessage,
+  createChatSnapshotMessage,
+  type ChatHostMessage,
+  type ChatSnapshotMessage,
+} from "./contract.js";
 import {
   ChatProjector,
   type ApprovalCard,
   type InputCard,
 } from "./projector.js";
+import { approvalDialogContent } from "./approval-summary.js";
+import { groupToolsForPicker } from "./tool-groups.js";
 import { isUnknownEvent, type DecodedEvent } from "../protocol/decode.js";
 import type {
   WorkspaceRuntime,
@@ -24,30 +39,101 @@ import type { ChatSessionSummary } from "../runtime/controller.js";
 import { projectEditPlan, type EditPlanCard } from "../edits/model.js";
 import type { ApprovalRequiredData } from "../protocol/generated.js";
 import { testBuildEnabled } from "../test-mode.js";
+import {
+  chatWebviewResourceRoot,
+  renderChatHTML,
+} from "./webview/shell.js";
+import { ResourceNavigator } from "./resource-navigator.js";
+import {
+  projectChatResources,
+  type ResourceReference,
+} from "./resources.js";
+import {
+  projectComposer,
+  type ComposerControl,
+} from "./composer.js";
+import { turnIntentForMode } from "./turn-intent.js";
+import type {
+  SessionProfileSnapshot,
+  SessionToolCatalog,
+} from "../runtime/session.js";
+import type { CredentialView } from "../security/credentials.js";
+import {
+  createStructuredSessionReceipt,
+  renderSessionMarkdown,
+  validateStructuredSessionReceipt,
+} from "./export.js";
 
 interface RootChatState {
   readonly projectors: Map<string, ChatProjector>;
+  readonly composers: Map<string, SessionComposerState>;
   runtime: SupervisorSnapshot;
+  revealTurnId: string | undefined;
+  sessionSearchQuery: string;
+  sessionSearch: {
+    readonly query: string;
+    readonly sessionIds: readonly string[];
+    readonly matches: readonly {
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly kind: string;
+      readonly snippet?: string;
+    }[];
+  } | undefined;
+}
+
+interface SessionComposerState {
+  readonly profile?: SessionProfileSnapshot;
+  readonly catalog?: SessionToolCatalog;
+  readonly credential?: CredentialView;
+  readonly contexts?: readonly NativeContextAttachment[];
+  readonly error?: string;
+}
+
+interface ProviderPickItem extends vscode.QuickPickItem {
+  readonly providerId: string;
+}
+
+interface ModelPickItem extends vscode.QuickPickItem {
+  readonly modelId: string;
+  readonly selectionMode: string;
 }
 
 export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   readonly #registry: WorkspaceRuntimeRegistry;
+  readonly #extensionUri: vscode.Uri;
   readonly #roots = new Map<string, RootChatState>();
   readonly #editPreview: EditPlanPreview;
+  readonly #resourceNavigator: ResourceNavigator;
   readonly #subscriptions: vscode.Disposable[];
   readonly #modalApprovals = new Set<string>();
   readonly #modalInputs = new Set<string>();
   readonly #submittedApprovals = new Set<string>();
+  readonly #submittedRecoveries = new Set<string>();
   readonly #mergePlans = new Map<string, EditPlanCard>();
+  readonly #mergeOperations = new Set<string>();
+  readonly #resources = new Map<string, ResourceReference>();
+  readonly #composerLoads = new Set<string>();
   #view: vscode.WebviewView | undefined;
   #flushTimer: NodeJS.Timeout | undefined;
+  #webviewReady = false;
+  #clientEvidence: ChatClientEvidence | undefined;
+  #snapshotPosts = 0;
+  #patchPosts = 0;
+  #projectionRevision = 0;
+  #lastProjection: ChatSnapshotMessage | undefined;
+  #deferredError: ChatHostMessage | undefined;
+  readonly #deferredRecoveries = new Map<string, ChatHostMessage>();
 
   public constructor(
     registry: WorkspaceRuntimeRegistry,
     editPreview: EditPlanPreview,
+    extensionUri: vscode.Uri,
   ) {
     this.#registry = registry;
     this.#editPreview = editPreview;
+    this.#resourceNavigator = new ResourceNavigator(registry, editPreview);
+    this.#extensionUri = extensionUri;
     this.#syncRoots();
     this.#subscriptions = [
       registry.onEvent(({ root, sessionId, event, replayed }) => {
@@ -55,6 +141,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       }),
       registry.onStateChange(({ root, snapshot }) => {
         this.#state(root.rootId).runtime = snapshot;
+        if (snapshot.state !== "ready") {
+          this.#state(root.rootId).composers.clear();
+        }
         this.#scheduleFlush();
       }),
       registry.onDidChangeRoots(() => {
@@ -73,11 +162,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   public resolveWebviewView(view: vscode.WebviewView): void {
     this.#view = view;
+    this.#webviewReady = false;
+    this.#clientEvidence = undefined;
+    this.#projectionRevision = 0;
+    this.#lastProjection = undefined;
     view.webview.options = {
       enableScripts: true,
-      localResourceRoots: [],
+      localResourceRoots: [chatWebviewResourceRoot(this.#extensionUri)],
     };
-    view.webview.html = renderHTML();
+    view.webview.html = renderChatHTML(view.webview, this.#extensionUri);
     this.#subscriptions.push(
       view.webview.onDidReceiveMessage((value: unknown) => {
         void this.#receive(value);
@@ -85,6 +178,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       view.onDidDispose(() => {
         if (this.#view === view) {
           this.#view = undefined;
+          this.#webviewReady = false;
+          this.#clientEvidence = undefined;
+        }
+      }),
+      view.onDidChangeVisibility(() => {
+        if (view.visible) {
+          this.#lastProjection = undefined;
+          const deferredError = this.#deferredError;
+          this.#deferredError = undefined;
+          if (deferredError !== undefined) {
+            this.#post(deferredError);
+          }
+          for (const recovery of this.#deferredRecoveries.values()) {
+            this.#post(recovery);
+          }
+          this.#deferredRecoveries.clear();
+          this.#scheduleFlush();
+        } else if (this.#flushTimer !== undefined) {
+          clearTimeout(this.#flushTimer);
+          this.#flushTimer = undefined;
         }
       }),
     );
@@ -99,6 +212,34 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     for (const subscription of this.#subscriptions.splice(0)) {
       subscription.dispose();
     }
+  }
+
+  public get webviewReady(): boolean {
+    return this.#webviewReady;
+  }
+
+  public get clientEvidence(): ChatClientEvidence | undefined {
+    return this.#clientEvidence;
+  }
+
+  public get projectionDiagnostics(): {
+    readonly visible: boolean;
+    readonly snapshotPosts: number;
+    readonly patchPosts: number;
+  } {
+    return {
+      visible: this.#view?.visible ?? false,
+      snapshotPosts: this.#snapshotPosts,
+      patchPosts: this.#patchPosts,
+    };
+  }
+
+  public invalidateProjection(): void {
+    this.#scheduleFlush();
+  }
+
+  public receiveTestIntent(value: unknown): Promise<void> {
+    return this.#receive(value);
   }
 
   public async decidePlan(
@@ -133,6 +274,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   ): void {
     const projector = this.#projector(root.rootId, sessionId);
     projector.apply(event);
+    if (!isUnknownEvent(event) && event.kind === "tool.catalog.changed") {
+      this.#state(root.rootId).composers.clear();
+    }
     this.#scheduleFlush();
     if (replayed || isUnknownEvent(event)) {
       return;
@@ -163,12 +307,266 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       const message = decodeWebviewMessage(value);
       const root = this.#registry.selected;
       switch (message.type) {
+        case "ready":
+          this.#webviewReady = true;
+          this.#lastProjection = undefined;
+          break;
+        case "client-evidence":
+          this.#clientEvidence = message;
+          break;
+        case "resync":
+          this.#lastProjection = undefined;
+          this.#scheduleFlush();
+          break;
+        case "open-resource": {
+          const reference = this.#resources.get(message.resourceId);
+          if (reference === undefined) {
+            throw new Error("resource reference is unknown or stale");
+          }
+          await this.#resourceNavigator.open(reference);
+          break;
+        }
+        case "resource-action": {
+          const reference = this.#resources.get(message.resourceId);
+          if (reference === undefined) {
+            throw new Error("resource reference is unknown or stale");
+          }
+          let action = message.action;
+          if (action === "menu") {
+            const choice = await vscode.window.showQuickPick([
+              { label: "$(go-to-file) Open", action: "open" as const },
+              { label: "$(split-horizontal) Open to Side", action: "open-to-side" as const },
+              { label: "$(copy) Copy Relative Path", action: "copy-relative-path" as const },
+            ], {
+              title: reference.path,
+              placeHolder: "Choose a Resource action",
+            });
+            if (choice === undefined) break;
+            action = choice.action;
+          }
+          if (action === "copy-relative-path") {
+            await this.#resourceNavigator.copyRelativePath(reference);
+          } else {
+            await this.#resourceNavigator.open(reference, {
+              side: action === "open-to-side",
+            });
+          }
+          break;
+        }
         case "select-root":
           await this.#registry.select(message.rootId);
           break;
         case "select-chat":
           await root.controller.selectChat(message.sessionId);
+          this.#state(root.rootId).revealTurnId = message.turnId;
           break;
+        case "search-chats": {
+          const state = this.#state(root.rootId);
+          const query = message.query.trim();
+          state.sessionSearchQuery = query;
+          if (query.length === 0) {
+            state.sessionSearch = undefined;
+            this.#scheduleFlush();
+            break;
+          }
+          const result = await root.controller.searchChats({
+            query,
+            includeArchived: true,
+            limit: 1000,
+          });
+          if (state.sessionSearchQuery === query) {
+            state.sessionSearch = {
+              query,
+              sessionIds: result.sessions.map((session) => session.sessionId),
+              matches: result.matches.map((match) => ({
+                sessionId: match.session_id,
+                turnId: match.turn_id,
+                kind: match.kind,
+                ...(match.snippet === undefined
+                  ? {}
+                  : { snippet: match.snippet }),
+              })),
+            };
+            this.#scheduleFlush();
+          }
+          break;
+        }
+        case "manage-chat":
+          await this.#manageChat(root, message.sessionId, message.action);
+          break;
+        case "plan-action": {
+          const session = this.#selectedSession(root);
+          const plan = await root.controller.sessionPlan(session.sessionId);
+          if (plan.artifact === undefined ||
+            plan.artifact.id !== message.planId) {
+            throw new Error("Plan Artifact is unknown or stale");
+          }
+          if (message.action === "open") {
+            const document = await vscode.workspace.openTextDocument({
+              language: "markdown",
+              content: plan.artifact.body,
+            });
+            await vscode.window.showTextDocument(document, {
+              preview: false,
+              preserveFocus: false,
+            });
+            break;
+          }
+          const destination = await vscode.window.showQuickPick([
+            {
+              label: "$(play) Current Session",
+              description: "Use the active Session and Profile",
+              value: "current" as const,
+            },
+            {
+              label: "$(add) New Session",
+              description: "Copy the Session Profile, then implement",
+              value: "new" as const,
+            },
+            {
+              label: "$(git-branch) Checkpoint Fork",
+              description: "Fork state-only history before implementation",
+              value: "fork" as const,
+            },
+          ], {
+            title: "Plan Destination",
+            placeHolder: "Choose where implementation starts",
+          });
+          if (destination === undefined) break;
+          if (message.action === "autopilot") {
+            const confirmation = await vscode.window.showWarningMessage(
+              "Start this Plan with Autopilot?",
+              {
+                modal: true,
+                detail: "The Runtime may approve eligible actions automatically, " +
+                  "but Host permission ceilings, Guard, Policy, and Sandbox remain active.",
+              },
+              "Start Autopilot",
+            );
+            if (confirmation !== "Start Autopilot") break;
+          }
+          let targetSessionId = session.sessionId;
+          let sourceSessionId: string | undefined;
+          if (destination.value === "new") {
+            const created = await root.controller.duplicateChat(
+              session.sessionId,
+            );
+            targetSessionId = created.sessionId;
+            sourceSessionId = session.sessionId;
+          } else if (destination.value === "fork") {
+            const checkpoints = await root.controller.checkpoints(
+              session.sessionId,
+            );
+            const selected = await vscode.window.showQuickPick(
+              checkpoints.checkpoints.filter((checkpoint) => checkpoint.can_fork)
+                .map((checkpoint) => ({
+                  label: checkpoint.summary,
+                  description: new Date(
+                    checkpoint.created_at,
+                  ).toLocaleString(),
+                  checkpoint,
+                })),
+              {
+                title: "Plan Checkpoint Fork",
+                placeHolder: "Choose a compatible Checkpoint",
+              },
+            );
+            if (selected === undefined) break;
+            await root.controller.forkCheckpoint(
+              session.sessionId,
+              selected.checkpoint.id,
+              `${session.title} · Plan`,
+            );
+            sourceSessionId = session.sessionId;
+          }
+          await root.controller.implementPlan(
+            targetSessionId,
+            message.planId,
+            message.action,
+            sourceSessionId,
+          );
+          break;
+        }
+        case "turn-recovery": {
+          const session = this.#selectedSession(root);
+          const recoveryKey = sessionKey(
+            root.rootId,
+            session.sessionId,
+            `recovery:${message.turnId}`,
+          );
+          if (this.#submittedRecoveries.has(recoveryKey)) {
+            this.#post(createChatRecoveryStatusMessage(
+              message.turnId,
+              message.action,
+              "failed",
+              { message: "Recovery is already in progress" },
+            ));
+            break;
+          }
+          const turn = this.#projector(
+            root.rootId,
+            session.sessionId,
+          ).snapshot().turns.find((candidate) => candidate.id === message.turnId);
+          if (turn === undefined ||
+            (turn.status !== "failed" && turn.status !== "canceled")) {
+            this.#post(createChatRecoveryStatusMessage(
+              message.turnId,
+              message.action,
+              "failed",
+              { message: "Source Turn is unavailable or not recoverable" },
+            ));
+            break;
+          }
+          this.#submittedRecoveries.add(recoveryKey);
+          let guidance: string | undefined;
+          if (message.action === "continue") {
+            guidance = await vscode.window.showInputBox({
+              title: "Continue Turn",
+              prompt: "Optional guidance for the new Turn",
+              placeHolder: "Continue from current workspace state",
+              validateInput: (value) => value.length > 64 << 10
+                ? "Guidance must be at most 65536 characters"
+                : null,
+            });
+            if (guidance === undefined) {
+              this.#submittedRecoveries.delete(recoveryKey);
+              this.#post(createChatRecoveryStatusMessage(
+                turn.id,
+                message.action,
+                "canceled",
+              ));
+              break;
+            }
+          }
+          try {
+            const accepted = await root.controller.recoverTurn(
+              session.sessionId,
+              turn.id,
+              message.action,
+              guidance,
+            );
+            this.#post(createChatRecoveryStatusMessage(
+              turn.id,
+              message.action,
+              "accepted",
+              { newTurnId: accepted.turnId },
+            ));
+          } catch (error) {
+            this.#post(createChatRecoveryStatusMessage(
+              turn.id,
+              message.action,
+              "failed",
+              {
+                message: error instanceof Error
+                  ? error.message
+                  : String(error),
+              },
+            ));
+          } finally {
+            this.#submittedRecoveries.delete(recoveryKey);
+          }
+          break;
+        }
         case "new-chat":
           await root.controller.createChat();
           break;
@@ -178,16 +576,83 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "run-setup":
           await vscode.commands.executeCommand("codehelper.runSetup");
           break;
+        case "add-context": {
+          const session = this.#selectedSession(root);
+          const state = this.#state(root.rootId).composers.get(session.sessionId);
+          if (state?.profile === undefined) {
+            throw new Error("Session Profile is unavailable");
+          }
+          const attachment = await pickNativeContext(
+            root.folder,
+            root.contextBridge,
+            state.profile,
+          );
+          if (attachment === undefined) break;
+          const contexts = state.contexts ?? [];
+          if (contexts.length >= 8) {
+            throw new Error("a turn can attach at most 8 context items");
+          }
+          if (contexts.some((candidate) =>
+            candidate.reference.kind === attachment.reference.kind &&
+            candidate.reference.digest === attachment.reference.digest)) {
+            throw new Error("this context is already attached");
+          }
+          this.#state(root.rootId).composers.set(session.sessionId, {
+            ...state,
+            contexts: [...contexts, attachment],
+          });
+          this.#scheduleFlush();
+          break;
+        }
+        case "remove-context": {
+          const session = this.#selectedSession(root);
+          const state = this.#state(root.rootId).composers.get(session.sessionId);
+          if (state === undefined) break;
+          this.#state(root.rootId).composers.set(session.sessionId, {
+            ...state,
+            contexts: (state.contexts ?? []).filter(
+              (context) => context.id !== message.contextId,
+            ),
+          });
+          this.#scheduleFlush();
+          break;
+        }
+        case "configure-composer": {
+          const session = this.#selectedSession(root);
+          await this.#configureComposer(root, session, message.control);
+          break;
+        }
         case "submit": {
           const session = this.#selectedSession(root);
           const parsed = parseContextDirectives(message.text);
           if (parsed.prompt.length === 0) {
             throw new Error("enter a prompt in addition to the context directive");
           }
-          const context = await root.contextBridge.capture(parsed.directives);
+          const context = [
+            ...(await root.contextBridge.capture(parsed.directives)),
+            ...((this.#state(root.rootId).composers.get(session.sessionId)
+              ?.contexts ?? []).map((attachment) => attachment.reference)),
+          ];
+          if (context.length > 8) {
+            throw new Error("a turn can attach at most 8 context items");
+          }
           await root.controller.submitPrompt(
-            session.sessionId, parsed.prompt, context,
+            session.sessionId,
+            parsed.prompt,
+            context,
+            turnIntentForMode(
+              this.#state(root.rootId).composers.get(session.sessionId)
+                ?.profile?.profile.mode,
+            ),
           );
+          const composer = this.#state(root.rootId).composers.get(session.sessionId);
+          if (composer !== undefined) {
+            this.#state(root.rootId).composers.set(session.sessionId, {
+              ...composer,
+              contexts: [],
+            });
+            this.#scheduleFlush();
+          }
           break;
         }
         case "stop": {
@@ -242,32 +707,292 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         case "merge-chat": {
           const session = this.#selectedSession(root);
           const key = sessionKey(root.rootId, session.sessionId, "merge");
-          if (message.planId === undefined) {
-            const result = await root.controller.mergeChat(
-              session.sessionId, "preview",
-            );
-            const plan = decodeMergePlan(result);
-            this.#mergePlans.set(key, plan);
-            await this.#editPreview.show(plan, root.rootId);
-          } else {
-            if (this.#mergePlans.get(key)?.id !== message.planId) {
-              throw new Error("Chat merge plan is unknown or stale");
-            }
-            await root.controller.mergeChat(
-              session.sessionId, "apply", message.planId,
-            );
-            this.#mergePlans.delete(key);
+          if (this.#mergeOperations.has(key)) {
+            throw new Error("Chat merge is already in progress");
           }
-          this.#scheduleFlush();
+          this.#mergeOperations.add(key);
+          try {
+            if (message.planId === undefined) {
+              const result = await vscode.window.withProgress(
+                {
+                  location: vscode.ProgressLocation.Notification,
+                  title: "Preparing Chat merge preview...",
+                },
+                async () => root.controller.mergeChat(
+                  session.sessionId, "preview",
+                ),
+              );
+              const plan = decodeMergePlan(result);
+              this.#mergePlans.set(key, plan);
+              await this.#editPreview.showPatch(plan, root.rootId);
+            } else {
+              const plan = this.#mergePlans.get(key);
+              if (plan?.id !== message.planId) {
+                throw new Error(
+                  "Chat merge plan is unknown or stale; review changes again",
+                );
+              }
+              await vscode.window.withProgress(
+                {
+                  location: vscode.ProgressLocation.Notification,
+                  title: `Applying ${String(plan.files.length)} Chat changes...`,
+                },
+                async () => root.controller.mergeChat(
+                  session.sessionId, "apply", message.planId,
+                ),
+              );
+              this.#mergePlans.delete(key);
+              void vscode.window.showInformationMessage(
+                `Applied ${String(plan.files.length)} Chat changes to the workspace.`,
+              );
+            }
+          } catch (error) {
+            const detail = error instanceof Error
+              ? error.message
+              : String(error);
+            if (detail.includes("unknown or stale")) {
+              this.#mergePlans.delete(key);
+            }
+            void vscode.window.showErrorMessage(
+              `CodeHelper Chat merge failed: ${detail}`,
+            );
+            throw error;
+          } finally {
+            this.#mergeOperations.delete(key);
+            this.#scheduleFlush();
+          }
           break;
         }
       }
     } catch (error) {
-      this.#post({
-        type: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
+      this.#post(createChatErrorMessage(
+        error instanceof Error ? error.message : String(error),
+      ));
     }
+  }
+
+  async #manageChat(
+    root: WorkspaceRuntime,
+    sessionId: string,
+    action: "menu" | "rename" | "pin" | "unpin" | "archive" | "restore" |
+      "delete" | "checkpoints" | "duplicate" | "open-to-side" | "export" |
+      "reveal-approval",
+  ): Promise<void> {
+    const session = root.controller.sessions().find(
+      (candidate) => candidate.sessionId === sessionId,
+    );
+    if (session === undefined) throw new Error("Chat session is unavailable");
+    switch (action) {
+      case "menu": {
+        const choice = await vscode.window.showQuickPick([
+          { label: "$(edit) Rename", action: "rename" as const },
+          {
+            label: session.pinned ? "$(pinned) Unpin" : "$(pin) Pin",
+            action: session.pinned ? "unpin" as const : "pin" as const,
+          },
+          {
+            label: session.archived ? "$(history) Restore" : "$(archive) Archive",
+            action: session.archived ? "restore" as const : "archive" as const,
+          },
+          {
+            label: `$(history) Checkpoints (${String(session.checkpointCount)})`,
+            action: "checkpoints" as const,
+          },
+          { label: "$(copy) Duplicate", action: "duplicate" as const },
+          { label: "$(split-horizontal) Open to Side", action: "open-to-side" as const },
+          { label: "$(export) Export", action: "export" as const },
+          ...(session.pendingApprovals > 0
+            ? [{
+                label: "$(shield) Reveal Pending Approval",
+                action: "reveal-approval" as const,
+              }]
+            : []),
+          { label: "$(trash) Delete", action: "delete" as const },
+        ], {
+          title: session.title,
+          placeHolder: "Manage Session",
+        });
+        if (choice !== undefined) {
+          await this.#manageChat(root, sessionId, choice.action);
+        }
+        break;
+      }
+      case "rename": {
+        const title = await vscode.window.showInputBox({
+          title: "Rename Chat Session",
+          value: session.title,
+          prompt: "Session title is stored by the CodeHelper Runtime",
+          validateInput: (value) => value.trim().length === 0
+            ? "Enter a session title"
+            : value.length > 256 ? "Title must be at most 256 characters" : null,
+        });
+        if (title !== undefined) {
+          await root.controller.renameChat(sessionId, title);
+        }
+        break;
+      }
+      case "pin":
+      case "unpin":
+        await root.controller.pinChat(sessionId, action === "pin");
+        break;
+      case "archive":
+      case "restore":
+        await root.controller.archiveChat(sessionId, action === "archive");
+        break;
+      case "duplicate":
+        await root.controller.duplicateChat(sessionId);
+        break;
+      case "open-to-side": {
+        const markdown = renderSessionMarkdown(
+          session,
+          this.#projector(root.rootId, sessionId).snapshot(),
+        );
+        const document = await vscode.workspace.openTextDocument({
+          language: "markdown",
+          content: markdown,
+        });
+        await vscode.window.showTextDocument(document, {
+          preview: true,
+          viewColumn: vscode.ViewColumn.Beside,
+        });
+        break;
+      }
+      case "export": {
+        const snapshot = this.#projector(root.rootId, sessionId).snapshot();
+        const format = await vscode.window.showQuickPick([
+          { label: "Markdown", extension: "md" as const },
+          { label: "Structured Receipt", extension: "json" as const },
+        ], {
+          title: `Export · ${session.title}`,
+          placeHolder: "Choose an export format",
+        });
+        if (format === undefined) break;
+        const receipt = createStructuredSessionReceipt(session, snapshot);
+        validateStructuredSessionReceipt(receipt);
+        const content = format.extension === "md"
+          ? renderSessionMarkdown(session, snapshot)
+          : `${JSON.stringify(receipt, null, 2)}\n`;
+        const destination = await vscode.window.showSaveDialog({
+          title: `Export ${session.title}`,
+          filters: format.extension === "md"
+            ? { Markdown: ["md"] }
+            : { JSON: ["json"] },
+          defaultUri: vscode.Uri.joinPath(
+            root.folder.uri,
+            `${safeExportName(session.title)}.${format.extension}`,
+          ),
+        });
+        if (destination !== undefined) {
+          await vscode.workspace.fs.writeFile(
+            destination,
+            new TextEncoder().encode(content),
+          );
+        }
+        break;
+      }
+      case "reveal-approval": {
+        await root.controller.selectChat(sessionId);
+        const approval = this.#projector(
+          root.rootId,
+          sessionId,
+        ).pendingApprovals()[0];
+        if (approval === undefined) {
+          throw new Error("Session has no pending Approval");
+        }
+        this.#state(root.rootId).revealTurnId = approval.turnId;
+        await this.#showApproval(root, sessionId, approval);
+        break;
+      }
+      case "delete": {
+        const confirmation = await vscode.window.showWarningMessage(
+          `Delete "${session.title}" permanently?`,
+          { modal: true, detail: "Runtime history and isolated workspace data will be removed." },
+          "Delete",
+        );
+        if (confirmation === "Delete") {
+          await root.controller.deleteChat(sessionId);
+        }
+        break;
+      }
+      case "checkpoints": {
+        const list = await root.controller.checkpoints(sessionId);
+        if (list.checkpoints.length === 0) {
+          await vscode.window.showInformationMessage(
+            "This Session has no restorable Checkpoints.",
+          );
+          break;
+        }
+        const selection = await vscode.window.showQuickPick(
+          list.checkpoints.map((checkpoint) => ({
+            label: checkpoint.summary,
+            description: `${checkpoint.status} · ${
+              new Date(checkpoint.created_at).toLocaleString()
+            }`,
+            detail: `${String(checkpoint.changed_files)} changed files` +
+              (checkpoint.external_side_effects
+                ? " · completed Tool effects remain applied"
+                : ""),
+            checkpoint,
+          })),
+          {
+            title: `Checkpoints · ${session.title}`,
+            placeHolder: "Select a Checkpoint",
+          },
+        );
+        if (selection === undefined) break;
+        const choices = [
+          ...(selection.checkpoint.can_restore
+            ? [{ label: "$(discard) Restore state", action: "restore" as const }]
+            : []),
+          ...(selection.checkpoint.can_fork
+            ? [{ label: "$(git-branch) Fork Session", action: "fork" as const }]
+            : []),
+        ];
+        if (choices.length === 0) {
+          throw new Error(
+            "Checkpoint is stale for the current Session Profile Revision",
+          );
+        }
+        const choice = await vscode.window.showQuickPick(choices, {
+          title: selection.checkpoint.summary,
+          placeHolder: "Choose a Checkpoint operation",
+        });
+        if (choice?.action === "restore") {
+          const confirmation = await vscode.window.showWarningMessage(
+            "Restore Runtime state to this Checkpoint?",
+            {
+              modal: true,
+              detail: "Completed file, command, Tool, and network effects are " +
+                "not reversed or replayed. Only model-visible Runtime state is restored.",
+            },
+            "Restore State",
+          );
+          if (confirmation === "Restore State") {
+            await root.controller.restoreCheckpoint(
+              sessionId,
+              selection.checkpoint.id,
+            );
+          }
+        } else if (choice?.action === "fork") {
+          const title = await vscode.window.showInputBox({
+            title: "Fork Checkpoint",
+            value: `${session.title} · Fork`,
+            validateInput: (value) => value.trim().length === 0
+              ? "Enter a Fork title"
+              : value.length > 256 ? "Title must be at most 256 characters" : null,
+          });
+          if (title !== undefined) {
+            await root.controller.forkCheckpoint(
+              sessionId,
+              selection.checkpoint.id,
+              title,
+            );
+          }
+        }
+        break;
+      }
+    }
+    this.#scheduleFlush();
   }
 
   async #showApproval(
@@ -297,10 +1022,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           choices.push("Always approve");
         }
       }
-      choices.push("Deny", "Cancel turn");
+      choices.push("Deny request", "Stop turn");
+      const content = approvalDialogContent(approval);
       const selected = await vscode.window.showWarningMessage(
-        `${root.label}: ${approvalSummary(approval)}`,
-        { modal: true, detail: approval.arguments },
+        `${root.label}: ${content.title}`,
+        { modal: true, detail: content.detail },
         ...choices,
       );
       const decision = modalDecision(selected);
@@ -314,10 +1040,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         );
       }
     } catch (error) {
-      this.#post({
-        type: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
+      this.#post(createChatErrorMessage(
+        error instanceof Error ? error.message : String(error),
+      ));
     } finally {
       this.#modalApprovals.delete(key);
     }
@@ -349,10 +1074,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         );
       }
     } catch (error) {
-      this.#post({
-        type: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
+      this.#post(createChatErrorMessage(
+        error instanceof Error ? error.message : String(error),
+      ));
     } finally {
       this.#modalInputs.delete(key);
     }
@@ -421,11 +1145,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   #scheduleFlush(): void {
-    if (this.#flushTimer !== undefined) {
+    if (this.#flushTimer !== undefined ||
+      this.#view === undefined ||
+      !this.#view.visible) {
       return;
     }
     this.#flushTimer = setTimeout(() => {
       this.#flushTimer = undefined;
+      if (this.#view === undefined || !this.#view.visible) {
+        return;
+      }
       const root = this.#registry.selected;
       const state = this.#state(root.rootId);
       const sessions = this.#availableSessions(root).map((session) => ({
@@ -438,36 +1167,98 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       const projector = selected === undefined
         ? new ChatProjector()
         : this.#projector(root.rootId, selected.sessionId);
+      const resources = projectChatResources(
+        projector.snapshot(),
+        root.rootId,
+        selected?.sessionId ?? "unavailable",
+      );
+      this.#resources.clear();
+      for (const reference of resources.references) {
+        this.#resources.set(reference.id, reference);
+      }
       const mergePlan = selected === undefined
         ? undefined
         : this.#mergePlans.get(
             sessionKey(root.rootId, selected.sessionId, "merge"),
           );
-      this.#post({
-        type: "snapshot",
-        snapshot: projector.snapshot(),
-        runtime: {
-          state: state.runtime.state,
-          ...(state.runtime.error === undefined
-            ? {}
-            : { error: state.runtime.error }),
-          trusted: vscode.workspace.isTrusted,
-          selectedRootId: root.rootId,
-          selectedRootLabel: root.label,
-          selectedSessionId: selected?.sessionId,
-          sessions,
-          mergePlanId: mergePlan?.id,
-          roots: this.#registry.roots.map((candidate) => ({
-            id: candidate.rootId,
-            label: candidate.label,
-          })),
-        },
+      const composerState = selected === undefined
+        ? undefined
+        : state.composers.get(selected.sessionId);
+      if (selected !== undefined &&
+        state.runtime.state === "ready" &&
+        composerState === undefined) {
+        void this.#loadComposer(root, selected.sessionId);
+      }
+      const composer = composerState?.profile === undefined ||
+        composerState.catalog === undefined ||
+        composerState.credential === undefined
+        ? undefined
+        : projectComposer(
+            composerState.profile,
+            composerState.catalog,
+            composerState.credential,
+            vscode.workspace.isTrusted,
+            (composerState.contexts ?? []).map((context) => ({
+              id: context.id, kind: context.kind, label: context.label,
+            })),
+          );
+      const projection = createChatSnapshotMessage({
+        revision: ++this.#projectionRevision,
+        snapshot: resources.snapshot,
+        resources: resources.views,
+        state: state.runtime.state,
+        ...(state.runtime.error === undefined
+          ? {}
+          : { error: state.runtime.error }),
+        trusted: vscode.workspace.isTrusted,
+        selectedRootId: root.rootId,
+        selectedRootLabel: root.label,
+        sessions,
+        ...(state.revealTurnId === undefined
+          ? {}
+          : { revealTurnId: state.revealTurnId }),
+        ...(state.sessionSearch === undefined
+          ? {}
+          : { sessionSearch: state.sessionSearch }),
+        ...(mergePlan === undefined ? {} : { mergePlanId: mergePlan.id }),
+        roots: this.#registry.roots.map((candidate) => ({
+          id: candidate.rootId,
+          label: candidate.label,
+        })),
+        ...(composer === undefined ? {} : { composer }),
       });
+      const previous = this.#lastProjection;
+      const selectedChanged = previous?.runtime.selectedRootId !==
+          projection.runtime.selectedRootId ||
+        previous.runtime.selectedSessionId !==
+          projection.runtime.selectedSessionId;
+      if (previous === undefined || selectedChanged) {
+        this.#post(projection);
+        this.#lastProjection = projection;
+      } else {
+        const patch = createChatPatchMessage(previous, projection);
+        if (patch !== undefined) {
+          this.#post(patch);
+          this.#lastProjection = projection;
+        }
+      }
+      state.revealTurnId = undefined;
     }, 16);
   }
 
-  #post(value: unknown): void {
-    void this.#view?.webview.postMessage(value);
+  #post(value: ChatHostMessage): void {
+    if (this.#view?.visible === true) {
+      if (value.type === "snapshot") {
+        this.#snapshotPosts++;
+      } else if (value.type === "patch") {
+        this.#patchPosts++;
+      }
+      void this.#view.webview.postMessage(value);
+    } else if (value.type === "error") {
+      this.#deferredError = value;
+    } else if (value.type === "recovery-status") {
+      this.#deferredRecoveries.set(value.turnId, value);
+    }
   }
 
   #syncRoots(): void {
@@ -476,7 +1267,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       if (!this.#roots.has(root.rootId)) {
         this.#roots.set(root.rootId, {
           projectors: new Map(),
+          composers: new Map(),
           runtime: root.controller.snapshot,
+          revealTurnId: undefined,
+          sessionSearchQuery: "",
+          sessionSearch: undefined,
         });
       }
       this.#syncSessions(root);
@@ -507,6 +1302,243 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     for (const sessionId of state.projectors.keys()) {
       if (!live.has(sessionId)) state.projectors.delete(sessionId);
+    }
+    for (const sessionId of state.composers.keys()) {
+      if (!live.has(sessionId)) state.composers.delete(sessionId);
+    }
+  }
+
+  async #loadComposer(
+    root: WorkspaceRuntime,
+    sessionId: string,
+  ): Promise<void> {
+    const key = sessionKey(root.rootId, sessionId, "composer");
+    if (this.#composerLoads.has(key)) return;
+    this.#composerLoads.add(key);
+    try {
+      const [profile, catalog] = await Promise.all([
+        root.controller.sessionProfile(sessionId),
+        root.controller.sessionToolCatalog(sessionId),
+      ]);
+      const credential = await root.controller.credentialStatus(
+        profile.profile.provider,
+      );
+      this.#state(root.rootId).composers.set(sessionId, {
+        profile,
+        catalog,
+        credential,
+        contexts: this.#state(root.rootId).composers.get(sessionId)?.contexts ?? [],
+      });
+    } catch (error) {
+      this.#state(root.rootId).composers.set(sessionId, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.#composerLoads.delete(key);
+      this.#scheduleFlush();
+    }
+  }
+
+  async #configureComposer(
+    root: WorkspaceRuntime,
+    session: ChatSessionSummary,
+    control: ComposerControl,
+  ): Promise<void> {
+    let state = this.#state(root.rootId).composers.get(session.sessionId);
+    if (state?.profile === undefined ||
+      state.catalog === undefined ||
+      state.credential === undefined) {
+      this.#state(root.rootId).composers.delete(session.sessionId);
+      await this.#loadComposer(root, session.sessionId);
+      state = this.#state(root.rootId).composers.get(session.sessionId);
+    }
+    if (state?.profile === undefined ||
+      state.catalog === undefined ||
+      state.credential === undefined) {
+      throw new Error(state?.error ?? "Session Profile is unavailable");
+    }
+    if (control === "provider" || control === "model") {
+      const providers = await root.controller.providerCatalog();
+      let provider = state.profile.profile.provider;
+      if (control === "provider") {
+        const providerItems: ProviderPickItem[] = [
+          ...providers.providers.map((candidate) => ({
+            label: candidate.display_name,
+            description: candidate.selected ? "Current" : candidate.availability,
+            ...(candidate.reason === undefined ? {} : { detail: candidate.reason }),
+            providerId: candidate.id,
+          })),
+          {
+            label: "$(gear) Configure another Provider",
+            description: "Runs local Setup and restarts Runtime",
+            providerId: "",
+          },
+        ];
+        const picked = await vscode.window.showQuickPick<ProviderPickItem>(providerItems, {
+          title: "CodeHelper: Provider Catalog",
+          placeHolder: "Search Runtime-advertised Providers",
+          ignoreFocusOut: true,
+        });
+        if (picked === undefined) return;
+        if (picked.providerId === "") {
+          await vscode.commands.executeCommand("codehelper.runSetup", root.rootId);
+          this.#state(root.rootId).composers.delete(session.sessionId);
+          this.#scheduleFlush();
+          return;
+        }
+        provider = picked.providerId;
+      }
+      const models = await root.controller.modelCatalog(provider);
+      const modelItems: ModelPickItem[] = [
+        ...models.models.map((candidate) => ({
+          label: candidate.capabilities.display_name,
+          description: candidate.selected
+            ? "Current"
+            : candidate.capabilities.selection_mode === "restart_required"
+              ? "Restart Required"
+              : candidate.capabilities.availability,
+          detail: modelCapabilityDetail(candidate.capabilities),
+          modelId: candidate.id,
+          selectionMode: candidate.capabilities.selection_mode,
+        })),
+        {
+          label: "$(gear) Configure another Model",
+          description: "Runs local Setup and restarts Runtime",
+          detail: "",
+          modelId: "",
+          selectionMode: "restart_required",
+        },
+      ];
+      const picked = await vscode.window.showQuickPick<ModelPickItem>(modelItems, {
+        title: "CodeHelper: Model Catalog",
+        placeHolder: "Search by Model name or capability",
+        matchOnDescription: true,
+        matchOnDetail: true,
+        ignoreFocusOut: true,
+      });
+      if (picked === undefined) return;
+      if (picked.modelId === "") {
+        await vscode.commands.executeCommand(
+          "codehelper.runSetup", root.rootId, provider,
+        );
+        this.#state(root.rootId).composers.delete(session.sessionId);
+        this.#scheduleFlush();
+        return;
+      }
+      if (provider !== state.profile.profile.provider ||
+        picked.modelId !== state.profile.profile.model) {
+        if (picked.selectionMode !== "hot") {
+          await vscode.commands.executeCommand(
+            "codehelper.runSetup", root.rootId, provider,
+          );
+          this.#state(root.rootId).composers.delete(session.sessionId);
+          this.#scheduleFlush();
+          return;
+        }
+        throw new Error("Runtime advertised hot selection without a mutable route");
+      }
+      return;
+    }
+    if (control === "credential") {
+      await vscode.commands.executeCommand(
+        "codehelper.configureCredential",
+        root.rootId,
+        session.sessionId,
+      );
+      this.#state(root.rootId).composers.delete(session.sessionId);
+      this.#scheduleFlush();
+      return;
+    }
+
+    const snapshot = state.profile;
+    const mutable = new Set(snapshot.capabilities.mutable_fields);
+    if (control === "tools") {
+      if (!mutable.has("enabled_tool_ids")) {
+        throw new Error(
+          "Session Profile field enabled_tool_ids is fixed by this Runtime",
+        );
+      }
+      const selected = await pickTools(state.catalog);
+      if (selected === undefined) return;
+      try {
+        const enabledToolIDs = selected.length === state.catalog.tools.length
+          ? []
+          : selected;
+        const update = await root.controller.updateSessionProfile(
+          session.sessionId,
+          snapshot.profile.revision,
+          { enabled_tool_ids: enabledToolIDs },
+        );
+        const catalog = await root.controller.sessionToolCatalog(
+          session.sessionId,
+        );
+        this.#state(root.rootId).composers.set(session.sessionId, {
+          profile: { ...snapshot, profile: update.profile },
+          catalog,
+          credential: state.credential,
+          contexts: state.contexts ?? [],
+        });
+        if (update.prompt_cache_reset) {
+          void vscode.window.showInformationMessage(
+            "CodeHelper prompt cache reset for the updated Tool selection.",
+          );
+        }
+        this.#scheduleFlush();
+      } catch (error) {
+        this.#state(root.rootId).composers.delete(session.sessionId);
+        await this.#loadComposer(root, session.sessionId);
+        throw error;
+      }
+      return;
+    }
+    let field: "mode" | "approval_posture";
+    let value: string | undefined;
+    if (control === "mode") {
+      field = "mode";
+      value = await pickValue(
+        "CodeHelper: Agent Mode",
+        ["plan", "act", "operate"],
+        snapshot.profile.mode,
+      );
+    } else {
+      field = "approval_posture";
+      const values = vscode.workspace.isTrusted
+        ? ["never", "suggest", "auto", "bypass"]
+        : ["never", "suggest"];
+      value = await pickValue(
+        "CodeHelper: Approval Posture",
+        values,
+        snapshot.profile.approval_posture,
+      );
+    }
+    if (value === undefined) return;
+    if (!mutable.has(field)) {
+      throw new Error(`Session Profile field ${field} is fixed by this Runtime`);
+    }
+    try {
+      const update = await root.controller.updateSessionProfile(
+        session.sessionId,
+        snapshot.profile.revision,
+        field === "mode"
+          ? { mode: value }
+          : { approval_posture: value },
+      );
+      this.#state(root.rootId).composers.set(session.sessionId, {
+        profile: { ...snapshot, profile: update.profile },
+        catalog: state.catalog,
+        credential: state.credential,
+        contexts: state.contexts ?? [],
+      });
+      if (update.prompt_cache_reset) {
+        void vscode.window.showInformationMessage(
+          "CodeHelper prompt cache reset for the updated Session Profile.",
+        );
+      }
+      this.#scheduleFlush();
+    } catch (error) {
+      this.#state(root.rootId).composers.delete(session.sessionId);
+      await this.#loadComposer(root, session.sessionId);
+      throw error;
     }
   }
 
@@ -541,6 +1573,198 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     return root;
   }
+}
+
+function modelCapabilityDetail(
+  capabilities: SessionProfileSnapshot["capabilities"]["model_capabilities"],
+): string {
+  const features = [
+    `${String(capabilities.context_window)} context`,
+    `${String(capabilities.max_output_tokens)} max output`,
+    capabilities.reasoning ? "reasoning" : undefined,
+    capabilities.image_input || capabilities.vision ? "image input" : undefined,
+    capabilities.tool_calls ? "tools" : undefined,
+    capabilities.parallel_tool_calls === "supported" ? "parallel tools" : undefined,
+  ].filter((value): value is string => value !== undefined);
+  return features.join(" · ");
+}
+
+interface ToolPickItem extends vscode.QuickPickItem {
+  readonly toolID?: string;
+  readonly groupID?: string;
+  readonly memberIDs?: readonly string[];
+}
+
+async function pickTools(
+  catalog: SessionToolCatalog,
+): Promise<readonly string[] | undefined> {
+  const picker = vscode.window.createQuickPick<ToolPickItem>();
+  picker.title = "CodeHelper: Session Tools";
+  picker.placeholder = "Search by tool, source, capability, or availability";
+  picker.canSelectMany = true;
+  picker.ignoreFocusOut = true;
+  picker.matchOnDescription = true;
+  picker.matchOnDetail = true;
+  const sourceOrder = ["builtin", "mcp", "plugin", "skill", "dynamic"];
+  const initialEnabled = new Set(
+    catalog.tools.filter((tool) => tool.enabled).map((tool) => tool.id),
+  );
+  let enabled = new Set(initialEnabled);
+  const expandedGroups = new Set<string>();
+  const expandButton: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon("chevron-right"),
+    tooltip: "Show operations",
+  };
+  const collapseButton: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon("chevron-down"),
+    tooltip: "Hide operations",
+  };
+  let synchronizing = false;
+  const render = (): void => {
+    const items: ToolPickItem[] = [];
+    for (const source of sourceOrder) {
+      const tools = catalog.tools.filter((tool) => tool.source_kind === source);
+      if (tools.length === 0) continue;
+      items.push({
+        label: source.toUpperCase(),
+        kind: vscode.QuickPickItemKind.Separator,
+      });
+      for (const entry of groupToolsForPicker(tools)) {
+        if (entry.kind === "tool") {
+          items.push(toolPickItem(entry.tool, enabled.has(entry.tool.id)));
+          continue;
+        }
+        const memberIDs = entry.group.tools.map((tool) => tool.id);
+        const enabledCount = memberIDs.filter((id) => enabled.has(id)).length;
+        const expanded = expandedGroups.has(entry.group.id);
+        items.push({
+          groupID: entry.group.id,
+          memberIDs,
+          label: entry.group.label,
+          description: `${String(entry.group.tools.length)} operations · ` +
+            `${entry.group.capabilityLabel} · ${String(enabledCount)} enabled`,
+          detail: "Spawn and manage child agents. Expand for individual operations.",
+          picked: enabledCount === memberIDs.length,
+          alwaysShow: true,
+          buttons: [expanded ? collapseButton : expandButton],
+        });
+        if (expanded) {
+          for (const tool of entry.group.tools) {
+            items.push({
+              ...toolPickItem(tool, enabled.has(tool.id)),
+              groupID: entry.group.id,
+              label: `$(symbol-method) ${tool.name}`,
+            });
+          }
+        }
+      }
+    }
+    synchronizing = true;
+    picker.items = items;
+    picker.selectedItems = items.filter(
+      (item) => isSelectableToolItem(item) && item.picked === true,
+    );
+    synchronizing = false;
+  };
+  render();
+  const resetButton: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon("discard"),
+    tooltip: "Reset current selection",
+  };
+  const allButton: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon("check-all"),
+    tooltip: "Select all tools",
+  };
+  picker.buttons = [resetButton, allButton];
+  return new Promise((resolve) => {
+    let accepted = false;
+    const disposables = [
+      picker.onDidTriggerButton((button) => {
+        enabled = button === allButton
+          ? new Set(catalog.tools.map((tool) => tool.id))
+          : new Set(initialEnabled);
+        render();
+      }),
+      picker.onDidTriggerItemButton((event) => {
+        if (event.item.groupID === undefined ||
+          event.item.memberIDs === undefined) return;
+        if (expandedGroups.has(event.item.groupID)) {
+          expandedGroups.delete(event.item.groupID);
+        } else {
+          expandedGroups.add(event.item.groupID);
+        }
+        render();
+      }),
+      picker.onDidChangeSelection((selection) => {
+        if (synchronizing) return;
+        const selected = new Set(selection);
+        const toggledGroups = new Set<string>();
+        for (const item of picker.items) {
+          if (item.groupID === undefined || item.memberIDs === undefined) continue;
+          const wasAllEnabled = item.memberIDs.every((id) => enabled.has(id));
+          const isSelected = selected.has(item);
+          if (wasAllEnabled === isSelected) continue;
+          for (const id of item.memberIDs) {
+            if (isSelected) enabled.add(id);
+            else enabled.delete(id);
+          }
+          toggledGroups.add(item.groupID);
+        }
+        for (const item of picker.items) {
+          if (item.toolID === undefined ||
+            (item.groupID !== undefined && toggledGroups.has(item.groupID))) {
+            continue;
+          }
+          if (selected.has(item)) enabled.add(item.toolID);
+          else enabled.delete(item.toolID);
+        }
+        render();
+      }),
+      picker.onDidAccept(() => {
+        if (enabled.size === 0) {
+          void vscode.window.showWarningMessage(
+            "Select at least one tool; an empty Runtime allowlist means all tools.",
+          );
+          return;
+        }
+        accepted = true;
+        const selected = [...enabled].sort();
+        picker.hide();
+        resolve(selected);
+      }),
+      picker.onDidHide(() => {
+        if (!accepted) resolve(undefined);
+        for (const disposable of disposables) disposable.dispose();
+        picker.dispose();
+      }),
+    ];
+    picker.show();
+  });
+}
+
+function isSelectableToolItem(
+  item: ToolPickItem,
+): boolean {
+  return typeof item.toolID === "string" || typeof item.groupID === "string";
+}
+
+function toolPickItem(
+  tool: SessionToolCatalog["tools"][number],
+  picked: boolean,
+): ToolPickItem {
+  const status = tool.availability === "available"
+    ? tool.state
+    : `${tool.availability}: ${tool.unavailable_reason ?? tool.state}`;
+  return {
+    toolID: tool.id,
+    label: tool.availability === "unavailable"
+      ? `$(warning) ${tool.name}`
+      : tool.name,
+    description: `${tool.source_label} · ${tool.capability}`,
+    detail: `${tool.description} · ${status} · Guarded`,
+    picked,
+    alwaysShow: true,
+  };
 }
 
 function sessionKey(
@@ -580,20 +1804,13 @@ function modalDecision(
       return { decision: "approve", scope: "session" };
     case "Always approve":
       return { decision: "approve", scope: "always" };
-    case "Deny":
+    case "Deny request":
       return { decision: "deny", scope: "once" };
-    case "Cancel turn":
+    case "Stop turn":
       return { decision: "cancel", scope: "once" };
     default:
       return undefined;
   }
-}
-
-function approvalSummary(approval: ApprovalCard): string {
-  const resources = approval.resources.length === 0
-    ? "no declared resources"
-    : approval.resources.join(", ");
-  return `${approval.tool} requests approval for ${resources}`;
 }
 
 function isExpired(value: string): boolean {
@@ -601,427 +1818,31 @@ function isExpired(value: string): boolean {
   return !Number.isFinite(timestamp) || timestamp <= Date.now();
 }
 
-function renderHTML(): string {
-  const nonce = randomBytes(24).toString("base64");
-  const csp = [
-    "default-src 'none'",
-    `style-src 'nonce-${nonce}'`,
-    `script-src 'nonce-${nonce}'`,
-    "img-src data:",
-  ].join("; ");
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="${csp}">
-  <style nonce="${nonce}">
-    :root { color-scheme: light dark; }
-    body { margin: 0; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); font: var(--vscode-font-size)/1.45 var(--vscode-font-family); }
-    #status { position: sticky; top: 0; z-index: 2; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); color: var(--vscode-descriptionForeground); }
-    #root, #chat { max-width: 42%; margin-right: 6px; color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); border: 1px solid var(--vscode-dropdown-border); }
-    #status button { padding: 2px 6px; }
-    #journey-state { display: block; padding-top: 4px; color: var(--vscode-foreground); font-weight: 600; }
-    #turns { padding: 8px 10px 150px; }
-    article { border-bottom: 1px solid var(--vscode-panel-border); padding: 10px 0; }
-    .user { white-space: pre-wrap; font-weight: 600; }
-    .assistant { margin: 6px 0 8px; }
-    .meta { color: var(--vscode-descriptionForeground); }
-    .section-label { margin-top: 10px; color: var(--vscode-descriptionForeground); font-size: 0.9em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-    details.reasoning-panel { border-left: 3px solid var(--vscode-textLink-foreground); color: var(--vscode-descriptionForeground); }
-    details.reasoning-panel > summary { cursor: pointer; font-weight: 600; }
-    .reasoning-body { margin-top: 6px; }
-    .markdown { overflow-wrap: anywhere; }
-    .markdown > :first-child { margin-top: 0; }
-    .markdown > :last-child { margin-bottom: 0; }
-    .markdown p { margin: 0.55em 0; }
-    .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { margin: 0.9em 0 0.4em; line-height: 1.25; }
-    .markdown h1 { font-size: 1.45em; }
-    .markdown h2 { font-size: 1.3em; }
-    .markdown h3 { font-size: 1.15em; }
-    .markdown ul, .markdown ol { margin: 0.5em 0; padding-left: 1.8em; }
-    .markdown blockquote { margin: 0.6em 0; padding-left: 0.8em; border-left: 3px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
-    .markdown code { padding: 0.1em 0.3em; border-radius: 3px; font-family: var(--vscode-editor-font-family); background: var(--vscode-textCodeBlock-background); }
-    .markdown pre { padding: 8px; overflow: auto; white-space: pre; background: var(--vscode-textCodeBlock-background); border: 1px solid var(--vscode-panel-border); border-radius: 4px; }
-    .markdown pre code { padding: 0; background: transparent; }
-    .markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
-    .markdown th, .markdown td { padding: 4px 8px; border: 1px solid var(--vscode-panel-border); text-align: left; }
-    .markdown a { color: var(--vscode-textLink-foreground); }
-    .markdown hr { border: 0; border-top: 1px solid var(--vscode-panel-border); }
-    details { margin: 6px 0; padding: 4px 6px; background: var(--vscode-textCodeBlock-background); border-radius: 3px; }
-    details.context-receipt { display: inline-block; max-width: 100%; margin-right: 5px; border: 1px solid var(--vscode-panel-border); overflow-wrap: anywhere; }
-    details.context-receipt[open] { display: block; }
-    details.context-selection { border-left: 3px solid var(--vscode-focusBorder); }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-    .error { color: var(--vscode-errorForeground); white-space: pre-wrap; }
-    button { margin: 3px 4px 3px 0; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; padding: 5px 8px; cursor: pointer; }
-    button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
-    button:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
-    #composer { position: fixed; bottom: 0; left: 0; right: 0; padding: 8px; border-top: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
-    textarea { box-sizing: border-box; width: 100%; min-height: 64px; resize: vertical; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); padding: 6px; }
-    .hint { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
-    #repair { margin: 8px 0; padding: 8px; border: 1px solid var(--vscode-inputValidation-warningBorder); background: var(--vscode-inputValidation-warningBackground); }
-    #repair[hidden] { display: none; }
-    #empty { margin: 16px 10px; padding: 12px; border: 1px solid var(--vscode-panel-border); }
-    #empty[hidden] { display: none; }
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
-    }
-    @media (forced-colors: active) {
-      button, select, textarea, details, #empty, #repair { border: 1px solid CanvasText; }
-    }
-  </style>
-</head>
-<body>
-  <div id="status">
-    <select id="root" aria-label="Workspace root"></select>
-    <select id="chat" aria-label="Chat session"></select>
-    <button type="button" id="new-chat" title="Create isolated Chat">New</button>
-    <button type="button" id="merge-chat" title="Review Chat changes">Merge</button>
-    <span id="runtime" role="status" aria-live="polite">CodeHelper Runtime: starting</span>
-    <span id="journey-state" role="status" aria-live="polite">Loading · Runtime starting · Wait</span>
-  </div>
-  <section id="repair" role="status" aria-live="polite" hidden>
-    <strong>CodeHelper Runtime needs attention</strong>
-    <p id="repair-detail"></p>
-    <button type="button" id="repair-runtime">Inspect and Repair</button>
-    <button type="button" class="secondary" id="run-setup">Run Setup</button>
-  </section>
-  <section id="empty" hidden>
-    <strong>Start a CodeHelper Chat</strong>
-    <p>Describe a task below, or attach saved editor context with @file, @selection, @symbol, or @diagnostics.</p>
-  </section>
-  <main id="turns" aria-label="Chat transcript"></main>
-  <form id="composer">
-    <textarea id="prompt" aria-label="Prompt" placeholder="Ask CodeHelper. Attach @file, @selection, @symbol, or @diagnostics."></textarea>
-    <div>
-      <button type="submit" id="send" aria-keyshortcuts="Control+Enter Meta+Enter">Send</button>
-      <button type="button" class="secondary" id="stop" aria-keyshortcuts="Escape">Stop</button>
-    </div>
-    <div class="hint">Editor context is explicit and must come from the saved active file.</div>
-  </form>
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    const root = document.getElementById('root');
-    const chat = document.getElementById('chat');
-    const runtime = document.getElementById('runtime');
-    const journeyState = document.getElementById('journey-state');
-    const repair = document.getElementById('repair');
-    const repairDetail = document.getElementById('repair-detail');
-    const empty = document.getElementById('empty');
-    const turns = document.getElementById('turns');
-    const prompt = document.getElementById('prompt');
-    const send = document.getElementById('send');
-    const stop = document.getElementById('stop');
-    const newChat = document.getElementById('new-chat');
-    let trusted = false;
-    document.getElementById('composer').addEventListener('submit', event => {
-      event.preventDefault();
-      if (!prompt.value.trim()) return;
-      vscode.postMessage({ type: 'submit', text: prompt.value });
-      prompt.value = '';
-    });
-    prompt.addEventListener('keydown', event => {
-      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault();
-        send.click();
-      } else if (event.key === 'Escape' && !stop.disabled) {
-        event.preventDefault();
-        stop.click();
-      }
-    });
-    stop.addEventListener('click', () => {
-      vscode.postMessage({ type: 'stop' });
-    });
-    document.getElementById('repair-runtime').addEventListener('click', () => {
-      vscode.postMessage({ type: 'repair-runtime' });
-    });
-    document.getElementById('run-setup').addEventListener('click', () => {
-      vscode.postMessage({ type: 'run-setup' });
-    });
-    root.addEventListener('change', () => {
-      vscode.postMessage({ type: 'select-root', rootId: root.value });
-    });
-    chat.addEventListener('change', () => {
-      vscode.postMessage({ type: 'select-chat', sessionId: chat.value });
-    });
-    newChat.addEventListener('click', () => {
-      vscode.postMessage({ type: 'new-chat' });
-    });
-    document.getElementById('merge-chat').addEventListener('click', () => {
-      vscode.postMessage(messageMergePlanId ?
-        { type: 'merge-chat', planId: messageMergePlanId } :
-        { type: 'merge-chat' });
-    });
-    let messageMergePlanId;
-    window.addEventListener('message', event => {
-      const message = event.data;
-      if (message.type === 'error') {
-        const node = document.createElement('div');
-        node.className = 'error';
-        node.textContent = message.message;
-        turns.append(node);
-        return;
-      }
-      if (message.type !== 'snapshot') return;
-      trusted = message.runtime.trusted;
-      root.replaceChildren(...message.runtime.roots.map(candidate => {
-        const option = document.createElement('option');
-        option.value = candidate.id;
-        option.textContent = candidate.label;
-        option.selected = candidate.id === message.runtime.selectedRootId;
-        return option;
-      }));
-      root.hidden = message.runtime.roots.length < 2;
-      chat.replaceChildren(...message.runtime.sessions.map(candidate => {
-        const option = document.createElement('option');
-        option.value = candidate.sessionId;
-        option.textContent = (candidate.active ? '● ' : '') + candidate.title;
-        option.selected = candidate.sessionId === message.runtime.selectedSessionId;
-        return option;
-      }));
-      messageMergePlanId = message.runtime.mergePlanId;
-      const mergeButton = document.getElementById('merge-chat');
-      const runtimeReady = message.runtime.state === 'ready';
-      mergeButton.textContent =
-        messageMergePlanId ? 'Apply' : 'Merge';
-      mergeButton.disabled = !runtimeReady ||
-        (Boolean(messageMergePlanId) && !trusted);
-      prompt.disabled = !runtimeReady;
-      send.disabled = !runtimeReady;
-      stop.disabled = !runtimeReady || !message.snapshot.activeTurnId;
-      newChat.disabled = !runtimeReady;
-      runtime.textContent = 'CodeHelper Runtime: ' + message.runtime.state +
-        (trusted ? ' · trusted' : ' · read-only') +
-        ' · ' + message.runtime.sessions.length + ' chats';
-      journeyState.textContent = journeyLabel(
-        message.runtime.state, message.snapshot, trusted);
-      repair.hidden = !['failed', 'stopped'].includes(message.runtime.state);
-      repairDetail.textContent = message.runtime.error ||
-        'Run readiness checks to identify missing configuration or capabilities.';
-      empty.hidden = !runtimeReady || message.snapshot.turns.length > 0;
-      render(message.snapshot);
-    });
-    function journeyLabel(runtimeState, snapshot, workspaceTrusted) {
-      if (runtimeState === 'recovering') {
-        return 'Recovery · Restoring Chat and cursor · Wait';
-      }
-      if (runtimeState === 'starting') {
-        return 'Loading · Runtime starting · Wait';
-      }
-      if (runtimeState === 'failed' || runtimeState === 'stopped') {
-        return 'Failure · Runtime unavailable · Inspect and Repair';
-      }
-      if (!workspaceTrusted) {
-        return 'Setup · Read-only workspace · Trust workspace or run Setup';
-      }
-      const active = snapshot.turns.find(turn =>
-        turn.id === snapshot.activeTurnId);
-      if (active?.status === 'awaiting_approval') {
-        return 'Approval · Review target and effect · Approve, Deny, or Cancel';
-      }
-      if (active?.status === 'awaiting_input') {
-        return 'Input · Answer required · Choose or type a response';
-      }
-      if (active?.status === 'running') {
-        return 'Streaming · Turn in progress · Stop is available';
-      }
-      const latest = snapshot.turns[snapshot.turns.length - 1];
-      if (latest?.verification) {
-        return 'Verify · Verdict available · Review checks and Receipt';
-      }
-      if (latest?.status === 'failed' || latest?.status === 'canceled') {
-        return 'Failure · Turn did not complete · Review reason and retry';
-      }
-      if (latest?.status === 'completed') {
-        return 'Completed · Turn finished · Review changes and Receipt';
-      }
-      return 'Empty · Ready for a task · Enter a prompt';
-    }
-    function render(snapshot) {
-      const fragment = document.createDocumentFragment();
-      for (const turn of snapshot.turns) {
-        const article = document.createElement('article');
-        appendText(article, 'div', 'user', turn.user || '(restored turn)');
-        appendText(article, 'div', 'meta', turn.status);
-        if (turn.reasoning) {
-          const reasoning = document.createElement('details');
-          reasoning.className = 'reasoning-panel';
-          reasoning.open = turn.reasoningActive;
-          appendText(reasoning, 'summary', '', turn.reasoningActive ?
-            '推理过程 · 生成中' : '推理过程');
-          appendMarkdown(reasoning, turn.reasoningMarkdown, 'reasoning-body');
-          article.append(reasoning);
-        }
-        if (turn.output) {
-          appendText(article, 'div', 'section-label', '最终结论');
-          appendMarkdown(article, turn.outputMarkdown, 'assistant');
-        }
-        for (const receipt of turn.contextReceipts) {
-          article.append(contextReceiptCard(receipt));
-        }
-        for (const selection of turn.contextSelections) {
-          article.append(contextSelectionCard(selection));
-        }
-        for (const tool of turn.tools) {
-          const details = document.createElement('details');
-          appendText(details, 'summary', '', tool.tool + ' · ' + tool.status);
-          if (tool.arguments) appendText(details, 'pre', '', tool.arguments);
-          if (tool.output) appendText(details, 'pre', '', tool.output);
-          article.append(details);
-        }
-        for (const approval of turn.approvals) article.append(approvalCard(approval, trusted));
-        for (const input of turn.inputs) article.append(inputCard(input));
-        for (const diagnostic of turn.diagnostics) appendText(article, 'div', 'meta', diagnostic);
-        if (turn.verification) appendText(article, 'div', 'meta', 'Verify: ' + turn.verification);
-        if (turn.receipt) appendText(article, 'div', 'meta', turn.receipt);
-        if (turn.error) appendText(article, 'div', 'error', turn.error);
-        for (const unknown of turn.unknownEvents) {
-          const details = document.createElement('details');
-          appendText(details, 'summary', '', 'Unknown event');
-          appendText(details, 'pre', '', unknown);
-          article.append(details);
-        }
-        fragment.append(article);
-      }
-      turns.replaceChildren(fragment);
-      window.scrollTo(0, document.body.scrollHeight);
-    }
-    function contextReceiptCard(receipt) {
-      const card = document.createElement('details');
-      card.className = 'context-receipt';
-      let label = 'Context: ' + receipt.kind + ' · ' + receipt.path;
-      if (receipt.symbol) label += ' · ' + receipt.symbol;
-      if (receipt.diagnosticCount) {
-        label += ' · ' + receipt.diagnosticCount + ' diagnostics';
-      }
-      appendText(card, 'summary', '', label);
-      appendText(card, 'div', 'meta', 'Source: ' + (receipt.source || 'legacy'));
-      appendText(card, 'div', 'meta', 'SHA-256: ' + receipt.digest);
-      if (receipt.range) appendText(card, 'div', 'meta', 'Range: ' + receipt.range);
-      let bytes = 'Bytes: ' + receipt.retainedBytes + '/' + receipt.originalBytes;
-      if (receipt.truncated) bytes += ' · truncated';
-      appendText(card, 'div', 'meta', bytes);
-      if (receipt.omittedDiagnostics) {
-        appendText(card, 'div', 'meta',
-          'Omitted diagnostics: ' + receipt.omittedDiagnostics);
-      }
-      return card;
-    }
-    function contextSelectionCard(selection) {
-      const card = document.createElement('details');
-      card.className = 'context-selection';
-      let label = 'Selected ' + selection.kind + ': ' + selection.path;
-      if (selection.truncated) label += ' · cut';
-      appendText(card, 'summary', '', label);
-      appendText(card, 'div', 'meta', 'Why: ' + selection.reasons.join(', '));
-      appendText(card, 'div', 'meta', 'Score: ' + selection.score +
-        (selection.critical ? ' · critical' : ''));
-      if (selection.evidence.length) {
-        appendText(card, 'div', 'meta', 'Evidence: ' + selection.evidence.join(', '));
-      }
-      appendText(card, 'div', 'meta', selection.included ?
-        'Included in model context' :
-        'Not included: ' + (selection.truncationReason || 'context budget'));
-      return card;
-    }
-    function approvalCard(approval, workspaceTrusted) {
-      const box = document.createElement('details');
-      box.open = !approval.resolved;
-      appendText(box, 'summary', '', 'Approval: ' + approval.tool +
-        (approval.resolved ? ' · ' + approval.resolved : ''));
-      appendText(box, 'pre', '', approval.arguments);
-      appendText(box, 'div', 'meta', approval.resources.join(', '));
-      if (approval.reason) appendText(box, 'div', 'meta', approval.reason);
-      if (!approval.resolved && Date.parse(approval.expiresAt) > Date.now()) {
-        if (approval.editPlan) {
-          box.append(actionButton('Preview diff', () =>
-            vscode.postMessage({ type: 'preview', requestId: approval.requestId })));
-        }
-        if (workspaceTrusted) {
-          for (const scope of approval.allowedScopes) {
-            const button = actionButton('Approve ' + scope, () =>
-              vscode.postMessage({ type: 'approval', requestId: approval.requestId,
-                decision: 'approve', scope, planId: approval.editPlan && approval.editPlan.id }));
-            box.append(button);
-          }
-        }
-        box.append(actionButton('Deny', () =>
-          vscode.postMessage({ type: 'approval', requestId: approval.requestId, decision: 'deny', scope: 'once' })));
-        box.append(actionButton('Cancel turn', () =>
-          vscode.postMessage({ type: 'approval', requestId: approval.requestId, decision: 'cancel', scope: 'once' })));
-      }
-      return box;
-    }
-    function inputCard(input) {
-      const box = document.createElement('details');
-      box.open = !input.resolved;
-      appendText(box, 'summary', '', 'Input required');
-      appendText(box, 'div', '', input.prompt);
-      if (!input.resolved) {
-        for (const option of input.options) {
-          box.append(actionButton(option, () =>
-            vscode.postMessage({ type: 'input', requestId: input.requestId, answer: option })));
-        }
-      }
-      return box;
-    }
-    function actionButton(label, handler) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = label;
-      button.addEventListener('click', handler);
-      return button;
-    }
-    const markdownTags = new Set([
-      'a', 'blockquote', 'br', 'code', 'del', 'em',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr',
-      'li', 'ol', 'p', 'pre', 'span', 'strong',
-      'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
-    ]);
-    function appendMarkdown(parent, nodes, className) {
-      const container = document.createElement('div');
-      container.className = 'markdown ' + className;
-      for (const node of nodes) container.append(markdownNode(node));
-      parent.append(container);
-    }
-    function markdownNode(value) {
-      if (!value || typeof value !== 'object') {
-        return document.createTextNode('');
-      }
-      if (value.kind === 'text') {
-        return document.createTextNode(typeof value.text === 'string' ? value.text : '');
-      }
-      if (value.kind !== 'element' || !markdownTags.has(value.tag)) {
-        return document.createTextNode('');
-      }
-      const node = document.createElement(value.tag);
-      if (value.tag === 'a' && typeof value.href === 'string' &&
-        /^(https?:|mailto:)/.test(value.href)) {
-        node.setAttribute('href', value.href);
-        node.setAttribute('target', '_blank');
-        node.setAttribute('rel', 'noreferrer noopener');
-      }
-      if (value.tag === 'ol' && Number.isSafeInteger(value.start) &&
-        value.start > 1 && value.start <= 1000000) {
-        node.setAttribute('start', String(value.start));
-      }
-      if (value.tag === 'code' && typeof value.language === 'string' &&
-        /^[\\w+.-]{1,64}$/.test(value.language)) {
-        node.className = 'language-' + value.language;
-      }
-      if (Array.isArray(value.children)) {
-        for (const child of value.children) node.append(markdownNode(child));
-      }
-      return node;
-    }
-    function appendText(parent, tag, className, text) {
-      const node = document.createElement(tag);
-      if (className) node.className = className;
-      node.textContent = text;
-      parent.append(node);
-    }
-  </script>
-</body>
-</html>`;
+async function pickValue(
+  title: string,
+  values: readonly string[],
+  current: string,
+): Promise<string | undefined> {
+  const selected = await vscode.window.showQuickPick(
+    values.map((value) => ({
+      label: value === ""
+        ? "Default"
+        : `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`,
+      ...(value === current ? { description: "Current" } : {}),
+      value,
+    })),
+    {
+      title,
+      placeHolder: "Select a Session Profile value",
+      ignoreFocusOut: true,
+    },
+  );
+  return selected?.value;
+}
+
+function safeExportName(value: string): string {
+  const safe = value.trim()
+    .replaceAll(/[^a-zA-Z0-9._-]+/gu, "-")
+    .replaceAll(/^-+|-+$/gu, "");
+  return safe.slice(0, 96) || "codehelper-session";
 }

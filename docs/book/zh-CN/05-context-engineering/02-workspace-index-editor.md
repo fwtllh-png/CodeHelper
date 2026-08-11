@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/editor_context.go
   - internal/runtime/agent/repocontext/repocontext.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Workspace、Repository Index 与 Editor Context
@@ -31,6 +31,10 @@ last_verified: 2026-08-06
 
 理解 Workspace Identity、Repository 全局索引、Editor 显式焦点，以及防止 Context
 Drift 与 Path Escape 的验证链路。
+
+## 前置知识
+
+阅读 [Prompt、Message 与 Context](./01-prompt-message-context.md)。
 
 ## Repository 的三种视图
 
@@ -160,5 +164,5 @@ go test ./internal/persist/repoindex
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `context-workspace-index-editor` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

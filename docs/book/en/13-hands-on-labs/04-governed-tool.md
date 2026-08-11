@@ -15,8 +15,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/adapter/tool/guard/guard.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Implement a Governed Tool
@@ -90,4 +90,5 @@ Tool only with focused tests and Wire registration.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-governed-tool` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

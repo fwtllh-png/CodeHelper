@@ -84,6 +84,13 @@ void test("runtimeArguments omits config when environment configuration is used"
   assert.equal(runtimeArguments(runtimeOptions()).includes("--config"), false);
 });
 
+void test("runtimeArguments do not force approval for every workspace write", () => {
+  assert.equal(
+    runtimeArguments(runtimeOptions()).includes("--edit-plan-approvals"),
+    false,
+  );
+});
+
 void test("enrichRuntimeError retains the final Runtime stderr diagnostic", () => {
   assert.equal(
     enrichRuntimeError(

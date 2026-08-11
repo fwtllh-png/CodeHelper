@@ -18,7 +18,7 @@ source_of_truth:
   - internal/observability/trace/trace.go
   - internal/persist/state/eventlog/log.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # 从 Trace 复盘一次失败
@@ -94,3 +94,4 @@ Reducer Drift。
 | --- | --- |
 | Catalog ID | `lab-trace-failure` |
 | 状态 | `verified` |
+| 最后验证 | 2026-08-10 |

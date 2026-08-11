@@ -243,17 +243,30 @@ type Web struct {
 	SearchBackend string `json:"search_backend" toml:"search_backend"`
 }
 
+// DiagnosticCommand maps one file extension to a bounded post-edit checker.
+// Name is resolved through PATH; Args must include {path} so the checker stays
+// scoped to the file the guarded edit changed.
+type DiagnosticCommand struct {
+	Name string   `json:"name" toml:"name"`
+	Args []string `json:"args" toml:"args"`
+}
+
+type Diagnostics struct {
+	Commands map[string]DiagnosticCommand `json:"commands,omitempty" toml:"commands"`
+}
+
 type Config struct {
-	Runtime    Runtime   `json:"runtime" toml:"runtime"`
-	State      State     `json:"state" toml:"state"`
-	Memory     Memory    `json:"memory" toml:"memory"`
-	Context    Context   `json:"context" toml:"context"`
-	Telemetry  Telemetry `json:"telemetry" toml:"telemetry"`
-	Credential SecretRef `json:"credential" toml:"credential"`
-	Execution  Execution `json:"execution" toml:"execution"`
-	Route      Route     `json:"route" toml:"route"`
-	Vision     Vision    `json:"vision" toml:"vision"`
-	Web        Web       `json:"web" toml:"web"`
+	Runtime     Runtime     `json:"runtime" toml:"runtime"`
+	State       State       `json:"state" toml:"state"`
+	Memory      Memory      `json:"memory" toml:"memory"`
+	Context     Context     `json:"context" toml:"context"`
+	Telemetry   Telemetry   `json:"telemetry" toml:"telemetry"`
+	Credential  SecretRef   `json:"credential" toml:"credential"`
+	Execution   Execution   `json:"execution" toml:"execution"`
+	Route       Route       `json:"route" toml:"route"`
+	Vision      Vision      `json:"vision" toml:"vision"`
+	Web         Web         `json:"web" toml:"web"`
+	Diagnostics Diagnostics `json:"diagnostics" toml:"diagnostics"`
 }
 
 type Overrides struct {

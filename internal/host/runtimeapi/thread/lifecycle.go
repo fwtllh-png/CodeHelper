@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/usage"
@@ -117,7 +116,7 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 	}
 
 	rows, err := l.db.QueryContext(ctx, `
-		SELECT id, COALESCE(idempotency_key, ''), request_json
+		SELECT id, session_id, COALESCE(idempotency_key, ''), request_json
 		FROM operations WHERE status = ?`, OperationAccepted,
 	)
 	if err != nil {
@@ -127,7 +126,53 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 	for rows.Next() {
 		var pending app.PendingOperation
 		var canonical string
-		if err := rows.Scan(&pending.ID, &pending.IdempotencyKey, &canonical); err != nil {
+		if err := rows.Scan(
+			&pending.ID,
+			&pending.SessionID,
+			&pending.IdempotencyKey,
+			&canonical,
+		); err != nil {
+			return app.RecoveryState{}, err
+		}
+		pending.Canonical = json.RawMessage(canonical)
+		recovery.PendingOperations[pending.ID] = pending
+	}
+	if err := rows.Err(); err != nil {
+		return app.RecoveryState{}, err
+	}
+	if err := rows.Close(); err != nil {
+		return app.RecoveryState{}, err
+	}
+	rows, err = l.db.QueryContext(ctx, `
+		SELECT operation.id, operation.session_id,
+			COALESCE(operation.idempotency_key, ''), operation.request_json
+		FROM turns AS turn
+		JOIN operations AS operation ON operation.id = turn.operation_id
+		LEFT JOIN turn_terminal_envelopes AS terminal ON terminal.turn_id = turn.id
+		WHERE turn.status = 'active'
+			AND operation.kind = ?
+			AND operation.status = ?
+			AND terminal.turn_id IS NULL
+		ORDER BY turn.created_at, turn.id`,
+		protocol.OperationStartTurn,
+		OperationCommitted,
+	)
+	if err != nil {
+		return app.RecoveryState{}, fmt.Errorf(
+			"read interrupted active turns: %w",
+			err,
+		)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pending app.PendingOperation
+		var canonical string
+		if err := rows.Scan(
+			&pending.ID,
+			&pending.SessionID,
+			&pending.IdempotencyKey,
+			&canonical,
+		); err != nil {
 			return app.RecoveryState{}, err
 		}
 		pending.Canonical = json.RawMessage(canonical)
@@ -222,7 +267,7 @@ func (l *Lifecycle) Accept(
 	if errors.Is(err, ErrOperationConflict) {
 		return app.Acceptance{}, app.ErrOperationConflict
 	}
-	if errors.Is(err, ErrActiveTurn) || isUniqueActiveError(err) {
+	if errors.Is(err, ErrActiveTurn) {
 		return app.Acceptance{}, ErrActiveTurn
 	}
 	return acceptance, err
@@ -279,6 +324,20 @@ func (l *Lifecycle) Project(ctx context.Context, event protocol.Event) error {
 		return errors.New("thread lifecycle database is required")
 	}
 	return withTx(ctx, l.db, func(tx *sql.Tx) error {
+		var threadExists int
+		if err := tx.QueryRowContext(
+			ctx,
+			"SELECT COUNT(*) FROM threads WHERE id = ?",
+			event.ThreadID,
+		).Scan(&threadExists); err != nil {
+			return err
+		}
+		// Session deletion intentionally keeps the durable event log for audit.
+		// Recovery must not recreate or re-project relational state for events
+		// whose owning Thread has since been deleted.
+		if threadExists == 0 {
+			return nil
+		}
 		if err := usage.ProjectTx(ctx, tx, event); err != nil {
 			return fmt.Errorf("project usage lifecycle: %w", err)
 		}
@@ -353,6 +412,30 @@ func (l *Lifecycle) Project(ctx context.Context, event protocol.Event) error {
 			if err != nil {
 				return err
 			}
+		case protocol.EventCheckpointForked:
+			data, ok := event.Data.(*protocol.CheckpointForkedData)
+			if !ok {
+				return errors.New("checkpoint fork event has unexpected data")
+			}
+			var sessionID string
+			if err := tx.QueryRowContext(
+				ctx, "SELECT session_id FROM threads WHERE id = ?", event.ThreadID,
+			).Scan(&sessionID); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, `
+				INSERT INTO threads(
+					id, session_id, parent_thread_id, title, status,
+					source_cursor, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(id) DO NOTHING`,
+				data.NewThreadID, sessionID, event.ThreadID, data.Title,
+				ThreadOpen, int64(data.SourceCursor),
+				timestamp(event.CreatedAt), timestamp(event.CreatedAt),
+			)
+			if err != nil {
+				return err
+			}
 		case protocol.EventThreadCompacted:
 			_, err := tx.ExecContext(
 				ctx, "UPDATE threads SET updated_at = ? WHERE id = ?",
@@ -394,32 +477,28 @@ func acceptTurn(
 	canonical json.RawMessage,
 	now time.Time,
 ) error {
-	var active int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM turns WHERE thread_id = ? AND status = ?`,
-		threadID, TurnActive,
-	).Scan(&active); err != nil {
-		return err
-	}
-	if active != 0 {
-		return ErrActiveTurn
-	}
-	var ordinal uint64
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(ordinal) + 1, 0) FROM turns WHERE thread_id = ?`,
-		threadID,
-	).Scan(&ordinal); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO turns(
 			id, thread_id, operation_id, ordinal, status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		turnID, threadID, operation.ID, ordinal, TurnActive,
-		timestamp(operation.CreatedAt), timestamp(now),
+		)
+		SELECT ?, ?, ?,
+			COALESCE((SELECT MAX(ordinal) + 1 FROM turns WHERE thread_id = ?), 0),
+			?, ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1 FROM turns WHERE thread_id = ? AND status = ?
+		)`,
+		turnID, threadID, operation.ID, threadID, TurnActive,
+		timestamp(operation.CreatedAt), timestamp(now), threadID, TurnActive,
 	)
 	if err != nil {
 		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return ErrActiveTurn
 	}
 	return acceptItem(ctx, tx, turnID, itemID, string(operation.Kind), canonical, now)
 }
@@ -551,15 +630,6 @@ func confirmsOperation(kind protocol.EventKind) bool {
 		kind == protocol.EventThreadCompacted ||
 		kind == protocol.EventThreadForked ||
 		kind == protocol.EventTurnReverted
-}
-
-func isUniqueActiveError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "turns_one_active_per_thread") ||
-		strings.Contains(message, "unique constraint failed: turns.thread_id")
 }
 
 func withTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) (err error) {

@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/plugin/trust.go
   - internal/adapter/plugin/distribution.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # MCP、Skill、Plugin 与 Hook Trust
@@ -93,3 +93,11 @@ go test ./internal/adapter/mcp ./internal/adapter/skill
 ## 延伸阅读
 
 - [Skill、Plugin 与 Hook](../11-extension-ecosystem/04-skill-plugin-hook.md)
+
+## 事实来源与验证
+
+| 项目 | 值 |
+| --- | --- |
+| Catalog ID | `security-extension-trust` |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/protocol/problem.go
   - internal/runtime/agent/engine/toolstream.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Streaming, Cancellation, and Error Taxonomy
@@ -197,5 +197,5 @@ created by the Runtime.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-stream-cancel-errors` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

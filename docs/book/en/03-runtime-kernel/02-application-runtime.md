@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/application.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Application Runtime and State Projection
@@ -199,5 +199,5 @@ subscriber catches up.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-app` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

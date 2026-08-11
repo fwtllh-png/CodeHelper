@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -38,6 +39,36 @@ func TestPolicyRejectsBroadAndSensitiveReadRoots(t *testing.T) {
 		}); err == nil {
 			t.Fatal("user home was accepted as a host read root")
 		}
+	}
+}
+
+func TestExactWorkspaceWritePathLimitMatchesToolExpansion(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := make([]string, 0, MaxExactWorkspaceWritePaths+1)
+	for index := range MaxExactWorkspaceWritePaths + 1 {
+		path := fmt.Sprintf("file-%03d.txt", index)
+		if err := os.WriteFile(filepath.Join(root, path), []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, path)
+	}
+	if _, err := validateExactWorkspaceWritePaths(
+		workspace,
+		true,
+		paths[:MaxExactWorkspaceWritePaths],
+	); err != nil {
+		t.Fatalf("bounded exact writes were rejected: %v", err)
+	}
+	if _, err := validateExactWorkspaceWritePaths(
+		workspace,
+		true,
+		paths,
+	); err == nil {
+		t.Fatal("write set beyond the limit was accepted")
 	}
 }
 
@@ -117,6 +148,107 @@ func TestSeatbeltAllowsNetworkWhenConfigured(t *testing.T) {
 	}
 	if policy.Controls.NetworkIsolation {
 		t.Fatal("NetworkIsolation should be false when AllowNetwork is set")
+	}
+}
+
+func TestSeatbeltCommandCanRestrictWorkspaceAndNetwork(t *testing.T) {
+	root := t.TempDir()
+	privateTemp := t.TempDir()
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: root, PrivateTemp: privateTemp,
+		AllowNetwork: true, SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := seatbeltProfileForCommand(policy, "/bin/sh", true, nil, true)
+	workspaceWrite := "(allow file-write* (subpath " + seatbeltQuote(policy.WorkspaceRoot) + "))"
+	if strings.Contains(profile, workspaceWrite) {
+		t.Fatalf("read-only profile permits workspace writes:\n%s", profile)
+	}
+	privateWrite := "(allow file-write* (subpath " + seatbeltQuote(policy.PrivateTemp) + "))"
+	if !strings.Contains(profile, privateWrite) {
+		t.Fatalf("read-only profile blocks private temp writes:\n%s", profile)
+	}
+	if !strings.Contains(profile, "(deny network*)") ||
+		strings.Contains(profile, "(allow network-outbound)") {
+		t.Fatalf("network-restricted profile permits network:\n%s", profile)
+	}
+}
+
+func TestSeatbeltCommandAllowsOnlyDeclaredWorkspaceFiles(t *testing.T) {
+	root := t.TempDir()
+	privateTemp := t.TempDir()
+	declared := filepath.Join(root, "declared.txt")
+	undeclared := filepath.Join(root, "undeclared.txt")
+	for _, path := range []string{declared, undeclared} {
+		if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: root, PrivateTemp: privateTemp,
+		SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := seatbeltProfileForCommand(
+		policy, "/bin/sh", true, []string{declared}, true,
+	)
+	declaredWrite := "(allow file-write* (literal " + seatbeltQuote(declared) + "))"
+	if !strings.Contains(profile, declaredWrite) {
+		t.Fatalf("declared file grant missing:\n%s", profile)
+	}
+	undeclaredWrite := "(allow file-write* (literal " + seatbeltQuote(undeclared) + "))"
+	if strings.Contains(profile, undeclaredWrite) {
+		t.Fatalf("undeclared file grant present:\n%s", profile)
+	}
+	workspaceWrite := "(allow file-write* (subpath " + seatbeltQuote(root) + "))"
+	if strings.Contains(profile, workspaceWrite) {
+		t.Fatalf("workspace-wide write grant present:\n%s", profile)
+	}
+}
+
+func TestSeatbeltShellHereDocumentGrantIsNarrow(t *testing.T) {
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: t.TempDir(), PrivateTemp: t.TempDir(),
+		SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shellProfile := seatbeltProfile(policy, "/bin/sh")
+	for _, rule := range []string{
+		`(allow file-write* (literal "/var/tmp"))`,
+		`(allow file-write* (regex #"^/var/tmp/sh-thd-[0-9]+$"))`,
+		`(allow file-read* (regex #"^/var/tmp/sh-thd-[0-9]+$"))`,
+		`(allow file-write* (literal "/private/var/tmp"))`,
+		`(allow file-write* (regex #"^/private/var/tmp/sh-thd-[0-9]+$"))`,
+		`(allow file-read-metadata (subpath "/private/var/tmp"))`,
+		`(allow file-read* (regex #"^/private/var/tmp/sh-thd-[0-9]+$"))`,
+		`(allow file-write* (literal "/private/tmp"))`,
+		`(allow file-write* (regex #"^/private/tmp/sh-thd-[0-9]+$"))`,
+		`(allow file-read* (regex #"^/private/tmp/sh-thd-[0-9]+$"))`,
+	} {
+		if !strings.Contains(shellProfile, rule) {
+			t.Fatalf("shell profile missing narrow heredoc rule %q:\n%s", rule, shellProfile)
+		}
+	}
+	for _, broadRule := range []string{
+		`(allow file-write* (subpath "/var/tmp"))`,
+		`(allow file-write* (subpath "/private/var/tmp"))`,
+		`(allow file-write* (subpath "/private/tmp"))`,
+		`(allow file-read* (subpath "/private/var/tmp"))`,
+	} {
+		if strings.Contains(shellProfile, broadRule) {
+			t.Fatalf("shell profile broadly permits host temp writes:\n%s", shellProfile)
+		}
+	}
+	nonShellProfile := seatbeltProfile(policy, "/usr/bin/python3")
+	if strings.Contains(nonShellProfile, `sh-thd-`) ||
+		strings.Contains(nonShellProfile, `(allow file-write* (literal "/private/tmp"))`) {
+		t.Fatalf("non-shell profile inherited heredoc permissions:\n%s", nonShellProfile)
 	}
 }
 

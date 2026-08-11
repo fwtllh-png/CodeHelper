@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - Makefile
   - internal/security/sandbox/backend.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 跨平台构建与能力探测
@@ -40,8 +40,8 @@ flowchart LR
     K --> G[Guard]
 ```
 
-VS Code 还绑定 Local、Remote SSH、Dev Container Workspace Identity，并打包
-Target-specific Binary。Remote Editor Path 不是 Local Filesystem Path。
+VS Code 绑定本地 `file:` Workspace Identity，并打包 Target-specific Binary。
+Remote Editor Environment 不在插件产品范围内。
 
 ## 三层 Platform Evidence
 
@@ -94,5 +94,5 @@ go test ./internal/security/sandbox ./internal/platform/process
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `practice-cross-platform` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

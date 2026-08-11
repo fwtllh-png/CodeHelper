@@ -30,6 +30,10 @@ func TestGateDeniesUntilGranted(t *testing.T) {
 	if !strings.Contains(err.Error(), "egress denied") {
 		t.Fatalf("error = %q, want stable egress denied text", err)
 	}
+	host, protocol, ok := egress.DeniedTarget(err)
+	if !ok || host != "127.0.0.1" || protocol != "http" {
+		t.Fatalf("DeniedTarget() = %q, %q, %t", host, protocol, ok)
+	}
 
 	if !gate.AllowURL(server.URL) {
 		t.Fatal("AllowURL failed")

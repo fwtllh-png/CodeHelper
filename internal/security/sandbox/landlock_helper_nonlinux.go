@@ -11,6 +11,8 @@ func prepareLandlockInvocation(
 	string,
 	[]string,
 	[]string,
+	bool,
+	[]string,
 ) (string, string, error) {
 	return "", "", errors.New("Landlock helper is only available on Linux")
 }

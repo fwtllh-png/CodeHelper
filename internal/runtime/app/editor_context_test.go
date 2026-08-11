@@ -232,3 +232,49 @@ func TestResolveEditorContextValidatesSymbolAndDiagnostics(t *testing.T) {
 		t.Fatalf("diagnostic range error = %v", err)
 	}
 }
+
+func TestResolveNativeImageAndInlineContext(t *testing.T) {
+	root := t.TempDir()
+	image := []byte("\x89PNG\r\n\x1a\nfixture")
+	if err := os.WriteFile(filepath.Join(root, "screen.png"), image, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	imageDigest := sha256.Sum256(image)
+	inline := "go test ./...\nPASS"
+	inlineDigest := sha256.Sum256([]byte(inline))
+	prompt, receipts, attachments, err := resolveEditorContextWithAttachments(
+		root,
+		"inspect",
+		[]protocol.EditorContextReference{
+			{
+				Kind:   protocol.EditorContextImage,
+				Source: protocol.EditorContextSourceNativePicker,
+				URI: (&url.URL{
+					Scheme: "file", Path: filepath.Join(root, "screen.png"),
+				}).String(),
+				Path: "screen.png", DocumentVersion: 1,
+				Digest: hex.EncodeToString(imageDigest[:]),
+				Label:  "screen.png", MediaType: "image/png", Explicit: true,
+			},
+			{
+				Kind:   protocol.EditorContextTerminal,
+				Source: protocol.EditorContextSourceNativePicker,
+				Digest: hex.EncodeToString(inlineDigest[:]),
+				Label:  "Terminal output", MediaType: "text/plain",
+				Content: inline, Explicit: true,
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attachments) != 1 || attachments[0].MediaType != "image/png" ||
+		len(receipts) != 2 || receipts[0].Kind != protocol.EditorContextImage ||
+		receipts[1].Kind != protocol.EditorContextTerminal {
+		t.Fatalf("attachments=%+v receipts=%+v", attachments, receipts)
+	}
+	if !strings.Contains(prompt, "native model content block") ||
+		!strings.Contains(prompt, "go test ./...") {
+		t.Fatalf("resolved prompt = %q", prompt)
+	}
+}

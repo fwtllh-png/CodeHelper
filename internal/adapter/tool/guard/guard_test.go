@@ -32,6 +32,27 @@ func TestMalformedArgumentsFailBeforePolicy(t *testing.T) {
 	}
 }
 
+func TestArgumentExpansionFailureIsRecoverableInvalidArguments(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &failingExpanderExecutor{testExecutor: testExecutor{
+		descriptor: readDescriptor("expand"),
+	}}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	guard := newTestGuard(
+		t,
+		registry,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		nil,
+		nil,
+	)
+	_, err := guard.Execute(t.Context(), "call", "expand", json.RawMessage(`{}`))
+	if !errors.Is(err, tool.ErrInvalidArguments) {
+		t.Fatalf("error = %v, want ErrInvalidArguments", err)
+	}
+}
+
 func TestDefaultsNormalizeBeforeCanonicalResources(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
@@ -128,6 +149,80 @@ func TestRepositoryAskPausesAndApproveDenyResume(t *testing.T) {
 				t.Fatalf("cancel error = %v", err)
 			}
 		})
+	}
+}
+
+func TestActAutoProcessPausesForApprovalThenResumes(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	descriptor := readDescriptor("shell_run")
+	descriptor.Capability = tool.CapabilityProcess
+	descriptor.SandboxRequirement = tool.SandboxNone
+	if err := registry.Register(&testExecutor{descriptor: descriptor}, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan ApprovalRequest, 1)
+	guard := newTestGuard(
+		t,
+		registry,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto),
+		func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		},
+		nil,
+	)
+	result := make(chan error, 1)
+	go func() {
+		_, err := guard.Execute(
+			context.Background(), "process-call", "shell_run", json.RawMessage(`{}`),
+		)
+		result <- err
+	}()
+	request := <-requests
+	if request.Tool != "shell_run" {
+		t.Fatalf("approval tool = %q, want shell_run", request.Tool)
+	}
+	select {
+	case err := <-result:
+		t.Fatalf("process call did not pause for approval: %v", err)
+	default:
+	}
+	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
+	if err := <-result; err != nil {
+		t.Fatalf("approved process call failed: %v", err)
+	}
+}
+
+func TestActAutoReadOnlyShellDoesNotAsk(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	registry.SetSandboxBackend(strongBackend{})
+	descriptor := readDescriptor("shell_read")
+	descriptor.Capability = tool.CapabilityRead
+	descriptor.SandboxRequirement = tool.SandboxStrong
+	if err := registry.Register(&testExecutor{descriptor: descriptor}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var approvals atomic.Int64
+	guard := newTestGuard(
+		t,
+		registry,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto),
+		func(context.Context, ApprovalRequest) error {
+			approvals.Add(1)
+			return nil
+		},
+		nil,
+	)
+	if _, err := guard.Execute(
+		t.Context(), "read-process-call", "shell_read", json.RawMessage(`{}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if approvals.Load() != 0 {
+		t.Fatalf("read-only shell requested %d approvals", approvals.Load())
+	}
+	if guard.canEscalate(Invocation{Descriptor: descriptor}) {
+		t.Fatal("read-only shell may not escalate outside the sandbox")
 	}
 }
 
@@ -496,6 +591,17 @@ type testExecutor struct {
 	calls      atomic.Int32
 }
 
+type failingExpanderExecutor struct {
+	testExecutor
+}
+
+func (*failingExpanderExecutor) ExpandArguments(
+	context.Context,
+	json.RawMessage,
+) (json.RawMessage, error) {
+	return nil, errors.New("expanded beyond the bounded set")
+}
+
 func (e *testExecutor) Descriptor() tool.Descriptor { return e.descriptor }
 func (e *testExecutor) Execute(_ context.Context, raw json.RawMessage) (tool.Result, error) {
 	e.calls.Add(1)
@@ -776,27 +882,33 @@ func TestNetworkHostApprovalSessionReuseAndCancel(t *testing.T) {
 	_ = canceled
 }
 
-func TestNetworkDeniedUnderActAuto(t *testing.T) {
+func TestNetworkAsksUnderActAuto(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: networkFetchDescriptor()}
 	if err := registry.Register(&executor, nil); err != nil {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto)
-	asked := false
-	guard := newTestGuard(t, registry, runtime, func(context.Context, ApprovalRequest) error {
-		asked = true
+	requests := make(chan ApprovalRequest, 1)
+	guard := newTestGuard(t, registry, runtime, func(_ context.Context, request ApprovalRequest) error {
+		requests <- request
 		return nil
 	}, nil)
-	_, err := guard.Execute(
-		context.Background(), "call", "web_fetch",
-		json.RawMessage(`{"url":"https://example.com/"}`),
-	)
-	if err == nil || !contains(err.Error(), "permission_denied") {
-		t.Fatalf("error = %v, want permission_denied", err)
+	result := make(chan error, 1)
+	go func() {
+		_, err := guard.Execute(
+			context.Background(), "call", "web_fetch",
+			json.RawMessage(`{"url":"https://example.com/"}`),
+		)
+		result <- err
+	}()
+	request := <-requests
+	if request.Tool != "web_fetch" {
+		t.Fatalf("approval tool = %q, want web_fetch", request.Tool)
 	}
-	if asked {
-		t.Fatal("act+auto must deny network without asking")
+	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
+	if err := <-result; err != nil {
+		t.Fatalf("approved network call failed: %v", err)
 	}
 }
 
@@ -1043,11 +1155,11 @@ func TestIsSandboxDenial(t *testing.T) {
 	if !IsSandboxDenial(ErrSandboxDenied, tool.Result{}) {
 		t.Fatal("ErrSandboxDenied should match")
 	}
-	if !IsSandboxDenial(errors.New("sandbox denied by policy"), tool.Result{}) {
-		t.Fatal("sandbox denied string should match")
+	if IsSandboxDenial(errors.New("sandbox denied by policy"), tool.Result{}) {
+		t.Fatal("untyped sandbox text must not authorize escalation")
 	}
-	if !IsSandboxDenial(errors.New("Operation not permitted"), tool.Result{}) {
-		t.Fatal("operation not permitted should match")
+	if IsSandboxDenial(errors.New("Operation not permitted"), tool.Result{}) {
+		t.Fatal("OS error text must not authorize escalation")
 	}
 	if !IsSandboxDenial(nil, tool.Result{Metadata: map[string]any{"sandbox_denied": true}}) {
 		t.Fatal("metadata flag should match")

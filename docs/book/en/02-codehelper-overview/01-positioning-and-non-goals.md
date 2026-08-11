@@ -18,8 +18,8 @@ source_of_truth:
   - README.md
   - docs/en/overview.md
   - docs/en/roadmap.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Positioning, Value, and Non-Goals
@@ -209,5 +209,5 @@ positioning to layers and dependency direction.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `overview-positioning` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

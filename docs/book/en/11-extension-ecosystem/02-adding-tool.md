@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/adapter/tool/guard/guard.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Adding a Governed Tool
@@ -123,5 +123,5 @@ invalid schema, traversal, and unadvertised catalog binding fail before Execute.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `extension-tool` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

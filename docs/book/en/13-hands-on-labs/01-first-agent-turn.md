@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - docs/en/getting-started.md
   - testdata/providers/openai
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Build and Trace the First Agent Turn
@@ -246,5 +246,5 @@ never place a raw key in tracked documentation or command output.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-first-turn` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

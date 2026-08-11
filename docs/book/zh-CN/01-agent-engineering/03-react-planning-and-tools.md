@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/engine/engine.go
   - internal/adapter/tool/tool.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # ReAct、Planning、Tool Calling 与 Reflection
@@ -186,5 +186,5 @@ Adaptive Loop，何时应使用 Deterministic Orchestration。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `agent-react-planning-tools` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

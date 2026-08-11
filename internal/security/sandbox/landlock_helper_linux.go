@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"syscall"
 
@@ -31,6 +32,8 @@ func prepareLandlockInvocation(
 	executable string,
 	arguments []string,
 	environment []string,
+	workspaceReadOnly bool,
+	workspaceWritePaths []string,
 ) (string, string, error) {
 	if helperPath == "" {
 		return "", "", errors.New("Linux strong sandbox requires an injected helper executable")
@@ -43,10 +46,18 @@ func prepareLandlockInvocation(
 		return "", "", fmt.Errorf("resolve Landlock helper: %w", err)
 	}
 	readOnly := append(append([]string{}, policy.RuntimeReadRoots...), policy.HostReadRoots...)
+	readOnly = append(readOnly, policy.HostReadFiles...)
 	readOnly = append(readOnly, executable, helper)
+	if workspaceReadOnly {
+		readOnly = append(readOnly, policy.WorkspaceRoot)
+	}
 	slices.Sort(readOnly)
 	readOnly = slices.Compact(readOnly)
-	readWrite := []string{policy.PrivateTemp, policy.WorkspaceRoot}
+	readWrite := []string{policy.PrivateTemp}
+	if !workspaceReadOnly {
+		readWrite = append(readWrite, policy.WorkspaceRoot)
+	}
+	readWrite = append(readWrite, workspaceWritePaths...)
 	slices.Sort(readWrite)
 	request := landlockRequest{
 		SchemaVersion: landlockSchemaVersion,
@@ -162,11 +173,23 @@ func runLandlockHelper(arguments []string) error {
 		}
 	}
 	for _, path := range request.ReadWrite {
-		canonical, err := canonicalDirectory(path)
-		if err != nil || canonical != path {
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 {
 			return errors.New("Landlock write root is unavailable")
 		}
-		rules = append(rules, landlock.RWDirs(path).WithRefer())
+		if info.IsDir() {
+			canonical, err := canonicalDirectory(path)
+			if err != nil || canonical != path {
+				return errors.New("Landlock write root is unavailable")
+			}
+			rules = append(rules, landlock.RWDirs(path).WithRefer())
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil || resolved != path || !info.Mode().IsRegular() {
+			return errors.New("Landlock write file is unavailable")
+		}
+		rules = append(rules, landlock.RWFiles(path))
 	}
 	if err := landlock.V3.RestrictPaths(rules...); err != nil {
 		return fmt.Errorf("apply Landlock ABI v3 policy: %w", err)

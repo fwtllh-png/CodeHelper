@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - Makefile
   - internal/security/sandbox/backend.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Cross-Platform Builds and Capability Probing
@@ -42,9 +42,9 @@ flowchart LR
     K --> G[Guard allow/deny]
 ```
 
-VS Code additionally binds local, Remote SSH, and Dev Container Workspace
-identity and packages target-specific binaries. A remote editor path is not a
-local filesystem path.
+VS Code binds a local `file:` Workspace identity and packages target-specific
+binaries. Remote editor environments are outside the extension's product
+scope.
 
 ## Three Levels of Platform Evidence
 
@@ -103,5 +103,5 @@ go test ./internal/security/sandbox ./internal/platform/process
 | Item | Value |
 | --- | --- |
 | Catalog ID | `practice-cross-platform` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

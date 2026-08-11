@@ -220,6 +220,60 @@ func nextLegacySource(name string) string {
 	return fmt.Sprintf("legacy:%s:%d", name, legacySequence.Add(1))
 }
 
+// CatalogToolID binds a Session allowlist entry to its tool family and source
+// identity. Dynamic and Plugin names are already host/plugin namespaced; MCP
+// additionally retains its server source so a same-name replacement from a
+// different server cannot inherit an old grant.
+func CatalogToolID(name, source string) string {
+	kind := CatalogSourceKind(name, source)
+	var value string
+	switch kind {
+	case "mcp":
+		value = source + "/" + name
+	default:
+		value = kind + ":" + name
+	}
+	if len(value) <= 256 {
+		return value
+	}
+	sum := sha256.Sum256([]byte(value))
+	return kind + ":" + hex.EncodeToString(sum[:])
+}
+
+func CatalogSourceKind(name, source string) string {
+	switch {
+	case strings.HasPrefix(source, "mcp:"):
+		return "mcp"
+	case strings.HasPrefix(source, "plugin:"):
+		return "plugin"
+	case strings.HasPrefix(source, "dynamic:"):
+		return "dynamic"
+	case name == "load_skill":
+		return "skill"
+	default:
+		return "builtin"
+	}
+}
+
+func ParseCatalogToolID(id string) (kind, name string, ok bool) {
+	for _, candidate := range []string{
+		"builtin", "mcp", "plugin", "skill", "dynamic",
+	} {
+		prefix := candidate + ":"
+		if !strings.HasPrefix(id, prefix) || len(id) == len(prefix) {
+			continue
+		}
+		name = strings.TrimPrefix(id, prefix)
+		if candidate == "mcp" {
+			if index := strings.LastIndexByte(name, '/'); index >= 0 {
+				name = name[index+1:]
+			}
+		}
+		return candidate, name, true
+	}
+	return "", "", false
+}
+
 // CatalogEntryState is the lifecycle state of one model-visible catalog entry.
 // It is separate from Descriptor.Availability: availability describes whether
 // an executor can be used, while state also records exposure and revocation.

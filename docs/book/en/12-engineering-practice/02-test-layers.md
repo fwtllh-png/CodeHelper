@@ -11,12 +11,14 @@ code_paths:
   - extensions/vscode
 test_paths:
   - internal/host/runtimeapi/acp/contract_test.go
-  - extensions/vscode/src/runtime/integration.test.ts
+  - extensions/vscode/src/test/suite/index.ts
+  - extensions/vscode/src/performance/gate.test.ts
 source_of_truth:
   - Makefile
   - extensions/vscode/package.json
-status: verified
-last_verified: 2026-08-06
+  - extensions/vscode/scripts/matrix/journeys.mjs
+status: draft
+last_verified: null
 ---
 
 # Unit, Contract, Integration, and Electron Tests
@@ -34,12 +36,14 @@ binary, transport, Extension Host, or Electron is required.
 | Contract | shared runtime behavior through ACP | `make protocol-contract` |
 | Binary integration | ACP framing/process lifecycle | `make acp-interop` |
 | VS Code static/runtime | TS and real Runtime stdio | `make vscode-check`, `vscode-runtime-integration` |
-| Electron/remote | actual VS Code platform | `make vscode-integration` and matrix targets |
+| Electron | actual local VS Code platform | `make vscode-integration`, Rosetta integration |
+| Release matrix | Journey completeness and artifacts | `make vscode-rc` |
 
 Unit tests use fake clocks/backends only at ownership boundaries. ACP contract
 tests exercise shared runtime scenarios. Binary tests launch the built artifact.
-Electron, Remote SSH, and Dev Container gates are explicit because they acquire
-large external runtimes.
+Electron gates are explicit because they acquire a large external runtime.
+The VS Code suite currently has 173 tests; the Runtime integration lane runs
+the four cross-process cases instead of accepting their skipped form.
 
 Repository verification is reported through four lanes:
 
@@ -64,6 +68,7 @@ preserves command, platform, duration, exit code, status, and reason.
 | concurrency/lease | forced interleaving + Race |
 | process/transport | real binary lifecycle and cancellation |
 | VS Code trust/context | TS unit + ACP Runtime integration; Electron for platform API |
+| VS Code recovery/projection | Runtime artifact tests + Electron Retry/Continue/Plan + Patch resync |
 | release/update | artifact-content, digest, install, rollback, revocation |
 
 Test breadth follows changed contracts, not changed line count. A one-line
@@ -86,6 +91,22 @@ requires an external environment records prerequisites and why it did not run.
 - A skipped environment gate is reported, not called passed.
 - Generated protocol/compatibility drift fails static checks.
 - Electron tests remain outside ordinary `verify`.
+- A Remote SSH or Dev Container result cannot substitute for the local-only
+  product matrix.
+
+## Native Chat Journey Matrix
+
+Electron ARM64 covers Empty, local Workspace, Forced Colors, Native Runtime,
+and local Multi-root. Rosetta x64 covers Native Runtime and Multi-root. The
+shared Journey manifest contains 19 automated IDs and one documented manual
+Panel-move Journey. Matrix generation fails when an automated ID is missing;
+RC fails when a manual Journey is undocumented.
+
+Dynamic evidence includes all native context types, resource navigation,
+Light/Dark/High Contrast, forced colors, approximately 200% zoom, IME,
+hidden-view resume, streaming cancellation, Retry/Continue, model picker,
+Thinking, Tools, Credential validation, approval/verification receipts,
+Session lifecycle/search, and three Plan destinations.
 
 ## Verification
 
@@ -94,6 +115,7 @@ go test ./...
 make protocol-contract
 make test-hermetic
 cd extensions/vscode && npm run check && npm test
+make vscode-rc
 ```
 
 ## Review Questions
@@ -103,11 +125,12 @@ cd extensions/vscode && npm run check && npm test
 3. Why separate downloaded-runtime gates?
 4. How does contract risk determine test breadth?
 5. When does a fake become weaker than the behavior being claimed?
+6. Why does Journey evidence complement package test counts?
 
 ## Sources and Verification
 
 | Item | Value |
 | --- | --- |
 | Catalog ID | `practice-test-layers` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

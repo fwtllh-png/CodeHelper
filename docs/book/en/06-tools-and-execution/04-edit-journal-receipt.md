@@ -20,8 +20,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/persist/workspacejournal/journal.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Edit Plans, Journals, and Receipts
@@ -175,5 +175,5 @@ expected-after, and current fingerprints that turn a rollback into a conflict.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `tool-edit-journal-receipt` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

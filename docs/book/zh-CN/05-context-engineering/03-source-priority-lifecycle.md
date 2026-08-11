@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/promptcontext/context.go
   - internal/runtime/agent/promptcontext/turn.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Context Source、优先级与生命周期
@@ -30,6 +30,10 @@ last_verified: 2026-08-06
 
 按 Authority、Stability 与 Lifetime 分类 Context，理解 Ordering、Digest Skip、
 Working Set Decay 与 Evidence Priority。
+
+## 前置知识
+
+阅读前两章 Context Engineering 章节。
 
 ## Source Matrix
 
@@ -48,7 +52,7 @@ Working Set Decay 与 Evidence Priority。
 Authority 与 Recency 相互独立：最新 Repository Text 不会高于 Constitution；较早的
 Verified Evidence 可能比最新猜测更有价值。
 
-## 顺序与生命周期
+## Ordering 与 Priority
 
 ```mermaid
 flowchart LR
@@ -59,6 +63,8 @@ flowchart LR
     W --> E[Evidence]
     E --> P[Current Plan]
 ```
+
+## 生命周期机制
 
 稳定来源位于前缀以复用 Cache，动态任务来源位于 Tail。Evidence 内 Reminders/Risks
 优先于 Facts，使 Prefix-preserving Truncation 先保留义务，再保留可重复查询。
@@ -151,5 +157,5 @@ go test ./internal/runtime/agent/workingset ./internal/runtime/agent/evidence
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `context-source-lifecycle` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

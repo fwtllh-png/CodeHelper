@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/model/capability.go
   - internal/adapter/model/routeset.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Capability Negotiation 与 Route Resolution
@@ -39,6 +39,8 @@ last_verified: 2026-08-06
 发送 Unsupported Field 会在工作开始后得到 Remote 400；所有任务使用同一 Model 又会
 浪费 Cost 或缺失 Vision、Reasoning、Search、Tool Call。
 
+## Resolution Flow
+
 ```mermaid
 flowchart LR
     I[Provider / Model Selection] --> C[Catalog Lookup]
@@ -52,6 +54,8 @@ flowchart LR
 `Resolver` 将 Selection 转为 Validated `ReadyRoute`；`RouteSet` 将 Plan、Act、Vision
 等 Purpose 映射到 Route。Request 在网络前验证 Reasoning、Native Search、Tool Call、
 Prompt Cache 和 Output Limit。
+
+## Capability Evidence
 
 Capability 从 Catalog Declaration 开始，Runtime Observation 可以记录 Evidence 与
 Confidence，但不能静默升级未知能力。Locked Turn 固定 Slot，避免 Mid-turn Config
@@ -133,5 +137,5 @@ go test ./internal/runtime/agent/engine -run 'Test.*Route'
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `model-capability-routing` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

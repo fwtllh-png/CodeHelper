@@ -4,20 +4,35 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 void test("Chat Webview keeps a nonce-only CSP and safe DOM sinks", async () => {
-  const source = await sourceFile("chat", "view.ts");
+  const provider = await sourceFile("chat", "view.ts");
+  const shell = await sourceFile("chat", "webview", "shell.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
+  const dom = await sourceFile("chat", "webview", "dom.ts");
+  const mermaid = await sourceFile("chat", "webview", "mermaid-renderer.ts");
   const markdown = await sourceFile("chat", "markdown.ts");
-  assert.match(source, /"default-src 'none'"/u);
-  assert.match(source, /`style-src 'nonce-\$\{nonce\}'`/u);
-  assert.match(source, /`script-src 'nonce-\$\{nonce\}'`/u);
-  assert.match(source, /"img-src data:"/u);
-  assert.match(source, /localResourceRoots: \[\]/u);
-  assert.match(source, /\.textContent =/u);
-  assert.doesNotMatch(source, /\.innerHTML\s*=/u);
-  assert.doesNotMatch(source, /\beval\s*\(/u);
-  assert.doesNotMatch(source, /\bnew Function\s*\(/u);
-  assert.doesNotMatch(source, /https?:\/\//u);
-  assert.match(source, /const markdownTags = new Set/u);
-  assert.match(source, /\^\(https\?:\|mailto:\)/u);
+  assert.match(shell, /"default-src 'none'"/u);
+  assert.match(
+    shell,
+    /`style-src \$\{webview\.cspSource\} 'nonce-\$\{nonce\}'`/u,
+  );
+  assert.match(shell, /`script-src 'nonce-\$\{nonce\}'`/u);
+  assert.doesNotMatch(shell, /unsafe-inline/u);
+  assert.match(shell, /"img-src data:"/u);
+  assert.match(
+    provider,
+    /localResourceRoots: \[chatWebviewResourceRoot\(this\.#extensionUri\)\]/u,
+  );
+  assert.match(client, /\.textContent =/u);
+  assert.doesNotMatch(client, /\.innerHTML\s*=/u);
+  assert.doesNotMatch(client, /\beval\s*\(/u);
+  assert.doesNotMatch(client, /\bnew Function\s*\(/u);
+  assert.doesNotMatch(shell, /https?:\/\//u);
+  assert.match(dom, /const markdownTags = new Set/u);
+  assert.match(mermaid, /securityLevel: "strict"/u);
+  assert.match(dom, /"script, foreignObject, iframe, object, embed, a"/u);
+  assert.doesNotMatch(dom, /\.innerHTML\s*=/u);
+  assert.doesNotMatch(mermaid, /https?:\/\//u);
+  assert.match(dom, /\^\(\?:https\?:\|mailto:\)/u);
   assert.match(markdown, /html: false/u);
   assert.match(markdown, /const maxMarkdownNodes = 8192/u);
   assert.match(markdown, /\["http:", "https:", "mailto:"\]/u);
@@ -32,6 +47,24 @@ void test("Runtime launch uses argv spawning and bounded diagnostics", async () 
   assert.match(source, /const stderrLimit = 64 << 10/u);
 });
 
+void test("Composer credentials stay in SecretStorage and out of Webview state", async () => {
+  const credentials = await sourceFile("security", "credentials.ts");
+  const setup = await sourceFile("setup", "commands.ts");
+  const controller = await sourceFile("runtime", "controller.ts");
+  const processSource = await sourceFile("runtime", "process.ts");
+  const messages = await sourceFile("chat", "messages.ts");
+  const contract = await sourceFile("chat", "contract.ts");
+
+  assert.match(controller, /context\.secrets/u);
+  assert.match(credentials, /this\.#secrets\.store/u);
+  assert.match(setup, /password:\s*true/u);
+  assert.match(setup, /credentialReference/u);
+  assert.match(processSource, /env:\s*\{ \.\.\.process\.env, \.\.\.options\.environment \}/u);
+  assert.match(messages, /type: "configure-composer"/u);
+  assert.doesNotMatch(messages, /apiKey|secret:/u);
+  assert.doesNotMatch(contract, /credentialReference|credentialSecret/u);
+});
+
 void test("Webview messages and editor context retain explicit size boundaries", async () => {
   const messages = await sourceFile("chat", "messages.ts");
   const context = await sourceFile("context", "bridge.ts");
@@ -42,7 +75,7 @@ void test("Webview messages and editor context retain explicit size boundaries",
   assert.match(context, /const maxProviderSymbols = 4096/u);
   assert.match(context, /const maxProviderDiagnostics = 4096/u);
   assert.match(context, /isWorkspaceDocumentScheme\(document\.uri\.scheme\)/u);
-  assert.match(context, /value === "file" \|\| value === "vscode-remote"/u);
+  assert.match(context, /return value === "file"/u);
   assert.match(context, /document\.isDirty/u);
   assert.match(native, /const maxDiagnostics = 32/u);
   assert.match(native, /const maxDiagnosticMessageBytes = 8192/u);
@@ -50,7 +83,7 @@ void test("Webview messages and editor context retain explicit size boundaries",
   assert.match(projector, /values\.slice\(0, 8\)/u);
 });
 
-void test("remote execution remains inside the Workspace Extension Host", async () => {
+void test("Runtime execution is restricted to the local UI Extension Host", async () => {
   const controller = await sourceFile("runtime", "controller.ts");
   const processSource = await sourceFile("runtime", "process.ts");
   const compatibility = await sourceFile("compatibility", "policy.ts");
@@ -59,11 +92,12 @@ void test("remote execution remains inside the Workspace Extension Host", async 
     join(process.cwd(), "package.json"),
     "utf8",
   )) as Readonly<Record<string, unknown>>;
-  assert.deepEqual(manifest["extensionKind"], ["workspace"]);
-  assert.match(controller, /vscode\.ExtensionKind\.Workspace/u);
+  assert.deepEqual(manifest["extensionKind"], ["ui"]);
+  assert.match(controller, /vscode\.ExtensionKind\.UI/u);
   assert.match(controller, /assertWorkspaceExtensionHost/u);
   assert.match(host, /environment\.storageScheme !== "file"/u);
-  assert.match(host, /authorityMatchesRemoteName/u);
+  assert.match(host, /supports only local file workspaces/u);
+  assert.match(controller, /does not support Remote SSH or Dev Containers/u);
   assert.match(compatibility, /binary\.os !== expectedOS/u);
   assert.doesNotMatch(controller, /\bssh\b/u);
   assert.doesNotMatch(processSource, /\bssh\b/u);
@@ -82,7 +116,8 @@ void test("workspace identity and compatibility remain launch-bound", async () =
   assert.match(recovery, /requiredFeatures = compatibility\.required_features/u);
   assert.match(session, /workspace_identity: this\.#workspaceIdentity/u);
   assert.match(identity, /createHash\("sha256"\)\.update\(editorURI\)/u);
-  assert.match(identity, /parsed\.protocol === "vscode-remote:"/u);
+  assert.match(identity, /parsed\.protocol !== "file:"/u);
+  assert.doesNotMatch(process, /"--remote-name"/u);
   assert.match(compatibility, /development CodeHelper binary is unavailable in production/u);
   assert.match(store, /codehelper\.runtimeBindings\.v1/u);
 });
@@ -110,14 +145,34 @@ void test("multi-root routing remains root-bound and bounded", async () => {
 });
 
 void test("Runtime context receipts render as read-only text", async () => {
-  const source = await sourceFile("chat", "view.ts");
-  const start = source.indexOf("function contextReceiptCard(receipt)");
+  const source = await sourceFile("chat", "webview", "transcript.ts");
+  const start = source.indexOf("function contextReceiptCard(");
   const end = source.indexOf("function approvalCard(", start);
   assert.ok(start >= 0 && end > start);
   const receiptRenderer = source.slice(start, end);
   assert.match(receiptRenderer, /appendText\(/u);
   assert.doesNotMatch(receiptRenderer, /postMessage/u);
   assert.doesNotMatch(receiptRenderer, /actionButton/u);
+});
+
+void test("Chat resource navigation remains opaque and workspace-bound", async () => {
+  const messages = await sourceFile("chat", "messages.ts");
+  const resources = await sourceFile("chat", "resources.ts");
+  const navigator = await sourceFile("chat", "resource-navigator.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
+
+  assert.match(messages, /\^\[0-9a-f\]\{64\}\$/u);
+  assert.match(client, /type: "open-resource", resourceId/u);
+  assert.doesNotMatch(client, /vscode\.Uri/u);
+  assert.doesNotMatch(client, /command:/u);
+  assert.match(resources, /value\.includes\(":"\)/u);
+  assert.match(resources, /normalized\.startsWith\("\.\.\/"\)/u);
+  assert.match(navigator, /vscode\.Uri\.joinPath/u);
+  assert.match(navigator, /this\.#registry\.forURI\(uri\)/u);
+  assert.match(navigator, /"vscode\.executeDefinitionProvider"/u);
+  assert.match(navigator, /"revealInExplorer"/u);
+  assert.doesNotMatch(navigator, /vscode\.Uri\.parse/u);
+  assert.doesNotMatch(navigator, /executeCommand\(\s*reference/u);
 });
 
 void test("Native selection commands retain trust and Runtime authority", async () => {
@@ -176,7 +231,7 @@ void test("Changes review cannot bypass plan-bound Runtime approval", async () =
   assert.match(changes, /this\.#find\(\s*target\.rootId/u);
   assert.match(changes, /this\.#projector\(root\.rootId, sessionId\)/u);
   assert.match(chat, /current\.editPlan\?\.id/u);
-  assert.match(model, /const maxPlanFiles = 128/u);
+  assert.match(model, /const maxPlanFiles = 512/u);
   assert.match(model, /const maxPlanHistory = 16/u);
   assert.match(model, /const maxPlanTotalBytes = 8 << 20/u);
   assert.match(preview, /const maxPreviewDocuments = 256/u);

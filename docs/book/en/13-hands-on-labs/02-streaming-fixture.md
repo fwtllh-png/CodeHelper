@@ -14,8 +14,8 @@ test_paths:
   - internal/host/cli/run_test.go
 source_of_truth:
   - testdata/providers/openai/fixture.json
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Observe Streaming Events with a Fixture
@@ -88,4 +88,5 @@ rm -rf "$tmp"
 | Item | Value |
 | --- | --- |
 | Catalog ID | `lab-streaming-fixture` |
-| Status | `verified` |
+| Status | `draft` |
+| Last verified | Not yet verified |

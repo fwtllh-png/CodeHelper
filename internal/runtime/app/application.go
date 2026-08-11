@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -71,6 +72,73 @@ func (a *EngineAdapter) History() []provider.Message {
 	return a.engine.History()
 }
 
+func (a *EngineAdapter) RestorePendingApproval(
+	pending PendingApproval,
+) error {
+	if a == nil || a.engine == nil {
+		return errors.New("engine is unavailable")
+	}
+	encoded, err := json.Marshal(pending.Data)
+	if err != nil {
+		return err
+	}
+	var request toolguard.ApprovalRequest
+	if err := json.Unmarshal(encoded, &request); err != nil {
+		return err
+	}
+	return a.engine.RestoreApprovalRequest(request)
+}
+
+func (a *EngineAdapter) RestorePendingInput(pending PendingInput) error {
+	if a == nil || a.engine == nil {
+		return errors.New("engine is unavailable")
+	}
+	return a.engine.RestoreInputRequest(interact.Request{
+		RequestID: pending.Data.RequestID,
+		CallID:    pending.Data.CallID,
+		Tool:      pending.Data.Tool,
+		Prompt:    pending.Data.Prompt,
+		Options:   append([]string(nil), pending.Data.Options...),
+		ExpiresAt: pending.Data.ExpiresAt,
+	})
+}
+
+func (a *EngineAdapter) ValidateSessionProfile(
+	profile protocol.SessionProfile,
+) error {
+	if a == nil || a.engine == nil {
+		return errors.New("engine is unavailable")
+	}
+	return a.engine.ValidateSessionProfile(profile)
+}
+
+func (a *EngineAdapter) ApplySessionProfile(
+	profile protocol.SessionProfile,
+) error {
+	if a == nil || a.engine == nil {
+		return errors.New("engine is unavailable")
+	}
+	return a.engine.ApplySessionProfile(profile)
+}
+
+func (a *EngineAdapter) SetPolicyMode(mode policy.Mode) {
+	if a != nil && a.engine != nil {
+		a.engine.SetPolicyMode(mode)
+	}
+}
+
+func (a *EngineAdapter) SetPermission(permission policy.Permission) {
+	if a != nil && a.engine != nil {
+		a.engine.SetPermission(permission)
+	}
+}
+
+func (a *EngineAdapter) SetGranular(granular policy.Granular) {
+	if a != nil && a.engine != nil {
+		a.engine.SetGranular(granular)
+	}
+}
+
 func AdaptEngine(value *agentengine.Engine) *EngineAdapter {
 	return &EngineAdapter{engine: value}
 }
@@ -109,6 +177,7 @@ func (a *EngineAdapter) StartTurn(
 			return err
 		}
 	}
+	intent := protocol.NormalizeTurnIntent(payload.Intent)
 	identity := a.workspaceIdentity
 	if payload.WorkspaceIdentity != nil {
 		if identity.Version != 0 && identity != *payload.WorkspaceIdentity {
@@ -131,17 +200,18 @@ func (a *EngineAdapter) StartTurn(
 		// Engine executes tools in an isolated worktree.
 		contextWorkspace = a.workspaceIdentity.RuntimePath
 	}
-	modelPrompt, editorContext, resolveErr := resolveEditorContext(
+	modelPrompt, editorContext, attachments, resolveErr := resolveEditorContextWithAttachments(
 		contextWorkspace, payload.Prompt, payload.Context, identities...,
 	)
 	if resolveErr != nil {
 		return resolveErr
 	}
 	receipt := newReceiptRecorder(payload.Prompt)
+	receipt.intent = intent
 	receipt.editorContext = append(
 		[]protocol.EditorContextReceipt(nil), editorContext...,
 	)
-	_, runErr := a.engine.RunForTurn(ctx, string(payload.TurnID), modelPrompt, func(event agentengine.Event) error {
+	emit := func(event agentengine.Event) error {
 		receipt.observe(event)
 		if event.CatalogChanged != nil {
 			convert := func(changes []tool.CatalogChange) []protocol.ToolCatalogChange {
@@ -194,30 +264,41 @@ func (a *EngineAdapter) StartTurn(
 		}
 		switch event.State {
 		case agentengine.Preparing:
+			displayPrompt := payload.DisplayPrompt
+			if displayPrompt == "" {
+				displayPrompt = payload.Prompt
+			}
 			return sink.Emit(&protocol.TurnStartedData{
 				Provider: event.Provider, Model: event.Model,
-				Mode: event.Mode, Posture: event.Posture,
-				Workspace: event.Workspace, Sandbox: event.Sandbox,
-				Prompt: modelPrompt, DisplayPrompt: payload.Prompt,
+				Intent: intent,
+				Mode:   event.Mode, Posture: event.Posture,
+				Workspace:          event.Workspace,
+				WorkspaceIsolation: event.WorkspaceIsolation,
+				Sandbox:            event.Sandbox,
+				Prompt:             modelPrompt, DisplayPrompt: displayPrompt,
 				EditorContext: editorContext,
 			})
 		case agentengine.Completed:
-			if err := a.emitReceipt(receipt, sink); err != nil {
-				return err
-			}
-			return sink.Emit(&protocol.TurnCompletedData{Text: event.Text})
+			receipt.outcome = protocol.OutcomeForIntent(intent)
+			return a.commitTerminal(ctx, receipt, sink, true, &protocol.TurnCompletedData{
+				Text: event.Text, Outcome: protocol.OutcomeForIntent(intent),
+			})
 		case agentengine.Failed:
-			if err := a.emitReceipt(receipt, sink); err != nil {
-				return err
+			secondary := make([]protocol.TerminalIssue, len(event.SecondaryIssues))
+			for index, issue := range event.SecondaryIssues {
+				secondary[index] = protocol.TerminalIssue{
+					Phase: issue.Phase, Code: issue.Code, Message: issue.Message,
+				}
 			}
-			return sink.Emit(&protocol.TurnFailedData{
-				Code:    nonEmptyCode(event.ErrorCode, protocol.CodeInternal),
-				Message: nonEmpty(event.Error, "turn failed"),
+			return a.commitTerminal(ctx, receipt, sink, false, &protocol.TurnFailedData{
+				Code:            nonEmptyCode(event.ErrorCode, protocol.CodeInternal),
+				Message:         nonEmpty(event.Error, "turn failed"),
+				SecondaryIssues: secondary,
 			})
 		case agentengine.Canceled:
-			// Runtime owns the terminal turn.canceled event so CancelTurn reason
-			// (stored on the Runtime) is the authoritative audit payload.
-			return nil
+			return a.commitTerminal(ctx, receipt, sink, false, &protocol.TurnCanceledData{
+				Reason: protocol.NormalizeCancelReason(event.CancelReason),
+			})
 		case agentengine.AwaitingApproval:
 			if event.Approval == nil {
 				return nil
@@ -289,13 +370,57 @@ func (a *EngineAdapter) StartTurn(
 				return sink.Emit(&protocol.ToolStartData{
 					Tool:      event.ToolCall.Name,
 					CallID:    event.ToolCall.ID,
-					Arguments: json.RawMessage(event.ToolCall.Arguments),
+					Arguments: validToolArguments(event.ToolCall.Arguments),
 				})
 			}
 			if event.ToolCall != nil && event.Result != nil {
+				changes := make([]protocol.FileChange, len(event.FileChanges))
+				for index, change := range event.FileChanges {
+					changes[index] = protocol.FileChange{
+						Path: change.Path, Kind: change.Kind,
+						Added: change.Added, Removed: change.Removed,
+					}
+				}
+				var recovery *protocol.ToolRecovery
+				var completion *protocol.CompletionDeclaration
+				var observedChanges *int
+				var workspaceWriteScope string
+				if metadata := event.Result.Metadata; metadata != nil {
+					category, _ := metadata["error_category"].(string)
+					action, _ := metadata["required_action"].(string)
+					if category != "" && action != "" {
+						path, _ := metadata["path"].(string)
+						retry, _ := metadata["retry_original"].(bool)
+						recovery = &protocol.ToolRecovery{
+							ErrorCategory: category, RequiredAction: action,
+							Path: path, RetryOriginal: retry,
+						}
+					}
+					if count, ok := metadata["observed_changes"].(int); ok {
+						observedChanges = &count
+					}
+					workspaceWriteScope, _ = metadata["workspace_write_scope"].(string)
+					if declaration, ok := metadata[tool.MetadataCompletionDeclaration].(tool.CompletionDeclaration); ok {
+						accepted, _ := metadata["completion_declaration_accepted"].(bool)
+						rejection, _ := metadata["completion_declaration_rejection"].(string)
+						completion = &protocol.CompletionDeclaration{
+							Status: declaration.Status, Summary: declaration.Summary,
+							ChangedPaths: append([]string(nil), declaration.ChangedPaths...),
+							VerificationCallIDs: append(
+								[]string(nil), declaration.VerificationCallIDs...,
+							),
+							PendingActions:   append([]string(nil), declaration.PendingActions...),
+							MutationRevision: declaration.MutationRevision,
+							CallID:           declaration.CallID, Accepted: accepted, Rejection: rejection,
+						}
+					}
+				}
 				if err := sink.Emit(&protocol.ToolResultData{
 					Tool: event.ToolCall.Name, CallID: event.ToolCall.ID,
 					Output: event.Result.Content, IsError: event.Result.IsError,
+					Changes: changes, Recovery: recovery, Completion: completion,
+					WorkspaceWriteScope: workspaceWriteScope,
+					ObservedChanges:     observedChanges,
 				}); err != nil {
 					return err
 				}
@@ -326,6 +451,7 @@ func (a *EngineAdapter) StartTurn(
 						receipts[index] = protocol.DiagnosticReceipt{
 							Path: receipt.Path, Status: receipt.Status, Runner: receipt.Runner,
 							Diagnostics: diagnostics, Message: receipt.Message,
+							ErrorCategory: receipt.ErrorCategory, ExitCode: receipt.ExitCode,
 						}
 					}
 					return sink.Emit(&protocol.DiagnosticsData{
@@ -359,39 +485,107 @@ func (a *EngineAdapter) StartTurn(
 			})
 		}
 		return sink.Emit(&protocol.ToolStateData{State: string(event.State), Text: event.Text})
-	})
+	}
+	_, runErr := a.engine.RunForTurnWithIntentAndAttachments(
+		ctx, string(payload.TurnID), modelPrompt, intent, attachments, emit,
+	)
 	return runErr
 }
 
-// emitReceipt publishes the turn's execution receipt before the terminal event
-// so hosts observe one authoritative summary per turn.
-func (a *EngineAdapter) emitReceipt(recorder *receiptRecorder, sink EngineSink) error {
-	historyBytes, maxHistoryBytes := a.engine.ContextBudget()
-	data := recorder.build(turnObservations{
-		changes:    a.engine.TurnDiff(),
-		readPaths:  a.engine.ReadPaths(recorder.turn),
-		context:    a.engine.ContextReceipts(),
-		selections: a.engine.ContextSelections(),
-		catalog:    a.engine.CatalogReceipt(),
-		evidence:   a.engine.EvidenceSnapshot(),
-		budget: &protocol.ReceiptContextBudget{
-			HistoryBytes: historyBytes, MaxHistoryBytes: maxHistoryBytes,
-			Compactions: a.engine.Compactions(),
-		},
-		conflicts: a.engine.RollbackConflicts(),
-		latency:   a.engine.TurnLatency(),
-		spend:     a.engine.BudgetSnapshot(),
-	})
+func (a *EngineAdapter) buildReceipt(
+	recorder *receiptRecorder,
+	completed bool,
+) (*protocol.ExecutionReceiptData, error) {
+	if recorder == nil || recorder.budget == nil {
+		return nil, errors.New("terminal event is missing a frozen context budget")
+	}
+	data := recorder.build()
 	if data == nil {
+		return nil, nil
+	}
+	if err := validateTerminalReceipt(data, completed); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func (a *EngineAdapter) commitTerminal(
+	ctx context.Context,
+	recorder *receiptRecorder,
+	sink EngineSink,
+	completed bool,
+	terminal protocol.EventData,
+) error {
+	recorder.freeze(a.engine)
+	receipt, err := a.buildReceipt(recorder, completed)
+	if err != nil {
+		return err
+	}
+	frozen, err := a.engine.FrozenTerminalState(context.WithoutCancel(ctx))
+	if err != nil {
+		return err
+	}
+	if commitSink, ok := sink.(TerminalCommitSink); ok {
+		return commitSink.CommitTerminal(TerminalMaterial{
+			FrozenState: frozen.State,
+			DomainFacts: frozen.DomainFacts,
+			Receipt:     receipt,
+			Terminal:    terminal,
+		})
+	}
+	return errors.New("terminal commit sink is required")
+}
+
+func validateTerminalReceipt(
+	receipt *protocol.ExecutionReceiptData,
+	completed bool,
+) error {
+	if receipt == nil {
 		return nil
 	}
-	return sink.Emit(data)
+	if !completed {
+		if receipt.Outcome != "" {
+			return fmt.Errorf(
+				"failed turn receipt carries success outcome %q",
+				receipt.Outcome,
+			)
+		}
+		return nil
+	}
+	want := protocol.OutcomeForIntent(receipt.Intent)
+	if receipt.Outcome != want {
+		return fmt.Errorf(
+			"completed turn receipt outcome %q does not match intent %q",
+			receipt.Outcome,
+			receipt.Intent,
+		)
+	}
+	if protocol.NormalizeTurnIntent(receipt.Intent) !=
+		protocol.TurnIntentWorkspaceChange {
+		return nil
+	}
+	if len(receipt.Changes) == 0 {
+		return errors.New(
+			"completed workspace_change receipt has no observed changes",
+		)
+	}
+	if receipt.WorkspaceOutcome == nil ||
+		receipt.WorkspaceOutcome.Status != "changed" {
+		return errors.New(
+			"completed workspace_change receipt has no changed workspace outcome",
+		)
+	}
+	return nil
 }
 
 func (a *EngineAdapter) CancelTurn(
 	_ context.Context, payload *protocol.CancelTurnPayload, _ EngineSink,
 ) error {
-	a.engine.RequestCancelWithReason(protocol.NormalizeCancelReason(payload.Reason))
+	reason := protocol.NormalizeCancelReason(payload.Reason)
+	if err := a.engine.AcceptCancel(reason); err != nil {
+		return err
+	}
+	a.engine.RequestCancelWithReason(reason)
 	return nil
 }
 
@@ -421,10 +615,15 @@ func (a *EngineAdapter) DecideApproval(
 	if err := a.engine.StageApprovalDecision(decision); err != nil {
 		return err
 	}
+	if err := a.engine.AcceptApprovalResult(
+		payload.RequestID,
+		payload.Decision == protocol.ApprovalCancel,
+	); err != nil {
+		return err
+	}
 	if err := sink.Emit(&protocol.ApprovalResolvedData{
 		RequestID: payload.RequestID, Decision: payload.Decision,
 	}); err != nil {
-		_ = a.engine.ResumeApproval(payload.RequestID)
 		return err
 	}
 	return a.engine.ResumeApproval(payload.RequestID)
@@ -439,10 +638,12 @@ func (a *EngineAdapter) ReplyInput(
 	if err := a.engine.StageInputReply(reply); err != nil {
 		return err
 	}
+	if err := a.engine.AcceptInputResult(payload.RequestID); err != nil {
+		return err
+	}
 	if err := sink.Emit(&protocol.InputResolvedData{
 		RequestID: payload.RequestID, Answer: payload.Answer,
 	}); err != nil {
-		_ = a.engine.ResumeInput(payload.RequestID)
 		return err
 	}
 	return a.engine.ResumeInput(payload.RequestID)
@@ -624,6 +825,14 @@ func protocolNetwork(value *toolguard.NetworkApprovalContext) *protocol.NetworkA
 	return &protocol.NetworkApprovalPayload{
 		Host: value.Host, Protocol: value.Protocol, Mode: value.Mode,
 	}
+}
+
+func validToolArguments(value string) json.RawMessage {
+	raw := json.RawMessage(value)
+	if !json.Valid(raw) {
+		return nil
+	}
+	return raw
 }
 
 func nonEmptyCode(value, fallback protocol.ErrorCode) protocol.ErrorCode {

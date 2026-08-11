@@ -5,6 +5,7 @@ import (
 
 	language "github.com/fwtllh-png/CodeHelper/internal/adapter/lsp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
 	contenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/content"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	gittool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/git"
@@ -67,6 +68,9 @@ func NewWithIndex(
 	registry.SetSandboxBackend(backend)
 	handles := handletool.NewStore()
 	if err := handletool.Register(registry, handles); err != nil {
+		return nil, nil, err
+	}
+	if err := completiontool.Register(registry); err != nil {
 		return nil, nil, err
 	}
 	files, err := filetool.NewWithBackend(root, backend)

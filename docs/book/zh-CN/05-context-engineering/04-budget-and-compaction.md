@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/compact/compact.go
   - internal/runtime/agent/engine/compaction.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Token Budget、Compaction 与信息损失
@@ -30,6 +30,10 @@ last_verified: 2026-08-06
 
 理解 Partition Budget、Context Window Check、Deterministic Compaction，以及 Receipt
 如何显式呈现信息损失。
+
+## 前置知识
+
+阅读 [Context Source、优先级与生命周期](./03-source-priority-lifecycle.md)。
 
 ## 问题背景
 
@@ -95,10 +99,12 @@ goals -> todos -> failures -> changes -> critical paths -> facts -> digest
 Truncation Notice 仍保留。Previous Summary 作为 Carried Content 继续存在，避免二次
 Compaction 将其压平为含义不明的一行。
 
-## Turn Integrity 与 Receipt
+## Turn Integrity
 
 Cut 发生在 Whole-turn Group 边界，保持 Assistant Tool Call 与 Tool Result 配对。
 Skill/Constitution Fragment 从旧 History 删除并重新注入；Recent Tail 原样保留。
+
+## Receipts
 
 Compaction Receipt 报告 Original/Retained Byte 与 Message、Removed Turn、Retained
 Section、Truncation Reason、Working Set、Critical Path 和 Prompt Context Receipt。
@@ -156,5 +162,5 @@ Goal/Todo 比可重复的 Fact/Digest 更晚丢失。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `context-budget-compaction` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

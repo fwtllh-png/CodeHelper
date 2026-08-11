@@ -108,6 +108,10 @@
         ".github/**",
         "Makefile",
         "scripts/**",
+        "extensions/vscode/RELEASE-EVIDENCE.md",
+        "extensions/vscode/scripts/**",
+        "extensions/vscode/src/performance/**",
+        "extensions/vscode/src/test/suite/**",
         "docs/benchmark-v2.json",
         "docs/hotspot-baseline.json"
       ]
@@ -159,6 +163,10 @@
     {
       "id": "experience-contract",
       "command": ["make", "experience-baseline"]
+    },
+    {
+      "id": "vscode-release-candidate",
+      "command": ["make", "vscode-rc"]
     }
   ],
   "screenshots": [],

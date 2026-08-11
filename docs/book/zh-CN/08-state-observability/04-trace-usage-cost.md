@@ -19,7 +19,7 @@ source_of_truth:
   - internal/observability/trace/trace.go
   - internal/observability/usage/repository.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Trace、Span、Usage 与 Cost
@@ -30,6 +30,8 @@ last_verified: 2026-08-06
 
 理解 Phase Span、Latency Rollup、Multi-sample Usage Projection、Pricing Provenance 与
 Redacted Telemetry。
+
+## Observation Model
 
 ```mermaid
 flowchart LR
@@ -122,4 +124,4 @@ go test ./internal/observability/telemetry
 | --- | --- |
 | Catalog ID | `state-trace-usage-cost` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-10 |

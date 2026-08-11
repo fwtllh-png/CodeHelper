@@ -30,7 +30,7 @@
     "vscode": "^1.96.0"
   },
   "extensionKind": [
-    "workspace"
+    "ui"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -60,25 +60,8 @@
           "icon": "media/codehelper.svg"
         },
         {
-          "id": "codehelper.threads",
-          "name": "Threads",
-          "icon": "media/codehelper.svg"
-        },
-        {
           "id": "codehelper.agents",
           "name": "Agents",
-          "icon": "media/codehelper.svg",
-          "visibility": "collapsed"
-        },
-        {
-          "id": "codehelper.tasks",
-          "name": "Tasks",
-          "icon": "media/codehelper.svg",
-          "visibility": "collapsed"
-        },
-        {
-          "id": "codehelper.jobs",
-          "name": "Jobs",
           "icon": "media/codehelper.svg",
           "visibility": "collapsed"
         },
@@ -105,12 +88,24 @@
         "title": "CodeHelper: Restart Runtime"
       },
       {
+        "command": "codehelper.startRuntimeCapture",
+        "title": "CodeHelper: Start Runtime Capture"
+      },
+      {
+        "command": "codehelper.stopRuntimeCapture",
+        "title": "CodeHelper: Stop Runtime Capture"
+      },
+      {
         "command": "codehelper.repairRuntime",
         "title": "CodeHelper: Repair Runtime"
       },
       {
         "command": "codehelper.runSetup",
         "title": "CodeHelper: Setup Workspace"
+      },
+      {
+        "command": "codehelper.configureCredential",
+        "title": "CodeHelper: Configure Credential"
       },
       {
         "command": "codehelper.runQuickstart",
@@ -135,44 +130,44 @@
       {
         "command": "codehelper.explainSelection",
         "title": "CodeHelper: Explain Selection",
-        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection"
+        "enablement": "resourceScheme == file && editorHasSelection"
       },
       {
         "command": "codehelper.editSelection",
         "title": "CodeHelper: Edit Selection",
-        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted"
+        "enablement": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted"
       },
       {
         "command": "codehelper.refactorSelection",
         "title": "CodeHelper: Refactor Selection",
-        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted"
+        "enablement": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted"
       },
       {
         "command": "codehelper.generateTestsForSelection",
         "title": "CodeHelper: Generate Tests for Selection",
-        "enablement": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted"
+        "enablement": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "command": "codehelper.explainSelection",
-          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection",
+          "when": "resourceScheme == file && editorHasSelection",
           "group": "1_modification@10"
         },
         {
           "command": "codehelper.editSelection",
-          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted",
+          "when": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted",
           "group": "1_modification@11"
         },
         {
           "command": "codehelper.refactorSelection",
-          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted",
+          "when": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted",
           "group": "1_modification@12"
         },
         {
           "command": "codehelper.generateTestsForSelection",
-          "when": "(resourceScheme == file || resourceScheme == vscode-remote) && editorHasSelection && isWorkspaceTrusted",
+          "when": "resourceScheme == file && editorHasSelection && isWorkspaceTrusted",
           "group": "1_modification@13"
         }
       ]
@@ -233,11 +228,11 @@
         },
         "codehelper.runtime.maxSteps": {
           "type": "integer",
-          "default": 8,
+          "default": 256,
           "minimum": 1,
-          "maximum": 128,
+          "maximum": 1000,
           "scope": "window",
-          "description": "Maximum model/tool steps per VS Code turn."
+          "description": "Hard maximum model/tool steps per VS Code turn. CodeHelper emits a convergence warning before exhausting this budget."
         }
       }
     }
@@ -254,28 +249,29 @@
     "check:protocol": "node ./scripts/generate-protocol.mjs --check",
     "check:compatibility": "node ./scripts/generate-compatibility.mjs --check",
     "build": "node ./scripts/build.mjs",
-    "check": "npm run check:protocol && npm run check:compatibility && tsc --noEmit && eslint .",
+    "check": "npm run check:protocol && npm run check:compatibility && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json && eslint .",
     "test": "node ./scripts/test.mjs",
     "test:update": "node ./scripts/test.mjs binary",
     "test:security": "node ./scripts/test.mjs security",
     "test:performance": "node ./scripts/test.mjs performance",
     "test:runtime-performance": "node ./scripts/runtime-ready.mjs",
     "test:electron": "npm run build && node ./scripts/electron.mjs",
-    "test:remote-ssh": "npm run build && node ./scripts/remote-ssh.mjs",
-    "test:dev-container": "npm run build && node ./scripts/dev-container.mjs",
     "package": "npm run clean && npm run check && npm run test && npm run build",
-    "package:vsix": "npm run package && node ./scripts/vsix.mjs && node ./scripts/vsix-install.mjs"
+    "package:vsix": "npm run release:vscode:dry-run",
+    "package:vsix:universal": "npm run package && node ./scripts/vsix.mjs && node ./scripts/vsix-install.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@types/markdown-it": "^14.1.2",
-    "@types/node": "^24.1.0",
+    "@types/node": "24.1.0",
     "@types/vscode": "^1.96.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.25.8",
     "eslint": "^9.32.0",
     "markdown-it": "^14.1.0",
+    "markdownlint-cli2": "0.23.2",
+    "mermaid": "^11.16.1",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.38.0"
   }

@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/promptcontext/context.go
   - internal/runtime/agent/evidence/evidence.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 如何评估 Context Quality
@@ -31,6 +31,11 @@ last_verified: 2026-08-06
 
 用 Coverage、Precision、Freshness、Provenance、Budget Efficiency 与 Outcome Evidence
 替代“Prompt 看起来不错”的主观评价。
+
+## 前置知识
+
+阅读 [Context Source、优先级与生命周期](./03-source-priority-lifecycle.md) 与
+[Token Budget、Compaction 与信息损失](./04-budget-and-compaction.md)。
 
 ## Quality Dimension
 
@@ -46,6 +51,8 @@ last_verified: 2026-08-06
 
 Token 数量不能单独衡量 Quality：小 Context 可能遗漏 Critical File，大 Context 可能埋没
 唯一 Relevant Diagnostic。
+
+## Measurement Loop
 
 ```mermaid
 flowchart LR
@@ -172,5 +179,5 @@ go test ./internal/runtime/app -run 'TestReceipt(ReportsReadPathsAndContextSecti
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `context-quality` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

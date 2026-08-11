@@ -78,12 +78,13 @@
         "turn_orchestration": ["Run", "RunForTurn"],
         "start_phase": ["WorkspaceTurnGate", "beginTurn", "endTurn"],
         "model_phase": ["modelStep", "consume"],
-        "tool_phase": ["runTools"],
+        "tool_phase": ["runToolsWithCache"],
         "approval_and_input": ["DecideApproval", "ResumeApproval", "ResumeInput"],
         "verification": ["verifyGate", "evaluate"],
-        "terminal": ["terminalHandler", "newTerminalHandler", "finish"],
+        "terminal": ["turnEmitter", "newTurnEmitter", "finish"],
         "cancel": ["RequestCancel", "setActiveCancel"],
-        "history_and_recovery": ["History", "ReplaceHistory", "Undo", "RevertWorkspace"]
+        "history_and_recovery": ["History", "ReplaceHistory", "Undo", "RevertWorkspace"],
+        "turn_kernel_coordinator": ["newEngineTurnKernelForTurn"]
       },
       "responsibility_files": {
         "engine_core": "engine.go",
@@ -95,7 +96,8 @@
         "verification": "verify.go",
         "terminal": "terminal_handler.go",
         "cancel": "cancel_handler.go",
-        "history_and_recovery": "history_recovery.go"
+        "history_and_recovery": "history_recovery.go",
+        "turn_kernel_coordinator": "turn_kernel.go"
       },
       "allowed_internal_imports": [
         "internal/adapter/hooks",
@@ -116,6 +118,7 @@
         "internal/runtime/agent/compact",
         "internal/runtime/agent/evidence",
         "internal/runtime/agent/promptcontext",
+        "internal/runtime/agent/turnkernel",
         "internal/runtime/agent/workingset",
         "internal/runtime/protocol",
         "internal/security/policy"
@@ -133,7 +136,8 @@
         "internal/runtime/agent/engine/history_recovery.go",
         "internal/runtime/agent/engine/workspace_turn_gate_test.go",
         "internal/runtime/agent/engine/verify_gate_test.go",
-        "internal/runtime/agent/engine/toolstream_test.go"
+        "internal/runtime/agent/engine/toolstream_test.go",
+        "internal/runtime/agent/engine/turn_kernel_test.go"
       ]
     },
     {

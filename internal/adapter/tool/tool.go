@@ -60,6 +60,45 @@ func (e preconditionError) Unwrap() []error { return []error{ErrPrecondition, e.
 // checks they run before touching the workspace.
 func Precondition(err error) error { return preconditionError{err: err} }
 
+// RecoveryHint is structured guidance for correcting a recoverable tool call.
+// It travels only through the error chain and becomes model-visible Result
+// metadata at the engine boundary.
+type RecoveryHint struct {
+	ErrorCategory  string
+	RequiredAction string
+	Path           string
+	RetryOriginal  bool
+	FailedChange   int
+	MatchCount     int
+	StartLine      int
+	EndLine        int
+	CurrentExcerpt string
+	CandidatePaths []string
+}
+
+type recoveryHintError struct {
+	err  error
+	hint RecoveryHint
+}
+
+func (e recoveryHintError) Error() string { return e.err.Error() }
+func (e recoveryHintError) Unwrap() error { return e.err }
+
+func WithRecoveryHint(err error, hint RecoveryHint) error {
+	if err == nil {
+		return nil
+	}
+	return recoveryHintError{err: err, hint: hint}
+}
+
+func RecoveryHintFromError(err error) (RecoveryHint, bool) {
+	var hinted recoveryHintError
+	if !errors.As(err, &hinted) {
+		return RecoveryHint{}, false
+	}
+	return hinted.hint, true
+}
+
 type Visibility string
 
 const (
@@ -91,6 +130,13 @@ type ParallelPolicy string
 const (
 	ParallelConcurrent ParallelPolicy = "concurrent"
 	ParallelSerial     ParallelPolicy = "serial"
+)
+
+type RepeatPolicy string
+
+const (
+	RepeatExecute        RepeatPolicy = "execute"
+	RepeatReplaySameTurn RepeatPolicy = "replay_same_turn"
 )
 
 type SandboxRequirement string
@@ -125,6 +171,14 @@ type ResourceTemplate struct {
 type ResourceResolver struct {
 	Templates  []ResourceTemplate `json:"templates,omitempty"`
 	PatchField string             `json:"patch_field,omitempty"`
+	// PathsField names an array of workspace file paths. Every entry becomes an
+	// exact file write resource; directory trees and globs are intentionally not
+	// supported by this resolver.
+	PathsField string `json:"paths_field,omitempty"`
+	// ReadPathsField is the read-only counterpart to PathsField. It is used by
+	// verification tools to bind an explicit coverage claim to canonical
+	// workspace paths without granting write access to those paths.
+	ReadPathsField string `json:"read_paths_field,omitempty"`
 	// ChangesField names an array-of-objects argument whose every "path" and "to"
 	// entry is a file the call may write. Transaction tools carry their paths
 	// there instead of in a single top-level field.
@@ -144,6 +198,7 @@ type Descriptor struct {
 	ResourceResolver   ResourceResolver   `json:"resource_resolver"`
 	AccessMode         AccessMode         `json:"access_mode"`
 	ParallelPolicy     ParallelPolicy     `json:"parallel_policy"`
+	RepeatPolicy       RepeatPolicy       `json:"repeat_policy,omitempty"`
 	SandboxRequirement SandboxRequirement `json:"sandbox_requirement"`
 	Aliases            []Alias            `json:"aliases,omitempty"`
 	DeferredLoading    DeferredLoading    `json:"deferred_loading"`
@@ -170,6 +225,21 @@ type Result struct {
 	Truncated     bool           `json:"truncated,omitempty"`
 	OriginalBytes int            `json:"original_bytes,omitempty"`
 	Handle        string         `json:"handle,omitempty"`
+}
+
+const MetadataCompletionDeclaration = "completion_declaration"
+
+// CompletionDeclaration reports whether tool-assisted work has pending actions.
+// The engine binds an accepted complete declaration to observed paths and the
+// current mutation revision before it can authorize a terminal transition.
+type CompletionDeclaration struct {
+	Status              string   `json:"status"`
+	Summary             string   `json:"summary"`
+	ChangedPaths        []string `json:"changed_paths"`
+	VerificationCallIDs []string `json:"verification_call_ids"`
+	PendingActions      []string `json:"pending_actions"`
+	MutationRevision    uint64   `json:"mutation_revision,omitempty"`
+	CallID              string   `json:"call_id,omitempty"`
 }
 
 // MetadataEvidence is the result metadata key carrying []EvidenceHit: the paths a
@@ -370,6 +440,36 @@ func (r *Registry) ResolveBound(
 		)
 	}
 	return r.resolve(name, &binding)
+}
+
+// ResolveCatalogToolID validates a sampled binding without materializing or
+// executing the tool and returns the stable identity used by Session
+// allowlists.
+func (r *Registry) ResolveCatalogToolID(
+	name string,
+	binding CatalogBinding,
+) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if canonical := r.aliases[name]; canonical != "" {
+		name = canonical
+	}
+	item := r.tools[name]
+	if item == nil {
+		if tombstone, revoked := r.tombstones[name]; revoked {
+			return "", fmt.Errorf(
+				"%w %q (source=%s revision=%d)",
+				ErrToolRevoked, tombstone.canonical, tombstone.source, tombstone.revision,
+			)
+		}
+		return "", fmt.Errorf("%w %q", ErrUnknownTool, name)
+	}
+	if binding.CatalogID != "" {
+		if err := r.validateBindingLocked(name, item, &binding); err != nil {
+			return "", err
+		}
+	}
+	return CatalogToolID(name, item.source), nil
 }
 
 func (r *Registry) resolve(
@@ -610,6 +710,11 @@ func validateDescriptor(descriptor Descriptor) error {
 	}
 	if descriptor.ParallelPolicy != ParallelConcurrent && descriptor.ParallelPolicy != ParallelSerial {
 		return fmt.Errorf("tool %q has invalid parallel policy", descriptor.Name)
+	}
+	if descriptor.RepeatPolicy != "" &&
+		descriptor.RepeatPolicy != RepeatExecute &&
+		descriptor.RepeatPolicy != RepeatReplaySameTurn {
+		return fmt.Errorf("tool %q has invalid repeat policy", descriptor.Name)
 	}
 	if descriptor.SandboxRequirement != SandboxNone &&
 		descriptor.SandboxRequirement != SandboxStrong {

@@ -18,6 +18,7 @@ import (
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	rlmlib "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -127,6 +128,7 @@ func TestUpdatePlanAppearsInContextReceipts(t *testing.T) {
 	eng, err = agentengine.New(agentengine.Options{
 		Provider: &noopProvider{}, Route: testRoute(t), Tools: registry,
 		Metrics: telemetry.NewMetrics(), MaxOutputTokens: 64,
+		TurnCoordinatorRuntime: turnkernel.NewEphemeralCoordinatorRuntime(),
 		ContextReceipts: []promptcontext.Receipt{{
 			Kind: promptcontext.PartitionBase, SourcePath: "builtin://base-system",
 		}},

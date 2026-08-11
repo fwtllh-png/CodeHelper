@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
@@ -11,7 +12,16 @@ import (
 )
 
 func (e *Engine) DecideApproval(decision toolguard.ApprovalDecision) error {
-	return e.guard.Decide(decision)
+	if err := e.guard.StageDecision(decision); err != nil {
+		return err
+	}
+	if err := e.AcceptApprovalResult(
+		decision.RequestID,
+		decision.Canceled,
+	); err != nil {
+		return err
+	}
+	return e.guard.Resume(decision.RequestID)
 }
 
 func (e *Engine) StageApprovalDecision(decision toolguard.ApprovalDecision) error {
@@ -20,6 +30,15 @@ func (e *Engine) StageApprovalDecision(decision toolguard.ApprovalDecision) erro
 
 func (e *Engine) ResumeApproval(requestID string) error {
 	return e.guard.Resume(requestID)
+}
+
+func (e *Engine) RestoreApprovalRequest(
+	request toolguard.ApprovalRequest,
+) error {
+	if e.guard == nil {
+		return errors.New("approval guard is unavailable")
+	}
+	return e.guard.RestoreApproval(request)
 }
 
 func (e *Engine) StageInputReply(reply interact.Reply) error {
@@ -34,6 +53,38 @@ func (e *Engine) ResumeInput(requestID string) error {
 		return interact.HostUnavailableError{}
 	}
 	return e.options.InputHost.Resume(requestID)
+}
+
+func (e *Engine) RestoreInputRequest(request interact.Request) error {
+	if e.options.InputHost == nil {
+		return interact.HostUnavailableError{}
+	}
+	return e.options.InputHost.RestoreRequest(request)
+}
+
+func (e *Engine) connectInputHost(
+	kernel *engineTurnKernel,
+	emit func(Event) error,
+) func() {
+	if e.options.InputHost == nil {
+		return func() {}
+	}
+	e.options.InputHost.SetEmitter(
+		func(_ context.Context, request interact.Request) error {
+			if err := kernel.requireInput(request.RequestID); err != nil {
+				return err
+			}
+			copy := request
+			return emit(Event{
+				State: AwaitingInput,
+				Turn:  e.turn,
+				Input: &copy,
+			})
+		},
+	)
+	return func() {
+		e.options.InputHost.SetEmitter(nil)
+	}
 }
 
 func (e *Engine) ApplyPlan(plan interact.Plan) {
@@ -87,6 +138,16 @@ func (e *Engine) setApprovalEmit(emit func(Event) error) {
 }
 
 func (e *Engine) emitApproval(_ context.Context, request toolguard.ApprovalRequest) error {
+	kernel, err := e.activeTurnKernel()
+	if err != nil {
+		return err
+	}
+	if err := kernel.requireApproval(
+		request.RequestID,
+		request.CallID,
+	); err != nil {
+		return err
+	}
 	e.approvalMu.Lock()
 	emit := e.approvalEmit
 	e.approvalMu.Unlock()

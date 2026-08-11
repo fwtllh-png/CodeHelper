@@ -14,7 +14,12 @@ const forbidden = files.filter((file) =>
   file.startsWith("node_modules/") ||
   file.endsWith(".map") ||
   file.includes(".env")
-  || file.startsWith("dist/") && file !== "dist/extension.js"
+  || file.startsWith("dist/") && ![
+    "dist/extension.js",
+    "dist/chat-webview.js",
+    "dist/chat-webview.css",
+    "dist/mermaid-renderer.js",
+  ].includes(file)
 );
 if (forbidden.length > 0) {
   throw new Error(`VSIX contains forbidden files: ${forbidden.join(", ")}`);
@@ -24,10 +29,14 @@ for (const required of [
   "compatibility.json",
   "resources/release-trust-roots.json",
   "dist/extension.js",
+  "dist/chat-webview.js",
+  "dist/chat-webview.css",
+  "dist/mermaid-renderer.js",
   "media/codehelper.svg",
   "media/codehelper.png",
   "README.md",
   "CHANGELOG.md",
+  "RELEASE-EVIDENCE.md",
   "SECURITY.md",
   "PRIVACY.md",
   "SUPPORT.md",

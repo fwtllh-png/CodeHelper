@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/adapter/tool/catalog.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Tool Schema, Registry, and Dynamic Catalog
@@ -155,5 +155,5 @@ Snapshot binding, replace then revoke the entry, and explain each refusal.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `tool-schema-registry` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

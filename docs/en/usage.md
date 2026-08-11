@@ -207,6 +207,13 @@ codehelper host \
 
 ACP is used by editor/agent clients. Workspace identity arguments bind an editor
 workspace URI to a runtime root; hosts must not invent or relax that identity.
+`session/profile/get` returns the Runtime-owned Session Profile and model
+capabilities. `session/profile/update` uses `expectedRevision` optimistic
+concurrency, refuses updates during an active Turn, and reports whether the
+change reset the prompt-cache identity.
+`session/tool/catalog` returns the Session projection of the unified Runtime
+tool registry. Its enabled state is controlled by the Profile Allowlist and
+does not replace Guard or approval decisions.
 
 ## Mode and Posture
 
@@ -227,8 +234,11 @@ Recommended combinations:
 | isolated local experiment | `act` | `bypass` |
 | operational investigation | `operate` | `suggest` |
 
-`auto` is not equivalent to “approve everything”; policy may deny high-risk
-tools. `bypass` is not equivalent to disabling constitution or sandbox checks.
+`auto` is not equivalent to “approve everything”. In `act` mode it automatically
+allows low-risk work and asks for approval before process, network, or plugin
+tools. In `operate` mode, sandboxed process tools may run automatically while
+network and plugin tools still ask. `bypass` is not equivalent to disabling
+constitution or sandbox checks.
 
 ## Session and Thread Management
 

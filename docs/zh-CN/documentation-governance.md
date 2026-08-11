@@ -74,6 +74,11 @@ Verified 章节的最长复核周期为 180 天，150 天进入预警。每周 W
 源码漂移检查：若章节声明的 Code、Test 或 Source-of-truth 路径具有晚于
 `last_verified` 的 Git 日期，必须重新核查并同时更新双语文件。
 
+严格漂移检查后，用 `make doc-reverify` 对书籍执行对账：声明源码路径在
+`last_verified` 之后发生变化的章节，会在双语文件和 Catalog 中降级为
+`draft`；源码未变化的章节则以当天日期重新盖章。应用前用
+`make doc-reverify-dry-run` 预览结果。
+
 截图容易老化，因此仅在必要时使用。书籍中的每张图片都必须在
 `governance.json` 登记 SHA-256；相同信息可以用 Mermaid 或文本表达时，应优先使用
 可在源码中 Review 的形式。

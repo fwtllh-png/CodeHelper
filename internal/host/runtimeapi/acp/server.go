@@ -61,7 +61,11 @@ var methods = []string{
 	"thread/list", "thread/get", "task/list", "agent/list", "usage/query",
 	"session/new", "session/load", "session/prompt", "session/submit",
 	"session/replay", "session/history", "session/cancel", "session/merge",
-	"session/rename", "shutdown",
+	"session/list", "session/status", "session/lifecycle/update", "session/delete",
+	"session/rename", "session/profile/get", "session/profile/update",
+	"session/tool/catalog",
+	"checkpoint/list", "checkpoint/get", "checkpoint/restore", "checkpoint/fork",
+	"turn/recover", "plan/get", "plan/implement", "shutdown",
 }
 
 var dynamicMethods = []string{
@@ -82,6 +86,9 @@ type Dependencies struct {
 type Options struct {
 	ProviderID        string
 	ModelID           string
+	ModelCapabilities protocol.ModelCapabilities
+	ProviderCatalog   protocol.ProviderCatalog
+	ModelCatalog      protocol.ModelCatalog
 	WorkspaceRoot     string
 	WorkspaceIdentity protocol.WorkspaceIdentity
 	CleanupTimeout    time.Duration
@@ -155,6 +162,28 @@ func New(dependencies Dependencies, output io.Writer, options Options) (*Server,
 	}
 	if options.ProviderID == "" || options.ModelID == "" {
 		return nil, errors.New("ACP provider and model are required")
+	}
+	capabilities := protocol.SessionProfileCapabilities{
+		Provider: options.ProviderID, Model: options.ModelID,
+		ModelCapabilities: options.ModelCapabilities,
+	}
+	if err := capabilities.Validate(protocol.SessionProfile{
+		Version: protocol.SessionProfileVersion, Revision: 1,
+		Mode: "act", Provider: options.ProviderID, Model: options.ModelID,
+		ApprovalPosture: "never", ExecutionTarget: "local",
+		MaxSteps: 1, PromptCacheRevision: 1,
+	}); err != nil {
+		return nil, fmt.Errorf("ACP model capabilities: %w", err)
+	}
+	if len(options.ProviderCatalog.Providers) != 0 {
+		if err := options.ProviderCatalog.Validate(); err != nil {
+			return nil, fmt.Errorf("ACP provider catalog: %w", err)
+		}
+	}
+	if len(options.ModelCatalog.Models) != 0 {
+		if err := options.ModelCatalog.Validate(); err != nil {
+			return nil, fmt.Errorf("ACP model catalog: %w", err)
+		}
 	}
 	if options.WorkspaceRoot == "" {
 		options.WorkspaceRoot = "."
@@ -475,6 +504,34 @@ func (s *Server) dispatch(request rpcRequest) bool {
 		s.sessionMerge(request)
 	case "session/rename":
 		s.sessionRename(request)
+	case "session/list":
+		s.sessionList(request)
+	case "session/status":
+		s.sessionStatus(request)
+	case "session/lifecycle/update":
+		s.sessionLifecycleUpdate(request)
+	case "session/delete":
+		s.sessionDelete(request)
+	case "session/profile/get":
+		s.sessionProfileGet(request)
+	case "session/profile/update":
+		s.sessionProfileUpdate(request)
+	case "session/tool/catalog":
+		s.sessionToolCatalog(request)
+	case "checkpoint/list":
+		s.checkpointList(request)
+	case "checkpoint/get":
+		s.checkpointGet(request)
+	case "checkpoint/restore":
+		s.checkpointRestore(request)
+	case "checkpoint/fork":
+		s.checkpointFork(request)
+	case "turn/recover":
+		s.turnRecover(request)
+	case "plan/get":
+		s.planGet(request)
+	case "plan/implement":
+		s.planImplement(request)
 	case "tool/catalog":
 		s.dynamicCatalog(request)
 	case "tool/register":
@@ -720,9 +777,17 @@ func (s *Server) providerList(request rpcRequest) {
 		s.invalidParams(request, err)
 		return
 	}
-	s.replyResult(request, map[string]any{"providers": []any{
-		map[string]any{"id": s.options.ProviderID, "selected": true},
-	}})
+	result := protocol.ProviderCatalog{
+		Version: protocol.ModelCatalogVersion,
+		Providers: []protocol.ProviderCatalogEntry{{
+			ID: s.options.ProviderID, DisplayName: s.options.ProviderID,
+			Selected: true, Availability: "available",
+		}},
+	}
+	if len(s.options.ProviderCatalog.Providers) != 0 {
+		result = s.options.ProviderCatalog
+	}
+	s.replyResult(request, result)
 }
 
 type providerParams struct {
@@ -756,14 +821,38 @@ func (s *Server) modelList(request rpcRequest) {
 		return
 	}
 	if params.Provider != "" && params.Provider != s.options.ProviderID {
-		s.invalidParams(request, errors.New("provider is unavailable"))
-		return
+		found := false
+		for _, provider := range s.options.ProviderCatalog.Providers {
+			if provider.ID == params.Provider && provider.Availability == "available" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.invalidParams(request, errors.New("provider is unavailable"))
+			return
+		}
 	}
-	s.replyResult(request, map[string]any{"models": []any{
-		map[string]any{
-			"id": s.options.ModelID, "provider": s.options.ProviderID, "selected": true,
-		},
-	}})
+	result := protocol.ModelCatalog{
+		Version: protocol.ModelCatalogVersion,
+		Models: []protocol.ModelCatalogEntry{{
+			ID: s.options.ModelID, Provider: s.options.ProviderID, Selected: true,
+			Capabilities: s.options.ModelCapabilities,
+		}},
+	}
+	if len(s.options.ModelCatalog.Models) != 0 {
+		result = s.options.ModelCatalog
+		if params.Provider != "" {
+			filtered := result.Models[:0]
+			for _, entry := range result.Models {
+				if entry.Provider == params.Provider {
+					filtered = append(filtered, entry)
+				}
+			}
+			result.Models = filtered
+		}
+	}
+	s.replyResult(request, result)
 }
 
 type modelParams struct {
@@ -1117,6 +1206,16 @@ func (s *Server) sessionNew(request rpcRequest) {
 		Provider: s.options.ProviderID, Model: s.options.ModelID,
 		Isolation: params.Isolation,
 	}
+	if s.dependencies.Runtime.SessionProfilesAvailable() {
+		if _, err := s.dependencies.Runtime.RestoreSessionProfile(
+			s.ctx,
+			binding.ID,
+			binding.ThreadID,
+		); err != nil {
+			s.replyApplicationError(request, err)
+			return
+		}
+	}
 	s.bind(binding)
 	s.replyResult(request, map[string]any{
 		"sessionId": sessionID, "threadId": threadID,
@@ -1158,6 +1257,13 @@ func (s *Server) sessionLoad(request rpcRequest) {
 		s.replyApplicationError(request, err)
 		return
 	}
+	if session.Status != sessionstate.StatusOpen {
+		s.replyError(request, &rpcError{
+			Code:    codeConflict,
+			Message: "archived session must be restored before loading",
+		})
+		return
+	}
 	thread, err := s.dependencies.Threads.GetInWorkspace(
 		s.ctx, params.ThreadID, s.options.WorkspaceRoot,
 	)
@@ -1195,6 +1301,16 @@ func (s *Server) sessionLoad(request rpcRequest) {
 		ID: params.SessionID, ThreadID: params.ThreadID,
 		Provider: s.options.ProviderID, Model: s.options.ModelID,
 		Isolation: isolation,
+	}
+	if s.dependencies.Runtime.SessionProfilesAvailable() {
+		if _, err := s.dependencies.Runtime.RestoreSessionProfile(
+			s.ctx,
+			binding.ID,
+			binding.ThreadID,
+		); err != nil {
+			s.replyApplicationError(request, err)
+			return
+		}
 	}
 	s.bind(binding)
 	s.replyResult(request, map[string]any{
@@ -1238,19 +1354,486 @@ func (s *Server) sessionRename(request rpcRequest) {
 		s.invalidParams(request, errors.New("title must be one line and at most 256 bytes"))
 		return
 	}
-	binding, ok := s.requireSession(request, params.SessionID)
+	current, ok := s.sessionSummary(request, params.SessionID)
 	if !ok {
 		return
 	}
-	if err := s.dependencies.Threads.Rename(s.ctx, binding.ThreadID, title); err != nil {
+	updated, err := s.dependencies.Runtime.UpdateSessionLifecycle(
+		s.ctx,
+		params.SessionID,
+		current.Revision,
+		protocol.SessionLifecyclePatch{Title: &title},
+	)
+	if err != nil {
 		s.replyApplicationError(request, err)
 		return
 	}
 	s.replyResult(request, map[string]any{
-		"sessionId": binding.ID,
-		"threadId":  binding.ThreadID,
+		"sessionId": updated.Session.SessionID,
+		"threadId":  updated.Session.ThreadID,
 		"title":     title,
 	})
+}
+
+type sessionListParams struct {
+	Query           string                          `json:"query,omitempty"`
+	IncludeArchived bool                            `json:"includeArchived,omitempty"`
+	PinnedOnly      bool                            `json:"pinnedOnly,omitempty"`
+	Status          protocol.SessionLifecycleStatus `json:"status,omitempty"`
+	Limit           int                             `json:"limit,omitempty"`
+}
+
+func (s *Server) sessionList(request rpcRequest) {
+	var params sessionListParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	result, err := s.dependencies.Runtime.ListSessions(
+		s.ctx,
+		protocol.SessionListQuery{
+			WorkspaceRoot:   s.options.WorkspaceRoot,
+			Query:           strings.TrimSpace(params.Query),
+			IncludeArchived: params.IncludeArchived,
+			PinnedOnly:      params.PinnedOnly,
+			Status:          params.Status,
+			Limit:           params.Limit,
+		},
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+func (s *Server) sessionStatus(request rpcRequest) {
+	var params sessionProfileParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	summary, ok := s.sessionSummary(request, params.SessionID)
+	if !ok {
+		return
+	}
+	s.replyResult(request, summary)
+}
+
+type sessionLifecycleUpdateParams struct {
+	SessionID        string                         `json:"sessionId"`
+	ExpectedRevision uint64                         `json:"expectedRevision"`
+	Patch            protocol.SessionLifecyclePatch `json:"patch"`
+}
+
+func (s *Server) sessionLifecycleUpdate(request rpcRequest) {
+	var params sessionLifecycleUpdateParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if _, ok := s.sessionSummary(request, params.SessionID); !ok {
+		return
+	}
+	updated, err := s.dependencies.Runtime.UpdateSessionLifecycle(
+		s.ctx,
+		params.SessionID,
+		params.ExpectedRevision,
+		params.Patch,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	if updated.Session.Archived {
+		s.unbindSession(updated.Session.SessionID)
+	}
+	s.replyResult(request, updated)
+}
+
+type sessionDeleteParams struct {
+	SessionID        string `json:"sessionId"`
+	ExpectedRevision uint64 `json:"expectedRevision"`
+}
+
+func (s *Server) sessionDelete(request rpcRequest) {
+	var params sessionDeleteParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if _, ok := s.sessionSummary(request, params.SessionID); !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.DeleteSession(
+		s.ctx,
+		params.SessionID,
+		params.ExpectedRevision,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.unbindSession(params.SessionID)
+	s.replyResult(request, result)
+}
+
+func (s *Server) sessionSummary(
+	request rpcRequest,
+	sessionID string,
+) (protocol.SessionSummary, bool) {
+	if sessionID == "" {
+		s.invalidParams(request, errors.New("sessionId is required"))
+		return protocol.SessionSummary{}, false
+	}
+	summary, err := s.dependencies.Runtime.SessionStatus(s.ctx, sessionID)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return protocol.SessionSummary{}, false
+	}
+	if filepath.Clean(summary.WorkspaceRoot) != s.options.WorkspaceRoot {
+		s.invalidParams(request, errors.New("session belongs to another workspace"))
+		return protocol.SessionSummary{}, false
+	}
+	return summary, true
+}
+
+type sessionProfileParams struct {
+	SessionID string `json:"sessionId"`
+}
+
+func (s *Server) sessionProfileGet(request rpcRequest) {
+	var params sessionProfileParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	// The Extension Host calls profile/get after reconnecting. Reading without
+	// applying would leave the newly constructed thread Engine on CLI defaults
+	// even while the UI displays the durable profile.
+	profile, err := s.dependencies.Runtime.RestoreSessionProfile(
+		s.ctx,
+		binding.ID,
+		binding.ThreadID,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, profile)
+}
+
+type sessionProfileUpdateParams struct {
+	SessionID        string                       `json:"sessionId"`
+	ExpectedRevision uint64                       `json:"expectedRevision"`
+	Patch            protocol.SessionProfilePatch `json:"patch"`
+}
+
+func (s *Server) sessionProfileUpdate(request rpcRequest) {
+	var params sessionProfileUpdateParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	updated, err := s.dependencies.Runtime.UpdateSessionProfile(
+		s.ctx,
+		binding.ID,
+		binding.ThreadID,
+		params.ExpectedRevision,
+		params.Patch,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, updated)
+	_ = s.writeNotification("session/profile/changed", map[string]any{
+		"sessionId":        binding.ID,
+		"threadId":         binding.ThreadID,
+		"profile":          updated.Profile,
+		"promptCacheReset": updated.PromptCacheReset,
+		"resetReason":      updated.ResetReason,
+	})
+}
+
+func (s *Server) sessionToolCatalog(request rpcRequest) {
+	var params sessionProfileParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	catalog, err := s.dependencies.Runtime.SessionToolCatalog(
+		s.ctx,
+		binding.ID,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, catalog)
+}
+
+type checkpointParams struct {
+	SessionID    string `json:"sessionId"`
+	CheckpointID string `json:"checkpointId,omitempty"`
+	Limit        int    `json:"limit,omitempty"`
+	Title        string `json:"title,omitempty"`
+}
+
+func (s *Server) checkpointList(request rpcRequest) {
+	var params checkpointParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if _, ok := s.sessionSummary(request, params.SessionID); !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.Checkpoints(
+		s.ctx,
+		params.SessionID,
+		params.Limit,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+func (s *Server) checkpointGet(request rpcRequest) {
+	var params checkpointParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if params.CheckpointID == "" {
+		s.invalidParams(request, errors.New("checkpointId is required"))
+		return
+	}
+	if _, ok := s.sessionSummary(request, params.SessionID); !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.Checkpoint(
+		s.ctx,
+		params.SessionID,
+		params.CheckpointID,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+func (s *Server) checkpointRestore(request rpcRequest) {
+	var params checkpointParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if params.CheckpointID == "" {
+		s.invalidParams(request, errors.New("checkpointId is required"))
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.RestoreCheckpoint(
+		s.ctx,
+		binding.ID,
+		params.CheckpointID,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+func (s *Server) checkpointFork(request rpcRequest) {
+	var params checkpointParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if params.CheckpointID == "" {
+		s.invalidParams(request, errors.New("checkpointId is required"))
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.ForkCheckpoint(
+		s.ctx,
+		binding.ID,
+		params.CheckpointID,
+		params.Title,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	binding.ThreadID = result.ThreadID
+	s.bind(binding)
+	s.replyResult(request, result)
+}
+
+type turnRecoverParams struct {
+	SessionID      string                      `json:"sessionId"`
+	SourceTurnID   protocol.TurnID             `json:"sourceTurnId"`
+	Action         protocol.TurnRecoveryAction `json:"action"`
+	Guidance       string                      `json:"guidance,omitempty"`
+	IdempotencyKey string                      `json:"idempotencyKey"`
+}
+
+func (s *Server) turnRecover(request rpcRequest) {
+	var params turnRecoverParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	prepared, err := s.dependencies.Runtime.PrepareTurnRecovery(
+		s.ctx,
+		protocol.TurnRecoveryRequest{
+			Version:        protocol.WorkflowIntentVersion,
+			Action:         params.Action,
+			SessionID:      binding.ID,
+			SourceTurnID:   params.SourceTurnID,
+			Guidance:       params.Guidance,
+			IdempotencyKey: params.IdempotencyKey,
+		},
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.submitPrepared(
+		request,
+		binding,
+		preparedStartTurn(
+			prepared.Prompt,
+			prepared.DisplayPrompt,
+			prepared.Intent,
+			prepared.IdempotencyKey,
+		),
+	)
+}
+
+func (s *Server) planGet(request rpcRequest) {
+	var params sessionProfileParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if _, ok := s.requireSession(request, params.SessionID); !ok {
+		return
+	}
+	result, err := s.dependencies.Runtime.SessionPlan(
+		s.ctx,
+		params.SessionID,
+	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+type planImplementParams struct {
+	SessionID       string                  `json:"sessionId"`
+	SourceSessionID string                  `json:"sourceSessionId,omitempty"`
+	PlanID          string                  `json:"planId"`
+	Transition      protocol.PlanTransition `json:"transition"`
+}
+
+func (s *Server) planImplement(request rpcRequest) {
+	var params planImplementParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	binding, ok := s.requireSession(request, params.SessionID)
+	if !ok {
+		return
+	}
+	var prepared app.PlanTransitionPreparation
+	var err error
+	if params.SourceSessionID == "" {
+		prepared, err = s.dependencies.Runtime.PreparePlanTransition(
+			s.ctx,
+			binding.ID,
+			params.PlanID,
+			params.Transition,
+		)
+	} else {
+		if _, ok := s.requireSession(request, params.SourceSessionID); !ok {
+			return
+		}
+		prepared, err = s.dependencies.Runtime.PreparePlanTransitionTo(
+			s.ctx,
+			params.SourceSessionID,
+			binding.ID,
+			params.PlanID,
+			params.Transition,
+		)
+	}
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	_ = s.writeNotification("session/profile/changed", map[string]any{
+		"sessionId":        binding.ID,
+		"threadId":         binding.ThreadID,
+		"profile":          prepared.ProfileUpdate.Profile,
+		"promptCacheReset": prepared.ProfileUpdate.PromptCacheReset,
+		"resetReason":      prepared.ProfileUpdate.ResetReason,
+	})
+	s.submitPrepared(
+		request,
+		binding,
+		preparedStartTurn(
+			prepared.Prompt,
+			prepared.Prompt,
+			prepared.Intent,
+			prepared.IdempotencyKey,
+		),
+	)
+}
+
+func preparedStartTurn(
+	prompt string,
+	displayPrompt string,
+	intent protocol.TurnIntent,
+	idempotencyKey string,
+) operationRequest {
+	return operationRequest{
+		kind: protocol.OperationStartTurn,
+		payload: &protocol.StartTurnPayload{
+			Prompt:        prompt,
+			DisplayPrompt: displayPrompt,
+			Intent:        intent,
+		},
+		idempotencyKey: idempotencyKey,
+	}
 }
 
 type sessionPromptParams struct {
@@ -1567,13 +2150,17 @@ func (s *Server) sessionReplay(request rpcRequest) {
 }
 
 type sessionHistoryParams struct {
-	SessionID string `json:"sessionId"`
-	TurnLimit int    `json:"turnLimit,omitempty"`
+	SessionID string           `json:"sessionId"`
+	TurnLimit int              `json:"turnLimit,omitempty"`
+	SinceSeq  *protocol.Cursor `json:"sinceSeq,omitempty"`
 }
 
+const sessionHistoryMaxPayloadBytes = 2 << 20
+
 // sessionHistory hydrates a new client projection independently of its live
-// replay cursor. The response is bounded by turn count and contains only the
-// session's primary thread events.
+// replay cursor. The first page is bounded by turn count; every response is
+// also byte-bounded so a long tool-heavy Turn cannot exceed the ACP frame
+// limit. Continuation pages use nextSeq and contain only primary-thread events.
 func (s *Server) sessionHistory(request rpcRequest) {
 	var params sessionHistoryParams
 	if err := decodeParams(request.Params, &params); err != nil {
@@ -1595,14 +2182,22 @@ func (s *Server) sessionHistory(request rpcRequest) {
 	if !ok {
 		return
 	}
-	cursor, err := s.dependencies.Threads.HistoryCursor(
-		s.ctx, binding.ThreadID, params.TurnLimit,
-	)
-	if err != nil {
-		s.replyApplicationError(request, err)
-		return
+	cursor := protocol.Cursor(0)
+	if params.SinceSeq == nil {
+		var err error
+		cursor, err = s.dependencies.Threads.HistoryCursor(
+			s.ctx, binding.ThreadID, params.TurnLimit,
+		)
+		if err != nil {
+			s.replyApplicationError(request, err)
+			return
+		}
+	} else {
+		cursor = *params.SinceSeq
 	}
 	events := make([]protocol.Event, 0, params.TurnLimit*8)
+	payloadBytes := 0
+	truncated := false
 	for {
 		page, more, err := s.dependencies.Runtime.ReplayEvents(s.ctx, cursor, 1000)
 		if err != nil {
@@ -1610,10 +2205,25 @@ func (s *Server) sessionHistory(request rpcRequest) {
 			return
 		}
 		for _, event := range page {
-			cursor = event.Sequence
 			if event.ThreadID == binding.ThreadID {
-				events = append(events, event)
+				appended, appendErr := appendSessionHistoryEvent(
+					&events,
+					&payloadBytes,
+					event,
+				)
+				if appendErr != nil {
+					s.replyApplicationError(request, appendErr)
+					return
+				}
+				if !appended {
+					truncated = true
+					break
+				}
 			}
+			cursor = event.Sequence
+		}
+		if truncated {
+			break
 		}
 		if !more {
 			break
@@ -1629,7 +2239,27 @@ func (s *Server) sessionHistory(request rpcRequest) {
 		"sessionId": binding.ID,
 		"threadId":  binding.ThreadID,
 		"events":    events,
+		"nextSeq":   cursor,
+		"truncated": truncated,
 	})
+}
+
+func appendSessionHistoryEvent(
+	events *[]protocol.Event,
+	payloadBytes *int,
+	event protocol.Event,
+) (bool, error) {
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		return false, err
+	}
+	if len(*events) != 0 &&
+		*payloadBytes+len(encoded) > sessionHistoryMaxPayloadBytes {
+		return false, nil
+	}
+	*events = append(*events, event)
+	*payloadBytes += len(encoded)
+	return true, nil
 }
 
 func (s *Server) replyReplayError(request rpcRequest, err error) {
@@ -1879,6 +2509,18 @@ func (s *Server) bindThread(threadID protocol.ThreadID, sessionID string) {
 	s.mu.Unlock()
 }
 
+func (s *Server) unbindSession(sessionID string) {
+	s.mu.Lock()
+	delete(s.sessions, sessionID)
+	delete(s.active, sessionID)
+	for threadID, owner := range s.threads {
+		if owner == sessionID {
+			delete(s.threads, threadID)
+		}
+	}
+	s.mu.Unlock()
+}
+
 func (s *Server) sessionForThread(threadID protocol.ThreadID) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -2108,9 +2750,13 @@ func (s *Server) invalidParams(request rpcRequest, err error) {
 
 func (s *Server) replyApplicationError(request rpcRequest, err error) {
 	code := codeInternalError
+	var problem *protocol.Problem
+	_ = errors.As(err, &problem)
 	switch {
 	case errors.Is(err, threadstate.ErrActiveTurn),
-		errors.Is(err, app.ErrOperationConflict):
+		errors.Is(err, app.ErrOperationConflict),
+		errors.Is(err, sessionstate.ErrProfileRevisionConflict),
+		errors.Is(err, sessionstate.ErrLifecycleRevisionConflict):
 		code = codeConflict
 	case protocol.CodeOf(err) == protocol.CodeInvalidArgument:
 		code = codeInvalidParams
@@ -2125,7 +2771,11 @@ func (s *Server) replyApplicationError(request rpcRequest, err error) {
 		errors.Is(err, sessionstate.ErrNotFound):
 		code = codeInvalidParams
 	}
-	s.replyError(request, &rpcError{Code: code, Message: err.Error()})
+	rpcErr := &rpcError{Code: code, Message: err.Error()}
+	if problem != nil {
+		rpcErr.Data = problem
+	}
+	s.replyError(request, rpcErr)
 }
 
 func (s *Server) replyActiveResult(active *activeTurn, result any) {

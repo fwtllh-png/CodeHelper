@@ -36,8 +36,21 @@ void test("SessionCommands submits structured editor context", async () => {
   assert.equal(params.sessionId, "session_1");
   assert.equal(params.operation.kind, "turn.start");
   assert.equal(params.operation.payload["prompt"], "inspect");
+  assert.equal(params.operation.payload["intent"], "answer");
   assert.equal(Array.isArray(params.operation.payload["context"]), true);
   assert.deepEqual(params.operation.payload["workspace_identity"], identity);
+});
+
+void test("SessionCommands submits an explicit workspace-change intent", async () => {
+  const transport = new FakeTransport();
+  const session = new SessionCommands(transport, "session_1", () => true);
+  await session.submitPrompt("fix it", [], "workspace_change");
+  const params = transport.calls[0]?.params as {
+    readonly operation: {
+      readonly payload: Readonly<Record<string, unknown>>;
+    };
+  };
+  assert.equal(params.operation.payload["intent"], "workspace_change");
 });
 
 void test("SessionCommands refuses approve when workspace is untrusted", async () => {
@@ -71,6 +84,65 @@ void test("SessionCommands binds approval to an edit plan identity", async () =>
     };
   };
   assert.equal(params.operation.payload["plan_id"], "a".repeat(64));
+});
+
+void test("SessionCommands updates Runtime-owned profile by revision", async () => {
+  const transport: SessionTransport = {
+    request(method, params) {
+      assert.equal(method, "session/profile/update");
+      assert.deepEqual(params, {
+        sessionId: "session_1",
+        expectedRevision: 3,
+        patch: { mode: "plan" },
+      });
+      return Promise.resolve({
+        profile: {
+          version: 1,
+          revision: 4,
+          mode: "plan",
+          provider: "fixture",
+          model: "fixture-model",
+          approval_posture: "suggest",
+          execution_target: "local",
+          max_steps: 32,
+          prompt_cache_revision: 2,
+        },
+        prompt_cache_reset: true,
+        reset_reason: "mode",
+      });
+    },
+  };
+  const session = new SessionCommands(transport, "session_1", () => true);
+  const updated = await session.updateProfile(3, { mode: "plan" });
+  assert.equal(updated.profile.revision, 4);
+  assert.equal(updated.prompt_cache_reset, true);
+});
+
+void test("SessionCommands queries the Session-bound tool catalog", async () => {
+  const transport: SessionTransport = {
+    request(method, params) {
+      assert.equal(method, "session/tool/catalog");
+      assert.deepEqual(params, { sessionId: "session_1" });
+      return Promise.resolve({
+        version: 1,
+        catalog_id: "catalog-1",
+        generation: 1,
+        digest: "digest-1",
+        tools: [],
+      });
+    },
+  };
+  const session = new SessionCommands(transport, "session_1", () => true);
+  const catalog = await session.toolCatalog();
+  assert.equal(catalog.catalog_id, "catalog-1");
+});
+
+void test("SessionCommands blocks untrusted profile escalation", async () => {
+  const session = new SessionCommands(new FakeTransport(), "session_1", () => false);
+  await assert.rejects(
+    session.updateProfile(1, { approval_posture: "bypass" }),
+    /untrusted workspace/u,
+  );
 });
 
 class FakeTransport implements SessionTransport {

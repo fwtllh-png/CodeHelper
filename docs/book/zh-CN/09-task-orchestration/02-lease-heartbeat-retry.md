@@ -18,7 +18,7 @@ source_of_truth:
   - internal/orchestration/task/execution.go
   - internal/orchestration/worker/worker.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Lease、Heartbeat、Retry 与幂等性
@@ -29,6 +29,8 @@ last_verified: 2026-08-06
 
 理解 Ownership Fencing、Lease Loss、Attempt Accounting、Bounded Backoff 与 Retry
 Safety 的边界。
+
+## Ownership Protocol
 
 ```mermaid
 sequenceDiagram
@@ -51,6 +53,8 @@ Requeue；旧 Owner 被 Fence，下一次 Heartbeat/Settle 失败，并触发 Wo
 Lease Fence 防止两个 Owner 提交 Task State，却不能撤销 Lease Loss 前已产生的 External
 Side Effect。Retried Executor 必须 Intrinsically Idempotent、使用 Idempotency Key，
 或拒绝 Retry。Shell Background Task 明确要求 Idempotent Declaration。
+
+## Idempotency
 
 Recovery Requeue 可执行 Interrupted Work，Fail 无有效 Executor/Retry Path 的 Work，
 并保留 Healthy Foreign Lease。
@@ -119,4 +123,4 @@ go test ./internal/orchestration/worker -run 'Test.*(Lease|Retry|Takeover)'
 | --- | --- |
 | Catalog ID | `task-lease-retry` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 最后验证 | 2026-08-10 |

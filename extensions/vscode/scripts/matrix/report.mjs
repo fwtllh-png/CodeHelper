@@ -6,30 +6,15 @@ import {
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { matrixJobs as expected } from "./jobs.mjs";
+import { journeyEvidence } from "./journeys.mjs";
+
+const extensionRoot = resolve(import.meta.dirname, "..", "..");
 const outputRoot = resolve(
   process.env["CODEHELPER_MATRIX_ROOT"] ??
     join(import.meta.dirname, "..", "..", "dist", "matrix"),
 );
 const evidenceRoot = join(outputRoot, "evidence");
-const expected = [
-  required("local-darwin-arm64-external", "macOS arm64 external single+multi"),
-  required("local-darwin-arm64-bundled", "macOS arm64 bundled handshake"),
-  required("local-darwin-x64-external", "macOS x64 external single+multi (Rosetta)"),
-  required("remote-ssh-linux-arm64-single-external", "SSH arm64 external single"),
-  required("remote-ssh-linux-arm64-multi-external", "SSH arm64 external multi"),
-  required("remote-ssh-linux-arm64-single-managed", "SSH arm64 managed single"),
-  required("remote-ssh-linux-arm64-multi-managed", "SSH arm64 managed multi"),
-  required("dev-container-linux-arm64-single-managed", "Container arm64 managed single"),
-  required("dev-container-linux-arm64-multi-managed", "Container arm64 managed multi"),
-  required("dev-container-linux-amd64-single-managed", "Container amd64 managed single"),
-  required("dev-container-linux-amd64-multi-managed", "Container amd64 managed multi"),
-  required("update-integration", "signed update, rollback, revocation"),
-  required("distribution", "universal and target VSIX distribution"),
-  required("security", "extension security gate"),
-  required("performance", "extension performance gate"),
-  optional("local-win32-x64", "Windows x64 runner unavailable"),
-];
-
 const evidence = new Map();
 for (const entry of await readdir(evidenceRoot, {
   withFileTypes: true,
@@ -55,14 +40,38 @@ const jobs = expected.map((entry) => {
 const missing = jobs.filter(
   (job) => job.required && job.status !== "passed",
 );
+const observedJourneys = new Set(
+  [...evidence.values()].flatMap((entry) =>
+    Array.isArray(entry.journeys)
+      ? entry.journeys.filter((value) => typeof value === "string")
+      : []),
+);
+const manualEvidence = await readFile(
+  join(extensionRoot, "RELEASE-EVIDENCE.md"),
+  "utf8",
+).catch(() => "");
+const journeys = journeyEvidence.map((journey) => ({
+  ...journey,
+  status: journey.kind === "automated"
+    ? observedJourneys.has(journey.id) ? "passed" : "missing"
+    : manualEvidence.includes(`\`${journey.id}\``)
+      ? "documented"
+      : "missing",
+}));
+const missingJourneys = journeys.filter((journey) => journey.status === "missing");
 const report = {
   schema_version: 1,
   generated_at: new Date().toISOString(),
   platform: `${process.platform}/${process.arch}`,
-  status: missing.length === 0 ? "passed" : "incomplete",
+  status: missing.length === 0 && missingJourneys.length === 0
+    ? "passed"
+    : "incomplete",
   passed: jobs.filter((job) => job.status === "passed").length,
   required: jobs.filter((job) => job.required).length,
   missing: missing.map((job) => job.job),
+  journey_status: missingJourneys.length === 0 ? "passed" : "incomplete",
+  missing_journeys: missingJourneys.map((journey) => journey.id),
+  journeys,
   jobs,
 };
 await mkdir(outputRoot, { recursive: true });
@@ -78,22 +87,14 @@ process.stdout.write(
   `VS Code matrix ${report.status}: ${String(report.passed)}/` +
     `${String(report.required)} required evidence present\n`,
 );
-if (missing.length > 0 &&
+if ((missing.length > 0 || missingJourneys.length > 0) &&
   process.env["CODEHELPER_MATRIX_ALLOW_INCOMPLETE"] !== "1") {
   process.exitCode = 1;
 }
 
-function required(job, description) {
-  return { job, description, required: true };
-}
-
-function optional(job, description) {
-  return { job, description, required: false };
-}
-
 function markdown(report) {
   const lines = [
-    "# VS Code V3 E2E Matrix",
+    "# VS Code Local E2E Matrix",
     "",
     `- Status: **${report.status}**`,
     `- Platform: \`${report.platform}\``,
@@ -106,6 +107,19 @@ function markdown(report) {
     lines.push(
       `| \`${job.job}\` | ${job.required ? "yes" : "no"} | ` +
         `${job.status} | ${job.description} |`,
+    );
+  }
+  lines.push(
+    "",
+    "## Journey Evidence",
+    "",
+    "| Journey | Kind | Status | Description |",
+    "| --- | --- | --- | --- |",
+  );
+  for (const journey of report.journeys) {
+    lines.push(
+      `| \`${journey.id}\` | ${journey.kind} | ${journey.status} | ` +
+        `${journey.description} |`,
     );
   }
   lines.push("");

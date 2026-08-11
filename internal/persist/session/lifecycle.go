@@ -1,0 +1,743 @@
+package session
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+var ErrLifecycleRevisionConflict = errors.New("session lifecycle revision conflict")
+
+type LifecycleRevisionConflictError struct {
+	Expected uint64
+	Current  uint64
+}
+
+func (e *LifecycleRevisionConflictError) Error() string {
+	return fmt.Sprintf(
+		"session lifecycle revision conflict: expected %d, current %d",
+		e.Expected,
+		e.Current,
+	)
+}
+
+func (e *LifecycleRevisionConflictError) Unwrap() error {
+	return ErrLifecycleRevisionConflict
+}
+
+type LifecycleQuery = protocol.SessionListQuery
+
+type lifecycleMetadata struct {
+	Version        int               `json:"version"`
+	Revision       uint64            `json:"revision"`
+	Pinned         bool              `json:"pinned"`
+	ActiveThreadID protocol.ThreadID `json:"active_thread_id,omitempty"`
+}
+
+type profileRoute struct {
+	Provider        string `json:"provider"`
+	Model           string `json:"model"`
+	Mode            string `json:"mode"`
+	ExecutionTarget string `json:"execution_target"`
+}
+
+func (r *Repository) ListLifecycle(
+	ctx context.Context,
+	filter LifecycleQuery,
+) (protocol.SessionList, error) {
+	if r.db == nil {
+		return protocol.SessionList{}, errors.New("session repository database is required")
+	}
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 || len(filter.Query) > 256 ||
+		strings.ContainsRune(filter.Query, '\x00') {
+		return protocol.SessionList{}, errors.New("session lifecycle query is invalid")
+	}
+	sqlLimit := limit
+	if filter.Status != "" {
+		sqlLimit = 1000
+	}
+	query := `
+		SELECT s.id
+		FROM sessions s
+		JOIN workspaces w ON w.id = s.workspace_id
+		JOIN threads root ON root.id = COALESCE(
+			NULLIF(json_extract(
+				s.metadata_json, '$.lifecycle.active_thread_id'
+			), ''),
+			(
+				SELECT id FROM threads
+				WHERE session_id = s.id AND parent_thread_id IS NULL
+				ORDER BY created_at, id LIMIT 1
+			)
+		)
+		WHERE 1 = 1`
+	var arguments []any
+	add := func(clause string, value any) {
+		query += " AND " + clause
+		arguments = append(arguments, value)
+	}
+	if filter.WorkspaceRoot != "" {
+		add("w.root_path = ?", filter.WorkspaceRoot)
+	}
+	if !filter.IncludeArchived {
+		add("s.status = ?", StatusOpen)
+	}
+	if filter.PinnedOnly {
+		query += ` AND COALESCE(
+			json_extract(s.metadata_json, '$.lifecycle.pinned'), 0
+		) = 1`
+	}
+	needle := strings.TrimSpace(filter.Query)
+	if needle != "" {
+		query += ` AND (
+			instr(lower(root.title), lower(?)) > 0 OR
+			EXISTS (
+				SELECT 1
+				FROM items i
+				JOIN turns tr ON tr.id = i.turn_id
+				JOIN threads st ON st.id = tr.thread_id
+				WHERE st.session_id = s.id
+				  AND instr(lower(CAST(i.payload_json AS TEXT)), lower(?)) > 0
+			)
+		)`
+		arguments = append(arguments, needle, needle)
+	}
+	query += ` ORDER BY
+		COALESCE(json_extract(s.metadata_json, '$.lifecycle.pinned'), 0) DESC,
+		COALESCE((
+			SELECT MAX(tr.updated_at)
+			FROM turns tr JOIN threads st ON st.id = tr.thread_id
+			WHERE st.session_id = s.id
+		), root.updated_at, s.updated_at) DESC,
+		s.id
+		LIMIT ?`
+	arguments = append(arguments, sqlLimit)
+	rows, err := r.db.QueryContext(ctx, query, arguments...)
+	if err != nil {
+		return protocol.SessionList{}, fmt.Errorf("list session lifecycle: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return protocol.SessionList{}, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return protocol.SessionList{}, err
+	}
+	result := make([]protocol.SessionSummary, 0, len(ids))
+	matches := make([]protocol.SessionSearchMatch, 0, len(ids))
+	for _, id := range ids {
+		summary, err := r.GetLifecycle(ctx, id)
+		if err != nil {
+			return protocol.SessionList{}, err
+		}
+		if filter.Status != "" && summary.Status != filter.Status {
+			continue
+		}
+		result = append(result, summary)
+		if needle != "" {
+			turnID, matchErr := r.matchTurn(ctx, id, needle)
+			if matchErr != nil {
+				return protocol.SessionList{}, matchErr
+			}
+			if turnID != "" {
+				matches = append(matches, protocol.SessionSearchMatch{
+					SessionID: id, TurnID: turnID, Kind: "content",
+				})
+			}
+		}
+		if len(result) == limit {
+			break
+		}
+	}
+	return protocol.SessionList{
+		Version: protocol.SessionLifecycleVersion,
+		Query:   needle, Sessions: result, Matches: matches,
+	}, nil
+}
+
+func (r *Repository) GetLifecycle(
+	ctx context.Context,
+	sessionID string,
+) (protocol.SessionSummary, error) {
+	if r.db == nil {
+		return protocol.SessionSummary{}, errors.New("session repository database is required")
+	}
+	var (
+		summary                                  protocol.SessionSummary
+		sessionStatus, threadStatus              string
+		metadata                                 []byte
+		workspaceLabel                           string
+		createdAt, sessionUpdated, threadUpdated string
+		parent                                   sql.NullString
+	)
+	err := r.db.QueryRowContext(ctx, `
+		SELECT s.id, s.status, s.metadata_json, s.created_at, s.updated_at,
+		       w.root_path, w.display_name,
+		       t.id, t.parent_thread_id, t.title, t.status, t.updated_at
+		FROM sessions s
+		JOIN workspaces w ON w.id = s.workspace_id
+		JOIN threads t ON t.id = COALESCE(
+			NULLIF(json_extract(
+				s.metadata_json, '$.lifecycle.active_thread_id'
+			), ''),
+			(
+				SELECT id FROM threads
+				WHERE session_id = s.id AND parent_thread_id IS NULL
+				ORDER BY created_at, id LIMIT 1
+			)
+		)
+		WHERE s.id = ?`,
+		sessionID,
+	).Scan(
+		&summary.SessionID, &sessionStatus, &metadata, &createdAt, &sessionUpdated,
+		&summary.WorkspaceRoot, &workspaceLabel,
+		&summary.ThreadID, &parent, &summary.Title, &threadStatus, &threadUpdated,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return protocol.SessionSummary{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.SessionSummary{}, fmt.Errorf("get session lifecycle: %w", err)
+	}
+	summary.Version = protocol.SessionLifecycleVersion
+	summary.Archived = sessionStatus == string(StatusClosed) ||
+		threadStatus == "archived"
+	if parent.Valid {
+		summary.ParentThreadID = protocol.ThreadID(parent.String)
+	}
+	if summary.CreatedAt, err = parseTime(createdAt); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	sessionTime, err := parseTime(sessionUpdated)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	threadTime, err := parseTime(threadUpdated)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	summary.UpdatedAt = laterTime(sessionTime, threadTime)
+	meta, route, isolation, err := decodeLifecycleMetadata(metadata)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	summary.Revision = meta.Revision
+	summary.Pinned = meta.Pinned
+	summary.Provider = route.Provider
+	summary.Model = route.Model
+	summary.Mode = route.Mode
+	summary.ExecutionTarget = route.ExecutionTarget
+	if summary.ExecutionTarget == "" {
+		summary.ExecutionTarget = "local"
+	}
+	summary.Isolation = isolation
+	summary.WorkspaceLabel = strings.TrimSpace(workspaceLabel)
+	if summary.WorkspaceLabel == "" {
+		summary.WorkspaceLabel = filepath.Base(summary.WorkspaceRoot)
+	}
+	if summary.WorkspaceLabel == "" || summary.WorkspaceLabel == "." {
+		summary.WorkspaceLabel = summary.WorkspaceRoot
+	}
+	if err := r.projectLatestTurn(ctx, &summary); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if err := r.projectUsage(ctx, &summary); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if err := summary.Validate(); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	return summary, nil
+}
+
+func (r *Repository) ThreadIDs(
+	ctx context.Context,
+	sessionID string,
+) ([]protocol.ThreadID, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id FROM threads WHERE session_id = ? ORDER BY created_at, id`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []protocol.ThreadID
+	for rows.Next() {
+		var id protocol.ThreadID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		result = append(result, id)
+	}
+	return result, rows.Err()
+}
+
+func (r *Repository) SessionForThread(
+	ctx context.Context,
+	threadID protocol.ThreadID,
+) (string, error) {
+	var sessionID string
+	err := r.db.QueryRowContext(
+		ctx,
+		`SELECT session_id FROM threads WHERE id = ?`,
+		threadID,
+	).Scan(&sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return sessionID, err
+}
+
+func (r *Repository) ActivateThread(
+	ctx context.Context,
+	sessionID string,
+	threadID protocol.ThreadID,
+) (protocol.SessionSummary, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var metadata []byte
+	err = tx.QueryRowContext(ctx, `
+		SELECT s.metadata_json
+		FROM sessions s
+		JOIN threads t ON t.session_id = s.id
+		WHERE s.id = ? AND t.id = ?`,
+		sessionID, threadID,
+	).Scan(&metadata)
+	if errors.Is(err, sql.ErrNoRows) {
+		return protocol.SessionSummary{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if lifecycle.ActiveThreadID == threadID {
+		if err := tx.Rollback(); err != nil {
+			return protocol.SessionSummary{}, err
+		}
+		return r.GetLifecycle(ctx, sessionID)
+	}
+	lifecycle.Version = protocol.SessionLifecycleVersion
+	lifecycle.Revision++
+	lifecycle.ActiveThreadID = threadID
+	updated, err := metadataWithLifecycle(metadata, lifecycle)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE sessions SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+		updated, timestamp(time.Now().UTC()), sessionID,
+	); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	return r.GetLifecycle(ctx, sessionID)
+}
+
+func (r *Repository) UpdateLifecycle(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+	patch protocol.SessionLifecyclePatch,
+) (protocol.SessionSummary, error) {
+	if expectedRevision == 0 {
+		return protocol.SessionSummary{}, errors.New("expected lifecycle revision is required")
+	}
+	if err := patch.Validate(); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var metadata []byte
+	var threadID protocol.ThreadID
+	var currentTitle, sessionStatus, threadStatus string
+	err = tx.QueryRowContext(ctx, `
+		SELECT s.metadata_json, s.status, t.id, t.title, t.status
+		FROM sessions s
+		JOIN threads t ON t.id = COALESCE(
+			NULLIF(json_extract(
+				s.metadata_json, '$.lifecycle.active_thread_id'
+			), ''),
+			(
+				SELECT id FROM threads
+				WHERE session_id = s.id AND parent_thread_id IS NULL
+				ORDER BY created_at, id LIMIT 1
+			)
+		)
+		WHERE s.id = ?`,
+		sessionID,
+	).Scan(&metadata, &sessionStatus, &threadID, &currentTitle, &threadStatus)
+	if errors.Is(err, sql.ErrNoRows) {
+		return protocol.SessionSummary{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if lifecycle.Revision != expectedRevision {
+		return protocol.SessionSummary{}, &LifecycleRevisionConflictError{
+			Expected: expectedRevision,
+			Current:  lifecycle.Revision,
+		}
+	}
+	title := currentTitle
+	if patch.Title != nil {
+		title = strings.TrimSpace(*patch.Title)
+	}
+	pinned := lifecycle.Pinned
+	if patch.Pinned != nil {
+		pinned = *patch.Pinned
+	}
+	archived := sessionStatus == string(StatusClosed) || threadStatus == "archived"
+	if patch.Archived != nil {
+		archived = *patch.Archived
+	}
+	if title == currentTitle && pinned == lifecycle.Pinned &&
+		archived == (sessionStatus == string(StatusClosed) || threadStatus == "archived") {
+		if err := tx.Rollback(); err != nil {
+			return protocol.SessionSummary{}, err
+		}
+		return r.GetLifecycle(ctx, sessionID)
+	}
+	lifecycle.Version = protocol.SessionLifecycleVersion
+	lifecycle.Revision++
+	lifecycle.Pinned = pinned
+	nextMetadata, err := metadataWithLifecycle(metadata, lifecycle)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	now := time.Now().UTC()
+	closedAt := any(nil)
+	nextSessionStatus := StatusOpen
+	nextThreadStatus := "open"
+	if archived {
+		nextSessionStatus = StatusClosed
+		nextThreadStatus = "archived"
+		closedAt = timestamp(now)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE sessions
+		SET status = ?, metadata_json = ?, updated_at = ?, closed_at = ?
+		WHERE id = ?`,
+		nextSessionStatus, nextMetadata, timestamp(now), closedAt, sessionID,
+	); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE threads
+		SET title = ?, status = ?, updated_at = ?
+		WHERE id = ?`,
+		title, nextThreadStatus, timestamp(now), threadID,
+	); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	return r.GetLifecycle(ctx, sessionID)
+}
+
+func (r *Repository) DeleteLifecycle(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+) (protocol.SessionDeleteResult, error) {
+	if expectedRevision == 0 {
+		return protocol.SessionDeleteResult{},
+			errors.New("expected lifecycle revision is required")
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var (
+		metadata      []byte
+		threadID      protocol.ThreadID
+		workspaceRoot string
+		status        string
+	)
+	err = tx.QueryRowContext(ctx, `
+		SELECT s.metadata_json, s.status, w.root_path, t.id
+		FROM sessions s
+		JOIN workspaces w ON w.id = s.workspace_id
+		JOIN threads t ON t.id = COALESCE(
+			NULLIF(json_extract(
+				s.metadata_json, '$.lifecycle.active_thread_id'
+			), ''),
+			(
+				SELECT id FROM threads
+				WHERE session_id = s.id AND parent_thread_id IS NULL
+				ORDER BY created_at, id LIMIT 1
+			)
+		)
+		WHERE s.id = ?`,
+		sessionID,
+	).Scan(&metadata, &status, &workspaceRoot, &threadID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return protocol.SessionDeleteResult{}, ErrNotFound
+	}
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	if lifecycle.Revision != expectedRevision {
+		return protocol.SessionDeleteResult{}, &LifecycleRevisionConflictError{
+			Expected: expectedRevision,
+			Current:  lifecycle.Revision,
+		}
+	}
+	{
+		var count int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM sessions s
+			JOIN workspaces w ON w.id = s.workspace_id
+			WHERE w.root_path = ?`,
+			workspaceRoot,
+		).Scan(&count); err != nil {
+			return protocol.SessionDeleteResult{}, err
+		}
+		if count <= 1 {
+			return protocol.SessionDeleteResult{}, protocol.NewProblem(
+				protocol.CodeConflict,
+				"cannot delete the last session in a workspace",
+				false,
+				nil,
+			)
+		}
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
+	if err != nil {
+		return protocol.SessionDeleteResult{}, fmt.Errorf("delete session: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	if affected != 1 {
+		return protocol.SessionDeleteResult{}, ErrLifecycleRevisionConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	return protocol.SessionDeleteResult{
+		Version:   protocol.SessionLifecycleVersion,
+		SessionID: sessionID,
+		ThreadID:  threadID,
+		DeletedAt: time.Now().UTC(),
+	}, nil
+}
+
+func decodeLifecycleMetadata(
+	metadata []byte,
+) (lifecycleMetadata, profileRoute, string, error) {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(metadata, &values); err != nil {
+		return lifecycleMetadata{}, profileRoute{}, "", fmt.Errorf(
+			"decode durable session metadata: %w",
+			err,
+		)
+	}
+	lifecycle := lifecycleMetadata{
+		Version:  protocol.SessionLifecycleVersion,
+		Revision: 1,
+	}
+	if raw := values["lifecycle"]; len(raw) != 0 {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&lifecycle); err != nil {
+			return lifecycleMetadata{}, profileRoute{}, "", fmt.Errorf(
+				"decode session lifecycle metadata: %w",
+				err,
+			)
+		}
+		if lifecycle.Version != protocol.SessionLifecycleVersion ||
+			lifecycle.Revision == 0 {
+			return lifecycleMetadata{}, profileRoute{}, "",
+				errors.New("session lifecycle metadata is invalid")
+		}
+		if lifecycle.ActiveThreadID != "" &&
+			len(lifecycle.ActiveThreadID) > 256 {
+			return lifecycleMetadata{}, profileRoute{}, "",
+				errors.New("session lifecycle active Thread identity is invalid")
+		}
+	}
+	var route profileRoute
+	if raw := values["profile"]; len(raw) != 0 {
+		_ = json.Unmarshal(raw, &route)
+	}
+	if route.Provider == "" {
+		_ = json.Unmarshal(values["provider"], &route.Provider)
+	}
+	if route.Model == "" {
+		_ = json.Unmarshal(values["model"], &route.Model)
+	}
+	var isolation string
+	_ = json.Unmarshal(values["isolation"], &isolation)
+	if isolation == "" {
+		isolation = "shared"
+	}
+	if isolation != "shared" && isolation != "worktree" {
+		return lifecycleMetadata{}, profileRoute{}, "",
+			fmt.Errorf("unsupported durable session isolation %q", isolation)
+	}
+	return lifecycle, route, isolation, nil
+}
+
+func metadataWithLifecycle(
+	metadata []byte,
+	lifecycle lifecycleMetadata,
+) ([]byte, error) {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(metadata, &values); err != nil {
+		return nil, err
+	}
+	if values == nil {
+		values = make(map[string]json.RawMessage)
+	}
+	encoded, err := json.Marshal(lifecycle)
+	if err != nil {
+		return nil, err
+	}
+	values["lifecycle"] = encoded
+	return json.Marshal(values)
+}
+
+func (r *Repository) projectLatestTurn(
+	ctx context.Context,
+	summary *protocol.SessionSummary,
+) error {
+	var turnID, status, updatedAt string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT tr.id, tr.status, tr.updated_at
+		FROM turns tr
+		JOIN threads t ON t.id = tr.thread_id
+		WHERE t.session_id = ?
+		ORDER BY tr.updated_at DESC, tr.ordinal DESC
+		LIMIT 1`,
+		summary.SessionID,
+	).Scan(&turnID, &status, &updatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		summary.Status = protocol.SessionStatusIdle
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	summary.LatestTurnID = protocol.TurnID(turnID)
+	turnTime, err := parseTime(updatedAt)
+	if err != nil {
+		return err
+	}
+	summary.UpdatedAt = laterTime(summary.UpdatedAt, turnTime)
+	switch status {
+	case "active":
+		summary.Status = protocol.SessionStatusRunning
+	case "completed", "reverted":
+		summary.Status = protocol.SessionStatusCompleted
+	case "failed":
+		summary.Status = protocol.SessionStatusFailed
+	case "canceled":
+		summary.Status = protocol.SessionStatusInterrupted
+	default:
+		summary.Status = protocol.SessionStatusIdle
+	}
+	var sequence uint64
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(e.sequence), 0)
+		FROM event_index e
+		JOIN threads t ON t.id = e.thread_id
+		WHERE t.session_id = ?`,
+		summary.SessionID,
+	).Scan(&sequence); err != nil {
+		return err
+	}
+	summary.LatestSequence = protocol.Cursor(sequence)
+	return nil
+}
+
+func (r *Repository) projectUsage(
+	ctx context.Context,
+	summary *protocol.SessionSummary,
+) error {
+	var unpriced, calls uint64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(input_tokens + output_tokens + reasoning_tokens), 0),
+			COALESCE(SUM(CASE WHEN cost_known THEN cost_microunits ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN cost_known THEN 0 ELSE 1 END), 0),
+			COUNT(*)
+		FROM usage WHERE session_id = ?`,
+		summary.SessionID,
+	).Scan(&summary.TotalTokens, &summary.CostMicrounits, &unpriced, &calls)
+	if err != nil {
+		return err
+	}
+	summary.CostKnown = calls > 0 && unpriced == 0
+	return nil
+}
+
+func (r *Repository) matchTurn(
+	ctx context.Context,
+	sessionID string,
+	query string,
+) (protocol.TurnID, error) {
+	var turnID string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT tr.id
+		FROM items i
+		JOIN turns tr ON tr.id = i.turn_id
+		JOIN threads t ON t.id = tr.thread_id
+		WHERE t.session_id = ?
+		  AND instr(lower(CAST(i.payload_json AS TEXT)), lower(?)) > 0
+		ORDER BY tr.ordinal DESC, i.ordinal DESC
+		LIMIT 1`,
+		sessionID, query,
+	).Scan(&turnID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return protocol.TurnID(turnID), err
+}
+
+func laterTime(left, right time.Time) time.Time {
+	if right.After(left) {
+		return right
+	}
+	return left
+}

@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/provider/types.go
   - internal/runtime/agent/engine/engine.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Streaming、Reasoning、Tool Call 与 Usage
@@ -70,6 +70,8 @@ Incomplete Buffer 提升为 Tool Call。
 
 Reasoning Text、Visible Text、Opaque Signature/Provider Data、Tool Argument 保持独立
 Content Block，避免 Replay 改变其 Role。
+
+## Usage 与 Cost
 
 一个 Turn 可产生多个 Provider Sample，包括 Tool-side Model Call。Usage 在一个 Sample
 内是 Cumulative，因此 Aggregation 保留每个 Sample 的最后报告，而不是累加所有 Delta。
@@ -147,5 +149,5 @@ Sample、Visible Output 与 Accounting Effect。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `model-stream-reasoning-usage` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

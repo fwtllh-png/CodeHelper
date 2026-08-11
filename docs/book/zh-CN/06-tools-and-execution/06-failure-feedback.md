@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/engine/toolfailure.go
   - internal/runtime/agent/engine/engine.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Tool Failure 如何反馈给模型
@@ -31,6 +31,8 @@ last_verified: 2026-08-06
 
 区分 Recoverable Call Feedback、Soft Tool Result、Cancellation 与 Terminal
 Guard/Runtime Failure，避免诱导模型反复探测边界。
+
+## Failure Channels
 
 ```mermaid
 flowchart TD
@@ -90,6 +92,8 @@ Policy Rule 或无助于下一有效 Action 的 Backend Detail。
 Failure Feedback 会进入 Model-visible History 与 Evidence/Compaction。它解释 Boundary，
 绝不是削弱 Boundary 的指令。
 
+## Pairing 与 Scheduling
+
 每个 Result 保留 Call ID。Scheduler 遵守 Serial/Concurrent Policy，并在返回前 Join
 全部 Goroutine。Executed Map 以 Call ID 防止 Turn 内重复执行；Recoverable Failure
 进入 History，下一 Sample 可修正。
@@ -148,5 +152,5 @@ Policy Denial 与 Arbitrary Executor Error，解释哪些会成为 Failed Tool R
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `tool-failure-feedback` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

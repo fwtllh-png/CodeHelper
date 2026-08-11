@@ -4,6 +4,7 @@
 package memory
 
 import (
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -138,7 +139,7 @@ func (s *Store) Append(note string) error {
 	if len(trimmed) > MaxNoteBytes {
 		return ErrNoteTooLarge
 	}
-	if looksSecret(trimmed) {
+	if containsCredentialMaterial(trimmed) {
 		return errors.New("memory note must not contain secrets")
 	}
 
@@ -263,13 +264,33 @@ func assertInside(root, path string) error {
 	return nil
 }
 
-func looksSecret(note string) bool {
-	lower := strings.ToLower(note)
-	for _, marker := range []string{
-		"api_key", "apikey", "secret", "password", "token=", "bearer ",
-		"-----begin ", "private key",
-	} {
-		if strings.Contains(lower, marker) {
+func containsCredentialMaterial(note string) bool {
+	if block, _ := pem.Decode([]byte(note)); block != nil &&
+		strings.Contains(strings.ToUpper(block.Type), "PRIVATE KEY") {
+		return true
+	}
+	credentialFields := map[string]struct{}{
+		"access_token": {}, "api_key": {}, "apikey": {}, "client_secret": {},
+		"password": {}, "refresh_token": {}, "token": {},
+	}
+	for line := range strings.Lines(note) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			key, value, ok = strings.Cut(line, ":")
+		}
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		key = strings.ToLower(strings.TrimSpace(key))
+		if key == "authorization" &&
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "bearer ") {
+			return true
+		}
+		if _, sensitive := credentialFields[key]; sensitive {
 			return true
 		}
 	}

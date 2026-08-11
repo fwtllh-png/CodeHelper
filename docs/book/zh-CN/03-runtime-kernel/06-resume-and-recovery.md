@@ -11,17 +11,19 @@ prerequisites:
 code_paths:
   - internal/runtime/app
   - internal/runtime/app/wire
+  - internal/persist/snapshot
   - internal/persist/workspacejournal
 test_paths:
   - internal/runtime/app/reconstruct_test.go
+  - internal/runtime/app/session_artifacts_test.go
   - internal/runtime/app/wire/persistent_test.go
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
   - internal/runtime/app/lifecycle.go
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/wire/persistent.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Resume、Recovery 与幂等边界
@@ -89,6 +91,26 @@ Interrupted Executable Work 可以按契约 Requeue；没有 Executor 的 Record
 把四者都称为 Resume 会隐藏 Duplicate-effect Risk。Owner 必须依据 Durable Record 与可证明
 Effect 选择行为。
 
+Turn-level Retry/Continue 是显式 Recovery Operation，不是自动 Provider Retry。Runtime
+从 Durable History 重建 Source Turn 的 Model-visible Request，并创建新 Turn。Retry
+保持原 Request；Continue 可追加有界 Guidance。两者都要求 Source 已 Terminal、
+Target Session Idle、Active-thread Ownership 与新 Idempotency Key；不会复制或重放
+历史 Tool、Command、Network 或 File Effect。
+
+## Session Checkpoint 与 State-only Restore
+
+Session Checkpoint 是由 Snapshot Metadata/CAS 支持的不可变 Artifact，绑定 Session、
+Thread、Turn、Profile Revision、Model-visible History 与 Integrity Data；它不同于
+Workflow Node Checkpoint。
+
+Restore 只恢复 State。Runtime 选择已验证的 History/Profile Baseline 并发出 Durable
+Restore Fact，不重新执行历史 Event/Effect。Fork 同样只恢复 State，再创建带 Parent
+Session/Thread/Checkpoint Lineage 的新 Active Thread；该关系状态可跨进程重启恢复。
+
+Structured Plan Artifact 复用相同 Ownership Discipline。在 Current Session、New
+Session 或 Checkpoint Fork 中实施 Plan，都会在 Runtime 校验 Plan Identity、Source
+Profile Revision、Target Profile Equivalence 与 Lineage 后创建新 Turn。
+
 ## Crash Window Matrix
 
 | Crash Window | Durable Evidence | Safe Startup Action |
@@ -133,6 +155,7 @@ Idempotency 只在局部边界成立；一个 Key 不能使任意 Shell Command 
 | History | `runtime/app/reconstruct.go` |
 | Persistent Builder | `runtime/app/wire/persistent.go` |
 | Session/Snapshot | `persist/session`、`persist/snapshot` |
+| Checkpoint/Plan/Turn Recovery | `runtime/app/session_artifacts.go` |
 | Workspace Recovery | `persist/workspacejournal` |
 
 ## 设计取舍与替代方案
@@ -151,11 +174,14 @@ Effect-specific Before-image 补充。
 - Non-executable Interrupted Work 明确失败。
 - Journal Restore 检查 Ownership/Fingerprint。
 - External Side Effect 不被错误报告为 Reverted。
+- Checkpoint Restore/Fork 不执行历史 Side Effect。
+- Retry/Continue 拒绝 Non-terminal、Cross-thread、Busy 或 Stale Source。
 
 ## 测试与验证
 
 ```bash
 go test ./internal/runtime/app -run TestReconstructThread
+go test ./internal/runtime/app -run 'Test(SessionCheckpoint|Restore|Fork|RecoverTurn|Plan)'
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
 go test ./internal/persist/workspacejournal \
   -run 'Test(TheNextProcessUndoesATurnAKilledProcessLeftHalfApplied|RecoveryKeepsTheWritesOfATurnThatAlreadyCommitted)'
@@ -177,6 +203,8 @@ go test ./internal/host/cli -run TestExecPersistentResumeListTurns
 3. Idempotency 为什么必须限定边界？
 4. Replay、Resume、Retry、Reconcile 有何区别？
 5. Remote Effect Outcome Unknown 时应该怎么做？
+6. Checkpoint 为什么可恢复 History，却不能 Replay Event？
+7. Continue 与恢复 Interrupted Process 有何不同？
 
 ## 延伸阅读
 
@@ -188,5 +216,5 @@ go test ./internal/host/cli -run TestExecPersistentResumeListTurns
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `runtime-resume-recovery` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

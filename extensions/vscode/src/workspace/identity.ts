@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { isAbsolute, posix } from "node:path";
 
 import type { TurnStartPayload } from "../protocol/generated.js";
-import { authorityMatchesRemoteName } from "./host.js";
 
 export type WorkspaceIdentity = NonNullable<
 TurnStartPayload["workspace_identity"]
@@ -10,18 +9,15 @@ TurnStartPayload["workspace_identity"]
 
 const workspaceIdentityVersion = 1;
 const maxWorkspaceIdentityBytes = 4096;
-const maxRemoteNameBytes = 128;
 
 export function createWorkspaceIdentity(
   editorURI: string,
   runtimePath: string,
-  remoteName?: string,
 ): WorkspaceIdentity {
   if (Buffer.byteLength(editorURI, "utf8") === 0 ||
     Buffer.byteLength(editorURI, "utf8") > maxWorkspaceIdentityBytes ||
     Buffer.byteLength(runtimePath, "utf8") === 0 ||
     Buffer.byteLength(runtimePath, "utf8") > maxWorkspaceIdentityBytes ||
-    Buffer.byteLength(remoteName ?? "", "utf8") > maxRemoteNameBytes ||
     !isAbsolute(runtimePath)) {
     throw new Error("workspace identity fields are invalid");
   }
@@ -39,25 +35,14 @@ export function createWorkspaceIdentity(
     !canonicalPercentEscapes(editorURI)) {
     throw new Error("workspace editor URI is not canonical");
   }
-  if (parsed.protocol === "file:") {
-    if (parsed.host !== "" || remoteName !== undefined) {
-      throw new Error("local workspace identity cannot carry remote authority");
-    }
-  } else if (parsed.protocol === "vscode-remote:") {
-    if (parsed.host === "" || remoteName === undefined ||
-      !/^[A-Za-z0-9._-]+$/u.test(remoteName) ||
-      !authorityMatchesRemoteName(parsed.host, remoteName)) {
-      throw new Error("remote workspace identity requires authority and remote name");
-    }
-  } else {
-    throw new Error("workspace editor URI scheme is unsupported");
+  if (parsed.protocol !== "file:" || parsed.host !== "") {
+    throw new Error("workspace identity requires a local file URI");
   }
   return {
     version: workspaceIdentityVersion,
     root_id: createHash("sha256").update(editorURI).digest("hex"),
     editor_uri: editorURI,
     runtime_path: runtimePath,
-    ...(remoteName === undefined ? {} : { remote_name: remoteName }),
   };
 }
 

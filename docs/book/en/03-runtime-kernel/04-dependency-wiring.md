@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/wire/runtime.go
   - internal/runtime/app/wire/route.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Dependency Construction and Capability Wiring
@@ -191,5 +191,5 @@ occur during this trace.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-wiring` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

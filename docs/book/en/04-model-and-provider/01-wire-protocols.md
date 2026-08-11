@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/provider/types.go
   - internal/adapter/provider/httpclient/client.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Chat Completion and Responses Protocols
@@ -157,5 +157,5 @@ wire fields that produce the same normalized Event types.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `model-wire-protocols` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

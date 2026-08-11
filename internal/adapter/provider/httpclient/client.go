@@ -173,7 +173,6 @@ func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (pro
 		sleep = wait
 	}
 	idempotencyKey := requestKey(body)
-	reasoningRepaired := false
 
 	for attempt := 1; attempt <= attempts; attempt++ {
 		httpRequest, createErr := http.NewRequestWithContext(
@@ -220,21 +219,6 @@ func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (pro
 			}, nil
 		}
 		errorText := boundedBody(response.Body)
-		if !reasoningRepaired &&
-			request.Route.Protocol() == model.ProtocolOpenAIResponses &&
-			looksLikeReasoningReplayError(errorText) {
-			if hydrated, changed := hydrateReasoningText(request.Messages); changed {
-				repaired := request
-				repaired.Messages = hydrated
-				if repairedBody, repairedPath, encodeErr := encodeRequest(repaired); encodeErr == nil {
-					reasoningRepaired = true
-					request = repaired
-					body, path = repairedBody, repairedPath
-					idempotencyKey = requestKey(body)
-					continue
-				}
-			}
-		}
 		retryable := retryableStatus(response.StatusCode)
 		serverDelay, hasRetryAfter := retryAfter(response.Header.Get("Retry-After"), now())
 		rateLimit := rateLimitMetadata(response.Header, serverDelay, hasRetryAfter)
@@ -257,9 +241,9 @@ func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (pro
 		if errorText != "" {
 			message += ": " + errorText
 		}
-		if shouldDumpProvider(response.StatusCode, errorText) {
+		if shouldDumpProvider(response.StatusCode) {
 			if dumpPath, dumpErr := dumpProviderFailure(
-				request, body, path, response.StatusCode, errorText, reasoningRepaired,
+				request, body, path, response.StatusCode, errorText,
 			); dumpErr == nil && dumpPath != "" {
 				message += " [diagnostic: " + dumpPath + "]"
 			}
@@ -837,6 +821,7 @@ type receiveResult struct {
 func (s *managedStream) Recv() (provider.StreamEvent, error) {
 	if s.idleTimeout <= 0 {
 		event, err := s.stream.Recv()
+		err = normalizeStreamError(err)
 		s.observe(event, err)
 		return event, err
 	}
@@ -849,8 +834,9 @@ func (s *managedStream) Recv() (provider.StreamEvent, error) {
 	defer timer.Stop()
 	select {
 	case value := <-result:
-		s.observe(value.event, value.err)
-		return value.event, value.err
+		err := normalizeStreamError(value.err)
+		s.observe(value.event, err)
+		return value.event, err
 	case <-timer.C:
 		err := protocol.NewProblem(
 			protocol.CodeUnavailable,
@@ -866,6 +852,21 @@ func (s *managedStream) Recv() (provider.StreamEvent, error) {
 		_ = s.Close()
 		return provider.StreamEvent{}, err
 	}
+}
+
+func normalizeStreamError(err error) error {
+	if err == nil || errors.Is(err, io.EOF) || protocol.CodeOf(err) != protocol.CodeInternal {
+		return err
+	}
+	if retryableTransportError(err) {
+		return protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"provider stream transport failed",
+			true,
+			err,
+		)
+	}
+	return err
 }
 
 func (s *managedStream) observe(event provider.StreamEvent, err error) {

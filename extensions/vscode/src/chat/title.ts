@@ -1,10 +1,15 @@
 const politePromptPrefix =
   /^(?:(?:请(?:帮我)?|帮我|麻烦(?:帮我)?|please|can you|could you)\s*)+/iu;
 const maxGeneratedChatTitleLength = 48;
-const placeholderChatTitle = /^Chat [1-9][0-9]*$/u;
+const legacyPlaceholderChatTitle = /^Chat [1-9][0-9]*$/u;
+const legacyLocalizedChatTitle = "新对话";
+
+export const defaultChatTitle = "New Chat";
 
 export function isPlaceholderChatTitle(title: string): boolean {
-  return placeholderChatTitle.test(title);
+  return title === defaultChatTitle ||
+    title === legacyLocalizedChatTitle ||
+    legacyPlaceholderChatTitle.test(title);
 }
 
 export function chatTitleFromPrompt(prompt: string): string | undefined {

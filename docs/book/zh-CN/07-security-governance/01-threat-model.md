@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - docs/zh-CN/security.md
   - internal/adapter/tool/guard/guard.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Agent Runtime Threat Model
@@ -106,3 +106,11 @@ make secret-leak-test
 
 - [Mode、Posture、Policy 与 Permission](./02-mode-posture-policy.md)
 - [安全手册](../../../zh-CN/security.md)
+
+## 事实来源与验证
+
+| 项目 | 值 |
+| --- | --- |
+| Catalog ID | `security-threat-model` |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

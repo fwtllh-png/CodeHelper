@@ -70,7 +70,7 @@ mode = "act"                 # plan | act | operate
 workspace = "."
 tools = true
 max_output_tokens = 4096
-max_steps = 64
+max_steps = 256
 timeout = "2m"
 idle_timeout = "1m"
 max_concurrent = 8
@@ -158,7 +158,23 @@ model = "gpt-4.1-mini"
 
 [web]
 search_backend = "duckduckgo"
+
+[diagnostics.commands.".md"]
+name = "markdownlint-cli2"
+args = ["--no-globs", "--", "{path}"]
 ```
+
+`execution.max_steps` 是安全与成本的硬上限，不是目标值。代码 Turn 默认值为 256，
+支持范围为 1-1000。当预算不少于 64 步时，Runtime 会在剩余 16-32 步时注入一次
+收敛提醒，使模型优先完成一个完整、已验证的结果；若无法在预算内完成，则通过
+`pending_actions` 明确声明未完成工作，而不是毫无预警地被强制终止。
+
+Agent 还会跟踪连续没有结构化进展的 Sample；这不是新的 16 步执行上限。连续 16 步
+无进展时要求模型收敛，32 步时限制继续扩散式探索，但仍允许精确文件读取、工作区
+修改、质量检查、Plan 更新和 Completion；48 步时以明确的无进展错误终止 Turn。
+任何 Mutation、Plan 步骤完成、Verification 或 Completion 推进都会立即清零计数。
+Answer 和 Plan Turn 还会把首次读取的新路径与新 Evidence 计为进展；Operation Turn
+会把成功的业务 Tool 结果计为进展。该进展状态会持久化，并在 Runtime 恢复后延续。
 
 未知 TOML 字段会被拒绝。这是有意设计：拼错的安全或预算字段不能“看起来已配置但
 实际没有生效”。
@@ -219,6 +235,24 @@ Suite。每个 `turn.verification` Check 都包含命令推导原因。无法识
 明确报告 `unavailable`，不会静默成为绿色结果。
 
 只有仓库验证命令在目标沙箱内稳定可复现时，才应使用 `hard`。
+
+## 编辑后诊断
+
+`[diagnostics.commands]` 将小写文件扩展名映射到可信的、通过 PATH 解析的可执行程序。
+每个命令的有界参数列表必须包含 `{path}`。这些命令会在受 Guard 管理的文件编辑后
+执行，因此仓库本地配置只有在被显式信任后才能定义它们。
+
+Markdown 可通过 `make vscode-install` 安装仓库锁定的开发依赖，也可以在 Host PATH
+中安装相同版本：
+
+```bash
+npm install --global markdownlint-cli2@0.23.2
+```
+
+仓库的 `.markdownlint-cli2.jsonc` 让单文件编辑后检查与仓库级
+`markdownlint-cli2` 检查保持一致。Markdown Lint 只作为补充，不替代
+`make docs-check` 和 `make book-check`；双语一致性、导航、治理与书籍结构仍以这两个
+命令为权威门禁。
 
 ## 状态与持久化
 

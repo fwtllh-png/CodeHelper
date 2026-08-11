@@ -19,8 +19,8 @@ source_of_truth:
   - internal/runtime/protocol/message.go
   - internal/runtime/app/runtime.go
   - docs/protocol/runtime-protocol.schema.json
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Operation, Event, Receipt, and Projection
@@ -236,5 +236,5 @@ vocabulary to one end-to-end interaction.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `overview-runtime-vocabulary` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

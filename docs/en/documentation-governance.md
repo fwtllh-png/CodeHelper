@@ -80,6 +80,12 @@ warning threshold. A weekly workflow performs strict source drift checks:
 if a declared code, test, or source-of-truth path has a later Git date than
 `last_verified`, the chapter must be rechecked and both language files updated.
 
+Reconcile the book after a strict drift check with `make doc-reverify`:
+chapters whose declared source paths changed since `last_verified` are
+downgraded to `draft` in both language files and in the Catalog; chapters
+whose sources are unchanged are re-stamped with today's date. Preview the
+outcome with `make doc-reverify-dry-run` before applying it.
+
 Screenshots are exceptional because they age poorly. Every book image must
 appear in `governance.json` with its SHA-256 digest. Prefer Mermaid or text when
 the same information can remain reviewable in source form.

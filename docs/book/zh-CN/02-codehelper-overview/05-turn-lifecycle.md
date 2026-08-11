@@ -18,8 +18,8 @@ test_paths:
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
   - internal/runtime/protocol/message.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 一次 Agent Turn 的完整生命周期
@@ -226,5 +226,5 @@ Tool Branch。修改 Prompt 前先阅读 `testdata/providers/openai/fixture.json
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `overview-turn-lifecycle` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

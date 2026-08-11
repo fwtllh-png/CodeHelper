@@ -17,8 +17,8 @@ source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/agent/engine/engine.go
   - internal/runtime/protocol/message.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # From Chatbot to Agent
@@ -201,5 +201,5 @@ explains the probabilistic component inside the loop and the limits it imposes.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `agent-from-chatbot-to-agent` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

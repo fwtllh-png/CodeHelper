@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -128,6 +131,42 @@ func TestShellPropagatesSandboxPrepareError(t *testing.T) {
 	}
 }
 
+func TestShellWorkspaceChangeDuringSandboxValidationIsRecoverable(t *testing.T) {
+	root := t.TempDir()
+	missing := filepath.Join(root, "node_modules", "acorn-jsx")
+	manager := process.NewSessionManager(4096)
+	t.Cleanup(manager.CloseAll)
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithManagerAndBackend(
+		registry,
+		root,
+		manager,
+		errorBackend{err: &os.PathError{
+			Op: "lstat", Path: missing, Err: fs.ErrNotExist,
+		}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	_, err := registry.Execute(t.Context(), tool.Call{
+		Name: "shell_read",
+		Arguments: json.RawMessage(
+			`{"command":"printf should-not-run"}`,
+		),
+		Authorized: true,
+	})
+	if !errors.Is(err, tool.ErrPrecondition) {
+		t.Fatalf("shell error = %v, want recoverable precondition", err)
+	}
+	hint, ok := tool.RecoveryHintFromError(err)
+	if !ok ||
+		hint.ErrorCategory != "workspace_changed" ||
+		hint.RequiredAction != "shell_read" ||
+		hint.Path != "node_modules/acorn-jsx" ||
+		!hint.RetryOriginal {
+		t.Fatalf("recovery hint = %+v, found=%t", hint, ok)
+	}
+}
+
 type passthroughBackend struct{}
 
 func (passthroughBackend) Capability() sandbox.Capability {
@@ -138,6 +177,11 @@ func (passthroughBackend) Capability() sandbox.Capability {
 }
 
 func (passthroughBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
+	command.PreparedReadOnly = command.WorkspaceReadOnly
+	command.PreparedWritePaths = append(
+		[]string(nil), command.WorkspaceWritePaths...,
+	)
+	command.PreparedNetworkDenied = command.DenyNetwork
 	return command, nil
 }
 

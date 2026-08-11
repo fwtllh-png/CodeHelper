@@ -7,13 +7,23 @@ import {
   unavailableBackgroundViews,
 } from "./background/views.js";
 import { ChatViewProvider } from "./chat/view.js";
+import type { ChatClientEvidence } from "./chat/messages.js";
 import { registerSelectionCommands } from "./selection/commands.js";
 import type { DecodedEvent } from "./protocol/decode.js";
 import type { SupervisorSnapshot } from "./runtime/supervisor.js";
 import type {
   ChatSessionSummary,
+  ChatSearchResult,
   RuntimeHostSnapshot,
 } from "./runtime/controller.js";
+import type {
+  SessionProfilePatch,
+  SessionProfileSnapshot,
+  SessionToolCatalog,
+  SessionProfileUpdate,
+  SubmitReceipt,
+} from "./runtime/session.js";
+import type { AcceptedPlanTurn } from "./runtime/artifacts.js";
 import { registerDiagnosticActions } from "./diagnostics/actions.js";
 import { ChangesView, unavailableChangesView } from "./edits/changes.js";
 import { EditPlanPreview } from "./edits/preview.js";
@@ -29,6 +39,15 @@ import {
   type ManifestCache,
 } from "./binary/update.js";
 import { registerSetupCommands } from "./setup/commands.js";
+import type { CredentialView } from "./security/credentials.js";
+import type {
+  CheckpointList,
+  CheckpointRestore,
+  ModelCatalog,
+  ProviderCatalog,
+  SessionPlan,
+} from "./protocol/generated.js";
+import { hostLocalStoragePath } from "./runtime/host-storage.js";
 
 let registry: WorkspaceRuntimeRegistry | undefined;
 let updateCheckInFlight: Promise<void> | undefined;
@@ -46,6 +65,72 @@ export interface ExtensionAPI {
   readonly runtimeHosts?: () => readonly RuntimeHostSnapshot[];
   readonly chatSessions?: () => readonly ChatSessionSummary[];
   readonly createChat?: () => Promise<ChatSessionSummary>;
+  readonly duplicateChat?: (sessionId: string) => Promise<ChatSessionSummary>;
+  readonly renameChat?: (sessionId: string, title: string) => Promise<void>;
+  readonly pinChat?: (sessionId: string, pinned: boolean) => Promise<void>;
+  readonly archiveChat?: (sessionId: string, archived: boolean) => Promise<void>;
+  readonly deleteChat?: (sessionId: string) => Promise<void>;
+  readonly checkpoints?: (sessionId: string) => Promise<CheckpointList>;
+  readonly restoreCheckpoint?: (
+    sessionId: string,
+    checkpointId: string,
+  ) => Promise<CheckpointRestore>;
+  readonly forkCheckpoint?: (
+    sessionId: string,
+    checkpointId: string,
+    title: string,
+  ) => Promise<void>;
+  readonly sessionProfile?: (sessionId: string) => Promise<SessionProfileSnapshot>;
+  readonly sessionToolCatalog?: (
+    sessionId: string,
+  ) => Promise<SessionToolCatalog>;
+  readonly providerCatalog?: () => Promise<ProviderCatalog>;
+  readonly modelCatalog?: (provider?: string) => Promise<ModelCatalog>;
+  readonly updateSessionProfile?: (
+    sessionId: string,
+    expectedRevision: number,
+    patch: SessionProfilePatch,
+  ) => Promise<SessionProfileUpdate>;
+  readonly testCredentialStatus?: (provider: string) => Promise<CredentialView>;
+  readonly testStoreCredential?: (
+    provider: string,
+    secret: string,
+  ) => Promise<void>;
+  readonly testRecordCredentialValidation?: (
+    provider: string,
+    validation: "valid" | "invalid",
+  ) => Promise<void>;
+  readonly chatWebviewReady?: () => boolean;
+  readonly chatClientEvidence?: () => ChatClientEvidence | undefined;
+  readonly chatProjectionDiagnostics?: () => {
+    readonly visible: boolean;
+    readonly snapshotPosts: number;
+    readonly patchPosts: number;
+  };
+  readonly testInvalidateChatProjection?: () => void;
+  readonly testDispatchChatIntent?: (value: unknown) => Promise<void>;
+  readonly testSubmitPrompt?: (
+    sessionId: string,
+    prompt: string,
+  ) => Promise<SubmitReceipt>;
+  readonly testCancelTurn?: (
+    sessionId: string,
+    turnId: string,
+  ) => Promise<SubmitReceipt>;
+  readonly testRecoverTurn?: (
+    sessionId: string,
+    turnId: string,
+    action: "retry" | "continue",
+    guidance?: string,
+  ) => Promise<AcceptedPlanTurn>;
+  readonly testSessionPlan?: (sessionId: string) => Promise<SessionPlan>;
+  readonly testImplementPlan?: (
+    sessionId: string,
+    planId: string,
+    transition: "implement" | "autopilot",
+    sourceSessionId?: string,
+  ) => Promise<AcceptedPlanTurn>;
+  readonly testSearchChats?: (query: string) => Promise<ChatSearchResult>;
   readonly onRootRuntimeEvent?: (
     listener: (
       rootId: string,
@@ -62,6 +147,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
   context.subscriptions.push(output, editPreview);
   const folders = vscode.workspace.workspaceFolders ?? [];
   let registryError: string | undefined;
+  let chatView: ChatViewProvider | undefined;
   if (folders.length > 0) {
     try {
       registry = new WorkspaceRuntimeRegistry(context, folders, output);
@@ -71,7 +157,12 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
     }
   }
   if (registry !== undefined) {
-    const chat = new ChatViewProvider(registry, editPreview);
+    const chat = new ChatViewProvider(
+      registry,
+      editPreview,
+      context.extensionUri,
+    );
+    chatView = chat;
     context.subscriptions.push(
       registry,
       chat,
@@ -170,6 +261,37 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
         reportStartError(output, error);
       }
     }),
+    vscode.commands.registerCommand("codehelper.startRuntimeCapture", async () => {
+      const root = await registry?.pick("CodeHelper: Start Runtime Capture");
+      if (root === undefined) {
+        void vscode.window.showErrorMessage(
+          "Runtime capture requires an open workspace folder.",
+        );
+        return;
+      }
+      try {
+        const path = await root.controller.startRuntimeCapture();
+        void vscode.window.showInformationMessage(
+          `${root.label}: Runtime capture started at ${path}`,
+        );
+      } catch (error) {
+        reportStartError(output, error);
+      }
+    }),
+    vscode.commands.registerCommand("codehelper.stopRuntimeCapture", async () => {
+      const root = await registry?.pick("CodeHelper: Stop Runtime Capture");
+      if (root === undefined) return;
+      try {
+        const path = await root.controller.stopRuntimeCapture();
+        void vscode.window.showInformationMessage(
+          path === undefined
+            ? `${root.label}: Runtime capture is not active.`
+            : `${root.label}: Runtime capture stopped at ${path}`,
+        );
+      } catch (error) {
+        reportStartError(output, error);
+      }
+    }),
     vscode.commands.registerCommand("codehelper.checkBinaryUpdates", async () => {
       await checkBinaryUpdate(context, output, true);
     }),
@@ -253,6 +375,110 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
           ),
           chatSessions: () => activeRegistry.selected.controller.sessions(),
           createChat: async () => activeRegistry.selected.controller.createChat(),
+          duplicateChat: async (sessionId) =>
+            activeRegistry.selected.controller.duplicateChat(sessionId),
+          renameChat: async (sessionId, title) =>
+            activeRegistry.selected.controller.renameChat(sessionId, title),
+          pinChat: async (sessionId, pinned) =>
+            activeRegistry.selected.controller.pinChat(sessionId, pinned),
+          archiveChat: async (sessionId, archived) =>
+            activeRegistry.selected.controller.archiveChat(sessionId, archived),
+          deleteChat: async (sessionId) =>
+            activeRegistry.selected.controller.deleteChat(sessionId),
+          checkpoints: async (sessionId) =>
+            activeRegistry.selected.controller.checkpoints(sessionId),
+          restoreCheckpoint: async (sessionId, checkpointId) =>
+            activeRegistry.selected.controller.restoreCheckpoint(
+              sessionId,
+              checkpointId,
+            ),
+          forkCheckpoint: async (sessionId, checkpointId, title) =>
+            activeRegistry.selected.controller.forkCheckpoint(
+              sessionId,
+              checkpointId,
+              title,
+            ),
+          sessionProfile: async (sessionId) =>
+            activeRegistry.selected.controller.sessionProfile(sessionId),
+          sessionToolCatalog: async (sessionId) =>
+            activeRegistry.selected.controller.sessionToolCatalog(sessionId),
+          providerCatalog: async () =>
+            activeRegistry.selected.controller.providerCatalog(),
+          modelCatalog: async (provider) =>
+            activeRegistry.selected.controller.modelCatalog(provider),
+          updateSessionProfile: async (sessionId, expectedRevision, patch) =>
+            activeRegistry.selected.controller.updateSessionProfile(
+              sessionId,
+              expectedRevision,
+              patch,
+            ),
+          testCredentialStatus: async (provider) =>
+            activeRegistry.selected.controller.credentialStatus(provider),
+          testStoreCredential: async (provider, secret) => {
+            await activeRegistry.selected.controller.storeCredential(
+              provider,
+              secret,
+            );
+            await activeRegistry.selected.controller
+              .activateCredentialProvider(provider);
+          },
+          testRecordCredentialValidation: async (provider, validation) =>
+            activeRegistry.selected.controller.recordCredentialValidation(
+              provider,
+              validation,
+              validation === "invalid" ? "authentication" : undefined,
+            ),
+          chatWebviewReady: () => chatView?.webviewReady ?? false,
+          chatClientEvidence: () => chatView?.clientEvidence,
+          chatProjectionDiagnostics: () =>
+            chatView?.projectionDiagnostics ?? {
+              visible: false,
+              snapshotPosts: 0,
+              patchPosts: 0,
+            },
+          testInvalidateChatProjection: () => {
+            chatView?.invalidateProjection();
+          },
+          testDispatchChatIntent: async (value) => {
+            if (chatView === undefined) {
+              throw new Error("Chat View is unavailable");
+            }
+            await chatView.receiveTestIntent(value);
+          },
+          testSubmitPrompt: async (sessionId, prompt) =>
+            activeRegistry.selected.controller.submitPrompt(
+              sessionId,
+              prompt,
+              [],
+            ),
+          testCancelTurn: async (sessionId, turnId) =>
+            activeRegistry.selected.controller.cancelTurn(sessionId, turnId),
+          testRecoverTurn: async (
+            sessionId,
+            turnId,
+            action,
+            guidance,
+          ) => activeRegistry.selected.controller.recoverTurn(
+            sessionId,
+            turnId,
+            action,
+            guidance,
+          ),
+          testSessionPlan: async (sessionId) =>
+            activeRegistry.selected.controller.sessionPlan(sessionId),
+          testImplementPlan: async (
+            sessionId,
+            planId,
+            transition,
+            sourceSessionId,
+          ) => activeRegistry.selected.controller.implementPlan(
+            sessionId,
+            planId,
+            transition,
+            sourceSessionId,
+          ),
+          testSearchChats: async (query) =>
+            activeRegistry.selected.controller.searchChats({ query }),
           onRootRuntimeEvent: (
             listener: (
               rootId: string,
@@ -290,9 +516,13 @@ async function performBinaryUpdate(
   interactive: boolean,
 ): Promise<void> {
   try {
-    if (context.globalStorageUri.scheme !== "file") {
-      throw new Error("binary updates require Host-local file storage");
-    }
+    const storageRoot = await hostLocalStoragePath({
+      uiExtensionHost:
+        context.extension.extensionKind === vscode.ExtensionKind.UI,
+      remoteName: vscode.env.remoteName,
+      scheme: context.globalStorageUri.scheme,
+      fsPath: context.globalStorageUri.fsPath,
+    });
     const configuration = vscode.workspace.getConfiguration("codehelper");
     const policy = configuration.get<"off" | "notify" | "auto">(
       "update.policy",
@@ -310,7 +540,7 @@ async function performBinaryUpdate(
       "release-trust-roots.json",
     ));
     const store = new ManagedBinaryStore(join(
-      context.globalStorageUri.fsPath,
+      storageRoot,
       "managed-binary",
     ));
     const client = new BinaryUpdateClient({

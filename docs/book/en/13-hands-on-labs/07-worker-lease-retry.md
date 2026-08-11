@@ -17,7 +17,7 @@ source_of_truth:
   - internal/orchestration/task/execution.go
   - internal/orchestration/worker/worker.go
 status: verified
-last_verified: 2026-08-06
+last_verified: 2026-08-10
 ---
 
 # Debug Worker Leases and Retries
@@ -97,3 +97,4 @@ Delete the temporary Task database and stop both Worker loops.
 | --- | --- |
 | Catalog ID | `lab-worker-retry` |
 | Status | `verified` |
+| Last verified | 2026-08-10 |

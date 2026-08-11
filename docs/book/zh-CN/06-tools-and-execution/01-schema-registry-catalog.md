@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/adapter/tool/catalog.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Tool Schema、Registry 与 Dynamic Catalog
@@ -84,6 +84,8 @@ Source 的 Desired State。Replace/Revoke 更换 Authority，并留下 Tombstone
 
 只匹配 Name 无法回答这些问题。
 
+## Deferred Tools 与 Search
+
 Deferred Entry 在 Executor 加载前公开 Descriptor。`tool_search` 搜索、排序并
 Materialize 匹配 Tool；Entry Count/Schema Byte Limit 控制增长。并发加载合并，加载时
 Schema/Authority Drift 失败。
@@ -144,5 +146,5 @@ go test ./internal/adapter/tool/toolsearch ./internal/adapter/tool/mcp
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `tool-schema-registry` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

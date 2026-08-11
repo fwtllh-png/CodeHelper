@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - AGENTS.md
   - docs/zh-CN/architecture.md
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # 如何阅读和修改大型 Agent 工程
@@ -27,6 +27,8 @@ last_verified: 2026-08-06
 ## 学习目标
 
 按 Ownership/Contract 导航，先取得 Evidence 再编辑，并按风险扩大验证。
+
+## Working Method
 
 1. 读 `AGENTS.md`、README、Architecture、Nearest Test、Makefile 与 Status。
 2. 找 Stable Contract：Protocol、Descriptor、Repository 或 Interface。
@@ -113,5 +115,5 @@ git diff --check
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `practice-reading-codebase` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

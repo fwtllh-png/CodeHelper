@@ -19,8 +19,8 @@ source_of_truth:
   - internal/runtime/protocol/message.go
   - internal/runtime/app/runtime.go
   - docs/protocol/runtime-protocol.schema.json
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Operation、Event、Receipt 与 Projection
@@ -197,5 +197,5 @@ go test ./internal/persist/state \
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `overview-runtime-vocabulary` |
-| 状态 | `verified` |
-| 最后验证 | 2026-08-06 |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

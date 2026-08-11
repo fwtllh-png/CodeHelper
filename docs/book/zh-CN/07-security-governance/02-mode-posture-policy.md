@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/security/policy/policy.go
   - internal/security/permissions/permissions.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Mode、Posture、Policy 与 Permission
@@ -96,3 +96,11 @@ go test ./internal/security/permissions
 ## 延伸阅读
 
 - [Guard、Approval、Constitution 与 Sandbox](./03-approval-constitution-sandbox.md)
+
+## 事实来源与验证
+
+| 项目 | 值 |
+| --- | --- |
+| Catalog ID | `security-mode-policy` |
+| 状态 | `draft` |
+| 最后验证 | 尚未验证 |

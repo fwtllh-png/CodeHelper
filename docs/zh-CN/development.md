@@ -21,7 +21,6 @@
 - `syft`：生成完整 CycloneDX SBOM；
 - `tmux`：可 Attach 的 Lane；
 - Linux Bubblewrap/Landlock 或 macOS Seatbelt；
-- Extension Matrix 所需 Docker/Remote SSH 依赖。
 
 ## 初始化
 
@@ -112,7 +111,8 @@ make brand-check
 | `make vscode-integration` | 官方 VS Code Electron Flow |
 | `make vscode-security` | Extension Security Test |
 | `make vscode-performance` | Projection 与 Runtime Ready 性能预算 |
-| `make vscode-package` | 构建并安装本地 VSIX |
+| `make vscode-package` | 构建、安装并握手验证当前 Host Target VSIX |
+| `make vscode-package-universal` | 构建并静态安装审计 Universal VSIX |
 | `make vscode-distribution` | 多目标 Dry-run 发布产物 |
 | `make vscode-rc` | 完整 Release Candidate Gate |
 

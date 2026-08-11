@@ -6,6 +6,7 @@ import (
 	"time"
 
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -161,5 +162,44 @@ func TestHistoryCursorBoundsNewestTurns(t *testing.T) {
 	}
 	if cursor != 9 {
 		t.Fatalf("HistoryCursor() = %d, want 9", cursor)
+	}
+}
+
+func TestRecoverRequeuesCommittedStartForActiveTurnWithoutTerminal(t *testing.T) {
+	store, err := state.Open(t.Context(), state.Options{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close(t.Context()) })
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, statement := range []string{
+		`INSERT INTO workspaces(id, root_path, created_at, updated_at)
+		 VALUES ('workspace', '/workspace', ?, ?)`,
+		`INSERT INTO sessions(id, workspace_id, status, created_at, updated_at)
+		 VALUES ('session', 'workspace', 'open', ?, ?)`,
+		`INSERT INTO threads(id, session_id, title, status, created_at, updated_at)
+		 VALUES ('thread', 'session', 'chat', 'open', ?, ?)`,
+		`INSERT INTO operations(
+			id, session_id, kind, status, request_json, created_at, updated_at
+		 ) VALUES ('operation', 'session', 'turn.start', 'committed', '{}', ?, ?)`,
+		`INSERT INTO turns(
+			id, thread_id, operation_id, ordinal, status, created_at, updated_at
+		 ) VALUES ('turn', 'thread', 'operation', 1, 'active', ?, ?)`,
+	} {
+		if _, err := store.SQLite().DB().ExecContext(
+			t.Context(), statement, now, now,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recovery, err := NewLifecycle(store).Recover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, ok := recovery.PendingOperations["operation"]
+	if !ok || pending.SessionID != "session" ||
+		string(pending.Canonical) != "{}" {
+		t.Fatalf("pending operations = %+v, want interrupted start", recovery.PendingOperations)
 	}
 }

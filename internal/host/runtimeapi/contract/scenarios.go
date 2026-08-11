@@ -66,6 +66,44 @@ func Scenarios() []Scenario {
 			Run: readModelsExposeCompletedThread,
 		},
 		{
+			Name: "session profile revision and cache reset are shared",
+			Setup: func(t *testing.T) Setup {
+				return Setup{Fixture: fixturePath(t, "openai"), Prompt: "say hello"}
+			},
+			Run: sessionProfileRevisionIsShared,
+		},
+		{
+			Name: "session tool catalog and allowlist are shared",
+			Setup: func(t *testing.T) Setup {
+				return Setup{
+					Fixture:   fixturePath(t, "openai"),
+					Workspace: t.TempDir(), Tools: true,
+				}
+			},
+			Run: sessionToolCatalogIsShared,
+		},
+		{
+			Name: "session lifecycle query and protection are shared",
+			Setup: func(t *testing.T) Setup {
+				return Setup{
+					Fixture:   fixturePath(t, "openai"),
+					Workspace: t.TempDir(),
+				}
+			},
+			Run: sessionLifecycleIsShared,
+		},
+		{
+			Name: "Checkpoint Restore is state-only and Fork lineage is shared",
+			Setup: func(t *testing.T) Setup {
+				return Setup{
+					Fixture:   fixturePath(t, "openai"),
+					Prompt:    "say hello",
+					Workspace: t.TempDir(),
+				}
+			},
+			Run: checkpointRestoreAndForkAreShared,
+		},
+		{
 			Name:  "editor context receipts are shared and durable",
 			Setup: editorContextSetup,
 			Run:   editorContextReceiptsAreSharedAndDurable,
@@ -100,7 +138,7 @@ func Scenarios() []Scenario {
 				return Setup{
 					Fixture: fixturePath(t, "dynamic-tools"), Prompt: "call host echo",
 					Workspace: t.TempDir(), Tools: true, TrustedDynamicTools: true,
-					MaxSteps: 2,
+					MaxSteps: 4,
 				}
 			},
 			Run: dynamicToolsCompleteLifecycle,
@@ -125,17 +163,230 @@ func Scenarios() []Scenario {
 				workspace := t.TempDir()
 				rules := filepath.Join(workspace, "repository-rules.json")
 				if err := os.WriteFile(
-					rules, []byte(`[{"tool":"file_write","action":"ask"}]`), 0o600,
+					rules, []byte(`[{"tool":"file_apply","action":"ask"}]`), 0o600,
 				); err != nil {
 					t.Fatal(err)
 				}
 				return Setup{
 					Fixture: fixturePath(t, "tools"), Prompt: "create result",
-					Workspace: workspace, Tools: true, RepositoryRules: rules, MaxSteps: 2,
+					Workspace: workspace, Tools: true, RepositoryRules: rules, MaxSteps: 8,
 				}
 			},
 			Run: approvalParksAndResumes,
 		},
+	}
+}
+
+func checkpointRestoreAndForkAreShared(
+	t *testing.T,
+	host Host,
+	setup Setup,
+) {
+	live, err := host.Live(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := host.StartTurn(t.Context(), setup.Prompt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created *protocol.CheckpointCreatedData
+	deadline := time.After(waitTimeout)
+	for created == nil {
+		select {
+		case event, open := <-live:
+			if !open {
+				t.Fatal("live stream closed before Checkpoint creation")
+			}
+			if event.TurnID != turn.TurnID {
+				continue
+			}
+			if data, ok := event.Data.(*protocol.CheckpointCreatedData); ok {
+				created = data
+			}
+		case <-deadline:
+			t.Fatal("Checkpoint creation was not observed")
+		}
+	}
+	list, err := host.ListCheckpoints(t.Context(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := list.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Checkpoints) != 1 ||
+		list.Checkpoints[0].ID != created.Checkpoint.ID {
+		t.Fatalf("%s: Checkpoints = %+v", host.Transport(), list)
+	}
+	restored, err := host.RestoreCheckpoint(
+		t.Context(),
+		created.Checkpoint.ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.SideEffectsReplayed {
+		t.Fatal("Checkpoint Restore replayed side effects")
+	}
+	forked, err := host.ForkCheckpoint(
+		t.Context(),
+		created.Checkpoint.ID,
+		"Contract Fork",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forked.ParentID != created.Checkpoint.ThreadID ||
+		forked.ThreadID == created.Checkpoint.ThreadID ||
+		forked.Checkpoint.ID != created.Checkpoint.ID {
+		t.Fatalf("%s: Checkpoint Fork = %+v", host.Transport(), forked)
+	}
+}
+
+func sessionLifecycleIsShared(t *testing.T, host Host, _ Setup) {
+	list, err := host.ListSessions(t.Context(), protocol.SessionListQuery{
+		Query: "contract", Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := list.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Sessions) != 1 {
+		t.Fatalf("%s: lifecycle list = %+v", host.Transport(), list)
+	}
+	current := list.Sessions[0]
+	title := "Pinned lifecycle fixture"
+	pinned := true
+	updated, err := host.UpdateSessionLifecycle(
+		t.Context(),
+		current.Revision,
+		protocol.SessionLifecyclePatch{Title: &title, Pinned: &pinned},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Session.Title != title || !updated.Session.Pinned ||
+		updated.Session.Revision != current.Revision+1 {
+		t.Fatalf("%s: lifecycle update = %+v", host.Transport(), updated)
+	}
+	archived := true
+	updated, err = host.UpdateSessionLifecycle(
+		t.Context(),
+		updated.Session.Revision,
+		protocol.SessionLifecyclePatch{Archived: &archived},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Session.Archived {
+		t.Fatalf("%s: archived lifecycle = %+v", host.Transport(), updated)
+	}
+	list, err = host.ListSessions(t.Context(), protocol.SessionListQuery{
+		IncludeArchived: true, PinnedOnly: true, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Sessions) != 1 || !list.Sessions[0].Archived {
+		t.Fatalf("%s: archived list = %+v", host.Transport(), list)
+	}
+	if _, err := host.DeleteSession(
+		t.Context(),
+		updated.Session.Revision,
+	); err == nil {
+		t.Fatalf("%s: deleted the last session", host.Transport())
+	}
+}
+
+func sessionToolCatalogIsShared(t *testing.T, host Host, _ Setup) {
+	snapshot, err := host.SessionProfile(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := host.SessionToolCatalog(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Validate(); err != nil {
+		t.Fatalf("%s: invalid tool catalog: %v", host.Transport(), err)
+	}
+	if len(catalog.Tools) < 2 {
+		t.Fatalf("%s: tool catalog = %+v", host.Transport(), catalog)
+	}
+	for _, entry := range catalog.Tools {
+		if !entry.Enabled || !entry.Guarded {
+			t.Fatalf("%s: default tool entry = %+v", host.Transport(), entry)
+		}
+	}
+	selected := []string{catalog.Tools[0].ID}
+	updated, err := host.UpdateSessionProfile(
+		t.Context(),
+		snapshot.Profile.Revision,
+		protocol.SessionProfilePatch{EnabledToolIDs: &selected},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.PromptCacheReset || updated.ResetReason != "enabled_tool_ids" {
+		t.Fatalf("%s: tool profile update = %+v", host.Transport(), updated)
+	}
+	catalog, err = host.SessionToolCatalog(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range catalog.Tools {
+		if entry.Enabled != (entry.ID == selected[0]) {
+			t.Fatalf("%s: selected tool entry = %+v", host.Transport(), entry)
+		}
+	}
+}
+
+func sessionProfileRevisionIsShared(t *testing.T, host Host, _ Setup) {
+	snapshot, err := host.SessionProfile(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Profile.Revision == 0 ||
+		snapshot.Profile.PromptCacheRevision == 0 ||
+		snapshot.Profile.Provider == "" ||
+		snapshot.Profile.Model == "" ||
+		snapshot.Capabilities.Provider != snapshot.Profile.Provider ||
+		snapshot.Capabilities.Model != snapshot.Profile.Model {
+		t.Fatalf("%s: session profile = %+v", host.Transport(), snapshot)
+	}
+	mode := "plan"
+	updated, err := host.UpdateSessionProfile(
+		t.Context(),
+		snapshot.Profile.Revision,
+		protocol.SessionProfilePatch{Mode: &mode},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Profile.Revision != snapshot.Profile.Revision+1 ||
+		updated.Profile.PromptCacheRevision !=
+			snapshot.Profile.PromptCacheRevision+1 ||
+		!updated.PromptCacheReset ||
+		updated.ResetReason != "mode" {
+		t.Fatalf("%s: profile update = %+v", host.Transport(), updated)
+	}
+	if _, err := host.UpdateSessionProfile(
+		t.Context(),
+		snapshot.Profile.Revision,
+		protocol.SessionProfilePatch{Mode: &mode},
+	); err == nil {
+		t.Fatalf("%s: stale session profile revision was accepted", host.Transport())
+	}
+	recovered, err := host.SessionProfile(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Profile.Revision != updated.Profile.Revision ||
+		recovered.Profile.Mode != mode {
+		t.Fatalf("%s: recovered profile = %+v", host.Transport(), recovered)
 	}
 }
 

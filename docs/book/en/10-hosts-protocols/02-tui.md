@@ -16,8 +16,8 @@ test_paths:
 source_of_truth:
   - internal/host/tui/host.go
   - internal/host/tui/app.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # TUI State Projection
@@ -129,12 +129,12 @@ active Tool card, approval overlay, and final receipt.
 
 ## Further Reading
 
-- [VS Code Context Bridge](./06-vscode.md)
+- [VS Code Native Agent Chat](./06-vscode.md)
 
 ## Sources and Verification
 
 | Item | Value |
 | --- | --- |
 | Catalog ID | `host-tui` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

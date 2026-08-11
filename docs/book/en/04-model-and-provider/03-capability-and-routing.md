@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/model/capability.go
   - internal/adapter/model/routeset.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Capability Negotiation and Route Resolution
@@ -149,5 +149,5 @@ non-reasoning descriptor in a local test and observe local validation.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `model-capability-routing` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

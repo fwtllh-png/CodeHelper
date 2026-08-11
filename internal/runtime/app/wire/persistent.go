@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
@@ -16,17 +17,22 @@ import (
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	snapshotstate "github.com/fwtllh-png/CodeHelper/internal/persist/snapshot"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type PersistentRuntimeOptions struct {
-	Store            *state.Store
-	Engine           app.Engine
-	OperationBuffer  int
-	SubscriberBuffer int
-	Metrics          *telemetry.Metrics
-	Logger           *slog.Logger
+	Store               *state.Store
+	Engine              app.Engine
+	OperationBuffer     int
+	SubscriberBuffer    int
+	Metrics             *telemetry.Metrics
+	Logger              *slog.Logger
+	DefaultProfile      protocol.SessionProfile
+	ProfileCapabilities protocol.SessionProfileCapabilities
+	ToolCatalog         *tool.Registry
+	SessionWorkspaces   app.SessionWorkspaceManager
 }
 
 type PersistentRepositories struct {
@@ -67,7 +73,7 @@ func NewPersistentRuntime(
 	if _, err := repositories.Tasks.RecoverInterrupted(ctx, time.Time{}); err != nil {
 		return nil, fmt.Errorf("recover interrupted tasks: %w", err)
 	}
-	return app.NewRuntimeWithRecovery(ctx, app.Options{
+	runtimeOptions := app.Options{
 		Engine:           options.Engine,
 		EventStore:       options.Store,
 		ContentStore:     options.Store.Content(),
@@ -76,7 +82,18 @@ func NewPersistentRuntime(
 		SubscriberBuffer: options.SubscriberBuffer,
 		Metrics:          options.Metrics,
 		Logger:           options.Logger,
-	})
+		TerminalStore:    turnstate.NewSQLiteRepository(options.Store.SQLite()),
+	}
+	if options.DefaultProfile.Version != 0 {
+		runtimeOptions.SessionProfiles = repositories.Sessions
+		runtimeOptions.DefaultProfile = options.DefaultProfile
+		runtimeOptions.ProfileCapabilities = options.ProfileCapabilities
+		runtimeOptions.ToolCatalog = options.ToolCatalog
+		runtimeOptions.SessionLifecycle = repositories.Sessions
+		runtimeOptions.SessionWorkspaces = options.SessionWorkspaces
+		runtimeOptions.SessionArtifacts = repositories.Snapshots
+	}
+	return app.NewRuntimeWithRecovery(ctx, runtimeOptions)
 }
 
 // EnsureThread creates workspace/session/thread seed rows when missing so

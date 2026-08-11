@@ -119,6 +119,7 @@ func (qualityTestBackend) Capability() sandbox.Capability {
 }
 
 func (qualityTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
+	command.PreparedReadOnly = command.WorkspaceReadOnly
 	return command, nil
 }
 
@@ -163,7 +164,7 @@ func TestQualityVerifierDetectsAndAuditsMixedEcosystems(t *testing.T) {
 	}
 }
 
-func TestQualityVerifierReportsModuleProxyTimeoutAsUnavailable(t *testing.T) {
+func TestQualityVerifierDoesNotInferFailureKindFromOutput(t *testing.T) {
 	quality := &Tool{
 		root: t.TempDir(), kind: "quality_verify",
 		run: func(context.Context, process.Options) (process.Result, error) {
@@ -181,9 +182,7 @@ func TestQualityVerifierReportsModuleProxyTimeoutAsUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.IsError ||
-		result.Metadata["status"] != "unavailable" ||
-		result.Metadata["error_category"] != verify.ErrorCategoryDependencyUnavailable {
+	if !result.IsError || result.Metadata["status"] != "failed" {
 		t.Fatalf("result = %+v", result)
 	}
 	var payload map[string]any
@@ -191,12 +190,67 @@ func TestQualityVerifierReportsModuleProxyTimeoutAsUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	checks, _ := payload["checks"].([]any)
-	if payload["status"] != "unavailable" || len(checks) != 1 {
+	if payload["status"] != "failed" || len(checks) != 1 {
 		t.Fatalf("payload = %+v", payload)
 	}
 	check, _ := checks[0].(map[string]any)
-	if check["status"] != "unavailable" ||
-		check["error_category"] != verify.ErrorCategoryDependencyUnavailable {
+	if check["status"] != "failed" {
 		t.Fatalf("check = %+v", check)
+	}
+}
+
+func TestQualityVerifierEmitsCanonicalCoverageEvidence(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs", "a.md"), []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	quality := &Tool{
+		root: root, kind: "quality_verify",
+		run: func(_ context.Context, options process.Options) (process.Result, error) {
+			if !options.WorkspaceReadOnly {
+				t.Fatal("quality process was not workspace read-only")
+			}
+			return process.Result{}, nil
+		},
+	}
+	result, err := quality.Execute(t.Context(), json.RawMessage(
+		`{"command":"verify","covered_paths":["docs/a.md","docs/a.md"]}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, ok := result.Metadata[verify.EvidenceMetadataKey].(verify.Evidence)
+	if !ok {
+		t.Fatalf("verification evidence = %#v", result.Metadata)
+	}
+	if evidence.Status != verify.StatusPassed ||
+		len(evidence.CoveredPaths) != 1 ||
+		evidence.CoveredPaths[0] != "docs/a.md" ||
+		evidence.CommandDigest == "" {
+		t.Fatalf("verification evidence = %+v", evidence)
+	}
+}
+
+func TestQualityVerifierRejectsCoverageOutsideWorkspace(t *testing.T) {
+	quality := &Tool{
+		root: t.TempDir(), kind: "quality_verify",
+		run: func(context.Context, process.Options) (process.Result, error) {
+			t.Fatal("invalid coverage executed a command")
+			return process.Result{}, nil
+		},
+	}
+	for _, path := range []string{"../outside", "/tmp/outside"} {
+		raw, err := json.Marshal(map[string]any{
+			"command": "verify", "covered_paths": []string{path},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := quality.Execute(t.Context(), raw); err == nil {
+			t.Fatalf("covered path %q was accepted", path)
+		}
 	}
 }

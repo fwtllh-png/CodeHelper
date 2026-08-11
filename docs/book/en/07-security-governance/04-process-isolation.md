@@ -17,8 +17,8 @@ test_paths:
 source_of_truth:
   - internal/security/sandbox/backend.go
   - internal/security/sandbox/policy.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # OS Sandbox and Process Isolation
@@ -97,3 +97,11 @@ make sandbox-attack-test
 ## Further Reading
 
 - [Fail-Closed Behavior and Platform Claims](./07-fail-closed.md)
+
+## Sources and Verification
+
+| Item | Value |
+| --- | --- |
+| Catalog ID | `security-process-isolation` |
+| Status | `draft` |
+| Last verified | Not yet verified |

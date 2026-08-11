@@ -7,7 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,11 +55,13 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
@@ -127,6 +132,9 @@ type Session struct {
 	dynamicTools       *dynamictool.Manager
 	providerID         string
 	modelID            string
+	modelCapabilities  protocol.ModelCapabilities
+	providerCatalog    protocol.ProviderCatalog
+	modelCatalog       protocol.ModelCatalog
 	processes          *process.SessionManager
 	jobLogs            *joblog.Store
 	mcpPool            *mcpruntime.Pool
@@ -145,6 +153,8 @@ type Session struct {
 	children           *childRuntime
 	childTools         *childToolsets
 	chatWorkspaces     *chatWorkspaces
+	threads            *app.ThreadManager
+	turnCoordinators   *durableCoordinatorRuntime
 	journal            *workspacejournal.Manager
 	journalRecovery    workspacejournal.Recovery
 	subagents          *subagent.Manager
@@ -166,6 +176,11 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		return nil, fmt.Errorf("load execution config: %w", err)
 	}
 	execution := snapshot.Config.Execution
+	diagnosticCommands := configuredDiagnosticCommands(
+		snapshot.Config.Diagnostics.Commands,
+	)
+	diagnosticReadRoots := diagnosticCommandReadRoots(diagnosticCommands)
+	diagnosticReadFiles := diagnosticCommandReadFiles(diagnosticCommands)
 	if !execution.Tools &&
 		(options.RepositoryRulesPath != "" || options.PluginBundle != "" ||
 			options.PluginReceipt != "" || options.MCPConfigPath != "") {
@@ -311,7 +326,8 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		}
 		backend, err := newPlatformBackend(sandbox.Options{
 			WorkspaceRoot: execution.Workspace, HelperPath: helperPath,
-			AllowNetwork: true,
+			AllowNetwork: true, HostReadRoots: diagnosticReadRoots,
+			HostReadFiles: diagnosticReadFiles,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create sandbox: %w", err)
@@ -479,7 +495,11 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		if err != nil {
 			return nil, err
 		}
-		diagnosticRunner = diagnostics.NewCommandRunner(execution.Workspace, backend, nil)
+		diagnosticRunner = diagnostics.NewCommandRunner(
+			execution.Workspace,
+			backend,
+			diagnosticCommands,
+		)
 		commandRunner := &verify.CommandRunner{
 			Root: execution.Workspace, Sandbox: backend,
 			Tests: repoindex.TestMapper{Index: repositoryIndex},
@@ -553,8 +573,20 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		if err != nil {
 			return nil, fmt.Errorf("child worktrees: %w", err)
 		}
+		gitCommonDir, err := childTrees.commonGitDir(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("resolve repository Git metadata: %w", err)
+		}
 		childToolsets = newChildToolsets(
-			helperPath, content, webOpts, execution.Verify, execution.Journal,
+			helperPath,
+			content,
+			webOpts,
+			execution.Verify,
+			execution.Journal,
+			diagnosticCommands,
+			diagnosticReadRoots,
+			diagnosticReadFiles,
+			gitCommonDir,
 		)
 		session.childTools = childToolsets
 		chatRoot := filepath.Join(execution.Workspace, ".codehelper", "chats")
@@ -661,7 +693,9 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 	}
 	toolPrefix := ""
 	if execution.Tools {
-		toolPrefix = "Use only the supplied tools and honor their schemas and policy decisions."
+		toolPrefix = "Use only the supplied tools and honor their schemas and policy decisions. " +
+			"A turn that mutates the workspace is not complete until turn_complete is called " +
+			"after the last mutation and every required quality check."
 	}
 	budgets := options.PromptBudgets
 	if budgets == nil {
@@ -696,13 +730,51 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		// commit or rollback. Isolated child worktrees clear both journal and gate.
 		workspaceTurnGate = agentengine.NewWorkspaceTurnGate()
 	}
+	approvalPosture := policy.PermissionBypass
+	if securityRuntime != nil {
+		approvalPosture = securityRuntime.Permission
+	} else if options.Permission != "" {
+		approvalPosture = policy.Permission(options.Permission)
+	}
+	modelCapabilities := route.Model().Capabilities
+	reasoningEffort := maximumReasoningEffort(
+		route.ProviderID(),
+		route.Model().ID,
+		modelCapabilities.Reasoning,
+	)
+	maxOutputTokens, err := reasoningAwareMaxOutputTokens(
+		execution.MaxOutputTokens,
+		snapshot.MaxOutputTokensSource(),
+		route,
+		reasoningEffort,
+	)
+	if err != nil {
+		return nil, err
+	}
+	var coordinatorRuntime turnkernel.CoordinatorRuntime
+	if options.PersistentStore != nil {
+		session.turnCoordinators, err = newDurableCoordinatorRuntime(
+			turnstate.NewSQLiteRepository(options.PersistentStore.SQLite()),
+			hookSessionID,
+			defaultTurnCoordinatorLease,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create durable turn coordinator runtime: %w", err)
+		}
+		coordinatorRuntime = session.turnCoordinators
+	} else {
+		coordinatorRuntime = turnkernel.NewEphemeralCoordinatorRuntime()
+	}
 	seedOptions := agentengine.Options{
 		Provider: client, Route: route, Routes: routes,
 		Tools: registry, PromptContext: prompt.Messages,
-		MaxOutputTokens: execution.MaxOutputTokens, Security: securityRuntime,
-		Workspace: execution.Workspace, Guard: nil,
-		OnNetworkAllow: egressGate.Allow,
-		Journal:        journal, WorkspaceTurnGate: workspaceTurnGate,
+		ModePromptBudget: budgets[promptcontext.PartitionMode],
+		MaxOutputTokens:  maxOutputTokens, Security: securityRuntime,
+		ProfilePermissionCeiling: approvalPosture,
+		Workspace:                execution.Workspace, Guard: nil,
+		WorkspaceIsolation: "shared",
+		OnNetworkAllow:     egressGate.Allow,
+		Journal:            journal, WorkspaceTurnGate: workspaceTurnGate,
 		Diagnostics: diagnosticRunner,
 		Verify: agentengine.VerifyOptions{
 			Mode:           execution.Verify.Mode,
@@ -712,9 +784,12 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			Timeout:        execution.Verify.Timeout,
 			Runner:         verifyRunner,
 		},
-		Metrics: session.metrics, Trace: traceSink,
-		ReasoningEffort: execution.ReasoningEffort,
-		NativeSearch:    execution.NativeSearch,
+		RequireCompletionDeclaration: execution.Tools,
+		Metrics:                      session.metrics, Trace: traceSink,
+		TurnCoordinatorRuntime: coordinatorRuntime,
+		ReasoningEffort:        reasoningEffort,
+		FixedReasoningEffort:   reasoningEffort,
+		NativeSearch:           execution.NativeSearch,
 		Budget: agentengine.Budget{
 			MaxTokens: execution.BudgetTokens, MaxCostUSD: execution.BudgetUSD,
 		},
@@ -793,18 +868,76 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			return out
 		},
 	}
+	defaultProfile := protocol.SessionProfile{
+		Version:             protocol.SessionProfileVersion,
+		Revision:            1,
+		Mode:                execution.Mode,
+		Provider:            route.ProviderID(),
+		Model:               route.Model().ID,
+		ReasoningEffort:     reasoningEffort,
+		ApprovalPosture:     string(approvalPosture),
+		ExecutionTarget:     "local",
+		MaxSteps:            execution.MaxSteps,
+		PromptCacheRevision: 1,
+	}
+	mutableProfileFields := []string{"mode", "max_steps"}
+	if modelCapabilities.ToolCalls {
+		mutableProfileFields = append(mutableProfileFields, "enabled_tool_ids")
+	}
+	if approvalPosture != policy.PermissionNever {
+		mutableProfileFields = append(
+			mutableProfileFields,
+			"approval_posture",
+		)
+	}
+	var reasoningEfforts []string
+	if modelCapabilities.Reasoning {
+		reasoningEfforts = []string{reasoningEffort}
+	}
+	profileCapabilities := protocol.SessionProfileCapabilities{
+		Provider: defaultProfile.Provider,
+		Model:    defaultProfile.Model,
+		ModelCapabilities: protocol.ModelCapabilities{
+			DisplayName:            route.Model().ID,
+			ContextWindow:          route.Model().Limits.ContextTokens,
+			MaxOutputTokens:        route.Model().Limits.MaxOutputTokens,
+			Streaming:              modelCapabilities.Streaming,
+			Reasoning:              modelCapabilities.Reasoning,
+			ToolCalls:              modelCapabilities.ToolCalls,
+			ParallelToolCalls:      "unknown",
+			NativeSearch:           modelCapabilities.NativeSearch,
+			Vision:                 modelCapabilities.Vision,
+			ImageInput:             modelCapabilities.ImageInput,
+			PromptCache:            modelCapabilities.PromptCache,
+			ReasoningEfforts:       reasoningEfforts,
+			DefaultReasoningEffort: reasoningEffort,
+			CredentialStatus:       "unknown",
+			Availability:           "available",
+			SelectionMode:          "restart_required",
+		},
+		MutableFields: mutableProfileFields,
+	}
+	session.modelCapabilities = profileCapabilities.ModelCapabilities
+	session.providerCatalog, session.modelCatalog = runtimeModelCatalog(
+		session.providerID,
+		session.modelID,
+		profileCapabilities.ModelCapabilities,
+	)
 	// Shared Guard is intentionally not passed into seedOptions: each thread
 	// Engine allocates its own Guard so approval handlers stay isolated.
 	// OnNetworkAllow still points at the session egress Gate so a mid-flight
 	// host approval actually Grants Dial, not just the approval cache.
 	workspaceIdentity := options.WorkspaceIdentity
 	threadManager := app.NewThreadManager(func() (*app.EngineAdapter, error) {
-		worker, err := agentengine.New(seedOptions)
+		threadOptions := seedOptions
+		threadOptions.Security = cloneThreadSecurity(seedOptions.Security)
+		worker, err := agentengine.New(threadOptions)
 		if err != nil {
 			return nil, err
 		}
 		return adaptEngine(worker, workspaceIdentity), nil
 	})
+	session.threads = threadManager
 	threadManager.SetChildFactory(func(spec app.ChildSpec) (*app.EngineAdapter, error) {
 		options := childEngineOptions(seedOptions, spec, securityRuntime)
 		if !spec.ReadOnly && !spec.Serialized {
@@ -882,6 +1015,10 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 			OperationBuffer:  snapshot.Config.Runtime.OperationBuffer,
 			SubscriberBuffer: snapshot.Config.Runtime.SubscriberBuffer,
 			Metrics:          session.metrics, Logger: session.logger,
+			DefaultProfile:      defaultProfile,
+			ToolCatalog:         registry,
+			ProfileCapabilities: profileCapabilities,
+			SessionWorkspaces:   session.chatWorkspaces,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create persistent runtime: %w", err)
@@ -906,6 +1043,116 @@ func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr er
 		return nil, err
 	}
 	return session, nil
+}
+
+func configuredDiagnosticCommands(
+	configured map[string]config.DiagnosticCommand,
+) map[string]diagnostics.Command {
+	commands := make(map[string]diagnostics.Command, len(configured))
+	for extension, command := range configured {
+		commands[extension] = diagnostics.Command{
+			Name: command.Name,
+			Args: append([]string(nil), command.Args...),
+		}
+	}
+	return commands
+}
+
+func diagnosticCommandReadRoots(
+	commands map[string]diagnostics.Command,
+) []string {
+	seen := make(map[string]struct{})
+	addExecutableTree := func(name string, includePackageRoot bool) {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			return
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return
+		}
+		root := filepath.Dir(resolved)
+		if includePackageRoot {
+			root = filepath.Dir(root)
+		}
+		seen[root] = struct{}{}
+	}
+	for _, command := range commands {
+		path, err := exec.LookPath(command.Name)
+		if err != nil {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			continue
+		}
+		seen[filepath.Dir(resolved)] = struct{}{}
+		for _, dependency := range diagnosticDependencyReadFiles(resolved) {
+			seen[filepath.Dir(dependency)] = struct{}{}
+		}
+		switch filepath.Ext(resolved) {
+		case ".js", ".cjs", ".mjs":
+			addExecutableTree("node", true)
+			node, nodeErr := exec.LookPath("node")
+			if nodeErr == nil {
+				for _, dependency := range diagnosticDependencyReadFiles(node) {
+					seen[filepath.Dir(dependency)] = struct{}{}
+				}
+			}
+		}
+	}
+	roots := make([]string, 0, len(seen))
+	for root := range seen {
+		roots = append(roots, root)
+	}
+	slices.Sort(roots)
+	return roots
+}
+
+func diagnosticCommandReadFiles(
+	commands map[string]diagnostics.Command,
+) []string {
+	seen := make(map[string]struct{})
+	add := func(name string) {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			return
+		}
+		for _, dependency := range diagnosticDependencyReadFiles(path) {
+			seen[dependency] = struct{}{}
+		}
+	}
+	for _, command := range commands {
+		add(command.Name)
+		path, err := exec.LookPath(command.Name)
+		if err != nil {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			switch filepath.Ext(resolved) {
+			case ".js", ".cjs", ".mjs":
+				add("node")
+			}
+		}
+	}
+	files := make([]string, 0, len(seen))
+	for path := range seen {
+		files = append(files, path)
+	}
+	slices.Sort(files)
+	return files
+}
+
+func cloneThreadSecurity(source *policy.Runtime) *policy.Runtime {
+	if source == nil {
+		return nil
+	}
+	cloned := *source
+	cloned.Grants = append([]policy.Rule(nil), source.Grants...)
+	cloned.Repository = append([]policy.Rule(nil), source.Repository...)
+	cloned.Approvals = policy.NewApprovalCache()
+	return &cloned
 }
 
 func adaptEngine(
@@ -1018,6 +1265,7 @@ func childEngineOptions(
 	}
 	if spec.Workspace != "" {
 		options.Workspace = spec.Workspace
+		options.WorkspaceIsolation = app.SessionIsolationWorktree
 	}
 	if spec.ReadOnly && security != nil {
 		// Plan mode is the existing, tested read-only enforcement: everything
@@ -1047,4 +1295,45 @@ func stickyPromptCacheKey(sessionID, workspace string) string {
 		return "workspace:" + filepath.Base(workspace)
 	}
 	return "codehelper-default"
+}
+
+func maximumReasoningEffort(providerID, modelID string, reasoning bool) string {
+	if !reasoning {
+		return ""
+	}
+	if strings.HasPrefix(providerID, "deepseek-v4") ||
+		strings.HasPrefix(modelID, "deepseek-v4") {
+		return "max"
+	}
+	return "xhigh"
+}
+
+const minimumReasoningOutputTokens uint64 = 16_384
+
+func reasoningAwareMaxOutputTokens(
+	configured uint64,
+	source config.Source,
+	route model.ReadyRoute,
+	reasoningEffort string,
+) (uint64, error) {
+	if reasoningEffort == "" {
+		return configured, nil
+	}
+	minimum := minimumReasoningOutputTokens
+	if limit := route.Model().Limits.MaxOutputTokens; limit != 0 && minimum > limit {
+		minimum = limit
+	}
+	if configured >= minimum {
+		return configured, nil
+	}
+	if source == "" || source == config.SourceDefault {
+		return minimum, nil
+	}
+	return 0, fmt.Errorf(
+		"execution.max_output_tokens=%d from %s is below the %d-token minimum for reasoning_effort=%s",
+		configured,
+		source,
+		minimum,
+		reasoningEffort,
+	)
 }

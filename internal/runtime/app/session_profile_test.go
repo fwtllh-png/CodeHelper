@@ -1,0 +1,464 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"sync"
+	"testing"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+type memoryProfileStore struct {
+	mu      sync.Mutex
+	profile protocol.SessionProfile
+	writes  int
+}
+
+func (s *memoryProfileStore) Profile(
+	context.Context,
+	string,
+	protocol.SessionProfile,
+) (protocol.SessionProfile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.profile, nil
+}
+
+func (s *memoryProfileStore) EnsureProfile(
+	ctx context.Context,
+	sessionID string,
+	defaults protocol.SessionProfile,
+) (protocol.SessionProfile, error) {
+	return s.Profile(ctx, sessionID, defaults)
+}
+
+func (s *memoryProfileStore) UpdateProfile(
+	_ context.Context,
+	_ string,
+	expected uint64,
+	_ protocol.SessionProfile,
+	patch protocol.SessionProfilePatch,
+) (protocol.SessionProfileUpdateResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if expected != s.profile.Revision {
+		return protocol.SessionProfileUpdateResult{}, errors.New("stale revision")
+	}
+	updated, err := protocol.ApplySessionProfilePatch(s.profile, patch)
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	s.profile = updated.Profile
+	s.writes++
+	return updated, nil
+}
+
+type profileTestEngine struct {
+	testEngine
+	mu      sync.Mutex
+	applied protocol.SessionProfile
+}
+
+type observingEventStore struct {
+	EventStore
+	onAppend func(protocol.Event)
+}
+
+func (s *observingEventStore) Append(
+	ctx context.Context,
+	event protocol.Event,
+) error {
+	if err := s.EventStore.Append(ctx, event); err != nil {
+		return err
+	}
+	if s.onAppend != nil {
+		s.onAppend(event)
+	}
+	return nil
+}
+
+func (e *profileTestEngine) ValidateSessionProfile(
+	_ protocol.ThreadID,
+	profile protocol.SessionProfile,
+) error {
+	return profile.Validate()
+}
+
+func (e *profileTestEngine) ApplySessionProfile(
+	_ protocol.ThreadID,
+	profile protocol.SessionProfile,
+) error {
+	e.mu.Lock()
+	e.applied = profile
+	e.mu.Unlock()
+	return nil
+}
+
+func TestSessionProfileUpdateRejectsActiveTurnBeforePersistence(t *testing.T) {
+	defaults := runtimeTestProfile()
+	store := &memoryProfileStore{profile: defaults}
+	engine := &profileTestEngine{testEngine: testEngine{block: true}}
+	runtime := NewRuntime(Options{
+		Engine:              engine,
+		SessionProfiles:     store,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: "thread-profile",
+		TurnID:   "turn-profile",
+		ItemID:   "item-profile",
+		Prompt:   "wait",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	if event := receiveEvent(t, events); event.Kind != protocol.EventTurnStarted {
+		t.Fatalf("first event = %s", event.Kind)
+	}
+	mode := "plan"
+	_, err = runtime.UpdateSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+		1,
+		protocol.SessionProfilePatch{Mode: &mode},
+	)
+	if protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("active update error = %v", err)
+	}
+	if store.writes != 0 {
+		t.Fatalf("active update persisted %d writes", store.writes)
+	}
+}
+
+func TestSessionProfileRestoreIsIdempotentDuringRecoveredActiveTurn(
+	t *testing.T,
+) {
+	defaults := runtimeTestProfile()
+	store := &memoryProfileStore{profile: defaults}
+	engine := &profileTestEngine{testEngine: testEngine{block: true}}
+	runtime := NewRuntime(Options{
+		Engine:              engine,
+		SessionProfiles:     store,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	if _, err := runtime.RestoreSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+	); err != nil {
+		t.Fatal(err)
+	}
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: "thread-profile",
+		TurnID:   "turn-profile",
+		ItemID:   "item-profile",
+		Prompt:   "wait",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	if event := receiveEvent(t, events); event.Kind != protocol.EventTurnStarted {
+		t.Fatalf("first event = %s", event.Kind)
+	}
+	if _, err := runtime.RestoreSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+	); err != nil {
+		t.Fatalf("same profile restore during active turn: %v", err)
+	}
+
+	store.mu.Lock()
+	store.profile.Revision++
+	store.mu.Unlock()
+	if _, err := runtime.RestoreSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+	); protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("changed profile restore during active turn error = %v", err)
+	}
+}
+
+func TestTerminalEventIsPublishedAfterActiveTurnIsReleased(t *testing.T) {
+	defaults := runtimeTestProfile()
+	profiles := &memoryProfileStore{profile: defaults}
+	observed := make(chan error, 1)
+	store := &observingEventStore{EventStore: NewMemoryEventStore(16)}
+	var runtime *Runtime
+	store.onAppend = func(event protocol.Event) {
+		if !protocol.IsTerminalEvent(event.Kind) {
+			return
+		}
+		mode := "plan"
+		_, err := runtime.UpdateSessionProfile(
+			context.Background(),
+			"session-profile",
+			event.ThreadID,
+			defaults.Revision,
+			protocol.SessionProfilePatch{Mode: &mode},
+		)
+		observed <- err
+	}
+	runtime = NewRuntime(Options{
+		Engine:              &profileTestEngine{},
+		EventStore:          store,
+		SessionProfiles:     profiles,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), startOperation(t, 1)); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		event := receiveEvent(t, events)
+		if protocol.IsTerminalEvent(event.Kind) {
+			break
+		}
+	}
+	if err := <-observed; err != nil {
+		t.Fatalf("profile update at terminal publication = %v", err)
+	}
+}
+
+func TestSessionProfileUpdateAppliesRevisionAndCacheReset(t *testing.T) {
+	defaults := runtimeTestProfile()
+	store := &memoryProfileStore{profile: defaults}
+	engine := &profileTestEngine{}
+	runtime := NewRuntime(Options{
+		Engine:              engine,
+		SessionProfiles:     store,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	mode := "plan"
+	updated, err := runtime.UpdateSessionProfile(
+		t.Context(),
+		"session-profile",
+		"thread-profile",
+		1,
+		protocol.SessionProfilePatch{Mode: &mode},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Profile.Revision != 2 || !updated.PromptCacheReset {
+		t.Fatalf("updated profile = %+v", updated)
+	}
+	engine.mu.Lock()
+	applied := engine.applied
+	engine.mu.Unlock()
+	if applied.Revision != 2 || applied.Mode != mode {
+		t.Fatalf("applied profile = %+v", applied)
+	}
+}
+
+func TestSessionToolCatalogProjectsProfileSelection(t *testing.T) {
+	defaults := runtimeTestProfile()
+	store := &memoryProfileStore{profile: defaults}
+	registry := tool.NewRegistry(nil, nil)
+	catalogTool := &profileCatalogTool{}
+	if err := registry.Register(catalogTool, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{
+		Engine: &profileTestEngine{}, SessionProfiles: store,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+		ToolCatalog:         registry,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	catalog, err := runtime.SessionToolCatalog(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Tools) < 2 {
+		t.Fatalf("catalog = %+v", catalog)
+	}
+	for _, entry := range catalog.Tools {
+		if !entry.Enabled || !entry.Guarded {
+			t.Fatalf("default catalog entry = %+v", entry)
+		}
+	}
+	enabled := []string{"builtin:catalog_read"}
+	if _, err := runtime.UpdateSessionProfile(
+		t.Context(), "session-profile", "thread-profile", 1,
+		protocol.SessionProfilePatch{EnabledToolIDs: &enabled},
+	); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err = runtime.SessionToolCatalog(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range catalog.Tools {
+		if entry.Enabled != (entry.ID == "builtin:catalog_read") {
+			t.Fatalf("selected catalog entry = %+v", entry)
+		}
+	}
+	generation := catalog.Generation
+	catalogTool.unavailable = true
+	catalog, err = runtime.SessionToolCatalog(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if catalog.Generation <= generation {
+		t.Fatalf("availability did not advance generation: %+v", catalog)
+	}
+	for _, entry := range catalog.Tools {
+		if entry.ID == "builtin:catalog_read" &&
+			(entry.Availability != "unavailable" ||
+				entry.UnavailableReason != "fixture disconnected" ||
+				!entry.Enabled) {
+			t.Fatalf("unavailable catalog entry = %+v", entry)
+		}
+	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := snapshot.Lookup("catalog_read")
+	if !ok {
+		t.Fatal("catalog_read is missing")
+	}
+	if _, err := registry.Revoke(
+		entry.Source,
+		"catalog_read",
+		registry.Generation(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err = runtime.SessionToolCatalog(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var revoked *protocol.SessionToolCatalogEntry
+	for index := range catalog.Tools {
+		if catalog.Tools[index].ID == "builtin:catalog_read" {
+			revoked = &catalog.Tools[index]
+			break
+		}
+	}
+	if revoked == nil || revoked.State != "revoked" ||
+		revoked.Availability != "unavailable" || !revoked.Enabled {
+		t.Fatalf("revoked catalog entry = %+v", revoked)
+	}
+}
+
+func TestProjectToolSourceCoversUnifiedFamilies(t *testing.T) {
+	tests := map[string]struct {
+		name, source, kind string
+	}{
+		"builtin": {name: "file_read", source: "builtin:file_read", kind: "builtin"},
+		"mcp":     {name: "issues", source: "mcp:github", kind: "mcp"},
+		"plugin":  {name: "plugin_demo_run", source: "plugin:lifecycle", kind: "plugin"},
+		"skill":   {name: "load_skill", source: "builtin:load_skill", kind: "skill"},
+		"dynamic": {name: "host_echo", source: "dynamic:3", kind: "dynamic"},
+	}
+	for label, test := range tests {
+		t.Run(label, func(t *testing.T) {
+			kind, _ := projectToolSource(test.name, test.source)
+			if kind != test.kind {
+				t.Fatalf("kind = %q, want %q", kind, test.kind)
+			}
+		})
+	}
+}
+
+type profileCatalogTool struct{ unavailable bool }
+
+func (t *profileCatalogTool) Descriptor() tool.Descriptor {
+	descriptor := tool.Descriptor{
+		Name: "catalog_read", Description: "Read the catalog fixture",
+		InputSchema: map[string]any{
+			"type": "object", "additionalProperties": false,
+		},
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+	}
+	if t.unavailable {
+		descriptor.Availability = tool.AvailabilityUnavailable
+		descriptor.UnavailableReason = "fixture disconnected"
+	}
+	return descriptor
+}
+
+func (*profileCatalogTool) Execute(
+	context.Context,
+	json.RawMessage,
+) (tool.Result, error) {
+	return tool.Result{Content: "ok"}, nil
+}
+
+func runtimeTestProfile() protocol.SessionProfile {
+	return protocol.SessionProfile{
+		Version:             protocol.SessionProfileVersion,
+		Revision:            1,
+		Mode:                "act",
+		Provider:            "fixture",
+		Model:               "fixture-model",
+		ApprovalPosture:     "suggest",
+		ExecutionTarget:     "local",
+		MaxSteps:            32,
+		PromptCacheRevision: 1,
+	}
+}
+
+func runtimeTestCapabilities(
+	profile protocol.SessionProfile,
+) protocol.SessionProfileCapabilities {
+	return protocol.SessionProfileCapabilities{
+		Provider: profile.Provider,
+		Model:    profile.Model,
+		ModelCapabilities: protocol.ModelCapabilities{
+			DisplayName:       profile.Model,
+			ContextWindow:     128_000,
+			MaxOutputTokens:   8_192,
+			Streaming:         true,
+			Reasoning:         true,
+			PromptCache:       true,
+			ParallelToolCalls: "unknown",
+			ReasoningEfforts:  []string{"low", "medium", "high"},
+			CredentialStatus:  "unknown",
+			Availability:      "available",
+			SelectionMode:     "restart_required",
+		},
+		MutableFields: []string{
+			"mode",
+			"reasoning_effort",
+			"enabled_tool_ids",
+			"approval_posture",
+			"max_steps",
+		},
+	}
+}

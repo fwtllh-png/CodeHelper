@@ -11,17 +11,19 @@ prerequisites:
 code_paths:
   - internal/runtime/app
   - internal/runtime/app/wire
+  - internal/persist/snapshot
   - internal/persist/workspacejournal
 test_paths:
   - internal/runtime/app/reconstruct_test.go
+  - internal/runtime/app/session_artifacts_test.go
   - internal/runtime/app/wire/persistent_test.go
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
   - internal/runtime/app/lifecycle.go
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/wire/persistent.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Resume, Recovery, and Idempotency
@@ -99,6 +101,30 @@ by another worker are not stolen.
 Using "resume" for all four hides duplicate-effect risk. The owner chooses
 based on what was durably recorded and which effects can be proven.
 
+Turn-level Retry and Continue are explicit recovery operations, not automatic
+Provider retry. Runtime reconstructs the source Turn's model-visible request
+from durable history and starts a new Turn. Retry preserves the request;
+Continue may append bounded guidance. Both require a terminal source Turn, an
+idle target Session, active-thread ownership, and a new idempotency key. They
+do not copy or replay historical Tool, Command, Network, or file effects.
+
+## Session Checkpoints and State-only Restore
+
+A Session Checkpoint is an immutable artifact backed by Snapshot metadata and
+CAS. It binds Session, Thread, Turn, Profile Revision, model-visible history,
+and integrity data. It is different from a Workflow node checkpoint.
+
+Restore is state-only. Runtime selects the verified history/Profile baseline
+and emits durable restore facts; it never re-executes historical Events or
+effects. Fork also restores state only, then creates a new active Thread with
+explicit parent Session/Thread/Checkpoint lineage. That lineage is relational
+state and survives process restart.
+
+Structured Plan Artifacts use the same ownership discipline. Implementing a
+Plan in the current Session, a new Session, or a Checkpoint Fork creates a new
+Turn after Runtime validates Plan identity, source Profile Revision, target
+Profile equivalence, and lineage.
+
 ## Crash Window Matrix
 
 | Crash window | Durable evidence | Safe startup action |
@@ -147,6 +173,7 @@ arbitrary shell command idempotent.
 | History reconstruction | `runtime/app/reconstruct.go` |
 | Persistent construction | `runtime/app/wire/persistent.go` |
 | Session snapshots | `persist/session`, `persist/snapshot` |
+| Checkpoint/Plan/Turn recovery | `runtime/app/session_artifacts.go` |
 | Workspace recovery | `persist/workspacejournal` |
 
 ## Tradeoffs and Alternatives
@@ -167,11 +194,14 @@ before-images.
 - Unknown/non-executable interrupted work fails rather than pretending retry.
 - Journal restore checks ownership and fingerprints.
 - External side effects are never falsely reported as reverted.
+- Checkpoint Restore/Fork never execute historical side effects.
+- Retry/Continue reject non-terminal, cross-thread, busy, or stale sources.
 
 ## Tests and Verification
 
 ```bash
 go test ./internal/runtime/app -run TestReconstructThread
+go test ./internal/runtime/app -run 'Test(SessionCheckpoint|Restore|Fork|RecoverTurn|Plan)'
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
 go test ./internal/persist/workspacejournal -run 'Test(TheNextProcessUndoesATurnAKilledProcessLeftHalfApplied|RecoveryKeepsTheWritesOfATurnThatAlreadyCommitted)'
 ```
@@ -195,6 +225,8 @@ recovery, lease recovery, or effect recovery.
 3. Why is idempotency always boundary-specific?
 4. How do replay, resume, retry, and reconcile differ?
 5. What should happen when a remote effect has an unknown outcome?
+6. Why can a Checkpoint restore history but not replay its Events?
+7. How does Continue differ from resuming an interrupted process?
 
 ## Further Reading
 
@@ -206,5 +238,5 @@ recovery, lease recovery, or effect recovery.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-resume-recovery` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -14,6 +14,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -31,6 +32,18 @@ func (s *Session) Close(ctx context.Context) error {
 func (s *Session) ProviderID() string { return s.providerID }
 
 func (s *Session) ModelID() string { return s.modelID }
+
+func (s *Session) ModelCapabilities() protocol.ModelCapabilities {
+	return s.modelCapabilities
+}
+
+func (s *Session) ProviderCatalog() protocol.ProviderCatalog {
+	return s.providerCatalog
+}
+
+func (s *Session) ModelCatalog() protocol.ModelCatalog {
+	return s.modelCatalog
+}
 
 func (s *Session) SessionWorkspaces() app.SessionWorkspaceManager {
 	if s == nil {
@@ -103,6 +116,9 @@ func (s *Session) SetPolicyMode(mode policy.Mode) {
 	// CloneSampling policy installed on Guard for the turn duration.
 	if s != nil && s.security != nil {
 		s.security.Mode = mode
+		if s.threads != nil {
+			s.threads.SetPolicyMode(mode)
+		}
 	}
 }
 
@@ -110,6 +126,9 @@ func (s *Session) SetPermission(permission policy.Permission) {
 	// Applies to the next turn only; see SetPolicyMode.
 	if s != nil && s.security != nil {
 		s.security.Permission = permission
+		if s.threads != nil {
+			s.threads.SetPermission(permission)
+		}
 	}
 }
 
@@ -117,6 +136,9 @@ func (s *Session) SetGranular(granular policy.Granular) {
 	// Applies to the next turn only; see SetPolicyMode.
 	if s != nil && s.security != nil {
 		s.security.Granular = granular
+		if s.threads != nil {
+			s.threads.SetGranular(granular)
+		}
 	}
 }
 
@@ -136,6 +158,10 @@ func (s *Session) closeResources(ctx context.Context, closeRuntime bool) error {
 	}
 	if closeRuntime && s.Runtime != nil {
 		closeErrors = append(closeErrors, s.Runtime.Close(ctx))
+	}
+	if s.turnCoordinators != nil {
+		closeErrors = append(closeErrors, s.turnCoordinators.Close(ctx))
+		s.turnCoordinators = nil
 	}
 	if s.processes != nil {
 		s.processes.CloseAll()

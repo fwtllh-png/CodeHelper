@@ -2,15 +2,22 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 var (
@@ -58,6 +65,17 @@ type EngineSink interface {
 	Emit(protocol.EventData) error
 }
 
+type TerminalMaterial struct {
+	FrozenState turnkernel.State
+	DomainFacts []turnkernel.DomainFact
+	Receipt     *protocol.ExecutionReceiptData
+	Terminal    protocol.EventData
+}
+
+type TerminalCommitSink interface {
+	CommitTerminal(TerminalMaterial) error
+}
+
 type Engine interface {
 	StartTurn(context.Context, *protocol.StartTurnPayload, EngineSink) error
 	CancelTurn(context.Context, *protocol.CancelTurnPayload, EngineSink) error
@@ -69,17 +87,126 @@ type Engine interface {
 	RevertTurn(context.Context, *protocol.RevertTurnPayload, EngineSink) error
 }
 
+type SessionProfileStore interface {
+	Profile(context.Context, string, protocol.SessionProfile) (protocol.SessionProfile, error)
+	EnsureProfile(context.Context, string, protocol.SessionProfile) (protocol.SessionProfile, error)
+	UpdateProfile(
+		context.Context,
+		string,
+		uint64,
+		protocol.SessionProfile,
+		protocol.SessionProfilePatch,
+	) (protocol.SessionProfileUpdateResult, error)
+}
+
+type SessionProfileEngine interface {
+	ValidateSessionProfile(protocol.ThreadID, protocol.SessionProfile) error
+	ApplySessionProfile(protocol.ThreadID, protocol.SessionProfile) error
+}
+
+type SessionToolCatalog interface {
+	Snapshot() (tool.CatalogSnapshot, error)
+}
+
+type SessionLifecycleStore interface {
+	ListLifecycle(
+		context.Context,
+		protocol.SessionListQuery,
+	) (protocol.SessionList, error)
+	GetLifecycle(
+		context.Context,
+		string,
+	) (protocol.SessionSummary, error)
+	ThreadIDs(
+		context.Context,
+		string,
+	) ([]protocol.ThreadID, error)
+	SessionForThread(
+		context.Context,
+		protocol.ThreadID,
+	) (string, error)
+	ActivateThread(
+		context.Context,
+		string,
+		protocol.ThreadID,
+	) (protocol.SessionSummary, error)
+	UpdateLifecycle(
+		context.Context,
+		string,
+		uint64,
+		protocol.SessionLifecyclePatch,
+	) (protocol.SessionSummary, error)
+	DeleteLifecycle(
+		context.Context,
+		string,
+		uint64,
+	) (protocol.SessionDeleteResult, error)
+}
+
+type SessionArtifactStore interface {
+	SaveCheckpoint(
+		context.Context,
+		protocol.SessionCheckpoint,
+		[]protocol.CompactedMessage,
+		protocol.SessionProfile,
+	) (protocol.SessionCheckpoint, error)
+	GetCheckpoint(
+		context.Context,
+		string,
+	) (
+		protocol.SessionCheckpoint,
+		[]protocol.CompactedMessage,
+		protocol.SessionProfile,
+		error,
+	)
+	ListCheckpoints(
+		context.Context,
+		string,
+		int,
+	) ([]protocol.SessionCheckpoint, error)
+	CountCheckpoints(context.Context, string) (int, error)
+	SavePlan(
+		context.Context,
+		protocol.SessionPlanArtifact,
+	) (protocol.SessionPlanArtifact, error)
+	GetPlan(context.Context, string) (protocol.SessionPlanArtifact, error)
+	LatestPlan(
+		context.Context,
+		string,
+		protocol.ThreadID,
+	) (protocol.SessionPlanArtifact, bool, error)
+}
+
+type CheckpointEngine interface {
+	History(protocol.ThreadID) ([]provider.Message, error)
+	RestoreCheckpoint(protocol.ThreadID, []provider.Message) error
+	ForkCheckpoint(
+		protocol.ThreadID,
+		protocol.ThreadID,
+		[]provider.Message,
+	) error
+	Release(protocol.ThreadID)
+}
+
 type Options struct {
-	OperationBuffer  int
-	EventHistory     int
-	SubscriberBuffer int
-	Engine           Engine
-	EventStore       EventStore
-	ContentStore     ContentStore
-	Lifecycle        DurableLifecycle
-	Recovery         *RecoveryState
-	Metrics          *telemetry.Metrics
-	Logger           *slog.Logger
+	OperationBuffer     int
+	EventHistory        int
+	SubscriberBuffer    int
+	Engine              Engine
+	EventStore          EventStore
+	ContentStore        ContentStore
+	Lifecycle           DurableLifecycle
+	Recovery            *RecoveryState
+	Metrics             *telemetry.Metrics
+	Logger              *slog.Logger
+	SessionProfiles     SessionProfileStore
+	DefaultProfile      protocol.SessionProfile
+	ProfileCapabilities protocol.SessionProfileCapabilities
+	ToolCatalog         SessionToolCatalog
+	SessionLifecycle    SessionLifecycleStore
+	SessionWorkspaces   SessionWorkspaceManager
+	SessionArtifacts    SessionArtifactStore
+	TerminalStore       turnkernel.TerminalEnvelopeStore
 }
 
 type Snapshot struct {
@@ -101,15 +228,23 @@ type acceptedOperation struct {
 }
 
 type Runtime struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	opts      Options
-	engine    Engine
-	events    EventStore
-	content   ContentStore
-	lifecycle DurableLifecycle
-	metrics   *telemetry.Metrics
-	logger    *slog.Logger
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	opts                Options
+	engine              Engine
+	events              EventStore
+	content             ContentStore
+	lifecycle           DurableLifecycle
+	metrics             *telemetry.Metrics
+	logger              *slog.Logger
+	profiles            SessionProfileStore
+	defaultProfile      protocol.SessionProfile
+	profileCapabilities protocol.SessionProfileCapabilities
+	toolCatalog         SessionToolCatalog
+	sessionLifecycle    SessionLifecycleStore
+	sessionWorkspaces   SessionWorkspaceManager
+	sessionArtifacts    SessionArtifactStore
+	terminalStore       turnkernel.TerminalEnvelopeStore
 
 	operations chan acceptedOperation
 	done       chan struct{}
@@ -129,10 +264,11 @@ type Runtime struct {
 	accepting        bool
 	closed           bool
 
-	activeMu      sync.Mutex
-	active        map[protocol.TurnID]context.CancelFunc
-	activeThreads map[protocol.ThreadID]protocol.TurnID
-	cancels       map[protocol.TurnID]cancelRecord
+	activeMu        sync.Mutex
+	active          map[protocol.TurnID]context.CancelFunc
+	activeThreads   map[protocol.ThreadID]protocol.TurnID
+	appliedProfiles map[protocol.ThreadID]uint64
+	cancels         map[protocol.TurnID]cancelRecord
 
 	// Event-owned items (F5): tool/approval/input get stable ItemIDs distinct
 	// from the turn.start operation item.
@@ -143,7 +279,6 @@ type Runtime struct {
 
 // cancelRecord captures CancelTurn provenance for the terminal turn.canceled event.
 type cancelRecord struct {
-	reason string
 	itemID protocol.ItemID
 	opID   protocol.OperationID
 }
@@ -161,6 +296,14 @@ func NewRuntimeWithRecovery(ctx context.Context, options Options) (*Runtime, err
 
 func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Runtime, error) {
 	options = withDefaults(options)
+	if recoverDurable && options.Lifecycle != nil &&
+		(options.EventStore == nil ||
+			options.ContentStore == nil ||
+			options.TerminalStore == nil) {
+		return nil, errors.New(
+			"durable runtime requires event, content, and terminal stores",
+		)
+	}
 	if options.Metrics == nil {
 		options.Metrics = telemetry.NewMetrics()
 	}
@@ -169,6 +312,17 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	}
 	if options.ContentStore == nil {
 		options.ContentStore = NewMemoryContentStore()
+	}
+	if options.TerminalStore == nil {
+		options.TerminalStore = turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
+	}
+	if options.SessionProfiles != nil {
+		if err := options.DefaultProfile.Validate(); err != nil {
+			return nil, fmt.Errorf("default session profile: %w", err)
+		}
+		if err := options.ProfileCapabilities.Validate(options.DefaultProfile); err != nil {
+			return nil, fmt.Errorf("session profile capabilities: %w", err)
+		}
 	}
 	recovery := options.Recovery
 	if recoverDurable && options.Lifecycle != nil {
@@ -180,31 +334,40 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	}
 	runtimeContext, cancel := context.WithCancel(context.Background())
 	runtime := &Runtime{
-		ctx:           runtimeContext,
-		cancel:        cancel,
-		opts:          options,
-		engine:        options.Engine,
-		events:        options.EventStore,
-		content:       options.ContentStore,
-		lifecycle:     options.Lifecycle,
-		metrics:       options.Metrics,
-		logger:        options.Logger,
-		operations:    make(chan acceptedOperation, options.OperationBuffer),
-		done:          make(chan struct{}),
-		subscribers:   make(map[uint64]chan protocol.Event),
-		terminals:     make(map[protocol.TurnID]protocol.EventKind),
-		approvals:     make(map[string]PendingApproval),
-		inputs:        make(map[string]PendingInput),
-		accepted:      make(map[protocol.OperationID]PendingOperation),
-		acceptedKeys:  make(map[string]protocol.OperationID),
-		committed:     make(map[protocol.OperationID]PendingOperation),
-		active:        make(map[protocol.TurnID]context.CancelFunc),
-		activeThreads: make(map[protocol.ThreadID]protocol.TurnID),
-		cancels:       make(map[protocol.TurnID]cancelRecord),
-		toolItems:     make(map[string]protocol.ItemID),
-		approvalItems: make(map[string]protocol.ItemID),
-		inputItems:    make(map[string]protocol.ItemID),
-		accepting:     true,
+		ctx:                 runtimeContext,
+		cancel:              cancel,
+		opts:                options,
+		engine:              options.Engine,
+		events:              options.EventStore,
+		content:             options.ContentStore,
+		lifecycle:           options.Lifecycle,
+		metrics:             options.Metrics,
+		logger:              options.Logger,
+		profiles:            options.SessionProfiles,
+		defaultProfile:      options.DefaultProfile,
+		profileCapabilities: options.ProfileCapabilities,
+		toolCatalog:         options.ToolCatalog,
+		sessionLifecycle:    options.SessionLifecycle,
+		sessionWorkspaces:   options.SessionWorkspaces,
+		sessionArtifacts:    options.SessionArtifacts,
+		terminalStore:       options.TerminalStore,
+		operations:          make(chan acceptedOperation, options.OperationBuffer),
+		done:                make(chan struct{}),
+		subscribers:         make(map[uint64]chan protocol.Event),
+		terminals:           make(map[protocol.TurnID]protocol.EventKind),
+		approvals:           make(map[string]PendingApproval),
+		inputs:              make(map[string]PendingInput),
+		accepted:            make(map[protocol.OperationID]PendingOperation),
+		acceptedKeys:        make(map[string]protocol.OperationID),
+		committed:           make(map[protocol.OperationID]PendingOperation),
+		active:              make(map[protocol.TurnID]context.CancelFunc),
+		activeThreads:       make(map[protocol.ThreadID]protocol.TurnID),
+		appliedProfiles:     make(map[protocol.ThreadID]uint64),
+		cancels:             make(map[protocol.TurnID]cancelRecord),
+		toolItems:           make(map[string]protocol.ItemID),
+		approvalItems:       make(map[string]protocol.ItemID),
+		inputItems:          make(map[string]protocol.ItemID),
+		accepting:           true,
 	}
 	if last, err := runtime.events.LastSequence(context.Background()); err == nil {
 		runtime.lastSequence = last
@@ -212,8 +375,839 @@ func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Run
 	if recovery != nil {
 		runtime.restore(*recovery)
 	}
+	if recoverDurable {
+		if err := runtime.recoverTerminalProjections(ctx); err != nil {
+			cancel()
+			return nil, fmt.Errorf("recover terminal projections: %w", err)
+		}
+	}
 	go runtime.loop()
+	if recoverDurable {
+		if err := runtime.recoverPendingTurns(ctx); err != nil {
+			cancel()
+			<-runtime.done
+			return nil, fmt.Errorf("recover pending turns: %w", err)
+		}
+	}
 	return runtime, nil
+}
+
+func (r *Runtime) SessionLifecycleAvailable() bool {
+	return r != nil && r.sessionLifecycle != nil
+}
+
+func (r *Runtime) ListSessions(
+	ctx context.Context,
+	query protocol.SessionListQuery,
+) (protocol.SessionList, error) {
+	if r.sessionLifecycle == nil {
+		return protocol.SessionList{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session lifecycle is unavailable",
+			false,
+			nil,
+		)
+	}
+	if err := query.Validate(); err != nil {
+		return protocol.SessionList{}, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			err.Error(),
+			false,
+			err,
+		)
+	}
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	searchQuery := strings.TrimSpace(query.Query)
+	storeQuery := query
+	if searchQuery != "" {
+		storeQuery.Query = ""
+	}
+	if query.Status != "" || searchQuery != "" {
+		storeQuery.Status = ""
+		storeQuery.Limit = 1000
+	}
+	page, err := r.sessionLifecycle.ListLifecycle(ctx, storeQuery)
+	if err != nil {
+		return protocol.SessionList{}, err
+	}
+	searchPage := protocol.SessionList{}
+	if searchQuery != "" {
+		searchStoreQuery := query
+		searchStoreQuery.Status = ""
+		searchStoreQuery.Limit = 1000
+		searchPage, err = r.sessionLifecycle.ListLifecycle(ctx, searchStoreQuery)
+		if err != nil {
+			return protocol.SessionList{}, err
+		}
+	}
+	candidates := make([]protocol.SessionSummary, 0, len(page.Sessions))
+	for _, value := range page.Sessions {
+		value, err = r.projectSessionActivity(ctx, value)
+		if err != nil {
+			return protocol.SessionList{}, err
+		}
+		candidates = append(candidates, value)
+	}
+	eventMatches := []protocol.SessionSearchMatch(nil)
+	if searchQuery != "" {
+		eventMatches, err = r.searchSessionEvents(ctx, candidates, searchQuery)
+		if err != nil {
+			return protocol.SessionList{}, err
+		}
+	}
+	matched := make(map[string]struct{}, len(searchPage.Sessions)+len(eventMatches))
+	for _, value := range searchPage.Sessions {
+		matched[value.SessionID] = struct{}{}
+	}
+	for _, match := range eventMatches {
+		matched[match.SessionID] = struct{}{}
+	}
+	sessions := make([]protocol.SessionSummary, 0, min(len(candidates), limit))
+	included := make(map[string]struct{}, len(candidates))
+	for _, value := range candidates {
+		if searchQuery != "" {
+			if _, ok := matched[value.SessionID]; !ok {
+				continue
+			}
+		}
+		if query.Status != "" && value.Status != query.Status {
+			continue
+		}
+		sessions = append(sessions, value)
+		included[value.SessionID] = struct{}{}
+		if len(sessions) == limit {
+			break
+		}
+	}
+	matchesBySession := make(map[string]protocol.SessionSearchMatch, len(eventMatches))
+	for _, match := range eventMatches {
+		matchesBySession[match.SessionID] = match
+	}
+	for _, match := range searchPage.Matches {
+		if _, exists := matchesBySession[match.SessionID]; !exists {
+			if match.Snippet == "" {
+				match.Snippet = searchQuery
+			}
+			matchesBySession[match.SessionID] = match
+		}
+	}
+	matches := make([]protocol.SessionSearchMatch, 0, len(matchesBySession))
+	for _, value := range sessions {
+		if match, ok := matchesBySession[value.SessionID]; ok {
+			if _, ok := included[match.SessionID]; ok {
+				matches = append(matches, match)
+			}
+		}
+	}
+	result := protocol.SessionList{
+		Version:  protocol.SessionLifecycleVersion,
+		Query:    searchQuery,
+		Sessions: sessions,
+		Matches:  matches,
+	}
+	if err := result.Validate(); err != nil {
+		return protocol.SessionList{}, err
+	}
+	return result, nil
+}
+
+func (r *Runtime) searchSessionEvents(
+	ctx context.Context,
+	sessions []protocol.SessionSummary,
+	query string,
+) ([]protocol.SessionSearchMatch, error) {
+	byThread := make(map[protocol.ThreadID]string, len(sessions))
+	for _, summary := range sessions {
+		threadIDs, err := r.sessionLifecycle.ThreadIDs(ctx, summary.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		for _, threadID := range threadIDs {
+			byThread[threadID] = summary.SessionID
+		}
+	}
+	events, err := r.events.Replay(ctx, 0)
+	var gap *CursorGapError
+	if errors.As(err, &gap) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	matches := make(map[string]protocol.SessionSearchMatch, len(sessions))
+	record := func(event protocol.Event, kind, value string) {
+		sessionID := byThread[event.ThreadID]
+		snippet, ok := searchSnippet(value, query)
+		if sessionID == "" || !ok || event.TurnID == "" {
+			return
+		}
+		matches[sessionID] = protocol.SessionSearchMatch{
+			SessionID: sessionID,
+			TurnID:    event.TurnID,
+			Kind:      kind,
+			Snippet:   snippet,
+		}
+	}
+	for _, event := range events {
+		switch data := event.Data.(type) {
+		case *protocol.TurnStartedData:
+			prompt := data.DisplayPrompt
+			if prompt == "" {
+				prompt = data.Prompt
+			}
+			record(event, "user_request", prompt)
+		case *protocol.TurnCompletedData:
+			record(event, "agent_output", data.Text)
+		case *protocol.ExecutionReceiptData:
+			for _, change := range data.Changes {
+				record(event, "path", change.Path)
+			}
+			for _, reference := range data.EditorContext {
+				record(event, "path", reference.Path)
+				if reference.Symbol != nil {
+					record(event, "symbol", reference.Symbol.Name)
+				}
+			}
+		}
+	}
+	result := make([]protocol.SessionSearchMatch, 0, len(sessions))
+	for _, summary := range sessions {
+		if match, ok := matches[summary.SessionID]; ok {
+			result = append(result, match)
+			continue
+		}
+		if snippet, ok := searchSnippet(summary.Title, query); ok &&
+			summary.LatestTurnID != "" {
+			result = append(result, protocol.SessionSearchMatch{
+				SessionID: summary.SessionID,
+				TurnID:    summary.LatestTurnID,
+				Kind:      "title",
+				Snippet:   snippet,
+			})
+		}
+	}
+	return result, nil
+}
+
+func searchSnippet(value, query string) (string, bool) {
+	const limit = 240
+	valueRunes := []rune(value)
+	lower := []rune(strings.ToLower(value))
+	needle := []rune(strings.ToLower(query))
+	index := -1
+	for candidate := 0; candidate+len(needle) <= len(lower); candidate++ {
+		if string(lower[candidate:candidate+len(needle)]) == string(needle) {
+			index = candidate
+			break
+		}
+	}
+	if index < 0 {
+		return "", false
+	}
+	start := max(0, index-limit/3)
+	end := min(len(valueRunes), start+limit)
+	start = max(0, end-limit)
+	snippet := strings.TrimSpace(string(valueRunes[start:end]))
+	if start > 0 {
+		snippet = "..." + snippet
+	}
+	if end < len(valueRunes) {
+		snippet += "..."
+	}
+	return snippet, true
+}
+
+func (r *Runtime) SessionStatus(
+	ctx context.Context,
+	sessionID string,
+) (protocol.SessionSummary, error) {
+	if r.sessionLifecycle == nil {
+		return protocol.SessionSummary{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session lifecycle is unavailable",
+			false,
+			nil,
+		)
+	}
+	summary, err := r.sessionLifecycle.GetLifecycle(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	return r.projectSessionActivity(ctx, summary)
+}
+
+func (r *Runtime) UpdateSessionLifecycle(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+	patch protocol.SessionLifecyclePatch,
+) (protocol.SessionLifecycleUpdate, error) {
+	if r.sessionLifecycle == nil {
+		return protocol.SessionLifecycleUpdate{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session lifecycle is unavailable",
+			false,
+			nil,
+		)
+	}
+	current, err := r.SessionStatus(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	if patch.Archived != nil && *patch.Archived {
+		if err := ensureSessionQuiescent(current, "archive"); err != nil {
+			return protocol.SessionLifecycleUpdate{}, err
+		}
+	}
+	updated, err := r.sessionLifecycle.UpdateLifecycle(
+		ctx,
+		sessionID,
+		expectedRevision,
+		patch,
+	)
+	if err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	updated, err = r.projectSessionActivity(ctx, updated)
+	if err != nil {
+		return protocol.SessionLifecycleUpdate{}, err
+	}
+	return protocol.SessionLifecycleUpdate{
+		Session: updated,
+	}, nil
+}
+
+func (r *Runtime) DeleteSession(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+) (protocol.SessionDeleteResult, error) {
+	if r.sessionLifecycle == nil {
+		return protocol.SessionDeleteResult{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session lifecycle is unavailable",
+			false,
+			nil,
+		)
+	}
+	current, err := r.SessionStatus(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	if err := ensureSessionQuiescent(current, "delete"); err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	if current.Isolation == SessionIsolationWorktree {
+		if r.sessionWorkspaces == nil {
+			return protocol.SessionDeleteResult{}, protocol.NewProblem(
+				protocol.CodeUnavailable,
+				"isolated Chat workspaces are unavailable",
+				false,
+				nil,
+			)
+		}
+		if _, err := r.sessionWorkspaces.Restore(
+			ctx,
+			current.SessionID,
+			current.ThreadID,
+		); err != nil {
+			return protocol.SessionDeleteResult{}, err
+		}
+		plan, err := r.sessionWorkspaces.PlanMerge(
+			ctx,
+			current.SessionID,
+			current.ThreadID,
+		)
+		if err != nil && !errors.Is(err, ErrSessionWorkspaceClean) {
+			return protocol.SessionDeleteResult{}, err
+		}
+		if err == nil && len(plan.Files) != 0 {
+			return protocol.SessionDeleteResult{}, protocol.NewProblem(
+				protocol.CodeConflict,
+				"cannot delete session with unmerged worktree changes",
+				false,
+				nil,
+			)
+		}
+	}
+	result, err := r.sessionLifecycle.DeleteLifecycle(
+		ctx,
+		sessionID,
+		expectedRevision,
+	)
+	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	if manager, ok := r.engine.(*ThreadManager); ok && manager != nil {
+		manager.Release(result.ThreadID)
+	}
+	if current.Isolation == SessionIsolationWorktree {
+		if discardErr := r.sessionWorkspaces.Discard(
+			ctx,
+			current.SessionID,
+			current.ThreadID,
+		); discardErr != nil {
+			r.logger.Error(
+				"discard deleted Session worktree",
+				"session_id", current.SessionID,
+				"thread_id", current.ThreadID,
+				"error", discardErr,
+			)
+		}
+	}
+	return result, nil
+}
+
+func (r *Runtime) projectSessionActivity(
+	ctx context.Context,
+	summary protocol.SessionSummary,
+) (protocol.SessionSummary, error) {
+	threadIDs, err := r.sessionLifecycle.ThreadIDs(ctx, summary.SessionID)
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	threads := make(map[protocol.ThreadID]struct{}, len(threadIDs))
+	for _, threadID := range threadIDs {
+		threads[threadID] = struct{}{}
+	}
+	if r.sessionArtifacts != nil {
+		checkpointCount, err := r.sessionArtifacts.CountCheckpoints(
+			ctx,
+			summary.SessionID,
+		)
+		if err != nil {
+			return protocol.SessionSummary{}, err
+		}
+		summary.CheckpointCount = checkpointCount
+		if checkpointCount > 0 {
+			checkpoints, err := r.sessionArtifacts.ListCheckpoints(
+				ctx,
+				summary.SessionID,
+				1,
+			)
+			if err != nil {
+				return protocol.SessionSummary{}, err
+			}
+			if len(checkpoints) == 1 {
+				summary.ChangedFiles = checkpoints[0].ChangedFiles
+			}
+		}
+	}
+	r.activeMu.Lock()
+	active := false
+	for threadID := range threads {
+		if _, ok := r.activeThreads[threadID]; ok {
+			active = true
+			break
+		}
+	}
+	r.activeMu.Unlock()
+	r.mu.Lock()
+	pendingApprovals := 0
+	for _, approval := range r.approvals {
+		if _, ok := threads[approval.ThreadID]; ok {
+			pendingApprovals++
+		}
+	}
+	pendingInputs := 0
+	for _, input := range r.inputs {
+		if _, ok := threads[input.ThreadID]; ok {
+			pendingInputs++
+		}
+	}
+	r.mu.Unlock()
+	summary.PendingApprovals = pendingApprovals
+	summary.PendingInputs = pendingInputs
+	switch {
+	case pendingApprovals > 0:
+		summary.Status = protocol.SessionStatusAwaitingApproval
+	case pendingInputs > 0:
+		summary.Status = protocol.SessionStatusAwaitingInput
+	case active:
+		summary.Status = protocol.SessionStatusRunning
+	}
+	return summary, nil
+}
+
+func ensureSessionQuiescent(
+	summary protocol.SessionSummary,
+	action string,
+) error {
+	switch summary.Status {
+	case protocol.SessionStatusRunning,
+		protocol.SessionStatusAwaitingApproval,
+		protocol.SessionStatusAwaitingInput:
+		return protocol.NewProblemWithDetails(
+			protocol.CodeConflict,
+			fmt.Sprintf(
+				"cannot %s session while status is %s",
+				action,
+				summary.Status,
+			),
+			true,
+			protocol.ProblemDetails{
+				Reason:        protocol.ProblemReasonSessionBusy,
+				ResourceID:    summary.SessionID,
+				SessionStatus: string(summary.Status),
+			},
+			nil,
+		)
+	default:
+		return nil
+	}
+}
+
+func (r *Runtime) SessionToolCatalog(
+	ctx context.Context,
+	sessionID string,
+) (protocol.SessionToolCatalog, error) {
+	if r.toolCatalog == nil {
+		return protocol.SessionToolCatalog{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session tool catalog is unavailable",
+			false,
+			nil,
+		)
+	}
+	profile, err := r.SessionProfile(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionToolCatalog{}, err
+	}
+	snapshot, err := r.toolCatalog.Snapshot()
+	if err != nil {
+		return protocol.SessionToolCatalog{}, fmt.Errorf("snapshot tool catalog: %w", err)
+	}
+	enabled := make(map[string]bool, len(profile.Profile.EnabledToolIDs))
+	for _, id := range profile.Profile.EnabledToolIDs {
+		enabled[id] = true
+	}
+	allEnabled := len(enabled) == 0
+	result := protocol.SessionToolCatalog{
+		Version:   protocol.SessionToolCatalogVersion,
+		CatalogID: snapshot.CatalogID, Generation: snapshot.Generation,
+		Digest: snapshot.Digest,
+	}
+	entries := snapshot.Entries()
+	seen := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		descriptor := entry.Descriptor
+		if descriptor.Visibility != tool.VisibleModel {
+			continue
+		}
+		sourceKind, sourceLabel := projectToolSource(entry.Name, entry.Source)
+		id := tool.CatalogToolID(entry.Name, entry.Source)
+		seen[id] = true
+		result.Tools = append(result.Tools, protocol.SessionToolCatalogEntry{
+			ID: id, Name: boundedCatalogText(entry.Name, 256),
+			Description: boundedCatalogText(descriptor.Description, 4096),
+			SourceKind:  sourceKind, SourceLabel: sourceLabel,
+			Capability:         string(descriptor.Capability),
+			AccessMode:         string(descriptor.AccessMode),
+			RiskLevel:          catalogRiskLevel(descriptor.Capability, descriptor.AccessMode),
+			SandboxRequirement: string(descriptor.SandboxRequirement),
+			PolicyState:        "deferred",
+			PolicyReason:       "Final policy decision requires validated arguments and resources",
+			ConstitutionState:  "deferred",
+			ConstitutionReason: "Final constitution decision is enforced by the Tool Guard",
+			Availability:       string(descriptor.Availability),
+			UnavailableReason:  boundedCatalogText(descriptor.UnavailableReason, 4096),
+			State:              string(entry.State), Revision: entry.Revision,
+			Enabled: allEnabled || enabled[id],
+			Guarded: true,
+		})
+	}
+	for _, id := range profile.Profile.EnabledToolIDs {
+		if seen[id] {
+			continue
+		}
+		sourceKind, name, ok := tool.ParseCatalogToolID(id)
+		if !ok {
+			continue
+		}
+		sourceLabel := strings.ToUpper(sourceKind[:1]) + sourceKind[1:]
+		if sourceKind == "mcp" {
+			sourceLabel = "MCP"
+		}
+		result.Tools = append(result.Tools, protocol.SessionToolCatalogEntry{
+			ID: id, Name: name,
+			Description:        "Tool is no longer registered in the Runtime catalog",
+			SourceKind:         sourceKind,
+			SourceLabel:        sourceLabel,
+			Capability:         "unknown",
+			AccessMode:         "unknown",
+			RiskLevel:          "unknown",
+			SandboxRequirement: "unknown",
+			PolicyState:        "deferred",
+			PolicyReason:       "Revoked Tool has no executable policy decision",
+			ConstitutionState:  "deferred",
+			ConstitutionReason: "Revoked Tool cannot reach Constitution evaluation",
+			Availability:       "unavailable",
+			UnavailableReason:  "Tool was revoked or its source is disconnected",
+			State:              "revoked",
+			Revision:           1,
+			Enabled:            true,
+			Guarded:            true,
+		})
+	}
+	sort.Slice(result.Tools, func(i, j int) bool {
+		return result.Tools[i].ID < result.Tools[j].ID
+	})
+	if err := result.Validate(); err != nil {
+		return protocol.SessionToolCatalog{}, err
+	}
+	return result, nil
+}
+
+func catalogRiskLevel(capability tool.Capability, access tool.AccessMode) string {
+	switch {
+	case capability == tool.CapabilityRead && access == tool.AccessRead:
+		return "low"
+	case capability == tool.CapabilityWrite:
+		return "medium"
+	case capability == tool.CapabilityProcess ||
+		capability == tool.CapabilityNetwork ||
+		capability == tool.CapabilityPlugin ||
+		access == tool.AccessTree:
+		return "high"
+	default:
+		return "unknown"
+	}
+}
+
+func boundedCatalogText(value string, maximum int) string {
+	if len(value) <= maximum {
+		return value
+	}
+	end := maximum
+	for end > 0 && !utf8.ValidString(value[:end]) {
+		end--
+	}
+	return value[:end]
+}
+
+func projectToolSource(name, source string) (string, string) {
+	switch kind := tool.CatalogSourceKind(name, source); kind {
+	case "mcp":
+		label := strings.TrimPrefix(source, "mcp:")
+		if label == "helpers" {
+			label = "MCP"
+		}
+		return "mcp", label
+	case "plugin":
+		return "plugin", "Plugin"
+	case "dynamic":
+		return "dynamic", "Host"
+	case "skill":
+		return "skill", "Skills"
+	default:
+		return "builtin", "CodeHelper"
+	}
+}
+
+func (r *Runtime) SessionProfile(
+	ctx context.Context,
+	sessionID string,
+) (protocol.SessionProfileSnapshot, error) {
+	if r.profiles == nil {
+		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session profiles are unavailable",
+			false,
+			nil,
+		)
+	}
+	profile, err := r.profiles.EnsureProfile(ctx, sessionID, r.defaultProfile)
+	if err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	if !profileFieldMutable(
+		r.profileCapabilities.MutableFields,
+		"reasoning_effort",
+	) {
+		profile.ReasoningEffort = r.defaultProfile.ReasoningEffort
+	}
+	capabilities := r.profileCapabilities
+	capabilities.Provider = profile.Provider
+	capabilities.Model = profile.Model
+	if err := capabilities.Validate(profile); err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	return protocol.SessionProfileSnapshot{
+		Profile:      profile,
+		Capabilities: capabilities,
+	}, nil
+}
+
+func profileFieldMutable(fields []string, target string) bool {
+	for _, field := range fields {
+		if field == target {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Runtime) SessionProfilesAvailable() bool {
+	return r != nil && r.profiles != nil
+}
+
+func (r *Runtime) RestoreSessionProfile(
+	ctx context.Context,
+	sessionID string,
+	threadID protocol.ThreadID,
+) (protocol.SessionProfileSnapshot, error) {
+	snapshot, err := r.SessionProfile(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	controller, ok := r.engine.(SessionProfileEngine)
+	if !ok {
+		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session profile updates are unsupported by this engine",
+			false,
+			nil,
+		)
+	}
+	r.activeMu.Lock()
+	defer r.activeMu.Unlock()
+	if _, active := r.activeThreads[threadID]; active {
+		if r.appliedProfiles[threadID] == snapshot.Profile.Revision {
+			return snapshot, nil
+		}
+		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
+			protocol.CodeConflict,
+			"session profile cannot be restored while its thread has an active turn",
+			true,
+			nil,
+		)
+	}
+	if err := controller.ValidateSessionProfile(threadID, snapshot.Profile); err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	if err := controller.ApplySessionProfile(threadID, snapshot.Profile); err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	r.appliedProfiles[threadID] = snapshot.Profile.Revision
+	return snapshot, nil
+}
+
+func (r *Runtime) UpdateSessionProfile(
+	ctx context.Context,
+	sessionID string,
+	threadID protocol.ThreadID,
+	expectedRevision uint64,
+	patch protocol.SessionProfilePatch,
+) (protocol.SessionProfileUpdateResult, error) {
+	if r.profiles == nil {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session profiles are unavailable",
+			false,
+			nil,
+		)
+	}
+	controller, ok := r.engine.(SessionProfileEngine)
+	if !ok {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"session profile updates are unsupported by this engine",
+			false,
+			nil,
+		)
+	}
+	r.activeMu.Lock()
+	defer r.activeMu.Unlock()
+	if _, active := r.activeThreads[threadID]; active {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeConflict,
+			"session profile cannot change while its thread has an active turn",
+			true,
+			nil,
+		)
+	}
+	current, err := r.profiles.Profile(ctx, sessionID, r.defaultProfile)
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	candidate, err := protocol.ApplySessionProfilePatch(current, patch)
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			err.Error(),
+			false,
+			err,
+		)
+	}
+	if err := validateMutableProfilePatch(
+		patch,
+		r.profileCapabilities.MutableFields,
+	); err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	if err := controller.ValidateSessionProfile(threadID, candidate.Profile); err != nil {
+		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			err.Error(),
+			false,
+			err,
+		)
+	}
+	updated, err := r.profiles.UpdateProfile(
+		ctx,
+		sessionID,
+		expectedRevision,
+		r.defaultProfile,
+		patch,
+	)
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
+	}
+	if err := controller.ApplySessionProfile(threadID, updated.Profile); err != nil {
+		return protocol.SessionProfileUpdateResult{}, fmt.Errorf(
+			"apply persisted session profile: %w",
+			err,
+		)
+	}
+	r.appliedProfiles[threadID] = updated.Profile.Revision
+	return updated, nil
+}
+
+func validateMutableProfilePatch(
+	patch protocol.SessionProfilePatch,
+	mutable []string,
+) error {
+	allowed := make(map[string]bool, len(mutable))
+	for _, field := range mutable {
+		allowed[field] = true
+	}
+	fields := []struct {
+		name string
+		set  bool
+	}{
+		{"mode", patch.Mode != nil},
+		{"provider", patch.Provider != nil},
+		{"model", patch.Model != nil},
+		{"reasoning_effort", patch.ReasoningEffort != nil},
+		{"enabled_tool_ids", patch.EnabledToolIDs != nil},
+		{"approval_posture", patch.ApprovalPosture != nil},
+		{"execution_target", patch.ExecutionTarget != nil},
+		{"max_steps", patch.MaxSteps != nil},
+	}
+	for _, field := range fields {
+		if field.set && !allowed[field.name] {
+			return protocol.NewProblem(
+				protocol.CodeConflict,
+				fmt.Sprintf("session profile field %s is immutable in this runtime", field.name),
+				false,
+				nil,
+			)
+		}
+	}
+	return nil
 }
 
 func (r *Runtime) Submit(ctx context.Context, operation protocol.Operation) error {
@@ -673,24 +1667,52 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 	r.workers.Add(1)
 	go func() {
 		defer r.workers.Done()
-		defer func() {
+		released := false
+		releaseActive := func() {
+			if released {
+				return
+			}
 			r.activeMu.Lock()
 			delete(r.active, payload.TurnID)
 			delete(r.activeThreads, payload.ThreadID)
 			r.activeMu.Unlock()
-			cancel()
-		}()
-		sink := &runtimeSink{runtime: r, operation: operation}
-		err := r.engine.StartTurn(turnContext, payload, sink)
+			released = true
+		}
+		defer releaseActive()
+		defer cancel()
+		sink := &runtimeSink{
+			runtime: r, operation: operation, deferTerminal: true,
+		}
+		err := startTurnSafely(r.engine, turnContext, payload, sink)
+		if r.lifecycle != nil && !sink.terminalCommitAttempted {
+			releaseActive()
+			if err == nil {
+				err = errors.New(
+					"durable turn returned without atomic terminal commit",
+				)
+			}
+			if rejectErr := r.reject(operation, err); rejectErr == nil {
+				r.commit(operation.ID)
+			}
+			return
+		}
+		if sink.terminalCommitAttempted && sink.terminal == nil {
+			releaseActive()
+			if err == nil {
+				err = errors.New("terminal envelope commit failed")
+			}
+			if rejectErr := r.reject(operation, err); rejectErr == nil {
+				r.commit(operation.ID)
+			}
+			return
+		}
 		var terminalErr error
 		switch {
 		case errors.Is(turnContext.Err(), context.Canceled):
-			reason := protocol.CancelReasonInterrupted
 			itemID := payload.ItemID
 			opID := operation.ID
 			r.activeMu.Lock()
 			if stored, ok := r.cancels[payload.TurnID]; ok {
-				reason = stored.reason
 				if stored.itemID != "" {
 					itemID = stored.itemID
 				}
@@ -700,34 +1722,68 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 				delete(r.cancels, payload.TurnID)
 			}
 			r.activeMu.Unlock()
-			// Pin ItemID (and cancel OperationID when present) so Persist/lifecycle
-			// can update the cancel item rather than the start-turn item (F5).
-			terminalErr = r.publish(
-				opID, payload.ThreadID, payload.TurnID, itemID,
-				&protocol.TurnCanceledData{Reason: reason},
-			)
+			releaseActive()
+			// Engine/Coordinator owns the canceled decision. Runtime only binds
+			// the accepted cancel Operation and Item identity to its projection.
+			terminalErr = sink.publishTerminalAs(opID, itemID)
 			if terminalErr == nil {
-				r.commit(operation.ID)
+				r.persistTerminalArtifactForTurn(
+					context.Background(),
+					payload.ThreadID,
+					payload.TurnID,
+				)
+			}
+			if terminalErr == nil {
+				sink.commitOperation()
 			}
 			return // skip shared commit below — already handled
-		case err != nil:
-			var decision *policy.DecisionError
-			if errors.As(err, &decision) && decision.Code == "approval_canceled" {
-				terminalErr = sink.Emit(&protocol.TurnCanceledData{
-					Reason: protocol.CancelReasonApprovalCanceled,
-				})
-			} else {
-				terminalErr = sink.Emit(&protocol.TurnFailedData{
-					Code: protocol.CodeOf(err), Message: err.Error(),
-				})
+		}
+		if sink.terminal == nil {
+			releaseActive()
+			if err == nil {
+				err = errors.New("turn engine returned without terminal material")
 			}
-		default:
-			terminalErr = sink.Emit(&protocol.TurnCompletedData{})
+			if rejectErr := r.reject(operation, err); rejectErr == nil {
+				r.commit(operation.ID)
+			}
+			return
+		}
+		releaseActive()
+		terminalErr = sink.publishTerminal()
+		if terminalErr == nil {
+			r.persistTerminalArtifactForTurn(
+				context.Background(),
+				payload.ThreadID,
+				payload.TurnID,
+			)
 		}
 		if terminalErr == nil {
-			r.commit(operation.ID)
+			sink.commitOperation()
+		} else {
+			if rejectErr := r.reject(operation, terminalErr); rejectErr == nil {
+				r.commit(operation.ID)
+			}
 		}
 	}()
+}
+
+func startTurnSafely(
+	engine Engine,
+	ctx context.Context,
+	payload *protocol.StartTurnPayload,
+	sink EngineSink,
+) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = protocol.NewProblem(
+				protocol.CodeInternal,
+				"turn engine panicked",
+				false,
+				fmt.Errorf("turn engine panic: %v", recovered),
+			)
+		}
+	}()
+	return engine.StartTurn(ctx, payload, sink)
 }
 
 func (r *Runtime) cancelTurn(
@@ -736,22 +1792,26 @@ func (r *Runtime) cancelTurn(
 ) error {
 	r.activeMu.Lock()
 	cancel, exists := r.active[payload.TurnID]
-	if exists {
-		r.cancels[payload.TurnID] = cancelRecord{
-			reason: protocol.NormalizeCancelReason(payload.Reason),
-			itemID: payload.ItemID,
-			opID:   operation.ID,
-		}
-	}
 	r.activeMu.Unlock()
 	if !exists {
 		return r.reject(operation, errors.New("turn is not active"))
 	}
-	invokeErr := r.invoke(operation, func(sink EngineSink) error {
-		return r.engine.CancelTurn(r.ctx, payload, sink)
-	})
+	sink := &runtimeSink{runtime: r, operation: operation}
+	if err := r.engine.CancelTurn(r.ctx, payload, sink); err != nil {
+		if rejectErr := r.reject(operation, err); rejectErr != nil {
+			return rejectErr
+		}
+		r.commit(operation.ID)
+		return err
+	}
+	r.activeMu.Lock()
+	r.cancels[payload.TurnID] = cancelRecord{
+		itemID: payload.ItemID,
+		opID:   operation.ID,
+	}
+	r.activeMu.Unlock()
 	cancel()
-	return invokeErr
+	return nil
 }
 
 func (r *Runtime) invoke(
@@ -776,13 +1836,540 @@ func (r *Runtime) reject(operation protocol.Operation, err error) error {
 }
 
 type runtimeSink struct {
-	runtime   *Runtime
-	operation protocol.Operation
+	runtime                 *Runtime
+	operation               protocol.Operation
+	deferTerminal           bool
+	terminal                protocol.EventData
+	material                *TerminalMaterial
+	terminalCommitAttempted bool
+	operationCommitted      bool
 }
 
 func (s *runtimeSink) Emit(data protocol.EventData) error {
+	if s.deferTerminal && protocol.IsTerminalEvent(eventKind(data)) {
+		if s.terminal == nil {
+			s.terminal = data
+		}
+		return nil
+	}
 	threadID, turnID, itemID := protocol.OperationReferences(s.operation)
 	return s.runtime.publish(s.operation.ID, threadID, turnID, itemID, data)
+}
+
+func (s *runtimeSink) CommitTerminal(material TerminalMaterial) error {
+	s.terminalCommitAttempted = true
+	if !material.FrozenState.Phase.Terminal() ||
+		material.FrozenState.Terminal == nil ||
+		material.Receipt == nil ||
+		material.Terminal == nil ||
+		len(material.DomainFacts) == 0 {
+		return errors.New("terminal material is incomplete")
+	}
+	_, turnID, _ := protocol.OperationReferences(s.operation)
+	if string(turnID) != material.DomainFacts[0].TurnID {
+		return errors.New("terminal material turn identity mismatch")
+	}
+	receiptPayload, err := json.Marshal(material.Receipt)
+	if err != nil {
+		return err
+	}
+	terminalPayload, err := json.Marshal(material.Terminal)
+	if err != nil {
+		return err
+	}
+	decision := *material.FrozenState.Terminal
+	commitReceipt := s.runtime.operationCommitReceipt(s.operation.ID)
+	operationReceipt, err := json.Marshal(commitReceipt)
+	if err != nil {
+		return err
+	}
+	threadID, _, itemID := protocol.OperationReferences(s.operation)
+	projectionOperationID := s.operation.ID
+	s.runtime.activeMu.Lock()
+	if stored, ok := s.runtime.cancels[turnID]; ok {
+		if stored.opID != "" {
+			projectionOperationID = stored.opID
+		}
+		if stored.itemID != "" {
+			itemID = stored.itemID
+		}
+	}
+	s.runtime.activeMu.Unlock()
+	entry := func(
+		id string,
+		kind protocol.EventKind,
+		payload json.RawMessage,
+	) turnkernel.ProjectionOutboxEntry {
+		return turnkernel.ProjectionOutboxEntry{
+			ID:          id,
+			EventID:     terminalOutboxEventID(turnID, id),
+			OperationID: projectionOperationID,
+			ThreadID:    threadID,
+			TurnID:      turnID,
+			ItemID:      itemID,
+			Kind:        string(kind),
+			Payload:     payload,
+		}
+	}
+	outbox := make([]turnkernel.ProjectionOutboxEntry, 0,
+		len(material.FrozenState.FinalOutput)+2)
+	for index, text := range material.FrozenState.FinalOutput {
+		payload, err := json.Marshal(&protocol.OutputDeltaData{Text: text})
+		if err != nil {
+			return err
+		}
+		id := fmt.Sprintf("output:%06d", index+1)
+		outbox = append(
+			outbox,
+			entry(id, protocol.EventOutputDelta, payload),
+		)
+	}
+	outbox = append(outbox,
+		entry(
+			"receipt",
+			protocol.EventExecutionReceipt,
+			receiptPayload,
+		),
+		entry(
+			"terminal",
+			eventKind(material.Terminal),
+			terminalPayload,
+		),
+	)
+	envelope := turnkernel.TerminalEnvelope{
+		TurnID:      string(turnID),
+		EffectID:    "terminal:" + string(turnID),
+		FrozenState: material.FrozenState,
+		DomainFacts: material.DomainFacts,
+		Receipt:     material.Receipt,
+		FinalOutput: append(
+			[]string(nil),
+			material.FrozenState.FinalOutput...,
+		),
+		TerminalEvent: turnkernel.Event{
+			Kind:     turnkernel.EventTerminalCommitted,
+			Terminal: &decision,
+		},
+		OperationCommit: turnkernel.OperationCommitFact{
+			OperationID: s.operation.ID,
+			Status:      "committed",
+			Receipt:     operationReceipt,
+		},
+		Outbox: outbox,
+	}
+	if s.runtime.lifecycle != nil {
+		atomicStore, ok := s.runtime.terminalStore.(turnkernel.AtomicTerminalOperationStore)
+		if !ok {
+			return errors.New(
+				"durable lifecycle requires atomic terminal operation store",
+			)
+		}
+		_, err = atomicStore.CommitTerminalOperation(
+			context.Background(),
+			envelope,
+		)
+		s.operationCommitted = err == nil
+	} else {
+		_, err = s.runtime.terminalStore.CommitTerminal(
+			context.Background(),
+			envelope,
+		)
+		s.operationCommitted = err == nil
+	}
+	if err != nil {
+		return err
+	}
+	cloned := material
+	s.material = &cloned
+	s.terminal = material.Terminal
+	return nil
+}
+
+func (s *runtimeSink) publishTerminal() error {
+	return s.publishTerminalAs(s.operation.ID, s.operationItemID())
+}
+
+func (s *runtimeSink) operationItemID() protocol.ItemID {
+	_, _, itemID := protocol.OperationReferences(s.operation)
+	return itemID
+}
+
+func (s *runtimeSink) commitOperation() {
+	if s.operationCommitted {
+		s.runtime.commitLocal(s.operation.ID)
+		return
+	}
+	s.runtime.commit(s.operation.ID)
+}
+
+func terminalOutboxEventID(
+	turnID protocol.TurnID,
+	entryID string,
+) protocol.EventID {
+	sum := sha256.Sum256(
+		[]byte("terminal-outbox\x00" + string(turnID) + "\x00" + entryID),
+	)
+	return protocol.EventID(fmt.Sprintf("evt_%x", sum[:16]))
+}
+
+func (s *runtimeSink) publishTerminalAs(
+	operationID protocol.OperationID,
+	itemID protocol.ItemID,
+) error {
+	if s.terminal == nil {
+		return errors.New("turn finished without a terminal event")
+	}
+	threadID, turnID, _ := protocol.OperationReferences(s.operation)
+	if s.material == nil {
+		return s.runtime.publish(
+			operationID,
+			threadID,
+			turnID,
+			itemID,
+			s.terminal,
+		)
+	}
+	entries, err := s.runtime.terminalStore.PendingOutbox(
+		context.Background(),
+		string(turnID),
+	)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.OperationID != operationID || entry.ItemID != itemID {
+			return errors.New("terminal outbox projection identity mismatch")
+		}
+		if err := s.runtime.publishTerminalOutboxEntry(entry); err != nil {
+			return err
+		}
+		if err := s.runtime.terminalStore.MarkOutboxPublished(
+			context.Background(),
+			string(turnID),
+			[]string{entry.ID},
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runtime) recoverTerminalProjections(ctx context.Context) error {
+	store, ok := r.terminalStore.(turnkernel.TerminalProjectionRecoveryStore)
+	if !ok {
+		if r.lifecycle != nil {
+			return errors.New(
+				"durable lifecycle requires terminal projection recovery store",
+			)
+		}
+		return nil
+	}
+	projections, err := store.PendingTerminalProjections(ctx)
+	if err != nil {
+		return err
+	}
+	for _, projection := range projections {
+		for _, entry := range projection.Entries {
+			if err := r.publishTerminalOutboxEntry(entry); err != nil {
+				return fmt.Errorf(
+					"project terminal outbox %s/%s: %w",
+					projection.Envelope.TurnID,
+					entry.ID,
+					err,
+				)
+			}
+			if err := r.terminalStore.MarkOutboxPublished(
+				ctx,
+				projection.Envelope.TurnID,
+				[]string{entry.ID},
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *Runtime) recoverPendingTurns(ctx context.Context) error {
+	if restorer, ok := r.engine.(interface {
+		RestorePendingApproval(PendingApproval) error
+		RestorePendingInput(PendingInput) error
+	}); ok {
+		r.mu.Lock()
+		approvals := make([]PendingApproval, 0, len(r.approvals))
+		for _, approval := range r.approvals {
+			approvals = append(approvals, approval)
+		}
+		inputs := make([]PendingInput, 0, len(r.inputs))
+		for _, input := range r.inputs {
+			inputs = append(inputs, input)
+		}
+		r.mu.Unlock()
+		sort.Slice(approvals, func(i, j int) bool {
+			return approvals[i].RequestID < approvals[j].RequestID
+		})
+		sort.Slice(inputs, func(i, j int) bool {
+			return inputs[i].RequestID < inputs[j].RequestID
+		})
+		for _, approval := range approvals {
+			if err := restorer.RestorePendingApproval(approval); err != nil {
+				return err
+			}
+		}
+		for _, input := range inputs {
+			if err := restorer.RestorePendingInput(input); err != nil {
+				return err
+			}
+		}
+	}
+	r.mu.Lock()
+	pending := make([]PendingOperation, 0, len(r.accepted))
+	for _, operation := range r.accepted {
+		pending = append(pending, operation)
+	}
+	r.mu.Unlock()
+	sort.Slice(pending, func(i, j int) bool {
+		return pending[i].ID < pending[j].ID
+	})
+	for _, pendingOperation := range pending {
+		operation, err := decodePendingOperation(pendingOperation)
+		if err != nil {
+			return err
+		}
+		if operation.Kind != protocol.OperationStartTurn {
+			continue
+		}
+		threadID, turnID, _ := protocol.OperationReferences(operation)
+		if pendingOperation.SessionID != "" && r.profiles != nil {
+			if _, err := r.RestoreSessionProfile(
+				ctx,
+				pendingOperation.SessionID,
+				threadID,
+			); err != nil {
+				return fmt.Errorf(
+					"restore profile before interrupted turn %s: %w",
+					turnID,
+					err,
+				)
+			}
+		}
+		facts, err := r.terminalStore.LoadDomainFacts(
+			ctx,
+			string(turnID),
+		)
+		if err != nil {
+			return err
+		}
+		if len(facts) == 0 {
+			continue
+		}
+		select {
+		case r.operations <- acceptedOperation{
+			operation:      operation,
+			idempotencyKey: pendingOperation.IdempotencyKey,
+			canonical: append(
+				[]byte(nil),
+				pendingOperation.Canonical...,
+			),
+		}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+func decodePendingOperation(
+	pending PendingOperation,
+) (protocol.Operation, error) {
+	var envelope struct {
+		Kind    protocol.OperationKind `json:"kind"`
+		Payload json.RawMessage        `json:"payload"`
+	}
+	if err := json.Unmarshal(pending.Canonical, &envelope); err != nil {
+		return protocol.Operation{}, fmt.Errorf(
+			"decode pending operation %s: %w",
+			pending.ID,
+			err,
+		)
+	}
+	payload, err := protocol.DecodeOperationPayload(
+		envelope.Kind,
+		envelope.Payload,
+	)
+	if err != nil {
+		return protocol.Operation{}, err
+	}
+	operation := protocol.Operation{
+		Version:   protocol.Version,
+		ID:        pending.ID,
+		Kind:      envelope.Kind,
+		CreatedAt: time.Unix(0, 1).UTC(),
+		Payload:   payload,
+	}
+	return operation, operation.Validate()
+}
+
+func (r *Runtime) publishTerminalOutboxEntry(
+	entry turnkernel.ProjectionOutboxEntry,
+) error {
+	data, err := decodeTerminalOutboxEntry(entry)
+	if err != nil {
+		return err
+	}
+	if entry.EventID == "" ||
+		entry.OperationID == "" ||
+		entry.ThreadID == "" ||
+		entry.TurnID == "" ||
+		entry.ItemID == "" {
+		return errors.New("terminal outbox event identity is incomplete")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	identityStore, ok := r.events.(EventIdentityStore)
+	if !ok {
+		return errors.New("terminal outbox requires event identity store")
+	}
+	existing, exists, err := identityStore.EventByID(
+		context.Background(),
+		entry.EventID,
+	)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if existing.OperationID != entry.OperationID ||
+			existing.ThreadID != entry.ThreadID ||
+			existing.TurnID != entry.TurnID ||
+			existing.ItemID != entry.ItemID ||
+			string(existing.Kind) != entry.Kind {
+			return errors.New("terminal outbox event identity conflict")
+		}
+		if existing.Sequence > r.lastSequence {
+			r.lastSequence = existing.Sequence
+		}
+		if protocol.IsTerminalEvent(existing.Kind) {
+			r.terminals[existing.TurnID] = existing.Kind
+		}
+		if r.lifecycle != nil {
+			return r.lifecycle.Project(context.Background(), existing)
+		}
+		return nil
+	}
+	var event protocol.Event
+	for attempt := 0; ; attempt++ {
+		event, err = protocol.NewEventWithIdentity(
+			protocol.EventMeta{
+				Sequence:    r.lastSequence + 1,
+				OperationID: entry.OperationID,
+				ThreadID:    entry.ThreadID,
+				TurnID:      entry.TurnID,
+				ItemID:      entry.ItemID,
+			},
+			entry.EventID,
+			time.Now(),
+			data,
+		)
+		if err != nil {
+			return err
+		}
+		if err = r.events.Append(context.Background(), event); err == nil {
+			break
+		}
+		existing, exists, lookupErr := identityStore.EventByID(
+			context.Background(),
+			entry.EventID,
+		)
+		if lookupErr != nil {
+			return errors.Join(err, lookupErr)
+		}
+		if exists {
+			if existing.OperationID != entry.OperationID ||
+				existing.ThreadID != entry.ThreadID ||
+				existing.TurnID != entry.TurnID ||
+				existing.ItemID != entry.ItemID ||
+				string(existing.Kind) != entry.Kind {
+				return errors.New("terminal outbox event identity conflict")
+			}
+			event = existing
+			break
+		}
+		last, sequenceErr := r.events.LastSequence(context.Background())
+		if sequenceErr != nil || attempt >= 3 {
+			return err
+		}
+		if last > r.lastSequence {
+			r.lastSequence = last
+		}
+	}
+	if event.Sequence > r.lastSequence {
+		r.lastSequence = event.Sequence
+	}
+	var projectionErr error
+	if r.lifecycle != nil {
+		projectionErr = r.lifecycle.Project(context.Background(), event)
+	}
+	if projectionErr == nil && !protocol.IsTerminalEvent(event.Kind) {
+		r.persistSessionArtifact(context.Background(), event)
+	}
+	if protocol.IsTerminalEvent(event.Kind) {
+		r.terminals[event.TurnID] = event.Kind
+	}
+	r.metrics.EventPublished()
+	for id, subscriber := range r.subscribers {
+		select {
+		case subscriber <- event:
+		default:
+			close(subscriber)
+			delete(r.subscribers, id)
+			r.metrics.SubscriberDropped()
+		}
+	}
+	return projectionErr
+}
+
+func decodeTerminalOutboxEntry(
+	entry turnkernel.ProjectionOutboxEntry,
+) (protocol.EventData, error) {
+	var data protocol.EventData
+	switch protocol.EventKind(entry.Kind) {
+	case protocol.EventOutputDelta:
+		data = &protocol.OutputDeltaData{}
+	case protocol.EventExecutionReceipt:
+		data = &protocol.ExecutionReceiptData{}
+	case protocol.EventTurnCompleted:
+		data = &protocol.TurnCompletedData{}
+	case protocol.EventTurnFailed:
+		data = &protocol.TurnFailedData{}
+	case protocol.EventTurnCanceled:
+		data = &protocol.TurnCanceledData{}
+	default:
+		return nil, fmt.Errorf(
+			"unsupported terminal outbox kind %q",
+			entry.Kind,
+		)
+	}
+	if err := json.Unmarshal(entry.Payload, data); err != nil {
+		return nil, fmt.Errorf(
+			"decode terminal outbox %s: %w",
+			entry.ID,
+			err,
+		)
+	}
+	return data, nil
+}
+
+func (r *Runtime) operationCommitReceipt(
+	operationID protocol.OperationID,
+) CommitReceipt {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return CommitReceipt{
+		OperationID:  operationID,
+		Status:       "committed",
+		LastSequence: r.lastSequence,
+		CompletedAt:  time.Now().UTC(),
+	}
 }
 
 func (r *Runtime) publish(
@@ -795,6 +2382,20 @@ func (r *Runtime) publish(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	itemID = r.eventOwnedItemID(data, itemID)
+	if plan, ok := data.(*protocol.PlanDeltaData); ok && plan.Done {
+		if err := r.decoratePlanArtifact(
+			context.Background(),
+			threadID,
+			turnID,
+			plan,
+		); err != nil {
+			r.logArtifactError(
+				"decorate Session Plan Artifact",
+				protocol.Event{ThreadID: threadID, TurnID: turnID},
+				err,
+			)
+		}
+	}
 	kind := eventKind(data)
 	if protocol.IsTerminalEvent(kind) {
 		if _, exists := r.terminals[turnID]; exists {
@@ -802,23 +2403,35 @@ func (r *Runtime) publish(
 		}
 		r.terminals[turnID] = kind
 	}
-	event, err := protocol.NewEvent(protocol.EventMeta{
-		Sequence: r.lastSequence + 1, OperationID: operationID,
-		ThreadID: threadID, TurnID: turnID, ItemID: itemID,
-	}, data)
-	if err != nil {
-		if protocol.IsTerminalEvent(kind) {
-			delete(r.terminals, turnID)
+	var event protocol.Event
+	for attempt := 0; ; attempt++ {
+		var err error
+		event, err = protocol.NewEvent(protocol.EventMeta{
+			Sequence: r.lastSequence + 1, OperationID: operationID,
+			ThreadID: threadID, TurnID: turnID, ItemID: itemID,
+		}, data)
+		if err != nil {
+			if protocol.IsTerminalEvent(kind) {
+				delete(r.terminals, turnID)
+			}
+			r.metrics.Error()
+			return err
 		}
-		r.metrics.Error()
-		return err
-	}
-	if err := r.events.Append(context.Background(), event); err != nil {
-		if last, sequenceErr := r.events.LastSequence(context.Background()); sequenceErr == nil &&
-			last > r.lastSequence {
-			// Durable stores reserve sequence numbers before appending bytes.
-			// Failed reservations remain gaps and must never be reused.
-			r.lastSequence = last
+		if err = r.events.Append(context.Background(), event); err == nil {
+			break
+		}
+		last, sequenceErr := r.events.LastSequence(context.Background())
+		if sequenceErr == nil && attempt < 3 {
+			if last > r.lastSequence {
+				// Multiple Runtime instances may share a durable store. A failed
+				// reservation is still a permanent gap, so refresh the global
+				// high-watermark and mint a new Event identity.
+				r.lastSequence = last
+			}
+			// If the high-watermark did not move, Append failed before creating
+			// a reservation. Retrying the same sequence is safe and prevents a
+			// transient persistence error from splitting a Tool lifecycle.
+			continue
 		}
 		if protocol.IsTerminalEvent(kind) {
 			delete(r.terminals, turnID)
@@ -833,6 +2446,9 @@ func (r *Runtime) publish(
 		if projectionErr != nil {
 			r.metrics.Error()
 		}
+	}
+	if projectionErr == nil && !protocol.IsTerminalEvent(kind) {
+		r.persistSessionArtifact(context.Background(), event)
 	}
 	switch value := data.(type) {
 	case *protocol.ApprovalRequiredData:
@@ -993,6 +2609,12 @@ func eventKind(data protocol.EventData) protocol.EventKind {
 		return protocol.EventThreadForked
 	case *protocol.TurnRevertedData:
 		return protocol.EventTurnReverted
+	case *protocol.CheckpointCreatedData:
+		return protocol.EventCheckpointCreated
+	case *protocol.CheckpointRestoredData:
+		return protocol.EventCheckpointRestored
+	case *protocol.CheckpointForkedData:
+		return protocol.EventCheckpointForked
 	case *protocol.ExecutionReceiptData:
 		return protocol.EventExecutionReceipt
 	case *protocol.TurnCompactionData:
@@ -1161,6 +2783,10 @@ func (r *Runtime) commit(operationID protocol.OperationID) {
 			return
 		}
 	}
+	r.commitLocal(operationID)
+}
+
+func (r *Runtime) commitLocal(operationID protocol.OperationID) {
 	r.mu.Lock()
 	if pending, exists := r.accepted[operationID]; exists {
 		r.committed[operationID] = pending

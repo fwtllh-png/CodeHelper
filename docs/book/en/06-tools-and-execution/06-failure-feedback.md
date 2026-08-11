@@ -19,8 +19,8 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/engine/toolfailure.go
   - internal/runtime/agent/engine/engine.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Feeding Tool Failures Back to the Model
@@ -160,5 +160,5 @@ become failed Tool Results.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `tool-failure-feedback` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

@@ -11,14 +11,16 @@ code_paths:
   - internal/adapter/model
   - internal/adapter/provider/httpclient
   - internal/security/keyring
+  - extensions/vscode/src/security
 test_paths:
   - internal/adapter/provider/httpclient/credentials_test.go
   - internal/security/keyring/store_test.go
+  - extensions/vscode/src/security/credentials.test.ts
 source_of_truth:
   - docs/en/security.md
   - internal/adapter/provider/httpclient/credentials.go
-status: verified
-last_verified: 2026-08-06
+status: draft
+last_verified: null
 ---
 
 # Credential References and Secret Lifecycle
@@ -66,6 +68,17 @@ turning an arbitrary path into a credential source.
 CLI auth commands create/update references and can copy an environment value
 into Keyring without serializing it into TOML.
 
+In VS Code, native password InputBox collects a value and SecretStorage keeps
+it under the exact Workspace/Provider identity. The generated Runtime
+configuration contains only a reference; the local Runtime child receives the
+resolved value. Webview state contains credential status and sanitized
+validation metadata, never the value or reference.
+
+Credential validation calls the Provider model-list endpoint through Runtime
+wiring. Persisted results are limited to validation status, timestamp, and a
+sanitized failure category. An untrusted Workspace cannot configure credentials
+or use validation as an egress bypass.
+
 ## Lifecycle
 
 Provision outside tracked source, resolve at use, redact from diagnostics,
@@ -91,6 +104,7 @@ The value must not enter:
 - Catalog/Route descriptions returned to users;
 - retry diagnostics, response dumps, or command arguments;
 - child-process environment unless that process explicitly owns the credential.
+- Webview Snapshot, Client Evidence, Session export, or release evidence.
 
 Redaction is defense in depth, not permission to log first.
 
@@ -113,6 +127,7 @@ Keyring backend messages that may contain them.
 | Platform file checks | `credential_file_*.go` |
 | OS Keyring | `security/keyring` |
 | CLI management | `host/cli/auth_cmd.go` |
+| VS Code SecretStorage | `extensions/vscode/src/security/credentials.ts` |
 
 ## Tradeoffs and Alternatives
 
@@ -135,6 +150,7 @@ deployment choose without changing Provider logic.
 go test ./internal/adapter/provider/httpclient -run 'Test.*Credential'
 go test ./internal/security/keyring
 make secret-leak-test
+cd extensions/vscode && npm test -- credentials
 ```
 
 ## Hands-On Lab
@@ -150,6 +166,7 @@ send a Provider request and delete the temporary config afterward.
 3. At what latest point should the raw value be resolved?
 4. Why does resolver support not automatically imply Catalog support?
 5. Why is redaction not sufficient justification to log a secret?
+6. Why is Provider validation implemented through Runtime wiring?
 
 ## Further Reading
 
@@ -161,5 +178,5 @@ send a Provider request and delete the temporary config afterward.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `model-credential-lifecycle` |
-| Status | `verified` |
-| Last verified | 2026-08-06 |
+| Status | `draft` |
+| Last verified | Not yet verified |

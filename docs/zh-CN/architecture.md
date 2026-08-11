@@ -75,12 +75,34 @@ Host 中存在的功能都不完整。
 1. Host 校验用户输入并提交 Operation。
 2. Application 解析 Session、Thread、Workspace 和 Policy。
 3. Prompt Context 组装 Repo Map、Pin 文件、Working Set、Evidence、Policy 与压缩历史。
-4. Provider 流式返回模型输出与工具请求。
-5. Tool Request 进入 Registry 和 Guard。
-6. Guard 评估 Mode、Posture、Permission、Constitution、Approval 与 Sandbox。
-7. 修改型工具通过 Journal/事务 Adapter 写入。
-8. Verify 收集诊断或执行仓库检查。
-9. Event 与 Receipt 被持久化，并投影到各 Host。
+4. Coordinator 请求 Provider Sample Effect；`DurableEffectDispatcher` 在 Engine
+   调用 Provider 前持久化 `EffectStarted`。
+5. 模型 Text、Usage 与 Tool Proposal 通过 `ModelSampleResultReceived` 一次返回。
+6. Reducer 持久化 Sample Result，并在 Executor 投影前将 Tool Proposal 转换为 Tool Effect。
+7. Tool Executor 进入 Registry 和 Guard；Guard 评估 Mode、Posture、Permission、
+   Constitution、Approval 与 Sandbox。
+8. Tool、Approval、Input Result 以一个可保留重试的 Result Command 返回；Coordinator
+   在 Host Projection 前持久化逻辑闭合。
+9. 修改型工具通过 Journal/事务 Adapter 写入。
+10. `EvaluateTurnStep` 由 Reducer 选择 Repair、Verification 或 Complete。
+11. Verification Executor 通过 `VerificationFinished` 返回证据；Reducer 选择 Passed、
+    Repair、Reported、Failed 或 Reverted，并独占 Repair Budget。
+12. Engine 提交 `TerminalRequested`；Reducer 选择 Completed、Failed 或 Canceled。
+    随后 Journal Commit/Rollback 作为 Durable Effect 执行，并返回
+    `JournalResultReceived`。
+13. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Final Output、
+    Receipt、Terminal Event、Outbox 与真实 Operation Receipt。
+14. Output、Receipt 与 Terminal 只在该事务成功后投影。
+15. 重启时 Runtime 扫描 Pending Terminal Projection，以稳定 Event ID 逐条 Append，
+    成功后再将对应 Entry 标记为 Published。
+16. accepted StartTurn 仅在存在对应非终态 Domain Fact 时自动恢复；Coordinator requeue
+    Running Effect，Engine 从 Durable Payload 接续 Provider、Tool 或 Journal 执行。
+17. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
+    替代请求。
+
+`TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，
+不会反向生成 Command 写回状态机。Durable Runtime 构造必须显式提供 Event、Content、
+Terminal Store；Memory Store 仅由显式 `NewRuntime` Ephemeral 构造选择。
 
 Cancel 和 Failure 是明确终态，不是“没有返回数据”。
 
@@ -99,6 +121,15 @@ Durable State 由多个明确组件组合：
 
 SQLite 当前是初始 Schema。未来公开版本变更必须使用显式 Migration；首次基线前的开发
 迁移历史已经有意压缩。
+
+Persistent Runtime Wiring 在创建 Engine 前注入 SQLite Turn Coordinator Store。每个
+已接受 Transition 都在 State Commit 或 Effect Dispatch 前追加 Domain Fact。启动恢复
+使用可续租的 Active Turn Lease；无效或重复恢复 Fail Closed。
+
+Session Checkpoint 与 Plan Artifact 复用 Snapshot Index 和 CAS。Checkpoint 只保存
+经过校验的 Model-visible History Baseline 与 Profile Snapshot；Restore 不能执行历史
+Event。持久化 Restore/Fork Event 保证重启重建结果确定。Fork 血缘与当前 Active
+Session Thread 属于关系型 Lifecycle State，而不是 Host-local State。
 
 ## 上下文架构
 
