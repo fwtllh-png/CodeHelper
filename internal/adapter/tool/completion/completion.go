@@ -7,14 +7,26 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 )
 
 const Name = "turn_complete"
 
 type Tool struct{}
 
+type output struct {
+	Status      string                     `json:"status"`
+	Message     string                     `json:"message"`
+	Declaration tool.CompletionDeclaration `json:"-"`
+}
+
 func Register(registry *tool.Registry) error {
-	return registry.Register(&Tool{}, nil)
+	executor, err := (&Tool{}).typedExecutor()
+	if err != nil {
+		return err
+	}
+	return registry.Register(executor, nil)
 }
 
 func (*Tool) Descriptor() tool.Descriptor {
@@ -55,43 +67,55 @@ func (*Tool) Descriptor() tool.Descriptor {
 	}
 }
 
-func (*Tool) Execute(_ context.Context, raw json.RawMessage) (tool.Result, error) {
-	var declaration tool.CompletionDeclaration
-	if err := json.Unmarshal(raw, &declaration); err != nil {
+func (*Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+	executor, err := (&Tool{}).typedExecutor()
+	if err != nil {
 		return tool.Result{}, err
 	}
+	return executor.Execute(ctx, raw)
+}
+
+func (t *Tool) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[tool.CompletionDeclaration, output]{
+		Descriptor: t.Descriptor(),
+		Validate:   validateDeclaration,
+		Run: func(_ context.Context, declaration tool.CompletionDeclaration) (output, error) {
+			return output{
+				Status:      "pending_runtime_validation",
+				Message:     "completion declaration submitted for runtime validation",
+				Declaration: declaration,
+			}, nil
+		},
+		Encode: func(value output) (tool.Result, error) {
+			return toolresult.Success(value, nil)
+		},
+		Metadata: func(value output) map[string]any {
+			return map[string]any{tool.MetadataCompletionDeclaration: value.Declaration}
+		},
+	})
+}
+
+func validateDeclaration(declaration tool.CompletionDeclaration) error {
 	switch declaration.Status {
 	case "complete":
 		if len(declaration.PendingActions) != 0 {
-			return tool.Result{}, errors.New(
+			return errors.New(
 				"complete declaration cannot contain pending actions",
 			)
 		}
 	case "incomplete":
 		if len(declaration.PendingActions) == 0 {
-			return tool.Result{}, errors.New(
+			return errors.New(
 				"incomplete declaration requires pending actions",
 			)
 		}
 	default:
-		return tool.Result{}, errors.New("unsupported completion status")
+		return errors.New("unsupported completion status")
 	}
 	for _, action := range declaration.PendingActions {
 		if strings.TrimSpace(action) == "" {
-			return tool.Result{}, errors.New("pending action cannot be empty")
+			return errors.New("pending action cannot be empty")
 		}
 	}
-	content, err := json.Marshal(map[string]any{
-		"status":  "pending_runtime_validation",
-		"message": "completion declaration submitted for runtime validation",
-	})
-	if err != nil {
-		return tool.Result{}, err
-	}
-	return tool.Result{
-		Content: string(content),
-		Metadata: map[string]any{
-			tool.MetadataCompletionDeclaration: declaration,
-		},
-	}, nil
+	return nil
 }

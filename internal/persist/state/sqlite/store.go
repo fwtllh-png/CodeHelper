@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	modernsqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -283,28 +284,7 @@ func (s *Store) WithTx(ctx context.Context, options *sql.TxOptions, fn func(*sql
 	if fn == nil {
 		return errors.New("sqlite transaction callback is required")
 	}
-	tx, err := s.BeginTx(ctx, options)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			_ = tx.Rollback()
-			panic(recovered)
-		}
-		if err != nil {
-			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-				err = errors.Join(err, fmt.Errorf("rollback transaction: %w", rollbackErr))
-			}
-		}
-	}()
-	if err = fn(tx); err != nil {
-		return err
-	}
-	if err = tx.Commit(); err != nil {
-		return s.classify("commit transaction", err)
-	}
-	return nil
+	return s.classify("transaction", sqlkit.WithTx(ctx, s.db, options, fn))
 }
 
 // Close closes the database. It is safe to call more than once.

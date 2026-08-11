@@ -3,6 +3,39 @@
   "requirement_id": "ARCH-RATCHET-001",
   "targets": [
     {
+      "id": "persist_sqlkit_package",
+      "kind": "package",
+      "path": "internal/persist/sqlkit",
+      "limits": {
+        "internal_fanout": 0,
+        "production_lines": 244,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "typed_tool_package",
+      "kind": "package",
+      "path": "internal/adapter/tool/typed",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 246,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "tool_result_package",
+      "kind": "package",
+      "path": "internal/adapter/tool/result",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 171,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
       "id": "runtime_app_wire_package",
       "kind": "package",
       "path": "internal/runtime/app/wire",

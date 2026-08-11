@@ -7,11 +7,17 @@ import (
 
 	diagnostics "github.com/fwtllh-png/CodeHelper/internal/adapter/lsp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 type Tool struct {
 	checker diagnostics.Checker
+}
+
+type input struct {
+	Files   []string             `json:"files"`
+	Changes []diagnostics.Change `json:"changes"`
 }
 
 func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.Backend) error {
@@ -23,9 +29,14 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 		return err
 	}
 	registry.SetSandboxBackend(backend)
-	return registry.Register(&Tool{
+	instance := &Tool{
 		checker: diagnostics.Checker{Root: root, Sandbox: backend},
-	}, nil)
+	}
+	executor, err := instance.typedExecutor()
+	if err != nil {
+		return err
+	}
+	return registry.Register(executor, nil)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {
@@ -51,23 +62,21 @@ func (t *Tool) Descriptor() tool.Descriptor {
 }
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Files   []string             `json:"files"`
-		Changes []diagnostics.Change `json:"changes"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
-	values, err := t.checker.Analyze(ctx, input.Files, input.Changes)
+	executor, err := t.typedExecutor()
 	if err != nil {
 		return tool.Result{}, err
 	}
-	output, err := json.Marshal(values)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	return tool.Result{
-		Content:  string(output),
-		Metadata: map[string]any{"diagnostics": values, "diagnostic_count": len(values)},
-	}, nil
+	return executor.Execute(ctx, raw)
+}
+
+func (t *Tool) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[input, []diagnostics.Diagnostic]{
+		Descriptor: t.Descriptor(),
+		Run: func(ctx context.Context, value input) ([]diagnostics.Diagnostic, error) {
+			return t.checker.Analyze(ctx, value.Files, value.Changes)
+		},
+		Metadata: func(values []diagnostics.Diagnostic) map[string]any {
+			return map[string]any{"diagnostics": values, "diagnostic_count": len(values)}
+		},
+	})
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 )
 
@@ -61,7 +62,7 @@ func (r *Repository) Create(ctx context.Context, request CreateRequest) (Automat
 	if err != nil {
 		return Automation{}, err
 	}
-	payload, err := normalizedObject(request.TaskPayload)
+	payload, err := sqlkit.CanonicalObject(request.TaskPayload)
 	if err != nil {
 		return Automation{}, fmt.Errorf("task payload: %w", err)
 	}
@@ -85,10 +86,10 @@ func (r *Repository) Create(ctx context.Context, request CreateRequest) (Automat
 			task_kind, task_payload_json, created_at, updated_at, next_run_at,
 			task_executor, task_max_attempts
 		) VALUES (?, 1, ?, ?, ?, ?, ?, ?, 'UTC', ?, ?, ?, ?, ?, ?, ?)`,
-		value.ID, value.SessionID, nullable(value.ThreadID), nullable(value.TurnID),
+		value.ID, value.SessionID, sqlkit.NullableString(value.ThreadID), sqlkit.NullableString(value.TurnID),
 		value.Name, value.Status, value.RRULE, value.TaskKind, string(value.TaskPayload),
-		timestamp(value.CreatedAt), timestamp(value.UpdatedAt), timestamp(next),
-		nullable(value.TaskExecutor), value.TaskMaxAttempts,
+		sqlkit.Timestamp(value.CreatedAt), sqlkit.Timestamp(value.UpdatedAt), sqlkit.Timestamp(next),
+		sqlkit.NullableString(value.TaskExecutor), value.TaskMaxAttempts,
 	)
 	if err != nil {
 		return Automation{}, err
@@ -120,16 +121,7 @@ func (r *Repository) List(ctx context.Context, filter Filter) ([]Automation, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var values []Automation
-	for rows.Next() {
-		value, err := scanAutomation(rows)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, value)
-	}
-	return values, rows.Err()
+	return sqlkit.ScanAll(rows, scanAutomation)
 }
 
 func (r *Repository) Update(ctx context.Context, id string, change Update) (Automation, error) {
@@ -141,7 +133,7 @@ func (r *Repository) Update(ctx context.Context, id string, change Update) (Auto
 		at = time.Now().UTC()
 	}
 	var updated Automation
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		current, err := getAutomation(ctx, tx, id)
 		if err != nil {
 			return err
@@ -185,7 +177,7 @@ func (r *Repository) Update(ctx context.Context, id string, change Update) (Auto
 			current.TaskExecutor, current.TaskMaxAttempts = normalized, normalizedAttempts
 		}
 		if change.TaskPayload != nil {
-			payload, err := normalizedObject(change.TaskPayload)
+			payload, err := sqlkit.CanonicalObject(change.TaskPayload)
 			if err != nil {
 				return err
 			}
@@ -232,7 +224,7 @@ func (r *Repository) setStatus(
 		at = at.UTC()
 	}
 	var updated Automation
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		current, err := getAutomation(ctx, tx, id)
 		if err != nil {
 			return err
@@ -276,7 +268,7 @@ func (r *Repository) RunNow(ctx context.Context, id string, expectedVersion uint
 		at = at.UTC()
 	}
 	var run Run
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		current, err := getAutomation(ctx, tx, id)
 		if err != nil {
 			return err
@@ -311,7 +303,7 @@ func (r *Repository) Tick(ctx context.Context, now time.Time) ([]Run, error) {
 		now = now.UTC()
 	}
 	var runs []Run
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		if err := reconcileNextRuns(ctx, tx, now); err != nil {
 			return err
 		}
@@ -319,7 +311,7 @@ func (r *Repository) Tick(ctx context.Context, now time.Time) ([]Run, error) {
 			SELECT id FROM automations
 			WHERE status = ? AND next_run_at IS NOT NULL AND next_run_at <= ?
 			ORDER BY next_run_at, id`,
-			StatusActive, timestamp(now),
+			StatusActive, sqlkit.Timestamp(now),
 		)
 		if err != nil {
 			return err
@@ -400,16 +392,7 @@ func (r *Repository) ListRuns(ctx context.Context, automationID string) ([]Run, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var values []Run
-	for rows.Next() {
-		value, err := scanRun(rows)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, value)
-	}
-	return values, rows.Err()
+	return sqlkit.ScanAll(rows, scanRun)
 }
 
 var errDuplicateSlot = errors.New("automation slot already enqueued")
@@ -502,7 +485,7 @@ func enqueue(
 		runID = "run_manual_" + current.ID + "_" + at.UTC().Format("20060102T150405.000000000")
 		idempotency = fmt.Sprintf("automation:%s:manual:%s", current.ID, at.UTC().Format(time.RFC3339Nano))
 	}
-	payload, err := normalizedObject(current.TaskPayload)
+	payload, err := sqlkit.CanonicalObject(current.TaskPayload)
 	if err != nil {
 		return Run{}, err
 	}
@@ -516,9 +499,9 @@ func enqueue(
 			lifecycle_sequence, created_at, updated_at,
 			executor, attempt, max_attempts
 		) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 0, ?)`,
-		taskID, current.SessionID, nullable(current.ThreadID), nullable(current.TurnID),
-		current.TaskKind, task.StateQueued, string(payload), timestamp(at), timestamp(at),
-		nullable(current.TaskExecutor), attempts,
+		taskID, current.SessionID, sqlkit.NullableString(current.ThreadID), sqlkit.NullableString(current.TurnID),
+		current.TaskKind, task.StateQueued, string(payload), sqlkit.Timestamp(at), sqlkit.Timestamp(at),
+		sqlkit.NullableString(current.TaskExecutor), attempts,
 	); err != nil {
 		if sqlitestate.IsUniqueConstraintViolation(err) {
 			return Run{}, errDuplicateSlot
@@ -528,7 +511,7 @@ func enqueue(
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO task_lifecycle(task_id, sequence, state, reason, created_at)
 		VALUES (?, 1, ?, NULL, ?)`,
-		taskID, task.StateQueued, timestamp(at),
+		taskID, task.StateQueued, sqlkit.Timestamp(at),
 	); err != nil {
 		return Run{}, err
 	}
@@ -542,9 +525,9 @@ func enqueue(
 			id, version, automation_id, scheduled_for, trigger, status, task_id,
 			task_idempotency_key, thread_id, turn_id, created_at, updated_at
 		) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		run.ID, run.AutomationID, timestamp(run.ScheduledFor), run.Trigger, run.Status,
-		run.TaskID, run.TaskIdempotencyKey, nullable(run.ThreadID), nullable(run.TurnID),
-		timestamp(run.CreatedAt), timestamp(run.UpdatedAt),
+		run.ID, run.AutomationID, sqlkit.Timestamp(run.ScheduledFor), run.Trigger, run.Status,
+		run.TaskID, run.TaskIdempotencyKey, sqlkit.NullableString(run.ThreadID), sqlkit.NullableString(run.TurnID),
+		sqlkit.Timestamp(run.CreatedAt), sqlkit.Timestamp(run.UpdatedAt),
 	)
 	if err != nil {
 		if sqlitestate.IsUniqueConstraintViolation(err) {
@@ -553,10 +536,6 @@ func enqueue(
 		return Run{}, err
 	}
 	return run, nil
-}
-
-type scanner interface {
-	Scan(dest ...any) error
 }
 
 type queryable interface {
@@ -583,26 +562,22 @@ func writeAutomation(ctx context.Context, tx *sql.Tx, value Automation) error {
 			task_payload_json = ?, updated_at = ?, next_run_at = ?, last_run_at = ?,
 			task_executor = ?, task_max_attempts = ?
 		WHERE id = ? AND version = ?`,
-		value.Version, value.SessionID, nullable(value.ThreadID), nullable(value.TurnID),
+		value.Version, value.SessionID, sqlkit.NullableString(value.ThreadID), sqlkit.NullableString(value.TurnID),
 		value.Name, value.Status, value.RRULE, value.TaskKind, string(value.TaskPayload),
-		timestamp(value.UpdatedAt), nullableTime(value.NextRunAt), nullableTime(value.LastRunAt),
-		nullable(value.TaskExecutor), value.TaskMaxAttempts,
+		sqlkit.Timestamp(value.UpdatedAt), sqlkit.NullableTime(value.NextRunAt), sqlkit.NullableTime(value.LastRunAt),
+		sqlkit.NullableString(value.TaskExecutor), value.TaskMaxAttempts,
 		value.ID, value.Version-1,
 	)
 	if err != nil {
 		return err
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected != 1 {
+	if err := sqlkit.RequireAffected(result, 1); err != nil {
 		return ErrVersionConflict
 	}
 	return nil
 }
 
-func scanAutomation(row scanner) (Automation, error) {
+func scanAutomation(row sqlkit.RowScanner) (Automation, error) {
 	var value Automation
 	var threadID, turnID, nextRun, lastRun, executor sql.NullString
 	var payload, createdAt, updatedAt string
@@ -654,7 +629,7 @@ func getRun(ctx context.Context, db queryable, id string) (Run, error) {
 	return value, err
 }
 
-func scanRun(row scanner) (Run, error) {
+func scanRun(row sqlkit.RowScanner) (Run, error) {
 	var value Run
 	var taskID, threadID, turnID sql.NullString
 	var scheduledFor, createdAt, updatedAt string
@@ -679,51 +654,6 @@ func scanRun(row scanner) (Run, error) {
 	return value, err
 }
 
-func withTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) (err error) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-	if err = fn(tx); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func normalizedObject(raw json.RawMessage) (json.RawMessage, error) {
-	if len(raw) == 0 {
-		return json.RawMessage(`{}`), nil
-	}
-	var value map[string]any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return nil, err
-	}
-	return json.Marshal(value)
-}
-
-func timestamp(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
-}
-
 func parseTime(value string) (time.Time, error) {
 	return time.Parse(time.RFC3339Nano, value)
-}
-
-func nullable(value string) any {
-	if value == "" {
-		return nil
-	}
-	return value
-}
-
-func nullableTime(value *time.Time) any {
-	if value == nil {
-		return nil
-	}
-	return timestamp(*value)
 }

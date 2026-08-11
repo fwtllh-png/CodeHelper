@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -311,49 +312,42 @@ func (r *Repository) ActivateThread(
 	sessionID string,
 	threadID protocol.ThreadID,
 ) (protocol.SessionSummary, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	var metadata []byte
-	err = tx.QueryRowContext(ctx, `
-		SELECT s.metadata_json
-		FROM sessions s
-		JOIN threads t ON t.session_id = s.id
-		WHERE s.id = ? AND t.id = ?`,
-		sessionID, threadID,
-	).Scan(&metadata)
-	if errors.Is(err, sql.ErrNoRows) {
-		return protocol.SessionSummary{}, ErrNotFound
-	}
-	if err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
-	if err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	if lifecycle.ActiveThreadID == threadID {
-		if err := tx.Rollback(); err != nil {
-			return protocol.SessionSummary{}, err
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
+		var metadata []byte
+		err := tx.QueryRowContext(ctx, `
+			SELECT s.metadata_json
+			FROM sessions s
+			JOIN threads t ON t.session_id = s.id
+			WHERE s.id = ? AND t.id = ?`,
+			sessionID, threadID,
+		).Scan(&metadata)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
 		}
-		return r.GetLifecycle(ctx, sessionID)
-	}
-	lifecycle.Version = protocol.SessionLifecycleVersion
-	lifecycle.Revision++
-	lifecycle.ActiveThreadID = threadID
-	updated, err := metadataWithLifecycle(metadata, lifecycle)
+		if err != nil {
+			return err
+		}
+		lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
+		if err != nil {
+			return err
+		}
+		if lifecycle.ActiveThreadID == threadID {
+			return nil
+		}
+		lifecycle.Version = protocol.SessionLifecycleVersion
+		lifecycle.Revision++
+		lifecycle.ActiveThreadID = threadID
+		updated, err := metadataWithLifecycle(metadata, lifecycle)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
+			UPDATE sessions SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+			updated, sqlkit.Timestamp(time.Now().UTC()), sessionID,
+		)
+		return err
+	})
 	if err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE sessions SET metadata_json = ?, updated_at = ? WHERE id = ?`,
-		updated, timestamp(time.Now().UTC()), sessionID,
-	); err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return protocol.SessionSummary{}, err
 	}
 	return r.GetLifecycle(ctx, sessionID)
@@ -371,98 +365,91 @@ func (r *Repository) UpdateLifecycle(
 	if err := patch.Validate(); err != nil {
 		return protocol.SessionSummary{}, err
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	var metadata []byte
-	var threadID protocol.ThreadID
-	var currentTitle, sessionStatus, threadStatus string
-	err = tx.QueryRowContext(ctx, `
-		SELECT s.metadata_json, s.status, t.id, t.title, t.status
-		FROM sessions s
-		JOIN threads t ON t.id = COALESCE(
-			NULLIF(json_extract(
-				s.metadata_json, '$.lifecycle.active_thread_id'
-			), ''),
-			(
-				SELECT id FROM threads
-				WHERE session_id = s.id AND parent_thread_id IS NULL
-				ORDER BY created_at, id LIMIT 1
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
+		var metadata []byte
+		var threadID protocol.ThreadID
+		var currentTitle, sessionStatus, threadStatus string
+		err := tx.QueryRowContext(ctx, `
+			SELECT s.metadata_json, s.status, t.id, t.title, t.status
+			FROM sessions s
+			JOIN threads t ON t.id = COALESCE(
+				NULLIF(json_extract(
+					s.metadata_json, '$.lifecycle.active_thread_id'
+				), ''),
+				(
+					SELECT id FROM threads
+					WHERE session_id = s.id AND parent_thread_id IS NULL
+					ORDER BY created_at, id LIMIT 1
+				)
 			)
+			WHERE s.id = ?`,
+			sessionID,
+		).Scan(&metadata, &sessionStatus, &threadID, &currentTitle, &threadStatus)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
+		if err != nil {
+			return err
+		}
+		if lifecycle.Revision != expectedRevision {
+			return &LifecycleRevisionConflictError{
+				Expected: expectedRevision,
+				Current:  lifecycle.Revision,
+			}
+		}
+		title := currentTitle
+		if patch.Title != nil {
+			title = strings.TrimSpace(*patch.Title)
+		}
+		pinned := lifecycle.Pinned
+		if patch.Pinned != nil {
+			pinned = *patch.Pinned
+		}
+		archived := sessionStatus == string(StatusClosed) || threadStatus == "archived"
+		if patch.Archived != nil {
+			archived = *patch.Archived
+		}
+		if title == currentTitle && pinned == lifecycle.Pinned &&
+			archived == (sessionStatus == string(StatusClosed) || threadStatus == "archived") {
+			return nil
+		}
+		lifecycle.Version = protocol.SessionLifecycleVersion
+		lifecycle.Revision++
+		lifecycle.Pinned = pinned
+		nextMetadata, err := metadataWithLifecycle(metadata, lifecycle)
+		if err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		closedAt := any(nil)
+		nextSessionStatus := StatusOpen
+		nextThreadStatus := "open"
+		if archived {
+			nextSessionStatus = StatusClosed
+			nextThreadStatus = "archived"
+			closedAt = sqlkit.Timestamp(now)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE sessions
+			SET status = ?, metadata_json = ?, updated_at = ?, closed_at = ?
+			WHERE id = ?`,
+			nextSessionStatus, nextMetadata, sqlkit.Timestamp(now), closedAt, sessionID,
+		); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `
+			UPDATE threads
+			SET title = ?, status = ?, updated_at = ?
+			WHERE id = ?`,
+			title, nextThreadStatus, sqlkit.Timestamp(now), threadID,
 		)
-		WHERE s.id = ?`,
-		sessionID,
-	).Scan(&metadata, &sessionStatus, &threadID, &currentTitle, &threadStatus)
-	if errors.Is(err, sql.ErrNoRows) {
-		return protocol.SessionSummary{}, ErrNotFound
-	}
+		return err
+	})
 	if err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
-	if err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	if lifecycle.Revision != expectedRevision {
-		return protocol.SessionSummary{}, &LifecycleRevisionConflictError{
-			Expected: expectedRevision,
-			Current:  lifecycle.Revision,
-		}
-	}
-	title := currentTitle
-	if patch.Title != nil {
-		title = strings.TrimSpace(*patch.Title)
-	}
-	pinned := lifecycle.Pinned
-	if patch.Pinned != nil {
-		pinned = *patch.Pinned
-	}
-	archived := sessionStatus == string(StatusClosed) || threadStatus == "archived"
-	if patch.Archived != nil {
-		archived = *patch.Archived
-	}
-	if title == currentTitle && pinned == lifecycle.Pinned &&
-		archived == (sessionStatus == string(StatusClosed) || threadStatus == "archived") {
-		if err := tx.Rollback(); err != nil {
-			return protocol.SessionSummary{}, err
-		}
-		return r.GetLifecycle(ctx, sessionID)
-	}
-	lifecycle.Version = protocol.SessionLifecycleVersion
-	lifecycle.Revision++
-	lifecycle.Pinned = pinned
-	nextMetadata, err := metadataWithLifecycle(metadata, lifecycle)
-	if err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	now := time.Now().UTC()
-	closedAt := any(nil)
-	nextSessionStatus := StatusOpen
-	nextThreadStatus := "open"
-	if archived {
-		nextSessionStatus = StatusClosed
-		nextThreadStatus = "archived"
-		closedAt = timestamp(now)
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE sessions
-		SET status = ?, metadata_json = ?, updated_at = ?, closed_at = ?
-		WHERE id = ?`,
-		nextSessionStatus, nextMetadata, timestamp(now), closedAt, sessionID,
-	); err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE threads
-		SET title = ?, status = ?, updated_at = ?
-		WHERE id = ?`,
-		title, nextThreadStatus, timestamp(now), threadID,
-	); err != nil {
-		return protocol.SessionSummary{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return protocol.SessionSummary{}, err
 	}
 	return r.GetLifecycle(ctx, sessionID)
@@ -477,51 +464,46 @@ func (r *Repository) DeleteLifecycle(
 		return protocol.SessionDeleteResult{},
 			errors.New("expected lifecycle revision is required")
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return protocol.SessionDeleteResult{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	var (
-		metadata      []byte
-		threadID      protocol.ThreadID
-		workspaceRoot string
-		status        string
-	)
-	err = tx.QueryRowContext(ctx, `
-		SELECT s.metadata_json, s.status, w.root_path, t.id
-		FROM sessions s
-		JOIN workspaces w ON w.id = s.workspace_id
-		JOIN threads t ON t.id = COALESCE(
-			NULLIF(json_extract(
-				s.metadata_json, '$.lifecycle.active_thread_id'
-			), ''),
-			(
-				SELECT id FROM threads
-				WHERE session_id = s.id AND parent_thread_id IS NULL
-				ORDER BY created_at, id LIMIT 1
-			)
+	var threadID protocol.ThreadID
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
+		var (
+			metadata      []byte
+			workspaceRoot string
+			status        string
 		)
-		WHERE s.id = ?`,
-		sessionID,
-	).Scan(&metadata, &status, &workspaceRoot, &threadID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return protocol.SessionDeleteResult{}, ErrNotFound
-	}
-	if err != nil {
-		return protocol.SessionDeleteResult{}, err
-	}
-	lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
-	if err != nil {
-		return protocol.SessionDeleteResult{}, err
-	}
-	if lifecycle.Revision != expectedRevision {
-		return protocol.SessionDeleteResult{}, &LifecycleRevisionConflictError{
-			Expected: expectedRevision,
-			Current:  lifecycle.Revision,
+		err := tx.QueryRowContext(ctx, `
+			SELECT s.metadata_json, s.status, w.root_path, t.id
+			FROM sessions s
+			JOIN workspaces w ON w.id = s.workspace_id
+			JOIN threads t ON t.id = COALESCE(
+				NULLIF(json_extract(
+					s.metadata_json, '$.lifecycle.active_thread_id'
+				), ''),
+				(
+					SELECT id FROM threads
+					WHERE session_id = s.id AND parent_thread_id IS NULL
+					ORDER BY created_at, id LIMIT 1
+				)
+			)
+			WHERE s.id = ?`,
+			sessionID,
+		).Scan(&metadata, &status, &workspaceRoot, &threadID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
 		}
-	}
-	{
+		if err != nil {
+			return err
+		}
+		lifecycle, _, _, err := decodeLifecycleMetadata(metadata)
+		if err != nil {
+			return err
+		}
+		if lifecycle.Revision != expectedRevision {
+			return &LifecycleRevisionConflictError{
+				Expected: expectedRevision,
+				Current:  lifecycle.Revision,
+			}
+		}
 		var count int
 		if err := tx.QueryRowContext(ctx, `
 			SELECT COUNT(*)
@@ -530,29 +512,26 @@ func (r *Repository) DeleteLifecycle(
 			WHERE w.root_path = ?`,
 			workspaceRoot,
 		).Scan(&count); err != nil {
-			return protocol.SessionDeleteResult{}, err
+			return err
 		}
 		if count <= 1 {
-			return protocol.SessionDeleteResult{}, protocol.NewProblem(
+			return protocol.NewProblem(
 				protocol.CodeConflict,
 				"cannot delete the last session in a workspace",
 				false,
 				nil,
 			)
 		}
-	}
-	result, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
+		result, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
+		if err != nil {
+			return fmt.Errorf("delete session: %w", err)
+		}
+		if err := sqlkit.RequireAffected(result, 1); err != nil {
+			return ErrLifecycleRevisionConflict
+		}
+		return nil
+	})
 	if err != nil {
-		return protocol.SessionDeleteResult{}, fmt.Errorf("delete session: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return protocol.SessionDeleteResult{}, err
-	}
-	if affected != 1 {
-		return protocol.SessionDeleteResult{}, ErrLifecycleRevisionConflict
-	}
-	if err := tx.Commit(); err != nil {
 		return protocol.SessionDeleteResult{}, err
 	}
 	return protocol.SessionDeleteResult{
