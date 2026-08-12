@@ -10,14 +10,20 @@ prerequisites:
 code_paths:
   - internal/persist
   - internal/runtime/app
+  - internal/runtime/agent/turnkernel
 test_paths:
   - internal/runtime/app/wire/persistent_test.go
+  - internal/runtime/app/runtime_terminal_recovery_test.go
+  - internal/runtime/agent/turnkernel/runtime_test.go
   - internal/persist/state/store_test.go
+  - internal/persist/state/turnstate/store_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
+  - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/agent/turnkernel/terminal_envelope.go
   - internal/persist/state/store.go
-status: draft
-last_verified: null
+status: verified
+last_verified: 2026-08-12
 ---
 
 # Durable State 的必要性
@@ -49,13 +55,18 @@ flowchart LR
 
 Event Sequence/Terminal Outcome 说明发生了什么；Projection 支持 Session/Task/Usage/Trace
 查询；Snapshot 加速恢复；CAS 保存 Immutable Payload；Journal 保存 Before-image；
-Lease 区分 Live Owner 与 Abandoned Work。
+Lease 区分 Live Owner 与 Abandoned Work；Domain Fact 以 State Digest 记录每个被接受的
+Kernel Transition；Effect 持有 Durable Payload、Lifecycle、Attempt 与 Idempotency
+Identity；Terminal Envelope 原子封存 Final Kernel State、Domain Facts、Session
+Delta、Receipt、Operation Commit 与 Projection Outbox。
 
 ## Authority/Lifetime Matrix
 
 | Record | Authority | Lifetime/Use |
 | --- | --- | --- |
 | Accepted Operation | Request Identity/Idempotency | Admission/Duplicate Detection |
+| Turn Domain Fact | 权威 Reducer Transition/State Digest | Restart/Invariant Audit |
+| Pending Effect | Executable Intent/Payload/Idempotency | Conditional Continuation |
 | Event Sequence | Canonical Lifecycle Fact | Replay/Host/Audit |
 | SQLite Projection | Derived Query View | List/Filter/Aggregate |
 | Snapshot | Integrity-checked Checkpoint | Accelerate Reconstruction |
@@ -73,16 +84,20 @@ submit -> durable acceptance/reservation -> engine work
        -> durable events/projections -> commit receipt -> terminal event
 ```
 
-每个 Boundary 的 Crash 含义不同。Recovery 可恢复 Bookkeeping 或标记 Interrupted Work，
-但不能仅因 Caller 未收到 Terminal Response 就重跑 Agent。
+每个 Boundary 的 Crash 含义不同。Missing Client Acknowledgement 永远不授权执行。
+Pending Turn 只有在具备合法 Domain Facts、可 Claim Lease 与受支持 Durable Effect
+Route 时才继续。Running Effect 在 Dispatch 前先持久化为 Requeued；已保留的 Result
+Command 只重交 State Machine，不重复 External Execution。
 
 Durability 不是序列化所有对象。Subscriber、Network Stream、Mutex 与 Process Handle
 属于 Ephemeral State，只能重建或明确丢失。
 
 ## Correctness Properties
 
-Durable Write 需要 Atomicity、Ordering、Integrity、Idempotent Projection 和
-Indeterminate Outcome。Recovery 不能仅因为 Result 未被观察就再次执行 Agent Turn。
+Durable Write 需要 Atomicity、Ordering、Integrity、Idempotent Projection、Renewable
+Ownership Lease 和显式 Indeterminate Outcome。Recovery 必须区分“Requested 但未
+Started”“Started 但无 Accepted Result”“Result 已保留但 State Append 失败”，三者
+不能共享一个 Retry 规则。
 
 ## 设计取舍
 
@@ -102,12 +117,15 @@ Event、Typed Projection、Integrity-checked Snapshot 与 Side-effect Journal。
 ```bash
 go test ./internal/persist/state/...
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
+go test ./internal/runtime/app -run 'Test(C5|C6|Phase4R)'
+go test ./internal/runtime/agent/turnkernel
 ```
 
 ## 动手实验
 
-阅读 `TestPersistentRuntimeRestartIsIdempotentAndKeepsOneTerminal`，找出防止 Restart
-重复运行 Turn 的 Durable Record。
+阅读 `TestC5RuntimeDispatchesAcceptedTurnWithDomainFacts` 与 Phase 4R Restart Test，
+找出哪些 Fact 授权 Continuation、Effect 何时 Requeue，以及哪个 Identity 保证
+Terminal Projection 幂等。
 
 ## 复习问题
 
@@ -126,5 +144,5 @@ go test ./internal/runtime/app/wire -run TestPersistentRuntime
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `state-why-durable` |
-| 状态 | `draft` |
-| 最后验证 | 尚未验证 |
+| 状态 | `verified` |
+| 最后验证 | 2026-08-12 |

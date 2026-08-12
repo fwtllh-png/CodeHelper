@@ -11,6 +11,7 @@ prerequisites:
 code_paths:
   - internal/runtime/app
   - internal/runtime/app/wire
+  - internal/runtime/agent/turnkernel
   - internal/persist/snapshot
   - internal/persist/workspacejournal
   - internal/persist/state/turnstate
@@ -19,6 +20,9 @@ test_paths:
   - internal/runtime/app/session_artifacts_test.go
   - internal/runtime/app/runtime_terminal_recovery_test.go
   - internal/runtime/app/wire/persistent_test.go
+  - internal/runtime/agent/turnkernel/runtime_test.go
+  - internal/runtime/agent/turnkernel/effect_dispatcher_test.go
+  - internal/persist/state/turnstate/store_test.go
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
   - internal/runtime/app/lifecycle.go
@@ -27,8 +31,11 @@ source_of_truth:
   - internal/runtime/app/terminal_publisher.go
   - internal/runtime/app/runtime_start.go
   - internal/runtime/app/persistence/runtime.go
-status: draft
-last_verified: null
+  - internal/runtime/app/wire/turn_coordinator.go
+  - internal/runtime/agent/turnkernel/coordinator.go
+  - internal/runtime/agent/turnkernel/terminal_envelope.go
+status: verified
+last_verified: 2026-08-12
 ---
 
 # Resume、Recovery 与幂等边界
@@ -55,21 +62,22 @@ Replay Model/Tool Work 并重复副作用。
 
 ```mermaid
 flowchart TD
-    B[Persistent Bootstrap] --> L[Load Lifecycle and Events]
-    L --> R[Reconstruct Threads and Pending Work]
-    R --> J[Recover Workspace Journal]
-    J --> C{Previous owner live?}
-    C -->|yes| K[Keep lease/state]
-    C -->|no| F[Fail or requeue by contract]
-    F --> A[Accept New Operations]
-    K --> A
+    B[Prepared Persistent Runtime] --> O[投影 Pending Terminal Outbox]
+    O --> L[加载 Lifecycle、Pending Operation 与 Domain Facts]
+    L --> C{Fact 匹配且 Lease 可 Claim?}
+    C -->|无 Fact| I[保留 Accepted Pending]
+    C -->|Foreign Live Lease| K[不抢占 Ownership]
+    C -->|是| R[恢复 Coordinator State]
+    R --> Q[Requeue Running Effect]
+    Q --> D[依据 Durable Payload Dispatch]
+    D --> A[继续原 Accepted Turn]
 ```
 
-Persistent Bootstrap 使用 `NewRuntimeWithRecovery`，在开放 Acceptance 前调用 Durable
-Lifecycle。`TerminalPublisher` 在启动激活阶段（`runtime_start.go`）重放 Pending
-Terminal Outbox Projection，之后 Runtime 才打开 Acceptance。Outbox Entry 通过
-Event Hub 以确定性 Event ID（`PublishStable`）发布，即使 Projection 在崩溃前只
-应用了一部分，重启重放也保持幂等。
+Persistent Assembly 先用恢复出的 Lifecycle State 准备 Runtime，再由
+`Runtime.Start` 激活。`TerminalPublisher` 首先通过 Event Hub 以确定性 Event ID
+（`PublishStable`）发布 Pending Terminal Outbox Entry。随后 Runtime Loop 启动，
+`recoverPendingTurns` 仅重排存在匹配 Domain Facts 的已接受 `turn.start` Operation。
+没有 Fact 的 Accepted Operation 不会仅因自身存在就触发 Sampling。
 
 ## Resume
 
@@ -81,7 +89,9 @@ History 只保留 Completed 且 Tool Pair 完整的 Exchange；Failed/Incomplete
 
 ## Recovery
 
-Recovery 恢复 Accepted/Committed Operation、Pending Turn/Approval/Input、
+Recovery 恢复 Accepted/Committed Operation、Pending Turn/Approval/Input、有序且
+带 Digest 的 Turn Domain Facts/Frozen Kernel State、带 Payload Digest 与
+Idempotency Key 的 Provider/Tool/Approval/Input/Verification/Journal Effect、
 Terminal Outbox Projection/Item Identity、Last Cursor、Thread History/Snapshot
 与 Workspace Journal，
 以及每个 Thread 最新 Durable SessionDelta（随 Turn 的 Terminal Envelope 提交，
@@ -94,8 +104,15 @@ Session Memory 保持不变。重启后 `ThreadManager` 从 `persist/state/turns
 恢复每个 Thread 的最新 Delta，使 Usage、Cost、Working Set、Evidence、Failures
 与 Compaction 计数和 Committed History 一起跨 Crash 存活。
 
-Interrupted Executable Work 可以按契约 Requeue；没有 Executor 的 Record 只能失败。
-其他 Worker 的 Live Lease 不会被抢占。
+`durableCoordinatorRuntime` Claim 已过期的 Active-turn Lease，从严格有序的 Domain
+Facts 恢复每个 Coordinator，并在 Active 期间续租。Restore 先通过持久化
+`EffectRequeued` Command 把每个 `EffectRunning` 改回 `EffectRequested`，再从 Durable
+Payload 路由全部 Pending Effect。Engine 继续原 Turn，并在再次等待前恢复原始
+Approval/Input Request ID。
+
+这是有条件的 Continuation，不是 Blind Operation Replay。Fact 缺失、Sequence/Digest
+非法、Effect Route 不可用、Lease 冲突或 Payload 不完整都会 Fail Closed；Live Foreign
+Lease 永不被抢占。
 
 ## 四种不同的 “Re”
 
@@ -134,9 +151,11 @@ Profile Revision、Target Profile Equivalence 与 Lineage 后创建新 Turn。
 | Crash Window | Durable Evidence | Safe Startup Action |
 | --- | --- | --- |
 | Acceptance 前 | 无 | Caller 正常 Submit |
-| Accepted、Dispatch 前 | Acceptance Record | Restore Pending，不 Blind Sample |
-| Turn Started、Effect 前 | Event/Active Record | 无显式 Contract 时标记 Interrupted |
-| Tool Proposed、无 Result | Incomplete Pair | 排除 Model History |
+| Accepted、首个 Domain Fact 前 | 仅 Acceptance Record | 保持 Pending，不 Sample |
+| Domain Fact 已持久化、Effect Requested | State/Effect Payload | Claim Lease 并 Dispatch |
+| Effect Running、无 Result Fact | `EffectStarted`/Idempotency Key | 持久化 `EffectRequeued` 后恢复 Route |
+| Result 已产生、Fact Append 失败 | Retained Result Command | 重交同一 Result，不重跑 Effect |
+| Tool Proposed、无 Result | Open Call/Pending Tool Effect | 恢复 Effect；Incomplete Pair 不进 Committed History |
 | File Journaled、未 Commit | Before-image/Owner | Owner Dead 时 Restore |
 | File Turn Committed | Commit/Settlement | 保留 Write |
 | Remote Effect Outcome Unknown | Proof 不足 | Reconcile，不声称 Revert |
@@ -169,9 +188,12 @@ Idempotency 只在局部边界成立；一个 Key 不能使任意 Shell Command 
 | 关注点 | 源码 |
 | --- | --- |
 | Lifecycle Contract | `runtime/app/lifecycle.go` |
-| Runtime Restore | `runtime/app/runtime.go` |
+| Startup Activation/Pending Turn Dispatch | `runtime/app/runtime_start.go`、`runtime/app/runtime.go` |
 | History | `runtime/app/reconstruct.go` |
-| Persistent Builder | `runtime/app/wire/persistent.go` |
+| Persistent Assembly | `runtime/app/persistence/runtime.go` |
+| Turn Lease/Coordinator Runtime | `runtime/app/wire/turn_coordinator.go` |
+| Coordinator Restore/Effect Requeue | `runtime/agent/turnkernel/coordinator.go` |
+| Durable Effect Result Retention | `runtime/agent/turnkernel/effect_dispatcher.go` |
 | Session/Snapshot | `persist/session`、`persist/snapshot` |
 | Checkpoint/Plan/Turn Recovery | `runtime/app/session_artifacts.go` |
 | Thread Session State Restore | `runtime/app/thread_manager.go` |
@@ -180,8 +202,10 @@ Idempotency 只在局部边界成立；一个 Key 不能使任意 Shell Command 
 
 ## 设计取舍与替代方案
 
-Restart 后 Replay 所有 Accepted Operation 看似完整，却可能重复 Provider Cost 与 Effect。
-CodeHelper 恢复 Pending Fact，但没有显式 Durable Executor Contract 时不 Replay Engine。
+Restart 后 Replay 所有 Accepted Operation 会重复 Provider Cost 与 Effect。CodeHelper
+只继续具备合法 Domain Facts、可 Claim Lease 与受支持 Durable Effect Route 的 Turn。
+Coordinator 恢复 State；Retained Result Protocol 与每个 Effect 的 Idempotency
+Identity 防止一次 State Append 失败变成第二次 External Execution。
 
 Event Sourcing 可重建 Logical State，却不能恢复 Half-written File；Journal 用
 Effect-specific Before-image 补充。
@@ -201,8 +225,11 @@ Effect-specific Before-image 补充。
 
 ```bash
 go test ./internal/runtime/app -run TestReconstructThread
-go test ./internal/runtime/app -run 'Test(SessionCheckpoint|Restore|Fork|RecoverTurn|Plan)'
+go test ./internal/runtime/app \
+  -run 'Test(C5|C6|Phase4R|SessionCheckpoint|Restore|Fork|RecoverTurn|Plan)'
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
+go test ./internal/runtime/agent/turnkernel
+go test ./internal/persist/state/turnstate
 go test ./internal/persist/workspacejournal \
   -run 'Test(TheNextProcessUndoesATurnAKilledProcessLeftHalfApplied|RecoveryKeepsTheWritesOfATurnThatAlreadyCommitted)'
 ```
@@ -218,13 +245,14 @@ go test ./internal/host/cli -run TestExecPersistentResumeListTurns
 
 ## 复习问题
 
-1. Restart 为什么不能自动 Replay Accepted Engine Work？
+1. 为什么没有 Domain Facts 的 Accepted Operation 必须保持 Pending？
 2. Event 与 Workspace Journal 各能恢复什么？
 3. Idempotency 为什么必须限定边界？
 4. Replay、Resume、Retry、Reconcile 有何区别？
 5. Remote Effect Outcome Unknown 时应该怎么做？
 6. Checkpoint 为什么可恢复 History，却不能 Replay Event？
 7. Continue 与恢复 Interrupted Process 有何不同？
+8. 为什么 Restart 后 Dispatch Running Effect 前必须先持久化 `EffectRequeued`？
 
 ## 延伸阅读
 
@@ -236,5 +264,5 @@ go test ./internal/host/cli -run TestExecPersistentResumeListTurns
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `runtime-resume-recovery` |
-| 状态 | `draft` |
-| 最后验证 | 尚未验证 |
+| 状态 | `verified` |
+| 最后验证 | 2026-08-12 |

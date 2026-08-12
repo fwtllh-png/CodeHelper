@@ -16,7 +16,7 @@
 
 - [为什么 Agent 需要受治理的 Runtime](./01-agent-engineering/05-why-governed-runtime.md) — `agent-why-governed-runtime` — `draft` — 规划路径: `01-agent-engineering/05-why-governed-runtime.md`
 - [CodeHelper 全局架构](./02-codehelper-overview/02-system-architecture.md) — `overview-system-architecture` — `draft` — 规划路径: `02-codehelper-overview/02-system-architecture.md`
-- [一次 Agent Turn 的完整生命周期](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `draft` — 规划路径: `02-codehelper-overview/05-turn-lifecycle.md`
+- [一次 Agent Turn 的完整生命周期](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `verified` — 规划路径: `02-codehelper-overview/05-turn-lifecycle.md`
 - [Model、Context 与 Tool 如何协作](./02-codehelper-overview/06-model-context-and-tool.md) — `overview-model-context-tool` — `draft` — 规划路径: `02-codehelper-overview/06-model-context-and-tool.md`
 - [Guard、Approval、Constitution 与 Sandbox](./07-security-governance/03-approval-constitution-sandbox.md) — `security-approval-sandbox` — `draft` — 规划路径: `07-security-governance/03-approval-constitution-sandbox.md`
 - [构建并追踪第一个 Agent Turn](./13-hands-on-labs/01-first-agent-turn.md) — `lab-first-turn` — `draft` — 规划路径: `13-hands-on-labs/01-first-agent-turn.md`
@@ -37,17 +37,17 @@
 - [CodeHelper 全局架构](./02-codehelper-overview/02-system-architecture.md) — `overview-system-architecture` — `draft` — 规划路径: `02-codehelper-overview/02-system-architecture.md`
 - [Package 所有权与依赖方向](./02-codehelper-overview/03-package-ownership.md) — `overview-package-ownership` — `draft` — 规划路径: `02-codehelper-overview/03-package-ownership.md`
 - [Operation、Event、Receipt 与 Projection](./02-codehelper-overview/04-runtime-vocabulary.md) — `overview-runtime-vocabulary` — `draft` — 规划路径: `02-codehelper-overview/04-runtime-vocabulary.md`
-- [一次 Agent Turn 的完整生命周期](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `draft` — 规划路径: `02-codehelper-overview/05-turn-lifecycle.md`
+- [一次 Agent Turn 的完整生命周期](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `verified` — 规划路径: `02-codehelper-overview/05-turn-lifecycle.md`
 - [Model、Context 与 Tool 如何协作](./02-codehelper-overview/06-model-context-and-tool.md) — `overview-model-context-tool` — `draft` — 规划路径: `02-codehelper-overview/06-model-context-and-tool.md`
 
 ### 部分 3: Runtime 内核
 
 - [Protocol 与稳定数据契约](./03-runtime-kernel/01-protocol.md) — `runtime-protocol` — `draft` — 规划路径: `03-runtime-kernel/01-protocol.md`
-- [Application Runtime 与状态投影](./03-runtime-kernel/02-application-runtime.md) — `runtime-app` — `draft` — 规划路径: `03-runtime-kernel/02-application-runtime.md`
-- [模型与工具执行循环](./03-runtime-kernel/03-agent-loop.md) — `runtime-agent-loop` — `draft` — 规划路径: `03-runtime-kernel/03-agent-loop.md`
+- [Application Runtime 与状态投影](./03-runtime-kernel/02-application-runtime.md) — `runtime-app` — `verified` — 规划路径: `03-runtime-kernel/02-application-runtime.md`
+- [模型与工具执行循环](./03-runtime-kernel/03-agent-loop.md) — `runtime-agent-loop` — `verified` — 规划路径: `03-runtime-kernel/03-agent-loop.md`
 - [依赖构造与能力装配](./03-runtime-kernel/04-dependency-wiring.md) — `runtime-wiring` — `draft` — 规划路径: `03-runtime-kernel/04-dependency-wiring.md`
 - [Streaming、Cancellation 与 Error Taxonomy](./03-runtime-kernel/05-streaming-cancellation-errors.md) — `runtime-stream-cancel-errors` — `draft` — 规划路径: `03-runtime-kernel/05-streaming-cancellation-errors.md`
-- [Resume、Recovery 与幂等边界](./03-runtime-kernel/06-resume-and-recovery.md) — `runtime-resume-recovery` — `draft` — 规划路径: `03-runtime-kernel/06-resume-and-recovery.md`
+- [Resume、Recovery 与幂等边界](./03-runtime-kernel/06-resume-and-recovery.md) — `runtime-resume-recovery` — `verified` — 规划路径: `03-runtime-kernel/06-resume-and-recovery.md`
 
 ### 部分 4: 模型与 Provider
 
@@ -88,7 +88,7 @@
 
 ### 部分 8: 状态与可观测性
 
-- [Durable State 的必要性](./08-state-observability/01-why-durable-state.md) — `state-why-durable` — `draft` — 规划路径: `08-state-observability/01-why-durable-state.md`
+- [Durable State 的必要性](./08-state-observability/01-why-durable-state.md) — `state-why-durable` — `verified` — 规划路径: `08-state-observability/01-why-durable-state.md`
 - [SQLite、Event Log 与 Projection](./08-state-observability/02-sqlite-event-projection.md) — `state-sqlite-event-projection` — `draft` — 规划路径: `08-state-observability/02-sqlite-event-projection.md`
 - [Session、Snapshot、CAS 与 Workspace Journal](./08-state-observability/03-session-snapshot-journal.md) — `state-session-snapshot-journal` — `draft` — 规划路径: `08-state-observability/03-session-snapshot-journal.md`
 - [Trace、Span、Usage 与 Cost](./08-state-observability/04-trace-usage-cost.md) — `state-trace-usage-cost` — `verified` — 规划路径: `08-state-observability/04-trace-usage-cost.md`
@@ -129,7 +129,7 @@
 - [跨平台构建与能力探测](./12-engineering-practice/05-cross-platform.md) — `practice-cross-platform` — `draft` — 规划路径: `12-engineering-practice/05-cross-platform.md`
 - [VSIX、SBOM、Provenance 与 Release Evidence](./12-engineering-practice/06-release-evidence.md) — `practice-release-evidence` — `draft` — 规划路径: `12-engineering-practice/06-release-evidence.md`
 - [如何阅读和修改大型 Agent 工程](./12-engineering-practice/07-reading-codebase.md) — `practice-reading-codebase` — `draft` — 规划路径: `12-engineering-practice/07-reading-codebase.md`
-- [架构度量与回归棘轮](./12-engineering-practice/08-architecture-ratchet.md) — `practice-architecture-ratchet` — `draft` — 规划路径: `12-engineering-practice/08-architecture-ratchet.md`
+- [架构度量与回归棘轮](./12-engineering-practice/08-architecture-ratchet.md) — `practice-architecture-ratchet` — `verified` — 规划路径: `12-engineering-practice/08-architecture-ratchet.md`
 
 ### 部分 13: 动手实验
 

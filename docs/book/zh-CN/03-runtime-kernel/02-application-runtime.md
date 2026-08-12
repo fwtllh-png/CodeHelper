@@ -18,6 +18,8 @@ test_paths:
   - internal/runtime/app/eventhub/hub_test.go
   - internal/runtime/app/chatmerge/service_test.go
   - internal/runtime/app/persistence/runtime_test.go
+  - internal/runtime/app/turn_kernel_convergence_test.go
+  - internal/runtime/agent/turnkernel/convergence_baseline_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/operation_dispatch.go
@@ -30,8 +32,10 @@ source_of_truth:
   - internal/runtime/app/application.go
   - internal/runtime/app/chatmerge/service.go
   - internal/runtime/app/persistence/runtime.go
-status: draft
-last_verified: null
+  - internal/runtime/agent/turnkernel/coordinator.go
+  - internal/runtime/agent/turnkernel/terminal_envelope.go
+status: verified
+last_verified: 2026-08-12
 ---
 
 # Application Runtime 与状态投影
@@ -69,8 +73,9 @@ flowchart TD
     S[SubmitWithKey] --> V[Validate and Canonicalize]
     V --> Q[Bounded Queue]
     Q --> D[Dispatch Loop]
-    D --> E[Application Engine]
-    E --> M[Emit Event Data]
+    D --> E[Engine Adapter]
+    E --> K[Turn Coordinator / Domain Facts]
+    K --> M[执行 Effect 并投影 Event Data]
     M --> N[Assign Sequence and Identity]
     N --> P[Persist and Publish]
     P --> X[Snapshot / Replay / Projection]
@@ -130,7 +135,10 @@ Kernel Snapshot。
 
 `TerminalPublisher` 是 Atomic Terminal Commit、Deterministic Outbox Projection 和
 Restart Recovery 的唯一 Owner。Terminal Commit 在 Projection 前持久绑定 Frozen
-Kernel State、Session Delta、Receipt、Terminal Event 与真实 Operation Receipt。
+Kernel State、有序 Domain Facts、Session Delta、Final Output、Receipt、Terminal
+Event、真实 Operation Receipt 与 Deterministic Outbox。Durable Startup 先投影
+Pending Outbox Entry，再且仅在存在匹配 Domain Facts 时重排已接受的 StartTurn
+Operation。
 
 `SessionService` 拥有 Lifecycle、Profile 和 Tool Catalog；`ArtifactService` 拥有
 Checkpoint、Plan、Turn Recovery 与 Artifact Persistence。Host 依赖的 Contract 位于
@@ -174,7 +182,8 @@ Cursor。Slow Subscriber 被关闭并移除，不会阻塞排序路径。
 
 `ThreadManager` 按 Thread 创建/恢复 `EngineAdapter`。Adapter 解析 Workspace/Editor
 Context，将 Engine Event 转为 Protocol Event，并记录 Receipt。App 层不解析 Provider
-Stream，也不授权 Tool。
+Stream、不授权 Tool，也不调用 `turnkernel.Reducer.Apply`。Turn Coordinator 拥有
+状态转换；Runtime 拥有 Admission、Protocol Projection 与 Terminal Publication。
 
 ## 代码地图
 
@@ -188,6 +197,7 @@ Stream，也不授权 Tool。
 | Atomic Terminal/Outbox Recovery | `terminal_publisher.go` |
 | Session/Artifact Service | `service_facade.go`、`session_artifacts.go` |
 | Engine Adapter | `application.go` |
+| Turn 状态机权威 | `agent/turnkernel/coordinator.go` |
 | Pending State | `pendingwork.go` |
 | Thread Ownership | `thread_manager.go` |
 | Receipt | `receipt.go` |
@@ -216,6 +226,8 @@ Slow Subscriber 被移除可能丢失 Live UI Update，但 Replayable Event 允�
 
 ```bash
 go test ./internal/runtime/app
+go test ./internal/runtime/agent/turnkernel \
+  -run 'Test(C0|C1|C2|C3|C4|C5|C6|Phase4R)'
 ```
 
 重点阅读 `TestRuntimeConcurrentSubmitHasStrictSequenceAndUniqueTerminal`、
@@ -246,5 +258,5 @@ Complete Accounting；再分析 Dropped Subscriber 如何通过 `ReplayEvents` �
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `runtime-app` |
-| 状态 | `draft` |
-| 最后验证 | 尚未验证 |
+| 状态 | `verified` |
+| 最后验证 | 2026-08-12 |

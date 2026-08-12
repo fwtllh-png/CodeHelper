@@ -16,7 +16,7 @@ Start with these six foundational chapters:
 
 - [Why Agents Need a Governed Runtime](./01-agent-engineering/05-why-governed-runtime.md) — `agent-why-governed-runtime` — `draft` — planned path: `01-agent-engineering/05-why-governed-runtime.md`
 - [CodeHelper System Architecture](./02-codehelper-overview/02-system-architecture.md) — `overview-system-architecture` — `draft` — planned path: `02-codehelper-overview/02-system-architecture.md`
-- [The Complete Lifecycle of an Agent Turn](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `draft` — planned path: `02-codehelper-overview/05-turn-lifecycle.md`
+- [The Complete Lifecycle of an Agent Turn](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `verified` — planned path: `02-codehelper-overview/05-turn-lifecycle.md`
 - [How Models, Context, and Tools Cooperate](./02-codehelper-overview/06-model-context-and-tool.md) — `overview-model-context-tool` — `draft` — planned path: `02-codehelper-overview/06-model-context-and-tool.md`
 - [Guard, Approval, Constitution, and Sandbox](./07-security-governance/03-approval-constitution-sandbox.md) — `security-approval-sandbox` — `draft` — planned path: `07-security-governance/03-approval-constitution-sandbox.md`
 - [Build and Trace the First Agent Turn](./13-hands-on-labs/01-first-agent-turn.md) — `lab-first-turn` — `draft` — planned path: `13-hands-on-labs/01-first-agent-turn.md`
@@ -37,17 +37,17 @@ Start with these six foundational chapters:
 - [CodeHelper System Architecture](./02-codehelper-overview/02-system-architecture.md) — `overview-system-architecture` — `draft` — planned path: `02-codehelper-overview/02-system-architecture.md`
 - [Package Ownership and Dependency Direction](./02-codehelper-overview/03-package-ownership.md) — `overview-package-ownership` — `draft` — planned path: `02-codehelper-overview/03-package-ownership.md`
 - [Operation, Event, Receipt, and Projection](./02-codehelper-overview/04-runtime-vocabulary.md) — `overview-runtime-vocabulary` — `draft` — planned path: `02-codehelper-overview/04-runtime-vocabulary.md`
-- [The Complete Lifecycle of an Agent Turn](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `draft` — planned path: `02-codehelper-overview/05-turn-lifecycle.md`
+- [The Complete Lifecycle of an Agent Turn](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `verified` — planned path: `02-codehelper-overview/05-turn-lifecycle.md`
 - [How Models, Context, and Tools Cooperate](./02-codehelper-overview/06-model-context-and-tool.md) — `overview-model-context-tool` — `draft` — planned path: `02-codehelper-overview/06-model-context-and-tool.md`
 
 ### Part 3: Runtime Kernel
 
 - [Protocol and Stable Data Contracts](./03-runtime-kernel/01-protocol.md) — `runtime-protocol` — `draft` — planned path: `03-runtime-kernel/01-protocol.md`
-- [Application Runtime and State Projection](./03-runtime-kernel/02-application-runtime.md) — `runtime-app` — `draft` — planned path: `03-runtime-kernel/02-application-runtime.md`
-- [The Model and Tool Execution Loop](./03-runtime-kernel/03-agent-loop.md) — `runtime-agent-loop` — `draft` — planned path: `03-runtime-kernel/03-agent-loop.md`
+- [Application Runtime and State Projection](./03-runtime-kernel/02-application-runtime.md) — `runtime-app` — `verified` — planned path: `03-runtime-kernel/02-application-runtime.md`
+- [The Model and Tool Execution Loop](./03-runtime-kernel/03-agent-loop.md) — `runtime-agent-loop` — `verified` — planned path: `03-runtime-kernel/03-agent-loop.md`
 - [Dependency Construction and Capability Wiring](./03-runtime-kernel/04-dependency-wiring.md) — `runtime-wiring` — `draft` — planned path: `03-runtime-kernel/04-dependency-wiring.md`
 - [Streaming, Cancellation, and Error Taxonomy](./03-runtime-kernel/05-streaming-cancellation-errors.md) — `runtime-stream-cancel-errors` — `draft` — planned path: `03-runtime-kernel/05-streaming-cancellation-errors.md`
-- [Resume, Recovery, and Idempotency](./03-runtime-kernel/06-resume-and-recovery.md) — `runtime-resume-recovery` — `draft` — planned path: `03-runtime-kernel/06-resume-and-recovery.md`
+- [Resume, Recovery, and Idempotency](./03-runtime-kernel/06-resume-and-recovery.md) — `runtime-resume-recovery` — `verified` — planned path: `03-runtime-kernel/06-resume-and-recovery.md`
 
 ### Part 4: Models and Providers
 
@@ -88,7 +88,7 @@ Start with these six foundational chapters:
 
 ### Part 8: State and Observability
 
-- [Why Durable State Is Required](./08-state-observability/01-why-durable-state.md) — `state-why-durable` — `draft` — planned path: `08-state-observability/01-why-durable-state.md`
+- [Why Durable State Is Required](./08-state-observability/01-why-durable-state.md) — `state-why-durable` — `verified` — planned path: `08-state-observability/01-why-durable-state.md`
 - [SQLite, Event Logs, and Projections](./08-state-observability/02-sqlite-event-projection.md) — `state-sqlite-event-projection` — `draft` — planned path: `08-state-observability/02-sqlite-event-projection.md`
 - [Sessions, Snapshots, CAS, and Workspace Journal](./08-state-observability/03-session-snapshot-journal.md) — `state-session-snapshot-journal` — `draft` — planned path: `08-state-observability/03-session-snapshot-journal.md`
 - [Traces, Spans, Usage, and Cost](./08-state-observability/04-trace-usage-cost.md) — `state-trace-usage-cost` — `verified` — planned path: `08-state-observability/04-trace-usage-cost.md`
@@ -129,7 +129,7 @@ Start with these six foundational chapters:
 - [Cross-Platform Builds and Capability Probing](./12-engineering-practice/05-cross-platform.md) — `practice-cross-platform` — `draft` — planned path: `12-engineering-practice/05-cross-platform.md`
 - [VSIX, SBOM, Provenance, and Release Evidence](./12-engineering-practice/06-release-evidence.md) — `practice-release-evidence` — `draft` — planned path: `12-engineering-practice/06-release-evidence.md`
 - [Reading and Changing a Large Agent Codebase](./12-engineering-practice/07-reading-codebase.md) — `practice-reading-codebase` — `draft` — planned path: `12-engineering-practice/07-reading-codebase.md`
-- [Architecture Metrics and the Regression Ratchet](./12-engineering-practice/08-architecture-ratchet.md) — `practice-architecture-ratchet` — `draft` — planned path: `12-engineering-practice/08-architecture-ratchet.md`
+- [Architecture Metrics and the Regression Ratchet](./12-engineering-practice/08-architecture-ratchet.md) — `practice-architecture-ratchet` — `verified` — planned path: `12-engineering-practice/08-architecture-ratchet.md`
 
 ### Part 13: Hands-On Labs
 

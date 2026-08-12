@@ -12,15 +12,20 @@ code_paths:
   - internal/runtime/app
   - internal/runtime/agent/engine
   - internal/runtime/agent/turnexec
+  - internal/runtime/agent/turnkernel
 test_paths:
   - internal/runtime/protocol/message_test.go
   - internal/runtime/app/runtime_test.go
+  - internal/runtime/app/runtime_terminal_recovery_test.go
   - internal/runtime/agent/engine/engine_test.go
+  - internal/runtime/agent/turnkernel/coordinator_test.go
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
   - internal/runtime/protocol/message.go
-status: draft
-last_verified: null
+  - internal/runtime/agent/turnkernel/coordinator.go
+  - internal/runtime/agent/turnkernel/command.go
+status: verified
+last_verified: 2026-08-12
 ---
 
 # The Complete Lifecycle of an Agent Turn
@@ -79,6 +84,7 @@ sequenceDiagram
     participant R as app.Runtime
     participant A as EngineAdapter
     participant S as turnexec.Scope
+    participant K as TurnCoordinator
     participant E as agent.Engine
     participant M as Provider
     participant G as Tool Guard
@@ -87,9 +93,12 @@ sequenceDiagram
     R-->>H: ordered turn.started Event
     R->>A: StartTurn
     A->>S: Factory.Open(TurnSpec)
+    S->>K: Open or restore Domain Facts
     S->>E: Run frozen Scope
+    K->>E: Sample Provider Effect
     E->>M: Stream(ModelRequest)
     M-->>E: text / reasoning / Tool Call / usage
+    E->>K: ModelSampleResultReceived
     alt Tool Call
         E->>G: ExecuteBound
         G-->>H: approval.required when needed
@@ -144,9 +153,17 @@ reasoning options, native search, and the Tool Definitions visible in the
 catalog snapshot. Provider-specific adapters normalize responses into common
 Stream Events.
 
+Before the Provider call, `DurableEffectDispatcher.Start` submits
+`EffectStarted` to the `TurnCoordinator`; the Coordinator persists the
+resulting Domain Fact before execution proceeds. The complete sample returns
+as one retained `ModelSampleResultReceived` command. If accepting that Result
+fails, the same command may be resubmitted without performing the Provider
+call a second time.
+
 Text, reasoning, citations, usage, and Tool Calls become Engine Events and then
 Runtime protocol Events. The Host receives incremental facts without owning
-the model stream.
+the model stream. Protocol Events are Host-facing projections; ordered Domain
+Facts are the authoritative Turn state-machine record.
 
 ## Step 5: Execute Tools and Continue
 
@@ -169,7 +186,9 @@ what was read, changed, approved, verified, spent, and timed.
 
 Scope prepares a revisioned and digested `SessionDelta` for History, Usage,
 Cost, Working Set, Evidence, Failures, and Compaction. Runtime commits it with
-the Terminal Envelope; Engine applies it exactly once only after durable
+the frozen Kernel state, ordered Domain Facts, final output, Receipt, real
+Operation receipt, terminal Event, and deterministic projection Outbox in the
+Terminal Envelope. Engine applies the Delta exactly once only after durable
 commit. The Runtime enforces one terminal Event per Turn.
 
 ## Control Operations
@@ -195,9 +214,11 @@ commands fail with structured errors.
 | Queue, cursor, terminal state | `internal/runtime/app/runtime.go` |
 | Protocol-to-Engine adaptation | `internal/runtime/app/application.go` |
 | Turn lifecycle and control | `internal/runtime/agent/turnexec` |
+| Authoritative reducer, Coordinator, and Effects | `internal/runtime/agent/turnkernel` |
 | Model/tool executor | `internal/runtime/agent/engine` |
 | Receipt projection | `internal/runtime/app/receipt.go` |
-| Durable restart | `internal/runtime/app/wire/persistent.go` |
+| Durable Runtime assembly | `internal/runtime/app/persistence/runtime.go` |
+| Turn Domain Facts and leases | `internal/persist/state/turnstate` |
 
 ## Tradeoffs and Alternatives
 
@@ -228,6 +249,9 @@ go test ./internal/runtime/app \
 
 go test ./internal/runtime/agent/engine \
   -run 'Test(EngineExecutesToolAndFeedsResultOnce|VerifyGateHardFailureFailsTurnAndRollsBack)'
+
+go test ./internal/runtime/agent/turnkernel \
+  -run 'Test(TurnCoordinator|DurableEffectDispatcher|Phase4R)'
 ```
 
 ## Hands-On Lab
@@ -269,5 +293,5 @@ changing the prompt.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `overview-turn-lifecycle` |
-| Status | `draft` |
-| Last verified | Not yet verified |
+| Status | `verified` |
+| Last verified | 2026-08-12 |

@@ -10,16 +10,19 @@ prerequisites:
 code_paths:
   - scripts/architecturemetrics
   - scripts/architecturesize
+  - internal/runtime/agent/turnkernel
   - Makefile
 test_paths:
   - scripts/architecturemetrics/main_test.go
   - scripts/architecturesize/main_test.go
+  - internal/runtime/agent/turnkernel/convergence_baseline_test.go
+  - internal/runtime/app/turn_kernel_convergence_test.go
 source_of_truth:
   - docs/architecture-metrics-baseline.json
   - docs/hotspot-baseline.json
   - Makefile
-status: draft
-last_verified: null
+status: verified
+last_verified: 2026-08-12
 ---
 
 # Architecture Metrics and the Regression Ratchet
@@ -71,12 +74,24 @@ on drift, and optionally writes a measured report. The Makefile exposes
 (measure plus enforce); the ratchet is part of `make verify` and of
 `architecture-freeze`.
 
+The current baseline contains 43 targets: 19 packages, 23 files, and one
+repository-wide Event dispatch target. This count is descriptive, not a fixed
+constant; the committed JSON remains authoritative.
+
 `make architecture-size-budget BASE_REF=origin/main` independently compares
-the complete ownership closure against a Git base. It excludes tests, docs,
-fixtures, generated sources, and build output, and reports base, head, added,
-deleted, and net production lines. Stage D consumed an explicitly approved
-`+847` relaxation when it merged. The default returned to zero afterward, so
-the next net production line fails unless a new decision is recorded.
+the configured Runtime ownership closure against a Git base. It excludes
+tests, docs, fixtures, generated sources, and build output, and reports base,
+head, added, deleted, and net production lines. The default net-growth budget
+is zero, so added production lines must be offset by deletion or covered by an
+explicitly reviewed invocation.
+
+Turn-state ownership has an additional semantic gate. The
+`turn-kernel-convergence-baseline` target checks C0-C6 and Phase 4R ownership:
+only Coordinator calls `Reducer.Apply`, external work uses durable Effects,
+terminal commit is atomic, restart uses Domain Facts, and legacy reverse-drive
+paths remain absent. `turn-kernel-convergence-exit-gate` enables the final
+production-ownership assertion with
+`CODEHELPER_TURN_KERNEL_CONVERGENCE_EXIT_GATE=1`.
 
 ## Metrics
 
@@ -131,6 +146,7 @@ are reported as one sorted drift list, and the command exits non-zero.
 | Make targets | `Makefile` | `architecture-metrics`, `architecture-ratchet`, `architecture-freeze` |
 | Tests | `scripts/architecturemetrics/main_test.go` | Baseline validation, drift, headroom, and ratchet cases |
 | Ownership size budget | `scripts/architecturesize` | Base/head production LOC and exact relaxation enforcement |
+| Turn Kernel ownership | `turnkernel/convergence_baseline_test.go` | C0-C6 and Phase 4R semantic ownership |
 
 ## Failure Modes and Security Boundaries
 
@@ -146,6 +162,8 @@ are reported as one sorted drift list, and the command exits non-zero.
 go test ./scripts/architecturemetrics
 make architecture-ratchet
 make architecture-size-budget BASE_REF=origin/main
+make turn-kernel-convergence-baseline
+make turn-kernel-convergence-exit-gate
 make book-check
 ```
 
@@ -164,5 +182,5 @@ report is written to `.tmp/architecture/metrics.json` and is not tracked.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `practice-architecture-ratchet` |
-| Status | `draft` |
-| Last verified | Not yet verified |
+| Status | `verified` |
+| Last verified | 2026-08-12 |

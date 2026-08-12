@@ -18,6 +18,8 @@ test_paths:
   - internal/runtime/app/eventhub/hub_test.go
   - internal/runtime/app/chatmerge/service_test.go
   - internal/runtime/app/persistence/runtime_test.go
+  - internal/runtime/app/turn_kernel_convergence_test.go
+  - internal/runtime/agent/turnkernel/convergence_baseline_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/operation_dispatch.go
@@ -30,8 +32,10 @@ source_of_truth:
   - internal/runtime/app/application.go
   - internal/runtime/app/chatmerge/service.go
   - internal/runtime/app/persistence/runtime.go
-status: draft
-last_verified: null
+  - internal/runtime/agent/turnkernel/coordinator.go
+  - internal/runtime/agent/turnkernel/terminal_envelope.go
+status: verified
+last_verified: 2026-08-12
 ---
 
 # Application Runtime and State Projection
@@ -73,8 +77,9 @@ flowchart TD
     S[SubmitWithKey] --> V[Validate and Canonicalize]
     V --> Q[Bounded Operation Queue]
     Q --> D[Dispatch Loop]
-    D --> E[Application Engine]
-    E --> M[Emit Event Data]
+    D --> E[Engine Adapter]
+    E --> K[Turn Coordinator / Domain Facts]
+    K --> M[Execute Effects and project Event Data]
     M --> N[Assign Sequence and Identity]
     N --> P[Persist and Publish]
     P --> X[Snapshot / Replay / Host Projection]
@@ -142,8 +147,10 @@ the authoritative Turn Kernel snapshot.
 
 `TerminalPublisher` is the sole owner of atomic terminal commit, deterministic
 outbox projection, and restart recovery. A terminal commit durably binds the
-frozen kernel state, Session Delta, Receipt, terminal Event, and real Operation
-receipt before projection.
+frozen Kernel state, ordered Domain Facts, Session Delta, final output,
+Receipt, terminal Event, real Operation receipt, and deterministic Outbox
+before projection. Durable startup projects pending Outbox entries first, then
+requeues accepted StartTurn Operations only when matching Domain Facts exist.
 
 `SessionService` owns lifecycle, Profile, and Tool Catalog behavior.
 `ArtifactService` owns Checkpoint, Plan, Turn recovery, and artifact
@@ -199,7 +206,9 @@ closed and dropped rather than blocking the single ordering path.
 forked history. `EngineAdapter` resolves workspace/editor context and converts
 internal Engine Events into protocol Events while recording a Receipt.
 
-The app layer does not parse Provider streams or authorize Tool Calls.
+The app layer does not parse Provider streams, authorize Tool Calls, or call
+`turnkernel.Reducer.Apply`. The Turn Coordinator owns that transition; Runtime
+owns admission, protocol projection, and terminal publication.
 
 ## Code Map
 
@@ -213,6 +222,7 @@ The app layer does not parse Provider streams or authorize Tool Calls.
 | Atomic terminal/outbox recovery | `terminal_publisher.go` |
 | Session and artifact services | `service_facade.go`, `session_artifacts.go` |
 | Engine adaptation | `application.go` |
+| Turn state-machine authority | `agent/turnkernel/coordinator.go` |
 | Pending state | `pendingwork.go` |
 | Thread ownership | `thread_manager.go` |
 | Receipt projection | `receipt.go` |
@@ -249,6 +259,8 @@ Run the complete package when changing queue, event, or recovery semantics:
 
 ```bash
 go test ./internal/runtime/app
+go test ./internal/runtime/agent/turnkernel \
+  -run 'Test(C0|C1|C2|C3|C4|C5|C6|Phase4R)'
 ```
 
 ## Hands-On Lab
@@ -276,5 +288,5 @@ subscriber catches up.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-app` |
-| Status | `draft` |
-| Last verified | Not yet verified |
+| Status | `verified` |
+| Last verified | 2026-08-12 |

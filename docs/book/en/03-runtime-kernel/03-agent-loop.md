@@ -10,14 +10,20 @@ prerequisites:
 code_paths:
   - internal/runtime/agent/engine
   - internal/runtime/agent/turnexec
+  - internal/runtime/agent/turnkernel
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/engine/scheduler_test.go
   - internal/runtime/agent/engine/verify_gate_test.go
+  - internal/runtime/agent/turnkernel/reducer_test.go
+  - internal/runtime/agent/turnkernel/effect_dispatcher_test.go
 source_of_truth:
-  - internal/runtime/agent/engine/engine.go
-status: draft
-last_verified: null
+  - internal/runtime/agent/engine/turn_handler.go
+  - internal/runtime/agent/engine/turn_kernel.go
+  - internal/runtime/agent/turnkernel/reducer.go
+  - internal/runtime/agent/turnkernel/coordinator.go
+status: verified
+last_verified: 2026-08-12
 ---
 
 # The Model and Tool Execution Loop
@@ -62,6 +68,12 @@ stateDiagram-v2
 Actual Events also cover compaction, input waiting, catalog changes, usage,
 diagnostics, and extension health.
 
+The diagram is a conceptual view. In code, `turnkernel.Reducer` is the only
+production owner of state transitions and repair/verification/terminal
+decisions. `TurnCoordinator` is the only production caller of `Reducer.Apply`;
+Engine handlers execute Effects and project progress, but Engine Events never
+feed Commands back into the Reducer.
+
 ## Sampling Boundary
 
 At Turn start the Engine freezes a `TurnSpec`: identity and request, Session
@@ -82,6 +94,12 @@ effects.
 Stream fragments are normalized into complete Tool Calls. Catalog identity is
 attached locally, calls are admitted by a scheduler, and execution goes through
 Guard. Parallel-safe calls may run concurrently; exclusive resources serialize.
+
+Provider, Tool, Approval, Input, Verification, and Journal work are explicit
+Kernel Effects. `DurableEffectDispatcher` records `EffectStarted` before
+external execution and retains the first Result Command until the Coordinator
+durably accepts it. On restore, a running Effect is first persisted as
+`EffectRequeued`, then dispatched from its durable payload and idempotency key.
 
 The Engine does not publish partial batch results as complete Tool messages.
 After the batch settles, Results are appended with matching Call IDs and the
@@ -104,13 +122,17 @@ moved on.
 Each model/Tool iteration has a provisional and committed side:
 
 ```text
-snapshot route/policy/catalog
+persist requested Effect in a Domain Fact
+  -> persist EffectStarted
+  -> snapshot route/policy/catalog
   -> assemble request
   -> stream provisional output and complete Tool Calls
-  -> validate/bind/schedule/execute calls
+  -> submit one retained Result Command
+  -> persist resulting state/Effects as ordered Domain Facts
+  -> validate/bind/schedule/execute Tool Effects
   -> append paired Assistant Call + Tool Result
   -> next sample or final verification
-  -> commit coherent Turn history only at successful boundary
+  -> atomically commit Terminal Envelope and Session Delta
 ```
 
 Live Events may be observable before history commits. Users need progress, but
@@ -155,6 +177,9 @@ roll back so a future Turn does not treat an incomplete Tool exchange as fact.
 | Turn scope and mailbox | `turnexec` |
 | Scope state and control | `turn_scope.go` |
 | Session delta | `session_delta.go` |
+| State, Commands, Events, and Effects | `turnkernel/state.go`, `turnkernel/command.go` |
+| Authoritative transitions | `turnkernel/reducer.go`, `turnkernel/coordinator.go` |
+| Durable Effect routing | `turnkernel/effect_dispatcher.go` |
 | Tool scheduler | `scheduler.go` |
 | Tool failure classes | `toolfailure.go` |
 | Verification | `verify.go` |
@@ -184,6 +209,7 @@ loop local and uses descriptor/resource scheduling.
 ```bash
 go test ./internal/runtime/agent/engine \
   -run 'Test(EngineExecutesToolAndFeedsResultOnce|ToolSchedulerSerialExcludesConcurrent|EngineBudgetAndFailedHistoryRollback|VerifyGateHardFailureFailsTurnAndRollsBack)'
+go test ./internal/runtime/agent/turnkernel
 ```
 
 ## Hands-On Lab
@@ -210,5 +236,5 @@ text. Confirm that Tool Call ID pairs the Assistant and Tool messages.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-agent-loop` |
-| Status | `draft` |
-| Last verified | Not yet verified |
+| Status | `verified` |
+| Last verified | 2026-08-12 |

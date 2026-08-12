@@ -12,15 +12,20 @@ code_paths:
   - internal/runtime/app
   - internal/runtime/agent/engine
   - internal/runtime/agent/turnexec
+  - internal/runtime/agent/turnkernel
 test_paths:
   - internal/runtime/protocol/message_test.go
   - internal/runtime/app/runtime_test.go
+  - internal/runtime/app/runtime_terminal_recovery_test.go
   - internal/runtime/agent/engine/engine_test.go
+  - internal/runtime/agent/turnkernel/coordinator_test.go
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
   - internal/runtime/protocol/message.go
-status: draft
-last_verified: null
+  - internal/runtime/agent/turnkernel/coordinator.go
+  - internal/runtime/agent/turnkernel/command.go
+status: verified
+last_verified: 2026-08-12
 ---
 
 # 一次 Agent Turn 的完整生命周期
@@ -75,6 +80,7 @@ sequenceDiagram
     participant R as app.Runtime
     participant A as EngineAdapter
     participant S as turnexec.Scope
+    participant K as TurnCoordinator
     participant E as agent.Engine
     participant M as Provider
     participant G as Tool Guard
@@ -82,9 +88,12 @@ sequenceDiagram
     R-->>H: turn.started
     R->>A: StartTurn
     A->>S: Factory.Open(TurnSpec)
+    S->>K: 打开或恢复 Domain Facts
     S->>E: 运行冻结 Scope
+    K->>E: Sample Provider Effect
     E->>M: Stream(ModelRequest)
     M-->>E: Text / Reasoning / Tool Call / Usage
+    E->>K: ModelSampleResultReceived
     alt Tool Call
         E->>G: ExecuteBound
         G-->>H: approval.required
@@ -130,8 +139,14 @@ Working Set 与 Evidence 仍从 Scope-local State 在 Tool Result 后重新渲�
 Engine 构建包含 Route、Message、Limit、Reasoning、Native Search 和 Tool Definition
 的 `provider.ModelRequest`。Provider Adapter 将不同厂商协议规范化为统一 Stream。
 
+调用 Provider 前，`DurableEffectDispatcher.Start` 先向 `TurnCoordinator` 提交
+`EffectStarted`；Coordinator 将对应 Domain Fact 持久化后才允许执行。完整 Sample
+以一个被保留的 `ModelSampleResultReceived` Command 返回。若 Result 的持久化接收
+失败，可以重交同一个 Command，而不会再次调用 Provider。
+
 Text、Reasoning、Citation、Usage 和 Tool Call 先成为 Engine Event，再转换为 Runtime
-Event；Host 不直接拥有 Provider Stream。
+Event；Host 不直接拥有 Provider Stream。Protocol Event 是面向 Host 的 Projection，
+有序 Domain Fact 才是 Turn 状态机的权威记录。
 
 ## 5. Tool 执行与继续
 
@@ -146,9 +161,10 @@ Sample，直到 Model 完成、Budget/Step Gate 停止、Verification 失败或 
 
 Changed Path 可以触发 Diagnostics 和 Verify Check。Hard Failure 可使 Turn 失败并回滚
 Journaled Edit。Scope 为 History、Usage、Cost、Working Set、Evidence、Failures 与
-Compaction 准备带 Revision/Digest 的 `SessionDelta`。Runtime 将它与 Terminal
-Envelope 原子提交；Engine 只在 Durable Commit 成功后幂等 Apply。Runtime 确保一个
-Turn 只有一个 Terminal Event。
+Compaction 准备带 Revision/Digest 的 `SessionDelta`。Runtime 将它与冻结 Kernel
+State、有序 Domain Facts、Final Output、Receipt、真实 Operation Receipt、Terminal
+Event 和确定性 Projection Outbox 一起写入 Terminal Envelope。Engine 只在 Durable
+Commit 成功后幂等 Apply。Runtime 确保一个 Turn 只有一个 Terminal Event。
 
 ## Control Operation
 
@@ -171,9 +187,11 @@ Overflow、Late、Duplicate、Kind Mismatch 都返回结构化错误。
 | Queue/Cursor/Terminal | `internal/runtime/app/runtime.go` |
 | Engine Adapter | `internal/runtime/app/application.go` |
 | Turn Lifecycle/Control | `internal/runtime/agent/turnexec` |
+| 权威 Reducer、Coordinator 与 Effect | `internal/runtime/agent/turnkernel` |
 | Model/Tool Executor | `internal/runtime/agent/engine` |
 | Receipt | `internal/runtime/app/receipt.go` |
-| Durable Restart | `internal/runtime/app/wire/persistent.go` |
+| Durable Runtime Assembly | `internal/runtime/app/persistence/runtime.go` |
+| Turn Domain Fact 与 Lease | `internal/persist/state/turnstate` |
 
 ## 设计取舍与替代方案
 
@@ -200,6 +218,8 @@ go test ./internal/runtime/app \
   -run 'TestRuntime(ConcurrentSubmitHasStrictSequenceAndUniqueTerminal|CancelActuallyCancelsActiveTurn|ToolAndApprovalGetOwnedItemIDs)'
 go test ./internal/runtime/agent/engine \
   -run 'Test(EngineExecutesToolAndFeedsResultOnce|VerifyGateHardFailureFailsTurnAndRollsBack)'
+go test ./internal/runtime/agent/turnkernel \
+  -run 'Test(TurnCoordinator|DurableEffectDispatcher|Phase4R)'
 ```
 
 ## 动手实验
@@ -236,5 +256,5 @@ Tool Branch。修改 Prompt 前先阅读 `testdata/providers/openai/fixture.json
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `overview-turn-lifecycle` |
-| 状态 | `draft` |
-| 最后验证 | 尚未验证 |
+| 状态 | `verified` |
+| 最后验证 | 2026-08-12 |

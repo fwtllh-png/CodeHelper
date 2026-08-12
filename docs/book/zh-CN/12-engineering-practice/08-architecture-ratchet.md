@@ -10,16 +10,19 @@ prerequisites:
 code_paths:
   - scripts/architecturemetrics
   - scripts/architecturesize
+  - internal/runtime/agent/turnkernel
   - Makefile
 test_paths:
   - scripts/architecturemetrics/main_test.go
   - scripts/architecturesize/main_test.go
+  - internal/runtime/agent/turnkernel/convergence_baseline_test.go
+  - internal/runtime/app/turn_kernel_convergence_test.go
 source_of_truth:
   - docs/architecture-metrics-baseline.json
   - docs/hotspot-baseline.json
   - Makefile
-status: draft
-last_verified: null
+status: verified
+last_verified: 2026-08-12
 ---
 
 # 架构度量与回归棘轮
@@ -65,11 +68,20 @@ Switch 站点。
 architecture-ratchet`（测量并执行）；Ratchet 已加入 `make verify` 和
 `architecture-freeze`。
 
-`make architecture-size-budget BASE_REF=origin/main` 独立比较完整 Ownership Closure
-与 Git Base。它排除 Test、Docs、Fixture、Generated Source 与 Build Output，并报告
-Base、Head、Added、Deleted、Net Production Lines。Stage D 合入时消费了显式批准的
-`+847` Relaxation，随后默认值恢复为零；后续新增第 `+1` 行就会失败，除非再次记录
-明确决策。
+当前 Baseline 包含 43 个 Target：19 个 Package、23 个 File 和 1 个 Repository-wide
+Event Dispatch Target。该数量只是当前快照，不是固定常量；Committed JSON 始终是
+事实来源。
+
+`make architecture-size-budget BASE_REF=origin/main` 独立比较配置中的 Runtime
+Ownership Closure 与 Git Base。它排除 Test、Docs、Fixture、Generated Source 与
+Build Output，并报告 Base、Head、Added、Deleted、Net Production Lines。默认净增长
+预算为零，因此新增生产代码必须由删除抵消，或通过显式审阅的 Invocation 放宽。
+
+Turn State Ownership 还有语义门禁。`turn-kernel-convergence-baseline` 检查 C0-C6 与
+Phase 4R Ownership：只有 Coordinator 调用 `Reducer.Apply`，External Work 使用
+Durable Effect，Terminal Commit 保持原子，Restart 使用 Domain Facts，旧 Reverse-drive
+路径持续不存在。`turn-kernel-convergence-exit-gate` 通过
+`CODEHELPER_TURN_KERNEL_CONVERGENCE_EXIT_GATE=1` 开启最终生产 Ownership 断言。
 
 ## 指标
 
@@ -118,6 +130,7 @@ Headroom 汇总为排序后的漂移列表，命令以非零退出码结束。
 | Make 目标 | `Makefile` | `architecture-metrics`、`architecture-ratchet`、`architecture-freeze` |
 | 测试 | `scripts/architecturemetrics/main_test.go` | Baseline 校验、漂移、Headroom 与 Ratchet 用例 |
 | Ownership Size Budget | `scripts/architecturesize` | Base/Head Production LOC 与精确 Relaxation |
+| Turn Kernel Ownership | `turnkernel/convergence_baseline_test.go` | C0-C6 与 Phase 4R 语义 Ownership |
 
 ## 失败模式与安全边界
 
@@ -132,6 +145,8 @@ Headroom 汇总为排序后的漂移列表，命令以非零退出码结束。
 go test ./scripts/architecturemetrics
 make architecture-ratchet
 make architecture-size-budget BASE_REF=origin/main
+make turn-kernel-convergence-baseline
+make turn-kernel-convergence-exit-gate
 make book-check
 ```
 
@@ -150,5 +165,5 @@ Ratchet 不需要网络，也不需要真实 Provider，属于 Hermetic。测量
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `practice-architecture-ratchet` |
-| 状态 | `draft` |
-| 最后验证 | 尚未验证 |
+| 状态 | `verified` |
+| 最后验证 | 2026-08-12 |

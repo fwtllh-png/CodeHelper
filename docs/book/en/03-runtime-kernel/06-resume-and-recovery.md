@@ -11,6 +11,7 @@ prerequisites:
 code_paths:
   - internal/runtime/app
   - internal/runtime/app/wire
+  - internal/runtime/agent/turnkernel
   - internal/persist/snapshot
   - internal/persist/workspacejournal
   - internal/persist/state/turnstate
@@ -19,6 +20,9 @@ test_paths:
   - internal/runtime/app/session_artifacts_test.go
   - internal/runtime/app/runtime_terminal_recovery_test.go
   - internal/runtime/app/wire/persistent_test.go
+  - internal/runtime/agent/turnkernel/runtime_test.go
+  - internal/runtime/agent/turnkernel/effect_dispatcher_test.go
+  - internal/persist/state/turnstate/store_test.go
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
   - internal/runtime/app/lifecycle.go
@@ -27,8 +31,11 @@ source_of_truth:
   - internal/runtime/app/terminal_publisher.go
   - internal/runtime/app/runtime_start.go
   - internal/runtime/app/persistence/runtime.go
-status: draft
-last_verified: null
+  - internal/runtime/app/wire/turn_coordinator.go
+  - internal/runtime/agent/turnkernel/coordinator.go
+  - internal/runtime/agent/turnkernel/terminal_envelope.go
+status: verified
+last_verified: 2026-08-12
 ---
 
 # Resume, Recovery, and Idempotency
@@ -56,22 +63,23 @@ or Tool work and duplicate side effects.
 
 ```mermaid
 flowchart TD
-    B[Persistent Bootstrap] --> L[Load Lifecycle and Events]
-    L --> R[Reconstruct Threads and Pending Work]
-    R --> J[Recover Workspace Journal]
-    J --> C{Previous owner live?}
-    C -->|yes| K[Keep lease/state]
-    C -->|no| F[Fail or requeue by contract]
-    F --> A[Accept New Operations]
-    K --> A
+    B[Prepared Persistent Runtime] --> O[Project pending Terminal Outbox]
+    O --> L[Load lifecycle, pending Operations, and Domain Facts]
+    L --> C{Matching facts and claimable lease?}
+    C -->|no facts| I[Keep accepted work pending]
+    C -->|foreign live lease| K[Do not steal ownership]
+    C -->|yes| R[Restore Coordinator state]
+    R --> Q[Requeue running Effects]
+    Q --> D[Dispatch pending Effects from durable payload]
+    D --> A[Continue the original accepted Turn]
 ```
 
-Persistent bootstraps use `NewRuntimeWithRecovery`, which calls the durable
-Lifecycle before opening acceptance. `TerminalPublisher` replays pending
-terminal outbox projections during startup activation (`runtime_start.go`)
-before the Runtime opens acceptance. Outbox entries are published through the
-Event Hub with deterministic Event IDs (`PublishStable`), so restart replay is
-idempotent even when a projection was partially applied before the crash.
+Persistent assembly prepares the Runtime with recovered lifecycle state, then
+`Runtime.Start` activates it. `TerminalPublisher` first publishes pending
+terminal Outbox entries through the Event Hub with deterministic Event IDs
+(`PublishStable`). The Runtime loop then starts and `recoverPendingTurns`
+requeues only accepted `turn.start` Operations that have matching Domain Facts.
+An accepted Operation without facts is not sampled merely because it exists.
 
 ## Resume
 
@@ -89,6 +97,9 @@ Recovery restores:
 
 - accepted and committed Operation records;
 - active/pending Turn, Approval, and Input ownership;
+- ordered, digested Turn Domain Facts and frozen Kernel state;
+- requested/running Provider, Tool, Approval, Input, Verification, and Journal
+  Effects with payload digests and idempotency keys;
 - pending terminal outbox projections and Item identity;
 - last Event cursor;
 - thread history and snapshots;
@@ -105,9 +116,16 @@ durable delta for each Thread from `persist/state/turnstate`, so Usage, Cost,
 Working Set, Evidence, Failures, and Compaction counters survive a crash
 alongside committed History.
 
-Interrupted executable background work may be requeued; records without an
-executor fail because no honest implementation can run them. Live leases owned
-by another worker are not stolen.
+`durableCoordinatorRuntime` claims expired active-Turn leases, restores each
+Coordinator from strictly ordered Domain Facts, and renews ownership while it
+is active. Restore converts every `EffectRunning` entry to
+`EffectRequested` through a persisted `EffectRequeued` command, then routes all
+pending Effects from their durable payloads. The Engine resumes the original
+Turn and primes the original Approval/Input request IDs before waiting again.
+
+This is conditional continuation, not blind Operation replay. Missing facts,
+invalid sequence/digest, unavailable Effect routes, lease conflict, or
+incomplete payload fail closed. A live foreign lease is never stolen.
 
 ## The Four Different "Re" Operations
 
@@ -150,9 +168,11 @@ Profile equivalence, and lineage.
 | Crash window | Durable evidence | Safe startup action |
 | --- | --- | --- |
 | before acceptance | none | caller may submit normally |
-| accepted, before dispatch | acceptance record | restore pending; do not blindly sample |
-| Turn started, before effect | Events/active record | mark interrupted unless explicit resume contract |
-| Tool proposed, no Result | incomplete pair | exclude from model history |
+| accepted, before first Domain Fact | acceptance record only | keep pending; do not sample |
+| Domain Fact persisted, Effect requested | state and Effect payload | claim lease and dispatch Effect |
+| Effect marked running, no Result Fact | `EffectStarted` and idempotency key | persist `EffectRequeued`, then resume route |
+| Result produced, Fact append failed | retained Result Command | resubmit the same Result; do not rerun Effect |
+| Tool proposed, no Result | open Call and pending Tool Effect | restore Effect; exclude incomplete pair from committed history |
 | file write journaled, not committed | before-image/owner | restore when owner is dead |
 | committed file Turn | commit/settlement | keep write |
 | remote effect outcome unknown | insufficient proof | reconcile; never claim revert |
@@ -189,9 +209,12 @@ arbitrary shell command idempotent.
 | Concern | Source |
 | --- | --- |
 | Durable lifecycle contract | `runtime/app/lifecycle.go` |
-| Runtime restore | `runtime/app/runtime.go` |
+| Startup activation and pending Turn dispatch | `runtime/app/runtime_start.go`, `runtime/app/runtime.go` |
 | History reconstruction | `runtime/app/reconstruct.go` |
-| Persistent construction | `runtime/app/wire/persistent.go` |
+| Persistent assembly | `runtime/app/persistence/runtime.go` |
+| Turn lease and Coordinator runtime | `runtime/app/wire/turn_coordinator.go` |
+| Coordinator restore and Effect requeue | `runtime/agent/turnkernel/coordinator.go` |
+| Durable Effect result retention | `runtime/agent/turnkernel/effect_dispatcher.go` |
 | Session snapshots | `persist/session`, `persist/snapshot` |
 | Checkpoint/Plan/Turn recovery | `runtime/app/session_artifacts.go` |
 | Thread session state restore | `runtime/app/thread_manager.go` |
@@ -200,9 +223,11 @@ arbitrary shell command idempotent.
 
 ## Tradeoffs and Alternatives
 
-Replaying every accepted Operation after restart appears complete but can
-repeat Provider charges and effects. CodeHelper restores pending facts without
-replaying Engine work unless an explicit durable executor contract permits it.
+Replaying every accepted Operation after restart would repeat Provider charges
+and effects. CodeHelper continues only Turns with valid Domain Facts, claimable
+leases, and supported durable Effect routes. The Coordinator restores state;
+the retained Result protocol and per-Effect idempotency identity prevent a
+failed state append from becoming an automatic second external execution.
 
 Event sourcing alone can reconstruct logical state but not restore a
 half-written file. The Journal complements Events with effect-specific
@@ -223,8 +248,11 @@ before-images.
 
 ```bash
 go test ./internal/runtime/app -run TestReconstructThread
-go test ./internal/runtime/app -run 'Test(SessionCheckpoint|Restore|Fork|RecoverTurn|Plan)'
+go test ./internal/runtime/app \
+  -run 'Test(C5|C6|Phase4R|SessionCheckpoint|Restore|Fork|RecoverTurn|Plan)'
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
+go test ./internal/runtime/agent/turnkernel
+go test ./internal/persist/state/turnstate
 go test ./internal/persist/workspacejournal -run 'Test(TheNextProcessUndoesATurnAKilledProcessLeftHalfApplied|RecoveryKeepsTheWritesOfATurnThatAlreadyCommitted)'
 ```
 
@@ -241,7 +269,7 @@ recovery, lease recovery, or effect recovery.
 
 ## Review Questions
 
-1. Why must restart not automatically replay accepted Engine work?
+1. Why does an accepted Operation without Domain Facts remain pending?
 2. What can Event history reconstruct that a Workspace Journal cannot, and vice
    versa?
 3. Why is idempotency always boundary-specific?
@@ -249,6 +277,8 @@ recovery, lease recovery, or effect recovery.
 5. What should happen when a remote effect has an unknown outcome?
 6. Why can a Checkpoint restore history but not replay its Events?
 7. How does Continue differ from resuming an interrupted process?
+8. Why is `EffectRequeued` persisted before a running Effect is dispatched
+   after restart?
 
 ## Further Reading
 
@@ -260,5 +290,5 @@ recovery, lease recovery, or effect recovery.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `runtime-resume-recovery` |
-| Status | `draft` |
-| Last verified | Not yet verified |
+| Status | `verified` |
+| Last verified | 2026-08-12 |

@@ -10,14 +10,20 @@ prerequisites:
 code_paths:
   - internal/runtime/agent/engine
   - internal/runtime/agent/turnexec
+  - internal/runtime/agent/turnkernel
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/engine/scheduler_test.go
   - internal/runtime/agent/engine/verify_gate_test.go
+  - internal/runtime/agent/turnkernel/reducer_test.go
+  - internal/runtime/agent/turnkernel/effect_dispatcher_test.go
 source_of_truth:
-  - internal/runtime/agent/engine/engine.go
-status: draft
-last_verified: null
+  - internal/runtime/agent/engine/turn_handler.go
+  - internal/runtime/agent/engine/turn_kernel.go
+  - internal/runtime/agent/turnkernel/reducer.go
+  - internal/runtime/agent/turnkernel/coordinator.go
+status: verified
+last_verified: 2026-08-12
 ---
 
 # 模型与工具执行循环
@@ -57,6 +63,11 @@ stateDiagram-v2
     CallingModel --> Canceled
 ```
 
+上图是概念视图。代码中 `turnkernel.Reducer` 是状态转换以及 Repair、Verification、
+Terminal Decision 的唯一生产 Owner；`TurnCoordinator` 是 `Reducer.Apply` 的唯一
+生产调用方。Engine Handler 只执行 Effect 并投影 Progress，Engine Event 不会反向
+生成 Command 驱动 Reducer。
+
 ## Sampling Boundary
 
 Turn 开始时 Engine 冻结 `TurnSpec`：Identity 与 Request、Session Profile、Route、
@@ -73,6 +84,11 @@ Catalog Budget 允许的 Tool Definition。
 
 Stream Fragment 被组装为完整 Tool Call，并绑定 Local Catalog Identity。Scheduler
 根据 Descriptor/Resource 决定 Parallel 或 Serial，执行统一经过 Guard。
+
+Provider、Tool、Approval、Input、Verification 和 Journal 工作都表示为显式 Kernel
+Effect。`DurableEffectDispatcher` 在外部执行前记录 `EffectStarted`，并保留首个
+Result Command，直到 Coordinator Durable Accept。恢复时，Running Effect 先持久化为
+`EffectRequeued`，再依据 Durable Payload 与 Idempotency Key 重新 Dispatch。
 
 Batch 完成前不会把 Partial Result 作为完整 Tool Message 发布。Batch Settled 后，
 Result 使用相同 Call ID 写入 History，下一 Sample 获得完整因果关系。
@@ -91,13 +107,17 @@ Resolution，防止 Stale Host Reply 干扰已前进的 Turn。
 每轮 Model/Tool Iteration 都有 Provisional 与 Committed 两侧：
 
 ```text
-snapshot route/policy/catalog
+persist requested Effect in a Domain Fact
+  -> persist EffectStarted
+  -> snapshot route/policy/catalog
   -> assemble request
   -> stream provisional output / complete tool calls
-  -> validate/bind/schedule/execute
+  -> submit one retained Result Command
+  -> persist resulting state/Effects as ordered Domain Facts
+  -> validate/bind/schedule/execute Tool Effects
   -> append paired assistant call + tool result
   -> next sample / final verification
-  -> commit coherent turn history at successful boundary
+  -> atomically commit Terminal Envelope and Session Delta
 ```
 
 History Commit 前 Live Event 已可观察，这是有意设计：用户需要 Progress，但未来 Model
@@ -140,6 +160,9 @@ Turn 把不完整 Tool Exchange 当成事实。
 | Turn Scope/Mailbox | `turnexec` |
 | Scope State/Control | `turn_scope.go` |
 | Session Delta | `session_delta.go` |
+| State、Command、Event 与 Effect | `turnkernel/state.go`、`turnkernel/command.go` |
+| 权威状态转换 | `turnkernel/reducer.go`、`turnkernel/coordinator.go` |
+| Durable Effect Routing | `turnkernel/effect_dispatcher.go` |
 | Scheduler | `scheduler.go` |
 | Failure Class | `toolfailure.go` |
 | Verification | `verify.go` |
@@ -168,6 +191,7 @@ Descriptor/Resource Scheduling。
 ```bash
 go test ./internal/runtime/agent/engine \
   -run 'Test(EngineExecutesToolAndFeedsResultOnce|ToolSchedulerSerialExcludesConcurrent|EngineBudgetAndFailedHistoryRollback|VerifyGateHardFailureFailsTurnAndRollsBack)'
+go test ./internal/runtime/agent/turnkernel
 ```
 
 ## 动手实验
@@ -194,5 +218,5 @@ Message。
 | 项目 | 值 |
 | --- | --- |
 | Catalog ID | `runtime-agent-loop` |
-| 状态 | `draft` |
-| 最后验证 | 尚未验证 |
+| 状态 | `verified` |
+| 最后验证 | 2026-08-12 |

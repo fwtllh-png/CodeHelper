@@ -10,14 +10,20 @@ prerequisites:
 code_paths:
   - internal/persist
   - internal/runtime/app
+  - internal/runtime/agent/turnkernel
 test_paths:
   - internal/runtime/app/wire/persistent_test.go
+  - internal/runtime/app/runtime_terminal_recovery_test.go
+  - internal/runtime/agent/turnkernel/runtime_test.go
   - internal/persist/state/store_test.go
+  - internal/persist/state/turnstate/store_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
+  - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/agent/turnkernel/terminal_envelope.go
   - internal/persist/state/store.go
-status: draft
-last_verified: null
+status: verified
+last_verified: 2026-08-12
 ---
 
 # Why Durable State Is Required
@@ -54,12 +60,18 @@ flowchart LR
 - CAS stores large immutable payloads by verified content identity.
 - Workspace Journal records before-images for safe rollback.
 - Leases distinguish live ownership from abandoned work.
+- Domain Facts record every accepted Kernel transition with a state digest.
+- Effects carry durable payload, lifecycle, attempt, and idempotency identity.
+- A Terminal Envelope atomically seals final Kernel state, Domain Facts,
+  Session Delta, Receipt, Operation commit, and projection Outbox.
 
 ## Authority and Lifetime Matrix
 
 | Record | Authority | Lifetime/use |
 | --- | --- | --- |
 | accepted Operation | request identity/idempotency evidence | admission and duplicate detection |
+| Turn Domain Fact | authoritative reducer transition and state digest | restart and invariant audit |
+| pending Effect | executable intent plus payload/idempotency identity | conditional continuation |
 | Event sequence | canonical lifecycle fact | replay, Host stream, audit |
 | SQLite projection | derived query view | listing, filtering, aggregation |
 | Snapshot | integrity-checked checkpoint | reconstruction acceleration |
@@ -78,18 +90,22 @@ submit -> durable acceptance/reservation -> engine work
        -> durable events/projections -> commit receipt -> terminal event
 ```
 
-Each boundary has a different crash meaning. Recovery may resume bookkeeping or
-mark interrupted work, but it must not rerun an Agent merely because the caller
-did not receive the terminal response.
+Each boundary has a different crash meaning. Missing client acknowledgement
+never authorizes execution. A pending Turn continues only when it has valid
+Domain Facts, a claimable lease, and a supported durable Effect route. A
+running Effect is persisted as requeued before dispatch, while a retained
+Result Command is resubmitted without repeating its external execution.
 
 Durability is not “serialize every object.” Ephemeral subscribers, open network
 streams, mutexes, and process handles are reconstructed or declared lost.
 
 ## Correctness Properties
 
-Durable writes need atomicity, ordering, integrity checks, idempotent projection,
-and explicit handling of indeterminate outcomes. Recovery must not execute the
-same Agent Turn merely because its result was not observed.
+Durable writes need atomicity, ordering, integrity checks, idempotent
+projection, renewable ownership leases, and explicit handling of indeterminate
+outcomes. Recovery distinguishes “requested but not started,” “started with no
+accepted Result,” and “Result retained after state-append failure”; those
+states do not share one retry rule.
 
 ## Tradeoffs
 
@@ -110,12 +126,15 @@ typed projections, integrity-checked snapshots, and side-effect journals.
 ```bash
 go test ./internal/persist/state/...
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
+go test ./internal/runtime/app -run 'Test(C5|C6|Phase4R)'
+go test ./internal/runtime/agent/turnkernel
 ```
 
 ## Hands-On Lab
 
-Read `TestPersistentRuntimeRestartIsIdempotentAndKeepsOneTerminal`; identify
-which durable records prevent the restarted process from running the Turn twice.
+Read `TestC5RuntimeDispatchesAcceptedTurnWithDomainFacts` and the Phase 4R
+restart tests. Identify which facts authorize continuation, when an Effect is
+requeued, and which identity keeps terminal projection idempotent.
 
 ## Review Questions
 
@@ -134,5 +153,5 @@ which durable records prevent the restarted process from running the Turn twice.
 | Item | Value |
 | --- | --- |
 | Catalog ID | `state-why-durable` |
-| Status | `draft` |
-| Last verified | Not yet verified |
+| Status | `verified` |
+| Last verified | 2026-08-12 |
