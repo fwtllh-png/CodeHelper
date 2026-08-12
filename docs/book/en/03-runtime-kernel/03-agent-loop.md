@@ -9,6 +9,7 @@ prerequisites:
   - runtime-app
 code_paths:
   - internal/runtime/agent/engine
+  - internal/runtime/agent/turnexec
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/engine/scheduler_test.go
@@ -63,11 +64,14 @@ diagnostics, and extension health.
 
 ## Sampling Boundary
 
-At Turn start the Engine snapshots security policy and route intent. Before a
-sample it assembles stable history plus volatile Turn context and captures a
-Tool Catalog snapshot. `ModelRequest` includes route, messages, limits,
-reasoning options, and only the Tool Definitions admitted by the catalog
-budget.
+At Turn start the Engine freezes a `TurnSpec`: identity and request, Session
+Profile, route, policy, limits, prompt prefix, Tool Catalog, skills, MCP
+health, and extension snapshots. The frozen spec opens a `turnexec.Scope`
+that owns the Turn-local Kernel, trace, diagnostics, verification, Tool spend,
+diff, and control state. Before a sample the Engine assembles stable history
+plus volatile Turn context from Scope-local state; `ModelRequest` includes
+route, messages, limits, reasoning options, and only the Tool Definitions
+admitted by the catalog budget.
 
 Meaningful Stream data prevents unsafe automatic retry: once output or a Tool
 Call may have influenced state, replaying the Provider request could duplicate
@@ -86,6 +90,14 @@ next sample sees the complete causal history.
 Recoverable Tool failures are classified and fed back to the model. Security,
 budget, cancellation, and invariant failures terminate instead of inviting the
 model to work around them.
+
+## Turn Control
+
+Cancel, Steer, Approval, and Input requests enter through the Scope's
+`ControlPort` and are serialized through a bounded mailbox. A Request Ledger
+rejects resolutions that arrive late, duplicate an earlier one, or target the
+wrong kind of wait, so a stale Host reply cannot steer a Turn that already
+moved on.
 
 ## One Iteration as a Transaction
 
@@ -114,7 +126,7 @@ reconciliation.
 
 | Scope | Examples |
 | --- | --- |
-| Turn | security snapshot, route intent, Workspace gate, budgets, trace |
+| Turn | frozen `TurnSpec`, Scope-owned Kernel/trace/diagnostics/verification/Tool spend/control, Workspace gate, budgets |
 | Sample | volatile context, Tool definitions, Provider request, Usage ordinal |
 | Call | Catalog binding, arguments, resource claims, approval, Result |
 | Thread | committed history, working set, evidence, compaction windows |
@@ -140,6 +152,9 @@ roll back so a future Turn does not treat an incomplete Tool exchange as fact.
 | Concern | Source |
 | --- | --- |
 | Loop and sampling | `engine.go` |
+| Turn scope and mailbox | `turnexec` |
+| Scope state and control | `turn_scope.go` |
+| Session delta | `session_delta.go` |
 | Tool scheduler | `scheduler.go` |
 | Tool failure classes | `toolfailure.go` |
 | Verification | `verify.go` |

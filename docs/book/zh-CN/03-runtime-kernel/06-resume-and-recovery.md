@@ -13,6 +13,7 @@ code_paths:
   - internal/runtime/app/wire
   - internal/persist/snapshot
   - internal/persist/workspacejournal
+  - internal/persist/state/turnstate
 test_paths:
   - internal/runtime/app/reconstruct_test.go
   - internal/runtime/app/session_artifacts_test.go
@@ -21,6 +22,7 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/lifecycle.go
   - internal/runtime/app/reconstruct.go
+  - internal/runtime/app/thread_manager.go
   - internal/runtime/app/wire/persistent.go
 status: draft
 last_verified: null
@@ -74,7 +76,16 @@ History 只保留 Completed 且 Tool Pair 完整的 Exchange；Failed/Incomplete
 ## Recovery
 
 Recovery 恢复 Accepted/Committed Operation、Pending Turn/Approval/Input、
-Terminal/Item Map、Last Cursor、Thread History/Snapshot 和 Workspace Journal。
+Terminal/Item Map、Last Cursor、Thread History/Snapshot 与 Workspace Journal，
+以及每个 Thread 最新 Durable SessionDelta（随 Turn 的 Terminal Envelope 提交，
+含 History、Usage、Cost、Working Set、Evidence、Failures、Compaction 与
+Revision/Digest）。
+
+Turn 状态以 `SessionDelta` 随 Terminal Envelope 原子提交。Engine 在执行期间
+Stage Delta，并且只在 Envelope Durable Commit 后应用一次；Commit 失败时
+Session Memory 保持不变。重启后 `ThreadManager` 从 `persist/state/turnstate`
+恢复每个 Thread 的最新 Delta，使 Usage、Cost、Working Set、Evidence、Failures
+与 Compaction 计数和 Committed History 一起跨 Crash 存活。
 
 Interrupted Executable Work 可以按契约 Requeue；没有 Executor 的 Record 只能失败。
 其他 Worker 的 Live Lease 不会被抢占。
@@ -156,6 +167,8 @@ Idempotency 只在局部边界成立；一个 Key 不能使任意 Shell Command 
 | Persistent Builder | `runtime/app/wire/persistent.go` |
 | Session/Snapshot | `persist/session`、`persist/snapshot` |
 | Checkpoint/Plan/Turn Recovery | `runtime/app/session_artifacts.go` |
+| Thread Session State Restore | `runtime/app/thread_manager.go` |
+| Terminal Turn State Store | `persist/state/turnstate` |
 | Workspace Recovery | `persist/workspacejournal` |
 
 ## 设计取舍与替代方案

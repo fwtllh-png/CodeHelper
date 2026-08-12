@@ -11,6 +11,7 @@ code_paths:
   - internal/runtime/protocol
   - internal/runtime/app
   - internal/runtime/agent/engine
+  - internal/runtime/agent/turnexec
 test_paths:
   - internal/runtime/protocol/message_test.go
   - internal/runtime/app/runtime_test.go
@@ -77,6 +78,7 @@ sequenceDiagram
     participant H as Host
     participant R as app.Runtime
     participant A as EngineAdapter
+    participant S as turnexec.Scope
     participant E as agent.Engine
     participant M as Provider
     participant G as Tool Guard
@@ -84,8 +86,8 @@ sequenceDiagram
     H->>R: Submit(turn.start)
     R-->>H: ordered turn.started Event
     R->>A: StartTurn
-    A->>E: RunForTurn
-    E->>E: assemble context and snapshot policy/catalog
+    A->>S: Factory.Open(TurnSpec)
+    S->>E: Run frozen Scope
     E->>M: Stream(ModelRequest)
     M-->>E: text / reasoning / Tool Call / usage
     alt Tool Call
@@ -129,9 +131,11 @@ subscriber buffers prevent one caller from consuming unbounded memory.
 context against runtime paths. It separates the display prompt from
 model-visible expanded context and begins a Receipt recorder.
 
-The Agent Engine snapshots Turn-scoped policy, route, and catalog state.
-Dynamic context such as repository map, working set, and evidence is rendered
-at sampling time so it can evolve after Tool Results.
+The Agent Engine freezes identity, request, Session Profile, route, policy,
+limits, prompt prefix, Tool Catalog, skills, MCP health, and extensions in one
+`TurnSpec`. `turnexec.Factory` opens a typed Scope; sampling cannot re-read
+those mutable sources. Repository map, working set, and evidence still render
+from the Scope-local state after Tool Results.
 
 ## Step 4: Sample and Stream
 
@@ -163,8 +167,10 @@ Changed paths can trigger diagnostics and configured Verify checks. A hard
 failure can fail the Turn and roll back journaled edits. The Receipt captures
 what was read, changed, approved, verified, spent, and timed.
 
-The Runtime enforces one terminal Event per Turn. Cancellation is represented
-as a terminal fact, not as missing output.
+Scope prepares a revisioned and digested `SessionDelta` for History, Usage,
+Cost, Working Set, Evidence, Failures, and Compaction. Runtime commits it with
+the Terminal Envelope; Engine applies it exactly once only after durable
+commit. The Runtime enforces one terminal Event per Turn.
 
 ## Control Operations
 
@@ -177,6 +183,9 @@ as a terminal fact, not as missing output.
 - `turn.revert` reverts eligible workspace effects.
 
 Each is an Operation with explicit rejection and Event semantics.
+Cancel and steer enter a bounded Scope mailbox. Approval and Input resolutions
+must match one unresolved Request ID; overflow, late, duplicate, and wrong-kind
+commands fail with structured errors.
 
 ## Code Map
 
@@ -185,7 +194,8 @@ Each is an Operation with explicit rejection and Event semantics.
 | Operation/Event types | `internal/runtime/protocol/message.go` |
 | Queue, cursor, terminal state | `internal/runtime/app/runtime.go` |
 | Protocol-to-Engine adaptation | `internal/runtime/app/application.go` |
-| Model/tool loop | `internal/runtime/agent/engine/engine.go` |
+| Turn lifecycle and control | `internal/runtime/agent/turnexec` |
+| Model/tool executor | `internal/runtime/agent/engine` |
 | Receipt projection | `internal/runtime/app/receipt.go` |
 | Durable restart | `internal/runtime/app/wire/persistent.go` |
 

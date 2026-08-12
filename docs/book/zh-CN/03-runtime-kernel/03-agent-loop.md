@@ -9,6 +9,7 @@ prerequisites:
   - runtime-app
 code_paths:
   - internal/runtime/agent/engine
+  - internal/runtime/agent/turnexec
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/engine/scheduler_test.go
@@ -58,9 +59,12 @@ stateDiagram-v2
 
 ## Sampling Boundary
 
-Turn 开始时 Engine 快照 Security Policy 与 Route Intent。Sample 前组装 Stable History
-和 Volatile Context，并取得 Tool Catalog Snapshot。`ModelRequest` 只包含 Catalog
-Budget 允许的 Tool Definition。
+Turn 开始时 Engine 冻结 `TurnSpec`：Identity 与 Request、Session Profile、Route、
+Policy、Limits、Prompt Prefix、Tool Catalog、Skills、MCP Health 与 Extension
+Snapshot。冻结的 Spec 打开 `turnexec.Scope`，由它持有 Turn 局部的 Kernel、Trace、
+Diagnostics、Verification、Tool Spend、Diff 与 Control 状态。Sample 前从
+Scope-local 状态组装 Stable History 与 Volatile Context；`ModelRequest` 只包含
+Catalog Budget 允许的 Tool Definition。
 
 出现 Meaningful Stream Data 后不再盲目 Retry Provider，因为 Output/Tool Call 可能
 已经影响外部状态。
@@ -75,6 +79,12 @@ Result 使用相同 Call ID 写入 History，下一 Sample 获得完整因果关
 
 Recoverable Tool Failure 可以分类后反馈给模型；Security、Budget、Cancellation 与
 Invariant Failure 必须终止，不能邀请模型绕过。
+
+## Turn Control
+
+Cancel、Steer、Approval 与 Input 请求都通过 Scope 的 `ControlPort` 进入，并由
+有界 Mailbox 串行化。Request Ledger 会拒绝迟到、重复或针对错误等待类型的
+Resolution，防止 Stale Host Reply 干扰已前进的 Turn。
 
 ## 将一次 Iteration 视为 Transaction
 
@@ -101,7 +111,7 @@ Remote Effect 需要自己的 Idempotency/Reconciliation。
 
 | Scope | 示例 |
 | --- | --- |
-| Turn | Security Snapshot、Route Intent、Workspace Gate、Budget、Trace |
+| Turn | 冻结的 TurnSpec、Scope 持有的 Kernel/Trace/Diagnostics/Verification/Tool Spend/Control、Workspace Gate、Budget |
 | Sample | Volatile Context、Tool Definition、Provider Request、Usage Ordinal |
 | Call | Catalog Binding、Argument、Resource Claim、Approval、Result |
 | Thread | Committed History、Working Set、Evidence、Compaction Window |
@@ -127,6 +137,9 @@ Turn 把不完整 Tool Exchange 当成事实。
 | 关注点 | 源码 |
 | --- | --- |
 | Loop/Sampling | `engine.go` |
+| Turn Scope/Mailbox | `turnexec` |
+| Scope State/Control | `turn_scope.go` |
+| Session Delta | `session_delta.go` |
 | Scheduler | `scheduler.go` |
 | Failure Class | `toolfailure.go` |
 | Verification | `verify.go` |

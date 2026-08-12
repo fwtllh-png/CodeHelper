@@ -9,9 +9,11 @@ prerequisites:
   - practice-benchmark
 code_paths:
   - scripts/architecturemetrics
+  - scripts/architecturesize
   - Makefile
 test_paths:
   - scripts/architecturemetrics/main_test.go
+  - scripts/architecturesize/main_test.go
 source_of_truth:
   - docs/architecture-metrics-baseline.json
   - docs/hotspot-baseline.json
@@ -69,6 +71,13 @@ on drift, and optionally writes a measured report. The Makefile exposes
 (measure plus enforce); the ratchet is part of `make verify` and of
 `architecture-freeze`.
 
+`make architecture-size-budget BASE_REF=origin/main` independently compares
+the complete ownership closure against a Git base. It excludes tests, docs,
+fixtures, generated sources, and build output, and reports base, head, added,
+deleted, and net production lines. Stage D carries an explicitly approved
+`+847` relaxation; the command fails on `+848`, so later growth cannot hide
+inside that decision.
+
 ## Metrics
 
 | Metric | Target kind | Meaning | Headroom |
@@ -121,6 +130,7 @@ are reported as one sorted drift list, and the command exits non-zero.
 | Threshold contract | `docs/architecture-metrics-baseline.json` | Single source of truth for limits |
 | Make targets | `Makefile` | `architecture-metrics`, `architecture-ratchet`, `architecture-freeze` |
 | Tests | `scripts/architecturemetrics/main_test.go` | Baseline validation, drift, headroom, and ratchet cases |
+| Ownership size budget | `scripts/architecturesize` | Base/head production LOC and exact relaxation enforcement |
 
 ## Failure Modes and Security Boundaries
 
@@ -135,6 +145,7 @@ are reported as one sorted drift list, and the command exits non-zero.
 ```bash
 go test ./scripts/architecturemetrics
 make architecture-ratchet
+make architecture-size-budget BASE_REF=origin/main
 make book-check
 ```
 

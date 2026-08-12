@@ -11,6 +11,7 @@ code_paths:
   - internal/runtime/protocol
   - internal/runtime/app
   - internal/runtime/agent/engine
+  - internal/runtime/agent/turnexec
 test_paths:
   - internal/runtime/protocol/message_test.go
   - internal/runtime/app/runtime_test.go
@@ -73,14 +74,15 @@ sequenceDiagram
     participant H as Host
     participant R as app.Runtime
     participant A as EngineAdapter
+    participant S as turnexec.Scope
     participant E as agent.Engine
     participant M as Provider
     participant G as Tool Guard
     H->>R: Submit(turn.start)
     R-->>H: turn.started
     R->>A: StartTurn
-    A->>E: RunForTurn
-    E->>E: 组装 Context，快照 Policy/Catalog
+    A->>S: Factory.Open(TurnSpec)
+    S->>E: 运行冻结 Scope
     E->>M: Stream(ModelRequest)
     M-->>E: Text / Reasoning / Tool Call / Usage
     alt Tool Call
@@ -118,8 +120,10 @@ Subscriber。有界 Queue/Buffer 防止单个 Caller 消耗无限内存。
 `EngineAdapter.StartTurn` 验证 Workspace Identity，解析 Editor Context，并区分用于 UI
 的 Display Prompt 和 Model-visible Context，同时创建 Receipt Recorder。
 
-Agent Engine 快照 Turn-scoped Policy、Route 与 Catalog。Repo Map、Working Set 和
-Evidence 等动态 Context 在 Sampling 时重新渲染。
+Agent Engine 在一个 `TurnSpec` 中冻结 Identity、Request、Session Profile、Route、
+Policy、Limit、Prompt Prefix、Tool Catalog、Skill、MCP Health 与 Extension。
+`turnexec.Factory` 打开强类型 Scope；Sampling 不得重新读取这些可变来源。Repo Map、
+Working Set 与 Evidence 仍从 Scope-local State 在 Tool Result 后重新渲染。
 
 ## 4. Sample 与 Stream
 
@@ -141,8 +145,10 @@ Sample，直到 Model 完成、Budget/Step Gate 停止、Verification 失败或 
 ## 6. Verification 与终止
 
 Changed Path 可以触发 Diagnostics 和 Verify Check。Hard Failure 可使 Turn 失败并回滚
-Journaled Edit。Receipt 汇总 Read、Change、Approval、Verification、Cost 和 Latency。
-Runtime 确保一个 Turn 只有一个 Terminal Event。
+Journaled Edit。Scope 为 History、Usage、Cost、Working Set、Evidence、Failures 与
+Compaction 准备带 Revision/Digest 的 `SessionDelta`。Runtime 将它与 Terminal
+Envelope 原子提交；Engine 只在 Durable Commit 成功后幂等 Apply。Runtime 确保一个
+Turn 只有一个 Terminal Event。
 
 ## Control Operation
 
@@ -154,6 +160,9 @@ Runtime 确保一个 Turn 只有一个 Terminal Event。
 - `thread.fork`：创建独立 History；
 - `turn.revert`：回退允许的 Workspace Effect。
 
+Cancel/Steer 进入 Scope 的有界 Mailbox。Approval/Input 必须匹配唯一未解决 Request ID；
+Overflow、Late、Duplicate、Kind Mismatch 都返回结构化错误。
+
 ## 代码地图
 
 | 阶段 | 源码 |
@@ -161,7 +170,8 @@ Runtime 确保一个 Turn 只有一个 Terminal Event。
 | Operation/Event | `internal/runtime/protocol/message.go` |
 | Queue/Cursor/Terminal | `internal/runtime/app/runtime.go` |
 | Engine Adapter | `internal/runtime/app/application.go` |
-| Model/Tool Loop | `internal/runtime/agent/engine/engine.go` |
+| Turn Lifecycle/Control | `internal/runtime/agent/turnexec` |
+| Model/Tool Executor | `internal/runtime/agent/engine` |
 | Receipt | `internal/runtime/app/receipt.go` |
 | Durable Restart | `internal/runtime/app/wire/persistent.go` |
 
