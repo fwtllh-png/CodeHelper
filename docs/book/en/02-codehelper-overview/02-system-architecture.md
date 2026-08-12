@@ -177,14 +177,23 @@ tools, approvals, verification, and terminal outcomes.
 
 ## Construction Boundary
 
-`runtime/app/wire` is allowed to know concrete implementations. It:
+`runtime/app/wire` is allowed to know concrete implementations. `NewExec` is
+the composition root: it creates a construction-only `buildState` and runs a
+closed module sequence:
 
-- resolves model routes and credentials;
-- creates the tool Registry and Guard;
-- assembles prompt context and budgets;
-- connects journals, diagnostics, traces, and persistence;
-- adapts the Agent Engine to the application Engine interface;
-- creates persistent or in-memory Runtime instances.
+```text
+config -> provider -> platform -> persistence -> builtin tools
+       -> extension contributors -> security -> orchestration
+       -> agent -> runtime -> background services
+```
+
+Each module owns one construction boundary and publishes only what later
+modules need. `buildState` is never retained by Runtime, Engine, or Session
+services. Builtin and extension tools share one Registry; Plugin, Skill,
+Memory, Task/Automation, Hook, and MCP integrations contribute through
+ordered, uniquely named contributors rather than modifying the Agent module.
+Construction and shutdown share `assembly.ResourceStack`, so a partial build
+rolls back in reverse registration order without leaking resources.
 
 Keeping construction separate prevents dependency injection logic from
 becoming a second business loop.
@@ -243,7 +252,7 @@ Trace one path without reading implementation bodies:
 3. Find `EngineAdapter.StartTurn` in `internal/runtime/app/application.go`.
 4. Find `Engine.RunForTurn` in `internal/runtime/agent/engine`.
 5. Find `Guard.ExecuteBound` in `internal/adapter/tool/guard`.
-6. Find `NewRuntime` calls in `internal/runtime/app/wire`.
+6. Find `NewExec` and the module sequence in `internal/runtime/app/wire`.
 
 Then run the architecture test. The exercise demonstrates that the source tree
 encodes the same route described by the diagram.

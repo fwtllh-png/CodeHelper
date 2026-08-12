@@ -40,10 +40,35 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 67,
-        "production_lines": 6881,
+        "internal_fanout": 66,
+        "production_lines": 7573,
         "options_fields": 80,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "Stage C replaces the monolithic NewExec body with explicit BuildState, lifecycle modules, contributors, and rollback tests; the package-level ownership code grows while the runtime.go hotspot and fanout are independently tightened below their previous limits."
+      }
+    },
+    {
+      "id": "wire_assembly_package",
+      "kind": "package",
+      "path": "internal/runtime/app/wire/assembly",
+      "limits": {
+        "internal_fanout": 0,
+        "production_lines": 134,
+        "options_fields": 0,
+        "mutex_fields": 1
+      }
+    },
+    {
+      "id": "orchestration_contributor_package",
+      "kind": "package",
+      "path": "internal/adapter/extension/orchestration",
+      "limits": {
+        "internal_fanout": 6,
+        "production_lines": 44,
+        "options_fields": 5,
+        "mutex_fields": 0
       }
     },
     {
@@ -115,8 +140,62 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/runtime.go",
       "limits": {
-        "lines": 1359,
-        "max_function_lines": 884
+        "lines": 483,
+        "max_function_lines": 65
+      }
+    },
+    {
+      "id": "wire_build_state_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/build_state.go",
+      "limits": {
+        "lines": 143,
+        "max_function_lines": 15
+      }
+    },
+    {
+      "id": "wire_modules_core_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/modules_core.go",
+      "limits": {
+        "lines": 327,
+        "max_function_lines": 117
+      }
+    },
+    {
+      "id": "wire_modules_extensions_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/modules_extensions.go",
+      "limits": {
+        "lines": 282,
+        "max_function_lines": 37
+      }
+    },
+    {
+      "id": "wire_modules_security_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/modules_security.go",
+      "limits": {
+        "lines": 133,
+        "max_function_lines": 113
+      }
+    },
+    {
+      "id": "wire_modules_orchestration_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/modules_orchestration.go",
+      "limits": {
+        "lines": 220,
+        "max_function_lines": 197
+      }
+    },
+    {
+      "id": "wire_modules_runtime_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/modules_runtime.go",
+      "limits": {
+        "lines": 474,
+        "max_function_lines": 372
       }
     },
     {

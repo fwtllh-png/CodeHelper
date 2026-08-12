@@ -12,10 +12,20 @@ code_paths:
 test_paths:
   - internal/runtime/app/wire/bootstrap_test.go
   - internal/runtime/app/wire/model_test.go
+  - internal/runtime/app/wire/build_state_test.go
+  - internal/runtime/app/wire/assembly/resources_test.go
   - internal/runtime/app/wire/sandbox_architecture_test.go
 source_of_truth:
   - internal/runtime/app/wire/runtime.go
   - internal/runtime/app/wire/route.go
+  - internal/runtime/app/wire/build_state.go
+  - internal/runtime/app/wire/modules_core.go
+  - internal/runtime/app/wire/modules_extensions.go
+  - internal/runtime/app/wire/modules_orchestration.go
+  - internal/runtime/app/wire/modules_runtime.go
+  - internal/runtime/app/wire/modules_security.go
+  - internal/runtime/app/wire/assembly/resources.go
+  - internal/adapter/extension/orchestration/contributor.go
 status: draft
 last_verified: null
 ---
@@ -72,6 +82,38 @@ implementations to:
 - build child runtimes, Worktrees, and background executors;
 - choose persistent or in-memory application Runtime.
 
+## Composition Root Structure
+
+`wire.NewExec` is an orchestration entry, not a service locator or business
+workflow. It creates a construction-only `buildState` and executes a closed
+module sequence:
+
+```text
+config -> provider -> platform -> persistence -> builtin tools
+       -> extension contributors -> security -> orchestration
+       -> agent -> runtime -> background services
+```
+
+Each module implements the `buildModule` contract (`Name()` and `Build`),
+owns one construction boundary, and publishes only the values later modules
+need through `buildState`. Runtime, Engine, and Session services never retain
+that state. A failed module aborts with a `moduleBuildError` that names the
+module, and already-opened resources are closed through the shared resource
+stack.
+
+Builtin and extension tools receive the same `Registry` instance. Plugin,
+Skill, Memory, Task/Automation, Hook, and MCP integrations implement the
+`extensionContributor` contract (`ID()` and `Contribute`) and run in the
+`extension-tools` module in fixed order with unique IDs, so no extension
+modifies the Agent module.
+
+Construction and shutdown share `assembly.ResourceStack`. `NewExec` registers
+resource closers once; both partial-build rollback and normal shutdown close
+the stack in reverse registration order. A resource closes at most once, one
+close failure does not skip later resources, and callers receive the joined
+errors with resource identities. Late failures, including Runtime or Scheduler
+construction failures, cannot leak resources.
+
 ## Invariants Before Start
 
 Construction fails rather than producing a partially trusted Runtime when:
@@ -88,7 +130,9 @@ they define the Runtime assembled from user configuration.
 
 ## Startup Ordering and Ownership Transfer
 
-Construction follows a dependency order, not merely a list of constructors:
+Construction follows a dependency order, not merely a list of constructors.
+The module sequence above enforces it; each numbered step maps to one module
+or one group of modules:
 
 1. validate configuration and canonicalize Workspace identity;
 2. open durable stores and perform recovery before acceptance;
@@ -101,9 +145,10 @@ Construction follows a dependency order, not merely a list of constructors:
 9. create Application Runtime and only then expose a Host facade.
 
 Ownership transfers at each successful step. If a later step fails, already
-opened stores, transports, extension processes, and background managers must be
-closed in reverse order. A constructor that leaks a process on failure violates
-the Runtime contract even if no Turn started.
+opened stores, transports, extension processes, and background managers are
+closed in reverse registration order by the shared `ResourceStack`. A
+constructor that leaks a process on failure violates the Runtime contract even
+if no Turn started.
 
 ## Capability Provenance
 
@@ -124,23 +169,33 @@ Configuration expresses intent; it cannot manufacture environmental capability.
 
 | Concern | Source |
 | --- | --- |
-| Main assembly | `runtime.go` |
+| Composition root and module sequence | `runtime.go` |
+| Construction-only state and module contract | `build_state.go` |
+| config/provider/platform/persistence/builtin tools | `modules_core.go` |
+| Extension contributors | `modules_extensions.go` |
+| Security policy/constitution/guard | `modules_security.go` |
+| Orchestration tools and subagents | `modules_orchestration.go` |
+| Agent engine, runtime, background services | `modules_runtime.go` |
+| Resource lifecycle | `assembly/resources.go` |
 | Route/budget defaults | `route.go`, `routeset.go` |
-| Provider construction | `model.go` |
+| Provider construction | `model.go`, `model_catalog.go`, `model_probe.go` |
 | Persistent Runtime | `persistent.go` |
 | Sandbox facts | `sandbox_info.go` |
 | MCP/extensions | `mcp.go`, `extensions.go` |
 | Child/background work | `childruntime.go`, `background_executors.go` |
+| Task/automation contributor | `internal/adapter/extension/orchestration/contributor.go` |
 
 ## Implementation Walkthrough
 
-The main builder canonicalizes Workspace, builds stores and observability,
-loads Constitution, merges Policy rules, creates Registry and Guard, assembles
-Prompt Context, then constructs Agent Engines through a Thread Manager.
+`NewExec` runs the closed module sequence: canonicalize Workspace, build
+stores and observability, load Constitution, merge Policy rules, create
+Registry and Guard, assemble Prompt Context, then construct Agent Engines
+through a Thread Manager. Each step publishes into `buildState`; ownership
+moves forward module by module.
 
 The application Runtime receives only its `Engine` interface and durable
 facilities. Hosts receive the resulting session/facade, not the concrete
-Provider or Guard.
+Provider or Guard, and never the `buildState`.
 
 ## Tradeoffs and Alternatives
 
@@ -148,8 +203,10 @@ A dependency-injection framework could automate graphs but hide ordering and
 security decisions. CodeHelper uses explicit Go construction so reviewers can
 trace exactly which Backend and Policy enter a Guard.
 
-Large composition roots are harder to read. The response is semantic helper
-files, not moving business loops into Wiring.
+Large composition roots are harder to read. The response is a closed module
+sequence with per-module ownership (`modules_*.go`), a construction-only
+`buildState`, and an explicit `ResourceStack` — not moving business loops into
+Wiring.
 
 ## Failure Modes and Security Boundaries
 
@@ -169,9 +226,9 @@ go test ./internal/host/cli -run TestCLIDoesNotDependOnExecutionImplementations
 ## Hands-On Lab
 
 Start at the CLI `exec` command and trace only constructor calls until
-`app.NewRuntime` or `NewRuntimeWithRecovery`. Record where Route, Guard,
-Sandbox, Journal, and Prompt Context are attached. No business Turn step should
-occur during this trace.
+`wire.NewExec`. Identify the module sequence in `defaultBuildModules`, and
+record where Route, Guard, Sandbox, Journal, and Prompt Context are attached.
+No business Turn step should occur during this trace.
 
 ## Review Questions
 

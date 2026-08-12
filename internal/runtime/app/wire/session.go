@@ -21,7 +21,9 @@ import (
 
 func (s *Session) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
-		s.closeErr = s.closeResources(ctx, true)
+		if s.resources != nil {
+			s.closeErr = s.resources.Close(ctx)
+		}
 	})
 	return s.closeErr
 }
@@ -142,83 +144,150 @@ func (s *Session) SetGranular(granular policy.Granular) {
 	}
 }
 
-func (s *Session) closeResources(ctx context.Context, closeRuntime bool) error {
-	var closeErrors []error
-	// The scheduler stops first and drains: its tasks run as child turns, so
-	// stopping it after the child runtime would leave turns with nothing to settle
-	// them. Draining returns in-flight work to the queue without spending an
-	// attempt, so the next process picks it up.
-	if s.scheduler != nil {
-		closeErrors = append(closeErrors, s.scheduler.Close())
+func (s *Session) registerResourceClosers() error {
+	type resource struct {
+		name  string
+		close func(context.Context) error
 	}
-	// The child pump subscribes to the runtime, so it stops before the runtime
-	// does; otherwise it would resubscribe against a closing runtime.
-	if s.children != nil {
-		s.children.close()
+	// Registration is the reverse of shutdown dependency order. Reading fields
+	// at close time makes the same stack valid for partial construction rollback.
+	resources := []resource{
+		{name: "exec-log", close: func(context.Context) error {
+			if s.logFile == nil {
+				return nil
+			}
+			return s.logFile.Close()
+		}},
+		{name: "provider-fixture", close: func(ctx context.Context) error {
+			if s.fixture == nil {
+				return nil
+			}
+			return s.fixture.Close(ctx)
+		}},
+		{name: "plugin-registry", close: func(context.Context) error {
+			if s.pluginRegistry == nil {
+				return nil
+			}
+			return s.pluginRegistry.Close()
+		}},
+		{name: "plugin-tools", close: func(context.Context) error {
+			if s.pluginTools == nil {
+				return nil
+			}
+			return s.pluginTools.Close()
+		}},
+		{name: "loaded-plugins", close: func(context.Context) error {
+			closeErrors := make([]error, 0, len(s.plugins))
+			for _, loadedPlugin := range s.plugins {
+				closeErrors = append(closeErrors, loadedPlugin.Close())
+			}
+			return errors.Join(closeErrors...)
+		}},
+		{name: "metrics", close: func(context.Context) error {
+			if s.metricsPath == "" {
+				return nil
+			}
+			return writeMetricSnapshot(s.metricsPath, s.metrics)
+		}},
+		{name: "finish-log", close: func(context.Context) error {
+			if s.logger != nil {
+				s.logger.Info(
+					"exec finished",
+					"provider", s.providerID,
+					"model", s.modelID,
+				)
+			}
+			return nil
+		}},
+		{name: "sandbox", close: func(context.Context) error {
+			if s.sandbox == nil {
+				return nil
+			}
+			err := sandbox.CloseBackend(s.sandbox)
+			s.sandbox = nil
+			return err
+		}},
+		{name: "ephemeral-tasks", close: func(context.Context) error {
+			if s.ephemeralTasks == nil {
+				return nil
+			}
+			err := s.ephemeralTasks.Close()
+			s.ephemeralTasks = nil
+			return err
+		}},
+		{name: "content-store", close: func(ctx context.Context) error {
+			if s.content == nil {
+				return nil
+			}
+			return s.content.Close(ctx)
+		}},
+		{name: "workspace-journal", close: func(ctx context.Context) error {
+			if s.journal == nil {
+				return nil
+			}
+			return s.journal.Close(ctx)
+		}},
+		{name: "mcp-pool", close: func(ctx context.Context) error {
+			if s.mcpPool == nil {
+				return nil
+			}
+			return s.mcpPool.ShutdownAll(ctx)
+		}},
+		{name: "mcp-prewarm", close: func(context.Context) error {
+			if s.mcpPrewarm != nil {
+				s.mcpPrewarm.Stop()
+			}
+			return nil
+		}},
+		{name: "child-toolsets", close: func(context.Context) error {
+			if s.childTools != nil {
+				s.childTools.closeAll()
+			}
+			return nil
+		}},
+		{name: "job-logs", close: func(context.Context) error {
+			if s.jobLogs == nil {
+				return nil
+			}
+			return s.jobLogs.Close()
+		}},
+		{name: "processes", close: func(context.Context) error {
+			if s.processes != nil {
+				s.processes.CloseAll()
+			}
+			return nil
+		}},
+		{name: "turn-coordinators", close: func(ctx context.Context) error {
+			if s.turnCoordinators == nil {
+				return nil
+			}
+			err := s.turnCoordinators.Close(ctx)
+			s.turnCoordinators = nil
+			return err
+		}},
+		{name: "runtime", close: func(ctx context.Context) error {
+			if s.Runtime == nil {
+				return nil
+			}
+			return s.Runtime.Close(ctx)
+		}},
+		{name: "child-runtime", close: func(context.Context) error {
+			if s.children != nil {
+				s.children.close()
+			}
+			return nil
+		}},
+		{name: "scheduler", close: func(context.Context) error {
+			if s.scheduler == nil {
+				return nil
+			}
+			return s.scheduler.Close()
+		}},
 	}
-	if closeRuntime && s.Runtime != nil {
-		closeErrors = append(closeErrors, s.Runtime.Close(ctx))
+	for _, resource := range resources {
+		if err := s.resources.Add(resource.name, resource.close); err != nil {
+			return err
+		}
 	}
-	if s.turnCoordinators != nil {
-		closeErrors = append(closeErrors, s.turnCoordinators.Close(ctx))
-		s.turnCoordinators = nil
-	}
-	if s.processes != nil {
-		s.processes.CloseAll()
-	}
-	// The job logs close after the jobs that write to them; the files stay on disk
-	// so a later process can still read what a job printed.
-	if s.jobLogs != nil {
-		closeErrors = append(closeErrors, s.jobLogs.Close())
-	}
-	// Isolated children own a sandbox and a process manager each, so they close
-	// after the runtime has stopped handing them turns.
-	if s.childTools != nil {
-		s.childTools.closeAll()
-	}
-	if s.mcpPrewarm != nil {
-		s.mcpPrewarm.Stop()
-	}
-	if s.mcpPool != nil {
-		closeErrors = append(closeErrors, s.mcpPool.ShutdownAll(ctx))
-	}
-	// The journal closes after the child toolsets, which own journals of their own,
-	// and before the content store: a durable journal owns the store its
-	// before-images live in.
-	if s.journal != nil {
-		closeErrors = append(closeErrors, s.journal.Close(ctx))
-	}
-	if s.content != nil {
-		closeErrors = append(closeErrors, s.content.Close(ctx))
-	}
-	if s.ephemeralTasks != nil {
-		closeErrors = append(closeErrors, s.ephemeralTasks.Close())
-		s.ephemeralTasks = nil
-	}
-	if s.sandbox != nil {
-		closeErrors = append(closeErrors, sandbox.CloseBackend(s.sandbox))
-		s.sandbox = nil
-	}
-	if s.logger != nil {
-		s.logger.Info("exec finished", "provider", s.providerID, "model", s.modelID)
-	}
-	if s.metricsPath != "" {
-		closeErrors = append(closeErrors, writeMetricSnapshot(s.metricsPath, s.metrics))
-	}
-	for _, loadedPlugin := range s.plugins {
-		closeErrors = append(closeErrors, loadedPlugin.Close())
-	}
-	if s.pluginTools != nil {
-		closeErrors = append(closeErrors, s.pluginTools.Close())
-	}
-	if s.pluginRegistry != nil {
-		closeErrors = append(closeErrors, s.pluginRegistry.Close())
-	}
-	if s.fixture != nil {
-		closeErrors = append(closeErrors, s.fixture.Close(ctx))
-	}
-	if s.logFile != nil {
-		closeErrors = append(closeErrors, s.logFile.Close())
-	}
-	return errors.Join(closeErrors...)
+	return nil
 }

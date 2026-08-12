@@ -60,6 +60,32 @@ Architecture tests enforce important import restrictions. A design change that
 requires violating one of these rules needs an explicit architecture update,
 not a local shortcut.
 
+## Runtime Composition Root
+
+`runtime/app/wire.NewExec` is an orchestration entry, not a service locator or
+business workflow. It creates a construction-only `buildState` and executes a
+closed module sequence:
+
+```text
+config -> provider -> platform -> persistence -> builtin tools
+       -> extension contributors -> security -> orchestration
+       -> agent -> runtime -> background services
+```
+
+Each module owns one construction boundary and publishes only the values needed
+by later modules. `buildState` is never retained by Runtime, Engine, or Session
+services. Builtin and extension tools receive the same Registry instance;
+Plugin, Skill, Memory, Task/Automation, Hook, and MCP integrations contribute
+through ordered, uniquely named contributors rather than modifying the Agent
+module.
+
+Construction and shutdown share `assembly.ResourceStack`. Session registers
+resource closers once, then both partial-build rollback and normal shutdown
+close the stack in reverse registration order. A resource closes at most once,
+one close failure does not skip later resources, and callers receive the joined
+errors with resource identities. This keeps late failures, including Runtime or
+Scheduler construction failures, from leaking resources.
+
 ## Runtime Protocol
 
 The protocol is defined in `internal/runtime/protocol`; the generated public
