@@ -113,6 +113,16 @@ Transcript 使用 Session、Turn、Tool Call、Approval 和 Input Request ID，�
 文本作为 Identity。Bounded Virtual Window 在 State 中保留完整 Transcript，同时限制
 DOM Node；每次 Patch 后恢复 Expanded Card、Focus 与 Relative Scroll Anchor。
 
+## Chat Projection
+
+Chat Projection 消费生成的 Event Traits，并通过 Stream、Tool、Interaction、Evidence、
+Terminal 与 Snapshot 领域模块分发；根 Projector 只拥有 Sequence、Turn Identity 与
+Dispatch Policy，每个领域模块负责对应 Event Class 的呈现行为。
+
+Traits 来自 Protocol Manifest，而不是 Host 本地分类。新 Event Kind 要么被领域模块
+理解，要么 Generic Render——绝不会在 Host 中被静默重新分类；缺少 Traits 的 Event
+会让 Schema 与 TypeScript 生成直接失败。
+
 ## Checkpoint、Plan 与 Turn Recovery
 
 Checkpoint 是不可变 Runtime Artifact。Restore 只恢复 State：重建已验证的
@@ -206,6 +216,7 @@ Incremental Patch 与 Resource Navigation。再追踪 Canceled Turn 的 Retry/Co
 5. Multi-root Routing 如何防止 Cross-root Authority Confusion？
 6. Stale Patch 为什么必须请求 Snapshot，而不能部分应用？
 7. Restore 与 Retry 为什么是不同 Runtime Operation？
+8. 根 Projector 为什么自己不分类 Event？
 
 ## 延伸阅读
 
