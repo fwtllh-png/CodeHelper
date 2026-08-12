@@ -44,9 +44,6 @@
         "production_lines": 7964,
         "options_fields": 80,
         "mutex_fields": 5
-      },
-      "relaxations": {
-        "production_lines": "Stage C completion introduces explicit prepared/runtime start phases, minimal-capability extension contributors with structured receipts, orchestration and guard factories, and module output types; existing hotspot files and function limits are tightened and every new ownership file receives an exact ratchet target."
       }
     },
     {
