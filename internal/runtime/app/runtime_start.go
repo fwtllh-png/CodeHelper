@@ -113,15 +113,15 @@ func prepareRuntime(
 		accepted:          make(map[protocol.OperationID]PendingOperation),
 		acceptedKeys:      make(map[string]protocol.OperationID),
 		committed:         make(map[protocol.OperationID]PendingOperation),
-		active:            make(map[protocol.TurnID]context.CancelFunc),
-		activeThreads:     make(map[protocol.ThreadID]protocol.TurnID),
-		appliedProfiles:   make(map[protocol.ThreadID]uint64),
-		cancels:           make(map[protocol.TurnID]cancelRecord),
+		active:            NewActiveTurnRegistry(),
 		toolItems:         make(map[string]protocol.ItemID),
 		approvalItems:     make(map[string]protocol.ItemID),
 		inputItems:        make(map[string]protocol.ItemID),
 		durable:           recoverDurable,
 	}
+	runtime.terminal = &TerminalPublisher{runtime: runtime}
+	runtime.SessionService = &SessionService{Runtime: runtime}
+	runtime.ArtifactService = &ArtifactService{Runtime: runtime}
 	if last, err := runtime.events.LastSequence(context.Background()); err == nil {
 		runtime.lastSequence = last
 	}
@@ -145,7 +145,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 
 func (r *Runtime) activate(ctx context.Context) error {
 	if r.durable {
-		if err := r.recoverTerminalProjections(ctx); err != nil {
+		if err := r.terminal.Recover(ctx); err != nil {
 			go r.loop()
 			close(r.operations)
 			return fmt.Errorf("recover terminal projections: %w", err)

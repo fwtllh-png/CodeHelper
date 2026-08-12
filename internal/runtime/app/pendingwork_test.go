@@ -99,17 +99,16 @@ func TestRuntimeTurnPhaseClassification(t *testing.T) {
 		t.Fatalf("idle phase = %s", phase)
 	}
 
-	runtime.activeMu.Lock()
-	runtime.active[turn] = func() {}
-	runtime.activeThreads[thread] = turn
-	runtime.activeMu.Unlock()
+	lease, err := runtime.active.Reserve(thread, turn, "op", "item")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.active.Release(lease) })
 	if phase := runtime.turnPhase(thread, turn); phase != PhaseRunning {
 		t.Fatalf("running phase = %s", phase)
 	}
 
-	runtime.mu.Lock()
-	runtime.approvals["a1"] = PendingApproval{ThreadID: thread, TurnID: turn}
-	runtime.mu.Unlock()
+	runtime.active.SetPhase(turn, PhaseAwaitingApproval)
 	if phase := runtime.turnPhase(thread, turn); phase != PhaseAwaitingApproval {
 		t.Fatalf("approval phase = %s", phase)
 	}
@@ -117,10 +116,7 @@ func TestRuntimeTurnPhaseClassification(t *testing.T) {
 		t.Fatalf("mailbox while awaiting approval = %s", disp)
 	}
 
-	runtime.mu.Lock()
-	delete(runtime.approvals, "a1")
-	runtime.inputs["i1"] = PendingInput{ThreadID: thread, TurnID: turn}
-	runtime.mu.Unlock()
+	runtime.active.SetPhase(turn, PhaseAwaitingInput)
 	if phase := runtime.turnPhase(thread, turn); phase != PhaseAwaitingInput {
 		t.Fatalf("input phase = %s", phase)
 	}

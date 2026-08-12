@@ -122,6 +122,24 @@ ACP is the editor transport envelope over this shared model. A feature that
 exists only in one host is incomplete unless it is intentionally
 host-specific presentation.
 
+### Application Ownership
+
+The application Runtime is a Facade over explicit owners:
+
+- `operationDispatcher` maps all eight Operation payloads to typed Handlers.
+  Handlers return structured Outcomes; only Dispatcher applies synchronous
+  commit and rejection.
+- `ActiveTurnRegistry` atomically reserves Thread and Turn, binds control and
+  cancellation provenance, tracks phase/Profile revision, and rejects stale
+  lease release.
+- `TerminalPublisher` owns atomic terminal commit, deterministic outbox
+  publication, and restart recovery.
+- `SessionService` owns lifecycle, Profile, and Tool Catalog behavior;
+  `ArtifactService` owns Checkpoint, Plan, Turn recovery, and persistence.
+
+Runtime embeds the two query services to preserve the Host-facing API without
+duplicating execution logic.
+
 ## Turn Data Flow
 
 Before execution, Engine builds an immutable `TurnSpec` containing identity,

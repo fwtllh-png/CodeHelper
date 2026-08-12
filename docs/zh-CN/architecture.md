@@ -105,6 +105,21 @@ Recovery 成功前不会启动后台 Worker。
 ACP 是共享模型的编辑器 Transport Envelope。除非是有意的 Host 呈现差异，只在一种
 Host 中存在的功能都不完整。
 
+### Application Ownership
+
+Application Runtime 是显式 Owner 组成的 Facade：
+
+- `operationDispatcher` 将 8 类 Operation Payload 映射到强类型 Handler。Handler
+  返回结构化 Outcome；只有 Dispatcher 执行同步 Commit 与 Rejection。
+- `ActiveTurnRegistry` 原子预留 Thread 与 Turn，绑定 Control、Cancel Provenance、
+  Phase 与 Profile Revision，并拒绝 Stale Lease Release。
+- `TerminalPublisher` 独占 Atomic Terminal Commit、Deterministic Outbox Publish
+  与 Restart Recovery。
+- `SessionService` 拥有 Lifecycle、Profile 与 Tool Catalog；`ArtifactService` 拥有
+  Checkpoint、Plan、Turn Recovery 与 Persistence。
+
+Runtime 嵌入两个查询 Service，在不复制执行逻辑的前提下保持 Host API 不变。
+
 ## Turn 数据流
 
 执行前，Engine 构造不可变 `TurnSpec`，冻结 Identity、Request、Session Profile、

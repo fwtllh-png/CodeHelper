@@ -22,9 +22,15 @@ func TestSessionLifecycleOverlaysLiveStateAndProtectsArchiveDelete(t *testing.T)
 	}}
 	runtime := NewRuntime(Options{SessionLifecycle: store})
 	t.Cleanup(func() { closeRuntime(t, runtime) })
-	runtime.activeMu.Lock()
-	runtime.activeThreads["thread-life"] = "turn-life"
-	runtime.activeMu.Unlock()
+	lease, err := runtime.active.Reserve(
+		"thread-life",
+		"turn-life",
+		"operation-life",
+		"item-life",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	runtime.mu.Lock()
 	runtime.approvals["approval-life"] = PendingApproval{
 		RequestID: "approval-life", ThreadID: "thread-life", TurnID: "turn-life",
@@ -60,9 +66,9 @@ func TestSessionLifecycleOverlaysLiveStateAndProtectsArchiveDelete(t *testing.T)
 		t.Fatal("active session was deleted")
 	}
 
-	runtime.activeMu.Lock()
-	delete(runtime.activeThreads, "thread-life")
-	runtime.activeMu.Unlock()
+	if err := runtime.active.Release(lease); err != nil {
+		t.Fatal(err)
+	}
 	runtime.mu.Lock()
 	delete(runtime.approvals, "approval-life")
 	runtime.mu.Unlock()

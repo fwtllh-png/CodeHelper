@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -246,6 +245,9 @@ type Runtime struct {
 	sessionWorkspaces   SessionWorkspaceManager
 	sessionArtifacts    SessionArtifactStore
 	terminalStore       turnkernel.TerminalEnvelopeStore
+	terminal            *TerminalPublisher
+	*SessionService
+	*ArtifactService
 
 	operations chan acceptedOperation
 	done       chan struct{}
@@ -268,11 +270,7 @@ type Runtime struct {
 	accepting        bool
 	closed           bool
 
-	activeMu        sync.Mutex
-	active          map[protocol.TurnID]context.CancelFunc
-	activeThreads   map[protocol.ThreadID]protocol.TurnID
-	appliedProfiles map[protocol.ThreadID]uint64
-	cancels         map[protocol.TurnID]cancelRecord
+	active *ActiveTurnRegistry
 
 	// Event-owned items (F5): tool/approval/input get stable ItemIDs distinct
 	// from the turn.start operation item.
@@ -281,35 +279,20 @@ type Runtime struct {
 	inputItems    map[string]protocol.ItemID // request_id -> item
 }
 
-// cancelRecord captures CancelTurn provenance for the terminal turn.canceled event.
-type cancelRecord struct {
-	itemID protocol.ItemID
-	opID   protocol.OperationID
-}
-
-func (r *Runtime) SessionLifecycleAvailable() bool {
+func (r *SessionService) SessionLifecycleAvailable() bool {
 	return r != nil && r.sessionLifecycle != nil
 }
 
-func (r *Runtime) ListSessions(
+func (r *SessionService) ListSessions(
 	ctx context.Context,
 	query protocol.SessionListQuery,
 ) (protocol.SessionList, error) {
 	if r.sessionLifecycle == nil {
-		return protocol.SessionList{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"session lifecycle is unavailable",
-			false,
-			nil,
-		)
+		return protocol.SessionList{}, runtimeProblem(protocol.CodeUnavailable, "session lifecycle is unavailable", nil)
 	}
 	if err := query.Validate(); err != nil {
-		return protocol.SessionList{}, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			err.Error(),
-			false,
-			err,
-		)
+		return protocol.SessionList{},
+			runtimeProblem(protocol.CodeInvalidArgument, err.Error(), err)
 	}
 	limit := query.Limit
 	if limit <= 0 {
@@ -409,7 +392,7 @@ func (r *Runtime) ListSessions(
 	return result, nil
 }
 
-func (r *Runtime) searchSessionEvents(
+func (r *SessionService) searchSessionEvents(
 	ctx context.Context,
 	sessions []protocol.SessionSummary,
 	query string,
@@ -515,17 +498,12 @@ func searchSnippet(value, query string) (string, bool) {
 	return snippet, true
 }
 
-func (r *Runtime) SessionStatus(
+func (r *SessionService) SessionStatus(
 	ctx context.Context,
 	sessionID string,
 ) (protocol.SessionSummary, error) {
 	if r.sessionLifecycle == nil {
-		return protocol.SessionSummary{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"session lifecycle is unavailable",
-			false,
-			nil,
-		)
+		return protocol.SessionSummary{}, runtimeProblem(protocol.CodeUnavailable, "session lifecycle is unavailable", nil)
 	}
 	summary, err := r.sessionLifecycle.GetLifecycle(ctx, sessionID)
 	if err != nil {
@@ -534,19 +512,14 @@ func (r *Runtime) SessionStatus(
 	return r.projectSessionActivity(ctx, summary)
 }
 
-func (r *Runtime) UpdateSessionLifecycle(
+func (r *SessionService) UpdateSessionLifecycle(
 	ctx context.Context,
 	sessionID string,
 	expectedRevision uint64,
 	patch protocol.SessionLifecyclePatch,
 ) (protocol.SessionLifecycleUpdate, error) {
 	if r.sessionLifecycle == nil {
-		return protocol.SessionLifecycleUpdate{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"session lifecycle is unavailable",
-			false,
-			nil,
-		)
+		return protocol.SessionLifecycleUpdate{}, runtimeProblem(protocol.CodeUnavailable, "session lifecycle is unavailable", nil)
 	}
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
@@ -575,18 +548,13 @@ func (r *Runtime) UpdateSessionLifecycle(
 	}, nil
 }
 
-func (r *Runtime) DeleteSession(
+func (r *SessionService) DeleteSession(
 	ctx context.Context,
 	sessionID string,
 	expectedRevision uint64,
 ) (protocol.SessionDeleteResult, error) {
 	if r.sessionLifecycle == nil {
-		return protocol.SessionDeleteResult{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"session lifecycle is unavailable",
-			false,
-			nil,
-		)
+		return protocol.SessionDeleteResult{}, runtimeProblem(protocol.CodeUnavailable, "session lifecycle is unavailable", nil)
 	}
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
@@ -597,12 +565,7 @@ func (r *Runtime) DeleteSession(
 	}
 	if current.Isolation == SessionIsolationWorktree {
 		if r.sessionWorkspaces == nil {
-			return protocol.SessionDeleteResult{}, protocol.NewProblem(
-				protocol.CodeUnavailable,
-				"isolated Chat workspaces are unavailable",
-				false,
-				nil,
-			)
+			return protocol.SessionDeleteResult{}, runtimeProblem(protocol.CodeUnavailable, "isolated Chat workspaces are unavailable", nil)
 		}
 		if _, err := r.sessionWorkspaces.Restore(
 			ctx,
@@ -620,12 +583,7 @@ func (r *Runtime) DeleteSession(
 			return protocol.SessionDeleteResult{}, err
 		}
 		if err == nil && len(plan.Files) != 0 {
-			return protocol.SessionDeleteResult{}, protocol.NewProblem(
-				protocol.CodeConflict,
-				"cannot delete session with unmerged worktree changes",
-				false,
-				nil,
-			)
+			return protocol.SessionDeleteResult{}, runtimeProblem(protocol.CodeConflict, "cannot delete session with unmerged worktree changes", nil)
 		}
 	}
 	result, err := r.sessionLifecycle.DeleteLifecycle(
@@ -656,7 +614,7 @@ func (r *Runtime) DeleteSession(
 	return result, nil
 }
 
-func (r *Runtime) projectSessionActivity(
+func (r *SessionService) projectSessionActivity(
 	ctx context.Context,
 	summary protocol.SessionSummary,
 ) (protocol.SessionSummary, error) {
@@ -691,15 +649,13 @@ func (r *Runtime) projectSessionActivity(
 			}
 		}
 	}
-	r.activeMu.Lock()
 	active := false
 	for threadID := range threads {
-		if _, ok := r.activeThreads[threadID]; ok {
+		if _, ok := r.active.LookupThread(threadID); ok {
 			active = true
 			break
 		}
 	}
-	r.activeMu.Unlock()
 	r.mu.Lock()
 	pendingApprovals := 0
 	for _, approval := range r.approvals {
@@ -735,37 +691,25 @@ func ensureSessionQuiescent(
 	case protocol.SessionStatusRunning,
 		protocol.SessionStatusAwaitingApproval,
 		protocol.SessionStatusAwaitingInput:
-		return protocol.NewProblemWithDetails(
-			protocol.CodeConflict,
+		return sessionBusyProblem(
 			fmt.Sprintf(
 				"cannot %s session while status is %s",
 				action,
 				summary.Status,
 			),
-			true,
-			protocol.ProblemDetails{
-				Reason:        protocol.ProblemReasonSessionBusy,
-				ResourceID:    summary.SessionID,
-				SessionStatus: string(summary.Status),
-			},
-			nil,
+			summary,
 		)
 	default:
 		return nil
 	}
 }
 
-func (r *Runtime) SessionToolCatalog(
+func (r *SessionService) SessionToolCatalog(
 	ctx context.Context,
 	sessionID string,
 ) (protocol.SessionToolCatalog, error) {
 	if r.toolCatalog == nil {
-		return protocol.SessionToolCatalog{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"session tool catalog is unavailable",
-			false,
-			nil,
-		)
+		return protocol.SessionToolCatalog{}, runtimeProblem(protocol.CodeUnavailable, "session tool catalog is unavailable", nil)
 	}
 	profile, err := r.SessionProfile(ctx, sessionID)
 	if err != nil {
@@ -902,17 +846,12 @@ func projectToolSource(name, source string) (string, string) {
 	}
 }
 
-func (r *Runtime) SessionProfile(
+func (r *SessionService) SessionProfile(
 	ctx context.Context,
 	sessionID string,
 ) (protocol.SessionProfileSnapshot, error) {
 	if r.profiles == nil {
-		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"session profiles are unavailable",
-			false,
-			nil,
-		)
+		return protocol.SessionProfileSnapshot{}, runtimeProblem(protocol.CodeUnavailable, "session profiles are unavailable", nil)
 	}
 	profile, err := r.profiles.EnsureProfile(ctx, sessionID, r.defaultProfile)
 	if err != nil {
@@ -945,11 +884,11 @@ func profileFieldMutable(fields []string, target string) bool {
 	return false
 }
 
-func (r *Runtime) SessionProfilesAvailable() bool {
+func (r *SessionService) SessionProfilesAvailable() bool {
 	return r != nil && r.profiles != nil
 }
 
-func (r *Runtime) RestoreSessionProfile(
+func (r *SessionService) RestoreSessionProfile(
 	ctx context.Context,
 	sessionID string,
 	threadID protocol.ThreadID,
@@ -960,24 +899,17 @@ func (r *Runtime) RestoreSessionProfile(
 	}
 	controller, ok := r.engine.(SessionProfileEngine)
 	if !ok {
-		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"session profile updates are unsupported by this engine",
-			false,
-			nil,
-		)
+		return protocol.SessionProfileSnapshot{}, runtimeProblem(protocol.CodeUnavailable, "session profile updates are unsupported by this engine", nil)
 	}
-	r.activeMu.Lock()
-	defer r.activeMu.Unlock()
-	if _, active := r.activeThreads[threadID]; active {
-		if r.appliedProfiles[threadID] == snapshot.Profile.Revision {
+	r.active.mu.Lock()
+	defer r.active.mu.Unlock()
+	if _, active := r.active.byThread[threadID]; active {
+		if r.active.profiles[threadID] == snapshot.Profile.Revision {
 			return snapshot, nil
 		}
-		return protocol.SessionProfileSnapshot{}, protocol.NewProblem(
+		return protocol.SessionProfileSnapshot{}, retryableProblem(
 			protocol.CodeConflict,
 			"session profile cannot be restored while its thread has an active turn",
-			true,
-			nil,
 		)
 	}
 	if err := controller.ValidateSessionProfile(threadID, snapshot.Profile); err != nil {
@@ -986,11 +918,11 @@ func (r *Runtime) RestoreSessionProfile(
 	if err := controller.ApplySessionProfile(threadID, snapshot.Profile); err != nil {
 		return protocol.SessionProfileSnapshot{}, err
 	}
-	r.appliedProfiles[threadID] = snapshot.Profile.Revision
+	r.active.profiles[threadID] = snapshot.Profile.Revision
 	return snapshot, nil
 }
 
-func (r *Runtime) UpdateSessionProfile(
+func (r *SessionService) UpdateSessionProfile(
 	ctx context.Context,
 	sessionID string,
 	threadID protocol.ThreadID,
@@ -998,30 +930,18 @@ func (r *Runtime) UpdateSessionProfile(
 	patch protocol.SessionProfilePatch,
 ) (protocol.SessionProfileUpdateResult, error) {
 	if r.profiles == nil {
-		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"session profiles are unavailable",
-			false,
-			nil,
-		)
+		return protocol.SessionProfileUpdateResult{}, runtimeProblem(protocol.CodeUnavailable, "session profiles are unavailable", nil)
 	}
 	controller, ok := r.engine.(SessionProfileEngine)
 	if !ok {
-		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"session profile updates are unsupported by this engine",
-			false,
-			nil,
-		)
+		return protocol.SessionProfileUpdateResult{}, runtimeProblem(protocol.CodeUnavailable, "session profile updates are unsupported by this engine", nil)
 	}
-	r.activeMu.Lock()
-	defer r.activeMu.Unlock()
-	if _, active := r.activeThreads[threadID]; active {
-		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
+	r.active.mu.Lock()
+	defer r.active.mu.Unlock()
+	if _, active := r.active.byThread[threadID]; active {
+		return protocol.SessionProfileUpdateResult{}, retryableProblem(
 			protocol.CodeConflict,
 			"session profile cannot change while its thread has an active turn",
-			true,
-			nil,
 		)
 	}
 	current, err := r.profiles.Profile(ctx, sessionID, r.defaultProfile)
@@ -1030,12 +950,8 @@ func (r *Runtime) UpdateSessionProfile(
 	}
 	candidate, err := protocol.ApplySessionProfilePatch(current, patch)
 	if err != nil {
-		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			err.Error(),
-			false,
-			err,
-		)
+		return protocol.SessionProfileUpdateResult{},
+			runtimeProblem(protocol.CodeInvalidArgument, err.Error(), err)
 	}
 	if err := validateMutableProfilePatch(
 		patch,
@@ -1044,12 +960,8 @@ func (r *Runtime) UpdateSessionProfile(
 		return protocol.SessionProfileUpdateResult{}, err
 	}
 	if err := controller.ValidateSessionProfile(threadID, candidate.Profile); err != nil {
-		return protocol.SessionProfileUpdateResult{}, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			err.Error(),
-			false,
-			err,
-		)
+		return protocol.SessionProfileUpdateResult{},
+			runtimeProblem(protocol.CodeInvalidArgument, err.Error(), err)
 	}
 	updated, err := r.profiles.UpdateProfile(
 		ctx,
@@ -1067,7 +979,7 @@ func (r *Runtime) UpdateSessionProfile(
 			err,
 		)
 	}
-	r.appliedProfiles[threadID] = updated.Profile.Revision
+	r.active.profiles[threadID] = updated.Profile.Revision
 	return updated, nil
 }
 
@@ -1094,10 +1006,9 @@ func validateMutableProfilePatch(
 	}
 	for _, field := range fields {
 		if field.set && !allowed[field.name] {
-			return protocol.NewProblem(
+			return runtimeProblem(
 				protocol.CodeConflict,
 				fmt.Sprintf("session profile field %s is immutable in this runtime", field.name),
-				false,
 				nil,
 			)
 		}
@@ -1170,12 +1081,7 @@ func (r *Runtime) EventsLimited(
 	limit int,
 ) (<-chan protocol.Event, error) {
 	if limit <= 0 {
-		return nil, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			"event replay limit must be positive",
-			false,
-			nil,
-		)
+		return nil, runtimeProblem(protocol.CodeInvalidArgument, "event replay limit must be positive", nil)
 	}
 	return r.eventsFrom(ctx, cursor, limit)
 }
@@ -1190,9 +1096,7 @@ func (r *Runtime) ReplayEvents(
 	limit int,
 ) ([]protocol.Event, bool, error) {
 	if limit <= 0 {
-		return nil, false, protocol.NewProblem(
-			protocol.CodeInvalidArgument, "event replay limit must be positive", false, nil,
-		)
+		return nil, false, runtimeProblem(protocol.CodeInvalidArgument, "event replay limit must be positive", nil)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1290,9 +1194,7 @@ func (r *Runtime) Snapshot(context.Context) Snapshot {
 		PendingOperations: len(r.accepted),
 	}
 	r.mu.Unlock()
-	r.activeMu.Lock()
-	snapshot.ActiveTurns = len(r.active)
-	r.activeMu.Unlock()
+	snapshot.ActiveTurns = r.active.Snapshot().Turns
 	return snapshot
 }
 
@@ -1380,77 +1282,19 @@ func (r *Runtime) loop() {
 }
 
 func (r *Runtime) dispatch(accepted acceptedOperation) {
-	operation := accepted.operation
-	if r.engine == nil {
-		if r.reject(operation, errors.New("runtime engine is not configured")) == nil {
-			r.commit(operation.ID)
-		}
-		return
-	}
-	var completed bool
-	switch payload := operation.Payload.(type) {
-	case *protocol.StartTurnPayload:
-		r.start(operation, payload)
-		return
-	case *protocol.CancelTurnPayload:
-		completed = r.cancelTurn(operation, payload) == nil
-	case *protocol.SteerTurnPayload:
-		startedNew, err := r.dispatchSteer(operation, payload)
-		if startedNew {
-			return
-		}
-		completed = err == nil
-	case *protocol.ApprovalDecisionPayload:
-		completed = r.dispatchApproval(operation, payload) == nil
-	case *protocol.InputReplyPayload:
-		completed = r.dispatchInput(operation, payload) == nil
-	case *protocol.CompactThreadPayload:
-		completed = r.invoke(operation, func(sink EngineSink) error {
-			return r.engine.CompactThread(r.ctx, payload, sink)
-		}) == nil
-	case *protocol.ForkThreadPayload:
-		completed = r.invoke(operation, func(sink EngineSink) error {
-			return r.engine.ForkThread(r.ctx, payload, sink)
-		}) == nil
-	case *protocol.RevertTurnPayload:
-		completed = r.invoke(operation, func(sink EngineSink) error {
-			return r.engine.RevertTurn(r.ctx, payload, sink)
-		}) == nil
-	default:
-		completed = r.reject(operation, errors.New("operation payload is not supported")) == nil
-	}
-	if completed {
-		r.commit(operation.ID)
-	}
+	dispatcher := operationDispatcher{runtime: r}
+	dispatcher.Apply(accepted.operation, dispatcher.Dispatch(accepted))
 }
 
-func (r *Runtime) turnPhase(threadID protocol.ThreadID, turnID protocol.TurnID) TurnPhase {
-	r.activeMu.Lock()
-	activeTurn, threadActive := r.activeThreads[threadID]
-	r.activeMu.Unlock()
-	if !threadActive {
+func (r *Runtime) turnPhase(threadID protocol.ThreadID, _ protocol.TurnID) TurnPhase {
+	handle, active := r.active.LookupThread(threadID)
+	if !active {
 		return PhaseIdle
 	}
-	liveTurn := activeTurn
-	if turnID != "" && turnID != liveTurn {
-		// Stale turn id on an otherwise busy thread — still classify the live turn.
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, approval := range r.approvals {
-		if approval.ThreadID == threadID && approval.TurnID == liveTurn {
-			return PhaseAwaitingApproval
-		}
-	}
-	for _, input := range r.inputs {
-		if input.ThreadID == threadID && input.TurnID == liveTurn {
-			return PhaseAwaitingInput
-		}
-	}
-	return PhaseRunning
+	return handle.Phase
 }
 
-func (r *Runtime) dispatchSteer(operation protocol.Operation, payload *protocol.SteerTurnPayload) (startedNew bool, err error) {
+func (r SteerTurnHandler) run(operation protocol.Operation, payload *protocol.SteerTurnPayload) (startedNew bool, err error) {
 	phase := r.turnPhase(payload.ThreadID, payload.TurnID)
 	disposition := RoutePending(phase, PendingItem{Source: SourceSteer})
 	switch disposition {
@@ -1461,25 +1305,25 @@ func (r *Runtime) dispatchSteer(operation protocol.Operation, payload *protocol.
 	case DispositionStartNewTurn:
 		turnID, err := protocol.NewTurnID()
 		if err != nil {
-			return false, r.reject(operation, err)
+			return false, err
 		}
 		itemID, err := protocol.NewItemID()
 		if err != nil {
-			return false, r.reject(operation, err)
+			return false, err
 		}
 		start := &protocol.StartTurnPayload{
 			ThreadID: payload.ThreadID, TurnID: turnID, ItemID: itemID, Prompt: payload.Prompt,
 		}
-		r.start(operation, start)
-		return true, nil
+		outcome := (StartTurnHandler{r.Runtime}).Handle(operation, start)
+		return outcome.Kind == OutcomeAsync, outcome.Problem
 	default:
-		return false, r.reject(operation, fmt.Errorf(
+		return false, fmt.Errorf(
 			"pending-work rejected steer: %s", ExplainPending(phase, PendingItem{Source: SourceSteer}, disposition),
-		))
+		)
 	}
 }
 
-func (r *Runtime) dispatchApproval(operation protocol.Operation, payload *protocol.ApprovalDecisionPayload) error {
+func (r ApprovalHandler) Handle(operation protocol.Operation, payload *protocol.ApprovalDecisionPayload) OperationOutcome {
 	phase := r.turnPhase(payload.ThreadID, payload.TurnID)
 	r.mu.Lock()
 	_, known := r.approvals[payload.RequestID]
@@ -1489,17 +1333,17 @@ func (r *Runtime) dispatchApproval(operation protocol.Operation, payload *protoc
 	}
 	disposition := RoutePending(phase, PendingItem{Source: SourceApproval})
 	if disposition != DispositionResumePaused {
-		return r.reject(operation, fmt.Errorf(
+		return finishOutcome(fmt.Errorf(
 			"pending-work rejected approval: %s",
 			ExplainPending(phase, PendingItem{Source: SourceApproval}, disposition),
 		))
 	}
-	return r.invoke(operation, func(sink EngineSink) error {
+	return finishOutcome(r.invoke(operation, func(sink EngineSink) error {
 		return r.engine.DecideApproval(r.ctx, payload, sink)
-	})
+	}))
 }
 
-func (r *Runtime) dispatchInput(operation protocol.Operation, payload *protocol.InputReplyPayload) error {
+func (r InputHandler) Handle(operation protocol.Operation, payload *protocol.InputReplyPayload) OperationOutcome {
 	phase := r.turnPhase(payload.ThreadID, payload.TurnID)
 	r.mu.Lock()
 	_, known := r.inputs[payload.RequestID]
@@ -1509,30 +1353,26 @@ func (r *Runtime) dispatchInput(operation protocol.Operation, payload *protocol.
 	}
 	disposition := RoutePending(phase, PendingItem{Source: SourceInput})
 	if disposition != DispositionResumePaused {
-		return r.reject(operation, fmt.Errorf(
+		return finishOutcome(fmt.Errorf(
 			"pending-work rejected input: %s",
 			ExplainPending(phase, PendingItem{Source: SourceInput}, disposition),
 		))
 	}
-	return r.invoke(operation, func(sink EngineSink) error {
+	return finishOutcome(r.invoke(operation, func(sink EngineSink) error {
 		return r.engine.ReplyInput(r.ctx, payload, sink)
-	})
+	}))
 }
 
-// RouteMailbox exposes mailbox pending-work routing for agent/runtime callers.
 func (r *Runtime) RouteMailbox(threadID protocol.ThreadID, turnID protocol.TurnID, triggerTurn bool) PendingDisposition {
 	phase := r.turnPhase(threadID, turnID)
 	return RoutePending(phase, PendingItem{Source: SourceMailbox, TriggerTurn: triggerTurn})
 }
 
-func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTurnPayload) {
+func (r StartTurnHandler) Handle(operation protocol.Operation, payload *protocol.StartTurnPayload) OperationOutcome {
 	if payload.Idle {
 		if checker, ok := r.engine.(interface{ AllowIdleTurn() error }); ok {
 			if err := checker.AllowIdleTurn(); err != nil {
-				if r.reject(operation, err) == nil {
-					r.commit(operation.ID)
-				}
-				return
+				return finishOutcome(err)
 			}
 		}
 	}
@@ -1540,32 +1380,24 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 	_, finished := r.terminals[payload.TurnID]
 	r.mu.Unlock()
 	if finished {
-		if r.reject(operation, errors.New("turn already has a terminal event")) == nil {
-			r.commit(operation.ID)
-		}
-		return
+		return finishOutcome(errors.New("turn already has a terminal event"))
 	}
 	turnContext, cancel := context.WithCancel(r.ctx)
-	r.activeMu.Lock()
-	if _, exists := r.active[payload.TurnID]; exists {
-		r.activeMu.Unlock()
+	lease, err := r.active.Reserve(
+		payload.ThreadID,
+		payload.TurnID,
+		operation.ID,
+		payload.ItemID,
+	)
+	if err != nil {
 		cancel()
-		if r.reject(operation, errors.New("turn is already active")) == nil {
-			r.commit(operation.ID)
-		}
-		return
+		return finishOutcome(err)
 	}
-	if _, exists := r.activeThreads[payload.ThreadID]; exists {
-		r.activeMu.Unlock()
+	if err := r.active.BindControl(payload.TurnID, cancel); err != nil {
+		_ = r.active.Release(lease)
 		cancel()
-		if r.reject(operation, errors.New("thread already has an active turn")) == nil {
-			r.commit(operation.ID)
-		}
-		return
+		return finishOutcome(err)
 	}
-	r.active[payload.TurnID] = cancel
-	r.activeThreads[payload.ThreadID] = payload.TurnID
-	r.activeMu.Unlock()
 
 	r.workers.Add(1)
 	go func() {
@@ -1575,16 +1407,13 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 			if released {
 				return
 			}
-			r.activeMu.Lock()
-			delete(r.active, payload.TurnID)
-			delete(r.activeThreads, payload.ThreadID)
-			r.activeMu.Unlock()
+			_ = r.active.Release(lease)
 			released = true
 		}
 		defer releaseActive()
 		defer cancel()
 		sink := &runtimeSink{
-			runtime: r, operation: operation, deferTerminal: true,
+			runtime: r.Runtime, operation: operation, deferTerminal: true,
 		}
 		err := startTurnSafely(r.engine, turnContext, payload, sink)
 		if r.lifecycle != nil && !sink.terminalCommitAttempted {
@@ -1614,23 +1443,20 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 		case errors.Is(turnContext.Err(), context.Canceled):
 			itemID := payload.ItemID
 			opID := operation.ID
-			r.activeMu.Lock()
-			if stored, ok := r.cancels[payload.TurnID]; ok {
-				if stored.itemID != "" {
-					itemID = stored.itemID
+			if stored, ok := r.active.LookupTurn(payload.TurnID); ok {
+				if stored.ItemID != "" {
+					itemID = stored.ItemID
 				}
-				if stored.opID != "" {
-					opID = stored.opID
+				if stored.OperationID != "" {
+					opID = stored.OperationID
 				}
-				delete(r.cancels, payload.TurnID)
 			}
-			r.activeMu.Unlock()
 			releaseActive()
 			// Engine/Coordinator owns the canceled decision. Runtime only binds
 			// the accepted cancel Operation and Item identity to its projection.
 			terminalErr = sink.publishTerminalAs(opID, itemID)
 			if terminalErr == nil {
-				r.persistTerminalArtifactForTurn(
+				r.ArtifactService.persistTerminalArtifactForTurn(
 					context.Background(),
 					payload.ThreadID,
 					payload.TurnID,
@@ -1654,7 +1480,7 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 		releaseActive()
 		terminalErr = sink.publishTerminal()
 		if terminalErr == nil {
-			r.persistTerminalArtifactForTurn(
+			r.ArtifactService.persistTerminalArtifactForTurn(
 				context.Background(),
 				payload.ThreadID,
 				payload.TurnID,
@@ -1668,6 +1494,7 @@ func (r *Runtime) start(operation protocol.Operation, payload *protocol.StartTur
 			}
 		}
 	}()
+	return OperationOutcome{Kind: OutcomeAsync}
 }
 
 func startTurnSafely(
@@ -1689,32 +1516,24 @@ func startTurnSafely(
 	return engine.StartTurn(ctx, payload, sink)
 }
 
-func (r *Runtime) cancelTurn(
-	operation protocol.Operation,
-	payload *protocol.CancelTurnPayload,
-) error {
-	r.activeMu.Lock()
-	cancel, exists := r.active[payload.TurnID]
-	r.activeMu.Unlock()
-	if !exists {
-		return r.reject(operation, errors.New("turn is not active"))
+func (r CancelTurnHandler) Handle(operation protocol.Operation, payload *protocol.CancelTurnPayload) OperationOutcome {
+	if _, active := r.active.LookupTurn(payload.TurnID); !active {
+		return finishOutcome(errors.New("turn is not active"))
 	}
-	sink := &runtimeSink{runtime: r, operation: operation}
+	sink := &runtimeSink{runtime: r.Runtime, operation: operation}
 	if err := r.engine.CancelTurn(r.ctx, payload, sink); err != nil {
-		if rejectErr := r.reject(operation, err); rejectErr != nil {
-			return rejectErr
-		}
-		r.commit(operation.ID)
-		return err
+		return finishOutcome(err)
 	}
-	r.activeMu.Lock()
-	r.cancels[payload.TurnID] = cancelRecord{
-		itemID: payload.ItemID,
-		opID:   operation.ID,
+	cancel, err := r.active.RecordCancel(
+		payload.TurnID,
+		operation.ID,
+		payload.ItemID,
+	)
+	if err != nil {
+		return finishOutcome(err)
 	}
-	r.activeMu.Unlock()
 	cancel()
-	return nil
+	return OperationOutcome{Kind: OutcomeCommitted}
 }
 
 func (r *Runtime) invoke(
@@ -1722,10 +1541,7 @@ func (r *Runtime) invoke(
 	call func(EngineSink) error,
 ) error {
 	sink := &runtimeSink{runtime: r, operation: operation}
-	if err := call(sink); err != nil {
-		return r.reject(operation, err)
-	}
-	return nil
+	return call(sink)
 }
 
 func (r *Runtime) reject(operation protocol.Operation, err error) error {
@@ -1743,9 +1559,8 @@ type runtimeSink struct {
 	operation               protocol.Operation
 	deferTerminal           bool
 	terminal                protocol.EventData
-	material                *TerminalMaterial
+	committed               *CommittedTerminal
 	terminalCommitAttempted bool
-	operationCommitted      bool
 }
 
 func (s *runtimeSink) Emit(data protocol.EventData) error {
@@ -1761,130 +1576,14 @@ func (s *runtimeSink) Emit(data protocol.EventData) error {
 
 func (s *runtimeSink) CommitTerminal(material TerminalMaterial) error {
 	s.terminalCommitAttempted = true
-	if !material.FrozenState.Phase.Terminal() ||
-		material.FrozenState.Terminal == nil ||
-		material.Receipt == nil ||
-		material.Terminal == nil ||
-		len(material.DomainFacts) == 0 {
-		return errors.New("terminal material is incomplete")
-	}
-	_, turnID, _ := protocol.OperationReferences(s.operation)
-	if string(turnID) != material.DomainFacts[0].TurnID {
-		return errors.New("terminal material turn identity mismatch")
-	}
-	receiptPayload, err := json.Marshal(material.Receipt)
-	if err != nil {
-		return err
-	}
-	terminalPayload, err := json.Marshal(material.Terminal)
-	if err != nil {
-		return err
-	}
-	decision := *material.FrozenState.Terminal
-	commitReceipt := s.runtime.operationCommitReceipt(s.operation.ID)
-	operationReceipt, err := json.Marshal(commitReceipt)
-	if err != nil {
-		return err
-	}
-	threadID, _, itemID := protocol.OperationReferences(s.operation)
-	projectionOperationID := s.operation.ID
-	s.runtime.activeMu.Lock()
-	if stored, ok := s.runtime.cancels[turnID]; ok {
-		if stored.opID != "" {
-			projectionOperationID = stored.opID
-		}
-		if stored.itemID != "" {
-			itemID = stored.itemID
-		}
-	}
-	s.runtime.activeMu.Unlock()
-	entry := func(
-		id string,
-		kind protocol.EventKind,
-		payload json.RawMessage,
-	) turnkernel.ProjectionOutboxEntry {
-		return turnkernel.ProjectionOutboxEntry{
-			ID:          id,
-			EventID:     terminalOutboxEventID(turnID, id),
-			OperationID: projectionOperationID,
-			ThreadID:    threadID,
-			TurnID:      turnID,
-			ItemID:      itemID,
-			Kind:        string(kind),
-			Payload:     payload,
-		}
-	}
-	outbox := make([]turnkernel.ProjectionOutboxEntry, 0,
-		len(material.FrozenState.FinalOutput)+2)
-	for index, text := range material.FrozenState.FinalOutput {
-		payload, err := json.Marshal(&protocol.OutputDeltaData{Text: text})
-		if err != nil {
-			return err
-		}
-		id := fmt.Sprintf("output:%06d", index+1)
-		outbox = append(
-			outbox,
-			entry(id, protocol.EventOutputDelta, payload),
-		)
-	}
-	outbox = append(outbox,
-		entry(
-			"receipt",
-			protocol.EventExecutionReceipt,
-			receiptPayload,
-		),
-		entry(
-			"terminal",
-			eventKind(material.Terminal),
-			terminalPayload,
-		),
+	committed, err := s.runtime.terminal.Commit(
+		context.Background(),
+		TerminalRequest{Operation: s.operation, Material: material},
 	)
-	envelope := turnkernel.TerminalEnvelope{
-		TurnID:       string(turnID),
-		EffectID:     "terminal:" + string(turnID),
-		FrozenState:  material.FrozenState,
-		DomainFacts:  material.DomainFacts,
-		Receipt:      material.Receipt,
-		SessionDelta: append(json.RawMessage(nil), material.SessionDelta...),
-		FinalOutput: append(
-			[]string(nil),
-			material.FrozenState.FinalOutput...,
-		),
-		TerminalEvent: turnkernel.Event{
-			Kind:     turnkernel.EventTerminalCommitted,
-			Terminal: &decision,
-		},
-		OperationCommit: turnkernel.OperationCommitFact{
-			OperationID: s.operation.ID,
-			Status:      "committed",
-			Receipt:     operationReceipt,
-		},
-		Outbox: outbox,
-	}
-	if s.runtime.lifecycle != nil {
-		atomicStore, ok := s.runtime.terminalStore.(turnkernel.AtomicTerminalOperationStore)
-		if !ok {
-			return errors.New(
-				"durable lifecycle requires atomic terminal operation store",
-			)
-		}
-		_, err = atomicStore.CommitTerminalOperation(
-			context.Background(),
-			envelope,
-		)
-		s.operationCommitted = err == nil
-	} else {
-		_, err = s.runtime.terminalStore.CommitTerminal(
-			context.Background(),
-			envelope,
-		)
-		s.operationCommitted = err == nil
-	}
 	if err != nil {
 		return err
 	}
-	cloned := material
-	s.material = &cloned
+	s.committed = &committed
 	s.terminal = material.Terminal
 	return nil
 }
@@ -1899,21 +1598,11 @@ func (s *runtimeSink) operationItemID() protocol.ItemID {
 }
 
 func (s *runtimeSink) commitOperation() {
-	if s.operationCommitted {
+	if s.committed != nil && s.committed.OperationCommitted {
 		s.runtime.commitLocal(s.operation.ID)
 		return
 	}
 	s.runtime.commit(s.operation.ID)
-}
-
-func terminalOutboxEventID(
-	turnID protocol.TurnID,
-	entryID string,
-) protocol.EventID {
-	sum := sha256.Sum256(
-		[]byte("terminal-outbox\x00" + string(turnID) + "\x00" + entryID),
-	)
-	return protocol.EventID(fmt.Sprintf("evt_%x", sum[:16]))
 }
 
 func (s *runtimeSink) publishTerminalAs(
@@ -1924,7 +1613,7 @@ func (s *runtimeSink) publishTerminalAs(
 		return errors.New("turn finished without a terminal event")
 	}
 	threadID, turnID, _ := protocol.OperationReferences(s.operation)
-	if s.material == nil {
+	if s.committed == nil {
 		return s.runtime.publish(
 			operationID,
 			threadID,
@@ -1933,65 +1622,12 @@ func (s *runtimeSink) publishTerminalAs(
 			s.terminal,
 		)
 	}
-	entries, err := s.runtime.terminalStore.PendingOutbox(
+	return s.runtime.terminal.Publish(
 		context.Background(),
-		string(turnID),
+		*s.committed,
+		operationID,
+		itemID,
 	)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if entry.OperationID != operationID || entry.ItemID != itemID {
-			return errors.New("terminal outbox projection identity mismatch")
-		}
-		if err := s.runtime.publishTerminalOutboxEntry(entry); err != nil {
-			return err
-		}
-		if err := s.runtime.terminalStore.MarkOutboxPublished(
-			context.Background(),
-			string(turnID),
-			[]string{entry.ID},
-		); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *Runtime) recoverTerminalProjections(ctx context.Context) error {
-	store, ok := r.terminalStore.(turnkernel.TerminalProjectionRecoveryStore)
-	if !ok {
-		if r.lifecycle != nil {
-			return errors.New(
-				"durable lifecycle requires terminal projection recovery store",
-			)
-		}
-		return nil
-	}
-	projections, err := store.PendingTerminalProjections(ctx)
-	if err != nil {
-		return err
-	}
-	for _, projection := range projections {
-		for _, entry := range projection.Entries {
-			if err := r.publishTerminalOutboxEntry(entry); err != nil {
-				return fmt.Errorf(
-					"project terminal outbox %s/%s: %w",
-					projection.Envelope.TurnID,
-					entry.ID,
-					err,
-				)
-			}
-			if err := r.terminalStore.MarkOutboxPublished(
-				ctx,
-				projection.Envelope.TurnID,
-				[]string{entry.ID},
-			); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func (r *Runtime) recoverPendingTurns(ctx context.Context) error {
@@ -2214,7 +1850,7 @@ func (r *Runtime) publishTerminalOutboxEntry(
 		projectionErr = r.lifecycle.Project(context.Background(), event)
 	}
 	if projectionErr == nil && !protocol.IsTerminalEvent(event.Kind) {
-		r.persistSessionArtifact(context.Background(), event)
+		r.ArtifactService.persistSessionArtifact(context.Background(), event)
 	}
 	if protocol.IsTerminalEvent(event.Kind) {
 		r.terminals[event.TurnID] = event.Kind
@@ -2287,13 +1923,13 @@ func (r *Runtime) publish(
 	defer r.mu.Unlock()
 	itemID = r.eventOwnedItemID(data, itemID)
 	if plan, ok := data.(*protocol.PlanDeltaData); ok && plan.Done {
-		if err := r.decoratePlanArtifact(
+		if err := r.ArtifactService.decoratePlanArtifact(
 			context.Background(),
 			threadID,
 			turnID,
 			plan,
 		); err != nil {
-			r.logArtifactError(
+			r.ArtifactService.logArtifactError(
 				"decorate Session Plan Artifact",
 				protocol.Event{ThreadID: threadID, TurnID: turnID},
 				err,
@@ -2352,10 +1988,11 @@ func (r *Runtime) publish(
 		}
 	}
 	if projectionErr == nil && !protocol.IsTerminalEvent(kind) {
-		r.persistSessionArtifact(context.Background(), event)
+		r.ArtifactService.persistSessionArtifact(context.Background(), event)
 	}
 	switch value := data.(type) {
 	case *protocol.ApprovalRequiredData:
+		r.active.SetPhase(turnID, PhaseAwaitingApproval)
 		r.approvals[value.RequestID] = PendingApproval{
 			RequestID: value.RequestID,
 			ThreadID:  threadID,
@@ -2364,9 +2001,11 @@ func (r *Runtime) publish(
 			Data:      *value,
 		}
 	case *protocol.ApprovalResolvedData:
+		r.active.SetPhase(turnID, PhaseRunning)
 		delete(r.approvals, value.RequestID)
 		delete(r.approvalItems, value.RequestID)
 	case *protocol.InputRequiredData:
+		r.active.SetPhase(turnID, PhaseAwaitingInput)
 		r.inputs[value.RequestID] = PendingInput{
 			RequestID: value.RequestID,
 			ThreadID:  threadID,
@@ -2375,6 +2014,7 @@ func (r *Runtime) publish(
 			Data:      *value,
 		}
 	case *protocol.InputResolvedData:
+		r.active.SetPhase(turnID, PhaseRunning)
 		delete(r.inputs, value.RequestID)
 		delete(r.inputItems, value.RequestID)
 	}
@@ -2561,11 +2201,7 @@ func (r *Runtime) closeSubscribers() {
 }
 
 func (r *Runtime) cancelActive() {
-	r.activeMu.Lock()
-	for _, cancel := range r.active {
-		cancel()
-	}
-	r.activeMu.Unlock()
+	r.active.CancelAll()
 }
 
 func (r *Runtime) restore(recovery RecoveryState) {

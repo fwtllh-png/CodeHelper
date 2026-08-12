@@ -44,9 +44,6 @@
         "production_lines": 7970,
         "options_fields": 80,
         "mutex_fields": 5
-      },
-      "relaxations": {
-        "production_lines": "Stage D freezes Turn snapshots in wire configuration; user approved the measured ownership closure growth."
       }
     },
     {
@@ -91,9 +88,6 @@
         "production_lines": 8835,
         "options_fields": 61,
         "mutex_fields": 9
-      },
-      "relaxations": {
-        "production_lines": "Stage D replaces shared Turn state with TurnSpec, Scope, ControlPort, and durable SessionDelta; user approved the measured ownership closure growth."
       }
     },
     {
@@ -105,9 +99,6 @@
         "production_lines": 7651,
         "options_fields": 18,
         "mutex_fields": 5
-      },
-      "relaxations": {
-        "production_lines": "Stage D restores durable SessionDelta state through ThreadManager and the terminal store."
       }
     },
     {
@@ -203,11 +194,8 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2713,
-        "max_function_lines": 144
-      },
-      "relaxations": {
-        "lines": "Stage D includes the durable SessionDelta in the atomic terminal envelope."
+        "lines": 2350,
+        "max_function_lines": 132
       }
     },
     {
@@ -271,10 +259,6 @@
       "limits": {
         "lines": 464,
         "max_function_lines": 347
-      },
-      "relaxations": {
-        "lines": "Stage D groups MCP, extension, and skill snapshot sources for TurnSpec freezing.",
-        "max_function_lines": "Stage D groups MCP, extension, and skill snapshot sources for TurnSpec freezing."
       }
     },
     {
@@ -284,10 +268,6 @@
       "limits": {
         "lines": 175,
         "max_function_lines": 85
-      },
-      "relaxations": {
-        "lines": "Stage D wires Terminal Store SessionDelta recovery into ThreadManager.",
-        "max_function_lines": "Stage D wires Terminal Store SessionDelta recovery into ThreadManager."
       }
     },
     {
