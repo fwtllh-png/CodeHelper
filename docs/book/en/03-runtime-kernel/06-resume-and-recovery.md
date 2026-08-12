@@ -69,7 +69,9 @@ flowchart TD
 Persistent bootstraps use `NewRuntimeWithRecovery`, which calls the durable
 Lifecycle before opening acceptance. `TerminalPublisher` replays pending
 terminal outbox projections during startup activation (`runtime_start.go`)
-before the Runtime opens acceptance.
+before the Runtime opens acceptance. Outbox entries are published through the
+Event Hub with deterministic Event IDs (`PublishStable`), so restart replay is
+idempotent even when a projection was partially applied before the crash.
 
 ## Resume
 

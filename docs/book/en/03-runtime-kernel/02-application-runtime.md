@@ -15,12 +15,15 @@ test_paths:
   - internal/runtime/app/operation_dispatch_test.go
   - internal/runtime/app/active_turn_registry_test.go
   - internal/runtime/app/thread_manager_test.go
+  - internal/runtime/app/eventhub/hub_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/operation_dispatch.go
   - internal/runtime/app/active_turn_registry.go
   - internal/runtime/app/terminal_publisher.go
   - internal/runtime/app/service_facade.go
+  - internal/runtime/app/eventhub/hub.go
+  - internal/runtime/app/service/contracts.go
   - internal/runtime/app/session_artifacts.go
   - internal/runtime/app/application.go
 status: draft
@@ -55,6 +58,8 @@ different runtime.
   Outcome.
 - Projection derives current query state from ordered Events.
 - `ActiveTurnRegistry` atomically reserves a Turn and Thread with a lease.
+- `eventhub.Hub` exclusively owns Event sequence, append, replay, and
+  subscriber fanout.
 - Pending work represents resumable Approval, Input, and Operation state.
 
 ## Runtime Flow
@@ -114,14 +119,20 @@ state machine, not a process afterthought.
 ## Dispatch and Active Turns
 
 `operationDispatcher` explicitly dispatches start, cancel, steer, Approval,
-Input, compact, fork, and revert. Every Handler returns committed, rejected,
-async, or terminal Outcome; only the Dispatcher applies the synchronous
-commit/rejection template. Start remains async until terminal publication.
+Input, compact, fork, and revert. Every Handler returns an Outcome carrying
+optional Events, an optional Async Turn identity, a typed `*protocol.Problem`,
+and an explicit Commit Mode (`CommitNow` or `CommitDeferred`). Only the
+Dispatcher applies the synchronous commit/rejection template, and
+`validateOperationOutcome` enforces the exact Kind/Commit Mode combination;
+plain errors are converted to Problems with `CodeInternal` mapped to
+`CodeConflict`. Start remains async until terminal publication.
 
-`ActiveTurnRegistry` reserves Thread and Turn in one critical section. Release
-requires the matching lease token, so a stale goroutine cannot release a newer
-Turn. The same handle owns control, cancellation provenance, current phase,
-and applied Profile revision.
+`ActiveTurnRegistry` reserves Thread and Turn in one critical section; the
+lease carries the durable Start Operation ID. Release requires the matching
+lease token, so a stale goroutine cannot release a newer Turn. The same handle
+binds control and cancellation provenance and applied Profile revision, but
+pending-work phase is no longer stored there: `EngineAdapter.TurnPhase` reads
+the authoritative Turn Kernel snapshot.
 
 ## Terminal and Service Ownership
 
@@ -132,18 +143,25 @@ receipt before projection.
 
 `SessionService` owns lifecycle, Profile, and Tool Catalog behavior.
 `ArtifactService` owns Checkpoint, Plan, Turn recovery, and artifact
-persistence. Runtime embeds both services so Hosts retain the existing Facade
-API without duplicate forwarding methods.
+persistence. Their Host-facing contracts live in the independent
+`app/service` package (`Session` and `Artifact[Recovery, Plan]` interfaces);
+implementations are adapters over Runtime-owned ports, not host logic. Runtime
+embeds both services so Hosts retain the existing Facade API without duplicate
+forwarding methods.
 
 ## Event Projection
 
-Event sequence is assigned centrally. Events are appended to the Event Store,
-update pending state, and are published to subscribers. `TerminalPublisher`
-projects committed terminal outbox entries into Events. Replay uses Cursor
-ranges without creating a live subscription.
+`eventhub.Hub` owns the single ordering path: sequence assignment, append,
+replay, and subscriber fanout. The Runtime delegates `Events`,
+`EventsLimited`, `ReplayEvents`, `Snapshot`, and `Close` to the Hub. `Publish`
+appends an Event and fans it out to subscribers; `PublishStable` additionally
+deduplicates by a deterministic Event ID against an identity store, which
+makes `TerminalPublisher`'s committed outbox projection idempotent across
+restarts. `Restore` reconciles the in-memory sequence after recovery.
 
-A bounded in-memory history can produce an explicit Cursor Gap. Slow
-subscribers are dropped rather than blocking the single ordering path.
+Replay uses Cursor ranges without creating a live subscription. A bounded
+in-memory history can produce an explicit Cursor Gap. Slow subscribers are
+closed and dropped rather than blocking the single ordering path.
 
 ## Thread and Engine Management
 
@@ -157,9 +175,11 @@ The app layer does not parse Provider streams or authorize Tool Calls.
 
 | Concern | Source |
 | --- | --- |
-| Queue, sequence, subscribers | `runtime.go` |
+| Queue, acceptance, dispatch | `runtime.go` |
 | Operation outcomes and handlers | `operation_dispatch.go` |
 | Active Turn leases and control | `active_turn_registry.go` |
+| Event sequence, replay, subscribers | `eventhub/hub.go` |
+| Host-facing service contracts | `service/contracts.go` |
 | Atomic terminal/outbox recovery | `terminal_publisher.go` |
 | Session and artifact services | `service_facade.go`, `session_artifacts.go` |
 | Engine adaptation | `application.go` |

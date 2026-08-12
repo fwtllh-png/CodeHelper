@@ -67,7 +67,9 @@ flowchart TD
 
 Persistent Bootstrap 使用 `NewRuntimeWithRecovery`，在开放 Acceptance 前调用 Durable
 Lifecycle。`TerminalPublisher` 在启动激活阶段（`runtime_start.go`）重放 Pending
-Terminal Outbox Projection，之后 Runtime 才打开 Acceptance。
+Terminal Outbox Projection，之后 Runtime 才打开 Acceptance。Outbox Entry 通过
+Event Hub 以确定性 Event ID（`PublishStable`）发布，即使 Projection 在崩溃前只
+应用了一部分，重启重放也保持幂等。
 
 ## Resume
 
