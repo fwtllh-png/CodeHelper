@@ -16,6 +16,8 @@ test_paths:
   - internal/runtime/app/active_turn_registry_test.go
   - internal/runtime/app/thread_manager_test.go
   - internal/runtime/app/eventhub/hub_test.go
+  - internal/runtime/app/chatmerge/service_test.go
+  - internal/runtime/app/persistence/runtime_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/operation_dispatch.go
@@ -26,6 +28,8 @@ source_of_truth:
   - internal/runtime/app/service/contracts.go
   - internal/runtime/app/session_artifacts.go
   - internal/runtime/app/application.go
+  - internal/runtime/app/chatmerge/service.go
+  - internal/runtime/app/persistence/runtime.go
 status: draft
 last_verified: null
 ---
@@ -149,6 +153,32 @@ implementations are adapters over Runtime-owned ports, not host logic. Runtime
 embeds both services so Hosts retain the existing Facade API without duplicate
 forwarding methods.
 
+## Chat Merge and Durable Assembly
+
+`chatmerge.Service` (`internal/runtime/app/chatmerge`) owns the isolated Chat
+workspace pipeline as an independently testable service rather than
+construction logic inside `wire`:
+
+- `Plan` returns a compact `tool.EditPlan` whose ID digests every planned
+  batch, so a stale preview cannot be applied.
+- `Apply` re-plans under the Turn Gate, verifies the plan ID, snapshots
+  expected file fingerprints, and journal-applies batches with CAS conflict
+  detection, then refreshes the worktree and commits a new baseline.
+- `Snapshot` copies parent workspace changes into a new worktree and commits
+  its baseline; `Verify` rejects a restored worktree without a baseline.
+- Text conflicts resolve with a three-way `git merge-file` against the
+  committed baseline; binary or non-UTF-8 paths and overlarge diffs are
+  rejected (512 files, 64 per batch, 3 MiB diff cap).
+- `allowApply` derives from the Runtime permission, so a read-only workspace
+  never reaches the journal.
+
+`internal/runtime/app/persistence` is the durable assembly boundary: it
+composes Session, Thread, Task, Snapshot, Usage, and Trace repositories over
+`persist/state.Store`, restores interrupted Tasks, and prepares or starts a
+persistent `app.Runtime` (`PreparePersistentRuntime`, `NewPersistentRuntime`)
+before accepting Operations. `EnsureThread` seeds workspace/session/thread
+rows so CLI and TUI hosts can start Turns against the persistent Runtime.
+
 ## Event Projection
 
 `eventhub.Hub` owns the single ordering path: sequence assignment, append,
@@ -187,6 +217,8 @@ The app layer does not parse Provider streams or authorize Tool Calls.
 | Thread ownership | `thread_manager.go` |
 | Receipt projection | `receipt.go` |
 | Durable lifecycle interface | `lifecycle.go` |
+| Chat merge preview and journaled apply | `chatmerge/service.go` |
+| Durable Runtime assembly and recovery | `persistence/runtime.go` |
 
 ## Tradeoffs and Alternatives
 

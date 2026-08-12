@@ -9,6 +9,7 @@ prerequisites:
   - runtime-agent-loop
 code_paths:
   - internal/runtime/app/wire
+  - internal/runtime/app/persistence
 test_paths:
   - internal/runtime/app/wire/bootstrap_test.go
   - internal/runtime/app/wire/model_test.go
@@ -32,6 +33,7 @@ source_of_truth:
   - internal/runtime/app/wire/modules_runtime.go
   - internal/runtime/app/wire/assembly/resources.go
   - internal/runtime/app/runtime_start.go
+  - internal/runtime/app/persistence/runtime.go
   - internal/adapter/extension/orchestration/contributor.go
 status: draft
 last_verified: null
@@ -87,7 +89,9 @@ implementations to:
 - connect Journal, Diagnostics, Verify, Trace, Usage, and stores;
 - initialize MCP, Skill, Plugin, Hook, and Dynamic Tool managers;
 - build child runtimes, Worktrees, and background executors;
-- choose persistent or in-memory application Runtime.
+- choose persistent or in-memory application Runtime;
+- construct `chatmerge.Service` and the durable assembly; merge, journal, and
+  Git behavior stays inside the constructed services.
 
 ## Composition Root Structure
 
@@ -111,7 +115,10 @@ Subagents, and child worktrees/toolsets. Provider publishes the selected
 Provider/Model catalogs, while Security publishes its Permission Store and
 Guard Factory. A failed module aborts with a `moduleBuildError` that names
 the module, and already-opened resources are closed through the shared
-resource stack.
+resource stack. Durable assembly and Chat merge are constructed modules too:
+`app/persistence` composes repositories and recovery, while
+`chatmerge.Service` owns the isolated workspace baseline, preview, and
+journaled apply.
 
 Builtin and extension tools receive the same `Registry` instance. Plugin,
 Skill, Memory, Dynamic Tool, Hook, and MCP integrations implement the
@@ -204,7 +211,8 @@ Configuration expresses intent; it cannot manufacture environmental capability.
 | Resource lifecycle | `assembly/resources.go` |
 | Route/budget defaults | `route.go`, `routeset.go` |
 | Provider construction | `model.go`, `model_catalog.go`, `model_probe.go` |
-| Persistent Runtime | `persistent.go` |
+| Durable Runtime assembly | `internal/runtime/app/persistence/runtime.go` |
+| Chat merge construction | `chatworktree.go`, `chatmerge/service.go` |
 | Sandbox facts | `sandbox_info.go` |
 | MCP/extensions | `mcp.go`, `extensions.go` |
 | Child/background work | `childruntime.go`, `background_executors.go` |

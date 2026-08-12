@@ -16,6 +16,8 @@ test_paths:
   - internal/runtime/app/active_turn_registry_test.go
   - internal/runtime/app/thread_manager_test.go
   - internal/runtime/app/eventhub/hub_test.go
+  - internal/runtime/app/chatmerge/service_test.go
+  - internal/runtime/app/persistence/runtime_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/operation_dispatch.go
@@ -26,6 +28,8 @@ source_of_truth:
   - internal/runtime/app/service/contracts.go
   - internal/runtime/app/session_artifacts.go
   - internal/runtime/app/application.go
+  - internal/runtime/app/chatmerge/service.go
+  - internal/runtime/app/persistence/runtime.go
 status: draft
 last_verified: null
 ---
@@ -134,6 +138,27 @@ Checkpoint、Plan、Turn Recovery 与 Artifact Persistence。Host 依赖的 Cont
 Runtime Port 上的 Adapter，不包含 Host 逻辑。Runtime 嵌入两个 Service，Host 继续
 使用原 Facade API，不产生重复转发方法。
 
+## Chat Merge 与 Durable Assembly
+
+`chatmerge.Service`（`internal/runtime/app/chatmerge`）以独立可测试的 Service
+拥有隔离 Chat Workspace 流水线，而不是 `wire` 内的构造逻辑：
+
+- `Plan` 返回紧凑 `tool.EditPlan`，其 ID 摘要所有批次，过期 Preview 无法被应用。
+- `Apply` 在 Turn Gate 下重新 Plan、校验 Plan ID、快照预期文件 Fingerprint，通过
+  Journal 分批应用并做 CAS 冲突检测，然后刷新 Worktree 并提交新 Baseline。
+- `Snapshot` 将父 Workspace 变更复制进新 Worktree 并提交 Baseline；`Verify` 拒绝
+  没有 Baseline 的恢复 Worktree。
+- 文本冲突用 `git merge-file` 对已提交 Baseline 做三方合并；二进制/非 UTF-8 路径
+  与过大 Diff 被拒绝（512 文件、每批 64、Diff 上限 3 MiB）。
+- `allowApply` 来自 Runtime Permission，只读 Workspace 永远不会进入 Journal。
+
+`internal/runtime/app/persistence` 是 Durable Assembly 边界：它在
+`persist/state.Store` 之上组合 Session、Thread、Task、Snapshot、Usage、Trace
+Repository，恢复被中断的 Task，并在接受 Operation 前以 `PreparePersistentRuntime`
+/`NewPersistentRuntime` 准备或启动 Persistent `app.Runtime`。`EnsureThread` 预置
+Workspace/Session/Thread 行，使 CLI/TUI Host 可以在 Persistent Runtime 上启动
+Turn。
+
 ## Event Projection
 
 `eventhub.Hub` 独占单一排序路径：Sequence 分配、Append、Replay 与 Subscriber
@@ -167,6 +192,8 @@ Stream，也不授权 Tool。
 | Thread Ownership | `thread_manager.go` |
 | Receipt | `receipt.go` |
 | Durable Lifecycle | `lifecycle.go` |
+| Chat Merge Preview/Journaled Apply | `chatmerge/service.go` |
+| Durable Runtime Assembly/Recovery | `persistence/runtime.go` |
 
 ## 设计取舍与替代方案
 
