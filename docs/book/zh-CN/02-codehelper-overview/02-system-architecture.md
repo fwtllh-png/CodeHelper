@@ -160,14 +160,20 @@ Event 包含 Sequence、Operation、Thread、Turn 和 Item Identity，使 Host �
 
 ## Construction Boundary
 
-`runtime/app/wire` 可以了解具体实现，负责：
+`runtime/app/wire` 可以了解具体实现。`NewExec` 是组合根：创建仅用于构造期的
+`buildState`，并执行封闭的 Module 序列：
 
-- 解析 Model Route 与 Credential；
-- 创建 Tool Registry 与 Guard；
-- 组装 Prompt Context 与 Budget；
-- 连接 Journal、Diagnostics、Trace 和 Persistence；
-- 将 Agent Engine 适配为 Application Engine；
-- 创建 Persistent 或 In-memory Runtime。
+```text
+config -> provider -> platform -> persistence -> builtin tools
+       -> extension contributors -> security -> orchestration
+       -> agent -> runtime -> background services
+```
+
+每个 Module 只拥有一个构造边界，仅向后续 Module 发布必要结果。Runtime、Engine 和
+Session Service 都不得持有 `buildState`。Builtin 与 Extension Tool 共享同一个
+Registry；Plugin、Skill、Memory、Task/Automation、Hook 和 MCP 通过有序且 ID 唯一
+的 Contributor 扩展，不修改 Agent Module。构造与关闭共享 `assembly.ResourceStack`，
+部分构造失败按注册逆序回滚，不泄漏资源。
 
 构造与业务循环分离，避免 Dependency Injection 代码成为第二套 Runtime。
 
@@ -208,7 +214,7 @@ go test ./internal/runtime/app -run TestRuntimeUnsupportedOperationIsExplicitlyR
 ## 动手实验
 
 按顺序定位 `OperationStartTurn`、`Runtime.Submit`、`EngineAdapter.StartTurn`、
-`Engine.RunForTurn`、`Guard.ExecuteBound` 和 `wire.NewRuntime` 调用点，再运行
+`Engine.RunForTurn`、`Guard.ExecuteBound` 和 `wire.NewExec` 调用点，再运行
 Architecture Test，确认源码路径与架构图一致。
 
 ## 复习问题

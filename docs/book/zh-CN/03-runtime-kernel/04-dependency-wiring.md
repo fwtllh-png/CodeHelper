@@ -12,10 +12,20 @@ code_paths:
 test_paths:
   - internal/runtime/app/wire/bootstrap_test.go
   - internal/runtime/app/wire/model_test.go
+  - internal/runtime/app/wire/build_state_test.go
+  - internal/runtime/app/wire/assembly/resources_test.go
   - internal/runtime/app/wire/sandbox_architecture_test.go
 source_of_truth:
   - internal/runtime/app/wire/runtime.go
   - internal/runtime/app/wire/route.go
+  - internal/runtime/app/wire/build_state.go
+  - internal/runtime/app/wire/modules_core.go
+  - internal/runtime/app/wire/modules_extensions.go
+  - internal/runtime/app/wire/modules_orchestration.go
+  - internal/runtime/app/wire/modules_runtime.go
+  - internal/runtime/app/wire/modules_security.go
+  - internal/runtime/app/wire/assembly/resources.go
+  - internal/adapter/extension/orchestration/contributor.go
 status: draft
 last_verified: null
 ---
@@ -70,6 +80,32 @@ flowchart TD
 - 构建 Child Runtime、Worktree 与 Background Executor；
 - 选择 Persistent 或 In-memory Application Runtime。
 
+## 组合根结构
+
+`wire.NewExec` 是装配入口，不是 Service Locator 或业务 Workflow。它创建仅用于
+构造期的 `buildState`，并执行封闭的 Module 序列：
+
+```text
+config -> provider -> platform -> persistence -> builtin tools
+       -> extension contributors -> security -> orchestration
+       -> agent -> runtime -> background services
+```
+
+每个 Module 实现 `buildModule` 契约（`Name()` 与 `Build`），只拥有一个构造边界，
+并通过 `buildState` 仅向后续 Module 发布必要结果。Runtime、Engine 和 Session
+Service 都不得持有 `buildState`。Module 失败时以 `moduleBuildError` 中止并带上
+Module 名，已打开资源通过共享 Resource Stack 关闭。
+
+Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Plugin、Skill、Memory、
+Task/Automation、Hook 和 MCP 实现 `extensionContributor` 契约（`ID()` 与
+`Contribute`），在 `extension-tools` Module 中按固定顺序、ID 唯一执行，任何
+Extension 都不修改 Agent Module。
+
+构造与关闭共享 `assembly.ResourceStack`。`NewExec` 只注册一次资源关闭函数；
+部分构造失败回滚与正常关闭都按注册逆序关闭同一 Stack。每项资源最多关闭一次，
+单项关闭失败不会跳过后续资源，调用方会收到带资源标识的聚合错误。因此 Runtime
+或 Scheduler 等后段构造失败也不会泄漏资源。
+
 ## Startup Invariant
 
 Route/Capability/Config 无效、Workspace Identity 无法 Canonicalize、Required Sandbox
@@ -78,7 +114,8 @@ Route/Capability/Config 无效、Workspace Identity 无法 Canonicalize、Requir
 
 ## Startup Ordering 与 Ownership Transfer
 
-Construction 遵循 Dependency Order，而不是简单 Constructor List：
+Construction 遵循 Dependency Order，而不是简单 Constructor List。上面的 Module
+序列强制执行该顺序，每个编号步骤对应一个或一组 Module：
 
 1. Validate Config 并 Canonicalize Workspace；
 2. 打开 Durable Store，在 Acceptance 前 Recovery；
@@ -90,9 +127,9 @@ Construction 遵循 Dependency Order，而不是简单 Constructor List：
 8. 创建 Thread/Engine Factory；
 9. 创建 Application Runtime，最后才暴露 Host Facade。
 
-每步成功后 Ownership 转移。后续步骤失败时，已打开 Store、Transport、Extension Process、
-Background Manager 必须逆序 Close。即使 Turn 尚未开始，Constructor Failure 泄漏
-Process 也违反 Runtime Contract。
+每步成功后 Ownership 转移。后续步骤失败时，已打开 Store、Transport、Extension
+Process、Background Manager 由共享 `ResourceStack` 按注册逆序 Close。即使 Turn
+尚未开始，Constructor Failure 泄漏 Process 也违反 Runtime Contract。
 
 ## Capability Provenance
 
@@ -111,26 +148,37 @@ Configuration 表达 Intent，不能制造 Environment Capability。
 
 | 关注点 | 源码 |
 | --- | --- |
-| Main Assembly | `runtime.go` |
+| 组合根与 Module 序列 | `runtime.go` |
+| 构造期状态与 Module 契约 | `build_state.go` |
+| config/provider/platform/persistence/builtin tools | `modules_core.go` |
+| Extension Contributor | `modules_extensions.go` |
+| Security Policy/Constitution/Guard | `modules_security.go` |
+| Orchestration Tool 与 Subagent | `modules_orchestration.go` |
+| Agent Engine/Runtime/Background | `modules_runtime.go` |
+| 资源生命周期 | `assembly/resources.go` |
 | Route/Budget | `route.go`、`routeset.go` |
-| Provider | `model.go` |
+| Provider | `model.go`、`model_catalog.go`、`model_probe.go` |
 | Persistence | `persistent.go` |
 | Sandbox Fact | `sandbox_info.go` |
 | MCP/Extension | `mcp.go`、`extensions.go` |
 | Child/Background | `childruntime.go`、`background_executors.go` |
+| Task/Automation Contributor | `internal/adapter/extension/orchestration/contributor.go` |
 
 ## 实现导读
 
-Builder Canonicalize Workspace，构建 Store/Observability，加载 Constitution，合并
-Policy，创建 Registry/Guard，组装 Prompt Context，再通过 Thread Manager 构造
-Agent Engine。Application Runtime 只接收 Engine Interface 与 Durable Facility；
-Host 不获得 Provider 或 Guard 实例。
+`NewExec` 执行封闭 Module 序列：Canonicalize Workspace，构建 Store/Observability，
+加载 Constitution，合并 Policy，创建 Registry/Guard，组装 Prompt Context，再通过
+Thread Manager 构造 Agent Engine。每步向 `buildState` 发布结果，Ownership 逐
+Module 前移。Application Runtime 只接收 Engine Interface 与 Durable Facility；
+Host 不获得 Provider、Guard 实例，也拿不到 `buildState`。
 
 ## 设计取舍与替代方案
 
 DI Framework 可以自动化 Graph，却可能隐藏 Ordering 与 Security Decision。CodeHelper
 使用显式 Go Construction，使 Reviewer 能追踪进入 Guard 的 Backend 和 Policy。
-Composition Root 较大时应按语义拆 Helper，而不是把 Business Loop 移入 Wiring。
+Composition Root 较大时的对策是封闭 Module 序列（`modules_*.go` 按 Module 归属）、
+仅构造期存在的 `buildState` 和显式 `ResourceStack`，而不是把 Business Loop 移入
+Wiring。
 
 ## 失败模式与安全边界
 
@@ -149,9 +197,9 @@ go test ./internal/host/cli -run TestCLIDoesNotDependOnExecutionImplementations
 
 ## 动手实验
 
-从 CLI `exec` 只追踪 Constructor，直到 `app.NewRuntime` 或
-`NewRuntimeWithRecovery`。记录 Route、Guard、Sandbox、Journal、Prompt Context
-在哪里接入；这条路径不应出现 Business Turn Step。
+从 CLI `exec` 只追踪 Constructor，直到 `wire.NewExec`。在 `defaultBuildModules`
+中识别 Module 序列，记录 Route、Guard、Sandbox、Journal、Prompt Context 在哪里
+接入；这条路径不应出现 Business Turn Step。
 
 ## 复习问题
 
