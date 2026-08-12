@@ -343,7 +343,7 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 				wire := parseProductionFile(
 					t,
 					root,
-					"internal/runtime/app/wire/runtime.go",
+					"internal/runtime/app/wire/modules_runtime.go",
 				)
 				function := findFunction(
 					engineKernel,

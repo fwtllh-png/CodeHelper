@@ -55,6 +55,27 @@ CLI / TUI / VS Code / ACP
 Architecture Test 会检查重要 Import 限制。需要违反这些规则的设计必须先进行显式架构
 调整，不能用局部捷径绕过。
 
+## Runtime 组合根
+
+`runtime/app/wire.NewExec` 是装配入口，不是 Service Locator 或业务 Workflow。它创建
+仅用于构造期的 `buildState`，并执行封闭的 Module 序列：
+
+```text
+config -> provider -> platform -> persistence -> builtin tools
+       -> extension contributors -> security -> orchestration
+       -> agent -> runtime -> background services
+```
+
+每个 Module 只拥有一个构造边界，并仅向后续 Module 暴露必要结果。Runtime、Engine 和
+Session Service 都不得持有 `buildState`。Builtin 与 Extension Tool 共享同一个
+Registry 实例；Plugin、Skill、Memory、Task/Automation、Hook 和 MCP 通过有序且 ID
+唯一的 Contributor 扩展，不修改 Agent Module。
+
+构造与关闭共享 `assembly.ResourceStack`。Session 只注册一次资源关闭函数；部分构造
+失败回滚与正常关闭都按注册逆序关闭同一 Stack。每项资源最多关闭一次，单项关闭失败
+不会跳过后续资源，调用方会收到带资源标识的聚合错误。因此 Runtime 或 Scheduler 等
+后段构造失败也不会泄漏已创建资源。
+
 ## Runtime 协议
 
 协议定义位于 `internal/runtime/protocol`，生成后的公开 Schema 位于
