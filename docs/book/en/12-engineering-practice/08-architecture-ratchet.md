@@ -74,9 +74,9 @@ on drift, and optionally writes a measured report. The Makefile exposes
 `make architecture-size-budget BASE_REF=origin/main` independently compares
 the complete ownership closure against a Git base. It excludes tests, docs,
 fixtures, generated sources, and build output, and reports base, head, added,
-deleted, and net production lines. Stage D carries an explicitly approved
-`+847` relaxation; the command fails on `+848`, so later growth cannot hide
-inside that decision.
+deleted, and net production lines. Stage D consumed an explicitly approved
+`+847` relaxation when it merged. The default returned to zero afterward, so
+the next net production line fails unless a new decision is recorded.
 
 ## Metrics
 

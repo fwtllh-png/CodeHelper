@@ -41,7 +41,7 @@ ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_SIZE_REPORT ?= .tmp/architecture/size-budget.json
 ARCHITECTURE_SIZE_PATHS ?= internal/runtime/agent/engine,internal/runtime/agent/turnexec,internal/runtime/agent/compact,internal/runtime/agent/evidence,internal/runtime/agent/workingset,internal/runtime/app,internal/persist/state/turnstate
-ARCHITECTURE_SIZE_MAX_NET ?= 847
+ARCHITECTURE_SIZE_MAX_NET ?= 0
 BASE_REF ?= $(ARCHITECTURE_BASE_REF)
 
 FUZZTIME ?= 30s

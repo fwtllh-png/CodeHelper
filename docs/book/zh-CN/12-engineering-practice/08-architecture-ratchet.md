@@ -67,8 +67,9 @@ architecture-ratchet`（测量并执行）；Ratchet 已加入 `make verify` 和
 
 `make architecture-size-budget BASE_REF=origin/main` 独立比较完整 Ownership Closure
 与 Git Base。它排除 Test、Docs、Fixture、Generated Source 与 Build Output，并报告
-Base、Head、Added、Deleted、Net Production Lines。Stage D 带有显式批准的 `+847`
-Relaxation；第 `+848` 行会使命令失败，因此后续增长不能隐藏在这次决定中。
+Base、Head、Added、Deleted、Net Production Lines。Stage D 合入时消费了显式批准的
+`+847` Relaxation，随后默认值恢复为零；后续新增第 `+1` 行就会失败，除非再次记录
+明确决策。
 
 ## 指标
 
