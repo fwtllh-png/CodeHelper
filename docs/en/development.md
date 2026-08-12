@@ -223,6 +223,41 @@ and 5 lines respectively. A larger gap between the measured value and its limit
 also fails, forcing the baseline downward after a split. The measured report is
 written to `.tmp/architecture/metrics.json`.
 
+## Foundation Kits
+
+Shared persistence mechanics live in `internal/persist/sqlkit`. Repositories
+may reuse transaction lifecycle, row collection, canonical JSON, nullable
+values, UTC timestamps, and exact affected-row checks. SQL statements,
+optimistic concurrency, state transitions, not-found errors, and domain scans
+remain in the owning repository. `sqlkit.WithTx` does not retry or nest
+transactions; callback errors roll back, rollback errors are joined, and a
+callback panic rolls back before being rethrown.
+
+Simple typed tools use `internal/adapter/tool/typed` for strict JSON decoding
+and output encoding, and `internal/adapter/tool/result` for structured success
+or failure results. The typed adapter is not an execution path: descriptors
+still register in the ordinary Registry, calls still require authorization,
+and consequential tools still pass through Guard, approval, journal, and
+sandbox policy. Resource resolution, availability, and repeat behavior remain
+explicit in each tool descriptor.
+
+The first migrated tool tier is `completion`, `lsp`, `memory`, `revert`,
+`skill`, and `toolsearch`. Their migration gate rejects local
+`json.Unmarshal` code so call-shape handling cannot silently diverge. Task
+`List` shares its scanner with `Get`, selects all fields in one query, and has
+a 1000-row benchmark plus a one-query contract test.
+
+Focused validation:
+
+```bash
+go test -race ./internal/persist/... \
+  ./internal/orchestration/task \
+  ./internal/orchestration/automation
+go test -race ./internal/adapter/tool/...
+go test -run '^$' -bench BenchmarkList1000 -benchtime=1x \
+  ./internal/orchestration/task
+```
+
 Choose tests by risk:
 
 | Change | Minimum validation |

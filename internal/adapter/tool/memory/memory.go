@@ -10,10 +10,21 @@ import (
 
 	memorystore "github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 )
 
 type Tool struct {
 	store *memorystore.Store
+}
+
+type input struct {
+	Note string `json:"note"`
+}
+
+type output struct {
+	Content string
+	Path    string
 }
 
 func New(store *memorystore.Store) (*Tool, error) {
@@ -31,7 +42,11 @@ func Register(registry *tool.Registry, store *memorystore.Store) error {
 	if err != nil {
 		return err
 	}
-	return registry.Register(executor, nil)
+	typedExecutor, err := executor.typedExecutor()
+	if err != nil {
+		return err
+	}
+	return registry.Register(typedExecutor, nil)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {
@@ -69,20 +84,31 @@ func (t *Tool) Descriptor() tool.Descriptor {
 }
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	_ = ctx
-	var input struct {
-		Note string `json:"note"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
+	executor, err := t.typedExecutor()
+	if err != nil {
 		return tool.Result{}, err
 	}
-	if err := t.store.Append(input.Note); err != nil {
-		return tool.Result{}, err
-	}
-	return tool.Result{
-		Content: "remembered: " + strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input.Note), "#")),
-		Metadata: map[string]any{
-			"path": t.store.Path(),
+	return executor.Execute(ctx, raw)
+}
+
+func (t *Tool) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[input, output]{
+		Descriptor: t.Descriptor(),
+		Run: func(_ context.Context, value input) (output, error) {
+			if err := t.store.Append(value.Note); err != nil {
+				return output{}, err
+			}
+			return output{
+				Content: "remembered: " +
+					strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value.Note), "#")),
+				Path: t.store.Path(),
+			}, nil
 		},
-	}, nil
+		Encode: func(value output) (tool.Result, error) {
+			return toolresult.Text(value.Content, nil), nil
+		},
+		Metadata: func(value output) map[string]any {
+			return map[string]any{"path": value.Path}
+		},
+	})
 }

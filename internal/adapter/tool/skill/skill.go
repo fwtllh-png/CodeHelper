@@ -9,10 +9,15 @@ import (
 
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 )
 
 type Tool struct {
 	catalog *skillruntime.Catalog
+}
+
+type input struct {
+	Name string `json:"name"`
 }
 
 func New(catalog *skillruntime.Catalog) (*Tool, error) {
@@ -30,7 +35,11 @@ func Register(registry *tool.Registry, catalog *skillruntime.Catalog) error {
 	if err != nil {
 		return err
 	}
-	return registry.Register(executor, nil)
+	typedExecutor, err := executor.typedExecutor()
+	if err != nil {
+		return err
+	}
+	return registry.Register(typedExecutor, nil)
 }
 
 func (*Tool) Descriptor() tool.Descriptor {
@@ -61,18 +70,30 @@ func (*Tool) Descriptor() tool.Descriptor {
 }
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
+	executor, err := t.typedExecutor()
+	if err != nil {
 		return tool.Result{}, err
 	}
+	return executor.Execute(ctx, raw)
+}
+
+func (t *Tool) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[input, tool.Result]{
+		Descriptor: t.Descriptor(),
+		Run:        t.run,
+		Encode: func(value tool.Result) (tool.Result, error) {
+			return value, nil
+		},
+	})
+}
+
+func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
 	if allowed := AllowedNamesFrom(ctx); allowed != nil {
-		if _, ok := allowed[input.Name]; !ok {
+		if _, ok := allowed[value.Name]; !ok {
 			return tool.Result{}, errors.New("skill is not in this turn's catalog snapshot")
 		}
 	}
-	plan, err := t.catalog.LoadPlan(ctx, input.Name)
+	plan, err := t.catalog.LoadPlan(ctx, value.Name)
 	if err != nil {
 		return tool.Result{}, err
 	}

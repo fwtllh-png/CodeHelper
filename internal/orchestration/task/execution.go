@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 )
 
 // Executor names. A task is executable only when its executor is one of these,
@@ -139,7 +141,7 @@ func (r *Repository) Claim(ctx context.Context, request ClaimRequest) ([]Task, e
 	now = now.UTC()
 
 	var claimed []Task
-	err = withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err = sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		ids, err := claimIDs(
 			ctx, tx, owner, executors, request.SessionID, workspaceRoot,
 			now, request.Lease, limit,
@@ -155,14 +157,14 @@ func (r *Repository) Claim(ctx context.Context, request ClaimRequest) ([]Task, e
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO task_lifecycle(task_id, sequence, state, reason, created_at)
 				VALUES (?, ?, ?, NULL, ?)`,
-				id, value.LifecycleSequence, StateRunning, timestamp(now),
+				id, value.LifecycleSequence, StateRunning, sqlkit.Timestamp(now),
 			); err != nil {
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO task_attempts(task_id, attempt, owner, status, started_at)
 				VALUES (?, ?, ?, ?, ?)`,
-				id, value.Attempt, owner, AttemptRunning, timestamp(now),
+				id, value.Attempt, owner, AttemptRunning, sqlkit.Timestamp(now),
 			); err != nil {
 				return err
 			}
@@ -182,7 +184,7 @@ func claimIDs(
 ) ([]string, error) {
 	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(executors)), ", ")
 	arguments := []any{
-		owner, timestamp(now.Add(lease)), timestamp(now), timestamp(now), StateQueued,
+		owner, sqlkit.Timestamp(now.Add(lease)), sqlkit.Timestamp(now), sqlkit.Timestamp(now), StateQueued,
 	}
 	for _, executor := range executors {
 		arguments = append(arguments, executor)
@@ -202,7 +204,7 @@ func claimIDs(
 						AND claim_workspace.root_path = ?
 				)`
 	arguments = append(arguments, workspaceRoot)
-	arguments = append(arguments, timestamp(now), limit)
+	arguments = append(arguments, sqlkit.Timestamp(now), limit)
 	rows, err := tx.QueryContext(ctx, `
 		UPDATE tasks SET state = 'running', lease_owner = ?, lease_expires_at = ?,
 			heartbeat_at = ?, attempt = attempt + 1, next_attempt_at = NULL,
@@ -246,7 +248,7 @@ func (r *Repository) Heartbeat(ctx context.Context, id, owner string, until time
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE tasks SET lease_expires_at = ?, heartbeat_at = ?, updated_at = ?
 		WHERE id = ? AND state = ? AND lease_owner = ?`,
-		timestamp(until.UTC()), timestamp(now), timestamp(now), id, StateRunning, owner,
+		sqlkit.Timestamp(until.UTC()), sqlkit.Timestamp(now), sqlkit.Timestamp(now), id, StateRunning, owner,
 	)
 	if err != nil {
 		return err
@@ -271,7 +273,7 @@ func (r *Repository) RecordAttemptTurn(ctx context.Context, id, owner, threadID,
 		UPDATE task_attempts SET thread_id = ?, turn_id = ?
 		WHERE task_id = ? AND owner = ? AND status = ?
 			AND attempt = (SELECT attempt FROM tasks WHERE id = ?)`,
-		nullable(threadID), nullable(turnID), id, owner, AttemptRunning, id,
+		sqlkit.NullableString(threadID), sqlkit.NullableString(turnID), id, owner, AttemptRunning, id,
 	)
 	if err != nil {
 		return err
@@ -303,7 +305,7 @@ func (r *Repository) Settle(ctx context.Context, id, owner string, change Transi
 		change.At = time.Now().UTC()
 	}
 	var updated Task
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		current, err := get(ctx, tx, id)
 		if err != nil {
 			return err
@@ -320,14 +322,14 @@ func (r *Repository) Settle(ctx context.Context, id, owner string, change Transi
 		}
 		result := current.Result
 		if change.Result != nil {
-			if result, err = normalizedJSON(change.Result); err != nil {
+			if result, err = sqlkit.CanonicalJSON(change.Result); err != nil {
 				return fmt.Errorf("task result: %w", err)
 			}
 		}
 		sequence := current.LifecycleSequence + 1
 		var terminalAt any
 		if isTerminal(change.State) {
-			terminalAt = timestamp(change.At)
+			terminalAt = sqlkit.Timestamp(change.At)
 		}
 		// The lease is released here whatever the outcome: a settled task is not
 		// being worked on, and a stale lease would only delay the reclaimer.
@@ -336,8 +338,8 @@ func (r *Repository) Settle(ctx context.Context, id, owner string, change Transi
 				lease_owner = NULL, lease_expires_at = NULL, lifecycle_sequence = ?,
 				terminal_at = ?, updated_at = ?
 			WHERE id = ? AND state = ? AND lifecycle_sequence = ? AND lease_owner = ?`,
-			change.State, nullableJSON(result), nullable(failureReason(change.State, reason)),
-			sequence, terminalAt, timestamp(change.At),
+			change.State, nullableJSON(result), sqlkit.NullableString(failureReason(change.State, reason)),
+			sequence, terminalAt, sqlkit.Timestamp(change.At),
 			id, current.State, current.LifecycleSequence, owner,
 		)
 		if err != nil {
@@ -353,7 +355,7 @@ func (r *Repository) Settle(ctx context.Context, id, owner string, change Transi
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO task_lifecycle(task_id, sequence, state, reason, created_at)
 			VALUES (?, ?, ?, ?, ?)`,
-			id, sequence, change.State, nullable(reason), timestamp(change.At),
+			id, sequence, change.State, sqlkit.NullableString(reason), sqlkit.Timestamp(change.At),
 		); err != nil {
 			return err
 		}
@@ -385,7 +387,7 @@ func (r *Repository) Requeue(
 	}
 	at = at.UTC()
 	var updated Task
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		current, err := get(ctx, tx, id)
 		if err != nil {
 			return err
@@ -425,17 +427,17 @@ func requeueLocked(
 	}
 	var nextAttemptAt, terminalAt any
 	if exhausted {
-		terminalAt = timestamp(at)
+		terminalAt = sqlkit.Timestamp(at)
 	} else if delay > 0 {
-		nextAttemptAt = timestamp(at.Add(delay))
+		nextAttemptAt = sqlkit.Timestamp(at.Add(delay))
 	}
 	outcome, err := tx.ExecContext(ctx, `
 		UPDATE tasks SET state = ?, failure_reason = ?, lease_owner = NULL,
 			lease_expires_at = NULL, next_attempt_at = ?, lifecycle_sequence = ?,
 			terminal_at = ?, updated_at = ?, attempt = ?
 		WHERE id = ? AND state = ? AND lifecycle_sequence = ?`,
-		next, nullable(failureReason(next, reason)), nextAttemptAt, sequence,
-		terminalAt, timestamp(at), attempt,
+		next, sqlkit.NullableString(failureReason(next, reason)), nextAttemptAt, sequence,
+		terminalAt, sqlkit.Timestamp(at), attempt,
 		current.ID, current.State, current.LifecycleSequence,
 	)
 	if err != nil {
@@ -451,7 +453,7 @@ func requeueLocked(
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO task_lifecycle(task_id, sequence, state, reason, created_at)
 		VALUES (?, ?, ?, ?, ?)`,
-		current.ID, sequence, next, nullable(reason), timestamp(at),
+		current.ID, sequence, next, sqlkit.NullableString(reason), sqlkit.Timestamp(at),
 	); err != nil {
 		return Task{}, err
 	}
@@ -489,7 +491,7 @@ func (r *Repository) Reclaim(
 	}
 	at = at.UTC()
 	var reclaimed []Task
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		ids, err := expiredIDs(ctx, tx, at)
 		if err != nil {
 			return err
@@ -521,7 +523,7 @@ func expiredIDs(ctx context.Context, tx *sql.Tx, at time.Time) ([]string, error)
 		WHERE state = ? AND executor IS NOT NULL AND lease_expires_at IS NOT NULL
 			AND lease_expires_at <= ?
 		ORDER BY lease_expires_at, id`,
-		StateRunning, timestamp(at),
+		StateRunning, sqlkit.Timestamp(at),
 	)
 	if err != nil {
 		return nil, err
@@ -586,7 +588,7 @@ func endAttempt(
 	_, err := tx.ExecContext(ctx, `
 		UPDATE task_attempts SET status = ?, reason = ?, ended_at = ?
 		WHERE task_id = ? AND attempt = ? AND status = ?`,
-		status, nullable(reason), timestamp(at), id, attempt, AttemptRunning,
+		status, sqlkit.NullableString(reason), sqlkit.Timestamp(at), id, attempt, AttemptRunning,
 	)
 	return err
 }

@@ -747,6 +747,12 @@ func validateDescriptor(descriptor Descriptor) error {
 	return nil
 }
 
+// ValidateDescriptor checks the stable registry contract without registering
+// an executor. Construction helpers use it to fail before wiring a catalog.
+func ValidateDescriptor(descriptor Descriptor) error {
+	return validateDescriptor(descriptor)
+}
+
 func ValidateArguments(schema map[string]any, raw json.RawMessage) error {
 	var value any
 	decoder := json.NewDecoder(bytes.NewReader(raw))

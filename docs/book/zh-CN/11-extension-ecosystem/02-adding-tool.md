@@ -10,12 +10,17 @@ prerequisites:
 code_paths:
   - internal/adapter/tool
   - internal/adapter/tool/builtin
+  - internal/adapter/tool/typed
+  - internal/adapter/tool/result
 test_paths:
   - internal/adapter/tool/tool_test.go
   - internal/adapter/tool/guard/guard_test.go
+  - internal/adapter/tool/typed/typed_test.go
+  - internal/adapter/tool/result/result_test.go
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/adapter/tool/guard/guard.go
+  - internal/adapter/tool/typed/typed.go
 status: draft
 last_verified: null
 ---
@@ -31,11 +36,14 @@ Contract 的 Tool。
 
 ## 扩展清单
 
-1. 实现 `Executor.Descriptor` 与 `Execute`。
+1. 用 `typed.Define` 实现 Executor：Typed `Spec` 包含 `Decode`、`Validate`、
+   `Run`、`Encode` 与可选 `Metadata`。
 2. 使用 Strict Object Schema 和 `additionalProperties: false`。
 3. 声明 Visibility、Capability、Access、Resource Template、Parallel Policy、
    Sandbox Requirement、Availability 与 Alias。
-4. 返回 Bounded Model Content 与 Structured Runtime Metadata。
+4. 通过 `tool/result` Builder（`Success`、`Text`、`Fail`、`Unavailable`）编码
+   Model Content 与 Structured Runtime Metadata；Output Limit 与 Handle Routing
+   由 Registry 执行。
 5. 只在任何 Side Effect 前使用 Precondition Error。
 6. Mediated File Writer 实现 `EditPlanner`、Atomic Commit 与 Read-before-edit。
 7. 在 Adapter/Wire 注册，Host 不直接调用。
@@ -52,6 +60,16 @@ flowchart LR
 
 Resource Resolution 必须在 Policy 前枚举所有可能 Effect。无法从 Normalized Argument
 描述 Write Path 时，应拒绝或使用 Trusted Argument Expander。
+
+## Typed Construction Kit
+
+`typed.Define[I, O]` 是构建 Executor 的标准方式。Spec 分离 `Decode`（Strict JSON，
+拒绝 Unknown Field）、`Validate`（任何 Effect 前的 Precondition）、`Run`、`Encode`
+与 `Metadata`。`tool.ValidateDescriptor` 在 Tool 接入 Catalog 前使 Construction
+失败；`typed.ReadTool`/`WriteTool`/`ProcessTool` 提供对应 Effect Class 的
+Capability、Access 与 Sandbox 要求。`tool/result` Builder 保持 Model Content
+可编码、Metadata Structured 且 JSON-compatible；Result Bounding 与 Routing 仍由
+Registry 负责。
 
 ## Registration、Snapshot 与 Binding
 
@@ -95,12 +113,13 @@ Write 或 Revoked Binding。
 ```bash
 go test ./internal/adapter/tool
 go test ./internal/adapter/tool/guard
+go test ./internal/adapter/tool/typed ./internal/adapter/tool/result
 ```
 
 ## 动手实验
 
-新增 Read-only Fixture Tool，验证 Invalid Schema、Traversal、Unadvertised Binding 在
-Execute 前失败。
+用 `typed.ReadTool`/`typed.Define` 新增 Read-only Fixture Tool，验证 Invalid
+Schema、Traversal、Unadvertised Binding 在 Execute 前失败。
 
 ## 复习问题
 

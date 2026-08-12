@@ -1,8 +1,13 @@
 package task
 
 import (
+	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -164,7 +169,128 @@ func TestListFiltersByWorkspaceAndLimit(t *testing.T) {
 	}
 }
 
-func testRepository(t *testing.T) *Repository {
+func TestListUsesOneQueryAndPreservesEveryTaskField(t *testing.T) {
+	repository := testRepository(t)
+	now := time.Date(2026, 8, 12, 9, 30, 0, 123, time.UTC)
+	next := now.Add(time.Minute)
+	lease := now.Add(2 * time.Minute)
+	heartbeat := now.Add(30 * time.Second)
+	terminal := now.Add(3 * time.Minute)
+	if _, err := repository.db.ExecContext(t.Context(), `
+		INSERT INTO threads(id, session_id, title, status, created_at, updated_at)
+		VALUES ('thread-1', 'session-1', 'fixture', 'open', ?, ?);
+		INSERT INTO turns(id, thread_id, ordinal, status, created_at, updated_at)
+		VALUES ('turn-1', 'thread-1', 1, 'completed', ?, ?)`,
+		now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano),
+		now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.db.ExecContext(t.Context(), `
+		INSERT INTO tasks(
+			id, session_id, thread_id, turn_id, kind, state, payload_json,
+			result_json, failure_reason, lease_owner, lease_expires_at,
+			lifecycle_sequence, terminal_at, created_at, updated_at,
+			executor, attempt, max_attempts, next_attempt_at, heartbeat_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"all-fields", "session-1", "thread-1", "turn-1", "fixture", StateCompleted,
+		`{"payload":true}`, `{"result":true}`, "finished", "worker-1",
+		lease.Format(time.RFC3339Nano), 7, terminal.Format(time.RFC3339Nano),
+		now.Format(time.RFC3339Nano), terminal.Format(time.RFC3339Nano),
+		ExecutorAgentTurn, 2, 4, next.Format(time.RFC3339Nano),
+		heartbeat.Format(time.RFC3339Nano),
+	); err != nil {
+		t.Fatal(err)
+	}
+	counter := &countingTaskQueries{db: repository.db}
+	repository.queries = counter
+	values, err := repository.List(t.Context(), Filter{}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counter.count.Load() != 1 {
+		t.Fatalf("task List executed %d queries, want 1", counter.count.Load())
+	}
+	if len(values) != 1 {
+		t.Fatalf("tasks = %+v", values)
+	}
+	fromGet, err := repository.Get(t.Context(), "all-fields")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(values[0], fromGet) {
+		t.Fatalf("List scan differs from Get:\nlist=%+v\nget=%+v", values[0], fromGet)
+	}
+	if values[0].LifecycleSequence != 7 ||
+		values[0].Executor != ExecutorAgentTurn ||
+		values[0].Attempt != 2 ||
+		values[0].MaxAttempts != 4 ||
+		values[0].LeaseExpiresAt == nil ||
+		values[0].HeartbeatAt == nil ||
+		values[0].NextAttemptAt == nil ||
+		values[0].TerminalAt == nil {
+		t.Fatalf("task fields were not preserved: %+v", values[0])
+	}
+}
+
+func BenchmarkList1000(b *testing.B) {
+	repository := testRepository(b)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	tx, err := repository.db.BeginTx(b.Context(), nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for index := 0; index < 1000; index++ {
+		if _, err := tx.ExecContext(b.Context(), `
+			INSERT INTO tasks(
+				id, session_id, kind, state, payload_json,
+				lifecycle_sequence, created_at, updated_at
+			) VALUES (?, 'session-1', 'benchmark', ?, '{}', 1, ?, ?)`,
+			fmt.Sprintf("task-%04d", index), StateQueued, now, now,
+		); err != nil {
+			_ = tx.Rollback()
+			b.Fatal(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		values, err := repository.List(b.Context(), Filter{}, 1000)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(values) != 1000 {
+			b.Fatalf("listed %d tasks", len(values))
+		}
+	}
+}
+
+type countingTaskQueries struct {
+	db    *sql.DB
+	count atomic.Int64
+}
+
+func (q *countingTaskQueries) QueryContext(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (*sql.Rows, error) {
+	q.count.Add(1)
+	return q.db.QueryContext(ctx, query, args...)
+}
+
+func (q *countingTaskQueries) QueryRowContext(
+	ctx context.Context,
+	query string,
+	args ...any,
+) *sql.Row {
+	q.count.Add(1)
+	return q.db.QueryRowContext(ctx, query, args...)
+}
+
+func testRepository(t testing.TB) *Repository {
 	t.Helper()
 	store, err := sqlitestate.Open(t.Context(), filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {

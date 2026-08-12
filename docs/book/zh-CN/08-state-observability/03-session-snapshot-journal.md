@@ -13,12 +13,14 @@ code_paths:
   - internal/persist/snapshot
   - internal/persist/state/cas
   - internal/persist/workspacejournal
+  - internal/persist/sqlkit
 test_paths:
   - internal/runtime/app/session_artifacts_test.go
   - internal/persist/session/lifecycle_test.go
   - internal/persist/snapshot/repository_test.go
   - internal/persist/state/cas/store_test.go
   - internal/persist/workspacejournal/recover_test.go
+  - internal/persist/sqlkit/ownership_test.go
 source_of_truth:
   - internal/runtime/app/session_artifacts.go
   - internal/persist/session/lifecycle.go
@@ -73,6 +75,10 @@ Session Lifecycle State 还包括 Title、Pin/Archive、Active Thread、Latest T
 Activity 与 Optimistic Revision。Host 只能缓存 Binding/Cursor；Canonical Session State
 通过 Runtime Operation 查询和修改。
 
+Lifecycle Transition 在 `sqlkit.WithTx` 内执行；Optimistic Revision 递增与
+Identity-bound Update 用 `RequireAffected` 校验精确行数，避免 Stale Session 静默覆盖
+并发修改。
+
 ## Commit/Reference Window
 
 Snapshot Save 先保证 Content，再提交 Metadata：
@@ -121,6 +127,7 @@ Git 无法覆盖 Untracked File、Partial Turn 和 Non-Git Workspace，因此 Jo
 go test ./internal/runtime/app -run 'Test(SessionCheckpoint|Restore|Fork|Plan)'
 go test ./internal/persist/session ./internal/persist/snapshot
 go test ./internal/persist/state/cas ./internal/persist/workspacejournal
+go test ./internal/persist/sqlkit
 ```
 
 ## 动手实验

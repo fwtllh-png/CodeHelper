@@ -213,6 +213,36 @@ npm run generate:compatibility
 和 5 行额度。实际值下降后若与阈值差距超过该额度，检查也会失败并要求同步下调基线。
 实际测量报告写入 `.tmp/architecture/metrics.json`。
 
+## 基础 Kit
+
+共享的持久化机械逻辑位于 `internal/persist/sqlkit`。Repository 可以复用事务生命周期、
+行集合扫描、Canonical JSON、Nullable 值、UTC 时间戳和精确 RowsAffected 检查。SQL
+文本、乐观并发、状态迁移、Not-found 错误与领域 Scanner 仍由对应 Repository 持有。
+`sqlkit.WithTx` 不重试也不嵌套事务；Callback 错误触发 Rollback，Rollback 错误会合并，
+Callback Panic 会先 Rollback 再继续抛出。
+
+简单 Typed Tool 使用 `internal/adapter/tool/typed` 完成严格 JSON 解码和输出编码，使用
+`internal/adapter/tool/result` 构造结构化成功或失败结果。Typed Adapter 不是新的执行
+路径：Descriptor 仍注册到普通 Registry，调用仍需要授权，Consequential Tool 仍经过
+Guard、Approval、Journal 与 Sandbox Policy。Resource Resolution、Availability 和
+Repeat Behavior 继续由各 Tool Descriptor 显式声明。
+
+首批迁移范围为 `completion`、`lsp`、`memory`、`revert`、`skill` 和 `toolsearch`。
+迁移门禁禁止这些 Tool 重新引入本地 `json.Unmarshal`，防止 Call Shape 语义分叉。
+Task `List` 与 `Get` 共用 Scanner，一次查询读取所有字段，并具备 1000 行 Benchmark
+和单查询 Contract Test。
+
+聚焦验证：
+
+```bash
+go test -race ./internal/persist/... \
+  ./internal/orchestration/task \
+  ./internal/orchestration/automation
+go test -race ./internal/adapter/tool/...
+go test -run '^$' -bench BenchmarkList1000 -benchtime=1x \
+  ./internal/orchestration/task
+```
+
 按风险选择测试：
 
 | 变更 | 最低验证 |

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 )
 
 // EnsureSession inserts workspace + session rows when missing so automation
@@ -36,8 +38,8 @@ func (r *Repository) EnsureSession(ctx context.Context, sessionID, workspaceRoot
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	now := timestamp(time.Now().UTC())
-	return withTx(ctx, r.db, func(tx *sql.Tx) error {
+	now := sqlkit.Timestamp(time.Now().UTC())
+	return sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		var workspaceID string
 		err := tx.QueryRowContext(ctx, `
 			SELECT id FROM workspaces WHERE root_path = ?`, absRoot,

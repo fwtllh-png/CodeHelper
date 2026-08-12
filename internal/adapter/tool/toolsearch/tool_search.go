@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 )
 
 const (
@@ -22,6 +24,11 @@ type Tool struct {
 	limit    int
 }
 
+type input struct {
+	Query string `json:"query"`
+	Limit int    `json:"limit"`
+}
+
 func New(registry *tool.Registry) (*Tool, error) {
 	if registry == nil {
 		return nil, errors.New("tool_search registry is required")
@@ -34,7 +41,11 @@ func Register(registry *tool.Registry) error {
 	if err != nil {
 		return err
 	}
-	return registry.Register(executor, nil)
+	typedExecutor, err := executor.typedExecutor()
+	if err != nil {
+		return err
+	}
+	return registry.Register(typedExecutor, nil)
 }
 
 func (*Tool) Descriptor() tool.Descriptor {
@@ -67,14 +78,25 @@ type match struct {
 	Generation   uint64         `json:"generation"`
 }
 
-func (t *Tool) Execute(_ context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Query string `json:"query"`
-		Limit int    `json:"limit"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
+func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+	executor, err := t.typedExecutor()
+	if err != nil {
 		return tool.Result{}, err
 	}
+	return executor.Execute(ctx, raw)
+}
+
+func (t *Tool) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[input, tool.Result]{
+		Descriptor: t.Descriptor(),
+		Run:        t.run,
+		Encode: func(value tool.Result) (tool.Result, error) {
+			return value, nil
+		},
+	})
+}
+
+func (t *Tool) run(_ context.Context, input input) (tool.Result, error) {
 	query := strings.ToLower(strings.TrimSpace(input.Query))
 	if query == "" {
 		return tool.Result{}, errors.New("tool_search query is required")
@@ -141,14 +163,10 @@ func (t *Tool) Execute(_ context.Context, raw json.RawMessage) (tool.Result, err
 		matches[index].Revision = change.Revision
 		matches[index].Generation = t.registry.Generation()
 	}
-	payload, err := json.Marshal(map[string]any{
+	return toolresult.Success(map[string]any{
 		"query": input.Query, "matches": matches, "count": len(matches),
 		"catalog_id": snapshot.CatalogID, "generation": t.registry.Generation(),
-	})
-	if err != nil {
-		return tool.Result{}, err
-	}
-	return tool.Result{Content: string(payload)}, nil
+	}, nil)
 }
 
 func scoreDescriptor(descriptor tool.Descriptor, terms []string) int {

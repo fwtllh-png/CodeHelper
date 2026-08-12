@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 )
 
@@ -82,11 +83,12 @@ type Filter struct {
 }
 
 type Repository struct {
-	db *sql.DB
+	db      *sql.DB
+	queries taskQueries
 }
 
 func NewRepository(db *sql.DB) *Repository {
-	return &Repository{db: db}
+	return &Repository{db: db, queries: db}
 }
 
 func NewSQLiteRepository(store *sqlitestate.Store) *Repository {
@@ -112,7 +114,7 @@ func (r *Repository) Create(ctx context.Context, value Task) (Task, error) {
 	if err := validateExecution(&value); err != nil {
 		return Task{}, err
 	}
-	payload, err := normalizedObject(value.Payload)
+	payload, err := sqlkit.CanonicalObject(value.Payload)
 	if err != nil {
 		return Task{}, fmt.Errorf("task payload: %w", err)
 	}
@@ -124,23 +126,23 @@ func (r *Repository) Create(ctx context.Context, value Task) (Task, error) {
 		value.UpdatedAt = value.CreatedAt
 	}
 	value.LifecycleSequence = 1
-	err = withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err = sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO tasks(
 				id, session_id, thread_id, turn_id, kind, state, payload_json,
 				lifecycle_sequence, created_at, updated_at,
 				executor, attempt, max_attempts, next_attempt_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 0, ?, ?)`,
-			value.ID, value.SessionID, nullable(value.ThreadID), nullable(value.TurnID),
-			value.Kind, value.State, payload, timestamp(value.CreatedAt), timestamp(value.UpdatedAt),
-			nullable(value.Executor), value.MaxAttempts, nullableTime(value.NextAttemptAt),
+			value.ID, value.SessionID, sqlkit.NullableString(value.ThreadID), sqlkit.NullableString(value.TurnID),
+			value.Kind, value.State, payload, sqlkit.Timestamp(value.CreatedAt), sqlkit.Timestamp(value.UpdatedAt),
+			sqlkit.NullableString(value.Executor), value.MaxAttempts, sqlkit.NullableTime(value.NextAttemptAt),
 		); err != nil {
 			return fmt.Errorf("create task: %w", err)
 		}
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO task_lifecycle(task_id, sequence, state, created_at)
 			VALUES (?, 1, ?, ?)`,
-			value.ID, value.State, timestamp(value.UpdatedAt),
+			value.ID, value.State, sqlkit.Timestamp(value.UpdatedAt),
 		)
 		return err
 	})
@@ -155,7 +157,7 @@ func (r *Repository) Get(ctx context.Context, id string) (Task, error) {
 	if r.db == nil {
 		return Task{}, errors.New("task repository database is required")
 	}
-	return get(ctx, r.db, id)
+	return get(ctx, r.queries, id)
 }
 
 func (r *Repository) List(ctx context.Context, filter Filter, limit int) ([]Task, error) {
@@ -165,7 +167,7 @@ func (r *Repository) List(ctx context.Context, filter Filter, limit int) ([]Task
 	if limit <= 0 || limit > 1000 {
 		return nil, errors.New("task list limit must be between 1 and 1000")
 	}
-	query := "SELECT id FROM tasks WHERE 1 = 1"
+	query := taskSelect + " WHERE 1 = 1"
 	var arguments []any
 	add := func(clause string, value any) {
 		query += " AND " + clause
@@ -193,31 +195,11 @@ func (r *Repository) List(ctx context.Context, filter Filter, limit int) ([]Task
 	}
 	query += " ORDER BY created_at DESC, id LIMIT ?"
 	arguments = append(arguments, limit)
-	rows, err := r.db.QueryContext(ctx, query, arguments...)
+	rows, err := r.queries.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	values := make([]Task, 0, len(ids))
-	for _, id := range ids {
-		value, err := r.Get(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		values = append(values, value)
-	}
-	return values, nil
+	return sqlkit.ScanAll(rows, scanTask)
 }
 
 // Update atomically validates the state transition, updates all task fields,
@@ -230,7 +212,7 @@ func (r *Repository) Update(ctx context.Context, id string, change Transition) (
 		change.At = time.Now().UTC()
 	}
 	var updated Task
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		current, err := get(ctx, tx, id)
 		if err != nil {
 			return err
@@ -247,7 +229,7 @@ func (r *Repository) Update(ctx context.Context, id string, change Transition) (
 		}
 		result := current.Result
 		if change.Result != nil {
-			result, err = normalizedJSON(change.Result)
+			result, err = sqlkit.CanonicalJSON(change.Result)
 			if err != nil {
 				return fmt.Errorf("task result: %w", err)
 			}
@@ -262,41 +244,33 @@ func (r *Repository) Update(ctx context.Context, id string, change Transition) (
 		sequence := current.LifecycleSequence + 1
 		var terminalAt any
 		if isTerminal(change.State) {
-			terminalAt = timestamp(change.At)
+			terminalAt = sqlkit.Timestamp(change.At)
 		}
 		updateResult, err := tx.ExecContext(ctx, `
 			UPDATE tasks SET state = ?, result_json = ?, failure_reason = ?,
 				lease_owner = ?, lease_expires_at = ?, lifecycle_sequence = ?,
 				terminal_at = ?, updated_at = ?
 			WHERE id = ? AND state = ? AND lifecycle_sequence = ?`,
-			change.State, nullableJSON(result), nullable(reason), nullable(change.LeaseOwner),
-			nullableTime(change.LeaseExpiresAt), sequence, terminalAt, timestamp(change.At),
+			change.State, nullableJSON(result), sqlkit.NullableString(reason), sqlkit.NullableString(change.LeaseOwner),
+			sqlkit.NullableTime(change.LeaseExpiresAt), sequence, terminalAt, sqlkit.Timestamp(change.At),
 			id, current.State, current.LifecycleSequence,
 		)
 		if err != nil {
 			return err
 		}
-		affected, err := updateResult.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if affected != 1 {
-			return errors.New("task changed during lifecycle transition")
+		if err := sqlkit.RequireAffected(updateResult, 1); err != nil {
+			return fmt.Errorf("task changed during lifecycle transition: %w", err)
 		}
 		resultExec, err := tx.ExecContext(ctx, `
 			INSERT INTO task_lifecycle(task_id, sequence, state, reason, created_at)
 			VALUES (?, ?, ?, ?, ?)`,
-			id, sequence, change.State, nullable(change.Reason), timestamp(change.At),
+			id, sequence, change.State, sqlkit.NullableString(change.Reason), sqlkit.Timestamp(change.At),
 		)
 		if err != nil {
 			return err
 		}
-		affected, err = resultExec.RowsAffected()
-		if err != nil || affected != 1 {
-			if err != nil {
-				return err
-			}
-			return errors.New("task lifecycle update was not persisted")
+		if err := sqlkit.RequireAffected(resultExec, 1); err != nil {
+			return fmt.Errorf("task lifecycle update was not persisted: %w", err)
 		}
 		updated, err = get(ctx, tx, id)
 		return err
@@ -321,7 +295,7 @@ func (r *Repository) PatchPayload(ctx context.Context, id string, patch map[stri
 		return r.Get(ctx, id)
 	}
 	var updated Task
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		current, err := get(ctx, tx, id)
 		if err != nil {
 			return err
@@ -339,7 +313,7 @@ func (r *Repository) PatchPayload(ctx context.Context, id string, patch map[stri
 		if err != nil {
 			return err
 		}
-		now := timestamp(time.Now().UTC())
+		now := sqlkit.Timestamp(time.Now().UTC())
 		result, err := tx.ExecContext(ctx, `
 			UPDATE tasks SET payload_json = ?, updated_at = ? WHERE id = ?`,
 			payload, now, id,
@@ -347,12 +321,8 @@ func (r *Repository) PatchPayload(ctx context.Context, id string, patch map[stri
 		if err != nil {
 			return err
 		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if affected != 1 {
-			return errors.New("task payload was not updated")
+		if err := sqlkit.RequireAffected(result, 1); err != nil {
+			return fmt.Errorf("task payload was not updated: %w", err)
 		}
 		updated, err = get(ctx, tx, id)
 		return err
@@ -389,7 +359,7 @@ func (r *Repository) RecoverInterrupted(ctx context.Context, at time.Time) (Reco
 	}
 	at = at.UTC()
 	var recovery Recovery
-	err := withTx(ctx, r.db, func(tx *sql.Tx) error {
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		rows, err := tx.QueryContext(ctx, `
 				SELECT id FROM tasks
 				WHERE state = ? AND lease_owner IS NULL AND lease_expires_at IS NULL
@@ -450,23 +420,19 @@ func failInterrupted(ctx context.Context, tx *sql.Tx, current Task, at time.Time
 			lifecycle_sequence = ?, terminal_at = ?, updated_at = ?,
 			lease_owner = NULL, lease_expires_at = NULL
 		WHERE id = ? AND state = ? AND lifecycle_sequence = ?`,
-		StateFailed, next, timestamp(at), timestamp(at),
+		StateFailed, next, sqlkit.Timestamp(at), sqlkit.Timestamp(at),
 		current.ID, StateRunning, current.LifecycleSequence,
 	)
 	if err != nil {
 		return err
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected != 1 {
-		return errors.New("running task changed during recovery")
+	if err := sqlkit.RequireAffected(result, 1); err != nil {
+		return fmt.Errorf("running task changed during recovery: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO task_lifecycle(task_id, sequence, state, reason, created_at)
 		VALUES (?, ?, ?, 'interrupted', ?)`,
-		current.ID, next, StateFailed, timestamp(at),
+		current.ID, next, StateFailed, sqlkit.Timestamp(at),
 	); err != nil {
 		return err
 	}
@@ -526,26 +492,37 @@ type queryable interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
+type taskQueries interface {
+	queryable
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+const taskSelect = `
+	SELECT id, session_id, thread_id, turn_id, kind, state, lifecycle_sequence,
+		payload_json, result_json, failure_reason, lease_owner, lease_expires_at,
+		terminal_at, created_at, updated_at,
+		executor, attempt, max_attempts, next_attempt_at, heartbeat_at
+	FROM tasks`
+
 func get(ctx context.Context, db queryable, id string) (Task, error) {
+	value, err := scanTask(db.QueryRowContext(ctx, taskSelect+" WHERE id = ?", id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Task{}, ErrNotFound
+	}
+	return value, err
+}
+
+func scanTask(row sqlkit.RowScanner) (Task, error) {
 	var value Task
 	var threadID, turnID, result, reason, owner, leaseAt, terminalAt sql.NullString
 	var executor, nextAttemptAt, heartbeatAt sql.NullString
 	var payload, createdAt, updatedAt string
-	err := db.QueryRowContext(ctx, `
-		SELECT id, session_id, thread_id, turn_id, kind, state, lifecycle_sequence,
-			payload_json, result_json, failure_reason, lease_owner, lease_expires_at,
-			terminal_at, created_at, updated_at,
-			executor, attempt, max_attempts, next_attempt_at, heartbeat_at
-		FROM tasks WHERE id = ?`, id,
-	).Scan(
+	err := row.Scan(
 		&value.ID, &value.SessionID, &threadID, &turnID, &value.Kind, &value.State,
 		&value.LifecycleSequence, &payload, &result, &reason, &owner, &leaseAt,
 		&terminalAt, &createdAt, &updatedAt,
 		&executor, &value.Attempt, &value.MaxAttempts, &nextAttemptAt, &heartbeatAt,
 	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Task{}, ErrNotFound
-	}
 	if err != nil {
 		return Task{}, err
 	}
@@ -597,48 +574,11 @@ func optionalTime(value sql.NullString) (*time.Time, error) {
 	return &parsed, nil
 }
 
-func normalizedObject(value json.RawMessage) (json.RawMessage, error) {
-	if len(value) == 0 {
-		return json.RawMessage(`{}`), nil
-	}
-	var decoded map[string]any
-	if err := json.Unmarshal(value, &decoded); err != nil {
-		return nil, err
-	}
-	return json.Marshal(decoded)
-}
-
-func normalizedJSON(value json.RawMessage) (json.RawMessage, error) {
-	var decoded any
-	if err := json.Unmarshal(value, &decoded); err != nil {
-		return nil, err
-	}
-	return json.Marshal(decoded)
-}
-
 func nullableJSON(value json.RawMessage) any {
 	if value == nil {
 		return nil
 	}
 	return string(value)
-}
-
-func nullable(value string) any {
-	if value == "" {
-		return nil
-	}
-	return value
-}
-
-func nullableTime(value *time.Time) any {
-	if value == nil {
-		return nil
-	}
-	return timestamp(*value)
-}
-
-func timestamp(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func parseTime(value string) (time.Time, error) {
@@ -647,20 +587,4 @@ func parseTime(value string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("parse task timestamp: %w", err)
 	}
 	return result, nil
-}
-
-func withTx(ctx context.Context, db *sql.DB, fn func(*sql.Tx) error) (err error) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-	if err = fn(tx); err != nil {
-		return err
-	}
-	return tx.Commit()
 }

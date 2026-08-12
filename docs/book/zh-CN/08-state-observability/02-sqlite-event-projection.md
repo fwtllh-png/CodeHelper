@@ -11,13 +11,17 @@ code_paths:
   - internal/persist/state/sqlite
   - internal/persist/state/eventlog
   - internal/persist/state
+  - internal/persist/sqlkit
 test_paths:
   - internal/persist/state/sqlite/store_test.go
   - internal/persist/state/eventlog/log_test.go
   - internal/persist/state/store_test.go
+  - internal/persist/sqlkit/sqlkit_test.go
+  - internal/persist/sqlkit/ownership_test.go
 source_of_truth:
   - internal/persist/state/sqlite/store.go
   - internal/persist/state/eventlog/log.go
+  - internal/persist/sqlkit/sqlkit.go
 status: draft
 last_verified: null
 ---
@@ -51,6 +55,19 @@ Projection 将 Event 转为当前查询视图，不改变 Event 语义。
 `sqlite.Open` 解析 Absolute Path，启用 Foreign Key、Busy Timeout、WAL，原子创建
 Schema v1，验证 Pragma 并运行 `quick_check`。Newer Schema 在任何写入前被拒绝；
 Multi-statement Write 使用 `WithTx`。
+
+## 共享 Repository Kit（sqlkit）
+
+`internal/persist/sqlkit` 持有持久化 Repository 共享的 Domain-neutral SQL Helper。
+`WithTx` 在单个事务中运行一个 Callback（不 Retry、不嵌套；Panic 时 Rollback，
+Rollback 失败会 Join 进 Error）。`ScanAll` 逐行 Scan 并验证迭代错误。
+`CanonicalObject`/`CanonicalJSON` 校验并紧凑化 JSON 值；
+`NullableString`/`NullableTime`/`Timestamp` 归一化空值；`RequireAffected` 校验
+Optimistic 或 Identity-bound Write 承诺的精确行数。
+
+SQL 文本、状态转换与领域错误仍归各 Repository 所有。`sqlite.Store.WithTx` 委托给
+`sqlkit.WithTx` 并保留其错误分类。Session、Task、Automation Repository 共享同一套
+Helper，Migration-guard Test（`ownership_test.go`）在它们重新实现时会失败。
 
 ## Event Log
 
@@ -106,6 +123,7 @@ Ownership、Effect、Accounting、Outcome 所需的信息。
 go test ./internal/persist/state/sqlite
 go test ./internal/persist/state/eventlog
 go test ./internal/persist/state
+go test ./internal/persist/sqlkit
 ```
 
 ## 动手实验

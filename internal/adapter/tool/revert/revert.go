@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 )
 
 const UnavailableReason = "workspace revert is unavailable"
@@ -36,7 +38,12 @@ func Register(registry *tool.Registry, options Options) error {
 	if registry == nil {
 		return errors.New("registry is required")
 	}
-	return registry.Register(&Tool{reverter: options.Reverter}, nil)
+	instance := &Tool{reverter: options.Reverter}
+	executor, err := instance.typedExecutor()
+	if err != nil {
+		return err
+	}
+	return registry.Register(executor, nil)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {
@@ -65,26 +72,34 @@ func (t *Tool) Descriptor() tool.Descriptor {
 }
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	if t.reverter == nil {
-		return tool.Result{
-			Content: UnavailableReason, IsError: true,
-			Metadata: map[string]any{"error_category": "unavailable"},
-		}, nil
+	executor, err := t.typedExecutor()
+	if err != nil {
+		return tool.Result{}, err
 	}
-	var value input
-	if len(raw) > 0 && string(raw) != "null" {
-		if err := json.Unmarshal(raw, &value); err != nil {
-			return tool.Result{}, err
-		}
+	return executor.Execute(ctx, raw)
+}
+
+func (t *Tool) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[input, tool.Result]{
+		Descriptor: t.Descriptor(),
+		Run:        t.run,
+		Encode: func(value tool.Result) (tool.Result, error) {
+			return value, nil
+		},
+	})
+}
+
+func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
+	if t.reverter == nil {
+		return toolresult.Unavailable(UnavailableReason), nil
 	}
 	target := strings.TrimSpace(value.TargetTurnID)
 	if target == "" {
 		id, err := t.reverter.DefaultTargetTurnID()
 		if err != nil {
-			return tool.Result{
-				Content: err.Error(), IsError: true,
-				Metadata: map[string]any{"error_category": "invalid_argument"},
-			}, nil
+			return toolresult.Fail(toolresult.Failure{
+				Category: "invalid_argument", Message: err.Error(),
+			}), nil
 		}
 		target = id
 	}
@@ -103,32 +118,20 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	}
 	if err != nil {
 		receipt["error"] = err.Error()
-		content, marshalErr := json.Marshal(receipt)
-		if marshalErr != nil {
-			return tool.Result{}, marshalErr
-		}
-		return tool.Result{
-			Content: string(content), IsError: true,
-			Metadata: map[string]any{
-				"error_category": "revert_failed",
-				"target_turn_id": target,
-				"restored":       restored,
-				"conflicts":      conflicts,
-			},
-		}, nil
-	}
-	content, marshalErr := json.Marshal(receipt)
-	if marshalErr != nil {
-		return tool.Result{}, marshalErr
-	}
-	return tool.Result{
-		Content: string(content),
-		Metadata: map[string]any{
+		result, encodeErr := toolresult.Success(receipt, map[string]any{
+			"error_category": "revert_failed",
 			"target_turn_id": target,
 			"restored":       restored,
 			"conflicts":      conflicts,
-		},
-	}, nil
+		})
+		result.IsError = true
+		return result, encodeErr
+	}
+	return toolresult.Success(receipt, map[string]any{
+		"target_turn_id": target,
+		"restored":       restored,
+		"conflicts":      conflicts,
+	})
 }
 
 // FakeReverter is a hermetic reverter for tests and tool-manifest generation.

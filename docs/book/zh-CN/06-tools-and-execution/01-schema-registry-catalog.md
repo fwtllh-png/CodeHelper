@@ -12,13 +12,18 @@ code_paths:
   - internal/adapter/tool
   - internal/adapter/tool/toolsearch
   - internal/adapter/tool/dynamic
+  - internal/adapter/tool/typed
+  - internal/adapter/tool/result
 test_paths:
   - internal/adapter/tool/registry_catalog_test.go
   - internal/adapter/tool/toolsearch/tool_search_test.go
   - internal/adapter/tool/catalog_test.go
+  - internal/adapter/tool/typed/typed_test.go
+  - internal/adapter/tool/result/result_test.go
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/adapter/tool/catalog.go
+  - internal/adapter/tool/typed/typed.go
 status: draft
 last_verified: null
 ---
@@ -93,6 +98,26 @@ Schema/Authority Drift 失败。
 Large Result 也受 Catalog 约束：Registry 对 Inline Content 设置界限，超限时返回 Handle；
 `result_get` 提供 Bounded Retrieval，Handle 不能绕过 Hard Cap。
 
+## Typed Tool Kit
+
+`internal/adapter/tool/typed` 与 `internal/adapter/tool/result` 是受治理 Tool 的标准
+构造 Kit。`tool.ValidateDescriptor` 在不注册 Executor 的前提下校验稳定 Registry
+Contract；`typed.Define[I, O]` 将 Typed `Spec{Descriptor, Decode, Validate, Run,
+Encode, Metadata}` 包装为 `tool.Executor`：
+
+- 在接入 Catalog 之前完成校验；
+- Strict Decode 拒绝 Unknown Field、`null` 与 Trailing JSON Value；
+- Run Panic 变成 Execution Error 而不是 Crash；
+- Encoded Result 离开 Executor 前通过 `result.Validate`。
+
+`typed.ReadTool`、`typed.WriteTool`、`typed.ProcessTool` 以正确的 Visibility、
+Capability、Access、Parallel、Sandbox 要求构造 Descriptor，避免 Tool 声明比其 Effect
+更弱的 Security Contract。`tool/result` 编码 Model Content 与 Structured Metadata
+（`Success`、`Text`、带 `error_category`/`retryable` 的 `Fail`、`Unavailable`）；
+Output Limit、Truncation 与 Handle Routing 仍归 Registry 所有。Kit 不做
+Execution/Policy Decision：Registry Validation、Authorization、Guard、Sandbox
+Policy 都在 Kit 之外。
+
 ## 代码地图
 
 | 关注点 | 源码 |
@@ -102,6 +127,7 @@ Large Result 也受 Catalog 约束：Registry 对 Inline Content 设置界限，
 | Deferred Discovery | `adapter/tool/toolsearch` |
 | Dynamic Source | `adapter/tool/dynamic` |
 | MCP Reconcile | `adapter/tool/mcp` |
+| Typed Kit | `adapter/tool/typed`、`adapter/tool/result` |
 
 ## 设计取舍
 
@@ -122,6 +148,7 @@ Large Result 也受 Catalog 约束：Registry 对 Inline Content 设置界限，
 ```bash
 go test ./internal/adapter/tool -run 'Test(CatalogSnapshot|Registry|DynamicCatalog)'
 go test ./internal/adapter/tool/toolsearch ./internal/adapter/tool/mcp
+go test ./internal/adapter/tool/typed ./internal/adapter/tool/result
 ```
 
 ## 动手实验
