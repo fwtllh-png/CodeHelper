@@ -217,6 +217,24 @@ rolls back in reverse registration order without leaking resources.
 Keeping construction separate prevents dependency injection logic from
 becoming a second business loop.
 
+### Runtime Ownership Table
+
+| Owner | Source | Boundary |
+| --- | --- | --- |
+| Composition | `runtime/app/wire` | constructs concrete modules; owns no business loop |
+| Durable assembly | `runtime/app/persistence` | composes repositories and recovery |
+| Chat merge | `runtime/app/chatmerge` | previews and journal-applies isolated worktree changes |
+| Operations | `runtime/app` | dispatch, reservation, Event Hub, terminal commit |
+| Turns | `runtime/agent` | Coordinator, Scope, effects, controls, verification |
+| Go projection | `runtime/eventview` | typed Event interpretation shared by Go Hosts |
+| VS Code projection | `extensions/vscode/src/chat/projector` | exhaustive generated Event Class dispatch |
+
+The ownership split removes two accidental control paths. Persistent ACP is the
+only `host --adapter acp` implementation; the pre-release one-shot envelope
+adapter no longer delegates into `exec`. Chat merge and durable repository
+behavior are independently testable services rather than construction logic
+inside `wire`.
+
 ## Persistence and Orchestration
 
 SQLite stores relational projections; the event log stores ordered facts; CAS

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -244,18 +245,12 @@ func TestChatWorkspaceMergeCombinesNonOverlappingParentDrift(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := session.chatWorkspaces.git(
-		t.Context(), workspace, "add", "README.md",
-	); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := session.chatWorkspaces.git(
-		t.Context(), workspace,
+	runChatGit(t, workspace, "add", "README.md")
+	runChatGit(
+		t, workspace,
 		"-c", "user.name=Fixture", "-c", "user.email=fixture@example.com",
 		"commit", "--no-gpg-sign", "-m", "three-way base",
-	); err != nil {
-		t.Fatal(err)
-	}
+	)
 	isolated, err := manager.Provision(
 		t.Context(), "session-chat-three-way", protocol.ThreadID("thread-chat-three-way"),
 	)
@@ -276,11 +271,9 @@ func TestChatWorkspaceMergeCombinesNonOverlappingParentDrift(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	baseline, err := session.chatWorkspaces.chatBaselineFile(
-		t.Context(), isolated.Root, "README.md",
-	)
-	if err != nil || !baseline.exists || string(baseline.data) != base {
-		t.Fatalf("baseline=%q exists=%t err=%v", baseline.data, baseline.exists, err)
+	baseline := runChatGit(t, isolated.Root, "show", "HEAD:README.md")
+	if baseline != base {
+		t.Fatalf("baseline=%q", baseline)
 	}
 
 	plan, err := manager.PlanMerge(
@@ -467,4 +460,16 @@ func closeSession(t *testing.T, session *Session) {
 		t.Fatal(err)
 	}
 	session.Runtime = nil
+}
+
+func runChatGit(t *testing.T, directory string, arguments ...string) string {
+	t.Helper()
+	command := exec.CommandContext(t.Context(), "git", arguments...)
+	command.Dir = directory
+	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=", "GIT_CONFIG_SYSTEM=")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(arguments, " "), err, output)
+	}
+	return string(output)
 }

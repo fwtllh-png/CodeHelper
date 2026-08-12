@@ -192,6 +192,23 @@ Automation，最后启动 Worker Scheduler。任一步失败都会终止构造�
 
 构造与业务循环分离，避免 Dependency Injection 代码成为第二套 Runtime。
 
+### Runtime 所有权表
+
+| Owner | Source | Boundary |
+| --- | --- | --- |
+| Composition | `runtime/app/wire` | 构造 Concrete Module，不拥有业务循环 |
+| Durable Assembly | `runtime/app/persistence` | 组合 Repository 与 Recovery |
+| Chat Merge | `runtime/app/chatmerge` | Preview 并 Journal-apply 隔离 Worktree Change |
+| Operation | `runtime/app` | Dispatch、Reservation、Event Hub、Terminal Commit |
+| Turn | `runtime/agent` | Coordinator、Scope、Effect、Control、Verification |
+| Go Projection | `runtime/eventview` | Go Host 共享的 Typed Event Interpretation |
+| VS Code Projection | `extensions/vscode/src/chat/projector` | Exhaustive Generated Event Class Dispatch |
+
+该所有权拆分删除了两条意外控制路径。持久 ACP 是唯一
+`host --adapter acp` 实现；预发布的一次性 Envelope Adapter 不再转发到 `exec`。
+Chat Merge 与 Durable Repository 行为成为可独立测试的 Service，不再混在 `wire`
+构造逻辑中。
+
 ## Persistence 与 Orchestration
 
 SQLite 保存关系 Projection，Event Log 保存有序事实，CAS 保存不可变 Payload，

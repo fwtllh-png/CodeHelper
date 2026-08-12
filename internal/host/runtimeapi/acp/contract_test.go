@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/contract"
 	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -68,7 +69,7 @@ func newContractHost(t *testing.T, setup contract.Setup) contract.Host {
 		_ = store.CloseAll(context.Background())
 		t.Fatal(err)
 	}
-	repositories, err := wire.NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}

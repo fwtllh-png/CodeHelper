@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -29,7 +30,7 @@ func TestCostPanelReadsThreadAndSessionFromTheDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.CloseAll(context.Background()) }()
-	if err := wire.EnsureThread(
+	if err := apppersistence.EnsureThread(
 		context.Background(), store, threadID, "session-tui-cost", root,
 	); err != nil {
 		t.Fatal(err)

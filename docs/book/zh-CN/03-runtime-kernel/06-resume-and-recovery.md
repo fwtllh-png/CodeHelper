@@ -26,7 +26,7 @@ source_of_truth:
   - internal/runtime/app/thread_manager.go
   - internal/runtime/app/terminal_publisher.go
   - internal/runtime/app/runtime_start.go
-  - internal/runtime/app/wire/persistent.go
+  - internal/runtime/app/persistence/runtime.go
 status: draft
 last_verified: null
 ---

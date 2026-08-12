@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/session/ux"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/eventview"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -190,7 +191,9 @@ func runExec(
 		if workspaceRoot == "" {
 			workspaceRoot = *workspace
 		}
-		if err := wire.EnsureThread(ctx, store, threadID, sessionID, workspaceRoot); err != nil {
+		if err := apppersistence.EnsureThread(
+			ctx, store, threadID, sessionID, workspaceRoot,
+		); err != nil {
 			_, _ = fmt.Fprintf(stderr, "codehelper: exec ensure thread: %v\n", err)
 			return 1
 		}

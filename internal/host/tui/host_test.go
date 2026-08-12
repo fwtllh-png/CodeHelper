@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -118,7 +119,7 @@ func TestSessionHostPersistentResumeListTurns(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := wire.EnsureThread(
+		if err := apppersistence.EnsureThread(
 			context.Background(), store, protocol.ThreadID(threadID), "session-tui", root,
 		); err != nil {
 			t.Fatal(err)
@@ -161,7 +162,7 @@ func TestSessionHostPersistentResumeListTurns(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.CloseAll(context.Background()) }()
-	repos, err := wire.NewPersistentRepositories(store)
+	repos, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -302,16 +303,8 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 			return adaptEngine(worker, workspaceIdentity), nil
 		},
 	)
-	session.chatWorkspaces = newChatWorkspaces(
-		execution.Workspace,
-		state.orchestration.chatTrees,
-		state.orchestration.childToolsets,
-		threadManager,
-		state.orchestration.parentFiles,
-		state.security.journal,
-		workspaceTurnGate,
-		state.security.runtime != nil &&
-			state.security.runtime.Permission != policy.PermissionNever,
+	session.chatWorkspaces = buildChatWorkspaces(
+		state, threadManager, workspaceTurnGate,
 	)
 	if state.options.PersistentStore != nil {
 		store := state.options.PersistentStore
@@ -381,13 +374,12 @@ func (runtimeModule) Build(
 ) error {
 	session := state.session
 	if state.options.PersistentStore != nil {
-		runtime, err := PreparePersistentRuntime(ctx, PersistentRuntimeOptions{
-			Store:               state.options.PersistentStore,
-			Engine:              state.agent.threads,
-			OperationBuffer:     state.config.snapshot.Config.Runtime.OperationBuffer,
-			SubscriberBuffer:    state.config.snapshot.Config.Runtime.SubscriberBuffer,
-			Metrics:             session.metrics,
-			Logger:              session.logger,
+		runtime, err := apppersistence.PreparePersistentRuntime(ctx, apppersistence.PersistentRuntimeOptions{
+			Store:            state.options.PersistentStore,
+			Engine:           state.agent.threads,
+			OperationBuffer:  state.config.snapshot.Config.Runtime.OperationBuffer,
+			SubscriberBuffer: state.config.snapshot.Config.Runtime.SubscriberBuffer,
+			Metrics:          session.metrics, Logger: session.logger,
 			DefaultProfile:      state.agent.defaultProfile,
 			ToolCatalog:         state.tools.registry,
 			ProfileCapabilities: state.agent.profileCapabilities,
