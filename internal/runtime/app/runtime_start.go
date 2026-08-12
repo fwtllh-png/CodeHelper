@@ -44,7 +44,6 @@ func PrepareRuntimeWithRecovery(
 ) (*Runtime, error) {
 	return prepareRuntime(ctx, options, true)
 }
-
 func prepareRuntime(
 	ctx context.Context,
 	options Options,
@@ -106,7 +105,6 @@ func prepareRuntime(
 		terminalStore:     options.TerminalStore,
 		operations:        make(chan acceptedOperation, options.OperationBuffer),
 		done:              make(chan struct{}),
-		subscribers:       make(map[uint64]chan protocol.Event),
 		terminals:         make(map[protocol.TurnID]protocol.EventKind),
 		approvals:         make(map[string]PendingApproval),
 		inputs:            make(map[string]PendingInput),
@@ -119,12 +117,10 @@ func prepareRuntime(
 		inputItems:        make(map[string]protocol.ItemID),
 		durable:           recoverDurable,
 	}
+	runtime.hub = newEventHub(runtimeContext, runtime)
 	runtime.terminal = &TerminalPublisher{runtime: runtime}
 	runtime.SessionService = &SessionService{Runtime: runtime}
 	runtime.ArtifactService = &ArtifactService{Runtime: runtime}
-	if last, err := runtime.events.LastSequence(context.Background()); err == nil {
-		runtime.lastSequence = last
-	}
 	if recovery != nil {
 		runtime.restore(*recovery)
 	}
@@ -142,7 +138,6 @@ func (r *Runtime) Start(ctx context.Context) error {
 	})
 	return r.startErr
 }
-
 func (r *Runtime) activate(ctx context.Context) error {
 	if r.durable {
 		if err := r.terminal.Recover(ctx); err != nil {

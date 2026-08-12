@@ -127,15 +127,20 @@ host-specific presentation.
 The application Runtime is a Facade over explicit owners:
 
 - `operationDispatcher` maps all eight Operation payloads to typed Handlers.
-  Handlers return structured Outcomes; only Dispatcher applies synchronous
+  Handlers return Outcomes containing Events, Async Turn identity, typed
+  Problem, and explicit Commit Mode; only Dispatcher applies synchronous
   commit and rejection.
 - `ActiveTurnRegistry` atomically reserves Thread and Turn, binds control and
-  cancellation provenance, tracks phase/Profile revision, and rejects stale
-  lease release.
+  cancellation provenance and Profile revision, and rejects stale release with
+  an in-memory token. Its durable Lease ID is the persisted Start Operation ID.
+  Pending-work phase comes from the authoritative Turn Kernel snapshot.
+- `eventhub.Hub` exclusively owns sequence assignment, append, replay,
+  subscription fanout, slow-consumer policy, and close.
 - `TerminalPublisher` owns atomic terminal commit, deterministic outbox
-  publication, and restart recovery.
+  publication identity, Event Hub projection, and restart recovery.
 - `SessionService` owns lifecycle, Profile, and Tool Catalog behavior;
   `ArtifactService` owns Checkpoint, Plan, Turn recovery, and persistence.
+  Their Host-facing contracts live in the independent `app/service` package.
 
 Runtime embeds the two query services to preserve the Host-facing API without
 duplicating execution logic.

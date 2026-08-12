@@ -213,7 +213,6 @@ func (r *ArtifactService) PrepareTurnRecovery(
 		IdempotencyKey: request.IdempotencyKey,
 	}, nil
 }
-
 func recoveryDisplayPrompt(modelPrompt string, displayPrompt string) string {
 	value := strings.TrimSpace(displayPrompt)
 	if value == "" {
@@ -234,7 +233,6 @@ func recoveryDisplayPrompt(modelPrompt string, displayPrompt string) string {
 	}
 	return value
 }
-
 func recoveryTaggedSection(prompt string, tag string) (string, bool) {
 	open := "<" + tag + ">"
 	close := "</" + tag + ">"
@@ -249,7 +247,6 @@ func recoveryTaggedSection(prompt string, tag string) (string, bool) {
 	}
 	return prompt[start : start+end], true
 }
-
 func renderRecoveryEvidence(
 	sourceTurnID protocol.TurnID,
 	intent protocol.TurnIntent,
@@ -302,7 +299,6 @@ func renderRecoveryEvidence(
 		}
 	}
 }
-
 func recoveryDigestJSON(data json.RawMessage) string {
 	if len(data) == 0 {
 		return ""
@@ -322,12 +318,10 @@ func recoveryDigestJSON(data json.RawMessage) string {
 	}
 	return recoveryDigest(canonical)
 }
-
 func recoveryDigest(data []byte) string {
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
-
 func appendBoundedRecoveryOutput(builder *strings.Builder, text string) {
 	if text == "" || builder.Len() >= turnRecoveryOutputLimit {
 		return
@@ -803,7 +797,6 @@ func (r *ArtifactService) PreparePlanTransitionTo(
 		),
 	}, nil
 }
-
 func samePlanTargetProfile(
 	source, target protocol.SessionProfile,
 ) bool {
@@ -816,7 +809,6 @@ func samePlanTargetProfile(
 		source.ExecutionTarget == target.ExecutionTarget &&
 		source.MaxSteps == target.MaxSteps
 }
-
 func (r *ArtifactService) checkpointState(
 	ctx context.Context,
 	sessionID, checkpointID, action string,
@@ -868,12 +860,10 @@ func (r *ArtifactService) checkpointState(
 	}
 	return current, checkpoint, history, nil
 }
-
 func stableArtifactID(prefix string, values ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(values, "\x00")))
 	return prefix + "_" + hex.EncodeToString(sum[:])
 }
-
 func boundedArtifactText(value string, maximum int) string {
 	if len(value) <= maximum {
 		return value
@@ -884,7 +874,6 @@ func boundedArtifactText(value string, maximum int) string {
 	}
 	return value
 }
-
 func (r *ArtifactService) decoratePlanArtifact(
 	ctx context.Context,
 	threadID protocol.ThreadID,
@@ -917,7 +906,6 @@ func (r *ArtifactService) decoratePlanArtifact(
 	data.CanAutopilot = true
 	return nil
 }
-
 func (r *ArtifactService) persistSessionArtifact(
 	ctx context.Context,
 	event protocol.Event,
@@ -976,7 +964,6 @@ func (r *ArtifactService) persistSessionArtifact(
 		)
 	}
 }
-
 func (r *ArtifactService) persistTerminalArtifactForTurn(
 	ctx context.Context,
 	threadID protocol.ThreadID,
@@ -1003,7 +990,6 @@ func (r *ArtifactService) persistTerminalArtifactForTurn(
 		}
 	}
 }
-
 func (r *ArtifactService) persistTerminalCheckpoint(
 	ctx context.Context,
 	event protocol.Event,
@@ -1093,7 +1079,6 @@ func (r *ArtifactService) persistTerminalCheckpoint(
 		r.logArtifactError("publish Session Checkpoint", event, err)
 	}
 }
-
 func (r *ArtifactService) checkpointEffects(
 	ctx context.Context,
 	threadID protocol.ThreadID,
@@ -1133,7 +1118,6 @@ func (r *ArtifactService) checkpointEffects(
 	}
 	return len(changed), external, note, parentCheckpointID, reference
 }
-
 func (r *ArtifactService) logArtifactError(
 	action string,
 	event protocol.Event,

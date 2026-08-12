@@ -86,7 +86,8 @@ func TestRoutePendingUnknownSourceRejects(t *testing.T) {
 }
 
 func TestRuntimeTurnPhaseClassification(t *testing.T) {
-	runtime := NewRuntime(Options{Engine: &testEngine{}})
+	engine := &kernelPhaseTestEngine{}
+	runtime := NewRuntime(Options{Engine: engine})
 	thread, err := protocol.NewThreadID()
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +109,7 @@ func TestRuntimeTurnPhaseClassification(t *testing.T) {
 		t.Fatalf("running phase = %s", phase)
 	}
 
-	runtime.active.SetPhase(turn, PhaseAwaitingApproval)
+	engine.phase = PhaseAwaitingApproval
 	if phase := runtime.turnPhase(thread, turn); phase != PhaseAwaitingApproval {
 		t.Fatalf("approval phase = %s", phase)
 	}
@@ -116,10 +117,19 @@ func TestRuntimeTurnPhaseClassification(t *testing.T) {
 		t.Fatalf("mailbox while awaiting approval = %s", disp)
 	}
 
-	runtime.active.SetPhase(turn, PhaseAwaitingInput)
+	engine.phase = PhaseAwaitingInput
 	if phase := runtime.turnPhase(thread, turn); phase != PhaseAwaitingInput {
 		t.Fatalf("input phase = %s", phase)
 	}
+}
+
+type kernelPhaseTestEngine struct {
+	testEngine
+	phase TurnPhase
+}
+
+func (e *kernelPhaseTestEngine) TurnPhase(protocol.TurnID) (TurnPhase, bool) {
+	return e.phase, e.phase != ""
 }
 
 func TestIdleSteerStartsNewTurn(t *testing.T) {

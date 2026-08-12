@@ -11,6 +11,9 @@ func TestActiveTurnRegistryOwnsThreadAndRejectsStaleRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if first.ID != "op-1" {
+		t.Fatalf("durable lease ID = %q", first.ID)
+	}
 	if _, err := registry.Reserve("thread", "turn-2", "op-2", "item-2"); err == nil {
 		t.Fatal("reserved a second turn on the same thread")
 	}
@@ -56,10 +59,5 @@ func TestActiveTurnRegistryBindsControlAndCancelProvenance(t *testing.T) {
 	if !ok || handle.OperationID != "cancel-op" ||
 		handle.ItemID != "cancel-item" {
 		t.Fatalf("cancel handle = %+v, active=%v", handle, ok)
-	}
-	registry.SetPhase("turn", PhaseAwaitingInput)
-	handle, _ = registry.LookupTurn("turn")
-	if handle.Phase != PhaseAwaitingInput {
-		t.Fatalf("phase = %s", handle.Phase)
 	}
 }

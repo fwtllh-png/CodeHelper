@@ -15,12 +15,12 @@ type TerminalRequest struct {
 	Operation protocol.Operation
 	Material  TerminalMaterial
 }
-
 type CommittedTerminal struct {
 	Operation          protocol.Operation
 	OperationCommitted bool
+	OperationID        protocol.OperationID
+	ItemID             protocol.ItemID
 }
-
 type TerminalPublisher struct{ runtime *Runtime }
 
 func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest) (CommittedTerminal, error) {
@@ -96,7 +96,9 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 		},
 		Outbox: outbox,
 	}
-	committed := CommittedTerminal{Operation: request.Operation}
+	committed := CommittedTerminal{
+		Operation: request.Operation, OperationID: projectionOperationID, ItemID: itemID,
+	}
 	if p.runtime.lifecycle != nil {
 		atomicStore, ok := p.runtime.terminalStore.(turnkernel.AtomicTerminalOperationStore)
 		if !ok {
@@ -112,15 +114,14 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 	}
 	return committed, err
 }
-
-func (p *TerminalPublisher) Publish(ctx context.Context, committed CommittedTerminal, operationID protocol.OperationID, itemID protocol.ItemID) error {
+func (p *TerminalPublisher) Publish(ctx context.Context, committed CommittedTerminal) error {
 	_, turnID, _ := protocol.OperationReferences(committed.Operation)
 	entries, err := p.runtime.terminalStore.PendingOutbox(ctx, string(turnID))
 	if err != nil {
 		return err
 	}
 	for _, entry := range entries {
-		if entry.OperationID != operationID || entry.ItemID != itemID {
+		if entry.OperationID != committed.OperationID || entry.ItemID != committed.ItemID {
 			return errors.New("terminal outbox projection identity mismatch")
 		}
 		if err := p.publishEntry(ctx, string(turnID), entry); err != nil {
@@ -129,7 +130,6 @@ func (p *TerminalPublisher) Publish(ctx context.Context, committed CommittedTerm
 	}
 	return nil
 }
-
 func (p *TerminalPublisher) Recover(ctx context.Context) error {
 	store, ok := p.runtime.terminalStore.(turnkernel.TerminalProjectionRecoveryStore)
 	if !ok {
@@ -158,18 +158,41 @@ func (p *TerminalPublisher) Recover(ctx context.Context) error {
 	}
 	return nil
 }
-
 func (p *TerminalPublisher) publishEntry(
 	ctx context.Context,
 	turnID string,
 	entry turnkernel.ProjectionOutboxEntry,
 ) error {
-	if err := p.runtime.publishTerminalOutboxEntry(entry); err != nil {
+	data, err := decodeTerminalOutboxEntry(entry)
+	if err != nil {
+		return err
+	}
+	if entry.EventID == "" || entry.OperationID == "" || entry.ThreadID == "" ||
+		entry.TurnID == "" || entry.ItemID == "" {
+		return errors.New("terminal outbox event identity is incomplete")
+	}
+	p.runtime.mu.Lock()
+	err = p.runtime.hub.PublishStable(protocol.EventMeta{
+		OperationID: entry.OperationID, ThreadID: entry.ThreadID,
+		TurnID: entry.TurnID, ItemID: entry.ItemID,
+	}, entry.EventID, data, func(event protocol.Event) error {
+		if event.OperationID != entry.OperationID || event.ThreadID != entry.ThreadID || event.TurnID != entry.TurnID || event.ItemID != entry.ItemID || string(event.Kind) != entry.Kind {
+			return errors.New("terminal outbox event identity conflict")
+		}
+		if protocol.IsTerminalEvent(event.Kind) {
+			p.runtime.terminals[event.TurnID] = event.Kind
+		}
+		if p.runtime.lifecycle != nil {
+			return p.runtime.lifecycle.Project(context.Background(), event)
+		}
+		return nil
+	})
+	p.runtime.mu.Unlock()
+	if err != nil {
 		return err
 	}
 	return p.runtime.terminalStore.MarkOutboxPublished(ctx, turnID, []string{entry.ID})
 }
-
 func terminalOutboxEventID(turnID protocol.TurnID, entryID string) protocol.EventID {
 	sum := sha256.Sum256([]byte("terminal-outbox\x00" + string(turnID) + "\x00" + entryID))
 	return protocol.EventID(fmt.Sprintf("evt_%x", sum[:16]))

@@ -96,7 +96,7 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7651,
+        "production_lines": 7385,
         "options_fields": 18,
         "mutex_fields": 5
       }
@@ -194,7 +194,7 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2350,
+        "lines": 2055,
         "max_function_lines": 132
       }
     },
@@ -266,8 +266,8 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime_start.go",
       "limits": {
-        "lines": 175,
-        "max_function_lines": 85
+        "lines": 170,
+        "max_function_lines": 82
       }
     },
     {

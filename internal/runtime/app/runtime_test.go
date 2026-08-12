@@ -244,7 +244,6 @@ func TestRuntimeDispatchesControlOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = runtime.active.Release(lease) })
-	runtime.active.SetPhase("turn", PhaseAwaitingApproval)
 	runtime.mu.Lock()
 	runtime.approvals["approval_1"] = PendingApproval{
 		RequestID: "approval_1", ThreadID: "thread", TurnID: "turn",

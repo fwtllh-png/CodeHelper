@@ -1,9 +1,25 @@
 package app
 
-import "github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+import (
+	"context"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
 
 type SessionService struct{ *Runtime }
 type ArtifactService struct{ *Runtime }
+
+func newEventHub(ctx context.Context, runtime *Runtime) *eventhub.Hub {
+	return eventhub.New(eventhub.Config{
+		Store: runtime.events, Buffer: runtime.opts.SubscriberBuffer,
+		Context: ctx, Closed: ErrClosed, CursorAhead: ErrCursorAhead,
+		ReplayOverflow: func(cursor protocol.Cursor, limit int) error {
+			return &ReplayLimitError{Requested: cursor, Limit: limit}
+		},
+		OnPublished: runtime.metrics.EventPublished, OnDropped: runtime.metrics.SubscriberDropped,
+	})
+}
 
 func runtimeProblem(code protocol.ErrorCode, message string, cause error) *protocol.Problem {
 	return protocol.NewProblem(code, message, false, cause)

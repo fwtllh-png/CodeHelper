@@ -17,10 +17,25 @@ const (
 )
 
 type OperationOutcome struct {
-	Kind    OutcomeKind
-	Problem error
+	Kind       OutcomeKind
+	Events     []protocol.EventData
+	Async      *AsyncTurn
+	Problem    *protocol.Problem
+	CommitMode CommitMode
 }
+type CommitMode string
 
+const (
+	CommitNow      CommitMode = "now"
+	CommitDeferred CommitMode = "deferred"
+)
+
+type AsyncTurn struct {
+	ThreadID    protocol.ThreadID
+	TurnID      protocol.TurnID
+	OperationID protocol.OperationID
+	ItemID      protocol.ItemID
+}
 type operationDispatcher struct {
 	runtime *Runtime
 }
@@ -28,7 +43,8 @@ type operationDispatcher struct {
 func (d operationDispatcher) Dispatch(accepted acceptedOperation) OperationOutcome {
 	if d.runtime == nil || d.runtime.engine == nil {
 		return OperationOutcome{
-			Kind: OutcomeRejected, Problem: errors.New("runtime engine is not configured"),
+			Kind: OutcomeRejected, Problem: outcomeProblem(errors.New("runtime engine is not configured")),
+			CommitMode: CommitNow,
 		}
 	}
 	operation := accepted.operation
@@ -68,37 +84,32 @@ func (h SteerTurnHandler) Handle(operation protocol.Operation, payload *protocol
 	if err != nil {
 		return finishOutcome(err)
 	}
-	if started {
-		return OperationOutcome{Kind: OutcomeAsync}
+	if started != nil {
+		return OperationOutcome{Kind: OutcomeAsync, Async: started, CommitMode: CommitDeferred}
 	}
-	return OperationOutcome{Kind: OutcomeCommitted}
+	return OperationOutcome{Kind: OutcomeCommitted, CommitMode: CommitNow}
 }
-
 func (h CompactThreadHandler) Handle(operation protocol.Operation, payload *protocol.CompactThreadPayload) OperationOutcome {
 	return finishOutcome(h.invoke(operation, func(sink EngineSink) error {
 		return h.engine.CompactThread(h.ctx, payload, sink)
 	}))
 }
-
 func (h ForkThreadHandler) Handle(operation protocol.Operation, payload *protocol.ForkThreadPayload) OperationOutcome {
 	return finishOutcome(h.invoke(operation, func(sink EngineSink) error {
 		return h.engine.ForkThread(h.ctx, payload, sink)
 	}))
 }
-
 func (h RevertTurnHandler) Handle(operation protocol.Operation, payload *protocol.RevertTurnPayload) OperationOutcome {
 	return finishOutcome(h.invoke(operation, func(sink EngineSink) error {
 		return h.engine.RevertTurn(h.ctx, payload, sink)
 	}))
 }
-
 func finishOutcome(err error) OperationOutcome {
 	if err != nil {
-		return OperationOutcome{Kind: OutcomeRejected, Problem: err}
+		return OperationOutcome{Kind: OutcomeRejected, Problem: outcomeProblem(err), CommitMode: CommitNow}
 	}
-	return OperationOutcome{Kind: OutcomeCommitted}
+	return OperationOutcome{Kind: OutcomeCommitted, CommitMode: CommitNow}
 }
-
 func (d operationDispatcher) Apply(operation protocol.Operation, outcome OperationOutcome) {
 	if err := validateOperationOutcome(outcome); err != nil {
 		if d.runtime.reject(operation, err) == nil {
@@ -113,25 +124,36 @@ func (d operationDispatcher) Apply(operation protocol.Operation, outcome Operati
 		return
 	}
 	if outcome.Kind == OutcomeCommitted {
+		for _, event := range outcome.Events {
+			if err := (&runtimeSink{runtime: d.runtime, operation: operation}).Emit(event); err != nil {
+				return
+			}
+		}
 		d.runtime.commit(operation.ID)
 	}
 }
-
 func validateOperationOutcome(outcome OperationOutcome) error {
-	valid := outcome.Problem == nil
-	switch outcome.Kind {
-	case OutcomeCommitted, OutcomeAsync, OutcomeTerminal:
-		if valid {
-			return nil
-		}
-	case OutcomeRejected:
-		if !valid {
-			return nil
-		}
+	noProblem, noAsync, noEvents := outcome.Problem == nil, outcome.Async == nil, len(outcome.Events) == 0
+	valid := outcome.Kind == OutcomeCommitted && noProblem && noAsync && outcome.CommitMode == CommitNow ||
+		outcome.Kind == OutcomeRejected && !noProblem && noAsync && noEvents && outcome.CommitMode == CommitNow ||
+		outcome.Kind == OutcomeAsync && noProblem && !noAsync && noEvents && outcome.CommitMode == CommitDeferred ||
+		outcome.Kind == OutcomeTerminal && noProblem && noAsync && noEvents && outcome.CommitMode == CommitDeferred
+	if valid {
+		return nil
 	}
 	return fmt.Errorf(
 		"invalid operation outcome kind=%q problem=%t",
 		outcome.Kind,
 		outcome.Problem != nil,
 	)
+}
+func outcomeProblem(err error) *protocol.Problem {
+	if problem, ok := err.(*protocol.Problem); ok {
+		return problem
+	}
+	code := protocol.CodeOf(err)
+	if code == protocol.CodeInternal {
+		code = protocol.CodeConflict
+	}
+	return protocol.NewProblem(code, err.Error(), false, err)
 }

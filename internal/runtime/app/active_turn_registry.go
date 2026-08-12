@@ -9,22 +9,19 @@ import (
 )
 
 type ActiveTurnLease struct {
+	ID       protocol.OperationID
 	token    uint64
 	threadID protocol.ThreadID
 	turnID   protocol.TurnID
 }
-
 type ActiveTurnHandle struct {
 	ThreadID    protocol.ThreadID
 	TurnID      protocol.TurnID
 	OperationID protocol.OperationID
 	ItemID      protocol.ItemID
-	Phase       TurnPhase
 	cancel      context.CancelFunc
 }
-
 type ActiveTurnSnapshot struct{ Turns int }
-
 type ActiveTurnRegistry struct {
 	mu       sync.Mutex
 	next     uint64
@@ -32,7 +29,6 @@ type ActiveTurnRegistry struct {
 	byThread map[protocol.ThreadID]protocol.TurnID
 	profiles map[protocol.ThreadID]uint64
 }
-
 type activeTurnEntry struct {
 	lease  ActiveTurnLease
 	handle ActiveTurnHandle
@@ -43,7 +39,6 @@ func NewActiveTurnRegistry() *ActiveTurnRegistry {
 		byTurn: make(map[protocol.TurnID]activeTurnEntry), byThread: make(map[protocol.ThreadID]protocol.TurnID),
 		profiles: make(map[protocol.ThreadID]uint64)}
 }
-
 func (r *ActiveTurnRegistry) Reserve(threadID protocol.ThreadID, turnID protocol.TurnID, operationID protocol.OperationID, itemID protocol.ItemID) (ActiveTurnLease, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -54,18 +49,17 @@ func (r *ActiveTurnRegistry) Reserve(threadID protocol.ThreadID, turnID protocol
 		return ActiveTurnLease{}, errors.New("thread already has an active turn")
 	}
 	r.next++
-	lease := ActiveTurnLease{token: r.next, threadID: threadID, turnID: turnID}
+	lease := ActiveTurnLease{ID: operationID, token: r.next, threadID: threadID, turnID: turnID}
 	r.byTurn[turnID] = activeTurnEntry{
 		lease: lease,
 		handle: ActiveTurnHandle{
 			ThreadID: threadID, TurnID: turnID,
-			OperationID: operationID, ItemID: itemID, Phase: PhaseRunning,
+			OperationID: operationID, ItemID: itemID,
 		},
 	}
 	r.byThread[threadID] = turnID
 	return lease, nil
 }
-
 func (r *ActiveTurnRegistry) BindControl(turnID protocol.TurnID, cancel context.CancelFunc) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -77,14 +71,12 @@ func (r *ActiveTurnRegistry) BindControl(turnID protocol.TurnID, cancel context.
 	r.byTurn[turnID] = entry
 	return nil
 }
-
 func (r *ActiveTurnRegistry) LookupTurn(turnID protocol.TurnID) (ActiveTurnHandle, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entry, ok := r.byTurn[turnID]
 	return entry.handle, ok
 }
-
 func (r *ActiveTurnRegistry) LookupThread(threadID protocol.ThreadID) (ActiveTurnHandle, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -95,18 +87,6 @@ func (r *ActiveTurnRegistry) LookupThread(threadID protocol.ThreadID) (ActiveTur
 	entry, ok := r.byTurn[turnID]
 	return entry.handle, ok
 }
-
-func (r *ActiveTurnRegistry) SetPhase(turnID protocol.TurnID, phase TurnPhase) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	entry, ok := r.byTurn[turnID]
-	if !ok {
-		return
-	}
-	entry.handle.Phase = phase
-	r.byTurn[turnID] = entry
-}
-
 func (r *ActiveTurnRegistry) RecordCancel(turnID protocol.TurnID, operationID protocol.OperationID, itemID protocol.ItemID) (context.CancelFunc, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -119,7 +99,6 @@ func (r *ActiveTurnRegistry) RecordCancel(turnID protocol.TurnID, operationID pr
 	r.byTurn[turnID] = entry
 	return entry.handle.cancel, nil
 }
-
 func (r *ActiveTurnRegistry) Release(lease ActiveTurnLease) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -131,13 +110,11 @@ func (r *ActiveTurnRegistry) Release(lease ActiveTurnLease) error {
 	delete(r.byThread, lease.threadID)
 	return nil
 }
-
 func (r *ActiveTurnRegistry) Snapshot() ActiveTurnSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return ActiveTurnSnapshot{Turns: len(r.byTurn)}
 }
-
 func (r *ActiveTurnRegistry) CancelAll() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
