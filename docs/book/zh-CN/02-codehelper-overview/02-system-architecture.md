@@ -164,16 +164,31 @@ Event 包含 Sequence、Operation、Thread、Turn 和 Item Identity，使 Host �
 `buildState`，并执行封闭的 Module 序列：
 
 ```text
-config -> provider -> platform -> persistence -> builtin tools
+config -> provider -> persistence -> platform -> builtin tools
        -> extension contributors -> security -> orchestration
        -> agent -> runtime -> background services
 ```
 
 每个 Module 只拥有一个构造边界，仅向后续 Module 发布必要结果。Runtime、Engine 和
-Session Service 都不得持有 `buildState`。Builtin 与 Extension Tool 共享同一个
-Registry；Plugin、Skill、Memory、Task/Automation、Hook 和 MCP 通过有序且 ID 唯一
-的 Contributor 扩展，不修改 Agent Module。构造与关闭共享 `assembly.ResourceStack`，
-部分构造失败按注册逆序回滚，不泄漏资源。
+Session Service 都不得持有 `buildState`。Persistence 拥有 Content、Job Log 与
+SQLite 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchestration
+拥有 Task/Automation Repository、Workflow Executor、Scheduler 构造、Subagent 与
+Child Worktree/Toolset。Provider 发布所选 Provider/Model Catalog，Security 发布
+Permission Store 与 Guard Factory。
+
+Builtin 与 Extension Tool 共享同一个 Registry。Plugin、Skill、Memory、Dynamic
+Tool、Hook 和 MCP Contributor 只接收显式构造能力与共享 Registry，不接收
+`buildState`；每个 Contributor 返回确定性的 `ContributionReceipt`，记录新增 Tool
+Identity 与命名输出。Task/Automation 注册归 Orchestration，而非 Extension
+Contributor Chain。
+
+Runtime 构造具有 Prepared 状态：`RuntimeModule` 只构造 Facade 并恢复静态 Durable
+State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh、启动
+Runtime 的 Terminal Outbox/Pending Turn Recovery、启动 MCP Prewarm、协调
+Automation，最后启动 Worker Scheduler。任一步失败都会终止构造并由 ResourceStack
+回滚；Runtime Recovery 成功前不会启动后台 Worker。
+
+构造与关闭共享 `assembly.ResourceStack`，部分构造失败按注册逆序回滚，不泄漏资源。
 
 构造与业务循环分离，避免 Dependency Injection 代码成为第二套 Runtime。
 

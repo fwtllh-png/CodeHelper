@@ -19,12 +19,19 @@ source_of_truth:
   - internal/runtime/app/wire/runtime.go
   - internal/runtime/app/wire/route.go
   - internal/runtime/app/wire/build_state.go
+  - internal/runtime/app/wire/module_outputs.go
   - internal/runtime/app/wire/modules_core.go
+  - internal/runtime/app/wire/modules_provider.go
   - internal/runtime/app/wire/modules_extensions.go
-  - internal/runtime/app/wire/modules_orchestration.go
-  - internal/runtime/app/wire/modules_runtime.go
+  - internal/runtime/app/wire/contributors_extensions.go
   - internal/runtime/app/wire/modules_security.go
+  - internal/runtime/app/wire/security_factory.go
+  - internal/runtime/app/wire/modules_orchestration.go
+  - internal/runtime/app/wire/orchestration_components.go
+  - internal/runtime/app/wire/scheduler_factory.go
+  - internal/runtime/app/wire/modules_runtime.go
   - internal/runtime/app/wire/assembly/resources.go
+  - internal/runtime/app/runtime_start.go
   - internal/adapter/extension/orchestration/contributor.go
 status: draft
 last_verified: null
@@ -89,7 +96,7 @@ workflow. It creates a construction-only `buildState` and executes a closed
 module sequence:
 
 ```text
-config -> provider -> platform -> persistence -> builtin tools
+config -> provider -> persistence -> platform -> builtin tools
        -> extension contributors -> security -> orchestration
        -> agent -> runtime -> background services
 ```
@@ -97,15 +104,24 @@ config -> provider -> platform -> persistence -> builtin tools
 Each module implements the `buildModule` contract (`Name()` and `Build`),
 owns one construction boundary, and publishes only the values later modules
 need through `buildState`. Runtime, Engine, and Session services never retain
-that state. A failed module aborts with a `moduleBuildError` that names the
-module, and already-opened resources are closed through the shared resource
-stack.
+that state. Persistence owns Content, Job Log, and the SQLite foundation;
+Platform owns Process, Sandbox, and Repository Index; Orchestration owns
+Task/Automation repositories, Workflow executors, Scheduler construction,
+Subagents, and child worktrees/toolsets. Provider publishes the selected
+Provider/Model catalogs, while Security publishes its Permission Store and
+Guard Factory. A failed module aborts with a `moduleBuildError` that names
+the module, and already-opened resources are closed through the shared
+resource stack.
 
 Builtin and extension tools receive the same `Registry` instance. Plugin,
-Skill, Memory, Task/Automation, Hook, and MCP integrations implement the
-`extensionContributor` contract (`ID()` and `Contribute`) and run in the
-`extension-tools` module in fixed order with unique IDs, so no extension
-modifies the Agent module.
+Skill, Memory, Dynamic Tool, Hook, and MCP integrations implement the
+`extensionContributor` contract (`ID()` and `Contribute`), receive only
+their explicit construction capabilities plus the shared `Registry` — never
+`buildState` — and run in the `extension-tools` module in fixed order with
+unique IDs. Each contributor returns a deterministic `ContributionReceipt`
+listing added Tool identities and named outputs, so no extension modifies the
+Agent module. Task/Automation registration belongs to the Orchestration
+module rather than the extension contributor chain.
 
 Construction and shutdown share `assembly.ResourceStack`. `NewExec` registers
 resource closers once; both partial-build rollback and normal shutdown close
@@ -142,13 +158,19 @@ or one group of modules:
 6. initialize extensions and reconcile their catalog contributions;
 7. connect context, evidence, diagnostics, verification, usage, and trace;
 8. create Thread/Engine factories;
-9. create Application Runtime and only then expose a Host facade.
+9. construct the Runtime facade in a prepared state and restore static
+   durable state without accepting operations (`RuntimeModule`);
+10. start background services in order: initial MCP refresh, Runtime
+    terminal outbox and pending-Turn recovery, MCP prewarm, Automation
+    reconciliation, then the Worker Scheduler (`BackgroundModule`);
+11. expose the Host facade only after the Runtime is accepting operations.
 
 Ownership transfers at each successful step. If a later step fails, already
 opened stores, transports, extension processes, and background managers are
-closed in reverse registration order by the shared `ResourceStack`. A
-constructor that leaks a process on failure violates the Runtime contract even
-if no Turn started.
+closed in reverse registration order by the shared `ResourceStack`. A failed
+step aborts construction, and no background worker starts before Runtime
+recovery has succeeded. A constructor that leaks a process on failure violates
+the Runtime contract even if no Turn started.
 
 ## Capability Provenance
 
@@ -171,10 +193,13 @@ Configuration expresses intent; it cannot manufacture environmental capability.
 | --- | --- |
 | Composition root and module sequence | `runtime.go` |
 | Construction-only state and module contract | `build_state.go` |
-| config/provider/platform/persistence/builtin tools | `modules_core.go` |
-| Extension contributors | `modules_extensions.go` |
-| Security policy/constitution/guard | `modules_security.go` |
-| Orchestration tools and subagents | `modules_orchestration.go` |
+| Named module outputs | `module_outputs.go` |
+| config/persistence/platform/builtin tools | `modules_core.go` |
+| Provider catalog module | `modules_provider.go` |
+| Extension contributors and receipts | `modules_extensions.go`, `contributors_extensions.go` |
+| Security module and Guard factory | `modules_security.go`, `security_factory.go` |
+| Orchestration module, components, Task/Automation registration | `modules_orchestration.go`, `orchestration_components.go` |
+| Scheduler construction | `scheduler_factory.go` |
 | Agent engine, runtime, background services | `modules_runtime.go` |
 | Resource lifecycle | `assembly/resources.go` |
 | Route/budget defaults | `route.go`, `routeset.go` |
@@ -183,7 +208,7 @@ Configuration expresses intent; it cannot manufacture environmental capability.
 | Sandbox facts | `sandbox_info.go` |
 | MCP/extensions | `mcp.go`, `extensions.go` |
 | Child/background work | `childruntime.go`, `background_executors.go` |
-| Task/automation contributor | `internal/adapter/extension/orchestration/contributor.go` |
+| Runtime facade preparation and start | `internal/runtime/app/runtime_start.go` |
 
 ## Implementation Walkthrough
 
@@ -192,6 +217,13 @@ stores and observability, load Constitution, merge Policy rules, create
 Registry and Guard, assemble Prompt Context, then construct Agent Engines
 through a Thread Manager. Each step publishes into `buildState`; ownership
 moves forward module by module.
+
+Runtime construction ends in a prepared state: the `runtime` module
+constructs the facade and restores static durable state without accepting
+operations, and only the final `background` module starts terminal outbox and
+pending-Turn recovery, MCP prewarm, Automation reconciliation, and the Worker
+Scheduler. A failure before that point rolls the resource stack back without
+ever starting background workers.
 
 The application Runtime receives only its `Engine` interface and durable
 facilities. Hosts receive the resulting session/facade, not the concrete
