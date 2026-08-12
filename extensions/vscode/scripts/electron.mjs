@@ -20,14 +20,17 @@ const testOutput = join(extensionRoot, ".tmp-electron");
 const fixtureRoot = await mkdtemp(join(tmpdir(), "codehelper-vscode-electron-"));
 const workspace = join(fixtureRoot, "workspace");
 const nativeWorkspace = join(fixtureRoot, "workspace-native");
+const subagentWorkspace = join(fixtureRoot, "workspace-subagent");
 const workspaceA = join(fixtureRoot, "workspace-a");
 const workspaceB = join(fixtureRoot, "workspace-b");
 const multiWorkspace = join(fixtureRoot, "multi.code-workspace");
 const nativeBinary = process.env["CODEHELPER_VSCODE_BINARY"];
 const nativeFixture = process.env["CODEHELPER_VSCODE_SELECTION_FIXTURE"];
+const subagentFixture = process.env["CODEHELPER_VSCODE_SUBAGENT_FIXTURE"];
 const testPlatform = process.env["CODEHELPER_VSCODE_TEST_PLATFORM"];
 const expectedHostArch = process.env["CODEHELPER_EXPECTED_HOST_ARCH"];
 const disableGPU = process.env["CODEHELPER_VSCODE_DISABLE_GPU"] === "1";
+const keepTemp = process.env["CODEHELPER_ELECTRON_KEEP_TEMP"] === "1";
 const matrixTarget = process.env["CODEHELPER_MATRIX_TARGET"] ??
   `${process.platform}-${process.arch}`;
 let electronPerformance;
@@ -38,6 +41,7 @@ try {
   await mkdir(testOutput, { recursive: true });
   await mkdir(join(workspace, ".vscode"), { recursive: true });
   await mkdir(join(nativeWorkspace, ".vscode"), { recursive: true });
+  await mkdir(join(subagentWorkspace, ".vscode"), { recursive: true });
   await mkdir(join(workspaceA, ".vscode"), { recursive: true });
   await mkdir(join(workspaceB, ".vscode"), { recursive: true });
   if ((nativeBinary === undefined) !== (nativeFixture === undefined)) {
@@ -48,6 +52,20 @@ try {
   const nativeWrapper = nativeBinary === undefined
     ? undefined
     : await fixtureWrapper(fixtureRoot, nativeBinary, nativeFixture);
+  if (subagentFixture !== undefined && nativeBinary === undefined) {
+    throw new Error(
+      "CODEHELPER_VSCODE_SUBAGENT_FIXTURE requires CODEHELPER_VSCODE_BINARY",
+    );
+  }
+  const subagentWrapper = subagentFixture === undefined
+    ? undefined
+    : await fixtureWrapper(
+      fixtureRoot,
+      nativeBinary,
+      subagentFixture,
+      "codehelper-subagent-fixture",
+      ["--posture", "bypass"],
+    );
   await build({
     entryPoints: [join(extensionRoot, "src", "test", "suite", "index.ts")],
     outfile: join(testOutput, "index.js"),
@@ -66,6 +84,7 @@ try {
     "accessibility",
     ...(nativeWrapper === undefined ? [] : ["native"]),
     ...(nativeWrapper === undefined ? [] : ["multi"]),
+    ...(subagentWrapper === undefined ? [] : ["subagent"]),
   ];
   const requestedScenarios = process.env["CODEHELPER_ELECTRON_SCENARIOS"]
     ?.split(",")
@@ -76,13 +95,20 @@ try {
   }
   for (const scenario of scenarios) {
     if (scenario !== "empty") {
-      const native = scenario === "native" || scenario === "multi";
+      const native = scenario === "native" ||
+        scenario === "multi" ||
+        scenario === "subagent";
+      const binaryPath = scenario === "subagent"
+        ? subagentWrapper
+        : nativeWrapper;
       const settings = {
         "codehelper.runtime.autoStart": native,
-        ...(native ? { "codehelper.binaryPath": nativeWrapper } : {}),
+        ...(native ? { "codehelper.binaryPath": binaryPath } : {}),
       };
       const scenarioWorkspace = scenario === "native"
         ? nativeWorkspace
+        : scenario === "subagent"
+          ? subagentWorkspace
         : workspace;
       await writeFile(
         join(scenarioWorkspace, ".vscode", "settings.json"),
@@ -98,23 +124,23 @@ try {
           "",
         ].join("\n");
       await writeFile(join(scenarioWorkspace, "context.ts"), content);
-      if (scenario === "native") {
-        await execFile("git", ["init", "--quiet"], { cwd: nativeWorkspace });
+      if (scenario === "native" || scenario === "subagent") {
+        await execFile("git", ["init", "--quiet"], { cwd: scenarioWorkspace });
         await execFile(
           "git",
           ["config", "user.email", "electron@codehelper.invalid"],
-          { cwd: nativeWorkspace },
+          { cwd: scenarioWorkspace },
         );
         await execFile(
           "git",
           ["config", "user.name", "CodeHelper Electron"],
-          { cwd: nativeWorkspace },
+          { cwd: scenarioWorkspace },
         );
-        await execFile("git", ["add", "."], { cwd: nativeWorkspace });
+        await execFile("git", ["add", "."], { cwd: scenarioWorkspace });
         await execFile(
           "git",
           ["commit", "--quiet", "-m", "Electron fixture baseline"],
-          { cwd: nativeWorkspace },
+          { cwd: scenarioWorkspace },
         );
       }
       if (scenario === "multi") {
@@ -144,7 +170,9 @@ try {
           ? []
           : [scenario === "multi"
             ? multiWorkspace
-            : scenario === "native" ? nativeWorkspace : workspace]),
+            : scenario === "native"
+              ? nativeWorkspace
+              : scenario === "subagent" ? subagentWorkspace : workspace]),
         "--user-data-dir", join(hostRoot, "data"),
         "--extensions-dir", join(hostRoot, "extensions"),
         "--password-store=basic",
@@ -182,7 +210,11 @@ try {
         ));
       }
     } finally {
-      await rm(hostRoot, { recursive: true, force: true });
+      if (keepTemp) {
+        process.stderr.write(`preserved Electron host data: ${hostRoot}\n`);
+      } else {
+        await rm(hostRoot, { recursive: true, force: true });
+      }
     }
   }
   const matrixRoot = join(extensionRoot, "dist", "matrix", "evidence");
@@ -211,16 +243,28 @@ try {
   }
 } finally {
   await rm(testOutput, { recursive: true, force: true });
-  await rm(fixtureRoot, { recursive: true, force: true });
+  if (keepTemp) {
+    process.stderr.write(`preserved Electron fixtures: ${fixtureRoot}\n`);
+  } else {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
 }
 
-async function fixtureWrapper(root, binary, fixture) {
-  const wrapper = join(root, "codehelper-selection-fixture");
+async function fixtureWrapper(
+  root,
+  binary,
+  fixture,
+  name = "codehelper-selection-fixture",
+  extraArguments = [],
+) {
+  const wrapper = join(root, name);
+  const suffix = extraArguments.map(shellQuote).join(" ");
   await writeFile(
     wrapper,
     `#!/bin/sh\n` +
     `if [ "$1" = "version" ]; then exec ${shellQuote(binary)} "$@"; fi\n` +
-    `exec ${shellQuote(binary)} "$@" --provider-fixture ${shellQuote(fixture)}\n`,
+    `exec ${shellQuote(binary)} "$@" --provider-fixture ${shellQuote(fixture)}` +
+    `${suffix === "" ? "" : ` ${suffix}`}\n`,
   );
   await chmod(wrapper, 0o700);
   return wrapper;
@@ -259,6 +303,8 @@ function scenarioJourneys(scenario) {
       ];
     case "multi":
       return ["workspace.multi-root", "resource.navigation"];
+    case "subagent":
+      return ["runtime.explicit-subagent"];
     case "bundled":
       return [];
     default:

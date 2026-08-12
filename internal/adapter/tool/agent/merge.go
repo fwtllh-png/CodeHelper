@@ -19,7 +19,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 )
 
-// mergeInput is the model-visible agent_merge payload. ExpandArguments fills
+// mergeInput is the model-visible integrate_agent payload. ExpandArguments fills
 // changes from the child's worktree so Guard can journal write paths.
 type mergeInput struct {
 	Op      string            `json:"op,omitempty"`
@@ -33,17 +33,7 @@ func (o *operation) ExpandArguments(ctx context.Context, raw json.RawMessage) (j
 	if o == nil || o.tools == nil {
 		return raw, nil
 	}
-	if o.kind == "agent" {
-		var input struct {
-			Op string `json:"op"`
-		}
-		if err := json.Unmarshal(raw, &input); err != nil {
-			return nil, err
-		}
-		if strings.TrimSpace(input.Op) != "merge" {
-			return raw, nil
-		}
-	} else if o.kind != "agent_merge" {
+	if o.kind != "integrate_agent" {
 		return raw, nil
 	}
 	return o.tools.expandMerge(ctx, raw)
@@ -80,21 +70,21 @@ type mergePlan struct {
 
 func (t *Tool) planMerge(ctx context.Context, agentID string, filter []string) (mergePlan, error) {
 	if t.files == nil {
-		return mergePlan{}, errors.New("agent_merge requires parent file tools")
+		return mergePlan{}, errors.New("integrate_agent requires parent file tools")
 	}
 	workspace := strings.TrimSpace(t.workspace)
 	if workspace == "" {
-		return mergePlan{}, errors.New("agent_merge requires parent workspace")
+		return mergePlan{}, errors.New("integrate_agent requires parent workspace")
 	}
-	agent, ok := t.manager.Agent(agentID)
+	agent, ok := t.control.Agent(agentID)
 	if !ok {
-		if _, hasResult := t.manager.Result(agentID); hasResult {
-			return mergePlan{}, fmt.Errorf("agent %s is closed; merge before agent_close", agentID)
+		if _, hasResult := t.control.Result(agentID); hasResult {
+			return mergePlan{}, fmt.Errorf("agent %s is closed; integrate before close_agent", agentID)
 		}
 		return mergePlan{}, fmt.Errorf("agent %s not found", agentID)
 	}
 	if agent.Closed || agent.Status == subagent.StatusShutdown {
-		return mergePlan{}, fmt.Errorf("agent %s is closed; merge before agent_close", agentID)
+		return mergePlan{}, fmt.Errorf("agent %s is closed; integrate before close_agent", agentID)
 	}
 	if !agent.Isolated || strings.TrimSpace(agent.Worktree) == "" {
 		return mergePlan{}, fmt.Errorf("agent %s has no isolated worktree to merge", agentID)
@@ -102,7 +92,7 @@ func (t *Tool) planMerge(ctx context.Context, agentID string, filter []string) (
 	if strings.TrimSpace(agent.BaseRev) == "" {
 		return mergePlan{}, fmt.Errorf("agent %s has no base revision for conflict detection", agentID)
 	}
-	result, ok := t.manager.Result(agentID)
+	result, ok := t.control.Result(agentID)
 	if !ok {
 		return mergePlan{}, fmt.Errorf("agent %s has no settled result yet; wait for the child turn", agentID)
 	}
@@ -136,7 +126,7 @@ func (t *Tool) planMerge(ctx context.Context, agentID string, filter []string) (
 		if err := validateMergePath(path); err != nil {
 			return mergePlan{}, err
 		}
-		if owner, claimed := t.manager.WriteOwner(path); claimed && owner != agentID {
+		if owner, claimed := t.control.WriteOwner(path); claimed && owner != agentID {
 			return mergePlan{}, fmt.Errorf(
 				"merge conflict on %s: also claimed by %s", path, owner,
 			)
@@ -167,7 +157,7 @@ func (t *Tool) planMerge(ctx context.Context, agentID string, filter []string) (
 
 func (t *Tool) merge(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
 	if t.files == nil {
-		return tool.Result{}, errors.New("agent_merge requires parent file tools")
+		return tool.Result{}, errors.New("integrate_agent requires parent file tools")
 	}
 	var input mergeInput
 	if err := json.Unmarshal(raw, &input); err != nil {

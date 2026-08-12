@@ -131,7 +131,7 @@ type Session struct {
 	turnCoordinators     *durableCoordinatorRuntime
 	journal              *workspacejournal.Manager
 	journalRecovery      workspacejournal.Recovery
-	subagents            *subagent.Manager
+	subagents            *subagent.AgentControl
 	scheduler            *worker.Scheduler
 	Constitution         constitution.Status
 	constitutionPrompt   string
@@ -349,25 +349,6 @@ func childEngineOptions(
 		options.Security = readOnly
 	}
 	return options
-}
-
-func agentGraphFor(
-	store *state.Store, workspaceRoot, sessionID string,
-) subagent.Graph {
-	if store == nil {
-		return nil
-	}
-	return state.NewAgentGraph(store, workspaceRoot, sessionID)
-}
-
-func stickyPromptCacheKey(sessionID, workspace string) string {
-	if sessionID != "" {
-		return "session:" + sessionID
-	}
-	if workspace != "" {
-		return "workspace:" + filepath.Base(workspace)
-	}
-	return "codehelper-default"
 }
 
 func maximumReasoningEffort(providerID, modelID string, reasoning bool) string {

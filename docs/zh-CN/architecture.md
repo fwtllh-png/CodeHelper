@@ -331,6 +331,10 @@ Hook 观察或拦截生命周期点，必须有界，不能成为另一条无 Gu
 - **Subagent**：具有 Depth、Budget 与 Workspace Isolation 的 Child Runtime。
 
 所有编排最终仍回到 Runtime、Tool 和 Security 边界。
+委派策略、Context Fork、Durable Agent Tree、Approval 上送、Integration 与 VS Code
+时间线的目标设计见
+[Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)。该文档是实施提案，
+不表示其中的目标行为已经全部交付。
 
 ## 架构变更检查表
 

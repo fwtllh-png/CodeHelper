@@ -145,6 +145,11 @@ func (s *Store) appendOne(ctx context.Context, event protocol.Event) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.appendOneLocked(ctx, event)
+}
+
+// appendOneLocked persists a validated event while the caller owns s.mu.
+func (s *Store) appendOneLocked(ctx context.Context, event protocol.Event) error {
 	if s.closed {
 		return ErrClosed
 	}

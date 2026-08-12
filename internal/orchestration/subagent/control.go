@@ -59,7 +59,7 @@ func (m *Manager) List(filter ListFilter) []Agent {
 		if filter.ParentID != "" && agent.Parent != filter.ParentID {
 			continue
 		}
-		out = append(out, *agent)
+		out = append(out, cloneAgent(agent))
 		seen[agent.ID] = struct{}{}
 	}
 	m.mu.Unlock()
@@ -139,7 +139,7 @@ func (m *Manager) waitProgressLocked(agentIDs []string) ([]Agent, bool, error) {
 		var done []Agent
 		for _, agent := range m.agents {
 			if isTerminal(agent.Status) {
-				done = append(done, *agent)
+				done = append(done, cloneAgent(agent))
 			}
 		}
 		sort.Slice(done, func(i, j int) bool { return done[i].ID < done[j].ID })
@@ -154,7 +154,7 @@ func (m *Manager) waitProgressLocked(agentIDs []string) ([]Agent, bool, error) {
 		if !isTerminal(agent.Status) {
 			return done, false, nil
 		}
-		done = append(done, *agent)
+		done = append(done, cloneAgent(agent))
 	}
 	return done, true, nil
 }

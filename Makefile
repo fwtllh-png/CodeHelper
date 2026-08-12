@@ -30,7 +30,7 @@ LDFLAGS := -s -w \
 	vscode-security vscode-performance vscode-runtime-integration \
 	vscode-integration vscode-rosetta-integration \
 	vscode-build vscode-package vscode-package-universal vscode-release-dry-run \
-	vscode-multiroot-integration vscode-update-integration \
+	vscode-multiroot-integration vscode-subagent-integration vscode-update-integration \
 	vscode-distribution vscode-local-setup vscode-matrix-report vscode-rc \
 	deepseek-init deepseek-tui deepseek-vscode \
 	bench upgrade-baseline catalog-bench package clean
@@ -378,6 +378,14 @@ vscode-multiroot-integration: build vscode-install
 		CODEHELPER_VSCODE_BINARY='$(CURDIR)/$(BINARY)' \
 		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
 		CODEHELPER_ELECTRON_SCENARIOS=multi \
+		$(NPM) run test:electron
+
+vscode-subagent-integration: build vscode-install
+	cd $(VSCODE_DIR) && \
+		CODEHELPER_VSCODE_BINARY='$(CURDIR)/$(BINARY)' \
+		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
+		CODEHELPER_VSCODE_SUBAGENT_FIXTURE='$(CURDIR)/testdata/providers/vscode-subagent' \
+		CODEHELPER_ELECTRON_SCENARIOS=subagent \
 		$(NPM) run test:electron
 
 vscode-update-integration: vscode-install

@@ -34,6 +34,7 @@ func TestParseRoleAliasesAndFailClosed(t *testing.T) {
 		{"reviewer", subagent.RoleReview},
 		{"implement", subagent.RoleImplementer},
 		{"verify", subagent.RoleVerifier},
+		{"await", subagent.RoleAwaiter},
 		{"custom", subagent.RoleCustom},
 	}
 	for _, tc := range cases {

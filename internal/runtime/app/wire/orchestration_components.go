@@ -17,6 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
+	persiststate "github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -100,32 +101,30 @@ func buildChildOrchestration(
 	output.children = newChildRuntime(
 		limits, execution.Workspace, output.childGovernor, output.childToolsets,
 	)
-	output.subagents, err = subagent.Open(subagent.Options{
+	output.subagents, err = subagent.OpenControl(subagent.Options{
 		Root: agentRoot, Gate: state.security.guard,
 		Runtime: output.children, Worktrees: childTrees,
 		Budget: subagent.Budget{
 			MaxTokens: limits.MaxTokens, MaxCostUSD: limits.MaxCostUSD,
 			MaxDepth: limits.MaxDepth, MaxParallel: limits.MaxParallel,
 		},
-	})
+	}, subagent.DelegationMode(limits.Delegation))
 	if err != nil {
-		return fmt.Errorf("subagent manager: %w", err)
+		return fmt.Errorf("agent control: %w", err)
 	}
 	output.parentFiles, err = filetool.NewWithBackend(
 		execution.Workspace,
 		state.platform.backend,
 	)
 	if err != nil {
-		return fmt.Errorf("parent file tools for agent_merge: %w", err)
+		return fmt.Errorf("parent file tools for integrate_agent: %w", err)
 	}
 	if err := agenttool.Register(state.tools.registry, agenttool.Options{
-		Manager: output.subagents, Handles: state.tools.handleStore,
-		Governor: output.childGovernor, SessionID: state.config.hookSessionID,
-		Root: agentRoot, Gate: state.security.guard,
-		Graph: agentGraphFor(
-			state.options.PersistentStore,
-			execution.Workspace,
-			state.config.hookSessionID,
+		Control: output.subagents, Handles: state.tools.handleStore,
+		SessionID: state.config.hookSessionID,
+		Root:      agentRoot, Gate: state.security.guard,
+		Graph: persiststate.NewAgentGraph(
+			state.options.PersistentStore, execution.Workspace, state.config.hookSessionID,
 		),
 		Files: output.parentFiles, Workspace: execution.Workspace,
 		OnRelease: output.children.release,

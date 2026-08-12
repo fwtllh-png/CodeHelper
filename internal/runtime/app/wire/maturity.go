@@ -15,7 +15,7 @@ const MaturityLexical = "lexical"
 // MaturityNoMerge marks a capability that executes fully, including writes in
 // isolation, but cannot yet hand its work back to the host workspace.
 // Kept for diagnostics compatibility; subagent_child_turn no longer reports it
-// after agent_merge landed.
+// after integrate_agent landed.
 const MaturityNoMerge = "no_merge"
 
 // MaturityPartial marks a capability whose advertised surface is only partly

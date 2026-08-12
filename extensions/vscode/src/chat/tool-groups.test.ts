@@ -8,9 +8,9 @@ type Tool = SessionToolCatalog["tools"][number];
 
 void test("tool picker folds Agent lifecycle operations into one group", () => {
   const tools = [
-    tool("agent", "write"),
-    tool("agent_close", "write"),
-    tool("agent_list", "read"),
+    tool("spawn_agent", "write"),
+    tool("close_agent", "write"),
+    tool("list_agents", "read"),
     tool("file_read", "read"),
   ];
   const entries = groupToolsForPicker(tools);
@@ -23,14 +23,14 @@ void test("tool picker folds Agent lifecycle operations into one group", () => {
   assert.equal(group.group.capabilityLabel, "Read/Write");
   assert.deepEqual(
     group.group.tools.map((candidate) => candidate.name),
-    ["agent", "agent_close", "agent_list"],
+    ["spawn_agent", "close_agent", "list_agents"],
   );
   assert.equal(entries[1]?.kind, "tool");
 });
 
 void test("tool picker leaves a lone Agent tool ungrouped", () => {
   const entries = groupToolsForPicker([
-    tool("agent", "write"),
+    tool("spawn_agent", "write"),
     tool("file_read", "read"),
   ]);
   assert.deepEqual(entries.map((entry) => entry.kind), ["tool", "tool"]);

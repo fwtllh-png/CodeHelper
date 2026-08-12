@@ -74,10 +74,10 @@ func (s *Session) JournalRecovery() workspacejournal.Recovery {
 	return s.journalRecovery
 }
 
-// Subagents reports the child-agent manager, or nil when this host runs without
+// Subagents reports the child-agent control plane, or nil when this host runs without
 // tools. A host needs it to show what child agents exist: the parent's thread
 // history says a child was spawned, not what became of it.
-func (s *Session) Subagents() *subagent.Manager {
+func (s *Session) Subagents() *subagent.AgentControl {
 	if s == nil {
 		return nil
 	}

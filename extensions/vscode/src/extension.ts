@@ -109,6 +109,7 @@ export interface ExtensionAPI {
   };
   readonly testInvalidateChatProjection?: () => void;
   readonly testDispatchChatIntent?: (value: unknown) => Promise<void>;
+  readonly testApprovePending?: () => Promise<boolean>;
   readonly testSubmitPrompt?: (
     sessionId: string,
     prompt: string,
@@ -444,6 +445,12 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
               throw new Error("Chat View is unavailable");
             }
             await chatView.receiveTestIntent(value);
+          },
+          testApprovePending: async () => {
+            if (chatView === undefined) {
+              throw new Error("Chat View is unavailable");
+            }
+            return chatView.approvePendingForTest();
           },
           testSubmitPrompt: async (sessionId, prompt) =>
             activeRegistry.selected.controller.submitPrompt(

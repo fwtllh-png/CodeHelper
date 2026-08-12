@@ -1,6 +1,5 @@
-// Package agent exposes model-visible agent tools for spawning and controlling
-// isolated sub-agents through subagent.Manager, rlm.Governor, and a shared handle store.
-// Hosts must only render receipts/events; control plane is these tools + Manager.
+// Package agent adapts model-visible agent tools onto subagent.AgentControl.
+// Hosts submit the same lifecycle intents and only render receipts/events.
 package agent
 
 import (
@@ -16,18 +15,19 @@ import (
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 )
 
 type Options struct {
+	Control       *subagent.AgentControl
 	Manager       *subagent.Manager
 	Handles       *handle.Store
-	Governor      *rlm.Governor
 	SessionID     string
 	Root          string
 	Gate          subagent.ToolGate
 	Budget        subagent.Budget
 	Runtime       subagent.RuntimeHost
+	Delegation    subagent.DelegationMode
+	Roles         subagent.RoleCatalog
 	ParentContext func() string
 	Graph         subagent.Graph
 	// OnRelease lets the host drop per-agent runtime state (thread engine, wall
@@ -40,9 +40,8 @@ type Options struct {
 }
 
 type Tool struct {
-	manager       *subagent.Manager
+	control       *subagent.AgentControl
 	handles       *handle.Store
-	governor      *rlm.Governor
 	sessionID     string
 	parentContext func() string
 	onRelease     func(agentID string)
@@ -70,19 +69,23 @@ type Verification struct {
 
 // Receipt is the structured agent run receipt returned to the parent.
 type Receipt struct {
-	RunID        string         `json:"run_id"`
-	AgentID      string         `json:"agent_id"`
-	ThreadID     string         `json:"thread_id"`
-	Turn         string         `json:"turn"`
-	Role         string         `json:"role"`
-	Profile      string         `json:"profile"`
-	Stance       string         `json:"stance"`
-	FollowUp     bool           `json:"follow_up"`
-	Takeover     bool           `json:"takeover"`
-	Artifacts    []ArtifactRef  `json:"artifacts"`
-	Usage        Usage          `json:"usage"`
-	Verification Verification   `json:"verification"`
-	WorkerRecord map[string]any `json:"worker_record"`
+	RunID          string         `json:"run_id"`
+	AgentID        string         `json:"agent_id"`
+	ThreadID       string         `json:"thread_id"`
+	Turn           string         `json:"turn"`
+	Role           string         `json:"role"`
+	Profile        string         `json:"profile"`
+	Stance         string         `json:"stance"`
+	TaskName       string         `json:"task_name"`
+	ExpectedOutput string         `json:"expected_output"`
+	OwnedPaths     []string       `json:"owned_paths,omitempty"`
+	Trigger        string         `json:"trigger"`
+	FollowUp       bool           `json:"follow_up"`
+	Takeover       bool           `json:"takeover"`
+	Artifacts      []ArtifactRef  `json:"artifacts"`
+	Usage          Usage          `json:"usage"`
+	Verification   Verification   `json:"verification"`
+	WorkerRecord   map[string]any `json:"worker_record"`
 }
 
 func Register(registry *tool.Registry, options Options) error {
@@ -96,8 +99,9 @@ func Register(registry *tool.Registry, options Options) error {
 	if sessionID == "" {
 		sessionID = "session-local"
 	}
+	control := options.Control
 	manager := options.Manager
-	if manager == nil {
+	if control == nil && manager == nil {
 		if options.Gate == nil {
 			return errors.New("agent tool gate is required when manager is nil")
 		}
@@ -110,32 +114,43 @@ func Register(registry *tool.Registry, options Options) error {
 		}
 		opened, err := subagent.Open(subagent.Options{
 			Root: root, Budget: options.Budget, Gate: options.Gate, Runtime: options.Runtime,
+			Roles: options.Roles,
 		})
 		if err != nil {
 			return err
 		}
 		manager = opened
 	}
+	if control == nil {
+		mode := options.Delegation
+		if mode == "" {
+			mode = subagent.DelegationExplicit
+		}
+		policy, err := subagent.NewDelegationPolicy(mode)
+		if err != nil {
+			return err
+		}
+		opened, err := subagent.NewAgentControl(manager, options.Roles, policy)
+		if err != nil {
+			return err
+		}
+		control = opened
+	}
 	if options.Graph != nil {
-		if err := manager.AttachGraph(options.Graph); err != nil {
+		if err := control.AttachGraph(options.Graph); err != nil {
 			return fmt.Errorf("attach agent graph: %w", err)
 		}
 	}
-	governor := options.Governor
-	if governor == nil {
-		governor = rlm.NewGovernor(rlm.Limits{})
-	}
 	shared := &Tool{
-		manager: manager, handles: options.Handles,
-		governor: governor, sessionID: sessionID,
+		control: control, handles: options.Handles, sessionID: sessionID,
 		parentContext: options.ParentContext,
 		onRelease:     options.OnRelease,
 		files:         options.Files,
 		workspace:     strings.TrimSpace(options.Workspace),
 	}
 	for _, kind := range []string{
-		"agent", "agent_wait", "agent_list", "agent_followup", "agent_interrupt", "agent_close",
-		"agent_merge",
+		"spawn_agent", "send_message", "wait_agent", "list_agents",
+		"followup_task", "interrupt_agent", "close_agent", "integrate_agent",
 	} {
 		if err := registry.Register(&operation{tools: shared, kind: kind}, nil); err != nil {
 			return err
@@ -145,54 +160,47 @@ func Register(registry *tool.Registry, options Options) error {
 }
 
 func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	if t == nil || t.manager == nil || t.handles == nil || t.governor == nil {
+	if t == nil || t.control == nil || t.handles == nil {
 		return tool.Result{}, errors.New("agent tool is not configured")
 	}
 	var input struct {
-		Prompt        string `json:"prompt"`
-		Role          string `json:"role"`
-		ParentID      string `json:"parent_id"`
-		ForkContext   bool   `json:"fork_context"`
-		ParentContext string `json:"parent_context"`
+		TaskName       string   `json:"task_name"`
+		Role           string   `json:"role"`
+		Objective      string   `json:"objective"`
+		ExpectedOutput string   `json:"expected_output"`
+		OwnedPaths     []string `json:"owned_paths"`
+		ParentID       string   `json:"parent_id"`
+		Trigger        string   `json:"trigger"`
+		ForkContext    bool     `json:"fork_context"`
+		ParentContext  string   `json:"parent_context"`
 	}
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
-	}
-	prompt := strings.TrimSpace(input.Prompt)
-	if prompt == "" {
-		return tool.Result{}, errors.New("prompt is required")
 	}
 	role, err := subagent.ParseRole(input.Role)
 	if err != nil {
 		return tool.Result{}, err
 	}
 	parentID := strings.TrimSpace(input.ParentID)
-	depth := 0
-	if parentID != "" {
-		parent, ok := t.manager.Agent(parentID)
-		if !ok {
-			return tool.Result{}, errors.New("parent agent unavailable")
-		}
-		depth = parent.Depth + 1
-	}
-	// Admission here only guards the spawn itself, and the lease is released
-	// before the turn starts: the child turn takes a lease of its own for its
-	// whole lifetime, and counting the same child twice would make max_parallel
-	// bind one child too early. Real token spend is charged from the receipt the
-	// child produces, so nothing is charged for work that has not run.
-	lease, err := t.governor.Admit(depth, 0, 0)
+	objective := strings.TrimSpace(input.Objective)
+	child, err := t.control.SpawnIntent(subagent.DelegationIntent{
+		TaskName:       strings.TrimSpace(input.TaskName),
+		Role:           role,
+		Objective:      objective,
+		ExpectedOutput: strings.TrimSpace(input.ExpectedOutput),
+		OwnedPaths:     input.OwnedPaths,
+		ParentID:       parentID,
+		Trigger:        subagent.DelegationTrigger(strings.TrimSpace(input.Trigger)),
+	})
 	if err != nil {
 		return tool.Result{}, err
 	}
-	child, err := t.manager.Spawn(parentID, role, prompt)
-	t.governor.Release(lease)
+	childPrompt, forkEmpty := t.buildChildPrompt(
+		input.ForkContext, input.ParentContext, child, objective,
+	)
+	turn, err := t.control.Takeover(ctx, child.ID, childPrompt)
 	if err != nil {
-		return tool.Result{}, err
-	}
-	childPrompt, forkEmpty := t.buildChildPrompt(input.ForkContext, input.ParentContext, child, prompt)
-	turn, err := t.manager.Takeover(ctx, child.ID, childPrompt)
-	if err != nil {
-		_ = t.manager.Close(child.ID)
+		_ = t.control.Close(child.ID)
 		return tool.Result{}, err
 	}
 	threadID := subagent.ThreadIDFor(child.ID)
@@ -204,13 +212,16 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	handleName := filepath.ToSlash(filepath.Join("agent-"+child.ID, "transcript"))
 	varHandle, err := t.handles.PutText(t.sessionID, handleName, transcript)
 	if err != nil {
-		_ = t.manager.Close(child.ID)
+		_ = t.control.Close(child.ID)
 		return tool.Result{}, err
 	}
 	receipt := Receipt{
 		RunID: child.ID, AgentID: child.ID, ThreadID: threadID, Turn: turn,
 		Role: string(child.Role), Profile: child.Profile, Stance: string(child.Stance),
-		FollowUp: false, Takeover: true,
+		TaskName: child.TaskName, ExpectedOutput: child.ExpectedOutput,
+		OwnedPaths: append([]string(nil), child.OwnedPaths...),
+		Trigger:    string(child.DelegationTrigger),
+		FollowUp:   false, Takeover: true,
 		Artifacts: []ArtifactRef{{Kind: "transcript_handle", Ref: varHandle}},
 		// The child turn has only just been submitted here: claiming a
 		// verification status now would be a claim about work that has not run.
@@ -223,16 +234,16 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	}
 	receiptBody, err := json.Marshal(receipt)
 	if err != nil {
-		_ = t.manager.Close(child.ID)
+		_ = t.control.Close(child.ID)
 		return tool.Result{}, err
 	}
 	mailboxTo := parentID
 	if mailboxTo == "" {
 		mailboxTo = "parent"
 	}
-	message, err := t.manager.Mailbox().Deliver(child.ID, mailboxTo, receiptBody)
+	message, err := t.control.Mailbox().Deliver(child.ID, mailboxTo, receiptBody)
 	if err != nil {
-		_ = t.manager.Close(child.ID)
+		_ = t.control.Close(child.ID)
 		return tool.Result{}, err
 	}
 	body := map[string]any{
@@ -241,6 +252,8 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		"depth": child.Depth, "worktree": child.Worktree,
 		"serialized": child.Serialized,
 		"parent_id":  child.Parent, "turn": turn,
+		"task_name": child.TaskName, "expected_output": child.ExpectedOutput,
+		"owned_paths": child.OwnedPaths, "trigger": string(child.DelegationTrigger),
 		"status":       string(subagent.StatusRunning),
 		"fork_context": input.ForkContext, "fork_context_empty": forkEmpty,
 		"receipt": map[string]any{
@@ -269,9 +282,9 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 }
 
 func (t *Tool) buildChildPrompt(fork bool, explicitParent string, child *subagent.Agent, task string) (string, bool) {
-	roleLine := fmt.Sprintf("role=%s profile=%s stance=%s", child.Role, child.Profile, child.Stance)
+	childPrompt := subagent.ChildPrompt(*child, task)
 	if !fork {
-		return roleLine + "\n" + task, false
+		return childPrompt, false
 	}
 	prefix := strings.TrimSpace(explicitParent)
 	if t.parentContext != nil {
@@ -280,10 +293,10 @@ func (t *Tool) buildChildPrompt(fork bool, explicitParent string, child *subagen
 		}
 	}
 	if prefix == "" {
-		return roleLine + "\n" + task, true
+		return childPrompt, true
 	}
-	return prefix + "\n---\n" + roleLine + "\n" + task, false
+	return prefix + "\n---\n" + childPrompt, false
 }
 
 // Manager exposes the underlying manager for tests and cleanup.
-func (t *Tool) Manager() *subagent.Manager { return t.manager }
+func (t *Tool) Manager() *subagent.Manager { return t.control.Manager() }

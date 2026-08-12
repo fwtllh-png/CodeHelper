@@ -22,8 +22,9 @@ architecture and delivery stages are defined in the
 3. [Book navigation and chapter status](../book/en/NAVIGATION.md)
 4. [Knowledge documentation plan](./knowledge-base-plan.md)
 5. [Architecture](./architecture.md)
-6. [Security model](./security.md)
-7. [Local development and scripts](./development.md)
+6. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
+7. [Security model](./security.md)
+8. [Local development and scripts](./development.md)
 
 ### I want to use CodeHelper
 
@@ -47,14 +48,15 @@ architecture and delivery stages are defined in the
 ### I want to contribute
 
 1. [Architecture](./architecture.md)
-2. [Security model](./security.md)
-3. [Local development and scripts](./development.md)
-4. [Agent guide](./agent-guide.md)
-5. [TUI and VS Code experience contract](./experience.md)
-6. [VS Code Runtime monitoring](./runtime-monitoring.md)
-7. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-8. [Documentation governance](./documentation-governance.md)
-9. [Roadmap](./roadmap.md)
+2. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
+3. [Security model](./security.md)
+4. [Local development and scripts](./development.md)
+5. [Agent guide](./agent-guide.md)
+6. [TUI and VS Code experience contract](./experience.md)
+7. [VS Code Runtime monitoring](./runtime-monitoring.md)
+8. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+9. [Documentation governance](./documentation-governance.md)
+10. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 

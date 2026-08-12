@@ -63,7 +63,7 @@ returns the exact diff without writing.
 | file write/edit/apply/patch | explicit file/tree write | mediated filesystem transaction |
 | shell/terminal | Workspace tree + process session | arbitrary command inside Sandbox profile |
 | web/GitHub | network host + logical object | governed remote effect |
-| Agent spawn/merge | child slot/worktree + target files | child Runtime and explicit merge |
+| Agent spawn/integration | child slot/worktree + target files | child Runtime and explicit integration |
 | result/handle | content object read | bounded retrieval only |
 
 Resource declaration is used by Policy, Approval, Claims, Journal scope, and
@@ -92,10 +92,15 @@ closed.
 
 ## Agent Tools
 
-`agent`, wait/list/followup/interrupt/close, and `agent_merge` operate through
-the orchestration Manager and Governor. They enforce depth, parallelism, token,
-cost, wall-clock, stance, worktree, and merge rules. Child receipts distinguish
-pending/self-reported work from gate-proven verification.
+`spawn_agent`, `send_message`, `wait_agent`, `list_agents`, `followup_task`,
+`interrupt_agent`, `close_agent`, and `integrate_agent` operate through one
+`AgentControl`. Delegation Policy validates the trigger, Role Catalog resolves
+the real prompt/stance contract, and Runtime budgets enforce depth,
+parallelism, token, cost, wall-clock, worktree, and integration rules.
+`execution.subagent.delegation` selects `disabled`, `explicit`, or `adaptive`;
+disabled mode hides these tools from the model while retaining internal worker
+execution. Child receipts distinguish pending/self-reported work from
+gate-proven verification.
 
 ```mermaid
 flowchart TD
@@ -115,7 +120,7 @@ flowchart TD
 | Built-in wiring | `tool/builtin/builtin.go` |
 | File operations | `tool/file` |
 | Process/session | `tool/shell` |
-| Child agents/merge | `tool/agent` |
+| Child agents/integration | `tool/agent` |
 | Process backend | `internal/platform/process` |
 
 ## Tradeoffs and Alternatives
@@ -131,7 +136,7 @@ reuse the same Guard regardless of Host.
 - Process Tools fail closed without strong sandbox.
 - Timeout/cancel terminates process groups and returns attributed status.
 - Agent admission fails on depth/concurrency/budget violations.
-- Agent merge checks baseline drift and file claims.
+- Agent integration checks baseline drift and file claims.
 
 ## Tests and Verification
 
@@ -150,7 +155,7 @@ preconditions, resources, and resulting change metadata across both paths.
 
 1. Why do optional Tools stay visible as unavailable?
 2. Why is shell serialization also represented as a resource claim?
-3. Why is an Agent merge treated as a workspace write?
+3. Why is Agent integration treated as a workspace write?
 4. What breaks when a Tool under-declares or over-declares Resources?
 5. Why can a valid Shell schema still require strong Sandbox enforcement?
 

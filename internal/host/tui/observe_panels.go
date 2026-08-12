@@ -247,7 +247,7 @@ func lastLineOf(value string) string {
 	return ""
 }
 
-func (m Model) subagentManager() *subagent.Manager {
+func (m Model) subagentManager() *subagent.AgentControl {
 	host, ok := m.runtime.(*SessionHost)
 	if !ok || host.Session() == nil {
 		return nil

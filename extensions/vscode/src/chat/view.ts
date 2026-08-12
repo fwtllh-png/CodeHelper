@@ -242,6 +242,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     return this.#receive(value);
   }
 
+  public async approvePendingForTest(): Promise<boolean> {
+    const root = this.#registry.selected;
+    const session = this.#selectedSession(root);
+    const approval = this.#projector(
+      root.rootId,
+      session.sessionId,
+    ).pendingApprovals()[0];
+    if (approval === undefined) return false;
+    await this.#decide(root, session.sessionId, approval, "approve", "once");
+    return true;
+  }
+
   public async decidePlan(
     rootId: string,
     requestId: string,

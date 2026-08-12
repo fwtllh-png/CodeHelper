@@ -122,6 +122,7 @@ native_search = true
 func TestLoadAcceptsSerializedSameWorkspaceChildren(t *testing.T) {
 	path := writeConfig(t, `
 [execution.subagent]
+delegation = "adaptive"
 workspace = "same_workspace_serialized"
 `)
 	snapshot, err := Load(LoadOptions{Path: path})
@@ -130,6 +131,38 @@ workspace = "same_workspace_serialized"
 	}
 	if got := snapshot.Config.Execution.Subagent.Workspace; got != SubagentWorkspaceSerialized {
 		t.Fatalf("subagent workspace = %q", got)
+	}
+	if got := snapshot.Config.Execution.Subagent.Delegation; got != SubagentDelegationAdaptive {
+		t.Fatalf("subagent delegation = %q", got)
+	}
+	if got := snapshot.Provenance[fieldSubagentDelegation]; got != SourceFile {
+		t.Fatalf("delegation provenance = %q", got)
+	}
+}
+
+func TestLoadRejectsUnknownSubagentDelegation(t *testing.T) {
+	path := writeConfig(t, `
+[execution.subagent]
+delegation = "proactive"
+`)
+	_, err := Load(LoadOptions{Path: path})
+	if err == nil || !strings.Contains(err.Error(), fieldSubagentDelegation) {
+		t.Fatalf("delegation error = %v", err)
+	}
+}
+
+func TestLoadSubagentDelegationFromEnvironment(t *testing.T) {
+	snapshot, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
+		"CODEHELPER_SUBAGENT_DELEGATION": "disabled",
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshot.Config.Execution.Subagent.Delegation; got != SubagentDelegationDisabled {
+		t.Fatalf("subagent delegation = %q", got)
+	}
+	if got := snapshot.Provenance[fieldSubagentDelegation]; got != SourceEnv {
+		t.Fatalf("delegation provenance = %q", got)
 	}
 }
 

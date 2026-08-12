@@ -78,7 +78,7 @@ type Dependencies struct {
 	Threads           *threadstate.Repository
 	Tasks             *taskstate.Repository
 	Usage             *usagestate.Repository
-	Agents            *subagent.Manager
+	Agents            *subagent.AgentControl
 	DynamicTools      *dynamictool.Manager
 	SessionWorkspaces app.SessionWorkspaceManager
 }

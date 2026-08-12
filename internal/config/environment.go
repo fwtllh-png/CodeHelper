@@ -171,6 +171,13 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 	if err := applyEnvBool(lookup, "CODEHELPER_NATIVE_SEARCH", fieldNativeSearch, &execution.NativeSearch, provenance); err != nil {
 		return err
 	}
+	applyEnvString(
+		lookup,
+		"CODEHELPER_SUBAGENT_DELEGATION",
+		fieldSubagentDelegation,
+		&execution.Subagent.Delegation,
+		provenance,
+	)
 	verify := &execution.Verify
 	applyEnvString(lookup, "CODEHELPER_VERIFY_MODE", fieldVerifyMode, &verify.Mode, provenance)
 	applyEnvString(lookup, "CODEHELPER_VERIFY_SCOPE", fieldVerifyScope, &verify.Scope, provenance)

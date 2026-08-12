@@ -47,7 +47,16 @@ export function groupToolsForPicker(
 }
 
 function isAgentTool(name: string): boolean {
-  return name === "agent" || name.startsWith("agent_");
+  return new Set([
+    "spawn_agent",
+    "send_message",
+    "wait_agent",
+    "list_agents",
+    "followup_task",
+    "interrupt_agent",
+    "close_agent",
+    "integrate_agent",
+  ]).has(name);
 }
 
 function title(value: string): string {

@@ -31,6 +31,7 @@ execution.protocol
 execution.provider
 execution.rate_limit
 execution.reasoning_effort
+execution.subagent.delegation
 execution.subagent.max_cost_usd
 execution.subagent.max_depth
 execution.subagent.max_parallel

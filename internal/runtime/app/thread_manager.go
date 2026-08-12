@@ -22,6 +22,7 @@ type ThreadManager struct {
 	restorer  WindowRestorer
 	sequences SequenceReader
 	deltas    SessionDeltaRestorer
+	register  func(protocol.ThreadID, ChildSpec) error
 
 	mu        sync.Mutex
 	threads   map[protocol.ThreadID]*EngineAdapter
@@ -96,6 +97,14 @@ func (m *ThreadManager) SetChildFactory(factory ChildFactory) {
 	m.children = factory
 }
 
+func (m *ThreadManager) SetChildRegistrar(
+	register func(protocol.ThreadID, ChildSpec) error,
+) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.register = register
+}
+
 func (m *ThreadManager) SetSessionDeltaRestorer(
 	restorer SessionDeltaRestorer,
 ) {
@@ -117,6 +126,11 @@ func (m *ThreadManager) RegisterChild(threadID protocol.ThreadID, spec ChildSpec
 	}
 	if _, ok := m.threads[threadID]; ok {
 		return fmt.Errorf("thread %s already has an engine", threadID)
+	}
+	if m.register != nil {
+		if err := m.register(threadID, spec); err != nil {
+			return err
+		}
 	}
 	m.childSpec[threadID] = spec
 	return nil

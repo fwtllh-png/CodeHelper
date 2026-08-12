@@ -85,6 +85,7 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyInt(overrides.VerifyRepair, &verify.MaxRepairSteps, fieldVerifyRepair, SourceCLI, provenance)
 	applyDuration(overrides.VerifyTimeout, &verify.Timeout, fieldVerifyTimeout, SourceCLI, provenance)
 	child := &execution.Subagent
+	applyString(overrides.SubagentDelegation, &child.Delegation, fieldSubagentDelegation, SourceCLI, provenance)
 	applyInt(overrides.SubagentMaxDepth, &child.MaxDepth, fieldSubagentMaxDepth, SourceCLI, provenance)
 	applyInt(overrides.SubagentMaxParallel, &child.MaxParallel, fieldSubagentMaxParallel, SourceCLI, provenance)
 	applyInt(overrides.SubagentMaxSteps, &child.MaxSteps, fieldSubagentMaxSteps, SourceCLI, provenance)
