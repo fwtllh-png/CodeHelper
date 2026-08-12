@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 
@@ -112,6 +113,44 @@ func TestDefineValidatesDescriptorAndRequiredRun(t *testing.T) {
 	if _, err := Define(spec); err == nil {
 		t.Fatal("missing Run succeeded")
 	}
+	spec = fixtureSpec(func(context.Context, fixtureInput) (fixtureOutput, error) {
+		return fixtureOutput{}, nil
+	})
+	spec.Descriptor.RepeatPolicy = ""
+	if _, err := Define(spec); err == nil {
+		t.Fatal("implicit RepeatPolicy succeeded")
+	}
+}
+
+func TestDescriptorBuildersRequirePolicySensitiveOptions(t *testing.T) {
+	policy := DescriptorPolicy{
+		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
+			Kind: "fixture", ID: "value", Access: tool.AccessRead,
+		}}},
+		Availability: tool.AvailabilityAvailable,
+		RepeatPolicy: tool.RepeatExecute,
+	}
+	schema := map[string]any{
+		"type": "object", "additionalProperties": false,
+	}
+	for _, descriptor := range []tool.Descriptor{
+		ReadTool("read_fixture", "read", schema, policy),
+		WriteTool("write_fixture", "write", schema, policy),
+		ProcessTool("process_fixture", "process", schema, policy),
+	} {
+		if descriptor.Availability != policy.Availability ||
+			descriptor.RepeatPolicy != policy.RepeatPolicy ||
+			len(descriptor.ResourceResolver.Templates) != 1 {
+			t.Fatalf("descriptor lost explicit options: %+v", descriptor)
+		}
+	}
+}
+
+func TestDefaultEncoderRejectsNonFiniteJSONNumbers(t *testing.T) {
+	result, err := EncodeJSON(map[string]float64{"invalid": math.NaN()})
+	if err == nil || result.Content != "" || result.Metadata != nil {
+		t.Fatalf("non-finite JSON result = %+v, error = %v", result, err)
+	}
 }
 
 func fixtureExecutor(
@@ -129,15 +168,23 @@ func fixtureExecutor(
 func fixtureSpec(
 	run func(context.Context, fixtureInput) (fixtureOutput, error),
 ) Spec[fixtureInput, fixtureOutput] {
-	descriptor := ReadTool("typed_fixture", "Typed fixture", map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"name": map[string]any{"type": "string", "minLength": 1},
+	descriptor := ReadTool(
+		"typed_fixture",
+		"Typed fixture",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string", "minLength": 1},
+			},
+			"required":             []string{"name"},
+			"additionalProperties": false,
 		},
-		"required":             []string{"name"},
-		"additionalProperties": false,
-	})
-	descriptor.Availability = tool.AvailabilityAvailable
+		DescriptorPolicy{
+			ResourceResolver: tool.ResourceResolver{},
+			Availability:     tool.AvailabilityAvailable,
+			RepeatPolicy:     tool.RepeatExecute,
+		},
+	)
 	return Spec[fixtureInput, fixtureOutput]{
 		Descriptor: descriptor,
 		Run:        run,

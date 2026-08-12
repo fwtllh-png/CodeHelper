@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 )
 
@@ -72,7 +73,7 @@ func (r *Repository) CreateWorkspace(ctx context.Context, workspace Workspace) (
 	if workspace.UpdatedAt.IsZero() {
 		workspace.UpdatedAt = workspace.CreatedAt
 	}
-	metadata, err := normalizedJSON(workspace.Metadata)
+	metadata, err := sqlkit.CanonicalObject(workspace.Metadata)
 	if err != nil {
 		return Workspace{}, fmt.Errorf("workspace metadata: %w", err)
 	}
@@ -80,7 +81,7 @@ func (r *Repository) CreateWorkspace(ctx context.Context, workspace Workspace) (
 		INSERT INTO workspaces(id, root_path, display_name, metadata_json, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		workspace.ID, workspace.RootPath, workspace.DisplayName, metadata,
-		timestamp(workspace.CreatedAt), timestamp(workspace.UpdatedAt),
+		sqlkit.Timestamp(workspace.CreatedAt), sqlkit.Timestamp(workspace.UpdatedAt),
 	)
 	if err != nil {
 		return Workspace{}, fmt.Errorf("create workspace: %w", err)
@@ -113,7 +114,7 @@ func (r *Repository) Create(ctx context.Context, value Session) (Session, error)
 		closedAt := value.UpdatedAt
 		value.ClosedAt = &closedAt
 	}
-	metadata, err := normalizedJSON(value.Metadata)
+	metadata, err := sqlkit.CanonicalObject(value.Metadata)
 	if err != nil {
 		return Session{}, fmt.Errorf("session metadata: %w", err)
 	}
@@ -122,7 +123,8 @@ func (r *Repository) Create(ctx context.Context, value Session) (Session, error)
 			id, workspace_id, status, metadata_json, created_at, updated_at, closed_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		value.ID, value.WorkspaceID, value.Status, metadata,
-		timestamp(value.CreatedAt), timestamp(value.UpdatedAt), nullableTime(value.ClosedAt),
+		sqlkit.Timestamp(value.CreatedAt), sqlkit.Timestamp(value.UpdatedAt),
+		sqlkit.NullableTime(value.ClosedAt),
 	)
 	if err != nil {
 		return Session{}, fmt.Errorf("create session: %w", err)
@@ -151,7 +153,10 @@ func (r *Repository) Get(ctx context.Context, id string) (Session, error) {
 	if err != nil {
 		return Session{}, fmt.Errorf("get session: %w", err)
 	}
-	value.Metadata = json.RawMessage(metadata)
+	value.Metadata, err = sqlkit.CanonicalObject(json.RawMessage(metadata))
+	if err != nil {
+		return Session{}, fmt.Errorf("decode persisted session metadata: %w", err)
+	}
 	if value.CreatedAt, err = parseTime(createdAt); err != nil {
 		return Session{}, err
 	}
@@ -176,7 +181,7 @@ func (r *Repository) Close(ctx context.Context, id string, at time.Time) (Sessio
 		UPDATE sessions
 		SET status = ?, updated_at = ?, closed_at = ?
 		WHERE id = ? AND status = ?`,
-		StatusClosed, timestamp(at), timestamp(at), id, StatusOpen,
+		StatusClosed, sqlkit.Timestamp(at), sqlkit.Timestamp(at), id, StatusOpen,
 	)
 	if err != nil {
 		return Session{}, fmt.Errorf("close session: %w", err)
@@ -252,7 +257,10 @@ func (r *Repository) List(ctx context.Context, filter Filter) ([]Session, error)
 		); err != nil {
 			return nil, fmt.Errorf("scan session: %w", err)
 		}
-		value.Metadata = json.RawMessage(metadata)
+		value.Metadata, err = sqlkit.CanonicalObject(json.RawMessage(metadata))
+		if err != nil {
+			return nil, fmt.Errorf("decode persisted session metadata: %w", err)
+		}
 		if value.CreatedAt, err = parseTime(createdAt); err != nil {
 			return nil, err
 		}
@@ -269,28 +277,6 @@ func (r *Repository) List(ctx context.Context, filter Filter) ([]Session, error)
 		out = append(out, value)
 	}
 	return out, rows.Err()
-}
-
-func normalizedJSON(value json.RawMessage) (json.RawMessage, error) {
-	if len(value) == 0 {
-		return json.RawMessage(`{}`), nil
-	}
-	var decoded any
-	if err := json.Unmarshal(value, &decoded); err != nil {
-		return nil, err
-	}
-	return json.Marshal(decoded)
-}
-
-func timestamp(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
-}
-
-func nullableTime(value *time.Time) any {
-	if value == nil {
-		return nil
-	}
-	return timestamp(*value)
 }
 
 func parseTime(value string) (time.Time, error) {

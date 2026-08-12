@@ -1,6 +1,9 @@
 package automation
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -42,9 +45,24 @@ func TestTickEnqueuesExactlyOnceAcrossRestart(t *testing.T) {
 		t.Fatalf("advanced next = %v want %v", reloaded.NextRunAt, wantNext)
 	}
 
-	// Simulate restart: reopen DB and tick again before the next slot.
-	storePath := filepath.Join(t.TempDir(), "unused")
-	_ = storePath
+	var storePath string
+	if err := repo.db.QueryRowContext(
+		t.Context(),
+		"SELECT file FROM pragma_database_list WHERE name = 'main'",
+	).Scan(&storePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := sqlitestate.Open(t.Context(), storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	repo = NewRepository(reopened.DB())
+
+	// A real reopen must not enqueue the same persisted slot twice.
 	again, err := repo.Tick(t.Context(), firstNow.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -142,6 +160,80 @@ func TestConcurrentTicksDoNotDuplicateSlots(t *testing.T) {
 	}
 	if len(listed) != 1 {
 		t.Fatalf("ledger = %+v", listed)
+	}
+}
+
+func TestRepositoryFailsClosedOnMalformedStoredJSON(t *testing.T) {
+	repository := testRepository(t)
+	created, err := repository.Create(t.Context(), CreateRequest{
+		ID: "malformed", SessionID: "session-1", Name: "fixture",
+		RRULE: "FREQ=HOURLY",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.db.ExecContext(
+		t.Context(),
+		"PRAGMA ignore_check_constraints = ON",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.db.ExecContext(
+		t.Context(),
+		"UPDATE automations SET task_payload_json = ? WHERE id = ?",
+		`{"broken":`,
+		created.ID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.db.ExecContext(
+		t.Context(),
+		"PRAGMA ignore_check_constraints = OFF",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Get(t.Context(), created.ID); err == nil {
+		t.Fatal("Get accepted malformed persisted automation JSON")
+	}
+	if _, err := repository.List(
+		t.Context(),
+		Filter{SessionID: "session-1"},
+	); err == nil {
+		t.Fatal("List accepted malformed persisted automation JSON")
+	}
+}
+
+func TestRepositoryContractDuplicateConflictCancelAndMissingSchema(t *testing.T) {
+	repository := testRepository(t)
+	request := CreateRequest{
+		ID: "contract", SessionID: "session-1", Name: "fixture",
+		RRULE: "FREQ=HOURLY",
+	}
+	created, err := repository.Create(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Create(t.Context(), request); err == nil {
+		t.Fatal("duplicate automation identity succeeded")
+	}
+	if _, err := repository.Update(t.Context(), created.ID, Update{
+		ExpectedVersion: created.Version + 1,
+		Name:            "stale",
+	}); !errors.Is(err, ErrVersionConflict) {
+		t.Fatalf("optimistic conflict error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := repository.Get(ctx, created.ID); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled Get error = %v", err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "missing.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := NewRepository(db).Get(t.Context(), created.ID); err == nil {
+		t.Fatal("repository without schema succeeded")
 	}
 }
 

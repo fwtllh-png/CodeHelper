@@ -3,9 +3,12 @@ package sqlkit
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -69,6 +72,26 @@ func TestWithTxRejectsInvalidInputsAndCanceledContext(t *testing.T) {
 	}
 }
 
+func TestWithTxJoinsRollbackErrorAndReturnsCommitErrorUnwrapped(t *testing.T) {
+	callbackErr := errors.New("callback failed")
+	rollbackErr := errors.New("rollback failed")
+	db := openFaultDB(t, &faultTx{rollbackErr: rollbackErr})
+	err := WithTx(t.Context(), db, nil, func(*sql.Tx) error {
+		return callbackErr
+	})
+	if !errors.Is(err, callbackErr) || !errors.Is(err, rollbackErr) {
+		t.Fatalf("joined transaction error = %v", err)
+	}
+
+	commitErr := errors.New("commit failed")
+	db = openFaultDB(t, &faultTx{commitErr: commitErr})
+	if err := WithTx(t.Context(), db, nil, func(*sql.Tx) error {
+		return nil
+	}); err != commitErr {
+		t.Fatalf("commit error = %v, want original %v", err, commitErr)
+	}
+}
+
 func TestScanAllAndRequireAffected(t *testing.T) {
 	db := openTestDB(t)
 	if _, err := db.Exec(`CREATE TABLE values_table(value TEXT)`); err != nil {
@@ -83,6 +106,13 @@ func TestScanAllAndRequireAffected(t *testing.T) {
 	}
 	if affectedErr := RequireAffected(result, 1); affectedErr == nil {
 		t.Fatal("wrong affected count succeeded")
+	} else {
+		var mismatch *AffectedRowsError
+		if !errors.As(affectedErr, &mismatch) ||
+			mismatch.Actual != 2 ||
+			mismatch.Expected != 1 {
+			t.Fatalf("affected rows error = %#v", affectedErr)
+		}
 	}
 	rows, err := db.Query(`SELECT value FROM values_table ORDER BY value`)
 	if err != nil {
@@ -119,6 +149,21 @@ func TestCanonicalNullableAndTimestamp(t *testing.T) {
 	if string(value) != `[1,true]` {
 		t.Fatalf("value = %s", value)
 	}
+	large, err := CanonicalJSON(json.RawMessage(`{"id":9007199254740993}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(large) != `{"id":9007199254740993}` {
+		t.Fatalf("large integer lost precision: %s", large)
+	}
+	for _, raw := range []json.RawMessage{
+		json.RawMessage(`{"ok":true} {"extra":true}`),
+		json.RawMessage(`null`),
+	} {
+		if _, canonicalErr := CanonicalObject(raw); canonicalErr == nil {
+			t.Fatalf("invalid object accepted: %s", raw)
+		}
+	}
 	if NullableString("") != nil || NullableString("x") != "x" {
 		t.Fatal("nullable string contract failed")
 	}
@@ -134,6 +179,55 @@ func TestCanonicalNullableAndTimestamp(t *testing.T) {
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+var faultDriverSequence atomic.Uint64
+
+type faultDriver struct {
+	tx *faultTx
+}
+
+func (d *faultDriver) Open(string) (driver.Conn, error) {
+	return &faultConn{tx: d.tx}, nil
+}
+
+type faultConn struct {
+	tx *faultTx
+}
+
+func (*faultConn) Prepare(string) (driver.Stmt, error) {
+	return nil, errors.New("prepare is unsupported")
+}
+
+func (*faultConn) Close() error { return nil }
+
+func (c *faultConn) Begin() (driver.Tx, error) { return c.tx, nil }
+
+func (c *faultConn) BeginTx(
+	context.Context,
+	driver.TxOptions,
+) (driver.Tx, error) {
+	return c.tx, nil
+}
+
+type faultTx struct {
+	commitErr   error
+	rollbackErr error
+}
+
+func (t *faultTx) Commit() error   { return t.commitErr }
+func (t *faultTx) Rollback() error { return t.rollbackErr }
+
+func openFaultDB(t *testing.T, tx *faultTx) *sql.DB {
+	t.Helper()
+	name := fmt.Sprintf("sqlkit-fault-%d", faultDriverSequence.Add(1))
+	sql.Register(name, &faultDriver{tx: tx})
+	db, err := sql.Open(name, "")
 	if err != nil {
 		t.Fatal(err)
 	}

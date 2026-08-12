@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -23,6 +24,11 @@ type Tool struct {
 	kind    string
 	run     func(context.Context, process.Options) (process.Result, error)
 	sandbox sandbox.Backend
+}
+
+type input struct {
+	Command      string   `json:"command"`
+	CoveredPaths []string `json:"covered_paths"`
 }
 
 func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.Backend) error {
@@ -40,9 +46,14 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 	absolute := workspace.Root()
 	registry.SetSandboxBackend(backend)
 	for _, kind := range []string{"quality_test", "quality_diagnostics", "quality_review", "quality_verify"} {
-		if err := registry.Register(&Tool{
+		instance := &Tool{
 			root: absolute, kind: kind, sandbox: backend,
-		}, nil); err != nil {
+		}
+		executor, err := instance.typedExecutor()
+		if err != nil {
+			return err
+		}
+		if err := registry.Register(executor, nil); err != nil {
 			return err
 		}
 	}
@@ -82,6 +93,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		Capability: tool.CapabilityProcess, AccessMode: tool.AccessTree,
 		ResourceResolver:   resolver,
 		ParallelPolicy:     tool.ParallelSerial,
+		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object", "properties": properties,
@@ -91,21 +103,32 @@ func (t *Tool) Descriptor() tool.Descriptor {
 }
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Command      string   `json:"command"`
-		CoveredPaths []string `json:"covered_paths"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
+	executor, err := t.typedExecutor()
+	if err != nil {
 		return tool.Result{}, err
 	}
-	coveredPaths, err := t.canonicalCoveredPaths(input.CoveredPaths)
+	return executor.Execute(ctx, raw)
+}
+
+func (t *Tool) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[input, tool.Result]{
+		Descriptor: t.Descriptor(),
+		Run:        t.runTyped,
+		Encode: func(value tool.Result) (tool.Result, error) {
+			return value, nil
+		},
+	})
+}
+
+func (t *Tool) runTyped(ctx context.Context, value input) (tool.Result, error) {
+	coveredPaths, err := t.canonicalCoveredPaths(value.CoveredPaths)
 	if err != nil {
 		return tool.Result{}, err
 	}
 	if t.kind == "quality_verify" {
-		return t.executeVerifier(ctx, input.Command, coveredPaths)
+		return t.executeVerifier(ctx, value.Command, coveredPaths)
 	}
-	command := input.Command
+	command := value.Command
 	if command == "" {
 		command = map[string]string{
 			"quality_test":        "go test ./...",

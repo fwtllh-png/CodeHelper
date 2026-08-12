@@ -233,6 +233,85 @@ func TestListUsesOneQueryAndPreservesEveryTaskField(t *testing.T) {
 	}
 }
 
+func TestRepositoryFailsClosedOnMalformedStoredJSON(t *testing.T) {
+	repository := testRepository(t)
+	if _, err := repository.Create(t.Context(), Task{
+		ID: "malformed", SessionID: "session-1", Kind: "fixture",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.db.ExecContext(
+		t.Context(),
+		"PRAGMA ignore_check_constraints = ON",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.db.ExecContext(
+		t.Context(),
+		"UPDATE tasks SET payload_json = ? WHERE id = ?",
+		`{"broken":`,
+		"malformed",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.db.ExecContext(
+		t.Context(),
+		"PRAGMA ignore_check_constraints = OFF",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Get(t.Context(), "malformed"); err == nil {
+		t.Fatal("Get accepted malformed persisted task JSON")
+	}
+	if _, err := repository.List(t.Context(), Filter{}, 10); err == nil {
+		t.Fatal("List accepted malformed persisted task JSON")
+	}
+}
+
+func TestRepositoryContractDuplicateCancelAndMissingSchema(t *testing.T) {
+	repository := testRepository(t)
+	value := Task{ID: "contract", SessionID: "session-1", Kind: "fixture"}
+	if _, err := repository.Create(t.Context(), value); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Create(t.Context(), value); err == nil {
+		t.Fatal("duplicate task identity succeeded")
+	}
+	var storePath string
+	if err := repository.db.QueryRowContext(
+		t.Context(),
+		"SELECT file FROM pragma_database_list WHERE name = 'main'",
+	).Scan(&storePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := sqlitestate.Open(t.Context(), storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	repository = NewRepository(reopened.DB())
+	if persisted, err := repository.Get(t.Context(), value.ID); err != nil ||
+		persisted.ID != value.ID {
+		t.Fatalf("task after restart = %+v, error = %v", persisted, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := repository.Get(ctx, value.ID); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled Get error = %v", err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "missing.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := NewRepository(db).Get(t.Context(), value.ID); err == nil {
+		t.Fatal("repository without schema succeeded")
+	}
+}
+
 func BenchmarkList1000(b *testing.B) {
 	repository := testRepository(b)
 	now := time.Now().UTC().Format(time.RFC3339Nano)

@@ -20,6 +20,10 @@ var (
 )
 
 const (
+	ErrorCategoryUnknownTool      = "unknown_tool"
+	ErrorCategoryToolUnavailable  = "tool_unavailable"
+	ErrorCategoryInvalidArguments = "invalid_arguments"
+	ErrorCategoryPrecondition     = "tool_precondition"
 	ErrorCategoryToolCatalogStale = "tool_catalog_stale"
 	ErrorCategoryToolRevoked      = "tool_revoked"
 	ErrorCategoryToolLoadFailed   = "tool_load_failed"
@@ -33,6 +37,14 @@ const (
 // catalog failures.
 func ErrorCategory(err error) string {
 	switch {
+	case errors.Is(err, ErrUnknownTool):
+		return ErrorCategoryUnknownTool
+	case errors.Is(err, ErrToolUnavailable):
+		return ErrorCategoryToolUnavailable
+	case errors.Is(err, ErrInvalidArguments):
+		return ErrorCategoryInvalidArguments
+	case errors.Is(err, ErrPrecondition):
+		return ErrorCategoryPrecondition
 	case errors.Is(err, ErrCatalogStale):
 		return ErrorCategoryToolCatalogStale
 	case errors.Is(err, ErrToolRevoked):

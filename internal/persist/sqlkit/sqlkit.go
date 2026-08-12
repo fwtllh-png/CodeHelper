@@ -4,11 +4,13 @@
 package sqlkit
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -91,7 +93,7 @@ func CanonicalObject(raw json.RawMessage) (json.RawMessage, error) {
 		return json.RawMessage(`{}`), nil
 	}
 	var value map[string]any
-	if err := json.Unmarshal(raw, &value); err != nil {
+	if err := decodeOne(raw, &value); err != nil {
 		return nil, err
 	}
 	if value == nil {
@@ -103,10 +105,23 @@ func CanonicalObject(raw json.RawMessage) (json.RawMessage, error) {
 // CanonicalJSON validates and compacts any JSON value.
 func CanonicalJSON(raw json.RawMessage) (json.RawMessage, error) {
 	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
+	if err := decodeOne(raw, &value); err != nil {
 		return nil, err
 	}
 	return json.Marshal(value)
+}
+
+func decodeOne(raw json.RawMessage, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errors.New("multiple JSON values")
+	}
+	return nil
 }
 
 func NullableString(value string) any {
@@ -127,6 +142,17 @@ func Timestamp(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
 }
 
+// AffectedRowsError reports an optimistic or identity-bound write that
+// completed but did not affect the exact number of rows promised by its owner.
+type AffectedRowsError struct {
+	Actual   int64
+	Expected int64
+}
+
+func (e *AffectedRowsError) Error() string {
+	return fmt.Sprintf("affected %d rows, expected %d", e.Actual, e.Expected)
+}
+
 // RequireAffected verifies the exact row count promised by an optimistic or
 // identity-bound write.
 func RequireAffected(result sql.Result, expected int64) error {
@@ -138,7 +164,7 @@ func RequireAffected(result sql.Result, expected int64) error {
 		return err
 	}
 	if affected != expected {
-		return fmt.Errorf("affected %d rows, expected %d", affected, expected)
+		return &AffectedRowsError{Actual: affected, Expected: expected}
 	}
 	return nil
 }

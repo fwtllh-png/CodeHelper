@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -107,7 +108,7 @@ func (r *Repository) Save(ctx context.Context, value Snapshot) (Snapshot, error)
 			ID: value.ID, Found: value.SchemaVersion, Supported: SchemaVersion,
 		}
 	}
-	metadata, err := normalizedObject(value.Metadata)
+	metadata, err := sqlkit.CanonicalObject(value.Metadata)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("snapshot metadata: %w", err)
 	}
@@ -131,7 +132,7 @@ func (r *Repository) Save(ctx context.Context, value Snapshot) (Snapshot, error)
 			schema_version, metadata_json, created_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		value.ID, value.ThreadID, nullableTurn(value.TurnID), value.Cursor, value.Kind,
-		value.ContentHash, value.SchemaVersion, metadata, timestamp(value.CreatedAt),
+		value.ContentHash, value.SchemaVersion, metadata, sqlkit.Timestamp(value.CreatedAt),
 	)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("persist snapshot: %w", err)
@@ -194,7 +195,12 @@ func (r *Repository) read(ctx context.Context, query string, arguments ...any) (
 		return Snapshot{}, fmt.Errorf("read snapshot: %w", err)
 	}
 	value.TurnID = protocol.TurnID(turnID.String)
-	value.Metadata = json.RawMessage(metadata)
+	value.Metadata, err = sqlkit.CanonicalObject(json.RawMessage(metadata))
+	if err != nil {
+		return Snapshot{}, &IntegrityError{
+			ID: value.ID, Err: fmt.Errorf("decode persisted snapshot metadata: %w", err),
+		}
+	}
 	value.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
 	if err != nil {
 		return Snapshot{}, &IntegrityError{ID: value.ID, Err: err}
@@ -223,24 +229,9 @@ func hash(content []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func normalizedObject(value json.RawMessage) (json.RawMessage, error) {
-	if len(value) == 0 {
-		return json.RawMessage(`{}`), nil
-	}
-	var decoded map[string]any
-	if err := json.Unmarshal(value, &decoded); err != nil {
-		return nil, err
-	}
-	return json.Marshal(decoded)
-}
-
 func nullableTurn(value protocol.TurnID) any {
 	if value == "" {
 		return nil
 	}
 	return value
-}
-
-func timestamp(value time.Time) string {
-	return value.UTC().Format(time.RFC3339Nano)
 }
