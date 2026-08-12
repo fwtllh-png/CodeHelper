@@ -48,6 +48,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			{Kind: "process", ID: "lsp", Access: tool.AccessWrite, Tree: true},
 		}},
 		ParallelPolicy:     tool.ParallelSerial,
+		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object",

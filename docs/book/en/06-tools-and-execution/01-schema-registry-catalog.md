@@ -121,12 +121,31 @@ Encode, Metadata}` into a `tool.Executor`:
 `typed.ReadTool`, `typed.WriteTool`, and `typed.ProcessTool` build Descriptors
 with the correct Visibility, Capability, Access, Parallel, and Sandbox
 requirements for their effect class, so a Tool cannot accidentally declare a
-weaker security contract than its effect. `tool/result` encodes model content
-with structured metadata (`Success`, `Text`, `Fail` with
+weaker security contract than its effect. Policy-sensitive fields stay
+explicit: the builders take a `DescriptorPolicy{ResourceResolver, Availability,
+RepeatPolicy}`, and `typed.Define` rejects a Descriptor whose `RepeatPolicy` is
+empty, so repeatability is a decision, never an inferred default. `tool/result`
+encodes model content with structured metadata (`Success`, `Text`, `Fail` with
 `error_category`/`retryable`, `Unavailable`); the Registry still owns output
 limits, truncation, and Handle routing. The kits make no execution or policy
 decisions: Registry validation, authorization, Guard, and sandbox policy stay
 outside them.
+
+The typed boundary is the default for every Executor, including the Tier-2
+tools (quality, handle, automation, and MCP helper calls now decode into static
+input types). Executors whose schema is owned elsewhere remain raw-JSON by
+exception and must document why in a `typed-boundary-exception:` comment that a
+migration guard test enforces: the plugin Executor's concrete identity, and
+remote MCP Tools whose schema belongs to the remote catalog.
+
+`ErrorCategory` classifies failures for stable routing: `unknown_tool`,
+`tool_unavailable`, `invalid_arguments`, and `tool_precondition`, alongside the
+existing catalog-stale, revoked, and load-failed categories. A shared
+`executor_contract_test.go` exercises the whole contract — descriptor
+validation, the authorization requirement, schema errors surfaced as
+`ErrInvalidArguments`, output truncation with Handle routing, the Guard path,
+panic containment, cancellation propagation, JSON-compatible metadata, and
+deferred materialization that preserves catalog identity.
 
 ## Code Map
 

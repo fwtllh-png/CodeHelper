@@ -28,6 +28,15 @@ type Spec[I, O any] struct {
 	Metadata   func(O) map[string]any
 }
 
+// DescriptorPolicy contains the policy-sensitive fields that descriptor
+// helpers must never infer. Passing the policy value makes an intentionally
+// empty ResourceResolver distinct at the call site from a forgotten decision.
+type DescriptorPolicy struct {
+	ResourceResolver tool.ResourceResolver
+	Availability     tool.Availability
+	RepeatPolicy     tool.RepeatPolicy
+}
+
 type executor[I, O any] struct {
 	spec Spec[I, O]
 }
@@ -35,6 +44,9 @@ type executor[I, O any] struct {
 func Define[I, O any](spec Spec[I, O]) (tool.Executor, error) {
 	if err := tool.ValidateDescriptor(spec.Descriptor); err != nil {
 		return nil, err
+	}
+	if spec.Descriptor.RepeatPolicy == "" {
+		return nil, errors.New("typed tool RepeatPolicy must be explicit")
 	}
 	if spec.Run == nil {
 		return nil, errors.New("typed tool Run function is required")
@@ -118,29 +130,53 @@ func EncodeJSON[O any](value O) (tool.Result, error) {
 	return toolresult.Success(value, nil)
 }
 
-func ReadTool(name, description string, schema map[string]any) tool.Descriptor {
+func ReadTool(
+	name string,
+	description string,
+	schema map[string]any,
+	policy DescriptorPolicy,
+) tool.Descriptor {
 	return tool.Descriptor{
 		Name: name, Description: description, InputSchema: schema,
 		Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
 		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
 		SandboxRequirement: tool.SandboxNone,
+		ResourceResolver:   policy.ResourceResolver,
+		Availability:       policy.Availability,
+		RepeatPolicy:       policy.RepeatPolicy,
 	}
 }
 
-func WriteTool(name, description string, schema map[string]any) tool.Descriptor {
+func WriteTool(
+	name string,
+	description string,
+	schema map[string]any,
+	policy DescriptorPolicy,
+) tool.Descriptor {
 	return tool.Descriptor{
 		Name: name, Description: description, InputSchema: schema,
 		Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
 		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 		SandboxRequirement: tool.SandboxNone,
+		ResourceResolver:   policy.ResourceResolver,
+		Availability:       policy.Availability,
+		RepeatPolicy:       policy.RepeatPolicy,
 	}
 }
 
-func ProcessTool(name, description string, schema map[string]any) tool.Descriptor {
+func ProcessTool(
+	name string,
+	description string,
+	schema map[string]any,
+	policy DescriptorPolicy,
+) tool.Descriptor {
 	return tool.Descriptor{
 		Name: name, Description: description, InputSchema: schema,
 		Visibility: tool.VisibleModel, Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessTree, ParallelPolicy: tool.ParallelSerial,
 		SandboxRequirement: tool.SandboxStrong,
+		ResourceResolver:   policy.ResourceResolver,
+		Availability:       policy.Availability,
+		RepeatPolicy:       policy.RepeatPolicy,
 	}
 }

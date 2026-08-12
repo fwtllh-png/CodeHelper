@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	automationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 )
 
@@ -28,6 +29,16 @@ type Tools struct {
 type executor struct {
 	tools *Tools
 	name  string
+}
+
+type input struct {
+	Name            string          `json:"name"`
+	RRULE           string          `json:"rrule"`
+	AutomationID    string          `json:"automation_id"`
+	TaskKind        string          `json:"task_kind"`
+	TaskPayload     json.RawMessage `json:"task_payload"`
+	Status          string          `json:"status"`
+	ExpectedVersion uint64          `json:"expected_version"`
 }
 
 func Register(registry *tool.Registry, options Options) error {
@@ -53,7 +64,12 @@ func Register(registry *tool.Registry, options Options) error {
 		"automation_update", "automation_pause", "automation_resume",
 		"automation_delete", "automation_run",
 	} {
-		if err := registry.Register(&executor{tools: tools, name: name}, nil); err != nil {
+		instance := &executor{tools: tools, name: name}
+		typedExecutor, err := instance.typedExecutor()
+		if err != nil {
+			return err
+		}
+		if err := registry.Register(typedExecutor, nil); err != nil {
 			return err
 		}
 	}
@@ -69,6 +85,7 @@ func (e *executor) Descriptor() tool.Descriptor {
 				"RRULE supports FREQ=HOURLY|WEEKLY with optional INTERVAL/BYDAY (UTC).",
 			Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
+			RepeatPolicy:       tool.RepeatExecute,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 				Kind: "automation", Field: "automation_id", Access: tool.AccessWrite,
@@ -92,6 +109,7 @@ func (e *executor) Descriptor() tool.Descriptor {
 			Description: "List non-deleted automations for the current session.",
 			Visibility:  tool.VisibleModel, Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+			RepeatPolicy:       tool.RepeatExecute,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 				Kind: "session", ID: "automations", Access: tool.AccessRead,
@@ -112,6 +130,7 @@ func (e *executor) Descriptor() tool.Descriptor {
 			Description: "Read an automation template and its recent run ledger.",
 			Visibility:  tool.VisibleModel, Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+			RepeatPolicy:       tool.RepeatExecute,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 				Kind: "automation", Field: "automation_id", Access: tool.AccessRead,
@@ -131,6 +150,7 @@ func (e *executor) Descriptor() tool.Descriptor {
 			Description: "Update mutable automation fields. Pass expected_version for optimistic concurrency.",
 			Visibility:  tool.VisibleModel, Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
+			RepeatPolicy:       tool.RepeatExecute,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 				Kind: "automation", Field: "automation_id", Access: tool.AccessWrite,
@@ -162,6 +182,7 @@ func (e *executor) Descriptor() tool.Descriptor {
 				"Returns task_id usable with task_read.",
 			Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
+			RepeatPolicy:       tool.RepeatExecute,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 				Kind: "automation", Field: "automation_id", Access: tool.AccessWrite,
@@ -186,6 +207,7 @@ func mutatorDescriptor(name, description string) tool.Descriptor {
 		Name: name, Description: description,
 		Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
 		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
+		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 			Kind: "automation", Field: "automation_id", Access: tool.AccessWrite,
@@ -203,39 +225,47 @@ func mutatorDescriptor(name, description string) tool.Descriptor {
 }
 
 func (e *executor) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+	executor, err := e.typedExecutor()
+	if err != nil {
+		return tool.Result{}, err
+	}
+	return executor.Execute(ctx, raw)
+}
+
+func (e *executor) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[input, tool.Result]{
+		Descriptor: e.Descriptor(),
+		Run:        e.run,
+		Encode: func(value tool.Result) (tool.Result, error) {
+			return value, nil
+		},
+	})
+}
+
+func (e *executor) run(ctx context.Context, value input) (tool.Result, error) {
 	switch e.name {
 	case "automation_create":
-		return e.tools.create(ctx, raw)
+		return e.tools.create(ctx, value)
 	case "automation_list":
-		return e.tools.list(ctx, raw)
+		return e.tools.list(ctx, value)
 	case "automation_read":
-		return e.tools.read(ctx, raw)
+		return e.tools.read(ctx, value)
 	case "automation_update":
-		return e.tools.update(ctx, raw)
+		return e.tools.update(ctx, value)
 	case "automation_pause":
-		return e.tools.pause(ctx, raw)
+		return e.tools.pause(ctx, value)
 	case "automation_resume":
-		return e.tools.resume(ctx, raw)
+		return e.tools.resume(ctx, value)
 	case "automation_delete":
-		return e.tools.delete(ctx, raw)
+		return e.tools.delete(ctx, value)
 	case "automation_run":
-		return e.tools.run(ctx, raw)
+		return e.tools.run(ctx, value)
 	default:
 		return tool.Result{}, fmt.Errorf("unknown automation tool %q", e.name)
 	}
 }
 
-func (t *Tools) create(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Name         string          `json:"name"`
-		RRULE        string          `json:"rrule"`
-		AutomationID string          `json:"automation_id"`
-		TaskKind     string          `json:"task_kind"`
-		TaskPayload  json.RawMessage `json:"task_payload"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tools) create(ctx context.Context, input input) (tool.Result, error) {
 	if err := t.repo.EnsureSession(ctx, t.sessionID, t.workspace); err != nil {
 		return tool.Result{}, err
 	}
@@ -253,15 +283,7 @@ func (t *Tools) create(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	return summarizeAutomation(created)
 }
 
-func (t *Tools) list(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Status string `json:"status"`
-	}
-	if len(raw) > 0 && string(raw) != "null" {
-		if err := json.Unmarshal(raw, &input); err != nil {
-			return tool.Result{}, err
-		}
-	}
+func (t *Tools) list(ctx context.Context, input input) (tool.Result, error) {
 	filter := automationstore.Filter{SessionID: t.sessionID}
 	if input.Status != "" {
 		filter.Status = automationstore.Status(input.Status)
@@ -284,13 +306,7 @@ func (t *Tools) list(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	}, nil
 }
 
-func (t *Tools) read(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		AutomationID string `json:"automation_id"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tools) read(ctx context.Context, input input) (tool.Result, error) {
 	value, err := t.repo.Get(ctx, strings.TrimSpace(input.AutomationID))
 	if err != nil {
 		return tool.Result{}, err
@@ -322,18 +338,7 @@ func (t *Tools) read(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	}, nil
 }
 
-func (t *Tools) update(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		AutomationID    string          `json:"automation_id"`
-		ExpectedVersion uint64          `json:"expected_version"`
-		Name            string          `json:"name"`
-		RRULE           string          `json:"rrule"`
-		TaskKind        string          `json:"task_kind"`
-		TaskPayload     json.RawMessage `json:"task_payload"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tools) update(ctx context.Context, input input) (tool.Result, error) {
 	version, err := t.resolveVersion(ctx, input.AutomationID, input.ExpectedVersion)
 	if err != nil {
 		return tool.Result{}, err
@@ -348,8 +353,8 @@ func (t *Tools) update(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	return summarizeAutomation(updated)
 }
 
-func (t *Tools) pause(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	id, version, err := t.parseMutator(ctx, raw)
+func (t *Tools) pause(ctx context.Context, input input) (tool.Result, error) {
+	id, version, err := t.parseMutator(ctx, input)
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -360,8 +365,8 @@ func (t *Tools) pause(ctx context.Context, raw json.RawMessage) (tool.Result, er
 	return summarizeAutomation(updated)
 }
 
-func (t *Tools) resume(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	id, version, err := t.parseMutator(ctx, raw)
+func (t *Tools) resume(ctx context.Context, input input) (tool.Result, error) {
+	id, version, err := t.parseMutator(ctx, input)
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -372,8 +377,8 @@ func (t *Tools) resume(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	return summarizeAutomation(updated)
 }
 
-func (t *Tools) delete(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	id, version, err := t.parseMutator(ctx, raw)
+func (t *Tools) delete(ctx context.Context, input input) (tool.Result, error) {
+	id, version, err := t.parseMutator(ctx, input)
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -384,8 +389,8 @@ func (t *Tools) delete(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	return summarizeAutomation(updated)
 }
 
-func (t *Tools) run(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	id, version, err := t.parseMutator(ctx, raw)
+func (t *Tools) run(ctx context.Context, input input) (tool.Result, error) {
+	id, version, err := t.parseMutator(ctx, input)
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -408,14 +413,7 @@ func (t *Tools) run(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 	}, nil
 }
 
-func (t *Tools) parseMutator(ctx context.Context, raw json.RawMessage) (string, uint64, error) {
-	var input struct {
-		AutomationID    string `json:"automation_id"`
-		ExpectedVersion uint64 `json:"expected_version"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return "", 0, err
-	}
+func (t *Tools) parseMutator(ctx context.Context, input input) (string, uint64, error) {
 	version, err := t.resolveVersion(ctx, input.AutomationID, input.ExpectedVersion)
 	if err != nil {
 		return "", 0, err

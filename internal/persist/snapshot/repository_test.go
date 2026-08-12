@@ -1,6 +1,8 @@
 package snapshot
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -161,6 +163,89 @@ func TestSnapshotRejectsUnsupportedSchema(t *testing.T) {
 	var schemaErr *SchemaError
 	if !errors.As(err, &schemaErr) || !errors.Is(err, ErrUnsupportedSchema) {
 		t.Fatalf("schema error = %v, want SchemaError", err)
+	}
+}
+
+func TestRepositoryFailsClosedOnMalformedStoredMetadata(t *testing.T) {
+	repository, database, _ := testRepository(t)
+	saved, err := repository.Save(t.Context(), Snapshot{
+		ID: "malformed", ThreadID: "thread-1", TurnID: "turn-1",
+		Cursor: 1, Kind: "runtime", Content: []byte("trusted"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().ExecContext(
+		t.Context(),
+		"PRAGMA ignore_check_constraints = ON",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().ExecContext(
+		t.Context(),
+		"UPDATE snapshots SET metadata_json = ? WHERE id = ?",
+		`{"broken":`,
+		saved.ID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().ExecContext(
+		t.Context(),
+		"PRAGMA ignore_check_constraints = OFF",
+	); err != nil {
+		t.Fatal(err)
+	}
+	_, err = repository.Get(t.Context(), saved.ID)
+	var integrityErr *IntegrityError
+	if !errors.As(err, &integrityErr) {
+		t.Fatalf("malformed metadata error = %v, want IntegrityError", err)
+	}
+}
+
+func TestRepositoryContractDuplicateCancelAndMissingSchema(t *testing.T) {
+	repository, database, content := testRepository(t)
+	value := Snapshot{
+		ID: "contract", ThreadID: "thread-1", TurnID: "turn-1",
+		Cursor: 1, Kind: "runtime", Content: []byte("trusted"),
+	}
+	if _, err := repository.Save(t.Context(), value); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Save(t.Context(), value); err == nil {
+		t.Fatal("duplicate snapshot identity succeeded")
+	}
+	var storePath string
+	if err := database.DB().QueryRowContext(
+		t.Context(),
+		"SELECT file FROM pragma_database_list WHERE name = 'main'",
+	).Scan(&storePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := sqlitestate.Open(t.Context(), storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	repository = NewRepository(reopened.DB(), content)
+	if persisted, err := repository.Get(t.Context(), value.ID); err != nil ||
+		persisted.ID != value.ID {
+		t.Fatalf("snapshot after restart = %+v, error = %v", persisted, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := repository.Get(ctx, value.ID); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled Get error = %v", err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "missing.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := NewRepository(db, content).Get(t.Context(), value.ID); err == nil {
+		t.Fatal("repository without schema succeeded")
 	}
 }
 

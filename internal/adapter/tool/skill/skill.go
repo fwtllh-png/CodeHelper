@@ -64,6 +64,7 @@ func (*Tool) Descriptor() tool.Descriptor {
 		}}},
 		AccessMode:         tool.AccessRead,
 		ParallelPolicy:     tool.ParallelConcurrent,
+		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxNone,
 		Availability:       tool.AvailabilityAvailable,
 	}

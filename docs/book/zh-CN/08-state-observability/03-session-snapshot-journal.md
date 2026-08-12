@@ -77,7 +77,9 @@ Activity 与 Optimistic Revision。Host 只能缓存 Binding/Cursor；Canonical 
 
 Lifecycle Transition 在 `sqlkit.WithTx` 内执行；Optimistic Revision 递增与
 Identity-bound Update 用 `RequireAffected` 校验精确行数，避免 Stale Session 静默覆盖
-并发修改。
+并发修改。Session 与 Snapshot Repository 复用共享 `sqlkit` Helper（`CanonicalObject`、
+`Timestamp`、`NullableTime`）并在读取时 Canonicalize 存储 Metadata；Profile Update
+同样在 `WithTx` 内执行，把行数不匹配映射为类型化的 `ProfileRevisionConflictError`。
 
 ## Commit/Reference Window
 
@@ -113,7 +115,8 @@ Git 无法覆盖 Untracked File、Partial Turn 和 Non-Git Workspace，因此 Jo
 
 ## 失败与安全边界
 
-- Snapshot Corruption/Schema Mismatch 被拒绝。
+- Snapshot Corruption/Schema Mismatch 被拒绝；Repository Read 遇到 Malformed
+  Stored Metadata 也 Fail Closed（Integrity Error），而非静默修复。
 - CAS Tampering、Symlink、Invalid ID/Reference Fail Closed。
 - Last-reference Release 删除内容。
 - Before-image Failure 阻止 Edit。

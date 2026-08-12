@@ -55,6 +55,7 @@ func (*Tool) Descriptor() tool.Descriptor {
 			"Returns selected tool names, descriptions, and input schemas.",
 		Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
 		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object",

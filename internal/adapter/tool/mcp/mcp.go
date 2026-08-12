@@ -14,6 +14,7 @@ import (
 
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 )
 
 type executor struct {
@@ -25,6 +26,13 @@ type helperExecutor struct {
 	kind       string
 	pool       *mcpruntime.Pool
 	descriptor tool.Descriptor
+}
+
+type helperInput struct {
+	Server    string            `json:"server,omitempty"`
+	URI       string            `json:"uri,omitempty"`
+	Name      string            `json:"name,omitempty"`
+	Arguments map[string]string `json:"arguments,omitempty"`
 }
 
 func Register(registry *tool.Registry, pool *mcpruntime.Pool) error {
@@ -314,6 +322,7 @@ func descriptorFor(entry mcpruntime.CatalogEntry) (tool.Descriptor, error) {
 		ResourceResolver:   tool.ResourceResolver{Templates: resources},
 		AccessMode:         tool.AccessMode(entry.Binding.AccessMode),
 		ParallelPolicy:     tool.ParallelPolicy(entry.Binding.ParallelPolicy),
+		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxRequirement(entry.Binding.SandboxRequirement),
 		Availability:       tool.AvailabilityAvailable,
 	}
@@ -328,6 +337,9 @@ func (e *executor) Execute(
 	ctx context.Context,
 	arguments json.RawMessage,
 ) (tool.Result, error) {
+	// typed-boundary-exception: the remote catalog owns this dynamic schema.
+	// Passing validated raw JSON avoids precision loss and provider-specific
+	// value normalization at a boundary with no local static input type.
 	result, err := e.entry.Connection.CallTool(ctx, e.entry.RemoteName, arguments)
 	if err != nil {
 		return tool.Result{}, err
@@ -403,6 +415,7 @@ func newHelperExecutor(kind string, pool *mcpruntime.Pool) *helperExecutor {
 			Capability:         tool.CapabilityNetwork,
 			AccessMode:         tool.AccessRead,
 			ParallelPolicy:     tool.ParallelConcurrent,
+			RepeatPolicy:       tool.RepeatExecute,
 			SandboxRequirement: tool.SandboxNone,
 			Availability:       tool.AvailabilityAvailable,
 		},
@@ -417,15 +430,24 @@ func (e *helperExecutor) Execute(
 	ctx context.Context,
 	arguments json.RawMessage,
 ) (tool.Result, error) {
-	var input struct {
-		Server    string            `json:"server,omitempty"`
-		URI       string            `json:"uri,omitempty"`
-		Name      string            `json:"name,omitempty"`
-		Arguments map[string]string `json:"arguments,omitempty"`
-	}
-	if err := json.Unmarshal(arguments, &input); err != nil {
+	executor, err := e.typedExecutor()
+	if err != nil {
 		return tool.Result{}, err
 	}
+	return executor.Execute(ctx, arguments)
+}
+
+func (e *helperExecutor) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[helperInput, tool.Result]{
+		Descriptor: e.Descriptor(),
+		Run:        e.run,
+		Encode: func(value tool.Result) (tool.Result, error) {
+			return value, nil
+		},
+	})
+}
+
+func (e *helperExecutor) run(ctx context.Context, input helperInput) (tool.Result, error) {
 	switch e.kind {
 	case "list_mcp_resources":
 		var resources []map[string]any

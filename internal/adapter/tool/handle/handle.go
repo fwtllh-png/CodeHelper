@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 )
 
 const (
@@ -151,6 +152,16 @@ type ReadTool struct {
 	Store *Store
 }
 
+type readInput struct {
+	Handle    json.RawMessage `json:"handle"`
+	Mode      string          `json:"mode"`
+	StartLine int             `json:"start_line"`
+	MaxLines  int             `json:"max_lines"`
+	Query     string          `json:"query"`
+	Offset    int             `json:"offset"`
+	MaxBytes  int             `json:"max_bytes"`
+}
+
 func Register(registry *tool.Registry, store *Store) error {
 	if registry == nil {
 		return errors.New("handle_read registry is required")
@@ -158,7 +169,12 @@ func Register(registry *tool.Registry, store *Store) error {
 	if store == nil {
 		store = NewStore()
 	}
-	return registry.Register(&ReadTool{Store: store}, nil)
+	instance := &ReadTool{Store: store}
+	executor, err := instance.typedExecutor()
+	if err != nil {
+		return err
+	}
+	return registry.Register(executor, nil)
 }
 
 func (*ReadTool) Descriptor() tool.Descriptor {
@@ -170,6 +186,7 @@ func (*ReadTool) Descriptor() tool.Descriptor {
 		Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityRead, AccessMode: tool.AccessRead,
 		ParallelPolicy:     tool.ParallelConcurrent,
+		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxNone,
 		Availability:       tool.AvailabilityAvailable,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -197,21 +214,29 @@ func (*ReadTool) Descriptor() tool.Descriptor {
 	}
 }
 
-func (t *ReadTool) Execute(_ context.Context, raw json.RawMessage) (tool.Result, error) {
+func (t *ReadTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+	executor, err := t.typedExecutor()
+	if err != nil {
+		return tool.Result{}, err
+	}
+	return executor.Execute(ctx, raw)
+}
+
+func (t *ReadTool) typedExecutor() (tool.Executor, error) {
+	return typed.Define(typed.Spec[readInput, tool.Result]{
+		Descriptor: t.Descriptor(),
+		Run: func(_ context.Context, value readInput) (tool.Result, error) {
+			return t.read(value)
+		},
+		Encode: func(value tool.Result) (tool.Result, error) {
+			return value, nil
+		},
+	})
+}
+
+func (t *ReadTool) read(input readInput) (tool.Result, error) {
 	if t == nil || t.Store == nil {
 		return tool.Result{}, errors.New("handle store is required")
-	}
-	var input struct {
-		Handle    json.RawMessage `json:"handle"`
-		Mode      string          `json:"mode"`
-		StartLine int             `json:"start_line"`
-		MaxLines  int             `json:"max_lines"`
-		Query     string          `json:"query"`
-		Offset    int             `json:"offset"`
-		MaxBytes  int             `json:"max_bytes"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
 	}
 	handle, err := parseHandle(input.Handle)
 	if err != nil {

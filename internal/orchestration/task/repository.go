@@ -527,9 +527,15 @@ func scanTask(row sqlkit.RowScanner) (Task, error) {
 		return Task{}, err
 	}
 	value.ThreadID, value.TurnID = threadID.String, turnID.String
-	value.Payload = json.RawMessage(payload)
+	value.Payload, err = sqlkit.CanonicalObject(json.RawMessage(payload))
+	if err != nil {
+		return Task{}, fmt.Errorf("decode persisted task payload: %w", err)
+	}
 	if result.Valid {
-		value.Result = json.RawMessage(result.String)
+		value.Result, err = sqlkit.CanonicalJSON(json.RawMessage(result.String))
+		if err != nil {
+			return Task{}, fmt.Errorf("decode persisted task result: %w", err)
+		}
 	}
 	value.Reason = reason.String
 	value.FailureReason, value.LeaseOwner = reason.String, owner.String

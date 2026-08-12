@@ -30,6 +30,17 @@ func TestMigratedRepositoriesDoNotReimplementSQLKit(t *testing.T) {
 		"persist/session/lifecycle.go": {
 			".BeginTx(",
 		},
+		"persist/session/profile.go": {
+			".BeginTx(", "func normalizedJSON(", "func nullableTime(",
+			"func timestamp(",
+		},
+		"persist/session/repository.go": {
+			".BeginTx(", "func normalizedJSON(", "func nullableTime(",
+			"func timestamp(",
+		},
+		"persist/snapshot/repository.go": {
+			".BeginTx(", "func normalizedObject(", "func timestamp(",
+		},
 	}
 	for relative, forbidden := range files {
 		t.Run(relative, func(t *testing.T) {

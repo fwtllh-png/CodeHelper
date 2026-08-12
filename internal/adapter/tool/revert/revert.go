@@ -59,6 +59,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"workspace journal. Omitting target_turn_id restores the latest recorded turn.",
 		Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
 		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
+		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxNone,
 		Availability:       available, UnavailableReason: reason,
 		InputSchema: map[string]any{

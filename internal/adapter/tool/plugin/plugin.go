@@ -251,6 +251,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			{Kind: "plugin", ID: t.plugin.Name(), Access: tool.AccessWrite, Tree: true},
 		}},
 		ParallelPolicy:     tool.ParallelSerial,
+		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object",
@@ -279,6 +280,9 @@ func NamespacedName(pluginName string) string {
 }
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+	// typed-boundary-exception: this executor's concrete identity owns
+	// in-flight retirement, while the nested arguments schema belongs to the
+	// reviewed plugin. Keep that lifecycle and raw payload boundary explicit.
 	if err := t.begin(); err != nil {
 		return tool.Result{}, err
 	}

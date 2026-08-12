@@ -33,3 +33,40 @@ func TestTierOneToolsUseTypedBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestTierTwoToolsUseTypedBoundaryOrDocumentException(t *testing.T) {
+	root := filepath.Clean("..")
+	cases := []struct {
+		path          string
+		typed         bool
+		exception     bool
+		forbidRawRoot bool
+	}{
+		{path: "quality/quality.go", typed: true, forbidRawRoot: true},
+		{path: "automation/automation.go", typed: true, forbidRawRoot: true},
+		{path: "handle/handle.go", typed: true},
+		{path: "plugin/plugin.go", exception: true},
+		{path: "mcp/mcp.go", typed: true, exception: true},
+	}
+	for _, test := range cases {
+		t.Run(test.path, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join(root, test.path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := string(data)
+			if test.typed && !strings.Contains(source, "typed.Define(") {
+				t.Fatal("Tier-2 tool lost its typed executor")
+			}
+			if test.exception &&
+				!strings.Contains(source, "typed-boundary-exception:") {
+				t.Fatal("Tier-2 explicit executor lacks a reviewed exception")
+			}
+			if test.forbidRawRoot &&
+				(strings.Contains(source, "json.Unmarshal(raw") ||
+					strings.Contains(source, "json.Unmarshal(arguments")) {
+				t.Fatal("Tier-2 typed root reintroduced local JSON decoding")
+			}
+		})
+	}
+}

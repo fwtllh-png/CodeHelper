@@ -40,7 +40,7 @@ parallelism, result, and test contracts.
    `Validate`, `Run`, `Encode`, and optional `Metadata`.
 2. Use a strict object schema with `additionalProperties: false`.
 3. Declare visibility, capability, access, resource templates, parallel policy,
-   sandbox requirement, availability, and aliases.
+   repeat policy, sandbox requirement, availability, and aliases.
 4. Encode model content and structured Runtime metadata through the
    `tool/result` builders (`Success`, `Text`, `Fail`, `Unavailable`); the
    Registry applies output limits and Handle routing.
@@ -70,10 +70,18 @@ separates `Decode` (strict JSON, unknown fields rejected), `Validate`
 (precondition checks that run before any effect), `Run`, `Encode`, and
 `Metadata`. `tool.ValidateDescriptor` fails construction before the Tool is
 wired into a catalog; `typed.ReadTool`/`WriteTool`/`ProcessTool` supply the
-correct capability, access, and sandbox requirements for the effect class. The
-`tool/result` builders encode model content and keep metadata structured and
-JSON-compatible; the Registry remains responsible for bounding and routing the
-result.
+correct capability, access, and sandbox requirements for the effect class and
+take an explicit `DescriptorPolicy` (Resource Resolver, Availability, Repeat
+Policy), so policy-sensitive fields are decisions, never inferred defaults —
+`typed.Define` rejects an empty Repeat Policy. The `tool/result` builders
+encode model content and keep metadata structured and JSON-compatible; the
+Registry remains responsible for bounding and routing the result.
+
+Almost every Executor passes through the typed boundary, including the Tier-2
+tools (quality, handle, automation, and MCP helpers). Where the schema is owned
+elsewhere (a remote MCP catalog, or an Executor whose concrete identity owns
+its contract), raw JSON is kept only with a documented
+`typed-boundary-exception:` comment that the migration guard test enforces.
 
 ## Registration, Snapshot, and Binding
 
@@ -113,6 +121,8 @@ override a failed process, unobserved write, or revoked binding.
 - Partial side effects cannot be labeled precondition failure.
 - Result handles are used for oversized output.
 - Actual writes are observed by Guard, not trusted from result text.
+- Raw-JSON executors must document a `typed-boundary-exception:` reason; schema
+  ownership is explicit, never accidental.
 
 ## Tests and Verification
 

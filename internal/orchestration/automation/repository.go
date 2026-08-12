@@ -590,8 +590,14 @@ func scanAutomation(row sqlkit.RowScanner) (Automation, error) {
 	}
 	value.TaskExecutor = executor.String
 	value.ThreadID, value.TurnID = threadID.String, turnID.String
-	value.TaskPayload = json.RawMessage(payload)
 	var err error
+	value.TaskPayload, err = sqlkit.CanonicalObject(json.RawMessage(payload))
+	if err != nil {
+		return Automation{}, fmt.Errorf(
+			"decode persisted automation task payload: %w",
+			err,
+		)
+	}
 	value.CreatedAt, err = parseTime(createdAt)
 	if err != nil {
 		return Automation{}, err

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -109,7 +110,7 @@ func (r *Repository) EnsureProfile(
 				SET metadata_json = ?, updated_at = ?
 				WHERE id = ? AND metadata_json = ?`,
 				next,
-				timestamp(time.Now().UTC()),
+				sqlkit.Timestamp(time.Now().UTC()),
 				sessionID,
 				metadata,
 			)
@@ -137,7 +138,7 @@ func (r *Repository) EnsureProfile(
 			SET metadata_json = ?, updated_at = ?
 			WHERE id = ? AND metadata_json = ?`,
 			next,
-			timestamp(time.Now().UTC()),
+			sqlkit.Timestamp(time.Now().UTC()),
 			sessionID,
 			metadata,
 		)
@@ -195,69 +196,67 @@ func (r *Repository) UpdateProfile(
 	if err := patch.Validate(); err != nil {
 		return protocol.SessionProfileUpdateResult{}, err
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return protocol.SessionProfileUpdateResult{}, fmt.Errorf("begin session profile update: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	var metadata []byte
-	err = tx.QueryRowContext(
-		ctx,
-		"SELECT metadata_json FROM sessions WHERE id = ?",
-		sessionID,
-	).Scan(&metadata)
-	if errors.Is(err, sql.ErrNoRows) {
-		return protocol.SessionProfileUpdateResult{}, ErrNotFound
-	}
-	if err != nil {
-		return protocol.SessionProfileUpdateResult{}, fmt.Errorf("read session profile: %w", err)
-	}
-	current, err := profileFromMetadata(metadata, defaults)
-	if err != nil {
-		return protocol.SessionProfileUpdateResult{}, err
-	}
-	if current.Revision != expectedRevision {
-		return protocol.SessionProfileUpdateResult{}, &ProfileRevisionConflictError{
-			Expected: expectedRevision,
-			Current:  current.Revision,
+	var updated protocol.SessionProfileUpdateResult
+	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
+		var metadata []byte
+		err := tx.QueryRowContext(
+			ctx,
+			"SELECT metadata_json FROM sessions WHERE id = ?",
+			sessionID,
+		).Scan(&metadata)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
 		}
-	}
-	updated, err := protocol.ApplySessionProfilePatch(current, patch)
-	if err != nil {
-		return protocol.SessionProfileUpdateResult{}, err
-	}
-	if updated.Profile.Revision == current.Revision {
-		return updated, nil
-	}
-	nextMetadata, err := metadataWithProfile(metadata, updated.Profile)
-	if err != nil {
-		return protocol.SessionProfileUpdateResult{}, err
-	}
-	result, err := tx.ExecContext(ctx, `
-		UPDATE sessions
-		SET metadata_json = ?, updated_at = ?
-		WHERE id = ? AND metadata_json = ?`,
-		nextMetadata,
-		timestamp(time.Now().UTC()),
-		sessionID,
-		metadata,
-	)
-	if err != nil {
-		return protocol.SessionProfileUpdateResult{}, fmt.Errorf("update session profile: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return protocol.SessionProfileUpdateResult{}, err
-	}
-	if affected != 1 {
-		return protocol.SessionProfileUpdateResult{}, &ProfileRevisionConflictError{
-			Expected: expectedRevision,
-			Current:  current.Revision,
+		if err != nil {
+			return fmt.Errorf("read session profile: %w", err)
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return protocol.SessionProfileUpdateResult{}, fmt.Errorf("commit session profile update: %w", err)
+		current, err := profileFromMetadata(metadata, defaults)
+		if err != nil {
+			return err
+		}
+		if current.Revision != expectedRevision {
+			return &ProfileRevisionConflictError{
+				Expected: expectedRevision,
+				Current:  current.Revision,
+			}
+		}
+		updated, err = protocol.ApplySessionProfilePatch(current, patch)
+		if err != nil {
+			return err
+		}
+		if updated.Profile.Revision == current.Revision {
+			return nil
+		}
+		nextMetadata, err := metadataWithProfile(metadata, updated.Profile)
+		if err != nil {
+			return err
+		}
+		result, err := tx.ExecContext(ctx, `
+			UPDATE sessions
+			SET metadata_json = ?, updated_at = ?
+			WHERE id = ? AND metadata_json = ?`,
+			nextMetadata,
+			sqlkit.Timestamp(time.Now().UTC()),
+			sessionID,
+			metadata,
+		)
+		if err != nil {
+			return fmt.Errorf("update session profile: %w", err)
+		}
+		if err := sqlkit.RequireAffected(result, 1); err != nil {
+			var mismatch *sqlkit.AffectedRowsError
+			if !errors.As(err, &mismatch) {
+				return err
+			}
+			return &ProfileRevisionConflictError{
+				Expected: expectedRevision,
+				Current:  current.Revision,
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return protocol.SessionProfileUpdateResult{}, err
 	}
 	return updated, nil
 }

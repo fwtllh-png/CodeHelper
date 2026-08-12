@@ -10,6 +10,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -201,7 +202,16 @@ func (r *Repository) ListCheckpoints(
 		}
 		value.TurnID = protocol.TurnID(turnID.String)
 		value.Kind = KindSessionCheckpoint
-		value.Metadata = json.RawMessage(metadata)
+		value.Metadata, err = sqlkit.CanonicalObject(json.RawMessage(metadata))
+		if err != nil {
+			return nil, &IntegrityError{
+				ID: value.ID,
+				Err: fmt.Errorf(
+					"decode persisted checkpoint metadata: %w",
+					err,
+				),
+			}
+		}
 		if value.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt); err != nil {
 			return nil, &IntegrityError{ID: value.ID, Err: err}
 		}
