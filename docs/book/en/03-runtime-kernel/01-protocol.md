@@ -109,8 +109,8 @@ non-empty Thread/Turn reference to make an invalid message fit.
 
 ## Event Traits
 
-Event classification is protocol data, not Host policy. `event_traits.go`
-assigns every Event Kind a generated trait record:
+Event classification is protocol data, not Host policy. `event_traits.json`
+assigns every Event Kind a trait record:
 
 | Trait | Meaning | Examples |
 | --- | --- | --- |
@@ -120,11 +120,11 @@ assigns every Event Kind a generated trait record:
 | `Correlation` | the key Hosts use to group Events | `turn`, `call`, `sample`, `request`, `checkpoint`, `agent`, `plan`, ... |
 | `Terminal` | whether the Event ends its lifecycle scope | only `turn.completed`, `turn.failed`, and `turn.canceled` are `true` |
 
-`IsTerminalEvent` derives from `Traits(kind).Terminal` instead of a hardcoded
-Kind list. Schema generation emits the manifest as `event_traits` in the
-committed artifact, and the VS Code generator produces
-`event-traits.golden.json` plus TypeScript trait types. A new Event without
-Traits fails both Schema and TypeScript generation.
+`make protocol-schema` runs `scripts/eventtraitgen` first, producing
+`event_traits.gen.go`; schema generation then emits the same table as
+`event_traits`, and the VS Code generator produces the TypeScript table and
+`event-traits.golden.json`. `IsTerminalEvent` derives from
+`Traits(kind).Terminal`. Go embed tests and TypeScript `--check` fail on drift.
 
 ## Schema Generation
 
@@ -158,7 +158,7 @@ version and schema remain authoritative for each build.
 | Shared envelope | `message.go` |
 | Operations and payloads | `operation.go` |
 | Events and data | `event.go` |
-| Event Traits manifest | `event_traits.go` |
+| Event Traits source and generated table | `event_traits.json`, `event_traits.gen.go` |
 | Execution evidence | `receipt.go` |
 | Identity | `identity.go` |
 | Codec and strict validation | `codec.go`, `validate.go` |

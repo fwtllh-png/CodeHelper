@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/eventview"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/spf13/cobra"
 )
@@ -213,40 +214,41 @@ func foldQuickstartEvents(report *quickstartReport, data []byte) error {
 			return fmt.Errorf("decode quickstart event: %w", err)
 		}
 		report.EventCount++
-		switch event.Kind {
-		case protocol.EventToolResult:
-			result, _ := event.Data.(*protocol.ToolResultData)
-			if result == nil || result.IsError {
+		update, err := eventview.Project(event)
+		if err != nil {
+			return err
+		}
+		switch value := update.(type) {
+		case eventview.ToolUpdate:
+			if value.Result == nil || value.Result.IsError {
 				continue
 			}
-			switch result.Tool {
+			switch value.Tool {
 			case "update_plan":
 				report.Stages.Plan = true
 			case "file_read":
 				report.Stages.Read = true
 			}
-		case protocol.EventApprovalRequired:
-			approval, _ := event.Data.(*protocol.ApprovalRequiredData)
-			if approval != nil && approval.EditPlan != nil {
+		case eventview.InteractionUpdate:
+			if value.ApprovalRequired != nil &&
+				value.ApprovalRequired.EditPlan != nil {
 				report.Stages.EditPreview = true
 			}
-		case protocol.EventApprovalResolved:
-			resolved, _ := event.Data.(*protocol.ApprovalResolvedData)
-			if resolved != nil && resolved.Decision == protocol.ApprovalApprove {
+			if value.ResolvedValue == string(protocol.ApprovalApprove) {
 				report.Stages.Approved = true
 			}
-		case protocol.EventTurnVerification:
-			report.Stages.Verification = true
-		case protocol.EventExecutionReceipt:
-			receipt, _ := event.Data.(*protocol.ExecutionReceiptData)
-			if receipt != nil {
+		case eventview.EvidenceUpdate:
+			if value.Verification != nil {
+				report.Stages.Verification = true
+			}
+			if value.Receipt != nil {
 				report.Stages.Receipt = true
-				for _, change := range receipt.Changes {
+				for _, change := range value.Receipt.Changes {
 					report.ChangedFiles = append(report.ChangedFiles, change.Path)
 				}
 			}
-		case protocol.EventTurnCompleted:
-			report.Stages.Completed = true
+		case eventview.TerminalUpdate:
+			report.Stages.Completed = value.Status == "completed"
 		}
 	}
 	return scanner.Err()

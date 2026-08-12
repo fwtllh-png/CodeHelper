@@ -1,6 +1,14 @@
 package protocol
 
-import "testing"
+import (
+	_ "embed"
+	"encoding/json"
+	"reflect"
+	"testing"
+)
+
+//go:embed event_traits.json
+var eventTraitsSource []byte
 
 func TestEventTraitsExhaustive(t *testing.T) {
 	kinds := EventKinds()
@@ -16,6 +24,16 @@ func TestEventTraitsExhaustive(t *testing.T) {
 			traits.Durability == "" || traits.Correlation == "" {
 			t.Fatalf("event %q has incomplete traits: %+v", kind, traits)
 		}
+	}
+}
+
+func TestGeneratedEventTraitsMatchManifest(t *testing.T) {
+	var source map[EventKind]EventTraits
+	if err := json.Unmarshal(eventTraitsSource, &source); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(source, eventTraits) {
+		t.Fatal("event_traits.gen.go drifted from event_traits.json")
 	}
 }
 

@@ -1,79 +1,47 @@
 import type {
-  DiagnosticsResultData,
-  TurnReceiptData,
-  TurnStartedData,
+  DiagnosticsResultData, TurnReceiptData, TurnStartedData,
 } from "../../protocol/generated.js";
 import type { EditPlanCard } from "../../edits/model.js";
 import type { MarkdownNode } from "../markdown.js";
 import type { ResourceRange } from "../resources.js";
-
-export type {
-  EditPlanCard,
-  EditPlanFileCard,
-} from "../../edits/model.js";
-
+export type { EditPlanCard, EditPlanFileCard } from "../../edits/model.js";
 export const maxCardText = 64 << 10;
 export const maxChatTurns = 200;
 export const expandedContextMarker = "\n\nExplicit editor context follows as JSON.";
-
-export type TurnStatus =
-  | "running"
-  | "awaiting_approval"
-  | "awaiting_input"
-  | "completed"
-  | "failed"
-  | "canceled";
-
+export type TurnStatus = "running" | "awaiting_approval" | "awaiting_input" |
+  "completed" | "failed" | "canceled";
 export interface ToolCard {
-  readonly callId: string; readonly tool: string;
-  readonly status: "running" | "completed" | "failed"; readonly changes: readonly FileChangeCard[];
-  readonly arguments?: string; readonly output: string;
+  readonly callId: string; readonly tool: string; readonly status: "running" | "completed" | "failed";
+  readonly changes: readonly FileChangeCard[]; readonly arguments?: string; readonly output: string;
 }
-
 export interface FileChangeCard {
   readonly path: string; readonly resourceId?: string;
-  readonly kind: "created" | "modified" | "deleted";
-  readonly added: number; readonly removed: number;
+  readonly kind: "created" | "modified" | "deleted"; readonly added: number; readonly removed: number;
 }
-
 export interface ApprovalCard {
   readonly requestId: string; readonly turnId: string; readonly itemId: string;
-  readonly tool: string; readonly arguments: string;
-  readonly resources: readonly string[]; readonly allowedScopes: readonly string[];
-  readonly expiresAt: string; readonly reason?: string; readonly resolved?: string;
-  readonly editPlan?: EditPlanCard;
+  readonly tool: string; readonly arguments: string; readonly resources: readonly string[];
+  readonly allowedScopes: readonly string[]; readonly expiresAt: string;
+  readonly reason?: string; readonly resolved?: string; readonly editPlan?: EditPlanCard;
 }
-
 export interface InputCard {
   readonly requestId: string; readonly turnId: string; readonly itemId: string;
-  readonly prompt: string; readonly expiresAt: string; readonly resolved?: string;
-  readonly options: readonly string[];
+  readonly prompt: string; readonly options: readonly string[]; readonly expiresAt: string; readonly resolved?: string;
 }
-
 export interface PlanCard {
-  readonly id?: string; readonly body: string;
-  readonly bodyMarkdown: readonly MarkdownNode[]; readonly status: "drafting" | "ready";
-  readonly canImplement: boolean; readonly canAutopilot: boolean;
+  readonly id?: string; readonly body: string; readonly bodyMarkdown: readonly MarkdownNode[];
+  readonly status: "drafting" | "ready"; readonly canImplement: boolean; readonly canAutopilot: boolean;
 }
-
-export interface WorkspaceChangeCard {
-  readonly changedCount: number; readonly workspace?: string;
-}
-interface TimelineBase {
-  readonly id: string; readonly sequence: number;
-}
+export interface WorkspaceChangeCard { readonly changedCount: number; readonly workspace?: string }
+interface TimelineBase { readonly id: string; readonly sequence: number }
 export type TurnTimelineItem =
   | TimelineBase & {
-      readonly kind: "output";
-      readonly text: string;
-      readonly markdown: readonly MarkdownNode[];
-      readonly final: boolean;
+      readonly kind: "output"; readonly text: string;
+      readonly markdown: readonly MarkdownNode[]; readonly final: boolean;
     }
   | TimelineBase & {
-      readonly kind: "reasoning";
-      readonly text: string;
-      readonly markdown: readonly MarkdownNode[];
-      readonly active: boolean;
+      readonly kind: "reasoning"; readonly text: string;
+      readonly markdown: readonly MarkdownNode[]; readonly active: boolean;
     }
   | TimelineBase & (
       | { readonly kind: "tool"; readonly callId: string }
@@ -81,10 +49,7 @@ export type TurnTimelineItem =
       | { readonly kind: "diagnostics"; readonly messages: readonly string[] }
       | { readonly kind: "verification" | "notice"; readonly text: string }
     );
-
-export type EditorContextReceipt =
-  NonNullable<TurnStartedData["editor_context"]>[number];
-
+export type EditorContextReceipt = NonNullable<TurnStartedData["editor_context"]>[number];
 export interface ContextReceiptCard {
   readonly kind: EditorContextReceipt["kind"]; readonly source?: EditorContextReceipt["source"];
   readonly path: string; readonly label?: string; readonly digest: string;
@@ -94,17 +59,13 @@ export interface ContextReceiptCard {
   readonly originalBytes: number; readonly retainedBytes: number;
   readonly truncated: boolean;
 }
-
-export type ContextSelection =
-  NonNullable<TurnReceiptData["context_selections"]>[number];
-
+export type ContextSelection = NonNullable<TurnReceiptData["context_selections"]>[number];
 export interface ContextSelectionCard {
   readonly path: string; readonly kind: string;
   readonly reasons: readonly string[]; readonly evidence: readonly string[];
   readonly score: number; readonly critical: boolean; readonly included: boolean;
   readonly truncated: boolean; readonly truncationReason?: string; readonly resourceId?: string;
 }
-
 export interface ChatTurn {
   readonly id: string; readonly user: string; readonly status: TurnStatus;
   readonly output: string; readonly reasoning: string;
@@ -118,17 +79,13 @@ export interface ChatTurn {
   readonly workspaceChange?: WorkspaceChangeCard;
   readonly unknownEvents: readonly string[];
 }
-
-export interface ChatSnapshot {
-  readonly turns: readonly ChatTurn[]; readonly activeTurnId?: string;
-}
+export interface ChatSnapshot { readonly turns: readonly ChatTurn[]; readonly activeTurnId?: string }
 type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
-export type MutableTool = Omit<Mutable<ToolCard>, "changes"> & {
-  changes: FileChangeCard[];
-};
-export type MutableApproval = Omit<Mutable<ApprovalCard>, "resources" | "allowedScopes"> & {
-  resources: string[]; allowedScopes: string[];
-};
+export type MutableTool = Omit<Mutable<ToolCard>, "changes"> &
+  { changes: FileChangeCard[] };
+export type MutableApproval =
+  Omit<Mutable<ApprovalCard>, "resources" | "allowedScopes"> &
+  { resources: string[]; allowedScopes: string[] };
 export type MutableInput = Omit<Mutable<InputCard>, "options"> & { options: string[] };
 export type DiagnosticReceipt = DiagnosticsResultData["receipts"][number];
 export type MutableTimelineItem =
@@ -139,7 +96,6 @@ export type MutableTimelineItem =
       messages: string[];
     }
   | Mutable<Extract<TurnTimelineItem, { kind: "verification" | "notice" }>>;
-
 export interface MutableTurn {
   id: string; user: string; status: TurnStatus;
   output: string; reasoning: string; reasoningActive: boolean;

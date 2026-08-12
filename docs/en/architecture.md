@@ -122,15 +122,17 @@ ACP is the editor transport envelope over this shared model. A feature that
 exists only in one host is incomplete unless it is intentionally
 host-specific presentation.
 
-Event classification is protocol data, not Host policy. The protocol Event
-manifest assigns every Event a generated Class, Item Owner, Durability,
-Correlation, and Terminal trait; schema and TypeScript generation fail when a
-new Event lacks traits. Go TUI, CLI, and Bench consume the shared `eventview`
-projection, while machine NDJSON remains the original Event envelope.
+Event classification is protocol data, not Host policy. The
+`event_traits.json` manifest generates the Go trait table, protocol schema,
+TypeScript table, and golden from one source; generation fails when a new
+Event lacks Class, Item Owner, Durability, Correlation, or Terminal traits.
+Go TUI, CLI, and Bench consume typed semantic updates from `eventview` rather
+than classifying `Event.Data`; machine NDJSON remains the original envelope.
 
 VS Code consumes the generated traits and projects through domain modules for
-stream, tool, interaction, evidence, terminal, and snapshot behavior. The root
-Projector owns only sequence, Turn identity, and dispatch policy.
+stream, tool, interaction, evidence, terminal, and snapshot behavior.
+`projector/index.ts` owns sequence and Turn identity, while
+`turn-projector.ts` exhaustively dispatches every generated Event Class.
 
 ### Application Ownership
 

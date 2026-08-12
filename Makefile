@@ -297,6 +297,7 @@ protocol-contract:
 # protocol-schema regenerates the published protocol shapes. The drift test in
 # internal/runtime/protocol fails when the committed copy is stale.
 protocol-schema:
+	$(GO) run ./scripts/eventtraitgen ./internal/runtime/protocol/event_traits.json ./internal/runtime/protocol/event_traits.gen.go
 	$(GO) run ./internal/runtime/protocol/schemagen $(PROTOCOL_SCHEMA)
 
 # VS Code unit and type checks never download Electron. Runtime, Electron, and

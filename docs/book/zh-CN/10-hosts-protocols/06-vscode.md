@@ -116,12 +116,14 @@ DOM Node；每次 Patch 后恢复 Expanded Card、Focus 与 Relative Scroll Anch
 ## Chat Projection
 
 Chat Projection 消费生成的 Event Traits，并通过 Stream、Tool、Interaction、Evidence、
-Terminal 与 Snapshot 领域模块分发；根 Projector 只拥有 Sequence、Turn Identity 与
-Dispatch Policy，每个领域模块负责对应 Event Class 的呈现行为。
+Terminal 与 Snapshot 领域模块分发。`projector/index.ts` 拥有 Sequence 与 Turn
+Identity；`turn-projector.ts` 对生成的 Event Class Union 做 Exhaustive Switch，
+新增 Class 缺少 Domain Decision 时 TypeScript 编译失败。根 `projector.ts` 只保留
+Compatibility Re-export。
 
-Traits 来自 Protocol Manifest，而不是 Host 本地分类。新 Event Kind 要么被领域模块
-理解，要么 Generic Render——绝不会在 Host 中被静默重新分类；缺少 Traits 的 Event
-会让 Schema 与 TypeScript 生成直接失败。
+Traits 来自 Protocol Manifest，而不是 Host 本地分类。新 Event Kind 必须由领域模块
+处理或显式忽略，绝不会在 Host 中被静默重新分类；缺少 Traits 的 Event 会让 Schema
+与 TypeScript 生成直接失败。
 
 ## Checkpoint、Plan 与 Turn Recovery
 

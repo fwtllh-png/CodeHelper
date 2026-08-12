@@ -98,8 +98,8 @@ Identity，但不能重写 Client 非空 Thread/Turn 来让 Invalid Message 看�
 
 ## Event Traits
 
-Event 分类是 Protocol 数据，不是 Host Policy。`event_traits.go` 为每种 Event Kind
-声明生成式 Trait 记录：
+Event 分类是 Protocol 数据，不是 Host Policy。`event_traits.json` 为每种 Event Kind
+声明 Trait 记录：
 
 | Trait | 含义 | 示例 |
 | --- | --- | --- |
@@ -109,10 +109,11 @@ Event 分类是 Protocol 数据，不是 Host Policy。`event_traits.go` 为每�
 | `Correlation` | Host 分组 Event 的键 | `turn`、`call`、`sample`、`request`、`checkpoint`、`agent`、`plan` 等 |
 | `Terminal` | Event 是否结束其 Lifecycle Scope | 只有 `turn.completed`、`turn.failed`、`turn.canceled` 为 `true` |
 
-`IsTerminalEvent` 从 `Traits(kind).Terminal` 推导，而不是硬编码 Kind 列表。Schema
-生成把 Manifest 作为 `event_traits` 写入 Commit Artifact；VS Code 生成器输出
-`event-traits.golden.json` 与 TypeScript Trait Type。缺少 Traits 的新 Event 会让
-Schema 与 TypeScript 生成直接失败。
+`make protocol-schema` 先运行 `scripts/eventtraitgen` 生成
+`event_traits.gen.go`；Schema 再把同一 Table 作为 `event_traits` 写入 Artifact，
+VS Code 生成器输出 TypeScript Table 与 `event-traits.golden.json`。
+`IsTerminalEvent` 从 `Traits(kind).Terminal` 推导；Go Embed Test 与 TypeScript
+`--check` 会在产物漂移时失败。
 
 ## Schema Generation
 
@@ -143,7 +144,7 @@ Schema 都是 Authority。
 | Shared Envelope | `message.go` |
 | Operation 与 Payload | `operation.go` |
 | Event 与 Data | `event.go` |
-| Event Traits Manifest | `event_traits.go` |
+| Event Traits Source 与生成表 | `event_traits.json`、`event_traits.gen.go` |
 | Execution Evidence | `receipt.go` |
 | Identity | `identity.go` |
 | Codec 与 Strict Validation | `codec.go`、`validate.go` |

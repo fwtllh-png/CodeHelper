@@ -18,8 +18,9 @@ func TestProjectUsesProtocolTraitsAndTerminalSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if update.Traits.Class != protocol.EventClassTerminal || update.Terminal == nil ||
-		update.Terminal.Status != "failed" || !update.Traits.Terminal {
+	terminal, ok := update.(TerminalUpdate)
+	if !ok || terminal.Traits().Class != protocol.EventClassTerminal ||
+		terminal.Status != "failed" || !terminal.Traits().Terminal {
 		t.Fatalf("update = %+v", update)
 	}
 }

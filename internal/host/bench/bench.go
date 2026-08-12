@@ -766,19 +766,20 @@ func runTurn(
 			if event.TurnID != turnID {
 				continue
 			}
-			if _, err := eventview.Project(event); err != nil {
+			update, err := eventview.Project(event)
+			if err != nil {
 				return err
 			}
-			switch data := event.Data.(type) {
-			case *protocol.OutputDeltaData:
-				if data != nil {
+			switch data := update.(type) {
+			case eventview.TextUpdate:
+				if data.Channel == "output" {
 					output.WriteString(data.Text)
 				}
-			case *protocol.ToolResultData:
-				if data == nil {
+			case eventview.ToolUpdate:
+				if data.Result == nil {
 					continue
 				}
-				if data.IsError {
+				if data.Result.IsError {
 					observed.failed = appendUnique(observed.failed, data.Tool)
 					observed.pendingToolFailures[data.Tool]++
 					continue
@@ -788,8 +789,8 @@ func runTurn(
 					observed.recoveredToolFailures++
 					observed.pendingToolFailures[data.Tool]--
 				}
-			case *protocol.ApprovalRequiredData:
-				request := data
+			case eventview.InteractionUpdate:
+				request := data.ApprovalRequired
 				if request == nil || approvalDecision == "" {
 					continue
 				}
@@ -818,47 +819,43 @@ func runTurn(
 				}
 				observed.approvals++
 				observed.approvalDecision = approvalDecision
-			case *protocol.ExecutionReceiptData:
-				if data != nil {
-					observed.receipt = data
+			case eventview.EvidenceUpdate:
+				if data.Receipt != nil {
+					observed.receipt = data.Receipt
 				}
-			case *protocol.TurnVerificationData:
-				if data != nil {
-					observed.verification = data
+				if data.Verification != nil {
+					observed.verification = data.Verification
 				}
-			case *protocol.TurnCompactionData:
-				if data != nil {
+			case eventview.LifecycleUpdate:
+				if data.TurnCompaction != nil {
 					observed.compactions++
-					observed.compaction = data
+					observed.compaction = data.TurnCompaction
 				}
-			case *protocol.UsageData:
-				if data != nil {
-					usageSamples[data.Sample] = *data
+			case eventview.AccountingUpdate:
+				if data.Usage != nil {
+					usageSamples[data.Usage.Sample] = *data.Usage
 				}
-			case *protocol.TurnCompletedData:
+			case eventview.TerminalUpdate:
 				foldUsage()
-				observed.terminal = TerminalCompleted
 				observed.output += output.String()
-				return nil
-			case *protocol.TurnFailedData:
-				foldUsage()
-				observed.terminal = TerminalFailed
-				observed.output += output.String()
-				if data != nil {
+				switch data.Status {
+				case "completed":
+					observed.terminal = TerminalCompleted
+					return nil
+				case "failed":
+					observed.terminal = TerminalFailed
 					observed.terminalDetail = data.Message
+					return nil
+				case "canceled":
+					observed.terminal = TerminalCanceled
+					return nil
+				default:
+					message := data.Message
+					if message == "" {
+						message = "operation rejected"
+					}
+					return errors.New(message)
 				}
-				return nil
-			case *protocol.TurnCanceledData:
-				foldUsage()
-				observed.terminal = TerminalCanceled
-				observed.output += output.String()
-				return nil
-			case *protocol.OperationRejectedData:
-				message := "operation rejected"
-				if data != nil {
-					message = data.Message
-				}
-				return errors.New(message)
 			}
 		}
 	}

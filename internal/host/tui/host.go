@@ -195,7 +195,8 @@ func (h *SessionHost) pump(ctx context.Context, events <-chan protocol.Event, tu
 			case <-ctx.Done():
 				return
 			}
-			if terminal, err := facade.ProjectEvent(event); err == nil && terminal {
+			if update, err := facade.ProjectEvent(event); err == nil &&
+				facade.TerminalEvent(update) {
 				return
 			}
 		}
@@ -203,197 +204,171 @@ func (h *SessionHost) pump(ctx context.Context, events <-chan protocol.Event, tu
 }
 
 func mapRuntimeEvent(event protocol.Event) tea.Msg {
-	if _, err := facade.ProjectEvent(event); err != nil {
+	update, err := facade.ProjectEvent(event)
+	if err != nil {
 		return nil
 	}
-	switch data := event.Data.(type) {
-	case *protocol.OutputDeltaData:
-		text := ""
-		if data != nil {
-			text = data.Text
-		}
-		if text == "" {
+	switch data := update.(type) {
+	case facade.TextUpdate:
+		if data.Text == "" {
 			return nil
 		}
-		return streamMsg{kind: streamKindOutput, text: text}
-	case *protocol.ReasoningDeltaData:
-		text := ""
-		if data != nil {
-			text = data.Text
+		kind := streamKindOutput
+		if data.Channel == "reasoning" {
+			kind = streamKindReasoning
 		}
-		if text == "" {
-			return nil
-		}
-		return streamMsg{kind: streamKindReasoning, text: text}
-	case *protocol.ToolStateData:
+		return streamMsg{kind: kind, text: data.Text}
+	case facade.ToolUpdate:
 		// Engine lifecycle phases (running_tools / feeding_results / …), not tool names.
 		// Drive the phase strip only — do not mint fake tool receipts.
-		if data == nil || data.State == "" {
-			return nil
+		if data.State != nil {
+			return streamMsg{phaseHint: data.State.State, text: data.State.Text}
 		}
-		return streamMsg{phaseHint: data.State, text: data.Text}
-	case *protocol.ToolStartData:
-		name, id, detail := "tool", string(event.ItemID), ""
-		if data != nil {
-			name = data.Tool
-			id = data.CallID
-			detail = compactToolArgs(data.Arguments)
-		}
-		return streamMsg{tool: name, toolID: id, text: detail, toolDone: false}
-	case *protocol.ToolOutputData:
-		if data == nil || data.Chunk == "" {
-			return nil
-		}
-		return streamMsg{tool: data.Tool, toolID: data.CallID, toolOutput: data.Chunk}
-	case *protocol.ToolResultData:
-		name, detail, id := "tool", "", string(event.ItemID)
-		if data != nil {
-			name = data.Tool
-			detail = data.Output
-			id = data.CallID
-			if data.IsError {
+		switch data.EventKind {
+		case protocol.EventToolStart:
+			args, _ := data.Arguments.(json.RawMessage)
+			return streamMsg{
+				tool: data.Tool, toolID: data.CallID,
+				text: compactToolArgs(args), toolDone: false,
+			}
+		case protocol.EventToolOutput:
+			if data.Text == "" {
+				return nil
+			}
+			return streamMsg{tool: data.Tool, toolID: data.CallID, toolOutput: data.Text}
+		case protocol.EventToolResult:
+			detail := data.Text
+			if data.Result != nil && data.Result.IsError {
 				detail = "error: " + detail
 			}
+			return streamMsg{tool: data.Tool, toolID: data.CallID, text: detail, toolDone: true}
 		}
-		return streamMsg{tool: name, toolID: id, text: detail, toolDone: true}
-	case *protocol.MCPHealthChangedData:
-		if data == nil {
-			return nil
-		}
-		copy := *data
-		return streamMsg{mcpHealth: &copy}
-	case *protocol.ApprovalRequiredData:
-		id, text := string(event.ItemID), "approval required"
-		tool := ""
-		var args json.RawMessage
-		if data != nil {
-			id = data.RequestID
-			tool = data.Tool
-			args = data.Arguments
-			if data.Network != nil && data.Network.Host != "" {
-				protocol := data.Network.Protocol
-				if protocol == "" {
-					protocol = "https"
+		return nil
+	case facade.InteractionUpdate:
+		if data.ApprovalRequired != nil {
+			approval := data.ApprovalRequired
+			id, text := string(event.ItemID), "approval required"
+			id, tool, args := approval.RequestID, approval.Tool, approval.Arguments
+			if approval.Network != nil && approval.Network.Host != "" {
+				scheme := approval.Network.Protocol
+				if scheme == "" {
+					scheme = "https"
 				}
-				text = fmt.Sprintf("%s · allow %s://%s", data.Tool, protocol, data.Network.Host)
+				text = fmt.Sprintf("%s · allow %s://%s", tool, scheme, approval.Network.Host)
 			} else {
-				compact := compactToolArgs(data.Arguments)
+				compact := compactToolArgs(args)
 				if compact != "" {
-					text = data.Tool + " · " + compact
+					text = tool + " · " + compact
 				} else {
-					text = data.Tool
+					text = tool
 				}
 			}
+			return streamMsg{text: text, approvalID: id, approvalTool: tool, approvalArgs: args}
 		}
-		return streamMsg{text: text, approvalID: id, approvalTool: tool, approvalArgs: args}
-	case *protocol.InputRequiredData:
-		id, text := string(event.ItemID), "input required"
-		var options []string
-		if data != nil {
-			id = data.RequestID
-			text = data.Prompt
-			options = append([]string(nil), data.Options...)
+		if data.InputRequired != nil {
+			input := data.InputRequired
+			return streamMsg{
+				text: input.Prompt, inputID: input.RequestID,
+				inputOptions: append([]string(nil), input.Options...),
+			}
 		}
-		return streamMsg{text: text, inputID: id, inputOptions: options}
-	case *protocol.PlanDeltaData:
-		if data == nil {
+		return nil
+	case facade.ArtifactUpdate:
+		if data.Plan == nil {
 			return nil
 		}
 		return streamMsg{
-			kind: streamKindPlan, text: data.Text, planBody: data.Body, planDone: data.Done,
+			kind: streamKindPlan, text: data.Plan.Text,
+			planBody: data.Plan.Body, planDone: data.Plan.Done,
 		}
-	case *protocol.TurnCompletedData:
-		return streamMsg{text: "— turn.completed —"}
-	case *protocol.UsageData:
-		if data == nil {
+	case facade.AccountingUpdate:
+		if data.Usage == nil {
 			return nil
 		}
+		usage := data.Usage
 		// A provider that reports cost separately from tokens sends an event with
 		// no tokens in it. Dropping those is how the cost stopped reaching the
 		// screen at all, so the whole event is forwarded and the model decides.
 		return streamMsg{
-			promptTokens:     data.InputTokens,
-			completionTokens: data.OutputTokens + data.ReasoningTokens,
+			promptTokens:     usage.InputTokens,
+			completionTokens: usage.OutputTokens + usage.ReasoningTokens,
 			usage: &turnAccounting{
-				reported: true, inputTokens: data.InputTokens,
-				outputTokens: data.OutputTokens, reasoningTokens: data.ReasoningTokens,
-				cachedTokens:   data.CachedTokens,
-				costMicrounits: data.CostMicrounits, costKnown: data.CostKnown,
+				reported: true, inputTokens: usage.InputTokens,
+				outputTokens: usage.OutputTokens, reasoningTokens: usage.ReasoningTokens,
+				cachedTokens:   usage.CachedTokens,
+				costMicrounits: usage.CostMicrounits, costKnown: usage.CostKnown,
 			},
 		}
-	case *protocol.TurnFailedData:
-		msg := "turn.failed"
-		if data != nil {
-			msg = fmt.Sprintf("turn.failed: %s", data.Message)
+	case facade.TerminalUpdate:
+		switch data.Status {
+		case "completed":
+			return streamMsg{text: "— turn.completed —"}
+		case "failed":
+			return streamMsg{text: fmt.Sprintf("turn.failed: %s", data.Message)}
+		case "canceled":
+			return streamMsg{text: "turn.canceled"}
+		default:
+			return streamMsg{text: fmt.Sprintf("rejected: %s", data.Message)}
 		}
-		return streamMsg{text: msg}
-	case *protocol.TurnCanceledData:
-		return streamMsg{text: "turn.canceled"}
-	case *protocol.OperationRejectedData:
-		msg := "operation.rejected"
-		if data != nil {
-			msg = fmt.Sprintf("rejected: %s", data.Message)
+	case facade.LifecycleUpdate:
+		if data.MCPHealth != nil {
+			copy := *data.MCPHealth
+			return streamMsg{mcpHealth: &copy}
 		}
-		return streamMsg{text: msg}
-	case *protocol.ThreadCompactedData:
-		summary := "thread.compacted"
-		if data != nil && data.Summary != "" {
-			summary = data.Summary
+		if data.ThreadCompacted != nil {
+			summary := data.ThreadCompacted.Summary
 			if len(summary) > 160 {
 				summary = summary[:160] + "…"
 			}
+			return streamMsg{text: "compact:" + summary}
 		}
-		return streamMsg{text: "compact:" + summary}
-	case *protocol.ExecutionReceiptData:
-		if data == nil {
-			return nil
-		}
-		summary := ""
-		if data.VerificationDetail != nil {
-			workspace := "unknown"
-			if data.WorkspaceOutcome != nil {
-				workspace = data.WorkspaceOutcome.Status
-			}
-			summary = fmt.Sprintf(
-				"receipt verify=%s action=%s repairs=%d workspace=%s",
-				data.VerificationDetail.FinalStatus,
-				data.VerificationDetail.Action,
-				data.VerificationDetail.RepairSteps,
-				workspace,
-			)
-		}
-		return streamMsg{
-			text:           summary,
-			contextSummary: formatContextSections(data),
-			// The receipt settles the turn: it is the only carrier of the thread's
-			// budget pool and of the latency partition, and its totals supersede the
-			// per-call glances the usage events left behind.
-			receipt: &turnAccounting{
-				reported: true, inputTokens: data.InputTokens,
-				outputTokens: data.OutputTokens, reasoningTokens: data.ReasoningTokens,
-				cachedTokens: data.CachedTokens, costMicrounits: data.CostMicrounits,
-				costKnown: data.CostKnown, latency: data.Latency, budget: data.Budget,
-			},
-		}
-	case *protocol.TurnVerificationData:
-		if data == nil {
-			return nil
-		}
-		return streamMsg{text: fmt.Sprintf(
-			"verify[%s]:%s %s", data.Scope, data.Status, data.Action,
-		)}
-	case *protocol.TurnCompactionData:
-		summary := "turn.compaction"
-		if data != nil {
-			summary = fmt.Sprintf("compact[%s]:%s", data.Phase, data.Summary)
+		if data.TurnCompaction != nil {
+			summary := fmt.Sprintf(
+				"compact[%s]:%s", data.TurnCompaction.Phase, data.TurnCompaction.Summary)
 			if len(summary) > 160 {
 				summary = summary[:160] + "…"
 			}
+			return streamMsg{text: summary}
 		}
-		return streamMsg{text: summary}
-	default:
-		return nil
+	case facade.EvidenceUpdate:
+		if data.Receipt != nil {
+			receipt := data.Receipt
+			summary := ""
+			if receipt.VerificationDetail != nil {
+				workspace := "unknown"
+				if receipt.WorkspaceOutcome != nil {
+					workspace = receipt.WorkspaceOutcome.Status
+				}
+				summary = fmt.Sprintf(
+					"receipt verify=%s action=%s repairs=%d workspace=%s",
+					receipt.VerificationDetail.FinalStatus,
+					receipt.VerificationDetail.Action,
+					receipt.VerificationDetail.RepairSteps,
+					workspace,
+				)
+			}
+			return streamMsg{
+				text:           summary,
+				contextSummary: formatContextSections(receipt),
+				// The receipt settles the turn: it is the only carrier of the thread's
+				// budget pool and of the latency partition, and its totals supersede the
+				// per-call glances the usage events left behind.
+				receipt: &turnAccounting{
+					reported: true, inputTokens: receipt.InputTokens,
+					outputTokens: receipt.OutputTokens, reasoningTokens: receipt.ReasoningTokens,
+					cachedTokens: receipt.CachedTokens, costMicrounits: receipt.CostMicrounits,
+					costKnown: receipt.CostKnown, latency: receipt.Latency, budget: receipt.Budget,
+				},
+			}
+		}
+		if data.Verification != nil {
+			return streamMsg{text: fmt.Sprintf(
+				"verify[%s]:%s %s", data.Verification.Scope,
+				data.Verification.Status, data.Verification.Action,
+			)}
+		}
 	}
+	return nil
 }
 
 // formatContextSections summarizes what the last turn's prompt context carried:
@@ -793,20 +768,19 @@ func (h *SessionHost) CompactThread(ctx context.Context) (string, error) {
 			if event.OperationID != operation.ID {
 				continue
 			}
-			switch event.Kind {
-			case protocol.EventThreadCompacted:
-				data, _ := event.Data.(*protocol.ThreadCompactedData)
-				if data == nil {
-					return "", nil
+			update, projectErr := facade.ProjectEvent(event)
+			if projectErr != nil {
+				return "", projectErr
+			}
+			switch data := update.(type) {
+			case facade.LifecycleUpdate:
+				if data.ThreadCompacted != nil {
+					return data.ThreadCompacted.Summary, nil
 				}
-				return data.Summary, nil
-			case protocol.EventOperationRejected:
-				data, _ := event.Data.(*protocol.OperationRejectedData)
-				msg := "compact rejected"
-				if data != nil && data.Message != "" {
-					msg = data.Message
+			case facade.TerminalUpdate:
+				if data.Status == "rejected" {
+					return "", fmt.Errorf("%s", data.Message)
 				}
-				return "", fmt.Errorf("%s", msg)
 			}
 		}
 	}

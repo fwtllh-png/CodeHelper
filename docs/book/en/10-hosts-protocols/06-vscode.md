@@ -131,13 +131,15 @@ cards, focus, and relative scroll anchors after each Patch.
 
 The Chat projection consumes generated Event Traits and dispatches through
 domain modules: stream, tool, interaction, evidence, terminal, and snapshot.
-The root Projector owns only Sequence, Turn identity, and dispatch policy;
-each domain module owns the rendering behavior for its class of Events.
+`projector/index.ts` owns Sequence and Turn identity.
+`turn-projector.ts` switches exhaustively over the generated Event Class union,
+so adding a class without a domain decision fails TypeScript compilation.
+The root `projector.ts` is only a compatibility re-export.
 
 Traits come from the Protocol manifest, not Host-local classification. A new
-Event Kind is either understood by a domain module or rendered generically —
-it can never be silently reclassified in the Host, and adding it without
-Traits fails Schema and TypeScript generation.
+Event Kind is either handled or explicitly ignored by a domain module. It
+cannot be silently reclassified in the Host, and adding it without Traits
+fails Schema and TypeScript generation.
 
 ## Checkpoints, Plans, and Turn Recovery
 
