@@ -10,6 +10,7 @@ prerequisites:
 code_paths:
   - internal/runtime/protocol
   - internal/runtime/app
+  - internal/runtime/eventview
   - internal/persist/state
 test_paths:
   - internal/runtime/protocol/message_test.go
@@ -85,6 +86,10 @@ rules. An accepted Operation can still lead to failed or canceled work.
 Events describe output, reasoning, Tool state, Usage, approvals, diagnostics,
 compaction, Agent status, receipts, and terminal outcomes.
 
+Every Event Kind also carries Protocol Traits — Class, Item Owner, Durability,
+Correlation, and Terminal. Classification is Protocol data, not Host policy:
+Hosts consume the generated manifest instead of re-classifying Events per Host.
+
 ```mermaid
 flowchart LR
     O[Operation] --> R[Runtime transition]
@@ -129,6 +134,8 @@ close races.
 
 Hosts should render unknown future Events generically while preserving their
 envelope, but must understand terminal kinds used for lifecycle control.
+Terminal detection derives from `Traits(kind).Terminal`, so Hosts never
+hardcode terminal Kind lists.
 
 ## 6. Receipt
 
@@ -165,6 +172,12 @@ Properties:
 - ordered by cursor/version;
 - scoped by Workspace/Thread identity;
 - optimized for reads, not execution authority.
+
+Go Hosts (TUI, CLI, Bench) share one projection entry point:
+`eventview.Project` returns Traits, Data, and a normalized Terminal update
+(`completed`, `failed`, `canceled`, or `rejected`) while machine NDJSON keeps
+original Event Envelope. Presentation may differ per Host; classification
+must not.
 
 If a Projection and durable Event disagree, repair/rebuild the Projection; do
 not use the convenient view to overwrite the fact.
@@ -225,6 +238,7 @@ go test ./internal/persist/state \
 3. What does a Receipt prove, and what does it not authorize?
 4. Why must Projection be rebuildable and non-authoritative?
 5. Why must replay never re-execute a Tool?
+6. Why is Event classification Protocol data rather than Host policy?
 
 ## Next Chapter
 

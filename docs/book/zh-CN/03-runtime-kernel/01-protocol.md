@@ -15,6 +15,7 @@ test_paths:
   - internal/runtime/protocol/session_profile_test.go
   - internal/runtime/protocol/tool_catalog_test.go
   - internal/runtime/protocol/schema_test.go
+  - internal/runtime/protocol/event_traits_test.go
   - internal/runtime/protocol/fuzz_test.go
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
@@ -52,6 +53,8 @@ CLI、ACP、VS Code、Persistence 和 Test 都要描述同一份工作。消息�
 - Receipt 是证据，不是 Terminal Status。
 - Readiness 提供 `ready`、`degraded` 或 `blocked`，以及 Reason、Impact 与 Repair
   Action。
+- 每种 Event Kind 携带 Protocol Traits——Class、Item Owner、Durability、Correlation
+  与 Terminal；Host 消费 Manifest，而不是各自发明分类。
 - Session/Profile、Provider/Model、Tool Catalog、Lifecycle/Search、Checkpoint、Plan
   与 Turn Recovery 是共享 Host Contract，不是 VS Code Local State。
 
@@ -93,6 +96,25 @@ Runtime Transition 在 `Validate` 前绝不能接受它。
 Event 必须保留来自 Operation 的因果 Reference。Runtime 可补齐缺失的内部 Item
 Identity，但不能重写 Client 非空 Thread/Turn 来让 Invalid Message 看起来合法。
 
+## Event Traits
+
+Event 分类是 Protocol 数据，不是 Host Policy。`event_traits.json` 为每种 Event Kind
+声明 Trait 记录：
+
+| Trait | 含义 | 示例 |
+| --- | --- | --- |
+| `Class` | Event 描述的活动类型 | `lifecycle`、`stream`、`audit`、`evidence`、`accounting`、`terminal`、`terminal_operation`、`interaction`、`artifact`、`artifact_stream`、`orchestration` |
+| `ItemOwner` | Event 效果归属的 Item | `turn`、`tool`、`operation`、`approval`、`input`、`thread`、`checkpoint`、`agent` |
+| `Durability` | Event 保留时长 | `retained`、`transient`、`bounded`、`atomic`、`terminal_projection` |
+| `Correlation` | Host 分组 Event 的键 | `turn`、`call`、`sample`、`request`、`checkpoint`、`agent`、`plan` 等 |
+| `Terminal` | Event 是否结束其 Lifecycle Scope | 只有 `turn.completed`、`turn.failed`、`turn.canceled` 为 `true` |
+
+`make protocol-schema` 先运行 `scripts/eventtraitgen` 生成
+`event_traits.gen.go`；Schema 再把同一 Table 作为 `event_traits` 写入 Artifact，
+VS Code 生成器输出 TypeScript Table 与 `event-traits.golden.json`。
+`IsTerminalEvent` 从 `Traits(kind).Terminal` 推导；Go Embed Test 与 TypeScript
+`--check` 会在产物漂移时失败。
+
 ## Schema Generation
 
 `schema.go` 将注册类型反射到 `docs/protocol/runtime-protocol.schema.json`。Drift Test
@@ -105,6 +127,7 @@ Protocol Versioning 不等于接受任意 Extra JSON：
 
 - 新增 Optional Field 仍需重新生成 Schema 并 Review Client；
 - 新增 Kind 要求 Decoder/Projection 能理解或保留；
+- 新增 Kind 必须声明 Event Traits，否则 Schema 与 TypeScript 生成直接失败；
 - Required Field、Enum Meaning、Identity Scope、Terminal Behavior 改变，即使 JSON
   Type 不变也属于 Compatibility Change；
 - Host 可 Generic Display Unknown Event，但 Unknown Operation 必须拒绝，因为 Runtime
@@ -121,6 +144,7 @@ Schema 都是 Authority。
 | Shared Envelope | `message.go` |
 | Operation 与 Payload | `operation.go` |
 | Event 与 Data | `event.go` |
+| Event Traits Source 与生成表 | `event_traits.json`、`event_traits.gen.go` |
 | Execution Evidence | `receipt.go` |
 | Identity | `identity.go` |
 | Codec 与 Strict Validation | `codec.go`、`validate.go` |
@@ -183,6 +207,7 @@ Decode Test 后撤销实验；再把 Schema 中的 `turn.start` Required Field �
 5. Host 为什么可保留 Unknown Event，却不能提交 Unknown Operation？
 6. Durable Session Summary 与 Search Match 为什么使用不同 Shape？
 7. Recovery 为什么必须指定 Source Turn，而不是重新提交 Display Text？
+8. 新增 Event Kind 为什么必须声明 Protocol Traits，Schema 与 TypeScript 生成才能通过？
 
 ## 延伸阅读
 

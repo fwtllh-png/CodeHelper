@@ -17,6 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/eventview"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -469,9 +470,16 @@ func runRuntimeTurn(
 			if err := encoder.Encode(event); err != nil {
 				return "", err
 			}
-			switch event.Kind {
-			case protocol.EventApprovalRequired:
-				request := event.Data.(*protocol.ApprovalRequiredData)
+			update, err := eventview.Project(event)
+			if err != nil {
+				return "", err
+			}
+			switch data := update.(type) {
+			case eventview.InteractionUpdate:
+				request := data.ApprovalRequired
+				if request == nil {
+					continue
+				}
 				// Headless exec defaults to deny unless --approval-stdin feeds
 				// decisions. Bypass/Full already opted out of asks — auto-allow
 				// so mid-flight network grants (redirect hosts) are not silently
@@ -519,40 +527,34 @@ func runRuntimeTurn(
 				if err := runtime.Submit(ctx, decision); err != nil {
 					return "", err
 				}
-			case protocol.EventTurnCompleted:
-				if !revertAfterComplete {
+			case eventview.TerminalUpdate:
+				switch data.Status {
+				case "completed":
+					if !revertAfterComplete {
+						return turnID, nil
+					}
+					revertItemID, err := protocol.NewItemID()
+					if err != nil {
+						return "", err
+					}
+					revert, err := protocol.NewOperation(&protocol.RevertTurnPayload{
+						ThreadID: threadID, TurnID: turnID,
+						ItemID: revertItemID, TargetTurnID: turnID,
+					})
+					if err != nil {
+						return "", err
+					}
+					if err := runtime.Submit(context.Background(), revert); err != nil {
+						return "", err
+					}
+					waitingForRevert = true
+				case "failed", "canceled", "rejected":
+					return "", protocol.NewProblem(data.Code, data.Message, false, nil)
+				}
+			case eventview.LifecycleUpdate:
+				if data.TurnReverted != nil && waitingForRevert {
 					return turnID, nil
 				}
-				revertItemID, err := protocol.NewItemID()
-				if err != nil {
-					return "", err
-				}
-				revert, err := protocol.NewOperation(&protocol.RevertTurnPayload{
-					ThreadID:     threadID,
-					TurnID:       turnID,
-					ItemID:       revertItemID,
-					TargetTurnID: turnID,
-				})
-				if err != nil {
-					return "", err
-				}
-				if err := runtime.Submit(context.Background(), revert); err != nil {
-					return "", err
-				}
-				waitingForRevert = true
-			case protocol.EventTurnReverted:
-				if waitingForRevert {
-					return turnID, nil
-				}
-			case protocol.EventTurnFailed:
-				data := event.Data.(*protocol.TurnFailedData)
-				return "", protocol.NewProblem(data.Code, data.Message, false, nil)
-			case protocol.EventTurnCanceled:
-				data := event.Data.(*protocol.TurnCanceledData)
-				return "", protocol.NewProblem(protocol.CodeCanceled, data.Reason, false, nil)
-			case protocol.EventOperationRejected:
-				data := event.Data.(*protocol.OperationRejectedData)
-				return "", protocol.NewProblem(data.Code, data.Message, false, nil)
 			}
 		case <-cancelContext:
 			cancelContext = nil

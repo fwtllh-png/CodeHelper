@@ -127,6 +127,20 @@ IDs rather than rendered text. A bounded virtual window retains the full
 Transcript in state while limiting DOM nodes. Rendering restores expanded
 cards, focus, and relative scroll anchors after each Patch.
 
+## Chat Projection
+
+The Chat projection consumes generated Event Traits and dispatches through
+domain modules: stream, tool, interaction, evidence, terminal, and snapshot.
+`projector/index.ts` owns Sequence and Turn identity.
+`turn-projector.ts` switches exhaustively over the generated Event Class union,
+so adding a class without a domain decision fails TypeScript compilation.
+The root `projector.ts` is only a compatibility re-export.
+
+Traits come from the Protocol manifest, not Host-local classification. A new
+Event Kind is either handled or explicitly ignored by a domain module. It
+cannot be silently reclassified in the Host, and adding it without Traits
+fails Schema and TypeScript generation.
+
 ## Checkpoints, Plans, and Turn Recovery
 
 Checkpoints are immutable Runtime artifacts. Restore is state-only: it rebuilds
@@ -230,6 +244,7 @@ through Retry or Continue and prove the new Turn does not replay side effects.
 5. How does multi-root routing prevent cross-root authority confusion?
 6. Why must a stale Patch request a Snapshot instead of applying partially?
 7. Why are Restore and Retry separate Runtime operations?
+8. Why does the root Projector avoid classifying Events itself?
 
 ## Further Reading
 

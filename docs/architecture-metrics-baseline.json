@@ -162,7 +162,7 @@
       "path": "internal/host/tui",
       "limits": {
         "internal_fanout": 24,
-        "production_lines": 7516,
+        "production_lines": 7387,
         "options_fields": 28,
         "mutex_fields": 2
       }
@@ -363,7 +363,23 @@
       "kind": "file",
       "path": "extensions/vscode/src/chat/projector.ts",
       "limits": {
-        "lines": 1026
+        "lines": 7
+      }
+    },
+    {
+      "id": "vscode_chat_projector_index_file",
+      "kind": "file",
+      "path": "extensions/vscode/src/chat/projector/index.ts",
+      "limits": {
+        "lines": 99
+      }
+    },
+    {
+      "id": "vscode_chat_turn_projector_file",
+      "kind": "file",
+      "path": "extensions/vscode/src/chat/projector/turn-projector.ts",
+      "limits": {
+        "lines": 46
       }
     },
     {
@@ -371,7 +387,7 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 29
+        "event_switch_sites": 28
       }
     }
   ]

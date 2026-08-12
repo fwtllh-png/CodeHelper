@@ -15,6 +15,7 @@ test_paths:
   - internal/runtime/protocol/session_profile_test.go
   - internal/runtime/protocol/tool_catalog_test.go
   - internal/runtime/protocol/schema_test.go
+  - internal/runtime/protocol/event_traits_test.go
   - internal/runtime/protocol/fuzz_test.go
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
@@ -54,6 +55,9 @@ identity, and evolve deliberately.
 - Receipt is evidence, not a terminal status.
 - Readiness carries `ready`, `degraded`, or `blocked` plus reason, impact, and
   repair action.
+- Every Event Kind carries Protocol Traits — Class, Item Owner, Durability,
+  Correlation, and Terminal — that Hosts consume instead of inventing their
+  own classification.
 - Session/Profile, Provider/Model, Tool Catalog, lifecycle/search, Checkpoint,
   Plan, and Turn recovery contracts are shared Host data, not VS Code-local
   state.
@@ -103,6 +107,25 @@ An Event must preserve causal references from its Operation. The Runtime may
 assign missing internal Item identity, but it cannot rewrite a client's
 non-empty Thread/Turn reference to make an invalid message fit.
 
+## Event Traits
+
+Event classification is protocol data, not Host policy. `event_traits.json`
+assigns every Event Kind a trait record:
+
+| Trait | Meaning | Examples |
+| --- | --- | --- |
+| `Class` | what kind of activity the Event describes | `lifecycle`, `stream`, `audit`, `evidence`, `accounting`, `terminal`, `terminal_operation`, `interaction`, `artifact`, `artifact_stream`, `orchestration` |
+| `ItemOwner` | which Item owns the Event's effect | `turn`, `tool`, `operation`, `approval`, `input`, `thread`, `checkpoint`, `agent` |
+| `Durability` | how long the Event is retained | `retained`, `transient`, `bounded`, `atomic`, `terminal_projection` |
+| `Correlation` | the key Hosts use to group Events | `turn`, `call`, `sample`, `request`, `checkpoint`, `agent`, `plan`, ... |
+| `Terminal` | whether the Event ends its lifecycle scope | only `turn.completed`, `turn.failed`, and `turn.canceled` are `true` |
+
+`make protocol-schema` runs `scripts/eventtraitgen` first, producing
+`event_traits.gen.go`; schema generation then emits the same table as
+`event_traits`, and the VS Code generator produces the TypeScript table and
+`event-traits.golden.json`. `IsTerminalEvent` derives from
+`Traits(kind).Terminal`. Go embed tests and TypeScript `--check` fail on drift.
+
 ## Schema Generation
 
 `schema.go` reflects the registered payload/data types into
@@ -116,6 +139,8 @@ Protocol versioning is not equivalent to accepting arbitrary extra JSON.
 
 - Adding an optional field still requires regenerated schema and client review.
 - Adding a Kind requires every decoder/projection to preserve or understand it.
+- Adding a Kind requires Event Traits for that Kind; Schema and TypeScript
+  generation fail when Traits are missing.
 - Changing required fields, enum meaning, identity scope, or terminal behavior
   is a compatibility change even when the JSON type is unchanged.
 - Unknown Events may be displayed generically by Hosts, but unknown Operations
@@ -133,6 +158,7 @@ version and schema remain authoritative for each build.
 | Shared envelope | `message.go` |
 | Operations and payloads | `operation.go` |
 | Events and data | `event.go` |
+| Event Traits source and generated table | `event_traits.json`, `event_traits.gen.go` |
 | Execution evidence | `receipt.go` |
 | Identity | `identity.go` |
 | Codec and strict validation | `codec.go`, `validate.go` |
@@ -208,6 +234,8 @@ the schema entry for `turn.start` and map each required field to the Go type.
 5. Why may a Host preserve an unknown Event but not submit an unknown Operation?
 6. Why are durable Session summaries and search matches different shapes?
 7. Why must recovery name a source Turn instead of resubmitting rendered text?
+8. Why must every new Event Kind declare Protocol Traits before Schema and
+   TypeScript generation can pass?
 
 ## Further Reading
 

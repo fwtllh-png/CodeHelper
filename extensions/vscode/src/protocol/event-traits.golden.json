@@ -1,0 +1,275 @@
+{
+  "agent.message": {
+    "class": "orchestration",
+    "item_owner": "agent",
+    "durability": "retained",
+    "correlation": "agent",
+    "terminal": false
+  },
+  "agent.spawned": {
+    "class": "orchestration",
+    "item_owner": "agent",
+    "durability": "retained",
+    "correlation": "agent",
+    "terminal": false
+  },
+  "agent.status": {
+    "class": "orchestration",
+    "item_owner": "agent",
+    "durability": "retained",
+    "correlation": "agent",
+    "terminal": false
+  },
+  "approval.required": {
+    "class": "interaction",
+    "item_owner": "approval",
+    "durability": "retained",
+    "correlation": "request",
+    "terminal": false
+  },
+  "approval.resolved": {
+    "class": "interaction",
+    "item_owner": "approval",
+    "durability": "retained",
+    "correlation": "request",
+    "terminal": false
+  },
+  "checkpoint.created": {
+    "class": "artifact",
+    "item_owner": "checkpoint",
+    "durability": "retained",
+    "correlation": "checkpoint",
+    "terminal": false
+  },
+  "checkpoint.forked": {
+    "class": "artifact",
+    "item_owner": "checkpoint",
+    "durability": "retained",
+    "correlation": "checkpoint",
+    "terminal": false
+  },
+  "checkpoint.restored": {
+    "class": "artifact",
+    "item_owner": "checkpoint",
+    "durability": "retained",
+    "correlation": "checkpoint",
+    "terminal": false
+  },
+  "citation": {
+    "class": "evidence",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "command.execution": {
+    "class": "audit",
+    "item_owner": "tool",
+    "durability": "retained",
+    "correlation": "call",
+    "terminal": false
+  },
+  "diagnostics.result": {
+    "class": "evidence",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "extension.lifecycle": {
+    "class": "audit",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "extension",
+    "terminal": false
+  },
+  "host.command": {
+    "class": "interaction",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "command",
+    "terminal": false
+  },
+  "input.required": {
+    "class": "interaction",
+    "item_owner": "input",
+    "durability": "retained",
+    "correlation": "request",
+    "terminal": false
+  },
+  "input.resolved": {
+    "class": "interaction",
+    "item_owner": "input",
+    "durability": "retained",
+    "correlation": "request",
+    "terminal": false
+  },
+  "mcp.health.changed": {
+    "class": "audit",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "server",
+    "terminal": false
+  },
+  "operation.rejected": {
+    "class": "terminal_operation",
+    "item_owner": "operation",
+    "durability": "retained",
+    "correlation": "operation",
+    "terminal": false
+  },
+  "output.delta": {
+    "class": "stream",
+    "item_owner": "turn",
+    "durability": "terminal_projection",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "plan.delta": {
+    "class": "artifact_stream",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "plan",
+    "terminal": false
+  },
+  "reasoning.delta": {
+    "class": "stream",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "reasoning.signature": {
+    "class": "audit",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "search.result": {
+    "class": "evidence",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "thread.compacted": {
+    "class": "lifecycle",
+    "item_owner": "thread",
+    "durability": "retained",
+    "correlation": "thread",
+    "terminal": false
+  },
+  "thread.forked": {
+    "class": "lifecycle",
+    "item_owner": "thread",
+    "durability": "retained",
+    "correlation": "thread",
+    "terminal": false
+  },
+  "tool.catalog.changed": {
+    "class": "audit",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "catalog",
+    "terminal": false
+  },
+  "tool.output": {
+    "class": "stream",
+    "item_owner": "tool",
+    "durability": "bounded",
+    "correlation": "call",
+    "terminal": false
+  },
+  "tool.result": {
+    "class": "lifecycle",
+    "item_owner": "tool",
+    "durability": "retained",
+    "correlation": "call",
+    "terminal": false
+  },
+  "tool.start": {
+    "class": "lifecycle",
+    "item_owner": "tool",
+    "durability": "retained",
+    "correlation": "call",
+    "terminal": false
+  },
+  "tool.state": {
+    "class": "lifecycle",
+    "item_owner": "turn",
+    "durability": "transient",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "turn.canceled": {
+    "class": "terminal",
+    "item_owner": "turn",
+    "durability": "atomic",
+    "correlation": "turn",
+    "terminal": true
+  },
+  "turn.compaction": {
+    "class": "audit",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "turn.completed": {
+    "class": "terminal",
+    "item_owner": "turn",
+    "durability": "atomic",
+    "correlation": "turn",
+    "terminal": true
+  },
+  "turn.failed": {
+    "class": "terminal",
+    "item_owner": "turn",
+    "durability": "atomic",
+    "correlation": "turn",
+    "terminal": true
+  },
+  "turn.receipt": {
+    "class": "evidence",
+    "item_owner": "turn",
+    "durability": "atomic",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "turn.reverted": {
+    "class": "lifecycle",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "target_turn",
+    "terminal": false
+  },
+  "turn.started": {
+    "class": "lifecycle",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "turn.steered": {
+    "class": "interaction",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "turn",
+    "terminal": false
+  },
+  "turn.verification": {
+    "class": "evidence",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "mutation",
+    "terminal": false
+  },
+  "usage": {
+    "class": "accounting",
+    "item_owner": "turn",
+    "durability": "retained",
+    "correlation": "sample",
+    "terminal": false
+  }
+}

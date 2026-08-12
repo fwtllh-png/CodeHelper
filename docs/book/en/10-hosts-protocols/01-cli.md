@@ -10,6 +10,7 @@ prerequisites:
   - runtime-protocol
 code_paths:
   - internal/host/cli
+  - internal/runtime/eventview
 test_paths:
   - internal/host/cli/run_test.go
   - internal/host/cli/architecture_test.go
@@ -51,9 +52,13 @@ status form the automation contract. Secret references may be shown, never
 credential values.
 
 `exec` streams model, Tool, approval, verification, and terminal Events while
-supporting persistence/resume. Other command groups inspect config, models,
-auth, threads, tasks, workflows, fleet/lane, MCP, skills, plugins, metrics, and
-diagnostics without duplicating Runtime logic.
+supporting persistence/resume. `exec` and `quickstart` project every Event
+through the shared `eventview` projection before rendering: classification
+comes from Protocol Traits, and Text/JSON formatters consume the same typed
+Updates, so a new Event Kind is handled or explicitly ignored in Host code
+instead of being reclassified per renderer. Other command groups inspect
+config, models, auth, threads, tasks, workflows, fleet/lane, MCP, skills,
+plugins, metrics, and diagnostics without duplicating Runtime logic.
 
 ## Setup, Readiness, and Command Truth
 
@@ -90,7 +95,8 @@ are surfaced because silently truncating a receipt breaks automation.
 CLI-generated identities and explicit idempotency inputs flow into Runtime
 Operations. Persistent `exec` resumes from durable Thread/Turn/Event state; it
 does not rerun the prompt to recreate missing output. Text and JSON formatters
-consume the same Events, so rendering cannot change execution semantics.
+consume the same typed Updates projected from those Events, so rendering
+cannot change execution semantics.
 
 Configuration precedence is also provenance: defaults, files, environment, and
 explicit flags are resolved before Wire construction, and diagnostics name the
@@ -104,6 +110,7 @@ winning source without printing secret values.
 - A budget failure cannot render a completed terminal.
 - JSON logs are redacted and writer failure is surfaced.
 - CLI remains a Host, not an alternate execution engine.
+- Events are projected once through `eventview`; Hosts never reclassify them.
 
 ## Tests and Verification
 

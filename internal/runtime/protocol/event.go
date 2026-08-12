@@ -1205,5 +1205,6 @@ func NewEventWithIdentity(
 }
 
 func IsTerminalEvent(kind EventKind) bool {
-	return kind == EventTurnCompleted || kind == EventTurnFailed || kind == EventTurnCanceled
+	traits, ok := Traits(kind)
+	return ok && traits.Terminal
 }

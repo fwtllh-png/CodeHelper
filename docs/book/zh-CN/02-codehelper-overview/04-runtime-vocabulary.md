@@ -10,6 +10,7 @@ prerequisites:
 code_paths:
   - internal/runtime/protocol
   - internal/runtime/app
+  - internal/runtime/eventview
   - internal/persist/state
 test_paths:
   - internal/runtime/protocol/message_test.go
@@ -70,6 +71,10 @@ Tagged Kind、Timestamp、Typed Data。
 Event 表达 Output、Reasoning、Tool State、Usage、Approval、Diagnostics、Compaction、
 Agent Status、Receipt、Terminal Outcome。
 
+每种 Event Kind 还携带 Protocol Traits——Class、Item Owner、Durability、Correlation
+与 Terminal。分类是 Protocol 数据，不是 Host Policy；Host 消费生成式 Manifest，
+而不是各自重新分类。
+
 ```mermaid
 flowchart LR
     O[Operation] --> R[Runtime Transition]
@@ -106,6 +111,7 @@ Turn 必须且只能结束于 `turn.completed`、`turn.failed`、`turn.canceled`
 Race 中对每个 Accepted Operation 记账。
 
 Host 应 Generic Render 未知未来 Event 并保留 Envelope，但必须理解 Lifecycle Terminal。
+Terminal 判定来自 `Traits(kind).Terminal`，Host 不硬编码 Terminal Kind 列表。
 
 ## 6. Receipt
 
@@ -132,6 +138,10 @@ projection(next) = reduce(projection(current), event)
 Projection 包括 Thread List、Latest Turn、Pending Approval、Usage Rollup、VS Code Tree/
 Chat。它应当在规定范围可 Rebuild、Duplicate Delivery 下 Idempotent、按 Cursor/Version
 排序、按 Workspace/Thread Scope，并只优化 Read。
+
+Go Host（TUI、CLI、Bench）共享同一 Projection 入口：`eventview.Project` 返回 Traits、
+Data 与归一化 Terminal Update（`completed`、`failed`、`canceled` 或 `rejected`），而
+Machine NDJSON 仍输出原始 Event Envelope。呈现可以因 Host 而异，分类不能。
 
 Projection 与 Durable Event 冲突时应 Repair/Rebuild Projection，不能用方便的 View
 覆盖 Fact。
@@ -187,6 +197,7 @@ go test ./internal/persist/state \
 3. Receipt 证明什么、不授权什么？
 4. Projection 为什么必须可重建且无 Authority？
 5. Replay 为什么不能执行 Tool？
+6. Event 分类为什么是 Protocol 数据而不是 Host Policy？
 
 ## 下一章
 

@@ -6,6 +6,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const extensionRoot = resolve(scriptDirectory, "..");
 const schemaPath = resolve(extensionRoot, "../../docs/protocol/runtime-protocol.schema.json");
 const outputPath = resolve(extensionRoot, "src/protocol/generated.ts");
+const traitsGoldenPath = resolve(extensionRoot, "src/protocol/event-traits.golden.json");
 const check = process.argv.includes("--check");
 
 const schema = JSON.parse(await readFile(schemaPath, "utf8"));
@@ -88,8 +89,16 @@ function renderKinds(name, entries) {
   return `export const ${name} = [\n${indent(values, 2)}\n] as const;`;
 }
 
+function renderTraits(values) {
+  const lines = Object.entries(values).sort(([left], [right]) =>
+    left.localeCompare(right)).map(([kind, value]) =>
+    `${JSON.stringify(kind)}: ${JSON.stringify(value)},`);
+  return `{\n${indent(lines.join("\n"), 2)}\n}`;
+}
+
 const operations = typeEntries(schema.operations, "Payload");
 const events = typeEntries(schema.events, "Data");
+const traits = schema.event_traits;
 const operationEnvelope = tsType(schema.envelope.operation);
 const eventEnvelope = tsType(schema.envelope.event);
 const problem = tsType(schema.envelope.problem);
@@ -127,6 +136,19 @@ export type OperationKind = (typeof operationKinds)[number];
 ${renderKinds("eventKinds", events)}
 export type EventKind = (typeof eventKinds)[number];
 
+export type EventClass = ${[...new Set(Object.values(traits).map((value) => value.class))].sort().map(literal).join(" | ")};
+export type ItemOwner = ${[...new Set(Object.values(traits).map((value) => value.item_owner))].sort().map(literal).join(" | ")};
+export type Durability = ${[...new Set(Object.values(traits).map((value) => value.durability))].sort().map(literal).join(" | ")};
+export type CorrelationKind = ${[...new Set(Object.values(traits).map((value) => value.correlation))].sort().map(literal).join(" | ")};
+export interface EventTraits {
+  readonly class: EventClass;
+  readonly item_owner: ItemOwner;
+  readonly durability: Durability;
+  readonly correlation: CorrelationKind;
+  readonly terminal: boolean;
+}
+export const eventTraits = ${renderTraits(traits)} as const satisfies Record<EventKind, EventTraits>;
+
 export type OperationEnvelope = ${operationEnvelope};
 
 export type EventEnvelope = ${eventEnvelope};
@@ -157,18 +179,21 @@ export type KnownEvent = {
   };
 }[EventKind];
 `;
+const traitsGolden = `${JSON.stringify(traits, null, 2)}\n`;
 
 if (check) {
-  let current = "";
+  let current = "", currentTraits = "";
   try {
     current = await readFile(outputPath, "utf8");
+    currentTraits = await readFile(traitsGoldenPath, "utf8");
   } catch {
     // A missing generated file is a drift failure.
   }
-  if (current !== generated) {
+  if (current !== generated || currentTraits !== traitsGolden) {
     console.error("generated protocol types are stale; run npm run generate:protocol");
     process.exitCode = 1;
   }
 } else {
   await writeFile(outputPath, generated);
+  await writeFile(traitsGoldenPath, traitsGolden);
 }
