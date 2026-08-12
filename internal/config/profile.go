@@ -122,9 +122,10 @@ durable = true
 recover_on_start = true
 
 [execution.subagent]
+delegation = "explicit"
 max_depth = 5
 max_parallel = 4
-max_steps = 8
+max_steps = 24
 max_tokens = 0
 max_cost_usd = 0
 wall_time = "5m"

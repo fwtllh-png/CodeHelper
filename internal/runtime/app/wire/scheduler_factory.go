@@ -32,7 +32,7 @@ type schedulerFactory struct {
 	workflowRuns workflowRunStore
 	tasks        *taskstate.Repository
 	automations  *automation.Repository
-	subagents    *subagent.Manager
+	subagents    *subagent.AgentControl
 	children     *childRuntime
 	security     *policy.Runtime
 	hooks        *hooks.Manager

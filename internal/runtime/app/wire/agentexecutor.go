@@ -37,7 +37,7 @@ type AgentTurnPayload struct {
 // gets the same isolation, budget and fail-closed approvals as a foreground one,
 // and shows up in the same event stream.
 type agentTurnExecutor struct {
-	manager *subagent.Manager
+	control *subagent.AgentControl
 	// release drops the child's thread engine and isolated tool plane. Without it
 	// a worker that ran for a week would retain one of each per finished task.
 	release func(agentID string)
@@ -47,20 +47,20 @@ type agentTurnExecutor struct {
 }
 
 func newAgentTurnExecutor(
-	manager *subagent.Manager,
+	control *subagent.AgentControl,
 	release func(agentID string),
 	guard *toolguard.Guard,
 	journal *workspacejournal.Manager,
 	gate *agentengine.WorkspaceTurnGate,
 ) (*agentTurnExecutor, error) {
-	if manager == nil {
-		return nil, errors.New("agent_turn executor requires a subagent manager")
+	if control == nil {
+		return nil, errors.New("agent_turn executor requires agent control")
 	}
 	if guard == nil {
 		return nil, errors.New("agent_turn executor requires a parent tool guard")
 	}
 	return &agentTurnExecutor{
-		manager: manager, release: release, guard: guard, journal: journal, gate: gate,
+		control: control, release: release, guard: guard, journal: journal, gate: gate,
 	}, nil
 }
 
@@ -80,7 +80,7 @@ func (e *agentTurnExecutor) Execute(
 		return worker.Outcome{State: taskstate.StateFailed, Reason: err.Error()}, nil
 	}
 
-	agent, err := e.manager.Spawn("", role, payload.Prompt)
+	agent, err := e.control.SpawnBackground(role, payload.Prompt)
 	if err != nil {
 		// Spawn fails when the budget is spent or when a writing child has nowhere
 		// isolated to write. Neither is fixed by trying again immediately, but both
@@ -89,18 +89,18 @@ func (e *agentTurnExecutor) Execute(
 	}
 	defer e.closeAgent(agent.ID)
 
-	turnID, err := e.manager.Takeover(ctx, agent.ID, payload.Prompt)
+	turnID, err := e.control.Takeover(ctx, agent.ID, subagent.ChildPrompt(*agent, payload.Prompt))
 	if err != nil {
 		return worker.Outcome{State: taskstate.StateFailed, Reason: err.Error()}, nil
 	}
-	if _, err := e.manager.Wait(ctx, []string{agent.ID}, 0); err != nil {
+	if _, err := e.control.Wait(ctx, []string{agent.ID}, 0); err != nil {
 		// Cancellation is the scheduler stopping or the lease being lost. Either
 		// way the child turn must stop too, or it would keep spending against a
 		// task another worker now owns.
-		_, _ = e.manager.Interrupt(context.WithoutCancel(ctx), agent.ID)
+		_, _ = e.control.Interrupt(context.WithoutCancel(ctx), agent.ID)
 		return worker.Outcome{}, err
 	}
-	result, ok := e.manager.Result(agent.ID)
+	result, ok := e.control.Result(agent.ID)
 	if !ok {
 		return worker.Outcome{
 			State:    taskstate.StateFailed,
@@ -175,7 +175,7 @@ func (e *agentTurnExecutor) merge(
 	result, err := e.guard.Execute(
 		mergeContext,
 		"task-agent-merge-"+value.ID,
-		"agent_merge",
+		"integrate_agent",
 		arguments,
 	)
 	if err != nil {
@@ -204,7 +204,7 @@ func (e *agentTurnExecutor) merge(
 // task keeps no agent resident: the next attempt spawns a fresh one, which is
 // what makes a retry cheap.
 func (e *agentTurnExecutor) closeAgent(agentID string) {
-	_ = e.manager.Close(agentID)
+	_ = e.control.Close(agentID)
 	if e.release != nil {
 		e.release(agentID)
 	}

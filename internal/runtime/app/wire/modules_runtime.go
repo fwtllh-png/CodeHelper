@@ -3,12 +3,12 @@ package wire
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	reverttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/revert"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -28,12 +28,11 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	session := state.session
 	execution := state.config.execution
 	snapshot := state.config.snapshot
-	toolPrefix := ""
-	if execution.Tools {
-		toolPrefix = "Use only the supplied tools and honor their schemas and policy decisions. " +
-			"A turn that mutates the workspace is not complete until turn_complete is called " +
-			"after the last mutation and every required quality check."
+	delegation := ""
+	if state.orchestration.subagents != nil {
+		delegation = state.orchestration.subagents.Policy().Instructions()
 	}
+	toolPrefix := promptcontext.ToolInstructions(execution.Tools, delegation)
 	budgets := state.options.PromptBudgets
 	if budgets == nil {
 		budgets = defaultPromptBudgets()
@@ -164,7 +163,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		Hooks:            session.hooks,
 		SessionID:        state.config.hookSessionID,
 		InputHost:        session.inputHost,
-		PromptCacheKey: stickyPromptCacheKey(
+		PromptCacheKey: promptcontext.StickyCacheKey(
 			state.config.hookSessionID,
 			execution.Workspace,
 		),
@@ -401,6 +400,21 @@ func (runtimeModule) Build(
 		}
 		session.Runtime = runtime
 	}
+	if store := state.options.PersistentStore; store != nil &&
+		state.orchestration.subagents != nil {
+		control := state.orchestration.subagents
+		if err := apppersistence.ConfigurePersistentSubagents(
+			state.agent.threads, store,
+			state.config.execution.Workspace,
+			state.config.hookSessionID,
+			session.Runtime,
+			func(graph any) error {
+				return control.AttachGraph(graph.(subagent.Graph))
+			},
+		); err != nil {
+			return fmt.Errorf("attach live agent graph: %w", err)
+		}
+	}
 	if state.orchestration.children != nil {
 		state.orchestration.children.bind(
 			session.Runtime,
@@ -411,46 +425,5 @@ func (runtimeModule) Build(
 		session.subagents = state.orchestration.subagents
 	}
 	state.runtime.application = session.Runtime
-	return nil
-}
-
-type backgroundModule struct{}
-
-func (backgroundModule) Name() string { return "background" }
-
-func (backgroundModule) Build(
-	ctx context.Context,
-	state *buildState,
-) error {
-	if prewarm := state.extensions.mcpPrewarm; prewarm != nil {
-		if err := prewarm.RefreshNow(ctx); err != nil {
-			return fmt.Errorf("initial MCP refresh: %w", err)
-		}
-	}
-	if err := state.runtime.application.Start(ctx); err != nil {
-		return fmt.Errorf("start runtime recovery: %w", err)
-	}
-	if prewarm := state.extensions.mcpPrewarm; prewarm != nil {
-		prewarm.Start(ctx)
-	}
-	if automations := state.orchestration.automations; automations != nil {
-		if _, err := automations.Tick(ctx, time.Time{}); err != nil {
-			return fmt.Errorf("automation reconcile: %w", err)
-		}
-	}
-	scheduler, err := state.orchestration.scheduler.Build(
-		state.runtime.application,
-		state.agent.workspaceTurnGate,
-	)
-	if err != nil {
-		return fmt.Errorf("worker scheduler: %w", err)
-	}
-	if scheduler == nil {
-		return nil
-	}
-	if err := scheduler.Start(ctx); err != nil {
-		return fmt.Errorf("start worker scheduler: %w", err)
-	}
-	state.session.scheduler = scheduler
 	return nil
 }

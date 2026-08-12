@@ -15,7 +15,6 @@ import (
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -53,15 +52,12 @@ func TestAgentSpawnReceiptAndHandleRead(t *testing.T) {
 	}
 	if err := agenttool.Register(registry, agenttool.Options{
 		Handles: handles, SessionID: "session-1", Root: root, Gate: gate,
-		Governor: rlm.NewGovernor(rlm.Limits{MaxDepth: 3, MaxConcurrency: 4}),
-		Runtime:  runtime, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+		Runtime: runtime, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	parent := execute(t, registry, "agent", map[string]any{
-		"prompt": "parent work", "role": "general",
-	})
+	parent := execute(t, registry, "spawn_agent", spawnInput("parent_work", "parent work", "general"))
 	var parentBody map[string]any
 	if err := json.Unmarshal([]byte(parent.Content), &parentBody); err != nil {
 		t.Fatal(err)
@@ -79,13 +75,18 @@ func TestAgentSpawnReceiptAndHandleRead(t *testing.T) {
 	if usage["status"] != "pending" || verification["status"] != "pending" {
 		t.Fatalf("run_receipt = %+v", runReceipt)
 	}
+	if runReceipt["task_name"] != "parent_work" ||
+		runReceipt["expected_output"] != "Return a concise result with evidence." ||
+		runReceipt["trigger"] != "user" {
+		t.Fatalf("delegation receipt = %+v", runReceipt)
+	}
 	if len(runtime.turns) != 1 {
 		t.Fatalf("parent turns = %#v", runtime.turns)
 	}
 
-	child := execute(t, registry, "agent", map[string]any{
-		"prompt": "child work", "role": "reviewer", "parent_id": parentID,
-	})
+	childInput := spawnInput("child_work", "child work", "reviewer")
+	childInput["parent_id"] = parentID
+	child := execute(t, registry, "spawn_agent", childInput)
 	var childBody map[string]any
 	if err := json.Unmarshal([]byte(child.Content), &childBody); err != nil {
 		t.Fatal(err)
@@ -117,6 +118,79 @@ func TestAgentSpawnReceiptAndHandleRead(t *testing.T) {
 	}
 }
 
+func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := agenttool.Register(registry, agenttool.Options{
+		Handles: handle.NewStore(), SessionID: "session-1",
+		Root: t.TempDir(), Gate: &recordingGate{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	descriptors := registry.Descriptors(tool.VisibleModel)
+	names := make([]string, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		if descriptor.Name != "result_get" {
+			names = append(names, descriptor.Name)
+		}
+	}
+	want := []string{
+		"close_agent", "followup_task", "integrate_agent", "interrupt_agent",
+		"list_agents", "send_message", "spawn_agent", "wait_agent",
+	}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Fatalf("model-visible agent tools = %v, want %v", names, want)
+	}
+
+	disabled := tool.NewRegistry(nil, nil)
+	if err := agenttool.Register(disabled, agenttool.Options{
+		Handles: handle.NewStore(), SessionID: "session-2",
+		Root: t.TempDir(), Gate: &recordingGate{},
+		Delegation: subagent.DelegationDisabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := disabled.Descriptors(tool.VisibleModel); len(got) != 1 || got[0].Name != "result_get" {
+		t.Fatalf("disabled model-visible tools = %v", got)
+	}
+	if got := disabled.Descriptors(tool.VisibleInternal); len(got) != len(want) {
+		t.Fatalf("disabled internal tools = %d, want %d", len(got), len(want))
+	}
+}
+
+func TestSendMessageQueuesWithoutStartingTurn(t *testing.T) {
+	runtime := &dualRuntime{}
+	registry := tool.NewRegistry(nil, nil)
+	if err := agenttool.Register(registry, agenttool.Options{
+		Handles: handle.NewStore(), SessionID: "session-1",
+		Root: t.TempDir(), Gate: &recordingGate{}, Runtime: runtime,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	spawned := execute(
+		t, registry, "spawn_agent",
+		spawnInput("message_target", "wait for context", "explore"),
+	)
+	var body map[string]any
+	if err := json.Unmarshal([]byte(spawned.Content), &body); err != nil {
+		t.Fatal(err)
+	}
+	agentID, _ := body["agent_id"].(string)
+	before := len(runtime.turns)
+	queued := execute(t, registry, "send_message", map[string]any{
+		"agent_id": agentID, "message": "focus on recovery",
+	})
+	if len(runtime.turns) != before {
+		t.Fatalf("send_message started a turn: %#v", runtime.turns)
+	}
+	var queuedBody map[string]any
+	if err := json.Unmarshal([]byte(queued.Content), &queuedBody); err != nil {
+		t.Fatal(err)
+	}
+	if queuedBody["queued"] != true || queuedBody["agent_id"] != agentID {
+		t.Fatalf("queued message = %+v", queuedBody)
+	}
+}
+
 func TestAgentForkContextInheritsParentMarker(t *testing.T) {
 	root := t.TempDir()
 	handles := handle.NewStore()
@@ -127,14 +201,14 @@ func TestAgentForkContextInheritsParentMarker(t *testing.T) {
 	}
 	if err := agenttool.Register(registry, agenttool.Options{
 		Handles: handles, SessionID: "session-1", Root: root, Gate: &recordingGate{},
-		Governor: rlm.NewGovernor(rlm.Limits{}), Runtime: runtime,
+		Runtime:       runtime,
 		ParentContext: func() string { return "PARENT_MARKER_ALPHA decisions=keep-plan" },
 	}); err != nil {
 		t.Fatal(err)
 	}
-	forked := execute(t, registry, "agent", map[string]any{
-		"prompt": "continue review", "role": "explore", "fork_context": true,
-	})
+	forkInput := spawnInput("continue_review", "continue review", "explore")
+	forkInput["fork_context"] = true
+	forked := execute(t, registry, "spawn_agent", forkInput)
 	var body map[string]any
 	if err := json.Unmarshal([]byte(forked.Content), &body); err != nil {
 		t.Fatal(err)
@@ -157,9 +231,10 @@ func TestAgentForkContextInheritsParentMarker(t *testing.T) {
 		t.Fatalf("runtime turns = %#v", runtime.turns)
 	}
 
-	fresh := execute(t, registry, "agent", map[string]any{
-		"prompt": "fresh explore", "role": "explore",
-	})
+	fresh := execute(
+		t, registry, "spawn_agent",
+		spawnInput("fresh_explore", "fresh explore", "explore"),
+	)
 	var freshBody map[string]any
 	_ = json.Unmarshal([]byte(fresh.Content), &freshBody)
 	freshHandle, _ := json.Marshal(freshBody["transcript_handle"])
@@ -175,14 +250,12 @@ func TestAgentUnsupportedRoleFailClosed(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
 		Handles: handle.NewStore(), SessionID: "s", Root: t.TempDir(), Gate: &recordingGate{},
-		Governor: rlm.NewGovernor(rlm.Limits{}),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	_, err := registry.Execute(t.Context(), tool.Call{
-		Name: "agent", Arguments: mustJSON(map[string]any{
-			"prompt": "x", "role": "nope",
-		}), Authorized: true,
+		Name: "spawn_agent", Arguments: mustJSON(spawnInput("bad_role", "x", "nope")),
+		Authorized: true,
 	})
 	if err == nil {
 		t.Fatal("expected unsupported role rejection")
@@ -198,19 +271,24 @@ func TestAgentDepthAndConcurrencyFailClosed(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
 		Handles: handles, SessionID: "session-1", Root: root, Gate: &recordingGate{},
-		Governor: rlm.NewGovernor(rlm.Limits{MaxDepth: 0, MaxConcurrency: 1}),
-		Budget:   subagent.Budget{MaxDepth: 0, MaxParallel: 1},
+		Budget: subagent.Budget{MaxDepth: 1, MaxParallel: 3},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	first := execute(t, registry, "agent", map[string]any{"prompt": "one"})
+	first := execute(t, registry, "spawn_agent", spawnInput("one", "one", "general"))
 	var body map[string]any
 	_ = json.Unmarshal([]byte(first.Content), &body)
 	parentID, _ := body["agent_id"].(string)
+	childInput := spawnInput("child", "child", "general")
+	childInput["parent_id"] = parentID
+	child := execute(t, registry, "spawn_agent", childInput)
+	var childBody map[string]any
+	_ = json.Unmarshal([]byte(child.Content), &childBody)
+	childID, _ := childBody["agent_id"].(string)
+	deepInput := spawnInput("too_deep", "too-deep", "general")
+	deepInput["parent_id"] = childID
 	_, err := registry.Execute(t.Context(), tool.Call{
-		Name: "agent", Arguments: mustJSON(map[string]any{
-			"prompt": "too-deep", "parent_id": parentID,
-		}), Authorized: true,
+		Name: "spawn_agent", Arguments: mustJSON(deepInput), Authorized: true,
 	})
 	if err == nil {
 		t.Fatal("expected depth fail-closed")
@@ -220,14 +298,14 @@ func TestAgentDepthAndConcurrencyFailClosed(t *testing.T) {
 	handles2 := handle.NewStore()
 	if err := agenttool.Register(registry2, agenttool.Options{
 		Handles: handles2, SessionID: "session-1", Root: t.TempDir(), Gate: &recordingGate{},
-		Governor: rlm.NewGovernor(rlm.Limits{MaxDepth: 2, MaxConcurrency: 1}),
-		Budget:   subagent.Budget{MaxDepth: 2, MaxParallel: 1},
+		Budget: subagent.Budget{MaxDepth: 2, MaxParallel: 1},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_ = execute(t, registry2, "agent", map[string]any{"prompt": "hold"})
+	_ = execute(t, registry2, "spawn_agent", spawnInput("hold", "hold", "general"))
 	_, err = registry2.Execute(t.Context(), tool.Call{
-		Name: "agent", Arguments: mustJSON(map[string]any{"prompt": "overflow"}), Authorized: true,
+		Name: "spawn_agent", Arguments: mustJSON(spawnInput("overflow", "overflow", "general")),
+		Authorized: true,
 	})
 	if err == nil {
 		t.Fatal("expected concurrency fail-closed")
@@ -247,12 +325,11 @@ func TestAgentWorktreeCleanupLeavesSibling(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
 		Manager: manager, Handles: handles, SessionID: "session-1",
-		Governor: rlm.NewGovernor(rlm.Limits{}),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	a := execute(t, registry, "agent", map[string]any{"prompt": "a"})
-	b := execute(t, registry, "agent", map[string]any{"prompt": "b"})
+	a := execute(t, registry, "spawn_agent", spawnInput("a", "a", "general"))
+	b := execute(t, registry, "spawn_agent", spawnInput("b", "b", "general"))
 	var bodyA, bodyB map[string]any
 	_ = json.Unmarshal([]byte(a.Content), &bodyA)
 	_ = json.Unmarshal([]byte(b.Content), &bodyB)
@@ -282,11 +359,10 @@ func TestAgentToolGateForced(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
 		Manager: manager, Handles: handles, SessionID: "session-1",
-		Governor: rlm.NewGovernor(rlm.Limits{}),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	created := execute(t, registry, "agent", map[string]any{"prompt": "gate"})
+	created := execute(t, registry, "spawn_agent", spawnInput("gate", "gate", "general"))
 	var body map[string]any
 	_ = json.Unmarshal([]byte(created.Content), &body)
 	id, _ := body["agent_id"].(string)
@@ -305,7 +381,6 @@ func TestAgentAskFailClosedWithoutApprovalHost(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
 		Handles: handles, SessionID: "session-1", Root: root, Gate: &recordingGate{},
-		Governor: rlm.NewGovernor(rlm.Limits{}),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -316,9 +391,10 @@ func TestAgentAskFailClosedWithoutApprovalHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = guard.Execute(t.Context(), "call-1", "agent", mustJSON(map[string]any{
-		"prompt": "needs approval",
-	}))
+	_, err = guard.Execute(
+		t.Context(), "call-1", "spawn_agent",
+		mustJSON(spawnInput("needs_approval", "needs approval", "general")),
+	)
 	var decision *policy.DecisionError
 	if !errors.As(err, &decision) || decision.Code != "approval_host_unavailable" {
 		t.Fatalf("err = %v", err)
@@ -342,14 +418,14 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 	}
 	if err := agenttool.Register(registry, agenttool.Options{
 		Manager: manager, Handles: handles, SessionID: "session-1",
-		Governor: rlm.NewGovernor(rlm.Limits{}),
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	spawned := execute(t, registry, "agent", map[string]any{
-		"prompt": "hermetic work", "role": "explore",
-	})
+	spawned := execute(
+		t, registry, "spawn_agent",
+		spawnInput("hermetic_work", "hermetic work", "explore"),
+	)
 	var body map[string]any
 	if err := json.Unmarshal([]byte(spawned.Content), &body); err != nil {
 		t.Fatal(err)
@@ -360,7 +436,7 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 		t.Fatalf("spawn = %+v", body)
 	}
 
-	listed := execute(t, registry, "agent_list", map[string]any{})
+	listed := execute(t, registry, "list_agents", map[string]any{})
 	var listBody map[string]any
 	_ = json.Unmarshal([]byte(listed.Content), &listBody)
 	if listBody["count"] != float64(1) {
@@ -371,7 +447,7 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 	waitResult := make(chan tool.Result, 1)
 	go func() {
 		result, err := registry.Execute(context.Background(), tool.Call{
-			Name: "agent_wait", Arguments: mustJSON(map[string]any{
+			Name: "wait_agent", Arguments: mustJSON(map[string]any{
 				"agent_ids": []string{agentID},
 			}), Authorized: true,
 		})
@@ -402,7 +478,7 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 		t.Fatalf("wait agent = %+v", first)
 	}
 
-	closed := execute(t, registry, "agent_close", map[string]any{"agent_id": agentID})
+	closed := execute(t, registry, "close_agent", map[string]any{"agent_id": agentID})
 	var closeBody map[string]any
 	_ = json.Unmarshal([]byte(closed.Content), &closeBody)
 	if closeBody["closed"] != true || closeBody["status"] != "shutdown" {
@@ -411,7 +487,7 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(worktree, ".codehelper-worktree")); !os.IsNotExist(err) {
 		t.Fatalf("worktree should be removed after close: %v", err)
 	}
-	after := execute(t, registry, "agent_list", map[string]any{})
+	after := execute(t, registry, "list_agents", map[string]any{})
 	var afterBody map[string]any
 	_ = json.Unmarshal([]byte(after.Content), &afterBody)
 	if afterBody["count"] != float64(0) {
@@ -419,7 +495,7 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 	}
 }
 
-func TestUnifiedAgentCloseCompatibility(t *testing.T) {
+func TestLegacyUnifiedAgentToolIsUnavailable(t *testing.T) {
 	root := t.TempDir()
 	handles := handle.NewStore()
 	manager, err := subagent.Open(subagent.Options{
@@ -431,38 +507,14 @@ func TestUnifiedAgentCloseCompatibility(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
 		Manager: manager, Handles: handles, SessionID: "session-1",
-		Governor: rlm.NewGovernor(rlm.Limits{}),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	spawned := execute(t, registry, "agent", map[string]any{
-		"op": "spawn", "prompt": "compatibility child",
+	_, err = registry.Execute(t.Context(), tool.Call{
+		Name: "agent", Arguments: mustJSON(map[string]any{}), Authorized: true,
 	})
-	var body map[string]any
-	if err := json.Unmarshal([]byte(spawned.Content), &body); err != nil {
-		t.Fatal(err)
-	}
-	agentID, _ := body["agent_id"].(string)
-	if agentID == "" {
-		t.Fatalf("spawn = %+v", body)
-	}
-
-	closed := execute(t, registry, "agent", map[string]any{
-		"op": "close", "agent_id": agentID,
-	})
-	var closeBody map[string]any
-	if err := json.Unmarshal([]byte(closed.Content), &closeBody); err != nil {
-		t.Fatal(err)
-	}
-	if closeBody["closed"] != true || closeBody["agent_id"] != agentID {
-		t.Fatalf("close = %+v", closeBody)
-	}
-
-	_, err = registry.Execute(context.Background(), tool.Call{
-		Name: "agent", Arguments: mustJSON(map[string]any{"op": "close"}), Authorized: true,
-	})
-	if !errors.Is(err, tool.ErrInvalidArguments) {
-		t.Fatalf("missing agent_id error = %v, want invalid arguments", err)
+	if !errors.Is(err, tool.ErrUnknownTool) {
+		t.Fatalf("legacy tool error = %v, want unknown tool", err)
 	}
 }
 
@@ -479,13 +531,13 @@ func TestAgentWaitDefersSerializedChildUntilCallingTurnEnds(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
 		Manager: manager, Handles: handle.NewStore(), SessionID: "session-1",
-		Governor: rlm.NewGovernor(rlm.Limits{}),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	spawned := execute(t, registry, "agent", map[string]any{
-		"prompt": "edit host workspace", "role": "implementer",
-	})
+	spawned := execute(
+		t, registry, "spawn_agent",
+		spawnInput("edit_host_workspace", "edit host workspace", "implementer"),
+	)
 	var spawnBody map[string]any
 	if err := json.Unmarshal([]byte(spawned.Content), &spawnBody); err != nil {
 		t.Fatal(err)
@@ -495,11 +547,11 @@ func TestAgentWaitDefersSerializedChildUntilCallingTurnEnds(t *testing.T) {
 		t.Fatalf("spawn = %+v", spawnBody)
 	}
 	started := time.Now()
-	waited := execute(t, registry, "agent_wait", map[string]any{
+	waited := execute(t, registry, "wait_agent", map[string]any{
 		"agent_ids": []string{agentID}, "timeout_ms": 10_000,
 	})
 	if time.Since(started) > time.Second {
-		t.Fatal("serialized agent_wait blocked while caller held the workspace")
+		t.Fatal("serialized wait_agent blocked while caller held the workspace")
 	}
 	var waitBody map[string]any
 	if err := json.Unmarshal([]byte(waited.Content), &waitBody); err != nil {
@@ -523,22 +575,21 @@ func TestAgentInterruptFollowUpViaTools(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
 		Manager: manager, Handles: handles, SessionID: "session-1",
-		Governor: rlm.NewGovernor(rlm.Limits{}),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	spawned := execute(t, registry, "agent", map[string]any{"prompt": "run"})
+	spawned := execute(t, registry, "spawn_agent", spawnInput("run", "run", "general"))
 	var body map[string]any
 	_ = json.Unmarshal([]byte(spawned.Content), &body)
 	agentID, _ := body["agent_id"].(string)
 
-	interrupted := execute(t, registry, "agent_interrupt", map[string]any{"agent_id": agentID})
+	interrupted := execute(t, registry, "interrupt_agent", map[string]any{"agent_id": agentID})
 	var interruptBody map[string]any
 	_ = json.Unmarshal([]byte(interrupted.Content), &interruptBody)
 	if interruptBody["status"] != "interrupted" || interruptBody["previous_status"] != "running" {
 		t.Fatalf("interrupt = %+v", interruptBody)
 	}
-	follow := execute(t, registry, "agent_followup", map[string]any{
+	follow := execute(t, registry, "followup_task", map[string]any{
 		"agent_id": agentID, "prompt": "resume please",
 	})
 	var followBody map[string]any
@@ -560,6 +611,14 @@ func execute(t *testing.T, registry *tool.Registry, name string, input map[strin
 		t.Fatalf("%s: %v", name, err)
 	}
 	return result
+}
+
+func spawnInput(taskName, objective, role string) map[string]any {
+	return map[string]any{
+		"task_name": taskName, "objective": objective, "role": role,
+		"expected_output": "Return a concise result with evidence.",
+		"trigger":         "user",
+	}
 }
 
 func mustJSON(value map[string]any) json.RawMessage {

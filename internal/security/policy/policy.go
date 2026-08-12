@@ -122,7 +122,8 @@ func LifecycleGrants() []Rule {
 		"automation_create", "automation_update", "automation_pause",
 		"automation_resume", "automation_delete", "automation_run",
 		"github_comment", "github_close_issue", "github_close_pr",
-		"agent",
+		"spawn_agent", "send_message", "followup_task",
+		"interrupt_agent", "close_agent",
 	}
 	rules := make([]Rule, 0, len(names))
 	for _, name := range names {

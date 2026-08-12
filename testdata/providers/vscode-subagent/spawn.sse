@@ -1,0 +1,7 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_spawn_electron","function":{"name":"spawn_agent","arguments":"{\"task_name\":\"inspect_context\",\"role\":\"explore\","}}]},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"objective\":\"Inspect context.ts and summarize its nested function structure.\",\"expected_output\":\"A concise read-only summary with the relevant symbol names.\",\"owned_paths\":[],\"trigger\":\"user\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":31,"completion_tokens":18}}
+
+data: [DONE]

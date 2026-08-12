@@ -236,6 +236,12 @@ func (s Snapshot) validateDiagnostics() error {
 // isolated to write.
 func (s Snapshot) validateSubagent() error {
 	child := s.Config.Execution.Subagent
+	switch child.Delegation {
+	case SubagentDelegationDisabled, SubagentDelegationExplicit, SubagentDelegationAdaptive:
+	default:
+		return fieldError(fieldSubagentDelegation, s.Provenance,
+			"must be disabled, explicit, or adaptive")
+	}
 	switch child.Workspace {
 	case SubagentWorkspaceAuto, SubagentWorkspaceReadOnly, SubagentWorkspaceWorktree,
 		SubagentWorkspaceSerialized:

@@ -62,6 +62,7 @@ const (
 	fieldVerifyRepair    = "execution.verify.max_repair_steps"
 	fieldVerifyTimeout   = "execution.verify.timeout"
 
+	fieldSubagentDelegation  = "execution.subagent.delegation"
 	fieldSubagentMaxDepth    = "execution.subagent.max_depth"
 	fieldSubagentMaxParallel = "execution.subagent.max_parallel"
 	fieldSubagentMaxSteps    = "execution.subagent.max_steps"
@@ -180,6 +181,7 @@ func defaultProvenance() map[string]Source {
 		fieldVerifyRepair:    SourceDefault,
 		fieldVerifyTimeout:   SourceDefault,
 
+		fieldSubagentDelegation:  SourceDefault,
 		fieldSubagentMaxDepth:    SourceDefault,
 		fieldSubagentMaxParallel: SourceDefault,
 		fieldSubagentMaxSteps:    SourceDefault,

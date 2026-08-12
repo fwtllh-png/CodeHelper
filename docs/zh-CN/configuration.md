@@ -93,14 +93,19 @@ durable = true
 recover_on_start = true
 
 [execution.subagent]
+delegation = "explicit"      # disabled | explicit | adaptive
 max_depth = 5
 max_parallel = 4
-max_steps = 8
+max_steps = 24
 max_tokens = 0
 max_cost_usd = 0
 wall_time = "5m"
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
 
+
+`delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
+`spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。
+`disabled` 对模型隐藏 Agent Lifecycle Tool，但保留内部授权的 Durable Worker 执行。
 [execution.worker]
 enabled = false
 max_parallel = 2

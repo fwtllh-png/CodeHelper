@@ -37,7 +37,7 @@ type childRuntime struct {
 	mu      sync.Mutex
 	runtime *app.Runtime
 	threads *app.ThreadManager
-	manager *subagent.Manager
+	manager *subagent.AgentControl
 	turns   map[protocol.ThreadID]*childTurn
 	bound   bool
 
@@ -77,7 +77,7 @@ func newChildRuntime(
 
 // bind attaches the pieces that only exist once the Runtime is constructed.
 func (c *childRuntime) bind(
-	runtime *app.Runtime, threads *app.ThreadManager, manager *subagent.Manager,
+	runtime *app.Runtime, threads *app.ThreadManager, manager *subagent.AgentControl,
 ) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -111,7 +111,7 @@ func (c *childRuntime) close() {
 }
 
 // StartTurn submits a real turn for the child agent and returns as soon as the
-// runtime accepted it. Blocking until the child finishes would make agent_wait
+// runtime accepted it. Blocking until the child finishes would make wait_agent
 // pointless and would deadlock the parent turn that called the agent tool.
 func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (string, error) {
 	c.mu.Lock()

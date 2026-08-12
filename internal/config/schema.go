@@ -171,8 +171,11 @@ type Worker struct {
 // child must not be able to consume the parent's whole allowance, and a child
 // that writes must not be able to write into the parent's workspace.
 type Subagent struct {
-	MaxDepth    int `json:"max_depth" toml:"max_depth"`
-	MaxParallel int `json:"max_parallel" toml:"max_parallel"`
+	// Delegation selects whether model-visible spawning is disabled,
+	// explicit-only, or adaptively available.
+	Delegation  string `json:"delegation" toml:"delegation"`
+	MaxDepth    int    `json:"max_depth" toml:"max_depth"`
+	MaxParallel int    `json:"max_parallel" toml:"max_parallel"`
 	// MaxSteps is the child's own step quota, independent of Execution.MaxSteps.
 	MaxSteps int `json:"max_steps" toml:"max_steps"`
 	// MaxTokens and MaxCostUSD bound all child agents in the session together,
@@ -192,6 +195,10 @@ type Subagent struct {
 
 // Subagent workspace isolation strategies.
 const (
+	SubagentDelegationDisabled = "disabled"
+	SubagentDelegationExplicit = "explicit"
+	SubagentDelegationAdaptive = "adaptive"
+
 	SubagentWorkspaceAuto       = "auto"
 	SubagentWorkspaceReadOnly   = "read_only"
 	SubagentWorkspaceWorktree   = "worktree"
@@ -323,6 +330,7 @@ type Overrides struct {
 	VerifyTimeout   *time.Duration
 
 	SubagentMaxDepth    *int
+	SubagentDelegation  *string
 	SubagentMaxParallel *int
 	SubagentMaxSteps    *int
 	SubagentMaxTokens   *uint64

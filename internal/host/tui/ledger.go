@@ -60,7 +60,10 @@ func classifyTool(name string) ToolFamily {
 	case strings.Contains(n, "test") || strings.Contains(n, "verif") ||
 		strings.Contains(n, "validate"):
 		return FamilyVerify
-	case n == "agent" || strings.Contains(n, "delegate"):
+	case n == "spawn_agent" || n == "send_message" || n == "followup_task" ||
+		n == "wait_agent" || n == "list_agents" || n == "interrupt_agent" ||
+		n == "close_agent" || n == "integrate_agent" ||
+		strings.Contains(n, "delegate"):
 		return FamilyDelegate
 	default:
 		return FamilyGeneric

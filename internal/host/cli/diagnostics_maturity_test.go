@@ -8,7 +8,7 @@ import (
 
 func TestDiagnosticsReportsStubMaturity(t *testing.T) {
 	report := DiagnosticsReport(t.TempDir())
-	// agent_merge landed: child turns are no longer an incomplete
+	// integrate_agent landed: child turns are no longer an incomplete
 	// maturity entry. Operators learn about other gaps from the remaining keys.
 	if _, ok := report.Maturity["subagent_child_turn"]; ok {
 		t.Fatalf("subagent_child_turn should be omitted once merge is available: %#v", report.Maturity)

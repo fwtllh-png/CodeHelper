@@ -91,7 +91,7 @@ type orchestrationBuildState struct {
 	childToolsets  *childToolsets
 	chatTrees      *childWorktrees
 	parentFiles    *filetool.Tools
-	subagents      *subagent.Manager
+	subagents      *subagent.AgentControl
 	tasks          *taskstate.Repository
 	automations    *automation.Repository
 	workflowRuns   workflowRunStore

@@ -267,22 +267,24 @@ func TestExtensionContributorsDoNotAcceptBuildState(t *testing.T) {
 }
 
 func TestBackgroundModuleOwnsRuntimeActivityStart(t *testing.T) {
-	source, err := os.ReadFile("modules_runtime.go")
+	runtimeSource, err := os.ReadFile("modules_runtime.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(source)
-	backgroundAt := strings.Index(text, "func (backgroundModule) Build")
-	if backgroundAt < 0 {
+	backgroundSource, err := os.ReadFile("module_background.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeBuild := string(runtimeSource)
+	background := string(backgroundSource)
+	if !strings.Contains(background, "func (backgroundModule) Build") {
 		t.Fatal("BackgroundModule Build was not found")
 	}
-	runtimeBuild := text[:backgroundAt]
 	for _, forbidden := range []string{".RefreshNow(", ".Start(ctx)", ".Tick("} {
 		if strings.Contains(runtimeBuild, forbidden) {
 			t.Errorf("RuntimeModule starts background activity %q", forbidden)
 		}
 	}
-	background := text[backgroundAt:]
 	required := []string{
 		"prewarm.RefreshNow(ctx)",
 		"state.runtime.application.Start(ctx)",

@@ -60,7 +60,7 @@ Precondition 通过后才写入；Dry-run 返回同一 Exact Diff，不写磁盘
 | File Write/Edit/Apply/Patch | Explicit File/Tree Write | Mediated Filesystem Transaction |
 | Shell/Terminal | Workspace Tree + Process Session | Sandbox Profile 内任意 Command |
 | Web/GitHub | Network Host + Logical Object | Governed Remote Effect |
-| Agent Spawn/Merge | Child Slot/Worktree + Target Files | Child Runtime/Explicit Merge |
+| Agent Spawn/Integration | Child Slot/Worktree + Target Files | Child Runtime/Explicit Integration |
 | Result/Handle | Content Object Read | Bounded Retrieval |
 
 Resource Declaration 同时服务 Policy、Approval、Claim、Journal Scope、Receipt Attribution。
@@ -81,9 +81,13 @@ Output Limit 与 Explicit Network Policy。Platform 无法满足 Strength 时 Fa
 
 ## Agent Tool
 
-Agent Tool 通过 Orchestration Manager/Governor 实现 spawn、wait、followup、interrupt、
-close 与 merge，约束 Depth、Parallelism、Token、Cost、Wall-clock、Stance、Worktree
-和 Merge。Child Receipt 区分 Pending/Self-report 与 Gate-proven Verification。
+`spawn_agent`、`send_message`、`wait_agent`、`list_agents`、`followup_task`、
+`interrupt_agent`、`close_agent` 与 `integrate_agent` 通过同一个 `AgentControl`
+执行。Delegation Policy 校验触发来源，Role Catalog 解析真实 Prompt/Stance Contract，
+Runtime Budget 约束 Depth、Parallelism、Token、Cost、Wall-clock、Worktree 与
+Integration。`execution.subagent.delegation` 可选 `disabled`、`explicit` 或
+`adaptive`；Disabled 模式对模型隐藏这些 Tool，但保留内部 Worker 执行。Child Receipt
+区分 Pending/Self-report 与 Gate-proven Verification。
 
 ```mermaid
 flowchart TD
@@ -103,7 +107,7 @@ flowchart TD
 | Built-in Wiring | `tool/builtin/builtin.go` |
 | File | `tool/file` |
 | Process/Session | `tool/shell` |
-| Child Agent/Merge | `tool/agent` |
+| Child Agent/Integration | `tool/agent` |
 | Process Backend | `internal/platform/process` |
 
 ## 设计取舍
@@ -118,7 +122,7 @@ Built-in 提供 Narrow Structured Operation，并在所有 Host 复用同一 Gua
 - 缺少 Strong Sandbox 时 Process Tool Fail Closed。
 - Timeout/Cancel 终止 Process Group。
 - Agent Depth/Concurrency/Budget 超限拒绝 Admission。
-- Agent Merge 检查 Baseline Drift 与 File Claim。
+- Agent Integration 检查 Baseline Drift 与 File Claim。
 
 ## 测试与验证
 
@@ -136,7 +140,7 @@ Resource 与 Change Metadata。
 
 1. Optional Tool 为什么应显示为 Unavailable？
 2. Shell Serialization 为什么也表示为 Resource Claim？
-3. Agent Merge 为什么属于 Workspace Write？
+3. Agent Integration 为什么属于 Workspace Write？
 4. Tool Under/Over-declare Resource 会导致什么？
 5. 合法 Shell Schema 为什么仍要求 Strong Sandbox？
 

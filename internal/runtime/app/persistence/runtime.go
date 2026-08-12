@@ -101,6 +101,23 @@ func PreparePersistentRuntime(
 	return app.PrepareRuntimeWithRecovery(ctx, runtimeOptions)
 }
 
+func ConfigurePersistentSubagents(
+	manager *app.ThreadManager,
+	store *state.Store,
+	workspaceRoot, sessionID string,
+	runtime *app.Runtime,
+	attach func(any) error,
+) error {
+	manager.SetChildRegistrar(func(threadID protocol.ThreadID, spec app.ChildSpec) error {
+		return EnsureThread(
+			context.Background(), store, threadID, sessionID, spec.Workspace,
+		)
+	})
+	return attach(state.NewAgentGraph(
+		store, workspaceRoot, sessionID, runtime,
+	))
+}
+
 // EnsureThread creates workspace/session/thread seed rows when missing so
 // PersistentRuntime Lifecycle can Accept StartTurn for CLI/TUI hosts.
 func EnsureThread(

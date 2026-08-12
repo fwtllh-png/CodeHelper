@@ -380,6 +380,11 @@ become an alternate unguarded execution path.
 - **Subagent:** bounded child runtime with depth, budget, and workspace isolation.
 
 All orchestration eventually returns to runtime/tool/security boundaries.
+The target design for delegation policy, context forking, durable Agent Trees,
+approval routing, integration, and VS Code timelines is specified in the
+[Multi-Agent Architecture Upgrade](./multi-agent-architecture-upgrade.md).
+That document is a proposal and does not claim that its target behavior has
+already shipped.
 
 ## Change Checklist
 

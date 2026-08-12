@@ -25,6 +25,7 @@ const (
 	RoleReview      Role = "review"
 	RoleImplementer Role = "implementer"
 	RoleVerifier    Role = "verifier"
+	RoleAwaiter     Role = "awaiter"
 	RoleCustom      Role = "custom"
 )
 
@@ -76,6 +77,8 @@ func ParseRole(raw string) (Role, error) {
 		return RoleImplementer, nil
 	case "verifier", "verify", "verification", "validator", "tester":
 		return RoleVerifier, nil
+	case "awaiter", "await":
+		return RoleAwaiter, nil
 	case "custom":
 		return RoleCustom, nil
 	default:
@@ -98,6 +101,7 @@ type Options struct {
 	Gate      ToolGate
 	Runtime   RuntimeHost
 	Worktrees WorktreeProvider
+	Roles     RoleCatalog
 }
 
 type Manager struct {
@@ -108,6 +112,7 @@ type Manager struct {
 	gate      ToolGate
 	runtime   RuntimeHost
 	trees     WorktreeProvider
+	roles     RoleCatalog
 	agents    map[string]*Agent
 	mailbox   *Mailbox
 	worktrees map[string]*Worktree
@@ -136,13 +141,18 @@ type Agent struct {
 	Serialized bool
 	// BaseRev is the spawn-time git revision of an isolated worktree; empty for
 	// scratch / read-only children that never get a checkout.
-	BaseRev     string
-	Parent      string
-	Closed      bool
-	Status      Status
-	TurnID      string
-	LastMessage string
-	Result      *Result
+	BaseRev           string
+	Parent            string
+	Closed            bool
+	Status            Status
+	TurnID            string
+	LastMessage       string
+	Result            *Result
+	TaskName          string
+	ExpectedOutput    string
+	OwnedPaths        []string
+	DelegationTrigger DelegationTrigger
+	RoleInstructions  string
 }
 
 func Open(options Options) (*Manager, error) {
@@ -159,9 +169,14 @@ func Open(options Options) (*Manager, error) {
 	if trees == nil {
 		trees = scratchWorktrees{root: options.Root}
 	}
+	roles := options.Roles
+	if len(roles.specs) == 0 {
+		roles = DefaultRoleCatalog()
+	}
 	manager := &Manager{
 		root: options.Root, budget: options.Budget.WithDefaults(),
 		gate: options.Gate, runtime: options.Runtime, trees: trees,
+		roles:  roles,
 		agents: make(map[string]*Agent), mailbox: NewMailbox(),
 		worktrees: make(map[string]*Worktree),
 		claims:    make(map[string]string),
@@ -174,30 +189,36 @@ func Open(options Options) (*Manager, error) {
 }
 
 func (m *Manager) Route(role Role) Route {
-	switch role {
-	case RoleExplore:
-		return Route{Role: RoleExplore, Profile: "explore", Stance: StanceReadOnly}
-	case RolePlan:
-		return Route{Role: RolePlan, Profile: "plan", Stance: StanceMinimalWrite}
-	case RoleReview:
-		return Route{Role: RoleReview, Profile: "review", Stance: StanceReadOnly}
-	case RoleImplementer:
-		return Route{Role: RoleImplementer, Profile: "implement", Stance: StanceWrite}
-	case RoleVerifier:
-		return Route{Role: RoleVerifier, Profile: "verify", Stance: StanceTestFocused}
-	case RoleCustom:
-		return Route{Role: RoleCustom, Profile: "custom", Stance: StanceCustom}
-	default:
-		return Route{Role: RoleGeneral, Profile: "default", Stance: StanceWrite}
+	spec, err := m.roles.Resolve(role)
+	if err != nil {
+		spec, _ = m.roles.Resolve(RoleGeneral)
 	}
+	return Route{Role: spec.Role, Profile: spec.Profile, Stance: spec.Stance}
 }
 
+// Spawn is retained for internal compatibility. Model-facing and worker paths
+// use AgentControl, which adds delegation admission and structured intent.
 func (m *Manager) Spawn(parentID string, role Role, prompt string) (*Agent, error) {
+	spec, err := m.roles.Resolve(role)
+	if err != nil {
+		return nil, err
+	}
+	return m.spawn(DelegationIntent{
+		TaskName:       "internal_task",
+		Role:           role,
+		Objective:      prompt,
+		ExpectedOutput: "Return a concise result with supporting evidence.",
+		ParentID:       parentID,
+		Trigger:        TriggerSystem,
+	}, spec)
+}
+
+func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	depth := 0
-	if parentID != "" {
-		parent, ok := m.agents[parentID]
+	if intent.ParentID != "" {
+		parent, ok := m.agents[intent.ParentID]
 		if !ok || parent.Closed {
 			return nil, errors.New("parent agent unavailable")
 		}
@@ -211,26 +232,32 @@ func (m *Manager) Spawn(parentID string, role Role, prompt string) (*Agent, erro
 	}
 	m.nextID++
 	id := fmt.Sprintf("agent-%d", m.nextID)
-	route := m.Route(role)
 	// The stance decides what kind of directory the agent needs, so routing has
 	// to happen before provisioning: an explore child must not pay for a checkout.
-	wt, err := m.trees.Provision(id, route.Stance)
+	wt, err := m.trees.Provision(id, spec.Stance)
 	if err != nil {
 		return nil, err
 	}
 	agent := &Agent{
 		ID: id, Workspace: m.workspace, SessionID: m.sessionID,
-		Role: route.Role, Profile: route.Profile, Stance: route.Stance,
+		Role: spec.Role, Profile: spec.Profile, Stance: spec.Stance,
 		Depth: depth, Worktree: wt.Path, Isolated: wt.Isolated,
 		Serialized: wt.Serialized, BaseRev: wt.BaseRev,
-		Parent: parentID, Status: StatusPendingInit,
+		Parent: intent.ParentID, Status: StatusPendingInit,
+		TaskName:          strings.TrimSpace(intent.TaskName),
+		ExpectedOutput:    strings.TrimSpace(intent.ExpectedOutput),
+		OwnedPaths:        append([]string(nil), intent.OwnedPaths...),
+		DelegationTrigger: intent.Trigger,
+		RoleInstructions:  spec.Instructions,
+	}
+	if err := m.recordSpawnLocked(agent); err != nil {
+		_ = m.trees.Discard(wt)
+		return nil, fmt.Errorf("record agent spawn: %w", err)
 	}
 	m.agents[id] = agent
 	m.worktrees[id] = &wt
 	m.active.Add(1)
-	m.recordSpawnLocked(agent)
 	m.wait.Broadcast()
-	_ = prompt
 	return agent, nil
 }
 
@@ -274,7 +301,20 @@ func (m *Manager) Agent(id string) (Agent, bool) {
 	if !ok || agent.Closed {
 		return Agent{}, false
 	}
-	return *agent, true
+	return cloneAgent(agent), true
+}
+
+func cloneAgent(agent *Agent) Agent {
+	if agent == nil {
+		return Agent{}
+	}
+	cloned := *agent
+	cloned.OwnedPaths = append([]string(nil), agent.OwnedPaths...)
+	if agent.Result != nil {
+		result := *agent.Result
+		cloned.Result = &result
+	}
+	return cloned
 }
 
 func (m *Manager) Close(agentID string) error {

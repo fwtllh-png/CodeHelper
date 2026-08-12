@@ -1,0 +1,19 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": [
+    "spawn.sse",
+    "declare.sse",
+    "declare-child.sse",
+    "complete.sse",
+    "complete.sse"
+  ],
+  "stream_delay_ms": 20,
+  "expected_request_fragments": [
+    [
+      "Explicitly delegate one read-only explorer",
+      "\"name\":\"spawn_agent\""
+    ]
+  ]
+}

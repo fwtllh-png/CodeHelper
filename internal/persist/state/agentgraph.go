@@ -75,7 +75,15 @@ func (s *Store) AppendAgentEvent(ctx context.Context, data protocol.EventData) e
 	if data == nil {
 		return fmt.Errorf("agent event data is required")
 	}
-	last, err := s.LastSequence(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ErrClosed
+	}
+	last, err := s.lastReserved(ctx)
 	if err != nil {
 		return err
 	}
@@ -87,7 +95,10 @@ func (s *Store) AppendAgentEvent(ctx context.Context, data protocol.EventData) e
 	if err != nil {
 		return err
 	}
-	return s.Append(ctx, event)
+	if err := event.Validate(); err != nil {
+		return fmt.Errorf("validate durable agent event: %w", err)
+	}
+	return s.appendOneLocked(ctx, event)
 }
 
 func projectAgentGraphTx(ctx context.Context, tx *sql.Tx, event protocol.Event) error {

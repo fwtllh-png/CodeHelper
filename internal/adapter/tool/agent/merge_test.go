@@ -18,7 +18,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -107,8 +106,7 @@ func openMergeHarness(t *testing.T) (
 	if err := agenttool.Register(registry, agenttool.Options{
 		Manager: manager, Handles: handles, SessionID: "merge-session",
 		Root: t.TempDir(), Gate: gate, Files: files, Workspace: workspace,
-		Governor: rlm.NewGovernor(rlm.Limits{}),
-		Budget:   subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+		Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +163,7 @@ func TestAgentMergeDryRunAndApply(t *testing.T) {
 	agentID := settleWritingChild(t, manager)
 
 	dry := false
-	result, err := guard.Execute(context.Background(), "merge-1", "agent_merge", mustJSON(map[string]any{
+	result, err := guard.Execute(context.Background(), "merge-1", "integrate_agent", mustJSON(map[string]any{
 		"agent_id": agentID, "dry_run": true,
 	}))
 	if err != nil {
@@ -178,7 +176,7 @@ func TestAgentMergeDryRunAndApply(t *testing.T) {
 		t.Fatal("dry_run must not write the parent workspace")
 	}
 
-	result, err = guard.Execute(context.Background(), "merge-2", "agent_merge", mustJSON(map[string]any{
+	result, err = guard.Execute(context.Background(), "merge-2", "integrate_agent", mustJSON(map[string]any{
 		"agent_id": agentID, "dry_run": dry,
 	}))
 	if err != nil {
@@ -200,15 +198,15 @@ func TestAgentMergeDryRunAndApply(t *testing.T) {
 	}
 }
 
-func TestUnifiedAgentMergeUsesGuardExpansion(t *testing.T) {
+func TestIntegrateAgentUsesGuardExpansion(t *testing.T) {
 	_, guard, manager, workspace, _ := openMergeHarness(t)
 	agentID := settleWritingChild(t, manager)
 	guard.Policy().Repository = []policy.Rule{{
-		Tool: "agent", Resource: "*", Action: policy.ActionAllow,
+		Tool: "integrate_agent", Resource: "*", Action: policy.ActionAllow,
 	}}
 
-	result, err := guard.Execute(context.Background(), "merge-unified", "agent", mustJSON(map[string]any{
-		"op": "merge", "agent_id": agentID, "dry_run": false,
+	result, err := guard.Execute(context.Background(), "merge-guarded", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "dry_run": false,
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -225,7 +223,7 @@ func TestUnifiedAgentMergeUsesGuardExpansion(t *testing.T) {
 	}
 	changes, _ := result.Metadata[toolguard.MetadataChanges].([]toolguard.FileChange)
 	if len(changes) == 0 {
-		t.Fatalf("unified merge bypassed guarded file changes: %#v", result.Metadata)
+		t.Fatalf("integration bypassed guarded file changes: %#v", result.Metadata)
 	}
 }
 
@@ -245,7 +243,7 @@ func TestAgentMergeClaimConflict(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = guard.Execute(context.Background(), "merge-conflict", "agent_merge", mustJSON(map[string]any{
+	_, err = guard.Execute(context.Background(), "merge-conflict", "integrate_agent", mustJSON(map[string]any{
 		"agent_id": second.ID, "dry_run": false,
 	}))
 	if err == nil {
@@ -255,7 +253,7 @@ func TestAgentMergeClaimConflict(t *testing.T) {
 		t.Fatalf("conflict error = %v", err)
 	}
 	// First child still owns the claim and can merge.
-	if _, err := guard.Execute(context.Background(), "merge-ok", "agent_merge", mustJSON(map[string]any{
+	if _, err := guard.Execute(context.Background(), "merge-ok", "integrate_agent", mustJSON(map[string]any{
 		"agent_id": first, "dry_run": true,
 	})); err != nil {
 		t.Fatal(err)
@@ -268,7 +266,7 @@ func TestAgentMergeBaselineDrift(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "child-note.txt"), []byte("parent-drift\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := guard.Execute(context.Background(), "merge-drift", "agent_merge", mustJSON(map[string]any{
+	_, err := guard.Execute(context.Background(), "merge-drift", "integrate_agent", mustJSON(map[string]any{
 		"agent_id": agentID, "dry_run": false,
 	}))
 	if err == nil {
@@ -285,7 +283,7 @@ func TestAgentMergeAfterClose(t *testing.T) {
 	if err := manager.Close(agentID); err != nil {
 		t.Fatal(err)
 	}
-	_, err := guard.Execute(context.Background(), "merge-closed", "agent_merge", mustJSON(map[string]any{
+	_, err := guard.Execute(context.Background(), "merge-closed", "integrate_agent", mustJSON(map[string]any{
 		"agent_id": agentID, "dry_run": true,
 	}))
 	if err == nil {

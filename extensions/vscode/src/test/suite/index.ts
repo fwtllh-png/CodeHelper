@@ -152,6 +152,11 @@ export async function run(): Promise<void> {
     assert.equal(api.runtimeAutoStartScheduled, true);
     await verifyMultiRootFlows(api);
     await verifyResourceNavigation();
+  } else if (scenario === "subagent") {
+    assert.equal(vscode.workspace.workspaceFolders?.length, 1);
+    assert.equal(api.workspaceMode, "single");
+    assert.equal(api.runtimeAutoStartScheduled, true);
+    await verifyExplicitSubagent(api);
   } else {
     throw new Error(`unknown Electron scenario ${String(scenario)}`);
   }
@@ -878,6 +883,119 @@ async function verifyTurnRecovery(
     match.session_id === selected.sessionId &&
     match.turn_id === continued.turnId &&
     match.kind === "user_request"));
+}
+
+async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
+  assert.ok(api.runtimeSnapshot);
+  assert.ok(api.onRuntimeEvent);
+  assert.ok(api.onRootRuntimeEvent);
+  assert.ok(api.chatSessions);
+  assert.ok(api.testSubmitPrompt);
+  assert.ok(api.testApprovePending);
+  await waitFor(
+    () => api.runtimeSnapshot?.().state === "ready",
+    `subagent Runtime did not become ready: ${
+      JSON.stringify(api.runtimeSnapshot())
+    }`,
+    30_000,
+  );
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(workspace);
+  await vscode.window.showTextDocument(
+    await vscode.workspace.openTextDocument(
+      vscode.Uri.joinPath(workspace.uri, "context.ts"),
+    ),
+  );
+  const selected = api.chatSessions().find((session) => session.selected);
+  assert.ok(selected);
+
+  const spawned = new Map<
+    string,
+    { role: string; sessionId: string | undefined }
+  >();
+  const statuses = new Map<string, string>();
+  const terminals = new Map<string, string>();
+  const terminalDetails = new Map<string, unknown>();
+  const observed: string[] = [];
+  const rootObserved: string[] = [];
+  const rootSubscription = api.onRootRuntimeEvent((
+    _rootId,
+    event,
+    replayed,
+  ) => {
+    rootObserved.push(`${replayed ? "replay" : "live"}:${event.kind}`);
+  });
+  const subscription = api.onRuntimeEvent((event, replayed) => {
+    observed.push(`${replayed ? "replay" : "live"}:${event.kind}`);
+    if (replayed || isUnknownEvent(event)) return;
+    if (event.kind === "agent.spawned") {
+      spawned.set(event.data.agent_id, {
+        role: event.data.role,
+        sessionId: event.data.session_id,
+      });
+    } else if (event.kind === "agent.status") {
+      statuses.set(event.data.agent_id, event.data.status);
+    } else if (event.kind === "turn.completed" ||
+      event.kind === "turn.failed" ||
+      event.kind === "turn.canceled") {
+      terminals.set(event.turn_id, event.kind);
+      terminalDetails.set(event.turn_id, event.data);
+    }
+  });
+  try {
+    const parent = await api.testSubmitPrompt(
+      selected.sessionId,
+      "Explicitly delegate one read-only explorer to inspect context.ts. " +
+        "Use spawn_agent now, then report that the delegated work started.",
+    );
+    const approvalDeadline = Date.now() + 10_000;
+    while (!await api.testApprovePending()) {
+      if (Date.now() >= approvalDeadline) {
+        throw new Error(
+          `spawn_agent approval did not reach the Chat projector; ` +
+            `events=${observed.join(",")}`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    await waitFor(
+      () => terminals.has(parent.turnId),
+      `explicit subagent parent ${parent.turnId} did not terminate; ` +
+        `events=${observed.join(",")}; spawned=${JSON.stringify(
+          [...spawned.entries()],
+        )}; statuses=${JSON.stringify([...statuses.entries()])}; ` +
+        `rootEvents=${rootObserved.join(",")}; ` +
+        `runtime=${JSON.stringify(api.runtimeSnapshot())}`,
+      30_000,
+    );
+    assert.equal(
+      terminals.get(parent.turnId),
+      "turn.completed",
+      `parent terminal=${JSON.stringify(terminalDetails.get(parent.turnId))}; ` +
+        `events=${observed.join(",")}`,
+    );
+    await waitFor(
+      () => spawned.size === 1,
+      `explicit prompt did not emit exactly one agent.spawned event; ` +
+        `events=${observed.join(",")}; spawned=${JSON.stringify(
+          [...spawned.entries()],
+        )}`,
+      30_000,
+    );
+    const [agentID, child] = [...spawned.entries()][0] ?? [];
+    assert.ok(agentID);
+    assert.ok(child);
+    assert.equal(child.role, "explore");
+    assert.ok(child.sessionId);
+    await waitFor(
+      () => statuses.get(agentID) === "completed",
+      `child agent ${agentID} did not reach completed status`,
+      30_000,
+    );
+  } finally {
+    subscription.dispose();
+    rootSubscription.dispose();
+  }
 }
 
 async function verifyPlanDestinations(

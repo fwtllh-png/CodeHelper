@@ -1,0 +1,401 @@
+package subagent
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+// DelegationMode controls whether and why a model may create child agents.
+type DelegationMode string
+
+const (
+	DelegationDisabled DelegationMode = "disabled"
+	DelegationExplicit DelegationMode = "explicit"
+	DelegationAdaptive DelegationMode = "adaptive"
+)
+
+// DelegationTrigger records the authority that caused a spawn proposal.
+type DelegationTrigger string
+
+const (
+	TriggerUser      DelegationTrigger = "user"
+	TriggerDeveloper DelegationTrigger = "developer"
+	TriggerSkill     DelegationTrigger = "skill"
+	TriggerSystem    DelegationTrigger = "system"
+	TriggerAdaptive  DelegationTrigger = "adaptive"
+)
+
+// DelegationIntent is the structured contract for creating one child.
+type DelegationIntent struct {
+	TaskName       string
+	Role           Role
+	Objective      string
+	ExpectedOutput string
+	OwnedPaths     []string
+	ParentID       string
+	Trigger        DelegationTrigger
+}
+
+// DelegationPolicy validates the provenance of a spawn proposal. It is an
+// orchestration policy, not a replacement for Tool Guard or security policy.
+type DelegationPolicy struct {
+	mode DelegationMode
+}
+
+func NewDelegationPolicy(mode DelegationMode) (DelegationPolicy, error) {
+	switch mode {
+	case DelegationDisabled, DelegationExplicit, DelegationAdaptive:
+		return DelegationPolicy{mode: mode}, nil
+	default:
+		return DelegationPolicy{}, fmt.Errorf("unsupported delegation mode %q", mode)
+	}
+}
+
+func (p DelegationPolicy) Mode() DelegationMode { return p.mode }
+
+func (p DelegationPolicy) ModelVisible() bool {
+	return p.mode != DelegationDisabled
+}
+
+func (p DelegationPolicy) Admit(intent DelegationIntent) error {
+	if err := validateIntent(intent); err != nil {
+		return err
+	}
+	switch p.mode {
+	case DelegationDisabled:
+		if intent.Trigger == TriggerSystem {
+			return nil
+		}
+		return errors.New("subagent delegation is disabled")
+	case DelegationExplicit:
+		switch intent.Trigger {
+		case TriggerUser, TriggerDeveloper, TriggerSkill, TriggerSystem:
+			return nil
+		default:
+			return fmt.Errorf(
+				"delegation mode explicit rejects trigger %q; explicit user, developer, skill, or system authority is required",
+				intent.Trigger,
+			)
+		}
+	case DelegationAdaptive:
+		switch intent.Trigger {
+		case TriggerUser, TriggerDeveloper, TriggerSkill, TriggerSystem, TriggerAdaptive:
+			return nil
+		default:
+			return fmt.Errorf("unsupported delegation trigger %q", intent.Trigger)
+		}
+	default:
+		return fmt.Errorf("unsupported delegation mode %q", p.mode)
+	}
+}
+
+// Instructions returns the stable developer-facing delegation contract.
+func (p DelegationPolicy) Instructions() string {
+	switch p.mode {
+	case DelegationDisabled:
+		return ""
+	case DelegationExplicit:
+		return "Multi-agent delegation is explicit-only. Use spawn_agent only when the user, " +
+			"developer instructions, an active skill, or an internal system task explicitly authorizes delegation. " +
+			"Do not treat task complexity alone as authorization. Prefer existing agents via followup_task, " +
+			"run independent children concurrently, use wait_agent for synchronization, and close agents when done."
+	case DelegationAdaptive:
+		return "Multi-agent delegation is adaptive. Use spawn_agent only for independent work whose parallel benefit " +
+			"exceeds spawn and coordination cost. Keep simple or linear work in the parent, avoid overlapping write " +
+			"ownership, prefer existing agents via followup_task, run independent children concurrently, use wait_agent " +
+			"for synchronization, and close agents when done."
+	default:
+		return ""
+	}
+}
+
+func validateIntent(intent DelegationIntent) error {
+	if strings.TrimSpace(intent.TaskName) == "" {
+		return errors.New("task_name is required")
+	}
+	if strings.TrimSpace(intent.Objective) == "" {
+		return errors.New("objective is required")
+	}
+	if strings.TrimSpace(intent.ExpectedOutput) == "" {
+		return errors.New("expected_output is required")
+	}
+	if intent.Trigger == "" {
+		return errors.New("delegation trigger is required")
+	}
+	for _, path := range intent.OwnedPaths {
+		clean := filepath.Clean(strings.TrimSpace(path))
+		if clean == "" || clean == "." || filepath.IsAbs(clean) ||
+			clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("owned path %q must be workspace-relative", path)
+		}
+	}
+	return nil
+}
+
+// RoleSpec defines a real child execution role rather than a profile label.
+type RoleSpec struct {
+	Role          Role
+	Profile       string
+	Stance        Stance
+	Instructions  string
+	AllowedTools  []string
+	CanDelegate   bool
+	DefaultBudget Budget
+}
+
+// RoleCatalog resolves immutable built-in role contracts.
+type RoleCatalog struct {
+	specs map[Role]RoleSpec
+}
+
+func DefaultRoleCatalog() RoleCatalog {
+	return NewRoleCatalog([]RoleSpec{
+		{
+			Role: RoleGeneral, Profile: "default", Stance: StanceWrite,
+			Instructions: "Complete the assigned objective within its declared scope and return evidence.",
+			CanDelegate:  true,
+		},
+		{
+			Role: RoleExplore, Profile: "explore", Stance: StanceReadOnly,
+			Instructions: "Investigate the narrow question, cite key files and evidence, and do not modify the workspace.",
+			AllowedTools: []string{"read", "search"}, CanDelegate: true,
+		},
+		{
+			Role: RolePlan, Profile: "plan", Stance: StanceMinimalWrite,
+			Instructions: "Produce a bounded implementation plan, risks, ownership boundaries, and validation criteria.",
+			AllowedTools: []string{"read", "search"}, CanDelegate: true,
+		},
+		{
+			Role: RoleReview, Profile: "review", Stance: StanceReadOnly,
+			Instructions: "Review independently for correctness and regressions; lead with evidence-backed findings.",
+			AllowedTools: []string{"read", "search"}, CanDelegate: false,
+		},
+		{
+			Role: RoleImplementer, Profile: "implement", Stance: StanceWrite,
+			Instructions: "Implement only the assigned objective and owned paths, then verify the resulting behavior.",
+			CanDelegate:  true,
+		},
+		{
+			Role: RoleVerifier, Profile: "verify", Stance: StanceTestFocused,
+			Instructions: "Verify the supplied behavior independently and return commands, outcomes, and residual risk.",
+			AllowedTools: []string{"read", "search", "verify"}, CanDelegate: false,
+		},
+		{
+			Role: RoleAwaiter, Profile: "await", Stance: StanceReadOnly,
+			Instructions: "Wait for the assigned long-running work and report only structured progress or terminal state.",
+			AllowedTools: []string{"read"}, CanDelegate: false,
+		},
+		{
+			Role: RoleCustom, Profile: "custom", Stance: StanceCustom,
+			Instructions: "Follow the explicit custom role instructions without expanding authority or scope.",
+			CanDelegate:  false,
+		},
+	})
+}
+
+func NewRoleCatalog(specs []RoleSpec) RoleCatalog {
+	catalog := RoleCatalog{specs: make(map[Role]RoleSpec, len(specs))}
+	for _, spec := range specs {
+		cloned := spec
+		cloned.AllowedTools = append([]string(nil), spec.AllowedTools...)
+		catalog.specs[spec.Role] = cloned
+	}
+	return catalog
+}
+
+func (c RoleCatalog) Resolve(role Role) (RoleSpec, error) {
+	spec, ok := c.specs[role]
+	if !ok {
+		return RoleSpec{}, fmt.Errorf("unsupported role %q", role)
+	}
+	spec.AllowedTools = append([]string(nil), spec.AllowedTools...)
+	return spec, nil
+}
+
+func (c RoleCatalog) Roles() []Role {
+	roles := make([]Role, 0, len(c.specs))
+	for role := range c.specs {
+		roles = append(roles, role)
+	}
+	sort.Slice(roles, func(i, j int) bool { return roles[i] < roles[j] })
+	return roles
+}
+
+// AgentControl is the single lifecycle entry used by tools, workers, and hosts.
+// Manager remains the synchronized state owner behind this boundary.
+type AgentControl struct {
+	manager *Manager
+	roles   RoleCatalog
+	policy  DelegationPolicy
+}
+
+func NewAgentControl(
+	manager *Manager,
+	roles RoleCatalog,
+	policy DelegationPolicy,
+) (*AgentControl, error) {
+	if manager == nil {
+		return nil, errors.New("agent control requires a manager")
+	}
+	if len(roles.specs) == 0 {
+		roles = DefaultRoleCatalog()
+	}
+	return &AgentControl{manager: manager, roles: roles, policy: policy}, nil
+}
+
+// OpenControl constructs the synchronized state owner and its only lifecycle
+// facade at the orchestration boundary.
+func OpenControl(options Options, mode DelegationMode) (*AgentControl, error) {
+	manager, err := Open(options)
+	if err != nil {
+		return nil, err
+	}
+	policy, err := NewDelegationPolicy(mode)
+	if err != nil {
+		return nil, err
+	}
+	return NewAgentControl(manager, options.Roles, policy)
+}
+
+func (c *AgentControl) Policy() DelegationPolicy { return c.policy }
+
+func (c *AgentControl) Roles() RoleCatalog { return c.roles }
+
+func (c *AgentControl) SpawnIntent(intent DelegationIntent) (*Agent, error) {
+	if c == nil {
+		return nil, errors.New("agent control is unavailable")
+	}
+	if err := c.policy.Admit(intent); err != nil {
+		return nil, err
+	}
+	spec, err := c.roles.Resolve(intent.Role)
+	if err != nil {
+		return nil, err
+	}
+	return c.manager.spawn(intent, spec)
+}
+
+// SpawnInternal preserves the existing internal/test API while ensuring that
+// all production paths still pass through RoleCatalog and DelegationPolicy.
+func (c *AgentControl) SpawnInternal(parentID string, role Role, objective string) (*Agent, error) {
+	return c.SpawnSystem(
+		"internal_task", parentID, role, objective,
+		"Return a concise result with supporting evidence.",
+	)
+}
+
+func (c *AgentControl) SpawnSystem(
+	taskName, parentID string,
+	role Role,
+	objective, expectedOutput string,
+) (*Agent, error) {
+	return c.SpawnIntent(DelegationIntent{
+		TaskName: taskName, Role: role, Objective: objective,
+		ExpectedOutput: expectedOutput, ParentID: parentID, Trigger: TriggerSystem,
+	})
+}
+
+func (c *AgentControl) SpawnBackground(role Role, objective string) (*Agent, error) {
+	return c.SpawnSystem(
+		"background_task", "", role, objective,
+		"Complete the durable task and return structured evidence.",
+	)
+}
+
+// Spawn is the concise internal API used by Runtime tests and callers whose
+// system authority is already established.
+func (c *AgentControl) Spawn(parentID string, role Role, objective string) (*Agent, error) {
+	return c.SpawnInternal(parentID, role, objective)
+}
+
+func (c *AgentControl) Agent(id string) (Agent, bool) {
+	return c.manager.Agent(id)
+}
+
+func (c *AgentControl) List(filter ListFilter) []Agent {
+	return c.manager.List(filter)
+}
+
+func (c *AgentControl) Wait(
+	ctx context.Context,
+	agentIDs []string,
+	timeout time.Duration,
+) (WaitResult, error) {
+	return c.manager.Wait(ctx, agentIDs, timeout)
+}
+
+func (c *AgentControl) FollowUp(ctx context.Context, agentID, prompt string) (string, error) {
+	return c.manager.FollowUp(ctx, agentID, prompt)
+}
+
+func (c *AgentControl) Interrupt(ctx context.Context, agentID string) (Status, error) {
+	return c.manager.Interrupt(ctx, agentID)
+}
+
+func (c *AgentControl) Close(agentID string) error {
+	return c.manager.Close(agentID)
+}
+
+func (c *AgentControl) Takeover(ctx context.Context, agentID, prompt string) (string, error) {
+	return c.manager.Takeover(ctx, agentID, prompt)
+}
+
+func (c *AgentControl) Complete(agentID, message string) error {
+	return c.manager.Complete(agentID, message)
+}
+
+func (c *AgentControl) Fail(agentID, message string) error {
+	return c.manager.Fail(agentID, message)
+}
+
+func (c *AgentControl) Settle(result Result) error {
+	return c.manager.Settle(result)
+}
+
+func (c *AgentControl) Result(agentID string) (Result, bool) {
+	return c.manager.Result(agentID)
+}
+
+func (c *AgentControl) WriteOwner(path string) (string, bool) {
+	return c.manager.WriteOwner(path)
+}
+
+func (c *AgentControl) Mailbox() *Mailbox {
+	return c.manager.Mailbox()
+}
+
+func (c *AgentControl) AttachGraph(graph Graph) error {
+	return c.manager.AttachGraph(graph)
+}
+
+// Manager exposes synchronized runtime state only to construction and legacy
+// test helpers. New lifecycle callers must use AgentControl.
+func (c *AgentControl) Manager() *Manager {
+	if c == nil {
+		return nil
+	}
+	return c.manager
+}
+
+// ChildPrompt renders the role and ownership contract shared by model tools and
+// durable background executors.
+func ChildPrompt(agent Agent, objective string) string {
+	lines := []string{
+		fmt.Sprintf("role=%s profile=%s stance=%s", agent.Role, agent.Profile, agent.Stance),
+		"task_name=" + agent.TaskName,
+		"objective=" + strings.TrimSpace(objective),
+		"expected_output=" + agent.ExpectedOutput,
+	}
+	if len(agent.OwnedPaths) != 0 {
+		lines = append(lines, "owned_paths="+strings.Join(agent.OwnedPaths, ","))
+	}
+	if strings.TrimSpace(agent.RoleInstructions) != "" {
+		lines = append(lines, "role_instructions="+agent.RoleInstructions)
+	}
+	return strings.Join(lines, "\n")
+}

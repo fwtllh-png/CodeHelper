@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 )
 
-// operation dispatches model-visible agent control-plane tools onto Manager.
+// operation dispatches one model-visible lifecycle tool onto AgentControl.
 type operation struct {
 	tools *Tool
 	kind  string
@@ -20,15 +19,15 @@ type operation struct {
 
 func (o *operation) Descriptor() tool.Descriptor {
 	switch o.kind {
-	case "agent_wait":
+	case "wait_agent":
 		return tool.Descriptor{
-			Name: "agent_wait",
+			Name: "wait_agent",
 			Description: "Wait until listed child agents reach a terminal status " +
 				"(completed|errored|interrupted|shutdown). Empty agent_ids waits for any. " +
 				"timeout_ms>0 returns timed_out without error when the deadline elapses. " +
 				"A queued same-workspace child returns deferred immediately because it can start only " +
 				"after the calling turn releases the workspace.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+			Visibility: o.visibility(), Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			InputSchema: map[string]any{
@@ -42,12 +41,12 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"additionalProperties": false,
 			},
 		}
-	case "agent_list":
+	case "list_agents":
 		return tool.Descriptor{
-			Name: "agent_list",
+			Name: "list_agents",
 			Description: "List child agents managed by this session. " +
 				"Optionally filter by parent_id; include_closed lists shutdown agents.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+			Visibility: o.visibility(), Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			InputSchema: map[string]any{
@@ -59,13 +58,34 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"additionalProperties": false,
 			},
 		}
-	case "agent_followup":
+	case "send_message":
 		return tool.Descriptor{
-			Name: "agent_followup",
+			Name: "send_message",
+			Description: "Queue a bounded message for an open child agent without starting a new turn. " +
+				"Use followup_task when the message should begin more work.",
+			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
+			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelConcurrent,
+			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
+			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
+				Kind: "agent", Field: "agent_id", Access: tool.AccessWrite,
+			}}},
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"agent_id": map[string]any{"type": "string", "minLength": float64(1)},
+					"message":  map[string]any{"type": "string", "minLength": float64(1)},
+				},
+				"required":             []string{"agent_id", "message"},
+				"additionalProperties": false,
+			},
+		}
+	case "followup_task":
+		return tool.Descriptor{
+			Name: "followup_task",
 			Description: "Send a follow-up turn to a resident child agent. " +
 				"Fails if the agent is running, closed, or missing. " +
 				"Interrupt or wait for completion before following up.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
+			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -81,12 +101,12 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"additionalProperties": false,
 			},
 		}
-	case "agent_interrupt":
+	case "interrupt_agent":
 		return tool.Descriptor{
-			Name: "agent_interrupt",
+			Name: "interrupt_agent",
 			Description: "Interrupt a running child agent turn. The agent stays open " +
-				"(worktree retained) so agent_followup can resume.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
+				"(worktree retained) so followup_task can resume.",
+			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -101,13 +121,13 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"additionalProperties": false,
 			},
 		}
-	case "agent_close":
+	case "close_agent":
 		return tool.Descriptor{
-			Name: "agent_close",
+			Name: "close_agent",
 			Description: "Close a child agent, free its concurrency slot, and cleanup its worktree. " +
-				"Merge with agent_merge first if you need the child's writes in the parent workspace; " +
-				"Close discards the worktree. Prefer agent_wait until terminal status before closing.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
+				"Integrate with integrate_agent first if you need the child's writes in the parent workspace; " +
+				"Close discards the worktree. Prefer wait_agent until terminal status before closing.",
+			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -122,15 +142,15 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"additionalProperties": false,
 			},
 		}
-	case "agent_merge":
+	case "integrate_agent":
 		return tool.Descriptor{
-			Name: "agent_merge",
+			Name: "integrate_agent",
 			Description: "Apply a writing child's worktree changes into the parent workspace via " +
 				"the same validate-then-apply path as file_apply (journal + turnDiff + Verify Gate). " +
 				"dry_run defaults to true — preview the unified diff before applying. " +
 				"Fails on write-claim conflicts or when the parent drifted from the child's base revision. " +
-				"Requires an open isolated child with a settled result; do not agent_close first.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
+				"Requires an open isolated child with a settled result; do not close_agent first.",
+			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessTree, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{
@@ -162,129 +182,87 @@ func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Resu
 		return tool.Result{}, errors.New("agent tool is not configured")
 	}
 	switch o.kind {
-	case "agent_wait":
+	case "wait_agent":
 		return o.tools.wait(ctx, raw)
-	case "agent_list":
+	case "list_agents":
 		return o.tools.list(raw)
-	case "agent_followup":
+	case "send_message":
+		return o.tools.sendMessage(raw)
+	case "followup_task":
 		return o.tools.followUp(ctx, raw)
-	case "agent_interrupt":
+	case "interrupt_agent":
 		return o.tools.interrupt(ctx, raw)
-	case "agent_close":
+	case "close_agent":
 		return o.tools.closeAgent(raw)
-	case "agent_merge":
+	case "integrate_agent":
 		return o.tools.merge(ctx, raw)
 	default:
-		var input struct {
-			Op string `json:"op"`
-		}
-		if err := json.Unmarshal(raw, &input); err != nil {
-			return tool.Result{}, err
-		}
-		switch strings.TrimSpace(input.Op) {
-		case "", "spawn":
-			return o.tools.spawn(ctx, raw)
-		case "wait":
-			return o.tools.wait(ctx, raw)
-		case "list":
-			return o.tools.list(raw)
-		case "followup":
-			return o.tools.followUp(ctx, raw)
-		case "interrupt":
-			return o.tools.interrupt(ctx, raw)
-		case "close":
-			return o.tools.closeAgent(raw)
-		case "merge":
-			return o.tools.merge(ctx, raw)
-		default:
-			return tool.Result{}, fmt.Errorf("unsupported agent operation %q", input.Op)
-		}
+		return o.tools.spawn(ctx, raw)
 	}
 }
 
 func (t *Tool) spawnDescriptor() tool.Descriptor {
 	return tool.Descriptor{
-		Name: "agent",
-		Description: "Spawn or control child agents. Omit op (or use op=spawn) to create an " +
-			"isolated child with its own worktree and mailbox. Compatibility operations: " +
-			"list, wait, followup, interrupt, close, merge; the dedicated agent_* tools remain available. " +
-			"Roles: general|explore|plan|review|implementer|verifier|custom " +
-			"(aliases: worker→general, reviewer→review, planner→plan). " +
+		Name: "spawn_agent",
+		Description: "Create an asynchronous child agent after delegation admission. " +
+			"Provide a short task_name, one objective, the expected output, and the authority trigger. " +
+			"Roles: general|explore|plan|review|implementer|verifier|awaiter|custom. " +
+			"Declare owned_paths for writing work; omit them for read-only roles. " +
 			"fork_context:true inherits the parent prompt prefix when available. " +
 			"Returns agent_id, structured receipt, and a transcript var_handle for handle_read. " +
-			"Use agent_wait / agent_followup / agent_interrupt / agent_list / agent_merge / agent_close for control.",
-		Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
+			"Use wait_agent, followup_task, interrupt_agent, list_agents, integrate_agent, and close_agent for control.",
+		Visibility: t.visibility(), Capability: tool.CapabilityWrite,
 		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 		SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 		ResourceResolver: tool.ResourceResolver{
 			Templates: []tool.ResourceTemplate{
 				{Kind: "agent", Field: "parent_id", Access: tool.AccessWrite},
-				{Kind: "agent", Field: "agent_id", Access: tool.AccessWrite},
 			},
-			ChangesField: "changes",
 		},
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"op": map[string]any{
-					"type": "string",
-					"enum": []any{"spawn", "list", "wait", "followup", "interrupt", "close", "merge"},
-				},
-				"prompt": map[string]any{"type": "string", "minLength": float64(1)},
+				"task_name":       map[string]any{"type": "string", "minLength": float64(1)},
+				"objective":       map[string]any{"type": "string", "minLength": float64(1)},
+				"expected_output": map[string]any{"type": "string", "minLength": float64(1)},
 				"role": map[string]any{
 					"type": "string",
 					"enum": []any{
-						"general", "explore", "plan", "review", "implementer", "verifier", "custom",
+						"general", "explore", "plan", "review", "implementer", "verifier", "awaiter", "custom",
 						"worker", "reviewer", "planner",
 					},
+				},
+				"trigger": map[string]any{
+					"type": "string",
+					"enum": []any{"user", "developer", "skill", "system", "adaptive"},
+				},
+				"owned_paths": map[string]any{
+					"type": "array", "items": map[string]any{"type": "string"},
 				},
 				"parent_id":      map[string]any{"type": "string"},
 				"fork_context":   map[string]any{"type": "boolean"},
 				"parent_context": map[string]any{"type": "string"},
-				"agent_id":       map[string]any{"type": "string", "minLength": float64(1)},
-				"agent_ids": map[string]any{
-					"type": "array", "items": map[string]any{"type": "string"},
-				},
-				"timeout_ms":     map[string]any{"type": "integer"},
-				"include_closed": map[string]any{"type": "boolean"},
-				"dry_run":        map[string]any{"type": "boolean"},
-				"paths": map[string]any{
-					"type": "array", "items": map[string]any{"type": "string"},
-				},
 			},
-			"oneOf": []any{
-				map[string]any{
-					"properties": map[string]any{"op": map[string]any{"const": "spawn"}},
-					"required":   []string{"prompt"},
-				},
-				map[string]any{
-					"properties": map[string]any{"op": map[string]any{"const": "list"}},
-					"required":   []string{"op"},
-				},
-				map[string]any{
-					"properties": map[string]any{"op": map[string]any{"const": "wait"}},
-					"required":   []string{"op"},
-				},
-				map[string]any{
-					"properties": map[string]any{"op": map[string]any{"const": "followup"}},
-					"required":   []string{"op", "agent_id", "prompt"},
-				},
-				map[string]any{
-					"properties": map[string]any{"op": map[string]any{"const": "interrupt"}},
-					"required":   []string{"op", "agent_id"},
-				},
-				map[string]any{
-					"properties": map[string]any{"op": map[string]any{"const": "close"}},
-					"required":   []string{"op", "agent_id"},
-				},
-				map[string]any{
-					"properties": map[string]any{"op": map[string]any{"const": "merge"}},
-					"required":   []string{"op", "agent_id"},
-				},
+			"required": []string{
+				"task_name", "role", "objective", "expected_output", "trigger",
 			},
 			"additionalProperties": false,
 		},
 	}
+}
+
+func (o *operation) visibility() tool.Visibility {
+	if o == nil || o.tools == nil {
+		return tool.VisibleInternal
+	}
+	return o.tools.visibility()
+}
+
+func (t *Tool) visibility() tool.Visibility {
+	if t != nil && t.control != nil && t.control.Policy().ModelVisible() {
+		return tool.VisibleModel
+	}
+	return tool.VisibleInternal
 }
 
 func agentSnapshot(agent subagent.Agent) map[string]any {
@@ -294,6 +272,8 @@ func agentSnapshot(agent subagent.Agent) map[string]any {
 		"isolated": agent.Isolated, "serialized": agent.Serialized, "base_rev": agent.BaseRev,
 		"parent_id": agent.Parent, "status": string(agent.Status),
 		"turn_id": agent.TurnID, "last_message": agent.LastMessage, "closed": agent.Closed,
+		"task_name": agent.TaskName, "expected_output": agent.ExpectedOutput,
+		"owned_paths": agent.OwnedPaths, "delegation_trigger": agent.DelegationTrigger,
 	}
 	// The structured result is the point of waiting on a child: without it the
 	// parent would only learn that the child stopped, not what it established.
@@ -335,7 +315,7 @@ func (t *Tool) wait(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 			},
 		}, nil
 	}
-	result, err := t.manager.Wait(ctx, input.AgentIDs, timeout)
+	result, err := t.control.Wait(ctx, input.AgentIDs, timeout)
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -358,7 +338,7 @@ func (t *Tool) wait(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 
 func (t *Tool) serializedWaitTargets(agentIDs []string) []subagent.Agent {
 	if len(agentIDs) == 0 {
-		listed := t.manager.List(subagent.ListFilter{})
+		listed := t.control.List(subagent.ListFilter{})
 		queued := make([]subagent.Agent, 0, len(listed))
 		for _, agent := range listed {
 			if agent.Serialized && !subagent.IsTerminal(agent.Status) {
@@ -369,7 +349,7 @@ func (t *Tool) serializedWaitTargets(agentIDs []string) []subagent.Agent {
 	}
 	queued := make([]subagent.Agent, 0, len(agentIDs))
 	for _, agentID := range agentIDs {
-		agent, ok := t.manager.Agent(agentID)
+		agent, ok := t.control.Agent(agentID)
 		if ok && agent.Serialized && !subagent.IsTerminal(agent.Status) {
 			queued = append(queued, agent)
 		}
@@ -385,7 +365,7 @@ func (t *Tool) list(raw json.RawMessage) (tool.Result, error) {
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
 	}
-	listed := t.manager.List(subagent.ListFilter{
+	listed := t.control.List(subagent.ListFilter{
 		ParentID: strings.TrimSpace(input.ParentID), IncludeClosed: input.IncludeClosed,
 	})
 	agents := make([]map[string]any, 0, len(listed))
@@ -403,6 +383,46 @@ func (t *Tool) list(raw json.RawMessage) (tool.Result, error) {
 	}, nil
 }
 
+func (t *Tool) sendMessage(raw json.RawMessage) (tool.Result, error) {
+	var input struct {
+		AgentID string `json:"agent_id"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return tool.Result{}, err
+	}
+	agentID := strings.TrimSpace(input.AgentID)
+	message := strings.TrimSpace(input.Message)
+	if agentID == "" || message == "" {
+		return tool.Result{}, errors.New("agent_id and message are required")
+	}
+	if _, ok := t.control.Agent(agentID); !ok {
+		return tool.Result{}, errors.New("agent not found")
+	}
+	body, err := json.Marshal(map[string]any{
+		"kind": "message", "message": message,
+	})
+	if err != nil {
+		return tool.Result{}, err
+	}
+	delivered, err := t.control.Mailbox().Deliver("parent", agentID, body)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	content, err := json.Marshal(map[string]any{
+		"agent_id": agentID, "sequence": delivered.Sequence, "queued": true,
+	})
+	if err != nil {
+		return tool.Result{}, err
+	}
+	return tool.Result{
+		Content: string(content),
+		Metadata: map[string]any{
+			"agent_id": agentID, "sequence": delivered.Sequence, "queued": true,
+		},
+	}, nil
+}
+
 func (t *Tool) followUp(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
 	var input struct {
 		AgentID string `json:"agent_id"`
@@ -416,11 +436,11 @@ func (t *Tool) followUp(ctx context.Context, raw json.RawMessage) (tool.Result, 
 	if agentID == "" || prompt == "" {
 		return tool.Result{}, errors.New("agent_id and prompt are required")
 	}
-	turn, err := t.manager.FollowUp(ctx, agentID, prompt)
+	turn, err := t.control.FollowUp(ctx, agentID, prompt)
 	if err != nil {
 		return tool.Result{}, err
 	}
-	snap, _ := t.manager.Agent(agentID)
+	snap, _ := t.control.Agent(agentID)
 	body := map[string]any{
 		"agent_id": agentID, "turn": turn, "status": string(snap.Status),
 		"follow_up": true,
@@ -448,11 +468,11 @@ func (t *Tool) interrupt(ctx context.Context, raw json.RawMessage) (tool.Result,
 	if agentID == "" {
 		return tool.Result{}, errors.New("agent_id is required")
 	}
-	prev, err := t.manager.Interrupt(ctx, agentID)
+	prev, err := t.control.Interrupt(ctx, agentID)
 	if err != nil {
 		return tool.Result{}, err
 	}
-	snap, ok := t.manager.Agent(agentID)
+	snap, ok := t.control.Agent(agentID)
 	status := subagent.StatusInterrupted
 	if ok {
 		status = snap.Status
@@ -483,9 +503,9 @@ func (t *Tool) closeAgent(raw json.RawMessage) (tool.Result, error) {
 	if agentID == "" {
 		return tool.Result{}, errors.New("agent_id is required")
 	}
-	snap, _ := t.manager.Agent(agentID)
+	snap, _ := t.control.Agent(agentID)
 	worktree := snap.Worktree
-	if err := t.manager.Close(agentID); err != nil {
+	if err := t.control.Close(agentID); err != nil {
 		return tool.Result{}, err
 	}
 	if t.onRelease != nil {

@@ -95,14 +95,21 @@ durable = true
 recover_on_start = true
 
 [execution.subagent]
+delegation = "explicit"      # disabled | explicit | adaptive
 max_depth = 5
 max_parallel = 4
-max_steps = 8
+max_steps = 24
 max_tokens = 0
 max_cost_usd = 0
 wall_time = "5m"
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
 
+
+`delegation = "explicit"` exposes `spawn_agent` only with user, developer,
+Skill, or internal system authority. `adaptive` also allows the model to
+delegate independent work when parallel benefit exceeds coordination cost.
+`disabled` hides Agent lifecycle tools from the model while preserving
+internally authorized durable worker execution.
 [execution.worker]
 enabled = false
 max_parallel = 2

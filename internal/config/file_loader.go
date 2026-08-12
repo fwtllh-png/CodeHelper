@@ -33,6 +33,7 @@ type executionFileConfig struct {
 		Timeout        *string `toml:"timeout"`
 	} `toml:"verify"`
 	Subagent struct {
+		Delegation  *string  `toml:"delegation"`
 		MaxDepth    *int     `toml:"max_depth"`
 		MaxParallel *int     `toml:"max_parallel"`
 		MaxSteps    *int     `toml:"max_steps"`
@@ -299,6 +300,7 @@ func applyExecutionFile(
 	applyInt(input.Verify.MaxRepairSteps, &verify.MaxRepairSteps, fieldVerifyRepair, source, provenance)
 	applyDurationString(input.Verify.Timeout, &verify.Timeout, fieldVerifyTimeout, source, provenance)
 	child := &execution.Subagent
+	applyString(input.Subagent.Delegation, &child.Delegation, fieldSubagentDelegation, source, provenance)
 	applyInt(input.Subagent.MaxDepth, &child.MaxDepth, fieldSubagentMaxDepth, source, provenance)
 	applyInt(input.Subagent.MaxParallel, &child.MaxParallel, fieldSubagentMaxParallel, source, provenance)
 	applyInt(input.Subagent.MaxSteps, &child.MaxSteps, fieldSubagentMaxSteps, source, provenance)

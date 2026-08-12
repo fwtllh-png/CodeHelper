@@ -9,6 +9,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -47,6 +48,51 @@ func TestChildTurnIntentUsesEffectiveWorkspaceAuthority(t *testing.T) {
 				testCase.want,
 			)
 		}
+	}
+}
+
+func TestPersistentSessionPublishesAgentSpawnLive(t *testing.T) {
+	workspace := t.TempDir()
+	store, err := state.Open(t.Context(), state.Options{
+		DataDir:     filepath.Join(t.TempDir(), "state"),
+		BusyTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := true
+	session, err := NewExec(t.Context(), ExecOptions{
+		FixturePath:     subagentFixture(t, "subagent"),
+		Permission:      "bypass",
+		PersistentStore: store,
+		ConfigOverrides: config.Overrides{
+			Tools: &tools, Workspace: &workspace,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = session.Close(context.Background())
+		_ = store.CloseAll(context.Background())
+	})
+	cursor := session.Runtime.Snapshot(t.Context()).LastSequence
+	events, err := session.Runtime.Events(t.Context(), cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := session.subagents.Spawn("", subagent.RoleExplore, "inspect")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		data, ok := event.Data.(*protocol.AgentSpawnedData)
+		if !ok || data.AgentID != child.ID {
+			t.Fatalf("event = %#v, want agent.spawned for %s", event, child.ID)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("live agent.spawned event was not published")
 	}
 }
 

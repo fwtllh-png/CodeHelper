@@ -98,11 +98,11 @@ func agentFromEdge(edge GraphEdge) *Agent {
 	}
 }
 
-func (m *Manager) recordSpawnLocked(agent *Agent) {
+func (m *Manager) recordSpawnLocked(agent *Agent) error {
 	if m.graph == nil || agent == nil {
-		return
+		return nil
 	}
-	_ = m.graph.RecordSpawn(GraphEdge{
+	return m.graph.RecordSpawn(GraphEdge{
 		ParentID: agent.Parent, ChildID: agent.ID, Status: agent.Status,
 		Workspace: agent.Workspace, SessionID: agent.SessionID,
 		Role: agent.Role, Profile: agent.Profile, Stance: agent.Stance,
