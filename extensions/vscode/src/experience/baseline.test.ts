@@ -295,13 +295,22 @@ void test("Chat presents Provider and Model as one route control", async () => {
 void test("Chat renders process activity as an ordered collapsible timeline", async () => {
   const transcript = await sourceFile("chat", "webview", "transcript.ts");
   const client = await sourceFile("chat", "webview", "client.ts");
-  const projector = await sourceFile("chat", "projector.ts");
+  const projectorModel = await sourceFile("chat", "projector", "model.ts");
+  const streamProjector = await sourceFile(
+    "chat", "projector", "stream-projector.ts",
+  );
+  const toolProjector = await sourceFile(
+    "chat", "projector", "tool-projector.ts",
+  );
   const styles = await sourceFile("chat", "webview", "styles.css");
 
-  assert.match(projector, /readonly timeline: readonly TurnTimelineItem\[\]/u);
-  assert.match(projector, /appendTimelineText\(turn, "output"/u);
-  assert.match(projector, /appendTimelineText\(turn, "reasoning"/u);
-  assert.match(projector, /ensureToolTimelineItem\(turn/u);
+  assert.match(
+    projectorModel,
+    /readonly timeline: readonly TurnTimelineItem\[\]/u,
+  );
+  assert.match(streamProjector, /appendTimelineText\(turn, "output"/u);
+  assert.match(streamProjector, /appendTimelineText\(turn, "reasoning"/u);
+  assert.match(toolProjector, /ensureToolTimelineItem\(turn/u);
   assert.match(transcript, /appendTimeline\(stream, turn, trusted, actions\)/u);
   assert.match(transcript, /className = "turn-stream"/u);
   assert.match(transcript, /group\.className = "activity-group"/u);

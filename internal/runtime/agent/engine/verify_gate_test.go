@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
@@ -84,13 +85,13 @@ func newVerifyGateFixture(
 		t.Fatal(err)
 	}
 	streams := []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "read", Name: "file_read", Arguments: `{"path":"value.txt"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "edit", Name: "file_edit",
 				Arguments: `{"path":"value.txt","old":"before","new":"after"}`,
@@ -99,7 +100,7 @@ func newVerifyGateFixture(
 		}},
 	}
 	for range 1 + extraReplies {
-		streams = append(streams, &provider.SliceStream{Events: []provider.StreamEvent{
+		streams = append(streams, &providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}})
@@ -353,7 +354,7 @@ func TestVerifyGateRunnerErrorDependsOnMode(t *testing.T) {
 func TestVerifyGateSkipsTurnsWithoutFileChanges(t *testing.T) {
 	verifier := &scriptedVerifier{receipts: []verify.Receipt{failedReceipt("never runs")}}
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "nothing to change"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -429,14 +430,14 @@ func TestVerifyGateCoversToolsWhoseArgumentsCarryNoPath(t *testing.T) {
 	}
 	verifier := &scriptedVerifier{receipts: []verify.Receipt{failedReceipt("broken")}}
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "patch", Name: "fake_patch",
 				Arguments: `{"patch":"--- a/value.txt\n+++ b/value.txt\n"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -493,14 +494,14 @@ func TestVerifyGateSkipsWritesThatChangeNoBytes(t *testing.T) {
 	}
 	verifier := &scriptedVerifier{receipts: []verify.Receipt{failedReceipt("never runs")}}
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "patch", Name: "fake_patch",
 				Arguments: `{"patch":"--- a/value.txt\n+++ b/value.txt\n"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}},

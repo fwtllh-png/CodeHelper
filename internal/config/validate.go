@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -399,9 +398,4 @@ func fieldError(field string, provenance map[string]Source, reason string) error
 		source = SourceDefault
 	}
 	return &FieldError{Field: field, Source: source, Reason: reason}
-}
-
-func IsFieldError(err error) bool {
-	var target *FieldError
-	return errors.As(err, &target)
 }

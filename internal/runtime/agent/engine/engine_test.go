@@ -20,6 +20,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
@@ -52,14 +53,14 @@ func (b engineSandboxBackend) Prepare(_ context.Context, command sandbox.Command
 
 func TestEngineExecutesToolAndFeedsResultOnce(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStart},
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "echo", Arguments: `{"text":"hello"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStart},
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
@@ -100,7 +101,7 @@ func TestEngineExecutesToolAndFeedsResultOnce(t *testing.T) {
 
 func TestEngineReplaysCanonicalDuplicateToolCallsWithinTurn(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "lookup",
 				Arguments: `{"a":1,"b":2}`,
@@ -155,13 +156,13 @@ func TestEngineReplaysCanonicalDuplicateToolCallsWithinTurn(t *testing.T) {
 
 func TestEngineFailsWhenCompletionRepairRemainsEmpty(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
 		}},
 	}}
@@ -176,7 +177,7 @@ func TestEngineFailsWhenCompletionRepairRemainsEmpty(t *testing.T) {
 
 func TestEngineRepairsEmptyFinalResponse(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
 		}},
 		textStream("无法继续执行，但已明确说明原因。"),
@@ -234,13 +235,13 @@ func TestWorkspaceChangeIntentRejectsTextOnlyCompletion(t *testing.T) {
 
 func TestCompletionRepairHasIndependentStepBudget(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "echo", Arguments: `{"text":"evidence"}`,
 			}},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
 		}},
 		textStream("最终结论：验证完成。"),
@@ -268,7 +269,7 @@ func TestCompletionRepairHasIndependentStepBudget(t *testing.T) {
 
 func TestEngineContinuesIncompleteProviderStop(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "partial"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
 		}},
@@ -298,7 +299,7 @@ func TestEngineContinuesIncompleteProviderStop(t *testing.T) {
 
 func TestEngineUsesBoundedFinishRouteAfterReasoningOnlyMaxTokens(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventReasoningDelta, Text: "completed analysis"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
 		}},
@@ -342,7 +343,7 @@ func TestEngineUsesBoundedFinishRouteAfterReasoningOnlyMaxTokens(t *testing.T) {
 
 func TestEngineDoesNotUseFinishRouteForPartialToolCall(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "partial", Name: "echo", Arguments: `{"text":`,
 			}},
@@ -373,15 +374,15 @@ func TestEngineDoesNotUseFinishRouteForPartialToolCall(t *testing.T) {
 
 func TestEngineFailsAfterBoundedIncompleteContinuations(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "one"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonIncomplete},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: " two"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: " three"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonIncomplete},
 		}},
@@ -402,7 +403,7 @@ func TestEngineFailsAfterBoundedIncompleteContinuations(t *testing.T) {
 
 func TestEngineDoesNotContinueContentFilterStop(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "blocked"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonContentFilter},
 		}},
@@ -418,11 +419,11 @@ func TestEngineDoesNotContinueContentFilterStop(t *testing.T) {
 
 func TestEngineIncompleteContinuationCanResumeWithToolCall(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "checking"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "echo", Arguments: `{"text":"evidence"}`,
 			}},
@@ -452,13 +453,13 @@ func TestEngineIncompleteContinuationCanResumeWithToolCall(t *testing.T) {
 
 func TestEngineRepairsInterruptedPostToolNarrationBeforeCompletion(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "echo", Arguments: `{"text":"evidence"}`,
 			}},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "所有事实齐备，现在提交修改："},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
 		}},
@@ -503,14 +504,14 @@ func TestEngineRepairsInterruptedPostToolNarrationBeforeCompletion(t *testing.T)
 
 func TestEngineRepairsNarrationAfterStructuredToolFailure(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "result_error", Arguments: `{}`,
 			}},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
 		}},
 		textStream("小笔误，修正后重跑："),
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_2", Name: "echo", Arguments: `{"text":"fixed"}`,
 			}},
@@ -548,7 +549,7 @@ func TestEngineRepairsNarrationAfterStructuredToolFailure(t *testing.T) {
 
 func TestEngineDoesNotClearToolFailureWithTextOnlyPromises(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "result_error", Arguments: `{}`,
 			}},
@@ -578,20 +579,20 @@ func TestEngineDoesNotClearToolFailureWithTextOnlyPromises(t *testing.T) {
 
 func TestEngineRetainsFailureUntilPostRecoveryCompletionCheck(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "result_error", Arguments: `{}`,
 			}},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_2", Name: "echo", Arguments: `{"text":"recovered"}`,
 			}},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
 		}},
 		textStream("与预期有出入，直接精确核实："),
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_3", Name: "echo", Arguments: `{"text":"verified"}`,
 			}},
@@ -631,28 +632,28 @@ func TestEngineRetainsFailureUntilPostRecoveryCompletionCheck(t *testing.T) {
 
 func TestEngineResetsCompletionRepairBudgetAfterToolProgress(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "result_error", Arguments: `{}`,
 			}},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
 		}},
 		textStream("I will retry the first failed check."),
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_2", Name: "echo", Arguments: `{"text":"first recovered"}`,
 			}},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
 		}},
 		textStream("I will verify the first recovery."),
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_3", Name: "result_error", Arguments: `{}`,
 			}},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
 		}},
 		textStream("I will retry the second failed check."),
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_4", Name: "echo", Arguments: `{"text":"second recovered"}`,
 			}},
@@ -1081,7 +1082,7 @@ func TestRunToolsCancellationClosesKernelLifecycle(t *testing.T) {
 
 func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: "panic_tool", Arguments: `{}`,
 			}},
@@ -1221,13 +1222,13 @@ func TestEngineUsesWebSearchCitationToCompleteTurn(t *testing.T) {
 	t.Setenv("CODEHELPER_WEB_SEARCH_URL", searchServer.URL)
 
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "web_1", Name: "web_search", Arguments: `{"query":"verified answer"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "completed with citation"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -1260,7 +1261,7 @@ func TestEngineUsesWebSearchCitationToCompleteTurn(t *testing.T) {
 func TestEngineRetriesOnlyBeforeMeaningfulStreamData(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&errorStream{err: errors.New("temporary")},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStart},
 			{Type: provider.EventTextDelta, Text: "ok"},
 			{Type: provider.EventMessageStop},
@@ -1325,13 +1326,13 @@ func TestTurnCatalogSnapshotRejectsReplacementAndRemainsFrozen(t *testing.T) {
 	runtime := &catalogMutationProvider{
 		registry: registry,
 		streams: []provider.Stream{
-			&provider.SliceStream{Events: []provider.StreamEvent{
+			&providerfixture.SliceStream{Events: []provider.StreamEvent{
 				{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 					Index: 0, ID: "call_stale", Name: "echo", Arguments: `{"text":"old"}`,
 				}},
 				{Type: provider.EventMessageStop},
 			}},
-			&provider.SliceStream{Events: []provider.StreamEvent{
+			&providerfixture.SliceStream{Events: []provider.StreamEvent{
 				{Type: provider.EventTextDelta, Text: "recovered"},
 				{Type: provider.EventMessageStop},
 			}},
@@ -1377,7 +1378,7 @@ func TestProviderRetryReusesCatalogSnapshot(t *testing.T) {
 		registry: registry,
 		streams: []provider.Stream{
 			&errorStream{err: errors.New("temporary")},
-			&provider.SliceStream{Events: []provider.StreamEvent{
+			&providerfixture.SliceStream{Events: []provider.StreamEvent{
 				{Type: provider.EventTextDelta, Text: "ok"},
 				{Type: provider.EventMessageStop},
 			}},
@@ -1465,7 +1466,7 @@ func TestExtensionSnapshotProjectsOncePerTurn(t *testing.T) {
 
 func TestSamplingFailsClosedUntilToolCatalogSyncRecovers(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStart},
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
@@ -1523,7 +1524,7 @@ func TestEngineToolsOffAndOnUseSameImplementation(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			runtime := &scriptedProvider{streams: []provider.Stream{
-				&provider.SliceStream{Events: []provider.StreamEvent{
+				&providerfixture.SliceStream{Events: []provider.StreamEvent{
 					{Type: provider.EventTextDelta, Text: "ok"},
 					{Type: provider.EventMessageStop},
 				}},
@@ -1545,13 +1546,13 @@ func TestEngineToolsOffAndOnUseSameImplementation(t *testing.T) {
 
 func TestEngineReplaysReasoningSignatureAndNativeSearch(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventReasoningDelta, Index: 0, Text: "think"},
 			{Type: provider.EventReasoningSignature, Index: 0, Signature: "signed"},
 			{Type: provider.EventTextDelta, Index: 1, Text: "first"},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "second"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -1634,7 +1635,7 @@ func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 
 func TestEngineUnauthorizedToolHasSingleFailedTerminal(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "call_1", Name: "echo", Arguments: `{"text":"hello"}`,
 			}},
@@ -2301,7 +2302,7 @@ func TestFailedTurnCompactsWithinOversizedDurableLastTurn(t *testing.T) {
 
 func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -2354,7 +2355,7 @@ func assertStateOrder(t *testing.T, got []State, want ...State) {
 
 func TestEnginePreSamplingGateBeforeModelCall(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "ok"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -2480,7 +2481,7 @@ func TestEngineMailboxNonTriggerHeldUntilNextTurn(t *testing.T) {
 	}
 	// Next turn should promote held mailbox before/with user prompt inject path.
 	runtime2 := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "ok"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -2507,13 +2508,13 @@ func TestEngineMailboxNonTriggerHeldUntilNextTurn(t *testing.T) {
 
 func TestEngineUndoRemovesCompleteToolTurnAndForkIsIndependent(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "call_1", Name: "echo", Arguments: `{"text":"hello"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -2535,7 +2536,7 @@ func TestEngineUndoRemovesCompleteToolTurnAndForkIsIndependent(t *testing.T) {
 
 func TestEngineCloneEmptyIsolatesHistoryAndGuard(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "hello"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -2621,20 +2622,20 @@ func runWorkspaceEditTurn(
 		t.Fatal(err)
 	}
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "read", Name: "file_read", Arguments: `{"path":"value.txt"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "edit", Name: "file_edit",
 				Arguments: `{"path":"value.txt","old":"before","new":"after"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -2855,7 +2856,7 @@ func (p *steerProvider) Stream(ctx context.Context, request provider.ModelReques
 	if p.calls.Add(1) == 1 {
 		return &steerStream{ctx: ctx, started: p.started}, nil
 	}
-	return &provider.SliceStream{Events: []provider.StreamEvent{
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 		{Type: provider.EventTextDelta, Text: "final"},
 		{Type: provider.EventMessageStop},
 	}}, nil

@@ -2,7 +2,6 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 
 	diagnostics "github.com/fwtllh-png/CodeHelper/internal/adapter/lsp"
@@ -60,14 +59,6 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"additionalProperties": false,
 		},
 	}
-}
-
-func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	executor, err := t.typedExecutor()
-	if err != nil {
-		return tool.Result{}, err
-	}
-	return executor.Execute(ctx, raw)
 }
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {

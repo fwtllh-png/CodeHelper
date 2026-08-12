@@ -27,7 +27,6 @@ source_of_truth:
   - internal/runtime/app/terminal_publisher.go
   - internal/runtime/app/service_facade.go
   - internal/runtime/app/eventhub/hub.go
-  - internal/runtime/app/service/contracts.go
   - internal/runtime/app/session_artifacts.go
   - internal/runtime/app/application.go
   - internal/runtime/app/chatmerge/service.go
@@ -141,10 +140,9 @@ Pending Outbox Entry，再且仅在存在匹配 Domain Facts 时重排已接受�
 Operation。
 
 `SessionService` 拥有 Lifecycle、Profile 和 Tool Catalog；`ArtifactService` 拥有
-Checkpoint、Plan、Turn Recovery 与 Artifact Persistence。Host 依赖的 Contract 位于
-独立 `app/service` Package（`Session` 与 `Artifact[Recovery, Plan]` 接口），实现只是
-Runtime Port 上的 Adapter，不包含 Host 逻辑。Runtime 嵌入两个 Service，Host 继续
-使用原 Facade API，不产生重复转发方法。
+Checkpoint、Plan、Turn Recovery 与 Artifact Persistence。Runtime 直接通过
+Runtime-owned Port 暴露窄化的 Host Query Method，不再保留平行的 Interface-only
+Package，也不复制 Host Execution Logic。
 
 ## Chat Merge 与 Durable Assembly
 
@@ -162,10 +160,10 @@ Runtime Port 上的 Adapter，不包含 Host 逻辑。Runtime 嵌入两个 Servi
 
 `internal/runtime/app/persistence` 是 Durable Assembly 边界：它在
 `persist/state.Store` 之上组合 Session、Thread、Task、Snapshot、Usage、Trace
-Repository，恢复被中断的 Task，并在接受 Operation 前以 `PreparePersistentRuntime`
-/`NewPersistentRuntime` 准备或启动 Persistent `app.Runtime`。`EnsureThread` 预置
-Workspace/Session/Thread 行，使 CLI/TUI Host 可以在 Persistent Runtime 上启动
-Turn。
+Repository，恢复被中断的 Task，并以 `PreparePersistentRuntime` 准备 Persistent
+`app.Runtime`。Composition Owner 只在外围依赖图就绪后调用 `Start`。`EnsureThread`
+预置 Workspace/Session/Thread 行，使 CLI/TUI Host 可以在 Persistent Runtime 上
+启动 Turn。
 
 ## Event Projection
 
@@ -193,7 +191,6 @@ Stream、不授权 Tool，也不调用 `turnkernel.Reducer.Apply`。Turn Coordin
 | Operation Outcome/Handler | `operation_dispatch.go` |
 | Active Turn Lease/Control | `active_turn_registry.go` |
 | Event Sequence/Replay/Subscriber | `eventhub/hub.go` |
-| Host 依赖 Service Contract | `service/contracts.go` |
 | Atomic Terminal/Outbox Recovery | `terminal_publisher.go` |
 | Session/Artifact Service | `service_facade.go`、`session_artifacts.go` |
 | Engine Adapter | `application.go` |

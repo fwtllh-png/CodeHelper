@@ -24,12 +24,6 @@ export const journeyEvidence = Object.freeze([
   ),
 ]);
 
-export const requiredAutomatedJourneyIDs = Object.freeze(
-  journeyEvidence
-    .filter((journey) => journey.kind === "automated")
-    .map((journey) => journey.id),
-);
-
 function automated(id, description) {
   return Object.freeze({ id, description, kind: "automated" });
 }

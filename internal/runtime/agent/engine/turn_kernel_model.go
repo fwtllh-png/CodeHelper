@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"fmt"
-
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
@@ -103,16 +101,4 @@ func (s *engineTurnKernel) evaluateTurnStep(
 		ProgressKey: progressKey,
 	})
 	return s.state.NextAction, err
-}
-
-func (s *engineTurnKernel) verificationAction() (
-	turnkernel.VerificationAction,
-	error,
-) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.state.Verification.Action == "" {
-		return "", fmt.Errorf("verification action is unavailable")
-	}
-	return s.state.Verification.Action, nil
 }

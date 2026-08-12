@@ -41,36 +41,6 @@ func DecodeCompactedHistory(messages []protocol.CompactedMessage) ([]provider.Me
 	return result, nil
 }
 
-// LatestCompactedWindow returns the newest thread.compacted payload for threadID
-// by scanning the durable/memory event log.
-func LatestCompactedWindow(
-	ctx context.Context, store EventStore, threadID protocol.ThreadID,
-) (*protocol.ThreadCompactedData, error) {
-	if store == nil {
-		return nil, nil
-	}
-	if threadID == "" {
-		return nil, fmt.Errorf("thread id is required")
-	}
-	events, err := store.Replay(ctx, 0)
-	if err != nil {
-		return nil, err
-	}
-	var latest *protocol.ThreadCompactedData
-	for _, event := range events {
-		if event.Kind != protocol.EventThreadCompacted || event.ThreadID != threadID {
-			continue
-		}
-		data, ok := event.Data.(*protocol.ThreadCompactedData)
-		if !ok || data == nil {
-			continue
-		}
-		copy := *data
-		latest = &copy
-	}
-	return latest, nil
-}
-
 // LatestThreadHistorySeed returns the best history seed for resume via full
 // event reconstruction (compact/fork base + post-checkpoint durable events).
 func LatestThreadHistorySeed(

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 )
 
 func TestDeltaCoalescingStreamPreservesTextAndReducesEvents(t *testing.T) {
@@ -22,7 +23,7 @@ func TestDeltaCoalescingStreamPreservesTextAndReducesEvents(t *testing.T) {
 		})
 	}
 	events = append(events, provider.StreamEvent{Type: provider.EventMessageStop})
-	stream := newDeltaCoalescingStream(&provider.SliceStream{Events: events})
+	stream := newDeltaCoalescingStream(&providerfixture.SliceStream{Events: events})
 	defer stream.Close()
 
 	var text strings.Builder
@@ -49,7 +50,7 @@ func TestDeltaCoalescingStreamPreservesTextAndReducesEvents(t *testing.T) {
 }
 
 func TestDeltaCoalescingStreamFlushesBeforeEventBoundaries(t *testing.T) {
-	source := &provider.SliceStream{Events: []provider.StreamEvent{
+	source := &providerfixture.SliceStream{Events: []provider.StreamEvent{
 		{Type: provider.EventReasoningDelta, Index: 0, Text: "a"},
 		{Type: provider.EventReasoningDelta, Index: 0, Text: "b"},
 		{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{

@@ -101,11 +101,11 @@ func TestWorktreeCleanupDoesNotTouchSibling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := manager.Spawn("", subagent.RoleWorker, "one")
+	a, err := manager.Spawn("", subagent.RoleGeneral, "one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := manager.Spawn("", subagent.RoleReviewer, "two")
+	b, err := manager.Spawn("", subagent.RoleReview, "two")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,17 +139,17 @@ func TestDepthAndConcurrencyBudgets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent, err := manager.Spawn("", subagent.RolePlanner, "root")
+	parent, err := manager.Spawn("", subagent.RolePlan, "root")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Spawn("", subagent.RoleWorker, "blocked"); err == nil {
+	if _, err := manager.Spawn("", subagent.RoleGeneral, "blocked"); err == nil {
 		t.Fatal("expected concurrency rejection")
 	}
 	if err := manager.Close(parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	child, err := manager.Spawn("", subagent.RoleWorker, "child")
+	child, err := manager.Spawn("", subagent.RoleGeneral, "child")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,15 +160,15 @@ func TestDepthAndConcurrencyBudgets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := deep.Spawn("", subagent.RolePlanner, "root")
+	root, err := deep.Spawn("", subagent.RolePlan, "root")
 	if err != nil {
 		t.Fatal(err)
 	}
-	mid, err := deep.Spawn(root.ID, subagent.RoleWorker, "mid")
+	mid, err := deep.Spawn(root.ID, subagent.RoleGeneral, "mid")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := deep.Spawn(mid.ID, subagent.RoleWorker, "too-deep"); err == nil {
+	if _, err := deep.Spawn(mid.ID, subagent.RoleGeneral, "too-deep"); err == nil {
 		t.Fatal("expected depth rejection")
 	}
 	_ = child

@@ -18,7 +18,7 @@ Root 运行。
 | `check-hotspot-baseline.go` | 无 | 校验 Stage 0 热点冻结与拆分后的职责归属 |
 | `commanddocs` | 无 | 从 Cobra Command Tree 生成或校验双语命令清单 |
 | `upgradebaseline` | 无 | 写入 Stage 0 Benchmark 指标与能力可用性 |
-| `stage3experience` | 无 | 校验 Host Journey 契约、可用性指标和已移除产品面 |
+| `experiencecontract` | 无 | 校验共享 Experience Baseline |
 | `content-fixture-smoke.sh` | 无 | 临时 Content Dependency Fixture |
 | `live-model-smoke.sh` | 有 | 一次真实 Provider 请求，不持久化 Secret |
 | `package-release.sh` | 无 | `dist/release` Binary、Checksum、SBOM、Manifest |

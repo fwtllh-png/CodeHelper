@@ -28,13 +28,6 @@ const (
 	RoleCustom      Role = "custom"
 )
 
-// Legacy alias constants (same values as canonical roles).
-const (
-	RoleWorker   Role = RoleGeneral
-	RoleReviewer Role = RoleReview
-	RolePlanner  Role = RolePlan
-)
-
 type Stance string
 
 const (

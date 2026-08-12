@@ -3,7 +3,6 @@ package orchestrate
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -158,10 +157,4 @@ func runFixtureTurn(ctx context.Context, runtime *app.Runtime, prompt string) (s
 			}
 		}
 	}
-}
-
-// EncodeInspect is a helper for JSON diagnostics.
-func EncodeInspect(v any) json.RawMessage {
-	data, _ := json.Marshal(v)
-	return data
 }

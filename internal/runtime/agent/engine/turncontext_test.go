@@ -9,6 +9,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -77,19 +78,19 @@ func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	providerRuntime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "w1", Name: "write", Arguments: `{"path":"a","value":"x"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "w2", Name: "write", Arguments: `{"path":"b","value":"y"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -164,23 +165,23 @@ func TestRunForTurnNextTurnSeesUpdatedPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	providerRuntime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "w1", Name: "write", Arguments: `{"path":"a","value":"x"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "first"},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "w2", Name: "write", Arguments: `{"path":"b","value":"y"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "second"},
 			{Type: provider.EventMessageStop},
 		}},

@@ -10,6 +10,7 @@ import (
 
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
@@ -409,13 +410,13 @@ func TestToolFailureCategoryIncludesSkillDependency(t *testing.T) {
 
 func TestEngineFeedsSampledUnknownToolBackToModel(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "call_unknown", Name: "read", Arguments: `{"path":"README.md"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "recovered"},
 			{Type: provider.EventMessageStop},
 		}},
@@ -452,13 +453,13 @@ func TestEngineFeedsSampledUnknownToolBackToModel(t *testing.T) {
 
 func TestEngineDoesNotExecuteUnadvertisedCatalogTool(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "call_deferred", Name: "deferred_echo", Arguments: `{"text":"hello"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "recovered"},
 			{Type: provider.EventMessageStop},
 		}},

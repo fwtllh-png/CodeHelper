@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
@@ -448,23 +447,4 @@ type Stream interface {
 
 type Provider interface {
 	Stream(context.Context, ModelRequest) (Stream, error)
-}
-
-type SliceStream struct {
-	Events []StreamEvent
-	index  int
-}
-
-func (s *SliceStream) Recv() (StreamEvent, error) {
-	if s.index >= len(s.Events) {
-		return StreamEvent{}, io.EOF
-	}
-	event := s.Events[s.index]
-	s.index++
-	return event, nil
-}
-
-func (s *SliceStream) Close() error {
-	s.index = len(s.Events)
-	return nil
 }

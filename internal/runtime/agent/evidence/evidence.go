@@ -52,9 +52,6 @@ const (
 // declaration site is worth more prompt bytes than a grep hit.
 var order = []Kind{KindDefinition, KindReference, KindTest, KindConfig, KindTextMatch}
 
-// Kinds returns the kinds in presentation order.
-func Kinds() []Kind { return append([]Kind(nil), order...) }
-
 func (k Kind) rank() int {
 	for index, candidate := range order {
 		if candidate == k {

@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
@@ -735,9 +734,4 @@ func PlanReceipt(plan Plan) promptcontext.Receipt {
 		OriginalTokens: tokens, RetainedTokens: tokens,
 		Digest: fmt.Sprintf("%x", len(text)+len(plan.Steps)*17),
 	}
-}
-
-// PlanMessage returns the system message for a plan partition.
-func PlanMessage(plan Plan) provider.Message {
-	return provider.TextMessage(provider.RoleSystem, FormatPlan(plan))
 }

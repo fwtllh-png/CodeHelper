@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 )
 
 func TestWorkspaceTurnGateSerializesAndReleasesOnce(t *testing.T) {
@@ -150,7 +151,7 @@ func (p *gateProbeProvider) Stream(
 	provider.ModelRequest,
 ) (provider.Stream, error) {
 	p.once.Do(func() { close(p.called) })
-	return &provider.SliceStream{Events: []provider.StreamEvent{
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 		{Type: provider.EventMessageStart},
 		{Type: provider.EventTextDelta, Text: "done"},
 		{Type: provider.EventMessageStop},

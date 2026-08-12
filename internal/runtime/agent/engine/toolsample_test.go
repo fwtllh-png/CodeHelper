@@ -9,6 +9,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 )
@@ -59,7 +60,7 @@ func (t samplingTool) Execute(ctx context.Context, _ json.RawMessage) (tool.Resu
 }
 
 func usageStream(text string, usage provider.Usage) provider.Stream {
-	return &provider.SliceStream{Events: []provider.StreamEvent{
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 		{Type: provider.EventTextDelta, Text: text},
 		{Type: provider.EventUsage, Usage: &usage},
 		{Type: provider.EventMessageStop},
@@ -79,7 +80,7 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 	sink := &recordingSink{}
 	scripted := &scriptedProvider{streams: []provider.Stream{
 		// Step one asks for the tool.
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "call-1", Name: "look", Arguments: `{}`,
 			}},
@@ -255,7 +256,7 @@ func TestToolSampleUsageEmitFailureFailsTheTurn(t *testing.T) {
 	}
 	engine, err := New(Options{
 		Provider: &scriptedProvider{streams: []provider.Stream{
-			&provider.SliceStream{Events: []provider.StreamEvent{
+			&providerfixture.SliceStream{Events: []provider.StreamEvent{
 				{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 					ID: "call-usage-failure", Name: "look", Arguments: `{}`,
 				}},

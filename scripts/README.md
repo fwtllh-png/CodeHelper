@@ -19,7 +19,7 @@ root unless a script explicitly states otherwise.
 | `check-hotspot-baseline.go` | no | validates the Stage 0 hotspot freeze and post-split responsibility owners |
 | `commanddocs` | no | generates or checks bilingual command lists from the Cobra tree |
 | `upgradebaseline` | no | writes Stage 0 benchmark metrics and capability availability |
-| `stage3experience` | no | validates the Host Journey contract, usability metrics, and removed product surfaces |
+| `experiencecontract` | no | validates the shared experience baseline |
 | `content-fixture-smoke.sh` | no | temporary content-dependency fixtures |
 | `live-model-smoke.sh` | yes | one real provider request; no persistent secret |
 | `package-release.sh` | no | `dist/release`: binaries, checksums, SBOM, manifest |

@@ -19,15 +19,31 @@ import (
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
+
+func newPersistentRuntime(
+	ctx context.Context,
+	options apppersistence.PersistentRuntimeOptions,
+) (*app.Runtime, error) {
+	runtime, err := apppersistence.PreparePersistentRuntime(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	if err := runtime.Start(ctx); err != nil {
+		_ = runtime.Close(context.Background())
+		return nil, err
+	}
+	return runtime, nil
+}
 
 func TestC1DurableCoordinatorRuntimeScansRestoresAndLeasesActiveTurn(
 	t *testing.T,
 ) {
 	store := seedPersistentState(t, t.TempDir())
 	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +153,7 @@ func TestC1DurableCoordinatorRuntimeScansRestoresAndLeasesActiveTurn(
 func TestDurableCoordinatorOpenWaitsForInterruptedTurnLease(t *testing.T) {
 	store := seedPersistentState(t, t.TempDir())
 	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +233,7 @@ func TestC1DurableCoordinatorRuntimeFailsClosedOnIncompleteFacts(
 ) {
 	store := seedPersistentState(t, t.TempDir())
 	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +421,7 @@ func TestPersistentRuntimeRestartIsIdempotentAndKeepsOneTerminal(t *testing.T) {
 	root := t.TempDir()
 	store := seedPersistentState(t, root)
 	engine := &persistentTestEngine{}
-	runtime, err := NewPersistentRuntime(t.Context(), PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
 		Store: store, Engine: engine,
 	})
 	if err != nil {
@@ -426,7 +442,7 @@ func TestPersistentRuntimeRestartIsIdempotentAndKeepsOneTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	recovered, err := NewPersistentRuntime(t.Context(), PersistentRuntimeOptions{
+	recovered, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
 		Store: reopened, Engine: engine,
 	})
 	if err != nil {
@@ -485,7 +501,7 @@ func TestC5SQLiteConcurrentOutboxRecoveryProjectsStableEventsOnce(
 ) {
 	store := seedPersistentState(t, t.TempDir())
 	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,9 +559,9 @@ func TestC5SQLiteConcurrentOutboxRecoveryProjectsStableEventsOnce(
 	errs := make(chan error, 2)
 	for range 2 {
 		wait.Go(func() {
-			runtime, openErr := NewPersistentRuntime(
+			runtime, openErr := newPersistentRuntime(
 				t.Context(),
-				PersistentRuntimeOptions{
+				apppersistence.PersistentRuntimeOptions{
 					Store:  store,
 					Engine: app.NoopEngine{},
 				},
@@ -741,7 +757,7 @@ func round13TerminalEnvelope(
 func TestPersistentRuntimeEnforcesOneActiveTurnPerThread(t *testing.T) {
 	store := seedPersistentState(t, t.TempDir())
 	engine := &persistentTestEngine{block: true}
-	runtime, err := NewPersistentRuntime(t.Context(), PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
 		Store: store, Engine: engine,
 	})
 	if err != nil {
@@ -786,7 +802,7 @@ func TestPersistentRuntimeEnforcesOneActiveTurnPerThread(t *testing.T) {
 func TestPersistentRuntimeRestoresPendingWithoutReplayingEngine(t *testing.T) {
 	root := t.TempDir()
 	store := seedPersistentState(t, root)
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -828,7 +844,7 @@ func TestPersistentRuntimeRestoresPendingWithoutReplayingEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := &persistentTestEngine{}
-	runtime, err := NewPersistentRuntime(t.Context(), PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
 		Store: reopened, Engine: engine,
 	})
 	if err != nil {
@@ -854,7 +870,7 @@ func TestPersistentRuntimeRestoresPendingWithoutReplayingEngine(t *testing.T) {
 func TestPersistentRuntimeMarksInterruptedTaskFailed(t *testing.T) {
 	root := t.TempDir()
 	store := seedPersistentState(t, root)
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -876,13 +892,13 @@ func TestPersistentRuntimeMarksInterruptedTaskFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := NewPersistentRuntime(t.Context(), PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
 		Store: reopened, Engine: &persistentTestEngine{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	recoveredRepositories, err := NewPersistentRepositories(reopened)
+	recoveredRepositories, err := apppersistence.NewPersistentRepositories(reopened)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -901,7 +917,7 @@ func TestPersistentRuntimeMarksInterruptedTaskFailed(t *testing.T) {
 func TestPersistentRuntimeDoesNotRecoverAnotherWorkersLiveLease(t *testing.T) {
 	root := t.TempDir()
 	store := seedPersistentState(t, root)
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -922,7 +938,7 @@ func TestPersistentRuntimeDoesNotRecoverAnotherWorkersLiveLease(t *testing.T) {
 		t.Fatalf("claimed %d tasks, want 1", len(claimed))
 	}
 
-	runtime, err := NewPersistentRuntime(t.Context(), PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
 		Store: store, Engine: &persistentTestEngine{},
 	})
 	if err != nil {
@@ -943,7 +959,7 @@ func TestPersistentRuntimeDoesNotRecoverAnotherWorkersLiveLease(t *testing.T) {
 func TestPersistentRepositoriesProjectThreadLifecycleEvents(t *testing.T) {
 	store := seedPersistentState(t, t.TempDir())
 	defer store.CloseAll(context.Background())
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1084,7 +1100,7 @@ func TestPersistentRecoveryIgnoresEventsFromDeletedSessions(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1125,7 +1141,7 @@ func seedPersistentState(t *testing.T, root string) *state.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repositories, err := NewPersistentRepositories(store)
+	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}

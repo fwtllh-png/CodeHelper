@@ -8,6 +8,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui/commands"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/testsupport/processfixture"
 )
 
 func TestJobsAliasesAndVerbs(t *testing.T) {
@@ -16,7 +17,7 @@ func TestJobsAliasesAndVerbs(t *testing.T) {
 		t.Fatalf("jobs => %+v", action)
 	}
 
-	fake := process.NewFakeJobCenter(
+	fake := processfixture.NewJobCenter(
 		process.JobInfo{
 			ID: "job_live", Command: "sleep 1", Status: process.JobStatusRunning,
 			Running: true, ExitCode: -1, CreatedAt: time.Now().UTC(),

@@ -69,7 +69,9 @@ void test("Webview messages and editor context retain explicit size boundaries",
   const messages = await sourceFile("chat", "messages.ts");
   const context = await sourceFile("context", "bridge.ts");
   const native = await sourceFile("context", "native.ts");
-  const projector = await sourceFile("chat", "projector.ts");
+  const projectorHelpers = await sourceFile(
+    "chat", "projector", "helpers.ts",
+  );
   assert.match(messages, /64 << 10/u);
   assert.match(context, /const maxContextFileBytes = 1 << 20/u);
   assert.match(context, /const maxProviderSymbols = 4096/u);
@@ -80,7 +82,7 @@ void test("Webview messages and editor context retain explicit size boundaries",
   assert.match(native, /const maxDiagnostics = 32/u);
   assert.match(native, /const maxDiagnosticMessageBytes = 8192/u);
   assert.match(native, /const maxDiagnosticMetadataBytes = 256/u);
-  assert.match(projector, /values\.slice\(0, 8\)/u);
+  assert.match(projectorHelpers, /values\.slice\(0, 8\)/u);
 });
 
 void test("Runtime execution is restricted to the local UI Extension Host", async () => {

@@ -78,14 +78,6 @@ func StagePluginSnapshot(
 	return snapshot, nil
 }
 
-func (s PluginSnapshot) Authority() Authority {
-	return s.authority
-}
-
-func (s PluginSnapshot) Len() int {
-	return len(s.skills)
-}
-
 func (s PluginSnapshot) cloneSkills() []candidate {
 	result := make([]candidate, len(s.skills))
 	copy(result, s.skills)

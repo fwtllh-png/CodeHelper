@@ -131,7 +131,7 @@ eventview + VS Code projectors -> Host presentation only
 | Operation dispatcher | `internal/runtime/app` | typed Operation handler selection and synchronous commit |
 | Turn coordinator and scope | `internal/runtime/agent` | reducer authority, effects, controls, and Turn-local state |
 | Event hub and terminal publisher | `internal/runtime/app/eventhub`, `internal/runtime/app` | sequence/fanout and atomic terminal publication |
-| Session and artifact services | `internal/runtime/app/service`, `internal/runtime/app` | Host-facing query contracts and implementations |
+| Session and artifact services | `internal/runtime/app` | Host-facing query behavior over Runtime-owned ports |
 | Go Host projection | `internal/runtime/eventview` | one typed interpretation of Event payloads |
 | VS Code projection | `extensions/vscode/src/chat/projector` | exhaustive Event Class presentation |
 
@@ -188,10 +188,8 @@ The application Runtime is a Facade over explicit owners:
   publication identity, Event Hub projection, and restart recovery.
 - `SessionService` owns lifecycle, Profile, and Tool Catalog behavior;
   `ArtifactService` owns Checkpoint, Plan, Turn recovery, and persistence.
-  Their Host-facing contracts live in the independent `app/service` package.
-
-Runtime embeds the two query services to preserve the Host-facing API without
-duplicating execution logic.
+  Runtime exposes their narrow Host-facing methods directly without a parallel
+  interface-only package.
 
 ## Turn Data Flow
 

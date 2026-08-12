@@ -12,6 +12,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
@@ -228,7 +229,7 @@ func (*singleAnswerProvider) Stream(
 	context.Context,
 	provider.ModelRequest,
 ) (provider.Stream, error) {
-	return &provider.SliceStream{Events: []provider.StreamEvent{
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 		{Type: provider.EventTextDelta, Text: "no changes needed"},
 		{Type: provider.EventMessageStop},
 	}}, nil
@@ -785,7 +786,7 @@ func (p *runtimeToolCancelProvider) Stream(
 	call := p.calls
 	p.mu.Unlock()
 	if call == 1 {
-		return &provider.SliceStream{Events: []provider.StreamEvent{
+		return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{
 				Type: provider.EventToolCallDelta,
 				ToolCall: &provider.ToolCallFragment{
@@ -842,7 +843,7 @@ func (p *runtimeInputProvider) Stream(
 	p.calls++
 	switch p.calls {
 	case 1:
-		return &provider.SliceStream{Events: []provider.StreamEvent{
+		return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{
 				Type: provider.EventToolCallDelta,
 				ToolCall: &provider.ToolCallFragment{
@@ -855,7 +856,7 @@ func (p *runtimeInputProvider) Stream(
 			{Type: provider.EventMessageStop},
 		}}, nil
 	case 2:
-		return &provider.SliceStream{Events: []provider.StreamEvent{
+		return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}}, nil
@@ -872,19 +873,19 @@ func (p *runtimeApprovalProvider) Stream(
 	p.calls++
 	switch p.calls {
 	case 1:
-		return &provider.SliceStream{Events: []provider.StreamEvent{
+		return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_write", Name: "write", Arguments: `{"path":"out.txt"}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}}, nil
 	case 2:
-		return &provider.SliceStream{Events: []provider.StreamEvent{
+		return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}}, nil
 	case 3:
-		return &provider.SliceStream{Events: []provider.StreamEvent{
+		return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},
 		}}, nil

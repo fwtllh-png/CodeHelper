@@ -250,11 +250,6 @@ func validatePluginName(name string) error {
 	return nil
 }
 
-func validateManifest(manifest Manifest) error {
-	_, err := NormalizeManifest(manifest)
-	return err
-}
-
 func decodeStrict(data []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()

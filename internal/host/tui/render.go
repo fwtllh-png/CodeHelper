@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -313,10 +312,6 @@ func (m Model) renderCell(cell transcriptCell) string {
 	default:
 		return styleTranscriptLine(wrapAwareLine(cell.Raw, width))
 	}
-}
-
-func fmtToolOmit(n int) string {
-	return "… " + strconv.Itoa(n) + " earlier tools …"
 }
 
 func (m Model) appendCell(kind transcriptCellKind, raw string) Model {

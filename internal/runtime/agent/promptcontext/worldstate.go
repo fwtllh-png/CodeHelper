@@ -26,25 +26,6 @@ type WorldStateSection interface {
 	Render() string
 }
 
-// ReceiptDigestsEqual reports whether two receipt slices have the same
-// Kind→Digest pairs (WorldState-style skip signal for unchanged partitions).
-func ReceiptDigestsEqual(left, right []Receipt) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	index := make(map[string]string, len(left))
-	for _, receipt := range left {
-		index[receipt.Kind] = receipt.Digest
-	}
-	for _, receipt := range right {
-		if index[receipt.Kind] != receipt.Digest {
-			return false
-		}
-		delete(index, receipt.Kind)
-	}
-	return len(index) == 0
-}
-
 func digestJSON(value any) string {
 	data, err := json.Marshal(value)
 	if err != nil {

@@ -224,14 +224,6 @@ func mutatorDescriptor(name, description string) tool.Descriptor {
 	}
 }
 
-func (e *executor) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	executor, err := e.typedExecutor()
-	if err != nil {
-		return tool.Result{}, err
-	}
-	return executor.Execute(ctx, raw)
-}
-
 func (e *executor) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[input, tool.Result]{
 		Descriptor: e.Descriptor(),

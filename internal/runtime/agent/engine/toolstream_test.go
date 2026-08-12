@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
@@ -52,14 +53,14 @@ func (s *streamingTool) Execute(ctx context.Context, _ json.RawMessage) (tool.Re
 func streamingTurn(t *testing.T, executor tool.Executor, options func(*Options)) (*Engine, *scriptedProvider) {
 	t.Helper()
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStart},
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				Index: 0, ID: "call_1", Name: executor.Descriptor().Name, Arguments: `{}`,
 			}},
 			{Type: provider.EventMessageStop},
 		}},
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStart},
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventMessageStop},

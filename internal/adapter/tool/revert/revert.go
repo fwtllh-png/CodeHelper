@@ -135,27 +135,6 @@ func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
 	})
 }
 
-// FakeReverter is a hermetic reverter for tests and tool-manifest generation.
-type FakeReverter struct {
-	DefaultID string
-	Restored  []string
-	Conflicts []string
-	Err       error
-	Calls     []string
-}
-
-func (f *FakeReverter) DefaultTargetTurnID() (string, error) {
-	if f.DefaultID == "" {
-		return "", errors.New("no turn to revert")
-	}
-	return f.DefaultID, nil
-}
-
-func (f *FakeReverter) Revert(_ context.Context, targetTurnID string) ([]string, []string, error) {
-	f.Calls = append(f.Calls, targetTurnID)
-	return append([]string{}, f.Restored...), append([]string{}, f.Conflicts...), f.Err
-}
-
 // EngineReverter adapts an agent engine with workspace journal revert.
 type EngineReverter struct {
 	RevertFn      func(ctx context.Context, targetTurnID string) (restored []string, conflicts []string, err error)

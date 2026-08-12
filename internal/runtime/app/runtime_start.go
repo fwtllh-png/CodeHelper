@@ -16,20 +16,6 @@ func NewRuntime(options Options) *Runtime {
 	return runtime
 }
 
-// NewRuntimeWithRecovery restores durable state before accepting operations.
-// Persistent bootstraps must use this constructor.
-func NewRuntimeWithRecovery(ctx context.Context, options Options) (*Runtime, error) {
-	runtime, err := PrepareRuntimeWithRecovery(ctx, options)
-	if err != nil {
-		return nil, err
-	}
-	if err := runtime.Start(ctx); err != nil {
-		_ = runtime.Close(context.Background())
-		return nil, err
-	}
-	return runtime, nil
-}
-
 // PrepareRuntime constructs an ephemeral Runtime without starting its operation
 // loop. The caller must call Start after the surrounding graph is ready.
 func PrepareRuntime(ctx context.Context, options Options) (*Runtime, error) {
