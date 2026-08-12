@@ -227,10 +227,6 @@ func Register(registry *tool.Registry, loaded *pluginruntime.Loaded) error {
 	return register(registry, loaded, "plugin_run")
 }
 
-func RegisterNamespaced(registry *tool.Registry, loaded *pluginruntime.Loaded) error {
-	return register(registry, loaded, NamespacedName(loaded.Name()))
-}
-
 func register(registry *tool.Registry, loaded *pluginruntime.Loaded, toolName string) error {
 	if registry == nil || loaded == nil {
 		return errors.New("plugin registry and loaded plugin are required")

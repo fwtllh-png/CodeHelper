@@ -12,7 +12,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,22 +37,6 @@ var requestSequence atomic.Uint64
 
 type CredentialResolver interface {
 	Resolve(context.Context, model.CredentialRef) (string, error)
-}
-
-type EnvCredentials struct{}
-
-func (EnvCredentials) Resolve(_ context.Context, reference model.CredentialRef) (string, error) {
-	if reference.Kind == "" {
-		return "", nil
-	}
-	if reference.Kind != "env" {
-		return "", fmt.Errorf("credential kind %q is not available", reference.Kind)
-	}
-	value, exists := os.LookupEnv(reference.Name)
-	if !exists || value == "" {
-		return "", fmt.Errorf("credential environment variable %s is not set", reference.Name)
-	}
-	return value, nil
 }
 
 type Client struct {
@@ -749,11 +732,6 @@ func applyOpenAIResponsesTools(body map[string]any, definitions []provider.ToolD
 	}
 }
 
-// Deprecated alias kept for older call sites / tests.
-func applyOpenAITools(body map[string]any, definitions []provider.ToolDefinition) {
-	applyOpenAIChatTools(body, definitions)
-}
-
 func appendTool(body map[string]any, definition map[string]any) {
 	tools, _ := body["tools"].([]map[string]any)
 	body["tools"] = append(tools, definition)
@@ -1092,4 +1070,3 @@ func wait(ctx context.Context, duration time.Duration) error {
 }
 
 var _ provider.Provider = (*Client)(nil)
-var _ CredentialResolver = EnvCredentials{}

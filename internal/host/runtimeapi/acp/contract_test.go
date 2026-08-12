@@ -13,12 +13,12 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/acp"
-	"github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/contract"
 	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/testsupport/runtimecontract"
 )
 
 // The ACP half of the shared protocol contract. The scenarios live

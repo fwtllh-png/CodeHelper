@@ -103,9 +103,3 @@ func (s *engineTurnKernel) journalEffectKind() (
 	}
 	return "", false
 }
-
-func (s *engineTurnKernel) terminalPhase() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.state.Phase.Terminal()
-}

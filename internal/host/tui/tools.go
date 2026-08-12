@@ -64,32 +64,6 @@ func (g *exploringGroup) liveLine(motion MotionMode, tick int) string {
 	return line
 }
 
-func (g *exploringGroup) exploredReceipt() string {
-	if g == nil || len(g.Entries) == 0 {
-		return ""
-	}
-	reads, finds := 0, 0
-	for _, e := range g.Entries {
-		switch classifyTool(e.Name) {
-		case FamilyRead:
-			reads++
-		case FamilyFind:
-			finds++
-		}
-	}
-	parts := make([]string, 0, 2)
-	if reads > 0 {
-		parts = append(parts, fmt.Sprintf("explored %d file(s)", reads))
-	}
-	if finds > 0 {
-		parts = append(parts, fmt.Sprintf("searched %d", finds))
-	}
-	if len(parts) == 0 {
-		parts = append(parts, fmt.Sprintf("explored %d", len(g.Entries)))
-	}
-	return "✓ " + strings.Join(parts, ", ")
-}
-
 func (g *exploringGroup) toSettledCards() []ToolCard {
 	if g == nil {
 		return nil

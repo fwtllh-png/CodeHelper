@@ -202,11 +202,6 @@ func (m Model) renderStatusLine() string {
 	return phase + "  " + footer
 }
 
-func (m Model) setPhase(p ShellPhase) Model {
-	m.phase = p
-	return m
-}
-
 func (m Model) recomputePhase() Model {
 	if m.mode == ModeApprove || m.approvalCard != nil && m.approvalCard.Status == "pending" {
 		m.phase = PhaseApproval

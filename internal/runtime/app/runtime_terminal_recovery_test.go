@@ -17,6 +17,21 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
+func newRuntimeWithRecovery(
+	ctx context.Context,
+	options Options,
+) (*Runtime, error) {
+	runtime, err := PrepareRuntimeWithRecovery(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	if err := runtime.Start(ctx); err != nil {
+		_ = runtime.Close(context.Background())
+		return nil, err
+	}
+	return runtime, nil
+}
+
 func TestC5RuntimeRecoversTerminalOutboxWithoutDuplicateEvent(t *testing.T) {
 	envelope := c5TerminalEnvelope(t)
 	terminalStore := &c5AtomicTerminalStore{
@@ -56,7 +71,7 @@ func TestC5RuntimeRecoversTerminalOutboxWithoutDuplicateEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime, err := NewRuntimeWithRecovery(t.Context(), Options{
+	runtime, err := newRuntimeWithRecovery(t.Context(), Options{
 		EventStore:    eventStore,
 		TerminalStore: terminalStore,
 	})
@@ -98,7 +113,7 @@ func TestC5RuntimeRecoveryIsRepeatableAfterOutboxDrain(t *testing.T) {
 		t.Fatal(err)
 	}
 	eventStore := NewMemoryEventStore(16)
-	first, err := NewRuntimeWithRecovery(t.Context(), Options{
+	first, err := newRuntimeWithRecovery(t.Context(), Options{
 		EventStore:    eventStore,
 		TerminalStore: terminalStore,
 	})
@@ -106,7 +121,7 @@ func TestC5RuntimeRecoveryIsRepeatableAfterOutboxDrain(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = first.Close(context.Background()) })
-	second, err := NewRuntimeWithRecovery(t.Context(), Options{
+	second, err := newRuntimeWithRecovery(t.Context(), Options{
 		EventStore:    eventStore,
 		TerminalStore: terminalStore,
 	})
@@ -140,7 +155,7 @@ func TestC5ConcurrentRecoveryProjectsOneEventPerOutboxEntry(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			runtime, err := NewRuntimeWithRecovery(t.Context(), Options{
+			runtime, err := newRuntimeWithRecovery(t.Context(), Options{
 				EventStore:    eventStore,
 				TerminalStore: terminalStore,
 			})
@@ -176,7 +191,7 @@ type c5RecoveryLifecycle struct {
 }
 
 func TestC6DurableRuntimeRejectsImplicitMemoryStores(t *testing.T) {
-	if _, err := NewRuntimeWithRecovery(t.Context(), Options{
+	if _, err := newRuntimeWithRecovery(t.Context(), Options{
 		Lifecycle: &c5RecoveryLifecycle{},
 	}); err == nil {
 		t.Fatal("durable runtime accepted implicit memory stores")
@@ -253,7 +268,7 @@ func (e *c5RecoveryEngine) RestorePendingInput(PendingInput) error {
 
 func TestC5RuntimePrimesRecoveredApprovalAndInputWaits(t *testing.T) {
 	engine := &c5RecoveryEngine{}
-	runtime, err := NewRuntimeWithRecovery(t.Context(), Options{
+	runtime, err := newRuntimeWithRecovery(t.Context(), Options{
 		Engine:       engine,
 		EventStore:   NewMemoryEventStore(16),
 		ContentStore: NewMemoryContentStore(),
@@ -340,7 +355,7 @@ func TestC5RuntimeDispatchesAcceptedTurnWithDomainFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := &c5RecoveryEngine{}
-	runtime, err := NewRuntimeWithRecovery(t.Context(), Options{
+	runtime, err := newRuntimeWithRecovery(t.Context(), Options{
 		Engine:        engine,
 		EventStore:    NewMemoryEventStore(16),
 		ContentStore:  NewMemoryContentStore(),
@@ -433,7 +448,7 @@ func TestC5RuntimeResumesStartedModelEffectThroughAgentEngine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := NewRuntimeWithRecovery(t.Context(), Options{
+	runtime, err := newRuntimeWithRecovery(t.Context(), Options{
 		Engine:        AdaptEngine(worker),
 		EventStore:    NewMemoryEventStore(16),
 		ContentStore:  NewMemoryContentStore(),
@@ -527,7 +542,7 @@ func TestRuntimeRecoveryCommitsEnvelopeForAlreadyTerminalKernel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := NewRuntimeWithRecovery(t.Context(), Options{
+	runtime, err := newRuntimeWithRecovery(t.Context(), Options{
 		Engine:        AdaptEngine(worker),
 		EventStore:    NewMemoryEventStore(16),
 		ContentStore:  NewMemoryContentStore(),
@@ -651,7 +666,7 @@ func TestC5RuntimeResumesStartedToolEffectThroughAgentEngine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := NewRuntimeWithRecovery(t.Context(), Options{
+	runtime, err := newRuntimeWithRecovery(t.Context(), Options{
 		Engine:        AdaptEngine(worker),
 		EventStore:    NewMemoryEventStore(16),
 		ContentStore:  NewMemoryContentStore(),
@@ -789,7 +804,7 @@ func TestC5RuntimeResumesCommittingTurnThroughJournalEffect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := NewRuntimeWithRecovery(t.Context(), Options{
+	runtime, err := newRuntimeWithRecovery(t.Context(), Options{
 		Engine:        AdaptEngine(worker),
 		EventStore:    NewMemoryEventStore(16),
 		ContentStore:  NewMemoryContentStore(),

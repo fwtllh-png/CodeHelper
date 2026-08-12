@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/testsupport/processfixture"
 )
 
 func openPanelKey(t *testing.T, model tui.Model, key string) tui.Model {
@@ -58,7 +59,7 @@ func TestTasksPanelSaysWhetherAnythingIsExecutingTasks(t *testing.T) {
 }
 
 func TestJobsPanelShowsRunningStateAndTheNewestOutput(t *testing.T) {
-	fake := process.NewFakeJobCenter(
+	fake := processfixture.NewJobCenter(
 		process.JobInfo{
 			ID: "job_build", Command: "make build", Status: process.JobStatusRunning,
 			Running: true, ExitCode: -1, CreatedAt: time.Now().UTC(),
@@ -90,7 +91,7 @@ func TestJobsPanelShowsRunningStateAndTheNewestOutput(t *testing.T) {
 // Enter re-reads the source of truth rather than mutating anything: these panels
 // observe work whose lifecycle belongs to the tools and the CLI.
 func TestEnterRefreshesAnObservationPanel(t *testing.T) {
-	fake := process.NewFakeJobCenter(process.JobInfo{
+	fake := processfixture.NewJobCenter(process.JobInfo{
 		ID: "job_one", Command: "sleep 1", Status: process.JobStatusRunning,
 		Running: true, ExitCode: -1, CreatedAt: time.Now().UTC(),
 	})

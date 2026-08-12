@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -118,7 +119,7 @@ func (p *threadEchoProvider) Stream(
 	p.mu.Lock()
 	p.calls++
 	p.mu.Unlock()
-	return &provider.SliceStream{Events: []provider.StreamEvent{
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 		{Type: provider.EventTextDelta, Text: "echo:" + prompt},
 		{Type: provider.EventMessageStop},
 	}}, nil

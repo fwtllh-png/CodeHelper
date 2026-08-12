@@ -28,10 +28,6 @@ type Permissions struct {
 	Network    bool `json:"network"`
 }
 
-func DefaultPermissions() Permissions {
-	return Permissions{}
-}
-
 type Budget struct {
 	MaxTokens   uint64  `json:"max_tokens,omitempty"`
 	MaxCostUSD  float64 `json:"max_cost_usd,omitempty"`

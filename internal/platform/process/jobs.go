@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -268,84 +267,3 @@ func (s *Session) jobInfo() JobInfo {
 
 // Ensure SessionManager implements JobCenter.
 var _ JobCenter = (*SessionManager)(nil)
-
-// FakeJobCenter is a hermetic JobCenter for TUI tests.
-type FakeJobCenter struct {
-	mu   sync.Mutex
-	Jobs map[string]JobInfo
-}
-
-func NewFakeJobCenter(jobs ...JobInfo) *FakeJobCenter {
-	center := &FakeJobCenter{Jobs: map[string]JobInfo{}}
-	for _, job := range jobs {
-		center.Jobs[job.ID] = job
-	}
-	return center
-}
-
-func (f *FakeJobCenter) List() []JobInfo {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]JobInfo, 0, len(f.Jobs))
-	for _, job := range f.Jobs {
-		out = append(out, job)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
-}
-
-// Add inserts or replaces a job, so a caller can change what a later List sees.
-func (f *FakeJobCenter) Add(job JobInfo) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.Jobs[job.ID] = job
-}
-
-func (f *FakeJobCenter) Info(id string) (JobInfo, bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	job, ok := f.Jobs[id]
-	return job, ok
-}
-
-func (f *FakeJobCenter) Poll(_ context.Context, id string, _ bool) (JobInfo, error) {
-	job, ok := f.Info(id)
-	if !ok {
-		return JobInfo{}, errors.New("job not found")
-	}
-	if job.Status == JobStatusStale {
-		return JobInfo{}, errors.New("stale job cannot be polled")
-	}
-	return job, nil
-}
-
-func (f *FakeJobCenter) Stdin(id, data string) error {
-	job, ok := f.Info(id)
-	if !ok {
-		return errors.New("job not found")
-	}
-	if job.Status == JobStatusStale || !job.Running {
-		return errors.New("job cannot accept stdin")
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	job.OutputTail += data
-	f.Jobs[id] = job
-	return nil
-}
-
-func (f *FakeJobCenter) Cancel(id string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if _, ok := f.Jobs[id]; !ok {
-		return errors.New("job not found")
-	}
-	delete(f.Jobs, id)
-	return nil
-}
-
-func (f *FakeJobCenter) CancelAll() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.Jobs = map[string]JobInfo{}
-}

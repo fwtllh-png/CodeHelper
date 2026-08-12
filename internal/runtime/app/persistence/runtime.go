@@ -61,23 +61,6 @@ func NewPersistentRepositories(store *state.Store) (PersistentRepositories, erro
 	}, nil
 }
 
-// NewPersistentRuntime creates a reusable, long-lived runtime over state.Store.
-// Unlike NewExec, it restores durable lifecycle state before accepting work.
-func NewPersistentRuntime(
-	ctx context.Context,
-	options PersistentRuntimeOptions,
-) (*app.Runtime, error) {
-	runtime, err := PreparePersistentRuntime(ctx, options)
-	if err != nil {
-		return nil, err
-	}
-	if err := runtime.Start(ctx); err != nil {
-		_ = runtime.Close(context.Background())
-		return nil, err
-	}
-	return runtime, nil
-}
-
 // PreparePersistentRuntime restores static durable state without starting
 // terminal projection or pending Turn recovery.
 func PreparePersistentRuntime(

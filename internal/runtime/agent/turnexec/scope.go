@@ -20,7 +20,6 @@ type ControlPort interface {
 
 type Factory[S, O, P any] interface {
 	Open(context.Context, S) (*Scope[S, O, P], error)
-	Restore(context.Context, S) (*Scope[S, O, P], error)
 }
 
 type Scope[S, O, P any] struct {

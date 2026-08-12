@@ -9,6 +9,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 )
 
@@ -27,7 +28,7 @@ func (p *recordingProvider) Stream(
 	if p.err != nil {
 		return nil, p.err
 	}
-	return &provider.SliceStream{Events: []provider.StreamEvent{
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 		{Type: provider.EventMessageStart},
 		{Type: provider.EventTextDelta, Text: p.text},
 		{Type: provider.EventUsage, Usage: &provider.Usage{InputTokens: 900, OutputTokens: 12}},

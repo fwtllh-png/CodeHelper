@@ -121,14 +121,6 @@ type AuditSink interface {
 	Record(context.Context, AuditRecord)
 }
 
-type AuditFunc func(context.Context, AuditRecord)
-
-func (f AuditFunc) Record(ctx context.Context, record AuditRecord) {
-	if f != nil {
-		f(ctx, record)
-	}
-}
-
 type AuditRecord struct {
 	Time            time.Time     `json:"time"`
 	Event           Event         `json:"event"`

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
@@ -13,7 +14,7 @@ import (
 // usage row recorded a zero cost even with known pricing.
 func TestEngineAttachesCostToStreamingUsage(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventUsage, Usage: &provider.Usage{
 				InputTokens: 1_000_000, OutputTokens: 2_000_000,
@@ -68,7 +69,7 @@ func TestEngineNumbersUsageBySampleAcrossCalls(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		// First call asks for a tool, reporting input before output the way
 		// Anthropic does.
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventUsage, Usage: &provider.Usage{InputTokens: 100}},
 			{Type: provider.EventToolCallDelta, Index: 0, ToolCall: &provider.ToolCallFragment{
 				ID: "call-1", Name: "echo", Arguments: `{"text":"hi"}`,
@@ -77,7 +78,7 @@ func TestEngineNumbersUsageBySampleAcrossCalls(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 		// Second call answers with text.
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "done"},
 			{Type: provider.EventUsage, Usage: &provider.Usage{
 				InputTokens: 150, OutputTokens: 30,

@@ -6,6 +6,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -43,7 +44,7 @@ func namedRoute(t *testing.T, modelID string) model.ReadyRoute {
 }
 
 func textStream(text string) provider.Stream {
-	return &provider.SliceStream{Events: []provider.StreamEvent{
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 		{Type: provider.EventTextDelta, Text: text},
 		{Type: provider.EventMessageStop},
 	}}
@@ -187,7 +188,7 @@ func TestCostFollowsTheRouteTheTurnActuallyUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	scripted := &scriptedProvider{streams: []provider.Stream{
-		&provider.SliceStream{Events: []provider.StreamEvent{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "a plan"},
 			{Type: provider.EventUsage, Usage: &provider.Usage{
 				InputTokens: 1_000_000, OutputTokens: 0,

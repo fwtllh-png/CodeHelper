@@ -58,21 +58,3 @@ func TestJobCenterListInfoCancelAndStale(t *testing.T) {
 	_ = manager.Cancel(id)
 	time.Sleep(50 * time.Millisecond)
 }
-
-func TestFakeJobCenter(t *testing.T) {
-	fake := process.NewFakeJobCenter(process.JobInfo{
-		ID: "job_1", Command: "echo hi", Status: process.JobStatusRunning, Running: true,
-	})
-	if len(fake.List()) != 1 {
-		t.Fatal(fake.List())
-	}
-	if err := fake.Stdin("job_1", "x"); err != nil {
-		t.Fatal(err)
-	}
-	if err := fake.Cancel("job_1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(fake.List()) != 0 {
-		t.Fatal(fake.List())
-	}
-}

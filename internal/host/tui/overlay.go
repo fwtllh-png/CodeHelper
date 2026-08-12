@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 func (m Model) renderFocusOverlay() string {
@@ -64,10 +63,6 @@ func (m Model) renderFocusOverlay() string {
 	default:
 		return ""
 	}
-}
-
-func overlayBorderStyle() lipgloss.Style {
-	return styleOverlay
 }
 
 // handleOverlayHotkeys handles y/n shortcuts while approval is focused.

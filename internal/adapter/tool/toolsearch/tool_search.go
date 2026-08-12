@@ -2,7 +2,6 @@ package toolsearch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
@@ -77,14 +76,6 @@ type match struct {
 	Score        int            `json:"score"`
 	Revision     uint64         `json:"revision"`
 	Generation   uint64         `json:"generation"`
-}
-
-func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	executor, err := t.typedExecutor()
-	if err != nil {
-		return tool.Result{}, err
-	}
-	return executor.Execute(ctx, raw)
 }
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {

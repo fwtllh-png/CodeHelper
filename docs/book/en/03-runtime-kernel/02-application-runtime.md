@@ -27,7 +27,6 @@ source_of_truth:
   - internal/runtime/app/terminal_publisher.go
   - internal/runtime/app/service_facade.go
   - internal/runtime/app/eventhub/hub.go
-  - internal/runtime/app/service/contracts.go
   - internal/runtime/app/session_artifacts.go
   - internal/runtime/app/application.go
   - internal/runtime/app/chatmerge/service.go
@@ -154,11 +153,9 @@ requeues accepted StartTurn Operations only when matching Domain Facts exist.
 
 `SessionService` owns lifecycle, Profile, and Tool Catalog behavior.
 `ArtifactService` owns Checkpoint, Plan, Turn recovery, and artifact
-persistence. Their Host-facing contracts live in the independent
-`app/service` package (`Session` and `Artifact[Recovery, Plan]` interfaces);
-implementations are adapters over Runtime-owned ports, not host logic. Runtime
-embeds both services so Hosts retain the existing Facade API without duplicate
-forwarding methods.
+persistence. Runtime exposes their narrow Host-facing methods directly over
+Runtime-owned ports; there is no parallel interface-only package or duplicated
+Host execution logic.
 
 ## Chat Merge and Durable Assembly
 
@@ -181,10 +178,11 @@ construction logic inside `wire`:
 
 `internal/runtime/app/persistence` is the durable assembly boundary: it
 composes Session, Thread, Task, Snapshot, Usage, and Trace repositories over
-`persist/state.Store`, restores interrupted Tasks, and prepares or starts a
-persistent `app.Runtime` (`PreparePersistentRuntime`, `NewPersistentRuntime`)
-before accepting Operations. `EnsureThread` seeds workspace/session/thread
-rows so CLI and TUI hosts can start Turns against the persistent Runtime.
+`persist/state.Store`, restores interrupted Tasks, and prepares a persistent
+`app.Runtime` with `PreparePersistentRuntime`. The composition owner calls
+`Start` only after the surrounding graph is ready. `EnsureThread` seeds
+workspace/session/thread rows so CLI and TUI hosts can start Turns against the
+persistent Runtime.
 
 ## Event Projection
 
@@ -218,7 +216,6 @@ owns admission, protocol projection, and terminal publication.
 | Operation outcomes and handlers | `operation_dispatch.go` |
 | Active Turn leases and control | `active_turn_registry.go` |
 | Event sequence, replay, subscribers | `eventhub/hub.go` |
-| Host-facing service contracts | `service/contracts.go` |
 | Atomic terminal/outbox recovery | `terminal_publisher.go` |
 | Session and artifact services | `service_facade.go`, `session_artifacts.go` |
 | Engine adaptation | `application.go` |

@@ -118,7 +118,7 @@ eventview + VS Code Projector -> 仅负责 Host Presentation
 | Operation Dispatcher | `internal/runtime/app` | Typed Operation Handler Selection 与 Synchronous Commit |
 | Turn Coordinator/Scope | `internal/runtime/agent` | Reducer Authority、Effect、Control 与 Turn-local State |
 | Event Hub/Terminal Publisher | `internal/runtime/app/eventhub`、`internal/runtime/app` | Sequence/Fanout 与 Atomic Terminal Publication |
-| Session/Artifact Service | `internal/runtime/app/service`、`internal/runtime/app` | Host-facing Query Contract 与实现 |
+| Session/Artifact Service | `internal/runtime/app` | Runtime-owned Port 上的 Host-facing Query 行为 |
 | Go Host Projection | `internal/runtime/eventview` | Event Payload 的唯一 Typed Interpretation |
 | VS Code Projection | `extensions/vscode/src/chat/projector` | Exhaustive Event Class Presentation |
 
@@ -165,10 +165,8 @@ Application Runtime 是显式 Owner 组成的 Facade：
 - `TerminalPublisher` 独占 Atomic Terminal Commit、Deterministic Outbox Publish
   Identity、Event Hub Projection 与 Restart Recovery。
 - `SessionService` 拥有 Lifecycle、Profile 与 Tool Catalog；`ArtifactService` 拥有
-  Checkpoint、Plan、Turn Recovery 与 Persistence；Host 依赖的 Contract 位于独立
-  `app/service` Package。
-
-Runtime 嵌入两个查询 Service，在不复制执行逻辑的前提下保持 Host API 不变。
+  Checkpoint、Plan、Turn Recovery 与 Persistence。Runtime 直接暴露窄化的 Host
+  Query Method，不再保留平行的 Interface-only Package。
 
 ## Turn 数据流
 

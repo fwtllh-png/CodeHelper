@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
@@ -581,7 +582,7 @@ func declarationEngine(
 }
 
 func toolCallStream(id, name, arguments string) provider.Stream {
-	return &provider.SliceStream{Events: []provider.StreamEvent{
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
 		{
 			Type: provider.EventToolCallDelta,
 			ToolCall: &provider.ToolCallFragment{

@@ -128,13 +128,6 @@ func (f scopeFactory) Open(
 	return f.open(spec)
 }
 
-func (f scopeFactory) Restore(
-	_ context.Context,
-	spec TurnSpec,
-) (*executionScope, error) {
-	return f.open(spec)
-}
-
 func (f scopeFactory) open(spec TurnSpec) (*executionScope, error) {
 	if f.engine == nil {
 		return nil, errors.New("turn scope engine is required")

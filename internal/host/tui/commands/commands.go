@@ -217,11 +217,6 @@ func StubKinds() []Kind {
 	}
 }
 
-// NoopKinds names legacy placeholders that the TUI no longer registers.
-func NoopKinds() []Kind {
-	return []Kind{KindRedo, KindCopy}
-}
-
 // HelpText returns operable TUI slash commands plus a CLI-only footnote.
 func HelpText() string {
 	main := strings.Join([]string{

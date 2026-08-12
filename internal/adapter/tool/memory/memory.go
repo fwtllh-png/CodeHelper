@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -82,14 +81,6 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		SandboxRequirement: tool.SandboxNone,
 		Availability:       tool.AvailabilityAvailable,
 	}
-}
-
-func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	executor, err := t.typedExecutor()
-	if err != nil {
-		return tool.Result{}, err
-	}
-	return executor.Execute(ctx, raw)
 }
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {

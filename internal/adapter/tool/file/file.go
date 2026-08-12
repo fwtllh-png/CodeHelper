@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -606,52 +605,6 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 
 func (t *Tools) resolve(name string, mode sandbox.ResolveMode) (string, error) {
 	return t.workspace.Resolve(name, mode)
-}
-
-type replacement struct {
-	old string
-	new string
-}
-
-func (t *Tools) edit(name string, replacements []replacement) (tool.Result, error) {
-	file, err := t.workspace.OpenFile(name)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	data, err := io.ReadAll(file)
-	if err != nil {
-		file.Close()
-		return tool.Result{}, err
-	}
-	info, err := file.Stat()
-	closeErr := file.Close()
-	if err != nil {
-		return tool.Result{}, err
-	}
-	if closeErr != nil {
-		return tool.Result{}, closeErr
-	}
-	if isBinary(data) {
-		return tool.Result{}, errors.New("binary file cannot be edited")
-	}
-	content := string(data)
-	for index, item := range replacements {
-		if item.old == "" {
-			return tool.Result{}, fmt.Errorf("replacement %d has empty old text", index)
-		}
-		if count := strings.Count(content, item.old); count != 1 {
-			return tool.Result{}, fmt.Errorf("replacement %d matched %d times, want exactly once", index, count)
-		}
-		content = strings.Replace(content, item.old, item.new, 1)
-	}
-	if err := t.atomicWrite(name, []byte(content), info.Mode().Perm()); err != nil {
-		return tool.Result{}, err
-	}
-	return tool.Result{Content: "edited", Metadata: map[string]any{"replacements": len(replacements)}}, nil
-}
-
-func (t *Tools) atomicWrite(name string, data []byte, mode fs.FileMode) error {
-	return t.workspace.AtomicWrite(name, data, mode)
 }
 
 func patchPaths(patch string) []string {

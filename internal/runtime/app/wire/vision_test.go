@@ -12,6 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -41,7 +42,7 @@ model = "fixture-model"
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
-	if err := EnsureThread(t.Context(), store, "thread", "session-vision", workspace); err != nil {
+	if err := apppersistence.EnsureThread(t.Context(), store, "thread", "session-vision", workspace); err != nil {
 		t.Fatal(err)
 	}
 	tools := true
