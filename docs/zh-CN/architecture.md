@@ -105,6 +105,15 @@ Recovery 成功前不会启动后台 Worker。
 ACP 是共享模型的编辑器 Transport Envelope。除非是有意的 Host 呈现差异，只在一种
 Host 中存在的功能都不完整。
 
+Event 分类是 Protocol 数据，而不是 Host Policy。Protocol Event Manifest 为每种
+Event 声明生成式 Class、Item Owner、Durability、Correlation 与 Terminal Trait；
+新增 Event 缺少 Traits 时 Schema 与 TypeScript 生成直接失败。Go TUI、CLI 与 Bench
+消费共享 `eventview` Projection，Machine NDJSON 仍输出原始 Event Envelope。
+
+VS Code 消费生成的 Traits，并通过 Stream、Tool、Interaction、Evidence、Terminal 与
+Snapshot 领域模块投影；根 Projector 只拥有 Sequence、Turn Identity 与 Dispatch
+Policy。
+
 ### Application Ownership
 
 Application Runtime 是显式 Owner 组成的 Facade：

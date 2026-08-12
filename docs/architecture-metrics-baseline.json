@@ -162,7 +162,7 @@
       "path": "internal/host/tui",
       "limits": {
         "internal_fanout": 24,
-        "production_lines": 7516,
+        "production_lines": 7387,
         "options_fields": 28,
         "mutex_fields": 2
       }
@@ -363,7 +363,7 @@
       "kind": "file",
       "path": "extensions/vscode/src/chat/projector.ts",
       "limits": {
-        "lines": 1026
+        "lines": 133
       }
     },
     {

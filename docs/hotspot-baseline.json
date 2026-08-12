@@ -29,7 +29,6 @@
       },
       "allowed_internal_imports": [
         "internal/adapter/mcp",
-        "internal/adapter/model",
         "internal/adapter/plugin",
         "internal/adapter/skill",
         "internal/config",
@@ -48,6 +47,7 @@
         "internal/platform/process",
         "internal/runtime/app",
         "internal/runtime/app/wire",
+        "internal/host/tui/facade",
         "internal/runtime/protocol",
         "internal/security/constitution",
         "internal/security/permissions",

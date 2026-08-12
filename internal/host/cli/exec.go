@@ -17,6 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/eventview"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -469,9 +470,12 @@ func runRuntimeTurn(
 			if err := encoder.Encode(event); err != nil {
 				return "", err
 			}
-			switch event.Kind {
-			case protocol.EventApprovalRequired:
-				request := event.Data.(*protocol.ApprovalRequiredData)
+			if _, err := eventview.Project(event); err != nil {
+				return "", err
+			}
+			switch data := event.Data.(type) {
+			case *protocol.ApprovalRequiredData:
+				request := data
 				// Headless exec defaults to deny unless --approval-stdin feeds
 				// decisions. Bypass/Full already opted out of asks — auto-allow
 				// so mid-flight network grants (redirect hosts) are not silently
@@ -519,7 +523,7 @@ func runRuntimeTurn(
 				if err := runtime.Submit(ctx, decision); err != nil {
 					return "", err
 				}
-			case protocol.EventTurnCompleted:
+			case *protocol.TurnCompletedData:
 				if !revertAfterComplete {
 					return turnID, nil
 				}
@@ -540,18 +544,15 @@ func runRuntimeTurn(
 					return "", err
 				}
 				waitingForRevert = true
-			case protocol.EventTurnReverted:
+			case *protocol.TurnRevertedData:
 				if waitingForRevert {
 					return turnID, nil
 				}
-			case protocol.EventTurnFailed:
-				data := event.Data.(*protocol.TurnFailedData)
+			case *protocol.TurnFailedData:
 				return "", protocol.NewProblem(data.Code, data.Message, false, nil)
-			case protocol.EventTurnCanceled:
-				data := event.Data.(*protocol.TurnCanceledData)
+			case *protocol.TurnCanceledData:
 				return "", protocol.NewProblem(protocol.CodeCanceled, data.Reason, false, nil)
-			case protocol.EventOperationRejected:
-				data := event.Data.(*protocol.OperationRejectedData)
+			case *protocol.OperationRejectedData:
 				return "", protocol.NewProblem(data.Code, data.Message, false, nil)
 			}
 		case <-cancelContext:

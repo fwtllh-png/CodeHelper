@@ -4,19 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/host/tui/commands"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/fleet"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/lane"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
+	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
+	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
+	"github.com/fwtllh-png/CodeHelper/internal/host/tui/commands"
+	"github.com/fwtllh-png/CodeHelper/internal/host/tui/facade"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/fleet"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/lane"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
 )
 
 func (m Model) openPanel(kind PanelKind) Model {
@@ -267,26 +268,11 @@ func (m Model) panelAction() Model {
 }
 
 func modelIDs() []string {
-	catalog := model.DefaultCatalog()
-	var out []string
-	for _, provider := range catalog.Providers() {
-		for id := range provider.Models {
-			out = append(out, id)
-		}
-	}
-	sort.Strings(out)
-	if len(out) == 0 {
-		return []string{"gpt-4.1"}
-	}
-	return out
+	_, models := facade.DefaultCatalogChoices()
+	return models
 }
 
 func providerIDs() []string {
-	catalog := model.DefaultCatalog()
-	var out []string
-	for _, provider := range catalog.Providers() {
-		out = append(out, provider.ID)
-	}
-	sort.Strings(out)
-	return out
+	providers, _ := facade.DefaultCatalogChoices()
+	return providers
 }

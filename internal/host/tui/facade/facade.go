@@ -5,12 +5,38 @@
 package facade
 
 import (
+	"sort"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/eventview"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
+
+func ProjectEvent(event protocol.Event) (terminal bool, err error) {
+	update, err := eventview.Project(event)
+	return err == nil && (update.Traits.Terminal ||
+		update.Traits.Class == protocol.EventClassTerminalOperation), err
+}
+
+func DefaultCatalogChoices() (providers, models []string) {
+	for _, provider := range model.DefaultCatalog().Providers() {
+		providers = append(providers, provider.ID)
+		for id := range provider.Models {
+			models = append(models, id)
+		}
+	}
+	sort.Strings(providers)
+	sort.Strings(models)
+	if len(models) == 0 {
+		models = []string{"gpt-4.1"}
+	}
+	return providers, models
+}
 
 // SessionServices exposes the subset of wire.Session the TUI panels need.
 type SessionServices struct {

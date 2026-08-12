@@ -24,6 +24,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/eventview"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -765,13 +766,15 @@ func runTurn(
 			if event.TurnID != turnID {
 				continue
 			}
-			switch event.Kind {
-			case protocol.EventOutputDelta:
-				if data, _ := event.Data.(*protocol.OutputDeltaData); data != nil {
+			if _, err := eventview.Project(event); err != nil {
+				return err
+			}
+			switch data := event.Data.(type) {
+			case *protocol.OutputDeltaData:
+				if data != nil {
 					output.WriteString(data.Text)
 				}
-			case protocol.EventToolResult:
-				data, _ := event.Data.(*protocol.ToolResultData)
+			case *protocol.ToolResultData:
 				if data == nil {
 					continue
 				}
@@ -785,8 +788,8 @@ func runTurn(
 					observed.recoveredToolFailures++
 					observed.pendingToolFailures[data.Tool]--
 				}
-			case protocol.EventApprovalRequired:
-				request, _ := event.Data.(*protocol.ApprovalRequiredData)
+			case *protocol.ApprovalRequiredData:
+				request := data
 				if request == nil || approvalDecision == "" {
 					continue
 				}
@@ -815,43 +818,42 @@ func runTurn(
 				}
 				observed.approvals++
 				observed.approvalDecision = approvalDecision
-			case protocol.EventExecutionReceipt:
-				if data, _ := event.Data.(*protocol.ExecutionReceiptData); data != nil {
+			case *protocol.ExecutionReceiptData:
+				if data != nil {
 					observed.receipt = data
 				}
-			case protocol.EventTurnVerification:
-				if data, _ := event.Data.(*protocol.TurnVerificationData); data != nil {
+			case *protocol.TurnVerificationData:
+				if data != nil {
 					observed.verification = data
 				}
-			case protocol.EventTurnCompaction:
-				if data, _ := event.Data.(*protocol.TurnCompactionData); data != nil {
+			case *protocol.TurnCompactionData:
+				if data != nil {
 					observed.compactions++
 					observed.compaction = data
 				}
-			case protocol.EventUsage:
-				if data, _ := event.Data.(*protocol.UsageData); data != nil {
+			case *protocol.UsageData:
+				if data != nil {
 					usageSamples[data.Sample] = *data
 				}
-			case protocol.EventTurnCompleted:
+			case *protocol.TurnCompletedData:
 				foldUsage()
 				observed.terminal = TerminalCompleted
 				observed.output += output.String()
 				return nil
-			case protocol.EventTurnFailed:
+			case *protocol.TurnFailedData:
 				foldUsage()
 				observed.terminal = TerminalFailed
 				observed.output += output.String()
-				if data, _ := event.Data.(*protocol.TurnFailedData); data != nil {
+				if data != nil {
 					observed.terminalDetail = data.Message
 				}
 				return nil
-			case protocol.EventTurnCanceled:
+			case *protocol.TurnCanceledData:
 				foldUsage()
 				observed.terminal = TerminalCanceled
 				observed.output += output.String()
 				return nil
-			case protocol.EventOperationRejected:
-				data, _ := event.Data.(*protocol.OperationRejectedData)
+			case *protocol.OperationRejectedData:
 				message := "operation rejected"
 				if data != nil {
 					message = data.Message

@@ -26,9 +26,10 @@ type Schema struct {
 	Version int `json:"protocol_version"`
 	// Operations and Events map a kind to the schema of its payload or data.
 	// Envelope carries the shapes that wrap them.
-	Envelope   map[string]*TypeSchema `json:"envelope"`
-	Operations map[string]*TypeSchema `json:"operations"`
-	Events     map[string]*TypeSchema `json:"events"`
+	Envelope    map[string]*TypeSchema    `json:"envelope"`
+	Operations  map[string]*TypeSchema    `json:"operations"`
+	Events      map[string]*TypeSchema    `json:"events"`
+	EventTraits map[EventKind]EventTraits `json:"event_traits"`
 }
 
 // TypeSchema is the subset of JSON Schema the protocol needs. It is deliberately
@@ -52,9 +53,10 @@ type TypeSchema struct {
 func GenerateSchema() *Schema {
 	schema := &Schema{
 		Dialect: SchemaDialect, Title: "codehelper runtime protocol", Version: Version,
-		Envelope:   map[string]*TypeSchema{},
-		Operations: map[string]*TypeSchema{},
-		Events:     map[string]*TypeSchema{},
+		Envelope:    map[string]*TypeSchema{},
+		Operations:  map[string]*TypeSchema{},
+		Events:      map[string]*TypeSchema{},
+		EventTraits: eventTraits,
 	}
 	for _, entry := range operationPayloads {
 		schema.Operations[string(entry.kind)] = schemaOf(reflect.TypeOf(entry.newPayload()))

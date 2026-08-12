@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/fwtllh-png/CodeHelper/internal/host/tui/facade"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/session/ux"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
@@ -194,9 +195,7 @@ func (h *SessionHost) pump(ctx context.Context, events <-chan protocol.Event, tu
 			case <-ctx.Done():
 				return
 			}
-			switch event.Kind {
-			case protocol.EventTurnCompleted, protocol.EventTurnFailed,
-				protocol.EventTurnCanceled, protocol.EventOperationRejected:
+			if terminal, err := facade.ProjectEvent(event); err == nil && terminal {
 				return
 			}
 		}
@@ -204,9 +203,11 @@ func (h *SessionHost) pump(ctx context.Context, events <-chan protocol.Event, tu
 }
 
 func mapRuntimeEvent(event protocol.Event) tea.Msg {
-	switch event.Kind {
-	case protocol.EventOutputDelta:
-		data, _ := event.Data.(*protocol.OutputDeltaData)
+	if _, err := facade.ProjectEvent(event); err != nil {
+		return nil
+	}
+	switch data := event.Data.(type) {
+	case *protocol.OutputDeltaData:
 		text := ""
 		if data != nil {
 			text = data.Text
@@ -215,8 +216,7 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 			return nil
 		}
 		return streamMsg{kind: streamKindOutput, text: text}
-	case protocol.EventReasoningDelta:
-		data, _ := event.Data.(*protocol.ReasoningDeltaData)
+	case *protocol.ReasoningDeltaData:
 		text := ""
 		if data != nil {
 			text = data.Text
@@ -225,16 +225,14 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 			return nil
 		}
 		return streamMsg{kind: streamKindReasoning, text: text}
-	case protocol.EventToolState:
+	case *protocol.ToolStateData:
 		// Engine lifecycle phases (running_tools / feeding_results / …), not tool names.
 		// Drive the phase strip only — do not mint fake tool receipts.
-		data, _ := event.Data.(*protocol.ToolStateData)
 		if data == nil || data.State == "" {
 			return nil
 		}
 		return streamMsg{phaseHint: data.State, text: data.Text}
-	case protocol.EventToolStart:
-		data, _ := event.Data.(*protocol.ToolStartData)
+	case *protocol.ToolStartData:
 		name, id, detail := "tool", string(event.ItemID), ""
 		if data != nil {
 			name = data.Tool
@@ -242,14 +240,12 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 			detail = compactToolArgs(data.Arguments)
 		}
 		return streamMsg{tool: name, toolID: id, text: detail, toolDone: false}
-	case protocol.EventToolOutput:
-		data, _ := event.Data.(*protocol.ToolOutputData)
+	case *protocol.ToolOutputData:
 		if data == nil || data.Chunk == "" {
 			return nil
 		}
 		return streamMsg{tool: data.Tool, toolID: data.CallID, toolOutput: data.Chunk}
-	case protocol.EventToolResult:
-		data, _ := event.Data.(*protocol.ToolResultData)
+	case *protocol.ToolResultData:
 		name, detail, id := "tool", "", string(event.ItemID)
 		if data != nil {
 			name = data.Tool
@@ -260,15 +256,13 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 			}
 		}
 		return streamMsg{tool: name, toolID: id, text: detail, toolDone: true}
-	case protocol.EventMCPHealthChanged:
-		data, _ := event.Data.(*protocol.MCPHealthChangedData)
+	case *protocol.MCPHealthChangedData:
 		if data == nil {
 			return nil
 		}
 		copy := *data
 		return streamMsg{mcpHealth: &copy}
-	case protocol.EventApprovalRequired:
-		data, _ := event.Data.(*protocol.ApprovalRequiredData)
+	case *protocol.ApprovalRequiredData:
 		id, text := string(event.ItemID), "approval required"
 		tool := ""
 		var args json.RawMessage
@@ -292,8 +286,7 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 			}
 		}
 		return streamMsg{text: text, approvalID: id, approvalTool: tool, approvalArgs: args}
-	case protocol.EventInputRequired:
-		data, _ := event.Data.(*protocol.InputRequiredData)
+	case *protocol.InputRequiredData:
 		id, text := string(event.ItemID), "input required"
 		var options []string
 		if data != nil {
@@ -302,18 +295,16 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 			options = append([]string(nil), data.Options...)
 		}
 		return streamMsg{text: text, inputID: id, inputOptions: options}
-	case protocol.EventPlanDelta:
-		data, _ := event.Data.(*protocol.PlanDeltaData)
+	case *protocol.PlanDeltaData:
 		if data == nil {
 			return nil
 		}
 		return streamMsg{
 			kind: streamKindPlan, text: data.Text, planBody: data.Body, planDone: data.Done,
 		}
-	case protocol.EventTurnCompleted:
+	case *protocol.TurnCompletedData:
 		return streamMsg{text: "— turn.completed —"}
-	case protocol.EventUsage:
-		data, _ := event.Data.(*protocol.UsageData)
+	case *protocol.UsageData:
 		if data == nil {
 			return nil
 		}
@@ -330,24 +321,21 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 				costMicrounits: data.CostMicrounits, costKnown: data.CostKnown,
 			},
 		}
-	case protocol.EventTurnFailed:
-		data, _ := event.Data.(*protocol.TurnFailedData)
+	case *protocol.TurnFailedData:
 		msg := "turn.failed"
 		if data != nil {
 			msg = fmt.Sprintf("turn.failed: %s", data.Message)
 		}
 		return streamMsg{text: msg}
-	case protocol.EventTurnCanceled:
+	case *protocol.TurnCanceledData:
 		return streamMsg{text: "turn.canceled"}
-	case protocol.EventOperationRejected:
-		data, _ := event.Data.(*protocol.OperationRejectedData)
+	case *protocol.OperationRejectedData:
 		msg := "operation.rejected"
 		if data != nil {
 			msg = fmt.Sprintf("rejected: %s", data.Message)
 		}
 		return streamMsg{text: msg}
-	case protocol.EventThreadCompacted:
-		data, _ := event.Data.(*protocol.ThreadCompactedData)
+	case *protocol.ThreadCompactedData:
 		summary := "thread.compacted"
 		if data != nil && data.Summary != "" {
 			summary = data.Summary
@@ -356,8 +344,7 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 			}
 		}
 		return streamMsg{text: "compact:" + summary}
-	case protocol.EventExecutionReceipt:
-		data, _ := event.Data.(*protocol.ExecutionReceiptData)
+	case *protocol.ExecutionReceiptData:
 		if data == nil {
 			return nil
 		}
@@ -388,16 +375,14 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 				costKnown: data.CostKnown, latency: data.Latency, budget: data.Budget,
 			},
 		}
-	case protocol.EventTurnVerification:
-		data, _ := event.Data.(*protocol.TurnVerificationData)
+	case *protocol.TurnVerificationData:
 		if data == nil {
 			return nil
 		}
 		return streamMsg{text: fmt.Sprintf(
 			"verify[%s]:%s %s", data.Scope, data.Status, data.Action,
 		)}
-	case protocol.EventTurnCompaction:
-		data, _ := event.Data.(*protocol.TurnCompactionData)
+	case *protocol.TurnCompactionData:
 		summary := "turn.compaction"
 		if data != nil {
 			summary = fmt.Sprintf("compact[%s]:%s", data.Phase, data.Summary)

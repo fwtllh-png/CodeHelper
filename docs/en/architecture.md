@@ -122,6 +122,16 @@ ACP is the editor transport envelope over this shared model. A feature that
 exists only in one host is incomplete unless it is intentionally
 host-specific presentation.
 
+Event classification is protocol data, not Host policy. The protocol Event
+manifest assigns every Event a generated Class, Item Owner, Durability,
+Correlation, and Terminal trait; schema and TypeScript generation fail when a
+new Event lacks traits. Go TUI, CLI, and Bench consume the shared `eventview`
+projection, while machine NDJSON remains the original Event envelope.
+
+VS Code consumes the generated traits and projects through domain modules for
+stream, tool, interaction, evidence, terminal, and snapshot behavior. The root
+Projector owns only sequence, Turn identity, and dispatch policy.
+
 ### Application Ownership
 
 The application Runtime is a Facade over explicit owners:
