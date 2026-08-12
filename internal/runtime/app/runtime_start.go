@@ -71,6 +71,11 @@ func prepareRuntime(
 	if options.TerminalStore == nil {
 		options.TerminalStore = turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
 	}
+	if manager, ok := options.Engine.(*ThreadManager); ok {
+		if store, ok := options.TerminalStore.(turnkernel.SessionDeltaRecoveryStore); ok {
+			manager.SetSessionDeltaRestorer(store.LatestSessionDelta)
+		}
+	}
 	if options.SessionProfiles != nil {
 		if err := options.DefaultProfile.Validate(); err != nil {
 			return nil, fmt.Errorf("default session profile: %w", err)

@@ -10,6 +10,7 @@ import (
 
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type Store struct {
@@ -384,6 +385,36 @@ func (s *Store) LoadTerminal(
 		return envelope, marker, err
 	}
 	return envelope, marker, nil
+}
+
+func (s *Store) LatestSessionDelta(
+	ctx context.Context,
+	threadID protocol.ThreadID,
+) (json.RawMessage, error) {
+	var delta string
+	err := s.database.DB().QueryRowContext(
+		ctx,
+		`SELECT json_extract(envelope_json, '$.session_delta')
+		 FROM turn_terminal_envelopes
+		 WHERE EXISTS (
+		   SELECT 1
+		   FROM json_each(envelope_json, '$.outbox')
+		   WHERE json_extract(value, '$.thread_id') = ?
+		 )
+		 AND json_type(envelope_json, '$.session_delta') IS NOT NULL
+		 ORDER BY rowid DESC LIMIT 1`,
+		threadID,
+	).Scan(&delta)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !json.Valid([]byte(delta)) {
+		return nil, errors.New("stored session delta is invalid")
+	}
+	return json.RawMessage(delta), nil
 }
 
 func (s *Store) PendingOutbox(

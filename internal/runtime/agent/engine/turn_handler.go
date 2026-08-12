@@ -11,6 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -58,97 +59,161 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 ) (result Result, resultErr error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if prompt == "" {
-		return Result{}, errors.New("prompt is required")
+	spec, persistedTurnID, err := e.prepareTurnSpec(
+		turnID,
+		TurnRequest{
+			Prompt: prompt, Intent: intent, Attachments: attachments,
+		},
+	)
+	if err != nil {
+		return Result{}, err
 	}
-	intent = protocol.NormalizeTurnIntent(intent)
-	if !intent.Valid() {
-		return Result{}, protocol.NewProblem(
+	factory := scopeFactory{
+		engine: e, emit: emit, persistedTurnID: persistedTurnID,
+	}
+	scope, err := factory.Open(ctx, spec)
+	if err != nil {
+		return Result{}, err
+	}
+	defer scope.Close(context.WithoutCancel(ctx))
+	return scope.Run(ctx)
+}
+
+func (e *Engine) prepareTurnSpec(
+	turnID string,
+	request TurnRequest,
+) (TurnSpec, string, error) {
+	persistedTurnID := turnID
+	if request.Prompt == "" {
+		return TurnSpec{}, "", errors.New("prompt is required")
+	}
+	request.Intent = protocol.NormalizeTurnIntent(request.Intent)
+	if !request.Intent.Valid() {
+		return TurnSpec{}, "", protocol.NewProblem(
 			protocol.CodeInvalidArgument,
-			fmt.Sprintf("turn intent %q is invalid", intent),
+			fmt.Sprintf("turn intent %q is invalid", request.Intent),
 			false,
 			nil,
 		)
 	}
+	if turnID == "" {
+		turnID = fmt.Sprintf("engine-turn-%d", e.turn+1)
+	}
+	spec, err := SnapshotTurnSpec(
+		e.options,
+		TurnIdentity{
+			SessionID: e.options.SessionID, TurnID: turnID,
+			ProfileRevision: e.options.ProfileRevision,
+		},
+		request,
+	)
+	if err != nil {
+		return TurnSpec{}, "", err
+	}
+	return spec, persistedTurnID, nil
+}
+
+type executionScope = turnexec.Scope[TurnSpec, Result, ScopeSnapshot]
+
+type scopeFactory struct {
+	engine          *Engine
+	emit            func(Event) error
+	persistedTurnID string
+}
+
+func (f scopeFactory) Open(
+	_ context.Context,
+	spec TurnSpec,
+) (*executionScope, error) {
+	return f.open(spec)
+}
+
+func (f scopeFactory) Restore(
+	_ context.Context,
+	spec TurnSpec,
+) (*executionScope, error) {
+	return f.open(spec)
+}
+
+func (f scopeFactory) open(spec TurnSpec) (*executionScope, error) {
+	if f.engine == nil {
+		return nil, errors.New("turn scope engine is required")
+	}
+	emit := f.emit
 	if emit == nil {
 		emit = func(Event) error { return nil }
 	}
-	if err := e.beginTurn(); err != nil {
-		return Result{}, err
+	scope := &Scope{
+		engine: f.engine, spec: spec, emit: emit,
+		persistedTurnID: f.persistedTurnID,
+		state:           newScopeState(f.engine),
 	}
-	defer e.endTurn()
+	f.engine.publishScope(scope)
+	f.engine.attachPending(scope)
+	return turnexec.NewScope(
+		scope.Spec(),
+		scope.Run,
+		scope.Control(),
+		scope.Snapshot,
+		func(context.Context) error { scope.Close(); return nil },
+	)
+}
+
+// Run owns the complete lifetime of one frozen TurnSpec.
+func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
+	e := s.engine
+	spec := s.spec
+	emit := s.emit
+	turnID := spec.Identity.TurnID
+	prompt := spec.Request.Prompt
+	intent := spec.Request.Intent
+	attachments := spec.Request.Attachments
+	persistedTurnID := s.persistedTurnID
 	releaseWorkspace, err := e.options.WorkspaceTurnGate.Acquire(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 	defer releaseWorkspace()
 
-	persistedTurnID := turnID
-	if turnID == "" {
-		turnID = fmt.Sprintf("engine-turn-%d", e.turn+1)
-	}
-
-	turnContext, err := SnapshotTurnContext(e.options, turnID)
-	if err != nil {
-		return result, err
-	}
-	e.setTurnRoute(turnContext.Route)
-	defer e.clearTurnRoute()
-
-	recorder, turnSpan := e.beginTrace(turnContext.Purpose)
+	recorder, turnSpan := e.beginTrace(spec.Purpose)
 	defer func() {
 		e.endTrace(context.WithoutCancel(ctx), recorder, turnSpan, persistedTurnID, result.State)
 	}()
 	kernel, err := newEngineTurnKernelForTurn(
 		kernelTurnIdentity{
 			turnID:          turnID,
-			profileRevision: e.options.ProfileRevision,
+			profileRevision: spec.Identity.ProfileRevision,
 		},
 		intent,
-		string(turnContext.Mode),
+		string(spec.Mode),
 		recorder,
 		turnSpan.ID(),
 		e.options.TurnKernelObserver,
 		e.options.Metrics,
-		turnkernel.Policy{
-			CompletionRequired: e.options.RequireCompletionDeclaration,
-			VerificationRequired: e.options.Verify.enabled() ||
-				protocol.NormalizeTurnIntent(intent) ==
-					protocol.TurnIntentWorkspaceChange ||
-				e.options.RequireCompletionDeclaration,
-			VerificationMustPass: protocol.NormalizeTurnIntent(intent) ==
-				protocol.TurnIntentWorkspaceChange ||
-				e.options.RequireCompletionDeclaration,
-			VerificationMode:        e.options.Verify.Mode,
-			VerificationOnFailure:   e.options.Verify.OnFailure,
-			CompletionRepairLimit:   maxCompletionRepairs,
-			WorkspaceRepairLimit:    maxWorkspaceChangeRepairs,
-			DeclarationRepairLimit:  maxDeclarationRepairs,
-			VerificationRepairLimit: uint32(max(e.options.Verify.MaxRepairSteps, 0)),
-			JournalRequired:         e.journal != nil,
-		},
+		spec.Kernel,
 		e.options.TurnCoordinatorRuntime,
 	)
 	if err != nil {
 		return result, err
 	}
-	e.setTurnKernel(kernel)
-	defer e.clearTurnKernel(kernel)
+	s.mu.Lock()
+	s.state.kernel = kernel
+	s.mu.Unlock()
 	defer func() {
 		_ = e.options.TurnCoordinatorRuntime.Release(
 			context.WithoutCancel(ctx),
 			turnID,
 		)
 	}()
-	if e.options.SkillSnapshot != nil {
-		names := make([]string, 0, len(turnContext.Skills))
-		for _, summary := range turnContext.Skills {
+	if len(spec.Skills) != 0 {
+		names := make([]string, 0, len(spec.Skills))
+		for _, summary := range spec.Skills {
 			names = append(names, summary.Name)
 		}
 		ctx = skilltool.WithAllowedNames(ctx, names)
 	}
-	if e.guard != nil && turnContext.Policy != nil {
-		sessionPolicy := e.guard.SwapPolicy(turnContext.Policy)
+	if e.guard != nil && spec.Policy != nil {
+		sessionPolicy := e.guard.SwapPolicy(spec.Policy)
 		defer e.guard.SwapPolicy(sessionPolicy)
 	}
 	if e.options.Hooks != nil {
@@ -176,16 +241,11 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	defer disconnectInput()
 	e.options.Metrics.AgentTurn()
 	e.turn++
-	e.resetToolSpend()
 	result.Turn = e.turn
 	kernelTerminalFinalized := false
 	kernelTerminalStarted := false
 	journalRevert := false
-	e.turnDiff.Reset()
-	e.resetTurnDiagnostics()
-	e.resetVerificationEvidence()
-	e.resetRollbackConflicts()
-	e.evidence.BeginTurn(e.turn)
+	e.evidenceSet().BeginTurn(e.turn)
 	_, restoredTerminal := kernel.terminalDecision()
 	if e.journal != nil && !restoredTerminal {
 		if err := e.journal.Begin(turnID); err != nil {
@@ -194,6 +254,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	}
 	transaction := cloneMessages(e.history)
 	terminal := newTurnEmitter(e.turn, emit)
+	terminal.setCommitted(e.applySessionDelta)
 	terminal.setCancelReason(func() string {
 		if reason := kernel.cancellationReason(); reason != "" {
 			return reason
@@ -221,7 +282,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		}
 		terminal.setPrimary(resultErr)
 		snapshot, err := e.finalizeTerminalContext(
-			transaction, false, canceled, send,
+			transaction, false, canceled, provider.Usage{}, 0, send,
 		)
 		terminal.setContextBudget(snapshot)
 		if err != nil {
@@ -382,12 +443,12 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		return result, nil
 	}
 	if err := send(Preparing, Event{
-		Provider: turnContext.Provider, Model: turnContext.Model,
-		Purpose: string(turnContext.Purpose),
-		Mode:    string(turnContext.Mode), Posture: string(turnContext.Posture),
-		Workspace:          turnContext.Workspace,
+		Provider: spec.Provider, Model: spec.Model,
+		Purpose: string(spec.Purpose),
+		Mode:    string(spec.Mode), Posture: string(spec.Posture),
+		Workspace:          spec.Workspace,
 		WorkspaceIsolation: e.options.WorkspaceIsolation,
-		Sandbox:            turnContext.Sandbox,
+		Sandbox:            spec.Sandbox,
 	}); err != nil {
 		return result, err
 	}
@@ -469,13 +530,13 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		return kernel.invalidateCompletion(reason)
 	}
 	for step := 0; step <
-		e.options.MaxSteps+kernel.repairStepTotal(); step++ {
+		spec.Limits.MaxSteps+kernel.repairStepTotal(); step++ {
 		if e.appendSteering(&transaction) && kernel.completion() != nil {
 			if err := invalidateCompletion("turn_steered"); err != nil {
 				return result, err
 			}
 		}
-		if remaining := stepBudgetWarningRemaining(e.options.MaxSteps, step); remaining > 0 {
+		if remaining := stepBudgetWarningRemaining(spec.Limits.MaxSteps, step); remaining > 0 {
 			transaction = append(transaction, stepBudgetFeedback(e.turn, remaining))
 		}
 		progress, err = kernel.observeProgress(e.progressSignature(kernel))
@@ -693,9 +754,8 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 			if outcome.receipt != nil && outcome.receipt.Workspace == nil {
 				outcome.receipt.Workspace = &VerificationWorkspace{Status: "changed"}
 			}
-			previousHistory := cloneMessages(e.history)
 			snapshot, err := e.finalizeTerminalContext(
-				transaction, true, false, send,
+				transaction, true, false, result.Usage, cost, send,
 			)
 			if err != nil {
 				return result, err
@@ -722,12 +782,9 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 				Verification:         outcome.receipt,
 				Completion:           kernel.completionDeclaration(),
 			}); err != nil {
-				e.history = previousHistory
 				contextFinalized = false
 				return result, err
 			}
-			e.usage.Add(result.Usage)
-			e.costUSD += cost
 			return result, nil
 		}
 		if err := send(PreparingTools, Event{}); err != nil {
@@ -792,7 +849,7 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 		protocol.CodeResourceExhausted,
 		fmt.Sprintf(
 			"engine exceeded %d steps (raise execution.max_steps, CODEHELPER_MAX_STEPS, or --max-steps)",
-			e.options.MaxSteps,
+			spec.Limits.MaxSteps,
 		),
 		false,
 		nil,
@@ -861,19 +918,6 @@ func completionDeclarationFeedback(turn uint64) provider.Message {
 	return message
 }
 
-func completionVerifiedFeedback(turn uint64) provider.Message {
-	message := provider.TextMessage(
-		provider.RoleUser,
-		"[completion_verified]\n"+
-			"required_action=final_answer\n"+
-			"pending_actions=0\n"+
-			"Structured completion and verification passed. Provide one concise "+
-			"user-facing final answer without calling another tool.",
-	)
-	message.Turn = turn
-	return message
-}
-
 func completionFeedback(turn uint64) provider.Message {
 	message := provider.TextMessage(provider.RoleUser, `[completion_required]
 Your previous response did not contain a complete user-facing final answer.
@@ -891,10 +935,6 @@ failure, or provide a concise final answer that clearly reports the unresolved
 failure and its impact.`)
 	message.Turn = turn
 	return message
-}
-
-func emitState(send func(State, Event) error) func(State, Event) error {
-	return send
 }
 
 func errorText(err error) string {

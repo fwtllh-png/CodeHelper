@@ -19,6 +19,7 @@ type turnEmitter struct {
 	primaryError  string
 	secondary     []TerminalIssue
 	emitFunc      func(Event) error
+	committed     func() error
 	cancelReason  func() string
 	decision      func() (turnkernel.TerminalDecision, bool)
 }
@@ -50,6 +51,11 @@ func (h *turnEmitter) send(state State, event Event) error {
 		return err
 	}
 	if terminal {
+		if h.committed != nil {
+			if err := h.committed(); err != nil {
+				return err
+			}
+		}
 		h.emitted = true
 	}
 	return nil
@@ -57,6 +63,10 @@ func (h *turnEmitter) send(state State, event Event) error {
 
 func (h *turnEmitter) setContextBudget(snapshot ContextBudgetSnapshot) {
 	h.contextBudget = &snapshot
+}
+
+func (h *turnEmitter) setCommitted(apply func() error) {
+	h.committed = apply
 }
 
 func (h *turnEmitter) setPrimary(err error) {
@@ -95,6 +105,8 @@ func firstJoinedError(err error) error {
 func (e *Engine) finalizeTerminalContext(
 	transaction []provider.Message,
 	completed, canceled bool,
+	usage provider.Usage,
+	cost float64,
 	send func(State, Event) error,
 ) (ContextBudgetSnapshot, error) {
 	candidate := cloneMessages(e.history)
@@ -111,7 +123,23 @@ func (e *Engine) finalizeTerminalContext(
 	if err := e.runTerminalCompactGate(&candidate, allowCurrentTurn, send); err != nil {
 		return e.contextBudgetSnapshot(candidate), err
 	}
-	e.history = candidate
+	delta, err := prepareSessionDelta(
+		e.runningScope().spec.Identity.TurnID,
+		e.sessionRevision,
+		candidate,
+		usage,
+		cost,
+		SessionStateDelta{
+			WorkingSet: e.workingLedger().Delta(),
+			Evidence:   e.evidenceSet().Delta(),
+			Failures:   e.failureLedger().Delta(),
+			Compaction: CompactionDelta{Count: e.compactionTotal()},
+		},
+	)
+	if err != nil {
+		return e.contextBudgetSnapshot(candidate), err
+	}
+	e.stageSessionDelta(delta)
 	return e.contextBudgetSnapshot(candidate), nil
 }
 

@@ -13,7 +13,9 @@
     "!**/node_modules/**",
     "!**/dist/**",
     "!**/.vscode-test/**",
+    "!.tmp/**",
     "!.codehelper/**",
+    "!debug*.md",
     "!docs/DEEPSEEK-LIVE.zh-CN.md"
   ]
 }

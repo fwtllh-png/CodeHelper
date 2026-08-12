@@ -47,7 +47,7 @@ func (e *Engine) progressSignature(kernel *engineTurnKernel) string {
 				fact.Symbol,
 			))
 		}
-		for _, path := range e.working.PathsObservedAt(
+		for _, path := range e.workingLedger().PathsObservedAt(
 			workingset.SourceRead,
 			e.turn,
 		) {

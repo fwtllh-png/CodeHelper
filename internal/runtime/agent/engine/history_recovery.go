@@ -114,7 +114,7 @@ func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudget
 	snapshot := ContextBudgetSnapshot{
 		HistoryBytes:     historyBytes(history),
 		MaxHistoryBytes:  e.options.MaxContextBytes,
-		Compactions:      e.compactions,
+		Compactions:      e.compactionTotal(),
 		MaxContextTokens: e.activeRoute().Model().Limits.ContextTokens,
 	}
 	messages := append(e.promptMessages(), cloneMessages(history)...)
@@ -201,7 +201,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	}
 	*history = selected.history
 	workingSet, criticalPaths := e.compactionPaths()
-	e.compactions++
+	e.noteCompaction()
 	receipt := &CompactionReceipt{
 		OriginalMessages: originalMessages, RemovedMessages: selected.cut,
 		OriginalBytes: size, RetainedBytes: selected.retainedBytes,
@@ -414,59 +414,30 @@ func (e *Engine) ReplaceHistory(messages []provider.Message) {
 func (e *Engine) Fork() *Engine {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.steerMu.Lock()
-	defer e.steerMu.Unlock()
+	e.scopeMu.Lock()
+	defer e.scopeMu.Unlock()
 	e.planMu.Lock()
 	defer e.planMu.Unlock()
 	forked := &Engine{
 		options: e.options, history: cloneMessages(e.history),
-		pending:     append([]PendingInput(nil), e.pending...),
 		mailboxHold: append([]PendingInput(nil), e.mailboxHold...),
 		turn:        e.turn,
-		scheduler:   NewToolScheduler(e.options.MaxToolConcurrent),
-		turnDiff:    NewTurnDiffTracker(),
-
-		working:  e.working.Clone(),
-		evidence: e.evidence.Clone(),
-		failures: e.failures.Clone(),
+		working:     e.working.Clone(),
+		evidence:    e.evidence.Clone(),
+		failures:    e.failures.Clone(),
 
 		planText: e.planText,
 		plan:     e.plan.Clone(),
+	}
+	forked.lastScope = &Scope{
+		engine: forked,
+		state:  newScopeState(e),
 	}
 	if e.planReceipt != nil {
 		receipt := *e.planReceipt
 		forked.planReceipt = &receipt
 	}
 	return forked
-}
-
-func (e *Engine) Undo() bool {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if len(e.history) == 0 {
-		return false
-	}
-	lastTurn := e.history[len(e.history)-1].Turn
-	if lastTurn != 0 {
-		start := len(e.history) - 1
-		for start > 0 && e.history[start-1].Turn == lastTurn {
-			start--
-		}
-		e.history = e.history[:start]
-		return true
-	}
-	start := -1
-	for index := len(e.history) - 1; index >= 0; index-- {
-		if e.history[index].Role == provider.RoleUser {
-			start = index
-			break
-		}
-	}
-	if start < 0 {
-		return false
-	}
-	e.history = e.history[:start]
-	return true
 }
 
 // LastTurnID returns the workspace journal turn id with the highest turn number.

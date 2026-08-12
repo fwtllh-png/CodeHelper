@@ -256,7 +256,7 @@ func currentVerificationCallIDs(
 	mutationRevision uint64,
 ) []string {
 	var callIDs []string
-	for _, evidence := range engine.verificationInputs {
+	for _, evidence := range engine.verificationEvidence() {
 		if evidence.MutationRevision == mutationRevision &&
 			evidence.CallID != "" {
 			callIDs = append(callIDs, evidence.CallID)

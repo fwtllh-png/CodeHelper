@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -20,11 +19,10 @@ func (e *Engine) completionCandidate(
 	mutationRevision uint64,
 ) turnkernel.CompletionCandidate {
 	candidate := turnkernel.CompletionCandidate{
-		CompletionCall:  call.ID,
-		BatchMutated:    batchMutated,
-		BatchSize:       batchSize,
-		ToolError:       result.IsError,
-		QualityRequired: e.qualityEvidenceRequired,
+		CompletionCall: call.ID,
+		BatchMutated:   batchMutated,
+		BatchSize:      batchSize,
+		ToolError:      result.IsError,
 	}
 	declaration, ok := decodeCompletionDeclaration(
 		result.Metadata[tool.MetadataCompletionDeclaration],
@@ -38,8 +36,9 @@ func (e *Engine) completionCandidate(
 			declaration.PendingActions...,
 		)
 	}
-	currentEvidence := make(map[string]struct{}, len(e.verificationInputs))
-	for _, evidence := range e.verificationInputs {
+	evidenceInputs := e.verificationEvidence()
+	currentEvidence := make(map[string]struct{}, len(evidenceInputs))
+	for _, evidence := range evidenceInputs {
 		if evidence.MutationRevision == mutationRevision && evidence.CallID != "" {
 			currentEvidence[evidence.CallID] = struct{}{}
 		}
@@ -145,18 +144,4 @@ func decodeCompletionDeclaration(value any) (tool.CompletionDeclaration, bool) {
 		return tool.CompletionDeclaration{}, false
 	}
 	return declaration, true
-}
-
-func (e *Engine) completionProgressKey(mutationRevision uint64) string {
-	callIDs := make([]string, 0, len(e.verificationInputs))
-	for _, evidence := range e.verificationInputs {
-		if evidence.MutationRevision == mutationRevision && evidence.CallID != "" {
-			callIDs = append(callIDs, evidence.CallID)
-		}
-	}
-	slices.Sort(callIDs)
-	return strings.Join(append(
-		[]string{strconv.FormatUint(mutationRevision, 10)},
-		callIDs...,
-	), "\x00")
 }

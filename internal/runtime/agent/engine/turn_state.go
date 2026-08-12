@@ -7,10 +7,11 @@ import (
 
 // TurnDiff returns the net file-tool changes recorded for the active/last turn (N18).
 func (e *Engine) TurnDiff() []TurnDiffEntry {
-	if e == nil || e.turnDiff == nil {
+	scope := e.currentScope()
+	if scope == nil || scope.state.diff == nil {
 		return nil
 	}
-	return e.turnDiff.Snapshot()
+	return scope.state.diff.Snapshot()
 }
 
 // RollbackConflicts describes the paths an automatic rollback of the last turn
@@ -21,37 +22,37 @@ func (e *Engine) RollbackConflicts() []string {
 	if e == nil {
 		return nil
 	}
-	e.rollbackMu.Lock()
-	defer e.rollbackMu.Unlock()
-	return append([]string(nil), e.rollbackConflicts...)
+	scope := e.currentScope()
+	if scope == nil {
+		return nil
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	return append([]string(nil), scope.state.rollback...)
 }
 
 func (e *Engine) recordRollbackConflicts(receipt workspacejournal.Receipt) {
 	if e == nil || len(receipt.Conflicts) == 0 {
 		return
 	}
-	e.rollbackMu.Lock()
-	defer e.rollbackMu.Unlock()
+	scope := e.executionScope()
+	if scope == nil {
+		return
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
 	for _, conflict := range receipt.Conflicts {
-		e.rollbackConflicts = append(e.rollbackConflicts, fmt.Sprintf(
+		scope.state.rollback = append(scope.state.rollback, fmt.Sprintf(
 			"workspace rollback could not restore %s: %s", conflict.Path, conflict.Reason,
 		))
 	}
 }
 
-func (e *Engine) resetRollbackConflicts() {
-	if e == nil {
-		return
-	}
-	e.rollbackMu.Lock()
-	defer e.rollbackMu.Unlock()
-	e.rollbackConflicts = nil
-}
-
 // FormatTurnDiff renders the turn-diff tracker, or empty when nothing was recorded.
 func (e *Engine) FormatTurnDiff() string {
-	if e == nil || e.turnDiff == nil {
+	scope := e.currentScope()
+	if scope == nil || scope.state.diff == nil {
 		return ""
 	}
-	return e.turnDiff.Format()
+	return scope.state.diff.Format()
 }

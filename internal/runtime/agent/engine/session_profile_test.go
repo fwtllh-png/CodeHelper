@@ -101,7 +101,7 @@ func TestSessionProfileToolAllowlistRejectsUnadvertisedExecution(t *testing.T) {
 	if err := engine.ApplySessionProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	if definitions := engine.toolDefinitions(); len(definitions) != 0 {
+	if definitions := testToolDefinitions(t, engine); len(definitions) != 0 {
 		t.Fatalf("definitions = %+v, want only hidden retrieval helper", definitions)
 	}
 	results, err := engine.runTools(
@@ -207,7 +207,7 @@ func TestSessionProfileToolAllowlistBindsSourceAcrossRevocation(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if definitions := engine.toolDefinitions(); len(definitions) != 0 {
+	if definitions := testToolDefinitions(t, engine); len(definitions) != 0 {
 		t.Fatalf("same-name replacement inherited allowlist: %+v", definitions)
 	}
 	results, err := engine.runTools(

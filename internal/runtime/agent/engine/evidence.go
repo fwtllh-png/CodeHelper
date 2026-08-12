@@ -21,10 +21,10 @@ var resultHandleTools = map[string]struct{}{
 // noteToolCall records a call before it runs: what was asked for, and whether it
 // collects a result the model was told about earlier.
 func (e *Engine) noteToolCall(call provider.ToolCall) {
-	if e.evidence == nil {
+	if e.evidenceSet() == nil {
 		return
 	}
-	e.evidence.NoteCall(call.Name, call.Arguments)
+	e.evidenceSet().NoteCall(call.Name, call.Arguments)
 	if _, found := resultHandleTools[call.Name]; !found {
 		return
 	}
@@ -38,7 +38,7 @@ func (e *Engine) noteToolCall(call provider.ToolCall) {
 		return
 	}
 	for _, candidate := range []string{arguments.Handle, arguments.ID} {
-		e.evidence.ConsumeHandle(candidate)
+		e.evidenceSet().ConsumeHandle(candidate)
 	}
 }
 
@@ -47,7 +47,7 @@ func (e *Engine) noteToolCall(call provider.ToolCall) {
 // Everything it records comes from result metadata the tools already produce, so
 // a tool that says nothing about what it found costs the ledger nothing.
 func (e *Engine) observeEvidence(call provider.ToolCall, result tool.Result) {
-	if e.evidence == nil || result.Metadata == nil {
+	if e.evidenceSet() == nil || result.Metadata == nil {
 		return
 	}
 	for _, hit := range observedEvidenceHits(result.Metadata) {
@@ -55,7 +55,7 @@ func (e *Engine) observeEvidence(call provider.ToolCall, result tool.Result) {
 		if !ok {
 			continue
 		}
-		e.evidence.Observe(evidence.Fact{
+		e.evidenceSet().Observe(evidence.Fact{
 			Kind: evidence.Kind(hit.Kind), Path: path, Line: hit.Line,
 			Symbol: hit.Symbol, Tool: call.Name, Turn: e.turn,
 		})
@@ -65,10 +65,10 @@ func (e *Engine) observeEvidence(call provider.ToolCall, result tool.Result) {
 	}
 	if path, ok := e.workspaceRelative(observedFileRead(result.Metadata)); ok {
 		digest, _ := result.Metadata["content_sha256"].(string)
-		e.evidence.NoteRead(path, digest)
+		e.evidenceSet().NoteRead(path, digest)
 	}
 	if handle, _ := result.Metadata["handle"].(string); handle != "" {
-		e.evidence.NoteHandle(handle, call.Name)
+		e.evidenceSet().NoteHandle(handle, call.Name)
 	}
 }
 
@@ -79,24 +79,24 @@ func (e *Engine) observeEvidence(call provider.ToolCall, result tool.Result) {
 // already tried an edit with the wrong anchor will try it again with the same
 // anchor.
 func (e *Engine) observeToolFailure(call provider.ToolCall, result tool.Result) {
-	if e.failures == nil {
+	if e.failureLedger() == nil {
 		return
 	}
 	reason := result.Content
 	if category, _ := result.Metadata["error_category"].(string); category != "" {
 		reason = category + ": " + reason
 	}
-	e.failures.NoteTool(e.turn, call.Name, reason)
+	e.failureLedger().NoteTool(e.turn, call.Name, reason)
 }
 
 // observeVerifyFailure records that a verification did not pass. The gate's own
 // verdict only reaches this turn's event stream, so without this the next turn
 // cannot tell a suite that was never run from one that ran and failed.
 func (e *Engine) observeVerifyFailure(scope, status, message string) {
-	if e.failures == nil {
+	if e.failureLedger() == nil {
 		return
 	}
-	e.failures.NoteVerify(e.turn, scope, status, message)
+	e.failureLedger().NoteVerify(e.turn, scope, status, message)
 }
 
 // Failures reports the attempts that did not work, most recently seen first.
@@ -104,28 +104,28 @@ func (e *Engine) Failures() []compact.Failure {
 	if e == nil {
 		return nil
 	}
-	return e.failures.List()
+	return e.failureLedger().List()
 }
 
 // observeChangeEvidence records a write. A path the thread read first, or one it
 // created, rests on evidence; anything else was written blind.
 func (e *Engine) observeChangeEvidence(change toolguard.FileChange) {
-	if e.evidence == nil {
+	if e.evidenceSet() == nil {
 		return
 	}
 	path, ok := e.workspaceRelative(change.Path)
 	if !ok {
 		return
 	}
-	read := change.Kind == toolguard.FileCreated || e.working.HasSource(workingset.SourceRead, path)
-	e.evidence.MarkChanged(path, e.turn, read)
+	read := change.Kind == toolguard.FileCreated || e.workingLedger().HasSource(workingset.SourceRead, path)
+	e.evidenceSet().MarkChanged(path, e.turn, read)
 }
 
 // observeDiagnosticsEvidence records whether a checked path is still failing. A
 // receipt the runner could not produce says nothing either way, so it is skipped
 // rather than read as clean.
 func (e *Engine) observeDiagnosticsEvidence(receipts []diagnostics.Receipt) {
-	if e.evidence == nil {
+	if e.evidenceSet() == nil {
 		return
 	}
 	for _, receipt := range receipts {
@@ -133,7 +133,7 @@ func (e *Engine) observeDiagnosticsEvidence(receipts []diagnostics.Receipt) {
 			continue
 		}
 		if path, ok := e.workspaceRelative(receipt.Path); ok {
-			e.evidence.MarkDiagnostics(path, len(receipt.Diagnostics) > 0)
+			e.evidenceSet().MarkDiagnostics(path, len(receipt.Diagnostics) > 0)
 		}
 	}
 }
@@ -141,7 +141,7 @@ func (e *Engine) observeDiagnosticsEvidence(receipts []diagnostics.Receipt) {
 // observeVerifiedEvidence records that verification covered paths. Only a passing
 // gate may call it: a failed run is the reason the risk exists.
 func (e *Engine) observeVerifiedEvidence(paths []string) {
-	if e.evidence == nil {
+	if e.evidenceSet() == nil {
 		return
 	}
 	relative := make([]string, 0, len(paths))
@@ -150,7 +150,7 @@ func (e *Engine) observeVerifiedEvidence(paths []string) {
 			relative = append(relative, candidate)
 		}
 	}
-	e.evidence.MarkVerified(relative)
+	e.evidenceSet().MarkVerified(relative)
 }
 
 // EvidenceSnapshot reports the evidence set as of the last sample: what the
@@ -159,7 +159,7 @@ func (e *Engine) EvidenceSnapshot() evidence.Snapshot {
 	if e == nil {
 		return evidence.Snapshot{}
 	}
-	return e.evidence.Snapshot(e.options.EvidenceLimit)
+	return e.evidenceSet().Snapshot(e.options.EvidenceLimit)
 }
 
 func observedEvidenceHits(metadata map[string]any) []tool.EvidenceHit {

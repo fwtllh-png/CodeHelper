@@ -11,11 +11,12 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
-func TestSnapshotTurnContextClonesSamplingPolicy(t *testing.T) {
+func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	security := policy.DefaultRuntime(policy.ModeOperate, policy.PermissionAuto)
 	security.Repository = []policy.Rule{{
 		Tool: "shell_run", Resource: "*", Action: policy.ActionAsk,
@@ -25,12 +26,22 @@ func TestSnapshotTurnContextClonesSamplingPolicy(t *testing.T) {
 	options := Options{
 		Route: testRoute(t), Tools: registry, Security: security, Workspace: "/tmp/ws",
 	}
-	snapshot, err := SnapshotTurnContext(options, "turn-1")
+	snapshot, err := SnapshotTurnSpec(
+		options,
+		TurnIdentity{SessionID: "session-1", TurnID: "turn-1", ProfileRevision: 7},
+		TurnRequest{Prompt: "inspect", Intent: protocol.TurnIntentAnswer},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if snapshot.Provider == "" || snapshot.Model == "" {
 		t.Fatalf("snapshot = %+v", snapshot)
+	}
+	if snapshot.Identity.TurnID != "turn-1" ||
+		snapshot.Identity.ProfileRevision != 7 ||
+		snapshot.Request.Prompt != "inspect" ||
+		snapshot.Catalog.Generation == 0 {
+		t.Fatalf("identity/request/catalog not frozen: %+v", snapshot)
 	}
 	// Operate is act with wider permissions, not a purpose of its own.
 	if snapshot.Purpose != model.PurposeAct {
@@ -112,7 +123,7 @@ func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 				security.Mode = policy.ModeOperate
 				go func(requestID string) {
 					time.Sleep(10 * time.Millisecond)
-					_ = engine.DecideApproval(toolguard.ApprovalDecision{
+					_ = mustControl(t, engine).ResolveApproval(toolguard.ApprovalDecision{
 						RequestID: requestID, Approved: true,
 						Scope: policy.ApprovalOnce, ExpiresAt: time.Now().Add(time.Minute),
 					})
@@ -190,7 +201,7 @@ func TestRunForTurnNextTurnSeesUpdatedPolicy(t *testing.T) {
 	_, err = engine.RunForTurn(t.Context(), "t2", "second", func(event Event) error {
 		if event.State == AwaitingApproval && event.Approval != nil {
 			approvals++
-			_ = engine.DecideApproval(toolguard.ApprovalDecision{
+			_ = mustControl(t, engine).ResolveApproval(toolguard.ApprovalDecision{
 				RequestID: event.Approval.RequestID, Approved: true,
 				Scope: policy.ApprovalOnce, ExpiresAt: time.Now().Add(time.Minute),
 			})

@@ -12,11 +12,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 )
 
-func (e *Engine) resetVerificationEvidence() {
-	e.verificationInputs = nil
-	e.qualityEvidenceRequired = false
-}
-
 func (e *Engine) bindVerificationEvidence(
 	call provider.ToolCall,
 	result *tool.Result,
@@ -62,7 +57,13 @@ func (e *Engine) bindVerificationEvidence(
 	evidence.MutationRevision = mutationRevision
 	result.Metadata[verify.EvidenceMetadataKey] = evidence
 	result.Metadata["verification_evidence_accepted"] = true
-	e.verificationInputs = append(e.verificationInputs, evidence)
+	scope := e.executionScope()
+	if scope == nil {
+		return
+	}
+	scope.mu.Lock()
+	scope.state.verification = append(scope.state.verification, evidence)
+	scope.mu.Unlock()
 }
 
 func decodeVerificationEvidence(value any) (verify.Evidence, bool) {
@@ -102,8 +103,9 @@ func (e *Engine) qualityVerificationReceipt(
 	mutationRevision uint64,
 ) (verify.Receipt, []string) {
 	covered := make(map[string]struct{})
-	checks := make([]verify.Check, 0, len(e.verificationInputs))
-	for _, evidence := range e.verificationInputs {
+	evidenceInputs := e.verificationEvidence()
+	checks := make([]verify.Check, 0, len(evidenceInputs))
+	for _, evidence := range evidenceInputs {
 		if evidence.Status != verify.StatusPassed ||
 			evidence.MutationRevision != mutationRevision {
 			continue
@@ -140,4 +142,14 @@ func (e *Engine) qualityVerificationReceipt(
 		Scope: verify.ScopeQuality, Status: verify.StatusPassed, Checks: checks,
 		Message: "post-mutation structured quality evidence covers every changed path",
 	}, nil
+}
+
+func (e *Engine) verificationEvidence() []verify.Evidence {
+	scope := e.currentScope()
+	if scope == nil {
+		return nil
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	return append([]verify.Evidence(nil), scope.state.verification...)
 }

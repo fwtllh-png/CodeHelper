@@ -41,8 +41,8 @@ func (e *Engine) buildCompactSummary(removed []provider.Message) compact.Summary
 	for _, step := range open {
 		summary.Todos = append(summary.Todos, compact.Todo{Title: step.Title, Status: step.Status})
 	}
-	summary.Failures = e.failures.List()
-	for _, change := range e.evidence.Changes() {
+	summary.Failures = e.failureLedger().List()
+	for _, change := range e.evidenceSet().Changes() {
 		summary.Changes = append(summary.Changes, compact.Change{
 			Path: change.Path, Turn: change.Turn, Read: change.Read,
 			Verified: change.Verified, Diagnostics: change.Diagnostics,
@@ -50,7 +50,7 @@ func (e *Engine) buildCompactSummary(removed []provider.Message) compact.Summary
 	}
 	compact.SortChanges(summary.Changes)
 	_, summary.CriticalPaths = e.compactionPaths()
-	snapshot := e.evidence.Snapshot(e.options.EvidenceLimit)
+	snapshot := e.evidenceSet().Snapshot(e.options.EvidenceLimit)
 	for _, fact := range snapshot.Facts {
 		summary.Facts = append(summary.Facts, compact.Fact{Line: fact.Describe()})
 	}
@@ -166,5 +166,5 @@ func (e *Engine) Compactions() int {
 	if e == nil {
 		return 0
 	}
-	return e.compactions
+	return e.compactionTotal()
 }

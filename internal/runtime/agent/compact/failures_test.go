@@ -2,9 +2,20 @@ package compact
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestFailureDeltaRoundTrip(t *testing.T) {
+	failures := NewFailures()
+	failures.NoteTool(1, "read", "missing")
+	failures.NoteVerify(2, "tests", "failed", "exit 1")
+	restored := ApplyFailureDelta(failures.Delta())
+	if !reflect.DeepEqual(restored.List(), failures.List()) {
+		t.Fatalf("restored = %+v, want %+v", restored.List(), failures.List())
+	}
+}
 
 func TestFailuresDeduplicateAndCount(t *testing.T) {
 	ledger := NewFailures()

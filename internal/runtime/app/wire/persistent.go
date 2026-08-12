@@ -90,6 +90,10 @@ func PreparePersistentRuntime(
 	if _, err := repositories.Tasks.RecoverInterrupted(ctx, time.Time{}); err != nil {
 		return nil, fmt.Errorf("recover interrupted tasks: %w", err)
 	}
+	terminalStore := turnstate.NewSQLiteRepository(options.Store.SQLite())
+	if manager, ok := options.Engine.(*app.ThreadManager); ok {
+		manager.SetSessionDeltaRestorer(terminalStore.LatestSessionDelta)
+	}
 	runtimeOptions := app.Options{
 		Engine:           options.Engine,
 		EventStore:       options.Store,
@@ -99,7 +103,7 @@ func PreparePersistentRuntime(
 		SubscriberBuffer: options.SubscriberBuffer,
 		Metrics:          options.Metrics,
 		Logger:           options.Logger,
-		TerminalStore:    turnstate.NewSQLiteRepository(options.Store.SQLite()),
+		TerminalStore:    terminalStore,
 	}
 	if options.DefaultProfile.Version != 0 {
 		runtimeOptions.SessionProfiles = repositories.Sessions

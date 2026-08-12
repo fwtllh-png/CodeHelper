@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -20,6 +21,7 @@ type ThreadManager struct {
 	children  ChildFactory
 	restorer  WindowRestorer
 	sequences SequenceReader
+	deltas    SessionDeltaRestorer
 
 	mu        sync.Mutex
 	threads   map[protocol.ThreadID]*EngineAdapter
@@ -56,6 +58,11 @@ type WindowRestorer func(ctx context.Context, threadID protocol.ThreadID) (*prot
 // SequenceReader returns the durable eventlog high-watermark (used as fork source cursor).
 type SequenceReader func(ctx context.Context) (protocol.Cursor, error)
 
+type SessionDeltaRestorer func(
+	context.Context,
+	protocol.ThreadID,
+) (json.RawMessage, error)
+
 type compactWindow struct {
 	Number   uint64
 	FirstID  string
@@ -87,6 +94,14 @@ func (m *ThreadManager) SetChildFactory(factory ChildFactory) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.children = factory
+}
+
+func (m *ThreadManager) SetSessionDeltaRestorer(
+	restorer SessionDeltaRestorer,
+) {
+	m.mu.Lock()
+	m.deltas = restorer
+	m.mu.Unlock()
 }
 
 // RegisterChild binds a child spec to a thread before its first turn is
@@ -501,6 +516,7 @@ func (m *ThreadManager) forThread(id protocol.ThreadID) (*EngineAdapter, error) 
 		return adapter, nil
 	}
 	restorer := m.restorer
+	deltas := m.deltas
 	m.mu.Unlock()
 
 	m.createMu.Lock()
@@ -535,6 +551,15 @@ func (m *ThreadManager) forThread(id protocol.ThreadID) (*EngineAdapter, error) 
 	}
 	if err := m.restoreWindow(context.Background(), id, adapter, restorer); err != nil {
 		return nil, err
+	}
+	if deltas != nil {
+		raw, err := deltas(context.Background(), id)
+		if err != nil {
+			return nil, fmt.Errorf("restore session delta for %s: %w", id, err)
+		}
+		if err := adapter.RestoreSessionDelta(raw); err != nil {
+			return nil, fmt.Errorf("apply session delta for %s: %w", id, err)
+		}
 	}
 
 	m.mu.Lock()

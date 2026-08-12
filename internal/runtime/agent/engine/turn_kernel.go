@@ -11,7 +11,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -28,7 +27,7 @@ type engineTurnKernel struct {
 	recorder    *trace.Recorder
 	parent      uint64
 	sink        func(turnkernel.TransitionRecord)
-	metrics     *telemetry.Metrics
+	metrics     Metrics
 	restored    bool
 }
 
@@ -44,7 +43,7 @@ func newEngineTurnKernelForTurn(
 	recorder *trace.Recorder,
 	parent uint64,
 	sink func(turnkernel.TransitionRecord),
-	metrics *telemetry.Metrics,
+	metrics Metrics,
 	policy turnkernel.Policy,
 	runtime turnkernel.CoordinatorRuntime,
 ) (*engineTurnKernel, error) {
