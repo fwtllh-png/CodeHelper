@@ -497,7 +497,7 @@ func TestToolSearchThresholdDoesNotTruncateEagerTools(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, registry)
 	engine.options.ToolSearchThreshold = 4
 
-	definitions := engine.toolDefinitions()
+	definitions := testToolDefinitions(t, engine)
 	advertised := make(map[string]bool, len(definitions))
 	for _, definition := range definitions {
 		advertised[definition.Name] = true

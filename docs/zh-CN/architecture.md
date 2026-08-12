@@ -107,6 +107,15 @@ Host 中存在的功能都不完整。
 
 ## Turn 数据流
 
+执行前，Engine 构造不可变 `TurnSpec`，冻结 Identity、Request、Session Profile、
+Route、Policy、Limit、Prompt Prefix、Tool Catalog、Skill、MCP Health 与 Extension
+Snapshot。`turnexec.Factory` 从该 Spec 打开强类型 Scope；Scope 运行期间 Sampling
+不得重新读取这些可变来源。
+
+Scope 独占 Turn 级 Kernel、Trace、Diagnostics、Verification、Tool Spend、Diff 与
+Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；有界 Mailbox
+拒绝溢出，Request Ledger 拒绝 Late、Duplicate 与 Kind Mismatch Resolution。
+
 1. Host 校验用户输入并提交 Operation。
 2. Application 解析 Session、Thread、Workspace 和 Policy。
 3. Prompt Context 组装 Repo Map、Pin 文件、Working Set、Evidence、Policy 与压缩历史。
@@ -125,14 +134,17 @@ Host 中存在的功能都不完整。
 12. Engine 提交 `TerminalRequested`；Reducer 选择 Completed、Failed 或 Canceled。
     随后 Journal Commit/Rollback 作为 Durable Effect 执行，并返回
     `JournalResultReceived`。
-13. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Final Output、
-    Receipt、Terminal Event、Outbox 与真实 Operation Receipt。
-14. Output、Receipt 与 Terminal 只在该事务成功后投影。
-15. 重启时 Runtime 扫描 Pending Terminal Projection，以稳定 Event ID 逐条 Append，
+13. Scope 准备带 Revision 与 Digest 的 `SessionDelta`，包含 History、Usage、Cost、
+    Working Set、Evidence、Failures 与 Compaction State。
+14. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Session Delta、
+    Final Output、Receipt、Terminal Event、Outbox 与真实 Operation Receipt。
+15. Engine 只在该 Commit 成功后幂等 Apply Session Delta；Commit 失败不修改 Session
+    内存。
+16. 重启时 Runtime 扫描 Pending Terminal Projection，以稳定 Event ID 逐条 Append，
     成功后再将对应 Entry 标记为 Published。
-16. accepted StartTurn 仅在存在对应非终态 Domain Fact 时自动恢复；Coordinator requeue
+17. accepted StartTurn 仅在存在对应非终态 Domain Fact 时自动恢复；Coordinator requeue
     Running Effect，Engine 从 Durable Payload 接续 Provider、Tool 或 Journal 执行。
-17. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
+18. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
     替代请求。
 
 `TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，

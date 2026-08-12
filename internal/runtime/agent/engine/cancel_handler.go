@@ -3,24 +3,9 @@ package engine
 import (
 	"context"
 	"errors"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 )
-
-func (e *Engine) Steer(prompt string) error {
-	if prompt == "" {
-		return errors.New("steering prompt is required")
-	}
-	e.steerMu.Lock()
-	defer e.steerMu.Unlock()
-	if !e.running {
-		return errors.New("no active turn to steer")
-	}
-	e.pending = append(e.pending, PendingInput{Source: PendingSteer, Prompt: prompt})
-	if e.cancel != nil {
-		e.cancel()
-	}
-	return nil
-}
 
 // EnqueueMailbox queues an inter-agent mailbox message.
 // triggerTurn=true injects into the current turn (cancels sampling, like Steer).
@@ -29,21 +14,29 @@ func (e *Engine) EnqueueMailbox(prompt string, triggerTurn bool) error {
 	if prompt == "" {
 		return errors.New("mailbox prompt is required")
 	}
-	e.steerMu.Lock()
-	defer e.steerMu.Unlock()
 	item := PendingInput{Source: PendingMailbox, Prompt: prompt, TriggerTurn: triggerTurn}
 	if !triggerTurn {
+		e.scopeMu.Lock()
 		e.mailboxHold = append(e.mailboxHold, item)
+		e.scopeMu.Unlock()
 		return nil
 	}
-	if !e.running {
-
+	scope := e.runningScope()
+	if scope == nil {
+		e.scopeMu.Lock()
 		e.mailboxHold = append(e.mailboxHold, item)
+		e.scopeMu.Unlock()
 		return nil
 	}
-	e.pending = append(e.pending, item)
-	if e.cancel != nil {
-		e.cancel()
+	scope.mu.Lock()
+	err := scope.state.mailbox.Offer(item)
+	cancel := scope.state.cancel
+	scope.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if cancel != nil {
+		cancel(errors.New("mailbox input"))
 	}
 	return nil
 }
@@ -55,10 +48,13 @@ func (e *Engine) appendSteering(history *[]provider.Message) bool {
 }
 
 func (e *Engine) drainPending() []PendingInput {
-	e.steerMu.Lock()
-	pending := e.pending
-	e.pending = nil
-	e.steerMu.Unlock()
+	scope := e.executionScope()
+	if scope == nil {
+		return nil
+	}
+	scope.mu.Lock()
+	pending := scope.state.mailbox.Drain()
+	scope.mu.Unlock()
 	return pending
 }
 
@@ -74,44 +70,34 @@ func (e *Engine) appendPendingInputs(history *[]provider.Message, pending []Pend
 	}
 }
 
-// appendSteeringPrompts keeps the historical name used by modelStep drain path.
-func (e *Engine) appendSteeringPrompts(history *[]provider.Message, pending []PendingInput) {
-	e.appendPendingInputs(history, pending)
-}
-
-func (e *Engine) setActiveCancel(cancel context.CancelFunc) {
-	e.steerMu.Lock()
-	e.cancel = cancel
-	e.steerMu.Unlock()
+func (e *Engine) setActiveCancel(cancel context.CancelCauseFunc) {
+	scope := e.runningScope()
+	if scope == nil {
+		return
+	}
+	scope.mu.Lock()
+	scope.state.cancel = cancel
+	scope.mu.Unlock()
 }
 
 func (e *Engine) clearActiveCancel() {
-	e.steerMu.Lock()
-	e.cancel = nil
-	e.steerMu.Unlock()
-}
-
-// RequestCancel aborts the active model/tool phase if one is running (N14 Abort).
-func (e *Engine) RequestCancel() {
-	e.RequestCancelWithReason("")
-}
-
-// RequestCancelWithReason aborts the active phase and records why the turn was
-// canceled so user-interrupted work can remain available to a continuation.
-func (e *Engine) RequestCancelWithReason(reason string) {
-	e.steerMu.Lock()
-	e.cancelReason = reason
-	cancel := e.cancel
-	e.steerMu.Unlock()
-	if cancel != nil {
-		cancel()
+	scope := e.runningScope()
+	if scope == nil {
+		return
 	}
+	scope.mu.Lock()
+	scope.state.cancel = nil
+	scope.mu.Unlock()
 }
 
 func (e *Engine) cancellationReason() string {
-	e.steerMu.Lock()
-	defer e.steerMu.Unlock()
-	return e.cancelReason
+	scope := e.executionScope()
+	if scope == nil {
+		return ""
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	return scope.state.cancelReason
 }
 
 func retainCanceledHistory(messages []provider.Message) []provider.Message {

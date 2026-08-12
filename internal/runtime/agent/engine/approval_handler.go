@@ -8,29 +8,9 @@ import (
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 )
-
-func (e *Engine) DecideApproval(decision toolguard.ApprovalDecision) error {
-	if err := e.guard.StageDecision(decision); err != nil {
-		return err
-	}
-	if err := e.AcceptApprovalResult(
-		decision.RequestID,
-		decision.Canceled,
-	); err != nil {
-		return err
-	}
-	return e.guard.Resume(decision.RequestID)
-}
-
-func (e *Engine) StageApprovalDecision(decision toolguard.ApprovalDecision) error {
-	return e.guard.StageDecision(decision)
-}
-
-func (e *Engine) ResumeApproval(requestID string) error {
-	return e.guard.Resume(requestID)
-}
 
 func (e *Engine) RestoreApprovalRequest(
 	request toolguard.ApprovalRequest,
@@ -39,20 +19,6 @@ func (e *Engine) RestoreApprovalRequest(
 		return errors.New("approval guard is unavailable")
 	}
 	return e.guard.RestoreApproval(request)
-}
-
-func (e *Engine) StageInputReply(reply interact.Reply) error {
-	if e.options.InputHost == nil {
-		return interact.HostUnavailableError{}
-	}
-	return e.options.InputHost.StageReply(reply)
-}
-
-func (e *Engine) ResumeInput(requestID string) error {
-	if e.options.InputHost == nil {
-		return interact.HostUnavailableError{}
-	}
-	return e.options.InputHost.Resume(requestID)
 }
 
 func (e *Engine) RestoreInputRequest(request interact.Request) error {
@@ -72,6 +38,16 @@ func (e *Engine) connectInputHost(
 	e.options.InputHost.SetEmitter(
 		func(_ context.Context, request interact.Request) error {
 			if err := kernel.requireInput(request.RequestID); err != nil {
+				return err
+			}
+			scope := e.runningScope()
+			if scope == nil {
+				return errors.New("turn scope is not active")
+			}
+			if err := scope.state.requests.Register(
+				turnexec.RequestInput,
+				request.RequestID,
+			); err != nil {
 				return err
 			}
 			copy := request
@@ -112,11 +88,20 @@ func (e *Engine) ContextReceipts() []promptcontext.Receipt {
 // The volatile partitions (repository map, working set, plan) are appended after
 // the history instead, by turnContextMessages.
 func (e *Engine) promptMessages() []provider.Message {
+	if scope := e.runningScope(); scope != nil {
+		return cloneMessages(scope.spec.Context.Messages)
+	}
 	return cloneMessages(e.options.PromptContext)
 }
 
 func (e *Engine) contextReceipts() []promptcontext.Receipt {
-	receipts := append([]promptcontext.Receipt(nil), e.options.ContextReceipts...)
+	var receipts []promptcontext.Receipt
+	if scope := e.currentScope(); scope != nil &&
+		len(scope.spec.Context.Receipts) != 0 {
+		receipts = append(receipts, scope.spec.Context.Receipts...)
+	} else {
+		receipts = append(receipts, e.options.ContextReceipts...)
+	}
 	e.planMu.Lock()
 	if e.planReceipt != nil {
 		filtered := receipts[:0]
@@ -132,25 +117,36 @@ func (e *Engine) contextReceipts() []promptcontext.Receipt {
 }
 
 func (e *Engine) setApprovalEmit(emit func(Event) error) {
-	e.approvalMu.Lock()
-	e.approvalEmit = emit
-	e.approvalMu.Unlock()
+	scope := e.runningScope()
+	if scope == nil {
+		return
+	}
+	scope.mu.Lock()
+	scope.state.approvalEmit = emit
+	scope.mu.Unlock()
 }
 
 func (e *Engine) emitApproval(_ context.Context, request toolguard.ApprovalRequest) error {
-	kernel, err := e.activeTurnKernel()
+	scope := e.runningScope()
+	if scope == nil {
+		return errors.New("approval host is not connected to an active turn")
+	}
+	kernel, err := scope.kernel()
 	if err != nil {
 		return err
 	}
-	if err := kernel.requireApproval(
+	if err := kernel.requireApproval(request.RequestID, request.CallID); err != nil {
+		return err
+	}
+	if err := scope.state.requests.Register(
+		turnexec.RequestApproval,
 		request.RequestID,
-		request.CallID,
 	); err != nil {
 		return err
 	}
-	e.approvalMu.Lock()
-	emit := e.approvalEmit
-	e.approvalMu.Unlock()
+	scope.mu.Lock()
+	emit := scope.state.approvalEmit
+	scope.mu.Unlock()
 	if emit == nil {
 		return errors.New("approval host is not connected to an active turn")
 	}

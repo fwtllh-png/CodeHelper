@@ -57,6 +57,7 @@ type TerminalEnvelope struct {
 	FrozenState     State                          `json:"frozen_state"`
 	DomainFacts     []DomainFact                   `json:"domain_facts"`
 	Receipt         *protocol.ExecutionReceiptData `json:"receipt"`
+	SessionDelta    json.RawMessage                `json:"session_delta,omitempty"`
 	FinalOutput     []string                       `json:"final_output,omitempty"`
 	TerminalEvent   Event                          `json:"terminal_event"`
 	OperationCommit OperationCommitFact            `json:"operation_commit"`
@@ -75,6 +76,7 @@ type TerminalEnvelopeStage string
 const (
 	StageDomainFacts     TerminalEnvelopeStage = "domain_facts"
 	StageReceipt         TerminalEnvelopeStage = "receipt"
+	StageSessionDelta    TerminalEnvelopeStage = "session_delta"
 	StageFinalOutput     TerminalEnvelopeStage = "final_output"
 	StageTerminalEvent   TerminalEnvelopeStage = "terminal_event"
 	StageOperationCommit TerminalEnvelopeStage = "operation_commit"
@@ -106,6 +108,10 @@ type TerminalProjectionRecoveryStore interface {
 	PendingTerminalProjections(
 		context.Context,
 	) ([]PendingTerminalProjection, error)
+}
+
+type SessionDeltaRecoveryStore interface {
+	LatestSessionDelta(context.Context, protocol.ThreadID) (json.RawMessage, error)
 }
 
 // MemoryTerminalEnvelopeStore is the reference implementation for the atomic
@@ -219,6 +225,7 @@ func (s *MemoryTerminalEnvelopeStore) CommitTerminal(
 	for _, stage := range []TerminalEnvelopeStage{
 		StageDomainFacts,
 		StageReceipt,
+		StageSessionDelta,
 		StageFinalOutput,
 		StageTerminalEvent,
 		StageOperationCommit,
@@ -307,6 +314,37 @@ func (s *MemoryTerminalEnvelopeStore) PendingTerminalProjections(
 	return projections, nil
 }
 
+func (s *MemoryTerminalEnvelopeStore) LatestSessionDelta(
+	_ context.Context,
+	threadID protocol.ThreadID,
+) (json.RawMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var latest TerminalEnvelope
+	var latestRevision uint64
+	for _, envelope := range s.envelopes {
+		if len(envelope.SessionDelta) == 0 {
+			continue
+		}
+		matches := false
+		for _, entry := range envelope.Outbox {
+			if entry.ThreadID == threadID {
+				matches = true
+				break
+			}
+		}
+		var header struct {
+			BaseRevision uint64 `json:"base_revision"`
+		}
+		if matches && json.Unmarshal(envelope.SessionDelta, &header) == nil &&
+			(latest.TurnID == "" || header.BaseRevision > latestRevision) {
+			latest = envelope
+			latestRevision = header.BaseRevision
+		}
+	}
+	return append(json.RawMessage(nil), latest.SessionDelta...), nil
+}
+
 func (s *MemoryTerminalEnvelopeStore) MarkOutboxPublished(
 	_ context.Context,
 	turnID string,
@@ -347,6 +385,9 @@ func validateTerminalEnvelope(envelope TerminalEnvelope) (string, error) {
 	}
 	if envelope.Receipt == nil {
 		return "", errors.New("terminal envelope receipt is missing")
+	}
+	if len(envelope.SessionDelta) != 0 && !json.Valid(envelope.SessionDelta) {
+		return "", errors.New("terminal envelope session delta is invalid")
 	}
 	if envelope.OperationCommit.OperationID == "" ||
 		envelope.OperationCommit.Status != "committed" {

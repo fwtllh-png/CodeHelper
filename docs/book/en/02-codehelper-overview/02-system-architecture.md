@@ -269,7 +269,9 @@ Trace one path without reading implementation bodies:
 1. Find `OperationStartTurn` in `internal/runtime/protocol`.
 2. Find `Runtime.Submit` in `internal/runtime/app`.
 3. Find `EngineAdapter.StartTurn` in `internal/runtime/app/application.go`.
-4. Find `Engine.RunForTurn` in `internal/runtime/agent/engine`.
+4. Find `Engine.RunForTurn` in `internal/runtime/agent/engine` and follow
+   `prepareTurnSpec`/`SnapshotTurnSpec` to the frozen `TurnSpec` executed
+   inside a `turnexec.Scope` (`internal/runtime/agent/turnexec`).
 5. Find `Guard.ExecuteBound` in `internal/adapter/tool/guard`.
 6. Find `NewExec` and the module sequence in `internal/runtime/app/wire`.
 

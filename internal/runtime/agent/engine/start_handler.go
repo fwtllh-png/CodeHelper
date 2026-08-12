@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"sync"
 )
 
@@ -34,29 +33,23 @@ func (g *WorkspaceTurnGate) Acquire(ctx context.Context) (func(), error) {
 	}, nil
 }
 
-func (e *Engine) beginTurn() error {
-	e.steerMu.Lock()
-	defer e.steerMu.Unlock()
-	if e.running {
-		return errors.New("engine turn is already running")
-	}
-	e.running = true
-	e.cancelReason = ""
-
-	e.pending = append([]PendingInput(nil), e.mailboxHold...)
+func (e *Engine) attachPending(scope *Scope) {
+	e.scopeMu.Lock()
+	pending := append([]PendingInput(nil), e.mailboxHold...)
 	e.mailboxHold = nil
-	return nil
-}
-
-func (e *Engine) endTurn() {
-	e.steerMu.Lock()
-	for _, item := range e.pending {
-		if item.Source == PendingMailbox {
-			e.mailboxHold = append(e.mailboxHold, item)
+	e.scopeMu.Unlock()
+	scope.mu.Lock()
+	scope.state.cancelReason = ""
+	var overflow []PendingInput
+	for _, item := range pending {
+		if err := scope.state.mailbox.Offer(item); err != nil {
+			overflow = append(overflow, item)
 		}
 	}
-	e.running = false
-	e.pending = nil
-	e.cancel = nil
-	e.steerMu.Unlock()
+	scope.mu.Unlock()
+	if len(overflow) != 0 {
+		e.scopeMu.Lock()
+		e.mailboxHold = append(e.mailboxHold, overflow...)
+		e.scopeMu.Unlock()
+	}
 }

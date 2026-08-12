@@ -72,6 +72,13 @@ func (a *EngineAdapter) History() []provider.Message {
 	return a.engine.History()
 }
 
+func (a *EngineAdapter) RestoreSessionDelta(raw json.RawMessage) error {
+	if a == nil || a.engine == nil {
+		return errors.New("engine is unavailable")
+	}
+	return a.engine.RestoreSessionDelta(raw)
+}
+
 func (a *EngineAdapter) RestorePendingApproval(
 	pending PendingApproval,
 ) error {
@@ -525,12 +532,20 @@ func (a *EngineAdapter) commitTerminal(
 	if err != nil {
 		return err
 	}
+	var sessionDelta json.RawMessage
+	if delta, ok := a.engine.PreparedSessionDelta(); ok {
+		sessionDelta, err = json.Marshal(delta)
+		if err != nil {
+			return err
+		}
+	}
 	if commitSink, ok := sink.(TerminalCommitSink); ok {
 		return commitSink.CommitTerminal(TerminalMaterial{
-			FrozenState: frozen.State,
-			DomainFacts: frozen.DomainFacts,
-			Receipt:     receipt,
-			Terminal:    terminal,
+			FrozenState:  frozen.State,
+			DomainFacts:  frozen.DomainFacts,
+			Receipt:      receipt,
+			Terminal:     terminal,
+			SessionDelta: sessionDelta,
 		})
 	}
 	return errors.New("terminal commit sink is required")
@@ -582,11 +597,11 @@ func (a *EngineAdapter) CancelTurn(
 	_ context.Context, payload *protocol.CancelTurnPayload, _ EngineSink,
 ) error {
 	reason := protocol.NormalizeCancelReason(payload.Reason)
-	if err := a.engine.AcceptCancel(reason); err != nil {
+	control, err := a.engine.Control()
+	if err != nil {
 		return err
 	}
-	a.engine.RequestCancelWithReason(reason)
-	return nil
+	return control.Cancel(reason)
 }
 
 func (a *EngineAdapter) SteerTurn(
@@ -594,7 +609,11 @@ func (a *EngineAdapter) SteerTurn(
 	payload *protocol.SteerTurnPayload,
 	sink EngineSink,
 ) error {
-	if err := a.engine.Steer(payload.Prompt); err != nil {
+	control, err := a.engine.Control()
+	if err != nil {
+		return err
+	}
+	if err := control.Steer(payload.Prompt); err != nil {
 		return err
 	}
 	return sink.Emit(&protocol.TurnSteeredData{Prompt: payload.Prompt})
@@ -612,21 +631,16 @@ func (a *EngineAdapter) DecideApproval(
 		ReplacementArguments: payload.ReplacementArguments,
 		PlanID:               payload.PlanID,
 	}
-	if err := a.engine.StageApprovalDecision(decision); err != nil {
+	control, err := a.engine.Control()
+	if err != nil {
 		return err
 	}
-	if err := a.engine.AcceptApprovalResult(
-		payload.RequestID,
-		payload.Decision == protocol.ApprovalCancel,
-	); err != nil {
+	if err := control.ResolveApproval(decision); err != nil {
 		return err
 	}
-	if err := sink.Emit(&protocol.ApprovalResolvedData{
+	return sink.Emit(&protocol.ApprovalResolvedData{
 		RequestID: payload.RequestID, Decision: payload.Decision,
-	}); err != nil {
-		return err
-	}
-	return a.engine.ResumeApproval(payload.RequestID)
+	})
 }
 
 func (a *EngineAdapter) ReplyInput(
@@ -635,18 +649,16 @@ func (a *EngineAdapter) ReplyInput(
 	reply := interact.Reply{
 		RequestID: payload.RequestID, Answer: payload.Answer, Values: payload.Values,
 	}
-	if err := a.engine.StageInputReply(reply); err != nil {
+	control, err := a.engine.Control()
+	if err != nil {
 		return err
 	}
-	if err := a.engine.AcceptInputResult(payload.RequestID); err != nil {
+	if err := control.ResolveInput(reply); err != nil {
 		return err
 	}
-	if err := sink.Emit(&protocol.InputResolvedData{
+	return sink.Emit(&protocol.InputResolvedData{
 		RequestID: payload.RequestID, Answer: payload.Answer,
-	}); err != nil {
-		return err
-	}
-	return a.engine.ResumeInput(payload.RequestID)
+	})
 }
 
 func (a *EngineAdapter) CompactThread(

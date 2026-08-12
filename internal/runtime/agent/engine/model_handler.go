@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -33,26 +32,17 @@ func (e *Engine) modelStep(
 	if pendingInputInjected != nil {
 		*pendingInputInjected = false
 	}
-	if err := e.emitExtensionLifecycleChanges(send); err != nil {
+	scope := e.runningScope()
+	if scope == nil {
+		return nil, nil, provider.Usage{}, 0, errors.New("turn scope is not active")
+	}
+	if err := e.emitExtensionLifecycleChanges(scope.spec.Extensions, send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
-	if err := e.emitMCPHealthChanges(send); err != nil {
+	if err := e.emitMCPHealthChanges(scope.spec.MCP, send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
-	if e.options.ToolCatalogSync != nil {
-		if err := e.options.ToolCatalogSync(); err != nil {
-			return nil, nil, provider.Usage{}, 0, protocol.WrapProblem(
-				protocol.CodeUnavailable,
-				"tool catalog synchronization failed",
-				true,
-				err,
-			)
-		}
-	}
-	catalog, err := e.options.Tools.Snapshot()
-	if err != nil {
-		return nil, nil, provider.Usage{}, 0, err
-	}
+	catalog := scope.spec.Catalog
 	if changed := e.catalogChange(catalog); changed != nil {
 		if err := send(CallingModel, Event{CatalogChanged: changed}); err != nil {
 			return nil, nil, provider.Usage{}, 0, err
@@ -70,7 +60,10 @@ func (e *Engine) modelStep(
 	finishAttempted := false
 	finishMode := false
 	for attempt := 0; ; attempt++ {
-		messages := append(e.promptMessages(), cloneMessages(*history)...)
+		messages := append(
+			cloneMessages(scope.spec.Context.Messages),
+			cloneMessages(*history)...,
+		)
 		turnContext, turnReceipts := e.turnContextMessagesForCatalog(ctx, catalog, advertised)
 		messages = append(messages, turnContext...)
 		messages = append(messages, cloneMessages(continuationMessages)...)
@@ -82,7 +75,7 @@ func (e *Engine) modelStep(
 		}
 		e.maybeInjectBudgetReminder(&messages)
 		lastEstimate = estimatedInput
-		requestContext, cancel := context.WithCancel(ctx)
+		requestContext, cancel := context.WithCancelCause(ctx)
 		e.setActiveCancel(cancel)
 
 		route := e.activeRoute()
@@ -114,7 +107,7 @@ func (e *Engine) modelStep(
 		})
 		if err != nil {
 			e.clearActiveCancel()
-			cancel()
+			cancel(nil)
 			callSpan.Set("error", errorText(err))
 			callSpan.End(trace.StatusError)
 			if errors.Is(err, context.Canceled) && ctx.Err() == nil && e.appendSteering(history) {
@@ -139,7 +132,7 @@ func (e *Engine) modelStep(
 			e.tracer().NoteFirstOutput,
 		)
 		e.clearActiveCancel()
-		cancel()
+		cancel(nil)
 		if err != nil {
 			callSpan.Set("error", errorText(err))
 			callSpan.End(trace.StatusError)
@@ -349,216 +342,94 @@ func appendContinuedBlocks(
 	return current
 }
 
-func (e *Engine) emitExtensionLifecycleChanges(send func(State, Event) error) error {
-	if e.options.ExtensionSnapshot == nil {
-		return nil
-	}
-	current, err := e.options.ExtensionSnapshot()
-	if err != nil {
-		return err
-	}
+func (e *Engine) emitExtensionLifecycleChanges(
+	current []ExtensionSnapshot,
+	send func(State, Event) error,
+) error {
 	sort.Slice(current, func(i, j int) bool {
 		if current[i].Kind != current[j].Kind {
 			return current[i].Kind < current[j].Kind
 		}
 		return current[i].Name < current[j].Name
 	})
-	if e.extensionSeen == nil {
-		e.extensionSeen = make(map[string]ExtensionSnapshot)
+	scope := e.executionScope()
+	if scope == nil {
+		return errors.New("turn scope is not active")
 	}
-	present := make(map[string]bool, len(current))
+	scope.mu.Lock()
+	if scope.state.extensionsProjected {
+		scope.mu.Unlock()
+		return nil
+	}
+	scope.state.extensionsProjected = true
+	scope.mu.Unlock()
 	for _, snapshot := range current {
 		if snapshot.Kind == "" || snapshot.Name == "" {
 			continue
 		}
-		key := snapshot.Kind + "\x00" + snapshot.Name
-		present[key] = true
-		previous, exists := e.extensionSeen[key]
-		if exists && sameExtension(previous, snapshot) {
-			continue
-		}
-		action := extensionAction(nil, snapshot)
-		previousVersion := ""
-		if exists {
-			action = extensionAction(&previous, snapshot)
-			previousVersion = previous.Version
+		action := "active"
+		if !snapshot.Enabled {
+			action = "disabled"
 		}
 		if err := send(CallingModel, Event{
 			ExtensionLifecycle: &ExtensionLifecycleChanged{
-				Action: action, PreviousVersion: previousVersion, Current: snapshot,
+				Action: action, Current: snapshot,
 			},
 		}); err != nil {
 			return err
 		}
-		e.extensionSeen[key] = snapshot
-	}
-	var removed []string
-	for key := range e.extensionSeen {
-		if !present[key] {
-			removed = append(removed, key)
-		}
-	}
-	sort.Strings(removed)
-	for _, key := range removed {
-		previous := e.extensionSeen[key]
-		revoked := previous
-		revoked.Enabled = false
-		revoked.ChangedAt = e.options.Now().UTC()
-		if err := send(CallingModel, Event{
-			ExtensionLifecycle: &ExtensionLifecycleChanged{
-				Action: "revoked", PreviousVersion: previous.Version, Current: revoked,
-			},
-		}); err != nil {
-			return err
-		}
-		delete(e.extensionSeen, key)
 	}
 	return nil
 }
 
-func extensionAction(previous *ExtensionSnapshot, current ExtensionSnapshot) string {
-	if previous == nil {
-		if current.Enabled {
-			return "active"
-		}
-		return "disabled"
+func (e *Engine) emitMCPHealthChanges(
+	current []MCPHealthSnapshot,
+	send func(State, Event) error,
+) error {
+	sort.Slice(current, func(i, j int) bool { return current[i].Server < current[j].Server })
+	scope := e.executionScope()
+	if scope == nil {
+		return errors.New("turn scope is not active")
 	}
-	if previous.Enabled != current.Enabled {
-		if current.Enabled {
-			return "enabled"
-		}
-		return "disabled"
-	}
-	if previous.Digest != current.Digest ||
-		previous.Version != current.Version ||
-		previous.Generation != current.Generation {
-		switch current.LastAction {
-		case "install":
-			return "installed"
-		case "update":
-			return "updated"
-		case "rollback":
-			return "rolled_back"
-		}
-		return "updated"
-	}
-	if current.Enabled {
-		return "active"
-	}
-	return "disabled"
-}
-
-func sameExtension(left, right ExtensionSnapshot) bool {
-	return left.Kind == right.Kind &&
-		left.Name == right.Name &&
-		left.Version == right.Version &&
-		left.Source == right.Source &&
-		left.Publisher == right.Publisher &&
-		left.Trust == right.Trust &&
-		left.Digest == right.Digest &&
-		left.Generation == right.Generation &&
-		left.Enabled == right.Enabled &&
-		left.LastAction == right.LastAction &&
-		left.ChangedAt.Equal(right.ChangedAt)
-}
-
-func (e *Engine) emitMCPHealthChanges(send func(State, Event) error) error {
-	if e.options.MCPHealthSnapshot == nil {
+	scope.mu.Lock()
+	if scope.state.mcpProjected {
+		scope.mu.Unlock()
 		return nil
 	}
-	current := e.options.MCPHealthSnapshot()
-	sort.Slice(current, func(i, j int) bool { return current[i].Server < current[j].Server })
-	if e.mcpHealthSeen == nil {
-		e.mcpHealthSeen = make(map[string]MCPHealthSnapshot)
-	}
-	present := make(map[string]bool, len(current))
+	scope.state.mcpProjected = true
+	scope.mu.Unlock()
 	for _, snapshot := range current {
 		if snapshot.Server == "" {
 			continue
 		}
-		present[snapshot.Server] = true
-		previous, exists := e.mcpHealthSeen[snapshot.Server]
-		if exists && sameMCPHealth(previous, snapshot) {
-			continue
-		}
-		change := &MCPHealthChanged{Current: snapshot}
-		if exists {
-			change.PreviousState = previous.State
-		}
-		if err := send(CallingModel, Event{MCPHealthChanged: change}); err != nil {
+		if err := send(CallingModel, Event{
+			MCPHealthChanged: &MCPHealthChanged{Current: snapshot},
+		}); err != nil {
 			return err
 		}
-		e.mcpHealthSeen[snapshot.Server] = snapshot
-	}
-	var removedServers []string
-	for server := range e.mcpHealthSeen {
-		if present[server] {
-			continue
-		}
-		removedServers = append(removedServers, server)
-	}
-	sort.Strings(removedServers)
-	for _, server := range removedServers {
-		previous := e.mcpHealthSeen[server]
-		removed := previous
-		removed.State = "removed"
-		removed.ChangedAt = e.options.Now().UTC()
-		removed.RetryAt = time.Time{}
-		if err := send(CallingModel, Event{MCPHealthChanged: &MCPHealthChanged{
-			PreviousState: previous.State, Current: removed,
-		}}); err != nil {
-			return err
-		}
-		delete(e.mcpHealthSeen, server)
 	}
 	return nil
 }
 
-func sameMCPHealth(left, right MCPHealthSnapshot) bool {
-	return left.Server == right.Server &&
-		left.State == right.State &&
-		left.ConsecutiveFailures == right.ConsecutiveFailures &&
-		left.LastError == right.LastError &&
-		left.RetryAt.Equal(right.RetryAt)
-}
-
 func (e *Engine) catalogChange(current tool.CatalogSnapshot) *CatalogChanged {
-	e.turnContextMu.Lock()
-	defer e.turnContextMu.Unlock()
-	if e.catalogSeen != nil && e.catalogSeen.CatalogID == current.CatalogID &&
-		e.catalogSeen.Generation == current.Generation {
+	scope := e.executionScope()
+	if scope == nil {
 		return nil
 	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	if scope.state.catalogProjected {
+		return nil
+	}
+	scope.state.catalogProjected = true
 	changed := &CatalogChanged{
 		CatalogID: current.CatalogID, Generation: current.Generation, Digest: current.Digest,
 	}
-	old := make(map[string]tool.CatalogEntrySnapshot)
-	if e.catalogSeen != nil && e.catalogSeen.CatalogID == current.CatalogID {
-		for _, entry := range e.catalogSeen.Entries() {
-			old[entry.Name] = entry
-		}
-	}
 	for _, entry := range current.Entries() {
-		previous, exists := old[entry.Name]
-		change := tool.CatalogChange{
+		changed.Added = append(changed.Added, tool.CatalogChange{
 			Name: entry.Name, Source: entry.Source, Revision: entry.Revision,
-		}
-		switch {
-		case !exists:
-			changed.Added = append(changed.Added, change)
-		case previous.Revision != entry.Revision || previous.State != entry.State:
-			changed.Replaced = append(changed.Replaced, change)
-		}
-		delete(old, entry.Name)
-	}
-	for _, entry := range old {
-		changed.Revoked = append(changed.Revoked, tool.CatalogChange{
-			Name: entry.Name, Source: entry.Source, Revision: entry.Revision + 1,
 		})
 	}
-	sort.Slice(changed.Revoked, func(i, j int) bool {
-		return changed.Revoked[i].Name < changed.Revoked[j].Name
-	})
 	return changed
 }
 
@@ -721,18 +592,6 @@ func consume(
 			return nil, nil, usage, meaningful, errors.New("unknown provider event")
 		}
 	}
-}
-
-func (e *Engine) toolDefinitions() []provider.ToolDefinition {
-	snapshot, err := e.options.Tools.Snapshot()
-	if err != nil {
-		return nil
-	}
-	definitions, _, err := e.toolDefinitionsFromSnapshot(snapshot)
-	if err != nil {
-		return nil
-	}
-	return definitions
 }
 
 func (e *Engine) toolDefinitionsFromSnapshot(

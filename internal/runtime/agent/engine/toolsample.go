@@ -192,44 +192,51 @@ type toolSpend struct {
 }
 
 func (e *Engine) nextSample() uint32 {
-	e.spendMu.Lock()
-	defer e.spendMu.Unlock()
-	e.samples++
-	return e.samples
+	scope := e.executionScope()
+	if scope == nil {
+		return 0
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	scope.state.samples++
+	return scope.state.samples
 }
 
 // addToolSpend records the latest cumulative report for one tool sample. Reports
 // replace rather than accumulate, matching how a usage row is projected: a
 // provider that reports usage twice for one call is describing the same tokens.
 func (e *Engine) addToolSpend(usage provider.Usage, cost float64, known bool, index uint32) {
-	e.spendMu.Lock()
-	defer e.spendMu.Unlock()
-	if e.toolSamples == nil {
-		e.toolSamples = make(map[uint32]toolSpend)
+	scope := e.executionScope()
+	if scope == nil {
+		return
 	}
-	e.toolSamples[index] = toolSpend{usage: usage, cost: cost, known: known}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	if scope.state.toolSamples == nil {
+		scope.state.toolSamples = make(map[uint32]toolSpend)
+	}
+	scope.state.toolSamples[index] = toolSpend{
+		usage: usage, cost: cost, known: known,
+	}
 }
 
 // drainToolSpend takes what the tools spent since it was last called.
 func (e *Engine) drainToolSpend() toolSpend {
-	e.spendMu.Lock()
-	defer e.spendMu.Unlock()
+	scope := e.executionScope()
+	if scope == nil {
+		return toolSpend{known: true}
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
 	total := toolSpend{known: true}
-	for index, spend := range e.toolSamples {
+	for index, spend := range scope.state.toolSamples {
 		total.usage.Add(spend.usage)
 		total.cost += spend.cost
 		total.known = total.known && spend.known
 		total.samples++
-		delete(e.toolSamples, index)
+		delete(scope.state.toolSamples, index)
 	}
 	return total
-}
-
-func (e *Engine) resetToolSpend() {
-	e.spendMu.Lock()
-	defer e.spendMu.Unlock()
-	e.samples = 0
-	e.toolSamples = nil
 }
 
 // toolSpanID is the open span of a tool call, or zero when the call has none.
@@ -237,7 +244,11 @@ func (e *Engine) toolSpanID(callID string) uint64 {
 	if callID == "" {
 		return 0
 	}
-	e.traceMu.Lock()
-	defer e.traceMu.Unlock()
-	return e.toolSpans[callID]
+	scope := e.executionScope()
+	if scope == nil {
+		return 0
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	return scope.state.toolSpans[callID]
 }

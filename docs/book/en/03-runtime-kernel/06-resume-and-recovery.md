@@ -13,6 +13,7 @@ code_paths:
   - internal/runtime/app/wire
   - internal/persist/snapshot
   - internal/persist/workspacejournal
+  - internal/persist/state/turnstate
 test_paths:
   - internal/runtime/app/reconstruct_test.go
   - internal/runtime/app/session_artifacts_test.go
@@ -21,6 +22,7 @@ test_paths:
 source_of_truth:
   - internal/runtime/app/lifecycle.go
   - internal/runtime/app/reconstruct.go
+  - internal/runtime/app/thread_manager.go
   - internal/runtime/app/wire/persistent.go
 status: draft
 last_verified: null
@@ -83,7 +85,18 @@ Recovery restores:
 - terminal maps and Item identity;
 - last Event cursor;
 - thread history and snapshots;
-- workspace Journal state.
+- workspace Journal state;
+- the latest durable `SessionDelta` per Thread (History, Usage, Cost, Working
+  Set, Evidence, Failures, Compaction, with revision and digest), committed
+  with each Turn's Terminal Envelope.
+
+Turn state is committed as a `SessionDelta` bundled with the Terminal
+Envelope. The Engine stages the delta during execution and applies it exactly
+once, only after the envelope is durably committed; a commit failure leaves
+Session memory unchanged. On restart, `ThreadManager` restores the latest
+durable delta for each Thread from `persist/state/turnstate`, so Usage, Cost,
+Working Set, Evidence, Failures, and Compaction counters survive a crash
+alongside committed History.
 
 Interrupted executable background work may be requeued; records without an
 executor fail because no honest implementation can run them. Live leases owned
@@ -174,6 +187,8 @@ arbitrary shell command idempotent.
 | Persistent construction | `runtime/app/wire/persistent.go` |
 | Session snapshots | `persist/session`, `persist/snapshot` |
 | Checkpoint/Plan/Turn recovery | `runtime/app/session_artifacts.go` |
+| Thread session state restore | `runtime/app/thread_manager.go` |
+| Terminal turn state store | `persist/state/turnstate` |
 | Workspace recovery | `persist/workspacejournal` |
 
 ## Tradeoffs and Alternatives

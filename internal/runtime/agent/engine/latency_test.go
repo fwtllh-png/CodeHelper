@@ -413,7 +413,7 @@ func approveAfter(
 		clock.advance(waited)
 		// A zero expiry takes the request's own, which the guard requires the
 		// decision to stay inside.
-		return engine.DecideApproval(toolguard.ApprovalDecision{
+		return mustControl(t, engine).ResolveApproval(toolguard.ApprovalDecision{
 			RequestID: event.Approval.RequestID, Approved: true,
 			Scope: policy.ApprovalOnce,
 		})

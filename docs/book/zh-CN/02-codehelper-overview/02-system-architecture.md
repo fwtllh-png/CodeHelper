@@ -229,8 +229,10 @@ go test ./internal/runtime/app -run TestRuntimeUnsupportedOperationIsExplicitlyR
 ## 动手实验
 
 按顺序定位 `OperationStartTurn`、`Runtime.Submit`、`EngineAdapter.StartTurn`、
-`Engine.RunForTurn`、`Guard.ExecuteBound` 和 `wire.NewExec` 调用点，再运行
-Architecture Test，确认源码路径与架构图一致。
+`Engine.RunForTurn`（沿 `prepareTurnSpec`/`SnapshotTurnSpec` 到冻结的
+`TurnSpec`，再进入 `internal/runtime/agent/turnexec` 的 `turnexec.Scope`）、
+`Guard.ExecuteBound` 和 `wire.NewExec` 调用点，再运行 Architecture Test，
+确认源码路径与架构图一致。
 
 ## 复习问题
 

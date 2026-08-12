@@ -17,7 +17,7 @@ LDFLAGS := -s -w \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
-	architecture-ratchet architecture-freeze \
+	architecture-ratchet architecture-size-budget architecture-freeze \
 	book-navigation command-docs command-docs-check \
 	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
 	doc-governance-check doc-governance-test doc-impact \
@@ -39,6 +39,10 @@ PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
 ARCHITECTURE_METRICS_BASELINE := docs/architecture-metrics-baseline.json
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
 ARCHITECTURE_BASE_REF ?= origin/main
+ARCHITECTURE_SIZE_REPORT ?= .tmp/architecture/size-budget.json
+ARCHITECTURE_SIZE_PATHS ?= internal/runtime/agent/engine,internal/runtime/agent/turnexec,internal/runtime/agent/compact,internal/runtime/agent/evidence,internal/runtime/agent/workingset,internal/runtime/app,internal/persist/state/turnstate
+ARCHITECTURE_SIZE_MAX_NET ?= 847
+BASE_REF ?= $(ARCHITECTURE_BASE_REF)
 
 FUZZTIME ?= 30s
 RELEASE_STAGE ?= experimental
@@ -89,6 +93,14 @@ architecture-ratchet: architecture-metrics
 	else \
 		printf '%s\n' 'architecture ratchet comparison skipped: base baseline is unavailable'; \
 	fi
+
+architecture-size-budget:
+	$(GO) test -count=1 ./scripts/architecturesize
+	$(GO) run ./scripts/architecturesize -root . \
+		-base-ref '$(BASE_REF)' \
+		-paths '$(ARCHITECTURE_SIZE_PATHS)' \
+		-max-net '$(ARCHITECTURE_SIZE_MAX_NET)' \
+		-report '$(ARCHITECTURE_SIZE_REPORT)'
 
 # Architecture behavior freeze. Package tests carry characterization, visual/wire
 # goldens, config provenance drift, state transitions, and schema drift. Race is

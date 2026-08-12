@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -14,7 +13,6 @@ import (
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
@@ -89,7 +87,7 @@ type Options struct {
 	OnNetworkAllow     func(host, protocol string)
 	Workspace          string
 	WorkspaceIsolation string
-	Metrics            *telemetry.Metrics
+	Metrics            Metrics
 	// Now is the clock every duration the turn reports is measured against
 	// (nil → time.Now). One clock rather than several is what lets a test assert
 	// a latency exactly.
@@ -142,13 +140,7 @@ type Options struct {
 	// each sampling snapshot. Background notifications remain an optimization;
 	// a sync error must prevent a stale catalog from reaching the provider.
 	ToolCatalogSync func() error
-	// MCPHealthSnapshot returns one isolated status row per configured server.
-	MCPHealthSnapshot func() []MCPHealthSnapshot
-	// ExtensionSnapshot returns trusted extension identities. Changes are
-	// projected at sampling boundaries, like MCP health and catalog changes.
-	ExtensionSnapshot func() ([]ExtensionSnapshot, error)
-	// SkillSnapshot returns the enabled skill catalog for turn freezing (N10).
-	SkillSnapshot func() []SkillSummary
+	TurnSnapshots   TurnSnapshotSources
 	// RepoContext renders the repository map and working set appended to every
 	// request. A nil provider leaves the request as it was before (W1.2).
 	RepoContext RepoContext
@@ -161,54 +153,47 @@ type Options struct {
 	EvidenceLimit int
 }
 
+type Metrics interface {
+	AgentTurn()
+	ToolExecution()
+	Error()
+	ContextTail(int, bool)
+	Evidence(int, int)
+	Compaction(int)
+	TurnKernelObserver(bool, bool)
+}
+
+type noopMetrics struct{}
+
+func (noopMetrics) AgentTurn()                    {}
+func (noopMetrics) ToolExecution()                {}
+func (noopMetrics) Error()                        {}
+func (noopMetrics) ContextTail(int, bool)         {}
+func (noopMetrics) Evidence(int, int)             {}
+func (noopMetrics) Compaction(int)                {}
+func (noopMetrics) TurnKernelObserver(bool, bool) {}
+
+type TurnSnapshotSources struct {
+	MCP        func() []MCPHealthSnapshot
+	Extensions func() ([]ExtensionSnapshot, error)
+	Skills     func() []SkillSummary
+}
+
 type Engine struct {
 	mu      sync.Mutex
-	steerMu sync.Mutex
+	scopeMu sync.Mutex
 	options Options
 	history []provider.Message
-	pending []PendingInput // inject into current turn (steer + mailbox+trigger)
 	// mailboxHold buffers non-trigger mailbox until the next turn begins.
-	mailboxHold []PendingInput
-	turn        uint64
-	// spendMu guards the sample counter and what the turn's tools spent
-	// sampling. Both are written from the tool goroutines, which run several at
-	// a time, as well as from the turn's own loop.
-	spendMu sync.Mutex
-	// samples counts the provider calls the current turn has started, its own
-	// and its tools'. It resets with the turn because usage rows are identified
-	// by turn and sample.
-	samples uint32
-	// toolSamples is the latest cumulative report per tool-initiated sample.
-	toolSamples  map[uint32]toolSpend
-	running      bool
-	cancel       context.CancelFunc
-	cancelReason string
-	usage        provider.Usage
-	costUSD      float64
-	guard        *toolguard.Guard
-	journal      *workspacejournal.Manager
-	turnIDs      map[string]uint64
-
-	approvalMu   sync.Mutex
-	approvalEmit func(Event) error
-
-	turnKernelMu sync.Mutex
-	turnKernel   *engineTurnKernel
-
-	// routeMu guards the route the active turn samples on. It is nil between
-	// turns, when the act route is the only sensible answer.
-	routeMu   sync.RWMutex
-	turnRoute *model.ReadyRoute
-
-	// traceMu guards the active turn's span recorder and the tool spans an
-	// approval wait attaches itself to. Both are written from the tool
-	// goroutines, which run several at a time.
-	traceMu sync.Mutex
-	// recorder is the active turn's spans, and nil between turns.
-	recorder *trace.Recorder
-	// toolSpans maps a tool call to its open span, so the guard's approval wait
-	// lands under the call that parked rather than under the turn.
-	toolSpans map[string]uint64
+	mailboxHold     []PendingInput
+	turn            uint64
+	usage           provider.Usage
+	costUSD         float64
+	sessionRevision uint64
+	appliedDeltas   map[string]string
+	guard           *toolguard.Guard
+	journal         *workspacejournal.Manager
+	turnIDs         map[string]uint64
 
 	planMu sync.Mutex
 	// planText is the rendered plan partition; plan keeps the structure behind it
@@ -218,8 +203,6 @@ type Engine struct {
 	plan        interact.Plan
 	planReceipt *promptcontext.Receipt
 
-	scheduler *ToolScheduler
-	turnDiff  *TurnDiffTracker
 	// working accumulates the paths the thread touched. Unlike turnDiff it is not
 	// reset per turn: what mattered last turn usually still matters.
 	working *workingset.Ledger
@@ -236,34 +219,13 @@ type Engine struct {
 	profileReadOnly bool
 	enabledTools    map[string]struct{}
 
-	// turnContextMu guards the receipts of the volatile tail of the last sample.
-	turnContextMu   sync.Mutex
-	turnContextSeen []promptcontext.Receipt
-	turnSelections  []promptcontext.Selection
-	catalogSeen     *tool.CatalogSnapshot
-	mcpHealthSeen   map[string]MCPHealthSnapshot
-	extensionSeen   map[string]ExtensionSnapshot
-
-	// diagnosticsMu guards the post-edit receipts collected during the active
-	// turn, which the verify gate reads when its scope is diagnostics.
-	diagnosticsMu       sync.Mutex
-	turnDiagnosticsSeen []diagnostics.Receipt
-
-	// verificationInputs are Effect Executor inputs. Kernel owns their
-	// acceptance, mutation binding, and completion decision.
-	verificationInputs      []verify.Evidence
-	qualityEvidenceRequired bool
-
-	// rollbackMu guards the conflicts an automatic rollback of the active turn
-	// left unresolved.
-	rollbackMu        sync.Mutex
-	rollbackConflicts []string
-
 	// compactions counts how many times history was replaced by a summary. It is
 	// what tells a long thread apart from one that merely looks long.
 	compactions int
 
 	budgetReminderDelivered bool
+	activeScope             *Scope
+	lastScope               *Scope
 }
 
 var testTurnCoordinatorRuntimeFactory func() turnkernel.CoordinatorRuntime
@@ -275,24 +237,10 @@ var testTurnCoordinatorRuntimeFactory func() turnkernel.CoordinatorRuntime
 // plan model would be budgeted against the act model's window and billed at its
 // prices.
 func (e *Engine) activeRoute() model.ReadyRoute {
-	e.routeMu.RLock()
-	defer e.routeMu.RUnlock()
-	if e.turnRoute != nil {
-		return *e.turnRoute
+	if scope := e.runningScope(); scope != nil {
+		return scope.spec.Route
 	}
 	return e.options.Route
-}
-
-func (e *Engine) setTurnRoute(route model.ReadyRoute) {
-	e.routeMu.Lock()
-	defer e.routeMu.Unlock()
-	e.turnRoute = &route
-}
-
-func (e *Engine) clearTurnRoute() {
-	e.routeMu.Lock()
-	defer e.routeMu.Unlock()
-	e.turnRoute = nil
 }
 
 func (e *Engine) recordTurnDiagnostics(receipts []diagnostics.Receipt) {
@@ -302,21 +250,23 @@ func (e *Engine) recordTurnDiagnostics(receipts []diagnostics.Receipt) {
 	for _, receipt := range receipts {
 		e.observePath(workingset.SourceDiagnostic, receipt.Path)
 	}
-	e.diagnosticsMu.Lock()
-	defer e.diagnosticsMu.Unlock()
-	e.turnDiagnosticsSeen = append(e.turnDiagnosticsSeen, receipts...)
+	scope := e.runningScope()
+	if scope == nil {
+		return
+	}
+	scope.mu.Lock()
+	scope.state.diagnostics = append(scope.state.diagnostics, receipts...)
+	scope.mu.Unlock()
 }
 
 func (e *Engine) turnDiagnostics() []diagnostics.Receipt {
-	e.diagnosticsMu.Lock()
-	defer e.diagnosticsMu.Unlock()
-	return append([]diagnostics.Receipt(nil), e.turnDiagnosticsSeen...)
-}
-
-func (e *Engine) resetTurnDiagnostics() {
-	e.diagnosticsMu.Lock()
-	defer e.diagnosticsMu.Unlock()
-	e.turnDiagnosticsSeen = nil
+	scope := e.currentScope()
+	if scope == nil {
+		return nil
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	return append([]diagnostics.Receipt(nil), scope.state.diagnostics...)
 }
 
 func New(options Options) (*Engine, error) {
@@ -363,6 +313,9 @@ func New(options Options) (*Engine, error) {
 	}
 	if options.TokenEstimator == nil {
 		options.TokenEstimator = HeuristicTokenEstimator{}
+	}
+	if options.Metrics == nil {
+		options.Metrics = noopMetrics{}
 	}
 	if options.Security == nil {
 		options.Security = policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
@@ -419,13 +372,13 @@ func New(options Options) (*Engine, error) {
 		promptCacheBase: options.PromptCacheKey,
 		profileReadOnly: profileReadOnlyFromOptions(options),
 		turnIDs:         make(map[string]uint64),
-		scheduler:       NewToolScheduler(options.MaxToolConcurrent),
-		turnDiff:        NewTurnDiffTracker(),
+		appliedDeltas:   make(map[string]string),
 		working:         workingset.New(),
 		evidence:        evidence.New(),
 		failures:        compact.NewFailures(),
 	}
 	engine.seedWorkingSet()
+	engine.lastScope = &Scope{engine: engine, state: newScopeState(engine)}
 	if engine.guard == nil {
 		guard, err := toolguard.New(toolguard.Options{
 			Registry: options.Tools, Policy: options.Security, Workspace: options.Workspace,
@@ -450,7 +403,7 @@ func (e *Engine) ValidateSessionProfile(profile protocol.SessionProfile) error {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.running {
+	if e.runningScope() != nil {
 		return errors.New("session profile cannot change while a turn is active")
 	}
 	route := e.options.Routes.Act()
@@ -506,10 +459,6 @@ func (e *Engine) toolEnabled(entry tool.CatalogEntrySnapshot) bool {
 	if e.options.RequireCompletionDeclaration && entry.Name == "turn_complete" {
 		return true
 	}
-	if e.qualityEvidenceRequired &&
-		(entry.Name == "quality_verify" || entry.Name == "quality_test") {
-		return true
-	}
 	if len(e.enabledTools) == 0 {
 		return true
 	}
@@ -523,10 +472,6 @@ func (e *Engine) toolCallEnabled(
 	binding tool.CatalogBinding,
 ) bool {
 	if e.options.RequireCompletionDeclaration && name == "turn_complete" {
-		return true
-	}
-	if e.qualityEvidenceRequired &&
-		(name == "quality_verify" || name == "quality_test") {
 		return true
 	}
 	if len(e.enabledTools) == 0 {

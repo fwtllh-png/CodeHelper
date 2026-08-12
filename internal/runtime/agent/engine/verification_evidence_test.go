@@ -83,11 +83,12 @@ func TestQualityEvidenceRejectsSameBatchMutationAndGenericShell(t *testing.T) {
 
 func TestVerifyGateAcceptsFullCurrentQualityCoverage(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	scope := attachTestScope(t, engine)
 	engine.options.Verify = VerifyOptions{
 		Mode: VerifyModeSoft, Scope: verify.ScopeDiagnostics,
 		Runner: unavailableVerifier{}, MaxRepairSteps: 1,
 	}
-	engine.turnDiff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
+	scope.state.diff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
 	result := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
 	engine.bindVerificationEvidence(provider.ToolCall{
 		ID: "verify-1", Name: "quality_verify",
@@ -114,11 +115,12 @@ func TestVerifyGateAcceptsFullCurrentQualityCoverage(t *testing.T) {
 
 func TestVerifyGateRequestsStructuredRepairForMissingCoverage(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	scope := attachTestScope(t, engine)
 	engine.options.Verify = VerifyOptions{
 		Mode: VerifyModeSoft, Scope: verify.ScopeDiagnostics,
 		Runner: unavailableVerifier{}, MaxRepairSteps: 1,
 	}
-	engine.turnDiff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
+	scope.state.diff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
 	kernel := newEngineTurnKernel(
 		protocol.TurnIntentAnswer, "act", nil, 0, nil, nil,
 	)

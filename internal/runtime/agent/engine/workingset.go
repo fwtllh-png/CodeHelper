@@ -25,11 +25,11 @@ type RepoContext interface {
 // with forward slashes, because that is what the repository index is keyed by and
 // what a model can hand straight back to a file tool.
 func (e *Engine) observePath(source workingset.Source, path string) {
-	if e == nil || e.working == nil {
+	if e == nil || e.workingLedger() == nil {
 		return
 	}
 	if relative, ok := e.workspaceRelative(path); ok {
-		e.working.Observe(source, e.turn, relative)
+		e.workingLedger().Observe(source, e.turn, relative)
 	}
 }
 
@@ -86,7 +86,7 @@ func (e *Engine) WorkingSetEntries(turn uint64, limit int) []workingset.Entry {
 	if e == nil {
 		return nil
 	}
-	return e.working.Select(turn, limit)
+	return e.workingLedger().Select(turn, limit)
 }
 
 // ReadPaths returns the paths turn read. The turn receipt reports them, which is
@@ -95,14 +95,14 @@ func (e *Engine) ReadPaths(turn uint64) []string {
 	if e == nil {
 		return nil
 	}
-	return e.working.PathsObservedAt(workingset.SourceRead, turn)
+	return e.workingLedger().PathsObservedAt(workingset.SourceRead, turn)
 }
 
 // compactionPaths returns the working set and the critical paths a compaction
 // summary should carry, sorted for a stable summary.
 func (e *Engine) compactionPaths() ([]string, []string) {
 	var paths, critical []string
-	for _, entry := range e.working.Select(e.turn, e.options.WorkingSetLimit) {
+	for _, entry := range e.workingLedger().Select(e.turn, e.options.WorkingSetLimit) {
 		paths = append(paths, entry.Path)
 		if entry.Critical {
 			critical = append(critical, entry.Path)
@@ -120,18 +120,26 @@ func (e *Engine) recordTurnContextReceipts(receipts []promptcontext.Receipt) {
 	for _, receipt := range receipts {
 		e.options.Metrics.ContextTail(receipt.RetainedBytes, receipt.Truncated)
 	}
-	e.turnContextMu.Lock()
-	defer e.turnContextMu.Unlock()
-	e.turnContextSeen = receipts
+	scope := e.executionScope()
+	if scope == nil {
+		return
+	}
+	scope.mu.Lock()
+	scope.state.contextSeen = receipts
+	scope.mu.Unlock()
 }
 
 func (e *Engine) turnContextReceipts() []promptcontext.Receipt {
 	if e == nil {
 		return nil
 	}
-	e.turnContextMu.Lock()
-	defer e.turnContextMu.Unlock()
-	return append([]promptcontext.Receipt(nil), e.turnContextSeen...)
+	scope := e.currentScope()
+	if scope == nil {
+		return nil
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	return append([]promptcontext.Receipt(nil), scope.state.contextSeen...)
 }
 
 // TurnContextReceipts reports the volatile partitions of the last sample.
@@ -145,9 +153,13 @@ func (e *Engine) ContextSelections() []promptcontext.Selection {
 	if e == nil {
 		return nil
 	}
-	e.turnContextMu.Lock()
-	defer e.turnContextMu.Unlock()
-	return cloneSelections(e.turnSelections)
+	scope := e.currentScope()
+	if scope == nil {
+		return nil
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	return cloneSelections(scope.state.selections)
 }
 
 func cloneSelections(input []promptcontext.Selection) []promptcontext.Selection {
@@ -166,13 +178,17 @@ func (e *Engine) CatalogReceipt() *protocol.ReceiptCatalog {
 	if e == nil {
 		return nil
 	}
-	e.turnContextMu.Lock()
-	if e.catalogSeen == nil {
-		e.turnContextMu.Unlock()
+	scope := e.currentScope()
+	if scope == nil {
 		return nil
 	}
-	snapshot := *e.catalogSeen
-	e.turnContextMu.Unlock()
+	scope.mu.Lock()
+	if scope.state.catalog == nil {
+		scope.mu.Unlock()
+		return nil
+	}
+	snapshot := *scope.state.catalog
+	scope.mu.Unlock()
 	_, advertised, err := e.toolDefinitionsFromSnapshot(snapshot)
 	if err != nil {
 		return nil
@@ -202,12 +218,12 @@ func (e *Engine) CatalogReceipt() *protocol.ReceiptCatalog {
 // naming them, so they outrank anything the agent later stumbles onto and never
 // decay out.
 func (e *Engine) seedWorkingSet() {
-	if e.working == nil {
+	if e.workingLedger() == nil {
 		return
 	}
 	for _, path := range e.options.WorkingSet {
 		if relative, ok := e.workspaceRelative(path); ok {
-			e.working.Observe(workingset.SourcePinned, 0, relative)
+			e.workingLedger().Observe(workingset.SourcePinned, 0, relative)
 		}
 	}
 }
@@ -245,23 +261,28 @@ func (e *Engine) turnContextMessagesForCatalog(
 		receipts = append(receipts, catalogReceipt)
 	}
 	catalogCopy := catalog
-	e.turnContextMu.Lock()
-	e.catalogSeen = &catalogCopy
-	e.turnSelections = nil
-	e.turnContextMu.Unlock()
+	scope := e.executionScope()
+	if scope != nil {
+		scope.mu.Lock()
+		scope.state.catalog = &catalogCopy
+		scope.state.selections = nil
+		scope.mu.Unlock()
+	}
 	if e.options.RepoContext != nil {
-		snapshot := e.evidence.Snapshot(e.options.EvidenceLimit)
+		snapshot := e.evidenceSet().Snapshot(e.options.EvidenceLimit)
 		built := e.options.RepoContext.Build(ctx, promptcontext.TurnState{
 			Turn:       e.turn,
-			WorkingSet: e.working.Select(e.turn, e.options.WorkingSetLimit),
+			WorkingSet: e.workingLedger().Select(e.turn, e.options.WorkingSetLimit),
 			Evidence:   snapshot,
 		})
 		e.options.Metrics.Evidence(len(snapshot.Risks), len(snapshot.Reminders))
 		messages = append(messages, built.Messages...)
 		receipts = append(receipts, built.Receipts...)
-		e.turnContextMu.Lock()
-		e.turnSelections = cloneSelections(built.Selections)
-		e.turnContextMu.Unlock()
+		if scope != nil {
+			scope.mu.Lock()
+			scope.state.selections = cloneSelections(built.Selections)
+			scope.mu.Unlock()
+		}
 	}
 	// The plan sits at the very end: it is the most task-specific instruction,
 	// and keeping it out of the prefix means updating it no longer invalidates

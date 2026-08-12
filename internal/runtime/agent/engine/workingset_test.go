@@ -114,14 +114,15 @@ func TestDiagnosticsAndPlanFeedTheWorkingSet(t *testing.T) {
 
 func TestTheWorkingSetOutlivesTheTurnAndTheTurnDiffDoesNot(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
+	scope := attachTestScope(t, engine)
 	engine.options.Workspace = t.TempDir()
 
 	engine.turn = 1
-	engine.turnDiff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
+	scope.state.diff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
 	engine.observePath(workingset.SourceEdited, "a.go")
 
 	engine.turn = 2
-	engine.turnDiff.Reset()
+	scope.state.diff.Reset()
 	if len(engine.TurnDiff()) != 0 {
 		t.Fatal("the turn diff must not survive its turn")
 	}

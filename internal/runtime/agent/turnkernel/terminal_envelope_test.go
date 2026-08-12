@@ -76,6 +76,36 @@ func TestPhase4R2TerminalEnvelopeCommitsAtomicallyAndIdempotently(t *testing.T) 
 	}
 }
 
+func TestLatestSessionDeltaIsScopedByThreadAndRevision(t *testing.T) {
+	store := NewMemoryTerminalEnvelopeStore(nil, nil)
+	first := terminalEnvelopeFixture(t)
+	first.SessionDelta = json.RawMessage(`{"base_revision":0,"digest":"first"}`)
+	if _, err := store.CommitTerminal(t.Context(), first); err != nil {
+		t.Fatal(err)
+	}
+	second := terminalEnvelopeFixture(t)
+	second.TurnID = "turn-2"
+	second.EffectID = "effect-terminal-2"
+	for index := range second.DomainFacts {
+		second.DomainFacts[index].TurnID = second.TurnID
+	}
+	for index := range second.Outbox {
+		second.Outbox[index].TurnID = protocol.TurnID(second.TurnID)
+	}
+	second.SessionDelta = json.RawMessage(`{"base_revision":1,"digest":"second"}`)
+	if _, err := store.CommitTerminal(t.Context(), second); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := store.LatestSessionDelta(t.Context(), "thread-1")
+	if err != nil || string(raw) != string(second.SessionDelta) {
+		t.Fatalf("latest delta = %s, error=%v", raw, err)
+	}
+	if raw, err := store.LatestSessionDelta(t.Context(), "other"); err != nil ||
+		len(raw) != 0 {
+		t.Fatalf("other delta = %s, error=%v", raw, err)
+	}
+}
+
 func TestPhase4R2DomainFactsAreStrictlyOrderedAndTerminallySealed(t *testing.T) {
 	store := NewMemoryTerminalEnvelopeStore(nil, nil)
 	envelope := terminalEnvelopeFixture(t)

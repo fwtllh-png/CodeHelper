@@ -289,8 +289,9 @@ func TestEngineRejectsRequiredCompletionToolMissing(t *testing.T) {
 
 func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.turnDiff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
-	engine.verificationInputs = append(engine.verificationInputs, verify.Evidence{
+	scope := attachTestScope(t, engine)
+	scope.state.diff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
+	scope.state.verification = append(scope.state.verification, verify.Evidence{
 		SchemaVersion: 1, Kind: "verify", Status: verify.StatusPassed,
 		CoveredPaths: []string{"a.go"}, CallID: "verify-1",
 		MutationRevision: 1,

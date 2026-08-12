@@ -295,6 +295,19 @@ func TestTerminalEnvelopeFailurePublishesNoReceiptOrTerminal(t *testing.T) {
 				); !errors.Is(loadErr, turnkernel.ErrTerminalEnvelopeMissing) {
 					t.Fatalf("terminal store error = %v", loadErr)
 				}
+				usage, cost := worker.Usage()
+				if len(worker.History()) != 0 ||
+					usage.Total() != 0 ||
+					cost != 0 ||
+					worker.SessionRevision() != 0 {
+					t.Fatalf(
+						"failed terminal applied session state: history=%d usage=%+v cost=%f revision=%d",
+						len(worker.History()),
+						usage,
+						cost,
+						worker.SessionRevision(),
+					)
+				}
 				return
 			}
 		case <-deadline:

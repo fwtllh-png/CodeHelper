@@ -124,6 +124,17 @@ host-specific presentation.
 
 ## Turn Data Flow
 
+Before execution, Engine builds an immutable `TurnSpec` containing identity,
+request, Session Profile, route, policy, limits, prompt prefix, Tool Catalog,
+skills, MCP health, and extension snapshots. `turnexec.Factory` opens a typed
+Scope from that Spec. Sampling never re-reads those mutable sources during the
+Scope.
+
+Scope owns Turn-only Kernel, trace, diagnostics, verification, Tool spend, diff,
+and control state. Cancel, steer, Approval, and Input enter through its
+`ControlPort`; a bounded mailbox rejects overflow, and the Request ledger
+rejects late, duplicate, or wrong-kind resolutions.
+
 1. A host validates user input and submits an operation.
 2. The application resolves session, thread, workspace, and policy state.
 3. Prompt context assembles repository map, pinned files, working set, evidence,
@@ -147,16 +158,19 @@ host-specific presentation.
 12. Engine submits `TerminalRequested`; Reducer selects Completed, Failed, or
     Canceled. Journal Commit/Rollback then runs as a durable Effect and returns
     `JournalResultReceived`.
-13. Persistent Runtime atomically commits frozen state, final output, receipt,
-    terminal event, outbox, and the real operation receipt in one SQLite
-    transaction.
-14. Output, receipt, and terminal projections run only after that commit.
-15. On restart, Runtime scans pending terminal projections and appends each
+13. Scope prepares a revisioned, digested `SessionDelta` containing History,
+    Usage, Cost, Working Set, Evidence, Failures, and Compaction state.
+14. Persistent Runtime atomically commits frozen state, Session Delta, final
+    output, receipt, terminal event, outbox, and the real operation receipt in
+    one SQLite transaction.
+15. Engine applies Session Delta exactly once only after that commit. Commit
+    failure leaves Session memory unchanged.
+16. On restart, Runtime scans pending terminal projections and appends each
     entry with its stable Event ID before marking that entry published.
-16. Accepted StartTurn operations resume automatically only when matching
+17. Accepted StartTurn operations resume automatically only when matching
     non-terminal Domain Facts exist; Coordinator requeues running Effects and
     Engine resumes Provider, Tool, or Journal execution from durable payloads.
-17. Approval and Input recovery primes the original request IDs before resumed
+18. Approval and Input recovery primes the original request IDs before resumed
     execution, so hosts replay one wait rather than receiving a replacement.
 
 `TurnCoordinator` is the only production entry to `Reducer.Apply`. Engine

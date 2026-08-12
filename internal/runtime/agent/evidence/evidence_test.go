@@ -1,9 +1,24 @@
 package evidence
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestEvidenceDeltaRoundTrip(t *testing.T) {
+	set := New()
+	set.BeginTurn(3)
+	set.Observe(Fact{Kind: KindDefinition, Path: "a.go", Line: 2, Turn: 1})
+	set.MarkChanged("a.go", 2, true)
+	set.MarkDiagnostics("a.go", true)
+	set.NoteRead("b.go", "digest")
+	set.NoteHandle("result-1", "read")
+	restored := ApplyDelta(set.Delta())
+	if !reflect.DeepEqual(restored.Delta(), set.Delta()) {
+		t.Fatalf("restored = %+v, want %+v", restored.Delta(), set.Delta())
+	}
+}
 
 func TestNilSetAcceptsObservationsAndReportsNothing(t *testing.T) {
 	var set *Set

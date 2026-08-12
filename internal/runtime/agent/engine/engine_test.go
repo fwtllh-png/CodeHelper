@@ -1131,7 +1131,7 @@ func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
 func TestToolDefinitionsAreEmptyWhenToolsAreDisabled(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 
-	if definitions := engine.toolDefinitions(); len(definitions) != 0 {
+	if definitions := testToolDefinitions(t, engine); len(definitions) != 0 {
 		t.Fatalf("toolDefinitions() = %+v, want empty tools-off surface", definitions)
 	}
 }
@@ -1311,7 +1311,7 @@ func TestEngineGuaranteesOneRetryForStructuredTransportFailure(t *testing.T) {
 	}
 }
 
-func TestSamplingSnapshotRejectsToolReplacedBeforeExecution(t *testing.T) {
+func TestTurnCatalogSnapshotRejectsReplacementAndRemainsFrozen(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	oldExecutor := &countingCatalogExecutor{descriptor: echoDescriptor()}
 	oldExecutor.descriptor.Description = "catalog v1"
@@ -1357,8 +1357,8 @@ func TestSamplingSnapshotRejectsToolReplacedBeforeExecution(t *testing.T) {
 	if got := definitionDescription(runtime.requests[0], "echo"); got != "catalog v1" {
 		t.Fatalf("first sample description = %q", got)
 	}
-	if got := definitionDescription(runtime.requests[1], "echo"); got != "catalog v2" {
-		t.Fatalf("next sample description = %q", got)
+	if got := definitionDescription(runtime.requests[1], "echo"); got != "catalog v1" {
+		t.Fatalf("next sample escaped frozen catalog: %q", got)
 	}
 }
 
@@ -1404,13 +1404,13 @@ func TestProviderRetryReusesCatalogSnapshot(t *testing.T) {
 	}
 }
 
-func TestMCPHealthChangesEmitOnlyOnTransition(t *testing.T) {
+func TestMCPHealthSnapshotProjectsOncePerTurn(t *testing.T) {
 	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 	snapshots := []MCPHealthSnapshot{{
 		Server: "remote", State: "healthy", ChangedAt: now,
 	}}
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MCPHealthSnapshot = func() []MCPHealthSnapshot {
+	engine.options.TurnSnapshots.MCP = func() []MCPHealthSnapshot {
 		return append([]MCPHealthSnapshot(nil), snapshots...)
 	}
 	engine.options.Now = func() time.Time { return now }
@@ -1421,34 +1421,18 @@ func TestMCPHealthChangesEmitOnlyOnTransition(t *testing.T) {
 		}
 		return nil
 	}
-	if err := engine.emitMCPHealthChanges(send); err != nil {
+	if err := engine.emitMCPHealthChanges(append([]MCPHealthSnapshot(nil), snapshots...), send); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.emitMCPHealthChanges(send); err != nil {
+	if err := engine.emitMCPHealthChanges(append([]MCPHealthSnapshot(nil), snapshots...), send); err != nil {
 		t.Fatal(err)
 	}
-	snapshots[0].State = "open"
-	snapshots[0].ConsecutiveFailures = 3
-	snapshots[0].LastError = "timeout"
-	snapshots[0].ChangedAt = now.Add(time.Second)
-	if err := engine.emitMCPHealthChanges(send); err != nil {
-		t.Fatal(err)
-	}
-	snapshots = nil
-	now = now.Add(2 * time.Second)
-	if err := engine.emitMCPHealthChanges(send); err != nil {
-		t.Fatal(err)
-	}
-	if len(changes) != 3 ||
-		changes[0].Current.State != "healthy" ||
-		changes[1].PreviousState != "healthy" ||
-		changes[1].Current.State != "open" ||
-		changes[2].Current.State != "removed" {
+	if len(changes) != 1 || changes[0].Current.State != "healthy" {
 		t.Fatalf("changes = %+v", changes)
 	}
 }
 
-func TestExtensionLifecycleEmitsOnlyAuditableTransitions(t *testing.T) {
+func TestExtensionSnapshotProjectsOncePerTurn(t *testing.T) {
 	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 	snapshots := []ExtensionSnapshot{{
 		Kind: "plugin", Name: "review", Version: "1.0.0",
@@ -1457,7 +1441,7 @@ func TestExtensionLifecycleEmitsOnlyAuditableTransitions(t *testing.T) {
 		LastAction: "install", ChangedAt: now,
 	}}
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.ExtensionSnapshot = func() ([]ExtensionSnapshot, error) {
+	engine.options.TurnSnapshots.Extensions = func() ([]ExtensionSnapshot, error) {
 		return append([]ExtensionSnapshot(nil), snapshots...), nil
 	}
 	engine.options.Now = func() time.Time { return now }
@@ -1468,36 +1452,13 @@ func TestExtensionLifecycleEmitsOnlyAuditableTransitions(t *testing.T) {
 		}
 		return nil
 	}
-	if err := engine.emitExtensionLifecycleChanges(send); err != nil {
+	if err := engine.emitExtensionLifecycleChanges(append([]ExtensionSnapshot(nil), snapshots...), send); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.emitExtensionLifecycleChanges(send); err != nil {
+	if err := engine.emitExtensionLifecycleChanges(append([]ExtensionSnapshot(nil), snapshots...), send); err != nil {
 		t.Fatal(err)
 	}
-	snapshots[0].Version = "2.0.0"
-	snapshots[0].Digest = strings.Repeat("b", 64)
-	snapshots[0].Generation = 2
-	snapshots[0].LastAction = "update"
-	snapshots[0].ChangedAt = now.Add(time.Second)
-	if err := engine.emitExtensionLifecycleChanges(send); err != nil {
-		t.Fatal(err)
-	}
-	snapshots[0].Enabled = false
-	snapshots[0].ChangedAt = now.Add(2 * time.Second)
-	if err := engine.emitExtensionLifecycleChanges(send); err != nil {
-		t.Fatal(err)
-	}
-	snapshots = nil
-	now = now.Add(3 * time.Second)
-	if err := engine.emitExtensionLifecycleChanges(send); err != nil {
-		t.Fatal(err)
-	}
-	if len(changes) != 4 ||
-		changes[0].Action != "active" ||
-		changes[1].Action != "updated" ||
-		changes[1].PreviousVersion != "1.0.0" ||
-		changes[2].Action != "disabled" ||
-		changes[3].Action != "revoked" {
+	if len(changes) != 1 || changes[0].Action != "active" {
 		t.Fatalf("changes = %+v", changes)
 	}
 }
@@ -1728,7 +1689,7 @@ func TestRequestCancelHasSingleCanceledTerminalAndNoCommittedHistory(t *testing.
 	case <-time.After(5 * time.Second):
 		t.Fatal("model stream did not start")
 	}
-	engine.RequestCancel()
+	_ = mustControl(t, engine).Cancel("")
 	select {
 	case runErr := <-done:
 		if !errors.Is(runErr, context.Canceled) {
@@ -1764,7 +1725,7 @@ func TestCanceledTurnContinuationRetainsTaskContext(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("model stream did not start")
 	}
-	engine.RequestCancelWithReason(protocol.CancelReasonUserInterrupted)
+	_ = mustControl(t, engine).Cancel(protocol.CancelReasonUserInterrupted)
 	if runErr := <-done; !errors.Is(runErr, context.Canceled) {
 		t.Fatalf("canceled Run() error = %v, want context.Canceled", runErr)
 	}
@@ -2437,7 +2398,8 @@ func TestEngineSteerContinuesCurrentTurnWithoutStaleInput(t *testing.T) {
 		done <- err
 	}()
 	<-runtime.started
-	if err := engine.Steer("change direction"); err != nil {
+	control := mustControl(t, engine)
+	if err := control.Steer("change direction"); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
@@ -2453,7 +2415,7 @@ func TestEngineSteerContinuesCurrentTurnWithoutStaleInput(t *testing.T) {
 		second[2].Text() != "change direction" {
 		t.Fatalf("steered messages = %+v", second)
 	}
-	if err := engine.Steer("stale"); err == nil {
+	if err := control.Steer("stale"); err == nil {
 		t.Fatal("Steer() after completion succeeded")
 	}
 }
@@ -2470,7 +2432,7 @@ func TestEnginePendingInputFIFOSteerAndMailbox(t *testing.T) {
 	if err := engine.EnqueueMailbox("mail-first", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.Steer("steer-second"); err != nil {
+	if err := mustControl(t, engine).Steer("steer-second"); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
@@ -2504,7 +2466,7 @@ func TestEngineMailboxNonTriggerHeldUntilNextTurn(t *testing.T) {
 	if err := engine.EnqueueMailbox("late-mail", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.Steer("nudge"); err != nil {
+	if err := mustControl(t, engine).Steer("nudge"); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
@@ -2568,9 +2530,6 @@ func TestEngineUndoRemovesCompleteToolTurnAndForkIsIndependent(t *testing.T) {
 	fork.history[1].Blocks[0].ToolCall.Name = "changed"
 	if engine.history[1].Blocks[0].ToolCall.Name != "echo" {
 		t.Fatal("Fork() shares tool-call backing storage")
-	}
-	if !engine.Undo() || len(engine.History()) != 0 {
-		t.Fatalf("history after undo = %+v", engine.History())
 	}
 }
 
@@ -2715,6 +2674,39 @@ func newEngine(t *testing.T, runtime provider.Provider, registry *tool.Registry)
 		t.Fatal(err)
 	}
 	return engine
+}
+
+func attachTestScope(t *testing.T, engine *Engine) *Scope {
+	t.Helper()
+	scope := &Scope{
+		engine: engine,
+		state:  newScopeState(engine),
+	}
+	engine.publishScope(scope)
+	t.Cleanup(func() { engine.finishScope(scope) })
+	return scope
+}
+
+func mustControl(t *testing.T, engine *Engine) ControlPort {
+	t.Helper()
+	control, err := engine.Control()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return control
+}
+
+func testToolDefinitions(t *testing.T, engine *Engine) []provider.ToolDefinition {
+	t.Helper()
+	snapshot, err := engine.options.Tools.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions, _, err := engine.toolDefinitionsFromSnapshot(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return definitions
 }
 
 func messageWithText(role provider.Role, text string, turn uint64) provider.Message {

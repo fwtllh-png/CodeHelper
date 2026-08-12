@@ -195,14 +195,15 @@ func TestCompactionSummaryCarriesUnverifiedChanges(t *testing.T) {
 
 func TestTailRenderCountsRisksAndReminders(t *testing.T) {
 	engine := evidenceEngine(t)
-	engine.options.Metrics = telemetry.NewMetrics()
+	metrics := telemetry.NewMetrics()
+	engine.options.Metrics = metrics
 	engine.options.RepoContext = &stubRepoContext{}
 	engine.observeChangeEvidence(toolguard.FileChange{Path: "a.go", Kind: toolguard.FileModified})
 	engine.noteToolCall(provider.ToolCall{Name: "search_text", Arguments: `{"query":"a"}`})
 	engine.noteToolCall(provider.ToolCall{Name: "search_text", Arguments: `{"query":"a"}`})
 
 	engine.turnContextMessages(t.Context())
-	snapshot := engine.options.Metrics.Snapshot()
+	snapshot := metrics.Snapshot()
 	// Two risks: the change is both unverified and unread.
 	if snapshot.EvidenceRisks != 2 || snapshot.PolicyReminders != 1 {
 		t.Fatalf("metrics = %+v", snapshot)

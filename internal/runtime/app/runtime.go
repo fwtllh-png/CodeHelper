@@ -66,10 +66,11 @@ type EngineSink interface {
 }
 
 type TerminalMaterial struct {
-	FrozenState turnkernel.State
-	DomainFacts []turnkernel.DomainFact
-	Receipt     *protocol.ExecutionReceiptData
-	Terminal    protocol.EventData
+	FrozenState  turnkernel.State
+	DomainFacts  []turnkernel.DomainFact
+	Receipt      *protocol.ExecutionReceiptData
+	Terminal     protocol.EventData
+	SessionDelta json.RawMessage
 }
 
 type TerminalCommitSink interface {
@@ -1839,11 +1840,12 @@ func (s *runtimeSink) CommitTerminal(material TerminalMaterial) error {
 		),
 	)
 	envelope := turnkernel.TerminalEnvelope{
-		TurnID:      string(turnID),
-		EffectID:    "terminal:" + string(turnID),
-		FrozenState: material.FrozenState,
-		DomainFacts: material.DomainFacts,
-		Receipt:     material.Receipt,
+		TurnID:       string(turnID),
+		EffectID:     "terminal:" + string(turnID),
+		FrozenState:  material.FrozenState,
+		DomainFacts:  material.DomainFacts,
+		Receipt:      material.Receipt,
+		SessionDelta: append(json.RawMessage(nil), material.SessionDelta...),
 		FinalOutput: append(
 			[]string(nil),
 			material.FrozenState.FinalOutput...,

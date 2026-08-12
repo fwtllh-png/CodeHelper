@@ -9,9 +9,11 @@ prerequisites:
   - practice-benchmark
 code_paths:
   - scripts/architecturemetrics
+  - scripts/architecturesize
   - Makefile
 test_paths:
   - scripts/architecturemetrics/main_test.go
+  - scripts/architecturesize/main_test.go
 source_of_truth:
   - docs/architecture-metrics-baseline.json
   - docs/hotspot-baseline.json
@@ -63,6 +65,11 @@ Switch 站点。
 architecture-ratchet`（测量并执行）；Ratchet 已加入 `make verify` 和
 `architecture-freeze`。
 
+`make architecture-size-budget BASE_REF=origin/main` 独立比较完整 Ownership Closure
+与 Git Base。它排除 Test、Docs、Fixture、Generated Source 与 Build Output，并报告
+Base、Head、Added、Deleted、Net Production Lines。Stage D 带有显式批准的 `+847`
+Relaxation；第 `+848` 行会使命令失败，因此后续增长不能隐藏在这次决定中。
+
 ## 指标
 
 | Metric | Target 类型 | 含义 | Headroom |
@@ -109,6 +116,7 @@ Headroom 汇总为排序后的漂移列表，命令以非零退出码结束。
 | 阈值契约 | `docs/architecture-metrics-baseline.json` | 阈值的唯一事实来源 |
 | Make 目标 | `Makefile` | `architecture-metrics`、`architecture-ratchet`、`architecture-freeze` |
 | 测试 | `scripts/architecturemetrics/main_test.go` | Baseline 校验、漂移、Headroom 与 Ratchet 用例 |
+| Ownership Size Budget | `scripts/architecturesize` | Base/Head Production LOC 与精确 Relaxation |
 
 ## 失败模式与安全边界
 
@@ -122,6 +130,7 @@ Headroom 汇总为排序后的漂移列表，命令以非零退出码结束。
 ```bash
 go test ./scripts/architecturemetrics
 make architecture-ratchet
+make architecture-size-budget BASE_REF=origin/main
 make book-check
 ```
 

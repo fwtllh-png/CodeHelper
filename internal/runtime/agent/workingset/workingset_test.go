@@ -1,6 +1,7 @@
 package workingset
 
 import (
+	"reflect"
 	"sync"
 	"testing"
 )
@@ -146,6 +147,17 @@ func TestNilLedgerIsUsable(t *testing.T) {
 	}
 	if paths := ledger.PathsObservedAt(SourceRead, 1); paths != nil {
 		t.Fatalf("paths = %v", paths)
+	}
+}
+
+func TestDeltaRoundTripPreservesObservations(t *testing.T) {
+	ledger := New()
+	ledger.Observe(SourceRead, 2, "a.go")
+	ledger.Observe(SourceEdited, 3, "a.go")
+	ledger.Observe(SourcePlan, 4, "b.go")
+	restored := ApplyDelta(ledger.Delta())
+	if got, want := restored.Select(4, 10), ledger.Select(4, 10); !reflect.DeepEqual(got, want) {
+		t.Fatalf("restored = %+v, want %+v", got, want)
 	}
 }
 

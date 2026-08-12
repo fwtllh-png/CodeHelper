@@ -22,9 +22,12 @@ func (e *Engine) beginTrace(purpose model.Purpose) (*trace.Recorder, *trace.Span
 		"model":    route.Model().ID,
 		"purpose":  string(purpose),
 	})
-	e.traceMu.Lock()
-	e.recorder, e.toolSpans = recorder, make(map[string]uint64)
-	e.traceMu.Unlock()
+	if scope := e.runningScope(); scope != nil {
+		scope.mu.Lock()
+		scope.state.recorder = recorder
+		scope.state.toolSpans = make(map[string]uint64)
+		scope.mu.Unlock()
+	}
 	return recorder, span
 }
 
@@ -54,9 +57,13 @@ func (e *Engine) tracer() *trace.Recorder {
 	if e == nil {
 		return nil
 	}
-	e.traceMu.Lock()
-	defer e.traceMu.Unlock()
-	return e.recorder
+	scope := e.currentScope()
+	if scope == nil {
+		return nil
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	return scope.state.recorder
 }
 
 // beginToolSpan opens a tool span and remembers it under the call id, which is
@@ -69,11 +76,13 @@ func (e *Engine) beginToolSpan(call provider.ToolCall) *trace.Span {
 	if span.ID() == 0 || call.ID == "" {
 		return span
 	}
-	e.traceMu.Lock()
-	if e.toolSpans != nil {
-		e.toolSpans[call.ID] = span.ID()
+	if scope := e.runningScope(); scope != nil {
+		scope.mu.Lock()
+		if scope.state.toolSpans != nil {
+			scope.state.toolSpans[call.ID] = span.ID()
+		}
+		scope.mu.Unlock()
 	}
-	e.traceMu.Unlock()
 	return span
 }
 
@@ -84,9 +93,11 @@ func (e *Engine) endToolSpan(
 	call provider.ToolCall, span *trace.Span, result tool.Result, err error,
 ) {
 	if call.ID != "" {
-		e.traceMu.Lock()
-		delete(e.toolSpans, call.ID)
-		e.traceMu.Unlock()
+		if scope := e.runningScope(); scope != nil {
+			scope.mu.Lock()
+			delete(scope.state.toolSpans, call.ID)
+			scope.mu.Unlock()
+		}
 	}
 	switch {
 	case err != nil:
@@ -104,9 +115,13 @@ func (e *Engine) endToolSpan(
 // emits the request and then hears nothing until the tool returns, by which time
 // the tool has also run.
 func (e *Engine) observeApprovalWait(wait toolguard.ApprovalWait) {
-	e.traceMu.Lock()
-	recorder, parent := e.recorder, e.toolSpans[wait.CallID]
-	e.traceMu.Unlock()
+	scope := e.runningScope()
+	if scope == nil {
+		return
+	}
+	scope.mu.Lock()
+	recorder, parent := scope.state.recorder, scope.state.toolSpans[wait.CallID]
+	scope.mu.Unlock()
 	if recorder == nil {
 		return
 	}

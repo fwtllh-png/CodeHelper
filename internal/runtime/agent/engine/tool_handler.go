@@ -55,7 +55,7 @@ func (e *Engine) runToolsWithCache(
 	if identity.TurnID == "" {
 		identity.TurnID = turnID
 	}
-	toolCtx, cancel := context.WithCancel(ctx)
+	toolCtx, cancel := context.WithCancelCause(ctx)
 	toolCtx = tool.WithInvocationIdentity(toolCtx, identity)
 
 	toolCtx = withToolAccount(toolCtx, &toolAccount{
@@ -67,12 +67,13 @@ func (e *Engine) runToolsWithCache(
 
 	e.setActiveCancel(cancel)
 	defer e.clearActiveCancel()
-	defer cancel()
+	defer cancel(nil)
 
-	sched := e.scheduler
-	if sched == nil {
-		sched = NewToolScheduler(e.options.MaxToolConcurrent)
+	scope := e.executionScope()
+	if scope == nil {
+		return nil, errors.New("turn scope is not active")
 	}
+	sched := scope.state.scheduler
 	results := make([]tool.Result, len(calls))
 	errorsByIndex := make([]error, len(calls))
 	skipExecution := make([]bool, len(calls))
@@ -316,7 +317,7 @@ func (e *Engine) runToolsWithCache(
 		call := calls[index]
 		if !copy.IsError {
 			for _, change := range observedFileChanges(copy.Metadata) {
-				e.turnDiff.Record(TurnDiffEntry{
+				scope.state.diff.Record(TurnDiffEntry{
 					Path: change.Path, Tool: call.Name, Kind: change.Kind,
 					Added: change.Added, Removed: change.Removed,
 				})

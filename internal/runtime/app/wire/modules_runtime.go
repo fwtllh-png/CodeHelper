@@ -173,68 +173,70 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 			}
 			return session.mcpPrewarm.SyncCatalog()
 		},
-		MCPHealthSnapshot: func() []agentengine.MCPHealthSnapshot {
-			if session.mcpPool == nil {
-				return nil
-			}
-			snapshots := session.mcpPool.HealthSnapshots()
-			result := make([]agentengine.MCPHealthSnapshot, 0, len(snapshots))
-			for _, snapshot := range snapshots {
-				result = append(result, agentengine.MCPHealthSnapshot{
-					Server:              snapshot.Server,
-					State:               string(snapshot.State),
-					ConsecutiveFailures: snapshot.ConsecutiveFailures,
-					LastError:           snapshot.LastError,
-					ChangedAt:           snapshot.ChangedAt,
-					RetryAt:             snapshot.RetryAt,
-				})
-			}
-			return result
-		},
-		ExtensionSnapshot: func() ([]agentengine.ExtensionSnapshot, error) {
-			if session.pluginRegistry == nil {
-				return nil, nil
-			}
-			if session.pluginTools != nil {
-				if syncErr := session.pluginTools.Sync(); syncErr != nil {
-					return nil, syncErr
+		TurnSnapshots: agentengine.TurnSnapshotSources{
+			MCP: func() []agentengine.MCPHealthSnapshot {
+				if session.mcpPool == nil {
+					return nil
 				}
-			}
-			snapshots, snapshotErr := session.pluginRegistry.LifecycleSnapshots()
-			if snapshotErr != nil {
-				return nil, snapshotErr
-			}
-			result := make([]agentengine.ExtensionSnapshot, 0, len(snapshots))
-			for _, snapshot := range snapshots {
-				result = append(result, agentengine.ExtensionSnapshot{
-					Kind:       "plugin",
-					Name:       snapshot.Name,
-					Version:    snapshot.Version,
-					Source:     snapshot.Source,
-					Publisher:  snapshot.Publisher,
-					Trust:      snapshot.Trust,
-					Digest:     snapshot.Digest,
-					Generation: snapshot.Generation,
-					Enabled:    snapshot.Enabled,
-					LastAction: snapshot.LastAction,
-					ChangedAt:  snapshot.ChangedAt,
-				})
-			}
-			return result, nil
-		},
-		SkillSnapshot: func() []agentengine.SkillSummary {
-			if catalog == nil {
-				return nil
-			}
-			summaries := catalog.Summaries(context.Background())
-			out := make([]agentengine.SkillSummary, 0, len(summaries))
-			for _, summary := range summaries {
-				out = append(out, agentengine.SkillSummary{
-					Name: summary.Name, Description: summary.Description,
-					Source: string(summary.Source),
-				})
-			}
-			return out
+				snapshots := session.mcpPool.HealthSnapshots()
+				result := make([]agentengine.MCPHealthSnapshot, 0, len(snapshots))
+				for _, snapshot := range snapshots {
+					result = append(result, agentengine.MCPHealthSnapshot{
+						Server:              snapshot.Server,
+						State:               string(snapshot.State),
+						ConsecutiveFailures: snapshot.ConsecutiveFailures,
+						LastError:           snapshot.LastError,
+						ChangedAt:           snapshot.ChangedAt,
+						RetryAt:             snapshot.RetryAt,
+					})
+				}
+				return result
+			},
+			Extensions: func() ([]agentengine.ExtensionSnapshot, error) {
+				if session.pluginRegistry == nil {
+					return nil, nil
+				}
+				if session.pluginTools != nil {
+					if syncErr := session.pluginTools.Sync(); syncErr != nil {
+						return nil, syncErr
+					}
+				}
+				snapshots, snapshotErr := session.pluginRegistry.LifecycleSnapshots()
+				if snapshotErr != nil {
+					return nil, snapshotErr
+				}
+				result := make([]agentengine.ExtensionSnapshot, 0, len(snapshots))
+				for _, snapshot := range snapshots {
+					result = append(result, agentengine.ExtensionSnapshot{
+						Kind:       "plugin",
+						Name:       snapshot.Name,
+						Version:    snapshot.Version,
+						Source:     snapshot.Source,
+						Publisher:  snapshot.Publisher,
+						Trust:      snapshot.Trust,
+						Digest:     snapshot.Digest,
+						Generation: snapshot.Generation,
+						Enabled:    snapshot.Enabled,
+						LastAction: snapshot.LastAction,
+						ChangedAt:  snapshot.ChangedAt,
+					})
+				}
+				return result, nil
+			},
+			Skills: func() []agentengine.SkillSummary {
+				if catalog == nil {
+					return nil
+				}
+				summaries := catalog.Summaries(context.Background())
+				out := make([]agentengine.SkillSummary, 0, len(summaries))
+				for _, summary := range summaries {
+					out = append(out, agentengine.SkillSummary{
+						Name: summary.Name, Description: summary.Description,
+						Source: string(summary.Source),
+					})
+				}
+				return out
+			},
 		},
 	}
 	defaultProfile := protocol.SessionProfile{
