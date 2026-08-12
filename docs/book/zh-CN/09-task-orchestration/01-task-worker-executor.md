@@ -11,10 +11,12 @@ code_paths:
   - internal/orchestration/task
   - internal/orchestration/worker
   - internal/runtime/app/wire
+  - internal/persist/sqlkit
 test_paths:
   - internal/orchestration/task/repository_test.go
   - internal/orchestration/worker/worker_test.go
   - internal/runtime/app/wire/agentexecutor_test.go
+  - internal/persist/sqlkit/ownership_test.go
 source_of_truth:
   - internal/orchestration/task/repository.go
   - internal/orchestration/worker/worker.go
@@ -45,7 +47,8 @@ stateDiagram-v2
 
 Task 记录 Executor、Payload、Workspace/Session Identity、Attempt、Lease Owner/Expiry、
 Schedule、Result、Failure Reason 与 Version。Repository 校验 `CanTransition` 并追加
-Lifecycle Entry。
+Lifecycle Entry；Transition 与 Session/Execution Write 在 `sqlkit.WithTx` 内执行，
+Optimistic Version Update 用 `RequireAffected` 校验精确行数。
 
 Worker Scheduler 只广告有限 Executor Set，只 Claim 匹配 Task，遵守 `MaxParallel`，
 启动 Heartbeat，在 Cancellation 下运行 Executor，再 Settle Success/Failure/Retry/

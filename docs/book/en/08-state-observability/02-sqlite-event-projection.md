@@ -11,13 +11,17 @@ code_paths:
   - internal/persist/state/sqlite
   - internal/persist/state/eventlog
   - internal/persist/state
+  - internal/persist/sqlkit
 test_paths:
   - internal/persist/state/sqlite/store_test.go
   - internal/persist/state/eventlog/log_test.go
   - internal/persist/state/store_test.go
+  - internal/persist/sqlkit/sqlkit_test.go
+  - internal/persist/sqlkit/ownership_test.go
 source_of_truth:
   - internal/persist/state/sqlite/store.go
   - internal/persist/state/eventlog/log.go
+  - internal/persist/sqlkit/sqlkit.go
 status: draft
 last_verified: null
 ---
@@ -53,6 +57,23 @@ meaning.
 WAL, creates schema version 1 atomically, verifies pragmas, then runs
 `quick_check`. A newer schema is rejected before any write. Multi-statement
 writes use `WithTx`.
+
+## Shared Repository Kit (sqlkit)
+
+`internal/persist/sqlkit` holds domain-neutral SQL helpers shared by durable
+repositories. `WithTx` runs one callback in one transaction (no retry, no
+nesting; a panic rolls back, and a failed rollback is joined into the error).
+`ScanAll` consumes rows with one scan per row and verifies iteration errors.
+`CanonicalObject`/`CanonicalJSON` validate and compact JSON values;
+`NullableString`/`NullableTime`/`Timestamp` normalize empty values; and
+`RequireAffected` verifies the exact row count promised by an optimistic or
+identity-bound write.
+
+SQL text, state transitions, and domain errors stay with the owning
+repository. `sqlite.Store.WithTx` delegates to `sqlkit.WithTx` and keeps its
+error classification. Session, Task, and Automation repositories share the
+same helpers, and a migration-guard test (`ownership_test.go`) fails if they
+reimplement them.
 
 ## Event Log
 
@@ -116,6 +137,7 @@ ownership, effects, accounting, or final outcome.
 go test ./internal/persist/state/sqlite
 go test ./internal/persist/state/eventlog
 go test ./internal/persist/state
+go test ./internal/persist/sqlkit
 ```
 
 ## Hands-On Lab

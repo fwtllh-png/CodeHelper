@@ -10,12 +10,17 @@ prerequisites:
 code_paths:
   - internal/adapter/tool
   - internal/adapter/tool/builtin
+  - internal/adapter/tool/typed
+  - internal/adapter/tool/result
 test_paths:
   - internal/adapter/tool/tool_test.go
   - internal/adapter/tool/guard/guard_test.go
+  - internal/adapter/tool/typed/typed_test.go
+  - internal/adapter/tool/result/result_test.go
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/adapter/tool/guard/guard.go
+  - internal/adapter/tool/typed/typed.go
 status: draft
 last_verified: null
 ---
@@ -31,11 +36,14 @@ parallelism, result, and test contracts.
 
 ## Extension Checklist
 
-1. Implement `Executor.Descriptor` and `Execute`.
+1. Implement the Executor with `typed.Define`: a typed `Spec` with `Decode`,
+   `Validate`, `Run`, `Encode`, and optional `Metadata`.
 2. Use a strict object schema with `additionalProperties: false`.
 3. Declare visibility, capability, access, resource templates, parallel policy,
    sandbox requirement, availability, and aliases.
-4. Return bounded model content and structured Runtime metadata.
+4. Encode model content and structured Runtime metadata through the
+   `tool/result` builders (`Success`, `Text`, `Fail`, `Unavailable`); the
+   Registry applies output limits and Handle routing.
 5. Mark precondition errors only before any side effect.
 6. For mediated file writes, implement `EditPlanner`, atomic commit, and
    read-before-edit semantics.
@@ -54,6 +62,18 @@ flowchart LR
 Resource resolution must enumerate every possible effect before Policy. If a
 Tool cannot describe a write path from normalized arguments, it must refuse the
 call or use a trusted argument expander.
+
+## Typed Construction Kit
+
+`typed.Define[I, O]` is the standard way to build an Executor. The Spec
+separates `Decode` (strict JSON, unknown fields rejected), `Validate`
+(precondition checks that run before any effect), `Run`, `Encode`, and
+`Metadata`. `tool.ValidateDescriptor` fails construction before the Tool is
+wired into a catalog; `typed.ReadTool`/`WriteTool`/`ProcessTool` supply the
+correct capability, access, and sandbox requirements for the effect class. The
+`tool/result` builders encode model content and keep metadata structured and
+JSON-compatible; the Registry remains responsible for bounding and routing the
+result.
 
 ## Registration, Snapshot, and Binding
 
@@ -99,12 +119,14 @@ override a failed process, unobserved write, or revoked binding.
 ```bash
 go test ./internal/adapter/tool
 go test ./internal/adapter/tool/guard
+go test ./internal/adapter/tool/typed ./internal/adapter/tool/result
 ```
 
 ## Hands-On Lab
 
-Add a read-only Fixture Tool with one file resource, then write tests showing
-invalid schema, traversal, and unadvertised catalog binding fail before Execute.
+Add a read-only Fixture Tool with `typed.ReadTool`/`typed.Define` and one file
+resource, then write tests showing invalid schema, traversal, and unadvertised
+catalog binding fail before Execute.
 
 ## Review Questions
 

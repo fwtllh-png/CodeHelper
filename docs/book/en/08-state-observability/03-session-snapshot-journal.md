@@ -13,12 +13,14 @@ code_paths:
   - internal/persist/snapshot
   - internal/persist/state/cas
   - internal/persist/workspacejournal
+  - internal/persist/sqlkit
 test_paths:
   - internal/runtime/app/session_artifacts_test.go
   - internal/persist/session/lifecycle_test.go
   - internal/persist/snapshot/repository_test.go
   - internal/persist/state/cas/store_test.go
   - internal/persist/workspacejournal/recover_test.go
+  - internal/persist/sqlkit/ownership_test.go
 source_of_truth:
   - internal/runtime/app/session_artifacts.go
   - internal/persist/session/lifecycle.go
@@ -77,6 +79,11 @@ latest Turn, pending activity, and optimistic Revision. Hosts may cache only
 bindings and cursors; they query and mutate canonical Session state through
 Runtime operations.
 
+Lifecycle transitions run inside `sqlkit.WithTx`; optimistic Revision bumps and
+identity-bound updates assert the exact affected row count with
+`RequireAffected`, so a stale Session cannot silently overwrite concurrent
+changes.
+
 ## Commit and Reference Windows
 
 Snapshot save orders writes so metadata never points at unretained content:
@@ -130,6 +137,7 @@ Journal remains necessary.
 go test ./internal/runtime/app -run 'Test(SessionCheckpoint|Restore|Fork|Plan)'
 go test ./internal/persist/session ./internal/persist/snapshot
 go test ./internal/persist/state/cas ./internal/persist/workspacejournal
+go test ./internal/persist/sqlkit
 ```
 
 ## Hands-On Lab

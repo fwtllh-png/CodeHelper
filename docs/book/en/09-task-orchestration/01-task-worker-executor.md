@@ -11,10 +11,12 @@ code_paths:
   - internal/orchestration/task
   - internal/orchestration/worker
   - internal/runtime/app/wire
+  - internal/persist/sqlkit
 test_paths:
   - internal/orchestration/task/repository_test.go
   - internal/orchestration/worker/worker_test.go
   - internal/runtime/app/wire/agentexecutor_test.go
+  - internal/persist/sqlkit/ownership_test.go
 source_of_truth:
   - internal/orchestration/task/repository.go
   - internal/orchestration/worker/worker.go
@@ -45,7 +47,10 @@ stateDiagram-v2
 
 Task records executor name, payload, workspace/session identity, attempts,
 lease owner/expiry, schedule time, result, failure reason, and version.
-Repository transitions validate `CanTransition` and append lifecycle entries.
+Repository transitions validate `CanTransition` and append lifecycle entries;
+transitions and session/execution writes run inside `sqlkit.WithTx`, and
+optimistic version updates assert the exact affected row count with
+`RequireAffected`.
 
 Worker Scheduler advertises a finite Executor set, claims only matching Tasks,
 respects `MaxParallel`, starts heartbeats, runs each Executor under cancellation,

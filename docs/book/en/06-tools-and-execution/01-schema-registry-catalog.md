@@ -12,13 +12,18 @@ code_paths:
   - internal/adapter/tool
   - internal/adapter/tool/toolsearch
   - internal/adapter/tool/dynamic
+  - internal/adapter/tool/typed
+  - internal/adapter/tool/result
 test_paths:
   - internal/adapter/tool/registry_catalog_test.go
   - internal/adapter/tool/toolsearch/tool_search_test.go
   - internal/adapter/tool/catalog_test.go
+  - internal/adapter/tool/typed/typed_test.go
+  - internal/adapter/tool/result/result_test.go
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/adapter/tool/catalog.go
+  - internal/adapter/tool/typed/typed.go
 status: draft
 last_verified: null
 ---
@@ -100,6 +105,29 @@ Large Results are also governed Catalog behavior: the Registry stores bounded
 content and returns a Handle when inline output exceeds limits. `result_get`
 provides bounded retrieval; a Handle does not bypass hard output caps.
 
+## Typed Tool Kits
+
+`internal/adapter/tool/typed` and `internal/adapter/tool/result` are the
+standard construction kits for governed Tools. `tool.ValidateDescriptor`
+checks the stable registry contract without registering an Executor, and
+`typed.Define[I, O]` wraps a typed `Spec{Descriptor, Decode, Validate, Run,
+Encode, Metadata}` into a `tool.Executor`:
+
+- validation happens before anything is wired into a catalog;
+- strict decode rejects unknown fields, `null`, and trailing JSON values;
+- Run panics become execution errors, not crashes;
+- encoded results pass `result.Validate` before they leave the Executor.
+
+`typed.ReadTool`, `typed.WriteTool`, and `typed.ProcessTool` build Descriptors
+with the correct Visibility, Capability, Access, Parallel, and Sandbox
+requirements for their effect class, so a Tool cannot accidentally declare a
+weaker security contract than its effect. `tool/result` encodes model content
+with structured metadata (`Success`, `Text`, `Fail` with
+`error_category`/`retryable`, `Unavailable`); the Registry still owns output
+limits, truncation, and Handle routing. The kits make no execution or policy
+decisions: Registry validation, authorization, Guard, and sandbox policy stay
+outside them.
+
 ## Code Map
 
 | Concern | Source |
@@ -109,6 +137,7 @@ provides bounded retrieval; a Handle does not bypass hard output caps.
 | Deferred discovery | `adapter/tool/toolsearch` |
 | Dynamic sources | `adapter/tool/dynamic` |
 | MCP reconciliation | `adapter/tool/mcp` |
+| Typed kits | `adapter/tool/typed`, `adapter/tool/result` |
 
 ## Tradeoffs and Alternatives
 
@@ -131,6 +160,7 @@ dynamic discovery while ensuring the sampled authority is the executed one.
 go test ./internal/adapter/tool \
   -run 'Test(CatalogSnapshot|Registry|DynamicCatalog)'
 go test ./internal/adapter/tool/toolsearch ./internal/adapter/tool/mcp
+go test ./internal/adapter/tool/typed ./internal/adapter/tool/result
 ```
 
 ## Hands-On Lab
