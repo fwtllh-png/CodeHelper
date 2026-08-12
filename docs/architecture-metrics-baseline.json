@@ -44,9 +44,6 @@
         "production_lines": 7573,
         "options_fields": 80,
         "mutex_fields": 5
-      },
-      "relaxations": {
-        "production_lines": "Stage C replaces the monolithic NewExec body with explicit BuildState, lifecycle modules, contributors, and rollback tests; the package-level ownership code grows while the runtime.go hotspot and fanout are independently tightened below their previous limits."
       }
     },
     {
