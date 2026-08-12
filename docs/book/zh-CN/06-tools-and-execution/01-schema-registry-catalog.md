@@ -112,11 +112,26 @@ Encode, Metadata}` 包装为 `tool.Executor`：
 
 `typed.ReadTool`、`typed.WriteTool`、`typed.ProcessTool` 以正确的 Visibility、
 Capability、Access、Parallel、Sandbox 要求构造 Descriptor，避免 Tool 声明比其 Effect
-更弱的 Security Contract。`tool/result` 编码 Model Content 与 Structured Metadata
-（`Success`、`Text`、带 `error_category`/`retryable` 的 `Fail`、`Unavailable`）；
-Output Limit、Truncation 与 Handle Routing 仍归 Registry 所有。Kit 不做
-Execution/Policy Decision：Registry Validation、Authorization、Guard、Sandbox
-Policy 都在 Kit 之外。
+更弱的 Security Contract。Policy-sensitive 字段必须显式：Builder 接收
+`DescriptorPolicy{ResourceResolver, Availability, RepeatPolicy}`，`typed.Define`
+拒绝 `RepeatPolicy` 为空的 Descriptor，可重复性始终是决策而非推断默认。
+`tool/result` 编码 Model Content 与 Structured Metadata（`Success`、`Text`、带
+`error_category`/`retryable` 的 `Fail`、`Unavailable`）；Output Limit、Truncation
+与 Handle Routing 仍归 Registry 所有。Kit 不做 Execution/Policy Decision：
+Registry Validation、Authorization、Guard、Sandbox Policy 都在 Kit 之外。
+
+Typed Boundary 是所有 Executor 的默认路径，包括 Tier-2 工具（quality、handle、
+automation 与 MCP Helper Call 现在解码为静态输入类型）。Schema 由他方拥有的
+Executor 以例外方式保留 Raw JSON，并必须在 `typed-boundary-exception:` 注释中说明
+原因——该注释由 Migration Guard Test 强制：例如 Plugin Executor 的具体身份，以及
+Schema 属于远端 Catalog 的 Remote MCP Tool。
+
+`ErrorCategory` 为稳定路由分类失败：`unknown_tool`、`tool_unavailable`、
+`invalid_arguments`、`tool_precondition`，与原有 catalog-stale、revoked、
+load-failed 类别并列。共享的 `executor_contract_test.go` 覆盖完整契约——Descriptor
+校验、Authorization 要求、Schema 错误以 `ErrInvalidArguments` 呈现、Output
+Truncation 与 Handle Routing、Guard 路径、Panic 包容、Cancellation 传播、Metadata
+JSON-compatibility，以及保持 Catalog Identity 的 Deferred Materialization。
 
 ## 代码地图
 

@@ -84,6 +84,8 @@ Retry Safety。Scheduler 而非 Executor 拥有 Task Transition/Lease Settlement
 - Unsupported Payload 不盲目 Retry。
 - Writing Child Result 通过 Guarded File Merge。
 - In-memory Limit 与 Durable Lease Fence 共同工作。
+- 存储的 Task Payload/Result 在读取时 Canonicalize 并校验；Malformed Stored
+  JSON Fail Closed 而非静默修复。
 
 ## 测试与验证
 
@@ -91,6 +93,9 @@ Retry Safety。Scheduler 而非 Executor 拥有 Task Transition/Lease Settlement
 go test ./internal/orchestration/task ./internal/orchestration/worker
 go test ./internal/runtime/app/wire -run 'TestScheduler|TestQueuedTask'
 ```
+
+契约测试覆盖重复身份、乐观冲突、取消上下文、缺失 Schema 与真实重启/重开行为：Task
+与 Automation 状态在真实数据库重开后存活，定时 Tick 恰好执行一次。
 
 ## 动手实验
 

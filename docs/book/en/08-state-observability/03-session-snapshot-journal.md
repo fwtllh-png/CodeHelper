@@ -82,7 +82,10 @@ Runtime operations.
 Lifecycle transitions run inside `sqlkit.WithTx`; optimistic Revision bumps and
 identity-bound updates assert the exact affected row count with
 `RequireAffected`, so a stale Session cannot silently overwrite concurrent
-changes.
+changes. Session and Snapshot repositories reuse the shared `sqlkit` helpers
+(`CanonicalObject`, `Timestamp`, `NullableTime`) and canonicalize stored
+metadata on read; Profile updates also run in `WithTx` and map a row-count
+mismatch to the typed `ProfileRevisionConflictError`.
 
 ## Commit and Reference Windows
 
@@ -123,7 +126,9 @@ Journal remains necessary.
 
 ## Failure Boundaries
 
-- Snapshot corruption/schema mismatch is rejected.
+- Snapshot corruption/schema mismatch is rejected; repository reads fail
+  closed on malformed stored metadata (integrity errors) instead of silently
+  repairing it.
 - CAS tampering, symlinks, invalid IDs, and bad reference metadata fail closed.
 - Last-reference release deletes content; retained content survives restart.
 - Journal before-image failure blocks the edit.

@@ -61,13 +61,20 @@ Multi-statement Write 使用 `WithTx`。
 `internal/persist/sqlkit` 持有持久化 Repository 共享的 Domain-neutral SQL Helper。
 `WithTx` 在单个事务中运行一个 Callback（不 Retry、不嵌套；Panic 时 Rollback，
 Rollback 失败会 Join 进 Error）。`ScanAll` 逐行 Scan 并验证迭代错误。
-`CanonicalObject`/`CanonicalJSON` 校验并紧凑化 JSON 值；
-`NullableString`/`NullableTime`/`Timestamp` 归一化空值；`RequireAffected` 校验
-Optimistic 或 Identity-bound Write 承诺的精确行数。
+`CanonicalObject`/`CanonicalJSON` 通过 Single-value Decoder 校验并紧凑化 JSON 值，
+保留 Number Precision 并拒绝 Trailing JSON；`NullableString`/`NullableTime`/
+`Timestamp` 归一化空值；`RequireAffected` 校验 Optimistic 或 Identity-bound Write
+承诺的精确行数，并返回带 Actual/Expected 的类型化 `AffectedRowsError`，供调用方
+分类冲突。
 
 SQL 文本、状态转换与领域错误仍归各 Repository 所有。`sqlite.Store.WithTx` 委托给
 `sqlkit.WithTx` 并保留其错误分类。Session、Task、Automation Repository 共享同一套
 Helper，Migration-guard Test（`ownership_test.go`）在它们重新实现时会失败。
+
+Repository Read 也属于 Contract：Task、Automation、Snapshot 与 Session 读路径会
+Canonicalize 并校验其返回的存储 JSON，遇到 Malformed Stored Value 时 Fail Closed
+（绝不静默修复）——Migration-guard Test（`TestRepositoryFailsClosedOnMalformedStoredJSON`）
+用 `PRAGMA ignore_check_constraints` 注入损坏行并断言所有读路径报错。
 
 ## Event Log
 

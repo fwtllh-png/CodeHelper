@@ -40,7 +40,7 @@ Contract 的 Tool。
    `Run`、`Encode` 与可选 `Metadata`。
 2. 使用 Strict Object Schema 和 `additionalProperties: false`。
 3. 声明 Visibility、Capability、Access、Resource Template、Parallel Policy、
-   Sandbox Requirement、Availability 与 Alias。
+   Repeat Policy、Sandbox Requirement、Availability 与 Alias。
 4. 通过 `tool/result` Builder（`Success`、`Text`、`Fail`、`Unavailable`）编码
    Model Content 与 Structured Runtime Metadata；Output Limit 与 Handle Routing
    由 Registry 执行。
@@ -67,9 +67,16 @@ Resource Resolution 必须在 Policy 前枚举所有可能 Effect。无法从 No
 拒绝 Unknown Field）、`Validate`（任何 Effect 前的 Precondition）、`Run`、`Encode`
 与 `Metadata`。`tool.ValidateDescriptor` 在 Tool 接入 Catalog 前使 Construction
 失败；`typed.ReadTool`/`WriteTool`/`ProcessTool` 提供对应 Effect Class 的
-Capability、Access 与 Sandbox 要求。`tool/result` Builder 保持 Model Content
+Capability、Access 与 Sandbox 要求，并接收显式 `DescriptorPolicy`（Resource
+Resolver、Availability、Repeat Policy），Policy-sensitive 字段是决策而非推断默认
+——`typed.Define` 拒绝空的 Repeat Policy。`tool/result` Builder 保持 Model Content
 可编码、Metadata Structured 且 JSON-compatible；Result Bounding 与 Routing 仍由
 Registry 负责。
+
+几乎所有 Executor 都经过 Typed Boundary，包括 Tier-2 工具（quality、handle、
+automation 与 MCP Helper）。当 Schema 由他方拥有（Remote MCP Catalog，或 Concrete
+Identity 拥有自身 Contract 的 Executor）时，只有在带 `typed-boundary-exception:`
+注释说明（Migration Guard Test 强制）的前提下才保留 Raw JSON。
 
 ## Registration、Snapshot 与 Binding
 
@@ -107,6 +114,8 @@ Write 或 Revoked Binding。
 - Partial Side Effect 不得标记 Precondition。
 - Oversized Output 使用 Result Handle。
 - Guard 观察实际 Write。
+- 保留 Raw JSON 的 Executor 必须写明 `typed-boundary-exception:` 理由；Schema
+  所有权始终显式，而非偶然。
 
 ## 测试与验证
 

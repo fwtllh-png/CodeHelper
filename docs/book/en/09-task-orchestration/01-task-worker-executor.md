@@ -93,6 +93,8 @@ cannot execute it.
 - Unsupported payload fails without blind retry.
 - Writing child results merge through guarded file operations.
 - In-memory concurrency limits complement durable lease fencing.
+- Stored Task payloads and results are canonicalized and validated on read;
+  malformed stored JSON fails closed instead of being silently repaired.
 
 ## Tests and Verification
 
@@ -100,6 +102,11 @@ cannot execute it.
 go test ./internal/orchestration/task ./internal/orchestration/worker
 go test ./internal/runtime/app/wire -run 'TestScheduler|TestQueuedTask'
 ```
+
+Contract tests cover duplicate identity, optimistic conflict, canceled
+contexts, missing schemas, and real restart/reopen behavior: Task and
+Automation state survives an actual database reopen, and a scheduled tick runs
+exactly once.
 
 ## Hands-On Lab
 

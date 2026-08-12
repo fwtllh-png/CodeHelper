@@ -64,16 +64,25 @@ writes use `WithTx`.
 repositories. `WithTx` runs one callback in one transaction (no retry, no
 nesting; a panic rolls back, and a failed rollback is joined into the error).
 `ScanAll` consumes rows with one scan per row and verifies iteration errors.
-`CanonicalObject`/`CanonicalJSON` validate and compact JSON values;
+`CanonicalObject`/`CanonicalJSON` validate and compact JSON values through a
+single-value decoder that preserves number precision and rejects trailing JSON;
 `NullableString`/`NullableTime`/`Timestamp` normalize empty values; and
 `RequireAffected` verifies the exact row count promised by an optimistic or
-identity-bound write.
+identity-bound write, returning the typed `AffectedRowsError` (actual vs.
+expected) so callers can classify the conflict.
 
 SQL text, state transitions, and domain errors stay with the owning
 repository. `sqlite.Store.WithTx` delegates to `sqlkit.WithTx` and keeps its
 error classification. Session, Task, and Automation repositories share the
 same helpers, and a migration-guard test (`ownership_test.go`) fails if they
 reimplement them.
+
+Repository reads are part of the contract: Task, Automation, Snapshot, and
+Session reads canonicalize and validate the stored JSON they return and fail
+closed (never silently repairing) when the stored value is malformed — a
+migration-guard test (`TestRepositoryFailsClosedOnMalformedStoredJSON`) injects
+malformed rows with `PRAGMA ignore_check_constraints` and asserts that every
+read path errors.
 
 ## Event Log
 
