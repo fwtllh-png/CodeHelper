@@ -15,8 +15,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
@@ -32,15 +30,13 @@ func newPlatformBackend(options sandbox.Options) (sandbox.Backend, error) {
 	return sandbox.NewPlatformBackend(options)
 }
 
-func openDurableRepositories(
+func openOrchestrationStore(
 	ctx context.Context,
 	persistent *state.Store,
 	workspace string,
-) (*taskstate.Repository, *automation.Repository, *sqlitestate.Store, error) {
+) (*sqlitestate.Store, *sqlitestate.Store, error) {
 	if persistent != nil {
-		sqlite := persistent.SQLite()
-		return taskstate.NewSQLiteRepository(sqlite),
-			automation.NewSQLiteRepository(sqlite), nil, nil
+		return persistent.SQLite(), nil, nil
 	}
 	root := strings.TrimSpace(workspace)
 	if root == "" {
@@ -48,14 +44,13 @@ func openDurableRepositories(
 	}
 	dir := filepath.Join(root, ".codehelper")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	store, err := sqlitestate.Open(ctx, filepath.Join(dir, "tasks-ephemeral.db"))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
-	return taskstate.NewSQLiteRepository(store),
-		automation.NewSQLiteRepository(store), store, nil
+	return store, store, nil
 }
 
 // openRepositoryIndex builds the repository index over whichever state database
@@ -67,16 +62,11 @@ func openDurableRepositories(
 func openRepositoryIndex(
 	workspace string,
 	backend sandbox.Backend,
-	persistent *state.Store,
-	ephemeral *sqlitestate.Store,
+	store *sqlitestate.Store,
 	settings config.Index,
 ) (*repoindex.Index, string) {
 	if !settings.Enabled {
 		return nil, repoindex.StatusDisabled
-	}
-	store := ephemeral
-	if persistent != nil {
-		store = persistent.SQLite()
 	}
 	if store == nil {
 		return nil, repoindex.StatusDisabled

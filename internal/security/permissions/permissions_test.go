@@ -2,8 +2,10 @@ package permissions
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -106,5 +108,34 @@ func TestRuleFromInvocation(t *testing.T) {
 	})
 	if err != nil || host.Resource != "example.com" {
 		t.Fatalf("host = %+v err=%v", host, err)
+	}
+}
+
+func TestStoreSerializesConcurrentAllows(t *testing.T) {
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const count = 8
+	var group sync.WaitGroup
+	for index := range count {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			_, appendErr := store.AppendAllow(policy.Invocation{
+				Tool: "web_fetch",
+				Resources: []tool.Resource{{
+					Kind: "host", ID: fmt.Sprintf("host-%d.example", index),
+					Access: tool.AccessRead,
+				}},
+			})
+			if appendErr != nil {
+				t.Error(appendErr)
+			}
+		}()
+	}
+	group.Wait()
+	if rules := store.Rules(); len(rules) != count {
+		t.Fatalf("rules = %d, want %d", len(rules), count)
 	}
 }

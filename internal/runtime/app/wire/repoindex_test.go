@@ -8,8 +8,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -37,14 +35,14 @@ func TestRepositoryIndexOpensOverTheEphemeralDatabase(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	_, _, ephemeral, err := openDurableRepositories(t.Context(), nil, root)
+	_, ephemeral, err := openOrchestrationStore(t.Context(), nil, root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = ephemeral.Close() })
 
 	index, status := openRepositoryIndex(
-		root, indexTestBackend{}, nil, ephemeral, config.Defaults().Context.Index,
+		root, indexTestBackend{}, ephemeral, config.Defaults().Context.Index,
 	)
 	if status != repoindex.StatusPending || index == nil {
 		t.Fatalf("openRepositoryIndex() = %v, %q", index, status)
@@ -64,15 +62,14 @@ func TestRepositoryIndexStaysClosedWhenDisabledOrWithoutADatabase(t *testing.T) 
 	off := config.Defaults().Context.Index
 	off.Enabled = false
 	if index, status := openRepositoryIndex(
-		root, indexTestBackend{}, nil, nil, off,
+		root, indexTestBackend{}, nil, off,
 	); index != nil || status != repoindex.StatusDisabled {
 		t.Fatalf("disabled index = %v, %q", index, status)
 	}
 	// No persistent store and no ephemeral one: there is nowhere to keep rows, and
 	// a session must still start with text search.
 	if index, status := openRepositoryIndex(
-		root, indexTestBackend{}, (*state.Store)(nil), (*sqlitestate.Store)(nil),
-		config.Defaults().Context.Index,
+		root, indexTestBackend{}, nil, config.Defaults().Context.Index,
 	); index != nil || status != repoindex.StatusDisabled {
 		t.Fatalf("storeless index = %v, %q", index, status)
 	}

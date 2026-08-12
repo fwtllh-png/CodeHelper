@@ -37,6 +37,19 @@ func TestTrustedDynamicToolsAreExplicitAndRequireToolRuntime(t *testing.T) {
 	if session.DynamicTools() == nil {
 		t.Fatal("explicit trusted dynamic tools flag did not create the manager")
 	}
+	var dynamicReceipt *ContributionReceipt
+	for _, receipt := range session.ContributionReceipts() {
+		if receipt.Contributor == "dynamic-tools" {
+			value := receipt
+			dynamicReceipt = &value
+			break
+		}
+	}
+	if dynamicReceipt == nil ||
+		len(dynamicReceipt.Outputs) != 1 ||
+		dynamicReceipt.Outputs[0] != "dynamic-tool-manager" {
+		t.Fatalf("dynamic contribution receipt = %+v", dynamicReceipt)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := session.Close(ctx); err != nil {

@@ -106,6 +106,23 @@ func (s *Session) DynamicTools() *dynamictool.Manager {
 	return s.dynamicTools
 }
 
+// ContributionReceipts reports the construction identities published by
+// extension contributors without exposing their runtime-owned services.
+func (s *Session) ContributionReceipts() []ContributionReceipt {
+	if s == nil {
+		return nil
+	}
+	result := make([]ContributionReceipt, len(s.contributionReceipts))
+	for index, receipt := range s.contributionReceipts {
+		result[index] = ContributionReceipt{
+			Contributor: receipt.Contributor,
+			Tools:       append([]string(nil), receipt.Tools...),
+			Outputs:     append([]string(nil), receipt.Outputs...),
+		}
+	}
+	return result
+}
+
 func (s *Session) Jobs() process.JobCenter {
 	if s.processes == nil {
 		return nil

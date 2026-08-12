@@ -66,6 +66,23 @@ func NewPersistentRuntime(
 	ctx context.Context,
 	options PersistentRuntimeOptions,
 ) (*app.Runtime, error) {
+	runtime, err := PreparePersistentRuntime(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	if err := runtime.Start(ctx); err != nil {
+		_ = runtime.Close(context.Background())
+		return nil, err
+	}
+	return runtime, nil
+}
+
+// PreparePersistentRuntime restores static durable state without starting
+// terminal projection or pending Turn recovery.
+func PreparePersistentRuntime(
+	ctx context.Context,
+	options PersistentRuntimeOptions,
+) (*app.Runtime, error) {
 	repositories, err := NewPersistentRepositories(options.Store)
 	if err != nil {
 		return nil, err
@@ -93,7 +110,7 @@ func NewPersistentRuntime(
 		runtimeOptions.SessionWorkspaces = options.SessionWorkspaces
 		runtimeOptions.SessionArtifacts = repositories.Snapshots
 	}
-	return app.NewRuntimeWithRecovery(ctx, runtimeOptions)
+	return app.PrepareRuntimeWithRecovery(ctx, runtimeOptions)
 }
 
 // EnsureThread creates workspace/session/thread seed rows when missing so

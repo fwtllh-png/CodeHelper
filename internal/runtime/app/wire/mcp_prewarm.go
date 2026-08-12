@@ -7,6 +7,7 @@ import (
 	"time"
 
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	mcptool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/mcp"
 )
 
@@ -16,6 +17,7 @@ type MCPPrewarm struct {
 	ch          chan struct{}
 	pool        *mcpruntime.Pool
 	adapter     *mcptool.Adapter
+	registry    *tool.Registry
 	configPath  string
 	cancel      context.CancelFunc
 	unsubscribe func()
@@ -28,9 +30,9 @@ func NewMCPPrewarm(pool *mcpruntime.Pool, configPath string) *MCPPrewarm {
 	}
 }
 
-func (p *MCPPrewarm) SetAdapter(adapter *mcptool.Adapter) {
+func (p *MCPPrewarm) SetRegistry(registry *tool.Registry) {
 	if p != nil {
-		p.adapter = adapter
+		p.registry = registry
 	}
 }
 
@@ -136,8 +138,11 @@ func (p *MCPPrewarm) RefreshNow(ctx context.Context) error {
 // Background refresh is an optimization; sampling calls this as its
 // correctness boundary so an asynchronous failure cannot expose stale tools.
 func (p *MCPPrewarm) SyncCatalog() error {
-	if p == nil || p.adapter == nil {
+	if p == nil {
 		return nil
+	}
+	if err := p.ensureAdapter(); err != nil {
+		return err
 	}
 	return p.adapter.Sync()
 }
@@ -148,6 +153,10 @@ func (p *MCPPrewarm) refreshIfDirty(ctx context.Context) error {
 	}
 	if p.pool == nil || p.configPath == "" {
 		return nil
+	}
+	if err := p.ensureAdapter(); err != nil {
+		p.dirty.Store(true)
+		return err
 	}
 	config, err := mcpruntime.LoadConfig(p.configPath)
 	if err != nil {
@@ -168,5 +177,17 @@ func (p *MCPPrewarm) refreshIfDirty(ctx context.Context) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (p *MCPPrewarm) ensureAdapter() error {
+	if p.adapter != nil {
+		return nil
+	}
+	adapter, err := mcptool.NewAdapter(p.registry, p.pool)
+	if err != nil {
+		return err
+	}
+	p.adapter = adapter
 	return nil
 }

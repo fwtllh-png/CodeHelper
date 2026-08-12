@@ -249,6 +249,9 @@ type Runtime struct {
 	operations chan acceptedOperation
 	done       chan struct{}
 	workers    sync.WaitGroup
+	startOnce  sync.Once
+	startErr   error
+	durable    bool
 
 	mu               sync.Mutex
 	subscribers      map[uint64]chan protocol.Event
@@ -281,115 +284,6 @@ type Runtime struct {
 type cancelRecord struct {
 	itemID protocol.ItemID
 	opID   protocol.OperationID
-}
-
-func NewRuntime(options Options) *Runtime {
-	runtime, _ := newRuntime(context.Background(), options, false)
-	return runtime
-}
-
-// NewRuntimeWithRecovery restores durable state before accepting operations.
-// Persistent bootstraps must use this constructor.
-func NewRuntimeWithRecovery(ctx context.Context, options Options) (*Runtime, error) {
-	return newRuntime(ctx, options, true)
-}
-
-func newRuntime(ctx context.Context, options Options, recoverDurable bool) (*Runtime, error) {
-	options = withDefaults(options)
-	if recoverDurable && options.Lifecycle != nil &&
-		(options.EventStore == nil ||
-			options.ContentStore == nil ||
-			options.TerminalStore == nil) {
-		return nil, errors.New(
-			"durable runtime requires event, content, and terminal stores",
-		)
-	}
-	if options.Metrics == nil {
-		options.Metrics = telemetry.NewMetrics()
-	}
-	if options.EventStore == nil {
-		options.EventStore = NewMemoryEventStore(options.EventHistory)
-	}
-	if options.ContentStore == nil {
-		options.ContentStore = NewMemoryContentStore()
-	}
-	if options.TerminalStore == nil {
-		options.TerminalStore = turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
-	}
-	if options.SessionProfiles != nil {
-		if err := options.DefaultProfile.Validate(); err != nil {
-			return nil, fmt.Errorf("default session profile: %w", err)
-		}
-		if err := options.ProfileCapabilities.Validate(options.DefaultProfile); err != nil {
-			return nil, fmt.Errorf("session profile capabilities: %w", err)
-		}
-	}
-	recovery := options.Recovery
-	if recoverDurable && options.Lifecycle != nil {
-		value, err := options.Lifecycle.Recover(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("recover runtime lifecycle: %w", err)
-		}
-		recovery = &value
-	}
-	runtimeContext, cancel := context.WithCancel(context.Background())
-	runtime := &Runtime{
-		ctx:                 runtimeContext,
-		cancel:              cancel,
-		opts:                options,
-		engine:              options.Engine,
-		events:              options.EventStore,
-		content:             options.ContentStore,
-		lifecycle:           options.Lifecycle,
-		metrics:             options.Metrics,
-		logger:              options.Logger,
-		profiles:            options.SessionProfiles,
-		defaultProfile:      options.DefaultProfile,
-		profileCapabilities: options.ProfileCapabilities,
-		toolCatalog:         options.ToolCatalog,
-		sessionLifecycle:    options.SessionLifecycle,
-		sessionWorkspaces:   options.SessionWorkspaces,
-		sessionArtifacts:    options.SessionArtifacts,
-		terminalStore:       options.TerminalStore,
-		operations:          make(chan acceptedOperation, options.OperationBuffer),
-		done:                make(chan struct{}),
-		subscribers:         make(map[uint64]chan protocol.Event),
-		terminals:           make(map[protocol.TurnID]protocol.EventKind),
-		approvals:           make(map[string]PendingApproval),
-		inputs:              make(map[string]PendingInput),
-		accepted:            make(map[protocol.OperationID]PendingOperation),
-		acceptedKeys:        make(map[string]protocol.OperationID),
-		committed:           make(map[protocol.OperationID]PendingOperation),
-		active:              make(map[protocol.TurnID]context.CancelFunc),
-		activeThreads:       make(map[protocol.ThreadID]protocol.TurnID),
-		appliedProfiles:     make(map[protocol.ThreadID]uint64),
-		cancels:             make(map[protocol.TurnID]cancelRecord),
-		toolItems:           make(map[string]protocol.ItemID),
-		approvalItems:       make(map[string]protocol.ItemID),
-		inputItems:          make(map[string]protocol.ItemID),
-		accepting:           true,
-	}
-	if last, err := runtime.events.LastSequence(context.Background()); err == nil {
-		runtime.lastSequence = last
-	}
-	if recovery != nil {
-		runtime.restore(*recovery)
-	}
-	if recoverDurable {
-		if err := runtime.recoverTerminalProjections(ctx); err != nil {
-			cancel()
-			return nil, fmt.Errorf("recover terminal projections: %w", err)
-		}
-	}
-	go runtime.loop()
-	if recoverDurable {
-		if err := runtime.recoverPendingTurns(ctx); err != nil {
-			cancel()
-			<-runtime.done
-			return nil, fmt.Errorf("recover pending turns: %w", err)
-		}
-	}
-	return runtime, nil
 }
 
 func (r *Runtime) SessionLifecycleAvailable() bool {
@@ -1441,9 +1335,17 @@ func (r *Runtime) RecoveryState(context.Context) RecoveryState {
 }
 
 func (r *Runtime) Close(ctx context.Context) error {
+	startedForClose := false
+	r.startOnce.Do(func() {
+		startedForClose = true
+		r.startErr = errors.New("runtime closed before start")
+		go r.loop()
+	})
 	r.mu.Lock()
 	if r.accepting {
 		r.accepting = false
+		close(r.operations)
+	} else if startedForClose {
 		close(r.operations)
 	}
 	r.mu.Unlock()

@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
 type buildModuleFunc struct {
@@ -99,8 +102,8 @@ func TestDefaultBuildModuleOrder(t *testing.T) {
 	want := []string{
 		"config",
 		"provider",
-		"platform",
 		"persistence",
+		"platform",
 		"builtin-tools",
 		"extension-tools",
 		"security",
@@ -115,9 +118,9 @@ func TestDefaultBuildModuleOrder(t *testing.T) {
 }
 
 func TestExtensionContributorIDsAreUnique(t *testing.T) {
-	module := newExtensionToolsModule()
-	seen := make(map[string]struct{}, len(module.contributors))
-	for _, contributor := range module.contributors {
+	contributors := newExtensionContributors(&buildState{})
+	seen := make(map[string]struct{}, len(contributors))
+	for _, contributor := range contributors {
 		id := contributor.ID()
 		if id == "" {
 			t.Fatal("empty contributor ID")
@@ -132,7 +135,7 @@ func TestExtensionContributorIDsAreUnique(t *testing.T) {
 		"plugin-registry",
 		"skills",
 		"memory",
-		"task-automation",
+		"dynamic-tools",
 		"hooks",
 		"mcp",
 	} {
@@ -172,7 +175,7 @@ func TestNewExecRemainsConstructionOnlyOrchestration(t *testing.T) {
 }
 
 func TestWireUsesOneOrchestrationToolContributor(t *testing.T) {
-	source, err := os.ReadFile(filepath.Join("modules_extensions.go"))
+	source, err := os.ReadFile(filepath.Join("orchestration_components.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,5 +233,141 @@ func TestModuleClosuresDoNotRetainBuildState(t *testing.T) {
 			})
 			return false
 		})
+	}
+}
+
+func TestExtensionContributorsDoNotAcceptBuildState(t *testing.T) {
+	fileset := token.NewFileSet()
+	file, err := parser.ParseFile(
+		fileset,
+		"contributors_extensions.go",
+		nil,
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		function, ok := node.(*ast.FuncDecl)
+		if !ok || function.Name.Name != "Contribute" {
+			return true
+		}
+		ast.Inspect(function.Type.Params, func(inner ast.Node) bool {
+			identifier, identifierOK := inner.(*ast.Ident)
+			if identifierOK && identifier.Name == "buildState" {
+				t.Errorf(
+					"Contributor accepts buildState at %s",
+					fileset.Position(identifier.Pos()),
+				)
+			}
+			return true
+		})
+		return false
+	})
+}
+
+func TestBackgroundModuleOwnsRuntimeActivityStart(t *testing.T) {
+	source, err := os.ReadFile("modules_runtime.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	backgroundAt := strings.Index(text, "func (backgroundModule) Build")
+	if backgroundAt < 0 {
+		t.Fatal("BackgroundModule Build was not found")
+	}
+	runtimeBuild := text[:backgroundAt]
+	for _, forbidden := range []string{".RefreshNow(", ".Start(ctx)", ".Tick("} {
+		if strings.Contains(runtimeBuild, forbidden) {
+			t.Errorf("RuntimeModule starts background activity %q", forbidden)
+		}
+	}
+	background := text[backgroundAt:]
+	required := []string{
+		"prewarm.RefreshNow(ctx)",
+		"state.runtime.application.Start(ctx)",
+		"prewarm.Start(ctx)",
+		"automations.Tick(ctx",
+		"state.orchestration.scheduler.Build(",
+		"scheduler.Start(ctx)",
+	}
+	last := -1
+	for _, fragment := range required {
+		at := strings.Index(background, fragment)
+		if at < 0 {
+			t.Errorf("BackgroundModule is missing %q", fragment)
+			continue
+		}
+		if at <= last {
+			t.Errorf("BackgroundModule order is invalid at %q", fragment)
+		}
+		last = at
+	}
+	for _, path := range []string{"mcp.go", "contributors_extensions.go"} {
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if strings.Contains(string(data), "prewarm.Start(") {
+			t.Errorf("%s starts MCP prewarm outside BackgroundModule", path)
+		}
+	}
+}
+
+func TestModulesFailClosedOnMissingRequirements(t *testing.T) {
+	state := &buildState{}
+	state.config.execution.Tools = true
+	for _, test := range []struct {
+		name   string
+		module buildModule
+	}{
+		{name: "extension registry", module: newExtensionToolsModule()},
+		{name: "orchestration store", module: orchestrationModule{}},
+		{name: "prepared runtime", module: backgroundModule{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.module.Build(t.Context(), state); err == nil {
+				t.Fatal("missing module requirement succeeded")
+			}
+		})
+	}
+}
+
+type testExtensionContributor struct {
+	id string
+	fn func(*tool.Registry) (ContributionReceipt, error)
+}
+
+func (c testExtensionContributor) ID() string { return c.id }
+
+func (c testExtensionContributor) Contribute(
+	_ context.Context,
+	registry *tool.Registry,
+) (ContributionReceipt, error) {
+	return c.fn(registry)
+}
+
+func TestExtensionModulePublishesPartialOutputsForRollback(t *testing.T) {
+	state := &buildState{session: &Session{}}
+	state.config.execution.Tools = true
+	state.tools.registry = tool.NewRegistry(nil, nil)
+	module := extensionToolsModule{contributors: []extensionContributor{
+		testExtensionContributor{id: "created", fn: func(
+			*tool.Registry,
+		) (ContributionReceipt, error) {
+			state.extensions.memory = &memory.Store{}
+			return ContributionReceipt{Contributor: "created"}, nil
+		}},
+		testExtensionContributor{id: "failure", fn: func(
+			*tool.Registry,
+		) (ContributionReceipt, error) {
+			return ContributionReceipt{}, errors.New("stop")
+		}},
+	}}
+	if err := module.Build(t.Context(), state); err == nil {
+		t.Fatal("extension failure succeeded")
+	}
+	if state.session.memory == nil {
+		t.Fatal("partial extension output was hidden from ResourceStack rollback")
 	}
 }

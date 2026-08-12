@@ -41,9 +41,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 66,
-        "production_lines": 7573,
+        "production_lines": 7964,
         "options_fields": 80,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "Stage C completion introduces explicit prepared/runtime start phases, minimal-capability extension contributors with structured receipts, orchestration and guard factories, and module output types; existing hotspot files and function limits are tightened and every new ownership file receives an exact ratchet target."
       }
     },
     {
@@ -53,6 +56,17 @@
       "limits": {
         "internal_fanout": 0,
         "production_lines": 134,
+        "options_fields": 0,
+        "mutex_fields": 1
+      }
+    },
+    {
+      "id": "workspace_permissions_package",
+      "kind": "package",
+      "path": "internal/security/permissions",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 285,
         "options_fields": 0,
         "mutex_fields": 1
       }
@@ -128,7 +142,7 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2829,
+        "lines": 2712,
         "max_function_lines": 149
       }
     },
@@ -137,8 +151,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/runtime.go",
       "limits": {
-        "lines": 483,
-        "max_function_lines": 65
+        "lines": 412,
+        "max_function_lines": 50
       }
     },
     {
@@ -146,7 +160,7 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/build_state.go",
       "limits": {
-        "lines": 143,
+        "lines": 94,
         "max_function_lines": 15
       }
     },
@@ -155,8 +169,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_core.go",
       "limits": {
-        "lines": 327,
-        "max_function_lines": 117
+        "lines": 194,
+        "max_function_lines": 58
       }
     },
     {
@@ -164,7 +178,7 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_extensions.go",
       "limits": {
-        "lines": 282,
+        "lines": 122,
         "max_function_lines": 37
       }
     },
@@ -173,8 +187,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_security.go",
       "limits": {
-        "lines": 133,
-        "max_function_lines": 113
+        "lines": 110,
+        "max_function_lines": 92
       }
     },
     {
@@ -182,8 +196,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_orchestration.go",
       "limits": {
-        "lines": 220,
-        "max_function_lines": 197
+        "lines": 34,
+        "max_function_lines": 26
       }
     },
     {
@@ -191,8 +205,71 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 474,
-        "max_function_lines": 372
+        "lines": 462,
+        "max_function_lines": 345
+      }
+    },
+    {
+      "id": "runtime_start_file",
+      "kind": "file",
+      "path": "internal/runtime/app/runtime_start.go",
+      "limits": {
+        "lines": 172,
+        "max_function_lines": 80
+      }
+    },
+    {
+      "id": "wire_module_outputs_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/module_outputs.go",
+      "limits": {
+        "lines": 99,
+        "max_function_lines": 0
+      }
+    },
+    {
+      "id": "wire_modules_provider_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/modules_provider.go",
+      "limits": {
+        "lines": 188,
+        "max_function_lines": 53
+      }
+    },
+    {
+      "id": "wire_contributors_extensions_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/contributors_extensions.go",
+      "limits": {
+        "lines": 329,
+        "max_function_lines": 36
+      }
+    },
+    {
+      "id": "wire_orchestration_components_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/orchestration_components.go",
+      "limits": {
+        "lines": 228,
+        "max_function_lines": 81
+      }
+    },
+    {
+      "id": "wire_scheduler_factory_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/scheduler_factory.go",
+      "limits": {
+        "lines": 96,
+        "max_function_lines": 55
+      }
+    },
+    {
+      "id": "wire_security_factory_file",
+      "kind": "file",
+      "path": "internal/runtime/app/wire/security_factory.go",
+      "limits": {
+        "lines": 46,
+        "max_function_lines": 20
       }
     },
     {
