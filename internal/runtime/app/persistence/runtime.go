@@ -1,4 +1,5 @@
-package wire
+// Package persistence composes durable Runtime repositories and lifecycle.
+package persistence
 
 import (
 	"context"

@@ -9,6 +9,7 @@ prerequisites:
   - runtime-agent-loop
 code_paths:
   - internal/runtime/app/wire
+  - internal/runtime/app/persistence
 test_paths:
   - internal/runtime/app/wire/bootstrap_test.go
   - internal/runtime/app/wire/model_test.go
@@ -32,6 +33,7 @@ source_of_truth:
   - internal/runtime/app/wire/modules_runtime.go
   - internal/runtime/app/wire/assembly/resources.go
   - internal/runtime/app/runtime_start.go
+  - internal/runtime/app/persistence/runtime.go
   - internal/adapter/extension/orchestration/contributor.go
 status: draft
 last_verified: null
@@ -85,7 +87,9 @@ flowchart TD
 - 连接 Journal、Diagnostics、Verify、Trace、Usage 和 Store；
 - 初始化 MCP、Skill、Plugin、Hook、Dynamic Tool；
 - 构建 Child Runtime、Worktree 与 Background Executor；
-- 选择 Persistent 或 In-memory Application Runtime。
+- 选择 Persistent 或 In-memory Application Runtime；
+- 构造 `chatmerge.Service` 与 Durable Assembly；Merge、Journal、Git 行为保留在
+  被构造的 Service 中。
 
 ## 组合根结构
 
@@ -105,7 +109,9 @@ Service 都不得持有 `buildState`。Persistence 拥有 Content、Job Log 与 
 Task/Automation Repository、Workflow Executor、Scheduler 构造、Subagent 与
 Child Worktree/Toolset。Provider 发布所选 Provider/Model Catalog，Security
 发布 Permission Store 与 Guard Factory。Module 失败时以 `moduleBuildError` 中止
-并带上 Module 名，已打开资源通过共享 Resource Stack 关闭。
+并带上 Module 名，已打开资源通过共享 Resource Stack 关闭。Durable Assembly 与 Chat
+Merge 同样是构造模块：`app/persistence` 组合 Repository 与 Recovery，
+`chatmerge.Service` 拥有隔离 Workspace 的 Baseline、Preview 与 Journaled Apply。
 
 Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Plugin、Skill、Memory、
 Dynamic Tool、Hook 和 MCP 实现 `extensionContributor` 契约（`ID()` 与
@@ -180,7 +186,8 @@ Configuration 表达 Intent，不能制造 Environment Capability。
 | 资源生命周期 | `assembly/resources.go` |
 | Route/Budget | `route.go`、`routeset.go` |
 | Provider | `model.go`、`model_catalog.go`、`model_probe.go` |
-| Persistence | `persistent.go` |
+| Durable Runtime Assembly | `internal/runtime/app/persistence/runtime.go` |
+| Chat Merge 构造 | `chatworktree.go`、`chatmerge/service.go` |
 | Sandbox Fact | `sandbox_info.go` |
 | MCP/Extension | `mcp.go`、`extensions.go` |
 | Child/Background | `childruntime.go`、`background_executors.go` |

@@ -5,12 +5,15 @@
 package facade
 
 import (
+	"context"
 	"sort"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/eventview"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -47,6 +50,15 @@ func DefaultCatalogChoices() (providers, models []string) {
 		models = []string{"gpt-4.1"}
 	}
 	return providers, models
+}
+
+func EnsureThread(
+	ctx context.Context,
+	store *state.Store,
+	threadID protocol.ThreadID,
+	sessionID, workspace string,
+) error {
+	return apppersistence.EnsureThread(ctx, store, threadID, sessionID, workspace)
 }
 
 // SessionServices exposes the subset of wire.Session the TUI panels need.

@@ -90,6 +90,41 @@ Recovery 成功前不会启动后台 Worker。
 不会跳过后续资源，调用方会收到带资源标识的聚合错误。因此 Runtime 或 Scheduler 等
 后段构造失败也不会泄漏已创建资源。
 
+## Runtime 所有权图
+
+```text
+CLI / TUI / VS Code / ACP
+        | Operation / Event
+        v
+operationDispatcher -> ActiveTurnRegistry -> TurnCoordinator -> TurnScope
+        |                                        |
+        v                                        v
+    eventhub.Hub <-------------------------- Event Projection
+        |
+        +-> TerminalPublisher -> app/persistence -> SQLite / Event Log / CAS
+        |
+        +-> SessionService / ArtifactService -> Host Query
+
+wire.NewExec -> 仅负责构造 Module
+chatmerge.Service -> 隔离 Chat Preview / Journal Apply / Git Baseline
+eventview + VS Code Projector -> 仅负责 Host Presentation
+```
+
+| Owner | 路径 | 独占职责 |
+| --- | --- | --- |
+| Composition Root | `internal/runtime/app/wire` | Concrete Construction 与 Resource Registration |
+| Durable Runtime Assembly | `internal/runtime/app/persistence` | Repository、Lifecycle Recovery、Persistent Runtime Options |
+| Chat Merge Service | `internal/runtime/app/chatmerge` | Isolated Baseline、Three-way Preview、Journaled Apply |
+| Operation Dispatcher | `internal/runtime/app` | Typed Operation Handler Selection 与 Synchronous Commit |
+| Turn Coordinator/Scope | `internal/runtime/agent` | Reducer Authority、Effect、Control 与 Turn-local State |
+| Event Hub/Terminal Publisher | `internal/runtime/app/eventhub`、`internal/runtime/app` | Sequence/Fanout 与 Atomic Terminal Publication |
+| Session/Artifact Service | `internal/runtime/app/service`、`internal/runtime/app` | Host-facing Query Contract 与实现 |
+| Go Host Projection | `internal/runtime/eventview` | Event Payload 的唯一 Typed Interpretation |
+| VS Code Projection | `extensions/vscode/src/chat/projector` | Exhaustive Event Class Presentation |
+
+`codehelper host --adapter acp` 现在只有持久化路径。预发布的一次性 ACP Envelope Adapter
+已删除，Host 不能再通过 `exec` 选择第二条执行路径。
+
 ## Runtime 协议
 
 协议定义位于 `internal/runtime/protocol`，生成后的公开 Schema 位于

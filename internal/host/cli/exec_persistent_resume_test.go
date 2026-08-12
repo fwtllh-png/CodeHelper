@@ -9,7 +9,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/host/cli"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -45,7 +45,7 @@ func TestExecPersistentResumeListTurns(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.CloseAll(context.Background()) }()
-	repos, err := wire.NewPersistentRepositories(store)
+	repos, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		t.Fatal(err)
 	}

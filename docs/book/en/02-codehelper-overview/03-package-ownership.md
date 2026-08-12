@@ -68,6 +68,8 @@ on a UI process.
 | `app` | acceptance, sequence, active Turns, subscriptions, control operations |
 | `agent` | context and iterative Model/Tool business loop |
 | `app/wire` | concrete dependency construction and capability composition |
+| `app/chatmerge` | isolated Chat baseline, digest-bound preview, journaled apply |
+| `app/persistence` | durable repository composition and persistent Runtime recovery |
 
 Direction matters:
 
@@ -84,7 +86,9 @@ flowchart LR
 ```
 
 `wire` may import concrete implementations because construction is its job.
-That permission does not allow it to own Turn business decisions.
+That permission does not allow it to own Turn business decisions. It
+constructs `app/chatmerge` and `app/persistence`-based Runtimes but executes
+no merge, journal, or Git logic itself.
 
 ## 4. Adapter Sub-ownership
 
@@ -161,6 +165,7 @@ Providers or Tool executors directly.
 | Add OpenAI frame type | `adapter/provider/openai` | normalized Stream |
 | Add file mutation Tool | `adapter/tool/file` | Descriptor, Guard, journal |
 | Add approval rule | `security/policy` | Guard and protocol Events |
+| Change Chat merge policy | `runtime/app/chatmerge` | journal, Guard, baseline |
 | Add Worker retry state | `orchestration/task` | persistence and executor |
 | Add SQLite table | `persist/state/sqlite` | repository owner and schema checks |
 | Add VS Code command | `extensions/vscode` | ACP Operation and trust |
@@ -173,6 +178,7 @@ adapt other layers around its contract.
 - Host imports `adapter/provider`, `adapter/tool`, or `security/sandbox`.
 - Tool executor evaluates its own broad permission.
 - `wire` contains retry/Turn state machine logic.
+- `wire` executes Chat merge planning or journaled apply logic.
 - Engine writes SQLite tables directly.
 - Projection/UI state is used to authorize an action.
 - Orchestration calls a Provider instead of starting a Runtime Turn.

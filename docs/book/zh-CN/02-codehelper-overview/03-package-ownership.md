@@ -58,6 +58,8 @@ State，或让 Restart Behavior 依赖 UI Process。
 | `app` | Acceptance、Sequence、Active Turn、Subscription、Control |
 | `agent` | Context 与 Model/Tool Business Loop |
 | `app/wire` | Concrete Construction/Capability Composition |
+| `app/chatmerge` | 隔离 Chat Baseline、Digest-bound Preview、Journaled Apply |
+| `app/persistence` | Durable Repository 组合与 Persistent Runtime Recovery |
 
 ```mermaid
 flowchart LR
@@ -72,7 +74,8 @@ flowchart LR
 ```
 
 `wire` 可以依赖具体实现，因为 Construction 是其职责；这不意味着它可以拥有 Turn
-Business Decision。
+Business Decision。它构造 `app/chatmerge` 与基于 `app/persistence` 的 Runtime，
+但自身不执行 Merge、Journal 或 Git 逻辑。
 
 ## 4. Adapter 边界
 
@@ -125,6 +128,7 @@ Tool Executor。
 | OpenAI Frame | `adapter/provider/openai` | Normalized Stream |
 | File Tool | `adapter/tool/file` | Descriptor/Guard/Journal |
 | Approval Rule | `security/policy` | Guard/Protocol |
+| Chat Merge 策略 | `runtime/app/chatmerge` | Journal/Guard/Baseline |
 | Worker Retry | `orchestration/task` | Persist/Executor |
 | SQLite Table | `persist/state/sqlite` | Repository/Schema |
 | VS Code Command | `extensions/vscode` | ACP/Trust |
@@ -136,6 +140,7 @@ Cross-cutting 不等于 Ownerless。先选定一个 Invariant Owner，再围绕�
 - Host Import Provider/Tool/Sandbox；
 - Tool 自行决定 Broad Permission；
 - `wire` 实现 Retry/Turn State Machine；
+- `wire` 执行 Chat Merge Plan 或 Journaled Apply 逻辑；
 - Engine 直接写 SQLite Table；
 - Projection/UI State 授权 Action；
 - Orchestration 直接调用 Provider；

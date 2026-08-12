@@ -103,6 +103,42 @@ one close failure does not skip later resources, and callers receive the joined
 errors with resource identities. This keeps late failures, including Runtime or
 Scheduler construction failures, from leaking resources.
 
+## Runtime Ownership Map
+
+```text
+CLI / TUI / VS Code / ACP
+        | Operation / Event
+        v
+operationDispatcher -> ActiveTurnRegistry -> TurnCoordinator -> TurnScope
+        |                                        |
+        v                                        v
+    eventhub.Hub <-------------------------- Event projection
+        |
+        +-> TerminalPublisher -> app/persistence -> SQLite / Event Log / CAS
+        |
+        +-> SessionService / ArtifactService -> Host queries
+
+wire.NewExec -> construction modules only
+chatmerge.Service -> isolated Chat preview / journaled apply / Git baseline
+eventview + VS Code projectors -> Host presentation only
+```
+
+| Owner | Path | Exclusive responsibility |
+| --- | --- | --- |
+| Composition root | `internal/runtime/app/wire` | concrete construction and resource registration |
+| Durable Runtime assembly | `internal/runtime/app/persistence` | repositories, lifecycle recovery, persistent Runtime options |
+| Chat merge service | `internal/runtime/app/chatmerge` | isolated baseline, three-way preview, journaled apply |
+| Operation dispatcher | `internal/runtime/app` | typed Operation handler selection and synchronous commit |
+| Turn coordinator and scope | `internal/runtime/agent` | reducer authority, effects, controls, and Turn-local state |
+| Event hub and terminal publisher | `internal/runtime/app/eventhub`, `internal/runtime/app` | sequence/fanout and atomic terminal publication |
+| Session and artifact services | `internal/runtime/app/service`, `internal/runtime/app` | Host-facing query contracts and implementations |
+| Go Host projection | `internal/runtime/eventview` | one typed interpretation of Event payloads |
+| VS Code projection | `extensions/vscode/src/chat/projector` | exhaustive Event Class presentation |
+
+`codehelper host --adapter acp` is exclusively persistent. The pre-release
+one-shot ACP envelope adapter was removed; Hosts cannot select a second
+execution path through `exec`.
+
 ## Runtime Protocol
 
 The protocol is defined in `internal/runtime/protocol`; the generated public

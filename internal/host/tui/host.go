@@ -104,7 +104,9 @@ func (h *SessionHost) StartTurn(ctx context.Context, prompt string) error {
 		h.threadID = threadID
 	}
 	if h.store != nil {
-		if err := wire.EnsureThread(ctx, h.store, threadID, h.sessionID, h.workspace); err != nil {
+		if err := facade.EnsureThread(
+			ctx, h.store, threadID, h.sessionID, h.workspace,
+		); err != nil {
 			return err
 		}
 	}
@@ -717,7 +719,9 @@ func (h *SessionHost) CompactThread(ctx context.Context) (string, error) {
 		h.mu.Unlock()
 	}
 	if store != nil {
-		if err := wire.EnsureThread(ctx, store, threadID, sessionID, workspace); err != nil {
+		if err := facade.EnsureThread(
+			ctx, store, threadID, sessionID, workspace,
+		); err != nil {
 			return "", err
 		}
 	}

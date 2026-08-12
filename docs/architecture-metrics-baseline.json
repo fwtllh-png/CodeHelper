@@ -40,10 +40,32 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 66,
-        "production_lines": 7970,
-        "options_fields": 80,
+        "internal_fanout": 64,
+        "production_lines": 7249,
+        "options_fields": 70,
         "mutex_fields": 5
+      }
+    },
+    {
+      "id": "runtime_app_chatmerge_package",
+      "kind": "package",
+      "path": "internal/runtime/app/chatmerge",
+      "limits": {
+        "internal_fanout": 6,
+        "production_lines": 592,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "runtime_app_persistence_package",
+      "kind": "package",
+      "path": "internal/runtime/app/persistence",
+      "limits": {
+        "internal_fanout": 12,
+        "production_lines": 172,
+        "options_fields": 10,
+        "mutex_fields": 0
       }
     },
     {
@@ -66,6 +88,15 @@
         "production_lines": 285,
         "options_fields": 0,
         "mutex_fields": 1
+      }
+    },
+    {
+      "id": "platform_process_git_file",
+      "kind": "file",
+      "path": "internal/platform/process/git.go",
+      "limits": {
+        "lines": 28,
+        "max_function_lines": 14
       }
     },
     {
@@ -257,8 +288,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 464,
-        "max_function_lines": 347
+        "lines": 456,
+        "max_function_lines": 339
       }
     },
     {
