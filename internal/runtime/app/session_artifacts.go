@@ -64,17 +64,13 @@ type recoveryEvidenceCapsule struct {
 	Receipt      *recoveryReceiptEvidence `json:"receipt,omitempty"`
 }
 
-func (r *Runtime) PrepareTurnRecovery(
+func (r *ArtifactService) PrepareTurnRecovery(
 	ctx context.Context,
 	request protocol.TurnRecoveryRequest,
 ) (TurnRecoveryPreparation, error) {
 	if err := request.Validate(); err != nil {
-		return TurnRecoveryPreparation{}, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			err.Error(),
-			false,
-			err,
-		)
+		return TurnRecoveryPreparation{},
+			runtimeProblem(protocol.CodeInvalidArgument, err.Error(), err)
 	}
 	current, err := r.SessionStatus(ctx, request.SessionID)
 	if err != nil {
@@ -149,15 +145,12 @@ func (r *Runtime) PrepareTurnRecovery(
 		}
 	}
 	if started == nil || !terminal {
-		return TurnRecoveryPreparation{}, protocol.NewProblemWithDetails(
+		return TurnRecoveryPreparation{}, resourceProblem(
 			protocol.CodeConflict,
 			"source Turn is unavailable or not terminal",
 			false,
-			protocol.ProblemDetails{
-				Reason:     protocol.ProblemReasonSessionBusy,
-				ResourceID: string(request.SourceTurnID),
-			},
-			nil,
+			protocol.ProblemReasonSessionBusy,
+			string(request.SourceTurnID),
 		)
 	}
 	sourcePrompt := started.Prompt
@@ -165,12 +158,7 @@ func (r *Runtime) PrepareTurnRecovery(
 		sourcePrompt = started.DisplayPrompt
 	}
 	if strings.TrimSpace(sourcePrompt) == "" {
-		return TurnRecoveryPreparation{}, protocol.NewProblem(
-			protocol.CodeConflict,
-			"source Turn has no durable model-visible request",
-			false,
-			nil,
-		)
+		return TurnRecoveryPreparation{}, runtimeProblem(protocol.CodeConflict, "source Turn has no durable model-visible request", nil)
 	}
 	sourceDisplayPrompt := recoveryDisplayPrompt(
 		sourcePrompt,
@@ -178,12 +166,7 @@ func (r *Runtime) PrepareTurnRecovery(
 	)
 	intent := protocol.NormalizeTurnIntent(started.Intent)
 	if !intent.Valid() {
-		return TurnRecoveryPreparation{}, protocol.NewProblem(
-			protocol.CodeConflict,
-			"source Turn has no valid durable intent",
-			false,
-			nil,
-		)
+		return TurnRecoveryPreparation{}, runtimeProblem(protocol.CodeConflict, "source Turn has no valid durable intent", nil)
 	}
 	prompt := sourcePrompt
 	displayPrompt := sourceDisplayPrompt
@@ -230,7 +213,6 @@ func (r *Runtime) PrepareTurnRecovery(
 		IdempotencyKey: request.IdempotencyKey,
 	}, nil
 }
-
 func recoveryDisplayPrompt(modelPrompt string, displayPrompt string) string {
 	value := strings.TrimSpace(displayPrompt)
 	if value == "" {
@@ -251,7 +233,6 @@ func recoveryDisplayPrompt(modelPrompt string, displayPrompt string) string {
 	}
 	return value
 }
-
 func recoveryTaggedSection(prompt string, tag string) (string, bool) {
 	open := "<" + tag + ">"
 	close := "</" + tag + ">"
@@ -266,7 +247,6 @@ func recoveryTaggedSection(prompt string, tag string) (string, bool) {
 	}
 	return prompt[start : start+end], true
 }
-
 func renderRecoveryEvidence(
 	sourceTurnID protocol.TurnID,
 	intent protocol.TurnIntent,
@@ -319,7 +299,6 @@ func renderRecoveryEvidence(
 		}
 	}
 }
-
 func recoveryDigestJSON(data json.RawMessage) string {
 	if len(data) == 0 {
 		return ""
@@ -339,12 +318,10 @@ func recoveryDigestJSON(data json.RawMessage) string {
 	}
 	return recoveryDigest(canonical)
 }
-
 func recoveryDigest(data []byte) string {
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
-
 func appendBoundedRecoveryOutput(builder *strings.Builder, text string) {
 	if text == "" || builder.Len() >= turnRecoveryOutputLimit {
 		return
@@ -359,29 +336,19 @@ func appendBoundedRecoveryOutput(builder *strings.Builder, text string) {
 	builder.WriteString(text)
 }
 
-func (r *Runtime) Checkpoints(
+func (r *ArtifactService) Checkpoints(
 	ctx context.Context,
 	sessionID string,
 	limit int,
 ) (protocol.CheckpointList, error) {
 	if r.sessionArtifacts == nil {
-		return protocol.CheckpointList{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"Session Checkpoints are unavailable",
-			false,
-			nil,
-		)
+		return protocol.CheckpointList{}, runtimeProblem(protocol.CodeUnavailable, "Session Checkpoints are unavailable", nil)
 	}
 	if limit <= 0 {
 		limit = 100
 	}
 	if limit > 1000 {
-		return protocol.CheckpointList{}, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			"Checkpoint limit exceeds 1000",
-			false,
-			nil,
-		)
+		return protocol.CheckpointList{}, runtimeProblem(protocol.CodeInvalidArgument, "Checkpoint limit exceeds 1000", nil)
 	}
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
@@ -412,17 +379,12 @@ func (r *Runtime) Checkpoints(
 	return result, nil
 }
 
-func (r *Runtime) Checkpoint(
+func (r *ArtifactService) Checkpoint(
 	ctx context.Context,
 	sessionID, checkpointID string,
 ) (protocol.SessionCheckpoint, error) {
 	if r.sessionArtifacts == nil {
-		return protocol.SessionCheckpoint{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"Session Checkpoints are unavailable",
-			false,
-			nil,
-		)
+		return protocol.SessionCheckpoint{}, runtimeProblem(protocol.CodeUnavailable, "Session Checkpoints are unavailable", nil)
 	}
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
@@ -436,12 +398,7 @@ func (r *Runtime) Checkpoint(
 		return protocol.SessionCheckpoint{}, err
 	}
 	if checkpoint.SessionID != sessionID {
-		return protocol.SessionCheckpoint{}, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			"Checkpoint does not belong to the Session",
-			false,
-			nil,
-		)
+		return protocol.SessionCheckpoint{}, runtimeProblem(protocol.CodeInvalidArgument, "Checkpoint does not belong to the Session", nil)
 	}
 	profile, err := r.SessionProfile(ctx, sessionID)
 	if err != nil {
@@ -454,7 +411,7 @@ func (r *Runtime) Checkpoint(
 	return checkpoint, nil
 }
 
-func (r *Runtime) RestoreCheckpoint(
+func (r *ArtifactService) RestoreCheckpoint(
 	ctx context.Context,
 	sessionID, checkpointID string,
 ) (protocol.CheckpointRestoreResult, error) {
@@ -469,15 +426,12 @@ func (r *Runtime) RestoreCheckpoint(
 	}
 	manager, ok := r.engine.(CheckpointEngine)
 	if !ok {
-		return protocol.CheckpointRestoreResult{}, protocol.NewProblemWithDetails(
+		return protocol.CheckpointRestoreResult{}, resourceProblem(
 			protocol.CodeUnavailable,
 			"Checkpoint restore is unsupported by this engine",
 			false,
-			protocol.ProblemDetails{
-				Reason:     protocol.ProblemReasonUnsupported,
-				ResourceID: checkpointID,
-			},
-			nil,
+			protocol.ProblemReasonUnsupported,
+			checkpointID,
 		)
 	}
 	decoded, err := DecodeCompactedHistory(history)
@@ -533,7 +487,7 @@ func (r *Runtime) RestoreCheckpoint(
 	}, nil
 }
 
-func (r *Runtime) ForkCheckpoint(
+func (r *ArtifactService) ForkCheckpoint(
 	ctx context.Context,
 	sessionID, checkpointID, title string,
 ) (protocol.CheckpointForkResult, error) {
@@ -548,15 +502,12 @@ func (r *Runtime) ForkCheckpoint(
 	}
 	manager, ok := r.engine.(CheckpointEngine)
 	if !ok {
-		return protocol.CheckpointForkResult{}, protocol.NewProblemWithDetails(
+		return protocol.CheckpointForkResult{}, resourceProblem(
 			protocol.CodeUnavailable,
 			"Checkpoint Fork is unsupported by this engine",
 			false,
-			protocol.ProblemDetails{
-				Reason:     protocol.ProblemReasonUnsupported,
-				ResourceID: checkpointID,
-			},
-			nil,
+			protocol.ProblemReasonUnsupported,
+			checkpointID,
 		)
 	}
 	decoded, err := DecodeCompactedHistory(history)
@@ -626,17 +577,12 @@ func (r *Runtime) ForkCheckpoint(
 	}, nil
 }
 
-func (r *Runtime) SessionPlan(
+func (r *ArtifactService) SessionPlan(
 	ctx context.Context,
 	sessionID string,
 ) (protocol.SessionPlanSnapshot, error) {
 	if r.sessionArtifacts == nil {
-		return protocol.SessionPlanSnapshot{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"Session Plan Artifacts are unavailable",
-			false,
-			nil,
-		)
+		return protocol.SessionPlanSnapshot{}, runtimeProblem(protocol.CodeUnavailable, "Session Plan Artifacts are unavailable", nil)
 	}
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
@@ -669,18 +615,13 @@ func (r *Runtime) SessionPlan(
 	}, nil
 }
 
-func (r *Runtime) PreparePlanTransition(
+func (r *ArtifactService) PreparePlanTransition(
 	ctx context.Context,
 	sessionID, planID string,
 	transition protocol.PlanTransition,
 ) (PlanTransitionPreparation, error) {
 	if r.sessionArtifacts == nil {
-		return PlanTransitionPreparation{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"Session Plan Artifacts are unavailable",
-			false,
-			nil,
-		)
+		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeUnavailable, "Session Plan Artifacts are unavailable", nil)
 	}
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
@@ -695,23 +636,16 @@ func (r *Runtime) PreparePlanTransition(
 	}
 	if artifact.SessionID != sessionID ||
 		artifact.ThreadID != current.ThreadID {
-		return PlanTransitionPreparation{}, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			"Plan Artifact does not belong to the active Session Thread",
-			false,
-			nil,
-		)
+		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeInvalidArgument, "Plan Artifact does not belong to the active Session Thread", nil)
 	}
 	profile, err := r.SessionProfile(ctx, sessionID)
 	if err != nil {
 		return PlanTransitionPreparation{}, err
 	}
 	if profile.Profile.Revision != artifact.ProfileRevision {
-		return PlanTransitionPreparation{}, protocol.NewProblem(
+		return PlanTransitionPreparation{}, retryableProblem(
 			protocol.CodeConflict,
 			"Plan Artifact Profile Revision is stale",
-			true,
-			nil,
 		)
 	}
 	mode := "act"
@@ -719,31 +653,16 @@ func (r *Runtime) PreparePlanTransition(
 	switch transition {
 	case protocol.PlanTransitionImplement:
 		if !artifact.CanImplement {
-			return PlanTransitionPreparation{}, protocol.NewProblem(
-				protocol.CodeConflict,
-				"Plan Artifact cannot start implementation",
-				false,
-				nil,
-			)
+			return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeConflict, "Plan Artifact cannot start implementation", nil)
 		}
 	case protocol.PlanTransitionAutopilot:
 		if !artifact.CanAutopilot {
-			return PlanTransitionPreparation{}, protocol.NewProblem(
-				protocol.CodeConflict,
-				"Plan Artifact cannot start Autopilot",
-				false,
-				nil,
-			)
+			return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeConflict, "Plan Artifact cannot start Autopilot", nil)
 		}
 		posture := "auto"
 		patch.ApprovalPosture = &posture
 	default:
-		return PlanTransitionPreparation{}, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			"Plan transition is invalid",
-			false,
-			nil,
-		)
+		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeInvalidArgument, "Plan transition is invalid", nil)
 	}
 	updated, err := r.UpdateSessionProfile(
 		ctx,
@@ -772,33 +691,25 @@ func (r *Runtime) PreparePlanTransition(
 	}, nil
 }
 
-func (r *Runtime) PreparePlanTransitionTo(
+func (r *ArtifactService) PreparePlanTransitionTo(
 	ctx context.Context,
 	sourceSessionID, targetSessionID, planID string,
 	transition protocol.PlanTransition,
 ) (PlanTransitionPreparation, error) {
 	if r.sessionArtifacts == nil {
-		return PlanTransitionPreparation{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"Session Plan Artifacts are unavailable",
-			false,
-			nil,
-		)
+		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeUnavailable, "Session Plan Artifacts are unavailable", nil)
 	}
 	artifact, err := r.sessionArtifacts.GetPlan(ctx, planID)
 	if err != nil {
 		return PlanTransitionPreparation{}, err
 	}
 	if artifact.SessionID != sourceSessionID {
-		return PlanTransitionPreparation{}, protocol.NewProblemWithDetails(
+		return PlanTransitionPreparation{}, resourceProblem(
 			protocol.CodeInvalidArgument,
 			"Plan Artifact does not belong to the source Session",
 			false,
-			protocol.ProblemDetails{
-				Reason:     protocol.ProblemReasonWrongSession,
-				ResourceID: planID,
-			},
-			nil,
+			protocol.ProblemReasonWrongSession,
+			planID,
 		)
 	}
 	sourceProfile, err := r.SessionProfile(ctx, sourceSessionID)
@@ -806,17 +717,11 @@ func (r *Runtime) PreparePlanTransitionTo(
 		return PlanTransitionPreparation{}, err
 	}
 	if sourceProfile.Profile.Revision != artifact.ProfileRevision {
-		return PlanTransitionPreparation{}, protocol.NewProblemWithDetails(
-			protocol.CodeConflict,
+		return PlanTransitionPreparation{}, revisionProblem(
 			"Plan Artifact Profile Revision is stale",
-			true,
-			protocol.ProblemDetails{
-				Reason:           protocol.ProblemReasonStaleProfileRevision,
-				ResourceID:       planID,
-				ExpectedRevision: artifact.ProfileRevision,
-				ActualRevision:   sourceProfile.Profile.Revision,
-			},
-			nil,
+			planID,
+			artifact.ProfileRevision,
+			sourceProfile.Profile.Revision,
 		)
 	}
 	current, err := r.SessionStatus(ctx, targetSessionID)
@@ -828,15 +733,12 @@ func (r *Runtime) PreparePlanTransitionTo(
 	}
 	if sourceSessionID == targetSessionID &&
 		current.ParentThreadID != artifact.ThreadID {
-		return PlanTransitionPreparation{}, protocol.NewProblemWithDetails(
+		return PlanTransitionPreparation{}, resourceProblem(
 			protocol.CodeInvalidArgument,
 			"Plan Artifact does not belong to the parent Fork Thread",
 			false,
-			protocol.ProblemDetails{
-				Reason:     protocol.ProblemReasonWrongSession,
-				ResourceID: planID,
-			},
-			nil,
+			protocol.ProblemReasonWrongSession,
+			planID,
 		)
 	}
 	profile, err := r.SessionProfile(ctx, targetSessionID)
@@ -844,15 +746,12 @@ func (r *Runtime) PreparePlanTransitionTo(
 		return PlanTransitionPreparation{}, err
 	}
 	if !samePlanTargetProfile(sourceProfile.Profile, profile.Profile) {
-		return PlanTransitionPreparation{}, protocol.NewProblemWithDetails(
+		return PlanTransitionPreparation{}, resourceProblem(
 			protocol.CodeConflict,
 			"target Session Profile does not match the Plan source Profile",
 			false,
-			protocol.ProblemDetails{
-				Reason:     protocol.ProblemReasonWrongSession,
-				ResourceID: targetSessionID,
-			},
-			nil,
+			protocol.ProblemReasonWrongSession,
+			targetSessionID,
 		)
 	}
 	mode := "act"
@@ -860,31 +759,16 @@ func (r *Runtime) PreparePlanTransitionTo(
 	switch transition {
 	case protocol.PlanTransitionImplement:
 		if !artifact.CanImplement {
-			return PlanTransitionPreparation{}, protocol.NewProblem(
-				protocol.CodeConflict,
-				"Plan Artifact cannot start implementation",
-				false,
-				nil,
-			)
+			return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeConflict, "Plan Artifact cannot start implementation", nil)
 		}
 	case protocol.PlanTransitionAutopilot:
 		if !artifact.CanAutopilot {
-			return PlanTransitionPreparation{}, protocol.NewProblem(
-				protocol.CodeConflict,
-				"Plan Artifact cannot start Autopilot",
-				false,
-				nil,
-			)
+			return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeConflict, "Plan Artifact cannot start Autopilot", nil)
 		}
 		posture := "auto"
 		patch.ApprovalPosture = &posture
 	default:
-		return PlanTransitionPreparation{}, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			"Plan transition is invalid",
-			false,
-			nil,
-		)
+		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeInvalidArgument, "Plan transition is invalid", nil)
 	}
 	updated, err := r.UpdateSessionProfile(
 		ctx,
@@ -913,7 +797,6 @@ func (r *Runtime) PreparePlanTransitionTo(
 		),
 	}, nil
 }
-
 func samePlanTargetProfile(
 	source, target protocol.SessionProfile,
 ) bool {
@@ -926,8 +809,7 @@ func samePlanTargetProfile(
 		source.ExecutionTarget == target.ExecutionTarget &&
 		source.MaxSteps == target.MaxSteps
 }
-
-func (r *Runtime) checkpointState(
+func (r *ArtifactService) checkpointState(
 	ctx context.Context,
 	sessionID, checkpointID, action string,
 ) (
@@ -938,12 +820,7 @@ func (r *Runtime) checkpointState(
 ) {
 	if r.sessionArtifacts == nil {
 		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil,
-			protocol.NewProblem(
-				protocol.CodeUnavailable,
-				"Session Checkpoints are unavailable",
-				false,
-				nil,
-			)
+			runtimeProblem(protocol.CodeUnavailable, "Session Checkpoints are unavailable", nil)
 	}
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
@@ -959,15 +836,12 @@ func (r *Runtime) checkpointState(
 	}
 	if checkpoint.SessionID != sessionID {
 		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil,
-			protocol.NewProblemWithDetails(
+			resourceProblem(
 				protocol.CodeInvalidArgument,
 				"Checkpoint does not belong to the Session",
 				false,
-				protocol.ProblemDetails{
-					Reason:     protocol.ProblemReasonWrongSession,
-					ResourceID: checkpointID,
-				},
-				nil,
+				protocol.ProblemReasonWrongSession,
+				checkpointID,
 			)
 	}
 	currentProfile, err := r.SessionProfile(ctx, sessionID)
@@ -977,27 +851,19 @@ func (r *Runtime) checkpointState(
 	if currentProfile.Profile.Revision != checkpoint.ProfileRevision ||
 		checkpointProfile.Revision != checkpoint.ProfileRevision {
 		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil,
-			protocol.NewProblemWithDetails(
-				protocol.CodeConflict,
+			revisionProblem(
 				"Checkpoint Profile Revision is stale",
-				true,
-				protocol.ProblemDetails{
-					Reason:           protocol.ProblemReasonStaleProfileRevision,
-					ResourceID:       checkpointID,
-					ExpectedRevision: checkpoint.ProfileRevision,
-					ActualRevision:   currentProfile.Profile.Revision,
-				},
-				nil,
+				checkpointID,
+				checkpoint.ProfileRevision,
+				currentProfile.Profile.Revision,
 			)
 	}
 	return current, checkpoint, history, nil
 }
-
 func stableArtifactID(prefix string, values ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(values, "\x00")))
 	return prefix + "_" + hex.EncodeToString(sum[:])
 }
-
 func boundedArtifactText(value string, maximum int) string {
 	if len(value) <= maximum {
 		return value
@@ -1008,8 +874,7 @@ func boundedArtifactText(value string, maximum int) string {
 	}
 	return value
 }
-
-func (r *Runtime) decoratePlanArtifact(
+func (r *ArtifactService) decoratePlanArtifact(
 	ctx context.Context,
 	threadID protocol.ThreadID,
 	turnID protocol.TurnID,
@@ -1041,8 +906,7 @@ func (r *Runtime) decoratePlanArtifact(
 	data.CanAutopilot = true
 	return nil
 }
-
-func (r *Runtime) persistSessionArtifact(
+func (r *ArtifactService) persistSessionArtifact(
 	ctx context.Context,
 	event protocol.Event,
 ) {
@@ -1100,8 +964,7 @@ func (r *Runtime) persistSessionArtifact(
 		)
 	}
 }
-
-func (r *Runtime) persistTerminalArtifactForTurn(
+func (r *ArtifactService) persistTerminalArtifactForTurn(
 	ctx context.Context,
 	threadID protocol.ThreadID,
 	turnID protocol.TurnID,
@@ -1127,8 +990,7 @@ func (r *Runtime) persistTerminalArtifactForTurn(
 		}
 	}
 }
-
-func (r *Runtime) persistTerminalCheckpoint(
+func (r *ArtifactService) persistTerminalCheckpoint(
 	ctx context.Context,
 	event protocol.Event,
 	status protocol.CheckpointStatus,
@@ -1217,8 +1079,7 @@ func (r *Runtime) persistTerminalCheckpoint(
 		r.logArtifactError("publish Session Checkpoint", event, err)
 	}
 }
-
-func (r *Runtime) checkpointEffects(
+func (r *ArtifactService) checkpointEffects(
 	ctx context.Context,
 	threadID protocol.ThreadID,
 	turnID protocol.TurnID,
@@ -1257,8 +1118,7 @@ func (r *Runtime) checkpointEffects(
 	}
 	return len(changed), external, note, parentCheckpointID, reference
 }
-
-func (r *Runtime) logArtifactError(
+func (r *ArtifactService) logArtifactError(
 	action string,
 	event protocol.Event,
 	err error,

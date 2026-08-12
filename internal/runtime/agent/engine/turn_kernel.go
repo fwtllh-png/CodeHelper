@@ -35,7 +35,6 @@ type kernelTurnIdentity struct {
 	turnID          string
 	profileRevision uint64
 }
-
 func newEngineTurnKernelForTurn(
 	identity kernelTurnIdentity,
 	intent protocol.TurnIntent,
@@ -91,7 +90,6 @@ func newEngineTurnKernelForTurn(
 	}
 	return kernel, nil
 }
-
 func (s *engineTurnKernel) pendingSampleID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,14 +100,12 @@ func (s *engineTurnKernel) pendingSampleID() string {
 	}
 	return ""
 }
-
 func (s *engineTurnKernel) hasSample(sampleID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, exists := s.state.SampleLedger[sampleID]
 	return exists
 }
-
 func (s *engineTurnKernel) committingDecision() (
 	turnkernel.TerminalDecision,
 	bool,
@@ -122,13 +118,11 @@ func (s *engineTurnKernel) committingDecision() (
 	}
 	return *s.state.PendingTerminal, true
 }
-
 func (s *engineTurnKernel) frozenOutput() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return strings.Join(s.state.FinalOutput, "")
 }
-
 func (s *engineTurnKernel) terminalDecision() (
 	turnkernel.TerminalDecision,
 	bool,
@@ -140,7 +134,6 @@ func (s *engineTurnKernel) terminalDecision() (
 	}
 	return *s.state.Terminal, true
 }
-
 func (s *engineTurnKernel) pendingToolCalls() []provider.ToolCall {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -161,7 +154,6 @@ func (s *engineTurnKernel) pendingToolCalls() []provider.ToolCall {
 	}
 	return calls
 }
-
 func (s *engineTurnKernel) startTools(calls []provider.ToolCall) error {
 	if s == nil || len(calls) == 0 {
 		return nil
@@ -195,7 +187,6 @@ func (s *engineTurnKernel) startTools(calls []provider.ToolCall) error {
 	}
 	return s.applyAuthoritativeLocked(turnkernel.ToolCallsProposed{Calls: states})
 }
-
 func (s *engineTurnKernel) startTool(callID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -213,7 +204,6 @@ func (s *engineTurnKernel) startTool(callID string) error {
 	}, from)
 	return nil
 }
-
 func (s *engineTurnKernel) validateToolStarts(
 	calls []provider.ToolCall,
 ) error {
@@ -268,7 +258,6 @@ func (s *engineTurnKernel) validateToolStarts(
 	}
 	return nil
 }
-
 func (s *engineTurnKernel) closeTool(
 	call provider.ToolCall,
 	result tool.Result,
@@ -300,7 +289,6 @@ func (s *engineTurnKernel) closeTool(
 	s.recordAcceptedLocked(command, from)
 	return nil
 }
-
 func (s *engineTurnKernel) abortTools(reason string) error {
 	if s == nil {
 		return nil
@@ -321,19 +309,16 @@ func (s *engineTurnKernel) abortTools(reason string) error {
 	s.state = s.coordinator.Snapshot()
 	return s.applyAuthoritativeLocked(turnkernel.AbortOpenCalls{Reason: reason})
 }
-
 func (s *engineTurnKernel) mutationRevision() uint64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.MutationRevision
 }
-
 func (s *engineTurnKernel) verificationMustPass() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.Policy.VerificationMustPass
 }
-
 func (s *engineTurnKernel) completion() *turnkernel.CompletionDecision {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -345,7 +330,6 @@ func (s *engineTurnKernel) completion() *turnkernel.CompletionDecision {
 	copy.QualityCalls = append([]string(nil), copy.QualityCalls...)
 	return &copy
 }
-
 func (s *engineTurnKernel) completionDeclaration() *tool.CompletionDeclaration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -362,7 +346,6 @@ func (s *engineTurnKernel) completionDeclaration() *tool.CompletionDeclaration {
 		CallID:              decision.CompletionCall,
 	}
 }
-
 func (s *engineTurnKernel) evaluateCompletion(
 	candidate turnkernel.CompletionCandidate,
 ) (turnkernel.CompletionDecision, error) {

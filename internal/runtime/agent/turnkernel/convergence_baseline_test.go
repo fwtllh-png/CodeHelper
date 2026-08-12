@@ -213,13 +213,21 @@ func TestC4TerminalCommitOwnershipBaseline(t *testing.T) {
 
 func TestC5RestartProjectionOwnershipBaseline(t *testing.T) {
 	root := convergenceRepositoryRoot(t)
-	runtimeFile := parseProductionFile(
+	publisherFile := parseProductionFile(
 		t,
 		root,
-		"internal/runtime/app/runtime.go",
+		"internal/runtime/app/terminal_publisher.go",
 	)
-	if findFunction(runtimeFile, "recoverTerminalProjections") == nil {
-		t.Fatal("Runtime startup has no terminal outbox recovery")
+	if findFunction(publisherFile, "Recover") == nil {
+		t.Fatal("Terminal Publisher has no terminal outbox recovery")
+	}
+	startFile := parseProductionFile(
+		t,
+		root,
+		"internal/runtime/app/runtime_start.go",
+	)
+	if !functionCalls(findFunction(startFile, "activate"), "Recover") {
+		t.Fatal("Runtime startup does not invoke Terminal Publisher recovery")
 	}
 	storeFile := parseProductionFile(
 		t,

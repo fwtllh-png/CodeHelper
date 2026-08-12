@@ -1,10 +1,10 @@
 package app
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -254,7 +254,12 @@ func (r *receiptRecorder) observeTool(event agentengine.Event) {
 		r.toolsSucceeded = appendUniqueString(r.toolsSucceeded, event.ToolCall.Name)
 	}
 	if event.ToolCall.Name == "load_skill" {
-		if resolved, ok := event.Result.Metadata["resolved_skills"].([]skillruntime.ResolvedSkill); ok {
+		var resolved []struct {
+			Name, Version, Source, Plugin, Digest string
+			Locked                                bool
+		}
+		if encoded, err := json.Marshal(event.Result.Metadata["resolved_skills"]); err == nil &&
+			json.Unmarshal(encoded, &resolved) == nil {
 			for _, item := range resolved {
 				duplicate := false
 				for _, existing := range r.skills {

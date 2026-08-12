@@ -239,10 +239,11 @@ func TestRuntimeDispatchesControlOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Active turn + pending approval so steer injects and approval resumes.
-	runtime.activeMu.Lock()
-	runtime.active["turn"] = func() {}
-	runtime.activeThreads["thread"] = "turn"
-	runtime.activeMu.Unlock()
+	lease, err := runtime.active.Reserve("thread", "turn", "op", "item")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.active.Release(lease) })
 	runtime.mu.Lock()
 	runtime.approvals["approval_1"] = PendingApproval{
 		RequestID: "approval_1", ThreadID: "thread", TurnID: "turn",

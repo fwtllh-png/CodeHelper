@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -71,7 +72,6 @@ type ScopeSnapshot struct {
 	Verification   int
 	TerminalStaged bool
 }
-
 func newScopeState(engine *Engine) scopeState {
 	return scopeState{
 		scheduler:   NewToolScheduler(engine.options.MaxToolConcurrent),
@@ -130,13 +130,11 @@ func (s *Scope) Close() {
 		s.engine.finishScope(s)
 	})
 }
-
 func (e *Engine) publishScope(scope *Scope) {
 	e.scopeMu.Lock()
 	e.activeScope = scope
 	e.scopeMu.Unlock()
 }
-
 func (e *Engine) finishScope(scope *Scope) {
 	scope.mu.Lock()
 	var held []PendingInput
@@ -155,7 +153,6 @@ func (e *Engine) finishScope(scope *Scope) {
 	}
 	e.scopeMu.Unlock()
 }
-
 func (e *Engine) currentScope() *Scope {
 	if e == nil {
 		return nil
@@ -167,39 +164,49 @@ func (e *Engine) currentScope() *Scope {
 	}
 	return e.lastScope
 }
-
 func (e *Engine) executionScope() *Scope {
 	return e.currentScope()
 }
 
+func (e *Engine) TurnKernelPhase(turnID string) (turnkernel.Phase, bool) {
+	scope := e.runningScope()
+	if scope == nil || scope.spec.Identity.TurnID != turnID {
+		return "", false
+	}
+	scope.mu.Lock()
+	kernel := scope.state.kernel
+	scope.mu.Unlock()
+	if kernel == nil {
+		return "", false
+	}
+	kernel.mu.Lock()
+	defer kernel.mu.Unlock()
+	return kernel.state.Phase, true
+}
 func (e *Engine) workingLedger() *workingset.Ledger {
 	if scope := e.runningScope(); scope != nil {
 		return scope.state.working
 	}
 	return e.working
 }
-
 func (e *Engine) evidenceSet() *evidence.Set {
 	if scope := e.runningScope(); scope != nil {
 		return scope.state.evidence
 	}
 	return e.evidence
 }
-
 func (e *Engine) failureLedger() *compact.Failures {
 	if scope := e.runningScope(); scope != nil {
 		return scope.state.failures
 	}
 	return e.failures
 }
-
 func (e *Engine) compactionTotal() int {
 	if scope := e.runningScope(); scope != nil {
 		return scope.state.compactions
 	}
 	return e.compactions
 }
-
 func (e *Engine) noteCompaction() {
 	if scope := e.runningScope(); scope != nil {
 		scope.state.compactions++
@@ -207,7 +214,6 @@ func (e *Engine) noteCompaction() {
 	}
 	e.compactions++
 }
-
 func (e *Engine) runningScope() *Scope {
 	if e == nil {
 		return nil
@@ -216,7 +222,6 @@ func (e *Engine) runningScope() *Scope {
 	defer e.scopeMu.Unlock()
 	return e.activeScope
 }
-
 func (s *Scope) kernel() (*engineTurnKernel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -245,7 +250,6 @@ func (e *Engine) Control() (ControlPort, error) {
 	}
 	return scope.Control(), nil
 }
-
 func (s *Scope) Cancel(reason string) error {
 	if s == nil || s.engine.runningScope() != s {
 		return errors.New("turn scope is not active")
@@ -264,7 +268,6 @@ func (s *Scope) Cancel(reason string) error {
 	}
 	return kernelErr
 }
-
 func (s *Scope) Steer(prompt string) error {
 	if prompt == "" {
 		return errors.New("steering prompt is required")
@@ -317,7 +320,6 @@ func (s *Scope) ResolveApproval(
 	}
 	return engine.guard.Resume(decision.RequestID)
 }
-
 func (s *Scope) ResolveInput(reply interact.Reply) error {
 	if s == nil || s.engine.runningScope() != s {
 		return errors.New("turn scope is not active")

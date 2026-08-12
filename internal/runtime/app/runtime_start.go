@@ -44,7 +44,6 @@ func PrepareRuntimeWithRecovery(
 ) (*Runtime, error) {
 	return prepareRuntime(ctx, options, true)
 }
-
 func prepareRuntime(
 	ctx context.Context,
 	options Options,
@@ -106,25 +105,22 @@ func prepareRuntime(
 		terminalStore:     options.TerminalStore,
 		operations:        make(chan acceptedOperation, options.OperationBuffer),
 		done:              make(chan struct{}),
-		subscribers:       make(map[uint64]chan protocol.Event),
 		terminals:         make(map[protocol.TurnID]protocol.EventKind),
 		approvals:         make(map[string]PendingApproval),
 		inputs:            make(map[string]PendingInput),
 		accepted:          make(map[protocol.OperationID]PendingOperation),
 		acceptedKeys:      make(map[string]protocol.OperationID),
 		committed:         make(map[protocol.OperationID]PendingOperation),
-		active:            make(map[protocol.TurnID]context.CancelFunc),
-		activeThreads:     make(map[protocol.ThreadID]protocol.TurnID),
-		appliedProfiles:   make(map[protocol.ThreadID]uint64),
-		cancels:           make(map[protocol.TurnID]cancelRecord),
+		active:            NewActiveTurnRegistry(),
 		toolItems:         make(map[string]protocol.ItemID),
 		approvalItems:     make(map[string]protocol.ItemID),
 		inputItems:        make(map[string]protocol.ItemID),
 		durable:           recoverDurable,
 	}
-	if last, err := runtime.events.LastSequence(context.Background()); err == nil {
-		runtime.lastSequence = last
-	}
+	runtime.hub = newEventHub(runtimeContext, runtime)
+	runtime.terminal = &TerminalPublisher{runtime: runtime}
+	runtime.SessionService = &SessionService{Runtime: runtime}
+	runtime.ArtifactService = &ArtifactService{Runtime: runtime}
 	if recovery != nil {
 		runtime.restore(*recovery)
 	}
@@ -142,10 +138,9 @@ func (r *Runtime) Start(ctx context.Context) error {
 	})
 	return r.startErr
 }
-
 func (r *Runtime) activate(ctx context.Context) error {
 	if r.durable {
-		if err := r.recoverTerminalProjections(ctx); err != nil {
+		if err := r.terminal.Recover(ctx); err != nil {
 			go r.loop()
 			close(r.operations)
 			return fmt.Errorf("recover terminal projections: %w", err)

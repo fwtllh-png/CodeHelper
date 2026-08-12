@@ -65,13 +65,30 @@ func (a *EngineAdapter) Underlying() *agentengine.Engine {
 	return a.engine
 }
 
+func (a *EngineAdapter) TurnPhase(turnID protocol.TurnID) (TurnPhase, bool) {
+	if a == nil || a.engine == nil {
+		return PhaseIdle, false
+	}
+	phase, ok := a.engine.TurnKernelPhase(string(turnID))
+	if !ok {
+		return PhaseIdle, false
+	}
+	switch string(phase) {
+	case string(PhaseAwaitingApproval):
+		return PhaseAwaitingApproval, true
+	case string(PhaseAwaitingInput):
+		return PhaseAwaitingInput, true
+	default:
+		return PhaseRunning, true
+	}
+}
+
 func (a *EngineAdapter) History() []provider.Message {
 	if a == nil || a.engine == nil {
 		return nil
 	}
 	return a.engine.History()
 }
-
 func (a *EngineAdapter) RestoreSessionDelta(raw json.RawMessage) error {
 	if a == nil || a.engine == nil {
 		return errors.New("engine is unavailable")
@@ -95,7 +112,6 @@ func (a *EngineAdapter) RestorePendingApproval(
 	}
 	return a.engine.RestoreApprovalRequest(request)
 }
-
 func (a *EngineAdapter) RestorePendingInput(pending PendingInput) error {
 	if a == nil || a.engine == nil {
 		return errors.New("engine is unavailable")
@@ -498,7 +514,6 @@ func (a *EngineAdapter) StartTurn(
 	)
 	return runErr
 }
-
 func (a *EngineAdapter) buildReceipt(
 	recorder *receiptRecorder,
 	completed bool,
@@ -515,7 +530,6 @@ func (a *EngineAdapter) buildReceipt(
 	}
 	return data, nil
 }
-
 func (a *EngineAdapter) commitTerminal(
 	ctx context.Context,
 	recorder *receiptRecorder,
@@ -550,7 +564,6 @@ func (a *EngineAdapter) commitTerminal(
 	}
 	return errors.New("terminal commit sink is required")
 }
-
 func validateTerminalReceipt(
 	receipt *protocol.ExecutionReceiptData,
 	completed bool,
@@ -685,7 +698,6 @@ func (a *EngineAdapter) CompactThread(
 		WindowID:           windowID,
 	})
 }
-
 func formatCompactionSummary(receipt *agentengine.CompactionReceipt) string {
 	return fmt.Sprintf(
 		"compacted history: removed %d messages (%d→%d bytes); removed turns=%v",
@@ -730,7 +742,6 @@ func costMicrounits(costUSD float64) uint64 {
 	}
 	return uint64(math.Round(costUSD * 1e6))
 }
-
 func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 	if event.Plan != nil {
 		return sink.Emit(&protocol.PlanDeltaData{
@@ -776,14 +787,12 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 	}
 	return nil
 }
-
 func nonEmpty(value, fallback string) string {
 	if value == "" {
 		return fallback
 	}
 	return value
 }
-
 func commandExecutionFromResult(callID string, result *tool.Result) (*protocol.CommandExecutionData, bool) {
 	if result == nil || result.Metadata == nil {
 		return nil, false
@@ -829,7 +838,6 @@ func commandExecutionFromResult(callID string, result *tool.Result) (*protocol.C
 	}
 	return data, true
 }
-
 func protocolNetwork(value *toolguard.NetworkApprovalContext) *protocol.NetworkApprovalPayload {
 	if value == nil {
 		return nil
@@ -838,7 +846,6 @@ func protocolNetwork(value *toolguard.NetworkApprovalContext) *protocol.NetworkA
 		Host: value.Host, Protocol: value.Protocol, Mode: value.Mode,
 	}
 }
-
 func validToolArguments(value string) json.RawMessage {
 	raw := json.RawMessage(value)
 	if !json.Valid(raw) {
@@ -846,7 +853,6 @@ func validToolArguments(value string) json.RawMessage {
 	}
 	return raw
 }
-
 func nonEmptyCode(value, fallback protocol.ErrorCode) protocol.ErrorCode {
 	if value == "" {
 		return fallback
