@@ -67,17 +67,34 @@ business workflow. It creates a construction-only `buildState` and executes a
 closed module sequence:
 
 ```text
-config -> provider -> platform -> persistence -> builtin tools
+config -> provider -> persistence -> platform -> builtin tools
        -> extension contributors -> security -> orchestration
        -> agent -> runtime -> background services
 ```
 
 Each module owns one construction boundary and publishes only the values needed
 by later modules. `buildState` is never retained by Runtime, Engine, or Session
-services. Builtin and extension tools receive the same Registry instance;
-Plugin, Skill, Memory, Task/Automation, Hook, and MCP integrations contribute
-through ordered, uniquely named contributors rather than modifying the Agent
-module.
+services. Persistence owns Content, Job Log, and the SQLite foundation;
+Platform owns Process, Sandbox, and Repository Index; Orchestration owns
+Task/Automation repositories, Workflow executors, Scheduler construction,
+Subagents, and child worktrees/toolsets. Provider publishes the selected
+Provider/Model catalogs, while Security publishes its Permission Store and
+Guard Factory.
+
+Builtin and extension tools receive the same Registry instance. Plugin, Skill,
+Memory, Dynamic Tool, Hook, and MCP contributors receive only their explicit
+construction capabilities and the shared Registry, never `buildState`. Each
+returns a deterministic `ContributionReceipt` listing added Tool identities and
+named outputs. Task/Automation registration belongs to Orchestration rather
+than the extension contributor chain.
+
+Runtime construction has a prepared state. `RuntimeModule` constructs the
+facade and restores static durable state without accepting operations.
+`BackgroundModule` performs the initial MCP refresh, starts Runtime terminal
+outbox and pending-Turn recovery, starts MCP prewarm, reconciles Automations,
+then starts the Worker Scheduler. A failed step aborts construction and the
+resource stack rolls back; no background worker starts before Runtime recovery
+has succeeded.
 
 Construction and shutdown share `assembly.ResourceStack`. Session registers
 resource closers once, then both partial-build rollback and normal shutdown

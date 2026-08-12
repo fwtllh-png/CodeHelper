@@ -11,7 +11,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/builtin"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	mcptool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -84,7 +83,7 @@ func ServeMCP(
 }
 
 func RegisterMCPTools(
-	ctx context.Context,
+	_ context.Context,
 	registry *tool.Registry,
 	configPath string,
 ) (*mcpruntime.Pool, *MCPPrewarm, error) {
@@ -92,17 +91,12 @@ func RegisterMCPTools(
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := config.Validate(); err != nil {
+		return nil, nil, err
+	}
 	pool := mcpruntime.NewPool(nil)
-	if _, err := pool.Reload(ctx, config); err != nil {
-		return nil, nil, err
-	}
-	adapter, err := mcptool.NewAdapter(registry, pool)
-	if err != nil {
-		_ = pool.ShutdownAll(context.Background())
-		return nil, nil, err
-	}
 	prewarm := NewMCPPrewarm(pool, configPath)
-	prewarm.SetAdapter(adapter)
-	prewarm.Start(ctx)
+	prewarm.SetRegistry(registry)
+	prewarm.RequestRefresh()
 	return pool, prewarm, nil
 }

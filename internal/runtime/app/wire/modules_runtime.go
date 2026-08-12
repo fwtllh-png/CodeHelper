@@ -9,7 +9,6 @@ import (
 	reverttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/revert"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -60,7 +59,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		return fmt.Errorf("assemble prompt context: %w", err)
 	}
 	repoContext := newRepoContext(
-		state.persistence.repositoryIndex,
+		state.platform.repositoryIndex,
 		snapshot.Config.Context,
 		budgets,
 	)
@@ -257,39 +256,12 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	if approvalPosture != policy.PermissionNever {
 		mutableFields = append(mutableFields, "approval_posture")
 	}
-	var reasoningEfforts []string
-	if modelCapabilities.Reasoning {
-		reasoningEfforts = []string{reasoningEffort}
-	}
 	profileCapabilities := protocol.SessionProfileCapabilities{
-		Provider: defaultProfile.Provider,
-		Model:    defaultProfile.Model,
-		ModelCapabilities: protocol.ModelCapabilities{
-			DisplayName:            route.Model().ID,
-			ContextWindow:          route.Model().Limits.ContextTokens,
-			MaxOutputTokens:        route.Model().Limits.MaxOutputTokens,
-			Streaming:              modelCapabilities.Streaming,
-			Reasoning:              modelCapabilities.Reasoning,
-			ToolCalls:              modelCapabilities.ToolCalls,
-			ParallelToolCalls:      "unknown",
-			NativeSearch:           modelCapabilities.NativeSearch,
-			Vision:                 modelCapabilities.Vision,
-			ImageInput:             modelCapabilities.ImageInput,
-			PromptCache:            modelCapabilities.PromptCache,
-			ReasoningEfforts:       reasoningEfforts,
-			DefaultReasoningEffort: reasoningEffort,
-			CredentialStatus:       "unknown",
-			Availability:           "available",
-			SelectionMode:          "restart_required",
-		},
-		MutableFields: mutableFields,
+		Provider:          defaultProfile.Provider,
+		Model:             defaultProfile.Model,
+		ModelCapabilities: state.provider.modelCapabilities,
+		MutableFields:     mutableFields,
 	}
-	session.modelCapabilities = profileCapabilities.ModelCapabilities
-	session.providerCatalog, session.modelCatalog = runtimeModelCatalog(
-		session.providerID,
-		session.modelID,
-		profileCapabilities.ModelCapabilities,
-	)
 	workspaceIdentity := state.options.WorkspaceIdentity
 	childToolsets := state.orchestration.childToolsets
 	securityRuntime := state.security.runtime
@@ -407,15 +379,7 @@ func (runtimeModule) Build(
 ) error {
 	session := state.session
 	if state.options.PersistentStore != nil {
-		if session.automations == nil {
-			session.automations = automation.NewSQLiteRepository(
-				state.options.PersistentStore.SQLite(),
-			)
-			if _, err := session.automations.Tick(ctx, time.Time{}); err != nil {
-				return fmt.Errorf("automation reconcile: %w", err)
-			}
-		}
-		runtime, err := NewPersistentRuntime(ctx, PersistentRuntimeOptions{
+		runtime, err := PreparePersistentRuntime(ctx, PersistentRuntimeOptions{
 			Store:               state.options.PersistentStore,
 			Engine:              state.agent.threads,
 			OperationBuffer:     state.config.snapshot.Config.Runtime.OperationBuffer,
@@ -432,12 +396,16 @@ func (runtimeModule) Build(
 		}
 		session.Runtime = runtime
 	} else {
-		session.Runtime = app.NewRuntime(app.Options{
+		runtime, err := app.PrepareRuntime(ctx, app.Options{
 			Engine:       state.agent.threads,
 			ContentStore: session.content,
 			Metrics:      session.metrics,
 			Logger:       session.logger,
 		})
+		if err != nil {
+			return fmt.Errorf("prepare runtime: %w", err)
+		}
+		session.Runtime = runtime
 	}
 	if state.orchestration.children != nil {
 		state.orchestration.children.bind(
@@ -460,15 +428,35 @@ func (backgroundModule) Build(
 	ctx context.Context,
 	state *buildState,
 ) error {
-	return state.session.startScheduler(
-		ctx,
-		state.config.execution.Worker,
-		state.config.hookSessionID,
-		state.tools.registry,
-		state.security.guard,
-		state.security.journal,
+	if prewarm := state.extensions.mcpPrewarm; prewarm != nil {
+		if err := prewarm.RefreshNow(ctx); err != nil {
+			return fmt.Errorf("initial MCP refresh: %w", err)
+		}
+	}
+	if err := state.runtime.application.Start(ctx); err != nil {
+		return fmt.Errorf("start runtime recovery: %w", err)
+	}
+	if prewarm := state.extensions.mcpPrewarm; prewarm != nil {
+		prewarm.Start(ctx)
+	}
+	if automations := state.orchestration.automations; automations != nil {
+		if _, err := automations.Tick(ctx, time.Time{}); err != nil {
+			return fmt.Errorf("automation reconcile: %w", err)
+		}
+	}
+	scheduler, err := state.orchestration.scheduler.Build(
+		state.runtime.application,
 		state.agent.workspaceTurnGate,
-		state.persistence.workflowRuns,
-		state.config.execution.Workspace,
 	)
+	if err != nil {
+		return fmt.Errorf("worker scheduler: %w", err)
+	}
+	if scheduler == nil {
+		return nil
+	}
+	if err := scheduler.Start(ctx); err != nil {
+		return fmt.Errorf("start worker scheduler: %w", err)
+	}
+	state.session.scheduler = scheduler
+	return nil
 }

@@ -2,7 +2,6 @@ package wire
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -18,9 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	plugintool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
@@ -97,49 +94,50 @@ type ContextFile struct {
 type Session struct {
 	Runtime *app.Runtime
 
-	metrics            *telemetry.Metrics
-	metricsPath        string
-	logger             *slog.Logger
-	logFile            *os.File
-	fixture            *fixture.Server
-	plugins            []*pluginruntime.Loaded
-	pluginRegistry     *pluginruntime.Registry
-	pluginTools        *plugintool.Adapter
-	dynamicTools       *dynamictool.Manager
-	providerID         string
-	modelID            string
-	modelCapabilities  protocol.ModelCapabilities
-	providerCatalog    protocol.ProviderCatalog
-	modelCatalog       protocol.ModelCatalog
-	processes          *process.SessionManager
-	jobLogs            *joblog.Store
-	mcpPool            *mcpruntime.Pool
-	mcpPrewarm         *MCPPrewarm
-	sandbox            sandbox.Backend
-	content            *contentstore.Memory
-	memory             *memory.Store
-	automations        *automation.Repository
-	tasks              *taskstate.Repository
-	ephemeralTasks     *sqlitestate.Store
-	hooks              *hooks.Manager
-	inputHost          *interacttool.Host
-	applyPlan          func(interacttool.Plan)
-	security           *policy.Runtime
-	rlmStore           *rlm.Store
-	children           *childRuntime
-	childTools         *childToolsets
-	chatWorkspaces     *chatWorkspaces
-	threads            *app.ThreadManager
-	turnCoordinators   *durableCoordinatorRuntime
-	journal            *workspacejournal.Manager
-	journalRecovery    workspacejournal.Recovery
-	subagents          *subagent.Manager
-	scheduler          *worker.Scheduler
-	Constitution       constitution.Status
-	constitutionPrompt string
-	resources          *assembly.ResourceStack
-	closeOnce          sync.Once
-	closeErr           error
+	metrics              *telemetry.Metrics
+	metricsPath          string
+	logger               *slog.Logger
+	logFile              *os.File
+	fixture              *fixture.Server
+	plugins              []*pluginruntime.Loaded
+	pluginRegistry       *pluginruntime.Registry
+	pluginTools          *plugintool.Adapter
+	contributionReceipts []ContributionReceipt
+	dynamicTools         *dynamictool.Manager
+	providerID           string
+	modelID              string
+	modelCapabilities    protocol.ModelCapabilities
+	providerCatalog      protocol.ProviderCatalog
+	modelCatalog         protocol.ModelCatalog
+	processes            *process.SessionManager
+	jobLogs              *joblog.Store
+	mcpPool              *mcpruntime.Pool
+	mcpPrewarm           *MCPPrewarm
+	sandbox              sandbox.Backend
+	content              *contentstore.Memory
+	memory               *memory.Store
+	automations          *automation.Repository
+	tasks                *taskstate.Repository
+	ephemeralTasks       *sqlitestate.Store
+	hooks                *hooks.Manager
+	inputHost            *interacttool.Host
+	applyPlan            func(interacttool.Plan)
+	security             *policy.Runtime
+	rlmStore             *rlm.Store
+	children             *childRuntime
+	childTools           *childToolsets
+	chatWorkspaces       *chatWorkspaces
+	threads              *app.ThreadManager
+	turnCoordinators     *durableCoordinatorRuntime
+	journal              *workspacejournal.Manager
+	journalRecovery      workspacejournal.Recovery
+	subagents            *subagent.Manager
+	scheduler            *worker.Scheduler
+	Constitution         constitution.Status
+	constitutionPrompt   string
+	resources            *assembly.ResourceStack
+	closeOnce            sync.Once
+	closeErr             error
 }
 
 func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr error) {
@@ -150,8 +148,8 @@ func defaultBuildModules() []buildModule {
 	return []buildModule{
 		configModule{},
 		providerModule{},
-		platformModule{},
 		persistenceModule{},
+		platformModule{},
 		builtinToolsModule{},
 		newExtensionToolsModule(),
 		securityModule{},
@@ -307,75 +305,6 @@ func adaptEngine(
 		return app.AdaptEngine(engine)
 	}
 	return app.AdaptEngineWithWorkspaceIdentity(engine, identity)
-}
-
-// startScheduler brings up the durable task scheduler when the host asked for
-// one. It is off unless configured: a process that claims background work has to
-// stay alive to finish it, which is the opposite of what `exec` does.
-func (s *Session) startScheduler(
-	ctx context.Context,
-	settings config.Worker,
-	owner string,
-	registry *tool.Registry,
-	guard *toolguard.Guard,
-	journal *workspacejournal.Manager,
-	workspaceTurnGate *agentengine.WorkspaceTurnGate,
-	workflowRuns workflowRunStore,
-	workspace string,
-) error {
-	if !settings.Enabled || s.tasks == nil {
-		return nil
-	}
-	var executors []worker.Executor
-	if s.subagents != nil && s.children != nil {
-		agentTurns, err := newAgentTurnExecutor(
-			s.subagents,
-			s.children.release,
-			guard,
-			journal,
-			workspaceTurnGate,
-		)
-		if err != nil {
-			return fmt.Errorf("agent_turn executor: %w", err)
-		}
-		executors = append(executors, agentTurns)
-	}
-	workflowRunsExecutor, err := newWorkflowRunExecutor(s.Runtime, workflowRuns)
-	if err != nil {
-		return fmt.Errorf("workflow_run executor: %w", err)
-	}
-	executors = append(executors, workflowRunsExecutor)
-	shellCommands, err := newShellCommandExecutor(registry, s.security, workspace, s.hooks)
-	if err != nil {
-		return fmt.Errorf("shell_command executor: %w", err)
-	}
-	executors = append(executors, shellCommands)
-	if len(executors) == 0 {
-		// Nothing this build can run means nothing should be claimed: a scheduler
-		// with no executors would take leases it cannot honor.
-		return errors.New(
-			"execution.worker.enabled requires tools, which is what supplies the executors",
-		)
-	}
-	scheduler, err := worker.New(worker.Options{
-		Tasks: s.tasks, Automations: s.automations, Owner: owner,
-		Executors: executors, WorkspaceRoot: workspace, Lease: settings.Lease,
-		ClaimInterval:      settings.ClaimInterval,
-		AutomationInterval: settings.AutomationInterval,
-		MaxParallel:        settings.MaxParallel,
-		Backoff: taskstate.Backoff{
-			Base: settings.RetryBackoff, Max: settings.RetryBackoffMax,
-		},
-		Logger: s.logger,
-	})
-	if err != nil {
-		return fmt.Errorf("worker scheduler: %w", err)
-	}
-	if err := scheduler.Start(ctx); err != nil {
-		return fmt.Errorf("start worker scheduler: %w", err)
-	}
-	s.scheduler = scheduler
-	return nil
 }
 
 // childEngineOptions derives a child agent's Engine from the host template.

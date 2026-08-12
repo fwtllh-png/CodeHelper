@@ -3,28 +3,15 @@ package wire
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	handletool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
-	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 // buildState exists only while NewExec assembles a Session. Runtime components
@@ -38,6 +25,7 @@ type buildState struct {
 	platform      platformBuildState
 	persistence   persistenceBuildState
 	tools         toolBuildState
+	extensions    extensionBuildState
 	security      securityBuildState
 	orchestration orchestrationBuildState
 	agent         agentBuildState
@@ -54,47 +42,10 @@ type configBuildState struct {
 	diagnosticReadFiles []string
 }
 
-type providerBuildState struct {
-	routes      model.RouteSet
-	route       model.ReadyRoute
-	egress      *egress.Gate
-	client      *httpclient.Client
-	toolSampler *agentengine.ToolSampler
-}
-
-type platformBuildState struct {
-	helperPath string
-	backend    sandbox.Backend
-	web        webtool.Options
-}
-
-type persistenceBuildState struct {
-	repositoryIndex *repoindex.Index
-	workflowRuns    workflowRunStore
-}
-
 type toolBuildState struct {
 	registry     *tool.Registry
 	handleStore  *handletool.Store
 	skillCatalog *skill.Catalog
-}
-
-type securityBuildState struct {
-	runtime     *policy.Runtime
-	journal     *workspacejournal.Manager
-	diagnostics diagnostics.Runner
-	verify      verify.Runner
-	guard       *toolguard.Guard
-}
-
-type orchestrationBuildState struct {
-	sharedGovernor *rlm.Governor
-	childGovernor  *rlm.Governor
-	children       *childRuntime
-	childToolsets  *childToolsets
-	chatTrees      *childWorktrees
-	parentFiles    *filetool.Tools
-	subagents      *subagent.Manager
 }
 
 type agentBuildState struct {
