@@ -9,6 +9,7 @@ prerequisites:
   - runtime-stream-cancel-errors
 code_paths:
   - internal/host/tui
+  - internal/runtime/eventview
 test_paths:
   - internal/host/tui/host_test.go
   - internal/host/tui/app_test.go
@@ -16,6 +17,8 @@ test_paths:
 source_of_truth:
   - internal/host/tui/host.go
   - internal/host/tui/app.go
+  - internal/host/tui/facade/facade.go
+  - internal/runtime/eventview/view.go
 status: draft
 last_verified: null
 ---
@@ -33,16 +36,19 @@ Terminal UI。
 
 ```mermaid
 flowchart LR
-    R[Runtime Operations/Events] --> H[SessionHost]
+    R[Runtime Events] --> P[eventview.Project]
+    P --> U[Typed Update]
+    U --> H[SessionHost]
     H --> M[Bubble Tea Messages]
-    M --> P[Transcript / Tool / Approval Projection]
-    P --> V[Viewport / Panel / Overlay]
-    U[Key / Slash Command] --> H
+    M --> T[Transcript / Tool / Approval Projection]
+    T --> V[Viewport / Panel / Overlay]
+    K[Key / Slash Command] --> H
 ```
 
 `SessionHost` 提交 Operation、打开 Cursor Event Stream、Pump Event，并通过 Narrow
-Facade 暴露 Policy/Session Service。`Model` 投影 Output、Reasoning、Tool Lifecycle、
-Approval Queue、Input、Plan、Usage 与 Terminal Receipt。
+Facade 暴露 Policy/Session Service。每个 Event 先经过 `eventview.Project`，`Model`
+把 Typed Update 投影为 Output、Reasoning、Tool Lifecycle、Approval Queue、Input、
+Plan、Usage 与 Terminal Receipt。
 
 Live/Settled State 分离。Streaming Markdown 保留 Incomplete Tail；Tool Output 有界；
 Approval FIFO；Final Receipt 覆盖临时 Usage Glance。Empty/Unmeasured Panel 如实说明。
@@ -50,12 +56,23 @@ Approval FIFO；Final Receipt 覆盖临时 Usage Glance。Empty/Unmeasured Panel
 Slash Command 通过 Host Method 改变 Runtime Policy 或提交 Operation。Session Snapshot
 保存 UI Preference/Binding，但 CLI Explicit Posture 优先于恢复值。
 
+## 共享 Event Projection
+
+`internal/runtime/eventview.Project` 在任何 Host 代码看到 Event 之前，把它转换为
+Typed `Update`：`TextUpdate`（Output/Reasoning）、`ToolUpdate`、`InteractionUpdate`
+（Approval/Input）、`AccountingUpdate`（Usage）、`EvidenceUpdate`
+（Diagnostics/Receipt/Verification）、`LifecycleUpdate`、`ArtifactUpdate`（Plan）、
+`TerminalUpdate` 与 `IgnoredUpdate`。分类来自 Protocol Traits，因此 TUI、CLI 与
+Bench 共享同一 Projection，而不是各自重新分类 Raw Event。`internal/host/tui/facade`
+Re-export 这些类型；Unknown Kind 以 `IgnoredUpdate` 到达，仍可 Inspect 而不发明
+Behavior。
+
 ## Event Reducer Invariant
 
-TUI 是 Projection Reducer：
+TUI 是对 Typed Update 的 Projection Reducer：
 
 ```text
-(previous ui state, validated event) -> next ui state + optional paint
+(previous ui state, validated update) -> next ui state + optional paint
 ```
 
 - Event ID/Cursor 使 Duplicate Delivery Harmless；
@@ -106,8 +123,8 @@ make tui-smoke
 
 ## 动手实验
 
-追踪 Fixture Event 从 `SessionHost.pump` 到 Transcript、Tool Card、Approval Overlay 与
-Final Receipt。
+追踪 Fixture Event 经 `eventview.Project` 与 `SessionHost.pump` 到 Transcript、
+Tool Card、Approval Overlay 与 Final Receipt。
 
 ## 复习问题
 

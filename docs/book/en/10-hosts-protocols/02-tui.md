@@ -9,6 +9,7 @@ prerequisites:
   - runtime-stream-cancel-errors
 code_paths:
   - internal/host/tui
+  - internal/runtime/eventview
 test_paths:
   - internal/host/tui/host_test.go
   - internal/host/tui/app_test.go
@@ -16,6 +17,8 @@ test_paths:
 source_of_truth:
   - internal/host/tui/host.go
   - internal/host/tui/app.go
+  - internal/host/tui/facade/facade.go
+  - internal/runtime/eventview/view.go
 status: draft
 last_verified: null
 ---
@@ -33,17 +36,20 @@ moving business logic into the terminal UI.
 
 ```mermaid
 flowchart LR
-    R[Runtime Operations/Events] --> H[SessionHost]
+    R[Runtime Events] --> P[eventview.Project]
+    P --> U[Typed Update]
+    U --> H[SessionHost]
     H --> M[Bubble Tea messages]
-    M --> P[Transcript / Tool / Approval projectors]
-    P --> V[Viewport, panels, overlays]
-    U[Keys / slash commands] --> H
+    M --> T[Transcript / Tool / Approval projectors]
+    T --> V[Viewport, panels, overlays]
+    K[Keys / slash commands] --> H
 ```
 
 `SessionHost` submits Operations, opens a Cursor-based Event stream, pumps
-Events, and exposes policy/session services through narrow facades. `Model`
-projects output, reasoning, Tool lifecycle, approval queue, input requests,
-plans, usage, and terminal receipts.
+Events, and exposes policy/session services through narrow facades. Every
+Event first passes through `eventview.Project`; `Model` projects the resulting
+typed Updates into output, reasoning, Tool lifecycle, approval queue, input
+requests, plans, usage, and terminal receipts.
 
 Live state and settled state are distinct. Streaming Markdown keeps an
 incomplete tail, Tool output is bounded, approval cards are FIFO, and the final
@@ -54,12 +60,24 @@ Slash commands mutate Runtime policy or submit operations through Host methods.
 Session snapshots persist UI choices and bindings, but CLI-explicit posture
 overrides restored preferences.
 
+## Shared Event Projection
+
+`internal/runtime/eventview.Project` turns every validated Event into a typed
+`Update` before Host code sees it: `TextUpdate` (output/reasoning), `ToolUpdate`,
+`InteractionUpdate` (approval/input), `AccountingUpdate` (usage),
+`EvidenceUpdate` (diagnostics/receipt/verification), `LifecycleUpdate`,
+`ArtifactUpdate` (plan), `TerminalUpdate`, and `IgnoredUpdate`. Classification
+comes from Protocol Traits, so TUI, CLI, and bench share one projection instead
+of reclassifying raw Events per Host. `internal/host/tui/facade` re-exports
+these types; an unknown Kind arrives as `IgnoredUpdate`, inspectable without
+inventing behavior.
+
 ## Event Reducer Invariants
 
-The TUI is a projection reducer:
+The TUI is a projection reducer over typed Updates:
 
 ```text
-(previous UI state, validated Event) -> next UI state + optional paint
+(previous UI state, validated Update) -> next UI state + optional paint
 ```
 
 - Event identity/Cursor makes duplicate delivery harmless.
@@ -116,8 +134,9 @@ make tui-smoke
 
 ## Hands-On Lab
 
-Trace a Fixture Event sequence through `SessionHost.pump` into transcript,
-active Tool card, approval overlay, and final receipt.
+Trace a Fixture Event sequence through `eventview.Project` and
+`SessionHost.pump` into transcript, active Tool card, approval overlay, and
+final receipt.
 
 ## Review Questions
 

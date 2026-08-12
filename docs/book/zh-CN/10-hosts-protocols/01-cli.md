@@ -10,6 +10,7 @@ prerequisites:
   - runtime-protocol
 code_paths:
   - internal/host/cli
+  - internal/runtime/eventview
 test_paths:
   - internal/host/cli/run_test.go
   - internal/host/cli/architecture_test.go
@@ -49,8 +50,11 @@ Formal Command 提供稳定 Machine-readable Output 与 Structured Problem Code�
 可以显示 Credential Reference，不能显示 Value。
 
 `exec` Streaming Model、Tool、Approval、Verification 和 Terminal Event，并支持
-Persistence/Resume。Config、Model、Auth、Thread、Task、Workflow、Fleet/Lane、MCP、
-Skill、Plugin、Metrics 等命令只调用共享 Runtime/Repository。
+Persistence/Resume。`exec` 与 `quickstart` 在渲染前通过共享的 `eventview` Projection
+处理每个 Event：分类来自 Protocol Traits，Text/JSON Formatter 消费同一 Typed
+Update，因此新 Event Kind 在 Host 代码中被处理或显式忽略，而不是被每个 Renderer
+重新分类。Config、Model、Auth、Thread、Task、Workflow、Fleet/Lane、MCP、Skill、
+Plugin、Metrics 等命令只调用共享 Runtime/Repository。
 
 ## Setup、Readiness 与命令事实
 
@@ -81,8 +85,8 @@ Failure 必须显式，因为 Truncated Receipt 会破坏 Automation。
 ## Idempotency/Resume
 
 CLI Identity/Idempotency Input 进入 Runtime Operation。Persistent `exec` 从 Durable
-Thread/Turn/Event 恢复，不通过重提 Prompt 重建 Output。Text/JSON Formatter 消费同一
-Event，不改变 Execution Semantics。
+Thread/Turn/Event 恢复，不通过重提 Prompt 重建 Output。Text/JSON Formatter 消费这些
+Event 投影出的同一 Typed Update，不改变 Execution Semantics。
 
 Config Precedence 也是 Provenance：Default/File/Environment/Flag 在 Wire 前解析，
 Diagnostic 说明 Winning Source，但不打印 Secret Value。
@@ -95,6 +99,7 @@ Diagnostic 说明 Winning Source，但不打印 Secret Value。
 - Budget Failure 不产生 Completed Terminal。
 - JSON Log Redact Secret。
 - CLI 不是 Alternate Execution Engine。
+- Event 只经 `eventview` Projection 一次，Host 不本地重新分类。
 
 ## 测试与验证
 
