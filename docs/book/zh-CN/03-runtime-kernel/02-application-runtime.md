@@ -12,9 +12,16 @@ code_paths:
 test_paths:
   - internal/runtime/app/runtime_test.go
   - internal/runtime/app/pendingwork_test.go
+  - internal/runtime/app/operation_dispatch_test.go
+  - internal/runtime/app/active_turn_registry_test.go
   - internal/runtime/app/thread_manager_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
+  - internal/runtime/app/operation_dispatch.go
+  - internal/runtime/app/active_turn_registry.go
+  - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/app/service_facade.go
+  - internal/runtime/app/session_artifacts.go
   - internal/runtime/app/application.go
 status: draft
 last_verified: null
@@ -42,10 +49,9 @@ Cancellation、Replay、Pending Approval/Input 和一致的 Terminal Outcome。�
 ## 核心概念
 
 - **Acceptance** 在执行前校验并拥有 Operation。
-- **Dispatch** 将 Operation Kind 映射到 Application Engine Interface。
+- **Dispatch** 将 Operation Kind 映射到显式 Handler 和结构化 Outcome。
 - **Projection** 从有序 Event 推导当前查询状态。
-- **Active Map** 将一个 Turn 绑定到 Cancellation Function，将一个 Thread 绑定到其
-  Active Turn。
+- **ActiveTurnRegistry** 使用 Lease 原子预留 Turn 与 Thread。
 - **Pending Work** 表示可恢复的 Approval、Input 与 Operation 状态。
 
 ## 核心流程
@@ -81,7 +87,7 @@ Accepted 与 Committed Record 分开，使 Restart 能区分已进入 Runtime �
 | Duplicate Suppressed | Runtime State Lock 下比较 Canonical Content |
 | Event Ordered | Central Publish Path 分配 Sequence |
 | Event Durable | Subscriber Publish 前 Event Store Append 成功 |
-| Turn Active | Engine Goroutine 前安装 Turn/Thread Cancel Map |
+| Turn Active | Engine Goroutine 前绑定 Registry Lease 与 Control |
 | Turn Terminal | Terminal Map 接受第一个 Terminal Kind |
 | Runtime Closed | Drain Active Work 前关闭 Acceptance |
 
@@ -99,13 +105,28 @@ Order；Turn 可异步运行，但所有 Event 都回到 Central Publish Path。
 
 ## Dispatch 与 Active Turn
 
-Runtime 将 Start、Cancel、Steer、Approval、Input、Compact、Fork 和 Revert 分发到
-`app.Engine` Interface。异步执行前注册 Turn CancelFunc，并限制一个 Thread 同时只有
-一个 Active Turn。Terminal Map 拒绝重复终态。
+`operationDispatcher` 显式分发 Start、Cancel、Steer、Approval、Input、Compact、Fork
+和 Revert。每个 Handler 返回 Committed、Rejected、Async 或 Terminal Outcome；只有
+Dispatcher 执行同步 Commit/Reject 模板。Start 在 Terminal 发布前保持 Async。
+
+`ActiveTurnRegistry` 在同一临界区预留 Thread 与 Turn。Release 必须携带匹配的 Lease
+Token，旧 Goroutine 无法释放后启动的 Turn。同一 Handle 还拥有 Control、Cancel
+Provenance、当前 Phase 和已应用的 Profile Revision。
+
+## Terminal 与 Service Ownership
+
+`TerminalPublisher` 是 Atomic Terminal Commit、Deterministic Outbox Projection 和
+Restart Recovery 的唯一 Owner。Terminal Commit 在 Projection 前持久绑定 Frozen
+Kernel State、Session Delta、Receipt、Terminal Event 与真实 Operation Receipt。
+
+`SessionService` 拥有 Lifecycle、Profile 和 Tool Catalog；`ArtifactService` 拥有
+Checkpoint、Plan、Turn Recovery 与 Artifact Persistence。Runtime 嵌入两个 Service，
+Host 继续使用原 Facade API，不产生重复转发方法。
 
 ## Event Projection
 
-Sequence 由中心路径分配，Event 写入 Store、更新 Pending/Terminal Map 并发布。
+Sequence 由中心路径分配，Event 写入 Store、更新 Pending 状态并发布；
+`TerminalPublisher` 将已提交的 Terminal Outbox Entry 投影为 Event。
 Replay 按 Cursor 查询；History Gap 明确返回 Recovery Cursor。Slow Subscriber 被移除，
 不会阻塞排序路径。
 
@@ -120,6 +141,10 @@ Stream，也不授权 Tool。
 | 关注点 | 源码 |
 | --- | --- |
 | Queue/Sequence/Subscriber | `runtime.go` |
+| Operation Outcome/Handler | `operation_dispatch.go` |
+| Active Turn Lease/Control | `active_turn_registry.go` |
+| Atomic Terminal/Outbox Recovery | `terminal_publisher.go` |
+| Session/Artifact Service | `service_facade.go`、`session_artifacts.go` |
 | Engine Adapter | `application.go` |
 | Pending State | `pendingwork.go` |
 | Thread Ownership | `thread_manager.go` |
@@ -150,7 +175,9 @@ go test ./internal/runtime/app
 ```
 
 重点阅读 `TestRuntimeConcurrentSubmitHasStrictSequenceAndUniqueTerminal`、
-`TestRuntimeDropsSlowSubscriberDeterministically` 和 Thread Manager Test。
+`TestRuntimeDropsSlowSubscriberDeterministically`、
+`TestActiveTurnRegistryBindsControlAndCancelProvenance`、`TestOperationOutcomeContract`
+和 Thread Manager Test。
 
 ## 动手实验
 

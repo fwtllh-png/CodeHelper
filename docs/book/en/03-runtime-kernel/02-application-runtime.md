@@ -12,9 +12,16 @@ code_paths:
 test_paths:
   - internal/runtime/app/runtime_test.go
   - internal/runtime/app/pendingwork_test.go
+  - internal/runtime/app/operation_dispatch_test.go
+  - internal/runtime/app/active_turn_registry_test.go
   - internal/runtime/app/thread_manager_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
+  - internal/runtime/app/operation_dispatch.go
+  - internal/runtime/app/active_turn_registry.go
+  - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/app/service_facade.go
+  - internal/runtime/app/session_artifacts.go
   - internal/runtime/app/application.go
 status: draft
 last_verified: null
@@ -44,10 +51,10 @@ different runtime.
 ## Core Concepts
 
 - Acceptance validates and owns an Operation before execution.
-- Dispatch maps Operation Kind to the application Engine interface.
+- Dispatch maps each Operation Kind to an explicit Handler and structured
+  Outcome.
 - Projection derives current query state from ordered Events.
-- Active maps bind one Turn to a cancellation function and one Thread to its
-  active Turn.
+- `ActiveTurnRegistry` atomically reserves a Turn and Thread with a lease.
 - Pending work represents resumable Approval, Input, and Operation state.
 
 ## Runtime Flow
@@ -85,7 +92,7 @@ point:
 | Duplicate suppressed | canonical content is compared under Runtime state lock |
 | Event ordered | Sequence is assigned in the single publish path |
 | Event durable | Event Store append succeeds before subscriber publication |
-| Turn active | Turn/Thread cancellation maps are installed before Engine goroutine runs |
+| Turn active | Registry lease and control are bound before Engine goroutine runs |
 | Turn terminal | terminal map accepts the first terminal Kind |
 | Runtime closed | acceptance is disabled before active work/subscribers are drained |
 
@@ -106,20 +113,34 @@ state machine, not a process afterthought.
 
 ## Dispatch and Active Turns
 
-The Runtime dispatches start, cancel, steer, Approval, Input, compact, fork,
-and revert through the `app.Engine` interface. It registers active Turn
-cancellation before asynchronous execution and enforces one active Turn per
-Thread.
+`operationDispatcher` explicitly dispatches start, cancel, steer, Approval,
+Input, compact, fork, and revert. Every Handler returns committed, rejected,
+async, or terminal Outcome; only the Dispatcher applies the synchronous
+commit/rejection template. Start remains async until terminal publication.
 
-Terminal tracking rejects duplicate completed/failed/canceled outcomes.
-Cancellation provenance records reason and owning Item/Operation for the final
-Event.
+`ActiveTurnRegistry` reserves Thread and Turn in one critical section. Release
+requires the matching lease token, so a stale goroutine cannot release a newer
+Turn. The same handle owns control, cancellation provenance, current phase,
+and applied Profile revision.
+
+## Terminal and Service Ownership
+
+`TerminalPublisher` is the sole owner of atomic terminal commit, deterministic
+outbox projection, and restart recovery. A terminal commit durably binds the
+frozen kernel state, Session Delta, Receipt, terminal Event, and real Operation
+receipt before projection.
+
+`SessionService` owns lifecycle, Profile, and Tool Catalog behavior.
+`ArtifactService` owns Checkpoint, Plan, Turn recovery, and artifact
+persistence. Runtime embeds both services so Hosts retain the existing Facade
+API without duplicate forwarding methods.
 
 ## Event Projection
 
 Event sequence is assigned centrally. Events are appended to the Event Store,
-used to update pending/terminal maps, and published to subscribers. Replay uses
-Cursor ranges without creating a live subscription.
+update pending state, and are published to subscribers. `TerminalPublisher`
+projects committed terminal outbox entries into Events. Replay uses Cursor
+ranges without creating a live subscription.
 
 A bounded in-memory history can produce an explicit Cursor Gap. Slow
 subscribers are dropped rather than blocking the single ordering path.
@@ -137,6 +158,10 @@ The app layer does not parse Provider streams or authorize Tool Calls.
 | Concern | Source |
 | --- | --- |
 | Queue, sequence, subscribers | `runtime.go` |
+| Operation outcomes and handlers | `operation_dispatch.go` |
+| Active Turn leases and control | `active_turn_registry.go` |
+| Atomic terminal/outbox recovery | `terminal_publisher.go` |
+| Session and artifact services | `service_facade.go`, `session_artifacts.go` |
 | Engine adaptation | `application.go` |
 | Pending state | `pendingwork.go` |
 | Thread ownership | `thread_manager.go` |
@@ -165,7 +190,7 @@ recovery explicit and prevent one UI from stopping execution.
 
 ```bash
 go test ./internal/runtime/app \
-  -run 'TestRuntime|TestRuntimeTurnPhaseClassification|TestThreadManager'
+  -run 'TestRuntime|TestRuntimeTurnPhaseClassification|TestThreadManager|TestActiveTurnRegistry|TestOperationOutcome'
 ```
 
 Run the complete package when changing queue, event, or recovery semantics:

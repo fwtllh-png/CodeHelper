@@ -17,12 +17,15 @@ code_paths:
 test_paths:
   - internal/runtime/app/reconstruct_test.go
   - internal/runtime/app/session_artifacts_test.go
+  - internal/runtime/app/runtime_terminal_recovery_test.go
   - internal/runtime/app/wire/persistent_test.go
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
   - internal/runtime/app/lifecycle.go
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/thread_manager.go
+  - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/app/runtime_start.go
   - internal/runtime/app/wire/persistent.go
 status: draft
 last_verified: null
@@ -64,7 +67,9 @@ flowchart TD
 ```
 
 Persistent bootstraps use `NewRuntimeWithRecovery`, which calls the durable
-Lifecycle before opening acceptance.
+Lifecycle before opening acceptance. `TerminalPublisher` replays pending
+terminal outbox projections during startup activation (`runtime_start.go`)
+before the Runtime opens acceptance.
 
 ## Resume
 
@@ -82,7 +87,7 @@ Recovery restores:
 
 - accepted and committed Operation records;
 - active/pending Turn, Approval, and Input ownership;
-- terminal maps and Item identity;
+- pending terminal outbox projections and Item identity;
 - last Event cursor;
 - thread history and snapshots;
 - workspace Journal state;

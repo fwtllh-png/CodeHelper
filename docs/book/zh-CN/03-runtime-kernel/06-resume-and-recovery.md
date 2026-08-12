@@ -17,12 +17,15 @@ code_paths:
 test_paths:
   - internal/runtime/app/reconstruct_test.go
   - internal/runtime/app/session_artifacts_test.go
+  - internal/runtime/app/runtime_terminal_recovery_test.go
   - internal/runtime/app/wire/persistent_test.go
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
   - internal/runtime/app/lifecycle.go
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/thread_manager.go
+  - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/app/runtime_start.go
   - internal/runtime/app/wire/persistent.go
 status: draft
 last_verified: null
@@ -63,7 +66,8 @@ flowchart TD
 ```
 
 Persistent Bootstrap 使用 `NewRuntimeWithRecovery`，在开放 Acceptance 前调用 Durable
-Lifecycle。
+Lifecycle。`TerminalPublisher` 在启动激活阶段（`runtime_start.go`）重放 Pending
+Terminal Outbox Projection，之后 Runtime 才打开 Acceptance。
 
 ## Resume
 
@@ -76,7 +80,8 @@ History 只保留 Completed 且 Tool Pair 完整的 Exchange；Failed/Incomplete
 ## Recovery
 
 Recovery 恢复 Accepted/Committed Operation、Pending Turn/Approval/Input、
-Terminal/Item Map、Last Cursor、Thread History/Snapshot 与 Workspace Journal，
+Terminal Outbox Projection/Item Identity、Last Cursor、Thread History/Snapshot
+与 Workspace Journal，
 以及每个 Thread 最新 Durable SessionDelta（随 Turn 的 Terminal Envelope 提交，
 含 History、Usage、Cost、Working Set、Evidence、Failures、Compaction 与
 Revision/Digest）。
