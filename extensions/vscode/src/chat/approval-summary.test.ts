@@ -107,6 +107,25 @@ void test("approval card summarizes file content instead of rendering it", () =>
   assert.ok(content.detail.length <= 360);
 });
 
+void test("approval presentation identifies the requesting child agent", () => {
+  const request = approval({
+    tool: "shell_run",
+    arguments: JSON.stringify({ command: "go test ./..." }),
+    source: {
+      kind: "agent",
+      agentId: "agent-2",
+      agentPath: "/root/verify_runtime",
+      parentPath: "/root",
+      role: "verifier",
+    },
+  });
+  const card = approvalCardContent(request);
+  const dialog = approvalDialogContent(request);
+  assert.match(card.summary, /Agent \/root\/verify_runtime \(verifier\)/u);
+  assert.match(card.detail, /Requested by: Agent \/root\/verify_runtime/u);
+  assert.match(dialog.detail, /Parent: \/root/u);
+});
+
 function approval(
   overrides: Partial<ApprovalCard>,
 ): ApprovalCard {

@@ -1230,10 +1230,17 @@ func (r SteerTurnHandler) run(operation protocol.Operation, payload *protocol.St
 }
 
 func (r ApprovalHandler) Handle(operation protocol.Operation, payload *protocol.ApprovalDecisionPayload) OperationOutcome {
-	phase := r.turnPhase(payload.ThreadID, payload.TurnID)
 	r.mu.Lock()
-	_, known := r.approvals[payload.RequestID]
+	pending, known := r.approvals[payload.RequestID]
 	r.mu.Unlock()
+	if known {
+		proxied := *payload
+		proxied.ThreadID = pending.ThreadID
+		proxied.TurnID = pending.TurnID
+		payload = &proxied
+		operation.Payload = payload
+	}
+	phase := r.turnPhase(payload.ThreadID, payload.TurnID)
 	if known {
 		phase = PhaseAwaitingApproval
 	}

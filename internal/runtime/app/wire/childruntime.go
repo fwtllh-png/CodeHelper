@@ -78,13 +78,67 @@ func newChildRuntime(
 // bind attaches the pieces that only exist once the Runtime is constructed.
 func (c *childRuntime) bind(
 	runtime *app.Runtime, threads *app.ThreadManager, manager *subagent.AgentControl,
-) {
+) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.runtime = runtime
 	c.threads = threads
 	c.manager = manager
 	c.bound = runtime != nil && threads != nil && manager != nil
+	bound := c.bound
+	c.mu.Unlock()
+	if !bound {
+		return errors.New("child runtime dependencies are incomplete")
+	}
+	var recovered []struct {
+		threadID protocol.ThreadID
+		turnID   protocol.TurnID
+	}
+	for _, agent := range manager.List(subagent.ListFilter{}) {
+		switch agent.Status {
+		case subagent.StatusRequested, subagent.StatusStarting,
+			subagent.StatusRunning, subagent.StatusWaiting:
+		default:
+			continue
+		}
+		threadID := protocol.ThreadID(agent.ThreadID)
+		if _, registered := threads.ChildSpecFor(threadID); !registered {
+			spec, err := c.specFor(agent)
+			if err != nil {
+				return fmt.Errorf("restore child authority for %s: %w", agent.ID, err)
+			}
+			if err := threads.RegisterChild(threadID, spec); err != nil {
+				return fmt.Errorf("restore child thread %s: %w", threadID, err)
+			}
+		}
+		if agent.TurnID == "" ||
+			(agent.Status != subagent.StatusStarting &&
+				agent.Status != subagent.StatusRunning &&
+				agent.Status != subagent.StatusWaiting) {
+			continue
+		}
+		turnID := protocol.TurnID(agent.TurnID)
+		c.mu.Lock()
+		if _, tracked := c.turns[threadID]; !tracked {
+			c.turns[threadID] = &childTurn{
+				agentID: agent.ID, turnID: turnID, startedAt: time.Now(),
+			}
+			recovered = append(recovered, struct {
+				threadID protocol.ThreadID
+				turnID   protocol.TurnID
+			}{threadID: threadID, turnID: turnID})
+		}
+		c.mu.Unlock()
+	}
+	if len(recovered) > 0 {
+		// Runtime has not started replaying interrupted operations yet. Subscribe
+		// now so approval and terminal events from recovery cannot pass between
+		// durable graph hydration and child bookkeeping.
+		c.ensurePump(context.Background())
+		for _, turn := range recovered {
+			c.armDeadline(turn.threadID, turn.turnID)
+		}
+	}
+	return nil
 }
 
 func (c *childRuntime) close() {
@@ -134,6 +188,13 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 	if _, registered := threads.ChildSpecFor(threadID); !registered {
 		if err := threads.RegisterChild(threadID, spec); err != nil {
 			return "", err
+		}
+	}
+	if runtime.SessionProfilesAvailable() && agent.SessionID != "" {
+		if _, err := runtime.RestoreSessionProfile(
+			ctx, agent.SessionID, threadID,
+		); err != nil {
+			return "", fmt.Errorf("restore child session profile: %w", err)
 		}
 	}
 	turnID, err := protocol.NewTurnID()
@@ -259,11 +320,22 @@ func (c *childRuntime) release(agentID string) {
 // a child that needs to write but has nowhere isolated to write is rejected
 // rather than pointed at the parent workspace.
 func (c *childRuntime) specFor(agent subagent.Agent) (app.ChildSpec, error) {
+	role, err := c.manager.RoleSpec(agent.Role)
+	if err != nil {
+		return app.ChildSpec{}, err
+	}
 	spec := app.ChildSpec{
-		AgentID: agent.ID, Role: string(agent.Role), Stance: string(agent.Stance),
-		Workspace: c.root, ReadOnly: true,
-		MaxSteps: c.limits.MaxSteps, MaxTokens: c.limits.MaxTokens,
+		AgentID: agent.ID, AgentPath: agent.Path, ParentPath: agent.ParentPath,
+		Role: string(agent.Role), Stance: string(agent.Stance),
+		Workspace: c.root, HostWorkspace: agent.Workspace, SessionID: agent.SessionID,
+		ReadOnly:     true,
+		AllowedTools: append([]string(nil), role.AllowedTools...),
+		CanDelegate:  role.CanDelegate,
+		MaxSteps:     c.limits.MaxSteps, MaxTokens: c.limits.MaxTokens,
 		MaxCostUSD: c.limits.MaxCostUSD,
+	}
+	if spec.HostWorkspace == "" {
+		spec.HostWorkspace = c.root
 	}
 	if c.limits.Workspace == config.SubagentWorkspaceSerialized {
 		if !agent.Serialized || strings.TrimSpace(agent.Worktree) != c.root {
@@ -464,7 +536,7 @@ func (c *childRuntime) observe(event protocol.Event) {
 	}
 	settle := false
 	status := subagent.StatusCompleted
-	var deny *protocol.ApprovalDecisionPayload
+	var waitRequest, resumeRequest string
 	switch data := event.Data.(type) {
 	case *protocol.ExecutionReceiptData:
 		copied := *data
@@ -473,14 +545,9 @@ func (c *childRuntime) observe(event protocol.Event) {
 		copied := *data
 		turn.verify = &copied
 	case *protocol.ApprovalRequiredData:
-		turn.notes = append(turn.notes, fmt.Sprintf(
-			"%s needed approval and a child agent has no one to ask", data.Tool,
-		))
-		deny = &protocol.ApprovalDecisionPayload{
-			ThreadID: event.ThreadID, TurnID: turn.turnID, ItemID: event.ItemID,
-			RequestID: data.RequestID, Decision: protocol.ApprovalDeny,
-			Scope: protocol.ApprovalScopeOnce,
-		}
+		waitRequest = data.RequestID
+	case *protocol.ApprovalResolvedData:
+		resumeRequest = data.RequestID
 	case *protocol.TurnCompletedData:
 		if text := strings.TrimSpace(data.Text); text != "" {
 			turn.text = text
@@ -502,15 +569,22 @@ func (c *childRuntime) observe(event protocol.Event) {
 		settle, status = true, subagent.StatusErrored
 	}
 	if !settle {
-		runtime := c.runtime
+		manager := c.manager
+		agentID := turn.agentID
 		c.mu.Unlock()
-		// The pump is the child's host, and this host cannot ask a human. Denying
-		// immediately is the only answer that terminates: leaving the request open
-		// would burn the child's whole wall-clock budget waiting for nobody.
-		if deny != nil && runtime != nil {
-			if operation, err := protocol.NewOperation(deny); err == nil {
-				_ = runtime.Submit(context.Background(), operation)
+		var transitionErr error
+		if manager != nil && waitRequest != "" {
+			transitionErr = manager.AwaitApproval(agentID, waitRequest)
+		}
+		if manager != nil && resumeRequest != "" {
+			transitionErr = manager.ResumeApproval(agentID, resumeRequest)
+		}
+		if transitionErr != nil {
+			c.mu.Lock()
+			if current := c.turns[event.ThreadID]; current != nil {
+				current.notes = append(current.notes, transitionErr.Error())
 			}
+			c.mu.Unlock()
 		}
 		return
 	}

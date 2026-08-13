@@ -298,6 +298,36 @@ func TestSuggestApprovalRequiresAsyncHost(t *testing.T) {
 	assertDecisionCode(t, runtime.Authorize(t.Context(), call), "approval_required")
 }
 
+func TestTightenPermissionNeverExpandsAuthority(t *testing.T) {
+	permissions := []Permission{
+		PermissionNever,
+		PermissionSuggest,
+		PermissionAuto,
+		PermissionBypass,
+	}
+	for ceilingIndex, ceiling := range permissions {
+		for requestedIndex, requested := range permissions {
+			got := TightenPermission(requested, ceiling)
+			want := requested
+			if requestedIndex > ceilingIndex {
+				want = ceiling
+			}
+			if got != want {
+				t.Fatalf(
+					"TightenPermission(%q, %q) = %q, want %q",
+					requested, ceiling, got, want,
+				)
+			}
+		}
+	}
+	if got := TightenPermission("unknown", PermissionBypass); got != PermissionNever {
+		t.Fatalf("unknown requested posture = %q, want never", got)
+	}
+	if got := TightenPermission(PermissionBypass, "unknown"); got != PermissionNever {
+		t.Fatalf("unknown ceiling = %q, want never", got)
+	}
+}
+
 func TestApprovalCacheIsBoundedAndEvictsOldest(t *testing.T) {
 	now := time.Unix(4000, 0)
 	cache := NewApprovalCacheWithLimit(2)

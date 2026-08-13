@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -13,7 +14,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 func TestThreadManagerIsolatesHistory(t *testing.T) {
@@ -141,6 +144,129 @@ func TestThreadManagerBindsToolIdentityAndContextLookup(t *testing.T) {
 	}
 }
 
+func TestThreadManagerRestoresPendingApprovalOnChildThread(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(restoredApprovalTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := newTestAgentEngine(agentengine.Options{
+		Provider: &restoredApprovalProvider{}, Route: runtimeTestRoute(t),
+		Tools: registry, Metrics: telemetry.NewMetrics(),
+		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewThreadManager(func() (*EngineAdapter, error) {
+		return nil, errors.New("host factory must not restore child approval")
+	})
+	childFactoryCalls := 0
+	manager.SetChildFactory(func(ChildSpec) (*EngineAdapter, error) {
+		childFactoryCalls++
+		return AdaptEngine(worker), nil
+	})
+	if err := manager.RegisterChild("thread-child", ChildSpec{
+		AgentID: "agent-1", AgentPath: "/root/write",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pending := PendingApproval{
+		RequestID: "approval-stable", ThreadID: "thread-child",
+		TurnID: "turn-child", ItemID: "item-child",
+		Data: protocol.ApprovalRequiredData{
+			RequestID: "approval-stable", CallID: "call-write",
+			Tool: "write_file", Arguments: json.RawMessage(`{"path":"note.txt"}`),
+			AllowedScopes: []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
+			ExpiresAt:     time.Now().Add(time.Minute),
+		},
+	}
+	runtime, err := newRuntimeWithRecovery(t.Context(), Options{
+		Engine:        manager,
+		EventStore:    NewMemoryEventStore(32),
+		ContentStore:  NewMemoryContentStore(),
+		TerminalStore: turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil),
+		Lifecycle: &approvalRecoveryLifecycle{recovery: RecoveryState{
+			PendingApprovals: map[string]PendingApproval{
+				pending.RequestID: pending,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	if childFactoryCalls != 1 {
+		t.Fatalf("child factory calls = %d, want 1", childFactoryCalls)
+	}
+
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: "thread-child", TurnID: "turn-child",
+		ItemID: "item-child", Prompt: "resume recovered write",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	var observed []protocol.EventKind
+	decisionSubmitted := false
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			observed = append(observed, event.Kind)
+			if rejected, ok := event.Data.(*protocol.OperationRejectedData); ok {
+				t.Fatalf("approval decision rejected: %+v; events=%v", rejected, observed)
+			}
+			if event.Kind == protocol.EventToolStart && !decisionSubmitted {
+				itemID, itemErr := protocol.NewItemID()
+				if itemErr != nil {
+					t.Fatal(itemErr)
+				}
+				decision, decisionErr := protocol.NewOperation(
+					&protocol.ApprovalDecisionPayload{
+						ThreadID: "thread-parent", TurnID: "turn-parent",
+						ItemID: itemID, RequestID: pending.RequestID,
+						Decision: protocol.ApprovalApprove,
+						Scope:    protocol.ApprovalScopeOnce,
+					},
+				)
+				if decisionErr != nil {
+					t.Fatal(decisionErr)
+				}
+				if submitErr := runtime.Submit(t.Context(), decision); submitErr != nil {
+					t.Fatal(submitErr)
+				}
+				decisionSubmitted = true
+			}
+			resolved, ok := event.Data.(*protocol.ApprovalResolvedData)
+			if !ok {
+				continue
+			}
+			if resolved.RequestID != pending.RequestID ||
+				event.ThreadID != pending.ThreadID ||
+				event.TurnID != pending.TurnID {
+				t.Fatalf(
+					"recovered approval = %+v meta=(%s,%s), want request=%q meta=(%s,%s)",
+					resolved, event.ThreadID, event.TurnID,
+					pending.RequestID, pending.ThreadID, pending.TurnID,
+				)
+			}
+			return
+		case <-deadline:
+			t.Fatalf(
+				"recovered child tool call did not preserve approval request ID; events=%v",
+				observed,
+			)
+		}
+	}
+}
+
 func historyContains(messages []provider.Message, needle string) bool {
 	for _, message := range messages {
 		if strings.Contains(message.Text(), needle) {
@@ -157,6 +283,84 @@ func historyContains(messages []provider.Message, needle string) bool {
 
 type identityCaptureTool struct {
 	seen chan<- tool.InvocationIdentity
+}
+
+type restoredApprovalTool struct{}
+
+func (restoredApprovalTool) Descriptor() tool.Descriptor {
+	return tool.Descriptor{
+		Name: "write_file", Description: "write a recovered file",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
+		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{"type": "string"},
+			},
+			"required":             []string{"path"},
+			"additionalProperties": false,
+		},
+	}
+}
+
+func (restoredApprovalTool) Execute(
+	context.Context,
+	json.RawMessage,
+) (tool.Result, error) {
+	return tool.Result{Content: "written"}, nil
+}
+
+type restoredApprovalProvider struct{}
+
+func (*restoredApprovalProvider) Stream(
+	context.Context,
+	provider.ModelRequest,
+) (provider.Stream, error) {
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
+		{
+			Type: provider.EventToolCallDelta,
+			ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call-write", Name: "write_file",
+				Arguments: `{"path":"note.txt"}`,
+			},
+		},
+		{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+	}}, nil
+}
+
+type approvalRecoveryLifecycle struct {
+	recovery RecoveryState
+}
+
+func (l *approvalRecoveryLifecycle) Recover(
+	context.Context,
+) (RecoveryState, error) {
+	return l.recovery, nil
+}
+
+func (*approvalRecoveryLifecycle) Accept(
+	_ context.Context,
+	operation protocol.Operation,
+	_ string,
+	_ json.RawMessage,
+) (Acceptance, error) {
+	return Acceptance{OperationID: operation.ID}, nil
+}
+
+func (*approvalRecoveryLifecycle) Project(
+	context.Context,
+	protocol.Event,
+) error {
+	return nil
+}
+
+func (*approvalRecoveryLifecycle) Commit(
+	context.Context,
+	CommitReceipt,
+) error {
+	return nil
 }
 
 func (*identityCaptureTool) Descriptor() tool.Descriptor {

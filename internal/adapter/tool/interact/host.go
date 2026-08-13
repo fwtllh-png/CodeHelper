@@ -42,6 +42,7 @@ type Host struct {
 	emit      func(context.Context, Request) error
 	pending   map[string]*pending
 	recovered map[string]Request
+	restore   func(Request) error
 }
 
 type pending struct {
@@ -103,7 +104,17 @@ func (h *Host) Wait(
 		RequestID: requestID, CallID: callID, Tool: "request_user_input",
 		Prompt: prompt, Options: append([]string(nil), options...), ExpiresAt: expiresAt,
 	}
-	if !recovering {
+	if recovering {
+		h.mu.Lock()
+		restore := h.restore
+		h.mu.Unlock()
+		if restore == nil {
+			return Reply{}, errors.New("input recovery handler is unavailable")
+		}
+		if err := restore(req); err != nil {
+			return Reply{}, fmt.Errorf("restore input wait: %w", err)
+		}
+	} else {
 		if err := emit(ctx, req); err != nil {
 			return Reply{}, fmt.Errorf("emit input request: %w", err)
 		}
@@ -135,6 +146,14 @@ func (h *Host) RestoreRequest(request Request) error {
 	defer h.mu.Unlock()
 	h.recovered[request.CallID] = request
 	return nil
+}
+
+// SetRecoveryHandler restores turn-local wait bookkeeping without re-emitting
+// an input.required event that is already durable.
+func (h *Host) SetRecoveryHandler(handler func(Request) error) {
+	h.mu.Lock()
+	h.restore = handler
+	h.mu.Unlock()
 }
 
 func (h *Host) StageReply(reply Reply) error {

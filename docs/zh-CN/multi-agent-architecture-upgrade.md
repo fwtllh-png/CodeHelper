@@ -907,10 +907,31 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
 
 退出条件：
 
-- 每个 Crash Point 重启后得到唯一终态；
+- 每个 MA3 所属 Crash Point 重启后得到唯一终态；
 - Completion 不丢失且消费幂等；
 - 无假 `running`；
 - `wait_agent` 与自动通知观察同一事实。
+
+实施状态（2026-08-13）：`completed`。
+
+- Schema V2 使用 `agent_nodes`、`agent_messages`、`agent_results` 和
+  `agent_budget_ledger`；预发布阶段不引入兼容迁移；
+- Canonical Agent Path、Revision、Stable Operation ID、Actor、Reason、Event ID
+  和 SQLite CAS 组成唯一状态机写路径；
+- Terminal Result、Budget 结算和 Completion Outbox 在同一个 Agent Event
+  Transaction 提交；Outbox 使用 Message ID 幂等发布；
+- Mailbox 提供 per-target Sequence、`Receive/Ack` At-least-once Delivery，
+  `send_message` 只入队，`followup_task` 在 Task Message 持久化后启动 Turn；
+- Startup Reconciliation 覆盖 Spawn Commit、StartTurn Accepted、Result/Outbox、
+  未确认 Completion、假 Running、Orphan Worktree 和 Close；Integration
+  Preview/Apply Crash Point 属于 MA5；
+- 验收后复核补齐了 Active Child Turn Observation：在 Interrupted Operation
+  Replay 前重建 Child Turn 并启动 Runtime Event Pump，使恢复后的 `waiting`
+  Child 可以继续 Resume/Settle，而不会形成假 Active Node；
+- ACP/VS Code Agent View 暴露 Path、Parent Path、Revision 和 Thread；真实
+  Electron 验证两个 Child 在 Parent 不调用 `wait_agent` 时自动发送 Completion；
+- `go test ./...`、聚焦 Race、ACP/Protocol Contract、43/43 Architecture
+  Ratchet、VS Code Check 与 220 项测试均通过。
 
 ### MA4：Authority 与 Approval Proxy
 
@@ -928,6 +949,29 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
 - Child 不能获得 Parent 没有的 Tool 或 Workspace 权限；
 - 原 Request ID 在恢复后保持稳定；
 - Deny 产生结构化 Problem 与 Child 可理解反馈。
+
+实施状态（2026-08-13）：`completed`。
+
+- Permission Derivation 使用 `never < suggest < auto < bypass` 对所有 Posture
+  执行 Ceiling Clamp，未知值 Fail Closed；Child Tool 权限是 Parent Tool Catalog
+  与 Role Contract 的交集，每个 Child 使用独立 Approval Cache；
+- `approval.required` 与 `approval.resolved` 携带 Canonical Agent Source、Role、
+  Session 和 Host Workspace Identity；ACP/VS Code 只跨未绑定 Child Thread 投影
+  Source-bound Child Interaction；
+- Host 通过 Parent Session 提交原 Request ID。Runtime 根据 Durable Pending
+  Request 将 Thread/Turn 重写为 Child 权威身份，保留 Decision Item Identity，并
+  驱动 Agent `running -> waiting -> running`；
+- Guard Pending Request、Runtime Pending Approval 和 Waiting Agent Node 均可在
+  重启后恢复；Deny 产生结构化 Problem 与 Child 可理解的 `approval_denied`
+  Tool Feedback；
+- 验收后复核增加了生产 `ThreadManager` 恢复契约：Approval/Input Wait 在不重复
+  发布 Host Event 的前提下重建 Turn Kernel 与 Request Ledger，保持原 Request ID，
+  并安全暂存早于 Tool Replay Wait 到达的 Decision/Reply；
+- VS Code Approval Card 与 Approvals Tree 显示 Agent Path、Parent Path 和 Role；
+  真实 Electron 验证写型 Child 在 `suggest` 下等待、接收 Parent-proxied
+  Decision、恢复执行、验证改动并在 Parent 不调用 `wait_agent` 时自动 Completion；
+- Go 全量、聚焦 Race、Protocol Contract、43/43 Architecture Ratchet、
+  VS Code Check、222 项测试、文档检查和 Electron 场景均通过。
 
 ### MA5：Workspace Integration 与 Nested Agent
 

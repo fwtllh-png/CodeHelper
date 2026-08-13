@@ -19,7 +19,7 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	assertPragma(t, store.DB(), "user_version", "1")
+	assertPragma(t, store.DB(), "user_version", "2")
 	assertPragma(t, store.DB(), "journal_mode", "wal")
 	assertPragma(t, store.DB(), "foreign_keys", "1")
 	assertPragma(t, store.DB(), "busy_timeout", "137")
@@ -30,7 +30,8 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 		"turn_domain_facts", "turn_terminal_envelopes",
 		"turn_terminal_outbox", "turn_coordinator_leases",
 		"snapshots", "usage", "usage_turn_context", "automations", "automation_runs",
-		"agent_spawn_edges", "repo_index_files", "repo_index_symbols", "repo_index_meta",
+		"agent_nodes", "agent_messages", "agent_results", "agent_budget_ledger",
+		"repo_index_files", "repo_index_symbols", "repo_index_meta",
 		"task_attempts", "workflow_runs", "workflow_nodes", "spans",
 		"provider_capabilities",
 	}
@@ -56,8 +57,8 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 		"sample", "source_sequence", "cost_known")
 	assertTableColumns(t, store.DB(), "automations",
 		"task_executor", "task_max_attempts")
-	assertTableColumns(t, store.DB(), "agent_spawn_edges",
-		"workspace_root", "session_id")
+	assertTableColumns(t, store.DB(), "agent_nodes",
+		"workspace_root", "session_id", "path", "revision", "operation_id")
 }
 
 func TestTransactionCommitRollbackAndForeignKeys(t *testing.T) {

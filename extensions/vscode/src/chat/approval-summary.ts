@@ -24,10 +24,14 @@ export function approvalCardContent(
     stringField(input, "reason") ??
     approval.reason;
   const target = fileApply?.label ?? path ?? purpose;
-  const summary = `Approval: ${approval.tool}` +
+  const source = approvalSource(approval);
+  const summary = `${source === undefined ? "Approval" : source}: ${approval.tool}` +
     (target === undefined ? "" : ` · ${singleLine(target, 100)}`) +
     (approval.resolved === undefined ? "" : ` · ${approval.resolved}`);
   const lines: string[] = [];
+  if (source !== undefined) {
+    lines.push(`Requested by: ${source}`);
+  }
   if (fileApply !== undefined) {
     lines.push(`Changes: ${fileApply.label}`);
     lines.push(...fileApply.files.slice(0, 3).map((file) => `• ${file}`));
@@ -87,6 +91,12 @@ export function approvalDialogContent(
     ? `${approval.tool} needs approval`
     : `${approval.tool}: ${singleLine(purpose, 140)}`;
   const sections: string[] = [];
+  const source = approvalSource(approval);
+  if (source !== undefined) {
+    sections.push(
+      `Source\n${source}\nParent: ${approval.source?.parentPath ?? "/root"}`,
+    );
+  }
   if (fileApply !== undefined) {
     sections.push(`Request\nApply ${fileApply.label}`);
     sections.push(`Files\n${fileApply.files.map((file) => `• ${file}`).join("\n")}`);
@@ -105,6 +115,11 @@ export function approvalDialogContent(
   }
   sections.push("Full request details are available in the Chat approval card.");
   return { title, detail: sections.join("\n\n") };
+}
+
+function approvalSource(approval: ApprovalCard): string | undefined {
+  if (approval.source === undefined) return undefined;
+  return `Agent ${approval.source.agentPath} (${approval.source.role})`;
 }
 
 interface FileApplySummary {

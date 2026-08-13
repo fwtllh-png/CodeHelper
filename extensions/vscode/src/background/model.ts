@@ -21,9 +21,13 @@ export interface ThreadRow {
 
 export interface AgentRow {
   readonly id: string;
+  readonly path: string;
+  readonly revision: number;
   readonly workspace: string;
   readonly sessionId: string;
+  readonly threadId: string;
   readonly parentId: string;
+  readonly parentPath: string;
   readonly role: string;
   readonly status: string;
   readonly lastMessage: string;
@@ -50,6 +54,9 @@ export interface ApprovalRow {
   readonly tool: string;
   readonly resources: readonly string[];
   readonly expiresAt: string;
+  readonly agentPath: string;
+  readonly agentRole: string;
+  readonly parentPath: string;
 }
 
 export interface UsageRollup {
@@ -82,7 +89,8 @@ export interface TerminalNotice {
 
 const terminalTaskStates = new Set(["completed", "failed", "canceled"]);
 const terminalAgentStates = new Set([
-  "completed", "errored", "interrupted", "shutdown",
+  "completed", "failed", "interrupted", "integrated",
+  "integration_failed", "closed",
 ]);
 
 export class BackgroundProjector {
@@ -145,6 +153,9 @@ export class BackgroundProjector {
               `${resource.access}:${resource.path ?? resource.id ?? resource.kind}`,
           ),
           expiresAt: event.data.expires_at,
+          agentPath: event.data.source?.agent_path ?? "",
+          agentRole: event.data.source?.role ?? "",
+          parentPath: event.data.source?.parent_path ?? "",
         });
         return [];
       case "approval.resolved":
@@ -171,7 +182,8 @@ export class BackgroundProjector {
           event.data.message === undefined || event.data.message === ""
             ? event.data.agent_id
             : event.data.message,
-          event.data.status === "errored",
+          event.data.status === "failed" ||
+            event.data.status === "integration_failed",
         );
         return notice === undefined ? [] : [notice];
       }

@@ -635,6 +635,8 @@ func (d *TurnSteeredData) validate() error {
 type ApprovalResolvedData struct {
 	RequestID string           `json:"request_id"`
 	Decision  ApprovalDecision `json:"decision"`
+	Problem   *Problem         `json:"problem,omitempty"`
+	Source    *ApprovalSource  `json:"source,omitempty"`
 }
 
 func (*ApprovalResolvedData) eventKind() EventKind { return EventApprovalResolved }
@@ -645,6 +647,14 @@ func (d *ApprovalResolvedData) validate() error {
 	}
 	if d.RequestID == "" {
 		return errors.New("resolved approval request_id is required")
+	}
+	if d.Problem != nil &&
+		(d.Problem.Version != ProblemVersion || !ValidErrorCode(d.Problem.Code) ||
+			d.Problem.Message == "") {
+		return errors.New("resolved approval problem is invalid")
+	}
+	if err := validateApprovalSource(d.Source); err != nil {
+		return err
 	}
 	return nil
 }
@@ -709,6 +719,16 @@ type EditPlanFile struct {
 	AfterDigest  string `json:"after_digest"`
 }
 
+type ApprovalSource struct {
+	Kind          string `json:"kind"`
+	AgentID       string `json:"agent_id"`
+	AgentPath     string `json:"agent_path"`
+	ParentPath    string `json:"parent_path"`
+	Role          string `json:"role"`
+	SessionID     string `json:"session_id"`
+	WorkspaceRoot string `json:"workspace_root"`
+}
+
 type ApprovalRequiredData struct {
 	RequestID           string                  `json:"request_id"`
 	CallID              string                  `json:"call_id"`
@@ -723,6 +743,7 @@ type ApprovalRequiredData struct {
 	Reason              string                  `json:"reason,omitempty"`
 	Network             *NetworkApprovalPayload `json:"network,omitempty"`
 	EditPlan            *EditPlan               `json:"edit_plan,omitempty"`
+	Source              *ApprovalSource         `json:"source,omitempty"`
 }
 
 // NetworkApprovalPayload is host-scoped egress approval metadata (Immediate/Deferred).
@@ -752,6 +773,9 @@ func (d *ApprovalRequiredData) validate() error {
 			return errors.New("approval allowed scope is invalid")
 		}
 	}
+	if err := validateApprovalSource(d.Source); err != nil {
+		return err
+	}
 	if d.EditPlan != nil {
 		if !validSHA256(d.EditPlan.ID) || len(d.EditPlan.Files) == 0 {
 			return errors.New("approval edit plan identity and files are required")
@@ -763,6 +787,17 @@ func (d *ApprovalRequiredData) validate() error {
 				return errors.New("approval edit plan file is invalid")
 			}
 		}
+	}
+	return nil
+}
+
+func validateApprovalSource(source *ApprovalSource) error {
+	if source != nil &&
+		(source.Kind != "agent" || source.AgentID == "" ||
+			source.AgentPath == "" || source.ParentPath == "" ||
+			source.Role == "" || source.SessionID == "" ||
+			source.WorkspaceRoot == "") {
+		return errors.New("approval source is invalid")
 	}
 	return nil
 }
@@ -899,15 +934,16 @@ func (d *TurnVerificationData) validate() error {
 
 // AgentSpawnedData records a durable subagent spawn edge (W4.4).
 type AgentSpawnedData struct {
-	AgentID       string `json:"agent_id"`
-	ParentID      string `json:"parent_id,omitempty"`
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	SessionID     string `json:"session_id,omitempty"`
-	Role          string `json:"role"`
-	Profile       string `json:"profile,omitempty"`
-	Stance        string `json:"stance,omitempty"`
-	Depth         int    `json:"depth"`
-	Worktree      string `json:"worktree,omitempty"`
+	AgentID       string          `json:"agent_id"`
+	ParentID      string          `json:"parent_id,omitempty"`
+	WorkspaceRoot string          `json:"workspace_root,omitempty"`
+	SessionID     string          `json:"session_id,omitempty"`
+	Role          string          `json:"role"`
+	Profile       string          `json:"profile,omitempty"`
+	Stance        string          `json:"stance,omitempty"`
+	Depth         int             `json:"depth"`
+	Worktree      string          `json:"worktree,omitempty"`
+	Detail        json.RawMessage `json:"detail,omitempty"`
 }
 
 func (*AgentSpawnedData) eventKind() EventKind { return EventAgentSpawned }
@@ -919,16 +955,20 @@ func (d *AgentSpawnedData) validate() error {
 	if d.Role == "" {
 		return errors.New("agent role is required")
 	}
+	if len(d.Detail) > 0 && !json.Valid(d.Detail) {
+		return errors.New("agent spawn detail is invalid")
+	}
 	return nil
 }
 
 // AgentStatusData records a durable subagent status transition.
 type AgentStatusData struct {
-	AgentID       string `json:"agent_id"`
-	WorkspaceRoot string `json:"workspace_root,omitempty"`
-	SessionID     string `json:"session_id,omitempty"`
-	Status        string `json:"status"`
-	Message       string `json:"message,omitempty"`
+	AgentID       string          `json:"agent_id"`
+	WorkspaceRoot string          `json:"workspace_root,omitempty"`
+	SessionID     string          `json:"session_id,omitempty"`
+	Status        string          `json:"status"`
+	Message       string          `json:"message,omitempty"`
+	Detail        json.RawMessage `json:"detail,omitempty"`
 }
 
 func (*AgentStatusData) eventKind() EventKind { return EventAgentStatus }
@@ -936,6 +976,9 @@ func (*AgentStatusData) eventKind() EventKind { return EventAgentStatus }
 func (d *AgentStatusData) validate() error {
 	if d.AgentID == "" || d.Status == "" {
 		return errors.New("agent id and status are required")
+	}
+	if len(d.Detail) > 0 && !json.Valid(d.Detail) {
+		return errors.New("agent status detail is invalid")
 	}
 	return nil
 }

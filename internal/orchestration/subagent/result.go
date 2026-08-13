@@ -80,7 +80,7 @@ func (r Result) WritePaths() []string {
 }
 
 // Digest is the compact status message persisted with the agent edge. The full
-// Result lives in a handle; this is what survives in agent_spawn_edges.
+// Result is stored durably; Digest is the bounded Agent Node summary.
 func (r Result) Digest() string {
 	parts := make([]string, 0, 4)
 	if summary := strings.TrimSpace(r.Summary); summary != "" {
@@ -133,6 +133,11 @@ func (m *Manager) Settle(result Result) error {
 		m.mu.Unlock()
 		return fmt.Errorf("agent %s is closed", agentID)
 	}
+	if agent.Result != nil && agent.Status == result.Status &&
+		agent.Result.TurnID == result.TurnID {
+		m.mu.Unlock()
+		return nil
+	}
 	stored := result
 	if stored.Context.Version == 0 && agent.Context != nil {
 		stored.Context = cloneContextReceipt(*agent.Context)
@@ -140,16 +145,12 @@ func (m *Manager) Settle(result Result) error {
 	for _, conflict := range m.claimLocked(agentID, result.WritePaths()) {
 		stored.Unresolved = append(stored.Unresolved, conflict.String())
 	}
-	agent.Result = &stored
-	agent.Status = stored.Status
-	agent.LastMessage = stored.Digest()
-	if stored.TurnID != "" {
-		agent.TurnID = stored.TurnID
-	}
-	m.recordStatusLocked(agentID, stored.Status, agent.LastMessage)
-	m.wait.Broadcast()
+	err := m.transitionLocked(
+		agent, stored.Status, stored.TurnID, stored.Digest(),
+		"child_runtime", "terminal result committed", &stored,
+	)
 	m.mu.Unlock()
-	return nil
+	return err
 }
 
 // Result reports a settled child result, if the agent has one.

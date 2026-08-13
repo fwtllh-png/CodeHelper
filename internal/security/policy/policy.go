@@ -99,6 +99,34 @@ func DefaultRuntime(mode Mode, permission Permission) *Runtime {
 	}
 }
 
+// TightenPermission applies a fixed authority ceiling to a requested posture.
+// Unknown values fail closed. The ordering reflects the maximum automatic
+// authority each posture can exercise.
+func TightenPermission(requested, ceiling Permission) Permission {
+	rank := func(value Permission) int {
+		switch value {
+		case PermissionNever:
+			return 0
+		case PermissionSuggest:
+			return 1
+		case PermissionAuto:
+			return 2
+		case PermissionBypass:
+			return 3
+		default:
+			return -1
+		}
+	}
+	requestedRank, ceilingRank := rank(requested), rank(ceiling)
+	if requestedRank < 0 || ceilingRank < 0 {
+		return PermissionNever
+	}
+	if requestedRank > ceilingRank {
+		return ceiling
+	}
+	return requested
+}
+
 // CloneSampling returns a turn-local copy of Mode/Permission and rule lists.
 // Approvals and Now are shared with the session so grants stay coherent; host
 // Mode/Permission mutations on the parent Runtime do not affect the clone.

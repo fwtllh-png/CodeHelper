@@ -101,8 +101,13 @@ func buildChildOrchestration(
 	output.children = newChildRuntime(
 		limits, execution.Workspace, output.childGovernor, output.childToolsets,
 	)
+	workspaceIdentity, err := taskstate.NormalizeWorkspaceRoot(execution.Workspace)
+	if err != nil {
+		return fmt.Errorf("normalize agent workspace: %w", err)
+	}
 	output.subagents, err = subagent.OpenControl(subagent.Options{
 		Root: agentRoot, Gate: state.security.guard,
+		Workspace: workspaceIdentity, SessionID: state.config.hookSessionID,
 		Runtime: output.children, Worktrees: childTrees,
 		Budget: subagent.Budget{
 			MaxTokens: limits.MaxTokens, MaxCostUSD: limits.MaxCostUSD,

@@ -245,6 +245,40 @@ void test("connectSession projects workspace agent events across graph threads",
   connection.dispose();
 });
 
+void test("connectSession projects child approvals across agent threads", async () => {
+  const transport = new FakeTransport();
+  transport.responses.set("session/load", [{}]);
+  transport.responses.set("session/replay", [{
+    events: [agentApprovalEvent(6, "approval.required")],
+    nextSeq: 6,
+    truncated: false,
+  }]);
+  const store = new BindingStore(new MemoryMemento());
+  await store.save(binding(5));
+  const kinds: string[] = [];
+  const connection = await connectSession(
+    transport,
+    store,
+    "/workspace",
+    (event) => {
+      kinds.push(event.kind);
+      return Promise.resolve();
+    },
+    () => undefined,
+  );
+  transport.notify({
+    method: "session/update",
+    params: {
+      sessionId: "session_1",
+      event: agentApprovalEvent(7, "approval.resolved"),
+    },
+  });
+  await connection.settled();
+  assert.deepEqual(kinds, ["approval.required", "approval.resolved"]);
+  assert.equal(store.load("/workspace")?.lastSeq, 7);
+  connection.dispose();
+});
+
 void test("connectSession hydrates paginated session history", async () => {
   const transport = new FakeTransport();
   transport.responses.set("session/load", [{}]);
@@ -380,6 +414,51 @@ function agentEvent(sequence: number): Readonly<Record<string, unknown>> {
       session_id: "runtime-session",
       status: "completed",
     },
+  };
+}
+
+function agentApprovalEvent(
+  sequence: number,
+  kind: "approval.required" | "approval.resolved",
+): Readonly<Record<string, unknown>> {
+  const source = {
+    kind: "agent",
+    agent_id: "agent-1",
+    agent_path: "/root/write",
+    parent_path: "/root",
+    role: "implementer",
+    session_id: "runtime-session",
+    workspace_root: "/workspace",
+  };
+  return {
+    version: 1,
+    id: `approval_event_${String(sequence)}`,
+    sequence,
+    operation_id: "op_agent",
+    thread_id: "thread-agent-1",
+    turn_id: "turn_agent",
+    item_id: "item_agent",
+    kind,
+    created_at: "2026-08-04T00:00:00Z",
+    data: kind === "approval.required"
+      ? {
+        request_id: "approval-1",
+        call_id: "call-1",
+        tool: "file_write",
+        arguments: {},
+        arguments_digest: "digest",
+        resources: [],
+        allowed_scopes: ["once"],
+        expires_at: "2026-08-04T01:00:00Z",
+        replacement_allowed: false,
+        modifiable_arguments: [],
+        source,
+      }
+      : {
+        request_id: "approval-1",
+        decision: "approve",
+        source,
+      },
   };
 }
 

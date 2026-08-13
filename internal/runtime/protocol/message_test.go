@@ -371,6 +371,12 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 			AllowedScopes: []ApprovalScope{ApprovalScopeOnce, ApprovalScopeSession},
 			ExpiresAt:     time.Now().Add(time.Minute), ReplacementAllowed: true,
 			ModifiableArguments: []string{"path"},
+			Source: &ApprovalSource{
+				Kind: "agent", AgentID: "agent-1",
+				AgentPath: "/root/write_x", ParentPath: "/root",
+				Role: "implementer", SessionID: "session-1",
+				WorkspaceRoot: "/workspace",
+			},
 			EditPlan: &EditPlan{
 				ID: strings.Repeat("b", 64), Diff: "--- a/x\n+++ b/x\n",
 				Files: []EditPlanFile{{
@@ -381,7 +387,13 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 				}},
 			},
 		},
-		&ApprovalResolvedData{RequestID: "approval_1", Decision: ApprovalApprove},
+		&ApprovalResolvedData{
+			RequestID: "approval_1", Decision: ApprovalDeny,
+			Problem: NewProblemWithDetails(
+				CodeConflict, "child tool approval was denied", false,
+				ProblemDetails{Reason: "approval_denied"}, nil,
+			),
+		},
 		&TurnRevertedData{
 			TargetTurnID: "turn_previous", Restored: []string{"/workspace/value.go"},
 			Conflicts: []RevertConflict{}, NonFileSideEffectsNote: "file resources only",

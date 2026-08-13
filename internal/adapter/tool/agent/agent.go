@@ -263,7 +263,8 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		return tool.Result{}, err
 	}
 	body := map[string]any{
-		"agent_id": child.ID, "thread_id": threadID, "role": string(child.Role),
+		"agent_id": child.ID, "agent_path": child.Path, "revision": child.Revision,
+		"thread_id": threadID, "role": string(child.Role),
 		"profile": child.Profile, "stance": string(child.Stance),
 		"depth": child.Depth, "worktree": child.Worktree,
 		"serialized": child.Serialized,

@@ -60,9 +60,13 @@ function decodeAgent(value: unknown): AgentRow {
   const row = object(value, "agent");
   return {
     id: string(row["id"], "agent.id"),
+    path: string(row["path"], "agent.path"),
+    revision: number(row["revision"], "agent.revision"),
     workspace: string(row["workspace"], "agent.workspace"),
     sessionId: string(row["session_id"], "agent.session_id"),
+    threadId: string(row["thread_id"], "agent.thread_id"),
     parentId: optionalString(row["parent_id"], "agent.parent_id"),
+    parentPath: string(row["parent_path"], "agent.parent_path"),
     role: string(row["role"], "agent.role"),
     status: string(row["status"], "agent.status"),
     lastMessage: optionalString(row["last_message"], "agent.last_message"),

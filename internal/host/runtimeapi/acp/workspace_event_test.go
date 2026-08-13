@@ -1,8 +1,12 @@
 package acp
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
+	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -18,6 +22,27 @@ func TestAgentEventsAreVisibleOnlyToTheirHostWorkspace(t *testing.T) {
 		&protocol.AgentMessageData{
 			From: "agent-1", To: "agent-2", WorkspaceRoot: "/workspace/a",
 			Sequence: 1, Body: []byte(`{}`),
+		},
+		&protocol.ApprovalRequiredData{
+			RequestID: "approval-1", CallID: "call-1", Tool: "github_comment",
+			Arguments: []byte(`{}`), ArgumentsDigest: "digest",
+			AllowedScopes: []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
+			ExpiresAt:     time.Now().Add(time.Minute),
+			Source: &protocol.ApprovalSource{
+				Kind: "agent", AgentID: "agent-1",
+				AgentPath: "/root/write", ParentPath: "/root",
+				Role: "implementer", SessionID: "session-1",
+				WorkspaceRoot: "/workspace/a",
+			},
+		},
+		&protocol.ApprovalResolvedData{
+			RequestID: "approval-1", Decision: protocol.ApprovalApprove,
+			Source: &protocol.ApprovalSource{
+				Kind: "agent", AgentID: "agent-1",
+				AgentPath: "/root/write", ParentPath: "/root",
+				Role: "implementer", SessionID: "session-1",
+				WorkspaceRoot: "/workspace/a",
+			},
 		},
 	} {
 		event, err := protocol.NewEvent(protocol.EventMeta{
@@ -42,5 +67,39 @@ func TestAgentEventsAreVisibleOnlyToTheirHostWorkspace(t *testing.T) {
 	}
 	if server.workspaceVisible(foreign) {
 		t.Fatal("foreign workspace agent event was visible")
+	}
+}
+
+func TestAgentApprovalWorkspaceResolvesSymlinks(t *testing.T) {
+	workspace := t.TempDir()
+	link := filepath.Join(t.TempDir(), "workspace-link")
+	if err := os.Symlink(workspace, link); err != nil {
+		t.Fatal(err)
+	}
+	normalized, err := taskstate.NormalizeWorkspaceRoot(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{options: Options{WorkspaceRoot: normalized}}
+	event, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread_child",
+		TurnID: "turn_child", ItemID: "item",
+	}, &protocol.ApprovalRequiredData{
+		RequestID: "approval-1", CallID: "call-1", Tool: "file_write",
+		Arguments: []byte(`{}`), ArgumentsDigest: "digest",
+		AllowedScopes: []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
+		ExpiresAt:     time.Now().Add(time.Minute),
+		Source: &protocol.ApprovalSource{
+			Kind: "agent", AgentID: "agent-1",
+			AgentPath: "/root/write", ParentPath: "/root",
+			Role: "implementer", SessionID: "session-1",
+			WorkspaceRoot: link,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !server.workspaceVisible(event) {
+		t.Fatal("agent approval through workspace symlink was not visible")
 	}
 }

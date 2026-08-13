@@ -110,6 +110,12 @@ export interface ExtensionAPI {
   readonly testInvalidateChatProjection?: () => void;
   readonly testDispatchChatIntent?: (value: unknown) => Promise<void>;
   readonly testApprovePending?: () => Promise<boolean>;
+  readonly testDecideApproval?: (
+    sessionId: string,
+    turnId: string,
+    requestId: string,
+    expiresAt: string,
+  ) => Promise<SubmitReceipt>;
   readonly testSubmitPrompt?: (
     sessionId: string,
     prompt: string,
@@ -452,6 +458,19 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
             }
             return chatView.approvePendingForTest();
           },
+          testDecideApproval: async (
+            sessionId,
+            turnId,
+            requestId,
+            expiresAt,
+          ) => activeRegistry.selected.controller.decideApproval(
+            sessionId,
+            turnId,
+            requestId,
+            "approve",
+            "once",
+            expiresAt,
+          ),
           testSubmitPrompt: async (sessionId, prompt) =>
             activeRegistry.selected.controller.submitPrompt(
               sessionId,

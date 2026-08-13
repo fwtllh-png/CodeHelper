@@ -42,6 +42,10 @@ try {
   await mkdir(join(workspace, ".vscode"), { recursive: true });
   await mkdir(join(nativeWorkspace, ".vscode"), { recursive: true });
   await mkdir(join(subagentWorkspace, ".vscode"), { recursive: true });
+  await writeFile(
+    join(subagentWorkspace, "codehelper.toml"),
+    "[execution.subagent]\nworkspace = \"same_workspace_serialized\"\n",
+  );
   await mkdir(join(workspaceA, ".vscode"), { recursive: true });
   await mkdir(join(workspaceB, ".vscode"), { recursive: true });
   if ((nativeBinary === undefined) !== (nativeFixture === undefined)) {
@@ -64,7 +68,7 @@ try {
       nativeBinary,
       subagentFixture,
       "codehelper-subagent-fixture",
-      ["--posture", "bypass"],
+      ["--posture", "suggest"],
     );
   await build({
     entryPoints: [join(extensionRoot, "src", "test", "suite", "index.ts")],
@@ -104,6 +108,14 @@ try {
       const settings = {
         "codehelper.runtime.autoStart": native,
         ...(native ? { "codehelper.binaryPath": binaryPath } : {}),
+        ...(scenario === "subagent"
+          ? {
+            "codehelper.runtime.configPath": join(
+              subagentWorkspace,
+              "codehelper.toml",
+            ),
+          }
+          : {}),
       };
       const scenarioWorkspace = scenario === "native"
         ? nativeWorkspace

@@ -2,16 +2,43 @@ package wire
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
+
+type authorityTestTool struct{ descriptor tool.Descriptor }
+
+func (t authorityTestTool) Descriptor() tool.Descriptor { return t.descriptor }
+
+func (authorityTestTool) Execute(context.Context, json.RawMessage) (tool.Result, error) {
+	return tool.Result{Content: "ok"}, nil
+}
+
+type recoveredChildRuntimeHost struct{}
+
+func (recoveredChildRuntimeHost) StartTurn(
+	context.Context, string, string,
+) (string, error) {
+	return "turn-recovered", nil
+}
+
+func (recoveredChildRuntimeHost) CancelTurn(
+	context.Context, string, string,
+) error {
+	return nil
+}
 
 // subagentFixture is absolute because the session workspace is a temp directory
 // and a relative fixture path is resolved against it.
@@ -47,6 +74,143 @@ func TestChildTurnIntentUsesEffectiveWorkspaceAuthority(t *testing.T) {
 				got,
 				testCase.want,
 			)
+		}
+	}
+}
+
+func TestBindRestoresActiveChildObservation(t *testing.T) {
+	control, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: recoveryToolGate{},
+		Runtime:   recoveredChildRuntimeHost{},
+		Workspace: t.TempDir(), SessionID: "session-recovered",
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := control.SpawnSystem(
+		"recover child", "", subagent.RoleExplore, "inspect", "report",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := control.Takeover(
+		t.Context(), child.ID, "resume after restart",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := control.AwaitApproval(child.ID, "approval-stable"); err != nil {
+		t.Fatal(err)
+	}
+	current, _ := control.Agent(child.ID)
+	child = &current
+
+	threads := app.NewThreadManager(nil)
+	threads.SetChildFactory(func(app.ChildSpec) (*app.EngineAdapter, error) {
+		return nil, errors.New("recovery test must not instantiate an engine")
+	})
+	runtime := app.NewRuntime(app.Options{Engine: threads})
+	children := newChildRuntime(config.Subagent{
+		Workspace: config.SubagentWorkspaceReadOnly,
+		WallTime:  time.Minute,
+	}, t.TempDir(), nil, nil)
+	t.Cleanup(func() {
+		children.close()
+		_ = runtime.Close(context.Background())
+	})
+	if err := children.bind(runtime, threads, control); err != nil {
+		t.Fatal(err)
+	}
+	threadID := protocol.ThreadID(child.ThreadID)
+	children.mu.Lock()
+	recovered := children.turns[threadID]
+	pumpStarted := children.stop != nil
+	children.mu.Unlock()
+	if recovered == nil || recovered.turnID != protocol.TurnID(child.TurnID) ||
+		!pumpStarted {
+		t.Fatalf(
+			"recovered turn = %+v, pump_started=%v, child=%+v",
+			recovered, pumpStarted, child,
+		)
+	}
+
+	children.observe(protocol.Event{
+		ThreadID: threadID, TurnID: protocol.TurnID(child.TurnID),
+		Data: &protocol.ApprovalResolvedData{
+			RequestID: "approval-stable", Decision: protocol.ApprovalApprove,
+		},
+	})
+	resumed, _ := control.Agent(child.ID)
+	if resumed.Status != subagent.StatusRunning {
+		t.Fatalf("resumed child status = %q, want running", resumed.Status)
+	}
+	children.observe(protocol.Event{
+		ThreadID: threadID, TurnID: protocol.TurnID(child.TurnID),
+		Data: &protocol.TurnCompletedData{Text: "recovered completion"},
+	})
+	result, ok := control.Result(child.ID)
+	if !ok || result.Status != subagent.StatusCompleted ||
+		result.Summary != "recovered completion" {
+		t.Fatalf("recovered result = %+v, ok=%v", result, ok)
+	}
+}
+
+type recoveryToolGate struct{}
+
+func (recoveryToolGate) Execute(
+	context.Context, string, string, json.RawMessage,
+) (tool.Result, error) {
+	return tool.Result{Content: "ok"}, nil
+}
+
+func TestChildAuthorityIsParentAndRoleIntersection(t *testing.T) {
+	parent := tool.NewRegistry(nil, nil)
+	child := tool.NewRegistry(nil, nil)
+	register := func(registry *tool.Registry, name string, capability tool.Capability) {
+		t.Helper()
+		access := tool.AccessRead
+		if capability != tool.CapabilityRead {
+			access = tool.AccessWrite
+		}
+		err := registry.Register(authorityTestTool{descriptor: tool.Descriptor{
+			Name: name, Description: name,
+			InputSchema: map[string]any{"type": "object"},
+			Visibility:  tool.VisibleModel, Capability: capability,
+			AccessMode: access, ParallelPolicy: tool.ParallelConcurrent,
+			SandboxRequirement: tool.SandboxNone,
+			Availability:       tool.AvailabilityAvailable,
+		}}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, registry := range []*tool.Registry{parent, child} {
+		register(registry, "file_read", tool.CapabilityRead)
+		register(registry, "file_write", tool.CapabilityWrite)
+		register(registry, "spawn_agent", tool.CapabilityWrite)
+	}
+	register(child, "child_only", tool.CapabilityRead)
+
+	security := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
+	restrictChildTools(security, app.ChildSpec{
+		AllowedTools: []string{"read"}, CanDelegate: false,
+	}, parent, child)
+	decision := func(name string, capability tool.Capability) policy.Decision {
+		return security.Evaluate(policy.Invocation{
+			CallID: name + "-call", Tool: name,
+			Arguments: json.RawMessage(`{}`), Capability: capability,
+			Validated: true,
+		})
+	}
+	if got := decision("file_read", tool.CapabilityRead); got.Action != policy.ActionAllow {
+		t.Fatalf("inherited role read = %+v", got)
+	}
+	for name, capability := range map[string]tool.Capability{
+		"file_write":  tool.CapabilityWrite,
+		"spawn_agent": tool.CapabilityWrite,
+		"child_only":  tool.CapabilityRead,
+	} {
+		if got := decision(name, capability); got.Action != policy.ActionDeny {
+			t.Fatalf("%s authority = %+v, want deny", name, got)
 		}
 	}
 }
@@ -103,6 +267,14 @@ func TestPersistentSessionPublishesAgentSpawnLive(t *testing.T) {
 func openChildSession(
 	t *testing.T, fixture string, tune func(*config.Overrides),
 ) *Session {
+	return openChildSessionWithPermission(t, fixture, "bypass", tune)
+}
+
+func openChildSessionWithPermission(
+	t *testing.T,
+	fixture, permission string,
+	tune func(*config.Overrides),
+) *Session {
 	t.Helper()
 	workspace := t.TempDir()
 	tools := true
@@ -111,7 +283,7 @@ func openChildSession(
 		tune(&overrides)
 	}
 	session, err := NewExec(context.Background(), ExecOptions{
-		FixturePath: subagentFixture(t, fixture), Permission: "bypass",
+		FixturePath: subagentFixture(t, fixture), Permission: permission,
 		ConfigOverrides: overrides,
 	})
 	if err != nil {
@@ -248,6 +420,183 @@ func TestChildAgentRunsRealEngineTurn(t *testing.T) {
 			}
 		case <-deadline:
 			t.Fatalf("child thread events missing: receipt=%v completed=%v", sawReceipt, sawCompleted)
+		}
+	}
+}
+
+func TestSuggestChildWaitsForHostApprovalWithSource(t *testing.T) {
+	session, manager, child, events, required := startSuggestChildApproval(t)
+	if required.Source == nil ||
+		required.Source.AgentID != child.ID ||
+		required.Source.AgentPath != child.Path ||
+		required.Source.ParentPath != child.ParentPath ||
+		required.Source.Role != string(child.Role) ||
+		required.Source.SessionID == "" ||
+		required.Source.WorkspaceRoot == "" {
+		t.Fatalf("approval source = %+v, child = %+v", required.Source, child)
+	}
+	waitForAgentStatus(t, manager, child.ID, subagent.StatusWaiting)
+	submitChildApproval(t, session, child, required, protocol.ApprovalApprove)
+	resolved := waitForChildApprovalResolved(t, events, child.ThreadID)
+	if resolved.RequestID != required.RequestID || resolved.Problem != nil {
+		t.Fatalf("resolved approval = %+v, required = %+v", resolved, required)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	waited, err := manager.Wait(ctx, []string{child.ID}, 15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if waited.TimedOut {
+		t.Fatal("approved child did not finish")
+	}
+	result, ok := manager.Result(child.ID)
+	if !ok || result.Status != subagent.StatusCompleted {
+		t.Fatalf("approved child result = %+v, ok=%v", result, ok)
+	}
+}
+
+func TestDeniedChildApprovalPublishesProblemAndToolFeedback(t *testing.T) {
+	session, _, child, events, required := startSuggestChildApproval(t)
+	submitChildApproval(t, session, child, required, protocol.ApprovalDeny)
+
+	deadline := time.After(10 * time.Second)
+	sawProblem, sawFeedback := false, false
+	for !sawProblem || !sawFeedback {
+		select {
+		case event := <-events:
+			if event.ThreadID != protocol.ThreadID(child.ThreadID) {
+				continue
+			}
+			switch data := event.Data.(type) {
+			case *protocol.ApprovalResolvedData:
+				sawProblem = data.RequestID == required.RequestID &&
+					data.Problem != nil &&
+					data.Problem.Details != nil &&
+					data.Problem.Details.Reason == "approval_denied"
+			case *protocol.ToolResultData:
+				if data.CallID == required.CallID && data.IsError &&
+					strings.Contains(strings.ToLower(data.Output), "denied") {
+					sawFeedback = true
+				}
+			}
+		case <-deadline:
+			t.Fatalf(
+				"denied approval evidence missing: problem=%v feedback=%v",
+				sawProblem, sawFeedback,
+			)
+		}
+	}
+}
+
+func startSuggestChildApproval(
+	t *testing.T,
+) (*Session, *subagent.AgentControl, subagent.Agent, <-chan protocol.Event, *protocol.ApprovalRequiredData) {
+	t.Helper()
+	session := openChildSessionWithPermission(
+		t, "subagent-write", "suggest",
+		func(overrides *config.Overrides) {
+			serialized := config.SubagentWorkspaceSerialized
+			overrides.SubagentWorkspace = &serialized
+		},
+	)
+	manager := session.subagents
+	cursor := session.Runtime.Snapshot(t.Context()).LastSequence
+	events, err := session.Runtime.Events(t.Context(), cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := manager.Spawn("", subagent.RoleImplementer, "write and verify child-note.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Takeover(
+		t.Context(), child.ID, "write and verify child-note.txt",
+	); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			if event.ThreadID != protocol.ThreadID(child.ThreadID) {
+				continue
+			}
+			if required, ok := event.Data.(*protocol.ApprovalRequiredData); ok {
+				current, _ := manager.Agent(child.ID)
+				return session, manager, current, events, required
+			}
+		case <-deadline:
+			t.Fatal("writing child did not request approval under suggest posture")
+		}
+	}
+}
+
+func submitChildApproval(
+	t *testing.T,
+	session *Session,
+	child subagent.Agent,
+	required *protocol.ApprovalRequiredData,
+	decision protocol.ApprovalDecision,
+) {
+	t.Helper()
+	itemID, err := protocol.NewItemID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := protocol.NewOperation(&protocol.ApprovalDecisionPayload{
+		ThreadID:  protocol.ThreadID(child.ThreadID),
+		TurnID:    protocol.TurnID(child.TurnID),
+		ItemID:    itemID,
+		RequestID: required.RequestID,
+		Decision:  decision,
+		Scope:     protocol.ApprovalScopeOnce,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func waitForAgentStatus(
+	t *testing.T,
+	manager *subagent.AgentControl,
+	agentID string,
+	status subagent.Status,
+) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if agent, ok := manager.Agent(agentID); ok && agent.Status == status {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	agent, _ := manager.Agent(agentID)
+	t.Fatalf("agent status = %q, want %q", agent.Status, status)
+}
+
+func waitForChildApprovalResolved(
+	t *testing.T,
+	events <-chan protocol.Event,
+	threadID string,
+) *protocol.ApprovalResolvedData {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			if event.ThreadID != protocol.ThreadID(threadID) {
+				continue
+			}
+			if resolved, ok := event.Data.(*protocol.ApprovalResolvedData); ok {
+				return resolved
+			}
+		case <-deadline:
+			t.Fatal("child approval was not resolved")
 		}
 	}
 }

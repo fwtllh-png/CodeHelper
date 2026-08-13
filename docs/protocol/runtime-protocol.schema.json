@@ -2104,6 +2104,9 @@
         "depth": {
           "type": "integer"
         },
+        "detail": {
+          "description": "arbitrary JSON"
+        },
         "parent_id": {
           "type": "string"
         },
@@ -2138,6 +2141,9 @@
       "properties": {
         "agent_id": {
           "type": "string"
+        },
+        "detail": {
+          "description": "arbitrary JSON"
         },
         "message": {
           "type": "string"
@@ -2301,6 +2307,42 @@
             "additionalProperties": false
           }
         },
+        "source": {
+          "type": "object",
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            },
+            "agent_path": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "parent_path": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "workspace_root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "agent_path",
+            "kind",
+            "parent_path",
+            "role",
+            "session_id",
+            "workspace_root"
+          ],
+          "additionalProperties": false
+        },
         "tool": {
           "type": "string"
         }
@@ -2325,8 +2367,113 @@
         "decision": {
           "type": "string"
         },
+        "problem": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "properties": {
+                "actual_revision": {
+                  "type": "integer"
+                },
+                "expected_revision": {
+                  "type": "integer"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "resource_id": {
+                  "type": "string"
+                },
+                "session_status": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "additionalProperties": false
+            },
+            "http_status": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            },
+            "rate_limit": {
+              "type": "object",
+              "properties": {
+                "limit": {
+                  "type": "string"
+                },
+                "remaining": {
+                  "type": "string"
+                },
+                "reset": {
+                  "type": "string"
+                },
+                "retry_after_ms": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "retryable",
+            "version"
+          ],
+          "additionalProperties": false
+        },
         "request_id": {
           "type": "string"
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            },
+            "agent_path": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "parent_path": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "workspace_root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "agent_path",
+            "kind",
+            "parent_path",
+            "role",
+            "session_id",
+            "workspace_root"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

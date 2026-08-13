@@ -17,6 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	plugintool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/plugin"
@@ -319,6 +320,7 @@ func childEngineOptions(
 	options.Guard = nil
 	options.InputHost = nil
 	options.ReadTracker = nil
+	options.Security = cloneThreadSecurity(security)
 	if !spec.Serialized {
 		options.Journal = nil
 		options.WorkspaceTurnGate = nil
@@ -340,15 +342,87 @@ func childEngineOptions(
 		options.Workspace = spec.Workspace
 		options.WorkspaceIsolation = app.SessionIsolationWorktree
 	}
-	if spec.ReadOnly && security != nil {
+	if spec.ReadOnly && options.Security != nil {
 		// Plan mode is the existing, tested read-only enforcement: everything
 		// that is not a read capability is denied with mode_denied. A read-only
 		// stance that only shaped the prompt would not be a stance at all.
-		readOnly := security.CloneSampling()
-		readOnly.Mode = policy.ModePlan
-		options.Security = readOnly
+		options.Security.Mode = policy.ModePlan
+		options.Security.Permission = policy.PermissionNever
+	}
+	if options.Security != nil {
+		options.ProfilePermissionCeiling = options.Security.Permission
 	}
 	return options
+}
+
+func restrictChildTools(
+	security *policy.Runtime,
+	spec app.ChildSpec,
+	parent, child *tool.Registry,
+) {
+	if security == nil || child == nil {
+		return
+	}
+	parentTools := make(map[string]struct{})
+	if parent != nil {
+		for _, descriptor := range allToolDescriptors(parent) {
+			parentTools[descriptor.Name] = struct{}{}
+		}
+	}
+	for _, descriptor := range allToolDescriptors(child) {
+		_, inherited := parentTools[descriptor.Name]
+		if inherited && childRoleAllowsTool(spec, descriptor) {
+			continue
+		}
+		security.Grants = append(security.Grants, policy.Rule{
+			Tool: descriptor.Name, Resource: "*", Action: policy.ActionDeny,
+			Code: "child_authority_denied",
+		})
+	}
+}
+
+func allToolDescriptors(registry *tool.Registry) []tool.Descriptor {
+	var result []tool.Descriptor
+	for _, visibility := range []tool.Visibility{
+		tool.VisibleModel, tool.VisibleInternal, tool.VisibleHidden,
+	} {
+		result = append(result, registry.Descriptors(visibility)...)
+	}
+	return result
+}
+
+func childRoleAllowsTool(spec app.ChildSpec, descriptor tool.Descriptor) bool {
+	if !spec.CanDelegate && isAgentLifecycleTool(descriptor.Name) {
+		return false
+	}
+	if len(spec.AllowedTools) == 0 {
+		return true
+	}
+	for _, allowed := range spec.AllowedTools {
+		switch allowed {
+		case "read", "search":
+			if descriptor.Capability == tool.CapabilityRead {
+				return true
+			}
+		case "verify":
+			if descriptor.Capability == tool.CapabilityProcess {
+				return true
+			}
+		case descriptor.Name:
+			return true
+		}
+	}
+	return descriptor.Name == "turn_complete" || descriptor.Name == "result_get"
+}
+
+func isAgentLifecycleTool(name string) bool {
+	switch name {
+	case "spawn_agent", "send_message", "wait_agent", "list_agents",
+		"followup_task", "interrupt_agent", "close_agent", "integrate_agent":
+		return true
+	default:
+		return false
+	}
 }
 
 func maximumReasoningEffort(providerID, modelID string, reasoning bool) string {

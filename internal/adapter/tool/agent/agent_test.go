@@ -124,7 +124,7 @@ func TestAgentSpawnReceiptAndHandleRead(t *testing.T) {
 	}
 
 	receipt, _ := childBody["receipt"].(map[string]any)
-	if receipt["sequence"] != float64(2) || receipt["to"] != parentID {
+	if receipt["sequence"] != float64(1) || receipt["to"] != parentID {
 		t.Fatalf("receipt = %+v", receipt)
 	}
 }
@@ -540,7 +540,7 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 	closed := execute(t, registry, "close_agent", map[string]any{"agent_id": agentID})
 	var closeBody map[string]any
 	_ = json.Unmarshal([]byte(closed.Content), &closeBody)
-	if closeBody["closed"] != true || closeBody["status"] != "shutdown" {
+	if closeBody["closed"] != true || closeBody["status"] != "closed" {
 		t.Fatalf("close = %+v", closeBody)
 	}
 	if _, err := os.Stat(filepath.Join(worktree, ".codehelper-worktree")); !os.IsNotExist(err) {

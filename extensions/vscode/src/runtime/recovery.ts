@@ -4,6 +4,7 @@ import {
 } from "./client.js";
 import {
   decodeEvent,
+  isUnknownEvent,
   type DecodedEvent,
 } from "../protocol/decode.js";
 import type { BindingStore, RuntimeBinding } from "../state/store.js";
@@ -322,9 +323,13 @@ export async function connectSession(
 }
 
 function isWorkspaceEvent(event: DecodedEvent): boolean {
-  return event.kind === "agent.spawned" ||
+  return !isUnknownEvent(event) &&
+    (event.kind === "agent.spawned" ||
     event.kind === "agent.status" ||
-    event.kind === "agent.message";
+    event.kind === "agent.message" ||
+    ((event.kind === "approval.required" ||
+      event.kind === "approval.resolved") &&
+      event.data.source?.kind === "agent"));
 }
 
 async function replayPage(

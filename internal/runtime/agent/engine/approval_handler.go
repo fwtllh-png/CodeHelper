@@ -12,20 +12,69 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 )
 
+type recoveredInteraction[T any] struct {
+	pending map[string]struct{}
+	early   map[string]T
+}
+
+func (r *recoveredInteraction[T]) mark(requestID string) {
+	if r.pending == nil {
+		r.pending = make(map[string]struct{})
+		r.early = make(map[string]T)
+	}
+	r.pending[requestID] = struct{}{}
+}
+
+func (r *recoveredInteraction[T]) queue(requestID string, value T) bool {
+	if _, recovered := r.pending[requestID]; !recovered {
+		return false
+	}
+	if _, queued := r.early[requestID]; queued {
+		return false
+	}
+	r.early[requestID] = value
+	return true
+}
+
+func (r *recoveredInteraction[T]) take(requestID string) (T, bool) {
+	delete(r.pending, requestID)
+	value, ok := r.early[requestID]
+	delete(r.early, requestID)
+	return value, ok
+}
+
+func (e *Engine) configureApprovalHandlers() {
+	e.guard.SetApprovalHandler(e.emitApproval)
+	e.guard.SetApprovalRecoveryHandler(e.restoreApprovalWait)
+	e.guard.SetApprovalWaitObserver(e.observeApprovalWait)
+}
+
 func (e *Engine) RestoreApprovalRequest(
 	request toolguard.ApprovalRequest,
 ) error {
 	if e.guard == nil {
 		return errors.New("approval guard is unavailable")
 	}
-	return e.guard.RestoreApproval(request)
+	if err := e.guard.RestoreApproval(request); err != nil {
+		return err
+	}
+	e.scopeMu.Lock()
+	e.approvalRecovery.mark(request.RequestID)
+	e.scopeMu.Unlock()
+	return nil
 }
 
 func (e *Engine) RestoreInputRequest(request interact.Request) error {
 	if e.options.InputHost == nil {
 		return interact.HostUnavailableError{}
 	}
-	return e.options.InputHost.RestoreRequest(request)
+	if err := e.options.InputHost.RestoreRequest(request); err != nil {
+		return err
+	}
+	e.scopeMu.Lock()
+	e.inputRecovery.mark(request.RequestID)
+	e.scopeMu.Unlock()
+	return nil
 }
 
 func (e *Engine) connectInputHost(
@@ -37,7 +86,7 @@ func (e *Engine) connectInputHost(
 	}
 	e.options.InputHost.SetEmitter(
 		func(_ context.Context, request interact.Request) error {
-			if err := kernel.requireInput(request.RequestID); err != nil {
+			if err := kernel.ensureInput(request.RequestID); err != nil {
 				return err
 			}
 			scope := e.runningScope()
@@ -58,9 +107,44 @@ func (e *Engine) connectInputHost(
 			})
 		},
 	)
+	e.options.InputHost.SetRecoveryHandler(func(request interact.Request) error {
+		if err := kernel.ensureInput(request.RequestID); err != nil {
+			return err
+		}
+		scope := e.runningScope()
+		if scope == nil {
+			return errors.New("turn scope is not active")
+		}
+		if err := scope.state.requests.Register(
+			turnexec.RequestInput,
+			request.RequestID,
+		); err != nil {
+			return err
+		}
+		reply, queued := e.takeRecoveredInput(request.RequestID)
+		if !queued {
+			return nil
+		}
+		return scope.ResolveInput(reply)
+	})
 	return func() {
 		e.options.InputHost.SetEmitter(nil)
+		e.options.InputHost.SetRecoveryHandler(nil)
 	}
+}
+
+func (e *Engine) queueRecoveredInput(reply interact.Reply) bool {
+	e.scopeMu.Lock()
+	defer e.scopeMu.Unlock()
+	return e.inputRecovery.queue(reply.RequestID, reply)
+}
+
+func (e *Engine) takeRecoveredInput(
+	requestID string,
+) (interact.Reply, bool) {
+	e.scopeMu.Lock()
+	defer e.scopeMu.Unlock()
+	return e.inputRecovery.take(requestID)
 }
 
 func (e *Engine) ApplyPlan(plan interact.Plan) {
@@ -127,21 +211,8 @@ func (e *Engine) setApprovalEmit(emit func(Event) error) {
 }
 
 func (e *Engine) emitApproval(_ context.Context, request toolguard.ApprovalRequest) error {
-	scope := e.runningScope()
-	if scope == nil {
-		return errors.New("approval host is not connected to an active turn")
-	}
-	kernel, err := scope.kernel()
+	scope, err := e.registerApprovalWait(request)
 	if err != nil {
-		return err
-	}
-	if err := kernel.requireApproval(request.RequestID, request.CallID); err != nil {
-		return err
-	}
-	if err := scope.state.requests.Register(
-		turnexec.RequestApproval,
-		request.RequestID,
-	); err != nil {
 		return err
 	}
 	scope.mu.Lock()
@@ -151,4 +222,55 @@ func (e *Engine) emitApproval(_ context.Context, request toolguard.ApprovalReque
 		return errors.New("approval host is not connected to an active turn")
 	}
 	return emit(Event{Approval: &request})
+}
+
+func (e *Engine) restoreApprovalWait(request toolguard.ApprovalRequest) error {
+	scope, err := e.registerApprovalWait(request)
+	if err != nil {
+		return err
+	}
+	decision, queued := e.takeRecoveredApproval(request.RequestID)
+	if !queued {
+		return nil
+	}
+	return scope.ResolveApproval(decision)
+}
+
+func (e *Engine) registerApprovalWait(
+	request toolguard.ApprovalRequest,
+) (*Scope, error) {
+	scope := e.runningScope()
+	if scope == nil {
+		return nil, errors.New("approval host is not connected to an active turn")
+	}
+	kernel, err := scope.kernel()
+	if err != nil {
+		return nil, err
+	}
+	if err := kernel.ensureApproval(request.RequestID, request.CallID); err != nil {
+		return nil, err
+	}
+	if err := scope.state.requests.Register(
+		turnexec.RequestApproval,
+		request.RequestID,
+	); err != nil {
+		return nil, err
+	}
+	return scope, nil
+}
+
+func (e *Engine) queueRecoveredApproval(
+	decision toolguard.ApprovalDecision,
+) bool {
+	e.scopeMu.Lock()
+	defer e.scopeMu.Unlock()
+	return e.approvalRecovery.queue(decision.RequestID, decision)
+}
+
+func (e *Engine) takeRecoveredApproval(
+	requestID string,
+) (toolguard.ApprovalDecision, bool) {
+	e.scopeMu.Lock()
+	defer e.scopeMu.Unlock()
+	return e.approvalRecovery.take(requestID)
 }

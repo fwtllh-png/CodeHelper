@@ -23,7 +23,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 		return tool.Descriptor{
 			Name: "wait_agent",
 			Description: "Wait until listed child agents reach a terminal status " +
-				"(completed|errored|interrupted|shutdown). Empty agent_ids waits for any. " +
+				"(completed|failed|interrupted|integrated|integration_failed|closed). " +
+				"Empty agent_ids waits for any. " +
 				"timeout_ms>0 returns timed_out without error when the deadline elapses. " +
 				"A queued same-workspace child returns deferred immediately because it can start only " +
 				"after the calling turn releases the workspace.",
@@ -45,7 +46,7 @@ func (o *operation) Descriptor() tool.Descriptor {
 		return tool.Descriptor{
 			Name: "list_agents",
 			Description: "List child agents managed by this session. " +
-				"Optionally filter by parent_id; include_closed lists shutdown agents.",
+				"Optionally filter by parent_id; include_closed lists closed agents.",
 			Visibility: o.visibility(), Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
@@ -73,7 +74,9 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"type": "object",
 				"properties": map[string]any{
 					"agent_id": map[string]any{"type": "string", "minLength": float64(1)},
-					"message":  map[string]any{"type": "string", "minLength": float64(1)},
+					"message": map[string]any{
+						"type": "string", "minLength": float64(1), "maxLength": float64(8192),
+					},
 				},
 				"required":             []string{"agent_id", "message"},
 				"additionalProperties": false,
@@ -95,7 +98,9 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"type": "object",
 				"properties": map[string]any{
 					"agent_id": map[string]any{"type": "string", "minLength": float64(1)},
-					"prompt":   map[string]any{"type": "string", "minLength": float64(1)},
+					"prompt": map[string]any{
+						"type": "string", "minLength": float64(1), "maxLength": float64(16384),
+					},
 				},
 				"required":             []string{"agent_id", "prompt"},
 				"additionalProperties": false,
@@ -275,10 +280,12 @@ func (t *Tool) visibility() tool.Visibility {
 
 func agentSnapshot(agent subagent.Agent) map[string]any {
 	snapshot := map[string]any{
-		"agent_id": agent.ID, "role": string(agent.Role), "profile": agent.Profile,
+		"agent_id": agent.ID, "agent_path": agent.Path, "revision": agent.Revision,
+		"role": string(agent.Role), "profile": agent.Profile,
 		"stance": string(agent.Stance), "depth": agent.Depth, "worktree": agent.Worktree,
 		"isolated": agent.Isolated, "serialized": agent.Serialized, "base_rev": agent.BaseRev,
-		"parent_id": agent.Parent, "status": string(agent.Status),
+		"parent_id": agent.Parent, "parent_path": agent.ParentPath,
+		"status":  string(agent.Status),
 		"turn_id": agent.TurnID, "last_message": agent.LastMessage, "closed": agent.Closed,
 		"task_name": agent.TaskName, "expected_output": agent.ExpectedOutput,
 		"owned_paths": agent.OwnedPaths, "delegation_trigger": agent.DelegationTrigger,

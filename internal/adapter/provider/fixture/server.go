@@ -24,7 +24,19 @@ type Config struct {
 	ExpectedPrompt           string             `json:"expected_prompt,omitempty"`
 	ExpectedRequestFragments [][]string         `json:"expected_request_fragments,omitempty"`
 	Streams                  []string           `json:"streams,omitempty"`
+	Routes                   []Route            `json:"routes,omitempty"`
 	StreamDelayMS            int                `json:"stream_delay_ms,omitempty"`
+}
+
+type Route struct {
+	Match   []string `json:"match"`
+	Streams []string `json:"streams"`
+}
+
+type loadedRoute struct {
+	match   []string
+	streams [][]byte
+	index   atomic.Uint64
 }
 
 type Server struct {
@@ -57,17 +69,24 @@ func Start(directory string) (*Server, error) {
 	default:
 		return nil, fmt.Errorf("unsupported provider fixture protocol %q", config.Protocol)
 	}
-	streamNames := config.Streams
-	if len(streamNames) == 0 {
-		streamNames = []string{"stream.sse"}
+	streamData, err := loadStreams(directory, config.Streams)
+	if err != nil {
+		return nil, err
 	}
-	streamData := make([][]byte, 0, len(streamNames))
-	for _, name := range streamNames {
-		data, err := os.ReadFile(filepath.Join(directory, name))
-		if err != nil {
-			return nil, fmt.Errorf("read provider fixture stream: %w", err)
+	routes := make([]loadedRoute, 0, len(config.Routes))
+	for index, route := range config.Routes {
+		if len(route.Match) == 0 || len(route.Streams) == 0 {
+			return nil, fmt.Errorf(
+				"provider fixture route %d requires match and streams", index,
+			)
 		}
-		streamData = append(streamData, data)
+		streams, loadErr := loadStreams(directory, route.Streams)
+		if loadErr != nil {
+			return nil, fmt.Errorf("provider fixture route %d: %w", index, loadErr)
+		}
+		routes = append(routes, loadedRoute{
+			match: append([]string(nil), route.Match...), streams: streams,
+		})
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -100,12 +119,19 @@ func Start(directory string) (*Server, error) {
 			http.Error(writer, "expected prompt missing", http.StatusBadRequest)
 			return
 		}
-		index := int(requestIndex.Add(1) - 1)
-		if index >= len(streamData) {
+		selected, selectedIndex := streamData, &requestIndex
+		for index := range routes {
+			if containsAll(string(body), routes[index].match) {
+				selected, selectedIndex = routes[index].streams, &routes[index].index
+				break
+			}
+		}
+		index := int(selectedIndex.Add(1) - 1)
+		if index >= len(selected) {
 			http.Error(writer, "provider fixture streams exhausted", http.StatusConflict)
 			return
 		}
-		if index < len(config.ExpectedRequestFragments) {
+		if selectedIndex == &requestIndex && index < len(config.ExpectedRequestFragments) {
 			for _, fragment := range config.ExpectedRequestFragments[index] {
 				if !strings.Contains(string(body), fragment) {
 					http.Error(writer, "expected request fragment missing: "+fragment, http.StatusBadRequest)
@@ -115,7 +141,7 @@ func Start(directory string) (*Server, error) {
 		}
 		writer.Header().Set("Content-Type", "text/event-stream")
 		writer.WriteHeader(http.StatusOK)
-		for _, line := range strings.SplitAfter(string(streamData[index]), "\n") {
+		for _, line := range strings.SplitAfter(string(selected[index]), "\n") {
 			if config.StreamDelayMS > 0 {
 				time.Sleep(time.Duration(config.StreamDelayMS) * time.Millisecond)
 			}
@@ -135,6 +161,30 @@ func Start(directory string) (*Server, error) {
 		result.done <- result.server.Serve(listener)
 	}()
 	return result, nil
+}
+
+func loadStreams(directory string, names []string) ([][]byte, error) {
+	if len(names) == 0 {
+		names = []string{"stream.sse"}
+	}
+	streams := make([][]byte, 0, len(names))
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(directory, name))
+		if err != nil {
+			return nil, fmt.Errorf("read provider fixture stream: %w", err)
+		}
+		streams = append(streams, data)
+	}
+	return streams, nil
+}
+
+func containsAll(value string, fragments []string) bool {
+	for _, fragment := range fragments {
+		if fragment == "" || !strings.Contains(value, fragment) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) Close(ctx context.Context) error {

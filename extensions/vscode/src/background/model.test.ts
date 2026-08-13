@@ -11,8 +11,10 @@ void test("BackgroundProjector joins read models and separates executable jobs",
     status: "open", updatedAt: "2026-08-04T10:00:00Z",
   }]);
   projector.replaceAgents([{
-    id: "agent-1", workspace: "/workspace", sessionId: "session_1",
-    parentId: "", role: "explore", status: "running", lastMessage: "",
+    id: "agent-1", path: "/root/inspect", revision: 3,
+    workspace: "/workspace", sessionId: "session_1", threadId: "thread-agent-1",
+    parentId: "", parentPath: "/root",
+    role: "explore", status: "running", lastMessage: "",
     closed: false,
   }]);
   projector.replaceTasks([
@@ -45,8 +47,21 @@ void test("BackgroundProjector restores approvals and deduplicates terminal noti
     expires_at: "2026-08-04T12:00:00Z",
     replacement_allowed: false,
     modifiable_arguments: [],
+    source: {
+      kind: "agent",
+      agent_id: "agent-1",
+      agent_path: "/root/write_result",
+      parent_path: "/root",
+      role: "implementer",
+      session_id: "session-1",
+      workspace_root: "/workspace",
+    },
   }), true);
   assert.equal(projector.snapshot().approvals.length, 1);
+  assert.equal(
+    projector.snapshot().approvals[0]?.agentPath,
+    "/root/write_result",
+  );
   projector.applyEvent(event(2, "approval.resolved", {
     request_id: "approval_1", decision: "approve",
   }), true);

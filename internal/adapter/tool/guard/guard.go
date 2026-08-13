@@ -198,6 +198,7 @@ type Guard struct {
 	pending      map[string]*pending
 	completed    map[string]struct{}
 	recovered    map[string]ApprovalRequest
+	restoreWait  func(ApprovalRequest) error
 	approvalWait func(ApprovalWait)
 }
 
@@ -1129,6 +1130,19 @@ func (g *Guard) waitForApproval(
 	g.pending[requestID] = entry
 	g.mu.Unlock()
 	defer g.finishPending(requestID)
+	if recovering {
+		restore := g.approvalRecoveryHandler()
+		if restore == nil {
+			return ApprovalDecision{}, errors.New(
+				"approval recovery handler is unavailable",
+			)
+		}
+		if err := restore(event); err != nil {
+			return ApprovalDecision{}, fmt.Errorf(
+				"restore approval wait: %w", err,
+			)
+		}
+	}
 	// The wait starts when the request is raised, so a host that is slow to show it
 	// counts as waiting rather than as free. It is reported the moment the wait
 	// ends rather than when this function returns: what follows a decision — scope
@@ -1391,6 +1405,14 @@ func (g *Guard) SetApprovalHandler(handler func(context.Context, ApprovalRequest
 	g.mu.Unlock()
 }
 
+// SetApprovalRecoveryHandler restores turn-local wait bookkeeping without
+// re-emitting an approval.required event that is already durable.
+func (g *Guard) SetApprovalRecoveryHandler(handler func(ApprovalRequest) error) {
+	g.mu.Lock()
+	g.restoreWait = handler
+	g.mu.Unlock()
+}
+
 // SetApprovalWaitObserver installs the observer that hears how long each
 // approval kept a tool parked.
 func (g *Guard) SetApprovalWaitObserver(observe func(ApprovalWait)) {
@@ -1431,6 +1453,12 @@ func (g *Guard) approvalHandler() func(context.Context, ApprovalRequest) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.approvals
+}
+
+func (g *Guard) approvalRecoveryHandler() func(ApprovalRequest) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.restoreWait
 }
 
 func (g *Guard) approvalWaitObserver() func(ApprovalWait) {

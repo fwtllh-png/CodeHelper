@@ -119,6 +119,21 @@ internally authorized durable worker execution.
 token budgets, and a SHA-256 digest. Legacy `fork_context` and `parent_context`
 arguments are not accepted.
 
+The Agent Tree, Mailbox, Result, and Budget Ledger live in the workspace state
+store. Every Agent has a canonical path and CAS revision; terminal Result and
+Completion Outbox commit atomically. Completion notifies the parent
+automatically, while `wait_agent` synchronizes on the same fact. Stable Message
+IDs and `Receive/Ack` replay unacknowledged mailbox messages after restart.
+
+Child authority can only narrow the active Session profile. Effective posture
+follows `never < suggest < auto < bypass`, writable tools are the intersection
+of the parent catalog and the child role contract, and read-only roles use
+`never`. Under `suggest`, a child approval appears in the host with its Agent
+path and role. The host submits the original Request ID through the parent
+Session; Runtime routes the decision to the authoritative child Thread and
+preserves pending approvals across restart. A denial produces a structured
+Problem and an `approval_denied` tool result for the child.
+
 [execution.worker]
 enabled = false
 max_parallel = 2

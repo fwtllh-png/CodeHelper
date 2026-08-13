@@ -25,6 +25,17 @@ export function projectInteraction(event: DecodedEvent, turn: MutableTurn): bool
         allowedScopes: [...event.data.allowed_scopes],
         expiresAt: event.data.expires_at,
         ...(event.data.reason === undefined ? {} : { reason: event.data.reason }),
+        ...(event.data.source === undefined
+          ? {}
+          : {
+              source: {
+                kind: "agent" as const,
+                agentId: event.data.source.agent_id,
+                agentPath: event.data.source.agent_path,
+                parentPath: event.data.source.parent_path,
+                role: event.data.source.role,
+              },
+            }),
         ...(event.data.edit_plan === undefined
           ? {}
           : { editPlan: projectEditPlan(event.data.edit_plan) }),
