@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/permissions"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -322,6 +324,45 @@ func TestPersistentSessionPublishesAgentSpawnLive(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("live agent.spawned event was not published")
+	}
+}
+
+func TestNeverPostureRejectsPersistedWorkspaceAllow(t *testing.T) {
+	workspace := t.TempDir()
+	permissionPath := permissions.Path(workspace)
+	if err := os.MkdirAll(filepath.Dir(permissionPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(permissionPath, []byte(`
+[[allow]]
+tool = "file_write"
+resource = "notes.txt"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tools := true
+	session, err := NewExec(t.Context(), ExecOptions{
+		FixturePath: subagentFixture(t, "openai"),
+		Permission:  "never",
+		ConfigOverrides: config.Overrides{
+			Tools: &tools, Workspace: &workspace,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = session.Close(context.Background()) })
+	call := policy.Invocation{
+		CallID: "untrusted-write", Tool: "file_write",
+		Arguments: json.RawMessage(`{"path":"notes.txt","content":"blocked"}`),
+		Resources: []tool.Resource{{
+			Kind: "file", Path: "notes.txt", Access: tool.AccessWrite,
+		}},
+		Capability: tool.CapabilityWrite, Validated: true,
+	}
+	decision := session.Security().Evaluate(call)
+	if decision.Action != policy.ActionDeny || decision.Code != "permission_denied" {
+		t.Fatalf("decision = %+v, want permission_denied", decision)
 	}
 }
 

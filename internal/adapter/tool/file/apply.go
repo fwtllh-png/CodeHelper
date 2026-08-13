@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -571,15 +570,6 @@ func replaceOnce(data []byte, old, new string) ([]byte, error) {
 	content := string(data)
 	if count := strings.Count(content, old); count != 1 {
 		excerpt, startLine, endLine := closestEditExcerpt(content, old)
-		// #region debug-point A-C:edit-match-shape
-		fields := strings.Fields(old)
-		firstTokenCount := 0
-		if len(fields) != 0 {
-			firstTokenCount = strings.Count(content, fields[0])
-		}
-		payload, _ := json.Marshal(map[string]any{"sessionId": "file-apply-precondition-miss", "runId": "post-fix", "hypothesisId": "A-C", "location": "internal/adapter/tool/file/apply.go:replaceOnce", "msg": "[DEBUG] Exact edit match failed", "data": map[string]any{"content_bytes": len(content), "old_bytes": len(old), "exact_matches": count, "normalized_matches": strings.Count(strings.Join(strings.Fields(content), " "), strings.Join(fields, " ")), "first_token_matches": firstTokenCount, "excerpt_available": excerpt != "", "excerpt_start_line": startLine, "excerpt_end_line": endLine}})
-		go func() { _, _ = http.Post("http://127.0.0.1:7778/event", "application/json", bytes.NewReader(payload)) }()
-		// #endregion
 		return nil, &editMatchError{
 			count: count, startLine: startLine, endLine: endLine, excerpt: excerpt,
 		}

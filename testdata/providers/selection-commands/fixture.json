@@ -5,14 +5,26 @@
   "streams": [
     "explain.sse",
     "edit.sse",
+    "edit-quality.sse",
+    "edit-declare.sse",
+    "edit-complete.sse",
     "refactor.sse",
+    "refactor-quality.sse",
+    "refactor-declare.sse",
+    "refactor-complete.sse",
     "tests.sse",
+    "tests-quality.sse",
+    "tests-declare.sse",
+    "tests-complete.sse",
     "diagnostic-explain.sse",
     "diagnostic-fix.sse",
+    "diagnostic-fix-quality.sse",
+    "diagnostic-fix-declare.sse",
+    "diagnostic-fix-complete.sse",
     "changes-call.sse",
+    "changes-quality.sse",
+    "changes-declare.sse",
     "changes-complete.sse",
-    "changes-deny-call.sse",
-    "changes-deny-complete.sse",
     "recovery-source.sse",
     "recovery-retry.sse",
     "recovery-continue.sse",
@@ -37,15 +49,54 @@
       "return value;"
     ],
     [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_selection_edit\"",
+      "selection-edit.txt"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_selection_edit_quality\""
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_selection_edit_complete\""
+    ],
+    [
       "Refactor the selected code",
       "extract a helper",
       "selection_command",
       "return value;"
     ],
     [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_selection_refactor\"",
+      "selection-refactor.txt"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_selection_refactor_quality\""
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_selection_refactor_complete\""
+    ],
+    [
       "Generate focused tests",
       "selection_command",
       "return value;"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_selection_tests\"",
+      "selection-test.txt"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_selection_tests_quality\""
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_selection_tests_complete\""
     ],
     [
       "Explain the attached editor diagnostic",
@@ -56,6 +107,19 @@
       "Fix the attached editor diagnostic",
       "code_action",
       "fixture code action diagnostic"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_diagnostic_fix\"",
+      "diagnostic-fix.txt"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_diagnostic_fix_quality\""
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_diagnostic_fix_complete\""
     ],
     [
       "Generate focused tests",
@@ -69,13 +133,12 @@
       "nested/beta.txt"
     ],
     [
-      "Generate focused tests",
-      "selection_command",
-      "\"name\":\"file_apply\""
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_changes_quality\""
     ],
     [
       "\"role\":\"tool\"",
-      "\"tool_call_id\":\"call_changes_deny\""
+      "\"tool_call_id\":\"call_changes_complete\""
     ],
     [
       "Electron recovery source"
@@ -84,7 +147,7 @@
       "Electron recovery source"
     ],
     [
-      "Continue from the terminal Turn above",
+      "Continue the exact source Turn identified below",
       "Inspect the current parser state"
     ],
     [
