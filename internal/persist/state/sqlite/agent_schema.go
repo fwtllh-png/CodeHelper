@@ -69,6 +69,7 @@ CREATE TABLE agent_results (
     agent_id TEXT NOT NULL,
     turn_id TEXT NOT NULL DEFAULT '',
     result_json BLOB NOT NULL,
+    integration_result_json BLOB,
     receipt_ref TEXT NOT NULL DEFAULT '',
     source_sequence INTEGER NOT NULL,
     created_at TEXT NOT NULL,

@@ -170,6 +170,13 @@ func NewAgentGraph(
 				context.Background(), workspaceRoot, targetSessionID, agentID,
 			)
 		},
+		IntegrationResult: func(
+			targetSessionID, agentID string,
+		) (subagent.Result, bool, error) {
+			return store.LoadAgentIntegrationResultSession(
+				context.Background(), workspaceRoot, targetSessionID, agentID,
+			)
+		},
 		Integration: func(
 			targetSessionID, agentID, previewDigest string,
 		) (subagent.IntegrationCandidate, bool, error) {

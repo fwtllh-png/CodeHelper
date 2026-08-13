@@ -372,6 +372,88 @@ func TestAgentTerminalCommitIsAtomicAndCASGuarded(t *testing.T) {
 	}
 }
 
+func TestAgentGraphRetainsIntegrationResultAcrossFailedFollowUp(t *testing.T) {
+	root := t.TempDir()
+	store, err := Open(t.Context(), Options{
+		DataDir: root, BusyTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph := NewAgentGraph(store, "/workspace/result-baseline", "session-baseline")
+	control, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: passGate{},
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.AttachGraph(graph); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := control.SpawnIntent(subagent.DelegationIntent{
+		TaskName: "writer", Role: subagent.RoleImplementer,
+		Objective: "write report", ExpectedOutput: "report",
+		OwnedPaths: []string{"result.txt"}, Trigger: subagent.TriggerSystem,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	success := subagent.Result{
+		AgentID: agent.ID, ThreadID: agent.ThreadID, TurnID: "turn-success",
+		Status: subagent.StatusCompleted, Summary: "wrote report",
+		Diff: []protocol.ReceiptChange{{
+			Path: "result.txt", Tool: "file_write", Kind: "created",
+		}},
+	}
+	if err := control.Settle(success); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := control.FollowUp(t.Context(), agent.ID, "recheck"); err != nil {
+		t.Fatal(err)
+	}
+	if err := control.Settle(subagent.Result{
+		AgentID: agent.ID, ThreadID: agent.ThreadID, TurnID: "turn-failed",
+		Status: subagent.StatusFailed, Summary: "recheck failed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CloseAll(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(t.Context(), Options{
+		DataDir: root, BusyTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.CloseAll(context.Background()) })
+	fresh, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: passGate{},
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fresh.AttachGraph(NewAgentGraph(
+		reopened, "/workspace/result-baseline", "session-baseline",
+	)); err != nil {
+		t.Fatal(err)
+	}
+	current, ok := fresh.Result(agent.ID)
+	if !ok || current.Status != subagent.StatusFailed {
+		t.Fatalf("current Result = %+v, ok=%v", current, ok)
+	}
+	baseline, ok := fresh.IntegrationResult(agent.ID)
+	if !ok || baseline.Status != subagent.StatusCompleted ||
+		baseline.TurnID != success.TurnID {
+		t.Fatalf("Integration Result = %+v, ok=%v", baseline, ok)
+	}
+	if owner, claimed := fresh.WriteOwner("result.txt"); !claimed ||
+		owner != agent.ID {
+		t.Fatalf("write owner = %q, claimed=%v", owner, claimed)
+	}
+}
+
 func TestAgentIntegrationCandidatePersistsAndRejectsRevisionGap(t *testing.T) {
 	store, err := Open(t.Context(), Options{
 		DataDir: t.TempDir(), BusyTimeout: time.Second,

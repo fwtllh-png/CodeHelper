@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -75,6 +76,23 @@ func newChildRuntime(
 		turns: make(map[protocol.ThreadID]*childTurn),
 		done:  make(chan struct{}),
 	}
+}
+
+func newChildGovernor(limits config.Subagent) *rlm.Governor {
+	return rlm.NewGovernor(rlm.Limits{
+		MaxTokens: limits.MaxTokens, MaxCostUSD: limits.MaxCostUSD,
+		MaxDepth: limits.MaxDepth, MaxConcurrency: limits.MaxParallel,
+	})
+}
+
+func childOrchestrationRoot(state *buildState) string {
+	if state.options.PersistentStore != nil {
+		return filepath.Join(
+			state.options.PersistentStore.Root(),
+			"orchestration",
+		)
+	}
+	return filepath.Join(state.config.execution.Workspace, ".codehelper")
 }
 
 // bind attaches the pieces that only exist once the Runtime is constructed.

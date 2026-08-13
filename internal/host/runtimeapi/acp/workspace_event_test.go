@@ -1,13 +1,18 @@
 package acp
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -115,4 +120,143 @@ func TestAgentApprovalWorkspaceResolvesSymlinks(t *testing.T) {
 	if !server.workspaceVisible(event) {
 		t.Fatal("agent approval through workspace symlink was not visible")
 	}
+}
+
+func TestAgentSpawnBindsChildThreadToOwningSession(t *testing.T) {
+	workspace := t.TempDir()
+	normalized, err := taskstate.NormalizeWorkspaceRoot(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{
+		options: Options{WorkspaceRoot: normalized},
+		threads: make(map[protocol.ThreadID]string),
+	}
+	event, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread_agent_graph",
+		TurnID: "turn_agent_graph", ItemID: "item",
+	}, &protocol.AgentSpawnedData{
+		AgentID: "agent-9", WorkspaceRoot: normalized,
+		SessionID: "session-1", Role: "implementer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.bindAgentThread(event)
+	threadID := protocol.ThreadID(subagent.ThreadIDFor("agent-9"))
+	if got := server.sessionForThread(threadID); got != "session-1" {
+		t.Fatalf("child thread Session = %q, want session-1", got)
+	}
+}
+
+func TestPendingChildApprovalUsesRuntimeIdentity(t *testing.T) {
+	pending := app.PendingApproval{
+		RequestID: "approval-child", ThreadID: "thread-agent-9",
+		TurnID: "turn-child", ItemID: "item-child",
+		Data: protocol.ApprovalRequiredData{
+			RequestID: "approval-child", CallID: "call-edit",
+			Tool: "file_edit", Arguments: []byte(`{}`),
+			ArgumentsDigest: "digest",
+			AllowedScopes:   []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
+			ExpiresAt:       time.Now().Add(time.Minute),
+			Source: &protocol.ApprovalSource{
+				Kind: "agent", AgentID: "agent-9",
+				SessionID: "session-1", WorkspaceRoot: t.TempDir(),
+			},
+		},
+	}
+	runtime := app.NewRuntime(app.Options{
+		Engine: app.NewThreadManager(nil),
+		Recovery: &app.RecoveryState{
+			PendingApprovals: map[string]app.PendingApproval{
+				pending.RequestID: pending,
+			},
+		},
+	})
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	server := &Server{
+		dependencies: Dependencies{Runtime: runtime},
+		threads: map[protocol.ThreadID]string{
+			"thread-parent": "session-1",
+		},
+	}
+	payload := &protocol.ApprovalDecisionPayload{
+		ThreadID: "thread-parent", TurnID: "turn-parent",
+		ItemID: "item-decision", RequestID: pending.RequestID,
+		Decision: protocol.ApprovalApprove, Scope: protocol.ApprovalScopeOnce,
+	}
+	if err := server.bindPendingRequest(
+		sessionBinding{ID: "session-1", ThreadID: "thread-parent"},
+		payload,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if payload.ThreadID != pending.ThreadID || payload.TurnID != pending.TurnID {
+		t.Fatalf("proxied payload = %+v, pending = %+v", payload, pending)
+	}
+	if got := server.sessionForThread(pending.ThreadID); got != "session-1" {
+		t.Fatalf("bound Child Session = %q", got)
+	}
+	if err := server.bindPendingRequest(
+		sessionBinding{ID: "session-2", ThreadID: "thread-other"},
+		&protocol.ApprovalDecisionPayload{
+			RequestID: pending.RequestID,
+			Decision:  protocol.ApprovalApprove,
+		},
+	); err == nil || !strings.Contains(err.Error(), "belongs to session session-1") {
+		t.Fatalf("cross-Session approval error = %v", err)
+	}
+}
+
+func TestSessionBindRestoresExistingAgentThreads(t *testing.T) {
+	manager, err := subagent.Open(subagent.Options{
+		Root: t.TempDir(), SessionID: "session-1",
+		Gate: approvalPassGate{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := subagent.NewAgentControl(
+		manager,
+		subagent.DefaultRoleCatalog(),
+		mustExplicitPolicy(t),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := control.SpawnSystem(
+		"existing", "", subagent.RoleExplore, "inspect", "report",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{
+		dependencies: Dependencies{Agents: control},
+		sessions:     make(map[string]sessionBinding),
+		threads:      make(map[protocol.ThreadID]string),
+	}
+	server.bind(sessionBinding{ID: "session-1", ThreadID: "thread-parent"})
+	if got := server.sessionForThread(protocol.ThreadID(agent.ThreadID)); got != "session-1" {
+		t.Fatalf("restored Agent Thread Session = %q", got)
+	}
+}
+
+type approvalPassGate struct{}
+
+func (approvalPassGate) Execute(
+	context.Context,
+	string,
+	string,
+	json.RawMessage,
+) (tool.Result, error) {
+	return tool.Result{Content: "ok"}, nil
+}
+
+func mustExplicitPolicy(t *testing.T) subagent.DelegationPolicy {
+	t.Helper()
+	policy, err := subagent.NewDelegationPolicy(subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return policy
 }

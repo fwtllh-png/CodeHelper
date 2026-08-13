@@ -41,12 +41,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 64,
-        "production_lines": 7574,
+        "production_lines": 7590,
         "options_fields": 70,
         "mutex_fields": 5
       },
       "relaxations": {
-        "production_lines": "Multi-Agent completion audit binds background Turns to Session identity and makes Child cancellation reach terminal state before Thread/toolset release"
+        "production_lines": "Round 15 live fixes move Agent worktrees to Runtime state, preserve delegating read-only authority, and make Sandbox validation cancellation-aware"
       }
     },
     {
@@ -122,9 +122,6 @@
         "production_lines": 8993,
         "options_fields": 61,
         "mutex_fields": 9
-      },
-      "relaxations": {
-        "production_lines": "Multi-Agent completion audit propagates authoritative Session identity through Tool invocation context"
       }
     },
     {
@@ -133,12 +130,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7524,
+        "production_lines": 7543,
         "options_fields": 18,
         "mutex_fields": 5
       },
       "relaxations": {
-        "production_lines": "Multi-Agent completion audit adds explicit Thread-to-Session routing and lifecycle cleanup without expanding Runtime handler size"
+        "production_lines": "Round 15 live fixes expose authoritative pending-request identity and clear Approval/Input state through terminal outbox projection"
       }
     },
     {
@@ -205,9 +202,6 @@
         "production_lines": 7489,
         "options_fields": 28,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "MA6 adds the bounded canonical-path Agent tree, timeline projection, and authoritative child interaction routing"
       }
     },
     {
@@ -219,9 +213,6 @@
         "production_lines": 4744,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Multi-Agent completion audit makes Session and Workspace mandatory Agent Event identity"
       }
     },
     {
@@ -230,9 +221,12 @@
       "path": "internal/host/runtimeapi/acp",
       "limits": {
         "internal_fanout": 12,
-        "production_lines": 3028,
+        "production_lines": 3087,
         "options_fields": 10,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Round 15 live fixes bind durable Child Threads to their owning Session and proxy Approval/Input decisions by authoritative Request ID"
       }
     },
     {
@@ -242,9 +236,6 @@
       "limits": {
         "lines": 2064,
         "max_function_lines": 132
-      },
-      "relaxations": {
-        "lines": "MA6 completes the Runtime event-kind mapping for the retained agent.integration event"
       }
     },
     {
@@ -380,9 +371,6 @@
       "limits": {
         "lines": 2968,
         "max_function_lines": 124
-      },
-      "relaxations": {
-        "lines": "Multi-Agent completion audit routes Agent events and read queries only to their owning ACP Session"
       }
     },
     {
@@ -440,9 +428,6 @@
       "path": ".",
       "limits": {
         "event_switch_sites": 29
-      },
-      "relaxations": {
-        "event_switch_sites": "MA6 adds one centralized typed Agent Event projection in eventview; Hosts consume that view instead of adding raw payload switches"
       }
     }
   ]

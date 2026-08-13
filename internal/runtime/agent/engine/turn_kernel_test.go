@@ -387,6 +387,50 @@ func TestTurnKernelAbortClosesEveryOpenTool(t *testing.T) {
 	}
 }
 
+func TestTurnKernelCancellationClosesToolAwaitingApproval(t *testing.T) {
+	var records []turnkernel.TransitionRecord
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentWorkspaceChange,
+		"act",
+		nil,
+		0,
+		func(record turnkernel.TransitionRecord) {
+			records = append(records, record)
+		},
+		nil,
+	)
+	call := provider.ToolCall{ID: "edit", Name: "file_edit"}
+	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.startTool(call.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.requireApproval("approval-edit", call.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.requestCancel(protocol.CancelReasonHostInterrupted); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.closeTool(
+		call,
+		tool.Result{Content: "tool aborted: context canceled", IsError: true},
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	finalizeKernelForTest(t, kernel, turnkernel.TerminalDecision{
+		Kind: turnkernel.TerminalCanceled, Message: protocol.CancelReasonHostInterrupted,
+	})
+	assertKernelHealthy(t, kernel, records, turnkernel.PhaseCanceled)
+	if len(kernel.state.OpenCalls) != 0 ||
+		len(kernel.state.PendingApprovals) != 0 ||
+		len(kernel.state.PendingEffects) != 0 ||
+		len(kernel.state.ClosedCalls) != 1 {
+		t.Fatalf("canceled approval ledger = %+v", kernel.state)
+	}
+}
+
 func TestTurnKernelCancellationClosesToolAwaitingInput(t *testing.T) {
 	var records []turnkernel.TransitionRecord
 	kernel := newEngineTurnKernel(

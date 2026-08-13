@@ -223,11 +223,11 @@ func (b *seatbeltBackend) Policy() Policy { return b.policy }
 
 func (b *seatbeltBackend) Close() error { return closePolicyTemp(b.policy) }
 
-func (b *seatbeltBackend) Prepare(_ context.Context, command Command) (Command, error) {
+func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command, error) {
 	if _, err := b.workspace.ResolveDirectory(command.Dir); err != nil {
 		return Command{}, err
 	}
-	if err := validateWorkspaceLinks(b.workspace); err != nil {
+	if err := validateWorkspaceLinks(ctx, b.workspace); err != nil {
 		return Command{}, err
 	}
 	if err := auditSeatbeltSystemProfile(); err != nil {
@@ -293,11 +293,11 @@ func (b *bubblewrapBackend) Close() error {
 	return errors.Join(closePolicyTemp(b.policy), requestErr)
 }
 
-func (b *bubblewrapBackend) Prepare(_ context.Context, command Command) (Command, error) {
+func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Command, error) {
 	if _, err := b.workspace.ResolveDirectory(command.Dir); err != nil {
 		return Command{}, err
 	}
-	if err := validateWorkspaceLinks(b.workspace); err != nil {
+	if err := validateWorkspaceLinks(ctx, b.workspace); err != nil {
 		return Command{}, err
 	}
 	executable, err := resolveExecutableLiteral(command.Path, command.Env)
@@ -890,7 +890,7 @@ EOF
 	return candidate
 }
 
-func validateWorkspaceLinks(workspace *Workspace) error {
+func validateWorkspaceLinks(ctx context.Context, workspace *Workspace) error {
 	type objectKey struct {
 		device uint64
 		inode  uint64
@@ -902,6 +902,9 @@ func validateWorkspaceLinks(workspace *Workspace) error {
 	}
 	hardLinks := make(map[objectKey]hardLinkSet)
 	err := filepath.WalkDir(workspace.Root(), func(path string, entry os.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}

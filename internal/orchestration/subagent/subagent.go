@@ -179,6 +179,7 @@ type Agent struct {
 	TurnID            string
 	LastMessage       string
 	Result            *Result
+	IntegrationResult *Result
 	TaskName          string
 	ExpectedOutput    string
 	OwnedPaths        []string
@@ -532,6 +533,10 @@ func cloneAgent(agent *Agent) Agent {
 	if agent.Result != nil {
 		result := *agent.Result
 		cloned.Result = &result
+	}
+	if agent.IntegrationResult != nil {
+		result := *agent.IntegrationResult
+		cloned.IntegrationResult = &result
 	}
 	return cloned
 }

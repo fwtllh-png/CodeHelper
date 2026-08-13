@@ -861,6 +861,9 @@ func TestSpawnPostStartFailureReleasesChildRuntime(t *testing.T) {
 		Result: func(string, string) (subagent.Result, bool, error) {
 			return subagent.Result{}, false, nil
 		},
+		IntegrationResult: func(string, string) (subagent.Result, bool, error) {
+			return subagent.Result{}, false, nil
+		},
 		AppendIntegration: func(subagent.IntegrationCandidate) error { return nil },
 		Integration: func(
 			string, string, string,

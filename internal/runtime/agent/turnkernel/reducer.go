@@ -1160,8 +1160,28 @@ func applyToolResult(
 	current State,
 	command ToolResultReceived,
 ) error {
-	if err := requirePhase(current, command, PhaseExecutingTools); err != nil {
+	callAwaitingApproval := false
+	for _, approval := range current.PendingApprovals {
+		if approval.CallID == command.CallID {
+			callAwaitingApproval = true
+			break
+		}
+	}
+	cancelingApproval := callAwaitingApproval && current.Cancellation.Accepted
+	if err := requirePhase(
+		current,
+		command,
+		PhaseExecutingTools,
+		PhaseAwaitingApproval,
+	); err != nil {
 		return err
+	}
+	if callAwaitingApproval && !cancelingApproval {
+		return illegal(
+			current,
+			command,
+			"tool result cannot bypass a pending approval",
+		)
 	}
 	if strings.TrimSpace(command.EffectID) == "" {
 		return illegal(current, command, "tool effect id is empty")
@@ -1189,6 +1209,21 @@ func applyToolResult(
 	transition.State.ClosedCalls[command.CallID] = ToolResultState{
 		ID: command.CallID, Name: call.Name, IsError: command.IsError,
 	}
+	if cancelingApproval {
+		for requestID, approval := range current.PendingApprovals {
+			if approval.CallID != command.CallID {
+				continue
+			}
+			delete(transition.State.PendingApprovals, requestID)
+			closeEffectByIdentity(
+				transition,
+				EffectAwaitApproval,
+				requestID,
+				false,
+				current.Cancellation.Reason,
+			)
+		}
+	}
 	if command.IsError {
 		transition.State.UnresolvedToolFailure = true
 		transition.State.RecoveryToolSucceeded = false
@@ -1214,7 +1249,12 @@ func applyToolResult(
 			Mutation: transition.State.MutationRevision,
 		})
 	}
-	if len(transition.State.OpenCalls) == 0 {
+	switch {
+	case len(transition.State.PendingApprovals) != 0:
+		move(transition, PhaseAwaitingApproval)
+	case len(transition.State.OpenCalls) != 0:
+		move(transition, PhaseExecutingTools)
+	default:
 		move(transition, PhaseSampling)
 	}
 	return nil

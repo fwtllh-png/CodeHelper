@@ -13,6 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -238,10 +239,17 @@ func TestDelegatingReadOnlyRoleRetainsOnlyAgentLifecycleWrites(t *testing.T) {
 		register(registry, "spawn_agent", tool.CapabilityWrite)
 		register(registry, "list_agents", tool.CapabilityRead)
 	}
-	security := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
-	restrictChildTools(security, app.ChildSpec{
+	spec := app.ChildSpec{
+		ReadOnly:     true,
 		AllowedTools: []string{"read", "search"}, CanDelegate: true,
-	}, parent, child)
+	}
+	options := childEngineOptions(
+		agentengine.Options{},
+		spec,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
+	)
+	security := options.Security
+	restrictChildTools(security, spec, parent, child)
 	decision := func(name string, capability tool.Capability) policy.Action {
 		return security.Evaluate(policy.Invocation{
 			CallID: name, Tool: name, Arguments: json.RawMessage(`{}`),
@@ -250,9 +258,13 @@ func TestDelegatingReadOnlyRoleRetainsOnlyAgentLifecycleWrites(t *testing.T) {
 	}
 	spawnDecision := decision("spawn_agent", tool.CapabilityWrite)
 	listDecision := decision("list_agents", tool.CapabilityRead)
-	if spawnDecision == policy.ActionDeny || listDecision != policy.ActionAllow {
+	if options.Security.Mode != policy.ModeAct ||
+		options.Security.Permission != policy.PermissionSuggest ||
+		spawnDecision != policy.ActionAsk ||
+		listDecision != policy.ActionAllow {
 		t.Fatalf(
-			"delegating read-only role lost Agent lifecycle tools: spawn=%s list=%s",
+			"delegating read-only authority: mode=%s permission=%s spawn=%s list=%s",
+			options.Security.Mode, options.Security.Permission,
 			spawnDecision, listDecision,
 		)
 	}
@@ -295,6 +307,12 @@ func TestPersistentSessionPublishesAgentSpawnLive(t *testing.T) {
 	child, err := session.subagents.Spawn("", subagent.RoleExplore, "inspect")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.HasPrefix(
+		child.Worktree,
+		filepath.Join(store.Root(), "orchestration")+string(filepath.Separator),
+	) {
+		t.Fatalf("persistent child worktree = %q, state root = %q", child.Worktree, store.Root())
 	}
 	select {
 	case event := <-events:
@@ -537,8 +555,54 @@ func TestDeniedChildApprovalPublishesProblemAndToolFeedback(t *testing.T) {
 	}
 }
 
+func TestChildCancelPendingApprovalPublishesOneTerminal(t *testing.T) {
+	session, manager, child, events, _ := startSuggestChildApproval(t)
+	if err := session.children.CancelTurn(
+		t.Context(), child.ID, child.TurnID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	waited, err := manager.Wait(ctx, []string{child.ID}, 8*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if waited.TimedOut {
+		t.Fatal("canceled approval Child did not settle")
+	}
+	result, ok := manager.Result(child.ID)
+	if !ok || result.Status != subagent.StatusInterrupted {
+		t.Fatalf("canceled approval Result = %+v, ok=%v", result, ok)
+	}
+	deadline := time.After(5 * time.Second)
+	terminals := 0
+	for terminals == 0 {
+		select {
+		case event := <-events:
+			if event.ThreadID == protocol.ThreadID(child.ThreadID) &&
+				event.Kind == protocol.EventTurnCanceled {
+				terminals++
+			}
+		case <-deadline:
+			t.Fatal("approval Child did not publish turn.canceled")
+		}
+	}
+	time.Sleep(50 * time.Millisecond)
+	if snapshot := session.Runtime.Snapshot(t.Context()); snapshot.ActiveTurns != 0 || snapshot.PendingApprovals != 0 {
+		t.Fatalf("Runtime Snapshot after approval cancel = %+v", snapshot)
+	}
+}
+
 func startSuggestChildApproval(
 	t *testing.T,
+) (*Session, *subagent.AgentControl, subagent.Agent, <-chan protocol.Event, *protocol.ApprovalRequiredData) {
+	return startSuggestChildApprovalWithTune(t, nil)
+}
+
+func startSuggestChildApprovalWithTune(
+	t *testing.T,
+	tune func(*config.Overrides),
 ) (*Session, *subagent.AgentControl, subagent.Agent, <-chan protocol.Event, *protocol.ApprovalRequiredData) {
 	t.Helper()
 	session := openChildSessionWithPermission(
@@ -546,6 +610,9 @@ func startSuggestChildApproval(
 		func(overrides *config.Overrides) {
 			serialized := config.SubagentWorkspaceSerialized
 			overrides.SubagentWorkspace = &serialized
+			if tune != nil {
+				tune(overrides)
+			}
 		},
 	)
 	manager := session.subagents

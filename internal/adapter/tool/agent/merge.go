@@ -145,17 +145,17 @@ func (t *Tool) planMerge(ctx context.Context, agentID string, filter []string) (
 	if strings.TrimSpace(agent.BaseRev) == "" {
 		return mergePlan{}, fmt.Errorf("agent %s has no base revision for conflict detection", agentID)
 	}
-	result, ok := t.control.Result(agentID)
+	result, ok := t.control.IntegrationResult(agentID)
 	if !ok {
-		return mergePlan{}, fmt.Errorf("agent %s has no settled result yet; wait for the child turn", agentID)
-	}
-	if !subagent.IsTerminal(result.Status) {
-		return mergePlan{}, fmt.Errorf("agent %s is still %s", agentID, result.Status)
-	}
-	if agent.Status != subagent.StatusCompleted &&
-		agent.Status != subagent.StatusIntegrationFailed {
 		return mergePlan{}, fmt.Errorf(
-			"agent %s status %s is not integration-ready", agentID, agent.Status,
+			"agent %s has no successful integration result yet; wait for a completed writing turn",
+			agentID,
+		)
+	}
+	if !subagent.IsTerminal(agent.Status) {
+		return mergePlan{}, fmt.Errorf(
+			"agent %s is still %s; wait for the current turn before integration",
+			agentID, agent.Status,
 		)
 	}
 	paths := result.WritePaths()

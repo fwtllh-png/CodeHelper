@@ -1,6 +1,8 @@
 package sandbox
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -397,7 +399,7 @@ func TestValidateWorkspaceLinksAllowsLinksContainedInWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validateWorkspaceLinks(workspace); err != nil {
+	if err := validateWorkspaceLinks(t.Context(), workspace); err != nil {
 		t.Fatalf("validateWorkspaceLinks() rejected contained hard links: %v", err)
 	}
 }
@@ -417,8 +419,20 @@ func TestValidateWorkspaceLinksRejectsLinkOutsideWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = validateWorkspaceLinks(workspace)
+	err = validateWorkspaceLinks(t.Context(), workspace)
 	if err == nil || !strings.Contains(err.Error(), "hard links outside the workspace") {
 		t.Fatalf("validateWorkspaceLinks() error = %v", err)
+	}
+}
+
+func TestValidateWorkspaceLinksHonorsCancellation(t *testing.T) {
+	workspace, err := NewWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := validateWorkspaceLinks(ctx, workspace); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled validation error = %v", err)
 	}
 }
