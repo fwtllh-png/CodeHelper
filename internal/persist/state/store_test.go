@@ -275,6 +275,9 @@ func TestAppendEventsElidesNoiseAndKeepsAudit(t *testing.T) {
 		}},
 		AllowedScopes: []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
 		ExpiresAt:     time.Now().Add(time.Minute),
+		Effect:        "workspace.edit",
+		Risk:          "high",
+		ReasonCode:    "approval_required",
 	})
 	if err := store.AppendEvents(ctx, noise, audit, moreNoise, approval); err != nil {
 		t.Fatal(err)

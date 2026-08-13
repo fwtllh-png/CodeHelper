@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,15 +48,14 @@ const (
 )
 
 type Invocation struct {
-	CallID     string
-	Tool       string
-	Arguments  json.RawMessage
-	Resources  []tool.Resource
-	Capability tool.Capability
-	Access     tool.AccessMode
-	Sandbox    tool.SandboxRequirement
-	Journaled  bool
-	Validated  bool
+	CallID, Tool string
+	Arguments    json.RawMessage
+	Resources    []tool.Resource
+	Capability   tool.Capability
+	Access       tool.AccessMode
+	Sandbox      tool.SandboxRequirement
+	Journaled    bool
+	Validated    bool
 }
 
 type Rule struct {
@@ -72,22 +70,21 @@ type Rule struct {
 type Runtime struct {
 	Mode       Mode
 	Permission Permission
-	Grants     []Rule
-	Repository []Rule
-	Approvals  *ApprovalCache
-	Granular   Granular
-	Now        func() time.Time
+	// DisableAutoReview is the fail-closed operational kill switch.
+	DisableAutoReview  bool
+	Grants, Repository []Rule
+	Approvals          *ApprovalCache
+	Granular           Granular
+	Now                func() time.Time
 }
 
 type Decision struct {
-	Action Action
-	Code   string
-	Reason string
+	Action       Action
+	Code, Reason string
 }
 
 type DecisionError struct {
-	Code   string
-	Reason string
+	Code, Reason string
 }
 
 func (e *DecisionError) Error() string {
@@ -118,27 +115,17 @@ func TightenPermission(requested, ceiling Permission) Permission {
 	return requested
 }
 
-// CloneSampling returns a turn-local copy of Mode/Permission and rule lists.
-// Approvals and Now are shared with the session so grants stay coherent; host
-// Mode/Permission mutations on the parent Runtime do not affect the clone.
+// CloneSampling copies policy state while sharing session grants and clocks.
 func (r *Runtime) CloneSampling() *Runtime {
 	if r == nil {
 		return nil
 	}
 	return &Runtime{
-		Mode: r.Mode, Permission: r.Permission,
+		Mode: r.Mode, Permission: r.Permission, DisableAutoReview: r.DisableAutoReview,
 		Grants:     append([]Rule(nil), r.Grants...),
 		Repository: append([]Rule(nil), r.Repository...),
 		Approvals:  r.Approvals, Granular: r.Granular, Now: r.Now,
 	}
-}
-
-func (r *Runtime) Authorize(_ context.Context, invocation Invocation) error {
-	decision := r.Evaluate(invocation)
-	if decision.Action == ActionAllow {
-		return nil
-	}
-	return decisionError(decision.Code, decision.Reason)
 }
 
 func (r *Runtime) Evaluate(invocation Invocation) Decision {
@@ -198,10 +185,22 @@ func (r *Runtime) Evaluate(invocation Invocation) Decision {
 	decision := Decision{Action: ActionAllow}
 	if needsApproval {
 		decision = Decision{Action: ActionAsk, Code: "approval_required", Reason: "approval is required"}
+		effect := NormalizeEffect(invocation)
+		_, typed := GrantForInvocation(invocation)
+		if !r.DisableAutoReview && permissionAction == ActionAsk &&
+			!repositoryAsk && grant.Action != ActionAsk && typed &&
+			effect.Risk == RiskMedium &&
+			(effect.Kind == EffectNetworkRead || effect.Kind == EffectAgentLifecycle) {
+			decision = Decision{
+				Action: ActionAllow, Code: "auto_review_allowed",
+				Reason: "bounded medium-risk effect has an exact typed grant",
+			}
+		}
 	}
-	return ApplySurfaceTightening(
+	decision = ApplySurfaceTightening(
 		decision, ClassifySurface(invocation.Tool, invocation.Capability), r.Granular,
 	)
+	return decision
 }
 
 func deny(code, reason string) Decision {

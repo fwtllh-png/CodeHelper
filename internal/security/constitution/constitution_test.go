@@ -36,18 +36,17 @@ func TestConstitutionHoldSurvivesBypass(t *testing.T) {
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
 	runtime.Repository = bundle.Rules
-	err = runtime.Authorize(t.Context(), policy.Invocation{
+	decision := runtime.Evaluate(policy.Invocation{
 		CallID: "c1", Tool: "file_write", Capability: policy.CapabilityWrite, Validated: true,
 		Arguments: json.RawMessage(`{"path":"secrets/token"}`),
 		Resources: []tool.Resource{{
 			Kind: "file", Path: "secrets/token", Access: tool.AccessWrite,
 		}},
 	})
-	var decision *policy.DecisionError
-	if err == nil || !strings.Contains(err.Error(), "constitution_hold") {
-		t.Fatalf("err = %v", err)
+	if decision.Action != policy.ActionDeny ||
+		!strings.Contains(decision.Code, "constitution_hold") {
+		t.Fatalf("decision = %+v", decision)
 	}
-	_ = decision
 }
 
 func TestRepoOverridesUserPrompt(t *testing.T) {

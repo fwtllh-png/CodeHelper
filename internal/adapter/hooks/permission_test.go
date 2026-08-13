@@ -73,4 +73,19 @@ func TestPermissionRequestDenyWinsAllowBypasses(t *testing.T) {
 	if result.Action != ActionAllow {
 		t.Fatalf("got %+v", result)
 	}
+
+	noHooks, err := New(
+		Config{Version: ConfigVersion},
+		Options{Workspace: dir, DefaultTimeout: budget},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = noHooks.PermissionRequest(
+		context.Background(),
+		ToolCallBeforeInput{CallID: "c3", Tool: "web_fetch", Input: json.RawMessage(`{}`)},
+	)
+	if err != nil || result.Action != "" {
+		t.Fatalf("no-hook decision = %+v, err = %v", result, err)
+	}
 }

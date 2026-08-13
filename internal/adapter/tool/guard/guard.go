@@ -25,56 +25,41 @@ import (
 )
 
 type ApprovalRequest struct {
-	RequestID           string                 `json:"request_id"`
-	CallID              string                 `json:"call_id"`
-	Tool                string                 `json:"tool"`
-	Arguments           json.RawMessage        `json:"arguments"`
-	ArgumentsDigest     string                 `json:"arguments_digest"`
-	Resources           []tool.Resource        `json:"resources"`
-	AllowedScopes       []policy.ApprovalScope `json:"allowed_scopes"`
-	ExpiresAt           time.Time              `json:"expires_at"`
-	ReplacementAllowed  bool                   `json:"replacement_allowed"`
-	ModifiableArguments []string               `json:"modifiable_arguments"`
-	Effect              policy.EffectKind      `json:"effect"`
-	Risk                policy.RiskLevel       `json:"risk"`
-	ReasonCode          string                 `json:"reason_code"`
-	// Network is set for host-scoped egress approvals.
-	Network  *NetworkApprovalContext `json:"network,omitempty"`
-	EditPlan *tool.EditPlan          `json:"edit_plan,omitempty"`
-	Grant    *policy.Grant           `json:"grant,omitempty"`
+	RequestID           string                  `json:"request_id"`
+	CallID              string                  `json:"call_id"`
+	Tool                string                  `json:"tool"`
+	Arguments           json.RawMessage         `json:"arguments"`
+	ArgumentsDigest     string                  `json:"arguments_digest"`
+	Resources           []tool.Resource         `json:"resources"`
+	AllowedScopes       []policy.ApprovalScope  `json:"allowed_scopes"`
+	ExpiresAt           time.Time               `json:"expires_at"`
+	ReplacementAllowed  bool                    `json:"replacement_allowed"`
+	ModifiableArguments []string                `json:"modifiable_arguments"`
+	Effect              policy.EffectKind       `json:"effect"`
+	Risk                policy.RiskLevel        `json:"risk"`
+	ReasonCode          string                  `json:"reason_code"`
+	Network             *NetworkApprovalContext `json:"network,omitempty"`
+	EditPlan            *tool.EditPlan          `json:"edit_plan,omitempty"`
+	Grant               *policy.Grant           `json:"grant,omitempty"`
 }
 
-// FileChange is one workspace path a tool invocation actually changed, derived
-// by comparing the pre-execution fingerprint with the state on disk afterwards.
-// Observation is the only reliable source: a tool's arguments need not name the
-// paths it writes (file_patch carries them inside the diff body).
 type FileChange struct {
-	Path string `json:"path"`
-	Kind string `json:"kind"`
-	// Added and Removed count lines against the before-image the journal holds
-	// for the turn, and stay zero for binary content or when no journal is
-	// configured.
-	Added   int `json:"added,omitempty"`
-	Removed int `json:"removed,omitempty"`
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`
+	Added   int    `json:"added,omitempty"`
+	Removed int    `json:"removed,omitempty"`
 }
 
-// Change kinds reported in FileChange.Kind, shared with the workspace journal so
-// the guard, the journal and the receipt use one vocabulary.
 const (
 	FileCreated  = workspacejournal.ChangeCreated
 	FileModified = workspacejournal.ChangeModified
 	FileDeleted  = workspacejournal.ChangeDeleted
 )
 
-// MetadataChanges is the tool.Result metadata key holding []FileChange.
 const MetadataChanges = "changes"
 
-// MetadataCanonicalPath is the tool.Result metadata key holding the absolute path
-// of the file a read-tracked tool fingerprinted. It is how a caller learns that a
-// tool read a file, so it is named rather than spelled out at each use.
 const MetadataCanonicalPath = "canonical_path"
 
-// NetworkApprovalContext carries Immediate/Deferred host approval metadata.
 type NetworkApprovalContext struct {
 	Host     string `json:"host"`
 	Protocol string `json:"protocol"`
@@ -105,20 +90,16 @@ type Invocation struct {
 	Descriptor tool.Descriptor
 }
 
-// PermissionRequester runs before the interactive approval UI (N20).
-// Deny wins; Allow may bypass the Ask prompt; Ask/empty continues to UI.
 type PermissionRequester interface {
 	PermissionRequest(ctx context.Context, invocation Invocation) (PermissionDecision, error)
 }
 
-// PermissionDecision is the pre-approval hook outcome.
 type PermissionDecision struct {
 	Action PermissionAction
 	Reason string
 	HookID string
 }
 
-// PermissionAction mirrors hooks allow/deny/ask without importing the hooks package.
 type PermissionAction string
 
 const (
@@ -128,26 +109,20 @@ const (
 )
 
 type Options struct {
-	Registry     *tool.Registry
-	Policy       *policy.Runtime
-	Workspace    string
-	Approvals    func(context.Context, ApprovalRequest) error
-	PersistAllow func(policy.Invocation) error
-	// OnNetworkAllow is called when a network host is approved (or already
-	// allowed by a session/always grant). Wire uses it to write the egress Gate.
-	OnNetworkAllow func(host, protocol string)
-	Hooks          Hooks
-	// PermissionHooks run on ActionAsk before waitForApproval (N20).
-	PermissionHooks PermissionRequester
-	Now             func() time.Time
-	ApprovalTTL     time.Duration
-	ReadTracker     *workspacejournal.ReadTracker
-	Journal         *workspacejournal.Manager
-	Diagnostics     diagnostics.Runner
-	// Escalation nil uses DefaultEscalationPolicy (escalate-on-failure on).
-	Escalation *EscalationPolicy
-	// ForceEditPlanApproval makes mediated workspace writes require a fresh,
-	// one-shot plan approval even when a broader policy grant would allow them.
+	Registry              *tool.Registry
+	Policy                *policy.Runtime
+	Workspace             string
+	Approvals             func(context.Context, ApprovalRequest) error
+	PersistAllow          func(policy.Invocation) error
+	OnNetworkAllow        func(host, protocol string)
+	Hooks                 Hooks
+	PermissionHooks       PermissionRequester
+	Now                   func() time.Time
+	ApprovalTTL           time.Duration
+	ReadTracker           *workspacejournal.ReadTracker
+	Journal               *workspacejournal.Manager
+	Diagnostics           diagnostics.Runner
+	Escalation            *EscalationPolicy
 	ForceEditPlanApproval bool
 }
 
@@ -158,7 +133,6 @@ type pending struct {
 	decided  bool
 }
 
-// ApprovalWaitOutcome is how a wait for a human ended.
 type ApprovalWaitOutcome string
 
 const (
@@ -167,11 +141,6 @@ const (
 	ApprovalWaitCanceled ApprovalWaitOutcome = "canceled"
 )
 
-// ApprovalWait is one stretch a tool call spent parked waiting for a human.
-//
-// The guard reports it because only the guard sees both ends: a caller watching
-// from outside sees the request go out and then hears nothing until the tool has
-// also finished running, so anything it measured would be the wait plus the work.
 type ApprovalWait struct {
 	RequestID string
 	CallID    string
@@ -179,6 +148,8 @@ type ApprovalWait struct {
 	Waited    time.Duration
 	Outcome   ApprovalWaitOutcome
 }
+
+type ApprovalObserver func(string, string, string, string, time.Duration)
 
 type Guard struct {
 	registry              *tool.Registry
@@ -203,6 +174,7 @@ type Guard struct {
 	recovered    map[string]ApprovalRequest
 	restoreWait  func(ApprovalRequest) error
 	approvalWait func(ApprovalWait)
+	observe      ApprovalObserver
 }
 
 type approvalAsk struct {
@@ -275,6 +247,10 @@ func New(options Options) (*Guard, error) {
 	}, nil
 }
 
+func (g *Guard) SetApprovalObserver(observer ApprovalObserver) {
+	g.observe = observer
+}
+
 func (g *Guard) Execute(
 	ctx context.Context, callID, name string, raw json.RawMessage,
 ) (tool.Result, error) {
@@ -298,44 +274,43 @@ func (g *Guard) ExecuteBound(
 		if err != nil {
 			return tool.Result{}, err
 		}
-		decision := g.policy.Evaluate(policyInput(callID, invocation))
+		policyInvocation := policyInput(callID, invocation)
+		started := g.now()
+		decision := g.policy.Evaluate(policyInvocation)
+		reviewLatency := g.now().Sub(started)
 		if g.forceEditPlanApproval && mediatedFileWriter(invocation.Tool) &&
 			decision.Action == policy.ActionAllow {
 			decision.Action = policy.ActionAsk
 			decision.Code = "edit_plan_required"
 			decision.Reason = "workspace writes require a fresh edit plan approval"
 		}
+		hookAction := PermissionAction("")
+		if decision.Action == policy.ActionAsk || decision.Code == "auto_review_allowed" {
+			hookAction, err = g.permissionAction(ctx, invocation)
+			if err != nil {
+				return tool.Result{}, err
+			}
+			if decision.Code == "auto_review_allowed" && hookAction == PermissionAsk {
+				decision = policy.Decision{
+					Action: policy.ActionAsk, Code: "permission_hook_ask",
+					Reason: "permission hook requires human approval",
+				}
+			}
+		}
+		g.observeApproval("evaluated", policyInvocation, decision, 0)
 		switch decision.Action {
 		case policy.ActionDeny, policy.ActionHold:
+			g.observeApproval("denied", policyInvocation, decision, 0)
 			return tool.Result{}, &policy.DecisionError{Code: decision.Code, Reason: decision.Reason}
 		case policy.ActionAsk:
 			now := g.now()
-			policyInvocation := policyInput(callID, invocation)
 			if !g.forceEditPlanApproval &&
 				g.policy.Approvals != nil &&
 				g.policy.Approvals.MatchInvocation(policyInvocation, now) {
+				g.observeApproval("grant_hit", policyInvocation, decision, 0)
 				break
 			}
-			bypassAsk := false
-			if g.permissionHooks != nil {
-				permDecision, permErr := g.permissionHooks.PermissionRequest(ctx, invocation)
-				if permErr != nil {
-					return tool.Result{}, permErr
-				}
-				switch permDecision.Action {
-				case PermissionDeny:
-					reason := permDecision.Reason
-					if reason == "" {
-						reason = "permission hook denied"
-					}
-					return tool.Result{}, &policy.DecisionError{
-						Code: "permission_hook_denied", Reason: reason,
-					}
-				case PermissionAllow:
-					bypassAsk = true
-				}
-			}
-			if bypassAsk {
+			if hookAction == PermissionAllow {
 				break
 			}
 			var editPlan *tool.EditPlan
@@ -362,6 +337,7 @@ func (g *Guard) ExecuteBound(
 				ask.DisableReplace = true
 				ask.EditPlan = editPlan
 			}
+			g.observeApproval("human_required", policyInvocation, decision, reviewLatency)
 			approval, err := g.waitForApproval(
 				ctx, invocation, policyInvocation, now, ask,
 			)
@@ -385,8 +361,6 @@ func (g *Guard) ExecuteBound(
 						Reason: "workspace changed after edit preview",
 					}
 				}
-				// Planned writes are one-shot. Proceed directly to the existing
-				// journal/fingerprint/atomic commit path without caching a grant.
 				break
 			}
 			if len(approval.ReplacementArguments) != 0 {
@@ -415,6 +389,9 @@ func (g *Guard) ExecuteBound(
 			}
 			continue
 		case policy.ActionAllow:
+			if decision.Code == "auto_review_allowed" {
+				g.observeApproval("auto_allowed", policyInvocation, decision, reviewLatency)
+			}
 			g.grantNetworkHosts(invocation.Resources)
 		default:
 			return tool.Result{}, errors.New("tool guard received invalid policy action")
@@ -563,9 +540,6 @@ func policyInput(callID string, invocation Invocation) policy.Invocation {
 	}
 }
 
-// egressDeniedTarget extracts a host that RoundTrip refused for policy reasons.
-// Soft tool failures carry error_category=egress_denied; hard errors may wrap
-// egress.ErrDenied.
 func egressDeniedTarget(result tool.Result, executeErr error) (host, protocol string, ok bool) {
 	protocol = "https"
 	if result.IsError && result.Metadata != nil {
@@ -610,8 +584,6 @@ func softFailEgressApproval(err error) bool {
 	return false
 }
 
-// approveEgressHost asks the operator to Grant a host discovered mid-flight
-// (redirects, search backends not in the pre-flight resource list, etc.).
 func (g *Guard) approveEgressHost(
 	ctx context.Context, invocation Invocation, callID, host, protocol string,
 ) error {
@@ -628,17 +600,46 @@ func (g *Guard) approveEgressHost(
 	}
 	policyInvocation := policyInput(callID, invocation)
 	policyInvocation.Resources = resources
+	started := g.now()
+	decision := g.policy.Evaluate(policyInvocation)
+	reviewLatency := g.now().Sub(started)
+	redirect := invocation
+	redirect.Resources = resources
+	if decision.Action == policy.ActionAsk || decision.Code == "auto_review_allowed" {
+		action, err := g.permissionAction(ctx, redirect)
+		if err != nil {
+			return err
+		}
+		if action == PermissionAllow {
+			g.grantNetworkHosts(resources)
+			return nil
+		}
+		if decision.Code == "auto_review_allowed" && action == PermissionAsk {
+			decision = policy.Decision{
+				Action: policy.ActionAsk, Code: "permission_hook_ask",
+				Reason: "permission hook requires human approval",
+			}
+		}
+	}
+	g.observeApproval("evaluated", policyInvocation, decision, 0)
+	if decision.Action == policy.ActionDeny || decision.Action == policy.ActionHold {
+		g.observeApproval("denied", policyInvocation, decision, 0)
+		return &policy.DecisionError{Code: decision.Code, Reason: decision.Reason}
+	}
+	if decision.Action == policy.ActionAllow {
+		if decision.Code == "auto_review_allowed" {
+			g.observeApproval("auto_allowed", policyInvocation, decision, reviewLatency)
+		}
+		g.grantNetworkHosts(resources)
+		return nil
+	}
 	now := g.now()
 	if g.policy.Approvals != nil && g.policy.Approvals.MatchInvocation(policyInvocation, now) {
+		g.observeApproval("grant_hit", policyInvocation, decision, 0)
 		g.grantNetworkHosts(resources)
 		return nil
 	}
-	// Full/bypass already opted out of asks: grant the discovered host (e.g.
-	// www.bing.com → cn.bing.com redirect) without a second prompt.
-	if g.policy != nil && g.policy.Permission == policy.PermissionBypass {
-		g.grantNetworkHosts(resources)
-		return nil
-	}
+	g.observeApproval("human_required", policyInvocation, decision, reviewLatency)
 	approval, err := g.waitForApproval(
 		ctx, invocation, policyInvocation, now,
 		approvalAsk{
@@ -797,10 +798,6 @@ func (g *Guard) finishFileWrites(
 	}
 	result.Metadata["observed_changes"] = len(changes)
 	if runDiagnostics {
-		// Seal every journal record before invoking an external checker. A
-		// multi-file tool has already written all paths, so returning after the
-		// first diagnostic failure must not leave the remaining records with
-		// stale after-images that make automatic rollback conflict.
 		for _, path := range paths {
 			receipt, err := g.diagnostics.Run(ctx, path)
 			if err != nil {
@@ -823,9 +820,6 @@ func (g *Guard) finishFileWrites(
 	return nil
 }
 
-// observeFileChange compares the fingerprint taken before execution against the
-// state on disk afterwards. Content decides: rewriting a file with identical
-// bytes is not a change even though its identity (mtime/inode) moved.
 func (g *Guard) observeFileChange(
 	ctx context.Context, before workspacejournal.Fingerprint, path string,
 ) (FileChange, bool, error) {
@@ -852,10 +846,6 @@ func (g *Guard) observeFileChange(
 	return change, true, nil
 }
 
-// countLines measures the turn's net line delta for a path against the journal's
-// before-image, so a file edited several times in a turn reports the cumulative
-// change rather than the last call's. Binary content and a missing journal yield
-// no counts: an absent number is honest, a zero would read as "nothing changed".
 func (g *Guard) countLines(
 	ctx context.Context, path string,
 ) (textdiff.Stats, bool, error) {
@@ -888,10 +878,6 @@ func (g *Guard) countLines(
 	return stats, true, nil
 }
 
-// mediatedFileWriter reports whether a tool edits workspace files through the
-// guard's own read/write mediation: those calls must honour read-before-edit
-// and get post-edit diagnostics. Change observation is not gated on this — it
-// covers every declared write resource, whatever the tool.
 func mediatedFileWriter(name string) bool {
 	switch name {
 	case "file_write", "file_edit", "file_apply", "file_patch":
@@ -948,8 +934,6 @@ func (g *Guard) prepare(
 	}, executor, nil
 }
 
-// rewriteAbsolutePathArgs converts absolute paths that resolve inside the
-// workspace into relative paths so sandbox Open* APIs and resource checks agree.
 func (g *Guard) rewriteAbsolutePathArgs(
 	descriptor tool.Descriptor, arguments json.RawMessage,
 ) (json.RawMessage, error) {
@@ -1023,7 +1007,6 @@ func (g *Guard) workspaceRelative(value string) (string, error) {
 	if resolved, err := filepath.EvalSymlinks(absValue); err == nil {
 		absValue = resolved
 	} else {
-		// Missing path: resolve existing parents so /var vs /private/var matches.
 		resolvedParent, missing, joinErr := resolveExistingParent(absValue)
 		if joinErr != nil {
 			return "", errors.New("absolute resource path is not allowed")
@@ -1155,20 +1138,19 @@ func (g *Guard) waitForApproval(
 			)
 		}
 	}
-	// The wait starts when the request is raised, so a host that is slow to show it
-	// counts as waiting rather than as free. It is reported the moment the wait
-	// ends rather than when this function returns: what follows a decision — scope
-	// checks, a persisted allow rule — is the guard's own work, not a human's.
 	parked := g.now()
 	reportWait := func(outcome ApprovalWaitOutcome) {
+		waited := g.now().Sub(parked)
 		observe := g.approvalWaitObserver()
-		if observe == nil {
-			return
+		if observe != nil {
+			observe(ApprovalWait{
+				RequestID: requestID, CallID: invocation.CallID, Tool: invocation.Tool,
+				Waited: waited, Outcome: outcome,
+			})
 		}
-		observe(ApprovalWait{
-			RequestID: requestID, CallID: invocation.CallID, Tool: invocation.Tool,
-			Waited: g.now().Sub(parked), Outcome: outcome,
-		})
+		g.observeApproval(
+			"waited", policyInvocation, policy.Decision{Code: event.ReasonCode}, waited,
+		)
 	}
 	if !recovering {
 		if err := handler(ctx, event); err != nil {
@@ -1230,6 +1212,43 @@ func (g *Guard) waitForApproval(
 	}
 }
 
+func (g *Guard) permissionAction(
+	ctx context.Context,
+	invocation Invocation,
+) (PermissionAction, error) {
+	if g.permissionHooks == nil {
+		return "", nil
+	}
+	decision, err := g.permissionHooks.PermissionRequest(ctx, invocation)
+	if err != nil {
+		return "", err
+	}
+	if decision.Action == PermissionDeny {
+		reason := decision.Reason
+		if reason == "" {
+			reason = "permission hook denied"
+		}
+		return "", &policy.DecisionError{
+			Code: "permission_hook_denied", Reason: reason,
+		}
+	}
+	return decision.Action, nil
+}
+
+func (g *Guard) observeApproval(
+	outcome string,
+	invocation policy.Invocation,
+	decision policy.Decision,
+	latency time.Duration,
+) {
+	if g.observe != nil {
+		effect := policy.NormalizeEffect(invocation)
+		g.observe(
+			outcome, string(effect.Kind), string(effect.Risk), decision.Code, latency,
+		)
+	}
+}
+
 func (g *Guard) RestoreApproval(request ApprovalRequest) error {
 	if request.RequestID == "" || request.CallID == "" ||
 		request.ExpiresAt.IsZero() {
@@ -1253,14 +1272,12 @@ func (g *Guard) cacheApproval(
 				return fmt.Errorf("persist always allow: %w", err)
 			}
 		}
-		// Same-process acceleration: treat as session-scoped cache entry.
 		decision.Scope = policy.ApprovalSession
 		if decision.ExpiresAt.IsZero() || !decision.ExpiresAt.After(g.now()) {
 			decision.ExpiresAt = g.now().Add(24 * time.Hour)
 		}
 	}
 	if decision.Scope == policy.ApprovalOnce {
-		// Once stays exact (full args + resources).
 	}
 	g.grantNetworkHosts(invocation.Resources)
 	request, err := policy.NewApprovalRequestForScope(
@@ -1400,17 +1417,11 @@ func (g *Guard) SetApprovalHandler(handler func(context.Context, ApprovalRequest
 	g.approvals = handler
 	g.mu.Unlock()
 }
-
-// SetApprovalRecoveryHandler restores turn-local wait bookkeeping without
-// re-emitting an approval.required event that is already durable.
 func (g *Guard) SetApprovalRecoveryHandler(handler func(ApprovalRequest) error) {
 	g.mu.Lock()
 	g.restoreWait = handler
 	g.mu.Unlock()
 }
-
-// SetApprovalWaitObserver installs the observer that hears how long each
-// approval kept a tool parked.
 func (g *Guard) SetApprovalWaitObserver(observe func(ApprovalWait)) {
 	if g == nil {
 		return
@@ -1419,9 +1430,6 @@ func (g *Guard) SetApprovalWaitObserver(observe func(ApprovalWait)) {
 	g.approvalWait = observe
 	g.mu.Unlock()
 }
-
-// SwapPolicy replaces the Guard policy pointer and returns the previous one.
-// Used to install a turn-local CloneSampling view for the duration of a turn.
 func (g *Guard) SwapPolicy(next *policy.Runtime) *policy.Runtime {
 	if g == nil {
 		return nil
@@ -1434,8 +1442,6 @@ func (g *Guard) SwapPolicy(next *policy.Runtime) *policy.Runtime {
 	}
 	return prev
 }
-
-// Policy returns the policy currently installed on the Guard.
 func (g *Guard) Policy() *policy.Runtime {
 	if g == nil {
 		return nil
@@ -1501,7 +1507,6 @@ func (g *Guard) resolveResources(
 		}
 		resources = append(resources, resource)
 	}
-	// Derive host resources from URLs for host-scoped network approvals.
 	for _, resource := range append([]tool.Resource(nil), resources...) {
 		if resource.Kind != "url" || resource.ID == "" {
 			continue
@@ -1686,10 +1691,6 @@ func patchPaths(patch string) []string {
 	return result
 }
 
-// changePaths enumerates every path named by a transaction argument, both the
-// subject of each change and a move's destination. It fails on anything it
-// cannot read: a shape the guard does not understand must stop the call rather
-// than produce a short resource list that leaves writes uncovered.
 func changePaths(value any) ([]string, error) {
 	if value == nil {
 		return nil, nil
