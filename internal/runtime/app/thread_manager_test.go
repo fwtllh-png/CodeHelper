@@ -187,6 +187,9 @@ func TestThreadManagerRestoresPendingApprovalOnChildThread(t *testing.T) {
 			Tool: "write_file", Arguments: json.RawMessage(`{"path":"note.txt"}`),
 			AllowedScopes: []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
 			ExpiresAt:     time.Now().Add(time.Minute),
+			Effect:        "external.mutation",
+			Risk:          "high",
+			ReasonCode:    "approval_required",
 		},
 	}
 	runtime, err := newRuntimeWithRecovery(t.Context(), Options{

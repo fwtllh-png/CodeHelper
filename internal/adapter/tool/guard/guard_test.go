@@ -183,6 +183,10 @@ func TestActAutoProcessPausesForApprovalThenResumes(t *testing.T) {
 	if request.Tool != "shell_run" {
 		t.Fatalf("approval tool = %q, want shell_run", request.Tool)
 	}
+	if request.Effect != policy.EffectProcessMutating ||
+		request.Risk != policy.RiskHigh || request.ReasonCode == "" {
+		t.Fatalf("approval presentation facts = %+v", request)
+	}
 	select {
 	case err := <-result:
 		t.Fatalf("process call did not pause for approval: %v", err)
@@ -687,14 +691,14 @@ func TestEgressDeniedAsksThenRetries(t *testing.T) {
 
 	// Pre-flight Suggest asks for the tool URL host first.
 	first := <-requests
-	if first.Reason != ApprovalReasonNetworkHost ||
+	if first.ReasonCode != ApprovalReasonNetworkHost ||
 		first.Network == nil || first.Network.Host != "example.com" {
 		t.Fatalf("preflight approval = %+v", first)
 	}
 	mustDecide(t, guard, first, policy.ApprovalSession, nil)
 
 	request := <-requests
-	if request.Reason != ApprovalReasonNetworkHost ||
+	if request.ReasonCode != ApprovalReasonNetworkHost ||
 		request.Network == nil || request.Network.Host != "cdn.example" {
 		t.Fatalf("mid-flight approval = %+v", request)
 	}
@@ -865,7 +869,7 @@ func TestNetworkHostApprovalSessionReuseAndCancel(t *testing.T) {
 		result <- err
 	}()
 	first := <-requests
-	if first.Reason != ApprovalReasonNetworkHost ||
+	if first.ReasonCode != ApprovalReasonNetworkHost ||
 		first.Network == nil || first.Network.Host != "example.com" ||
 		first.Network.Mode != string(policy.NetworkImmediate) {
 		t.Fatalf("first approval = %+v", first)
@@ -1047,8 +1051,8 @@ func TestSandboxEscalateRequiresReapproval(t *testing.T) {
 		result <- err
 	}()
 	request := <-requests
-	if request.Reason != ApprovalReasonSandboxEscalate {
-		t.Fatalf("reason = %q, want %s", request.Reason, ApprovalReasonSandboxEscalate)
+	if request.ReasonCode != ApprovalReasonSandboxEscalate {
+		t.Fatalf("reason = %q, want %s", request.ReasonCode, ApprovalReasonSandboxEscalate)
 	}
 	hasNone := false
 	for _, resource := range request.Resources {
@@ -1146,8 +1150,8 @@ func TestSandboxStrongApprovalDoesNotCoverEscalate(t *testing.T) {
 		first <- err
 	}()
 	escalateAsk := <-requests
-	if escalateAsk.Reason != ApprovalReasonSandboxEscalate {
-		t.Fatalf("ask reason = %q", escalateAsk.Reason)
+	if escalateAsk.ReasonCode != ApprovalReasonSandboxEscalate {
+		t.Fatalf("ask reason = %q", escalateAsk.ReasonCode)
 	}
 	mustDecide(t, guard, escalateAsk, policy.ApprovalSession, nil)
 	if err := <-first; err != nil {

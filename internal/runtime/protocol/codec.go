@@ -9,10 +9,7 @@ import (
 	"time"
 )
 
-// operationPayloads is the single source of truth for the operation kinds that
-// exist on the wire: decoding and the list hosts advertise during capability
-// negotiation both read from it, so a kind cannot become decodable without also
-// becoming discoverable. Order is part of the contract because hosts publish it.
+// operationPayloads drives decoding and advertised kinds in contract order.
 var operationPayloads = []struct {
 	kind       OperationKind
 	newPayload func() OperationPayload

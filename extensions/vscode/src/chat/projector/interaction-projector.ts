@@ -2,10 +2,20 @@ import { isUnknownEvent, type DecodedEvent } from "../../protocol/decode.js";
 import { projectEditPlan } from "../../edits/model.js";
 import { stringify } from "./helpers.js";
 import type { MutableTurn } from "./model.js";
+const approvalEffects = new Set([
+  "workspace.read", "workspace.edit", "process.read_only", "process.mutating",
+  "network.read", "network.mutating", "agent.message", "agent.lifecycle",
+  "external.mutation",
+]);
+const approvalRisks = new Set(["low", "medium", "high", "critical"]);
 export function projectInteraction(event: DecodedEvent, turn: MutableTurn): boolean {
   if (isUnknownEvent(event)) return false;
   switch (event.kind) {
     case "approval.required":
+      if (!approvalEffects.has(event.data.effect) ||
+        !approvalRisks.has(event.data.risk) || event.data.reason_code === "") {
+        throw new TypeError("approval presentation facts are invalid");
+      }
       turn.reasoningActive = false;
       turn.status = "awaiting_approval";
       turn.approvals.set(event.data.request_id, {
@@ -24,7 +34,9 @@ export function projectInteraction(event: DecodedEvent, turn: MutableTurn): bool
         ],
         allowedScopes: [...event.data.allowed_scopes],
         expiresAt: event.data.expires_at,
-        ...(event.data.reason === undefined ? {} : { reason: event.data.reason }),
+        effect: event.data.effect,
+        risk: event.data.risk,
+        reasonCode: event.data.reason_code,
         ...(event.data.grant_preview === undefined
           ? {}
           : {
@@ -57,6 +69,9 @@ export function projectInteraction(event: DecodedEvent, turn: MutableTurn): bool
       });
       return true;
     case "approval.resolved": {
+      if (!["approve", "deny", "cancel"].includes(event.data.decision)) {
+        throw new TypeError("approval decision is invalid");
+      }
       const approval = turn.approvals.get(event.data.request_id);
       if (approval !== undefined) approval.resolved = event.data.decision;
       turn.status = "running";

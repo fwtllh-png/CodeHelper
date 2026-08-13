@@ -2301,6 +2301,9 @@
           ],
           "additionalProperties": false
         },
+        "effect": {
+          "type": "string"
+        },
         "expires_at": {
           "type": "string",
           "format": "date-time"
@@ -2351,7 +2354,7 @@
           ],
           "additionalProperties": false
         },
-        "reason": {
+        "reason_code": {
           "type": "string"
         },
         "replacement_allowed": {
@@ -2387,6 +2390,9 @@
             ],
             "additionalProperties": false
           }
+        },
+        "risk": {
+          "type": "string"
         },
         "source": {
           "type": "object",
@@ -2433,11 +2439,14 @@
         "arguments",
         "arguments_digest",
         "call_id",
+        "effect",
         "expires_at",
         "modifiable_arguments",
+        "reason_code",
         "replacement_allowed",
         "request_id",
         "resources",
+        "risk",
         "tool"
       ],
       "additionalProperties": false

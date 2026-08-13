@@ -156,13 +156,11 @@ func (a *EngineAdapter) SetPermission(permission policy.Permission) {
 		a.engine.SetPermission(permission)
 	}
 }
-
 func (a *EngineAdapter) SetGranular(granular policy.Granular) {
 	if a != nil && a.engine != nil {
 		a.engine.SetGranular(granular)
 	}
 }
-
 func AdaptEngine(value *agentengine.Engine) *EngineAdapter {
 	return &EngineAdapter{engine: value}
 }
@@ -368,7 +366,9 @@ func (a *EngineAdapter) StartTurn(
 				AllowedScopes: scopes, ExpiresAt: event.Approval.ExpiresAt,
 				ReplacementAllowed:  event.Approval.ReplacementAllowed,
 				ModifiableArguments: event.Approval.ModifiableArguments,
-				Reason:              event.Approval.Reason,
+				Effect:              string(event.Approval.Effect),
+				Risk:                string(event.Approval.Risk),
+				ReasonCode:          event.Approval.ReasonCode,
 				Network:             protocolNetwork(event.Approval.Network),
 				EditPlan:            editPlan,
 				GrantPreview:        grant,

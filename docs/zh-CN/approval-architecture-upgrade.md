@@ -2,7 +2,7 @@
 
 简体中文 | [English](../en/approval-architecture-upgrade.md)
 
-> 状态：A0-A2 已于 2026-08-13 完成。A3-A4 属于目标设计，不代表当前已交付能力。
+> 状态：A0-A3 已于 2026-08-13 完成。A4 属于目标设计，不代表当前已交付能力。
 >
 > 范围：Tool Guard Policy、持久化授权、Approval 协议、Runtime 恢复、ACP
 > 路由、VS Code 展示与 Approval 可观测性。
@@ -423,6 +423,14 @@ Canonical Path Set；Network Grant 绑定 Protocol 与 Host；Agent Grant 绑定
 - 除非存在真实消费者，不为 Pre-release Permission Format 增加兼容脚手架。
 
 ### A3：VS Code Approval Surface
+
+实施状态（2026-08-13）：`completed`。
+
+Runtime 现在随每个 Approval 发布经过校验的 Effect、Risk 与 Reason Code；VS Code
+只投影这些权威事实，不重新分类。审批收敛为单一 Inline Decision Surface：Allow
+Once 与 Skip 固定展示，可复用 Scope 和 Stop Turn 收入 More，Command/Target
+有界展示，Details 按需展开，同时保留 Diff Preview 与 Agent Source。并发 Request
+使用可访问的横向 Carousel。自动 Blocking Modal 及其重复 Formatter 已删除。
 
 - 通过生成契约扩展协议数据；
 - 删除 Blocking Modal 和重复 Transcript Control；

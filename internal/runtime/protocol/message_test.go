@@ -369,6 +369,7 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 				Kind: "file", Path: "/workspace/x", Access: "write",
 			}},
 			AllowedScopes: []ApprovalScope{ApprovalScopeOnce, ApprovalScopeSession},
+			Effect:        "workspace.edit", Risk: "high", ReasonCode: "approval_required",
 			GrantPreview: &ApprovalGrantPreview{
 				Kind: "file", Key: strings.Repeat("d", 64), Summary: "workspace/x",
 			},
@@ -481,6 +482,33 @@ func TestExtensionLifecycleValidationFailsClosed(t *testing.T) {
 				TurnID: "turn", ItemID: "item",
 			}, &value); err == nil {
 				t.Fatalf("invalid lifecycle value was accepted: %+v", value)
+			}
+		})
+	}
+}
+
+func TestApprovalPresentationFactsFailClosed(t *testing.T) {
+	valid := ApprovalRequiredData{
+		RequestID: "approval_1", CallID: "call_1", Tool: "shell_run",
+		Arguments:       json.RawMessage(`{"command":"go test ./..."}`),
+		ArgumentsDigest: strings.Repeat("a", 64),
+		AllowedScopes:   []ApprovalScope{ApprovalScopeOnce},
+		ExpiresAt:       time.Now().Add(time.Minute),
+		Effect:          "process.mutating",
+		Risk:            "high",
+		ReasonCode:      "approval_required",
+	}
+	tests := map[string]func(*ApprovalRequiredData){
+		"effect": func(value *ApprovalRequiredData) { value.Effect = "shell" },
+		"risk":   func(value *ApprovalRequiredData) { value.Risk = "severe" },
+		"reason": func(value *ApprovalRequiredData) { value.ReasonCode = "" },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			value := valid
+			mutate(&value)
+			if err := value.validate(); err == nil {
+				t.Fatal("invalid approval presentation facts were accepted")
 			}
 		})
 	}

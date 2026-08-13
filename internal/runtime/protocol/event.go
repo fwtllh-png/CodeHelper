@@ -171,15 +171,8 @@ func (d *CitationData) validate() error {
 	return nil
 }
 
-// UsageData reports what one provider call has consumed so far. The counts are
-// cumulative within their call, not deltas: a second event for the same Sample
-// replaces the first rather than adding to it, which is what lets a client that
-// joined mid-turn read one event and know the call's total.
-//
-// An aggregator therefore keeps the last event per Sample and sums across
-// Samples. Summing every event instead double-counts, because providers that
-// report input and output in separate stream events (Anthropic does) produce
-// two cumulative snapshots of the same call.
+// UsageData is one provider call's cumulative usage. Aggregators retain the
+// latest event per Sample and sum across Samples to avoid double-counting.
 type UsageData struct {
 	// Sample is which provider call within the turn these counts belong to,
 	// counting from 1. Zero means the producer did not say, which is only true
@@ -470,13 +463,8 @@ func (d *CompletionDeclaration) validate() error {
 	return nil
 }
 
-// ToolOutputData is one piece of a tool's output, sent while the tool is still
-// running. A command that takes a minute produced nothing observable until it
-// finished before this existed.
-//
-// It is a live-only event, like the model deltas: it is not persisted, so replay
-// reconstructs the call from tool.start and tool.result. A client that wants the
-// whole output reads the result, not the chunks.
+// ToolOutputData is a live output chunk. Replay reconstructs the call from
+// tool.start and tool.result rather than persisting these chunks.
 type ToolOutputData struct {
 	Tool   string `json:"tool"`
 	CallID string `json:"call_id"`
@@ -739,7 +727,9 @@ type ApprovalRequiredData struct {
 	ExpiresAt           time.Time               `json:"expires_at"`
 	ReplacementAllowed  bool                    `json:"replacement_allowed"`
 	ModifiableArguments []string                `json:"modifiable_arguments"`
-	Reason              string                  `json:"reason,omitempty"`
+	Effect              string                  `json:"effect"`
+	Risk                string                  `json:"risk"`
+	ReasonCode          string                  `json:"reason_code"`
 	Network             *NetworkApprovalPayload `json:"network,omitempty"`
 	EditPlan            *EditPlan               `json:"edit_plan,omitempty"`
 	GrantPreview        *ApprovalGrantPreview   `json:"grant_preview,omitempty"`
@@ -765,6 +755,10 @@ func (d *ApprovalRequiredData) validate() error {
 	}
 	if len(d.Arguments) == 0 || d.ExpiresAt.IsZero() {
 		return errors.New("approval arguments and expiry are required")
+	}
+	if !validApprovalEffect(d.Effect) || !validApprovalRisk(d.Risk) ||
+		d.ReasonCode == "" {
+		return errors.New("approval effect, risk, and reason code are required")
 	}
 	for _, resource := range d.Resources {
 		if resource.Kind == "" || (resource.Access != "read" && resource.Access != "write") {
@@ -801,6 +795,22 @@ func (d *ApprovalRequiredData) validate() error {
 		}
 	}
 	return nil
+}
+
+func validApprovalEffect(value string) bool {
+	switch value {
+	case "workspace.read", "workspace.edit", "process.read_only",
+		"process.mutating", "network.read", "network.mutating",
+		"agent.message", "agent.lifecycle", "external.mutation":
+		return true
+	default:
+		return false
+	}
+}
+
+func validApprovalRisk(value string) bool {
+	return value == "low" || value == "medium" || value == "high" ||
+		value == "critical"
 }
 
 func validateApprovalSource(source *ApprovalSource) error {

@@ -702,6 +702,7 @@ export type ApprovalRequiredData = {
           }>;
       readonly "id": string;
     };
+  readonly "effect": string;
   readonly "expires_at": string;
   readonly "grant_preview"?: {
       readonly "key": string;
@@ -714,7 +715,7 @@ export type ApprovalRequiredData = {
       readonly "mode": string;
       readonly "protocol": string;
     };
-  readonly "reason"?: string;
+  readonly "reason_code": string;
   readonly "replacement_allowed": boolean;
   readonly "request_id": string;
   readonly "resources": ReadonlyArray<{
@@ -724,6 +725,7 @@ export type ApprovalRequiredData = {
       readonly "path"?: string;
       readonly "tree"?: boolean;
     }>;
+  readonly "risk": string;
   readonly "source"?: {
       readonly "agent_id": string;
       readonly "agent_path": string;

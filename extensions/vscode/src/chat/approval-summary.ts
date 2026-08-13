@@ -1,16 +1,14 @@
 import type { ApprovalCard } from "./projector.js";
 
-const maxCommandPreview = 1200;
-const maxGenericPreview = 800;
+const maxTargetPreview = 1200;
 const maxCardPreview = 360;
 
-export interface ApprovalDialogContent {
-  readonly title: string;
-  readonly detail: string;
-}
-
 export interface ApprovalCardContent {
-  readonly summary: string;
+  readonly risk: string;
+  readonly title: string;
+  readonly consequence: string;
+  readonly target?: string;
+  readonly source?: string;
   readonly detail: string;
 }
 
@@ -21,16 +19,16 @@ export function approvalCardContent(
   const fileApply = fileApplySummary(approval, input);
   const path = stringField(input, "path");
   const purpose = stringField(input, "description") ??
-    stringField(input, "reason") ??
-    approval.reason;
-  const target = fileApply?.label ?? path ?? purpose;
+    stringField(input, "reason");
+  const command = stringField(input, "command");
+  const target = command ?? fileApply?.label ?? path ?? purpose;
   const source = approvalSource(approval);
-  const summary = `${source === undefined ? "Approval" : source}: ${approval.tool}` +
-    (target === undefined ? "" : ` · ${singleLine(target, 100)}`) +
-    (approval.resolved === undefined ? "" : ` · ${approval.resolved}`);
   const lines: string[] = [];
+  lines.push(`Effect: ${approval.effect}`);
+  lines.push(`Reason code: ${approval.reasonCode}`);
   if (source !== undefined) {
     lines.push(`Requested by: ${source}`);
+    lines.push(`Parent: ${approval.source?.parentPath ?? "/root"}`);
   }
   if (fileApply !== undefined) {
     lines.push(`Changes: ${fileApply.label}`);
@@ -38,86 +36,58 @@ export function approvalCardContent(
     if (fileApply.fileCount > 3) {
       lines.push(`• +${String(fileApply.fileCount - 3)} more files`);
     }
-    return {
-      summary,
-      detail: truncate(lines.join("\n"), maxCardPreview),
-    };
-  }
-  if (path !== undefined) {
+  } else if (path !== undefined) {
     lines.push(`File: ${singleLine(path, 180)}`);
-  }
-  const command = stringField(input, "command");
-  if (command !== undefined) {
-    lines.push(`Command: ${singleLine(command, maxCardPreview)}`);
   }
   const content = stringField(input, "content");
   if (content !== undefined) {
     lines.push(`Content: ${textSize(content)}`);
   }
-  for (const [key, value] of Object.entries(input ?? {})) {
-    if (["path", "command", "content", "description", "reason"].includes(key)) {
-      continue;
-    }
-    const formatted = formatValue(value);
-    lines.push(`${key}: ${singleLine(formatted, 160)}`);
-    if (lines.join("\n").length >= maxCardPreview) break;
-  }
   const resources = summarizeResources(approval.resources);
-  if (resources.length > 0) {
+  if (fileApply === undefined && resources.length > 0) {
     lines.push(`Access: ${resources.join(", ")}`);
   }
   if (approval.grantPreview !== undefined) {
     lines.push(`Reusable rule: ${singleLine(approval.grantPreview.summary, 180)}`);
   }
   return {
-    summary,
+    risk: `${title(approval.risk)} risk`,
+    title: approvalQuestion(approval.effect),
+    consequence: approvalConsequence(approval.effect),
+    ...(target === undefined
+      ? {}
+      : { target: truncate(target.trim(), maxTargetPreview) }),
+    ...(source === undefined ? {} : { source }),
     detail: truncate(lines.join("\n"), maxCardPreview),
   };
 }
 
-export function approvalDialogContent(
-  approval: ApprovalCard,
-): ApprovalDialogContent {
-  const input = parseArguments(approval.arguments);
-  const fileApply = fileApplySummary(approval, input);
-  const purpose = stringField(input, "description") ??
-    stringField(input, "reason") ??
-    approval.reason;
-  const command = stringField(input, "command");
-  const resources = summarizeResources(approval.resources);
-  const title = fileApply !== undefined
-    ? `file_apply: ${fileApply.label}`
-    : purpose === undefined
-    ? `${approval.tool} needs approval`
-    : `${approval.tool}: ${singleLine(purpose, 140)}`;
-  const sections: string[] = [];
-  const source = approvalSource(approval);
-  if (source !== undefined) {
-    sections.push(
-      `Source\n${source}\nParent: ${approval.source?.parentPath ?? "/root"}`,
-    );
+function approvalQuestion(effect: string): string {
+  switch (effect) {
+    case "workspace.edit": return "Apply workspace changes?";
+    case "process.read_only": return "Run this command?";
+    case "process.mutating": return "Run a command with side effects?";
+    case "network.read": return "Connect to a network host?";
+    case "network.mutating": return "Send data to a network service?";
+    case "agent.message": return "Send this agent message?";
+    case "agent.lifecycle": return "Change the agent workflow?";
+    case "external.mutation": return "Change an external system?";
+    default: return "Allow this operation?";
   }
-  if (fileApply !== undefined) {
-    sections.push(`Request\nApply ${fileApply.label}`);
-    sections.push(`Files\n${fileApply.files.map((file) => `• ${file}`).join("\n")}`);
-    sections.push(`Access\n• Write ${plural(fileApply.fileCount, "file")} in workspace`);
-    sections.push("A diff preview is open in Changes.");
-  } else if (command !== undefined) {
-    sections.push(`Command\n${truncate(command.trim(), maxCommandPreview)}`);
-  } else {
-    const preview = readableArguments(input, approval.arguments);
-    if (preview !== "") {
-      sections.push(`Request\n${truncate(preview, maxGenericPreview)}`);
-    }
+}
+
+function approvalConsequence(effect: string): string {
+  switch (effect) {
+    case "workspace.edit": return "This can modify files in the workspace.";
+    case "process.read_only": return "This reads local process state without declared writes.";
+    case "process.mutating": return "This command can modify local state.";
+    case "network.read": return "This shares the request target with a remote host.";
+    case "network.mutating": return "This can modify data on a remote service.";
+    case "agent.message": return "This sends content to another agent.";
+    case "agent.lifecycle": return "This can start, stop, or redirect agent work.";
+    case "external.mutation": return "This can modify state outside the workspace.";
+    default: return "Review the bounded request before continuing.";
   }
-  if (fileApply === undefined && resources.length > 0) {
-    sections.push(`Access\n${resources.map((value) => `• ${value}`).join("\n")}`);
-  }
-  if (approval.grantPreview !== undefined) {
-    sections.push(`Reusable rule\n${approval.grantPreview.summary}`);
-  }
-  sections.push("Full request details are available in the Chat approval card.");
-  return { title, detail: sections.join("\n\n") };
 }
 
 function approvalSource(approval: ApprovalCard): string | undefined {
@@ -182,24 +152,6 @@ function stringField(
   return typeof candidate === "string" && candidate.trim() !== ""
     ? candidate.trim()
     : undefined;
-}
-
-function readableArguments(
-  parsed: Readonly<Record<string, unknown>> | undefined,
-  original: string,
-): string {
-  if (parsed === undefined) return original.trim();
-  return Object.entries(parsed)
-    .map(([key, value]) => `${key}: ${formatValue(value)}`)
-    .join("\n");
-}
-
-function formatValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean" || value === null) {
-    return String(value);
-  }
-  return JSON.stringify(value);
 }
 
 function summarizeResources(resources: readonly string[]): string[] {

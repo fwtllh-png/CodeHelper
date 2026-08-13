@@ -44,6 +44,9 @@ func TestAgentEventsAreVisibleOnlyToTheirHostWorkspace(t *testing.T) {
 			Arguments: []byte(`{}`), ArgumentsDigest: "digest",
 			AllowedScopes: []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
 			ExpiresAt:     time.Now().Add(time.Minute),
+			Effect:        "external.mutation",
+			Risk:          "high",
+			ReasonCode:    "approval_required",
 			Source: &protocol.ApprovalSource{
 				Kind: "agent", AgentID: "agent-1",
 				AgentPath: "/root/write", ParentPath: "/root",
@@ -110,6 +113,9 @@ func TestAgentApprovalWorkspaceResolvesSymlinks(t *testing.T) {
 		Arguments: []byte(`{}`), ArgumentsDigest: "digest",
 		AllowedScopes: []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
 		ExpiresAt:     time.Now().Add(time.Minute),
+		Effect:        "workspace.edit",
+		Risk:          "high",
+		ReasonCode:    "approval_required",
 		Source: &protocol.ApprovalSource{
 			Kind: "agent", AgentID: "agent-1",
 			AgentPath: "/root/write", ParentPath: "/root",
@@ -163,6 +169,9 @@ func TestPendingChildApprovalUsesRuntimeIdentity(t *testing.T) {
 			ArgumentsDigest: "digest",
 			AllowedScopes:   []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
 			ExpiresAt:       time.Now().Add(time.Minute),
+			Effect:          "workspace.edit",
+			Risk:            "high",
+			ReasonCode:      "approval_required",
 			Source: &protocol.ApprovalSource{
 				Kind: "agent", AgentID: "agent-9",
 				SessionID: "session-1", WorkspaceRoot: t.TempDir(),

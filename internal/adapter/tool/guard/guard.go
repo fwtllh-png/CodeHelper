@@ -35,8 +35,9 @@ type ApprovalRequest struct {
 	ExpiresAt           time.Time              `json:"expires_at"`
 	ReplacementAllowed  bool                   `json:"replacement_allowed"`
 	ModifiableArguments []string               `json:"modifiable_arguments"`
-	// Reason explains why approval is needed (e.g. sandbox_escalate, network_host).
-	Reason string `json:"reason,omitempty"`
+	Effect              policy.EffectKind      `json:"effect"`
+	Risk                policy.RiskLevel       `json:"risk"`
+	ReasonCode          string                 `json:"reason_code"`
 	// Network is set for host-scoped egress approvals.
 	Network  *NetworkApprovalContext `json:"network,omitempty"`
 	EditPlan *tool.EditPlan          `json:"edit_plan,omitempty"`
@@ -205,7 +206,7 @@ type Guard struct {
 }
 
 type approvalAsk struct {
-	Reason         string
+	Code           string
 	AllowedScopes  []policy.ApprovalScope
 	DisableReplace bool
 	Network        *NetworkApprovalContext
@@ -353,6 +354,9 @@ func (g *Guard) ExecuteBound(
 				editPlan = &plan
 			}
 			ask := networkApprovalAsk(policyInvocation, invocation.Descriptor.Capability)
+			if ask.Code == "" {
+				ask.Code = decision.Code
+			}
 			if editPlan != nil {
 				ask.AllowedScopes = []policy.ApprovalScope{policy.ApprovalOnce}
 				ask.DisableReplace = true
@@ -471,7 +475,7 @@ func (g *Guard) ExecuteBound(
 					approval, err := g.waitForApproval(
 						ctx, invocation, escalateInvocation, now,
 						approvalAsk{
-							Reason: ApprovalReasonSandboxEscalate,
+							Code: ApprovalReasonSandboxEscalate,
 							AllowedScopes: []policy.ApprovalScope{
 								policy.ApprovalOnce, policy.ApprovalSession,
 							},
@@ -638,7 +642,7 @@ func (g *Guard) approveEgressHost(
 	approval, err := g.waitForApproval(
 		ctx, invocation, policyInvocation, now,
 		approvalAsk{
-			Reason: ApprovalReasonNetworkHost,
+			Code: ApprovalReasonNetworkHost,
 			Network: &NetworkApprovalContext{
 				Host: host, Protocol: protocol, Mode: string(policy.NetworkImmediate),
 			},
@@ -1122,9 +1126,11 @@ func (g *Guard) waitForApproval(
 		Arguments: request.Arguments, ArgumentsDigest: request.ArgumentsDigest,
 		Resources: request.Resources, AllowedScopes: scopes,
 		ExpiresAt: expiresAt, ReplacementAllowed: replacementAllowed,
-		ModifiableArguments: modifiable, Reason: opts.Reason, Network: opts.Network,
-		EditPlan: opts.EditPlan, Grant: request.Grant,
+		ModifiableArguments: modifiable, ReasonCode: opts.Code,
+		Network: opts.Network, EditPlan: opts.EditPlan, Grant: request.Grant,
 	}
+	effect := policy.NormalizeEffect(policyInvocation)
+	event.Effect, event.Risk = effect.Kind, effect.Risk
 	if recovering {
 		event = recovered
 	}
@@ -1301,7 +1307,7 @@ func networkApprovalAsk(
 		return approvalAsk{}
 	}
 	return approvalAsk{
-		Reason: ApprovalReasonNetworkHost,
+		Code: ApprovalReasonNetworkHost,
 		Network: &NetworkApprovalContext{
 			Host: host, Protocol: protocol, Mode: string(policy.NetworkImmediate),
 		},

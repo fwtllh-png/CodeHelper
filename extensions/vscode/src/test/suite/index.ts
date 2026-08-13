@@ -741,6 +741,9 @@ async function verifyNativeFlows(
   const approvals = new Map<string, {
     readonly requestId: string;
     readonly scopes: readonly string[];
+    readonly effect: string;
+    readonly risk: string;
+    readonly reasonCode: string;
     readonly grant?: { readonly kind: string; readonly key: string; readonly summary: string };
   }>();
   const resolvedApprovals = new Set<string>();
@@ -758,6 +761,9 @@ async function verifyNativeFlows(
       approvals.set(event.turn_id, {
         requestId: event.data.request_id,
         scopes: event.data.allowed_scopes,
+        effect: event.data.effect,
+        risk: event.data.risk,
+        reasonCode: event.data.reason_code,
         ...(event.data.grant_preview === undefined
           ? {}
           : { grant: event.data.grant_preview }),
@@ -1748,6 +1754,9 @@ async function verifyHighRiskApproval(
   approvals: ReadonlyMap<string, {
     readonly requestId: string;
     readonly scopes: readonly string[];
+    readonly effect: string;
+    readonly risk: string;
+    readonly reasonCode: string;
     readonly grant?: { readonly kind: string; readonly key: string; readonly summary: string };
   }>,
   resolved: ReadonlySet<string>,
@@ -1767,6 +1776,9 @@ async function verifyHighRiskApproval(
   const approval = approvals.get(turn.turnId);
   assert.ok(approval);
   assert.deepEqual(approval.scopes, ["once", "session"]);
+  assert.equal(approval.effect, "process.mutating");
+  assert.equal(approval.risk, "high");
+  assert.equal(approval.reasonCode, "approval_required");
   assert.ok(approval.grant);
   assert.equal(approval.grant.kind, "shell");
   assert.equal(approval.grant.key.length, 64);

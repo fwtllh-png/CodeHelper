@@ -378,7 +378,7 @@
       "kind": "file",
       "path": "extensions/vscode/src/chat/view.ts",
       "limits": {
-        "lines": 1868
+        "lines": 1777
       }
     },
     {

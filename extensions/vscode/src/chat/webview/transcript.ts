@@ -272,8 +272,18 @@ function appendTimeline(
   let group: HTMLDetailsElement | undefined;
   let groupBody: HTMLElement | undefined;
   let groupItems: TurnTimelineItem[] = [];
+  const pendingApprovals = turn.approvals.filter((approval) =>
+    approval.resolved === undefined);
+  const firstPendingApproval = pendingApprovals[0]?.requestId;
   for (const item of turn.timeline) {
-    const node = timelineItem(item, turn, trusted, actions);
+    let node: HTMLElement | undefined;
+    if (item.kind === "approval" && pendingApprovals.length > 1 &&
+      pendingApprovals.some((approval) => approval.requestId === item.requestId)) {
+      if (item.requestId !== firstPendingApproval) continue;
+      node = approvalCarousel(pendingApprovals, trusted, actions);
+    } else {
+      node = timelineItem(item, turn, trusted, actions);
+    }
     if (node === undefined) continue;
     if (item.kind === "output" || item.kind === "approval" ||
       item.kind === "input") {
@@ -747,51 +757,100 @@ function approvalCard(
   actions: TranscriptActions,
 ): HTMLElement {
   const content = approvalCardContent(approval);
-  const box = document.createElement("details");
+  const box = document.createElement("section");
   box.className = "approval-card";
   box.dataset["stateKey"] = `approval:${approval.requestId}`;
-  box.open = approval.resolved === undefined;
-  appendText(
-    box,
-    "summary",
-    "",
-    content.summary,
-  );
-  if (content.detail !== "") {
-    appendText(box, "div", "approval-summary", content.detail);
+  box.setAttribute("role", "region");
+  box.setAttribute("aria-label", `${content.risk}: ${content.title}`);
+  const header = document.createElement("div");
+  header.className = "approval-header";
+  appendText(header, "span", `approval-risk ${approval.risk}`, content.risk);
+  appendText(header, "strong", "approval-title", content.title);
+  box.append(header);
+  appendText(box, "p", "approval-consequence", content.consequence);
+  if (content.source !== undefined) {
+    appendText(box, "div", "approval-source", content.source);
   }
-  if (approval.resolved !== undefined ||
-    Date.parse(approval.expiresAt) <= Date.now()) {
+  if (content.target !== undefined) {
+    appendText(box, "pre", "approval-target", content.target);
+  }
+  const expired = Date.parse(approval.expiresAt) <= Date.now();
+  if (approval.resolved !== undefined || expired) {
+    appendText(
+      box,
+      "div",
+      "approval-outcome",
+      approval.resolved ?? "Expired",
+    );
     return box;
   }
+  const row = document.createElement("div");
+  row.className = "approval-actions";
   if (approval.editPlan !== undefined) {
-    box.append(actionButton("Preview diff", () => {
+    const preview = actionButton("Review changes", () => {
       actions.preview(approval.requestId);
-    }));
+    });
+    preview.className = "approval-action";
+    row.append(preview);
     for (const file of approval.editPlan.files) {
       if (file.resourceId !== undefined) {
         box.append(resourceButton(file.resourceId, actions, `Open ${file.path} diff`));
       }
     }
   }
-  if (trusted) {
-    for (const scope of approval.allowedScopes) {
-      box.append(actionButton(`Approve ${scope}`, () => {
-        actions.approve(
-          approval.requestId,
-          scope,
-          approval.editPlan?.id,
-        );
-      }));
-    }
+  if (trusted && approval.allowedScopes.includes("once")) {
+    const allow = actionButton("Allow once", () => {
+      actions.approve(approval.requestId, "once", approval.editPlan?.id);
+    });
+    allow.className = "approval-action primary";
+    row.append(allow);
   }
-  box.append(actionButton("Deny", () => {
+  const deny = actionButton("Skip", () => {
     actions.deny(approval.requestId);
-  }));
-  box.append(actionButton("Cancel turn", () => {
+  });
+  deny.className = "approval-action";
+  row.append(deny);
+  const reusable = approval.allowedScopes.filter((scope) => scope !== "once");
+  const more = document.createElement("details");
+  more.className = "approval-more";
+  appendText(more, "summary", "", "More");
+  for (const scope of trusted ? reusable : []) {
+    more.append(actionButton(
+      scope === "always" ? "Always allow" : "Allow for session",
+      () => {
+        actions.approve(approval.requestId, scope, approval.editPlan?.id);
+      },
+    ));
+  }
+  more.append(actionButton("Stop turn", () => {
     actions.cancel(approval.requestId);
   }));
+  row.append(more);
+  box.append(row);
+  const info = document.createElement("details");
+  info.className = "approval-info";
+  appendText(info, "summary", "", "Request details");
+  appendText(info, "div", "approval-summary", content.detail);
+  box.append(info);
   return box;
+}
+
+function approvalCarousel(
+  approvals: readonly ApprovalCard[],
+  trusted: boolean,
+  actions: TranscriptActions,
+): HTMLElement {
+  const carousel = document.createElement("section");
+  carousel.className = "approval-carousel timeline-item approval";
+  carousel.dataset["stateKey"] = `approval-carousel:${approvals[0]?.requestId ?? ""}`;
+  carousel.tabIndex = 0;
+  carousel.setAttribute(
+    "aria-label",
+    `${String(approvals.length)} pending approvals; scroll horizontally`,
+  );
+  carousel.append(...approvals.map((approval) =>
+    approvalCard(approval, trusted, actions)));
+  return carousel;
 }
 
 function inputCard(

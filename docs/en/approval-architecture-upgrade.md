@@ -2,7 +2,7 @@
 
 [简体中文](../zh-CN/approval-architecture-upgrade.md) | English
 
-> Status: A0-A2 were completed on 2026-08-13. A3-A4 are target design and are not
+> Status: A0-A3 were completed on 2026-08-13. A4 is target design and is not
 > claims about shipped behavior.
 >
 > Scope: Tool Guard policy, durable grants, approval protocol, Runtime recovery,
@@ -454,6 +454,15 @@ allows without a typed `grant_key` fail closed.
   scaffolding unless a real consumer requires it.
 
 ### A3: VS Code Approval Surface
+
+Implementation status (2026-08-13): `completed`.
+
+Runtime now publishes validated Effect, Risk, and Reason Code facts with every
+approval. VS Code projects those facts without reclassification and presents one
+inline decision surface: stable Allow Once and Skip actions, reusable scopes and
+Stop Turn under More, bounded command or target content, on-demand details, Diff
+preview, and Agent source. Concurrent requests use an accessible horizontal
+carousel. The automatic blocking modal and its duplicate formatter were removed.
 
 - extend protocol data through generated contracts;
 - replace the blocking modal and duplicate transcript controls;
