@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
@@ -116,7 +117,8 @@ func TestModeOperateWritesPolicyRuntime(t *testing.T) {
 	}
 	runtime := policy.DefaultRuntime(host.mode, policy.PermissionAuto)
 	decision := runtime.Evaluate(policy.Invocation{
-		CallID: "c1", Tool: "shell_run", Capability: policy.CapabilityProcess, Validated: true,
+		CallID: "c1", Tool: "shell_run", Capability: policy.CapabilityProcess,
+		Access: tool.AccessRead, Sandbox: tool.SandboxStrong, Validated: true,
 	})
 	if decision.Action != policy.ActionAllow {
 		t.Fatalf("operate auto process decision=%#v", decision)

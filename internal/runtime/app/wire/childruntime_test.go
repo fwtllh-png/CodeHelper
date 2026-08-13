@@ -656,6 +656,11 @@ func startSuggestChildApprovalWithTune(
 			}
 		},
 	)
+	// Approval proxy tests deliberately tighten this fixture call. Ordinary
+	// journaled file edits are low risk under suggest posture in A1.
+	session.Security().Repository = append([]policy.Rule{{
+		Tool: "file_write", Resource: "*", Action: policy.ActionAsk,
+	}}, session.Security().Repository...)
 	manager := session.subagents
 	cursor := session.Runtime.Snapshot(t.Context()).LastSequence
 	events, err := session.Runtime.Events(t.Context(), cursor)
@@ -700,14 +705,18 @@ func submitChildApproval(
 	if err != nil {
 		t.Fatal(err)
 	}
-	operation, err := protocol.NewOperation(&protocol.ApprovalDecisionPayload{
+	payload := &protocol.ApprovalDecisionPayload{
 		ThreadID:  protocol.ThreadID(child.ThreadID),
 		TurnID:    protocol.TurnID(child.TurnID),
 		ItemID:    itemID,
 		RequestID: required.RequestID,
 		Decision:  decision,
 		Scope:     protocol.ApprovalScopeOnce,
-	})
+	}
+	if decision == protocol.ApprovalApprove && required.EditPlan != nil {
+		payload.PlanID = required.EditPlan.ID
+	}
+	operation, err := protocol.NewOperation(payload)
 	if err != nil {
 		t.Fatal(err)
 	}

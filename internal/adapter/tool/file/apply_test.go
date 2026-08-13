@@ -504,21 +504,25 @@ func TestFileApplyDryRunReportsValidationFailures(t *testing.T) {
 	}
 }
 
-// Preview exists to make approval meaningful, not to slip past it: a dry run
-// declares the same write resources and takes the same approval.
-func TestFileApplyDryRunStillRequiresApproval(t *testing.T) {
+func TestFileApplyDryRunIsLowRiskAndDoesNotMutate(t *testing.T) {
 	root, registry := applyTools(t, map[string]string{"edit.txt": "one\n"})
-	requests := make(chan toolguard.ApprovalRequest, 1)
+	var approvals int
 	guard, err := toolguard.New(toolguard.Options{
 		Registry: registry,
 		Policy:   policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
-		Approvals: func(_ context.Context, request toolguard.ApprovalRequest) error {
-			requests <- request
-			return errors.New("denied")
+		Approvals: func(context.Context, toolguard.ApprovalRequest) error {
+			approvals++
+			return nil
 		},
 		Workspace: root,
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guard.Execute(
+		t.Context(), "read-1", "file_read",
+		json.RawMessage(`{"path":"edit.txt"}`),
+	); err != nil {
 		t.Fatal(err)
 	}
 	arguments, err := json.Marshal(map[string]any{
@@ -530,21 +534,18 @@ func TestFileApplyDryRunStillRequiresApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := guard.Execute(t.Context(), "call-1", "file_apply", arguments); err == nil {
-		t.Fatal("a denied dry run must fail")
+	if _, err := guard.Execute(t.Context(), "call-1", "file_apply", arguments); err != nil {
+		t.Fatal(err)
 	}
-	select {
-	case request := <-requests:
-		if len(request.Resources) == 0 {
-			t.Fatal("dry run asked for approval without declaring a resource")
-		}
-		for _, resource := range request.Resources {
-			if resource.Access != tool.AccessWrite {
-				t.Fatalf("dry run declared %q as %q, want write", resource.Path, resource.Access)
-			}
-		}
-	default:
-		t.Fatal("dry run bypassed approval")
+	if approvals != 0 {
+		t.Fatalf("dry run requested %d approvals", approvals)
+	}
+	content, err := os.ReadFile(filepath.Join(root, "edit.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "one\n" {
+		t.Fatalf("dry run mutated workspace: %q", content)
 	}
 }
 

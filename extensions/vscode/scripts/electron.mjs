@@ -141,6 +141,7 @@ try {
       await writeFile(join(scenarioWorkspace, "context.ts"), content);
       if (scenario === "native" || scenario === "approval" ||
         scenario === "subagent") {
+        await writeFile(join(scenarioWorkspace, "risk.txt"), "baseline\n");
         await execFile("git", ["init", "--quiet"], { cwd: scenarioWorkspace });
         await execFile(
           "git",

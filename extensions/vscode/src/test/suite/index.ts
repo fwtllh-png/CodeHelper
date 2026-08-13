@@ -738,8 +738,7 @@ async function verifyNativeFlows(
   const terminals = new Map<string, string>();
   const outputTurns = new Set<string>();
   const waiters = new Map<string, (kind: string) => void>();
-  const approvals = new Map<string, TestApproval>();
-  const approvalWaiters = new Map<string, (approval: TestApproval) => void>();
+  const approvals = new Map<string, string>();
   const resolvedApprovals = new Set<string>();
   const subscription = api.onRuntimeEvent((event, replayed) => {
     if (replayed || isUnknownEvent(event)) {
@@ -751,20 +750,8 @@ async function verifyNativeFlows(
       outputTurns.add(event.turn_id);
     } else if (event.kind === "turn.receipt") {
       receipts.set(event.turn_id, event.data.editor_context);
-    } else if (event.kind === "approval.required" &&
-      event.data.edit_plan !== undefined) {
-      const approval = {
-        requestId: event.data.request_id,
-        turnId: event.turn_id,
-        planId: event.data.edit_plan.id,
-        files: event.data.edit_plan.files.map((file) => ({
-          path: file.path,
-          kind: file.kind,
-        })),
-      };
-      approvals.set(event.turn_id, approval);
-      approvalWaiters.get(event.turn_id)?.(approval);
-      approvalWaiters.delete(event.turn_id);
+    } else if (event.kind === "approval.required") {
+      approvals.set(event.turn_id, event.data.request_id);
     } else if (event.kind === "approval.resolved") {
       resolvedApprovals.add(event.data.request_id);
     } else if (event.kind === "turn.completed" ||
@@ -823,14 +810,12 @@ async function verifyNativeFlows(
     );
     await verifyChangesReview(
       api,
-      createHash("sha256")
-        .update(canonicalEditorURI(workspace.uri))
-        .digest("hex"),
       document,
       approvals,
-      approvalWaiters,
-      resolvedApprovals,
       terminals,
+    );
+    await verifyHighRiskApproval(
+      api, workspace, approvals, resolvedApprovals, terminals,
     );
     if (extended) {
       await verifyTurnRecovery(api, terminals, waiters, outputTurns);
@@ -942,7 +927,6 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
     verification: string;
     message: string;
   }>();
-  const waitingAgents = new Set<string>();
   const resolvedApprovals = new Set<string>();
   const parentApprovals = new Set<string>();
   const childApprovals = new Map<string, {
@@ -1042,9 +1026,6 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
       statuses.set(event.data.agent_id, event.data.status);
       if (event.data.message !== undefined) {
         statusMessages.set(event.data.agent_id, event.data.message);
-      }
-      if (event.data.status === "waiting") {
-        waitingAgents.add(event.data.agent_id);
       }
     } else if (event.kind === "approval.required") {
       if (event.data.source?.kind === "agent") {
@@ -1169,38 +1150,18 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
         "apply exactly that preview digest. Do not perform the write in the parent.",
     );
     const writerDeadline = Date.now() + 30_000;
-    const submittedChildApprovals = new Set<string>();
     let writerParentApproved = false;
     let writerID = "";
     while (Date.now() < writerDeadline) {
       writerID = [...spawned.entries()].find(
         ([, value]) => value.role === "implementer",
       )?.[0] ?? "";
-      const writerApprovals = [...childApprovals.values()].filter(
-        (value) => value.agentId === writerID,
-      );
-      const pendingApproval = writerApprovals.find(
-        (value) => !resolvedApprovals.has(value.requestId) &&
-          !submittedChildApprovals.has(value.requestId),
-      );
-      if (pendingApproval !== undefined) {
-        submittedChildApprovals.add(pendingApproval.requestId);
-        await api.testDecideApproval(
-          selected.sessionId,
-          writerParent.turnId,
-          pendingApproval.requestId,
-          pendingApproval.expiresAt,
-        );
-      } else if (writerID === "" && !writerParentApproved) {
+      if (writerID === "" && !writerParentApproved) {
         writerParentApproved = await api.testApprovePending();
       }
       if (writerID !== "" &&
         statuses.get(writerID) === "completed" &&
-        completions.has(writerID) &&
-        writerApprovals.length > 0 &&
-        writerApprovals.every((value) =>
-          resolvedApprovals.has(value.requestId)
-        )) {
+        completions.has(writerID)) {
         break;
       }
       if (writerID !== "" &&
@@ -1225,22 +1186,11 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
     );
     const writer = spawned.get(writerID);
     assert.ok(writer);
-    const approval = [...childApprovals.values()].find(
-      (value) => value.agentId === writerID,
-    );
-    assert.ok(
-      approval,
-      `implementer child did not request approval; ${writerDiagnostics}`,
-    );
-    assert.equal(approval.agentPath, writer.path);
-    assert.equal(approval.parentPath, "/root");
-    assert.equal(approval.role, "implementer");
-    assert.equal(waitingAgents.has(writerID), true);
     assert.equal(
-      [...childApprovals.values()]
-        .filter((value) => value.agentId === writerID)
-        .every((value) => resolvedApprovals.has(value.requestId)),
-      true,
+      [...childApprovals.values()].some(
+        (value) => value.agentId === writerID,
+      ),
+      false,
       writerDiagnostics,
     );
     assert.equal(
@@ -1738,75 +1688,18 @@ async function verifySessionToolCatalog(api: ExtensionAPI): Promise<void> {
   );
 }
 
-interface TestApproval {
-  readonly requestId: string;
-  readonly turnId: string;
-  readonly planId: string;
-  readonly files: readonly {
-    readonly path: string;
-    readonly kind: string;
-  }[];
-}
-
 async function verifyChangesReview(
   api: ExtensionAPI,
-  rootId: string,
   document: vscode.TextDocument,
-  approvals: ReadonlyMap<string, TestApproval>,
-  approvalWaiters: Map<string, (approval: TestApproval) => void>,
-  resolvedApprovals: ReadonlySet<string>,
+  approvals: ReadonlyMap<string, string>,
   terminals: ReadonlyMap<string, string>,
 ): Promise<void> {
-  const first = await startChangesTurn(document, approvals, approvalWaiters);
-  assert.deepEqual(first.approval.files, [
-    { path: "alpha.txt", kind: "created" },
-    { path: "nested/beta.txt", kind: "created" },
-  ]);
-
-  const resolvedBeforeForgery = resolvedApprovals.size;
-  assert.equal(await vscode.commands.executeCommand("codehelper.approvePlan", {
-    rootId,
-    requestId: "forged-request",
-    decision: "approve",
-  }), false);
-  assert.equal(resolvedApprovals.size, resolvedBeforeForgery);
-
-  await waitFor(
-    () => {
-      const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-      return input instanceof vscode.TabInputTextDiff &&
-        input.modified.query.includes("nested%2Fbeta.txt");
-    },
-    "V1 edit plan preview did not open",
-  );
-  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-  assert.equal(await vscode.commands.executeCommand("codehelper.openPlanDiff", {
-    rootId,
-    planId: first.approval.planId,
-    fileIndex: 1,
-  }), true);
-  const diffTabs = vscode.window.tabGroups.all.flatMap((group) =>
-    group.tabs.filter((tab) => tab.input instanceof vscode.TabInputTextDiff));
-  assert.equal(diffTabs.length, 1);
-  const diffInput = diffTabs[0]?.input;
-  assert.ok(diffInput instanceof vscode.TabInputTextDiff);
-  assert.equal(diffInput.modified.scheme, "codehelper-edit-plan");
+  const turnId = await startChangesTurn(document);
   assert.equal(
-    diffInput.modified.authority,
-    `${rootId}-${first.approval.planId}`,
-  );
-  assert.match(diffInput.modified.query, /nested%2Fbeta\.txt/u);
-
-  assert.equal(await vscode.commands.executeCommand("codehelper.approvePlan", {
-    rootId,
-    requestId: first.approval.requestId,
-    decision: "approve",
-  }), true);
-  assert.equal(
-    await waitForTerminalWithApprovals(api, first.turnId, terminals),
+    await waitForTerminalWithApprovals(api, turnId, terminals),
     "turn.completed",
   );
-  assert.equal(resolvedApprovals.has(first.approval.requestId), true);
+  assert.equal(approvals.has(turnId), false);
   const workspace = vscode.workspace.workspaceFolders?.[0];
   assert.ok(workspace);
   assert.equal(
@@ -1823,20 +1716,11 @@ async function verifyChangesReview(
     ),
     "beta\n",
   );
-  const resolvedAfterApproval = resolvedApprovals.size;
-  assert.equal(await vscode.commands.executeCommand("codehelper.approvePlan", {
-    rootId,
-    requestId: first.approval.requestId,
-    decision: "approve",
-  }), false);
-  assert.equal(resolvedApprovals.size, resolvedAfterApproval);
 }
 
 async function startChangesTurn(
   document: vscode.TextDocument,
-  approvals: ReadonlyMap<string, TestApproval>,
-  waiters: Map<string, (approval: TestApproval) => void>,
-): Promise<{ readonly turnId: string; readonly approval: TestApproval }> {
+): Promise<string> {
   const editor = await vscode.window.showTextDocument(document);
   editor.selection = new vscode.Selection(2, 4, 2, 17);
   const raw = await vscode.commands.executeCommand(
@@ -1845,18 +1729,41 @@ async function startChangesTurn(
   assert.ok(typeof raw === "object" && raw !== null);
   const turnId = (raw as Record<string, unknown>)["turnId"];
   assert.ok(typeof turnId === "string" && turnId.length > 0);
-  const existing = approvals.get(turnId);
-  const approval = existing ?? await Promise.race([
-    new Promise<TestApproval>((resolve) => {
-      waiters.set(turnId, resolve);
-    }),
-    new Promise<TestApproval>((_resolve, reject) => {
-      setTimeout(() => {
-        reject(new Error(`turn ${turnId} did not request edit plan approval`));
-      }, 10_000);
-    }),
-  ]);
-  return { turnId, approval };
+  return turnId;
+}
+
+async function verifyHighRiskApproval(
+  api: ExtensionAPI,
+  workspace: vscode.WorkspaceFolder,
+  approvals: ReadonlyMap<string, string>,
+  resolved: ReadonlySet<string>,
+  terminals: ReadonlyMap<string, string>,
+): Promise<void> {
+  assert.ok(api.testSubmitPrompt);
+  const session = api.chatSessions?.().find((value) => value.selected);
+  assert.ok(session);
+  const turn = await api.testSubmitPrompt(
+    session.sessionId,
+    "Run the declared high risk workspace mutation",
+  );
+  await waitFor(
+    () => approvals.has(turn.turnId),
+    "high risk process did not request approval",
+  );
+  const requestId = approvals.get(turn.turnId);
+  assert.ok(requestId);
+  await api.testApprovePending?.();
+  assert.equal(
+    await waitForTerminalWithApprovals(api, turn.turnId, terminals),
+    "turn.completed",
+  );
+  assert.equal(resolved.has(requestId), true);
+  assert.equal(
+    new TextDecoder().decode(await vscode.workspace.fs.readFile(
+      vscode.Uri.joinPath(workspace.uri, "risk.txt"),
+    )),
+    "approved high risk mutation\n",
+  );
 }
 
 async function verifyDiagnosticActions(

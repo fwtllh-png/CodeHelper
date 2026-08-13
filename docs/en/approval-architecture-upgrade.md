@@ -2,7 +2,7 @@
 
 [简体中文](../zh-CN/approval-architecture-upgrade.md) | English
 
-> Status: A0 was completed on 2026-08-13. A1-A4 are target design and are not
+> Status: A0-A1 were completed on 2026-08-13. A2-A4 are target design and are not
 > claims about shipped behavior.
 >
 > Scope: Tool Guard policy, durable grants, approval protocol, Runtime recovery,
@@ -418,6 +418,15 @@ Acceptance:
 - production code has negative net growth.
 
 ### A1: Effect and Risk Kernel
+
+Implementation status (2026-08-13): `completed`.
+
+The delivered kernel normalizes validated Descriptor, canonical Resource,
+Sandbox, Access, and Journal facts without changing the Runtime protocol.
+Low-risk journaled edits, strong-sandbox read-only processes, and bounded Agent
+messages run without approval. Medium-risk operations remain human-reviewed
+until A4, while process mutation and external mutation remain high risk.
+Unknown or incomplete facts use the conservative legacy classification.
 
 - introduce normalized effects at the Guard/Policy boundary;
 - classify file, shell, network, agent, and external effects;

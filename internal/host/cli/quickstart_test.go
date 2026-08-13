@@ -32,8 +32,7 @@ func TestQuickstartCompletesGovernedFirstTurn(t *testing.T) {
 		t.Fatalf("report=%s", stdout.String())
 	}
 	for _, stage := range []string{
-		"plan", "read", "edit_preview", "approved",
-		"verification", "receipt", "completed",
+		"plan", "read", "edit", "verification", "receipt", "completed",
 	} {
 		if !report.Stages[stage] {
 			t.Fatalf("stage %s missing: %s", stage, stdout.String())

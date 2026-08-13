@@ -1108,14 +1108,9 @@ func TestSandboxStrongApprovalDoesNotCoverEscalate(t *testing.T) {
 		)
 		first <- err
 	}()
-	toolAsk := <-requests
-	if toolAsk.Reason == ApprovalReasonSandboxEscalate {
-		t.Fatal("first ask should be policy ask, not escalate")
-	}
-	mustDecide(t, guard, toolAsk, policy.ApprovalSession, nil)
 	escalateAsk := <-requests
 	if escalateAsk.Reason != ApprovalReasonSandboxEscalate {
-		t.Fatalf("second ask reason = %q", escalateAsk.Reason)
+		t.Fatalf("ask reason = %q", escalateAsk.Reason)
 	}
 	mustDecide(t, guard, escalateAsk, policy.ApprovalSession, nil)
 	if err := <-first; err != nil {

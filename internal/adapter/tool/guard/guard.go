@@ -295,11 +295,7 @@ func (g *Guard) ExecuteBound(
 		if err != nil {
 			return tool.Result{}, err
 		}
-		decision := g.policy.Evaluate(policy.Invocation{
-			CallID: callID, Tool: invocation.Tool, Arguments: invocation.Arguments,
-			Resources: invocation.Resources, Capability: invocation.Descriptor.Capability,
-			Validated: true,
-		})
+		decision := g.policy.Evaluate(policyInput(callID, invocation))
 		if g.forceEditPlanApproval && mediatedFileWriter(invocation.Tool) &&
 			decision.Action == policy.ActionAllow {
 			decision.Action = policy.ActionAsk
@@ -311,11 +307,7 @@ func (g *Guard) ExecuteBound(
 			return tool.Result{}, &policy.DecisionError{Code: decision.Code, Reason: decision.Reason}
 		case policy.ActionAsk:
 			now := g.now()
-			policyInvocation := policy.Invocation{
-				CallID: callID, Tool: invocation.Tool, Arguments: invocation.Arguments,
-				Resources: invocation.Resources, Capability: invocation.Descriptor.Capability,
-				Validated: true,
-			}
+			policyInvocation := policyInput(callID, invocation)
 			if !g.forceEditPlanApproval &&
 				g.policy.Approvals != nil &&
 				g.policy.Approvals.MatchInvocation(policyInvocation, now) {
@@ -397,11 +389,7 @@ func (g *Guard) ExecuteBound(
 				if err != nil {
 					return tool.Result{}, fmt.Errorf("replacement arguments: %w", err)
 				}
-				replacementInvocation := policy.Invocation{
-					CallID: callID, Tool: replacement.Tool, Arguments: replacement.Arguments,
-					Resources: replacement.Resources, Capability: replacement.Descriptor.Capability,
-					Validated: true,
-				}
+				replacementInvocation := policyInput(callID, replacement)
 				replacementDecision := g.policy.Evaluate(replacementInvocation)
 				if replacementDecision.Action != policy.ActionAsk {
 					if replacementDecision.Action == policy.ActionAllow {
@@ -473,11 +461,9 @@ func (g *Guard) ExecuteBound(
 					!g.canEscalate(invocation) {
 					break
 				}
-				escalateInvocation := policy.Invocation{
-					CallID: callID, Tool: invocation.Tool, Arguments: invocation.Arguments,
-					Resources:  withSandboxNoneResource(invocation.Resources),
-					Capability: invocation.Descriptor.Capability, Validated: true,
-				}
+				escalateInvocation := policyInput(callID, invocation)
+				escalateInvocation.Resources = withSandboxNoneResource(invocation.Resources)
+				escalateInvocation.Sandbox = tool.SandboxNone
 				now := g.now()
 				if g.policy.Approvals == nil || !g.policy.Approvals.MatchInvocation(escalateInvocation, now) {
 					approval, err := g.waitForApproval(
@@ -561,6 +547,16 @@ func (g *Guard) canEscalate(invocation Invocation) bool {
 		invocation.Descriptor.Capability != tool.CapabilityRead
 }
 
+func policyInput(callID string, invocation Invocation) policy.Invocation {
+	return policy.Invocation{
+		CallID: callID, Tool: invocation.Tool, Arguments: invocation.Arguments,
+		Resources: invocation.Resources, Capability: invocation.Descriptor.Capability,
+		Access:    invocation.Descriptor.AccessMode,
+		Sandbox:   invocation.Descriptor.SandboxRequirement,
+		Journaled: mediatedFileWriter(invocation.Tool), Validated: true,
+	}
+}
+
 // egressDeniedTarget extracts a host that RoundTrip refused for policy reasons.
 // Soft tool failures carry error_category=egress_denied; hard errors may wrap
 // egress.ErrDenied.
@@ -624,10 +620,8 @@ func (g *Guard) approveEgressHost(
 		{Kind: "host", ID: host, Access: tool.AccessRead},
 		{Kind: "url", ID: protocol + "://" + host + "/", Access: tool.AccessRead},
 	}
-	policyInvocation := policy.Invocation{
-		CallID: callID, Tool: invocation.Tool, Arguments: invocation.Arguments,
-		Resources: resources, Capability: invocation.Descriptor.Capability, Validated: true,
-	}
+	policyInvocation := policyInput(callID, invocation)
+	policyInvocation.Resources = resources
 	now := g.now()
 	if g.policy.Approvals != nil && g.policy.Approvals.MatchInvocation(policyInvocation, now) {
 		g.grantNetworkHosts(resources)

@@ -2,7 +2,7 @@
 
 简体中文 | [English](../en/approval-architecture-upgrade.md)
 
-> 状态：A0 已于 2026-08-13 完成。A1-A4 属于目标设计，不代表当前已交付能力。
+> 状态：A0-A1 已于 2026-08-13 完成。A2-A4 属于目标设计，不代表当前已交付能力。
 >
 > 范围：Tool Guard Policy、持久化授权、Approval 协议、Runtime 恢复、ACP
 > 路由、VS Code 展示与 Approval 可观测性。
@@ -390,6 +390,14 @@ Outcome。严禁记录 Raw Command、Path、Argument、Prompt、Credential 和 R
 - 生产代码净减少。
 
 ### A1：Effect 与 Risk Kernel
+
+实施状态（2026-08-13）：`completed`。
+
+已交付 Kernel 使用校验后的 Descriptor、Canonical Resource、Sandbox、Access 与
+Journal Fact 完成归一化，不改变 Runtime Protocol。Low Risk 的 Journaled Edit、
+Strong Sandbox Read-only Process 和有界 Agent Message 不再触发 Approval。Medium
+Risk 在 A4 前仍由人工审批，Process Mutation 与 External Mutation 保持 High Risk。
+缺少 Fact 的调用使用保守的 Legacy Classification。
 
 - 在 Guard/Policy 边界引入 Normalized Effect；
 - 分类 File、Shell、Network、Agent 与 External Effect；
