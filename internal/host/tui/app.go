@@ -99,6 +99,7 @@ type Model struct {
 	thinkingExpanded bool
 	expandedToolID   string
 	sidebarTasks     []string // optional classic activity echo
+	agentTimeline    []AgentTimelineEntry
 }
 
 const maxPendingImages = 3

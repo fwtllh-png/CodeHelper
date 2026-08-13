@@ -1,0 +1,23 @@
+{
+  "name": "adaptive-parallel",
+  "category": "multi_agent_adaptive",
+  "prompt": "Adaptively delegate two independent evaluations and wait for both results.",
+  "provider_fixture": "../provider",
+  "tools": true,
+  "posture": "bypass",
+  "approval_decision": "approve",
+  "max_steps": 8,
+  "timeout_ms": 20000,
+  "subagent": {
+    "delegation": "adaptive",
+    "max_depth": 3,
+    "max_parallel": 4
+  },
+  "expect": {
+    "terminal": "completed",
+    "agent_spawns": 2,
+    "agent_terminals": 2,
+    "agent_max_concurrency": 2,
+    "output_contains": ["multi-agent-eval-ok"]
+  }
+}

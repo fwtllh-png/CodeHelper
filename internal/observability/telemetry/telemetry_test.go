@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestJSONLoggerRedactsCredentialCorpus(t *testing.T) {
@@ -109,6 +111,45 @@ func TestTurnKernelObserverMetricsSeparateHealthyTransitions(t *testing.T) {
 		snapshot.TurnKernelDrifts != 2 ||
 		snapshot.TurnKernelDigestErrors != 1 {
 		t.Fatalf("turn kernel metrics = %+v", snapshot)
+	}
+}
+
+func TestAgentRolloutMetricsComeFromTerminalFacts(t *testing.T) {
+	metrics := NewMetrics()
+	started := time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC)
+	metrics.ObserveAgentEvent(&protocol.AgentSpawnedData{AgentID: "agent-1"}, started)
+	metrics.ObserveAgentEvent(
+		&protocol.AgentStatusData{
+			AgentID: "agent-1", Status: "completed",
+			Detail: []byte(`{"result":{"usage":{"cost_microunits":42,"cost_known":true}}}`),
+		},
+		started.Add(1250*time.Millisecond),
+	)
+	metrics.ObserveAgentEvent(&protocol.AgentSpawnedData{AgentID: "agent-2"}, started)
+	metrics.ObserveAgentEvent(
+		&protocol.AgentStatusData{AgentID: "agent-2", Status: "interrupted"},
+		started.Add(time.Second),
+	)
+	for _, status := range []string{"applied", "failed", "discarded"} {
+		metrics.ObserveAgentEvent(
+			&protocol.AgentIntegrationData{Status: status},
+			started,
+		)
+	}
+
+	snapshot := metrics.Snapshot()
+	if snapshot.AgentSpawns != 2 ||
+		snapshot.AgentCompleted != 1 ||
+		snapshot.AgentInterrupted != 1 ||
+		snapshot.AgentCompletionLatencyMS != 2250 ||
+		snapshot.AgentCompletionLatencySamples != 2 ||
+		snapshot.AgentIntegrationsApplied != 1 ||
+		snapshot.AgentIntegrationsFailed != 1 ||
+		snapshot.AgentIntegrationsDiscarded != 1 ||
+		snapshot.AgentCostMicrounits != 42 ||
+		snapshot.AgentCostKnownSamples != 1 ||
+		snapshot.AgentCostUnknownSamples != 1 {
+		t.Fatalf("agent rollout metrics = %+v", snapshot)
 	}
 }
 

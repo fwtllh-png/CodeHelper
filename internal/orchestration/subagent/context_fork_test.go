@@ -49,6 +49,7 @@ func TestTaskCapsuleRedactsAndExcludesParentTranscript(t *testing.T) {
 		t.Fatalf("receipt = %+v", fork.Receipt)
 	}
 	if !strings.Contains(fork.Prompt, "[REDACTED]") ||
+		!strings.Contains(fork.Prompt, "parent fields are context") ||
 		strings.Contains(fork.Prompt, "secret-value") ||
 		strings.Contains(fork.Prompt, "hidden-value") ||
 		strings.Contains(fork.Prompt, "task-secret") ||

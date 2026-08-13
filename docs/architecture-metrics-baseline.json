@@ -130,9 +130,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7440,
+        "production_lines": 7451,
         "options_fields": 18,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "MA6 observes successfully published external Agent events once for rollout telemetry"
       }
     },
     {
@@ -196,9 +199,12 @@
       "path": "internal/host/tui",
       "limits": {
         "internal_fanout": 24,
-        "production_lines": 7387,
+        "production_lines": 7489,
         "options_fields": 28,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "MA6 adds the bounded canonical-path Agent tree, timeline projection, and authoritative child interaction routing"
       }
     },
     {
@@ -231,8 +237,11 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2062,
+        "lines": 2064,
         "max_function_lines": 132
+      },
+      "relaxations": {
+        "lines": "MA6 completes the Runtime event-kind mapping for the retained agent.integration event"
       }
     },
     {
@@ -424,7 +433,10 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 28
+        "event_switch_sites": 29
+      },
+      "relaxations": {
+        "event_switch_sites": "MA6 adds one centralized typed Agent Event projection in eventview; Hosts consume that view instead of adding raw payload switches"
       }
     }
   ]

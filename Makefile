@@ -17,6 +17,7 @@ LDFLAGS := -s -w \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
+	multi-agent-eval multi-agent-performance \
 	architecture-ratchet architecture-size-budget architecture-freeze \
 	book-navigation command-docs command-docs-check \
 	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
@@ -25,6 +26,7 @@ LDFLAGS := -s -w \
 	doc-external-links release-fact-check brand-check \
 	markdownlint-check \
 	security-test sandbox-attack-test secret-leak-test live-model-smoke \
+	live-multi-agent-smoke \
 	cli-smoke tui-smoke acp-interop protocol-contract protocol-schema \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
 	vscode-security vscode-performance vscode-runtime-integration \
@@ -32,7 +34,7 @@ LDFLAGS := -s -w \
 	vscode-build vscode-package vscode-package-universal vscode-release-dry-run \
 	vscode-multiroot-integration vscode-subagent-integration vscode-update-integration \
 	vscode-distribution vscode-local-setup vscode-matrix-report vscode-rc \
-	deepseek-init deepseek-tui deepseek-vscode \
+	deepseek-init deepseek-tui deepseek-vscode deepseek-multi-agent-smoke \
 	bench upgrade-baseline catalog-bench package clean
 
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
@@ -277,6 +279,9 @@ secret-leak-test: build
 live-model-smoke: build
 	./scripts/live-model-smoke.sh ./$(BINARY)
 
+live-multi-agent-smoke: build
+	LIVE_MODEL_MULTI_AGENT=1 ./scripts/live-model-smoke.sh ./$(BINARY)
+
 cli-smoke:
 	$(GO) test -race -count=1 ./internal/host/cli/... -run 'Test(RunHelp|RunVersion|RunUnknown|RunMachine|Auth|Model|Thread|Doctor|Cobra)'
 
@@ -419,6 +424,9 @@ deepseek-tui:
 deepseek-vscode:
 	./scripts/deepseek-local.sh vscode
 
+deepseek-multi-agent-smoke:
+	./scripts/deepseek-local.sh multi-agent-smoke
+
 vscode-matrix-report:
 	cd $(VSCODE_DIR) && $(NPM) run matrix:report
 
@@ -455,6 +463,17 @@ benchmark-v2: benchmark-v2-check bench
 upgrade-baseline:
 	$(GO) run ./scripts/upgradebaseline \
 		--output '$(UPGRADE_BASELINE_REPORT)'
+
+# multi-agent-eval runs the production Runtime against hermetic explicit,
+# adaptive, and parent-local scenarios, then enforces release thresholds.
+multi-agent-eval:
+	$(GO) run ./scripts/upgradebaseline \
+		--suite testdata/multi-agent-evals \
+		--agent-thresholds testdata/multi-agent-evals/thresholds.json \
+		--output .tmp/multi-agent-eval-report.json
+
+multi-agent-performance:
+	cd $(VSCODE_DIR) && $(NPM) run test:performance
 
 # catalog-bench tracks the M4 dynamic tool catalog's time, allocation, and
 # prompt-size baseline at 100/500/1000 tools.

@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"child-eval-ok"},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3}}
+
+data: [DONE]

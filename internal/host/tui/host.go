@@ -34,9 +34,15 @@ type SessionHost struct {
 	threadID    protocol.ThreadID
 	turnID      protocol.TurnID
 	eventCursor protocol.Cursor // last observed sequence; subscribe from tip, never replay from 0 after ring trim
+	requests    map[string]interactionTarget
 	out         chan tea.Msg
 	cancel      context.CancelFunc
 	closed      bool
+}
+
+type interactionTarget struct {
+	threadID protocol.ThreadID
+	turnID   protocol.TurnID
 }
 
 // NewSessionHost wraps an opened wire session. Caller must Close.
@@ -185,9 +191,15 @@ func (h *SessionHost) pump(ctx context.Context, events <-chan protocol.Event, tu
 				h.eventCursor = event.Sequence
 			}
 			h.mu.Unlock()
-			if event.TurnID != turnID {
+			update, err := facade.ProjectEvent(event)
+			if err != nil {
 				continue
 			}
+			parentEvent := event.TurnID == turnID
+			if !parentEvent && !tuiWorkspaceEvent(update) {
+				continue
+			}
+			h.rememberInteraction(event, update)
 			msg := mapRuntimeEvent(event)
 			if msg == nil {
 				continue
@@ -197,8 +209,7 @@ func (h *SessionHost) pump(ctx context.Context, events <-chan protocol.Event, tu
 			case <-ctx.Done():
 				return
 			}
-			if update, err := facade.ProjectEvent(event); err == nil &&
-				facade.TerminalEvent(update) {
+			if parentEvent && facade.TerminalEvent(update) {
 				return
 			}
 		}
@@ -283,6 +294,9 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 			kind: streamKindPlan, text: data.Plan.Text,
 			planBody: data.Plan.Body, planDone: data.Plan.Done,
 		}
+	case facade.AgentUpdate:
+		copy := data
+		return streamMsg{agentUpdate: &copy, agentSequence: event.Sequence}
 	case facade.AccountingUpdate:
 		if data.Usage == nil {
 			return nil
@@ -373,6 +387,54 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 	return nil
 }
 
+func tuiWorkspaceEvent(update facade.EventUpdate) bool {
+	switch data := update.(type) {
+	case facade.AgentUpdate:
+		return true
+	case facade.InteractionUpdate:
+		source := data.Source
+		if data.ApprovalRequired != nil {
+			source = data.ApprovalRequired.Source
+		}
+		return source != nil && source.Kind == "agent"
+	default:
+		return false
+	}
+}
+
+func (h *SessionHost) rememberInteraction(
+	event protocol.Event,
+	update facade.EventUpdate,
+) {
+	interaction, ok := update.(facade.InteractionUpdate)
+	if !ok {
+		return
+	}
+	requestID := interaction.ResolvedRequest
+	if interaction.ApprovalRequired != nil {
+		requestID = interaction.ApprovalRequired.RequestID
+	}
+	if interaction.InputRequired != nil {
+		requestID = interaction.InputRequired.RequestID
+	}
+	if requestID == "" {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if interaction.ResolvedRequest != "" {
+		delete(h.requests, requestID)
+		return
+	}
+	if h.requests == nil {
+		h.requests = make(map[string]interactionTarget)
+	}
+	h.requests[requestID] = interactionTarget{
+		threadID: event.ThreadID,
+		turnID:   event.TurnID,
+	}
+}
+
 // formatContextSections summarizes what the last turn's prompt context carried:
 // the partitions and their retained bytes, the ones a budget cut, how many paths
 // the turn read, and how close the history is to being summarized away. It is one
@@ -431,6 +493,9 @@ func (h *SessionHost) DecideApproval(ctx context.Context, requestID, decision st
 	h.mu.Lock()
 	threadID := h.threadID
 	turnID := h.turnID
+	if target, ok := h.requests[requestID]; ok {
+		threadID, turnID = target.threadID, target.turnID
+	}
 	h.mu.Unlock()
 	if threadID == "" || turnID == "" {
 		return fmt.Errorf("no active turn for approval")
@@ -481,6 +546,9 @@ func (h *SessionHost) ReplyInput(ctx context.Context, requestID, answer string) 
 	h.mu.Lock()
 	threadID := h.threadID
 	turnID := h.turnID
+	if target, ok := h.requests[requestID]; ok {
+		threadID, turnID = target.threadID, target.turnID
+	}
 	h.mu.Unlock()
 	if threadID == "" || turnID == "" {
 		return fmt.Errorf("no active turn for input reply")

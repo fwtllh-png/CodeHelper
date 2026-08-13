@@ -20,7 +20,7 @@ Root 运行。
 | `upgradebaseline` | 无 | 写入 Stage 0 Benchmark 指标与能力可用性 |
 | `experiencecontract` | 无 | 校验共享 Experience Baseline |
 | `content-fixture-smoke.sh` | 无 | 临时 Content Dependency Fixture |
-| `live-model-smoke.sh` | 有 | 一次真实 Provider 请求，不持久化 Secret |
+| `live-model-smoke.sh` | 有 | 单 Agent 或 Multi Agent 真实 Provider Smoke，不持久化 Secret |
 | `package-release.sh` | 无 | `dist/release` Binary、Checksum、SBOM、Manifest |
 | `deepseek-local.sh` | 配置或打包可能联网 | 本机 DeepSeek 编译、Keychain 配置、TUI 与 VS Code |
 | `setup-vscode-local.sh` | Package Build 可能安装依赖 | 把 Target VSIX 安装到 macOS 官方 VS Code |
@@ -58,6 +58,8 @@ make doc-external-links
 make brand-check
 make secret-leak-test
 make live-model-smoke
+make live-multi-agent-smoke
+make deepseek-multi-agent-smoke
 VERSION=0.1.0 make package
 make deepseek-init
 make deepseek-tui

@@ -23,6 +23,8 @@ Commands:
   init      build CodeHelper, install config, migrate the key to Keychain
   tui       run init, then launch the TUI with the DeepSeek model
   vscode    build/configure/install the extension and open official VS Code
+  multi-agent-smoke
+            run the real-provider Multi-Agent release smoke
   doc       create or refresh the ignored local runbook with the real API key
   check     validate the existing binary, config, route, and credential
 
@@ -262,6 +264,18 @@ case "$command_name" in
     trap 'api_key=""; unset DEEPSEEK_API_KEY' EXIT
     write_local_doc "$api_key"
     DEEPSEEK_API_KEY="$api_key" "$ROOT/scripts/setup-vscode-local.sh"
+    ;;
+  multi-agent-smoke)
+    api_key="$(load_api_key)"
+    trap 'api_key=""; unset DEEPSEEK_API_KEY LIVE_MODEL_API_KEY' EXIT
+    make build
+    LIVE_MODEL_MULTI_AGENT=1 \
+      LIVE_MODEL_NAME="$PROVIDER" \
+      LIVE_MODEL_BASE_URL="https://api.deepseek.com" \
+      LIVE_MODEL_WIRE_MODEL="$MODEL" \
+      LIVE_MODEL_API_KEY="$api_key" \
+      LIVE_MODEL_PROTOCOL="openai_responses" \
+      "$ROOT/scripts/live-model-smoke.sh" "$ROOT/bin/codehelper"
     ;;
   doc)
     api_key="$(load_api_key)"

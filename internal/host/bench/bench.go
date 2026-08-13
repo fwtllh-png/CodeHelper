@@ -17,12 +17,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/eventview"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -89,7 +92,17 @@ type Task struct {
 	// Context configures the volatile context tail. Like the index it is on by
 	// default, so a task only sets it to disable a section or squeeze a budget.
 	Context *TaskContext `json:"context,omitempty"`
-	Expect  Expectation  `json:"expect"`
+	// Subagent enables Multi-Agent evaluation through the production control
+	// plane. Nil preserves the ordinary single-Agent benchmark defaults.
+	Subagent *TaskSubagent `json:"subagent,omitempty"`
+	Expect   Expectation   `json:"expect"`
+}
+
+type TaskSubagent struct {
+	Delegation  string `json:"delegation"`
+	Workspace   string `json:"workspace,omitempty"`
+	MaxDepth    int    `json:"max_depth,omitempty"`
+	MaxParallel int    `json:"max_parallel,omitempty"`
 }
 
 // TaskVerify mirrors the [execution.verify] config section.
@@ -161,7 +174,11 @@ type Expectation struct {
 	Terminal string `json:"terminal"`
 	// TerminalContains requires substrings in the failure message, so a task can
 	// assert a turn failed for the intended reason instead of any reason.
-	TerminalContains []string `json:"terminal_contains,omitempty"`
+	TerminalContains  []string `json:"terminal_contains,omitempty"`
+	AgentSpawns       *int     `json:"agent_spawns,omitempty"`
+	AgentTerminals    *int     `json:"agent_terminals,omitempty"`
+	AgentConcurrency  *int     `json:"agent_max_concurrency,omitempty"`
+	IntegrationStates []string `json:"integration_states,omitempty"`
 	// Files maps workspace-relative paths to their exact required content.
 	Files map[string]string `json:"files,omitempty"`
 	// Unchanged lists paths that must be byte-identical to the seed. This is how
@@ -241,50 +258,59 @@ type Result struct {
 	Failures []string `json:"failures,omitempty"`
 	// Error is set when the harness itself could not run the task, which is
 	// reported separately from an assertion failure.
-	Error             string   `json:"error,omitempty"`
-	UnavailableReason string   `json:"unavailable_reason,omitempty"`
-	Terminal          string   `json:"terminal"`
-	DurationMS        int64    `json:"duration_ms"`
-	ToolsSucceeded    []string `json:"tools_succeeded,omitempty"`
-	ToolsFailed       []string `json:"tools_failed,omitempty"`
-	ReceiptChanges    []string `json:"receipt_changes,omitempty"`
+	Error              string   `json:"error,omitempty"`
+	UnavailableReason  string   `json:"unavailable_reason,omitempty"`
+	Terminal           string   `json:"terminal"`
+	DurationMS         int64    `json:"duration_ms"`
+	ToolsSucceeded     []string `json:"tools_succeeded,omitempty"`
+	ToolsFailed        []string `json:"tools_failed,omitempty"`
+	ToolFailureDetails []string `json:"tool_failure_details,omitempty"`
+	ReceiptChanges     []string `json:"receipt_changes,omitempty"`
 	// ReceiptDiagnostics is the receipt's diagnostics verdict, reported so a run
 	// shows whether changes were checked at all.
-	ReceiptDiagnostics     string `json:"receipt_diagnostics,omitempty"`
-	VerifyStatus           string `json:"verify_status,omitempty"`
-	VerifyAction           string `json:"verify_action,omitempty"`
-	VerifyRepairs          int    `json:"verify_repairs,omitempty"`
-	InputTokens            uint64 `json:"input_tokens"`
-	OutputTokens           uint64 `json:"output_tokens"`
-	CachedTokens           uint64 `json:"cached_tokens"`
-	CostMicrounits         uint64 `json:"cost_microunits"`
-	UsageCalls             int    `json:"usage_calls"`
-	UnpricedCalls          int    `json:"unpriced_calls"`
-	RetryAttempts          int    `json:"retry_attempts"`
-	Approvals              int    `json:"approvals"`
-	ApprovalDecision       string `json:"approval_decision,omitempty"`
-	VerificationApplicable bool   `json:"verification_applicable"`
-	VerificationCovered    bool   `json:"verification_covered"`
+	ReceiptDiagnostics       string   `json:"receipt_diagnostics,omitempty"`
+	VerifyStatus             string   `json:"verify_status,omitempty"`
+	VerifyAction             string   `json:"verify_action,omitempty"`
+	VerifyRepairs            int      `json:"verify_repairs,omitempty"`
+	InputTokens              uint64   `json:"input_tokens"`
+	OutputTokens             uint64   `json:"output_tokens"`
+	CachedTokens             uint64   `json:"cached_tokens"`
+	CostMicrounits           uint64   `json:"cost_microunits"`
+	UsageCalls               int      `json:"usage_calls"`
+	UnpricedCalls            int      `json:"unpriced_calls"`
+	RetryAttempts            int      `json:"retry_attempts"`
+	Approvals                int      `json:"approvals"`
+	ApprovalDecision         string   `json:"approval_decision,omitempty"`
+	AgentSpawns              int      `json:"agent_spawns"`
+	AgentTerminals           int      `json:"agent_terminals"`
+	AgentMaxConcurrency      int      `json:"agent_max_concurrency"`
+	IntegrationStates        []string `json:"integration_states,omitempty"`
+	DelegationMode           string   `json:"delegation_mode,omitempty"`
+	ExpectedAgentSpawns      *int     `json:"expected_agent_spawns,omitempty"`
+	ExpectedAgentConcurrency *int     `json:"expected_agent_concurrency,omitempty"`
+	VerificationApplicable   bool     `json:"verification_applicable"`
+	VerificationCovered      bool     `json:"verification_covered"`
 }
 
 // Report aggregates a suite run.
 type Report struct {
-	SchemaVersion  int             `json:"schema_version"`
-	Platform       string          `json:"platform"`
-	Total          int             `json:"total"`
-	Available      int             `json:"available"`
-	Unavailable    int             `json:"unavailable"`
-	Failed         int             `json:"failed"`
-	Passed         int             `json:"passed"`
-	Results        []Result        `json:"results"`
-	Categories     map[string]int  `json:"categories"`
-	InputTokens    uint64          `json:"input_tokens"`
-	OutputTokens   uint64          `json:"output_tokens"`
-	CachedTokens   uint64          `json:"cached_tokens"`
-	CostMicrounits uint64          `json:"cost_microunits"`
-	DurationMS     int64           `json:"duration_ms"`
-	Metrics        BaselineMetrics `json:"metrics"`
-	GeneratedAt    time.Time       `json:"generated_at"`
+	SchemaVersion  int                    `json:"schema_version"`
+	Platform       string                 `json:"platform"`
+	Total          int                    `json:"total"`
+	Available      int                    `json:"available"`
+	Unavailable    int                    `json:"unavailable"`
+	Failed         int                    `json:"failed"`
+	Passed         int                    `json:"passed"`
+	Results        []Result               `json:"results"`
+	Categories     map[string]int         `json:"categories"`
+	InputTokens    uint64                 `json:"input_tokens"`
+	OutputTokens   uint64                 `json:"output_tokens"`
+	CachedTokens   uint64                 `json:"cached_tokens"`
+	CostMicrounits uint64                 `json:"cost_microunits"`
+	DurationMS     int64                  `json:"duration_ms"`
+	Metrics        BaselineMetrics        `json:"metrics"`
+	AgentMetrics   AgentEvaluationMetrics `json:"agent_metrics"`
+	GeneratedAt    time.Time              `json:"generated_at"`
 }
 
 // OK reports whether every task passed.
@@ -391,6 +417,7 @@ func RunSuite(ctx context.Context, root string) (Report, error) {
 		report.DurationMS += result.DurationMS
 	}
 	report.Metrics = baselineMetrics(report.Results)
+	report.AgentMetrics = agentEvaluationMetrics(report.Results)
 	return report, nil
 }
 
@@ -411,6 +438,7 @@ func RunTask(ctx context.Context, task Task) Result {
 	result.Terminal = observed.terminal
 	result.ToolsSucceeded = observed.succeeded
 	result.ToolsFailed = observed.failed
+	result.ToolFailureDetails = append([]string(nil), observed.toolFailureDetails...)
 	if observed.verification != nil {
 		result.VerifyStatus = observed.verification.Status
 		result.VerifyAction = observed.verification.Action
@@ -431,6 +459,15 @@ func RunTask(ctx context.Context, task Task) Result {
 	result.RetryAttempts = observed.recoveredToolFailures + result.VerifyRepairs
 	result.Approvals = observed.approvals
 	result.ApprovalDecision = observed.approvalDecision
+	result.AgentSpawns = len(observed.agents)
+	result.AgentTerminals = len(observed.terminalAgents)
+	result.AgentMaxConcurrency = observed.maxAgentConcurrency
+	result.IntegrationStates = append([]string(nil), observed.integrationStates...)
+	result.ExpectedAgentSpawns = task.Expect.AgentSpawns
+	result.ExpectedAgentConcurrency = task.Expect.AgentConcurrency
+	if task.Subagent != nil {
+		result.DelegationMode = task.Subagent.Delegation
+	}
 	result.VerificationApplicable = task.Verify != nil ||
 		len(result.ReceiptChanges) > 0
 	result.VerificationCovered = result.VerificationApplicable &&
@@ -459,6 +496,7 @@ type observation struct {
 	output                string
 	succeeded             []string
 	failed                []string
+	toolFailureDetails    []string
 	inputTokens           uint64
 	outputTokens          uint64
 	cachedTokens          uint64
@@ -482,6 +520,13 @@ type observation struct {
 	seed                map[string]string
 	final               map[string]string
 	pendingToolFailures map[string]int
+	agents              map[string]struct{}
+	activeAgents        map[string]struct{}
+	terminalAgents      map[string]struct{}
+	maxAgentConcurrency int
+	integrationStates   []string
+	agentTimeline       []string
+	eventKinds          []string
 }
 
 func executeTask(ctx context.Context, task Task) (observation, error) {
@@ -527,13 +572,48 @@ func executeTask(ctx context.Context, task Task) (observation, error) {
 	applyVerifyOverrides(task.Verify, &overrides)
 	applyIndexOverrides(task.Index, &overrides)
 	applyContextOverrides(task.Context, &overrides)
+	if settings := task.Subagent; settings != nil {
+		if settings.Delegation != "" {
+			value := settings.Delegation
+			overrides.SubagentDelegation = &value
+		}
+		if settings.Workspace != "" {
+			value := settings.Workspace
+			overrides.SubagentWorkspace = &value
+		}
+		if settings.MaxDepth > 0 {
+			value := settings.MaxDepth
+			overrides.SubagentMaxDepth = &value
+		}
+		if settings.MaxParallel > 0 {
+			value := settings.MaxParallel
+			overrides.SubagentMaxParallel = &value
+		}
+	}
 	fixturePath := filepath.Join(task.Dir, providerDir)
 	if task.ProviderFixture != "" {
 		fixturePath = filepath.Join(task.Dir, filepath.FromSlash(task.ProviderFixture))
 	}
+	threadID, err := protocol.NewThreadID()
+	if err != nil {
+		return observation{}, err
+	}
+	var persistentStore *state.Store
+	if task.Subagent != nil {
+		persistentStore, err = state.Open(ctx, state.Options{DataDir: dataDir})
+		if err != nil {
+			return observation{}, fmt.Errorf("open benchmark state: %w", err)
+		}
+		defer func() { _ = persistentStore.CloseAll(context.Background()) }()
+		if err := apppersistence.EnsureThread(
+			ctx, persistentStore, threadID, "session-benchmark", workspace,
+		); err != nil {
+			return observation{}, fmt.Errorf("ensure benchmark thread: %w", err)
+		}
+	}
 	session, err := wire.NewExec(ctx, wire.ExecOptions{
 		FixturePath: fixturePath, ConfigOverrides: overrides,
-		Permission: posture,
+		Permission: posture, PersistentStore: persistentStore,
 	})
 	if err != nil {
 		return observation{}, fmt.Errorf("wire session: %w", err)
@@ -545,9 +625,11 @@ func executeTask(ctx context.Context, task Task) (observation, error) {
 	}()
 
 	prompts := append([]string{task.Prompt}, task.Followups...)
-	observed, err := runThread(ctx, session.Runtime, prompts, task.ApprovalDecision)
+	observed, err := runThread(
+		ctx, session.Runtime, threadID, prompts, task.ApprovalDecision,
+	)
 	if err != nil {
-		return observation{}, err
+		return observed, err
 	}
 	final, err := readTree(workspace)
 	if err != nil {
@@ -686,25 +768,30 @@ func applyContextOverrides(settings *TaskContext, overrides *config.Overrides) {
 func runThread(
 	ctx context.Context,
 	runtime *app.Runtime,
+	threadID protocol.ThreadID,
 	prompts []string,
 	approvalDecision string,
 ) (observation, error) {
-	threadID, err := protocol.NewThreadID()
-	if err != nil {
-		return observation{}, err
-	}
 	// Subscribe once, before the first submit, so no early event is missed and the
 	// stream stays continuous across turns.
 	events, err := runtime.Events(context.Background(), 0)
 	if err != nil {
 		return observation{}, err
 	}
-	observed := observation{pendingToolFailures: make(map[string]int)}
+	observed := observation{
+		pendingToolFailures: make(map[string]int),
+		agents:              make(map[string]struct{}),
+		activeAgents:        make(map[string]struct{}),
+		terminalAgents:      make(map[string]struct{}),
+	}
 	for _, prompt := range prompts {
 		if err := runTurn(
 			ctx, runtime, events, threadID, prompt, approvalDecision, &observed,
 		); err != nil {
-			return observation{}, err
+			return observed, fmt.Errorf(
+				"%w; events=%v; agent timeline=%v",
+				err, observed.eventKinds, observed.agentTimeline,
+			)
 		}
 		// A turn that did not complete ends the thread: later prompts would measure
 		// a state the task never asked for.
@@ -763,12 +850,26 @@ func runTurn(
 			if !ok {
 				return errors.New("event stream closed before a terminal event")
 			}
-			if event.TurnID != turnID {
-				continue
+			if len(observed.eventKinds) < 100 {
+				observed.eventKinds = append(
+					observed.eventKinds,
+					fmt.Sprintf("%d:%s:%s", event.Sequence, event.Kind, event.TurnID),
+				)
 			}
 			update, err := eventview.Project(event)
 			if err != nil {
 				return err
+			}
+			if agent, ok := update.(eventview.AgentUpdate); ok {
+				observeAgentUpdate(observed, agent)
+			}
+			parentEvent := event.TurnID == turnID
+			if !parentEvent {
+				interaction, ok := update.(eventview.InteractionUpdate)
+				if !ok || interaction.ApprovalRequired == nil ||
+					interaction.ApprovalRequired.Source == nil {
+					continue
+				}
 			}
 			switch data := update.(type) {
 			case eventview.TextUpdate:
@@ -781,6 +882,10 @@ func runTurn(
 				}
 				if data.Result.IsError {
 					observed.failed = appendUnique(observed.failed, data.Tool)
+					observed.toolFailureDetails = append(
+						observed.toolFailureDetails,
+						data.Tool+": "+data.Result.Output,
+					)
 					observed.pendingToolFailures[data.Tool]++
 					continue
 				}
@@ -804,7 +909,8 @@ func runTurn(
 				}
 				decision, decisionErr := protocol.NewOperation(
 					&protocol.ApprovalDecisionPayload{
-						ThreadID: threadID, TurnID: turnID, ItemID: decisionItemID,
+						ThreadID: event.ThreadID, TurnID: event.TurnID,
+						ItemID:    decisionItemID,
 						RequestID: request.RequestID,
 						Decision:  protocol.ApprovalDecision(approvalDecision),
 						Scope:     protocol.ApprovalScopeOnce,
@@ -836,6 +942,9 @@ func runTurn(
 					usageSamples[data.Usage.Sample] = *data.Usage
 				}
 			case eventview.TerminalUpdate:
+				if !parentEvent {
+					continue
+				}
 				foldUsage()
 				observed.output += output.String()
 				switch data.Status {
@@ -861,6 +970,50 @@ func runTurn(
 	}
 }
 
+func observeAgentUpdate(observed *observation, update eventview.AgentUpdate) {
+	switch {
+	case update.Spawned != nil:
+		id := update.Spawned.AgentID
+		observed.agentTimeline = append(
+			observed.agentTimeline, id+":spawned",
+		)
+		observed.agents[id] = struct{}{}
+		observed.activeAgents[id] = struct{}{}
+		observed.maxAgentConcurrency = max(
+			observed.maxAgentConcurrency,
+			len(observed.activeAgents),
+		)
+	case update.Status != nil:
+		id := update.Status.AgentID
+		observed.agentTimeline = append(
+			observed.agentTimeline, id+":"+update.Status.Status,
+		)
+		if terminalAgentStatus(update.Status.Status) {
+			delete(observed.activeAgents, id)
+			observed.terminalAgents[id] = struct{}{}
+		}
+	case update.Integration != nil:
+		observed.agentTimeline = append(
+			observed.agentTimeline,
+			update.Integration.AgentID+":integration:"+update.Integration.Status,
+		)
+		observed.integrationStates = append(
+			observed.integrationStates,
+			update.Integration.Status,
+		)
+	}
+}
+
+func terminalAgentStatus(status string) bool {
+	switch status {
+	case "completed", "failed", "interrupted", "integrated",
+		"integration_failed", "closed":
+		return true
+	default:
+		return false
+	}
+}
+
 func evaluate(task Task, observed observation) []string {
 	var failures []string
 	if observed.terminal != task.Expect.Terminal {
@@ -878,6 +1031,34 @@ func evaluate(task Task, observed observation) []string {
 				"terminal detail %q does not contain %q", observed.terminalDetail, want,
 			))
 		}
+	}
+	if task.Expect.AgentSpawns != nil &&
+		len(observed.agents) != *task.Expect.AgentSpawns {
+		failures = append(failures, fmt.Sprintf(
+			"agent spawns = %d want %d",
+			len(observed.agents), *task.Expect.AgentSpawns,
+		))
+	}
+	if task.Expect.AgentTerminals != nil &&
+		len(observed.terminalAgents) != *task.Expect.AgentTerminals {
+		failures = append(failures, fmt.Sprintf(
+			"agent terminals = %d want %d",
+			len(observed.terminalAgents), *task.Expect.AgentTerminals,
+		))
+	}
+	if task.Expect.AgentConcurrency != nil &&
+		observed.maxAgentConcurrency < *task.Expect.AgentConcurrency {
+		failures = append(failures, fmt.Sprintf(
+			"agent max concurrency = %d want at least %d",
+			observed.maxAgentConcurrency, *task.Expect.AgentConcurrency,
+		))
+	}
+	if len(task.Expect.IntegrationStates) != 0 &&
+		!slices.Equal(observed.integrationStates, task.Expect.IntegrationStates) {
+		failures = append(failures, fmt.Sprintf(
+			"integration states = %v want %v",
+			observed.integrationStates, task.Expect.IntegrationStates,
+		))
 	}
 	for path, want := range task.Expect.Files {
 		got, exists := observed.final[filepath.ToSlash(path)]

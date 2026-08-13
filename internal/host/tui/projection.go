@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/fwtllh-png/CodeHelper/internal/host/tui/facade"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"strings"
 )
@@ -43,6 +44,60 @@ const (
 	// budget do not fit on one.
 	PanelCost PanelKind = "cost"
 )
+
+// AgentTimelineEntry is the compact, bounded orchestration history shown by the
+// TUI Agent panel. Durable detail remains in Runtime events and Agent Results.
+type AgentTimelineEntry struct {
+	Sequence protocol.Cursor
+	AgentID  string
+	Path     string
+	Kind     string
+	Status   string
+	Message  string
+}
+
+const maxAgentTimelineEntries = 64
+
+func (m Model) appendAgentTimeline(
+	sequence protocol.Cursor,
+	update facade.AgentUpdate,
+) Model {
+	entry := AgentTimelineEntry{Sequence: sequence}
+	switch {
+	case update.Spawned != nil:
+		entry.AgentID = update.Spawned.AgentID
+		entry.Kind, entry.Status = "spawn", "requested"
+		entry.Message = update.Spawned.Role
+	case update.Status != nil:
+		entry.AgentID = update.Status.AgentID
+		entry.Kind, entry.Status = "status", update.Status.Status
+		entry.Message = update.Status.Message
+	case update.Message != nil:
+		entry.AgentID = update.Message.From
+		if entry.AgentID == "" || entry.AgentID == "parent" {
+			entry.AgentID = update.Message.To
+		}
+		entry.Kind = "message"
+		entry.Message = strings.TrimSpace(string(update.Message.Body))
+	case update.Integration != nil:
+		entry.AgentID = update.Integration.AgentID
+		entry.Path = update.Integration.AgentPath
+		entry.Kind, entry.Status = "integration", update.Integration.Status
+		entry.Message = update.Integration.Message
+	default:
+		return m
+	}
+	if len(m.agentTimeline) != 0 &&
+		m.agentTimeline[len(m.agentTimeline)-1].Sequence == sequence {
+		return m
+	}
+	m.agentTimeline = append(m.agentTimeline, entry)
+	if overflow := len(m.agentTimeline) - maxAgentTimelineEntries; overflow > 0 {
+		copy(m.agentTimeline, m.agentTimeline[overflow:])
+		m.agentTimeline = m.agentTimeline[:maxAgentTimelineEntries]
+	}
+	return m
+}
 
 type PickerKind string
 
@@ -238,6 +293,8 @@ type streamMsg struct {
 	// /context reports.
 	contextSummary string
 	mcpHealth      *protocol.MCPHealthChangedData
+	agentUpdate    *facade.AgentUpdate
+	agentSequence  protocol.Cursor
 	// usage is what a usage event said about the call it covers, and receipt is
 	// what the turn receipt settled on. Both carry money and the receipt also
 	// carries latency and the thread's budget, none of which the token counters

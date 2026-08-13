@@ -33,7 +33,7 @@ func (m Model) renderAgentsPanel() string {
 			"this panel observes them (Enter refreshes)"
 	}
 	sort.Slice(agents, func(first, second int) bool {
-		return agents[first].ID < agents[second].ID
+		return agents[first].Path < agents[second].Path
 	})
 	rows := make([]string, 0, min(len(agents), maxPanelRows))
 	running := 0
@@ -49,6 +49,14 @@ func (m Model) renderAgentsPanel() string {
 	if hidden := len(agents) - len(rows); hidden > 0 {
 		header += fmt.Sprintf(" +%d more", hidden)
 	}
+	if len(m.agentTimeline) != 0 && len(rows) < maxPanelRows {
+		rows = append(rows, "  timeline:")
+		remaining := maxPanelRows - len(rows)
+		start := max(0, len(m.agentTimeline)-remaining)
+		for _, entry := range m.agentTimeline[start:] {
+			rows = append(rows, formatAgentTimeline(entry))
+		}
+	}
 	return header + "\n" + strings.Join(rows, "\n")
 }
 
@@ -57,9 +65,14 @@ func formatAgentRow(agent subagent.Agent) string {
 	if agent.Isolated {
 		isolation = "isolated"
 	}
+	path := agent.Path
+	if path == "" {
+		path = agent.ID
+	}
 	row := fmt.Sprintf(
-		"  %s %s/%s %s depth=%d %s",
-		agent.ID, agent.Role, agent.Stance, agent.Status, agent.Depth, isolation,
+		"  %s├─ %s [%s] %s/%s %s %s",
+		strings.Repeat("  ", agent.Depth), path, agent.ID,
+		agent.Role, agent.Stance, agent.Status, isolation,
 	)
 	// The last message is what the agent has to say for itself, which is more
 	// useful than its identifiers when something went wrong.
@@ -67,6 +80,23 @@ func formatAgentRow(agent subagent.Agent) string {
 		row += " · " + truncateRunes(summary, 60)
 	}
 	return row
+}
+
+func formatAgentTimeline(entry AgentTimelineEntry) string {
+	identity := entry.Path
+	if identity == "" {
+		identity = entry.AgentID
+	}
+	line := fmt.Sprintf(
+		"    #%d %s %s", entry.Sequence, identity, entry.Kind,
+	)
+	if entry.Status != "" {
+		line += "=" + entry.Status
+	}
+	if message := firstLine(entry.Message); message != "" {
+		line += " · " + truncateRunes(message, 48)
+	}
+	return line
 }
 
 // renderTasksPanel shows durable background tasks and whether anything in this
