@@ -2,7 +2,7 @@
 
 简体中文 | [English](../en/approval-architecture-upgrade.md)
 
-> 状态：A0-A3 已于 2026-08-13 完成。A4 属于目标设计，不代表当前已交付能力。
+> 状态：A0-A4 已于 2026-08-13 完成。
 >
 > 范围：Tool Guard Policy、持久化授权、Approval 协议、Runtime 恢复、ACP
 > 路由、VS Code 展示与 Approval 可观测性。
@@ -268,15 +268,12 @@ Runtime 生成 Proposed Amendment。Host 只能选择 Runtime 给出的 Decision
 
 ### 5.5 Bounded Auto Review
 
-Auto Review 是可选能力，只处理 Deterministic Classification 无法确定的 Low/Medium
-Risk。Reviewer：
-
-- 以 Read-only 和 `approval_policy=never` 运行；
-- 接收 Normalized Effect，而不是任意 Secret；
-- 默认没有 Process、Network、MCP、Memory 或 Subagent Authority；
-- 返回通过 Schema 校验的 Risk、Authorization、Outcome 与 Rationale；
-- 快速超时，失败后回退 Human Approval；
-- 永不批准 High/Critical，也不能覆盖 Deny。
+Auto Review 是最终的 Deterministic Policy 阶段，只允许 Permission 产生、具有完整
+Typed Grant 的 Medium Risk Network Read 或 Agent Lifecycle Ask。它不能覆盖
+Repository/Grant Ask、Deny/Hold、Permission Never、Granular Ask/Deny、缺失
+Grant 或 High/Critical Risk。运维 Kill Switch
+`CODEHELPER_DISABLE_APPROVAL_AUTO_REVIEW=1` 会把 Reviewable Case 退回 Human
+Approval；系统不保留 Shadow 或旧 Reviewer 路径。
 
 ## 6. 协议演进
 
@@ -395,15 +392,15 @@ Outcome。严禁记录 Raw Command、Path、Argument、Prompt、Credential 和 R
 
 已交付 Kernel 使用校验后的 Descriptor、Canonical Resource、Sandbox、Access 与
 Journal Fact 完成归一化，不改变 Runtime Protocol。Low Risk 的 Journaled Edit、
-Strong Sandbox Read-only Process 和有界 Agent Message 不再触发 Approval。Medium
-Risk 在 A4 前仍由人工审批，Process Mutation 与 External Mutation 保持 High Risk。
+Strong Sandbox Read-only Process 和有界 Agent Message 不再触发 Approval。符合条件的
+Medium Risk 进入 A4 Bounded Reviewer，Process Mutation 与 External Mutation 保持 High Risk。
 缺少 Fact 的调用使用保守的 Legacy Classification。
 
 - 在 Guard/Policy 边界引入 Normalized Effect；
 - 分类 File、Shell、Network、Agent 与 External Effect；
 - 删除 `file_write` 与 Lifecycle Name-based Exception；
 - 增加 Deterministic Risk Table 和 Reason Code；
-- 保持现有协议，并以 Shadow Mode 比较新旧决策。
+- 将符合条件的 Medium Risk Effect 交给 Deterministic A4 Reviewer。
 
 ### A2：Typed Grant 与 Amendment
 
@@ -438,13 +435,15 @@ Once 与 Skip 固定展示，可复用 Scope 和 Stop Turn 收入 More，Command
 - 保留 Diff Preview 和 Agent Source；
 - 增加 Projector、Accessibility、Snapshot 与 Electron Test。
 
-### A4：Auto Review 与灰度发布
+### A4：Auto Review 与直接启用
 
-- 在 Feature Flag 后增加 Bounded Reviewer；
-- 增加 Decision Funnel Telemetry 与 Dashboard；
-- 自动 Outcome 启用前先运行 Shadow Evaluation；
-- 以安全不变量和 Approval 降幅作为 Release Gate；
-- 提供 Kill Switch，将不确定情况退回 Human Approval。
+实施状态（2026-08-13）：`completed`。
+
+- 直接启用 Bounded Reviewer，并删除平行决策路径；
+- Preflight 与 Mid-flight Egress 共用同一 Policy Pipeline；
+- 增加不含 Invocation Data 的低基数 Funnel 与 Latency Metric；
+- 保留显式 Ask 及全部 High/Critical 人工边界；
+- 提供一个 Fail-closed 环境 Kill Switch。
 
 ## 10. 验证矩阵
 
@@ -467,10 +466,10 @@ Electron 验收必须对同一 Request 同时记录 Runtime JSONL Event 与 UI S
 ## 11. 回滚
 
 - A0 是直接安全修复，不使用 Feature Flag。
-- A1 在改变 Outcome 前先运行 Shadow Comparison。
+- A1 Deterministic Effect/Risk Classification 是当前生效路径。
 - A2 可关闭 Reusable Grant，同时保留 Allow-once。
 - A3 可回退到单个基础 Inline Card，但不回退 Blocking Modal。
-- A4 的 Reviewer 与 Automatic Outcome 使用独立 Kill Switch。
+- A4 只有一个 Fail-closed Kill Switch，不保留旧 Reviewer 实现。
 
 回滚不得扩大 Authority。不确定时只能回到 Human Approval 或 Deny。
 

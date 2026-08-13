@@ -3,6 +3,7 @@ package wire
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
@@ -25,10 +26,8 @@ func (securityModule) Build(
 	}
 	session := state.session
 	execution := state.config.execution
-	securityRuntime := policy.DefaultRuntime(
-		policy.Mode(execution.Mode),
-		policy.Permission(state.options.Permission),
-	)
+	securityRuntime := policy.DefaultRuntime(policy.Mode(execution.Mode), policy.Permission(state.options.Permission))
+	securityRuntime.DisableAutoReview = os.Getenv("CODEHELPER_DISABLE_APPROVAL_AUTO_REVIEW") == "1"
 	session.security = securityRuntime
 	journal, err := openWorkspaceJournal(
 		ctx,
@@ -100,6 +99,7 @@ func (securityModule) Build(
 	if err != nil {
 		return fmt.Errorf("create tool guard: %w", err)
 	}
+	guard.SetApprovalObserver(session.metrics.Approval)
 	state.security = securityBuildState{
 		runtime: securityRuntime, journal: journal,
 		constitution: constitutionBundle, permissions: permissionStore,

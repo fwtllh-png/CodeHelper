@@ -10,41 +10,21 @@ import (
 )
 
 type MetricSnapshot struct {
-	OperationsSubmitted uint64 `json:"operations_submitted"`
-	OperationsProcessed uint64 `json:"operations_processed"`
-	EventsPublished     uint64 `json:"events_published"`
-	SubscribersDropped  uint64 `json:"subscribers_dropped"`
-	ProviderRequests    uint64 `json:"provider_requests"`
-	AgentTurns          uint64 `json:"agent_turns"`
-	ToolExecutions      uint64 `json:"tool_executions"`
-	Errors              uint64 `json:"errors"`
-	// RepoIndexState is how the repository symbol index was configured for the
-	// session: a reader needs it to tell a run with no symbol tools from one whose
-	// index broke and fell back to text search.
-	RepoIndexState string `json:"repo_index_state,omitempty"`
-	// ContextTailBytes totals the repository map and working set bytes sent with
-	// requests, and ContextTailTruncations counts the sections a budget cut. The
-	// tail rides on every sample, so these are what tell an operator whether the
-	// ceilings are set sensibly for their repository.
-	ContextTailBytes       uint64 `json:"context_tail_bytes,omitempty"`
-	ContextTailTruncations uint64 `json:"context_tail_truncations,omitempty"`
-	// EvidenceRisks counts the unproved changes reported to the model, and
-	// PolicyReminders the wasteful call patterns. Both are per report rather than
-	// per distinct path, so they measure how often the agent had to be told
-	// something — which is the point of watching them.
-	EvidenceRisks   uint64 `json:"evidence_risks,omitempty"`
-	PolicyReminders uint64 `json:"policy_reminders,omitempty"`
-	// Compactions counts how many times a thread's history was replaced by a
-	// summary, and CompactionSavedBytes the history bytes that replacement
-	// removed. Together they say whether compaction is earning its complexity: a
-	// thread that compacts often while saving little is one whose budgets are
-	// wrong.
-	Compactions          uint64 `json:"compactions,omitempty"`
-	CompactionSavedBytes uint64 `json:"compaction_saved_bytes,omitempty"`
-	// TurnKernelTransitions counts Coordinator-committed transitions. Drifts are
-	// rejected transitions or terminal decisions that disagree with the
-	// committed Kernel state. DigestErrors mean the transition state could not be
-	// validated and hashed, so Replay comparison is not trustworthy.
+	OperationsSubmitted           uint64 `json:"operations_submitted"`
+	OperationsProcessed           uint64 `json:"operations_processed"`
+	EventsPublished               uint64 `json:"events_published"`
+	SubscribersDropped            uint64 `json:"subscribers_dropped"`
+	ProviderRequests              uint64 `json:"provider_requests"`
+	AgentTurns                    uint64 `json:"agent_turns"`
+	ToolExecutions                uint64 `json:"tool_executions"`
+	Errors                        uint64 `json:"errors"`
+	RepoIndexState                string `json:"repo_index_state,omitempty"`
+	ContextTailBytes              uint64 `json:"context_tail_bytes,omitempty"`
+	ContextTailTruncations        uint64 `json:"context_tail_truncations,omitempty"`
+	EvidenceRisks                 uint64 `json:"evidence_risks,omitempty"`
+	PolicyReminders               uint64 `json:"policy_reminders,omitempty"`
+	Compactions                   uint64 `json:"compactions,omitempty"`
+	CompactionSavedBytes          uint64 `json:"compaction_saved_bytes,omitempty"`
 	TurnKernelTransitions         uint64 `json:"turn_kernel_transitions,omitempty"`
 	TurnKernelDrifts              uint64 `json:"turn_kernel_drifts,omitempty"`
 	TurnKernelDigestErrors        uint64 `json:"turn_kernel_digest_errors,omitempty"`
@@ -60,40 +40,31 @@ type MetricSnapshot struct {
 	AgentCostMicrounits           uint64 `json:"agent_cost_microunits,omitempty"`
 	AgentCostKnownSamples         uint64 `json:"agent_cost_known_samples,omitempty"`
 	AgentCostUnknownSamples       uint64 `json:"agent_cost_unknown_samples,omitempty"`
+	ApprovalEvaluatedTotal        uint64 `json:"approval_evaluated_total,omitempty"`
+	ApprovalAutoAllowedTotal      uint64 `json:"approval_auto_allowed_total,omitempty"`
+	ApprovalHumanRequiredTotal    uint64 `json:"approval_human_required_total,omitempty"`
+	ApprovalDeniedTotal           uint64 `json:"approval_denied_total,omitempty"`
+	ApprovalGrantHitTotal         uint64 `json:"approval_grant_hit_total,omitempty"`
+	ApprovalReviewerLatencyMS     uint64 `json:"approval_reviewer_latency_ms,omitempty"`
+	ApprovalWaitLatencyMS         uint64 `json:"approval_wait_latency_ms,omitempty"`
 }
 
 type Metrics struct {
-	operationsSubmitted           atomic.Uint64
-	operationsProcessed           atomic.Uint64
-	eventsPublished               atomic.Uint64
-	subscribersDropped            atomic.Uint64
-	providerRequests              atomic.Uint64
-	agentTurns                    atomic.Uint64
-	toolExecutions                atomic.Uint64
-	errors                        atomic.Uint64
-	repoIndexState                atomic.Pointer[string]
-	contextTailBytes              atomic.Uint64
-	contextTailCuts               atomic.Uint64
-	evidenceRisks                 atomic.Uint64
-	policyReminders               atomic.Uint64
-	compactions                   atomic.Uint64
-	compactionSaved               atomic.Uint64
-	turnKernelTransitions         atomic.Uint64
-	turnKernelDrifts              atomic.Uint64
-	turnKernelDigestErrors        atomic.Uint64
-	agentSpawns                   atomic.Uint64
-	agentCompleted                atomic.Uint64
-	agentFailed                   atomic.Uint64
-	agentInterrupted              atomic.Uint64
-	agentCompletionLatencyMS      atomic.Uint64
-	agentCompletionLatencySamples atomic.Uint64
-	agentIntegrationsApplied      atomic.Uint64
-	agentIntegrationsFailed       atomic.Uint64
-	agentIntegrationsDiscarded    atomic.Uint64
-	agentCostMicrounits           atomic.Uint64
-	agentCostKnownSamples         atomic.Uint64
-	agentCostUnknownSamples       atomic.Uint64
-	agentStarted                  sync.Map
+	operationsSubmitted, operationsProcessed, eventsPublished       atomic.Uint64
+	subscribersDropped, providerRequests, agentTurns                atomic.Uint64
+	toolExecutions, errors, contextTailBytes, contextTailCuts       atomic.Uint64
+	evidenceRisks, policyReminders, compactions, compactionSaved    atomic.Uint64
+	turnKernelTransitions, turnKernelDrifts, turnKernelDigestErrors atomic.Uint64
+	agentSpawns, agentCompleted, agentFailed, agentInterrupted      atomic.Uint64
+	agentCompletionLatencyMS, agentCompletionLatencySamples         atomic.Uint64
+	agentIntegrationsApplied, agentIntegrationsFailed               atomic.Uint64
+	agentIntegrationsDiscarded, agentCostMicrounits                 atomic.Uint64
+	agentCostKnownSamples, agentCostUnknownSamples                  atomic.Uint64
+	approvalEvaluated, approvalAutoAllowed, approvalHumanRequired   atomic.Uint64
+	approvalDenied, approvalGrantHits, approvalReviewerLatencyMS    atomic.Uint64
+	approvalWaitLatencyMS                                           atomic.Uint64
+	repoIndexState                                                  atomic.Pointer[string]
+	agentStarted                                                    sync.Map
 }
 
 func NewMetrics() *Metrics {
@@ -145,6 +116,31 @@ func (m *Metrics) ToolExecution() {
 func (m *Metrics) Error() {
 	if m != nil {
 		m.errors.Add(1)
+	}
+}
+
+func (m *Metrics) Approval(
+	outcome, effect, risk, reasonCode string,
+	latency time.Duration,
+) {
+	if m == nil || effect == "" || risk == "" || len(reasonCode) > 64 {
+		return
+	}
+	switch outcome {
+	case "evaluated":
+		m.approvalEvaluated.Add(1)
+	case "auto_allowed":
+		m.approvalAutoAllowed.Add(1)
+		m.approvalReviewerLatencyMS.Add(uint64(max(0, latency.Milliseconds())))
+	case "human_required":
+		m.approvalHumanRequired.Add(1)
+		m.approvalReviewerLatencyMS.Add(uint64(max(0, latency.Milliseconds())))
+	case "denied":
+		m.approvalDenied.Add(1)
+	case "grant_hit":
+		m.approvalGrantHits.Add(1)
+	case "waited":
+		m.approvalWaitLatencyMS.Add(uint64(max(0, latency.Milliseconds())))
 	}
 }
 
@@ -200,7 +196,6 @@ func (m *Metrics) TurnKernelObserver(drift, digestError bool) {
 	}
 }
 
-// AgentSpawn records one admitted Child and starts its completion clock.
 func (m *Metrics) AgentSpawn(agentID string, at time.Time) {
 	if m == nil {
 		return
@@ -245,7 +240,6 @@ func (m *Metrics) AgentStatus(
 	}
 }
 
-// AgentIntegration records terminal Integration Candidate outcomes.
 func (m *Metrics) AgentIntegration(status string) {
 	if m == nil {
 		return
@@ -305,7 +299,6 @@ func agentStatusCost(detail json.RawMessage) (uint64, bool) {
 	return 0, false
 }
 
-// SetRepositoryIndexState records the state of the repository symbol index.
 func (m *Metrics) SetRepositoryIndexState(state string) {
 	if m != nil {
 		m.repoIndexState.Store(&state)
@@ -343,6 +336,13 @@ func (m *Metrics) Snapshot() MetricSnapshot {
 		AgentCostMicrounits:           m.agentCostMicrounits.Load(),
 		AgentCostKnownSamples:         m.agentCostKnownSamples.Load(),
 		AgentCostUnknownSamples:       m.agentCostUnknownSamples.Load(),
+		ApprovalEvaluatedTotal:        m.approvalEvaluated.Load(),
+		ApprovalAutoAllowedTotal:      m.approvalAutoAllowed.Load(),
+		ApprovalHumanRequiredTotal:    m.approvalHumanRequired.Load(),
+		ApprovalDeniedTotal:           m.approvalDenied.Load(),
+		ApprovalGrantHitTotal:         m.approvalGrantHits.Load(),
+		ApprovalReviewerLatencyMS:     m.approvalReviewerLatencyMS.Load(),
+		ApprovalWaitLatencyMS:         m.approvalWaitLatencyMS.Load(),
 
 		OperationsSubmitted: m.operationsSubmitted.Load(),
 		OperationsProcessed: m.operationsProcessed.Load(),

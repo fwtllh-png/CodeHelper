@@ -60,7 +60,7 @@ func (a *Adapter) PermissionRequest(
 	ctx context.Context, invocation toolguard.Invocation,
 ) (toolguard.PermissionDecision, error) {
 	if a == nil || a.Manager == nil {
-		return toolguard.PermissionDecision{Action: toolguard.PermissionAsk}, nil
+		return toolguard.PermissionDecision{}, nil
 	}
 	result, err := a.Manager.PermissionRequest(ctx, ToolCallBeforeInput{
 		CallID: invocation.CallID,
@@ -70,7 +70,7 @@ func (a *Adapter) PermissionRequest(
 	if err != nil {
 		return toolguard.PermissionDecision{}, err
 	}
-	action := toolguard.PermissionAsk
+	action := toolguard.PermissionAction("")
 	switch result.Action {
 	case ActionAllow:
 		action = toolguard.PermissionAllow

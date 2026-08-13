@@ -2,8 +2,7 @@
 
 [简体中文](../zh-CN/approval-architecture-upgrade.md) | English
 
-> Status: A0-A3 were completed on 2026-08-13. A4 is target design and is not
-> claims about shipped behavior.
+> Status: A0-A4 were completed on 2026-08-13.
 >
 > Scope: Tool Guard policy, durable grants, approval protocol, Runtime recovery,
 > ACP routing, VS Code presentation, and approval observability.
@@ -289,16 +288,13 @@ Rules:
 
 ### 5.5 Bounded Auto Review
 
-Auto review is optional and applies only when deterministic classification
-returns an uncertain low/medium risk. The reviewer:
-
-- runs read-only with `approval_policy=never`;
-- receives normalized effect data, not arbitrary secrets;
-- has no process, network, MCP, memory, or subagent authority unless explicitly
-  required;
-- returns schema-validated risk, authorization, outcome, and rationale;
-- times out quickly and fails closed to human approval;
-- can never approve high/critical risk or override a deny.
+Auto review is the final deterministic Policy stage. It can allow only a
+permission-generated Ask whose normalized Effect is Medium Risk Network Read or
+Agent Lifecycle and whose complete invocation has an exact Typed Grant. It
+cannot override Repository/Grant Ask, Deny/Hold, Permission Never, Granular
+Ask/Deny, missing grants, or High/Critical Risk. The operational kill switch
+`CODEHELPER_DISABLE_APPROVAL_AUTO_REVIEW=1` returns reviewable cases to Human
+Approval; there is no Shadow or legacy Reviewer path.
 
 ## 6. Protocol Evolution
 
@@ -424,15 +420,15 @@ Implementation status (2026-08-13): `completed`.
 The delivered kernel normalizes validated Descriptor, canonical Resource,
 Sandbox, Access, and Journal facts without changing the Runtime protocol.
 Low-risk journaled edits, strong-sandbox read-only processes, and bounded Agent
-messages run without approval. Medium-risk operations remain human-reviewed
-until A4, while process mutation and external mutation remain high risk.
+messages run without approval. Eligible Medium-risk operations enter the A4
+bounded Reviewer, while process mutation and external mutation remain high risk.
 Unknown or incomplete facts use the conservative legacy classification.
 
 - introduce normalized effects at the Guard/Policy boundary;
 - classify file, shell, network, agent, and external effects;
 - remove `file_write` and lifecycle name-based exceptions;
 - add deterministic risk tables and reason codes;
-- preserve current protocol while comparing old/new decisions in shadow mode.
+- hand eligible Medium-risk effects to the deterministic A4 Reviewer.
 
 ### A2: Typed Grants and Amendments
 
@@ -472,11 +468,13 @@ carousel. The automatic blocking modal and its duplicate formatter were removed.
 
 ### A4: Auto Review and Rollout
 
-- add bounded reviewer behind a feature flag;
-- add decision funnel telemetry and dashboards;
-- run shadow evaluation before enabling automatic outcomes;
-- gate release on security invariants and approval reduction;
-- provide a kill switch that returns uncertain cases to human approval.
+Implementation status (2026-08-13): `completed`.
+
+- enabled the bounded Reviewer directly and removed parallel decision paths;
+- covered Preflight and Mid-flight Egress with the same Policy pipeline;
+- added low-cardinality funnel and latency metrics without invocation data;
+- retained explicit Ask and every High/Critical human boundary;
+- added one fail-closed environment Kill Switch.
 
 ## 10. Verification Matrix
 
@@ -500,10 +498,10 @@ correlation is not sufficient.
 ## 11. Rollback
 
 - A0 is a direct security correction and is not feature-flagged.
-- A1 runs in shadow comparison before changing outcomes.
+- A1 deterministic Effect/Risk classification is the active path.
 - A2 can disable reusable grants while retaining allow-once.
 - A3 can fall back to one inline basic card, not the blocking modal.
-- A4 has independent reviewer and automatic-outcome kill switches.
+- A4 has one fail-closed Kill Switch and no legacy Reviewer implementation.
 
 Rollback must never widen authority. On uncertainty, CodeHelper returns to
 human approval or denial.

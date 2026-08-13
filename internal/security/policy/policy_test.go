@@ -36,7 +36,7 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 			if test.tool == "file_write" {
 				raw = `{"path":"notes.txt"}`
 			}
-			err := runtime.Authorize(t.Context(), invocation(test.tool, "call-1", raw))
+			err := authorize(runtime, invocation(test.tool, "call-1", raw))
 			assertDecisionCode(t, err, test.wantCode)
 		})
 	}
@@ -45,21 +45,21 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		runtime := DefaultRuntime(ModeOperate, PermissionAuto)
 		call := invocation("file_read", "net-1", `{}`)
 		call.Capability = CapabilityNetwork
-		err := runtime.Authorize(t.Context(), call)
+		err := authorize(runtime, call)
 		assertDecisionCode(t, err, "approval_required")
 	})
 	t.Run("operate auto plugin asks", func(t *testing.T) {
 		runtime := DefaultRuntime(ModeOperate, PermissionAuto)
 		call := invocation("file_read", "plugin-1", `{}`)
 		call.Capability = CapabilityPlugin
-		err := runtime.Authorize(t.Context(), call)
+		err := authorize(runtime, call)
 		assertDecisionCode(t, err, "approval_required")
 	})
 	t.Run("act auto network read asks", func(t *testing.T) {
 		runtime := DefaultRuntime(ModeAct, PermissionAuto)
 		call := invocation("file_read", "net-act", `{}`)
 		call.Capability = CapabilityNetwork
-		err := runtime.Authorize(t.Context(), call)
+		err := authorize(runtime, call)
 		assertDecisionCode(t, err, "approval_required")
 	})
 
@@ -68,41 +68,41 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		{Tool: "file_write", Resource: "protected", Action: ActionDeny},
 		{Tool: "file_write", Resource: "protected", Action: ActionAllow},
 	}
-	err := runtime.Authorize(t.Context(), invocation("file_write", "call-2", `{"path":"protected/value"}`))
+	err := authorize(runtime, invocation("file_write", "call-2", `{"path":"protected/value"}`))
 	assertDecisionCode(t, err, "repository_rule_denied")
 
 	runtime.Repository = []Rule{{Tool: "file_write", Action: ActionHold, Code: "release_hold"}}
-	err = runtime.Authorize(t.Context(), invocation("file_write", "call-3", `{"path":"value"}`))
+	err = authorize(runtime, invocation("file_write", "call-3", `{"path":"value"}`))
 	assertDecisionCode(t, err, "release_hold")
 
 	runtime = DefaultRuntime(ModeAct, PermissionSuggest)
 	runtime.Repository = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
-	err = runtime.Authorize(t.Context(), invocation("file_write", "call-allow", `{"path":"notes.txt"}`))
+	err = authorize(runtime, invocation("file_write", "call-allow", `{"path":"notes.txt"}`))
 	assertDecisionCode(t, err, "")
 
 	runtime = DefaultRuntime(ModeAct, PermissionNever)
 	runtime.Repository = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
-	err = runtime.Authorize(t.Context(), invocation("file_write", "call-never", `{"path":"notes.txt"}`))
+	err = authorize(runtime, invocation("file_write", "call-never", `{"path":"notes.txt"}`))
 	assertDecisionCode(t, err, "permission_denied")
 
 	runtime = DefaultRuntime(ModePlan, PermissionSuggest)
 	runtime.Repository = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
-	err = runtime.Authorize(t.Context(), invocation("file_write", "call-plan", `{"path":"notes.txt"}`))
+	err = authorize(runtime, invocation("file_write", "call-plan", `{"path":"notes.txt"}`))
 	assertDecisionCode(t, err, "mode_denied")
 
 	runtime = DefaultRuntime(ModeAct, PermissionSuggest)
-	err = runtime.Authorize(t.Context(), invocation(
+	err = authorize(runtime, invocation(
 		"file_write", "call-auto-write", `{"path":"notes.txt","content":"done"}`,
 	))
 	assertDecisionCode(t, err, "")
 	edit := invocation("file_edit", "call-edit", `{"path":"notes.txt"}`)
 	edit.Capability = CapabilityWrite
-	err = runtime.Authorize(t.Context(), edit)
+	err = authorize(runtime, edit)
 	assertDecisionCode(t, err, "")
 	runtime.Repository = []Rule{{
 		Tool: "file_write", Resource: "notes.txt", Action: ActionAsk,
 	}}
-	err = runtime.Authorize(t.Context(), invocation(
+	err = authorize(runtime, invocation(
 		"file_write", "call-repository-ask", `{"path":"notes.txt","content":"done"}`,
 	))
 	assertDecisionCode(t, err, "approval_required")
@@ -146,7 +146,7 @@ func TestPolicyCompleteModePermissionCapabilityTruthTable(t *testing.T) {
 					call := invocation("file_read", "truth-table", `{}`)
 					call.Capability = capability
 					call.Access, call.Sandbox = "", ""
-					err := runtime.Authorize(t.Context(), call)
+					err := authorize(runtime, call)
 					want := ""
 					switch {
 					case mode == ModePlan && capability != CapabilityRead:
@@ -189,7 +189,7 @@ func TestRepositoryCommandRulesInspectEveryShellSegment(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = runtime.Authorize(t.Context(), invocation("shell_run", command, string(raw)))
+		err = authorize(runtime, invocation("shell_run", command, string(raw)))
 		assertDecisionCode(t, err, "repository_rule_denied")
 	}
 
@@ -197,7 +197,7 @@ func TestRepositoryCommandRulesInspectEveryShellSegment(t *testing.T) {
 	runtime.Repository = []Rule{
 		{Tool: "shell_run", CommandPrefix: "rm", Action: ActionDeny},
 	}
-	err := runtime.Authorize(t.Context(), invocation(
+	err := authorize(runtime, invocation(
 		"shell_run", "quoted", `{"command":"printf '%s' 'echo safe; rm target'"}`,
 	))
 	assertDecisionCode(t, err, "")
@@ -206,14 +206,14 @@ func TestRepositoryCommandRulesInspectEveryShellSegment(t *testing.T) {
 func TestToolGrantMissingAndDenyCannotBeOverridden(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
 	runtime.Grants = []Rule{{Tool: "file_read", Action: ActionAllow}}
-	err := runtime.Authorize(t.Context(), invocation("file_write", "call-1", `{"path":"a"}`))
+	err := authorize(runtime, invocation("file_write", "call-1", `{"path":"a"}`))
 	assertDecisionCode(t, err, "tool_grant_missing")
 
 	runtime.Grants = []Rule{
 		{Tool: "file_write", Resource: "*", Action: ActionAllow},
 		{Tool: "file_write", Resource: "a", Action: ActionDeny},
 	}
-	err = runtime.Authorize(t.Context(), invocation("file_write", "call-2", `{"path":"a"}`))
+	err = authorize(runtime, invocation("file_write", "call-2", `{"path":"a"}`))
 	assertDecisionCode(t, err, "tool_grant_denied")
 }
 
@@ -283,7 +283,7 @@ func TestSuggestLowRiskEditDoesNotRequireAsyncHost(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionSuggest)
 	call := invocation("file_edit", "call-approval", `{"path":"a"}`)
 	call.Capability = CapabilityWrite
-	assertDecisionCode(t, runtime.Authorize(t.Context(), call), "")
+	assertDecisionCode(t, authorize(runtime, call), "")
 }
 
 func TestTightenPermissionNeverExpandsAuthority(t *testing.T) {
@@ -389,6 +389,14 @@ func invocation(toolName, callID, arguments string) Invocation {
 		Journaled: toolName == "file_write" || toolName == "file_edit",
 		Validated: true,
 	}
+}
+
+func authorize(runtime *Runtime, invocation Invocation) error {
+	decision := runtime.Evaluate(invocation)
+	if decision.Action == ActionAllow {
+		return nil
+	}
+	return &DecisionError{Code: decision.Code, Reason: decision.Reason}
 }
 
 func assertDecisionCode(t *testing.T, err error, want string) {

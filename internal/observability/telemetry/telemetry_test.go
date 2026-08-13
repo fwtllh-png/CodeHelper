@@ -3,6 +3,7 @@ package telemetry
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -78,6 +79,12 @@ func TestMetricsAreAtomic(t *testing.T) {
 				metrics.ToolExecution()
 				metrics.Error()
 				metrics.TurnKernelObserver(true, true)
+				metrics.Approval("evaluated", "network.read", "medium", "approval_required", 0)
+				metrics.Approval("auto_allowed", "network.read", "medium", "auto_review_allowed", 2*time.Millisecond)
+				metrics.Approval("human_required", "process.mutating", "high", "approval_required", 3*time.Millisecond)
+				metrics.Approval("denied", "external.mutation", "critical", "permission_denied", 0)
+				metrics.Approval("grant_hit", "network.read", "medium", "approval_required", 0)
+				metrics.Approval("waited", "process.mutating", "high", "approval_required", 4*time.Millisecond)
 			}
 		}()
 	}
@@ -95,7 +102,14 @@ func TestMetricsAreAtomic(t *testing.T) {
 		got.Errors != want ||
 		got.TurnKernelTransitions != want ||
 		got.TurnKernelDrifts != want ||
-		got.TurnKernelDigestErrors != want {
+		got.TurnKernelDigestErrors != want ||
+		got.ApprovalEvaluatedTotal != want ||
+		got.ApprovalAutoAllowedTotal != want ||
+		got.ApprovalHumanRequiredTotal != want ||
+		got.ApprovalDeniedTotal != want ||
+		got.ApprovalGrantHitTotal != want ||
+		got.ApprovalReviewerLatencyMS != want*5 ||
+		got.ApprovalWaitLatencyMS != want*4 {
 		t.Fatalf("metric snapshot = %+v, want every counter %d", got, want)
 	}
 }
@@ -111,6 +125,23 @@ func TestTurnKernelObserverMetricsSeparateHealthyTransitions(t *testing.T) {
 		snapshot.TurnKernelDrifts != 2 ||
 		snapshot.TurnKernelDigestErrors != 1 {
 		t.Fatalf("turn kernel metrics = %+v", snapshot)
+	}
+}
+
+func TestApprovalMetricsNeverStoreInvocationData(t *testing.T) {
+	metrics := NewMetrics()
+	metrics.Approval(
+		"human_required", "network.read command=secret", "medium path=/private",
+		"approval_required", 0,
+	)
+	encoded, err := json.Marshal(metrics.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"command", "path", "arguments", "prompt", "resource"} {
+		if bytes.Contains(encoded, []byte(forbidden)) {
+			t.Fatalf("approval metrics contain forbidden data: %s", encoded)
+		}
 	}
 }
 

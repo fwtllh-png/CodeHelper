@@ -92,16 +92,16 @@ func TestEffectRiskDrivesApprovalWithoutToolNameExceptions(t *testing.T) {
 			want: ActionAllow,
 		},
 		{
-			name: "suggest followup asks", permission: PermissionSuggest,
+			name: "suggest followup auto reviews", permission: PermissionSuggest,
 			call: effectInvocation("followup_task", CapabilityWrite, tool.AccessWrite, tool.SandboxNone,
 				tool.Resource{Kind: "agent", ID: "agent-1", Access: tool.AccessWrite}),
-			want: ActionAsk,
+			want: ActionAllow,
 		},
 		{
-			name: "auto network read asks", permission: PermissionAuto,
+			name: "auto network read auto reviews", permission: PermissionAuto,
 			call: effectInvocation("web_fetch", CapabilityNetwork, tool.AccessRead, tool.SandboxNone,
 				tool.Resource{Kind: "host", ID: "example.com", Access: tool.AccessRead}),
-			want: ActionAsk,
+			want: ActionAllow,
 		},
 		{
 			name: "auto process write asks", permission: PermissionAuto,
@@ -122,6 +122,47 @@ func TestEffectRiskDrivesApprovalWithoutToolNameExceptions(t *testing.T) {
 				t.Fatalf("decision = %+v, want %s", decision, test.want)
 			}
 		})
+	}
+}
+
+func TestBoundedAutoReview(t *testing.T) {
+	network := effectInvocation(
+		"web_fetch", CapabilityNetwork, tool.AccessRead, tool.SandboxNone,
+		tool.Resource{Kind: "host", ID: "example.com", Access: tool.AccessRead},
+	)
+	agent := effectInvocation(
+		"spawn_agent", CapabilityWrite, tool.AccessWrite, tool.SandboxNone,
+		tool.Resource{Kind: "agent", ID: "agent-1", Access: tool.AccessWrite},
+	)
+	high := effectInvocation(
+		"shell_run", CapabilityProcess, tool.AccessWrite, tool.SandboxStrong,
+		tool.Resource{Kind: "file", Path: "a.go", Access: tool.AccessWrite},
+	)
+	untyped := effectInvocation(
+		"unknown_write", CapabilityWrite, "", "",
+	)
+	for _, call := range []Invocation{network, agent} {
+		runtime := DefaultRuntime(ModeAct, PermissionSuggest)
+		reviewed := runtime.Evaluate(call)
+		if reviewed.Action != ActionAllow || reviewed.Code != "auto_review_allowed" {
+			t.Fatalf("reviewed = %+v", reviewed)
+		}
+	}
+	runtime := DefaultRuntime(ModeAct, PermissionSuggest)
+	if reviewed := runtime.Evaluate(high); reviewed.Action != ActionAsk {
+		t.Fatalf("high risk review = %+v", reviewed)
+	}
+	if reviewed := runtime.Evaluate(untyped); reviewed.Action != ActionAsk {
+		t.Fatalf("untyped review = %+v", reviewed)
+	}
+	runtime.Repository = []Rule{{Tool: "web_fetch", Action: ActionAsk}}
+	if reviewed := runtime.Evaluate(network); reviewed.Action != ActionAsk {
+		t.Fatalf("repository ask review = %+v", reviewed)
+	}
+	runtime.Repository = nil
+	runtime.DisableAutoReview = true
+	if reviewed := runtime.Evaluate(network); reviewed.Action != ActionAsk {
+		t.Fatalf("kill switch review = %+v", reviewed)
 	}
 }
 

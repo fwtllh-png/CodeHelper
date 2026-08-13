@@ -241,6 +241,7 @@ func TestApprovalAlwaysPersistsAllow(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
+	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 2)
 	var persisted atomic.Int32
 	guard, err := New(Options{
@@ -346,6 +347,7 @@ func TestApprovalOnceSessionExpiryAndModifiedArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
+	runtime.DisableAutoReview = true
 	runtime.Repository = []policy.Rule{{
 		Tool: "followup_task", Resource: "blocked", Action: policy.ActionDeny,
 	}}
@@ -632,6 +634,39 @@ type testExecutor struct {
 	calls      atomic.Int32
 }
 
+type approvalMetricSink struct {
+	mu     sync.Mutex
+	values []string
+}
+
+type permissionRequesterFunc func(
+	context.Context, Invocation,
+) (PermissionDecision, error)
+
+func (f permissionRequesterFunc) PermissionRequest(
+	ctx context.Context, invocation Invocation,
+) (PermissionDecision, error) {
+	return f(ctx, invocation)
+}
+
+func (s *approvalMetricSink) Approval(
+	outcome, effect, risk, reasonCode string,
+	_ time.Duration,
+) {
+	if effect == "" || risk == "" || reasonCode == "" {
+		panic("approval metric has an empty dimension")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.values = append(s.values, outcome)
+}
+
+func (s *approvalMetricSink) outcomes() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.values...)
+}
+
 type failingExpanderExecutor struct {
 	testExecutor
 }
@@ -655,8 +690,8 @@ func TestEgressDeniedAsksThenRetries(t *testing.T) {
 	if err := registry.Register(executor, nil); err != nil {
 		t.Fatal(err)
 	}
-	// Suggest still asks for mid-flight hosts; Bypass auto-grants (see below).
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
+	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 2)
 	var grantedMu sync.Mutex
 	var granted []string
@@ -785,6 +820,7 @@ func TestEgressDeniedApprovalDenyKeepsFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
+	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 2)
 	guard, err := New(Options{
 		Registry: registry, Policy: runtime, Workspace: t.TempDir(),
@@ -854,6 +890,7 @@ func TestNetworkHostApprovalSessionReuseAndCancel(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeOperate, policy.PermissionAuto)
+	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 4)
 	guard := newTestGuard(t, registry, runtime, func(_ context.Context, request ApprovalRequest) error {
 		requests <- request
@@ -923,33 +960,71 @@ func TestNetworkHostApprovalSessionReuseAndCancel(t *testing.T) {
 	_ = canceled
 }
 
-func TestNetworkAsksUnderActAuto(t *testing.T) {
+func TestNetworkAutoReviewsUnderActAuto(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	executor := testExecutor{descriptor: networkFetchDescriptor()}
-	if err := registry.Register(&executor, nil); err != nil {
+	executor := &testExecutor{descriptor: networkFetchDescriptor()}
+	if err := registry.Register(executor, nil); err != nil {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto)
-	requests := make(chan ApprovalRequest, 1)
-	guard := newTestGuard(t, registry, runtime, func(_ context.Context, request ApprovalRequest) error {
-		requests <- request
-		return nil
+	metrics := &approvalMetricSink{}
+	guard := newTestGuard(t, registry, runtime, func(
+		context.Context, ApprovalRequest,
+	) error {
+		return errors.New("auto-reviewed network read requested human approval")
 	}, nil)
-	result := make(chan error, 1)
+	guard.SetApprovalObserver(metrics.Approval)
+	if _, err := guard.Execute(
+		context.Background(), "call", "web_fetch",
+		json.RawMessage(`{"url":"https://example.com/"}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if executor.calls.Load() != 1 {
+		t.Fatalf("calls = %d", executor.calls.Load())
+	}
+	if !reflect.DeepEqual(metrics.outcomes(), []string{"evaluated", "auto_allowed"}) {
+		t.Fatalf("approval metrics = %v", metrics.outcomes())
+	}
+}
+
+func TestPermissionHookAskOverridesAutoReview(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &testExecutor{descriptor: networkFetchDescriptor()}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan ApprovalRequest, 1)
+	guard := newTestGuard(
+		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto),
+		func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		}, nil,
+	)
+	metrics := &approvalMetricSink{}
+	guard.SetApprovalObserver(metrics.Approval)
+	guard.permissionHooks = permissionRequesterFunc(func(
+		context.Context, Invocation,
+	) (PermissionDecision, error) {
+		return PermissionDecision{Action: PermissionAsk}, nil
+	})
+	done := make(chan error, 1)
 	go func() {
 		_, err := guard.Execute(
 			context.Background(), "call", "web_fetch",
 			json.RawMessage(`{"url":"https://example.com/"}`),
 		)
-		result <- err
+		done <- err
 	}()
 	request := <-requests
-	if request.Tool != "web_fetch" {
-		t.Fatalf("approval tool = %q, want web_fetch", request.Tool)
+	if request.ReasonCode != ApprovalReasonNetworkHost ||
+		!reflect.DeepEqual(metrics.outcomes(), []string{"evaluated", "human_required"}) {
+		t.Fatalf("request = %+v metrics = %v", request, metrics.outcomes())
 	}
 	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
-	if err := <-result; err != nil {
-		t.Fatalf("approved network call failed: %v", err)
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -274,11 +274,11 @@ func (m *Manager) PermissionRequest(
 	input ToolCallBeforeInput,
 ) (ToolCallBeforeResult, error) {
 	if m == nil {
-		return ToolCallBeforeResult{Action: ActionAsk}, nil
+		return ToolCallBeforeResult{}, nil
 	}
 	hooks := m.config.Hooks[PermissionRequest]
 	if len(hooks) == 0 {
-		return ToolCallBeforeResult{Action: ActionAsk}, nil
+		return ToolCallBeforeResult{}, nil
 	}
 	current := bytes.Clone(input.Input)
 	if len(current) == 0 {
