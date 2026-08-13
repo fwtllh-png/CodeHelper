@@ -18,18 +18,17 @@ import (
 )
 
 type Options struct {
-	Control       *subagent.AgentControl
-	Manager       *subagent.Manager
-	Handles       *handle.Store
-	SessionID     string
-	Root          string
-	Gate          subagent.ToolGate
-	Budget        subagent.Budget
-	Runtime       subagent.RuntimeHost
-	Delegation    subagent.DelegationMode
-	Roles         subagent.RoleCatalog
-	ParentContext func() string
-	Graph         subagent.Graph
+	Control    *subagent.AgentControl
+	Manager    *subagent.Manager
+	Handles    *handle.Store
+	SessionID  string
+	Root       string
+	Gate       subagent.ToolGate
+	Budget     subagent.Budget
+	Runtime    subagent.RuntimeHost
+	Delegation subagent.DelegationMode
+	Roles      subagent.RoleCatalog
+	Graph      subagent.Graph
 	// OnRelease lets the host drop per-agent runtime state (thread engine, wall
 	// clock watchdog) when the model closes an agent.
 	OnRelease func(agentID string)
@@ -40,13 +39,12 @@ type Options struct {
 }
 
 type Tool struct {
-	control       *subagent.AgentControl
-	handles       *handle.Store
-	sessionID     string
-	parentContext func() string
-	onRelease     func(agentID string)
-	files         *filetool.Tools
-	workspace     string
+	control   *subagent.AgentControl
+	handles   *handle.Store
+	sessionID string
+	onRelease func(agentID string)
+	files     *filetool.Tools
+	workspace string
 }
 
 // ArtifactRef is a compact pointer to a child-produced artifact.
@@ -69,23 +67,24 @@ type Verification struct {
 
 // Receipt is the structured agent run receipt returned to the parent.
 type Receipt struct {
-	RunID          string         `json:"run_id"`
-	AgentID        string         `json:"agent_id"`
-	ThreadID       string         `json:"thread_id"`
-	Turn           string         `json:"turn"`
-	Role           string         `json:"role"`
-	Profile        string         `json:"profile"`
-	Stance         string         `json:"stance"`
-	TaskName       string         `json:"task_name"`
-	ExpectedOutput string         `json:"expected_output"`
-	OwnedPaths     []string       `json:"owned_paths,omitempty"`
-	Trigger        string         `json:"trigger"`
-	FollowUp       bool           `json:"follow_up"`
-	Takeover       bool           `json:"takeover"`
-	Artifacts      []ArtifactRef  `json:"artifacts"`
-	Usage          Usage          `json:"usage"`
-	Verification   Verification   `json:"verification"`
-	WorkerRecord   map[string]any `json:"worker_record"`
+	RunID          string                  `json:"run_id"`
+	AgentID        string                  `json:"agent_id"`
+	ThreadID       string                  `json:"thread_id"`
+	Turn           string                  `json:"turn"`
+	Role           string                  `json:"role"`
+	Profile        string                  `json:"profile"`
+	Stance         string                  `json:"stance"`
+	TaskName       string                  `json:"task_name"`
+	ExpectedOutput string                  `json:"expected_output"`
+	OwnedPaths     []string                `json:"owned_paths,omitempty"`
+	Trigger        string                  `json:"trigger"`
+	FollowUp       bool                    `json:"follow_up"`
+	Takeover       bool                    `json:"takeover"`
+	Artifacts      []ArtifactRef           `json:"artifacts"`
+	Usage          Usage                   `json:"usage"`
+	Verification   Verification            `json:"verification"`
+	WorkerRecord   map[string]any          `json:"worker_record"`
+	Context        subagent.ContextReceipt `json:"context"`
 }
 
 func Register(registry *tool.Registry, options Options) error {
@@ -143,10 +142,9 @@ func Register(registry *tool.Registry, options Options) error {
 	}
 	shared := &Tool{
 		control: control, handles: options.Handles, sessionID: sessionID,
-		parentContext: options.ParentContext,
-		onRelease:     options.OnRelease,
-		files:         options.Files,
-		workspace:     strings.TrimSpace(options.Workspace),
+		onRelease: options.OnRelease,
+		files:     options.Files,
+		workspace: strings.TrimSpace(options.Workspace),
 	}
 	for _, kind := range []string{
 		"spawn_agent", "send_message", "wait_agent", "list_agents",
@@ -171,8 +169,8 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		OwnedPaths     []string `json:"owned_paths"`
 		ParentID       string   `json:"parent_id"`
 		Trigger        string   `json:"trigger"`
-		ForkContext    bool     `json:"fork_context"`
-		ParentContext  string   `json:"parent_context"`
+		ContextMode    string   `json:"context_mode"`
+		ContextTurns   int      `json:"context_turns"`
 	}
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
@@ -195,19 +193,36 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	if err != nil {
 		return tool.Result{}, err
 	}
-	childPrompt, forkEmpty := t.buildChildPrompt(
-		input.ForkContext, input.ParentContext, child, objective,
-	)
-	turn, err := t.control.Takeover(ctx, child.ID, childPrompt)
+	roleSpec, err := t.control.RoleSpec(role)
+	if err != nil {
+		_ = t.control.Close(child.ID)
+		return tool.Result{}, err
+	}
+	identity := tool.InvocationIdentityFrom(ctx)
+	fork, err := t.control.ForkContext(ctx, subagent.ContextRequest{
+		Mode:      subagent.ContextMode(strings.TrimSpace(input.ContextMode)),
+		LastTurns: input.ContextTurns,
+		Source: subagent.ContextSourceRef{
+			ThreadID: identity.ThreadID,
+			TurnID:   identity.TurnID,
+		},
+		Agent: *child, Role: roleSpec, Objective: objective,
+		Trigger: child.DelegationTrigger,
+	})
+	if err != nil {
+		_ = t.control.Close(child.ID)
+		return tool.Result{}, err
+	}
+	turn, err := t.control.Takeover(ctx, child.ID, fork.Prompt)
 	if err != nil {
 		_ = t.control.Close(child.ID)
 		return tool.Result{}, err
 	}
 	threadID := subagent.ThreadIDFor(child.ID)
 	transcript := fmt.Sprintf(
-		"agent_id=%s\nthread_id=%s\nrole=%s\nprofile=%s\nstance=%s\ndepth=%d\nworktree=%s\nparent=%s\nfork_context=%v\nfork_context_empty=%v\nprompt=%s\nturn=%s\n",
+		"agent_id=%s\nthread_id=%s\nrole=%s\nprofile=%s\nstance=%s\ndepth=%d\nworktree=%s\nparent=%s\ncontext_mode=%s\ncontext_digest=%s\nprompt=%s\nturn=%s\n",
 		child.ID, threadID, child.Role, child.Profile, child.Stance, child.Depth, child.Worktree, child.Parent,
-		input.ForkContext, forkEmpty, childPrompt, turn,
+		fork.Receipt.Mode, fork.Receipt.Digest, fork.Prompt, turn,
 	)
 	handleName := filepath.ToSlash(filepath.Join("agent-"+child.ID, "transcript"))
 	varHandle, err := t.handles.PutText(t.sessionID, handleName, transcript)
@@ -227,6 +242,7 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		// verification status now would be a claim about work that has not run.
 		Usage:        Usage{Status: "pending"},
 		Verification: Verification{Status: "pending"},
+		Context:      fork.Receipt,
 		WorkerRecord: map[string]any{
 			"worktree": child.Worktree, "serialized": child.Serialized,
 			"parent_id": child.Parent, "depth": child.Depth,
@@ -255,7 +271,7 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		"task_name": child.TaskName, "expected_output": child.ExpectedOutput,
 		"owned_paths": child.OwnedPaths, "trigger": string(child.DelegationTrigger),
 		"status":       string(subagent.StatusRunning),
-		"fork_context": input.ForkContext, "fork_context_empty": forkEmpty,
+		"context_mode": fork.Receipt.Mode, "context_receipt": fork.Receipt,
 		"receipt": map[string]any{
 			"sequence": message.Sequence, "from": message.From, "to": message.To,
 			"body": json.RawMessage(message.Body),
@@ -277,25 +293,10 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 			"usage":             receipt.Usage.Status,
 			"status":            string(subagent.StatusRunning),
 			"serialized":        child.Serialized,
+			"context_digest":    fork.Receipt.Digest,
+			"context_tokens":    fork.Receipt.TokenEstimate,
 		},
 	}, nil
-}
-
-func (t *Tool) buildChildPrompt(fork bool, explicitParent string, child *subagent.Agent, task string) (string, bool) {
-	childPrompt := subagent.ChildPrompt(*child, task)
-	if !fork {
-		return childPrompt, false
-	}
-	prefix := strings.TrimSpace(explicitParent)
-	if t.parentContext != nil {
-		if fromHost := strings.TrimSpace(t.parentContext()); fromHost != "" {
-			prefix = fromHost
-		}
-	}
-	if prefix == "" {
-		return childPrompt, true
-	}
-	return prefix + "\n---\n" + childPrompt, false
 }
 
 // Manager exposes the underlying manager for tests and cleanup.

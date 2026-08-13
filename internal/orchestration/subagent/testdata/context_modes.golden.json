@@ -1,0 +1,292 @@
+[
+  {
+    "mode": "fresh",
+    "included": [
+      {
+        "kind": "task_contract",
+        "ref": "inspect_auth",
+        "bytes": 34
+      }
+    ],
+    "excluded": [
+      {
+        "kind": "model_reasoning",
+        "reason": "unverified reasoning is never inherited"
+      },
+      {
+        "kind": "unpaired_tool_exchange",
+        "reason": "orphan tool calls and results are removed"
+      }
+    ]
+  },
+  {
+    "mode": "task_capsule",
+    "source_thread": "thread-parent",
+    "source_turn": "turn-parent",
+    "parent_goal": "parent goal",
+    "user_request": "current request token=[REDACTED]",
+    "relevant_files": [
+      {
+        "path": "internal/runtime/app/runtime.go",
+        "sources": [
+          "tool_read"
+        ],
+        "critical": true
+      }
+    ],
+    "evidence": [
+      {
+        "summary": "runtime owns the turn",
+        "handle": "evidence://parent/1"
+      }
+    ],
+    "workspace_rules": [
+      "keep hosts thin"
+    ],
+    "included": [
+      {
+        "kind": "task_contract",
+        "ref": "inspect_auth",
+        "bytes": 34
+      },
+      {
+        "kind": "parent_goal",
+        "bytes": 11
+      },
+      {
+        "kind": "user_request",
+        "bytes": 32
+      },
+      {
+        "kind": "relevant_file",
+        "count": 1
+      },
+      {
+        "kind": "evidence",
+        "count": 1
+      },
+      {
+        "kind": "workspace_rule",
+        "count": 1
+      }
+    ],
+    "excluded": [
+      {
+        "kind": "model_reasoning",
+        "reason": "unverified reasoning is never inherited"
+      },
+      {
+        "kind": "unpaired_tool_exchange",
+        "reason": "orphan tool calls and results are removed"
+      },
+      {
+        "kind": "parent_transcript",
+        "reason": "task_capsule carries only task-relevant facts"
+      },
+      {
+        "kind": "secret_value",
+        "count": 1,
+        "reason": "redacted"
+      }
+    ]
+  },
+  {
+    "mode": "last_n_turns",
+    "source_thread": "thread-parent",
+    "source_turn": "turn-parent",
+    "parent_goal": "parent goal",
+    "user_request": "current request token=[REDACTED]",
+    "relevant_files": [
+      {
+        "path": "internal/runtime/app/runtime.go",
+        "sources": [
+          "tool_read"
+        ],
+        "critical": true
+      }
+    ],
+    "evidence": [
+      {
+        "summary": "runtime owns the turn",
+        "handle": "evidence://parent/1"
+      }
+    ],
+    "workspace_rules": [
+      "keep hosts thin"
+    ],
+    "recent_turns": [
+      {
+        "turn": 2,
+        "user": [
+          "current request"
+        ],
+        "assistant": [
+          "current answer"
+        ],
+        "tools": [
+          {
+            "name": "search",
+            "arguments": "{\"query\":\"owner\"}",
+            "result": "current body"
+          }
+        ]
+      }
+    ],
+    "included": [
+      {
+        "kind": "task_contract",
+        "ref": "inspect_auth",
+        "bytes": 34
+      },
+      {
+        "kind": "parent_goal",
+        "bytes": 11
+      },
+      {
+        "kind": "user_request",
+        "bytes": 32
+      },
+      {
+        "kind": "relevant_file",
+        "count": 1
+      },
+      {
+        "kind": "evidence",
+        "count": 1
+      },
+      {
+        "kind": "workspace_rule",
+        "count": 1
+      },
+      {
+        "kind": "history_turn",
+        "count": 1
+      }
+    ],
+    "excluded": [
+      {
+        "kind": "model_reasoning",
+        "reason": "unverified reasoning is never inherited"
+      },
+      {
+        "kind": "unpaired_tool_exchange",
+        "reason": "orphan tool calls and results are removed"
+      },
+      {
+        "kind": "older_turns",
+        "count": 1,
+        "reason": "outside last_n_turns window"
+      },
+      {
+        "kind": "secret_value",
+        "count": 1,
+        "reason": "redacted"
+      }
+    ]
+  },
+  {
+    "mode": "full",
+    "source_thread": "thread-parent",
+    "source_turn": "turn-parent",
+    "parent_goal": "parent goal",
+    "user_request": "current request token=[REDACTED]",
+    "relevant_files": [
+      {
+        "path": "internal/runtime/app/runtime.go",
+        "sources": [
+          "tool_read"
+        ],
+        "critical": true
+      }
+    ],
+    "evidence": [
+      {
+        "summary": "runtime owns the turn",
+        "handle": "evidence://parent/1"
+      }
+    ],
+    "workspace_rules": [
+      "keep hosts thin"
+    ],
+    "recent_turns": [
+      {
+        "turn": 1,
+        "user": [
+          "old request"
+        ],
+        "assistant": [
+          "old answer"
+        ],
+        "tools": [
+          {
+            "name": "read",
+            "arguments": "{\"path\":\"old.go\"}",
+            "result": "old body"
+          }
+        ]
+      },
+      {
+        "turn": 2,
+        "user": [
+          "current request"
+        ],
+        "assistant": [
+          "current answer"
+        ],
+        "tools": [
+          {
+            "name": "search",
+            "arguments": "{\"query\":\"owner\"}",
+            "result": "current body"
+          }
+        ]
+      }
+    ],
+    "included": [
+      {
+        "kind": "task_contract",
+        "ref": "inspect_auth",
+        "bytes": 34
+      },
+      {
+        "kind": "parent_goal",
+        "bytes": 11
+      },
+      {
+        "kind": "user_request",
+        "bytes": 32
+      },
+      {
+        "kind": "relevant_file",
+        "count": 1
+      },
+      {
+        "kind": "evidence",
+        "count": 1
+      },
+      {
+        "kind": "workspace_rule",
+        "count": 1
+      },
+      {
+        "kind": "history_turn",
+        "count": 2
+      }
+    ],
+    "excluded": [
+      {
+        "kind": "model_reasoning",
+        "reason": "unverified reasoning is never inherited"
+      },
+      {
+        "kind": "unpaired_tool_exchange",
+        "reason": "orphan tool calls and results are removed"
+      },
+      {
+        "kind": "secret_value",
+        "count": 1,
+        "reason": "redacted"
+      }
+    ]
+  }
+]

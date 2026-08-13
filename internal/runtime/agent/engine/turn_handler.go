@@ -110,6 +110,7 @@ func (e *Engine) prepareTurnSpec(
 	if err != nil {
 		return TurnSpec{}, "", err
 	}
+	spec.History = cloneMessages(e.history)
 	return spec, persistedTurnID, nil
 }
 

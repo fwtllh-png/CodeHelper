@@ -106,6 +106,13 @@ workspace = "auto"           # auto | read_only | worktree | same_workspace_seri
 `delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
 `spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。
 `disabled` 对模型隐藏 Agent Lifecycle Tool，但保留内部授权的 Durable Worker 执行。
+
+`spawn_agent` 从当前 Runtime Turn 自动捕获 Parent Context。`context_mode` 默认是
+`task_capsule`；`fresh` 不继承 Parent Context，`last_n_turns` 最多加入
+`context_turns` 个包含完整 Tool Call/Result 配对的最近 Turn，`full` 需要明确授权或
+Role Policy。Tool 返回 `context_receipt`，记录来源、包含/排除原因、字节和 Token
+预算及 SHA-256 Digest。旧的 `fork_context` 和 `parent_context` 参数不再接受。
+
 [execution.worker]
 enabled = false
 max_parallel = 2

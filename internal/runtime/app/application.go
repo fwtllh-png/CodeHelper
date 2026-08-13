@@ -510,7 +510,8 @@ func (a *EngineAdapter) StartTurn(
 		return sink.Emit(&protocol.ToolStateData{State: string(event.State), Text: event.Text})
 	}
 	_, runErr := a.engine.RunForTurnWithIntentAndAttachments(
-		ctx, string(payload.TurnID), modelPrompt, intent, attachments, emit,
+		tool.WithTurnIdentity(ctx, string(payload.ThreadID), string(payload.TurnID)),
+		string(payload.TurnID), modelPrompt, intent, attachments, emit,
 	)
 	return runErr
 }

@@ -41,6 +41,17 @@ func (r *dualRuntime) StartTurn(_ context.Context, agentID, prompt string) (stri
 
 func (r *dualRuntime) CancelTurn(context.Context, string, string) error { return nil }
 
+type staticContextSource struct {
+	snapshot subagent.ParentContextSnapshot
+}
+
+func (s staticContextSource) Snapshot(
+	context.Context,
+	subagent.ContextSourceRef,
+) (subagent.ParentContextSnapshot, error) {
+	return s.snapshot, nil
+}
+
 func TestAgentSpawnReceiptAndHandleRead(t *testing.T) {
 	root := t.TempDir()
 	handles := handle.NewStore()
@@ -128,9 +139,13 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 	}
 	descriptors := registry.Descriptors(tool.VisibleModel)
 	names := make([]string, 0, len(descriptors))
+	var spawnDescriptor tool.Descriptor
 	for _, descriptor := range descriptors {
 		if descriptor.Name != "result_get" {
 			names = append(names, descriptor.Name)
+		}
+		if descriptor.Name == "spawn_agent" {
+			spawnDescriptor = descriptor
 		}
 	}
 	want := []string{
@@ -139,6 +154,17 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("model-visible agent tools = %v, want %v", names, want)
+	}
+	properties := spawnDescriptor.InputSchema["properties"].(map[string]any)
+	for _, field := range []string{"context_mode", "context_turns"} {
+		if _, ok := properties[field]; !ok {
+			t.Fatalf("spawn_agent schema is missing %q", field)
+		}
+	}
+	for _, legacy := range []string{"fork_context", "parent_context"} {
+		if _, ok := properties[legacy]; ok {
+			t.Fatalf("spawn_agent schema still exposes legacy field %q", legacy)
+		}
 	}
 
 	disabled := tool.NewRegistry(nil, nil)
@@ -191,30 +217,61 @@ func TestSendMessageQueuesWithoutStartingTurn(t *testing.T) {
 	}
 }
 
-func TestAgentForkContextInheritsParentMarker(t *testing.T) {
+func TestAgentTaskCapsuleUsesRuntimeParentSnapshot(t *testing.T) {
 	root := t.TempDir()
 	handles := handle.NewStore()
 	runtime := &dualRuntime{}
 	registry := tool.NewRegistry(nil, nil)
+	manager, err := subagent.Open(subagent.Options{
+		Root: root, Gate: &recordingGate{}, Runtime: runtime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := subagent.NewDelegationPolicy(subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := subagent.NewAgentControl(
+		manager, subagent.DefaultRoleCatalog(), policy,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control.BindContextSource(staticContextSource{
+		snapshot: subagent.ParentContextSnapshot{
+			SourceThread: "thread-parent", SourceTurn: "turn-parent",
+			ParentGoal:     "PARENT_MARKER_ALPHA decisions=keep-plan",
+			UserRequest:    "review the runtime api_key=do-not-leak",
+			WorkspaceRules: []string{"follow AGENTS.md"},
+		},
+	})
 	if err := handle.Register(registry, handles); err != nil {
 		t.Fatal(err)
 	}
 	if err := agenttool.Register(registry, agenttool.Options{
-		Handles: handles, SessionID: "session-1", Root: root, Gate: &recordingGate{},
-		Runtime:       runtime,
-		ParentContext: func() string { return "PARENT_MARKER_ALPHA decisions=keep-plan" },
+		Control: control, Handles: handles, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	forkInput := spawnInput("continue_review", "continue review", "explore")
-	forkInput["fork_context"] = true
-	forked := execute(t, registry, "spawn_agent", forkInput)
+	forked, err := registry.Execute(
+		tool.WithInvocationIdentity(t.Context(), tool.InvocationIdentity{
+			ThreadID: "thread-parent", TurnID: "turn-parent",
+		}),
+		tool.Call{
+			Name: "spawn_agent", Arguments: mustJSON(forkInput), Authorized: true,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var body map[string]any
 	if err := json.Unmarshal([]byte(forked.Content), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body["fork_context"] != true || body["fork_context_empty"] != false {
-		t.Fatalf("fork flags = %+v", body)
+	if body["context_mode"] != string(subagent.ContextTaskCapsule) {
+		t.Fatalf("context mode = %+v", body)
 	}
 	handleRaw, err := json.Marshal(body["transcript_handle"])
 	if err != nil {
@@ -224,17 +281,19 @@ func TestAgentForkContextInheritsParentMarker(t *testing.T) {
 		"handle": json.RawMessage(handleRaw), "mode": "head", "max_bytes": 2048,
 	})
 	if !strings.Contains(read.Content, "PARENT_MARKER_ALPHA") ||
-		!strings.Contains(read.Content, "fork_context=true") {
+		!strings.Contains(read.Content, "context_mode=task_capsule") ||
+		strings.Contains(read.Content, "do-not-leak") {
 		t.Fatalf("fork transcript = %s", read.Content)
 	}
-	if len(runtime.turns) != 1 || !strings.Contains(runtime.turns[0], "PARENT_MARKER_ALPHA") {
+	if len(runtime.turns) != 1 ||
+		!strings.Contains(runtime.turns[0], "PARENT_MARKER_ALPHA") ||
+		strings.Contains(runtime.turns[0], "do-not-leak") {
 		t.Fatalf("runtime turns = %#v", runtime.turns)
 	}
 
-	fresh := execute(
-		t, registry, "spawn_agent",
-		spawnInput("fresh_explore", "fresh explore", "explore"),
-	)
+	freshInput := spawnInput("fresh_explore", "fresh explore", "explore")
+	freshInput["context_mode"] = "fresh"
+	fresh := execute(t, registry, "spawn_agent", freshInput)
 	var freshBody map[string]any
 	_ = json.Unmarshal([]byte(fresh.Content), &freshBody)
 	freshHandle, _ := json.Marshal(freshBody["transcript_handle"])

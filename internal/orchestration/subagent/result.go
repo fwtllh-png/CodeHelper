@@ -54,6 +54,7 @@ type Result struct {
 	Verification protocol.ReceiptVerification `json:"verification"`
 	Unresolved   []string                     `json:"unresolved,omitempty"`
 	Usage        ResultUsage                  `json:"usage"`
+	Context      ContextReceipt               `json:"context"`
 }
 
 // WritePaths lists the paths the child actually changed, which is what the
@@ -133,6 +134,9 @@ func (m *Manager) Settle(result Result) error {
 		return fmt.Errorf("agent %s is closed", agentID)
 	}
 	stored := result
+	if stored.Context.Version == 0 && agent.Context != nil {
+		stored.Context = cloneContextReceipt(*agent.Context)
+	}
 	for _, conflict := range m.claimLocked(agentID, result.WritePaths()) {
 		stored.Unresolved = append(stored.Unresolved, conflict.String())
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -444,19 +445,26 @@ func (m *ThreadManager) History(threadID protocol.ThreadID) ([]provider.Message,
 	return adapter.History(), nil
 }
 
-// FormatTurnDiff returns the net file-tool diff for threadID's engine (N18).
-func (m *ThreadManager) FormatTurnDiff(threadID protocol.ThreadID) string {
+func (m *ThreadManager) ContextEngine(threadID string) (*agentengine.Engine, error) {
 	if m == nil || threadID == "" {
-		return ""
+		return nil, errors.New("thread id is required for context lookup")
 	}
 	m.mu.Lock()
-	adapter := m.threads[threadID]
+	adapter := m.threads[protocol.ThreadID(threadID)]
 	m.mu.Unlock()
 	if adapter == nil {
-		return ""
+		return nil, fmt.Errorf("thread %q has no context engine", threadID)
 	}
-	engine := adapter.Underlying()
-	if engine == nil {
+	if engine := adapter.Underlying(); engine != nil {
+		return engine, nil
+	}
+	return nil, errors.New("thread engine is unavailable")
+}
+
+// FormatTurnDiff returns the net file-tool diff for threadID's engine (N18).
+func (m *ThreadManager) FormatTurnDiff(threadID protocol.ThreadID) string {
+	engine, err := m.ContextEngine(string(threadID))
+	if err != nil {
 		return ""
 	}
 	return engine.FormatTurnDiff()

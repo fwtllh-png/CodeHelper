@@ -153,6 +153,7 @@ type Agent struct {
 	OwnedPaths        []string
 	DelegationTrigger DelegationTrigger
 	RoleInstructions  string
+	Context           *ContextReceipt
 }
 
 func Open(options Options) (*Manager, error) {
@@ -310,6 +311,10 @@ func cloneAgent(agent *Agent) Agent {
 	}
 	cloned := *agent
 	cloned.OwnedPaths = append([]string(nil), agent.OwnedPaths...)
+	if agent.Context != nil {
+		context := cloneContextReceipt(*agent.Context)
+		cloned.Context = &context
+	}
 	if agent.Result != nil {
 		result := *agent.Result
 		cloned.Result = &result

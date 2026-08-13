@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -87,6 +88,59 @@ func TestThreadManagerIsolatesHistory(t *testing.T) {
 	t.Fatalf("histories not isolated:\nA=%+v\nB=%+v", histA, histB)
 }
 
+func TestThreadManagerBindsToolIdentityAndContextLookup(t *testing.T) {
+	seen := make(chan tool.InvocationIdentity, 1)
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&identityCaptureTool{seen: seen}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := newTestAgentEngine(agentengine.Options{
+		Provider: &identityToolProvider{}, Route: runtimeTestRoute(t),
+		Tools: registry, Metrics: telemetry.NewMetrics(),
+		MaxOutputTokens: 128, SessionID: "process-session",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := 0
+	manager := NewThreadManager(func() (*EngineAdapter, error) {
+		created++
+		return AdaptEngine(engine), nil
+	})
+	runtime := NewRuntime(Options{Engine: manager})
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: "thread-parent", TurnID: "turn-parent",
+		ItemID: "item-parent", Prompt: "capture identity",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case identity := <-seen:
+		if identity.ThreadID != "thread-parent" ||
+			identity.TurnID != "turn-parent" ||
+			identity.CallID != "call-identity" {
+			t.Fatalf("tool identity = %+v", identity)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("identity tool was not called")
+	}
+	if resolved, err := manager.ContextEngine("thread-parent"); err != nil ||
+		resolved != engine {
+		t.Fatalf("context engine = %p, err = %v", resolved, err)
+	}
+	if _, err := manager.ContextEngine("thread-missing"); err == nil {
+		t.Fatal("missing context lookup created an engine")
+	}
+	if created != 1 {
+		t.Fatalf("engine factory calls = %d, want 1", created)
+	}
+}
+
 func historyContains(messages []provider.Message, needle string) bool {
 	for _, message := range messages {
 		if strings.Contains(message.Text(), needle) {
@@ -99,6 +153,63 @@ func historyContains(messages []provider.Message, needle string) bool {
 		}
 	}
 	return false
+}
+
+type identityCaptureTool struct {
+	seen chan<- tool.InvocationIdentity
+}
+
+func (*identityCaptureTool) Descriptor() tool.Descriptor {
+	return tool.Descriptor{
+		Name: "capture_identity", Description: "capture the invocation identity",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelSerial,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type": "object", "properties": map[string]any{},
+			"additionalProperties": false,
+		},
+	}
+}
+
+func (t *identityCaptureTool) Execute(
+	ctx context.Context,
+	_ json.RawMessage,
+) (tool.Result, error) {
+	t.seen <- tool.InvocationIdentityFrom(ctx)
+	return tool.Result{Content: "captured"}, nil
+}
+
+type identityToolProvider struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (p *identityToolProvider) Stream(
+	context.Context,
+	provider.ModelRequest,
+) (provider.Stream, error) {
+	p.mu.Lock()
+	p.calls++
+	call := p.calls
+	p.mu.Unlock()
+	if call == 1 {
+		return &providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{
+				Type: provider.EventToolCallDelta,
+				ToolCall: &provider.ToolCallFragment{
+					Index: 0, ID: "call-identity",
+					Name: "capture_identity", Arguments: `{}`,
+				},
+			},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
+		}}, nil
+	}
+	return &providerfixture.SliceStream{Events: []provider.StreamEvent{
+		{Type: provider.EventTextDelta, Text: "done"},
+		{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+	}}, nil
 }
 
 type threadEchoProvider struct {

@@ -1,0 +1,317 @@
+package subagent_test
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"unicode/utf8"
+
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
+)
+
+type contextFixtureSource struct {
+	snapshot subagent.ParentContextSnapshot
+}
+
+func (s contextFixtureSource) Snapshot(
+	context.Context,
+	subagent.ContextSourceRef,
+) (subagent.ParentContextSnapshot, error) {
+	return s.snapshot, nil
+}
+
+func TestTaskCapsuleRedactsAndExcludesParentTranscript(t *testing.T) {
+	forker := subagent.NewContextForker(subagent.DefaultContextPolicy())
+	forker.BindSource(contextFixtureSource{
+		snapshot: subagent.ParentContextSnapshot{
+			SourceThread: "thread-parent", SourceTurn: "turn-parent",
+			ParentGoal: "repair auth", UserRequest: "inspect token=secret-value",
+			WorkspaceRules: []string{"authorization: hidden-value"},
+			Messages: []subagent.ContextMessage{{
+				Role: "assistant", Turn: 1,
+				Blocks: []subagent.ContextBlock{{
+					Kind: "text", Text: "unrelated transcript",
+				}},
+			}},
+		},
+	})
+	request := contextRequest("")
+	request.Agent.TaskName = "inspect_auth token=task-secret"
+	fork, err := forker.Fork(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.Receipt.Mode != subagent.ContextTaskCapsule ||
+		fork.Receipt.SourceTurn != "turn-parent" {
+		t.Fatalf("receipt = %+v", fork.Receipt)
+	}
+	if !strings.Contains(fork.Prompt, "[REDACTED]") ||
+		strings.Contains(fork.Prompt, "secret-value") ||
+		strings.Contains(fork.Prompt, "hidden-value") ||
+		strings.Contains(fork.Prompt, "task-secret") ||
+		strings.Contains(fork.Prompt, "unrelated transcript") {
+		t.Fatalf("task capsule = %s", fork.Prompt)
+	}
+	if len(fork.Receipt.Digest) != 64 ||
+		fork.Receipt.Bytes > fork.Receipt.MaxBytes ||
+		fork.Receipt.TokenEstimate > int(fork.Receipt.MaxTokens) {
+		t.Fatalf("receipt budget = %+v", fork.Receipt)
+	}
+}
+
+func TestLastNTurnsKeepsOnlyCompleteToolPairs(t *testing.T) {
+	forker := subagent.NewContextForker(subagent.DefaultContextPolicy())
+	forker.BindSource(contextFixtureSource{
+		snapshot: subagent.ParentContextSnapshot{
+			SourceThread: "thread-parent", SourceTurn: "turn-parent",
+			Messages: []subagent.ContextMessage{
+				{
+					Role: "assistant", Turn: 1,
+					Blocks: []subagent.ContextBlock{{
+						Kind: "tool_call", CallID: "old-pair", ToolName: "old_read",
+					}},
+				},
+				{
+					Role: "tool", Turn: 1,
+					Blocks: []subagent.ContextBlock{{
+						Kind: "tool_result", CallID: "old-pair", Text: "old body",
+					}},
+				},
+				{
+					Role: "assistant", Turn: 2,
+					Blocks: []subagent.ContextBlock{
+						{Kind: "text", Text: "current"},
+						{Kind: "tool_call", CallID: "paired", ToolName: "file_read", Arguments: `{"path":"a.go"}`},
+						{Kind: "tool_call", CallID: "orphan-call", ToolName: "shell_run"},
+					},
+				},
+				{
+					Role: "tool", Turn: 2,
+					Blocks: []subagent.ContextBlock{
+						{Kind: "tool_result", CallID: "paired", Text: "file body"},
+						{Kind: "tool_result", CallID: "orphan-result", Text: "must drop"},
+					},
+				},
+			},
+		},
+	})
+	request := contextRequest(subagent.ContextLastNTurns)
+	request.LastTurns = 1
+	fork, err := forker.Fork(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fork.Capsule.RecentTurns) != 1 ||
+		len(fork.Capsule.RecentTurns[0].Tools) != 1 ||
+		fork.Capsule.RecentTurns[0].Tools[0].Name != "file_read" {
+		t.Fatalf("recent turns = %+v", fork.Capsule.RecentTurns)
+	}
+	if strings.Contains(fork.Prompt, "orphan-call") ||
+		strings.Contains(fork.Prompt, "must drop") {
+		t.Fatalf("orphan exchange leaked: %s", fork.Prompt)
+	}
+}
+
+func TestFullContextRequiresAuthorityOrRolePolicy(t *testing.T) {
+	forker := subagent.NewContextForker(subagent.DefaultContextPolicy())
+	forker.BindSource(contextFixtureSource{})
+	request := contextRequest(subagent.ContextFull)
+	for _, trigger := range []subagent.DelegationTrigger{
+		"", subagent.TriggerAdaptive, "unknown",
+	} {
+		request.Trigger = trigger
+		if _, err := forker.Fork(t.Context(), request); err == nil {
+			t.Fatalf("full context accepted trigger %q without role policy", trigger)
+		}
+	}
+	request.Trigger = subagent.TriggerUser
+	if _, err := forker.Fork(t.Context(), request); err != nil {
+		t.Fatalf("user-authorized full context: %v", err)
+	}
+	request.Trigger = subagent.TriggerAdaptive
+	request.Role.FullContext = true
+	if _, err := forker.Fork(t.Context(), request); err != nil {
+		t.Fatalf("role-authorized full context: %v", err)
+	}
+}
+
+func TestContextBudgetIsDeterministicAndUTF8Safe(t *testing.T) {
+	policy := subagent.DefaultContextPolicy()
+	policy.MaxBytes = 1400
+	policy.MaxTokens = 350
+	forker := subagent.NewContextForker(policy)
+	snapshot := subagent.ParentContextSnapshot{
+		SourceThread: "thread-parent", SourceTurn: "turn-parent",
+		ParentGoal:  strings.Repeat("目标", 400),
+		UserRequest: strings.Repeat("请求", 400),
+	}
+	for index := 0; index < 20; index++ {
+		snapshot.RelevantFiles = append(snapshot.RelevantFiles, subagent.RelevantFile{
+			Path: strings.Repeat("路径", 20),
+		})
+		snapshot.Evidence = append(snapshot.Evidence, subagent.EvidenceSummary{
+			Summary: strings.Repeat("证据", 40), Handle: "evidence://item",
+		})
+	}
+	forker.BindSource(contextFixtureSource{snapshot: snapshot})
+	first, err := forker.Fork(t.Context(), contextRequest(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := forker.Fork(t.Context(), contextRequest(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Receipt.Digest != second.Receipt.Digest ||
+		first.Receipt.Bytes > 1400 ||
+		!utf8.ValidString(first.Prompt) {
+		t.Fatalf("first=%+v second=%+v", first.Receipt, second.Receipt)
+	}
+	if !hasExcludedReason(first.Receipt.Excluded, "context budget") {
+		t.Fatalf("budget exclusions = %+v", first.Receipt.Excluded)
+	}
+}
+
+func TestContextModesMatchGolden(t *testing.T) {
+	forker := subagent.NewContextForker(subagent.DefaultContextPolicy())
+	forker.BindSource(contextFixtureSource{
+		snapshot: subagent.ParentContextSnapshot{
+			SourceThread: "thread-parent", SourceTurn: "turn-parent",
+			ParentGoal: "parent goal", UserRequest: "current request token=secret",
+			RelevantFiles: []subagent.RelevantFile{{
+				Path:    "internal/runtime/app/runtime.go",
+				Sources: []string{"tool_read"}, Critical: true,
+			}},
+			Evidence: []subagent.EvidenceSummary{{
+				Summary: "runtime owns the turn", Handle: "evidence://parent/1",
+			}},
+			WorkspaceRules: []string{"keep hosts thin"},
+			Messages: []subagent.ContextMessage{
+				{
+					Role: "user", Turn: 1,
+					Blocks: []subagent.ContextBlock{{Kind: "text", Text: "old request"}},
+				},
+				{
+					Role: "assistant", Turn: 1,
+					Blocks: []subagent.ContextBlock{
+						{Kind: "text", Text: "old answer"},
+						{Kind: "tool_call", CallID: "old", ToolName: "read", Arguments: `{"path":"old.go"}`},
+					},
+				},
+				{
+					Role: "tool", Turn: 1,
+					Blocks: []subagent.ContextBlock{{Kind: "tool_result", CallID: "old", Text: "old body"}},
+				},
+				{
+					Role: "user", Turn: 2,
+					Blocks: []subagent.ContextBlock{{Kind: "text", Text: "current request"}},
+				},
+				{
+					Role: "assistant", Turn: 2,
+					Blocks: []subagent.ContextBlock{
+						{Kind: "text", Text: "current answer"},
+						{Kind: "tool_call", CallID: "current", ToolName: "search", Arguments: `{"query":"owner"}`},
+						{Kind: "tool_call", CallID: "orphan", ToolName: "read"},
+					},
+				},
+				{
+					Role: "tool", Turn: 2,
+					Blocks: []subagent.ContextBlock{
+						{Kind: "tool_result", CallID: "current", Text: "current body"},
+						{Kind: "tool_result", CallID: "result-only", Text: "drop me"},
+					},
+				},
+			},
+		},
+	})
+	type goldenEntry struct {
+		Mode           subagent.ContextMode       `json:"mode"`
+		SourceThread   string                     `json:"source_thread,omitempty"`
+		SourceTurn     string                     `json:"source_turn,omitempty"`
+		ParentGoal     string                     `json:"parent_goal,omitempty"`
+		UserRequest    string                     `json:"user_request,omitempty"`
+		RelevantFiles  []subagent.RelevantFile    `json:"relevant_files,omitempty"`
+		Evidence       []subagent.EvidenceSummary `json:"evidence,omitempty"`
+		WorkspaceRules []string                   `json:"workspace_rules,omitempty"`
+		RecentTurns    []subagent.ContextTurn     `json:"recent_turns,omitempty"`
+		Included       []subagent.ContextItem     `json:"included"`
+		Excluded       []subagent.ContextItem     `json:"excluded"`
+	}
+	modes := []subagent.ContextMode{
+		subagent.ContextFresh,
+		subagent.ContextTaskCapsule,
+		subagent.ContextLastNTurns,
+		subagent.ContextFull,
+	}
+	entries := make([]goldenEntry, 0, len(modes))
+	for _, mode := range modes {
+		request := contextRequest(mode)
+		request.LastTurns = 1
+		fork, err := forker.Fork(t.Context(), request)
+		if err != nil {
+			t.Fatalf("%s: %v", mode, err)
+		}
+		entries = append(entries, goldenEntry{
+			Mode:           mode,
+			SourceThread:   fork.Capsule.SourceThread,
+			SourceTurn:     fork.Capsule.SourceTurn,
+			ParentGoal:     fork.Capsule.ParentGoal,
+			UserRequest:    fork.Capsule.UserRequest,
+			RelevantFiles:  fork.Capsule.RelevantFiles,
+			Evidence:       fork.Capsule.Evidence,
+			WorkspaceRules: fork.Capsule.WorkspaceRules,
+			RecentTurns:    fork.Capsule.RecentTurns,
+			Included:       fork.Receipt.Included,
+			Excluded:       fork.Receipt.Excluded,
+		})
+	}
+	got, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = append(got, '\n')
+	path := filepath.Join("testdata", "context_modes.golden.json")
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v\ngot:\n%s", path, err, got)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("context mode golden mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func contextRequest(mode subagent.ContextMode) subagent.ContextRequest {
+	return subagent.ContextRequest{
+		Mode: mode,
+		Source: subagent.ContextSourceRef{
+			ThreadID: "thread-parent", TurnID: "turn-parent",
+		},
+		Agent: subagent.Agent{
+			TaskName: "inspect_auth", Role: subagent.RoleExplore,
+			Profile: "explore", Stance: subagent.StanceReadOnly,
+			ExpectedOutput:   "key files and evidence",
+			RoleInstructions: "inspect only",
+		},
+		Role: subagent.RoleSpec{
+			Role: subagent.RoleExplore, Profile: "explore",
+			Stance:       subagent.StanceReadOnly,
+			AllowedTools: []string{"read", "search"},
+			DefaultBudget: subagent.Budget{
+				MaxTokens: 1000, MaxDepth: 3, MaxParallel: 2,
+			},
+		},
+		Objective: "inspect auth", Trigger: subagent.TriggerUser,
+	}
+}
+
+func hasExcludedReason(items []subagent.ContextItem, reason string) bool {
+	for _, item := range items {
+		if item.Reason == reason {
+			return true
+		}
+	}
+	return false
+}
