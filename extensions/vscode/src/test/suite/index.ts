@@ -916,6 +916,15 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
   const statuses = new Map<string, string>();
   const terminals = new Map<string, string>();
   const terminalDetails = new Map<string, unknown>();
+  type SpawnContextReceipt = {
+    readonly bytes?: unknown;
+    readonly digest?: unknown;
+    readonly included?: readonly { readonly kind?: unknown }[];
+    readonly max_bytes?: unknown;
+    readonly mode?: unknown;
+    readonly source_turn?: unknown;
+  };
+  const spawnContextReceipts = new Map<string, SpawnContextReceipt>();
   const observed: string[] = [];
   const rootObserved: string[] = [];
   const rootSubscription = api.onRootRuntimeEvent((
@@ -935,6 +944,16 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
       });
     } else if (event.kind === "agent.status") {
       statuses.set(event.data.agent_id, event.data.status);
+    } else if (event.kind === "tool.result" &&
+      event.data.tool === "spawn_agent") {
+      const output = JSON.parse(event.data.output) as {
+        readonly agent_id?: unknown;
+        readonly context_receipt?: SpawnContextReceipt;
+      };
+      if (typeof output.agent_id === "string" &&
+        output.context_receipt !== undefined) {
+        spawnContextReceipts.set(output.agent_id, output.context_receipt);
+      }
     } else if (event.kind === "turn.completed" ||
       event.kind === "turn.failed" ||
       event.kind === "turn.canceled") {
@@ -945,18 +964,20 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
   try {
     const parent = await api.testSubmitPrompt(
       selected.sessionId,
-      "Explicitly delegate one read-only explorer to inspect context.ts. " +
-        "Use spawn_agent now, then report that the delegated work started.",
+      "Explicitly delegate two read-only explorers to inspect independent " +
+        "aspects of context.ts. Use two spawn_agent calls now, then report " +
+        "that both delegated tasks started.",
     );
     const approvalDeadline = Date.now() + 10_000;
-    while (!await api.testApprovePending()) {
+    while (!terminals.has(parent.turnId)) {
+      await api.testApprovePending();
       if (Date.now() >= approvalDeadline) {
         throw new Error(
-          `spawn_agent approval did not reach the Chat projector; ` +
+          `spawn_agent approvals did not complete the parent turn; ` +
             `events=${observed.join(",")}`,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
     await waitFor(
       () => terminals.has(parent.turnId),
@@ -975,23 +996,35 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
         `events=${observed.join(",")}`,
     );
     await waitFor(
-      () => spawned.size === 1,
-      `explicit prompt did not emit exactly one agent.spawned event; ` +
+      () => spawned.size === 2 && spawnContextReceipts.size === 2,
+      `explicit prompt did not emit two agents and context receipts; ` +
         `events=${observed.join(",")}; spawned=${JSON.stringify(
           [...spawned.entries()],
-        )}`,
+        )}; receipts=${JSON.stringify([...spawnContextReceipts.entries()])}`,
       30_000,
     );
-    const [agentID, child] = [...spawned.entries()][0] ?? [];
-    assert.ok(agentID);
-    assert.ok(child);
-    assert.equal(child.role, "explore");
-    assert.ok(child.sessionId);
-    await waitFor(
-      () => statuses.get(agentID) === "completed",
-      `child agent ${agentID} did not reach completed status`,
-      30_000,
-    );
+    for (const [agentID, child] of spawned) {
+      assert.equal(child.role, "explore");
+      assert.ok(child.sessionId);
+      const receipt = spawnContextReceipts.get(agentID);
+      assert.ok(receipt);
+      assert.equal(receipt.mode, "task_capsule");
+      assert.equal(receipt.source_turn, parent.turnId);
+      assert.equal(typeof receipt.digest, "string");
+      assert.ok(
+        typeof receipt.bytes === "number" &&
+          typeof receipt.max_bytes === "number" &&
+          receipt.bytes <= receipt.max_bytes,
+      );
+      assert.ok(receipt.included?.some((item) =>
+        item.kind === "user_request"
+      ));
+      await waitFor(
+        () => statuses.get(agentID) === "completed",
+        `child agent ${agentID} did not reach completed status`,
+        30_000,
+      );
+    }
   } finally {
     subscription.dispose();
     rootSubscription.dispose();

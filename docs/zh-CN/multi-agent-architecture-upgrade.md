@@ -345,7 +345,7 @@ flowchart LR
     TS[Parent TurnSpec] --> C[Context Forker]
     WS[Working Set] --> C
     EV[Evidence] --> C
-    RP[Repository Map] --> C
+    WR[Workspace Rules] --> C
     DI[Delegation Intent] --> C
     C --> TC[Task Capsule]
     TC --> CTS[Child TurnSpec]
@@ -356,7 +356,7 @@ Task Capsule 包含：
 - Parent Goal 与当前 User Request；
 - Child Objective、Expected Output 与完成条件；
 - Role Prompt、Authority Snapshot 和 Limits；
-- Owned Paths、Relevant Files 与 Repository Map Slice；
+- Owned Paths 与 Relevant Files；
 - 已验证 Evidence 的摘要和 Handle；
 - 必须遵循的 Workspace Rule；
 - 可选的最近 N 个相关 Turn；
@@ -377,17 +377,22 @@ Task Capsule 包含：
 
 ```go
 type ContextReceipt struct {
+    Version       int
     Mode          ContextMode
-    SourceTurn    protocol.TurnID
+    SourceThread  string
+    SourceTurn    string
     Included      []ContextItem
     Excluded      []ContextItem
+    Bytes         int
+    MaxBytes      int
     TokenEstimate int
+    MaxTokens     uint64
     Digest        string
 }
 ```
 
-这样可以验证 Child 为何看到某个文件，也能衡量 Fork 相比复制 Full History 节省了多少
-Token。
+`Digest` 是最终 Capsule Prompt 的 SHA-256。Receipt 可以验证 Child 为何看到某个文件，
+并证明实际字节数和 Token 估算没有超过冻结预算。
 
 ## 8. 生命周期与状态机
 
@@ -832,7 +837,7 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
 - Tool Adapter 不再拥有生命周期状态；
 - 旧 Tool Surface 被删除而不是长期双写。
 
-实施状态（2026-08-13）：`accepted`。
+实施状态（2026-08-13）：`completed`。
 
 - `AgentControl`、Delegation Policy、Role Catalog、八个独立 Agent Tool、
   Prompt Instructions 与配置全链路已经落地；
@@ -841,12 +846,13 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
   中提交以下显式授权 Prompt：
 
   ```text
-  Explicitly delegate one read-only explorer to inspect context.ts.
-  Use spawn_agent now, then report that the delegated work started.
+  Explicitly delegate two read-only explorers to inspect independent aspects
+  of context.ts. Use two spawn_agent calls now, then report that both
+  delegated tasks started.
   ```
 
-- 场景验证 Chat Approval、Parent `turn.completed`、`agent.spawned` 和 Child
-  `agent.status=completed`；
+- 场景验证两次 Chat Approval、Parent `turn.completed`、两个
+  `agent.spawned` 和两个 Child `agent.status=completed`；
 - 验收同时修复了 Persistent Child Thread Seed、Agent Event 原子序号分配、
   Durable + Live Event 单一发布路径及 macOS `/var` 路径规范化；
 - Agent Event 当前携带 Runtime Hook Session Identity；精确绑定到发起它的
@@ -867,6 +873,27 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
 - Tool Call/Result 不出现孤立配对；
 - Secret 与无关 Tool Output 不进入 Child；
 - Task Capsule Token 有确定上限。
+
+实施状态（2026-08-13）：`completed`。
+
+- Parent Runtime 从当前 TurnSpec、History、Working Set、Evidence 和 Prompt
+  Partition 冻结构化 Snapshot；Provider Reasoning、Opaque Data、Image 和 Search
+  Payload 不进入 Snapshot；
+- Runtime 将权威 Parent Thread/Turn Identity 注入 Tool Context；Context lookup
+  只读已存在 Engine，TurnSpec 冻结 Parent History，未知 Thread、缺失或漂移 Turn
+  均 fail closed；
+- `spawn_agent` 默认生成 `task_capsule`，旧 `fork_context` / `parent_context`
+  字段已删除；模型 Spawn 和 Durable Worker 共享同一 Capsule 路径；
+- Redactor、完整 Tool Call/Result Pair、UTF-8 安全裁剪、稳定排序、确定性预算和
+  SHA-256 Digest 均有 Unit 与 Race 覆盖；`task_name` 同样经过脱敏和限长；
+- `fresh/task_capsule/last_n_turns/full` 的包含、排除、完整 Tool Pair 和 Secret
+  Redaction 由四模式 Golden 固定；`full` 只接受明确 Trigger 或 Role Policy；
+- Durable Worker 结果通过 Contract Test 固定 Capsule Mode、Digest 与预算；
+- `go test ./...`、聚焦 `go test -race`、ACP Protocol Contract、43/43
+  Architecture Ratchet、VS Code Check 与 220 项测试、文档和 Book 门禁均通过；
+- `make vscode-subagent-integration` 在真实 Electron 中验证两个异步 Explorer、
+  Parent Turn `source_turn`、真实 `user_request`、默认 `task_capsule`、Digest
+  和 `bytes <= max_bytes`。
 
 ### MA3：Durable Agent Tree 与自动 Completion
 

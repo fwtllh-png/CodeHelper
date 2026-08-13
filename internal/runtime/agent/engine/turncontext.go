@@ -45,6 +45,7 @@ type TurnContextSnapshot struct {
 type TurnSpec struct {
 	Identity TurnIdentity
 	Request  TurnRequest
+	History  []provider.Message
 	Profile  protocol.SessionProfile
 	// Purpose is what this turn samples for, derived from the frozen mode. It is
 	// what selects Route out of the session's routing table.

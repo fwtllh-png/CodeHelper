@@ -16,6 +16,13 @@ func WithInvocationIdentity(ctx context.Context, id InvocationIdentity) context.
 	return context.WithValue(ctx, invocationIdentityKey{}, id)
 }
 
+// WithTurnIdentity binds the authoritative Runtime turn while preserving CallID.
+func WithTurnIdentity(ctx context.Context, threadID, turnID string) context.Context {
+	id := InvocationIdentityFrom(ctx)
+	id.ThreadID, id.TurnID = threadID, turnID
+	return WithInvocationIdentity(ctx, id)
+}
+
 // InvocationIdentityFrom returns identity previously attached to ctx, or zero.
 func InvocationIdentityFrom(ctx context.Context) InvocationIdentity {
 	id, _ := ctx.Value(invocationIdentityKey{}).(InvocationIdentity)

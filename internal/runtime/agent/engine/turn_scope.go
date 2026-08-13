@@ -72,6 +72,7 @@ type ScopeSnapshot struct {
 	Verification   int
 	TerminalStaged bool
 }
+
 func newScopeState(engine *Engine) scopeState {
 	return scopeState{
 		scheduler:   NewToolScheduler(engine.options.MaxToolConcurrent),
@@ -95,6 +96,7 @@ func (s *Scope) Spec() TurnSpec {
 		[]provider.Attachment(nil),
 		spec.Request.Attachments...,
 	)
+	spec.History = cloneMessages(spec.History)
 	spec.Context.Messages = cloneMessages(spec.Context.Messages)
 	spec.Context.Receipts = append(
 		[]promptcontext.Receipt(nil),

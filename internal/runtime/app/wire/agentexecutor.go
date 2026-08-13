@@ -89,7 +89,7 @@ func (e *agentTurnExecutor) Execute(
 	}
 	defer e.closeAgent(agent.ID)
 
-	turnID, err := e.control.Takeover(ctx, agent.ID, subagent.ChildPrompt(*agent, payload.Prompt))
+	turnID, err := e.control.TakeoverBackground(ctx, *agent, payload.Prompt)
 	if err != nil {
 		return worker.Outcome{State: taskstate.StateFailed, Reason: err.Error()}, nil
 	}
@@ -239,7 +239,7 @@ func agentTurnOutcome(result subagent.Result, turnID string, merged bool) worker
 		ThreadID: result.ThreadID, TurnID: outcome.TurnID,
 		Status: string(result.Status), Summary: result.Summary,
 		Unresolved: result.Unresolved, Verification: result.Verification,
-		ChangedPaths: result.WritePaths(), Merged: merged, Usage: result.Usage,
+		ChangedPaths: result.WritePaths(), Merged: merged, Usage: result.Usage, Context: result.Context,
 	}); err == nil {
 		outcome.Result = encoded
 	}
@@ -260,6 +260,7 @@ type agentTurnResult struct {
 	ChangedPaths []string                     `json:"changed_paths,omitempty"`
 	Merged       bool                         `json:"merged"`
 	Usage        subagent.ResultUsage         `json:"usage"`
+	Context      subagent.ContextReceipt      `json:"context"`
 }
 
 func parseAgentTurnPayload(raw json.RawMessage) (AgentTurnPayload, error) {

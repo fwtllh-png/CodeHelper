@@ -96,6 +96,9 @@ func (p DelegationPolicy) Admit(intent DelegationIntent) error {
 
 // Instructions returns the stable developer-facing delegation contract.
 func (p DelegationPolicy) Instructions() string {
+	const contextContract = " Context is runtime-owned: omit context_mode to use a bounded task_capsule; " +
+		"use last_n_turns only when recent history is material, and use full only with explicit authority. " +
+		"Never copy parent transcripts or secrets into tool arguments."
 	switch p.mode {
 	case DelegationDisabled:
 		return ""
@@ -103,12 +106,13 @@ func (p DelegationPolicy) Instructions() string {
 		return "Multi-agent delegation is explicit-only. Use spawn_agent only when the user, " +
 			"developer instructions, an active skill, or an internal system task explicitly authorizes delegation. " +
 			"Do not treat task complexity alone as authorization. Prefer existing agents via followup_task, " +
-			"run independent children concurrently, use wait_agent for synchronization, and close agents when done."
+			"run independent children concurrently, use wait_agent for synchronization, and close agents when done." +
+			contextContract
 	case DelegationAdaptive:
 		return "Multi-agent delegation is adaptive. Use spawn_agent only for independent work whose parallel benefit " +
 			"exceeds spawn and coordination cost. Keep simple or linear work in the parent, avoid overlapping write " +
 			"ownership, prefer existing agents via followup_task, run independent children concurrently, use wait_agent " +
-			"for synchronization, and close agents when done."
+			"for synchronization, and close agents when done." + contextContract
 	default:
 		return ""
 	}
@@ -145,6 +149,7 @@ type RoleSpec struct {
 	Instructions  string
 	AllowedTools  []string
 	CanDelegate   bool
+	FullContext   bool
 	DefaultBudget Budget
 }
 
@@ -198,6 +203,21 @@ func DefaultRoleCatalog() RoleCatalog {
 	})
 }
 
+func (c *AgentControl) TakeoverBackground(
+	ctx context.Context,
+	agent Agent,
+	objective string,
+) (string, error) {
+	fork, err := c.ForkContext(ctx, ContextRequest{
+		Mode: ContextTaskCapsule, Agent: agent, Objective: objective,
+		Trigger: TriggerSystem,
+	})
+	if err != nil {
+		return "", err
+	}
+	return c.Takeover(ctx, agent.ID, fork.Prompt)
+}
+
 func NewRoleCatalog(specs []RoleSpec) RoleCatalog {
 	catalog := RoleCatalog{specs: make(map[Role]RoleSpec, len(specs))}
 	for _, spec := range specs {
@@ -232,6 +252,7 @@ type AgentControl struct {
 	manager *Manager
 	roles   RoleCatalog
 	policy  DelegationPolicy
+	forker  *ContextForker
 }
 
 func NewAgentControl(
@@ -245,7 +266,10 @@ func NewAgentControl(
 	if len(roles.specs) == 0 {
 		roles = DefaultRoleCatalog()
 	}
-	return &AgentControl{manager: manager, roles: roles, policy: policy}, nil
+	return &AgentControl{
+		manager: manager, roles: roles, policy: policy,
+		forker: NewContextForker(DefaultContextPolicy()),
+	}, nil
 }
 
 // OpenControl constructs the synchronized state owner and its only lifecycle
@@ -265,6 +289,77 @@ func OpenControl(options Options, mode DelegationMode) (*AgentControl, error) {
 func (c *AgentControl) Policy() DelegationPolicy { return c.policy }
 
 func (c *AgentControl) Roles() RoleCatalog { return c.roles }
+
+func (c *AgentControl) BindContextSource(source ContextSource) {
+	if c != nil && c.forker != nil {
+		c.forker.BindSource(source)
+	}
+}
+
+func (c *AgentControl) ForkContext(
+	ctx context.Context,
+	request ContextRequest,
+) (ContextFork, error) {
+	if c == nil || c.forker == nil {
+		return ContextFork{}, errors.New("agent context forker is unavailable")
+	}
+	if request.Role.Role == "" {
+		spec, err := c.roles.Resolve(request.Agent.Role)
+		if err != nil {
+			return ContextFork{}, err
+		}
+		request.Role = spec
+	}
+	request.Role.DefaultBudget = tightenBudget(
+		request.Role.DefaultBudget,
+		c.manager.budget,
+	)
+	fork, err := c.forker.Fork(ctx, request)
+	if err != nil {
+		return ContextFork{}, err
+	}
+	if request.Agent.ID != "" {
+		if err := c.manager.recordContextReceipt(
+			request.Agent.ID, fork.Receipt,
+		); err != nil {
+			return ContextFork{}, err
+		}
+	}
+	return fork, nil
+}
+
+func (c *AgentControl) RoleSpec(role Role) (RoleSpec, error) {
+	if c == nil {
+		return RoleSpec{}, errors.New("agent control is unavailable")
+	}
+	return c.roles.Resolve(role)
+}
+
+func tightenBudget(role, tree Budget) Budget {
+	tightenUint := func(value, ceiling uint64) uint64 {
+		if value == 0 || ceiling > 0 && ceiling < value {
+			return ceiling
+		}
+		return value
+	}
+	tightenInt := func(value, ceiling int) int {
+		if value == 0 || ceiling > 0 && ceiling < value {
+			return ceiling
+		}
+		return value
+	}
+	tightenFloat := func(value, ceiling float64) float64 {
+		if value == 0 || ceiling > 0 && ceiling < value {
+			return ceiling
+		}
+		return value
+	}
+	role.MaxTokens = tightenUint(role.MaxTokens, tree.MaxTokens)
+	role.MaxCostUSD = tightenFloat(role.MaxCostUSD, tree.MaxCostUSD)
+	role.MaxDepth = tightenInt(role.MaxDepth, tree.MaxDepth)
+	role.MaxParallel = tightenInt(role.MaxParallel, tree.MaxParallel)
+	return role
+}
 
 func (c *AgentControl) SpawnIntent(intent DelegationIntent) (*Agent, error) {
 	if c == nil {

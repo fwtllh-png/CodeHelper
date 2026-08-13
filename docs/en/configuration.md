@@ -110,6 +110,15 @@ Skill, or internal system authority. `adaptive` also allows the model to
 delegate independent work when parallel benefit exceeds coordination cost.
 `disabled` hides Agent lifecycle tools from the model while preserving
 internally authorized durable worker execution.
+
+`spawn_agent` captures parent context from the active runtime Turn. Its
+`context_mode` is `task_capsule` by default; `fresh` inherits no parent context,
+`last_n_turns` adds up to `context_turns` complete recent tool exchanges, and
+`full` requires explicit authority or role policy. The tool returns a
+`context_receipt` with source identity, inclusion/exclusion reasons, byte and
+token budgets, and a SHA-256 digest. Legacy `fork_context` and `parent_context`
+arguments are not accepted.
+
 [execution.worker]
 enabled = false
 max_parallel = 2

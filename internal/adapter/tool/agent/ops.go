@@ -208,7 +208,8 @@ func (t *Tool) spawnDescriptor() tool.Descriptor {
 			"Provide a short task_name, one objective, the expected output, and the authority trigger. " +
 			"Roles: general|explore|plan|review|implementer|verifier|awaiter|custom. " +
 			"Declare owned_paths for writing work; omit them for read-only roles. " +
-			"fork_context:true inherits the parent prompt prefix when available. " +
+			"context_mode defaults to task_capsule; use last_n_turns only when recent history is material. " +
+			"full requires explicit authority or role policy. Parent context is captured by the runtime. " +
 			"Returns agent_id, structured receipt, and a transcript var_handle for handle_read. " +
 			"Use wait_agent, followup_task, interrupt_agent, list_agents, integrate_agent, and close_agent for control.",
 		Visibility: t.visibility(), Capability: tool.CapabilityWrite,
@@ -239,9 +240,16 @@ func (t *Tool) spawnDescriptor() tool.Descriptor {
 				"owned_paths": map[string]any{
 					"type": "array", "items": map[string]any{"type": "string"},
 				},
-				"parent_id":      map[string]any{"type": "string"},
-				"fork_context":   map[string]any{"type": "boolean"},
-				"parent_context": map[string]any{"type": "string"},
+				"parent_id": map[string]any{"type": "string"},
+				"context_mode": map[string]any{
+					"type":    "string",
+					"enum":    []any{"fresh", "task_capsule", "last_n_turns", "full"},
+					"default": "task_capsule",
+				},
+				"context_turns": map[string]any{
+					"type": "integer", "minimum": float64(1), "maximum": float64(8),
+					"default": float64(2),
+				},
 			},
 			"required": []string{
 				"task_name", "role", "objective", "expected_output", "trigger",

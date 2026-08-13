@@ -379,7 +379,7 @@ flowchart LR
     TS[Parent TurnSpec] --> C[Context Forker]
     WS[Working Set] --> C
     EV[Evidence] --> C
-    RP[Repository Map] --> C
+    WR[Workspace Rules] --> C
     DI[Delegation Intent] --> C
     C --> TC[Task Capsule]
     TC --> CTS[Child TurnSpec]
@@ -390,7 +390,7 @@ A Task Capsule contains:
 - parent goal and current user request;
 - child objective, expected output, and completion criteria;
 - role prompt, authority snapshot, and limits;
-- owned paths, relevant files, and a repository-map slice;
+- owned paths and relevant files;
 - summaries and handles for verified evidence;
 - applicable workspace rules;
 - optionally the last N relevant Turns;
@@ -411,17 +411,23 @@ Every fork produces a receipt:
 
 ```go
 type ContextReceipt struct {
+    Version       int
     Mode          ContextMode
-    SourceTurn    protocol.TurnID
+    SourceThread  string
+    SourceTurn    string
     Included      []ContextItem
     Excluded      []ContextItem
+    Bytes         int
+    MaxBytes      int
     TokenEstimate int
+    MaxTokens     uint64
     Digest        string
 }
 ```
 
-This explains why a child saw a file and measures token savings against a full
-history copy.
+`Digest` is the SHA-256 of the final capsule prompt. The receipt explains why a
+child saw a file and proves that actual bytes and estimated tokens stayed within
+the frozen budget.
 
 ## 8. Lifecycle and State Machine
 
@@ -796,7 +802,7 @@ characterization tests. Exit when explicit prompts reliably spawn asynchronous
 explorers, simple fixtures do not spawn, adapters own no lifecycle state, and
 the old tool surface is removed.
 
-Implementation status (2026-08-13): `accepted`.
+Implementation status (2026-08-13): `completed`.
 
 - AgentControl, delegation policy, the role catalog, eight independent Agent
   tools, prompt instructions, and the complete configuration chain are live.
@@ -805,12 +811,13 @@ Implementation status (2026-08-13): `accepted`.
   through a real VS Code Electron Extension Host:
 
   ```text
-  Explicitly delegate one read-only explorer to inspect context.ts.
-  Use spawn_agent now, then report that the delegated work started.
+  Explicitly delegate two read-only explorers to inspect independent aspects
+  of context.ts. Use two spawn_agent calls now, then report that both
+  delegated tasks started.
   ```
 
-- The scenario verifies Chat approval, parent `turn.completed`,
-  `agent.spawned`, and child `agent.status=completed`.
+- The scenario verifies two Chat approvals, parent `turn.completed`, two
+  `agent.spawned` events, and two child `agent.status=completed` events.
 - Acceptance also fixed persistent child thread seeding, atomic Agent Event
   sequence allocation, one durable and live event publication path, and macOS
   `/var` path canonicalization.
@@ -824,6 +831,32 @@ Deliver all context modes, a frozen parent snapshot, Context Receipt, budgets,
 redaction, and removal of manual `parent_context`. Exit when goldens prove
 inclusion and exclusion, tool call/result pairs remain valid, secrets and
 irrelevant outputs do not leak, and capsules have deterministic limits.
+
+Implementation status (2026-08-13): `completed`.
+
+- The parent Runtime freezes a structured snapshot from the current TurnSpec,
+  history, working set, evidence, and prompt partitions. Provider reasoning,
+  opaque data, images, and search payloads do not enter the snapshot.
+- Runtime injects the authoritative parent Thread and Turn identity into tool
+  context. Context lookup reads only an existing Engine, TurnSpec freezes
+  parent history, and unknown Threads or missing/drifted Turns fail closed.
+- `spawn_agent` produces `task_capsule` by default, legacy `fork_context` and
+  `parent_context` fields are removed, and model spawns and durable workers use
+  the same capsule path.
+- Unit and race coverage protects redaction, complete tool call/result pairs,
+  UTF-8-safe truncation, stable ordering, deterministic budgets, and SHA-256
+  digests. Model-provided `task_name` is also redacted and bounded.
+- A four-mode golden freezes inclusion, exclusion, complete tool pairs, and
+  secret redaction for `fresh/task_capsule/last_n_turns/full`; `full` accepts
+  only an explicit trigger or role policy.
+- A durable-worker contract test freezes capsule mode, digest, and budgets in
+  the persisted worker result.
+- `go test ./...`, focused `go test -race`, the ACP Protocol Contract, the
+  43/43 Architecture Ratchet, VS Code check and 220 tests, documentation, and
+  book gates pass.
+- `make vscode-subagent-integration` verifies two asynchronous explorers,
+  parent `source_turn`, the real `user_request`, default `task_capsule`, its
+  digest, and `bytes <= max_bytes` in real Electron.
 
 ### MA3: Durable Agent Tree and Automatic Completion
 

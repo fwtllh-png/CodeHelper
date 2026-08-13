@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -103,6 +104,13 @@ func TestSchedulerRunsAQueuedTaskAsARealChildTurn(t *testing.T) {
 	// read as such rather than as a silent pass.
 	if result.Verification.Verify != protocol.ReceiptNotEvaluated || result.Merged {
 		t.Fatalf("result = %+v", result)
+	}
+	if result.Context.Version != 1 ||
+		result.Context.Mode != subagent.ContextTaskCapsule ||
+		len(result.Context.Digest) != 64 ||
+		result.Context.Bytes > result.Context.MaxBytes ||
+		result.Context.TokenEstimate > int(result.Context.MaxTokens) {
+		t.Fatalf("context receipt = %+v", result.Context)
 	}
 
 	// The attempt audit is what lets an operator find the turn a task ran as.

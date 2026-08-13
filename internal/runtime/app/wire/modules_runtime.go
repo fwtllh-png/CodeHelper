@@ -277,6 +277,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		return adaptEngine(worker, workspaceIdentity), nil
 	})
 	session.threads = threadManager
+	subagent.BindRuntimeContext(state.orchestration.subagents, threadManager)
 	threadManager.SetChildFactory(
 		func(spec app.ChildSpec) (*app.EngineAdapter, error) {
 			options := childEngineOptions(

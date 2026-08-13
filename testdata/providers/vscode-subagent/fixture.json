@@ -6,13 +6,15 @@
     "spawn.sse",
     "declare.sse",
     "declare-child.sse",
+    "declare-third.sse",
+    "complete.sse",
     "complete.sse",
     "complete.sse"
   ],
   "stream_delay_ms": 20,
   "expected_request_fragments": [
     [
-      "Explicitly delegate one read-only explorer",
+      "Explicitly delegate two read-only explorers",
       "\"name\":\"spawn_agent\""
     ]
   ]
