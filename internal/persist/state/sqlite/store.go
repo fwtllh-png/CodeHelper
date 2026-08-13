@@ -18,7 +18,7 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 var (
 	ErrCorrupt           = errors.New("sqlite database is corrupt")
@@ -202,10 +202,10 @@ func (s *Store) enableWAL(ctx context.Context) error {
 
 func (s *Store) initializeSchema(ctx context.Context) error {
 	return s.WithTx(ctx, nil, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, schemaV1); err != nil {
+		if _, err := tx.ExecContext(ctx, schemaCurrent); err != nil {
 			return s.classify("create schema v1", err)
 		}
-		if _, err := tx.ExecContext(ctx, "PRAGMA user_version = 1"); err != nil {
+		if _, err := tx.ExecContext(ctx, "PRAGMA user_version = 2"); err != nil {
 			return s.classify("record schema version", err)
 		}
 		return nil
@@ -295,7 +295,7 @@ func (s *Store) Close() error {
 	return s.closeErr
 }
 
-const schemaV1 = `
+const schemaCurrent = `
 CREATE TABLE workspaces (
     id TEXT PRIMARY KEY,
     root_path TEXT NOT NULL UNIQUE,
@@ -572,27 +572,6 @@ CREATE INDEX automation_runs_automation_scheduled
 ON automation_runs(automation_id, scheduled_for DESC);
 CREATE INDEX automation_runs_status_updated
 ON automation_runs(status, updated_at);
-`
-
-const agentTopologySchema = `
-CREATE TABLE agent_spawn_edges (
-    workspace_root TEXT NOT NULL,
-    session_id TEXT NOT NULL,
-    parent_agent_id TEXT NOT NULL DEFAULT '',
-    child_agent_id TEXT NOT NULL,
-    status TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT '',
-    profile TEXT NOT NULL DEFAULT '',
-    stance TEXT NOT NULL DEFAULT '',
-    depth INTEGER NOT NULL DEFAULT 0,
-    worktree TEXT NOT NULL DEFAULT '',
-    last_message TEXT NOT NULL DEFAULT '',
-    updated_at TEXT NOT NULL,
-    source_sequence INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (workspace_root, child_agent_id)
-);
-CREATE INDEX agent_spawn_edges_workspace_parent_status
-ON agent_spawn_edges(workspace_root, parent_agent_id, status);
 `
 
 // Repository index rows are keyed by the canonical workspace root rather than a

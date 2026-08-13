@@ -10,6 +10,7 @@ import (
 func TestC5HostRestoresInputWaitWithoutDuplicateEmission(t *testing.T) {
 	host := NewHost(time.Minute)
 	var emissions atomic.Int32
+	var restores atomic.Int32
 	host.SetEmitter(func(context.Context, Request) error {
 		emissions.Add(1)
 		return nil
@@ -21,6 +22,14 @@ func TestC5HostRestoresInputWaitWithoutDuplicateEmission(t *testing.T) {
 		Prompt:    "continue?",
 		ExpiresAt: time.Now().Add(time.Minute),
 	}
+	host.SetRecoveryHandler(func(restored Request) error {
+		if restored.RequestID != request.RequestID ||
+			restored.CallID != request.CallID {
+			t.Fatalf("restored request = %+v, want %+v", restored, request)
+		}
+		restores.Add(1)
+		return nil
+	})
 	if err := host.RestoreRequest(request); err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +71,13 @@ func TestC5HostRestoresInputWaitWithoutDuplicateEmission(t *testing.T) {
 	case reply := <-result:
 		if reply.RequestID != request.RequestID ||
 			reply.Answer != "yes" ||
-			emissions.Load() != 0 {
+			emissions.Load() != 0 ||
+			restores.Load() != 1 {
 			t.Fatalf(
-				"reply=%+v emissions=%d",
+				"reply=%+v emissions=%d restores=%d",
 				reply,
 				emissions.Load(),
+				restores.Load(),
 			)
 		}
 	case <-time.After(time.Second):

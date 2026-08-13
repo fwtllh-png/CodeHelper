@@ -35,6 +35,7 @@ type kernelTurnIdentity struct {
 	turnID          string
 	profileRevision uint64
 }
+
 func newEngineTurnKernelForTurn(
 	identity kernelTurnIdentity,
 	intent protocol.TurnIntent,
@@ -402,6 +403,25 @@ func (s *engineTurnKernel) requireApproval(
 	return nil
 }
 
+func (s *engineTurnKernel) ensureApproval(
+	requestID string,
+	callID string,
+) error {
+	s.mu.Lock()
+	current, ok := s.state.PendingApprovals[requestID]
+	s.mu.Unlock()
+	if ok {
+		if current.CallID != callID {
+			return fmt.Errorf(
+				"approval %s belongs to call %s, not %s",
+				requestID, current.CallID, callID,
+			)
+		}
+		return nil
+	}
+	return s.requireApproval(requestID, callID)
+}
+
 func (s *engineTurnKernel) resolveApproval(
 	requestID string,
 	canceled bool,
@@ -465,6 +485,22 @@ func (s *engineTurnKernel) requireInput(requestID string) error {
 		Attempt:  effect.Attempt,
 	}, from)
 	return nil
+}
+
+func (s *engineTurnKernel) ensureInput(requestID string) error {
+	s.mu.Lock()
+	pending := s.state.PendingInput
+	s.mu.Unlock()
+	if pending != nil {
+		if pending.RequestID != requestID {
+			return fmt.Errorf(
+				"input wait belongs to request %s, not %s",
+				pending.RequestID, requestID,
+			)
+		}
+		return nil
+	}
+	return s.requireInput(requestID)
 }
 
 func (s *engineTurnKernel) resolveInput(requestID string) error {

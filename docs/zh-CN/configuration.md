@@ -113,6 +113,18 @@ workspace = "auto"           # auto | read_only | worktree | same_workspace_seri
 Role Policy。Tool 返回 `context_receipt`，记录来源、包含/排除原因、字节和 Token
 预算及 SHA-256 Digest。旧的 `fork_context` 和 `parent_context` 参数不再接受。
 
+Agent Tree、Mailbox、Result 和 Budget Ledger 持久化在 Workspace State Store。
+每个 Agent 具有 Canonical Path 和 CAS Revision；终态 Result 与 Completion Outbox
+原子提交。Completion 自动通知 Parent，`wait_agent` 只是对同一事实的主动同步方式。
+Mailbox 使用稳定 Message ID 和 `Receive/Ack`，未确认消息在重启后重投。
+
+Child Authority 只能收紧当前 Session Profile。有效 Posture 遵循
+`never < suggest < auto < bypass`；写工具权限是 Parent Tool Catalog 与 Child Role
+Contract 的交集，Read-only Role 固定使用 `never`。在 `suggest` 下，Child Approval
+会在 Host 中显示 Agent Path 与 Role。Host 通过 Parent Session 提交原 Request ID，
+Runtime 将决定路由到权威 Child Thread，并在重启后保留 Pending Approval。Deny 会向
+Child 返回结构化 Problem 与 `approval_denied` Tool Result。
+
 [execution.worker]
 enabled = false
 max_parallel = 2

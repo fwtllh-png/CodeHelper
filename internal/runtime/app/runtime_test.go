@@ -17,6 +17,8 @@ type testEngine struct {
 	block        bool
 	cancelMu     sync.Mutex
 	cancelReason string
+	approvalMu   sync.Mutex
+	approval     *protocol.ApprovalDecisionPayload
 }
 
 func (e *testEngine) StartTurn(
@@ -54,7 +56,11 @@ func (e *testEngine) CancelTurn(
 func (*testEngine) SteerTurn(_ context.Context, payload *protocol.SteerTurnPayload, sink EngineSink) error {
 	return sink.Emit(&protocol.TurnSteeredData{Prompt: payload.Prompt})
 }
-func (*testEngine) DecideApproval(_ context.Context, payload *protocol.ApprovalDecisionPayload, sink EngineSink) error {
+func (e *testEngine) DecideApproval(_ context.Context, payload *protocol.ApprovalDecisionPayload, sink EngineSink) error {
+	copy := *payload
+	e.approvalMu.Lock()
+	e.approval = &copy
+	e.approvalMu.Unlock()
 	return sink.Emit(&protocol.ApprovalResolvedData{RequestID: payload.RequestID, Decision: payload.Decision})
 }
 func (*testEngine) ReplyInput(_ context.Context, payload *protocol.InputReplyPayload, sink EngineSink) error {
@@ -291,6 +297,55 @@ func TestRuntimeDispatchesControlOperations(t *testing.T) {
 		if event.Kind != test.event {
 			t.Fatalf("event = %s, want %s", event.Kind, test.event)
 		}
+	}
+}
+
+func TestApprovalHandlerProxiesParentOperationToChildIdentity(t *testing.T) {
+	engine := &testEngine{}
+	runtime := NewRuntime(Options{Engine: engine, SubscriberBuffer: 8})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := runtime.active.Reserve(
+		"child-thread", "child-turn", "child-start", "child-item",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.active.Release(lease) })
+	runtime.mu.Lock()
+	runtime.approvals["child-approval"] = PendingApproval{
+		RequestID: "child-approval",
+		ThreadID:  "child-thread",
+		TurnID:    "child-turn",
+		ItemID:    "child-item",
+	}
+	runtime.mu.Unlock()
+	operation, err := protocol.NewOperation(&protocol.ApprovalDecisionPayload{
+		ThreadID: "parent-thread", TurnID: "parent-turn", ItemID: "parent-item",
+		RequestID: "child-approval", Decision: protocol.ApprovalApprove,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	event := receiveEvent(t, events)
+	if event.Kind != protocol.EventApprovalResolved ||
+		event.ThreadID != "child-thread" ||
+		event.TurnID != "child-turn" ||
+		event.ItemID != "parent-item" {
+		t.Fatalf("proxied approval event = %+v", event)
+	}
+	engine.approvalMu.Lock()
+	proxied := engine.approval
+	engine.approvalMu.Unlock()
+	if proxied == nil || proxied.ThreadID != "child-thread" ||
+		proxied.TurnID != "child-turn" || proxied.ItemID != "parent-item" {
+		t.Fatalf("proxied approval payload = %+v", proxied)
 	}
 }
 

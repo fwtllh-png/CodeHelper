@@ -62,9 +62,13 @@ type Task struct {
 
 type Agent struct {
 	ID          string          `json:"id"`
+	Path        string          `json:"path"`
+	Revision    uint64          `json:"revision"`
 	Workspace   string          `json:"workspace"`
 	SessionID   string          `json:"session_id"`
+	ThreadID    string          `json:"thread_id"`
 	ParentID    string          `json:"parent_id,omitempty"`
+	ParentPath  string          `json:"parent_path"`
 	Role        subagent.Role   `json:"role"`
 	Profile     string          `json:"profile,omitempty"`
 	Stance      subagent.Stance `json:"stance"`
@@ -151,8 +155,10 @@ func TaskFrom(value taskstate.Task) Task {
 
 func AgentFrom(value subagent.Agent) Agent {
 	return Agent{
-		ID: value.ID, Workspace: value.Workspace, SessionID: value.SessionID,
-		ParentID: value.Parent, Role: value.Role, Profile: value.Profile,
+		ID: value.ID, Path: value.Path, Revision: value.Revision,
+		Workspace: value.Workspace, SessionID: value.SessionID,
+		ThreadID: value.ThreadID, ParentID: value.Parent, ParentPath: value.ParentPath,
+		Role: value.Role, Profile: value.Profile,
 		Stance: value.Stance, Depth: value.Depth, Status: value.Status,
 		TurnID: value.TurnID, LastMessage: value.LastMessage, Worktree: value.Worktree,
 		Isolated: value.Isolated, Serialized: value.Serialized, Closed: value.Closed,

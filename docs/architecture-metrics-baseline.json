@@ -41,9 +41,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 64,
-        "production_lines": 7249,
+        "production_lines": 7416,
         "options_fields": 70,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "MA4 adds child authority derivation, approval source binding, and durable active-child restart observation"
       }
     },
     {
@@ -116,9 +119,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 8835,
+        "production_lines": 8990,
         "options_fields": 61,
         "mutex_fields": 9
+      },
+      "relaxations": {
+        "production_lines": "MA4 restores durable approval and input waits without duplicate host events and safely queues early decisions"
       }
     },
     {
@@ -127,9 +133,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7385,
+        "production_lines": 7440,
         "options_fields": 18,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "MA4 routes parent approval decisions and recovered pending interactions to authoritative child threads"
       }
     },
     {
@@ -204,9 +213,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 4684,
+        "production_lines": 4708,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "MA4 adds structured child approval source and denial problem fields to the shared protocol"
       }
     },
     {
@@ -225,8 +237,11 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2055,
+        "lines": 2062,
         "max_function_lines": 132
+      },
+      "relaxations": {
+        "lines": "MA4 preserves request identity while proxying approval decisions to child thread ownership"
       }
     },
     {
@@ -234,8 +249,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/runtime.go",
       "limits": {
-        "lines": 412,
+        "lines": 467,
         "max_function_lines": 50
+      },
+      "relaxations": {
+        "lines": "MA4 derives child tool authority as the parent catalog and role contract intersection"
       }
     },
     {
@@ -288,8 +306,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 430,
-        "max_function_lines": 339
+        "lines": 444,
+        "max_function_lines": 351
+      },
+      "relaxations": {
+        "lines": "MA4 binds canonical agent approval source metadata during child engine construction",
+        "max_function_lines": "MA4 keeps child source binding in the existing runtime construction boundary"
       }
     },
     {
@@ -333,8 +355,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/orchestration_components.go",
       "limits": {
-        "lines": 228,
-        "max_function_lines": 81
+        "lines": 232,
+        "max_function_lines": 84
+      },
+      "relaxations": {
+        "lines": "MA4 canonicalizes subagent workspace identity before authority and host projection",
+        "max_function_lines": "MA4 performs canonical workspace derivation beside subagent construction"
       }
     },
     {
@@ -369,8 +395,11 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 565,
+        "lines": 584,
         "max_function_lines": 127
+      },
+      "relaxations": {
+        "lines": "MA4 clamps child posture and stores bounded recovered interaction queues on each engine"
       }
     },
     {

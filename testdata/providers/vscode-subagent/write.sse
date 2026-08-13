@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_write_electron_child","function":{"name":"file_write","arguments":"{\"path\":\"child-note.txt\",\"content\":\"written by the Electron child\\n\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":16,"completion_tokens":10}}
+
+data: [DONE]

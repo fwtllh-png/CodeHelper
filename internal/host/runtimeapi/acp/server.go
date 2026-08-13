@@ -2376,10 +2376,22 @@ func (s *Server) workspaceVisible(event protocol.Event) bool {
 		workspace = data.WorkspaceRoot
 	case *protocol.AgentMessageData:
 		workspace = data.WorkspaceRoot
+	case *protocol.ApprovalRequiredData:
+		if data.Source != nil {
+			workspace = data.Source.WorkspaceRoot
+		}
+	case *protocol.ApprovalResolvedData:
+		if data.Source != nil {
+			workspace = data.Source.WorkspaceRoot
+		}
 	default:
 		return false
 	}
-	return workspace != "" && workspace == s.options.WorkspaceRoot
+	if workspace == "" {
+		return false
+	}
+	normalized, err := taskstate.NormalizeWorkspaceRoot(workspace)
+	return err == nil && normalized == s.options.WorkspaceRoot
 }
 
 func (s *Server) recordForwarded(sequence protocol.Cursor) {

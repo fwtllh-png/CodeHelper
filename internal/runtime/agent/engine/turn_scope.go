@@ -303,6 +303,9 @@ func (s *Scope) ResolveApproval(
 		turnexec.RequestApproval,
 		decision.RequestID,
 	); err != nil {
+		if engine.queueRecoveredApproval(decision) {
+			return nil
+		}
 		return err
 	}
 	if err := engine.guard.StageDecision(decision); err != nil {
@@ -334,6 +337,9 @@ func (s *Scope) ResolveInput(reply interact.Reply) error {
 		turnexec.RequestInput,
 		reply.RequestID,
 	); err != nil {
+		if engine.queueRecoveredInput(reply) {
+			return nil
+		}
 		return err
 	}
 	if err := engine.options.InputHost.StageReply(reply); err != nil {

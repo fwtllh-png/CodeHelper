@@ -296,11 +296,23 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 				options.Diagnostics = toolset.diagnostics
 				options.Verify.Runner = toolset.verify
 			}
+			restrictChildTools(
+				options.Security, spec, seedOptions.Tools, options.Tools,
+			)
 			worker, workerErr := agentengine.New(options)
 			if workerErr != nil {
 				return nil, workerErr
 			}
-			return adaptEngine(worker, workspaceIdentity), nil
+			adapter := adaptEngine(worker, workspaceIdentity)
+			if spec.AgentID != "" && spec.AgentPath != "" {
+				adapter.SetApprovalSource(protocol.ApprovalSource{
+					Kind: "agent", AgentID: spec.AgentID,
+					AgentPath: spec.AgentPath, ParentPath: spec.ParentPath,
+					Role: spec.Role, SessionID: spec.SessionID,
+					WorkspaceRoot: spec.HostWorkspace,
+				})
+			}
+			return adapter, nil
 		},
 	)
 	session.chatWorkspaces = buildChatWorkspaces(
@@ -417,11 +429,13 @@ func (runtimeModule) Build(
 		}
 	}
 	if state.orchestration.children != nil {
-		state.orchestration.children.bind(
+		if err := state.orchestration.children.bind(
 			session.Runtime,
 			state.agent.threads,
 			state.orchestration.subagents,
-		)
+		); err != nil {
+			return fmt.Errorf("bind child runtime: %w", err)
+		}
 		session.children = state.orchestration.children
 		session.subagents = state.orchestration.subagents
 	}

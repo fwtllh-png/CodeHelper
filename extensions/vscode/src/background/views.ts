@@ -344,9 +344,11 @@ function snapshotNodes(
       }));
     case "agents":
       return snapshot.agents.map((row) => entry(
-        `${row.role} · ${row.id}`,
+        row.path,
         row.status,
-        `Session: ${row.sessionId}\n${row.lastMessage}`,
+        `Role: ${row.role}\nID: ${row.id}\nRevision: ${String(row.revision)}\n` +
+          `Thread: ${row.threadId}\nParent: ${row.parentPath}\n` +
+          `Session: ${row.sessionId}\n${row.lastMessage}`,
         terminal(row.status) ? "check" : "hubot",
       ));
     case "tasks":
@@ -355,9 +357,11 @@ function snapshotNodes(
       return snapshot.jobs.map(taskNode);
     case "approvals":
       return snapshot.approvals.map((row) => entry(
-        row.tool,
-        "waiting",
-        `${row.requestId}\n${row.resources.join("\n")}\nExpires: ${row.expiresAt}`,
+        row.agentPath === "" ? row.tool : `${row.agentPath}: ${row.tool}`,
+        row.agentRole === "" ? "waiting" : `${row.agentRole} · waiting`,
+        `${row.requestId}\n` +
+          (row.parentPath === "" ? "" : `Parent: ${row.parentPath}\n`) +
+          `${row.resources.join("\n")}\nExpires: ${row.expiresAt}`,
         "shield",
       ));
     case "usage":
@@ -404,7 +408,8 @@ function entry(
 }
 
 function terminal(status: string): boolean {
-  return ["completed", "failed", "canceled", "errored", "interrupted", "shutdown"]
+  return ["completed", "failed", "interrupted", "integrated",
+    "integration_failed", "closed"]
     .includes(status);
 }
 

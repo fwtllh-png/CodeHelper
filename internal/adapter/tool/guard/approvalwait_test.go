@@ -177,6 +177,15 @@ func TestC5GuardRestoresApprovalWaitWithoutDuplicateEmission(t *testing.T) {
 	if err := guard.RestoreApproval(request); err != nil {
 		t.Fatal(err)
 	}
+	var restores int
+	guard.SetApprovalRecoveryHandler(func(restored ApprovalRequest) error {
+		if restored.RequestID != request.RequestID ||
+			restored.CallID != request.CallID {
+			t.Fatalf("restored request = %+v, want %+v", restored, request)
+		}
+		restores++
+		return nil
+	})
 	done := make(chan error, 1)
 	go func() {
 		_, executeErr := guard.Execute(
@@ -208,7 +217,10 @@ func TestC5GuardRestoresApprovalWaitWithoutDuplicateEmission(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if emissions != 0 {
-		t.Fatalf("restored approval emissions = %d", emissions)
+	if emissions != 0 || restores != 1 {
+		t.Fatalf(
+			"restored approval emissions = %d, restores = %d",
+			emissions, restores,
+		)
 	}
 }

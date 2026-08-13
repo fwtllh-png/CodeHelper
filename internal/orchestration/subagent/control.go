@@ -2,6 +2,7 @@ package subagent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -12,12 +13,21 @@ import (
 type Status string
 
 const (
-	StatusPendingInit Status = "pending_init"
-	StatusRunning     Status = "running"
-	StatusInterrupted Status = "interrupted"
-	StatusCompleted   Status = "completed"
-	StatusErrored     Status = "errored"
-	StatusShutdown    Status = "shutdown"
+	StatusRequested         Status = "requested"
+	StatusStarting          Status = "starting"
+	StatusRunning           Status = "running"
+	StatusWaiting           Status = "waiting"
+	StatusCompleted         Status = "completed"
+	StatusFailed            Status = "failed"
+	StatusInterrupted       Status = "interrupted"
+	StatusIntegrating       Status = "integrating"
+	StatusIntegrated        Status = "integrated"
+	StatusIntegrationFailed Status = "integration_failed"
+	StatusClosed            Status = "closed"
+
+	StatusPendingInit = StatusRequested
+	StatusErrored     = StatusFailed
+	StatusShutdown    = StatusClosed
 )
 
 // ListFilter selects agents for List.
@@ -34,7 +44,8 @@ type WaitResult struct {
 
 func isTerminal(status Status) bool {
 	switch status {
-	case StatusCompleted, StatusErrored, StatusInterrupted, StatusShutdown:
+	case StatusCompleted, StatusFailed, StatusInterrupted, StatusIntegrated,
+		StatusIntegrationFailed, StatusClosed:
 		return true
 	default:
 		return false
@@ -43,6 +54,35 @@ func isTerminal(status Status) bool {
 
 // IsTerminal reports whether status is a settled child state.
 func IsTerminal(status Status) bool { return isTerminal(status) }
+
+func CanTransition(from, to Status) bool {
+	switch from {
+	case "":
+		return to == StatusRequested
+	case StatusRequested:
+		return to == StatusStarting || to == StatusCompleted ||
+			to == StatusFailed || to == StatusInterrupted || to == StatusClosed
+	case StatusStarting:
+		return to == StatusRunning || to == StatusCompleted ||
+			to == StatusFailed || to == StatusInterrupted
+	case StatusRunning:
+		return to == StatusWaiting || to == StatusCompleted ||
+			to == StatusFailed || to == StatusInterrupted
+	case StatusWaiting:
+		return to == StatusRunning || to == StatusCompleted ||
+			to == StatusFailed || to == StatusInterrupted
+	case StatusCompleted:
+		return to == StatusStarting || to == StatusIntegrating || to == StatusClosed
+	case StatusFailed, StatusInterrupted:
+		return to == StatusStarting || to == StatusClosed
+	case StatusIntegrating:
+		return to == StatusIntegrated || to == StatusIntegrationFailed
+	case StatusIntegrated, StatusIntegrationFailed:
+		return to == StatusClosed
+	default:
+		return false
+	}
+}
 
 // List returns agent snapshots matching filter, sorted by ID.
 // When a durable Graph is attached, missing children are merged from projection
@@ -162,19 +202,31 @@ func (m *Manager) waitProgressLocked(agentIDs []string) ([]Agent, bool, error) {
 // FollowUp starts another turn on a resident agent. Rejects closed/shutdown and
 // busy (running) agents — no silent steer queue in this slice.
 func (m *Manager) FollowUp(ctx context.Context, agentID, prompt string) (string, error) {
+	if len(prompt) == 0 || len(prompt) > 16<<10 {
+		return "", errors.New("follow-up prompt is empty or exceeds 16 KiB")
+	}
 	m.mu.Lock()
 	agent, ok := m.agents[agentID]
-	if !ok || agent.Closed || agent.Status == StatusShutdown {
+	if !ok || agent.Closed || agent.Status == StatusClosed {
 		m.mu.Unlock()
 		return "", errors.New("agent not found")
 	}
-	if agent.Status == StatusRunning {
+	if occupiesSlot(agent.Status) {
 		m.mu.Unlock()
 		return "", errors.New("agent is busy")
 	}
-	runtime := m.runtime
 	m.mu.Unlock()
-	return m.startTurn(ctx, agentID, prompt, runtime)
+	body, err := json.Marshal(map[string]string{"prompt": prompt})
+	if err != nil {
+		return "", err
+	}
+	if _, err := m.mailbox.Enqueue(Message{
+		From: "parent", To: agentID, Kind: MessageTask,
+		Body: body, TriggerTurn: true,
+	}); err != nil {
+		return "", err
+	}
+	return m.startTurn(ctx, agentID, "", m.runtime)
 }
 
 // Interrupt cancels the current turn if possible and marks the agent interrupted.
@@ -203,39 +255,97 @@ func (m *Manager) Interrupt(ctx context.Context, agentID string) (Status, error)
 	if !ok || agent.Closed {
 		return prev, errors.New("agent not found")
 	}
-	agent.Status = StatusInterrupted
-	m.recordStatusLocked(agentID, StatusInterrupted, "")
-	m.wait.Broadcast()
+	if err := m.transitionLocked(
+		agent, StatusInterrupted, turnID, "", "parent", "interrupt requested", nil,
+	); err != nil {
+		return prev, err
+	}
 	return prev, nil
+}
+
+func (m *Manager) AwaitApproval(agentID, requestID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	agent, ok := m.agents[agentID]
+	if !ok || agent.Closed {
+		return errors.New("agent not found")
+	}
+	if agent.Status == StatusWaiting {
+		return nil
+	}
+	if agent.Status != StatusRunning {
+		return fmt.Errorf("agent %s cannot wait for approval from %s", agentID, agent.Status)
+	}
+	return m.transitionLocked(
+		agent, StatusWaiting, agent.TurnID,
+		"waiting for approval "+requestID,
+		"runtime", "child approval requested", nil,
+	)
+}
+
+func (m *Manager) ResumeApproval(agentID, requestID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	agent, ok := m.agents[agentID]
+	if !ok || agent.Closed {
+		return errors.New("agent not found")
+	}
+	if agent.Status == StatusRunning {
+		return nil
+	}
+	if agent.Status != StatusWaiting {
+		return fmt.Errorf("agent %s cannot resume approval from %s", agentID, agent.Status)
+	}
+	return m.transitionLocked(
+		agent, StatusRunning, agent.TurnID,
+		"approval resolved "+requestID,
+		"runtime", "child approval resolved", nil,
+	)
 }
 
 // Complete marks an agent completed (runtime/test hook for Wait).
 func (m *Manager) Complete(agentID, message string) error {
-	return m.finish(agentID, StatusCompleted, message)
+	return m.settleSynthetic(agentID, StatusCompleted, message)
 }
 
 // Fail marks an agent errored (runtime/test hook for Wait).
 func (m *Manager) Fail(agentID, message string) error {
-	return m.finish(agentID, StatusErrored, message)
+	return m.settleSynthetic(agentID, StatusFailed, message)
 }
 
-func (m *Manager) finish(agentID string, status Status, message string) error {
+func (m *Manager) settleSynthetic(agentID string, status Status, message string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	agent, ok := m.agents[agentID]
-	if !ok || agent.Closed || agent.Status == StatusShutdown {
+	if !ok || agent.Closed || agent.Status == StatusClosed {
+		m.mu.Unlock()
 		return errors.New("agent not found")
 	}
-	agent.Status = status
-	agent.LastMessage = message
-	m.recordStatusLocked(agentID, status, message)
-	m.wait.Broadcast()
-	return nil
+	result := Result{
+		AgentID: agentID, ThreadID: agent.ThreadID, TurnID: agent.TurnID,
+		Status: status, Summary: message,
+	}
+	m.mu.Unlock()
+	return m.Settle(result)
 }
 
 func (m *Manager) startTurn(
 	ctx context.Context, agentID, prompt string, runtime RuntimeHost,
 ) (string, error) {
+	m.mu.Lock()
+	agent, ok := m.agents[agentID]
+	if !ok || agent.Closed || agent.Status == StatusClosed {
+		m.mu.Unlock()
+		return "", errors.New("agent not found")
+	}
+	if err := m.transitionLocked(
+		agent, StatusStarting, "", "", "runtime", "turn requested", nil,
+	); err != nil {
+		m.mu.Unlock()
+		return "", err
+	}
+	pending := m.mailbox.Pending(agentID)
+	m.mu.Unlock()
+	prompt = promptWithMessages(prompt, pending)
 	var (
 		out string
 		err error
@@ -246,29 +356,43 @@ func (m *Manager) startTurn(
 		out, err = runtime.StartTurn(ctx, agentID, prompt)
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	agent, ok := m.agents[agentID]
+	agent, ok = m.agents[agentID]
 	if !ok || agent.Closed {
+		m.mu.Unlock()
 		if err != nil {
 			return "", err
 		}
 		return "", errors.New("agent not found")
 	}
 	if err != nil {
-		agent.Status = StatusErrored
-		agent.LastMessage = err.Error()
-		m.wait.Broadcast()
+		result := Result{
+			AgentID: agentID, ThreadID: agent.ThreadID, Status: StatusFailed,
+			Summary: err.Error(),
+		}
+		if transitionErr := m.transitionLocked(
+			agent, StatusFailed, "", err.Error(),
+			"runtime", "start turn failed", &result,
+		); transitionErr != nil {
+			m.mu.Unlock()
+			return "", errors.Join(err, transitionErr)
+		}
+		m.mu.Unlock()
 		return "", err
 	}
 	// A real child turn runs asynchronously, so Settle may already have observed
 	// its terminal event before this returns. Terminal wins: overwriting it with
 	// running would leave the agent unreachable for Wait forever.
 	if isTerminal(agent.Status) && agent.TurnID == out {
+		m.mu.Unlock()
 		return out, nil
 	}
-	agent.Status = StatusRunning
-	agent.TurnID = out
-	agent.LastMessage = ""
-	m.wait.Broadcast()
+	if err := m.transitionLocked(
+		agent, StatusRunning, out, "", "runtime", "turn accepted", nil,
+	); err != nil {
+		m.mu.Unlock()
+		return "", err
+	}
+	m.mu.Unlock()
+	_ = m.mailbox.Ack(pending)
 	return out, nil
 }

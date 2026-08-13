@@ -432,6 +432,14 @@ func (c *AgentControl) Interrupt(ctx context.Context, agentID string) (Status, e
 	return c.manager.Interrupt(ctx, agentID)
 }
 
+func (c *AgentControl) AwaitApproval(agentID, requestID string) error {
+	return c.manager.AwaitApproval(agentID, requestID)
+}
+
+func (c *AgentControl) ResumeApproval(agentID, requestID string) error {
+	return c.manager.ResumeApproval(agentID, requestID)
+}
+
 func (c *AgentControl) Close(agentID string) error {
 	return c.manager.Close(agentID)
 }

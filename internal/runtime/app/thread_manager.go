@@ -38,11 +38,17 @@ type ThreadManager struct {
 // host template: its own workspace root, step quota and spend budget. The host
 // template cannot express these because every host thread shares one seed.
 type ChildSpec struct {
-	AgentID   string
-	Role      string
-	Stance    string
-	Workspace string // isolation root; empty means the host workspace
-	ReadOnly  bool   // no journal, writes denied by policy
+	AgentID       string
+	AgentPath     string
+	ParentPath    string
+	Role          string
+	Stance        string
+	Workspace     string // isolation root; empty means the host workspace
+	HostWorkspace string
+	SessionID     string
+	ReadOnly      bool // no journal, writes denied by policy
+	AllowedTools  []string
+	CanDelegate   bool
 	// Serialized means this child deliberately shares the host workspace and
 	// inherits its whole-turn gate (and journal when writable).
 	Serialized bool
@@ -226,6 +232,26 @@ func (m *ThreadManager) ReplyInput(
 		return err
 	}
 	return adapter.ReplyInput(ctx, payload, sink)
+}
+
+// RestorePendingApproval rehydrates the Guard on the authoritative thread.
+// Runtime calls this before replaying interrupted turns so the original request
+// ID remains valid after restart.
+func (m *ThreadManager) RestorePendingApproval(pending PendingApproval) error {
+	adapter, err := m.forThread(pending.ThreadID)
+	if err != nil {
+		return err
+	}
+	return adapter.RestorePendingApproval(pending)
+}
+
+// RestorePendingInput rehydrates interactive waits on their owning thread.
+func (m *ThreadManager) RestorePendingInput(pending PendingInput) error {
+	adapter, err := m.forThread(pending.ThreadID)
+	if err != nil {
+		return err
+	}
+	return adapter.RestorePendingInput(pending)
 }
 
 func (m *ThreadManager) ValidateSessionProfile(

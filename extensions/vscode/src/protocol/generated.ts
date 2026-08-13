@@ -648,6 +648,7 @@ export type AgentMessageData = {
 export type AgentSpawnedData = {
   readonly "agent_id": string;
   readonly "depth": number;
+  readonly "detail"?: unknown;
   readonly "parent_id"?: string;
   readonly "profile"?: string;
   readonly "role": string;
@@ -659,6 +660,7 @@ export type AgentSpawnedData = {
 
 export type AgentStatusData = {
   readonly "agent_id": string;
+  readonly "detail"?: unknown;
   readonly "message"?: string;
   readonly "session_id"?: string;
   readonly "status": string;
@@ -701,12 +703,50 @@ export type ApprovalRequiredData = {
       readonly "path"?: string;
       readonly "tree"?: boolean;
     }>;
+  readonly "source"?: {
+      readonly "agent_id": string;
+      readonly "agent_path": string;
+      readonly "kind": string;
+      readonly "parent_path": string;
+      readonly "role": string;
+      readonly "session_id": string;
+      readonly "workspace_root": string;
+    };
   readonly "tool": string;
 };
 
 export type ApprovalResolvedData = {
   readonly "decision": string;
+  readonly "problem"?: {
+      readonly "code": string;
+      readonly "details"?: {
+            readonly "actual_revision"?: number;
+            readonly "expected_revision"?: number;
+            readonly "reason": string;
+            readonly "resource_id"?: string;
+            readonly "session_status"?: string;
+          };
+      readonly "http_status"?: number;
+      readonly "message": string;
+      readonly "rate_limit"?: {
+            readonly "limit"?: string;
+            readonly "remaining"?: string;
+            readonly "reset"?: string;
+            readonly "retry_after_ms"?: number;
+          };
+      readonly "retryable": boolean;
+      readonly "version": number;
+    };
   readonly "request_id": string;
+  readonly "source"?: {
+      readonly "agent_id": string;
+      readonly "agent_path": string;
+      readonly "kind": string;
+      readonly "parent_path": string;
+      readonly "role": string;
+      readonly "session_id": string;
+      readonly "workspace_root": string;
+    };
 };
 
 export type CheckpointCreatedData = {

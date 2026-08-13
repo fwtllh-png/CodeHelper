@@ -862,8 +862,33 @@ Implementation status (2026-08-13): `completed`.
 
 Deliver Node, Mailbox, Result, and Budget Ledger stores, CAS revisions, atomic
 terminal result plus completion outbox, startup reconciliation, and canonical
-paths. Exit when every crash point converges to one state, completion is durable
-and idempotent, false running state is absent, and wait observes the same facts.
+paths. Exit when every MA3-owned crash point converges to one state, completion
+is durable and idempotent, false running state is absent, and wait observes the
+same facts.
+
+Implementation status (2026-08-13): `completed`.
+
+- Schema V2 uses `agent_nodes`, `agent_messages`, `agent_results`, and
+  `agent_budget_ledger`; no pre-release compatibility migration is introduced.
+- Canonical Agent Path, Revision, stable Operation ID, actor, reason, Event ID,
+  and SQLite CAS form the only state-machine write path.
+- Terminal Result, budget settlement, and Completion Outbox commit in one Agent
+  Event transaction. The outbox publishes idempotently by Message ID.
+- Mailboxes provide per-target sequence and at-least-once `Receive/Ack`.
+  `send_message` only queues, while `followup_task` starts a Turn only after its
+  Task Message is durable.
+- Startup reconciliation covers spawn commit, accepted StartTurn,
+  result/outbox, unacknowledged completion, false running state, orphaned
+  worktree, and close. Integration preview/apply crash points belong to MA5.
+- A post-acceptance recovery audit now rebuilds active child Turn observation
+  and starts the Runtime event pump before interrupted operations replay. A
+  recovered `waiting` child therefore resumes and settles instead of remaining
+  a false active node.
+- ACP and VS Code Agent views expose path, parent path, revision, and thread.
+  Real Electron verifies automatic completion from two children without a
+  parent `wait_agent` call.
+- `go test ./...`, focused race tests, ACP/protocol contracts, the 43/43
+  Architecture Ratchet, VS Code check, and all 220 tests pass.
 
 ### MA4: Authority and Approval Proxy
 
@@ -871,6 +896,34 @@ Deliver authority derivation, child approval routing, source-aware host UI,
 restart recovery, and contract tests for all postures. Exit when a writing child
 can wait in `suggest`, authority never expands, request IDs survive restart, and
 denial produces a structured Problem.
+
+Implementation status (2026-08-13): `completed`.
+
+- Permission derivation clamps every posture with
+  `never < suggest < auto < bypass`; unknown values fail closed. A child gets
+  only the parent tool catalog intersected with its Role Contract, and each
+  child owns an independent approval cache.
+- `approval.required` and `approval.resolved` carry canonical Agent source,
+  role, Session, and host workspace identity. ACP and VS Code project only
+  source-bound child interactions across unbound child Threads.
+- The host submits the original Request ID through the parent Session. Runtime
+  resolves the durable pending request, rewrites Thread and Turn to the child,
+  preserves the decision Item identity, and transitions the Agent
+  `running -> waiting -> running`.
+- Pending Guard requests, Runtime pending approvals, and waiting Agent nodes
+  survive restart. Denial emits a structured Problem and child-readable
+  `approval_denied` tool feedback.
+- A post-acceptance recovery contract drives the production `ThreadManager`
+  path: recovered Approval/Input waits rebuild the Turn Kernel and request
+  ledger without duplicate host events, preserve the original Request ID, and
+  safely queue a decision that arrives before Tool replay reaches its wait.
+- VS Code approval cards and the Approvals Tree identify the Agent path, parent
+  path, and role. Real Electron verifies a writing child waits under `suggest`,
+  receives a parent-proxied decision, resumes, verifies its change, and
+  completes without a parent `wait_agent` call.
+- All Go tests, focused race tests, Protocol Contract, the 43/43 Architecture
+  Ratchet, VS Code check, all 222 tests, docs checks, and the Electron scenario
+  pass.
 
 ### MA5: Workspace Integration and Nested Agents
 

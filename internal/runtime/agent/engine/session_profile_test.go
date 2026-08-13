@@ -46,6 +46,26 @@ func TestProfilePermissionCeilingDistinguishesHostFromSessionNever(t *testing.T)
 	}
 }
 
+func TestProfilePermissionCeilingClampsEveryPosture(t *testing.T) {
+	for _, requested := range []policy.Permission{
+		policy.PermissionNever,
+		policy.PermissionSuggest,
+		policy.PermissionAuto,
+		policy.PermissionBypass,
+	} {
+		got := effectiveProfilePermissionWithCeiling(
+			false, requested, policy.PermissionSuggest,
+		)
+		want := requested
+		if requested == policy.PermissionAuto || requested == policy.PermissionBypass {
+			want = policy.PermissionSuggest
+		}
+		if got != want {
+			t.Fatalf("requested %q under suggest ceiling = %q, want %q", requested, got, want)
+		}
+	}
+}
+
 func TestSessionProfileModeRefreshesModelInstructionsAndReceipt(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.options.ModePromptBudget = promptcontext.Budget{

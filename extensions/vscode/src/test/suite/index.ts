@@ -892,6 +892,7 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
   assert.ok(api.chatSessions);
   assert.ok(api.testSubmitPrompt);
   assert.ok(api.testApprovePending);
+  assert.ok(api.testDecideApproval);
   await waitFor(
     () => api.runtimeSnapshot?.().state === "ready",
     `subagent Runtime did not become ready: ${
@@ -911,9 +912,27 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
 
   const spawned = new Map<
     string,
-    { role: string; sessionId: string | undefined }
+    {
+      path: string | undefined;
+      revision: number | undefined;
+      role: string;
+      sessionId: string | undefined;
+    }
   >();
+  const completions = new Set<string>();
   const statuses = new Map<string, string>();
+  const statusMessages = new Map<string, string>();
+  const waitingAgents = new Set<string>();
+  const resolvedApprovals = new Set<string>();
+  const parentApprovals = new Set<string>();
+  const childApprovals = new Map<string, {
+    requestId: string;
+    expiresAt: string;
+    agentId: string;
+    agentPath: string;
+    parentPath: string;
+    role: string;
+  }>();
   const terminals = new Map<string, string>();
   const terminalDetails = new Map<string, unknown>();
   type SpawnContextReceipt = {
@@ -932,18 +951,76 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
     event,
     replayed,
   ) => {
-    rootObserved.push(`${replayed ? "replay" : "live"}:${event.kind}`);
+    const approvalDetail = !isUnknownEvent(event) &&
+        event.kind === "approval.required"
+      ? `:${event.thread_id}:${event.data.tool}:${
+        JSON.stringify(event.data.source ?? null)
+      }`
+      : "";
+    rootObserved.push(
+      `${replayed ? "replay" : "live"}:${event.kind}${approvalDetail}`,
+    );
+    if (!replayed && !isUnknownEvent(event) &&
+      event.kind === "approval.required" &&
+      event.data.source?.kind === "agent") {
+      childApprovals.set(event.data.request_id, {
+        requestId: event.data.request_id,
+        expiresAt: event.data.expires_at,
+        agentId: event.data.source.agent_id,
+        agentPath: event.data.source.agent_path,
+        parentPath: event.data.source.parent_path,
+        role: event.data.source.role,
+      });
+    }
   });
   const subscription = api.onRuntimeEvent((event, replayed) => {
     observed.push(`${replayed ? "replay" : "live"}:${event.kind}`);
     if (replayed || isUnknownEvent(event)) return;
     if (event.kind === "agent.spawned") {
+      const detail = event.data.detail as {
+        readonly path?: unknown;
+        readonly revision?: unknown;
+      } | undefined;
       spawned.set(event.data.agent_id, {
+        path: typeof detail?.path === "string" ? detail.path : undefined,
+        revision: typeof detail?.revision === "number"
+          ? detail.revision
+          : undefined,
         role: event.data.role,
         sessionId: event.data.session_id,
       });
     } else if (event.kind === "agent.status") {
       statuses.set(event.data.agent_id, event.data.status);
+      if (event.data.message !== undefined) {
+        statusMessages.set(event.data.agent_id, event.data.message);
+      }
+      if (event.data.status === "waiting") {
+        waitingAgents.add(event.data.agent_id);
+      }
+    } else if (event.kind === "approval.required") {
+      if (event.data.source?.kind === "agent") {
+        childApprovals.set(event.data.request_id, {
+          requestId: event.data.request_id,
+          expiresAt: event.data.expires_at,
+          agentId: event.data.source.agent_id,
+          agentPath: event.data.source.agent_path,
+          parentPath: event.data.source.parent_path,
+          role: event.data.source.role,
+        });
+      } else {
+        parentApprovals.add(event.data.request_id);
+      }
+    } else if (event.kind === "approval.resolved") {
+      resolvedApprovals.add(event.data.request_id);
+    } else if (event.kind === "agent.message") {
+      const message = event.data.body as {
+        readonly from?: unknown;
+        readonly kind?: unknown;
+      };
+      if (message.kind === "completion" &&
+        typeof message.from === "string") {
+        completions.add(message.from);
+      }
     } else if (event.kind === "tool.result" &&
       event.data.tool === "spawn_agent") {
       const output = JSON.parse(event.data.output) as {
@@ -969,8 +1046,15 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
         "that both delegated tasks started.",
     );
     const approvalDeadline = Date.now() + 10_000;
+    const submittedParentApprovals = new Set<string>();
     while (!terminals.has(parent.turnId)) {
-      await api.testApprovePending();
+      const pending = [...parentApprovals].find(
+        (requestId) => !resolvedApprovals.has(requestId) &&
+          !submittedParentApprovals.has(requestId),
+      );
+      if (pending !== undefined && await api.testApprovePending()) {
+        submittedParentApprovals.add(pending);
+      }
       if (Date.now() >= approvalDeadline) {
         throw new Error(
           `spawn_agent approvals did not complete the parent turn; ` +
@@ -1006,6 +1090,8 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
     for (const [agentID, child] of spawned) {
       assert.equal(child.role, "explore");
       assert.ok(child.sessionId);
+      assert.ok(child.path?.startsWith("/root/"));
+      assert.equal(child.revision, 1);
       const receipt = spawnContextReceipts.get(agentID);
       assert.ok(receipt);
       assert.equal(receipt.mode, "task_capsule");
@@ -1020,11 +1106,100 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
         item.kind === "user_request"
       ));
       await waitFor(
-        () => statuses.get(agentID) === "completed",
-        `child agent ${agentID} did not reach completed status`,
+        () => statuses.get(agentID) === "completed" &&
+          completions.has(agentID),
+        `child agent ${agentID} did not complete and notify its parent`,
         30_000,
       );
     }
+
+    const writerParent = await api.testSubmitPrompt(
+      selected.sessionId,
+      "Explicitly spawn one implementer child to write child-note.txt and " +
+        "verify it. Do not perform the write in the parent.",
+    );
+    const writerDeadline = Date.now() + 30_000;
+    const submittedChildApprovals = new Set<string>();
+    let writerParentApproved = false;
+    let writerID = "";
+    while (Date.now() < writerDeadline) {
+      writerID = [...spawned.entries()].find(
+        ([, value]) => value.role === "implementer",
+      )?.[0] ?? "";
+      const writerApprovals = [...childApprovals.values()].filter(
+        (value) => value.agentId === writerID,
+      );
+      const pendingApproval = writerApprovals.find(
+        (value) => !resolvedApprovals.has(value.requestId) &&
+          !submittedChildApprovals.has(value.requestId),
+      );
+      if (pendingApproval !== undefined &&
+        terminals.has(writerParent.turnId)) {
+        submittedChildApprovals.add(pendingApproval.requestId);
+        await api.testDecideApproval(
+          selected.sessionId,
+          writerParent.turnId,
+          pendingApproval.requestId,
+          pendingApproval.expiresAt,
+        );
+      } else if (writerID === "" && !writerParentApproved) {
+        writerParentApproved = await api.testApprovePending();
+      }
+      if (writerID !== "" &&
+        statuses.get(writerID) === "completed" &&
+        completions.has(writerID) &&
+        writerApprovals.length > 0 &&
+        writerApprovals.every((value) =>
+          resolvedApprovals.has(value.requestId)
+        )) {
+        break;
+      }
+      if (writerID !== "" &&
+        ["failed", "errored", "interrupted"].includes(
+          statuses.get(writerID) ?? "",
+        )) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const writerDiagnostics =
+      `events=${observed.join(",")}; root=${rootObserved.join(",")}; ` +
+      `spawned=${JSON.stringify([...spawned.entries()])}; ` +
+      `statuses=${JSON.stringify([...statuses.entries()])}; ` +
+      `statusMessages=${JSON.stringify([...statusMessages.entries()])}; ` +
+      `terminals=${JSON.stringify([...terminalDetails.entries()])}; ` +
+      `approvals=${JSON.stringify([...childApprovals.values()])}`;
+    assert.notEqual(
+      writerID,
+      "",
+      `implementer child was not spawned; ${writerDiagnostics}`,
+    );
+    const writer = spawned.get(writerID);
+    assert.ok(writer);
+    const approval = [...childApprovals.values()].find(
+      (value) => value.agentId === writerID,
+    );
+    assert.ok(
+      approval,
+      `implementer child did not request approval; ${writerDiagnostics}`,
+    );
+    assert.equal(approval.agentPath, writer.path);
+    assert.equal(approval.parentPath, "/root");
+    assert.equal(approval.role, "implementer");
+    assert.equal(waitingAgents.has(writerID), true);
+    assert.equal(
+      [...childApprovals.values()]
+        .filter((value) => value.agentId === writerID)
+        .every((value) => resolvedApprovals.has(value.requestId)),
+      true,
+      writerDiagnostics,
+    );
+    assert.equal(
+      statuses.get(writerID),
+      "completed",
+      writerDiagnostics,
+    );
+    assert.equal(completions.has(writerID), true);
   } finally {
     subscription.dispose();
     rootSubscription.dispose();

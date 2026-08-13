@@ -11,6 +11,30 @@
     "complete.sse",
     "complete.sse"
   ],
+  "routes": [
+    {
+      "match": [
+        "Implement only the assigned objective and owned paths",
+        "write_child_note"
+      ],
+      "streams": [
+        "write.sse",
+        "verify-writer.sse",
+        "declare-writer.sse",
+        "complete-writer.sse"
+      ]
+    },
+    {
+      "match": [
+        "Explicitly spawn one implementer child"
+      ],
+      "streams": [
+        "spawn-writer.sse",
+        "declare-writer-parent.sse",
+        "complete.sse"
+      ]
+    }
+  ],
   "stream_delay_ms": 20,
   "expected_request_fragments": [
     [

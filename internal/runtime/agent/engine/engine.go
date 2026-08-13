@@ -219,6 +219,9 @@ type Engine struct {
 	profileReadOnly bool
 	enabledTools    map[string]struct{}
 
+	approvalRecovery recoveredInteraction[toolguard.ApprovalDecision]
+	inputRecovery    recoveredInteraction[interact.Reply]
+
 	// compactions counts how many times history was replaced by a summary. It is
 	// what tells a long thread apart from one that merely looks long.
 	compactions int
@@ -392,8 +395,7 @@ func New(options Options) (*Engine, error) {
 		}
 		engine.guard = guard
 	}
-	engine.guard.SetApprovalHandler(engine.emitApproval)
-	engine.guard.SetApprovalWaitObserver(engine.observeApprovalWait)
+	engine.configureApprovalHandlers()
 	return engine, nil
 }
 
@@ -446,9 +448,10 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 	)
 	if e.options.Security != nil {
 		e.options.Security.Mode = policy.Mode(profile.Mode)
-		e.options.Security.Permission = effectiveProfilePermission(
+		e.options.Security.Permission = effectiveProfilePermissionWithCeiling(
 			e.profileReadOnly,
 			policy.Permission(profile.ApprovalPosture),
+			profilePermissionCeiling(e.options),
 		)
 	}
 	e.refreshPromptMode(profile.Mode)
@@ -496,12 +499,27 @@ func effectiveProfilePermission(
 	return requested
 }
 
-func profileReadOnlyFromOptions(options Options) bool {
+func effectiveProfilePermissionWithCeiling(
+	readOnly bool,
+	requested policy.Permission,
+	ceiling policy.Permission,
+) policy.Permission {
+	return policy.TightenPermission(
+		effectiveProfilePermission(readOnly, requested),
+		ceiling,
+	)
+}
+
+func profilePermissionCeiling(options Options) policy.Permission {
 	ceiling := options.ProfilePermissionCeiling
 	if ceiling == "" && options.Security != nil {
 		ceiling = options.Security.Permission
 	}
-	return ceiling == policy.PermissionNever
+	return ceiling
+}
+
+func profileReadOnlyFromOptions(options Options) bool {
+	return profilePermissionCeiling(options) == policy.PermissionNever
 }
 
 func (e *Engine) SetPolicyMode(mode policy.Mode) {
@@ -526,9 +544,10 @@ func (e *Engine) SetPermission(permission policy.Permission) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.options.Security != nil {
-		e.options.Security.Permission = effectiveProfilePermission(
+		e.options.Security.Permission = effectiveProfilePermissionWithCeiling(
 			e.profileReadOnly,
 			permission,
+			profilePermissionCeiling(e.options),
 		)
 	}
 }

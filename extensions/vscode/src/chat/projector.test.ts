@@ -328,6 +328,15 @@ void test("ChatProjector tracks approval identity and resolution", () => {
     expires_at: "2026-08-04T12:00:00Z",
     replacement_allowed: false,
     modifiable_arguments: [],
+    source: {
+      kind: "agent",
+      agent_id: "agent-1",
+      agent_path: "/root/implement_parser",
+      parent_path: "/root",
+      role: "implementer",
+      session_id: "session-1",
+      workspace_root: "/workspace",
+    },
     edit_plan: {
       id: "b".repeat(64),
       diff: "--- /dev/null\n+++ b/result.txt\n",
@@ -345,6 +354,7 @@ void test("ChatProjector tracks approval identity and resolution", () => {
   const pending = projector.pendingApprovals()[0];
   assert.equal(pending?.turnId, "turn_1");
   assert.equal(pending.editPlan?.files[0]?.after, "created\n");
+  assert.equal(pending.source?.agentPath, "/root/implement_parser");
   projector.apply(event(2, "approval.resolved", {
     request_id: "approval_1",
     decision: "approve",

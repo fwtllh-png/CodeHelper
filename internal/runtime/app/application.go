@@ -56,6 +56,7 @@ func (NoopEngine) RevertTurn(context.Context, *protocol.RevertTurnPayload, Engin
 type EngineAdapter struct {
 	engine            *agentengine.Engine
 	workspaceIdentity protocol.WorkspaceIdentity
+	approvalSource    *protocol.ApprovalSource
 }
 
 func (a *EngineAdapter) Underlying() *agentengine.Engine {
@@ -63,6 +64,14 @@ func (a *EngineAdapter) Underlying() *agentengine.Engine {
 		return nil
 	}
 	return a.engine
+}
+
+func (a *EngineAdapter) SetApprovalSource(source protocol.ApprovalSource) {
+	if a == nil {
+		return
+	}
+	copy := source
+	a.approvalSource = &copy
 }
 
 func (a *EngineAdapter) TurnPhase(turnID protocol.TurnID) (TurnPhase, bool) {
@@ -363,6 +372,7 @@ func (a *EngineAdapter) StartTurn(
 				Reason:              event.Approval.Reason,
 				Network:             protocolNetwork(event.Approval.Network),
 				EditPlan:            editPlan,
+				Source:              a.approvalSource,
 			})
 		case agentengine.AwaitingInput:
 			if event.Input == nil {
@@ -652,9 +662,24 @@ func (a *EngineAdapter) DecideApproval(
 	if err := control.ResolveApproval(decision); err != nil {
 		return err
 	}
-	return sink.Emit(&protocol.ApprovalResolvedData{
+	resolved := &protocol.ApprovalResolvedData{
 		RequestID: payload.RequestID, Decision: payload.Decision,
-	})
+		Source: a.approvalSource,
+	}
+	if payload.Decision == protocol.ApprovalDeny {
+		message := "tool approval was denied"
+		if a.approvalSource != nil {
+			message = "child tool approval was denied"
+		}
+		resolved.Problem = protocol.NewProblemWithDetails(
+			protocol.CodeConflict,
+			message,
+			false,
+			protocol.ProblemDetails{Reason: "approval_denied"},
+			nil,
+		)
+	}
+	return sink.Emit(resolved)
 }
 
 func (a *EngineAdapter) ReplyInput(

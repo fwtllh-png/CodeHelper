@@ -23,6 +23,13 @@ export interface ApprovalCard {
   readonly tool: string; readonly arguments: string; readonly resources: readonly string[];
   readonly allowedScopes: readonly string[]; readonly expiresAt: string;
   readonly reason?: string; readonly resolved?: string; readonly editPlan?: EditPlanCard;
+  readonly source?: {
+    readonly kind: "agent";
+    readonly agentId: string;
+    readonly agentPath: string;
+    readonly parentPath: string;
+    readonly role: string;
+  };
 }
 export interface InputCard {
   readonly requestId: string; readonly turnId: string; readonly itemId: string;

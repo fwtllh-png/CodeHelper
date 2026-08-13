@@ -43,7 +43,9 @@ class FixtureTransport implements BackgroundTransport {
         }] });
       case "agent/list":
         return Promise.resolve({ agents: [{
-          id: "agent-1", workspace: "/workspace", session_id: "session_1",
+          id: "agent-1", path: "/root/inspect", revision: 3,
+          workspace: "/workspace", session_id: "session_1",
+          thread_id: "thread-agent-1", parent_path: "/root",
           role: "explore", status: "running", closed: false,
         }] });
       case "task/list":

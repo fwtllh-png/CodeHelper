@@ -1,32 +1,83 @@
 package subagent
 
 import (
-	"encoding/json"
 	"fmt"
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-// GraphEdge is a durable child snapshot used to rebuild List after restart.
+// GraphEdge is the durable Agent Node snapshot used to rebuild a tree.
 type GraphEdge struct {
-	ParentID    string
-	ChildID     string
-	Workspace   string
-	SessionID   string
-	Status      Status
-	Role        Role
-	Profile     string
-	Stance      Stance
-	Depth       int
-	Worktree    string
-	LastMessage string
+	ParentID    string `json:"parent_id,omitempty"`
+	ParentPath  string `json:"parent_path"`
+	ChildID     string `json:"agent_id"`
+	Path        string `json:"path"`
+	Workspace   string `json:"workspace"`
+	SessionID   string `json:"session_id"`
+	ThreadID    string `json:"thread_id"`
+	TurnID      string `json:"turn_id,omitempty"`
+	Status      Status `json:"status"`
+	Revision    uint64 `json:"revision"`
+	Role        Role   `json:"role"`
+	Profile     string `json:"profile,omitempty"`
+	Stance      Stance `json:"stance"`
+	Depth       int    `json:"depth"`
+	Worktree    string `json:"worktree,omitempty"`
+	Isolated    bool   `json:"isolated"`
+	Serialized  bool   `json:"serialized"`
+	BaseRev     string `json:"base_revision,omitempty"`
+	TaskName    string `json:"task_name,omitempty"`
+	LastMessage string `json:"last_message,omitempty"`
 }
 
-// Graph is the durable agent topology + inter-agent message sink.
-// Mailbox remains an in-process delivery buffer; Graph is the restart truth.
+type CompletionEnvelope struct {
+	AgentPath        string                       `json:"agent_path"`
+	Status           Status                       `json:"status"`
+	Summary          string                       `json:"summary,omitempty"`
+	ResultRef        string                       `json:"result_ref"`
+	ReceiptRef       string                       `json:"receipt_ref,omitempty"`
+	ChangedPaths     []string                     `json:"changed_paths,omitempty"`
+	Verification     protocol.ReceiptVerification `json:"verification"`
+	Usage            ResultUsage                  `json:"usage"`
+	IntegrationReady bool                         `json:"integration_ready"`
+}
+
+type GraphTransition struct {
+	AgentID           string              `json:"agent_id"`
+	Path              string              `json:"path"`
+	ExpectedRevision  uint64              `json:"expected_revision"`
+	Status            Status              `json:"status"`
+	TurnID            string              `json:"turn_id,omitempty"`
+	Message           string              `json:"message,omitempty"`
+	OperationID       string              `json:"operation_id"`
+	Actor             string              `json:"actor"`
+	Reason            string              `json:"reason,omitempty"`
+	Result            *Result             `json:"result,omitempty"`
+	Completion        *CompletionEnvelope `json:"completion,omitempty"`
+	CompletionMessage *Message            `json:"completion_message,omitempty"`
+	CreatedAt         time.Time           `json:"created_at"`
+}
+
+type BudgetLedger struct {
+	ReservedTokens uint64 `json:"reserved_tokens"`
+	SpentTokens    uint64 `json:"spent_tokens"`
+	ReservedMicros uint64 `json:"reserved_microunits"`
+	SpentMicros    uint64 `json:"spent_microunits"`
+	ReservedSlots  int    `json:"reserved_slots"`
+}
+
+// Graph is the durable Agent Node, Mailbox, Result, and Budget store.
 type Graph interface {
 	RecordSpawn(edge GraphEdge) error
-	RecordStatus(agentID string, status Status, message string) error
-	RecordMessage(from, to string, sequence uint64, body json.RawMessage) error
+	RecordTransition(transition GraphTransition) error
+	RecordMessage(message Message) error
+	MarkDelivered(message Message) error
 	ListChildren(parentID string) ([]GraphEdge, error)
+	ListMessages(to string) ([]Message, error)
+	LoadResult(agentID string) (Result, bool, error)
+	LoadBudget() (BudgetLedger, error)
+	Reconcile() error
 }
 
 type graphIdentity interface {
@@ -44,6 +95,9 @@ func (m *Manager) AttachGraph(graph Graph) error {
 		m.workspace, m.sessionID = identity.AgentIdentity()
 	}
 	m.mu.Unlock()
+	if err := graph.Reconcile(); err != nil {
+		return err
+	}
 	return m.Hydrate()
 }
 
@@ -65,20 +119,46 @@ func (m *Manager) Hydrate() error {
 		if err != nil {
 			return err
 		}
-		m.mu.Lock()
 		for _, edge := range edges {
+			result, settled, err := graph.LoadResult(edge.ChildID)
+			if err != nil {
+				return err
+			}
+			m.mu.Lock()
 			if _, ok := m.agents[edge.ChildID]; !ok {
 				m.agents[edge.ChildID] = agentFromEdge(edge)
+			}
+			if edge.Worktree != "" {
+				m.worktrees[edge.ChildID] = &Worktree{
+					ID: edge.ChildID, Path: edge.Worktree, Isolated: edge.Isolated,
+					Serialized: edge.Serialized, BaseRev: edge.BaseRev,
+				}
+			}
+			if settled {
+				m.agents[edge.ChildID].Result = &result
 			}
 			bumpNextIDLocked(m, edge.ChildID)
 			if _, ok := seen[edge.ChildID]; !ok {
 				seen[edge.ChildID] = struct{}{}
 				queue = append(queue, edge.ChildID)
 			}
+			m.mu.Unlock()
 		}
-		m.mu.Unlock()
 	}
-	return nil
+	messages, err := graph.ListMessages("")
+	if err != nil {
+		return err
+	}
+	ledger, err := graph.LoadBudget()
+	if err != nil {
+		return err
+	}
+	m.mailbox.Restore(messages)
+	m.mu.Lock()
+	m.ledger = ledger
+	m.active.Store(int32(ledger.ReservedSlots))
+	m.mu.Unlock()
+	return m.reconcileOrphanWorktrees()
 }
 
 func bumpNextIDLocked(m *Manager, id string) {
@@ -90,10 +170,13 @@ func bumpNextIDLocked(m *Manager, id string) {
 
 func agentFromEdge(edge GraphEdge) *Agent {
 	return &Agent{
-		ID: edge.ChildID, Role: edge.Role, Profile: edge.Profile, Stance: edge.Stance,
+		ID: edge.ChildID, Path: edge.Path, Revision: edge.Revision,
+		Role: edge.Role, Profile: edge.Profile, Stance: edge.Stance,
 		Depth: edge.Depth, Worktree: edge.Worktree, Parent: edge.ParentID,
-		Workspace: edge.Workspace, SessionID: edge.SessionID,
-		Closed: edge.Status == StatusShutdown, Status: edge.Status,
+		Isolated: edge.Isolated, Serialized: edge.Serialized,
+		ParentPath: edge.ParentPath, Workspace: edge.Workspace, SessionID: edge.SessionID,
+		ThreadID: edge.ThreadID, TurnID: edge.TurnID, BaseRev: edge.BaseRev,
+		TaskName: edge.TaskName, Closed: edge.Status == StatusClosed, Status: edge.Status,
 		LastMessage: edge.LastMessage,
 	}
 }
@@ -103,38 +186,57 @@ func (m *Manager) recordSpawnLocked(agent *Agent) error {
 		return nil
 	}
 	return m.graph.RecordSpawn(GraphEdge{
-		ParentID: agent.Parent, ChildID: agent.ID, Status: agent.Status,
+		ParentID: agent.Parent, ParentPath: agent.ParentPath,
+		ChildID: agent.ID, Path: agent.Path, Status: agent.Status,
 		Workspace: agent.Workspace, SessionID: agent.SessionID,
+		ThreadID: agent.ThreadID, TurnID: agent.TurnID, Revision: agent.Revision,
 		Role: agent.Role, Profile: agent.Profile, Stance: agent.Stance,
 		Depth: agent.Depth, Worktree: agent.Worktree,
+		Isolated: agent.Isolated, Serialized: agent.Serialized, BaseRev: agent.BaseRev,
+		TaskName: agent.TaskName,
 	})
 }
 
-func (m *Manager) recordStatusLocked(agentID string, status Status, message string) {
+func (m *Manager) recordTransitionLocked(transition GraphTransition) error {
 	if m.graph == nil {
-		return
+		return nil
 	}
-	_ = m.graph.RecordStatus(agentID, status, message)
+	return m.graph.RecordTransition(transition)
 }
 
-func (m *Manager) recordMessage(from, to string, sequence uint64, body json.RawMessage) {
+func (m *Manager) recordMessage(message Message) error {
 	m.mu.Lock()
 	graph := m.graph
 	m.mu.Unlock()
 	if graph == nil {
-		return
+		return nil
 	}
-	_ = graph.RecordMessage(from, to, sequence, body)
+	return graph.RecordMessage(message)
+}
+
+func (m *Manager) recordDelivery(message Message) error {
+	m.mu.Lock()
+	graph := m.graph
+	m.mu.Unlock()
+	if graph == nil {
+		return nil
+	}
+	return graph.MarkDelivered(message)
 }
 
 // DurableGraph adapts a recorder that can append agent protocol events and list edges.
 type DurableGraph struct {
-	Workspace     string
-	SessionID     string
-	AppendSpawn   func(GraphEdge) error
-	AppendStatus  func(agentID string, status Status, message string) error
-	AppendMessage func(from, to string, sequence uint64, body json.RawMessage) error
-	Children      func(parentID string) ([]GraphEdge, error)
+	Workspace      string
+	SessionID      string
+	AppendSpawn    func(GraphEdge) error
+	AppendStatus   func(GraphTransition) error
+	AppendMessage  func(Message) error
+	DeliverMessage func(Message) error
+	Children       func(parentID string) ([]GraphEdge, error)
+	Messages       func(to string) ([]Message, error)
+	Result         func(agentID string) (Result, bool, error)
+	Budget         func() (BudgetLedger, error)
+	ReconcileGraph func() error
 }
 
 func (g DurableGraph) AgentIdentity() (string, string) {
@@ -148,18 +250,25 @@ func (g DurableGraph) RecordSpawn(edge GraphEdge) error {
 	return g.AppendSpawn(edge)
 }
 
-func (g DurableGraph) RecordStatus(agentID string, status Status, message string) error {
+func (g DurableGraph) RecordTransition(transition GraphTransition) error {
 	if g.AppendStatus == nil {
 		return fmt.Errorf("agent graph status recorder is required")
 	}
-	return g.AppendStatus(agentID, status, message)
+	return g.AppendStatus(transition)
 }
 
-func (g DurableGraph) RecordMessage(from, to string, sequence uint64, body json.RawMessage) error {
+func (g DurableGraph) RecordMessage(message Message) error {
 	if g.AppendMessage == nil {
 		return fmt.Errorf("agent graph message recorder is required")
 	}
-	return g.AppendMessage(from, to, sequence, body)
+	return g.AppendMessage(message)
+}
+
+func (g DurableGraph) MarkDelivered(message Message) error {
+	if g.DeliverMessage == nil {
+		return fmt.Errorf("agent graph delivery recorder is required")
+	}
+	return g.DeliverMessage(message)
 }
 
 func (g DurableGraph) ListChildren(parentID string) ([]GraphEdge, error) {
@@ -167,4 +276,32 @@ func (g DurableGraph) ListChildren(parentID string) ([]GraphEdge, error) {
 		return nil, fmt.Errorf("agent graph list is required")
 	}
 	return g.Children(parentID)
+}
+
+func (g DurableGraph) ListMessages(to string) ([]Message, error) {
+	if g.Messages == nil {
+		return nil, fmt.Errorf("agent graph mailbox list is required")
+	}
+	return g.Messages(to)
+}
+
+func (g DurableGraph) LoadResult(agentID string) (Result, bool, error) {
+	if g.Result == nil {
+		return Result{}, false, fmt.Errorf("agent graph result loader is required")
+	}
+	return g.Result(agentID)
+}
+
+func (g DurableGraph) LoadBudget() (BudgetLedger, error) {
+	if g.Budget == nil {
+		return BudgetLedger{}, fmt.Errorf("agent graph budget loader is required")
+	}
+	return g.Budget()
+}
+
+func (g DurableGraph) Reconcile() error {
+	if g.ReconcileGraph == nil {
+		return nil
+	}
+	return g.ReconcileGraph()
 }

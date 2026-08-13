@@ -170,6 +170,40 @@ func TestWaitTimeoutAndEmptyIDs(t *testing.T) {
 	}
 }
 
+func TestChildApprovalTransitionsThroughWaiting(t *testing.T) {
+	runtime := &recordingRuntime{}
+	manager, err := subagent.Open(subagent.Options{
+		Root: t.TempDir(), Gate: &fakeGate{}, Runtime: runtime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := manager.Spawn("", subagent.RoleGeneral, "write")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Takeover(t.Context(), agent.ID, "write"); err != nil {
+		t.Fatal(err)
+	}
+	running, _ := manager.Agent(agent.ID)
+	if err := manager.AwaitApproval(agent.ID, "approval-1"); err != nil {
+		t.Fatal(err)
+	}
+	waiting, _ := manager.Agent(agent.ID)
+	if waiting.Status != subagent.StatusWaiting ||
+		waiting.Revision != running.Revision+1 {
+		t.Fatalf("waiting agent = %+v, running = %+v", waiting, running)
+	}
+	if err := manager.ResumeApproval(agent.ID, "approval-1"); err != nil {
+		t.Fatal(err)
+	}
+	resumed, _ := manager.Agent(agent.ID)
+	if resumed.Status != subagent.StatusRunning ||
+		resumed.Revision != waiting.Revision+1 {
+		t.Fatalf("resumed agent = %+v, waiting = %+v", resumed, waiting)
+	}
+}
+
 func TestTakeoverFailureMarksErrored(t *testing.T) {
 	runtime := &recordingRuntime{failOnce: true}
 	manager, err := subagent.Open(subagent.Options{

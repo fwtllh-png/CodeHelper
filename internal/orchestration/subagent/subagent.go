@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
@@ -97,6 +98,8 @@ type RuntimeHost interface {
 
 type Options struct {
 	Root      string
+	Workspace string
+	SessionID string
 	Budget    Budget
 	Gate      ToolGate
 	Runtime   RuntimeHost
@@ -122,16 +125,21 @@ type Manager struct {
 	workspace string
 	sessionID string
 	nextID    int
+	ledger    BudgetLedger
 }
 
 type Agent struct {
-	ID        string
-	Workspace string
-	SessionID string
-	Role      Role
-	Profile   string
-	Stance    Stance
-	Depth     int
+	ID         string
+	Path       string
+	ParentPath string
+	Revision   uint64
+	Workspace  string
+	SessionID  string
+	ThreadID   string
+	Role       Role
+	Profile    string
+	Stance     Stance
+	Depth      int
 	// Worktree is where this agent works, and Isolated says whether writing
 	// there is safe. A writing agent without isolation must not run.
 	Worktree string
@@ -177,15 +185,15 @@ func Open(options Options) (*Manager, error) {
 	manager := &Manager{
 		root: options.Root, budget: options.Budget.WithDefaults(),
 		gate: options.Gate, runtime: options.Runtime, trees: trees,
+		workspace: options.Workspace, sessionID: options.SessionID,
 		roles:  roles,
 		agents: make(map[string]*Agent), mailbox: NewMailbox(),
 		worktrees: make(map[string]*Worktree),
 		claims:    make(map[string]string),
 	}
 	manager.wait = sync.NewCond(&manager.mu)
-	manager.mailbox.onDeliver = func(msg Message) {
-		manager.recordMessage(msg.From, msg.To, msg.Sequence, msg.Body)
-	}
+	manager.mailbox.persist = manager.recordMessage
+	manager.mailbox.deliver = manager.recordDelivery
 	return manager, nil
 }
 
@@ -218,18 +226,27 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	depth := 0
+	parentPath := "/root"
 	if intent.ParentID != "" {
 		parent, ok := m.agents[intent.ParentID]
 		if !ok || parent.Closed {
 			return nil, errors.New("parent agent unavailable")
 		}
 		depth = parent.Depth + 1
+		parentPath = parent.Path
 	}
 	if depth > m.budget.MaxDepth {
 		return nil, fmt.Errorf("recursion depth %d exceeds limit %d", depth, m.budget.MaxDepth)
 	}
 	if int(m.active.Load()) >= m.budget.MaxParallel {
 		return nil, errors.New("subagent concurrency budget exhausted")
+	}
+	if m.budget.MaxTokens > 0 && m.ledger.SpentTokens >= m.budget.MaxTokens {
+		return nil, errors.New("subagent token budget exhausted")
+	}
+	if m.budget.MaxCostUSD > 0 &&
+		m.ledger.SpentMicros >= uint64(m.budget.MaxCostUSD*1e6) {
+		return nil, errors.New("subagent cost budget exhausted")
 	}
 	m.nextID++
 	id := fmt.Sprintf("agent-%d", m.nextID)
@@ -240,11 +257,14 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		return nil, err
 	}
 	agent := &Agent{
-		ID: id, Workspace: m.workspace, SessionID: m.sessionID,
-		Role: spec.Role, Profile: spec.Profile, Stance: spec.Stance,
+		ID: id, Path: m.nextPathLocked(intent.ParentID, intent.TaskName, id),
+		ParentPath: parentPath,
+		Revision:   1, Workspace: m.workspace, SessionID: m.sessionID,
+		ThreadID: ThreadIDFor(id),
+		Role:     spec.Role, Profile: spec.Profile, Stance: spec.Stance,
 		Depth: depth, Worktree: wt.Path, Isolated: wt.Isolated,
 		Serialized: wt.Serialized, BaseRev: wt.BaseRev,
-		Parent: intent.ParentID, Status: StatusPendingInit,
+		Parent: intent.ParentID, Status: StatusRequested,
 		TaskName:          strings.TrimSpace(intent.TaskName),
 		ExpectedOutput:    strings.TrimSpace(intent.ExpectedOutput),
 		OwnedPaths:        append([]string(nil), intent.OwnedPaths...),
@@ -258,6 +278,7 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	m.agents[id] = agent
 	m.worktrees[id] = &wt
 	m.active.Add(1)
+	m.ledger.ReservedSlots++
 	m.wait.Broadcast()
 	return agent, nil
 }
@@ -332,12 +353,22 @@ func (m *Manager) Close(agentID string) error {
 	if agent.Closed {
 		return nil
 	}
+	if occupiesSlot(agent.Status) {
+		if err := m.transitionLocked(
+			agent, StatusInterrupted, agent.TurnID, agent.LastMessage,
+			"parent", "agent closed while active", nil,
+		); err != nil {
+			return err
+		}
+	}
+	if err := m.transitionLocked(
+		agent, StatusClosed, agent.TurnID, agent.LastMessage,
+		"parent", "agent closed", nil,
+	); err != nil {
+		return err
+	}
 	agent.Closed = true
-	agent.Status = StatusShutdown
-	m.recordStatusLocked(agentID, StatusShutdown, "")
 	m.releaseClaimsLocked(agentID)
-	m.active.Add(-1)
-	m.wait.Broadcast()
 	wt := m.worktrees[agentID]
 	if wt == nil {
 		return nil
@@ -349,21 +380,38 @@ func (m *Manager) Close(agentID string) error {
 }
 
 type Message struct {
-	Sequence uint64          `json:"sequence"`
-	From     string          `json:"from"`
-	To       string          `json:"to"`
-	Body     json.RawMessage `json:"body"`
+	ID          string          `json:"id"`
+	Sequence    uint64          `json:"sequence"`
+	From        string          `json:"from"`
+	To          string          `json:"to"`
+	Kind        MessageKind     `json:"kind"`
+	PayloadRef  string          `json:"payload_ref,omitempty"`
+	Body        json.RawMessage `json:"body"`
+	TriggerTurn bool            `json:"trigger_turn,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+	DeliveredAt *time.Time      `json:"delivered_at,omitempty"`
 }
+
+type MessageKind string
+
+const (
+	MessageContext     MessageKind = "context"
+	MessageTask        MessageKind = "task"
+	MessageCompletion  MessageKind = "completion"
+	MessageInterrupt   MessageKind = "interrupt"
+	MessageIntegration MessageKind = "integration"
+)
 
 type Mailbox struct {
-	mu        sync.Mutex
-	seq       uint64
-	pending   []Message
-	closed    bool
-	onDeliver func(Message)
+	mu      sync.Mutex
+	seq     map[string]uint64
+	pending []Message
+	closed  bool
+	persist func(Message) error
+	deliver func(Message) error
 }
 
-func NewMailbox() *Mailbox { return &Mailbox{} }
+func NewMailbox() *Mailbox { return &Mailbox{seq: make(map[string]uint64)} }
 
 func (m *Mailbox) Close() {
 	m.mu.Lock()
@@ -378,34 +426,146 @@ func (m *Mailbox) Closed() bool {
 }
 
 func (m *Mailbox) Deliver(from, to string, body json.RawMessage) (Message, error) {
+	return m.Enqueue(Message{
+		From: from, To: to, Kind: MessageContext, Body: body,
+	})
+}
+
+func (m *Mailbox) Enqueue(message Message) (Message, error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		return Message{}, errors.New("mailbox closed")
 	}
-	m.seq++
-	msg := Message{Sequence: m.seq, From: from, To: to, Body: append(json.RawMessage(nil), body...)}
-	m.pending = append(m.pending, msg)
-	hook := m.onDeliver
-	m.mu.Unlock()
-	if hook != nil {
-		hook(msg)
+	if strings.TrimSpace(message.To) == "" {
+		m.mu.Unlock()
+		return Message{}, errors.New("mailbox target is required")
 	}
-	return msg, nil
+	if len(message.Body) == 0 || len(message.Body) > 16<<10 ||
+		!json.Valid(message.Body) {
+		m.mu.Unlock()
+		return Message{}, errors.New("mailbox body must be bounded JSON")
+	}
+	message = m.prepareLocked(message)
+	persist := m.persist
+	m.mu.Unlock()
+	if persist != nil {
+		if err := persist(message); err != nil {
+			return Message{}, err
+		}
+	}
+	m.mu.Lock()
+	m.pending = append(m.pending, message)
+	m.mu.Unlock()
+	return message, nil
+}
+
+func (m *Mailbox) Prepare(message Message) (Message, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed || strings.TrimSpace(message.To) == "" {
+		return Message{}, errors.New("mailbox is closed or target is missing")
+	}
+	return m.prepareLocked(message), nil
+}
+
+func (m *Mailbox) Accept(message Message) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if message.Sequence > m.seq[message.To] {
+		m.seq[message.To] = message.Sequence
+	}
+	message.Body = append(json.RawMessage(nil), message.Body...)
+	m.pending = append(m.pending, message)
+}
+
+func (m *Mailbox) prepareLocked(message Message) Message {
+	m.seq[message.To]++
+	message.Sequence = m.seq[message.To]
+	if message.ID == "" {
+		message.ID = fmt.Sprintf("message-%s-%d", message.To, message.Sequence)
+	}
+	if message.Kind == "" {
+		message.Kind = MessageContext
+	}
+	if message.CreatedAt.IsZero() {
+		message.CreatedAt = time.Now().UTC()
+	}
+	message.Body = append(json.RawMessage(nil), message.Body...)
+	return message
 }
 
 func (m *Mailbox) Drain(to string) []Message {
+	messages := m.Receive(to)
+	if err := m.Ack(messages); err != nil {
+		return nil
+	}
+	return messages
+}
+
+func (m *Mailbox) Receive(to string) []Message {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var kept, out []Message
-	for _, msg := range m.pending {
-		if msg.To == to {
-			out = append(out, msg)
-			continue
+	var out []Message
+	for _, message := range m.pending {
+		if to == "" || message.To == to {
+			message.Body = append(json.RawMessage(nil), message.Body...)
+			out = append(out, message)
 		}
-		kept = append(kept, msg)
 	}
-	m.pending = kept
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Sequence < out[j].Sequence })
 	return out
+}
+
+func (m *Mailbox) Pending(to string) []Message { return m.Receive(to) }
+
+func (m *Mailbox) Ack(messages []Message) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	delivered := time.Now().UTC()
+	for index := range messages {
+		messages[index].DeliveredAt = &delivered
+		if m.deliver != nil {
+			if err := m.deliver(messages[index]); err != nil {
+				return err
+			}
+		}
+	}
+	acknowledged := make(map[string]struct{}, len(messages))
+	for _, message := range messages {
+		acknowledged[message.ID] = struct{}{}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	kept := m.pending[:0]
+	for _, message := range m.pending {
+		if _, ok := acknowledged[message.ID]; !ok {
+			kept = append(kept, message)
+		}
+	}
+	m.pending = kept
+	return nil
+}
+
+func (m *Mailbox) Restore(messages []Message) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	existing := make(map[string]struct{}, len(m.pending))
+	for _, message := range m.pending {
+		existing[message.ID] = struct{}{}
+	}
+	for _, message := range messages {
+		if message.Sequence > m.seq[message.To] {
+			m.seq[message.To] = message.Sequence
+		}
+		if message.DeliveredAt == nil {
+			if _, ok := existing[message.ID]; ok {
+				continue
+			}
+			message.Body = append(json.RawMessage(nil), message.Body...)
+			m.pending = append(m.pending, message)
+			existing[message.ID] = struct{}{}
+		}
+	}
 }
