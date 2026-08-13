@@ -139,13 +139,16 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 	}
 	descriptors := registry.Descriptors(tool.VisibleModel)
 	names := make([]string, 0, len(descriptors))
-	var spawnDescriptor tool.Descriptor
+	var spawnDescriptor, waitDescriptor tool.Descriptor
 	for _, descriptor := range descriptors {
 		if descriptor.Name != "result_get" {
 			names = append(names, descriptor.Name)
 		}
 		if descriptor.Name == "spawn_agent" {
 			spawnDescriptor = descriptor
+		}
+		if descriptor.Name == "wait_agent" {
+			waitDescriptor = descriptor
 		}
 	}
 	want := []string{
@@ -154,6 +157,12 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 	}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("model-visible agent tools = %v, want %v", names, want)
+	}
+	if waitDescriptor.ParallelPolicy != tool.ParallelConcurrent {
+		t.Fatalf(
+			"wait_agent parallel policy = %q, want concurrent",
+			waitDescriptor.ParallelPolicy,
+		)
 	}
 	properties := spawnDescriptor.InputSchema["properties"].(map[string]any)
 	for _, field := range []string{"context_mode", "context_turns"} {
