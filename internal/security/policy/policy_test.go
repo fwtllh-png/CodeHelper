@@ -76,6 +76,11 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 	err = runtime.Authorize(t.Context(), invocation("file_write", "call-allow", `{"path":"notes.txt"}`))
 	assertDecisionCode(t, err, "")
 
+	runtime = DefaultRuntime(ModeAct, PermissionNever)
+	runtime.Repository = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
+	err = runtime.Authorize(t.Context(), invocation("file_write", "call-never", `{"path":"notes.txt"}`))
+	assertDecisionCode(t, err, "permission_denied")
+
 	runtime = DefaultRuntime(ModePlan, PermissionSuggest)
 	runtime.Repository = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
 	err = runtime.Authorize(t.Context(), invocation("file_write", "call-plan", `{"path":"notes.txt"}`))

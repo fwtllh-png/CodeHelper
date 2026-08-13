@@ -213,15 +213,15 @@ func (r *Runtime) Evaluate(invocation Invocation) Decision {
 	if err := modeDecision(r.Mode, invocation.Capability); err != nil {
 		return decisionFromError(err)
 	}
+	permissionAction, err := permissionDecision(r.Mode, r.Permission, invocation.Capability)
+	if err != nil {
+		return decisionFromError(err)
+	}
 	if repositoryAllow {
 		return ApplySurfaceTightening(
 			Decision{Action: ActionAllow},
 			ClassifySurface(invocation.Tool, invocation.Capability), r.Granular,
 		)
-	}
-	permissionAction, err := permissionDecision(r.Mode, r.Permission, invocation.Capability)
-	if err != nil {
-		return decisionFromError(err)
 	}
 	// A workspace-bound file_write still passes schema/resource validation,
 	// repository policy, read-before-write, journaling, and atomic commit. Under

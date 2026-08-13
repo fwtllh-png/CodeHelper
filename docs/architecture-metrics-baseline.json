@@ -44,9 +44,6 @@
         "production_lines": 7590,
         "options_fields": 70,
         "mutex_fields": 5
-      },
-      "relaxations": {
-        "production_lines": "Round 15 live fixes move Agent worktrees to Runtime state, preserve delegating read-only authority, and make Sandbox validation cancellation-aware"
       }
     },
     {
@@ -133,9 +130,6 @@
         "production_lines": 7543,
         "options_fields": 18,
         "mutex_fields": 5
-      },
-      "relaxations": {
-        "production_lines": "Round 15 live fixes expose authoritative pending-request identity and clear Approval/Input state through terminal outbox projection"
       }
     },
     {
@@ -224,9 +218,6 @@
         "production_lines": 3087,
         "options_fields": 10,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "Round 15 live fixes bind durable Child Threads to their owning Session and proxy Approval/Input decisions by authoritative Request ID"
       }
     },
     {

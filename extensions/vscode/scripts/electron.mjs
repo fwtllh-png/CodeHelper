@@ -86,6 +86,7 @@ try {
     "empty",
     "workspace",
     "accessibility",
+    ...(nativeWrapper === undefined ? [] : ["approval"]),
     ...(nativeWrapper === undefined ? [] : ["native"]),
     ...(nativeWrapper === undefined ? [] : ["multi"]),
     ...(subagentWrapper === undefined ? [] : ["subagent"]),
@@ -100,6 +101,7 @@ try {
   for (const scenario of scenarios) {
     if (scenario !== "empty") {
       const native = scenario === "native" ||
+        scenario === "approval" ||
         scenario === "multi" ||
         scenario === "subagent";
       const binaryPath = scenario === "subagent"
@@ -118,6 +120,7 @@ try {
           : {}),
       };
       const scenarioWorkspace = scenario === "native"
+        || scenario === "approval"
         ? nativeWorkspace
         : scenario === "subagent"
           ? subagentWorkspace
@@ -136,7 +139,8 @@ try {
           "",
         ].join("\n");
       await writeFile(join(scenarioWorkspace, "context.ts"), content);
-      if (scenario === "native" || scenario === "subagent") {
+      if (scenario === "native" || scenario === "approval" ||
+        scenario === "subagent") {
         await execFile("git", ["init", "--quiet"], { cwd: scenarioWorkspace });
         await execFile(
           "git",
@@ -183,6 +187,7 @@ try {
           : [scenario === "multi"
             ? multiWorkspace
             : scenario === "native"
+              || scenario === "approval"
               ? nativeWorkspace
               : scenario === "subagent" ? subagentWorkspace : workspace]),
         "--user-data-dir", join(hostRoot, "data"),
@@ -307,6 +312,8 @@ function scenarioJourneys(scenario) {
       ];
     case "accessibility":
       return ["forced-colors", "ime.composition"];
+    case "approval":
+      return ["approval-verification-receipt"];
     case "native":
       return [
         "runtime.streaming-stop",

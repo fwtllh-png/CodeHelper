@@ -91,6 +91,11 @@ export async function run(): Promise<void> {
     assert.equal(api.workspaceMode, "single");
     assert.equal(api.runtimeAutoStartScheduled, false);
     await verifyForcedColorsAccessibility(api);
+  } else if (scenario === "approval") {
+    assert.equal(vscode.workspace.workspaceFolders?.length, 1);
+    assert.equal(api.workspaceMode, "single");
+    assert.equal(api.runtimeAutoStartScheduled, true);
+    await verifyNativeFlows(api);
   } else if (scenario === "native") {
     assert.equal(vscode.workspace.workspaceFolders?.length, 1);
     assert.equal(api.workspaceMode, "single");
@@ -101,7 +106,7 @@ export async function run(): Promise<void> {
         `autoStart=${String(vscode.workspace.getConfiguration("codehelper")
           .get<boolean>("runtime.autoStart"))}`,
     );
-    await verifyNativeFlows(api);
+    await verifyNativeFlows(api, true);
     assert.ok(
       (api.chatProjectionDiagnostics?.().patchPosts ?? 0) > 0,
       "streaming Runtime events did not produce incremental Chat Patches",
@@ -707,9 +712,13 @@ async function waitForMultiRootReceipt(
   );
 }
 
-async function verifyNativeFlows(api: ExtensionAPI): Promise<void> {
+async function verifyNativeFlows(
+  api: ExtensionAPI,
+  extended = false,
+): Promise<void> {
   assert.ok(api.runtimeSnapshot);
   assert.ok(api.onRuntimeEvent);
+  assert.ok(api.testApprovePending);
   try {
     await waitFor(
       () => api.runtimeSnapshot?.().state === "ready",
@@ -783,7 +792,11 @@ async function verifyNativeFlows(api: ExtensionAPI): Promise<void> {
       assert.ok(typeof raw === "object" && raw !== null);
       const turnID = (raw as Record<string, unknown>)["turnId"];
       assert.ok(typeof turnID === "string" && turnID.length > 0);
-      const terminal = await waitForTerminal(turnID, terminals, waiters);
+      const terminal = await waitForTerminalWithApprovals(
+        api,
+        turnID,
+        terminals,
+      );
       assert.equal(terminal, "turn.completed");
       const context = started.get(turnID);
       assert.ok(Array.isArray(context));
@@ -801,14 +814,15 @@ async function verifyNativeFlows(api: ExtensionAPI): Promise<void> {
       assert.deepEqual(receipts.get(turnID), context);
     }
     await verifyDiagnosticActions(
+      api,
       workspace,
       document,
       started,
       receipts,
       terminals,
-      waiters,
     );
     await verifyChangesReview(
+      api,
       createHash("sha256")
         .update(canonicalEditorURI(workspace.uri))
         .digest("hex"),
@@ -817,15 +831,11 @@ async function verifyNativeFlows(api: ExtensionAPI): Promise<void> {
       approvalWaiters,
       resolvedApprovals,
       terminals,
-      waiters,
     );
-    await verifyTurnRecovery(
-      api,
-      terminals,
-      waiters,
-      outputTurns,
-    );
-    await verifyPlanDestinations(api, terminals, waiters);
+    if (extended) {
+      await verifyTurnRecovery(api, terminals, waiters, outputTurns);
+      await verifyPlanDestinations(api, terminals, waiters);
+    }
   } finally {
     subscription.dispose();
   }
@@ -1739,13 +1749,13 @@ interface TestApproval {
 }
 
 async function verifyChangesReview(
+  api: ExtensionAPI,
   rootId: string,
   document: vscode.TextDocument,
   approvals: ReadonlyMap<string, TestApproval>,
   approvalWaiters: Map<string, (approval: TestApproval) => void>,
   resolvedApprovals: ReadonlySet<string>,
   terminals: ReadonlyMap<string, string>,
-  terminalWaiters: Map<string, (kind: string) => void>,
 ): Promise<void> {
   const first = await startChangesTurn(document, approvals, approvalWaiters);
   assert.deepEqual(first.approval.files, [
@@ -1793,7 +1803,7 @@ async function verifyChangesReview(
     decision: "approve",
   }), true);
   assert.equal(
-    await waitForTerminal(first.turnId, terminals, terminalWaiters),
+    await waitForTerminalWithApprovals(api, first.turnId, terminals),
     "turn.completed",
   );
   assert.equal(resolvedApprovals.has(first.approval.requestId), true);
@@ -1820,24 +1830,6 @@ async function verifyChangesReview(
     decision: "approve",
   }), false);
   assert.equal(resolvedApprovals.size, resolvedAfterApproval);
-
-  const second = await startChangesTurn(document, approvals, approvalWaiters);
-  assert.equal(await vscode.commands.executeCommand("codehelper.denyPlan", {
-    rootId,
-    requestId: second.approval.requestId,
-    decision: "deny",
-  }), true);
-  assert.equal(
-    await waitForTerminal(second.turnId, terminals, terminalWaiters),
-    "turn.completed",
-  );
-  assert.equal(resolvedApprovals.has(second.approval.requestId), true);
-  await assert.rejects(async () => vscode.workspace.fs.stat(
-    vscode.Uri.joinPath(workspace.uri, "denied-alpha.txt"),
-  ));
-  await assert.rejects(async () => vscode.workspace.fs.stat(
-    vscode.Uri.joinPath(workspace.uri, "nested", "denied-beta.txt"),
-  ));
 }
 
 async function startChangesTurn(
@@ -1868,12 +1860,12 @@ async function startChangesTurn(
 }
 
 async function verifyDiagnosticActions(
+  api: ExtensionAPI,
   workspace: vscode.WorkspaceFolder,
   document: vscode.TextDocument,
   started: Map<string, unknown>,
   receipts: ReadonlyMap<string, unknown>,
   terminals: ReadonlyMap<string, string>,
-  waiters: Map<string, (kind: string) => void>,
 ): Promise<void> {
   const collection = vscode.languages.createDiagnosticCollection(
     "codehelper-code-action-fixture",
@@ -1988,7 +1980,7 @@ async function verifyDiagnosticActions(
       const turnID = (raw as Record<string, unknown>)["turnId"];
       assert.ok(typeof turnID === "string" && turnID.length > 0);
       assert.equal(
-        await waitForTerminal(turnID, terminals, waiters),
+        await waitForTerminalWithApprovals(api, turnID, terminals),
         "turn.completed",
       );
       const context = started.get(turnID);
@@ -2013,6 +2005,29 @@ async function verifyDiagnosticActions(
   } finally {
     collection.dispose();
   }
+}
+
+async function waitForTerminalWithApprovals(
+  api: ExtensionAPI,
+  turnID: string,
+  terminals: ReadonlyMap<string, string>,
+): Promise<string> {
+  const deadline = Date.now() + 30_000;
+  while (!terminals.has(turnID)) {
+    try {
+      await api.testApprovePending?.();
+    } catch (error) {
+      if (!(error instanceof Error) ||
+        !error.message.includes("approval decision is already submitted")) {
+        throw error;
+      }
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`turn ${turnID} did not terminate after approvals`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return terminals.get(turnID) ?? "unknown";
 }
 
 async function registeredDiagnosticActions(

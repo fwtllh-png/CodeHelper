@@ -82,9 +82,6 @@ export function approvalDialogContent(
     approval.reason;
   const command = stringField(input, "command");
   const resources = summarizeResources(approval.resources);
-  // #region debug-point A-C-D:approval-dialog-input-shape
-  void fetch("http://127.0.0.1:7777/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: "approval-content-formatting", runId: "post-fix", hypothesisId: "A-C-D", location: "extensions/vscode/src/chat/approval-summary.ts:approvalDialogContent", msg: "[DEBUG] Approval dialog input shape", data: { tool: approval.tool, argumentsChars: approval.arguments.length, parsed: input !== undefined, changes: Array.isArray(input?.["changes"]) ? input["changes"].length : 0, hasEditPlan: approval.editPlan !== undefined, resources: approval.resources.length, presentationBranch: fileApply !== undefined ? "file-apply" : command === undefined ? "generic-request" : "command" }, ts: Date.now() }) }).catch(() => {});
-  // #endregion
   const title = fileApply !== undefined
     ? `file_apply: ${fileApply.label}`
     : purpose === undefined

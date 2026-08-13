@@ -1,5 +1,3 @@
-data: {"choices":[{"delta":{"content":"diagnostic fix planned"},"finish_reason":null}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":40,"completion_tokens":3}}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_diagnostic_fix","function":{"name":"file_write","arguments":"{\"path\":\"diagnostic-fix.txt\",\"content\":\"diagnostic fix applied\\n\"}"}}]},"finish_reason":"tool_calls"}]}
 
 data: [DONE]
