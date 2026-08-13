@@ -66,11 +66,12 @@ type Capabilities struct {
 }
 
 type Pricing struct {
-	InputPerMillion  float64    `json:"input_per_million"`
-	OutputPerMillion float64    `json:"output_per_million"`
-	Currency         string     `json:"currency"`
-	Known            bool       `json:"known"`
-	Provenance       Provenance `json:"provenance"`
+	InputPerMillion       float64    `json:"input_per_million"`
+	CachedInputPerMillion *float64   `json:"cached_input_per_million,omitempty"`
+	OutputPerMillion      float64    `json:"output_per_million"`
+	Currency              string     `json:"currency"`
+	Known                 bool       `json:"known"`
+	Provenance            Provenance `json:"provenance"`
 }
 
 type MetadataProvenance struct {
@@ -204,6 +205,10 @@ func validateProvider(provider Provider) error {
 		}
 		if model.Pricing.Known && model.Pricing.Currency == "" {
 			return fmt.Errorf("provider %q model %q known pricing requires currency", provider.ID, key)
+		}
+		if cached := model.Pricing.CachedInputPerMillion; cached != nil &&
+			(!model.Pricing.Known || *cached < 0) {
+			return fmt.Errorf("provider %q model %q has invalid cached input pricing", provider.ID, key)
 		}
 		if !model.Pricing.Known && (model.Pricing.InputPerMillion != 0 || model.Pricing.OutputPerMillion != 0) {
 			return fmt.Errorf("provider %q model %q unknown pricing must not set dollar rates", provider.ID, key)

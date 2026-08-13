@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "status": "accepted",
+  "baseline_commit": "940a158302b276b5ab94387c5ff1102cdba3ebf3",
+  "instrumentation_behavior_delta": 0,
+  "prompt_digest": "sha256:8b61b8edfa5f01e3cebb659eb994a3ade736b0abd71c7a4df4d80dc069e51b1e",
+  "fixture_digest": "d1cee21886e746f1287bd1c9e7dc43dd4cd4718f300808d76dfb7c492890fe6b",
+  "hermetic": {
+    "runs": 5,
+    "passed": 5,
+    "input_tokens_p50": 147770,
+    "input_tokens_p90": 147770,
+    "input_tokens_mad": 0,
+    "uncached_input_tokens_p50": 110832,
+    "cached_share_basis_points_p50": 2499,
+    "output_tokens_p50": 912,
+    "sample_count_p50": 8,
+    "estimator_error_p95": 0.04004004004004004,
+    "context_p50": {
+      "stable": 22456,
+      "history_user": 1104,
+      "history_assistant": 2455,
+      "history_tool": 6190,
+      "history_other": 0,
+      "dynamic": 22090,
+      "tool_definitions": 81224,
+      "provider_framing": 16267,
+      "continuation": 0
+    }
+  },
+  "live": {
+    "provider": "deepseek-v4-flash",
+    "model": "deepseek-v4-flash",
+    "runs": 10,
+    "passed": 10,
+    "input_tokens_p50": 394163,
+    "input_tokens_p90": 621434,
+    "input_tokens_mad": 45542,
+    "uncached_input_tokens_p50": 64520,
+    "cached_input_tokens_p50": 323456,
+    "cached_share_basis_points_p50": 8026,
+    "output_tokens_p50": 11964,
+    "reasoning_tokens_p50": 7838,
+    "sample_count_p50": 12,
+    "duration_ms_p50": 113047,
+    "cost_known": false,
+    "cost_upper_bound_microunits_p50": 122454,
+    "estimator_error_p95": 0.03153110944527736,
+    "context_p50": {
+      "stable": 33684,
+      "history_user": 1865,
+      "history_assistant": 130145,
+      "history_tool": 27574,
+      "history_other": 0,
+      "dynamic": 33158,
+      "tool_definitions": 121836,
+      "provider_framing": 42440,
+      "continuation": 0
+    },
+    "sample_reasons": {
+      "normal": 112,
+      "tool_failure_repair": 9,
+      "declaration_repair": 4
+    }
+  },
+  "architecture_size": {
+    "base_production_lines": 27955,
+    "head_production_lines": 27946,
+    "net_production_lines": -9
+  }
+}

@@ -18,6 +18,7 @@ LDFLAGS := -s -w \
 	experience-electron-baseline host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-eval multi-agent-performance \
+	token-bench token-bench-live token-bench-compare \
 	architecture-ratchet architecture-size-budget architecture-freeze \
 	book-navigation command-docs command-docs-check \
 	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
@@ -56,6 +57,14 @@ TEST_GOPATH ?= $(shell $(GO) env GOPATH)
 TEST_GOMODCACHE ?= $(shell $(GO) env GOMODCACHE)
 TEST_GOCACHE ?= $(shell $(GO) env GOCACHE)
 UPGRADE_BASELINE_REPORT ?= docs/upgrade-baseline.json
+TOKEN_BENCH_ARTIFACT ?= .tmp/token-efficiency/current
+TOKEN_BENCH_RUNS ?= 5
+TOKEN_BENCH_BASELINE ?=
+TOKEN_BENCH_CANDIDATE ?=
+TOKEN_BENCH_COMPARISON ?= .tmp/token-efficiency/comparison.json
+TOKEN_BENCH_LIVE_CONFIG ?=
+TOKEN_BENCH_BINARY ?= bin/codehelper
+TOKEN_BENCH_MAX_STEPS ?= 32
 TEST_HOME_ENV := HOME='$(TEST_HOME)' GOPATH='$(TEST_GOPATH)' \
 	GOMODCACHE='$(TEST_GOMODCACHE)' GOCACHE='$(TEST_GOCACHE)'
 PLATFORM_CAPABILITY_ARGS := --available-on darwin --available-on linux
@@ -467,6 +476,25 @@ benchmark-v2: benchmark-v2-check bench
 	$(GO) test -count=1 \
 		-run 'TestBinaryInterop(ReplayPagesMatchLiveStream|RestartLoadsSessionAndReplays)' \
 		./internal/host/runtimeapi/acp
+
+token-bench:
+	$(GO) run ./scripts/tokenbench run \
+		--runs '$(TOKEN_BENCH_RUNS)' \
+		--output '$(TOKEN_BENCH_ARTIFACT)'
+
+token-bench-live: build
+	$(GO) run ./scripts/tokenbench live \
+		--binary '$(TOKEN_BENCH_BINARY)' \
+		--config '$(TOKEN_BENCH_LIVE_CONFIG)' \
+		--runs '$(TOKEN_BENCH_RUNS)' \
+		--max-steps '$(TOKEN_BENCH_MAX_STEPS)' \
+		--output '$(TOKEN_BENCH_ARTIFACT)'
+
+token-bench-compare:
+	$(GO) run ./scripts/tokenbench compare \
+		--baseline '$(TOKEN_BENCH_BASELINE)' \
+		--candidate '$(TOKEN_BENCH_CANDIDATE)' \
+		--output '$(TOKEN_BENCH_COMPARISON)'
 
 # upgrade-baseline writes the versioned coding baseline. The report preserves
 # failed task evidence and exits non-zero unless every declared task passes.

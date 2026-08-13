@@ -11,6 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -516,6 +517,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		engine: e,
 		kernel: kernel,
 	}
+	sampleReason := promptcontext.SampleNormal
 	invalidateCompletion := func(reason string) error {
 		current := kernel.completion()
 		if current == nil || !current.Accepted {
@@ -578,14 +580,16 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			}
 			return send(state, event)
 		}
-		blocks, calls, usage, estimatedInput, err := e.modelStep(
+		blocks, calls, usage, _, err := e.modelStep(
 			ctx,
 			&transaction,
 			result.Usage,
+			sampleReason,
 			&modelOutputContinued,
 			&pendingInputInjected,
 			modelSend,
 		)
+		sampleReason = promptcontext.SampleNormal
 		if finishErr := kernel.finishModelSample(
 			sampleID,
 			blocksText(blocks),
@@ -606,9 +610,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		result.Usage.Add(usage)
 		sampled.Add(usage)
-		if estimatedInput > result.EstimatedInputTokens {
-			result.EstimatedInputTokens = estimatedInput
-		}
 		text := blocksText(blocks)
 		result.Reasoning += blocksReasoning(blocks)
 		result.ReasoningSignature += blocksSignature(blocks)
@@ -672,12 +673,14 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					return result, err
 				}
 				transaction = append(transaction, toolFailureCompletionFeedback(e.turn))
+				sampleReason = promptcontext.SampleToolFailureRepair
 				continue
 			case turnkernel.StepActionRepairCompletion:
 				if err := kernel.discardOutput("completion_repair"); err != nil {
 					return result, err
 				}
 				transaction = append(transaction, completionFeedback(e.turn))
+				sampleReason = promptcontext.SampleCompletionRepair
 				continue
 			case turnkernel.StepActionRepairWorkspace:
 				if err := kernel.discardOutput("workspace_change_repair"); err != nil {
@@ -687,6 +690,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					transaction,
 					workspaceChangeRequiredFeedback(e.turn),
 				)
+				sampleReason = promptcontext.SampleWorkspaceRepair
 				continue
 			case turnkernel.StepActionRepairDeclaration:
 				if err := kernel.discardOutput("completion_declaration_repair"); err != nil {
@@ -696,6 +700,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					transaction,
 					completionDeclarationFeedback(e.turn),
 				)
+				sampleReason = promptcontext.SampleDeclarationRepair
 				continue
 			case turnkernel.StepActionVerify:
 				outcome, err = gate.evaluate(ctx, send)
@@ -711,6 +716,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					transaction = append(
 						transaction, verifyFeedback(outcome.receipt, e.turn),
 					)
+					sampleReason = promptcontext.SampleVerificationRepair
 					continue
 				case verifyActionFailed:
 					return result, protocol.NewProblem(
@@ -736,10 +742,10 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			}
 			pricing := e.activeRoute().Model().Pricing
 			cost := estimateCost(pricing, sampled) + toolSpent.cost
-			costKnown := pricing.Known && (toolSpent.samples == 0 || toolSpent.known)
+			costKnown := pricingKnown(pricing, sampled) &&
+				(toolSpent.samples == 0 || toolSpent.known)
 			result.CostUSD = cost
 
-			result.InputTokenDelta = int64(sampled.InputTokens) - int64(result.EstimatedInputTokens)
 			result.Text, result.State = finalText, Completed
 			journalRevert = outcome.action == verifyActionReverted
 			if e.journal == nil && journalRevert {
@@ -770,11 +776,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			}
 			if err := send(Completed, Event{
 				Text: finalText, Usage: &result.Usage, CostUSD: cost,
-				CostKnown:            costKnown,
-				EstimatedInputTokens: result.EstimatedInputTokens,
-				InputTokenDelta:      result.InputTokenDelta,
-				Verification:         outcome.receipt,
-				Completion:           kernel.completionDeclaration(),
+				CostKnown: costKnown, Verification: outcome.receipt,
+				Completion: kernel.completionDeclaration(),
 			}); err != nil {
 				contextFinalized = false
 				return result, err

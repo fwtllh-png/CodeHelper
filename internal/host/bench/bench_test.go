@@ -52,6 +52,26 @@ func TestCodingBenchmarkSuite(t *testing.T) {
 	}
 }
 
+func TestTokenEfficiencyBenchmark(t *testing.T) {
+	task, err := bench.LoadTask(filepath.Join(suiteRoot(), "token-efficiency"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := bench.RunTask(t.Context(), task)
+	if !result.Passed {
+		t.Fatalf("token efficiency fixture failed: %+v", result)
+	}
+	if len(result.Samples) != 8 {
+		t.Fatalf("samples=%d want 8", len(result.Samples))
+	}
+	for _, sample := range result.Samples {
+		if sample.InputTokens == 0 || sample.Context == nil ||
+			sample.Context.EstimatedTokens == 0 {
+			t.Fatalf("sample has no token attribution: %+v", sample)
+		}
+	}
+}
+
 // TestBenchmarkAssertionsFail guards the harness itself: a task whose
 // expectations do not match reality must be reported as failed, otherwise the
 // gate would pass vacuously.

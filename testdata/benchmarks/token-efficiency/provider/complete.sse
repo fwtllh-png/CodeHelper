@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"Implemented nested relative includes, stable first-seen deduplication, and include cycle errors containing the cycle path. Added focused include-cycle coverage. Verification: go test ./... passed."},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":{{request_input_tokens}},"completion_tokens":38,"prompt_tokens_details":{"cached_tokens":{{request_cached_tokens}}}}}
+
+data: [DONE]

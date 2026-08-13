@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_write_test","function":{"name":"file_write","arguments":"{\"path\":\"config/loader_cycle_test.go\",\"content\":\"package config\\n\\nimport (\\n\\t\\\"path/filepath\\\"\\n\\t\\\"strings\\\"\\n\\t\\\"testing\\\"\\n)\\n\\nfunc TestLoadReportsIncludeCyclePath(t *testing.T) {\\n\\troot := t.TempDir()\\n\\ta := filepath.Join(root, \\\"a.conf\\\")\\n\\tb := filepath.Join(root, \\\"nested\\\", \\\"b.conf\\\")\\n\\twriteFixture(t, a, \\\"include nested/b.conf\\\\n\\\")\\n\\twriteFixture(t, b, \\\"include ../a.conf\\\\n\\\")\\n\\n\\t_, err := Load(a)\\n\\tif err == nil {\\n\\t\\tt.Fatal(\\\"Load() succeeded, want include cycle error\\\")\\n\\t}\\n\\tmessage := err.Error()\\n\\tfor _, want := range []string{\\\"include cycle\\\", a, b} {\\n\\t\\tif !strings.Contains(message, want) {\\n\\t\\t\\tt.Fatalf(\\\"Load() error = %q, want %q\\\", message, want)\\n\\t\\t}\\n\\t}\\n}\\n\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":{{request_input_tokens}},"completion_tokens":260,"prompt_tokens_details":{"cached_tokens":{{request_cached_tokens}}}}}
+
+data: [DONE]

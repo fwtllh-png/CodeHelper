@@ -3905,7 +3905,13 @@
               "original_bytes": {
                 "type": "integer"
               },
+              "original_tokens": {
+                "type": "integer"
+              },
               "retained_bytes": {
+                "type": "integer"
+              },
+              "retained_tokens": {
                 "type": "integer"
               },
               "truncated": {
@@ -4958,6 +4964,54 @@
       "properties": {
         "cached_tokens": {
           "type": "integer"
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "continuation_tokens": {
+              "type": "integer"
+            },
+            "dynamic_tokens": {
+              "type": "integer"
+            },
+            "estimated_tokens": {
+              "type": "integer"
+            },
+            "history_assistant_tokens": {
+              "type": "integer"
+            },
+            "history_other_tokens": {
+              "type": "integer"
+            },
+            "history_tool_tokens": {
+              "type": "integer"
+            },
+            "history_user_tokens": {
+              "type": "integer"
+            },
+            "message_count": {
+              "type": "integer"
+            },
+            "provider_framing_tokens": {
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "stable_tokens": {
+              "type": "integer"
+            },
+            "tool_definition_count": {
+              "type": "integer"
+            },
+            "tool_definition_tokens": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false
         },
         "cost_known": {
           "type": "boolean"

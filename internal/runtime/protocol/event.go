@@ -174,29 +174,35 @@ func (d *CitationData) validate() error {
 // UsageData is one provider call's cumulative usage. Aggregators retain the
 // latest event per Sample and sum across Samples to avoid double-counting.
 type UsageData struct {
-	// Sample is which provider call within the turn these counts belong to,
-	// counting from 1. Zero means the producer did not say, which is only true
-	// of events recorded before samples existed.
-	Sample uint32 `json:"sample"`
-	// Provider and Model name who answered this call. They are on the event
-	// rather than looked up per turn because one turn can call more than one
-	// model.
-	Provider string `json:"provider,omitempty"`
-	Model    string `json:"model,omitempty"`
+	Sample   uint32             `json:"sample"`
+	Provider string             `json:"provider,omitempty"`
+	Model    string             `json:"model,omitempty"`
+	Context  *SampleContextData `json:"context,omitempty"`
 
-	// CachedTokens is part of InputTokens and ReasoningTokens part of
-	// OutputTokens; neither is an addition to the total beside it.
 	InputTokens     uint64 `json:"input_tokens"`
 	OutputTokens    uint64 `json:"output_tokens"`
 	ReasoningTokens uint64 `json:"reasoning_tokens"`
 	CachedTokens    uint64 `json:"cached_tokens,omitempty"`
-	// CostMicrounits is the call cost in USD millionths, meaningful only when
-	// CostKnown is true.
-	CostMicrounits uint64 `json:"cost_microunits,omitempty"`
-	// CostKnown reports whether the model has pricing metadata at all. It is
-	// what separates a free call from an unpriced one: both carry zero cost,
-	// and only this says which is which.
-	CostKnown bool `json:"cost_known"`
+	CostMicrounits  uint64 `json:"cost_microunits,omitempty"`
+	CostKnown       bool   `json:"cost_known"`
+}
+
+// SampleContextData is low-cardinality token attribution for one provider call.
+// It contains counts only, never prompt or tool content.
+type SampleContextData struct {
+	Reason                 string `json:"reason"`
+	StableTokens           uint64 `json:"stable_tokens,omitempty"`
+	HistoryUserTokens      uint64 `json:"history_user_tokens,omitempty"`
+	HistoryAssistantTokens uint64 `json:"history_assistant_tokens,omitempty"`
+	HistoryToolTokens      uint64 `json:"history_tool_tokens,omitempty"`
+	HistoryOtherTokens     uint64 `json:"history_other_tokens,omitempty"`
+	DynamicTokens          uint64 `json:"dynamic_tokens,omitempty"`
+	ContinuationTokens     uint64 `json:"continuation_tokens,omitempty"`
+	ToolDefinitionTokens   uint64 `json:"tool_definition_tokens,omitempty"`
+	ProviderFramingTokens  uint64 `json:"provider_framing_tokens,omitempty"`
+	EstimatedTokens        uint64 `json:"estimated_tokens,omitempty"`
+	MessageCount           int    `json:"message_count,omitempty"`
+	ToolDefinitionCount    int    `json:"tool_definition_count,omitempty"`
 }
 
 func (*UsageData) eventKind() EventKind { return EventUsage }

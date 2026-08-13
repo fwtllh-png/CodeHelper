@@ -24,8 +24,9 @@ architecture and delivery stages are defined in the
 5. [Architecture](./architecture.md)
 6. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
 7. [Approval architecture upgrade](./approval-architecture-upgrade.md)
-8. [Security model](./security.md)
-9. [Local development and scripts](./development.md)
+8. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
+9. [Security model](./security.md)
+10. [Local development and scripts](./development.md)
 
 ### I want to use CodeHelper
 
@@ -51,14 +52,15 @@ architecture and delivery stages are defined in the
 1. [Architecture](./architecture.md)
 2. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
 3. [Approval architecture upgrade](./approval-architecture-upgrade.md)
-4. [Security model](./security.md)
-5. [Local development and scripts](./development.md)
-6. [Agent guide](./agent-guide.md)
-7. [TUI and VS Code experience contract](./experience.md)
-8. [VS Code Runtime monitoring](./runtime-monitoring.md)
-9. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-10. [Documentation governance](./documentation-governance.md)
-11. [Roadmap](./roadmap.md)
+4. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
+5. [Security model](./security.md)
+6. [Local development and scripts](./development.md)
+7. [Agent guide](./agent-guide.md)
+8. [TUI and VS Code experience contract](./experience.md)
+9. [VS Code Runtime monitoring](./runtime-monitoring.md)
+10. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+11. [Documentation governance](./documentation-governance.md)
+12. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 

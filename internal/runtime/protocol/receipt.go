@@ -90,10 +90,12 @@ type ReceiptContextSection struct {
 	Kind string `json:"kind"`
 	// Digest identifies the section before truncation, so two turns carrying the
 	// same section can be recognized as carrying the same bytes.
-	Digest        string `json:"digest,omitempty"`
-	OriginalBytes int    `json:"original_bytes"`
-	RetainedBytes int    `json:"retained_bytes"`
-	Truncated     bool   `json:"truncated,omitempty"`
+	Digest         string `json:"digest,omitempty"`
+	OriginalBytes  int    `json:"original_bytes"`
+	RetainedBytes  int    `json:"retained_bytes"`
+	OriginalTokens uint64 `json:"original_tokens,omitempty"`
+	RetainedTokens uint64 `json:"retained_tokens,omitempty"`
+	Truncated      bool   `json:"truncated,omitempty"`
 	// TruncationReason is byte_budget or token_budget when Truncated is set.
 	TruncationReason string `json:"truncation_reason,omitempty"`
 }

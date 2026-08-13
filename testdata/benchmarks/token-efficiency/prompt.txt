@@ -1,0 +1,12 @@
+Fix the config loader in this repository.
+
+Requirements:
+1. Resolve nested include directives relative to the file that declares them.
+2. Preserve the first-seen order while removing duplicate entries.
+3. Return a clear error for include cycles and include the cycle path.
+4. Keep the public API backward compatible.
+5. Add or update focused tests for the changed behavior.
+6. Run the relevant tests and report the exact verification performed.
+
+Do not modify unrelated files. Complete the implementation, verification, and
+final summary in this turn.

@@ -141,30 +141,3 @@ func summaryLine(message provider.Message) string {
 	}
 	return line
 }
-
-// ContextBudget reports how many bytes of history the thread is carrying and the
-// threshold that triggers the next compaction, so a host can show how close the
-// thread is to losing the transcript the model is relying on.
-//
-// Like the other receipt accessors it runs unlocked, on the turn goroutine that
-// already holds the engine: the receipt is assembled inside the turn, so taking
-// the lock here would deadlock against it.
-func (e *Engine) ContextBudget() (int, int) {
-	if e == nil {
-		return 0, 0
-	}
-	size := 0
-	for _, message := range e.history {
-		size += messageSize(message)
-	}
-	return size, e.options.MaxContextBytes
-}
-
-// Compactions is how many times this thread's history has been replaced by a
-// summary. It shares ContextBudget's calling convention.
-func (e *Engine) Compactions() int {
-	if e == nil {
-		return 0
-	}
-	return e.compactionTotal()
-}

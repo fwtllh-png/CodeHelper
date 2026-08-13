@@ -76,7 +76,8 @@ func fixtureModel(id string) *model.Model {
 			Vision: true, ImageInput: true, PromptCache: true,
 		},
 		Pricing: model.Pricing{
-			Currency: "USD", Known: true, Provenance: model.ProvenanceFixture,
+			CachedInputPerMillion: new(float64),
+			Currency:              "USD", Known: true, Provenance: model.ProvenanceFixture,
 		},
 		MetadataProvenance: model.MetadataProvenance{
 			CanonicalID: model.ProvenanceFixture, WireID: model.ProvenanceFixture,

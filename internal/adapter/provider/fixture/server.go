@@ -27,6 +27,7 @@ type Config struct {
 	Streams                  []string           `json:"streams,omitempty"`
 	Routes                   []Route            `json:"routes,omitempty"`
 	StreamDelayMS            int                `json:"stream_delay_ms,omitempty"`
+	CachedInputRatio         float64            `json:"cached_input_ratio,omitempty"`
 }
 
 type Route struct {
@@ -71,6 +72,9 @@ func Start(directory string) (*Server, error) {
 	}
 	if config.StreamDelayMS < 0 {
 		return nil, errors.New("provider fixture stream_delay_ms must not be negative")
+	}
+	if config.CachedInputRatio < 0 || config.CachedInputRatio > 1 {
+		return nil, errors.New("provider fixture cached_input_ratio must be between zero and one")
 	}
 	switch config.Protocol {
 	case model.ProtocolOpenAIChat, model.ProtocolOpenAIResponses, model.ProtocolAnthropic:
@@ -147,7 +151,7 @@ func Start(directory string) (*Server, error) {
 				}
 			}
 		}
-		stream, expandErr := expandStream(selected[index], payload)
+		stream, expandErr := expandStream(selected[index], payload, config.CachedInputRatio)
 		if expandErr != nil {
 			http.Error(writer, expandErr.Error(), http.StatusConflict)
 			return
@@ -176,8 +180,13 @@ func Start(directory string) (*Server, error) {
 	return result, nil
 }
 
-func expandStream(stream []byte, payload map[string]any) ([]byte, error) {
+func expandStream(stream []byte, payload map[string]any, cachedRatio float64) ([]byte, error) {
 	rendered := string(stream)
+	inputTokens := estimateInputTokens(payload)
+	rendered = strings.NewReplacer(
+		"{{request_input_tokens}}", fmt.Sprint(inputTokens),
+		"{{request_cached_tokens}}", fmt.Sprint(uint64(float64(inputTokens)*cachedRatio)),
+	).Replace(rendered)
 	for token, pattern := range map[string]*regexp.Regexp{
 		"{{agent_id}}":       agentIDPattern,
 		"{{preview_digest}}": previewDigestPattern,
@@ -192,6 +201,17 @@ func expandStream(stream []byte, payload map[string]any) ([]byte, error) {
 		rendered = strings.ReplaceAll(rendered, token, value)
 	}
 	return []byte(rendered), nil
+}
+
+func estimateInputTokens(payload map[string]any) uint64 {
+	visible := make(map[string]any)
+	for _, key := range []string{"input", "messages", "system", "tools"} {
+		if value, ok := payload[key]; ok {
+			visible[key] = value
+		}
+	}
+	encoded, _ := json.Marshal(visible)
+	return uint64((len(encoded) + 3) / 4)
 }
 
 func latestMatch(value any, pattern *regexp.Regexp) (string, bool) {

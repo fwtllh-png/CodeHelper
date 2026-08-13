@@ -402,9 +402,7 @@ func (r *receiptRecorder) receiptBudget(spend agentengine.BudgetSnapshot) *proto
 	}
 }
 
-// contextSections renders the prompt context receipts for the audit record. An
-// empty section is reported too: knowing a partition carried nothing is what
-// distinguishes it from a partition that was never assembled.
+// contextSections retains empty partitions so assembled-empty differs from absent.
 func contextSections(receipts []promptcontext.Receipt) []protocol.ReceiptContextSection {
 	if len(receipts) == 0 {
 		return nil
@@ -414,6 +412,7 @@ func contextSections(receipts []promptcontext.Receipt) []protocol.ReceiptContext
 		sections = append(sections, protocol.ReceiptContextSection{
 			Kind: receipt.Kind, Digest: receipt.Digest,
 			OriginalBytes: receipt.OriginalBytes, RetainedBytes: receipt.RetainedBytes,
+			OriginalTokens: receipt.OriginalTokens, RetainedTokens: receipt.RetainedTokens,
 			Truncated: receipt.Truncated, TruncationReason: receipt.TruncationReason,
 		})
 	}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "fixture_id": "token-efficiency-v1",
+  "prompt_sha256": "8b61b8edfa5f01e3cebb659eb994a3ade736b0abd71c7a4df4d80dc069e51b1e",
+  "encoding": "utf-8",
+  "line_endings": "lf",
+  "minimum_runs": 5,
+  "ordering": "ABBA",
+  "lanes": ["hermetic", "live_no_cache", "live_cache", "long_output", "compaction"]
+}

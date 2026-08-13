@@ -19,8 +19,6 @@ type MetricSnapshot struct {
 	ToolExecutions                uint64 `json:"tool_executions"`
 	Errors                        uint64 `json:"errors"`
 	RepoIndexState                string `json:"repo_index_state,omitempty"`
-	ContextTailBytes              uint64 `json:"context_tail_bytes,omitempty"`
-	ContextTailTruncations        uint64 `json:"context_tail_truncations,omitempty"`
 	EvidenceRisks                 uint64 `json:"evidence_risks,omitempty"`
 	PolicyReminders               uint64 `json:"policy_reminders,omitempty"`
 	Compactions                   uint64 `json:"compactions,omitempty"`
@@ -52,7 +50,7 @@ type MetricSnapshot struct {
 type Metrics struct {
 	operationsSubmitted, operationsProcessed, eventsPublished       atomic.Uint64
 	subscribersDropped, providerRequests, agentTurns                atomic.Uint64
-	toolExecutions, errors, contextTailBytes, contextTailCuts       atomic.Uint64
+	toolExecutions, errors                                          atomic.Uint64
 	evidenceRisks, policyReminders, compactions, compactionSaved    atomic.Uint64
 	turnKernelTransitions, turnKernelDrifts, turnKernelDigestErrors atomic.Uint64
 	agentSpawns, agentCompleted, agentFailed, agentInterrupted      atomic.Uint64
@@ -141,20 +139,6 @@ func (m *Metrics) Approval(
 		m.approvalGrantHits.Add(1)
 	case "waited":
 		m.approvalWaitLatencyMS.Add(uint64(max(0, latency.Milliseconds())))
-	}
-}
-
-// ContextTail records one rendered volatile section: how many bytes it sent and
-// whether a budget cut it.
-func (m *Metrics) ContextTail(bytes int, truncated bool) {
-	if m == nil {
-		return
-	}
-	if bytes > 0 {
-		m.contextTailBytes.Add(uint64(bytes))
-	}
-	if truncated {
-		m.contextTailCuts.Add(1)
 	}
 }
 
@@ -315,8 +299,6 @@ func (m *Metrics) Snapshot() MetricSnapshot {
 	}
 	return MetricSnapshot{
 		RepoIndexState:                indexState,
-		ContextTailBytes:              m.contextTailBytes.Load(),
-		ContextTailTruncations:        m.contextTailCuts.Load(),
 		EvidenceRisks:                 m.evidenceRisks.Load(),
 		PolicyReminders:               m.policyReminders.Load(),
 		Compactions:                   m.compactions.Load(),

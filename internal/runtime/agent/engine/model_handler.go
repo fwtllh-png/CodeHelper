@@ -15,6 +15,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -22,6 +23,7 @@ func (e *Engine) modelStep(
 	ctx context.Context,
 	history *[]provider.Message,
 	turnUsage provider.Usage,
+	reason string,
 	continued *bool,
 	pendingInputInjected *bool,
 	send func(State, Event) error,
@@ -98,6 +100,16 @@ func (e *Engine) modelStep(
 			reasoningEffort = "low"
 			nativeSearch = false
 		}
+		attribution, attributionErr := promptcontext.MeasureSample(promptcontext.SampleInput{
+			Reason: promptcontext.SampleReason(reason, attempt, finishMode || continuations > 0),
+			Stable: scope.spec.Context.Messages, History: *history, Dynamic: turnContext,
+			Continuation: continuationMessages, Definitions: requestTools,
+			Estimate: e.options.TokenEstimator.Estimate,
+		})
+		if attributionErr != nil {
+			return nil, nil, totalUsage, lastEstimate, attributionErr
+		}
+		call.context = &attribution
 		stream, err := e.options.Provider.Stream(requestContext, provider.ModelRequest{
 			Route: route, Messages: messages,
 			MaxOutputTokens: maxOutputTokens, Tools: requestTools,
@@ -442,6 +454,7 @@ type sample struct {
 	provider string
 	model    string
 	pricing  model.Pricing
+	context  *protocol.SampleContextData
 }
 
 func consume(
@@ -527,8 +540,9 @@ func consume(
 
 			cost := estimateCost(call.pricing, copy)
 			if err := emit(Event{
-				Usage: &copy, CostUSD: cost, CostKnown: call.pricing.Known,
+				Usage: &copy, CostUSD: cost, CostKnown: pricingKnown(call.pricing, copy),
 				Sample: call.index, Provider: call.provider, Model: call.model,
+				SampleContext: call.context,
 			}); err != nil {
 				return nil, nil, usage, meaningful, err
 			}

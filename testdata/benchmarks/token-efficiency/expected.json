@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "terminal": "completed",
+  "required_changes": ["config/loader.go"],
+  "required_test_change_any": ["config/loader_test.go", "config/loader_cycle_test.go"],
+  "forbidden_changes": ["go.mod"],
+  "verification": "go test ./...",
+  "required_output": ["go test ./...", "include cycle"],
+  "minimum_samples": 1,
+  "maximum_estimator_error_p95": 0.10,
+  "maximum_aa_input_delta": 0.05
+}
