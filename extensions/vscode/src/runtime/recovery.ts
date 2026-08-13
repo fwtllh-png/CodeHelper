@@ -146,15 +146,19 @@ export async function connectSession(
   let disposed = false;
   let recovering = true;
   const bufferedEvents: DecodedEvent[] = [];
+  const childThreads = new Set<string>();
 
   const advance = async (
     event: DecodedEvent,
     replayed: boolean,
   ): Promise<void> => {
-    if (binding === undefined ||
-      (event.thread_id !== binding.threadId && !isWorkspaceEvent(event))) {
+    if (binding === undefined) {
       return;
     }
+    registerAgentThread(event, binding.sessionId, childThreads);
+    if (event.thread_id !== binding.threadId &&
+      !childThreads.has(event.thread_id) &&
+      !isWorkspaceEvent(event)) return;
     if (event.sequence <= binding.lastSeq) {
       return;
     }
@@ -224,6 +228,7 @@ export async function connectSession(
         sessionId: binding.sessionId,
         threadId: binding.threadId,
       });
+      await hydrateAgentThreads(client, binding.sessionId, childThreads);
       let historySinceSeq: number | undefined;
       for (;;) {
         const history = requireObject(await client.request("session/history", {
@@ -331,6 +336,40 @@ function isWorkspaceEvent(event: DecodedEvent): boolean {
     ((event.kind === "approval.required" ||
       event.kind === "approval.resolved") &&
       event.data.source?.kind === "agent"));
+}
+
+async function hydrateAgentThreads(
+  client: AcpTransport,
+  sessionId: string,
+  target: Set<string>,
+): Promise<void> {
+  const result = requireObject(await client.request("agent/list", {
+    sessionId, includeClosed: true, limit: 1000,
+  }), "agent/list result");
+  if (!Array.isArray(result["agents"])) {
+    throw new TypeError("agent/list agents must be an array");
+  }
+  for (const raw of result["agents"]) {
+    const agent = requireObject(raw, "agent/list agent");
+    if (requireString(agent["session_id"], "agent session id") !== sessionId) {
+      throw new Error("agent/list returned an Agent for another Session");
+    }
+    target.add(requireString(agent["thread_id"], "agent thread id"));
+  }
+}
+
+function registerAgentThread(
+  event: DecodedEvent,
+  sessionId: string,
+  target: Set<string>,
+): void {
+  if (isUnknownEvent(event) || event.kind !== "agent.spawned" ||
+    event.data.session_id !== sessionId ||
+    !isObject(event.data.detail)) return;
+  const threadId = event.data.detail["thread_id"];
+  if (typeof threadId === "string" && threadId.length !== 0) {
+    target.add(threadId);
+  }
 }
 
 async function replayPage(

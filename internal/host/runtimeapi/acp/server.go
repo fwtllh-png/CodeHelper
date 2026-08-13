@@ -2101,7 +2101,7 @@ func (s *Server) requireTurn(binding sessionBinding, turn protocol.TurnID) error
 	if err != nil {
 		return err
 	}
-	if record.ThreadID != binding.ThreadID {
+	if s.sessionForThread(record.ThreadID) != binding.ID {
 		return fmt.Errorf("turn %s belongs to thread %s", turn, record.ThreadID)
 	}
 	return nil

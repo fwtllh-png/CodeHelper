@@ -279,6 +279,106 @@ void test("connectSession projects child approvals across agent threads", async 
   connection.dispose();
 });
 
+void test("connectSession projects live events from spawned Child Threads", async () => {
+  const transport = new FakeTransport();
+  transport.responses.set("session/load", [{}]);
+  transport.responses.set("session/replay", [{
+    events: [],
+    nextSeq: 5,
+    truncated: false,
+  }]);
+  const store = new BindingStore(new MemoryMemento());
+  await store.save(binding(5));
+  const seen: Array<[number, string]> = [];
+  const connection = await connectSession(
+    transport,
+    store,
+    "/workspace",
+    (event) => {
+      seen.push([event.sequence, event.thread_id]);
+      return Promise.resolve();
+    },
+    () => undefined,
+  );
+  transport.notify({
+    method: "session/update",
+    params: {
+      sessionId: "session_1",
+      event: agentSpawnedEvent(6, "session_1", "thread-agent-1"),
+    },
+  });
+  transport.notify({
+    method: "session/update",
+    params: {
+      sessionId: "session_1",
+      event: childTurnEvent(7, "thread-agent-1"),
+    },
+  });
+  await connection.settled();
+  assert.deepEqual(seen, [
+    [6, "thread_agent_graph"],
+    [7, "thread-agent-1"],
+  ]);
+  assert.equal(store.load("/workspace")?.lastSeq, 7);
+  connection.dispose();
+});
+
+void test("connectSession hydrates Child Threads before restart replay", async () => {
+  const transport = new FakeTransport();
+  transport.responses.set("session/load", [{}]);
+  transport.responses.set("agent/list", [{
+    agents: [{
+      session_id: "session_1",
+      thread_id: "thread-agent-1",
+    }],
+  }]);
+  transport.responses.set("session/replay", [{
+    events: [childTurnEvent(6, "thread-agent-1")],
+    nextSeq: 6,
+    truncated: false,
+  }]);
+  const store = new BindingStore(new MemoryMemento());
+  await store.save(binding(5));
+  const seen: string[] = [];
+  const connection = await connectSession(
+    transport,
+    store,
+    "/workspace",
+    (event) => {
+      seen.push(event.thread_id);
+      return Promise.resolve();
+    },
+    () => undefined,
+  );
+  assert.deepEqual(seen, ["thread-agent-1"]);
+  assert.equal(connection.replayedEvents, 1);
+  assert.equal(store.load("/workspace")?.lastSeq, 6);
+  connection.dispose();
+});
+
+void test("connectSession rejects foreign Agent hydration", async () => {
+  const transport = new FakeTransport();
+  transport.responses.set("session/load", [{}]);
+  transport.responses.set("agent/list", [{
+    agents: [{
+      session_id: "session_other",
+      thread_id: "thread-agent-foreign",
+    }],
+  }]);
+  const store = new BindingStore(new MemoryMemento());
+  await store.save(binding(5));
+  await assert.rejects(
+    connectSession(
+      transport,
+      store,
+      "/workspace",
+      async () => Promise.resolve(),
+      () => undefined,
+    ),
+    /Agent for another Session/u,
+  );
+});
+
 void test("connectSession hydrates paginated session history", async () => {
   const transport = new FakeTransport();
   transport.responses.set("session/load", [{}]);
@@ -328,6 +428,9 @@ class FakeTransport implements AcpTransport {
     if (responses === undefined || responses.length === 0) {
       if (method === "session/history") {
         return Promise.resolve({ events: [] });
+      }
+      if (method === "agent/list") {
+        return Promise.resolve({ agents: [] });
       }
       return Promise.reject(new Error(`unexpected request ${method}`));
     }
@@ -414,6 +517,43 @@ function agentEvent(sequence: number): Readonly<Record<string, unknown>> {
       session_id: "runtime-session",
       status: "completed",
     },
+  };
+}
+
+function agentSpawnedEvent(
+  sequence: number,
+  sessionId: string,
+  threadId: string,
+): Readonly<Record<string, unknown>> {
+  return {
+    version: 1,
+    id: `agent_spawned_${String(sequence)}`,
+    sequence,
+    operation_id: "op_agent_graph",
+    thread_id: "thread_agent_graph",
+    turn_id: "turn_agent_graph",
+    item_id: "item_agent",
+    kind: "agent.spawned",
+    created_at: "2026-08-04T00:00:00Z",
+    data: {
+      agent_id: "agent-1",
+      workspace_root: "/workspace",
+      session_id: sessionId,
+      role: "explore",
+      depth: 0,
+      detail: { thread_id: threadId },
+    },
+  };
+}
+
+function childTurnEvent(
+  sequence: number,
+  threadId: string,
+): Readonly<Record<string, unknown>> {
+  return {
+    ...runtimeEvent(sequence),
+    id: `child_event_${String(sequence)}`,
+    thread_id: threadId,
   };
 }
 

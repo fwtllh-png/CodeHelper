@@ -1090,7 +1090,10 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
   Durable Agent Hydration 会在 ACP Replay/Live Projection 前绑定确定性的
   Child Thread ID。Approval Decision 会先按权威 Pending Request ID 解析
   Child Identity，再校验 Thread，因此 VS Code 可以审批 Child Edit，同时
-  不放宽跨 Session 隔离；
+  不放宽跨 Session 隔离。Existing-Turn 校验接受该 Session 拥有的任意 Thread，
+  而不再只接受 Parent Chat Thread。VS Code 重连时通过 `agent/list` 水合同一
+  Child Thread Set，Live Projection 时再由 `agent.spawned` 增量扩展，保留
+  Child Reasoning、Tool、Usage、Receipt 与 Terminal Event；
 - Read-only Role 仍无法修改 Workspace，但 `CanDelegate=true` 的 Role 会在
   Parent Authority Ceiling 下仅保留 Agent Lifecycle Catalog。Nested Spawn
   仍经过 Guard、Approval Proxy、Role Intersection 与 Tree Budget Admission；

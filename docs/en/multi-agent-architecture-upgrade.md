@@ -1032,7 +1032,11 @@ Completion audit (2026-08-13):
   durable Agent hydration bind deterministic Child Thread IDs before ACP
   replay/live projection. Approval decisions resolve the authoritative pending
   Request ID before Thread validation, so VS Code can approve a Child edit
-  without weakening cross-Session isolation.
+  without weakening cross-Session isolation. Existing-Turn validation accepts
+  any Thread owned by that Session rather than only the parent Chat Thread.
+  VS Code hydrates the same Child Thread set through `agent/list` on reconnect
+  and expands it from `agent.spawned` during live projection, preserving Child
+  reasoning, Tool, usage, Receipt, and terminal events.
 - Read-only roles remain unable to mutate the Workspace, but roles with
   `CanDelegate=true` retain only the Agent lifecycle catalog under the Parent
   authority ceiling. Nested Spawn still passes Guard, Approval Proxy, Role

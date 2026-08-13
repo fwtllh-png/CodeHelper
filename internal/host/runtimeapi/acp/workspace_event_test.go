@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
+	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
+	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -150,6 +153,7 @@ func TestAgentSpawnBindsChildThreadToOwningSession(t *testing.T) {
 }
 
 func TestPendingChildApprovalUsesRuntimeIdentity(t *testing.T) {
+	threads := childTurnRepository(t, "session-1", "thread-parent", "thread-agent-9", "turn-child")
 	pending := app.PendingApproval{
 		RequestID: "approval-child", ThreadID: "thread-agent-9",
 		TurnID: "turn-child", ItemID: "item-child",
@@ -175,7 +179,8 @@ func TestPendingChildApprovalUsesRuntimeIdentity(t *testing.T) {
 	})
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	server := &Server{
-		dependencies: Dependencies{Runtime: runtime},
+		dependencies: Dependencies{Runtime: runtime, Threads: threads},
+		ctx:          t.Context(),
 		threads: map[protocol.ThreadID]string{
 			"thread-parent": "session-1",
 		},
@@ -197,6 +202,22 @@ func TestPendingChildApprovalUsesRuntimeIdentity(t *testing.T) {
 	if got := server.sessionForThread(pending.ThreadID); got != "session-1" {
 		t.Fatalf("bound Child Session = %q", got)
 	}
+	operation, err := server.prepareOperation(
+		sessionBinding{ID: "session-1", ThreadID: "thread-parent"},
+		operationRequest{
+			kind: protocol.OperationApprovalDecision, payload: payload,
+		},
+	)
+	if err != nil {
+		t.Fatalf("prepare Child Approval: %v", err)
+	}
+	threadID, turnID, _ := protocol.OperationReferences(operation)
+	if threadID != pending.ThreadID || turnID != pending.TurnID {
+		t.Fatalf(
+			"prepared Child Approval = %s/%s, want %s/%s",
+			threadID, turnID, pending.ThreadID, pending.TurnID,
+		)
+	}
 	if err := server.bindPendingRequest(
 		sessionBinding{ID: "session-2", ThreadID: "thread-other"},
 		&protocol.ApprovalDecisionPayload{
@@ -206,6 +227,94 @@ func TestPendingChildApprovalUsesRuntimeIdentity(t *testing.T) {
 	); err == nil || !strings.Contains(err.Error(), "belongs to session session-1") {
 		t.Fatalf("cross-Session approval error = %v", err)
 	}
+}
+
+func TestPendingChildInputPassesSessionOwnedTurnValidation(t *testing.T) {
+	threads := childTurnRepository(
+		t, "session-1", "thread-parent", "thread-agent-9", "turn-child",
+	)
+	pending := app.PendingInput{
+		RequestID: "input-child", ThreadID: "thread-agent-9",
+		TurnID: "turn-child", ItemID: "item-child",
+		Data: protocol.InputRequiredData{
+			RequestID: "input-child", Prompt: "answer",
+		},
+	}
+	runtime := app.NewRuntime(app.Options{
+		Engine: app.NewThreadManager(nil),
+		Recovery: &app.RecoveryState{
+			PendingInputs: map[string]app.PendingInput{
+				pending.RequestID: pending,
+			},
+		},
+	})
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	server := &Server{
+		dependencies: Dependencies{Runtime: runtime, Threads: threads},
+		ctx:          t.Context(),
+		threads: map[protocol.ThreadID]string{
+			"thread-parent":  "session-1",
+			"thread-agent-9": "session-1",
+		},
+	}
+	payload := &protocol.InputReplyPayload{
+		ThreadID: "thread-parent", TurnID: "turn-parent",
+		ItemID: "item-reply", RequestID: pending.RequestID, Answer: "ok",
+	}
+	operation, err := server.prepareOperation(
+		sessionBinding{ID: "session-1", ThreadID: "thread-parent"},
+		operationRequest{kind: protocol.OperationInputReply, payload: payload},
+	)
+	if err != nil {
+		t.Fatalf("prepare Child Input: %v", err)
+	}
+	threadID, turnID, _ := protocol.OperationReferences(operation)
+	if threadID != pending.ThreadID || turnID != pending.TurnID {
+		t.Fatalf(
+			"prepared Child Input = %s/%s, want %s/%s",
+			threadID, turnID, pending.ThreadID, pending.TurnID,
+		)
+	}
+}
+
+func childTurnRepository(
+	t *testing.T,
+	sessionID string,
+	parentThreadID, childThreadID protocol.ThreadID,
+	childTurnID protocol.TurnID,
+) *threadstate.Repository {
+	t.Helper()
+	store, err := sqlitestate.Open(
+		t.Context(), filepath.Join(t.TempDir(), "state.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	repository := threadstate.NewRepository(store.DB())
+	if _, err := repository.CreateSeed(
+		t.Context(),
+		sessionstate.Workspace{ID: "workspace-1", RootPath: t.TempDir()},
+		sessionstate.Session{ID: sessionID, WorkspaceID: "workspace-1"},
+		threadstate.Thread{ID: parentThreadID, SessionID: sessionID},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Create(t.Context(), threadstate.Thread{
+		ID: childThreadID, SessionID: sessionID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := store.DB().ExecContext(t.Context(), `
+		INSERT INTO turns(
+			id, thread_id, ordinal, status, created_at, updated_at
+		) VALUES (?, ?, 0, ?, ?, ?)`,
+		childTurnID, childThreadID, threadstate.TurnActive, now, now,
+	); err != nil {
+		t.Fatal(err)
+	}
+	return repository
 }
 
 func TestSessionBindRestoresExistingAgentThreads(t *testing.T) {
