@@ -336,7 +336,7 @@ func TestNeverPostureRejectsPersistedWorkspaceAllow(t *testing.T) {
 	if err := os.WriteFile(permissionPath, []byte(`
 [[allow]]
 tool = "file_write"
-resource = "notes.txt"
+grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}

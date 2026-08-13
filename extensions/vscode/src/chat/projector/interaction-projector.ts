@@ -25,6 +25,15 @@ export function projectInteraction(event: DecodedEvent, turn: MutableTurn): bool
         allowedScopes: [...event.data.allowed_scopes],
         expiresAt: event.data.expires_at,
         ...(event.data.reason === undefined ? {} : { reason: event.data.reason }),
+        ...(event.data.grant_preview === undefined
+          ? {}
+          : {
+              grantPreview: {
+                kind: event.data.grant_preview.kind,
+                key: event.data.grant_preview.key,
+                summary: event.data.grant_preview.summary,
+              },
+            }),
         ...(event.data.source === undefined
           ? {}
           : {

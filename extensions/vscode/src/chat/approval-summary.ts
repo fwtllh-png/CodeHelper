@@ -66,6 +66,9 @@ export function approvalCardContent(
   if (resources.length > 0) {
     lines.push(`Access: ${resources.join(", ")}`);
   }
+  if (approval.grantPreview !== undefined) {
+    lines.push(`Reusable rule: ${singleLine(approval.grantPreview.summary, 180)}`);
+  }
   return {
     summary,
     detail: truncate(lines.join("\n"), maxCardPreview),
@@ -109,6 +112,9 @@ export function approvalDialogContent(
   }
   if (fileApply === undefined && resources.length > 0) {
     sections.push(`Access\n${resources.map((value) => `• ${value}`).join("\n")}`);
+  }
+  if (approval.grantPreview !== undefined) {
+    sections.push(`Reusable rule\n${approval.grantPreview.summary}`);
   }
   sections.push("Full request details are available in the Chat approval card.");
   return { title, detail: sections.join("\n\n") };

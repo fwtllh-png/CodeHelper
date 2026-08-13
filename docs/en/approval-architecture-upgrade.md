@@ -2,7 +2,7 @@
 
 [简体中文](../zh-CN/approval-architecture-upgrade.md) | English
 
-> Status: A0-A1 were completed on 2026-08-13. A2-A4 are target design and are not
+> Status: A0-A2 were completed on 2026-08-13. A3-A4 are target design and are not
 > claims about shipped behavior.
 >
 > Scope: Tool Guard policy, durable grants, approval protocol, Runtime recovery,
@@ -435,6 +435,16 @@ Unknown or incomplete facts use the conservative legacy classification.
 - preserve current protocol while comparing old/new decisions in shadow mode.
 
 ### A2: Typed Grants and Amendments
+
+Implementation status (2026-08-13): `completed`.
+
+Runtime now generates one typed Grant for each reusable approval and uses its
+SHA-256 key for Session cache reuse, persistent Permission matching, and the
+displayed Grant Preview. Shell Grants bind the exact canonical command, cwd,
+declared resources, and write set; File Grants bind the complete canonical path
+set; Network Grants bind protocol and host; Agent Grants bind operation and
+Agent resource. Requests without a narrow Grant offer `once` only. Persisted
+allows without a typed `grant_key` fail closed.
 
 - replace generic approval cache resource keys;
 - parse shell commands structurally;

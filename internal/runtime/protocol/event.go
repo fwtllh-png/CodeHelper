@@ -719,7 +719,6 @@ type EditPlanFile struct {
 	BeforeDigest string `json:"before_digest"`
 	AfterDigest  string `json:"after_digest"`
 }
-
 type ApprovalSource struct {
 	Kind          string `json:"kind"`
 	AgentID       string `json:"agent_id"`
@@ -729,7 +728,6 @@ type ApprovalSource struct {
 	SessionID     string `json:"session_id"`
 	WorkspaceRoot string `json:"workspace_root"`
 }
-
 type ApprovalRequiredData struct {
 	RequestID           string                  `json:"request_id"`
 	CallID              string                  `json:"call_id"`
@@ -744,10 +742,15 @@ type ApprovalRequiredData struct {
 	Reason              string                  `json:"reason,omitempty"`
 	Network             *NetworkApprovalPayload `json:"network,omitempty"`
 	EditPlan            *EditPlan               `json:"edit_plan,omitempty"`
+	GrantPreview        *ApprovalGrantPreview   `json:"grant_preview,omitempty"`
 	Source              *ApprovalSource         `json:"source,omitempty"`
 }
+type ApprovalGrantPreview struct {
+	Kind    string `json:"kind"`
+	Key     string `json:"key"`
+	Summary string `json:"summary"`
+}
 
-// NetworkApprovalPayload is host-scoped egress approval metadata (Immediate/Deferred).
 type NetworkApprovalPayload struct {
 	Host     string `json:"host"`
 	Protocol string `json:"protocol"`
@@ -773,6 +776,14 @@ func (d *ApprovalRequiredData) validate() error {
 			scope != ApprovalScopeAlways {
 			return errors.New("approval allowed scope is invalid")
 		}
+		if scope != ApprovalScopeOnce && d.GrantPreview == nil {
+			return errors.New("reusable approval scope requires a grant preview")
+		}
+	}
+	if d.GrantPreview != nil &&
+		(d.GrantPreview.Kind == "" || !validSHA256(d.GrantPreview.Key) ||
+			d.GrantPreview.Summary == "") {
+		return errors.New("approval grant preview is invalid")
 	}
 	if err := validateApprovalSource(d.Source); err != nil {
 		return err
@@ -812,9 +823,7 @@ type ThreadCompactedData struct {
 	WindowID           string             `json:"window_id,omitempty"`
 }
 
-// CompactedMessage is the durable, model-visible history unit stored on
-// thread.compacted windows. Turn is preserved for resume (unlike provider
-// wire encoding which omits it).
+// CompactedMessage is durable model-visible history; Turn is retained for resume.
 type CompactedMessage struct {
 	Role    string          `json:"role"`
 	Content json.RawMessage `json:"content"`
@@ -933,7 +942,6 @@ func (d *TurnVerificationData) validate() error {
 	return nil
 }
 
-// AgentSpawnedData records a durable subagent spawn edge (W4.4).
 type AgentSpawnedData struct {
 	AgentID       string          `json:"agent_id"`
 	ParentID      string          `json:"parent_id,omitempty"`
@@ -1015,11 +1023,8 @@ func (*AgentIntegrationData) eventKind() EventKind { return EventAgentIntegratio
 func (d *AgentIntegrationData) validate() error {
 	if d.AgentID == "" || d.AgentPath == "" || d.ParentPath == "" ||
 		d.WorkspaceRoot == "" || d.SessionID == "" || d.Status == "" ||
-		len(d.PreviewDigest) != 64 {
+		!validSHA256(d.PreviewDigest) {
 		return errors.New("agent integration identity is invalid")
-	}
-	if _, err := hex.DecodeString(d.PreviewDigest); err != nil {
-		return errors.New("agent integration digest is invalid")
 	}
 	if len(d.Detail) > 0 && !json.Valid(d.Detail) {
 		return errors.New("agent integration detail is invalid")
@@ -1040,7 +1045,6 @@ func (d *AgentMessageData) validate() error {
 	return nil
 }
 
-// PlanDeltaData streams a <proposed_plan> body for TUI Plan cards (W5.1).
 type PlanDeltaData struct {
 	Text            string `json:"text,omitempty"`
 	Body            string `json:"body,omitempty"`
@@ -1072,7 +1076,6 @@ func (d *PlanDeltaData) validate() error {
 	return nil
 }
 
-// CommandExecutionData is a typed shell/process lifecycle item (N13).
 type CommandExecutionData struct {
 	CallID     string `json:"call_id"`
 	SessionID  string `json:"session_id,omitempty"`
@@ -1098,7 +1101,6 @@ func (d *CommandExecutionData) validate() error {
 	return nil
 }
 
-// HostCommandData records a TUI/host slash command for audit/replay (N13 companion).
 type HostCommandData struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
@@ -1141,9 +1143,7 @@ type CheckpointCreatedData struct {
 
 func (*CheckpointCreatedData) eventKind() EventKind { return EventCheckpointCreated }
 
-func (d *CheckpointCreatedData) validate() error {
-	return d.Checkpoint.Validate()
-}
+func (d *CheckpointCreatedData) validate() error { return d.Checkpoint.Validate() }
 
 func (*CheckpointRestoredData) eventKind() EventKind { return EventCheckpointRestored }
 

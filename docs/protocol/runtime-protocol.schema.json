@@ -2305,6 +2305,26 @@
           "type": "string",
           "format": "date-time"
         },
+        "grant_preview": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "key",
+            "kind",
+            "summary"
+          ],
+          "additionalProperties": false
+        },
         "modifiable_arguments": {
           "type": "array",
           "items": {

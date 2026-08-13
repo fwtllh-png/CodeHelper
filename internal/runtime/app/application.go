@@ -65,7 +65,6 @@ func (a *EngineAdapter) Underlying() *agentengine.Engine {
 	}
 	return a.engine
 }
-
 func (a *EngineAdapter) SetApprovalSource(source protocol.ApprovalSource) {
 	if a == nil {
 		return
@@ -73,7 +72,6 @@ func (a *EngineAdapter) SetApprovalSource(source protocol.ApprovalSource) {
 	copy := source
 	a.approvalSource = &copy
 }
-
 func (a *EngineAdapter) TurnPhase(turnID protocol.TurnID) (TurnPhase, bool) {
 	if a == nil || a.engine == nil {
 		return PhaseIdle, false
@@ -91,7 +89,6 @@ func (a *EngineAdapter) TurnPhase(turnID protocol.TurnID) (TurnPhase, bool) {
 		return PhaseRunning, true
 	}
 }
-
 func (a *EngineAdapter) History() []provider.Message {
 	if a == nil || a.engine == nil {
 		return nil
@@ -104,7 +101,6 @@ func (a *EngineAdapter) RestoreSessionDelta(raw json.RawMessage) error {
 	}
 	return a.engine.RestoreSessionDelta(raw)
 }
-
 func (a *EngineAdapter) RestorePendingApproval(
 	pending PendingApproval,
 ) error {
@@ -134,7 +130,6 @@ func (a *EngineAdapter) RestorePendingInput(pending PendingInput) error {
 		ExpiresAt: pending.Data.ExpiresAt,
 	})
 }
-
 func (a *EngineAdapter) ValidateSessionProfile(
 	profile protocol.SessionProfile,
 ) error {
@@ -143,7 +138,6 @@ func (a *EngineAdapter) ValidateSessionProfile(
 	}
 	return a.engine.ValidateSessionProfile(profile)
 }
-
 func (a *EngineAdapter) ApplySessionProfile(
 	profile protocol.SessionProfile,
 ) error {
@@ -152,13 +146,11 @@ func (a *EngineAdapter) ApplySessionProfile(
 	}
 	return a.engine.ApplySessionProfile(profile)
 }
-
 func (a *EngineAdapter) SetPolicyMode(mode policy.Mode) {
 	if a != nil && a.engine != nil {
 		a.engine.SetPolicyMode(mode)
 	}
 }
-
 func (a *EngineAdapter) SetPermission(permission policy.Permission) {
 	if a != nil && a.engine != nil {
 		a.engine.SetPermission(permission)
@@ -362,6 +354,13 @@ func (a *EngineAdapter) StartTurn(
 					Files: files,
 				}
 			}
+			var grant *protocol.ApprovalGrantPreview
+			if event.Approval.Grant != nil {
+				grant = &protocol.ApprovalGrantPreview{
+					Kind: event.Approval.Grant.Kind, Key: event.Approval.Grant.Key,
+					Summary: event.Approval.Grant.Summary,
+				}
+			}
 			return sink.Emit(&protocol.ApprovalRequiredData{
 				RequestID: event.Approval.RequestID, CallID: event.Approval.CallID,
 				Tool: event.Approval.Tool, Arguments: event.Approval.Arguments,
@@ -372,6 +371,7 @@ func (a *EngineAdapter) StartTurn(
 				Reason:              event.Approval.Reason,
 				Network:             protocolNetwork(event.Approval.Network),
 				EditPlan:            editPlan,
+				GrantPreview:        grant,
 				Source:              a.approvalSource,
 			})
 		case agentengine.AwaitingInput:

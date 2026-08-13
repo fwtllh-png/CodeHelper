@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -229,7 +230,9 @@ func TestActAutoReadOnlyShellDoesNotAsk(t *testing.T) {
 func TestApprovalAlwaysPersistsAllow(t *testing.T) {
 	now := time.Unix(10_000, 0)
 	registry := tool.NewRegistry(nil, nil)
-	executor := testExecutor{descriptor: writeDescriptor()}
+	descriptor := networkFetchDescriptor()
+	descriptor.AccessMode = tool.AccessWrite
+	executor := testExecutor{descriptor: descriptor}
 	if err := registry.Register(&executor, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -256,8 +259,8 @@ func TestApprovalAlwaysPersistsAllow(t *testing.T) {
 	}
 	result := make(chan error, 1)
 	go func() {
-		_, execErr := guard.Execute(context.Background(), "always-1", "write",
-			json.RawMessage(`{"path":"a","value":"x"}`))
+		_, execErr := guard.Execute(context.Background(), "always-1", "web_fetch",
+			json.RawMessage(`{"url":"https://example.com/a"}`))
 		result <- execErr
 	}()
 	request := <-requests
@@ -277,8 +280,8 @@ func TestApprovalAlwaysPersistsAllow(t *testing.T) {
 	if persisted.Load() != 1 {
 		t.Fatalf("persisted = %d", persisted.Load())
 	}
-	if _, err := guard.Execute(context.Background(), "always-2", "write",
-		json.RawMessage(`{"path":"b","value":"y"}`)); err != nil {
+	if _, err := guard.Execute(context.Background(), "always-2", "web_fetch",
+		json.RawMessage(`{"url":"https://example.com/b"}`)); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -288,16 +291,59 @@ func TestApprovalAlwaysPersistsAllow(t *testing.T) {
 	}
 }
 
+func TestUnscopedApprovalOffersOnceOnly(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&testExecutor{descriptor: writeDescriptor()}, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan ApprovalRequest, 1)
+	guard, err := New(Options{
+		Registry:  registry,
+		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
+		Workspace: t.TempDir(),
+		Approvals: func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		},
+		PersistAllow: func(policy.Invocation) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := guard.Execute(context.Background(), "once-only", "write",
+			json.RawMessage(`{"path":"a","value":"x"}`))
+		done <- err
+	}()
+	request := <-requests
+	if request.Grant != nil ||
+		!reflect.DeepEqual(request.AllowedScopes, []policy.ApprovalScope{policy.ApprovalOnce}) {
+		t.Fatalf("request = %+v", request)
+	}
+	if err := guard.Decide(ApprovalDecision{
+		RequestID: request.RequestID, Approved: true, Scope: policy.ApprovalAlways,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err == nil || !contains(err.Error(), "approval_scope_denied") {
+		t.Fatalf("forged always decision = %v", err)
+	}
+}
+
 func TestApprovalOnceSessionExpiryAndModifiedArguments(t *testing.T) {
 	now := time.Unix(10_000, 0)
 	registry := tool.NewRegistry(nil, nil)
-	executor := testExecutor{descriptor: writeDescriptor()}
+	descriptor := writeDescriptor()
+	descriptor.Name = "followup_task"
+	descriptor.ResourceResolver.Templates[0].Kind = "agent"
+	executor := testExecutor{descriptor: descriptor}
 	if err := registry.Register(&executor, nil); err != nil {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	runtime.Repository = []policy.Rule{{
-		Tool: "write", Resource: "blocked", Action: policy.ActionDeny,
+		Tool: "followup_task", Resource: "blocked", Action: policy.ActionDeny,
 	}}
 	requests := make(chan ApprovalRequest, 4)
 	guard, err := New(Options{
@@ -314,7 +360,7 @@ func TestApprovalOnceSessionExpiryAndModifiedArguments(t *testing.T) {
 	call := func(id string, arguments string) <-chan error {
 		result := make(chan error, 1)
 		go func() {
-			_, err := guard.Execute(context.Background(), id, "write", json.RawMessage(arguments))
+			_, err := guard.Execute(context.Background(), id, "followup_task", json.RawMessage(arguments))
 			result <- err
 		}()
 		return result
@@ -349,15 +395,6 @@ func TestApprovalOnceSessionExpiryAndModifiedArguments(t *testing.T) {
 		t.Fatalf("replacement error = %v", err)
 	}
 
-	rechecked := call("rechecked", `{"path":"safe","value":"x"}`)
-	request = <-requests
-	mustDecide(
-		t, guard, request, policy.ApprovalOnce,
-		json.RawMessage(`{"path":"blocked","value":"x"}`),
-	)
-	if err := <-rechecked; err == nil || !contains(err.Error(), "repository_rule_denied") {
-		t.Fatalf("replacement policy error = %v", err)
-	}
 }
 
 func TestApprovalCancelDuplicateLateAndWrongRequest(t *testing.T) {

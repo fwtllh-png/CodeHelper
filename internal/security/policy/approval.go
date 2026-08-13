@@ -32,12 +32,7 @@ type ApprovalRequest struct {
 	Scope           ApprovalScope   `json:"scope"`
 	Fingerprint     string          `json:"fingerprint"`
 	ExpiresAt       time.Time       `json:"expires_at"`
-}
-
-type ApprovalResponse struct {
-	Approved  bool
-	Scope     ApprovalScope
-	ExpiresAt time.Time
+	Grant           *Grant          `json:"grant,omitempty"`
 }
 
 type approvalEntry struct {
@@ -48,11 +43,11 @@ type approvalEntry struct {
 }
 
 type ApprovalCache struct {
-	mu           sync.Mutex
-	entries      map[string]approvalEntry
-	resourceKeys map[string]approvalEntry // tool+resource.Key session grants (T3)
-	limit        int
-	next         uint64
+	mu        sync.Mutex
+	entries   map[string]approvalEntry
+	grantKeys map[string]approvalEntry
+	limit     int
+	next      uint64
 }
 
 const defaultApprovalCacheLimit = 1024
@@ -66,7 +61,7 @@ func NewApprovalCacheWithLimit(limit int) *ApprovalCache {
 		limit = 1
 	}
 	return &ApprovalCache{
-		entries: make(map[string]approvalEntry), resourceKeys: make(map[string]approvalEntry), limit: limit,
+		entries: make(map[string]approvalEntry), grantKeys: make(map[string]approvalEntry), limit: limit,
 	}
 }
 
@@ -90,6 +85,9 @@ func NewApprovalRequestForScope(
 		ArgumentsDigest: hex.EncodeToString(argumentsHash[:]),
 		Resources:       resources, Scope: scope, ExpiresAt: expiresAt,
 	}
+	if grant, ok := GrantForInvocation(invocation); ok {
+		request.Grant = &grant
+	}
 	request.Fingerprint = approvalFingerprint(request)
 	return request, nil
 }
@@ -112,8 +110,8 @@ func (c *ApprovalCache) Add(request ApprovalRequest, scope ApprovalScope) error 
 	if c.entries == nil {
 		c.entries = make(map[string]approvalEntry)
 	}
-	if c.resourceKeys == nil {
-		c.resourceKeys = make(map[string]approvalEntry)
+	if c.grantKeys == nil {
+		c.grantKeys = make(map[string]approvalEntry)
 	}
 	if c.limit < 1 {
 		c.limit = defaultApprovalCacheLimit
@@ -126,28 +124,30 @@ func (c *ApprovalCache) Add(request ApprovalRequest, scope ApprovalScope) error 
 		baseFingerprint: approvalBaseFingerprint(request), sequence: c.next,
 	}
 	c.entries[request.Fingerprint] = entry
-	// Session/Always grants expand to per-resource keys so multi-path patches
-	// skip only when every path is already covered.
 	if scope == ApprovalSession || scope == ApprovalAlways {
-		for _, resource := range request.Resources {
-			key := resourceApprovalKey(request.Tool, resource.Key())
-			c.resourceKeys[key] = approvalEntry{
-				expiresAt: request.ExpiresAt, once: false,
-				baseFingerprint: key, sequence: c.next,
-			}
+		if request.Grant == nil || request.Grant.Key == "" {
+			return errors.New("reusable approval requires a typed grant")
+		}
+		c.grantKeys[request.Grant.Key] = approvalEntry{
+			expiresAt: request.ExpiresAt, sequence: c.next,
 		}
 	}
-	for len(c.entries) > c.limit {
+	pruneApprovalEntries(c.entries, c.limit)
+	pruneApprovalEntries(c.grantKeys, c.limit)
+	return nil
+}
+
+func pruneApprovalEntries(entries map[string]approvalEntry, limit int) {
+	for len(entries) > limit {
 		var oldestKey string
 		var oldestSequence uint64
-		for key, value := range c.entries {
+		for key, value := range entries {
 			if oldestKey == "" || value.sequence < oldestSequence {
 				oldestKey, oldestSequence = key, value.sequence
 			}
 		}
-		delete(c.entries, oldestKey)
+		delete(entries, oldestKey)
 	}
-	return nil
 }
 
 func (c *ApprovalCache) MatchInvocation(invocation Invocation, now time.Time) bool {
@@ -157,42 +157,28 @@ func (c *ApprovalCache) MatchInvocation(invocation Invocation, now time.Time) bo
 	if c.matchInvocationExact(invocation, now) {
 		return true
 	}
-	if hostScoped, ok := HostScopedInvocation(invocation); ok {
-		if c.matchInvocationExact(hostScoped, now) {
-			return true
-		}
-	}
-	return c.matchAllResourceKeys(invocation, now)
+	return c.matchGrant(invocation, now)
 }
 
-func (c *ApprovalCache) matchAllResourceKeys(invocation Invocation, now time.Time) bool {
-	resources := append([]tool.Resource(nil), invocation.Resources...)
-	sort.Slice(resources, func(i, j int) bool { return resources[i].Key() < resources[j].Key() })
-	resources = compactResources(resources)
-	if len(resources) == 0 {
+func (c *ApprovalCache) matchGrant(invocation Invocation, now time.Time) bool {
+	grant, ok := GrantForInvocation(invocation)
+	if !ok {
 		return false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.resourceKeys == nil {
+	if c.grantKeys == nil {
 		return false
 	}
-	for _, resource := range resources {
-		key := resourceApprovalKey(invocation.Tool, resource.Key())
-		entry, exists := c.resourceKeys[key]
-		if !exists {
-			return false
-		}
-		if !entry.expiresAt.After(now) {
-			delete(c.resourceKeys, key)
-			return false
-		}
+	entry, exists := c.grantKeys[grant.Key]
+	if !exists {
+		return false
+	}
+	if !entry.expiresAt.After(now) {
+		delete(c.grantKeys, grant.Key)
+		return false
 	}
 	return true
-}
-
-func resourceApprovalKey(toolName, resourceKey string) string {
-	return toolName + "\x00" + resourceKey
 }
 
 func (c *ApprovalCache) matchInvocationExact(invocation Invocation, now time.Time) bool {
@@ -219,26 +205,6 @@ func (c *ApprovalCache) matchInvocationExact(invocation Invocation, now time.Tim
 	return false
 }
 
-func (c *ApprovalCache) Match(request ApprovalRequest, now time.Time) bool {
-	if c == nil || request.Fingerprint == "" || request.Fingerprint != approvalFingerprint(request) {
-		return false
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	entry, exists := c.entries[request.Fingerprint]
-	if !exists {
-		return false
-	}
-	if !entry.expiresAt.After(now) {
-		delete(c.entries, request.Fingerprint)
-		return false
-	}
-	if entry.once {
-		delete(c.entries, request.Fingerprint)
-	}
-	return true
-}
-
 func (c *ApprovalCache) Purge(now time.Time) {
 	if c == nil {
 		return
@@ -250,9 +216,9 @@ func (c *ApprovalCache) Purge(now time.Time) {
 			delete(c.entries, key)
 		}
 	}
-	for key, entry := range c.resourceKeys {
+	for key, entry := range c.grantKeys {
 		if !entry.expiresAt.After(now) {
-			delete(c.resourceKeys, key)
+			delete(c.grantKeys, key)
 		}
 	}
 }
@@ -278,6 +244,11 @@ func approvalBaseFingerprint(request ApprovalRequest) string {
 	for _, resource := range compactResources(resources) {
 		encoded, _ := json.Marshal(resource)
 		writeFingerprintField(hash, string(encoded))
+	}
+	if request.Grant != nil {
+		writeFingerprintField(hash, request.Grant.Kind)
+		writeFingerprintField(hash, request.Grant.Key)
+		writeFingerprintField(hash, request.Grant.Summary)
 	}
 	return hex.EncodeToString(hash.Sum(nil))
 }

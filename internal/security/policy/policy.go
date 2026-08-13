@@ -64,6 +64,7 @@ type Rule struct {
 	Tool          string `json:"tool"`
 	Resource      string `json:"resource,omitempty"`
 	CommandPrefix string `json:"command_prefix,omitempty"`
+	GrantKey      string `json:"grant_key,omitempty"`
 	Action        Action `json:"action"`
 	Code          string `json:"code,omitempty"`
 }
@@ -288,6 +289,12 @@ func ruleMatches(rule Rule, invocation Invocation) bool {
 		}
 		if json.Unmarshal(invocation.Arguments, &input) != nil ||
 			!commandRuleMatches(input.Command, rule.CommandPrefix, rule.Action) {
+			return false
+		}
+	}
+	if rule.GrantKey != "" {
+		grant, ok := GrantForInvocation(invocation)
+		if !ok || grant.Key != rule.GrantKey {
 			return false
 		}
 	}
