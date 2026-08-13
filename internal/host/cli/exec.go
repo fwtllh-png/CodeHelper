@@ -467,14 +467,15 @@ func runRuntimeTurn(
 			if !open {
 				return "", errors.New("runtime event stream closed before terminal event")
 			}
-			if event.TurnID != turnID {
+			update, err := eventview.Project(event)
+			if err != nil {
+				return "", err
+			}
+			parentEvent := event.TurnID == turnID
+			if !parentEvent && !execWorkspaceEvent(update) {
 				continue
 			}
 			if err := encoder.Encode(event); err != nil {
-				return "", err
-			}
-			update, err := eventview.Project(event)
-			if err != nil {
 				return "", err
 			}
 			switch data := update.(type) {
@@ -518,7 +519,7 @@ func runRuntimeTurn(
 					planID = request.EditPlan.ID
 				}
 				decision, err := protocol.NewOperation(&protocol.ApprovalDecisionPayload{
-					ThreadID: threadID, TurnID: turnID, ItemID: decisionItemID,
+					ThreadID: event.ThreadID, TurnID: event.TurnID, ItemID: decisionItemID,
 					RequestID: request.RequestID, Decision: decisionValue,
 					Scope: scope, ExpiresAt: request.ExpiresAt,
 					ReplacementArguments: replacement,
@@ -531,6 +532,9 @@ func runRuntimeTurn(
 					return "", err
 				}
 			case eventview.TerminalUpdate:
+				if !parentEvent {
+					continue
+				}
 				switch data.Status {
 				case "completed":
 					if !revertAfterComplete {
@@ -555,7 +559,7 @@ func runRuntimeTurn(
 					return "", protocol.NewProblem(data.Code, data.Message, false, nil)
 				}
 			case eventview.LifecycleUpdate:
-				if data.TurnReverted != nil && waitingForRevert {
+				if parentEvent && data.TurnReverted != nil && waitingForRevert {
 					return turnID, nil
 				}
 			}
@@ -581,5 +585,20 @@ func runRuntimeTurn(
 				return "", fmt.Errorf("submit cancellation after interrupt: %w", err)
 			}
 		}
+	}
+}
+
+func execWorkspaceEvent(update eventview.Update) bool {
+	switch data := update.(type) {
+	case eventview.AgentUpdate:
+		return true
+	case eventview.InteractionUpdate:
+		source := data.Source
+		if data.ApprovalRequired != nil {
+			source = data.ApprovalRequired.Source
+		}
+		return source != nil && source.Kind == "agent"
+	default:
+		return false
 	}
 }

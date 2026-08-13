@@ -281,6 +281,9 @@ vscode.TreeDataProvider<TreeNode>, vscode.Disposable {
       );
     }
     if (element.kind === "agent") return agentChildren(element);
+    if (element.kind === "agentTimelineGroup") {
+      return timelineNodes(element.snapshot, element.agentId);
+    }
     return [];
   }
 
@@ -299,6 +302,15 @@ type TreeNode =
   | {
       readonly kind: "integration";
       readonly row: BackgroundSnapshot["integrations"][number];
+    }
+  | {
+      readonly kind: "agentTimelineGroup";
+      readonly snapshot: BackgroundSnapshot;
+      readonly agentId?: string;
+    }
+  | {
+      readonly kind: "agentTimeline";
+      readonly row: BackgroundSnapshot["agentTimeline"][number];
     }
   | {
       readonly kind: "entry";
@@ -352,6 +364,32 @@ function treeItem(node: TreeNode): vscode.TreeItem {
     item.iconPath = new vscode.ThemeIcon(integrationIcon(node.row));
     return item;
   }
+  if (node.kind === "agentTimelineGroup") {
+    const count = node.agentId === undefined
+      ? node.snapshot.agentTimeline.length
+      : node.snapshot.agentTimeline.filter(
+        (row) => row.agentId === node.agentId,
+      ).length;
+    const item = new vscode.TreeItem(
+      node.agentId === undefined ? "Global Timeline" : "Timeline",
+      vscode.TreeItemCollapsibleState.Collapsed,
+    );
+    item.description = `${String(count)} events`;
+    item.iconPath = new vscode.ThemeIcon("history");
+    return item;
+  }
+  if (node.kind === "agentTimeline") {
+    const identity = node.row.agentPath || node.row.agentId;
+    const item = new vscode.TreeItem(
+      `#${String(node.row.sequence)} ${identity}`,
+    );
+    item.description = node.row.status === ""
+      ? node.row.kind
+      : `${node.row.kind} · ${node.row.status}`;
+    item.tooltip = node.row.message;
+    item.iconPath = new vscode.ThemeIcon(timelineIcon(node.row.kind));
+    return item;
+  }
   const item = new vscode.TreeItem(node.label);
   item.description = node.description;
   item.tooltip = node.tooltip;
@@ -402,10 +440,14 @@ function snapshotNodes(
 
 function rootAgentNodes(snapshot: BackgroundSnapshot): TreeNode[] {
   const ids = new Set(snapshot.agents.map((row) => row.id));
-  return snapshot.agents
+  const agents: TreeNode[] = snapshot.agents
     .filter((row) => row.parentId === "" || !ids.has(row.parentId))
     .sort((left, right) => left.path.localeCompare(right.path))
     .map((row) => ({ kind: "agent", row, snapshot }));
+  if (snapshot.agentTimeline.length !== 0) {
+    agents.push({ kind: "agentTimelineGroup", snapshot });
+  }
+  return agents;
 }
 
 function agentChildren(
@@ -418,7 +460,37 @@ function agentChildren(
   const integrations: TreeNode[] = node.snapshot.integrations
     .filter((row) => row.agentId === node.row.id)
     .map((row) => ({ kind: "integration", row }));
-  return [...agents, ...integrations];
+  const timeline: TreeNode[] = node.snapshot.agentTimeline.some(
+    (row) => row.agentId === node.row.id,
+  )
+    ? [{
+      kind: "agentTimelineGroup",
+      snapshot: node.snapshot,
+      agentId: node.row.id,
+    }]
+    : [];
+  return [...agents, ...integrations, ...timeline];
+}
+
+function timelineNodes(
+  snapshot: BackgroundSnapshot,
+  agentId?: string,
+): TreeNode[] {
+  return snapshot.agentTimeline
+    .filter((row) => agentId === undefined || row.agentId === agentId)
+    .slice(-100)
+    .reverse()
+    .map((row) => ({ kind: "agentTimeline", row }));
+}
+
+function timelineIcon(kind: BackgroundSnapshot["agentTimeline"][number]["kind"]): string {
+  switch (kind) {
+    case "spawn": return "add";
+    case "status": return "pulse";
+    case "message": return "mail";
+    case "approval": return "shield";
+    case "integration": return "git-merge";
+  }
 }
 
 function integrationTooltip(

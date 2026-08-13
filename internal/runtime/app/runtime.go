@@ -1908,6 +1908,8 @@ func eventKind(data protocol.EventData) protocol.EventKind {
 		return protocol.EventAgentStatus
 	case *protocol.AgentMessageData:
 		return protocol.EventAgentMessage
+	case *protocol.AgentIntegrationData:
+		return protocol.EventAgentIntegration
 	case *protocol.PlanDeltaData:
 		return protocol.EventPlanDelta
 	case *protocol.CommandExecutionData:

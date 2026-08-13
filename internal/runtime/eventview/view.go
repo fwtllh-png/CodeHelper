@@ -2,6 +2,7 @@ package eventview
 
 import (
 	"fmt"
+
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -27,6 +28,7 @@ type ToolUpdate struct {
 type InteractionUpdate struct {
 	Base
 	ApprovalRequired               *protocol.ApprovalRequiredData
+	Source                         *protocol.ApprovalSource
 	InputRequired                  *protocol.InputRequiredData
 	ResolvedRequest, ResolvedValue string
 }
@@ -50,6 +52,13 @@ type LifecycleUpdate struct {
 type ArtifactUpdate struct {
 	Base
 	Plan *protocol.PlanDeltaData
+}
+type AgentUpdate struct {
+	Base
+	Spawned     *protocol.AgentSpawnedData
+	Status      *protocol.AgentStatusData
+	Message     *protocol.AgentMessageData
+	Integration *protocol.AgentIntegrationData
 }
 type TerminalUpdate struct {
 	Base
@@ -80,7 +89,10 @@ func Project(event protocol.Event) (Update, error) {
 	case *protocol.ApprovalRequiredData:
 		return InteractionUpdate{Base: base, ApprovalRequired: data}, nil
 	case *protocol.ApprovalResolvedData:
-		return InteractionUpdate{Base: base, ResolvedRequest: data.RequestID, ResolvedValue: string(data.Decision)}, nil
+		return InteractionUpdate{
+			Base: base, Source: data.Source,
+			ResolvedRequest: data.RequestID, ResolvedValue: string(data.Decision),
+		}, nil
 	case *protocol.InputRequiredData:
 		return InteractionUpdate{Base: base, InputRequired: data}, nil
 	case *protocol.InputResolvedData:
@@ -103,6 +115,14 @@ func Project(event protocol.Event) (Update, error) {
 		return LifecycleUpdate{Base: base, TurnReverted: data}, nil
 	case *protocol.PlanDeltaData:
 		return ArtifactUpdate{Base: base, Plan: data}, nil
+	case *protocol.AgentSpawnedData:
+		return AgentUpdate{Base: base, Spawned: data}, nil
+	case *protocol.AgentStatusData:
+		return AgentUpdate{Base: base, Status: data}, nil
+	case *protocol.AgentMessageData:
+		return AgentUpdate{Base: base, Message: data}, nil
+	case *protocol.AgentIntegrationData:
+		return AgentUpdate{Base: base, Integration: data}, nil
 	case *protocol.TurnCompletedData:
 		return TerminalUpdate{Base: base, Status: "completed", Message: data.Text}, nil
 	case *protocol.TurnFailedData:

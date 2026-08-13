@@ -58,6 +58,40 @@ func TestBaselineMetricsKeepEmptyDenominatorsUnknown(t *testing.T) {
 	}
 }
 
+func TestAgentEvaluationThresholdsFailClosed(t *testing.T) {
+	one := 1.0
+	zero := 0.0
+	thresholds := AgentEvaluationThresholds{
+		SchemaVersion: 1, MinimumScenarios: 3,
+		MinimumExplicitCompliance: 1, MinimumAdaptiveCompliance: 1,
+		MinimumLocalExecutionRate: 1, MaximumFalseSpawnRate: 0,
+		MinimumAgentCompletionRate: 1, MinimumParallelAdmissionRate: 1,
+	}
+	passing := AgentEvaluationMetrics{
+		Scenarios:             3,
+		ExplicitCompliance:    Ratio{Value: &one, Numerator: 1, Denominator: 1},
+		AdaptiveCompliance:    Ratio{Value: &one, Numerator: 2, Denominator: 2},
+		LocalExecutionRate:    Ratio{Value: &one, Numerator: 1, Denominator: 1},
+		FalseSpawnRate:        Ratio{Value: &zero, Denominator: 1},
+		AgentCompletionRate:   Ratio{Value: &one, Numerator: 4, Denominator: 4},
+		ParallelAdmissionRate: Ratio{Value: &one, Numerator: 2, Denominator: 2},
+	}
+	if failures := ValidateAgentEvaluation(passing, thresholds); len(failures) != 0 {
+		t.Fatalf("passing metrics failed: %v", failures)
+	}
+	missing := passing
+	missing.AdaptiveCompliance = Ratio{}
+	if failures := ValidateAgentEvaluation(missing, thresholds); len(failures) != 1 ||
+		failures[0] != "adaptive compliance has no evidence" {
+		t.Fatalf("missing evidence failures = %v", failures)
+	}
+	regressed := passing
+	regressed.FalseSpawnRate = Ratio{Value: &one, Numerator: 1, Denominator: 1}
+	if failures := ValidateAgentEvaluation(regressed, thresholds); len(failures) != 1 {
+		t.Fatalf("regression failures = %v", failures)
+	}
+}
+
 func TestReportJSONCarriesVersionedBaselineMetrics(t *testing.T) {
 	report := Report{
 		SchemaVersion: 1,

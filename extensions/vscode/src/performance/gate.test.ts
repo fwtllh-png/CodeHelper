@@ -89,6 +89,54 @@ void test("BackgroundProjector refreshes 1000 Tree rows within budget", () => {
   );
 });
 
+void test("BackgroundProjector processes 10k Agent events within budget", () => {
+  const projector = new BackgroundProjector();
+  const beforeHeap = process.memoryUsage().heapUsed;
+  const started = performance.now();
+  projector.applyEvent(event(1, "agent.spawned", {
+    agent_id: "agent-1",
+    role: "explore",
+    depth: 0,
+    detail: {
+      path: "/root/inspect",
+      revision: 1,
+      workspace: "/workspace",
+      session_id: "session-1",
+      thread_id: "thread-agent-1",
+      parent_path: "/root",
+      status: "requested",
+    },
+  }), true);
+  for (let sequence = 2; sequence <= eventCount; sequence += 1) {
+    projector.applyEvent(event(sequence, "agent.status", {
+      agent_id: "agent-1",
+      status: sequence === eventCount ? "completed" : "running",
+      message: `transition ${String(sequence)}`,
+      detail: {
+        path: "/root/inspect",
+        revision: sequence,
+      },
+    }), true);
+  }
+  const durationMS = performance.now() - started;
+  const heapGrowth = Math.max(0, process.memoryUsage().heapUsed - beforeHeap);
+  const snapshot = projector.snapshot();
+  metrics["agent_10k_duration_ms"] = Number(durationMS.toFixed(1));
+  metrics["agent_10k_heap_growth_bytes"] = heapGrowth;
+  metrics["agent_timeline_retained"] = snapshot.agentTimeline.length;
+
+  assert.equal(snapshot.agents[0]?.status, "completed");
+  assert.equal(snapshot.agentTimeline.length, 512);
+  assert.ok(
+    durationMS < maxDurationMS,
+    `10k Agent event projection took ${durationMS.toFixed(1)}ms`,
+  );
+  assert.ok(
+    heapGrowth < maxHeapGrowthBytes,
+    `10k Agent event projection grew heap by ${String(heapGrowth)} bytes`,
+  );
+});
+
 void test("ChatProjector ignores workspace agent events in the Chat transcript", () => {
   const projector = new ChatProjector();
   assert.equal(projector.apply(event(1, "agent.status", {

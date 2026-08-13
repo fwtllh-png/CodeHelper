@@ -48,6 +48,15 @@ export interface IntegrationRow {
   readonly appliedAt: string;
 }
 
+export interface AgentTimelineRow {
+  readonly sequence: number;
+  readonly agentId: string;
+  readonly agentPath: string;
+  readonly kind: "spawn" | "status" | "message" | "approval" | "integration";
+  readonly status: string;
+  readonly message: string;
+}
+
 export interface TaskRow {
   readonly id: string;
   readonly sessionId: string;
@@ -89,6 +98,7 @@ export interface BackgroundSnapshot {
   readonly threads: readonly ThreadRow[];
   readonly agents: readonly AgentRow[];
   readonly integrations: readonly IntegrationRow[];
+  readonly agentTimeline: readonly AgentTimelineRow[];
   readonly tasks: readonly TaskRow[];
   readonly jobs: readonly TaskRow[];
   readonly approvals: readonly ApprovalRow[];
@@ -107,15 +117,20 @@ const terminalAgentStates = new Set([
   "completed", "failed", "interrupted", "integrated",
   "integration_failed", "closed",
 ]);
+const maxAgentTimeline = 512;
+const maxIntegrationCandidates = 256;
+const maxNoticeKeys = 1024;
 
 export class BackgroundProjector {
   readonly #threads = new Map<string, ThreadRow>();
   readonly #agents = new Map<string, AgentRow>();
   readonly #integrations = new Map<string, IntegrationRow>();
+  readonly #agentTimeline: AgentTimelineRow[] = [];
   readonly #tasks = new Map<string, TaskRow>();
   readonly #approvals = new Map<string, ApprovalRow>();
   readonly #notified = new Set<string>();
   #tasksInitialized = false;
+  #lastWorkspaceSequence = 0;
   #usage: UsageRollup = emptyUsage();
 
   public replaceThreads(rows: readonly ThreadRow[]): void {
@@ -158,6 +173,10 @@ export class BackgroundProjector {
     replayed: boolean,
   ): readonly TerminalNotice[] {
     if (isUnknownEvent(event)) return [];
+    if (isAgentWorkspaceEvent(event)) {
+      if (event.sequence <= this.#lastWorkspaceSequence) return [];
+      this.#lastWorkspaceSequence = event.sequence;
+    }
     switch (event.kind) {
       case "approval.required":
         this.#approvals.set(event.data.request_id, {
@@ -173,6 +192,16 @@ export class BackgroundProjector {
           agentRole: event.data.source?.role ?? "",
           parentPath: event.data.source?.parent_path ?? "",
         });
+        if (event.data.source?.kind === "agent") {
+          this.#appendAgentTimeline({
+            sequence: event.sequence,
+            agentId: event.data.source.agent_id,
+            agentPath: event.data.source.agent_path,
+            kind: "approval",
+            status: "required",
+            message: event.data.tool,
+          });
+        }
         return [];
       case "approval.resolved":
         this.#approvals.delete(event.data.request_id);
@@ -191,6 +220,25 @@ export class BackgroundProjector {
         return notice === undefined ? [] : [notice];
       }
       case "agent.status": {
+        const current = this.#agents.get(event.data.agent_id);
+        const detail = eventAgentStatusDetail(event.data.detail);
+        if (current !== undefined) {
+          this.#agents.set(event.data.agent_id, {
+            ...current,
+            revision: detail.revision ?? current.revision,
+            status: event.data.status,
+            lastMessage: event.data.message ?? current.lastMessage,
+            closed: event.data.status === "closed",
+          });
+        }
+        this.#appendAgentTimeline({
+          sequence: event.sequence,
+          agentId: event.data.agent_id,
+          agentPath: detail.path ?? current?.path ?? "",
+          kind: "status",
+          status: event.data.status,
+          message: event.data.message ?? "",
+        });
         if (replayed || !terminalAgentStates.has(event.data.status)) return [];
         const notice = this.#notice(
           `agent:${event.data.agent_id}:${event.data.status}`,
@@ -202,6 +250,33 @@ export class BackgroundProjector {
             event.data.status === "integration_failed",
         );
         return notice === undefined ? [] : [notice];
+      }
+      case "agent.spawned": {
+        const row = eventAgentRow(event.data);
+        this.#agents.set(row.id, row);
+        this.#appendAgentTimeline({
+          sequence: event.sequence,
+          agentId: row.id,
+          agentPath: row.path,
+          kind: "spawn",
+          status: row.status,
+          message: row.role,
+        });
+        return [];
+      }
+      case "agent.message": {
+        const agentId = event.data.from === "parent"
+          ? event.data.to
+          : event.data.from;
+        this.#appendAgentTimeline({
+          sequence: event.sequence,
+          agentId,
+          agentPath: this.#agents.get(agentId)?.path ?? "",
+          kind: "message",
+          status: "",
+          message: eventMessage(event.data.body),
+        });
+        return [];
       }
       case "agent.integration": {
         const detail = integrationDetail(event.data.detail);
@@ -221,6 +296,15 @@ export class BackgroundProjector {
             appliedAt: detail.appliedAt,
           },
         );
+        trimOldestMapEntries(this.#integrations, maxIntegrationCandidates);
+        this.#appendAgentTimeline({
+          sequence: event.sequence,
+          agentId: event.data.agent_id,
+          agentPath: event.data.agent_path,
+          kind: "integration",
+          status: event.data.status,
+          message: event.data.message ?? "",
+        });
         return [];
       }
       default:
@@ -237,6 +321,7 @@ export class BackgroundProjector {
         this.#integrations.values(),
         (row) => `${row.agentPath}:${row.previewDigest}`,
       ),
+      agentTimeline: [...this.#agentTimeline],
       tasks,
       jobs: tasks.filter((row) => row.executor !== ""),
       approvals: sorted(this.#approvals.values(), (row) => row.expiresAt),
@@ -252,7 +337,34 @@ export class BackgroundProjector {
   ): TerminalNotice | undefined {
     if (this.#notified.has(key)) return undefined;
     this.#notified.add(key);
+    trimOldestSetEntries(this.#notified, maxNoticeKeys);
     return { key, title, detail, failed };
+  }
+
+  #appendAgentTimeline(row: AgentTimelineRow): void {
+    this.#agentTimeline.push(row);
+    if (this.#agentTimeline.length > maxAgentTimeline) {
+      this.#agentTimeline.splice(
+        0,
+        this.#agentTimeline.length - maxAgentTimeline,
+      );
+    }
+  }
+}
+
+function isAgentWorkspaceEvent(event: DecodedEvent): boolean {
+  if (isUnknownEvent(event)) return false;
+  switch (event.kind) {
+    case "agent.spawned":
+    case "agent.status":
+    case "agent.message":
+    case "agent.integration":
+      return true;
+    case "approval.required":
+    case "approval.resolved":
+      return event.data.source?.kind === "agent";
+    default:
+      return false;
   }
 }
 
@@ -292,6 +404,89 @@ function verificationStatus(value: unknown): string {
   }
   const verify = (value as Readonly<Record<string, unknown>>)["verify"];
   return typeof verify === "string" ? verify : "";
+}
+
+function eventAgentRow(data: {
+  readonly agent_id: string;
+  readonly parent_id?: string;
+  readonly workspace_root?: string;
+  readonly session_id?: string;
+  readonly role: string;
+  readonly profile?: string;
+  readonly stance?: string;
+  readonly depth: number;
+  readonly worktree?: string;
+  readonly detail?: unknown;
+}): AgentRow {
+  const detail = record(data.detail);
+  return {
+    id: data.agent_id,
+    path: text(detail?.["path"]) || `/root/${data.agent_id}`,
+    revision: integer(detail?.["revision"]) ?? 1,
+    workspace: text(detail?.["workspace"]) || data.workspace_root || "",
+    sessionId: text(detail?.["session_id"]) || data.session_id || "",
+    threadId: text(detail?.["thread_id"]),
+    parentId: text(detail?.["parent_id"]) || data.parent_id || "",
+    parentPath: text(detail?.["parent_path"]) || "/root",
+    role: data.role,
+    status: text(detail?.["status"]) || "requested",
+    lastMessage: text(detail?.["last_message"]),
+    closed: false,
+  };
+}
+
+function eventAgentStatusDetail(value: unknown): {
+  readonly path: string | undefined;
+  readonly revision: number | undefined;
+} {
+  const detail = record(value);
+  return {
+    path: text(detail?.["path"]) || undefined,
+    revision: integer(detail?.["expected_revision"]) === undefined
+      ? undefined
+      : (integer(detail?.["expected_revision"]) ?? 0) + 1,
+  };
+}
+
+function eventMessage(value: unknown): string {
+  const detail = record(value);
+  const body = text(detail?.["body"]) || text(detail?.["summary"]);
+  const rendered = body || (
+    typeof value === "string" ? value : JSON.stringify(value)
+  );
+  return rendered.length <= 160 ? rendered : `${rendered.slice(0, 157)}...`;
+}
+
+function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Readonly<Record<string, unknown>>
+    : undefined;
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function integer(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function trimOldestMapEntries<K, V>(target: Map<K, V>, limit: number): void {
+  while (target.size > limit) {
+    const oldest = target.keys().next();
+    if (oldest.done) return;
+    target.delete(oldest.value);
+  }
+}
+
+function trimOldestSetEntries<T>(target: Set<T>, limit: number): void {
+  while (target.size > limit) {
+    const oldest = target.values().next();
+    if (oldest.done) return;
+    target.delete(oldest.value);
+  }
 }
 
 function replace<T>(

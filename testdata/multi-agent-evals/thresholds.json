@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "minimum_scenarios": 3,
+  "minimum_explicit_compliance": 1,
+  "minimum_adaptive_compliance": 1,
+  "minimum_local_execution_rate": 1,
+  "maximum_false_spawn_rate": 0,
+  "minimum_agent_completion_rate": 1,
+  "minimum_parallel_admission_rate": 1
+}

@@ -123,6 +123,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	case streamMsg:
+		if msg.agentUpdate != nil {
+			m = m.appendAgentTimeline(msg.agentSequence, *msg.agentUpdate)
+			if m.mode == ModePanel && m.panel == PanelAgents {
+				m.panelBody = m.renderPanel(PanelAgents)
+			}
+		}
 		if msg.mcpHealth != nil {
 			if m.mcpHealth == nil {
 				m.mcpHealth = make(map[string]protocol.MCPHealthChangedData)

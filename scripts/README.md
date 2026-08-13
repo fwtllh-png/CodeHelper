@@ -21,7 +21,7 @@ root unless a script explicitly states otherwise.
 | `upgradebaseline` | no | writes Stage 0 benchmark metrics and capability availability |
 | `experiencecontract` | no | validates the shared experience baseline |
 | `content-fixture-smoke.sh` | no | temporary content-dependency fixtures |
-| `live-model-smoke.sh` | yes | one real provider request; no persistent secret |
+| `live-model-smoke.sh` | yes | single- or Multi-Agent real provider smoke; no persistent secret |
 | `package-release.sh` | no | `dist/release`: binaries, checksums, SBOM, manifest |
 | `deepseek-local.sh` | setup/package may use network | local DeepSeek build, Keychain config, TUI, and VS Code |
 | `setup-vscode-local.sh` | package build may install dependencies | installs a target VSIX into official macOS VS Code |
@@ -59,6 +59,8 @@ make doc-external-links
 make brand-check
 make secret-leak-test
 make live-model-smoke
+make live-multi-agent-smoke
+make deepseek-multi-agent-smoke
 VERSION=0.1.0 make package
 make deepseek-init
 make deepseek-tui

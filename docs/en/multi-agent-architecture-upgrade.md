@@ -984,6 +984,37 @@ compact TUI tree, Multi-Agent evaluation packs, live-provider smoke, and
 performance baselines. Exit when hosts agree, VS Code replay is continuous,
 large streams stay bounded, and explicit/adaptive evaluations meet thresholds.
 
+Implementation status: `completed` (2026-08-13).
+
+- `eventview.AgentUpdate` is the typed Go Host projection for all retained
+  `agent.*` Events. CLI and TUI now accept workspace Agent Events across Child
+  Threads, route Child approvals by the Event's authoritative Thread/Turn, and
+  terminate only on the Parent Turn. ACP forwards the same workspace-scoped
+  facts, including Integration, without binding fake Child sessions.
+- TUI renders a canonical-path compact tree plus a bounded 64-entry timeline.
+  VS Code reconstructs nested Agent nodes, Integration receipts, a 512-entry
+  Global/per-Agent Timeline, and at most 256 Integration candidates. Monotonic
+  Workspace sequence handling prevents replay/live overlap from duplicating
+  Timeline rows or regressing terminal Agent state after restart.
+- The existing production Runtime benchmark now supports declarative
+  Multi-Agent scenarios. `make multi-agent-eval` runs Parent-local,
+  Explicit-parallel, and Adaptive-parallel fixtures and fails closed against
+  checked-in thresholds: Explicit/Adaptive compliance, local execution, Child
+  completion, and parallel admission are 100%; false Spawn is 0%.
+- Runtime telemetry derives Spawn, terminal outcome, completion latency,
+  Integration outcome, and Child cost directly from successfully published
+  Agent Events. `delegation=disabled|explicit|adaptive` remains the sole Spawn
+  kill switch and rollout control.
+- VS Code processes 10,000 Agent Events under the 1-second/32-MiB budget while
+  retaining 512 Timeline rows. The measured local projection was below 4 ms.
+  The complete VS Code suite has 226 tests (222 passed, 4 environment-gated).
+- `make deepseek-multi-agent-smoke` uses the guarded owner-environment wrapper
+  without persisting or printing credentials. The real DeepSeek run spawned
+  exactly two `context_mode=fresh` Explorer Children concurrently, observed two
+  completed Child results, waited, closed them, and completed the Parent in
+  about 21.5 seconds. `make vscode-subagent-integration` also passed the real
+  Electron Spawn/Approval/Integration workflow.
+
 ## 17. Verification System
 
 ### 17.1 Test Layers

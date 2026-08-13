@@ -1,0 +1,39 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": ["simple.sse"],
+  "routes": [
+    {
+      "match": ["\\u003ctask_capsule\\u003e", "eval_child_a"],
+      "streams": ["declare-child.sse", "complete-child.sse"]
+    },
+    {
+      "match": ["\\u003ctask_capsule\\u003e", "eval_child_b"],
+      "streams": ["declare-child.sse", "complete-child.sse"]
+    },
+    {
+      "match": ["Keep this simple task in the parent"],
+      "streams": ["simple.sse"]
+    },
+    {
+      "match": ["Explicitly delegate two independent evaluations"],
+      "streams": [
+        "spawn-explicit.sse",
+        "wait.sse",
+        "declare-parent.sse",
+        "complete-parent.sse"
+      ]
+    },
+    {
+      "match": ["Adaptively delegate two independent evaluations"],
+      "streams": [
+        "spawn-adaptive.sse",
+        "wait.sse",
+        "declare-parent.sse",
+        "complete-parent.sse"
+      ]
+    }
+  ],
+  "stream_delay_ms": 20
+}

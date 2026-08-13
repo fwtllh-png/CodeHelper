@@ -23,6 +23,7 @@ type AccountingUpdate = eventview.AccountingUpdate
 type EvidenceUpdate = eventview.EvidenceUpdate
 type LifecycleUpdate = eventview.LifecycleUpdate
 type ArtifactUpdate = eventview.ArtifactUpdate
+type AgentUpdate = eventview.AgentUpdate
 type TerminalUpdate = eventview.TerminalUpdate
 
 func ProjectEvent(event protocol.Event) (EventUpdate, error) {

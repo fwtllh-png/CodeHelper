@@ -1,0 +1,21 @@
+{
+  "name": "simple-local",
+  "category": "multi_agent_locality",
+  "prompt": "Keep this simple task in the parent and reply with simple-parent-ok.",
+  "provider_fixture": "../provider",
+  "tools": true,
+  "posture": "bypass",
+  "max_steps": 4,
+  "timeout_ms": 30000,
+  "subagent": {
+    "delegation": "adaptive",
+    "max_depth": 3,
+    "max_parallel": 4
+  },
+  "expect": {
+    "terminal": "completed",
+    "agent_spawns": 0,
+    "agent_terminals": 0,
+    "output_contains": ["simple-parent-ok"]
+  }
+}

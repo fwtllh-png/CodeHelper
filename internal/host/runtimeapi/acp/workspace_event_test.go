@@ -3,6 +3,7 @@ package acp
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,11 @@ func TestAgentEventsAreVisibleOnlyToTheirHostWorkspace(t *testing.T) {
 		&protocol.AgentMessageData{
 			From: "agent-1", To: "agent-2", WorkspaceRoot: "/workspace/a",
 			Sequence: 1, Body: []byte(`{}`),
+		},
+		&protocol.AgentIntegrationData{
+			AgentID: "agent-1", AgentPath: "/root/write", ParentPath: "/root",
+			WorkspaceRoot: "/workspace/a", SessionID: "session-1",
+			Status: "applied", PreviewDigest: strings.Repeat("a", 64),
 		},
 		&protocol.ApprovalRequiredData{
 			RequestID: "approval-1", CallID: "call-1", Tool: "github_comment",

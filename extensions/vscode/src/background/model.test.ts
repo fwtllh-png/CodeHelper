@@ -118,6 +118,101 @@ void test("BackgroundProjector retains integration candidate and receipt", () =>
   assert.equal(row.verification, "passed");
 });
 
+void test("BackgroundProjector rebuilds Agent nodes and bounds large replay", () => {
+  const projector = new BackgroundProjector();
+  projector.applyEvent(event(1, "agent.spawned", {
+    agent_id: "agent-1",
+    role: "explorer",
+    depth: 0,
+    detail: {
+      path: "/root/inspect",
+      revision: 1,
+      workspace: "/workspace",
+      session_id: "session_1",
+      thread_id: "thread-agent-1",
+      parent_path: "/root",
+      status: "requested",
+    },
+  }), true);
+  for (let sequence = 2; sequence <= 10_000; sequence += 1) {
+    projector.applyEvent(event(sequence, "agent.status", {
+      agent_id: "agent-1",
+      status: sequence === 10_000 ? "completed" : "running",
+      message: `transition ${String(sequence)}`,
+      detail: {
+        path: "/root/inspect",
+        expected_revision: sequence - 1,
+      },
+    }), true);
+  }
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    projector.applyEvent(event(10_001 + attempt, "agent.integration", {
+      agent_id: "agent-1",
+      agent_path: "/root/inspect",
+      parent_path: "/root",
+      workspace_root: "/workspace",
+      session_id: "session_1",
+      status: "failed",
+      preview_digest: attempt.toString(16).padStart(64, "0"),
+    }), true);
+  }
+  const snapshot = projector.snapshot();
+  assert.equal(snapshot.agents[0]?.path, "/root/inspect");
+  assert.equal(snapshot.agents[0].status, "completed");
+  assert.equal(snapshot.agentTimeline.length, 512);
+  assert.equal(snapshot.agentTimeline.at(-1)?.sequence, 10_300);
+  assert.equal(snapshot.integrations.length, 256);
+});
+
+void test("BackgroundProjector keeps Agent replay and live overlap monotonic", () => {
+  const projector = new BackgroundProjector();
+  projector.applyEvent(event(1, "agent.spawned", {
+    agent_id: "agent-1",
+    role: "explore",
+    depth: 0,
+    detail: {
+      path: "/root/inspect",
+      revision: 1,
+      workspace: "/workspace",
+      session_id: "session_1",
+      thread_id: "thread-agent-1",
+      parent_path: "/root",
+      status: "requested",
+    },
+  }), true);
+  projector.applyEvent(event(2, "agent.status", {
+    agent_id: "agent-1",
+    status: "running",
+    detail: { path: "/root/inspect", expected_revision: 1 },
+  }), true);
+
+  // Restart replay can overlap the first buffered live page.
+  projector.applyEvent(event(2, "agent.status", {
+    agent_id: "agent-1",
+    status: "running",
+    detail: { path: "/root/inspect", expected_revision: 1 },
+  }), false);
+  projector.applyEvent(event(3, "agent.status", {
+    agent_id: "agent-1",
+    status: "completed",
+    detail: { path: "/root/inspect", expected_revision: 2 },
+  }), false);
+  // A stale replay page must not regress the terminal node.
+  projector.applyEvent(event(1, "agent.spawned", {
+    agent_id: "agent-1",
+    role: "explore",
+    depth: 0,
+  }), true);
+
+  const snapshot = projector.snapshot();
+  assert.equal(snapshot.agents[0]?.status, "completed");
+  assert.equal(snapshot.agents[0].revision, 3);
+  assert.deepEqual(
+    snapshot.agentTimeline.map((row) => row.sequence),
+    [1, 2, 3],
+  );
+});
+
 void test("BackgroundProjector notifies only real task terminal transitions", () => {
   const projector = new BackgroundProjector();
   assert.equal(projector.replaceTasks([task("old", "agent_turn", "completed")]).length, 0);

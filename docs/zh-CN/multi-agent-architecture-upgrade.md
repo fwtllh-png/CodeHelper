@@ -1045,6 +1045,34 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
 - 大事件流保持 Extension Host 性能预算；
 - Explicit 与 Adaptive Eval 达到发布阈值。
 
+实施状态：`completed`（2026-08-13）。
+
+- `eventview.AgentUpdate` 统一解释全部 retained `agent.*` Event。CLI 与 TUI
+  可跨 Child Thread 接收 Workspace Agent Event，按 Event 中的权威 Thread/Turn
+  路由 Child Approval，并且只有 Parent Turn Terminal 才结束 Host Turn。ACP
+  投影相同的 Workspace-scoped Agent/Integration 事实，不伪造 Child Session；
+- TUI 使用 Canonical Path 渲染 Compact Tree 和最多 64 条 Timeline。VS Code
+  可恢复 Nested Agent Node、Integration Receipt、最多 512 条 Global/per-Agent
+  Timeline 和 256 个 Integration Candidate。Workspace Sequence 单调应用，保证
+  Restart 时 Replay/Live 重叠不会重复 Timeline 或回退 Terminal Agent State；
+- 现有生产 Runtime Benchmark 已支持声明式 Multi Agent 场景。
+  `make multi-agent-eval` 覆盖 Parent Local、Explicit Parallel 和 Adaptive
+  Parallel，并以提交到仓库的阈值 Fail Closed：Explicit/Adaptive Compliance、
+  Local Execution、Child Completion 和 Parallel Admission 均为 100%，False
+  Spawn 为 0%；
+- Runtime Telemetry 直接从成功发布的 Agent Event 统计 Spawn、Terminal Outcome、
+  Completion Latency、Integration Outcome 和 Child Cost。
+  `delegation=disabled|explicit|adaptive` 仍是唯一 Spawn Kill Switch 与灰度控制；
+- VS Code 在 1 秒/32 MiB 预算内处理 10,000 个 Agent Event，Timeline 固定保留
+  512 条；本机实测投影低于 4 ms。完整 VS Code 测试共 226 项，其中 222 项通过，
+  4 项为环境门禁跳过；
+- `make deepseek-multi-agent-smoke` 通过受控 Owner Environment Wrapper 读取凭据，
+  不持久化或打印 Secret。真实 DeepSeek 运行精确并发启动两个
+  `context_mode=fresh` Explorer Child，观察到两个 Completed Child Result，
+  执行 Wait/Close，并在约 21.5 秒完成 Parent。`make
+  vscode-subagent-integration` 同样通过真实 Electron
+  Spawn/Approval/Integration 工作流。
+
 ## 17. 验证体系
 
 ### 17.1 测试金字塔

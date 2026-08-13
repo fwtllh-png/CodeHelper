@@ -4,11 +4,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/host/bench"
@@ -21,12 +23,27 @@ func main() {
 		"benchmark suite directory",
 	)
 	output := flag.String("output", "", "JSON output path (stdout when empty)")
+	agentThresholds := flag.String(
+		"agent-thresholds",
+		"",
+		"optional Multi-Agent threshold JSON path",
+	)
 	timeout := flag.Duration("timeout", 10*time.Minute, "suite timeout")
 	flag.Parse()
 
 	root, err := repositoryRoot()
 	if err != nil {
 		fatal(err)
+	}
+	var thresholds *bench.AgentEvaluationThresholds
+	if *agentThresholds != "" {
+		loaded, loadErr := loadAgentThresholds(
+			filepath.Join(root, *agentThresholds),
+		)
+		if loadErr != nil {
+			fatal(loadErr)
+		}
+		thresholds = &loaded
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
@@ -70,6 +87,42 @@ func main() {
 		)
 		os.Exit(1)
 	}
+	if thresholds != nil {
+		failures := bench.ValidateAgentEvaluation(
+			report.AgentMetrics,
+			*thresholds,
+		)
+		if len(failures) != 0 {
+			fmt.Fprintln(
+				os.Stderr,
+				"upgradebaseline: Multi-Agent release thresholds failed:",
+			)
+			for _, failure := range failures {
+				fmt.Fprintln(os.Stderr, " -", failure)
+			}
+			os.Exit(1)
+		}
+	}
+}
+
+func loadAgentThresholds(path string) (bench.AgentEvaluationThresholds, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return bench.AgentEvaluationThresholds{}, fmt.Errorf(
+			"read agent thresholds: %w",
+			err,
+		)
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	var thresholds bench.AgentEvaluationThresholds
+	if err := decoder.Decode(&thresholds); err != nil {
+		return bench.AgentEvaluationThresholds{}, fmt.Errorf(
+			"decode agent thresholds: %w",
+			err,
+		)
+	}
+	return thresholds, nil
 }
 
 func repositoryRoot() (string, error) {

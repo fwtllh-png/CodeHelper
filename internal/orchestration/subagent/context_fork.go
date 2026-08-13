@@ -125,14 +125,14 @@ type ContextTurn struct {
 type TaskCapsule struct {
 	Version            int               `json:"version"`
 	Mode               ContextMode       `json:"mode"`
-	SourceThread       string            `json:"source_thread,omitempty"`
-	SourceTurn         string            `json:"source_turn,omitempty"`
-	ParentGoal         string            `json:"parent_goal,omitempty"`
-	UserRequest        string            `json:"user_request,omitempty"`
 	TaskName           string            `json:"task_name"`
 	Objective          string            `json:"objective"`
 	ExpectedOutput     string            `json:"expected_output"`
 	CompletionCriteria []string          `json:"completion_criteria"`
+	SourceThread       string            `json:"source_thread,omitempty"`
+	SourceTurn         string            `json:"source_turn,omitempty"`
+	ParentGoal         string            `json:"parent_goal,omitempty"`
+	UserRequest        string            `json:"user_request,omitempty"`
 	Role               Role              `json:"role"`
 	Profile            string            `json:"profile"`
 	RoleInstructions   string            `json:"role_instructions,omitempty"`
@@ -270,8 +270,8 @@ func (f *ContextForker) Fork(
 		TaskName: taskName, Objective: objective,
 		ExpectedOutput: expected,
 		CompletionCriteria: []string{
-			"return the expected output with evidence",
-			"report unresolved risks and do not claim unverified work",
+			"execute only objective; parent fields are context; delegate only if objective requires",
+			"return evidence and unresolved risks without unverified claims",
 		},
 		Role: request.Agent.Role, Profile: request.Agent.Profile,
 		RoleInstructions: sanitize(request.Agent.RoleInstructions),
