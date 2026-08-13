@@ -32,6 +32,7 @@ type IntegrationReceipt struct {
 }
 
 type IntegrationCandidate struct {
+	SessionID     string                       `json:"session_id"`
 	AgentID       string                       `json:"agent_id"`
 	AgentPath     string                       `json:"agent_path"`
 	ParentID      string                       `json:"parent_id,omitempty"`
@@ -66,6 +67,12 @@ func (m *Manager) SaveIntegration(candidate IntegrationCandidate) error {
 	}
 	if candidate.AgentPath == "" {
 		candidate.AgentPath = agent.Path
+	}
+	if candidate.SessionID == "" {
+		candidate.SessionID = agent.SessionID
+	}
+	if candidate.SessionID != agent.SessionID {
+		return errors.New("integration candidate belongs to another session")
 	}
 	if candidate.ParentID == "" {
 		candidate.ParentID = agent.Parent
@@ -114,11 +121,15 @@ func (m *Manager) Integration(
 		return cloneIntegration(candidate), true, nil
 	}
 	graph := m.graph
+	sessionID := ""
+	if agent, exists := m.agents[agentID]; exists {
+		sessionID = agent.SessionID
+	}
 	m.mu.Unlock()
 	if graph == nil {
 		return IntegrationCandidate{}, false, nil
 	}
-	candidate, ok, err := graph.LoadIntegration(agentID, previewDigest)
+	candidate, ok, err := graph.LoadIntegration(sessionID, agentID, previewDigest)
 	if err != nil || !ok {
 		return IntegrationCandidate{}, ok, err
 	}

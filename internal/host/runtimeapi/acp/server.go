@@ -985,6 +985,7 @@ func (s *Server) taskList(request rpcRequest) {
 }
 
 type agentListParams struct {
+	SessionID     string `json:"sessionId,omitempty"`
 	ParentID      string `json:"parentId,omitempty"`
 	IncludeClosed bool   `json:"includeClosed,omitempty"`
 	Limit         int    `json:"limit,omitempty"`
@@ -996,6 +997,13 @@ func (s *Server) agentList(request rpcRequest) {
 		s.invalidParams(request, err)
 		return
 	}
+	if params.SessionID == "" {
+		s.invalidParams(request, errors.New("sessionId is required"))
+		return
+	}
+	if _, ok := s.requireSession(request, params.SessionID); !ok {
+		return
+	}
 	limit, err := boundedLimit(params.Limit, 100)
 	if err != nil {
 		s.invalidParams(request, err)
@@ -1004,7 +1012,8 @@ func (s *Server) agentList(request rpcRequest) {
 	result := make([]runtimeview.Agent, 0)
 	if s.dependencies.Agents != nil {
 		values := s.dependencies.Agents.List(subagent.ListFilter{
-			ParentID: params.ParentID, IncludeClosed: params.IncludeClosed,
+			SessionID: params.SessionID, ParentID: params.ParentID,
+			IncludeClosed: params.IncludeClosed,
 		})
 		if len(values) > limit {
 			values = values[:limit]
@@ -2139,7 +2148,7 @@ func (s *Server) sessionReplay(request rpcRequest) {
 	for _, event := range page {
 		nextSeq = event.Sequence
 		if s.sessionForThread(event.ThreadID) == binding.ID ||
-			s.workspaceVisible(event) {
+			s.workspaceVisibleToSession(event, binding.ID) {
 			events = append(events, event)
 		}
 	}
@@ -2315,11 +2324,11 @@ func (s *Server) deliver(event protocol.Event) {
 	s.mu.Lock()
 	sessionID, bound := s.threads[event.ThreadID]
 	workspaceVisible := s.workspaceVisible(event)
+	workspaceSession := s.workspaceEventSession(event)
 	var workspaceSessions []string
 	if !bound && workspaceVisible {
-		workspaceSessions = make([]string, 0, len(s.sessions))
-		for id := range s.sessions {
-			workspaceSessions = append(workspaceSessions, id)
+		if _, exists := s.sessions[workspaceSession]; exists {
+			workspaceSessions = append(workspaceSessions, workspaceSession)
 		}
 	}
 	var active *activeTurn
@@ -2368,32 +2377,49 @@ func (s *Server) deliver(event protocol.Event) {
 }
 
 func (s *Server) workspaceVisible(event protocol.Event) bool {
-	var workspace string
-	switch data := event.Data.(type) {
-	case *protocol.AgentSpawnedData:
-		workspace = data.WorkspaceRoot
-	case *protocol.AgentStatusData:
-		workspace = data.WorkspaceRoot
-	case *protocol.AgentMessageData:
-		workspace = data.WorkspaceRoot
-	case *protocol.AgentIntegrationData:
-		workspace = data.WorkspaceRoot
-	case *protocol.ApprovalRequiredData:
-		if data.Source != nil {
-			workspace = data.Source.WorkspaceRoot
-		}
-	case *protocol.ApprovalResolvedData:
-		if data.Source != nil {
-			workspace = data.Source.WorkspaceRoot
-		}
-	default:
-		return false
-	}
+	workspace, _ := s.workspaceEventIdentity(event)
 	if workspace == "" {
 		return false
 	}
 	normalized, err := taskstate.NormalizeWorkspaceRoot(workspace)
 	return err == nil && normalized == s.options.WorkspaceRoot
+}
+
+func (s *Server) workspaceVisibleToSession(
+	event protocol.Event,
+	sessionID string,
+) bool {
+	return s.workspaceVisible(event) &&
+		s.workspaceEventSession(event) == sessionID
+}
+
+func (s *Server) workspaceEventSession(event protocol.Event) string {
+	_, sessionID := s.workspaceEventIdentity(event)
+	return sessionID
+}
+
+func (s *Server) workspaceEventIdentity(
+	event protocol.Event,
+) (workspace, sessionID string) {
+	switch data := event.Data.(type) {
+	case *protocol.AgentSpawnedData:
+		return data.WorkspaceRoot, data.SessionID
+	case *protocol.AgentStatusData:
+		return data.WorkspaceRoot, data.SessionID
+	case *protocol.AgentMessageData:
+		return data.WorkspaceRoot, data.SessionID
+	case *protocol.AgentIntegrationData:
+		return data.WorkspaceRoot, data.SessionID
+	case *protocol.ApprovalRequiredData:
+		if data.Source != nil {
+			return data.Source.WorkspaceRoot, data.Source.SessionID
+		}
+	case *protocol.ApprovalResolvedData:
+		if data.Source != nil {
+			return data.Source.WorkspaceRoot, data.Source.SessionID
+		}
+	}
+	return "", ""
 }
 
 func (s *Server) recordForwarded(sequence protocol.Cursor) {

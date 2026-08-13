@@ -204,6 +204,72 @@ func TestAgentGraphIsolatesWorkspacesWithCollidingAgentIDs(t *testing.T) {
 	}
 }
 
+func TestAgentGraphIsolatesSessionsWithinWorkspace(t *testing.T) {
+	store, err := Open(t.Context(), Options{
+		DataDir: t.TempDir(), BusyTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	const workspace = "/workspace/shared"
+	openControl := func(sessionID string) *subagent.AgentControl {
+		control, err := subagent.OpenControl(subagent.Options{
+			Root: t.TempDir(), Gate: passGate{}, SessionID: sessionID,
+			Budget: subagent.Budget{
+				MaxParallel: 1, MaxResident: 1, MaxTotal: 1,
+			},
+		}, subagent.DelegationExplicit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := control.AttachGraph(NewAgentGraph(
+			store, workspace, sessionID,
+		)); err != nil {
+			t.Fatal(err)
+		}
+		return control
+	}
+	first := openControl("session-a")
+	firstAgent, err := first.SpawnSystem(
+		"first", "", subagent.RoleExplore, "inspect", "report",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Complete(firstAgent.ID, "a"); err != nil {
+		t.Fatal(err)
+	}
+	second := openControl("session-b")
+	secondAgent, err := second.SpawnSystem(
+		"second", "", subagent.RoleExplore, "inspect", "report",
+	)
+	if err != nil {
+		t.Fatalf("session-b inherited session-a max_total: %v", err)
+	}
+	if firstAgent.ID == secondAgent.ID {
+		t.Fatalf("workspace agent ids collided: %s", firstAgent.ID)
+	}
+	if got := second.List(subagent.ListFilter{
+		SessionID: "session-b",
+	}); len(got) != 1 || got[0].ID != secondAgent.ID {
+		t.Fatalf("session-b tree = %+v", got)
+	}
+	if got := second.List(subagent.ListFilter{
+		SessionID: "session-a",
+	}); len(got) != 1 || got[0].ID != firstAgent.ID {
+		t.Fatalf("session-a tree = %+v", got)
+	}
+	for _, sessionID := range []string{"session-a", "session-b"} {
+		ledger, err := store.LoadAgentBudgetSession(
+			t.Context(), workspace, sessionID,
+		)
+		if err != nil || ledger.TotalSpawned != 1 {
+			t.Fatalf("%s ledger = %+v, err=%v", sessionID, ledger, err)
+		}
+	}
+}
+
 func TestAgentTerminalCommitIsAtomicAndCASGuarded(t *testing.T) {
 	store, err := Open(t.Context(), Options{
 		DataDir: t.TempDir(), BusyTimeout: time.Second,
@@ -749,7 +815,7 @@ func TestFollowUpPersistsTaskBeforeStartingTurn(t *testing.T) {
 	}
 }
 
-func TestOrphanedWorktreeBecomesFailedRecoverableNode(t *testing.T) {
+func TestOrphanedWorktreeRecoversOwningSession(t *testing.T) {
 	store, err := Open(t.Context(), Options{
 		DataDir: t.TempDir(), BusyTimeout: time.Second,
 	})
@@ -768,21 +834,59 @@ func TestOrphanedWorktreeBecomesFailedRecoverableNode(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	allocationDirectory := filepath.Join(root, "worktree-allocations")
+	if err := os.MkdirAll(allocationDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	allocation, err := json.Marshal(map[string]any{
+		"version": 1,
+		"edge": subagent.GraphEdge{
+			ChildID: "agent-7", Path: "/root/recovered_agent_7",
+			ParentPath: "/root", Workspace: "/workspace/orphan",
+			SessionID: "session-owner", ThreadID: "thread-agent-7",
+			Status: subagent.StatusRequested, Revision: 1,
+			Role: subagent.RoleExplore, Profile: "explore",
+			Stance: subagent.StanceReadOnly, TaskName: "recovered_agent_7",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(allocationDirectory, "agent-7.json"),
+		allocation, 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
 	manager, err := subagent.Open(subagent.Options{
-		Root: root, Gate: passGate{},
+		Root: root, SessionID: "process-restarted", Gate: passGate{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.AttachGraph(NewAgentGraph(
-		store, "/workspace/orphan", "session-orphan",
+		store, "/workspace/orphan", "process-restarted",
 	)); err != nil {
 		t.Fatal(err)
 	}
 	recovered, ok := manager.Agent("agent-7")
 	if !ok || recovered.Status != subagent.StatusFailed ||
-		recovered.Result == nil || recovered.Path != "/root/recovered_agent_7" {
+		recovered.Result == nil ||
+		recovered.Path != "/root/recovered_agent_7" ||
+		recovered.SessionID != "session-owner" {
 		t.Fatalf("recovered orphan = %+v, ok=%v", recovered, ok)
+	}
+	sessions, err := store.ListAgentSessions(t.Context(), "/workspace/orphan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0] != "session-owner" {
+		t.Fatalf("recovered sessions = %v, want [session-owner]", sessions)
+	}
+	completions := manager.Mailbox().PendingSession("session-owner", "root")
+	if len(completions) != 1 ||
+		len(manager.Mailbox().PendingSession("process-restarted", "root")) != 0 {
+		t.Fatalf("recovered completions = %+v", completions)
 	}
 	if _, err := os.Stat(worktree); err != nil {
 		t.Fatalf("orphan evidence was removed before explicit close: %v", err)
@@ -792,6 +896,70 @@ func TestOrphanedWorktreeBecomesFailedRecoverableNode(t *testing.T) {
 	}
 	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
 		t.Fatalf("closed orphan worktree still exists: %v", err)
+	}
+}
+
+func TestOrphanedWorktreeWithoutAllocationIsQuarantined(t *testing.T) {
+	store, err := Open(t.Context(), Options{
+		DataDir: t.TempDir(), BusyTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	root := t.TempDir()
+	worktree := filepath.Join(root, "worktrees", "agent-8")
+	if err := os.MkdirAll(worktree, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(worktree, ".codehelper-worktree"),
+		[]byte("agent-8\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := subagent.Open(subagent.Options{
+		Root: root, SessionID: "process-restarted", Gate: passGate{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.AttachGraph(NewAgentGraph(
+		store, "/workspace/orphan", "process-restarted",
+	)); err != nil {
+		t.Fatal(err)
+	}
+	if sessions, listErr := store.ListAgentSessions(
+		t.Context(), "/workspace/orphan",
+	); listErr != nil || len(sessions) != 0 {
+		t.Fatalf("unowned orphan sessions = %v, err=%v", sessions, listErr)
+	}
+	if _, ok := manager.Agent("agent-8"); ok {
+		t.Fatal("quarantined orphan was claimed as an Agent")
+	}
+	raw, err := os.ReadFile(filepath.Join(
+		root, "worktree-quarantine", "agent-8.json",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var quarantine struct {
+		AgentID string `json:"agent_id"`
+		Reason  string `json:"reason"`
+	}
+	if err := json.Unmarshal(raw, &quarantine); err != nil {
+		t.Fatal(err)
+	}
+	if quarantine.AgentID != "agent-8" ||
+		!strings.Contains(quarantine.Reason, "worktree-allocations") {
+		t.Fatalf("quarantine = %+v", quarantine)
+	}
+	next, err := manager.Spawn("", subagent.RoleExplore, "continue safely")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.ID != "agent-9" {
+		t.Fatalf("next Agent = %s, want agent-9", next.ID)
 	}
 }
 

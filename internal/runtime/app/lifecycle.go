@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -74,6 +75,23 @@ type CommitReceipt struct {
 	Status       string               `json:"status"`
 	LastSequence protocol.Cursor      `json:"last_sequence"`
 	CompletedAt  time.Time            `json:"completed_at"`
+}
+
+func (r *Runtime) BindThreadSession(
+	threadID protocol.ThreadID,
+	sessionID string,
+) error {
+	manager, ok := r.engine.(*ThreadManager)
+	if !ok {
+		return errors.New("runtime engine does not support thread session binding")
+	}
+	return manager.BindSession(threadID, sessionID)
+}
+
+func (r *Runtime) ReleaseThread(threadID protocol.ThreadID) {
+	if manager, ok := r.engine.(*ThreadManager); ok {
+		manager.Release(threadID)
+	}
 }
 
 // DurableLifecycle persists operation acceptance and relational projections.

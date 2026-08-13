@@ -49,6 +49,7 @@ type CompletionEnvelope struct {
 }
 
 type GraphTransition struct {
+	SessionID         string              `json:"session_id"`
 	AgentID           string              `json:"agent_id"`
 	Path              string              `json:"path"`
 	ExpectedRevision  uint64              `json:"expected_revision"`
@@ -82,12 +83,13 @@ type Graph interface {
 	RecordTransition(transition GraphTransition) error
 	RecordMessage(message Message) error
 	MarkDelivered(message Message) error
-	ListChildren(parentID string) ([]GraphEdge, error)
-	ListMessages(to string) ([]Message, error)
-	LoadResult(agentID string) (Result, bool, error)
+	ListSessions() ([]string, error)
+	ListChildren(sessionID, parentID string) ([]GraphEdge, error)
+	ListMessages(sessionID, to string) ([]Message, error)
+	LoadResult(sessionID, agentID string) (Result, bool, error)
 	RecordIntegration(candidate IntegrationCandidate) error
-	LoadIntegration(agentID, previewDigest string) (IntegrationCandidate, bool, error)
-	LoadBudget() (BudgetLedger, error)
+	LoadIntegration(sessionID, agentID, previewDigest string) (IntegrationCandidate, bool, error)
+	LoadBudget(sessionID string) (BudgetLedger, error)
 	Reconcile() error
 }
 
@@ -104,6 +106,9 @@ func (m *Manager) AttachGraph(graph Graph) error {
 	m.graph = graph
 	if identity, ok := graph.(graphIdentity); ok {
 		m.workspace, m.sessionID = identity.AgentIdentity()
+		m.mailbox.mu.Lock()
+		m.mailbox.defaultSession = m.sessionID
+		m.mailbox.mu.Unlock()
 	}
 	m.mu.Unlock()
 	if err := graph.Reconcile(); err != nil {
@@ -120,58 +125,64 @@ func (m *Manager) Hydrate() error {
 	if graph == nil {
 		return nil
 	}
-	// Breadth-first from roots: list "" then each known parent.
-	seen := map[string]struct{}{"": {}}
-	queue := []string{""}
-	for len(queue) > 0 {
-		parent := queue[0]
-		queue = queue[1:]
-		edges, err := graph.ListChildren(parent)
-		if err != nil {
-			return err
-		}
-		for _, edge := range edges {
-			result, settled, err := graph.LoadResult(edge.ChildID)
+	sessions, err := graph.ListSessions()
+	if err != nil {
+		return err
+	}
+	for _, sessionID := range sessions {
+		// Breadth-first from each Session root.
+		seen := map[string]struct{}{"": {}}
+		queue := []string{""}
+		for len(queue) > 0 {
+			parent := queue[0]
+			queue = queue[1:]
+			edges, err := graph.ListChildren(sessionID, parent)
 			if err != nil {
 				return err
 			}
-			m.mu.Lock()
-			if _, ok := m.agents[edge.ChildID]; !ok {
-				m.agents[edge.ChildID] = agentFromEdge(edge)
-			}
-			if edge.Worktree != "" {
-				m.worktrees[edge.ChildID] = &Worktree{
-					ID: edge.ChildID, Path: edge.Worktree, Isolated: edge.Isolated,
-					Serialized: edge.Serialized, BaseRev: edge.BaseRev,
+			for _, edge := range edges {
+				result, settled, err := graph.LoadResult(sessionID, edge.ChildID)
+				if err != nil {
+					return err
 				}
-			}
-			if settled {
-				m.agents[edge.ChildID].Result = &result
-				if !m.agents[edge.ChildID].Closed {
-					m.claimLocked(edge.ChildID, result.WritePaths())
+				m.mu.Lock()
+				if _, ok := m.agents[edge.ChildID]; !ok {
+					m.agents[edge.ChildID] = agentFromEdge(edge)
 				}
+				if edge.Worktree != "" {
+					m.worktrees[edge.ChildID] = &Worktree{
+						ID: edge.ChildID, Path: edge.Worktree, Isolated: edge.Isolated,
+						Serialized: edge.Serialized, BaseRev: edge.BaseRev,
+					}
+				}
+				if settled {
+					m.agents[edge.ChildID].Result = &result
+					if !m.agents[edge.ChildID].Closed {
+						m.claimLocked(edge.ChildID, result.WritePaths())
+					}
+				}
+				bumpNextIDLocked(m, edge.ChildID)
+				if _, ok := seen[edge.ChildID]; !ok {
+					seen[edge.ChildID] = struct{}{}
+					queue = append(queue, edge.ChildID)
+				}
+				m.mu.Unlock()
 			}
-			bumpNextIDLocked(m, edge.ChildID)
-			if _, ok := seen[edge.ChildID]; !ok {
-				seen[edge.ChildID] = struct{}{}
-				queue = append(queue, edge.ChildID)
-			}
-			m.mu.Unlock()
 		}
+		messages, err := graph.ListMessages(sessionID, "")
+		if err != nil {
+			return err
+		}
+		m.mailbox.Restore(messages)
+		ledger, err := graph.LoadBudget(sessionID)
+		if err != nil {
+			return err
+		}
+		m.mu.Lock()
+		m.ledgers[sessionID] = ledger
+		m.active[sessionID] = ledger.ReservedSlots
+		m.mu.Unlock()
 	}
-	messages, err := graph.ListMessages("")
-	if err != nil {
-		return err
-	}
-	ledger, err := graph.LoadBudget()
-	if err != nil {
-		return err
-	}
-	m.mailbox.Restore(messages)
-	m.mu.Lock()
-	m.ledger = ledger
-	m.active.Store(int32(ledger.ReservedSlots))
-	m.mu.Unlock()
 	return m.reconcileOrphanWorktrees()
 }
 
@@ -254,12 +265,13 @@ type DurableGraph struct {
 	AppendStatus      func(GraphTransition) error
 	AppendMessage     func(Message) error
 	DeliverMessage    func(Message) error
-	Children          func(parentID string) ([]GraphEdge, error)
-	Messages          func(to string) ([]Message, error)
-	Result            func(agentID string) (Result, bool, error)
+	Sessions          func() ([]string, error)
+	Children          func(sessionID, parentID string) ([]GraphEdge, error)
+	Messages          func(sessionID, to string) ([]Message, error)
+	Result            func(sessionID, agentID string) (Result, bool, error)
 	AppendIntegration func(IntegrationCandidate) error
-	Integration       func(agentID, previewDigest string) (IntegrationCandidate, bool, error)
-	Budget            func() (BudgetLedger, error)
+	Integration       func(sessionID, agentID, previewDigest string) (IntegrationCandidate, bool, error)
+	Budget            func(sessionID string) (BudgetLedger, error)
 	ReconcileGraph    func() error
 }
 
@@ -295,25 +307,32 @@ func (g DurableGraph) MarkDelivered(message Message) error {
 	return g.DeliverMessage(message)
 }
 
-func (g DurableGraph) ListChildren(parentID string) ([]GraphEdge, error) {
+func (g DurableGraph) ListSessions() ([]string, error) {
+	if g.Sessions == nil {
+		return nil, fmt.Errorf("agent graph session list is required")
+	}
+	return g.Sessions()
+}
+
+func (g DurableGraph) ListChildren(sessionID, parentID string) ([]GraphEdge, error) {
 	if g.Children == nil {
 		return nil, fmt.Errorf("agent graph list is required")
 	}
-	return g.Children(parentID)
+	return g.Children(sessionID, parentID)
 }
 
-func (g DurableGraph) ListMessages(to string) ([]Message, error) {
+func (g DurableGraph) ListMessages(sessionID, to string) ([]Message, error) {
 	if g.Messages == nil {
 		return nil, fmt.Errorf("agent graph mailbox list is required")
 	}
-	return g.Messages(to)
+	return g.Messages(sessionID, to)
 }
 
-func (g DurableGraph) LoadResult(agentID string) (Result, bool, error) {
+func (g DurableGraph) LoadResult(sessionID, agentID string) (Result, bool, error) {
 	if g.Result == nil {
 		return Result{}, false, fmt.Errorf("agent graph result loader is required")
 	}
-	return g.Result(agentID)
+	return g.Result(sessionID, agentID)
 }
 
 func (g DurableGraph) RecordIntegration(candidate IntegrationCandidate) error {
@@ -324,20 +343,20 @@ func (g DurableGraph) RecordIntegration(candidate IntegrationCandidate) error {
 }
 
 func (g DurableGraph) LoadIntegration(
-	agentID, previewDigest string,
+	sessionID, agentID, previewDigest string,
 ) (IntegrationCandidate, bool, error) {
 	if g.Integration == nil {
 		return IntegrationCandidate{}, false,
 			fmt.Errorf("agent graph integration loader is required")
 	}
-	return g.Integration(agentID, previewDigest)
+	return g.Integration(sessionID, agentID, previewDigest)
 }
 
-func (g DurableGraph) LoadBudget() (BudgetLedger, error) {
+func (g DurableGraph) LoadBudget(sessionID string) (BudgetLedger, error) {
 	if g.Budget == nil {
 		return BudgetLedger{}, fmt.Errorf("agent graph budget loader is required")
 	}
-	return g.Budget()
+	return g.Budget(sessionID)
 }
 
 func (g DurableGraph) Reconcile() error {

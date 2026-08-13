@@ -591,9 +591,14 @@ func TestBinaryInteropReadQueries(t *testing.T) {
 	for id, method := range map[string]string{
 		"tasks": "task/list", "agents": "agent/list",
 	} {
-		frame := host.call(t, id, method, map[string]any{"limit": 10})
+		frame := host.call(t, id, method, map[string]any{
+			"sessionId": session.SessionID, "limit": 10,
+		})
 		requireResult(t, frame)
 	}
+	requireErrorCode(t, host.call(t, "agents-unscoped", "agent/list", map[string]any{
+		"limit": 10,
+	}), -32602)
 	usage := host.call(t, "usage", "usage/query", map[string]any{
 		"sessionId": session.SessionID, "threadId": session.ThreadID, "limit": 10,
 	})

@@ -421,10 +421,17 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 				ExitCode: 1, Output: "FAIL calc",
 			}},
 		},
-		&AgentSpawnedData{AgentID: "agent-1", Role: "explore", Depth: 0},
-		&AgentStatusData{AgentID: "agent-1", Status: "completed", Message: "ok"},
+		&AgentSpawnedData{
+			AgentID: "agent-1", WorkspaceRoot: "/workspace",
+			SessionID: "session-1", Role: "explore", Depth: 0,
+		},
+		&AgentStatusData{
+			AgentID: "agent-1", WorkspaceRoot: "/workspace",
+			SessionID: "session-1", Status: "completed", Message: "ok",
+		},
 		&AgentMessageData{
-			From: "agent-1", To: "agent-2", Sequence: 1, Body: json.RawMessage(`{}`),
+			From: "agent-1", To: "agent-2", WorkspaceRoot: "/workspace",
+			SessionID: "session-1", Sequence: 1, Body: json.RawMessage(`{}`),
 		},
 	}
 	for index, value := range dataValues {

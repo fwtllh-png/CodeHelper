@@ -1,10 +1,13 @@
 package subagent
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Worktree is the directory an agent works in.
@@ -36,7 +39,26 @@ type WorktreeProvider interface {
 	Discard(worktree Worktree) error
 }
 
-const worktreeMarker = ".codehelper-worktree"
+const (
+	worktreeMarker            = ".codehelper-worktree"
+	worktreeAllocations       = "worktree-allocations"
+	worktreeAllocationVersion = 1
+	worktreeQuarantine        = "worktree-quarantine"
+	worktreeQuarantineVersion = 1
+)
+
+type worktreeAllocation struct {
+	Version int       `json:"version"`
+	Edge    GraphEdge `json:"edge"`
+}
+
+type quarantinedWorktree struct {
+	Version       int       `json:"version"`
+	AgentID       string    `json:"agent_id"`
+	Path          string    `json:"path"`
+	Reason        string    `json:"reason"`
+	QuarantinedAt time.Time `json:"quarantined_at"`
+}
 
 // NewScratchWorktrees is the default provider: a plain directory per agent. A
 // host that can isolate writes wraps or replaces it.
@@ -73,6 +95,104 @@ func (s scratchWorktrees) Discard(worktree Worktree) error {
 		return errors.New("worktree marker mismatch; fail closed")
 	}
 	return os.RemoveAll(worktree.Path)
+}
+
+func (m *Manager) recordWorktreeAllocation(edge GraphEdge) error {
+	if edge.ChildID == "" || edge.SessionID == "" || edge.Path == "" {
+		return errors.New("worktree allocation identity is incomplete")
+	}
+	return writeWorktreeMetadata(
+		filepath.Join(m.root, worktreeAllocations, edge.ChildID+".json"),
+		worktreeAllocation{
+			Version: worktreeAllocationVersion,
+			Edge:    edge,
+		},
+	)
+}
+
+func (m *Manager) loadWorktreeAllocation(agentID string) (GraphEdge, error) {
+	raw, err := os.ReadFile(filepath.Join(
+		m.root, worktreeAllocations, agentID+".json",
+	))
+	if err != nil {
+		return GraphEdge{}, err
+	}
+	var allocation worktreeAllocation
+	if err := json.Unmarshal(raw, &allocation); err != nil {
+		return GraphEdge{}, fmt.Errorf("decode worktree allocation: %w", err)
+	}
+	edge := allocation.Edge
+	if allocation.Version != worktreeAllocationVersion ||
+		edge.ChildID != agentID ||
+		edge.SessionID == "" ||
+		edge.Workspace != m.workspace ||
+		edge.Path == "" ||
+		edge.ThreadID != ThreadIDFor(agentID) ||
+		edge.Revision != 1 ||
+		edge.Status != StatusRequested {
+		return GraphEdge{}, errors.New("worktree allocation identity is invalid")
+	}
+	return edge, nil
+}
+
+func (m *Manager) clearWorktreeAllocation(agentID string) error {
+	err := os.Remove(filepath.Join(
+		m.root, worktreeAllocations, agentID+".json",
+	))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func (m *Manager) clearAllocationWithoutWorktree(agentID string) {
+	_, err := os.Stat(filepath.Join(m.root, "worktrees", agentID))
+	if os.IsNotExist(err) {
+		_ = m.clearWorktreeAllocation(agentID)
+	}
+}
+
+func (m *Manager) quarantineWorktree(
+	agentID, path string,
+	cause error,
+) error {
+	return writeWorktreeMetadata(
+		filepath.Join(m.root, worktreeQuarantine, agentID+".json"),
+		quarantinedWorktree{
+			Version: worktreeQuarantineVersion,
+			AgentID: agentID, Path: path, Reason: cause.Error(),
+			QuarantinedAt: time.Now().UTC(),
+		},
+	)
+}
+
+func (m *Manager) clearWorktreeQuarantine(agentID string) error {
+	err := os.Remove(filepath.Join(
+		m.root, worktreeQuarantine, agentID+".json",
+	))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func writeWorktreeMetadata(target string, value any) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	temporary := target + ".tmp"
+	if err := os.WriteFile(temporary, raw, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, target); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
 }
 
 // checkWorktreeOverlapLocked refuses to discard a directory another live agent

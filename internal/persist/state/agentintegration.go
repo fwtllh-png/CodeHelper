@@ -11,20 +11,45 @@ import (
 )
 
 func (s *Store) LoadAgentIntegration(
-	ctx context.Context,
-	workspaceRoot, agentID, previewDigest string,
+	ctx context.Context, workspaceRoot, agentID, previewDigest string,
 ) (subagent.IntegrationCandidate, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return subagent.IntegrationCandidate{}, false, ErrClosed
 	}
+	return loadAgentIntegrationRow(
+		ctx, s.sqlite.DB(), workspaceRoot, "", agentID, previewDigest,
+	)
+}
+
+func (s *Store) LoadAgentIntegrationSession(
+	ctx context.Context, workspaceRoot, sessionID, agentID, previewDigest string,
+) (subagent.IntegrationCandidate, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return subagent.IntegrationCandidate{}, false, ErrClosed
+	}
+	return loadAgentIntegrationRow(
+		ctx, s.sqlite.DB(), workspaceRoot, sessionID, agentID, previewDigest,
+	)
+}
+
+func loadAgentIntegrationRow(
+	ctx context.Context,
+	db *sql.DB,
+	workspaceRoot, sessionID, agentID, previewDigest string,
+) (subagent.IntegrationCandidate, bool, error) {
+	query := `SELECT candidate_json FROM agent_integrations
+		WHERE workspace_root = ? AND agent_id = ? AND preview_digest = ?`
+	args := []any{workspaceRoot, agentID, previewDigest}
+	if sessionID != "" {
+		query += ` AND session_id = ?`
+		args = append(args, sessionID)
+	}
 	var raw []byte
-	err := s.sqlite.DB().QueryRowContext(ctx, `
-		SELECT candidate_json FROM agent_integrations
-		WHERE workspace_root = ? AND agent_id = ? AND preview_digest = ?`,
-		workspaceRoot, agentID, previewDigest,
-	).Scan(&raw)
+	err := db.QueryRowContext(ctx, query, args...).Scan(&raw)
 	if err == sql.ErrNoRows {
 		return subagent.IntegrationCandidate{}, false, nil
 	}
@@ -46,7 +71,7 @@ type AgentIntegrationRecovery struct {
 
 func (s *Store) PlanAgentIntegrationRecovery(
 	ctx context.Context,
-	workspaceRoot string,
+	workspaceRoot, sessionID string,
 ) ([]AgentIntegrationRecovery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -57,10 +82,11 @@ func (s *Store) PlanAgentIntegrationRecovery(
 		SELECT n.status, n.revision, i.candidate_json
 		FROM agent_nodes n
 		JOIN agent_integrations i
-		  ON i.workspace_root = n.workspace_root AND i.agent_id = n.agent_id
-		WHERE n.workspace_root = ?
+		  ON i.workspace_root = n.workspace_root
+		 AND i.session_id = n.session_id AND i.agent_id = n.agent_id
+		WHERE n.workspace_root = ? AND n.session_id = ?
 		  AND (n.status = 'integrating' OR i.status = 'applying')
-		ORDER BY i.updated_at DESC`, workspaceRoot)
+		ORDER BY i.updated_at DESC`, workspaceRoot, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +127,7 @@ func projectAgentIntegrationTx(
 		return fmt.Errorf("decode agent integration detail: %w", err)
 	}
 	if candidate.AgentID != data.AgentID ||
+		candidate.SessionID != data.SessionID ||
 		candidate.PreviewDigest != data.PreviewDigest ||
 		string(candidate.Status) != data.Status ||
 		candidate.Revision == 0 {
@@ -112,8 +139,9 @@ func projectAgentIntegrationTx(
 	err := tx.QueryRowContext(ctx, `
 		SELECT revision, status, source_sequence
 		FROM agent_integrations
-		WHERE workspace_root = ? AND agent_id = ? AND preview_digest = ?`,
-		data.WorkspaceRoot, data.AgentID, data.PreviewDigest,
+		WHERE workspace_root = ? AND session_id = ? AND agent_id = ?
+		  AND preview_digest = ?`,
+		data.WorkspaceRoot, data.SessionID, data.AgentID, data.PreviewDigest,
 	).Scan(&currentRevision, &currentStatus, &sourceSequence)
 	switch {
 	case err == sql.ErrNoRows:
@@ -144,15 +172,16 @@ func projectAgentIntegrationTx(
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO agent_integrations(
-			workspace_root, agent_id, preview_digest, status, revision,
+			workspace_root, session_id, agent_id, preview_digest, status, revision,
 			candidate_json, source_sequence, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(workspace_root, agent_id, preview_digest) DO UPDATE SET
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(workspace_root, session_id, agent_id, preview_digest) DO UPDATE SET
 			status=excluded.status, revision=excluded.revision,
 			candidate_json=excluded.candidate_json,
 			source_sequence=excluded.source_sequence,
 			updated_at=excluded.updated_at`,
-		data.WorkspaceRoot, data.AgentID, data.PreviewDigest, data.Status,
+		data.WorkspaceRoot, data.SessionID, data.AgentID,
+		data.PreviewDigest, data.Status,
 		candidate.Revision, raw, int64(event.Sequence), timestamp(event.CreatedAt),
 	)
 	return err

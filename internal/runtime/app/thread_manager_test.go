@@ -110,7 +110,15 @@ func TestThreadManagerBindsToolIdentityAndContextLookup(t *testing.T) {
 		created++
 		return AdaptEngine(engine), nil
 	})
-	runtime := NewRuntime(Options{Engine: manager})
+	runtime := NewRuntime(Options{
+		Engine: manager,
+		SessionLifecycle: &memorySessionLifecycleStore{
+			summary: protocol.SessionSummary{
+				Version:   protocol.SessionLifecycleVersion,
+				SessionID: "session-real", ThreadID: "thread-parent",
+			},
+		},
+	})
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
 		ThreadID: "thread-parent", TurnID: "turn-parent",
@@ -124,7 +132,8 @@ func TestThreadManagerBindsToolIdentityAndContextLookup(t *testing.T) {
 	}
 	select {
 	case identity := <-seen:
-		if identity.ThreadID != "thread-parent" ||
+		if identity.SessionID != "session-real" ||
+			identity.ThreadID != "thread-parent" ||
 			identity.TurnID != "turn-parent" ||
 			identity.CallID != "call-identity" {
 			t.Fatalf("tool identity = %+v", identity)

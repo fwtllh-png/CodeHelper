@@ -111,9 +111,9 @@ void test(
         ),
         true,
       );
-      assert.equal((await background.agents()).length, 0);
-      assert.equal((await background.tasks()).length, 0);
-      assert.equal((await background.usage()).turns, 0);
+      assert.equal((await background.agents(originalSessionID)).length, 0);
+      assert.equal((await background.tasks(originalSessionID)).length, 0);
+      assert.equal((await background.usage(originalSessionID)).turns, 0);
     } finally {
       firstSession?.dispose();
       secondSession?.dispose();

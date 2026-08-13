@@ -189,6 +189,7 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	}
 	parentID := strings.TrimSpace(input.ParentID)
 	trigger := subagent.DelegationTrigger(strings.TrimSpace(input.Trigger))
+	sessionID := t.invocationSession(ctx)
 	if caller, nested := t.callerAgent(ctx); nested {
 		roleSpec, roleErr := t.control.RoleSpec(caller.Role)
 		if roleErr != nil {
@@ -208,6 +209,7 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	}
 	objective := strings.TrimSpace(input.Objective)
 	child, err := t.control.SpawnIntent(subagent.DelegationIntent{
+		SessionID:      sessionID,
 		TaskName:       strings.TrimSpace(input.TaskName),
 		Role:           role,
 		Objective:      objective,
@@ -225,8 +227,7 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	}
 	roleSpec, err := t.control.RoleSpec(role)
 	if err != nil {
-		_ = t.control.Close(child.ID)
-		return tool.Result{}, err
+		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
 	}
 	identity := tool.InvocationIdentityFrom(ctx)
 	fork, err := t.control.ForkContext(ctx, subagent.ContextRequest{
@@ -240,13 +241,11 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		Trigger: child.DelegationTrigger,
 	})
 	if err != nil {
-		_ = t.control.Close(child.ID)
-		return tool.Result{}, err
+		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
 	}
 	turn, err := t.control.Takeover(ctx, child.ID, fork.Prompt)
 	if err != nil {
-		_ = t.control.Close(child.ID)
-		return tool.Result{}, err
+		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
 	}
 	threadID := subagent.ThreadIDFor(child.ID)
 	transcript := fmt.Sprintf(
@@ -255,10 +254,9 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		fork.Receipt.Mode, fork.Receipt.Digest, fork.Prompt, turn,
 	)
 	handleName := filepath.ToSlash(filepath.Join("agent-"+child.ID, "transcript"))
-	varHandle, err := t.handles.PutText(t.sessionID, handleName, transcript)
+	varHandle, err := t.handles.PutText(sessionID, handleName, transcript)
 	if err != nil {
-		_ = t.control.Close(child.ID)
-		return tool.Result{}, err
+		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
 	}
 	receipt := Receipt{
 		RunID: child.ID, AgentID: child.ID, ThreadID: threadID, Turn: turn,
@@ -280,17 +278,18 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	}
 	receiptBody, err := json.Marshal(receipt)
 	if err != nil {
-		_ = t.control.Close(child.ID)
-		return tool.Result{}, err
+		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
 	}
 	mailboxTo := parentID
 	if mailboxTo == "" {
 		mailboxTo = "parent"
 	}
-	message, err := t.control.Mailbox().Deliver(child.ID, mailboxTo, receiptBody)
+	message, err := t.control.Mailbox().Enqueue(subagent.Message{
+		SessionID: sessionID, From: child.ID, To: mailboxTo,
+		Kind: subagent.MessageContext, Body: receiptBody,
+	})
 	if err != nil {
-		_ = t.control.Close(child.ID)
-		return tool.Result{}, err
+		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
 	}
 	body := map[string]any{
 		"agent_id": child.ID, "agent_path": child.Path, "revision": child.Revision,
@@ -330,6 +329,13 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	}, nil
 }
 
+func (t *Tool) cleanupSpawnedChild(agentID string) error {
+	if t.onRelease != nil {
+		t.onRelease(agentID)
+	}
+	return t.control.Close(agentID)
+}
+
 func (t *Tool) callerAgent(ctx context.Context) (subagent.Agent, bool) {
 	if t == nil || t.control == nil {
 		return subagent.Agent{}, false
@@ -344,6 +350,13 @@ func (t *Tool) callerAgent(ctx context.Context) (subagent.Agent, bool) {
 func (t *Tool) authorizeTarget(ctx context.Context, agentID string) error {
 	caller, nested := t.callerAgent(ctx)
 	if !nested {
+		sessionID, ok := t.control.AgentSession(agentID)
+		if !ok {
+			return errors.New("agent not found")
+		}
+		if sessionID != t.invocationSession(ctx) {
+			return errors.New("agent belongs to another session")
+		}
 		return nil
 	}
 	if !t.control.IsDescendant(caller.ID, agentID) {
@@ -352,6 +365,13 @@ func (t *Tool) authorizeTarget(ctx context.Context, agentID string) error {
 		)
 	}
 	return nil
+}
+
+func (t *Tool) invocationSession(ctx context.Context) string {
+	if identity := tool.InvocationIdentityFrom(ctx); identity.SessionID != "" {
+		return identity.SessionID
+	}
+	return t.sessionID
 }
 
 // Manager exposes the underlying manager for tests and cleanup.

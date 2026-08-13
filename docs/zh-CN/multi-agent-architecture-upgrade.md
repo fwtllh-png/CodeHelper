@@ -2,7 +2,10 @@
 
 简体中文 | [English](../en/multi-agent-architecture-upgrade.md)
 
-> 状态：目标架构与实施提案，不代表当前版本已经交付全部能力。
+> 状态：MA1-MA6 已完成实施与验收。明确标注为 `Proposed` 的部分仍属于后续
+> 目标设计，主要包括 Host 直接生命周期 Operation 与 VS Code 生命周期控件；
+> 当前 Host 查询并投影 Durable Agent Tree，生命周期写操作仍由受治理的模型
+> Agent Tool 发起。
 >
 > 适用范围：CodeHelper Runtime、Subagent 编排、持久化、安全边界，以及
 > CLI、TUI、VS Code、ACP 对同一组 Multi Agent 事实的投影。
@@ -119,7 +122,8 @@ flowchart TB
 4. **结果有界、详情可寻址**：摘要进入 Parent，完整内容通过 Handle 懒加载。
 5. **并行必须有所有权**：写任务必须声明 Owned Paths 或独占 Worktree。
 6. **恢复是正常路径**：每个异步边界都必须定义 Crash 前后行为。
-7. **Host 只提交意图**：Follow-up、Interrupt、Close、Integrate 都是 Runtime Operation。
+7. **唯一写路径**：模型 Agent Tool 经 Guard 进入 AgentControl；未来 Host
+   生命周期控件必须提交 Runtime Operation，不能直接调用 AgentControl。
 
 ## 4. 目标总体架构
 
@@ -770,7 +774,7 @@ Projector 只按 Event Class 和 Traits 投影，不解析自由文本猜状态�
 - 点击 Agent 节点过滤 Global Timeline；
 - 点击 Event 懒加载 Tool Detail、Diff 或 Receipt；
 - Running Event 显示持续时间，不伪造完成时间；
-- Follow-up、Interrupt、Close、Integrate 只提交 Runtime Operation；
+- 未来 Follow-up、Interrupt、Close、Integrate UI 只提交 Runtime Operation；
 - Snapshot 加 `last_sequence`，随后从 Event Hub 增量 Replay；
 - Timeline 使用虚拟列表；
 - Transcript、Tool Output 与大 Diff 通过 Content Handle 懒加载；
@@ -1072,6 +1076,30 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
   执行 Wait/Close，并在约 21.5 秒完成 Parent。`make
   vscode-subagent-integration` 同样通过真实 Electron
   Spawn/Approval/Integration 工作流。
+
+完成度复核（2026-08-13）：
+
+- 同一 Workspace 内的 Durable Agent Node、Mailbox、Result、Integration、
+  Budget、Reconciliation 与 ACP Replay/Live Routing 均按权威 Session ID 分区。
+  `InvocationIdentity` 将 Runtime Thread 对应的 Session 传入每个 Agent Tool，
+  一个 Chat Session 无法 List、Wait、Close 或 Integrate 另一个 Session 的
+  Agent，历史 `max_total` 消耗也不会污染新 Session。ACP `agent/list` 要求
+  已绑定的 Session；VS Code 为每个已连接 Session 保留独立 Background
+  Projector，并只展示当前选中的 Chat Session；
+- Worktree Allocation 会在 Provision 产生文件系统副作用前写入带版本和
+  Session 归属的 WAL。若进程在 Provision 与 Agent Node Commit 之间崩溃，
+  Failed Node、Completion 与 Budget Settlement 仍恢复到原 Session；缺少
+  有效 Allocation 的 Orphan 会保留原目录并写入 Quarantine Manifest，
+  不得由进程级 Hook Session 认领；
+- `[execution.subagent]` 全部字段均进入 Defaults、TOML、
+  `CODEHELPER_SUBAGENT_*` 环境变量、程序化 Override、Validation 与 Provenance；
+  `max_resident` 和 `max_total` 不再只能通过 TOML 生效；
+- `multi-agent-eval` 与 `multi-agent-performance` 已成为 `verify` 和
+  `release-gate` 的强制门禁；受 Environment 保护的手动
+  `Live Multi-Agent Smoke` Workflow 使用仓库 Secret 并上传脱敏证据；
+- 异步 Child Turn 启动后的后处理失败会先取消并释放 Child Runtime，再关闭
+  Agent Node。Mailbox Persistence 故障注入保证失败的 `spawn_agent` 不会遗留
+  无人跟踪但继续运行的 Child。
 
 ## 17. 验证体系
 

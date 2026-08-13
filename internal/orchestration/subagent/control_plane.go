@@ -32,6 +32,7 @@ const (
 
 // DelegationIntent is the structured contract for creating one child.
 type DelegationIntent struct {
+	SessionID      string
 	TaskName       string
 	Role           Role
 	Objective      string
@@ -400,10 +401,20 @@ func (c *AgentControl) SpawnSystem(
 }
 
 func (c *AgentControl) SpawnBackground(role Role, objective string) (*Agent, error) {
-	return c.SpawnSystem(
-		"background_task", "", role, objective,
-		"Complete the durable task and return structured evidence.",
-	)
+	return c.SpawnBackgroundForSession("", role, objective)
+}
+
+func (c *AgentControl) SpawnBackgroundForSession(
+	sessionID string,
+	role Role,
+	objective string,
+) (*Agent, error) {
+	return c.SpawnIntent(DelegationIntent{
+		SessionID: sessionID, TaskName: "background_task",
+		Role: role, Objective: objective,
+		ExpectedOutput: "Complete the durable task and return structured evidence.",
+		Trigger:        TriggerSystem,
+	})
 }
 
 // Spawn is the concise internal API used by Runtime tests and callers whose
@@ -420,6 +431,10 @@ func (c *AgentControl) AgentByThread(threadID string) (Agent, bool) {
 	return c.manager.AgentByThread(threadID)
 }
 
+func (c *AgentControl) AgentSession(agentID string) (string, bool) {
+	return c.manager.AgentSession(agentID)
+}
+
 func (c *AgentControl) IsDescendant(parentID, agentID string) bool {
 	return c.manager.IsDescendant(parentID, agentID)
 }
@@ -434,6 +449,15 @@ func (c *AgentControl) Wait(
 	timeout time.Duration,
 ) (WaitResult, error) {
 	return c.manager.Wait(ctx, agentIDs, timeout)
+}
+
+func (c *AgentControl) WaitSession(
+	ctx context.Context,
+	sessionID string,
+	agentIDs []string,
+	timeout time.Duration,
+) (WaitResult, error) {
+	return c.manager.WaitSession(ctx, sessionID, agentIDs, timeout)
 }
 
 func (c *AgentControl) FollowUp(ctx context.Context, agentID, prompt string) (string, error) {

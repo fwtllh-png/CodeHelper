@@ -178,6 +178,58 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 		&execution.Subagent.Delegation,
 		provenance,
 	)
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_SUBAGENT_MAX_DEPTH",
+		fieldSubagentMaxDepth, &execution.Subagent.MaxDepth, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_SUBAGENT_MAX_PARALLEL",
+		fieldSubagentMaxParallel, &execution.Subagent.MaxParallel, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_SUBAGENT_MAX_RESIDENT",
+		fieldSubagentMaxResident, &execution.Subagent.MaxResident, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_SUBAGENT_MAX_TOTAL",
+		fieldSubagentMaxTotal, &execution.Subagent.MaxTotal, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_SUBAGENT_MAX_STEPS",
+		fieldSubagentMaxSteps, &execution.Subagent.MaxSteps, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvUint64(
+		lookup, "CODEHELPER_SUBAGENT_MAX_TOKENS",
+		fieldSubagentMaxTokens, &execution.Subagent.MaxTokens, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvFloat64(
+		lookup, "CODEHELPER_SUBAGENT_MAX_COST_USD",
+		fieldSubagentMaxCostUSD, &execution.Subagent.MaxCostUSD, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvDuration(
+		lookup, "CODEHELPER_SUBAGENT_WALL_TIME",
+		fieldSubagentWallTime, &execution.Subagent.WallTime, provenance,
+	); err != nil {
+		return err
+	}
+	applyEnvString(
+		lookup, "CODEHELPER_SUBAGENT_WORKSPACE",
+		fieldSubagentWorkspace, &execution.Subagent.Workspace, provenance,
+	)
 	verify := &execution.Verify
 	applyEnvString(lookup, "CODEHELPER_VERIFY_MODE", fieldVerifyMode, &verify.Mode, provenance)
 	applyEnvString(lookup, "CODEHELPER_VERIFY_SCOPE", fieldVerifyScope, &verify.Scope, provenance)

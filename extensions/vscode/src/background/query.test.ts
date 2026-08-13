@@ -3,20 +3,28 @@ import test from "node:test";
 
 import { BackgroundQuery, type BackgroundTransport } from "./query.js";
 
-void test("BackgroundQuery decodes workspace-scoped read models", async () => {
+void test("BackgroundQuery scopes session read models", async () => {
   const transport = new FixtureTransport();
   const query = new BackgroundQuery(transport);
   assert.equal((await query.threads())[0]?.id, "thread_1");
-  assert.equal((await query.agents())[0]?.workspace, "/workspace");
-  assert.equal((await query.tasks())[0]?.executor, "agent_turn");
-  assert.equal((await query.usage()).totalTokens, 15);
+  assert.equal((await query.agents("session_1"))[0]?.workspace, "/workspace");
+  assert.equal((await query.tasks("session_1"))[0]?.executor, "agent_turn");
+  assert.equal((await query.usage("session_1")).totalTokens, 15);
   assert.deepEqual(
     transport.calls.map((call) => call.method),
     ["thread/list", "agent/list", "task/list", "usage/query"],
   );
   assert.equal(
-    (transport.calls[0]?.params as Record<string, unknown>)["sessionId"],
-    undefined,
+    (transport.calls[1]?.params as Record<string, unknown>)["sessionId"],
+    "session_1",
+  );
+  assert.equal(
+    (transport.calls[2]?.params as Record<string, unknown>)["sessionId"],
+    "session_1",
+  );
+  assert.equal(
+    (transport.calls[3]?.params as Record<string, unknown>)["sessionId"],
+    "session_1",
   );
 });
 

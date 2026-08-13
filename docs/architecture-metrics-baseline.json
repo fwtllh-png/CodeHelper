@@ -41,12 +41,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 64,
-        "production_lines": 7486,
+        "production_lines": 7574,
         "options_fields": 70,
         "mutex_fields": 5
       },
       "relaxations": {
-        "production_lines": "MA5 adds child-rooted nested Agent tools, inherited execution roots, and parent integration verification wiring"
+        "production_lines": "Multi-Agent completion audit binds background Turns to Session identity and makes Child cancellation reach terminal state before Thread/toolset release"
       }
     },
     {
@@ -119,9 +119,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 8990,
+        "production_lines": 8993,
         "options_fields": 61,
         "mutex_fields": 9
+      },
+      "relaxations": {
+        "production_lines": "Multi-Agent completion audit propagates authoritative Session identity through Tool invocation context"
       }
     },
     {
@@ -130,12 +133,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7451,
+        "production_lines": 7524,
         "options_fields": 18,
         "mutex_fields": 5
       },
       "relaxations": {
-        "production_lines": "MA6 observes successfully published external Agent events once for rollout telemetry"
+        "production_lines": "Multi-Agent completion audit adds explicit Thread-to-Session routing and lifecycle cleanup without expanding Runtime handler size"
       }
     },
     {
@@ -213,12 +216,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 4742,
+        "production_lines": 4744,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "MA5 adds the retained agent.integration candidate and receipt event contract"
+        "production_lines": "Multi-Agent completion audit makes Session and Workspace mandatory Agent Event identity"
       }
     },
     {
@@ -375,8 +378,11 @@
       "kind": "file",
       "path": "internal/host/runtimeapi/acp/server.go",
       "limits": {
-        "lines": 2948,
+        "lines": 2968,
         "max_function_lines": 124
+      },
+      "relaxations": {
+        "lines": "Multi-Agent completion audit routes Agent events and read queries only to their owning ACP Session"
       }
     },
     {

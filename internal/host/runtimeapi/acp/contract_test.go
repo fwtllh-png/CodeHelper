@@ -397,7 +397,9 @@ func (h *contractACPHost) ReadState(ctx context.Context) (contract.ReadState, er
 		return result, err
 	}
 	result.Tasks = taskPage.Tasks
-	agents, err := h.call(ctx, "agent/list", map[string]any{"limit": 10})
+	agents, err := h.call(ctx, "agent/list", map[string]any{
+		"sessionId": h.sessionID, "limit": 10,
+	})
 	if err != nil {
 		return result, err
 	}

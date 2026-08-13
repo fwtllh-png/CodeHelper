@@ -15,14 +15,16 @@ func TestAgentEventsAreVisibleOnlyToTheirHostWorkspace(t *testing.T) {
 	server := &Server{options: Options{WorkspaceRoot: "/workspace/a"}}
 	for _, data := range []protocol.EventData{
 		&protocol.AgentSpawnedData{
-			AgentID: "agent-1", WorkspaceRoot: "/workspace/a", Role: "explore",
+			AgentID: "agent-1", WorkspaceRoot: "/workspace/a",
+			SessionID: "session-1", Role: "explore",
 		},
 		&protocol.AgentStatusData{
-			AgentID: "agent-1", WorkspaceRoot: "/workspace/a", Status: "completed",
+			AgentID: "agent-1", WorkspaceRoot: "/workspace/a",
+			SessionID: "session-1", Status: "completed",
 		},
 		&protocol.AgentMessageData{
 			From: "agent-1", To: "agent-2", WorkspaceRoot: "/workspace/a",
-			Sequence: 1, Body: []byte(`{}`),
+			SessionID: "session-1", Sequence: 1, Body: []byte(`{}`),
 		},
 		&protocol.AgentIntegrationData{
 			AgentID: "agent-1", AgentPath: "/root/write", ParentPath: "/root",
@@ -61,12 +63,17 @@ func TestAgentEventsAreVisibleOnlyToTheirHostWorkspace(t *testing.T) {
 		if !server.workspaceVisible(event) {
 			t.Fatalf("%s event was not workspace visible", event.Kind)
 		}
+		if !server.workspaceVisibleToSession(event, "session-1") ||
+			server.workspaceVisibleToSession(event, "session-2") {
+			t.Fatalf("%s event was not scoped to session-1", event.Kind)
+		}
 	}
 	foreign, err := protocol.NewEvent(protocol.EventMeta{
 		Sequence: 2, OperationID: "op", ThreadID: "thread_agent_graph",
 		TurnID: "turn_agent_graph", ItemID: "item",
 	}, &protocol.AgentStatusData{
-		AgentID: "agent-1", WorkspaceRoot: "/workspace/b", Status: "completed",
+		AgentID: "agent-1", WorkspaceRoot: "/workspace/b",
+		SessionID: "session-1", Status: "completed",
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -256,7 +256,7 @@ func (e *workflowRunExecutor) Execute(
 	}); err != nil {
 		return failedOutcome(err), nil
 	}
-	driver := newBackgroundWorkflowDriver(ctx, e.runtime)
+	driver := newBackgroundWorkflowDriver(ctx, e.runtime, value.SessionID)
 	run, runErr := workflow.NewRuntime().Run(ctx, workflow.RunOptions{
 		ID: runID, Spec: payload.Spec, Driver: driver, Checkpoint: e.checkpoints,
 	})
@@ -316,18 +316,25 @@ func normalizedRunStatus(status workflow.RunStatus) workflow.RunStatus {
 }
 
 type backgroundWorkflowDriver struct {
-	ctx     context.Context
-	runtime *app.Runtime
-	mu      sync.Mutex
-	active  map[protocol.TurnID]protocol.ThreadID
+	ctx       context.Context
+	runtime   *app.Runtime
+	sessionID string
+	mu        sync.Mutex
+	active    map[protocol.TurnID]protocol.ThreadID
 }
 
 func newBackgroundWorkflowDriver(
 	ctx context.Context,
 	runtime *app.Runtime,
+	sessionIDs ...string,
 ) *backgroundWorkflowDriver {
+	sessionID := ""
+	if len(sessionIDs) != 0 {
+		sessionID = sessionIDs[0]
+	}
 	return &backgroundWorkflowDriver{
-		ctx: ctx, runtime: runtime, active: make(map[protocol.TurnID]protocol.ThreadID),
+		ctx: ctx, runtime: runtime, sessionID: sessionID,
+		active: make(map[protocol.TurnID]protocol.ThreadID),
 	}
 }
 
@@ -397,6 +404,12 @@ func (d *backgroundWorkflowDriver) runTurn(ctx context.Context, prompt string) (
 	})
 	if err != nil {
 		return "", err
+	}
+	if d.sessionID != "" {
+		if err := d.runtime.BindThreadSession(threadID, d.sessionID); err != nil {
+			return "", err
+		}
+		defer d.runtime.ReleaseThread(threadID)
 	}
 	d.mu.Lock()
 	d.active[turnID] = threadID

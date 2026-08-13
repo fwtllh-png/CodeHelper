@@ -715,6 +715,48 @@ func TestChildAgentWallClockCancelsTurn(t *testing.T) {
 	}
 }
 
+func TestReleaseWaitsForRunningChildCancellation(t *testing.T) {
+	session := openChildSession(t, "subagent-slow", nil)
+	child, err := session.subagents.Spawn(
+		"", subagent.RoleExplore, "wait until canceled",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turnID, err := session.subagents.Takeover(
+		t.Context(), child.ID, "wait until canceled",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	threadID := protocol.ThreadID(subagent.ThreadIDFor(child.ID))
+	if _, ok := session.threads.ChildSpecFor(threadID); !ok {
+		t.Fatal("child spec was not registered")
+	}
+	session.children.release(child.ID)
+	if _, ok := session.threads.ChildSpecFor(threadID); ok {
+		t.Fatal("child spec remained after cancellation reached terminal")
+	}
+	events, _, err := session.Runtime.ReplayEvents(t.Context(), 0, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kinds []protocol.EventKind
+	for _, event := range events {
+		if event.TurnID == protocol.TurnID(turnID) &&
+			event.Kind == protocol.EventTurnCanceled {
+			return
+		}
+		if event.TurnID == protocol.TurnID(turnID) {
+			kinds = append(kinds, event.Kind)
+			if rejected, ok := event.Data.(*protocol.OperationRejectedData); ok {
+				t.Logf("rejected: %s", rejected.Message)
+			}
+		}
+	}
+	t.Fatalf("child turn %s was released before turn.canceled: %v", turnID, kinds)
+}
+
 func TestChildAgentSpendIsChargedToTheSharedLedger(t *testing.T) {
 	session := openChildSession(t, "subagent", nil)
 	ledger := session.children.governor

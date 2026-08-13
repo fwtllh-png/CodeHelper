@@ -937,8 +937,8 @@ func (d *TurnVerificationData) validate() error {
 type AgentSpawnedData struct {
 	AgentID       string          `json:"agent_id"`
 	ParentID      string          `json:"parent_id,omitempty"`
-	WorkspaceRoot string          `json:"workspace_root,omitempty"`
-	SessionID     string          `json:"session_id,omitempty"`
+	WorkspaceRoot string          `json:"workspace_root"`
+	SessionID     string          `json:"session_id"`
 	Role          string          `json:"role"`
 	Profile       string          `json:"profile,omitempty"`
 	Stance        string          `json:"stance,omitempty"`
@@ -950,8 +950,8 @@ type AgentSpawnedData struct {
 func (*AgentSpawnedData) eventKind() EventKind { return EventAgentSpawned }
 
 func (d *AgentSpawnedData) validate() error {
-	if d.AgentID == "" {
-		return errors.New("agent id is required")
+	if d.AgentID == "" || d.WorkspaceRoot == "" || d.SessionID == "" {
+		return errors.New("agent spawn identity is required")
 	}
 	if d.Role == "" {
 		return errors.New("agent role is required")
@@ -965,8 +965,8 @@ func (d *AgentSpawnedData) validate() error {
 // AgentStatusData records a durable subagent status transition.
 type AgentStatusData struct {
 	AgentID       string          `json:"agent_id"`
-	WorkspaceRoot string          `json:"workspace_root,omitempty"`
-	SessionID     string          `json:"session_id,omitempty"`
+	WorkspaceRoot string          `json:"workspace_root"`
+	SessionID     string          `json:"session_id"`
 	Status        string          `json:"status"`
 	Message       string          `json:"message,omitempty"`
 	Detail        json.RawMessage `json:"detail,omitempty"`
@@ -975,8 +975,9 @@ type AgentStatusData struct {
 func (*AgentStatusData) eventKind() EventKind { return EventAgentStatus }
 
 func (d *AgentStatusData) validate() error {
-	if d.AgentID == "" || d.Status == "" {
-		return errors.New("agent id and status are required")
+	if d.AgentID == "" || d.WorkspaceRoot == "" ||
+		d.SessionID == "" || d.Status == "" {
+		return errors.New("agent status identity is required")
 	}
 	if len(d.Detail) > 0 && !json.Valid(d.Detail) {
 		return errors.New("agent status detail is invalid")
@@ -989,8 +990,8 @@ func (d *AgentStatusData) validate() error {
 type AgentMessageData struct {
 	From          string          `json:"from"`
 	To            string          `json:"to"`
-	WorkspaceRoot string          `json:"workspace_root,omitempty"`
-	SessionID     string          `json:"session_id,omitempty"`
+	WorkspaceRoot string          `json:"workspace_root"`
+	SessionID     string          `json:"session_id"`
 	Sequence      uint64          `json:"sequence"`
 	Body          json.RawMessage `json:"body"`
 }
@@ -1029,8 +1030,9 @@ func (d *AgentIntegrationData) validate() error {
 func (*AgentMessageData) eventKind() EventKind { return EventAgentMessage }
 
 func (d *AgentMessageData) validate() error {
-	if d.From == "" || d.To == "" {
-		return errors.New("agent message from and to are required")
+	if d.From == "" || d.To == "" ||
+		d.WorkspaceRoot == "" || d.SessionID == "" {
+		return errors.New("agent message identity is required")
 	}
 	if d.Sequence == 0 {
 		return errors.New("agent message sequence must be positive")

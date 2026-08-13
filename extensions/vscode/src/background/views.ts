@@ -23,9 +23,11 @@ const viewIds: Readonly<Record<VisibleBackgroundView, string>> = {
 
 interface RootBackground {
   readonly root: WorkspaceRuntime;
-  readonly projector: BackgroundProjector;
+  readonly projectors: Map<string, BackgroundProjector>;
+  readonly emptyProjector: BackgroundProjector;
   readonly query: BackgroundQuery;
   readonly pending: Set<BackgroundView>;
+  selectedSessionId: string;
 }
 
 interface RootSnapshot {
@@ -86,17 +88,22 @@ export class BackgroundViews implements vscode.Disposable {
           await vscode.commands.executeCommand("codehelper.chat.focus");
         },
       ),
-      registry.onEvent(({ root, event, replayed }) => {
-        this.#onEvent(root, event, replayed);
+      registry.onEvent(({ root, sessionId, event, replayed }) => {
+        this.#onEvent(root, sessionId, event, replayed);
       }),
       registry.onStateChange(({ root, snapshot }) => {
         if (snapshot.state === "ready") {
+          this.#syncSessions(root);
           for (const kind of this.#visible) this.#schedule(root.rootId, kind);
         }
       }),
       registry.onDidChangeRoots(() => {
         this.#syncRoots();
         for (const provider of this.#providers.values()) provider.refresh();
+      }),
+      registry.onDidChangeSessions((root) => {
+        this.#syncSessions(root);
+        for (const kind of this.#visible) this.#schedule(root.rootId, kind);
       }),
     );
   }
@@ -114,11 +121,13 @@ export class BackgroundViews implements vscode.Disposable {
       if (!this.#roots.has(root.rootId)) {
         this.#roots.set(root.rootId, {
           root,
-          projector: new BackgroundProjector(),
+          projectors: new Map(),
+          emptyProjector: new BackgroundProjector(),
           query: new BackgroundQuery({
             request: (method, params) => root.controller.query(method, params),
           }),
           pending: new Set(),
+          selectedSessionId: "",
         });
       }
     }
@@ -128,20 +137,28 @@ export class BackgroundViews implements vscode.Disposable {
   }
 
   #snapshots(): readonly RootSnapshot[] {
-    return this.#registry.roots.map((root) => ({
-      rootId: root.rootId,
-      label: root.label,
-      snapshot: this.#root(root.rootId).projector.snapshot(),
-    }));
+    return this.#registry.roots.map((root) => {
+      const background = this.#root(root.rootId);
+      const projector = background.projectors.get(background.selectedSessionId) ??
+        background.emptyProjector;
+      return {
+        rootId: root.rootId,
+        label: root.label,
+        snapshot: projector.snapshot(),
+      };
+    });
   }
 
   #onEvent(
     root: WorkspaceRuntime,
+    sessionId: string,
     event: DecodedEvent,
     replayed: boolean,
   ): void {
     const background = this.#root(root.rootId);
-    this.#notify(root, background.projector.applyEvent(event, replayed));
+    const projector = this.#projector(background, sessionId);
+    this.#notify(root, projector.applyEvent(event, replayed));
+    if (sessionId !== background.selectedSessionId) return;
     this.#providers.get("approvals")?.refresh();
     for (const kind of affectedViews(event.kind)) {
       if (this.#visible.has(kind)) {
@@ -173,32 +190,38 @@ export class BackgroundViews implements vscode.Disposable {
     await Promise.all(roots.map(async (root) => {
       const pending = [...root.pending];
       root.pending.clear();
+      const sessionId = root.selectedSessionId;
+      if (sessionId === "") return;
+      const projector = this.#projector(root, sessionId);
       try {
         const reads: Promise<void>[] = [];
         if (pending.includes("threads")) {
           reads.push(root.query.threads().then((rows) => {
-            root.projector.replaceThreads(rows);
+            projector.replaceThreads(rows);
             this.#providers.get("threads")?.refresh();
           }));
         }
         if (pending.includes("agents")) {
-          reads.push(root.query.agents().then((rows) => {
-            root.projector.replaceAgents(rows);
+          reads.push(root.query.agents(sessionId).then((rows) => {
+            projector.replaceAgents(rows);
             this.#providers.get("agents")?.refresh();
           }));
         }
         if (pending.includes("tasks") || pending.includes("jobs")) {
-          reads.push(root.query.tasks().then((rows) => {
-            this.#notify(root.root, root.projector.replaceTasks(rows));
+          reads.push(root.query.tasks(sessionId).then((rows) => {
+            this.#notify(root.root, projector.replaceTasks(rows));
             this.#providers.get("tasks")?.refresh();
             this.#providers.get("jobs")?.refresh();
           }));
         }
         if (pending.includes("usage")) {
-          reads.push(root.query.usage().then((usage) => {
-            root.projector.replaceUsage(usage);
+          reads.push(root.query.usage(sessionId).then((usage) => {
+            projector.replaceUsage(usage);
             this.#providers.get("usage")?.refresh();
           }));
+        }
+        if (pending.includes("approvals")) {
+          this.#providers.get("approvals")?.refresh();
         }
         await Promise.all(reads);
       } catch (error) {
@@ -208,6 +231,24 @@ export class BackgroundViews implements vscode.Disposable {
         );
       }
     }));
+  }
+
+  #syncSessions(root: WorkspaceRuntime): void {
+    const background = this.#root(root.rootId);
+    let sessionIds: readonly string[];
+    let selectedSessionId: string;
+    try {
+      sessionIds = root.controller.sessions().map((session) => session.sessionId);
+      selectedSessionId = root.controller.identity().sessionId;
+    } catch {
+      return;
+    }
+    const live = new Set(sessionIds);
+    for (const sessionId of background.projectors.keys()) {
+      if (!live.has(sessionId)) background.projectors.delete(sessionId);
+    }
+    background.selectedSessionId = selectedSessionId;
+    this.#projector(background, selectedSessionId);
   }
 
   #notify(
@@ -230,6 +271,18 @@ export class BackgroundViews implements vscode.Disposable {
       throw new Error("workspace root background projection is unavailable");
     }
     return root;
+  }
+
+  #projector(
+    root: RootBackground,
+    sessionId: string,
+  ): BackgroundProjector {
+    let projector = root.projectors.get(sessionId);
+    if (projector === undefined) {
+      projector = new BackgroundProjector();
+      root.projectors.set(sessionId, projector);
+    }
+    return projector;
   }
 }
 

@@ -43,12 +43,42 @@ type AgentSpawnEdge struct {
 	UpdatedAt      time.Time
 }
 
-// ListAgentChildren returns projected spawn edges for parentID ("" = session roots).
-func (s *Store) ListAgentChildren(
-	ctx context.Context, workspaceRoot, parentID string,
-) ([]AgentSpawnEdge, error) {
+func (s *Store) ListAgentSessions(
+	ctx context.Context,
+	workspaceRoot string,
+) ([]string, error) {
 	if workspaceRoot == "" {
 		return nil, fmt.Errorf("agent graph workspace root is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, ErrClosed
+	}
+	rows, err := s.sqlite.DB().QueryContext(ctx, `
+		SELECT DISTINCT session_id FROM agent_nodes
+		WHERE workspace_root = ? ORDER BY session_id`, workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sessions []string
+	for rows.Next() {
+		var sessionID string
+		if err := rows.Scan(&sessionID); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, sessionID)
+	}
+	return sessions, rows.Err()
+}
+
+// ListAgentChildren returns projected spawn edges for one Session parent.
+func (s *Store) ListAgentChildrenSession(
+	ctx context.Context, workspaceRoot, sessionID, parentID string,
+) ([]AgentSpawnEdge, error) {
+	if workspaceRoot == "" || sessionID == "" {
+		return nil, fmt.Errorf("agent graph workspace and session are required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -63,8 +93,8 @@ func (s *Store) ListAgentChildren(
 		       max_cost_microunits, reserved_tokens, reserved_microunits,
 		       source_sequence, updated_at
 		FROM agent_nodes
-		WHERE workspace_root = ? AND parent_agent_id = ?
-		ORDER BY agent_id`, workspaceRoot, parentID)
+		WHERE workspace_root = ? AND session_id = ? AND parent_agent_id = ?
+		ORDER BY agent_id`, workspaceRoot, sessionID, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +127,26 @@ func (s *Store) ListAgentChildren(
 		out = append(out, edge)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) ListAgentChildren(
+	ctx context.Context, workspaceRoot, parentID string,
+) ([]AgentSpawnEdge, error) {
+	sessions, err := s.ListAgentSessions(ctx, workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+	var out []AgentSpawnEdge
+	for _, sessionID := range sessions {
+		rows, err := s.ListAgentChildrenSession(
+			ctx, workspaceRoot, sessionID, parentID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rows...)
+	}
+	return out, nil
 }
 
 // AppendAgentEvent allocates the next durable sequence and appends an agent.* event.

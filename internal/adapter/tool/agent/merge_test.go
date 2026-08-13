@@ -105,6 +105,7 @@ func openMergeHarnessWithVerifier(
 	gate := &recordingGate{}
 	manager, err := subagent.Open(subagent.Options{
 		Root: t.TempDir(), Gate: gate, Runtime: &dualRuntime{},
+		SessionID: "merge-session",
 		Worktrees: fixedWorktrees{path: worktree, baseRev: baseRev},
 		Budget:    subagent.Budget{MaxDepth: 3, MaxParallel: 4},
 	})

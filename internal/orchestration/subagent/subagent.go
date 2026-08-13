@@ -3,6 +3,7 @@ package subagent
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -142,12 +142,12 @@ type Manager struct {
 	worktrees    map[string]*Worktree
 	claims       map[string]string // workspace-relative path -> owning agent id
 	integrations map[string]IntegrationCandidate
-	active       atomic.Int32
+	active       map[string]int
 	graph        Graph
 	workspace    string
 	sessionID    string
 	nextID       int
-	ledger       BudgetLedger
+	ledgers      map[string]BudgetLedger
 }
 
 type Agent struct {
@@ -217,7 +217,13 @@ func Open(options Options) (*Manager, error) {
 		worktrees:    make(map[string]*Worktree),
 		claims:       make(map[string]string),
 		integrations: make(map[string]IntegrationCandidate),
+		active:       make(map[string]int),
+		ledgers:      make(map[string]BudgetLedger),
 	}
+	if manager.sessionID == "" {
+		manager.sessionID = "session-local"
+	}
+	manager.mailbox.defaultSession = manager.sessionID
 	manager.wait = sync.NewCond(&manager.mu)
 	manager.mailbox.persist = manager.recordMessage
 	manager.mailbox.deliver = manager.recordDelivery
@@ -252,6 +258,13 @@ func (m *Manager) Spawn(parentID string, role Role, prompt string) (*Agent, erro
 func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	sessionID := strings.TrimSpace(intent.SessionID)
+	if sessionID == "" {
+		sessionID = m.sessionID
+	}
+	if sessionID == "" {
+		return nil, errors.New("subagent session id is required")
+	}
 	depth := 0
 	parentPath := "/root"
 	executionRoot := m.workspace
@@ -262,19 +275,23 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		if !ok || parent.Closed {
 			return nil, errors.New("parent agent unavailable")
 		}
+		if parent.SessionID != sessionID {
+			return nil, errors.New("parent agent belongs to another session")
+		}
 		depth = parent.Depth + 1
 		parentPath = parent.Path
 	}
 	if depth > m.budget.MaxDepth {
 		return nil, fmt.Errorf("recursion depth %d exceeds limit %d", depth, m.budget.MaxDepth)
 	}
-	if int(m.active.Load()) >= m.budget.MaxParallel {
+	ledger := m.ledgers[sessionID]
+	if m.active[sessionID] >= m.budget.MaxParallel {
 		return nil, errors.New("subagent concurrency budget exhausted")
 	}
-	if m.residentLocked() >= m.budget.MaxResident {
+	if m.residentLocked(sessionID) >= m.budget.MaxResident {
 		return nil, errors.New("subagent resident budget exhausted")
 	}
-	if m.ledger.TotalSpawned >= m.budget.MaxTotal {
+	if ledger.TotalSpawned >= m.budget.MaxTotal {
 		return nil, errors.New("subagent total spawn budget exhausted")
 	}
 	requested, err := m.normalizeAgentBudgetLocked(
@@ -285,23 +302,43 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	}
 	reservedMicros := uint64(requested.MaxCostUSD * 1e6)
 	if m.budget.MaxTokens > 0 &&
-		m.ledger.SpentTokens+m.ledger.ReservedTokens+requested.MaxTokens >
+		ledger.SpentTokens+ledger.ReservedTokens+requested.MaxTokens >
 			m.budget.MaxTokens {
 		return nil, errors.New("subagent token reservation exceeds tree budget")
 	}
 	maxMicros := uint64(m.budget.MaxCostUSD * 1e6)
 	if maxMicros > 0 &&
-		m.ledger.SpentMicros+m.ledger.ReservedMicros+reservedMicros >
+		ledger.SpentMicros+ledger.ReservedMicros+reservedMicros >
 			maxMicros {
 		return nil, errors.New("subagent cost reservation exceeds tree budget")
 	}
 	m.nextID++
 	id := fmt.Sprintf("agent-%d", m.nextID)
+	path := m.nextPathLocked(intent.ParentID, intent.TaskName, id)
+	threadID := ThreadIDFor(id)
+	allocation := GraphEdge{
+		ParentID: intent.ParentID, ParentPath: parentPath,
+		ChildID: id, Path: path, Status: StatusRequested,
+		Workspace: m.workspace, SessionID: sessionID,
+		ExecutionRoot: executionRoot, ThreadID: threadID, Revision: 1,
+		Role: spec.Role, Profile: spec.Profile, Stance: spec.Stance,
+		Depth: depth, TaskName: strings.TrimSpace(intent.TaskName),
+		OwnedPaths: append([]string(nil), intent.OwnedPaths...),
+		Budget:     requested, ReservedTokens: requested.MaxTokens,
+		ReservedMicros: reservedMicros,
+	}
+	if err := m.recordWorktreeAllocation(allocation); err != nil {
+		return nil, fmt.Errorf("record worktree allocation: %w", err)
+	}
 	// The stance decides what kind of directory the agent needs, so routing has
 	// to happen before provisioning: an explore child must not pay for a checkout.
 	wt, err := m.trees.Provision(id, spec.Stance)
 	if err != nil {
+		m.clearAllocationWithoutWorktree(id)
 		return nil, err
+	}
+	if wt.Serialized {
+		_ = m.clearWorktreeAllocation(id)
 	}
 	if spec.Stance == StanceReadOnly && parent != nil &&
 		strings.TrimSpace(parent.Worktree) != "" {
@@ -310,11 +347,11 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		executionRoot = wt.Path
 	}
 	agent := &Agent{
-		ID: id, Path: m.nextPathLocked(intent.ParentID, intent.TaskName, id),
+		ID: id, Path: path,
 		ParentPath: parentPath,
 		Revision:   1, Workspace: m.workspace, ExecutionRoot: executionRoot,
-		SessionID: m.sessionID,
-		ThreadID:  ThreadIDFor(id),
+		SessionID: sessionID,
+		ThreadID:  threadID,
 		Role:      spec.Role, Profile: spec.Profile, Stance: spec.Stance,
 		Depth: depth, Worktree: wt.Path, Isolated: wt.Isolated,
 		Serialized: wt.Serialized, BaseRev: wt.BaseRev,
@@ -329,16 +366,24 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		ReservedMicros:    reservedMicros,
 	}
 	if err := m.recordSpawnLocked(agent); err != nil {
-		_ = m.trees.Discard(wt)
-		return nil, fmt.Errorf("record agent spawn: %w", err)
+		discardErr := m.trees.Discard(wt)
+		if discardErr == nil {
+			_ = m.clearWorktreeAllocation(id)
+		}
+		return nil, errors.Join(
+			fmt.Errorf("record agent spawn: %w", err),
+			discardErr,
+		)
 	}
+	_ = m.clearWorktreeAllocation(id)
 	m.agents[id] = agent
 	m.worktrees[id] = &wt
-	m.active.Add(1)
-	m.ledger.ReservedSlots++
-	m.ledger.ReservedTokens += requested.MaxTokens
-	m.ledger.ReservedMicros += reservedMicros
-	m.ledger.TotalSpawned++
+	m.active[sessionID]++
+	ledger.ReservedSlots++
+	ledger.ReservedTokens += requested.MaxTokens
+	ledger.ReservedMicros += reservedMicros
+	ledger.TotalSpawned++
+	m.ledgers[sessionID] = ledger
 	m.wait.Broadcast()
 	return agent, nil
 }
@@ -386,10 +431,11 @@ func (m *Manager) normalizeAgentBudgetLocked(
 	return requested, nil
 }
 
-func (m *Manager) residentLocked() int {
+func (m *Manager) residentLocked(sessionID string) int {
 	resident := 0
 	for _, agent := range m.agents {
-		if agent != nil && !agent.Closed && agent.Status != StatusClosed {
+		if agent != nil && agent.SessionID == sessionID &&
+			!agent.Closed && agent.Status != StatusClosed {
 			resident++
 		}
 	}
@@ -448,6 +494,16 @@ func (m *Manager) AgentByThread(threadID string) (Agent, bool) {
 		}
 	}
 	return Agent{}, false
+}
+
+func (m *Manager) AgentSession(agentID string) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	agent, ok := m.agents[agentID]
+	if !ok || agent == nil {
+		return "", false
+	}
+	return agent.SessionID, true
 }
 
 func (m *Manager) IsDescendant(parentID, agentID string) bool {
@@ -518,6 +574,7 @@ func (m *Manager) Close(agentID string) error {
 
 type Message struct {
 	ID          string          `json:"id"`
+	SessionID   string          `json:"session_id"`
 	Sequence    uint64          `json:"sequence"`
 	From        string          `json:"from"`
 	To          string          `json:"to"`
@@ -540,12 +597,13 @@ const (
 )
 
 type Mailbox struct {
-	mu      sync.Mutex
-	seq     map[string]uint64
-	pending []Message
-	closed  bool
-	persist func(Message) error
-	deliver func(Message) error
+	mu             sync.Mutex
+	seq            map[string]uint64
+	pending        []Message
+	closed         bool
+	defaultSession string
+	persist        func(Message) error
+	deliver        func(Message) error
 }
 
 func NewMailbox() *Mailbox { return &Mailbox{seq: make(map[string]uint64)} }
@@ -609,18 +667,28 @@ func (m *Mailbox) Prepare(message Message) (Message, error) {
 func (m *Mailbox) Accept(message Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if message.Sequence > m.seq[message.To] {
-		m.seq[message.To] = message.Sequence
+	key := mailboxKey(message.SessionID, message.To)
+	if message.Sequence > m.seq[key] {
+		m.seq[key] = message.Sequence
 	}
 	message.Body = append(json.RawMessage(nil), message.Body...)
 	m.pending = append(m.pending, message)
 }
 
 func (m *Mailbox) prepareLocked(message Message) Message {
-	m.seq[message.To]++
-	message.Sequence = m.seq[message.To]
+	if message.SessionID == "" {
+		message.SessionID = m.defaultSession
+	}
+	key := mailboxKey(message.SessionID, message.To)
+	m.seq[key]++
+	message.Sequence = m.seq[key]
 	if message.ID == "" {
-		message.ID = fmt.Sprintf("message-%s-%d", message.To, message.Sequence)
+		message.ID = fmt.Sprintf(
+			"message-%x-%s-%d",
+			sha256.Sum256([]byte(message.SessionID)),
+			message.To,
+			message.Sequence,
+		)
 	}
 	if message.Kind == "" {
 		message.Kind = MessageContext
@@ -641,11 +709,16 @@ func (m *Mailbox) Drain(to string) []Message {
 }
 
 func (m *Mailbox) Receive(to string) []Message {
+	return m.ReceiveSession("", to)
+}
+
+func (m *Mailbox) ReceiveSession(sessionID, to string) []Message {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []Message
 	for _, message := range m.pending {
-		if to == "" || message.To == to {
+		if (sessionID == "" || message.SessionID == sessionID) &&
+			(to == "" || message.To == to) {
 			message.Body = append(json.RawMessage(nil), message.Body...)
 			out = append(out, message)
 		}
@@ -655,6 +728,10 @@ func (m *Mailbox) Receive(to string) []Message {
 }
 
 func (m *Mailbox) Pending(to string) []Message { return m.Receive(to) }
+
+func (m *Mailbox) PendingSession(sessionID, to string) []Message {
+	return m.ReceiveSession(sessionID, to)
+}
 
 func (m *Mailbox) Ack(messages []Message) error {
 	if len(messages) == 0 {
@@ -693,8 +770,9 @@ func (m *Mailbox) Restore(messages []Message) {
 		existing[message.ID] = struct{}{}
 	}
 	for _, message := range messages {
-		if message.Sequence > m.seq[message.To] {
-			m.seq[message.To] = message.Sequence
+		key := mailboxKey(message.SessionID, message.To)
+		if message.Sequence > m.seq[key] {
+			m.seq[key] = message.Sequence
 		}
 		if message.DeliveredAt == nil {
 			if _, ok := existing[message.ID]; ok {
@@ -706,3 +784,5 @@ func (m *Mailbox) Restore(messages []Message) {
 		}
 	}
 }
+
+func mailboxKey(sessionID, to string) string { return sessionID + "\x00" + to }

@@ -14,20 +14,32 @@ import (
 func (s *Store) ListAgentMessages(
 	ctx context.Context, workspaceRoot, to string,
 ) ([]subagent.Message, error) {
-	return s.listAgentMessages(ctx, workspaceRoot, to, false)
+	return s.listAgentMessages(ctx, workspaceRoot, "", to, false)
+}
+
+func (s *Store) ListAgentMessagesSession(
+	ctx context.Context, workspaceRoot, sessionID, to string,
+) ([]subagent.Message, error) {
+	return s.listAgentMessages(ctx, workspaceRoot, sessionID, to, false)
 }
 
 func (s *Store) ListUnpublishedAgentCompletions(
 	ctx context.Context, workspaceRoot string,
 ) ([]subagent.Message, error) {
-	return s.listAgentMessages(ctx, workspaceRoot, "", true)
+	return s.listAgentMessages(ctx, workspaceRoot, "", "", true)
+}
+
+func (s *Store) ListUnpublishedAgentCompletionsSession(
+	ctx context.Context, workspaceRoot, sessionID string,
+) ([]subagent.Message, error) {
+	return s.listAgentMessages(ctx, workspaceRoot, sessionID, "", true)
 }
 
 func (s *Store) listAgentMessages(
-	ctx context.Context, workspaceRoot, to string, unpublished bool,
+	ctx context.Context, workspaceRoot, sessionID, to string, unpublished bool,
 ) ([]subagent.Message, error) {
 	if workspaceRoot == "" {
-		return nil, fmt.Errorf("agent mailbox workspace root is required")
+		return nil, fmt.Errorf("agent mailbox workspace is required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -35,11 +47,15 @@ func (s *Store) listAgentMessages(
 		return nil, ErrClosed
 	}
 	query := `
-		SELECT id, sequence, from_agent_id, to_agent_id, kind, payload_ref,
+		SELECT session_id, id, sequence, from_agent_id, to_agent_id, kind, payload_ref,
 		       body, trigger_turn, created_at, delivered_at
 		FROM agent_messages
 		WHERE workspace_root = ?`
 	args := []any{workspaceRoot}
+	if sessionID != "" {
+		query += ` AND session_id = ?`
+		args = append(args, sessionID)
+	}
 	if unpublished {
 		query += ` AND kind = 'completion' AND published_at IS NULL`
 	} else if to != "" {
@@ -58,7 +74,7 @@ func (s *Store) listAgentMessages(
 		var kind, created string
 		var delivered sql.NullString
 		if err := rows.Scan(
-			&message.ID, &message.Sequence, &message.From, &message.To,
+			&message.SessionID, &message.ID, &message.Sequence, &message.From, &message.To,
 			&kind, &message.PayloadRef, &message.Body, &message.TriggerTurn,
 			&created, &delivered,
 		); err != nil {
@@ -88,12 +104,34 @@ func (s *Store) LoadAgentResult(
 	if s.closed {
 		return subagent.Result{}, false, ErrClosed
 	}
+	return loadAgentResultRow(ctx, s.sqlite.DB(), workspaceRoot, "", agentID)
+}
+
+func (s *Store) LoadAgentResultSession(
+	ctx context.Context, workspaceRoot, sessionID, agentID string,
+) (subagent.Result, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return subagent.Result{}, false, ErrClosed
+	}
+	return loadAgentResultRow(ctx, s.sqlite.DB(), workspaceRoot, sessionID, agentID)
+}
+
+func loadAgentResultRow(
+	ctx context.Context,
+	db *sql.DB,
+	workspaceRoot, sessionID, agentID string,
+) (subagent.Result, bool, error) {
+	query := `SELECT result_json FROM agent_results
+		WHERE workspace_root = ? AND agent_id = ?`
+	args := []any{workspaceRoot, agentID}
+	if sessionID != "" {
+		query += ` AND session_id = ?`
+		args = append(args, sessionID)
+	}
 	var raw []byte
-	err := s.sqlite.DB().QueryRowContext(ctx, `
-		SELECT result_json FROM agent_results
-		WHERE workspace_root = ? AND agent_id = ?`,
-		workspaceRoot, agentID,
-	).Scan(&raw)
+	err := db.QueryRowContext(ctx, query, args...).Scan(&raw)
 	if err == sql.ErrNoRows {
 		return subagent.Result{}, false, nil
 	}
@@ -110,22 +148,38 @@ func (s *Store) LoadAgentResult(
 func (s *Store) LoadAgentBudget(
 	ctx context.Context, workspaceRoot string,
 ) (subagent.BudgetLedger, error) {
+	return s.loadAgentBudget(ctx, workspaceRoot, "")
+}
+
+func (s *Store) LoadAgentBudgetSession(
+	ctx context.Context, workspaceRoot, sessionID string,
+) (subagent.BudgetLedger, error) {
+	return s.loadAgentBudget(ctx, workspaceRoot, sessionID)
+}
+
+func (s *Store) loadAgentBudget(
+	ctx context.Context, workspaceRoot, sessionID string,
+) (subagent.BudgetLedger, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return subagent.BudgetLedger{}, ErrClosed
 	}
 	var ledger subagent.BudgetLedger
-	err := s.sqlite.DB().QueryRowContext(ctx, `
+	query := `
 		SELECT COALESCE(SUM(reserved_tokens), 0),
 		       COALESCE(SUM(spent_tokens), 0),
 		       COALESCE(SUM(reserved_microunits), 0),
 		       COALESCE(SUM(spent_microunits), 0),
 		       COALESCE(SUM(reserved_slots), 0),
 		       COUNT(*)
-		FROM agent_budget_ledger WHERE workspace_root = ?`,
-		workspaceRoot,
-	).Scan(
+		FROM agent_budget_ledger WHERE workspace_root = ?`
+	args := []any{workspaceRoot}
+	if sessionID != "" {
+		query += ` AND session_id = ?`
+		args = append(args, sessionID)
+	}
+	err := s.sqlite.DB().QueryRowContext(ctx, query, args...).Scan(
 		&ledger.ReservedTokens, &ledger.SpentTokens,
 		&ledger.ReservedMicros, &ledger.SpentMicros, &ledger.ReservedSlots,
 		&ledger.TotalSpawned,
@@ -134,7 +188,7 @@ func (s *Store) LoadAgentBudget(
 }
 
 func (s *Store) PlanAgentReconciliation(
-	ctx context.Context, workspaceRoot string,
+	ctx context.Context, workspaceRoot, sessionID string,
 ) ([]subagent.GraphTransition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -144,9 +198,9 @@ func (s *Store) PlanAgentReconciliation(
 	rows, err := s.sqlite.DB().QueryContext(ctx, `
 		SELECT agent_id, path, thread_id, turn_id, status, revision
 		FROM agent_nodes
-		WHERE workspace_root = ?
+		WHERE workspace_root = ? AND session_id = ?
 		  AND status IN ('requested', 'starting', 'running', 'waiting')
-		ORDER BY depth, agent_id`, workspaceRoot)
+		ORDER BY depth, agent_id`, workspaceRoot, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +242,8 @@ func (s *Store) PlanAgentReconciliation(
 		revision := value.revision
 		appendTransition := func(status subagent.Status, reason string, result *subagent.Result) {
 			transitions = append(transitions, subagent.GraphTransition{
-				AgentID: value.id, Path: value.path,
+				SessionID: sessionID,
+				AgentID:   value.id, Path: value.path,
 				ExpectedRevision: revision, Status: status, TurnID: turnID,
 				Message: reason, OperationID: fmt.Sprintf(
 					"reconcile:%s:%d", value.id, revision+1,
@@ -310,10 +365,11 @@ func projectAgentSpawnTx(
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO agent_budget_ledger(
-			workspace_root, agent_id, reserved_tokens, reserved_microunits,
+			workspace_root, session_id, agent_id, reserved_tokens, reserved_microunits,
 			reserved_slots, source_sequence, updated_at
-		) VALUES (?, ?, ?, ?, 1, ?, ?)`,
-		edge.Workspace, edge.ChildID, edge.ReservedTokens, edge.ReservedMicros,
+		) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+		edge.Workspace, edge.SessionID, edge.ChildID,
+		edge.ReservedTokens, edge.ReservedMicros,
 		int64(event.Sequence), now,
 	)
 	return err
@@ -337,8 +393,8 @@ func projectAgentTransitionTx(
 		SELECT status, revision, source_sequence, operation_id,
 		       path, parent_agent_id, session_id
 		FROM agent_nodes
-		WHERE workspace_root = ? AND agent_id = ?`,
-		data.WorkspaceRoot, data.AgentID,
+		WHERE workspace_root = ? AND session_id = ? AND agent_id = ?`,
+		data.WorkspaceRoot, data.SessionID, data.AgentID,
 	).Scan(
 		&current, &revision, &sourceSequence, &operationID,
 		&path, &parentID, &sessionID,
@@ -348,13 +404,23 @@ func projectAgentTransitionTx(
 	if uint64(event.Sequence) <= sourceSequence {
 		return nil
 	}
+	if data.SessionID != sessionID {
+		return fmt.Errorf("agent %s belongs to another session", data.AgentID)
+	}
 	if transition.AgentID == "" {
 		transition = subagent.GraphTransition{
-			AgentID: data.AgentID, ExpectedRevision: revision,
+			SessionID: sessionID,
+			AgentID:   data.AgentID, ExpectedRevision: revision,
 			Status: subagent.Status(data.Status), Message: data.Message,
 			OperationID: fmt.Sprintf("legacy:%s:%d", data.AgentID, revision+1),
 			Actor:       "legacy", CreatedAt: event.CreatedAt,
 		}
+	}
+	if transition.SessionID == "" {
+		transition.SessionID = sessionID
+	}
+	if transition.SessionID != sessionID {
+		return fmt.Errorf("agent transition belongs to another session")
 	}
 	if revision == transition.ExpectedRevision+1 &&
 		operationID == transition.OperationID {
@@ -380,12 +446,13 @@ func projectAgentTransitionTx(
 			last_message = CASE WHEN ? != '' THEN ? ELSE last_message END,
 			operation_id = ?, actor = ?, reason = ?, event_id = ?,
 			source_sequence = ?, updated_at = ?
-		WHERE workspace_root = ? AND agent_id = ? AND revision = ?`,
+		WHERE workspace_root = ? AND session_id = ? AND agent_id = ?
+		  AND revision = ?`,
 		transition.Status, next, transition.TurnID, transition.TurnID,
 		transition.Message, transition.Message,
 		transition.OperationID, transition.Actor, transition.Reason, string(event.ID),
 		int64(event.Sequence), timestamp(event.CreatedAt),
-		data.WorkspaceRoot, data.AgentID, revision,
+		data.WorkspaceRoot, sessionID, data.AgentID, revision,
 	)
 	if err != nil {
 		return err
@@ -407,14 +474,15 @@ func projectAgentTransitionTx(
 		}
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO agent_results(
-				workspace_root, agent_id, turn_id, result_json,
+				workspace_root, session_id, agent_id, turn_id, result_json,
 				receipt_ref, source_sequence, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(workspace_root, agent_id) DO UPDATE SET
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(workspace_root, session_id, agent_id) DO UPDATE SET
 				turn_id=excluded.turn_id, result_json=excluded.result_json,
 				receipt_ref=excluded.receipt_ref,
 				source_sequence=excluded.source_sequence, created_at=excluded.created_at`,
-			data.WorkspaceRoot, data.AgentID, transition.Result.TurnID, raw,
+			data.WorkspaceRoot, sessionID, data.AgentID,
+			transition.Result.TurnID, raw,
 			transition.Result.Context.Digest, int64(event.Sequence),
 			timestamp(event.CreatedAt),
 		)
@@ -423,7 +491,7 @@ func projectAgentTransitionTx(
 		}
 		if transition.CompletionMessage == nil {
 			message, buildErr := recoveryCompletionMessageTx(
-				ctx, tx, data.WorkspaceRoot, path, parentID, sessionID,
+				ctx, tx, data.WorkspaceRoot, sessionID, path, parentID,
 				next, *transition.Result, event.CreatedAt,
 			)
 			if buildErr != nil {
@@ -443,7 +511,7 @@ func projectAgentTransitionTx(
 func recoveryCompletionMessageTx(
 	ctx context.Context,
 	tx *sql.Tx,
-	workspace, path, parentID, sessionID string,
+	workspace, sessionID, path, parentID string,
 	revision uint64,
 	result subagent.Result,
 	createdAt time.Time,
@@ -455,8 +523,8 @@ func recoveryCompletionMessageTx(
 	var sequence uint64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT COALESCE(MAX(sequence), 0) + 1 FROM agent_messages
-		WHERE workspace_root = ? AND to_agent_id = ?`,
-		workspace, target,
+		WHERE workspace_root = ? AND session_id = ? AND to_agent_id = ?`,
+		workspace, sessionID, target,
 	).Scan(&sequence); err != nil {
 		return subagent.Message{}, err
 	}
@@ -478,8 +546,9 @@ func recoveryCompletionMessageTx(
 		return subagent.Message{}, err
 	}
 	return subagent.Message{
-		ID:       fmt.Sprintf("message-%s-%d", target, sequence),
-		Sequence: sequence, From: result.AgentID, To: target,
+		SessionID: sessionID,
+		ID:        fmt.Sprintf("message-%s-%d", target, sequence),
+		Sequence:  sequence, From: result.AgentID, To: target,
 		Kind: subagent.MessageCompletion, PayloadRef: envelope.ResultRef,
 		Body: body, CreatedAt: createdAt,
 	}, nil
@@ -516,13 +585,13 @@ func projectAgentBudgetTransitionTx(
 			spent_microunits = spent_microunits + ?,
 			released = CASE WHEN reserved_slots + ? = 0 THEN 1 ELSE 0 END,
 			source_sequence = ?, updated_at = ?
-		WHERE workspace_root = ? AND agent_id = ?`,
+		WHERE workspace_root = ? AND session_id = ? AND agent_id = ?`,
 		slotDelta,
 		transition.ReleaseBudget, transition.ReserveTokens,
 		transition.ReleaseBudget, transition.ReserveMicros,
 		spentTokens, spentMicros, slotDelta,
 		int64(event.Sequence), timestamp(event.CreatedAt),
-		workspace, transition.AgentID,
+		workspace, transition.SessionID, transition.AgentID,
 	)
 	return err
 }
@@ -533,21 +602,29 @@ func projectAgentMessageTx(
 	var message subagent.Message
 	if err := json.Unmarshal(data.Body, &message); err != nil || message.ID == "" {
 		message = subagent.Message{
-			ID:       fmt.Sprintf("message-%s-%d", data.To, data.Sequence),
-			Sequence: data.Sequence, From: data.From, To: data.To,
+			SessionID: data.SessionID,
+			ID:        fmt.Sprintf("message-%s-%d", data.To, data.Sequence),
+			Sequence:  data.Sequence, From: data.From, To: data.To,
 			Kind: subagent.MessageContext, Body: data.Body,
 			CreatedAt: event.CreatedAt,
 		}
+	}
+	if message.SessionID == "" {
+		message.SessionID = data.SessionID
+	}
+	if message.SessionID != data.SessionID {
+		return fmt.Errorf("agent message %s belongs to another session", message.ID)
 	}
 	if message.DeliveredAt != nil {
 		result, err := tx.ExecContext(ctx, `
 			UPDATE agent_messages SET
 				published_at = COALESCE(published_at, ?),
 				delivered_at = ?, source_sequence = ?
-			WHERE workspace_root = ? AND id = ? AND delivered_at IS NULL`,
+			WHERE workspace_root = ? AND session_id = ? AND id = ?
+			  AND delivered_at IS NULL`,
 			timestamp(event.CreatedAt), timestamp(*message.DeliveredAt),
 			int64(event.Sequence),
-			data.WorkspaceRoot, message.ID,
+			data.WorkspaceRoot, data.SessionID, message.ID,
 		)
 		if err != nil {
 			return err
@@ -556,8 +633,8 @@ func projectAgentMessageTx(
 			var delivered sql.NullString
 			if err := tx.QueryRowContext(ctx, `
 				SELECT delivered_at FROM agent_messages
-				WHERE workspace_root = ? AND id = ?`,
-				data.WorkspaceRoot, message.ID,
+				WHERE workspace_root = ? AND session_id = ? AND id = ?`,
+				data.WorkspaceRoot, data.SessionID, message.ID,
 			).Scan(&delivered); err != nil || !delivered.Valid {
 				return fmt.Errorf("agent message %s delivery is missing", message.ID)
 			}
@@ -581,14 +658,14 @@ func insertAgentMessageTx(
 	}
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO agent_messages(
-			workspace_root, id, sequence, from_agent_id, to_agent_id,
+			workspace_root, session_id, id, sequence, from_agent_id, to_agent_id,
 			kind, payload_ref, body, trigger_turn, created_at,
 			published_at, delivered_at, source_sequence
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(workspace_root, id) DO UPDATE SET
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(workspace_root, session_id, id) DO UPDATE SET
 			published_at = COALESCE(agent_messages.published_at, excluded.published_at),
 			source_sequence = MAX(agent_messages.source_sequence, excluded.source_sequence)`,
-		workspace, message.ID, message.Sequence, message.From, message.To,
+		workspace, message.SessionID, message.ID, message.Sequence, message.From, message.To,
 		message.Kind, message.PayloadRef, []byte(message.Body), message.TriggerTurn,
 		timestamp(message.CreatedAt), publishedAt, nullableTimestamp(message.DeliveredAt),
 		int64(event.Sequence),

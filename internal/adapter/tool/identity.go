@@ -6,9 +6,10 @@ type invocationIdentityKey struct{}
 
 // InvocationIdentity carries call/thread/turn IDs through tool execution context (N3).
 type InvocationIdentity struct {
-	CallID   string
-	ThreadID string
-	TurnID   string
+	CallID    string
+	SessionID string
+	ThreadID  string
+	TurnID    string
 }
 
 // WithInvocationIdentity attaches identity to ctx for downstream executors.
@@ -20,6 +21,13 @@ func WithInvocationIdentity(ctx context.Context, id InvocationIdentity) context.
 func WithTurnIdentity(ctx context.Context, threadID, turnID string) context.Context {
 	id := InvocationIdentityFrom(ctx)
 	id.ThreadID, id.TurnID = threadID, turnID
+	return WithInvocationIdentity(ctx, id)
+}
+
+// WithSessionIdentity binds the durable Session while preserving call/turn IDs.
+func WithSessionIdentity(ctx context.Context, sessionID string) context.Context {
+	id := InvocationIdentityFrom(ctx)
+	id.SessionID = sessionID
 	return WithInvocationIdentity(ctx, id)
 }
 
