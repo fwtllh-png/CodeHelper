@@ -24,8 +24,7 @@ var bundledQuickstartFixture embed.FS
 type quickstartStages struct {
 	Plan         bool `json:"plan"`
 	Read         bool `json:"read"`
-	EditPreview  bool `json:"edit_preview"`
-	Approved     bool `json:"approved"`
+	Edit         bool `json:"edit"`
 	Verification bool `json:"verification"`
 	Receipt      bool `json:"receipt"`
 	Completed    bool `json:"completed"`
@@ -193,8 +192,7 @@ func runQuickstart(
 	const expected = "package quickstart\n\nfunc Greeting() string {\n\treturn \"hello, CodeHelper\"\n}\n"
 	report.OK = report.Stages.Plan &&
 		report.Stages.Read &&
-		report.Stages.EditPreview &&
-		report.Stages.Approved &&
+		report.Stages.Edit &&
 		report.Stages.Verification &&
 		report.Stages.Receipt &&
 		report.Stages.Completed &&
@@ -229,14 +227,6 @@ func foldQuickstartEvents(report *quickstartReport, data []byte) error {
 			case "file_read":
 				report.Stages.Read = true
 			}
-		case eventview.InteractionUpdate:
-			if value.ApprovalRequired != nil &&
-				value.ApprovalRequired.EditPlan != nil {
-				report.Stages.EditPreview = true
-			}
-			if value.ResolvedValue == string(protocol.ApprovalApprove) {
-				report.Stages.Approved = true
-			}
 		case eventview.EvidenceUpdate:
 			if value.Verification != nil {
 				report.Stages.Verification = true
@@ -244,6 +234,7 @@ func foldQuickstartEvents(report *quickstartReport, data []byte) error {
 			if value.Receipt != nil {
 				report.Stages.Receipt = true
 				for _, change := range value.Receipt.Changes {
+					report.Stages.Edit = true
 					report.ChangedFiles = append(report.ChangedFiles, change.Path)
 				}
 			}

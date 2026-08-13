@@ -2,8 +2,6 @@ package policy
 
 import "strings"
 
-// Surface identifies a granular approval dimension (W5.3). Surfaces may only
-// tighten decisions — they never weaken constitution/mode deny.
 type Surface string
 
 const (
@@ -13,7 +11,6 @@ const (
 	SurfaceMCP     Surface = "mcp"
 )
 
-// SurfacePosture is ask/allow/inherit. Empty means inherit (use coarse posture).
 type SurfacePosture string
 
 const (
@@ -23,7 +20,6 @@ const (
 	SurfaceDeny    SurfacePosture = "deny"
 )
 
-// Granular holds per-surface approval toggles. Fingerprint cache is unchanged.
 type Granular struct {
 	Sandbox SurfacePosture `json:"sandbox,omitempty"`
 	Rules   SurfacePosture `json:"rules,omitempty"`
@@ -31,7 +27,6 @@ type Granular struct {
 	MCP     SurfacePosture `json:"mcp,omitempty"`
 }
 
-// ClassifySurface maps a tool invocation to an approval surface.
 func ClassifySurface(toolName string, capability Capability) Surface {
 	name := strings.ToLower(strings.TrimSpace(toolName))
 	switch {
@@ -48,38 +43,23 @@ func ClassifySurface(toolName string, capability Capability) Surface {
 }
 
 func (g Granular) postureFor(surface Surface) SurfacePosture {
-	switch surface {
-	case SurfaceSandbox:
-		return g.Sandbox
-	case SurfaceRules:
-		return g.Rules
-	case SurfaceSkills:
-		return g.Skills
-	case SurfaceMCP:
-		return g.MCP
-	default:
-		return SurfaceInherit
-	}
+	return map[Surface]SurfacePosture{
+		SurfaceSandbox: g.Sandbox, SurfaceRules: g.Rules,
+		SurfaceSkills: g.Skills, SurfaceMCP: g.MCP,
+	}[surface]
 }
 
-// ApplySurfaceTightening may raise ActionAllow → Ask/Deny based on surface.
-// It never turns Deny/Hold into Allow.
 func ApplySurfaceTightening(decision Decision, surface Surface, granular Granular) Decision {
 	posture := granular.postureFor(surface)
-	switch posture {
-	case SurfaceInherit, SurfaceAllow:
-		return decision
-	case SurfaceAsk:
-		if decision.Action == ActionAllow {
-			return Decision{Action: ActionAsk, Code: "granular_ask", Reason: "surface " + string(surface) + " requires approval"}
-		}
-		return decision
-	case SurfaceDeny:
-		if decision.Action == ActionAllow || decision.Action == ActionAsk {
-			return Decision{Action: ActionDeny, Code: "granular_deny", Reason: "surface " + string(surface) + " denies"}
-		}
-		return decision
-	default:
+	if posture == SurfaceInherit || posture == SurfaceAllow ||
+		decision.Action == ActionDeny || decision.Action == ActionHold {
 		return decision
 	}
+	if posture == SurfaceAsk && decision.Action == ActionAllow {
+		return Decision{Action: ActionAsk, Code: "granular_ask", Reason: "surface " + string(surface) + " requires approval"}
+	}
+	if posture == SurfaceDeny {
+		return Decision{Action: ActionDeny, Code: "granular_deny", Reason: "surface " + string(surface) + " denies"}
+	}
+	return decision
 }

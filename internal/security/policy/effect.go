@@ -1,0 +1,88 @@
+package policy
+
+import "github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+
+type EffectKind string
+
+const (
+	EffectWorkspaceRead    EffectKind = "workspace.read"
+	EffectWorkspaceEdit    EffectKind = "workspace.edit"
+	EffectProcessReadOnly  EffectKind = "process.read_only"
+	EffectProcessMutating  EffectKind = "process.mutating"
+	EffectNetworkRead      EffectKind = "network.read"
+	EffectNetworkMutating  EffectKind = "network.mutating"
+	EffectAgentMessage     EffectKind = "agent.message"
+	EffectAgentLifecycle   EffectKind = "agent.lifecycle"
+	EffectExternalMutation EffectKind = "external.mutation"
+)
+
+type RiskLevel string
+
+const (
+	RiskLow      RiskLevel = "low"
+	RiskMedium   RiskLevel = "medium"
+	RiskHigh     RiskLevel = "high"
+	RiskCritical RiskLevel = "critical"
+)
+
+type Effect struct {
+	Kind          EffectKind
+	Risk          RiskLevel
+	Reversibility string
+}
+
+func NormalizeEffect(invocation Invocation) Effect {
+	if invocation.Access == "" || invocation.Sandbox == "" {
+		switch invocation.Capability {
+		case tool.CapabilityRead:
+			return effect(EffectWorkspaceRead, RiskLow, "reversible")
+		case tool.CapabilityWrite:
+			return effect(EffectExternalMutation, RiskMedium, "bounded")
+		case tool.CapabilityProcess, tool.CapabilityNetwork, tool.CapabilityPlugin:
+			return effect(EffectExternalMutation, RiskHigh, "irreversible")
+		default:
+			return effect(EffectExternalMutation, RiskCritical, "irreversible")
+		}
+	}
+	var resources uint8
+	masks := map[string]uint8{"process": 2, "host": 4, "url": 4, "agent": 8}
+	for _, resource := range invocation.Resources {
+		resources |= masks[resource.Kind]
+		if (resource.Kind == "file" || resource.Kind == "directory") &&
+			resource.Access != tool.AccessRead {
+			resources |= 1
+		}
+	}
+	switch {
+	case invocation.Capability == tool.CapabilityRead:
+		return effect(EffectWorkspaceRead, RiskLow, "reversible")
+	case resources&8 != 0:
+		switch invocation.Tool {
+		case "send_message":
+			return effect(EffectAgentMessage, RiskLow, "reversible")
+		case "spawn_agent", "followup_task":
+			return effect(EffectAgentLifecycle, RiskMedium, "bounded")
+		default:
+			return effect(EffectAgentLifecycle, RiskHigh, "bounded")
+		}
+	case invocation.Capability == tool.CapabilityProcess || resources&2 != 0:
+		if invocation.Sandbox == tool.SandboxStrong && resources&1 == 0 {
+			return effect(EffectProcessReadOnly, RiskLow, "reversible")
+		}
+		return effect(EffectProcessMutating, RiskHigh, "bounded")
+	case invocation.Capability == tool.CapabilityNetwork || resources&4 != 0:
+		if invocation.Access == tool.AccessRead {
+			return effect(EffectNetworkRead, RiskMedium, "bounded")
+		}
+		return effect(EffectNetworkMutating, RiskHigh, "irreversible")
+	case invocation.Capability == tool.CapabilityWrite && resources&1 != 0 &&
+		invocation.Journaled:
+		return effect(EffectWorkspaceEdit, RiskLow, "reversible")
+	default:
+		return effect(EffectExternalMutation, RiskHigh, "irreversible")
+	}
+}
+
+func effect(kind EffectKind, risk RiskLevel, reversibility string) Effect {
+	return Effect{kind, risk, reversibility}
+}

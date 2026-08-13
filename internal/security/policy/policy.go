@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -55,6 +54,9 @@ type Invocation struct {
 	Arguments  json.RawMessage
 	Resources  []tool.Resource
 	Capability tool.Capability
+	Access     tool.AccessMode
+	Sandbox    tool.SandboxRequirement
+	Journaled  bool
 	Validated  bool
 }
 
@@ -94,31 +96,19 @@ func (e *DecisionError) Error() string {
 func DefaultRuntime(mode Mode, permission Permission) *Runtime {
 	return &Runtime{
 		Mode: mode, Permission: permission,
-		Grants:    append([]Rule{{Tool: "*", Resource: "*", Action: ActionAllow}}, LifecycleGrants()...),
+		Grants:    []Rule{{Tool: "*", Resource: "*", Action: ActionAllow}},
 		Approvals: NewApprovalCache(), Now: time.Now,
 	}
 }
 
-// TightenPermission applies a fixed authority ceiling to a requested posture.
-// Unknown values fail closed. The ordering reflects the maximum automatic
-// authority each posture can exercise.
 func TightenPermission(requested, ceiling Permission) Permission {
-	rank := func(value Permission) int {
-		switch value {
-		case PermissionNever:
-			return 0
-		case PermissionSuggest:
-			return 1
-		case PermissionAuto:
-			return 2
-		case PermissionBypass:
-			return 3
-		default:
-			return -1
-		}
+	ranks := map[Permission]int{
+		PermissionNever: 0, PermissionSuggest: 1,
+		PermissionAuto: 2, PermissionBypass: 3,
 	}
-	requestedRank, ceilingRank := rank(requested), rank(ceiling)
-	if requestedRank < 0 || ceilingRank < 0 {
+	requestedRank, requestedOK := ranks[requested]
+	ceilingRank, ceilingOK := ranks[ceiling]
+	if !requestedOK || !ceilingOK {
 		return PermissionNever
 	}
 	if requestedRank > ceilingRank {
@@ -142,28 +132,7 @@ func (r *Runtime) CloneSampling() *Runtime {
 	}
 }
 
-// LifecycleGrants are default ask rules for write/lifecycle tools that land in
-// later product-parity phases. Specific ask wins over the wildcard allow grant.
-func LifecycleGrants() []Rule {
-	names := []string{
-		"task_cancel",
-		"automation_create", "automation_update", "automation_pause",
-		"automation_resume", "automation_delete", "automation_run",
-		"github_comment", "github_close_issue", "github_close_pr",
-		"spawn_agent", "send_message", "followup_task",
-		"interrupt_agent", "close_agent",
-	}
-	rules := make([]Rule, 0, len(names))
-	for _, name := range names {
-		rules = append(rules, Rule{
-			Tool: name, Resource: "*", Action: ActionAsk, Code: "lifecycle_approval_required",
-		})
-	}
-	return rules
-}
-
-func (r *Runtime) Authorize(ctx context.Context, invocation Invocation) error {
-	_ = ctx
+func (r *Runtime) Authorize(_ context.Context, invocation Invocation) error {
 	decision := r.Evaluate(invocation)
 	if decision.Action == ActionAllow {
 		return nil
@@ -213,7 +182,8 @@ func (r *Runtime) Evaluate(invocation Invocation) Decision {
 	if err := modeDecision(r.Mode, invocation.Capability); err != nil {
 		return decisionFromError(err)
 	}
-	permissionAction, err := permissionDecision(r.Mode, r.Permission, invocation.Capability)
+	effect := NormalizeEffect(invocation)
+	permissionAction, err := permissionDecision(r.Permission, invocation.Capability, effect.Risk)
 	if err != nil {
 		return decisionFromError(err)
 	}
@@ -222,12 +192,6 @@ func (r *Runtime) Evaluate(invocation Invocation) Decision {
 			Decision{Action: ActionAllow},
 			ClassifySurface(invocation.Tool, invocation.Capability), r.Granular,
 		)
-	}
-	// A workspace-bound file_write still passes schema/resource validation,
-	// repository policy, read-before-write, journaling, and atomic commit. Under
-	// suggest posture it does not need an additional interactive confirmation.
-	if r.Permission == PermissionSuggest && invocation.Tool == "file_write" {
-		permissionAction = ActionAllow
 	}
 	needsApproval := repositoryAsk || permissionAction == ActionAsk || grant.Action == ActionAsk
 	decision := Decision{Action: ActionAllow}
@@ -264,53 +228,36 @@ func modeDecision(mode Mode, capability tool.Capability) error {
 	return nil
 }
 
-func permissionDecision(mode Mode, permission Permission, capability tool.Capability) (Action, error) {
-	switch permission {
-	case PermissionSuggest:
-		if capability == tool.CapabilityRead {
-			return ActionAllow, nil
-		}
-		return ActionAsk, nil
-	case PermissionAuto:
-		switch capability {
-		case tool.CapabilityRead, tool.CapabilityWrite:
-			return ActionAllow, nil
-		case tool.CapabilityProcess:
-			if mode == ModeOperate {
-				return ActionAllow, nil
-			}
-			return ActionAsk, nil
-		case tool.CapabilityNetwork, tool.CapabilityPlugin:
-			return ActionAsk, nil
-		default:
-			return ActionDeny, decisionError("permission_denied", "auto posture denies high-risk unapproved execution")
-		}
-	case PermissionBypass:
-		return ActionAllow, nil
-	case PermissionNever:
+func permissionDecision(permission Permission, capability tool.Capability, risk RiskLevel) (Action, error) {
+	if permission != PermissionSuggest && permission != PermissionAuto &&
+		permission != PermissionBypass && permission != PermissionNever {
+		return ActionDeny, decisionError("permission_unknown", "unknown permission is denied")
+	}
+	if permission == PermissionNever {
 		if capability == tool.CapabilityRead {
 			return ActionAllow, nil
 		}
 		return ActionDeny, decisionError("permission_denied", "never posture denies side effects")
-	default:
-		return ActionDeny, decisionError("permission_unknown", "unknown permission posture is denied")
 	}
+	if risk == RiskCritical {
+		return ActionDeny, decisionError("permission_denied", "critical-risk execution is denied")
+	}
+	if permission == PermissionBypass || capability == tool.CapabilityRead || risk == RiskLow {
+		return ActionAllow, nil
+	}
+	return ActionAsk, nil
 }
 
 func strongestMatch(rules []Rule, invocation Invocation) (Rule, bool) {
-	var matches []Rule
+	var strongest Rule
+	found := false
 	for _, rule := range rules {
-		if ruleMatches(rule, invocation) {
-			matches = append(matches, rule)
+		if ruleMatches(rule, invocation) &&
+			(!found || actionPriority(rule.Action) > actionPriority(strongest.Action)) {
+			strongest, found = rule, true
 		}
 	}
-	if len(matches) == 0 {
-		return Rule{}, false
-	}
-	sort.SliceStable(matches, func(i, j int) bool {
-		return actionPriority(matches[i].Action) > actionPriority(matches[j].Action)
-	})
-	return matches[0], true
+	return strongest, found
 }
 
 func ruleMatches(rule Rule, invocation Invocation) bool {
@@ -412,18 +359,9 @@ func shellCommandSegments(command string) []string {
 }
 
 func actionPriority(action Action) int {
-	switch action {
-	case ActionHold:
-		return 4
-	case ActionDeny:
-		return 3
-	case ActionAsk:
-		return 2
-	case ActionAllow:
-		return 1
-	default:
-		return 5
-	}
+	return map[Action]int{
+		ActionAllow: 1, ActionAsk: 2, ActionDeny: 3, ActionHold: 4,
+	}[action]
 }
 
 func decisionError(code, reason string) error {
@@ -437,7 +375,7 @@ func Validate(runtime *Runtime) error {
 	if err := modeDecision(runtime.Mode, tool.CapabilityRead); err != nil {
 		return fmt.Errorf("mode: %w", err)
 	}
-	if _, err := permissionDecision(runtime.Mode, runtime.Permission, tool.CapabilityRead); err != nil {
+	if _, err := permissionDecision(runtime.Permission, tool.CapabilityRead, RiskLow); err != nil {
 		return fmt.Errorf("permission: %w", err)
 	}
 	return nil

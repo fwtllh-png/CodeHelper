@@ -23,8 +23,8 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		{name: "plan request_user_input", mode: ModePlan, permission: PermissionSuggest, tool: "request_user_input"},
 		{name: "act auto write", mode: ModeAct, permission: PermissionAuto, tool: "file_write"},
 		{name: "act auto read-only shell", mode: ModeAct, permission: PermissionAuto, tool: "shell_read"},
-		{name: "act auto process asks", mode: ModeAct, permission: PermissionAuto, tool: "shell_run", wantCode: "approval_required"},
-		{name: "operate auto process", mode: ModeOperate, permission: PermissionAuto, tool: "shell_run"},
+		{name: "act auto sandboxed process", mode: ModeAct, permission: PermissionAuto, tool: "shell_run"},
+		{name: "operate auto sandboxed process", mode: ModeOperate, permission: PermissionAuto, tool: "shell_run"},
 		{name: "never write denied", mode: ModeAct, permission: PermissionNever, tool: "file_write", wantCode: "permission_denied"},
 		{name: "unknown denied", mode: ModeAct, permission: PermissionBypass, tool: "future_tool", wantCode: "policy_unknown_capability"},
 	}
@@ -32,12 +32,16 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			runtime := DefaultRuntime(test.mode, test.permission)
 			runtime.Now = func() time.Time { return now }
-			err := runtime.Authorize(t.Context(), invocation(test.tool, "call-1", `{}`))
+			raw := `{}`
+			if test.tool == "file_write" {
+				raw = `{"path":"notes.txt"}`
+			}
+			err := runtime.Authorize(t.Context(), invocation(test.tool, "call-1", raw))
 			assertDecisionCode(t, err, test.wantCode)
 		})
 	}
 
-	t.Run("operate auto network asks", func(t *testing.T) {
+	t.Run("operate auto network read asks", func(t *testing.T) {
 		runtime := DefaultRuntime(ModeOperate, PermissionAuto)
 		call := invocation("file_read", "net-1", `{}`)
 		call.Capability = CapabilityNetwork
@@ -51,7 +55,7 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		err := runtime.Authorize(t.Context(), call)
 		assertDecisionCode(t, err, "approval_required")
 	})
-	t.Run("act auto network asks", func(t *testing.T) {
+	t.Run("act auto network read asks", func(t *testing.T) {
 		runtime := DefaultRuntime(ModeAct, PermissionAuto)
 		call := invocation("file_read", "net-act", `{}`)
 		call.Capability = CapabilityNetwork
@@ -94,7 +98,7 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 	edit := invocation("file_edit", "call-edit", `{"path":"notes.txt"}`)
 	edit.Capability = CapabilityWrite
 	err = runtime.Authorize(t.Context(), edit)
-	assertDecisionCode(t, err, "approval_required")
+	assertDecisionCode(t, err, "")
 	runtime.Repository = []Rule{{
 		Tool: "file_write", Resource: "notes.txt", Action: ActionAsk,
 	}}
@@ -102,22 +106,6 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		"file_write", "call-repository-ask", `{"path":"notes.txt","content":"done"}`,
 	))
 	assertDecisionCode(t, err, "approval_required")
-}
-
-func TestLifecycleGrantsForceAskUnderAutoAndBypass(t *testing.T) {
-	for _, permission := range []Permission{PermissionAuto, PermissionBypass} {
-		runtime := DefaultRuntime(ModeAct, permission)
-		call := Invocation{
-			CallID: "lifecycle-1", Tool: "task_cancel", Arguments: json.RawMessage(`{}`),
-			Capability: CapabilityWrite, Validated: true,
-			Resources: []tool.Resource{{Kind: "task", ID: "task-1", Access: tool.AccessWrite}},
-		}
-		err := runtime.Authorize(t.Context(), call)
-		assertDecisionCode(t, err, "approval_required")
-	}
-	runtime := DefaultRuntime(ModeAct, PermissionAuto)
-	err := runtime.Authorize(t.Context(), invocation("file_write", "normal-write", `{"path":"a.txt"}`))
-	assertDecisionCode(t, err, "")
 }
 
 func TestCloneSamplingIsolatesModePermissionAndRules(t *testing.T) {
@@ -157,6 +145,7 @@ func TestPolicyCompleteModePermissionCapabilityTruthTable(t *testing.T) {
 					runtime := DefaultRuntime(mode, permission)
 					call := invocation("file_read", "truth-table", `{}`)
 					call.Capability = capability
+					call.Access, call.Sandbox = "", ""
 					err := runtime.Authorize(t.Context(), call)
 					want := ""
 					switch {
@@ -164,20 +153,11 @@ func TestPolicyCompleteModePermissionCapabilityTruthTable(t *testing.T) {
 						want = "mode_denied"
 					case permission == PermissionSuggest && capability != CapabilityRead:
 						want = "approval_required"
-					case permission == PermissionAuto && mode == ModeOperate:
-						switch capability {
-						case CapabilityRead, CapabilityWrite, CapabilityProcess:
-							want = ""
-						case CapabilityNetwork, CapabilityPlugin:
-							want = "approval_required"
-						default:
-							want = "permission_denied"
-						}
 					case permission == PermissionAuto:
 						switch capability {
-						case CapabilityRead, CapabilityWrite:
+						case CapabilityRead:
 							want = ""
-						case CapabilityProcess, CapabilityNetwork, CapabilityPlugin:
+						case CapabilityWrite, CapabilityProcess, CapabilityNetwork, CapabilityPlugin:
 							want = "approval_required"
 						default:
 							want = "permission_denied"
@@ -296,11 +276,11 @@ func TestApprovalIsBoundToCallArgumentsResourcesScopeAndExpiry(t *testing.T) {
 	}
 }
 
-func TestSuggestApprovalRequiresAsyncHost(t *testing.T) {
+func TestSuggestLowRiskEditDoesNotRequireAsyncHost(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionSuggest)
 	call := invocation("file_edit", "call-approval", `{"path":"a"}`)
 	call.Capability = CapabilityWrite
-	assertDecisionCode(t, runtime.Authorize(t.Context(), call), "approval_required")
+	assertDecisionCode(t, runtime.Authorize(t.Context(), call), "")
 }
 
 func TestTightenPermissionNeverExpandsAuthority(t *testing.T) {
@@ -391,7 +371,19 @@ func invocation(toolName, callID, arguments string) Invocation {
 	}
 	return Invocation{
 		CallID: callID, Tool: toolName, Arguments: raw,
-		Resources: resources, Capability: capability, Validated: true,
+		Resources: resources, Capability: capability,
+		Access: map[string]tool.AccessMode{
+			"file_read": tool.AccessRead, "file_write": tool.AccessWrite,
+			"file_edit": tool.AccessWrite, "shell_read": tool.AccessRead,
+			"shell_run": tool.AccessRead,
+		}[toolName],
+		Sandbox: map[string]tool.SandboxRequirement{
+			"file_read": tool.SandboxNone, "file_write": tool.SandboxNone,
+			"file_edit": tool.SandboxNone, "shell_read": tool.SandboxStrong,
+			"shell_run": tool.SandboxStrong,
+		}[toolName],
+		Journaled: toolName == "file_write" || toolName == "file_edit",
+		Validated: true,
 	}
 }
 
