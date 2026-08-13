@@ -174,3 +174,98 @@ func TestDepthAndConcurrencyBudgets(t *testing.T) {
 	}
 	_ = child
 }
+
+func TestResidentAndTotalTreeBudgets(t *testing.T) {
+	manager, err := subagent.Open(subagent.Options{
+		Root: t.TempDir(), Gate: &fakeGate{},
+		Budget: subagent.Budget{
+			MaxDepth: 2, MaxParallel: 2, MaxResident: 2, MaxTotal: 3,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := manager.Spawn("", subagent.RoleExplore, "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.Spawn("", subagent.RoleExplore, "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Complete(first.ID, "done"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Complete(second.ID, "done"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Spawn("", subagent.RoleExplore, "resident"); err == nil {
+		t.Fatal("completed resident agents must still consume resident capacity")
+	}
+	if err := manager.Close(first.ID); err != nil {
+		t.Fatal(err)
+	}
+	third, err := manager.Spawn("", subagent.RoleExplore, "third")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(second.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(third.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Spawn("", subagent.RoleExplore, "total"); err == nil {
+		t.Fatal("closed agents must still consume total spawn capacity")
+	}
+}
+
+func TestNestedAgentBudgetCanOnlyNarrowParentCeiling(t *testing.T) {
+	control, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: &fakeGate{},
+		Budget: subagent.Budget{
+			MaxSteps: 30, MaxTokens: 1000, MaxCostUSD: 10,
+			MaxDepth: 2, MaxParallel: 3, MaxResident: 3, MaxTotal: 3,
+		},
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := control.SpawnIntent(subagent.DelegationIntent{
+		TaskName: "parent", Role: subagent.RoleExplore, Objective: "inspect",
+		ExpectedOutput: "report", Trigger: subagent.TriggerUser,
+		Budget: subagent.AgentBudget{
+			MaxSteps: 20, MaxTokens: 400, MaxCostUSD: 4,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = control.SpawnIntent(subagent.DelegationIntent{
+		TaskName: "too_large", ParentID: parent.ID,
+		Role: subagent.RoleExplore, Objective: "inspect",
+		ExpectedOutput: "report", Trigger: subagent.TriggerSystem,
+		Budget: subagent.AgentBudget{
+			MaxSteps: 21, MaxTokens: 401, MaxCostUSD: 4.1,
+		},
+	})
+	if err == nil {
+		t.Fatal("nested agent expanded its parent budget")
+	}
+	child, err := control.SpawnIntent(subagent.DelegationIntent{
+		TaskName: "narrow", ParentID: parent.ID,
+		Role: subagent.RoleExplore, Objective: "inspect",
+		ExpectedOutput: "report", Trigger: subagent.TriggerSystem,
+		Budget: subagent.AgentBudget{
+			MaxSteps: 10, MaxTokens: 200, MaxCostUSD: 2,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Budget.MaxSteps != 10 || child.Budget.MaxTokens != 200 ||
+		child.Budget.MaxCostUSD != 2 ||
+		child.ReservedTokens != 200 || child.ReservedMicros != 2_000_000 {
+		t.Fatalf("nested budget = %+v", child)
+	}
+}

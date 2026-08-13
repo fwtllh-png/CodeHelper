@@ -285,7 +285,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 				spec,
 				securityRuntime,
 			)
-			if !spec.ReadOnly && !spec.Serialized {
+			if !spec.Serialized && (!spec.ReadOnly || spec.Workspace != spec.HostWorkspace) {
 				toolset, openErr := childToolsets.open(spec.Workspace)
 				if openErr != nil {
 					return nil, openErr

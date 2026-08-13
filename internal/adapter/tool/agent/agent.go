@@ -14,6 +14,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 )
 
@@ -36,6 +37,8 @@ type Options struct {
 	Files *filetool.Tools
 	// Workspace is the parent workspace root used for baseline fingerprinting.
 	Workspace string
+	// Verify runs affected parent tests after a candidate has been applied.
+	Verify verify.Runner
 }
 
 type Tool struct {
@@ -45,6 +48,7 @@ type Tool struct {
 	onRelease func(agentID string)
 	files     *filetool.Tools
 	workspace string
+	verify    verify.Runner
 }
 
 // ArtifactRef is a compact pointer to a child-produced artifact.
@@ -145,6 +149,7 @@ func Register(registry *tool.Registry, options Options) error {
 		onRelease: options.OnRelease,
 		files:     options.Files,
 		workspace: strings.TrimSpace(options.Workspace),
+		verify:    options.Verify,
 	}
 	for _, kind := range []string{
 		"spawn_agent", "send_message", "wait_agent", "list_agents",
@@ -171,6 +176,9 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		Trigger        string   `json:"trigger"`
 		ContextMode    string   `json:"context_mode"`
 		ContextTurns   int      `json:"context_turns"`
+		MaxSteps       int      `json:"max_steps"`
+		MaxTokens      uint64   `json:"max_tokens"`
+		MaxCostUSD     float64  `json:"max_cost_usd"`
 	}
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
@@ -180,6 +188,24 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		return tool.Result{}, err
 	}
 	parentID := strings.TrimSpace(input.ParentID)
+	trigger := subagent.DelegationTrigger(strings.TrimSpace(input.Trigger))
+	if caller, nested := t.callerAgent(ctx); nested {
+		roleSpec, roleErr := t.control.RoleSpec(caller.Role)
+		if roleErr != nil {
+			return tool.Result{}, roleErr
+		}
+		if !roleSpec.CanDelegate {
+			return tool.Result{}, fmt.Errorf(
+				"agent %s role %s cannot delegate", caller.ID, caller.Role,
+			)
+		}
+		if parentID != "" && parentID != caller.ID {
+			return tool.Result{}, errors.New(
+				"nested spawn parent_id must match the calling agent",
+			)
+		}
+		parentID, trigger = caller.ID, subagent.TriggerSystem
+	}
 	objective := strings.TrimSpace(input.Objective)
 	child, err := t.control.SpawnIntent(subagent.DelegationIntent{
 		TaskName:       strings.TrimSpace(input.TaskName),
@@ -188,7 +214,11 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		ExpectedOutput: strings.TrimSpace(input.ExpectedOutput),
 		OwnedPaths:     input.OwnedPaths,
 		ParentID:       parentID,
-		Trigger:        subagent.DelegationTrigger(strings.TrimSpace(input.Trigger)),
+		Trigger:        trigger,
+		Budget: subagent.AgentBudget{
+			MaxSteps: input.MaxSteps, MaxTokens: input.MaxTokens,
+			MaxCostUSD: input.MaxCostUSD,
+		},
 	})
 	if err != nil {
 		return tool.Result{}, err
@@ -298,6 +328,30 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 			"context_tokens":    fork.Receipt.TokenEstimate,
 		},
 	}, nil
+}
+
+func (t *Tool) callerAgent(ctx context.Context) (subagent.Agent, bool) {
+	if t == nil || t.control == nil {
+		return subagent.Agent{}, false
+	}
+	identity := tool.InvocationIdentityFrom(ctx)
+	if identity.ThreadID == "" {
+		return subagent.Agent{}, false
+	}
+	return t.control.AgentByThread(identity.ThreadID)
+}
+
+func (t *Tool) authorizeTarget(ctx context.Context, agentID string) error {
+	caller, nested := t.callerAgent(ctx)
+	if !nested {
+		return nil
+	}
+	if !t.control.IsDescendant(caller.ID, agentID) {
+		return fmt.Errorf(
+			"agent %s may control only its descendant subtree", caller.ID,
+		)
+	}
+	return nil
 }
 
 // Manager exposes the underlying manager for tests and cleanup.

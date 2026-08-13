@@ -47,6 +47,7 @@ const (
 	EventAgentSpawned       EventKind = "agent.spawned"
 	EventAgentStatus        EventKind = "agent.status"
 	EventAgentMessage       EventKind = "agent.message"
+	EventAgentIntegration   EventKind = "agent.integration"
 	EventPlanDelta          EventKind = "plan.delta"
 	EventCommandExecution   EventKind = "command.execution"
 	EventHostCommand        EventKind = "host.command"
@@ -992,6 +993,37 @@ type AgentMessageData struct {
 	SessionID     string          `json:"session_id,omitempty"`
 	Sequence      uint64          `json:"sequence"`
 	Body          json.RawMessage `json:"body"`
+}
+
+type AgentIntegrationData struct {
+	AgentID       string          `json:"agent_id"`
+	AgentPath     string          `json:"agent_path"`
+	ParentPath    string          `json:"parent_path"`
+	WorkspaceRoot string          `json:"workspace_root"`
+	SessionID     string          `json:"session_id"`
+	Status        string          `json:"status"`
+	PreviewDigest string          `json:"preview_digest"`
+	Paths         []string        `json:"paths,omitempty"`
+	Conflicts     []string        `json:"conflicts,omitempty"`
+	Message       string          `json:"message,omitempty"`
+	Detail        json.RawMessage `json:"detail,omitempty"`
+}
+
+func (*AgentIntegrationData) eventKind() EventKind { return EventAgentIntegration }
+
+func (d *AgentIntegrationData) validate() error {
+	if d.AgentID == "" || d.AgentPath == "" || d.ParentPath == "" ||
+		d.WorkspaceRoot == "" || d.SessionID == "" || d.Status == "" ||
+		len(d.PreviewDigest) != 64 {
+		return errors.New("agent integration identity is invalid")
+	}
+	if _, err := hex.DecodeString(d.PreviewDigest); err != nil {
+		return errors.New("agent integration digest is invalid")
+	}
+	if len(d.Detail) > 0 && !json.Valid(d.Detail) {
+		return errors.New("agent integration detail is invalid")
+	}
+	return nil
 }
 
 func (*AgentMessageData) eventKind() EventKind { return EventAgentMessage }

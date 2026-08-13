@@ -30,7 +30,10 @@
       ],
       "streams": [
         "spawn-writer.sse",
-        "declare-writer-parent.sse",
+        "wait-writer.sse",
+        "preview-writer.sse",
+        "apply-writer.sse",
+        "declare-integration.sse",
         "complete.sse"
       ]
     }

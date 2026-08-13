@@ -15,6 +15,7 @@ import (
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
@@ -84,6 +85,13 @@ func runGitOutput(t *testing.T, dir string, args ...string) string {
 func openMergeHarness(t *testing.T) (
 	*tool.Registry, *toolguard.Guard, *subagent.Manager, string, string,
 ) {
+	return openMergeHarnessWithVerifier(t, nil)
+}
+
+func openMergeHarnessWithVerifier(
+	t *testing.T,
+	verifier verify.Runner,
+) (*tool.Registry, *toolguard.Guard, *subagent.Manager, string, string) {
 	t.Helper()
 	workspace, worktree, baseRev := newMergeFixture(t)
 	backend := mergeTestBackend{}
@@ -107,6 +115,7 @@ func openMergeHarness(t *testing.T) (
 		Manager: manager, Handles: handles, SessionID: "merge-session",
 		Root: t.TempDir(), Gate: gate, Files: files, Workspace: workspace,
 		Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+		Verify: verifier,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +137,17 @@ func openMergeHarness(t *testing.T) (
 }
 
 type mergeTestBackend struct{}
+
+type fixedVerifier struct {
+	status string
+}
+
+func (v fixedVerifier) Verify(
+	_ context.Context,
+	request verify.Request,
+) (verify.Receipt, error) {
+	return verify.Receipt{Scope: request.Scope, Status: v.status}, nil
+}
 
 func (mergeTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
@@ -158,31 +178,31 @@ func settleWritingChild(t *testing.T, manager *subagent.Manager) string {
 	return child.ID
 }
 
-func TestAgentMergeDryRunAndApply(t *testing.T) {
+func TestAgentMergePreviewAndApply(t *testing.T) {
 	_, guard, manager, workspace, _ := openMergeHarness(t)
 	agentID := settleWritingChild(t, manager)
 
-	dry := false
 	result, err := guard.Execute(context.Background(), "merge-1", "integrate_agent", mustJSON(map[string]any{
-		"agent_id": agentID, "dry_run": true,
+		"agent_id": agentID, "op": "preview",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Metadata["dry_run"] != true {
-		t.Fatalf("dry_run metadata = %#v", result.Metadata)
+	digest, ok := result.Metadata["preview_digest"].(string)
+	if !ok || len(digest) != 64 {
+		t.Fatalf("preview digest = %#v", result.Metadata["preview_digest"])
 	}
 	if _, err := os.Stat(filepath.Join(workspace, "child-note.txt")); !os.IsNotExist(err) {
-		t.Fatal("dry_run must not write the parent workspace")
+		t.Fatal("preview must not write the parent workspace")
 	}
 
 	result, err = guard.Execute(context.Background(), "merge-2", "integrate_agent", mustJSON(map[string]any{
-		"agent_id": agentID, "dry_run": dry,
+		"agent_id": agentID, "op": "apply", "preview_digest": digest,
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Metadata["merged"] != true || result.Metadata["dry_run"] != false {
+	if result.Metadata["integration_status"] != string(subagent.IntegrationApplied) {
 		t.Fatalf("apply metadata = %#v", result.Metadata)
 	}
 	body, err := os.ReadFile(filepath.Join(workspace, "child-note.txt"))
@@ -206,13 +226,17 @@ func TestIntegrateAgentUsesGuardExpansion(t *testing.T) {
 	}}
 
 	result, err := guard.Execute(context.Background(), "merge-guarded", "integrate_agent", mustJSON(map[string]any{
-		"agent_id": agentID, "dry_run": false,
+		"agent_id": agentID, "op": "preview",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Metadata["merged"] != true {
-		t.Fatalf("merge metadata = %#v", result.Metadata)
+	digest, _ := result.Metadata["preview_digest"].(string)
+	result, err = guard.Execute(context.Background(), "merge-guarded-apply", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "op": "apply", "preview_digest": digest,
+	}))
+	if err != nil {
+		t.Fatal(err)
 	}
 	body, err := os.ReadFile(filepath.Join(workspace, "child-note.txt"))
 	if err != nil {
@@ -224,6 +248,35 @@ func TestIntegrateAgentUsesGuardExpansion(t *testing.T) {
 	changes, _ := result.Metadata[toolguard.MetadataChanges].([]toolguard.FileChange)
 	if len(changes) == 0 {
 		t.Fatalf("integration bypassed guarded file changes: %#v", result.Metadata)
+	}
+}
+
+func TestAgentMergeRecordsParentVerificationFailure(t *testing.T) {
+	_, guard, manager, _, _ := openMergeHarnessWithVerifier(
+		t, fixedVerifier{status: verify.StatusFailed},
+	)
+	agentID := settleWritingChild(t, manager)
+	preview, err := guard.Execute(
+		context.Background(), "merge-verify-preview", "integrate_agent",
+		mustJSON(map[string]any{"agent_id": agentID, "op": "preview"}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := preview.Metadata["preview_digest"].(string)
+	applied, err := guard.Execute(
+		context.Background(), "merge-verify-apply", "integrate_agent",
+		mustJSON(map[string]any{
+			"agent_id": agentID, "op": "apply", "preview_digest": digest,
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, ok := applied.Metadata["integration_receipt"].(subagent.IntegrationReceipt)
+	if !ok || receipt.Verification.Verify != protocol.ReceiptFailed ||
+		receipt.Verification.Tests != protocol.ReceiptFailed {
+		t.Fatalf("integration receipt = %#v", applied.Metadata["integration_receipt"])
 	}
 }
 
@@ -243,37 +296,75 @@ func TestAgentMergeClaimConflict(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = guard.Execute(context.Background(), "merge-conflict", "integrate_agent", mustJSON(map[string]any{
-		"agent_id": second.ID, "dry_run": false,
+	result, err := guard.Execute(context.Background(), "merge-conflict", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": second.ID, "op": "preview",
 	}))
-	if err == nil {
-		t.Fatal("second merge must conflict with first claim")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "child-note.txt") {
-		t.Fatalf("conflict error = %v", err)
+	conflicts, _ := result.Metadata["conflicts"].([]string)
+	if len(conflicts) == 0 || !strings.Contains(conflicts[0], "child-note.txt") {
+		t.Fatalf("conflicts = %#v", result.Metadata["conflicts"])
+	}
+	digest, _ := result.Metadata["preview_digest"].(string)
+	_, err = guard.Execute(context.Background(), "merge-conflict-apply", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": second.ID, "op": "apply", "preview_digest": digest,
+	}))
+	if err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("second apply conflict error = %v", err)
 	}
 	// First child still owns the claim and can merge.
 	if _, err := guard.Execute(context.Background(), "merge-ok", "integrate_agent", mustJSON(map[string]any{
-		"agent_id": first, "dry_run": true,
+		"agent_id": first, "op": "preview",
 	})); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestAgentMergeBaselineDrift(t *testing.T) {
+func TestAgentMergeParentDriftInvalidatesPreview(t *testing.T) {
 	_, guard, manager, workspace, _ := openMergeHarness(t)
 	agentID := settleWritingChild(t, manager)
+	preview, err := guard.Execute(context.Background(), "merge-preview", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "op": "preview",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := preview.Metadata["preview_digest"].(string)
 	if err := os.WriteFile(filepath.Join(workspace, "child-note.txt"), []byte("parent-drift\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := guard.Execute(context.Background(), "merge-drift", "integrate_agent", mustJSON(map[string]any{
-		"agent_id": agentID, "dry_run": false,
+	_, err = guard.Execute(context.Background(), "merge-drift", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "op": "apply", "preview_digest": digest,
 	}))
 	if err == nil {
-		t.Fatal("merge must fail when parent drifted from base revision")
+		t.Fatal("apply must fail when parent drifted after preview")
 	}
 	if !strings.Contains(err.Error(), "drift") && !strings.Contains(err.Error(), "conflict") {
 		t.Fatalf("drift error = %v", err)
+	}
+}
+
+func TestAgentMergeChildDriftInvalidatesPreview(t *testing.T) {
+	_, guard, manager, _, worktree := openMergeHarness(t)
+	agentID := settleWritingChild(t, manager)
+	preview, err := guard.Execute(context.Background(), "merge-preview", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "op": "preview",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := preview.Metadata["preview_digest"].(string)
+	if err := os.WriteFile(
+		filepath.Join(worktree, "child-note.txt"), []byte("changed-after-preview\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	_, err = guard.Execute(context.Background(), "merge-stale-child", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "op": "apply", "preview_digest": digest,
+	}))
+	if err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale child error = %v", err)
 	}
 }
 
@@ -284,13 +375,71 @@ func TestAgentMergeAfterClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := guard.Execute(context.Background(), "merge-closed", "integrate_agent", mustJSON(map[string]any{
-		"agent_id": agentID, "dry_run": true,
+		"agent_id": agentID, "op": "preview",
 	}))
 	if err == nil {
 		t.Fatal("merge after close must fail")
 	}
 	if !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("close error = %v", err)
+	}
+}
+
+func TestAgentMergeDiscardClosesChild(t *testing.T) {
+	_, guard, manager, _, _ := openMergeHarness(t)
+	agentID := settleWritingChild(t, manager)
+	preview, err := guard.Execute(context.Background(), "merge-preview", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "op": "preview",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := preview.Metadata["preview_digest"].(string)
+	result, err := guard.Execute(context.Background(), "merge-discard", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "op": "discard", "preview_digest": digest,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Metadata["integration_status"] != string(subagent.IntegrationDiscarded) {
+		t.Fatalf("discard metadata = %#v", result.Metadata)
+	}
+	if _, ok := manager.Agent(agentID); ok {
+		t.Fatal("discarded agent must no longer be available")
+	}
+}
+
+func TestAgentMergeRetryCreatesNewDigest(t *testing.T) {
+	_, guard, manager, _, _ := openMergeHarness(t)
+	agentID := settleWritingChild(t, manager)
+	preview, err := guard.Execute(context.Background(), "merge-preview", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "op": "preview",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstDigest, _ := preview.Metadata["preview_digest"].(string)
+	candidate, ok, err := manager.Integration(agentID, firstDigest)
+	if err != nil || !ok {
+		t.Fatalf("load candidate: ok=%v err=%v", ok, err)
+	}
+	candidate.Status = subagent.IntegrationApplying
+	if err := manager.SaveIntegration(candidate); err != nil {
+		t.Fatal(err)
+	}
+	candidate.Status = subagent.IntegrationFailed
+	if err := manager.SaveIntegration(candidate); err != nil {
+		t.Fatal(err)
+	}
+	retry, err := guard.Execute(context.Background(), "merge-retry", "integrate_agent", mustJSON(map[string]any{
+		"agent_id": agentID, "op": "retry", "preview_digest": firstDigest,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	retryDigest, _ := retry.Metadata["preview_digest"].(string)
+	if retryDigest == "" || retryDigest == firstDigest {
+		t.Fatalf("retry digest = %q, first = %q", retryDigest, firstDigest)
 	}
 }
 

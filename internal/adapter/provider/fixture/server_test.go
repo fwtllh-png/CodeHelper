@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -69,6 +70,56 @@ func TestRoutesKeepIndependentStreamCursors(t *testing.T) {
 				test.marker, response.StatusCode, body, test.want,
 			)
 		}
+	}
+}
+
+func TestStreamPlaceholdersUseLatestToolAndPromptValues(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureFile(t, root, "fixture.json", `{
+		"protocol":"openai_chat",
+		"path":"/chat/completions",
+		"model":"fixture-model",
+		"streams":["stream.sse"]
+	}`)
+	writeFixtureFile(
+		t, root, "stream.sse",
+		`agent={{agent_id}} digest={{preview_digest}}`,
+	)
+	server, err := Start(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := server.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	digest := strings.Repeat("a", 64)
+	payload := []byte(`{
+		"model":"fixture-model",
+		"stream":true,
+		"messages":[
+			{"role":"assistant","content":"old agent-1"},
+			{"role":"user","content":"integrate agent-7"},
+			{"role":"tool","content":"preview_digest=` + digest + `"}
+		]
+	}`)
+	response, err := http.Post(
+		server.URL+"/chat/completions",
+		"application/json",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil || closeErr != nil {
+		t.Fatal(readErr, closeErr)
+	}
+	if response.StatusCode != http.StatusOK ||
+		string(body) != "agent=agent-7 digest="+digest {
+		t.Fatalf("status=%d body=%q", response.StatusCode, body)
 	}
 }
 

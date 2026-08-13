@@ -121,12 +121,14 @@ func (s *Store) LoadAgentBudget(
 		       COALESCE(SUM(spent_tokens), 0),
 		       COALESCE(SUM(reserved_microunits), 0),
 		       COALESCE(SUM(spent_microunits), 0),
-		       COALESCE(SUM(reserved_slots), 0)
+		       COALESCE(SUM(reserved_slots), 0),
+		       COUNT(*)
 		FROM agent_budget_ledger WHERE workspace_root = ?`,
 		workspaceRoot,
 	).Scan(
 		&ledger.ReservedTokens, &ledger.SpentTokens,
 		&ledger.ReservedMicros, &ledger.SpentMicros, &ledger.ReservedSlots,
+		&ledger.TotalSpawned,
 	)
 	return ledger, err
 }
@@ -231,6 +233,8 @@ func projectDurableAgentTx(ctx context.Context, tx *sql.Tx, event protocol.Event
 		return projectAgentTransitionTx(ctx, tx, event, data)
 	case *protocol.AgentMessageData:
 		return projectAgentMessageTx(ctx, tx, event, data)
+	case *protocol.AgentIntegrationData:
+		return projectAgentIntegrationTx(ctx, tx, event, data)
 	default:
 		return nil
 	}
@@ -258,19 +262,31 @@ func projectAgentSpawnTx(
 		edge.Status != subagent.StatusRequested {
 		return fmt.Errorf("invalid durable agent spawn for %s", data.AgentID)
 	}
+	ownedPaths, err := json.Marshal(edge.OwnedPaths)
+	if err != nil {
+		return err
+	}
 	now := timestamp(event.CreatedAt)
 	result, err := tx.ExecContext(ctx, `
 		INSERT OR IGNORE INTO agent_nodes(
-			workspace_root, session_id, agent_id, path,
+			workspace_root, session_id, agent_id, path, execution_root,
 			parent_agent_id, parent_path, thread_id, turn_id,
 			status, revision, role, profile, stance, depth,
-			worktree, isolated, serialized, base_revision, task_name, last_message,
+			worktree, isolated, serialized, base_revision, task_name,
+			owned_paths_json, last_message,
+			max_steps, max_tokens, max_cost_microunits,
+			reserved_tokens, reserved_microunits,
 			operation_id, actor, reason, event_id, source_sequence, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, '', ?, ?, ?)`,
-		edge.Workspace, edge.SessionID, edge.ChildID, edge.Path,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '',
+		          ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)`,
+		edge.Workspace, edge.SessionID, edge.ChildID, edge.Path, edge.ExecutionRoot,
 		edge.ParentID, edge.ParentPath, edge.ThreadID, edge.TurnID,
 		edge.Status, edge.Revision, edge.Role, edge.Profile, edge.Stance, edge.Depth,
 		edge.Worktree, edge.Isolated, edge.Serialized, edge.BaseRev, edge.TaskName,
+		ownedPaths,
+		edge.Budget.MaxSteps, edge.Budget.MaxTokens,
+		uint64(edge.Budget.MaxCostUSD*1e6),
+		edge.ReservedTokens, edge.ReservedMicros,
 		"agent:"+edge.ChildID+":1", "delegation", string(event.ID),
 		int64(event.Sequence), now,
 	)
@@ -294,9 +310,11 @@ func projectAgentSpawnTx(
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO agent_budget_ledger(
-			workspace_root, agent_id, reserved_slots, source_sequence, updated_at
-		) VALUES (?, ?, 1, ?, ?)`,
-		edge.Workspace, edge.ChildID, int64(event.Sequence), now,
+			workspace_root, agent_id, reserved_tokens, reserved_microunits,
+			reserved_slots, source_sequence, updated_at
+		) VALUES (?, ?, ?, ?, 1, ?, ?)`,
+		edge.Workspace, edge.ChildID, edge.ReservedTokens, edge.ReservedMicros,
+		int64(event.Sequence), now,
 	)
 	return err
 }
@@ -490,12 +508,19 @@ func projectAgentBudgetTransitionTx(
 	_, err := tx.ExecContext(ctx, `
 		UPDATE agent_budget_ledger SET
 			reserved_slots = reserved_slots + ?,
+			reserved_tokens = CASE
+				WHEN ? THEN 0 ELSE reserved_tokens + ? END,
+			reserved_microunits = CASE
+				WHEN ? THEN 0 ELSE reserved_microunits + ? END,
 			spent_tokens = spent_tokens + ?,
 			spent_microunits = spent_microunits + ?,
 			released = CASE WHEN reserved_slots + ? = 0 THEN 1 ELSE 0 END,
 			source_sequence = ?, updated_at = ?
 		WHERE workspace_root = ? AND agent_id = ?`,
-		slotDelta, spentTokens, spentMicros, slotDelta,
+		slotDelta,
+		transition.ReleaseBudget, transition.ReserveTokens,
+		transition.ReleaseBudget, transition.ReserveMicros,
+		spentTokens, spentMicros, slotDelta,
 		int64(event.Sequence), timestamp(event.CreatedAt),
 		workspace, transition.AgentID,
 	)

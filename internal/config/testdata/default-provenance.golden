@@ -35,8 +35,10 @@ execution.subagent.delegation
 execution.subagent.max_cost_usd
 execution.subagent.max_depth
 execution.subagent.max_parallel
+execution.subagent.max_resident
 execution.subagent.max_steps
 execution.subagent.max_tokens
+execution.subagent.max_total
 execution.subagent.wall_time
 execution.subagent.workspace
 execution.timeout

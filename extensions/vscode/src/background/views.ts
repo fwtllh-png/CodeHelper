@@ -275,12 +275,13 @@ vscode.TreeDataProvider<TreeNode>, vscode.Disposable {
     if (element === undefined) {
       return this.#snapshot().map((root) => ({ kind: "root", root }));
     }
-    if (element.kind !== "root") {
-      return [];
+    if (element.kind === "root") {
+      return snapshotNodes(
+        this.#kind, element.root.rootId, element.root.snapshot,
+      );
     }
-    return snapshotNodes(
-      this.#kind, element.root.rootId, element.root.snapshot,
-    );
+    if (element.kind === "agent") return agentChildren(element);
+    return [];
   }
 
   public dispose(): void {
@@ -290,6 +291,15 @@ vscode.TreeDataProvider<TreeNode>, vscode.Disposable {
 
 type TreeNode =
   | { readonly kind: "root"; readonly root: RootSnapshot }
+  | {
+      readonly kind: "agent";
+      readonly row: BackgroundSnapshot["agents"][number];
+      readonly snapshot: BackgroundSnapshot;
+    }
+  | {
+      readonly kind: "integration";
+      readonly row: BackgroundSnapshot["integrations"][number];
+    }
   | {
       readonly kind: "entry";
       readonly label: string;
@@ -313,6 +323,34 @@ function treeItem(node: TreeNode): vscode.TreeItem {
   }
   if (node.kind === "info") {
     return new vscode.TreeItem(node.label);
+  }
+  if (node.kind === "agent") {
+    const children = agentChildren(node);
+    const item = new vscode.TreeItem(
+      node.row.path,
+      children.length === 0
+        ? vscode.TreeItemCollapsibleState.None
+        : vscode.TreeItemCollapsibleState.Expanded,
+    );
+    item.description = node.row.status;
+    item.tooltip =
+      `Role: ${node.row.role}\nID: ${node.row.id}\n` +
+      `Revision: ${String(node.row.revision)}\nThread: ${node.row.threadId}\n` +
+      `Parent: ${node.row.parentPath}\nSession: ${node.row.sessionId}\n` +
+      node.row.lastMessage;
+    item.iconPath = new vscode.ThemeIcon(
+      terminal(node.row.status) ? "check" : "hubot",
+    );
+    return item;
+  }
+  if (node.kind === "integration") {
+    const item = new vscode.TreeItem(
+      `Integration ${node.row.previewDigest.slice(0, 12)}`,
+    );
+    item.description = node.row.status;
+    item.tooltip = integrationTooltip(node.row);
+    item.iconPath = new vscode.ThemeIcon(integrationIcon(node.row));
+    return item;
   }
   const item = new vscode.TreeItem(node.label);
   item.description = node.description;
@@ -343,14 +381,7 @@ function snapshotNodes(
         },
       }));
     case "agents":
-      return snapshot.agents.map((row) => entry(
-        row.path,
-        row.status,
-        `Role: ${row.role}\nID: ${row.id}\nRevision: ${String(row.revision)}\n` +
-          `Thread: ${row.threadId}\nParent: ${row.parentPath}\n` +
-          `Session: ${row.sessionId}\n${row.lastMessage}`,
-        terminal(row.status) ? "check" : "hubot",
-      ));
+      return rootAgentNodes(snapshot);
     case "tasks":
       return snapshot.tasks.map(taskNode);
     case "jobs":
@@ -367,6 +398,60 @@ function snapshotNodes(
     case "usage":
       return usageNodes(snapshot);
   }
+}
+
+function rootAgentNodes(snapshot: BackgroundSnapshot): TreeNode[] {
+  const ids = new Set(snapshot.agents.map((row) => row.id));
+  return snapshot.agents
+    .filter((row) => row.parentId === "" || !ids.has(row.parentId))
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .map((row) => ({ kind: "agent", row, snapshot }));
+}
+
+function agentChildren(
+  node: Extract<TreeNode, { readonly kind: "agent" }>,
+): TreeNode[] {
+  const agents: TreeNode[] = node.snapshot.agents
+    .filter((row) => row.parentId === node.row.id)
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .map((row) => ({ kind: "agent", row, snapshot: node.snapshot }));
+  const integrations: TreeNode[] = node.snapshot.integrations
+    .filter((row) => row.agentId === node.row.id)
+    .map((row) => ({ kind: "integration", row }));
+  return [...agents, ...integrations];
+}
+
+function integrationTooltip(
+  row: BackgroundSnapshot["integrations"][number],
+): string {
+  const details = [
+    `Digest: ${row.previewDigest}`,
+    `Parent: ${row.parentPath}`,
+    `Paths: ${row.paths.join(", ") || "none"}`,
+  ];
+  if (row.conflicts.length !== 0) {
+    details.push(`Conflicts: ${row.conflicts.join("; ")}`);
+  }
+  if (row.changedPaths.length !== 0) {
+    details.push(`Applied: ${row.changedPaths.join(", ")}`);
+  }
+  if (row.verification !== "") {
+    details.push(`Verification: ${row.verification}`);
+  }
+  if (row.appliedAt !== "") details.push(`Applied at: ${row.appliedAt}`);
+  if (row.message !== "") details.push(row.message);
+  return details.join("\n");
+}
+
+function integrationIcon(
+  row: BackgroundSnapshot["integrations"][number],
+): string {
+  if (row.conflicts.length !== 0 || row.status === "failed") return "error";
+  if (row.status === "applied") {
+    return row.verification === "failed" ? "warning" : "pass";
+  }
+  if (row.status === "discarded") return "trash";
+  return row.status === "applying" ? "sync" : "diff";
 }
 
 function taskNode(row: BackgroundSnapshot["tasks"][number]): TreeNode {

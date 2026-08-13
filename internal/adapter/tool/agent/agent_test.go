@@ -371,6 +371,111 @@ func TestAgentDepthAndConcurrencyFailClosed(t *testing.T) {
 	}
 }
 
+func TestNestedAgentScopeBindsCallerAndRejectsSiblingControl(t *testing.T) {
+	root := t.TempDir()
+	manager, err := subagent.Open(subagent.Options{
+		Root: root, Gate: &recordingGate{}, Runtime: &dualRuntime{},
+		Worktrees: fixedWorktrees{
+			path: filepath.Join(root, "parent-worktree"),
+		},
+		Budget: subagent.Budget{
+			MaxDepth: 3, MaxParallel: 4, MaxResident: 4, MaxTotal: 4,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delegation, err := subagent.NewDelegationPolicy(subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := subagent.NewAgentControl(
+		manager, subagent.DefaultRoleCatalog(), delegation,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control.BindContextSource(staticContextSource{
+		snapshot: subagent.ParentContextSnapshot{
+			SourceThread: "thread-parent", SourceTurn: "turn-parent",
+			ParentGoal: "nested control test",
+		},
+	})
+	registry := tool.NewRegistry(nil, nil)
+	if err := agenttool.Register(registry, agenttool.Options{
+		Control: control, Handles: handle.NewStore(), SessionID: "session-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	parent := execute(t, registry, "spawn_agent", spawnInput(
+		"parent", "parent", "general",
+	))
+	sibling := execute(t, registry, "spawn_agent", spawnInput(
+		"sibling", "sibling", "general",
+	))
+	var parentBody, siblingBody map[string]any
+	if err := json.Unmarshal([]byte(parent.Content), &parentBody); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(sibling.Content), &siblingBody); err != nil {
+		t.Fatal(err)
+	}
+	parentID, _ := parentBody["agent_id"].(string)
+	parentThread, _ := parentBody["thread_id"].(string)
+	siblingID, _ := siblingBody["agent_id"].(string)
+	nestedContext := tool.WithInvocationIdentity(t.Context(), tool.InvocationIdentity{
+		ThreadID: parentThread, TurnID: "turn-parent",
+	})
+
+	forged := spawnInput("forged", "forged", "explore")
+	forged["parent_id"] = siblingID
+	if _, err := executeWithContext(
+		nestedContext, registry, "spawn_agent", forged,
+	); err == nil || !strings.Contains(err.Error(), "calling agent") {
+		t.Fatalf("forged parent error = %v", err)
+	}
+	grandchild, err := executeWithContext(
+		nestedContext, registry, "spawn_agent",
+		spawnInput("grandchild", "inspect parent work", "explore"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var grandchildBody map[string]any
+	if err := json.Unmarshal([]byte(grandchild.Content), &grandchildBody); err != nil {
+		t.Fatal(err)
+	}
+	grandchildID, _ := grandchildBody["agent_id"].(string)
+	if grandchildBody["parent_id"] != parentID ||
+		grandchildBody["depth"] != float64(1) ||
+		grandchildBody["trigger"] != string(subagent.TriggerSystem) {
+		t.Fatalf("grandchild = %+v", grandchildBody)
+	}
+	parentAgent, ok := manager.Agent(parentID)
+	if !ok {
+		t.Fatal("parent agent unavailable")
+	}
+	grandchildAgent, ok := manager.Agent(grandchildID)
+	if !ok || grandchildAgent.ExecutionRoot != parentAgent.Worktree {
+		t.Fatalf(
+			"grandchild execution root = %q, parent worktree = %q, ok=%v",
+			grandchildAgent.ExecutionRoot, parentAgent.Worktree, ok,
+		)
+	}
+	if _, err := executeWithContext(
+		nestedContext, registry, "send_message",
+		map[string]any{"agent_id": siblingID, "message": "forbidden"},
+	); err == nil || !strings.Contains(err.Error(), "descendant subtree") {
+		t.Fatalf("sibling control error = %v", err)
+	}
+	if _, err := executeWithContext(
+		nestedContext, registry, "send_message",
+		map[string]any{"agent_id": grandchildID, "message": "allowed"},
+	); err != nil {
+		t.Fatalf("descendant control: %v", err)
+	}
+}
+
 func TestAgentWorktreeCleanupLeavesSibling(t *testing.T) {
 	root := t.TempDir()
 	handles := handle.NewStore()
@@ -670,6 +775,17 @@ func execute(t *testing.T, registry *tool.Registry, name string, input map[strin
 		t.Fatalf("%s: %v", name, err)
 	}
 	return result
+}
+
+func executeWithContext(
+	ctx context.Context,
+	registry *tool.Registry,
+	name string,
+	input map[string]any,
+) (tool.Result, error) {
+	return registry.Execute(ctx, tool.Call{
+		Name: name, Arguments: mustJSON(input), Authorized: true,
+	})
 }
 
 func spawnInput(taskName, objective, role string) map[string]any {

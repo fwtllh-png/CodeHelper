@@ -306,6 +306,244 @@ func TestAgentTerminalCommitIsAtomicAndCASGuarded(t *testing.T) {
 	}
 }
 
+func TestAgentIntegrationCandidatePersistsAndRejectsRevisionGap(t *testing.T) {
+	store, err := Open(t.Context(), Options{
+		DataDir: t.TempDir(), BusyTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	graph := NewAgentGraph(store, "/workspace/integration", "session-integration")
+	control, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: passGate{},
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.AttachGraph(graph); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := control.SpawnIntent(subagent.DelegationIntent{
+		TaskName: "writer", Role: subagent.RoleExplore, Objective: "inspect",
+		ExpectedOutput: "report", OwnedPaths: []string{"result.txt"},
+		Trigger: subagent.TriggerSystem,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.Settle(subagent.Result{
+		AgentID: agent.ID, ThreadID: agent.ThreadID, TurnID: "turn-result",
+		Status: subagent.StatusCompleted, Summary: "done",
+		Diff: []protocol.ReceiptChange{{
+			Path: "result.txt", Tool: "file_write", Kind: "created",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	candidate := integrationCandidate(agent, strings.Repeat("a", 64))
+	if err := control.SaveIntegration(candidate); err != nil {
+		t.Fatal(err)
+	}
+	loaded, ok, err := store.LoadAgentIntegration(
+		t.Context(), "/workspace/integration", agent.ID, candidate.PreviewDigest,
+	)
+	if err != nil || !ok || loaded.Status != subagent.IntegrationPreviewed ||
+		loaded.Revision != 1 || loaded.AttemptID != candidate.AttemptID {
+		t.Fatalf("loaded candidate = %+v, ok=%v, err=%v", loaded, ok, err)
+	}
+	candidate.Status = subagent.IntegrationApplying
+	candidate.Revision = 3
+	if err := graph.RecordIntegration(candidate); err == nil {
+		t.Fatal("integration revision gap was accepted")
+	}
+}
+
+func TestAgentIntegrationRecoveryConvergesInterruptedApply(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store, err := Open(ctx, Options{DataDir: root, BusyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph := NewAgentGraph(store, "/workspace/apply-crash", "session-apply-crash")
+	control, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: passGate{},
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.AttachGraph(graph); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := control.SpawnIntent(subagent.DelegationIntent{
+		TaskName: "writer", Role: subagent.RoleExplore, Objective: "inspect",
+		ExpectedOutput: "report", OwnedPaths: []string{"result.txt"},
+		Trigger: subagent.TriggerSystem,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.Settle(subagent.Result{
+		AgentID: agent.ID, ThreadID: agent.ThreadID, TurnID: "turn-result",
+		Status: subagent.StatusCompleted, Summary: "done",
+		Diff: []protocol.ReceiptChange{{
+			Path: "result.txt", Tool: "file_write", Kind: "created",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	candidate := integrationCandidate(agent, strings.Repeat("b", 64))
+	if err := control.SaveIntegration(candidate); err != nil {
+		t.Fatal(err)
+	}
+	if err := control.BeginIntegration(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	candidate.Status = subagent.IntegrationApplying
+	if err := control.SaveIntegration(candidate); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CloseAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(ctx, Options{DataDir: root, BusyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.CloseAll(context.Background()) })
+	fresh, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: passGate{},
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fresh.AttachGraph(NewAgentGraph(
+		reopened, "/workspace/apply-crash", "session-apply-crash",
+	)); err != nil {
+		t.Fatal(err)
+	}
+	recovered, ok, err := fresh.Integration(agent.ID, candidate.PreviewDigest)
+	if err != nil || !ok || recovered.Status != subagent.IntegrationFailed {
+		t.Fatalf("recovered candidate = %+v, ok=%v, err=%v", recovered, ok, err)
+	}
+	node, ok := fresh.Agent(agent.ID)
+	if !ok || node.Status != subagent.StatusIntegrationFailed {
+		t.Fatalf("recovered agent = %+v, ok=%v", node, ok)
+	}
+	if len(node.OwnedPaths) != 1 || node.OwnedPaths[0] != "result.txt" {
+		t.Fatalf("recovered owned paths = %#v", node.OwnedPaths)
+	}
+	if owner, claimed := fresh.WriteOwner("result.txt"); !claimed || owner != agent.ID {
+		t.Fatalf("recovered write owner = %q, claimed=%v", owner, claimed)
+	}
+}
+
+func TestAgentIntegrationRecoveryCompletesAppliedCandidate(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store, err := Open(ctx, Options{DataDir: root, BusyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph := NewAgentGraph(store, "/workspace/applied-crash", "session-applied-crash")
+	control, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: passGate{},
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.AttachGraph(graph); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := control.SpawnSystem(
+		"writer", "", subagent.RoleExplore, "inspect", "report",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.Complete(agent.ID, "done"); err != nil {
+		t.Fatal(err)
+	}
+	candidate := integrationCandidate(agent, strings.Repeat("c", 64))
+	if err := control.SaveIntegration(candidate); err != nil {
+		t.Fatal(err)
+	}
+	if err := control.BeginIntegration(agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	candidate.Status = subagent.IntegrationApplying
+	if err := control.SaveIntegration(candidate); err != nil {
+		t.Fatal(err)
+	}
+	candidate.Status = subagent.IntegrationApplied
+	candidate.Receipt = &subagent.IntegrationReceipt{
+		ChangedPaths: []string{"result.txt"},
+		Verification: protocol.ReceiptVerification{
+			Diagnostics: protocol.ReceiptNotEvaluated,
+			Tests:       protocol.ReceiptPassed,
+			Verify:      protocol.ReceiptPassed,
+		},
+		AppliedAt: time.Now().UTC(),
+	}
+	if err := control.SaveIntegration(candidate); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CloseAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(ctx, Options{DataDir: root, BusyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.CloseAll(context.Background()) })
+	fresh, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: passGate{},
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fresh.AttachGraph(NewAgentGraph(
+		reopened, "/workspace/applied-crash", "session-applied-crash",
+	)); err != nil {
+		t.Fatal(err)
+	}
+	node, ok := fresh.Agent(agent.ID)
+	if !ok || node.Status != subagent.StatusIntegrated {
+		t.Fatalf("recovered applied agent = %+v, ok=%v", node, ok)
+	}
+	recovered, ok, err := fresh.Integration(agent.ID, candidate.PreviewDigest)
+	if err != nil || !ok || recovered.Status != subagent.IntegrationApplied ||
+		recovered.Receipt == nil ||
+		recovered.Receipt.Verification.Verify != protocol.ReceiptPassed {
+		t.Fatalf("recovered receipt = %+v, ok=%v, err=%v", recovered, ok, err)
+	}
+}
+
+func integrationCandidate(
+	agent *subagent.Agent,
+	digest string,
+) subagent.IntegrationCandidate {
+	return subagent.IntegrationCandidate{
+		AgentID: agent.ID, AgentPath: agent.Path,
+		ParentID: agent.Parent, ParentPath: agent.ParentPath,
+		AttemptID: "attempt-" + agent.ID, PreviewDigest: digest,
+		Status:       subagent.IntegrationPreviewed,
+		BaseRevision: "base", ResultTurnID: "turn-result",
+		Paths: []string{"result.txt"},
+		Changes: []subagent.IntegrationChange{{
+			Op: "write", Path: "result.txt", Content: "done\n",
+		}},
+		Verification: protocol.ReceiptVerification{
+			Diagnostics: protocol.ReceiptNotEvaluated,
+			Tests:       protocol.ReceiptNotEvaluated,
+			Verify:      protocol.ReceiptNotEvaluated,
+		},
+	}
+}
+
 func TestAgentRestartReconcilesMissingAndActiveTurns(t *testing.T) {
 	ctx := t.Context()
 	root := t.TempDir()

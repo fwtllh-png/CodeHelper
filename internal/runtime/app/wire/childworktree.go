@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	agenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/agent"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/builtin"
+	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
@@ -296,6 +298,7 @@ type childToolset struct {
 	jobLogs     *joblog.Store
 	diagnostics diagnostics.Runner
 	verify      verify.Runner
+	files       *filetool.Tools
 }
 
 func (t *childToolset) close() {
@@ -325,9 +328,22 @@ type childToolsets struct {
 	diagnosticReadRoots []string
 	diagnosticReadFiles []string
 	gitCommonDir        string
+	agents              *subagent.AgentControl
+	agentSession        string
+	agentRelease        func(string)
 
 	mu    sync.Mutex
 	built map[string]*childToolset
+}
+
+func (c *childToolsets) bindAgents(
+	control *subagent.AgentControl,
+	sessionID string,
+	onRelease func(string),
+) {
+	c.mu.Lock()
+	c.agents, c.agentSession, c.agentRelease = control, sessionID, onRelease
+	c.mu.Unlock()
 }
 
 func newChildToolsets(
@@ -380,7 +396,9 @@ func (c *childToolsets) open(root string) (*childToolset, error) {
 		jobs = archive
 		processes.SetArchive(archive)
 	}
-	registry, _, err := builtin.NewWithDependencies(root, backend, c.content, processes, c.web)
+	registry, handles, err := builtin.NewWithDependencies(
+		root, backend, c.content, processes, c.web,
+	)
 	if err != nil {
 		processes.CloseAll()
 		_ = sandbox.CloseBackend(backend)
@@ -396,11 +414,30 @@ func (c *childToolsets) open(root string) (*childToolset, error) {
 	if c.verify.Command != "" {
 		runner.Commands = []verify.Command{{Name: "custom", Command: c.verify.Command}}
 	}
+	files, err := filetool.NewWithBackend(root, backend)
+	if err != nil {
+		_ = journal.Close(context.Background())
+		processes.CloseAll()
+		_ = sandbox.CloseBackend(backend)
+		return nil, fmt.Errorf("child integration files: %w", err)
+	}
+	if c.agents != nil {
+		if err := agenttool.Register(registry, agenttool.Options{
+			Control: c.agents, Handles: handles, SessionID: c.agentSession,
+			Files: files, Workspace: root, OnRelease: c.agentRelease,
+			Verify: runner,
+		}); err != nil {
+			_ = journal.Close(context.Background())
+			processes.CloseAll()
+			_ = sandbox.CloseBackend(backend)
+			return nil, fmt.Errorf("child agent tools: %w", err)
+		}
+	}
 	toolset := &childToolset{
 		registry: registry, backend: backend, processes: processes, journal: journal,
 		jobLogs:     jobs,
 		diagnostics: diagnostics.NewCommandRunner(root, backend, c.diagnosticCommands),
-		verify:      runner,
+		verify:      runner, files: files,
 	}
 	c.built[root] = toolset
 	return toolset, nil

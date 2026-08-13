@@ -34,6 +34,20 @@ export interface AgentRow {
   readonly closed: boolean;
 }
 
+export interface IntegrationRow {
+  readonly agentId: string;
+  readonly agentPath: string;
+  readonly parentPath: string;
+  readonly status: string;
+  readonly previewDigest: string;
+  readonly paths: readonly string[];
+  readonly conflicts: readonly string[];
+  readonly message: string;
+  readonly changedPaths: readonly string[];
+  readonly verification: string;
+  readonly appliedAt: string;
+}
+
 export interface TaskRow {
   readonly id: string;
   readonly sessionId: string;
@@ -74,6 +88,7 @@ export interface UsageRollup {
 export interface BackgroundSnapshot {
   readonly threads: readonly ThreadRow[];
   readonly agents: readonly AgentRow[];
+  readonly integrations: readonly IntegrationRow[];
   readonly tasks: readonly TaskRow[];
   readonly jobs: readonly TaskRow[];
   readonly approvals: readonly ApprovalRow[];
@@ -96,6 +111,7 @@ const terminalAgentStates = new Set([
 export class BackgroundProjector {
   readonly #threads = new Map<string, ThreadRow>();
   readonly #agents = new Map<string, AgentRow>();
+  readonly #integrations = new Map<string, IntegrationRow>();
   readonly #tasks = new Map<string, TaskRow>();
   readonly #approvals = new Map<string, ApprovalRow>();
   readonly #notified = new Set<string>();
@@ -187,6 +203,26 @@ export class BackgroundProjector {
         );
         return notice === undefined ? [] : [notice];
       }
+      case "agent.integration": {
+        const detail = integrationDetail(event.data.detail);
+        this.#integrations.set(
+          `${event.data.agent_id}:${event.data.preview_digest}`,
+          {
+            agentId: event.data.agent_id,
+            agentPath: event.data.agent_path,
+            parentPath: event.data.parent_path,
+            status: event.data.status,
+            previewDigest: event.data.preview_digest,
+            paths: event.data.paths ?? [],
+            conflicts: event.data.conflicts ?? [],
+            message: event.data.message ?? "",
+            changedPaths: detail.changedPaths,
+            verification: detail.verification,
+            appliedAt: detail.appliedAt,
+          },
+        );
+        return [];
+      }
       default:
         return [];
     }
@@ -197,6 +233,10 @@ export class BackgroundProjector {
     return {
       threads: sorted(this.#threads.values(), (row) => row.updatedAt),
       agents: sorted(this.#agents.values(), (row) => row.id),
+      integrations: sorted(
+        this.#integrations.values(),
+        (row) => `${row.agentPath}:${row.previewDigest}`,
+      ),
       tasks,
       jobs: tasks.filter((row) => row.executor !== ""),
       approvals: sorted(this.#approvals.values(), (row) => row.expiresAt),
@@ -214,6 +254,44 @@ export class BackgroundProjector {
     this.#notified.add(key);
     return { key, title, detail, failed };
   }
+}
+
+function integrationDetail(value: unknown): {
+  readonly changedPaths: readonly string[];
+  readonly verification: string;
+  readonly appliedAt: string;
+} {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { changedPaths: [], verification: "", appliedAt: "" };
+  }
+  const candidate = value as Readonly<Record<string, unknown>>;
+  const receipt = candidate["receipt"];
+  if (typeof receipt !== "object" || receipt === null || Array.isArray(receipt)) {
+    return {
+      changedPaths: [],
+      verification: verificationStatus(candidate["verification"]),
+      appliedAt: "",
+    };
+  }
+  const fields = receipt as Readonly<Record<string, unknown>>;
+  const changed = fields["changed_paths"];
+  return {
+    changedPaths: Array.isArray(changed)
+      ? changed.filter((path): path is string => typeof path === "string")
+      : [],
+    verification: verificationStatus(fields["verification"]),
+    appliedAt: typeof fields["applied_at"] === "string"
+      ? fields["applied_at"]
+      : "",
+  };
+}
+
+function verificationStatus(value: unknown): string {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return "";
+  }
+  const verify = (value as Readonly<Record<string, unknown>>)["verify"];
+  return typeof verify === "string" ? verify : "";
 }
 
 function replace<T>(

@@ -401,6 +401,7 @@
             "agent.spawned",
             "agent.status",
             "agent.message",
+            "agent.integration",
             "plan.delta",
             "command.execution",
             "host.command",
@@ -2065,6 +2066,60 @@
     }
   },
   "events": {
+    "agent.integration": {
+      "type": "object",
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "agent_path": {
+          "type": "string"
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "detail": {
+          "description": "arbitrary JSON"
+        },
+        "message": {
+          "type": "string"
+        },
+        "parent_path": {
+          "type": "string"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preview_digest": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "workspace_root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "agent_path",
+        "parent_path",
+        "preview_digest",
+        "session_id",
+        "status",
+        "workspace_root"
+      ],
+      "additionalProperties": false
+    },
     "agent.message": {
       "type": "object",
       "properties": {
@@ -4905,6 +4960,13 @@
     }
   },
   "event_traits": {
+    "agent.integration": {
+      "class": "orchestration",
+      "item_owner": "agent",
+      "durability": "retained",
+      "correlation": "agent",
+      "terminal": false
+    },
     "agent.message": {
       "class": "orchestration",
       "item_owner": "agent",

@@ -29,6 +29,7 @@ void test("BackgroundProjector joins read models and separates executable jobs",
   const snapshot = projector.snapshot();
   assert.equal(snapshot.threads[0]?.id, "thread_1");
   assert.equal(snapshot.agents[0]?.sessionId, "session_1");
+  assert.equal(snapshot.integrations.length, 0);
   assert.deepEqual(snapshot.tasks.map((row) => row.id).sort(), ["job", "todo"]);
   assert.deepEqual(snapshot.jobs.map((row) => row.id), ["job"]);
   assert.equal(snapshot.usage.totalTokens, 15);
@@ -83,6 +84,38 @@ void test("BackgroundProjector restores approvals and deduplicates terminal noti
     projector.applyEvent(event(4, "turn.failed", { error: "boom" }), true).length,
     0,
   );
+});
+
+void test("BackgroundProjector retains integration candidate and receipt", () => {
+  const projector = new BackgroundProjector();
+  projector.applyEvent(event(1, "agent.integration", {
+    agent_id: "agent-2",
+    agent_path: "/root/implement",
+    parent_path: "/root",
+    workspace_root: "/workspace",
+    session_id: "session_1",
+    status: "applied",
+    preview_digest: "a".repeat(64),
+    paths: ["result.txt"],
+    conflicts: [],
+    message: "parent verification passed",
+    detail: {
+      receipt: {
+        changed_paths: ["result.txt"],
+        verification: {
+          diagnostics: "not_evaluated",
+          tests: "passed",
+          verify: "passed",
+        },
+        applied_at: "2026-08-04T10:00:00Z",
+      },
+    },
+  }), true);
+  const row = projector.snapshot().integrations[0];
+  assert.equal(row?.status, "applied");
+  assert.equal(row.previewDigest, "a".repeat(64));
+  assert.deepEqual(row.changedPaths, ["result.txt"]);
+  assert.equal(row.verification, "passed");
 });
 
 void test("BackgroundProjector notifies only real task terminal transitions", () => {

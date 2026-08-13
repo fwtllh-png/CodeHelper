@@ -6,6 +6,7 @@ CREATE TABLE agent_nodes (
     session_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
     path TEXT NOT NULL,
+    execution_root TEXT NOT NULL DEFAULT '',
     parent_agent_id TEXT NOT NULL DEFAULT '',
     parent_path TEXT NOT NULL DEFAULT '/root',
     thread_id TEXT NOT NULL,
@@ -21,7 +22,14 @@ CREATE TABLE agent_nodes (
     serialized INTEGER NOT NULL DEFAULT 0,
     base_revision TEXT NOT NULL DEFAULT '',
     task_name TEXT NOT NULL DEFAULT '',
+    owned_paths_json BLOB NOT NULL DEFAULT '[]'
+        CHECK (json_valid(owned_paths_json)),
     last_message TEXT NOT NULL DEFAULT '',
+    max_steps INTEGER NOT NULL DEFAULT 0,
+    max_tokens INTEGER NOT NULL DEFAULT 0,
+    max_cost_microunits INTEGER NOT NULL DEFAULT 0,
+    reserved_tokens INTEGER NOT NULL DEFAULT 0,
+    reserved_microunits INTEGER NOT NULL DEFAULT 0,
     operation_id TEXT NOT NULL,
     actor TEXT NOT NULL,
     reason TEXT NOT NULL DEFAULT '',
@@ -82,4 +90,20 @@ CREATE TABLE agent_budget_ledger (
     FOREIGN KEY (workspace_root, agent_id)
         REFERENCES agent_nodes(workspace_root, agent_id) ON DELETE CASCADE
 );
+
+CREATE TABLE agent_integrations (
+    workspace_root TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    preview_digest TEXT NOT NULL,
+    status TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    candidate_json BLOB NOT NULL,
+    source_sequence INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (workspace_root, agent_id, preview_digest),
+    FOREIGN KEY (workspace_root, agent_id)
+        REFERENCES agent_nodes(workspace_root, agent_id) ON DELETE CASCADE
+);
+CREATE INDEX agent_integrations_workspace_status
+ON agent_integrations(workspace_root, status, updated_at);
 `

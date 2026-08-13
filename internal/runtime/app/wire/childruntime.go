@@ -331,8 +331,17 @@ func (c *childRuntime) specFor(agent subagent.Agent) (app.ChildSpec, error) {
 		ReadOnly:     true,
 		AllowedTools: append([]string(nil), role.AllowedTools...),
 		CanDelegate:  role.CanDelegate,
-		MaxSteps:     c.limits.MaxSteps, MaxTokens: c.limits.MaxTokens,
-		MaxCostUSD: c.limits.MaxCostUSD,
+		MaxSteps:     agent.Budget.MaxSteps, MaxTokens: agent.Budget.MaxTokens,
+		MaxCostUSD: agent.Budget.MaxCostUSD,
+	}
+	if spec.MaxSteps == 0 {
+		spec.MaxSteps = c.limits.MaxSteps
+	}
+	if spec.MaxTokens == 0 {
+		spec.MaxTokens = c.limits.MaxTokens
+	}
+	if spec.MaxCostUSD == 0 {
+		spec.MaxCostUSD = c.limits.MaxCostUSD
 	}
 	if spec.HostWorkspace == "" {
 		spec.HostWorkspace = c.root
@@ -353,6 +362,9 @@ func (c *childRuntime) specFor(agent subagent.Agent) (app.ChildSpec, error) {
 		agent.Stance == subagent.StanceReadOnly {
 		// Read-only children share the host workspace and get no journal: they
 		// change nothing, so there is nothing to roll back.
+		if strings.TrimSpace(agent.ExecutionRoot) != "" {
+			spec.Workspace = agent.ExecutionRoot
+		}
 		return spec, nil
 	}
 	if !agent.Isolated || strings.TrimSpace(agent.Worktree) == "" {

@@ -47,7 +47,8 @@ func Defaults() Config {
 
 			Subagent: Subagent{
 				Delegation: SubagentDelegationExplicit,
-				MaxDepth:   5, MaxParallel: 4, MaxSteps: 24,
+				MaxDepth:   5, MaxParallel: 4, MaxResident: 8, MaxTotal: 16,
+				MaxSteps: 24,
 				WallTime: 5 * time.Minute, Workspace: SubagentWorkspaceAuto,
 			},
 

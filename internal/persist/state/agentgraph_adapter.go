@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -102,6 +103,11 @@ func NewAgentGraph(
 		AppendMessage: func(message subagent.Message) error {
 			return publishMessage(message)
 		},
+		AppendIntegration: func(candidate subagent.IntegrationCandidate) error {
+			return publishIntegration(
+				appendEvent, workspaceRoot, sessionID, candidate,
+			)
+		},
 		DeliverMessage: func(message subagent.Message) error {
 			return publishMessage(message)
 		},
@@ -117,7 +123,8 @@ func NewAgentGraph(
 				out = append(out, subagent.GraphEdge{
 					ParentID: edge.ParentID, ParentPath: edge.ParentPath,
 					ChildID: edge.ChildID, Path: edge.Path,
-					Workspace: edge.WorkspaceRoot, SessionID: edge.SessionID,
+					ExecutionRoot: edge.ExecutionRoot,
+					Workspace:     edge.WorkspaceRoot, SessionID: edge.SessionID,
 					ThreadID: edge.ThreadID, TurnID: edge.TurnID,
 					Revision: edge.Revision,
 					Status:   subagent.Status(edge.Status), Role: subagent.Role(edge.Role),
@@ -125,7 +132,14 @@ func NewAgentGraph(
 					Depth: edge.Depth, Worktree: edge.Worktree,
 					Isolated: edge.Isolated, Serialized: edge.Serialized,
 					BaseRev: edge.BaseRevision, TaskName: edge.TaskName,
+					OwnedPaths:  append([]string(nil), edge.OwnedPaths...),
 					LastMessage: edge.LastMessage,
+					Budget: subagent.AgentBudget{
+						MaxSteps: edge.MaxSteps, MaxTokens: edge.MaxTokens,
+						MaxCostUSD: float64(edge.MaxCostMicros) / 1e6,
+					},
+					ReservedTokens: edge.ReservedTokens,
+					ReservedMicros: edge.ReservedMicros,
 				})
 			}
 			return out, nil
@@ -135,6 +149,13 @@ func NewAgentGraph(
 		},
 		Result: func(agentID string) (subagent.Result, bool, error) {
 			return store.LoadAgentResult(context.Background(), workspaceRoot, agentID)
+		},
+		Integration: func(
+			agentID, previewDigest string,
+		) (subagent.IntegrationCandidate, bool, error) {
+			return store.LoadAgentIntegration(
+				context.Background(), workspaceRoot, agentID, previewDigest,
+			)
 		},
 		Budget: func() (subagent.BudgetLedger, error) {
 			return store.LoadAgentBudget(context.Background(), workspaceRoot)
@@ -160,7 +181,95 @@ func NewAgentGraph(
 					return err
 				}
 			}
+			if err := reconcileAgentIntegrations(
+				store, appendEvent, workspaceRoot, sessionID,
+			); err != nil {
+				return err
+			}
 			return publishPending()
 		},
 	}
+}
+
+func publishIntegration(
+	appendEvent func(context.Context, protocol.EventData) error,
+	workspaceRoot, sessionID string,
+	candidate subagent.IntegrationCandidate,
+) error {
+	detail, err := json.Marshal(candidate)
+	if err != nil {
+		return err
+	}
+	return appendEvent(context.Background(), &protocol.AgentIntegrationData{
+		AgentID: candidate.AgentID, AgentPath: candidate.AgentPath,
+		ParentPath: candidate.ParentPath, WorkspaceRoot: workspaceRoot,
+		SessionID: sessionID, Status: string(candidate.Status),
+		PreviewDigest: candidate.PreviewDigest,
+		Paths:         append([]string(nil), candidate.Paths...),
+		Conflicts:     append([]string(nil), candidate.Conflicts...),
+		Message:       candidate.Message, Detail: detail,
+	})
+}
+
+func reconcileAgentIntegrations(
+	store *Store,
+	appendEvent func(context.Context, protocol.EventData) error,
+	workspaceRoot, sessionID string,
+) error {
+	recoveries, err := store.PlanAgentIntegrationRecovery(
+		context.Background(), workspaceRoot,
+	)
+	if err != nil {
+		return err
+	}
+	for _, recovery := range recoveries {
+		candidate := recovery.Candidate
+		if candidate.Status == subagent.IntegrationPreviewed {
+			candidate.Status = subagent.IntegrationApplying
+			candidate.Revision++
+			candidate.UpdatedAt = time.Now().UTC()
+			candidate.Message = "integration interrupted before apply began"
+			if err := publishIntegration(
+				appendEvent, workspaceRoot, sessionID, candidate,
+			); err != nil {
+				return err
+			}
+		}
+		target := subagent.StatusIntegrated
+		message := "recovered applied integration"
+		if candidate.Status != subagent.IntegrationApplied {
+			candidate.Status = subagent.IntegrationFailed
+			candidate.Revision++
+			candidate.UpdatedAt = time.Now().UTC()
+			candidate.Message = "integration apply interrupted and workspace journal recovered"
+			if err := publishIntegration(
+				appendEvent, workspaceRoot, sessionID, candidate,
+			); err != nil {
+				return err
+			}
+			target, message = subagent.StatusIntegrationFailed, candidate.Message
+		}
+		if recovery.AgentStatus != subagent.StatusIntegrating {
+			continue
+		}
+		transition := subagent.GraphTransition{
+			AgentID: candidate.AgentID, Path: candidate.AgentPath,
+			ExpectedRevision: recovery.AgentRevision, Status: target,
+			OperationID: "reconcile:integration:" + candidate.AgentID,
+			Actor:       "startup_reconciler", Reason: message, Message: message,
+			CreatedAt: time.Now().UTC(),
+		}
+		detail, err := json.Marshal(transition)
+		if err != nil {
+			return err
+		}
+		if err := appendEvent(context.Background(), &protocol.AgentStatusData{
+			AgentID: candidate.AgentID, WorkspaceRoot: workspaceRoot,
+			SessionID: sessionID, Status: string(target),
+			Message: message, Detail: detail,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

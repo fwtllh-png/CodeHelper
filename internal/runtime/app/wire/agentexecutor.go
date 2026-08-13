@@ -160,23 +160,44 @@ func (e *agentTurnExecutor) merge(
 			resultErr = errors.Join(resultErr, rollbackErr)
 		}
 	}()
-	arguments, err := json.Marshal(map[string]any{
+	previewArguments, err := json.Marshal(map[string]any{
 		"agent_id": agentID,
-		"dry_run":  false,
+		"op":       "preview",
 	})
 	if err != nil {
 		return err
 	}
 	mergeContext := tool.WithInvocationIdentity(ctx, tool.InvocationIdentity{
-		CallID:   "task-agent-merge-" + value.ID,
+		CallID:   "task-agent-preview-" + value.ID,
 		ThreadID: value.ThreadID,
 		TurnID:   value.TurnID,
 	})
+	preview, err := e.guard.Execute(
+		mergeContext,
+		"task-agent-preview-"+value.ID,
+		"integrate_agent",
+		previewArguments,
+	)
+	if err != nil {
+		return err
+	}
+	previewDigest, _ := preview.Metadata["preview_digest"].(string)
+	if previewDigest == "" {
+		return errors.New("agent integration preview returned no digest")
+	}
+	applyArguments, err := json.Marshal(map[string]any{
+		"agent_id":       agentID,
+		"op":             "apply",
+		"preview_digest": previewDigest,
+	})
+	if err != nil {
+		return err
+	}
 	result, err := e.guard.Execute(
 		mergeContext,
-		"task-agent-merge-"+value.ID,
+		"task-agent-apply-"+value.ID,
 		"integrate_agent",
-		arguments,
+		applyArguments,
 	)
 	if err != nil {
 		return err

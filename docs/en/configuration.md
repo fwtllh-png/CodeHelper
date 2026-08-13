@@ -98,6 +98,8 @@ recover_on_start = true
 delegation = "explicit"      # disabled | explicit | adaptive
 max_depth = 5
 max_parallel = 4
+max_resident = 8
+max_total = 16
 max_steps = 24
 max_tokens = 0
 max_cost_usd = 0
@@ -123,7 +125,12 @@ The Agent Tree, Mailbox, Result, and Budget Ledger live in the workspace state
 store. Every Agent has a canonical path and CAS revision; terminal Result and
 Completion Outbox commit atomically. Completion notifies the parent
 automatically, while `wait_agent` synchronizes on the same fact. Stable Message
-IDs and `Receive/Ack` replay unacknowledged mailbox messages after restart.
+IDs and `Receive/Ack` preserve unacknowledged delivery across restart.
+`max_parallel` limits active children, `max_resident` includes completed
+children whose Result or worktree is still retained, and `max_total` bounds all
+spawns for the durable tree, including closed agents. Depth, token, and cost
+admission also apply to nested agents; a child may narrow but never expand its
+parent's budget.
 
 Child authority can only narrow the active Session profile. Effective posture
 follows `never < suggest < auto < bypass`, writable tools are the intersection

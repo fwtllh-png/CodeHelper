@@ -66,6 +66,7 @@ var eventData = []struct {
 	{EventAgentSpawned, func() EventData { return &AgentSpawnedData{} }},
 	{EventAgentStatus, func() EventData { return &AgentStatusData{} }},
 	{EventAgentMessage, func() EventData { return &AgentMessageData{} }},
+	{EventAgentIntegration, func() EventData { return &AgentIntegrationData{} }},
 	{EventPlanDelta, func() EventData { return &PlanDeltaData{} }},
 	{EventCommandExecution, func() EventData { return &CommandExecutionData{} }},
 	{EventHostCommand, func() EventData { return &HostCommandData{} }},

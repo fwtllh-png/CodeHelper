@@ -1,4 +1,11 @@
 {
+  "agent.integration": {
+    "class": "orchestration",
+    "item_owner": "agent",
+    "durability": "retained",
+    "correlation": "agent",
+    "terminal": false
+  },
   "agent.message": {
     "class": "orchestration",
     "item_owner": "agent",

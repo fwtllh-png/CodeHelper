@@ -41,10 +41,13 @@ const (
 )
 
 type Budget struct {
+	MaxSteps    int
 	MaxTokens   uint64
 	MaxCostUSD  float64
 	MaxDepth    int
 	MaxParallel int
+	MaxResident int
+	MaxTotal    int
 }
 
 func (b Budget) WithDefaults() Budget {
@@ -54,7 +57,25 @@ func (b Budget) WithDefaults() Budget {
 	if b.MaxParallel <= 0 {
 		b.MaxParallel = 8
 	}
+	if b.MaxResident <= 0 {
+		b.MaxResident = 8
+	}
+	if b.MaxResident < b.MaxParallel {
+		b.MaxResident = b.MaxParallel
+	}
+	if b.MaxTotal <= 0 {
+		b.MaxTotal = 16
+	}
+	if b.MaxTotal < b.MaxResident {
+		b.MaxTotal = b.MaxResident
+	}
 	return b
+}
+
+type AgentBudget struct {
+	MaxSteps   int     `json:"max_steps,omitempty"`
+	MaxTokens  uint64  `json:"max_tokens,omitempty"`
+	MaxCostUSD float64 `json:"max_cost_usd,omitempty"`
 }
 
 type Route struct {
@@ -108,38 +129,40 @@ type Options struct {
 }
 
 type Manager struct {
-	mu        sync.Mutex
-	wait      *sync.Cond
-	root      string
-	budget    Budget
-	gate      ToolGate
-	runtime   RuntimeHost
-	trees     WorktreeProvider
-	roles     RoleCatalog
-	agents    map[string]*Agent
-	mailbox   *Mailbox
-	worktrees map[string]*Worktree
-	claims    map[string]string // workspace-relative path -> owning agent id
-	active    atomic.Int32
-	graph     Graph
-	workspace string
-	sessionID string
-	nextID    int
-	ledger    BudgetLedger
+	mu           sync.Mutex
+	wait         *sync.Cond
+	root         string
+	budget       Budget
+	gate         ToolGate
+	runtime      RuntimeHost
+	trees        WorktreeProvider
+	roles        RoleCatalog
+	agents       map[string]*Agent
+	mailbox      *Mailbox
+	worktrees    map[string]*Worktree
+	claims       map[string]string // workspace-relative path -> owning agent id
+	integrations map[string]IntegrationCandidate
+	active       atomic.Int32
+	graph        Graph
+	workspace    string
+	sessionID    string
+	nextID       int
+	ledger       BudgetLedger
 }
 
 type Agent struct {
-	ID         string
-	Path       string
-	ParentPath string
-	Revision   uint64
-	Workspace  string
-	SessionID  string
-	ThreadID   string
-	Role       Role
-	Profile    string
-	Stance     Stance
-	Depth      int
+	ID            string
+	Path          string
+	ParentPath    string
+	Revision      uint64
+	Workspace     string
+	ExecutionRoot string
+	SessionID     string
+	ThreadID      string
+	Role          Role
+	Profile       string
+	Stance        Stance
+	Depth         int
 	// Worktree is where this agent works, and Isolated says whether writing
 	// there is safe. A writing agent without isolation must not run.
 	Worktree string
@@ -162,6 +185,9 @@ type Agent struct {
 	DelegationTrigger DelegationTrigger
 	RoleInstructions  string
 	Context           *ContextReceipt
+	Budget            AgentBudget
+	ReservedTokens    uint64
+	ReservedMicros    uint64
 }
 
 func Open(options Options) (*Manager, error) {
@@ -188,8 +214,9 @@ func Open(options Options) (*Manager, error) {
 		workspace: options.Workspace, sessionID: options.SessionID,
 		roles:  roles,
 		agents: make(map[string]*Agent), mailbox: NewMailbox(),
-		worktrees: make(map[string]*Worktree),
-		claims:    make(map[string]string),
+		worktrees:    make(map[string]*Worktree),
+		claims:       make(map[string]string),
+		integrations: make(map[string]IntegrationCandidate),
 	}
 	manager.wait = sync.NewCond(&manager.mu)
 	manager.mailbox.persist = manager.recordMessage
@@ -227,8 +254,11 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	defer m.mu.Unlock()
 	depth := 0
 	parentPath := "/root"
+	executionRoot := m.workspace
+	var parent *Agent
 	if intent.ParentID != "" {
-		parent, ok := m.agents[intent.ParentID]
+		var ok bool
+		parent, ok = m.agents[intent.ParentID]
 		if !ok || parent.Closed {
 			return nil, errors.New("parent agent unavailable")
 		}
@@ -241,12 +271,29 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	if int(m.active.Load()) >= m.budget.MaxParallel {
 		return nil, errors.New("subagent concurrency budget exhausted")
 	}
-	if m.budget.MaxTokens > 0 && m.ledger.SpentTokens >= m.budget.MaxTokens {
-		return nil, errors.New("subagent token budget exhausted")
+	if m.residentLocked() >= m.budget.MaxResident {
+		return nil, errors.New("subagent resident budget exhausted")
 	}
-	if m.budget.MaxCostUSD > 0 &&
-		m.ledger.SpentMicros >= uint64(m.budget.MaxCostUSD*1e6) {
-		return nil, errors.New("subagent cost budget exhausted")
+	if m.ledger.TotalSpawned >= m.budget.MaxTotal {
+		return nil, errors.New("subagent total spawn budget exhausted")
+	}
+	requested, err := m.normalizeAgentBudgetLocked(
+		intent.Budget, spec.DefaultBudget, parent,
+	)
+	if err != nil {
+		return nil, err
+	}
+	reservedMicros := uint64(requested.MaxCostUSD * 1e6)
+	if m.budget.MaxTokens > 0 &&
+		m.ledger.SpentTokens+m.ledger.ReservedTokens+requested.MaxTokens >
+			m.budget.MaxTokens {
+		return nil, errors.New("subagent token reservation exceeds tree budget")
+	}
+	maxMicros := uint64(m.budget.MaxCostUSD * 1e6)
+	if maxMicros > 0 &&
+		m.ledger.SpentMicros+m.ledger.ReservedMicros+reservedMicros >
+			maxMicros {
+		return nil, errors.New("subagent cost reservation exceeds tree budget")
 	}
 	m.nextID++
 	id := fmt.Sprintf("agent-%d", m.nextID)
@@ -256,12 +303,19 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	if err != nil {
 		return nil, err
 	}
+	if spec.Stance == StanceReadOnly && parent != nil &&
+		strings.TrimSpace(parent.Worktree) != "" {
+		executionRoot = parent.Worktree
+	} else if spec.Stance != StanceReadOnly {
+		executionRoot = wt.Path
+	}
 	agent := &Agent{
 		ID: id, Path: m.nextPathLocked(intent.ParentID, intent.TaskName, id),
 		ParentPath: parentPath,
-		Revision:   1, Workspace: m.workspace, SessionID: m.sessionID,
-		ThreadID: ThreadIDFor(id),
-		Role:     spec.Role, Profile: spec.Profile, Stance: spec.Stance,
+		Revision:   1, Workspace: m.workspace, ExecutionRoot: executionRoot,
+		SessionID: m.sessionID,
+		ThreadID:  ThreadIDFor(id),
+		Role:      spec.Role, Profile: spec.Profile, Stance: spec.Stance,
 		Depth: depth, Worktree: wt.Path, Isolated: wt.Isolated,
 		Serialized: wt.Serialized, BaseRev: wt.BaseRev,
 		Parent: intent.ParentID, Status: StatusRequested,
@@ -270,6 +324,9 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		OwnedPaths:        append([]string(nil), intent.OwnedPaths...),
 		DelegationTrigger: intent.Trigger,
 		RoleInstructions:  spec.Instructions,
+		Budget:            requested,
+		ReservedTokens:    requested.MaxTokens,
+		ReservedMicros:    reservedMicros,
 	}
 	if err := m.recordSpawnLocked(agent); err != nil {
 		_ = m.trees.Discard(wt)
@@ -279,8 +336,64 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	m.worktrees[id] = &wt
 	m.active.Add(1)
 	m.ledger.ReservedSlots++
+	m.ledger.ReservedTokens += requested.MaxTokens
+	m.ledger.ReservedMicros += reservedMicros
+	m.ledger.TotalSpawned++
 	m.wait.Broadcast()
 	return agent, nil
+}
+
+func (m *Manager) normalizeAgentBudgetLocked(
+	requested AgentBudget,
+	role Budget,
+	parent *Agent,
+) (AgentBudget, error) {
+	if requested.MaxSteps == 0 {
+		requested.MaxSteps = role.MaxSteps
+	}
+	if requested.MaxSteps == 0 {
+		requested.MaxSteps = m.budget.MaxSteps
+	}
+	if requested.MaxTokens == 0 {
+		requested.MaxTokens = role.MaxTokens
+	}
+	if requested.MaxTokens == 0 {
+		requested.MaxTokens = m.budget.MaxTokens
+	}
+	if requested.MaxCostUSD == 0 {
+		requested.MaxCostUSD = role.MaxCostUSD
+	}
+	if requested.MaxCostUSD == 0 {
+		requested.MaxCostUSD = m.budget.MaxCostUSD
+	}
+	if m.budget.MaxSteps > 0 && requested.MaxSteps > m.budget.MaxSteps {
+		return AgentBudget{}, errors.New("child step budget exceeds tree ceiling")
+	}
+	if parent != nil {
+		if parent.Budget.MaxSteps > 0 &&
+			requested.MaxSteps > parent.Budget.MaxSteps {
+			return AgentBudget{}, errors.New("child step budget exceeds parent ceiling")
+		}
+		if parent.Budget.MaxTokens > 0 &&
+			requested.MaxTokens > parent.Budget.MaxTokens {
+			return AgentBudget{}, errors.New("child token budget exceeds parent ceiling")
+		}
+		if parent.Budget.MaxCostUSD > 0 &&
+			requested.MaxCostUSD > parent.Budget.MaxCostUSD {
+			return AgentBudget{}, errors.New("child cost budget exceeds parent ceiling")
+		}
+	}
+	return requested, nil
+}
+
+func (m *Manager) residentLocked() int {
+	resident := 0
+	for _, agent := range m.agents {
+		if agent != nil && !agent.Closed && agent.Status != StatusClosed {
+			resident++
+		}
+	}
+	return resident
 }
 
 func (m *Manager) ExecuteTool(ctx context.Context, agentID, callID, name string, raw json.RawMessage) (tool.Result, error) {
@@ -324,6 +437,30 @@ func (m *Manager) Agent(id string) (Agent, bool) {
 		return Agent{}, false
 	}
 	return cloneAgent(agent), true
+}
+
+func (m *Manager) AgentByThread(threadID string) (Agent, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, agent := range m.agents {
+		if agent != nil && !agent.Closed && agent.ThreadID == threadID {
+			return cloneAgent(agent), true
+		}
+	}
+	return Agent{}, false
+}
+
+func (m *Manager) IsDescendant(parentID, agentID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	current := m.agents[agentID]
+	for current != nil && current.Parent != "" {
+		if current.Parent == parentID {
+			return true
+		}
+		current = m.agents[current.Parent]
+	}
+	return false
 }
 
 func cloneAgent(agent *Agent) Agent {

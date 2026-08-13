@@ -324,7 +324,8 @@ export async function connectSession(
 
 function isWorkspaceEvent(event: DecodedEvent): boolean {
   return !isUnknownEvent(event) &&
-    (event.kind === "agent.spawned" ||
+    (event.kind === "agent.integration" ||
+    event.kind === "agent.spawned" ||
     event.kind === "agent.status" ||
     event.kind === "agent.message" ||
     ((event.kind === "approval.required" ||

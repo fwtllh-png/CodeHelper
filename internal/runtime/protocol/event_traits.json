@@ -1,5 +1,6 @@
 {
   "agent.message": {"class":"orchestration","item_owner":"agent","durability":"retained","correlation":"agent","terminal":false},
+  "agent.integration": {"class":"orchestration","item_owner":"agent","durability":"retained","correlation":"agent","terminal":false},
   "agent.spawned": {"class":"orchestration","item_owner":"agent","durability":"retained","correlation":"agent","terminal":false},
   "agent.status": {"class":"orchestration","item_owner":"agent","durability":"retained","correlation":"agent","terminal":false},
   "approval.required": {"class":"interaction","item_owner":"approval","durability":"retained","correlation":"request","terminal":false},

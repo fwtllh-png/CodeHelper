@@ -176,6 +176,8 @@ type Subagent struct {
 	Delegation  string `json:"delegation" toml:"delegation"`
 	MaxDepth    int    `json:"max_depth" toml:"max_depth"`
 	MaxParallel int    `json:"max_parallel" toml:"max_parallel"`
+	MaxResident int    `json:"max_resident" toml:"max_resident"`
+	MaxTotal    int    `json:"max_total" toml:"max_total"`
 	// MaxSteps is the child's own step quota, independent of Execution.MaxSteps.
 	MaxSteps int `json:"max_steps" toml:"max_steps"`
 	// MaxTokens and MaxCostUSD bound all child agents in the session together,

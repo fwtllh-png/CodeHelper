@@ -922,6 +922,16 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
   const completions = new Set<string>();
   const statuses = new Map<string, string>();
   const statusMessages = new Map<string, string>();
+  const integrationStatuses = new Map<string, string[]>();
+  const integrationReceipts = new Map<string, {
+    agentId: string;
+    agentPath: string;
+    parentPath: string;
+    paths: readonly string[];
+    changedPaths: readonly string[];
+    verification: string;
+    message: string;
+  }>();
   const waitingAgents = new Set<string>();
   const resolvedApprovals = new Set<string>();
   const parentApprovals = new Set<string>();
@@ -988,6 +998,35 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
           : undefined,
         role: event.data.role,
         sessionId: event.data.session_id,
+      });
+    } else if (event.kind === "agent.integration") {
+      const statuses = integrationStatuses.get(event.data.preview_digest) ?? [];
+      statuses.push(event.data.status);
+      integrationStatuses.set(event.data.preview_digest, statuses);
+      const detail = event.data.detail as {
+        readonly receipt?: {
+          readonly changed_paths?: unknown;
+          readonly verification?: {
+            readonly verify?: unknown;
+          };
+        };
+      } | undefined;
+      const changedPaths = detail?.receipt?.changed_paths;
+      integrationReceipts.set(event.data.preview_digest, {
+        agentId: event.data.agent_id,
+        agentPath: event.data.agent_path,
+        parentPath: event.data.parent_path,
+        paths: event.data.paths ?? [],
+        changedPaths: Array.isArray(changedPaths)
+          ? changedPaths.filter(
+            (path): path is string => typeof path === "string",
+          )
+          : [],
+        verification:
+          typeof detail?.receipt?.verification?.verify === "string"
+            ? detail.receipt.verification.verify
+            : "",
+        message: event.data.message ?? "",
       });
     } else if (event.kind === "agent.status") {
       statuses.set(event.data.agent_id, event.data.status);
@@ -1116,7 +1155,8 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
     const writerParent = await api.testSubmitPrompt(
       selected.sessionId,
       "Explicitly spawn one implementer child to write child-note.txt and " +
-        "verify it. Do not perform the write in the parent.",
+        "verify it. Wait for that child, then use integrate_agent preview and " +
+        "apply exactly that preview digest. Do not perform the write in the parent.",
     );
     const writerDeadline = Date.now() + 30_000;
     const submittedChildApprovals = new Set<string>();
@@ -1133,8 +1173,7 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
         (value) => !resolvedApprovals.has(value.requestId) &&
           !submittedChildApprovals.has(value.requestId),
       );
-      if (pendingApproval !== undefined &&
-        terminals.has(writerParent.turnId)) {
+      if (pendingApproval !== undefined) {
         submittedChildApprovals.add(pendingApproval.requestId);
         await api.testDecideApproval(
           selected.sessionId,
@@ -1200,6 +1239,69 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
       writerDiagnostics,
     );
     assert.equal(completions.has(writerID), true);
+
+    const integrationDeadline = Date.now() + 30_000;
+    const submittedIntegrationApprovals = new Set<string>();
+    while (!terminals.has(writerParent.turnId) &&
+      Date.now() < integrationDeadline) {
+      const pending = [...parentApprovals].find(
+        (requestId) => !resolvedApprovals.has(requestId) &&
+          !submittedIntegrationApprovals.has(requestId),
+      );
+      if (pending !== undefined && await api.testApprovePending()) {
+        submittedIntegrationApprovals.add(pending);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await waitFor(
+      () => terminals.has(writerParent.turnId) &&
+        [...integrationReceipts.values()].some(
+          (receipt) => receipt.agentId === writerID &&
+            receipt.changedPaths.includes("child-note.txt"),
+        ),
+      `writer integration did not apply; ${writerDiagnostics}; ` +
+        `writerParent=${JSON.stringify(writerParent)}; ` +
+        `integrationStatuses=${JSON.stringify(
+          [...integrationStatuses.entries()],
+        )}; integrationReceipts=${JSON.stringify(
+          [...integrationReceipts.entries()],
+        )}`,
+      30_000,
+    );
+    assert.equal(
+      terminals.get(writerParent.turnId),
+      "turn.completed",
+      `writer parent terminal=${
+        JSON.stringify(terminalDetails.get(writerParent.turnId))
+      }; integrationStatuses=${
+        JSON.stringify([...integrationStatuses.entries()])
+      }; integrationReceipts=${
+        JSON.stringify([...integrationReceipts.entries()])
+      }`,
+    );
+    const [previewDigest, integration] =
+      [...integrationReceipts.entries()].find(
+        ([, receipt]) => receipt.agentId === writerID,
+      ) ?? [];
+    assert.ok(previewDigest);
+    assert.ok(integration);
+    assert.deepEqual(
+      integrationStatuses.get(previewDigest),
+      ["previewed", "applying", "applied"],
+    );
+    assert.equal(integration.agentPath, writer.path);
+    assert.equal(integration.parentPath, "/root");
+    assert.deepEqual(integration.paths, ["child-note.txt"]);
+    assert.deepEqual(integration.changedPaths, ["child-note.txt"]);
+    assert.equal(integration.verification, "passed");
+    assert.equal(statuses.get(writerID), "integrated");
+    const integratedBody = await vscode.workspace.fs.readFile(
+      vscode.Uri.joinPath(workspace.uri, "child-note.txt"),
+    );
+    assert.equal(
+      new TextDecoder().decode(integratedBody),
+      "written by the Electron child\n",
+    );
   } finally {
     subscription.dispose();
     rootSubscription.dispose();
