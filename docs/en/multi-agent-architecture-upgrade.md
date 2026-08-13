@@ -932,6 +932,51 @@ parent verification, scoped nested control, and persistent tree budgets. Exit
 when disjoint changes integrate independently, same-path conflict fails before
 apply, stale previews cannot apply, and limits govern the full tree.
 
+Implementation status (2026-08-13): `completed`.
+
+- `integrate_agent` now exposes `preview`, `apply`, `discard`, and `retry`.
+  Preview persists an immutable Candidate and exact changes; Apply requires its
+  SHA-256 Preview Digest and regenerates the plan before Guard authorization.
+  Child content, Result Turn, selected paths, or parent baseline drift makes the
+  old digest fail closed before a workspace write.
+- Owned Paths and live write claims reject out-of-scope or same-path changes.
+  Disjoint candidates remain independently previewable and apply through the
+  existing Guard resource claims, Workspace Journal, expected-write
+  fingerprints, and atomic file transaction.
+- `agent_integrations` projects Candidate revisions and
+  `previewed -> applying -> applied|failed` or `previewed -> discarded`.
+  Startup reconciliation converges interrupted Apply to explicit failure after
+  Journal recovery, and completes an already-applied Candidate whose Agent
+  status commit was interrupted. Owned Paths and write claims also rebuild
+  after restart.
+- Apply records an Integration Receipt with changed paths, apply time, and
+  Parent Workspace Verification. A failed or unavailable verification verdict
+  remains distinct from whether bytes were applied.
+- A nested caller is resolved from authoritative Child Thread identity.
+  Parent ID forgery and sibling or ancestor control fail closed; a Child may
+  operate only its descendant subtree. Delegating roles retain Agent lifecycle
+  tools without gaining ordinary write tools, read-only descendants inherit
+  the parent worktree, and descendant integration targets that parent
+  workspace.
+- Tree admission durably enforces depth, active parallelism, resident nodes,
+  total spawns, and token/cost reservations. Each Child may only narrow its
+  Parent step/token/cost ceiling; terminal and close release reservations while
+  spend and total spawn remain charged across restart.
+- The generated `agent.integration` retained Event is shared by Go, JSON
+  Schema, ACP, and TypeScript. VS Code replays Candidates and Receipts, renders
+  nested Agent nodes as a real tree, and shows digest, paths, conflicts,
+  verification, and applied changes beneath the owning Agent.
+- Unit and persistence contracts cover stale Child and Parent previews,
+  pre-Apply same-path conflict, discard/retry, Parent Verification, Candidate
+  CAS, applying/applied crash recovery, nested scope, inherited execution root,
+  and persistent Tree Budget admission.
+- Serial `go test -p 1 ./...`, focused Race, Protocol Contract, 43/43
+  Architecture Ratchet, VS Code check and all 223 tests, docs/book gates, and
+  `make vscode-subagent-integration` pass. Real Electron verifies one Parent
+  Turn executes `spawn -> wait -> child approval proxy -> preview -> apply ->
+  parent verify -> complete` in a Git worktree and observes
+  `previewed -> applying -> applied`, `integrated`, and the final parent file.
+
 ### MA6: Host Projection, Evaluation, and Rollout
 
 Deliver Event Traits and schema, Go eventview, VS Code Tree/Detail/Timeline, a

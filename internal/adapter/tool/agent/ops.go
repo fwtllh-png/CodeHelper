@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -150,11 +151,12 @@ func (o *operation) Descriptor() tool.Descriptor {
 	case "integrate_agent":
 		return tool.Descriptor{
 			Name: "integrate_agent",
-			Description: "Apply a writing child's worktree changes into the parent workspace via " +
-				"the same validate-then-apply path as file_apply (journal + turnDiff + Verify Gate). " +
-				"dry_run defaults to true — preview the unified diff before applying. " +
-				"Fails on write-claim conflicts or when the parent drifted from the child's base revision. " +
-				"Requires an open isolated child with a settled result; do not close_agent first.",
+			Description: "Integrate a settled writing child through a durable preview-bound workflow. " +
+				"Use op=preview first and inspect its digest, paths, conflicts, and unified diff. " +
+				"Use op=apply with that preview_digest; apply revalidates child bytes, owned paths, " +
+				"write claims, and parent baseline before the journaled write, then verifies the parent workspace. " +
+				"Use discard to reject and clean up, or retry with a failed candidate digest to create a new preview. " +
+				"Requires an open isolated child; do not close_agent first.",
 			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessTree, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
@@ -168,7 +170,13 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"type": "object",
 				"properties": map[string]any{
 					"agent_id": map[string]any{"type": "string", "minLength": float64(1)},
-					"dry_run":  map[string]any{"type": "boolean", "default": true},
+					"op": map[string]any{
+						"type": "string", "default": mergePreview,
+						"enum": []any{mergePreview, mergeApply, mergeDiscard, mergeRetry},
+					},
+					"preview_digest": map[string]any{
+						"type": "string", "minLength": float64(64), "maxLength": float64(64),
+					},
 					"paths": map[string]any{
 						"type": "array", "items": map[string]any{"type": "string"},
 					},
@@ -190,15 +198,15 @@ func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Resu
 	case "wait_agent":
 		return o.tools.wait(ctx, raw)
 	case "list_agents":
-		return o.tools.list(raw)
+		return o.tools.list(ctx, raw)
 	case "send_message":
-		return o.tools.sendMessage(raw)
+		return o.tools.sendMessage(ctx, raw)
 	case "followup_task":
 		return o.tools.followUp(ctx, raw)
 	case "interrupt_agent":
 		return o.tools.interrupt(ctx, raw)
 	case "close_agent":
-		return o.tools.closeAgent(raw)
+		return o.tools.closeAgent(ctx, raw)
 	case "integrate_agent":
 		return o.tools.merge(ctx, raw)
 	default:
@@ -255,6 +263,15 @@ func (t *Tool) spawnDescriptor() tool.Descriptor {
 					"type": "integer", "minimum": float64(1), "maximum": float64(8),
 					"default": float64(2),
 				},
+				"max_steps": map[string]any{
+					"type": "integer", "minimum": float64(1),
+				},
+				"max_tokens": map[string]any{
+					"type": "integer", "minimum": float64(1),
+				},
+				"max_cost_usd": map[string]any{
+					"type": "number", "exclusiveMinimum": float64(0),
+				},
 			},
 			"required": []string{
 				"task_name", "role", "objective", "expected_output", "trigger",
@@ -306,6 +323,27 @@ func (t *Tool) wait(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
 	}
+	if caller, nested := t.callerAgent(ctx); nested {
+		if len(input.AgentIDs) == 0 {
+			for _, child := range t.control.List(subagent.ListFilter{
+				ParentID: caller.ID,
+			}) {
+				input.AgentIDs = append(input.AgentIDs, child.ID)
+			}
+			if len(input.AgentIDs) == 0 {
+				return emptyWaitResult()
+			}
+		} else {
+			for _, agentID := range input.AgentIDs {
+				if !t.control.IsDescendant(caller.ID, agentID) {
+					return tool.Result{}, fmt.Errorf(
+						"agent %s may wait only on its descendant subtree",
+						caller.ID,
+					)
+				}
+			}
+		}
+	}
 	timeout := time.Duration(0)
 	if input.TimeoutMS > 0 {
 		timeout = time.Duration(input.TimeoutMS) * time.Millisecond
@@ -351,6 +389,19 @@ func (t *Tool) wait(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 	}, nil
 }
 
+func emptyWaitResult() (tool.Result, error) {
+	content, err := json.Marshal(map[string]any{
+		"timed_out": false, "agents": []any{},
+	})
+	if err != nil {
+		return tool.Result{}, err
+	}
+	return tool.Result{
+		Content:  string(content),
+		Metadata: map[string]any{"timed_out": false, "count": 0},
+	}, nil
+}
+
 func (t *Tool) serializedWaitTargets(agentIDs []string) []subagent.Agent {
 	if len(agentIDs) == 0 {
 		listed := t.control.List(subagent.ListFilter{})
@@ -372,7 +423,7 @@ func (t *Tool) serializedWaitTargets(agentIDs []string) []subagent.Agent {
 	return queued
 }
 
-func (t *Tool) list(raw json.RawMessage) (tool.Result, error) {
+func (t *Tool) list(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
 	var input struct {
 		ParentID      string `json:"parent_id"`
 		IncludeClosed bool   `json:"include_closed"`
@@ -380,8 +431,20 @@ func (t *Tool) list(raw json.RawMessage) (tool.Result, error) {
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
 	}
+	parentID := strings.TrimSpace(input.ParentID)
+	if caller, nested := t.callerAgent(ctx); nested {
+		if parentID != "" && parentID != caller.ID &&
+			!t.control.IsDescendant(caller.ID, parentID) {
+			return tool.Result{}, fmt.Errorf(
+				"agent %s may list only its descendant subtree", caller.ID,
+			)
+		}
+		if parentID == "" {
+			parentID = caller.ID
+		}
+	}
 	listed := t.control.List(subagent.ListFilter{
-		ParentID: strings.TrimSpace(input.ParentID), IncludeClosed: input.IncludeClosed,
+		ParentID: parentID, IncludeClosed: input.IncludeClosed,
 	})
 	agents := make([]map[string]any, 0, len(listed))
 	for _, agent := range listed {
@@ -398,7 +461,10 @@ func (t *Tool) list(raw json.RawMessage) (tool.Result, error) {
 	}, nil
 }
 
-func (t *Tool) sendMessage(raw json.RawMessage) (tool.Result, error) {
+func (t *Tool) sendMessage(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, error) {
 	var input struct {
 		AgentID string `json:"agent_id"`
 		Message string `json:"message"`
@@ -411,6 +477,9 @@ func (t *Tool) sendMessage(raw json.RawMessage) (tool.Result, error) {
 	if agentID == "" || message == "" {
 		return tool.Result{}, errors.New("agent_id and message are required")
 	}
+	if err := t.authorizeTarget(ctx, agentID); err != nil {
+		return tool.Result{}, err
+	}
 	if _, ok := t.control.Agent(agentID); !ok {
 		return tool.Result{}, errors.New("agent not found")
 	}
@@ -420,7 +489,11 @@ func (t *Tool) sendMessage(raw json.RawMessage) (tool.Result, error) {
 	if err != nil {
 		return tool.Result{}, err
 	}
-	delivered, err := t.control.Mailbox().Deliver("parent", agentID, body)
+	from := "parent"
+	if caller, nested := t.callerAgent(ctx); nested {
+		from = caller.ID
+	}
+	delivered, err := t.control.Mailbox().Deliver(from, agentID, body)
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -450,6 +523,9 @@ func (t *Tool) followUp(ctx context.Context, raw json.RawMessage) (tool.Result, 
 	prompt := strings.TrimSpace(input.Prompt)
 	if agentID == "" || prompt == "" {
 		return tool.Result{}, errors.New("agent_id and prompt are required")
+	}
+	if err := t.authorizeTarget(ctx, agentID); err != nil {
+		return tool.Result{}, err
 	}
 	turn, err := t.control.FollowUp(ctx, agentID, prompt)
 	if err != nil {
@@ -483,6 +559,9 @@ func (t *Tool) interrupt(ctx context.Context, raw json.RawMessage) (tool.Result,
 	if agentID == "" {
 		return tool.Result{}, errors.New("agent_id is required")
 	}
+	if err := t.authorizeTarget(ctx, agentID); err != nil {
+		return tool.Result{}, err
+	}
 	prev, err := t.control.Interrupt(ctx, agentID)
 	if err != nil {
 		return tool.Result{}, err
@@ -507,7 +586,10 @@ func (t *Tool) interrupt(ctx context.Context, raw json.RawMessage) (tool.Result,
 	}, nil
 }
 
-func (t *Tool) closeAgent(raw json.RawMessage) (tool.Result, error) {
+func (t *Tool) closeAgent(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, error) {
 	var input struct {
 		AgentID string `json:"agent_id"`
 	}
@@ -517,6 +599,9 @@ func (t *Tool) closeAgent(raw json.RawMessage) (tool.Result, error) {
 	agentID := strings.TrimSpace(input.AgentID)
 	if agentID == "" {
 		return tool.Result{}, errors.New("agent_id is required")
+	}
+	if err := t.authorizeTarget(ctx, agentID); err != nil {
+		return tool.Result{}, err
 	}
 	snap, _ := t.control.Agent(agentID)
 	worktree := snap.Worktree

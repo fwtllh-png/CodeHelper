@@ -39,6 +39,7 @@ type DelegationIntent struct {
 	OwnedPaths     []string
 	ParentID       string
 	Trigger        DelegationTrigger
+	Budget         AgentBudget
 }
 
 // DelegationPolicy validates the provenance of a spawn proposal. It is an
@@ -130,6 +131,9 @@ func validateIntent(intent DelegationIntent) error {
 	}
 	if intent.Trigger == "" {
 		return errors.New("delegation trigger is required")
+	}
+	if intent.Budget.MaxSteps < 0 || intent.Budget.MaxCostUSD < 0 {
+		return errors.New("child budget limits must be non-negative")
 	}
 	for _, path := range intent.OwnedPaths {
 		clean := filepath.Clean(strings.TrimSpace(path))
@@ -412,6 +416,14 @@ func (c *AgentControl) Agent(id string) (Agent, bool) {
 	return c.manager.Agent(id)
 }
 
+func (c *AgentControl) AgentByThread(threadID string) (Agent, bool) {
+	return c.manager.AgentByThread(threadID)
+}
+
+func (c *AgentControl) IsDescendant(parentID, agentID string) bool {
+	return c.manager.IsDescendant(parentID, agentID)
+}
+
 func (c *AgentControl) List(filter ListFilter) []Agent {
 	return c.manager.List(filter)
 }
@@ -462,6 +474,24 @@ func (c *AgentControl) Settle(result Result) error {
 
 func (c *AgentControl) Result(agentID string) (Result, bool) {
 	return c.manager.Result(agentID)
+}
+
+func (c *AgentControl) SaveIntegration(candidate IntegrationCandidate) error {
+	return c.manager.SaveIntegration(candidate)
+}
+
+func (c *AgentControl) Integration(
+	agentID, previewDigest string,
+) (IntegrationCandidate, bool, error) {
+	return c.manager.Integration(agentID, previewDigest)
+}
+
+func (c *AgentControl) BeginIntegration(agentID string) error {
+	return c.manager.BeginIntegration(agentID)
+}
+
+func (c *AgentControl) FinishIntegration(agentID string, err error) error {
+	return c.manager.FinishIntegration(agentID, err)
 }
 
 func (c *AgentControl) WriteOwner(path string) (string, bool) {

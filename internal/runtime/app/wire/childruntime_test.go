@@ -215,6 +215,53 @@ func TestChildAuthorityIsParentAndRoleIntersection(t *testing.T) {
 	}
 }
 
+func TestDelegatingReadOnlyRoleRetainsOnlyAgentLifecycleWrites(t *testing.T) {
+	parent := tool.NewRegistry(nil, nil)
+	child := tool.NewRegistry(nil, nil)
+	register := func(registry *tool.Registry, name string, capability tool.Capability) {
+		t.Helper()
+		err := registry.Register(authorityTestTool{descriptor: tool.Descriptor{
+			Name: name, Description: name,
+			InputSchema: map[string]any{"type": "object"},
+			Visibility:  tool.VisibleModel, Capability: capability,
+			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelConcurrent,
+			SandboxRequirement: tool.SandboxNone,
+			Availability:       tool.AvailabilityAvailable,
+		}}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, registry := range []*tool.Registry{parent, child} {
+		register(registry, "file_read", tool.CapabilityRead)
+		register(registry, "file_write", tool.CapabilityWrite)
+		register(registry, "spawn_agent", tool.CapabilityWrite)
+		register(registry, "list_agents", tool.CapabilityRead)
+	}
+	security := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
+	restrictChildTools(security, app.ChildSpec{
+		AllowedTools: []string{"read", "search"}, CanDelegate: true,
+	}, parent, child)
+	decision := func(name string, capability tool.Capability) policy.Action {
+		return security.Evaluate(policy.Invocation{
+			CallID: name, Tool: name, Arguments: json.RawMessage(`{}`),
+			Capability: capability, Validated: true,
+		}).Action
+	}
+	spawnDecision := decision("spawn_agent", tool.CapabilityWrite)
+	listDecision := decision("list_agents", tool.CapabilityRead)
+	if spawnDecision == policy.ActionDeny || listDecision != policy.ActionAllow {
+		t.Fatalf(
+			"delegating read-only role lost Agent lifecycle tools: spawn=%s list=%s",
+			spawnDecision, listDecision,
+		)
+	}
+	if decision("file_read", tool.CapabilityRead) != policy.ActionAllow ||
+		decision("file_write", tool.CapabilityWrite) != policy.ActionDeny {
+		t.Fatal("delegating read-only role escaped its ordinary tool allowlist")
+	}
+}
+
 func TestPersistentSessionPublishesAgentSpawnLive(t *testing.T) {
 	workspace := t.TempDir()
 	store, err := state.Open(t.Context(), state.Options{

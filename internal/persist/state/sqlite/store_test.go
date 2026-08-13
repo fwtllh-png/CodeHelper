@@ -31,6 +31,7 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 		"turn_terminal_outbox", "turn_coordinator_leases",
 		"snapshots", "usage", "usage_turn_context", "automations", "automation_runs",
 		"agent_nodes", "agent_messages", "agent_results", "agent_budget_ledger",
+		"agent_integrations",
 		"repo_index_files", "repo_index_symbols", "repo_index_meta",
 		"task_attempts", "workflow_runs", "workflow_nodes", "spans",
 		"provider_capabilities",
@@ -58,7 +59,13 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 	assertTableColumns(t, store.DB(), "automations",
 		"task_executor", "task_max_attempts")
 	assertTableColumns(t, store.DB(), "agent_nodes",
-		"workspace_root", "session_id", "path", "revision", "operation_id")
+		"workspace_root", "session_id", "path", "execution_root", "revision",
+		"owned_paths_json",
+		"max_steps", "max_tokens", "max_cost_microunits",
+		"reserved_tokens", "reserved_microunits", "operation_id")
+	assertTableColumns(t, store.DB(), "agent_integrations",
+		"workspace_root", "agent_id", "preview_digest", "status",
+		"revision", "candidate_json", "source_sequence")
 }
 
 func TestTransactionCommitRollbackAndForeignKeys(t *testing.T) {

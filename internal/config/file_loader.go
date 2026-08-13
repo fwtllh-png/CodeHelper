@@ -2,9 +2,10 @@ package config
 
 import (
 	"fmt"
-	"github.com/pelletier/go-toml/v2"
 	"os"
 	"strings"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 type executionFileConfig struct {
@@ -36,6 +37,8 @@ type executionFileConfig struct {
 		Delegation  *string  `toml:"delegation"`
 		MaxDepth    *int     `toml:"max_depth"`
 		MaxParallel *int     `toml:"max_parallel"`
+		MaxResident *int     `toml:"max_resident"`
+		MaxTotal    *int     `toml:"max_total"`
 		MaxSteps    *int     `toml:"max_steps"`
 		MaxTokens   *uint64  `toml:"max_tokens"`
 		MaxCostUSD  *float64 `toml:"max_cost_usd"`
@@ -303,6 +306,8 @@ func applyExecutionFile(
 	applyString(input.Subagent.Delegation, &child.Delegation, fieldSubagentDelegation, source, provenance)
 	applyInt(input.Subagent.MaxDepth, &child.MaxDepth, fieldSubagentMaxDepth, source, provenance)
 	applyInt(input.Subagent.MaxParallel, &child.MaxParallel, fieldSubagentMaxParallel, source, provenance)
+	applyInt(input.Subagent.MaxResident, &child.MaxResident, fieldSubagentMaxResident, source, provenance)
+	applyInt(input.Subagent.MaxTotal, &child.MaxTotal, fieldSubagentMaxTotal, source, provenance)
 	applyInt(input.Subagent.MaxSteps, &child.MaxSteps, fieldSubagentMaxSteps, source, provenance)
 	applyUint64(input.Subagent.MaxTokens, &child.MaxTokens, fieldSubagentMaxTokens, source, provenance)
 	applyFloat64(input.Subagent.MaxCostUSD, &child.MaxCostUSD, fieldSubagentMaxCostUSD, source, provenance)

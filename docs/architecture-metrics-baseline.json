@@ -41,12 +41,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 64,
-        "production_lines": 7416,
+        "production_lines": 7486,
         "options_fields": 70,
         "mutex_fields": 5
       },
       "relaxations": {
-        "production_lines": "MA4 adds child authority derivation, approval source binding, and durable active-child restart observation"
+        "production_lines": "MA5 adds child-rooted nested Agent tools, inherited execution roots, and parent integration verification wiring"
       }
     },
     {
@@ -122,9 +122,6 @@
         "production_lines": 8990,
         "options_fields": 61,
         "mutex_fields": 9
-      },
-      "relaxations": {
-        "production_lines": "MA4 restores durable approval and input waits without duplicate host events and safely queues early decisions"
       }
     },
     {
@@ -136,9 +133,6 @@
         "production_lines": 7440,
         "options_fields": 18,
         "mutex_fields": 5
-      },
-      "relaxations": {
-        "production_lines": "MA4 routes parent approval decisions and recovered pending interactions to authoritative child threads"
       }
     },
     {
@@ -213,12 +207,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 4708,
+        "production_lines": 4742,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "MA4 adds structured child approval source and denial problem fields to the shared protocol"
+        "production_lines": "MA5 adds the retained agent.integration candidate and receipt event contract"
       }
     },
     {
@@ -239,9 +233,6 @@
       "limits": {
         "lines": 2062,
         "max_function_lines": 132
-      },
-      "relaxations": {
-        "lines": "MA4 preserves request identity while proxying approval decisions to child thread ownership"
       }
     },
     {
@@ -251,9 +242,6 @@
       "limits": {
         "lines": 467,
         "max_function_lines": 50
-      },
-      "relaxations": {
-        "lines": "MA4 derives child tool authority as the parent catalog and role contract intersection"
       }
     },
     {
@@ -308,10 +296,6 @@
       "limits": {
         "lines": 444,
         "max_function_lines": 351
-      },
-      "relaxations": {
-        "lines": "MA4 binds canonical agent approval source metadata during child engine construction",
-        "max_function_lines": "MA4 keeps child source binding in the existing runtime construction boundary"
       }
     },
     {
@@ -357,10 +341,6 @@
       "limits": {
         "lines": 232,
         "max_function_lines": 84
-      },
-      "relaxations": {
-        "lines": "MA4 canonicalizes subagent workspace identity before authority and host projection",
-        "max_function_lines": "MA4 performs canonical workspace derivation beside subagent construction"
       }
     },
     {
@@ -397,9 +377,6 @@
       "limits": {
         "lines": 584,
         "max_function_lines": 127
-      },
-      "relaxations": {
-        "lines": "MA4 clamps child posture and stores bounded recovered interaction queues on each engine"
       }
     },
     {

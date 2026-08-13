@@ -3,6 +3,7 @@
 package protocol
 
 var eventTraits = map[EventKind]EventTraits{
+	"agent.integration":    {"orchestration", "agent", "retained", "agent", false},
 	"agent.message":        {"orchestration", "agent", "retained", "agent", false},
 	"agent.spawned":        {"orchestration", "agent", "retained", "agent", false},
 	"agent.status":         {"orchestration", "agent", "retained", "agent", false},

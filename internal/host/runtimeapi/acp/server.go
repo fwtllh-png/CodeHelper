@@ -2376,6 +2376,8 @@ func (s *Server) workspaceVisible(event protocol.Event) bool {
 		workspace = data.WorkspaceRoot
 	case *protocol.AgentMessageData:
 		workspace = data.WorkspaceRoot
+	case *protocol.AgentIntegrationData:
+		workspace = data.WorkspaceRoot
 	case *protocol.ApprovalRequiredData:
 		if data.Source != nil {
 			workspace = data.Source.WorkspaceRoot

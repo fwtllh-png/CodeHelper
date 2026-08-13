@@ -77,7 +77,9 @@ func CanTransition(from, to Status) bool {
 		return to == StatusStarting || to == StatusClosed
 	case StatusIntegrating:
 		return to == StatusIntegrated || to == StatusIntegrationFailed
-	case StatusIntegrated, StatusIntegrationFailed:
+	case StatusIntegrationFailed:
+		return to == StatusIntegrating || to == StatusClosed
+	case StatusIntegrated:
 		return to == StatusClosed
 	default:
 		return false

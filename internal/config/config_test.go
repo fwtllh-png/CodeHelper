@@ -140,6 +140,32 @@ workspace = "same_workspace_serialized"
 	}
 }
 
+func TestLoadSubagentTreeLimitsFromFile(t *testing.T) {
+	path := writeConfig(t, `
+[execution.subagent]
+max_parallel = 3
+max_resident = 6
+max_total = 12
+`)
+	snapshot, err := Load(LoadOptions{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := snapshot.Config.Execution.Subagent
+	if child.MaxParallel != 3 || child.MaxResident != 6 || child.MaxTotal != 12 {
+		t.Fatalf("subagent tree limits = %+v", child)
+	}
+	for _, field := range []string{
+		fieldSubagentMaxParallel,
+		fieldSubagentMaxResident,
+		fieldSubagentMaxTotal,
+	} {
+		if snapshot.Provenance[field] != SourceFile {
+			t.Fatalf("provenance[%s] = %q", field, snapshot.Provenance[field])
+		}
+	}
+}
+
 func TestLoadRejectsUnknownSubagentDelegation(t *testing.T) {
 	path := writeConfig(t, `
 [execution.subagent]

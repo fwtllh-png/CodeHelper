@@ -96,6 +96,8 @@ recover_on_start = true
 delegation = "explicit"      # disabled | explicit | adaptive
 max_depth = 5
 max_parallel = 4
+max_resident = 8
+max_total = 16
 max_steps = 24
 max_tokens = 0
 max_cost_usd = 0
@@ -117,6 +119,10 @@ Agent Tree、Mailbox、Result 和 Budget Ledger 持久化在 Workspace State Sto
 每个 Agent 具有 Canonical Path 和 CAS Revision；终态 Result 与 Completion Outbox
 原子提交。Completion 自动通知 Parent，`wait_agent` 只是对同一事实的主动同步方式。
 Mailbox 使用稳定 Message ID 和 `Receive/Ack`，未确认消息在重启后重投。
+`max_parallel` 限制活跃 Child 数，`max_resident` 还计入仍保留 Result 或 Worktree 的
+已完成 Child，`max_total` 则限制整棵 Durable Tree 的累计 Spawn 数，包括已关闭
+Agent。Depth、Token 和 Cost Admission 同样作用于 Nested Agent；Child 只能收窄，
+不能扩大 Parent Budget。
 
 Child Authority 只能收紧当前 Session Profile。有效 Posture 遵循
 `never < suggest < auto < bypass`；写工具权限是 Parent Tool Catalog 与 Child Role

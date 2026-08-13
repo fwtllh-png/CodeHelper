@@ -255,6 +255,18 @@ func (s Snapshot) validateSubagent() error {
 	if child.MaxParallel < 1 {
 		return fieldError(fieldSubagentMaxParallel, s.Provenance, "must be positive")
 	}
+	if child.MaxResident < child.MaxParallel {
+		return fieldError(
+			fieldSubagentMaxResident, s.Provenance,
+			"must be at least execution.subagent.max_parallel",
+		)
+	}
+	if child.MaxTotal < child.MaxResident {
+		return fieldError(
+			fieldSubagentMaxTotal, s.Provenance,
+			"must be at least execution.subagent.max_resident",
+		)
+	}
 	if child.MaxSteps < 1 {
 		return fieldError(fieldSubagentMaxSteps, s.Provenance, "must be positive")
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -46,6 +47,13 @@ type Server struct {
 	listener net.Listener
 	done     chan error
 }
+
+var (
+	agentIDPattern       = regexp.MustCompile(`agent-[0-9]+`)
+	previewDigestPattern = regexp.MustCompile(
+		`preview_digest[^0-9a-fA-F]{1,32}([0-9a-fA-F]{64})`,
+	)
+)
 
 func Start(directory string) (*Server, error) {
 	configData, err := os.ReadFile(filepath.Join(directory, "fixture.json"))
@@ -139,9 +147,14 @@ func Start(directory string) (*Server, error) {
 				}
 			}
 		}
+		stream, expandErr := expandStream(selected[index], payload)
+		if expandErr != nil {
+			http.Error(writer, expandErr.Error(), http.StatusConflict)
+			return
+		}
 		writer.Header().Set("Content-Type", "text/event-stream")
 		writer.WriteHeader(http.StatusOK)
-		for _, line := range strings.SplitAfter(string(selected[index]), "\n") {
+		for _, line := range strings.SplitAfter(string(stream), "\n") {
 			if config.StreamDelayMS > 0 {
 				time.Sleep(time.Duration(config.StreamDelayMS) * time.Millisecond)
 			}
@@ -161,6 +174,54 @@ func Start(directory string) (*Server, error) {
 		result.done <- result.server.Serve(listener)
 	}()
 	return result, nil
+}
+
+func expandStream(stream []byte, payload map[string]any) ([]byte, error) {
+	rendered := string(stream)
+	for token, pattern := range map[string]*regexp.Regexp{
+		"{{agent_id}}":       agentIDPattern,
+		"{{preview_digest}}": previewDigestPattern,
+	} {
+		if !strings.Contains(rendered, token) {
+			continue
+		}
+		value, ok := latestMatch(payload["messages"], pattern)
+		if !ok {
+			return nil, fmt.Errorf("provider fixture placeholder %s has no request value", token)
+		}
+		rendered = strings.ReplaceAll(rendered, token, value)
+	}
+	return []byte(rendered), nil
+}
+
+func latestMatch(value any, pattern *regexp.Regexp) (string, bool) {
+	switch typed := value.(type) {
+	case []any:
+		for index := len(typed) - 1; index >= 0; index-- {
+			if match, ok := latestMatch(typed[index], pattern); ok {
+				return match, true
+			}
+		}
+	case map[string]any:
+		if content, ok := typed["content"]; ok {
+			if match, found := latestMatch(content, pattern); found {
+				return match, true
+			}
+		}
+		for _, item := range typed {
+			if match, ok := latestMatch(item, pattern); ok {
+				return match, true
+			}
+		}
+	case string:
+		matches := pattern.FindAllStringSubmatch(typed, -1)
+		if len(matches) == 0 {
+			return "", false
+		}
+		match := matches[len(matches)-1]
+		return match[len(match)-1], true
+	}
+	return "", false
 }
 
 func loadStreams(directory string, names []string) ([][]byte, error) {

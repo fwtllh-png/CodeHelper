@@ -16,6 +16,7 @@ export const operationKinds = [
 export type OperationKind = (typeof operationKinds)[number];
 
 export const eventKinds = [
+  "agent.integration",
   "agent.message",
   "agent.spawned",
   "agent.status",
@@ -70,6 +71,7 @@ export interface EventTraits {
   readonly terminal: boolean;
 }
 export const eventTraits = {
+  "agent.integration": {"class":"orchestration","item_owner":"agent","durability":"retained","correlation":"agent","terminal":false},
   "agent.message": {"class":"orchestration","item_owner":"agent","durability":"retained","correlation":"agent","terminal":false},
   "agent.spawned": {"class":"orchestration","item_owner":"agent","durability":"retained","correlation":"agent","terminal":false},
   "agent.status": {"class":"orchestration","item_owner":"agent","durability":"retained","correlation":"agent","terminal":false},
@@ -124,7 +126,7 @@ export type EventEnvelope = {
   readonly "data": Readonly<Record<string, unknown>>;
   readonly "id": string;
   readonly "item_id": string;
-  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "reasoning.signature" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "checkpoint.created" | "checkpoint.restored" | "checkpoint.forked" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
+  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "reasoning.signature" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "checkpoint.created" | "checkpoint.restored" | "checkpoint.forked" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "agent.integration" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
   readonly "operation_id": string;
   readonly "sequence": number;
   readonly "thread_id": string;
@@ -635,6 +637,20 @@ export interface OperationPayloadByKind {
   readonly "turn.start": TurnStartPayload;
   readonly "turn.steer": TurnSteerPayload;
 }
+
+export type AgentIntegrationData = {
+  readonly "agent_id": string;
+  readonly "agent_path": string;
+  readonly "conflicts"?: ReadonlyArray<string>;
+  readonly "detail"?: unknown;
+  readonly "message"?: string;
+  readonly "parent_path": string;
+  readonly "paths"?: ReadonlyArray<string>;
+  readonly "preview_digest": string;
+  readonly "session_id": string;
+  readonly "status": string;
+  readonly "workspace_root": string;
+};
 
 export type AgentMessageData = {
   readonly "body": unknown;
@@ -1372,6 +1388,7 @@ export type UsageData = {
 };
 
 export interface EventDataByKind {
+  readonly "agent.integration": AgentIntegrationData;
   readonly "agent.message": AgentMessageData;
   readonly "agent.spawned": AgentSpawnedData;
   readonly "agent.status": AgentStatusData;

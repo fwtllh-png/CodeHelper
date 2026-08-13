@@ -990,6 +990,44 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
 - Preview 后漂移不能使用旧 Digest Apply；
 - Depth、Parallel 与 Budget 在整个 Tree 生效。
 
+实施状态（2026-08-13）：`completed`。
+
+- `integrate_agent` 已提供 `preview`、`apply`、`discard` 和 `retry`。Preview
+  持久化不可变 Candidate 与精确 Change；Apply 必须提交对应 SHA-256 Preview
+  Digest，并在 Guard 授权前重新生成 Plan。Child Content、Result Turn、选择 Path
+  或 Parent Baseline 任一漂移都会使旧 Digest 在写入前 Fail Closed；
+- Owned Path 和 Live Write Claim 拒绝越界写与同路径写；不同路径 Candidate 可独立
+  Preview，并复用现有 Guard Resource Claim、Workspace Journal、Expected-write
+  Fingerprint 和 Atomic File Transaction 完成 Apply；
+- `agent_integrations` 投影 Candidate Revision 以及
+  `previewed -> applying -> applied|failed`、`previewed -> discarded` 状态机。
+  Startup Reconciliation 会在 Journal Recovery 后将中断 Apply 收敛为明确失败，也会
+  补齐已 Apply 但 Agent Status Commit 中断的 Candidate；Owned Path 与 Write Claim
+  同样在重启后重建；
+- Apply 生成包含 Changed Paths、Apply Time 和 Parent Workspace Verification 的
+  Integration Receipt；Verification Failed/Unavailable 与文件是否已经 Apply 明确
+  区分；
+- Nested Caller 由权威 Child Thread Identity 解析。伪造 Parent ID、控制 Sibling
+  或 Ancestor 均 Fail Closed；Child 只能操作自身 Descendant Subtree。可委派 Role
+  保留 Agent Lifecycle Tool 但不会获得普通写 Tool，Read-only Descendant 继承
+  Parent Worktree，Descendant Integration 以该 Parent Workspace 为目标；
+- Tree Admission 持久化执行 Depth、Active Parallel、Resident Node、Total Spawn
+  与 Token/Cost Reservation。每个 Child 只能收窄 Parent 的 Step/Token/Cost
+  Ceiling；Terminal/Close 释放 Reservation，Spend 与 Total Spawn 在重启后仍计费；
+- 生成的 retained `agent.integration` Event 由 Go、JSON Schema、ACP 和
+  TypeScript 共享。VS Code 可重放 Candidate/Receipt，将 Nested Agent 显示为真实
+  Tree，并在所属 Agent 下展示 Digest、Path、Conflict、Verification 与 Applied
+  Change；
+- Unit 与 Persistence Contract 覆盖 Child/Parent Stale Preview、Apply 前同路径
+  Conflict、Discard/Retry、Parent Verification、Candidate CAS、Applying/Applied
+  Crash Recovery、Nested Scope、Execution Root 继承和 Persistent Tree Budget；
+- 串行 `go test -p 1 ./...`、聚焦 Race、Protocol Contract、43/43 Architecture
+  Ratchet、VS Code Check 与全部 223 项测试、Docs/Book 门禁和
+  `make vscode-subagent-integration` 均通过。真实 Electron 验证一个 Parent Turn
+  在 Git Worktree 中执行 `spawn -> wait -> child approval proxy -> preview ->
+  apply -> parent verify -> complete`，并观察到
+  `previewed -> applying -> applied`、`integrated` 和最终 Parent 文件。
+
 ### MA6：Host 投影、Eval 与 Rollout
 
 交付：

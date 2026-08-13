@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -17,6 +18,7 @@ type AgentSpawnEdge struct {
 	ParentPath     string
 	ChildID        string
 	Path           string
+	ExecutionRoot  string
 	ThreadID       string
 	TurnID         string
 	Status         string
@@ -30,7 +32,13 @@ type AgentSpawnEdge struct {
 	Serialized     bool
 	BaseRevision   string
 	TaskName       string
+	OwnedPaths     []string
 	LastMessage    string
+	MaxSteps       int
+	MaxTokens      uint64
+	MaxCostMicros  uint64
+	ReservedTokens uint64
+	ReservedMicros uint64
 	SourceSequence protocol.Cursor
 	UpdatedAt      time.Time
 }
@@ -49,9 +57,11 @@ func (s *Store) ListAgentChildren(
 	}
 	rows, err := s.sqlite.DB().QueryContext(ctx, `
 		SELECT workspace_root, session_id, parent_agent_id, parent_path,
-		       agent_id, path, thread_id, turn_id, status, revision,
+		       agent_id, path, execution_root, thread_id, turn_id, status, revision,
 		       role, profile, stance, depth, worktree, isolated, serialized, base_revision,
-		       task_name, last_message, source_sequence, updated_at
+		       task_name, owned_paths_json, last_message, max_steps, max_tokens,
+		       max_cost_microunits, reserved_tokens, reserved_microunits,
+		       source_sequence, updated_at
 		FROM agent_nodes
 		WHERE workspace_root = ? AND parent_agent_id = ?
 		ORDER BY agent_id`, workspaceRoot, parentID)
@@ -63,18 +73,24 @@ func (s *Store) ListAgentChildren(
 	for rows.Next() {
 		var edge AgentSpawnEdge
 		var updated string
+		var ownedPaths []byte
 		var seq int64
 		if err := rows.Scan(
 			&edge.WorkspaceRoot, &edge.SessionID, &edge.ParentID, &edge.ParentPath,
-			&edge.ChildID, &edge.Path, &edge.ThreadID, &edge.TurnID,
+			&edge.ChildID, &edge.Path, &edge.ExecutionRoot, &edge.ThreadID, &edge.TurnID,
 			&edge.Status, &edge.Revision, &edge.Role, &edge.Profile,
 			&edge.Stance, &edge.Depth, &edge.Worktree,
 			&edge.Isolated, &edge.Serialized, &edge.BaseRevision,
-			&edge.TaskName, &edge.LastMessage, &seq, &updated,
+			&edge.TaskName, &ownedPaths, &edge.LastMessage, &edge.MaxSteps, &edge.MaxTokens,
+			&edge.MaxCostMicros, &edge.ReservedTokens, &edge.ReservedMicros,
+			&seq, &updated,
 		); err != nil {
 			return nil, err
 		}
 		edge.SourceSequence = protocol.Cursor(seq)
+		if err := json.Unmarshal(ownedPaths, &edge.OwnedPaths); err != nil {
+			return nil, err
+		}
 		if edge.UpdatedAt, err = time.Parse(time.RFC3339Nano, updated); err != nil {
 			return nil, err
 		}

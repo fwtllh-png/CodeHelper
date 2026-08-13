@@ -392,8 +392,8 @@ func allToolDescriptors(registry *tool.Registry) []tool.Descriptor {
 }
 
 func childRoleAllowsTool(spec app.ChildSpec, descriptor tool.Descriptor) bool {
-	if !spec.CanDelegate && isAgentLifecycleTool(descriptor.Name) {
-		return false
+	if isAgentLifecycleTool(descriptor.Name) {
+		return spec.CanDelegate
 	}
 	if len(spec.AllowedTools) == 0 {
 		return true

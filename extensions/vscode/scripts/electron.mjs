@@ -44,7 +44,7 @@ try {
   await mkdir(join(subagentWorkspace, ".vscode"), { recursive: true });
   await writeFile(
     join(subagentWorkspace, "codehelper.toml"),
-    "[execution.subagent]\nworkspace = \"same_workspace_serialized\"\n",
+    "[execution.subagent]\nworkspace = \"worktree\"\n",
   );
   await mkdir(join(workspaceA, ".vscode"), { recursive: true });
   await mkdir(join(workspaceB, ".vscode"), { recursive: true });
@@ -203,6 +203,13 @@ try {
         extensionTestsPath: testOutput,
         extensionTestsEnv: {
           CODEHELPER_ELECTRON_SCENARIO: scenario,
+          ...(scenario === "subagent"
+            ? {
+              CODEHELPER_VERIFY_MODE: "soft",
+              CODEHELPER_VERIFY_SCOPE: "affected",
+              CODEHELPER_VERIFY_COMMAND: "test -f child-note.txt",
+            }
+            : {}),
           ...(expectedHostArch === undefined
             ? {}
             : { CODEHELPER_EXPECTED_HOST_ARCH: expectedHostArch }),

@@ -65,6 +65,8 @@ const (
 	fieldSubagentDelegation  = "execution.subagent.delegation"
 	fieldSubagentMaxDepth    = "execution.subagent.max_depth"
 	fieldSubagentMaxParallel = "execution.subagent.max_parallel"
+	fieldSubagentMaxResident = "execution.subagent.max_resident"
+	fieldSubagentMaxTotal    = "execution.subagent.max_total"
 	fieldSubagentMaxSteps    = "execution.subagent.max_steps"
 	fieldSubagentMaxTokens   = "execution.subagent.max_tokens"
 	fieldSubagentMaxCostUSD  = "execution.subagent.max_cost_usd"
@@ -184,6 +186,8 @@ func defaultProvenance() map[string]Source {
 		fieldSubagentDelegation:  SourceDefault,
 		fieldSubagentMaxDepth:    SourceDefault,
 		fieldSubagentMaxParallel: SourceDefault,
+		fieldSubagentMaxResident: SourceDefault,
+		fieldSubagentMaxTotal:    SourceDefault,
 		fieldSubagentMaxSteps:    SourceDefault,
 		fieldSubagentMaxTokens:   SourceDefault,
 		fieldSubagentMaxCostUSD:  SourceDefault,
