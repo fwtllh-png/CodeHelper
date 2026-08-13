@@ -2,7 +2,7 @@
 
 简体中文 | [English](../en/approval-architecture-upgrade.md)
 
-> 状态：A0-A1 已于 2026-08-13 完成。A2-A4 属于目标设计，不代表当前已交付能力。
+> 状态：A0-A2 已于 2026-08-13 完成。A3-A4 属于目标设计，不代表当前已交付能力。
 >
 > 范围：Tool Guard Policy、持久化授权、Approval 协议、Runtime 恢复、ACP
 > 路由、VS Code 展示与 Approval 可观测性。
@@ -406,6 +406,15 @@ Risk 在 A4 前仍由人工审批，Process Mutation 与 External Mutation 保�
 - 保持现有协议，并以 Shadow Mode 比较新旧决策。
 
 ### A2：Typed Grant 与 Amendment
+
+实施状态（2026-08-13）：`completed`。
+
+Runtime 现在为每个可复用 Approval 生成唯一 Typed Grant，其 SHA-256 Key 同时用于
+Session Cache 复用、持久化 Permission 匹配和 UI Grant Preview。Shell Grant 绑定
+精确 Canonical Command、cwd、声明 Resource 与 Write Set；File Grant 绑定完整
+Canonical Path Set；Network Grant 绑定 Protocol 与 Host；Agent Grant 绑定 Operation
+与 Agent Resource。无法生成窄 Grant 的 Request 只提供 `once`。缺少 Typed
+`grant_key` 的持久化 Allow 将 Fail Closed。
 
 - 替换 Approval Cache 通用 Resource Key；
 - 结构化解析 Shell Command；

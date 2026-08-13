@@ -224,9 +224,10 @@ func TestApprovalIsBoundToCallArgumentsResourcesScopeAndExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reordered, err := NewApprovalRequest(invocation(
+	reorderedCall := invocation(
 		"shell_run", "call-1", `{"command":"go test ./...","cwd":"."}`,
-	), now.Add(time.Minute))
+	)
+	reordered, err := NewApprovalRequest(reorderedCall, now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +246,8 @@ func TestApprovalIsBoundToCallArgumentsResourcesScopeAndExpiry(t *testing.T) {
 	if err := cache.Add(request, ApprovalOnce); err != nil {
 		t.Fatal(err)
 	}
-	if !cache.Match(reordered, now) || cache.Match(reordered, now) {
+	if !cache.MatchInvocation(reorderedCall, now) ||
+		cache.MatchInvocation(reorderedCall, now) {
 		t.Fatal("once approval was not consumed exactly once")
 	}
 	sessionRequest, err := NewApprovalRequestForScope(base, ApprovalSession, now.Add(time.Minute))
@@ -255,10 +257,11 @@ func TestApprovalIsBoundToCallArgumentsResourcesScopeAndExpiry(t *testing.T) {
 	if err := cache.Add(sessionRequest, ApprovalSession); err != nil {
 		t.Fatal(err)
 	}
-	if !cache.Match(sessionRequest, now) || !cache.Match(sessionRequest, now.Add(30*time.Second)) {
+	if !cache.MatchInvocation(base, now) ||
+		!cache.MatchInvocation(base, now.Add(30*time.Second)) {
 		t.Fatal("session approval was not reusable before expiry")
 	}
-	if cache.Match(sessionRequest, now.Add(2*time.Minute)) {
+	if cache.MatchInvocation(base, now.Add(2*time.Minute)) {
 		t.Fatal("expired approval matched")
 	}
 
@@ -316,20 +319,20 @@ func TestTightenPermissionNeverExpandsAuthority(t *testing.T) {
 func TestApprovalCacheIsBoundedAndEvictsOldest(t *testing.T) {
 	now := time.Unix(4000, 0)
 	cache := NewApprovalCacheWithLimit(2)
-	requests := make([]ApprovalRequest, 3)
-	for index := range requests {
+	calls := make([]Invocation, 3)
+	for index := range calls {
+		calls[index] = invocation(
+			"file_write", string(rune('a'+index)),
+			`{"path":"`+string(rune('a'+index))+`"}`,
+		)
 		request, err := NewApprovalRequestForScope(
-			invocation(
-				"file_write", string(rune('a'+index)),
-				`{"path":"`+string(rune('a'+index))+`"}`,
-			),
+			calls[index],
 			ApprovalSession,
 			now.Add(time.Hour),
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		requests[index] = request
 		if err := cache.Add(request, ApprovalSession); err != nil {
 			t.Fatal(err)
 		}
@@ -337,10 +340,11 @@ func TestApprovalCacheIsBoundedAndEvictsOldest(t *testing.T) {
 	if len(cache.entries) != 2 {
 		t.Fatalf("cache size = %d, want 2", len(cache.entries))
 	}
-	if cache.Match(requests[0], now) {
+	if cache.MatchInvocation(calls[0], now) {
 		t.Fatal("oldest approval remained after bounded eviction")
 	}
-	if !cache.Match(requests[1], now) || !cache.Match(requests[2], now) {
+	if !cache.MatchInvocation(calls[1], now) ||
+		!cache.MatchInvocation(calls[2], now) {
 		t.Fatal("new approvals were unexpectedly evicted")
 	}
 }

@@ -45,11 +45,7 @@ func TestApprovalCacheHostScopedSessionReuse(t *testing.T) {
 		},
 		Capability: CapabilityNetwork, Validated: true,
 	}
-	hostScoped, ok := HostScopedInvocation(first)
-	if !ok {
-		t.Fatal("expected host-scoped invocation")
-	}
-	request, err := NewApprovalRequestForScope(hostScoped, ApprovalSession, now.Add(time.Hour))
+	request, err := NewApprovalRequestForScope(first, ApprovalSession, now.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

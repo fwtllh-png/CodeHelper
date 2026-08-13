@@ -703,6 +703,11 @@ export type ApprovalRequiredData = {
       readonly "id": string;
     };
   readonly "expires_at": string;
+  readonly "grant_preview"?: {
+      readonly "key": string;
+      readonly "kind": string;
+      readonly "summary": string;
+    };
   readonly "modifiable_arguments": ReadonlyArray<string>;
   readonly "network"?: {
       readonly "host": string;

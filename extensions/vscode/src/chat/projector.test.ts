@@ -325,6 +325,11 @@ void test("ChatProjector tracks approval identity and resolution", () => {
     arguments_digest: "a".repeat(64),
     resources: [{ kind: "file", path: "result.txt", access: "write" }],
     allowed_scopes: ["once", "session"],
+    grant_preview: {
+      kind: "file",
+      key: "d".repeat(64),
+      summary: "workspace paths: file:result.txt:write",
+    },
     expires_at: "2026-08-04T12:00:00Z",
     replacement_allowed: false,
     modifiable_arguments: [],
@@ -355,6 +360,7 @@ void test("ChatProjector tracks approval identity and resolution", () => {
   assert.equal(pending?.turnId, "turn_1");
   assert.equal(pending.editPlan?.files[0]?.after, "created\n");
   assert.equal(pending.source?.agentPath, "/root/implement_parser");
+  assert.equal(pending.grantPreview?.key, "d".repeat(64));
   projector.apply(event(2, "approval.resolved", {
     request_id: "approval_1",
     decision: "approve",

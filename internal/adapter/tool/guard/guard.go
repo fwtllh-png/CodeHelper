@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -39,6 +40,7 @@ type ApprovalRequest struct {
 	// Network is set for host-scoped egress approvals.
 	Network  *NetworkApprovalContext `json:"network,omitempty"`
 	EditPlan *tool.EditPlan          `json:"edit_plan,omitempty"`
+	Grant    *policy.Grant           `json:"grant,omitempty"`
 }
 
 // FileChange is one workspace path a tool invocation actually changed, derived
@@ -1094,11 +1096,21 @@ func (g *Guard) waitForApproval(
 	}
 	request.RequestID = requestID
 	fields := schemaProperties(invocation.Descriptor.InputSchema)
-	scopes := []policy.ApprovalScope{
-		policy.ApprovalOnce, policy.ApprovalSession, policy.ApprovalAlways,
+	scopes := []policy.ApprovalScope{policy.ApprovalOnce}
+	if request.Grant != nil {
+		scopes = append(scopes, policy.ApprovalSession)
+		if g.persistAllow != nil {
+			scopes = append(scopes, policy.ApprovalAlways)
+		}
 	}
 	if len(opts.AllowedScopes) != 0 {
-		scopes = append([]policy.ApprovalScope(nil), opts.AllowedScopes...)
+		allowed := make(map[policy.ApprovalScope]bool, len(opts.AllowedScopes))
+		for _, scope := range opts.AllowedScopes {
+			allowed[scope] = true
+		}
+		scopes = slices.DeleteFunc(scopes, func(scope policy.ApprovalScope) bool {
+			return !allowed[scope]
+		})
 	}
 	replacementAllowed := !opts.DisableReplace
 	modifiable := fields
@@ -1111,7 +1123,7 @@ func (g *Guard) waitForApproval(
 		Resources: request.Resources, AllowedScopes: scopes,
 		ExpiresAt: expiresAt, ReplacementAllowed: replacementAllowed,
 		ModifiableArguments: modifiable, Reason: opts.Reason, Network: opts.Network,
-		EditPlan: opts.EditPlan,
+		EditPlan: opts.EditPlan, Grant: request.Grant,
 	}
 	if recovering {
 		event = recovered
@@ -1189,18 +1201,9 @@ func (g *Guard) waitForApproval(
 		if decision.Scope == "" {
 			decision.Scope = policy.ApprovalOnce
 		}
-		if len(opts.AllowedScopes) != 0 {
-			allowed := false
-			for _, scope := range opts.AllowedScopes {
-				if decision.Scope == scope {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return ApprovalDecision{}, &policy.DecisionError{
-					Code: "approval_scope_denied", Reason: "approval scope is not allowed",
-				}
+		if !slices.Contains(scopes, decision.Scope) {
+			return ApprovalDecision{}, &policy.DecisionError{
+				Code: "approval_scope_denied", Reason: "approval scope is not allowed",
 			}
 		}
 		if decision.Scope == policy.ApprovalAlways {
@@ -1238,14 +1241,9 @@ func (g *Guard) RestoreApproval(request ApprovalRequest) error {
 func (g *Guard) cacheApproval(
 	invocation policy.Invocation, decision ApprovalDecision,
 ) error {
-	toCache := invocation
-	if hostScoped, ok := policy.HostScopedInvocation(invocation); ok {
-		// Session/Always grants are host-scoped so URLs on the same host reuse.
-		toCache = hostScoped
-	}
 	if decision.Scope == policy.ApprovalAlways {
 		if g.persistAllow != nil {
-			if err := g.persistAllow(toCache); err != nil {
+			if err := g.persistAllow(invocation); err != nil {
 				return fmt.Errorf("persist always allow: %w", err)
 			}
 		}
@@ -1256,13 +1254,11 @@ func (g *Guard) cacheApproval(
 		}
 	}
 	if decision.Scope == policy.ApprovalOnce {
-		// Once stays exact (full args + resources) so a single URL grant does
-		// not silently cover other paths on the same host.
-		toCache = invocation
+		// Once stays exact (full args + resources).
 	}
-	g.grantNetworkHosts(toCache.Resources)
+	g.grantNetworkHosts(invocation.Resources)
 	request, err := policy.NewApprovalRequestForScope(
-		toCache, decision.Scope, decision.ExpiresAt,
+		invocation, decision.Scope, decision.ExpiresAt,
 	)
 	if err != nil {
 		return err

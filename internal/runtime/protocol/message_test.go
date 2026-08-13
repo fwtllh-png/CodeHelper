@@ -369,7 +369,10 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 				Kind: "file", Path: "/workspace/x", Access: "write",
 			}},
 			AllowedScopes: []ApprovalScope{ApprovalScopeOnce, ApprovalScopeSession},
-			ExpiresAt:     time.Now().Add(time.Minute), ReplacementAllowed: true,
+			GrantPreview: &ApprovalGrantPreview{
+				Kind: "file", Key: strings.Repeat("d", 64), Summary: "workspace/x",
+			},
+			ExpiresAt: time.Now().Add(time.Minute), ReplacementAllowed: true,
 			ModifiableArguments: []string{"path"},
 			Source: &ApprovalSource{
 				Kind: "agent", AgentID: "agent-1",

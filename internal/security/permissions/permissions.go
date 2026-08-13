@@ -1,8 +1,6 @@
-// Package permissions loads and persists workspace permissions.toml rules.
 package permissions
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -16,22 +14,20 @@ import (
 
 const FileName = "permissions.toml"
 
-// Entry is one deny/ask/allow stanza in permissions.toml.
 type Entry struct {
 	Tool          string `toml:"tool"`
 	Resource      string `toml:"resource,omitempty"`
 	CommandPrefix string `toml:"command_prefix,omitempty"`
+	GrantKey      string `toml:"grant_key,omitempty"`
 	Code          string `toml:"code,omitempty"`
 }
 
-// Document is the on-disk permissions schema.
 type Document struct {
 	Deny  []Entry `toml:"deny,omitempty"`
 	Ask   []Entry `toml:"ask,omitempty"`
 	Allow []Entry `toml:"allow,omitempty"`
 }
 
-// Bundle is the compiled permissions file.
 type Bundle struct {
 	Path    string
 	Present bool
@@ -75,6 +71,9 @@ func AppendAllow(workspace string, rule policy.Rule) (Bundle, error) {
 	if rule.Tool == "" {
 		return Bundle{}, errors.New("allow rule tool is required")
 	}
+	if len(rule.GrantKey) != 64 {
+		return Bundle{}, errors.New("allow rule grant_key must be a SHA-256")
+	}
 	rule.Action = policy.ActionAllow
 	bundle, err := Load(workspace)
 	if err != nil {
@@ -82,7 +81,7 @@ func AppendAllow(workspace string, rule policy.Rule) (Bundle, error) {
 	}
 	entry := Entry{
 		Tool: rule.Tool, Resource: rule.Resource,
-		CommandPrefix: rule.CommandPrefix, Code: rule.Code,
+		CommandPrefix: rule.CommandPrefix, GrantKey: rule.GrantKey, Code: rule.Code,
 	}
 	for _, existing := range bundle.Doc.Allow {
 		if entryEqual(existing, entry) {
@@ -102,44 +101,15 @@ func AppendAllow(workspace string, rule policy.Rule) (Bundle, error) {
 	return bundle, nil
 }
 
-// RuleFromInvocation builds a durable allow rule for shell/file tools.
 func RuleFromInvocation(invocation policy.Invocation) (policy.Rule, error) {
-	toolName := strings.TrimSpace(invocation.Tool)
-	if toolName == "" {
-		return policy.Rule{}, errors.New("invocation tool is required")
+	grant, ok := policy.GrantForInvocation(invocation)
+	if !ok {
+		return policy.Rule{}, errors.New("invocation has no persistable typed grant")
 	}
-	switch {
-	case isShellTool(toolName):
-		prefix, err := commandPrefix(invocation.Arguments)
-		if err != nil {
-			return policy.Rule{}, err
-		}
-		return policy.Rule{
-			Tool: toolName, CommandPrefix: prefix, Action: policy.ActionAllow,
-			Code: "permissions_always_allow",
-		}, nil
-	case isFileWriteTool(toolName):
-		resource, err := primaryWritePath(invocation)
-		if err != nil {
-			return policy.Rule{}, err
-		}
-		return policy.Rule{
-			Tool: toolName, Resource: resource, Action: policy.ActionAllow,
-			Code: "permissions_always_allow",
-		}, nil
-	default:
-		resource := "*"
-		for _, value := range invocation.Resources {
-			if value.Kind == "host" && strings.TrimSpace(value.ID) != "" {
-				resource = strings.ToLower(strings.TrimSpace(value.ID))
-				break
-			}
-		}
-		return policy.Rule{
-			Tool: toolName, Resource: resource, Action: policy.ActionAllow,
-			Code: "permissions_always_allow",
-		}, nil
-	}
+	return policy.Rule{
+		Tool: invocation.Tool, GrantKey: grant.Key, Action: policy.ActionAllow,
+		Code: "permissions_always_allow",
+	}, nil
 }
 
 func compile(doc Document) ([]policy.Rule, error) {
@@ -149,9 +119,13 @@ func compile(doc Document) ([]policy.Rule, error) {
 			if strings.TrimSpace(entry.Tool) == "" {
 				return errors.New("permissions entry tool is required")
 			}
+			if action == policy.ActionAllow && len(entry.GrantKey) != 64 {
+				return errors.New("permissions allow entry requires a SHA-256 grant_key")
+			}
 			rules = append(rules, policy.Rule{
 				Tool: entry.Tool, Resource: entry.Resource,
-				CommandPrefix: entry.CommandPrefix, Action: action, Code: entry.Code,
+				CommandPrefix: entry.CommandPrefix, GrantKey: entry.GrantKey,
+				Action: action, Code: entry.Code,
 			})
 		}
 		return nil
@@ -185,52 +159,6 @@ func writeDocument(path string, doc Document) error {
 
 func entryEqual(a, b Entry) bool {
 	return a.Tool == b.Tool && a.Resource == b.Resource &&
-		a.CommandPrefix == b.CommandPrefix && a.Code == b.Code
-}
-
-func isShellTool(name string) bool {
-	switch name {
-	case "shell_run", "shell_pty", "task_shell_start", "task_shell_wait":
-		return true
-	default:
-		return strings.HasPrefix(name, "task_shell_")
-	}
-}
-
-func isFileWriteTool(name string) bool {
-	switch name {
-	case "file_write", "file_edit", "file_patch":
-		return true
-	default:
-		return false
-	}
-}
-
-func commandPrefix(raw json.RawMessage) (string, error) {
-	var input struct {
-		Command string `json:"command"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return "", fmt.Errorf("shell arguments: %w", err)
-	}
-	fields := strings.Fields(strings.TrimSpace(input.Command))
-	if len(fields) == 0 {
-		return "", errors.New("shell command is empty")
-	}
-	return fields[0], nil
-}
-
-func primaryWritePath(invocation policy.Invocation) (string, error) {
-	for _, resource := range invocation.Resources {
-		if resource.Kind == "file" && resource.Path != "" {
-			return filepath.ToSlash(filepath.Clean(resource.Path)), nil
-		}
-	}
-	var input struct {
-		Path string `json:"path"`
-	}
-	if err := json.Unmarshal(invocation.Arguments, &input); err == nil && strings.TrimSpace(input.Path) != "" {
-		return filepath.ToSlash(filepath.Clean(input.Path)), nil
-	}
-	return "", errors.New("write path is required for allow persistence")
+		a.CommandPrefix == b.CommandPrefix && a.GrantKey == b.GrantKey &&
+		a.Code == b.Code
 }

@@ -738,7 +738,11 @@ async function verifyNativeFlows(
   const terminals = new Map<string, string>();
   const outputTurns = new Set<string>();
   const waiters = new Map<string, (kind: string) => void>();
-  const approvals = new Map<string, string>();
+  const approvals = new Map<string, {
+    readonly requestId: string;
+    readonly scopes: readonly string[];
+    readonly grant?: { readonly kind: string; readonly key: string; readonly summary: string };
+  }>();
   const resolvedApprovals = new Set<string>();
   const subscription = api.onRuntimeEvent((event, replayed) => {
     if (replayed || isUnknownEvent(event)) {
@@ -751,7 +755,13 @@ async function verifyNativeFlows(
     } else if (event.kind === "turn.receipt") {
       receipts.set(event.turn_id, event.data.editor_context);
     } else if (event.kind === "approval.required") {
-      approvals.set(event.turn_id, event.data.request_id);
+      approvals.set(event.turn_id, {
+        requestId: event.data.request_id,
+        scopes: event.data.allowed_scopes,
+        ...(event.data.grant_preview === undefined
+          ? {}
+          : { grant: event.data.grant_preview }),
+      });
     } else if (event.kind === "approval.resolved") {
       resolvedApprovals.add(event.data.request_id);
     } else if (event.kind === "turn.completed" ||
@@ -1691,7 +1701,7 @@ async function verifySessionToolCatalog(api: ExtensionAPI): Promise<void> {
 async function verifyChangesReview(
   api: ExtensionAPI,
   document: vscode.TextDocument,
-  approvals: ReadonlyMap<string, string>,
+  approvals: ReadonlyMap<string, unknown>,
   terminals: ReadonlyMap<string, string>,
 ): Promise<void> {
   const turnId = await startChangesTurn(document);
@@ -1735,7 +1745,11 @@ async function startChangesTurn(
 async function verifyHighRiskApproval(
   api: ExtensionAPI,
   workspace: vscode.WorkspaceFolder,
-  approvals: ReadonlyMap<string, string>,
+  approvals: ReadonlyMap<string, {
+    readonly requestId: string;
+    readonly scopes: readonly string[];
+    readonly grant?: { readonly kind: string; readonly key: string; readonly summary: string };
+  }>,
   resolved: ReadonlySet<string>,
   terminals: ReadonlyMap<string, string>,
 ): Promise<void> {
@@ -1750,14 +1764,20 @@ async function verifyHighRiskApproval(
     () => approvals.has(turn.turnId),
     "high risk process did not request approval",
   );
-  const requestId = approvals.get(turn.turnId);
-  assert.ok(requestId);
-  await api.testApprovePending?.();
+  const approval = approvals.get(turn.turnId);
+  assert.ok(approval);
+  assert.deepEqual(approval.scopes, ["once", "session"]);
+  assert.ok(approval.grant);
+  assert.equal(approval.grant.kind, "shell");
+  assert.equal(approval.grant.key.length, 64);
+  assert.match(approval.grant.summary, /approved high risk mutation/u);
+  assert.ok(api.testApprovePending);
+  await api.testApprovePending();
   assert.equal(
     await waitForTerminalWithApprovals(api, turn.turnId, terminals),
     "turn.completed",
   );
-  assert.equal(resolved.has(requestId), true);
+  assert.equal(resolved.has(approval.requestId), true);
   assert.equal(
     new TextDecoder().decode(await vscode.workspace.fs.readFile(
       vscode.Uri.joinPath(workspace.uri, "risk.txt"),
