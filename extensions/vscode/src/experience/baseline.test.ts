@@ -470,6 +470,7 @@ void test("Setup and Repair preserve trust and consequential-action rules", asyn
 
 void test("Approval uses one accessible inline decision surface", async () => {
   const view = await sourceFile("chat", "view.ts");
+  const styles = await sourceFile("chat", "webview", "styles.css");
   const transcript = await sourceFile("chat", "webview", "transcript.ts");
 
   assert.doesNotMatch(view, /#showApproval|#modalApprovals|approvalDialogContent/u);
@@ -480,6 +481,11 @@ void test("Approval uses one accessible inline decision surface", async () => {
   assert.match(transcript, /"Request details"/u);
   assert.match(transcript, /trusted \? reusable : \[\]/u);
   assert.match(transcript, /pending approvals; scroll horizontally/u);
+  assert.match(styles, /@media \(max-height: 320px\)[\s\S]+approval-card:has\(\.approval-actions\)/u);
+  assert.match(
+    view,
+    /const revealTurnId = state\.revealTurnId \?\?[\s\S]+projector\.pendingApprovals\(\)\.at\(-1\)\?\.turnId/u,
+  );
 });
 
 async function sourceFile(...segments: string[]): Promise<string> {

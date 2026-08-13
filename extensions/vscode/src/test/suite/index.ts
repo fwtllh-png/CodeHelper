@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { promisify } from "node:util";
 
 import * as vscode from "vscode";
 
@@ -14,6 +18,7 @@ import type { WorkspaceRuntime } from "../../workspace/registry.js";
 import type { EditPlanPreview } from "../../edits/preview.js";
 
 const extensionID = "codehelper.codehelper-vscode";
+const execFile = promisify(execFileCallback);
 const expectedViews = [
   "codehelper.chat",
   "codehelper.changes",
@@ -747,9 +752,28 @@ async function verifyNativeFlows(
     readonly grant?: { readonly kind: string; readonly key: string; readonly summary: string };
   }>();
   const resolvedApprovals = new Set<string>();
+  const evidenceDir = process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"];
+  const evidenceEvents: unknown[] = [];
+  let capturePath: string | undefined;
+  if (evidenceDir !== undefined) {
+    await mkdir(evidenceDir, { recursive: true });
+    capturePath = await vscode.commands.executeCommand<string>(
+      "codehelper.startRuntimeCapture",
+    );
+  }
   const subscription = api.onRuntimeEvent((event, replayed) => {
     if (replayed || isUnknownEvent(event)) {
       return;
+    }
+    if (evidenceDir !== undefined && (
+      event.kind.startsWith("approval.") ||
+      event.kind === "turn.started" ||
+      event.kind === "turn.completed" ||
+      event.kind === "turn.failed" ||
+      event.kind === "tool.start" ||
+      event.kind === "tool.result"
+    )) {
+      evidenceEvents.push(event);
     }
     if (event.kind === "turn.started") {
       started.set(event.turn_id, event.data.editor_context);
@@ -839,6 +863,29 @@ async function verifyNativeFlows(
     }
   } finally {
     subscription.dispose();
+    if (evidenceDir !== undefined) {
+      await vscode.commands.executeCommand("codehelper.stopRuntimeCapture");
+      if (capturePath !== undefined) {
+        const preserved = join(evidenceDir, "runtime-capture.jsonl");
+        await copyFile(capturePath, preserved);
+        capturePath = preserved;
+      }
+      await writeFile(
+        join(evidenceDir, "approval-evidence.json"),
+        JSON.stringify({
+          schema_version: 1,
+          prompts: [
+            "Generate focused tests for the selected code",
+            "Run the declared high risk workspace mutation",
+          ],
+          runtime_capture: capturePath,
+          approvals: [...approvals.entries()],
+          resolved_approval_ids: [...resolvedApprovals],
+          terminals: [...terminals.entries()],
+          events: evidenceEvents,
+        }, null, 2),
+      );
+    }
   }
 }
 
@@ -1783,6 +1830,13 @@ async function verifyHighRiskApproval(
   assert.equal(approval.grant.kind, "shell");
   assert.equal(approval.grant.key.length, 64);
   assert.match(approval.grant.summary, /approved high risk mutation/u);
+  if (process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"] !== undefined) {
+    await vscode.commands.executeCommand("codehelper.chat.focus");
+    for (let index = 0; index < 8; index++)
+      await vscode.commands.executeCommand("workbench.action.increaseViewSize");
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    await captureApprovalScreenshot("approval-pending.png");
+  }
   assert.ok(api.testApprovePending);
   await api.testApprovePending();
   assert.equal(
@@ -1790,12 +1844,51 @@ async function verifyHighRiskApproval(
     "turn.completed",
   );
   assert.equal(resolved.has(approval.requestId), true);
+  if (process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"] !== undefined) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await captureApprovalScreenshot("approval-resolved.png");
+  }
   assert.equal(
     new TextDecoder().decode(await vscode.workspace.fs.readFile(
       vscode.Uri.joinPath(workspace.uri, "risk.txt"),
     )),
     "approved high risk mutation\n",
   );
+}
+
+async function captureApprovalScreenshot(name: string): Promise<void> {
+  const directory = process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"];
+  const port = process.env["CODEHELPER_APPROVAL_DEBUG_PORT"];
+  assert.ok(directory && port);
+  const response = await fetch(`http://127.0.0.1:${port}/json/list`);
+  const targets = await response.json() as readonly {
+      readonly type?: string;
+      readonly title?: string;
+      readonly webSocketDebuggerUrl?: string;
+    }[];
+  const target = targets.find((value) =>
+    value.type === "page" &&
+    value.webSocketDebuggerUrl !== undefined);
+  assert.ok(target?.webSocketDebuggerUrl, "VS Code Renderer CDP target unavailable");
+  const script = [
+    "const fs = require('node:fs');",
+    "const socket = new WebSocket(process.argv[1]);",
+    "socket.onopen = () => socket.send(JSON.stringify({",
+    "id: 1, method: 'Page.captureScreenshot',",
+    "params: { format: 'png', fromSurface: true, captureBeyondViewport: false }",
+    "}));",
+    "socket.onmessage = (message) => {",
+    "const response = JSON.parse(String(message.data));",
+    "if (response.id !== 1) return;",
+    "if (!response.result?.data) throw new Error('CDP screenshot failed');",
+    "fs.writeFileSync(process.argv[2], Buffer.from(response.result.data, 'base64'));",
+    "socket.close();",
+    "};",
+    "socket.onerror = () => { process.exitCode = 1; };",
+  ].join("");
+  await execFile("node", [
+    "-e", script, target.webSocketDebuggerUrl, join(directory, name),
+  ]);
 }
 
 async function verifyDiagnosticActions(

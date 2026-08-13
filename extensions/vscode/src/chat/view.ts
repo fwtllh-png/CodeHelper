@@ -283,24 +283,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   ): void {
     const projector = this.#projector(root.rootId, sessionId);
     projector.apply(event);
-    if (!isUnknownEvent(event) && event.kind === "tool.catalog.changed") {
+    if (!isUnknownEvent(event) && event.kind === "tool.catalog.changed")
       this.#state(root.rootId).composers.clear();
-    }
     this.#scheduleFlush();
-    if (replayed || isUnknownEvent(event)) {
-      return;
-    }
+    if (replayed || isUnknownEvent(event)) return;
     if (event.kind === "approval.resolved") {
-      this.#submittedApprovals.delete(
-        sessionKey(root.rootId, sessionId, event.data.request_id),
-      );
+      this.#submittedApprovals.delete(sessionKey(
+        root.rootId, sessionId, event.data.request_id,
+      ));
     } else if (event.kind === "input.required") {
-      const card = projector.pendingInputs().find(
-        (input) => input.requestId === event.data.request_id,
-      );
-      if (card !== undefined) {
-        void this.#showInput(root, sessionId, card);
-      }
+      const card = projector.pendingInputs().find((input) =>
+        input.requestId === event.data.request_id);
+      if (card !== undefined) void this.#showInput(root, sessionId, card);
     }
   }
 
@@ -1115,6 +1109,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       const projector = selected === undefined
         ? new ChatProjector()
         : this.#projector(root.rootId, selected.sessionId);
+      const revealTurnId = state.revealTurnId ??
+        projector.pendingApprovals().at(-1)?.turnId;
       const resources = projectChatResources(
         projector.snapshot(),
         root.rootId,
@@ -1162,9 +1158,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         selectedRootId: root.rootId,
         selectedRootLabel: root.label,
         sessions,
-        ...(state.revealTurnId === undefined
+        ...(revealTurnId === undefined
           ? {}
-          : { revealTurnId: state.revealTurnId }),
+          : { revealTurnId }),
         ...(state.sessionSearch === undefined
           ? {}
           : { sessionSearch: state.sessionSearch }),
@@ -1491,15 +1487,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   #availableSessions(root: WorkspaceRuntime): readonly ChatSessionSummary[] {
-    return root.controller.snapshot.state === "ready"
-      ? root.controller.sessions()
-      : [];
+    return root.controller.snapshot.state === "ready" ? root.controller.sessions() : [];
   }
 
   #selectedSession(root: WorkspaceRuntime): ChatSessionSummary {
-    const session = this.#availableSessions(root).find(
-      (candidate) => candidate.selected,
-    );
+    const session = this.#availableSessions(root).find((candidate) => candidate.selected);
     if (session === undefined) throw new Error("no Chat session is selected");
     return session;
   }

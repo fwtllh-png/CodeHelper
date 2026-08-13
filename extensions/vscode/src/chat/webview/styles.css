@@ -706,6 +706,13 @@ details.context-selection {
 
 .approval-carousel > .approval-card { min-width: calc(100% - 24px); scroll-snap-align: start; }
 
+@media (max-height: 320px) {
+  body:has(.approval-card .approval-actions) #composer-region { display: none; }
+  .approval-card:has(.approval-actions) {
+    position: fixed; z-index: 10; inset: 35px 8px 4px; margin: 0; overflow: auto;
+  }
+  .approval-card:has(.approval-actions) .approval-actions { grid-row: 2; flex-wrap: wrap; }
+}
 .plan-card {
   margin: 10px 0;
   padding: 10px;

@@ -31,6 +31,8 @@ const testPlatform = process.env["CODEHELPER_VSCODE_TEST_PLATFORM"];
 const expectedHostArch = process.env["CODEHELPER_EXPECTED_HOST_ARCH"];
 const disableGPU = process.env["CODEHELPER_VSCODE_DISABLE_GPU"] === "1";
 const keepTemp = process.env["CODEHELPER_ELECTRON_KEEP_TEMP"] === "1";
+const approvalEvidenceDir = process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"];
+const approvalDebugPort = "9333";
 const matrixTarget = process.env["CODEHELPER_MATRIX_TARGET"] ??
   `${process.platform}-${process.arch}`;
 let electronPerformance;
@@ -39,6 +41,9 @@ const completedJourneys = new Set(["surface.webview-view"]);
 try {
   await rm(testOutput, { recursive: true, force: true });
   await mkdir(testOutput, { recursive: true });
+  if (approvalEvidenceDir !== undefined) {
+    await mkdir(approvalEvidenceDir, { recursive: true });
+  }
   await mkdir(join(workspace, ".vscode"), { recursive: true });
   await mkdir(join(nativeWorkspace, ".vscode"), { recursive: true });
   await mkdir(join(subagentWorkspace, ".vscode"), { recursive: true });
@@ -200,6 +205,9 @@ try {
         "--skip-release-notes",
         "--skip-welcome",
         ...(scenario === "accessibility" ? ["--force-high-contrast"] : []),
+        ...(scenario === "approval" && approvalEvidenceDir !== undefined
+          ? [`--remote-debugging-port=${approvalDebugPort}`]
+          : []),
         ...(disableGPU ? ["--disable-gpu"] : []),
       ];
       const exitCode = await runTests({
@@ -209,6 +217,12 @@ try {
         extensionTestsPath: testOutput,
         extensionTestsEnv: {
           CODEHELPER_ELECTRON_SCENARIO: scenario,
+          ...(scenario === "approval" && approvalEvidenceDir !== undefined
+            ? {
+              CODEHELPER_APPROVAL_EVIDENCE_DIR: approvalEvidenceDir,
+              CODEHELPER_APPROVAL_DEBUG_PORT: approvalDebugPort,
+            }
+            : {}),
           ...(scenario === "subagent"
             ? {
               CODEHELPER_VERIFY_MODE: "soft",

@@ -281,6 +281,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
         void vscode.window.showInformationMessage(
           `${root.label}: Runtime capture started at ${path}`,
         );
+        return path;
       } catch (error) {
         reportStartError(output, error);
       }
