@@ -25,8 +25,18 @@ func estimateMessageTokens(messages []provider.Message) uint64 {
 }
 
 func estimateCost(pricing model.Pricing, usage provider.Usage) float64 {
-	return float64(usage.InputTokens)/1_000_000*pricing.InputPerMillion +
+	uncached := usage.InputTokens - min(usage.InputTokens, usage.CachedTokens)
+	cachedPrice := pricing.InputPerMillion
+	if pricing.CachedInputPerMillion != nil {
+		cachedPrice = *pricing.CachedInputPerMillion
+	}
+	return float64(uncached)/1_000_000*pricing.InputPerMillion +
+		float64(usage.CachedTokens)/1_000_000*cachedPrice +
 		float64(usage.OutputTokens)/1_000_000*pricing.OutputPerMillion
+}
+
+func pricingKnown(pricing model.Pricing, usage provider.Usage) bool {
+	return pricing.Known && (usage.CachedTokens == 0 || pricing.CachedInputPerMillion != nil)
 }
 
 func (e *Engine) checkBudget(

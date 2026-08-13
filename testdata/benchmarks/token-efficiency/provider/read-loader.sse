@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_read_loader","function":{"name":"file_read","arguments":"{\"path\":\"config/loader.go\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":{{request_input_tokens}},"completion_tokens":14,"prompt_tokens_details":{"cached_tokens":{{request_cached_tokens}}}}}
+
+data: [DONE]

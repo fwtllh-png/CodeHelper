@@ -1,0 +1,8 @@
+{"sample":1,"stream":"provider/search.sse","expected_tool":"search_text"}
+{"sample":2,"stream":"provider/read-loader.sse","expected_tool":"file_read"}
+{"sample":3,"stream":"provider/read-tests.sse","expected_tool":"file_read"}
+{"sample":4,"stream":"provider/write-loader.sse","expected_tool":"file_write"}
+{"sample":5,"stream":"provider/write-cycle-test.sse","expected_tool":"file_write"}
+{"sample":6,"stream":"provider/run-tests.sse","expected_tool":"shell_run"}
+{"sample":7,"stream":"provider/declare.sse","expected_tool":"turn_complete"}
+{"sample":8,"stream":"provider/complete.sse","expected_terminal":"completed"}

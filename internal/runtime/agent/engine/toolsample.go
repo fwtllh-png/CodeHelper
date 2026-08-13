@@ -146,9 +146,10 @@ func (s *accountedStream) Recv() (provider.StreamEvent, error) {
 		s.usage.Add(*event.Usage)
 		total := s.usage
 		cost := estimateCost(s.call.pricing, total)
-		s.account.engine.addToolSpend(total, cost, s.call.pricing.Known, s.call.index)
+		known := pricingKnown(s.call.pricing, total)
+		s.account.engine.addToolSpend(total, cost, known, s.call.index)
 		if err := s.account.send(Event{
-			Usage: &total, CostUSD: cost, CostKnown: s.call.pricing.Known,
+			Usage: &total, CostUSD: cost, CostKnown: known,
 			Sample: s.call.index, Provider: s.call.provider, Model: s.call.model,
 			Purpose: string(s.purpose),
 		}); err != nil {

@@ -117,9 +117,6 @@ func (e *Engine) compactionPaths() ([]string, []string) {
 // turn receipt and the compaction summary can report what the volatile sections
 // cost and whether a budget cut them.
 func (e *Engine) recordTurnContextReceipts(receipts []promptcontext.Receipt) {
-	for _, receipt := range receipts {
-		e.options.Metrics.ContextTail(receipt.RetainedBytes, receipt.Truncated)
-	}
 	scope := e.executionScope()
 	if scope == nil {
 		return

@@ -1,0 +1,27 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "Fix the config loader in this repository.",
+  "cached_input_ratio": 0.25,
+  "streams": [
+    "search.sse",
+    "read-loader.sse",
+    "read-tests.sse",
+    "write-loader.sse",
+    "write-cycle-test.sse",
+    "run-tests.sse",
+    "declare.sse",
+    "complete.sse"
+  ],
+  "expected_request_fragments": [
+    ["\"name\":\"search_text\"", "\"name\":\"file_read\"", "\"name\":\"file_write\""],
+    ["\"name\":\"search_text\"", "\"role\":\"tool\"", "\"tool_call_id\":\"call_search\""],
+    ["\"tool_call_id\":\"call_read_loader\"", "func Load(path string)"],
+    ["\"tool_call_id\":\"call_read_tests\"", "TestLoadNestedIncludesAndStableDeduplication"],
+    ["\"tool_call_id\":\"call_write_loader\""],
+    ["\"tool_call_id\":\"call_write_test\"", "loader_cycle_test.go"],
+    ["\"tool_call_id\":\"call_tests\"", "go test ./..."],
+    ["\"tool_call_id\":\"call_complete\"", "completion_declaration_accepted"]
+  ]
+}

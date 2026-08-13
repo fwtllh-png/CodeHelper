@@ -20,8 +20,9 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 5. [架构设计](./architecture.md)
 6. [Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)
 7. [Approval 架构升级方案](./approval-architecture-upgrade.md)
-8. [安全模型](./security.md)
-9. [本地开发与脚本](./development.md)
+8. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
+9. [安全模型](./security.md)
+10. [本地开发与脚本](./development.md)
 
 ### 我要使用 CodeHelper
 
@@ -47,14 +48,15 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 1. [架构设计](./architecture.md)
 2. [Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)
 3. [Approval 架构升级方案](./approval-architecture-upgrade.md)
-4. [安全模型](./security.md)
-5. [本地开发与脚本](./development.md)
-6. [Agent 指南](./agent-guide.md)
-7. [TUI 与 VS Code 体验契约](./experience.md)
-8. [VS Code Runtime 标准监测](./runtime-monitoring.md)
-9. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
-10. [文档治理](./documentation-governance.md)
-11. [后续规划](./roadmap.md)
+4. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
+5. [安全模型](./security.md)
+6. [本地开发与脚本](./development.md)
+7. [Agent 指南](./agent-guide.md)
+8. [TUI 与 VS Code 体验契约](./experience.md)
+9. [VS Code Runtime 标准监测](./runtime-monitoring.md)
+10. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
+11. [文档治理](./documentation-governance.md)
+12. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 

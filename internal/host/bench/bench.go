@@ -63,6 +63,8 @@ type Task struct {
 	// rather than desired behaviour, says so.
 	Note   string `json:"note,omitempty"`
 	Prompt string `json:"prompt"`
+	// PromptFile keeps byte-sensitive benchmark prompts in one canonical file.
+	PromptFile string `json:"prompt_file,omitempty"`
 	// Followups are further prompts sent on the same thread after Prompt, each as
 	// its own turn. Most tasks need none. A task needs them to measure anything
 	// that only happens between turns — compaction cuts on whole turn groups, so a
@@ -268,49 +270,54 @@ type Result struct {
 	ReceiptChanges     []string `json:"receipt_changes,omitempty"`
 	// ReceiptDiagnostics is the receipt's diagnostics verdict, reported so a run
 	// shows whether changes were checked at all.
-	ReceiptDiagnostics       string   `json:"receipt_diagnostics,omitempty"`
-	VerifyStatus             string   `json:"verify_status,omitempty"`
-	VerifyAction             string   `json:"verify_action,omitempty"`
-	VerifyRepairs            int      `json:"verify_repairs,omitempty"`
-	InputTokens              uint64   `json:"input_tokens"`
-	OutputTokens             uint64   `json:"output_tokens"`
-	CachedTokens             uint64   `json:"cached_tokens"`
-	CostMicrounits           uint64   `json:"cost_microunits"`
-	UsageCalls               int      `json:"usage_calls"`
-	UnpricedCalls            int      `json:"unpriced_calls"`
-	RetryAttempts            int      `json:"retry_attempts"`
-	Approvals                int      `json:"approvals"`
-	ApprovalDecision         string   `json:"approval_decision,omitempty"`
-	AgentSpawns              int      `json:"agent_spawns"`
-	AgentTerminals           int      `json:"agent_terminals"`
-	AgentMaxConcurrency      int      `json:"agent_max_concurrency"`
-	IntegrationStates        []string `json:"integration_states,omitempty"`
-	DelegationMode           string   `json:"delegation_mode,omitempty"`
-	ExpectedAgentSpawns      *int     `json:"expected_agent_spawns,omitempty"`
-	ExpectedAgentConcurrency *int     `json:"expected_agent_concurrency,omitempty"`
-	VerificationApplicable   bool     `json:"verification_applicable"`
-	VerificationCovered      bool     `json:"verification_covered"`
+	ReceiptDiagnostics       string               `json:"receipt_diagnostics,omitempty"`
+	VerifyStatus             string               `json:"verify_status,omitempty"`
+	VerifyAction             string               `json:"verify_action,omitempty"`
+	VerifyRepairs            int                  `json:"verify_repairs,omitempty"`
+	InputTokens              uint64               `json:"input_tokens"`
+	UncachedInputTokens      uint64               `json:"uncached_input_tokens"`
+	OutputTokens             uint64               `json:"output_tokens"`
+	ReasoningTokens          uint64               `json:"reasoning_tokens"`
+	CachedTokens             uint64               `json:"cached_tokens"`
+	CostMicrounits           uint64               `json:"cost_microunits"`
+	UsageCalls               int                  `json:"usage_calls"`
+	UnpricedCalls            int                  `json:"unpriced_calls"`
+	RetryAttempts            int                  `json:"retry_attempts"`
+	Approvals                int                  `json:"approvals"`
+	ApprovalDecision         string               `json:"approval_decision,omitempty"`
+	AgentSpawns              int                  `json:"agent_spawns"`
+	AgentTerminals           int                  `json:"agent_terminals"`
+	AgentMaxConcurrency      int                  `json:"agent_max_concurrency"`
+	IntegrationStates        []string             `json:"integration_states,omitempty"`
+	DelegationMode           string               `json:"delegation_mode,omitempty"`
+	ExpectedAgentSpawns      *int                 `json:"expected_agent_spawns,omitempty"`
+	ExpectedAgentConcurrency *int                 `json:"expected_agent_concurrency,omitempty"`
+	VerificationApplicable   bool                 `json:"verification_applicable"`
+	VerificationCovered      bool                 `json:"verification_covered"`
+	Samples                  []protocol.UsageData `json:"samples,omitempty"`
 }
 
 // Report aggregates a suite run.
 type Report struct {
-	SchemaVersion  int                    `json:"schema_version"`
-	Platform       string                 `json:"platform"`
-	Total          int                    `json:"total"`
-	Available      int                    `json:"available"`
-	Unavailable    int                    `json:"unavailable"`
-	Failed         int                    `json:"failed"`
-	Passed         int                    `json:"passed"`
-	Results        []Result               `json:"results"`
-	Categories     map[string]int         `json:"categories"`
-	InputTokens    uint64                 `json:"input_tokens"`
-	OutputTokens   uint64                 `json:"output_tokens"`
-	CachedTokens   uint64                 `json:"cached_tokens"`
-	CostMicrounits uint64                 `json:"cost_microunits"`
-	DurationMS     int64                  `json:"duration_ms"`
-	Metrics        BaselineMetrics        `json:"metrics"`
-	AgentMetrics   AgentEvaluationMetrics `json:"agent_metrics"`
-	GeneratedAt    time.Time              `json:"generated_at"`
+	SchemaVersion       int                    `json:"schema_version"`
+	Platform            string                 `json:"platform"`
+	Total               int                    `json:"total"`
+	Available           int                    `json:"available"`
+	Unavailable         int                    `json:"unavailable"`
+	Failed              int                    `json:"failed"`
+	Passed              int                    `json:"passed"`
+	Results             []Result               `json:"results"`
+	Categories          map[string]int         `json:"categories"`
+	InputTokens         uint64                 `json:"input_tokens"`
+	UncachedInputTokens uint64                 `json:"uncached_input_tokens"`
+	OutputTokens        uint64                 `json:"output_tokens"`
+	ReasoningTokens     uint64                 `json:"reasoning_tokens"`
+	CachedTokens        uint64                 `json:"cached_tokens"`
+	CostMicrounits      uint64                 `json:"cost_microunits"`
+	DurationMS          int64                  `json:"duration_ms"`
+	Metrics             BaselineMetrics        `json:"metrics"`
+	AgentMetrics        AgentEvaluationMetrics `json:"agent_metrics"`
+	GeneratedAt         time.Time              `json:"generated_at"`
 }
 
 // OK reports whether every task passed.
@@ -341,6 +348,13 @@ func LoadTask(dir string) (Task, error) {
 		return Task{}, fmt.Errorf("decode %s: %w", filepath.Join(dir, TaskFile), err)
 	}
 	task.Dir = dir
+	if task.PromptFile != "" {
+		prompt, readErr := os.ReadFile(filepath.Join(dir, filepath.FromSlash(task.PromptFile)))
+		if readErr != nil {
+			return Task{}, fmt.Errorf("read benchmark prompt: %w", readErr)
+		}
+		task.Prompt = string(prompt)
+	}
 	if task.Name == "" {
 		task.Name = filepath.Base(dir)
 	}
@@ -411,7 +425,9 @@ func RunSuite(ctx context.Context, root string) (Report, error) {
 		}
 		report.Categories[result.Category]++
 		report.InputTokens += result.InputTokens
+		report.UncachedInputTokens += result.UncachedInputTokens
 		report.OutputTokens += result.OutputTokens
+		report.ReasoningTokens += result.ReasoningTokens
 		report.CachedTokens += result.CachedTokens
 		report.CostMicrounits += result.CostMicrounits
 		report.DurationMS += result.DurationMS
@@ -451,7 +467,9 @@ func RunTask(ctx context.Context, task Task) Result {
 		}
 	}
 	result.InputTokens = observed.inputTokens
+	result.UncachedInputTokens = observed.inputTokens - min(observed.inputTokens, observed.cachedTokens)
 	result.OutputTokens = observed.outputTokens
+	result.ReasoningTokens = observed.reasoningTokens
 	result.CachedTokens = observed.cachedTokens
 	result.CostMicrounits = observed.costMicrounits
 	result.UsageCalls = observed.usageCalls
@@ -472,6 +490,7 @@ func RunTask(ctx context.Context, task Task) Result {
 		len(result.ReceiptChanges) > 0
 	result.VerificationCovered = result.VerificationApplicable &&
 		result.VerifyStatus != ""
+	result.Samples = append([]protocol.UsageData(nil), observed.samples...)
 	result.Failures = evaluate(task, observed)
 	if strings.Contains(observed.terminalDetail, "sandbox_unavailable") {
 		result.Status = "unavailable"
@@ -499,6 +518,7 @@ type observation struct {
 	toolFailureDetails    []string
 	inputTokens           uint64
 	outputTokens          uint64
+	reasoningTokens       uint64
 	cachedTokens          uint64
 	costMicrounits        uint64
 	usageCalls            int
@@ -527,6 +547,7 @@ type observation struct {
 	integrationStates   []string
 	agentTimeline       []string
 	eventKinds          []string
+	samples             []protocol.UsageData
 }
 
 func executeTask(ctx context.Context, task Task) (observation, error) {
@@ -834,13 +855,18 @@ func runTurn(
 		for _, usage := range usageSamples {
 			observed.inputTokens += usage.InputTokens
 			observed.outputTokens += usage.OutputTokens
+			observed.reasoningTokens += usage.ReasoningTokens
 			observed.cachedTokens += usage.CachedTokens
 			observed.costMicrounits += usage.CostMicrounits
 			observed.usageCalls++
 			if !usage.CostKnown {
 				observed.unpricedCalls++
 			}
+			observed.samples = append(observed.samples, usage)
 		}
+		sort.Slice(observed.samples, func(i, j int) bool {
+			return observed.samples[i].Sample < observed.samples[j].Sample
+		})
 	}
 	for {
 		select {

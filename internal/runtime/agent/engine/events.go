@@ -41,27 +41,26 @@ type Event struct {
 	// Sample is which provider call within the turn a usage report belongs to.
 	// Usage is cumulative within a sample, so a consumer keeps the last report
 	// per sample rather than adding them up.
-	Sample               uint32                      `json:"sample,omitempty"`
-	EstimatedInputTokens uint64                      `json:"estimated_input_tokens,omitempty"`
-	InputTokenDelta      int64                       `json:"input_token_delta,omitempty"`
-	ErrorCode            protocol.ErrorCode          `json:"error_code,omitempty"`
-	Error                string                      `json:"error,omitempty"`
-	CancelReason         string                      `json:"cancel_reason,omitempty"`
-	SecondaryIssues      []TerminalIssue             `json:"secondary_issues,omitempty"`
-	Compaction           *CompactionReceipt          `json:"compaction,omitempty"`
-	ContextBudget        *ContextBudgetSnapshot      `json:"context_budget,omitempty"`
-	Approval             *toolguard.ApprovalRequest  `json:"approval,omitempty"`
-	Input                *interact.Request           `json:"input,omitempty"`
-	Diagnostics          []diagnostics.Receipt       `json:"diagnostics,omitempty"`
-	FileChanges          []toolguard.FileChange      `json:"file_changes,omitempty"`
-	Plan                 *ProposedPlanUpdate         `json:"plan,omitempty"`
-	Verification         *VerificationReceipt        `json:"verification,omitempty"`
-	Completion           *tool.CompletionDeclaration `json:"completion,omitempty"`
-	ProviderRetry        *ProviderRetry              `json:"provider_retry,omitempty"`
-	ToolOutput           *ToolOutput                 `json:"tool_output,omitempty"`
-	CatalogChanged       *CatalogChanged             `json:"catalog_changed,omitempty"`
-	MCPHealthChanged     *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
-	ExtensionLifecycle   *ExtensionLifecycleChanged  `json:"extension_lifecycle,omitempty"`
+	Sample             uint32                      `json:"sample,omitempty"`
+	SampleContext      *protocol.SampleContextData `json:"sample_context,omitempty"`
+	ErrorCode          protocol.ErrorCode          `json:"error_code,omitempty"`
+	Error              string                      `json:"error,omitempty"`
+	CancelReason       string                      `json:"cancel_reason,omitempty"`
+	SecondaryIssues    []TerminalIssue             `json:"secondary_issues,omitempty"`
+	Compaction         *CompactionReceipt          `json:"compaction,omitempty"`
+	ContextBudget      *ContextBudgetSnapshot      `json:"context_budget,omitempty"`
+	Approval           *toolguard.ApprovalRequest  `json:"approval,omitempty"`
+	Input              *interact.Request           `json:"input,omitempty"`
+	Diagnostics        []diagnostics.Receipt       `json:"diagnostics,omitempty"`
+	FileChanges        []toolguard.FileChange      `json:"file_changes,omitempty"`
+	Plan               *ProposedPlanUpdate         `json:"plan,omitempty"`
+	Verification       *VerificationReceipt        `json:"verification,omitempty"`
+	Completion         *tool.CompletionDeclaration `json:"completion,omitempty"`
+	ProviderRetry      *ProviderRetry              `json:"provider_retry,omitempty"`
+	ToolOutput         *ToolOutput                 `json:"tool_output,omitempty"`
+	CatalogChanged     *CatalogChanged             `json:"catalog_changed,omitempty"`
+	MCPHealthChanged   *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
+	ExtensionLifecycle *ExtensionLifecycleChanged  `json:"extension_lifecycle,omitempty"`
 }
 
 type ProviderRetry struct {
@@ -197,19 +196,17 @@ func (HeuristicTokenEstimator) Estimate(messages []provider.Message) (uint64, er
 }
 
 type Result struct {
-	Turn                 uint64                  `json:"turn"`
-	Text                 string                  `json:"text"`
-	Reasoning            string                  `json:"reasoning,omitempty"`
-	ReasoningSignature   string                  `json:"reasoning_signature,omitempty"`
-	State                State                   `json:"state"`
-	Usage                provider.Usage          `json:"usage"`
-	CostUSD              float64                 `json:"cost_usd"`
-	EstimatedInputTokens uint64                  `json:"estimated_input_tokens"`
-	InputTokenDelta      int64                   `json:"input_token_delta"`
-	Tools                []provider.ToolCall     `json:"tools,omitempty"`
-	Searches             []provider.SearchResult `json:"searches,omitempty"`
-	Citations            []provider.Citation     `json:"citations,omitempty"`
-	Verification         *VerificationReceipt    `json:"verification,omitempty"`
+	Turn               uint64                  `json:"turn"`
+	Text               string                  `json:"text"`
+	Reasoning          string                  `json:"reasoning,omitempty"`
+	ReasoningSignature string                  `json:"reasoning_signature,omitempty"`
+	State              State                   `json:"state"`
+	Usage              provider.Usage          `json:"usage"`
+	CostUSD            float64                 `json:"cost_usd"`
+	Tools              []provider.ToolCall     `json:"tools,omitempty"`
+	Searches           []provider.SearchResult `json:"searches,omitempty"`
+	Citations          []provider.Citation     `json:"citations,omitempty"`
+	Verification       *VerificationReceipt    `json:"verification,omitempty"`
 }
 
 // PendingSource tags why an input was enqueued into the turn-local queue (N1).

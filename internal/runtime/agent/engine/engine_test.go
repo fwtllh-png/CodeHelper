@@ -2241,12 +2241,12 @@ func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
 		terminalBudget.HistoryBytes > terminalBudget.MaxHistoryBytes {
 		t.Fatalf("terminal context budget = %+v", terminalBudget)
 	}
-	historyBytes, maxHistoryBytes := engine.ContextBudget()
-	if historyBytes != terminalBudget.HistoryBytes ||
-		maxHistoryBytes != terminalBudget.MaxHistoryBytes {
+	durableBytes := historyBytes(engine.history)
+	if durableBytes != terminalBudget.HistoryBytes ||
+		engine.options.MaxContextBytes != terminalBudget.MaxHistoryBytes {
 		t.Fatalf(
 			"durable history = %d/%d, terminal snapshot = %+v",
-			historyBytes, maxHistoryBytes, terminalBudget,
+			durableBytes, engine.options.MaxContextBytes, terminalBudget,
 		)
 	}
 }

@@ -777,6 +777,7 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 	if event.Usage != nil {
 		return sink.Emit(&protocol.UsageData{
 			Sample: event.Sample, Provider: event.Provider, Model: event.Model,
+			Context:     event.SampleContext,
 			InputTokens: event.Usage.InputTokens, OutputTokens: event.Usage.OutputTokens,
 			ReasoningTokens: event.Usage.ReasoningTokens,
 			CachedTokens:    event.Usage.CachedTokens,

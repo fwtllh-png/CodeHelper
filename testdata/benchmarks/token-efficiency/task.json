@@ -1,0 +1,27 @@
+{
+  "name": "token-efficiency",
+  "category": "token_efficiency",
+  "note": "Canonical T0 task for identical-prompt token attribution and before/after comparison.",
+  "prompt_file": "prompt.txt",
+  "tools": true,
+  "posture": "bypass",
+  "max_steps": 12,
+  "timeout_ms": 120000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "fail",
+    "command": "go test ./...",
+    "max_repair_steps": 0,
+    "timeout_ms": 60000
+  },
+  "expect": {
+    "terminal": "completed",
+    "tools_used": ["search_text", "file_read", "file_write", "shell_run"],
+    "receipt_changes": ["config/loader.go", "config/loader_cycle_test.go"],
+    "verify_status": "passed",
+    "verify_action": "passed",
+    "verify_repairs": 0,
+    "output_contains": ["go test ./...", "include cycle"]
+  }
+}

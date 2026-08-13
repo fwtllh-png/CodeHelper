@@ -157,7 +157,6 @@ type Metrics interface {
 	AgentTurn()
 	ToolExecution()
 	Error()
-	ContextTail(int, bool)
 	Evidence(int, int)
 	Compaction(int)
 	TurnKernelObserver(bool, bool)
@@ -168,7 +167,6 @@ type noopMetrics struct{}
 func (noopMetrics) AgentTurn()                    {}
 func (noopMetrics) ToolExecution()                {}
 func (noopMetrics) Error()                        {}
-func (noopMetrics) ContextTail(int, bool)         {}
 func (noopMetrics) Evidence(int, int)             {}
 func (noopMetrics) Compaction(int)                {}
 func (noopMetrics) TurnKernelObserver(bool, bool) {}

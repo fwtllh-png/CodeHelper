@@ -34,9 +34,10 @@ type modelMetadataFile struct {
 	MaxOutputTokens uint64             `json:"max_output_tokens"`
 	Capabilities    model.Capabilities `json:"capabilities"`
 	Pricing         struct {
-		InputPerMillion  float64 `json:"input_per_million"`
-		OutputPerMillion float64 `json:"output_per_million"`
-		Currency         string  `json:"currency"`
+		InputPerMillion       float64  `json:"input_per_million"`
+		CachedInputPerMillion *float64 `json:"cached_input_per_million,omitempty"`
+		OutputPerMillion      float64  `json:"output_per_million"`
+		Currency              string   `json:"currency"`
 	} `json:"pricing"`
 }
 
@@ -115,12 +116,16 @@ func loadModelMetadata(path, modelID string) (model.Model, error) {
 		return model.Model{}, errors.New("model metadata pricing currency must be USD")
 	}
 	return model.Model{
-		ID: inputModelID(modelID), CanonicalID: input.CanonicalID, WireID: input.WireID,
-		Limits: inputLimits(input), Capabilities: input.Capabilities,
+		ID: modelID, CanonicalID: input.CanonicalID, WireID: input.WireID,
+		Limits: model.Limits{
+			ContextTokens: input.ContextTokens, MaxOutputTokens: input.MaxOutputTokens,
+		},
+		Capabilities: input.Capabilities,
 		Pricing: model.Pricing{
-			InputPerMillion:  input.Pricing.InputPerMillion,
-			OutputPerMillion: input.Pricing.OutputPerMillion,
-			Currency:         input.Pricing.Currency, Known: true, Provenance: model.ProvenanceConfig,
+			InputPerMillion:       input.Pricing.InputPerMillion,
+			CachedInputPerMillion: input.Pricing.CachedInputPerMillion,
+			OutputPerMillion:      input.Pricing.OutputPerMillion,
+			Currency:              input.Pricing.Currency, Known: true, Provenance: model.ProvenanceConfig,
 		},
 		MetadataProvenance: model.MetadataProvenance{
 			CanonicalID: model.ProvenanceConfig, WireID: model.ProvenanceConfig,
@@ -129,14 +134,6 @@ func loadModelMetadata(path, modelID string) (model.Model, error) {
 		},
 		Provenance: model.ProvenanceConfig,
 	}, nil
-}
-
-func inputModelID(modelID string) string { return modelID }
-
-func inputLimits(input modelMetadataFile) model.Limits {
-	return model.Limits{
-		ContextTokens: input.ContextTokens, MaxOutputTokens: input.MaxOutputTokens,
-	}
 }
 
 func parseCapabilities(value string) (model.Capabilities, error) {
