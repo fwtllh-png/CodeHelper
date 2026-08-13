@@ -342,7 +342,7 @@ func childEngineOptions(
 		options.Workspace = spec.Workspace
 		options.WorkspaceIsolation = app.SessionIsolationWorktree
 	}
-	if spec.ReadOnly && options.Security != nil {
+	if spec.ReadOnly && !spec.CanDelegate && options.Security != nil {
 		// Plan mode is the existing, tested read-only enforcement: everything
 		// that is not a read capability is denied with mode_denied. A read-only
 		// stance that only shaped the prompt would not be a stance at all.

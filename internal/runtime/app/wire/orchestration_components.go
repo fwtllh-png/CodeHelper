@@ -62,11 +62,9 @@ func buildChildOrchestration(
 	session, execution := state.session, state.config.execution
 	limits := execution.Subagent
 	output.sharedGovernor = rlm.NewGovernor(rlm.Limits{})
-	output.childGovernor = rlm.NewGovernor(rlm.Limits{
-		MaxTokens: limits.MaxTokens, MaxCostUSD: limits.MaxCostUSD,
-		MaxDepth: limits.MaxDepth, MaxConcurrency: limits.MaxParallel,
-	})
-	agentRoot := filepath.Join(execution.Workspace, ".codehelper", "agents")
+	output.childGovernor = newChildGovernor(limits)
+	orchestrationRoot := childOrchestrationRoot(state)
+	agentRoot := filepath.Join(orchestrationRoot, "agents")
 	if err := os.MkdirAll(agentRoot, 0o700); err != nil {
 		return fmt.Errorf("agent root: %w", err)
 	}
@@ -87,7 +85,7 @@ func buildChildOrchestration(
 		gitCommonDir,
 	)
 	session.childTools = output.childToolsets
-	chatRoot := filepath.Join(execution.Workspace, ".codehelper", "chats")
+	chatRoot := filepath.Join(orchestrationRoot, "chats")
 	if err := os.MkdirAll(chatRoot, 0o700); err != nil {
 		return fmt.Errorf("Chat worktree root: %w", err)
 	}

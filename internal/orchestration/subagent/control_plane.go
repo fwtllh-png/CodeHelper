@@ -500,6 +500,10 @@ func (c *AgentControl) Result(agentID string) (Result, bool) {
 	return c.manager.Result(agentID)
 }
 
+func (c *AgentControl) IntegrationResult(agentID string) (Result, bool) {
+	return c.manager.IntegrationResult(agentID)
+}
+
 func (c *AgentControl) SaveIntegration(candidate IntegrationCandidate) error {
 	return c.manager.SaveIntegration(candidate)
 }

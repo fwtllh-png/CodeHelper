@@ -1086,6 +1086,27 @@ Provenance 全链路，并更新双语配置文档。禁止由 VS Code 保存一
   Agent，历史 `max_total` 消耗也不会污染新 Session。ACP `agent/list` 要求
   已绑定的 Session；VS Code 为每个已连接 Session 保留独立 Background
   Projector，并只展示当前选中的 Chat Session；
+- 一个 Session 拥有 Parent、Fork 和 Child Thread Set。`agent.spawned` 与
+  Durable Agent Hydration 会在 ACP Replay/Live Projection 前绑定确定性的
+  Child Thread ID。Approval Decision 会先按权威 Pending Request ID 解析
+  Child Identity，再校验 Thread，因此 VS Code 可以审批 Child Edit，同时
+  不放宽跨 Session 隔离。Existing-Turn 校验接受该 Session 拥有的任意 Thread，
+  而不再只接受 Parent Chat Thread。VS Code 重连时通过 `agent/list` 水合同一
+  Child Thread Set，Live Projection 时再由 `agent.spawned` 增量扩展，保留
+  Child Reasoning、Tool、Usage、Receipt 与 Terminal Event；
+- Read-only Role 仍无法修改 Workspace，但 `CanDelegate=true` 的 Role 会在
+  Parent Authority Ceiling 下仅保留 Agent Lifecycle Catalog。Nested Spawn
+  仍经过 Guard、Approval Proxy、Role Intersection 与 Tree Budget Admission；
+- Terminal Outbox Projection 会清理对应 Turn 的 Pending Approval/Input，
+  Restart Replay 也遵循同一规则。Awaiting Approval 期间取消时，已取消的
+  Tool Result 只作为清理事实闭合 Effect，并收敛到唯一 Canceled Terminal，
+  不再留下 False Active Turn；
+- 当前 Child Result 与最后一个成功 Integration Result 分离。失败 Follow-up
+  仍由 Wait/List 如实展示，但 Child 终态后，较早的已验证隔离写入仍可 Preview
+  和 Apply；
+- 持久化 Agent/Chat Worktree 位于 Runtime State Root，而不是用户 Workspace。
+  Strong Sandbox Link Validation 支持 Context Cancel，大仓库或取消的 Follow-up
+  不再长期占用 Tool Claim；
 - Worktree Allocation 会在 Provision 产生文件系统副作用前写入带版本和
   Session 归属的 WAL。若进程在 Provision 与 Agent Node Commit 之间崩溃，
   Failed Node、Completion 与 Budget Settlement 仍恢复到原 Session；缺少

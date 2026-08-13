@@ -118,6 +118,33 @@ func (s *Store) LoadAgentResultSession(
 	return loadAgentResultRow(ctx, s.sqlite.DB(), workspaceRoot, sessionID, agentID)
 }
 
+func (s *Store) LoadAgentIntegrationResultSession(
+	ctx context.Context, workspaceRoot, sessionID, agentID string,
+) (subagent.Result, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return subagent.Result{}, false, ErrClosed
+	}
+	query := `SELECT integration_result_json FROM agent_results
+		WHERE workspace_root = ? AND session_id = ? AND agent_id = ?`
+	var raw []byte
+	err := s.sqlite.DB().QueryRowContext(
+		ctx, query, workspaceRoot, sessionID, agentID,
+	).Scan(&raw)
+	if err == sql.ErrNoRows || len(raw) == 0 {
+		return subagent.Result{}, false, nil
+	}
+	if err != nil {
+		return subagent.Result{}, false, err
+	}
+	var result subagent.Result
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return subagent.Result{}, false, err
+	}
+	return result, true, nil
+}
+
 func loadAgentResultRow(
 	ctx context.Context,
 	db *sql.DB,
@@ -472,17 +499,26 @@ func projectAgentTransitionTx(
 		if marshalErr != nil {
 			return marshalErr
 		}
+		var integrationResult any
+		if transition.Result.Status == subagent.StatusCompleted &&
+			len(transition.Result.WritePaths()) > 0 {
+			integrationResult = raw
+		}
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO agent_results(
 				workspace_root, session_id, agent_id, turn_id, result_json,
-				receipt_ref, source_sequence, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				integration_result_json, receipt_ref, source_sequence, created_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(workspace_root, session_id, agent_id) DO UPDATE SET
 				turn_id=excluded.turn_id, result_json=excluded.result_json,
+				integration_result_json=COALESCE(
+					excluded.integration_result_json,
+					agent_results.integration_result_json
+				),
 				receipt_ref=excluded.receipt_ref,
 				source_sequence=excluded.source_sequence, created_at=excluded.created_at`,
 			data.WorkspaceRoot, sessionID, data.AgentID,
-			transition.Result.TurnID, raw,
+			transition.Result.TurnID, raw, integrationResult,
 			transition.Result.Context.Digest, int64(event.Sequence),
 			timestamp(event.CreatedAt),
 		)

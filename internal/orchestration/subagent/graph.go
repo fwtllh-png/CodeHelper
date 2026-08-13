@@ -87,6 +87,7 @@ type Graph interface {
 	ListChildren(sessionID, parentID string) ([]GraphEdge, error)
 	ListMessages(sessionID, to string) ([]Message, error)
 	LoadResult(sessionID, agentID string) (Result, bool, error)
+	LoadIntegrationResult(sessionID, agentID string) (Result, bool, error)
 	RecordIntegration(candidate IntegrationCandidate) error
 	LoadIntegration(sessionID, agentID, previewDigest string) (IntegrationCandidate, bool, error)
 	LoadBudget(sessionID string) (BudgetLedger, error)
@@ -145,6 +146,11 @@ func (m *Manager) Hydrate() error {
 				if err != nil {
 					return err
 				}
+				integrationResult, integrationReady, err :=
+					graph.LoadIntegrationResult(sessionID, edge.ChildID)
+				if err != nil {
+					return err
+				}
 				m.mu.Lock()
 				if _, ok := m.agents[edge.ChildID]; !ok {
 					m.agents[edge.ChildID] = agentFromEdge(edge)
@@ -157,8 +163,11 @@ func (m *Manager) Hydrate() error {
 				}
 				if settled {
 					m.agents[edge.ChildID].Result = &result
+				}
+				if integrationReady {
+					m.agents[edge.ChildID].IntegrationResult = &integrationResult
 					if !m.agents[edge.ChildID].Closed {
-						m.claimLocked(edge.ChildID, result.WritePaths())
+						m.claimLocked(edge.ChildID, integrationResult.WritePaths())
 					}
 				}
 				bumpNextIDLocked(m, edge.ChildID)
@@ -269,6 +278,7 @@ type DurableGraph struct {
 	Children          func(sessionID, parentID string) ([]GraphEdge, error)
 	Messages          func(sessionID, to string) ([]Message, error)
 	Result            func(sessionID, agentID string) (Result, bool, error)
+	IntegrationResult func(sessionID, agentID string) (Result, bool, error)
 	AppendIntegration func(IntegrationCandidate) error
 	Integration       func(sessionID, agentID, previewDigest string) (IntegrationCandidate, bool, error)
 	Budget            func(sessionID string) (BudgetLedger, error)
@@ -333,6 +343,15 @@ func (g DurableGraph) LoadResult(sessionID, agentID string) (Result, bool, error
 		return Result{}, false, fmt.Errorf("agent graph result loader is required")
 	}
 	return g.Result(sessionID, agentID)
+}
+
+func (g DurableGraph) LoadIntegrationResult(
+	sessionID, agentID string,
+) (Result, bool, error) {
+	if g.IntegrationResult == nil {
+		return Result{}, false, nil
+	}
+	return g.IntegrationResult(sessionID, agentID)
 }
 
 func (g DurableGraph) RecordIntegration(candidate IntegrationCandidate) error {

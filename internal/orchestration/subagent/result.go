@@ -163,3 +163,16 @@ func (m *Manager) Result(agentID string) (Result, bool) {
 	}
 	return *agent.Result, true
 }
+
+// IntegrationResult returns the most recent successful child result whose
+// isolated writes remain eligible for parent preview. A later failed follow-up
+// does not erase already verified work.
+func (m *Manager) IntegrationResult(agentID string) (Result, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	agent, ok := m.agents[agentID]
+	if !ok || agent.IntegrationResult == nil {
+		return Result{}, false
+	}
+	return *agent.IntegrationResult, true
+}

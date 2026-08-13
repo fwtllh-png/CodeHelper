@@ -30,7 +30,7 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"A queued same-workspace child returns deferred immediately because it can start only " +
 				"after the calling turn releases the workspace.",
 			Visibility: o.visibility(), Capability: tool.CapabilityRead,
-			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelSerial,
+			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			InputSchema: map[string]any{
 				"type": "object",

@@ -92,6 +92,9 @@ func (m *Manager) transitionLocked(
 	if result != nil {
 		stored := *transition.Result
 		agent.Result = &stored
+		if integrationBaseline(agent, stored) {
+			agent.IntegrationResult = &stored
+		}
 		ledger.SpentTokens += stored.Usage.Tokens()
 		ledger.SpentMicros += stored.Usage.CostMicrounits
 		m.mailbox.Accept(*transition.CompletionMessage)
@@ -143,9 +146,20 @@ func completionEnvelope(agent *Agent, result Result) CompletionEnvelope {
 		ReceiptRef:   result.Context.Digest,
 		ChangedPaths: append([]string(nil), paths...),
 		Verification: result.Verification, Usage: result.Usage,
-		IntegrationReady: agent.Isolated &&
-			len(result.WritePaths()) > 0 && len(result.Unresolved) == 0,
+		IntegrationReady: integrationReady(agent, result),
 	}
+}
+
+func integrationReady(agent *Agent, result Result) bool {
+	return integrationBaseline(agent, result) &&
+		len(result.Unresolved) == 0
+}
+
+func integrationBaseline(agent *Agent, result Result) bool {
+	return agent != nil &&
+		agent.Isolated &&
+		result.Status == StatusCompleted &&
+		len(result.WritePaths()) > 0
 }
 
 func promptWithMessages(prompt string, messages []Message) string {

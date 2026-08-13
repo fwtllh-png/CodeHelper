@@ -204,6 +204,9 @@ func allocationGraph(
 		Result: func(string, string) (Result, bool, error) {
 			return Result{}, false, nil
 		},
+		IntegrationResult: func(string, string) (Result, bool, error) {
+			return Result{}, false, nil
+		},
 		AppendIntegration: func(IntegrationCandidate) error { return nil },
 		Integration: func(
 			string,

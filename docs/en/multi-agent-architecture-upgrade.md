@@ -1028,6 +1028,29 @@ Completion audit (2026-08-13):
   poisons a new Session. ACP `agent/list` requires a bound Session, and VS Code
   keeps one Background Projector per connected Session while displaying the
   currently selected Chat Session.
+- A Session owns its parent, fork, and Child Thread set. `agent.spawned` and
+  durable Agent hydration bind deterministic Child Thread IDs before ACP
+  replay/live projection. Approval decisions resolve the authoritative pending
+  Request ID before Thread validation, so VS Code can approve a Child edit
+  without weakening cross-Session isolation. Existing-Turn validation accepts
+  any Thread owned by that Session rather than only the parent Chat Thread.
+  VS Code hydrates the same Child Thread set through `agent/list` on reconnect
+  and expands it from `agent.spawned` during live projection, preserving Child
+  reasoning, Tool, usage, Receipt, and terminal events.
+- Read-only roles remain unable to mutate the Workspace, but roles with
+  `CanDelegate=true` retain only the Agent lifecycle catalog under the Parent
+  authority ceiling. Nested Spawn still passes Guard, Approval Proxy, Role
+  intersection, and Tree Budget admission.
+- Terminal outbox projection clears pending Approval/Input requests for the
+  terminal Turn, including restart replay. Cancellation while awaiting approval
+  accepts the canceled Tool result as cleanup and converges to one canceled
+  terminal instead of leaving a false-active Turn.
+- The current Child Result and last successful Integration Result are separate.
+  A failed follow-up remains visible to Wait/List while an earlier verified
+  isolated write can still be previewed and applied after the Child is terminal.
+- Persistent Agent and Chat worktrees live under the Runtime state root rather
+  than the user Workspace. Strong Sandbox link validation is context-cancelable,
+  so a large repository or canceled follow-up cannot retain Tool claims.
 - Worktree allocation writes a versioned, Session-bound WAL before provisioning
   makes a filesystem side effect. A crash between Provision and Agent Node
   commit therefore recovers a failed Node, Completion, and budget settlement in

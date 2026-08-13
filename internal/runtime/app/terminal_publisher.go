@@ -181,6 +181,7 @@ func (p *TerminalPublisher) publishEntry(
 		}
 		if protocol.IsTerminalEvent(event.Kind) {
 			p.runtime.terminals[event.TurnID] = event.Kind
+			p.runtime.clearPendingTurn(event.TurnID)
 		}
 		if p.runtime.lifecycle != nil {
 			return p.runtime.lifecycle.Project(context.Background(), event)

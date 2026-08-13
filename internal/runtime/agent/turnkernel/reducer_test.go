@@ -37,6 +37,38 @@ func TestReadOnlyAnswerCompletesWithoutMutationContract(t *testing.T) {
 	}
 }
 
+func TestCanceledApprovalAcceptsLateToolResult(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentWorkspaceChange)
+	state = apply(t, state, ToolCallsProposed{
+		Calls: []ToolCallState{{ID: "call-edit", Name: "file_edit"}},
+	}).State
+	state = apply(t, state, ApprovalRequired{
+		RequestID: "approval-edit", CallID: "call-edit",
+	}).State
+	state = apply(t, state, CancelRequested{
+		Reason: protocol.CancelReasonHostInterrupted,
+	}).State
+	closed := apply(t, state, ToolResultReceived{
+		CallID: "call-edit", IsError: true,
+	})
+	if closed.State.Phase != PhaseSampling ||
+		len(closed.State.OpenCalls) != 0 ||
+		len(closed.State.PendingApprovals) != 0 ||
+		len(closed.State.PendingEffects) != 0 ||
+		len(closed.State.ClosedCalls) != 1 {
+		t.Fatalf("late canceled result = %+v", closed.State)
+	}
+	terminal := apply(t, closed.State, TerminalRequested{
+		CancelReason: protocol.CancelReasonHostInterrupted,
+	})
+	terminal = apply(t, terminal.State, FinishTerminal{})
+	if terminal.State.Phase != PhaseCanceled ||
+		terminal.State.Terminal == nil ||
+		terminal.State.Terminal.Kind != TerminalCanceled {
+		t.Fatalf("terminal = %+v", terminal.State)
+	}
+}
+
 func TestRepairBudgetResetsOnlyOnStructuredProgress(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
 	for range 2 {

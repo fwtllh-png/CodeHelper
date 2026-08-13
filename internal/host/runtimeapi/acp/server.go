@@ -2025,6 +2025,9 @@ func (s *Server) prepareOperation(
 			)
 		}
 	}
+	if err := s.bindPendingRequest(binding, spec.payload); err != nil {
+		return protocol.Operation{}, err
+	}
 	thread, turn, _ := protocol.PayloadReferences(spec.payload)
 	if thread != "" && s.sessionForThread(thread) != binding.ID {
 		return protocol.Operation{}, fmt.Errorf(
@@ -2098,7 +2101,7 @@ func (s *Server) requireTurn(binding sessionBinding, turn protocol.TurnID) error
 	if err != nil {
 		return err
 	}
-	if record.ThreadID != binding.ThreadID {
+	if s.sessionForThread(record.ThreadID) != binding.ID {
 		return fmt.Errorf("turn %s belongs to thread %s", turn, record.ThreadID)
 	}
 	return nil
@@ -2147,6 +2150,7 @@ func (s *Server) sessionReplay(request rpcRequest) {
 	nextSeq := params.SinceSeq
 	for _, event := range page {
 		nextSeq = event.Sequence
+		s.bindAgentThread(event)
 		if s.sessionForThread(event.ThreadID) == binding.ID ||
 			s.workspaceVisibleToSession(event, binding.ID) {
 			events = append(events, event)
@@ -2322,6 +2326,7 @@ func (s *Server) pump(events <-chan protocol.Event) {
 
 func (s *Server) deliver(event protocol.Event) {
 	s.mu.Lock()
+	s.bindAgentThreadLocked(event)
 	sessionID, bound := s.threads[event.ThreadID]
 	workspaceVisible := s.workspaceVisible(event)
 	workspaceSession := s.workspaceEventSession(event)
@@ -2531,13 +2536,6 @@ func (s *Server) failActive(rpcErr *rpcError) {
 		s.replyActiveError(active, rpcErr)
 		s.finish(active)
 	}
-}
-
-func (s *Server) bind(binding sessionBinding) {
-	s.mu.Lock()
-	s.sessions[binding.ID] = binding
-	s.threads[binding.ThreadID] = binding.ID
-	s.mu.Unlock()
 }
 
 func (s *Server) bindThread(threadID protocol.ThreadID, sessionID string) {
