@@ -34,10 +34,17 @@ func TestProjectFailsClosedForUnknownEvent(t *testing.T) {
 
 func TestProjectAgentEventsWithoutHostPayloadSwitches(t *testing.T) {
 	for _, data := range []protocol.EventData{
-		&protocol.AgentSpawnedData{AgentID: "agent-1", Role: "explorer"},
-		&protocol.AgentStatusData{AgentID: "agent-1", Status: "running"},
+		&protocol.AgentSpawnedData{
+			AgentID: "agent-1", WorkspaceRoot: "/workspace",
+			SessionID: "session-1", Role: "explorer",
+		},
+		&protocol.AgentStatusData{
+			AgentID: "agent-1", WorkspaceRoot: "/workspace",
+			SessionID: "session-1", Status: "running",
+		},
 		&protocol.AgentMessageData{
-			From: "agent-1", To: "parent", Sequence: 1,
+			From: "agent-1", To: "parent", WorkspaceRoot: "/workspace",
+			SessionID: "session-1", Sequence: 1,
 			Body: []byte(`{"body":"done"}`),
 		},
 		&protocol.AgentIntegrationData{

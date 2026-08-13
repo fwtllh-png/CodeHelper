@@ -326,7 +326,7 @@ func (t *Tool) wait(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 	if caller, nested := t.callerAgent(ctx); nested {
 		if len(input.AgentIDs) == 0 {
 			for _, child := range t.control.List(subagent.ListFilter{
-				ParentID: caller.ID,
+				SessionID: caller.SessionID, ParentID: caller.ID,
 			}) {
 				input.AgentIDs = append(input.AgentIDs, child.ID)
 			}
@@ -348,7 +348,9 @@ func (t *Tool) wait(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 	if input.TimeoutMS > 0 {
 		timeout = time.Duration(input.TimeoutMS) * time.Millisecond
 	}
-	if queued := t.serializedWaitTargets(input.AgentIDs); len(queued) > 0 {
+	if queued := t.serializedWaitTargets(
+		t.invocationSession(ctx), input.AgentIDs,
+	); len(queued) > 0 {
 		agents := make([]map[string]any, 0, len(queued))
 		for _, agent := range queued {
 			agents = append(agents, agentSnapshot(agent))
@@ -368,7 +370,9 @@ func (t *Tool) wait(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 			},
 		}, nil
 	}
-	result, err := t.control.Wait(ctx, input.AgentIDs, timeout)
+	result, err := t.control.WaitSession(
+		ctx, t.invocationSession(ctx), input.AgentIDs, timeout,
+	)
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -402,9 +406,14 @@ func emptyWaitResult() (tool.Result, error) {
 	}, nil
 }
 
-func (t *Tool) serializedWaitTargets(agentIDs []string) []subagent.Agent {
+func (t *Tool) serializedWaitTargets(
+	sessionID string,
+	agentIDs []string,
+) []subagent.Agent {
 	if len(agentIDs) == 0 {
-		listed := t.control.List(subagent.ListFilter{})
+		listed := t.control.List(subagent.ListFilter{
+			SessionID: sessionID,
+		})
 		queued := make([]subagent.Agent, 0, len(listed))
 		for _, agent := range listed {
 			if agent.Serialized && !subagent.IsTerminal(agent.Status) {
@@ -444,7 +453,8 @@ func (t *Tool) list(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 		}
 	}
 	listed := t.control.List(subagent.ListFilter{
-		ParentID: parentID, IncludeClosed: input.IncludeClosed,
+		SessionID: t.invocationSession(ctx),
+		ParentID:  parentID, IncludeClosed: input.IncludeClosed,
 	})
 	agents := make([]map[string]any, 0, len(listed))
 	for _, agent := range listed {
@@ -493,7 +503,10 @@ func (t *Tool) sendMessage(
 	if caller, nested := t.callerAgent(ctx); nested {
 		from = caller.ID
 	}
-	delivered, err := t.control.Mailbox().Deliver(from, agentID, body)
+	delivered, err := t.control.Mailbox().Enqueue(subagent.Message{
+		SessionID: t.invocationSession(ctx), From: from, To: agentID,
+		Kind: subagent.MessageContext, Body: body,
+	})
 	if err != nil {
 		return tool.Result{}, err
 	}

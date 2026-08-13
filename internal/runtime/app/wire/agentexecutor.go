@@ -80,7 +80,9 @@ func (e *agentTurnExecutor) Execute(
 		return worker.Outcome{State: taskstate.StateFailed, Reason: err.Error()}, nil
 	}
 
-	agent, err := e.control.SpawnBackground(role, payload.Prompt)
+	agent, err := e.control.SpawnBackgroundForSession(
+		value.SessionID, role, payload.Prompt,
+	)
 	if err != nil {
 		// Spawn fails when the budget is spent or when a writing child has nowhere
 		// isolated to write. Neither is fixed by trying again immediately, but both
@@ -168,9 +170,9 @@ func (e *agentTurnExecutor) merge(
 		return err
 	}
 	mergeContext := tool.WithInvocationIdentity(ctx, tool.InvocationIdentity{
-		CallID:   "task-agent-preview-" + value.ID,
-		ThreadID: value.ThreadID,
-		TurnID:   value.TurnID,
+		CallID:    "task-agent-preview-" + value.ID,
+		SessionID: value.SessionID, ThreadID: value.ThreadID,
+		TurnID: value.TurnID,
 	})
 	preview, err := e.guard.Execute(
 		mergeContext,

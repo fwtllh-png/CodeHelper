@@ -49,6 +49,9 @@ func (e *Engine) runToolsWithCache(
 		return nil, err
 	}
 	identity := tool.InvocationIdentityFrom(ctx)
+	if identity.SessionID == "" {
+		identity.SessionID = e.options.SessionID
+	}
 	if identity.ThreadID == "" {
 		identity.ThreadID = e.options.SessionID
 	}

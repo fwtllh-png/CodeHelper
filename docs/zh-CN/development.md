@@ -123,7 +123,10 @@ make brand-check
 | `make bench` | 在强宿主机 Sandbox 上执行 Fixture Coding Benchmark |
 | `make upgrade-baseline` | 写入带版本的 Coding 指标报告 |
 | `make catalog-bench` | Dynamic Tool Catalog Scale Benchmark |
+| `make multi-agent-eval` | Hermetic 委派、Completion 与并行度发布阈值 |
+| `make multi-agent-performance` | 有界 Agent Event 投影性能预算 |
 | `make live-model-smoke` | 显式、非 Hermetic 的真实模型冒烟 |
+| `make live-multi-agent-smoke` | 需要凭据的真实 Provider Agent Spawn/Wait/Completion 冒烟 |
 | `make package VERSION=x.y.z` | 多平台 CLI Package 与 SBOM |
 
 ## 仓库脚本

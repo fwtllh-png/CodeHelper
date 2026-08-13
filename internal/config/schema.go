@@ -334,6 +334,8 @@ type Overrides struct {
 	SubagentMaxDepth    *int
 	SubagentDelegation  *string
 	SubagentMaxParallel *int
+	SubagentMaxResident *int
+	SubagentMaxTotal    *int
 	SubagentMaxSteps    *int
 	SubagentMaxTokens   *uint64
 	SubagentMaxCostUSD  *float64

@@ -124,7 +124,10 @@ make brand-check
 | `make bench` | fixture coding benchmark on a strong host sandbox |
 | `make upgrade-baseline` | write the versioned coding metrics report |
 | `make catalog-bench` | dynamic tool catalog scale benchmark |
+| `make multi-agent-eval` | hermetic delegation/completion/parallelism release thresholds |
+| `make multi-agent-performance` | bounded Agent Event projection budget |
 | `make live-model-smoke` | explicit, non-hermetic provider smoke |
+| `make live-multi-agent-smoke` | credentialed real-provider Agent spawn/wait/completion smoke |
 | `make package VERSION=x.y.z` | multi-platform CLI package and SBOM |
 
 ## Repository Scripts

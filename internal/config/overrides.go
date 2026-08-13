@@ -88,6 +88,8 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyString(overrides.SubagentDelegation, &child.Delegation, fieldSubagentDelegation, SourceCLI, provenance)
 	applyInt(overrides.SubagentMaxDepth, &child.MaxDepth, fieldSubagentMaxDepth, SourceCLI, provenance)
 	applyInt(overrides.SubagentMaxParallel, &child.MaxParallel, fieldSubagentMaxParallel, SourceCLI, provenance)
+	applyInt(overrides.SubagentMaxResident, &child.MaxResident, fieldSubagentMaxResident, SourceCLI, provenance)
+	applyInt(overrides.SubagentMaxTotal, &child.MaxTotal, fieldSubagentMaxTotal, SourceCLI, provenance)
 	applyInt(overrides.SubagentMaxSteps, &child.MaxSteps, fieldSubagentMaxSteps, SourceCLI, provenance)
 	applyUint64(overrides.SubagentMaxTokens, &child.MaxTokens, fieldSubagentMaxTokens, SourceCLI, provenance)
 	applyFloat64(overrides.SubagentMaxCostUSD, &child.MaxCostUSD, fieldSubagentMaxCostUSD, SourceCLI, provenance)

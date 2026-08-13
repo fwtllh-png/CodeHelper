@@ -347,6 +347,7 @@ Common overrides:
 | `CODEHELPER_MODE`, `CODEHELPER_WORKSPACE`, `CODEHELPER_TOOLS` | execution behavior |
 | `CODEHELPER_MAX_*`, `CODEHELPER_TIMEOUT`, `CODEHELPER_IDLE_TIMEOUT` | limits |
 | `CODEHELPER_BUDGET_TOKENS`, `CODEHELPER_BUDGET_USD` | session budgets |
+| `CODEHELPER_SUBAGENT_*` | delegation, tree limits, child budgets, wall time, and workspace strategy |
 | `CODEHELPER_VERIFY_*` | verification behavior |
 | `CODEHELPER_STATE_*` | persistence |
 | `CODEHELPER_CREDENTIAL_KIND`, `CODEHELPER_CREDENTIAL_NAME` | secret reference |

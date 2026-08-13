@@ -56,11 +56,7 @@ func prepareRuntime(
 	if options.TerminalStore == nil {
 		options.TerminalStore = turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
 	}
-	if manager, ok := options.Engine.(*ThreadManager); ok {
-		if store, ok := options.TerminalStore.(turnkernel.SessionDeltaRecoveryStore); ok {
-			manager.SetSessionDeltaRestorer(store.LatestSessionDelta)
-		}
-	}
+	configureThreadManager(options)
 	if options.SessionProfiles != nil {
 		if err := options.DefaultProfile.Validate(); err != nil {
 			return nil, fmt.Errorf("default session profile: %w", err)
@@ -111,6 +107,19 @@ func prepareRuntime(
 		runtime.restore(*recovery)
 	}
 	return runtime, nil
+}
+
+func configureThreadManager(options Options) {
+	manager, ok := options.Engine.(*ThreadManager)
+	if !ok {
+		return
+	}
+	if store, ok := options.TerminalStore.(turnkernel.SessionDeltaRecoveryStore); ok {
+		manager.SetSessionDeltaRestorer(store.LatestSessionDelta)
+	}
+	if options.SessionLifecycle != nil {
+		manager.SetSessionResolver(options.SessionLifecycle.SessionForThread)
+	}
 }
 
 // Start activates a prepared Runtime exactly once. Durable projection and Turn

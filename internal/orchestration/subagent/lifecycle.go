@@ -24,7 +24,8 @@ func (m *Manager) transitionLocked(
 		)
 	}
 	reserve := !occupiesSlot(agent.Status) && occupiesSlot(status)
-	if reserve && int(m.active.Load()) >= m.budget.MaxParallel {
+	ledger := m.ledgers[agent.SessionID]
+	if reserve && m.active[agent.SessionID] >= m.budget.MaxParallel {
 		return errors.New("subagent concurrency budget exhausted")
 	}
 	var reserveTokens, reserveMicros uint64
@@ -32,20 +33,21 @@ func (m *Manager) transitionLocked(
 		reserveTokens = agent.Budget.MaxTokens
 		reserveMicros = uint64(agent.Budget.MaxCostUSD * 1e6)
 		if m.budget.MaxTokens > 0 &&
-			m.ledger.SpentTokens+m.ledger.ReservedTokens+reserveTokens >
+			ledger.SpentTokens+ledger.ReservedTokens+reserveTokens >
 				m.budget.MaxTokens {
 			return errors.New("subagent token reservation exceeds tree budget")
 		}
 		maxMicros := uint64(m.budget.MaxCostUSD * 1e6)
 		if maxMicros > 0 &&
-			m.ledger.SpentMicros+m.ledger.ReservedMicros+reserveMicros >
+			ledger.SpentMicros+ledger.ReservedMicros+reserveMicros >
 				maxMicros {
 			return errors.New("subagent cost reservation exceeds tree budget")
 		}
 	}
 	release := occupiesSlot(agent.Status) && !occupiesSlot(status)
 	transition := GraphTransition{
-		AgentID: agent.ID, Path: agent.Path,
+		SessionID: agent.SessionID,
+		AgentID:   agent.ID, Path: agent.Path,
 		ExpectedRevision: agent.Revision, Status: status,
 		TurnID: turnID, Message: message,
 		OperationID: fmt.Sprintf("agent:%s:%d", agent.ID, agent.Revision+1),
@@ -67,7 +69,8 @@ func (m *Manager) transitionLocked(
 			target = "root"
 		}
 		completion, err := m.mailbox.Prepare(Message{
-			From: agent.ID, To: target, Kind: MessageCompletion,
+			SessionID: agent.SessionID,
+			From:      agent.ID, To: target, Kind: MessageCompletion,
 			PayloadRef: envelope.ResultRef, Body: body,
 		})
 		if err != nil {
@@ -89,26 +92,27 @@ func (m *Manager) transitionLocked(
 	if result != nil {
 		stored := *transition.Result
 		agent.Result = &stored
-		m.ledger.SpentTokens += stored.Usage.Tokens()
-		m.ledger.SpentMicros += stored.Usage.CostMicrounits
+		ledger.SpentTokens += stored.Usage.Tokens()
+		ledger.SpentMicros += stored.Usage.CostMicrounits
 		m.mailbox.Accept(*transition.CompletionMessage)
 	}
 	switch {
 	case !occupiesSlot(previous) && occupiesSlot(status):
-		m.active.Add(1)
-		m.ledger.ReservedSlots++
+		m.active[agent.SessionID]++
+		ledger.ReservedSlots++
 		agent.ReservedTokens = reserveTokens
 		agent.ReservedMicros = reserveMicros
-		m.ledger.ReservedTokens += reserveTokens
-		m.ledger.ReservedMicros += reserveMicros
+		ledger.ReservedTokens += reserveTokens
+		ledger.ReservedMicros += reserveMicros
 	case occupiesSlot(previous) && !occupiesSlot(status):
-		m.active.Add(-1)
-		m.ledger.ReservedSlots--
-		m.ledger.ReservedTokens -= agent.ReservedTokens
-		m.ledger.ReservedMicros -= agent.ReservedMicros
+		m.active[agent.SessionID]--
+		ledger.ReservedSlots--
+		ledger.ReservedTokens -= agent.ReservedTokens
+		ledger.ReservedMicros -= agent.ReservedMicros
 		agent.ReservedTokens = 0
 		agent.ReservedMicros = 0
 	}
+	m.ledgers[agent.SessionID] = ledger
 	m.wait.Broadcast()
 	return nil
 }

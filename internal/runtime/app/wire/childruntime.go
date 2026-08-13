@@ -49,17 +49,19 @@ type childRuntime struct {
 // childTurn accumulates what a child turn observed until its terminal event
 // says how to settle it.
 type childTurn struct {
-	agentID   string
-	turnID    protocol.TurnID
-	receipt   *protocol.ExecutionReceiptData
-	verify    *protocol.TurnVerificationData
-	text      string
-	notes     []string
-	deadline  context.CancelFunc
-	timedOut  bool
-	startedAt time.Time
-	lease     rlm.Lease
-	leased    bool
+	agentID        string
+	turnID         protocol.TurnID
+	startOperation protocol.OperationID
+	started        bool
+	receipt        *protocol.ExecutionReceiptData
+	verify         *protocol.TurnVerificationData
+	text           string
+	notes          []string
+	deadline       context.CancelFunc
+	timedOut       bool
+	startedAt      time.Time
+	lease          rlm.Lease
+	leased         bool
 }
 
 func newChildRuntime(
@@ -221,8 +223,9 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 	c.ensurePump(ctx)
 	c.mu.Lock()
 	c.turns[threadID] = &childTurn{
-		agentID: agentID, turnID: turnID, startedAt: time.Now(),
-		lease: lease, leased: true,
+		agentID: agentID, turnID: turnID, startOperation: operation.ID,
+		startedAt: time.Now(),
+		lease:     lease, leased: true,
 	}
 	c.mu.Unlock()
 
@@ -287,10 +290,76 @@ func (c *childRuntime) release(agentID string) {
 	// Cancel its runtime turn before forgetting the thread, otherwise it could
 	// acquire the gate later and run after the operator already closed it.
 	if active != nil {
+		if !c.waitForStart(threadID, 2*time.Second) {
+			go func() {
+				if c.waitForStart(threadID, c.limits.WallTime) {
+					c.release(agentID)
+				}
+			}()
+			return
+		}
+		c.mu.Lock()
+		active = c.turns[threadID]
+		c.mu.Unlock()
+		if active == nil {
+			c.releaseThread(threadID)
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		_ = c.CancelTurn(ctx, agentID, string(active.turnID))
 		cancel()
+		if !c.waitForTerminal(threadID, 2*time.Second) {
+			go func() {
+				if c.waitForTerminal(threadID, c.limits.WallTime) {
+					c.releaseThread(threadID)
+				}
+			}()
+			return
+		}
 	}
+	c.releaseThread(threadID)
+}
+
+func (c *childRuntime) waitForStart(
+	threadID protocol.ThreadID,
+	timeout time.Duration,
+) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		c.mu.Lock()
+		turn := c.turns[threadID]
+		ready := turn == nil || turn.started
+		c.mu.Unlock()
+		if ready {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (c *childRuntime) waitForTerminal(
+	threadID protocol.ThreadID,
+	timeout time.Duration,
+) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		c.mu.Lock()
+		active := c.turns[threadID] != nil
+		c.mu.Unlock()
+		if !active {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (c *childRuntime) releaseThread(threadID protocol.ThreadID) {
 	c.mu.Lock()
 	threads := c.threads
 	if turn := c.turns[threadID]; turn != nil {
@@ -550,6 +619,8 @@ func (c *childRuntime) observe(event protocol.Event) {
 	status := subagent.StatusCompleted
 	var waitRequest, resumeRequest string
 	switch data := event.Data.(type) {
+	case *protocol.TurnStartedData:
+		turn.started = true
 	case *protocol.ExecutionReceiptData:
 		copied := *data
 		turn.receipt = &copied
@@ -578,7 +649,9 @@ func (c *childRuntime) observe(event protocol.Event) {
 			"operation rejected: %s",
 			data.Message,
 		))
-		settle, status = true, subagent.StatusErrored
+		if event.OperationID == turn.startOperation {
+			settle, status = true, subagent.StatusErrored
+		}
 	}
 	if !settle {
 		manager := c.manager

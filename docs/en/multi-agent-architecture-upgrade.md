@@ -2,9 +2,10 @@
 
 [简体中文](../zh-CN/multi-agent-architecture-upgrade.md) | English
 
-> Status: target architecture and implementation proposal. This document does
-> not claim that the current release already ships every capability described
-> below.
+> Status: MA1-MA6 are implemented and accepted. Sections explicitly labelled
+> `Proposed` remain follow-on target design, notably direct Host lifecycle
+> Operations and VS Code lifecycle controls; current Hosts query and project the
+> durable Agent Tree while governed model tools perform lifecycle mutations.
 >
 > Scope: the CodeHelper runtime, subagent orchestration, persistence, security
 > boundaries, and the common Multi-Agent facts projected by CLI, TUI, VS Code,
@@ -148,8 +149,9 @@ flowchart TB
    receive an exclusive worktree.
 6. **Recovery is a normal path:** every asynchronous boundary defines its crash
    behavior.
-7. **Hosts submit intent:** follow-up, interrupt, close, and integrate remain
-   Runtime Operations.
+7. **One mutation path:** model Agent tools enter AgentControl through Guard;
+   future direct Host lifecycle controls must submit Runtime Operations rather
+   than call AgentControl themselves.
 
 ## 4. Target Architecture
 
@@ -762,7 +764,8 @@ infers status from free text.
 
 Timeline details, Diff, and Receipt content load lazily. A snapshot carries
 `last_sequence`, incremental replay follows, and virtual lists protect the
-Extension Host from large sessions. UI controls only submit Runtime Operations.
+Extension Host from large sessions. Any future lifecycle UI controls must submit
+Runtime Operations.
 
 ## 15. Protocol and Configuration Impact
 
@@ -1014,6 +1017,34 @@ Implementation status: `completed` (2026-08-13).
   completed Child results, waited, closed them, and completed the Parent in
   about 21.5 seconds. `make vscode-subagent-integration` also passed the real
   Electron Spawn/Approval/Integration workflow.
+
+Completion audit (2026-08-13):
+
+- Durable Agent Node, Mailbox, Result, Integration, Budget, reconciliation, and
+  ACP replay/live routing are partitioned by authoritative Session ID inside a
+  Workspace. `InvocationIdentity` carries that Session from Runtime Thread
+  lookup into every Agent tool, so one Chat Session cannot list, wait, close, or
+  integrate another Session's Agent and historical `max_total` spend no longer
+  poisons a new Session. ACP `agent/list` requires a bound Session, and VS Code
+  keeps one Background Projector per connected Session while displaying the
+  currently selected Chat Session.
+- Worktree allocation writes a versioned, Session-bound WAL before provisioning
+  makes a filesystem side effect. A crash between Provision and Agent Node
+  commit therefore recovers a failed Node, Completion, and budget settlement in
+  the original Session; an orphan without a valid allocation is retained with a
+  quarantine manifest and is never claimed by the process-scoped hook Session.
+- Every `[execution.subagent]` field now participates in defaults, TOML,
+  `CODEHELPER_SUBAGENT_*` environment variables, programmatic overrides,
+  validation, and provenance. `max_resident` and `max_total` are no longer
+  TOML-only limits.
+- `multi-agent-eval` and `multi-agent-performance` are mandatory in both
+  `verify` and `release-gate`. A protected, manually triggered
+  `Live Multi-Agent Smoke` workflow consumes repository secrets and uploads
+  redacted evidence.
+- A failure after an asynchronous Child Turn starts now cancels/releases the
+  Child runtime before closing the Agent Node. Fault injection covers mailbox
+  persistence failure, preventing an errored `spawn_agent` call from leaving
+  an untracked Child running.
 
 ## 17. Verification System
 

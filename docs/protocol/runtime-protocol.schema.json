@@ -2146,7 +2146,9 @@
         "body",
         "from",
         "sequence",
-        "to"
+        "session_id",
+        "to",
+        "workspace_root"
       ],
       "additionalProperties": false
     },
@@ -2187,7 +2189,9 @@
       "required": [
         "agent_id",
         "depth",
-        "role"
+        "role",
+        "session_id",
+        "workspace_root"
       ],
       "additionalProperties": false
     },
@@ -2215,7 +2219,9 @@
       },
       "required": [
         "agent_id",
-        "status"
+        "session_id",
+        "status",
+        "workspace_root"
       ],
       "additionalProperties": false
     },

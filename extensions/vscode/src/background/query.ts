@@ -23,23 +23,23 @@ export class BackgroundQuery {
     return array(value["threads"], "threads").map(decodeThread);
   }
 
-  public async agents(): Promise<readonly AgentRow[]> {
+  public async agents(sessionId: string): Promise<readonly AgentRow[]> {
     const value = object(await this.#transport.request("agent/list", {
-      includeClosed: true, limit: 1000,
+      sessionId, includeClosed: true, limit: 1000,
     }), "agent/list result");
     return array(value["agents"], "agents").map(decodeAgent);
   }
 
-  public async tasks(): Promise<readonly TaskRow[]> {
+  public async tasks(sessionId: string): Promise<readonly TaskRow[]> {
     const value = object(await this.#transport.request("task/list", {
-      limit: 1000,
+      sessionId, limit: 1000,
     }), "task/list result");
     return array(value["tasks"], "tasks").map(decodeTask);
   }
 
-  public async usage(): Promise<UsageRollup> {
+  public async usage(sessionId: string): Promise<UsageRollup> {
     const value = object(await this.#transport.request("usage/query", {
-      limit: 1000,
+      sessionId, limit: 1000,
     }), "usage/query result");
     return decodeUsage(object(value["rollup"], "usage rollup"));
   }

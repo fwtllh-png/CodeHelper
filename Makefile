@@ -68,7 +68,8 @@ endif
 fmt:
 	$(GO) fmt ./...
 
-verify: architecture-ratchet markdownlint-check docs-check book-check brand-check vscode-check vscode-test
+verify: architecture-ratchet markdownlint-check docs-check book-check brand-check \
+	multi-agent-eval vscode-check vscode-test multi-agent-performance
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
 	$(GO) vet ./...
 	$(MAKE) test-hermetic
@@ -156,7 +157,8 @@ test-release:
 		--require-available \
 		-- $(MAKE) release-gate
 
-release-gate: cross-build smoke race secret-leak-test benchmark-v2 vscode-release-dry-run
+release-gate: cross-build smoke race secret-leak-test benchmark-v2 \
+	multi-agent-eval multi-agent-performance vscode-release-dry-run
 
 race:
 	$(GO) test -race -p 1 ./...
@@ -472,7 +474,7 @@ multi-agent-eval:
 		--agent-thresholds testdata/multi-agent-evals/thresholds.json \
 		--output .tmp/multi-agent-eval-report.json
 
-multi-agent-performance:
+multi-agent-performance: vscode-install
 	cd $(VSCODE_DIR) && $(NPM) run test:performance
 
 # catalog-bench tracks the M4 dynamic tool catalog's time, allocation, and

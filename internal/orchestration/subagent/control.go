@@ -32,6 +32,7 @@ const (
 
 // ListFilter selects agents for List.
 type ListFilter struct {
+	SessionID     string
 	ParentID      string
 	IncludeClosed bool
 }
@@ -95,6 +96,9 @@ func (m *Manager) List(filter ListFilter) []Agent {
 	out := make([]Agent, 0, len(m.agents))
 	seen := make(map[string]struct{}, len(m.agents))
 	for _, agent := range m.agents {
+		if filter.SessionID != "" && agent.SessionID != filter.SessionID {
+			continue
+		}
 		if !filter.IncludeClosed && (agent.Closed || agent.Status == StatusShutdown) {
 			continue
 		}
@@ -107,8 +111,7 @@ func (m *Manager) List(filter ListFilter) []Agent {
 	m.mu.Unlock()
 
 	if graph != nil {
-		parent := filter.ParentID
-		edges, err := graph.ListChildren(parent)
+		edges, err := graph.ListChildren(filter.SessionID, filter.ParentID)
 		if err == nil {
 			for _, edge := range edges {
 				if _, ok := seen[edge.ChildID]; ok {
@@ -131,6 +134,15 @@ func (m *Manager) List(filter ListFilter) []Agent {
 // Wait blocks until every listed agent is terminal, or any agent is terminal when
 // agentIDs is empty. A non-positive timeout means wait until ctx is done.
 func (m *Manager) Wait(ctx context.Context, agentIDs []string, timeout time.Duration) (WaitResult, error) {
+	return m.WaitSession(ctx, "", agentIDs, timeout)
+}
+
+func (m *Manager) WaitSession(
+	ctx context.Context,
+	sessionID string,
+	agentIDs []string,
+	timeout time.Duration,
+) (WaitResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -148,7 +160,7 @@ func (m *Manager) Wait(ctx context.Context, agentIDs []string, timeout time.Dura
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for {
-		done, ready, err := m.waitProgressLocked(agentIDs)
+		done, ready, err := m.waitProgressLocked(sessionID, agentIDs)
 		if err != nil {
 			return WaitResult{}, err
 		}
@@ -176,10 +188,16 @@ func (m *Manager) Wait(ctx context.Context, agentIDs []string, timeout time.Dura
 	}
 }
 
-func (m *Manager) waitProgressLocked(agentIDs []string) ([]Agent, bool, error) {
+func (m *Manager) waitProgressLocked(
+	sessionID string,
+	agentIDs []string,
+) ([]Agent, bool, error) {
 	if len(agentIDs) == 0 {
 		var done []Agent
 		for _, agent := range m.agents {
+			if sessionID != "" && agent.SessionID != sessionID {
+				continue
+			}
 			if isTerminal(agent.Status) {
 				done = append(done, cloneAgent(agent))
 			}
@@ -190,7 +208,7 @@ func (m *Manager) waitProgressLocked(agentIDs []string) ([]Agent, bool, error) {
 	done := make([]Agent, 0, len(agentIDs))
 	for _, id := range agentIDs {
 		agent, ok := m.agents[id]
-		if !ok {
+		if !ok || sessionID != "" && agent.SessionID != sessionID {
 			return nil, false, fmt.Errorf("agent %q not found", id)
 		}
 		if !isTerminal(agent.Status) {
@@ -223,7 +241,8 @@ func (m *Manager) FollowUp(ctx context.Context, agentID, prompt string) (string,
 		return "", err
 	}
 	if _, err := m.mailbox.Enqueue(Message{
-		From: "parent", To: agentID, Kind: MessageTask,
+		SessionID: agent.SessionID,
+		From:      "parent", To: agentID, Kind: MessageTask,
 		Body: body, TriggerTurn: true,
 	}); err != nil {
 		return "", err
@@ -345,7 +364,7 @@ func (m *Manager) startTurn(
 		m.mu.Unlock()
 		return "", err
 	}
-	pending := m.mailbox.Pending(agentID)
+	pending := m.mailbox.PendingSession(agent.SessionID, agentID)
 	m.mu.Unlock()
 	prompt = promptWithMessages(prompt, pending)
 	var (

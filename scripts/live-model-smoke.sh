@@ -72,8 +72,8 @@ if [ "$multi_agent" = "1" ]; then
 delegation = "explicit"
 max_depth = 1
 max_parallel = 4
-max_resident = 16
-max_total = 16
+max_resident = 4
+max_total = 4
 max_steps = 12
 wall_time = "5m"
 workspace = "read_only"
@@ -188,6 +188,10 @@ ruby -rjson -rdigest -ruri -e '
 			model: ARGV[2],
 			model_sha256: Digest::SHA256.hexdigest(ARGV[2]),
 			provider: ARGV[3],
+			multi_agent: multi_agent,
+			agent_spawn_count: spawned.uniq.length,
+			agent_terminal_count: agent_terminal.length,
+			agent_completed_count: agent_terminal.values.count { |item| item.fetch(:status) == "completed" },
 			terminal_event: terminal.fetch(0),
 			terminal_count: terminal.length,
 			text_assertion_sha256: Digest::SHA256.hexdigest(text.strip)

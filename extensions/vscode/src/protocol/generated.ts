@@ -656,9 +656,9 @@ export type AgentMessageData = {
   readonly "body": unknown;
   readonly "from": string;
   readonly "sequence": number;
-  readonly "session_id"?: string;
+  readonly "session_id": string;
   readonly "to": string;
-  readonly "workspace_root"?: string;
+  readonly "workspace_root": string;
 };
 
 export type AgentSpawnedData = {
@@ -668,9 +668,9 @@ export type AgentSpawnedData = {
   readonly "parent_id"?: string;
   readonly "profile"?: string;
   readonly "role": string;
-  readonly "session_id"?: string;
+  readonly "session_id": string;
   readonly "stance"?: string;
-  readonly "workspace_root"?: string;
+  readonly "workspace_root": string;
   readonly "worktree"?: string;
 };
 
@@ -678,9 +678,9 @@ export type AgentStatusData = {
   readonly "agent_id": string;
   readonly "detail"?: unknown;
   readonly "message"?: string;
-  readonly "session_id"?: string;
+  readonly "session_id": string;
   readonly "status": string;
-  readonly "workspace_root"?: string;
+  readonly "workspace_root": string;
 };
 
 export type ApprovalRequiredData = {

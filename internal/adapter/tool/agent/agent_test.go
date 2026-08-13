@@ -766,6 +766,156 @@ func TestAgentInterruptFollowUpViaTools(t *testing.T) {
 	}
 }
 
+func TestAgentToolsRejectCrossSessionTargets(t *testing.T) {
+	manager, err := subagent.Open(subagent.Options{
+		Root: t.TempDir(), Gate: &recordingGate{}, Runtime: &dualRuntime{},
+		SessionID: "session-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := subagent.NewDelegationPolicy(subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := subagent.NewAgentControl(
+		manager, subagent.DefaultRoleCatalog(), policy,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := control.SpawnIntent(subagent.DelegationIntent{
+		SessionID: "session-a", TaskName: "first", Role: subagent.RoleExplore,
+		Objective: "inspect", ExpectedOutput: "report", Trigger: subagent.TriggerUser,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := control.SpawnIntent(subagent.DelegationIntent{
+		SessionID: "session-b", TaskName: "second", Role: subagent.RoleExplore,
+		Objective: "inspect", ExpectedOutput: "report", Trigger: subagent.TriggerUser,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := agenttool.Register(registry, agenttool.Options{
+		Control: control, Handles: handle.NewStore(), SessionID: "session-a",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sessionB := tool.WithInvocationIdentity(t.Context(), tool.InvocationIdentity{
+		SessionID: "session-b", ThreadID: "thread-b", TurnID: "turn-b",
+	})
+	if _, err := executeWithContext(
+		sessionB, registry, "close_agent",
+		map[string]any{"agent_id": first.ID},
+	); err == nil || !strings.Contains(err.Error(), "another session") {
+		t.Fatalf("cross-session close error = %v", err)
+	}
+	listed, err := executeWithContext(
+		sessionB, registry, "list_agents", map[string]any{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(listed.Content, first.ID) ||
+		!strings.Contains(listed.Content, second.ID) {
+		t.Fatalf("session-b agent list = %s", listed.Content)
+	}
+}
+
+func TestSpawnPostStartFailureReleasesChildRuntime(t *testing.T) {
+	runtime := &dualRuntime{}
+	manager, err := subagent.Open(subagent.Options{
+		Root: t.TempDir(), Gate: &recordingGate{}, Runtime: runtime,
+		SessionID: "session-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := subagent.NewAgentControl(
+		manager,
+		subagent.DefaultRoleCatalog(),
+		mustDelegationPolicy(t),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failure := errors.New("persist mailbox failed")
+	graph := subagent.DurableGraph{
+		Workspace: "/workspace", SessionID: "session-1",
+		AppendSpawn:  func(subagent.GraphEdge) error { return nil },
+		AppendStatus: func(subagent.GraphTransition) error { return nil },
+		AppendMessage: func(subagent.Message) error {
+			return failure
+		},
+		DeliverMessage: func(subagent.Message) error { return nil },
+		Sessions:       func() ([]string, error) { return nil, nil },
+		Children: func(string, string) ([]subagent.GraphEdge, error) {
+			return nil, nil
+		},
+		Messages: func(string, string) ([]subagent.Message, error) {
+			return nil, nil
+		},
+		Result: func(string, string) (subagent.Result, bool, error) {
+			return subagent.Result{}, false, nil
+		},
+		AppendIntegration: func(subagent.IntegrationCandidate) error { return nil },
+		Integration: func(
+			string, string, string,
+		) (subagent.IntegrationCandidate, bool, error) {
+			return subagent.IntegrationCandidate{}, false, nil
+		},
+		Budget:         func(string) (subagent.BudgetLedger, error) { return subagent.BudgetLedger{}, nil },
+		ReconcileGraph: func() error { return nil },
+	}
+	if err := control.AttachGraph(graph); err != nil {
+		t.Fatal(err)
+	}
+	released := 0
+	registry := tool.NewRegistry(nil, nil)
+	if err := agenttool.Register(registry, agenttool.Options{
+		Control: control, Handles: handle.NewStore(), SessionID: "session-1",
+		OnRelease: func(string) {
+			released++
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	input := spawnInput("cleanup", "start then fail", "explore")
+	input["context_mode"] = "fresh"
+	_, err = executeWithContext(
+		tool.WithInvocationIdentity(t.Context(), tool.InvocationIdentity{
+			SessionID: "session-1", ThreadID: "thread-parent", TurnID: "turn-parent",
+		}),
+		registry,
+		"spawn_agent",
+		input,
+	)
+	if !errors.Is(err, failure) {
+		t.Fatalf("spawn error = %v", err)
+	}
+	if released != 1 || len(runtime.turns) != 1 {
+		t.Fatalf("released=%d turns=%v", released, runtime.turns)
+	}
+	agents := control.List(subagent.ListFilter{
+		SessionID: "session-1", IncludeClosed: true,
+	})
+	if len(agents) != 1 || !agents[0].Closed {
+		t.Fatalf("post-failure agents = %+v", agents)
+	}
+}
+
+func mustDelegationPolicy(t *testing.T) subagent.DelegationPolicy {
+	t.Helper()
+	policy, err := subagent.NewDelegationPolicy(subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return policy
+}
+
 func execute(t *testing.T, registry *tool.Registry, name string, input map[string]any) tool.Result {
 	t.Helper()
 	result, err := registry.Execute(t.Context(), tool.Call{

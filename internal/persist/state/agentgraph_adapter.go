@@ -48,15 +48,19 @@ func NewAgentGraph(
 		if err != nil {
 			return err
 		}
+		messageSessionID := message.SessionID
+		if messageSessionID == "" {
+			messageSessionID = sessionID
+		}
 		return appendEvent(context.Background(), &protocol.AgentMessageData{
 			From: message.From, To: message.To,
-			WorkspaceRoot: workspaceRoot, SessionID: sessionID,
+			WorkspaceRoot: workspaceRoot, SessionID: messageSessionID,
 			Sequence: message.Sequence, Body: body,
 		})
 	}
-	publishPending := func() error {
-		messages, err := store.ListUnpublishedAgentCompletions(
-			context.Background(), workspaceRoot,
+	publishPending := func(targetSessionID string) error {
+		messages, err := store.ListUnpublishedAgentCompletionsSession(
+			context.Background(), workspaceRoot, targetSessionID,
 		)
 		if err != nil {
 			return err
@@ -70,6 +74,9 @@ func NewAgentGraph(
 	}
 	return subagent.DurableGraph{
 		Workspace: workspaceRoot, SessionID: sessionID,
+		Sessions: func() ([]string, error) {
+			return store.ListAgentSessions(context.Background(), workspaceRoot)
+		},
 		AppendSpawn: func(edge subagent.GraphEdge) error {
 			detail, err := json.Marshal(edge)
 			if err != nil {
@@ -77,19 +84,22 @@ func NewAgentGraph(
 			}
 			return appendEvent(context.Background(), &protocol.AgentSpawnedData{
 				AgentID: edge.ChildID, ParentID: edge.ParentID,
-				WorkspaceRoot: workspaceRoot, SessionID: sessionID, Role: string(edge.Role),
+				WorkspaceRoot: workspaceRoot, SessionID: edge.SessionID, Role: string(edge.Role),
 				Profile: edge.Profile, Stance: string(edge.Stance),
 				Depth: edge.Depth, Worktree: edge.Worktree, Detail: detail,
 			})
 		},
 		AppendStatus: func(transition subagent.GraphTransition) error {
+			if transition.SessionID == "" {
+				transition.SessionID = sessionID
+			}
 			detail, err := json.Marshal(transition)
 			if err != nil {
 				return err
 			}
 			if err := appendEvent(context.Background(), &protocol.AgentStatusData{
 				AgentID:       transition.AgentID,
-				WorkspaceRoot: workspaceRoot, SessionID: sessionID,
+				WorkspaceRoot: workspaceRoot, SessionID: transition.SessionID,
 				Status: string(transition.Status), Message: transition.Message,
 				Detail: detail,
 			}); err != nil {
@@ -101,6 +111,9 @@ func NewAgentGraph(
 			return nil
 		},
 		AppendMessage: func(message subagent.Message) error {
+			if message.SessionID == "" {
+				message.SessionID = sessionID
+			}
 			return publishMessage(message)
 		},
 		AppendIntegration: func(candidate subagent.IntegrationCandidate) error {
@@ -109,11 +122,14 @@ func NewAgentGraph(
 			)
 		},
 		DeliverMessage: func(message subagent.Message) error {
+			if message.SessionID == "" {
+				message.SessionID = sessionID
+			}
 			return publishMessage(message)
 		},
-		Children: func(parentID string) ([]subagent.GraphEdge, error) {
-			edges, err := store.ListAgentChildren(
-				context.Background(), workspaceRoot, parentID,
+		Children: func(targetSessionID, parentID string) ([]subagent.GraphEdge, error) {
+			edges, err := store.ListAgentChildrenSession(
+				context.Background(), workspaceRoot, targetSessionID, parentID,
 			)
 			if err != nil {
 				return nil, err
@@ -144,49 +160,66 @@ func NewAgentGraph(
 			}
 			return out, nil
 		},
-		Messages: func(to string) ([]subagent.Message, error) {
-			return store.ListAgentMessages(context.Background(), workspaceRoot, to)
-		},
-		Result: func(agentID string) (subagent.Result, bool, error) {
-			return store.LoadAgentResult(context.Background(), workspaceRoot, agentID)
-		},
-		Integration: func(
-			agentID, previewDigest string,
-		) (subagent.IntegrationCandidate, bool, error) {
-			return store.LoadAgentIntegration(
-				context.Background(), workspaceRoot, agentID, previewDigest,
+		Messages: func(targetSessionID, to string) ([]subagent.Message, error) {
+			return store.ListAgentMessagesSession(
+				context.Background(), workspaceRoot, targetSessionID, to,
 			)
 		},
-		Budget: func() (subagent.BudgetLedger, error) {
-			return store.LoadAgentBudget(context.Background(), workspaceRoot)
+		Result: func(targetSessionID, agentID string) (subagent.Result, bool, error) {
+			return store.LoadAgentResultSession(
+				context.Background(), workspaceRoot, targetSessionID, agentID,
+			)
+		},
+		Integration: func(
+			targetSessionID, agentID, previewDigest string,
+		) (subagent.IntegrationCandidate, bool, error) {
+			return store.LoadAgentIntegrationSession(
+				context.Background(), workspaceRoot, targetSessionID,
+				agentID, previewDigest,
+			)
+		},
+		Budget: func(targetSessionID string) (subagent.BudgetLedger, error) {
+			return store.LoadAgentBudgetSession(
+				context.Background(), workspaceRoot, targetSessionID,
+			)
 		},
 		ReconcileGraph: func() error {
-			transitions, err := store.PlanAgentReconciliation(
+			sessions, err := store.ListAgentSessions(
 				context.Background(), workspaceRoot,
 			)
 			if err != nil {
 				return err
 			}
-			for _, transition := range transitions {
-				detail, marshalErr := json.Marshal(transition)
-				if marshalErr != nil {
-					return marshalErr
+			for _, targetSessionID := range sessions {
+				transitions, planErr := store.PlanAgentReconciliation(
+					context.Background(), workspaceRoot, targetSessionID,
+				)
+				if planErr != nil {
+					return planErr
 				}
-				if err := appendEvent(context.Background(), &protocol.AgentStatusData{
-					AgentID:       transition.AgentID,
-					WorkspaceRoot: workspaceRoot, SessionID: sessionID,
-					Status: string(transition.Status), Message: transition.Message,
-					Detail: detail,
-				}); err != nil {
+				for _, transition := range transitions {
+					detail, marshalErr := json.Marshal(transition)
+					if marshalErr != nil {
+						return marshalErr
+					}
+					if err := appendEvent(context.Background(), &protocol.AgentStatusData{
+						AgentID: transition.AgentID, WorkspaceRoot: workspaceRoot,
+						SessionID: targetSessionID, Status: string(transition.Status),
+						Message: transition.Message, Detail: detail,
+					}); err != nil {
+						return err
+					}
+				}
+				if err := reconcileAgentIntegrations(
+					store, appendEvent, workspaceRoot, targetSessionID,
+				); err != nil {
+					return err
+				}
+				if err := publishPending(targetSessionID); err != nil {
 					return err
 				}
 			}
-			if err := reconcileAgentIntegrations(
-				store, appendEvent, workspaceRoot, sessionID,
-			); err != nil {
-				return err
-			}
-			return publishPending()
+			return nil
 		},
 	}
 }
@@ -203,7 +236,7 @@ func publishIntegration(
 	return appendEvent(context.Background(), &protocol.AgentIntegrationData{
 		AgentID: candidate.AgentID, AgentPath: candidate.AgentPath,
 		ParentPath: candidate.ParentPath, WorkspaceRoot: workspaceRoot,
-		SessionID: sessionID, Status: string(candidate.Status),
+		SessionID: candidate.SessionID, Status: string(candidate.Status),
 		PreviewDigest: candidate.PreviewDigest,
 		Paths:         append([]string(nil), candidate.Paths...),
 		Conflicts:     append([]string(nil), candidate.Conflicts...),
@@ -217,7 +250,7 @@ func reconcileAgentIntegrations(
 	workspaceRoot, sessionID string,
 ) error {
 	recoveries, err := store.PlanAgentIntegrationRecovery(
-		context.Background(), workspaceRoot,
+		context.Background(), workspaceRoot, sessionID,
 	)
 	if err != nil {
 		return err
@@ -253,7 +286,8 @@ func reconcileAgentIntegrations(
 			continue
 		}
 		transition := subagent.GraphTransition{
-			AgentID: candidate.AgentID, Path: candidate.AgentPath,
+			SessionID: candidate.SessionID,
+			AgentID:   candidate.AgentID, Path: candidate.AgentPath,
 			ExpectedRevision: recovery.AgentRevision, Status: target,
 			OperationID: "reconcile:integration:" + candidate.AgentID,
 			Actor:       "startup_reconciler", Reason: message, Message: message,
@@ -265,7 +299,7 @@ func reconcileAgentIntegrations(
 		}
 		if err := appendEvent(context.Background(), &protocol.AgentStatusData{
 			AgentID: candidate.AgentID, WorkspaceRoot: workspaceRoot,
-			SessionID: sessionID, Status: string(target),
+			SessionID: candidate.SessionID, Status: string(target),
 			Message: message, Detail: detail,
 		}); err != nil {
 			return err

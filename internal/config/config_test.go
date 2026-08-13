@@ -177,18 +177,60 @@ delegation = "proactive"
 	}
 }
 
-func TestLoadSubagentDelegationFromEnvironment(t *testing.T) {
+func TestLoadSubagentConfigurationFromEnvironment(t *testing.T) {
 	snapshot, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_SUBAGENT_DELEGATION": "disabled",
+		"CODEHELPER_SUBAGENT_DELEGATION":   "disabled",
+		"CODEHELPER_SUBAGENT_MAX_DEPTH":    "7",
+		"CODEHELPER_SUBAGENT_MAX_PARALLEL": "3",
+		"CODEHELPER_SUBAGENT_MAX_RESIDENT": "5",
+		"CODEHELPER_SUBAGENT_MAX_TOTAL":    "9",
+		"CODEHELPER_SUBAGENT_MAX_STEPS":    "31",
+		"CODEHELPER_SUBAGENT_MAX_TOKENS":   "12000",
+		"CODEHELPER_SUBAGENT_MAX_COST_USD": "2.5",
+		"CODEHELPER_SUBAGENT_WALL_TIME":    "90s",
+		"CODEHELPER_SUBAGENT_WORKSPACE":    "read_only",
 	})})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snapshot.Config.Execution.Subagent.Delegation; got != SubagentDelegationDisabled {
-		t.Fatalf("subagent delegation = %q", got)
+	got := snapshot.Config.Execution.Subagent
+	if got.Delegation != SubagentDelegationDisabled ||
+		got.MaxDepth != 7 || got.MaxParallel != 3 ||
+		got.MaxResident != 5 || got.MaxTotal != 9 ||
+		got.MaxSteps != 31 || got.MaxTokens != 12000 ||
+		got.MaxCostUSD != 2.5 || got.WallTime != 90*time.Second ||
+		got.Workspace != SubagentWorkspaceReadOnly {
+		t.Fatalf("subagent environment config = %+v", got)
 	}
-	if got := snapshot.Provenance[fieldSubagentDelegation]; got != SourceEnv {
-		t.Fatalf("delegation provenance = %q", got)
+	for _, field := range []string{
+		fieldSubagentDelegation, fieldSubagentMaxDepth,
+		fieldSubagentMaxParallel, fieldSubagentMaxResident,
+		fieldSubagentMaxTotal, fieldSubagentMaxSteps,
+		fieldSubagentMaxTokens, fieldSubagentMaxCostUSD,
+		fieldSubagentWallTime, fieldSubagentWorkspace,
+	} {
+		if source := snapshot.Provenance[field]; source != SourceEnv {
+			t.Fatalf("provenance[%s] = %q", field, source)
+		}
+	}
+}
+
+func TestSubagentResidentAndTotalOverridesWin(t *testing.T) {
+	resident, total := 11, 13
+	snapshot, err := Load(LoadOptions{Overrides: Overrides{
+		SubagentMaxResident: &resident,
+		SubagentMaxTotal:    &total,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshot.Config.Execution.Subagent; got.MaxResident != resident ||
+		got.MaxTotal != total {
+		t.Fatalf("subagent overrides = %+v", got)
+	}
+	if snapshot.Provenance[fieldSubagentMaxResident] != SourceCLI ||
+		snapshot.Provenance[fieldSubagentMaxTotal] != SourceCLI {
+		t.Fatalf("subagent override provenance = %+v", snapshot.Provenance)
 	}
 }
 

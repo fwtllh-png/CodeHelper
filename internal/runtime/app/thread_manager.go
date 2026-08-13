@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -24,6 +25,7 @@ type ThreadManager struct {
 	sequences SequenceReader
 	deltas    SessionDeltaRestorer
 	register  func(protocol.ThreadID, ChildSpec) error
+	session   func(context.Context, protocol.ThreadID) (string, error)
 
 	mu        sync.Mutex
 	threads   map[protocol.ThreadID]*EngineAdapter
@@ -31,6 +33,7 @@ type ThreadManager struct {
 	running   map[protocol.ThreadID]int
 	windows   map[protocol.ThreadID]*compactWindow
 	childSpec map[protocol.ThreadID]ChildSpec
+	sessions  map[protocol.ThreadID]string
 	createMu  sync.Mutex // serialize factory calls (shared Options seeds)
 }
 
@@ -91,6 +94,7 @@ func NewThreadManager(factory func() (*EngineAdapter, error)) *ThreadManager {
 		running:   make(map[protocol.ThreadID]int),
 		windows:   make(map[protocol.ThreadID]*compactWindow),
 		childSpec: make(map[protocol.ThreadID]ChildSpec),
+		sessions:  make(map[protocol.ThreadID]string),
 	}
 }
 
@@ -120,6 +124,14 @@ func (m *ThreadManager) SetSessionDeltaRestorer(
 	m.mu.Unlock()
 }
 
+func (m *ThreadManager) SetSessionResolver(
+	resolver func(context.Context, protocol.ThreadID) (string, error),
+) {
+	m.mu.Lock()
+	m.session = resolver
+	m.mu.Unlock()
+}
+
 // RegisterChild binds a child spec to a thread before its first turn is
 // submitted. The engine itself is still created lazily by forThread.
 func (m *ThreadManager) RegisterChild(threadID protocol.ThreadID, spec ChildSpec) error {
@@ -140,6 +152,25 @@ func (m *ThreadManager) RegisterChild(threadID protocol.ThreadID, spec ChildSpec
 		}
 	}
 	m.childSpec[threadID] = spec
+	if spec.SessionID != "" {
+		m.sessions[threadID] = spec.SessionID
+	}
+	return nil
+}
+
+func (m *ThreadManager) BindSession(
+	threadID protocol.ThreadID,
+	sessionID string,
+) error {
+	if threadID == "" || sessionID == "" {
+		return errors.New("thread and session ids are required")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if existing := m.sessions[threadID]; existing != "" && existing != sessionID {
+		return fmt.Errorf("thread %s is already bound to session %s", threadID, existing)
+	}
+	m.sessions[threadID] = sessionID
 	return nil
 }
 
@@ -159,6 +190,7 @@ func (m *ThreadManager) Release(threadID protocol.ThreadID) {
 	delete(m.threads, threadID)
 	delete(m.windows, threadID)
 	delete(m.childSpec, threadID)
+	delete(m.sessions, threadID)
 	for turnID, owner := range m.turns {
 		if owner == threadID {
 			delete(m.turns, turnID)
@@ -184,6 +216,20 @@ func (m *ThreadManager) SetSequenceReader(reader SequenceReader) {
 func (m *ThreadManager) StartTurn(
 	ctx context.Context, payload *protocol.StartTurnPayload, sink EngineSink,
 ) error {
+	m.mu.Lock()
+	sessionID := m.sessions[payload.ThreadID]
+	resolveSession := m.session
+	m.mu.Unlock()
+	if sessionID == "" && resolveSession != nil {
+		resolved, err := resolveSession(ctx, payload.ThreadID)
+		if err != nil {
+			return fmt.Errorf("resolve turn session identity: %w", err)
+		}
+		sessionID = resolved
+	}
+	if sessionID != "" {
+		ctx = tool.WithSessionIdentity(ctx, sessionID)
+	}
 	adapter, err := m.forThread(payload.ThreadID)
 	if err != nil {
 		return err

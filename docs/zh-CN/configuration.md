@@ -322,6 +322,7 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | `CODEHELPER_MODE`、`CODEHELPER_WORKSPACE`、`CODEHELPER_TOOLS` | 执行行为 |
 | `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT` | 限制 |
 | `CODEHELPER_BUDGET_TOKENS`、`CODEHELPER_BUDGET_USD` | 会话预算 |
+| `CODEHELPER_SUBAGENT_*` | 委派模式、Tree 限制、Child 预算、Wall Time 与 Workspace 策略 |
 | `CODEHELPER_VERIFY_*` | 验证行为 |
 | `CODEHELPER_STATE_*` | 持久化 |
 | `CODEHELPER_CREDENTIAL_KIND`、`CODEHELPER_CREDENTIAL_NAME` | Secret 引用 |
