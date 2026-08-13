@@ -11,13 +11,8 @@ import (
 // SchemaDialect is the JSON Schema dialect the generated document declares.
 const SchemaDialect = "https://json-schema.org/draft/2020-12/schema"
 
-// Schema is the machine-readable description of this build's protocol surface.
-//
-// It is generated from the same factory tables that decoding and capability
-// negotiation read, so a payload shape cannot drift from what is published: there
-// is no second place to update. A consumer outside this repository — the VS Code
-// extension is the first one coming — needs the shapes, not just the kind names
-// that `OperationKinds` and `EventKinds` already give it.
+// Schema describes the protocol from the same tables used by decoding and
+// capability negotiation, keeping published shapes and accepted kinds aligned.
 type Schema struct {
 	Dialect string `json:"$schema"`
 	Title   string `json:"title"`
@@ -32,9 +27,7 @@ type Schema struct {
 	EventTraits map[EventKind]EventTraits `json:"event_traits"`
 }
 
-// TypeSchema is the subset of JSON Schema the protocol needs. It is deliberately
-// small: the protocol is structs of scalars, slices and nested structs, and a
-// generator that only emits what those need cannot emit something misleading.
+// TypeSchema is the JSON Schema subset needed by protocol structs.
 type TypeSchema struct {
 	Type string `json:"type,omitempty"`
 	// Format carries "date-time" for timestamps, which is the one semantic a
@@ -48,8 +41,7 @@ type TypeSchema struct {
 	Enum                 []string               `json:"enum,omitempty"`
 }
 
-// GenerateSchema builds the document. It is pure: the same build always produces
-// the same bytes, which is what makes a committed copy a drift check.
+// GenerateSchema deterministically builds the committed protocol document.
 func GenerateSchema() *Schema {
 	schema := &Schema{
 		Dialect: SchemaDialect, Title: "codehelper runtime protocol", Version: Version,

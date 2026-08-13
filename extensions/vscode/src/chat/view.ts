@@ -28,7 +28,6 @@ import {
   type ApprovalCard,
   type InputCard,
 } from "./projector.js";
-import { approvalDialogContent } from "./approval-summary.js";
 import { groupToolsForPicker } from "./tool-groups.js";
 import { isUnknownEvent, type DecodedEvent } from "../protocol/decode.js";
 import type {
@@ -38,7 +37,6 @@ import type {
 import type { ChatSessionSummary } from "../runtime/controller.js";
 import { projectEditPlan, type EditPlanCard } from "../edits/model.js";
 import type { ApprovalRequiredData } from "../protocol/generated.js";
-import { testBuildEnabled } from "../test-mode.js";
 import {
   chatWebviewResourceRoot,
   renderChatHTML,
@@ -106,7 +104,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   readonly #editPreview: EditPlanPreview;
   readonly #resourceNavigator: ResourceNavigator;
   readonly #subscriptions: vscode.Disposable[];
-  readonly #modalApprovals = new Set<string>();
   readonly #modalInputs = new Set<string>();
   readonly #submittedApprovals = new Set<string>();
   readonly #submittedRecoveries = new Set<string>();
@@ -293,14 +290,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (replayed || isUnknownEvent(event)) {
       return;
     }
-    if (event.kind === "approval.required") {
-      const card = projector.pendingApprovals().find(
-        (approval) => approval.requestId === event.data.request_id,
-      );
-      if (card !== undefined) {
-        void this.#showApproval(root, sessionId, card);
-      }
-    } else if (event.kind === "approval.resolved") {
+    if (event.kind === "approval.resolved") {
       this.#submittedApprovals.delete(
         sessionKey(root.rootId, sessionId, event.data.request_id),
       );
@@ -912,7 +902,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           throw new Error("Session has no pending Approval");
         }
         this.#state(root.rootId).revealTurnId = approval.turnId;
-        await this.#showApproval(root, sessionId, approval);
         break;
       }
       case "delete": {
@@ -1005,59 +994,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       }
     }
     this.#scheduleFlush();
-  }
-
-  async #showApproval(
-    root: WorkspaceRuntime,
-    sessionId: string,
-    approval: ApprovalCard,
-  ): Promise<void> {
-    const key = sessionKey(root.rootId, sessionId, approval.requestId);
-    if (this.#modalApprovals.has(key) || isExpired(approval.expiresAt)) {
-      return;
-    }
-    this.#modalApprovals.add(key);
-    try {
-      if (approval.editPlan !== undefined) {
-        await this.#editPreview.show(approval.editPlan, root.rootId);
-      }
-      if (testBuildEnabled) return;
-      const choices: string[] = [];
-      if (vscode.workspace.isTrusted) {
-        if (approval.allowedScopes.includes("once")) {
-          choices.push("Approve once");
-        }
-        if (approval.allowedScopes.includes("session")) {
-          choices.push("Approve for session");
-        }
-        if (approval.allowedScopes.includes("always")) {
-          choices.push("Always approve");
-        }
-      }
-      choices.push("Deny request", "Stop turn");
-      const content = approvalDialogContent(approval);
-      const selected = await vscode.window.showWarningMessage(
-        `${root.label}: ${content.title}`,
-        { modal: true, detail: content.detail },
-        ...choices,
-      );
-      const decision = modalDecision(selected);
-      if (decision !== undefined) {
-        await this.#decide(
-          root,
-          sessionId,
-          approval,
-          decision.decision,
-          decision.scope,
-        );
-      }
-    } catch (error) {
-      this.#post(createChatErrorMessage(
-        error instanceof Error ? error.message : String(error),
-      ));
-    } finally {
-      this.#modalApprovals.delete(key);
-    }
   }
 
   async #showInput(
@@ -1804,25 +1740,6 @@ function decodeMergePlan(value: unknown): EditPlanCard {
 
 function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function modalDecision(
-  value: string | undefined,
-): { readonly decision: ApprovalDecision; readonly scope: ApprovalScope } | undefined {
-  switch (value) {
-    case "Approve once":
-      return { decision: "approve", scope: "once" };
-    case "Approve for session":
-      return { decision: "approve", scope: "session" };
-    case "Always approve":
-      return { decision: "approve", scope: "always" };
-    case "Deny request":
-      return { decision: "deny", scope: "once" };
-    case "Stop turn":
-      return { decision: "cancel", scope: "once" };
-    default:
-      return undefined;
-  }
 }
 
 function isExpired(value: string): boolean {

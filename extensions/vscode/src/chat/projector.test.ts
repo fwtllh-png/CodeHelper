@@ -325,6 +325,9 @@ void test("ChatProjector tracks approval identity and resolution", () => {
     arguments_digest: "a".repeat(64),
     resources: [{ kind: "file", path: "result.txt", access: "write" }],
     allowed_scopes: ["once", "session"],
+    effect: "workspace.edit",
+    risk: "high",
+    reason_code: "edit_plan_required",
     grant_preview: {
       kind: "file",
       key: "d".repeat(64),
@@ -361,12 +364,47 @@ void test("ChatProjector tracks approval identity and resolution", () => {
   assert.equal(pending.editPlan?.files[0]?.after, "created\n");
   assert.equal(pending.source?.agentPath, "/root/implement_parser");
   assert.equal(pending.grantPreview?.key, "d".repeat(64));
+  assert.equal(pending.effect, "workspace.edit");
+  assert.equal(pending.risk, "high");
+  assert.equal(pending.reasonCode, "edit_plan_required");
   projector.apply(event(2, "approval.resolved", {
     request_id: "approval_1",
     decision: "approve",
   }));
   assert.equal(projector.pendingApprovals().length, 0);
   assert.equal(projector.snapshot().turns[0]?.approvals[0]?.resolved, "approve");
+});
+
+void test("ChatProjector rejects malformed approval presentation facts", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture", model: "fixture-model", prompt: "run command",
+  }));
+  const required = {
+    request_id: "approval_bad",
+    call_id: "call_bad",
+    tool: "shell_run",
+    arguments: { command: "rm output.txt" },
+    arguments_digest: "a".repeat(64),
+    resources: [],
+    allowed_scopes: ["once"],
+    effect: "process.mutating",
+    risk: "severe",
+    reason_code: "approval_required",
+    expires_at: "2099-01-01T00:00:00Z",
+    replacement_allowed: false,
+    modifiable_arguments: [],
+  };
+  assert.throws(
+    () => projector.apply(event(2, "approval.required", required)),
+    /presentation facts are invalid/u,
+  );
+  assert.throws(
+    () => projector.apply(event(3, "approval.resolved", {
+      request_id: "approval_bad", decision: "bypass",
+    })),
+    /decision is invalid/u,
+  );
 });
 
 void test("ChatProjector projects structured Plans and rolls back later Turns", () => {

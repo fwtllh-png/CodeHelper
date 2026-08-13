@@ -62,6 +62,9 @@ void test("Resource projection covers file, range, symbol, diagnostic, directory
         resources: ["write:src/value.ts"],
         allowedScopes: ["once"],
         expiresAt: "2099-01-01T00:00:00Z",
+        effect: "workspace.edit",
+        risk: "high",
+        reasonCode: "approval_required",
         editPlan: {
           id: "b".repeat(64),
           diff: "diff",

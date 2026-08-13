@@ -281,10 +281,13 @@ func TestC5RuntimePrimesRecoveredApprovalAndInputWaits(t *testing.T) {
 				"approval-1": {
 					RequestID: "approval-1",
 					Data: protocol.ApprovalRequiredData{
-						RequestID: "approval-1",
-						CallID:    "call-1",
-						Tool:      "write",
-						ExpiresAt: time.Now().Add(time.Minute),
+						RequestID:  "approval-1",
+						CallID:     "call-1",
+						Tool:       "write",
+						ExpiresAt:  time.Now().Add(time.Minute),
+						Effect:     "external.mutation",
+						Risk:       "high",
+						ReasonCode: "approval_required",
 					},
 				},
 			},

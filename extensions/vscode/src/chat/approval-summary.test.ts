@@ -2,13 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { ApprovalCard } from "./projector.js";
-import {
-  approvalCardContent,
-  approvalDialogContent,
-} from "./approval-summary.js";
+import { approvalCardContent } from "./approval-summary.js";
 
-void test("approval dialog renders shell requests as readable sections", () => {
-  const content = approvalDialogContent(approval({
+void test("approval card renders authoritative risk, effect, and command", () => {
+  const content = approvalCardContent(approval({
     arguments: JSON.stringify({
       command: "cd docs/book && python3 - <<'PY'\nprint('ok')\nPY",
       description: "Verify all front matter code paths exist",
@@ -21,30 +18,29 @@ void test("approval dialog renders shell requests as readable sections", () => {
     ],
   }));
 
-  assert.equal(
-    content.title,
-    "shell_run: Verify all front matter code paths exist",
-  );
-  assert.match(content.detail, /Command\ncd docs\/book && python3/u);
-  assert.match(content.detail, /\nprint\('ok'\)\n/u);
-  assert.match(content.detail, /• Write workspace/u);
-  assert.match(content.detail, /• Write isolated chat worktree/u);
-  assert.doesNotMatch(content.detail, /serial-tools|write:none|\\n/u);
+  assert.equal(content.risk, "High risk");
+  assert.equal(content.title, "Run a command with side effects?");
+  assert.equal(content.consequence, "This command can modify local state.");
+  assert.match(content.target ?? "", /cd docs\/book[\s\S]+print\('ok'\)/u);
+  assert.match(content.detail, /Effect: process\.mutating/u);
+  assert.match(content.detail, /Reason code: approval_required/u);
+  assert.match(content.detail, /Access: Write workspace/u);
+  assert.doesNotMatch(content.detail, /serial-tools|write:none/u);
 });
 
-void test("approval dialog bounds malformed generic arguments", () => {
-  const content = approvalDialogContent(approval({
+void test("approval card bounds malformed generic arguments", () => {
+  const content = approvalCardContent(approval({
     arguments: "x".repeat(2000),
     resources: [],
   }));
-  assert.equal(content.title, "shell_run needs approval");
-  assert.ok(content.detail.length < 1000);
-  assert.match(content.detail, /Full request details/u);
+  assert.equal(content.target, undefined);
+  assert.ok(content.detail.length <= 360);
 });
 
-void test("approval dialog receives structured multi-file apply context", () => {
+void test("approval card receives structured multi-file apply context", () => {
   const request = approval({
     tool: "file_apply",
+    effect: "workspace.edit",
     arguments: JSON.stringify({
       changes: Array.from({ length: 14 }, (_, index) => ({
         op: "edit",
@@ -72,16 +68,10 @@ void test("approval dialog receives structured multi-file apply context", () => 
       })),
     },
   });
-  const content = approvalDialogContent(request);
   const card = approvalCardContent(request);
 
-  assert.equal(content.title, "file_apply: 14 edits across 6 files");
-  assert.match(content.detail, /Request\nApply 14 edits across 6 files/u);
-  assert.match(content.detail, /chapter-1\.md \(3 edits\)/u);
-  assert.match(content.detail, /Access\n• Write 6 files in workspace/u);
-  assert.match(content.detail, /diff preview is open in Changes/u);
-  assert.doesNotMatch(content.detail, /changes:|old|new|\/workspace/u);
-  assert.equal(card.summary, "Approval: file_apply · 14 edits across 6 files");
+  assert.equal(card.title, "Apply workspace changes?");
+  assert.equal(card.target, "14 edits across 6 files");
   assert.match(card.detail, /Changes: 14 edits across 6 files/u);
   assert.doesNotMatch(card.detail, /changes:|old|new|\/workspace/u);
 });
@@ -90,6 +80,7 @@ void test("approval card summarizes file content instead of rendering it", () =>
   const body = "# Heading\n\n" + "long content\n".repeat(200);
   const content = approvalCardContent(approval({
     tool: "file_write",
+    effect: "workspace.edit",
     arguments: JSON.stringify({
       path: "docs/book/en/chapter.md",
       content: body,
@@ -97,10 +88,8 @@ void test("approval card summarizes file content instead of rendering it", () =>
     resources: ["write:docs/book/en/chapter.md"],
   }));
 
-  assert.equal(
-    content.summary,
-    "Approval: file_write · docs/book/en/chapter.md",
-  );
+  assert.equal(content.title, "Apply workspace changes?");
+  assert.equal(content.target, "docs/book/en/chapter.md");
   assert.match(content.detail, /File: docs\/book\/en\/chapter\.md/u);
   assert.match(content.detail, /Content: 202 lines · \d+ characters/u);
   assert.doesNotMatch(content.detail, /Heading|long content/u);
@@ -120,10 +109,9 @@ void test("approval presentation identifies the requesting child agent", () => {
     },
   });
   const card = approvalCardContent(request);
-  const dialog = approvalDialogContent(request);
-  assert.match(card.summary, /Agent \/root\/verify_runtime \(verifier\)/u);
+  assert.match(card.source ?? "", /Agent \/root\/verify_runtime \(verifier\)/u);
   assert.match(card.detail, /Requested by: Agent \/root\/verify_runtime/u);
-  assert.match(dialog.detail, /Parent: \/root/u);
+  assert.match(card.detail, /Parent: \/root/u);
 });
 
 function approval(
@@ -138,6 +126,9 @@ function approval(
     resources: [],
     allowedScopes: ["once", "session"],
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    effect: "process.mutating",
+    risk: "high",
+    reasonCode: "approval_required",
     ...overrides,
   };
 }

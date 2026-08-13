@@ -468,6 +468,20 @@ void test("Setup and Repair preserve trust and consequential-action rules", asyn
   assert.match(messages, /case "run-setup":/u);
 });
 
+void test("Approval uses one accessible inline decision surface", async () => {
+  const view = await sourceFile("chat", "view.ts");
+  const transcript = await sourceFile("chat", "webview", "transcript.ts");
+
+  assert.doesNotMatch(view, /#showApproval|#modalApprovals|approvalDialogContent/u);
+  assert.match(transcript, /setAttribute\("role", "region"\)/u);
+  assert.match(transcript, /"Allow once"/u);
+  assert.match(transcript, /"Skip"/u);
+  assert.match(transcript, /"More"/u);
+  assert.match(transcript, /"Request details"/u);
+  assert.match(transcript, /trusted \? reusable : \[\]/u);
+  assert.match(transcript, /pending approvals; scroll horizontally/u);
+});
+
 async function sourceFile(...segments: string[]): Promise<string> {
   return readFile(join(process.cwd(), "src", ...segments), "utf8");
 }

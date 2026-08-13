@@ -824,6 +824,9 @@ func TestPersistentRuntimeRestoresPendingWithoutReplayingEngine(t *testing.T) {
 		ArgumentsDigest: "digest",
 		AllowedScopes:   []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
 		ExpiresAt:       time.Now().Add(time.Hour).UTC(),
+		Effect:          "process.mutating",
+		Risk:            "high",
+		ReasonCode:      "approval_required",
 	}
 	event, err := protocol.NewEvent(protocol.EventMeta{
 		Sequence: 1, OperationID: operation.ID,

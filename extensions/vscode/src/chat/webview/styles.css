@@ -653,10 +653,58 @@ details.context-selection {
   border-left: 3px solid var(--vscode-focusBorder);
 }
 
-.approval-card,
 .input-card {
   border: 1px solid var(--vscode-panel-border);
 }
+
+.approval-card {
+  display: grid; gap: 8px;
+  margin: 8px 0; padding: 12px;
+  border: 1px solid var(--vscode-panel-border);
+  border-left: 3px solid var(--vscode-editorWarning-foreground);
+  border-radius: 6px; background: var(--vscode-editorWidget-background);
+}
+
+.approval-header,
+.approval-actions {
+  display: flex; gap: 8px; align-items: center;
+}
+
+.approval-risk {
+  padding: 2px 6px; border-radius: 10px;
+  color: var(--vscode-badge-foreground); font-size: 0.78em; font-weight: 600;
+  background: var(--vscode-badge-background);
+}
+
+.approval-risk.high,
+.approval-risk.critical { color: var(--vscode-inputValidation-errorForeground); }
+
+.approval-consequence,
+.approval-source,
+.approval-outcome { margin: 0; color: var(--vscode-descriptionForeground); }
+
+.approval-target {
+  max-height: 140px; margin: 0; padding: 8px; overflow: auto;
+  font-family: var(--vscode-editor-font-family); white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--vscode-textCodeBlock-background);
+}
+
+.approval-action.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+
+.approval-more,
+.approval-info { padding: 0; margin: 0; background: transparent; }
+
+.approval-more > summary { padding: 3px 8px; background: var(--vscode-button-secondaryBackground); }
+
+.approval-more[open] { display: flex; gap: 6px; align-items: center; }
+
+.approval-carousel {
+  display: flex; gap: 8px; padding: 0; overflow-x: auto;
+  background: transparent; border: 0; scroll-snap-type: x mandatory;
+}
+
+.approval-carousel > .approval-card { min-width: calc(100% - 24px); scroll-snap-align: start; }
 
 .plan-card {
   margin: 10px 0;

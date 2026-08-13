@@ -174,25 +174,15 @@ type ReceiptContextBudget struct {
 	Compactions      int    `json:"compactions"`
 }
 
-// ReceiptLatency is where the turn spent its wall clock.
-//
-// The phases are not slices of a pie and adding them up is meaningless:
+// ReceiptLatency records measured phase duration. Phases overlap:
 //
 //	ApprovalWaitMS ⊆ ToolMS     a tool parks for approval inside its own call
 //	ProviderMS     ⊆ TotalMS    model calls are sequential within a turn
 //	ToolMS         ⋛ TotalMS    tools run in parallel, so their sum can exceed
 //	                            the wall clock the turn actually took
 //
-// ToolMS is deliberately the sum over calls rather than the stretch the turn
-// spent in tool phases: "these tools took nine seconds of work" is what explains
-// a bill, and it is also what a reader can compare against the per-tool spans.
-//
-// A zero means the phase was measured and cost nothing: no tool ran, nobody was
-// asked to approve anything, the verify gate was off. It never means "not
-// measured" — a turn that measured nothing carries no latency partition at all.
-// FirstTokenMS is the exception and therefore the only pointer here: a turn whose
-// model produced no output has no honest zero to report, because zero would read
-// as a first token that arrived instantly.
+// ToolMS sums calls for cost comparison. Zero means measured with no work;
+// FirstTokenMS is optional because a model may produce no output.
 type ReceiptLatency struct {
 	TotalMS        int64  `json:"total_ms"`
 	FirstTokenMS   *int64 `json:"first_token_ms,omitempty"`

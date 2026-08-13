@@ -632,6 +632,9 @@ func (*itemOwningEngine) StartTurn(
 		Arguments: []byte(`{}`), ArgumentsDigest: "x",
 		ExpiresAt:     time.Now().Add(time.Minute),
 		AllowedScopes: []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
+		Effect:        "process.mutating",
+		Risk:          "high",
+		ReasonCode:    "approval_required",
 	}); err != nil {
 		return err
 	}
