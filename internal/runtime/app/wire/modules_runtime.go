@@ -221,7 +221,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 				for _, summary := range summaries {
 					out = append(out, agentengine.SkillSummary{
 						Name: summary.Name, Description: summary.Description,
-						Source: string(summary.Source),
+						Source: string(summary.Source), Path: summary.Path, Plugin: summary.Plugin,
 					})
 				}
 				return out

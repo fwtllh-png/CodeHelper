@@ -161,7 +161,7 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 	}
 	render := func(engine *Engine) string {
 		engine.options.RepoContext = &stubRepoContext{}
-		world, _, _ := engine.worldStateContext(t.Context())
+		world, _ := engine.turnContextMessages(t.Context())
 		var text strings.Builder
 		for _, message := range world {
 			text.WriteString(message.Text())

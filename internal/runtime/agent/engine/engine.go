@@ -17,6 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
@@ -158,6 +159,7 @@ type Engine struct {
 	working         *workingset.Ledger
 	evidence        *evidence.Set
 	failures        *compact.Failures
+	world           contextstore.WorldBaseline
 	promptCacheBase string
 	profileReadOnly bool
 	enabledTools    map[string]struct{}

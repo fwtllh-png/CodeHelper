@@ -5057,6 +5057,18 @@
             },
             "transport_payload_digest": {
               "type": "string"
+            },
+            "world_changed_sections": {
+              "type": "integer"
+            },
+            "world_digest": {
+              "type": "string"
+            },
+            "world_mode": {
+              "type": "string"
+            },
+            "world_revision": {
+              "type": "integer"
             }
           },
           "required": [

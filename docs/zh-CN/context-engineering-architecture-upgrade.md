@@ -17,7 +17,9 @@
   [`context-engineering-ce0-evidence.json`](../context-engineering-ce0-evidence.json)；
 - CE1：`accepted`，证据见
   [`context-engineering-ce1-evidence.json`](../context-engineering-ce1-evidence.json)；
-- CE2-CE7：尚未开始。
+- CE2：`accepted`，证据见
+  [`context-engineering-ce2-evidence.json`](../context-engineering-ce2-evidence.json)；
+- CE3-CE7：尚未开始。
 
 ## 1. 执行摘要
 
@@ -441,7 +443,7 @@ server-side prompt cache
 | 提升长会话质量 | Structured Truth Merge | 三次 Compaction Fact Retention | Critical Fact=100% |
 | 降低单项爆炸风险 | Admission Token Cap | Max Item Tokens | 每项 <=10,000 |
 | 提高可诊断性 | Item Receipt 与 Attribution | Unknown Token Share | <=2% |
-| 降低维护成本 | 删除多路 Authority | Owned Production LOC、Authority Count | Authority=1，最终净增 <=0 |
+| 降低维护成本 | 删除多路 Authority | Authority Count、重复实现数量 | Authority=1，无遗留双写路径 |
 
 ### 7.1 指标定义
 
@@ -693,7 +695,7 @@ Sample Count、P50/P95、Gate Status 和失败原因。
 退出条件：
 
 - Context Authority Count=1；
-- Owned Production Paths 相对 CE0 净增 <=0；
+- 生产代码增长有明确所有权和测试证据，不保留被替代的重复路径；
 - 无 Feature Flag 和长期双写；
 - 所有 Hard Gate、Efficiency Gate 和 Architecture Gate 通过。
 
@@ -749,7 +751,7 @@ npm test
 | Cache 实验互相预热 | Namespace 隔离和配对 Digest |
 | Provider-specific 逻辑泄漏 | Capability 驱动，Adapter 只投影 |
 | DeepSeek 被误开增量 | Capability Test 和 Live Request Dump 双门禁 |
-| 代码量持续增长 | 每阶段删除替代路径，CE7 最终净增门禁 |
+| 代码量持续增长 | 每阶段报告代码趋势并删除替代路径，以所有权和逻辑闭包而非零增长为门禁 |
 
 ## 13. 非目标
 

@@ -6,6 +6,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -65,6 +66,7 @@ type TurnSpec struct {
 	Kernel     turnkernel.Policy
 	Limits     TurnLimits
 	Context    TurnContextSnapshot
+	World      contextstore.WorldBaseline
 	Catalog    tool.CatalogSnapshot
 	Skills     []SkillSummary
 	MCP        []MCPHealthSnapshot
@@ -76,6 +78,8 @@ type SkillSummary struct {
 	Name        string
 	Description string
 	Source      string
+	Path        string
+	Plugin      string
 }
 
 // PurposeForMode is which route a turn in this mode samples on. Plan mode is the
@@ -174,10 +178,7 @@ func SnapshotTurnSpec(
 		},
 		Context: TurnContextSnapshot{
 			Messages: cloneMessages(options.PromptContext),
-			Receipts: append(
-				[]promptcontext.Receipt(nil),
-				options.ContextReceipts...,
-			),
+			Receipts: staticContextReceipts(options.ContextReceipts),
 		},
 		Catalog: catalog,
 	}
@@ -195,6 +196,20 @@ func SnapshotTurnSpec(
 		spec.Extensions = append([]ExtensionSnapshot(nil), spec.Extensions...)
 	}
 	return spec, nil
+}
+
+func staticContextReceipts(
+	receipts []promptcontext.Receipt,
+) []promptcontext.Receipt {
+	result := make([]promptcontext.Receipt, 0, len(receipts))
+	for _, receipt := range receipts {
+		if receipt.Kind == promptcontext.PartitionPolicy ||
+			receipt.Kind == promptcontext.PartitionSkills {
+			continue
+		}
+		result = append(result, receipt)
+	}
+	return result
 }
 
 // effectiveRoutes is the routing table an Options describes: the one it carries,

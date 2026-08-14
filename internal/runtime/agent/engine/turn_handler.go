@@ -12,6 +12,7 @@ import (
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
@@ -136,6 +137,7 @@ func (e *Engine) prepareTurnSpec(
 		return TurnSpec{}, "", err
 	}
 	spec.History = cloneMessages(e.history)
+	spec.World = contextstore.CloneWorldBaseline(e.world)
 	return spec, persistedTurnID, nil
 }
 
@@ -167,6 +169,7 @@ func (f scopeFactory) open(spec TurnSpec) (*executionScope, error) {
 		persistedTurnID: f.persistedTurnID,
 		state:           newScopeState(f.engine),
 	}
+	scope.state.world = contextstore.CloneWorldBaseline(spec.World)
 	f.engine.publishScope(scope)
 	f.engine.attachPending(scope)
 	return turnexec.NewScope(

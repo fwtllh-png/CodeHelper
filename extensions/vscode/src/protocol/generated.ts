@@ -1412,6 +1412,10 @@ export type UsageData = {
       readonly "tool_definition_count"?: number;
       readonly "tool_definition_tokens"?: number;
       readonly "transport_payload_digest"?: string;
+      readonly "world_changed_sections"?: number;
+      readonly "world_digest"?: string;
+      readonly "world_mode"?: string;
+      readonly "world_revision"?: number;
     };
   readonly "cost_known": boolean;
   readonly "cost_microunits"?: number;

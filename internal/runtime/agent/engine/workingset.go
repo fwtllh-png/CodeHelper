@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
@@ -189,88 +188,4 @@ func (e *Engine) seedWorkingSet() {
 			e.workingLedger().Observe(workingset.SourcePinned, 0, relative)
 		}
 	}
-}
-
-func (e *Engine) toolCatalogContext(
-	catalog tool.CatalogSnapshot,
-	advertised map[string]bool,
-) ([]provider.Message, promptcontext.Receipt) {
-	scope := e.executionScope()
-	if scope == nil {
-		return promptcontext.AssembleToolCatalog(
-			promptcontext.NewToolCatalogSectionFromSnapshot(catalog, advertised),
-			e.options.ToolCatalogBudget,
-		)
-	}
-	scope.mu.Lock()
-	defer scope.mu.Unlock()
-	if scope.state.catalogReceipt.Kind == "" {
-		messages, receipt := promptcontext.AssembleToolCatalog(
-			promptcontext.NewToolCatalogSectionFromSnapshot(catalog, advertised),
-			e.options.ToolCatalogBudget,
-		)
-		scope.state.catalogContext = cloneMessages(messages)
-		scope.state.catalogReceipt = receipt
-	}
-	return cloneMessages(scope.state.catalogContext), scope.state.catalogReceipt
-}
-
-func (e *Engine) worldStateContext(
-	ctx context.Context,
-) ([]provider.Message, []provider.Message, []promptcontext.Receipt) {
-	scope := e.executionScope()
-	var previous []promptcontext.Receipt
-	ready := false
-	if scope != nil {
-		scope.mu.Lock()
-		previous = append(previous, scope.state.contextSeen...)
-		ready = scope.state.worldContext != nil
-		scope.mu.Unlock()
-	}
-	var built promptcontext.TurnContext
-	if e.options.RepoContext != nil {
-		snapshot := e.evidenceSet().Snapshot(e.options.EvidenceLimit)
-		built = e.options.RepoContext.Build(ctx, promptcontext.TurnState{
-			Turn:             e.turn,
-			WorkingSet:       e.workingLedger().Select(e.turn, e.options.WorkingSetLimit),
-			Evidence:         snapshot,
-			PreviousReceipts: previous,
-		})
-		e.options.Metrics.Evidence(len(snapshot.Risks), len(snapshot.Reminders))
-	}
-	e.planMu.Lock()
-	plan := e.planText
-	var planReceipt *promptcontext.Receipt
-	if e.planReceipt != nil {
-		copy := *e.planReceipt
-		planReceipt = &copy
-	}
-	e.planMu.Unlock()
-	if planReceipt != nil {
-		if promptcontext.SectionDigestMap(previous)[promptcontext.PartitionPlan] ==
-			planReceipt.Digest {
-			planReceipt.RetainedBytes, planReceipt.RetainedTokens = 0, 0
-		} else {
-			built.Messages = append(
-				built.Messages,
-				provider.TextMessage(provider.RoleSystem, plan),
-			)
-		}
-		built.Receipts = append(built.Receipts, *planReceipt)
-	}
-	for index := range built.Messages {
-		built.Messages[index].Turn = e.turn
-	}
-	if scope == nil {
-		return built.Messages, nil, built.Receipts
-	}
-	scope.mu.Lock()
-	defer scope.mu.Unlock()
-	scope.state.selections = cloneSelections(built.Selections)
-	scope.state.contextSeen = append([]promptcontext.Receipt(nil), built.Receipts...)
-	if !ready {
-		scope.state.worldContext = cloneMessages(built.Messages)
-		return cloneMessages(scope.state.worldContext), nil, built.Receipts
-	}
-	return cloneMessages(scope.state.worldContext), built.Messages, built.Receipts
 }

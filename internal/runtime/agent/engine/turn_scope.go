@@ -45,11 +45,9 @@ type scopeState struct {
 	diff                *TurnDiffTracker
 	contextSeen         []promptcontext.Receipt
 	selections          []promptcontext.Selection
-	catalogContext      []provider.Message
-	catalogReceipt      promptcontext.Receipt
 	catalog             tool.CatalogSnapshot
 	catalogProjected    tool.CatalogSnapshot
-	worldContext        []provider.Message
+	world               contextstore.WorldBaseline
 	contextLedger       *contextstore.Ledger
 	extensionsProjected bool
 	mcpProjected        bool
@@ -114,6 +112,7 @@ func (s *Scope) Spec() TurnSpec {
 		[]promptcontext.Receipt(nil),
 		spec.Context.Receipts...,
 	)
+	spec.World = contextstore.CloneWorldBaseline(spec.World)
 	spec.Skills = append([]SkillSummary(nil), spec.Skills...)
 	spec.MCP = append([]MCPHealthSnapshot(nil), spec.MCP...)
 	spec.Extensions = append([]ExtensionSnapshot(nil), spec.Extensions...)

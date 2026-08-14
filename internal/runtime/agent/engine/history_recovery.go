@@ -19,7 +19,9 @@ import (
 const compactScopeBodyAfterPrefix = "body_after_prefix"
 
 func (e *Engine) compact() *CompactionReceipt {
-	return e.compactHistory(&e.history, false)
+	receipt := e.compactHistory(&e.history, false)
+	e.reconcileWorldBaseline(e.history)
+	return receipt
 }
 
 func (e *Engine) runCompactGate(
@@ -143,7 +145,15 @@ func (e *Engine) Compact() *CompactionReceipt {
 func (e *Engine) CompactForced() *CompactionReceipt {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.compactHistory(&e.history, true)
+	receipt := e.compactHistory(&e.history, true)
+	e.reconcileWorldBaseline(e.history)
+	return receipt
+}
+
+func (e *Engine) reconcileWorldBaseline(history []provider.Message) {
+	if !contextstore.WorldBaselineValid(history, e.world) {
+		e.world = contextstore.WorldBaseline{}
+	}
 }
 
 func (e *Engine) compactHistory(history *[]provider.Message, force bool) *CompactionReceipt {
@@ -293,7 +303,9 @@ func (e *Engine) buildCompactionCandidate(
 	cut int,
 ) compactionCandidate {
 	removed := cloneMessages(history[:cut])
-	toSummarize := promptcontext.StripContextualFragments(cloneMessages(removed))
+	toSummarize := contextstore.StripWorldState(
+		promptcontext.StripContextualFragments(cloneMessages(removed)),
+	)
 	summary := e.buildCompactSummary(toSummarize)
 	if summary.Goal == "" {
 		goal := activeTurnGoal(history)
@@ -307,7 +319,9 @@ func (e *Engine) buildCompactionCandidate(
 	}
 	rendered, truncated, sections := summary.Render(e.summaryBudget())
 	compacted := provider.TextMessage(provider.RoleSystem, rendered)
-	tail := promptcontext.StripContextualFragments(cloneMessages(history[cut:]))
+	tail := contextstore.StripWorldState(
+		promptcontext.StripContextualFragments(cloneMessages(history[cut:])),
+	)
 	candidate := append([]provider.Message{compacted}, tail...)
 	return compactionCandidate{
 		cut: cut, history: candidate, removed: removed, toSummarize: toSummarize,
@@ -420,6 +434,9 @@ func (e *Engine) ReplaceHistory(messages []provider.Message) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.history = cloneMessages(messages)
+	if !contextstore.WorldBaselineValid(e.history, e.world) {
+		e.world = contextstore.WorldBaseline{}
+	}
 	var maxTurn uint64
 	for _, message := range e.history {
 		if message.Turn > maxTurn {
@@ -445,6 +462,7 @@ func (e *Engine) Fork() *Engine {
 		working:     e.working.Clone(),
 		evidence:    e.evidence.Clone(),
 		failures:    e.failures.Clone(),
+		world:       contextstore.CloneWorldBaseline(e.world),
 
 		planText: e.planText,
 		plan:     e.plan.Clone(),
@@ -501,6 +519,7 @@ func (e *Engine) RevertWorkspace(
 		}
 	}
 	e.history = history
+	e.reconcileWorldBaseline(e.history)
 	delete(e.turnIDs, targetTurnID)
 	return receipt, nil
 }

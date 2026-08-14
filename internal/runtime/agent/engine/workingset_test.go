@@ -35,6 +35,12 @@ type stubRepoContext struct {
 func (e *Engine) turnContextMessages(
 	ctx context.Context,
 ) ([]provider.Message, []promptcontext.Receipt) {
+	scope := e.executionScope()
+	scope.spec.Context = TurnContextSnapshot{
+		Messages: cloneMessages(e.options.PromptContext),
+		Receipts: staticContextReceipts(e.options.ContextReceipts),
+	}
+	scope.spec.Policy = e.options.Security.CloneSampling()
 	catalog, err := e.options.Tools.Snapshot()
 	if err != nil {
 		return nil, nil
@@ -43,13 +49,16 @@ func (e *Engine) turnContextMessages(
 	if err != nil {
 		return nil, nil
 	}
-	frozen, catalogReceipt := e.toolCatalogContext(catalog, advertised)
-	world, delta, receipts := e.worldStateContext(ctx)
-	if catalogReceipt.OriginalBytes > 0 {
-		receipts = append([]promptcontext.Receipt{catalogReceipt}, receipts...)
+	history := cloneMessages(e.history)
+	stable, delta, receipts, _, err := e.projectWorldState(
+		ctx, history, catalog, advertised,
+	)
+	if err != nil {
+		return nil, nil
 	}
-	messages := append(frozen, world...)
-	return append(messages, delta...), receipts
+	e.history = append(history, cloneMessages(delta)...)
+	messages := append(cloneMessages(stable), cloneMessages(e.history)...)
+	return messages, receipts
 }
 
 func (s *stubRepoContext) Build(
@@ -72,9 +81,11 @@ func (s *stubRepoContext) Build(
 	)
 	receipts := append([]promptcontext.Receipt(nil), s.receipts...)
 	if len(receipts) == 0 {
+		size := len(message.Text())
 		receipt := promptcontext.Receipt{
-			Kind:   promptcontext.PartitionWorkingSetLedger,
-			Digest: "set:" + strings.Join(paths, ","),
+			Kind:          promptcontext.PartitionWorkingSetLedger,
+			Digest:        "set:" + strings.Join(paths, ","),
+			OriginalBytes: size, RetainedBytes: size,
 		}
 		receipts = append(receipts, receipt)
 		if promptcontext.SectionDigestMap(state.PreviousReceipts)[receipt.Kind] ==
@@ -190,7 +201,7 @@ func TestForkInheritsTheWorkingSetWithoutSharingIt(t *testing.T) {
 	}
 }
 
-func TestWorldStateSnapshotPrecedesHistoryAndStaysScopeLocal(t *testing.T) {
+func TestWorldStateFullIsRetainedInDurableHistory(t *testing.T) {
 	stub := &stubRepoContext{}
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.Workspace = t.TempDir()
@@ -202,31 +213,18 @@ func TestWorldStateSnapshotPrecedesHistoryAndStaysScopeLocal(t *testing.T) {
 	engine.observePath(workingset.SourceEdited, "a.go")
 	engine.ApplyPlan(planFixture())
 
-	history := []provider.Message{messageWithText(provider.RoleUser, "do it", 4)}
-	world, delta, _ := engine.worldStateContext(t.Context())
-	messages := append(engine.promptMessages(), world...)
-	messages = append(messages, history...)
-	messages = append(messages, delta...)
-
-	if len(messages) != 4 {
-		t.Fatalf("messages = %+v", messages)
+	engine.history = []provider.Message{messageWithText(provider.RoleUser, "do it", 4)}
+	messages, _ := engine.turnContextMessages(t.Context())
+	if messages[0].Text() != "stable prefix" || messages[1].Role != provider.RoleUser {
+		t.Fatalf("messages = %+v, want stable prefix before durable history", messages)
 	}
-	if messages[0].Text() != "stable prefix" || messages[3].Role != provider.RoleUser {
-		t.Fatalf("messages = %+v, want stable world state before history", messages)
+	var working, plan bool
+	for _, message := range engine.history {
+		working = working || strings.Contains(message.Text(), "a.go")
+		plan = plan || strings.Contains(message.Text(), "step one")
 	}
-	if !strings.Contains(messages[1].Text(), "a.go") {
-		t.Fatalf("working set = %q", messages[1].Text())
-	}
-	if !strings.Contains(messages[2].Text(), "step one") {
-		t.Fatalf("plan = %q", messages[2].Text())
-	}
-	for _, message := range messages[1:3] {
-		if message.Role != provider.RoleSystem {
-			t.Fatalf("world state role = %q, want system", message.Role)
-		}
-	}
-	if len(engine.history) != 0 {
-		t.Fatalf("history = %+v, want the snapshot to stay Scope-local", engine.history)
+	if !working || !plan {
+		t.Fatalf("durable world history = %+v", engine.history)
 	}
 }
 
@@ -262,7 +260,7 @@ func TestFrozenToolCatalogPrecedesChangingHistory(t *testing.T) {
 			}
 		}
 		if catalog < 0 || world < 0 || user < 0 ||
-			catalog >= world || world >= user || worldCount != 1 {
+			user >= catalog || catalog >= world || worldCount != 1 {
 			t.Fatalf(
 				"catalog/world/user = %d/%d/%d count=%d messages=%+v",
 				catalog, world, user, worldCount, request.Messages,
@@ -271,27 +269,19 @@ func TestFrozenToolCatalogPrecedesChangingHistory(t *testing.T) {
 	}
 }
 
-func TestFrozenToolCatalogSnapshotIsReused(t *testing.T) {
+func TestUnchangedToolCatalogEmitsNoPatch(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := registry.Register(&echoTool{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
 	attachTestScope(t, engine)
-	catalog, err := registry.Snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, advertised, err := engine.toolDefinitionsFromSnapshot(catalog, TurnRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, receipt := engine.toolCatalogContext(catalog, advertised)
+	first, _ := engine.turnContextMessages(t.Context())
+	before := len(engine.history)
 	first[0].Blocks[0].Text = "mutated caller copy"
-	second, cached := engine.toolCatalogContext(catalog, advertised)
-	if second[0].Text() == "mutated caller copy" ||
-		cached.Digest != receipt.Digest {
-		t.Fatalf("cached catalog = %+v receipt=%+v", second, cached)
+	second, _ := engine.turnContextMessages(t.Context())
+	if len(engine.history) != before || second[0].Text() == "mutated caller copy" {
+		t.Fatalf("history=%+v second=%+v", engine.history, second)
 	}
 }
 
@@ -322,15 +312,17 @@ func TestTurnContextRebuildsWithinTheSameTurn(t *testing.T) {
 	if stub.turns[0] != 1 || stub.turns[1] != 1 {
 		t.Fatalf("turns = %v, want both samples in turn 1", stub.turns)
 	}
-	_, delta, _ := engine.worldStateContext(t.Context())
-	if len(delta) != 0 {
-		t.Fatalf("unchanged world state delta = %+v", delta)
+	before := len(engine.history)
+	_, _ = engine.turnContextMessages(t.Context())
+	if len(engine.history) != before {
+		t.Fatalf("unchanged world state appended history: %+v", engine.history[before:])
 	}
 }
 
 func TestTurnContextReceiptsJoinTheContextReceipts(t *testing.T) {
 	stub := &stubRepoContext{receipts: []promptcontext.Receipt{{
-		Kind: promptcontext.PartitionRepoMap, RetainedBytes: 12,
+		Kind: promptcontext.PartitionRepoMap, OriginalBytes: 12, RetainedBytes: 12,
+		Digest:    "repo-map",
 		Truncated: true, TruncationReason: "byte_budget",
 	}}}
 	engine := newEngine(t, &scriptedProvider{}, nil)
@@ -373,7 +365,7 @@ func TestTurnContextReceiptsJoinTheContextReceipts(t *testing.T) {
 func TestTurnContextIsOptional(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	messages, receipts := engine.turnContextMessages(t.Context())
-	if len(messages) != 0 || len(receipts) != 0 {
-		t.Fatalf("messages = %+v, receipts = %+v, want nothing without a provider", messages, receipts)
+	if len(messages) == 0 || len(receipts) == 0 {
+		t.Fatalf("messages = %+v, receipts = %+v, want the policy world baseline", messages, receipts)
 	}
 }

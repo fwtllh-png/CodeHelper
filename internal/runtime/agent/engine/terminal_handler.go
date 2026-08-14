@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -126,8 +127,19 @@ func (e *Engine) finalizeTerminalContext(
 	e.planMu.Lock()
 	plan := e.plan.Clone()
 	e.planMu.Unlock()
+	scope := e.runningScope()
+	scope.mu.Lock()
+	projectedWorld := contextstore.CloneWorldBaseline(scope.state.world)
+	scope.mu.Unlock()
+	world := contextstore.WorldBaseline{}
+	switch {
+	case contextstore.WorldBaselineValid(candidate, projectedWorld):
+		world = projectedWorld
+	case contextstore.WorldBaselineValid(candidate, e.world):
+		world = contextstore.CloneWorldBaseline(e.world)
+	}
 	delta, err := prepareSessionDelta(
-		e.runningScope().spec.Identity.TurnID,
+		scope.spec.Identity.TurnID,
 		e.sessionRevision,
 		candidate,
 		usage,
@@ -139,6 +151,7 @@ func (e *Engine) finalizeTerminalContext(
 			Failures:   e.failureLedger().Delta(),
 			Compaction: CompactionDelta{Count: e.compactionTotal()},
 			Plan:       &plan,
+			World:      world,
 		},
 	)
 	if err != nil {

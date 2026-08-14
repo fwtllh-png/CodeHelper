@@ -172,6 +172,10 @@ type SampleContextData struct {
 	ReasoningEffort        string `json:"reasoning_effort,omitempty"`
 	ContextRevision        uint64 `json:"context_revision,omitempty"`
 	ContextDigest          string `json:"context_digest,omitempty"`
+	WorldRevision          uint64 `json:"world_revision,omitempty"`
+	WorldDigest            string `json:"world_digest,omitempty"`
+	WorldMode              string `json:"world_mode,omitempty"`
+	WorldChangedSections   int    `json:"world_changed_sections,omitempty"`
 	StableTokens           uint64 `json:"stable_tokens,omitempty"`
 	HistoryUserTokens      uint64 `json:"history_user_tokens,omitempty"`
 	HistoryAssistantTokens uint64 `json:"history_assistant_tokens,omitempty"`

@@ -235,12 +235,13 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 23,
-        "production_lines": 9563,
+        "production_lines": 9773,
         "options_fields": 59,
         "mutex_fields": 9
       },
       "relaxations": {
-        "internal_fanout": "CE1 makes Engine consume the Runtime-owned ContextLedger instead of assembling provider requests directly."
+        "internal_fanout": "CE1 makes Engine consume the Runtime-owned ContextLedger instead of assembling provider requests directly.",
+        "production_lines": "CE2 adds typed World State projection, durable baseline validation, and Full/Patch recovery semantics."
       }
     },
     {
@@ -282,7 +283,7 @@
       "path": "internal/runtime/agent/contextstore",
       "limits": {
         "internal_fanout": 2,
-        "production_lines": 407,
+        "production_lines": 694,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -337,9 +338,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 4761,
+        "production_lines": 4763,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "CE2 exposes content-safe World State revision, digest, mode, and changed-section evidence."
       }
     },
     {
@@ -502,8 +506,20 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 509,
+        "lines": 511,
         "max_function_lines": 123
+      },
+      "relaxations": {
+        "lines": "CE2 stores the durable World State baseline on the Engine session authority."
+      }
+    },
+    {
+      "id": "engine_world_state_file",
+      "kind": "file",
+      "path": "internal/runtime/agent/engine/world_state.go",
+      "limits": {
+        "lines": 251,
+        "max_function_lines": 95
       }
     },
     {

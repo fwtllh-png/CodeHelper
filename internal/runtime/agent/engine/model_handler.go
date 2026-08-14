@@ -78,10 +78,12 @@ func (e *Engine) modelStep(
 	if err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
-	catalogContext, catalogReceipt := e.toolCatalogContext(catalog, advertised)
-	stableContext := append(cloneMessages(scope.spec.Context.Messages), catalogContext...)
-	worldContext, worldDelta, worldReceipts := e.worldStateContext(ctx)
-	stableContext = append(stableContext, worldContext...)
+	stableContext, worldDelta, worldReceipts, worldProjection, err := e.projectWorldState(
+		ctx, *history, catalog, advertised,
+	)
+	if err != nil {
+		return nil, nil, provider.Usage{}, 0, err
+	}
 	*history = append(*history, cloneMessages(worldDelta)...)
 	scope.mu.Lock()
 	if scope.state.contextLedger == nil {
@@ -101,9 +103,6 @@ func (e *Engine) modelStep(
 	for attempt := 0; ; attempt++ {
 		var turnContext []provider.Message
 		turnReceipts := append([]promptcontext.Receipt(nil), worldReceipts...)
-		if catalogReceipt.OriginalBytes > 0 {
-			turnReceipts = append([]promptcontext.Receipt{catalogReceipt}, turnReceipts...)
-		}
 		e.recordTurnContextReceipts(turnReceipts)
 		budgetMessage, budgetFinishOnly := e.budgetConvergence(
 			e.BudgetSnapshot().TokensUsed + turnUsage.Total() + totalUsage.Total(),
@@ -177,6 +176,10 @@ func (e *Engine) modelStep(
 		if attributionErr != nil {
 			return nil, nil, totalUsage, lastEstimate, attributionErr
 		}
+		attribution.WorldRevision = worldProjection.Baseline.Revision
+		attribution.WorldDigest = worldProjection.Baseline.Digest
+		attribution.WorldMode = string(worldProjection.Mode)
+		attribution.WorldChangedSections = len(worldProjection.Changed)
 		lastEstimate = attribution.EstimatedTokens
 		if _, err := e.checkBudget(
 			e.calibrateInput(lastEstimate), turnUsage, totalUsage, maxOutputTokens,

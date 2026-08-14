@@ -1615,7 +1615,13 @@ func TestEngineBindsVersionedReplayToAssistantProvenance(t *testing.T) {
 	if _, err := engine.Run(t.Context(), "two", nil); err != nil {
 		t.Fatal(err)
 	}
-	assistant := runtime.requests[1].Messages[1]
+	var assistant provider.Message
+	for _, message := range runtime.requests[1].Messages {
+		if message.Role == provider.RoleAssistant && message.Provenance != nil {
+			assistant = message
+			break
+		}
+	}
 	replayed := assistant.Blocks
 	if len(replayed) != 2 ||
 		replayed[0].Type != provider.ContentReasoning ||
@@ -2385,7 +2391,7 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 	if compaction == nil ||
 		compaction.Phase != CompactionPhasePreSampling ||
 		compaction.RemovedMessages != 2 ||
-		len(compaction.PromptContextReceipts) != 1 ||
+		len(compaction.PromptContextReceipts) != 2 ||
 		compaction.RetainedTokens > engine.options.CompactWindow.AutoTokens {
 		t.Fatalf("compaction event = %+v", compaction)
 	}
@@ -2462,7 +2468,7 @@ func TestEngineSteerContinuesCurrentTurnWithoutStaleInput(t *testing.T) {
 	if len(runtime.requests) != 2 {
 		t.Fatalf("requests = %+v", runtime.requests)
 	}
-	second := runtime.requests[1].Messages
+	second := contextstore.StripWorldState(runtime.requests[1].Messages)
 	if len(second) != 3 ||
 		second[0].Text() != "initial" ||
 		second[1].Text() != "partial" ||
@@ -2495,7 +2501,7 @@ func TestEnginePendingInputFIFOSteerAndMailbox(t *testing.T) {
 	if len(runtime.requests) < 2 {
 		t.Fatalf("requests = %d, want >= 2", len(runtime.requests))
 	}
-	second := runtime.requests[1].Messages
+	second := contextstore.StripWorldState(runtime.requests[1].Messages)
 	if len(second) < 4 {
 		t.Fatalf("steered messages = %+v", second)
 	}
@@ -2581,8 +2587,28 @@ func TestEngineUndoRemovesCompleteToolTurnAndForkIsIndependent(t *testing.T) {
 		t.Fatal(err)
 	}
 	fork := engine.Fork()
-	fork.history[1].Blocks[0].ToolCall.Name = "changed"
-	if engine.history[1].Blocks[0].ToolCall.Name != "echo" {
+	var forkCall, engineCall *provider.ToolCall
+	for messageIndex := range fork.history {
+		for blockIndex := range fork.history[messageIndex].Blocks {
+			if fork.history[messageIndex].Blocks[blockIndex].ToolCall != nil {
+				forkCall = fork.history[messageIndex].Blocks[blockIndex].ToolCall
+				break
+			}
+		}
+	}
+	for messageIndex := range engine.history {
+		for blockIndex := range engine.history[messageIndex].Blocks {
+			if engine.history[messageIndex].Blocks[blockIndex].ToolCall != nil {
+				engineCall = engine.history[messageIndex].Blocks[blockIndex].ToolCall
+				break
+			}
+		}
+	}
+	if forkCall == nil || engineCall == nil {
+		t.Fatalf("tool call missing: fork=%+v engine=%+v", fork.history, engine.history)
+	}
+	forkCall.Name = "changed"
+	if engineCall.Name != "echo" {
 		t.Fatal("Fork() shares tool-call backing storage")
 	}
 }

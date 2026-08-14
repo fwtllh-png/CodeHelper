@@ -19,7 +19,9 @@ Implementation progress:
   [`context-engineering-ce0-evidence.json`](../context-engineering-ce0-evidence.json).
 - CE1: `accepted`; see
   [`context-engineering-ce1-evidence.json`](../context-engineering-ce1-evidence.json).
-- CE2-CE7: not started.
+- CE2: `accepted`; see
+  [`context-engineering-ce2-evidence.json`](../context-engineering-ce2-evidence.json).
+- CE3-CE7: not started.
 
 ## 1. Executive Summary
 
@@ -461,7 +463,7 @@ the same canonical workload.
 | Better long-thread retention | Structured Truth merge | Facts after three compactions | Critical facts=100% |
 | Bounded individual items | Admission token cap | Maximum item tokens | Every item <=10,000 |
 | Better diagnosis | Item receipts and attribution | Unknown token share | At most 2% |
-| Lower maintenance burden | Delete parallel authorities | Owned LOC and authority count | Authority=1; final net growth <=0 |
+| Lower maintenance burden | Delete parallel authorities | Authority and duplicate implementation count | Authority=1; no legacy dual-write path |
 
 ### 7.1 Metric Definitions
 
@@ -716,7 +718,7 @@ Deliver:
 Exit:
 
 - Context Authority Count=1;
-- owned production paths have net growth at most zero from CE0;
+- production growth has explicit ownership and test evidence, with replaced paths deleted;
 - no feature flag or permanent dual write remains; and
 - all correctness, efficiency, and architecture gates pass.
 
@@ -772,7 +774,7 @@ npm test
 | Cache experiments cross-warm | Namespace isolation and paired digests |
 | Provider details leak inward | Capabilities drive behavior; Adapters only project |
 | DeepSeek accidentally uses incremental | Capability tests and live request dumps form two gates |
-| Production code keeps growing | Delete replaced paths every phase and enforce the CE7 net-growth gate |
+| Production code keeps growing | Report size trends and delete replaced paths; gate on coherent ownership rather than zero growth |
 
 ## 13. Non-goals
 

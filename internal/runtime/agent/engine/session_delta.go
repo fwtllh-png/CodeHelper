@@ -11,6 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 )
@@ -20,27 +21,29 @@ type CompactionDelta struct {
 }
 
 type SessionStateDelta struct {
-	Turn       uint64               `json:"turn,omitempty"`
-	WorkingSet workingset.Delta     `json:"working_set"`
-	Evidence   evidence.Delta       `json:"evidence"`
-	Failures   compact.FailureDelta `json:"failures"`
-	Compaction CompactionDelta      `json:"compaction"`
-	Plan       *interact.Plan       `json:"plan,omitempty"`
+	Turn       uint64                     `json:"turn,omitempty"`
+	WorkingSet workingset.Delta           `json:"working_set"`
+	Evidence   evidence.Delta             `json:"evidence"`
+	Failures   compact.FailureDelta       `json:"failures"`
+	Compaction CompactionDelta            `json:"compaction"`
+	Plan       *interact.Plan             `json:"plan,omitempty"`
+	World      contextstore.WorldBaseline `json:"world,omitempty"`
 }
 
 type SessionDelta struct {
-	TurnID         string               `json:"turn_id"`
-	Turn           uint64               `json:"turn,omitempty"`
-	BaseRevision   uint64               `json:"base_revision"`
-	History        []provider.Message   `json:"history"`
-	Usage          provider.Usage       `json:"usage"`
-	CostMicrounits uint64               `json:"cost_microunits"`
-	WorkingSet     workingset.Delta     `json:"working_set"`
-	Evidence       evidence.Delta       `json:"evidence"`
-	Failures       compact.FailureDelta `json:"failures"`
-	Compaction     CompactionDelta      `json:"compaction"`
-	Plan           *interact.Plan       `json:"plan,omitempty"`
-	Digest         string               `json:"digest"`
+	TurnID         string                     `json:"turn_id"`
+	Turn           uint64                     `json:"turn,omitempty"`
+	BaseRevision   uint64                     `json:"base_revision"`
+	History        []provider.Message         `json:"history"`
+	Usage          provider.Usage             `json:"usage"`
+	CostMicrounits uint64                     `json:"cost_microunits"`
+	WorkingSet     workingset.Delta           `json:"working_set"`
+	Evidence       evidence.Delta             `json:"evidence"`
+	Failures       compact.FailureDelta       `json:"failures"`
+	Compaction     CompactionDelta            `json:"compaction"`
+	Plan           *interact.Plan             `json:"plan,omitempty"`
+	World          contextstore.WorldBaseline `json:"world,omitempty"`
+	Digest         string                     `json:"digest"`
 }
 
 func prepareSessionDelta(
@@ -69,7 +72,8 @@ func prepareSessionDelta(
 		CostMicrounits: uint64(math.Round(cost * 1_000_000)),
 		WorkingSet:     sessionState.WorkingSet, Evidence: sessionState.Evidence,
 		Failures: sessionState.Failures, Compaction: sessionState.Compaction,
-		Plan: sessionState.Plan, Turn: sessionState.Turn,
+		Plan: sessionState.Plan, World: contextstore.CloneWorldBaseline(sessionState.World),
+		Turn: sessionState.Turn,
 	}
 	for _, message := range history {
 		delta.Turn = max(delta.Turn, message.Turn)
@@ -133,6 +137,11 @@ func (e *Engine) applyDurableSessionDelta(delta SessionDelta) error {
 	if delta.Plan != nil && len(delta.Plan.Steps) != 0 {
 		e.setPlan(delta.Plan.Clone())
 	}
+	if contextstore.WorldBaselineValid(delta.History, delta.World) {
+		e.world = contextstore.CloneWorldBaseline(delta.World)
+	} else {
+		e.world = contextstore.WorldBaseline{}
+	}
 	e.sessionRevision++
 	e.appliedDeltas[key] = delta.Digest
 	return nil
@@ -150,6 +159,7 @@ func (e *Engine) PreparedSessionDelta() (SessionDelta, bool) {
 	}
 	delta := *scope.state.delta
 	delta.History = cloneMessages(delta.History)
+	delta.World = contextstore.CloneWorldBaseline(delta.World)
 	return delta, true
 }
 

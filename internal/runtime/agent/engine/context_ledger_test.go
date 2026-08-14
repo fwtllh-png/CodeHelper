@@ -70,4 +70,12 @@ func TestModelSamplesUseMonotonicContextLedgerSnapshots(t *testing.T) {
 	if contexts[0].ContextDigest == contexts[1].ContextDigest {
 		t.Fatal("context digest did not change after Tool Call/Result history")
 	}
+	if contexts[0].WorldRevision != 1 || contexts[0].WorldMode != "full" ||
+		contexts[0].WorldChangedSections == 0 ||
+		contexts[1].WorldRevision != 1 || contexts[1].WorldMode != "patch" ||
+		contexts[1].WorldChangedSections != 0 ||
+		contexts[0].WorldDigest == "" ||
+		contexts[0].WorldDigest != contexts[1].WorldDigest {
+		t.Fatalf("world projections=%+v", contexts)
+	}
 }
