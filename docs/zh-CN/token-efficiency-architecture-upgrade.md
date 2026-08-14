@@ -4,10 +4,11 @@
 
 > 状态：`in_progress`。T0 已验收；T1 已实现，验证状态为
 > `implemented_validation_mixed`；T2 也已实现，验证状态为
-> `implemented_validation_mixed`。证据见
+> `implemented_validation_mixed`；T3 已验收。证据见
 > [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
 >、[`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json)
-> 与 [`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json)。
+>、[`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json)
+> 与 [`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json)。
 >
 > 范围：Prompt Context、History、Compaction、Tool Catalog、Tool Result、
 > Provider Session、Reasoning Budget、Completion Protocol、Usage Accounting
@@ -784,24 +785,45 @@ History，转交 T3 处理。
 
 ### T3：Tool Context 收敛
 
-目标：减少 Tool Schema 与 Result 对历史的占用。
+T3 最终验收（`accepted`）：
 
-执行：
+五项退出门禁全部通过。机器可读证据见
+[`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json)。
 
-- 按 Turn Intent 和最近相关性选择 Provider Tool Set；
-- 只保留核心 Tool、相关 Tool 和 `tool_search`；
-- 文本 Catalog 改为 Namespace/Diff，不重复完整 Description；
-- Result Store 增加模型 Token Projection；
-- Test、Build、Read 和 Generic Result 使用类型化预算；
-- Metadata 只将模型需要的字段写入 Tool Result。
+| 退出门禁 | 结果 | 状态 |
+| --- | ---: | --- |
+| 首次 Tool Definitions | 3,334 Token，目标 <=4K | 通过 |
+| 稳态 Definition Delta | 120 个 Live Sample 均为 0 Token | 通过 |
+| 100 KiB 模型可见 Result | 至少下降 84.46%，目标 >=70% | 通过 |
+| 完整 Handle 获取 | 分页逐字节重建一致 | 通过 |
+| 未广告 Tool 执行 | Sampled Binding Fail Closed | 通过 |
 
-退出条件：
+实现事实：
 
-- Canonical Prompt 首次 Tool Definitions 不超过 4K Token；
-- 稳态 Tool Definition Delta 为 0；
-- 100 KiB Log Lane 的模型可见 Result 至少下降 70%；
-- `result_get` 能无损获取完整内容；
-- 未广告 Tool、Role 和 Authority 测试全部 Fail Closed。
+- Provider Tool Set 由 Coding Core、Turn Intent、Prompt 相关性、既有
+  Materialization 与 `tool_search` 共同选择；
+- `tool_search` 成功后只刷新 Scope Catalog，下一 Sample 使用新 Revision 与
+  Authority 绑定 Materialized Tool；
+- Catalog 投影输出 Added/Replaced/Revoked Delta，不再重复完整 Catalog；
+- Result Store 对 Read/Test/Build/Generic/Structured 使用 Token-aware Budget，
+  保存完整结果并通过 `result_get` 有界分页；
+- 模型 History 仅保留恢复、完成声明、Citation、Diagnostics 与 Handle
+  Metadata；Runtime Receipt 保留完整 Result。
+
+Hermetic 5/5 通过且 Sample 数均为 8。Input 与 Uncached Input P50 从
+149,055/111,795 降至 72,189/54,145，均下降 51.57%。Tool Definition
+累计 P50 从 81,224 降至 26,672，首个 Sample 为 3,334 Token。
+
+DeepSeek Live 使用相同 Prompt、Fixture、Model 与配置 Digest，10/10 通过。
+Input P50 从 413,745 降至 178,678（-56.81%），Uncached Input 从 79,459
+降至 45,582（-42.63%），Sample Count P50 从 13 降至 11（-15.38%）。
+第三个 Sample 后 Cache Share P50 为 96.00%。一个正确完成的 30-Sample
+离群 Run 将 P90 提高到 377,527、Max 提高到 1,607,352；报告未剔除该样本。
+120 次调用缺少 Cached Input 价格，因此成本仍为 Unknown。
+
+正确性验收通过 Tool、Runtime Agent、Runtime App、持久化、Compaction
+Capability 与 Canonical Token Efficiency 测试。Architecture Ratchet
+43/43；架构闭包生产代码净变化 `-3` 行，全部 `internal` 净变化 `-1` 行。
 
 ### T4：Loop 与 Reasoning 收敛
 

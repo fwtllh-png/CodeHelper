@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
@@ -45,10 +46,11 @@ type scopeState struct {
 	selections          []promptcontext.Selection
 	catalogContext      []provider.Message
 	catalogReceipt      promptcontext.Receipt
+	catalog             tool.CatalogSnapshot
+	catalogProjected    tool.CatalogSnapshot
 	worldContext        []provider.Message
 	extensionsProjected bool
 	mcpProjected        bool
-	catalogProjected    bool
 	diagnostics         []diagnostics.Receipt
 	verification        []verify.Evidence
 	rollback            []string

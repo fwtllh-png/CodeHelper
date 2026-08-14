@@ -33,8 +33,7 @@ const (
 	DefaultMaxMaterializedSchemaBytes = 64 << 10
 )
 
-// ErrorCategory returns the stable model/telemetry category for managed
-// catalog failures.
+// ErrorCategory returns a stable catalog failure category.
 func ErrorCategory(err error) string {
 	switch {
 	case errors.Is(err, ErrUnknownTool):
@@ -179,8 +178,7 @@ func (r *Registry) checkMaterializeLimitLocked(candidate *registered) error {
 	return nil
 }
 
-// Registration is one desired entry in a source-owned catalog reconcile.
-// Constructors keep executor and loader mutually exclusive.
+// Registration is one source-owned desired entry.
 type Registration struct {
 	descriptor Descriptor
 	executor   Executor
@@ -205,8 +203,6 @@ func NewDeferredRegistration(
 	}
 }
 
-// WithPayload associates source-private immutable metadata with the entry.
-// Registry lifecycle decisions never inspect this value.
 func (r Registration) WithPayload(payload any) Registration {
 	r.payload = payload
 	return r
@@ -232,10 +228,7 @@ func nextLegacySource(name string) string {
 	return fmt.Sprintf("legacy:%s:%d", name, legacySequence.Add(1))
 }
 
-// CatalogToolID binds a Session allowlist entry to its tool family and source
-// identity. Dynamic and Plugin names are already host/plugin namespaced; MCP
-// additionally retains its server source so a same-name replacement from a
-// different server cannot inherit an old grant.
+// CatalogToolID binds allowlist authority to tool family and source.
 func CatalogToolID(name, source string) string {
 	kind := CatalogSourceKind(name, source)
 	var value string
@@ -286,9 +279,7 @@ func ParseCatalogToolID(id string) (kind, name string, ok bool) {
 	return "", "", false
 }
 
-// CatalogEntryState is the lifecycle state of one model-visible catalog entry.
-// It is separate from Descriptor.Availability: availability describes whether
-// an executor can be used, while state also records exposure and revocation.
+// CatalogEntryState tracks exposure separately from availability.
 type CatalogEntryState string
 
 const (
@@ -299,9 +290,7 @@ const (
 	CatalogEntryRevoked      CatalogEntryState = "revoked"
 )
 
-// CatalogEntrySnapshot binds one descriptor to the source and revision that
-// supplied it. A tool call sampled from this entry must be checked against the
-// same revision before execution.
+// CatalogEntrySnapshot binds a descriptor to source and authority revision.
 type CatalogEntrySnapshot struct {
 	Name       string            `json:"name"`
 	Source     string            `json:"source"`
@@ -311,9 +300,7 @@ type CatalogEntrySnapshot struct {
 	authority  uint64
 }
 
-// CatalogSnapshot is an immutable, sorted view of the tool catalog used by one
-// model sampling attempt. CatalogID scopes generation comparisons to one
-// in-process catalog instance.
+// CatalogSnapshot is an immutable, sorted sampling view.
 type CatalogSnapshot struct {
 	CatalogID  string
 	Generation uint64
@@ -322,8 +309,7 @@ type CatalogSnapshot struct {
 	entries []CatalogEntrySnapshot
 }
 
-// NewCatalogSnapshot validates and isolates a catalog view. Descriptors are
-// deep-cloned so later registry mutations cannot change an in-flight sample.
+// NewCatalogSnapshot deep-clones descriptors for in-flight isolation.
 func NewCatalogSnapshot(
 	catalogID string,
 	generation uint64,
@@ -372,7 +358,6 @@ func NewCatalogSnapshot(
 	}, nil
 }
 
-// Entries returns a deep-cloned, name-sorted view.
 func (s CatalogSnapshot) Entries() []CatalogEntrySnapshot {
 	result := make([]CatalogEntrySnapshot, len(s.entries))
 	for index, entry := range s.entries {
@@ -382,7 +367,6 @@ func (s CatalogSnapshot) Entries() []CatalogEntrySnapshot {
 	return result
 }
 
-// Lookup returns an isolated entry by canonical tool name.
 func (s CatalogSnapshot) Lookup(name string) (CatalogEntrySnapshot, bool) {
 	index := sort.Search(len(s.entries), func(index int) bool {
 		return s.entries[index].Name >= name
@@ -395,15 +379,13 @@ func (s CatalogSnapshot) Lookup(name string) (CatalogEntrySnapshot, bool) {
 	return entry, true
 }
 
-// CatalogChange identifies one entry affected by an atomic reconcile.
 type CatalogChange struct {
 	Name     string
 	Source   string
 	Revision uint64
 }
 
-// ChangeSet is the externally observable result of one catalog generation
-// transition. The slices are name-sorted by the reconciler.
+// ChangeSet is one name-sorted catalog generation transition.
 type ChangeSet struct {
 	CatalogID  string
 	Generation uint64
@@ -411,6 +393,33 @@ type ChangeSet struct {
 	Added      []CatalogChange
 	Replaced   []CatalogChange
 	Revoked    []CatalogChange
+}
+
+func DiffCatalog(before, after CatalogSnapshot) ChangeSet {
+	changes := ChangeSet{
+		CatalogID: after.CatalogID, Generation: after.Generation,
+		Digest: after.Digest,
+	}
+	for _, entry := range after.Entries() {
+		change := CatalogChange{
+			Name: entry.Name, Source: entry.Source, Revision: entry.Revision,
+		}
+		previous, found := before.Lookup(entry.Name)
+		switch {
+		case !found:
+			changes.Added = append(changes.Added, change)
+		case previous.Revision != entry.Revision || previous.State != entry.State:
+			changes.Replaced = append(changes.Replaced, change)
+		}
+	}
+	for _, entry := range before.Entries() {
+		if _, found := after.Lookup(entry.Name); !found {
+			changes.Revoked = append(changes.Revoked, CatalogChange{
+				Name: entry.Name, Source: entry.Source, Revision: entry.Revision,
+			})
+		}
+	}
+	return changes
 }
 
 func (r *Registry) CatalogID() string {
@@ -425,8 +434,7 @@ func (r *Registry) Generation() uint64 {
 	return r.generation
 }
 
-// Snapshot freezes the active catalog. Revoked names stay in the Registry's
-// tombstone set for error classification but are never model-visible.
+// Snapshot excludes revoked tombstones from the model-visible view.
 func (r *Registry) Snapshot() (CatalogSnapshot, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -441,17 +449,14 @@ func (r *Registry) Snapshot() (CatalogSnapshot, error) {
 	)
 }
 
-// SourceRegistrations returns an isolated desired-state list suitable for a
-// compare-and-swap reconcile. The private token lets unchanged deferred
-// closures survive a round trip without being mistaken for replacements.
+// SourceRegistrations preserves private tokens for CAS reconcile.
 func (r *Registry) SourceRegistrations(source string) []Registration {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.sourceRegistrationsLocked(source)
 }
 
-// SourceState returns generation and registrations under one read lock so a
-// caller can safely feed them into a compare-and-swap reconcile.
+// SourceState reads generation and registrations atomically.
 func (r *Registry) SourceState(source string) (uint64, []Registration) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -488,9 +493,7 @@ func (r *Registry) Reconcile(
 	return r.reconcileLocked(source, normalized)
 }
 
-// registerOne is the O(1) startup compatibility path behind Register and
-// RegisterDeferred. Its source is unique and immutable, so a full source
-// reconcile would only re-copy the entire startup catalog for every tool.
+// registerOne is the O(1) path for immutable startup sources.
 func (r *Registry) registerOne(source string, registration Registration) error {
 	normalized, err := normalizeRegistration(registration)
 	if err != nil {
@@ -779,10 +782,7 @@ func (r *Registry) snapshotEntriesLocked() []CatalogEntrySnapshot {
 	return entries
 }
 
-// refreshAvailabilityLocked preserves the legacy self-degrading tool contract
-// while keeping capability, resource and schema policy owned by the Registry.
-// Executors may tighten availability at runtime, but cannot mutate aliases or
-// authority through Descriptor().
+// Executors may tighten availability but cannot mutate authority or schema.
 func (r *Registry) refreshAvailabilityLocked(item *registered) error {
 	if item == nil || item.executor == nil || item.deferred != nil {
 		return nil

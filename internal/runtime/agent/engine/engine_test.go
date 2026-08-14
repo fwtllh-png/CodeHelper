@@ -2708,7 +2708,7 @@ func testToolDefinitions(t *testing.T, engine *Engine) []provider.ToolDefinition
 	if err != nil {
 		t.Fatal(err)
 	}
-	definitions, _, err := engine.toolDefinitionsFromSnapshot(snapshot)
+	definitions, _, err := engine.toolDefinitionsFromSnapshot(snapshot, TurnRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -39,7 +39,7 @@ func (e *Engine) turnContextMessages(
 	if err != nil {
 		return nil, nil
 	}
-	_, advertised, err := e.toolDefinitionsFromSnapshot(catalog)
+	_, advertised, err := e.toolDefinitionsFromSnapshot(catalog, TurnRequest{})
 	if err != nil {
 		return nil, nil
 	}
@@ -282,7 +282,7 @@ func TestFrozenToolCatalogSnapshotIsReused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, advertised, err := engine.toolDefinitionsFromSnapshot(catalog)
+	_, advertised, err := engine.toolDefinitionsFromSnapshot(catalog, TurnRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -117,7 +117,7 @@
       "limits": {
         "internal_fanout": 22,
         "production_lines": 8993,
-        "options_fields": 61,
+        "options_fields": 60,
         "mutex_fields": 9
       }
     },
@@ -369,7 +369,7 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 581,
+        "lines": 535,
         "max_function_lines": 127
       }
     },

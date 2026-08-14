@@ -100,6 +100,81 @@ func TestResultStoreReturnsTruncationHandle(t *testing.T) {
 	}
 }
 
+func TestResultStoreAppliesTypedTokenBudgetsAndKeepsFullHandle(t *testing.T) {
+	store := NewResultStore(32 << 10)
+	payload := strings.Repeat("build output line\n", 7000)
+	for _, test := range []struct {
+		name string
+		max  int
+		kind string
+	}{
+		{name: "file_read", max: 17 << 10, kind: "read"},
+		{name: "quality_test", max: 13 << 10, kind: "test"},
+		{name: "shell_run", max: 13 << 10, kind: "build"},
+		{name: "custom_tool", max: 9 << 10, kind: "generic"},
+	} {
+		result := store.RouteFor(test.name, Result{Content: payload})
+		if !result.Truncated || result.Handle == "" ||
+			len(result.Content) > test.max ||
+			len(result.Content)*10 > len(payload)*3 ||
+			result.Metadata["projection_kind"] != test.kind {
+			t.Fatalf("%s projection = %+v bytes=%d", test.name, result, len(result.Content))
+		}
+		if full, ok := store.Get(result.Handle); !ok || full != payload {
+			t.Fatalf("%s full handle bytes=%d found=%t", test.name, len(full), ok)
+		}
+	}
+}
+
+func TestResultGetPagesReconstructFullLargeResult(t *testing.T) {
+	store := NewResultStore(32 << 10)
+	payload := strings.Repeat("0123456789abcdef", 7000)
+	routed := store.RouteFor("shell_run", Result{Content: payload})
+	registry := NewRegistry(nil, store)
+	var reconstructed strings.Builder
+	offset := 0
+	for {
+		raw, _ := json.Marshal(map[string]any{
+			"handle": routed.Handle, "mode": "bytes",
+			"offset": offset, "max_bytes": 32 << 10,
+		})
+		page, err := registry.Execute(t.Context(), Call{
+			Name: "result_get", Arguments: raw, Authorized: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reconstructed.WriteString(page.Content)
+		next, more := page.Metadata["next_offset"]
+		if !more {
+			break
+		}
+		offset = next.(int)
+	}
+	if reconstructed.String() != payload {
+		t.Fatalf("reconstructed bytes = %d, want %d", reconstructed.Len(), len(payload))
+	}
+}
+
+func TestModelResultRetainsOnlyModelMetadata(t *testing.T) {
+	input := Result{Content: "ok", Metadata: map[string]any{
+		"error_category":  "retryable",
+		"required_action": "file_read",
+		"canonical_path":  "/private/workspace/a.go",
+		"fingerprint":     map[string]any{"runtime_only": true},
+	}}
+	projected := ModelResult("file_write", input)
+	if len(projected.Metadata) != 2 ||
+		projected.Metadata["error_category"] != "retryable" ||
+		projected.Metadata["required_action"] != "file_read" {
+		t.Fatalf("model metadata = %#v", projected.Metadata)
+	}
+	retrieved := ModelResult("result_get", input)
+	if len(retrieved.Metadata) != len(input.Metadata) {
+		t.Fatalf("retrieval metadata = %#v", retrieved.Metadata)
+	}
+}
+
 func TestResultRetrievalModesAreBoundedAndPagePastInlineContent(t *testing.T) {
 	const content = "line1\nline2\nneedle-three\nline4\nomega"
 	store := NewResultStore(16)

@@ -13,7 +13,7 @@
   },
   "context": {
     "compact": {
-      "auto_compact_tokens": 35350,
+      "auto_compact_tokens": 25200,
       "summary_max_bytes": 5120
     }
   },
@@ -21,7 +21,7 @@
     "terminal": "completed",
     "unchanged": ["service.py", "notes.md", "settings.yaml"],
     "tools_used": ["update_plan", "file_read"],
-    "compactions": 2,
+    "compactions": 1,
     "compaction_sections": ["goals", "digest"],
     "compaction_truncated": false
   }

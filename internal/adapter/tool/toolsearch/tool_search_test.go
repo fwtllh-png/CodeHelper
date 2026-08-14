@@ -58,9 +58,6 @@ func TestToolSearchRanksDeferredMatches(t *testing.T) {
 	if !strings.Contains(result.Content, "beta_plugin") {
 		t.Fatalf("content=%s", result.Content)
 	}
-	if toolsearch.ShouldEnable(registry.Descriptors(tool.VisibleModel), 100) {
-		t.Fatal("materialized catalog should no longer require search at this threshold")
-	}
 	snapshot, err := registry.Snapshot()
 	if err != nil {
 		t.Fatal(err)

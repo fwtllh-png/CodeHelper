@@ -45,13 +45,13 @@ func (e *Engine) modelStep(
 	if err := e.emitMCPHealthChanges(scope.spec.MCP, send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
-	catalog := scope.spec.Catalog
+	catalog := e.scopeCatalog(scope)
 	if changed := e.catalogChange(catalog); changed != nil {
 		if err := send(CallingModel, Event{CatalogChanged: changed}); err != nil {
 			return nil, nil, provider.Usage{}, 0, err
 		}
 	}
-	definitions, advertised, err := e.toolDefinitionsFromSnapshot(catalog)
+	definitions, advertised, err := e.toolDefinitionsFromSnapshot(catalog, scope.spec.Request)
 	if err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
@@ -464,6 +464,30 @@ func (e *Engine) emitMCPHealthChanges(
 	return nil
 }
 
+func (e *Engine) scopeCatalog(scope *Scope) tool.CatalogSnapshot {
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	if scope.state.catalog.Digest != "" {
+		return scope.state.catalog
+	}
+	return scope.spec.Catalog
+}
+
+func (e *Engine) refreshScopeCatalog() error {
+	current, err := e.options.Tools.Snapshot()
+	if err != nil {
+		return err
+	}
+	scope := e.runningScope()
+	if scope == nil {
+		return errors.New("turn scope is not active")
+	}
+	scope.mu.Lock()
+	scope.state.catalog = current
+	scope.mu.Unlock()
+	return nil
+}
+
 func (e *Engine) catalogChange(current tool.CatalogSnapshot) *CatalogChanged {
 	scope := e.executionScope()
 	if scope == nil {
@@ -471,25 +495,20 @@ func (e *Engine) catalogChange(current tool.CatalogSnapshot) *CatalogChanged {
 	}
 	scope.mu.Lock()
 	defer scope.mu.Unlock()
-	if scope.state.catalogProjected {
+	previous := scope.state.catalogProjected
+	if previous.Digest == current.Digest {
 		return nil
 	}
-	scope.state.catalogProjected = true
+	scope.state.catalogProjected = current
+	diff := tool.DiffCatalog(previous, current)
 	changed := &CatalogChanged{
 		CatalogID: current.CatalogID, Generation: current.Generation, Digest: current.Digest,
-	}
-	for _, entry := range current.Entries() {
-		changed.Added = append(changed.Added, tool.CatalogChange{
-			Name: entry.Name, Source: entry.Source, Revision: entry.Revision,
-		})
+		Added: diff.Added, Replaced: diff.Replaced, Revoked: diff.Revoked,
 	}
 	return changed
 }
 
-// sample names one provider call within a turn: which call it is, who answered
-// it, and what its tokens cost. It travels with every usage report so a
-// consumer can tell a second report about this call from the first report about
-// the next one.
+// sample attributes one provider call and its usage.
 type sample struct {
 	index    uint32
 	provider string
@@ -649,30 +668,63 @@ func consume(
 	}
 }
 
+const (
+	commonToolSet  = ",tool_search,result_get,handle_read,request_user_input,update_plan,turn_complete,"
+	readToolSet    = ",search_text,search_files,search_definition,search_references,file_read,file_list,file_write,file_edit,file_apply,shell_read,shell_run,quality_test,project_map,"
+	writeToolSet   = ",search_related_tests,quality_diagnostics,quality_verify,"
+	operateToolSet = ",terminal_run,background_shell_start,background_shell_wait," +
+		"background_shell_interact,background_shell_cancel,"
+	maxRelevantTools = 4
+)
+
 func (e *Engine) toolDefinitionsFromSnapshot(
 	snapshot tool.CatalogSnapshot,
+	request TurnRequest,
 ) ([]provider.ToolDefinition, map[string]bool, error) {
 	var descriptors []tool.Descriptor
+	var entries []tool.CatalogEntrySnapshot
 	for _, entry := range snapshot.Entries() {
 		if entry.Descriptor.Visibility == tool.VisibleModel &&
 			entry.Descriptor.Availability != tool.AvailabilityUnavailable &&
 			e.toolEnabled(entry) {
+			entries = append(entries, entry)
 			descriptors = append(descriptors, entry.Descriptor)
 		}
 	}
 	if onlyRetrievalHelpers(descriptors) {
 		return nil, map[string]bool{}, nil
 	}
-	threshold := e.options.ToolSearchThreshold
-	if threshold <= 0 {
-		threshold = toolsearch.DefaultThresh
-	}
-	useSearch := toolsearch.ShouldEnable(descriptors, threshold)
-	for _, entry := range snapshot.Entries() {
-		if entry.State == tool.CatalogEntryDeferred {
-			useSearch = true
-			break
+	selected := make(map[string]bool)
+	var search *tool.CatalogEntrySnapshot
+	relevant := 0
+	for index := range entries {
+		entry := entries[index]
+		if entry.Descriptor.Name == toolsearch.ToolName {
+			search = &entry
+			continue
 		}
+		if entry.State == tool.CatalogEntryDeferred {
+			continue
+		}
+		if coreTool(request.Intent, entry.Name) ||
+			entry.State == tool.CatalogEntryMaterialized {
+			selected[entry.Name] = true
+			continue
+		}
+		if relevant < maxRelevantTools &&
+			toolsearch.ScoreDescriptor(entry.Descriptor, request.Prompt) > 0 {
+			selected[entry.Name] = true
+			relevant++
+		}
+	}
+	if search == nil {
+		for _, entry := range entries {
+			if entry.State != tool.CatalogEntryDeferred {
+				selected[entry.Name] = true
+			}
+		}
+	} else if len(selected) < len(entries)-1 {
+		selected[toolsearch.ToolName] = true
 	}
 	result := make([]provider.ToolDefinition, 0, len(descriptors))
 	advertised := make(map[string]bool)
@@ -698,47 +750,37 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 		schemaBytes += len(data)
 		return nil
 	}
-	var search *tool.CatalogEntrySnapshot
-	for _, entry := range snapshot.Entries() {
-		descriptor := entry.Descriptor
-		if descriptor.Visibility != tool.VisibleModel ||
-			descriptor.Availability == tool.AvailabilityUnavailable ||
-			!e.toolEnabled(entry) {
-			continue
-		}
-		if descriptor.Name == toolsearch.ToolName {
-			copy := entry
-			search = &copy
-			continue
-		}
-		if entry.State != tool.CatalogEntryMaterialized {
-			continue
-		}
-		if err := add(entry, true); err != nil {
+	if search != nil && selected[toolsearch.ToolName] {
+		if err := add(*search, true); err != nil {
 			return nil, nil, err
 		}
 	}
-	for _, entry := range snapshot.Entries() {
-		descriptor := entry.Descriptor
-		if descriptor.Visibility != tool.VisibleModel ||
-			descriptor.Availability == tool.AvailabilityUnavailable ||
-			!e.toolEnabled(entry) ||
-			descriptor.Name == toolsearch.ToolName ||
-			entry.State == tool.CatalogEntryDeferred ||
-			entry.State == tool.CatalogEntryMaterialized {
+	for _, entry := range entries {
+		if !selected[entry.Name] || entry.Name == toolsearch.ToolName {
 			continue
 		}
-
-		if err := add(entry, true); err != nil {
-			return nil, nil, err
-		}
-	}
-	if search != nil {
-		if err := add(*search, useSearch); err != nil {
+		required := coreTool(request.Intent, entry.Name) ||
+			entry.State == tool.CatalogEntryMaterialized
+		if err := add(entry, required); err != nil {
 			return nil, nil, err
 		}
 	}
 	return result, advertised, nil
+}
+
+func coreTool(intent protocol.TurnIntent, name string) bool {
+	in := func(set string) bool { return strings.Contains(set, ","+name+",") }
+	if in(commonToolSet) || in(readToolSet) {
+		return true
+	}
+	switch protocol.NormalizeTurnIntent(intent) {
+	case protocol.TurnIntentWorkspaceChange:
+		return in(writeToolSet)
+	case protocol.TurnIntentOperation:
+		return in(writeToolSet) || in(operateToolSet)
+	default:
+		return false
+	}
 }
 
 func onlyRetrievalHelpers(descriptors []tool.Descriptor) bool {
@@ -755,10 +797,7 @@ func onlyRetrievalHelpers(descriptors []tool.Descriptor) bool {
 	return true
 }
 
-// maxOutputFor is the output ceiling to ask this route for. The configured
-// ceiling is a session-level number, so a turn routed to a model with a smaller
-// output limit is clamped to it: sending the larger number would be refused by
-// the provider, which reads as a routing failure rather than as a ceiling.
+// maxOutputFor clamps the session ceiling to the active route.
 func (e *Engine) maxOutputFor(route model.ReadyRoute) uint64 {
 	limit := route.Model().Limits.MaxOutputTokens
 	if limit == 0 || e.options.MaxOutputTokens <= limit {

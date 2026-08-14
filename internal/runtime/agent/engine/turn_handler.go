@@ -30,8 +30,7 @@ func (e *Engine) RunForTurn(
 	return e.RunForTurnWithAttachments(ctx, turnID, prompt, nil, emit)
 }
 
-// RunForTurnWithAttachments starts one turn with native image content blocks.
-// Attachments have already been workspace-bound and digest-verified by Runtime.
+// RunForTurnWithAttachments accepts Runtime-verified native images.
 func (e *Engine) RunForTurnWithAttachments(
 	ctx context.Context,
 	turnID, prompt string,
@@ -48,9 +47,7 @@ func (e *Engine) RunForTurnWithAttachments(
 	)
 }
 
-// RunForTurnWithIntentAndAttachments starts one turn under an explicit
-// completion contract. Intent is host-supplied structured data, never inferred
-// from prompt text.
+// RunForTurnWithIntentAndAttachments uses a host-supplied completion contract.
 func (e *Engine) RunForTurnWithIntentAndAttachments(
 	ctx context.Context,
 	turnID, prompt string,
@@ -154,7 +151,7 @@ func (f scopeFactory) open(spec TurnSpec) (*executionScope, error) {
 	)
 }
 
-// Run owns the complete lifetime of one frozen TurnSpec.
+// Run owns one frozen TurnSpec.
 func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	e := s.engine
 	spec := s.spec
@@ -488,7 +485,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			return result, err
 		}
 		for index, call := range recoveredCalls {
-			data, err := json.Marshal(results[index])
+			data, err := json.Marshal(tool.ModelResult(call.Name, results[index]))
 			if err != nil {
 				return result, err
 			}
@@ -504,9 +501,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			})
 		}
 	}
-	// sampled is what the turn's own sampling used, kept apart from what its
-	// tools sampled: the turn is priced at its own route's rates, and a tool's
-	// tokens belong to whichever model that tool used.
+	// Tool-model usage is accounted separately from this route.
 	var sampled provider.Usage
 	var toolSpent toolSpend
 	toolSpent.known = true
@@ -815,7 +810,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			return result, err
 		}
 		for index, call := range calls {
-			data, err := json.Marshal(results[index])
+			data, err := json.Marshal(tool.ModelResult(call.Name, results[index]))
 			if err != nil {
 				return result, err
 			}

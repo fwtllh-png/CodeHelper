@@ -3,8 +3,10 @@ package toolsearch
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
@@ -12,9 +14,8 @@ import (
 )
 
 const (
-	ToolName      = "tool_search"
-	DefaultLimit  = 8
-	DefaultThresh = 24
+	ToolName     = "tool_search"
+	DefaultLimit = 8
 )
 
 // Tool indexes VisibleModel descriptors and returns matching specs on demand (N8).
@@ -184,25 +185,10 @@ func scoreDescriptor(descriptor tool.Descriptor, terms []string) int {
 	return score
 }
 
-// ShouldEnable reports whether tool_search should be advertised (deferred present
-// or available tool count at/above threshold).
-func ShouldEnable(descriptors []tool.Descriptor, threshold int) bool {
-	if threshold <= 0 {
-		threshold = DefaultThresh
-	}
-	available, deferred := 0, 0
-	for _, descriptor := range descriptors {
-		if descriptor.Availability == tool.AvailabilityUnavailable {
-			continue
-		}
-		if descriptor.Name == ToolName {
-			continue
-		}
-		if descriptor.Availability == tool.AvailabilityDeferred {
-			deferred++
-			continue
-		}
-		available++
-	}
-	return deferred > 0 || available >= threshold
+func ScoreDescriptor(descriptor tool.Descriptor, query string) int {
+	terms := strings.FieldsFunc(strings.ToLower(query), func(value rune) bool {
+		return !unicode.IsLetter(value) && !unicode.IsNumber(value)
+	})
+	terms = slices.DeleteFunc(terms, func(term string) bool { return len(term) < 3 })
+	return scoreDescriptor(descriptor, terms)
 }
