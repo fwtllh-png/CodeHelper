@@ -904,6 +904,37 @@ Output 7,857（-16.43%），Reasoning 4,701（相对 T3 -23.51%，相对 T0
 - Connection Reset、Retry、Compaction 和 Resume 不重复 Tool Execution；
 - 不支持 Provider 行为不变。
 
+T5 最终证据（`implemented_validation_mixed`）：
+
+六项退出门禁通过五项。机器可读证据见
+[`token-efficiency-t5-evidence.json`](../token-efficiency-t5-evidence.json)。
+
+| 退出门禁 | 结果 | 状态 |
+| --- | ---: | --- |
+| Full/Incremental 逻辑等价 | Response/Tool/Reasoning Replay 测试 | 通过 |
+| Incremental Request Bytes | 15,182 -> 218（-98.56%），目标 <= -60% | 通过 |
+| Byte 与 Token 分离 | 双 Digest 与 Request Byte Attribution | 通过 |
+| Reset/Retry/Compaction/Resume 安全 | 完整回退，不复用陈旧 Response ID | 通过 |
+| 不支持 Provider 行为 | Hermetic 5/5 完全一致；DeepSeek Live 10/10 | 通过 |
+| 全部 `internal` 生产代码 | +465 行，目标 <= 0 | 未通过 |
+
+Bundled `openai-responses/gpt-4.1` 路由现在显式广告 Incremental Transport。
+Provider 按 Sticky Session 所有 WebSocket，只有收到合法终态后才提交 Response ID。
+仅当非输入属性一致，且完整逻辑输入严格扩展“已提交输入 + 规范化 Response Output”
+时发送 Delta。Connection Reset、属性变化、Compaction/Resume Rebase、解析失败或任意
+不确定状态都会使链失效并发送完整请求。`store=false` 保持固定；连接状态只存在于
+内存，并按 Provider Idle Timeout 过期。
+
+Hermetic 5/5 与 T4 完全一致：Input/Uncached Input P50 为 72,189/54,145，
+Output 912，Sample Count 8。不支持 Incremental 的 DeepSeek 控制组 Live 10/10：
+相对 T4，Input P50 -0.25%，Uncached Input -12.22%，Output +0.05%，Reasoning
++2.98%，Sample Count 保持 11。Architecture Ratchet 通过 43/43，Runtime 架构闭包
+生产代码净变化为 `0` 行。
+
+结论：保留 T5，因为所有行为与传输门禁均通过，但不标记为 `accepted`。
+Provider/Model 生产代码净增 462 行，全部 `internal` 净增 465 行；T6 默认启用前必须
+收敛该实现，或显式修订代码规模不变量。
+
 ### T6：总体验收与默认启用
 
 执行：

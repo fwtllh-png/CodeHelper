@@ -27,6 +27,14 @@ type SampleInput struct {
 	Estimate                               func([]provider.Message) (uint64, error)
 }
 
+func ApplyTransport(context *protocol.SampleContextData, value provider.TransportMetadata) {
+	if context == nil {
+		return
+	}
+	context.RequestBytes, context.LogicalRequestDigest = value.RequestBytes, value.LogicalRequestDigest
+	context.TransportPayloadDigest, context.IncrementalTransport = value.TransportPayloadDigest, value.Incremental
+}
+
 func SampleReason(initial string, attempt int, continuation bool) string {
 	if attempt > 0 {
 		return SampleProviderRetry

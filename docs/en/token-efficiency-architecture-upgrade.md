@@ -760,6 +760,41 @@ Exit: logical equivalence, cache-lane bytes fall at least 60% from T4, byte
 savings are not counted as token savings, reset/retry/resume never duplicate
 tool execution, and unsupported providers remain unchanged.
 
+T5 final evidence (`implemented_validation_mixed`):
+
+Five of six exit gates passed. Machine-readable evidence is in
+[`token-efficiency-t5-evidence.json`](../token-efficiency-t5-evidence.json).
+
+| Exit gate | Result | Status |
+| --- | ---: | --- |
+| Logical full/incremental equivalence | Response/tool/reasoning replay tests | passed |
+| Incremental request bytes | 15,182 -> 218 (-98.56%), target <= -60% | passed |
+| Bytes are separate from tokens | dual digests and request-byte attribution | passed |
+| Reset/retry/compaction/resume safety | full fallback; no stale response ID | passed |
+| Unsupported provider behavior | Hermetic 5/5 exact; DeepSeek Live 10/10 | passed |
+| All `internal` production code | +465 lines, target <= 0 | failed |
+
+The bundled `openai-responses/gpt-4.1` route now explicitly advertises
+incremental transport. Provider owns a sticky-session WebSocket and commits a
+response ID only after a valid terminal event. It sends a delta only when
+non-input properties match and the complete logical input strictly extends the
+committed input plus normalized response output. Connection reset, property
+change, compaction/resume rebase, parse failure, or uncertain state invalidates
+the chain and uses a complete request. `store=false` remains fixed; connection
+state is memory-only and expires at the Provider idle timeout.
+
+Hermetic 5/5 remained exactly equal to T4: input/uncached-input P50
+72,189/54,145, output 912, and eight samples. The unsupported DeepSeek control
+completed Live 10/10: relative to T4, input P50 changed -0.25%, uncached input
+-12.22%, output +0.05%, reasoning +2.98%, and sample count stayed 11.
+Architecture Ratchet passed 43/43 and the Runtime architecture closure stayed
+at net `0` lines.
+
+Decision: retain T5 because every behavioral and transport gate passed, but do
+not mark it `accepted`. The Provider/Model implementation adds 462 production
+lines and all `internal` adds 465; T6 must consolidate that implementation or
+explicitly revise the size invariant before default enablement.
+
 ### T6: Final Acceptance and Default Enablement
 
 - rerun all lanes on baseline and final commits;

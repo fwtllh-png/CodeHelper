@@ -5005,6 +5005,12 @@
             "history_user_tokens": {
               "type": "integer"
             },
+            "incremental_transport": {
+              "type": "boolean"
+            },
+            "logical_request_digest": {
+              "type": "string"
+            },
             "message_count": {
               "type": "integer"
             },
@@ -5017,6 +5023,9 @@
             "reasoning_effort": {
               "type": "string"
             },
+            "request_bytes": {
+              "type": "integer"
+            },
             "stable_tokens": {
               "type": "integer"
             },
@@ -5025,6 +5034,9 @@
             },
             "tool_definition_tokens": {
               "type": "integer"
+            },
+            "transport_payload_digest": {
+              "type": "string"
             }
           },
           "required": [

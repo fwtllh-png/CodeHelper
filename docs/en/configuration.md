@@ -209,6 +209,20 @@ name = "markdownlint-cli2"
 args = ["--no-globs", "--", "{path}"]
 ```
 
+Bundled `openai-responses` routes that advertise incremental transport keep a
+Provider-owned WebSocket per sticky session key. The first sample sends the
+complete logical input; a later sample sends `previous_response_id` and only
+new input when all non-input properties are unchanged and the logical input
+strictly extends the committed chain. Any route, property, compaction, retry,
+resume, connection, or response-state uncertainty sends a complete request.
+Other providers continue using their existing HTTP transport.
+
+Incremental transport always uses `store=false`. Response state is retained
+only in the active connection and is discarded on failure or idle timeout.
+Usage events persist request byte counts plus SHA-256 logical and transport
+digests, never prompt content. Request-byte savings are transport evidence and
+are not reported as token savings.
+
 `execution.max_steps` is a hard safety and cost bound, not a target. The
 default is 256 for coding Turns and the supported range is 1-1000. For budgets
 of at least 64 steps, Runtime injects one convergence warning with 16-32 steps

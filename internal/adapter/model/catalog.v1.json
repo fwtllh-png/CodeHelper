@@ -73,7 +73,8 @@
             "native_search": true,
             "vision": true,
             "image_input": true,
-            "prompt_cache": true
+            "prompt_cache": true,
+            "incremental_responses": true
           },
           "pricing": {
             "input_per_million": 2,

@@ -97,12 +97,7 @@ type TextDeltaData struct {
 	Text string `json:"text"`
 }
 
-func (d *TextDeltaData) validate() error {
-	if d.Text == "" {
-		return errors.New("delta text is required")
-	}
-	return nil
-}
+func (d *TextDeltaData) validate() error { return require(d.Text != "", "delta text is required") }
 
 type OutputDeltaData TextDeltaData
 
@@ -123,10 +118,7 @@ type ReasoningSignatureData struct {
 func (*ReasoningSignatureData) eventKind() EventKind { return EventReasoningSignature }
 
 func (d *ReasoningSignatureData) validate() error {
-	if d.Signature == "" {
-		return errors.New("reasoning signature is required")
-	}
-	return nil
+	return require(d.Signature != "", "reasoning signature is required")
 }
 
 type Source struct {
@@ -165,10 +157,7 @@ type CitationData struct {
 func (*CitationData) eventKind() EventKind { return EventCitation }
 
 func (d *CitationData) validate() error {
-	if d.URL == "" || d.Start < 0 || d.End < d.Start {
-		return errors.New("citation url and valid range are required")
-	}
-	return nil
+	return require(d.URL != "" && d.Start >= 0 && d.End >= d.Start, "citation url and valid range are required")
 }
 
 // UsageData is one provider call's cumulative usage. Aggregators retain the
@@ -204,6 +193,10 @@ type SampleContextData struct {
 	EstimatedTokens        uint64 `json:"estimated_tokens,omitempty"`
 	MessageCount           int    `json:"message_count,omitempty"`
 	ToolDefinitionCount    int    `json:"tool_definition_count,omitempty"`
+	RequestBytes           uint64 `json:"request_bytes,omitempty"`
+	LogicalRequestDigest   string `json:"logical_request_digest,omitempty"`
+	TransportPayloadDigest string `json:"transport_payload_digest,omitempty"`
+	IncrementalTransport   bool   `json:"incremental_transport,omitempty"`
 }
 
 func (*UsageData) eventKind() EventKind { return EventUsage }
@@ -217,9 +210,11 @@ type ToolStateData struct {
 
 func (*ToolStateData) eventKind() EventKind { return EventToolState }
 
-func (d *ToolStateData) validate() error {
-	if d.State == "" {
-		return errors.New("tool state is required")
+func (d *ToolStateData) validate() error { return require(d.State != "", "tool state is required") }
+
+func require(valid bool, message string) error {
+	if !valid {
+		return errors.New(message)
 	}
 	return nil
 }

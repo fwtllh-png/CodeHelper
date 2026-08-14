@@ -11,10 +11,11 @@ import (
 type Capability string
 
 const (
-	CapStreaming    Capability = "streaming"
-	CapReasoning    Capability = "reasoning"
-	CapToolCalls    Capability = "tool_calls"
-	CapNativeSearch Capability = "native_search"
+	CapStreaming            Capability = "streaming"
+	CapReasoning            Capability = "reasoning"
+	CapToolCalls            Capability = "tool_calls"
+	CapNativeSearch         Capability = "native_search"
+	CapIncrementalResponses Capability = "incremental_responses"
 	// CapVision is what the vision purpose needs: the model can describe an
 	// image. It is the bit NewRouteSet checks when a vision slot is configured.
 	CapVision Capability = "vision"
@@ -43,6 +44,8 @@ func (c Capabilities) Supports(capability Capability) bool {
 		return c.ToolCalls
 	case CapNativeSearch:
 		return c.NativeSearch
+	case CapIncrementalResponses:
+		return c.IncrementalResponses
 	case CapVision:
 		return c.Vision
 	case CapImageInput:

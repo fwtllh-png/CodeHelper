@@ -13,17 +13,16 @@ import (
 )
 
 type stream struct {
-	body           io.ReadCloser
-	decoder        *provider.SSEDecoder
-	protocol       model.WireProtocol
-	queue          []provider.StreamEvent
-	started        bool
-	finished       bool
-	stopReason     provider.StopReason
-	stopped        bool
-	closed         bool
-	reasoning      map[int]string
-	reasoningFinal map[int]bool
+	body       io.ReadCloser
+	decoder    *provider.SSEDecoder
+	protocol   model.WireProtocol
+	queue      []provider.StreamEvent
+	started    bool
+	finished   bool
+	stopReason provider.StopReason
+	stopped    bool
+	closed     bool
+	responses  ResponsesDecoder
 }
 
 func NewStream(body io.ReadCloser, protocol model.WireProtocol) (provider.Stream, error) {
@@ -70,8 +69,7 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 		if s.protocol == model.ProtocolOpenAIChat {
 			events, err = parseChatChunk([]byte(record.Data))
 		} else {
-			events, err = parseResponsesChunk([]byte(record.Data))
-			events = s.reconcileResponsesReasoning(events)
+			events, err = s.responses.Decode([]byte(record.Data))
 		}
 		if err != nil {
 			return provider.StreamEvent{}, err
@@ -95,20 +93,33 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 	}
 }
 
-func (s *stream) reconcileResponsesReasoning(
-	events []provider.StreamEvent,
-) []provider.StreamEvent {
-	if s.reasoning == nil {
-		s.reasoning = make(map[int]string)
-		s.reasoningFinal = make(map[int]bool)
+// ResponsesDecoder turns one Responses JSON event into provider events while
+// reconciling providers that emit both reasoning deltas and final snapshots.
+type ResponsesDecoder struct {
+	CaptureState   bool
+	reasoning      map[int]string
+	reasoningFinal map[int]bool
+}
+
+func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
+	events, err := parseResponsesChunk(data)
+	if err != nil {
+		return nil, err
+	}
+	if d.reasoning == nil {
+		d.reasoning = make(map[int]string)
+		d.reasoningFinal = make(map[int]bool)
 	}
 	reconciled := make([]provider.StreamEvent, 0, len(events))
 	for _, event := range events {
+		if event.Type == provider.EventResponseState && !d.CaptureState {
+			continue
+		}
 		if event.Type != provider.EventReasoningDelta {
 			reconciled = append(reconciled, event)
 			continue
 		}
-		seen := s.reasoning[event.Index]
+		seen := d.reasoning[event.Index]
 		visible := event.Text
 		if strings.HasPrefix(visible, seen) {
 			visible = strings.TrimPrefix(visible, seen)
@@ -116,22 +127,22 @@ func (s *stream) reconcileResponsesReasoning(
 			visible = ""
 		}
 		if visible != "" {
-			s.reasoning[event.Index] = seen + visible
+			d.reasoning[event.Index] = seen + visible
 		}
 		event.Text = visible
 		if event.Block != nil && len(event.Block.ProviderData) == 0 {
 			event.Block.Text = visible
 		}
 		hasProviderData := event.Block != nil && len(event.Block.ProviderData) != 0
-		if visible == "" && (!hasProviderData || s.reasoningFinal[event.Index]) {
+		if visible == "" && (!hasProviderData || d.reasoningFinal[event.Index]) {
 			continue
 		}
 		if hasProviderData {
-			s.reasoningFinal[event.Index] = true
+			d.reasoningFinal[event.Index] = true
 		}
 		reconciled = append(reconciled, event)
 	}
-	return reconciled
+	return reconciled, nil
 }
 
 func (s *stream) enqueueStop(reason provider.StopReason) {
@@ -340,6 +351,21 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 	case "response.completed", "response.incomplete":
 		var events []provider.StreamEvent
 		if response, ok := chunk["response"].(map[string]any); ok {
+			if id := stringValue(response["id"]); id != "" {
+				state := &provider.ResponseState{ID: id}
+				if output, ok := response["output"].([]any); ok {
+					for _, item := range output {
+						raw, err := json.Marshal(item)
+						if err != nil {
+							return nil, err
+						}
+						state.Output = append(state.Output, raw)
+					}
+				}
+				events = append(events, provider.StreamEvent{
+					Type: provider.EventResponseState, Response: state,
+				})
+			}
 			// Final output is the authoritative reasoning payload. Re-emit so a
 			// missed delta / empty output_item.done still lands in history before
 			// the tool-loop replay (DeepSeek 400 without reasoning_text).
