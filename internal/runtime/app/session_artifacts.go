@@ -26,6 +26,7 @@ type TurnRecoveryPreparation struct {
 	DisplayPrompt  string
 	Intent         protocol.TurnIntent
 	IdempotencyKey string
+	Recovery       protocol.TurnRecoveryContext
 }
 
 const turnRecoveryOutputLimit = 16 << 10
@@ -211,6 +212,9 @@ func (r *ArtifactService) PrepareTurnRecovery(
 		DisplayPrompt:  displayPrompt,
 		Intent:         intent,
 		IdempotencyKey: request.IdempotencyKey,
+		Recovery: protocol.TurnRecoveryContext{
+			Action: request.Action, SourceTurnID: request.SourceTurnID,
+		},
 	}, nil
 }
 func recoveryDisplayPrompt(modelPrompt string, displayPrompt string) string {

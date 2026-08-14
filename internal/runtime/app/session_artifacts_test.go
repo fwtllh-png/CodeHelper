@@ -459,6 +459,8 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	}
 	if !strings.Contains(continued.Prompt, "do not repeat completed Tool") ||
 		continued.Intent != protocol.TurnIntentWorkspaceChange ||
+		continued.Recovery.Action != protocol.TurnRecoveryContinue ||
+		continued.Recovery.SourceTurnID != "turn-source" ||
 		!strings.Contains(continued.Prompt, "Source Turn ID: turn-source") ||
 		!strings.Contains(continued.Prompt, "<source_request>\nFix the parser") ||
 		!strings.Contains(continued.Prompt, "failed (conflict): validation failed") ||

@@ -616,13 +616,29 @@ func applyRecoveryRequested(
 	}
 	if strings.TrimSpace(command.SourceTurnID) == "" ||
 		strings.TrimSpace(command.RecoveryTurnID) == "" ||
-		command.CurrentProfileRevision == 0 {
+		command.CurrentProfileRevision == 0 ||
+		(command.Action != string(protocol.TurnRecoveryRetry) &&
+			command.Action != string(protocol.TurnRecoveryContinue)) ||
+		(command.DraftResumed && len(command.Changes) == 0) {
 		return illegal(current, command, "recovery relation is incomplete")
 	}
 	transition.State.ProfileRevision = command.CurrentProfileRevision
 	transition.State.RecoveryRelation = &RecoveryRelation{
 		SourceTurnID:   command.SourceTurnID,
 		RecoveryTurnID: command.RecoveryTurnID,
+		Action:         command.Action,
+		DraftResumed:   command.DraftResumed,
+	}
+	if len(command.Changes) != 0 {
+		transition.State.MutationRevision = 1
+		transition.State.Changes = append(
+			[]ObservedChange(nil),
+			command.Changes...,
+		)
+		transition.State.Journal = JournalOpen
+		transition.Events = append(transition.Events, Event{
+			Kind: EventMutationObserved, Mutation: 1,
+		})
 	}
 	transition.Events = append(
 		transition.Events,
@@ -1368,7 +1384,7 @@ func applyVerificationFinished(
 		case command.Status == VerificationPassed:
 			action = VerificationActionPassed
 		case current.Policy.VerificationMustPass:
-			action = VerificationActionFailed
+			action = VerificationActionBlocked
 		case current.Policy.VerificationMode == "soft":
 			action = VerificationActionReported
 		case current.Policy.VerificationOnFailure == "revert":
@@ -1536,11 +1552,7 @@ func applyTerminalRequested(
 		Kind: EventTerminalPrepared, Terminal: &copy,
 	})
 	if current.Journal == JournalOpen || current.Policy.JournalRequired {
-		effect := EffectRollbackJournal
-		if decision.Kind == TerminalCompleted &&
-			current.Verification.Action != VerificationActionReverted {
-			effect = EffectCommitJournal
-		}
+		effect, _ := terminalJournalOutcome(current, decision)
 		requestEffect(
 			transition,
 			effect,
@@ -1564,19 +1576,14 @@ func applyJournalFinalized(
 	if current.PendingTerminal == nil {
 		return illegal(current, command, "terminal transaction is missing")
 	}
-	expected := JournalRolledBack
-	if current.PendingTerminal.Kind == TerminalCompleted &&
-		current.Verification.Action != VerificationActionReverted {
-		expected = JournalCommitted
-	}
+	effectKind, expected := terminalJournalOutcome(
+		current,
+		*current.PendingTerminal,
+	)
 	if current.Journal != JournalOpen || status != expected {
 		return illegal(current, command, "journal result does not match terminal outcome")
 	}
 	transition.State.Journal = status
-	effectKind := EffectRollbackJournal
-	if status == JournalCommitted {
-		effectKind = EffectCommitJournal
-	}
 	closeFirstEffectByKind(transition, effectKind, true, "")
 	return nil
 }
@@ -1593,14 +1600,13 @@ func applyJournalResult(
 	if !ok || effect.Status != EffectRunning {
 		return illegal(current, command, "journal effect is not running")
 	}
-	expectedKind := EffectRollbackJournal
-	expectedStatus := JournalRolledBack
-	if current.PendingTerminal != nil &&
-		current.PendingTerminal.Kind == TerminalCompleted &&
-		current.Verification.Action != VerificationActionReverted {
-		expectedKind = EffectCommitJournal
-		expectedStatus = JournalCommitted
+	if current.PendingTerminal == nil {
+		return illegal(current, command, "terminal transaction is missing")
 	}
+	expectedKind, expectedStatus := terminalJournalOutcome(
+		current,
+		*current.PendingTerminal,
+	)
 	if effect.Kind != expectedKind || command.Status != expectedStatus {
 		return illegal(current, command, "journal result does not match terminal outcome")
 	}
@@ -1634,21 +1640,14 @@ func applyFinishTerminal(transition *Transition, current State) error {
 		return illegal(current, command, "terminal transaction is missing")
 	}
 	if len(current.Changes) != 0 {
-		expected := JournalRolledBack
-		if current.PendingTerminal.Kind == TerminalCompleted &&
-			current.Verification.Action != VerificationActionReverted {
-			expected = JournalCommitted
-		}
+		_, expected := terminalJournalOutcome(current, *current.PendingTerminal)
 		if current.Journal != expected {
 			return illegal(current, command, "journal is not finalized")
 		}
 	} else {
 		expected := JournalNone
 		if current.Policy.JournalRequired {
-			expected = JournalRolledBack
-			if current.PendingTerminal.Kind == TerminalCompleted {
-				expected = JournalCommitted
-			}
+			_, expected = terminalJournalOutcome(current, *current.PendingTerminal)
 		}
 		if current.Journal != expected {
 			return illegal(current, command, "unchanged turn journal is not finalized")
@@ -1674,6 +1673,24 @@ func applyFinishTerminal(transition *Transition, current State) error {
 		Kind: EventTerminalCommitted, Terminal: &decision,
 	})
 	return nil
+}
+
+func terminalJournalOutcome(
+	state State,
+	decision TerminalDecision,
+) (EffectKind, JournalStatus) {
+	switch {
+	case decision.Kind == TerminalCompleted &&
+		state.Verification.Action != VerificationActionReverted:
+		return EffectCommitJournal, JournalCommitted
+	case decision.Kind == TerminalFailed &&
+		(state.Verification.Action == VerificationActionBlocked ||
+			state.RecoveryRelation != nil &&
+				state.RecoveryRelation.DraftResumed):
+		return EffectSuspendJournal, JournalSuspended
+	default:
+		return EffectRollbackJournal, JournalRolledBack
+	}
 }
 
 func validateCompletionReadiness(state State) error {

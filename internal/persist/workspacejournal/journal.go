@@ -312,6 +312,7 @@ type Manager struct {
 	store     contentstore.Store
 	active    *turnJournal
 	committed map[string]*turnJournal
+	drafts    map[string]*turnJournal
 	// unresolved keeps journals whose rollback hit a conflict, so their
 	// before-images survive for a retry.
 	unresolved map[string]*turnJournal
@@ -342,7 +343,9 @@ func New(root string, store contentstore.Store) (*Manager, error) {
 	}
 	return &Manager{
 		root: workspace.Root(), workspace: workspace, store: store,
-		committed: make(map[string]*turnJournal), unresolved: make(map[string]*turnJournal),
+		committed:  make(map[string]*turnJournal),
+		drafts:     make(map[string]*turnJournal),
+		unresolved: make(map[string]*turnJournal),
 	}, nil
 }
 
@@ -354,6 +357,11 @@ func (m *Manager) Begin(turnID string) error {
 	defer m.mu.Unlock()
 	if m.active != nil {
 		return errors.New("workspace journal already has an active turn")
+	}
+	if len(m.drafts) != 0 {
+		return errors.New(
+			"workspace journal has a retained draft; continue, retry, or revert it first",
+		)
 	}
 	started := time.Now().UTC()
 	if err := m.ledger.append(entry{
@@ -542,8 +550,96 @@ func canonicalPath(path string) (string, error) {
 func (m *Manager) Commit(turnID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	journal, err := m.finishActiveLocked(turnID)
+	if err != nil {
+		return err
+	}
+	m.committed[turnID] = journal
+	// A committed turn is no longer something a later process should undo: it
+	// passed its gate, so its changes are finished work.
+	return m.ledger.append(entry{Phase: phaseCommit, TurnID: turnID})
+}
+
+// Suspend preserves an unverified Turn as a resumable draft. Unlike Commit, it
+// keeps the before-images durable across process restart.
+func (m *Manager) Suspend(turnID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.active == nil || m.active.id != turnID {
-		return errors.New("workspace journal active turn does not match commit")
+		return errors.New("workspace journal active turn does not match suspension")
+	}
+	journal := m.active
+	m.active = nil
+	m.drafts[turnID] = journal
+	return m.ledger.append(entry{Phase: phaseDraft, TurnID: turnID})
+}
+
+// HasDraft reports whether a terminal Turn retained a resumable workspace
+// draft in this journal.
+func (m *Manager) HasDraft(turnID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.drafts[turnID] != nil
+}
+
+// DraftChanges returns the retained net changes for a terminal draft.
+func (m *Manager) DraftChanges(turnID string) []Change {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	journal := m.drafts[turnID]
+	if journal == nil {
+		return nil
+	}
+	changes := make([]Change, 0, len(journal.order))
+	for _, path := range journal.order {
+		record := journal.records[path]
+		if record == nil || record.Kind() == "" {
+			continue
+		}
+		changes = append(changes, Change{
+			Path: record.Path, Kind: record.Kind(),
+			Before: record.Before, After: record.After,
+		})
+	}
+	return changes
+}
+
+// ResumeDraft atomically rebinds a retained draft to the new recovery Turn.
+// Keeping one journal preserves the original before-images and avoids a chain
+// of partial baselines across repeated Continue actions.
+func (m *Manager) ResumeDraft(sourceTurnID, recoveryTurnID string) error {
+	if sourceTurnID == "" || recoveryTurnID == "" {
+		return errors.New("workspace draft recovery identity is invalid")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active != nil {
+		return errors.New("workspace journal already has an active turn")
+	}
+	journal := m.drafts[sourceTurnID]
+	if journal == nil {
+		return errors.New("workspace draft was not found")
+	}
+	if sourceTurnID == recoveryTurnID {
+		delete(m.drafts, sourceTurnID)
+		m.active = journal
+		return nil
+	}
+	if err := m.ledger.append(entry{
+		Phase: phaseResume, TurnID: recoveryTurnID,
+		SourceTurnID: sourceTurnID, Owner: m.owner, PID: m.pid,
+	}); err != nil {
+		return err
+	}
+	delete(m.drafts, sourceTurnID)
+	journal.id = recoveryTurnID
+	m.active = journal
+	return nil
+}
+
+func (m *Manager) finishActiveLocked(turnID string) (*turnJournal, error) {
+	if m.active == nil || m.active.id != turnID {
+		return nil, errors.New("workspace journal active turn does not match finalization")
 	}
 	journal := m.active
 	m.active = nil
@@ -560,10 +656,7 @@ func (m *Manager) Commit(turnID string) error {
 		filtered = append(filtered, path)
 	}
 	journal.order = filtered
-	m.committed[turnID] = journal
-	// A committed turn is no longer something a later process should undo: it
-	// passed its gate, so its changes are finished work.
-	return m.ledger.append(entry{Phase: phaseCommit, TurnID: turnID})
+	return journal, nil
 }
 
 // Rollback undoes the active turn. A conflict leaves the remaining before-images
@@ -604,14 +697,23 @@ func (m *Manager) Rollback(ctx context.Context, turnID string) (Receipt, error) 
 func (m *Manager) Revert(ctx context.Context, turnID string) (Receipt, error) {
 	m.mu.Lock()
 	journal := m.committed[turnID]
+	draft := false
+	if journal == nil {
+		journal = m.drafts[turnID]
+		draft = journal != nil
+	}
 	m.mu.Unlock()
 	if journal == nil {
-		return Receipt{}, errors.New("committed workspace turn was not found")
+		return Receipt{}, errors.New("committed workspace turn or draft was not found")
 	}
 	receipt, err := m.restore(ctx, journal)
 	if err == nil && len(receipt.Conflicts) == 0 {
 		m.mu.Lock()
-		delete(m.committed, turnID)
+		if draft {
+			delete(m.drafts, turnID)
+		} else {
+			delete(m.committed, turnID)
+		}
 		m.mu.Unlock()
 		m.release(journal)
 		if settleErr := m.ledger.append(entry{

@@ -74,6 +74,49 @@ func TestJournalCommitRevertAndConflict(t *testing.T) {
 	}
 }
 
+func TestJournalDraftResumeCommitsOriginalBaseline(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "value.txt")
+	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := New(root, contentstore.NewMemory(contentstore.Options{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Begin("source"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, manager, path, "draft\n")
+	if err := manager.Suspend("source"); err != nil {
+		t.Fatal(err)
+	}
+	if !manager.HasDraft("source") {
+		t.Fatal("suspended Turn did not retain a draft")
+	}
+	if err := manager.Begin("unrelated"); err == nil {
+		t.Fatal("unrelated Turn began on top of a retained draft")
+	}
+	if err := manager.ResumeDraft("source", "recovery"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, manager, path, "verified\n")
+	if err := manager.Commit("recovery"); err != nil {
+		t.Fatal(err)
+	}
+
+	receipt, err := manager.Revert(t.Context(), "recovery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipt.Restored) != 1 {
+		t.Fatalf("revert receipt = %+v", receipt)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "before\n" {
+		t.Fatalf("reverted recovery = %q, want original baseline", data)
+	}
+}
+
 // write records a turn write end to end: before-image, the write itself, and the
 // after fingerprint.
 func write(t *testing.T, manager *Manager, path, content string) {

@@ -1998,6 +1998,22 @@
         "prompt": {
           "type": "string"
         },
+        "recovery": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "source_turn_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "source_turn_id"
+          ],
+          "additionalProperties": false
+        },
         "thread_id": {
           "type": "string"
         },

@@ -274,8 +274,12 @@ Verification modes:
 
 - `off`: do not run the verify gate;
 - `soft`: collect and report a verdict without turning a successful edit into a
-  failed turn;
+  failed turn unless the Turn contract requires verification;
 - `hard`: enforce the verdict after repair attempts are exhausted.
+
+`workspace_change` and explicit completion contracts always require verification.
+When their no-progress repair budget is exhausted, the Turn becomes `blocked`
+and its journal remains as a resumable draft regardless of the configured mode.
 
 Scopes:
 

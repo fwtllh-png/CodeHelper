@@ -222,11 +222,12 @@ rejects late, duplicate, or wrong-kind resolutions.
 9. Mutating tools write through journaled/transactional adapters.
 10. `EvaluateTurnStep` makes Reducer select Repair, Verification, or Complete.
 11. The Verification executor returns evidence through
-    `VerificationFinished`; Reducer selects Passed, Repair, Reported, Failed, or
-    Reverted and owns the repair budget.
+    `VerificationFinished`; Reducer selects Passed, Repair, Reported, Blocked,
+    Failed, or Reverted and owns the repair budget.
 12. Engine submits `TerminalRequested`; Reducer selects Completed, Failed, or
-    Canceled. Journal Commit/Rollback then runs as a durable Effect and returns
-    `JournalResultReceived`.
+    Canceled. Journal Commit/Suspend/Rollback then runs as a durable Effect and
+    returns `JournalResultReceived`. Suspend retains a verification-blocked
+    draft for a structurally bound Continue Turn.
 13. Scope prepares a revisioned, digested `SessionDelta` containing History,
     Usage, Cost, Working Set, Evidence, Failures, and Compaction state.
 14. Persistent Runtime atomically commits frozen state, Session Delta, final

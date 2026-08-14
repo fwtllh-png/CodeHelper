@@ -47,6 +47,7 @@ func openWorkspaceJournal(
 			"recovered interrupted workspace turns",
 			"rolled_back", len(recovery.RolledBack),
 			"kept_committed", len(recovery.Abandoned),
+			"retained_drafts", len(recovery.Drafts),
 			"skipped_live", len(recovery.Skipped),
 		)
 	}

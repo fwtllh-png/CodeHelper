@@ -195,7 +195,7 @@ func TestStrictVerifyGateDoesNotReportFailedVerification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != turnkernel.VerificationActionFailed {
+	if action != turnkernel.VerificationActionBlocked {
 		t.Fatalf("strict failed verification action = %q", action)
 	}
 }

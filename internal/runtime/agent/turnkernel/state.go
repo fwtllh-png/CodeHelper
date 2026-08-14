@@ -43,6 +43,7 @@ type JournalStatus string
 const (
 	JournalNone       JournalStatus = "none"
 	JournalOpen       JournalStatus = "open"
+	JournalSuspended  JournalStatus = "suspended"
 	JournalCommitted  JournalStatus = "committed"
 	JournalRolledBack JournalStatus = "rolled_back"
 )
@@ -100,6 +101,7 @@ const (
 	VerificationActionPassed   VerificationAction = "passed"
 	VerificationActionRepair   VerificationAction = "repair"
 	VerificationActionReported VerificationAction = "reported"
+	VerificationActionBlocked  VerificationAction = "blocked"
 	VerificationActionFailed   VerificationAction = "failed"
 	VerificationActionReverted VerificationAction = "reverted"
 )
@@ -231,6 +233,8 @@ type CancellationState struct {
 type RecoveryRelation struct {
 	SourceTurnID   string `json:"source_turn_id"`
 	RecoveryTurnID string `json:"recovery_turn_id"`
+	Action         string `json:"action"`
+	DraftResumed   bool   `json:"draft_resumed,omitempty"`
 }
 
 type State struct {

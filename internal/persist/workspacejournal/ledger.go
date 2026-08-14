@@ -19,6 +19,8 @@ const (
 	phaseBegin   = "begin"
 	phaseBefore  = "before"
 	phaseAfter   = "after"
+	phaseDraft   = "draft"
+	phaseResume  = "resume"
 	phaseCommit  = "commit"
 	phaseSettled = "settled"
 	phaseRecover = "recovered"
@@ -27,12 +29,13 @@ const (
 // entry is one ledger line. Records are written per path rather than per turn so
 // that a crash halfway through a turn still has the paths it already touched.
 type entry struct {
-	Phase  string    `json:"phase"`
-	TurnID string    `json:"turn_id"`
-	Owner  string    `json:"owner,omitempty"`
-	PID    int       `json:"pid,omitempty"`
-	Record *Record   `json:"record,omitempty"`
-	At     time.Time `json:"at"`
+	Phase        string    `json:"phase"`
+	TurnID       string    `json:"turn_id"`
+	Owner        string    `json:"owner,omitempty"`
+	PID          int       `json:"pid,omitempty"`
+	Record       *Record   `json:"record,omitempty"`
+	At           time.Time `json:"at"`
+	SourceTurnID string    `json:"source_turn_id,omitempty"`
 }
 
 // ledger appends turn records to a file and replays what an earlier process
@@ -95,6 +98,7 @@ type pendingTurn struct {
 	PID       int
 	Started   time.Time
 	Committed bool
+	Draft     bool
 	Order     []string
 	Records   map[string]*Record
 }
@@ -171,7 +175,26 @@ func applyEntry(
 		// writes, and only a settled turn drops out.
 		if turn := pending[value.TurnID]; turn != nil {
 			turn.Committed = true
+			turn.Draft = false
 		}
+	case phaseDraft:
+		if turn := pending[value.TurnID]; turn != nil {
+			turn.Draft = true
+		}
+	case phaseResume:
+		source := pending[value.SourceTurnID]
+		if source == nil || pending[value.TurnID] != nil {
+			return
+		}
+		position := sequence[value.SourceTurnID]
+		delete(pending, value.SourceTurnID)
+		delete(sequence, value.SourceTurnID)
+		source.ID = value.TurnID
+		source.Owner = value.Owner
+		source.PID = value.PID
+		source.Draft = true
+		pending[value.TurnID] = source
+		sequence[value.TurnID] = position
 	case phaseBefore, phaseAfter:
 		turn := pending[value.TurnID]
 		if turn == nil || value.Record == nil {
@@ -223,6 +246,10 @@ func (l *ledger) compact(turns []pendingTurn) error {
 		if turn.Committed {
 			lines = append(lines, entry{
 				Phase: phaseCommit, TurnID: turn.ID, At: turn.Started,
+			})
+		} else if turn.Draft {
+			lines = append(lines, entry{
+				Phase: phaseDraft, TurnID: turn.ID, At: turn.Started,
 			})
 		}
 		for _, line := range lines {

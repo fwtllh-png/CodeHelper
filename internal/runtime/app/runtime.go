@@ -1282,12 +1282,8 @@ func (r *Runtime) RouteMailbox(threadID protocol.ThreadID, turnID protocol.TurnI
 }
 
 func (r StartTurnHandler) Handle(operation protocol.Operation, payload *protocol.StartTurnPayload) OperationOutcome {
-	if payload.Idle {
-		if checker, ok := r.engine.(interface{ AllowIdleTurn() error }); ok {
-			if err := checker.AllowIdleTurn(); err != nil {
-				return finishOutcome(err)
-			}
-		}
+	if err := r.validateStart(payload); err != nil {
+		return finishOutcome(err)
 	}
 	r.mu.Lock()
 	_, finished := r.terminals[payload.TurnID]
@@ -1413,6 +1409,7 @@ func (r StartTurnHandler) Handle(operation protocol.Operation, payload *protocol
 		},
 	}
 }
+
 func startTurnSafely(
 	engine Engine,
 	ctx context.Context,

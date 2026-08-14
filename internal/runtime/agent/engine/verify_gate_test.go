@@ -60,6 +60,7 @@ type verifyGateFixture struct {
 	provider *scriptedProvider
 	path     string
 	verifier *scriptedVerifier
+	journal  *workspacejournal.Manager
 }
 
 func newVerifyGateFixture(
@@ -115,7 +116,10 @@ func newVerifyGateFixture(
 	if err != nil {
 		t.Fatal(err)
 	}
-	return verifyGateFixture{engine: engine, provider: runtime, path: path, verifier: verifier}
+	return verifyGateFixture{
+		engine: engine, provider: runtime, path: path, verifier: verifier,
+		journal: journal,
+	}
 }
 
 func (f verifyGateFixture) contents(t *testing.T) string {
@@ -192,6 +196,95 @@ func TestVerifyGateRepairRoundUsesExtraStepBudget(t *testing.T) {
 	if feedback.Role != provider.RoleUser || !strings.Contains(feedback.Text(), "[verify]") ||
 		!strings.Contains(feedback.Text(), "still wrong") {
 		t.Fatalf("repair feedback = %+v", feedback)
+	}
+}
+
+func TestWorkspaceVerificationBlockRetainsDraftForContinue(t *testing.T) {
+	verifier := &scriptedVerifier{receipts: []verify.Receipt{
+		failedReceipt("value.txt:1:1: still wrong"),
+		failedReceipt("value.txt:1:1: still wrong"),
+	}}
+	fixture := newVerifyGateFixture(t, VerifyOptions{
+		Mode: VerifyModeSoft, Scope: verify.ScopeDiagnostics, MaxRepairSteps: 1,
+	}, verifier, 1, 3)
+
+	blocked, err := fixture.engine.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"turn-blocked",
+		"edit",
+		protocol.TurnIntentWorkspaceChange,
+		nil,
+		func(Event) error { return nil },
+	)
+
+	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("blocked result = %+v error = %v", blocked, err)
+	}
+	if blocked.Verification == nil ||
+		blocked.Verification.Action != string(verifyActionBlocked) ||
+		blocked.Verification.Workspace == nil ||
+		blocked.Verification.Workspace.Status != "draft" {
+		t.Fatalf("blocked verification = %+v", blocked.Verification)
+	}
+	if !fixture.journal.HasDraft("turn-blocked") ||
+		fixture.contents(t) != "after\n" {
+		t.Fatalf(
+			"draft retained=%v contents=%q",
+			fixture.journal.HasDraft("turn-blocked"),
+			fixture.contents(t),
+		)
+	}
+
+	fixture.verifier.receipts = append(
+		fixture.verifier.receipts,
+		passedReceipt(),
+	)
+	fixture.provider.streams = append(fixture.provider.streams,
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "done"},
+			{Type: provider.EventMessageStop},
+		}},
+	)
+	recovery := protocol.TurnRecoveryContext{
+		Action: protocol.TurnRecoveryContinue, SourceTurnID: "turn-blocked",
+	}
+	continued, err := fixture.engine.RunForTurnWithRequest(
+		t.Context(),
+		"turn-continued",
+		TurnRequest{
+			Prompt: "continue repair", Intent: protocol.TurnIntentWorkspaceChange,
+			Recovery: &recovery,
+		},
+		func(Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if continued.State != Completed ||
+		fixture.contents(t) != "after\n" ||
+		fixture.journal.HasDraft("turn-blocked") ||
+		fixture.journal.HasDraft("turn-continued") {
+		t.Fatalf(
+			"continued = %+v contents=%q source_draft=%v recovery_draft=%v",
+			continued,
+			fixture.contents(t),
+			fixture.journal.HasDraft("turn-blocked"),
+			fixture.journal.HasDraft("turn-continued"),
+		)
+	}
+	lastRequest := fixture.verifier.requests[len(fixture.verifier.requests)-1]
+	if len(lastRequest.Paths) != 1 ||
+		!strings.HasSuffix(lastRequest.Paths[0], "value.txt") {
+		t.Fatalf("continued verification paths = %v", lastRequest.Paths)
+	}
+	if _, err := fixture.engine.RevertWorkspace(
+		t.Context(),
+		"turn-continued",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.contents(t) != "before\n" {
+		t.Fatalf("reverted recovery = %q, want original baseline", fixture.contents(t))
 	}
 }
 

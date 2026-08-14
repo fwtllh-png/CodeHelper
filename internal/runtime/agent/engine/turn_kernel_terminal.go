@@ -97,6 +97,7 @@ func (s *engineTurnKernel) journalEffectKind() (
 	for _, effect := range s.state.PendingEffects {
 		switch effect.Kind {
 		case turnkernel.EffectCommitJournal,
+			turnkernel.EffectSuspendJournal,
 			turnkernel.EffectRollbackJournal:
 			return effect.Kind, true
 		}

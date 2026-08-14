@@ -85,6 +85,54 @@ func TestRecoveryKeepsTheWritesOfATurnThatAlreadyCommitted(t *testing.T) {
 	}
 }
 
+func TestRecoveryRetainsAndResumesDraftAcrossProcessRestart(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "value.txt")
+	unchanged := filepath.Join(root, "unchanged.txt")
+	writeFile(t, path, "original")
+	writeFile(t, unchanged, "same")
+
+	killed := openJournal(t, root)
+	killed.pid = deadPID(t)
+	mustRunTurn(t, killed, "source", path, "draft")
+	write(t, killed, unchanged, "same")
+	if err := killed.Suspend("source"); err != nil {
+		t.Fatal(err)
+	}
+
+	survivor := openJournal(t, root)
+	recovery, err := survivor.Recover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recovery.RolledBack) != 0 ||
+		len(recovery.Drafts) != 1 ||
+		recovery.Drafts[0] != "source" ||
+		!survivor.HasDraft("source") {
+		t.Fatalf("recovery = %+v, draft retained=%v", recovery, survivor.HasDraft("source"))
+	}
+	if got := readFile(t, path); got != "draft" {
+		t.Fatalf("file = %q, want retained draft", got)
+	}
+	if err := survivor.ResumeDraft("source", "recovery"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, survivor, path, "verified")
+	write(t, survivor, unchanged, "updated")
+	if err := survivor.Commit("recovery"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := survivor.Revert(t.Context(), "recovery"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, path); got != "original" {
+		t.Fatalf("reverted recovery = %q, want original baseline", got)
+	}
+	if got := readFile(t, unchanged); got != "same" {
+		t.Fatalf("reverted unchanged record = %q, want original baseline", got)
+	}
+}
+
 // Two hosts can share a workspace. Rolling back a turn the other one is still
 // running would destroy live work, so an owner that is still alive wins.
 func TestRecoverySkipsTurnsWhoseProcessIsStillRunning(t *testing.T) {
@@ -249,6 +297,32 @@ func TestClosingSettlesCommittedTurnsSoTheNextProcessStartsClean(t *testing.T) {
 	}
 	if got := readFile(t, path); got != "accepted" {
 		t.Fatalf("file = %q", got)
+	}
+}
+
+func TestClosingHandsDraftToInProcessReplacement(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "value.txt")
+	writeFile(t, path, "original")
+
+	manager := openJournal(t, root)
+	mustRunTurn(t, manager, "source", path, "draft")
+	if err := manager.Suspend("source"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	replacement := openJournal(t, root)
+	recovery, err := replacement.Recover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recovery.Drafts) != 1 ||
+		recovery.Drafts[0] != "source" ||
+		!replacement.HasDraft("source") {
+		t.Fatalf("replacement recovery = %+v", recovery)
 	}
 }
 

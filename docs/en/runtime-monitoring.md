@@ -196,6 +196,9 @@ During every Turn, check structured invariants:
   aggregates `failed > unavailable > passed > not_evaluated`;
 - strict `workspace_change` verification never degrades an exhausted failed
   check to soft `reported`;
+- exhausted required verification is `blocked`, not accepted or immediately
+  discarded. Its workspace journal is suspended as a durable unverified draft;
+  Continue resumes that journal, while Retry explicitly reverts it;
 - when post-edit Diagnostics are unavailable, `workspace_change` may complete
   only from passed `quality_test` or `quality_verify` evidence that declares
   exact `covered_paths`, runs after the last Mutation, and covers every changed

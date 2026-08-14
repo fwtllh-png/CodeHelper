@@ -193,10 +193,11 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
 9. 修改型工具通过 Journal/事务 Adapter 写入。
 10. `EvaluateTurnStep` 由 Reducer 选择 Repair、Verification 或 Complete。
 11. Verification Executor 通过 `VerificationFinished` 返回证据；Reducer 选择 Passed、
-    Repair、Reported、Failed 或 Reverted，并独占 Repair Budget。
+    Repair、Reported、Blocked、Failed 或 Reverted，并独占 Repair Budget。
 12. Engine 提交 `TerminalRequested`；Reducer 选择 Completed、Failed 或 Canceled。
-    随后 Journal Commit/Rollback 作为 Durable Effect 执行，并返回
-    `JournalResultReceived`。
+    随后 Journal Commit/Suspend/Rollback 作为 Durable Effect 执行，并返回
+    `JournalResultReceived`。Suspend 会为结构化绑定的 Continue Turn 保留
+    Verification-blocked Draft。
 13. Scope 准备带 Revision 与 Digest 的 `SessionDelta`，包含 History、Usage、Cost、
     Working Set、Evidence、Failures 与 Compaction State。
 14. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Session Delta、

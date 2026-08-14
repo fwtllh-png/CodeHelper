@@ -78,6 +78,11 @@ func Validate(state State) error {
 	if state.RecoveryRelation != nil &&
 		(strings.TrimSpace(state.RecoveryRelation.SourceTurnID) == "" ||
 			strings.TrimSpace(state.RecoveryRelation.RecoveryTurnID) == "" ||
+			(state.RecoveryRelation.Action != string(protocol.TurnRecoveryRetry) &&
+				state.RecoveryRelation.Action != string(protocol.TurnRecoveryContinue)) ||
+			(state.RecoveryRelation.DraftResumed &&
+				(state.RecoveryRelation.Action != string(protocol.TurnRecoveryContinue) ||
+					state.MutationRevision == 0)) ||
 			state.ProfileRevision == 0) {
 		return errors.New("recovery relation is invalid")
 	}
@@ -177,6 +182,7 @@ func Validate(state State) error {
 		finalizingJournal := state.Policy.JournalRequired &&
 			(state.Phase == PhaseCommitting || state.Phase.Terminal()) &&
 			(state.Journal == JournalCommitted ||
+				state.Journal == JournalSuspended ||
 				state.Journal == JournalRolledBack)
 		if state.Journal != JournalNone && !finalizingJournal {
 			return errors.New("unchanged turn has a journal")
@@ -228,6 +234,7 @@ func Validate(state State) error {
 		case VerificationActionPassed,
 			VerificationActionRepair,
 			VerificationActionReported,
+			VerificationActionBlocked,
 			VerificationActionFailed,
 			VerificationActionReverted:
 		default:
@@ -250,6 +257,7 @@ func Validate(state State) error {
 		return errors.New("pending terminal exists outside committing")
 	}
 	if (state.Journal == JournalCommitted ||
+		state.Journal == JournalSuspended ||
 		state.Journal == JournalRolledBack) &&
 		state.Phase != PhaseCommitting &&
 		!state.Phase.Terminal() {
@@ -335,17 +343,12 @@ func validateTerminalState(state State) error {
 		if strings.TrimSpace(state.Terminal.Message) == "" {
 			return errors.New("non-success terminal message is empty")
 		}
-		if hasChanges && state.Journal != JournalRolledBack {
-			return errors.New("failed or canceled mutation was not rolled back")
+		expected := JournalNone
+		if hasChanges || state.Policy.JournalRequired {
+			_, expected = terminalJournalOutcome(state, *state.Terminal)
 		}
-		if !hasChanges {
-			expected := JournalNone
-			if state.Policy.JournalRequired {
-				expected = JournalRolledBack
-			}
-			if state.Journal != expected {
-				return errors.New("failed or canceled unchanged turn has invalid journal state")
-			}
+		if state.Journal != expected {
+			return errors.New("failed or canceled turn has invalid journal state")
 		}
 	}
 	return nil

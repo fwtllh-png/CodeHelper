@@ -40,6 +40,9 @@ export function projectSnapshot(
       ...summarizeDiagnostics(turn.diagnostics.values()),
     ],
     ...(turn.verification === undefined ? {} : { verification: turn.verification }),
+    ...(turn.verificationBlocked === undefined
+      ? {}
+      : { verificationBlocked: turn.verificationBlocked }),
     ...(turn.workspaceChange === undefined
       ? {}
       : { workspaceChange: { ...turn.workspaceChange } }),

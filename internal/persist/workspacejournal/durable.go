@@ -71,6 +71,7 @@ type Interrupted struct {
 	TurnID    string   `json:"turn_id"`
 	PID       int      `json:"pid,omitempty"`
 	Committed bool     `json:"committed"`
+	Draft     bool     `json:"draft,omitempty"`
 	Paths     []string `json:"paths,omitempty"`
 }
 
@@ -87,6 +88,7 @@ func Inspect(directory string) ([]Interrupted, error) {
 	for _, turn := range pending {
 		turns = append(turns, Interrupted{
 			TurnID: turn.ID, PID: turn.PID, Committed: turn.Committed,
+			Draft: turn.Draft,
 			Paths: append([]string(nil), turn.Order...),
 		})
 	}
@@ -100,6 +102,9 @@ type Recovery struct {
 	// Abandoned names turns whose writes were kept because the turn had already
 	// committed: it passed its gate, so its changes are the user's work.
 	Abandoned []string `json:"abandoned,omitempty"`
+	// Drafts names verification-blocked turns retained for explicit Continue or
+	// Retry recovery.
+	Drafts []string `json:"drafts,omitempty"`
 	// Skipped names turns left alone because the process that owns them is still
 	// running. Two processes undoing each other's writes is worse than waiting.
 	Skipped []string `json:"skipped,omitempty"`
@@ -107,12 +112,13 @@ type Recovery struct {
 
 // Empty reports whether recovery found nothing to do, which is the normal case.
 func (r Recovery) Empty() bool {
-	return len(r.RolledBack) == 0 && len(r.Abandoned) == 0 && len(r.Skipped) == 0
+	return len(r.RolledBack) == 0 && len(r.Abandoned) == 0 &&
+		len(r.Drafts) == 0 && len(r.Skipped) == 0
 }
 
-// Recover undoes turns that an earlier process began and never finished. It must
-// run before this process begins a turn of its own: an interrupted turn's writes
-// are exactly the state the next turn would build on top of.
+// Recover undoes interrupted turns and adopts verification-blocked drafts. It
+// must run before this process begins a turn of its own: both states determine
+// the workspace baseline the next turn would build on top of.
 func (m *Manager) Recover(ctx context.Context) (Recovery, error) {
 	if m.ledger == nil {
 		return Recovery{}, nil
@@ -140,6 +146,12 @@ func (m *Manager) Recover(ctx context.Context) (Recovery, error) {
 		case processAlive(turn.PID):
 			recovery.Skipped = append(recovery.Skipped, turn.ID)
 			keep = append(keep, turn)
+		case turn.Draft:
+			m.mu.Lock()
+			m.drafts[turn.ID] = adopt(turn)
+			m.mu.Unlock()
+			recovery.Drafts = append(recovery.Drafts, turn.ID)
+			keep = append(keep, turn)
 		default:
 			receipt, restoreErr := m.restore(ctx, adopt(turn))
 			receipt.TurnID = turn.ID
@@ -154,6 +166,7 @@ func (m *Manager) Recover(ctx context.Context) (Recovery, error) {
 		}
 	}
 	sort.Strings(recovery.Abandoned)
+	sort.Strings(recovery.Drafts)
 	sort.Strings(recovery.Skipped)
 	if err := m.ledger.compact(keep); err != nil {
 		return recovery, err
@@ -186,6 +199,14 @@ func (m *Manager) Close(ctx context.Context) error {
 	pending, err := m.ledger.replay()
 	if err != nil {
 		return err
+	}
+	for index := range pending {
+		if pending[index].Draft && pending[index].Owner == m.owner {
+			// The manager is closing cleanly, so an in-process replacement may
+			// adopt the terminal draft even though this PID remains alive.
+			pending[index].Owner = ""
+			pending[index].PID = 0
+		}
 	}
 	if err := m.ledger.compact(pending); err != nil {
 		return err

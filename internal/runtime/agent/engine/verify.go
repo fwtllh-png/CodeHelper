@@ -75,6 +75,7 @@ const (
 	verifyActionRepair  verifyAction = "repair"
 	// verifyActionReported is a soft-mode failure: recorded, turn unaffected.
 	verifyActionReported verifyAction = "reported"
+	verifyActionBlocked  verifyAction = "blocked"
 	verifyActionFailed   verifyAction = "failed"
 	verifyActionReverted verifyAction = "reverted"
 )

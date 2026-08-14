@@ -23,6 +23,7 @@ func TestC2RoutedEffectsExcludeLaterStageKinds(t *testing.T) {
 		EffectSampleProvider,
 		EffectRunVerification,
 		EffectCommitJournal,
+		EffectSuspendJournal,
 		EffectRollbackJournal,
 	} {
 		if C2RoutedEffect(kind) {
@@ -42,6 +43,7 @@ func TestC3RoutedEffectsOwnModelAndVerification(t *testing.T) {
 	}
 	for _, kind := range []EffectKind{
 		EffectCommitJournal,
+		EffectSuspendJournal,
 		EffectRollbackJournal,
 	} {
 		if C3RoutedEffect(kind) {
@@ -53,6 +55,7 @@ func TestC3RoutedEffectsOwnModelAndVerification(t *testing.T) {
 func TestC4RoutedEffectsOwnJournal(t *testing.T) {
 	for _, kind := range []EffectKind{
 		EffectCommitJournal,
+		EffectSuspendJournal,
 		EffectRollbackJournal,
 	} {
 		if !C4RoutedEffect(kind) || !RoutedEffect(kind) {
@@ -69,6 +72,7 @@ func TestC6EveryEffectKindHasDurableRoute(t *testing.T) {
 		EffectAwaitInput,
 		EffectRunVerification,
 		EffectCommitJournal,
+		EffectSuspendJournal,
 		EffectRollbackJournal,
 	} {
 		if !RoutedEffect(kind) {

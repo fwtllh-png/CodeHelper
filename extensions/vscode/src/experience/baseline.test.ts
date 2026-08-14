@@ -334,8 +334,9 @@ void test("Chat renders process activity as an ordered collapsible timeline", as
   assert.match(styles, /\.reasoning-toggle\s*\{/u);
   assert.match(transcript, /recovery\.className = "recovery-actions"/u);
   assert.match(transcript, /recovery\.dataset\["recoveryTurnId"\] = turn\.id/u);
-  assert.match(transcript, /actionButton\("Retry"/u);
-  assert.match(transcript, /actionButton\("Continue"/u);
+  assert.match(transcript, /retainedDraft \? "Discard & Retry" : "Retry"/u);
+  assert.match(transcript, /retainedDraft \? "Continue Repair" : "Continue"/u);
+  assert.match(transcript, /Workspace changes are retained for repair/u);
   assert.match(transcript, /status\.className = "recovery-status"/u);
   assert.match(client, /recoveryStates\.set\(turnId, \{ action, status: "pending" \}\)/u);
   assert.match(client, /state\.status === "accepted"/u);
