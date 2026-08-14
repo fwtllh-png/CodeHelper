@@ -80,3 +80,28 @@ func TestPurposeRequiredCapabilitiesOnlyVisionAsksForVision(t *testing.T) {
 		}
 	}
 }
+
+func TestIncrementalResponsesIsAdvertisedOnlyByBundledResponsesRoute(t *testing.T) {
+	resolver, err := NewResolver(DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	responses, err := resolver.Resolve(RouteRequest{
+		ProviderID: "openai-responses", ModelID: "gpt-4.1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat, err := resolver.Resolve(RouteRequest{
+		ProviderID: "openai", ModelID: "gpt-4.1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !responses.Model().Capabilities.IncrementalResponses {
+		t.Fatal("bundled Responses route must advertise incremental transport")
+	}
+	if chat.Model().Capabilities.IncrementalResponses {
+		t.Fatal("Chat route must not advertise Responses transport")
+	}
+}

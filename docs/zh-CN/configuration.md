@@ -198,6 +198,18 @@ name = "markdownlint-cli2"
 args = ["--no-globs", "--", "{path}"]
 ```
 
+Bundled `openai-responses` 路由只有在显式广告 Incremental Transport 时，才会
+按 Sticky Session Key 复用 Provider 所有的 WebSocket。第一个 Sample 发送完整
+逻辑输入；后续 Sample 仅当所有非输入属性不变，且逻辑输入严格扩展已提交链时，
+才发送 `previous_response_id` 与新增输入。Route、属性、Compaction、Retry、
+Resume、连接或 Response State 存在任何不确定性时，都发送完整请求。其他
+Provider 继续使用原有 HTTP Transport。
+
+Incremental Transport 固定使用 `store=false`。Response State 只保留在活动连接
+内存中，并在失败或 Idle Timeout 后删除。Usage Event 仅持久化 Request Bytes
+以及 Logical/Transport 的 SHA-256 Digest，不保存 Prompt 内容。Request Byte
+下降只属于传输证据，不会被报告为 Token 降幅。
+
 `execution.max_steps` 是安全与成本的硬上限，不是目标值。代码 Turn 默认值为 256，
 支持范围为 1-1000。当预算不少于 64 步时，Runtime 会在剩余 16-32 步时注入一次
 收敛提醒，使模型优先完成一个完整、已验证的结果；若无法在预算内完成，则通过

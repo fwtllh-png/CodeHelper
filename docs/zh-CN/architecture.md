@@ -211,6 +211,12 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
 18. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
     替代请求。
 
+Engine 始终提交完整逻辑模型请求。只有模型显式广告能力、请求属性不变且输入严格扩展
+已提交 Response Chain 时，Provider Adapter 才能将该请求投影为 Incremental
+Responses WebSocket。Response ID 与连接状态不会进入 Host 或 Runtime Authority；
+Reset、Retry、Compaction、Resume 或任意不确定状态都会回退完整请求。Usage 分别保留
+Logical/Transport Digest 与序列化 Request Bytes，传输收益不会被报告为 Token 收益。
+
 `TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，
 不会反向生成 Command 写回状态机。Durable Runtime 构造必须显式提供 Event、Content、
 Terminal Store；Memory Store 仅由显式 `NewRuntime` Ephemeral 构造选择。

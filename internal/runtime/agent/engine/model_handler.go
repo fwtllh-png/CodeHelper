@@ -80,8 +80,7 @@ func (e *Engine) modelStep(
 	var continuationMessages []provider.Message
 	var continuedBlocks []provider.ContentBlock
 	continuations := 0
-	finishAttempted := false
-	finishMode := false
+	finishAttempted, finishMode := false, false
 	baseReasoningEffort := e.reasoningEffort(scope, reason)
 	for attempt := 0; ; attempt++ {
 		var turnContext []provider.Message
@@ -619,6 +618,7 @@ func consume(
 			}
 		case provider.EventUsage:
 			usage.Add(*event.Usage)
+			promptcontext.ApplyTransport(call.context, event.Usage.Transport)
 			copy := usage
 
 			cost := estimateCost(call.pricing, copy)

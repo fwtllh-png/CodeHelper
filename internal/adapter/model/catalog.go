@@ -55,6 +55,10 @@ type Capabilities struct {
 	Reasoning    bool `json:"reasoning"`
 	ToolCalls    bool `json:"tool_calls"`
 	NativeSearch bool `json:"native_search"`
+	// IncrementalResponses allows connection-local Responses continuation.
+	// It is separate from PromptCache because custom Responses endpoints may
+	// implement one without the other.
+	IncrementalResponses bool `json:"incremental_responses,omitempty"`
 	// Vision is what the vision purpose samples on. A [route.vision] pointing
 	// at a model with Vision=false is refused at route-set construction rather
 	// than at the first image_analyze call.

@@ -243,6 +243,15 @@ rejects late, duplicate, or wrong-kind resolutions.
 18. Approval and Input recovery primes the original request IDs before resumed
     execution, so hosts replay one wait rather than receiving a replacement.
 
+Engine always submits a complete logical model request. A Provider adapter may
+project it onto an incremental Responses WebSocket only when the model
+explicitly advertises the capability, request properties are unchanged, and
+input strictly extends its committed response chain. Response IDs and
+connection state never enter Host or Runtime authority; reset, retry,
+compaction, resume, or uncertain state falls back to a complete request. Usage
+retains separate logical and transport digests plus serialized request bytes,
+so transport savings cannot be reported as token savings.
+
 `TurnCoordinator` is the only production entry to `Reducer.Apply`. Engine
 events are projection-only and never feed Commands back into the state machine.
 Durable Runtime construction requires explicit Event, Content, and Terminal

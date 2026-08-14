@@ -43,6 +43,8 @@ func (c Capabilities) clear(capability Capability) Capabilities {
 		c.ToolCalls = false
 	case CapNativeSearch:
 		c.NativeSearch = false
+	case CapIncrementalResponses:
+		c.IncrementalResponses = false
 	case CapVision:
 		c.Vision = false
 	case CapImageInput:
@@ -63,6 +65,8 @@ func (c Capabilities) set(capability Capability) Capabilities {
 		c.ToolCalls = true
 	case CapNativeSearch:
 		c.NativeSearch = true
+	case CapIncrementalResponses:
+		c.IncrementalResponses = true
 	case CapVision:
 		c.Vision = true
 	case CapImageInput:
@@ -102,7 +106,7 @@ func ParseCapability(raw string) (Capability, error) {
 	capability := Capability(raw)
 	switch capability {
 	case CapStreaming, CapReasoning, CapToolCalls, CapNativeSearch,
-		CapVision, CapImageInput, CapPromptCache:
+		CapVision, CapImageInput, CapPromptCache, CapIncrementalResponses:
 		return capability, nil
 	default:
 		return "", fmt.Errorf("unknown capability %q", raw)

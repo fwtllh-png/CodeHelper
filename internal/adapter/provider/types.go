@@ -291,6 +291,7 @@ const (
 	EventSearchResult       StreamEventType = "search_result"
 	EventCitation           StreamEventType = "citation"
 	EventUsage              StreamEventType = "usage"
+	EventResponseState      StreamEventType = "response_state"
 	EventMessageStop        StreamEventType = "message_stop"
 )
 
@@ -325,10 +326,11 @@ func (r StopReason) Incomplete() bool {
 // reports cache reads and writes beside input_tokens — so the adapter, not the
 // caller, is where the two shapes are reconciled.
 type Usage struct {
-	InputTokens     uint64 `json:"input_tokens"`
-	OutputTokens    uint64 `json:"output_tokens"`
-	ReasoningTokens uint64 `json:"reasoning_tokens,omitempty"`
-	CachedTokens    uint64 `json:"cached_tokens,omitempty"`
+	InputTokens     uint64            `json:"input_tokens"`
+	OutputTokens    uint64            `json:"output_tokens"`
+	ReasoningTokens uint64            `json:"reasoning_tokens,omitempty"`
+	CachedTokens    uint64            `json:"cached_tokens,omitempty"`
+	Transport       TransportMetadata `json:"-"`
 }
 
 // Total is every token the call consumed. Cached and reasoning tokens are
@@ -383,6 +385,14 @@ type StreamEvent struct {
 	Search     *SearchResult     `json:"search,omitempty"`
 	Citation   *Citation         `json:"citation,omitempty"`
 	Usage      *Usage            `json:"usage,omitempty"`
+	Response   *ResponseState    `json:"response,omitempty"`
+}
+
+// ResponseState is adapter-private continuation evidence. Engine ignores this
+// event; a session-capable provider commits it only after a valid stop event.
+type ResponseState struct {
+	ID     string            `json:"id"`
+	Output []json.RawMessage `json:"output,omitempty"`
 }
 
 func (e StreamEvent) Validate() error {
@@ -421,6 +431,10 @@ func (e StreamEvent) Validate() error {
 		if e.Usage == nil {
 			return errors.New("usage is required")
 		}
+	case EventResponseState:
+		if e.Response == nil || e.Response.ID == "" {
+			return errors.New("response state id is required")
+		}
 	case EventSearchResult:
 		if e.Search == nil {
 			return errors.New("search result is required")
@@ -443,6 +457,25 @@ func (e StreamEvent) Validate() error {
 type Stream interface {
 	Recv() (StreamEvent, error)
 	Close() error
+}
+
+type TransportMetadata struct {
+	RequestBytes           uint64
+	LogicalRequestDigest   string
+	TransportPayloadDigest string
+	Incremental            bool
+}
+
+type MetadataStream interface {
+	Stream
+	TransportMetadata() TransportMetadata
+}
+
+func Metadata(stream Stream) TransportMetadata {
+	if value, ok := stream.(MetadataStream); ok {
+		return value.TransportMetadata()
+	}
+	return TransportMetadata{}
 }
 
 type Provider interface {

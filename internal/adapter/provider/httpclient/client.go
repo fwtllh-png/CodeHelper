@@ -60,6 +60,8 @@ type Client struct {
 	active      int
 	nextRequest time.Time
 	health      Health
+	sessionMu   sync.Mutex
+	sessions    map[string]*responsesSession
 }
 
 type Health struct {
@@ -127,6 +129,24 @@ func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (pro
 	body, path, err := encodeRequest(request)
 	if err != nil {
 		return nil, protocol.NewProblem(protocol.CodeInvalidArgument, err.Error(), false, err)
+	}
+	if request.Route.Protocol() == model.ProtocolOpenAIResponses &&
+		request.Route.Model().Capabilities.IncrementalResponses &&
+		request.PromptCacheKey != "" {
+		stream, metadata, sessionErr := c.responsesSessionStream(
+			requestContext, request, body, credential,
+		)
+		if sessionErr == nil {
+			release = false
+			return &managedStream{
+				stream: &metadataStream{Stream: stream, metadata: metadata},
+				cancel: requestCancel, release: c.release,
+				idleTimeout: c.IdleTimeout, success: c.recordSuccess, failure: c.recordFailure,
+			}, nil
+		}
+		if requestContext.Err() != nil {
+			return nil, requestContext.Err()
+		}
 	}
 	attempts := c.MaxAttempts
 	if attempts <= 0 {
@@ -197,7 +217,11 @@ func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (pro
 			}
 			release = false
 			return &managedStream{
-				stream: stream, cancel: requestCancel, release: c.release,
+				stream: &metadataStream{
+					Stream:   stream,
+					metadata: transportMetadata(body, body, false),
+				},
+				cancel: requestCancel, release: c.release,
 				idleTimeout: c.IdleTimeout, success: c.recordSuccess, failure: c.recordFailure,
 			}, nil
 		}
@@ -789,6 +813,27 @@ type managedStream struct {
 	success     func()
 	failure     func(error)
 	closeOnce   sync.Once
+}
+
+func (s *managedStream) TransportMetadata() provider.TransportMetadata {
+	return provider.Metadata(s.stream)
+}
+
+type metadataStream struct {
+	provider.Stream
+	metadata provider.TransportMetadata
+}
+
+func (s *metadataStream) TransportMetadata() provider.TransportMetadata {
+	return s.metadata
+}
+
+func (s *metadataStream) Recv() (provider.StreamEvent, error) {
+	event, err := s.Stream.Recv()
+	if event.Usage != nil {
+		event.Usage.Transport = s.metadata
+	}
+	return event, err
 }
 
 type receiveResult struct {
