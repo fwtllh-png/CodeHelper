@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "deepseek_auth",
+      "http_status": 401,
+      "runtime_code": "invalid_argument",
+      "retryable": false,
+      "request_id_retained": false,
+      "target_failure_code": "auth"
+    },
+    {
+      "name": "deepseek_quota",
+      "http_status": 429,
+      "runtime_code": "unavailable",
+      "retryable": true,
+      "request_id_retained": false,
+      "target_failure_code": "quota"
+    },
+    {
+      "name": "deepseek_rate_limit",
+      "http_status": 429,
+      "runtime_code": "unavailable",
+      "retryable": true,
+      "retry_after_ms": 2000,
+      "request_id_retained": false,
+      "target_failure_code": "rate_limit"
+    },
+    {
+      "name": "deepseek_context_window",
+      "http_status": 400,
+      "runtime_code": "invalid_argument",
+      "retryable": false,
+      "request_id_retained": false,
+      "target_failure_code": "context_window_exceeded"
+    },
+    {
+      "name": "deepseek_invalid_request",
+      "http_status": 400,
+      "runtime_code": "invalid_argument",
+      "retryable": false,
+      "request_id_retained": false,
+      "target_failure_code": "invalid_request"
+    },
+    {
+      "name": "deepseek_server",
+      "http_status": 503,
+      "runtime_code": "unavailable",
+      "retryable": true,
+      "request_id_retained": false,
+      "target_failure_code": "server"
+    }
+  ]
+}

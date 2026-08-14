@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "stage": "P0",
+  "status": "baseline_frozen",
+  "base_commit": "4ef34543865ff858f5adb35b09984a20cdb77e32",
+  "reference": {
+    "project": "deepseek-harness",
+    "version": "0.1.0-rc.5",
+    "commit": "47f943859bef60e4160492346772ded9b24f765a"
+  },
+  "acceptance": {
+    "passed": true,
+    "production_behavior_changed": false,
+    "production_lines_net": 0,
+    "wire_request_cases": 5,
+    "stream_cases": 7,
+    "failure_cases": 6
+  },
+  "artifacts": {
+    "wire_requests": {
+      "path": "internal/adapter/provider/httpclient/testdata/p0/wire_requests.golden.json",
+      "sha256": "7efee8481f54add76f61ba311c79b34d0dfd4239da8fd67c94acc3a6896dd11d"
+    },
+    "stream_order": {
+      "path": "internal/adapter/provider/httpclient/testdata/p0/stream_order.golden.json",
+      "sha256": "8a83257cd7e3446ea1f69f4f949428710ad78b7a2d207dc12b607b4025057d00"
+    },
+    "failure_classification": {
+      "path": "internal/adapter/provider/httpclient/testdata/p0/failure_classification.golden.json",
+      "sha256": "8dc1d78b6dda132eacf7020f1217f0f220795b8026b83efbe0dc92e6d1fa5adf"
+    },
+    "request_counts": {
+      "path": "internal/adapter/provider/httpclient/testdata/p0/request_counts.golden.json",
+      "sha256": "0124a6645ee04773f7d91932e3e63dc2fd00cbe5acd39c487ae125ab7d7eae70"
+    }
+  },
+  "wire_requests": [
+    {
+      "name": "openai_chat",
+      "bytes": 1530,
+      "logical_digest": "9ebc584bdd30a94f4eee0a6f318559344006d9de103a6477180e937789f661ef",
+      "transport_digest": "9ebc584bdd30a94f4eee0a6f318559344006d9de103a6477180e937789f661ef"
+    },
+    {
+      "name": "openai_responses",
+      "bytes": 1602,
+      "logical_digest": "fb961b04e07d07f506325d34b5b16db66fdb16dacf65e0522740fcd7c33156b1",
+      "transport_digest": "fb961b04e07d07f506325d34b5b16db66fdb16dacf65e0522740fcd7c33156b1"
+    },
+    {
+      "name": "anthropic",
+      "bytes": 1723,
+      "logical_digest": "7d1a8eb5806cb59af9d51ca581533fc9839b2a1abc486a813f6297857abb3b15",
+      "transport_digest": "7d1a8eb5806cb59af9d51ca581533fc9839b2a1abc486a813f6297857abb3b15"
+    },
+    {
+      "name": "deepseek_chat",
+      "bytes": 1496,
+      "logical_digest": "75654bb6aea1f2c0882de435a6506bf64d725eae68a3b8441bd035efa0a4f22c",
+      "transport_digest": "75654bb6aea1f2c0882de435a6506bf64d725eae68a3b8441bd035efa0a4f22c"
+    },
+    {
+      "name": "deepseek_responses",
+      "bytes": 1638,
+      "logical_digest": "6ad398f45336191ca00dc441554aa2211a5128d54fd915aaae33a8344248a236",
+      "transport_digest": "6ad398f45336191ca00dc441554aa2211a5128d54fd915aaae33a8344248a236"
+    }
+  ],
+  "request_count_baseline": {
+    "scenario": "one_model_sample_with_two_hidden_http_retries",
+    "model_samples": 1,
+    "provider_requests": 3
+  },
+  "production_size": {
+    "paths": [
+      "internal/adapter/model",
+      "internal/adapter/provider",
+      "internal/runtime/app/wire/modules_provider.go"
+    ],
+    "lines": 4788,
+    "architecture_targets": 49
+  },
+  "known_gaps": [
+    "deepseek_chat_replays_tool_call_free_reasoning",
+    "deepseek_chat_native_cache_hits_are_not_counted",
+    "chat_eof_after_finish_without_done_is_accepted",
+    "empty_chat_completion_is_treated_as_success",
+    "deepseek_failure_classes_are_projected_to_coarse_runtime_codes",
+    "provider_request_retries_are_hidden_inside_one_model_sample",
+    "deepseek_responses_uses_shared_openai_encoding_and_decoding",
+    "responses_reasoning_placeholder_is_not_adapter_scoped"
+  ],
+  "commands": {
+    "hermetic": "make provider-architecture-p0",
+    "update_goldens": "make provider-p0-goldens-update",
+    "live_control": "make provider-deepseek-live-control"
+  },
+  "live_control": {
+    "explicit_opt_in": true,
+    "credential_behavior": "skip_when_unavailable",
+    "reads_ignored_runbook": false,
+    "incremental_responses": false,
+    "validation": "passed",
+    "provider_requests": 1,
+    "meaningful_output": true,
+    "usage_observed": true,
+    "terminal_stop_observed": true
+  }
+}

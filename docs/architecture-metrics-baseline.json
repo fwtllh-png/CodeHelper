@@ -36,6 +36,72 @@
       }
     },
     {
+      "id": "adapter_model_package",
+      "kind": "package",
+      "path": "internal/adapter/model",
+      "limits": {
+        "internal_fanout": 0,
+        "production_lines": 971,
+        "options_fields": 0,
+        "mutex_fields": 1
+      }
+    },
+    {
+      "id": "provider_core_package",
+      "kind": "package",
+      "path": "internal/adapter/provider",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 580,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "provider_httpclient_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/httpclient",
+      "limits": {
+        "internal_fanout": 8,
+        "production_lines": 1838,
+        "options_fields": 0,
+        "mutex_fields": 3
+      }
+    },
+    {
+      "id": "provider_openai_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/openai",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 573,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "provider_anthropic_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/anthropic",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 327,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "provider_fixture_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/fixture",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 311,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
       "id": "runtime_app_wire_package",
       "kind": "package",
       "path": "internal/runtime/app/wire",
