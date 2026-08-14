@@ -40,22 +40,19 @@ func pricingKnown(pricing model.Pricing, usage provider.Usage) bool {
 }
 
 func (e *Engine) checkBudget(
-	messages []provider.Message,
+	estimatedInput uint64,
 	turnUsage provider.Usage,
 	stepUsage provider.Usage,
+	outputReserve uint64,
 ) (uint64, error) {
-	estimatedInput, err := e.options.TokenEstimator.Estimate(messages)
-	if err != nil {
-		return 0, protocol.NewProblem(protocol.CodeInternal, "estimate input tokens", false, err)
-	}
 	route := e.activeRoute()
-	if estimatedInput+e.maxOutputFor(route) > route.Model().Limits.ContextTokens {
+	if estimatedInput+outputReserve > route.Model().Limits.ContextTokens {
 		return estimatedInput, protocol.NewProblem(
 			protocol.CodeResourceExhausted, "context window exceeded", false, nil,
 		)
 	}
 	projectedTokens := e.usage.Total() + turnUsage.Total() + stepUsage.Total() +
-		estimatedInput + e.options.MaxOutputTokens
+		estimatedInput + outputReserve
 	if limit := e.options.Budget.MaxTokens; limit > 0 && projectedTokens > limit {
 		return estimatedInput, protocol.NewProblem(
 			protocol.CodeResourceExhausted,
@@ -74,7 +71,7 @@ func (e *Engine) checkBudget(
 		projectedUsage := turnUsage
 		projectedUsage.Add(stepUsage)
 		projectedUsage.Add(provider.Usage{
-			InputTokens: estimatedInput, OutputTokens: e.options.MaxOutputTokens,
+			InputTokens: estimatedInput, OutputTokens: outputReserve,
 		})
 		if projected := e.costUSD + estimateCost(pricing, projectedUsage); projected > limit {
 			return estimatedInput, protocol.NewProblem(

@@ -31,7 +31,7 @@ func Defaults() Config {
 			CodingPolicy: CodingPolicy{Enabled: true},
 
 			Compact: Compact{
-				MaxHistoryBytes: 256 << 10, SummaryMaxBytes: 8 << 10, MaxDigestEntries: 120,
+				Scope: "total", SummaryMaxBytes: 8 << 10, MaxDigestEntries: 120,
 			},
 		},
 		Telemetry: Telemetry{LogLevel: "info"},

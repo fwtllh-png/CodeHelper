@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"unicode/utf8"
 
@@ -14,114 +15,117 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
+const compactScopeBodyAfterPrefix = "body_after_prefix"
+
 func (e *Engine) compact() *CompactionReceipt {
 	return e.compactHistory(&e.history, false)
 }
 
-// runPreSamplingCompactGate compresses history before the first model sample
-// when byte or context-token budgets are exceeded.
-func (e *Engine) runPreSamplingCompactGate(
+func (e *Engine) runCompactGate(
 	history *[]provider.Message,
+	input promptcontext.SampleInput,
+	outputReserve uint64,
+	phase string,
+	allowCurrentTurn bool,
 	send func(State, Event) error,
-) error {
-	needed := historyBytes(*history) > e.options.MaxContextBytes
-	receipt := e.compactHistoryForGate(history, false, false)
-	if receipt == nil && e.contextTokenLimitReached(*history) {
-		needed = true
-		receipt = e.compactHistoryForGate(history, true, false)
+) (tokenWindow, error) {
+	input.History = *history
+	window, err := e.measureTokenWindow(input, outputReserve)
+	if err != nil {
+		return tokenWindow{}, err
 	}
-	if receipt == nil {
-		if needed {
-			return compactionBudgetError(*history, e.options.MaxContextBytes)
+	receipt := e.compactHistoryWithPolicy(
+		history, false, allowCurrentTurn, input, outputReserve,
+	)
+	if receipt != nil {
+		receipt.Phase = phase
+		if err := send(Compacting, Event{Compaction: receipt}); err != nil {
+			return tokenWindow{}, err
 		}
-		return nil
+		input.History = *history
+		window, err = e.measureTokenWindow(input, outputReserve)
 	}
-	if historyBytes(*history) > e.options.MaxContextBytes ||
-		e.contextTokenLimitReached(*history) {
-		return compactionBudgetError(*history, e.options.MaxContextBytes)
-	}
-	receipt.Phase = CompactionPhasePreSampling
-	return send(Compacting, Event{Compaction: receipt})
+	return window, err
 }
 
-func (e *Engine) runMidTurnCompactGate(
-	history *[]provider.Message,
-	send func(State, Event) error,
-) error {
-	needed := historyBytes(*history) > e.options.MaxContextBytes
-	receipt := e.compactHistoryForGate(history, false, true)
-	if receipt == nil && e.contextTokenLimitReached(*history) {
-		needed = true
-		receipt = e.compactHistoryForGate(history, true, true)
-	}
-	if receipt == nil {
-		if needed {
-			return compactionBudgetError(*history, e.options.MaxContextBytes)
-		}
-		return nil
-	}
-	if historyBytes(*history) > e.options.MaxContextBytes ||
-		e.contextTokenLimitReached(*history) {
-		return compactionBudgetError(*history, e.options.MaxContextBytes)
-	}
-	receipt.Phase = CompactionPhaseMidTurn
-	return send(Compacting, Event{Compaction: receipt})
-}
-
-// runTerminalCompactGate enforces the same byte and token limits for every
-// terminal path. Failed turns pass durable history while completed and canceled
-// turns pass a tool-pair-safe transaction candidate.
 func (e *Engine) runTerminalCompactGate(
 	history *[]provider.Message,
 	allowCurrentTurn bool,
 	send func(State, Event) error,
 ) error {
-	needed := historyBytes(*history) > e.options.MaxContextBytes
-	receipt := e.compactHistoryForGate(history, false, allowCurrentTurn)
-	if receipt == nil && e.contextTokenLimitReached(*history) {
-		needed = true
-		receipt = e.compactHistoryForGate(history, true, allowCurrentTurn)
+	window, err := e.runCompactGate(history, promptcontext.SampleInput{
+		Stable: e.promptMessages(), Estimate: e.options.TokenEstimator.Estimate,
+	}, e.maxOutputFor(e.activeRoute()), CompactionPhasePostTurn, allowCurrentTurn, send)
+	if err == nil && window.total > window.hardLimit {
+		err = compactionBudgetError(window)
 	}
-	if receipt == nil {
-		if needed {
-			return compactionBudgetError(*history, e.options.MaxContextBytes)
-		}
-		return nil
-	}
-	if historyBytes(*history) > e.options.MaxContextBytes ||
-		e.contextTokenLimitReached(*history) {
-		return compactionBudgetError(*history, e.options.MaxContextBytes)
-	}
-	receipt.Phase = CompactionPhasePostTurn
-	return send(Compacting, Event{Compaction: receipt})
+	return err
 }
 
-func (e *Engine) contextTokenLimitReached(history []provider.Message) bool {
-	route := e.activeRoute()
-	limit := route.Model().Limits.ContextTokens
-	if limit == 0 {
-		return false
-	}
-	messages := append(e.promptMessages(), cloneMessages(history)...)
-	estimated, err := e.options.TokenEstimator.Estimate(messages)
+type tokenWindow struct {
+	estimated, total, active, hardLimit, compactLimit uint64
+}
+
+func (e *Engine) measureTokenWindow(
+	input promptcontext.SampleInput,
+	outputReserve uint64,
+) (tokenWindow, error) {
+	measured, err := promptcontext.MeasureSample(input)
 	if err != nil {
-		return false
+		return tokenWindow{}, err
 	}
-	return estimated+e.maxOutputFor(route) > limit
+	predicted := e.calibrateInput(measured.EstimatedTokens)
+	body := measured.EstimatedTokens - min(measured.EstimatedTokens, measured.StableTokens)
+	body = e.calibrateInput(body)
+	limit := e.activeRoute().Model().Limits.ContextTokens
+	compact := e.options.CompactWindow.AutoTokens
+	if compact == 0 {
+		compact = limit * 65 / 100
+	}
+	active := predicted + outputReserve
+	if e.options.CompactWindow.Scope == compactScopeBodyAfterPrefix {
+		active = body + outputReserve
+	}
+	return tokenWindow{
+		estimated: measured.EstimatedTokens, total: predicted + outputReserve,
+		active: active, hardLimit: limit, compactLimit: min(compact, limit),
+	}, nil
+}
+
+func (e *Engine) calibrateInput(estimated uint64) uint64 {
+	scope := e.runningScope()
+	if scope == nil {
+		return estimated
+	}
+	scope.mu.Lock()
+	lastEstimate, lastActual := scope.state.lastInputEstimate, scope.state.lastInputActual
+	scope.mu.Unlock()
+	if lastEstimate == 0 || lastActual == 0 {
+		return estimated
+	}
+	ratio := float64(lastActual) / float64(lastEstimate)
+	ratio = max(0.5, min(2.0, ratio))
+	return uint64(math.Ceil(float64(estimated) * ratio))
+}
+
+func (e *Engine) noteInputUsage(estimated, actual uint64) {
+	if scope := e.runningScope(); scope != nil && estimated != 0 && actual != 0 {
+		scope.mu.Lock()
+		scope.state.lastInputEstimate, scope.state.lastInputActual = estimated, actual
+		scope.mu.Unlock()
+	}
 }
 
 func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudgetSnapshot {
-	snapshot := ContextBudgetSnapshot{
-		HistoryBytes:     historyBytes(history),
-		MaxHistoryBytes:  e.options.MaxContextBytes,
-		Compactions:      e.compactionTotal(),
-		MaxContextTokens: e.activeRoute().Model().Limits.ContextTokens,
+	input := promptcontext.SampleInput{
+		Stable: e.promptMessages(), History: history, Estimate: e.options.TokenEstimator.Estimate,
 	}
-	messages := append(e.promptMessages(), cloneMessages(history)...)
-	if estimated, err := e.options.TokenEstimator.Estimate(messages); err == nil {
-		snapshot.EstimatedTokens = estimated
+	window, _ := e.measureTokenWindow(input, e.maxOutputFor(e.activeRoute()))
+	return ContextBudgetSnapshot{
+		ActiveTokens: window.active, AutoCompactTokens: window.compactLimit,
+		EstimatedTokens: window.estimated, MaxContextTokens: window.hardLimit,
+		Compactions: e.compactionTotal(),
 	}
-	return snapshot
 }
 
 // Compact applies the auto budget policy under the engine lock.
@@ -131,7 +135,7 @@ func (e *Engine) Compact() *CompactionReceipt {
 	return e.compact()
 }
 
-// CompactForced summarizes older turns even when history is under MaxContextBytes.
+// CompactForced summarizes older turns even below the automatic token limit.
 // Used by explicit thread.compact operations.
 func (e *Engine) CompactForced() *CompactionReceipt {
 	e.mu.Lock()
@@ -140,22 +144,17 @@ func (e *Engine) CompactForced() *CompactionReceipt {
 }
 
 func (e *Engine) compactHistory(history *[]provider.Message, force bool) *CompactionReceipt {
-	return e.compactHistoryWithPolicy(history, force, false, false)
-}
-
-func (e *Engine) compactHistoryForGate(
-	history *[]provider.Message,
-	force bool,
-	allowCurrentTurn bool,
-) *CompactionReceipt {
-	return e.compactHistoryWithPolicy(history, force, allowCurrentTurn, true)
+	return e.compactHistoryWithPolicy(history, force, false, promptcontext.SampleInput{
+		Stable: e.promptMessages(), Estimate: e.options.TokenEstimator.Estimate,
+	}, e.maxOutputFor(e.activeRoute()))
 }
 
 func (e *Engine) compactHistoryWithPolicy(
 	history *[]provider.Message,
 	force bool,
 	allowCurrentTurn bool,
-	requireBudget bool,
+	input promptcontext.SampleInput,
+	outputReserve uint64,
 ) *CompactionReceipt {
 	if e.options.Hooks != nil {
 		if err := e.options.Hooks.PreCompact(context.Background(), hooks.CompactInput{
@@ -164,35 +163,33 @@ func (e *Engine) compactHistoryWithPolicy(
 			return nil
 		}
 	}
-	size := historyBytes(*history)
 	if len(*history) <= 1 {
 		return nil
 	}
-	if !force && size <= e.options.MaxContextBytes {
+	input.History = *history
+	originalWindow, err := e.measureTokenWindow(input, outputReserve)
+	if err != nil || !force && originalWindow.active < originalWindow.compactLimit &&
+		originalWindow.total <= originalWindow.hardLimit {
 		return nil
 	}
+	size := historyBytes(*history)
 	originalMessages := len(*history)
-	target := max(1, e.options.MaxContextBytes*3/4)
-	if force && size <= e.options.MaxContextBytes {
-
-		target = max(1, size/4)
-	}
-	cuts := compactionCuts(*history, target, allowCurrentTurn)
+	target := originalWindow.compactLimit
+	cuts := compactionCuts(*history, allowCurrentTurn)
 	if len(cuts) == 0 {
 		return nil
 	}
 	var selected *compactionCandidate
 	for _, cut := range cuts {
 		candidate := e.buildCompactionCandidate(*history, cut)
-		if candidate.retainedBytes >= size {
+		input.History = candidate.history
+		window, estimateErr := e.measureTokenWindow(input, outputReserve)
+		if estimateErr != nil || window.active >= originalWindow.active {
 			continue
 		}
-		if requireBudget && size > e.options.MaxContextBytes &&
-			candidate.retainedBytes > e.options.MaxContextBytes {
-			continue
-		}
-		selected = &candidate
-		if !requireBudget || candidate.retainedBytes <= target {
+		candidate.retainedTokens = window.active
+		if force || window.active <= target {
+			selected = &candidate
 			break
 		}
 	}
@@ -205,6 +202,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	receipt := &CompactionReceipt{
 		OriginalMessages: originalMessages, RemovedMessages: selected.cut,
 		OriginalBytes: size, RetainedBytes: selected.retainedBytes,
+		OriginalTokens: originalWindow.active, RetainedTokens: selected.retainedTokens,
 		SummaryOriginalBytes: digestOriginalBytes(selected.toSummarize),
 		SummaryRetainedBytes: len(selected.rendered),
 		SummaryTruncated:     selected.summaryTruncated,
@@ -234,6 +232,7 @@ type compactionCandidate struct {
 	toSummarize      []provider.Message
 	rendered         string
 	retainedBytes    int
+	retainedTokens   uint64
 	summaryTruncated bool
 	sections         []string
 }
@@ -292,47 +291,22 @@ func removeGoalDigest(digest []string, goal string) []string {
 
 func compactionCuts(
 	history []provider.Message,
-	target int,
 	allowCurrentTurn bool,
 ) []int {
-	seen := make(map[int]struct{})
 	var cuts []int
-	if cut := turnGroupCut(history, target); cut > 0 {
-		cuts = append(cuts, cut)
-		seen[cut] = struct{}{}
-	}
-	if allowCurrentTurn {
-		for cut := 1; cut < len(history); cut++ {
-			if _, exists := seen[cut]; exists || !safeToolBoundary(history, cut) {
-				continue
-			}
+	currentTurn := history[len(history)-1].Turn
+	for cut := 1; cut < len(history); cut++ {
+		if !safeToolBoundary(history, cut) {
+			continue
+		}
+		if !allowCurrentTurn && history[cut-1].Turn == currentTurn {
+			continue
+		}
+		if history[cut-1].Turn != history[cut].Turn || allowCurrentTurn {
 			cuts = append(cuts, cut)
 		}
 	}
 	return cuts
-}
-
-func turnGroupCut(history []provider.Message, target int) int {
-	tailSize := 0
-	cut := len(history)
-	lastTurn := history[len(history)-1].Turn
-	for cut > 0 {
-		groupStart := cut - 1
-		turn := history[groupStart].Turn
-		for groupStart > 0 && history[groupStart-1].Turn == turn {
-			groupStart--
-		}
-		groupSize := historyBytes(history[groupStart:cut])
-		if cut < len(history) && tailSize+groupSize > target {
-			break
-		}
-		tailSize += groupSize
-		cut = groupStart
-		if turn == lastTurn && cut == 0 {
-			return 0
-		}
-	}
-	return cut
 }
 
 func safeToolBoundary(history []provider.Message, cut int) bool {
@@ -372,16 +346,12 @@ func historyBytes(messages []provider.Message) int {
 	return size
 }
 
-func compactionBudgetError(
-	history []provider.Message,
-	maxBytes int,
-) error {
+func compactionBudgetError(window tokenWindow) error {
 	return protocol.NewProblem(
 		protocol.CodeResourceExhausted,
 		fmt.Sprintf(
-			"history compaction could not reduce %d bytes to the %d-byte budget",
-			historyBytes(history),
-			maxBytes,
+			"context compaction could not reduce %d tokens below the %d-token hard limit",
+			window.total, window.hardLimit,
 		),
 		false,
 		nil,

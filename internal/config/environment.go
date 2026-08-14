@@ -117,11 +117,15 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 	}
 	compaction := &config.Context.Compact
 	if err := applyEnvInt(
-		lookup, "CODEHELPER_COMPACT_MAX_HISTORY_BYTES", fieldCompactMaxHistory,
-		&compaction.MaxHistoryBytes, provenance,
+		lookup, "CODEHELPER_COMPACT_AUTO_TOKENS", fieldCompactAutoTokens,
+		&compaction.AutoCompactTokens, provenance,
 	); err != nil {
 		return err
 	}
+	applyEnvString(
+		lookup, "CODEHELPER_COMPACT_SCOPE", fieldCompactScope,
+		&compaction.Scope, provenance,
+	)
 	if err := applyEnvInt(
 		lookup, "CODEHELPER_COMPACT_SUMMARY_MAX_BYTES", fieldCompactSummaryMax,
 		&compaction.SummaryMaxBytes, provenance,

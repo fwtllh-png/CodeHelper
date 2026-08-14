@@ -5,11 +5,19 @@
   "prompt": "align the greeting in service.py with settings.yaml",
   "followups": ["what is left to do"],
   "tools": true,
+  "posture": "bypass",
   "max_steps": 12,
   "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "fail",
+    "command": "grep -q '^GREETING = \"hi\"$' service.py",
+    "max_repair_steps": 0
+  },
   "context": {
     "compact": {
-      "max_history_bytes": 512,
+      "auto_compact_tokens": 35900,
       "summary_max_bytes": 4096
     }
   },

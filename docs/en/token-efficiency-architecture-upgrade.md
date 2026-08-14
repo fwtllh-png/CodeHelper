@@ -2,8 +2,10 @@
 
 [简体中文](../zh-CN/token-efficiency-architecture-upgrade.md) | English
 
-> Status: `in_progress`. T0 is accepted; see
-> [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json).
+> Status: `in_progress`. T0 is accepted. T1 is implemented with
+> `implemented_validation_mixed`; see
+> [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
+> and [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json).
 >
 > Scope: prompt context, history, compaction, tool catalogs, tool results,
 > provider sessions, reasoning budgets, completion protocol, usage accounting,
@@ -558,6 +560,28 @@ Acceptance evidence (T0, `accepted`):
 
 Exit: no context rejection, compaction within five percentage points of target,
 summary contract preserved, no correctness regression, and no input increase.
+
+Current T1 evidence (`implemented_validation_mixed`):
+
+- byte gates are deleted; `auto_compact_tokens=0` derives 65% of the model
+  window and supports `total` and `body_after_prefix`;
+- 55% injects convergence guidance, 65% compacts, and 85% exposes only
+  completion and verification tools;
+- candidates are selected only by full-request active tokens; bytes remain
+  audit fields;
+- hermetic 5/5 passed at input P50 147,770, with zero delta from frozen T0;
+- DeepSeek live 10/10 passed with MAD/P50 13.93%, but input P50 increased 9.17%
+  against frozen T0, so the strict comparison failed;
+- a contemporary T0 control measured input P50 545,009 versus 460,999 for the
+  adjacent T1 batch, a 15.41% decrease, while uncached input increased 23.03%;
+- all three compaction capability fixtures and the token-efficiency fixture
+  pass independently;
+- Architecture Ratchet passed 43/43 and production size fell from 27,946 to
+  27,943 lines, a net `-3`.
+
+The implementation and deterministic non-regression gates pass, but frozen and
+contemporary live comparisons disagree. T1 is not marked unconditionally
+`accepted` before proceeding to T2.
 
 ### T2: Durable World-state Diff
 

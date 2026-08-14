@@ -72,6 +72,26 @@ func TestTokenEfficiencyBenchmark(t *testing.T) {
 	}
 }
 
+func TestCompactionBenchmarks(t *testing.T) {
+	for _, name := range []string{
+		"compact-priority-truncation",
+		"compact-recursive-carryover",
+		"compact-structured-sections",
+	} {
+		t.Run(name, func(t *testing.T) {
+			task, err := bench.LoadTask(filepath.Join(suiteRoot(), name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := bench.RunTask(t.Context(), task)
+			if !result.Passed {
+				encoded, _ := json.MarshalIndent(result, "", "  ")
+				t.Fatalf("compaction fixture failed:\n%s", encoded)
+			}
+		})
+	}
+}
+
 // TestBenchmarkAssertionsFail guards the harness itself: a task whose
 // expectations do not match reality must be reported as failed, otherwise the
 // gate would pass vacuously.

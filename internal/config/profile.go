@@ -169,7 +169,8 @@ max_bytes = 4096
 enabled = true
 
 [context.compact]
-max_history_bytes = 262144
+auto_compact_tokens = 0
+scope = "total"
 summary_max_bytes = 8192
 max_digest_entries = 120
 

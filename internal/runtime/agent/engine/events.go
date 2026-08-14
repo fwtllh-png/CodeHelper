@@ -143,6 +143,8 @@ type CompactionReceipt struct {
 	RemovedMessages      int    `json:"removed_messages"`
 	OriginalBytes        int    `json:"original_bytes"`
 	RetainedBytes        int    `json:"retained_bytes"`
+	OriginalTokens       uint64 `json:"original_tokens"`
+	RetainedTokens       uint64 `json:"retained_tokens"`
 	SummaryOriginalBytes int    `json:"summary_original_bytes"`
 	SummaryRetainedBytes int    `json:"summary_retained_bytes"`
 	SummaryTruncated     bool   `json:"summary_truncated"`
@@ -167,16 +169,21 @@ const (
 // terminal event is emitted. Receipts consume this snapshot instead of racing
 // a later read of mutable engine history.
 type ContextBudgetSnapshot struct {
-	HistoryBytes     int    `json:"history_bytes"`
-	MaxHistoryBytes  int    `json:"max_history_bytes"`
-	EstimatedTokens  uint64 `json:"estimated_tokens,omitempty"`
-	MaxContextTokens uint64 `json:"max_context_tokens,omitempty"`
-	Compactions      int    `json:"compactions"`
+	ActiveTokens      uint64 `json:"active_tokens"`
+	AutoCompactTokens uint64 `json:"auto_compact_tokens"`
+	EstimatedTokens   uint64 `json:"estimated_tokens,omitempty"`
+	MaxContextTokens  uint64 `json:"max_context_tokens,omitempty"`
+	Compactions       int    `json:"compactions"`
 }
 
 type Budget struct {
 	MaxTokens  uint64
 	MaxCostUSD float64
+}
+
+type CompactWindowPolicy struct {
+	AutoTokens uint64
+	Scope      string
 }
 
 // BudgetReminderThresholdTokens triggers a one-shot model-visible reminder when

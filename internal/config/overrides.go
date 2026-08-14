@@ -46,8 +46,12 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	)
 	compaction := &config.Context.Compact
 	applyInt(
-		overrides.CompactMaxHistory, &compaction.MaxHistoryBytes,
-		fieldCompactMaxHistory, SourceCLI, provenance,
+		overrides.CompactAutoTokens, &compaction.AutoCompactTokens,
+		fieldCompactAutoTokens, SourceCLI, provenance,
+	)
+	applyString(
+		overrides.CompactScope, &compaction.Scope,
+		fieldCompactScope, SourceCLI, provenance,
 	)
 	applyInt(
 		overrides.CompactSummaryMax, &compaction.SummaryMaxBytes,

@@ -475,11 +475,9 @@ func formatContextSections(receipt *protocol.ExecutionReceiptData) string {
 	if len(receipt.ReadPaths) != 0 {
 		parts = append(parts, fmt.Sprintf("read %d path(s)", len(receipt.ReadPaths)))
 	}
-	// The threshold matters more than the partition bytes on a long session: it is
-	// what decides when the history the model is relying on gets replaced.
-	if budget := receipt.ContextBudget; budget != nil && budget.MaxHistoryBytes > 0 {
+	if budget := receipt.ContextBudget; budget != nil && budget.AutoCompactTokens > 0 {
 		part := fmt.Sprintf(
-			"history %dB/%dB", budget.HistoryBytes, budget.MaxHistoryBytes,
+			"context %d/%d tokens", budget.ActiveTokens, budget.AutoCompactTokens,
 		)
 		if budget.Compactions > 0 {
 			part += fmt.Sprintf(" after %d compaction(s)", budget.Compactions)

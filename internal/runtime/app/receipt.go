@@ -150,11 +150,11 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 	}
 	if event.ContextBudget != nil {
 		r.budget = &protocol.ReceiptContextBudget{
-			HistoryBytes:     event.ContextBudget.HistoryBytes,
-			MaxHistoryBytes:  event.ContextBudget.MaxHistoryBytes,
-			EstimatedTokens:  event.ContextBudget.EstimatedTokens,
-			MaxContextTokens: event.ContextBudget.MaxContextTokens,
-			Compactions:      event.ContextBudget.Compactions,
+			ActiveTokens:      event.ContextBudget.ActiveTokens,
+			AutoCompactTokens: event.ContextBudget.AutoCompactTokens,
+			EstimatedTokens:   event.ContextBudget.EstimatedTokens,
+			MaxContextTokens:  event.ContextBudget.MaxContextTokens,
+			Compactions:       event.ContextBudget.Compactions,
 		}
 	}
 	// Any event that names a purpose contributes to the route summary, not just

@@ -177,7 +177,8 @@ max_bytes = 4096
 enabled = true
 
 [context.compact]
-max_history_bytes = 262144
+auto_compact_tokens = 0 # 0 derives 65% of the active model window
+scope = "total" # or "body_after_prefix"
 summary_max_bytes = 8192
 max_digest_entries = 120
 
@@ -353,11 +354,11 @@ Common overrides:
 | `CODEHELPER_CREDENTIAL_KIND`, `CODEHELPER_CREDENTIAL_NAME` | secret reference |
 | `CODEHELPER_INDEX_*`, `CODEHELPER_REPO_MAP_*` | repository context |
 | `CODEHELPER_WORKING_SET_*`, `CODEHELPER_EVIDENCE_*` | session context |
-| `CODEHELPER_COMPACT_*` | history compaction |
+| `CODEHELPER_COMPACT_*` | token-window compaction |
 | `CODEHELPER_VISION_*`, `CODEHELPER_WEB_SEARCH_BACKEND` | specialized adapters |
 
 The authoritative list is the environment application block in
-`internal/config/config.go`.
+`internal/config/environment.go`.
 
 ## Configuration Hygiene
 

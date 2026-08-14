@@ -162,18 +162,17 @@ type ReceiptEvidence struct {
 	OmittedFacts int `json:"omitted_facts,omitempty"`
 }
 
-// ReceiptContextBudget is how much of the compaction threshold the thread's
-// history occupies, and how many times it has already been summarized.
+// ReceiptContextBudget records the token-native active window at termination.
 //
 // It answers a question the section list cannot: whether a turn that lost detail
 // lost it to a budget that is about to bite again. A thread on its fourth
 // compaction is one whose early history now exists only as summary.
 type ReceiptContextBudget struct {
-	HistoryBytes     int    `json:"history_bytes"`
-	MaxHistoryBytes  int    `json:"max_history_bytes"`
-	EstimatedTokens  uint64 `json:"estimated_tokens,omitempty"`
-	MaxContextTokens uint64 `json:"max_context_tokens,omitempty"`
-	Compactions      int    `json:"compactions"`
+	ActiveTokens      uint64 `json:"active_tokens"`
+	AutoCompactTokens uint64 `json:"auto_compact_tokens"`
+	EstimatedTokens   uint64 `json:"estimated_tokens,omitempty"`
+	MaxContextTokens  uint64 `json:"max_context_tokens,omitempty"`
+	Compactions       int    `json:"compactions"`
 }
 
 // ReceiptLatency records measured phase duration. Phases overlap:

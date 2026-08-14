@@ -61,6 +61,8 @@ type scopeState struct {
 	evidence            *evidence.Set
 	failures            *compact.Failures
 	compactions         int
+	lastInputEstimate   uint64
+	lastInputActual     uint64
 }
 
 type ScopeSnapshot struct {

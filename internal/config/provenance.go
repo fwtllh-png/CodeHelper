@@ -32,7 +32,8 @@ const (
 	fieldEvidenceMaxBytes      = "context.evidence.max_bytes"
 	fieldCodingPolicyEnabled   = "context.coding_policy.enabled"
 
-	fieldCompactMaxHistory = "context.compact.max_history_bytes"
+	fieldCompactAutoTokens = "context.compact.auto_compact_tokens"
+	fieldCompactScope      = "context.compact.scope"
 	fieldCompactSummaryMax = "context.compact.summary_max_bytes"
 	fieldCompactMaxDigest  = "context.compact.max_digest_entries"
 
@@ -153,7 +154,8 @@ func defaultProvenance() map[string]Source {
 		fieldEvidenceMaxEntries:    SourceDefault,
 		fieldEvidenceMaxBytes:      SourceDefault,
 		fieldCodingPolicyEnabled:   SourceDefault,
-		fieldCompactMaxHistory:     SourceDefault,
+		fieldCompactAutoTokens:     SourceDefault,
+		fieldCompactScope:          SourceDefault,
 		fieldCompactSummaryMax:     SourceDefault,
 		fieldCompactMaxDigest:      SourceDefault,
 

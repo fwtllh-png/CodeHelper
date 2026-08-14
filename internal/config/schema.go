@@ -47,15 +47,13 @@ type Context struct {
 
 // Compact configures what happens when a thread outgrows its context window.
 //
-// MaxHistoryBytes is the threshold: history above it is replaced by a summary at
-// the next opportunity. SummaryMaxBytes caps the summary itself, and is the knob
-// that decides how much survives — a summary cut short drops its cheapest
-// sections first, keeping the goal and the outstanding work. MaxDigestEntries
-// bounds the per-message record of what was removed.
+// AutoCompactTokens is the active-window threshold. Zero derives 65% of the
+// model window. Scope is total or body_after_prefix.
 type Compact struct {
-	MaxHistoryBytes  int `json:"max_history_bytes" toml:"max_history_bytes"`
-	SummaryMaxBytes  int `json:"summary_max_bytes" toml:"summary_max_bytes"`
-	MaxDigestEntries int `json:"max_digest_entries" toml:"max_digest_entries"`
+	AutoCompactTokens int    `json:"auto_compact_tokens" toml:"auto_compact_tokens"`
+	Scope             string `json:"scope" toml:"scope"`
+	SummaryMaxBytes   int    `json:"summary_max_bytes" toml:"summary_max_bytes"`
+	MaxDigestEntries  int    `json:"max_digest_entries" toml:"max_digest_entries"`
 }
 
 // RepoMap configures the repository overview appended to every request: which
@@ -301,7 +299,8 @@ type Overrides struct {
 	EvidenceMaxEntries    *int
 	EvidenceMaxBytes      *int
 	CodingPolicyEnabled   *bool
-	CompactMaxHistory     *int
+	CompactAutoTokens     *int
+	CompactScope          *string
 	CompactSummaryMax     *int
 	CompactMaxDigest      *int
 

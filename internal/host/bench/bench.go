@@ -163,11 +163,12 @@ type TaskCodingPolicy struct {
 
 // TaskCompact mirrors the [context.compact] config section. A benchmark task
 // runs a single turn, so the only way it can reach a compaction is to lower
-// MaxHistoryBytes until the in-turn gate fires between tool calls.
+// AutoCompactTokens until the in-turn gate fires between tool calls.
 type TaskCompact struct {
-	MaxHistoryBytes  int `json:"max_history_bytes,omitempty"`
-	SummaryMaxBytes  int `json:"summary_max_bytes,omitempty"`
-	MaxDigestEntries int `json:"max_digest_entries,omitempty"`
+	AutoCompactTokens int    `json:"auto_compact_tokens,omitempty"`
+	Scope             string `json:"scope,omitempty"`
+	SummaryMaxBytes   int    `json:"summary_max_bytes,omitempty"`
+	MaxDigestEntries  int    `json:"max_digest_entries,omitempty"`
 }
 
 // Expectation describes the observable outcome a task requires. Every field is
@@ -228,7 +229,7 @@ type Expectation struct {
 	// are implemented.
 	ReceiptNotCollectedExcludes []string `json:"receipt_not_collected_excludes,omitempty"`
 	// Compactions requires exactly this many in-turn compactions. A task only
-	// reaches one by lowering [context.compact] max_history_bytes, so this is how
+	// reaches one by lowering [context.compact] auto_compact_tokens, so this is how
 	// it proves the gate fired instead of the turn simply fitting.
 	Compactions *int `json:"compactions,omitempty"`
 	// CompactionSections requires the last compaction to report each of these
@@ -768,9 +769,12 @@ func applyContextOverrides(settings *TaskContext, overrides *config.Overrides) {
 		overrides.CodingPolicyEnabled = &enabled
 	}
 	if compaction := settings.Compact; compaction != nil {
-		if compaction.MaxHistoryBytes > 0 {
-			bytes := compaction.MaxHistoryBytes
-			overrides.CompactMaxHistory = &bytes
+		if compaction.AutoCompactTokens > 0 {
+			tokens := compaction.AutoCompactTokens
+			overrides.CompactAutoTokens = &tokens
+		}
+		if compaction.Scope != "" {
+			overrides.CompactScope = &compaction.Scope
 		}
 		if compaction.SummaryMaxBytes > 0 {
 			bytes := compaction.SummaryMaxBytes
