@@ -629,8 +629,7 @@ func (s *engineTurnKernel) repairSteps(
 func (s *engineTurnKernel) validateFinalReadiness() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.state.Policy.CompletionRequired &&
-		s.state.MutationRevision != 0 &&
+	if turnkernel.RequiresCompletion(s.state) &&
 		(s.state.Completion == nil || !s.state.Completion.Accepted) {
 		return protocol.NewProblem(
 			protocol.CodeConflict,

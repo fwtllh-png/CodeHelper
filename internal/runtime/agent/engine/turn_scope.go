@@ -54,7 +54,8 @@ type scopeState struct {
 	diagnostics         []diagnostics.Receipt
 	verification        []verify.Evidence
 	rollback            []string
-	budgetReminder      bool
+	budgetStage         uint8
+	reasoningEscalation uint8
 	mailbox             *turnexec.Mailbox[PendingInput]
 	requests            *turnexec.RequestLedger
 	cancel              context.CancelCauseFunc

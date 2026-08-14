@@ -191,6 +191,7 @@ type UsageData struct {
 // It contains counts only, never prompt or tool content.
 type SampleContextData struct {
 	Reason                 string `json:"reason"`
+	ReasoningEffort        string `json:"reasoning_effort,omitempty"`
 	StableTokens           uint64 `json:"stable_tokens,omitempty"`
 	HistoryUserTokens      uint64 `json:"history_user_tokens,omitempty"`
 	HistoryAssistantTokens uint64 `json:"history_assistant_tokens,omitempty"`

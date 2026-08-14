@@ -4998,6 +4998,9 @@
             "reason": {
               "type": "string"
             },
+            "reasoning_effort": {
+              "type": "string"
+            },
             "stable_tokens": {
               "type": "integer"
             },

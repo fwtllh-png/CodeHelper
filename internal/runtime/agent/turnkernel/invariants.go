@@ -295,10 +295,9 @@ func validateTerminalState(state State) error {
 			return errors.New("completed workspace_change has no mutation")
 		}
 		if !hasChanges {
-			if state.Policy.CompletionRequired &&
-				len(state.ClosedCalls) != 0 &&
+			if RequiresCompletion(state) &&
 				(state.Completion == nil || !state.Completion.Accepted) {
-				return errors.New("completed tool turn has no accepted completion")
+				return errors.New("completed integration turn has no accepted completion")
 			}
 			expected := JournalNone
 			if state.Policy.JournalRequired {
@@ -309,7 +308,7 @@ func validateTerminalState(state State) error {
 			}
 			return nil
 		}
-		if state.Policy.CompletionRequired &&
+		if RequiresCompletion(state) &&
 			(state.Completion == nil ||
 				!state.Completion.Accepted ||
 				state.Completion.Mutation != state.MutationRevision) {

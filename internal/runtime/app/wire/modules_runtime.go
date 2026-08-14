@@ -81,19 +81,9 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	}
 	route := state.provider.route
 	modelCapabilities := route.Model().Capabilities
-	reasoningEffort := maximumReasoningEffort(
-		route.ProviderID(),
-		route.Model().ID,
-		modelCapabilities.Reasoning,
-	)
-	maxOutputTokens, err := reasoningAwareMaxOutputTokens(
-		execution.MaxOutputTokens,
-		snapshot.MaxOutputTokensSource(),
-		route,
-		reasoningEffort,
-	)
-	if err != nil {
-		return err
+	reasoningEffort := execution.ReasoningEffort
+	if reasoningEffort != "" && !modelCapabilities.Reasoning {
+		return fmt.Errorf("execution.reasoning_effort requires a reasoning model")
 	}
 	var coordinatorRuntime turnkernel.CoordinatorRuntime
 	if state.options.PersistentStore != nil {
@@ -122,7 +112,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		Tools:                    state.tools.registry,
 		PromptContext:            prompt.Messages,
 		ModePromptBudget:         budgets[promptcontext.PartitionMode],
-		MaxOutputTokens:          maxOutputTokens,
+		MaxOutputTokens:          execution.MaxOutputTokens,
 		Security:                 state.security.runtime,
 		ProfilePermissionCeiling: approvalPosture,
 		Workspace:                execution.Workspace,
@@ -144,25 +134,24 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		Trace:                        traceSink,
 		TurnCoordinatorRuntime:       coordinatorRuntime,
 		ReasoningEffort:              reasoningEffort,
-		FixedReasoningEffort:         reasoningEffort,
 		NativeSearch:                 execution.NativeSearch,
 		Budget: agentengine.Budget{
 			MaxTokens:  execution.BudgetTokens,
 			MaxCostUSD: execution.BudgetUSD,
 		},
-		MaxSteps:          execution.MaxSteps,
-		WorkingSet:        prompt.WorkingSet,
-		CriticalPaths:     prompt.CriticalPaths,
-		ContextReceipts:   prompt.Receipts,
-		RepoContext:       repoContext,
-		WorkingSetLimit:   snapshot.Config.Context.WorkingSet.MaxEntries,
-		EvidenceLimit:     snapshot.Config.Context.Evidence.MaxEntries,
-		CompactWindow: agentengine.CompactWindowPolicy{AutoTokens: uint64(snapshot.Config.Context.Compact.AutoCompactTokens), Scope: snapshot.Config.Context.Compact.Scope},
-		SummaryMaxBytes:   snapshot.Config.Context.Compact.SummaryMaxBytes,
-		MaxDigestEntries:  snapshot.Config.Context.Compact.MaxDigestEntries,
-		Hooks:             session.hooks,
-		SessionID:         state.config.hookSessionID,
-		InputHost:         session.inputHost,
+		MaxSteps:         execution.MaxSteps,
+		WorkingSet:       prompt.WorkingSet,
+		CriticalPaths:    prompt.CriticalPaths,
+		ContextReceipts:  prompt.Receipts,
+		RepoContext:      repoContext,
+		WorkingSetLimit:  snapshot.Config.Context.WorkingSet.MaxEntries,
+		EvidenceLimit:    snapshot.Config.Context.Evidence.MaxEntries,
+		CompactWindow:    agentengine.CompactWindowPolicy{AutoTokens: uint64(snapshot.Config.Context.Compact.AutoCompactTokens), Scope: snapshot.Config.Context.Compact.Scope},
+		SummaryMaxBytes:  snapshot.Config.Context.Compact.SummaryMaxBytes,
+		MaxDigestEntries: snapshot.Config.Context.Compact.MaxDigestEntries,
+		Hooks:            session.hooks,
+		SessionID:        state.config.hookSessionID,
+		InputHost:        session.inputHost,
 		PromptCacheKey: promptcontext.StickyCacheKey(
 			state.config.hookSessionID,
 			execution.Workspace,

@@ -101,10 +101,9 @@ model = "fixture-model"
 		}
 	}
 
-	// 11 + 30 + 40 + 50 for the turn's own samples, 1500 for the image. A
-	// receipt that omitted the image would report 131 input tokens for a turn
-	// that bought 1631.
-	if receipt.InputTokens != 1631 {
+	// 11 + 30 for the read-only turn's samples, 1500 for the image. T4 removes
+	// the declaration and finish samples because no mutation occurred.
+	if receipt.InputTokens != 1541 {
 		t.Fatalf("receipt input tokens = %d, want the image included", receipt.InputTokens)
 	}
 	var vision *protocol.ReceiptRoute
@@ -126,7 +125,7 @@ model = "fixture-model"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rollup.InputTokens != 1631 {
+	if rollup.InputTokens != 1541 {
 		t.Fatalf("usage rollup = %+v, want the image's 1500 input tokens counted", rollup)
 	}
 

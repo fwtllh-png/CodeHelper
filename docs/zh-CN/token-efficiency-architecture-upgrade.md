@@ -4,11 +4,13 @@
 
 > 状态：`in_progress`。T0 已验收；T1 已实现，验证状态为
 > `implemented_validation_mixed`；T2 也已实现，验证状态为
-> `implemented_validation_mixed`；T3 已验收。证据见
+> `implemented_validation_mixed`；T3 已验收；T4 已实现，验证状态为
+> `implemented_validation_mixed`。证据见
 > [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
 >、[`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json)
 >、[`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json)
-> 与 [`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json)。
+>、[`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json)
+> 与 [`token-efficiency-t4-evidence.json`](../token-efficiency-t4-evidence.json)。
 >
 > 范围：Prompt Context、History、Compaction、Tool Catalog、Tool Result、
 > Provider Session、Reasoning Budget、Completion Protocol、Usage Accounting
@@ -845,6 +847,42 @@ Capability 与 Canonical Token Efficiency 测试。Architecture Ratchet
 - Reasoning Token 相对 Baseline 至少下降 30%；
 - Mutation Completion、Verification、Journal 和 Recovery 无回退；
 - 高复杂度 Fixture 质量不低于 Baseline。
+
+当前 T4 证据（`implemented_validation_mixed`）：
+
+五项退出门禁通过四项。机器可读证据见
+[`token-efficiency-t4-evidence.json`](../token-efficiency-t4-evidence.json)。
+
+| 退出门禁 | 结果 | 状态 |
+| --- | ---: | --- |
+| Read-only Declaration Repair | 0 | 通过 |
+| Canonical Live Sample Count P50 | 11 -> 11，目标至少 -15% | 未通过 |
+| 相对 T0 的 Reasoning P50 | 7,838 -> 4,701（-40.02%） | 通过 |
+| Mutation/Verification/Journal/Recovery | 聚焦测试全通过 | 通过 |
+| 高复杂度任务质量 | Capability Suite 7/25 -> 12/25 | 通过 |
+
+Completion Requirement 现在只由 Observed Mutation、显式
+`workspace_change` 或成功的 Durable `operation` 触发；Read-only Answer/Plan
+Tool Turn 直接完成。`reasoning_effort` 为空时，根据 Intent 与 Prompt 复杂度从
+Low/Medium/High 起步，只在 Repair 失败后提升。Reasoning-only Output Limit
+保持同档 Continuation，避免传输边界破坏 Prompt Cache Lane。Output Reserve
+按阶段限制；Session Token Budget 在 70% 注入结构化收敛，在 85% 进入
+Finish-only。Sample Attribution 同时记录 Reason 与实际 Effort。
+
+Hermetic 5/5 与 T3 逐项一致：Input/Uncached Input P50 为
+72,189/54,145，Sample 数为 8。最终 DeepSeek Live 10/10 全部完成：
+Input P50 185,228（相对 T3 +3.67%），Uncached Input 46,526（+2.07%），
+Output 7,857（-16.43%），Reasoning 4,701（相对 T3 -23.51%，相对 T0
+-40.02%），Sample Count 11（不变）。第三个 Sample 后 Cache Share P50
+为 93.62%。118 次调用仍缺少 Cached Input 价格。
+
+完整 Capability Suite 尚未全绿：13 个旧 Fixture 仍保留 T3 前的 Eager Tool
+或 T4 前的 Completion 假设。干净 T3 `main` 基线为 7/25，T4 为 12/25，
+因此没有质量回退，但这仍是明确的残余风险。Architecture Ratchet 通过
+43/43；架构闭包生产代码净减 `53` 行，全部 `internal` 生产代码净减 `14` 行。
+
+结论：保留 T4 的正确性与 Reasoning 收益，但不标记为 `accepted`。Sample Count
+目标没有改善，且小幅 Input 回退必须在 T5 评估 Incremental Transport 时继续可见。
 
 ### T5：Provider Incremental Session
 

@@ -311,3 +311,14 @@ func NewStateWithPolicy(
 	state.Policy = policy
 	return state
 }
+
+func RequiresCompletion(state State) bool {
+	required := state.MutationRevision != 0 ||
+		state.Intent == protocol.TurnIntentWorkspaceChange
+	if state.Intent == protocol.TurnIntentOperation {
+		for _, result := range state.ClosedCalls {
+			required = required || !result.IsError
+		}
+	}
+	return state.Policy.CompletionRequired && required
+}

@@ -1015,8 +1015,7 @@ func applyEvaluateTurnStep(
 		); err != nil {
 			return err
 		}
-	case current.Policy.CompletionRequired &&
-		len(current.ClosedCalls) != 0 &&
+	case RequiresCompletion(current) &&
 		(current.Completion == nil || !current.Completion.Accepted):
 		if err := spend(
 			RepairDeclaration,
@@ -1693,15 +1692,17 @@ func validateCompletionContract(state State) error {
 		if state.Journal != JournalNone {
 			return errors.New("unchanged turn has an open journal")
 		}
-		return nil
 	}
-	if state.Policy.CompletionRequired {
+	if RequiresCompletion(state) {
 		if state.Completion == nil || !state.Completion.Accepted {
-			return errors.New("mutation has no accepted completion decision")
+			return errors.New("turn has no accepted completion decision")
 		}
 		if state.Completion.Mutation != state.MutationRevision {
 			return errors.New("completion decision is stale")
 		}
+	}
+	if !hasChanges {
+		return nil
 	}
 	if state.Policy.VerificationRequired &&
 		(state.Verification.Mutation != state.MutationRevision ||

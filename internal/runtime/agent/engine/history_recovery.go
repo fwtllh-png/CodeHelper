@@ -221,7 +221,6 @@ func (e *Engine) compactHistoryWithPolicy(
 			SessionID: e.options.SessionID, Forced: force, Messages: len(*history),
 		})
 	}
-	e.resetBudgetReminder()
 	return receipt
 }
 
@@ -369,7 +368,6 @@ func (e *Engine) ReplaceHistory(messages []provider.Message) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.history = cloneMessages(messages)
-	e.resetBudgetReminder()
 	var maxTurn uint64
 	for _, message := range e.history {
 		if message.Turn > maxTurn {

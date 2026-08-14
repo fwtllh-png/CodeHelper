@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -85,40 +86,33 @@ func (e *Engine) checkBudget(
 	return estimatedInput, nil
 }
 
-func (e *Engine) maybeInjectBudgetReminder(messages *[]provider.Message) {
+func (e *Engine) budgetConvergence(used uint64) (provider.Message, bool) {
 	limit := e.options.Budget.MaxTokens
-	if limit == 0 || e.budgetReminderDelivered || messages == nil {
-		return
+	if limit == 0 || used < limit*70/100 {
+		return provider.Message{}, false
 	}
-	threshold := e.options.BudgetReminderThreshold
-	if threshold == 0 {
-		threshold = limit / 10
-		if threshold < 256 {
-			threshold = 256
-		}
-		if threshold > limit {
-			threshold = limit
-		}
+	stage := uint8(1)
+	if used >= limit*85/100 {
+		stage = 2
 	}
-	used := e.usage.Total()
-	if used >= limit {
-		return
+	scope := e.runningScope()
+	if scope == nil {
+		return provider.Message{}, stage == 2
 	}
-	remaining := limit - used
-	if remaining > threshold {
-		return
+	scope.mu.Lock()
+	if stage <= scope.state.budgetStage {
+		scope.mu.Unlock()
+		return provider.Message{}, stage == 2
 	}
-	e.budgetReminderDelivered = true
-	text := fmt.Sprintf(
-		"[budget reminder] Approximately %d tokens remaining of session budget %d. "+
-			"Prefer wrapping up or asking the user before starting large work.",
-		remaining, limit,
-	)
-	*messages = append(*messages, provider.TextMessage(provider.RoleUser, text))
-}
-
-func (e *Engine) resetBudgetReminder() {
-	e.budgetReminderDelivered = false
+	scope.state.budgetStage = stage
+	scope.mu.Unlock()
+	message := provider.TextMessage(provider.RoleUser, fmt.Sprintf(
+		"[token_budget]\nused_tokens=%d\nmax_tokens=%d\nstage=%s\n"+
+			"Stop broad exploration. Finish the smallest coherent result with current evidence; preserve required verification and report blockers.",
+		used, limit, []string{"", "converge", "finish_only"}[stage],
+	))
+	message.Turn = e.turn
+	return message, stage == 2
 }
 
 func (e *Engine) Usage() (provider.Usage, float64) {
