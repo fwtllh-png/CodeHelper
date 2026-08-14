@@ -15,6 +15,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -82,6 +83,14 @@ func (e *Engine) modelStep(
 	worldContext, worldDelta, worldReceipts := e.worldStateContext(ctx)
 	stableContext = append(stableContext, worldContext...)
 	*history = append(*history, cloneMessages(worldDelta)...)
+	scope.mu.Lock()
+	if scope.state.contextLedger == nil {
+		scope.state.contextLedger = contextstore.New(contextstore.Input{
+			Stable: stableContext, History: *history, Definitions: definitions,
+		})
+	}
+	contextLedger := scope.state.contextLedger
+	scope.mu.Unlock()
 	var totalUsage provider.Usage
 	var lastEstimate uint64
 	var providerAttempt uint32
@@ -111,31 +120,34 @@ func (e *Engine) modelStep(
 			reasoningEffort = "low"
 			nativeSearch = false
 		}
-		sampleInput := promptcontext.SampleInput{
-			Reason:          promptcontext.SampleReason(reason, attempt, finishMode || continuations > 0),
-			ReasoningEffort: reasoningEffort,
-			Stable:          stableContext, History: *history, Dynamic: turnContext,
-			Continuation: continuationMessages, Definitions: requestTools,
-			Estimate: e.options.TokenEstimator.Estimate,
+		sampleReason := promptcontext.SampleReason(
+			reason, attempt, finishMode || continuations > 0,
+		)
+		project := func() contextstore.Snapshot {
+			return contextLedger.Project(contextstore.Projection{
+				Stable: stableContext, History: *history, Dynamic: turnContext,
+				Continuation: continuationMessages, Definitions: requestTools,
+			})
 		}
+		snapshot := project()
 		phase := CompactionPhaseMidTurn
 		if turnUsage.InputTokens+totalUsage.InputTokens == 0 {
 			phase = CompactionPhasePreSampling
 		}
 		window, err := e.runCompactGate(
-			history, sampleInput, promptcontext.OutputLimit(
+			history, snapshot, promptcontext.OutputLimit(
 				e.maxOutputFor(route), reasoningEffort, finishMode || budgetFinishOnly,
 			), phase, true, send,
 		)
 		if err != nil {
 			return nil, nil, totalUsage, window.estimated, err
 		}
-		sampleInput.History = *history
+		snapshot = project()
 		if window.hardLimit > 0 && window.active >= window.hardLimit*55/100 {
 			turnContext = append(turnContext, contextWindowFeedback(e.turn))
-			sampleInput.History, sampleInput.Dynamic = *history, turnContext
+			snapshot = project()
 			window, err = e.runCompactGate(
-				history, sampleInput, promptcontext.OutputLimit(
+				history, snapshot, promptcontext.OutputLimit(
 					e.maxOutputFor(route), reasoningEffort, finishMode || budgetFinishOnly,
 				), phase, true, send,
 			)
@@ -153,13 +165,15 @@ func (e *Engine) modelStep(
 					return research || tool.Name != "turn_complete" && !strings.HasPrefix(tool.Name, "quality_")
 				})
 			reasoningEffort, nativeSearch = "low", false
-			sampleInput.Definitions = requestTools
 		}
 		maxOutputTokens := promptcontext.OutputLimit(
 			e.maxOutputFor(route), reasoningEffort, finishOnly,
 		)
-		sampleInput.ReasoningEffort = reasoningEffort
-		attribution, attributionErr := promptcontext.MeasureSample(sampleInput)
+		snapshot = project()
+		requestTools = snapshot.Definitions()
+		attribution, attributionErr := snapshot.Measure(
+			sampleReason, reasoningEffort, e.options.TokenEstimator.Estimate,
+		)
 		if attributionErr != nil {
 			return nil, nil, totalUsage, lastEstimate, attributionErr
 		}
@@ -169,14 +183,12 @@ func (e *Engine) modelStep(
 		); err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
 		}
-		messages := append(cloneMessages(stableContext), cloneMessages(*history)...)
-		messages = append(messages, turnContext...)
-		messages = append(messages, cloneMessages(continuationMessages)...)
+		messages := snapshot.Messages()
 		providerAttempt++
 		if err := send(CallingModel, Event{
 			ModelExecution: &ModelExecution{
 				Kind: "provider_attempt", SampleID: sampleID,
-				Attempt: providerAttempt, Reason: sampleInput.Reason,
+				Attempt: providerAttempt, Reason: sampleReason,
 			},
 		}); err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
@@ -211,7 +223,7 @@ func (e *Engine) modelStep(
 				err,
 				false,
 				history,
-				sampleInput,
+				snapshot,
 				maxOutputTokens,
 				send,
 			)
@@ -377,7 +389,7 @@ func (e *Engine) modelStep(
 			err,
 			meaningful,
 			history,
-			sampleInput,
+			snapshot,
 			maxOutputTokens,
 			send,
 		)
@@ -661,7 +673,7 @@ func consume(
 			}
 		case provider.EventUsage:
 			usage.Add(*event.Usage)
-			promptcontext.ApplyTransport(call.context, event.Usage.Transport)
+			contextstore.ApplyTransport(call.context, event.Usage.Transport)
 			copy := usage
 
 			cost := estimateCost(call.pricing, copy)

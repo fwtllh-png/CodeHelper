@@ -19,7 +19,7 @@ LDFLAGS := -s -w \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-eval multi-agent-performance \
 	token-bench token-bench-live token-bench-compare \
-	context-engineering-ce0 \
+	context-engineering-ce0 context-engineering-ce1 \
 	provider-architecture-p0 provider-architecture-p1 provider-architecture-p2 \
 	provider-architecture-p3 provider-architecture-p4 provider-architecture-p5 \
 	provider-architecture-p6 \
@@ -76,6 +76,7 @@ TOKEN_BENCH_LIVE_CONFIG ?=
 TOKEN_BENCH_BINARY ?= bin/codehelper
 TOKEN_BENCH_MAX_STEPS ?= 32
 CONTEXT_ENGINEERING_ARTIFACT ?= .tmp/context-engineering/baseline
+CONTEXT_ENGINEERING_CE1_ARTIFACT ?= .tmp/context-engineering/ce1-candidate
 TEST_HOME_ENV := HOME='$(TEST_HOME)' GOPATH='$(TEST_GOPATH)' \
 	GOMODCACHE='$(TEST_GOMODCACHE)' GOCACHE='$(TEST_GOCACHE)'
 PLATFORM_CAPABILITY_ARGS := --available-on darwin --available-on linux
@@ -616,6 +617,21 @@ context-engineering-ce0:
 		TOKEN_BENCH_RUNS='$(TOKEN_BENCH_RUNS)' \
 		TOKEN_BENCH_ARTIFACT='$(CONTEXT_ENGINEERING_ARTIFACT)'
 	$(MAKE) architecture-ratchet
+	$(MAKE) docs-check
+	$(MAKE) book-check
+
+context-engineering-ce1:
+	$(GO) test -count=1 \
+		./internal/runtime/agent/contextstore \
+		./internal/runtime/agent/promptcontext \
+		./internal/runtime/agent/engine \
+		./internal/runtime/protocol \
+		./scripts/tokenbench
+	$(MAKE) token-bench \
+		TOKEN_BENCH_RUNS='$(TOKEN_BENCH_RUNS)' \
+		TOKEN_BENCH_ARTIFACT='$(CONTEXT_ENGINEERING_CE1_ARTIFACT)'
+	$(MAKE) architecture-ratchet
+	$(MAKE) vscode-protocol-check
 	$(MAKE) docs-check
 	$(MAKE) book-check
 

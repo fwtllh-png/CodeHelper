@@ -4998,6 +4998,12 @@
         "context": {
           "type": "object",
           "properties": {
+            "context_digest": {
+              "type": "string"
+            },
+            "context_revision": {
+              "type": "integer"
+            },
             "continuation_tokens": {
               "type": "integer"
             },

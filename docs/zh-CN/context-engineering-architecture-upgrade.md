@@ -15,7 +15,9 @@
 
 - CE0：`accepted`，证据见
   [`context-engineering-ce0-evidence.json`](../context-engineering-ce0-evidence.json)；
-- CE1-CE7：尚未开始。
+- CE1：`accepted`，证据见
+  [`context-engineering-ce1-evidence.json`](../context-engineering-ce1-evidence.json)；
+- CE2-CE7：尚未开始。
 
 ## 1. 执行摘要
 

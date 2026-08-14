@@ -116,6 +116,7 @@
         "internal/observability/verify",
         "internal/persist/workspacejournal",
         "internal/runtime/agent/compact",
+        "internal/runtime/agent/contextstore",
         "internal/runtime/agent/evidence",
         "internal/runtime/agent/promptcontext",
         "internal/runtime/agent/turnexec",

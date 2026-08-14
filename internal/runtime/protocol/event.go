@@ -166,10 +166,12 @@ type UsageData struct {
 }
 
 // SampleContextData is low-cardinality token attribution for one provider call.
-// It contains counts only, never prompt or tool content.
+// It contains counts and content-safe digests, never prompt or tool content.
 type SampleContextData struct {
 	Reason                 string `json:"reason"`
 	ReasoningEffort        string `json:"reasoning_effort,omitempty"`
+	ContextRevision        uint64 `json:"context_revision,omitempty"`
+	ContextDigest          string `json:"context_digest,omitempty"`
 	StableTokens           uint64 `json:"stable_tokens,omitempty"`
 	HistoryUserTokens      uint64 `json:"history_user_tokens,omitempty"`
 	HistoryAssistantTokens uint64 `json:"history_assistant_tokens,omitempty"`

@@ -1,0 +1,189 @@
+package contextstore
+
+import (
+	"reflect"
+	"testing"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+func TestLedgerProjectsOneOrderedImmutableSnapshot(t *testing.T) {
+	stable := []provider.Message{provider.TextMessage(provider.RoleSystem, "stable")}
+	history := []provider.Message{provider.TextMessage(provider.RoleUser, "history")}
+	dynamic := []provider.Message{provider.TextMessage(provider.RoleSystem, "dynamic")}
+	continuation := []provider.Message{
+		provider.TextMessage(provider.RoleAssistant, "continuation"),
+	}
+	definitions := []provider.ToolDefinition{{
+		Name: "read", Description: "read a file",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{"type": "string"},
+			},
+		},
+	}}
+	ledger := New(Input{
+		Stable: stable, History: history, Dynamic: dynamic,
+		Continuation: continuation, Definitions: definitions,
+	})
+	initial := ledger.Snapshot()
+	if initial.Revision() != 1 {
+		t.Fatalf("initial revision=%d", initial.Revision())
+	}
+	messages := initial.Messages()
+	if got := []string{
+		messages[0].Text(), messages[1].Text(),
+		messages[2].Text(), messages[3].Text(),
+	}; !reflect.DeepEqual(got, []string{
+		"stable", "history", "dynamic", "continuation",
+	}) {
+		t.Fatalf("message order=%v", got)
+	}
+	items := initial.Items()
+	if got := []Kind{items[0].Kind, items[1].Kind, items[2].Kind, items[3].Kind}; !reflect.DeepEqual(got, orderedKinds[:]) {
+		t.Fatalf("item kinds=%v", got)
+	}
+	ids := []string{items[0].ID, items[1].ID, items[2].ID, items[3].ID}
+
+	unchanged := ledger.Project(Projection{
+		Stable: stable, History: history, Dynamic: dynamic,
+		Continuation: continuation, Definitions: definitions,
+	})
+	if unchanged.Revision() != 1 {
+		t.Fatalf("unchanged revision=%d", unchanged.Revision())
+	}
+
+	changedDynamic := []provider.Message{
+		provider.TextMessage(provider.RoleSystem, "dynamic changed"),
+	}
+	changed := ledger.Project(Projection{
+		Stable: stable, History: history, Dynamic: changedDynamic,
+		Continuation: continuation, Definitions: definitions,
+	})
+	if changed.Revision() != 2 {
+		t.Fatalf("changed revision=%d", changed.Revision())
+	}
+	changedItems := changed.Items()
+	if changedItems[0].ID != ids[0] || changedItems[1].ID != ids[1] ||
+		changedItems[2].ID == ids[2] || changedItems[3].ID != ids[3] {
+		t.Fatalf("item identities changed unexpectedly: before=%v after=%v", ids, changedItems)
+	}
+
+	messages = changed.Messages()
+	messages[0].Blocks[0].Text = "mutated"
+	tools := changed.Definitions()
+	tools[0].InputSchema["type"] = "mutated"
+	next := ledger.Snapshot()
+	if next.Messages()[0].Text() != "stable" ||
+		next.Definitions()[0].InputSchema["type"] != "object" {
+		t.Fatalf("snapshot mutation leaked: messages=%+v tools=%+v", next.Messages(), next.Definitions())
+	}
+
+	rewritten := changed.WithHistory([]provider.Message{
+		provider.TextMessage(provider.RoleUser, "compacted"),
+	})
+	if rewritten.Revision() != 3 ||
+		rewritten.Partition(KindHistory)[0].Text() != "compacted" ||
+		changed.Partition(KindHistory)[0].Text() != "history" {
+		t.Fatalf("history rewrite changed source snapshot: old=%+v new=%+v", changed, rewritten)
+	}
+}
+
+func TestSnapshotMeasureAttributesExactlyTheProjectedRequest(t *testing.T) {
+	estimate := func(messages []provider.Message) (uint64, error) {
+		return uint64(len(messages) * 10), nil
+	}
+	snapshot := New(Input{
+		Stable: []provider.Message{
+			provider.TextMessage(provider.RoleSystem, "stable"),
+		},
+		History: []provider.Message{
+			provider.TextMessage(provider.RoleUser, "question"),
+			provider.TextMessage(provider.RoleAssistant, "answer"),
+			provider.TextMessage(provider.RoleTool, "result"),
+		},
+		Dynamic: []provider.Message{
+			provider.TextMessage(provider.RoleSystem, "dynamic"),
+		},
+		Definitions: []provider.ToolDefinition{{
+			Name: "read", Description: "read a file",
+		}},
+	}).Snapshot()
+	got, err := snapshot.Measure("normal", "high", estimate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Reason != "normal" || got.ReasoningEffort != "high" ||
+		got.ContextRevision != snapshot.Revision() || got.ContextDigest == "" ||
+		got.StableTokens != 10 || got.HistoryUserTokens != 10 ||
+		got.HistoryAssistantTokens != 10 || got.HistoryToolTokens != 10 ||
+		got.DynamicTokens != 10 || got.ToolDefinitionTokens == 0 ||
+		got.ProviderFramingTokens == 0 || got.EstimatedTokens == 0 ||
+		got.MessageCount != len(snapshot.Messages()) {
+		t.Fatalf("attribution=%+v", got)
+	}
+}
+
+func TestSnapshotClonesAttachmentsAndReplayState(t *testing.T) {
+	message := provider.Message{
+		Role: provider.RoleAssistant,
+		Blocks: []provider.ContentBlock{{
+			Type: provider.ContentImage,
+			Attachment: &provider.Attachment{
+				MediaType: "image/png", Data: []byte("image"),
+			},
+		}},
+		Provenance: &provider.AssistantProvenance{
+			Adapter: "openai", Provider: "provider", Model: "model",
+			Replay: &provider.ReplayState{Version: 1, Data: []byte(`{"id":"replay"}`)},
+		},
+	}
+	ledger := New(Input{History: []provider.Message{message}})
+	snapshot := ledger.Snapshot()
+	projected := snapshot.Messages()
+	projected[0].Blocks[0].Attachment.Data[0] = 'X'
+	projected[0].Provenance.Replay.Data[0] = '['
+	again := ledger.Snapshot().Messages()[0]
+	if string(again.Blocks[0].Attachment.Data) != "image" ||
+		string(again.Provenance.Replay.Data) != `{"id":"replay"}` {
+		t.Fatalf("nested model content was not cloned: %+v", again)
+	}
+}
+
+func TestItemIdentitySurvivesUnrelatedHistoryPrefixRemoval(t *testing.T) {
+	prefix := provider.TextMessage(provider.RoleUser, "remove me")
+	prefix.Turn = 1
+	retained := provider.TextMessage(provider.RoleAssistant, "retain me")
+	retained.Turn = 2
+	snapshot := New(Input{History: []provider.Message{prefix, retained}}).Snapshot()
+	before := snapshot.Items()[1].ID
+	rewritten := snapshot.WithHistory([]provider.Message{retained})
+	after := rewritten.Items()[0].ID
+	if before != after {
+		t.Fatalf("retained item identity changed: before=%s after=%s", before, after)
+	}
+}
+
+func TestApplyTransportAddsWireReceiptWithoutChangingContextIdentity(t *testing.T) {
+	context := &protocol.SampleContextData{
+		ContextRevision: 3, ContextDigest: "sha256:context",
+	}
+	ApplyTransport(context, provider.TransportMetadata{
+		RequestBytes: 42, LogicalRequestDigest: "logical",
+		TransportPayloadDigest: "transport", Incremental: true,
+	})
+	if context.ContextRevision != 3 || context.ContextDigest != "sha256:context" ||
+		context.RequestBytes != 42 || context.LogicalRequestDigest != "logical" ||
+		context.TransportPayloadDigest != "transport" || !context.IncrementalTransport {
+		t.Fatalf("transport receipt=%+v", context)
+	}
+}
+
+func TestEmptyProjectionDoesNotAdvanceRevision(t *testing.T) {
+	ledger := New(Input{})
+	if got := ledger.Project(Projection{}).Revision(); got != 1 {
+		t.Fatalf("empty projection revision=%d", got)
+	}
+}

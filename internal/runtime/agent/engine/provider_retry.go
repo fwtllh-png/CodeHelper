@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -68,7 +68,7 @@ func (e *Engine) recoverContextOverflow(
 	err error,
 	meaningful bool,
 	history *[]provider.Message,
-	input promptcontext.SampleInput,
+	input contextstore.Snapshot,
 	outputReserve uint64,
 	send func(State, Event) error,
 ) (bool, error) {

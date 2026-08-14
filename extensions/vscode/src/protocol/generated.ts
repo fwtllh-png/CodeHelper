@@ -1392,6 +1392,8 @@ export type TurnVerificationData = {
 export type UsageData = {
   readonly "cached_tokens"?: number;
   readonly "context"?: {
+      readonly "context_digest"?: string;
+      readonly "context_revision"?: number;
       readonly "continuation_tokens"?: number;
       readonly "dynamic_tokens"?: number;
       readonly "estimated_tokens"?: number;

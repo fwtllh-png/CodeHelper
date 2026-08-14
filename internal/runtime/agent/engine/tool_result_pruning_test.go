@@ -7,7 +7,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 )
 
 func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
@@ -32,9 +32,7 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 	var receipt *CompactionReceipt
 	window, err := engine.runCompactGate(
 		&history,
-		promptcontext.SampleInput{
-			Estimate: engine.options.TokenEstimator.Estimate,
-		},
+		contextstore.New(contextstore.Input{}).Snapshot(),
 		128,
 		CompactionPhaseMidTurn,
 		true,
@@ -103,9 +101,7 @@ func TestToolResultPruningSkipsMalformedAndRetrievalResults(t *testing.T) {
 	before := cloneMessages(history)
 	stats, _, err := engine.pruneToolResultSurfaces(
 		&history,
-		promptcontext.SampleInput{
-			Estimate: engine.options.TokenEstimator.Estimate,
-		},
+		contextstore.New(contextstore.Input{}).Snapshot(),
 		128,
 		true,
 	)

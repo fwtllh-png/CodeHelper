@@ -13,6 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
@@ -49,6 +50,7 @@ type scopeState struct {
 	catalog             tool.CatalogSnapshot
 	catalogProjected    tool.CatalogSnapshot
 	worldContext        []provider.Message
+	contextLedger       *contextstore.Ledger
 	extensionsProjected bool
 	mcpProjected        bool
 	diagnostics         []diagnostics.Receipt

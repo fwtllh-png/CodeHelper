@@ -11,6 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -23,13 +24,13 @@ func (e *Engine) compact() *CompactionReceipt {
 
 func (e *Engine) runCompactGate(
 	history *[]provider.Message,
-	input promptcontext.SampleInput,
+	input contextstore.Snapshot,
 	outputReserve uint64,
 	phase string,
 	allowCurrentTurn bool,
 	send func(State, Event) error,
 ) (tokenWindow, error) {
-	input.History = *history
+	input = input.WithHistory(*history)
 	window, err := e.measureTokenWindow(input, outputReserve)
 	if err != nil {
 		return tokenWindow{}, err
@@ -42,7 +43,7 @@ func (e *Engine) runCompactGate(
 		if err := send(Compacting, Event{Compaction: receipt}); err != nil {
 			return tokenWindow{}, err
 		}
-		input.History = *history
+		input = input.WithHistory(*history)
 		window, err = e.measureTokenWindow(input, outputReserve)
 	}
 	return window, err
@@ -53,9 +54,11 @@ func (e *Engine) runTerminalCompactGate(
 	allowCurrentTurn bool,
 	send func(State, Event) error,
 ) error {
-	window, err := e.runCompactGate(history, promptcontext.SampleInput{
-		Stable: e.promptMessages(), Estimate: e.options.TokenEstimator.Estimate,
-	}, e.maxOutputFor(e.activeRoute()), CompactionPhasePostTurn, allowCurrentTurn, send)
+	input := contextstore.New(contextstore.Input{Stable: e.promptMessages()}).Snapshot()
+	window, err := e.runCompactGate(
+		history, input, e.maxOutputFor(e.activeRoute()),
+		CompactionPhasePostTurn, allowCurrentTurn, send,
+	)
 	if err == nil && window.total > window.hardLimit {
 		err = compactionBudgetError(window)
 	}
@@ -67,10 +70,10 @@ type tokenWindow struct {
 }
 
 func (e *Engine) measureTokenWindow(
-	input promptcontext.SampleInput,
+	input contextstore.Snapshot,
 	outputReserve uint64,
 ) (tokenWindow, error) {
-	measured, err := promptcontext.MeasureSample(input)
+	measured, err := input.Measure("", "", e.options.TokenEstimator.Estimate)
 	if err != nil {
 		return tokenWindow{}, err
 	}
@@ -117,9 +120,9 @@ func (e *Engine) noteInputUsage(estimated, actual uint64) {
 }
 
 func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudgetSnapshot {
-	input := promptcontext.SampleInput{
-		Stable: e.promptMessages(), History: history, Estimate: e.options.TokenEstimator.Estimate,
-	}
+	input := contextstore.New(contextstore.Input{
+		Stable: e.promptMessages(), History: history,
+	}).Snapshot()
 	window, _ := e.measureTokenWindow(input, e.maxOutputFor(e.activeRoute()))
 	return ContextBudgetSnapshot{
 		ActiveTokens: window.active, AutoCompactTokens: window.compactLimit,
@@ -144,16 +147,17 @@ func (e *Engine) CompactForced() *CompactionReceipt {
 }
 
 func (e *Engine) compactHistory(history *[]provider.Message, force bool) *CompactionReceipt {
-	return e.compactHistoryWithPolicy(history, force, false, promptcontext.SampleInput{
-		Stable: e.promptMessages(), Estimate: e.options.TokenEstimator.Estimate,
-	}, e.maxOutputFor(e.activeRoute()))
+	input := contextstore.New(contextstore.Input{Stable: e.promptMessages()}).Snapshot()
+	return e.compactHistoryWithPolicy(
+		history, force, false, input, e.maxOutputFor(e.activeRoute()),
+	)
 }
 
 func (e *Engine) compactHistoryWithPolicy(
 	history *[]provider.Message,
 	force bool,
 	allowCurrentTurn bool,
-	input promptcontext.SampleInput,
+	input contextstore.Snapshot,
 	outputReserve uint64,
 ) *CompactionReceipt {
 	if e.options.Hooks != nil {
@@ -180,7 +184,7 @@ func (e *Engine) compactHistoryWithPolicy(
 		}
 		return receipt
 	}
-	input.History = *history
+	input = input.WithHistory(*history)
 	originalWindow, err := e.measureTokenWindow(input, outputReserve)
 	if err != nil || !force && originalWindow.active < originalWindow.compactLimit &&
 		originalWindow.total <= originalWindow.hardLimit {
@@ -232,7 +236,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	var selected *compactionCandidate
 	for _, cut := range cuts {
 		candidate := e.buildCompactionCandidate(*history, cut)
-		input.History = candidate.history
+		input = input.WithHistory(candidate.history)
 		window, estimateErr := e.measureTokenWindow(input, outputReserve)
 		if estimateErr != nil || window.active >= workingWindow.active {
 			continue
@@ -552,47 +556,9 @@ func truncateUTF8(value string, limit int) string {
 }
 
 func cloneMessages(messages []provider.Message) []provider.Message {
-	cloned := make([]provider.Message, len(messages))
-	for index, message := range messages {
-		cloned[index] = message
-		cloned[index].Blocks = cloneBlocks(message.Blocks)
-		if message.Provenance != nil {
-			provenance := *message.Provenance
-			if message.Provenance.Replay != nil {
-				replay := *message.Provenance.Replay
-				replay.Data = append(
-					[]byte(nil),
-					message.Provenance.Replay.Data...,
-				)
-				provenance.Replay = &replay
-			}
-			cloned[index].Provenance = &provenance
-		}
-	}
-	return cloned
+	return contextstore.CloneMessages(messages)
 }
 
 func cloneBlocks(blocks []provider.ContentBlock) []provider.ContentBlock {
-	cloned := make([]provider.ContentBlock, len(blocks))
-	for index, block := range blocks {
-		cloned[index] = block
-		if block.ToolCall != nil {
-			copy := *block.ToolCall
-			cloned[index].ToolCall = &copy
-		}
-		if block.ToolResult != nil {
-			copy := *block.ToolResult
-			cloned[index].ToolResult = &copy
-		}
-		if block.Search != nil {
-			copy := *block.Search
-			copy.Sources = append([]provider.Source(nil), block.Search.Sources...)
-			cloned[index].Search = &copy
-		}
-		if block.Citation != nil {
-			copy := *block.Citation
-			cloned[index].Citation = &copy
-		}
-	}
-	return cloned
+	return contextstore.CloneBlocks(blocks)
 }

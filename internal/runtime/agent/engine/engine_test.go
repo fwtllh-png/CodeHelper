@@ -34,6 +34,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -2104,9 +2105,8 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 	}
 	original := historyBytes(history)
 	var receipt *CompactionReceipt
-	_, err := engine.runCompactGate(&history, promptcontext.SampleInput{
-		Estimate: engine.options.TokenEstimator.Estimate,
-	}, 128, CompactionPhaseMidTurn, true, func(_ State, event Event) error {
+	snapshot := contextstore.New(contextstore.Input{}).Snapshot()
+	_, err := engine.runCompactGate(&history, snapshot, 128, CompactionPhaseMidTurn, true, func(_ State, event Event) error {
 		receipt = event.Compaction
 		return nil
 	})
@@ -2137,9 +2137,8 @@ func TestMidTurnCompactionFailsClosedWhenNoSafeCandidateFits(t *testing.T) {
 		messageWithText(provider.RoleUser, strings.Repeat("goal ", 4000), 1),
 	}
 	before := cloneMessages(history)
-	window, err := engine.runCompactGate(&history, promptcontext.SampleInput{
-		Estimate: engine.options.TokenEstimator.Estimate,
-	}, 128, CompactionPhaseMidTurn, true, func(State, Event) error {
+	snapshot := contextstore.New(contextstore.Input{}).Snapshot()
+	window, err := engine.runCompactGate(&history, snapshot, 128, CompactionPhaseMidTurn, true, func(State, Event) error {
 		t.Fatal("failed compaction emitted an event")
 		return nil
 	})

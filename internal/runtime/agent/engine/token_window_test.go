@@ -6,20 +6,19 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 )
 
 func TestTokenWindowIncludesStableDynamicToolsAndOutputReserve(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	input := promptcontext.SampleInput{
+	input := contextstore.New(contextstore.Input{
 		Stable:  []provider.Message{provider.TextMessage(provider.RoleSystem, strings.Repeat("s", 400))},
 		History: []provider.Message{provider.TextMessage(provider.RoleUser, strings.Repeat("h", 400))},
 		Dynamic: []provider.Message{provider.TextMessage(provider.RoleSystem, strings.Repeat("d", 400))},
 		Definitions: []provider.ToolDefinition{{
 			Name: "lookup", Description: strings.Repeat("schema", 100),
 		}},
-		Estimate: engine.options.TokenEstimator.Estimate,
-	}
+	}).Snapshot()
 	total, err := engine.measureTokenWindow(input, 128)
 	if err != nil {
 		t.Fatal(err)
@@ -57,12 +56,12 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 		messageWithText(provider.RoleUser, "current", 2),
 	}
 	var receipt *CompactionReceipt
-	window, err := engine.runCompactGate(&history, promptcontext.SampleInput{
+	input := contextstore.New(contextstore.Input{
 		Stable: []provider.Message{
 			provider.TextMessage(provider.RoleSystem, strings.Repeat("s", 13_000)),
 		},
-		Estimate: engine.options.TokenEstimator.Estimate,
-	}, 128, CompactionPhasePreSampling, false, func(_ State, event Event) error {
+	}).Snapshot()
+	window, err := engine.runCompactGate(&history, input, 128, CompactionPhasePreSampling, false, func(_ State, event Event) error {
 		receipt = event.Compaction
 		return nil
 	})

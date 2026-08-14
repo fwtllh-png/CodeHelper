@@ -5,7 +5,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 )
 
 const toolResultSurfaceBytes = 4 << 10
@@ -17,7 +17,7 @@ type toolResultPruneStats struct {
 
 func (e *Engine) pruneToolResultSurfaces(
 	history *[]provider.Message,
-	input promptcontext.SampleInput,
+	input contextstore.Snapshot,
 	outputReserve uint64,
 	force bool,
 ) (toolResultPruneStats, tokenWindow, error) {
@@ -59,7 +59,7 @@ func (e *Engine) pruneToolResultSurfaces(
 			stats.bytes += len(block.ToolResult.Content) - len(encoded)
 			block.ToolResult.Content = string(encoded)
 			block.ToolResult.IsError = projected.IsError
-			input.History = *history
+			input = input.WithHistory(*history)
 			window, err = e.measureTokenWindow(input, outputReserve)
 			if err != nil {
 				return toolResultPruneStats{}, tokenWindow{}, err
@@ -72,7 +72,7 @@ func (e *Engine) pruneToolResultSurfaces(
 		}
 	}
 	if stats.results == 0 {
-		input.History = *history
+		input = input.WithHistory(*history)
 		measured, err := e.measureTokenWindow(input, outputReserve)
 		return stats, measured, err
 	}
