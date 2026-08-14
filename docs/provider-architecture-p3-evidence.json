@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "stage": "P3",
+  "status": "deepseek_isolated",
+  "base_commit": "3bc978bec48980e98652186cf10c1a3a42b54be4",
+  "acceptance": {
+    "passed": true,
+    "dedicated_deepseek_adapter": true,
+    "generic_openai_has_deepseek_condition": false,
+    "chat_reasoning_passback": "tool_call_turns_only",
+    "empty_tool_output_is_nonempty": true,
+    "unsupported_images_fail_before_io": true,
+    "thinking_off_uses_native_field": true,
+    "native_cache_usage_normalized": true,
+    "strict_chat_done_required": true,
+    "empty_response_is_typed_failure": true,
+    "http_failures_are_typed": true,
+    "v4_incremental_responses": false,
+    "v4_previous_response_id": false,
+    "v4_encrypted_reasoning_requested": false,
+    "p0_goldens_unchanged": true,
+    "live_control_passed": true
+  },
+  "architecture": {
+    "targets_passed": 55,
+    "provider_core_lines": 546,
+    "provider_router_lines": 110,
+    "provider_wire_lines": 165,
+    "provider_httpclient_lines": 673,
+    "provider_httpclient_client_lines": 407,
+    "provider_openai_lines": 1285,
+    "provider_deepseek_lines": 175,
+    "provider_anthropic_lines": 494,
+    "provider_openaicompat_lines": 10,
+    "observability_providerdump_lines": 174,
+    "transport_imports_concrete_adapters": false,
+    "concrete_construction_owner": "internal/runtime/app/wire"
+  },
+  "production_size_trend": {
+    "gate": "observational",
+    "base_lines": 4747,
+    "head_lines": 5023,
+    "added_lines": 483,
+    "deleted_lines": 207,
+    "net_lines": 276,
+    "justification": "Dedicated DeepSeek request, stream, usage, completion, and failure semantics plus typed failure facts and observability-owned diagnostics replace shared implicit behavior. Net line growth is recorded but is not a correctness gate."
+  },
+  "token_benchmark": {
+    "mode": "hermetic",
+    "runs_passed": 5,
+    "runs_total": 5,
+    "input_tokens_p50": 72189,
+    "uncached_input_tokens_p50": 54145,
+    "cached_input_tokens_p50": 18044,
+    "sample_count_p50": 8,
+    "t4_hermetic_equivalent": true
+  },
+  "commands": {
+    "hermetic": "make provider-architecture-p3",
+    "p0_contract": "make provider-p0-goldens",
+    "live_control": "make provider-deepseek-live-control",
+    "token_benchmark": "make token-bench TOKEN_BENCH_ARTIFACT=.tmp/token-efficiency/provider-p3",
+    "architecture": "make architecture-ratchet",
+    "documentation": "make docs-check"
+  }
+}

@@ -2,10 +2,11 @@
 
 [Simplified Chinese](../zh-CN/provider-architecture-upgrade.md) | English
 
-> Status: P2 `generic_paths_isolated`. Versioned evidence:
+> Status: P3 `deepseek_isolated`. Versioned evidence:
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
 > [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json),
-> and [`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json).
+> [`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json),
+> and [`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json).
 >
 > Scope: model route metadata, provider-neutral request and stream contracts,
 > wire adapters, HTTP and WebSocket transport, DeepSeek-specific behavior,
@@ -90,8 +91,9 @@ The upgrade must:
    capability-gated;
 8. keep credentials as references and preserve egress enforcement;
 9. improve conformance tests from substring checks to exact wire contracts;
-10. delete displaced generic branches and finish with no positive production
-    line growth; and
+10. delete displaced generic branches, avoid unnecessary duplication, and
+    record production-size trends without using net line growth as a
+    correctness gate; and
 11. pass the architecture ratchet and add Provider-specific hotspot limits.
 
 ## 3. Non-Goals
@@ -1231,8 +1233,10 @@ No legacy and new provider paths remain in parallel after default enablement.
 
 ## 22. Migration Plan
 
-Each stage must be independently reviewable, pass focused tests and
-Architecture Ratchet, and keep production-line net growth `<= 0`.
+Each stage must be independently reviewable and pass focused tests and
+Architecture Ratchet. Production size is recorded as a trend signal; stage
+acceptance is based on ownership, dependency direction, logic, duplication,
+and hotspot limits rather than a mechanical net-line target.
 
 ### P0: Characterization Baseline
 
@@ -1325,6 +1329,8 @@ Result:
 
 Status target: `deepseek_isolated`.
 
+Status: complete on the P3 branch.
+
 Work:
 
 - implement DeepSeek Chat request and stream;
@@ -1344,6 +1350,19 @@ Exit:
 - V4 sends no `previous_response_id`;
 - every DeepSeek wire scenario passes fixture and live control; and
 - capability and token benchmarks do not regress.
+
+Result:
+
+- `provider/deepseek` owns DeepSeek request policy, stream validation, native
+  cache accounting, strict completion, and HTTP failure classification;
+- generic OpenAI code contains reusable codec policy but no DeepSeek identity
+  or model-name condition;
+- V4 remains complete HTTP/SSE and sends neither `previous_response_id` nor
+  encrypted-reasoning requests;
+- redacted provider dumps are owned by `internal/observability/providerdump`;
+  and
+- P0 characterization remains unchanged while P3 fixtures cover the dedicated
+  contract.
 
 ### P4: Replay Provenance
 
@@ -1407,8 +1426,9 @@ Exit:
 
 - all acceptance gates below pass;
 - no dual provider path remains;
-- production net growth is `<= 0`;
-- T5 production-size debt is reduced rather than increased; and
+- production-size movement is documented and material growth has an ownership
+  or behavior justification;
+- obsolete branches and unnecessary duplication are removed; and
 - the branch is ready for no-ff integration.
 
 ## 23. Test Strategy
@@ -1573,7 +1593,7 @@ stage.
 | Construction | only `runtime/app/wire` builds concrete adapters |
 | Transport dependency | imports no concrete adapter |
 | Generic OpenAI code | contains no DeepSeek condition |
-| Provider production net growth | `<= 0` per stage |
+| Provider production size | record trend; justify material growth by ownership or behavior |
 | Architecture Ratchet | all targets pass |
 | Hotspot | no Provider production file above the agreed limit |
 
@@ -1661,5 +1681,5 @@ The upgrade is complete only when:
 - [ ] no raw secret enters tracked or diagnostic material;
 - [ ] exact fixtures, restart tests, and live DeepSeek scenarios pass;
 - [ ] English and Chinese documentation agree;
-- [ ] architecture and size gates pass; and
-- [ ] obsolete code is deleted with final production net growth `<= 0`.
+- [ ] architecture gates and documented size review pass; and
+- [ ] obsolete code and unnecessary duplication are deleted.

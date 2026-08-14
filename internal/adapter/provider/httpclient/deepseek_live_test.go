@@ -9,7 +9,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/deepseek"
 	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
@@ -38,10 +38,7 @@ func TestDeepSeekP0LiveControl(t *testing.T) {
 	client.Egress = gate
 	client.Metrics = metrics
 	client.IdleTimeout = 2 * time.Minute
-	adapter, err := openai.NewAdapter(model.AdapterDeepSeek)
-	if err != nil {
-		t.Fatal(err)
-	}
+	adapter := deepseek.NewAdapter()
 	registry, err := providerrouter.NewRegistry(adapter)
 	if err != nil {
 		t.Fatal(err)

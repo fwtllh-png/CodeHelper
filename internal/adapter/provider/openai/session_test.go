@@ -281,7 +281,7 @@ func TestResponsesSessionReplayOutputMatchesLogicalInputEncoding(t *testing.T) {
 			}},
 			{Type: provider.ContentText, Text: "done"},
 		},
-	}})
+	}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,6 +297,32 @@ func TestResponsesSessionReplayOutputMatchesLogicalInputEncoding(t *testing.T) {
 		if !jsonEqual(replayed[index], want) {
 			t.Fatalf("item %d replayed=%s logical=%s", index, replayed[index], want)
 		}
+	}
+}
+
+func TestOpenAIResponsesDoesNotSynthesizeDeepSeekReasoning(t *testing.T) {
+	request := testRequest(
+		t, "https://api.openai.test", model.ProtocolOpenAIResponses,
+	)
+	request.Messages = []provider.Message{
+		provider.TextMessage(provider.RoleUser, "inspect"),
+		{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{{
+			Type: provider.ContentToolCall,
+			ToolCall: &provider.ToolCall{
+				ID: "call_1", Name: "read", Arguments: "{}",
+			},
+		}}},
+	}
+	adapter, err := NewAdapter(model.AdapterOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := adapter.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(call.Body), "(continued)") {
+		t.Fatalf("DeepSeek placeholder leaked into OpenAI request: %s", call.Body)
 	}
 }
 

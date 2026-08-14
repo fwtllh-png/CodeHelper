@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -25,6 +26,33 @@ func GenericHTTPFailure(failure HTTPFailure) error {
 	problem.RateLimit = rateLimitMetadata(failure.Header)
 	return problem
 }
+func TypedHTTPFailure(
+	failure HTTPFailure,
+	code provider.FailureCode,
+	message, requestID string,
+) error {
+	base := GenericHTTPFailure(failure).(*protocol.Problem)
+	fact := &provider.Failure{
+		Code: code, Message: message, HTTPStatus: failure.Status,
+		RequestID: requestID,
+	}
+	if base.RateLimit != nil {
+		fact.RetryAfterMS = base.RateLimit.RetryAfterMS
+	}
+	result := protocol.NewProblem(
+		base.Code, base.Message, base.Retryable, fact,
+	)
+	result.HTTPStatus, result.RateLimit = base.HTTPStatus, base.RateLimit
+	return result
+}
+func FirstHeader(header http.Header, names ...string) string {
+	for _, name := range names {
+		if value := header.Get(name); value != "" {
+			return value
+		}
+	}
+	return ""
+}
 func RetryableStatus(status int) bool {
 	return status == http.StatusRequestTimeout || status == http.StatusTooEarly ||
 		status == http.StatusTooManyRequests || status >= 500
@@ -32,9 +60,9 @@ func RetryableStatus(status int) bool {
 func rateLimitMetadata(header http.Header) *protocol.RateLimitMetadata {
 	retryDelay, hasRetryAfter := retryAfter(header.Get("Retry-After"), time.Now())
 	metadata := &protocol.RateLimitMetadata{
-		Limit:     firstHeader(header, "RateLimit-Limit", "X-RateLimit-Limit"),
-		Remaining: firstHeader(header, "RateLimit-Remaining", "X-RateLimit-Remaining"),
-		Reset:     firstHeader(header, "RateLimit-Reset", "X-RateLimit-Reset"),
+		Limit:     FirstHeader(header, "RateLimit-Limit", "X-RateLimit-Limit"),
+		Remaining: FirstHeader(header, "RateLimit-Remaining", "X-RateLimit-Remaining"),
+		Reset:     FirstHeader(header, "RateLimit-Reset", "X-RateLimit-Reset"),
 	}
 	if hasRetryAfter {
 		metadata.RetryAfterMS = uint64(retryDelay / time.Millisecond)
@@ -61,12 +89,4 @@ func retryAfter(value string, now time.Time) (time.Duration, bool) {
 		delay = 0
 	}
 	return delay, true
-}
-func firstHeader(header http.Header, names ...string) string {
-	for _, name := range names {
-		if value := header.Get(name); value != "" {
-			return value
-		}
-	}
-	return ""
 }

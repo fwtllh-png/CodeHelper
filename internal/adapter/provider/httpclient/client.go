@@ -20,6 +20,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/providerdump"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
@@ -138,8 +139,8 @@ func (c *Client) Execute(
 	problem := adapter.ClassifyHTTP(providerwire.HTTPFailure{
 		Status: response.StatusCode, Header: response.Header, Body: errorText,
 	})
-	if shouldDumpProvider(response.StatusCode) {
-		if dumpPath, dumpErr := dumpProviderFailure(
+	if providerdump.Enabled(response.StatusCode) {
+		if dumpPath, dumpErr := providerdump.Write(
 			request, call.Body, call.Path, response.StatusCode, errorText,
 		); dumpErr == nil && dumpPath != "" {
 			if typed, ok := problem.(*protocol.Problem); ok {

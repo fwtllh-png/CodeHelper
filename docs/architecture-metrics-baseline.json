@@ -52,9 +52,12 @@
       "path": "internal/adapter/provider",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 541,
+        "production_lines": 546,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "P3 adds provider-neutral typed failure facts for adapter classification and later durable recovery."
       }
     },
     {
@@ -78,9 +81,12 @@
       "path": "internal/adapter/provider/wire",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 145,
+        "production_lines": 165,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "P3 preserves typed adapter failure facts while retaining the runtime Problem boundary."
       }
     },
     {
@@ -88,10 +94,13 @@
       "kind": "package",
       "path": "internal/adapter/provider/httpclient",
       "limits": {
-        "internal_fanout": 7,
-        "production_lines": 879,
+        "internal_fanout": 8,
+        "production_lines": 673,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "P3 delegates redacted provider diagnostics to the observability-owned dump package."
       }
     },
     {
@@ -99,8 +108,11 @@
       "kind": "file",
       "path": "internal/adapter/provider/httpclient/client.go",
       "limits": {
-        "lines": 406,
+        "lines": 407,
         "max_function_lines": 77
+      },
+      "relaxations": {
+        "lines": "P3 delegates diagnostic dump decisions without restoring provider serialization or retry ownership."
       }
     },
     {
@@ -109,14 +121,29 @@
       "path": "internal/adapter/provider/openai",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1208,
+        "production_lines": 1285,
         "options_fields": 0,
         "mutex_fields": 2
       },
       "relaxations": {
         "internal_fanout": "P2 makes OpenAI own prepared calls and continuation sessions.",
-        "production_lines": "P2 moves OpenAI serialization and Responses sessions out of transport.",
+        "production_lines": "P3 exposes explicit codec policies so DeepSeek can reuse wire mechanics without leaving DeepSeek conditions in generic OpenAI behavior.",
         "mutex_fields": "OpenAI now owns connection-local Responses continuation state."
+      }
+    },
+    {
+      "id": "provider_deepseek_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/deepseek",
+      "limits": {
+        "internal_fanout": 5,
+        "production_lines": 175,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "P3 gives DeepSeek an explicit adapter over shared wire codecs and runtime-neutral stream errors.",
+        "production_lines": "P3 isolates DeepSeek request, stream, cache, completion, and failure semantics in one adapter package."
       }
     },
     {
@@ -161,13 +188,28 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 69,
+        "internal_fanout": 70,
         "production_lines": 7582,
         "options_fields": 70,
         "mutex_fields": 5
       },
       "relaxations": {
-        "internal_fanout": "P2 composition constructs concrete wire adapters and guarded transport."
+        "internal_fanout": "P3 composition constructs the dedicated DeepSeek adapter alongside guarded transport."
+      }
+    },
+    {
+      "id": "observability_providerdump_package",
+      "kind": "package",
+      "path": "internal/observability/providerdump",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 174,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "P3 keeps redacted provider diagnostics in observability while consuming normalized request metadata.",
+        "production_lines": "P3 moves the existing bounded diagnostic format out of transport ownership."
       }
     },
     {

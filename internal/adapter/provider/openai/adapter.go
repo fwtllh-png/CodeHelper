@@ -21,7 +21,7 @@ type Adapter struct {
 
 func NewAdapter(id model.AdapterID) (*Adapter, error) {
 	switch id {
-	case model.AdapterOpenAI, model.AdapterDeepSeek, model.AdapterOpenAICompatible:
+	case model.AdapterOpenAI, model.AdapterOpenAICompatible:
 		return &Adapter{id: id}, nil
 	default:
 		return nil, fmt.Errorf("unsupported OpenAI-compatible adapter %q", id)
@@ -33,22 +33,56 @@ func (a *Adapter) Supports(protocol model.WireProtocol) bool {
 		protocol == model.ProtocolOpenAIResponses
 }
 func (a *Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedCall, error) {
-	var (
-		body map[string]any
-		path string
-	)
 	switch request.Route.Protocol() {
 	case model.ProtocolOpenAIChat:
-		body, path = chatBody(request), "/chat/completions"
+		return PrepareChat(request, a.id, ChatPolicy{})
 	case model.ProtocolOpenAIResponses:
-		input, err := responsesInput(request.Messages)
-		if err != nil {
-			return providerwire.PreparedCall{}, err
-		}
-		body, path = responsesBody(request, input), "/responses"
+		return PrepareResponses(request, a.id, "", true)
 	default:
 		return providerwire.PreparedCall{}, fmt.Errorf("adapter %q does not support protocol %q", a.id, request.Route.Protocol())
 	}
+}
+
+type ChatPolicy struct {
+	ReasoningWithToolsOnly bool
+	RejectImages           bool
+	EmptyToolOutput        string
+	ThinkingOff            bool
+}
+
+func PrepareChat(
+	request provider.ModelRequest,
+	adapter model.AdapterID,
+	options ChatPolicy,
+) (providerwire.PreparedCall, error) {
+	messages, err := chatMessages(request.Messages, options)
+	if err != nil {
+		return providerwire.PreparedCall{}, err
+	}
+	body := chatBody(request, messages, options)
+	return prepareCall(adapter, model.ProtocolOpenAIChat, "/chat/completions", body)
+}
+func PrepareResponses(
+	request provider.ModelRequest,
+	adapter model.AdapterID,
+	reasoningPlaceholder string,
+	includeEncryptedReasoning bool,
+) (providerwire.PreparedCall, error) {
+	input, err := responsesInput(request.Messages, reasoningPlaceholder)
+	if err != nil {
+		return providerwire.PreparedCall{}, err
+	}
+	body := responsesBody(
+		request, input, includeEncryptedReasoning,
+	)
+	return prepareCall(adapter, model.ProtocolOpenAIResponses, "/responses", body)
+}
+func prepareCall(
+	adapter model.AdapterID,
+	protocol model.WireProtocol,
+	path string,
+	body map[string]any,
+) (providerwire.PreparedCall, error) {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return providerwire.PreparedCall{}, err
@@ -59,8 +93,8 @@ func (a *Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedC
 			"Content-Type": []string{"application/json"},
 			"Accept":       []string{"text/event-stream"},
 		},
-		Auth: providerwire.AuthBearer, Adapter: a.id,
-		Protocol: request.Route.Protocol(),
+		Auth: providerwire.AuthBearer, Adapter: adapter,
+		Protocol: protocol,
 	}, nil
 }
 func (a *Adapter) OpenStream(body io.ReadCloser, call providerwire.PreparedCall) (provider.Stream, error) {
@@ -69,13 +103,24 @@ func (a *Adapter) OpenStream(body io.ReadCloser, call providerwire.PreparedCall)
 func (a *Adapter) ClassifyHTTP(failure providerwire.HTTPFailure) error {
 	return providerwire.GenericHTTPFailure(failure)
 }
-func chatBody(request provider.ModelRequest) map[string]any {
+func chatBody(
+	request provider.ModelRequest,
+	messages []map[string]any,
+	options ChatPolicy,
+) map[string]any {
 	body := map[string]any{
-		"model": request.Route.Model().WireID, "messages": chatMessages(request.Messages),
+		"model": request.Route.Model().WireID, "messages": messages,
 		"max_tokens": request.MaxOutputTokens, "stream": true,
 		"stream_options": map[string]bool{"include_usage": true},
 	}
-	applyOptional(body, request)
+	if request.Temperature != nil {
+		body["temperature"] = *request.Temperature
+	}
+	if request.ReasoningEffort == "off" && options.ThinkingOff {
+		body["thinking"] = map[string]string{"type": "disabled"}
+	} else if request.ReasoningEffort != "" {
+		body["reasoning_effort"] = request.ReasoningEffort
+	}
 	applyChatTools(body, request.Tools)
 	if request.NativeSearch {
 		appendTool(body, map[string]any{"type": "web_search_preview"})
@@ -85,7 +130,11 @@ func chatBody(request provider.ModelRequest) map[string]any {
 	}
 	return body
 }
-func responsesBody(request provider.ModelRequest, input []map[string]any) map[string]any {
+func responsesBody(
+	request provider.ModelRequest,
+	input []map[string]any,
+	includeEncryptedReasoning bool,
+) map[string]any {
 	store := false
 	if request.Store != nil {
 		store = *request.Store
@@ -95,7 +144,8 @@ func responsesBody(request provider.ModelRequest, input []map[string]any) map[st
 		parallelTools = *request.ParallelTools
 	}
 	include := request.Include
-	if len(include) == 0 && request.ReasoningEffort != "" {
+	if len(include) == 0 && request.ReasoningEffort != "" &&
+		includeEncryptedReasoning {
 		include = []string{"reasoning.encrypted_content"}
 	}
 	body := map[string]any{
@@ -121,7 +171,10 @@ func responsesBody(request provider.ModelRequest, input []map[string]any) map[st
 	}
 	return body
 }
-func chatMessages(messages []provider.Message) []map[string]any {
+func chatMessages(
+	messages []provider.Message,
+	options ChatPolicy,
+) ([]map[string]any, error) {
 	result := make([]map[string]any, 0, len(messages))
 	for _, message := range messages {
 		item := map[string]any{"role": message.Role}
@@ -134,6 +187,9 @@ func chatMessages(messages []provider.Message) []map[string]any {
 			case provider.ContentReasoning:
 				reasoning += block.Text
 			case provider.ContentImage:
+				if options.RejectImages {
+					return nil, fmt.Errorf("image input is not supported")
+				}
 				images = append(images, map[string]any{"type": "image_url", "image_url": map[string]any{"url": block.Attachment.DataURL()}})
 			case provider.ContentToolCall:
 				call := block.ToolCall
@@ -142,6 +198,10 @@ func chatMessages(messages []provider.Message) []map[string]any {
 				item["tool_call_id"] = block.ToolResult.CallID
 				text += block.ToolResult.Content
 			}
+		}
+		if message.Role == provider.RoleTool && text == "" &&
+			options.EmptyToolOutput != "" {
+			text = options.EmptyToolOutput
 		}
 		if len(images) == 0 {
 			item["content"] = text
@@ -152,17 +212,21 @@ func chatMessages(messages []provider.Message) []map[string]any {
 			}
 			item["content"] = append(content, images...)
 		}
-		if reasoning != "" {
-			item["reasoning_content"] = reasoning
-		}
 		if len(calls) != 0 {
 			item["tool_calls"] = calls
 		}
+		if reasoning != "" &&
+			(!options.ReasoningWithToolsOnly || len(calls) != 0) {
+			item["reasoning_content"] = reasoning
+		}
 		result = append(result, item)
 	}
-	return result
+	return result, nil
 }
-func responsesInput(messages []provider.Message) ([]map[string]any, error) {
+func responsesInput(
+	messages []provider.Message,
+	reasoningPlaceholder string,
+) ([]map[string]any, error) {
 	result := make([]map[string]any, 0, len(messages))
 	for _, message := range messages {
 		if grouped, ok := responsesImageItem(message); ok {
@@ -183,7 +247,7 @@ func responsesInput(messages []provider.Message) ([]map[string]any, error) {
 				}
 			case provider.ContentToolCall:
 				call := block.ToolCall
-				result = ensureReasoningBeforeFunctionCall(result)
+				result = ensureReasoningBeforeFunctionCall(result, reasoningPlaceholder)
 				result = append(result, map[string]any{"type": "function_call", "call_id": call.ID, "name": call.Name, "arguments": call.Arguments})
 			case provider.ContentToolResult:
 				result = append(result, map[string]any{"type": "function_call_output", "call_id": block.ToolResult.CallID, "output": block.ToolResult.Content})
@@ -220,17 +284,25 @@ func validateResponsesToolPairs(input []map[string]any) error {
 	}
 	return nil
 }
-
-const responsesReasoningPlaceholder = "(continued)"
-
-func ensureReasoningBeforeFunctionCall(result []map[string]any) []map[string]any {
+func ensureReasoningBeforeFunctionCall(
+	result []map[string]any,
+	placeholder string,
+) []map[string]any {
 	if len(result) > 0 {
 		switch stringValue(result[len(result)-1]["type"]) {
 		case "reasoning", "function_call":
 			return result
 		}
 	}
-	return append(result, map[string]any{"type": "reasoning", "content": []map[string]any{{"type": "reasoning_text", "text": responsesReasoningPlaceholder}}})
+	if placeholder == "" {
+		return result
+	}
+	return append(result, map[string]any{
+		"type": "reasoning",
+		"content": []map[string]any{{
+			"type": "reasoning_text", "text": placeholder,
+		}},
+	})
 }
 func responsesReasoningItem(block provider.ContentBlock) (map[string]any, error) {
 	text := strings.TrimSpace(block.Text)
@@ -320,12 +392,4 @@ func applyResponsesTools(body map[string]any, definitions []provider.ToolDefinit
 func appendTool(body map[string]any, definition map[string]any) {
 	tools, _ := body["tools"].([]map[string]any)
 	body["tools"] = append(tools, definition)
-}
-func applyOptional(body map[string]any, request provider.ModelRequest) {
-	if request.Temperature != nil {
-		body["temperature"] = *request.Temperature
-	}
-	if request.ReasoningEffort != "" {
-		body["reasoning_effort"] = request.ReasoningEffort
-	}
 }

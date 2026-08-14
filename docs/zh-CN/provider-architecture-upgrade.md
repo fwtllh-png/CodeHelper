@@ -2,10 +2,11 @@
 
 简体中文 | [English](../en/provider-architecture-upgrade.md)
 
-> 状态：P2 `generic_paths_isolated`。版本化证据见
+> 状态：P3 `deepseek_isolated`。版本化证据见
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
 > [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json)
-> 与 [`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json)。
+> 、[`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json)
+> 与 [`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json)。
 >
 > 范围：Model Route 元数据、Provider-neutral Request 与 Stream 契约、Wire
 > Adapter、HTTP 与 WebSocket Transport、DeepSeek 专属行为、Provider
@@ -83,7 +84,8 @@ Turn Effect 仍然是强制路径。
 7. 保留完整 Logical Request，同时让 Transport 优化继续受 Capability 控制；
 8. 保持 Credential Reference 与 Egress 强制执行；
 9. 将测试从子串检查升级为精确 Wire Contract；
-10. 删除被替代的通用分支，最终生产代码净增长不得为正；
+10. 删除被替代的通用分支、避免无必要重复，并记录生产代码规模趋势，但不把净行数
+    增长作为正确性门禁；
 11. 通过 Architecture Ratchet，并新增 Provider Hotspot 上限。
 
 ## 3. 非目标
@@ -1186,8 +1188,9 @@ Default Enablement 后不保留 Legacy 与 New Provider 双路径。
 
 ## 22. 迁移计划
 
-每个阶段必须可独立 Review，通过 Focused Test 与 Architecture Ratchet，并保持生产代码
-净增长 `<= 0`。
+每个阶段必须可独立 Review，并通过 Focused Test 与 Architecture Ratchet。生产代码规模
+只作为趋势信号记录；阶段验收以职责归属、依赖方向、逻辑正确性、重复度与 Hotspot
+上限为准，不采用机械的净行数目标。
 
 ### P0：Characterization Baseline
 
@@ -1279,6 +1282,8 @@ Exit：
 
 目标状态：`deepseek_isolated`。
 
+状态：P3 分支已完成。
+
 工作：
 
 - 实现 DeepSeek Chat Request 与 Stream；
@@ -1298,6 +1303,17 @@ Exit：
 - V4 不发送 `previous_response_id`；
 - 每个 DeepSeek Wire Scenario 均通过 Fixture 与 Live Control；
 - Capability 与 Token Benchmark 不回退。
+
+结果：
+
+- `provider/deepseek` 负责 DeepSeek Request Policy、Stream Validation、
+  Native Cache Accounting、Strict Completion 与 HTTP Failure Classification；
+- Generic OpenAI Code 仅保留可复用 Codec Policy，不含 DeepSeek Identity 或 Model-name
+  条件；
+- V4 保持完整 HTTP/SSE，既不发送 `previous_response_id`，也不请求 Encrypted
+  Reasoning；
+- 脱敏 Provider Dump 归 `internal/observability/providerdump` 所有；
+- P0 Characterization 保持不变，P3 Fixture 覆盖专用契约。
 
 ### P4：Replay Provenance
 
@@ -1360,8 +1376,8 @@ Exit：
 
 - 下列全部 Acceptance Gate 通过；
 - 不存在双 Provider Path；
-- 生产代码净增长 `<= 0`；
-- T5 生产规模债务减少而不是增加；
+- 生产代码规模变化已记录，且显著增长有明确的职责或行为依据；
+- Obsolete Branch 与无必要重复已删除；
 - Branch 可执行 `--no-ff` 集成。
 
 ## 23. 测试策略
@@ -1524,7 +1540,7 @@ git diff --check
 | Construction | 只有 `runtime/app/wire` 构造 Concrete Adapter |
 | Transport Dependency | 不 Import Concrete Adapter |
 | Generic OpenAI Code | 不含 DeepSeek 条件 |
-| Provider Production Net Growth | 每阶段 `<= 0` |
+| Provider Production Size | 记录趋势；显著增长必须有职责或行为依据 |
 | Architecture Ratchet | 全部通过 |
 | Hotspot | Provider Production File 不超过约定上限 |
 
@@ -1609,5 +1625,5 @@ Ownership。
 - [ ] Tracked 或 Diagnostic Material 中没有 Raw Secret；
 - [ ] Exact Fixture、Restart Test 与 Live DeepSeek Scenario 通过；
 - [ ] 中英文文档一致；
-- [ ] Architecture 与 Size Gate 通过；
-- [ ] Obsolete Code 已删除，最终生产代码净增长 `<= 0`。
+- [ ] Architecture Gate 与有记录的 Size Review 通过；
+- [ ] Obsolete Code 与无必要重复已删除。

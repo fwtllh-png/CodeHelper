@@ -356,7 +356,7 @@ func FuzzStreamParserOpenAI(f *testing.F) {
 		if len(data) > 1<<20 {
 			t.Skip()
 		}
-		_, _ = parseChatChunk(data)
+		_, _ = parseChatChunk(data, false)
 		_, _ = parseResponsesChunk(data)
 	})
 }

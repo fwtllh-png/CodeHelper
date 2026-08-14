@@ -4,6 +4,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/anthropic"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/deepseek"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openaicompat"
@@ -19,16 +20,12 @@ func newProviderRouter(
 	if err != nil {
 		return nil, err
 	}
-	deepSeek, err := openai.NewAdapter(model.AdapterDeepSeek)
-	if err != nil {
-		return nil, err
-	}
 	compatible, err := openaicompat.NewAdapter()
 	if err != nil {
 		return nil, err
 	}
 	adapters := []providerwire.Adapter{
-		openAI, deepSeek, anthropic.NewAdapter(), compatible,
+		openAI, deepseek.NewAdapter(), anthropic.NewAdapter(), compatible,
 	}
 	registry, err := providerrouter.NewRegistry(adapters...)
 	if err != nil {

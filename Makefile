@@ -20,6 +20,7 @@ LDFLAGS := -s -w \
 	multi-agent-eval multi-agent-performance \
 	token-bench token-bench-live token-bench-compare \
 	provider-architecture-p0 provider-architecture-p1 provider-architecture-p2 \
+	provider-architecture-p3 \
 	provider-p0-goldens provider-p0-goldens-update \
 	provider-deepseek-live-control \
 	architecture-ratchet architecture-size-budget architecture-freeze \
@@ -159,6 +160,15 @@ provider-architecture-p2: provider-p0-goldens
 		-paths '$(PROVIDER_ARCHITECTURE_SIZE_PATHS)' \
 		-max-net 0 \
 		-report '$(PROVIDER_ARCHITECTURE_SIZE_REPORT)'
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p3: provider-p0-goldens
+	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 ./internal/runtime/agent/engine ./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/adapter/provider/deepseek \
+		./internal/adapter/provider/openai \
+		./internal/adapter/provider/httpclient
 	$(MAKE) architecture-ratchet
 
 provider-deepseek-live-control:

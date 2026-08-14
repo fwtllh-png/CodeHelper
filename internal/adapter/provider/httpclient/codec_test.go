@@ -65,11 +65,42 @@ func testAdapter(id model.AdapterID) (providerwire.Adapter, error) {
 	if id == model.AdapterAnthropic {
 		return anthropic.NewAdapter(), nil
 	}
+	if id == model.AdapterDeepSeek {
+		adapter, err := openai.NewAdapter(model.AdapterOpenAI)
+		if err != nil {
+			return nil, err
+		}
+		return legacyOpenAIAdapter{
+			Adapter: adapter, id: model.AdapterDeepSeek,
+		}, nil
+	}
 	adapter, err := openai.NewAdapter(id)
 	if err != nil {
 		return nil, fmt.Errorf("test adapter: %w", err)
 	}
-	return adapter, nil
+	return legacyOpenAIAdapter{Adapter: adapter, id: id}, nil
+}
+
+type legacyOpenAIAdapter struct {
+	*openai.Adapter
+	id model.AdapterID
+}
+
+func (a legacyOpenAIAdapter) ID() model.AdapterID { return a.id }
+func (a legacyOpenAIAdapter) Prepare(
+	request provider.ModelRequest,
+) (providerwire.PreparedCall, error) {
+	var call providerwire.PreparedCall
+	var err error
+	if request.Route.Protocol() == model.ProtocolOpenAIResponses {
+		call, err = openai.PrepareResponses(
+			request, a.id, responsesReasoningPlaceholder, true,
+		)
+	} else {
+		call, err = a.Adapter.Prepare(request)
+		call.Adapter = a.id
+	}
+	return call, err
 }
 
 func transportMetadata(
