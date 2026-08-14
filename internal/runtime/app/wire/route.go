@@ -22,9 +22,12 @@ func resolveExecRoute(options execRouteOptions) (model.ReadyRoute, error) {
 		if options.Fixture {
 			provenance = model.ProvenanceFixture
 		}
-		kind := model.ProviderCustom
-		if options.ProviderID == "local" {
-			kind = model.ProviderLocal
+		adapter := model.AdapterOpenAICompatible
+		if options.Protocol == model.ProtocolAnthropic {
+			adapter = model.AdapterAnthropic
+		}
+		if bundled, exists := model.DefaultCatalog().Provider(options.ProviderID); exists {
+			adapter = bundled.Adapter
 		}
 		credential := model.CredentialRef{}
 		if options.APIKeyEnv != "" {
@@ -39,7 +42,7 @@ func resolveExecRoute(options execRouteOptions) (model.ReadyRoute, error) {
 		}
 		var err error
 		catalog, err = model.NewCatalog(model.Provider{
-			ID: options.ProviderID, Kind: kind, Endpoint: options.BaseURL,
+			ID: options.ProviderID, Adapter: adapter, Endpoint: options.BaseURL,
 			Protocol: options.Protocol, Credential: credential, Provenance: provenance,
 			Models: map[string]model.Model{options.ModelID: descriptor},
 		})

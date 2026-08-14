@@ -14,13 +14,13 @@ import (
 //go:embed catalog.v1.json
 var bundledCatalog []byte
 
-type ProviderKind string
+type AdapterID string
 
 const (
-	ProviderOpenAI    ProviderKind = "openai"
-	ProviderAnthropic ProviderKind = "anthropic"
-	ProviderLocal     ProviderKind = "local"
-	ProviderCustom    ProviderKind = "custom"
+	AdapterOpenAI           AdapterID = "openai"
+	AdapterDeepSeek         AdapterID = "deepseek"
+	AdapterAnthropic        AdapterID = "anthropic"
+	AdapterOpenAICompatible AdapterID = "openai_compatible"
 )
 
 type WireProtocol string
@@ -56,17 +56,10 @@ type Capabilities struct {
 	ToolCalls    bool `json:"tool_calls"`
 	NativeSearch bool `json:"native_search"`
 	// IncrementalResponses allows connection-local Responses continuation.
-	// It is separate from PromptCache because custom Responses endpoints may
-	// implement one without the other.
 	IncrementalResponses bool `json:"incremental_responses,omitempty"`
-	// Vision is what the vision purpose samples on. A [route.vision] pointing
-	// at a model with Vision=false is refused at route-set construction rather
-	// than at the first image_analyze call.
-	Vision bool `json:"vision"`
-	// ImageInput is what a request that carries a ContentImage block needs.
-	ImageInput bool `json:"image_input"`
-	// PromptCache is what a sticky prompt_cache_key (Responses encode) needs.
-	PromptCache bool `json:"prompt_cache"`
+	Vision               bool `json:"vision"`
+	ImageInput           bool `json:"image_input"`
+	PromptCache          bool `json:"prompt_cache"`
 }
 
 type Pricing struct {
@@ -99,7 +92,7 @@ type Model struct {
 
 type Provider struct {
 	ID         string           `json:"id"`
-	Kind       ProviderKind     `json:"kind"`
+	Adapter    AdapterID        `json:"adapter"`
 	Endpoint   string           `json:"endpoint"`
 	Protocol   WireProtocol     `json:"protocol"`
 	Credential CredentialRef    `json:"credential"`
@@ -180,10 +173,11 @@ func validateProvider(provider Provider) error {
 	if strings.TrimSpace(provider.ID) == "" {
 		return errors.New("provider id is required")
 	}
-	switch provider.Kind {
-	case ProviderOpenAI, ProviderAnthropic, ProviderLocal, ProviderCustom:
-	default:
-		return fmt.Errorf("provider %q has unsupported kind %q", provider.ID, provider.Kind)
+	if !provider.Adapter.Supports(provider.Protocol) {
+		return fmt.Errorf(
+			"provider %q adapter %q does not support protocol %q",
+			provider.ID, provider.Adapter, provider.Protocol,
+		)
 	}
 	switch provider.Protocol {
 	case ProtocolOpenAIChat, ProtocolOpenAIResponses, ProtocolAnthropic:
@@ -227,11 +221,21 @@ func validateProvider(provider Provider) error {
 	return nil
 }
 
+func (a AdapterID) Supports(protocol WireProtocol) bool {
+	switch a {
+	case AdapterOpenAI, AdapterDeepSeek, AdapterOpenAICompatible:
+		return protocol == ProtocolOpenAIChat || protocol == ProtocolOpenAIResponses
+	case AdapterAnthropic:
+		return protocol == ProtocolAnthropic
+	default:
+		return false
+	}
+}
+
 func normalizeProvider(provider Provider) Provider {
 	provider = cloneProvider(provider)
 	for id, descriptor := range provider.Models {
-		// Do not infer Known from Currency: unknown prices must stay known=false
-		// without fabricating $0 display facts.
+		// Unknown pricing must remain explicit rather than becoming a fabricated $0.
 		if descriptor.Pricing.Provenance == "" {
 			descriptor.Pricing.Provenance = descriptor.Provenance
 		}

@@ -2,8 +2,9 @@
 
 简体中文 | [English](../en/provider-architecture-upgrade.md)
 
-> 状态：P0 `baseline_frozen`；P1 尚未开始。版本化证据见
-> [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)。
+> 状态：P1 `infrastructure_ready`。版本化证据见
+> [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
+> 与 [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json)。
 >
 > 范围：Model Route 元数据、Provider-neutral Request 与 Stream 契约、Wire
 > Adapter、HTTP 与 WebSocket Transport、DeepSeek 专属行为、Provider
@@ -1213,7 +1214,7 @@ Exit：
 
 ### P1：Adapter Identity 与 Router
 
-目标状态：`infrastructure_ready`。
+状态：`infrastructure_ready`。
 
 工作：
 
@@ -1232,6 +1233,15 @@ Exit：
 - 不存在 Provider/Model-name Inference；
 - Behavior Golden 不变；
 - Concrete Client 不再逃逸 Composition。
+
+结果：
+
+- 28 个 Bundled Provider 全部声明闭集 `AdapterID`；
+- DeepSeek Chat 与 Responses 通过 `deepseek` Adapter 显式路由，无名称推断；
+- Immutable Registry 在 Duplicate 或 Active Adapter 缺失时拒绝构造；
+- Engine、ToolSampler 与 Capability Probe 共享同一个 Router；
+- P0 Wire、Stream、Failure 与 Request Count Golden 保持不变；
+- Provider Ownership 生产代码相对 P0 净减 41 行。
 
 ### P2：抽取 Wire Adapter
 
@@ -1571,9 +1581,9 @@ Ownership。
 
 只有满足以下全部条件，升级才算完成：
 
-- [ ] 每个 Provider Route 都有显式 `AdapterID`；
-- [ ] `ProviderKind` 已删除，或只保留一个不重叠且有文档的用途；
-- [ ] Engine、ToolSampler 与 Probe 使用同一个 Router；
+- [x] 每个 Provider Route 都有显式 `AdapterID`；
+- [x] `ProviderKind` 已删除，或只保留一个不重叠且有文档的用途；
+- [x] Engine、ToolSampler 与 Probe 使用同一个 Router；
 - [ ] `httpclient` 不再拥有 Request Serialization 或 Provider Error Mapping；
 - [ ] Transport 每次只执行一个 Attempt；
 - [ ] DeepSeek Chat 与 Responses 有专用 Request/Stream 代码；

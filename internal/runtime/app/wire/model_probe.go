@@ -12,7 +12,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
+	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
@@ -78,7 +78,7 @@ func ProbeModelCapabilities(ctx context.Context, options ProbeOptions) ([]ProbeR
 	if !gate.AllowURL(route.Endpoint()) {
 		return nil, fmt.Errorf("probe endpoint host cannot be granted")
 	}
-	client := httpclient.New()
+	client := providerrouter.NewLegacyClient()
 	client.Egress = gate
 	client.HTTP = &http.Client{Timeout: 30 * time.Second}
 	client.MaxAttempts = 1
@@ -87,11 +87,19 @@ func ProbeModelCapabilities(ctx context.Context, options ProbeOptions) ([]ProbeR
 		// fixture server never sees the value.
 		client.Credentials = probeCredentials("codehelper-probe-key")
 	}
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	runtimeProvider, err := newProviderRouter(client, routes)
+	if err != nil {
+		return nil, err
+	}
 
 	repo := model.NewCapabilityRepository(options.Store.SQLite().DB())
 	results := make([]ProbeResult, 0, len(options.Capabilities)+1)
 	for _, capability := range options.Capabilities {
-		supported, detail, err := probeOne(ctx, client, route, capability)
+		supported, detail, err := probeOne(ctx, runtimeProvider, route, capability)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", capability, err)
 		}
@@ -124,7 +132,7 @@ func ProbeModelCapabilities(ctx context.Context, options ProbeOptions) ([]ProbeR
 
 func probeOne(
 	ctx context.Context,
-	client *httpclient.Client,
+	client provider.Provider,
 	route model.ReadyRoute,
 	capability model.Capability,
 ) (bool, string, error) {

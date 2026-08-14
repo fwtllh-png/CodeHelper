@@ -41,7 +41,7 @@
       "path": "internal/adapter/model",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 971,
+        "production_lines": 892,
         "options_fields": 0,
         "mutex_fields": 1
       }
@@ -52,7 +52,18 @@
       "path": "internal/adapter/provider",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 580,
+        "production_lines": 541,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "provider_router_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/router",
+      "limits": {
+        "internal_fanout": 3,
+        "production_lines": 107,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -63,7 +74,7 @@
       "path": "internal/adapter/provider/httpclient",
       "limits": {
         "internal_fanout": 8,
-        "production_lines": 1838,
+        "production_lines": 1808,
         "options_fields": 0,
         "mutex_fields": 3
       }
@@ -106,10 +117,13 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 64,
-        "production_lines": 7590,
+        "internal_fanout": 65,
+        "production_lines": 7575,
         "options_fields": 70,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "internal_fanout": "P1 adds the explicit provider Router ownership boundary to composition."
       }
     },
     {

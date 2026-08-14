@@ -1169,9 +1169,13 @@ func testRequestWithPromptCache(
 	t *testing.T, endpoint string, wireProtocol model.WireProtocol, promptCache bool,
 ) provider.ModelRequest {
 	t.Helper()
+	adapter := model.AdapterOpenAICompatible
+	if wireProtocol == model.ProtocolAnthropic {
+		adapter = model.AdapterAnthropic
+	}
 	catalog, err := model.NewCatalog(model.Provider{
 		ID:         "fixture",
-		Kind:       model.ProviderCustom,
+		Adapter:    adapter,
 		Endpoint:   endpoint,
 		Protocol:   wireProtocol,
 		Credential: model.CredentialRef{Kind: "env", Name: "FIXTURE_API_KEY"},

@@ -106,7 +106,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	}
 	catalog := state.tools.skillCatalog
 	seedOptions := agentengine.Options{
-		Provider:                 state.provider.client,
+		Provider:                 state.provider.provider,
 		Route:                    route,
 		Routes:                   state.provider.routes,
 		Tools:                    state.tools.registry,

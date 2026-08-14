@@ -2,8 +2,9 @@
 
 [Simplified Chinese](../zh-CN/provider-architecture-upgrade.md) | English
 
-> Status: P0 `baseline_frozen`; P1 has not started. The versioned evidence is
-> [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json).
+> Status: P1 `infrastructure_ready`. Versioned evidence:
+> [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
+> and [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json).
 >
 > Scope: model route metadata, provider-neutral request and stream contracts,
 > wire adapters, HTTP and WebSocket transport, DeepSeek-specific behavior,
@@ -1258,7 +1259,7 @@ Exit:
 
 ### P1: Adapter Identity and Router
 
-Status target: `infrastructure_ready`.
+Status: `infrastructure_ready`.
 
 Work:
 
@@ -1278,6 +1279,15 @@ Exit:
 - no provider/model-name inference exists;
 - behavior goldens are unchanged; and
 - old concrete client does not escape composition.
+
+Result:
+
+- all 28 bundled providers declare a closed `AdapterID`;
+- DeepSeek Chat and Responses select `deepseek` without name inference;
+- the immutable Registry rejects duplicate and missing active adapters;
+- Engine, ToolSampler, and capability probes share the Router;
+- P0 wire, stream, failure, and request-count goldens are unchanged; and
+- Provider ownership production size is net `-41` lines from P0.
 
 ### P2: Extract Wire Adapters
 
@@ -1623,9 +1633,9 @@ without replacing security or loop ownership.
 
 The upgrade is complete only when:
 
-- [ ] every Provider route has explicit `AdapterID`;
-- [ ] `ProviderKind` is removed or has one non-overlapping documented purpose;
-- [ ] Engine, ToolSampler, and probes use the same Router;
+- [x] every Provider route has explicit `AdapterID`;
+- [x] `ProviderKind` is removed or has one non-overlapping documented purpose;
+- [x] Engine, ToolSampler, and probes use the same Router;
 - [ ] `httpclient` owns no request serialization or provider error mapping;
 - [ ] transport makes one attempt;
 - [ ] DeepSeek Chat and Responses have dedicated request and stream code;

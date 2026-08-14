@@ -73,7 +73,7 @@ func TestStageOutputLimitReservesByExecutionStage(t *testing.T) {
 func reasoningRoute(t *testing.T) model.ReadyRoute {
 	t.Helper()
 	catalog, err := model.NewCatalog(model.Provider{
-		ID: "reasoning", Kind: model.ProviderCustom, Endpoint: "http://127.0.0.1:1",
+		ID: "reasoning", Adapter: model.AdapterOpenAICompatible, Endpoint: "http://127.0.0.1:1",
 		Protocol: model.ProtocolOpenAIResponses, Provenance: model.ProvenanceFixture,
 		Models: map[string]model.Model{"model": {
 			ID: "model", CanonicalID: "model", WireID: "model",

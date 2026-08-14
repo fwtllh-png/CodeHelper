@@ -2792,8 +2792,12 @@ func testRoute(t *testing.T) model.ReadyRoute {
 
 func testRouteProtocol(t *testing.T, endpoint string, protocol model.WireProtocol) model.ReadyRoute {
 	t.Helper()
+	adapter := model.AdapterOpenAICompatible
+	if protocol == model.ProtocolAnthropic {
+		adapter = model.AdapterAnthropic
+	}
 	catalog, err := model.NewCatalog(model.Provider{
-		ID: "test", Kind: model.ProviderCustom, Endpoint: endpoint,
+		ID: "test", Adapter: adapter, Endpoint: endpoint,
 		Protocol: protocol, Provenance: model.ProvenanceFixture,
 		Models: map[string]model.Model{"model": {
 			ID: "model", CanonicalID: "model", WireID: "model",

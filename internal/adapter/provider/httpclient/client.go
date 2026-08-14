@@ -42,8 +42,7 @@ type CredentialResolver interface {
 type Client struct {
 	HTTP        *http.Client
 	Credentials CredentialResolver
-	// Egress, when non-nil and Enforce, gates every RoundTrip. Nil keeps the
-	// historical open client so unit tests that never wired a broker still pass.
+	// Egress gates RoundTrip when enforced; nil preserves open test clients.
 	Egress            *egress.Gate
 	MaxAttempts       int
 	BaseDelay         time.Duration
@@ -284,9 +283,7 @@ func encodeRequest(request provider.ModelRequest) ([]byte, string, error) {
 		if request.NativeSearch {
 			appendTool(body, map[string]any{"type": "web_search_preview"})
 		}
-		// Same gate as Responses: only advertise when the catalog says the model
-		// supports prompt caching (StickyPromptCacheKey already drops sticky
-		// defaults without the capability).
+		// Only advertise cache keys supported by catalog metadata.
 		if request.PromptCacheKey != "" && request.Route.Model().Capabilities.PromptCache {
 			body["prompt_cache_key"] = request.PromptCacheKey
 		}
@@ -333,10 +330,7 @@ func encodeRequest(request provider.ModelRequest) ([]byte, string, error) {
 			// OpenAI uses web_search_preview; DeepSeek Responses accepts web_search.
 			appendTool(body, map[string]any{"type": "web_search"})
 		}
-		// Only advertise a cache key when the catalog (or CLI) says the model
-		// supports it. Custom Responses endpoints often leave prompt_cache
-		// false and ignore the field; sending it is fine for them, but we still
-		// gate so a sticky key never contradicts Validate.
+		// Keep cache keys consistent with request validation.
 		if request.PromptCacheKey != "" && request.Route.Model().Capabilities.PromptCache {
 			body["prompt_cache_key"] = request.PromptCacheKey
 		}
@@ -419,11 +413,7 @@ func openAIMessages(messages []provider.Message) []map[string]any {
 				text += block.ToolResult.Content
 			}
 		}
-		// Text-only messages keep the plain string form. The array form is
-		// equivalent to the provider but not byte-identical, and every request
-		// body is a prompt cache key: switching all traffic to arrays to
-		// accommodate the rare message with an image would invalidate every
-		// cached prefix.
+		// Preserve the cache-stable string form for text-only messages.
 		if len(images) == 0 {
 			item["content"] = text
 		} else {
@@ -447,10 +437,7 @@ func openAIMessages(messages []provider.Message) []map[string]any {
 func openAIResponsesInput(messages []provider.Message) ([]map[string]any, error) {
 	result := make([]map[string]any, 0, len(messages))
 	for _, message := range messages {
-		// An image has to sit in the same input item as the text that asks about
-		// it, so a message carrying one is emitted as a single item with typed
-		// parts. Messages without images keep emitting one item per block, which
-		// is the shape every existing request already has.
+		// Images and their prompt text share one typed input item.
 		if grouped, ok := openAIResponsesImageItem(message); ok {
 			result = append(result, grouped)
 			continue
@@ -469,10 +456,7 @@ func openAIResponsesInput(messages []provider.Message) ([]map[string]any, error)
 				}
 			case provider.ContentToolCall:
 				call := block.ToolCall
-				// DeepSeek thinking mode rejects any function_call that is not
-				// preceded by a reasoning item (or another function_call that
-				// already shares one). Empty/encrypted-only reasoning is dropped
-				// above, so tool-only assistant steps need a placeholder here.
+				// DeepSeek requires reasoning before a replayed function call.
 				result = ensureReasoningBeforeFunctionCall(result)
 				result = append(result, map[string]any{
 					"type": "function_call", "call_id": call.ID, "name": call.Name, "arguments": call.Arguments,
@@ -521,9 +505,7 @@ func validateResponsesToolPairs(input []map[string]any) error {
 	return nil
 }
 
-// Placeholder used when a tool call must be replayed but no plaintext reasoning
-// was captured for that step. DeepSeek accepts this; an empty reasoning item or
-// a bare function_call after function_call_output both return HTTP 400.
+// Placeholder supplies required DeepSeek reasoning before replayed tool calls.
 const responsesReasoningPlaceholder = "(continued)"
 
 func ensureReasoningBeforeFunctionCall(result []map[string]any) []map[string]any {
@@ -541,11 +523,7 @@ func ensureReasoningBeforeFunctionCall(result []map[string]any) []map[string]any
 	})
 }
 
-// openAIResponsesReasoningItem rebuilds a Responses `reasoning` input item.
-// DeepSeek rejects empty reasoning items with HTTP 400 ("reasoning_text must be
-// passed back"); omitting the item entirely is accepted. Always emit plaintext
-// content and never send an empty shell. When tool calls remain after a drop,
-// ensureReasoningBeforeFunctionCall injects a non-empty placeholder.
+// openAIResponsesReasoningItem omits empty items rejected by DeepSeek.
 func openAIResponsesReasoningItem(block provider.ContentBlock) (map[string]any, error) {
 	text := strings.TrimSpace(block.Text)
 	var item map[string]any
@@ -613,9 +591,7 @@ func stringValue(value any) string {
 	return result
 }
 
-// openAIResponsesImageItem groups a message's text and images into one input
-// item. It reports false for a message without images, which every message in
-// the ordinary path is.
+// openAIResponsesImageItem groups message text and images into one input item.
 func openAIResponsesImageItem(message provider.Message) (map[string]any, bool) {
 	var content []map[string]any
 	images := false
@@ -636,11 +612,7 @@ func openAIResponsesImageItem(message provider.Message) (map[string]any, bool) {
 	return map[string]any{"role": message.Role, "content": content}, true
 }
 
-// anthropicMessages splits RoleSystem messages into Anthropic system text
-// blocks. Leading system messages (before the first non-system role) are the
-// stable prefix; any system message after conversation content is volatile
-// turn context. When promptCache is true, only the last stable block gets
-// cache_control so the breakpoint stays off turn-local tails.
+// anthropicMessages marks only the stable system prefix for prompt caching.
 func anthropicMessages(
 	messages []provider.Message, promptCache bool,
 ) ([]map[string]any, []map[string]any, error) {
@@ -743,8 +715,7 @@ func applyOpenAIChatTools(body map[string]any, definitions []provider.ToolDefini
 	}
 }
 
-// applyOpenAIResponsesTools uses the flat function tool shape required by Responses API
-// (name/description/parameters at top level — not nested under "function").
+// applyOpenAIResponsesTools uses the flat Responses function-tool shape.
 func applyOpenAIResponsesTools(body map[string]any, definitions []provider.ToolDefinition) {
 	for _, definition := range definitions {
 		appendTool(body, map[string]any{
@@ -868,8 +839,7 @@ func (s *managedStream) Recv() (provider.StreamEvent, error) {
 			context.DeadlineExceeded,
 		)
 		s.failure(err)
-		// Cancel the request first so the blocked decoder returns, then close
-		// the parser. Closing parser state concurrently with Recv is unsafe.
+		// Cancel before closing parser state that Recv may still use.
 		s.cancel()
 		<-result
 		_ = s.Close()

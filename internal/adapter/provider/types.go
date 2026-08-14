@@ -30,40 +30,28 @@ const (
 	ContentSearch     ContentType = "search"
 	ContentCitation   ContentType = "citation"
 	ContentProvider   ContentType = "provider"
-	// ContentImage carries an image a message shows the model. It exists so an
-	// image travels the same path as everything else a request contains — retry,
-	// idempotency key, usage, cost and trace — rather than through a side
-	// channel that none of those reach.
+	// ContentImage keeps images on the governed model-request path.
 	ContentImage ContentType = "image"
 )
 
-// Attachment is binary content a message carries. Data is the bytes themselves
-// rather than a path or a URL: the encoders need the bytes, and a provider that
-// fetched a local path would need the file to be reachable from the provider,
-// which for a workspace file it is not.
+// Attachment carries inline binary content and its media type.
 type Attachment struct {
 	MediaType string `json:"media_type"`
 	Data      []byte `json:"data"`
-	// Name is what the content was called locally. It is for the model's
-	// benefit — "the screenshot you asked about" — and no encoder requires it.
-	Name string `json:"name,omitempty"`
+	Name      string `json:"name,omitempty"`
 }
 
-// DataURL is the base64 data URL form every supported protocol accepts for
-// inline images.
+// DataURL returns the encoded inline-image form.
 func (a Attachment) DataURL() string {
 	return "data:" + a.MediaType + ";base64," + base64.StdEncoding.EncodeToString(a.Data)
 }
 
-// Base64 is the raw payload, which is what Anthropic's image source wants
-// beside a separate media type.
+// Base64 returns the raw base64 payload.
 func (a Attachment) Base64() string {
 	return base64.StdEncoding.EncodeToString(a.Data)
 }
 
-// ContentBlock is the lossless provider-neutral history unit. ProviderData is
-// used for opaque replay data (for example OpenAI encrypted reasoning items)
-// which must be sent back unchanged.
+// ContentBlock is the lossless provider-neutral history unit.
 type ContentBlock struct {
 	Type         ContentType     `json:"type"`
 	Text         string          `json:"text,omitempty"`
@@ -108,8 +96,7 @@ type ToolCall struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
-	// Catalog identity is internal execution authority. Providers never see it;
-	// the engine binds it after parsing a call from the sampled tools[] snapshot.
+	// Catalog identity is internal execution authority and never leaves the runtime.
 	CatalogID         string `json:"-"`
 	CatalogGeneration uint64 `json:"-"`
 	CatalogRevision   uint64 `json:"-"`
@@ -124,10 +111,7 @@ type ToolDefinition struct {
 
 type ModelRequest struct {
 	Route model.ReadyRoute `json:"-"`
-	// Purpose is what this call is for. It is not sent to the provider: it is
-	// how the call is attributed locally, so a token spent by the vision tool is
-	// distinguishable from a token spent by the turn's main sampling. An empty
-	// purpose reads as the main one.
+	// Purpose attributes local usage and is not sent to providers.
 	Purpose         model.Purpose    `json:"purpose,omitempty"`
 	Messages        []Message        `json:"messages"`
 	MaxOutputTokens uint64           `json:"max_output_tokens"`
@@ -136,19 +120,14 @@ type ModelRequest struct {
 	NativeSearch    bool             `json:"native_search,omitempty"`
 	Tools           []ToolDefinition `json:"tools,omitempty"`
 	Idempotent      bool             `json:"idempotent,omitempty"`
-	// PromptCacheKey is a sticky session/thread key for provider prompt caching (W5.4).
-	// Prefer StickyPromptCacheKey when attaching the session default: routes
-	// without prompt_cache must not carry a key, or Validate refuses the turn.
+	// PromptCacheKey is a sticky session/thread provider cache hint.
 	PromptCacheKey string   `json:"prompt_cache_key,omitempty"`
 	Store          *bool    `json:"store,omitempty"`
 	ParallelTools  *bool    `json:"parallel_tools,omitempty"`
 	Include        []string `json:"include,omitempty"`
 }
 
-// StickyPromptCacheKey returns key when the route advertises prompt_cache, else
-// "". Session engines always want a sticky hint; models without the capability
-// (custom Chat/Responses endpoints, DeepSeek, etc.) must drop it so Validate
-// does not refuse the turn and encode does not emit a contradictory field.
+// StickyPromptCacheKey returns key only for routes that advertise prompt caching.
 func StickyPromptCacheKey(key string, route model.ReadyRoute) string {
 	if key == "" || !route.Model().Capabilities.PromptCache {
 		return ""
@@ -186,10 +165,6 @@ func (r ModelRequest) Validate() error {
 		return fmt.Errorf("max_output_tokens exceeds model limit %d", descriptor.Limits.MaxOutputTokens)
 	}
 	caps := descriptor.Capabilities
-	// reasoning_effort is the consumer that capabilities.reasoning was missing
-	// for years: without this check the bit is a claim nobody verifies, and a
-	// non-reasoning model gets a provider 400 about a field the operator never
-	// saw in the catalog.
 	if r.ReasoningEffort != "" && !caps.Reasoning {
 		return errors.New("model does not support reasoning")
 	}
@@ -205,9 +180,7 @@ func (r ModelRequest) Validate() error {
 		}
 	}
 	if hasImageBlock(r.Messages) {
-		// Either bit is enough: a vision-purpose model is expected to accept an
-		// image, and a main-turn model marked image_input can too. Requiring
-		// both would refuse models that only advertise one of the two names.
+		// Either explicit image input or the broader vision capability is enough.
 		if !caps.ImageInput && !caps.Vision {
 			return fmt.Errorf("model %q does not support image input", descriptor.ID)
 		}
@@ -268,9 +241,6 @@ func (b ContentBlock) Validate() error {
 		if b.Attachment == nil || len(b.Attachment.Data) == 0 {
 			return errors.New("image bytes are required")
 		}
-		// The media type is checked rather than guessed: every protocol sends it
-		// verbatim, and a wrong one is rejected by the provider with an error
-		// that says nothing about which attachment was wrong.
 		if !strings.HasPrefix(b.Attachment.MediaType, "image/") {
 			return fmt.Errorf("image media type %q is not an image", b.Attachment.MediaType)
 		}
@@ -315,16 +285,10 @@ func (r StopReason) Incomplete() bool {
 	}
 }
 
-// Usage counts one provider call. Two of the four fields are breakdowns of the
-// other two rather than additions to them:
+// Usage counts one provider call. Cached and reasoning are subsets:
 //
 //	CachedTokens    ⊆ InputTokens
 //	ReasoningTokens ⊆ OutputTokens
-//
-// Every adapter must preserve that. Providers do not agree on it themselves —
-// OpenAI reports both as detail fields inside the totals, while Anthropic
-// reports cache reads and writes beside input_tokens — so the adapter, not the
-// caller, is where the two shapes are reconciled.
 type Usage struct {
 	InputTokens     uint64            `json:"input_tokens"`
 	OutputTokens    uint64            `json:"output_tokens"`
@@ -333,9 +297,7 @@ type Usage struct {
 	Transport       TransportMetadata `json:"-"`
 }
 
-// Total is every token the call consumed. Cached and reasoning tokens are
-// deliberately absent: they are already counted inside the two totals, so
-// adding them would bill the same tokens twice.
+// Total excludes subset fields to avoid double counting.
 func (u Usage) Total() uint64 {
 	return u.InputTokens + u.OutputTokens
 }
@@ -388,8 +350,7 @@ type StreamEvent struct {
 	Response   *ResponseState    `json:"response,omitempty"`
 }
 
-// ResponseState is adapter-private continuation evidence. Engine ignores this
-// event; a session-capable provider commits it only after a valid stop event.
+// ResponseState is adapter-private continuation evidence.
 type ResponseState struct {
 	ID     string            `json:"id"`
 	Output []json.RawMessage `json:"output,omitempty"`

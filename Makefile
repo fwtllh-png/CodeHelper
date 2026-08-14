@@ -19,7 +19,8 @@ LDFLAGS := -s -w \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-eval multi-agent-performance \
 	token-bench token-bench-live token-bench-compare \
-	provider-architecture-p0 provider-p0-goldens provider-p0-goldens-update \
+	provider-architecture-p0 provider-architecture-p1 \
+	provider-p0-goldens provider-p0-goldens-update \
 	provider-deepseek-live-control \
 	architecture-ratchet architecture-size-budget architecture-freeze \
 	book-navigation command-docs command-docs-check \
@@ -129,6 +130,17 @@ provider-p0-goldens-update:
 
 provider-architecture-p0: provider-p0-goldens
 	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 ./scripts/architecturesize
+	$(GO) run ./scripts/architecturesize -root . \
+		-base-ref '$(PROVIDER_ARCHITECTURE_BASE_REF)' \
+		-paths '$(PROVIDER_ARCHITECTURE_SIZE_PATHS)' \
+		-max-net 0 \
+		-report '$(PROVIDER_ARCHITECTURE_SIZE_REPORT)'
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p1: provider-p0-goldens
+	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 ./internal/runtime/agent/engine ./internal/runtime/app/wire
 	$(GO) test -count=1 ./scripts/architecturesize
 	$(GO) run ./scripts/architecturesize -root . \
 		-base-ref '$(PROVIDER_ARCHITECTURE_BASE_REF)' \

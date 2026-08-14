@@ -1,6 +1,6 @@
 {
   "provider_id": "openai",
-  "provider_kind": "openai",
+  "adapter": "openai",
   "endpoint": "https://api.openai.com/v1",
   "protocol": "openai_chat",
   "credential": {

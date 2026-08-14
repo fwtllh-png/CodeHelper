@@ -5,9 +5,7 @@ import (
 	"strings"
 )
 
-// Capability is a named ability a model may or may not have. The set is closed
-// on purpose: a filter has to match on something stable, and an open string
-// would let a typo look like "this model lacks a feature nobody defined".
+// Capability is a closed model ability used for route validation.
 type Capability string
 
 const (
@@ -16,24 +14,15 @@ const (
 	CapToolCalls            Capability = "tool_calls"
 	CapNativeSearch         Capability = "native_search"
 	CapIncrementalResponses Capability = "incremental_responses"
-	// CapVision is what the vision purpose needs: the model can describe an
-	// image. It is the bit NewRouteSet checks when a vision slot is configured.
+	// CapVision is required by the vision purpose.
 	CapVision Capability = "vision"
-	// CapImageInput is what a request carrying an image content block needs.
-	// A model can have CapVision without CapImageInput only in theory; in the
-	// catalog they travel together, and the request-time check is the one that
-	// catches a ContentImage on a text-only route.
+	// CapImageInput permits image content blocks.
 	CapImageInput Capability = "image_input"
-	// CapPromptCache is what a sticky prompt_cache_key (Responses) needs.
-	// Catalogues that support provider-side caching set it; a request that asks
-	// for a cache key on a model without it is refused rather than silently
-	// dropped, because a dropped key looks like a cache miss forever.
+	// CapPromptCache permits a sticky provider cache key.
 	CapPromptCache Capability = "prompt_cache"
 )
 
-// Supports reports whether the bit is set. Unknown names are not supported:
-// inventing a capability and asking for it must fail closed, not look like a
-// model that happens not to have it.
+// Supports reports whether a known bit is set and fails closed for unknowns.
 func (c Capabilities) Supports(capability Capability) bool {
 	switch capability {
 	case CapStreaming:
@@ -57,8 +46,7 @@ func (c Capabilities) Supports(capability Capability) bool {
 	}
 }
 
-// MissingCapabilities lists the required bits this model does not have, in the
-// order they were asked for. An empty return means the model covers the set.
+// MissingCapabilities preserves required-bit order.
 func (c Capabilities) MissingCapabilities(required []Capability) []Capability {
 	var missing []Capability
 	for _, capability := range required {
@@ -69,9 +57,7 @@ func (c Capabilities) MissingCapabilities(required []Capability) []Capability {
 	return missing
 }
 
-// RequireCapabilities fails when any required bit is off. The error names the
-// model and the missing bits so a misconfigured [route.vision] reads as a
-// capability problem rather than a provider 400 about an image field.
+// RequireCapabilities reports the model and every missing bit.
 func RequireCapabilities(modelID string, have Capabilities, required []Capability) error {
 	missing := have.MissingCapabilities(required)
 	if len(missing) == 0 {
@@ -87,12 +73,7 @@ func RequireCapabilities(modelID string, have Capabilities, required []Capabilit
 	)
 }
 
-// PurposeRequiredCapabilities is what a purpose's route must cover.
-//
-// Only purposes whose consumer would actually exercise the bit are listed:
-// plan and subquery are ordinary chat, so they inherit whatever act already
-// needed; vision is the one that would otherwise send an image to a text-only
-// model and get a 400 that names a field the operator never wrote.
+// PurposeRequiredCapabilities returns capabilities exercised by a purpose.
 func PurposeRequiredCapabilities(purpose Purpose) []Capability {
 	switch purpose {
 	case PurposeVision:

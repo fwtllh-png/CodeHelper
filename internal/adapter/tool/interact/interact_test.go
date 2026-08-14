@@ -489,7 +489,7 @@ func (noopProvider) Stream(context.Context, provider.ModelRequest) (provider.Str
 func testRoute(t *testing.T) model.ReadyRoute {
 	t.Helper()
 	catalog, err := model.NewCatalog(model.Provider{
-		ID: "test", Kind: model.ProviderCustom, Endpoint: "http://127.0.0.1:1",
+		ID: "test", Adapter: model.AdapterOpenAICompatible, Endpoint: "http://127.0.0.1:1",
 		Protocol: model.ProtocolOpenAIChat, Provenance: model.ProvenanceFixture,
 		Models: map[string]model.Model{"model": {
 			ID: "model", CanonicalID: "model", WireID: "model",

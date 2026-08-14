@@ -49,6 +49,31 @@ func TestResolveModelMetadataRejectsUnknownFacts(t *testing.T) {
 	}
 }
 
+func TestEndpointOverrideUsesCatalogAdapterWithoutNameInference(t *testing.T) {
+	deepSeek, err := resolveExecRoute(execRouteOptions{
+		ProviderID: "deepseek", ModelID: "deepseek-chat",
+		BaseURL: "http://127.0.0.1:1", Protocol: model.ProtocolOpenAIChat,
+		Model: fixtureModel("deepseek-chat"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deepSeek.Adapter() != model.AdapterDeepSeek {
+		t.Fatalf("known provider adapter = %q, want deepseek", deepSeek.Adapter())
+	}
+	lookalike, err := resolveExecRoute(execRouteOptions{
+		ProviderID: "deepseek-shadow", ModelID: "shadow",
+		BaseURL: "http://127.0.0.1:1", Protocol: model.ProtocolOpenAIChat,
+		Model: fixtureModel("shadow"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lookalike.Adapter() != model.AdapterOpenAICompatible {
+		t.Fatalf("unknown provider adapter = %q, want openai_compatible", lookalike.Adapter())
+	}
+}
+
 func TestResolveModelMetadataRejectsPartialOverrides(t *testing.T) {
 	if _, err := resolveModelMetadata("custom", ModelMetadataOptions{
 		ContextTokens: 4096, ContextSet: true,
