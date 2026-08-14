@@ -2,15 +2,19 @@
 
 [简体中文](../zh-CN/token-efficiency-architecture-upgrade.md) | English
 
-> Status: `in_progress`. T0 is accepted. T1 is implemented with
+> Status: `completed_validation_mixed`. T0 is accepted. T1 is implemented with
 > `implemented_validation_mixed`; T2 is also implemented with
 > `implemented_validation_mixed`; T3 is accepted; T4 is implemented with
-> `implemented_validation_mixed`; see
-> [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
->, [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json),
+> `implemented_validation_mixed`; T5 is implemented with
+> `implemented_validation_mixed`; T6 completed final validation with two
+> explicit failed gates. See
+> [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json),
+> [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json),
 > [`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json),
 > [`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json),
-> and [`token-efficiency-t4-evidence.json`](../token-efficiency-t4-evidence.json).
+> [`token-efficiency-t4-evidence.json`](../token-efficiency-t4-evidence.json),
+> [`token-efficiency-t5-evidence.json`](../token-efficiency-t5-evidence.json),
+> and [`token-efficiency-t6-evidence.json`](../token-efficiency-t6-evidence.json).
 >
 > Scope: prompt context, history, compaction, tool catalogs, tool results,
 > provider sessions, reasoning budgets, completion protocol, usage accounting,
@@ -803,6 +807,43 @@ explicitly revise the size invariant before default enablement.
   suites;
 - update architecture, configuration, benchmark book, and release evidence;
 - remove experiment toggles and old implementations.
+
+T6 final evidence (`completed_validation_mixed`):
+
+Seventeen of nineteen final gates passed. Machine-readable evidence and the
+stage waterfall are in
+[`token-efficiency-t6-evidence.json`](../token-efficiency-t6-evidence.json) and
+[`token-efficiency-t6-waterfall.json`](../token-efficiency-t6-waterfall.json).
+
+| Final gate | T0 | T6 | Result |
+| --- | ---: | ---: | --- |
+| Canonical cumulative input P50 | 394,163 | 157,507 (-60.04%) | passed |
+| Uncached input P50 | 64,520 | 32,634 (-49.42%) | failed; target -60% |
+| Post-third-sample cache share | - | 93.86% | passed |
+| Canonical sample count P50 | 12 | 9 (-25.00%) | passed |
+| Reasoning P50 | 7,838 | 4,709 (-39.92%) | passed |
+| 100 KiB visible result | 112,000 B | <=17,408 B (-84.46%) | passed |
+| Incremental request bytes | 15,182 B | 218 B (-98.56%) | passed |
+| Estimator P95 error | - | 5.87% | passed |
+| Context-window rejection | - | 0 | passed |
+
+Hermetic acceptance completed 5/5 and Live acceptance completed 10/10 with
+the same prompt, DeepSeek model, and configuration family as T0. The complete
+Capability Suite was recalibrated to the current deferred-tool, completion,
+verification, and retained-draft contracts and now passes 25/25. Provider,
+tool, Runtime, persistence, orchestration, security, CLI, and ACP lanes pass
+when package lanes run serially as required by the repository.
+
+T1-T4 policies remain the default. Incremental Responses is enabled by default
+only for a model route that advertises the capability; unsupported providers,
+including the current DeepSeek route, retain complete HTTP/SSE requests. No
+experiment toggle remains.
+
+The final status is mixed for two explicit reasons: uncached input missed its
+60% gate by 10.58 percentage points, and T5 retained a 465-line all-`internal`
+stage increase. T6 itself adds zero production lines and does not relax the
+43/43 Architecture Ratchet. The validated defaults remain enabled, but this
+document does not claim full architectural acceptance.
 
 ## 10. Final Acceptance Thresholds
 

@@ -15,8 +15,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const progressEpochSamples = 8
-
 type progressObservation struct {
 	stage             turnkernel.ProgressStage
 	noProgressSamples uint32

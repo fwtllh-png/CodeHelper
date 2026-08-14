@@ -121,3 +121,40 @@ func TestWorkspaceTurnStopsAfterFortyEightNoProgressSamples(t *testing.T) {
 	assertProgressFeedback(16, "converge")
 	assertProgressFeedback(32, "finish_only")
 }
+
+func TestReadOnlyTurnStopsAfterSixteenTotalSamples(t *testing.T) {
+	streams := make([]provider.Stream, 0, 13)
+	for index := range 12 {
+		streams = append(streams, toolCallStream(
+			fmt.Sprintf("call-%d", index),
+			"echo",
+			fmt.Sprintf(`{"text":"read-%d"}`, index),
+		))
+	}
+	streams = append(streams, textStream("bounded final answer"))
+	runtime := &scriptedProvider{streams: streams}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
+	engine.options.MaxSteps = 64
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"bounded-read-only",
+		"analyze the repository",
+		protocol.TurnIntentAnswer,
+		nil,
+		func(Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.Text != "bounded final answer" || len(runtime.requests) != 13 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	if len(runtime.requests[12].Tools) != 0 {
+		t.Fatalf("finish-only request exposed tools: %+v", runtime.requests[12].Tools)
+	}
+}

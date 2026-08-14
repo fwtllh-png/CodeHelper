@@ -3,11 +3,14 @@
   "path": "/chat/completions",
   "model": "fixture-model",
   "expected_prompt": "bump the value in first.py and rename the marker in second.py",
-  "streams": ["read_first.sse", "read_second.sse", "apply.sse", "complete.sse"],
+  "streams": ["read_first.sse", "read_second.sse", "apply.sse", "reread.sse", "complete.sse", "complete.sse"],
   "expected_request_fragments": [
     ["\"tools\"", "\"name\":\"file_apply\""],
     ["\"role\":\"tool\"", "\"tool_call_id\":\"call_read_first\""],
     ["\"role\":\"tool\"", "\"tool_call_id\":\"call_read_second\""],
-    ["\"tool_call_id\":\"call_apply\"", "want exactly once"]
+    ["\"tool_call_id\":\"call_apply\"", "want exactly once"],
+    ["reread_exact_range"],
+    ["\"tool_call_id\":\"call_reread\""],
+    []
   ]
 }

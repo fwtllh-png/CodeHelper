@@ -6,6 +6,7 @@
   "streams": [
     "tool-call.sse",
     "declare-first.sse",
+    "tool-search-quality.sse",
     "quality.sse",
     "declare-final.sse",
     "complete.sse"
@@ -14,6 +15,7 @@
     ["\"tools\"", "\"name\":\"file_apply\""],
     ["\"tool_calls\"", "\"role\":\"tool\"", "\"tool_call_id\":\"call_write\""],
     ["\"tool_call_id\":\"call_complete_first\""],
+    ["\"tool_call_id\":\"call_tool_search\"", "\"name\":\"quality_verify\""],
     ["\"tool_call_id\":\"call_quality\""],
     ["\"tool_call_id\":\"call_complete_final\""]
   ]

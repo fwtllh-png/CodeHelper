@@ -3,11 +3,12 @@
   "path": "/chat/completions",
   "model": "fixture-model",
   "expected_prompt": "move legacy.py to helpers.py and update the caller",
-  "streams": ["read_api.sse", "read_legacy.sse", "apply.sse", "complete.sse"],
+  "streams": ["read_api.sse", "read_legacy.sse", "apply.sse", "declare.sse", "complete.sse"],
   "expected_request_fragments": [
     ["\"tools\"", "\"name\":\"file_apply\"", "\"changes\""],
     ["\"role\":\"tool\"", "\"tool_call_id\":\"call_read_api\""],
     ["\"role\":\"tool\"", "\"tool_call_id\":\"call_read_legacy\""],
-    ["\"tool_call_id\":\"call_apply\"", "created helpers.py", "deleted legacy.py"]
+    ["\"tool_call_id\":\"call_apply\"", "created helpers.py", "deleted legacy.py"],
+    ["\"tool_call_id\":\"call_complete\"", "completion_declaration_accepted"]
   ]
 }

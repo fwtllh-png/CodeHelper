@@ -6,6 +6,13 @@
   "tools": true,
   "max_steps": 6,
   "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "fail",
+    "command": "test -f helpers.py && test -f NOTES.md && test ! -e legacy.py && grep -q 'helpers.legacy' api.py",
+    "max_repair_steps": 0
+  },
   "expect": {
     "terminal": "completed",
     "files": {
@@ -16,6 +23,8 @@
     "absent": ["legacy.py"],
     "tools_used": ["file_read", "file_apply"],
     "receipt_changes": ["api.py", "helpers.py", "legacy.py", "NOTES.md"],
+    "verify_status": "passed",
+    "verify_action": "passed",
     "output_contains": ["extracted"]
   }
 }

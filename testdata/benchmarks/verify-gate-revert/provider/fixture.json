@@ -3,8 +3,11 @@
   "path": "/chat/completions",
   "model": "fixture-model",
   "expected_prompt": "make config.txt valid",
-  "streams": ["read.sse", "edit.sse", "complete.sse"],
+  "streams": ["read.sse", "edit.sse", "declare.sse", "complete.sse"],
   "expected_request_fragments": [
-    ["\"tools\"", "\"name\":\"file_edit\""]
+    ["\"tools\"", "\"name\":\"file_edit\""],
+    ["\"tool_call_id\":\"call_read\""],
+    ["\"tool_call_id\":\"call_edit\""],
+    ["\"tool_call_id\":\"call_complete\"", "completion_declaration_accepted"]
   ]
 }

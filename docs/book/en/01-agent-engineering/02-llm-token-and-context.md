@@ -194,7 +194,26 @@ budgeting decides what may enter the request; neither authorizes Tool effects.
 5. Reserve output and Tool-result capacity before sending.
 6. Treat Usage, truncation, and compaction as observable facts.
 
-## 10. Review Questions
+## 10. CodeHelper Token-Efficiency Case Study
+
+CodeHelper's T0-T6 canonical DeepSeek run provides a useful measurement
+lesson. With the same prompt and model family, cumulative input P50 fell from
+394,163 to 157,507 tokens, reasoning P50 fell from 7,838 to 4,709, and sample
+count fell from 12 to 9. Post-third-sample cache share reached 93.86%.
+
+Those gains do not imply that every gate passed. Uncached input fell from
+64,520 to 32,634 tokens, a 49.42% reduction against a 60% target. A valid
+report must therefore keep cumulative input, uncached input, cache share,
+reasoning, and sample count separate. Transport-byte savings from an
+incremental protocol are another independent metric and must not be reported
+as token savings.
+
+The raw waterfall and final evidence are
+[`token-efficiency-t6-waterfall.json`](../../../token-efficiency-t6-waterfall.json)
+and
+[`token-efficiency-t6-evidence.json`](../../../token-efficiency-t6-evidence.json).
+
+## 11. Review Questions
 
 1. Why is a context window not model memory?
 2. Why can `temperature=0` still produce different system outcomes?

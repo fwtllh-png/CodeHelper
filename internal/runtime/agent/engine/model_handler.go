@@ -40,6 +40,7 @@ func (e *Engine) modelStep(
 	history *[]provider.Message,
 	turnUsage provider.Usage,
 	reason string,
+	finishMode bool,
 	continued *bool,
 	pendingInputInjected *bool,
 	send func(State, Event) error,
@@ -79,8 +80,7 @@ func (e *Engine) modelStep(
 	var lastEstimate uint64
 	var continuationMessages []provider.Message
 	var continuedBlocks []provider.ContentBlock
-	continuations := 0
-	finishAttempted, finishMode := false, false
+	finishAttempted, continuations := finishMode, 0
 	baseReasoningEffort := e.reasoningEffort(scope, reason)
 	for attempt := 0; ; attempt++ {
 		var turnContext []provider.Message
@@ -139,10 +139,11 @@ func (e *Engine) modelStep(
 		finishOnly := finishMode || budgetFinishOnly ||
 			window.hardLimit > 0 && window.active >= window.hardLimit*85/100
 		if finishOnly && !finishMode {
+			research := scope.spec.Request.Intent == protocol.TurnIntentAnswer || scope.spec.Request.Intent == protocol.TurnIntentPlan
 			requestTools = slices.DeleteFunc(
 				append([]provider.ToolDefinition(nil), requestTools...),
 				func(tool provider.ToolDefinition) bool {
-					return tool.Name != "turn_complete" && !strings.HasPrefix(tool.Name, "quality_")
+					return research || tool.Name != "turn_complete" && !strings.HasPrefix(tool.Name, "quality_")
 				})
 			reasoningEffort, nativeSearch = "low", false
 			sampleInput.Definitions = requestTools
@@ -293,6 +294,11 @@ func (e *Engine) modelStep(
 			continue
 		}
 		if err == nil {
+			completeBlocks := appendContinuedBlocks(continuedBlocks, blocks)
+			if continued != nil {
+				text := strings.TrimSpace(blocksText(completeBlocks))
+				*continued = strings.HasSuffix(text, ":") || strings.HasSuffix(text, "：")
+			}
 			if finishOnly && len(calls) != 0 {
 				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
 					protocol.CodeConflict,
@@ -318,8 +324,7 @@ func (e *Engine) modelStep(
 				calls[index].CatalogRevision = binding.Revision
 				calls[index].CatalogAuthority = binding.Authority
 			}
-			return appendContinuedBlocks(continuedBlocks, blocks),
-				calls, totalUsage, lastEstimate, nil
+			return completeBlocks, calls, totalUsage, lastEstimate, nil
 		}
 		if meaningful ||
 			attempt >= providerRetryLimit(e.options.MaxRetries, err) ||

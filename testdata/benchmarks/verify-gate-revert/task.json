@@ -1,7 +1,7 @@
 {
   "name": "verify-gate-revert",
   "category": "verify_gate",
-  "note": "Same failing gate as verify-gate-hard-fail but on_failure = revert: the turn completes so the model's explanation survives, while the workspace is restored. The difference between fail and revert is the terminal state, not the files.",
+  "note": "A verification-blocked workspace draft is retained for explicit recovery instead of being silently reverted. The failed terminal and blocked action preserve the failure while the draft remains inspectable.",
   "prompt": "make config.txt valid",
   "tools": true,
   "max_steps": 8,
@@ -14,12 +14,13 @@
     "max_repair_steps": 0
   },
   "expect": {
-    "terminal": "completed",
-    "unchanged": ["config.txt"],
+    "terminal": "failed",
+    "files": {
+      "config.txt": "mode = unsafe\n"
+    },
     "tools_used": ["file_read", "file_edit"],
     "verify_status": "failed",
-    "verify_action": "reverted",
-    "verify_repairs": 0,
-    "output_contains": ["config updated"]
+    "verify_action": "blocked",
+    "verify_repairs": 0
   }
 }

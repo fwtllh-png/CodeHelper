@@ -3,10 +3,11 @@
   "path": "/chat/completions",
   "model": "fixture-model",
   "expected_prompt": "rename old_name.py to new_name.py",
-  "streams": ["read.sse", "move.sse", "complete.sse"],
+  "streams": ["read.sse", "move.sse", "declare.sse", "complete.sse"],
   "expected_request_fragments": [
     ["\"tools\"", "\"name\":\"file_apply\""],
     ["\"role\":\"tool\"", "\"tool_call_id\":\"call_read\""],
-    ["\"tool_call_id\":\"call_move\"", "created new_name.py", "deleted old_name.py"]
+    ["\"tool_call_id\":\"call_move\"", "created new_name.py", "deleted old_name.py"],
+    ["\"tool_call_id\":\"call_complete\"", "completion_declaration_accepted"]
   ]
 }

@@ -4,9 +4,15 @@
   "prompt": "fix add in calc.py",
   "tools": true,
   "posture": "suggest",
-  "approval_decision": "approve",
   "max_steps": 6,
   "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "fail",
+    "command": "grep -q 'return a + b' calc.py",
+    "max_repair_steps": 0
+  },
   "expect": {
     "terminal": "completed",
     "files": {
@@ -14,8 +20,8 @@
     },
     "tools_used": ["file_read", "file_edit"],
     "receipt_changes": ["calc.py"],
-    "approvals": 1,
-    "approval_decision": "approve",
+    "verify_status": "passed",
+    "verify_action": "passed",
     "output_contains": ["fixed"]
   }
 }

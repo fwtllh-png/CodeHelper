@@ -6,6 +6,13 @@
   "tools": true,
   "max_steps": 6,
   "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "fail",
+    "command": "grep -q '^REQUEST_TIMEOUT = 30$' settings.py",
+    "max_repair_steps": 0
+  },
   "expect": {
     "terminal": "completed",
     "files": {
@@ -13,6 +20,8 @@
     },
     "tools_used": ["file_edit", "file_read"],
     "receipt_changes": ["settings.py"],
+    "verify_status": "passed",
+    "verify_action": "passed",
     "output_contains": ["renamed"]
   }
 }
