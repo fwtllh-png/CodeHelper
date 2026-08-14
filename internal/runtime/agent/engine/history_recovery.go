@@ -166,6 +166,20 @@ func (e *Engine) compactHistoryWithPolicy(
 	if len(*history) <= 1 {
 		return nil
 	}
+	finish := func(receipt *CompactionReceipt) *CompactionReceipt {
+		e.noteCompaction()
+		e.options.Metrics.Compaction(
+			receipt.OriginalBytes - receipt.RetainedBytes,
+		)
+		if e.options.Hooks != nil {
+			e.options.Hooks.PostCompact(context.Background(), hooks.CompactInput{
+				SessionID: e.options.SessionID,
+				Forced:    force,
+				Messages:  len(*history),
+			})
+		}
+		return receipt
+	}
 	input.History = *history
 	originalWindow, err := e.measureTokenWindow(input, outputReserve)
 	if err != nil || !force && originalWindow.active < originalWindow.compactLimit &&
@@ -174,9 +188,45 @@ func (e *Engine) compactHistoryWithPolicy(
 	}
 	size := historyBytes(*history)
 	originalMessages := len(*history)
+	pruned, prunedWindow, err := e.pruneToolResultSurfaces(
+		history,
+		input,
+		outputReserve,
+		force,
+	)
+	if err != nil {
+		return nil
+	}
+	pruningReceipt := func() *CompactionReceipt {
+		return &CompactionReceipt{
+			OriginalMessages:      originalMessages,
+			OriginalBytes:         size,
+			RetainedBytes:         historyBytes(*history),
+			OriginalTokens:        originalWindow.active,
+			RetainedTokens:        prunedWindow.active,
+			TruncationReason:      "tool_result_surface_pruning",
+			PrunedToolResults:     pruned.results,
+			PrunedBytes:           pruned.bytes,
+			PromptContextReceipts: e.contextReceipts(),
+		}
+	}
+	pruningEnough := pruned.results != 0 &&
+		(prunedWindow.active <= prunedWindow.compactLimit &&
+			prunedWindow.total <= prunedWindow.hardLimit ||
+			force && originalWindow.total <= originalWindow.hardLimit)
+	if pruningEnough {
+		return finish(pruningReceipt())
+	}
+	workingWindow := originalWindow
+	if pruned.results != 0 {
+		workingWindow = prunedWindow
+	}
 	target := originalWindow.compactLimit
 	cuts := compactionCuts(*history, allowCurrentTurn)
 	if len(cuts) == 0 {
+		if pruned.results != 0 {
+			return finish(pruningReceipt())
+		}
 		return nil
 	}
 	var selected *compactionCandidate
@@ -184,7 +234,7 @@ func (e *Engine) compactHistoryWithPolicy(
 		candidate := e.buildCompactionCandidate(*history, cut)
 		input.History = candidate.history
 		window, estimateErr := e.measureTokenWindow(input, outputReserve)
-		if estimateErr != nil || window.active >= originalWindow.active {
+		if estimateErr != nil || window.active >= workingWindow.active {
 			continue
 		}
 		candidate.retainedTokens = window.active
@@ -194,11 +244,13 @@ func (e *Engine) compactHistoryWithPolicy(
 		}
 	}
 	if selected == nil {
+		if pruned.results != 0 {
+			return finish(pruningReceipt())
+		}
 		return nil
 	}
 	*history = selected.history
 	workingSet, criticalPaths := e.compactionPaths()
-	e.noteCompaction()
 	receipt := &CompactionReceipt{
 		OriginalMessages: originalMessages, RemovedMessages: selected.cut,
 		OriginalBytes: size, RetainedBytes: selected.retainedBytes,
@@ -208,6 +260,8 @@ func (e *Engine) compactHistoryWithPolicy(
 		SummaryTruncated:     selected.summaryTruncated,
 		Sections:             selected.sections,
 		RemovedTurns:         uniqueMessageTurns(selected.removed),
+		PrunedToolResults:    pruned.results,
+		PrunedBytes:          pruned.bytes,
 
 		PromptContextReceipts: e.contextReceipts(),
 		WorkingSet:            workingSet, CriticalPaths: criticalPaths,
@@ -215,13 +269,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	if selected.summaryTruncated {
 		receipt.TruncationReason = "summary_byte_budget"
 	}
-	e.options.Metrics.Compaction(size - selected.retainedBytes)
-	if e.options.Hooks != nil {
-		e.options.Hooks.PostCompact(context.Background(), hooks.CompactInput{
-			SessionID: e.options.SessionID, Forced: force, Messages: len(*history),
-		})
-	}
-	return receipt
+	return finish(receipt)
 }
 
 type compactionCandidate struct {
@@ -455,8 +503,17 @@ func (e *Engine) RevertWorkspace(
 
 func messageSize(message provider.Message) int {
 	size := 0
+	if message.Provenance != nil {
+		size += len(message.Provenance.Adapter) +
+			len(message.Provenance.Provider) +
+			len(message.Provenance.Model)
+		if message.Provenance.Replay != nil {
+			size += len(message.Provenance.Replay.ContentDigest) +
+				len(message.Provenance.Replay.Data)
+		}
+	}
 	for _, block := range message.Blocks {
-		size += len(block.Text) + len(block.Signature) + len(block.ProviderData)
+		size += len(block.Text)
 		if block.ToolCall != nil {
 			size += len(block.ToolCall.ID) + len(block.ToolCall.Name) + len(block.ToolCall.Arguments)
 		}
@@ -499,6 +556,18 @@ func cloneMessages(messages []provider.Message) []provider.Message {
 	for index, message := range messages {
 		cloned[index] = message
 		cloned[index].Blocks = cloneBlocks(message.Blocks)
+		if message.Provenance != nil {
+			provenance := *message.Provenance
+			if message.Provenance.Replay != nil {
+				replay := *message.Provenance.Replay
+				replay.Data = append(
+					[]byte(nil),
+					message.Provenance.Replay.Data...,
+				)
+				provenance.Replay = &replay
+			}
+			cloned[index].Provenance = &provenance
+		}
 	}
 	return cloned
 }
@@ -524,7 +593,6 @@ func cloneBlocks(blocks []provider.ContentBlock) []provider.ContentBlock {
 			copy := *block.Citation
 			cloned[index].Citation = &copy
 		}
-		cloned[index].ProviderData = append([]byte(nil), block.ProviderData...)
 	}
 	return cloned
 }

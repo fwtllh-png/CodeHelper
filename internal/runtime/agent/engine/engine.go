@@ -53,6 +53,7 @@ type Options struct {
 	MaxOutputTokens  uint64
 	MaxSteps         int
 	MaxRetries       int
+	MaxRetryDelay    time.Duration
 	CompactWindow    CompactWindowPolicy
 	SummaryMaxBytes  int
 	MaxDigestEntries int
@@ -242,8 +243,8 @@ func New(options Options) (*Engine, error) {
 	if options.MaxSteps < 1 {
 		return nil, errors.New("max steps must be positive")
 	}
-	if options.MaxRetries < 0 {
-		return nil, errors.New("max retries cannot be negative")
+	if err := normalizeEngineOptions(&options); err != nil {
+		return nil, err
 	}
 	if options.TokenEstimator == nil {
 		options.TokenEstimator = HeuristicTokenEstimator{}

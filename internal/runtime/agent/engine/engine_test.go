@@ -20,8 +20,12 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/anthropic"
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
+	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
+	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
@@ -1225,8 +1229,9 @@ func TestEngineToolRoundTripAcrossProviderProtocols(t *testing.T) {
 			if err := registry.Register(executor, nil); err != nil {
 				t.Fatal(err)
 			}
+			route := testRouteProtocol(t, server.URL, test.protocol)
 			runtime, err := New(Options{
-				Provider: httpclient.New(), Route: testRouteProtocol(t, server.URL, test.protocol),
+				Provider: testHTTPProvider(t, route), Route: route,
 				Tools: registry, MaxOutputTokens: 128,
 				Authorize: func(provider.ToolCall) bool { return true },
 			})
@@ -1580,12 +1585,15 @@ func TestEngineToolsOffAndOnUseSameImplementation(t *testing.T) {
 	}
 }
 
-func TestEngineReplaysReasoningSignatureAndNativeSearch(t *testing.T) {
+func TestEngineBindsVersionedReplayToAssistantProvenance(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventReasoningDelta, Index: 0, Text: "think"},
-			{Type: provider.EventReasoningSignature, Index: 0, Signature: "signed"},
 			{Type: provider.EventTextDelta, Index: 1, Text: "first"},
+			{Type: provider.EventReplayState, Replay: &provider.ReplayState{
+				Version: provider.ReplayVersion,
+				Data:    json.RawMessage(`{"items":[{"type":"reasoning"}]}`),
+			}},
 			{Type: provider.EventMessageStop},
 		}},
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
@@ -1606,12 +1614,17 @@ func TestEngineReplaysReasoningSignatureAndNativeSearch(t *testing.T) {
 	if _, err := engine.Run(t.Context(), "two", nil); err != nil {
 		t.Fatal(err)
 	}
-	replayed := runtime.requests[1].Messages[1].Blocks
+	assistant := runtime.requests[1].Messages[1]
+	replayed := assistant.Blocks
 	if len(replayed) != 2 ||
 		replayed[0].Type != provider.ContentReasoning ||
 		replayed[0].Text != "think" ||
-		replayed[0].Signature != "signed" ||
 		replayed[1].Text != "first" ||
+		assistant.Provenance == nil ||
+		assistant.Provenance.Adapter != model.AdapterOpenAICompatible ||
+		assistant.Provenance.Replay == nil ||
+		assistant.Provenance.Replay.ContentDigest !=
+			provider.MessageContentDigest(assistant) ||
 		!runtime.requests[1].NativeSearch {
 		t.Fatalf("second request = %+v", runtime.requests[1])
 	}
@@ -2792,8 +2805,12 @@ func testRoute(t *testing.T) model.ReadyRoute {
 
 func testRouteProtocol(t *testing.T, endpoint string, protocol model.WireProtocol) model.ReadyRoute {
 	t.Helper()
+	adapter := model.AdapterOpenAICompatible
+	if protocol == model.ProtocolAnthropic {
+		adapter = model.AdapterAnthropic
+	}
 	catalog, err := model.NewCatalog(model.Provider{
-		ID: "test", Kind: model.ProviderCustom, Endpoint: endpoint,
+		ID: "test", Adapter: adapter, Endpoint: endpoint,
 		Protocol: protocol, Provenance: model.ProvenanceFixture,
 		Models: map[string]model.Model{"model": {
 			ID: "model", CanonicalID: "model", WireID: "model",
@@ -2818,6 +2835,36 @@ func testRouteProtocol(t *testing.T, endpoint string, protocol model.WireProtoco
 		t.Fatal(err)
 	}
 	return route
+}
+
+func testHTTPProvider(
+	t *testing.T,
+	route model.ReadyRoute,
+) provider.Provider {
+	t.Helper()
+	var adapter providerwire.Adapter
+	if route.Adapter() == model.AdapterAnthropic {
+		adapter = anthropic.NewAdapter()
+	} else {
+		var err error
+		adapter, err = openai.NewAdapter(route.Adapter())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	registry, err := providerrouter.NewRegistry(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := providerrouter.New(registry, routes, httpclient.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runtime
 }
 
 type scriptedProvider struct {

@@ -13,7 +13,6 @@ func estimateMessageTokens(messages []provider.Message) uint64 {
 	for _, message := range messages {
 		for _, block := range message.Blocks {
 			characters += len([]rune(block.Text))
-			characters += len([]rune(block.Signature))
 			if block.ToolCall != nil {
 				characters += len([]rune(block.ToolCall.Name + block.ToolCall.Arguments))
 			}

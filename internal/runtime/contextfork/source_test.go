@@ -38,10 +38,17 @@ func TestProjectMessagesExcludesOpaqueParentContent(t *testing.T) {
 		provider.TextMessage(provider.RoleUser, "parent goal"),
 		{
 			Role: provider.RoleAssistant, Turn: 1,
+			Provenance: &provider.AssistantProvenance{
+				Adapter: "openai", Provider: "openai", Model: "model",
+				Replay: &provider.ReplayState{
+					Version:       provider.ReplayVersion,
+					ContentDigest: "opaque-digest",
+					Data:          []byte(`{"private":"replay"}`),
+				},
+			},
 			Blocks: []provider.ContentBlock{
 				{Type: provider.ContentText, Text: "visible"},
 				{Type: provider.ContentReasoning, Text: "private reasoning"},
-				{Type: provider.ContentProvider, ProviderData: []byte(`{"opaque":true}`)},
 				{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{
 					ID: "call-1", Name: "file_read", Arguments: `{"path":"a.go"}`,
 				}},
@@ -70,6 +77,7 @@ func TestProjectMessagesExcludesOpaqueParentContent(t *testing.T) {
 	}
 	if strings.Contains(rendered.String(), "private reasoning") ||
 		strings.Contains(rendered.String(), "opaque") ||
+		strings.Contains(rendered.String(), "replay") ||
 		!strings.Contains(rendered.String(), "visible") ||
 		!strings.Contains(rendered.String(), "file body") {
 		t.Fatalf("projected messages = %+v", projected)

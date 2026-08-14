@@ -17,15 +17,30 @@ type stream struct {
 	decoder    *provider.SSEDecoder
 	protocol   model.WireProtocol
 	queue      []provider.StreamEvent
+	options    StreamPolicy
 	started    bool
 	finished   bool
 	stopReason provider.StopReason
+	usage      *provider.Usage
 	stopped    bool
 	closed     bool
 	responses  ResponsesDecoder
 }
+type StreamPolicy struct {
+	RequireDone   bool
+	NativeCache   bool
+	FinalUsage    bool
+	CaptureReplay bool
+}
 
 func NewStream(body io.ReadCloser, protocol model.WireProtocol) (provider.Stream, error) {
+	return NewStreamWithOptions(body, protocol, StreamPolicy{})
+}
+func NewStreamWithOptions(
+	body io.ReadCloser,
+	protocol model.WireProtocol,
+	options StreamPolicy,
+) (provider.Stream, error) {
 	if body == nil {
 		return nil, errors.New("response body is required")
 	}
@@ -33,9 +48,12 @@ func NewStream(body io.ReadCloser, protocol model.WireProtocol) (provider.Stream
 		_ = body.Close()
 		return nil, fmt.Errorf("unsupported OpenAI protocol %q", protocol)
 	}
-	return &stream{body: body, decoder: provider.NewSSEDecoder(body), protocol: protocol}, nil
+	return &stream{
+		body: body, decoder: provider.NewSSEDecoder(body),
+		protocol: protocol, options: options,
+		responses: ResponsesDecoder{CaptureReplay: options.CaptureReplay},
+	}, nil
 }
-
 func (s *stream) Recv() (provider.StreamEvent, error) {
 	if !s.started {
 		s.started = true
@@ -52,22 +70,27 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 		}
 		record, err := s.decoder.Next()
 		if err != nil {
-			if errors.Is(err, io.EOF) && s.protocol == model.ProtocolOpenAIChat && s.finished {
-				s.enqueueStop(s.stopReason)
+			if errors.Is(err, io.EOF) && s.protocol == model.ProtocolOpenAIChat &&
+				s.finished && !s.options.RequireDone {
+				s.finish(s.stopReason)
 				continue
 			}
 			if errors.Is(err, io.EOF) && !s.stopped {
-				return provider.StreamEvent{}, errors.New("OpenAI stream ended before completion")
+				return provider.StreamEvent{}, errors.New(
+					"OpenAI stream ended before completion",
+				)
 			}
 			return provider.StreamEvent{}, err
 		}
 		if record.Data == "[DONE]" {
-			s.enqueueStop(s.stopReason)
+			s.finish(s.stopReason)
 			continue
 		}
 		var events []provider.StreamEvent
 		if s.protocol == model.ProtocolOpenAIChat {
-			events, err = parseChatChunk([]byte(record.Data))
+			events, err = parseChatChunk(
+				[]byte(record.Data), s.options.NativeCache,
+			)
 		} else {
 			events, err = s.responses.Decode([]byte(record.Data))
 		}
@@ -85,20 +108,24 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 				stopReason = event.StopReason
 				continue
 			}
+			if event.Type == provider.EventUsage && s.options.FinalUsage {
+				s.usage = event.Usage
+				continue
+			}
 			s.queue = append(s.queue, event)
 		}
 		if stopReason != "" {
-			s.enqueueStop(stopReason)
+			s.finish(stopReason)
 		}
 	}
 }
 
-// ResponsesDecoder turns one Responses JSON event into provider events while
-// reconciling providers that emit both reasoning deltas and final snapshots.
 type ResponsesDecoder struct {
-	CaptureState   bool
-	reasoning      map[int]string
-	reasoningFinal map[int]bool
+	CaptureState  bool
+	CaptureReplay bool
+	reasoning     map[int]string
+	replayItems   map[string]json.RawMessage
+	replayOrder   []string
 }
 
 func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
@@ -108,11 +135,30 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 	}
 	if d.reasoning == nil {
 		d.reasoning = make(map[int]string)
-		d.reasoningFinal = make(map[int]bool)
+		d.replayItems = make(map[string]json.RawMessage)
 	}
 	reconciled := make([]provider.StreamEvent, 0, len(events))
 	for _, event := range events {
 		if event.Type == provider.EventResponseState && !d.CaptureState {
+			continue
+		}
+		if event.Type == provider.EventMessageStop {
+			if d.CaptureReplay && !event.StopReason.Incomplete() {
+				items := make([]json.RawMessage, 0, len(d.replayOrder))
+				for _, key := range d.replayOrder {
+					items = append(items, d.replayItems[key])
+				}
+				replay, replayErr := replayState(items)
+				if replayErr != nil {
+					return nil, replayErr
+				}
+				if replay != nil {
+					reconciled = append(reconciled, provider.StreamEvent{
+						Type: provider.EventReplayState, Replay: replay,
+					})
+				}
+			}
+			reconciled = append(reconciled, event)
 			continue
 		}
 		if event.Type != provider.EventReasoningDelta {
@@ -120,6 +166,12 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 			continue
 		}
 		seen := d.reasoning[event.Index]
+		if event.Block != nil && len(event.ReplayFragment) != 0 {
+			var item map[string]any
+			if json.Unmarshal(event.ReplayFragment, &item) == nil {
+				event.Text = reasoningTextMatchingVisible(item, seen)
+			}
+		}
 		visible := event.Text
 		if strings.HasPrefix(visible, seen) {
 			visible = strings.TrimPrefix(visible, seen)
@@ -130,31 +182,63 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 			d.reasoning[event.Index] = seen + visible
 		}
 		event.Text = visible
-		if event.Block != nil && len(event.Block.ProviderData) == 0 {
+		if event.Block != nil {
 			event.Block.Text = visible
 		}
-		hasProviderData := event.Block != nil && len(event.Block.ProviderData) != 0
-		if visible == "" && (!hasProviderData || d.reasoningFinal[event.Index]) {
-			continue
+		hasReplayFragment := len(event.ReplayFragment) != 0
+		if hasReplayFragment && d.CaptureReplay {
+			key := event.Block.ID
+			if key == "" {
+				key = fmt.Sprintf("#%d", event.Index)
+			}
+			if _, exists := d.replayItems[key]; !exists {
+				d.replayOrder = append(d.replayOrder, key)
+			}
+			d.replayItems[key] = append(
+				json.RawMessage(nil), event.ReplayFragment...,
+			)
+			event.ReplayFragment = nil
 		}
-		if hasProviderData {
-			d.reasoningFinal[event.Index] = true
+		if visible == "" {
+			continue
 		}
 		reconciled = append(reconciled, event)
 	}
 	return reconciled, nil
 }
 
-func (s *stream) enqueueStop(reason provider.StopReason) {
+func reasoningTextMatchingVisible(item map[string]any, seen string) string {
+	summary := reasoningTextFromContentParts(item["summary"])
+	content := reasoningTextFromContentParts(item["content"])
+	if seen == "" {
+		if summary != "" {
+			return summary
+		}
+		return content
+	}
+	for _, candidate := range []string{summary, content} {
+		if strings.HasPrefix(candidate, seen) ||
+			strings.HasPrefix(seen, candidate) {
+			return candidate
+		}
+	}
+	return seen
+}
+
+func (s *stream) finish(reason provider.StopReason) {
 	if s.stopped {
 		return
 	}
 	s.stopped = true
+	if s.usage != nil {
+		s.queue = append(s.queue, provider.StreamEvent{
+			Type: provider.EventUsage, Usage: s.usage,
+		})
+	}
 	s.queue = append(s.queue, provider.StreamEvent{
 		Type: provider.EventMessageStop, StopReason: reason,
 	})
 }
-
 func (s *stream) Close() error {
 	if s.closed {
 		return nil
@@ -163,8 +247,10 @@ func (s *stream) Close() error {
 	s.stopped = true
 	return s.body.Close()
 }
-
-func parseChatChunk(data []byte) ([]provider.StreamEvent, error) {
+func parseChatChunk(
+	data []byte,
+	nativeCache bool,
+) ([]provider.StreamEvent, error) {
 	var chunk struct {
 		Choices []struct {
 			Delta struct {
@@ -192,9 +278,11 @@ func parseChatChunk(data []byte) ([]provider.StreamEvent, error) {
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage *struct {
-			PromptTokens     uint64 `json:"prompt_tokens"`
-			CompletionTokens uint64 `json:"completion_tokens"`
-			Details          struct {
+			PromptTokens          uint64 `json:"prompt_tokens"`
+			CompletionTokens      uint64 `json:"completion_tokens"`
+			PromptCacheHitTokens  uint64 `json:"prompt_cache_hit_tokens"`
+			PromptCacheMissTokens uint64 `json:"prompt_cache_miss_tokens"`
+			Details               struct {
 				ReasoningTokens uint64 `json:"reasoning_tokens"`
 			} `json:"completion_tokens_details"`
 			PromptDetails struct {
@@ -249,19 +337,30 @@ func parseChatChunk(data []byte) ([]provider.StreamEvent, error) {
 		}
 	}
 	if chunk.Usage != nil {
+		cached := chunk.Usage.PromptDetails.CachedTokens
+		if nativeCache && chunk.Usage.PromptCacheHitTokens != 0 {
+			if cached != 0 && cached != chunk.Usage.PromptCacheHitTokens {
+				return nil, errors.New("cache token fields disagree")
+			}
+			cached = chunk.Usage.PromptCacheHitTokens
+		}
+		if nativeCache && (cached > chunk.Usage.PromptTokens ||
+			chunk.Usage.PromptCacheHitTokens+
+				chunk.Usage.PromptCacheMissTokens > chunk.Usage.PromptTokens) {
+			return nil, errors.New("cache token fields exceed prompt tokens")
+		}
 		events = append(events, provider.StreamEvent{
 			Type: provider.EventUsage,
 			Usage: &provider.Usage{
 				InputTokens:     chunk.Usage.PromptTokens,
 				OutputTokens:    chunk.Usage.CompletionTokens,
 				ReasoningTokens: chunk.Usage.Details.ReasoningTokens,
-				CachedTokens:    chunk.Usage.PromptDetails.CachedTokens,
+				CachedTokens:    cached,
 			},
 		})
 	}
 	return events, nil
 }
-
 func openAIStopReason(value string) provider.StopReason {
 	switch value {
 	case "stop":
@@ -276,7 +375,6 @@ func openAIStopReason(value string) provider.StopReason {
 		return provider.StopReasonUnknown
 	}
 }
-
 func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 	var chunk map[string]any
 	if err := json.Unmarshal(data, &chunk); err != nil {
@@ -289,7 +387,6 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 		return responsesReasoningTextEvent(chunk, chunk["delta"]), nil
 	case "response.reasoning_text.done", "response.reasoning_summary_text.done":
-		// Some providers only put the full chain on *.done (delta may be empty).
 		if text := firstString(chunk["text"], chunk["delta"]); text != "" {
 			return responsesReasoningTextEvent(chunk, text), nil
 		}
@@ -366,9 +463,6 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 					Type: provider.EventResponseState, Response: state,
 				})
 			}
-			// Final output is the authoritative reasoning payload. Re-emit so a
-			// missed delta / empty output_item.done still lands in history before
-			// the tool-loop replay (DeepSeek 400 without reasoning_text).
 			if output, ok := response["output"].([]any); ok {
 				for index, raw := range output {
 					item, _ := raw.(map[string]any)
@@ -433,7 +527,6 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 		return nil, nil
 	}
 }
-
 func responsesReasoningTextEvent(
 	chunk map[string]any,
 	value any,
@@ -447,56 +540,21 @@ func responsesReasoningTextEvent(
 	}
 	return events
 }
-
 func reasoningItemEvents(item map[string]any, index int) ([]provider.StreamEvent, error) {
 	raw, err := json.Marshal(item)
 	if err != nil {
 		return nil, err
 	}
-	text := reasoningTextFromResponsesItem(item)
+	text := reasoningTextFromItem(item)
 	block := provider.ContentBlock{
 		Type: provider.ContentReasoning, ID: stringValue(item["id"]),
-		Text: text, ProviderType: "openai_responses.reasoning", ProviderData: raw,
+		Text: text,
 	}
 	return []provider.StreamEvent{{
-		Type: provider.EventReasoningDelta, Index: index, Text: text, Block: &block,
+		Type: provider.EventReasoningDelta, Index: index, Text: text,
+		Block: &block, ReplayFragment: raw,
 	}}, nil
 }
-
-func reasoningTextFromResponsesItem(item map[string]any) string {
-	if item == nil {
-		return ""
-	}
-	if text := reasoningTextFromParts(item["content"]); text != "" {
-		return text
-	}
-	return reasoningTextFromParts(item["summary"])
-}
-
-func reasoningTextFromParts(value any) string {
-	switch content := value.(type) {
-	case string:
-		return content
-	case []any:
-		var parts []string
-		for _, raw := range content {
-			part, _ := raw.(map[string]any)
-			if part == nil {
-				continue
-			}
-			switch stringValue(part["type"]) {
-			case "reasoning_text", "output_text", "summary_text", "text", "":
-				if text := firstString(part["text"], part["reasoning_text"]); text != "" {
-					parts = append(parts, text)
-				}
-			}
-		}
-		return strings.Join(parts, "")
-	default:
-		return ""
-	}
-}
-
 func searchResult(item map[string]any) provider.SearchResult {
 	action, _ := item["action"].(map[string]any)
 	result := provider.SearchResult{Query: stringValue(action["query"])}
@@ -524,7 +582,6 @@ func searchResult(item map[string]any) provider.SearchResult {
 	}
 	return result
 }
-
 func textEvent(eventType provider.StreamEventType, value any) []provider.StreamEvent {
 	text := stringValue(value)
 	if text == "" {
@@ -537,12 +594,10 @@ func textEvent(eventType provider.StreamEventType, value any) []provider.StreamE
 	block := provider.ContentBlock{Type: blockType, Text: text}
 	return []provider.StreamEvent{{Type: eventType, Block: &block, Text: text}}
 }
-
 func nestedUint(value map[string]any, parent, child string) uint64 {
 	nested, _ := value[parent].(map[string]any)
 	return uint64(number(nested[child]))
 }
-
 func number(value any) float64 {
 	switch typed := value.(type) {
 	case float64:
@@ -557,12 +612,10 @@ func number(value any) float64 {
 		return 0
 	}
 }
-
 func stringValue(value any) string {
 	result, _ := value.(string)
 	return result
 }
-
 func firstString(values ...any) string {
 	for _, value := range values {
 		if result := stringValue(value); result != "" {

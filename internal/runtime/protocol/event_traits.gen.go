@@ -24,7 +24,6 @@ var eventTraits = map[EventKind]EventTraits{
 	"output.delta":         {"stream", "turn", "terminal_projection", "turn", false},
 	"plan.delta":           {"artifact_stream", "turn", "retained", "plan", false},
 	"reasoning.delta":      {"stream", "turn", "retained", "turn", false},
-	"reasoning.signature":  {"audit", "turn", "retained", "turn", false},
 	"search.result":        {"evidence", "turn", "retained", "turn", false},
 	"thread.compacted":     {"lifecycle", "thread", "retained", "thread", false},
 	"thread.forked":        {"lifecycle", "thread", "retained", "thread", false},

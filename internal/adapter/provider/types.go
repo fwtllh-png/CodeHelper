@@ -29,71 +29,48 @@ const (
 	ContentToolResult ContentType = "tool_result"
 	ContentSearch     ContentType = "search"
 	ContentCitation   ContentType = "citation"
-	ContentProvider   ContentType = "provider"
-	// ContentImage carries an image a message shows the model. It exists so an
-	// image travels the same path as everything else a request contains — retry,
-	// idempotency key, usage, cost and trace — rather than through a side
-	// channel that none of those reach.
-	ContentImage ContentType = "image"
+	ContentImage      ContentType = "image"
 )
 
-// Attachment is binary content a message carries. Data is the bytes themselves
-// rather than a path or a URL: the encoders need the bytes, and a provider that
-// fetched a local path would need the file to be reachable from the provider,
-// which for a workspace file it is not.
 type Attachment struct {
 	MediaType string `json:"media_type"`
 	Data      []byte `json:"data"`
-	// Name is what the content was called locally. It is for the model's
-	// benefit — "the screenshot you asked about" — and no encoder requires it.
-	Name string `json:"name,omitempty"`
+	Name      string `json:"name,omitempty"`
 }
 
-// DataURL is the base64 data URL form every supported protocol accepts for
-// inline images.
 func (a Attachment) DataURL() string {
 	return "data:" + a.MediaType + ";base64," + base64.StdEncoding.EncodeToString(a.Data)
 }
 
-// Base64 is the raw payload, which is what Anthropic's image source wants
-// beside a separate media type.
 func (a Attachment) Base64() string {
 	return base64.StdEncoding.EncodeToString(a.Data)
 }
 
-// ContentBlock is the lossless provider-neutral history unit. ProviderData is
-// used for opaque replay data (for example OpenAI encrypted reasoning items)
-// which must be sent back unchanged.
 type ContentBlock struct {
-	Type         ContentType     `json:"type"`
-	Text         string          `json:"text,omitempty"`
-	Signature    string          `json:"signature,omitempty"`
-	ID           string          `json:"id,omitempty"`
-	ToolCall     *ToolCall       `json:"tool_call,omitempty"`
-	ToolResult   *ToolResult     `json:"tool_result,omitempty"`
-	Search       *SearchResult   `json:"search,omitempty"`
-	Citation     *Citation       `json:"citation,omitempty"`
-	Attachment   *Attachment     `json:"attachment,omitempty"`
-	ProviderType string          `json:"provider_type,omitempty"`
-	ProviderData json.RawMessage `json:"provider_data,omitempty"`
+	Type       ContentType   `json:"type"`
+	Text       string        `json:"text,omitempty"`
+	ID         string        `json:"id,omitempty"`
+	ToolCall   *ToolCall     `json:"tool_call,omitempty"`
+	ToolResult *ToolResult   `json:"tool_result,omitempty"`
+	Search     *SearchResult `json:"search,omitempty"`
+	Citation   *Citation     `json:"citation,omitempty"`
+	Attachment *Attachment   `json:"attachment,omitempty"`
 }
-
 type ToolResult struct {
 	CallID  string `json:"call_id"`
 	Content string `json:"content"`
 	IsError bool   `json:"is_error,omitempty"`
 }
-
 type Message struct {
-	Role   Role           `json:"role"`
-	Blocks []ContentBlock `json:"content"`
-	Turn   uint64         `json:"-"`
+	Role       Role                 `json:"role"`
+	Blocks     []ContentBlock       `json:"content"`
+	Provenance *AssistantProvenance `json:"provenance,omitempty"`
+	Turn       uint64               `json:"-"`
 }
 
 func TextMessage(role Role, text string) Message {
 	return Message{Role: role, Blocks: []ContentBlock{{Type: ContentText, Text: text}}}
 }
-
 func (m Message) Text() string {
 	var result string
 	for _, block := range m.Blocks {
@@ -105,29 +82,21 @@ func (m Message) Text() string {
 }
 
 type ToolCall struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-	// Catalog identity is internal execution authority. Providers never see it;
-	// the engine binds it after parsing a call from the sampled tools[] snapshot.
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Arguments         string `json:"arguments"`
 	CatalogID         string `json:"-"`
 	CatalogGeneration uint64 `json:"-"`
 	CatalogRevision   uint64 `json:"-"`
 	CatalogAuthority  uint64 `json:"-"`
 }
-
 type ToolDefinition struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"input_schema"`
 }
-
 type ModelRequest struct {
-	Route model.ReadyRoute `json:"-"`
-	// Purpose is what this call is for. It is not sent to the provider: it is
-	// how the call is attributed locally, so a token spent by the vision tool is
-	// distinguishable from a token spent by the turn's main sampling. An empty
-	// purpose reads as the main one.
+	Route           model.ReadyRoute `json:"-"`
 	Purpose         model.Purpose    `json:"purpose,omitempty"`
 	Messages        []Message        `json:"messages"`
 	MaxOutputTokens uint64           `json:"max_output_tokens"`
@@ -136,26 +105,18 @@ type ModelRequest struct {
 	NativeSearch    bool             `json:"native_search,omitempty"`
 	Tools           []ToolDefinition `json:"tools,omitempty"`
 	Idempotent      bool             `json:"idempotent,omitempty"`
-	// PromptCacheKey is a sticky session/thread key for provider prompt caching (W5.4).
-	// Prefer StickyPromptCacheKey when attaching the session default: routes
-	// without prompt_cache must not carry a key, or Validate refuses the turn.
-	PromptCacheKey string   `json:"prompt_cache_key,omitempty"`
-	Store          *bool    `json:"store,omitempty"`
-	ParallelTools  *bool    `json:"parallel_tools,omitempty"`
-	Include        []string `json:"include,omitempty"`
+	PromptCacheKey  string           `json:"prompt_cache_key,omitempty"`
+	Store           *bool            `json:"store,omitempty"`
+	ParallelTools   *bool            `json:"parallel_tools,omitempty"`
+	Include         []string         `json:"include,omitempty"`
 }
 
-// StickyPromptCacheKey returns key when the route advertises prompt_cache, else
-// "". Session engines always want a sticky hint; models without the capability
-// (custom Chat/Responses endpoints, DeepSeek, etc.) must drop it so Validate
-// does not refuse the turn and encode does not emit a contradictory field.
 func StickyPromptCacheKey(key string, route model.ReadyRoute) string {
 	if key == "" || !route.Model().Capabilities.PromptCache {
 		return ""
 	}
 	return key
 }
-
 func (r ModelRequest) Validate() error {
 	if err := r.Route.Validate(); err != nil {
 		return fmt.Errorf("route: %w", err)
@@ -172,6 +133,14 @@ func (r ModelRequest) Validate() error {
 		if len(message.Blocks) == 0 {
 			return fmt.Errorf("messages[%d] has no content", index)
 		}
+		if err := validateMessageProvenance(message); err != nil {
+			return fmt.Errorf("messages[%d]: %w", index, err)
+		}
+		if err := ValidateReplayForRoute(
+			message, r.Route, r.Route.Adapter(),
+		); err != nil {
+			return fmt.Errorf("messages[%d]: %w", index, err)
+		}
 		for blockIndex, block := range message.Blocks {
 			if err := block.Validate(); err != nil {
 				return fmt.Errorf("messages[%d].content[%d]: %w", index, blockIndex, err)
@@ -186,11 +155,7 @@ func (r ModelRequest) Validate() error {
 		return fmt.Errorf("max_output_tokens exceeds model limit %d", descriptor.Limits.MaxOutputTokens)
 	}
 	caps := descriptor.Capabilities
-	// reasoning_effort is the consumer that capabilities.reasoning was missing
-	// for years: without this check the bit is a claim nobody verifies, and a
-	// non-reasoning model gets a provider 400 about a field the operator never
-	// saw in the catalog.
-	if r.ReasoningEffort != "" && !caps.Reasoning {
+	if r.ReasoningEffort != "" && r.ReasoningEffort != "off" && !caps.Reasoning {
 		return errors.New("model does not support reasoning")
 	}
 	if r.NativeSearch && !caps.NativeSearch {
@@ -205,9 +170,6 @@ func (r ModelRequest) Validate() error {
 		}
 	}
 	if hasImageBlock(r.Messages) {
-		// Either bit is enough: a vision-purpose model is expected to accept an
-		// image, and a main-turn model marked image_input can too. Requiring
-		// both would refuse models that only advertise one of the two names.
 		if !caps.ImageInput && !caps.Vision {
 			return fmt.Errorf("model %q does not support image input", descriptor.ID)
 		}
@@ -222,7 +184,6 @@ func (r ModelRequest) Validate() error {
 	}
 	return nil
 }
-
 func hasImageBlock(messages []Message) bool {
 	for _, message := range messages {
 		for _, block := range message.Blocks {
@@ -233,7 +194,6 @@ func hasImageBlock(messages []Message) bool {
 	}
 	return false
 }
-
 func (b ContentBlock) Validate() error {
 	switch b.Type {
 	case ContentText:
@@ -241,8 +201,8 @@ func (b ContentBlock) Validate() error {
 			return errors.New("text is required")
 		}
 	case ContentReasoning:
-		if b.Text == "" && b.Signature == "" && len(b.ProviderData) == 0 {
-			return errors.New("reasoning text, signature, or provider data is required")
+		if b.Text == "" {
+			return errors.New("reasoning text is required")
 		}
 	case ContentToolCall:
 		if b.ToolCall == nil || b.ToolCall.ID == "" || b.ToolCall.Name == "" {
@@ -260,17 +220,10 @@ func (b ContentBlock) Validate() error {
 		if b.Citation == nil || b.Citation.URL == "" {
 			return errors.New("citation URL is required")
 		}
-	case ContentProvider:
-		if b.ProviderType == "" || len(b.ProviderData) == 0 {
-			return errors.New("provider type and data are required")
-		}
 	case ContentImage:
 		if b.Attachment == nil || len(b.Attachment.Data) == 0 {
 			return errors.New("image bytes are required")
 		}
-		// The media type is checked rather than guessed: every protocol sends it
-		// verbatim, and a wrong one is rejected by the provider with an error
-		// that says nothing about which attachment was wrong.
 		if !strings.HasPrefix(b.Attachment.MediaType, "image/") {
 			return fmt.Errorf("image media type %q is not an image", b.Attachment.MediaType)
 		}
@@ -291,6 +244,7 @@ const (
 	EventSearchResult       StreamEventType = "search_result"
 	EventCitation           StreamEventType = "citation"
 	EventUsage              StreamEventType = "usage"
+	EventReplayState        StreamEventType = "replay_state"
 	EventResponseState      StreamEventType = "response_state"
 	EventMessageStop        StreamEventType = "message_stop"
 )
@@ -315,16 +269,10 @@ func (r StopReason) Incomplete() bool {
 	}
 }
 
-// Usage counts one provider call. Two of the four fields are breakdowns of the
-// other two rather than additions to them:
+// Usage counts one provider call. Cached and reasoning are subsets:
 //
 //	CachedTokens    ⊆ InputTokens
 //	ReasoningTokens ⊆ OutputTokens
-//
-// Every adapter must preserve that. Providers do not agree on it themselves —
-// OpenAI reports both as detail fields inside the totals, while Anthropic
-// reports cache reads and writes beside input_tokens — so the adapter, not the
-// caller, is where the two shapes are reconciled.
 type Usage struct {
 	InputTokens     uint64            `json:"input_tokens"`
 	OutputTokens    uint64            `json:"output_tokens"`
@@ -333,13 +281,9 @@ type Usage struct {
 	Transport       TransportMetadata `json:"-"`
 }
 
-// Total is every token the call consumed. Cached and reasoning tokens are
-// deliberately absent: they are already counted inside the two totals, so
-// adding them would bill the same tokens twice.
 func (u Usage) Total() uint64 {
 	return u.InputTokens + u.OutputTokens
 }
-
 func (u *Usage) Add(other Usage) {
 	u.InputTokens += other.InputTokens
 	u.OutputTokens += other.OutputTokens
@@ -353,19 +297,16 @@ type ToolCallFragment struct {
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
 }
-
 type SearchResult struct {
 	Query   string   `json:"query,omitempty"`
 	Sources []Source `json:"sources"`
 	Error   string   `json:"error,omitempty"`
 }
-
 type Source struct {
 	ID    string `json:"id,omitempty"`
 	Title string `json:"title,omitempty"`
 	URL   string `json:"url"`
 }
-
 type Citation struct {
 	SourceID string `json:"source_id,omitempty"`
 	URL      string `json:"url"`
@@ -373,23 +314,22 @@ type Citation struct {
 	Start    int    `json:"start,omitempty"`
 	End      int    `json:"end,omitempty"`
 }
-
 type StreamEvent struct {
-	Type       StreamEventType   `json:"type"`
-	StopReason StopReason        `json:"stop_reason,omitempty"`
-	Index      int               `json:"index,omitempty"`
-	Block      *ContentBlock     `json:"block,omitempty"`
-	Text       string            `json:"text,omitempty"`
-	Signature  string            `json:"signature,omitempty"`
-	ToolCall   *ToolCallFragment `json:"tool_call,omitempty"`
-	Search     *SearchResult     `json:"search,omitempty"`
-	Citation   *Citation         `json:"citation,omitempty"`
-	Usage      *Usage            `json:"usage,omitempty"`
-	Response   *ResponseState    `json:"response,omitempty"`
+	Type           StreamEventType   `json:"type"`
+	StopReason     StopReason        `json:"stop_reason,omitempty"`
+	Index          int               `json:"index,omitempty"`
+	Block          *ContentBlock     `json:"block,omitempty"`
+	Text           string            `json:"text,omitempty"`
+	Signature      string            `json:"signature,omitempty"`
+	ToolCall       *ToolCallFragment `json:"tool_call,omitempty"`
+	Search         *SearchResult     `json:"search,omitempty"`
+	Citation       *Citation         `json:"citation,omitempty"`
+	Usage          *Usage            `json:"usage,omitempty"`
+	Replay         *ReplayState      `json:"replay,omitempty"`
+	ReplayFragment json.RawMessage   `json:"-"`
+	Response       *ResponseState    `json:"response,omitempty"`
 }
 
-// ResponseState is adapter-private continuation evidence. Engine ignores this
-// event; a session-capable provider commits it only after a valid stop event.
 type ResponseState struct {
 	ID     string            `json:"id"`
 	Output []json.RawMessage `json:"output,omitempty"`
@@ -420,7 +360,7 @@ func (e StreamEvent) Validate() error {
 			return errors.New("stream text delta is empty")
 		}
 	case EventReasoningSignature:
-		if e.Signature == "" && (e.Block == nil || e.Block.Signature == "") {
+		if e.Signature == "" {
 			return errors.New("reasoning signature is empty")
 		}
 	case EventToolCallDelta:
@@ -430,6 +370,11 @@ func (e StreamEvent) Validate() error {
 	case EventUsage:
 		if e.Usage == nil {
 			return errors.New("usage is required")
+		}
+	case EventReplayState:
+		if e.Replay == nil || e.Replay.Version != ReplayVersion ||
+			len(e.Replay.Data) == 0 || !json.Valid(e.Replay.Data) {
+			return errors.New("versioned replay state is required")
 		}
 	case EventResponseState:
 		if e.Response == nil || e.Response.ID == "" {
@@ -458,14 +403,12 @@ type Stream interface {
 	Recv() (StreamEvent, error)
 	Close() error
 }
-
 type TransportMetadata struct {
 	RequestBytes           uint64
 	LogicalRequestDigest   string
 	TransportPayloadDigest string
 	Incremental            bool
 }
-
 type MetadataStream interface {
 	Stream
 	TransportMetadata() TransportMetadata

@@ -1,60 +1,84 @@
-package httpclient
+package openai
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
+	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type responsesSession struct {
-	mu       sync.Mutex
-	conn     *websocket.Conn
-	cancel   context.CancelFunc
-	endpoint string
-	previous string
-	property string
-	prefix   []json.RawMessage
-	lastUsed time.Time
-	idle     *time.Timer
+	mu                           sync.Mutex
+	conn                         providerwire.Socket
+	cancel                       context.CancelFunc
+	endpoint, previous, property string
+	prefix                       []json.RawMessage
+	lastUsed                     time.Time
+	idle                         *time.Timer
+	forceHTTP                    bool
 }
 
-func (c *Client) responsesSessionStream(
-	ctx context.Context,
-	request provider.ModelRequest,
-	logicalBody []byte,
-	credential string,
-) (provider.Stream, provider.TransportMetadata, error) {
-	key := request.PromptCacheKey + "\x00" + request.Route.ProviderID() + "\x00" + request.Route.Model().ID
-	c.sessionMu.Lock()
-	if c.sessions == nil {
-		c.sessions = make(map[string]*responsesSession)
+func (a *Adapter) TrySession(ctx context.Context, request provider.ModelRequest, call providerwire.PreparedCall, transport providerwire.SessionTransport) (provider.Stream, bool, error) {
+	if call.Protocol != "openai_responses" || !request.Route.Model().Capabilities.IncrementalResponses || request.PromptCacheKey == "" {
+		return nil, false, nil
 	}
-	session := c.sessions[key]
+	session := a.session(request)
+	session.mu.Lock()
+	if session.forceHTTP {
+		session.forceHTTP = false
+		session.mu.Unlock()
+		return nil, false, nil
+	}
+	session.mu.Unlock()
+	attempt, err := transport.BeginSession(ctx, request.Route, call)
+	if err != nil {
+		return nil, true, err
+	}
+	defer attempt.Close()
+	stream, metadata, err := a.openSession(ctx, request, call, attempt, session)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, true, ctx.Err()
+		}
+		session.mu.Lock()
+		session.forceHTTP = true
+		session.mu.Unlock()
+		return nil, true, protocol.NewProblem(protocol.CodeUnavailable, "provider session failed", true, err)
+	}
+	return attempt.Wrap(stream, metadata), true, nil
+}
+func (a *Adapter) session(request provider.ModelRequest) *responsesSession {
+	key := request.PromptCacheKey + "\x00" + request.Route.ProviderID() + "\x00" + request.Route.Model().ID
+	a.sessionMu.Lock()
+	defer a.sessionMu.Unlock()
+	if a.sessions == nil {
+		a.sessions = make(map[string]*responsesSession)
+	}
+	session := a.sessions[key]
 	if session == nil {
 		session = &responsesSession{}
-		c.sessions[key] = session
+		a.sessions[key] = session
 	}
-	c.sessionMu.Unlock()
-
+	return session
+}
+func (a *Adapter) openSession(ctx context.Context, request provider.ModelRequest, call providerwire.PreparedCall, attempt providerwire.SessionAttempt, session *responsesSession) (provider.Stream, provider.TransportMetadata, error) {
 	session.mu.Lock()
-	body, input, property, err := responsesSocketBody(logicalBody)
+	body, input, property, err := responsesSocketBody(call.Body)
 	if err != nil {
 		session.mu.Unlock()
 		return nil, provider.TransportMetadata{}, err
 	}
 	now := time.Now()
-	if session.conn != nil && c.IdleTimeout > 0 && now.Sub(session.lastUsed) > c.IdleTimeout {
+	idleTimeout := attempt.IdleTimeout()
+	if session.conn != nil && idleTimeout > 0 && now.Sub(session.lastUsed) > idleTimeout {
 		session.invalidate()
 	}
 	endpoint, err := websocketEndpoint(request.Route.Endpoint())
@@ -64,23 +88,14 @@ func (c *Client) responsesSessionStream(
 	}
 	if session.conn == nil || session.endpoint != endpoint {
 		session.invalidate()
-		headers := make(http.Header)
-		if credential != "" {
-			headers.Set("Authorization", "Bearer "+credential)
-		}
-		dialContext, cancel := context.WithCancel(context.Background())
-		conn, _, dialErr := websocket.Dial(dialContext, endpoint, &websocket.DialOptions{
-			HTTPClient: c.httpClient(), HTTPHeader: headers,
-		})
-		if dialErr != nil {
-			cancel()
+		conn, cancel, err := attempt.Dial(endpoint)
+		if err != nil {
 			session.mu.Unlock()
-			return nil, provider.TransportMetadata{}, dialErr
+			return nil, provider.TransportMetadata{}, err
 		}
 		session.conn, session.cancel, session.endpoint = conn, cancel, endpoint
 	}
-	incremental := session.previous != "" && session.property == property &&
-		strictExtension(session.prefix, input)
+	incremental := session.previous != "" && session.property == property && strictExtension(session.prefix, input)
 	if incremental {
 		body["previous_response_id"] = session.previous
 		body["input"] = input[len(session.prefix):]
@@ -91,20 +106,19 @@ func (c *Client) responsesSessionStream(
 		session.mu.Unlock()
 		return nil, provider.TransportMetadata{}, err
 	}
-	c.Metrics.ProviderRequest()
-	if err := session.conn.Write(ctx, websocket.MessageText, payload); err != nil {
+	attempt.ProviderRequest()
+	if err := session.conn.Write(ctx, payload); err != nil {
 		session.invalidate()
 		session.mu.Unlock()
 		return nil, provider.TransportMetadata{}, err
 	}
 	session.lastUsed = now
-	return &responsesSocketStream{
-		ctx: ctx, session: session, input: input, property: property,
-		idleTimeout: c.IdleTimeout,
-		decoder:     openai.ResponsesDecoder{CaptureState: true},
-	}, transportMetadata(logicalBody, payload, incremental), nil
+	stream := &responsesSocketStream{ctx: ctx, session: session, input: input, property: property,
+		idleTimeout: idleTimeout, decoder: ResponsesDecoder{
+			CaptureState: true, CaptureReplay: true,
+		}}
+	return stream, providerwire.Metadata(call.Body, payload, incremental), nil
 }
-
 func responsesSocketBody(data []byte) (map[string]any, []json.RawMessage, string, error) {
 	var body map[string]any
 	if err := json.Unmarshal(data, &body); err != nil {
@@ -127,9 +141,8 @@ func responsesSocketBody(data []byte) (map[string]any, []json.RawMessage, string
 	if err != nil {
 		return nil, nil, "", err
 	}
-	return body, input, digest(propertyBytes), nil
+	return body, input, providerwire.Digest(propertyBytes), nil
 }
-
 func cloneMap(input map[string]any) map[string]any {
 	out := make(map[string]any, len(input))
 	for key, value := range input {
@@ -137,7 +150,6 @@ func cloneMap(input map[string]any) map[string]any {
 	}
 	return out
 }
-
 func strictExtension(prefix, current []json.RawMessage) bool {
 	if len(current) <= len(prefix) {
 		return false
@@ -149,21 +161,17 @@ func strictExtension(prefix, current []json.RawMessage) bool {
 	}
 	return true
 }
-
 func jsonEqual(left, right []byte) bool {
 	var a, b any
-	return json.Unmarshal(left, &a) == nil && json.Unmarshal(right, &b) == nil &&
-		deepEqualJSON(a, b)
+	return json.Unmarshal(left, &a) == nil && json.Unmarshal(right, &b) == nil && deepEqualJSON(a, b)
 }
-
 func deepEqualJSON(left, right any) bool {
 	a, _ := json.Marshal(left)
 	b, _ := json.Marshal(right)
 	return string(a) == string(b)
 }
-
 func websocketEndpoint(endpoint string) (string, error) {
-	value, err := url.Parse(joinEndpoint(endpoint, "/responses"))
+	value, err := url.Parse(strings.TrimRight(endpoint, "/") + "/responses")
 	if err != nil {
 		return "", err
 	}
@@ -178,30 +186,16 @@ func websocketEndpoint(endpoint string) (string, error) {
 	return value.String(), nil
 }
 
-func transportMetadata(logical, payload []byte, incremental bool) provider.TransportMetadata {
-	return provider.TransportMetadata{
-		RequestBytes: uint64(len(payload)), LogicalRequestDigest: digest(logical),
-		TransportPayloadDigest: digest(payload), Incremental: incremental,
-	}
-}
-
-func digest(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
 type responsesSocketStream struct {
-	ctx         context.Context
-	session     *responsesSession
-	decoder     openai.ResponsesDecoder
-	queue       []provider.StreamEvent
-	started     bool
-	stopped     bool
-	closed      bool
-	input       []json.RawMessage
-	property    string
-	pending     *provider.ResponseState
-	idleTimeout time.Duration
+	ctx                      context.Context
+	session                  *responsesSession
+	decoder                  ResponsesDecoder
+	queue                    []provider.StreamEvent
+	started, stopped, closed bool
+	input                    []json.RawMessage
+	property                 string
+	pending                  *provider.ResponseState
+	idleTimeout              time.Duration
 }
 
 func (s *responsesSocketStream) Recv() (provider.StreamEvent, error) {
@@ -220,27 +214,20 @@ func (s *responsesSocketStream) Recv() (provider.StreamEvent, error) {
 				s.pending = event.Response
 				continue
 			}
-			if event.Type == provider.EventMessageStop && s.pending != nil &&
-				!event.StopReason.Incomplete() {
+			if event.Type == provider.EventMessageStop && s.pending != nil && !event.StopReason.Incomplete() {
 				s.session.previous = s.pending.ID
 				s.session.property = s.property
-				s.session.prefix = append(
-					append([]json.RawMessage(nil), s.input...),
-					replayOutput(s.pending.Output)...,
-				)
+				s.session.prefix = append(append([]json.RawMessage(nil), s.input...), replayOutput(s.pending.Output)...)
 			}
 			if event.Type == provider.EventMessageStop {
 				s.stopped = true
 			}
 			return event, nil
 		}
-		kind, data, err := s.session.conn.Read(s.ctx)
+		data, err := s.session.conn.Read(s.ctx)
 		if err != nil {
 			s.session.invalidate()
 			return provider.StreamEvent{}, err
-		}
-		if kind != websocket.MessageText {
-			continue
 		}
 		events, err := s.decoder.Decode(data)
 		if err != nil {
@@ -250,7 +237,6 @@ func (s *responsesSocketStream) Recv() (provider.StreamEvent, error) {
 		s.queue = append(s.queue, events...)
 	}
 }
-
 func (s *responsesSocketStream) Close() error {
 	if s.closed {
 		return nil
@@ -273,10 +259,9 @@ func (s *responsesSocketStream) Close() error {
 	s.session.mu.Unlock()
 	return nil
 }
-
 func (s *responsesSession) invalidate() {
 	if s.conn != nil {
-		_ = s.conn.Close(websocket.StatusNormalClosure, "")
+		_ = s.conn.Close()
 	}
 	if s.cancel != nil {
 		s.cancel()
@@ -287,7 +272,6 @@ func (s *responsesSession) invalidate() {
 	s.conn, s.cancel, s.previous, s.property, s.prefix = nil, nil, "", "", nil
 	s.idle = nil
 }
-
 func replayOutput(items []json.RawMessage) []json.RawMessage {
 	var result []json.RawMessage
 	for _, raw := range items {
@@ -297,19 +281,14 @@ func replayOutput(items []json.RawMessage) []json.RawMessage {
 		}
 		switch item["type"] {
 		case "function_call":
-			result = appendJSON(result, map[string]any{
-				"type": "function_call", "call_id": item["call_id"],
-				"name": item["name"], "arguments": item["arguments"],
-			})
+			result = appendJSON(result, map[string]any{"type": "function_call", "call_id": item["call_id"], "name": item["name"], "arguments": item["arguments"]})
 		case "reasoning":
 			text := responseItemText(item["content"])
 			if text == "" {
 				text = responseItemText(item["summary"])
 			}
 			if text != "" {
-				value := map[string]any{"type": "reasoning", "content": []map[string]any{{
-					"type": "reasoning_text", "text": text,
-				}}}
+				value := map[string]any{"type": "reasoning", "content": []map[string]any{{"type": "reasoning_text", "text": text}}}
 				if item["id"] != nil {
 					value["id"] = item["id"]
 				}
@@ -323,7 +302,6 @@ func replayOutput(items []json.RawMessage) []json.RawMessage {
 	}
 	return result
 }
-
 func responseItemText(value any) string {
 	parts, _ := value.([]any)
 	var text string
@@ -335,7 +313,6 @@ func responseItemText(value any) string {
 	}
 	return text
 }
-
 func appendJSON(items []json.RawMessage, value any) []json.RawMessage {
 	raw, err := json.Marshal(value)
 	if err == nil {
@@ -345,3 +322,4 @@ func appendJSON(items []json.RawMessage, value any) []json.RawMessage {
 }
 
 var _ provider.Stream = (*responsesSocketStream)(nil)
+var _ providerwire.SessionAdapter = (*Adapter)(nil)

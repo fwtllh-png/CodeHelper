@@ -19,6 +19,11 @@ LDFLAGS := -s -w \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-eval multi-agent-performance \
 	token-bench token-bench-live token-bench-compare \
+	provider-architecture-p0 provider-architecture-p1 provider-architecture-p2 \
+	provider-architecture-p3 provider-architecture-p4 provider-architecture-p5 \
+	provider-architecture-p6 \
+	provider-p0-goldens provider-p0-goldens-update \
+	provider-deepseek-live-control \
 	architecture-ratchet architecture-size-budget architecture-freeze \
 	book-navigation command-docs command-docs-check \
 	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
@@ -47,6 +52,10 @@ ARCHITECTURE_SIZE_REPORT ?= .tmp/architecture/size-budget.json
 ARCHITECTURE_SIZE_PATHS ?= internal/runtime/agent/engine,internal/runtime/agent/turnexec,internal/runtime/agent/compact,internal/runtime/agent/evidence,internal/runtime/agent/workingset,internal/runtime/app,internal/persist/state/turnstate
 ARCHITECTURE_SIZE_MAX_NET ?= 0
 BASE_REF ?= $(ARCHITECTURE_BASE_REF)
+PROVIDER_ARCHITECTURE_BASE_REF ?= origin/main
+PROVIDER_ARCHITECTURE_P2_BASE_REF ?= c8c0a59
+PROVIDER_ARCHITECTURE_SIZE_REPORT ?= .tmp/architecture/provider-p0-size.json
+PROVIDER_ARCHITECTURE_SIZE_PATHS ?= internal/adapter/model,internal/adapter/provider,internal/runtime/app/wire/modules_provider.go
 
 FUZZTIME ?= 30s
 RELEASE_STAGE ?= experimental
@@ -114,6 +123,109 @@ architecture-size-budget:
 		-paths '$(ARCHITECTURE_SIZE_PATHS)' \
 		-max-net '$(ARCHITECTURE_SIZE_MAX_NET)' \
 		-report '$(ARCHITECTURE_SIZE_REPORT)'
+
+provider-p0-goldens:
+	$(GO) test -count=1 ./internal/adapter/provider/httpclient -run '^TestP0'
+
+provider-p0-goldens-update:
+	CODEHELPER_UPDATE_PROVIDER_P0_GOLDENS=1 \
+		$(GO) test -count=1 ./internal/adapter/provider/httpclient -run '^TestP0'
+
+provider-architecture-p0: provider-p0-goldens
+	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 ./scripts/architecturesize
+	$(GO) run ./scripts/architecturesize -root . \
+		-base-ref '$(PROVIDER_ARCHITECTURE_BASE_REF)' \
+		-paths '$(PROVIDER_ARCHITECTURE_SIZE_PATHS)' \
+		-max-net 0 \
+		-report '$(PROVIDER_ARCHITECTURE_SIZE_REPORT)'
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p1: provider-p0-goldens
+	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 ./internal/runtime/agent/engine ./internal/runtime/app/wire
+	$(GO) test -count=1 ./scripts/architecturesize
+	$(GO) run ./scripts/architecturesize -root . \
+		-base-ref '$(PROVIDER_ARCHITECTURE_BASE_REF)' \
+		-paths '$(PROVIDER_ARCHITECTURE_SIZE_PATHS)' \
+		-max-net 0 \
+		-report '$(PROVIDER_ARCHITECTURE_SIZE_REPORT)'
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p2: provider-p0-goldens
+	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 ./internal/runtime/agent/engine ./internal/runtime/app/wire
+	$(GO) test -count=1 ./scripts/architecturesize
+	$(GO) run ./scripts/architecturesize -root . \
+		-base-ref '$(PROVIDER_ARCHITECTURE_P2_BASE_REF)' \
+		-paths '$(PROVIDER_ARCHITECTURE_SIZE_PATHS)' \
+		-max-net 0 \
+		-report '$(PROVIDER_ARCHITECTURE_SIZE_REPORT)'
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p3: provider-p0-goldens
+	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 ./internal/runtime/agent/engine ./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/adapter/provider/deepseek \
+		./internal/adapter/provider/openai \
+		./internal/adapter/provider/httpclient
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p4: provider-p0-goldens
+	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 \
+		./internal/runtime/protocol \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app \
+		./internal/runtime/contextfork \
+		./internal/persist/state/eventlog
+	$(GO) test -race -count=1 \
+		./internal/adapter/provider/anthropic \
+		./internal/adapter/provider/openai \
+		./internal/adapter/provider/deepseek \
+		./internal/adapter/provider/router
+	cd $(VSCODE_DIR) && $(NPM) run check:protocol
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p5: provider-p0-goldens
+	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 \
+		./internal/runtime/protocol \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app \
+		./internal/persist/state/eventlog
+	$(GO) test -race -count=1 \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine
+	cd $(VSCODE_DIR) && $(NPM) run check:protocol
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p6: provider-p0-goldens
+	$(GO) test -count=1 \
+		./internal/adapter/model \
+		./internal/adapter/tool \
+		./internal/adapter/provider/...
+	$(GO) test -count=1 \
+		./internal/runtime/protocol \
+		./internal/runtime/agent/promptcontext \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app \
+		./internal/runtime/app/wire \
+		./internal/persist/state/eventlog
+	$(GO) test -race -count=1 \
+		./internal/adapter/tool \
+		./internal/adapter/provider/deepseek \
+		./internal/runtime/agent/engine
+	cd $(VSCODE_DIR) && $(NPM) run check:protocol
+	$(MAKE) architecture-ratchet
+
+provider-deepseek-live-control:
+	CODEHELPER_DEEPSEEK_LIVE_CONTROL=1 \
+		$(GO) test -count=1 -v ./internal/adapter/provider/httpclient \
+		-run '^TestDeepSeekP0LiveControl$$'
 
 # Architecture behavior freeze. Package tests carry characterization, visual/wire
 # goldens, config provenance drift, state transitions, and schema drift. Race is

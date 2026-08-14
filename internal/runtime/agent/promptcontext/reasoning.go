@@ -2,9 +2,23 @@ package promptcontext
 
 import "strings"
 
-func ReasoningEffort(providerID, prompt, intent string, escalation uint8, supported bool, fixed string) string {
-	if !supported || fixed != "" {
+func ReasoningEffort(
+	prompt, intent string,
+	escalation uint8,
+	efforts []string,
+	fixed string,
+) string {
+	if fixed != "" || len(efforts) == 0 {
 		return fixed
+	}
+	adaptive := make([]string, 0, len(efforts))
+	for _, effort := range efforts {
+		if effort != "off" {
+			adaptive = append(adaptive, effort)
+		}
+	}
+	if len(adaptive) == 0 {
+		return ""
 	}
 	prompt = strings.ToLower(prompt)
 	level := 0
@@ -17,13 +31,10 @@ func ReasoningEffort(providerID, prompt, intent string, escalation uint8, suppor
 		level = max(level, 1)
 	}
 	level += int(escalation)
-	if level < 3 {
-		return []string{"low", "medium", "high"}[level]
+	if level >= len(adaptive) {
+		level = len(adaptive) - 1
 	}
-	if strings.HasPrefix(providerID, "deepseek-v4") {
-		return "max"
-	}
-	return "xhigh"
+	return adaptive[level]
 }
 
 func OutputLimit(limit uint64, effort string, finish bool) uint64 {

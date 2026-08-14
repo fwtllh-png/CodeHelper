@@ -81,17 +81,24 @@ func ProbeModelCapabilities(ctx context.Context, options ProbeOptions) ([]ProbeR
 	client := httpclient.New()
 	client.Egress = gate
 	client.HTTP = &http.Client{Timeout: 30 * time.Second}
-	client.MaxAttempts = 1
 	if options.BaseURL != "" || strings.TrimSpace(os.Getenv("CODEHELPER_MODEL_PROBE_BASE_URL")) != "" {
 		// Hermetic / overridden endpoints still require a credential resolver; the
 		// fixture server never sees the value.
 		client.Credentials = probeCredentials("codehelper-probe-key")
 	}
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	runtimeProvider, err := newProviderRouter(client, routes)
+	if err != nil {
+		return nil, err
+	}
 
 	repo := model.NewCapabilityRepository(options.Store.SQLite().DB())
 	results := make([]ProbeResult, 0, len(options.Capabilities)+1)
 	for _, capability := range options.Capabilities {
-		supported, detail, err := probeOne(ctx, client, route, capability)
+		supported, detail, err := probeOne(ctx, runtimeProvider, route, capability)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", capability, err)
 		}
@@ -124,7 +131,7 @@ func ProbeModelCapabilities(ctx context.Context, options ProbeOptions) ([]ProbeR
 
 func probeOne(
 	ctx context.Context,
-	client *httpclient.Client,
+	client provider.Provider,
 	route model.ReadyRoute,
 	capability model.Capability,
 ) (bool, string, error) {

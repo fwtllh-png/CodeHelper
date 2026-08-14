@@ -237,6 +237,12 @@ type ReceiptProviderRetry struct {
 	LastCategory string    `json:"last_category"`
 }
 
+type ReceiptModelExecution struct {
+	ProviderAttempts  int `json:"provider_attempts"`
+	ModelSamples      int `json:"model_samples"`
+	CompletionRepairs int `json:"completion_repairs"`
+}
+
 // ExecutionReceiptData is the per-turn audit record: what the turn was asked to
 // do, what it touched, what verified it, and what it cost.
 // It is emitted for completed and failed turns alike, immediately before the
@@ -256,6 +262,7 @@ type ExecutionReceiptData struct {
 	WorkspaceIsolation string                 `json:"workspace_isolation,omitempty"`
 	Completion         *CompletionDeclaration `json:"completion,omitempty"`
 	ProviderRetry      *ReceiptProviderRetry  `json:"provider_retry,omitempty"`
+	ModelExecution     ReceiptModelExecution  `json:"model_execution"`
 
 	// Routes are the routes the turn actually sampled on, one entry per purpose.
 	// It is what the turn did, not the table it could have used: a slot the turn

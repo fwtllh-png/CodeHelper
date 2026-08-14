@@ -252,6 +252,20 @@ compaction, resume, or uncertain state falls back to a complete request. Usage
 retains separate logical and transport digests plus serialized request bytes,
 so transport savings cannot be reported as token savings.
 
+Every route carries an explicit `AdapterID`; the immutable Provider Router is
+the only production sampling path. The composition root installs dedicated
+OpenAI, DeepSeek, and Anthropic adapters plus one parameterized
+OpenAI-compatible adapter. DeepSeek never advertises incremental responses, so
+its Chat and Responses routes always use complete HTTP/SSE requests without
+`previous_response_id`.
+
+Before summary replacement, the token-window gate deterministically reduces
+oversized closed Tool Result surfaces from oldest to newest. The Tool layer
+keeps the complete original in the durable Content Store and returns a stable
+`result_get` handle plus bounded head and tail excerpts. Call/result pairing is
+unchanged. The Engine remeasures after each projection and skips summary
+replacement when surface pruning alone restores the window.
+
 `TurnCoordinator` is the only production entry to `Reducer.Apply`. Engine
 events are projection-only and never feed Commands back into the state machine.
 Durable Runtime construction requires explicit Event, Content, and Terminal

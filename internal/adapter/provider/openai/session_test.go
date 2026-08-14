@@ -1,4 +1,4 @@
-package httpclient
+package openai
 
 import (
 	"context"
@@ -13,6 +13,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestResponsesSessionSendsStrictDeltaAndSeparatesDigests(t *testing.T) {
@@ -190,7 +192,7 @@ func TestResponsesSessionCapabilityOffKeepsHTTPBehavior(t *testing.T) {
 	}
 }
 
-func TestResponsesSessionConnectionResetFallsBackWithoutContinuation(t *testing.T) {
+func TestResponsesSessionConnectionResetDefersFullFallbackToNextCall(t *testing.T) {
 	var fullFallback map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Upgrade") == "" {
@@ -225,11 +227,11 @@ func TestResponsesSessionConnectionResetFallsBackWithoutContinuation(t *testing.
 	if _, err := provider.Drain(stream); err != nil {
 		t.Fatal(err)
 	}
-	client.sessionMu.Lock()
-	session := client.sessions["session-1\x00fixture\x00fixture-model"]
-	client.sessionMu.Unlock()
+	client.adapter.sessionMu.Lock()
+	session := client.adapter.sessions["session-1\x00fixture\x00fixture-model"]
+	client.adapter.sessionMu.Unlock()
 	session.mu.Lock()
-	session.conn.CloseNow()
+	session.conn.Close()
 	session.mu.Unlock()
 
 	second := first
@@ -237,6 +239,13 @@ func TestResponsesSessionConnectionResetFallsBackWithoutContinuation(t *testing.
 		provider.TextMessage(provider.RoleAssistant, "answer"),
 		provider.TextMessage(provider.RoleUser, "next"),
 	)
+	stream, err = client.Stream(t.Context(), second)
+	if !protocol.IsCode(err, protocol.CodeUnavailable) {
+		t.Fatalf("reset Stream() error = %v", err)
+	}
+	if fullFallback != nil {
+		t.Fatalf("reset call performed an HTTP fallback: %#v", fullFallback)
+	}
 	stream, err = client.Stream(t.Context(), second)
 	if err != nil {
 		t.Fatal(err)
@@ -257,22 +266,29 @@ func TestResponsesSessionConnectionResetFallsBackWithoutContinuation(t *testing.
 }
 
 func TestResponsesSessionReplayOutputMatchesLogicalInputEncoding(t *testing.T) {
+	route := testRequest(
+		t, "https://api.openai.test", model.ProtocolOpenAIResponses,
+	).Route
 	reasoning := json.RawMessage(`{"id":"rs_1","type":"reasoning","content":[{"type":"reasoning_text","text":"inspect"}]}`)
 	output := []json.RawMessage{
 		reasoning,
 		json.RawMessage(`{"id":"fc_1","type":"function_call","call_id":"call_1","name":"read","arguments":"{\"path\":\"a.go\"}"}`),
 		json.RawMessage(`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}`),
 	}
-	logical, err := openAIResponsesInput([]provider.Message{{
-		Role: provider.RoleAssistant,
-		Blocks: []provider.ContentBlock{
-			{Type: provider.ContentReasoning, Text: "inspect", ProviderType: "openai_responses.reasoning", ProviderData: reasoning},
-			{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{
-				ID: "call_1", Name: "read", Arguments: `{"path":"a.go"}`,
-			}},
-			{Type: provider.ContentText, Text: "done"},
-		},
-	}})
+	logical, err := responsesInput([]provider.Message{
+		provider.ProducedAssistant(
+			route,
+			[]provider.ContentBlock{
+				{Type: provider.ContentReasoning, ID: "rs_1", Text: "inspect"},
+				{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{
+					ID: "call_1", Name: "read", Arguments: `{"path":"a.go"}`,
+				}},
+				{Type: provider.ContentText, Text: "done"},
+			},
+			1,
+			mustReplayState(t, []json.RawMessage{reasoning}),
+		),
+	}, route, ResponsesPolicy{ReplayAdapter: model.AdapterOpenAI})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,6 +304,32 @@ func TestResponsesSessionReplayOutputMatchesLogicalInputEncoding(t *testing.T) {
 		if !jsonEqual(replayed[index], want) {
 			t.Fatalf("item %d replayed=%s logical=%s", index, replayed[index], want)
 		}
+	}
+}
+
+func TestOpenAIResponsesDoesNotSynthesizeDeepSeekReasoning(t *testing.T) {
+	request := testRequest(
+		t, "https://api.openai.test", model.ProtocolOpenAIResponses,
+	)
+	request.Messages = []provider.Message{
+		provider.TextMessage(provider.RoleUser, "inspect"),
+		{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{{
+			Type: provider.ContentToolCall,
+			ToolCall: &provider.ToolCall{
+				ID: "call_1", Name: "read", Arguments: "{}",
+			},
+		}}},
+	}
+	adapter, err := NewAdapter(model.AdapterOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := adapter.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(call.Body), "(continued)") {
+		t.Fatalf("DeepSeek placeholder leaked into OpenAI request: %s", call.Body)
 	}
 }
 
@@ -343,5 +385,86 @@ func writeResponseEvent(
 	}
 	if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
 		t.Error(err)
+	}
+}
+
+type adapterClient struct {
+	*httpclient.Client
+	adapter *Adapter
+}
+
+func testClient() *adapterClient {
+	adapter, err := NewAdapter(model.AdapterOpenAI)
+	if err != nil {
+		panic(err)
+	}
+	client := httpclient.New()
+	client.Credentials = staticCredentials("")
+	return &adapterClient{Client: client, adapter: adapter}
+}
+
+func (c *adapterClient) Stream(
+	ctx context.Context,
+	request provider.ModelRequest,
+) (provider.Stream, error) {
+	call, err := c.adapter.Prepare(request)
+	if err != nil {
+		return nil, err
+	}
+	stream, handled, err := c.adapter.TrySession(ctx, request, call, c.Client)
+	if handled || err != nil {
+		return stream, err
+	}
+	return c.Execute(ctx, request, call, c.adapter)
+}
+
+type staticCredentials string
+
+func (c staticCredentials) Resolve(
+	context.Context,
+	model.CredentialRef,
+) (string, error) {
+	return string(c), nil
+}
+
+func testRequest(
+	t *testing.T,
+	endpoint string,
+	protocol model.WireProtocol,
+) provider.ModelRequest {
+	t.Helper()
+	catalog, err := model.NewCatalog(model.Provider{
+		ID: "fixture", Adapter: model.AdapterOpenAI, Endpoint: endpoint,
+		Protocol: protocol, Provenance: model.ProvenanceFixture,
+		Models: map[string]model.Model{"fixture-model": {
+			ID: "fixture-model", CanonicalID: "fixture-model", WireID: "wire-model",
+			Limits: model.Limits{ContextTokens: 8192, MaxOutputTokens: 4096},
+			Capabilities: model.Capabilities{
+				Streaming: true, Reasoning: true, ToolCalls: true,
+			},
+			Pricing:    model.Pricing{Provenance: model.ProvenanceFixture},
+			Provenance: model.ProvenanceFixture,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := model.NewResolver(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(model.RouteRequest{
+		ProviderID: "fixture", ModelID: "fixture-model",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return provider.ModelRequest{
+		Route: route,
+		Messages: []provider.Message{
+			provider.TextMessage(provider.RoleUser, "hello"),
+		},
+		MaxOutputTokens: 128,
+		Idempotent:      true,
 	}
 }

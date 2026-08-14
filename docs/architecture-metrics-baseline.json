@@ -36,14 +36,172 @@
       }
     },
     {
+      "id": "adapter_model_package",
+      "kind": "package",
+      "path": "internal/adapter/model",
+      "limits": {
+        "internal_fanout": 0,
+        "production_lines": 940,
+        "options_fields": 0,
+        "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "P6 makes reasoning effort levels explicit model capability data and validates their ownership."
+      }
+    },
+    {
+      "id": "provider_core_package",
+      "kind": "package",
+      "path": "internal/adapter/provider",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 700,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "P5 extends the provider-neutral failure taxonomy for durable retry policy."
+      }
+    },
+    {
+      "id": "provider_router_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/router",
+      "limits": {
+        "internal_fanout": 4,
+        "production_lines": 116,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "P2 routes prepared calls through the provider wire contract.",
+        "production_lines": "P4 filters replay state by AdapterID before validation, serialization, or transport."
+      }
+    },
+    {
+      "id": "provider_wire_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/wire",
+      "limits": {
+        "internal_fanout": 3,
+        "production_lines": 165,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "P3 preserves typed adapter failure facts while retaining the runtime Problem boundary."
+      }
+    },
+    {
+      "id": "provider_httpclient_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/httpclient",
+      "limits": {
+        "internal_fanout": 8,
+        "production_lines": 673,
+        "options_fields": 0,
+        "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "P3 delegates redacted provider diagnostics to the observability-owned dump package."
+      }
+    },
+    {
+      "id": "provider_httpclient_client_file",
+      "kind": "file",
+      "path": "internal/adapter/provider/httpclient/client.go",
+      "limits": {
+        "lines": 407,
+        "max_function_lines": 77
+      },
+      "relaxations": {
+        "lines": "P3 delegates diagnostic dump decisions without restoring provider serialization or retry ownership."
+      }
+    },
+    {
+      "id": "provider_openai_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/openai",
+      "limits": {
+        "internal_fanout": 4,
+        "production_lines": 1507,
+        "options_fields": 0,
+        "mutex_fields": 2
+      },
+      "relaxations": {
+        "internal_fanout": "P2 makes OpenAI own prepared calls and continuation sessions.",
+        "production_lines": "Live DeepSeek validation requires the Responses adapter to reconcile visible reasoning summaries with native content and reject unrelated replay item bindings.",
+        "mutex_fields": "OpenAI now owns connection-local Responses continuation state."
+      }
+    },
+    {
+      "id": "provider_deepseek_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/deepseek",
+      "limits": {
+        "internal_fanout": 5,
+        "production_lines": 398,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "P3 gives DeepSeek an explicit adapter over shared wire codecs and runtime-neutral stream errors.",
+        "production_lines": "Live P6 validation requires the dedicated DeepSeek Responses adapter to recover typed DSML tool calls before provider-neutral Runtime processing."
+      }
+    },
+    {
+      "id": "provider_anthropic_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/anthropic",
+      "limits": {
+        "internal_fanout": 3,
+        "production_lines": 634,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "P2 makes Anthropic implement the provider wire contract.",
+        "production_lines": "P4 captures and validates Anthropic reasoning signatures as adapter-private replay state."
+      }
+    },
+    {
+      "id": "provider_fixture_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/fixture",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 311,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
       "id": "runtime_app_wire_package",
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 64,
-        "production_lines": 7590,
+        "internal_fanout": 69,
+        "production_lines": 7570,
         "options_fields": 70,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "internal_fanout": "P6 deletes the forwarding-only openaicompat package while retaining explicit compatible AdapterID construction."
+      }
+    },
+    {
+      "id": "observability_providerdump_package",
+      "kind": "package",
+      "path": "internal/observability/providerdump",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 179,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "P3 keeps redacted provider diagnostics in observability while consuming normalized request metadata.",
+        "production_lines": "P4 reports replay presence and size without exposing private replay bytes."
       }
     },
     {
@@ -116,9 +274,13 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 9110,
-        "options_fields": 58,
+        "production_lines": 9563,
+        "options_fields": 59,
         "mutex_fields": 9
+      },
+      "relaxations": {
+        "production_lines": "P6 adds deterministic retrieval-backed Tool Result surface pruning and pre-I/O reasoning-effort validation.",
+        "options_fields": "P5 adds the Runtime-owned provider retry delay bound."
       }
     },
     {
@@ -127,9 +289,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7598,
+        "production_lines": 7623,
         "options_fields": 18,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "P6 projects Tool Result pruning evidence through the Runtime compaction event."
       }
     },
     {
@@ -369,8 +534,11 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 508,
+        "lines": 509,
         "max_function_lines": 123
+      },
+      "relaxations": {
+        "lines": "P6 moves option normalization out of engine.go and lowers this hotspot."
       }
     },
     {

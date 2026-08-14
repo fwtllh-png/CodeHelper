@@ -114,7 +114,7 @@ func newModelCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command
 			}
 			payload := map[string]any{
 				"provider": provider.ID, "model": modelID,
-				"kind":              string(provider.Kind),
+				"adapter":           string(provider.Adapter),
 				"endpoint":          provider.Endpoint,
 				"protocol":          string(provider.Protocol),
 				"wire_id":           meta.WireID,

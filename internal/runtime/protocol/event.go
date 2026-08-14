@@ -15,7 +15,6 @@ const (
 	EventTurnStarted        EventKind = "turn.started"
 	EventOutputDelta        EventKind = "output.delta"
 	EventReasoningDelta     EventKind = "reasoning.delta"
-	EventReasoningSignature EventKind = "reasoning.signature"
 	EventSearchResult       EventKind = "search.result"
 	EventCitation           EventKind = "citation"
 	EventUsage              EventKind = "usage"
@@ -110,16 +109,6 @@ type ReasoningDeltaData TextDeltaData
 func (*ReasoningDeltaData) eventKind() EventKind { return EventReasoningDelta }
 
 func (d *ReasoningDeltaData) validate() error { return (*TextDeltaData)(d).validate() }
-
-type ReasoningSignatureData struct {
-	Signature string `json:"signature"`
-}
-
-func (*ReasoningSignatureData) eventKind() EventKind { return EventReasoningSignature }
-
-func (d *ReasoningSignatureData) validate() error {
-	return require(d.Signature != "", "reasoning signature is required")
-}
 
 type Source struct {
 	ID    string `json:"id"`
@@ -887,8 +876,10 @@ type TurnCompactionData struct {
 	Sections []string `json:"sections,omitempty"`
 	// SummaryTruncated reports that the summary budget cut sections, so a host can
 	// distinguish a complete account of the removed history from a partial one.
-	SummaryTruncated bool     `json:"summary_truncated,omitempty"`
-	RemovedTurns     []uint64 `json:"removed_turns,omitempty"`
+	SummaryTruncated  bool     `json:"summary_truncated,omitempty"`
+	RemovedTurns      []uint64 `json:"removed_turns,omitempty"`
+	PrunedToolResults int      `json:"pruned_tool_results,omitempty"`
+	PrunedBytes       int      `json:"pruned_bytes,omitempty"`
 }
 
 func (*TurnCompactionData) eventKind() EventKind { return EventTurnCompaction }

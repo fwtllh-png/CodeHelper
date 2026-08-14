@@ -108,8 +108,9 @@ workspace = "auto"           # auto | read_only | worktree | same_workspace_seri
 
 An empty `reasoning_effort` selects low for read-only work, medium for normal
 coding, and high for complex architecture/debugging; repair failures escalate
-one level. An explicit effort remains fixed. `max_output_tokens` is always the
-hard request ceiling; stage reserves never raise an explicit value.
+one level. An explicit effort remains fixed and must be advertised by every
+configured route; unsupported values fail before provider I/O. `max_output_tokens`
+is always the hard request ceiling; stage reserves never raise an explicit value.
 
 `delegation = "explicit"` exposes `spawn_agent` only with user, developer,
 Skill, or internal system authority. `adaptive` also allows the model to

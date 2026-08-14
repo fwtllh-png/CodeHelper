@@ -370,7 +370,6 @@
             "turn.started",
             "output.delta",
             "reasoning.delta",
-            "reasoning.signature",
             "search.result",
             "citation",
             "usage",
@@ -3206,18 +3205,6 @@
       ],
       "additionalProperties": false
     },
-    "reasoning.signature": {
-      "type": "object",
-      "properties": {
-        "signature": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "signature"
-      ],
-      "additionalProperties": false
-    },
     "search.result": {
       "type": "object",
       "properties": {
@@ -3641,6 +3628,12 @@
         },
         "phase": {
           "type": "string"
+        },
+        "pruned_bytes": {
+          "type": "integer"
+        },
+        "pruned_tool_results": {
+          "type": "integer"
         },
         "removed_messages": {
           "type": "integer"
@@ -4313,6 +4306,26 @@
         "mode": {
           "type": "string"
         },
+        "model_execution": {
+          "type": "object",
+          "properties": {
+            "completion_repairs": {
+              "type": "integer"
+            },
+            "model_samples": {
+              "type": "integer"
+            },
+            "provider_attempts": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "completion_repairs",
+            "model_samples",
+            "provider_attempts"
+          ],
+          "additionalProperties": false
+        },
         "not_collected": {
           "type": "array",
           "items": {
@@ -4624,6 +4637,7 @@
         "goal",
         "input_tokens",
         "latency_ms",
+        "model_execution",
         "output_tokens",
         "verification"
       ],
@@ -5222,13 +5236,6 @@
     },
     "reasoning.delta": {
       "class": "stream",
-      "item_owner": "turn",
-      "durability": "retained",
-      "correlation": "turn",
-      "terminal": false
-    },
-    "reasoning.signature": {
-      "class": "audit",
       "item_owner": "turn",
       "durability": "retained",
       "correlation": "turn",

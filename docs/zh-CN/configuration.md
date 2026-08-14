@@ -105,8 +105,9 @@ wall_time = "5m"
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
 
 `reasoning_effort` 为空时，Read-only 使用 Low，常规编码使用 Medium，复杂架构或
-Debug 使用 High；Repair 失败后提升一档。显式 Effort 始终固定。
-`max_output_tokens` 始终是请求硬上限，阶段 Reserve 不会提高显式配置值。
+Debug 使用 High；Repair 失败后提升一档。显式 Effort 始终固定，且必须由所有已配置
+Route 广告；不支持的值会在 Provider I/O 前失败。`max_output_tokens` 始终是请求硬
+上限，阶段 Reserve 不会提高显式配置值。
 
 `delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
 `spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。

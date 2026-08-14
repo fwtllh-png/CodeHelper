@@ -649,6 +649,16 @@ func (r *Registry) ExecutePrepared(
 	return r.results.RouteFor(canonicalName, result), nil
 }
 
+// PruneResultSurface stores the full result and returns a deterministic,
+// retrieval-backed model projection.
+func (r *Registry) PruneResultSurface(
+	name string,
+	result Result,
+	maxBytes int,
+) (Result, bool) {
+	return r.results.PruneSurface(name, result, maxBytes)
+}
+
 func RepairArguments(raw json.RawMessage) json.RawMessage {
 	value := strings.TrimSpace(string(raw))
 	if value == "" {
@@ -888,6 +898,64 @@ func (s *ResultStore) RouteFor(name string, result Result) Result {
 	return result
 }
 
+func (s *ResultStore) PruneSurface(
+	name string,
+	result Result,
+	maxBytes int,
+) (Result, bool) {
+	if name == "result_get" || name == "handle_read" || maxBytes <= 0 {
+		return result, false
+	}
+	full := storedResult{
+		Content: result.Content, IsError: result.IsError,
+		Metadata: cloneMetadata(result.Metadata),
+	}
+	if result.Handle != "" {
+		stored, ok := s.getResult(result.Handle)
+		if !ok {
+			return result, false
+		}
+		full = stored
+	}
+	if len(full.Content) <= maxBytes {
+		return result, false
+	}
+	data, err := json.Marshal(full)
+	if err != nil {
+		return result, false
+	}
+	handle := result.Handle
+	if handle == "" {
+		handle = contentstore.StableHandle("result", data)
+		if err := s.store.Put(context.Background(), handle, data); err != nil {
+			return result, false
+		}
+	}
+	headBytes := maxBytes * 3 / 4
+	tailBytes := maxBytes - headBytes
+	head, _ := boundedSlice(full.Content, 0, headBytes)
+	tail, _ := boundedSlice(full.Content, len(full.Content)-tailBytes, tailBytes)
+	result.Content = SurfaceTruncationNotice(
+		len(full.Content),
+		handle,
+		head,
+		tail,
+	)
+	result.IsError = full.IsError
+	result.Truncated = true
+	result.OriginalBytes = len(full.Content)
+	result.Handle = handle
+	result.Metadata = cloneMetadata(full.Metadata)
+	if result.Metadata == nil {
+		result.Metadata = map[string]any{}
+	}
+	result.Metadata["original_bytes"] = result.OriginalBytes
+	result.Metadata["truncated"] = true
+	result.Metadata["handle"] = handle
+	result.Metadata["projection_kind"] = "context_surface"
+	return result, true
+}
+
 func (s *ResultStore) projectionLimit(name, content string) (int, string, int) {
 	kind, tokens := "generic", 2048
 	switch {
@@ -949,6 +1017,24 @@ func TruncationNotice(originalBytes int, handle, body string) string {
 	}
 	b.WriteString(".\n\n")
 	b.WriteString(body)
+	return b.String()
+}
+
+func SurfaceTruncationNotice(
+	originalBytes int,
+	handle, head, tail string,
+) string {
+	var b strings.Builder
+	fmt.Fprintf(
+		&b,
+		"Warning: pruned tool result (original bytes: %d). "+
+			"Use result_get with handle %q to page the full result.\n\n",
+		originalBytes,
+		handle,
+	)
+	b.WriteString(head)
+	b.WriteString("\n\n... pruned middle ...\n\n")
+	b.WriteString(tail)
 	return b.String()
 }
 

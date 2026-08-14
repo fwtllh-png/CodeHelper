@@ -507,14 +507,16 @@ func (a *EngineAdapter) StartTurn(
 				return nil
 			}
 			return sink.Emit(&protocol.TurnCompactionData{
-				Phase:            nonEmpty(event.Compaction.Phase, agentengine.CompactionPhasePreSampling),
-				Summary:          formatCompactionSummary(event.Compaction),
-				RemovedMessages:  event.Compaction.RemovedMessages,
-				OriginalBytes:    event.Compaction.OriginalBytes,
-				RetainedBytes:    event.Compaction.RetainedBytes,
-				Sections:         append([]string(nil), event.Compaction.Sections...),
-				SummaryTruncated: event.Compaction.SummaryTruncated,
-				RemovedTurns:     append([]uint64(nil), event.Compaction.RemovedTurns...),
+				Phase:             nonEmpty(event.Compaction.Phase, agentengine.CompactionPhasePreSampling),
+				Summary:           formatCompactionSummary(event.Compaction),
+				RemovedMessages:   event.Compaction.RemovedMessages,
+				OriginalBytes:     event.Compaction.OriginalBytes,
+				RetainedBytes:     event.Compaction.RetainedBytes,
+				Sections:          append([]string(nil), event.Compaction.Sections...),
+				SummaryTruncated:  event.Compaction.SummaryTruncated,
+				RemovedTurns:      append([]uint64(nil), event.Compaction.RemovedTurns...),
+				PrunedToolResults: event.Compaction.PrunedToolResults,
+				PrunedBytes:       event.Compaction.PrunedBytes,
 			})
 		}
 		return sink.Emit(&protocol.ToolStateData{State: string(event.State), Text: event.Text})
@@ -730,9 +732,22 @@ func (a *EngineAdapter) CompactThread(
 	})
 }
 func formatCompactionSummary(receipt *agentengine.CompactionReceipt) string {
+	if receipt.RemovedMessages == 0 && receipt.PrunedToolResults != 0 {
+		return fmt.Sprintf(
+			"pruned %d tool result surfaces (%d→%d bytes)",
+			receipt.PrunedToolResults,
+			receipt.OriginalBytes,
+			receipt.RetainedBytes,
+		)
+	}
 	return fmt.Sprintf(
-		"compacted history: removed %d messages (%d→%d bytes); removed turns=%v",
-		receipt.RemovedMessages, receipt.OriginalBytes, receipt.RetainedBytes, receipt.RemovedTurns,
+		"compacted history: removed %d messages and pruned %d tool results "+
+			"(%d→%d bytes); removed turns=%v",
+		receipt.RemovedMessages,
+		receipt.PrunedToolResults,
+		receipt.OriginalBytes,
+		receipt.RetainedBytes,
+		receipt.RemovedTurns,
 	)
 }
 
@@ -810,9 +825,6 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 		case provider.ContentReasoning:
 			if event.Block.Text != "" {
 				return sink.Emit((*protocol.ReasoningDeltaData)(&protocol.TextDeltaData{Text: event.Block.Text}))
-			}
-			if event.Block.Signature != "" {
-				return sink.Emit(&protocol.ReasoningSignatureData{Signature: event.Block.Signature})
 			}
 			return nil
 		}

@@ -105,3 +105,22 @@ func TestIncrementalResponsesIsAdvertisedOnlyByBundledResponsesRoute(t *testing.
 		t.Fatal("Chat route must not advertise Responses transport")
 	}
 }
+
+func TestBundledReasoningEffortsAreExplicitAndIsolated(t *testing.T) {
+	catalog := DefaultCatalog()
+	deepseek, ok := catalog.Provider("deepseek-v4-flash")
+	if !ok {
+		t.Fatal("deepseek-v4-flash provider is missing")
+	}
+	levels := deepseek.Models["deepseek-v4-flash"].
+		Capabilities.ReasoningEffortLevels()
+	if len(levels) != 5 || levels[0] != "off" || levels[4] != "max" {
+		t.Fatalf("reasoning efforts = %v", levels)
+	}
+	levels[4] = "mutated"
+	again, _ := catalog.Provider("deepseek-v4-flash")
+	if got := again.Models["deepseek-v4-flash"].
+		Capabilities.ReasoningEffortLevels()[4]; got != "max" {
+		t.Fatalf("catalog reasoning efforts mutated to %q", got)
+	}
+}

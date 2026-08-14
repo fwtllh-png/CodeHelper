@@ -4,7 +4,9 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -242,5 +244,79 @@ func TestC5CoordinatorRestorePreservesDurableEffectPayload(t *testing.T) {
 	if !reflect.DeepEqual(actual.Payload, expected.Payload) ||
 		actual.PayloadDigest != expected.PayloadDigest {
 		t.Fatalf("restored effect=%+v want=%+v", actual, expected)
+	}
+}
+
+func TestProviderRetryScheduleSurvivesCoordinatorRestore(t *testing.T) {
+	store := NewMemoryTerminalEnvelopeStore(nil, nil)
+	first, err := NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := first.Open(
+		t.Context(),
+		"turn-provider-retry-restore",
+		NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []Command{
+		StartTurn{},
+		PreparationFinished{},
+		ModelSampleRequested{SampleID: "sample-retry"},
+	} {
+		if err := handle.Coordinator.Submit(t.Context(), command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	effect, err := handle.Dispatcher.Start(
+		EffectSampleProvider,
+		"sample-retry",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retryAt := time.Now().Add(time.Minute).UTC()
+	if err := handle.Dispatcher.ScheduleRetry(
+		EffectSampleProvider,
+		"sample-retry",
+		ProviderRetryRequested{
+			EffectID: effect.ID, SampleID: "sample-retry",
+			Attempt: effect.Attempt, Retry: 1,
+			Failure: provider.Failure{
+				Code:         provider.FailureRateLimit,
+				Message:      "rate limited",
+				RetryAfterMS: 60000,
+			},
+			EffectiveDelayMS: 60000,
+			RetryAt:          retryAt,
+			PolicyRevision:   "provider-retry/v1",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Release(t.Context(), "turn-provider-retry-restore"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := second.Restore(
+		t.Context(),
+		"turn-provider-retry-restore",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sample := restored.Coordinator.Snapshot().SampleLedger["sample-retry"]
+	if sample.ProviderRetries != 1 ||
+		sample.LastFailure == nil ||
+		sample.LastFailure.Code != provider.FailureRateLimit ||
+		sample.Retry == nil ||
+		!sample.Retry.RetryAt.Equal(retryAt) ||
+		sample.Retry.PolicyRevision != "provider-retry/v1" {
+		t.Fatalf("restored retry = %+v", sample)
 	}
 }

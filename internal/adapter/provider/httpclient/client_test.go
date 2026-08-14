@@ -527,10 +527,20 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolAnthropic)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "first"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{
-				{Type: provider.ContentReasoning, Text: "private thought", Signature: "signed-value"},
-				{Type: provider.ContentText, Text: "answer"},
-			}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{
+					{Type: provider.ContentReasoning, Text: "private thought"},
+					{Type: provider.ContentText, Text: "answer"},
+				},
+				1,
+				&provider.ReplayState{
+					Version: provider.ReplayVersion,
+					Data: json.RawMessage(
+						`{"signatures":[{"block":0,"value":"signed-value"}]}`,
+					),
+				},
+			),
 			provider.TextMessage(provider.RoleUser, "second"),
 		}
 		data, _, err := encodeRequest(request)
@@ -553,15 +563,19 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		}
 	})
 
-	t.Run("responses opaque reasoning", func(t *testing.T) {
+	t.Run("responses encrypted reasoning becomes neutral plaintext", func(t *testing.T) {
 		raw := json.RawMessage(`{"type":"reasoning","id":"rs_1","encrypted_content":"ciphertext","summary":[]}`)
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "first"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{{
-				Type: provider.ContentReasoning, ID: "rs_1",
-				ProviderType: "openai_responses.reasoning", ProviderData: raw,
-			}}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{{
+					Type: provider.ContentReasoning, ID: "rs_1", Text: "inspect",
+				}},
+				1,
+				responsesReplayState(raw),
+			),
 			provider.TextMessage(provider.RoleUser, "second"),
 		}
 		data, _, err := encodeRequest(request)
@@ -574,9 +588,12 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		if err := json.Unmarshal(data, &body); err != nil {
 			t.Fatal(err)
 		}
-		// Empty/encrypted-only reasoning must be omitted (DeepSeek 400 otherwise).
-		if len(body.Input) != 2 || body.Input[1]["role"] != "user" {
-			t.Fatalf("empty reasoning should be dropped, input=%#v", body.Input)
+		if len(body.Input) != 3 || body.Input[1]["type"] != "reasoning" ||
+			body.Input[2]["role"] != "user" {
+			t.Fatalf("reasoning replay = %#v", body.Input)
+		}
+		if _, exists := body.Input[1]["encrypted_content"]; exists {
+			t.Fatalf("encrypted replay leaked: %#v", body.Input[1])
 		}
 	})
 
@@ -585,10 +602,14 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "q"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{
-				{Type: provider.ContentReasoning, ProviderType: "openai_responses.reasoning", ProviderData: raw},
-				{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{ID: "c1", Name: "echo", Arguments: `{}`}},
-			}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{
+					{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{ID: "c1", Name: "echo", Arguments: `{}`}},
+				},
+				1,
+				responsesReplayState(raw),
+			),
 		}
 		data, _, err := encodeRequest(request)
 		if err != nil {
@@ -736,14 +757,19 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		}
 	})
 
-	t.Run("responses extracts reasoning_text from provider data", func(t *testing.T) {
+	t.Run("responses extracts reasoning_text from replay state", func(t *testing.T) {
 		raw := json.RawMessage(`{"type":"reasoning","id":"rs_2","content":[{"type":"reasoning_text","text":"from item"}],"summary":[]}`)
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "q"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{{
-				Type: provider.ContentReasoning, ProviderType: "openai_responses.reasoning", ProviderData: raw,
-			}}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{{
+					Type: provider.ContentReasoning, ID: "rs_2", Text: "from item",
+				}},
+				1,
+				responsesReplayState(raw),
+			),
 		}
 		data, _, err := encodeRequest(request)
 		if err != nil {
@@ -808,10 +834,14 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "first"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{{
-				Type: provider.ContentReasoning, ID: "rs_2", Text: "visible chain",
-				ProviderType: "openai_responses.reasoning", ProviderData: raw,
-			}}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{{
+					Type: provider.ContentReasoning, ID: "rs_2", Text: "visible chain",
+				}},
+				1,
+				responsesReplayState(raw),
+			),
 		}
 		data, _, err := encodeRequest(request)
 		if err != nil {
@@ -838,77 +868,66 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 	})
 }
 
-func TestClientRetries429AndServerErrors(t *testing.T) {
+func TestClientMakesOneAttemptForRetryableStatus(t *testing.T) {
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		attempt := attempts.Add(1)
-		if attempt == 1 {
-			writer.WriteHeader(http.StatusTooManyRequests)
-			return
-		}
-		if attempt == 2 {
-			writer.WriteHeader(http.StatusBadGateway)
-			return
-		}
-		_, _ = io.WriteString(writer, "data: [DONE]\n\n")
+		attempts.Add(1)
+		writer.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
 
 	client := testClient()
-	stream, err := client.Stream(t.Context(), testRequest(t, server.URL, model.ProtocolOpenAIChat))
-	if err != nil {
-		t.Fatal(err)
+	_, err := client.Stream(t.Context(), testRequest(t, server.URL, model.ProtocolOpenAIChat))
+	var problem *protocol.Problem
+	if !errors.As(err, &problem) || !problem.Retryable {
+		t.Fatalf("error = %v, want retryable problem", err)
 	}
-	if _, err := provider.Drain(stream); err != nil {
-		t.Fatal(err)
-	}
-	if got := attempts.Load(); got != 3 {
-		t.Fatalf("attempts = %d, want 3", got)
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("attempts = %d, want 1", got)
 	}
 }
 
-func TestClientRetriesCompleteHTTPStatusMatrix(t *testing.T) {
+func TestClientMakesOneAttemptForRetryableHTTPStatusMatrix(t *testing.T) {
 	statuses := []int{
 		http.StatusRequestTimeout,
 		http.StatusTooEarly,
 		http.StatusTooManyRequests,
 		http.StatusInternalServerError,
 	}
-	var attempts atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		index := int(attempts.Add(1) - 1)
-		if index < len(statuses) {
-			writer.WriteHeader(statuses[index])
-			return
-		}
-		_, _ = io.WriteString(writer, "data: [DONE]\n\n")
-	}))
-	defer server.Close()
-
-	client := testClient()
-	client.MaxAttempts = len(statuses) + 1
-	client.Sleep = func(context.Context, time.Duration) error { return nil }
-	stream, err := client.Stream(t.Context(), testRequest(t, server.URL, model.ProtocolOpenAIChat))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.Drain(stream); err != nil {
-		t.Fatal(err)
-	}
-	if got := attempts.Load(); got != int32(len(statuses)+1) {
-		t.Fatalf("attempts = %d", got)
+	for _, status := range statuses {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var attempts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(
+				writer http.ResponseWriter,
+				_ *http.Request,
+			) {
+				attempts.Add(1)
+				writer.WriteHeader(status)
+			}))
+			defer server.Close()
+			client := testClient()
+			_, err := client.Stream(
+				t.Context(),
+				testRequest(t, server.URL, model.ProtocolOpenAIChat),
+			)
+			var problem *protocol.Problem
+			if !errors.As(err, &problem) || !problem.Retryable {
+				t.Fatalf("error = %v, want retryable problem", err)
+			}
+			if attempts.Load() != 1 {
+				t.Fatalf("attempts = %d, want 1", attempts.Load())
+			}
+		})
 	}
 }
 
-func TestClientRetryAfterDateCapJitterAndRateLimitMetadata(t *testing.T) {
-	now := time.Date(2026, 7, 27, 12, 0, 0, 0, time.UTC)
-	var slept []time.Duration
+func TestClientRetainsRetryAfterMetadataWithoutSleeping(t *testing.T) {
 	var attempts atomic.Int32
 	var keys []string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		attempts.Add(1)
 		keys = append(keys, request.Header.Get("Idempotency-Key"))
-		writer.Header().Set("Retry-After", now.Add(time.Minute).Format(http.TimeFormat))
+		writer.Header().Set("Retry-After", "60")
 		writer.Header().Set("RateLimit-Limit", "100")
 		writer.Header().Set("RateLimit-Remaining", "0")
 		writer.WriteHeader(http.StatusTooManyRequests)
@@ -916,14 +935,6 @@ func TestClientRetryAfterDateCapJitterAndRateLimitMetadata(t *testing.T) {
 	defer server.Close()
 
 	client := testClient()
-	client.MaxAttempts = 2
-	client.MaxRetryDelay = 3 * time.Second
-	client.Now = func() time.Time { return now }
-	client.Random = func() float64 { return 1 }
-	client.Sleep = func(_ context.Context, delay time.Duration) error {
-		slept = append(slept, delay)
-		return nil
-	}
 	_, err := client.Stream(t.Context(), testRequest(t, server.URL, model.ProtocolOpenAIChat))
 
 	var problem *protocol.Problem
@@ -937,18 +948,8 @@ func TestClientRetryAfterDateCapJitterAndRateLimitMetadata(t *testing.T) {
 		problem.RateLimit.RetryAfterMS != 60000 {
 		t.Fatalf("problem = %+v", problem)
 	}
-	if len(slept) != 1 || slept[0] != 3*time.Second {
-		t.Fatalf("slept = %v", slept)
-	}
-	if len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] {
+	if attempts.Load() != 1 || len(keys) != 1 || keys[0] == "" {
 		t.Fatalf("idempotency keys = %v", keys)
-	}
-}
-
-func TestClientRetryAfterSeconds(t *testing.T) {
-	delay, ok := retryAfter("12", time.Time{})
-	if !ok || delay != 12*time.Second {
-		t.Fatalf("retryAfter() = %v, %t", delay, ok)
 	}
 }
 
@@ -972,33 +973,16 @@ func TestClientClassifiesTransportErrors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var attempts atomic.Int32
 			client := testClient()
-			client.Sleep = func(context.Context, time.Duration) error { return nil }
 			client.HTTP = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				if attempts.Add(1) == 1 {
-					return nil, test.err
-				}
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
-				}, nil
+				attempts.Add(1)
+				return nil, test.err
 			})}
 
-			stream, err := client.Stream(t.Context(), testRequest(t, "https://provider.test", model.ProtocolOpenAIChat))
-			if test.retryable {
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err := provider.Drain(stream); err != nil {
-					t.Fatal(err)
-				}
-				if attempts.Load() != 2 {
-					t.Fatalf("attempts = %d", attempts.Load())
-				}
-				return
-			}
+			_, err := client.Stream(t.Context(), testRequest(t, "https://provider.test", model.ProtocolOpenAIChat))
 			var problem *protocol.Problem
-			if !errors.As(err, &problem) || problem.Retryable || attempts.Load() != 1 {
+			if !errors.As(err, &problem) ||
+				problem.Retryable != test.retryable ||
+				attempts.Load() != 1 {
 				t.Fatalf("error=%v attempts=%d", err, attempts.Load())
 			}
 		})
@@ -1154,10 +1138,18 @@ func TestClientStreamIdleTimeoutAndNonIdempotentRetry(t *testing.T) {
 
 func testClient() *Client {
 	client := New()
-	client.MaxAttempts = 3
-	client.BaseDelay = time.Millisecond
 	client.Credentials = staticCredentials("")
 	return client
+}
+
+func responsesReplayState(items ...json.RawMessage) *provider.ReplayState {
+	data, _ := json.Marshal(struct {
+		Items []json.RawMessage `json:"items"`
+	}{Items: items})
+	return &provider.ReplayState{
+		Version: provider.ReplayVersion,
+		Data:    data,
+	}
 }
 
 func testRequest(t *testing.T, endpoint string, wireProtocol model.WireProtocol) provider.ModelRequest {
@@ -1169,9 +1161,13 @@ func testRequestWithPromptCache(
 	t *testing.T, endpoint string, wireProtocol model.WireProtocol, promptCache bool,
 ) provider.ModelRequest {
 	t.Helper()
+	adapter := model.AdapterOpenAICompatible
+	if wireProtocol == model.ProtocolAnthropic {
+		adapter = model.AdapterAnthropic
+	}
 	catalog, err := model.NewCatalog(model.Provider{
 		ID:         "fixture",
-		Kind:       model.ProviderCustom,
+		Adapter:    adapter,
 		Endpoint:   endpoint,
 		Protocol:   wireProtocol,
 		Credential: model.CredentialRef{Kind: "env", Name: "FIXTURE_API_KEY"},

@@ -92,6 +92,33 @@ func (d *DurableEffectDispatcher) Routed(
 	return entry.effect, entry.started, nil
 }
 
+// ScheduleRetry durably records the retry and returns the running effect to
+// Requested before the caller waits.
+func (d *DurableEffectDispatcher) ScheduleRetry(
+	kind EffectKind,
+	callID string,
+	command ProviderRetryRequested,
+) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	entry, err := d.findLocked(kind, callID)
+	if err != nil {
+		return err
+	}
+	if !entry.started ||
+		entry.effect.Status != EffectRunning ||
+		command.EffectID != entry.effect.ID ||
+		command.Attempt != entry.effect.Attempt {
+		return fmt.Errorf("effect %q cannot schedule retry", entry.effect.ID)
+	}
+	if err := entry.submit(command); err != nil {
+		return err
+	}
+	entry.started = false
+	entry.effect.Status = EffectRequested
+	return nil
+}
+
 // Resolve retains the first Result Command until Coordinator durably accepts
 // it. Retrying after a sink failure resubmits the same command without
 // executing the side effect again.
@@ -107,8 +134,13 @@ func (d *DurableEffectDispatcher) Resolve(command Command) error {
 		return fmt.Errorf("effect %q is not routed", effectID)
 	}
 	if !entry.started {
-		d.mu.Unlock()
-		return fmt.Errorf("effect %q has not started", effectID)
+		sample, ok := command.(ModelSampleResultReceived)
+		if !ok || sample.Error == "" ||
+			entry.effect.Kind != EffectSampleProvider ||
+			entry.effect.Status != EffectRequested {
+			d.mu.Unlock()
+			return fmt.Errorf("effect %q has not started", effectID)
+		}
 	}
 	if entry.result == nil {
 		entry.result = command

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -251,13 +252,26 @@ func waitKind(t *testing.T, events <-chan protocol.Event, kind protocol.EventKin
 }
 
 func TestEncodeDecodeCompactedHistoryRoundTrip(t *testing.T) {
+	assistant := provider.Message{
+		Role: provider.RoleAssistant, Turn: 1,
+		Blocks: []provider.ContentBlock{{
+			Type: provider.ContentText, Text: "world",
+		}},
+		Provenance: &provider.AssistantProvenance{
+			Adapter: "openai", Provider: "openai", Model: "model",
+			Replay: &provider.ReplayState{
+				Version: provider.ReplayVersion,
+				Data:    json.RawMessage(`{"items":[]}`),
+			},
+		},
+	}
+	assistant.Provenance.Replay.ContentDigest =
+		provider.MessageContentDigest(assistant)
 	input := []provider.Message{
 		{Role: provider.RoleUser, Turn: 1, Blocks: []provider.ContentBlock{{
 			Type: provider.ContentText, Text: "hello",
 		}}},
-		{Role: provider.RoleAssistant, Turn: 1, Blocks: []provider.ContentBlock{{
-			Type: provider.ContentText, Text: "world",
-		}}},
+		assistant,
 	}
 	encoded, err := EncodeCompactedHistory(input)
 	if err != nil {
@@ -269,5 +283,8 @@ func TestEncodeDecodeCompactedHistoryRoundTrip(t *testing.T) {
 	}
 	if len(decoded) != 2 || decoded[0].Turn != 1 || decoded[1].Text() != "world" {
 		t.Fatalf("decoded = %+v", decoded)
+	}
+	if decoded[1].Provenance != nil {
+		t.Fatalf("rewritten compacted history retained private replay: %+v", decoded[1])
 	}
 }

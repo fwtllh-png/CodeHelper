@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/providerdump"
 )
 
 func TestDumpProviderFailureWritesFile(t *testing.T) {
@@ -26,7 +27,7 @@ func TestDumpProviderFailureWritesFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dumpPath, err := dumpProviderFailure(
+	dumpPath, err := providerdump.Write(
 		request, body, path, 400,
 		`The 'reasoning_text' in the thinking mode must be passed back to the API.`,
 	)
@@ -41,8 +42,12 @@ func TestDumpProviderFailureWritesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "messages_summary") ||
-		!strings.Contains(string(data), "encoded_input_summary") {
+		!strings.Contains(string(data), "encoded_input_summary") ||
+		!strings.Contains(string(data), `"tool_call_id": "c1"`) {
 		t.Fatalf("dump missing summaries: %s", data)
+	}
+	if strings.Contains(string(data), "ToolCallID") {
+		t.Fatalf("dump changed its JSON field contract: %s", data)
 	}
 	if filepath.Ext(dumpPath) != ".json" {
 		t.Fatalf("ext = %q", dumpPath)
@@ -51,15 +56,15 @@ func TestDumpProviderFailureWritesFile(t *testing.T) {
 
 func TestShouldDumpProviderModes(t *testing.T) {
 	t.Setenv("CODEHELPER_PROVIDER_DUMP", "off")
-	if shouldDumpProvider(400) {
+	if providerdump.Enabled(400) {
 		t.Fatal("off should not dump")
 	}
 	t.Setenv("CODEHELPER_PROVIDER_DUMP", "error")
-	if !shouldDumpProvider(500) {
+	if !providerdump.Enabled(500) {
 		t.Fatal("error mode should dump any 4xx/5xx")
 	}
 	t.Setenv("CODEHELPER_PROVIDER_DUMP", "reasoning")
-	if shouldDumpProvider(400) {
+	if providerdump.Enabled(400) {
 		t.Fatal("legacy reasoning mode must not classify errors by text")
 	}
 }

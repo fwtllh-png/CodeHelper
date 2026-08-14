@@ -57,16 +57,29 @@ type Event struct {
 	Verification       *VerificationReceipt        `json:"verification,omitempty"`
 	Completion         *tool.CompletionDeclaration `json:"completion,omitempty"`
 	ProviderRetry      *ProviderRetry              `json:"provider_retry,omitempty"`
+	ModelExecution     *ModelExecution             `json:"model_execution,omitempty"`
 	ToolOutput         *ToolOutput                 `json:"tool_output,omitempty"`
 	CatalogChanged     *CatalogChanged             `json:"catalog_changed,omitempty"`
 	MCPHealthChanged   *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
 	ExtensionLifecycle *ExtensionLifecycleChanged  `json:"extension_lifecycle,omitempty"`
 }
 
+type ModelExecution struct {
+	Kind     string `json:"kind"`
+	SampleID string `json:"sample_id"`
+	Attempt  uint32 `json:"attempt,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
 type ProviderRetry struct {
-	Attempt  int                `json:"attempt"`
-	Code     protocol.ErrorCode `json:"code"`
-	Category string             `json:"category"`
+	Attempt        int                `json:"attempt"`
+	Retry          uint32             `json:"retry"`
+	Code           protocol.ErrorCode `json:"code"`
+	Category       string             `json:"category"`
+	Failure        provider.Failure   `json:"failure"`
+	EffectiveDelay time.Duration      `json:"effective_delay"`
+	RetryAt        time.Time          `json:"retry_at"`
+	PolicyRevision string             `json:"policy_revision"`
 }
 
 // TerminalIssue is a cleanup/finalization failure that happened after the
@@ -149,6 +162,8 @@ type CompactionReceipt struct {
 	SummaryRetainedBytes int    `json:"summary_retained_bytes"`
 	SummaryTruncated     bool   `json:"summary_truncated"`
 	TruncationReason     string `json:"truncation_reason,omitempty"`
+	PrunedToolResults    int    `json:"pruned_tool_results,omitempty"`
+	PrunedBytes          int    `json:"pruned_bytes,omitempty"`
 	// Sections names the parts of the summary that survived the budget, so a host
 	// can tell a compaction that carried the goal from one that only had room for
 	// a transcript.
@@ -197,17 +212,16 @@ func (HeuristicTokenEstimator) Estimate(messages []provider.Message) (uint64, er
 }
 
 type Result struct {
-	Turn               uint64                  `json:"turn"`
-	Text               string                  `json:"text"`
-	Reasoning          string                  `json:"reasoning,omitempty"`
-	ReasoningSignature string                  `json:"reasoning_signature,omitempty"`
-	State              State                   `json:"state"`
-	Usage              provider.Usage          `json:"usage"`
-	CostUSD            float64                 `json:"cost_usd"`
-	Tools              []provider.ToolCall     `json:"tools,omitempty"`
-	Searches           []provider.SearchResult `json:"searches,omitempty"`
-	Citations          []provider.Citation     `json:"citations,omitempty"`
-	Verification       *VerificationReceipt    `json:"verification,omitempty"`
+	Turn         uint64                  `json:"turn"`
+	Text         string                  `json:"text"`
+	Reasoning    string                  `json:"reasoning,omitempty"`
+	State        State                   `json:"state"`
+	Usage        provider.Usage          `json:"usage"`
+	CostUSD      float64                 `json:"cost_usd"`
+	Tools        []provider.ToolCall     `json:"tools,omitempty"`
+	Searches     []provider.SearchResult `json:"searches,omitempty"`
+	Citations    []provider.Citation     `json:"citations,omitempty"`
+	Verification *VerificationReceipt    `json:"verification,omitempty"`
 }
 
 // PendingSource tags why an input was enqueued into the turn-local queue (N1).

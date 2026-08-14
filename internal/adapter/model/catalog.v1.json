@@ -3,7 +3,7 @@
   "providers": [
     {
       "id": "openai",
-      "kind": "openai",
+      "adapter": "openai",
       "endpoint": "https://api.openai.com/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -49,7 +49,7 @@
     },
     {
       "id": "openai-responses",
-      "kind": "openai",
+      "adapter": "openai",
       "endpoint": "https://api.openai.com/v1",
       "protocol": "openai_responses",
       "credential": {
@@ -96,7 +96,7 @@
     },
     {
       "id": "anthropic",
-      "kind": "anthropic",
+      "adapter": "anthropic",
       "endpoint": "https://api.anthropic.com/v1",
       "protocol": "anthropic",
       "credential": {
@@ -116,6 +116,7 @@
           "capabilities": {
             "streaming": true,
             "reasoning": true,
+            "reasoning_efforts": ["low", "medium", "high", "xhigh"],
             "tool_calls": true,
             "native_search": true,
             "vision": true,
@@ -142,7 +143,7 @@
     },
     {
       "id": "local",
-      "kind": "local",
+      "adapter": "openai_compatible",
       "endpoint": "http://127.0.0.1:11434/v1",
       "protocol": "openai_chat",
       "credential": {},
@@ -185,7 +186,7 @@
     },
     {
       "id": "deepseek",
-      "kind": "custom",
+      "adapter": "deepseek",
       "endpoint": "https://api.deepseek.com/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -238,6 +239,7 @@
           "capabilities": {
             "streaming": true,
             "reasoning": true,
+            "reasoning_efforts": ["off", "low", "medium", "high", "max"],
             "tool_calls": true,
             "native_search": false,
             "vision": false,
@@ -264,7 +266,7 @@
     },
     {
       "id": "deepseek-v4-flash",
-      "kind": "custom",
+      "adapter": "deepseek",
       "endpoint": "https://api.deepseek.com",
       "protocol": "openai_responses",
       "credential": {
@@ -284,6 +286,7 @@
           "capabilities": {
             "streaming": true,
             "reasoning": true,
+            "reasoning_efforts": ["off", "low", "medium", "high", "max"],
             "tool_calls": true,
             "native_search": false,
             "vision": false,
@@ -310,7 +313,7 @@
     },
     {
       "id": "openrouter",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://openrouter.ai/api/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -353,7 +356,7 @@
     },
     {
       "id": "moonshot",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.moonshot.cn/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -399,7 +402,7 @@
     },
     {
       "id": "volcengine",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://ark.cn-beijing.volces.com/api/v3",
       "protocol": "openai_chat",
       "credential": {
@@ -419,6 +422,7 @@
           "capabilities": {
             "streaming": true,
             "reasoning": true,
+            "reasoning_efforts": ["low", "medium", "high", "xhigh"],
             "tool_calls": true,
             "native_search": false,
             "vision": false,
@@ -442,7 +446,7 @@
     },
     {
       "id": "ollama",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "http://127.0.0.1:11434/v1",
       "protocol": "openai_chat",
       "credential": {},
@@ -485,7 +489,7 @@
     },
     {
       "id": "vllm",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "http://127.0.0.1:8000/v1",
       "protocol": "openai_chat",
       "credential": {},
@@ -528,7 +532,7 @@
     },
     {
       "id": "sglang",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "http://127.0.0.1:30000/v1",
       "protocol": "openai_chat",
       "credential": {},
@@ -571,7 +575,7 @@
     },
     {
       "id": "zai",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://open.bigmodel.cn/api/paas/v4",
       "protocol": "openai_chat",
       "credential": {
@@ -614,7 +618,7 @@
     },
     {
       "id": "minimax",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.minimax.chat/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -657,7 +661,7 @@
     },
     {
       "id": "fireworks",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.fireworks.ai/inference/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -703,7 +707,7 @@
     },
     {
       "id": "together",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.together.xyz/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -749,7 +753,7 @@
     },
     {
       "id": "siliconflow",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.siliconflow.com/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -792,7 +796,7 @@
     },
     {
       "id": "azure",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://YOUR_RESOURCE.openai.azure.com/openai/deployments",
       "protocol": "openai_chat",
       "credential": {
@@ -835,7 +839,7 @@
     },
     {
       "id": "cohere",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.cohere.com/compatibility/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -881,7 +885,7 @@
     },
     {
       "id": "dashscope",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -927,7 +931,7 @@
     },
     {
       "id": "google",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
       "protocol": "openai_chat",
       "credential": {
@@ -973,7 +977,7 @@
     },
     {
       "id": "groq",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.groq.com/openai/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -1019,7 +1023,7 @@
     },
     {
       "id": "mistral",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.mistral.ai/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -1065,7 +1069,7 @@
     },
     {
       "id": "xai",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.x.ai/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -1108,7 +1112,7 @@
     },
     {
       "id": "baichuan",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.baichuan-ai.com/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -1151,7 +1155,7 @@
     },
     {
       "id": "hunyuan",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.hunyuan.cloud.tencent.com/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -1194,7 +1198,7 @@
     },
     {
       "id": "lingyiwanwu",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.lingyiwanwu.com/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -1237,7 +1241,7 @@
     },
     {
       "id": "yi",
-      "kind": "custom",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.lingyiwanwu.com/v1",
       "protocol": "openai_chat",
       "credential": {

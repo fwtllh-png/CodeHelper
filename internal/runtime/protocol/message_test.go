@@ -333,7 +333,6 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 		},
 		&OutputDeltaData{Text: "hello"},
 		&ReasoningDeltaData{Text: "think"},
-		&ReasoningSignatureData{Signature: "signed"},
 		&UsageData{},
 		&ToolStateData{State: "running"},
 		&ToolStartData{Tool: "read_file", CallID: "call_0", Arguments: json.RawMessage(`{"path":"a.go"}`)},

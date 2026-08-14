@@ -170,7 +170,7 @@ func TestPromptCacheKeyRequiresCapability(t *testing.T) {
 func responsesRoute(t *testing.T, promptCache bool) model.ReadyRoute {
 	t.Helper()
 	catalog, err := model.NewCatalog(model.Provider{
-		ID: "responses-test", Kind: model.ProviderCustom, Endpoint: "http://127.0.0.1:1",
+		ID: "responses-test", Adapter: model.AdapterOpenAICompatible, Endpoint: "http://127.0.0.1:1",
 		Protocol: model.ProtocolOpenAIResponses, Provenance: model.ProvenanceFixture,
 		Models: map[string]model.Model{
 			"model": {
@@ -201,7 +201,7 @@ func responsesRoute(t *testing.T, promptCache bool) model.ReadyRoute {
 func routeWithoutNativeSearch(t *testing.T) model.ReadyRoute {
 	t.Helper()
 	catalog, err := model.NewCatalog(model.Provider{
-		ID: "test", Kind: model.ProviderCustom, Endpoint: "http://127.0.0.1:1",
+		ID: "test", Adapter: model.AdapterOpenAICompatible, Endpoint: "http://127.0.0.1:1",
 		Protocol: model.ProtocolOpenAIChat, Provenance: model.ProvenanceFixture,
 		Models: map[string]model.Model{
 			"model": {

@@ -48,6 +48,28 @@ func Validate(state State) error {
 			sample.Status != SampleRunning {
 			return fmt.Errorf("successful model sample %q has an error", sampleID)
 		}
+		if sample.ProviderRetries == 0 && sample.Retry != nil {
+			return fmt.Errorf("model sample %q has retry facts without a retry", sampleID)
+		}
+		if sample.LastFailure != nil &&
+			(sample.LastFailure.Code == "" ||
+				strings.TrimSpace(sample.LastFailure.Message) == "") {
+			return fmt.Errorf("model sample %q has an invalid failure", sampleID)
+		}
+		if sample.Retry != nil {
+			effect, ok := state.PendingEffects[sample.Retry.EffectID]
+			if sample.Status != SampleRequested ||
+				sample.Retry.Attempt != sample.Attempt ||
+				sample.Retry.Retry != sample.ProviderRetries ||
+				sample.Retry.RetryAt.IsZero() ||
+				strings.TrimSpace(sample.Retry.PolicyRevision) == "" ||
+				!ok ||
+				effect.Kind != EffectSampleProvider ||
+				effect.CallID != sampleID ||
+				effect.Status != EffectRequested {
+				return fmt.Errorf("model sample %q has an invalid retry schedule", sampleID)
+			}
+		}
 	}
 	if state.ActiveSampleID != "" {
 		sample, ok := state.SampleLedger[state.ActiveSampleID]
@@ -405,6 +427,14 @@ func cloneState(state State) State {
 		len(state.SampleLedger),
 	)
 	for sampleID, sample := range state.SampleLedger {
+		if sample.LastFailure != nil {
+			value := *sample.LastFailure
+			sample.LastFailure = &value
+		}
+		if sample.Retry != nil {
+			value := *sample.Retry
+			sample.Retry = &value
+		}
 		cloned.SampleLedger[sampleID] = sample
 	}
 	cloned.PendingEffects = make(map[string]Effect, len(state.PendingEffects))

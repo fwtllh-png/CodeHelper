@@ -22,8 +22,8 @@ func TestResolverCreatesReadyRouteWithMetadata(t *testing.T) {
 	if err := route.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if route.ProviderKind() != ProviderOpenAI || route.Protocol() != ProtocolOpenAIChat {
-		t.Fatalf("unexpected route: provider=%q protocol=%q", route.ProviderKind(), route.Protocol())
+	if route.Adapter() != AdapterOpenAI || route.Protocol() != ProtocolOpenAIChat {
+		t.Fatalf("unexpected route: adapter=%q protocol=%q", route.Adapter(), route.Protocol())
 	}
 	model := route.Model()
 	if model.WireID != "gpt-4.1" || !model.Capabilities.NativeSearch {
@@ -129,6 +129,26 @@ func TestDeepSeekV4FlashKeepsResponsesProtocol(t *testing.T) {
 	}
 	if route.Protocol() != ProtocolOpenAIResponses {
 		t.Fatalf("protocol = %q, want openai_responses", route.Protocol())
+	}
+	if route.Adapter() != AdapterDeepSeek {
+		t.Fatalf("adapter = %q, want deepseek", route.Adapter())
+	}
+	if route.Model().Capabilities.IncrementalResponses {
+		t.Fatal("DeepSeek Responses must keep complete HTTP/SSE transport")
+	}
+}
+
+func TestCatalogRejectsAdapterProtocolMismatch(t *testing.T) {
+	_, err := NewCatalog(Provider{
+		ID: "invalid", Adapter: AdapterAnthropic,
+		Endpoint: "https://example.com", Protocol: ProtocolOpenAIChat,
+		Models: map[string]Model{"model": {
+			ID: "model", CanonicalID: "model", WireID: "model",
+			Limits: Limits{ContextTokens: 1024, MaxOutputTokens: 128},
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not support protocol") {
+		t.Fatalf("NewCatalog() error = %v, want adapter/protocol refusal", err)
 	}
 }
 

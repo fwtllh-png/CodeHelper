@@ -217,6 +217,17 @@ Responses WebSocket。Response ID 与连接状态不会进入 Host 或 Runtime A
 Reset、Retry、Compaction、Resume 或任意不确定状态都会回退完整请求。Usage 分别保留
 Logical/Transport Digest 与序列化 Request Bytes，传输收益不会被报告为 Token 收益。
 
+每条 Route 都携带显式 `AdapterID`，不可变 Provider Router 是生产环境唯一采样路径。
+Composition Root 安装专用 OpenAI、DeepSeek、Anthropic Adapter，以及一个参数化的
+OpenAI-compatible Adapter。DeepSeek 不广告 Incremental Responses，因此其 Chat 与
+Responses Route 始终使用完整 HTTP/SSE 请求，不发送 `previous_response_id`。
+
+Token Window Gate 在 Summary Replacement 前，按从旧到新的确定顺序缩减已闭合 Tool
+Result 的 Model-visible Surface。Tool 层把完整原文保存在 Durable Content Store，
+并返回稳定的 `result_get` Handle 与有界 Head/Tail 摘要；Call/Result 配对保持不变。
+Engine 在每次投影后重新测量，若 Surface Pruning 已恢复窗口，则跳过 Summary
+Replacement。
+
 `TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，
 不会反向生成 Command 写回状态机。Durable Runtime 构造必须显式提供 Event、Content、
 Terminal Store；Memory Store 仅由显式 `NewRuntime` Ephemeral 构造选择。

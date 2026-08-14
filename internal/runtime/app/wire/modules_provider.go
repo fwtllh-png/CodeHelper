@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
@@ -43,15 +42,17 @@ func (providerModule) Build(ctx context.Context, state *buildState) error {
 	client.IdleTimeout = execution.IdleTimeout
 	client.MaxConcurrent = execution.MaxConcurrent
 	client.RequestsPerSecond = execution.RateLimit
+	runtimeProvider, err := newProviderRouter(client, routes)
+	if err != nil {
+		return err
+	}
 	capabilities := selectedModelCapabilities(routes.Act())
 	providerCatalog, modelCatalog := runtimeModelCatalog(
-		routes.Act().ProviderID(),
-		routes.Act().Model().ID,
-		capabilities,
+		routes.Act().ProviderID(), routes.Act().Model().ID, capabilities,
 	)
 	state.provider = providerBuildState{
-		routes: routes, route: routes.Act(), egress: egressGate, client: client,
-		toolSampler:     agentengine.NewToolSampler(client),
+		routes: routes, route: routes.Act(), egress: egressGate, provider: runtimeProvider,
+		toolSampler:     agentengine.NewToolSampler(runtimeProvider),
 		providerCatalog: providerCatalog, modelCatalog: modelCatalog,
 		modelCapabilities: capabilities,
 	}
@@ -177,11 +178,6 @@ func selectedModelCapabilities(route model.ReadyRoute) protocol.ModelCapabilitie
 	capabilities := catalogModelCapabilities(route.Model())
 	if !capabilities.Reasoning {
 		return capabilities
-	}
-	capabilities.ReasoningEfforts = []string{"low", "medium", "high", "xhigh"}
-	if strings.HasPrefix(route.ProviderID(), "deepseek-v4") ||
-		strings.HasPrefix(route.Model().ID, "deepseek-v4") {
-		capabilities.ReasoningEfforts[3] = "max"
 	}
 	capabilities.DefaultReasoningEffort = "low"
 	return capabilities

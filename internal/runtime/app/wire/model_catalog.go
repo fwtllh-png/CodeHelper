@@ -65,10 +65,6 @@ func runtimeModelCatalog(
 
 func catalogModelCapabilities(descriptor model.Model) protocol.ModelCapabilities {
 	capabilities := descriptor.Capabilities
-	var efforts []string
-	if capabilities.Reasoning {
-		efforts = []string{"minimal", "low", "medium", "high", "xhigh"}
-	}
 	return protocol.ModelCapabilities{
 		DisplayName:       descriptor.ID,
 		ContextWindow:     descriptor.Limits.ContextTokens,
@@ -81,7 +77,7 @@ func catalogModelCapabilities(descriptor model.Model) protocol.ModelCapabilities
 		Vision:            capabilities.Vision,
 		ImageInput:        capabilities.ImageInput,
 		PromptCache:       capabilities.PromptCache,
-		ReasoningEfforts:  efforts,
+		ReasoningEfforts:  capabilities.ReasoningEffortLevels(),
 		CredentialStatus:  "unknown",
 		Availability:      "available",
 		SelectionMode:     "restart_required",

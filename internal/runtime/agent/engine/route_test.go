@@ -16,7 +16,7 @@ import (
 func namedRoute(t *testing.T, modelID string) model.ReadyRoute {
 	t.Helper()
 	catalog, err := model.NewCatalog(model.Provider{
-		ID: "second", Kind: model.ProviderCustom, Endpoint: "http://127.0.0.1:2",
+		ID: "second", Adapter: model.AdapterOpenAICompatible, Endpoint: "http://127.0.0.1:2",
 		Protocol: model.ProtocolOpenAIChat, Provenance: model.ProvenanceFixture,
 		Models: map[string]model.Model{modelID: {
 			ID: modelID, CanonicalID: modelID, WireID: modelID,

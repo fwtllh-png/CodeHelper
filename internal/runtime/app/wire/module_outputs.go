@@ -6,7 +6,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
@@ -38,7 +38,7 @@ type providerBuildState struct {
 	routes            model.RouteSet
 	route             model.ReadyRoute
 	egress            *egress.Gate
-	client            *httpclient.Client
+	provider          provider.Provider
 	toolSampler       *agentengine.ToolSampler
 	providerCatalog   protocol.ProviderCatalog
 	modelCatalog      protocol.ModelCatalog

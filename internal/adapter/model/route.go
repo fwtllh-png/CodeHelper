@@ -18,45 +18,30 @@ type RouteRequest struct {
 }
 
 type ReadyRoute struct {
-	providerID   string
-	providerKind ProviderKind
-	endpoint     string
-	protocol     WireProtocol
-	credential   CredentialRef
-	model        Model
-	provenance   Provenance
-	ready        bool
+	providerID, endpoint string
+	adapter              AdapterID
+	protocol             WireProtocol
+	credential           CredentialRef
+	model                Model
+	provenance           Provenance
+	ready                bool
 }
 
 type RouteDescriptor struct {
-	ProviderID   string        `json:"provider_id"`
-	ProviderKind ProviderKind  `json:"provider_kind"`
-	Endpoint     string        `json:"endpoint"`
-	Protocol     WireProtocol  `json:"protocol"`
-	Credential   CredentialRef `json:"credential"`
-	Model        Model         `json:"model"`
-	Provenance   Provenance    `json:"provenance"`
+	ProviderID string        `json:"provider_id"`
+	Adapter    AdapterID     `json:"adapter"`
+	Endpoint   string        `json:"endpoint"`
+	Protocol   WireProtocol  `json:"protocol"`
+	Credential CredentialRef `json:"credential"`
+	Model      Model         `json:"model"`
+	Provenance Provenance    `json:"provenance"`
 }
 
-func (r ReadyRoute) ProviderID() string {
-	return r.providerID
-}
-
-func (r ReadyRoute) ProviderKind() ProviderKind {
-	return r.providerKind
-}
-
-func (r ReadyRoute) Endpoint() string {
-	return r.endpoint
-}
-
-func (r ReadyRoute) Protocol() WireProtocol {
-	return r.protocol
-}
-
-func (r ReadyRoute) Credential() CredentialRef {
-	return r.credential
-}
+func (r ReadyRoute) ProviderID() string        { return r.providerID }
+func (r ReadyRoute) Adapter() AdapterID        { return r.adapter }
+func (r ReadyRoute) Endpoint() string          { return r.endpoint }
+func (r ReadyRoute) Protocol() WireProtocol    { return r.protocol }
+func (r ReadyRoute) Credential() CredentialRef { return r.credential }
 
 // WithCredential returns the resolved route with an explicit non-secret
 // credential reference selected by workspace configuration.
@@ -65,26 +50,21 @@ func (r ReadyRoute) WithCredential(reference CredentialRef) ReadyRoute {
 	return r
 }
 
-func (r ReadyRoute) Model() Model {
-	return r.model
-}
-
-func (r ReadyRoute) Provenance() Provenance {
-	return r.provenance
-}
+func (r ReadyRoute) Model() Model           { return r.model }
+func (r ReadyRoute) Provenance() Provenance { return r.provenance }
 
 func (r ReadyRoute) Describe() (RouteDescriptor, error) {
 	if err := r.Validate(); err != nil {
 		return RouteDescriptor{}, err
 	}
 	return RouteDescriptor{
-		ProviderID:   r.providerID,
-		ProviderKind: r.providerKind,
-		Endpoint:     r.endpoint,
-		Protocol:     r.protocol,
-		Credential:   r.credential,
-		Model:        r.model,
-		Provenance:   r.provenance,
+		ProviderID: r.providerID,
+		Adapter:    r.adapter,
+		Endpoint:   r.endpoint,
+		Protocol:   r.protocol,
+		Credential: r.credential,
+		Model:      r.model,
+		Provenance: r.provenance,
 	}, nil
 }
 
@@ -92,7 +72,8 @@ func (r ReadyRoute) Validate() error {
 	if !r.ready {
 		return errors.New("route was not produced by resolver")
 	}
-	if r.providerID == "" || r.endpoint == "" || r.model.ID == "" {
+	if r.providerID == "" || r.endpoint == "" || r.model.ID == "" ||
+		!r.adapter.Supports(r.protocol) {
 		return errors.New("ready route is incomplete")
 	}
 	return nil
@@ -156,13 +137,13 @@ func (r *Resolver) Resolve(request RouteRequest) (ReadyRoute, error) {
 		provenance = provider.Provenance
 	}
 	return ReadyRoute{
-		providerID:   provider.ID,
-		providerKind: provider.Kind,
-		endpoint:     provider.Endpoint,
-		protocol:     provider.Protocol,
-		credential:   provider.Credential,
-		model:        model,
-		provenance:   provenance,
-		ready:        true,
+		providerID: provider.ID,
+		adapter:    provider.Adapter,
+		endpoint:   provider.Endpoint,
+		protocol:   provider.Protocol,
+		credential: provider.Credential,
+		model:      model,
+		provenance: provenance,
+		ready:      true,
 	}, nil
 }

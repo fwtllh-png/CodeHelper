@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -14,13 +15,13 @@ import (
 //go:embed catalog.v1.json
 var bundledCatalog []byte
 
-type ProviderKind string
+type AdapterID string
 
 const (
-	ProviderOpenAI    ProviderKind = "openai"
-	ProviderAnthropic ProviderKind = "anthropic"
-	ProviderLocal     ProviderKind = "local"
-	ProviderCustom    ProviderKind = "custom"
+	AdapterOpenAI           AdapterID = "openai"
+	AdapterDeepSeek         AdapterID = "deepseek"
+	AdapterAnthropic        AdapterID = "anthropic"
+	AdapterOpenAICompatible AdapterID = "openai_compatible"
 )
 
 type WireProtocol string
@@ -51,22 +52,31 @@ type Limits struct {
 }
 
 type Capabilities struct {
-	Streaming    bool `json:"streaming"`
-	Reasoning    bool `json:"reasoning"`
-	ToolCalls    bool `json:"tool_calls"`
-	NativeSearch bool `json:"native_search"`
+	Streaming        bool     `json:"streaming"`
+	Reasoning        bool     `json:"reasoning"`
+	ReasoningEfforts []string `json:"reasoning_efforts,omitempty"`
+	ToolCalls        bool     `json:"tool_calls"`
+	NativeSearch     bool     `json:"native_search"`
 	// IncrementalResponses allows connection-local Responses continuation.
-	// It is separate from PromptCache because custom Responses endpoints may
-	// implement one without the other.
 	IncrementalResponses bool `json:"incremental_responses,omitempty"`
-	// Vision is what the vision purpose samples on. A [route.vision] pointing
-	// at a model with Vision=false is refused at route-set construction rather
-	// than at the first image_analyze call.
-	Vision bool `json:"vision"`
-	// ImageInput is what a request that carries a ContentImage block needs.
-	ImageInput bool `json:"image_input"`
-	// PromptCache is what a sticky prompt_cache_key (Responses encode) needs.
-	PromptCache bool `json:"prompt_cache"`
+	Vision               bool `json:"vision"`
+	ImageInput           bool `json:"image_input"`
+	PromptCache          bool `json:"prompt_cache"`
+}
+
+func (c Capabilities) ReasoningEffortLevels() []string {
+	if !c.Reasoning {
+		return nil
+	}
+	if len(c.ReasoningEfforts) != 0 {
+		return append([]string(nil), c.ReasoningEfforts...)
+	}
+	return []string{"low", "medium", "high", "xhigh"}
+}
+
+func (c Capabilities) SupportsReasoningEffort(effort string) bool {
+	return effort != "" &&
+		slices.Contains(c.ReasoningEffortLevels(), effort)
 }
 
 type Pricing struct {
@@ -99,7 +109,7 @@ type Model struct {
 
 type Provider struct {
 	ID         string           `json:"id"`
-	Kind       ProviderKind     `json:"kind"`
+	Adapter    AdapterID        `json:"adapter"`
 	Endpoint   string           `json:"endpoint"`
 	Protocol   WireProtocol     `json:"protocol"`
 	Credential CredentialRef    `json:"credential"`
@@ -180,10 +190,11 @@ func validateProvider(provider Provider) error {
 	if strings.TrimSpace(provider.ID) == "" {
 		return errors.New("provider id is required")
 	}
-	switch provider.Kind {
-	case ProviderOpenAI, ProviderAnthropic, ProviderLocal, ProviderCustom:
-	default:
-		return fmt.Errorf("provider %q has unsupported kind %q", provider.ID, provider.Kind)
+	if !provider.Adapter.Supports(provider.Protocol) {
+		return fmt.Errorf(
+			"provider %q adapter %q does not support protocol %q",
+			provider.ID, provider.Adapter, provider.Protocol,
+		)
 	}
 	switch provider.Protocol {
 	case ProtocolOpenAIChat, ProtocolOpenAIResponses, ProtocolAnthropic:
@@ -207,6 +218,33 @@ func validateProvider(provider Provider) error {
 		if model.Limits.MaxOutputTokens > model.Limits.ContextTokens {
 			return fmt.Errorf("provider %q model %q output limit exceeds context", provider.ID, key)
 		}
+		if !model.Capabilities.Reasoning &&
+			len(model.Capabilities.ReasoningEfforts) != 0 {
+			return fmt.Errorf(
+				"provider %q model %q declares efforts without reasoning",
+				provider.ID,
+				key,
+			)
+		}
+		efforts := make(map[string]struct{})
+		for _, effort := range model.Capabilities.ReasoningEfforts {
+			if effort == "" {
+				return fmt.Errorf(
+					"provider %q model %q has an empty reasoning effort",
+					provider.ID,
+					key,
+				)
+			}
+			if _, exists := efforts[effort]; exists {
+				return fmt.Errorf(
+					"provider %q model %q repeats reasoning effort %q",
+					provider.ID,
+					key,
+					effort,
+				)
+			}
+			efforts[effort] = struct{}{}
+		}
 		if model.Pricing.Known && model.Pricing.Currency == "" {
 			return fmt.Errorf("provider %q model %q known pricing requires currency", provider.ID, key)
 		}
@@ -227,11 +265,21 @@ func validateProvider(provider Provider) error {
 	return nil
 }
 
+func (a AdapterID) Supports(protocol WireProtocol) bool {
+	switch a {
+	case AdapterOpenAI, AdapterDeepSeek, AdapterOpenAICompatible:
+		return protocol == ProtocolOpenAIChat || protocol == ProtocolOpenAIResponses
+	case AdapterAnthropic:
+		return protocol == ProtocolAnthropic
+	default:
+		return false
+	}
+}
+
 func normalizeProvider(provider Provider) Provider {
 	provider = cloneProvider(provider)
 	for id, descriptor := range provider.Models {
-		// Do not infer Known from Currency: unknown prices must stay known=false
-		// without fabricating $0 display facts.
+		// Unknown pricing must remain explicit rather than becoming a fabricated $0.
 		if descriptor.Pricing.Provenance == "" {
 			descriptor.Pricing.Provenance = descriptor.Provenance
 		}
@@ -262,6 +310,10 @@ func cloneProvider(provider Provider) Provider {
 	}
 	models := make(map[string]Model, len(provider.Models))
 	for id, model := range provider.Models {
+		model.Capabilities.ReasoningEfforts = append(
+			[]string(nil),
+			model.Capabilities.ReasoningEfforts...,
+		)
 		models[id] = model
 	}
 	provider.Models = models

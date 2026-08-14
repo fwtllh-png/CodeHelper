@@ -91,8 +91,7 @@ func coalescibleDelta(event provider.StreamEvent) bool {
 		event.Type != provider.EventReasoningDelta {
 		return false
 	}
-	return event.Text != "" &&
-		(event.Block == nil || len(event.Block.ProviderData) == 0)
+	return event.Text != ""
 }
 
 func mergeDelta(buffered *provider.StreamEvent, next provider.StreamEvent) {
