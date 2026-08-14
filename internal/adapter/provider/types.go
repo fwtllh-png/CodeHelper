@@ -30,28 +30,23 @@ const (
 	ContentSearch     ContentType = "search"
 	ContentCitation   ContentType = "citation"
 	ContentProvider   ContentType = "provider"
-	// ContentImage keeps images on the governed model-request path.
-	ContentImage ContentType = "image"
+	ContentImage      ContentType = "image"
 )
 
-// Attachment carries inline binary content and its media type.
 type Attachment struct {
 	MediaType string `json:"media_type"`
 	Data      []byte `json:"data"`
 	Name      string `json:"name,omitempty"`
 }
 
-// DataURL returns the encoded inline-image form.
 func (a Attachment) DataURL() string {
 	return "data:" + a.MediaType + ";base64," + base64.StdEncoding.EncodeToString(a.Data)
 }
 
-// Base64 returns the raw base64 payload.
 func (a Attachment) Base64() string {
 	return base64.StdEncoding.EncodeToString(a.Data)
 }
 
-// ContentBlock is the lossless provider-neutral history unit.
 type ContentBlock struct {
 	Type         ContentType     `json:"type"`
 	Text         string          `json:"text,omitempty"`
@@ -65,13 +60,11 @@ type ContentBlock struct {
 	ProviderType string          `json:"provider_type,omitempty"`
 	ProviderData json.RawMessage `json:"provider_data,omitempty"`
 }
-
 type ToolResult struct {
 	CallID  string `json:"call_id"`
 	Content string `json:"content"`
 	IsError bool   `json:"is_error,omitempty"`
 }
-
 type Message struct {
 	Role   Role           `json:"role"`
 	Blocks []ContentBlock `json:"content"`
@@ -81,7 +74,6 @@ type Message struct {
 func TextMessage(role Role, text string) Message {
 	return Message{Role: role, Blocks: []ContentBlock{{Type: ContentText, Text: text}}}
 }
-
 func (m Message) Text() string {
 	var result string
 	for _, block := range m.Blocks {
@@ -93,25 +85,21 @@ func (m Message) Text() string {
 }
 
 type ToolCall struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-	// Catalog identity is internal execution authority and never leaves the runtime.
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Arguments         string `json:"arguments"`
 	CatalogID         string `json:"-"`
 	CatalogGeneration uint64 `json:"-"`
 	CatalogRevision   uint64 `json:"-"`
 	CatalogAuthority  uint64 `json:"-"`
 }
-
 type ToolDefinition struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"input_schema"`
 }
-
 type ModelRequest struct {
-	Route model.ReadyRoute `json:"-"`
-	// Purpose attributes local usage and is not sent to providers.
+	Route           model.ReadyRoute `json:"-"`
 	Purpose         model.Purpose    `json:"purpose,omitempty"`
 	Messages        []Message        `json:"messages"`
 	MaxOutputTokens uint64           `json:"max_output_tokens"`
@@ -120,21 +108,18 @@ type ModelRequest struct {
 	NativeSearch    bool             `json:"native_search,omitempty"`
 	Tools           []ToolDefinition `json:"tools,omitempty"`
 	Idempotent      bool             `json:"idempotent,omitempty"`
-	// PromptCacheKey is a sticky session/thread provider cache hint.
-	PromptCacheKey string   `json:"prompt_cache_key,omitempty"`
-	Store          *bool    `json:"store,omitempty"`
-	ParallelTools  *bool    `json:"parallel_tools,omitempty"`
-	Include        []string `json:"include,omitempty"`
+	PromptCacheKey  string           `json:"prompt_cache_key,omitempty"`
+	Store           *bool            `json:"store,omitempty"`
+	ParallelTools   *bool            `json:"parallel_tools,omitempty"`
+	Include         []string         `json:"include,omitempty"`
 }
 
-// StickyPromptCacheKey returns key only for routes that advertise prompt caching.
 func StickyPromptCacheKey(key string, route model.ReadyRoute) string {
 	if key == "" || !route.Model().Capabilities.PromptCache {
 		return ""
 	}
 	return key
 }
-
 func (r ModelRequest) Validate() error {
 	if err := r.Route.Validate(); err != nil {
 		return fmt.Errorf("route: %w", err)
@@ -180,7 +165,6 @@ func (r ModelRequest) Validate() error {
 		}
 	}
 	if hasImageBlock(r.Messages) {
-		// Either explicit image input or the broader vision capability is enough.
 		if !caps.ImageInput && !caps.Vision {
 			return fmt.Errorf("model %q does not support image input", descriptor.ID)
 		}
@@ -195,7 +179,6 @@ func (r ModelRequest) Validate() error {
 	}
 	return nil
 }
-
 func hasImageBlock(messages []Message) bool {
 	for _, message := range messages {
 		for _, block := range message.Blocks {
@@ -206,7 +189,6 @@ func hasImageBlock(messages []Message) bool {
 	}
 	return false
 }
-
 func (b ContentBlock) Validate() error {
 	switch b.Type {
 	case ContentText:
@@ -297,11 +279,9 @@ type Usage struct {
 	Transport       TransportMetadata `json:"-"`
 }
 
-// Total excludes subset fields to avoid double counting.
 func (u Usage) Total() uint64 {
 	return u.InputTokens + u.OutputTokens
 }
-
 func (u *Usage) Add(other Usage) {
 	u.InputTokens += other.InputTokens
 	u.OutputTokens += other.OutputTokens
@@ -315,19 +295,16 @@ type ToolCallFragment struct {
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
 }
-
 type SearchResult struct {
 	Query   string   `json:"query,omitempty"`
 	Sources []Source `json:"sources"`
 	Error   string   `json:"error,omitempty"`
 }
-
 type Source struct {
 	ID    string `json:"id,omitempty"`
 	Title string `json:"title,omitempty"`
 	URL   string `json:"url"`
 }
-
 type Citation struct {
 	SourceID string `json:"source_id,omitempty"`
 	URL      string `json:"url"`
@@ -335,7 +312,6 @@ type Citation struct {
 	Start    int    `json:"start,omitempty"`
 	End      int    `json:"end,omitempty"`
 }
-
 type StreamEvent struct {
 	Type       StreamEventType   `json:"type"`
 	StopReason StopReason        `json:"stop_reason,omitempty"`
@@ -350,7 +326,6 @@ type StreamEvent struct {
 	Response   *ResponseState    `json:"response,omitempty"`
 }
 
-// ResponseState is adapter-private continuation evidence.
 type ResponseState struct {
 	ID     string            `json:"id"`
 	Output []json.RawMessage `json:"output,omitempty"`
@@ -419,14 +394,12 @@ type Stream interface {
 	Recv() (StreamEvent, error)
 	Close() error
 }
-
 type TransportMetadata struct {
 	RequestBytes           uint64
 	LogicalRequestDigest   string
 	TransportPayloadDigest string
 	Incremental            bool
 }
-
 type MetadataStream interface {
 	Stream
 	TransportMetadata() TransportMetadata

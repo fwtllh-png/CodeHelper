@@ -9,6 +9,8 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
+	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 )
@@ -35,10 +37,24 @@ func TestDeepSeekP0LiveControl(t *testing.T) {
 	client.Credentials = p0LiveCredential(credential)
 	client.Egress = gate
 	client.Metrics = metrics
-	client.MaxAttempts = 1
 	client.IdleTimeout = 2 * time.Minute
-
-	stream, err := client.Stream(t.Context(), provider.ModelRequest{
+	adapter, err := openai.NewAdapter(model.AdapterDeepSeek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := providerrouter.NewRegistry(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := providerrouter.New(registry, routes, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := runtime.Stream(t.Context(), provider.ModelRequest{
 		Route: route,
 		Messages: []provider.Message{
 			provider.TextMessage(

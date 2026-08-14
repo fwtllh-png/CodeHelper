@@ -29,7 +29,6 @@ func NewStream(body io.ReadCloser) (provider.Stream, error) {
 		body: body, decoder: provider.NewSSEDecoder(body), searchInputs: make(map[int]*strings.Builder),
 	}, nil
 }
-
 func (s *stream) Recv() (provider.StreamEvent, error) {
 	if !s.started {
 		s.started = true
@@ -63,7 +62,6 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 		}
 	}
 }
-
 func (s *stream) parseChunk(data []byte) ([]provider.StreamEvent, error) {
 	var envelope struct {
 		Type         string `json:"type"`
@@ -118,7 +116,6 @@ func (s *stream) parseChunk(data []byte) ([]provider.StreamEvent, error) {
 	}
 	return events, nil
 }
-
 func searchQuery(input string) string {
 	var value struct {
 		Query string `json:"query"`
@@ -126,7 +123,6 @@ func searchQuery(input string) string {
 	_ = json.Unmarshal([]byte(input), &value)
 	return value.Query
 }
-
 func (s *stream) Close() error {
 	if s.closed {
 		return nil
@@ -135,7 +131,6 @@ func (s *stream) Close() error {
 	s.stopped = true
 	return s.body.Close()
 }
-
 func parseChunk(data []byte) ([]provider.StreamEvent, error) {
 	var chunk struct {
 		Type    string `json:"type"`
@@ -182,10 +177,8 @@ func parseChunk(data []byte) ([]provider.StreamEvent, error) {
 	}
 	switch chunk.Type {
 	case "message_start":
-		// Anthropic reports cache reads and cache writes beside input_tokens
-		// rather than inside it, so both have to be added to keep InputTokens
-		// the total it claims to be. Only the read counts as a cache hit: a
-		// cache write was billed as fresh input.
+		// Anthropic reports cache reads and writes beside input_tokens.
+		// Both enter the total, but only reads count as cache hits.
 		usage := provider.Usage{
 			InputTokens: chunk.Message.Usage.InputTokens +
 				chunk.Message.Usage.CacheReadTokens +
@@ -206,7 +199,6 @@ func parseChunk(data []byte) ([]provider.StreamEvent, error) {
 			block := provider.ContentBlock{Type: provider.ContentSearch, Search: &search}
 			return []provider.StreamEvent{{Type: provider.EventSearchResult, Index: chunk.Index, Block: &block, Search: &search}}, nil
 		case "server_tool_use":
-			// Provider-native tools are represented by their result event, not as client tool calls.
 			return nil, nil
 		case "tool_use":
 		default:
@@ -281,7 +273,6 @@ func parseChunk(data []byte) ([]provider.StreamEvent, error) {
 		return nil, nil
 	}
 }
-
 func anthropicStopReason(value string) provider.StopReason {
 	switch value {
 	case "end_turn", "stop_sequence", "refusal":
@@ -294,7 +285,6 @@ func anthropicStopReason(value string) provider.StopReason {
 		return provider.StopReasonUnknown
 	}
 }
-
 func parseSearchContent(data json.RawMessage) provider.SearchResult {
 	result := provider.SearchResult{Sources: []provider.Source{}}
 	if len(data) == 0 || string(data) == "null" {

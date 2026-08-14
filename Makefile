@@ -19,7 +19,7 @@ LDFLAGS := -s -w \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-eval multi-agent-performance \
 	token-bench token-bench-live token-bench-compare \
-	provider-architecture-p0 provider-architecture-p1 \
+	provider-architecture-p0 provider-architecture-p1 provider-architecture-p2 \
 	provider-p0-goldens provider-p0-goldens-update \
 	provider-deepseek-live-control \
 	architecture-ratchet architecture-size-budget architecture-freeze \
@@ -51,6 +51,7 @@ ARCHITECTURE_SIZE_PATHS ?= internal/runtime/agent/engine,internal/runtime/agent/
 ARCHITECTURE_SIZE_MAX_NET ?= 0
 BASE_REF ?= $(ARCHITECTURE_BASE_REF)
 PROVIDER_ARCHITECTURE_BASE_REF ?= origin/main
+PROVIDER_ARCHITECTURE_P2_BASE_REF ?= c8c0a59
 PROVIDER_ARCHITECTURE_SIZE_REPORT ?= .tmp/architecture/provider-p0-size.json
 PROVIDER_ARCHITECTURE_SIZE_PATHS ?= internal/adapter/model,internal/adapter/provider,internal/runtime/app/wire/modules_provider.go
 
@@ -144,6 +145,17 @@ provider-architecture-p1: provider-p0-goldens
 	$(GO) test -count=1 ./scripts/architecturesize
 	$(GO) run ./scripts/architecturesize -root . \
 		-base-ref '$(PROVIDER_ARCHITECTURE_BASE_REF)' \
+		-paths '$(PROVIDER_ARCHITECTURE_SIZE_PATHS)' \
+		-max-net 0 \
+		-report '$(PROVIDER_ARCHITECTURE_SIZE_REPORT)'
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p2: provider-p0-goldens
+	$(GO) test -count=1 ./internal/adapter/model ./internal/adapter/provider/...
+	$(GO) test -count=1 ./internal/runtime/agent/engine ./internal/runtime/app/wire
+	$(GO) test -count=1 ./scripts/architecturesize
+	$(GO) run ./scripts/architecturesize -root . \
+		-base-ref '$(PROVIDER_ARCHITECTURE_P2_BASE_REF)' \
 		-paths '$(PROVIDER_ARCHITECTURE_SIZE_PATHS)' \
 		-max-net 0 \
 		-report '$(PROVIDER_ARCHITECTURE_SIZE_REPORT)'

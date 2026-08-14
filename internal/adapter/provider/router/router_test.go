@@ -3,20 +3,48 @@ package router
 import (
 	"context"
 	"io"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 )
 
-type testProvider struct{ calls int }
+type testAdapter struct {
+	id model.AdapterID
+}
 
-func (p *testProvider) Stream(
-	context.Context,
-	provider.ModelRequest,
+func (a testAdapter) ID() model.AdapterID            { return a.id }
+func (testAdapter) Supports(model.WireProtocol) bool { return true }
+func (a testAdapter) Prepare(request provider.ModelRequest) (providerwire.PreparedCall, error) {
+	return providerwire.PreparedCall{
+		Method: http.MethodPost, Path: "/test", Adapter: a.id,
+		Protocol: request.Route.Protocol(),
+	}, nil
+}
+func (testAdapter) OpenStream(
+	io.ReadCloser,
+	providerwire.PreparedCall,
 ) (provider.Stream, error) {
-	p.calls++
+	return testStream{}, nil
+}
+func (testAdapter) ClassifyHTTP(providerwire.HTTPFailure) error { return nil }
+
+type testTransport struct {
+	calls int
+	id    model.AdapterID
+}
+
+func (t *testTransport) Execute(
+	_ context.Context,
+	_ provider.ModelRequest,
+	call providerwire.PreparedCall,
+	_ providerwire.Adapter,
+) (provider.Stream, error) {
+	t.calls++
+	t.id = call.Adapter
 	return testStream{}, nil
 }
 
@@ -26,16 +54,10 @@ func (testStream) Recv() (provider.StreamEvent, error) { return provider.StreamE
 func (testStream) Close() error                        { return nil }
 
 func TestRegistryRejectsDuplicateAdapter(t *testing.T) {
-	target := &testProvider{}
-	first, err := BindAdapter(model.AdapterOpenAI, target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := BindAdapter(model.AdapterOpenAI, target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewRegistry(first, second); err == nil ||
+	if _, err := NewRegistry(
+		testAdapter{id: model.AdapterOpenAI},
+		testAdapter{id: model.AdapterOpenAI},
+	); err == nil ||
 		!strings.Contains(err.Error(), "already registered") {
 		t.Fatalf("NewRegistry() error = %v, want duplicate refusal", err)
 	}
@@ -47,26 +69,21 @@ func TestRouterRejectsMissingActiveAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := BindAdapter(model.AdapterOpenAI, &testProvider{})
+	registry, err := NewRegistry(testAdapter{id: model.AdapterOpenAI})
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := NewRegistry(adapter)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := New(registry, routes); err == nil ||
+	if _, err := New(registry, routes, &testTransport{}); err == nil ||
 		!strings.Contains(err.Error(), `adapter "deepseek" is not registered`) {
 		t.Fatalf("New() error = %v, want missing adapter refusal", err)
 	}
 }
 
 func TestRouterSelectsReadyRouteAdapter(t *testing.T) {
-	openAI := &testProvider{}
-	deepSeek := &testProvider{}
-	openAIAdapter, _ := BindAdapter(model.AdapterOpenAI, openAI)
-	deepSeekAdapter, _ := BindAdapter(model.AdapterDeepSeek, deepSeek)
-	registry, err := NewRegistry(openAIAdapter, deepSeekAdapter)
+	registry, err := NewRegistry(
+		testAdapter{id: model.AdapterOpenAI},
+		testAdapter{id: model.AdapterDeepSeek},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,17 +92,24 @@ func TestRouterSelectsReadyRouteAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := New(registry, routes)
+	transport := &testTransport{}
+	runtime, err := New(registry, routes, transport)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stream, err := runtime.Stream(t.Context(), provider.ModelRequest{Route: route})
+	stream, err := runtime.Stream(t.Context(), provider.ModelRequest{
+		Route: route,
+		Messages: []provider.Message{
+			provider.TextMessage(provider.RoleUser, "test"),
+		},
+		MaxOutputTokens: 16,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = stream.Close()
-	if deepSeek.calls != 1 || openAI.calls != 0 {
-		t.Fatalf("calls: deepseek=%d openai=%d", deepSeek.calls, openAI.calls)
+	if transport.calls != 1 || transport.id != model.AdapterDeepSeek {
+		t.Fatalf("calls=%d adapter=%q", transport.calls, transport.id)
 	}
 }
 

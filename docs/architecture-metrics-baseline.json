@@ -62,8 +62,23 @@
       "kind": "package",
       "path": "internal/adapter/provider/router",
       "limits": {
+        "internal_fanout": 4,
+        "production_lines": 110,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "P2 routes prepared calls through the provider wire contract.",
+        "production_lines": "P2 validates prepared calls and delegates one transport attempt."
+      }
+    },
+    {
+      "id": "provider_wire_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/wire",
+      "limits": {
         "internal_fanout": 3,
-        "production_lines": 107,
+        "production_lines": 145,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -73,10 +88,19 @@
       "kind": "package",
       "path": "internal/adapter/provider/httpclient",
       "limits": {
-        "internal_fanout": 8,
-        "production_lines": 1808,
+        "internal_fanout": 7,
+        "production_lines": 879,
         "options_fields": 0,
-        "mutex_fields": 3
+        "mutex_fields": 1
+      }
+    },
+    {
+      "id": "provider_httpclient_client_file",
+      "kind": "file",
+      "path": "internal/adapter/provider/httpclient/client.go",
+      "limits": {
+        "lines": 406,
+        "max_function_lines": 77
       }
     },
     {
@@ -84,10 +108,15 @@
       "kind": "package",
       "path": "internal/adapter/provider/openai",
       "limits": {
-        "internal_fanout": 2,
-        "production_lines": 573,
+        "internal_fanout": 4,
+        "production_lines": 1208,
         "options_fields": 0,
-        "mutex_fields": 0
+        "mutex_fields": 2
+      },
+      "relaxations": {
+        "internal_fanout": "P2 makes OpenAI own prepared calls and continuation sessions.",
+        "production_lines": "P2 moves OpenAI serialization and Responses sessions out of transport.",
+        "mutex_fields": "OpenAI now owns connection-local Responses continuation state."
       }
     },
     {
@@ -95,8 +124,23 @@
       "kind": "package",
       "path": "internal/adapter/provider/anthropic",
       "limits": {
-        "internal_fanout": 1,
-        "production_lines": 327,
+        "internal_fanout": 3,
+        "production_lines": 494,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "P2 makes Anthropic implement the provider wire contract.",
+        "production_lines": "P2 moves Anthropic serialization out of transport."
+      }
+    },
+    {
+      "id": "provider_openaicompat_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/openaicompat",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 10,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -117,13 +161,13 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 65,
-        "production_lines": 7575,
+        "internal_fanout": 69,
+        "production_lines": 7582,
         "options_fields": 70,
         "mutex_fields": 5
       },
       "relaxations": {
-        "internal_fanout": "P1 adds the explicit provider Router ownership boundary to composition."
+        "internal_fanout": "P2 composition constructs concrete wire adapters and guarded transport."
       }
     },
     {

@@ -2,9 +2,10 @@
 
 简体中文 | [English](../en/provider-architecture-upgrade.md)
 
-> 状态：P1 `infrastructure_ready`。版本化证据见
+> 状态：P2 `generic_paths_isolated`。版本化证据见
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
-> 与 [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json)。
+> [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json)
+> 与 [`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json)。
 >
 > 范围：Model Route 元数据、Provider-neutral Request 与 Stream 契约、Wire
 > Adapter、HTTP 与 WebSocket Transport、DeepSeek 专属行为、Provider
@@ -1245,7 +1246,7 @@ Exit：
 
 ### P2：抽取 Wire Adapter
 
-目标状态：`generic_paths_isolated`。
+状态：`generic_paths_isolated`。
 
 工作：
 
@@ -1263,6 +1264,16 @@ Exit：
 - 一次 Router Call 只产生一次 Network Attempt；
 - OpenAI 与 Anthropic Golden 保持等价；
 - `httpclient/client.go` 不再是 Repository Hotspot。
+
+结果：
+
+- OpenAI 与 Anthropic 各自拥有精确 Request Serialization 和 Stream Opening；
+- OpenAI 拥有 Responses WebSocket Continuation 与 Replay State；
+- `openai_compatible` 成为显式的保守 Adapter；
+- `httpclient` 不 Import Concrete Adapter，且每次只执行一个 HTTP Attempt；
+- P0 Request、Stream 与 Failure Golden 保持字节级等价；
+- `httpclient/client.go` 从 1,087 行降至 406 行；
+- Provider Ownership 生产代码相对 P1 净增长 0 行。
 
 ### P3：专用 DeepSeek Adapter
 
@@ -1584,8 +1595,8 @@ Ownership。
 - [x] 每个 Provider Route 都有显式 `AdapterID`；
 - [x] `ProviderKind` 已删除，或只保留一个不重叠且有文档的用途；
 - [x] Engine、ToolSampler 与 Probe 使用同一个 Router；
-- [ ] `httpclient` 不再拥有 Request Serialization 或 Provider Error Mapping；
-- [ ] Transport 每次只执行一个 Attempt；
+- [x] `httpclient` 不再拥有 Request Serialization 或 Provider Error Mapping；
+- [x] Transport 每次只执行一个 Attempt；
 - [ ] DeepSeek Chat 与 Responses 有专用 Request/Stream 代码；
 - [ ] Generic OpenAI Code 不含 DeepSeek Special Case；
 - [ ] DeepSeek Chat 只在含 Tool Call 时回传 Reasoning；

@@ -15,7 +15,6 @@ type SSERecord struct {
 	Event string
 	Data  string
 }
-
 type SSEDecoder struct {
 	scanner *bufio.Scanner
 	event   string
@@ -29,7 +28,6 @@ func NewSSEDecoder(reader io.Reader) *SSEDecoder {
 	scanner.Buffer(make([]byte, 4096), defaultMaxSSEEventBytes)
 	return &SSEDecoder{scanner: scanner}
 }
-
 func (d *SSEDecoder) Next() (SSERecord, error) {
 	if d.done {
 		return SSERecord{}, io.EOF
@@ -68,7 +66,6 @@ func (d *SSEDecoder) Next() (SSERecord, error) {
 	}
 	return SSERecord{}, io.EOF
 }
-
 func (d *SSEDecoder) take() (SSERecord, bool) {
 	if len(d.data) == 0 {
 		d.event = ""
@@ -80,7 +77,6 @@ func (d *SSEDecoder) take() (SSERecord, bool) {
 	d.bytes = 0
 	return record, true
 }
-
 func Drain(stream Stream) ([]StreamEvent, error) {
 	defer stream.Close()
 	var events []StreamEvent

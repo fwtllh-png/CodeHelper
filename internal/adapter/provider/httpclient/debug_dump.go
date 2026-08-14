@@ -12,8 +12,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 )
 
-// providerDumpMode controls when request diagnostics are written to disk.
-// CODEHELPER_PROVIDER_DUMP=off|error|always (default: off).
 func providerDumpMode() string {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("CODEHELPER_PROVIDER_DUMP")))
 	switch mode {
@@ -27,7 +25,6 @@ func providerDumpMode() string {
 		return "off"
 	}
 }
-
 func shouldDumpProvider(status int) bool {
 	switch providerDumpMode() {
 	case "off":
@@ -38,7 +35,6 @@ func shouldDumpProvider(status int) bool {
 		return status >= 400
 	}
 }
-
 func providerDebugDir() string {
 	if dir := strings.TrimSpace(os.Getenv("CODEHELPER_DEBUG_DIR")); dir != "" {
 		return dir
@@ -63,14 +59,12 @@ type providerDump struct {
 	HowToShare   string           `json:"how_to_share"`
 	DumpHint     string           `json:"dump_hint"`
 }
-
 type messageSummary struct {
 	Index  int            `json:"index"`
 	Role   string         `json:"role"`
 	Turn   uint64         `json:"turn,omitempty"`
 	Blocks []blockSummary `json:"blocks"`
 }
-
 type blockSummary struct {
 	Type            string `json:"type"`
 	TextLen         int    `json:"text_len,omitempty"`
@@ -81,7 +75,6 @@ type blockSummary struct {
 	ToolCallID      string `json:"tool_call_id,omitempty"`
 	HasSignature    bool   `json:"has_signature,omitempty"`
 }
-
 type inputSummary struct {
 	Index    int    `json:"index"`
 	Type     string `json:"type"`
@@ -94,7 +87,6 @@ type inputSummary struct {
 }
 
 // dumpProviderFailure writes a redacted diagnostic JSON for the failed request.
-// Returns the file path when written.
 func dumpProviderFailure(
 	request provider.ModelRequest,
 	body []byte,
@@ -132,7 +124,6 @@ func dumpProviderFailure(
 	}
 	return filePath, nil
 }
-
 func summarizeMessages(messages []provider.Message) []messageSummary {
 	out := make([]messageSummary, 0, len(messages))
 	for index, message := range messages {
@@ -160,7 +151,6 @@ func summarizeMessages(messages []provider.Message) []messageSummary {
 	}
 	return out
 }
-
 func summarizeEncodedBody(body []byte, wire model.WireProtocol) []inputSummary {
 	if len(body) == 0 {
 		return nil
@@ -205,7 +195,10 @@ func summarizeEncodedBody(body []byte, wire model.WireProtocol) []inputSummary {
 		return nil
 	}
 }
-
+func stringValue(value any) string {
+	result, _ := value.(string)
+	return result
+}
 func truncateDump(value string, limit int) string {
 	if len(value) <= limit {
 		return value

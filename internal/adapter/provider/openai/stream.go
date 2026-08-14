@@ -35,7 +35,6 @@ func NewStream(body io.ReadCloser, protocol model.WireProtocol) (provider.Stream
 	}
 	return &stream{body: body, decoder: provider.NewSSEDecoder(body), protocol: protocol}, nil
 }
-
 func (s *stream) Recv() (provider.StreamEvent, error) {
 	if !s.started {
 		s.started = true
@@ -144,7 +143,6 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 	}
 	return reconciled, nil
 }
-
 func (s *stream) enqueueStop(reason provider.StopReason) {
 	if s.stopped {
 		return
@@ -154,7 +152,6 @@ func (s *stream) enqueueStop(reason provider.StopReason) {
 		Type: provider.EventMessageStop, StopReason: reason,
 	})
 }
-
 func (s *stream) Close() error {
 	if s.closed {
 		return nil
@@ -163,7 +160,6 @@ func (s *stream) Close() error {
 	s.stopped = true
 	return s.body.Close()
 }
-
 func parseChatChunk(data []byte) ([]provider.StreamEvent, error) {
 	var chunk struct {
 		Choices []struct {
@@ -261,7 +257,6 @@ func parseChatChunk(data []byte) ([]provider.StreamEvent, error) {
 	}
 	return events, nil
 }
-
 func openAIStopReason(value string) provider.StopReason {
 	switch value {
 	case "stop":
@@ -276,7 +271,6 @@ func openAIStopReason(value string) provider.StopReason {
 		return provider.StopReasonUnknown
 	}
 }
-
 func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 	var chunk map[string]any
 	if err := json.Unmarshal(data, &chunk); err != nil {
@@ -289,7 +283,6 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 		return responsesReasoningTextEvent(chunk, chunk["delta"]), nil
 	case "response.reasoning_text.done", "response.reasoning_summary_text.done":
-		// Some providers only put the full chain on *.done (delta may be empty).
 		if text := firstString(chunk["text"], chunk["delta"]); text != "" {
 			return responsesReasoningTextEvent(chunk, text), nil
 		}
@@ -366,9 +359,7 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 					Type: provider.EventResponseState, Response: state,
 				})
 			}
-			// Final output is the authoritative reasoning payload. Re-emit so a
-			// missed delta / empty output_item.done still lands in history before
-			// the tool-loop replay (DeepSeek 400 without reasoning_text).
+			// Final output recovers reasoning omitted from deltas.
 			if output, ok := response["output"].([]any); ok {
 				for index, raw := range output {
 					item, _ := raw.(map[string]any)
@@ -433,7 +424,6 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 		return nil, nil
 	}
 }
-
 func responsesReasoningTextEvent(
 	chunk map[string]any,
 	value any,
@@ -447,7 +437,6 @@ func responsesReasoningTextEvent(
 	}
 	return events
 }
-
 func reasoningItemEvents(item map[string]any, index int) ([]provider.StreamEvent, error) {
 	raw, err := json.Marshal(item)
 	if err != nil {
@@ -462,7 +451,6 @@ func reasoningItemEvents(item map[string]any, index int) ([]provider.StreamEvent
 		Type: provider.EventReasoningDelta, Index: index, Text: text, Block: &block,
 	}}, nil
 }
-
 func reasoningTextFromResponsesItem(item map[string]any) string {
 	if item == nil {
 		return ""
@@ -472,7 +460,6 @@ func reasoningTextFromResponsesItem(item map[string]any) string {
 	}
 	return reasoningTextFromParts(item["summary"])
 }
-
 func reasoningTextFromParts(value any) string {
 	switch content := value.(type) {
 	case string:
@@ -496,7 +483,6 @@ func reasoningTextFromParts(value any) string {
 		return ""
 	}
 }
-
 func searchResult(item map[string]any) provider.SearchResult {
 	action, _ := item["action"].(map[string]any)
 	result := provider.SearchResult{Query: stringValue(action["query"])}
@@ -524,7 +510,6 @@ func searchResult(item map[string]any) provider.SearchResult {
 	}
 	return result
 }
-
 func textEvent(eventType provider.StreamEventType, value any) []provider.StreamEvent {
 	text := stringValue(value)
 	if text == "" {
@@ -537,12 +522,10 @@ func textEvent(eventType provider.StreamEventType, value any) []provider.StreamE
 	block := provider.ContentBlock{Type: blockType, Text: text}
 	return []provider.StreamEvent{{Type: eventType, Block: &block, Text: text}}
 }
-
 func nestedUint(value map[string]any, parent, child string) uint64 {
 	nested, _ := value[parent].(map[string]any)
 	return uint64(number(nested[child]))
 }
-
 func number(value any) float64 {
 	switch typed := value.(type) {
 	case float64:
@@ -557,12 +540,10 @@ func number(value any) float64 {
 		return 0
 	}
 }
-
 func stringValue(value any) string {
 	result, _ := value.(string)
 	return result
 }
-
 func firstString(values ...any) string {
 	for _, value := range values {
 		if result := stringValue(value); result != "" {

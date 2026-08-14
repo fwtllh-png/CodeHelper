@@ -12,7 +12,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
@@ -78,10 +78,9 @@ func ProbeModelCapabilities(ctx context.Context, options ProbeOptions) ([]ProbeR
 	if !gate.AllowURL(route.Endpoint()) {
 		return nil, fmt.Errorf("probe endpoint host cannot be granted")
 	}
-	client := providerrouter.NewLegacyClient()
+	client := httpclient.New()
 	client.Egress = gate
 	client.HTTP = &http.Client{Timeout: 30 * time.Second}
-	client.MaxAttempts = 1
 	if options.BaseURL != "" || strings.TrimSpace(os.Getenv("CODEHELPER_MODEL_PROBE_BASE_URL")) != "" {
 		// Hermetic / overridden endpoints still require a credential resolver; the
 		// fixture server never sees the value.

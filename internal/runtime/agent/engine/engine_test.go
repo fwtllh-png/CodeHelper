@@ -20,8 +20,12 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/anthropic"
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
+	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
+	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
@@ -1225,8 +1229,9 @@ func TestEngineToolRoundTripAcrossProviderProtocols(t *testing.T) {
 			if err := registry.Register(executor, nil); err != nil {
 				t.Fatal(err)
 			}
+			route := testRouteProtocol(t, server.URL, test.protocol)
 			runtime, err := New(Options{
-				Provider: httpclient.New(), Route: testRouteProtocol(t, server.URL, test.protocol),
+				Provider: testHTTPProvider(t, route), Route: route,
 				Tools: registry, MaxOutputTokens: 128,
 				Authorize: func(provider.ToolCall) bool { return true },
 			})
@@ -2822,6 +2827,36 @@ func testRouteProtocol(t *testing.T, endpoint string, protocol model.WireProtoco
 		t.Fatal(err)
 	}
 	return route
+}
+
+func testHTTPProvider(
+	t *testing.T,
+	route model.ReadyRoute,
+) provider.Provider {
+	t.Helper()
+	var adapter providerwire.Adapter
+	if route.Adapter() == model.AdapterAnthropic {
+		adapter = anthropic.NewAdapter()
+	} else {
+		var err error
+		adapter, err = openai.NewAdapter(route.Adapter())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	registry, err := providerrouter.NewRegistry(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := providerrouter.New(registry, routes, httpclient.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runtime
 }
 
 type scriptedProvider struct {

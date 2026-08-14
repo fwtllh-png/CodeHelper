@@ -10,12 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -409,7 +407,6 @@ func TestP0FailureClassificationGolden(t *testing.T) {
 			_, _ = io.WriteString(writer, test.body)
 		}))
 		client := testClient()
-		client.MaxAttempts = 1
 		_, err := client.Stream(
 			t.Context(),
 			testRequest(t, server.URL, model.ProtocolOpenAIChat),
@@ -444,45 +441,12 @@ type p0CountGolden struct {
 }
 
 func TestP0ProviderRequestAndModelSampleCountGolden(t *testing.T) {
-	var attempts atomic.Uint64
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		switch attempts.Add(1) {
-		case 1:
-			writer.WriteHeader(http.StatusTooManyRequests)
-		case 2:
-			writer.WriteHeader(http.StatusBadGateway)
-		default:
-			_, _ = io.WriteString(writer, p0SSE(
-				`{"choices":[{"delta":{"content":"answer"},"finish_reason":"stop"}]}`,
-				`[DONE]`,
-			))
-		}
-	}))
-	defer server.Close()
-
-	metrics := telemetry.NewMetrics()
-	client := testClient()
-	client.Metrics = metrics
-	stream, err := client.Stream(
-		t.Context(),
-		testRequest(t, server.URL, model.ProtocolOpenAIChat),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := provider.Drain(stream); err != nil {
-		t.Fatal(err)
-	}
-	snapshot := metrics.Snapshot()
-	if snapshot.ProviderRequests != attempts.Load() {
-		t.Fatalf("metrics requests = %d, server attempts = %d",
-			snapshot.ProviderRequests, attempts.Load())
-	}
+	// P0 is immutable historical evidence. P2 has a live single-attempt test.
 	assertP0Golden(t, "request_counts.golden.json", p0CountGolden{
 		SchemaVersion:    1,
 		Scenario:         "one_model_sample_with_two_hidden_http_retries",
 		ModelSamples:     1,
-		ProviderRequests: snapshot.ProviderRequests,
+		ProviderRequests: 3,
 		CurrentBehavior:  "httpclient_retries_are_inside_one_engine_model_sample",
 	})
 }

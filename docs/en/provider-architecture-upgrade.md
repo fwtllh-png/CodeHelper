@@ -2,9 +2,10 @@
 
 [Simplified Chinese](../zh-CN/provider-architecture-upgrade.md) | English
 
-> Status: P1 `infrastructure_ready`. Versioned evidence:
+> Status: P2 `generic_paths_isolated`. Versioned evidence:
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
-> and [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json).
+> [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json),
+> and [`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json).
 >
 > Scope: model route metadata, provider-neutral request and stream contracts,
 > wire adapters, HTTP and WebSocket transport, DeepSeek-specific behavior,
@@ -1291,7 +1292,7 @@ Result:
 
 ### P2: Extract Wire Adapters
 
-Status target: `generic_paths_isolated`.
+Status: `generic_paths_isolated`.
 
 Work:
 
@@ -1309,6 +1310,16 @@ Exit:
 - one Router call produces one network attempt;
 - OpenAI and Anthropic goldens remain equivalent; and
 - `httpclient/client.go` is no longer a repository hotspot.
+
+Result:
+
+- OpenAI and Anthropic own exact request serialization and stream opening;
+- OpenAI owns Responses WebSocket continuation and replay state;
+- `openai_compatible` is an explicit conservative adapter;
+- `httpclient` imports no concrete adapter and performs one HTTP attempt;
+- P0 request, stream, and failure goldens remain byte-for-byte equivalent;
+- `httpclient/client.go` fell from 1,087 to 406 lines; and
+- Provider ownership production size is net `0` lines from P1.
 
 ### P3: Dedicated DeepSeek Adapter
 
@@ -1636,8 +1647,8 @@ The upgrade is complete only when:
 - [x] every Provider route has explicit `AdapterID`;
 - [x] `ProviderKind` is removed or has one non-overlapping documented purpose;
 - [x] Engine, ToolSampler, and probes use the same Router;
-- [ ] `httpclient` owns no request serialization or provider error mapping;
-- [ ] transport makes one attempt;
+- [x] `httpclient` owns no request serialization or provider error mapping;
+- [x] transport makes one attempt;
 - [ ] DeepSeek Chat and Responses have dedicated request and stream code;
 - [ ] generic OpenAI code contains no DeepSeek special case;
 - [ ] DeepSeek Chat passback includes reasoning only with tool calls;

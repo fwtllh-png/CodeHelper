@@ -6,13 +6,11 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,35 +19,23 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/anthropic"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
+	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 )
 
-const (
-	maxErrorBodyBytes = 16 << 10
-	defaultRetryCap   = 30 * time.Second
-)
+const maxErrorBodyBytes = 16 << 10
 
 var requestSequence atomic.Uint64
 
 type CredentialResolver interface {
 	Resolve(context.Context, model.CredentialRef) (string, error)
 }
-
 type Client struct {
-	HTTP        *http.Client
-	Credentials CredentialResolver
-	// Egress gates RoundTrip when enforced; nil preserves open test clients.
+	HTTP              *http.Client
+	Credentials       CredentialResolver
 	Egress            *egress.Gate
-	MaxAttempts       int
-	BaseDelay         time.Duration
-	MaxRetryDelay     time.Duration
-	Now               func() time.Time
-	Random            func() float64
-	Sleep             func(context.Context, time.Duration) error
 	Metrics           *telemetry.Metrics
 	IdleTimeout       time.Duration
 	MaxConcurrent     int
@@ -59,10 +45,7 @@ type Client struct {
 	active      int
 	nextRequest time.Time
 	health      Health
-	sessionMu   sync.Mutex
-	sessions    map[string]*responsesSession
 }
-
 type Health struct {
 	Healthy             bool      `json:"healthy"`
 	Active              int       `json:"active"`
@@ -75,18 +58,11 @@ func New() *Client {
 	return &Client{
 		HTTP:          &http.Client{},
 		Credentials:   DefaultCredentials(),
-		MaxAttempts:   3,
-		BaseDelay:     200 * time.Millisecond,
-		MaxRetryDelay: defaultRetryCap,
-		Now:           time.Now,
-		Random:        func() float64 { return 0.5 },
-		Sleep:         wait,
 		IdleTimeout:   60 * time.Second,
 		MaxConcurrent: 8,
 		health:        Health{Healthy: true, UpdatedAt: time.Now()},
 	}
 }
-
 func (c *Client) httpClient() *http.Client {
 	base := c.HTTP
 	if base == nil {
@@ -97,15 +73,16 @@ func (c *Client) httpClient() *http.Client {
 	}
 	return egress.WrapClient(base, c.Egress)
 }
-
-func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (provider.Stream, error) {
-	if err := request.Validate(); err != nil {
-		return nil, protocol.NewProblem(protocol.CodeInvalidArgument, err.Error(), false, err)
-	}
-	if err := c.acquire(ctx); err != nil {
+func (c *Client) Execute(
+	ctx context.Context,
+	request provider.ModelRequest,
+	call providerwire.PreparedCall,
+	adapter providerwire.Adapter,
+) (provider.Stream, error) {
+	requestContext, requestCancel, credential, err := c.begin(ctx, request.Route)
+	if err != nil {
 		return nil, err
 	}
-	requestContext, requestCancel := context.WithCancel(ctx)
 	release := true
 	defer func() {
 		if release {
@@ -113,667 +90,93 @@ func (c *Client) Stream(ctx context.Context, request provider.ModelRequest) (pro
 			c.release()
 		}
 	}()
-	if err := c.rateLimit(requestContext); err != nil {
-		return nil, err
-	}
 	httpClient := c.httpClient()
+	httpRequest, err := http.NewRequestWithContext(
+		requestContext,
+		call.Method,
+		joinEndpoint(request.Route.Endpoint(), call.Path),
+		bytes.NewReader(call.Body),
+	)
+	if err != nil {
+		return nil, protocol.NewProblem(
+			protocol.CodeInvalidArgument, "create provider request", false, err,
+		)
+	}
+	applyHeaders(httpRequest, call, credential)
+	httpRequest.Header.Set("Idempotency-Key", requestKey(call.Body))
+	c.providerRequest()
+	response, err := httpClient.Do(httpRequest)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		problem := protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"provider request failed",
+			retryableTransportError(err),
+			err,
+		)
+		c.recordFailure(problem)
+		return nil, problem
+	}
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		stream, err := adapter.OpenStream(response.Body, call)
+		if err != nil {
+			_ = response.Body.Close()
+			requestCancel()
+			c.recordFailure(err)
+			return nil, err
+		}
+		release = false
+		return c.wrapStream(
+			stream,
+			providerwire.Metadata(call.Body, call.Body, false),
+			requestCancel,
+		), nil
+	}
+	errorText := boundedBody(response.Body)
+	problem := adapter.ClassifyHTTP(providerwire.HTTPFailure{
+		Status: response.StatusCode, Header: response.Header, Body: errorText,
+	})
+	if shouldDumpProvider(response.StatusCode) {
+		if dumpPath, dumpErr := dumpProviderFailure(
+			request, call.Body, call.Path, response.StatusCode, errorText,
+		); dumpErr == nil && dumpPath != "" {
+			if typed, ok := problem.(*protocol.Problem); ok {
+				typed.Message += " [diagnostic: " + dumpPath + "]"
+			}
+		}
+	}
+	c.recordFailure(problem)
+	return nil, problem
+}
+func (c *Client) begin(
+	ctx context.Context,
+	route model.ReadyRoute,
+) (context.Context, context.CancelFunc, string, error) {
+	if err := c.acquire(ctx); err != nil {
+		return nil, nil, "", err
+	}
+	requestContext, cancel := context.WithCancel(ctx)
+	fail := func(err error) (context.Context, context.CancelFunc, string, error) {
+		cancel()
+		c.release()
+		return nil, nil, "", err
+	}
+	if err := c.rateLimit(requestContext); err != nil {
+		return fail(err)
+	}
 	resolver := c.Credentials
 	if resolver == nil {
 		resolver = DefaultCredentials()
 	}
-	credential, err := resolver.Resolve(requestContext, request.Route.Credential())
+	credential, err := resolver.Resolve(requestContext, route.Credential())
 	if err != nil {
-		return nil, protocol.NewProblem(protocol.CodeUnavailable, "resolve provider credential", false, err)
+		return fail(protocol.NewProblem(
+			protocol.CodeUnavailable, "resolve provider credential", false, err,
+		))
 	}
-	body, path, err := encodeRequest(request)
-	if err != nil {
-		return nil, protocol.NewProblem(protocol.CodeInvalidArgument, err.Error(), false, err)
-	}
-	if request.Route.Protocol() == model.ProtocolOpenAIResponses &&
-		request.Route.Model().Capabilities.IncrementalResponses &&
-		request.PromptCacheKey != "" {
-		stream, metadata, sessionErr := c.responsesSessionStream(
-			requestContext, request, body, credential,
-		)
-		if sessionErr == nil {
-			release = false
-			return &managedStream{
-				stream: &metadataStream{Stream: stream, metadata: metadata},
-				cancel: requestCancel, release: c.release,
-				idleTimeout: c.IdleTimeout, success: c.recordSuccess, failure: c.recordFailure,
-			}, nil
-		}
-		if requestContext.Err() != nil {
-			return nil, requestContext.Err()
-		}
-	}
-	attempts := c.MaxAttempts
-	if attempts <= 0 {
-		attempts = 3
-	}
-	if !request.Idempotent {
-		attempts = 1
-	}
-	delay := c.BaseDelay
-	if delay <= 0 {
-		delay = 200 * time.Millisecond
-	}
-	retryCap := c.MaxRetryDelay
-	if retryCap <= 0 {
-		retryCap = defaultRetryCap
-	}
-	now := c.Now
-	if now == nil {
-		now = time.Now
-	}
-	random := c.Random
-	if random == nil {
-		random = func() float64 { return 0.5 }
-	}
-	sleep := c.Sleep
-	if sleep == nil {
-		sleep = wait
-	}
-	idempotencyKey := requestKey(body)
-
-	for attempt := 1; attempt <= attempts; attempt++ {
-		httpRequest, createErr := http.NewRequestWithContext(
-			requestContext,
-			http.MethodPost,
-			joinEndpoint(request.Route.Endpoint(), path),
-			bytes.NewReader(body),
-		)
-		if createErr != nil {
-			return nil, protocol.NewProblem(protocol.CodeInvalidArgument, "create provider request", false, createErr)
-		}
-		setHeaders(httpRequest, request.Route, credential)
-		httpRequest.Header.Set("Idempotency-Key", idempotencyKey)
-		c.Metrics.ProviderRequest()
-		response, doErr := httpClient.Do(httpRequest)
-		if doErr != nil {
-			if ctx.Err() != nil {
-				requestCancel()
-				return nil, ctx.Err()
-			}
-			retryable := retryableTransportError(doErr)
-			if retryable && attempt < attempts {
-				retryDelay := cappedJitter(delay*time.Duration(attempt), retryCap, random())
-				if err := sleep(ctx, retryDelay); err != nil {
-					return nil, err
-				}
-				continue
-			}
-			problem := protocol.NewProblem(protocol.CodeUnavailable, "provider request failed", retryable, doErr)
-			c.recordFailure(problem)
-			return nil, problem
-		}
-		if response.StatusCode >= 200 && response.StatusCode < 300 {
-			stream, decodeErr := decodeStream(response.Body, request.Route.Protocol())
-			if decodeErr != nil {
-				requestCancel()
-				c.recordFailure(decodeErr)
-				return nil, decodeErr
-			}
-			release = false
-			return &managedStream{
-				stream: &metadataStream{
-					Stream:   stream,
-					metadata: transportMetadata(body, body, false),
-				},
-				cancel: requestCancel, release: c.release,
-				idleTimeout: c.IdleTimeout, success: c.recordSuccess, failure: c.recordFailure,
-			}, nil
-		}
-		errorText := boundedBody(response.Body)
-		retryable := retryableStatus(response.StatusCode)
-		serverDelay, hasRetryAfter := retryAfter(response.Header.Get("Retry-After"), now())
-		rateLimit := rateLimitMetadata(response.Header, serverDelay, hasRetryAfter)
-		if retryable && attempt < attempts {
-			retryDelay := serverDelay
-			if !hasRetryAfter {
-				retryDelay = delay * time.Duration(attempt)
-			}
-			retryDelay = cappedJitter(retryDelay, retryCap, random())
-			if err := sleep(ctx, retryDelay); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		code := protocol.CodeUnavailable
-		if response.StatusCode >= 400 && response.StatusCode < 500 && response.StatusCode != http.StatusTooManyRequests {
-			code = protocol.CodeInvalidArgument
-		}
-		message := fmt.Sprintf("provider returned HTTP %d", response.StatusCode)
-		if errorText != "" {
-			message += ": " + errorText
-		}
-		if shouldDumpProvider(response.StatusCode) {
-			if dumpPath, dumpErr := dumpProviderFailure(
-				request, body, path, response.StatusCode, errorText,
-			); dumpErr == nil && dumpPath != "" {
-				message += " [diagnostic: " + dumpPath + "]"
-			}
-		}
-		problem := protocol.NewProblem(code, message, retryable, nil)
-		problem.HTTPStatus = response.StatusCode
-		problem.RateLimit = rateLimit
-		c.recordFailure(problem)
-		return nil, problem
-	}
-	requestCancel()
-	problem := protocol.NewProblem(protocol.CodeUnavailable, "provider retries exhausted", true, nil)
-	c.recordFailure(problem)
-	return nil, problem
-}
-
-func encodeRequest(request provider.ModelRequest) ([]byte, string, error) {
-	switch request.Route.Protocol() {
-	case model.ProtocolOpenAIChat:
-		body := map[string]any{
-			"model":      request.Route.Model().WireID,
-			"messages":   openAIMessages(request.Messages),
-			"max_tokens": request.MaxOutputTokens,
-			"stream":     true,
-			"stream_options": map[string]bool{
-				"include_usage": true,
-			},
-		}
-		applyOptional(body, request)
-		applyOpenAIChatTools(body, request.Tools)
-		if request.NativeSearch {
-			appendTool(body, map[string]any{"type": "web_search_preview"})
-		}
-		// Only advertise cache keys supported by catalog metadata.
-		if request.PromptCacheKey != "" && request.Route.Model().Capabilities.PromptCache {
-			body["prompt_cache_key"] = request.PromptCacheKey
-		}
-		data, err := json.Marshal(body)
-		return data, "/chat/completions", err
-	case model.ProtocolOpenAIResponses:
-		input, err := openAIResponsesInput(request.Messages)
-		if err != nil {
-			return nil, "", err
-		}
-		store := false
-		if request.Store != nil {
-			store = *request.Store
-		}
-		parallelTools := true
-		if request.ParallelTools != nil {
-			parallelTools = *request.ParallelTools
-		}
-		include := request.Include
-		if len(include) == 0 && request.ReasoningEffort != "" {
-			include = []string{"reasoning.encrypted_content"}
-		}
-		body := map[string]any{
-			"model":               request.Route.Model().WireID,
-			"input":               input,
-			"max_output_tokens":   request.MaxOutputTokens,
-			"stream":              true,
-			"store":               store,
-			"parallel_tool_calls": parallelTools,
-		}
-		if len(include) != 0 {
-			body["include"] = include
-		}
-		if request.Temperature != nil {
-			body["temperature"] = *request.Temperature
-		}
-		if request.ReasoningEffort != "" {
-			body["reasoning"] = map[string]any{
-				"effort": request.ReasoningEffort, "summary": "auto",
-			}
-		}
-		applyOpenAIResponsesTools(body, request.Tools)
-		if request.NativeSearch {
-			// OpenAI uses web_search_preview; DeepSeek Responses accepts web_search.
-			appendTool(body, map[string]any{"type": "web_search"})
-		}
-		// Keep cache keys consistent with request validation.
-		if request.PromptCacheKey != "" && request.Route.Model().Capabilities.PromptCache {
-			body["prompt_cache_key"] = request.PromptCacheKey
-		}
-		data, err := json.Marshal(body)
-		return data, "/responses", err
-	case model.ProtocolAnthropic:
-		system, messages, err := anthropicMessages(
-			request.Messages, request.Route.Model().Capabilities.PromptCache,
-		)
-		if err != nil {
-			return nil, "", err
-		}
-		body := map[string]any{
-			"model":      request.Route.Model().WireID,
-			"messages":   messages,
-			"max_tokens": request.MaxOutputTokens,
-			"stream":     true,
-		}
-		if len(system) != 0 {
-			body["system"] = system
-		}
-		if request.Temperature != nil {
-			body["temperature"] = *request.Temperature
-		}
-		if request.ReasoningEffort != "" {
-			budget, err := reasoningBudget(request)
-			if err != nil {
-				return nil, "", err
-			}
-			body["thinking"] = map[string]any{"type": "enabled", "budget_tokens": budget}
-		}
-		if request.NativeSearch {
-			appendTool(body, map[string]any{
-				"type": "web_search_20250305", "name": "web_search", "max_uses": 5,
-			})
-		}
-		if len(request.Tools) != 0 {
-			for _, definition := range request.Tools {
-				appendTool(body, map[string]any{
-					"name": definition.Name, "description": definition.Description, "input_schema": definition.InputSchema,
-				})
-			}
-		}
-		data, err := json.Marshal(body)
-		return data, "/messages", err
-	default:
-		return nil, "", fmt.Errorf("unsupported provider protocol %q", request.Route.Protocol())
-	}
-}
-
-func openAIMessages(messages []provider.Message) []map[string]any {
-	result := make([]map[string]any, 0, len(messages))
-	for _, message := range messages {
-		item := map[string]any{"role": message.Role}
-		var text, reasoning string
-		var calls []map[string]any
-		var images []map[string]any
-		for _, block := range message.Blocks {
-			switch block.Type {
-			case provider.ContentText:
-				text += block.Text
-			case provider.ContentReasoning:
-				reasoning += block.Text
-			case provider.ContentImage:
-				images = append(images, map[string]any{
-					"type": "image_url",
-					"image_url": map[string]any{
-						"url": block.Attachment.DataURL(),
-					},
-				})
-			case provider.ContentToolCall:
-				call := block.ToolCall
-				calls = append(calls, map[string]any{
-					"id": call.ID, "type": "function", "function": map[string]any{
-						"name": call.Name, "arguments": call.Arguments,
-					},
-				})
-			case provider.ContentToolResult:
-				item["tool_call_id"] = block.ToolResult.CallID
-				text += block.ToolResult.Content
-			}
-		}
-		// Preserve the cache-stable string form for text-only messages.
-		if len(images) == 0 {
-			item["content"] = text
-		} else {
-			content := make([]map[string]any, 0, len(images)+1)
-			if text != "" {
-				content = append(content, map[string]any{"type": "text", "text": text})
-			}
-			item["content"] = append(content, images...)
-		}
-		if reasoning != "" {
-			item["reasoning_content"] = reasoning
-		}
-		if len(calls) != 0 {
-			item["tool_calls"] = calls
-		}
-		result = append(result, item)
-	}
-	return result
-}
-
-func openAIResponsesInput(messages []provider.Message) ([]map[string]any, error) {
-	result := make([]map[string]any, 0, len(messages))
-	for _, message := range messages {
-		// Images and their prompt text share one typed input item.
-		if grouped, ok := openAIResponsesImageItem(message); ok {
-			result = append(result, grouped)
-			continue
-		}
-		for _, block := range message.Blocks {
-			switch block.Type {
-			case provider.ContentText:
-				result = append(result, map[string]any{"role": message.Role, "content": block.Text})
-			case provider.ContentReasoning:
-				item, err := openAIResponsesReasoningItem(block)
-				if err != nil {
-					return nil, err
-				}
-				if item != nil {
-					result = append(result, item)
-				}
-			case provider.ContentToolCall:
-				call := block.ToolCall
-				// DeepSeek requires reasoning before a replayed function call.
-				result = ensureReasoningBeforeFunctionCall(result)
-				result = append(result, map[string]any{
-					"type": "function_call", "call_id": call.ID, "name": call.Name, "arguments": call.Arguments,
-				})
-			case provider.ContentToolResult:
-				result = append(result, map[string]any{
-					"type": "function_call_output", "call_id": block.ToolResult.CallID,
-					"output": block.ToolResult.Content,
-				})
-			case provider.ContentProvider:
-				var item map[string]any
-				if err := json.Unmarshal(block.ProviderData, &item); err != nil {
-					return nil, fmt.Errorf("decode OpenAI provider replay block: %w", err)
-				}
-				result = append(result, item)
-			}
-		}
-	}
-	if err := validateResponsesToolPairs(result); err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func validateResponsesToolPairs(input []map[string]any) error {
-	calls := make(map[string]struct{})
-	for index, item := range input {
-		switch stringValue(item["type"]) {
-		case "function_call":
-			callID := stringValue(item["call_id"])
-			if callID == "" {
-				return fmt.Errorf("OpenAI Responses function_call at input %d has no call_id", index)
-			}
-			calls[callID] = struct{}{}
-		case "function_call_output":
-			callID := stringValue(item["call_id"])
-			if _, exists := calls[callID]; callID == "" || !exists {
-				return fmt.Errorf(
-					"OpenAI Responses function_call_output at input %d has no preceding function_call for call_id %q",
-					index,
-					callID,
-				)
-			}
-		}
-	}
-	return nil
-}
-
-// Placeholder supplies required DeepSeek reasoning before replayed tool calls.
-const responsesReasoningPlaceholder = "(continued)"
-
-func ensureReasoningBeforeFunctionCall(result []map[string]any) []map[string]any {
-	if len(result) > 0 {
-		switch stringValue(result[len(result)-1]["type"]) {
-		case "reasoning", "function_call":
-			return result
-		}
-	}
-	return append(result, map[string]any{
-		"type": "reasoning",
-		"content": []map[string]any{{
-			"type": "reasoning_text", "text": responsesReasoningPlaceholder,
-		}},
-	})
-}
-
-// openAIResponsesReasoningItem omits empty items rejected by DeepSeek.
-func openAIResponsesReasoningItem(block provider.ContentBlock) (map[string]any, error) {
-	text := strings.TrimSpace(block.Text)
-	var item map[string]any
-	if block.ProviderType == "openai_responses.reasoning" && len(block.ProviderData) != 0 {
-		if err := json.Unmarshal(block.ProviderData, &item); err != nil {
-			return nil, fmt.Errorf("decode OpenAI reasoning replay block: %w", err)
-		}
-		if text == "" {
-			text = strings.TrimSpace(reasoningTextFromItem(item))
-		}
-	}
-	if text == "" {
-		return nil, nil
-	}
-	out := map[string]any{
-		"type": "reasoning",
-		"content": []map[string]any{{
-			"type": "reasoning_text", "text": text,
-		}},
-	}
-	if id := stringValue(item["id"]); id != "" {
-		out["id"] = id
-	}
-	return out, nil
-}
-
-func reasoningTextFromItem(item map[string]any) string {
-	if item == nil {
-		return ""
-	}
-	if text := reasoningTextFromContentParts(item["content"]); text != "" {
-		return text
-	}
-	return reasoningTextFromContentParts(item["summary"])
-}
-
-func reasoningTextFromContentParts(value any) string {
-	switch content := value.(type) {
-	case string:
-		return content
-	case []any:
-		var parts []string
-		for _, raw := range content {
-			part, _ := raw.(map[string]any)
-			if part == nil {
-				continue
-			}
-			switch stringValue(part["type"]) {
-			case "reasoning_text", "output_text", "summary_text", "text", "":
-				if text := stringValue(part["text"]); text != "" {
-					parts = append(parts, text)
-				} else if text := stringValue(part["reasoning_text"]); text != "" {
-					parts = append(parts, text)
-				}
-			}
-		}
-		return strings.Join(parts, "")
-	default:
-		return ""
-	}
-}
-
-func stringValue(value any) string {
-	result, _ := value.(string)
-	return result
-}
-
-// openAIResponsesImageItem groups message text and images into one input item.
-func openAIResponsesImageItem(message provider.Message) (map[string]any, bool) {
-	var content []map[string]any
-	images := false
-	for _, block := range message.Blocks {
-		switch block.Type {
-		case provider.ContentText:
-			content = append(content, map[string]any{"type": "input_text", "text": block.Text})
-		case provider.ContentImage:
-			images = true
-			content = append(content, map[string]any{
-				"type": "input_image", "image_url": block.Attachment.DataURL(),
-			})
-		}
-	}
-	if !images {
-		return nil, false
-	}
-	return map[string]any{"role": message.Role, "content": content}, true
-}
-
-// anthropicMessages marks only the stable system prefix for prompt caching.
-func anthropicMessages(
-	messages []provider.Message, promptCache bool,
-) ([]map[string]any, []map[string]any, error) {
-	var stable []string
-	var volatile []string
-	seenNonSystem := false
-	result := make([]map[string]any, 0, len(messages))
-	for _, message := range messages {
-		switch message.Role {
-		case provider.RoleSystem:
-			text := message.Text()
-			if text == "" {
-				continue
-			}
-			if !seenNonSystem {
-				stable = append(stable, text)
-			} else {
-				volatile = append(volatile, text)
-			}
-		case provider.RoleAssistant:
-			seenNonSystem = true
-			content := make([]map[string]any, 0, len(message.Blocks))
-			for _, block := range message.Blocks {
-				switch block.Type {
-				case provider.ContentText:
-					content = append(content, map[string]any{"type": "text", "text": block.Text})
-				case provider.ContentReasoning:
-					thinking := map[string]any{"type": "thinking", "thinking": block.Text}
-					if block.Signature != "" {
-						thinking["signature"] = block.Signature
-					}
-					content = append(content, thinking)
-				case provider.ContentToolCall:
-					call := block.ToolCall
-					var input any
-					if err := json.Unmarshal([]byte(call.Arguments), &input); err != nil {
-						return nil, nil, fmt.Errorf("decode Anthropic tool arguments for %s: %w", call.ID, err)
-					}
-					content = append(content, map[string]any{
-						"type": "tool_use", "id": call.ID, "name": call.Name, "input": input,
-					})
-				}
-			}
-			result = append(result, map[string]any{"role": "assistant", "content": content})
-		case provider.RoleTool:
-			seenNonSystem = true
-			content := make([]map[string]any, 0, len(message.Blocks))
-			for _, block := range message.Blocks {
-				if block.Type == provider.ContentToolResult {
-					content = append(content, map[string]any{
-						"type": "tool_result", "tool_use_id": block.ToolResult.CallID,
-						"content": block.ToolResult.Content, "is_error": block.ToolResult.IsError,
-					})
-				}
-			}
-			result = append(result, map[string]any{"role": "user", "content": content})
-		default:
-			seenNonSystem = true
-			content := make([]map[string]any, 0, len(message.Blocks))
-			for _, block := range message.Blocks {
-				switch block.Type {
-				case provider.ContentText:
-					content = append(content, map[string]any{"type": "text", "text": block.Text})
-				case provider.ContentImage:
-					content = append(content, map[string]any{
-						"type": "image",
-						"source": map[string]any{
-							"type":       "base64",
-							"media_type": block.Attachment.MediaType,
-							"data":       block.Attachment.Base64(),
-						},
-					})
-				}
-			}
-			result = append(result, map[string]any{"role": message.Role, "content": content})
-		}
-	}
-	system := make([]map[string]any, 0, len(stable)+len(volatile))
-	for index, text := range stable {
-		block := map[string]any{"type": "text", "text": text}
-		if promptCache && index == len(stable)-1 {
-			block["cache_control"] = map[string]any{"type": "ephemeral"}
-		}
-		system = append(system, block)
-	}
-	for _, text := range volatile {
-		system = append(system, map[string]any{"type": "text", "text": text})
-	}
-	return system, result, nil
-}
-
-func applyOpenAIChatTools(body map[string]any, definitions []provider.ToolDefinition) {
-	for _, definition := range definitions {
-		appendTool(body, map[string]any{
-			"type": "function",
-			"function": map[string]any{
-				"name": definition.Name, "description": definition.Description, "parameters": definition.InputSchema,
-			},
-		})
-	}
-}
-
-// applyOpenAIResponsesTools uses the flat Responses function-tool shape.
-func applyOpenAIResponsesTools(body map[string]any, definitions []provider.ToolDefinition) {
-	for _, definition := range definitions {
-		appendTool(body, map[string]any{
-			"type":        "function",
-			"name":        definition.Name,
-			"description": definition.Description,
-			"parameters":  definition.InputSchema,
-		})
-	}
-}
-
-func appendTool(body map[string]any, definition map[string]any) {
-	tools, _ := body["tools"].([]map[string]any)
-	body["tools"] = append(tools, definition)
-}
-
-func applyOptional(body map[string]any, request provider.ModelRequest) {
-	if request.Temperature != nil {
-		body["temperature"] = *request.Temperature
-	}
-	if request.ReasoningEffort != "" {
-		body["reasoning_effort"] = request.ReasoningEffort
-	}
-}
-
-func reasoningBudget(request provider.ModelRequest) (uint64, error) {
-	if request.MaxOutputTokens <= 1024 {
-		return 0, errors.New("Anthropic thinking requires max output tokens greater than 1024")
-	}
-	budget := request.MaxOutputTokens / 2
-	if budget < 1024 {
-		budget = 1024
-	}
-	if budget >= request.MaxOutputTokens {
-		return 0, errors.New("Anthropic thinking budget must be less than max output tokens")
-	}
-	return budget, nil
-}
-
-func setHeaders(request *http.Request, route model.ReadyRoute, credential string) {
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept", "text/event-stream")
-	if credential == "" {
-		return
-	}
-	if route.Protocol() == model.ProtocolAnthropic {
-		request.Header.Set("x-api-key", credential)
-		request.Header.Set("anthropic-version", "2023-06-01")
-		return
-	}
-	request.Header.Set("Authorization", "Bearer "+credential)
-}
-
-func decodeStream(body io.ReadCloser, protocol model.WireProtocol) (provider.Stream, error) {
-	if protocol == model.ProtocolAnthropic {
-		return anthropic.NewStream(body)
-	}
-	return openai.NewStream(body, protocol)
+	return requestContext, cancel, credential, nil
 }
 
 type managedStream struct {
@@ -798,7 +201,6 @@ type metadataStream struct {
 func (s *metadataStream) TransportMetadata() provider.TransportMetadata {
 	return s.metadata
 }
-
 func (s *metadataStream) Recv() (provider.StreamEvent, error) {
 	event, err := s.Stream.Recv()
 	if event.Usage != nil {
@@ -839,14 +241,12 @@ func (s *managedStream) Recv() (provider.StreamEvent, error) {
 			context.DeadlineExceeded,
 		)
 		s.failure(err)
-		// Cancel before closing parser state that Recv may still use.
 		s.cancel()
 		<-result
 		_ = s.Close()
 		return provider.StreamEvent{}, err
 	}
 }
-
 func normalizeStreamError(err error) error {
 	if err == nil || errors.Is(err, io.EOF) || protocol.CodeOf(err) != protocol.CodeInternal {
 		return err
@@ -861,7 +261,6 @@ func normalizeStreamError(err error) error {
 	}
 	return err
 }
-
 func (s *managedStream) observe(event provider.StreamEvent, err error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		s.failure(err)
@@ -873,7 +272,6 @@ func (s *managedStream) observe(event provider.StreamEvent, err error) {
 		_ = s.Close()
 	}
 }
-
 func (s *managedStream) Close() (result error) {
 	s.closeOnce.Do(func() {
 		s.cancel()
@@ -882,7 +280,6 @@ func (s *managedStream) Close() (result error) {
 	})
 	return result
 }
-
 func (c *Client) acquire(ctx context.Context) error {
 	for {
 		c.mu.Lock()
@@ -907,7 +304,6 @@ func (c *Client) acquire(ctx context.Context) error {
 		}
 	}
 }
-
 func (c *Client) release() {
 	c.mu.Lock()
 	if c.active > 0 {
@@ -917,7 +313,6 @@ func (c *Client) release() {
 	c.health.UpdatedAt = time.Now()
 	c.mu.Unlock()
 }
-
 func (c *Client) rateLimit(ctx context.Context) error {
 	c.mu.Lock()
 	rate := c.RequestsPerSecond
@@ -934,7 +329,6 @@ func (c *Client) rateLimit(ctx context.Context) error {
 	c.mu.Unlock()
 	return wait(ctx, waitFor)
 }
-
 func (c *Client) recordSuccess() {
 	c.mu.Lock()
 	c.health.Healthy = true
@@ -943,7 +337,6 @@ func (c *Client) recordSuccess() {
 	c.health.UpdatedAt = time.Now()
 	c.mu.Unlock()
 }
-
 func (c *Client) recordFailure(err error) {
 	c.mu.Lock()
 	c.health.ConsecutiveFailures++
@@ -952,56 +345,25 @@ func (c *Client) recordFailure(err error) {
 	c.health.UpdatedAt = time.Now()
 	c.mu.Unlock()
 }
-
 func (c *Client) Health() Health {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.health
 }
-
 func errorString(err error) string {
 	if err == nil {
 		return ""
 	}
 	return err.Error()
 }
-
 func joinEndpoint(endpoint, path string) string {
 	return strings.TrimRight(endpoint, "/") + path
 }
-
 func boundedBody(body io.ReadCloser) string {
 	defer body.Close()
 	data, _ := io.ReadAll(io.LimitReader(body, maxErrorBodyBytes))
 	return strings.TrimSpace(string(data))
 }
-
-func retryAfter(value string, now time.Time) (time.Duration, bool) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0, false
-	}
-	if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
-		return time.Duration(seconds) * time.Second, true
-	}
-	at, err := http.ParseTime(value)
-	if err != nil {
-		return 0, false
-	}
-	delay := at.Sub(now)
-	if delay < 0 {
-		delay = 0
-	}
-	return delay, true
-}
-
-func retryableStatus(status int) bool {
-	return status == http.StatusRequestTimeout ||
-		status == http.StatusTooEarly ||
-		status == http.StatusTooManyRequests ||
-		status >= 500
-}
-
 func retryableTransportError(err error) bool {
 	var certificateError *tls.CertificateVerificationError
 	var unknownAuthority x509.UnknownAuthorityError
@@ -1026,53 +388,10 @@ func retryableTransportError(err error) bool {
 	var networkError net.Error
 	return errors.As(err, &networkError) && (networkError.Timeout() || networkError.Temporary())
 }
-
-func cappedJitter(delay, cap time.Duration, random float64) time.Duration {
-	if delay < 0 {
-		delay = 0
-	}
-	if random < 0 {
-		random = 0
-	}
-	if random > 1 {
-		random = 1
-	}
-	delay = time.Duration(float64(delay) * (1 + 0.2*random))
-	if delay > cap {
-		return cap
-	}
-	return delay
-}
-
-func rateLimitMetadata(header http.Header, retryDelay time.Duration, hasRetryAfter bool) *protocol.RateLimitMetadata {
-	metadata := &protocol.RateLimitMetadata{
-		Limit:     firstHeader(header, "RateLimit-Limit", "X-RateLimit-Limit"),
-		Remaining: firstHeader(header, "RateLimit-Remaining", "X-RateLimit-Remaining"),
-		Reset:     firstHeader(header, "RateLimit-Reset", "X-RateLimit-Reset"),
-	}
-	if hasRetryAfter {
-		metadata.RetryAfterMS = uint64(retryDelay / time.Millisecond)
-	}
-	if metadata.Limit == "" && metadata.Remaining == "" && metadata.Reset == "" && metadata.RetryAfterMS == 0 {
-		return nil
-	}
-	return metadata
-}
-
-func firstHeader(header http.Header, names ...string) string {
-	for _, name := range names {
-		if value := header.Get(name); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 func requestKey(body []byte) string {
 	digest := sha256.Sum256(body)
 	return fmt.Sprintf("codehelper-%x-%d", digest[:8], requestSequence.Add(1))
 }
-
 func wait(ctx context.Context, duration time.Duration) error {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
@@ -1084,4 +403,4 @@ func wait(ctx context.Context, duration time.Duration) error {
 	}
 }
 
-var _ provider.Provider = (*Client)(nil)
+var _ providerwire.Transport = (*Client)(nil)
