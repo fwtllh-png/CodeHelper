@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -62,34 +63,10 @@ func (e *Engine) modelStep(
 	finishAttempted := false
 	finishMode := false
 	for attempt := 0; ; attempt++ {
-		messages := append(
-			cloneMessages(scope.spec.Context.Messages),
-			cloneMessages(*history)...,
-		)
 		turnContext, turnReceipts := e.turnContextMessagesForCatalog(ctx, catalog, advertised)
-		messages = append(messages, turnContext...)
-		messages = append(messages, cloneMessages(continuationMessages)...)
 		e.recordTurnContextReceipts(turnReceipts)
-
-		estimatedInput, err := e.checkBudget(messages, turnUsage, totalUsage)
-		if err != nil {
-			return nil, nil, totalUsage, estimatedInput, err
-		}
-		e.maybeInjectBudgetReminder(&messages)
-		lastEstimate = estimatedInput
-		requestContext, cancel := context.WithCancelCause(ctx)
-		e.setActiveCancel(cancel)
-
+		e.maybeInjectBudgetReminder(&turnContext)
 		route := e.activeRoute()
-		call := sample{
-			index: e.nextSample(), provider: route.ProviderID(),
-			model: route.Model().ID, pricing: route.Model().Pricing,
-		}
-
-		callSpan := e.tracer().Start(trace.NameModelCall, 0, map[string]any{
-			"provider": call.provider, "model": call.model,
-			"sample": call.index, "attempt": attempt + 1,
-		})
 		maxOutputTokens := e.maxOutputFor(route)
 		requestTools := definitions
 		reasoningEffort := e.options.ReasoningEffort
@@ -100,16 +77,70 @@ func (e *Engine) modelStep(
 			reasoningEffort = "low"
 			nativeSearch = false
 		}
-		attribution, attributionErr := promptcontext.MeasureSample(promptcontext.SampleInput{
+		sampleInput := promptcontext.SampleInput{
 			Reason: promptcontext.SampleReason(reason, attempt, finishMode || continuations > 0),
 			Stable: scope.spec.Context.Messages, History: *history, Dynamic: turnContext,
 			Continuation: continuationMessages, Definitions: requestTools,
 			Estimate: e.options.TokenEstimator.Estimate,
-		})
+		}
+		phase := CompactionPhaseMidTurn
+		if turnUsage.InputTokens+totalUsage.InputTokens == 0 {
+			phase = CompactionPhasePreSampling
+		}
+		window, err := e.runCompactGate(
+			history, sampleInput, maxOutputTokens, phase, true, send,
+		)
+		if err != nil {
+			return nil, nil, totalUsage, window.estimated, err
+		}
+		sampleInput.History = *history
+		if window.hardLimit > 0 && window.active >= window.hardLimit*55/100 {
+			turnContext = append(turnContext, contextWindowFeedback(e.turn))
+			sampleInput.History, sampleInput.Dynamic = *history, turnContext
+			window, err = e.runCompactGate(
+				history, sampleInput, maxOutputTokens, phase, true, send,
+			)
+			if err != nil {
+				return nil, nil, totalUsage, window.estimated, err
+			}
+		}
+		finishOnly := finishMode ||
+			window.hardLimit > 0 && window.active >= window.hardLimit*85/100
+		if finishOnly && !finishMode {
+			requestTools = slices.DeleteFunc(
+				append([]provider.ToolDefinition(nil), requestTools...),
+				func(tool provider.ToolDefinition) bool {
+					return tool.Name != "turn_complete" && !strings.HasPrefix(tool.Name, "quality_")
+				})
+			reasoningEffort, nativeSearch = "low", false
+			sampleInput.Definitions = requestTools
+		}
+		attribution, attributionErr := promptcontext.MeasureSample(sampleInput)
 		if attributionErr != nil {
 			return nil, nil, totalUsage, lastEstimate, attributionErr
 		}
-		call.context = &attribution
+		lastEstimate = attribution.EstimatedTokens
+		if _, err := e.checkBudget(
+			e.calibrateInput(lastEstimate), turnUsage, totalUsage, maxOutputTokens,
+		); err != nil {
+			return nil, nil, totalUsage, lastEstimate, err
+		}
+		messages := append(cloneMessages(scope.spec.Context.Messages), cloneMessages(*history)...)
+		messages = append(messages, turnContext...)
+		messages = append(messages, cloneMessages(continuationMessages)...)
+		if err := send(CallingModel, Event{}); err != nil {
+			return nil, nil, totalUsage, lastEstimate, err
+		}
+		requestContext, cancel := context.WithCancelCause(ctx)
+		e.setActiveCancel(cancel)
+		call := sample{
+			index: e.nextSample(), provider: route.ProviderID(),
+			model: route.Model().ID, pricing: route.Model().Pricing, context: &attribution,
+		}
+		callSpan := e.tracer().Start(trace.NameModelCall, 0, map[string]any{
+			"provider": call.provider, "model": call.model,
+			"sample": call.index, "attempt": attempt + 1,
+		})
 		stream, err := e.options.Provider.Stream(requestContext, provider.ModelRequest{
 			Route: route, Messages: messages,
 			MaxOutputTokens: maxOutputTokens, Tools: requestTools,
@@ -152,6 +183,7 @@ func (e *Engine) modelStep(
 			callSpan.End(trace.StatusOK)
 		}
 		totalUsage.Add(usage)
+		e.noteInputUsage(attribution.EstimatedTokens, usage.InputTokens)
 		pending := e.drainPending()
 		if ctx.Err() == nil && len(pending) != 0 {
 			if pendingInputInjected != nil {
@@ -230,7 +262,7 @@ func (e *Engine) modelStep(
 			continue
 		}
 		if err == nil {
-			if finishMode && len(calls) != 0 {
+			if finishOnly && len(calls) != 0 {
 				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
 					protocol.CodeConflict,
 					"model finish route attempted a new tool call",

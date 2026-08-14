@@ -9,6 +9,8 @@
     "edit.sse",
     "missing.sse",
     "first-answer.sse",
+    "declare.sse",
+    "complete.sse",
     "second-answer.sse"
   ],
   "expected_request_fragments": [
@@ -18,6 +20,8 @@
     ["\"tool_call_id\":\"call_read\""],
     ["\"tool_call_id\":\"call_edit\""],
     ["\"tool_call_id\":\"call_missing\""],
+    ["tool_failure_resolution_required"],
+    ["\"tool_call_id\":\"call_complete\"", "completion_declaration_accepted"],
     [
       "codehelper_summary",
       "Goal: align the greeting in service.py with settings.yaml",
@@ -26,7 +30,7 @@
       "Already tried and failed, do not repeat blindly:",
       "Changed so far:",
       "service.py (turn 1)",
-      "nothing verified it",
+      "verified",
       "Critical paths: service.py",
       "What lookups established:",
       "Removed history, newest first:"

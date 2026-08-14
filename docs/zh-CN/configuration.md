@@ -167,7 +167,8 @@ max_bytes = 4096
 enabled = true
 
 [context.compact]
-max_history_bytes = 262144
+auto_compact_tokens = 0 # 0 表示使用当前模型窗口的 65%
+scope = "total" # 或 "body_after_prefix"
 summary_max_bytes = 8192
 max_digest_entries = 120
 
@@ -328,10 +329,10 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | `CODEHELPER_CREDENTIAL_KIND`、`CODEHELPER_CREDENTIAL_NAME` | Secret 引用 |
 | `CODEHELPER_INDEX_*`、`CODEHELPER_REPO_MAP_*` | 仓库上下文 |
 | `CODEHELPER_WORKING_SET_*`、`CODEHELPER_EVIDENCE_*` | 会话上下文 |
-| `CODEHELPER_COMPACT_*` | 历史压缩 |
+| `CODEHELPER_COMPACT_*` | Token Window 压缩 |
 | `CODEHELPER_VISION_*`、`CODEHELPER_WEB_SEARCH_BACKEND` | 专用 Adapter |
 
-权威列表位于 `internal/config/config.go` 的环境变量应用逻辑。
+权威列表位于 `internal/config/environment.go` 的环境变量应用逻辑。
 
 ## 配置卫生
 

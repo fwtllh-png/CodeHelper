@@ -125,9 +125,10 @@ type fileConfig struct {
 			Enabled *bool `toml:"enabled"`
 		} `toml:"coding_policy"`
 		Compact struct {
-			MaxHistoryBytes  *int `toml:"max_history_bytes"`
-			SummaryMaxBytes  *int `toml:"summary_max_bytes"`
-			MaxDigestEntries *int `toml:"max_digest_entries"`
+			AutoCompactTokens *int    `toml:"auto_compact_tokens"`
+			Scope             *string `toml:"scope"`
+			SummaryMaxBytes   *int    `toml:"summary_max_bytes"`
+			MaxDigestEntries  *int    `toml:"max_digest_entries"`
 		} `toml:"compact"`
 	} `toml:"context"`
 	Telemetry struct {
@@ -216,8 +217,12 @@ func applyFile(
 	)
 	compaction := &config.Context.Compact
 	applyInt(
-		input.Context.Compact.MaxHistoryBytes, &compaction.MaxHistoryBytes,
-		fieldCompactMaxHistory, source, provenance,
+		input.Context.Compact.AutoCompactTokens, &compaction.AutoCompactTokens,
+		fieldCompactAutoTokens, source, provenance,
+	)
+	applyString(
+		input.Context.Compact.Scope, &compaction.Scope,
+		fieldCompactScope, source, provenance,
 	)
 	applyInt(
 		input.Context.Compact.SummaryMaxBytes, &compaction.SummaryMaxBytes,

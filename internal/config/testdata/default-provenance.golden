@@ -1,6 +1,7 @@
 context.coding_policy.enabled
+context.compact.auto_compact_tokens
 context.compact.max_digest_entries
-context.compact.max_history_bytes
+context.compact.scope
 context.compact.summary_max_bytes
 context.evidence.enabled
 context.evidence.max_bytes

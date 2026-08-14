@@ -57,11 +57,8 @@ type Options struct {
 	MaxOutputTokens  uint64
 	MaxSteps         int
 	MaxRetries       int
-	// MaxContextBytes is the history size that triggers a compaction.
-	MaxContextBytes int
-	// SummaryMaxBytes caps a rendered compaction summary. Zero derives it from
-	// MaxContextBytes.
-	SummaryMaxBytes int
+	CompactWindow    CompactWindowPolicy
+	SummaryMaxBytes  int
 	// MaxDigestEntries bounds the per-message running record a summary carries.
 	MaxDigestEntries     int
 	ReasoningEffort      string
@@ -308,9 +305,6 @@ func New(options Options) (*Engine, error) {
 	}
 	if options.MaxRetries < 0 {
 		return nil, errors.New("max retries cannot be negative")
-	}
-	if options.MaxContextBytes <= 0 {
-		options.MaxContextBytes = 256 << 10
 	}
 	if options.TokenEstimator == nil {
 		options.TokenEstimator = HeuristicTokenEstimator{}

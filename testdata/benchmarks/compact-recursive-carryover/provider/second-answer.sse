@@ -1,5 +1,5 @@
 data: {"choices":[{"delta":{"content":"notes.md says settings.yaml is the source of truth for the greeting"},"finish_reason":"stop"}]}
 
-data: {"choices":[],"usage":{"prompt_tokens":92,"completion_tokens":13}}
+data: {"choices":[],"usage":{"prompt_tokens":{{request_input_tokens}},"completion_tokens":13,"prompt_tokens_details":{"cached_tokens":{{request_cached_tokens}}}}}
 
 data: [DONE]

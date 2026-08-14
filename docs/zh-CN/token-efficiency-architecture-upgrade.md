@@ -2,8 +2,10 @@
 
 简体中文 | [English](../en/token-efficiency-architecture-upgrade.md)
 
-> 状态：`in_progress`。T0 已验收，基线见
-> [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)。
+> 状态：`in_progress`。T0 已验收；T1 已实现，验证状态为
+> `implemented_validation_mixed`。证据见
+> [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
+> 与 [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json)。
 >
 > 范围：Prompt Context、History、Compaction、Tool Catalog、Tool Result、
 > Provider Session、Reasoning Budget、Completion Protocol、Usage Accounting
@@ -694,6 +696,24 @@ Ablation，确定收益来源。Feature Toggle 只用于实验，不要求长期
 - Summary 保留 Goal、Changed Paths、Pending Work 和 Verification；
 - Canonical Prompt 正确性不回退；
 - 累计 Input 不高于 Baseline。
+
+当前证据（T1，`implemented_validation_mixed`）：
+
+- Byte Gate 已删除，`auto_compact_tokens=0` 默认取模型窗口 65%，支持 `total`
+  与 `body_after_prefix`；
+- 55% 注入收敛提示，65% Token-native Compaction，85% 仅暴露完成与验证工具；
+- Compaction 候选只按完整请求 Active Token 选择，Bytes 仅保留为审计字段；
+- Hermetic 5/5 通过，Input P50 147,770，与冻结 T0 差异为 0；
+- DeepSeek Live 10/10 通过且 MAD/P50 为 13.93%，但相对冻结 T0 的 Input P50
+  上升 9.17%，严格比较失败；
+- 同时间窗 T0 控制组 Input P50 为 545,009，T1 第二批为 460,999，下降
+  15.41%，但 Uncached Input 上升 23.03%；
+- 三个 Compaction Capability Fixture 与 Token Efficiency Fixture 独立通过；
+- Architecture Ratchet 43/43，生产代码从 27,946 行降至 27,943 行，净变化
+  `-3`。
+
+结论：实现与确定性非回归 Gate 通过，但冻结 Live 基线和同期控制结论不一致；
+在继续 T2 前保留该差异，不将 T1 标记为无条件 `accepted`。
 
 ### T2：Durable World State Diff
 

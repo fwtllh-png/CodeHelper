@@ -456,9 +456,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	}
 	user.Turn = e.turn
 	transaction = append(transaction, user)
-	if err := e.runPreSamplingCompactGate(&transaction, send); err != nil {
-		return result, err
-	}
 	executed := make(map[string]tool.Result)
 	cache := &toolResultCache{}
 	var finalText string
@@ -549,9 +546,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				noProgressFeedback(e.turn, progress),
 			)
 		}
-		if err := send(CallingModel, Event{}); err != nil {
-			return result, err
-		}
 		sampleID := kernel.pendingSampleID()
 		if sampleID == "" {
 			sampleID = fmt.Sprintf("turn-%d-step-%d", e.turn, step+1)
@@ -639,9 +633,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			transaction = append(transaction, provider.Message{
 				Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
 			})
-			if err := e.runMidTurnCompactGate(&transaction, send); err != nil {
-				return result, err
-			}
 			var outcome verifyOutcome
 			action, actionErr := kernel.evaluateTurnStep(
 				kernel.repairProgressKey(),
@@ -838,9 +829,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				}},
 			})
 		}
-		if err := e.runMidTurnCompactGate(&transaction, send); err != nil {
-			return result, err
-		}
 	}
 	return result, protocol.NewProblem(
 		protocol.CodeResourceExhausted,
@@ -880,6 +868,14 @@ func stepBudgetFeedback(turn uint64, remaining int) provider.Message {
 			remaining,
 		),
 	)
+	message.Turn = turn
+	return message
+}
+
+func contextWindowFeedback(turn uint64) provider.Message {
+	message := provider.TextMessage(provider.RoleUser,
+		"[context_window]\nStop broad exploration. Complete the smallest coherent "+
+			"verified result and declare any concrete remaining work.")
 	message.Turn = turn
 	return message
 }

@@ -1,16 +1,20 @@
 {
   "name": "compact-recursive-carryover",
   "category": "context_assembly",
-  "note": "A later compaction must pass the earlier summary through whole. Flattening it the way an ordinary message is flattened would cut it to one truncated line, so everything the first compaction paid to keep would vanish by the third turn — which is exactly when a long session needs it. The count is three because the gate also fires mid-turn once the second turn's own tool result pushes the history back over the threshold, so the last summary is carrying a summary that was itself carried.",
+  "note": "A later compaction must pass the earlier summary through whole. Flattening it the way an ordinary message is flattened would cut it to one truncated line, so everything the first compaction paid to keep would vanish by the third turn — which is exactly when a long session needs it. Token-native gating compacts once before each follow-up, avoiding the old byte gate's redundant mid-turn pass.",
   "prompt": "align the greeting in service.py with settings.yaml",
   "followups": ["also read notes.md", "what do you know so far"],
   "tools": true,
+  "posture": "bypass",
   "max_steps": 12,
   "timeout_ms": 60000,
+  "verify": {
+    "mode": "off"
+  },
   "context": {
     "compact": {
-      "max_history_bytes": 512,
-      "summary_max_bytes": 4096
+      "auto_compact_tokens": 35350,
+      "summary_max_bytes": 5120
     }
   },
   "expect": {

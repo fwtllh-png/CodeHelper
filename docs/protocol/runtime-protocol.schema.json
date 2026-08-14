@@ -3868,26 +3868,26 @@
         "context_budget": {
           "type": "object",
           "properties": {
+            "active_tokens": {
+              "type": "integer"
+            },
+            "auto_compact_tokens": {
+              "type": "integer"
+            },
             "compactions": {
               "type": "integer"
             },
             "estimated_tokens": {
               "type": "integer"
             },
-            "history_bytes": {
-              "type": "integer"
-            },
             "max_context_tokens": {
-              "type": "integer"
-            },
-            "max_history_bytes": {
               "type": "integer"
             }
           },
           "required": [
-            "compactions",
-            "history_bytes",
-            "max_history_bytes"
+            "active_tokens",
+            "auto_compact_tokens",
+            "compactions"
           ],
           "additionalProperties": false
         },

@@ -90,9 +90,14 @@ func (s Snapshot) Validate() error {
 	}
 
 	compaction := s.Config.Context.Compact
-	if compaction.MaxHistoryBytes < 256 || compaction.MaxHistoryBytes > 64<<20 {
-		return fieldError(fieldCompactMaxHistory, s.Provenance,
-			"must be between 256 and 67108864")
+	if compaction.AutoCompactTokens != 0 &&
+		(compaction.AutoCompactTokens < 256 || compaction.AutoCompactTokens > 64<<20) {
+		return fieldError(fieldCompactAutoTokens, s.Provenance,
+			"must be zero or between 256 and 67108864")
+	}
+	if compaction.Scope != "total" && compaction.Scope != "body_after_prefix" {
+		return fieldError(fieldCompactScope, s.Provenance,
+			"must be total or body_after_prefix")
 	}
 
 	if compaction.SummaryMaxBytes < 256 || compaction.SummaryMaxBytes > 1<<20 {

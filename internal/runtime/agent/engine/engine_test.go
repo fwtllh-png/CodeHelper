@@ -1793,7 +1793,7 @@ func TestRetainCanceledHistoryDropsOrphanToolTraffic(t *testing.T) {
 
 func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 600
+	engine.options.CompactWindow.AutoTokens = 600
 	// A budget wide enough for the whole summary: what this test is about is the
 	// shape of the summary and the atomicity of the cut, not the byte ceiling.
 	engine.options.SummaryMaxBytes = 4 << 10
@@ -1862,7 +1862,7 @@ func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 // sample continues from.
 func TestEngineCompactionDropsTheOldestDigestLinesFirst(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 400
+	engine.options.CompactWindow.AutoTokens = 228
 	engine.options.SummaryMaxBytes = 320
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, "first ancient request "+strings.Repeat("filler ", 60), 1),
@@ -1890,7 +1890,7 @@ func TestEngineCompactionDropsTheOldestDigestLinesFirst(t *testing.T) {
 // down to one line, which is how a long session loses its early history.
 func TestEngineSecondCompactionCarriesTheFirstSummaryVerbatim(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 1000
+	engine.options.CompactWindow.AutoTokens = 378
 	engine.options.SummaryMaxBytes = 800
 	engine.ApplyPlan(interact.Plan{
 		Objective: "teach the parser about trailing commas",
@@ -1941,7 +1941,8 @@ func TestEngineSecondCompactionCarriesTheFirstSummaryVerbatim(t *testing.T) {
 
 func TestEngineCompactStripsFragmentsAndPromptContextReinjects(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 400
+	engine.options.CompactWindow.AutoTokens = 228
+	engine.options.SummaryMaxBytes = 100
 	skills := promptcontext.WrapFragment(promptcontext.FragmentSkills, "skill catalog body")
 	constitution := promptcontext.WrapFragment(promptcontext.FragmentConstitution, "constitution body")
 	engine.options.PromptContext = []provider.Message{
@@ -1985,7 +1986,7 @@ func TestEngineCompactStripsFragmentsAndPromptContextReinjects(t *testing.T) {
 
 func TestEngineCompactForcedRejectsAReplacementThatWouldGrowHistory(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 256 << 10
+	engine.options.CompactWindow.AutoTokens = 65664
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, "old request", 1),
 		messageWithText(provider.RoleAssistant, "old answer", 1),
@@ -2006,7 +2007,7 @@ func TestEngineCompactForcedRejectsAReplacementThatWouldGrowHistory(t *testing.T
 
 func TestEngineCompactionRetainsToolPairingAtomically(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 500
+	engine.options.CompactWindow.AutoTokens = 500
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("discard ", 100), 1),
 		messageWithText(provider.RoleAssistant, strings.Repeat("discarded ", 100), 1),
@@ -2041,7 +2042,7 @@ func TestEngineCompactionRetainsToolPairingAtomically(t *testing.T) {
 
 func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 600
+	engine.options.CompactWindow.AutoTokens = 278
 	engine.options.SummaryMaxBytes = 400
 	history := []provider.Message{
 		messageWithText(provider.RoleUser, "fix the parser "+strings.Repeat("context ", 80), 1),
@@ -2054,7 +2055,9 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 	}
 	original := historyBytes(history)
 	var receipt *CompactionReceipt
-	err := engine.runMidTurnCompactGate(&history, func(_ State, event Event) error {
+	_, err := engine.runCompactGate(&history, promptcontext.SampleInput{
+		Estimate: engine.options.TokenEstimator.Estimate,
+	}, 128, CompactionPhaseMidTurn, true, func(_ State, event Event) error {
 		receipt = event.Compaction
 		return nil
 	})
@@ -2062,7 +2065,7 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	if receipt == nil || receipt.RetainedBytes >= receipt.OriginalBytes ||
-		receipt.RetainedBytes > engine.options.MaxContextBytes ||
+		receipt.RetainedTokens > engine.options.CompactWindow.AutoTokens ||
 		receipt.OriginalBytes != original {
 		t.Fatalf("mid-turn receipt = %+v", receipt)
 	}
@@ -2079,19 +2082,20 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 
 func TestMidTurnCompactionFailsClosedWhenNoSafeCandidateFits(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 200
+	engine.options.CompactWindow.AutoTokens = 300
 	engine.options.SummaryMaxBytes = 100
 	history := []provider.Message{
-		messageWithText(provider.RoleUser, strings.Repeat("goal ", 100), 1),
-		messageWithText(provider.RoleAssistant, strings.Repeat("active ", 100), 1),
+		messageWithText(provider.RoleUser, strings.Repeat("goal ", 4000), 1),
 	}
 	before := cloneMessages(history)
-	err := engine.runMidTurnCompactGate(&history, func(State, Event) error {
+	window, err := engine.runCompactGate(&history, promptcontext.SampleInput{
+		Estimate: engine.options.TokenEstimator.Estimate,
+	}, 128, CompactionPhaseMidTurn, true, func(State, Event) error {
 		t.Fatal("failed compaction emitted an event")
 		return nil
 	})
-	if err == nil || protocol.CodeOf(err) != protocol.CodeResourceExhausted {
-		t.Fatalf("compaction error = %v", err)
+	if err != nil || window.total <= window.hardLimit {
+		t.Fatalf("window=%+v error=%v", window, err)
 	}
 	if !reflect.DeepEqual(history, before) {
 		t.Fatalf("failed compaction changed history: %+v", history)
@@ -2099,15 +2103,13 @@ func TestMidTurnCompactionFailsClosedWhenNoSafeCandidateFits(t *testing.T) {
 }
 
 func TestTerminalCompletionFailsClosedWhenFinalMessageExceedsContextBudget(t *testing.T) {
-	runtime := &scriptedProvider{streams: []provider.Stream{
-		textStream(strings.Repeat("final ", 200)),
-	}}
+	runtime := &scriptedProvider{}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 128
+	engine.options.CompactWindow.AutoTokens = 160
 	engine.options.SummaryMaxBytes = 64
 	var completed bool
 
-	result, err := engine.Run(t.Context(), "short request", func(event Event) error {
+	result, err := engine.Run(t.Context(), strings.Repeat("request ", 4000), func(event Event) error {
 		completed = completed || event.State == Completed
 		return nil
 	})
@@ -2117,6 +2119,9 @@ func TestTerminalCompletionFailsClosedWhenFinalMessageExceedsContextBudget(t *te
 	}
 	if completed || result.State == Completed {
 		t.Fatalf("over-budget terminal was completed: result=%+v emitted=%v", result, completed)
+	}
+	if len(runtime.requests) != 0 {
+		t.Fatalf("provider requests = %d, want fail before sampling", len(runtime.requests))
 	}
 }
 
@@ -2208,7 +2213,7 @@ func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
 		&errorStream{err: errors.New("provider failed")},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 500
+	engine.options.CompactWindow.AutoTokens = 253
 	engine.options.SummaryMaxBytes = 160
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("old request ", 10), 1),
@@ -2238,15 +2243,13 @@ func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
 		t.Fatal("failed turn did not emit post-turn compaction")
 	}
 	if terminalBudget == nil ||
-		terminalBudget.HistoryBytes > terminalBudget.MaxHistoryBytes {
+		terminalBudget.ActiveTokens > terminalBudget.AutoCompactTokens {
 		t.Fatalf("terminal context budget = %+v", terminalBudget)
 	}
-	durableBytes := historyBytes(engine.history)
-	if durableBytes != terminalBudget.HistoryBytes ||
-		engine.options.MaxContextBytes != terminalBudget.MaxHistoryBytes {
+	if engine.options.CompactWindow.AutoTokens != terminalBudget.AutoCompactTokens {
 		t.Fatalf(
-			"durable history = %d/%d, terminal snapshot = %+v",
-			durableBytes, engine.options.MaxContextBytes, terminalBudget,
+			"auto compact tokens = %d, terminal snapshot = %+v",
+			engine.options.CompactWindow.AutoTokens, terminalBudget,
 		)
 	}
 }
@@ -2256,7 +2259,7 @@ func TestFailedTurnCompactsWithinOversizedDurableLastTurn(t *testing.T) {
 		&errorStream{err: errors.New("provider failed")},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 500
+	engine.options.CompactWindow.AutoTokens = 253
 	engine.options.SummaryMaxBytes = 160
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("durable request ", 20), 1),
@@ -2289,7 +2292,7 @@ func TestFailedTurnCompactsWithinOversizedDurableLastTurn(t *testing.T) {
 		t.Fatalf("post-turn compaction = %+v", postTurn)
 	}
 	if terminalBudget == nil ||
-		terminalBudget.HistoryBytes > terminalBudget.MaxHistoryBytes {
+		terminalBudget.ActiveTokens > terminalBudget.AutoCompactTokens {
 		t.Fatalf("terminal context budget = %+v", terminalBudget)
 	}
 	assertToolPairs(t, engine.history)
@@ -2308,7 +2311,8 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 		}},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 200
+	engine.options.CompactWindow.AutoTokens = 300
+	engine.options.SummaryMaxBytes = 100
 	engine.options.ContextReceipts = []promptcontext.Receipt{{
 		Kind: promptcontext.PartitionBase, SourcePath: "builtin://base-system",
 		OriginalBytes: 4, RetainedBytes: 4, OriginalTokens: 1, RetainedTokens: 1,
@@ -2334,7 +2338,7 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 		compaction.Phase != CompactionPhasePreSampling ||
 		compaction.RemovedMessages != 2 ||
 		len(compaction.PromptContextReceipts) != 1 ||
-		!compaction.SummaryTruncated {
+		compaction.RetainedTokens > engine.options.CompactWindow.AutoTokens {
 		t.Fatalf("compaction event = %+v", compaction)
 	}
 	assertStateOrder(t, states, Preparing, Compacting, CallingModel)
@@ -2361,7 +2365,8 @@ func TestEnginePreSamplingGateBeforeModelCall(t *testing.T) {
 		}},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.MaxContextBytes = 400
+	engine.options.CompactWindow.AutoTokens = 300
+	engine.options.SummaryMaxBytes = 100
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("old ", 80), 1),
 		messageWithText(provider.RoleAssistant, strings.Repeat("ans ", 80), 1),

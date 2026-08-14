@@ -17,7 +17,9 @@ func TestRuntimeEmitsTurnCompactionOnPreSamplingGate(t *testing.T) {
 	worker, err := newTestAgentEngine(agentengine.Options{
 		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
 		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
-		MaxOutputTokens: 128, MaxContextBytes: 200,
+		MaxOutputTokens: 128, CompactWindow: agentengine.CompactWindowPolicy{
+			AutoTokens: 300,
+		}, SummaryMaxBytes: 100,
 	})
 	if err != nil {
 		t.Fatal(err)

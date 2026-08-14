@@ -93,13 +93,12 @@ func (e *Engine) digestRemoved(removed []provider.Message) ([]string, string) {
 
 // summaryBudget is how many bytes a rendered summary may occupy.
 //
-// An explicit setting wins. Without one the budget follows the history threshold,
-// so a small thread does not get a summary larger than the history it replaces.
+// Summary rendering remains byte-bounded; only the decision to compact is token-native.
 func (e *Engine) summaryBudget() int {
 	if e.options.SummaryMaxBytes > 0 {
 		return e.options.SummaryMaxBytes
 	}
-	return max(64, min(defaultSummaryMaxBytes, e.options.MaxContextBytes/4))
+	return defaultSummaryMaxBytes
 }
 
 // digestOriginalBytes is what the removed messages would have cost as flat lines.

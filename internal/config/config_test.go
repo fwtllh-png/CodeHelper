@@ -835,6 +835,33 @@ enabled = false
 	}
 }
 
+func TestCompactTokenWindowResolvesAcrossSources(t *testing.T) {
+	path := writeConfig(t, `
+[context.compact]
+auto_compact_tokens = 300
+scope = "body_after_prefix"
+`)
+	scope := "total"
+	snapshot, err := Load(LoadOptions{
+		Path: path,
+		LookupEnv: envLookup(map[string]string{
+			"CODEHELPER_COMPACT_AUTO_TOKENS": "400",
+		}),
+		Overrides: Overrides{CompactScope: &scope},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshot.Config.Context.Compact; got.AutoCompactTokens != 400 ||
+		got.Scope != "total" {
+		t.Fatalf("compact = %+v", got)
+	}
+	if snapshot.Provenance[fieldCompactAutoTokens] != SourceEnv ||
+		snapshot.Provenance[fieldCompactScope] != SourceCLI {
+		t.Fatalf("provenance = %+v", snapshot.Provenance)
+	}
+}
+
 // The affected scope now has a repo index behind it, and it accepts a command so
 // an operator can point it at their own suite.
 func TestVerifyGateConfigAcceptsTheAffectedScope(t *testing.T) {

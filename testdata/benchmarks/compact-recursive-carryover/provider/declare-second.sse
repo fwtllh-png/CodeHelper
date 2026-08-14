@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete_second","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"read notes.md and confirmed settings.yaml owns the greeting\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":{{request_input_tokens}},"completion_tokens":27,"prompt_tokens_details":{"cached_tokens":{{request_cached_tokens}}}}}
+
+data: [DONE]
