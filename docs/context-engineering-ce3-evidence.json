@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "stage": "CE3",
+  "status": "accepted",
+  "branch": "refactor/context-engineering",
+  "base_commit": "3c02abf",
+  "scope": {
+    "window_contract": "internal/runtime/agent/contextstore/window.go",
+    "window_projection": "internal/runtime/agent/engine/window_ledger.go",
+    "durable_window": "internal/runtime/agent/engine/session_delta.go",
+    "per_kind_estimator": "internal/runtime/agent/engine/budget.go",
+    "sample_context_protocol": "internal/runtime/protocol/event.go",
+    "provider_request_behavior_changed": false,
+    "token_window_decision_behavior_changed": true
+  },
+  "acceptance": {
+    "passed": true,
+    "window_id": true,
+    "window_number": true,
+    "server_observed_prefill": true,
+    "observed_full_active_tokens": true,
+    "pending_item_cost": true,
+    "full_body_tools_reserve_accounting": true,
+    "per_kind_text_image_tool_framing_estimator": true,
+    "session_delta_persistence": true,
+    "restart_preserves_observed_baseline": true,
+    "fork_creates_independent_unobserved_window": true,
+    "compaction_advances_window": true,
+    "history_replacement_advances_window": true,
+    "global_ratio_calibration_deleted": true
+  },
+  "hermetic_candidate": {
+    "provider": "fixture",
+    "model": "fixture-model",
+    "runs_passed": 5,
+    "runs_total": 5,
+    "samples_total": 40,
+    "input_tokens_p50": 72189,
+    "uncached_input_tokens_p50": 54145,
+    "cached_input_tokens_p50": 18044,
+    "cached_share_basis_points_p50": 2499,
+    "output_tokens_p50": 912,
+    "sample_count_p50": 8,
+    "attribution_coverage_basis_points_p50": 10000,
+    "text_estimator_error_p95": 0.02139617432459081,
+    "compaction_trigger_error_p95": 0.021331277306604987,
+    "context_rejections": 0,
+    "context_p50": {
+      "stable": 3600,
+      "history_user": 1104,
+      "history_assistant": 2455,
+      "history_tool": 3217,
+      "history_other": 27168,
+      "dynamic": 0,
+      "continuation": 0,
+      "tool_definitions": 26672,
+      "provider_framing": 7711
+    }
+  },
+  "window_observation": {
+    "samples": 40,
+    "missing_window_id": 0,
+    "unobserved_samples": 0,
+    "missing_projected_tokens": 0,
+    "missing_prefill_tokens": 0,
+    "missing_output_reserve": 0,
+    "zero_pending_cost_samples": 0,
+    "window_ids_per_canonical_run": [1, 1, 1, 1, 1],
+    "window_numbers": [1]
+  },
+  "multimodal_estimator": {
+    "status": "passed",
+    "fixtures": [
+      {"width": 512, "height": 512, "expected_tokens": 255, "estimated_tokens": 255},
+      {"width": 1024, "height": 1024, "expected_tokens": 765, "estimated_tokens": 765},
+      {"width": 2048, "height": 1024, "expected_tokens": 1105, "estimated_tokens": 1105}
+    ],
+    "error_p95": 0
+  },
+  "comparison_to_ce2": {
+    "status": "passed",
+    "input_tokens_p50_relative": 0,
+    "uncached_input_tokens_p50_relative": 0,
+    "output_tokens_p50_relative": 0,
+    "sample_count_p50_relative": 0,
+    "attribution_coverage_basis_points_delta": 0
+  },
+  "architecture": {
+    "targets_passed": 58,
+    "targets_total": 58,
+    "contextstore_production_lines": 876,
+    "engine_production_lines": 10044,
+    "protocol_production_lines": 4789,
+    "runtime_app_production_lines": 7666,
+    "owned_production_lines_net": 541,
+    "size_status": "reported_not_gated"
+  },
+  "validation": {
+    "ce3_gate": "passed",
+    "focused_go_tests": "passed",
+    "full_go_suite": "passed",
+    "focused_race": "passed",
+    "token_benchmark": "passed",
+    "ce2_comparison": "passed",
+    "architecture_ratchet": "passed",
+    "protocol_schema": "passed",
+    "vscode_protocol": "passed",
+    "vscode_check": "passed",
+    "vscode_tests": "passed",
+    "docs_check": "passed",
+    "book_check": "passed",
+    "diff_check": "passed"
+  },
+  "commands": {
+    "stage": "make context-engineering-ce3",
+    "focused": "go test -count=1 ./internal/runtime/agent/contextstore ./internal/runtime/agent/engine ./internal/runtime/app/... ./internal/persist/... ./internal/runtime/protocol ./scripts/tokenbench",
+    "candidate": "make token-bench TOKEN_BENCH_RUNS=5 TOKEN_BENCH_ARTIFACT=.tmp/context-engineering/ce3-candidate",
+    "comparison": "make token-bench-compare TOKEN_BENCH_BASELINE=.tmp/context-engineering/ce2-candidate/report.json TOKEN_BENCH_CANDIDATE=.tmp/context-engineering/ce3-candidate/report.json TOKEN_BENCH_COMPARISON=.tmp/context-engineering/ce3-comparison.json",
+    "architecture": "make architecture-ratchet",
+    "protocol": "make protocol-schema && make vscode-protocol-check",
+    "full": "go test ./...",
+    "race": "go test -race -count=1 ./internal/runtime/agent/contextstore ./internal/runtime/agent/engine ./internal/runtime/app",
+    "vscode": "cd extensions/vscode && npm run check && npm test",
+    "documentation": "make docs-check && make book-check",
+    "diff": "git diff --check"
+  }
+}

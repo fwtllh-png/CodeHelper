@@ -130,6 +130,7 @@ func (e *Engine) finalizeTerminalContext(
 	scope := e.runningScope()
 	scope.mu.Lock()
 	projectedWorld := contextstore.CloneWorldBaseline(scope.state.world)
+	window := contextstore.CloneWindowLedger(scope.state.window)
 	scope.mu.Unlock()
 	world := contextstore.WorldBaseline{}
 	switch {
@@ -152,6 +153,7 @@ func (e *Engine) finalizeTerminalContext(
 			Compaction: CompactionDelta{Count: e.compactionTotal()},
 			Plan:       &plan,
 			World:      world,
+			Window:     window,
 		},
 	)
 	if err != nil {

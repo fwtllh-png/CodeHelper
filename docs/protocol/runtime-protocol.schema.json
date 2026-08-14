@@ -3290,6 +3290,9 @@
     "thread.forked": {
       "type": "object",
       "properties": {
+        "first_window_id": {
+          "type": "string"
+        },
         "new_thread_id": {
           "type": "string"
         },
@@ -3316,6 +3319,12 @@
           }
         },
         "source_cursor": {
+          "type": "integer"
+        },
+        "window_id": {
+          "type": "string"
+        },
+        "window_number": {
           "type": "integer"
         }
       },
@@ -3883,13 +3892,40 @@
             "auto_compact_tokens": {
               "type": "integer"
             },
+            "body_tokens": {
+              "type": "integer"
+            },
             "compactions": {
               "type": "integer"
             },
             "estimated_tokens": {
               "type": "integer"
             },
+            "full_active_tokens": {
+              "type": "integer"
+            },
             "max_context_tokens": {
+              "type": "integer"
+            },
+            "observed": {
+              "type": "boolean"
+            },
+            "output_reserve": {
+              "type": "integer"
+            },
+            "pending_tokens": {
+              "type": "integer"
+            },
+            "prefill_tokens": {
+              "type": "integer"
+            },
+            "tool_definition_tokens": {
+              "type": "integer"
+            },
+            "window_id": {
+              "type": "string"
+            },
+            "window_number": {
               "type": "integer"
             }
           },
@@ -5025,6 +5061,9 @@
             "history_user_tokens": {
               "type": "integer"
             },
+            "image_tokens": {
+              "type": "integer"
+            },
             "incremental_transport": {
               "type": "boolean"
             },
@@ -5049,6 +5088,9 @@
             "stable_tokens": {
               "type": "integer"
             },
+            "text_tokens": {
+              "type": "integer"
+            },
             "tool_definition_count": {
               "type": "integer"
             },
@@ -5057,6 +5099,33 @@
             },
             "transport_payload_digest": {
               "type": "string"
+            },
+            "window_body_tokens": {
+              "type": "integer"
+            },
+            "window_full_active_tokens": {
+              "type": "integer"
+            },
+            "window_id": {
+              "type": "string"
+            },
+            "window_number": {
+              "type": "integer"
+            },
+            "window_observed": {
+              "type": "boolean"
+            },
+            "window_output_reserve": {
+              "type": "integer"
+            },
+            "window_pending_tokens": {
+              "type": "integer"
+            },
+            "window_prefill_tokens": {
+              "type": "integer"
+            },
+            "window_projected_tokens": {
+              "type": "integer"
             },
             "world_changed_sections": {
               "type": "integer"

@@ -710,6 +710,7 @@ func (a *EngineAdapter) ReplyInput(
 func (a *EngineAdapter) CompactThread(
 	_ context.Context, _ *protocol.CompactThreadPayload, sink EngineSink,
 ) error {
+	beforeID, _ := a.engine.TokenWindowIdentity()
 	receipt := a.engine.CompactForced()
 	summary := "context already within budget; no messages compacted"
 	if receipt != nil {
@@ -719,15 +720,16 @@ func (a *EngineAdapter) CompactThread(
 	if err != nil {
 		return err
 	}
-	windowID, err := protocol.NewWindowID()
-	if err != nil {
-		return err
+	windowID, windowNumber := a.engine.TokenWindowIdentity()
+	if windowID == beforeID {
+		windowID, windowNumber = a.engine.AdvanceTokenWindow()
 	}
 	return sink.Emit(&protocol.ThreadCompactedData{
 		Summary:            summary,
 		ReplacementHistory: encoded,
-		WindowNumber:       1,
-		FirstWindowID:      windowID,
+		WindowNumber:       windowNumber,
+		FirstWindowID:      beforeID,
+		PreviousWindowID:   beforeID,
 		WindowID:           windowID,
 	})
 }

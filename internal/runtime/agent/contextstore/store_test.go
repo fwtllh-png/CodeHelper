@@ -111,7 +111,7 @@ func TestSnapshotMeasureAttributesExactlyTheProjectedRequest(t *testing.T) {
 			Name: "read", Description: "read a file",
 		}},
 	}).Snapshot()
-	got, err := snapshot.Measure("normal", "high", estimate)
+	got, err := snapshot.Measure("normal", "high", EstimatorFunc(estimate))
 	if err != nil {
 		t.Fatal(err)
 	}

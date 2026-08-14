@@ -8,7 +8,19 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-type Estimator func([]provider.Message) (uint64, error)
+type Estimator interface {
+	Estimate([]provider.Message) (uint64, error)
+}
+
+type EstimatorFunc func([]provider.Message) (uint64, error)
+
+func (f EstimatorFunc) Estimate(messages []provider.Message) (uint64, error) {
+	return f(messages)
+}
+
+type ImageEstimator interface {
+	EstimateImage(provider.Attachment) (uint64, error)
+}
 
 func ApplyTransport(
 	context *protocol.SampleContextData,
@@ -69,6 +81,22 @@ func (s Snapshot) Measure(
 	if result.ContinuationTokens, err = countMessages(continuation, estimate); err != nil {
 		return protocol.SampleContextData{}, err
 	}
+	for _, message := range s.Messages() {
+		for _, block := range message.Blocks {
+			if block.Type != provider.ContentImage || block.Attachment == nil {
+				continue
+			}
+			imageEstimator, ok := estimate.(ImageEstimator)
+			if !ok {
+				continue
+			}
+			tokens, estimateErr := imageEstimator.EstimateImage(*block.Attachment)
+			if estimateErr != nil {
+				return protocol.SampleContextData{}, estimateErr
+			}
+			result.ImageTokens += tokens
+		}
+	}
 	if len(s.definitions) != 0 {
 		encoded, encodeErr := json.Marshal(s.definitions)
 		if encodeErr != nil {
@@ -85,6 +113,10 @@ func (s Snapshot) Measure(
 		result.ContinuationTokens + result.ToolDefinitionTokens
 	result.ProviderFramingTokens = (result.EstimatedTokens*12 + 99) / 100
 	result.EstimatedTokens += result.ProviderFramingTokens
+	attributedNonText := result.ImageTokens + result.ToolDefinitionTokens +
+		result.ProviderFramingTokens
+	result.TextTokens = result.EstimatedTokens -
+		min(result.EstimatedTokens, attributedNonText)
 	return result, nil
 }
 
@@ -92,5 +124,5 @@ func countMessages(messages []provider.Message, estimate Estimator) (uint64, err
 	if len(messages) == 0 {
 		return 0, nil
 	}
-	return estimate(messages)
+	return estimate.Estimate(messages)
 }

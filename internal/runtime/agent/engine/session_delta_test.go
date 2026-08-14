@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestSessionDeltaApplyIsRevisionedAndIdempotent(t *testing.T) {
@@ -95,6 +97,12 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 	source.evidenceSet().MarkChanged("a.go", 4, true)
 	plan := planFixture()
 	source.ApplyPlan(plan)
+	windowContext := protocol.SampleContextData{
+		ContextDigest: "sha256:window", EstimatedTokens: 900,
+		ToolDefinitionTokens: 100,
+	}
+	source.window.Prepare(&windowContext, 128, 2662, 4096)
+	source.window.Observe(windowContext, 960, 400)
 	delta, err := prepareSessionDelta(
 		"turn-5",
 		4,
@@ -106,6 +114,7 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 			WorkingSet: source.workingLedger().Delta(),
 			Evidence:   source.evidenceSet().Delta(),
 			Plan:       &plan,
+			Window:     contextstore.CloneWindowLedger(source.window),
 		},
 	)
 	if err != nil {
@@ -125,7 +134,10 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 		usage.InputTokens != 9 || cost != 0.25 ||
 		len(target.working.Select(5, 10)) != 2 || target.turn != 5 ||
 		len(target.EvidenceSnapshot().Risks) != 1 ||
-		!strings.Contains(target.planText, "step one") {
+		!strings.Contains(target.planText, "step one") ||
+		target.window.ID != source.window.ID ||
+		target.window.PrefillTokens != 960 ||
+		!target.window.PrefillObserved {
 		t.Fatalf(
 			"revision=%d history=%d usage=%+v cost=%f working=%+v turn=%d plan=%q",
 			target.SessionRevision(),
@@ -149,7 +161,9 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 	fork := target.Fork()
 	if !strings.Contains(fork.planText, "step one") ||
 		len(fork.WorkingSetEntries(5, 10)) != 2 ||
-		len(fork.EvidenceSnapshot().Risks) != 1 {
+		len(fork.EvidenceSnapshot().Risks) != 1 ||
+		fork.window.ID == target.window.ID ||
+		fork.window.Number != 1 || fork.window.PrefillObserved {
 		t.Fatalf(
 			"fork plan=%q working=%+v evidence=%+v",
 			fork.planText, fork.WorkingSetEntries(5, 10), fork.EvidenceSnapshot(),

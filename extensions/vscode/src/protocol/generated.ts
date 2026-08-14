@@ -967,6 +967,7 @@ export type ThreadCompactedData = {
 };
 
 export type ThreadForkedData = {
+  readonly "first_window_id"?: string;
   readonly "new_thread_id": string;
   readonly "replacement_history"?: ReadonlyArray<{
       readonly "content": unknown;
@@ -974,6 +975,8 @@ export type ThreadForkedData = {
       readonly "turn"?: number;
     }>;
   readonly "source_cursor": number;
+  readonly "window_id"?: string;
+  readonly "window_number"?: number;
 };
 
 export type ToolCatalogChangedData = {
@@ -1121,9 +1124,18 @@ export type TurnReceiptData = {
   readonly "context_budget"?: {
       readonly "active_tokens": number;
       readonly "auto_compact_tokens": number;
+      readonly "body_tokens"?: number;
       readonly "compactions": number;
       readonly "estimated_tokens"?: number;
+      readonly "full_active_tokens"?: number;
       readonly "max_context_tokens"?: number;
+      readonly "observed"?: boolean;
+      readonly "output_reserve"?: number;
+      readonly "pending_tokens"?: number;
+      readonly "prefill_tokens"?: number;
+      readonly "tool_definition_tokens"?: number;
+      readonly "window_id"?: string;
+      readonly "window_number"?: number;
     };
   readonly "context_sections"?: ReadonlyArray<{
       readonly "digest"?: string;
@@ -1401,6 +1413,7 @@ export type UsageData = {
       readonly "history_other_tokens"?: number;
       readonly "history_tool_tokens"?: number;
       readonly "history_user_tokens"?: number;
+      readonly "image_tokens"?: number;
       readonly "incremental_transport"?: boolean;
       readonly "logical_request_digest"?: string;
       readonly "message_count"?: number;
@@ -1409,9 +1422,19 @@ export type UsageData = {
       readonly "reasoning_effort"?: string;
       readonly "request_bytes"?: number;
       readonly "stable_tokens"?: number;
+      readonly "text_tokens"?: number;
       readonly "tool_definition_count"?: number;
       readonly "tool_definition_tokens"?: number;
       readonly "transport_payload_digest"?: string;
+      readonly "window_body_tokens"?: number;
+      readonly "window_full_active_tokens"?: number;
+      readonly "window_id"?: string;
+      readonly "window_number"?: number;
+      readonly "window_observed"?: boolean;
+      readonly "window_output_reserve"?: number;
+      readonly "window_pending_tokens"?: number;
+      readonly "window_prefill_tokens"?: number;
+      readonly "window_projected_tokens"?: number;
       readonly "world_changed_sections"?: number;
       readonly "world_digest"?: string;
       readonly "world_mode"?: string;

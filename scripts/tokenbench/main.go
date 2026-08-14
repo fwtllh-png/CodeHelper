@@ -71,6 +71,7 @@ type report struct {
 	CostKnown             bool              `json:"cost_known"`
 	UnpricedCalls         int               `json:"unpriced_calls"`
 	EstimatorErrorP95     float64           `json:"estimator_error_p95"`
+	TriggerErrorP95       float64           `json:"compaction_trigger_error_p95"`
 	ContextP50            map[string]uint64 `json:"context_p50"`
 	Reasons               map[string]int    `json:"sample_reasons"`
 }
@@ -540,7 +541,7 @@ func summarize(results []bench.Result) report {
 		make([]uint64, 0, len(results)), make([]uint64, 0, len(results))
 	contextValues := make(map[string][]uint64)
 	reasons := make(map[string]int)
-	var errors []float64
+	var errors, triggerErrors []float64
 	passed := 0
 	unpricedCalls := 0
 	for _, result := range results {
@@ -581,6 +582,16 @@ func summarize(results []bench.Result) report {
 			if sample.InputTokens != 0 {
 				difference := absDiff(sample.InputTokens, value.EstimatedTokens)
 				errors = append(errors, float64(difference)/float64(sample.InputTokens))
+				if value.WindowProjectedTokens != 0 {
+					triggerDifference := absDiff(
+						sample.InputTokens,
+						value.WindowProjectedTokens,
+					)
+					triggerErrors = append(
+						triggerErrors,
+						float64(triggerDifference)/float64(sample.InputTokens),
+					)
+				}
 			}
 		}
 		for name, tokens := range runContext {
@@ -601,6 +612,11 @@ func summarize(results []bench.Result) report {
 	if len(errors) != 0 {
 		errorP95 = errors[nearestIndex(len(errors), 95)]
 	}
+	slices.Sort(triggerErrors)
+	triggerErrorP95 := 0.0
+	if len(triggerErrors) != 0 {
+		triggerErrorP95 = triggerErrors[nearestIndex(len(triggerErrors), 95)]
+	}
 	return report{
 		SchemaVersion: schemaVersion, Mode: "hermetic", Runs: len(results), Passed: passed,
 		Input: calculate(input), UncachedInput: calculate(uncached), CachedInput: calculate(cached),
@@ -611,6 +627,7 @@ func summarize(results []bench.Result) report {
 		CostUpperBound:        calculate(costs), CostKnown: unpricedCalls == 0,
 		UnpricedCalls:     unpricedCalls,
 		EstimatorErrorP95: errorP95,
+		TriggerErrorP95:   triggerErrorP95,
 		ContextP50:        contextP50, Reasons: reasons,
 	}
 }
@@ -661,7 +678,8 @@ func renderMarkdown(manifest manifest, report report) string {
 			"| Output tokens | %d | %d | %d |\n"+
 			"| Sample count | %d | %d | %d |\n"+
 			"| Attribution coverage (bp) | %d | %d | %d |\n\n"+
-			"Estimator error P95: `%.2f%%`\n",
+			"Estimator error P95: `%.2f%%`\n\n"+
+			"Compaction trigger error P95: `%.2f%%`\n",
 		manifest.Commit, manifest.Dirty, manifest.PromptDigest, report.Passed, report.Runs,
 		report.Input.P50, report.Input.P90, report.Input.MAD,
 		report.UncachedInput.P50, report.UncachedInput.P90, report.UncachedInput.MAD,
@@ -673,6 +691,7 @@ func renderMarkdown(manifest manifest, report report) string {
 		report.AttributionCoverageBP.P90,
 		report.AttributionCoverageBP.MAD,
 		report.EstimatorErrorP95*100,
+		report.TriggerErrorP95*100,
 	)
 }
 

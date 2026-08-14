@@ -361,6 +361,7 @@ func (m *ThreadManager) CompactThread(
 	if engine == nil {
 		return errors.New("thread engine is nil")
 	}
+	beforeID, _ := engine.TokenWindowIdentity()
 	receipt := engine.CompactForced()
 	summary := "context already within budget; no messages compacted"
 	if receipt != nil {
@@ -371,10 +372,13 @@ func (m *ThreadManager) CompactThread(
 	if err != nil {
 		return err
 	}
-	window, err := m.advanceWindow(payload.ThreadID)
-	if err != nil {
-		return err
+	windowID, windowNumber := engine.TokenWindowIdentity()
+	if windowID == beforeID {
+		windowID, windowNumber = engine.AdvanceTokenWindow()
 	}
+	window := m.recordWindow(
+		payload.ThreadID, beforeID, windowID, windowNumber,
+	)
 	return sink.Emit(&protocol.ThreadCompactedData{
 		Summary:            summary,
 		ReplacementHistory: encoded,
@@ -426,21 +430,29 @@ func (m *ThreadManager) ForkThread(
 		return err
 	}
 	child := AdaptEngineWithWorkspaceIdentity(engine.Fork(), parent.workspaceIdentity)
+	childWindowID, childWindowNumber := "", uint64(0)
+	if childEngine := child.Underlying(); childEngine != nil {
+		childWindowID, childWindowNumber = childEngine.TokenWindowIdentity()
+	}
 	m.mu.Lock()
 	if _, exists := m.threads[payload.NewThreadID]; exists {
 		m.mu.Unlock()
 		return fmt.Errorf("fork target thread %s already exists", payload.NewThreadID)
 	}
 	m.threads[payload.NewThreadID] = child
-	if state := m.windows[payload.ThreadID]; state != nil {
-		copy := *state
-		m.windows[payload.NewThreadID] = &copy
+	if childWindowID != "" {
+		m.windows[payload.NewThreadID] = &compactWindow{
+			Number: childWindowNumber, FirstID: childWindowID, Current: childWindowID,
+		}
 	}
 	m.mu.Unlock()
 	return sink.Emit(&protocol.ThreadForkedData{
 		NewThreadID:        payload.NewThreadID,
 		SourceCursor:       sourceCursor,
 		ReplacementHistory: history,
+		WindowNumber:       childWindowNumber,
+		FirstWindowID:      childWindowID,
+		WindowID:           childWindowID,
 	})
 }
 
@@ -684,6 +696,9 @@ func (m *ThreadManager) restoreWindow(
 	}
 	if engine := adapter.Underlying(); engine != nil {
 		engine.ReplaceHistory(messages)
+		if err := engine.RestoreTokenWindow(data.WindowID, data.WindowNumber); err != nil {
+			return fmt.Errorf("restore token window for %s: %w", id, err)
+		}
 	}
 	m.mu.Lock()
 	m.windows[id] = &compactWindow{
@@ -699,30 +714,34 @@ func (m *ThreadManager) restoreWindow(
 	return nil
 }
 
-func (m *ThreadManager) advanceWindow(threadID protocol.ThreadID) (advancedWindow, error) {
-	windowID, err := protocol.NewWindowID()
-	if err != nil {
-		return advancedWindow{}, err
-	}
+func (m *ThreadManager) recordWindow(
+	threadID protocol.ThreadID,
+	previousID string,
+	windowID string,
+	number uint64,
+) advancedWindow {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	state := m.windows[threadID]
 	if state == nil {
-		state = &compactWindow{}
+		state = &compactWindow{FirstID: previousID}
 		m.windows[threadID] = state
 	}
 	previous := state.Current
-	state.Number++
+	if previous == "" {
+		previous = previousID
+	}
+	state.Number = number
 	state.Current = windowID
 	if state.FirstID == "" {
-		state.FirstID = windowID
+		state.FirstID = previousID
 	}
 	return advancedWindow{
 		Number:   state.Number,
 		FirstID:  state.FirstID,
 		Current:  state.Current,
 		previous: previous,
-	}, nil
+	}
 }
 
 func (m *ThreadManager) bindTurn(turnID string, threadID protocol.ThreadID) {

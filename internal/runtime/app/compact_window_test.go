@@ -81,7 +81,10 @@ func TestCompactWindowChainAndResume(t *testing.T) {
 				if !ok || data.WindowID == "" || len(data.ReplacementHistory) == 0 {
 					t.Fatalf("compacted window = %#v", event.Data)
 				}
-				if data.WindowNumber != 1 || data.FirstWindowID != data.WindowID {
+				if data.WindowNumber != 2 ||
+					data.FirstWindowID == "" ||
+					data.PreviousWindowID != data.FirstWindowID ||
+					data.WindowID == data.PreviousWindowID {
 					t.Fatalf("window chain = %#v", data)
 				}
 				compacted = data
@@ -118,6 +121,17 @@ func TestCompactWindowChainAndResume(t *testing.T) {
 		if hist[i].Role != before[i].Role || hist[i].Text() != before[i].Text() || hist[i].Turn != before[i].Turn {
 			t.Fatalf("resumed history mismatch at %d:\n%+v\n%+v", i, hist[i], before[i])
 		}
+	}
+	resumedAdapter, err := resumed.forThread("thread-window")
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowID, windowNumber := resumedAdapter.Underlying().TokenWindowIdentity()
+	if windowID != compacted.WindowID || windowNumber != compacted.WindowNumber {
+		t.Fatalf(
+			"resumed token window=%s/%d, want %s/%d",
+			windowID, windowNumber, compacted.WindowID, compacted.WindowNumber,
+		)
 	}
 }
 
@@ -204,6 +218,10 @@ func TestCompactForkResume(t *testing.T) {
 				if len(data.ReplacementHistory) == 0 {
 					t.Fatal("fork must carry replacement history")
 				}
+				if data.WindowID == "" || data.WindowNumber != 1 ||
+					data.FirstWindowID != data.WindowID {
+					t.Fatalf("fork window = %#v", data)
+				}
 				forked = data
 			}
 		case <-deadline:
@@ -233,6 +251,17 @@ func TestCompactForkResume(t *testing.T) {
 	}
 	if len(restored) != len(childHist) {
 		t.Fatalf("resumed child history len=%d want %d", len(restored), len(childHist))
+	}
+	resumedChild, err := resumed.forThread("thread-child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowID, windowNumber := resumedChild.Underlying().TokenWindowIdentity()
+	if windowID != forked.WindowID || windowNumber != forked.WindowNumber {
+		t.Fatalf(
+			"resumed fork window=%s/%d, want %s/%d",
+			windowID, windowNumber, forked.WindowID, forked.WindowNumber,
+		)
 	}
 }
 

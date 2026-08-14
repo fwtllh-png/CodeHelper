@@ -62,8 +62,21 @@ func ReconstructThread(events []protocol.Event, threadID protocol.ThreadID) (Thr
 			}
 			baseHistory = messages
 			baseIndex = i
-			windowID := "fork:" + string(threadID)
-			window = reconstructWindow{Number: 1, FirstID: windowID, Current: windowID}
+			windowID := data.WindowID
+			if windowID == "" {
+				windowID = "fork:" + string(threadID)
+			}
+			number := data.WindowNumber
+			if number == 0 {
+				number = 1
+			}
+			firstID := data.FirstWindowID
+			if firstID == "" {
+				firstID = windowID
+			}
+			window = reconstructWindow{
+				Number: number, FirstID: firstID, Current: windowID,
+			}
 		case protocol.EventCheckpointRestored:
 			if event.ThreadID != threadID {
 				continue

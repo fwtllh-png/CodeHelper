@@ -67,6 +67,7 @@ type TurnSpec struct {
 	Limits     TurnLimits
 	Context    TurnContextSnapshot
 	World      contextstore.WorldBaseline
+	Window     contextstore.WindowLedger
 	Catalog    tool.CatalogSnapshot
 	Skills     []SkillSummary
 	MCP        []MCPHealthSnapshot

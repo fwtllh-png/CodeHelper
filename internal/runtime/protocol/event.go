@@ -176,6 +176,15 @@ type SampleContextData struct {
 	WorldDigest            string `json:"world_digest,omitempty"`
 	WorldMode              string `json:"world_mode,omitempty"`
 	WorldChangedSections   int    `json:"world_changed_sections,omitempty"`
+	WindowID               string `json:"window_id,omitempty"`
+	WindowNumber           uint64 `json:"window_number,omitempty"`
+	WindowObserved         bool   `json:"window_observed,omitempty"`
+	WindowProjectedTokens  uint64 `json:"window_projected_tokens,omitempty"`
+	WindowFullActiveTokens uint64 `json:"window_full_active_tokens,omitempty"`
+	WindowPrefillTokens    uint64 `json:"window_prefill_tokens,omitempty"`
+	WindowBodyTokens       uint64 `json:"window_body_tokens,omitempty"`
+	WindowPendingTokens    uint64 `json:"window_pending_tokens,omitempty"`
+	WindowOutputReserve    uint64 `json:"window_output_reserve,omitempty"`
 	StableTokens           uint64 `json:"stable_tokens,omitempty"`
 	HistoryUserTokens      uint64 `json:"history_user_tokens,omitempty"`
 	HistoryAssistantTokens uint64 `json:"history_assistant_tokens,omitempty"`
@@ -183,6 +192,8 @@ type SampleContextData struct {
 	HistoryOtherTokens     uint64 `json:"history_other_tokens,omitempty"`
 	DynamicTokens          uint64 `json:"dynamic_tokens,omitempty"`
 	ContinuationTokens     uint64 `json:"continuation_tokens,omitempty"`
+	TextTokens             uint64 `json:"text_tokens,omitempty"`
+	ImageTokens            uint64 `json:"image_tokens,omitempty"`
 	ToolDefinitionTokens   uint64 `json:"tool_definition_tokens,omitempty"`
 	ProviderFramingTokens  uint64 `json:"provider_framing_tokens,omitempty"`
 	EstimatedTokens        uint64 `json:"estimated_tokens,omitempty"`
@@ -1135,6 +1146,9 @@ type ThreadForkedData struct {
 	NewThreadID        ThreadID           `json:"new_thread_id"`
 	SourceCursor       Cursor             `json:"source_cursor"`
 	ReplacementHistory []CompactedMessage `json:"replacement_history,omitempty"`
+	WindowNumber       uint64             `json:"window_number,omitempty"`
+	FirstWindowID      string             `json:"first_window_id,omitempty"`
+	WindowID           string             `json:"window_id,omitempty"`
 }
 
 type CheckpointRestoredData struct {
@@ -1193,6 +1207,9 @@ func (*ThreadForkedData) eventKind() EventKind { return EventThreadForked }
 func (d *ThreadForkedData) validate() error {
 	if d.NewThreadID == "" {
 		return errors.New("forked thread id is required")
+	}
+	if len(d.ReplacementHistory) > 0 && d.WindowID == "" {
+		return errors.New("forked thread window_id is required")
 	}
 	return nil
 }

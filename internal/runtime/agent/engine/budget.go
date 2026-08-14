@@ -1,7 +1,12 @@
 package engine
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -19,9 +24,31 @@ func estimateMessageTokens(messages []provider.Message) uint64 {
 			if block.ToolResult != nil {
 				characters += len([]rune(block.ToolResult.Content))
 			}
+			if block.Type == provider.ContentImage && block.Attachment != nil {
+				characters += int(estimateImageTokens(*block.Attachment) * 4)
+			}
 		}
 	}
 	return uint64(max(1, (characters+3)/4))
+}
+
+func estimateImageTokens(attachment provider.Attachment) uint64 {
+	config, _, err := image.DecodeConfig(bytes.NewReader(attachment.Data))
+	if err != nil || config.Width <= 0 || config.Height <= 0 {
+		tiles := max(1, (len(attachment.Data)+(512<<10)-1)/(512<<10))
+		return 85 + uint64(170*tiles)
+	}
+	width, height := config.Width, config.Height
+	if longest := max(width, height); longest > 2048 {
+		width = max(1, width*2048/longest)
+		height = max(1, height*2048/longest)
+	}
+	if shortest := min(width, height); shortest > 768 {
+		width = max(1, width*768/shortest)
+		height = max(1, height*768/shortest)
+	}
+	tiles := ((width + 511) / 512) * ((height + 511) / 512)
+	return 85 + uint64(170*tiles)
 }
 
 func estimateCost(pricing model.Pricing, usage provider.Usage) float64 {

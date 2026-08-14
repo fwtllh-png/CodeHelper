@@ -28,6 +28,7 @@ type SessionStateDelta struct {
 	Compaction CompactionDelta            `json:"compaction"`
 	Plan       *interact.Plan             `json:"plan,omitempty"`
 	World      contextstore.WorldBaseline `json:"world,omitempty"`
+	Window     contextstore.WindowLedger  `json:"window"`
 }
 
 type SessionDelta struct {
@@ -43,6 +44,7 @@ type SessionDelta struct {
 	Compaction     CompactionDelta            `json:"compaction"`
 	Plan           *interact.Plan             `json:"plan,omitempty"`
 	World          contextstore.WorldBaseline `json:"world,omitempty"`
+	Window         contextstore.WindowLedger  `json:"window"`
 	Digest         string                     `json:"digest"`
 }
 
@@ -73,7 +75,8 @@ func prepareSessionDelta(
 		WorkingSet:     sessionState.WorkingSet, Evidence: sessionState.Evidence,
 		Failures: sessionState.Failures, Compaction: sessionState.Compaction,
 		Plan: sessionState.Plan, World: contextstore.CloneWorldBaseline(sessionState.World),
-		Turn: sessionState.Turn,
+		Window: contextstore.CloneWindowLedger(sessionState.Window),
+		Turn:   sessionState.Turn,
 	}
 	for _, message := range history {
 		delta.Turn = max(delta.Turn, message.Turn)
@@ -126,6 +129,14 @@ func (e *Engine) applyDurableSessionDelta(delta SessionDelta) error {
 			delta.BaseRevision,
 		)
 	}
+	window := contextstore.CloneWindowLedger(delta.Window)
+	if !window.Valid() {
+		var err error
+		window, err = createWindowLedger(1)
+		if err != nil {
+			return fmt.Errorf("restore token window: %w", err)
+		}
+	}
 	e.history = cloneMessages(delta.History)
 	e.turn = max(e.turn, delta.Turn)
 	e.usage.Add(delta.Usage)
@@ -142,6 +153,7 @@ func (e *Engine) applyDurableSessionDelta(delta SessionDelta) error {
 	} else {
 		e.world = contextstore.WorldBaseline{}
 	}
+	e.window = window
 	e.sessionRevision++
 	e.appliedDeltas[key] = delta.Digest
 	return nil
@@ -160,6 +172,7 @@ func (e *Engine) PreparedSessionDelta() (SessionDelta, bool) {
 	delta := *scope.state.delta
 	delta.History = cloneMessages(delta.History)
 	delta.World = contextstore.CloneWorldBaseline(delta.World)
+	delta.Window = contextstore.CloneWindowLedger(delta.Window)
 	return delta, true
 }
 

@@ -21,7 +21,9 @@ Implementation progress:
   [`context-engineering-ce1-evidence.json`](../context-engineering-ce1-evidence.json).
 - CE2: `accepted`; see
   [`context-engineering-ce2-evidence.json`](../context-engineering-ce2-evidence.json).
-- CE3-CE7: not started.
+- CE3: `accepted`; see
+  [`context-engineering-ce3-evidence.json`](../context-engineering-ce3-evidence.json).
+- CE4-CE7: not started.
 
 ## 1. Executive Summary
 

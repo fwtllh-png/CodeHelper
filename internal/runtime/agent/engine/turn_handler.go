@@ -138,6 +138,7 @@ func (e *Engine) prepareTurnSpec(
 	}
 	spec.History = cloneMessages(e.history)
 	spec.World = contextstore.CloneWorldBaseline(e.world)
+	spec.Window = contextstore.CloneWindowLedger(e.window)
 	return spec, persistedTurnID, nil
 }
 
@@ -170,6 +171,7 @@ func (f scopeFactory) open(spec TurnSpec) (*executionScope, error) {
 		state:           newScopeState(f.engine),
 	}
 	scope.state.world = contextstore.CloneWorldBaseline(spec.World)
+	scope.state.window = contextstore.CloneWindowLedger(spec.Window)
 	f.engine.publishScope(scope)
 	f.engine.attachPending(scope)
 	return turnexec.NewScope(

@@ -163,11 +163,20 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 	}
 	if event.ContextBudget != nil {
 		r.budget = &protocol.ReceiptContextBudget{
-			ActiveTokens:      event.ContextBudget.ActiveTokens,
-			AutoCompactTokens: event.ContextBudget.AutoCompactTokens,
-			EstimatedTokens:   event.ContextBudget.EstimatedTokens,
-			MaxContextTokens:  event.ContextBudget.MaxContextTokens,
-			Compactions:       event.ContextBudget.Compactions,
+			WindowID:             event.ContextBudget.WindowID,
+			WindowNumber:         event.ContextBudget.WindowNumber,
+			Observed:             event.ContextBudget.Observed,
+			ActiveTokens:         event.ContextBudget.ActiveTokens,
+			FullActiveTokens:     event.ContextBudget.FullActiveTokens,
+			PrefillTokens:        event.ContextBudget.PrefillTokens,
+			BodyTokens:           event.ContextBudget.BodyTokens,
+			ToolDefinitionTokens: event.ContextBudget.ToolDefinitionTokens,
+			PendingTokens:        event.ContextBudget.PendingTokens,
+			OutputReserve:        event.ContextBudget.OutputReserve,
+			AutoCompactTokens:    event.ContextBudget.AutoCompactTokens,
+			EstimatedTokens:      event.ContextBudget.EstimatedTokens,
+			MaxContextTokens:     event.ContextBudget.MaxContextTokens,
+			Compactions:          event.ContextBudget.Compactions,
 		}
 	}
 	// Any event that names a purpose contributes to the route summary, not just

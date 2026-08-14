@@ -48,6 +48,7 @@ type scopeState struct {
 	catalog             tool.CatalogSnapshot
 	catalogProjected    tool.CatalogSnapshot
 	world               contextstore.WorldBaseline
+	window              contextstore.WindowLedger
 	contextLedger       *contextstore.Ledger
 	extensionsProjected bool
 	mcpProjected        bool
@@ -65,8 +66,6 @@ type scopeState struct {
 	evidence            *evidence.Set
 	failures            *compact.Failures
 	compactions         int
-	lastInputEstimate   uint64
-	lastInputActual     uint64
 }
 
 type ScopeSnapshot struct {
@@ -89,6 +88,7 @@ func newScopeState(engine *Engine) scopeState {
 		evidence:    engine.evidence.Clone(),
 		failures:    engine.failures.Clone(),
 		compactions: engine.compactions,
+		window:      contextstore.CloneWindowLedger(engine.window),
 	}
 }
 
@@ -113,6 +113,7 @@ func (s *Scope) Spec() TurnSpec {
 		spec.Context.Receipts...,
 	)
 	spec.World = contextstore.CloneWorldBaseline(spec.World)
+	spec.Window = contextstore.CloneWindowLedger(spec.Window)
 	spec.Skills = append([]SkillSummary(nil), spec.Skills...)
 	spec.MCP = append([]MCPHealthSnapshot(nil), spec.MCP...)
 	spec.Extensions = append([]ExtensionSnapshot(nil), spec.Extensions...)

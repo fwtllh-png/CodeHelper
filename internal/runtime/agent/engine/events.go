@@ -184,11 +184,20 @@ const (
 // terminal event is emitted. Receipts consume this snapshot instead of racing
 // a later read of mutable engine history.
 type ContextBudgetSnapshot struct {
-	ActiveTokens      uint64 `json:"active_tokens"`
-	AutoCompactTokens uint64 `json:"auto_compact_tokens"`
-	EstimatedTokens   uint64 `json:"estimated_tokens,omitempty"`
-	MaxContextTokens  uint64 `json:"max_context_tokens,omitempty"`
-	Compactions       int    `json:"compactions"`
+	WindowID             string `json:"window_id,omitempty"`
+	WindowNumber         uint64 `json:"window_number,omitempty"`
+	Observed             bool   `json:"observed,omitempty"`
+	ActiveTokens         uint64 `json:"active_tokens"`
+	FullActiveTokens     uint64 `json:"full_active_tokens,omitempty"`
+	PrefillTokens        uint64 `json:"prefill_tokens,omitempty"`
+	BodyTokens           uint64 `json:"body_tokens,omitempty"`
+	ToolDefinitionTokens uint64 `json:"tool_definition_tokens,omitempty"`
+	PendingTokens        uint64 `json:"pending_tokens,omitempty"`
+	OutputReserve        uint64 `json:"output_reserve,omitempty"`
+	AutoCompactTokens    uint64 `json:"auto_compact_tokens"`
+	EstimatedTokens      uint64 `json:"estimated_tokens,omitempty"`
+	MaxContextTokens     uint64 `json:"max_context_tokens,omitempty"`
+	Compactions          int    `json:"compactions"`
 }
 
 type Budget struct {
@@ -209,6 +218,12 @@ type HeuristicTokenEstimator struct{}
 
 func (HeuristicTokenEstimator) Estimate(messages []provider.Message) (uint64, error) {
 	return estimateMessageTokens(messages), nil
+}
+
+func (HeuristicTokenEstimator) EstimateImage(
+	attachment provider.Attachment,
+) (uint64, error) {
+	return estimateImageTokens(attachment), nil
 }
 
 type Result struct {

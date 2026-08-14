@@ -105,6 +105,8 @@ func TestContextEngineeringCE0LifecycleGolden(t *testing.T) {
 				Data: &protocol.ThreadForkedData{
 					NewThreadID: "child", SourceCursor: 7,
 					ReplacementHistory: forked,
+					WindowNumber:       1, FirstWindowID: "fork-window",
+					WindowID: "fork-window",
 				},
 			}},
 		},

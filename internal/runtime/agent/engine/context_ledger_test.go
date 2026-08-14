@@ -70,6 +70,22 @@ func TestModelSamplesUseMonotonicContextLedgerSnapshots(t *testing.T) {
 	if contexts[0].ContextDigest == contexts[1].ContextDigest {
 		t.Fatal("context digest did not change after Tool Call/Result history")
 	}
+	if contexts[0].WindowID == "" ||
+		contexts[0].WindowID != contexts[1].WindowID ||
+		contexts[0].WindowNumber != 1 || contexts[1].WindowNumber != 1 ||
+		!contexts[0].WindowObserved || !contexts[1].WindowObserved ||
+		contexts[0].WindowPrefillTokens != 100 ||
+		contexts[0].WindowFullActiveTokens != 100 ||
+		contexts[0].WindowProjectedTokens == 0 ||
+		contexts[0].WindowPendingTokens == 0 ||
+		contexts[1].WindowPrefillTokens != 100 ||
+		contexts[1].WindowFullActiveTokens != 120 ||
+		contexts[1].WindowBodyTokens != 20 ||
+		contexts[1].WindowProjectedTokens == 0 ||
+		contexts[1].WindowPendingTokens == 0 ||
+		contexts[0].WindowOutputReserve == 0 {
+		t.Fatalf("window projections=%+v", contexts)
+	}
 	if contexts[0].WorldRevision != 1 || contexts[0].WorldMode != "full" ||
 		contexts[0].WorldChangedSections == 0 ||
 		contexts[1].WorldRevision != 1 || contexts[1].WorldMode != "patch" ||

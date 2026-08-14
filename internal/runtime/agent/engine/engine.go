@@ -160,6 +160,7 @@ type Engine struct {
 	evidence        *evidence.Set
 	failures        *compact.Failures
 	world           contextstore.WorldBaseline
+	window          contextstore.WindowLedger
 	promptCacheBase string
 	profileReadOnly bool
 	enabledTools    map[string]struct{}
@@ -304,6 +305,10 @@ func New(options Options) (*Engine, error) {
 	if options.Now == nil {
 		options.Now = time.Now
 	}
+	window, err := createWindowLedger(1)
+	if err != nil {
+		return nil, fmt.Errorf("create token window: %w", err)
+	}
 	engine := &Engine{
 		options: options, guard: options.Guard, journal: options.Journal,
 		promptCacheBase: options.PromptCacheKey,
@@ -313,6 +318,7 @@ func New(options Options) (*Engine, error) {
 		working:         workingset.New(),
 		evidence:        evidence.New(),
 		failures:        compact.NewFailures(),
+		window:          window,
 	}
 	engine.seedWorkingSet()
 	engine.lastScope = &Scope{engine: engine, state: newScopeState(engine)}

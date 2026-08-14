@@ -1,12 +1,17 @@
 package engine
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"strings"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestTokenWindowIncludesStableDynamicToolsAndOutputReserve(t *testing.T) {
@@ -28,22 +33,114 @@ func TestTokenWindowIncludesStableDynamicToolsAndOutputReserve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total.total != total.estimated+128 || total.active <= body.active ||
-		body.active <= 128 {
+	if total.total != total.estimated+128 || total.active != body.active ||
+		body.accounting.PendingTokens != body.estimated {
 		t.Fatalf("total=%+v body=%+v", total, body)
 	}
 }
 
-func TestTokenWindowCalibratesFromPriorActualUsage(t *testing.T) {
+func TestTokenWindowUsesObservedBaselineForPendingDelta(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	attachTestScope(t, engine)
-	engine.noteInputUsage(100, 150)
-	if got := engine.calibrateInput(200); got != 300 {
-		t.Fatalf("calibrated input = %d, want 300", got)
+	first := protocol.SampleContextData{
+		ContextDigest: "sha256:first", EstimatedTokens: 100,
 	}
-	engine.noteInputUsage(100, 1000)
-	if got := engine.calibrateInput(200); got != 400 {
-		t.Fatalf("bounded calibration = %d, want 400", got)
+	engine.prepareTokenWindow(&first, 20)
+	engine.observeTokenWindow(&first, 150, 50)
+	second := protocol.SampleContextData{
+		ContextDigest: "sha256:second", EstimatedTokens: 200,
+	}
+	projected := engine.prepareTokenWindow(&second, 20)
+	if projected.FullActiveTokens != 250 || projected.PrefillTokens != 150 ||
+		projected.BodyTokens != 100 || projected.PendingTokens != 100 ||
+		!projected.Observed {
+		t.Fatalf("observed projection=%+v", projected)
+	}
+	actualNextInput := uint64(245)
+	errorRate := float64(absDiff(projected.FullActiveTokens, actualNextInput)) /
+		float64(actualNextInput)
+	if errorRate > 0.05 {
+		t.Fatalf("compaction trigger error=%f projection=%+v", errorRate, projected)
+	}
+}
+
+func TestCompactionAndReplacementAdvanceTokenWindow(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	first := engine.window
+	engine.history = []provider.Message{
+		messageWithText(provider.RoleUser, strings.Repeat("old ", 300), 1),
+		messageWithText(provider.RoleAssistant, "old answer", 1),
+		messageWithText(provider.RoleUser, "current", 2),
+	}
+	if receipt := engine.CompactForced(); receipt == nil {
+		t.Fatal("forced compaction produced no receipt")
+	}
+	if engine.window.ID == first.ID || engine.window.Number != first.Number+1 ||
+		engine.window.PrefillObserved {
+		t.Fatalf("compacted window=%+v first=%+v", engine.window, first)
+	}
+	compacted := engine.window
+	engine.ReplaceHistory([]provider.Message{
+		messageWithText(provider.RoleUser, "replacement", 3),
+	})
+	if engine.window.ID == compacted.ID ||
+		engine.window.Number != compacted.Number+1 {
+		t.Fatalf("replacement window=%+v compacted=%+v", engine.window, compacted)
+	}
+}
+
+func TestHeuristicEstimatorAccountsForImageTilesByKind(t *testing.T) {
+	imageBytes := encodePNG(t, 512, 512)
+	attachment := provider.Attachment{
+		Name: "fixture.png", MediaType: "image/png", Data: imageBytes,
+	}
+	estimator := HeuristicTokenEstimator{}
+	imageTokens, err := estimator.EstimateImage(attachment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imageTokens != 255 {
+		t.Fatalf("512x512 image tokens=%d, want 255", imageTokens)
+	}
+	message := provider.Message{
+		Role: provider.RoleUser,
+		Blocks: []provider.ContentBlock{{
+			Type: provider.ContentImage, Attachment: &attachment,
+		}},
+	}
+	measured, err := contextstore.New(contextstore.Input{
+		History: []provider.Message{message},
+	}).Snapshot().Measure("", "", estimator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if measured.ImageTokens != 255 || measured.TextTokens != 0 ||
+		measured.EstimatedTokens != 286 {
+		t.Fatalf("multimodal attribution=%+v", measured)
+	}
+	for _, fixture := range []struct {
+		width, height int
+		actual        uint64
+	}{
+		{512, 512, 255},
+		{1024, 1024, 765},
+		{2048, 1024, 1105},
+	} {
+		value, estimateErr := estimator.EstimateImage(provider.Attachment{
+			MediaType: "image/png",
+			Data:      encodePNG(t, fixture.width, fixture.height),
+		})
+		if estimateErr != nil {
+			t.Fatal(estimateErr)
+		}
+		errorRate := float64(absDiff(value, fixture.actual)) /
+			float64(fixture.actual)
+		if errorRate > 0.10 {
+			t.Fatalf(
+				"%dx%d multimodal error=%f estimate=%d actual=%d",
+				fixture.width, fixture.height, errorRate, value, fixture.actual,
+			)
+		}
 	}
 }
 
@@ -86,4 +183,22 @@ func TestTokenWindowFinishOnlyRemovesAllReadOnlyToolsAtEightyFivePercent(t *test
 	if len(runtime.requests[0].Tools) != 0 {
 		t.Fatalf("requests = %+v, want no tools", runtime.requests)
 	}
+}
+
+func encodePNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	value := image.NewRGBA(image.Rect(0, 0, width, height))
+	value.SetRGBA(0, 0, color.RGBA{R: 255, A: 255})
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, value); err != nil {
+		t.Fatal(err)
+	}
+	return encoded.Bytes()
+}
+
+func absDiff(left, right uint64) uint64 {
+	if left > right {
+		return left - right
+	}
+	return right - left
 }

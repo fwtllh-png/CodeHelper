@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"unicode/utf8"
 
@@ -69,67 +68,61 @@ func (e *Engine) runTerminalCompactGate(
 
 type tokenWindow struct {
 	estimated, total, active, hardLimit, compactLimit uint64
+	accounting                                        contextstore.WindowProjection
 }
 
 func (e *Engine) measureTokenWindow(
 	input contextstore.Snapshot,
 	outputReserve uint64,
 ) (tokenWindow, error) {
-	measured, err := input.Measure("", "", e.options.TokenEstimator.Estimate)
+	measured, err := input.Measure("", "", e.options.TokenEstimator)
 	if err != nil {
 		return tokenWindow{}, err
 	}
-	predicted := e.calibrateInput(measured.EstimatedTokens)
-	body := measured.EstimatedTokens - min(measured.EstimatedTokens, measured.StableTokens)
-	body = e.calibrateInput(body)
-	limit := e.activeRoute().Model().Limits.ContextTokens
-	compact := e.options.CompactWindow.AutoTokens
-	if compact == 0 {
-		compact = limit * 65 / 100
-	}
-	active := predicted + outputReserve
+	projected := e.projectTokenWindow(&measured, outputReserve)
+	active := projected.FullActiveTokens + outputReserve
 	if e.options.CompactWindow.Scope == compactScopeBodyAfterPrefix {
-		active = body + outputReserve
+		active = projected.BodyTokens + outputReserve
+		if !projected.Observed {
+			active = projected.PendingTokens + outputReserve
+		}
 	}
 	return tokenWindow{
-		estimated: measured.EstimatedTokens, total: predicted + outputReserve,
-		active: active, hardLimit: limit, compactLimit: min(compact, limit),
+		estimated: measured.EstimatedTokens,
+		total:     projected.FullActiveTokens + outputReserve,
+		active:    active, hardLimit: projected.HardLimit,
+		compactLimit: projected.AutoCompactLimit,
+		accounting:   projected,
 	}, nil
 }
 
-func (e *Engine) calibrateInput(estimated uint64) uint64 {
-	scope := e.runningScope()
-	if scope == nil {
-		return estimated
+func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudgetSnapshot {
+	value := contextstore.Input{
+		Stable: e.promptMessages(), History: history,
 	}
-	scope.mu.Lock()
-	lastEstimate, lastActual := scope.state.lastInputEstimate, scope.state.lastInputActual
-	scope.mu.Unlock()
-	if lastEstimate == 0 || lastActual == 0 {
-		return estimated
-	}
-	ratio := float64(lastActual) / float64(lastEstimate)
-	ratio = max(0.5, min(2.0, ratio))
-	return uint64(math.Ceil(float64(estimated) * ratio))
-}
-
-func (e *Engine) noteInputUsage(estimated, actual uint64) {
-	if scope := e.runningScope(); scope != nil && estimated != 0 && actual != 0 {
+	if scope := e.runningScope(); scope != nil {
 		scope.mu.Lock()
-		scope.state.lastInputEstimate, scope.state.lastInputActual = estimated, actual
+		if scope.state.contextLedger != nil {
+			snapshot := scope.state.contextLedger.Snapshot()
+			value.Stable = snapshot.Partition(contextstore.KindStable)
+			value.Definitions = snapshot.Definitions()
+		}
 		scope.mu.Unlock()
 	}
-}
-
-func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudgetSnapshot {
-	input := contextstore.New(contextstore.Input{
-		Stable: e.promptMessages(), History: history,
-	}).Snapshot()
+	input := contextstore.New(value).Snapshot()
 	window, _ := e.measureTokenWindow(input, e.maxOutputFor(e.activeRoute()))
 	return ContextBudgetSnapshot{
 		ActiveTokens: window.active, AutoCompactTokens: window.compactLimit,
 		EstimatedTokens: window.estimated, MaxContextTokens: window.hardLimit,
-		Compactions: e.compactionTotal(),
+		WindowID: window.accounting.ID, WindowNumber: window.accounting.Number,
+		Observed:             window.accounting.Observed,
+		FullActiveTokens:     window.accounting.FullActiveTokens,
+		PrefillTokens:        window.accounting.PrefillTokens,
+		BodyTokens:           window.accounting.BodyTokens,
+		ToolDefinitionTokens: window.accounting.ToolDefinitionTokens,
+		PendingTokens:        window.accounting.PendingTokens,
+		OutputReserve:        window.accounting.OutputReserve,
+		Compactions:          e.compactionTotal(),
 	}
 }
 
@@ -182,6 +175,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	}
 	finish := func(receipt *CompactionReceipt) *CompactionReceipt {
 		e.noteCompaction()
+		e.advanceTokenWindow()
 		e.options.Metrics.Compaction(
 			receipt.OriginalBytes - receipt.RetainedBytes,
 		)
@@ -248,11 +242,16 @@ func (e *Engine) compactHistoryWithPolicy(
 		candidate := e.buildCompactionCandidate(*history, cut)
 		input = input.WithHistory(candidate.history)
 		window, estimateErr := e.measureTokenWindow(input, outputReserve)
-		if estimateErr != nil || window.active >= workingWindow.active {
+		if estimateErr != nil ||
+			window.active >= workingWindow.active &&
+				window.total >= workingWindow.total {
 			continue
 		}
 		candidate.retainedTokens = window.active
-		if force || window.active <= target {
+		if force || window.active <= target ||
+			e.options.CompactWindow.Scope == compactScopeBodyAfterPrefix &&
+				originalWindow.total > originalWindow.hardLimit &&
+				window.total <= window.hardLimit {
 			selected = &candidate
 			break
 		}
@@ -434,6 +433,7 @@ func (e *Engine) ReplaceHistory(messages []provider.Message) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.history = cloneMessages(messages)
+	e.advanceTokenWindow()
 	if !contextstore.WorldBaselineValid(e.history, e.world) {
 		e.world = contextstore.WorldBaseline{}
 	}
@@ -455,6 +455,13 @@ func (e *Engine) Fork() *Engine {
 	defer e.scopeMu.Unlock()
 	e.planMu.Lock()
 	defer e.planMu.Unlock()
+	forkWindow, err := createWindowLedger(1)
+	if err != nil {
+		forkWindow = fallbackWindowLedger(
+			contextstore.WindowLedger{},
+			fmt.Sprintf("%s:fork:%d", e.options.SessionID, e.turn),
+		)
+	}
 	forked := &Engine{
 		options: e.options, history: cloneMessages(e.history),
 		mailboxHold: append([]PendingInput(nil), e.mailboxHold...),
@@ -463,6 +470,7 @@ func (e *Engine) Fork() *Engine {
 		evidence:    e.evidence.Clone(),
 		failures:    e.failures.Clone(),
 		world:       contextstore.CloneWorldBaseline(e.world),
+		window:      forkWindow,
 
 		planText: e.planText,
 		plan:     e.plan.Clone(),
@@ -519,6 +527,7 @@ func (e *Engine) RevertWorkspace(
 		}
 	}
 	e.history = history
+	e.advanceTokenWindow()
 	e.reconcileWorldBaseline(e.history)
 	delete(e.turnIDs, targetTurnID)
 	return receipt, nil

@@ -23,6 +23,7 @@ func TestSummarizeAttributesEverySample(t *testing.T) {
 			Context: &protocol.SampleContextData{
 				Reason: "normal", StableTokens: 20, DynamicTokens: 10,
 				ToolDefinitionTokens: 40, EstimatedTokens: 70,
+				WindowProjectedTokens: 80,
 			},
 		}},
 	}}
@@ -30,6 +31,7 @@ func TestSummarizeAttributesEverySample(t *testing.T) {
 	if got.Passed != 1 || got.Input.P50 != 100 || got.UncachedInput.P50 != 75 ||
 		got.Calls.P50 != 1 || got.ContextP50["tool_definitions"] != 40 ||
 		got.Reasons["normal"] != 1 || got.EstimatorErrorP95 != 0.3 ||
+		got.TriggerErrorP95 != 0.2 ||
 		got.AttributionCoverageBP.P50 != 10_000 {
 		t.Fatalf("report=%+v", got)
 	}

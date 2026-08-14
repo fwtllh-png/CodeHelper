@@ -171,7 +171,7 @@ func (e *Engine) modelStep(
 		snapshot = project()
 		requestTools = snapshot.Definitions()
 		attribution, attributionErr := snapshot.Measure(
-			sampleReason, reasoningEffort, e.options.TokenEstimator.Estimate,
+			sampleReason, reasoningEffort, e.options.TokenEstimator,
 		)
 		if attributionErr != nil {
 			return nil, nil, totalUsage, lastEstimate, attributionErr
@@ -181,8 +181,9 @@ func (e *Engine) modelStep(
 		attribution.WorldMode = string(worldProjection.Mode)
 		attribution.WorldChangedSections = len(worldProjection.Changed)
 		lastEstimate = attribution.EstimatedTokens
+		windowProjection := e.prepareTokenWindow(&attribution, maxOutputTokens)
 		if _, err := e.checkBudget(
-			e.calibrateInput(lastEstimate), turnUsage, totalUsage, maxOutputTokens,
+			windowProjection.FullActiveTokens, turnUsage, totalUsage, maxOutputTokens,
 		); err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
 		}
@@ -201,6 +202,7 @@ func (e *Engine) modelStep(
 		call := sample{
 			index: e.nextSample(), provider: route.ProviderID(),
 			model: route.Model().ID, pricing: route.Model().Pricing, context: &attribution,
+			observe: e.observeTokenWindow,
 		}
 		callSpan := e.tracer().Start(trace.NameModelCall, 0, map[string]any{
 			"provider": call.provider, "model": call.model,
@@ -267,7 +269,6 @@ func (e *Engine) modelStep(
 			callSpan.End(trace.StatusOK)
 		}
 		totalUsage.Add(usage)
-		e.noteInputUsage(attribution.EstimatedTokens, usage.InputTokens)
 		pending := e.drainPending()
 		if ctx.Err() == nil && len(pending) != 0 {
 			if pendingInputInjected != nil {
@@ -596,6 +597,7 @@ type sample struct {
 	model    string
 	pricing  model.Pricing
 	context  *protocol.SampleContextData
+	observe  func(*protocol.SampleContextData, uint64, uint64)
 }
 
 func consume(
@@ -678,6 +680,9 @@ func consume(
 			usage.Add(*event.Usage)
 			contextstore.ApplyTransport(call.context, event.Usage.Transport)
 			copy := usage
+			if call.observe != nil {
+				call.observe(call.context, copy.InputTokens, copy.CachedTokens)
+			}
 
 			cost := estimateCost(call.pricing, copy)
 			if err := emit(Event{
