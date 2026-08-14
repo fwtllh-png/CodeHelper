@@ -13,6 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -343,6 +344,12 @@ func (e *Engine) runToolsWithCache(
 		if err := kernel.closeTool(call, copy, fileChanges); err != nil {
 			resultPublishErr = errors.Join(resultPublishErr, err)
 			continue
+		}
+		if call.Name == toolsearch.ToolName && !copy.IsError {
+			resultPublishErr = errors.Join(
+				resultPublishErr,
+				e.refreshScopeCatalog(),
+			)
 		}
 		if call.Name == "turn_complete" {
 			decision, err := kernel.evaluateCompletion(

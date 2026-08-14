@@ -43,30 +43,24 @@ const (
 
 type Options struct {
 	Provider provider.Provider
-	// Route is the act route: what a turn samples on unless its purpose has a
-	// route of its own.
+	// Route is the act route and the fallback for single-route callers.
 	Route model.ReadyRoute
-	// Routes is the whole per-purpose table. It is optional, and a caller that
-	// only has one model can leave it zero: New then builds a table from Route,
-	// which resolves every purpose to it. When both are given, Routes wins and
-	// Route is set from its act slot, so there is one source of truth afterwards.
-	Routes           model.RouteSet
-	Tools            *tool.Registry
-	PromptContext    []provider.Message
-	ModePromptBudget promptcontext.Budget
-	MaxOutputTokens  uint64
-	MaxSteps         int
-	MaxRetries       int
-	CompactWindow    CompactWindowPolicy
-	SummaryMaxBytes  int
-	// MaxDigestEntries bounds the per-message running record a summary carries.
+	// Routes overrides Route with a locked per-purpose table.
+	Routes               model.RouteSet
+	Tools                *tool.Registry
+	PromptContext        []provider.Message
+	ModePromptBudget     promptcontext.Budget
+	MaxOutputTokens      uint64
+	MaxSteps             int
+	MaxRetries           int
+	CompactWindow        CompactWindowPolicy
+	SummaryMaxBytes      int
 	MaxDigestEntries     int
 	ReasoningEffort      string
 	FixedReasoningEffort string
 	NativeSearch         bool
 	Budget               Budget
-	// BudgetReminderThreshold is remaining tokens that trigger a one-shot reminder
-	// (0 → max(256, MaxTokens/10)).
+	// BudgetReminderThreshold defaults to max(256, MaxTokens/10).
 	BudgetReminderThreshold uint64
 	TokenEstimator          TokenEstimator
 	WorkingSet              []string
@@ -74,76 +68,49 @@ type Options struct {
 	ContextReceipts         []promptcontext.Receipt
 	Authorize               func(provider.ToolCall) bool
 	Security                *policy.Runtime
-	// ProfilePermissionCeiling is fixed by the Host at construction. An empty
-	// value inherits Security.Permission for callers that do not use Profiles.
+	// ProfilePermissionCeiling is fixed by the Host.
 	ProfilePermissionCeiling policy.Permission
 	Guard                    *toolguard.Guard
-	// OnNetworkAllow is wired into a Guard that New allocates when Guard is
-	// nil. Without it, mid-flight egress approvals update the approval cache
-	// but never Grant the session Gate, so the retry still gets egress denied.
+	// OnNetworkAllow grants approved egress to the session Gate.
 	OnNetworkAllow     func(host, protocol string)
 	Workspace          string
 	WorkspaceIsolation string
 	Metrics            Metrics
-	// Now is the clock every duration the turn reports is measured against
-	// (nil → time.Now). One clock rather than several is what lets a test assert
-	// a latency exactly.
+	// Now is the turn clock (nil means time.Now).
 	Now func() time.Time
-	// Trace persists the turn's spans. A nil sink still leaves the spans
-	// collected in memory, because the receipt's latency partition is read from
-	// the same tree: a runtime without a database still reports how long its
-	// turns took.
+	// Trace persists spans; receipts retain in-memory timing without it.
 	Trace       trace.Sink
 	Journal     *workspacejournal.Manager
 	ReadTracker *workspacejournal.ReadTracker
-	// WorkspaceTurnGate is shared only by engines intentionally operating on
-	// the same writable root. Isolated worktree engines leave it nil.
+	// WorkspaceTurnGate serializes engines sharing one writable root.
 	WorkspaceTurnGate *WorkspaceTurnGate
 	Diagnostics       diagnostics.Runner
 	Verify            VerifyOptions
-	// RequireCompletionDeclaration makes tool-assisted completion depend on an
-	// accepted turn_complete result. Mutating declarations bind to the current
-	// mutation revision; read-only declarations bind to revision zero.
+	// RequireCompletionDeclaration binds turn_complete to mutation revision.
 	RequireCompletionDeclaration bool
-	// TurnKernelObserver receives deterministic records after Coordinator
-	// commits a transition. The callback is diagnostics-only: panics are
-	// contained and it cannot fail or alter the active Turn.
+	// TurnKernelObserver is diagnostics-only and panic-contained.
 	TurnKernelObserver func(turnkernel.TransitionRecord)
-	// TurnCoordinatorRuntime owns per-Turn Coordinator construction and
-	// persistence. Production hosts inject it from runtime/app/wire.
+	// TurnCoordinatorRuntime owns Coordinator construction and persistence.
 	TurnCoordinatorRuntime turnkernel.CoordinatorRuntime
 	Hooks                  *hooks.Manager
 	SessionID              string
 	InputHost              *interact.Host
-	// PromptCacheKey is the session sticky hint; samples only attach it when
-	// StickyPromptCacheKey drops the session default when the route lacks
-	// prompt_cache, so Validate/encode stay consistent across protocols.
+	// PromptCacheKey is the session sticky cache hint.
 	PromptCacheKey string
-	// ProfileRevision is the durable Session Profile revision frozen into each
-	// TurnCoordinator snapshot. Hosts without a profile store use revision 1.
-	ProfileRevision uint64
-	// MaxToolConcurrent bounds simultaneous concurrent-policy tools (0 → 8).
+	// ProfileRevision is frozen into each TurnCoordinator snapshot.
+	ProfileRevision   uint64
 	MaxToolConcurrent int
-	// MaxToolStreamBytes bounds how much of one tool call's output is delivered as
-	// live chunks (0 → DefaultMaxToolStreamBytes). The tool result is unaffected.
+	// MaxToolStreamBytes bounds live chunks, not the final result.
 	MaxToolStreamBytes int
-	// ToolSearchThreshold enables tool_search when available tools ≥ N (0 → 24).
-	ToolSearchThreshold int
-	// MaxToolDefinitions and MaxToolSchemaBytes hard-bound each provider request.
 	MaxToolDefinitions int
 	MaxToolSchemaBytes int
 	ToolCatalogBudget  promptcontext.Budget
-	// ToolCatalogSync reconciles externally managed tools immediately before
-	// each sampling snapshot. Background notifications remain an optimization;
-	// a sync error must prevent a stale catalog from reaching the provider.
+	// ToolCatalogSync reconciles external tools before the Turn snapshot.
 	ToolCatalogSync func() error
 	TurnSnapshots   TurnSnapshotSources
-	// RepoContext snapshots the repository, working set, and evidence.
-	RepoContext RepoContext
-	// WorkingSetLimit excludes pinned paths from its bound (0 → 16).
+	RepoContext     RepoContext
 	WorkingSetLimit int
-	// EvidenceLimit bounds facts, but not risks and reminders (0 → 24).
-	EvidenceLimit int
+	EvidenceLimit   int
 }
 
 type Metrics interface {
@@ -171,11 +138,10 @@ type TurnSnapshotSources struct {
 }
 
 type Engine struct {
-	mu      sync.Mutex
-	scopeMu sync.Mutex
-	options Options
-	history []provider.Message
-	// mailboxHold buffers non-trigger mailbox until the next turn begins.
+	mu              sync.Mutex
+	scopeMu         sync.Mutex
+	options         Options
+	history         []provider.Message
 	mailboxHold     []PendingInput
 	turn            uint64
 	usage           provider.Usage
@@ -186,16 +152,13 @@ type Engine struct {
 	journal         *workspacejournal.Manager
 	turnIDs         map[string]uint64
 
-	planMu sync.Mutex
-	// plan keeps the structure required by compaction and durable recovery.
+	planMu      sync.Mutex
 	planText    string
 	plan        interact.Plan
 	planReceipt *promptcontext.Receipt
 
-	// working and evidence are durable thread state; TurnDiff is not.
-	working  *workingset.Ledger
-	evidence *evidence.Set
-	// failures prevents compacted dead ends from being repeated.
+	working         *workingset.Ledger
+	evidence        *evidence.Set
 	failures        *compact.Failures
 	promptCacheBase string
 	profileReadOnly bool
@@ -213,12 +176,7 @@ type Engine struct {
 
 var testTurnCoordinatorRuntimeFactory func() turnkernel.CoordinatorRuntime
 
-// activeRoute is the route to charge, measure and size the context against.
-//
-// Everything derived from the model — pricing, the context window, the output
-// ceiling — has to come from the same route the request goes to, or a turn on a
-// plan model would be budgeted against the act model's window and billed at its
-// prices.
+// activeRoute is the single source for sampling, limits, and pricing.
 func (e *Engine) activeRoute() model.ReadyRoute {
 	if scope := e.runningScope(); scope != nil {
 		return scope.spec.Route
@@ -537,8 +495,6 @@ func (e *Engine) SetGranular(granular policy.Granular) {
 	}
 }
 
-// CloneEmpty builds a sibling Engine with the same Options seed, empty history,
-// and a fresh Guard (Guard is cleared so New allocates one per clone).
 func (e *Engine) CloneEmpty() (*Engine, error) {
 	if e == nil {
 		return nil, errors.New("engine is nil")
@@ -550,8 +506,6 @@ func (e *Engine) CloneEmpty() (*Engine, error) {
 	return New(options)
 }
 
-// OptionsSeed returns a copy of the engine Options with Guard cleared, suitable
-// for constructing per-thread Engines that share Provider/Tools/Security.
 func (e *Engine) OptionsSeed() Options {
 	e.mu.Lock()
 	defer e.mu.Unlock()

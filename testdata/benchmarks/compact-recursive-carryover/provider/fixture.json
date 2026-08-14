@@ -31,7 +31,6 @@
     [
       "codehelper_summary",
       "Goal: align the greeting in service.py with settings.yaml",
-      "Earlier summary:",
       "service.py already greets with hello"
     ]
   ]

@@ -154,8 +154,8 @@ func (e *Engine) CatalogReceipt() *protocol.ReceiptCatalog {
 	if scope == nil {
 		return nil
 	}
-	snapshot := scope.spec.Catalog
-	_, advertised, err := e.toolDefinitionsFromSnapshot(snapshot)
+	snapshot := e.scopeCatalog(scope)
+	_, advertised, err := e.toolDefinitionsFromSnapshot(snapshot, scope.spec.Request)
 	if err != nil {
 		return nil
 	}

@@ -20,9 +20,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-// Call-shape failures: the caller named a tool that cannot run, or passed
-// arguments the schema rejects. Hosts classify on these to decide whether a
-// failure can be handed back to the model instead of aborting the turn.
+// Call-shape failures are safe for the model to repair.
 var (
 	ErrUnknownTool     = errors.New("unknown tool")
 	ErrToolUnavailable = errors.New("unavailable")
@@ -33,15 +31,10 @@ var (
 	// ErrInvalidArguments marks arguments the caller can fix, as opposed to a
 	// broken tool definition (schema that fails to compile).
 	ErrInvalidArguments = errors.New("invalid tool arguments")
-	// ErrPrecondition marks a call the workspace refused before doing anything:
-	// its preconditions did not hold, so it changed nothing. Handing it back to
-	// the caller is only safe because of that guarantee — a tool may use it only
-	// on paths where it has written nothing.
+	// ErrPrecondition guarantees the refused call changed nothing.
 	ErrPrecondition = errors.New("tool precondition not met")
 )
 
-// argumentError keeps the original message while joining ErrInvalidArguments
-// into the unwrap tree.
 type argumentError struct{ err error }
 
 func (e argumentError) Error() string   { return e.err.Error() }
@@ -49,8 +42,6 @@ func (e argumentError) Unwrap() []error { return []error{ErrInvalidArguments, e.
 
 func invalidArguments(err error) error { return argumentError{err: err} }
 
-// preconditionError keeps the tool's own message while joining ErrPrecondition
-// into the unwrap tree.
 type preconditionError struct{ err error }
 
 func (e preconditionError) Error() string   { return e.err.Error() }
@@ -60,9 +51,7 @@ func (e preconditionError) Unwrap() []error { return []error{ErrPrecondition, e.
 // checks they run before touching the workspace.
 func Precondition(err error) error { return preconditionError{err: err} }
 
-// RecoveryHint is structured guidance for correcting a recoverable tool call.
-// It travels only through the error chain and becomes model-visible Result
-// metadata at the engine boundary.
+// RecoveryHint becomes model-visible only at the engine boundary.
 type RecoveryHint struct {
 	ErrorCategory  string
 	RequiredAction string
@@ -171,17 +160,11 @@ type ResourceTemplate struct {
 type ResourceResolver struct {
 	Templates  []ResourceTemplate `json:"templates,omitempty"`
 	PatchField string             `json:"patch_field,omitempty"`
-	// PathsField names an array of workspace file paths. Every entry becomes an
-	// exact file write resource; directory trees and globs are intentionally not
-	// supported by this resolver.
+	// PathsField resolves exact write paths, never globs or directory trees.
 	PathsField string `json:"paths_field,omitempty"`
-	// ReadPathsField is the read-only counterpart to PathsField. It is used by
-	// verification tools to bind an explicit coverage claim to canonical
-	// workspace paths without granting write access to those paths.
+	// ReadPathsField binds read-only verification coverage.
 	ReadPathsField string `json:"read_paths_field,omitempty"`
-	// ChangesField names an array-of-objects argument whose every "path" and "to"
-	// entry is a file the call may write. Transaction tools carry their paths
-	// there instead of in a single top-level field.
+	// ChangesField resolves transaction "path" and "to" entries.
 	ChangesField string `json:"changes_field,omitempty"`
 }
 
@@ -229,9 +212,7 @@ type Result struct {
 
 const MetadataCompletionDeclaration = "completion_declaration"
 
-// CompletionDeclaration reports whether tool-assisted work has pending actions.
-// The engine binds an accepted complete declaration to observed paths and the
-// current mutation revision before it can authorize a terminal transition.
+// CompletionDeclaration binds completion to observed mutation state.
 type CompletionDeclaration struct {
 	Status              string   `json:"status"`
 	Summary             string   `json:"summary"`
@@ -242,12 +223,7 @@ type CompletionDeclaration struct {
 	CallID              string   `json:"call_id,omitempty"`
 }
 
-// MetadataEvidence is the result metadata key carrying []EvidenceHit: the paths a
-// lookup found and what it found them to be.
-//
-// The hits are in the metadata rather than only in the JSON body because a caller
-// that wants to account for them should not have to parse each tool's payload
-// shape. The body stays the model's view; this is the runtime's.
+// MetadataEvidence carries runtime-observed []EvidenceHit.
 const MetadataEvidence = "evidence"
 
 // Evidence hit kinds. They mirror the kinds the runtime's evidence ledger
@@ -657,7 +633,7 @@ func (r *Registry) Execute(ctx context.Context, call Call) (Result, error) {
 	if name == "result_get" || name == "handle_read" {
 		return result, nil
 	}
-	return r.results.Route(result), nil
+	return r.results.RouteFor(name, result), nil
 }
 
 func (r *Registry) ExecutePrepared(
@@ -670,7 +646,7 @@ func (r *Registry) ExecutePrepared(
 	if canonicalName == "result_get" || canonicalName == "handle_read" {
 		return result, nil
 	}
-	return r.results.Route(result), nil
+	return r.results.RouteFor(canonicalName, result), nil
 }
 
 func RepairArguments(raw json.RawMessage) json.RawMessage {
@@ -875,8 +851,13 @@ func NewResultStoreWithStore(maxInline int, store contentstore.Store) *ResultSto
 }
 
 func (s *ResultStore) Route(result Result) Result {
+	return s.RouteFor("", result)
+}
+
+func (s *ResultStore) RouteFor(name string, result Result) Result {
 	result.OriginalBytes = len(result.Content)
-	if len(result.Content) <= s.maxInline {
+	limit, kind, tokens := s.projectionLimit(name, result.Content)
+	if len(result.Content) <= limit {
 		return result
 	}
 	stored := storedResult{
@@ -884,31 +865,13 @@ func (s *ResultStore) Route(result Result) Result {
 	}
 	data, err := json.Marshal(stored)
 	if err != nil {
-		body, _ := boundedSlice(result.Content, 0, s.maxInline)
-		result.Content = TruncationNotice(result.OriginalBytes, "", body)
-		result.Truncated = true
-		result.IsError = true
-		result.Metadata = map[string]any{
-			"result_store_error": err.Error(),
-			"original_bytes":     result.OriginalBytes,
-			"truncated":          true,
-		}
-		return result
+		return projectionFailure(result, limit, err)
 	}
 	handle := contentstore.StableHandle("result", data)
 	if err := s.store.Put(context.Background(), handle, data); err != nil {
-		body, _ := boundedSlice(result.Content, 0, s.maxInline)
-		result.Content = TruncationNotice(result.OriginalBytes, "", body)
-		result.Truncated = true
-		result.IsError = true
-		result.Metadata = map[string]any{
-			"result_store_error": err.Error(),
-			"original_bytes":     result.OriginalBytes,
-			"truncated":          true,
-		}
-		return result
+		return projectionFailure(result, limit, err)
 	}
-	body, _ := boundedSlice(result.Content, 0, s.maxInline)
+	body, _ := boundedSlice(result.Content, 0, limit)
 	result.Content = TruncationNotice(result.OriginalBytes, handle, body)
 	result.Truncated = true
 	result.Handle = handle
@@ -920,11 +883,64 @@ func (s *ResultStore) Route(result Result) Result {
 	result.Metadata["original_bytes"] = result.OriginalBytes
 	result.Metadata["truncated"] = true
 	result.Metadata["handle"] = handle
+	result.Metadata["projection_kind"] = kind
+	result.Metadata["projection_tokens"] = tokens
 	return result
 }
 
-// TruncationNotice prefixes model-visible tool output with an explicit budget
-// warning and optional result_get handle (T5). Keeps contentstore retrieval.
+func (s *ResultStore) projectionLimit(name, content string) (int, string, int) {
+	kind, tokens := "generic", 2048
+	switch {
+	case name == "spawn_agent" || name == "send_input" ||
+		name == "wait_agent" || name == "close_agent":
+		kind, tokens = "structured", 8192
+	case name == "file_read" || name == "file_list" || name == "shell_read" ||
+		strings.HasPrefix(name, "search_") || strings.HasPrefix(name, "git_"):
+		kind, tokens = "read", 4096
+	case strings.HasPrefix(name, "quality_"):
+		kind, tokens = "test", 3072
+	case name == "shell_run" || name == "terminal_run" ||
+		strings.Contains(name, "shell_"):
+		kind, tokens = "build", 3072
+	}
+	return min(s.maxInline, len(content), tokens*4), kind, tokens
+}
+
+func projectionFailure(result Result, limit int, err error) Result {
+	body, _ := boundedSlice(result.Content, 0, limit)
+	result.Content = TruncationNotice(result.OriginalBytes, "", body)
+	result.Truncated, result.IsError = true, true
+	result.Metadata = map[string]any{
+		"result_store_error": err.Error(),
+		"original_bytes":     result.OriginalBytes, "truncated": true,
+	}
+	return result
+}
+
+func ModelResult(name string, result Result) Result {
+	if name == "result_get" || name == "handle_read" || result.Metadata == nil {
+		return result
+	}
+	metadata := make(map[string]any)
+	for key, value := range result.Metadata {
+		switch key {
+		case "error_category", "required_action", "retry_original", "retryable",
+			"fatal", "handle", "original_bytes", "truncated",
+			"completion_declaration_accepted", "completion_declaration_rejection",
+			"completion_declaration_error", "verification_evidence_accepted",
+			"verification_evidence_rejection", "replayed_from_call_id",
+			"citations", "diagnostics":
+			metadata[key] = value
+		}
+	}
+	result.Metadata = metadata
+	if len(metadata) == 0 {
+		result.Metadata = nil
+	}
+	return result
+}
+
+// TruncationNotice preserves explicit truncation and retrieval instructions.
 func TruncationNotice(originalBytes int, handle, body string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Warning: truncated output (original bytes: %d)", originalBytes)

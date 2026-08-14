@@ -13,6 +13,7 @@ import (
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -486,7 +487,7 @@ func TestEngineDoesNotExecuteUnadvertisedCatalogTool(t *testing.T) {
 	}
 }
 
-func TestToolSearchThresholdDoesNotTruncateEagerTools(t *testing.T) {
+func TestCatalogWithoutToolSearchDoesNotTruncateEagerTools(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	const count = 30
 	for index := range count {
@@ -496,7 +497,6 @@ func TestToolSearchThresholdDoesNotTruncateEagerTools(t *testing.T) {
 		}
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
-	engine.options.ToolSearchThreshold = 4
 
 	definitions := testToolDefinitions(t, engine)
 	advertised := make(map[string]bool, len(definitions))
@@ -525,12 +525,148 @@ func TestToolDefinitionsEnforceCountAndSchemaBudgets(t *testing.T) {
 	}
 
 	engine.options.MaxToolDefinitions = 1
-	if _, _, err := engine.toolDefinitionsFromSnapshot(snapshot); !errors.Is(err, tool.ErrCatalogLimit) {
+	if _, _, err := engine.toolDefinitionsFromSnapshot(snapshot, TurnRequest{}); !errors.Is(err, tool.ErrCatalogLimit) {
 		t.Fatalf("count budget error = %v, want catalog limit", err)
 	}
 	engine.options.MaxToolDefinitions = 128
 	engine.options.MaxToolSchemaBytes = 1
-	if _, _, err := engine.toolDefinitionsFromSnapshot(snapshot); !errors.Is(err, tool.ErrCatalogLimit) {
+	if _, _, err := engine.toolDefinitionsFromSnapshot(snapshot, TurnRequest{}); !errors.Is(err, tool.ErrCatalogLimit) {
 		t.Fatalf("schema budget error = %v, want catalog limit", err)
+	}
+}
+
+func TestToolSelectionKeepsCoreAndBoundedRelevantDefinitions(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"search_text", "search_files", "search_definition", "search_references",
+		"file_read", "file_list", "file_write", "file_edit", "file_apply",
+		"shell_read", "shell_run", "quality_test", "project_map",
+		"special_deploy", "unrelated_fixture",
+	} {
+		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := TurnRequest{Prompt: "deploy the release"}
+	first, advertised, err := engine.toolDefinitionsFromSnapshot(snapshot, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"tool_search", "search_text", "file_read", "file_write",
+		"shell_run", "quality_test", "special_deploy",
+	} {
+		if !advertised[name] {
+			t.Fatalf("required or relevant tool %q omitted from %v", name, advertised)
+		}
+	}
+	if advertised["unrelated_fixture"] {
+		t.Fatalf("unrelated tool was advertised: %v", advertised)
+	}
+	encoded, _ := json.Marshal(first)
+	if tokens := (len(encoded) + 3) / 4; tokens > 4000 {
+		t.Fatalf("initial tool definitions = %d tokens, want <= 4000", tokens)
+	}
+	second, _, err := engine.toolDefinitionsFromSnapshot(snapshot, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeated, _ := json.Marshal(second)
+	if string(repeated) != string(encoded) {
+		t.Fatal("unchanged selection changed provider definitions")
+	}
+}
+
+func TestToolSearchRefreshesScopeCatalogAndBinding(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(catalogFixtureTool("special_deploy"), nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	before, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := attachTestScope(t, engine)
+	scope.spec.Catalog = before
+	if changed := engine.catalogChange(before); changed == nil ||
+		len(changed.Added) == 0 {
+		t.Fatalf("initial catalog change = %+v", changed)
+	}
+	entry, _ := before.Lookup("special_deploy")
+	if _, err := registry.Materialize(entry.Name, entry.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.refreshScopeCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	current := engine.scopeCatalog(scope)
+	changed := engine.catalogChange(current)
+	if changed == nil || len(changed.Replaced) != 1 ||
+		changed.Replaced[0].Name != "special_deploy" {
+		t.Fatalf("materialized catalog delta = %+v", changed)
+	}
+	_, advertised, err := engine.toolDefinitionsFromSnapshot(
+		current,
+		TurnRequest{Prompt: "continue"},
+	)
+	if err != nil || !advertised["special_deploy"] {
+		t.Fatalf("advertised = %v err=%v", advertised, err)
+	}
+	binding, ok := current.Binding("special_deploy")
+	if !ok {
+		t.Fatal("materialized binding missing")
+	}
+	if _, err := registry.ResolveCatalogToolID("special_deploy", binding); err != nil {
+		t.Fatalf("materialized binding rejected: %v", err)
+	}
+}
+
+func TestToolSearchMaterializesForTheNextSample(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	executor := &countingCatalogExecutor{
+		descriptor: catalogFixtureTool("special_deploy").Descriptor(),
+	}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("search", toolsearch.ToolName, `{"query":"special_deploy"}`),
+		toolCallStream("deploy", "special_deploy", `{}`),
+		textStream("done"),
+		textStream("done"),
+	}}
+	engine := newEngine(t, runtime, registry)
+	if _, err := engine.Run(t.Context(), "find a capability and use it", nil); err != nil {
+		t.Fatal(err)
+	}
+	if executor.calls.Load() != 1 || len(runtime.requests) < 2 {
+		t.Fatalf("calls=%d requests=%d", executor.calls.Load(), len(runtime.requests))
+	}
+	contains := func(request provider.ModelRequest, name string) bool {
+		for _, definition := range request.Tools {
+			if definition.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	if contains(runtime.requests[0], "special_deploy") ||
+		!contains(runtime.requests[1], "special_deploy") {
+		t.Fatal("materialized tool was not added only after tool_search")
 	}
 }

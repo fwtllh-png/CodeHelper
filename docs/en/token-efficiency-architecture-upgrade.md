@@ -4,10 +4,11 @@
 
 > Status: `in_progress`. T0 is accepted. T1 is implemented with
 > `implemented_validation_mixed`; T2 is also implemented with
-> `implemented_validation_mixed`; see
+> `implemented_validation_mixed`; T3 is accepted; see
 > [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
 >, [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json),
-> and [`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json).
+> [`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json),
+> and [`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json).
 >
 > Scope: prompt context, history, compaction, tool catalogs, tool results,
 > provider sessions, reasoning budgets, completion protocol, usage accounting,
@@ -649,16 +650,47 @@ Tool Definitions and growing Tool Result/Assistant History and is handed to T3.
 
 ### T3: Tool Context
 
-- select provider tools from intent and relevance;
-- retain core tools, relevant tools, and tool search;
-- render namespace and state diffs instead of repeated descriptions;
-- add token-aware model projection to the result store;
-- apply typed budgets to read, test, build, and generic output;
-- retain only model-required metadata.
+Final T3 acceptance (`accepted`):
 
-Exit: initial definitions at most 4K tokens, steady-state definition delta zero,
-100 KiB visible output falls at least 70%, full handle retrieval works, and
-unadvertised tools fail closed.
+All five exit gates pass. The machine-readable evidence is
+[`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json).
+
+| Exit gate | Result | Status |
+| --- | ---: | --- |
+| Initial Tool Definitions | 3,334 tokens, target <=4K | passed |
+| Steady-state definition delta | 0 tokens across 120 Live samples | passed |
+| 100 KiB model-visible Result | at least 84.46% lower, target >=70% | passed |
+| Full Handle retrieval | byte-exact paged reconstruction | passed |
+| Unadvertised Tool execution | fail closed with sampled binding | passed |
+
+Implementation facts:
+
+- Provider tools are selected from a Coding Core, Turn Intent, prompt
+  relevance, prior materialization, and `tool_search`;
+- a successful `tool_search` refreshes only the Scope Catalog, and the next
+  sample binds materialized tools to the new Revision and Authority;
+- Catalog projection emits Added/Replaced/Revoked deltas instead of repeating
+  the full catalog;
+- Result Store applies token-aware Read/Test/Build/Generic/Structured budgets,
+  stores the full result, and exposes bounded `result_get` paging;
+- model History keeps only recovery, completion, citation, diagnostics, and
+  Handle metadata; Runtime receipts retain the full Result.
+
+Hermetic 5/5 passed with eight samples. Input and uncached-input P50 fell from
+149,055/111,795 to 72,189/54,145, both down 51.57%. Tool Definition cumulative
+P50 fell from 81,224 to 26,672 and the first sample measured 3,334 tokens.
+
+DeepSeek Live 10/10 passed with identical prompt, fixture, model, and config
+digests. Input P50 fell from 413,745 to 178,678 (-56.81%), uncached input from
+79,459 to 45,582 (-42.63%), and sample-count P50 from 13 to 11 (-15.38%).
+Post-third-sample cache share P50 was 96.00%. One valid 30-sample outlier raised
+P90 to 377,527 and Max to 1,607,352; it was retained in the report. Cached input
+remained unpriced for 120 calls, so cost is still unknown.
+
+Correctness validation passed all Tool, Runtime Agent, Runtime App, persistence,
+Compaction Capability, and canonical Token Efficiency tests. Architecture
+Ratchet passed 43/43; the architecture closure changed by `-3` production
+lines and all `internal` production code by `-1`.
 
 ### T4: Loop and Reasoning
 
