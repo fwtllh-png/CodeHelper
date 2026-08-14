@@ -9,7 +9,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"syscall"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -39,7 +38,9 @@ func (e *Engine) modelStep(
 	ctx context.Context,
 	history *[]provider.Message,
 	turnUsage provider.Usage,
+	sampleID string,
 	reason string,
+	providerRetries uint32,
 	finishMode bool,
 	continued *bool,
 	pendingInputInjected *bool,
@@ -82,6 +83,7 @@ func (e *Engine) modelStep(
 	*history = append(*history, cloneMessages(worldDelta)...)
 	var totalUsage provider.Usage
 	var lastEstimate uint64
+	var providerAttempt uint32
 	var continuationMessages []provider.Message
 	var continuedBlocks []provider.ContentBlock
 	finishAttempted, continuations := finishMode, 0
@@ -169,7 +171,13 @@ func (e *Engine) modelStep(
 		messages := append(cloneMessages(stableContext), cloneMessages(*history)...)
 		messages = append(messages, turnContext...)
 		messages = append(messages, cloneMessages(continuationMessages)...)
-		if err := send(CallingModel, Event{}); err != nil {
+		providerAttempt++
+		if err := send(CallingModel, Event{
+			ModelExecution: &ModelExecution{
+				Kind: "provider_attempt", SampleID: sampleID,
+				Attempt: providerAttempt, Reason: sampleInput.Reason,
+			},
+		}); err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
 		}
 		requestContext, cancel := context.WithCancelCause(ctx)
@@ -198,13 +206,30 @@ func (e *Engine) modelStep(
 				attempt = -1
 				continue
 			}
-			if attempt < providerRetryLimit(e.options.MaxRetries, err) &&
-				ctx.Err() == nil {
+			contextChanged, recoveryErr := e.recoverContextOverflow(
+				err,
+				false,
+				history,
+				sampleInput,
+				maxOutputTokens,
+				send,
+			)
+			if recoveryErr != nil {
+				return nil, nil, totalUsage, lastEstimate, recoveryErr
+			}
+			retry, retryable := e.providerRetry(
+				err,
+				false,
+				providerRetries,
+				contextChanged,
+			)
+			if retryable && ctx.Err() == nil {
 				if sendErr := send(CallingModel, Event{
-					ProviderRetry: providerRetryEvent(attempt+1, err),
+					ProviderRetry: &retry,
 				}); sendErr != nil {
 					return nil, nil, totalUsage, lastEstimate, sendErr
 				}
+				providerRetries++
 				continue
 			}
 			return nil, nil, totalUsage, lastEstimate, err
@@ -347,41 +372,33 @@ func (e *Engine) modelStep(
 			}
 			return completeBlocks, calls, totalUsage, lastEstimate, nil
 		}
-		if meaningful ||
-			attempt >= providerRetryLimit(e.options.MaxRetries, err) ||
-			ctx.Err() != nil {
+		contextChanged, recoveryErr := e.recoverContextOverflow(
+			err,
+			meaningful,
+			history,
+			sampleInput,
+			maxOutputTokens,
+			send,
+		)
+		if recoveryErr != nil {
+			return nil, nil, totalUsage, lastEstimate, recoveryErr
+		}
+		retry, retryable := e.providerRetry(
+			err,
+			meaningful,
+			providerRetries,
+			contextChanged,
+		)
+		if !retryable || ctx.Err() != nil {
 			return blocks, nil, totalUsage, lastEstimate, err
 		}
 		if sendErr := send(CallingModel, Event{
-			ProviderRetry: providerRetryEvent(attempt+1, err),
+			ProviderRetry: &retry,
 		}); sendErr != nil {
 			return nil, nil, totalUsage, lastEstimate, sendErr
 		}
+		providerRetries++
 	}
-}
-
-func providerRetryEvent(attempt int, err error) *ProviderRetry {
-	category := "provider_unavailable"
-	switch {
-	case errors.Is(err, syscall.ECONNRESET):
-		category = "connection_reset"
-	case errors.Is(err, syscall.EPIPE):
-		category = "broken_pipe"
-	case errors.Is(err, io.ErrUnexpectedEOF):
-		category = "unexpected_eof"
-	case errors.Is(err, context.DeadlineExceeded):
-		category = "deadline_exceeded"
-	}
-	return &ProviderRetry{
-		Attempt: attempt, Code: protocol.CodeOf(err), Category: category,
-	}
-}
-
-func providerRetryLimit(configured int, err error) int {
-	if configured < 1 && protocol.IsRetryable(err) {
-		return 1
-	}
-	return configured
 }
 
 const maxOutputContinuations = 2

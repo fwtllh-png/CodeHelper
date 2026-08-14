@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "stage": "P5",
+  "status": "attempts_durable",
+  "base_commit": "3459c59",
+  "acceptance": {
+    "passed": true,
+    "normalized_terminal_failures_persisted": true,
+    "retry_fact_persisted_before_delay": true,
+    "retry_schedule_survives_restart": true,
+    "retry_budget_survives_restart": true,
+    "effect_attempts_monotonic": true,
+    "permanent_failures_retry": false,
+    "meaningful_stream_failures_retry": false,
+    "empty_response_retry_limit": 1,
+    "provider_delay_bounded": true,
+    "cancellation_during_delay_reissues_request": false,
+    "context_overflow_requires_visible_progress": true,
+    "provider_attempts_reported_separately": true,
+    "model_samples_reported_separately": true,
+    "completion_repairs_reported_separately": true,
+    "p0_goldens_unchanged": true
+  },
+  "architecture": {
+    "targets_passed": 55,
+    "provider_core_lines": 700,
+    "agent_engine_lines": 9367,
+    "runtime_app_lines": 7608,
+    "hidden_transport_retry_loops": 0,
+    "retry_policy_owner": "internal/runtime/agent",
+    "retry_state_owner": "internal/runtime/agent/turnkernel"
+  },
+  "production_size_trend": {
+    "gate": "observational",
+    "base_lines": 38654,
+    "head_lines": 39063,
+    "added_lines": 409,
+    "deleted_lines": 0,
+    "net_lines": 409,
+    "justification": "P5 adds durable normalized failure and retry schedule facts, atomic Provider Effect requeue, restart-safe attempt accounting, bounded delay and context-overflow policy, and separate model execution receipt attribution. Size is recorded as a trend rather than a correctness threshold."
+  },
+  "token_benchmark": {
+    "mode": "hermetic",
+    "runs_passed": 5,
+    "runs_total": 5,
+    "input_tokens_p50": 72189,
+    "uncached_input_tokens_p50": 54145,
+    "cached_input_tokens_p50": 18044,
+    "sample_count_p50": 8,
+    "p4_hermetic_equivalent": true
+  },
+  "commands": {
+    "hermetic": "make provider-architecture-p5",
+    "p0_contract": "make provider-p0-goldens",
+    "live_control": "make provider-deepseek-live-control",
+    "architecture": "make architecture-ratchet",
+    "protocol": "make protocol-schema && make vscode-protocol-check",
+    "token_benchmark": "make token-bench",
+    "documentation": "make docs-check && make book-check"
+  }
+}

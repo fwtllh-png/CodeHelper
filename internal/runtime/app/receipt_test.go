@@ -137,6 +137,26 @@ func TestReceiptReportsProviderRetrySummary(t *testing.T) {
 	}
 }
 
+func TestReceiptSeparatesProviderAttemptsSamplesAndCompletionRepairs(t *testing.T) {
+	recorder := newReceiptRecorder("repair model output")
+	for _, event := range []agentengine.ModelExecution{
+		{Kind: "model_sample", SampleID: "sample-1", Reason: promptcontext.SampleNormal},
+		{Kind: "provider_attempt", SampleID: "sample-1", Attempt: 1},
+		{Kind: "provider_attempt", SampleID: "sample-1", Attempt: 2},
+		{Kind: "model_sample", SampleID: "sample-2", Reason: promptcontext.SampleCompletionRepair},
+		{Kind: "provider_attempt", SampleID: "sample-2", Attempt: 1},
+	} {
+		value := event
+		recorder.observe(agentengine.Event{ModelExecution: &value})
+	}
+	receipt := recorder.build(turnObservations{})
+	if receipt.ModelExecution.ProviderAttempts != 3 ||
+		receipt.ModelExecution.ModelSamples != 2 ||
+		receipt.ModelExecution.CompletionRepairs != 1 {
+		t.Fatalf("model execution = %+v", receipt.ModelExecution)
+	}
+}
+
 func TestReceiptReportsReadPathsAndContextSections(t *testing.T) {
 	recorder := newReceiptRecorder("fix add")
 	recorder.editorContext = []protocol.EditorContextReceipt{{

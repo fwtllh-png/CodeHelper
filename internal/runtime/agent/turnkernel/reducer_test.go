@@ -4,7 +4,9 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -616,16 +618,24 @@ func TestPhase4R1EffectLifecycleHasStableIdentityAndClosure(t *testing.T) {
 
 func TestPhase4R1SampleUsageContextAndCancelAreStructured(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
-	state = apply(t, state, ModelSampleStarted{
-		SampleID: "sample-1",
-		Attempt:  1,
+	state = apply(t, state, ModelSampleRequested{SampleID: "sample-1"}).State
+	effectID := pendingEffectID(state, EffectSampleProvider, "sample-1")
+	state = apply(t, state, EffectStarted{
+		EffectID: effectID, Attempt: 1,
 	}).State
 	state = apply(t, state, ProviderRetryRequested{
-		SampleID: "sample-1",
-		Reason:   "unexpected eof",
+		EffectID: effectID, SampleID: "sample-1",
+		Attempt: 1, Retry: 1,
+		Failure: provider.Failure{
+			Code: provider.FailureStreamClosed, Message: "unexpected eof",
+		},
+		RetryAt: time.Now(), PolicyRevision: "test/v1",
 	}).State
-	state = apply(t, state, ModelSampleFinished{
-		SampleID: "sample-1",
+	state = apply(t, state, EffectStarted{
+		EffectID: effectID, Attempt: 2,
+	}).State
+	state = apply(t, state, ModelSampleResultReceived{
+		EffectID: effectID, SampleID: "sample-1",
 		Usage: UsageState{
 			InputTokens: 10, OutputTokens: 3, CostKnown: true,
 		},
@@ -654,6 +664,32 @@ func TestPhase4R1SampleUsageContextAndCancelAreStructured(t *testing.T) {
 		Calls: []ToolCallState{{ID: "call-1", Name: "tool"}},
 	}); !errors.Is(err, ErrIllegalTransition) {
 		t.Fatalf("post-cancel tool error = %v", err)
+	}
+}
+
+func TestPermanentProviderFailureIsPersistedWithoutRetry(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state = apply(t, state, ModelSampleRequested{SampleID: "sample-auth"}).State
+	effectID := pendingEffectID(state, EffectSampleProvider, "sample-auth")
+	state = apply(t, state, EffectStarted{
+		EffectID: effectID, Attempt: 1,
+	}).State
+	failure := &provider.Failure{
+		Code: provider.FailureAuth, Message: "invalid credential",
+		HTTPStatus: 401, RequestID: "request-1",
+	}
+	state = apply(t, state, ModelSampleResultReceived{
+		EffectID: effectID, SampleID: "sample-auth",
+		Error: failure.Message, Failure: failure,
+	}).State
+	sample := state.SampleLedger["sample-auth"]
+	if sample.Status != SampleFailed ||
+		sample.ProviderRetries != 0 ||
+		sample.LastFailure == nil ||
+		sample.LastFailure.Code != provider.FailureAuth ||
+		sample.LastFailure.HTTPStatus != 401 ||
+		sample.LastFailure.RequestID != "request-1" {
+		t.Fatalf("sample = %+v", sample)
 	}
 }
 

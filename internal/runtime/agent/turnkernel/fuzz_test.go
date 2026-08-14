@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -114,8 +116,28 @@ func fuzzCommand(state State, index int, value byte) Command {
 	case 17:
 		return ModelSampleFinished{SampleID: state.ActiveSampleID}
 	case 18:
+		effectID := ""
+		attempt := uint32(1)
+		retry := uint32(1)
+		if sample, ok := state.SampleLedger[state.ActiveSampleID]; ok {
+			attempt = sample.Attempt
+			retry = sample.ProviderRetries + 1
+		}
+		for id, effect := range state.PendingEffects {
+			if effect.Kind == EffectSampleProvider &&
+				effect.CallID == state.ActiveSampleID {
+				effectID = id
+				break
+			}
+		}
 		return ProviderRetryRequested{
-			SampleID: state.ActiveSampleID, Reason: "fixture retry",
+			EffectID: effectID, SampleID: state.ActiveSampleID,
+			Attempt: attempt, Retry: retry,
+			Failure: provider.Failure{
+				Code:    provider.FailureTransport,
+				Message: "fixture retry",
+			},
+			RetryAt: time.Unix(1, 0), PolicyRevision: "fuzz/v1",
 		}
 	case 19:
 		return CancelRequested{Reason: "fixture cancel"}

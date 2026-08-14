@@ -654,7 +654,15 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				sampleID += "-recovered"
 			}
 		}
-		if err := kernel.beginModelSample(sampleID); err != nil {
+		if err := send(CallingModel, Event{
+			ModelExecution: &ModelExecution{
+				Kind: "model_sample", SampleID: sampleID,
+				Reason: sampleReason,
+			},
+		}); err != nil {
+			return result, err
+		}
+		if err := kernel.beginModelSample(ctx, sampleID); err != nil {
 			return result, err
 		}
 		var modelOutputContinued bool
@@ -664,8 +672,11 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			if event.ProviderRetry != nil {
 				if err := kernel.providerRetry(
 					sampleID,
-					event.ProviderRetry.Category,
+					*event.ProviderRetry,
 				); err != nil {
+					return err
+				}
+				if err := kernel.beginModelSample(ctx, sampleID); err != nil {
 					return err
 				}
 			}
@@ -680,7 +691,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			ctx,
 			&transaction,
 			result.Usage,
+			sampleID,
 			sampleReason,
+			kernel.providerRetries(sampleID),
 			progress.stage == turnkernel.ProgressStageFinishOnly &&
 				turnkernel.IsResearchIntent(kernel.intent()),
 			&modelOutputContinued,

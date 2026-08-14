@@ -6,6 +6,9 @@
 package turnkernel
 
 import (
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -217,11 +220,22 @@ type ContextState struct {
 }
 
 type ModelSampleState struct {
-	ID              string       `json:"id"`
-	Attempt         uint32       `json:"attempt"`
-	Status          SampleStatus `json:"status"`
-	ProviderRetries uint32       `json:"provider_retries,omitempty"`
-	Error           string       `json:"error,omitempty"`
+	ID              string              `json:"id"`
+	Attempt         uint32              `json:"attempt"`
+	Status          SampleStatus        `json:"status"`
+	ProviderRetries uint32              `json:"provider_retries,omitempty"`
+	LastFailure     *provider.Failure   `json:"last_failure,omitempty"`
+	Retry           *ProviderRetryState `json:"retry,omitempty"`
+	Error           string              `json:"error,omitempty"`
+}
+
+type ProviderRetryState struct {
+	EffectID         string    `json:"effect_id"`
+	Attempt          uint32    `json:"attempt"`
+	Retry            uint32    `json:"retry"`
+	EffectiveDelayMS uint64    `json:"effective_delay_ms"`
+	RetryAt          time.Time `json:"retry_at"`
+	PolicyRevision   string    `json:"policy_revision"`
 }
 
 type CancellationState struct {

@@ -433,15 +433,23 @@ func applyModelSampleResult(
 		strings.TrimSpace(command.SampleID) == "" {
 		return illegal(current, command, "sample result identity is incomplete")
 	}
+	if (command.Error == "") != (command.Failure == nil) {
+		return illegal(current, command, "sample failure fact does not match result")
+	}
 	effect, ok := current.PendingEffects[command.EffectID]
+	running := ok &&
+		effect.Status == EffectRunning &&
+		current.ActiveSampleID == command.SampleID
+	scheduledAbort := ok &&
+		effect.Status == EffectRequested &&
+		command.Error != "" &&
+		current.ActiveSampleID == "" &&
+		current.SampleLedger[command.SampleID].Status == SampleRequested
 	if !ok ||
 		effect.Kind != EffectSampleProvider ||
 		effect.CallID != command.SampleID ||
-		effect.Status != EffectRunning {
+		(!running && !scheduledAbort) {
 		return illegal(current, command, "sample result effect is not running")
-	}
-	if current.ActiveSampleID != command.SampleID {
-		return illegal(current, command, "sample result does not match active sample")
 	}
 	success := command.Error == ""
 	if err := finishEffect(
@@ -455,9 +463,12 @@ func applyModelSampleResult(
 	sample := current.SampleLedger[command.SampleID]
 	sample.Status = SampleCompleted
 	sample.Error = ""
+	sample.Retry = nil
 	if !success {
 		sample.Status = SampleFailed
 		sample.Error = command.Error
+		failure := *command.Failure
+		sample.LastFailure = &failure
 	}
 	transition.State.SampleLedger[command.SampleID] = sample
 	transition.State.ActiveSampleID = ""
@@ -503,16 +514,45 @@ func applyProviderRetry(
 	if err := requirePhase(current, command, PhaseSampling); err != nil {
 		return err
 	}
+	effect, ok := current.PendingEffects[command.EffectID]
 	if current.ActiveSampleID != command.SampleID ||
-		strings.TrimSpace(command.Reason) == "" {
+		!ok ||
+		effect.Kind != EffectSampleProvider ||
+		effect.CallID != command.SampleID ||
+		effect.Status != EffectRunning ||
+		command.Attempt == 0 ||
+		command.Attempt != effect.Attempt ||
+		command.Failure.Code == "" ||
+		strings.TrimSpace(command.Failure.Message) == "" ||
+		command.Retry == 0 ||
+		strings.TrimSpace(command.PolicyRevision) == "" ||
+		command.RetryAt.IsZero() {
 		return illegal(current, command, "provider retry does not match active sample")
 	}
 	sample := current.SampleLedger[command.SampleID]
-	sample.ProviderRetries++
-	sample.Error = command.Reason
+	if command.Retry != sample.ProviderRetries+1 {
+		return illegal(current, command, "provider retry number is not monotonic")
+	}
+	failure := command.Failure
+	sample.ProviderRetries = command.Retry
+	sample.LastFailure = &failure
+	sample.Retry = &ProviderRetryState{
+		EffectID:         command.EffectID,
+		Attempt:          command.Attempt,
+		Retry:            command.Retry,
+		EffectiveDelayMS: command.EffectiveDelayMS,
+		RetryAt:          command.RetryAt,
+		PolicyRevision:   command.PolicyRevision,
+	}
+	sample.Status = SampleRequested
+	sample.Error = ""
 	transition.State.SampleLedger[command.SampleID] = sample
+	transition.State.ActiveSampleID = ""
+	effect.Status = EffectRequested
+	transition.State.PendingEffects[command.EffectID] = effect
 	transition.Events = append(transition.Events, Event{
-		Kind: EventProviderRetry, SampleID: command.SampleID,
+		Kind: EventProviderRetry, EffectID: command.EffectID,
+		SampleID: command.SampleID,
 	})
 	return nil
 }
@@ -669,6 +709,8 @@ func applyEffectStarted(
 		}
 		sample.Status = SampleRunning
 		sample.Attempt = command.Attempt
+		sample.Retry = nil
+		sample.Error = ""
 		transition.State.SampleLedger[effect.CallID] = sample
 		transition.State.ActiveSampleID = effect.CallID
 	}

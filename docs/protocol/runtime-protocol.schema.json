@@ -4300,6 +4300,26 @@
         "mode": {
           "type": "string"
         },
+        "model_execution": {
+          "type": "object",
+          "properties": {
+            "completion_repairs": {
+              "type": "integer"
+            },
+            "model_samples": {
+              "type": "integer"
+            },
+            "provider_attempts": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "completion_repairs",
+            "model_samples",
+            "provider_attempts"
+          ],
+          "additionalProperties": false
+        },
         "not_collected": {
           "type": "array",
           "items": {
@@ -4611,6 +4631,7 @@
         "goal",
         "input_tokens",
         "latency_ms",
+        "model_execution",
         "output_tokens",
         "verification"
       ],

@@ -2,12 +2,13 @@
 
 简体中文 | [English](../en/provider-architecture-upgrade.md)
 
-> 状态：P4 `replay_owned`。版本化证据见
+> 状态：P5 `attempts_durable`。版本化证据见
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
 > [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json)
 > 、[`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json)
 > 、[`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json)
-> 与 [`provider-architecture-p4-evidence.json`](../provider-architecture-p4-evidence.json)。
+> 、[`provider-architecture-p4-evidence.json`](../provider-architecture-p4-evidence.json)
+> 与 [`provider-architecture-p5-evidence.json`](../provider-architecture-p5-evidence.json)。
 >
 > 范围：Model Route 元数据、Provider-neutral Request 与 Stream 契约、Wire
 > Adapter、HTTP 与 WebSocket Transport、DeepSeek 专属行为、Provider
@@ -1356,7 +1357,7 @@ Exit：
 
 ### P5：Durable Retry 与 Recovery
 
-目标状态：`attempts_durable`。
+状态：`attempts_durable`。
 
 工作：
 
@@ -1376,6 +1377,24 @@ Exit：
 - Retryable Failure 不重复执行 Tool；
 - Context-overflow Retry 要求 Visible Context Progress；
 - Read-only Empty Failure 不会变成 Completion Repair。
+
+结果：
+
+- 终止性与可 Retry 的标准化 Provider Failure 都保留在 Durable Sample
+  Ledger 中；
+- Retry Command 原子持久化 Failure、Attempt、Retry Number、Effective
+  Delay、`RetryAt` 与 Policy Revision，同时将 Provider Effect 返回
+  Requested；
+- 同一 Effect 以单调递增 Attempt 启动后续调用，重启后 Retry Budget 与 Delay
+  均不重置；
+- Delay 期间取消会关闭 Scheduled Sample，不会再次调用 Provider；
+- Runtime Retry Matrix 禁止 Permanent 与 Malformed Failure Retry，禁止在
+  Meaningful Output 后透明 Retry Stream Failure，对 Provider Delay 设置上限，
+  并只允许 Empty Response 执行一次 Bounded Retry；
+- Context Overflow 只有在 Forced Token-native Compaction 可测量地减少
+  Model-visible History 后才 Retry；
+- Execution Receipt 分别报告 Provider Attempt、逻辑 Model Sample 与
+  Completion Repair。
 
 ### P6：Context Pruning 与最终启用
 

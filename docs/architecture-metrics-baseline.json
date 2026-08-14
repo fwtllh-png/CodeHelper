@@ -52,12 +52,12 @@
       "path": "internal/adapter/provider",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 696,
+        "production_lines": 700,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "P4 adds the provider-neutral versioned replay and assistant provenance contract."
+        "production_lines": "P5 extends the provider-neutral failure taxonomy for durable retry policy."
       }
     },
     {
@@ -282,12 +282,13 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 9113,
-        "options_fields": 58,
+        "production_lines": 9367,
+        "options_fields": 59,
         "mutex_fields": 9
       },
       "relaxations": {
-        "production_lines": "P4 commits adapter-owned replay only with successful assistant history and strips it from rewritten continuations."
+        "production_lines": "P5 owns normalized failure policy, context-overflow recovery, durable retry scheduling, and model execution attribution.",
+        "options_fields": "P5 adds the Runtime-owned provider retry delay bound."
       }
     },
     {
@@ -296,9 +297,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7598,
+        "production_lines": 7608,
         "options_fields": 18,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "P5 records separate Provider Attempt, Model Sample, and Completion Repair receipt totals."
       }
     },
     {
@@ -538,8 +542,11 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 508,
+        "lines": 522,
         "max_function_lines": 123
+      },
+      "relaxations": {
+        "lines": "P5 adds explicit Engine retry-delay configuration and validation."
       }
     },
     {

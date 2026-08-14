@@ -1,20 +1,42 @@
 package engine
 
 import (
+	"context"
+	"time"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
 
-func (s *engineTurnKernel) beginModelSample(sampleID string) error {
+func (s *engineTurnKernel) beginModelSample(
+	ctx context.Context,
+	sampleID string,
+) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if _, exists := s.state.SampleLedger[sampleID]; !exists {
 		if err := s.applyAuthoritativeLocked(
 			turnkernel.ModelSampleRequested{SampleID: sampleID},
 		); err != nil {
+			s.mu.Unlock()
 			return err
 		}
 	}
+	retryAt := time.Time{}
+	if retry := s.state.SampleLedger[sampleID].Retry; retry != nil {
+		retryAt = retry.RetryAt
+	}
+	s.mu.Unlock()
+	if delay := time.Until(retryAt); !retryAt.IsZero() && delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		case <-timer.C:
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	from := s.state.Phase
 	effect, err := s.dispatcher.Start(
 		turnkernel.EffectSampleProvider,
@@ -73,6 +95,8 @@ func (s *engineTurnKernel) finishModelSample(
 	}
 	if sampleErr != nil {
 		command.Error = sampleErr.Error()
+		failure := providerFailure(sampleErr, false)
+		command.Failure = &failure
 	}
 	from := s.state.Phase
 	if err := s.dispatcher.Resolve(command); err != nil {
@@ -84,12 +108,43 @@ func (s *engineTurnKernel) finishModelSample(
 
 func (s *engineTurnKernel) providerRetry(
 	sampleID string,
-	reason string,
+	retry ProviderRetry,
 ) error {
-	return s.applyAuthoritative(turnkernel.ProviderRetryRequested{
-		SampleID: sampleID,
-		Reason:   reason,
-	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	effect, _, err := s.dispatcher.Routed(
+		turnkernel.EffectSampleProvider,
+		sampleID,
+	)
+	if err != nil {
+		return err
+	}
+	from := s.state.Phase
+	command := turnkernel.ProviderRetryRequested{
+		EffectID:         effect.ID,
+		SampleID:         sampleID,
+		Attempt:          effect.Attempt,
+		Retry:            retry.Retry,
+		Failure:          retry.Failure,
+		EffectiveDelayMS: uint64(retry.EffectiveDelay / time.Millisecond),
+		RetryAt:          retry.RetryAt,
+		PolicyRevision:   retry.PolicyRevision,
+	}
+	if err := s.dispatcher.ScheduleRetry(
+		turnkernel.EffectSampleProvider,
+		sampleID,
+		command,
+	); err != nil {
+		return err
+	}
+	s.recordAcceptedLocked(command, from)
+	return nil
+}
+
+func (s *engineTurnKernel) providerRetries(sampleID string) uint32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state.SampleLedger[sampleID].ProviderRetries
 }
 
 func (s *engineTurnKernel) evaluateTurnStep(

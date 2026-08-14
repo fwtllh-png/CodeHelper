@@ -2,12 +2,13 @@
 
 [Simplified Chinese](../zh-CN/provider-architecture-upgrade.md) | English
 
-> Status: P4 `replay_owned`. Versioned evidence:
+> Status: P5 `attempts_durable`. Versioned evidence:
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
 > [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json),
 > [`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json),
 > [`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json),
-> and [`provider-architecture-p4-evidence.json`](../provider-architecture-p4-evidence.json).
+> [`provider-architecture-p4-evidence.json`](../provider-architecture-p4-evidence.json),
+> and [`provider-architecture-p5-evidence.json`](../provider-architecture-p5-evidence.json).
 >
 > Scope: model route metadata, provider-neutral request and stream contracts,
 > wire adapters, HTTP and WebSocket transport, DeepSeek-specific behavior,
@@ -1405,7 +1406,7 @@ Result:
 
 ### P5: Durable Retry and Recovery
 
-Status target: `attempts_durable`.
+Status: `attempts_durable`.
 
 Work:
 
@@ -1426,6 +1427,25 @@ Exit:
 - retryable failures never execute tools twice;
 - context-overflow retry requires visible context progress; and
 - read-only empty failures cannot become completion repair.
+
+Result:
+
+- normalized terminal and retryable Provider failures are retained in the
+  durable Sample Ledger;
+- a retry command atomically persists failure, attempt, retry number, effective
+  delay, `RetryAt`, and policy revision while returning the Provider Effect to
+  Requested;
+- the same Effect starts each later Attempt monotonically, and restart preserves
+  both retry budget and delay;
+- cancellation during delay closes the scheduled Sample without another
+  Provider call;
+- the Runtime retry matrix prevents retry for permanent and malformed failures,
+  prevents transparent stream retry after meaningful output, caps Provider
+  delay, and gives empty responses one bounded retry;
+- context overflow retries only when forced token-native compaction measurably
+  reduces model-visible history; and
+- execution receipts report Provider Attempts, logical Model Samples, and
+  Completion Repairs separately.
 
 ### P6: Context Pruning and Final Enablement
 

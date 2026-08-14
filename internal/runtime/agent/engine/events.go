@@ -57,16 +57,29 @@ type Event struct {
 	Verification       *VerificationReceipt        `json:"verification,omitempty"`
 	Completion         *tool.CompletionDeclaration `json:"completion,omitempty"`
 	ProviderRetry      *ProviderRetry              `json:"provider_retry,omitempty"`
+	ModelExecution     *ModelExecution             `json:"model_execution,omitempty"`
 	ToolOutput         *ToolOutput                 `json:"tool_output,omitempty"`
 	CatalogChanged     *CatalogChanged             `json:"catalog_changed,omitempty"`
 	MCPHealthChanged   *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
 	ExtensionLifecycle *ExtensionLifecycleChanged  `json:"extension_lifecycle,omitempty"`
 }
 
+type ModelExecution struct {
+	Kind     string `json:"kind"`
+	SampleID string `json:"sample_id"`
+	Attempt  uint32 `json:"attempt,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+}
+
 type ProviderRetry struct {
-	Attempt  int                `json:"attempt"`
-	Code     protocol.ErrorCode `json:"code"`
-	Category string             `json:"category"`
+	Attempt        int                `json:"attempt"`
+	Retry          uint32             `json:"retry"`
+	Code           protocol.ErrorCode `json:"code"`
+	Category       string             `json:"category"`
+	Failure        provider.Failure   `json:"failure"`
+	EffectiveDelay time.Duration      `json:"effective_delay"`
+	RetryAt        time.Time          `json:"retry_at"`
+	PolicyRevision string             `json:"policy_revision"`
 }
 
 // TerminalIssue is a cleanup/finalization failure that happened after the

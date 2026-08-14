@@ -1,6 +1,11 @@
 package turnkernel
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+)
 
 type Command interface {
 	commandName() string
@@ -59,6 +64,7 @@ type ModelSampleResultReceived struct {
 	SampleID  string
 	Usage     UsageState
 	Context   ContextState
+	Failure   *provider.Failure
 	Text      string
 	Calls     []ToolCallState
 	Continued bool
@@ -70,8 +76,14 @@ func (ModelSampleResultReceived) commandName() string {
 }
 
 type ProviderRetryRequested struct {
-	SampleID string
-	Reason   string
+	EffectID         string
+	SampleID         string
+	Attempt          uint32
+	Retry            uint32
+	Failure          provider.Failure
+	EffectiveDelayMS uint64
+	RetryAt          time.Time
+	PolicyRevision   string
 }
 
 func (ProviderRetryRequested) commandName() string { return "provider_retry_requested" }

@@ -1222,6 +1222,11 @@ export type TurnReceiptData = {
     };
   readonly "latency_ms": number;
   readonly "mode"?: string;
+  readonly "model_execution": {
+      readonly "completion_repairs": number;
+      readonly "model_samples": number;
+      readonly "provider_attempts": number;
+    };
   readonly "not_collected"?: ReadonlyArray<string>;
   readonly "outcome"?: string;
   readonly "output_tokens": number;
