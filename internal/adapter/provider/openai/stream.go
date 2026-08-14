@@ -166,6 +166,12 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 			continue
 		}
 		seen := d.reasoning[event.Index]
+		if event.Block != nil && len(event.ReplayFragment) != 0 {
+			var item map[string]any
+			if json.Unmarshal(event.ReplayFragment, &item) == nil {
+				event.Text = reasoningTextMatchingVisible(item, seen)
+			}
+		}
 		visible := event.Text
 		if strings.HasPrefix(visible, seen) {
 			visible = strings.TrimPrefix(visible, seen)
@@ -176,7 +182,7 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 			d.reasoning[event.Index] = seen + visible
 		}
 		event.Text = visible
-		if event.Block != nil && len(event.ReplayFragment) == 0 {
+		if event.Block != nil {
 			event.Block.Text = visible
 		}
 		hasReplayFragment := len(event.ReplayFragment) != 0
@@ -200,6 +206,25 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 	}
 	return reconciled, nil
 }
+
+func reasoningTextMatchingVisible(item map[string]any, seen string) string {
+	summary := reasoningTextFromContentParts(item["summary"])
+	content := reasoningTextFromContentParts(item["content"])
+	if seen == "" {
+		if summary != "" {
+			return summary
+		}
+		return content
+	}
+	for _, candidate := range []string{summary, content} {
+		if strings.HasPrefix(candidate, seen) ||
+			strings.HasPrefix(seen, candidate) {
+			return candidate
+		}
+	}
+	return seen
+}
+
 func (s *stream) finish(reason provider.StopReason) {
 	if s.stopped {
 		return

@@ -73,6 +73,44 @@ func TestResponsesReplayRejectsMalformedNativeItemBeforeIO(t *testing.T) {
 	}
 }
 
+func TestResponsesReplayDropsUnrelatedNativeItem(t *testing.T) {
+	request := testRequest(
+		t, "https://api.openai.test", model.ProtocolOpenAIResponses,
+	)
+	reasoning := json.RawMessage(
+		`{"type":"reasoning","id":"rs_native",` +
+			`"content":[{"type":"reasoning_text","text":"native chain"}],` +
+			`"summary":[{"type":"summary_text","text":"other summary"}]}`,
+	)
+	request.Messages = []provider.Message{
+		provider.ProducedAssistant(
+			request.Route,
+			[]provider.ContentBlock{{
+				Type: provider.ContentReasoning,
+				ID:   "rs_native",
+				Text: "visible reasoning",
+			}},
+			1,
+			mustReplayState(t, []json.RawMessage{reasoning}),
+		),
+		provider.TextMessage(provider.RoleUser, "continue"),
+	}
+	adapter, err := NewAdapter(model.AdapterOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := adapter.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(call.Body)
+	if strings.Contains(body, "rs_native") ||
+		strings.Contains(body, "native chain") ||
+		!strings.Contains(body, "visible reasoning") {
+		t.Fatalf("replayed request = %s", body)
+	}
+}
+
 func mustReplayState(
 	t *testing.T,
 	items []json.RawMessage,

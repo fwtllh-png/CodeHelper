@@ -124,13 +124,13 @@
       "path": "internal/adapter/provider/openai",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1448,
+        "production_lines": 1507,
         "options_fields": 0,
         "mutex_fields": 2
       },
       "relaxations": {
         "internal_fanout": "P2 makes OpenAI own prepared calls and continuation sessions.",
-        "production_lines": "P4 captures, validates, and reconstructs versioned Responses replay items without block-level private fields.",
+        "production_lines": "Live DeepSeek validation requires the Responses adapter to reconcile visible reasoning summaries with native content and reject unrelated replay item bindings.",
         "mutex_fields": "OpenAI now owns connection-local Responses continuation state."
       }
     },

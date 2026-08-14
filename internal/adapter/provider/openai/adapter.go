@@ -345,7 +345,7 @@ func responsesReasoningItem(
 		replayText := strings.TrimSpace(reasoningTextFromItem(item))
 		if text == "" {
 			text = replayText
-		} else if replayText != "" && replayText != text {
+		} else if !reasoningItemContainsText(item, text) {
 			return nil, errors.New(
 				"Responses replay reasoning does not match assistant content",
 			)
@@ -361,6 +361,23 @@ func responsesReasoningItem(
 	return out, nil
 }
 
+func reasoningItemContainsText(item map[string]any, text string) bool {
+	var populated bool
+	for _, key := range []string{"content", "summary"} {
+		candidate := strings.TrimSpace(
+			reasoningTextFromContentParts(item[key]),
+		)
+		if candidate == "" {
+			continue
+		}
+		populated = true
+		if candidate == text {
+			return true
+		}
+	}
+	return !populated
+}
+
 func replayReasoningItem(
 	items []json.RawMessage,
 	block provider.ContentBlock,
@@ -370,16 +387,33 @@ func replayReasoningItem(
 		for _, raw := range items {
 			var item map[string]any
 			if json.Unmarshal(raw, &item) == nil &&
-				stringValue(item["id"]) == block.ID {
+				stringValue(item["id"]) == block.ID &&
+				replayItemMatchesBlock(item, block) {
 				return raw
 			}
 		}
 	}
-	if ordinal >= 0 && ordinal < len(items) {
+	for _, raw := range items {
+		var item map[string]any
+		if json.Unmarshal(raw, &item) == nil &&
+			replayItemMatchesBlock(item, block) {
+			return raw
+		}
+	}
+	if block.Text == "" && ordinal >= 0 && ordinal < len(items) {
 		return items[ordinal]
 	}
 	return nil
 }
+
+func replayItemMatchesBlock(
+	item map[string]any,
+	block provider.ContentBlock,
+) bool {
+	text := strings.TrimSpace(block.Text)
+	return text == "" || reasoningItemContainsText(item, text)
+}
+
 func reasoningTextFromItem(item map[string]any) string {
 	if item == nil {
 		return ""

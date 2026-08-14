@@ -217,6 +217,83 @@ func TestResponsesStreamDoesNotReplayCompletedReasoning(t *testing.T) {
 	}
 }
 
+func TestResponsesReplayKeepsVisibleSummarySeparateFromNativeContent(
+	t *testing.T,
+) {
+	input := strings.Join([]string{
+		`data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_1","delta":"visible "}`,
+		"",
+		`data: {"type":"response.reasoning_summary_text.delta","output_index":0,"item_id":"rs_1","delta":"summary"}`,
+		"",
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","content":[{"type":"reasoning_text","text":"native private chain"}],"summary":[{"type":"summary_text","text":"visible summary"}]}}`,
+		"",
+		`data: {"type":"response.completed","response":{"output":[{"type":"reasoning","id":"rs_1","content":[{"type":"reasoning_text","text":"native private chain"}],"summary":[{"type":"summary_text","text":"visible summary"}]}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+		"",
+		"",
+	}, "\n")
+	stream, err := NewStreamWithOptions(
+		io.NopCloser(strings.NewReader(input)),
+		model.ProtocolOpenAIResponses,
+		StreamPolicy{CaptureReplay: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visible strings.Builder
+	var replay *provider.ReplayState
+	for _, event := range events {
+		if event.Type == provider.EventReasoningDelta {
+			visible.WriteString(event.Text)
+		}
+		if event.Type == provider.EventReplayState {
+			replay = event.Replay
+		}
+	}
+	if visible.String() != "visible summary" || replay == nil {
+		t.Fatalf(
+			"visible=%q replay=%+v events=%+v",
+			visible.String(),
+			replay,
+			events,
+		)
+	}
+
+	request := testRequest(
+		t,
+		"https://api.openai.test",
+		model.ProtocolOpenAIResponses,
+	)
+	request.Messages = []provider.Message{
+		provider.ProducedAssistant(
+			request.Route,
+			[]provider.ContentBlock{{
+				Type: provider.ContentReasoning,
+				ID:   "rs_1",
+				Text: "visible summary",
+			}},
+			1,
+			replay,
+		),
+		provider.TextMessage(provider.RoleUser, "continue"),
+	}
+	adapter, err := NewAdapter(model.AdapterOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := adapter.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(call.Body), "native private chain") ||
+		!strings.Contains(string(call.Body), "visible summary") {
+		t.Fatalf("replayed request = %s", call.Body)
+	}
+}
+
 func TestResponsesStreamNormalizesSearchCitationAndRegularTool(t *testing.T) {
 	input := strings.Join([]string{
 		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"read"}}`,
