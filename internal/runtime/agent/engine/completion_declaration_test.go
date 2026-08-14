@@ -171,19 +171,13 @@ func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
 	}
 }
 
-func TestReadOnlyToolTurnRequiresCompletionDeclaration(t *testing.T) {
+func TestReadOnlyToolTurnCompletesWithoutDeclarationRepair(t *testing.T) {
 	registry := declarationRegistry(t, false)
 	if err := registry.Register(&echoTool{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		toolCallStream("read-1", "echo", `{"text":"evidence"}`),
-		textStream("I will continue the remaining checks."),
-		toolCallStream("complete-1", completiontool.Name, `{
-			"status":"complete",
-			"summary":"read-only review completed",
-			"pending_actions":[]
-		}`),
 		textStream("The review is complete and the findings are ready."),
 	}}
 	engine := declarationEngine(t, runtime, registry, passedReceipt())
@@ -204,13 +198,12 @@ func TestReadOnlyToolTurnRequiresCompletionDeclaration(t *testing.T) {
 		result.Text != "The review is complete and the findings are ready." {
 		t.Fatalf("result = %+v", result)
 	}
-	if len(runtime.requests) != 4 ||
-		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
-		t.Fatalf("read-only tool turn bypassed completion gate: %+v", runtime.requests)
+	if len(runtime.requests) != 2 {
+		t.Fatalf("read-only tool turn used declaration repair: %+v", runtime.requests)
 	}
-	for _, event := range events {
-		if event.Text == "I will continue the remaining checks." {
-			t.Fatalf("future-work promise reached stable output: %+v", events)
+	for _, request := range runtime.requests {
+		if requestContains(request, "[completion_declaration_required]") {
+			t.Fatalf("read-only turn received declaration feedback: %+v", events)
 		}
 	}
 }
@@ -241,7 +234,7 @@ func TestIncompleteDeclarationContinuesCurrentTurn(t *testing.T) {
 
 	result, err := engine.RunForTurnWithIntentAndAttachments(
 		t.Context(), "turn-incomplete", "review both pieces of evidence",
-		protocol.TurnIntentAnswer, nil,
+		protocol.TurnIntentOperation, nil,
 		func(event Event) error {
 			events = append(events, event)
 			return nil

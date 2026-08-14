@@ -46,28 +46,25 @@ type Options struct {
 	// Route is the act route and the fallback for single-route callers.
 	Route model.ReadyRoute
 	// Routes overrides Route with a locked per-purpose table.
-	Routes               model.RouteSet
-	Tools                *tool.Registry
-	PromptContext        []provider.Message
-	ModePromptBudget     promptcontext.Budget
-	MaxOutputTokens      uint64
-	MaxSteps             int
-	MaxRetries           int
-	CompactWindow        CompactWindowPolicy
-	SummaryMaxBytes      int
-	MaxDigestEntries     int
-	ReasoningEffort      string
-	FixedReasoningEffort string
-	NativeSearch         bool
-	Budget               Budget
-	// BudgetReminderThreshold defaults to max(256, MaxTokens/10).
-	BudgetReminderThreshold uint64
-	TokenEstimator          TokenEstimator
-	WorkingSet              []string
-	CriticalPaths           []string
-	ContextReceipts         []promptcontext.Receipt
-	Authorize               func(provider.ToolCall) bool
-	Security                *policy.Runtime
+	Routes           model.RouteSet
+	Tools            *tool.Registry
+	PromptContext    []provider.Message
+	ModePromptBudget promptcontext.Budget
+	MaxOutputTokens  uint64
+	MaxSteps         int
+	MaxRetries       int
+	CompactWindow    CompactWindowPolicy
+	SummaryMaxBytes  int
+	MaxDigestEntries int
+	ReasoningEffort  string
+	NativeSearch     bool
+	Budget           Budget
+	TokenEstimator   TokenEstimator
+	WorkingSet       []string
+	CriticalPaths    []string
+	ContextReceipts  []promptcontext.Receipt
+	Authorize        func(provider.ToolCall) bool
+	Security         *policy.Runtime
 	// ProfilePermissionCeiling is fixed by the Host.
 	ProfilePermissionCeiling policy.Permission
 	Guard                    *toolguard.Guard
@@ -169,9 +166,8 @@ type Engine struct {
 
 	compactions int
 
-	budgetReminderDelivered bool
-	activeScope             *Scope
-	lastScope               *Scope
+	activeScope *Scope
+	lastScope   *Scope
 }
 
 var testTurnCoordinatorRuntimeFactory func() turnkernel.CoordinatorRuntime
@@ -367,9 +363,6 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.options.ReasoningEffort = profile.ReasoningEffort
-	if e.options.FixedReasoningEffort != "" {
-		e.options.ReasoningEffort = e.options.FixedReasoningEffort
-	}
 	e.options.MaxSteps = profile.MaxSteps
 	e.options.ProfileRevision = profile.Revision
 	e.enabledTools = make(map[string]struct{}, len(profile.EnabledToolIDs))

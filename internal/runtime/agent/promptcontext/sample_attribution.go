@@ -21,6 +21,7 @@ const (
 
 type SampleInput struct {
 	Reason                                 string
+	ReasoningEffort                        string
 	Stable, History, Dynamic, Continuation []provider.Message
 	Definitions                            []provider.ToolDefinition
 	Estimate                               func([]provider.Message) (uint64, error)
@@ -39,6 +40,7 @@ func SampleReason(initial string, attempt int, continuation bool) string {
 func MeasureSample(input SampleInput) (protocol.SampleContextData, error) {
 	result := protocol.SampleContextData{
 		Reason:              input.Reason,
+		ReasoningEffort:     input.ReasoningEffort,
 		MessageCount:        len(input.Stable) + len(input.History) + len(input.Dynamic) + len(input.Continuation),
 		ToolDefinitionCount: len(input.Definitions),
 	}

@@ -79,7 +79,7 @@ max_concurrent = 8
 rate_limit = 0
 budget_tokens = 0            # 0 means no additional token cap
 budget_usd = 0               # 0 means no additional cost cap
-reasoning_effort = ""
+reasoning_effort = ""        # empty = adaptive; explicit value fixes the effort
 native_search = false
 
 [execution.verify]
@@ -106,6 +106,10 @@ max_cost_usd = 0
 wall_time = "5m"
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
 
+An empty `reasoning_effort` selects low for read-only work, medium for normal
+coding, and high for complex architecture/debugging; repair failures escalate
+one level. An explicit effort remains fixed. `max_output_tokens` is always the
+hard request ceiling; stage reserves never raise an explicit value.
 
 `delegation = "explicit"` exposes `spawn_agent` only with user, developer,
 Skill, or internal system authority. `adaptive` also allows the model to

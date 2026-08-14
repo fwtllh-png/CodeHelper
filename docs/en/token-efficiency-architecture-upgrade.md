@@ -4,11 +4,13 @@
 
 > Status: `in_progress`. T0 is accepted. T1 is implemented with
 > `implemented_validation_mixed`; T2 is also implemented with
-> `implemented_validation_mixed`; T3 is accepted; see
+> `implemented_validation_mixed`; T3 is accepted; T4 is implemented with
+> `implemented_validation_mixed`; see
 > [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
 >, [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json),
 > [`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json),
-> and [`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json).
+> [`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json),
+> and [`token-efficiency-t4-evidence.json`](../token-efficiency-t4-evidence.json).
 >
 > Scope: prompt context, history, compaction, tool catalogs, tool results,
 > provider sessions, reasoning budgets, completion protocol, usage accounting,
@@ -704,6 +706,47 @@ lines and all `internal` production code by `-1`.
 Exit: zero declaration repairs in read-only lane, canonical sample count falls
 at least 15% from T3, reasoning falls at least 30% from baseline, and mutation
 safety and difficult-task quality do not regress.
+
+Current T4 evidence (`implemented_validation_mixed`):
+
+Four of five exit gates pass. The machine-readable evidence is
+[`token-efficiency-t4-evidence.json`](../token-efficiency-t4-evidence.json).
+
+| Exit gate | Result | Status |
+| --- | ---: | --- |
+| Read-only declaration repairs | 0 | passed |
+| Canonical Live sample-count P50 | 11 -> 11, target at least -15% | failed |
+| Reasoning P50 from T0 | 7,838 -> 4,701 (-40.02%) | passed |
+| Mutation/verification/journal/recovery | focused suites passed | passed |
+| Difficult-task quality | Capability Suite 7/25 -> 12/25 | passed |
+
+Completion is now required only by observed mutation, explicit
+`workspace_change`, or a successful durable `operation`; read-only Answer and
+Plan tool turns complete directly. Empty `reasoning_effort` starts at low,
+medium, or high from intent and prompt complexity and escalates only after a
+repair failure. Reasoning-only output limits continue at the same effort so a
+transport boundary does not reset the prompt-cache lane. Output reserve is
+stage-bounded, and session token budgets emit structural convergence at 70%
+and finish-only guidance at 85%. Sample attribution records both reason and
+effective effort.
+
+Hermetic 5/5 remained byte-for-byte equivalent to T3: input/uncached-input P50
+was 72,189/54,145 with eight samples. Final DeepSeek Live 10/10 completed with
+input P50 185,228 (+3.67% from T3), uncached input 46,526 (+2.07%), output 7,857
+(-16.43%), reasoning 4,701 (-23.51% from T3 and -40.02% from T0), and sample
+count 11 (unchanged). Post-third-sample cache share P50 was 93.62%. All 118
+calls remained unpriced for cached input.
+
+The full Capability Suite is still not green: 13 legacy fixtures retain
+pre-T3 eager-tool or pre-T4 completion assumptions. A clean T3 `main` baseline
+passed 7/25 and T4 passed 12/25, so this is not a quality regression, but it
+remains explicit residual risk. Architecture Ratchet passed 43/43; the
+architecture closure changed by `-53` production lines and all `internal`
+production code by `-14`.
+
+Decision: retain T4's correctness and reasoning reductions, but do not mark it
+`accepted`. The sample-count target did not move, and the small input regression
+must remain visible when T5 evaluates incremental transport.
 
 ### T5: Provider Incremental Session
 

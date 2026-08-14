@@ -1,34 +1,22 @@
 package engine
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-)
+func TestBudgetConvergenceTransitionsAtSeventyAndEightyFivePercent(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	engine.options.Budget = Budget{MaxTokens: 1000}
+	attachTestScope(t, engine)
 
-func TestMaybeInjectBudgetReminderOnce(t *testing.T) {
-	engine := &Engine{
-		options: Options{
-			Budget: Budget{MaxTokens: 1000}, BudgetReminderThreshold: 200,
-		},
-		usage: provider.Usage{InputTokens: 850},
+	message, finish := engine.budgetConvergence(700)
+	if finish || message.Text() == "" {
+		t.Fatalf("70%% stage = %q finish=%t", message.Text(), finish)
 	}
-	messages := []provider.Message{provider.TextMessage(provider.RoleUser, "hi")}
-	engine.maybeInjectBudgetReminder(&messages)
-	if len(messages) != 2 || !containsBudgetReminder(messages[1].Text()) {
-		t.Fatalf("messages=%+v", messages)
+	message, finish = engine.budgetConvergence(750)
+	if finish || message.Text() != "" {
+		t.Fatalf("repeated stage = %q finish=%t", message.Text(), finish)
 	}
-	engine.maybeInjectBudgetReminder(&messages)
-	if len(messages) != 2 {
-		t.Fatal("reminder should only inject once")
+	message, finish = engine.budgetConvergence(850)
+	if !finish || message.Text() == "" {
+		t.Fatalf("85%% stage = %q finish=%t", message.Text(), finish)
 	}
-	engine.resetBudgetReminder()
-	engine.maybeInjectBudgetReminder(&messages)
-	if len(messages) != 3 {
-		t.Fatal("reset should allow another reminder")
-	}
-}
-
-func containsBudgetReminder(text string) bool {
-	return len(text) > 0 && (len(text) >= 16 && text[:16] == "[budget reminder")
 }

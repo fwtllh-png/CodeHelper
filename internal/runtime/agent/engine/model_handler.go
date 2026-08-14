@@ -20,6 +20,21 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
+func (e *Engine) reasoningEffort(scope *Scope, reason string) string {
+	scope.mu.Lock()
+	if reason != promptcontext.SampleNormal {
+		scope.state.reasoningEscalation = min(scope.state.reasoningEscalation+1, 3)
+	}
+	level := scope.state.reasoningEscalation
+	scope.mu.Unlock()
+	return promptcontext.ReasoningEffort(
+		scope.spec.Route.ProviderID(), scope.spec.Request.Prompt,
+		string(scope.spec.Request.Intent), level,
+		scope.spec.Route.Model().Capabilities.Reasoning,
+		e.options.ReasoningEffort,
+	)
+}
+
 func (e *Engine) modelStep(
 	ctx context.Context,
 	history *[]provider.Message,
@@ -67,6 +82,7 @@ func (e *Engine) modelStep(
 	continuations := 0
 	finishAttempted := false
 	finishMode := false
+	baseReasoningEffort := e.reasoningEffort(scope, reason)
 	for attempt := 0; ; attempt++ {
 		var turnContext []provider.Message
 		turnReceipts := append([]promptcontext.Receipt(nil), worldReceipts...)
@@ -74,21 +90,25 @@ func (e *Engine) modelStep(
 			turnReceipts = append([]promptcontext.Receipt{catalogReceipt}, turnReceipts...)
 		}
 		e.recordTurnContextReceipts(turnReceipts)
-		e.maybeInjectBudgetReminder(&turnContext)
+		budgetMessage, budgetFinishOnly := e.budgetConvergence(
+			e.BudgetSnapshot().TokensUsed + turnUsage.Total() + totalUsage.Total(),
+		)
+		if len(budgetMessage.Blocks) != 0 {
+			turnContext = append(turnContext, budgetMessage)
+		}
 		route := e.activeRoute()
-		maxOutputTokens := e.maxOutputFor(route)
 		requestTools := definitions
-		reasoningEffort := e.options.ReasoningEffort
+		reasoningEffort := baseReasoningEffort
 		nativeSearch := e.options.NativeSearch
 		if finishMode {
-			maxOutputTokens = min(maxOutputTokens, uint64(4096))
 			requestTools = nil
 			reasoningEffort = "low"
 			nativeSearch = false
 		}
 		sampleInput := promptcontext.SampleInput{
-			Reason: promptcontext.SampleReason(reason, attempt, finishMode || continuations > 0),
-			Stable: stableContext, History: *history, Dynamic: turnContext,
+			Reason:          promptcontext.SampleReason(reason, attempt, finishMode || continuations > 0),
+			ReasoningEffort: reasoningEffort,
+			Stable:          stableContext, History: *history, Dynamic: turnContext,
 			Continuation: continuationMessages, Definitions: requestTools,
 			Estimate: e.options.TokenEstimator.Estimate,
 		}
@@ -97,7 +117,9 @@ func (e *Engine) modelStep(
 			phase = CompactionPhasePreSampling
 		}
 		window, err := e.runCompactGate(
-			history, sampleInput, maxOutputTokens, phase, true, send,
+			history, sampleInput, promptcontext.OutputLimit(
+				e.maxOutputFor(route), reasoningEffort, finishMode || budgetFinishOnly,
+			), phase, true, send,
 		)
 		if err != nil {
 			return nil, nil, totalUsage, window.estimated, err
@@ -107,13 +129,15 @@ func (e *Engine) modelStep(
 			turnContext = append(turnContext, contextWindowFeedback(e.turn))
 			sampleInput.History, sampleInput.Dynamic = *history, turnContext
 			window, err = e.runCompactGate(
-				history, sampleInput, maxOutputTokens, phase, true, send,
+				history, sampleInput, promptcontext.OutputLimit(
+					e.maxOutputFor(route), reasoningEffort, finishMode || budgetFinishOnly,
+				), phase, true, send,
 			)
 			if err != nil {
 				return nil, nil, totalUsage, window.estimated, err
 			}
 		}
-		finishOnly := finishMode ||
+		finishOnly := finishMode || budgetFinishOnly ||
 			window.hardLimit > 0 && window.active >= window.hardLimit*85/100
 		if finishOnly && !finishMode {
 			requestTools = slices.DeleteFunc(
@@ -124,6 +148,10 @@ func (e *Engine) modelStep(
 			reasoningEffort, nativeSearch = "low", false
 			sampleInput.Definitions = requestTools
 		}
+		maxOutputTokens := promptcontext.OutputLimit(
+			e.maxOutputFor(route), reasoningEffort, finishOnly,
+		)
+		sampleInput.ReasoningEffort = reasoningEffort
 		attribution, attributionErr := promptcontext.MeasureSample(sampleInput)
 		if attributionErr != nil {
 			return nil, nil, totalUsage, lastEstimate, attributionErr
@@ -230,19 +258,14 @@ func (e *Engine) modelStep(
 			if incomplete.Reason == provider.StopReasonMaxTokens &&
 				!incomplete.HasToolCallFragment &&
 				reasoningOnlyBlocks(continuedBlocks) &&
-				!finishAttempted {
+				!finishAttempted && continuations > 0 {
 				if len(blocks) != 0 {
 					continuationMessages = append(continuationMessages, provider.Message{
 						Role: provider.RoleAssistant, Blocks: cloneBlocks(blocks), Turn: e.turn,
 					})
 				}
-				continuationMessages = append(
-					continuationMessages,
-					finishOutputFeedback(e.turn),
-				)
-				finishAttempted = true
-				finishMode = true
-				attempt = -1
+				continuationMessages = append(continuationMessages, finishOutputFeedback(e.turn))
+				finishAttempted, finishMode, attempt = true, true, -1
 				continue
 			}
 			if continuations >= maxOutputContinuations {
@@ -706,8 +729,8 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 		if entry.State == tool.CatalogEntryDeferred {
 			continue
 		}
-		if coreTool(request.Intent, entry.Name) ||
-			entry.State == tool.CatalogEntryMaterialized {
+		if coreTool(request.Intent, entry.Name) || entry.State == tool.CatalogEntryMaterialized ||
+			entry.Name == "image_analyze" && strings.Contains(strings.ToLower(request.Prompt), "screenshot") {
 			selected[entry.Name] = true
 			continue
 		}

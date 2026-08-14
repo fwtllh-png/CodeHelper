@@ -37,6 +37,29 @@ func TestReadOnlyAnswerCompletesWithoutMutationContract(t *testing.T) {
 	}
 }
 
+func TestCompletionRequirementUsesMutationIntentAndIntegrationFacts(t *testing.T) {
+	answer := startSampling(t, protocol.TurnIntentAnswer)
+	answer.ClosedCalls["read"] = ToolResultState{ID: "read", Name: "file_read"}
+	if RequiresCompletion(answer) {
+		t.Fatal("read-only answer requires completion")
+	}
+	answer.MutationRevision = 1
+	if !RequiresCompletion(answer) {
+		t.Fatal("observed mutation does not require completion")
+	}
+	operation := startSampling(t, protocol.TurnIntentOperation)
+	operation.ClosedCalls["deploy"] = ToolResultState{ID: "deploy", Name: "deploy"}
+	if !RequiresCompletion(operation) {
+		t.Fatal("successful integration does not require completion")
+	}
+	operation.ClosedCalls["deploy"] = ToolResultState{
+		ID: "deploy", Name: "deploy", IsError: true,
+	}
+	if RequiresCompletion(operation) {
+		t.Fatal("failed integration was treated as completed")
+	}
+}
+
 func TestCanceledApprovalAcceptsLateToolResult(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentWorkspaceChange)
 	state = apply(t, state, ToolCallsProposed{
@@ -295,30 +318,15 @@ func TestMutationInvalidatesCompletionAndVerification(t *testing.T) {
 	}
 }
 
-func TestToolAssistedReadOnlyTurnRequiresStructuredCompletion(t *testing.T) {
+func TestToolAssistedReadOnlyTurnCompletesWithoutDeclaration(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
 	state = apply(t, state, ToolCallsProposed{
 		Calls: []ToolCallState{{ID: "read-1", Name: "file_read"}},
 	}).State
 	state = apply(t, state, ToolResultReceived{CallID: "read-1"}).State
-	state.ProvisionalOutput = []string{"I will continue checking."}
+	state.ProvisionalOutput = []string{"The review is complete."}
 
 	transition := apply(t, state, EvaluateTurnStep{ProgressKey: "read-only"})
-	if transition.State.NextAction != StepActionRepairDeclaration {
-		t.Fatalf("next action = %q, want %q",
-			transition.State.NextAction, StepActionRepairDeclaration)
-	}
-
-	state = apply(t, transition.State, CompletionEvaluated{
-		Candidate: CompletionCandidate{
-			DeclarationValid: true,
-			Status:           "complete",
-			Summary:          "read-only review completed",
-			CompletionCall:   "complete-1",
-			BatchSize:        1,
-		},
-	}).State
-	transition = apply(t, state, EvaluateTurnStep{ProgressKey: "completed"})
 	if transition.State.NextAction != StepActionComplete {
 		t.Fatalf("next action = %q, want %q",
 			transition.State.NextAction, StepActionComplete)

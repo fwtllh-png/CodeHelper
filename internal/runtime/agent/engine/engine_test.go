@@ -297,10 +297,14 @@ func TestEngineContinuesIncompleteProviderStop(t *testing.T) {
 	}
 }
 
-func TestEngineUsesBoundedFinishRouteAfterReasoningOnlyMaxTokens(t *testing.T) {
+func TestEngineUsesBoundedFinishRouteAfterRepeatedReasoningLimits(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventReasoningDelta, Text: "completed analysis"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventReasoningDelta, Text: " with more detail"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
 		}},
 		textStream("final answer"),
@@ -311,20 +315,26 @@ func TestEngineUsesBoundedFinishRouteAfterReasoningOnlyMaxTokens(t *testing.T) {
 	}
 	engine := newEngine(t, runtime, registry)
 	engine.options.ReasoningEffort = "max"
+	engine.options.Route = reasoningRoute(t)
+	engine.options.Routes, _ = model.NewRouteSet(engine.options.Route, nil, false)
 
 	result, err := engine.Run(t.Context(), "review", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Text != "final answer" ||
-		result.Reasoning != "completed analysis" ||
-		len(runtime.requests) != 2 {
+		result.Reasoning != "completed analysis with more detail" ||
+		len(runtime.requests) != 3 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
 	}
 	if len(runtime.requests[0].Tools) == 0 {
 		t.Fatal("normal reasoning sample did not receive tools")
 	}
-	finish := runtime.requests[1]
+	continuation := runtime.requests[1]
+	if continuation.ReasoningEffort != "max" || len(continuation.Tools) == 0 {
+		t.Fatalf("same-effort continuation = %+v", continuation)
+	}
+	finish := runtime.requests[2]
 	if finish.ReasoningEffort != "low" || len(finish.Tools) != 0 ||
 		finish.MaxOutputTokens > 4096 {
 		t.Fatalf("finish request = %+v", finish)
@@ -357,6 +367,8 @@ func TestEngineDoesNotUseFinishRouteForPartialToolCall(t *testing.T) {
 	}
 	engine := newEngine(t, runtime, registry)
 	engine.options.ReasoningEffort = "max"
+	engine.options.Route = reasoningRoute(t)
+	engine.options.Routes, _ = model.NewRouteSet(engine.options.Route, nil, false)
 
 	result, err := engine.Run(t.Context(), "review", nil)
 	if err != nil {

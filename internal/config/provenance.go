@@ -118,18 +118,6 @@ type Snapshot struct {
 	Provenance map[string]Source `json:"provenance"`
 }
 
-// MaxOutputTokensSource reports whether the output ceiling is still the
-// repository default or an operator-supplied cost boundary.
-func (s Snapshot) MaxOutputTokensSource() Source {
-	if s.Provenance == nil {
-		return SourceDefault
-	}
-	if source := s.Provenance[fieldMaxOutputTokens]; source != "" {
-		return source
-	}
-	return SourceDefault
-}
-
 func defaultProvenance() map[string]Source {
 	return map[string]Source{
 		fieldOperationBuffer:  SourceDefault,

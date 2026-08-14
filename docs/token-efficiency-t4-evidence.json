@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "status": "implemented_validation_mixed",
+  "baseline_commit": "6aea9147f68915ae5295bca244bb60d6b791460a",
+  "slice": "loop_reasoning_final",
+  "prompt_digest": "sha256:8b61b8edfa5f01e3cebb659eb994a3ade736b0abd71c7a4df4d80dc069e51b1e",
+  "fixture_digest": "d1cee21886e746f1287bd1c9e7dc43dd4cd4718f300808d76dfb7c492890fe6b",
+  "acceptance": {
+    "passed": false,
+    "gates_passed": 4,
+    "gates_total": 5,
+    "failed_gates": [
+      "sample_count_reduction"
+    ]
+  },
+  "hermetic": {
+    "runs": 5,
+    "passed": 5,
+    "input_tokens_p50": 72189,
+    "uncached_input_tokens_p50": 54145,
+    "output_tokens_p50": 912,
+    "sample_count_p50": 8,
+    "sample_count_relative_to_t3": 0,
+    "estimator_error_p95": 0.0217905739,
+    "initial_reasoning_effort": "medium"
+  },
+  "live": {
+    "provider": "deepseek-v4-flash",
+    "model": "deepseek-v4-flash",
+    "config_digest": "sha256:1b2af85b5181e39294843d1ab9fe1679973fd9f4680ad17a7034b3b4b91af50c",
+    "runs": 10,
+    "passed": 10,
+    "input_tokens_p50": 185228,
+    "input_tokens_p90": 232994,
+    "input_tokens_max": 268782,
+    "input_tokens_mad": 2441,
+    "input_tokens_relative_to_t3": 0.0366581224,
+    "uncached_input_tokens_p50": 46526,
+    "uncached_input_tokens_relative_to_t3": 0.0207099294,
+    "output_tokens_p50": 7857,
+    "output_tokens_relative_to_t3": -0.164326739,
+    "reasoning_tokens_p50": 4701,
+    "reasoning_tokens_relative_to_t3": -0.2351122681,
+    "reasoning_tokens_relative_to_t0": -0.4002296504,
+    "sample_count_p50": 11,
+    "sample_count_relative_to_t3": 0,
+    "sample_count_target_relative_to_t3": -0.15,
+    "post_third_sample_cache_share_basis_points_p50": 9362,
+    "reasoning_effort_samples": {
+      "medium": 111,
+      "high": 7
+    },
+    "sample_reasons": {
+      "normal": 105,
+      "output_continuation": 10,
+      "tool_failure_repair": 2,
+      "verification_repair": 1,
+      "declaration_repair": 0,
+      "provider_retry": 0
+    },
+    "unpriced_calls": 118,
+    "cost_known": false
+  },
+  "completion_and_reasoning": {
+    "read_only_declaration_repairs": 0,
+    "completion_requirement_from_durable_facts": true,
+    "mutation_completion_required": true,
+    "operation_completion_required_after_success": true,
+    "adaptive_reasoning": true,
+    "repair_only_escalation": true,
+    "reasoning_limit_same_effort_continuation": true,
+    "stage_output_reserve": true,
+    "budget_convergence_levels": [
+      70,
+      85
+    ],
+    "sample_reason_attribution": true
+  },
+  "correctness": {
+    "canonical_scenarios": 1,
+    "canonical_scenarios_passed": 1,
+    "compaction_scenarios": 3,
+    "compaction_scenarios_passed": 3,
+    "provider_and_tool_packages_passed": true,
+    "mutation_completion_verification_journal_recovery_passed": true,
+    "vision_read_only_model_calls_before": 5,
+    "vision_read_only_model_calls_after": 3,
+    "capability_suite_baseline_passed": 7,
+    "capability_suite_candidate_passed": 12,
+    "capability_suite_total": 25,
+    "remaining_fixture_drift": 13
+  },
+  "architecture": {
+    "ratchet_passed": 43,
+    "ratchet_total": 43,
+    "base_production_lines": 27937,
+    "head_production_lines": 27884,
+    "net_production_lines": -53,
+    "base_internal_lines": 130981,
+    "head_internal_lines": 130967,
+    "net_internal_lines": -14
+  },
+  "invalidated_intermediate_artifacts": [
+    ".tmp/token-efficiency/t4-live-10",
+    ".tmp/token-efficiency/t4-medium8k-smoke",
+    ".tmp/token-efficiency/t4-staged8k-smoke"
+  ],
+  "artifacts": {
+    "hermetic": ".tmp/token-efficiency/t4-final-hermetic",
+    "hermetic_comparison": ".tmp/token-efficiency/t4-final-hermetic-comparison.json",
+    "live": ".tmp/token-efficiency/t4-final-live-10",
+    "live_comparison": ".tmp/token-efficiency/t4-final-live-comparison.json",
+    "architecture_size": ".tmp/token-efficiency/t4-size.json"
+  }
+}

@@ -2,19 +2,16 @@ package wire
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -423,45 +420,4 @@ func isAgentLifecycleTool(name string) bool {
 	default:
 		return false
 	}
-}
-
-func maximumReasoningEffort(providerID, modelID string, reasoning bool) string {
-	if !reasoning {
-		return ""
-	}
-	if strings.HasPrefix(providerID, "deepseek-v4") ||
-		strings.HasPrefix(modelID, "deepseek-v4") {
-		return "max"
-	}
-	return "xhigh"
-}
-
-const minimumReasoningOutputTokens uint64 = 16_384
-
-func reasoningAwareMaxOutputTokens(
-	configured uint64,
-	source config.Source,
-	route model.ReadyRoute,
-	reasoningEffort string,
-) (uint64, error) {
-	if reasoningEffort == "" {
-		return configured, nil
-	}
-	minimum := minimumReasoningOutputTokens
-	if limit := route.Model().Limits.MaxOutputTokens; limit != 0 && minimum > limit {
-		minimum = limit
-	}
-	if configured >= minimum {
-		return configured, nil
-	}
-	if source == "" || source == config.SourceDefault {
-		return minimum, nil
-	}
-	return 0, fmt.Errorf(
-		"execution.max_output_tokens=%d from %s is below the %d-token minimum for reasoning_effort=%s",
-		configured,
-		source,
-		minimum,
-		reasoningEffort,
-	)
 }

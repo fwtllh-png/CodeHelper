@@ -186,12 +186,6 @@ type CompactWindowPolicy struct {
 	Scope      string
 }
 
-// BudgetReminderThresholdTokens triggers a one-shot model-visible reminder when
-// remaining session tokens fall at or below this value (0 → 10% of MaxTokens).
-type budgetReminderState struct {
-	delivered bool
-}
-
 type TokenEstimator interface {
 	Estimate([]provider.Message) (uint64, error)
 }

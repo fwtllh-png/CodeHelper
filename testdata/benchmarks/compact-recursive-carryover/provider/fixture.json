@@ -5,12 +5,8 @@
   "streams": [
     "plan.sse",
     "read-service.sse",
-    "first-answer.sse",
-    "declare-first.sse",
     "complete-first.sse",
     "read-notes.sse",
-    "second-answer.sse",
-    "declare-second.sse",
     "complete-second.sse",
     "third-answer.sse"
   ],
@@ -18,16 +14,12 @@
     [],
     ["\"tool_call_id\":\"call_plan\""],
     ["\"tool_call_id\":\"call_service\""],
-    ["completion_declaration_required"],
-    ["\"tool_call_id\":\"call_complete_first\"", "completion_declaration_accepted"],
     [
       "codehelper_summary",
       "Goal: align the greeting in service.py with settings.yaml",
       "Removed history, newest first:"
     ],
     ["\"tool_call_id\":\"call_notes\""],
-    ["completion_declaration_required"],
-    ["\"tool_call_id\":\"call_complete_second\"", "completion_declaration_accepted"],
     [
       "codehelper_summary",
       "Goal: align the greeting in service.py with settings.yaml",

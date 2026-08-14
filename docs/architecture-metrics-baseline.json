@@ -116,8 +116,8 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 8993,
-        "options_fields": 60,
+        "production_lines": 8987,
+        "options_fields": 58,
         "mutex_fields": 9
       }
     },
@@ -234,7 +234,7 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/runtime.go",
       "limits": {
-        "lines": 467,
+        "lines": 423,
         "max_function_lines": 50
       }
     },
@@ -288,8 +288,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 444,
-        "max_function_lines": 351
+        "lines": 433,
+        "max_function_lines": 340
       }
     },
     {
@@ -369,8 +369,8 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 535,
-        "max_function_lines": 127
+        "lines": 508,
+        "max_function_lines": 123
       }
     },
     {
