@@ -42,9 +42,9 @@ func TestStreamNormalizesAnthropicEvents(t *testing.T) {
 		provider.EventMessageStart,
 		provider.EventUsage,
 		provider.EventReasoningDelta,
-		provider.EventReasoningSignature,
 		provider.EventTextDelta,
 		provider.EventUsage,
+		provider.EventReplayState,
 		provider.EventMessageStop,
 	}
 	if len(events) != len(want) {
@@ -56,8 +56,9 @@ func TestStreamNormalizesAnthropicEvents(t *testing.T) {
 		}
 	}
 	if events[2].Block == nil || events[2].Block.Text != "think" ||
-		events[3].Block == nil || events[3].Block.Signature != "signed-thinking" {
-		t.Fatalf("reasoning blocks = %+v %+v", events[2].Block, events[3].Block)
+		events[5].Replay == nil ||
+		!strings.Contains(string(events[5].Replay.Data), "signed-thinking") {
+		t.Fatalf("reasoning replay = %+v %+v", events[2].Block, events[5].Replay)
 	}
 }
 

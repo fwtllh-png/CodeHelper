@@ -33,19 +33,110 @@ func (testAdapter) OpenStream(
 func (testAdapter) ClassifyHTTP(providerwire.HTTPFailure) error { return nil }
 
 type testTransport struct {
-	calls int
-	id    model.AdapterID
+	calls   int
+	id      model.AdapterID
+	request provider.ModelRequest
 }
 
 func (t *testTransport) Execute(
 	_ context.Context,
-	_ provider.ModelRequest,
+	request provider.ModelRequest,
 	call providerwire.PreparedCall,
 	_ providerwire.Adapter,
 ) (provider.Stream, error) {
 	t.calls++
 	t.id = call.Adapter
+	t.request = request
 	return testStream{}, nil
+}
+
+func TestRouterFiltersReplayBeforeAdapterAndTransport(t *testing.T) {
+	registry, err := NewRegistry(
+		testAdapter{id: model.AdapterDeepSeek},
+		testAdapter{id: model.AdapterOpenAI},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := testRoute(t, model.AdapterDeepSeek, model.ProtocolOpenAIChat)
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &testTransport{}
+	runtime, err := New(registry, routes, transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := testRoute(t, model.AdapterOpenAI, model.ProtocolOpenAIChat)
+	message := provider.ProducedAssistant(
+		other,
+		[]provider.ContentBlock{{
+			Type: provider.ContentReasoning, Text: "visible",
+		}},
+		1,
+		&provider.ReplayState{
+			Version: provider.ReplayVersion, Data: []byte(`{"items":[]}`),
+		},
+	)
+	_, err = runtime.Stream(t.Context(), provider.ModelRequest{
+		Route: route,
+		Messages: []provider.Message{
+			message,
+			provider.TextMessage(provider.RoleUser, "next"),
+		},
+		MaxOutputTokens: 16,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := transport.request.Messages[0]
+	if got.Provenance == nil || got.Provenance.Replay != nil {
+		t.Fatalf("cross-adapter replay reached transport: %+v", got)
+	}
+}
+
+func TestRouterDropsReplayAfterAssistantContentRewrite(t *testing.T) {
+	registry, err := NewRegistry(testAdapter{id: model.AdapterDeepSeek})
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := testRoute(t, model.AdapterDeepSeek, model.ProtocolOpenAIChat)
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &testTransport{}
+	runtime, err := New(registry, routes, transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := provider.ProducedAssistant(
+		route,
+		[]provider.ContentBlock{{
+			Type: provider.ContentReasoning, Text: "original",
+		}},
+		1,
+		&provider.ReplayState{
+			Version: provider.ReplayVersion, Data: []byte(`{"items":[]}`),
+		},
+	)
+	message.Blocks[0].Text = "rewritten"
+	_, err = runtime.Stream(t.Context(), provider.ModelRequest{
+		Route: route,
+		Messages: []provider.Message{
+			message,
+			provider.TextMessage(provider.RoleUser, "next"),
+		},
+		MaxOutputTokens: 16,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := transport.request.Messages[0].Provenance; got == nil ||
+		got.Replay != nil {
+		t.Fatalf("rewritten replay reached transport: %+v", got)
+	}
 }
 
 type testStream struct{}

@@ -78,16 +78,16 @@ func TestResponsesStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 8 || events[1].Text != "thinking" || events[2].Text != "answer" {
+	if len(events) != 7 || events[1].Text != "thinking" || events[2].Text != "answer" {
 		t.Fatalf("events = %+v", events)
 	}
 	if events[3].ToolCall.Name != "search" || events[4].ToolCall.Arguments == "" {
 		t.Fatalf("tool fragments = %+v %+v", events[3], events[4])
 	}
-	if events[5].Block == nil ||
-		events[5].Block.ProviderType != "openai_responses.reasoning" ||
-		!strings.Contains(string(events[5].Block.ProviderData), `"encrypted_content":"ciphertext"`) {
-		t.Fatalf("reasoning replay block = %+v", events[5].Block)
+	for _, event := range events {
+		if len(event.ReplayFragment) != 0 || event.Type == provider.EventReplayState {
+			t.Fatalf("default decoder exposed private replay: %+v", event)
+		}
 	}
 }
 
@@ -120,6 +120,60 @@ func TestResponsesStreamHarvestsReasoningFromCompleted(t *testing.T) {
 	}
 }
 
+func TestResponsesStreamCommitsVersionedReplayOnlyOnCompletion(t *testing.T) {
+	input := strings.Join([]string{
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","encrypted_content":"ciphertext","summary":[{"type":"summary_text","text":"inspect"}]}}`,
+		"",
+		`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		"",
+		"",
+	}, "\n")
+	stream, err := NewStreamWithOptions(
+		io.NopCloser(strings.NewReader(input)),
+		model.ProtocolOpenAIResponses,
+		StreamPolicy{CaptureReplay: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var replay *provider.ReplayState
+	for _, event := range events {
+		if len(event.ReplayFragment) != 0 {
+			t.Fatalf("private provider data leaked through content block: %+v", event.Block)
+		}
+		if event.Type == provider.EventReplayState {
+			replay = event.Replay
+		}
+	}
+	if replay == nil || replay.Version != provider.ReplayVersion ||
+		!strings.Contains(string(replay.Data), `"id":"rs_1"`) {
+		t.Fatalf("replay = %+v, events = %+v", replay, events)
+	}
+
+	incomplete := strings.Replace(input, "response.completed", "response.incomplete", 1)
+	stream, err = NewStreamWithOptions(
+		io.NopCloser(strings.NewReader(incomplete)),
+		model.ProtocolOpenAIResponses,
+		StreamPolicy{CaptureReplay: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err = provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.Type == provider.EventReplayState {
+			t.Fatalf("incomplete response committed replay: %+v", events)
+		}
+	}
+}
+
 func TestResponsesStreamDoesNotReplayCompletedReasoning(t *testing.T) {
 	input := strings.Join([]string{
 		`data: {"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_1","delta":"think"}`,
@@ -144,21 +198,22 @@ func TestResponsesStreamDoesNotReplayCompletedReasoning(t *testing.T) {
 		t.Fatal(err)
 	}
 	var visible strings.Builder
-	var providerData int
+	var replayEvents int
 	for _, event := range events {
 		if event.Type != provider.EventReasoningDelta {
 			continue
 		}
 		visible.WriteString(event.Text)
-		if event.Block != nil && len(event.Block.ProviderData) != 0 {
-			providerData++
+		if event.Type == provider.EventReplayState ||
+			len(event.ReplayFragment) != 0 {
+			replayEvents++
 		}
 	}
 	if visible.String() != "thinking" {
 		t.Fatalf("visible reasoning = %q, events = %+v", visible.String(), events)
 	}
-	if providerData != 1 {
-		t.Fatalf("provider data events = %d, want 1", providerData)
+	if replayEvents != 0 {
+		t.Fatalf("private replay events = %d, want 0", replayEvents)
 	}
 }
 

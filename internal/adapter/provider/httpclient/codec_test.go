@@ -94,13 +94,25 @@ func (a legacyOpenAIAdapter) Prepare(
 	var err error
 	if request.Route.Protocol() == model.ProtocolOpenAIResponses {
 		call, err = openai.PrepareResponses(
-			request, a.id, responsesReasoningPlaceholder, true,
+			request,
+			a.id,
+			openai.ResponsesPolicy{
+				ReasoningPlaceholder:      responsesReasoningPlaceholder,
+				IncludeEncryptedReasoning: true,
+				ReplayAdapter:             a.id,
+			},
 		)
 	} else {
 		call, err = a.Adapter.Prepare(request)
 		call.Adapter = a.id
 	}
 	return call, err
+}
+func (a legacyOpenAIAdapter) OpenStream(
+	body io.ReadCloser,
+	call providerwire.PreparedCall,
+) (provider.Stream, error) {
+	return openai.NewStream(body, call.Protocol)
 }
 
 func transportMetadata(

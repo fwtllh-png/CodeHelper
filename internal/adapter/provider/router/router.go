@@ -75,14 +75,20 @@ func New(
 }
 
 func (r *Router) Stream(ctx context.Context, request provider.ModelRequest) (provider.Stream, error) {
-	if err := request.Validate(); err != nil {
-		return nil, protocol.NewProblem(
-			protocol.CodeInvalidArgument, err.Error(), false, err,
-		)
-	}
 	adapter, err := r.registry.resolve(request.Route)
 	if err != nil {
 		return nil, err
+	}
+	request.Messages = provider.FilterReplayForAdapter(
+		request.Messages, adapter.ID(),
+	)
+	if validationErr := request.Validate(); validationErr != nil {
+		return nil, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			validationErr.Error(),
+			false,
+			validationErr,
+		)
 	}
 	call, err := adapter.Prepare(request)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -19,6 +20,9 @@ type stream struct {
 	closed         bool
 	searchInputs   map[int]*strings.Builder
 	pendingQueries []string
+	reasoningIndex map[int]int
+	signatures     map[int]string
+	nextReasoning  int
 }
 
 func NewStream(body io.ReadCloser) (provider.Stream, error) {
@@ -26,7 +30,9 @@ func NewStream(body io.ReadCloser) (provider.Stream, error) {
 		return nil, errors.New("response body is required")
 	}
 	return &stream{
-		body: body, decoder: provider.NewSSEDecoder(body), searchInputs: make(map[int]*strings.Builder),
+		body: body, decoder: provider.NewSSEDecoder(body),
+		searchInputs:   make(map[int]*strings.Builder),
+		reasoningIndex: make(map[int]int), signatures: make(map[int]string),
 	}, nil
 }
 func (s *stream) Recv() (provider.StreamEvent, error) {
@@ -108,13 +114,49 @@ func (s *stream) parseChunk(data []byte) ([]provider.StreamEvent, error) {
 		return nil, err
 	}
 	for index := range events {
+		if events[index].Type == provider.EventReasoningDelta {
+			s.reasoningBlock(events[index].Index)
+		}
+		if events[index].Type == provider.EventReasoningSignature {
+			block := s.reasoningBlock(events[index].Index)
+			s.signatures[block] += events[index].Signature
+			events[index].Type = ""
+			continue
+		}
 		if events[index].Type != provider.EventSearchResult || len(s.pendingQueries) == 0 {
 			continue
 		}
 		events[index].Search.Query = s.pendingQueries[0]
 		s.pendingQueries = s.pendingQueries[1:]
 	}
+	events = slices.DeleteFunc(events, func(event provider.StreamEvent) bool {
+		return event.Type == ""
+	})
+	if len(events) != 0 &&
+		events[len(events)-1].Type == provider.EventMessageStop {
+		replay, replayErr := anthropicReplayState(s.signatures)
+		if replayErr != nil {
+			return nil, replayErr
+		}
+		if replay != nil {
+			stop := events[len(events)-1]
+			events[len(events)-1] = provider.StreamEvent{
+				Type: provider.EventReplayState, Replay: replay,
+			}
+			events = append(events, stop)
+		}
+	}
 	return events, nil
+}
+
+func (s *stream) reasoningBlock(wireIndex int) int {
+	if block, exists := s.reasoningIndex[wireIndex]; exists {
+		return block
+	}
+	block := s.nextReasoning
+	s.nextReasoning++
+	s.reasoningIndex[wireIndex] = block
+	return block
 }
 func searchQuery(input string) string {
 	var value struct {
@@ -224,9 +266,8 @@ func parseChunk(data []byte) ([]provider.StreamEvent, error) {
 			if chunk.Delta.Signature == "" {
 				return nil, nil
 			}
-			block := provider.ContentBlock{Type: provider.ContentReasoning, Signature: chunk.Delta.Signature}
 			return []provider.StreamEvent{{
-				Type: provider.EventReasoningSignature, Index: chunk.Index, Block: &block,
+				Type: provider.EventReasoningSignature, Index: chunk.Index,
 				Signature: chunk.Delta.Signature,
 			}}, nil
 		case "input_json_delta":

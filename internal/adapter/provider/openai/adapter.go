@@ -2,6 +2,7 @@ package openai
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,7 +38,11 @@ func (a *Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedC
 	case model.ProtocolOpenAIChat:
 		return PrepareChat(request, a.id, ChatPolicy{})
 	case model.ProtocolOpenAIResponses:
-		return PrepareResponses(request, a.id, "", true)
+		policy := ResponsesPolicy{IncludeEncryptedReasoning: true}
+		if a.id == model.AdapterOpenAI {
+			policy.ReplayAdapter = model.AdapterOpenAI
+		}
+		return PrepareResponses(request, a.id, policy)
 	default:
 		return providerwire.PreparedCall{}, fmt.Errorf("adapter %q does not support protocol %q", a.id, request.Route.Protocol())
 	}
@@ -62,18 +67,24 @@ func PrepareChat(
 	body := chatBody(request, messages, options)
 	return prepareCall(adapter, model.ProtocolOpenAIChat, "/chat/completions", body)
 }
+
+type ResponsesPolicy struct {
+	ReasoningPlaceholder      string
+	IncludeEncryptedReasoning bool
+	ReplayAdapter             model.AdapterID
+}
+
 func PrepareResponses(
 	request provider.ModelRequest,
 	adapter model.AdapterID,
-	reasoningPlaceholder string,
-	includeEncryptedReasoning bool,
+	policy ResponsesPolicy,
 ) (providerwire.PreparedCall, error) {
-	input, err := responsesInput(request.Messages, reasoningPlaceholder)
+	input, err := responsesInput(request.Messages, request.Route, policy)
 	if err != nil {
 		return providerwire.PreparedCall{}, err
 	}
 	body := responsesBody(
-		request, input, includeEncryptedReasoning,
+		request, input, policy.IncludeEncryptedReasoning,
 	)
 	return prepareCall(adapter, model.ProtocolOpenAIResponses, "/responses", body)
 }
@@ -98,7 +109,9 @@ func prepareCall(
 	}, nil
 }
 func (a *Adapter) OpenStream(body io.ReadCloser, call providerwire.PreparedCall) (provider.Stream, error) {
-	return NewStream(body, call.Protocol)
+	return NewStreamWithOptions(body, call.Protocol, StreamPolicy{
+		CaptureReplay: a.id == model.AdapterOpenAI,
+	})
 }
 func (a *Adapter) ClassifyHTTP(failure providerwire.HTTPFailure) error {
 	return providerwire.GenericHTTPFailure(failure)
@@ -225,10 +238,22 @@ func chatMessages(
 }
 func responsesInput(
 	messages []provider.Message,
-	reasoningPlaceholder string,
+	route model.ReadyRoute,
+	policy ResponsesPolicy,
 ) ([]map[string]any, error) {
 	result := make([]map[string]any, 0, len(messages))
 	for _, message := range messages {
+		var replayItems []json.RawMessage
+		if policy.ReplayAdapter != "" {
+			items, err := ParseResponsesReplay(
+				message, route, policy.ReplayAdapter,
+			)
+			if err != nil {
+				return nil, err
+			}
+			replayItems = items
+		}
+		reasoningBlock := 0
 		if grouped, ok := responsesImageItem(message); ok {
 			result = append(result, grouped)
 			continue
@@ -238,25 +263,28 @@ func responsesInput(
 			case provider.ContentText:
 				result = append(result, map[string]any{"role": message.Role, "content": block.Text})
 			case provider.ContentReasoning:
-				item, err := responsesReasoningItem(block)
+				replay := replayReasoningItem(
+					replayItems, block, reasoningBlock,
+				)
+				item, err := responsesReasoningItem(
+					block,
+					replay,
+				)
 				if err != nil {
 					return nil, err
 				}
+				reasoningBlock++
 				if item != nil {
 					result = append(result, item)
 				}
 			case provider.ContentToolCall:
 				call := block.ToolCall
-				result = ensureReasoningBeforeFunctionCall(result, reasoningPlaceholder)
+				result = ensureReasoningBeforeFunctionCall(
+					result, policy.ReasoningPlaceholder,
+				)
 				result = append(result, map[string]any{"type": "function_call", "call_id": call.ID, "name": call.Name, "arguments": call.Arguments})
 			case provider.ContentToolResult:
 				result = append(result, map[string]any{"type": "function_call_output", "call_id": block.ToolResult.CallID, "output": block.ToolResult.Content})
-			case provider.ContentProvider:
-				var item map[string]any
-				if err := json.Unmarshal(block.ProviderData, &item); err != nil {
-					return nil, fmt.Errorf("decode OpenAI provider replay block: %w", err)
-				}
-				result = append(result, item)
 			}
 		}
 	}
@@ -304,15 +332,23 @@ func ensureReasoningBeforeFunctionCall(
 		}},
 	})
 }
-func responsesReasoningItem(block provider.ContentBlock) (map[string]any, error) {
+func responsesReasoningItem(
+	block provider.ContentBlock,
+	replay json.RawMessage,
+) (map[string]any, error) {
 	text := strings.TrimSpace(block.Text)
 	var item map[string]any
-	if block.ProviderType == "openai_responses.reasoning" && len(block.ProviderData) != 0 {
-		if err := json.Unmarshal(block.ProviderData, &item); err != nil {
+	if len(replay) != 0 {
+		if err := json.Unmarshal(replay, &item); err != nil {
 			return nil, fmt.Errorf("decode OpenAI reasoning replay block: %w", err)
 		}
+		replayText := strings.TrimSpace(reasoningTextFromItem(item))
 		if text == "" {
-			text = strings.TrimSpace(reasoningTextFromItem(item))
+			text = replayText
+		} else if replayText != "" && replayText != text {
+			return nil, errors.New(
+				"Responses replay reasoning does not match assistant content",
+			)
 		}
 	}
 	if text == "" {
@@ -323,6 +359,26 @@ func responsesReasoningItem(block provider.ContentBlock) (map[string]any, error)
 		out["id"] = id
 	}
 	return out, nil
+}
+
+func replayReasoningItem(
+	items []json.RawMessage,
+	block provider.ContentBlock,
+	ordinal int,
+) json.RawMessage {
+	if block.ID != "" {
+		for _, raw := range items {
+			var item map[string]any
+			if json.Unmarshal(raw, &item) == nil &&
+				stringValue(item["id"]) == block.ID {
+				return raw
+			}
+		}
+	}
+	if ordinal >= 0 && ordinal < len(items) {
+		return items[ordinal]
+	}
+	return nil
 }
 func reasoningTextFromItem(item map[string]any) string {
 	if item == nil {

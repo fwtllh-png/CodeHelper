@@ -370,7 +370,6 @@
             "turn.started",
             "output.delta",
             "reasoning.delta",
-            "reasoning.signature",
             "search.result",
             "citation",
             "usage",
@@ -3206,18 +3205,6 @@
       ],
       "additionalProperties": false
     },
-    "reasoning.signature": {
-      "type": "object",
-      "properties": {
-        "signature": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "signature"
-      ],
-      "additionalProperties": false
-    },
     "search.result": {
       "type": "object",
       "properties": {
@@ -5222,13 +5209,6 @@
     },
     "reasoning.delta": {
       "class": "stream",
-      "item_owner": "turn",
-      "durability": "retained",
-      "correlation": "turn",
-      "terminal": false
-    },
-    "reasoning.signature": {
-      "class": "audit",
       "item_owner": "turn",
       "durability": "retained",
       "correlation": "turn",

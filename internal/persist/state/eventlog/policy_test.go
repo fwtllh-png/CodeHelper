@@ -33,7 +33,6 @@ func TestShouldPersistTable(t *testing.T) {
 		{protocol.EventDiagnostics, true},
 		{protocol.EventSearchResult, true},
 		{protocol.EventCitation, true},
-		{protocol.EventReasoningSignature, true},
 		{protocol.EventAgentSpawned, true},
 		{protocol.EventAgentStatus, true},
 		{protocol.EventAgentMessage, true},

@@ -114,7 +114,9 @@ func (a *Adapter) openSession(ctx context.Context, request provider.ModelRequest
 	}
 	session.lastUsed = now
 	stream := &responsesSocketStream{ctx: ctx, session: session, input: input, property: property,
-		idleTimeout: idleTimeout, decoder: ResponsesDecoder{CaptureState: true}}
+		idleTimeout: idleTimeout, decoder: ResponsesDecoder{
+			CaptureState: true, CaptureReplay: true,
+		}}
 	return stream, providerwire.Metadata(call.Body, payload, incremental), nil
 }
 func responsesSocketBody(data []byte) (map[string]any, []json.RawMessage, string, error) {

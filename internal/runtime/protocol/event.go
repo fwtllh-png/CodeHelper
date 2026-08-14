@@ -15,7 +15,6 @@ const (
 	EventTurnStarted        EventKind = "turn.started"
 	EventOutputDelta        EventKind = "output.delta"
 	EventReasoningDelta     EventKind = "reasoning.delta"
-	EventReasoningSignature EventKind = "reasoning.signature"
 	EventSearchResult       EventKind = "search.result"
 	EventCitation           EventKind = "citation"
 	EventUsage              EventKind = "usage"
@@ -110,16 +109,6 @@ type ReasoningDeltaData TextDeltaData
 func (*ReasoningDeltaData) eventKind() EventKind { return EventReasoningDelta }
 
 func (d *ReasoningDeltaData) validate() error { return (*TextDeltaData)(d).validate() }
-
-type ReasoningSignatureData struct {
-	Signature string `json:"signature"`
-}
-
-func (*ReasoningSignatureData) eventKind() EventKind { return EventReasoningSignature }
-
-func (d *ReasoningSignatureData) validate() error {
-	return require(d.Signature != "", "reasoning signature is required")
-}
 
 type Source struct {
 	ID    string `json:"id"`

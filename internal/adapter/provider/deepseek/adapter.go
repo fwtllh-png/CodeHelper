@@ -27,7 +27,12 @@ func (*Adapter) Supports(protocol model.WireProtocol) bool {
 func (*Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedCall, error) {
 	if request.Route.Protocol() == model.ProtocolOpenAIResponses {
 		return openai.PrepareResponses(
-			request, model.AdapterDeepSeek, reasoningPlaceholder, false,
+			request,
+			model.AdapterDeepSeek,
+			openai.ResponsesPolicy{
+				ReasoningPlaceholder: reasoningPlaceholder,
+				ReplayAdapter:        model.AdapterDeepSeek,
+			},
 		)
 	}
 	if request.Route.Protocol() != model.ProtocolOpenAIChat {

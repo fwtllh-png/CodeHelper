@@ -527,10 +527,20 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolAnthropic)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "first"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{
-				{Type: provider.ContentReasoning, Text: "private thought", Signature: "signed-value"},
-				{Type: provider.ContentText, Text: "answer"},
-			}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{
+					{Type: provider.ContentReasoning, Text: "private thought"},
+					{Type: provider.ContentText, Text: "answer"},
+				},
+				1,
+				&provider.ReplayState{
+					Version: provider.ReplayVersion,
+					Data: json.RawMessage(
+						`{"signatures":[{"block":0,"value":"signed-value"}]}`,
+					),
+				},
+			),
 			provider.TextMessage(provider.RoleUser, "second"),
 		}
 		data, _, err := encodeRequest(request)
@@ -553,15 +563,19 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		}
 	})
 
-	t.Run("responses opaque reasoning", func(t *testing.T) {
+	t.Run("responses encrypted reasoning becomes neutral plaintext", func(t *testing.T) {
 		raw := json.RawMessage(`{"type":"reasoning","id":"rs_1","encrypted_content":"ciphertext","summary":[]}`)
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "first"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{{
-				Type: provider.ContentReasoning, ID: "rs_1",
-				ProviderType: "openai_responses.reasoning", ProviderData: raw,
-			}}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{{
+					Type: provider.ContentReasoning, ID: "rs_1", Text: "inspect",
+				}},
+				1,
+				responsesReplayState(raw),
+			),
 			provider.TextMessage(provider.RoleUser, "second"),
 		}
 		data, _, err := encodeRequest(request)
@@ -574,9 +588,12 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		if err := json.Unmarshal(data, &body); err != nil {
 			t.Fatal(err)
 		}
-		// Empty/encrypted-only reasoning must be omitted (DeepSeek 400 otherwise).
-		if len(body.Input) != 2 || body.Input[1]["role"] != "user" {
-			t.Fatalf("empty reasoning should be dropped, input=%#v", body.Input)
+		if len(body.Input) != 3 || body.Input[1]["type"] != "reasoning" ||
+			body.Input[2]["role"] != "user" {
+			t.Fatalf("reasoning replay = %#v", body.Input)
+		}
+		if _, exists := body.Input[1]["encrypted_content"]; exists {
+			t.Fatalf("encrypted replay leaked: %#v", body.Input[1])
 		}
 	})
 
@@ -585,10 +602,14 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "q"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{
-				{Type: provider.ContentReasoning, ProviderType: "openai_responses.reasoning", ProviderData: raw},
-				{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{ID: "c1", Name: "echo", Arguments: `{}`}},
-			}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{
+					{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{ID: "c1", Name: "echo", Arguments: `{}`}},
+				},
+				1,
+				responsesReplayState(raw),
+			),
 		}
 		data, _, err := encodeRequest(request)
 		if err != nil {
@@ -736,14 +757,19 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		}
 	})
 
-	t.Run("responses extracts reasoning_text from provider data", func(t *testing.T) {
+	t.Run("responses extracts reasoning_text from replay state", func(t *testing.T) {
 		raw := json.RawMessage(`{"type":"reasoning","id":"rs_2","content":[{"type":"reasoning_text","text":"from item"}],"summary":[]}`)
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "q"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{{
-				Type: provider.ContentReasoning, ProviderType: "openai_responses.reasoning", ProviderData: raw,
-			}}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{{
+					Type: provider.ContentReasoning, ID: "rs_2", Text: "from item",
+				}},
+				1,
+				responsesReplayState(raw),
+			),
 		}
 		data, _, err := encodeRequest(request)
 		if err != nil {
@@ -808,10 +834,14 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "first"),
-			{Role: provider.RoleAssistant, Blocks: []provider.ContentBlock{{
-				Type: provider.ContentReasoning, ID: "rs_2", Text: "visible chain",
-				ProviderType: "openai_responses.reasoning", ProviderData: raw,
-			}}},
+			provider.ProducedAssistant(
+				request.Route,
+				[]provider.ContentBlock{{
+					Type: provider.ContentReasoning, ID: "rs_2", Text: "visible chain",
+				}},
+				1,
+				responsesReplayState(raw),
+			),
 		}
 		data, _, err := encodeRequest(request)
 		if err != nil {
@@ -1110,6 +1140,16 @@ func testClient() *Client {
 	client := New()
 	client.Credentials = staticCredentials("")
 	return client
+}
+
+func responsesReplayState(items ...json.RawMessage) *provider.ReplayState {
+	data, _ := json.Marshal(struct {
+		Items []json.RawMessage `json:"items"`
+	}{Items: items})
+	return &provider.ReplayState{
+		Version: provider.ReplayVersion,
+		Data:    data,
+	}
 }
 
 func testRequest(t *testing.T, endpoint string, wireProtocol model.WireProtocol) provider.ModelRequest {

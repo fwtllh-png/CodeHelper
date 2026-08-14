@@ -26,9 +26,6 @@ export function projectStream(event: DecodedEvent, turn: MutableTurn): boolean {
       appendTimelineText(turn, "reasoning", event.sequence, event.data.text);
       turn.reasoningActive = true;
       return true;
-    case "reasoning.signature":
-      turn.reasoningActive = false;
-      return true;
     case "plan.delta": {
       const body = event.data.body ??
         appendBounded(turn.plan?.body ?? "", event.data.text ?? "");

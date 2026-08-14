@@ -455,8 +455,17 @@ func (e *Engine) RevertWorkspace(
 
 func messageSize(message provider.Message) int {
 	size := 0
+	if message.Provenance != nil {
+		size += len(message.Provenance.Adapter) +
+			len(message.Provenance.Provider) +
+			len(message.Provenance.Model)
+		if message.Provenance.Replay != nil {
+			size += len(message.Provenance.Replay.ContentDigest) +
+				len(message.Provenance.Replay.Data)
+		}
+	}
 	for _, block := range message.Blocks {
-		size += len(block.Text) + len(block.Signature) + len(block.ProviderData)
+		size += len(block.Text)
 		if block.ToolCall != nil {
 			size += len(block.ToolCall.ID) + len(block.ToolCall.Name) + len(block.ToolCall.Arguments)
 		}
@@ -499,6 +508,18 @@ func cloneMessages(messages []provider.Message) []provider.Message {
 	for index, message := range messages {
 		cloned[index] = message
 		cloned[index].Blocks = cloneBlocks(message.Blocks)
+		if message.Provenance != nil {
+			provenance := *message.Provenance
+			if message.Provenance.Replay != nil {
+				replay := *message.Provenance.Replay
+				replay.Data = append(
+					[]byte(nil),
+					message.Provenance.Replay.Data...,
+				)
+				provenance.Replay = &replay
+			}
+			cloned[index].Provenance = &provenance
+		}
 	}
 	return cloned
 }
@@ -524,7 +545,6 @@ func cloneBlocks(blocks []provider.ContentBlock) []provider.ContentBlock {
 			copy := *block.Citation
 			cloned[index].Citation = &copy
 		}
-		cloned[index].ProviderData = append([]byte(nil), block.ProviderData...)
 	}
 	return cloned
 }

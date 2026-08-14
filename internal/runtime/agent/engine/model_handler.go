@@ -43,6 +43,7 @@ func (e *Engine) modelStep(
 	finishMode bool,
 	continued *bool,
 	pendingInputInjected *bool,
+	capturedReplay **provider.ReplayState,
 	send func(State, Event) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, uint64, error) {
 	if continued != nil {
@@ -50,6 +51,9 @@ func (e *Engine) modelStep(
 	}
 	if pendingInputInjected != nil {
 		*pendingInputInjected = false
+	}
+	if capturedReplay != nil {
+		*capturedReplay = nil
 	}
 	scope := e.runningScope()
 	if scope == nil {
@@ -205,11 +209,13 @@ func (e *Engine) modelStep(
 			}
 			return nil, nil, totalUsage, lastEstimate, err
 		}
+		var replay *provider.ReplayState
 		blocks, calls, usage, meaningful, err := consume(
 			stream, call, func(event Event) error {
 				return send(Streaming, event)
 			},
 			e.tracer().NoteFirstOutput,
+			&replay,
 		)
 		e.clearActiveCancel()
 		cancel(nil)
@@ -227,10 +233,13 @@ func (e *Engine) modelStep(
 				*pendingInputInjected = true
 			}
 			pendingBlocks := appendContinuedBlocks(continuedBlocks, blocks)
+			if len(continuedBlocks) != 0 {
+				replay = nil
+			}
 			if len(pendingBlocks) != 0 {
-				*history = append(*history, provider.Message{
-					Role: provider.RoleAssistant, Blocks: pendingBlocks, Turn: e.turn,
-				})
+				*history = append(*history, provider.ProducedAssistant(
+					route, pendingBlocks, e.turn, replay,
+				))
 			}
 			e.appendPendingInputs(history, pending)
 			continuationMessages = nil
@@ -260,9 +269,12 @@ func (e *Engine) modelStep(
 				reasoningOnlyBlocks(continuedBlocks) &&
 				!finishAttempted && continuations > 0 {
 				if len(blocks) != 0 {
-					continuationMessages = append(continuationMessages, provider.Message{
-						Role: provider.RoleAssistant, Blocks: cloneBlocks(blocks), Turn: e.turn,
-					})
+					continuationMessages = append(
+						continuationMessages,
+						provider.ProducedAssistant(
+							route, cloneBlocks(blocks), e.turn, nil,
+						),
+					)
 				}
 				continuationMessages = append(continuationMessages, finishOutputFeedback(e.turn))
 				finishAttempted, finishMode, attempt = true, true, -1
@@ -281,9 +293,12 @@ func (e *Engine) modelStep(
 				)
 			}
 			if len(blocks) != 0 {
-				continuationMessages = append(continuationMessages, provider.Message{
-					Role: provider.RoleAssistant, Blocks: cloneBlocks(blocks), Turn: e.turn,
-				})
+				continuationMessages = append(
+					continuationMessages,
+					provider.ProducedAssistant(
+						route, cloneBlocks(blocks), e.turn, nil,
+					),
+				)
 			}
 			continuationMessages = append(
 				continuationMessages,
@@ -294,6 +309,12 @@ func (e *Engine) modelStep(
 			continue
 		}
 		if err == nil {
+			if len(continuedBlocks) != 0 {
+				replay = nil
+			}
+			if capturedReplay != nil {
+				*capturedReplay = replay
+			}
 			completeBlocks := appendContinuedBlocks(continuedBlocks, blocks)
 			if continued != nil {
 				text := strings.TrimSpace(blocksText(completeBlocks))
@@ -405,7 +426,7 @@ func reasoningOnlyBlocks(blocks []provider.ContentBlock) bool {
 		if block.Type != provider.ContentReasoning {
 			return false
 		}
-		if block.Text != "" || block.Signature != "" || len(block.ProviderData) != 0 {
+		if block.Text != "" {
 			meaningful = true
 		}
 	}
@@ -549,11 +570,13 @@ func consume(
 	call sample,
 	emit func(Event) error,
 	firstOutput func(),
+	capturedReplay **provider.ReplayState,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, bool, error) {
 	stream = newDeltaCoalescingStream(stream)
 	defer stream.Close()
 	var blocks []provider.ContentBlock
 	var usage provider.Usage
+	var replay *provider.ReplayState
 	fragments := make(map[int]provider.ToolCall)
 	meaningful := false
 
@@ -600,19 +623,16 @@ func consume(
 			blocks = appendStreamBlock(blocks, event.Index, block)
 			visible := block
 			visible.Text = event.Text
-			if visible.Text == "" && visible.Signature == "" {
+			if visible.Text == "" {
 				continue
 			}
 			if err := emit(Event{Text: event.Text, Block: &visible}); err != nil {
 				return nil, nil, usage, meaningful, err
 			}
 		case provider.EventReasoningSignature:
-			output()
-			block := eventBlock(event, provider.ContentReasoning)
-			blocks = appendStreamBlock(blocks, event.Index, block)
-			if err := emit(Event{Block: &block}); err != nil {
-				return nil, nil, usage, meaningful, err
-			}
+			return nil, nil, usage, meaningful, errors.New(
+				"provider signature was not captured as replay state",
+			)
 		case provider.EventSearchResult, provider.EventCitation:
 			output()
 			block := eventBlock(event, "")
@@ -634,6 +654,15 @@ func consume(
 			}); err != nil {
 				return nil, nil, usage, meaningful, err
 			}
+		case provider.EventReplayState:
+			if replay != nil || event.Replay == nil {
+				return nil, nil, usage, meaningful, errors.New(
+					"provider emitted duplicate or empty replay state",
+				)
+			}
+			copy := *event.Replay
+			copy.Data = append(json.RawMessage(nil), event.Replay.Data...)
+			replay = &copy
 		case provider.EventToolCallDelta:
 			output()
 			call := fragments[event.ToolCall.Index]
@@ -646,6 +675,9 @@ func consume(
 			call.Arguments += event.ToolCall.Arguments
 			fragments[event.ToolCall.Index] = call
 		case provider.EventMessageStop:
+			if capturedReplay != nil {
+				*capturedReplay = replay
+			}
 			switch event.StopReason {
 			case provider.StopReasonMaxTokens, provider.StopReasonIncomplete:
 				return blocks, nil, usage, meaningful, &incompleteModelOutputError{
@@ -843,8 +875,6 @@ func eventBlock(event provider.StreamEvent, fallback provider.ContentType) provi
 		return provider.ContentBlock{Type: provider.ContentText, Text: event.Text}
 	case provider.EventReasoningDelta:
 		return provider.ContentBlock{Type: provider.ContentReasoning, Text: event.Text}
-	case provider.EventReasoningSignature:
-		return provider.ContentBlock{Type: provider.ContentReasoning, Signature: event.Signature}
 	case provider.EventSearchResult:
 		return provider.ContentBlock{Type: provider.ContentSearch, Search: event.Search}
 	case provider.EventCitation:
@@ -866,15 +896,7 @@ func appendStreamBlock(
 			return blocks
 		}
 		if block.Type == provider.ContentReasoning &&
-			(len(last.ProviderData) == 0 || len(block.ProviderData) == 0 ||
-				(last.ID != "" && last.ID == block.ID)) {
-
-			if block.Text == "" && len(block.ProviderData) != 0 {
-				var item map[string]any
-				if json.Unmarshal(block.ProviderData, &item) == nil {
-					block.Text = reasoningTextFromProviderData(item)
-				}
-			}
+			(last.ID == "" || block.ID == "" || last.ID == block.ID) {
 			switch {
 			case last.Text == "":
 				last.Text = block.Text
@@ -884,53 +906,16 @@ func appendStreamBlock(
 				last.Text = block.Text
 			case strings.Contains(last.Text, block.Text):
 
-			case len(last.ProviderData) == 0:
+			default:
 				last.Text += block.Text
 			}
-			last.Signature += block.Signature
-			if len(last.ProviderData) == 0 {
-				last.ProviderType = block.ProviderType
-				last.ProviderData = append([]byte(nil), block.ProviderData...)
-				last.ID = block.ID
-			} else if last.ID == "" {
+			if last.ID == "" {
 				last.ID = block.ID
 			}
 			return blocks
 		}
 	}
 	return append(blocks, block)
-}
-
-func reasoningTextFromProviderData(item map[string]any) string {
-	if item == nil {
-		return ""
-	}
-	for _, key := range []string{"content", "summary"} {
-		switch content := item[key].(type) {
-		case string:
-			if content != "" {
-				return content
-			}
-		case []any:
-			var parts []string
-			for _, raw := range content {
-				part, _ := raw.(map[string]any)
-				if part == nil {
-					continue
-				}
-				switch typ, _ := part["type"].(string); typ {
-				case "reasoning_text", "output_text", "summary_text", "text", "":
-					if text, _ := part["text"].(string); text != "" {
-						parts = append(parts, text)
-					}
-				}
-			}
-			if joined := strings.Join(parts, ""); joined != "" {
-				return joined
-			}
-		}
-	}
-	return ""
 }
 
 func blocksText(blocks []provider.ContentBlock) string {
@@ -948,16 +933,6 @@ func blocksReasoning(blocks []provider.ContentBlock) string {
 	for _, block := range blocks {
 		if block.Type == provider.ContentReasoning {
 			result += block.Text
-		}
-	}
-	return result
-}
-
-func blocksSignature(blocks []provider.ContentBlock) string {
-	var result string
-	for _, block := range blocks {
-		if block.Type == provider.ContentReasoning {
-			result += block.Signature
 		}
 	}
 	return result

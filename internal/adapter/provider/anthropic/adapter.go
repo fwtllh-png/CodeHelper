@@ -26,7 +26,11 @@ func (*Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedCal
 			model.AdapterAnthropic, request.Route.Protocol(),
 		)
 	}
-	system, messages, err := messages(request.Messages, request.Route.Model().Capabilities.PromptCache)
+	system, messages, err := messages(
+		request.Messages,
+		request.Route,
+		request.Route.Model().Capabilities.PromptCache,
+	)
 	if err != nil {
 		return providerwire.PreparedCall{}, err
 	}
@@ -74,7 +78,11 @@ func (*Adapter) OpenStream(body io.ReadCloser, _ providerwire.PreparedCall) (pro
 func (*Adapter) ClassifyHTTP(failure providerwire.HTTPFailure) error {
 	return providerwire.GenericHTTPFailure(failure)
 }
-func messages(input []provider.Message, promptCache bool) ([]map[string]any, []map[string]any, error) {
+func messages(
+	input []provider.Message,
+	route model.ReadyRoute,
+	promptCache bool,
+) ([]map[string]any, []map[string]any, error) {
 	var stable, volatile []string
 	seenNonSystem := false
 	result := make([]map[string]any, 0, len(input))
@@ -92,6 +100,11 @@ func messages(input []provider.Message, promptCache bool) ([]map[string]any, []m
 			}
 		case provider.RoleAssistant:
 			seenNonSystem = true
+			signatures, err := replaySignatures(message, route)
+			if err != nil {
+				return nil, nil, err
+			}
+			reasoningBlock := 0
 			content := make([]map[string]any, 0, len(message.Blocks))
 			for _, block := range message.Blocks {
 				switch block.Type {
@@ -99,10 +112,12 @@ func messages(input []provider.Message, promptCache bool) ([]map[string]any, []m
 					content = append(content, map[string]any{"type": "text", "text": block.Text})
 				case provider.ContentReasoning:
 					thinking := map[string]any{"type": "thinking", "thinking": block.Text}
-					if block.Signature != "" {
-						thinking["signature"] = block.Signature
+					signature := signatures[reasoningBlock]
+					if signature != "" {
+						thinking["signature"] = signature
 					}
 					content = append(content, thinking)
+					reasoningBlock++
 				case provider.ContentToolCall:
 					call := block.ToolCall
 					var toolInput any

@@ -11,6 +11,7 @@ import (
 
 // EncodeCompactedHistory converts provider messages into durable compacted messages.
 func EncodeCompactedHistory(messages []provider.Message) ([]protocol.CompactedMessage, error) {
+	messages = provider.FilterReplayForAdapter(messages, "")
 	result := make([]protocol.CompactedMessage, 0, len(messages))
 	for _, message := range messages {
 		content, err := json.Marshal(message.Blocks)

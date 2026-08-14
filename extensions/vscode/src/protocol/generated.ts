@@ -37,7 +37,6 @@ export const eventKinds = [
   "output.delta",
   "plan.delta",
   "reasoning.delta",
-  "reasoning.signature",
   "search.result",
   "thread.compacted",
   "thread.forked",
@@ -92,7 +91,6 @@ export const eventTraits = {
   "output.delta": {"class":"stream","item_owner":"turn","durability":"terminal_projection","correlation":"turn","terminal":false},
   "plan.delta": {"class":"artifact_stream","item_owner":"turn","durability":"retained","correlation":"plan","terminal":false},
   "reasoning.delta": {"class":"stream","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
-  "reasoning.signature": {"class":"audit","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
   "search.result": {"class":"evidence","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
   "thread.compacted": {"class":"lifecycle","item_owner":"thread","durability":"retained","correlation":"thread","terminal":false},
   "thread.forked": {"class":"lifecycle","item_owner":"thread","durability":"retained","correlation":"thread","terminal":false},
@@ -126,7 +124,7 @@ export type EventEnvelope = {
   readonly "data": Readonly<Record<string, unknown>>;
   readonly "id": string;
   readonly "item_id": string;
-  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "reasoning.signature" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "checkpoint.created" | "checkpoint.restored" | "checkpoint.forked" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "agent.integration" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
+  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "checkpoint.created" | "checkpoint.restored" | "checkpoint.forked" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "agent.integration" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
   readonly "operation_id": string;
   readonly "sequence": number;
   readonly "thread_id": string;
@@ -946,10 +944,6 @@ export type ReasoningDeltaData = {
   readonly "text": string;
 };
 
-export type ReasoningSignatureData = {
-  readonly "signature": string;
-};
-
 export type SearchResultData = {
   readonly "query": string;
   readonly "sources": ReadonlyArray<{
@@ -1398,13 +1392,17 @@ export type UsageData = {
       readonly "history_other_tokens"?: number;
       readonly "history_tool_tokens"?: number;
       readonly "history_user_tokens"?: number;
+      readonly "incremental_transport"?: boolean;
+      readonly "logical_request_digest"?: string;
       readonly "message_count"?: number;
       readonly "provider_framing_tokens"?: number;
       readonly "reason": string;
       readonly "reasoning_effort"?: string;
+      readonly "request_bytes"?: number;
       readonly "stable_tokens"?: number;
       readonly "tool_definition_count"?: number;
       readonly "tool_definition_tokens"?: number;
+      readonly "transport_payload_digest"?: string;
     };
   readonly "cost_known": boolean;
   readonly "cost_microunits"?: number;
@@ -1438,7 +1436,6 @@ export interface EventDataByKind {
   readonly "output.delta": OutputDeltaData;
   readonly "plan.delta": PlanDeltaData;
   readonly "reasoning.delta": ReasoningDeltaData;
-  readonly "reasoning.signature": ReasoningSignatureData;
   readonly "search.result": SearchResultData;
   readonly "thread.compacted": ThreadCompactedData;
   readonly "thread.forked": ThreadForkedData;

@@ -266,22 +266,29 @@ func TestResponsesSessionConnectionResetDefersFullFallbackToNextCall(t *testing.
 }
 
 func TestResponsesSessionReplayOutputMatchesLogicalInputEncoding(t *testing.T) {
+	route := testRequest(
+		t, "https://api.openai.test", model.ProtocolOpenAIResponses,
+	).Route
 	reasoning := json.RawMessage(`{"id":"rs_1","type":"reasoning","content":[{"type":"reasoning_text","text":"inspect"}]}`)
 	output := []json.RawMessage{
 		reasoning,
 		json.RawMessage(`{"id":"fc_1","type":"function_call","call_id":"call_1","name":"read","arguments":"{\"path\":\"a.go\"}"}`),
 		json.RawMessage(`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}`),
 	}
-	logical, err := responsesInput([]provider.Message{{
-		Role: provider.RoleAssistant,
-		Blocks: []provider.ContentBlock{
-			{Type: provider.ContentReasoning, Text: "inspect", ProviderType: "openai_responses.reasoning", ProviderData: reasoning},
-			{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{
-				ID: "call_1", Name: "read", Arguments: `{"path":"a.go"}`,
-			}},
-			{Type: provider.ContentText, Text: "done"},
-		},
-	}}, "")
+	logical, err := responsesInput([]provider.Message{
+		provider.ProducedAssistant(
+			route,
+			[]provider.ContentBlock{
+				{Type: provider.ContentReasoning, ID: "rs_1", Text: "inspect"},
+				{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{
+					ID: "call_1", Name: "read", Arguments: `{"path":"a.go"}`,
+				}},
+				{Type: provider.ContentText, Text: "done"},
+			},
+			1,
+			mustReplayState(t, []json.RawMessage{reasoning}),
+		),
+	}, route, ResponsesPolicy{ReplayAdapter: model.AdapterOpenAI})
 	if err != nil {
 		t.Fatal(err)
 	}

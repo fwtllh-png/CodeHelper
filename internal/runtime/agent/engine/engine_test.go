@@ -1585,12 +1585,15 @@ func TestEngineToolsOffAndOnUseSameImplementation(t *testing.T) {
 	}
 }
 
-func TestEngineReplaysReasoningSignatureAndNativeSearch(t *testing.T) {
+func TestEngineBindsVersionedReplayToAssistantProvenance(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventReasoningDelta, Index: 0, Text: "think"},
-			{Type: provider.EventReasoningSignature, Index: 0, Signature: "signed"},
 			{Type: provider.EventTextDelta, Index: 1, Text: "first"},
+			{Type: provider.EventReplayState, Replay: &provider.ReplayState{
+				Version: provider.ReplayVersion,
+				Data:    json.RawMessage(`{"items":[{"type":"reasoning"}]}`),
+			}},
 			{Type: provider.EventMessageStop},
 		}},
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
@@ -1611,12 +1614,17 @@ func TestEngineReplaysReasoningSignatureAndNativeSearch(t *testing.T) {
 	if _, err := engine.Run(t.Context(), "two", nil); err != nil {
 		t.Fatal(err)
 	}
-	replayed := runtime.requests[1].Messages[1].Blocks
+	assistant := runtime.requests[1].Messages[1]
+	replayed := assistant.Blocks
 	if len(replayed) != 2 ||
 		replayed[0].Type != provider.ContentReasoning ||
 		replayed[0].Text != "think" ||
-		replayed[0].Signature != "signed" ||
 		replayed[1].Text != "first" ||
+		assistant.Provenance == nil ||
+		assistant.Provenance.Adapter != model.AdapterOpenAICompatible ||
+		assistant.Provenance.Replay == nil ||
+		assistant.Provenance.Replay.ContentDigest !=
+			provider.MessageContentDigest(assistant) ||
 		!runtime.requests[1].NativeSearch {
 		t.Fatalf("second request = %+v", runtime.requests[1])
 	}

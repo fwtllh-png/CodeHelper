@@ -29,7 +29,6 @@ const (
 	ContentToolResult ContentType = "tool_result"
 	ContentSearch     ContentType = "search"
 	ContentCitation   ContentType = "citation"
-	ContentProvider   ContentType = "provider"
 	ContentImage      ContentType = "image"
 )
 
@@ -48,17 +47,14 @@ func (a Attachment) Base64() string {
 }
 
 type ContentBlock struct {
-	Type         ContentType     `json:"type"`
-	Text         string          `json:"text,omitempty"`
-	Signature    string          `json:"signature,omitempty"`
-	ID           string          `json:"id,omitempty"`
-	ToolCall     *ToolCall       `json:"tool_call,omitempty"`
-	ToolResult   *ToolResult     `json:"tool_result,omitempty"`
-	Search       *SearchResult   `json:"search,omitempty"`
-	Citation     *Citation       `json:"citation,omitempty"`
-	Attachment   *Attachment     `json:"attachment,omitempty"`
-	ProviderType string          `json:"provider_type,omitempty"`
-	ProviderData json.RawMessage `json:"provider_data,omitempty"`
+	Type       ContentType   `json:"type"`
+	Text       string        `json:"text,omitempty"`
+	ID         string        `json:"id,omitempty"`
+	ToolCall   *ToolCall     `json:"tool_call,omitempty"`
+	ToolResult *ToolResult   `json:"tool_result,omitempty"`
+	Search     *SearchResult `json:"search,omitempty"`
+	Citation   *Citation     `json:"citation,omitempty"`
+	Attachment *Attachment   `json:"attachment,omitempty"`
 }
 type ToolResult struct {
 	CallID  string `json:"call_id"`
@@ -66,9 +62,10 @@ type ToolResult struct {
 	IsError bool   `json:"is_error,omitempty"`
 }
 type Message struct {
-	Role   Role           `json:"role"`
-	Blocks []ContentBlock `json:"content"`
-	Turn   uint64         `json:"-"`
+	Role       Role                 `json:"role"`
+	Blocks     []ContentBlock       `json:"content"`
+	Provenance *AssistantProvenance `json:"provenance,omitempty"`
+	Turn       uint64               `json:"-"`
 }
 
 func TextMessage(role Role, text string) Message {
@@ -136,6 +133,14 @@ func (r ModelRequest) Validate() error {
 		if len(message.Blocks) == 0 {
 			return fmt.Errorf("messages[%d] has no content", index)
 		}
+		if err := validateMessageProvenance(message); err != nil {
+			return fmt.Errorf("messages[%d]: %w", index, err)
+		}
+		if err := ValidateReplayForRoute(
+			message, r.Route, r.Route.Adapter(),
+		); err != nil {
+			return fmt.Errorf("messages[%d]: %w", index, err)
+		}
 		for blockIndex, block := range message.Blocks {
 			if err := block.Validate(); err != nil {
 				return fmt.Errorf("messages[%d].content[%d]: %w", index, blockIndex, err)
@@ -196,8 +201,8 @@ func (b ContentBlock) Validate() error {
 			return errors.New("text is required")
 		}
 	case ContentReasoning:
-		if b.Text == "" && b.Signature == "" && len(b.ProviderData) == 0 {
-			return errors.New("reasoning text, signature, or provider data is required")
+		if b.Text == "" {
+			return errors.New("reasoning text is required")
 		}
 	case ContentToolCall:
 		if b.ToolCall == nil || b.ToolCall.ID == "" || b.ToolCall.Name == "" {
@@ -214,10 +219,6 @@ func (b ContentBlock) Validate() error {
 	case ContentCitation:
 		if b.Citation == nil || b.Citation.URL == "" {
 			return errors.New("citation URL is required")
-		}
-	case ContentProvider:
-		if b.ProviderType == "" || len(b.ProviderData) == 0 {
-			return errors.New("provider type and data are required")
 		}
 	case ContentImage:
 		if b.Attachment == nil || len(b.Attachment.Data) == 0 {
@@ -243,6 +244,7 @@ const (
 	EventSearchResult       StreamEventType = "search_result"
 	EventCitation           StreamEventType = "citation"
 	EventUsage              StreamEventType = "usage"
+	EventReplayState        StreamEventType = "replay_state"
 	EventResponseState      StreamEventType = "response_state"
 	EventMessageStop        StreamEventType = "message_stop"
 )
@@ -313,17 +315,19 @@ type Citation struct {
 	End      int    `json:"end,omitempty"`
 }
 type StreamEvent struct {
-	Type       StreamEventType   `json:"type"`
-	StopReason StopReason        `json:"stop_reason,omitempty"`
-	Index      int               `json:"index,omitempty"`
-	Block      *ContentBlock     `json:"block,omitempty"`
-	Text       string            `json:"text,omitempty"`
-	Signature  string            `json:"signature,omitempty"`
-	ToolCall   *ToolCallFragment `json:"tool_call,omitempty"`
-	Search     *SearchResult     `json:"search,omitempty"`
-	Citation   *Citation         `json:"citation,omitempty"`
-	Usage      *Usage            `json:"usage,omitempty"`
-	Response   *ResponseState    `json:"response,omitempty"`
+	Type           StreamEventType   `json:"type"`
+	StopReason     StopReason        `json:"stop_reason,omitempty"`
+	Index          int               `json:"index,omitempty"`
+	Block          *ContentBlock     `json:"block,omitempty"`
+	Text           string            `json:"text,omitempty"`
+	Signature      string            `json:"signature,omitempty"`
+	ToolCall       *ToolCallFragment `json:"tool_call,omitempty"`
+	Search         *SearchResult     `json:"search,omitempty"`
+	Citation       *Citation         `json:"citation,omitempty"`
+	Usage          *Usage            `json:"usage,omitempty"`
+	Replay         *ReplayState      `json:"replay,omitempty"`
+	ReplayFragment json.RawMessage   `json:"-"`
+	Response       *ResponseState    `json:"response,omitempty"`
 }
 
 type ResponseState struct {
@@ -356,7 +360,7 @@ func (e StreamEvent) Validate() error {
 			return errors.New("stream text delta is empty")
 		}
 	case EventReasoningSignature:
-		if e.Signature == "" && (e.Block == nil || e.Block.Signature == "") {
+		if e.Signature == "" {
 			return errors.New("reasoning signature is empty")
 		}
 	case EventToolCallDelta:
@@ -366,6 +370,11 @@ func (e StreamEvent) Validate() error {
 	case EventUsage:
 		if e.Usage == nil {
 			return errors.New("usage is required")
+		}
+	case EventReplayState:
+		if e.Replay == nil || e.Replay.Version != ReplayVersion ||
+			len(e.Replay.Data) == 0 || !json.Valid(e.Replay.Data) {
+			return errors.New("versioned replay state is required")
 		}
 	case EventResponseState:
 		if e.Response == nil || e.Response.ID == "" {

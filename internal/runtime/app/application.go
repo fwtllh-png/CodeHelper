@@ -811,9 +811,6 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 			if event.Block.Text != "" {
 				return sink.Emit((*protocol.ReasoningDeltaData)(&protocol.TextDeltaData{Text: event.Block.Text}))
 			}
-			if event.Block.Signature != "" {
-				return sink.Emit(&protocol.ReasoningSignatureData{Signature: event.Block.Signature})
-			}
 			return nil
 		}
 	}

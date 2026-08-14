@@ -146,6 +146,48 @@ func TestResponsesPrepareScopesDeepSeekReplayRules(t *testing.T) {
 	}
 }
 
+func TestResponsesReplayIsValidatedByDeepSeekAdapter(t *testing.T) {
+	request := testRequest(t, model.ProtocolOpenAIResponses)
+	request.Messages = []provider.Message{
+		provider.ProducedAssistant(
+			request.Route,
+			[]provider.ContentBlock{{
+				Type: provider.ContentReasoning, ID: "rs_1", Text: "inspect",
+			}},
+			1,
+			&provider.ReplayState{
+				Version: provider.ReplayVersion,
+				Data: json.RawMessage(
+					`{"items":[{"type":"reasoning","id":"rs_1",` +
+						`"content":[{"type":"reasoning_text","text":"inspect"}]}]}`,
+				),
+			},
+		),
+		provider.TextMessage(provider.RoleUser, "continue"),
+	}
+	call, err := NewAdapter().Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(call.Body), `"id":"rs_1"`) {
+		t.Fatalf("same-adapter replay missing: %s", call.Body)
+	}
+
+	request.Messages[0] = provider.ProducedAssistant(
+		request.Route,
+		[]provider.ContentBlock{{Type: provider.ContentText, Text: "answer"}},
+		1,
+		&provider.ReplayState{
+			Version: provider.ReplayVersion,
+			Data:    json.RawMessage(`{"items":[{"type":"message"}]}`),
+		},
+	)
+	if _, err := NewAdapter().Prepare(request); err == nil ||
+		!strings.Contains(err.Error(), "unsupported type") {
+		t.Fatalf("malformed replay error = %v", err)
+	}
+}
+
 func TestChatStreamNormalizesCacheAndRequiresDone(t *testing.T) {
 	stream, err := newStream(io.NopCloser(strings.NewReader(sse(
 		`{"choices":[{"delta":{"reasoning_content":""},"finish_reason":null}]}`,

@@ -27,9 +27,10 @@ type stream struct {
 	responses  ResponsesDecoder
 }
 type StreamPolicy struct {
-	RequireDone bool
-	NativeCache bool
-	FinalUsage  bool
+	RequireDone   bool
+	NativeCache   bool
+	FinalUsage    bool
+	CaptureReplay bool
 }
 
 func NewStream(body io.ReadCloser, protocol model.WireProtocol) (provider.Stream, error) {
@@ -50,6 +51,7 @@ func NewStreamWithOptions(
 	return &stream{
 		body: body, decoder: provider.NewSSEDecoder(body),
 		protocol: protocol, options: options,
+		responses: ResponsesDecoder{CaptureReplay: options.CaptureReplay},
 	}, nil
 }
 func (s *stream) Recv() (provider.StreamEvent, error) {
@@ -119,9 +121,11 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 }
 
 type ResponsesDecoder struct {
-	CaptureState   bool
-	reasoning      map[int]string
-	reasoningFinal map[int]bool
+	CaptureState  bool
+	CaptureReplay bool
+	reasoning     map[int]string
+	replayItems   map[string]json.RawMessage
+	replayOrder   []string
 }
 
 func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
@@ -131,11 +135,30 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 	}
 	if d.reasoning == nil {
 		d.reasoning = make(map[int]string)
-		d.reasoningFinal = make(map[int]bool)
+		d.replayItems = make(map[string]json.RawMessage)
 	}
 	reconciled := make([]provider.StreamEvent, 0, len(events))
 	for _, event := range events {
 		if event.Type == provider.EventResponseState && !d.CaptureState {
+			continue
+		}
+		if event.Type == provider.EventMessageStop {
+			if d.CaptureReplay && !event.StopReason.Incomplete() {
+				items := make([]json.RawMessage, 0, len(d.replayOrder))
+				for _, key := range d.replayOrder {
+					items = append(items, d.replayItems[key])
+				}
+				replay, replayErr := replayState(items)
+				if replayErr != nil {
+					return nil, replayErr
+				}
+				if replay != nil {
+					reconciled = append(reconciled, provider.StreamEvent{
+						Type: provider.EventReplayState, Replay: replay,
+					})
+				}
+			}
+			reconciled = append(reconciled, event)
 			continue
 		}
 		if event.Type != provider.EventReasoningDelta {
@@ -153,15 +176,25 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 			d.reasoning[event.Index] = seen + visible
 		}
 		event.Text = visible
-		if event.Block != nil && len(event.Block.ProviderData) == 0 {
+		if event.Block != nil && len(event.ReplayFragment) == 0 {
 			event.Block.Text = visible
 		}
-		hasProviderData := event.Block != nil && len(event.Block.ProviderData) != 0
-		if visible == "" && (!hasProviderData || d.reasoningFinal[event.Index]) {
-			continue
+		hasReplayFragment := len(event.ReplayFragment) != 0
+		if hasReplayFragment && d.CaptureReplay {
+			key := event.Block.ID
+			if key == "" {
+				key = fmt.Sprintf("#%d", event.Index)
+			}
+			if _, exists := d.replayItems[key]; !exists {
+				d.replayOrder = append(d.replayOrder, key)
+			}
+			d.replayItems[key] = append(
+				json.RawMessage(nil), event.ReplayFragment...,
+			)
+			event.ReplayFragment = nil
 		}
-		if hasProviderData {
-			d.reasoningFinal[event.Index] = true
+		if visible == "" {
+			continue
 		}
 		reconciled = append(reconciled, event)
 	}
@@ -490,10 +523,11 @@ func reasoningItemEvents(item map[string]any, index int) ([]provider.StreamEvent
 	text := reasoningTextFromItem(item)
 	block := provider.ContentBlock{
 		Type: provider.ContentReasoning, ID: stringValue(item["id"]),
-		Text: text, ProviderType: "openai_responses.reasoning", ProviderData: raw,
+		Text: text,
 	}
 	return []provider.StreamEvent{{
-		Type: provider.EventReasoningDelta, Index: index, Text: text, Block: &block,
+		Type: provider.EventReasoningDelta, Index: index, Text: text,
+		Block: &block, ReplayFragment: raw,
 	}}, nil
 }
 func searchResult(item map[string]any) provider.SearchResult {

@@ -197,17 +197,16 @@ func (HeuristicTokenEstimator) Estimate(messages []provider.Message) (uint64, er
 }
 
 type Result struct {
-	Turn               uint64                  `json:"turn"`
-	Text               string                  `json:"text"`
-	Reasoning          string                  `json:"reasoning,omitempty"`
-	ReasoningSignature string                  `json:"reasoning_signature,omitempty"`
-	State              State                   `json:"state"`
-	Usage              provider.Usage          `json:"usage"`
-	CostUSD            float64                 `json:"cost_usd"`
-	Tools              []provider.ToolCall     `json:"tools,omitempty"`
-	Searches           []provider.SearchResult `json:"searches,omitempty"`
-	Citations          []provider.Citation     `json:"citations,omitempty"`
-	Verification       *VerificationReceipt    `json:"verification,omitempty"`
+	Turn         uint64                  `json:"turn"`
+	Text         string                  `json:"text"`
+	Reasoning    string                  `json:"reasoning,omitempty"`
+	State        State                   `json:"state"`
+	Usage        provider.Usage          `json:"usage"`
+	CostUSD      float64                 `json:"cost_usd"`
+	Tools        []provider.ToolCall     `json:"tools,omitempty"`
+	Searches     []provider.SearchResult `json:"searches,omitempty"`
+	Citations    []provider.Citation     `json:"citations,omitempty"`
+	Verification *VerificationReceipt    `json:"verification,omitempty"`
 }
 
 // PendingSource tags why an input was enqueued into the turn-local queue (N1).

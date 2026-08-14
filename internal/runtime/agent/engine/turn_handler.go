@@ -570,9 +570,10 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				Type: provider.ContentToolCall, ToolCall: &callCopy,
 			})
 		}
-		transaction = append(transaction, provider.Message{
-			Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
-		})
+		transaction = append(
+			transaction,
+			provider.ProducedAssistant(spec.Route, blocks, e.turn, nil),
+		)
 		toolCtx := ctx
 		if progress.stage == turnkernel.ProgressStageFinishOnly {
 			toolCtx = withFinishOnly(ctx)
@@ -658,6 +659,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		var modelOutputContinued bool
 		var pendingInputInjected bool
+		var modelReplay *provider.ReplayState
 		modelSend := func(state State, event Event) error {
 			if event.ProviderRetry != nil {
 				if err := kernel.providerRetry(
@@ -683,6 +685,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				turnkernel.IsResearchIntent(kernel.intent()),
 			&modelOutputContinued,
 			&pendingInputInjected,
+			&modelReplay,
 			modelSend,
 		)
 		sampleReason = promptcontext.SampleNormal
@@ -708,7 +711,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		sampled.Add(usage)
 		text := blocksText(blocks)
 		result.Reasoning += blocksReasoning(blocks)
-		result.ReasoningSignature += blocksSignature(blocks)
 		for _, block := range blocks {
 			if block.Type == provider.ContentSearch && block.Search != nil {
 				result.Searches = append(result.Searches, *block.Search)
@@ -725,16 +727,22 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					}
 				}
 				if len(blocks) != 0 {
-					transaction = append(transaction, provider.Message{
-						Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
-					})
+					transaction = append(
+						transaction,
+						provider.ProducedAssistant(
+							spec.Route, blocks, e.turn, modelReplay,
+						),
+					)
 				}
 				finalText += text
 				continue
 			}
-			transaction = append(transaction, provider.Message{
-				Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
-			})
+			transaction = append(
+				transaction,
+				provider.ProducedAssistant(
+					spec.Route, blocks, e.turn, modelReplay,
+				),
+			)
 			var outcome verifyOutcome
 			action, actionErr := kernel.evaluateTurnStep(
 				kernel.repairProgressKey(),
@@ -884,9 +892,12 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			callCopy := call
 			blocks = append(blocks, provider.ContentBlock{Type: provider.ContentToolCall, ToolCall: &callCopy})
 		}
-		transaction = append(transaction, provider.Message{
-			Role: provider.RoleAssistant, Blocks: blocks, Turn: e.turn,
-		})
+		transaction = append(
+			transaction,
+			provider.ProducedAssistant(
+				spec.Route, blocks, e.turn, modelReplay,
+			),
+		)
 		toolCtx := ctx
 		if progress.stage == turnkernel.ProgressStageFinishOnly {
 			toolCtx = withFinishOnly(ctx)

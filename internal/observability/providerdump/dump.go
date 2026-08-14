@@ -77,20 +77,20 @@ func Write(
 }
 
 type messageSummary struct {
-	Index  int            `json:"index"`
-	Role   string         `json:"role"`
-	Turn   uint64         `json:"turn,omitempty"`
-	Blocks []blockSummary `json:"blocks"`
+	Index         int            `json:"index"`
+	Role          string         `json:"role"`
+	Turn          uint64         `json:"turn,omitempty"`
+	Adapter       string         `json:"adapter,omitempty"`
+	HasReplay     bool           `json:"has_replay,omitempty"`
+	ReplayDataLen int            `json:"replay_data_len,omitempty"`
+	Blocks        []blockSummary `json:"blocks"`
 }
 type blockSummary struct {
-	Type            string `json:"type"`
-	TextLen         int    `json:"text_len,omitempty"`
-	ID              string `json:"id,omitempty"`
-	ProviderType    string `json:"provider_type,omitempty"`
-	ProviderDataLen int    `json:"provider_data_len,omitempty"`
-	ToolName        string `json:"tool_name,omitempty"`
-	ToolCallID      string `json:"tool_call_id,omitempty"`
-	HasSignature    bool   `json:"has_signature,omitempty"`
+	Type       string `json:"type"`
+	TextLen    int    `json:"text_len,omitempty"`
+	ID         string `json:"id,omitempty"`
+	ToolName   string `json:"tool_name,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 type inputSummary struct {
 	Index    int    `json:"index"`
@@ -110,11 +110,16 @@ func summarizeMessages(messages []provider.Message) []messageSummary {
 			Index: index, Role: string(message.Role), Turn: message.Turn,
 			Blocks: make([]blockSummary, 0, len(message.Blocks)),
 		}
+		if message.Provenance != nil {
+			summary.Adapter = string(message.Provenance.Adapter)
+			summary.HasReplay = message.Provenance.Replay != nil
+			if message.Provenance.Replay != nil {
+				summary.ReplayDataLen = len(message.Provenance.Replay.Data)
+			}
+		}
 		for _, block := range message.Blocks {
 			item := blockSummary{
 				Type: string(block.Type), TextLen: len(block.Text), ID: block.ID,
-				ProviderType: block.ProviderType, ProviderDataLen: len(block.ProviderData),
-				HasSignature: block.Signature != "",
 			}
 			if block.ToolCall != nil {
 				item.ToolName, item.ToolCallID = block.ToolCall.Name, block.ToolCall.ID

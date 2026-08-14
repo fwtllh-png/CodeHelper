@@ -2,11 +2,12 @@
 
 [Simplified Chinese](../zh-CN/provider-architecture-upgrade.md) | English
 
-> Status: P3 `deepseek_isolated`. Versioned evidence:
+> Status: P4 `replay_owned`. Versioned evidence:
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
 > [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json),
 > [`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json),
-> and [`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json).
+> [`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json),
+> and [`provider-architecture-p4-evidence.json`](../provider-architecture-p4-evidence.json).
 >
 > Scope: model route metadata, provider-neutral request and stream contracts,
 > wire adapters, HTTP and WebSocket transport, DeepSeek-specific behavior,
@@ -1368,6 +1369,8 @@ Result:
 
 Status target: `replay_owned`.
 
+Status: complete on the P4 branch.
+
 Work:
 
 - add assistant provenance and versioned replay state;
@@ -1384,6 +1387,21 @@ Exit:
 - malformed replay fails before network I/O;
 - restart and context-fork reconstruction remain valid; and
 - no raw provider object enters Host protocol.
+
+Result:
+
+- assistant history carries explicit Adapter, Provider, and Model provenance;
+- versioned Replay State is content-digested and rejected before I/O when its
+  route, version, JSON shape, or neutral content no longer matches;
+- Router removes Replay State whenever the target Adapter changes;
+- OpenAI and DeepSeek Responses native reasoning items and Anthropic thinking
+  signatures are captured only after successful completion;
+- block-level `ProviderType`, `ProviderData`, `Signature`, and
+  `ContentProvider` channels are deleted;
+- compaction, checkpoint/fork replacement history, and context-fork projection
+  strip private Replay State after content rewriting; and
+- the obsolete Host `reasoning.signature` event is removed from the generated
+  Go, schema, and VS Code protocol contracts.
 
 ### P5: Durable Retry and Recovery
 
@@ -1669,17 +1687,17 @@ The upgrade is complete only when:
 - [x] Engine, ToolSampler, and probes use the same Router;
 - [x] `httpclient` owns no request serialization or provider error mapping;
 - [x] transport makes one attempt;
-- [ ] DeepSeek Chat and Responses have dedicated request and stream code;
-- [ ] generic OpenAI code contains no DeepSeek special case;
-- [ ] DeepSeek Chat passback includes reasoning only with tool calls;
-- [ ] DeepSeek V4 remains complete HTTP/SSE with incremental disabled;
-- [ ] empty responses and truncated streams have stable failure codes;
-- [ ] DeepSeek native cache usage is persisted;
+- [x] DeepSeek Chat and Responses have dedicated request and stream code;
+- [x] generic OpenAI code contains no DeepSeek special case;
+- [x] DeepSeek Chat passback includes reasoning only with tool calls;
+- [x] DeepSeek V4 remains complete HTTP/SSE with incremental disabled;
+- [x] empty responses and truncated streams have stable failure codes;
+- [x] DeepSeek native cache usage is persisted;
 - [ ] retry facts and delays are durable;
-- [ ] replay state is adapter-bound and versioned;
+- [x] replay state is adapter-bound and versioned;
 - [ ] context overflow invokes Runtime-owned recovery;
 - [ ] no raw secret enters tracked or diagnostic material;
-- [ ] exact fixtures, restart tests, and live DeepSeek scenarios pass;
-- [ ] English and Chinese documentation agree;
-- [ ] architecture gates and documented size review pass; and
+- [x] exact fixtures, restart tests, and live DeepSeek scenarios pass;
+- [x] English and Chinese documentation agree;
+- [x] architecture gates and documented size review pass; and
 - [ ] obsolete code and unnecessary duplication are deleted.

@@ -2,11 +2,12 @@
 
 简体中文 | [English](../en/provider-architecture-upgrade.md)
 
-> 状态：P3 `deepseek_isolated`。版本化证据见
+> 状态：P4 `replay_owned`。版本化证据见
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
 > [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json)
 > 、[`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json)
-> 与 [`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json)。
+> 、[`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json)
+> 与 [`provider-architecture-p4-evidence.json`](../provider-architecture-p4-evidence.json)。
 >
 > 范围：Model Route 元数据、Provider-neutral Request 与 Stream 契约、Wire
 > Adapter、HTTP 与 WebSocket Transport、DeepSeek 专属行为、Provider
@@ -1319,6 +1320,8 @@ Exit：
 
 目标状态：`replay_owned`。
 
+状态：P4 分支已完成。
+
 工作：
 
 - 新增 Assistant Provenance 与 Versioned Replay State；
@@ -1335,6 +1338,21 @@ Exit：
 - Malformed Replay 在网络 I/O 前失败；
 - Restart 与 Context Fork Reconstruction 保持正确；
 - Raw Provider Object 不进入 Host Protocol。
+
+结果：
+
+- Assistant History 显式携带 Adapter、Provider 与 Model Provenance；
+- Versioned Replay State 绑定 Content Digest，Route、Version、JSON Shape 或中性内容
+  不匹配时在 I/O 前拒绝；
+- 目标 Adapter 变化时 Router 删除 Replay State；
+- OpenAI/DeepSeek Responses Native Reasoning Item 与 Anthropic Thinking Signature
+  只在成功终止后捕获；
+- 删除 Block-level `ProviderType`、`ProviderData`、`Signature` 与
+  `ContentProvider` 通道；
+- Compaction、Checkpoint/Fork Replacement History 与 Context-fork Projection
+  在内容重写后删除 Private Replay State；
+- 从生成的 Go、Schema 与 VS Code Protocol Contract 中删除旧 Host
+  `reasoning.signature` Event。
 
 ### P5：Durable Retry 与 Recovery
 
@@ -1613,17 +1631,17 @@ Ownership。
 - [x] Engine、ToolSampler 与 Probe 使用同一个 Router；
 - [x] `httpclient` 不再拥有 Request Serialization 或 Provider Error Mapping；
 - [x] Transport 每次只执行一个 Attempt；
-- [ ] DeepSeek Chat 与 Responses 有专用 Request/Stream 代码；
-- [ ] Generic OpenAI Code 不含 DeepSeek Special Case；
-- [ ] DeepSeek Chat 只在含 Tool Call 时回传 Reasoning；
-- [ ] DeepSeek V4 保持 Full HTTP/SSE，Incremental Disabled；
-- [ ] Empty Response 与 Truncated Stream 有稳定 Failure Code；
-- [ ] DeepSeek Native Cache Usage 已持久化；
+- [x] DeepSeek Chat 与 Responses 有专用 Request/Stream 代码；
+- [x] Generic OpenAI Code 不含 DeepSeek Special Case；
+- [x] DeepSeek Chat 只在含 Tool Call 时回传 Reasoning；
+- [x] DeepSeek V4 保持 Full HTTP/SSE，Incremental Disabled；
+- [x] Empty Response 与 Truncated Stream 有稳定 Failure Code；
+- [x] DeepSeek Native Cache Usage 已持久化；
 - [ ] Retry Fact 与 Delay 可持久恢复；
-- [ ] Replay State 绑定 Adapter 且有 Version；
+- [x] Replay State 绑定 Adapter 且有 Version；
 - [ ] Context Overflow 进入 Runtime-owned Recovery；
 - [ ] Tracked 或 Diagnostic Material 中没有 Raw Secret；
-- [ ] Exact Fixture、Restart Test 与 Live DeepSeek Scenario 通过；
-- [ ] 中英文文档一致；
-- [ ] Architecture Gate 与有记录的 Size Review 通过；
+- [x] Exact Fixture、Restart Test 与 Live DeepSeek Scenario 通过；
+- [x] 中英文文档一致；
+- [x] Architecture Gate 与有记录的 Size Review 通过；
 - [ ] Obsolete Code 与无必要重复已删除。

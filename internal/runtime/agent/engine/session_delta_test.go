@@ -79,6 +79,18 @@ func TestSessionDeltaRejectsRevisionAndDigestConflicts(t *testing.T) {
 func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 	source := newEngine(t, &scriptedProvider{}, nil)
 	scope := attachTestScope(t, source)
+	route := testRoute(t)
+	assistant := provider.ProducedAssistant(
+		route,
+		[]provider.ContentBlock{{
+			Type: provider.ContentReasoning, Text: "compacted",
+		}},
+		5,
+		&provider.ReplayState{
+			Version: provider.ReplayVersion,
+			Data:    json.RawMessage(`{"items":[{"type":"reasoning"}]}`),
+		},
+	)
 	source.workingLedger().Observe(workingset.SourceRead, 4, "a.go")
 	source.evidenceSet().MarkChanged("a.go", 4, true)
 	plan := planFixture()
@@ -86,7 +98,7 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 	delta, err := prepareSessionDelta(
 		"turn-5",
 		4,
-		[]provider.Message{provider.TextMessage(provider.RoleSystem, "compacted")},
+		[]provider.Message{assistant},
 		provider.Usage{InputTokens: 9},
 		0.25,
 		SessionStateDelta{
@@ -129,6 +141,11 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 		entries[0].LastTurn != 0 {
 		t.Fatalf("restored plan observation changed = %+v", entries)
 	}
+	restored := target.History()[0]
+	if restored.Provenance == nil || restored.Provenance.Replay == nil ||
+		restored.Provenance.Adapter != route.Adapter() {
+		t.Fatalf("restored replay provenance = %+v", restored.Provenance)
+	}
 	fork := target.Fork()
 	if !strings.Contains(fork.planText, "step one") ||
 		len(fork.WorkingSetEntries(5, 10)) != 2 ||
@@ -137,6 +154,10 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 			"fork plan=%q working=%+v evidence=%+v",
 			fork.planText, fork.WorkingSetEntries(5, 10), fork.EvidenceSnapshot(),
 		)
+	}
+	forked := fork.History()[0]
+	if forked.Provenance == nil || forked.Provenance.Replay == nil {
+		t.Fatalf("engine fork lost replay provenance = %+v", forked)
 	}
 	render := func(engine *Engine) string {
 		engine.options.RepoContext = &stubRepoContext{}

@@ -18,6 +18,7 @@ func newStream(
 	stream, err := openai.NewStreamWithOptions(
 		body, protocol, openai.StreamPolicy{
 			RequireDone: true, NativeCache: true, FinalUsage: true,
+			CaptureReplay: true,
 		},
 	)
 	if err != nil {

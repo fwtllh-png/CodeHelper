@@ -20,7 +20,6 @@
   "output.delta": {"class":"stream","item_owner":"turn","durability":"terminal_projection","correlation":"turn","terminal":false},
   "plan.delta": {"class":"artifact_stream","item_owner":"turn","durability":"retained","correlation":"plan","terminal":false},
   "reasoning.delta": {"class":"stream","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
-  "reasoning.signature": {"class":"audit","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
   "search.result": {"class":"evidence","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
   "thread.compacted": {"class":"lifecycle","item_owner":"thread","durability":"retained","correlation":"thread","terminal":false},
   "thread.forked": {"class":"lifecycle","item_owner":"thread","durability":"retained","correlation":"thread","terminal":false},

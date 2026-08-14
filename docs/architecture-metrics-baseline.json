@@ -52,12 +52,12 @@
       "path": "internal/adapter/provider",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 546,
+        "production_lines": 696,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "P3 adds provider-neutral typed failure facts for adapter classification and later durable recovery."
+        "production_lines": "P4 adds the provider-neutral versioned replay and assistant provenance contract."
       }
     },
     {
@@ -66,13 +66,13 @@
       "path": "internal/adapter/provider/router",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 110,
+        "production_lines": 116,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
         "internal_fanout": "P2 routes prepared calls through the provider wire contract.",
-        "production_lines": "P2 validates prepared calls and delegates one transport attempt."
+        "production_lines": "P4 filters replay state by AdapterID before validation, serialization, or transport."
       }
     },
     {
@@ -121,13 +121,13 @@
       "path": "internal/adapter/provider/openai",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1285,
+        "production_lines": 1448,
         "options_fields": 0,
         "mutex_fields": 2
       },
       "relaxations": {
         "internal_fanout": "P2 makes OpenAI own prepared calls and continuation sessions.",
-        "production_lines": "P3 exposes explicit codec policies so DeepSeek can reuse wire mechanics without leaving DeepSeek conditions in generic OpenAI behavior.",
+        "production_lines": "P4 captures, validates, and reconstructs versioned Responses replay items without block-level private fields.",
         "mutex_fields": "OpenAI now owns connection-local Responses continuation state."
       }
     },
@@ -137,13 +137,13 @@
       "path": "internal/adapter/provider/deepseek",
       "limits": {
         "internal_fanout": 5,
-        "production_lines": 175,
+        "production_lines": 181,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
         "internal_fanout": "P3 gives DeepSeek an explicit adapter over shared wire codecs and runtime-neutral stream errors.",
-        "production_lines": "P3 isolates DeepSeek request, stream, cache, completion, and failure semantics in one adapter package."
+        "production_lines": "P4 binds DeepSeek Responses replay to the dedicated adapter contract."
       }
     },
     {
@@ -152,13 +152,13 @@
       "path": "internal/adapter/provider/anthropic",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 494,
+        "production_lines": 634,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
         "internal_fanout": "P2 makes Anthropic implement the provider wire contract.",
-        "production_lines": "P2 moves Anthropic serialization out of transport."
+        "production_lines": "P4 captures and validates Anthropic reasoning signatures as adapter-private replay state."
       }
     },
     {
@@ -203,13 +203,13 @@
       "path": "internal/observability/providerdump",
       "limits": {
         "internal_fanout": 2,
-        "production_lines": 174,
+        "production_lines": 179,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
         "internal_fanout": "P3 keeps redacted provider diagnostics in observability while consuming normalized request metadata.",
-        "production_lines": "P3 moves the existing bounded diagnostic format out of transport ownership."
+        "production_lines": "P4 reports replay presence and size without exposing private replay bytes."
       }
     },
     {
@@ -282,9 +282,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 9110,
+        "production_lines": 9113,
         "options_fields": 58,
         "mutex_fields": 9
+      },
+      "relaxations": {
+        "production_lines": "P4 commits adapter-owned replay only with successful assistant history and strips it from rewritten continuations."
       }
     },
     {
