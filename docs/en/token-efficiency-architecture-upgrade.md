@@ -3,9 +3,11 @@
 [简体中文](../zh-CN/token-efficiency-architecture-upgrade.md) | English
 
 > Status: `in_progress`. T0 is accepted. T1 is implemented with
+> `implemented_validation_mixed`; T2 is also implemented with
 > `implemented_validation_mixed`; see
 > [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
-> and [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json).
+>, [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json),
+> and [`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json).
 >
 > Scope: prompt context, history, compaction, tool catalogs, tool results,
 > provider sessions, reasoning budgets, completion protocol, usage accounting,
@@ -594,6 +596,56 @@ contemporary live comparisons disagree. T1 is not marked unconditionally
 Exit: unchanged state adds fewer than 256 tokens, post-third-sample cache share
 is at least 80%, restart visibility is equivalent, no-cache input falls at least
 20% from T1, and production code net growth is at most zero.
+
+Final T2 acceptance (`implemented_validation_mixed`):
+
+The implementation is complete, but T2 is not accepted because four of its
+five exit gates pass. The machine-readable evidence is
+[`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json).
+
+| Exit gate | Result | Status |
+| --- | ---: | --- |
+| Unchanged World State delta | 0 tokens, target <256 | passed |
+| Cache share after sample 3 | 95.74% P50, target >=80% | passed |
+| Restart and child-fork visibility | equivalent | passed |
+| Live uncached-input P50 vs T1 | 64,628 -> 79,459 (+22.95%), target -20% | failed |
+| Production size vs T1 | closure -3 lines; all `internal` -1 | passed |
+
+Implementation facts:
+
+- frozen Tool Catalog plus the first Repo/Working Set/Evidence/Plan snapshot
+  form the Scope stable prefix;
+- later partition replacements are emitted only when their receipt digest
+  changes and are appended to model-visible History;
+- empty Evidence or Working Set emits an explicit tombstone instead of leaving
+  stale facts visible;
+- Session Delta durably carries Turn, Working Set, Evidence, and Plan, while
+  Repo Map and Tool Catalog rebuild deterministically;
+- unconditional volatile-tail rendering is removed and measured Dynamic
+  Context is zero.
+
+Hermetic results used the unchanged canonical prompt and fixture. All 5/5 runs
+passed with eight samples. Input P50 moved from 147,770 to 149,055 (+0.87%);
+Stable Context moved from 22,456 to 43,824, Dynamic Context from 22,090 to zero,
+and estimator P95 error was 4.00%.
+
+DeepSeek live results used the same prompt, fixture, model, and configuration
+digests as T1. All 10/10 runs passed. Input P50 moved from 430,313 to 413,745
+(-3.85%), reasoning P50 from 9,022 to 6,910 (-23.41%), and sample-count P50
+from 12 to 13. The post-third-sample cache gate passed, but uncached input
+regressed, so these secondary improvements do not override the failed exit
+gate. Cached input has no explicit price for 132 calls; cost remains unknown.
+
+Correctness validation passed all three Compaction Capability scenarios, the
+canonical Token Efficiency scenario, restart/fork visibility tests, Runtime,
+Provider, and Tool package tests, and Architecture Ratchet 43/43. Recursive
+carryover now needs two effective compactions, one per follow-up; the removed
+third compaction was caused by repeated volatile context rather than required
+summary semantics.
+
+Decision: retain the correctness and cache-locality improvements, but do not
+mark T2 `accepted`. The remaining uncached-input concentration is dominated by
+Tool Definitions and growing Tool Result/Assistant History and is handed to T3.
 
 ### T3: Tool Context
 

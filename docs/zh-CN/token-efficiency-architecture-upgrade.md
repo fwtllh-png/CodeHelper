@@ -3,9 +3,11 @@
 简体中文 | [English](../en/token-efficiency-architecture-upgrade.md)
 
 > 状态：`in_progress`。T0 已验收；T1 已实现，验证状态为
+> `implemented_validation_mixed`；T2 也已实现，验证状态为
 > `implemented_validation_mixed`。证据见
 > [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
-> 与 [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json)。
+>、[`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json)
+> 与 [`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json)。
 >
 > 范围：Prompt Context、History、Compaction、Tool Catalog、Tool Result、
 > Provider Session、Reasoning Budget、Completion Protocol、Usage Accounting
@@ -734,6 +736,51 @@ Ablation，确定收益来源。Feature Toggle 只用于实验，不要求长期
 - Restart 前后模型可见 World State 等价；
 - No-cache Lane 累计 Input 相对 T1 至少下降 20%；
 - 生产代码净增长 `<= 0`。
+
+T2 最终验收（`implemented_validation_mixed`）：
+
+实现已完成，但五项退出门禁仅通过四项，因此 T2 不标记为 accepted。机器可读
+证据见
+[`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json)。
+
+| 退出门禁 | 结果 | 状态 |
+| --- | ---: | --- |
+| 未变化 World State Delta | 0 Token，目标 <256 | 通过 |
+| 第三个 Sample 后 Cache Share | P50 95.74%，目标 >=80% | 通过 |
+| Restart 与 Child Fork 可见性 | 等价 | 通过 |
+| Live Uncached Input P50 相对 T1 | 64,628 -> 79,459（+22.95%），目标 -20% | 失败 |
+| 相对 T1 生产代码量 | 架构闭包 -3 行；全部 `internal` -1 行 | 通过 |
+
+实现事实：
+
+- 冻结 Tool Catalog 与首次 Repo/Working Set/Evidence/Plan Snapshot 组成 Scope
+  Stable Prefix；
+- 后续分区仅在 Receipt Digest 变化时生成 Replacement Delta，并追加到模型可见
+  History；
+- Evidence 或 Working Set 清空时输出显式 Tombstone，不让旧事实继续可见；
+- Session Delta 持久化 Turn、Working Set、Evidence 与 Plan；Repo Map 和 Tool
+  Catalog 确定性重建；
+- 无条件 Volatile Tail 渲染已删除，实测 Dynamic Context 为 0。
+
+Hermetic 使用未变化的 Canonical Prompt 与 Fixture，5/5 通过且 Sample 数均为
+8。Input P50 从 147,770 变为 149,055（+0.87%）；Stable Context 从 22,456
+变为 43,824，Dynamic Context 从 22,090 降为 0，Estimator P95 误差为
+4.00%。
+
+DeepSeek Live 与 T1 使用相同 Prompt、Fixture、Model 和配置 Digest，10/10
+通过。Input P50 从 430,313 降至 413,745（-3.85%），Reasoning P50 从
+9,022 降至 6,910（-23.41%），Sample Count P50 从 12 增至 13。第三个
+Sample 后 Cache Gate 通过，但 Uncached Input 回退，因此次要收益不能覆盖失败的
+退出门禁。132 次调用缺少明确 Cached Input 价格，成本保持 Unknown。
+
+正确性验收通过三个 Compaction Capability 场景、Canonical Token Efficiency
+场景、Restart/Fork 可见性测试、Runtime/Provider/Tool 包测试及 Architecture
+Ratchet 43/43。Recursive Carryover 现在每个 Follow-up 只需一次有效 Compaction，
+共两次；删除的第三次来自重复 Volatile Context，并非摘要语义所需。
+
+结论：保留正确性与 Cache Locality 改进，但不将 T2 标记为 `accepted`。剩余
+Uncached Input 主要集中在 Tool Definitions 及持续增长的 Tool Result/Assistant
+History，转交 T3 处理。
 
 ### T3：Tool Context 收敛
 

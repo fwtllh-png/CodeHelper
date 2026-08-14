@@ -173,6 +173,18 @@ func TestUpdatePlanAppearsInContextReceipts(t *testing.T) {
 	}
 }
 
+func TestPlanReceiptDigestTracksSameLengthChanges(t *testing.T) {
+	first := interact.PlanReceipt(interact.Plan{
+		Steps: []interact.PlanStep{{Title: "read a.go"}},
+	})
+	second := interact.PlanReceipt(interact.Plan{
+		Steps: []interact.PlanStep{{Title: "read b.go"}},
+	})
+	if first.OriginalBytes != second.OriginalBytes || first.Digest == second.Digest {
+		t.Fatalf("plan receipts = %+v / %+v", first, second)
+	}
+}
+
 // A plan written before steps carried a status still deserializes, which is what
 // lets a recorded history or an older model reply survive the schema change.
 func TestPlanStepsAcceptBothShapes(t *testing.T) {

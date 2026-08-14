@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
@@ -44,7 +43,9 @@ type scopeState struct {
 	diff                *TurnDiffTracker
 	contextSeen         []promptcontext.Receipt
 	selections          []promptcontext.Selection
-	catalog             *tool.CatalogSnapshot
+	catalogContext      []provider.Message
+	catalogReceipt      promptcontext.Receipt
+	worldContext        []provider.Message
 	extensionsProjected bool
 	mcpProjected        bool
 	catalogProjected    bool

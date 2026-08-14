@@ -369,7 +369,7 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 584,
+        "lines": 581,
         "max_function_lines": 127
       }
     },

@@ -9,6 +9,7 @@ import (
 	"math"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
@@ -19,14 +20,17 @@ type CompactionDelta struct {
 }
 
 type SessionStateDelta struct {
+	Turn       uint64               `json:"turn,omitempty"`
 	WorkingSet workingset.Delta     `json:"working_set"`
 	Evidence   evidence.Delta       `json:"evidence"`
 	Failures   compact.FailureDelta `json:"failures"`
 	Compaction CompactionDelta      `json:"compaction"`
+	Plan       *interact.Plan       `json:"plan,omitempty"`
 }
 
 type SessionDelta struct {
 	TurnID         string               `json:"turn_id"`
+	Turn           uint64               `json:"turn,omitempty"`
 	BaseRevision   uint64               `json:"base_revision"`
 	History        []provider.Message   `json:"history"`
 	Usage          provider.Usage       `json:"usage"`
@@ -35,6 +39,7 @@ type SessionDelta struct {
 	Evidence       evidence.Delta       `json:"evidence"`
 	Failures       compact.FailureDelta `json:"failures"`
 	Compaction     CompactionDelta      `json:"compaction"`
+	Plan           *interact.Plan       `json:"plan,omitempty"`
 	Digest         string               `json:"digest"`
 }
 
@@ -64,6 +69,10 @@ func prepareSessionDelta(
 		CostMicrounits: uint64(math.Round(cost * 1_000_000)),
 		WorkingSet:     sessionState.WorkingSet, Evidence: sessionState.Evidence,
 		Failures: sessionState.Failures, Compaction: sessionState.Compaction,
+		Plan: sessionState.Plan, Turn: sessionState.Turn,
+	}
+	for _, message := range history {
+		delta.Turn = max(delta.Turn, message.Turn)
 	}
 	payload, err := json.Marshal(delta)
 	if err != nil {
@@ -114,12 +123,16 @@ func (e *Engine) applyDurableSessionDelta(delta SessionDelta) error {
 		)
 	}
 	e.history = cloneMessages(delta.History)
+	e.turn = max(e.turn, delta.Turn)
 	e.usage.Add(delta.Usage)
 	e.costUSD += float64(delta.CostMicrounits) / 1_000_000
 	e.working = workingset.ApplyDelta(delta.WorkingSet)
 	e.evidence = evidence.ApplyDelta(delta.Evidence)
 	e.failures = compact.ApplyFailureDelta(delta.Failures)
 	e.compactions = delta.Compaction.Count
+	if delta.Plan != nil && len(delta.Plan.Steps) != 0 {
+		e.setPlan(delta.Plan.Clone())
+	}
 	e.sessionRevision++
 	e.appliedDeltas[key] = delta.Digest
 	return nil

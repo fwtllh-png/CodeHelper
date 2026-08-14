@@ -10,31 +10,28 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 )
 
-// Partitions rebuilt on every sample rather than frozen at bootstrap.
 const (
 	PartitionRepoMap          = "repo_map"
 	PartitionWorkingSetLedger = "working_set_ledger"
 	PartitionEvidence         = "evidence"
 )
 
-// truncationNotice closes a section a budget cut short. It ends the section, so
-// it survives a prefix-preserving cut only because its length is reserved.
+// truncationNotice is reserved inside each section budget.
 const truncationNotice = "(this section was cut to fit its budget; " +
 	"what is not listed here may still exist)\n"
 
-// TurnOptions is the state a turn context is rendered from. Paths are
-// workspace-relative, which is both what the repository index stores and what a
-// model can hand back to a file tool unchanged.
+// TurnOptions uses workspace-relative paths matching the repository index.
 type TurnOptions struct {
-	Turn       uint64
-	RepoMap    repomap.Map
-	WorkingSet []workingset.Entry
-	Evidence   evidence.Snapshot
-	Budgets    map[string]Budget
-	Tokens     TokenCounter
+	Turn             uint64
+	RepoMap          repomap.Map
+	WorkingSet       []workingset.Entry
+	Evidence         evidence.Snapshot
+	Budgets          map[string]Budget
+	Tokens           TokenCounter
+	PreviousReceipts []Receipt
 }
 
-// TurnContext is the volatile tail of a request.
+// TurnContext is a snapshot or replacement delta of repository state.
 type TurnContext struct {
 	Messages   []provider.Message `json:"messages"`
 	Receipts   []Receipt          `json:"receipts"`
@@ -65,30 +62,21 @@ type SelectionEvidence struct {
 	Turn   uint64 `json:"turn"`
 }
 
-// TurnState is what the engine knows when a sample is about to go out. It is one
-// struct rather than a growing parameter list because every consumer of the tail
-// needs the same snapshot of the turn, and adding to it must not force every
-// implementation of the tail to change shape.
+// TurnState is the engine snapshot visible to a context provider.
 type TurnState struct {
-	Turn       uint64
-	WorkingSet []workingset.Entry
-	Evidence   evidence.Snapshot
+	Turn             uint64
+	WorkingSet       []workingset.Entry
+	Evidence         evidence.Snapshot
+	PreviousReceipts []Receipt
 }
 
-// AssembleTurn renders the partitions that change while a session runs.
-//
-// The result belongs at the end of a request, after the history. Everything
-// before it is then byte-identical from one sample to the next, which is what
-// lets a provider serve the prefix from its cache; a volatile section placed in
-// the middle would instead invalidate every message after it.
-//
-// It cannot fail. A section with nothing to say produces a receipt and no
-// message, so the absence is still auditable.
+// AssembleTurn emits full sections initially and only digest changes afterwards.
 func AssembleTurn(options TurnOptions) TurnContext {
 	tokens := options.Tokens
 	if tokens == nil {
 		tokens = HeuristicTokenCounter{}
 	}
+	previous := SectionDigestMap(options.PreviousReceipts)
 	var result TurnContext
 	appendSection := func(kind, text, sourcePath string) (string, string) {
 		// The notice is charged to the budget up front, so a section that runs out
@@ -99,6 +87,11 @@ func AssembleTurn(options TurnOptions) TurnContext {
 			result.Receipts,
 			newReceipt(kind, sourcePath, text, retained, reason, tokens),
 		)
+		if previous[kind] == result.Receipts[len(result.Receipts)-1].Digest {
+			result.Receipts[len(result.Receipts)-1].RetainedBytes = 0
+			result.Receipts[len(result.Receipts)-1].RetainedTokens = 0
+			return retained, reason
+		}
 		if reason != "" {
 			retained += truncationNotice
 		}
@@ -110,20 +103,26 @@ func AssembleTurn(options TurnOptions) TurnContext {
 		}
 		return retained, reason
 	}
-	// A section the caller did not ask for is skipped whole, receipt included: a
-	// zero Map or an empty ledger means "not requested", which is different from
-	// "requested and empty" and should not read as a truncated section.
+	// A zero map means disabled; an empty previously visible section needs a tombstone.
 	if options.RepoMap.Status != "" {
 		_, _ = appendSection(PartitionRepoMap, renderRepoMap(options), "session://repo-map")
 	}
-	if len(options.WorkingSet) != 0 {
+	if len(options.WorkingSet) != 0 || previous[PartitionWorkingSetLedger] != "" {
+		text := renderWorkingSet(options)
+		if text == "" {
+			text = fmt.Sprintf("[working_set turn=%d]\n(no paths remain in the working set)\n", options.Turn)
+		}
 		retained, reason := appendSection(
-			PartitionWorkingSetLedger, renderWorkingSet(options), "session://working-set",
+			PartitionWorkingSetLedger, text, "session://working-set",
 		)
 		result.Selections = explainSelections(options, retained, reason)
 	}
-	if !options.Evidence.Empty() {
-		_, _ = appendSection(PartitionEvidence, renderEvidence(options), "session://evidence")
+	if !options.Evidence.Empty() || previous[PartitionEvidence] != "" {
+		text := renderEvidence(options)
+		if options.Evidence.Empty() {
+			text = fmt.Sprintf("[evidence turn=%d]\n(no current facts, risks, or reminders)\n", options.Turn)
+		}
+		_, _ = appendSection(PartitionEvidence, text, "session://evidence")
 	}
 	return result
 }

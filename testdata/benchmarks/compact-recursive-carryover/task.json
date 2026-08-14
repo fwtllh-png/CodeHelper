@@ -21,7 +21,7 @@
     "terminal": "completed",
     "unchanged": ["service.py", "notes.md", "settings.yaml"],
     "tools_used": ["update_plan", "file_read"],
-    "compactions": 3,
+    "compactions": 2,
     "compaction_sections": ["goals", "digest"],
     "compaction_truncated": false
   }

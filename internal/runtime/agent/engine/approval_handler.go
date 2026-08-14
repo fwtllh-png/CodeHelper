@@ -148,6 +148,11 @@ func (e *Engine) takeRecoveredInput(
 }
 
 func (e *Engine) ApplyPlan(plan interact.Plan) {
+	e.setPlan(plan)
+	e.observePaths(workingset.SourcePlan, plan.CriticalFiles)
+}
+
+func (e *Engine) setPlan(plan interact.Plan) {
 	text := interact.FormatPlan(plan)
 	receipt := interact.PlanReceipt(plan)
 	e.planMu.Lock()
@@ -155,8 +160,6 @@ func (e *Engine) ApplyPlan(plan interact.Plan) {
 	e.plan = plan
 	e.planReceipt = &receipt
 	e.planMu.Unlock()
-
-	e.observePaths(workingset.SourcePlan, plan.CriticalFiles)
 }
 
 func (e *Engine) ContextReceipts() []promptcontext.Receipt {
@@ -169,8 +172,7 @@ func (e *Engine) ContextReceipts() []promptcontext.Receipt {
 //
 // Nothing that changes during a session belongs here: the bytes are identical
 // from one sample to the next so a provider can serve them from its prompt cache.
-// The volatile partitions (repository map, working set, plan) are appended after
-// the history instead, by turnContextMessages.
+// Scope World State is composed separately; later digest changes enter History.
 func (e *Engine) promptMessages() []provider.Message {
 	if scope := e.runningScope(); scope != nil {
 		return cloneMessages(scope.spec.Context.Messages)
@@ -197,7 +199,7 @@ func (e *Engine) contextReceipts() []promptcontext.Receipt {
 		receipts = append(filtered, *e.planReceipt)
 	}
 	e.planMu.Unlock()
-	return append(receipts, e.turnContextReceipts()...)
+	return append(receipts, e.TurnContextReceipts()...)
 }
 
 func (e *Engine) setApprovalEmit(emit func(Event) error) {
