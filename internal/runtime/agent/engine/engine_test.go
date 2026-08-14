@@ -297,6 +297,30 @@ func TestEngineContinuesIncompleteProviderStop(t *testing.T) {
 	}
 }
 
+func TestEngineDoesNotRepairCompletedPostToolContinuation(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("call-1", "echo", `{"text":"evidence"}`),
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "完整结论的第一部分，"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		textStream("第二部分已完整结束。"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "完整结论的第一部分，第二部分已完整结束。" ||
+		len(runtime.requests) != 3 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+}
+
 func TestEngineUsesBoundedFinishRouteAfterRepeatedReasoningLimits(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{

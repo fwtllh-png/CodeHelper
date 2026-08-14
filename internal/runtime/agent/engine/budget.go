@@ -88,6 +88,9 @@ func (e *Engine) checkBudget(
 
 func (e *Engine) budgetConvergence(used uint64) (provider.Message, bool) {
 	limit := e.options.Budget.MaxTokens
+	if limit == 0 {
+		limit = e.activeRoute().Model().Limits.ContextTokens
+	}
 	if limit == 0 || used < limit*70/100 {
 		return provider.Message{}, false
 	}
@@ -108,7 +111,7 @@ func (e *Engine) budgetConvergence(used uint64) (provider.Message, bool) {
 	scope.mu.Unlock()
 	message := provider.TextMessage(provider.RoleUser, fmt.Sprintf(
 		"[token_budget]\nused_tokens=%d\nmax_tokens=%d\nstage=%s\n"+
-			"Stop broad exploration. Finish the smallest coherent result with current evidence; preserve required verification and report blockers.",
+			"Stop broad exploration. When stage=finish_only, do not request exploratory tools: produce the concise user-facing final answer now using current evidence. Preserve required completion/verification tools and report blockers.",
 		used, limit, []string{"", "converge", "finish_only"}[stage],
 	))
 	message.Turn = e.turn

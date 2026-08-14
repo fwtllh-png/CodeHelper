@@ -374,6 +374,28 @@ func TestObserveProgressUsesConservativeDurableThresholds(t *testing.T) {
 	}
 }
 
+func TestReadOnlyProgressHasBoundedTotalSampleStages(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	for _, test := range []struct {
+		samples uint32
+		want    ProgressStage
+	}{
+		{samples: 7, want: ProgressStageNone},
+		{samples: 8, want: ProgressStageConverge},
+		{samples: 12, want: ProgressStageFinishOnly},
+		{samples: 16, want: ProgressStageExhausted},
+	} {
+		state = apply(t, state, ObserveProgress{
+			Signature:        "evidence-changed-" + string(test.want),
+			CompletedSamples: test.samples,
+		}).State
+		if state.Progress.Stage != test.want {
+			t.Fatalf("samples=%d stage=%q, want %q",
+				test.samples, state.Progress.Stage, test.want)
+		}
+	}
+}
+
 func TestToolAndApprovalLifecycleIsClosedExactlyOnce(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
 	started := apply(t, state, ToolCallsProposed{

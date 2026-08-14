@@ -326,3 +326,8 @@ func RequiresCompletion(state State) bool {
 	}
 	return state.Policy.CompletionRequired && required
 }
+
+func IsResearchIntent(intent protocol.TurnIntent) bool {
+	return intent == protocol.TurnIntentAnswer ||
+		intent == protocol.TurnIntentPlan
+}

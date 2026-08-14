@@ -71,7 +71,7 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 	}
 }
 
-func TestTokenWindowFinishOnlyRemovesToolsAtEightyFivePercent(t *testing.T) {
+func TestTokenWindowFinishOnlyRemovesAllReadOnlyToolsAtEightyFivePercent(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{textStream("done")}}
 	engine := newEngine(t, runtime, declarationRegistry(t, true))
 
@@ -81,11 +81,7 @@ func TestTokenWindowFinishOnlyRemovesToolsAtEightyFivePercent(t *testing.T) {
 	if len(runtime.requests) != 1 {
 		t.Fatalf("requests = %+v", runtime.requests)
 	}
-	names := make(map[string]bool)
-	for _, definition := range runtime.requests[0].Tools {
-		names[definition.Name] = true
-	}
-	if len(names) != 2 || !names["turn_complete"] || !names["quality_verify"] {
-		t.Fatalf("requests = %+v, want completion and verification tools only", runtime.requests)
+	if len(runtime.requests[0].Tools) != 0 {
+		t.Fatalf("requests = %+v, want no tools", runtime.requests)
 	}
 }

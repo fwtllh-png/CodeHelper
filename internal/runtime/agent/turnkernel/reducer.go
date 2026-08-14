@@ -1057,6 +1057,9 @@ const (
 	progressConvergeSamples   = 16
 	progressFinishOnlySamples = 32
 	progressExhaustedSamples  = 48
+	researchConvergeSamples   = 8
+	researchFinishOnlySamples = 12
+	researchExhaustedSamples  = 16
 )
 
 func applyObserveProgress(
@@ -1097,8 +1100,35 @@ func applyObserveProgress(
 	default:
 		progress.Stage = ProgressStageNone
 	}
+	if IsResearchIntent(current.Intent) {
+		researchStage := ProgressStageNone
+		switch {
+		case command.CompletedSamples >= researchExhaustedSamples:
+			researchStage = ProgressStageExhausted
+		case command.CompletedSamples >= researchFinishOnlySamples:
+			researchStage = ProgressStageFinishOnly
+		case command.CompletedSamples >= researchConvergeSamples:
+			researchStage = ProgressStageConverge
+		}
+		if progressStageRank(researchStage) > progressStageRank(progress.Stage) {
+			progress.Stage = researchStage
+		}
+	}
 	transition.State.Progress = progress
 	return nil
+}
+
+func progressStageRank(stage ProgressStage) int {
+	switch stage {
+	case ProgressStageConverge:
+		return 1
+	case ProgressStageFinishOnly:
+		return 2
+	case ProgressStageExhausted:
+		return 3
+	default:
+		return 0
+	}
 }
 
 func spendRepairBudget(

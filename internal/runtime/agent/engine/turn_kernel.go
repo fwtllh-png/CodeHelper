@@ -756,14 +756,6 @@ func (s *engineTurnKernel) observeProgress(
 			completed,
 		)
 	}
-	if current.Signature != "" &&
-		current.Signature == signature &&
-		completed-current.ObservedSamples < progressEpochSamples {
-		return progressObservation{
-			stage:             current.Stage,
-			noProgressSamples: current.NoProgressSamples,
-		}, nil
-	}
 	previousStage := current.Stage
 	if err := s.applyAuthoritativeLocked(turnkernel.ObserveProgress{
 		Signature:        signature,

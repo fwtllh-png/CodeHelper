@@ -679,6 +679,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			&transaction,
 			result.Usage,
 			sampleReason,
+			progress.stage == turnkernel.ProgressStageFinishOnly &&
+				turnkernel.IsResearchIntent(kernel.intent()),
 			&modelOutputContinued,
 			&pendingInputInjected,
 			modelSend,
