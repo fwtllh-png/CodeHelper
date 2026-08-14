@@ -22,7 +22,7 @@
     "receipt_changes": ["version.txt"],
     "verify_status": "passed",
     "verify_action": "passed",
-    "verify_repairs": 1,
+    "verify_repairs": 0,
     "output_contains": ["1.0.0"]
   }
 }

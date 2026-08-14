@@ -364,7 +364,7 @@ func TestRunExecExportsProviderAgentAndToolMetrics(t *testing.T) {
 	if err := json.Unmarshal(data, &metrics); err != nil {
 		t.Fatal(err)
 	}
-	if metrics.ProviderRequests != 5 || metrics.AgentTurns != 1 || metrics.ToolExecutions != 4 {
+	if metrics.ProviderRequests != 6 || metrics.AgentTurns != 1 || metrics.ToolExecutions != 5 {
 		t.Fatalf("metrics = %+v", metrics)
 	}
 }

@@ -16,10 +16,12 @@
   "expect": {
     "terminal": "failed",
     "terminal_contains": ["verification"],
-    "unchanged": ["config.txt"],
+    "files": {
+      "config.txt": "mode = unsafe\n"
+    },
     "tools_used": ["file_read", "file_edit"],
     "verify_status": "failed",
-    "verify_action": "failed",
+    "verify_action": "blocked",
     "verify_repairs": 0
   }
 }

@@ -2,15 +2,18 @@
 
 简体中文 | [English](../en/token-efficiency-architecture-upgrade.md)
 
-> 状态：`in_progress`。T0 已验收；T1 已实现，验证状态为
+> 状态：`completed_validation_mixed`。T0 已验收；T1 已实现，验证状态为
 > `implemented_validation_mixed`；T2 也已实现，验证状态为
 > `implemented_validation_mixed`；T3 已验收；T4 已实现，验证状态为
-> `implemented_validation_mixed`。证据见
+> `implemented_validation_mixed`；T5 已实现，验证状态为
+> `implemented_validation_mixed`；T6 已完成最终验证，并明确记录两个失败门禁。证据见
 > [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
 >、[`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json)
 >、[`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json)
 >、[`token-efficiency-t3-evidence.json`](../token-efficiency-t3-evidence.json)
-> 与 [`token-efficiency-t4-evidence.json`](../token-efficiency-t4-evidence.json)。
+>、[`token-efficiency-t4-evidence.json`](../token-efficiency-t4-evidence.json)
+>、[`token-efficiency-t5-evidence.json`](../token-efficiency-t5-evidence.json)
+> 与 [`token-efficiency-t6-evidence.json`](../token-efficiency-t6-evidence.json)。
 >
 > 范围：Prompt Context、History、Compaction、Tool Catalog、Tool Result、
 > Provider Session、Reasoning Budget、Completion Protocol、Usage Accounting
@@ -944,6 +947,39 @@ Provider/Model 生产代码净增 462 行，全部 `internal` 净增 465 行；T
 - 运行完整 Runtime、Provider、Guard、Persistence、Multi-Agent 和 Host 测试；
 - 更新双语 Architecture、Configuration、Benchmark Book 与 Release Evidence；
 - 删除实验 Toggle 和旧实现。
+
+T6 最终证据（`completed_validation_mixed`）：
+
+十九项最终门禁通过十七项。机器可读证据与阶段瀑布见
+[`token-efficiency-t6-evidence.json`](../token-efficiency-t6-evidence.json) 和
+[`token-efficiency-t6-waterfall.json`](../token-efficiency-t6-waterfall.json)。
+
+| 最终门禁 | T0 | T6 | 结果 |
+| --- | ---: | ---: | --- |
+| Canonical 累计 Input P50 | 394,163 | 157,507（-60.04%） | 通过 |
+| Uncached Input P50 | 64,520 | 32,634（-49.42%） | 未通过，目标 -60% |
+| 第三 Sample 后 Cache Share | - | 93.86% | 通过 |
+| Canonical Sample Count P50 | 12 | 9（-25.00%） | 通过 |
+| Reasoning P50 | 7,838 | 4,709（-39.92%） | 通过 |
+| 100 KiB 模型可见 Result | 112,000 B | <=17,408 B（-84.46%） | 通过 |
+| Incremental Request Bytes | 15,182 B | 218 B（-98.56%） | 通过 |
+| Estimator P95 Error | - | 5.87% | 通过 |
+| Context Window Rejection | - | 0 | 通过 |
+
+Hermetic 验收 5/5，Live 验收 10/10，均保持与 T0 相同 Prompt、DeepSeek Model
+和配置族。完整 Capability Suite 已按当前 Deferred Tool、Completion、
+Verification 与 Retained Draft 契约校准并达到 25/25。Provider、Tool、Runtime、
+Persistence、Orchestration、Security、CLI 与 ACP Lane 在仓库要求的串行 Package
+执行方式下通过。
+
+T1-T4 Policy 保持默认启用。Incremental Responses 仅在 Model Route 显式广告能力
+时默认启用；当前 DeepSeek 等不支持 Provider 继续发送完整 HTTP/SSE 请求。实验
+Toggle 已全部删除。
+
+最终状态为 mixed，原因只有两项：Uncached Input 距离 60% 门禁仍差 10.58 个百分点；
+T5 仍保留全部 `internal` 净增 465 行的阶段规模债务。T6 自身生产代码净增长为 0，
+且未放宽 43/43 Architecture Ratchet。已验证的默认能力继续启用，但本文不宣称完整
+架构验收通过。
 
 ## 10. 最终验收阈值
 

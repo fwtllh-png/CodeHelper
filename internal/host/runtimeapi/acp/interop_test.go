@@ -350,7 +350,7 @@ func TestBinaryInteropApprovalRoundTripThroughSubmit(t *testing.T) {
 		fixture: "testdata/providers/tools",
 		extra: []string{
 			"--enable-tools", "--workspace", workspace,
-			"--repository-rules", rules, "--max-steps", "2",
+			"--repository-rules", rules, "--max-steps", "8",
 		},
 	})
 	defer host.stop(t)

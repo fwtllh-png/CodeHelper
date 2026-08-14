@@ -174,7 +174,24 @@ Adapter 证明 Provider 发出了什么；Budget 决定请求可包含什么；�
 5. 预留 Output/Tool Result 容量；
 6. Usage、Truncation、Compaction 必须可观察。
 
-## 10. 复习问题
+## 10. CodeHelper Token 效率案例
+
+CodeHelper T0-T6 的 Canonical DeepSeek 实测给出一个重要的计量结论。在保持相同
+Prompt 与 Model Family 时，累计 Input P50 从 394,163 降至 157,507，Reasoning
+P50 从 7,838 降至 4,709，Sample Count 从 12 降至 9，第三个 Sample 后 Cache
+Share 达到 93.86%。
+
+这些收益不代表所有门禁都通过。Uncached Input 从 64,520 降至 32,634，降幅
+49.42%，未达到 60% 目标。因此有效报告必须分别展示 Cumulative Input、Uncached
+Input、Cache Share、Reasoning 与 Sample Count。Incremental Protocol 的 Transport
+Byte 降幅是另一个独立指标，不能报告成 Token 降幅。
+
+原始瀑布和最终证据见
+[`token-efficiency-t6-waterfall.json`](../../../token-efficiency-t6-waterfall.json)
+与
+[`token-efficiency-t6-evidence.json`](../../../token-efficiency-t6-evidence.json)。
+
+## 11. 复习问题
 
 1. 为什么 Context Window 不是 Model Memory？
 2. 为什么 `temperature=0` 仍可能产生不同结果？

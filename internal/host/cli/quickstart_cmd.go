@@ -122,7 +122,7 @@ func runQuickstart(
 		"quickstartfixture",
 		[]string{
 			"fixture.json", "plan.sse", "read.sse", "edit.sse",
-			"declare-first.sse", "quality.sse", "declare-final.sse",
+			"declare-first.sse", "tool-search-quality.sse", "quality.sse", "declare-final.sse",
 			"complete.sse",
 		},
 	)

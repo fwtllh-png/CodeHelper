@@ -3,9 +3,13 @@
   "path": "/chat/completions",
   "model": "fixture-model",
   "expected_prompt": "rename the timeout constant in settings.py",
-  "streams": ["edit.sse", "read.sse", "repair.sse", "complete.sse"],
+  "streams": ["edit.sse", "read.sse", "repair.sse", "declare.sse", "complete.sse", "complete.sse"],
   "expected_request_fragments": [
     ["\"tools\"", "\"name\":\"file_edit\""],
-    ["read-before-edit", "file_read"]
+    ["read-before-edit", "file_read"],
+    ["\"tool_call_id\":\"call_read\"", "TIMEOUT = 30"],
+    ["\"tool_call_id\":\"call_edit\""],
+    ["\"tool_call_id\":\"call_complete\"", "completion_declaration_accepted"],
+    []
   ]
 }

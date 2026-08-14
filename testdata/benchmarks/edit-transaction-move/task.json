@@ -6,6 +6,13 @@
   "tools": true,
   "max_steps": 6,
   "timeout_ms": 60000,
+  "verify": {
+    "mode": "hard",
+    "scope": "repository",
+    "on_failure": "fail",
+    "command": "test -f new_name.py && test ! -e old_name.py",
+    "max_repair_steps": 0
+  },
   "expect": {
     "terminal": "completed",
     "files": {
@@ -14,6 +21,8 @@
     "absent": ["old_name.py"],
     "tools_used": ["file_read", "file_apply"],
     "receipt_changes": ["new_name.py", "old_name.py"],
+    "verify_status": "passed",
+    "verify_action": "passed",
     "output_contains": ["renamed"]
   }
 }
