@@ -3,9 +3,10 @@
 [简体中文](../zh-CN/token-efficiency-architecture-upgrade.md) | English
 
 > Status: `in_progress`. T0 is accepted. T1 is implemented with
-> `implemented_validation_mixed`; see
+> `implemented_validation_mixed`, and T2 has started; see
 > [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
-> and [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json).
+>, [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json),
+> and [`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json).
 >
 > Scope: prompt context, history, compaction, tool catalogs, tool results,
 > provider sessions, reasoning budgets, completion protocol, usage accounting,
@@ -594,6 +595,19 @@ contemporary live comparisons disagree. T1 is not marked unconditionally
 Exit: unchanged state adds fewer than 256 tokens, post-third-sample cache share
 is at least 80%, restart visibility is equivalent, no-cache input falls at least
 20% from T1, and production code net growth is at most zero.
+
+Current T2 progress (`in_progress`):
+
+- the frozen tool catalog is now a Scope-level snapshot in the stable prefix
+  instead of a per-sample dynamic tail, and recovery rebuilds it
+  deterministically from the same `TurnSpec.Catalog`;
+- canonical hermetic runs passed 5/5, with input P50 moving from 147,770 to
+  147,762;
+- stable-context P50 moved from 22,456 to 43,488 while dynamic-context P50 fell
+  from 22,090 to 1,056, moving about 21K tokens into the cacheable prefix;
+- all three compaction capability scenarios pass and Architecture Ratchet is
+  43/43;
+- this slice changes production size by `-8` lines relative to T1.
 
 ### T3: Tool Context
 

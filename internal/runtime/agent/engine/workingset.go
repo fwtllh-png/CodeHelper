@@ -179,13 +179,7 @@ func (e *Engine) CatalogReceipt() *protocol.ReceiptCatalog {
 	if scope == nil {
 		return nil
 	}
-	scope.mu.Lock()
-	if scope.state.catalog == nil {
-		scope.mu.Unlock()
-		return nil
-	}
-	snapshot := *scope.state.catalog
-	scope.mu.Unlock()
+	snapshot := scope.spec.Catalog
 	_, advertised, err := e.toolDefinitionsFromSnapshot(snapshot)
 	if err != nil {
 		return nil
@@ -225,43 +219,36 @@ func (e *Engine) seedWorkingSet() {
 	}
 }
 
-// turnContextMessages renders the volatile tail for the current sample.
-//
-// It is rebuilt on every sample rather than once per turn, so a file the agent
-// read a step ago is already listed. Nothing follows it in the request, so the
-// churn costs no cached prefix.
-func (e *Engine) turnContextMessages(ctx context.Context) ([]provider.Message, []promptcontext.Receipt) {
-	catalog, err := e.options.Tools.Snapshot()
-	if err != nil {
-		return nil, nil
-	}
-	_, advertised, err := e.toolDefinitionsFromSnapshot(catalog)
-	if err != nil {
-		return nil, nil
-	}
-	return e.turnContextMessagesForCatalog(ctx, catalog, advertised)
-}
-
-func (e *Engine) turnContextMessagesForCatalog(
-	ctx context.Context,
+func (e *Engine) toolCatalogContext(
 	catalog tool.CatalogSnapshot,
 	advertised map[string]bool,
-) ([]provider.Message, []promptcontext.Receipt) {
+) ([]provider.Message, promptcontext.Receipt) {
+	scope := e.executionScope()
+	if scope == nil {
+		return promptcontext.AssembleToolCatalog(
+			promptcontext.NewToolCatalogSectionFromSnapshot(catalog, advertised),
+			e.options.ToolCatalogBudget,
+		)
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	if scope.state.catalogReceipt.Kind == "" {
+		messages, receipt := promptcontext.AssembleToolCatalog(
+			promptcontext.NewToolCatalogSectionFromSnapshot(catalog, advertised),
+			e.options.ToolCatalogBudget,
+		)
+		scope.state.catalogContext = cloneMessages(messages)
+		scope.state.catalogReceipt = receipt
+	}
+	return cloneMessages(scope.state.catalogContext), scope.state.catalogReceipt
+}
+
+func (e *Engine) turnContextMessagesForCatalog(ctx context.Context) ([]provider.Message, []promptcontext.Receipt) {
 	var messages []provider.Message
 	var receipts []promptcontext.Receipt
-	catalogMessages, catalogReceipt := promptcontext.AssembleToolCatalog(
-		promptcontext.NewToolCatalogSectionFromSnapshot(catalog, advertised),
-		e.options.ToolCatalogBudget,
-	)
-	messages = append(messages, catalogMessages...)
-	if catalogReceipt.OriginalBytes > 0 {
-		receipts = append(receipts, catalogReceipt)
-	}
-	catalogCopy := catalog
 	scope := e.executionScope()
 	if scope != nil {
 		scope.mu.Lock()
-		scope.state.catalog = &catalogCopy
 		scope.state.selections = nil
 		scope.mu.Unlock()
 	}

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "status": "in_progress",
+  "baseline_commit": "493a5c7b7813dd2df506dbb289b6fc2fbf4eb7fa",
+  "slice": "frozen_tool_catalog_snapshot",
+  "prompt_digest": "sha256:8b61b8edfa5f01e3cebb659eb994a3ade736b0abd71c7a4df4d80dc069e51b1e",
+  "hermetic": {
+    "runs": 5,
+    "passed": 5,
+    "baseline_input_tokens_p50": 147770,
+    "candidate_input_tokens_p50": 147762,
+    "input_tokens_delta": -8,
+    "baseline_stable_tokens_p50": 22456,
+    "candidate_stable_tokens_p50": 43488,
+    "baseline_dynamic_tokens_p50": 22090,
+    "candidate_dynamic_tokens_p50": 1056,
+    "sample_count_p50": 8,
+    "comparison_status": "passed"
+  },
+  "capability": {
+    "compaction_scenarios": 3,
+    "compaction_scenarios_passed": 3
+  },
+  "architecture": {
+    "ratchet_passed": 43,
+    "ratchet_total": 43,
+    "base_production_lines": 27943,
+    "head_production_lines": 27935,
+    "net_production_lines": -8
+  }
+}

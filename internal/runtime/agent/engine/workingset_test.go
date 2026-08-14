@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
@@ -29,6 +30,25 @@ type stubRepoContext struct {
 	entries  [][]workingset.Entry
 	evidence []evidence.Snapshot
 	receipts []promptcontext.Receipt
+}
+
+func (e *Engine) turnContextMessages(
+	ctx context.Context,
+) ([]provider.Message, []promptcontext.Receipt) {
+	catalog, err := e.options.Tools.Snapshot()
+	if err != nil {
+		return nil, nil
+	}
+	_, advertised, err := e.toolDefinitionsFromSnapshot(catalog)
+	if err != nil {
+		return nil, nil
+	}
+	frozen, catalogReceipt := e.toolCatalogContext(catalog, advertised)
+	tail, receipts := e.turnContextMessagesForCatalog(ctx)
+	if catalogReceipt.OriginalBytes > 0 {
+		receipts = append([]promptcontext.Receipt{catalogReceipt}, receipts...)
+	}
+	return append(frozen, tail...), receipts
 }
 
 func (s *stubRepoContext) Build(
@@ -192,6 +212,62 @@ func TestTurnContextIsAppendedAfterHistoryAndNeverStored(t *testing.T) {
 	// Nothing the tail added may leak into what the next turn replays.
 	if len(engine.history) != 0 {
 		t.Fatalf("history = %+v, want the tail to stay request-local", engine.history)
+	}
+}
+
+func TestFrozenToolCatalogPrecedesChangingHistory(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("echo-1", "echo", `{"text":"one"}`),
+		textStream("done"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
+	if _, err := engine.Run(t.Context(), "inspect", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(runtime.requests))
+	}
+	for _, request := range runtime.requests {
+		catalog, user := -1, -1
+		for index, message := range request.Messages {
+			if strings.Contains(message.Text(), "[tool_catalog ") {
+				catalog = index
+			}
+			if message.Role == provider.RoleUser && message.Text() == "inspect" {
+				user = index
+			}
+		}
+		if catalog < 0 || user < 0 || catalog >= user {
+			t.Fatalf("catalog/user indexes = %d/%d, messages=%+v", catalog, user, request.Messages)
+		}
+	}
+}
+
+func TestFrozenToolCatalogSnapshotIsReused(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	attachTestScope(t, engine)
+	catalog, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, advertised, err := engine.toolDefinitionsFromSnapshot(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, receipt := engine.toolCatalogContext(catalog, advertised)
+	first[0].Blocks[0].Text = "mutated caller copy"
+	second, cached := engine.toolCatalogContext(catalog, advertised)
+	if second[0].Text() == "mutated caller copy" ||
+		cached.Digest != receipt.Digest {
+		t.Fatalf("cached catalog = %+v receipt=%+v", second, cached)
 	}
 }
 

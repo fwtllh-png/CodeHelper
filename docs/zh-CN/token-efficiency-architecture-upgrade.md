@@ -3,9 +3,10 @@
 简体中文 | [English](../en/token-efficiency-architecture-upgrade.md)
 
 > 状态：`in_progress`。T0 已验收；T1 已实现，验证状态为
-> `implemented_validation_mixed`。证据见
+> `implemented_validation_mixed`；T2 已启动。证据见
 > [`token-efficiency-t0-baseline.json`](../token-efficiency-t0-baseline.json)
-> 与 [`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json)。
+>、[`token-efficiency-t1-evidence.json`](../token-efficiency-t1-evidence.json)
+> 与 [`token-efficiency-t2-evidence.json`](../token-efficiency-t2-evidence.json)。
 >
 > 范围：Prompt Context、History、Compaction、Tool Catalog、Tool Result、
 > Provider Session、Reasoning Budget、Completion Protocol、Usage Accounting
@@ -734,6 +735,16 @@ Ablation，确定收益来源。Feature Toggle 只用于实验，不要求长期
 - Restart 前后模型可见 World State 等价；
 - No-cache Lane 累计 Input 相对 T1 至少下降 20%；
 - 生产代码净增长 `<= 0`。
+
+当前进展（T2，`in_progress`）：
+
+- 冻结 Tool Catalog 已改为 Scope 级 Snapshot，从每 Sample 动态尾部移到 Stable
+  Prefix，并从同一 `TurnSpec.Catalog` 在恢复时确定性重建；
+- Canonical Hermetic 5/5 通过，Input P50 从 147,770 降至 147,762；
+- Stable Context P50 从 22,456 增至 43,488，Dynamic Context P50 从 22,090
+  降至 1,056，约 21K Token 进入可缓存前缀；
+- 三个 Compaction Capability 场景通过，Architecture Ratchet 43/43；
+- 该切片相对 T1 生产代码净变化 `-8`。
 
 ### T3：Tool Context 收敛
 

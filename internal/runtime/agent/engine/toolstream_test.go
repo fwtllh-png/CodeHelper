@@ -175,7 +175,12 @@ func TestStreamingStopsAtItsBudgetButTheResultIsComplete(t *testing.T) {
 	if len(runtime.requests) < 2 {
 		t.Fatalf("requests = %d", len(runtime.requests))
 	}
-	feedback := toolResultContent(runtime.requests[1].Messages[2])
+	var feedback string
+	for _, message := range runtime.requests[1].Messages {
+		if content := toolResultContent(message); content != "" {
+			feedback = content
+		}
+	}
 	if !strings.Contains(feedback, strings.Repeat("c", 8)) {
 		t.Fatalf("tool feedback lost the tail: %q", feedback)
 	}

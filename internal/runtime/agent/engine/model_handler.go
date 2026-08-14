@@ -55,6 +55,8 @@ func (e *Engine) modelStep(
 	if err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
+	catalogContext, catalogReceipt := e.toolCatalogContext(catalog, advertised)
+	stableContext := append(cloneMessages(scope.spec.Context.Messages), catalogContext...)
 	var totalUsage provider.Usage
 	var lastEstimate uint64
 	var continuationMessages []provider.Message
@@ -63,7 +65,10 @@ func (e *Engine) modelStep(
 	finishAttempted := false
 	finishMode := false
 	for attempt := 0; ; attempt++ {
-		turnContext, turnReceipts := e.turnContextMessagesForCatalog(ctx, catalog, advertised)
+		turnContext, turnReceipts := e.turnContextMessagesForCatalog(ctx)
+		if catalogReceipt.OriginalBytes > 0 {
+			turnReceipts = append([]promptcontext.Receipt{catalogReceipt}, turnReceipts...)
+		}
 		e.recordTurnContextReceipts(turnReceipts)
 		e.maybeInjectBudgetReminder(&turnContext)
 		route := e.activeRoute()
@@ -79,7 +84,7 @@ func (e *Engine) modelStep(
 		}
 		sampleInput := promptcontext.SampleInput{
 			Reason: promptcontext.SampleReason(reason, attempt, finishMode || continuations > 0),
-			Stable: scope.spec.Context.Messages, History: *history, Dynamic: turnContext,
+			Stable: stableContext, History: *history, Dynamic: turnContext,
 			Continuation: continuationMessages, Definitions: requestTools,
 			Estimate: e.options.TokenEstimator.Estimate,
 		}
@@ -125,7 +130,7 @@ func (e *Engine) modelStep(
 		); err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
 		}
-		messages := append(cloneMessages(scope.spec.Context.Messages), cloneMessages(*history)...)
+		messages := append(cloneMessages(stableContext), cloneMessages(*history)...)
 		messages = append(messages, turnContext...)
 		messages = append(messages, cloneMessages(continuationMessages)...)
 		if err := send(CallingModel, Event{}); err != nil {
