@@ -123,6 +123,9 @@ func (e *Engine) finalizeTerminalContext(
 	if err := e.runTerminalCompactGate(&candidate, allowCurrentTurn, send); err != nil {
 		return e.contextBudgetSnapshot(candidate), err
 	}
+	e.planMu.Lock()
+	plan := e.plan.Clone()
+	e.planMu.Unlock()
 	delta, err := prepareSessionDelta(
 		e.runningScope().spec.Identity.TurnID,
 		e.sessionRevision,
@@ -130,10 +133,12 @@ func (e *Engine) finalizeTerminalContext(
 		usage,
 		cost,
 		SessionStateDelta{
+			Turn:       e.turn,
 			WorkingSet: e.workingLedger().Delta(),
 			Evidence:   e.evidenceSet().Delta(),
 			Failures:   e.failureLedger().Delta(),
 			Compaction: CompactionDelta{Count: e.compactionTotal()},
+			Plan:       &plan,
 		},
 	)
 	if err != nil {

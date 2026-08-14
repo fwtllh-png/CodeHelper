@@ -2,6 +2,7 @@ package interact
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -728,10 +729,11 @@ func writePlanList(b *strings.Builder, name string, values []string) {
 func PlanReceipt(plan Plan) promptcontext.Receipt {
 	text := FormatPlan(plan)
 	tokens := promptcontext.HeuristicTokenCounter{}.Count(text)
+	digest := sha256.Sum256([]byte(text))
 	return promptcontext.Receipt{
 		Kind: promptcontext.PartitionPlan, SourcePath: "session://plan",
 		OriginalBytes: len(text), RetainedBytes: len(text),
 		OriginalTokens: tokens, RetainedTokens: tokens,
-		Digest: fmt.Sprintf("%x", len(text)+len(plan.Steps)*17),
+		Digest: fmt.Sprintf("sha256:%x", digest[:]),
 	}
 }

@@ -13,17 +13,11 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-// RepoContext renders the volatile tail of a request: what the repository looks
-// like, which paths are in play, and what the turn has yet to prove. It is an
-// interface so the engine stays unaware of the repository index and keeps working
-// without one.
+// RepoContext renders the repository state visible to a sample.
 type RepoContext interface {
 	Build(ctx context.Context, state promptcontext.TurnState) promptcontext.TurnContext
 }
 
-// observePath records that source named path. Paths are stored workspace-relative
-// with forward slashes, because that is what the repository index is keyed by and
-// what a model can hand straight back to a file tool.
 func (e *Engine) observePath(source workingset.Source, path string) {
 	if e == nil || e.workingLedger() == nil {
 		return
@@ -39,9 +33,6 @@ func (e *Engine) observePaths(source workingset.Source, paths []string) {
 	}
 }
 
-// workspaceRelative normalizes a path the way the index spells it. A path outside
-// the workspace is dropped rather than recorded: the working set exists to point
-// at code the agent can act on.
 func (e *Engine) workspaceRelative(path string) (string, bool) {
 	path = strings.TrimSpace(path)
 	if path == "" || path == "." {
@@ -79,9 +70,6 @@ func (e *Engine) workspaceRelative(path string) (string, bool) {
 	return "", false
 }
 
-// WorkingSetEntries returns the working set as of turn, most relevant first. The
-// turn is a parameter rather than the engine's own counter so a caller outside
-// the turn loop does not have to read state the loop owns.
 func (e *Engine) WorkingSetEntries(turn uint64, limit int) []workingset.Entry {
 	if e == nil {
 		return nil
@@ -89,8 +77,6 @@ func (e *Engine) WorkingSetEntries(turn uint64, limit int) []workingset.Entry {
 	return e.workingLedger().Select(turn, limit)
 }
 
-// ReadPaths returns the paths turn read. The turn receipt reports them, which is
-// why the ledger tracks a turn per source rather than only the latest.
 func (e *Engine) ReadPaths(turn uint64) []string {
 	if e == nil {
 		return nil
@@ -98,8 +84,6 @@ func (e *Engine) ReadPaths(turn uint64) []string {
 	return e.workingLedger().PathsObservedAt(workingset.SourceRead, turn)
 }
 
-// compactionPaths returns the working set and the critical paths a compaction
-// summary should carry, sorted for a stable summary.
 func (e *Engine) compactionPaths() ([]string, []string) {
 	var paths, critical []string
 	for _, entry := range e.workingLedger().Select(e.turn, e.options.WorkingSetLimit) {
@@ -113,9 +97,6 @@ func (e *Engine) compactionPaths() ([]string, []string) {
 	return paths, critical
 }
 
-// recordTurnContextReceipts keeps the receipts of the latest tail render, so the
-// turn receipt and the compaction summary can report what the volatile sections
-// cost and whether a budget cut them.
 func (e *Engine) recordTurnContextReceipts(receipts []promptcontext.Receipt) {
 	scope := e.executionScope()
 	if scope == nil {
@@ -126,7 +107,8 @@ func (e *Engine) recordTurnContextReceipts(receipts []promptcontext.Receipt) {
 	scope.mu.Unlock()
 }
 
-func (e *Engine) turnContextReceipts() []promptcontext.Receipt {
+// TurnContextReceipts reports the partitions visible to the last sample.
+func (e *Engine) TurnContextReceipts() []promptcontext.Receipt {
 	if e == nil {
 		return nil
 	}
@@ -139,13 +121,6 @@ func (e *Engine) turnContextReceipts() []promptcontext.Receipt {
 	return append([]promptcontext.Receipt(nil), scope.state.contextSeen...)
 }
 
-// TurnContextReceipts reports the volatile partitions of the last sample.
-func (e *Engine) TurnContextReceipts() []promptcontext.Receipt {
-	return e.turnContextReceipts()
-}
-
-// ContextSelections reports the per-path explanation captured from the same
-// prompt render as the latest context receipts.
 func (e *Engine) ContextSelections() []promptcontext.Selection {
 	if e == nil {
 		return nil
@@ -205,9 +180,6 @@ func (e *Engine) CatalogReceipt() *protocol.ReceiptCatalog {
 	return receipt
 }
 
-// seedWorkingSet pins the files the session started with. They came from the user
-// naming them, so they outrank anything the agent later stumbles onto and never
-// decay out.
 func (e *Engine) seedWorkingSet() {
 	if e.workingLedger() == nil {
 		return
@@ -243,39 +215,62 @@ func (e *Engine) toolCatalogContext(
 	return cloneMessages(scope.state.catalogContext), scope.state.catalogReceipt
 }
 
-func (e *Engine) turnContextMessagesForCatalog(ctx context.Context) ([]provider.Message, []promptcontext.Receipt) {
-	var messages []provider.Message
-	var receipts []promptcontext.Receipt
+func (e *Engine) worldStateContext(
+	ctx context.Context,
+) ([]provider.Message, []provider.Message, []promptcontext.Receipt) {
 	scope := e.executionScope()
+	var previous []promptcontext.Receipt
+	ready := false
 	if scope != nil {
 		scope.mu.Lock()
-		scope.state.selections = nil
+		previous = append(previous, scope.state.contextSeen...)
+		ready = scope.state.worldContext != nil
 		scope.mu.Unlock()
 	}
+	var built promptcontext.TurnContext
 	if e.options.RepoContext != nil {
 		snapshot := e.evidenceSet().Snapshot(e.options.EvidenceLimit)
-		built := e.options.RepoContext.Build(ctx, promptcontext.TurnState{
-			Turn:       e.turn,
-			WorkingSet: e.workingLedger().Select(e.turn, e.options.WorkingSetLimit),
-			Evidence:   snapshot,
+		built = e.options.RepoContext.Build(ctx, promptcontext.TurnState{
+			Turn:             e.turn,
+			WorkingSet:       e.workingLedger().Select(e.turn, e.options.WorkingSetLimit),
+			Evidence:         snapshot,
+			PreviousReceipts: previous,
 		})
 		e.options.Metrics.Evidence(len(snapshot.Risks), len(snapshot.Reminders))
-		messages = append(messages, built.Messages...)
-		receipts = append(receipts, built.Receipts...)
-		if scope != nil {
-			scope.mu.Lock()
-			scope.state.selections = cloneSelections(built.Selections)
-			scope.mu.Unlock()
-		}
 	}
-	// The plan sits at the very end: it is the most task-specific instruction,
-	// and keeping it out of the prefix means updating it no longer invalidates
-	// the cached history behind it.
 	e.planMu.Lock()
 	plan := e.planText
-	e.planMu.Unlock()
-	if plan != "" {
-		messages = append(messages, provider.TextMessage(provider.RoleSystem, plan))
+	var planReceipt *promptcontext.Receipt
+	if e.planReceipt != nil {
+		copy := *e.planReceipt
+		planReceipt = &copy
 	}
-	return messages, receipts
+	e.planMu.Unlock()
+	if planReceipt != nil {
+		if promptcontext.SectionDigestMap(previous)[promptcontext.PartitionPlan] ==
+			planReceipt.Digest {
+			planReceipt.RetainedBytes, planReceipt.RetainedTokens = 0, 0
+		} else {
+			built.Messages = append(
+				built.Messages,
+				provider.TextMessage(provider.RoleSystem, plan),
+			)
+		}
+		built.Receipts = append(built.Receipts, *planReceipt)
+	}
+	for index := range built.Messages {
+		built.Messages[index].Turn = e.turn
+	}
+	if scope == nil {
+		return built.Messages, nil, built.Receipts
+	}
+	scope.mu.Lock()
+	defer scope.mu.Unlock()
+	scope.state.selections = cloneSelections(built.Selections)
+	scope.state.contextSeen = append([]promptcontext.Receipt(nil), built.Receipts...)
+	if !ready {
+		scope.state.worldContext = cloneMessages(built.Messages)
+		return cloneMessages(scope.state.worldContext), nil, built.Receipts
+	}
+	return cloneMessages(scope.state.worldContext), built.Messages, built.Receipts
 }

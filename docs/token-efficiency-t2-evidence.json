@@ -1,31 +1,83 @@
 {
   "schema_version": 1,
-  "status": "in_progress",
+  "status": "implemented_validation_mixed",
   "baseline_commit": "493a5c7b7813dd2df506dbb289b6fc2fbf4eb7fa",
-  "slice": "frozen_tool_catalog_snapshot",
+  "slice": "durable_world_state_diff_final",
   "prompt_digest": "sha256:8b61b8edfa5f01e3cebb659eb994a3ade736b0abd71c7a4df4d80dc069e51b1e",
+  "fixture_digest": "d1cee21886e746f1287bd1c9e7dc43dd4cd4718f300808d76dfb7c492890fe6b",
+  "acceptance": {
+    "passed": false,
+    "gates_passed": 4,
+    "gates_total": 5,
+    "failed_gates": [
+      "uncached_input_reduction"
+    ]
+  },
   "hermetic": {
     "runs": 5,
     "passed": 5,
     "baseline_input_tokens_p50": 147770,
-    "candidate_input_tokens_p50": 147762,
-    "input_tokens_delta": -8,
+    "candidate_input_tokens_p50": 149055,
+    "input_tokens_delta": 1285,
+    "input_tokens_relative": 0.0086959464,
+    "baseline_uncached_input_tokens_p50": 110832,
+    "candidate_uncached_input_tokens_p50": 111795,
     "baseline_stable_tokens_p50": 22456,
-    "candidate_stable_tokens_p50": 43488,
+    "candidate_stable_tokens_p50": 43824,
     "baseline_dynamic_tokens_p50": 22090,
-    "candidate_dynamic_tokens_p50": 1056,
+    "candidate_dynamic_tokens_p50": 0,
+    "candidate_history_other_tokens_p50": 1776,
     "sample_count_p50": 8,
-    "comparison_status": "passed"
+    "estimator_error_p95": 0.0399811576,
+    "non_regression_status": "passed"
   },
-  "capability": {
+  "live": {
+    "provider": "deepseek-v4-flash",
+    "model": "deepseek-v4-flash",
+    "config_digest": "sha256:1b2af85b5181e39294843d1ab9fe1679973fd9f4680ad17a7034b3b4b91af50c",
+    "runs": 10,
+    "passed": 10,
+    "input_tokens_p50": 413745,
+    "input_tokens_p90": 519178,
+    "input_tokens_mad": 27623,
+    "baseline_input_tokens_p50": 430313,
+    "input_tokens_relative": -0.0385022065,
+    "uncached_input_tokens_p50": 79459,
+    "baseline_uncached_input_tokens_p50": 64628,
+    "uncached_input_tokens_relative": 0.2294825772,
+    "post_third_sample_cache_share_basis_points_p50": 9574,
+    "post_third_sample_cache_share_samples": 112,
+    "sample_count_p50": 13,
+    "baseline_sample_count_p50": 12,
+    "reasoning_tokens_p50": 6910,
+    "baseline_reasoning_tokens_p50": 9022,
+    "dynamic_context_tokens_p50": 0,
+    "unpriced_calls": 132,
+    "cost_known": false
+  },
+  "correctness": {
+    "unchanged_world_state_delta_tokens": 0,
+    "restart_visibility_equivalent": true,
+    "fork_visibility_equivalent": true,
     "compaction_scenarios": 3,
-    "compaction_scenarios_passed": 3
+    "compaction_scenarios_passed": 3,
+    "token_efficiency_scenarios": 1,
+    "token_efficiency_scenarios_passed": 1
   },
   "architecture": {
     "ratchet_passed": 43,
     "ratchet_total": 43,
     "base_production_lines": 27943,
-    "head_production_lines": 27935,
-    "net_production_lines": -8
+    "head_production_lines": 27940,
+    "net_production_lines": -3,
+    "base_internal_lines": 130983,
+    "head_internal_lines": 130982,
+    "net_internal_lines": -1
+  },
+  "artifacts": {
+    "hermetic": ".tmp/token-efficiency/t2-final-hermetic",
+    "hermetic_comparison": ".tmp/token-efficiency/t2-final-comparison.json",
+    "live": ".tmp/token-efficiency/t2-final-live-10",
+    "live_comparison": ".tmp/token-efficiency/t2-final-live-comparison.json"
   }
 }

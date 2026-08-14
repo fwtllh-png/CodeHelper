@@ -57,6 +57,9 @@ func (e *Engine) modelStep(
 	}
 	catalogContext, catalogReceipt := e.toolCatalogContext(catalog, advertised)
 	stableContext := append(cloneMessages(scope.spec.Context.Messages), catalogContext...)
+	worldContext, worldDelta, worldReceipts := e.worldStateContext(ctx)
+	stableContext = append(stableContext, worldContext...)
+	*history = append(*history, cloneMessages(worldDelta)...)
 	var totalUsage provider.Usage
 	var lastEstimate uint64
 	var continuationMessages []provider.Message
@@ -65,7 +68,8 @@ func (e *Engine) modelStep(
 	finishAttempted := false
 	finishMode := false
 	for attempt := 0; ; attempt++ {
-		turnContext, turnReceipts := e.turnContextMessagesForCatalog(ctx)
+		var turnContext []provider.Message
+		turnReceipts := append([]promptcontext.Receipt(nil), worldReceipts...)
 		if catalogReceipt.OriginalBytes > 0 {
 			turnReceipts = append([]promptcontext.Receipt{catalogReceipt}, turnReceipts...)
 		}

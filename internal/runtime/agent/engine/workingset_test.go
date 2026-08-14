@@ -44,11 +44,12 @@ func (e *Engine) turnContextMessages(
 		return nil, nil
 	}
 	frozen, catalogReceipt := e.toolCatalogContext(catalog, advertised)
-	tail, receipts := e.turnContextMessagesForCatalog(ctx)
+	world, delta, receipts := e.worldStateContext(ctx)
 	if catalogReceipt.OriginalBytes > 0 {
 		receipts = append([]promptcontext.Receipt{catalogReceipt}, receipts...)
 	}
-	return append(frozen, tail...), receipts
+	messages := append(frozen, world...)
+	return append(messages, delta...), receipts
 }
 
 func (s *stubRepoContext) Build(
@@ -65,11 +66,27 @@ func (s *stubRepoContext) Build(
 			Path: entry.Path, Kind: "file", Reasons: []string{"read"}, Included: true,
 		})
 	}
+	message := provider.TextMessage(
+		provider.RoleSystem,
+		"[working_set] "+strings.Join(paths, " "),
+	)
+	receipts := append([]promptcontext.Receipt(nil), s.receipts...)
+	if len(receipts) == 0 {
+		receipt := promptcontext.Receipt{
+			Kind:   promptcontext.PartitionWorkingSetLedger,
+			Digest: "set:" + strings.Join(paths, ","),
+		}
+		receipts = append(receipts, receipt)
+		if promptcontext.SectionDigestMap(state.PreviousReceipts)[receipt.Kind] ==
+			receipt.Digest {
+			return promptcontext.TurnContext{
+				Receipts: receipts, Selections: selections,
+			}
+		}
+	}
 	return promptcontext.TurnContext{
-		Messages: []provider.Message{provider.TextMessage(
-			provider.RoleSystem, "[working_set] "+strings.Join(paths, " "),
-		)},
-		Receipts: s.receipts, Selections: selections,
+		Messages: []provider.Message{message},
+		Receipts: receipts, Selections: selections,
 	}
 }
 
@@ -173,7 +190,7 @@ func TestForkInheritsTheWorkingSetWithoutSharingIt(t *testing.T) {
 	}
 }
 
-func TestTurnContextIsAppendedAfterHistoryAndNeverStored(t *testing.T) {
+func TestWorldStateSnapshotPrecedesHistoryAndStaysScopeLocal(t *testing.T) {
 	stub := &stubRepoContext{}
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.Workspace = t.TempDir()
@@ -186,32 +203,30 @@ func TestTurnContextIsAppendedAfterHistoryAndNeverStored(t *testing.T) {
 	engine.ApplyPlan(planFixture())
 
 	history := []provider.Message{messageWithText(provider.RoleUser, "do it", 4)}
-	messages := append(engine.promptMessages(), cloneMessages(history)...)
-	tail, _ := engine.turnContextMessages(t.Context())
-	messages = append(messages, tail...)
+	world, delta, _ := engine.worldStateContext(t.Context())
+	messages := append(engine.promptMessages(), world...)
+	messages = append(messages, history...)
+	messages = append(messages, delta...)
 
 	if len(messages) != 4 {
 		t.Fatalf("messages = %+v", messages)
 	}
-	if messages[0].Text() != "stable prefix" || messages[1].Role != provider.RoleUser {
-		t.Fatalf("prefix = %+v, want the frozen context then the history", messages[:2])
+	if messages[0].Text() != "stable prefix" || messages[3].Role != provider.RoleUser {
+		t.Fatalf("messages = %+v, want stable world state before history", messages)
 	}
-	if !strings.Contains(messages[2].Text(), "a.go") {
-		t.Fatalf("turn context = %q", messages[2].Text())
+	if !strings.Contains(messages[1].Text(), "a.go") {
+		t.Fatalf("working set = %q", messages[1].Text())
 	}
-	// The plan is last: it is the most specific instruction, and keeping it out of
-	// the prefix means updating it does not invalidate the cached history.
-	if !strings.Contains(messages[3].Text(), "step one") {
-		t.Fatalf("plan = %q", messages[3].Text())
+	if !strings.Contains(messages[2].Text(), "step one") {
+		t.Fatalf("plan = %q", messages[2].Text())
 	}
-	for _, message := range messages[2:] {
+	for _, message := range messages[1:3] {
 		if message.Role != provider.RoleSystem {
-			t.Fatalf("tail role = %q, want system", message.Role)
+			t.Fatalf("world state role = %q, want system", message.Role)
 		}
 	}
-	// Nothing the tail added may leak into what the next turn replays.
 	if len(engine.history) != 0 {
-		t.Fatalf("history = %+v, want the tail to stay request-local", engine.history)
+		t.Fatalf("history = %+v, want the snapshot to stay Scope-local", engine.history)
 	}
 }
 
@@ -225,6 +240,7 @@ func TestFrozenToolCatalogPrecedesChangingHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
+	engine.options.RepoContext = &stubRepoContext{}
 	if _, err := engine.Run(t.Context(), "inspect", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -232,17 +248,25 @@ func TestFrozenToolCatalogPrecedesChangingHistory(t *testing.T) {
 		t.Fatalf("requests = %d, want 2", len(runtime.requests))
 	}
 	for _, request := range runtime.requests {
-		catalog, user := -1, -1
+		catalog, world, user := -1, -1, -1
+		worldCount := 0
 		for index, message := range request.Messages {
 			if strings.Contains(message.Text(), "[tool_catalog ") {
 				catalog = index
+			}
+			if strings.Contains(message.Text(), "[working_set]") {
+				world, worldCount = index, worldCount+1
 			}
 			if message.Role == provider.RoleUser && message.Text() == "inspect" {
 				user = index
 			}
 		}
-		if catalog < 0 || user < 0 || catalog >= user {
-			t.Fatalf("catalog/user indexes = %d/%d, messages=%+v", catalog, user, request.Messages)
+		if catalog < 0 || world < 0 || user < 0 ||
+			catalog >= world || world >= user || worldCount != 1 {
+			t.Fatalf(
+				"catalog/world/user = %d/%d/%d count=%d messages=%+v",
+				catalog, world, user, worldCount, request.Messages,
+			)
 		}
 	}
 }
@@ -288,11 +312,19 @@ func TestTurnContextRebuildsWithinTheSameTurn(t *testing.T) {
 	if len(stub.entries) != 2 || len(stub.entries[1]) != 1 {
 		t.Fatalf("second sample entries = %+v", stub.entries)
 	}
-	if !strings.Contains(messages[0].Text(), "found.go") {
-		t.Fatalf("second sample text = %q", messages[0].Text())
+	found := false
+	for _, message := range messages {
+		found = found || strings.Contains(message.Text(), "found.go")
+	}
+	if !found {
+		t.Fatalf("second sample messages = %+v", messages)
 	}
 	if stub.turns[0] != 1 || stub.turns[1] != 1 {
 		t.Fatalf("turns = %v, want both samples in turn 1", stub.turns)
+	}
+	_, delta, _ := engine.worldStateContext(t.Context())
+	if len(delta) != 0 {
+		t.Fatalf("unchanged world state delta = %+v", delta)
 	}
 }
 

@@ -240,3 +240,37 @@ func TestAssembleTurnDigestsAreStableAcrossIdenticalTurns(t *testing.T) {
 		t.Fatal("digest ignored the turn number")
 	}
 }
+
+func TestAssembleTurnEmitsOnlyChangedPartitions(t *testing.T) {
+	options := TurnOptions{
+		Turn: 4,
+		WorkingSet: []workingset.Entry{{
+			Path: "a.go", Sources: []workingset.Source{workingset.SourceRead},
+			LastTurn: 4,
+		}},
+		Evidence: evidence.Snapshot{Turn: 4, Risks: []evidence.Risk{{
+			Kind: evidence.RiskUnverifiedChange, Path: "a.go", Turn: 4,
+		}}},
+	}
+	first := AssembleTurn(options)
+	options.PreviousReceipts = first.Receipts
+	unchanged := AssembleTurn(options)
+	if len(unchanged.Messages) != 0 {
+		t.Fatalf("unchanged messages = %+v", unchanged.Messages)
+	}
+	for _, receipt := range unchanged.Receipts {
+		if receipt.RetainedBytes != 0 || receipt.RetainedTokens != 0 {
+			t.Fatalf("unchanged receipt = %+v", receipt)
+		}
+	}
+	if len(unchanged.Selections) != 1 || !unchanged.Selections[0].Included {
+		t.Fatalf("unchanged selections = %+v", unchanged.Selections)
+	}
+
+	options.Evidence = evidence.Snapshot{Turn: 4}
+	cleared := AssembleTurn(options)
+	if len(cleared.Messages) != 1 ||
+		!strings.Contains(cleared.Messages[0].Text(), "no current facts, risks, or reminders") {
+		t.Fatalf("cleared evidence delta = %+v", cleared.Messages)
+	}
+}

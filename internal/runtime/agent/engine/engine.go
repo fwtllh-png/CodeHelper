@@ -138,15 +138,11 @@ type Options struct {
 	// a sync error must prevent a stale catalog from reaching the provider.
 	ToolCatalogSync func() error
 	TurnSnapshots   TurnSnapshotSources
-	// RepoContext renders the repository map and working set appended to every
-	// request. A nil provider leaves the request as it was before (W1.2).
+	// RepoContext snapshots the repository, working set, and evidence.
 	RepoContext RepoContext
-	// WorkingSetLimit bounds how many self-discovered paths the working set
-	// reports; pinned paths are always reported (0 → 16).
+	// WorkingSetLimit excludes pinned paths from its bound (0 → 16).
 	WorkingSetLimit int
-	// EvidenceLimit bounds how many facts the evidence set reports per sample.
-	// Risks and reminders are always reported: they are what the section is for
-	// (0 → 24).
+	// EvidenceLimit bounds facts, but not risks and reminders (0 → 24).
 	EvidenceLimit int
 }
 
@@ -191,24 +187,15 @@ type Engine struct {
 	turnIDs         map[string]uint64
 
 	planMu sync.Mutex
-	// planText is the rendered plan partition; plan keeps the structure behind it
-	// so a compaction can report the steps that are still open rather than
-	// replaying the whole plan text.
+	// plan keeps the structure required by compaction and durable recovery.
 	planText    string
 	plan        interact.Plan
 	planReceipt *promptcontext.Receipt
 
-	// working accumulates the paths the thread touched. Unlike turnDiff it is not
-	// reset per turn: what mattered last turn usually still matters.
-	working *workingset.Ledger
-	// evidence accumulates what the thread found and what it has not yet proved.
-	// It outlives a turn for the same reason: a file changed three turns ago and
-	// still unverified is exactly what it exists to remember.
+	// working and evidence are durable thread state; TurnDiff is not.
+	working  *workingset.Ledger
 	evidence *evidence.Set
-	// failures remembers the attempts that did not work. Nothing else does: the
-	// receipt's failed-tool list, the verify verdict and the diagnostics set are
-	// all rebuilt per turn, so once a turn is compacted away its dead ends are
-	// invisible and the model walks into them again.
+	// failures prevents compacted dead ends from being repeated.
 	failures        *compact.Failures
 	promptCacheBase string
 	profileReadOnly bool
@@ -217,8 +204,6 @@ type Engine struct {
 	approvalRecovery recoveredInteraction[toolguard.ApprovalDecision]
 	inputRecovery    recoveredInteraction[interact.Reply]
 
-	// compactions counts how many times history was replaced by a summary. It is
-	// what tells a long thread apart from one that merely looks long.
 	compactions int
 
 	budgetReminderDelivered bool

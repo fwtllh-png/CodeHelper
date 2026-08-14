@@ -45,6 +45,7 @@ type scopeState struct {
 	selections          []promptcontext.Selection
 	catalogContext      []provider.Message
 	catalogReceipt      promptcontext.Receipt
+	worldContext        []provider.Message
 	extensionsProjected bool
 	mcpProjected        bool
 	catalogProjected    bool
