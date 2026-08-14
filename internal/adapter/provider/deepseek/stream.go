@@ -24,6 +24,9 @@ func newStream(
 	if err != nil {
 		return nil, err
 	}
+	if protocol == model.ProtocolOpenAIResponses {
+		stream = &dsmlStream{Stream: stream}
+	}
 	return &validatedStream{Stream: stream}, nil
 }
 

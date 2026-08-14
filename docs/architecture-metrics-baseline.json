@@ -140,13 +140,13 @@
       "path": "internal/adapter/provider/deepseek",
       "limits": {
         "internal_fanout": 5,
-        "production_lines": 181,
+        "production_lines": 398,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
         "internal_fanout": "P3 gives DeepSeek an explicit adapter over shared wire codecs and runtime-neutral stream errors.",
-        "production_lines": "P4 binds DeepSeek Responses replay to the dedicated adapter contract."
+        "production_lines": "Live P6 validation requires the dedicated DeepSeek Responses adapter to recover typed DSML tool calls before provider-neutral Runtime processing."
       }
     },
     {

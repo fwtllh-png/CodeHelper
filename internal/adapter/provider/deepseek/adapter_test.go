@@ -269,6 +269,113 @@ func TestResponsesStreamUsesDedicatedValidation(t *testing.T) {
 	assertFailure(t, err, provider.FailureEmptyResponse)
 }
 
+func TestResponsesStreamRecoversDSMLToolCalls(t *testing.T) {
+	markup := strings.Join([]string{
+		dsmlToolCallsOpen,
+		`<｜｜DSML｜｜invoke name="search_text">`,
+		`<｜｜DSML｜｜parameter name="path" string="true">internal</｜｜DSML｜｜parameter>`,
+		`<｜｜DSML｜｜parameter name="limit" string="false">40</｜｜DSML｜｜parameter>`,
+		dsmlInvokeClose,
+		dsmlToolCallsClose,
+	}, "\n")
+	split := len(dsmlToolCallsOpen) - 3
+	stream, err := newStream(
+		io.NopCloser(strings.NewReader(sse(
+			`{"type":"response.output_text.delta","output_index":0,"delta":"`+
+				markup[:split]+`"}`,
+			`{"type":"response.output_text.delta","output_index":0,"delta":`+
+				string(mustJSON(t, markup[split:]))+`}`,
+			`{"type":"response.completed","response":{"usage":{"input_tokens":4,`+
+				`"output_tokens":2}}}`,
+		))),
+		model.ProtocolOpenAIResponses,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls []provider.ToolCallFragment
+	var text strings.Builder
+	var stop provider.StopReason
+	for _, event := range events {
+		switch event.Type {
+		case provider.EventTextDelta:
+			text.WriteString(event.Text)
+		case provider.EventToolCallDelta:
+			calls = append(calls, *event.ToolCall)
+		case provider.EventMessageStop:
+			stop = event.StopReason
+		}
+	}
+	if text.Len() != 0 || len(calls) != 1 ||
+		calls[0].Name != "search_text" ||
+		calls[0].Arguments != `{"limit":40,"path":"internal"}` ||
+		stop != provider.StopReasonToolUse {
+		t.Fatalf(
+			"text=%q calls=%+v stop=%q events=%+v",
+			text.String(), calls, stop, events,
+		)
+	}
+}
+
+func TestResponsesStreamPreservesTextAroundDSML(t *testing.T) {
+	markup := dsmlToolCallsOpen +
+		`<｜｜DSML｜｜invoke name="file_read">` +
+		`<｜｜DSML｜｜parameter name="path" string="true">a.go</｜｜DSML｜｜parameter>` +
+		dsmlInvokeClose + dsmlToolCallsClose
+	stream, err := newStream(
+		io.NopCloser(strings.NewReader(sse(
+			`{"type":"response.output_text.delta","delta":"prefix "}`,
+			`{"type":"response.output_text.delta","delta":`+
+				string(mustJSON(t, markup))+`}`,
+			`{"type":"response.completed","response":{}}`,
+		))),
+		model.ProtocolOpenAIResponses,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var text strings.Builder
+	var calls int
+	for _, event := range events {
+		if event.Type == provider.EventTextDelta {
+			text.WriteString(event.Text)
+		}
+		if event.Type == provider.EventToolCallDelta {
+			calls++
+		}
+	}
+	if text.String() != "prefix " || calls != 1 {
+		t.Fatalf("text=%q calls=%d events=%+v", text.String(), calls, events)
+	}
+}
+
+func TestResponsesStreamRejectsMalformedDSML(t *testing.T) {
+	stream, err := newStream(
+		io.NopCloser(strings.NewReader(sse(
+			`{"type":"response.output_text.delta","delta":`+
+				string(mustJSON(t, dsmlToolCallsOpen+
+					`<｜｜DSML｜｜invoke name="search_text">`+
+					`<｜｜DSML｜｜parameter name="limit" string="false">nope`+
+					dsmlParameterClose+dsmlInvokeClose+dsmlToolCallsClose))+`}`,
+			`{"type":"response.completed","response":{}}`,
+		))),
+		model.ProtocolOpenAIResponses,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = provider.Drain(stream)
+	assertFailure(t, err, provider.FailureMalformedResponse)
+}
+
 func TestFailureClassificationRetainsProviderFacts(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -353,6 +460,14 @@ func sse(payloads ...string) string {
 		result.WriteString("\n\n")
 	}
 	return result.String()
+}
+func mustJSON(t *testing.T, value string) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 func assertFailure(
 	t *testing.T,
