@@ -22,12 +22,13 @@ architecture and delivery stages are defined in the
 3. [Book navigation and chapter status](../book/en/NAVIGATION.md)
 4. [Knowledge documentation plan](./knowledge-base-plan.md)
 5. [Architecture](./architecture.md)
-6. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
-7. [Approval architecture upgrade](./approval-architecture-upgrade.md)
-8. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
-9. [Provider architecture upgrade](./provider-architecture-upgrade.md)
-10. [Security model](./security.md)
-11. [Local development and scripts](./development.md)
+6. [Context engineering architecture upgrade](./context-engineering-architecture-upgrade.md)
+7. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
+8. [Approval architecture upgrade](./approval-architecture-upgrade.md)
+9. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
+10. [Provider architecture upgrade](./provider-architecture-upgrade.md)
+11. [Security model](./security.md)
+12. [Local development and scripts](./development.md)
 
 ### I want to use CodeHelper
 
@@ -51,18 +52,19 @@ architecture and delivery stages are defined in the
 ### I want to contribute
 
 1. [Architecture](./architecture.md)
-2. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
-3. [Approval architecture upgrade](./approval-architecture-upgrade.md)
-4. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
-5. [Provider architecture upgrade](./provider-architecture-upgrade.md)
-6. [Security model](./security.md)
-7. [Local development and scripts](./development.md)
-8. [Agent guide](./agent-guide.md)
-9. [TUI and VS Code experience contract](./experience.md)
-10. [VS Code Runtime monitoring](./runtime-monitoring.md)
-11. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-12. [Documentation governance](./documentation-governance.md)
-13. [Roadmap](./roadmap.md)
+2. [Context engineering architecture upgrade](./context-engineering-architecture-upgrade.md)
+3. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
+4. [Approval architecture upgrade](./approval-architecture-upgrade.md)
+5. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
+6. [Provider architecture upgrade](./provider-architecture-upgrade.md)
+7. [Security model](./security.md)
+8. [Local development and scripts](./development.md)
+9. [Agent guide](./agent-guide.md)
+10. [TUI and VS Code experience contract](./experience.md)
+11. [VS Code Runtime monitoring](./runtime-monitoring.md)
+12. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+13. [Documentation governance](./documentation-governance.md)
+14. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 

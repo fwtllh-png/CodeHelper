@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "scenarios": [
+    {
+      "name": "restart_filters_failed_and_unpaired_turns",
+      "thread": "restart",
+      "window": {
+        "number": 0
+      },
+      "messages": [
+        {
+          "index": 0,
+          "role": "user",
+          "text": "keep completed",
+          "content_digest": "98ff0b6f24dcf9025ee2a233c35b951ec8f0670631276377fd52abd3a2c9ff79"
+        },
+        {
+          "index": 1,
+          "role": "assistant",
+          "call_id": "paired-call",
+          "content_digest": "fd0e08cf734e91ba9a50840c3a1206115e48ac64ae5ee594606082d404a02c83"
+        },
+        {
+          "index": 2,
+          "role": "tool",
+          "result_id": "paired-call",
+          "content_digest": "d1b221c7d31b6850fa2089e20b969819b972a0fcba5d589e64448ac5976740a5"
+        },
+        {
+          "index": 3,
+          "role": "assistant",
+          "text": "completed answer",
+          "content_digest": "73080b2af0acefbb303a63a1199250677fec182718b06ef8b44cc0b553c5f5af"
+        }
+      ]
+    },
+    {
+      "name": "rollback_drops_only_target_turn",
+      "thread": "rollback",
+      "window": {
+        "number": 0
+      },
+      "messages": [
+        {
+          "index": 0,
+          "role": "user",
+          "text": "keep first",
+          "content_digest": "015e5510a0da9fa95d3af3a47f451fd83881fa4ab5137d9f4847e8a2edf3f12a"
+        },
+        {
+          "index": 1,
+          "role": "assistant",
+          "text": "first answer",
+          "content_digest": "25803faa8173b43fa6460d1b93fea45b6ca67217caf3a02287724741207df5a2"
+        }
+      ]
+    },
+    {
+      "name": "fork_uses_replacement_history",
+      "thread": "child",
+      "window": {
+        "number": 1,
+        "first": "fork:child",
+        "current": "fork:child"
+      },
+      "messages": [
+        {
+          "index": 0,
+          "role": "user",
+          "text": "fork source question",
+          "content_digest": "f8ce3b5f9aa564f02300c54aa7f7fbb93684eddc4ce9440066559df6f3861c3d"
+        },
+        {
+          "index": 1,
+          "role": "assistant",
+          "text": "fork source answer",
+          "content_digest": "6abd1903b77b3f6adecace77705e7c97c083761a59b211d338a7bec0c983cdea"
+        }
+      ]
+    },
+    {
+      "name": "compaction_installs_window_then_appends",
+      "thread": "compact",
+      "window": {
+        "number": 3,
+        "first": "window-1",
+        "current": "window-3"
+      },
+      "messages": [
+        {
+          "index": 0,
+          "role": "user",
+          "text": "pre-compact question",
+          "content_digest": "22703757fb74eb238cb7057a2d70a0108240e4f1fd97699893ff1dc7c651822d"
+        },
+        {
+          "index": 1,
+          "role": "assistant",
+          "text": "deterministic compact summary",
+          "content_digest": "7a8d056033cefb06945b2f8a5a8bd996004000cc1b9a2d9bca1d033c75e8d3a1"
+        },
+        {
+          "index": 2,
+          "role": "user",
+          "text": "after compact",
+          "content_digest": "6536ce57baa7ee9a1c557756e33f9631da403a291ea6e9a737ce7ff6df4f15d6"
+        },
+        {
+          "index": 3,
+          "role": "assistant",
+          "text": "post-compact answer",
+          "content_digest": "6638682a5596f9b50d81deb23da97c57698554a7f712d58b7a8d4f7642e0eeb8"
+        }
+      ]
+    }
+  ]
+}

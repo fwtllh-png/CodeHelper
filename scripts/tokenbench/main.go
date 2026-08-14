@@ -54,24 +54,25 @@ type stats struct {
 }
 
 type report struct {
-	SchemaVersion     int               `json:"schema_version"`
-	Mode              string            `json:"mode"`
-	Runs              int               `json:"runs"`
-	Passed            int               `json:"passed"`
-	Input             stats             `json:"input_tokens"`
-	UncachedInput     stats             `json:"uncached_input_tokens"`
-	CachedInput       stats             `json:"cached_input_tokens"`
-	CachedShareBP     stats             `json:"cached_share_basis_points"`
-	Output            stats             `json:"output_tokens"`
-	Reasoning         stats             `json:"reasoning_tokens"`
-	Calls             stats             `json:"sample_count"`
-	DurationMS        stats             `json:"duration_ms"`
-	CostUpperBound    stats             `json:"cost_upper_bound_microunits"`
-	CostKnown         bool              `json:"cost_known"`
-	UnpricedCalls     int               `json:"unpriced_calls"`
-	EstimatorErrorP95 float64           `json:"estimator_error_p95"`
-	ContextP50        map[string]uint64 `json:"context_p50"`
-	Reasons           map[string]int    `json:"sample_reasons"`
+	SchemaVersion         int               `json:"schema_version"`
+	Mode                  string            `json:"mode"`
+	Runs                  int               `json:"runs"`
+	Passed                int               `json:"passed"`
+	Input                 stats             `json:"input_tokens"`
+	UncachedInput         stats             `json:"uncached_input_tokens"`
+	CachedInput           stats             `json:"cached_input_tokens"`
+	CachedShareBP         stats             `json:"cached_share_basis_points"`
+	Output                stats             `json:"output_tokens"`
+	Reasoning             stats             `json:"reasoning_tokens"`
+	Calls                 stats             `json:"sample_count"`
+	AttributionCoverageBP stats             `json:"attribution_coverage_basis_points"`
+	DurationMS            stats             `json:"duration_ms"`
+	CostUpperBound        stats             `json:"cost_upper_bound_microunits"`
+	CostKnown             bool              `json:"cost_known"`
+	UnpricedCalls         int               `json:"unpriced_calls"`
+	EstimatorErrorP95     float64           `json:"estimator_error_p95"`
+	ContextP50            map[string]uint64 `json:"context_p50"`
+	Reasons               map[string]int    `json:"sample_reasons"`
 }
 
 type breakdown struct {
@@ -533,8 +534,9 @@ func summarize(results []bench.Result) report {
 	input, uncached, cached, cacheShare := make([]uint64, 0, len(results)),
 		make([]uint64, 0, len(results)), make([]uint64, 0, len(results)),
 		make([]uint64, 0, len(results))
-	output, reasoning, calls, durations, costs := make([]uint64, 0, len(results)),
+	output, reasoning, calls, attributionCoverage, durations, costs := make([]uint64, 0, len(results)),
 		make([]uint64, 0, len(results)), make([]uint64, 0, len(results)),
+		make([]uint64, 0, len(results)),
 		make([]uint64, 0, len(results)), make([]uint64, 0, len(results))
 	contextValues := make(map[string][]uint64)
 	reasons := make(map[string]int)
@@ -558,10 +560,12 @@ func summarize(results []bench.Result) report {
 			append(costs, result.CostMicrounits)
 		unpricedCalls += result.UnpricedCalls
 		runContext := make(map[string]uint64)
+		attributedSamples := 0
 		for _, sample := range result.Samples {
 			if sample.Context == nil {
 				continue
 			}
+			attributedSamples++
 			value := sample.Context
 			reasons[value.Reason]++
 			for name, tokens := range map[string]uint64{
@@ -582,6 +586,11 @@ func summarize(results []bench.Result) report {
 		for name, tokens := range runContext {
 			contextValues[name] = append(contextValues[name], tokens)
 		}
+		coverage := uint64(0)
+		if len(result.Samples) != 0 {
+			coverage = uint64(attributedSamples) * 10_000 / uint64(len(result.Samples))
+		}
+		attributionCoverage = append(attributionCoverage, coverage)
 	}
 	contextP50 := make(map[string]uint64, len(contextValues))
 	for name, values := range contextValues {
@@ -596,8 +605,10 @@ func summarize(results []bench.Result) report {
 		SchemaVersion: schemaVersion, Mode: "hermetic", Runs: len(results), Passed: passed,
 		Input: calculate(input), UncachedInput: calculate(uncached), CachedInput: calculate(cached),
 		CachedShareBP: calculate(cacheShare), Output: calculate(output),
-		Reasoning: calculate(reasoning), Calls: calculate(calls), DurationMS: calculate(durations),
-		CostUpperBound: calculate(costs), CostKnown: unpricedCalls == 0,
+		Reasoning: calculate(reasoning), Calls: calculate(calls),
+		AttributionCoverageBP: calculate(attributionCoverage),
+		DurationMS:            calculate(durations),
+		CostUpperBound:        calculate(costs), CostKnown: unpricedCalls == 0,
 		UnpricedCalls:     unpricedCalls,
 		EstimatorErrorP95: errorP95,
 		ContextP50:        contextP50, Reasons: reasons,
@@ -648,7 +659,8 @@ func renderMarkdown(manifest manifest, report report) string {
 			"| Cached input tokens | %d | %d | %d |\n"+
 			"| Cached share (bp) | %d | %d | %d |\n"+
 			"| Output tokens | %d | %d | %d |\n"+
-			"| Sample count | %d | %d | %d |\n\n"+
+			"| Sample count | %d | %d | %d |\n"+
+			"| Attribution coverage (bp) | %d | %d | %d |\n\n"+
 			"Estimator error P95: `%.2f%%`\n",
 		manifest.Commit, manifest.Dirty, manifest.PromptDigest, report.Passed, report.Runs,
 		report.Input.P50, report.Input.P90, report.Input.MAD,
@@ -657,6 +669,9 @@ func renderMarkdown(manifest manifest, report report) string {
 		report.CachedShareBP.P50, report.CachedShareBP.P90, report.CachedShareBP.MAD,
 		report.Output.P50, report.Output.P90, report.Output.MAD,
 		report.Calls.P50, report.Calls.P90, report.Calls.MAD,
+		report.AttributionCoverageBP.P50,
+		report.AttributionCoverageBP.P90,
+		report.AttributionCoverageBP.MAD,
 		report.EstimatorErrorP95*100,
 	)
 }

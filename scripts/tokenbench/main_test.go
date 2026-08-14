@@ -29,8 +29,22 @@ func TestSummarizeAttributesEverySample(t *testing.T) {
 	got := summarize(results)
 	if got.Passed != 1 || got.Input.P50 != 100 || got.UncachedInput.P50 != 75 ||
 		got.Calls.P50 != 1 || got.ContextP50["tool_definitions"] != 40 ||
-		got.Reasons["normal"] != 1 || got.EstimatorErrorP95 != 0.3 {
+		got.Reasons["normal"] != 1 || got.EstimatorErrorP95 != 0.3 ||
+		got.AttributionCoverageBP.P50 != 10_000 {
 		t.Fatalf("report=%+v", got)
+	}
+}
+
+func TestSummarizeReportsMissingAttribution(t *testing.T) {
+	got := summarize([]bench.Result{{
+		Passed: true,
+		Samples: []protocol.UsageData{
+			{Sample: 1, Context: &protocol.SampleContextData{Reason: "normal"}},
+			{Sample: 2},
+		},
+	}})
+	if got.AttributionCoverageBP.P50 != 5_000 {
+		t.Fatalf("attribution coverage=%+v", got.AttributionCoverageBP)
 	}
 }
 

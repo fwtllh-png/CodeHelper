@@ -18,12 +18,13 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 3. [书籍导航与章节状态](../book/zh-CN/NAVIGATION.md)
 4. [知识文档体系建设方案](./knowledge-base-plan.md)
 5. [架构设计](./architecture.md)
-6. [Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)
-7. [Approval 架构升级方案](./approval-architecture-upgrade.md)
-8. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
-9. [Provider 架构升级方案](./provider-architecture-upgrade.md)
-10. [安全模型](./security.md)
-11. [本地开发与脚本](./development.md)
+6. [Context Engineering 架构升级方案](./context-engineering-architecture-upgrade.md)
+7. [Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)
+8. [Approval 架构升级方案](./approval-architecture-upgrade.md)
+9. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
+10. [Provider 架构升级方案](./provider-architecture-upgrade.md)
+11. [安全模型](./security.md)
+12. [本地开发与脚本](./development.md)
 
 ### 我要使用 CodeHelper
 
@@ -47,18 +48,19 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 ### 我要参与开发
 
 1. [架构设计](./architecture.md)
-2. [Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)
-3. [Approval 架构升级方案](./approval-architecture-upgrade.md)
-4. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
-5. [Provider 架构升级方案](./provider-architecture-upgrade.md)
-6. [安全模型](./security.md)
-7. [本地开发与脚本](./development.md)
-8. [Agent 指南](./agent-guide.md)
-9. [TUI 与 VS Code 体验契约](./experience.md)
-10. [VS Code Runtime 标准监测](./runtime-monitoring.md)
-11. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
-12. [文档治理](./documentation-governance.md)
-13. [后续规划](./roadmap.md)
+2. [Context Engineering 架构升级方案](./context-engineering-architecture-upgrade.md)
+3. [Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)
+4. [Approval 架构升级方案](./approval-architecture-upgrade.md)
+5. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
+6. [Provider 架构升级方案](./provider-architecture-upgrade.md)
+7. [安全模型](./security.md)
+8. [本地开发与脚本](./development.md)
+9. [Agent 指南](./agent-guide.md)
+10. [TUI 与 VS Code 体验契约](./experience.md)
+11. [VS Code Runtime 标准监测](./runtime-monitoring.md)
+12. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
+13. [文档治理](./documentation-governance.md)
+14. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 

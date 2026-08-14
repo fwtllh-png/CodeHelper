@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "logical_request_digest": "sha256:0d2a6390bac13c525214a4f3b424b0dc55a678b87cf0b9893e37155a6290d282",
+  "route": {
+    "provider": "fixture",
+    "adapter": "openai",
+    "protocol": "openai_responses",
+    "model": "fixture-model",
+    "purpose": "act"
+  },
+  "request": {
+    "max_output_tokens": 1024,
+    "temperature": 0.2,
+    "reasoning_effort": "high",
+    "native_search": true,
+    "idempotent": true,
+    "prompt_cache_key_set": true,
+    "prompt_cache_key_digest": "sha256:fe058f5a51c2624acfd1804a248fe377f6a507f21f534de572efd087d6659837",
+    "message_count": 5,
+    "tool_definition_count": 1
+  },
+  "messages": [
+    {
+      "index": 0,
+      "role": "system",
+      "blocks": [
+        {
+          "index": 0,
+          "type": "text",
+          "content_digest": "sha256:9734ac2ddc175ec59fa43ddf38f53e71afec01e44a406950d3375abb28911b2a",
+          "text_bytes": 13,
+          "text_digest": "sha256:8c9a000ad2987128f345f659407e95de496b0976d2708e44bd17d91813bcd11a"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "role": "user",
+      "blocks": [
+        {
+          "index": 0,
+          "type": "text",
+          "content_digest": "sha256:0f6736e1f2247260ad24837e19b6b267b8e37778822b66e96a50719a01c7ef49",
+          "text_bytes": 11,
+          "text_digest": "sha256:7beadde60f416692f0402dc6bb875cf0a766d3b8a2e0ec02b473039359328557"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "role": "assistant",
+      "turn": 1,
+      "provenance": {
+        "adapter": "openai",
+        "provider": "fixture",
+        "model": "fixture-model",
+        "replay_version": 1,
+        "replay_bytes": 18,
+        "replay_digest": "sha256:d75f806fa873700aef854c5f573d98b6ea612e8959d378c49706cdf7277f3a1f",
+        "replay_content_digest": "4865ee9830d11ec93202c52cee27ef06f4fce86ab5d0be82a09eeed9e2b9f873"
+      },
+      "blocks": [
+        {
+          "index": 0,
+          "type": "reasoning",
+          "content_digest": "sha256:2a082e933ad7c34b73c88f456dba9ebff3ea2f311a69f733bfd7470d0b6f8a54",
+          "text_bytes": 17,
+          "text_digest": "sha256:2be21a13a27625e69f047fc5fc3571c3dd361e36addd3d94dba160b22b5d055c"
+        },
+        {
+          "index": 1,
+          "type": "tool_call",
+          "content_digest": "sha256:2de67ec05e573b43ccf5cf2fee44bf9ea693c17051deca47a9a6790961b015f8",
+          "call_id": "call-1",
+          "tool_name": "read_file",
+          "arguments_bytes": 27,
+          "arguments_digest": "sha256:061ac6678e4548c43a673b0691ab39711ed138a4fd15186f26fe6a0bfa287017"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "role": "tool",
+      "turn": 1,
+      "blocks": [
+        {
+          "index": 0,
+          "type": "tool_result",
+          "content_digest": "sha256:b97bdd2c1f439b6dd5082853f99d7ccc02308547052bfe5cbb3f99e0f7a944c3",
+          "call_id": "call-1",
+          "result_bytes": 11,
+          "result_digest": "sha256:0c6a09be1576ae4588b9689fdf005646c1f1f79388793d58e6bf19cbafe7aef8",
+          "result_error": true
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "role": "user",
+      "turn": 2,
+      "blocks": [
+        {
+          "index": 0,
+          "type": "image",
+          "content_digest": "sha256:fbe16219d77175b408dd16c66dae4093f1d80a56d12ab49a3d4d71ace43cb60f",
+          "media_type": "image/png",
+          "attachment_name_digest": "sha256:e5717273638f97e4dfc56ebe8f05329082b248f48168770ab8886b68870bc7ab",
+          "attachment_bytes": 19,
+          "attachment_digest": "sha256:13af509aef671909826dcbb4a78a1c88930c5575a9e50f9b2a7a92b0247aaa43"
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "index": 0,
+      "name": "read_file",
+      "description_bytes": 19,
+      "description_digest": "sha256:a48d7ff59b851f53ee2f0b70398ac865e7a332bf5d446f9a63931c0cc6a0d165",
+      "schema_bytes": 57,
+      "schema_digest": "sha256:53582d9d7229826e75097ac478787ca403c94ce74e4611571be1b03c706952cc"
+    }
+  ],
+  "attribution": {
+    "reason": "normal",
+    "reasoning_effort": "high",
+    "stable_tokens": 10,
+    "history_user_tokens": 11,
+    "history_assistant_tokens": 12,
+    "history_tool_tokens": 13,
+    "dynamic_tokens": 14,
+    "tool_definition_tokens": 15,
+    "provider_framing_tokens": 9,
+    "estimated_tokens": 84,
+    "message_count": 5,
+    "tool_definition_count": 1
+  },
+  "attributed_tokens": 84,
+  "unknown_estimated_tokens": 0,
+  "attribution_coverage_basis_points": 10000
+}
