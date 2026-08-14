@@ -878,8 +878,8 @@ Output 7,857（-16.43%），Reasoning 4,701（相对 T3 -23.51%，相对 T0
 
 完整 Capability Suite 尚未全绿：13 个旧 Fixture 仍保留 T3 前的 Eager Tool
 或 T4 前的 Completion 假设。干净 T3 `main` 基线为 7/25，T4 为 12/25，
-因此没有质量回退，但这仍是明确的残余风险。Architecture Ratchet 通过
-43/43；架构闭包生产代码净减 `53` 行，全部 `internal` 生产代码净减 `14` 行。
+因此没有质量回退，但这仍是明确的残余风险。Architecture Ratchet 43/43；
+架构闭包生产代码净减 `53` 行，全部 `internal` 生产代码净减 `14` 行。
 
 结论：保留 T4 的正确性与 Reasoning 收益，但不标记为 `accepted`。Sample Count
 目标没有改善，且小幅 Input 回退必须在 T5 评估 Incremental Transport 时继续可见。

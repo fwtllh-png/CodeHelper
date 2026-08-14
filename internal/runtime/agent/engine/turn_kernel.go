@@ -40,6 +40,9 @@ func newEngineTurnKernelForTurn(
 	identity kernelTurnIdentity,
 	intent protocol.TurnIntent,
 	mode string,
+	recovery *protocol.TurnRecoveryContext,
+	draftResumed bool,
+	draftChanges []turnkernel.ObservedChange,
 	recorder *trace.Recorder,
 	parent uint64,
 	sink func(turnkernel.TransitionRecord),
@@ -80,6 +83,18 @@ func newEngineTurnKernelForTurn(
 	}
 	if handle.Restored {
 		return kernel, nil
+	}
+	if recovery != nil {
+		if err := kernel.applyAuthoritative(turnkernel.RecoveryRequested{
+			SourceTurnID:           string(recovery.SourceTurnID),
+			RecoveryTurnID:         turnID,
+			CurrentProfileRevision: profileRevision,
+			Action:                 string(recovery.Action),
+			DraftResumed:           draftResumed,
+			Changes:                append([]turnkernel.ObservedChange(nil), draftChanges...),
+		}); err != nil {
+			return nil, err
+		}
 	}
 	if err := kernel.applyAuthoritative(turnkernel.StartTurn{}); err != nil {
 		return nil, err

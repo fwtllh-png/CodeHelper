@@ -9,11 +9,13 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -55,13 +57,28 @@ func (e *Engine) RunForTurnWithIntentAndAttachments(
 	attachments []provider.Attachment,
 	emit func(Event) error,
 ) (result Result, resultErr error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	spec, persistedTurnID, err := e.prepareTurnSpec(
+	return e.RunForTurnWithRequest(
+		ctx,
 		turnID,
 		TurnRequest{
 			Prompt: prompt, Intent: intent, Attachments: attachments,
 		},
+		emit,
+	)
+}
+
+// RunForTurnWithRequest starts a Turn with host-validated recovery metadata.
+func (e *Engine) RunForTurnWithRequest(
+	ctx context.Context,
+	turnID string,
+	request TurnRequest,
+	emit func(Event) error,
+) (result Result, resultErr error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	spec, persistedTurnID, err := e.prepareTurnSpec(
+		turnID,
+		request,
 	)
 	if err != nil {
 		return Result{}, err
@@ -93,6 +110,16 @@ func (e *Engine) prepareTurnSpec(
 			false,
 			nil,
 		)
+	}
+	if request.Recovery != nil {
+		if err := request.Recovery.Validate(); err != nil {
+			return TurnSpec{}, "", protocol.NewProblem(
+				protocol.CodeInvalidArgument,
+				err.Error(),
+				false,
+				err,
+			)
+		}
 	}
 	if turnID == "" {
 		turnID = fmt.Sprintf("engine-turn-%d", e.turn+1)
@@ -171,6 +198,40 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	defer func() {
 		e.endTrace(context.WithoutCancel(ctx), recorder, turnSpan, persistedTurnID, result.State)
 	}()
+	draftTurnID := ""
+	if e.journal != nil &&
+		spec.Request.Recovery != nil &&
+		spec.Request.Recovery.Action == protocol.TurnRecoveryContinue {
+		sourceTurnID := string(spec.Request.Recovery.SourceTurnID)
+		switch {
+		case e.journal.HasDraft(sourceTurnID):
+			draftTurnID = sourceTurnID
+		case e.journal.HasDraft(turnID):
+			// A restarted recovery Turn owns the same draft under its new ID.
+			draftTurnID = turnID
+		}
+	}
+	draftResumed := draftTurnID != ""
+	var (
+		draftChanges       []workspacejournal.Change
+		kernelDraftChanges []turnkernel.ObservedChange
+	)
+	if draftResumed {
+		draftChanges = e.journal.DraftChanges(draftTurnID)
+		kernelDraftChanges = make(
+			[]turnkernel.ObservedChange,
+			0,
+			len(draftChanges),
+		)
+		for _, change := range draftChanges {
+			kernelDraftChanges = append(
+				kernelDraftChanges,
+				turnkernel.ObservedChange{
+					Path: change.Path, Kind: change.Kind,
+				},
+			)
+		}
+	}
 	kernel, err := newEngineTurnKernelForTurn(
 		kernelTurnIdentity{
 			turnID:          turnID,
@@ -178,6 +239,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		},
 		intent,
 		string(spec.Mode),
+		spec.Request.Recovery,
+		draftResumed,
+		kernelDraftChanges,
 		recorder,
 		turnSpan.ID(),
 		e.options.TurnKernelObserver,
@@ -240,8 +304,34 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	e.evidenceSet().BeginTurn(e.turn)
 	_, restoredTerminal := kernel.terminalDecision()
 	if e.journal != nil && !restoredTerminal {
-		if err := e.journal.Begin(turnID); err != nil {
-			return result, err
+		var journalErr error
+		switch {
+		case draftResumed:
+			journalErr = e.journal.ResumeDraft(draftTurnID, turnID)
+		case spec.Request.Recovery != nil &&
+			spec.Request.Recovery.Action == protocol.TurnRecoveryRetry &&
+			e.journal.HasDraft(string(spec.Request.Recovery.SourceTurnID)):
+			_, journalErr = e.journal.Revert(
+				context.Background(),
+				string(spec.Request.Recovery.SourceTurnID),
+			)
+			if journalErr == nil {
+				journalErr = e.journal.Begin(turnID)
+			}
+		default:
+			journalErr = e.journal.Begin(turnID)
+		}
+		if journalErr != nil {
+			return result, journalErr
+		}
+		for _, change := range draftChanges {
+			s.state.diff.Record(TurnDiffEntry{
+				Path: change.Path, Tool: "recovery_draft", Kind: change.Kind,
+			})
+			e.observePath(workingset.SourceEdited, change.Path)
+			e.observeChangeEvidence(toolguard.FileChange{
+				Path: change.Path, Kind: change.Kind,
+			})
 		}
 	}
 	transaction := cloneMessages(e.history)
@@ -323,6 +413,18 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				} else {
 					journalErr = e.journal.Commit(turnID)
 				}
+			case turnkernel.EffectSuspendJournal:
+				if e.journal == nil {
+					journalErr = errors.New("workspace journal is unavailable")
+				} else {
+					journalErr = e.journal.Suspend(turnID)
+				}
+				if result.Verification != nil {
+					result.Verification.Workspace = &VerificationWorkspace{
+						Status: "draft",
+						Note:   "workspace changes are retained as a resumable, unverified draft",
+					}
+				}
 			case turnkernel.EffectRollbackJournal:
 				if e.journal == nil {
 					journalErr = errors.New("workspace journal is unavailable")
@@ -340,8 +442,11 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				journalErr = fmt.Errorf("unsupported journal effect %q", kind)
 			}
 			status := turnkernel.JournalRolledBack
-			if kind == turnkernel.EffectCommitJournal {
+			switch kind {
+			case turnkernel.EffectCommitJournal:
 				status = turnkernel.JournalCommitted
+			case turnkernel.EffectSuspendJournal:
+				status = turnkernel.JournalSuspended
 			}
 			if err := kernel.finishJournal(
 				effect,
@@ -704,7 +809,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					)
 					sampleReason = promptcontext.SampleVerificationRepair
 					continue
-				case verifyActionFailed:
+				case verifyActionBlocked, verifyActionFailed:
 					return result, protocol.NewProblem(
 						protocol.CodeConflict,
 						outcome.receipt.problemMessage(),

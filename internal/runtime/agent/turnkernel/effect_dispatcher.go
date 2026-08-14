@@ -226,7 +226,7 @@ func C3RoutedEffect(kind EffectKind) bool {
 
 func C4RoutedEffect(kind EffectKind) bool {
 	switch kind {
-	case EffectCommitJournal, EffectRollbackJournal:
+	case EffectCommitJournal, EffectSuspendJournal, EffectRollbackJournal:
 		return true
 	default:
 		return false

@@ -235,6 +235,9 @@ type RecoveryRequested struct {
 	SourceTurnID           string
 	RecoveryTurnID         string
 	CurrentProfileRevision uint64
+	Action                 string
+	DraftResumed           bool
+	Changes                []ObservedChange
 }
 
 func (RecoveryRequested) commandName() string { return "recovery_requested" }
@@ -345,6 +348,7 @@ const (
 	EffectAwaitInput      EffectKind = "await_input"
 	EffectRunVerification EffectKind = "run_verification"
 	EffectCommitJournal   EffectKind = "commit_journal"
+	EffectSuspendJournal  EffectKind = "suspend_journal"
 	EffectRollbackJournal EffectKind = "rollback_journal"
 )
 

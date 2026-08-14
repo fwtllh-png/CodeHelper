@@ -609,6 +609,10 @@ export type TurnStartPayload = {
   readonly "intent"?: string;
   readonly "item_id": string;
   readonly "prompt": string;
+  readonly "recovery"?: {
+      readonly "action": string;
+      readonly "source_turn_id": string;
+    };
   readonly "thread_id": string;
   readonly "turn_id": string;
   readonly "workspace_identity"?: {
@@ -1119,17 +1123,19 @@ export type TurnReceiptData = {
       readonly "verification_call_ids": ReadonlyArray<string>;
     };
   readonly "context_budget"?: {
+      readonly "active_tokens": number;
+      readonly "auto_compact_tokens": number;
       readonly "compactions": number;
       readonly "estimated_tokens"?: number;
-      readonly "history_bytes": number;
       readonly "max_context_tokens"?: number;
-      readonly "max_history_bytes": number;
     };
   readonly "context_sections"?: ReadonlyArray<{
       readonly "digest"?: string;
       readonly "kind": string;
       readonly "original_bytes": number;
+      readonly "original_tokens"?: number;
       readonly "retained_bytes": number;
+      readonly "retained_tokens"?: number;
       readonly "truncated"?: boolean;
       readonly "truncation_reason"?: string;
     }>;
@@ -1384,6 +1390,22 @@ export type TurnVerificationData = {
 
 export type UsageData = {
   readonly "cached_tokens"?: number;
+  readonly "context"?: {
+      readonly "continuation_tokens"?: number;
+      readonly "dynamic_tokens"?: number;
+      readonly "estimated_tokens"?: number;
+      readonly "history_assistant_tokens"?: number;
+      readonly "history_other_tokens"?: number;
+      readonly "history_tool_tokens"?: number;
+      readonly "history_user_tokens"?: number;
+      readonly "message_count"?: number;
+      readonly "provider_framing_tokens"?: number;
+      readonly "reason": string;
+      readonly "reasoning_effort"?: string;
+      readonly "stable_tokens"?: number;
+      readonly "tool_definition_count"?: number;
+      readonly "tool_definition_tokens"?: number;
+    };
   readonly "cost_known": boolean;
   readonly "cost_microunits"?: number;
   readonly "input_tokens": number;

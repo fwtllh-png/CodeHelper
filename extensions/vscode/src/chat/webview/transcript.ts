@@ -214,19 +214,32 @@ function renderTurn(
       appendText(article, "div", "error", turn.error);
     }
     if (turn.status === "failed" || turn.status === "canceled") {
+      const retainedDraft = turn.verificationBlocked === true;
+      if (retainedDraft) {
+        appendText(
+          article,
+          "div",
+          "meta",
+          "Verification blocked. Workspace changes are retained for repair.",
+        );
+      }
       const recovery = document.createElement("div");
       recovery.className = "recovery-actions";
       recovery.dataset["recoveryTurnId"] = turn.id;
-      const retry = actionButton("Retry", () => {
+      const retry = actionButton(retainedDraft ? "Discard & Retry" : "Retry", () => {
         actions.recover(turn.id, "retry");
       });
-      retry.className = "recovery-action primary";
-      retry.title = "Run the original request again";
-      const resume = actionButton("Continue", () => {
+      retry.className = `recovery-action ${retainedDraft ? "secondary" : "primary"}`;
+      retry.title = retainedDraft
+        ? "Discard the retained draft and run the original request again"
+        : "Run the original request again";
+      const resume = actionButton(retainedDraft ? "Continue Repair" : "Continue", () => {
         actions.recover(turn.id, "continue");
       });
-      resume.className = "recovery-action secondary";
-      resume.title = "Keep existing results and continue";
+      resume.className = `recovery-action ${retainedDraft ? "primary" : "secondary"}`;
+      resume.title = retainedDraft
+        ? "Continue from the retained workspace draft"
+        : "Keep existing results and continue";
       recovery.append(retry, resume);
       const status = document.createElement("span");
       status.className = "recovery-status";

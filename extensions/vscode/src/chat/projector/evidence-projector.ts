@@ -35,6 +35,7 @@ export function projectEvidence(event: DecodedEvent, turn: MutableTurn): boolean
         }).join(", ")}`,
       );
       turn.verification = verification;
+      turn.verificationBlocked = event.data.action === "blocked";
       turn.timeline.push({
         id: `verification:${String(event.sequence)}`,
         sequence: event.sequence,

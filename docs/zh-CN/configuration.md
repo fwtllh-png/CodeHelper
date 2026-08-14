@@ -254,8 +254,11 @@ Mode 写入 TOML；Posture 是 Host/命令级决策，通过参数提供。二�
 验证模式：
 
 - `off`：不运行 Verify Gate；
-- `soft`：收集并报告结论，但不把成功编辑改判为失败；
+- `soft`：收集并报告结论，但当 Turn Contract 要求验证时仍会阻止完成；
 - `hard`：修复预算耗尽后强制执行结论。
+
+`workspace_change` 与显式 Completion Contract 始终要求验证。其无进展 Repair Budget
+耗尽后，无论配置 Mode 为何，Turn 都会进入 `blocked`，Journal 则保留为可恢复 Draft。
 
 验证范围：
 

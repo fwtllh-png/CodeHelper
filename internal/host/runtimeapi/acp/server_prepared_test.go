@@ -12,6 +12,10 @@ func TestPreparedStartTurnPreservesIntent(t *testing.T) {
 		"Continue: fix the parser",
 		protocol.TurnIntentWorkspaceChange,
 		"recover-source",
+		&protocol.TurnRecoveryContext{
+			Action:       protocol.TurnRecoveryContinue,
+			SourceTurnID: "turn-source",
+		},
 	)
 	if request.kind != protocol.OperationStartTurn {
 		t.Fatalf("operation kind = %q", request.kind)
@@ -23,6 +27,8 @@ func TestPreparedStartTurnPreservesIntent(t *testing.T) {
 	if payload.Prompt != "internal recovery context" ||
 		payload.DisplayPrompt != "Continue: fix the parser" ||
 		payload.Intent != protocol.TurnIntentWorkspaceChange ||
+		payload.Recovery == nil ||
+		payload.Recovery.SourceTurnID != "turn-source" ||
 		request.idempotencyKey != "recover-source" {
 		t.Fatalf("prepared request = %+v, payload = %+v", request, payload)
 	}

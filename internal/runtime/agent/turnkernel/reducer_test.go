@@ -641,6 +641,7 @@ func TestPhase4R1RecoveryBindsCurrentProfileRevision(t *testing.T) {
 		SourceTurnID:           "source-turn",
 		RecoveryTurnID:         "recovery-turn",
 		CurrentProfileRevision: 9,
+		Action:                 string(protocol.TurnRecoveryContinue),
 	}).State
 	if state.ProfileRevision != 9 ||
 		state.RecoveryRelation == nil ||

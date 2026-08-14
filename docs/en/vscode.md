@@ -315,7 +315,12 @@ Retry and Continue are active Runtime workflows. They always create a new Turn
 with an idempotency key and never replay historical Tool, command, network, or
 file operations. Retry reuses the source Turn's durable model-visible request;
 Continue uses terminal history plus optional guidance. The recovery controls
-disable immediately after submission. An accepted
+disable immediately after submission. When required verification exhausts its
+no-progress repair budget, the source Turn fails as `blocked` while its journal
+is retained as an unverified draft. `Continue Repair` atomically rebinds that
+same journal to the recovery Turn, preserving the original before-images;
+`Discard & Retry` explicitly reverts the draft before rerunning the request.
+An accepted
 recovery replaces the buttons with `Retry started` or `Continue started`;
 submission failure restores the controls with the actual error.
 Plan transitions

@@ -101,6 +101,7 @@ type StartTurnPayload struct {
 	Intent            TurnIntent               `json:"intent,omitempty"`
 	WorkspaceIdentity *WorkspaceIdentity       `json:"workspace_identity,omitempty"`
 	Context           []EditorContextReference `json:"context,omitempty"`
+	Recovery          *TurnRecoveryContext     `json:"recovery,omitempty"`
 	// Idle marks extension/automation-initiated work. Plan mode rejects it (W6 / C4).
 	Idle bool `json:"idle,omitempty"`
 }
@@ -123,6 +124,11 @@ func (p *StartTurnPayload) validate() error {
 	}
 	if p.WorkspaceIdentity != nil {
 		if err := p.WorkspaceIdentity.Validate(); err != nil {
+			return err
+		}
+	}
+	if p.Recovery != nil {
+		if err := p.Recovery.Validate(); err != nil {
 			return err
 		}
 	}

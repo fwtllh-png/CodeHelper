@@ -538,6 +538,33 @@ void test("ChatProjector preserves unknown events as read-only cards and dedupli
   assert.match(unknown[0] ?? "", /future\.event/);
 });
 
+void test("ChatProjector exposes verification-blocked recovery state structurally", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+  }));
+  projector.apply(event(2, "turn.verification", {
+    scope: "diagnostics",
+    mode: "soft",
+    status: "failed",
+    action: "blocked",
+    repair_steps: 1,
+    checks: [],
+  }));
+  assert.equal(projector.snapshot().turns[0]?.verificationBlocked, true);
+
+  projector.apply(event(3, "turn.verification", {
+    scope: "diagnostics",
+    mode: "soft",
+    status: "passed",
+    action: "passed",
+    repair_steps: 1,
+    checks: [],
+  }));
+  assert.equal(projector.snapshot().turns[0]?.verificationBlocked, false);
+});
+
 void test("ChatProjector exposes verification attribution and workspace outcome", () => {
   const projector = new ChatProjector();
   projector.apply(event(1, "turn.started", {

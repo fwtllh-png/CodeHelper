@@ -116,9 +116,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 8987,
+        "production_lines": 9110,
         "options_fields": 58,
         "mutex_fields": 9
+      },
+      "relaxations": {
+        "production_lines": "Verification-blocked drafts require Engine recovery binding, inherited Mutation coverage, and journal finalization."
       }
     },
     {
@@ -127,9 +130,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7543,
+        "production_lines": 7598,
         "options_fields": 18,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "Runtime validates recovery Source Turn authority and carries typed recovery preparation."
       }
     },
     {
@@ -204,9 +210,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 4744,
+        "production_lines": 4766,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "The shared protocol now binds recovery action and Source Turn identity into turn.start."
       }
     },
     {
@@ -215,9 +224,12 @@
       "path": "internal/host/runtimeapi/acp",
       "limits": {
         "internal_fanout": 12,
-        "production_lines": 3087,
+        "production_lines": 3091,
         "options_fields": 10,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "ACP forwards typed recovery context without reconstructing Runtime recovery policy."
       }
     },
     {
@@ -360,8 +372,11 @@
       "kind": "file",
       "path": "internal/host/runtimeapi/acp/server.go",
       "limits": {
-        "lines": 2968,
+        "lines": 2970,
         "max_function_lines": 124
+      },
+      "relaxations": {
+        "lines": "ACP prepared Turn submission carries the Runtime-issued recovery context."
       }
     },
     {

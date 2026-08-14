@@ -25,6 +25,7 @@ type TurnRequest struct {
 	Prompt      string
 	Intent      protocol.TurnIntent
 	Attachments []provider.Attachment
+	Recovery    *protocol.TurnRecoveryContext
 }
 
 // TurnLimits freezes the budgets that bound one Scope.
@@ -128,6 +129,10 @@ func SnapshotTurnSpec(
 	}
 	request.Intent = protocol.NormalizeTurnIntent(request.Intent)
 	request.Attachments = append([]provider.Attachment(nil), request.Attachments...)
+	if request.Recovery != nil {
+		recovery := *request.Recovery
+		request.Recovery = &recovery
+	}
 	spec := TurnSpec{
 		Identity: identity,
 		Request:  request,

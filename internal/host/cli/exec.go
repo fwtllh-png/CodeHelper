@@ -240,8 +240,9 @@ func runExec(
 	if recovery := session.JournalRecovery(); !recovery.Empty() {
 		_, _ = fmt.Fprintf(
 			stderr,
-			"codehelper: recovered interrupted turns: %d rolled back, %d committed kept, %d left to a live process\n",
-			len(recovery.RolledBack), len(recovery.Abandoned), len(recovery.Skipped),
+			"codehelper: recovered interrupted turns: %d rolled back, %d committed kept, %d drafts retained, %d left to a live process\n",
+			len(recovery.RolledBack), len(recovery.Abandoned),
+			len(recovery.Drafts), len(recovery.Skipped),
 		)
 	}
 	prompt := strings.Join(flags.Args(), " ")

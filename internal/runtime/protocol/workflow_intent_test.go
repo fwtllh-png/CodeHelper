@@ -19,6 +19,12 @@ func TestTurnRecoveryContractNeverEncodesHistoricalOperationReplay(t *testing.T)
 	if err := retry.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	context := TurnRecoveryContext{
+		Action: TurnRecoveryContinue, SourceTurnID: "turn-source",
+	}
+	if err := context.Validate(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPlanDestinationRequiresExplicitCheckpointOnlyForFork(t *testing.T) {

@@ -84,7 +84,8 @@ export interface ChatTurn {
   readonly inputs: readonly InputCard[];
   readonly plan?: PlanCard; readonly contextReceipts: readonly ContextReceiptCard[];
   readonly contextSelections: readonly ContextSelectionCard[]; readonly diagnostics: readonly string[];
-  readonly verification?: string; readonly receipt?: string; readonly error?: string;
+  readonly verification?: string; readonly verificationBlocked?: boolean;
+  readonly receipt?: string; readonly error?: string;
   readonly workspaceChange?: WorkspaceChangeCard;
   readonly unknownEvents: readonly string[];
 }
@@ -115,5 +116,6 @@ export interface MutableTurn {
   diagnostics: Map<string, DiagnosticReceipt>; diagnosticNotices: string[];
   workspace?: string; workspaceIsolation?: string;
   workspaceChange?: WorkspaceChangeCard; lastSequence: number;
-  verification?: string; receipt?: string; error?: string; unknownEvents: string[];
+  verification?: string; verificationBlocked?: boolean;
+  receipt?: string; error?: string; unknownEvents: string[];
 }

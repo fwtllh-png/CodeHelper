@@ -171,6 +171,9 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   使用 `failed > unavailable > passed > not_evaluated` 聚合优先级；
 - Strict `workspace_change` Verification 在 Repair Budget 用尽后不能降级为 Soft
   `reported`；
+- Required Verification 耗尽后必须标记为 `blocked`，不能接受或立即丢弃改动。
+  Workspace Journal 以持久化未验证 Draft 暂停；Continue 恢复该 Journal，Retry
+  才显式撤销它；
 - Post-edit Diagnostics 不可用时，`workspace_change` 只能使用最后一次 Mutation
   之后运行的 `quality_test` 或 `quality_verify` Passed Evidence 完成；Evidence
   必须声明精确 `covered_paths` 并覆盖全部 Changed Paths；Repair Feedback 必须

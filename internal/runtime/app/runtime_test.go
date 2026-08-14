@@ -490,6 +490,44 @@ func startOperation(t *testing.T, index int) protocol.Operation {
 	return operation
 }
 
+func TestStartTurnRecoverySourceMustBeTerminalInTheSameThread(t *testing.T) {
+	events := NewMemoryEventStore(4)
+	terminal, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "operation-source",
+		ThreadID: "thread-source", TurnID: "turn-source", ItemID: "item-source",
+	}, &protocol.TurnFailedData{
+		Code: protocol.CodeConflict, Message: "verification blocked",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), terminal); err != nil {
+		t.Fatal(err)
+	}
+	handler := StartTurnHandler{Runtime: &Runtime{
+		ctx: t.Context(), events: events,
+	}}
+	recovery := &protocol.TurnRecoveryContext{
+		Action: protocol.TurnRecoveryContinue, SourceTurnID: "turn-source",
+	}
+	if err := handler.validateStart(&protocol.StartTurnPayload{
+		ThreadID: "thread-source", Recovery: recovery,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.validateStart(&protocol.StartTurnPayload{
+		ThreadID: "thread-other", Recovery: recovery,
+	}); protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("cross-Thread recovery error = %v", err)
+	}
+	recovery.SourceTurnID = "turn-missing"
+	if err := handler.validateStart(&protocol.StartTurnPayload{
+		ThreadID: "thread-source", Recovery: recovery,
+	}); protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("missing recovery error = %v", err)
+	}
+}
+
 func receiveEvent(t *testing.T, events <-chan protocol.Event) protocol.Event {
 	t.Helper()
 	select {

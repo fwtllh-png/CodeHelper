@@ -1743,6 +1743,7 @@ func (s *Server) turnRecover(request rpcRequest) {
 			prepared.DisplayPrompt,
 			prepared.Intent,
 			prepared.IdempotencyKey,
+			&prepared.Recovery,
 		),
 	)
 }
@@ -1824,6 +1825,7 @@ func (s *Server) planImplement(request rpcRequest) {
 			prepared.Prompt,
 			prepared.Intent,
 			prepared.IdempotencyKey,
+			nil,
 		),
 	)
 }
@@ -1833,6 +1835,7 @@ func preparedStartTurn(
 	displayPrompt string,
 	intent protocol.TurnIntent,
 	idempotencyKey string,
+	recovery *protocol.TurnRecoveryContext,
 ) operationRequest {
 	return operationRequest{
 		kind: protocol.OperationStartTurn,
@@ -1840,6 +1843,7 @@ func preparedStartTurn(
 			Prompt:        prompt,
 			DisplayPrompt: displayPrompt,
 			Intent:        intent,
+			Recovery:      recovery,
 		},
 		idempotencyKey: idempotencyKey,
 	}

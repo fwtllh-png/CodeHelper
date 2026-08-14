@@ -102,6 +102,10 @@ func (s *Scope) Spec() TurnSpec {
 		[]provider.Attachment(nil),
 		spec.Request.Attachments...,
 	)
+	if spec.Request.Recovery != nil {
+		recovery := *spec.Request.Recovery
+		spec.Request.Recovery = &recovery
+	}
 	spec.History = cloneMessages(spec.History)
 	spec.Context.Messages = cloneMessages(spec.Context.Messages)
 	spec.Context.Receipts = append(

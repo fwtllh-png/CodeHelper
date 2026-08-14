@@ -14,6 +14,25 @@ const (
 	TurnRecoveryContinue TurnRecoveryAction = "continue"
 )
 
+// TurnRecoveryContext binds a newly-created recovery Turn to the terminal Turn
+// whose request or retained workspace draft it is recovering.
+type TurnRecoveryContext struct {
+	Action       TurnRecoveryAction `json:"action"`
+	SourceTurnID TurnID             `json:"source_turn_id"`
+}
+
+func (c TurnRecoveryContext) Validate() error {
+	if !validProfileIdentifier(string(c.SourceTurnID)) {
+		return errors.New("turn recovery source is invalid")
+	}
+	switch c.Action {
+	case TurnRecoveryRetry, TurnRecoveryContinue:
+		return nil
+	default:
+		return errors.New("turn recovery action is invalid")
+	}
+}
+
 // TurnRecoveryRequest always creates a new Turn. Retry reuses the source Turn's
 // user request and safe model-visible context; Continue uses the terminal
 // history plus Guidance. Neither action replays historical Tool operations.

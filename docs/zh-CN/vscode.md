@@ -263,8 +263,11 @@ Ceiling、Guard、Policy、Journal 和 Sandbox 仍是最终权威。低风险操
 Retry 与 Continue 已成为可执行 Runtime Workflow。两者始终使用 Idempotency Key 创建
 新 Turn，绝不重放历史 Tool、Command、Network 或 File Operation。Retry 复用源 Turn
 的持久化 Model-visible Request；Continue 使用 Terminal History 与可选 Guidance。提交后
-按钮立即禁用；Runtime 接受后替换为 `Retry started` 或 `Continue started`，提交失败则
-恢复按钮并显示真实错误。
+按钮立即禁用。Required Verification 的无进展 Repair Budget 用尽时，源 Turn 以
+`blocked` 失败，但 Journal 会保留为未验证 Draft。`Continue Repair` 将同一 Journal
+原子重绑定到 Recovery Turn，并保留最初 Before Image；`Discard & Retry` 则在重新执行
+Request 前显式撤销 Draft。Runtime 接受恢复后，按钮替换为 `Retry started` 或
+`Continue started`；提交失败则恢复按钮并显示真实错误。
 Plan Transition 可显式选择 Current Session、保留 Profile 的 New Session 或 State-only
 Checkpoint Fork。Runtime 校验源 Artifact 并构造 Implementation Prompt，Webview 不做
 反向推断。

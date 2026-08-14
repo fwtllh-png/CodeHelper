@@ -6,4 +6,4 @@ package workspacejournal
 // recovery on this platform waits for a person to act instead of undoing an
 // interrupted turn; the alternative — assuming a process is gone and rolling back
 // underneath it — corrupts a live workspace.
-func processAlive(int) bool { return true }
+func processAlive(pid int) bool { return pid > 0 }
