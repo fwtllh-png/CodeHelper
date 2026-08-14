@@ -2,13 +2,14 @@
 
 简体中文 | [English](../en/provider-architecture-upgrade.md)
 
-> 状态：P5 `attempts_durable`。版本化证据见
+> 状态：P6 `accepted`。版本化证据见
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
 > [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json)
 > 、[`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json)
 > 、[`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json)
 > 、[`provider-architecture-p4-evidence.json`](../provider-architecture-p4-evidence.json)
-> 与 [`provider-architecture-p5-evidence.json`](../provider-architecture-p5-evidence.json)。
+> 、[`provider-architecture-p5-evidence.json`](../provider-architecture-p5-evidence.json)
+> 与 [`provider-architecture-p6-evidence.json`](../provider-architecture-p6-evidence.json)。
 >
 > 范围：Model Route 元数据、Provider-neutral Request 与 Stream 契约、Wire
 > Adapter、HTTP 与 WebSocket Transport、DeepSeek 专属行为、Provider
@@ -333,7 +334,7 @@ flowchart LR
 | OpenAI 语义 | `internal/adapter/provider/openai` |
 | DeepSeek 语义 | `internal/adapter/provider/deepseek` |
 | Anthropic 语义 | `internal/adapter/provider/anthropic` |
-| 通用 OpenAI-compatible Fallback | `internal/adapter/provider/openaicompat` |
+| 通用 OpenAI-compatible Fallback | 参数化 `internal/adapter/provider/openai` |
 | HTTP/WebSocket、Egress、Credential、并发 | `internal/adapter/provider/httpclient` |
 | Retry Decision 与 Attempt Lifecycle | `internal/runtime/agent` |
 | Registry 与 Transport 具体构造 | `internal/runtime/app/wire` |
@@ -1158,8 +1159,10 @@ Router、Registry、Adapter 或 Transport。
 internal/adapter/provider/wire/
 internal/adapter/provider/router.go
 internal/adapter/provider/deepseek/
-internal/adapter/provider/openaicompat/
 ```
+
+计划中的 `provider/openaicompat` Wrapper 在 P6 删除，因为它只把构造转发给参数化
+OpenAI Adapter。
 
 ### 21.2 移动或重写
 
@@ -1398,7 +1401,7 @@ Exit：
 
 ### P6：Context Pruning 与最终启用
 
-目标状态：`accepted`。
+状态：`accepted`。
 
 工作：
 
@@ -1416,6 +1419,22 @@ Exit：
 - 生产代码规模变化已记录，且显著增长有明确的职责或行为依据；
 - Obsolete Branch 与无必要重复已删除；
 - Branch 可执行 `--no-ff` 集成。
+
+结果：
+
+- Token Window Gate 在 Summary Replacement 前按从旧到新的顺序裁剪已闭合 Tool
+  Result Surface，并在每次投影后重新测量；
+- Tool 层把完整原文保留在 Durable Content Store，通过稳定 `result_get` Handle
+  提供有界 Head/Tail 摘要；
+- Pruning 保持 Call/Result 配对，并跳过 Malformed 与 Retrieval-tool Result；
+- 当 Pruning 已恢复窗口时，跳过 Summary Replacement；
+- Reasoning Effort Level 成为显式 Model Capability 数据，删除 Runtime Sampling
+  中最后一处 Provider 名称推断；
+- 删除仅负责转发的 `provider/openaicompat` Package，同时通过参数化 OpenAI Adapter
+  保留 Compatible `AdapterID`；
+- 不可变 Router 与专用 DeepSeek Adapter 无条件成为生产路径，DeepSeek 继续不广告
+  Incremental Responses；
+- 删除 Obsolete Package 后，Architecture Ratchet 收紧为 54 个有效 Target。
 
 ## 23. 测试策略
 

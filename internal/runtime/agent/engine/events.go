@@ -162,6 +162,8 @@ type CompactionReceipt struct {
 	SummaryRetainedBytes int    `json:"summary_retained_bytes"`
 	SummaryTruncated     bool   `json:"summary_truncated"`
 	TruncationReason     string `json:"truncation_reason,omitempty"`
+	PrunedToolResults    int    `json:"pruned_tool_results,omitempty"`
+	PrunedBytes          int    `json:"pruned_bytes,omitempty"`
 	// Sections names the parts of the summary that survived the budget, so a host
 	// can tell a compaction that carried the goal from one that only had room for
 	// a transcript.

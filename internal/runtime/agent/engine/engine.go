@@ -243,7 +243,7 @@ func New(options Options) (*Engine, error) {
 	if options.MaxSteps < 1 {
 		return nil, errors.New("max steps must be positive")
 	}
-	if err := normalizeRetryOptions(&options); err != nil {
+	if err := normalizeEngineOptions(&options); err != nil {
 		return nil, err
 	}
 	if options.TokenEstimator == nil {
@@ -329,19 +329,6 @@ func New(options Options) (*Engine, error) {
 	}
 	engine.configureApprovalHandlers()
 	return engine, nil
-}
-
-func normalizeRetryOptions(options *Options) error {
-	if options.MaxRetries < 0 {
-		return errors.New("max retries cannot be negative")
-	}
-	if options.MaxRetryDelay < 0 {
-		return errors.New("max retry delay cannot be negative")
-	}
-	if options.MaxRetryDelay == 0 {
-		options.MaxRetryDelay = 2 * time.Minute
-	}
-	return nil
 }
 
 func (e *Engine) ValidateSessionProfile(profile protocol.SessionProfile) error {

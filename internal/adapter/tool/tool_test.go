@@ -126,6 +126,39 @@ func TestResultStoreAppliesTypedTokenBudgetsAndKeepsFullHandle(t *testing.T) {
 	}
 }
 
+func TestResultStorePrunesContextSurfaceWithHeadTailAndStableHandle(t *testing.T) {
+	store := NewResultStore(32 << 10)
+	payload := "HEAD-" + strings.Repeat("middle", 2000) + "-TAIL"
+	input := Result{
+		Content:  payload,
+		Metadata: map[string]any{"error_category": "fixture"},
+	}
+	first, changed := store.PruneSurface("file_read", input, 1024)
+	if !changed ||
+		!first.Truncated ||
+		first.Handle == "" ||
+		first.OriginalBytes != len(payload) ||
+		!strings.Contains(first.Content, "HEAD-") ||
+		!strings.Contains(first.Content, "-TAIL") ||
+		!strings.Contains(first.Content, "... pruned middle ...") {
+		t.Fatalf("first projection = %+v", first)
+	}
+	full, ok := store.Get(first.Handle)
+	if !ok || full != payload {
+		t.Fatalf("stored result bytes=%d found=%t", len(full), ok)
+	}
+	second, changed := store.PruneSurface("file_read", first, 512)
+	if !changed || second.Handle != first.Handle ||
+		!strings.Contains(second.Content, "HEAD-") ||
+		!strings.Contains(second.Content, "-TAIL") {
+		t.Fatalf("second projection = %+v", second)
+	}
+	if skipped, changed := store.PruneSurface("result_get", input, 512); changed ||
+		skipped.Content != payload {
+		t.Fatalf("retrieval projection changed = %+v, %t", skipped, changed)
+	}
+}
+
 func TestResultGetPagesReconstructFullLargeResult(t *testing.T) {
 	store := NewResultStore(32 << 10)
 	payload := strings.Repeat("0123456789abcdef", 7000)

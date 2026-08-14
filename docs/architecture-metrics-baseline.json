@@ -41,9 +41,12 @@
       "path": "internal/adapter/model",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 892,
+        "production_lines": 940,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "P6 makes reasoning effort levels explicit model capability data and validates their ownership."
       }
     },
     {
@@ -162,17 +165,6 @@
       }
     },
     {
-      "id": "provider_openaicompat_package",
-      "kind": "package",
-      "path": "internal/adapter/provider/openaicompat",
-      "limits": {
-        "internal_fanout": 2,
-        "production_lines": 10,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
       "id": "provider_fixture_package",
       "kind": "package",
       "path": "internal/adapter/provider/fixture",
@@ -188,13 +180,13 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 70,
-        "production_lines": 7582,
+        "internal_fanout": 69,
+        "production_lines": 7570,
         "options_fields": 70,
         "mutex_fields": 5
       },
       "relaxations": {
-        "internal_fanout": "P3 composition constructs the dedicated DeepSeek adapter alongside guarded transport."
+        "internal_fanout": "P6 deletes the forwarding-only openaicompat package while retaining explicit compatible AdapterID construction."
       }
     },
     {
@@ -282,12 +274,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 9367,
+        "production_lines": 9563,
         "options_fields": 59,
         "mutex_fields": 9
       },
       "relaxations": {
-        "production_lines": "P5 owns normalized failure policy, context-overflow recovery, durable retry scheduling, and model execution attribution.",
+        "production_lines": "P6 adds deterministic retrieval-backed Tool Result surface pruning and pre-I/O reasoning-effort validation.",
         "options_fields": "P5 adds the Runtime-owned provider retry delay bound."
       }
     },
@@ -297,12 +289,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7608,
+        "production_lines": 7623,
         "options_fields": 18,
         "mutex_fields": 5
       },
       "relaxations": {
-        "production_lines": "P5 records separate Provider Attempt, Model Sample, and Completion Repair receipt totals."
+        "production_lines": "P6 projects Tool Result pruning evidence through the Runtime compaction event."
       }
     },
     {
@@ -542,11 +534,11 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 522,
+        "lines": 509,
         "max_function_lines": 123
       },
       "relaxations": {
-        "lines": "P5 adds explicit Engine retry-delay configuration and validation."
+        "lines": "P6 moves option normalization out of engine.go and lowers this hotspot."
       }
     },
     {

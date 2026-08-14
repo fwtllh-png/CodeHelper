@@ -1056,6 +1056,8 @@ export type TurnCanceledData = {
 export type TurnCompactionData = {
   readonly "original_bytes"?: number;
   readonly "phase": string;
+  readonly "pruned_bytes"?: number;
+  readonly "pruned_tool_results"?: number;
   readonly "removed_messages"?: number;
   readonly "removed_turns"?: ReadonlyArray<number>;
   readonly "retained_bytes"?: number;

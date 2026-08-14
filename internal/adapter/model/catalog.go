@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -51,15 +52,31 @@ type Limits struct {
 }
 
 type Capabilities struct {
-	Streaming    bool `json:"streaming"`
-	Reasoning    bool `json:"reasoning"`
-	ToolCalls    bool `json:"tool_calls"`
-	NativeSearch bool `json:"native_search"`
+	Streaming        bool     `json:"streaming"`
+	Reasoning        bool     `json:"reasoning"`
+	ReasoningEfforts []string `json:"reasoning_efforts,omitempty"`
+	ToolCalls        bool     `json:"tool_calls"`
+	NativeSearch     bool     `json:"native_search"`
 	// IncrementalResponses allows connection-local Responses continuation.
 	IncrementalResponses bool `json:"incremental_responses,omitempty"`
 	Vision               bool `json:"vision"`
 	ImageInput           bool `json:"image_input"`
 	PromptCache          bool `json:"prompt_cache"`
+}
+
+func (c Capabilities) ReasoningEffortLevels() []string {
+	if !c.Reasoning {
+		return nil
+	}
+	if len(c.ReasoningEfforts) != 0 {
+		return append([]string(nil), c.ReasoningEfforts...)
+	}
+	return []string{"low", "medium", "high", "xhigh"}
+}
+
+func (c Capabilities) SupportsReasoningEffort(effort string) bool {
+	return effort != "" &&
+		slices.Contains(c.ReasoningEffortLevels(), effort)
 }
 
 type Pricing struct {
@@ -201,6 +218,33 @@ func validateProvider(provider Provider) error {
 		if model.Limits.MaxOutputTokens > model.Limits.ContextTokens {
 			return fmt.Errorf("provider %q model %q output limit exceeds context", provider.ID, key)
 		}
+		if !model.Capabilities.Reasoning &&
+			len(model.Capabilities.ReasoningEfforts) != 0 {
+			return fmt.Errorf(
+				"provider %q model %q declares efforts without reasoning",
+				provider.ID,
+				key,
+			)
+		}
+		efforts := make(map[string]struct{})
+		for _, effort := range model.Capabilities.ReasoningEfforts {
+			if effort == "" {
+				return fmt.Errorf(
+					"provider %q model %q has an empty reasoning effort",
+					provider.ID,
+					key,
+				)
+			}
+			if _, exists := efforts[effort]; exists {
+				return fmt.Errorf(
+					"provider %q model %q repeats reasoning effort %q",
+					provider.ID,
+					key,
+					effort,
+				)
+			}
+			efforts[effort] = struct{}{}
+		}
 		if model.Pricing.Known && model.Pricing.Currency == "" {
 			return fmt.Errorf("provider %q model %q known pricing requires currency", provider.ID, key)
 		}
@@ -266,6 +310,10 @@ func cloneProvider(provider Provider) Provider {
 	}
 	models := make(map[string]Model, len(provider.Models))
 	for id, model := range provider.Models {
+		model.Capabilities.ReasoningEfforts = append(
+			[]string(nil),
+			model.Capabilities.ReasoningEfforts...,
+		)
 		models[id] = model
 	}
 	provider.Models = models

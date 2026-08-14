@@ -20,8 +20,9 @@ func TestSelectedModelCapabilitiesAdvertiseAdaptiveReasoning(t *testing.T) {
 	}
 	capabilities := selectedModelCapabilities(route)
 	if capabilities.DefaultReasoningEffort != "low" ||
-		len(capabilities.ReasoningEfforts) != 4 ||
-		capabilities.ReasoningEfforts[3] != "max" {
+		len(capabilities.ReasoningEfforts) != 5 ||
+		capabilities.ReasoningEfforts[0] != "off" ||
+		capabilities.ReasoningEfforts[4] != "max" {
 		t.Fatalf("capabilities = %+v", capabilities)
 	}
 }

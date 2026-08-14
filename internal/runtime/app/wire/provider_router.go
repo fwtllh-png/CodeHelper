@@ -7,7 +7,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/deepseek"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openaicompat"
 	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 )
@@ -20,7 +19,7 @@ func newProviderRouter(
 	if err != nil {
 		return nil, err
 	}
-	compatible, err := openaicompat.NewAdapter()
+	compatible, err := openai.NewAdapter(model.AdapterOpenAICompatible)
 	if err != nil {
 		return nil, err
 	}

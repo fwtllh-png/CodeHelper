@@ -27,9 +27,10 @@ func (e *Engine) reasoningEffort(scope *Scope, reason string) string {
 	level := scope.state.reasoningEscalation
 	scope.mu.Unlock()
 	return promptcontext.ReasoningEffort(
-		scope.spec.Route.ProviderID(), scope.spec.Request.Prompt,
-		string(scope.spec.Request.Intent), level,
-		scope.spec.Route.Model().Capabilities.Reasoning,
+		scope.spec.Request.Prompt,
+		string(scope.spec.Request.Intent),
+		level,
+		scope.spec.Route.Model().Capabilities.ReasoningEffortLevels(),
 		e.options.ReasoningEffort,
 	)
 }

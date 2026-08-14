@@ -2,13 +2,14 @@
 
 [Simplified Chinese](../zh-CN/provider-architecture-upgrade.md) | English
 
-> Status: P5 `attempts_durable`. Versioned evidence:
+> Status: P6 `accepted`. Versioned evidence:
 > [`provider-architecture-p0-baseline.json`](../provider-architecture-p0-baseline.json)
 > [`provider-architecture-p1-evidence.json`](../provider-architecture-p1-evidence.json),
 > [`provider-architecture-p2-evidence.json`](../provider-architecture-p2-evidence.json),
 > [`provider-architecture-p3-evidence.json`](../provider-architecture-p3-evidence.json),
 > [`provider-architecture-p4-evidence.json`](../provider-architecture-p4-evidence.json),
-> and [`provider-architecture-p5-evidence.json`](../provider-architecture-p5-evidence.json).
+> [`provider-architecture-p5-evidence.json`](../provider-architecture-p5-evidence.json),
+> and [`provider-architecture-p6-evidence.json`](../provider-architecture-p6-evidence.json).
 >
 > Scope: model route metadata, provider-neutral request and stream contracts,
 > wire adapters, HTTP and WebSocket transport, DeepSeek-specific behavior,
@@ -358,7 +359,7 @@ flowchart LR
 | OpenAI semantics | `internal/adapter/provider/openai` |
 | DeepSeek semantics | `internal/adapter/provider/deepseek` |
 | Anthropic semantics | `internal/adapter/provider/anthropic` |
-| Generic OpenAI-compatible fallback | `internal/adapter/provider/openaicompat` |
+| Generic OpenAI-compatible fallback | parameterized `internal/adapter/provider/openai` |
 | HTTP/WebSocket, egress, credentials, concurrency | `internal/adapter/provider/httpclient` |
 | Retry decision and attempt lifecycle | `internal/runtime/agent` |
 | Concrete registry and transport construction | `internal/runtime/app/wire` |
@@ -1203,8 +1204,10 @@ unless it owns a construction-only requirement.
 internal/adapter/provider/wire/
 internal/adapter/provider/router.go
 internal/adapter/provider/deepseek/
-internal/adapter/provider/openaicompat/
 ```
+
+The planned `provider/openaicompat` wrapper was removed in P6 because it only
+forwarded construction to the parameterized OpenAI adapter.
 
 ### 21.2 Move or Rewrite
 
@@ -1449,7 +1452,7 @@ Result:
 
 ### P6: Context Pruning and Final Enablement
 
-Status target: `accepted`.
+Status: `accepted`.
 
 Work:
 
@@ -1468,6 +1471,26 @@ Exit:
   or behavior justification;
 - obsolete branches and unnecessary duplication are removed; and
 - the branch is ready for no-ff integration.
+
+Result:
+
+- the token-window gate prunes closed Tool Result surfaces from oldest to
+  newest before summary replacement and remeasures after every projection;
+- the Tool layer retains each complete original in the durable Content Store
+  and exposes one stable `result_get` handle with bounded head and tail excerpts;
+- pruning preserves call/result pairing and skips malformed and retrieval-tool
+  results;
+- summary replacement is skipped when pruning alone restores the window;
+- reasoning effort levels are explicit Model Capability data, removing the last
+  Provider-name inference from Runtime sampling;
+- the forwarding-only `provider/openaicompat` package is deleted while the
+  compatible `AdapterID` remains available through the parameterized OpenAI
+  adapter;
+- the immutable Router and dedicated DeepSeek adapter are the unconditional
+  production path, and DeepSeek continues to advertise no incremental
+  responses; and
+- the architecture ratchet is tightened to 54 live targets after deleting the
+  obsolete package.
 
 ## 23. Test Strategy
 

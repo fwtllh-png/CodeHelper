@@ -876,8 +876,10 @@ type TurnCompactionData struct {
 	Sections []string `json:"sections,omitempty"`
 	// SummaryTruncated reports that the summary budget cut sections, so a host can
 	// distinguish a complete account of the removed history from a partial one.
-	SummaryTruncated bool     `json:"summary_truncated,omitempty"`
-	RemovedTurns     []uint64 `json:"removed_turns,omitempty"`
+	SummaryTruncated  bool     `json:"summary_truncated,omitempty"`
+	RemovedTurns      []uint64 `json:"removed_turns,omitempty"`
+	PrunedToolResults int      `json:"pruned_tool_results,omitempty"`
+	PrunedBytes       int      `json:"pruned_bytes,omitempty"`
 }
 
 func (*TurnCompactionData) eventKind() EventKind { return EventTurnCompaction }

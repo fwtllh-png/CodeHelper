@@ -21,6 +21,7 @@ LDFLAGS := -s -w \
 	token-bench token-bench-live token-bench-compare \
 	provider-architecture-p0 provider-architecture-p1 provider-architecture-p2 \
 	provider-architecture-p3 provider-architecture-p4 provider-architecture-p5 \
+	provider-architecture-p6 \
 	provider-p0-goldens provider-p0-goldens-update \
 	provider-deepseek-live-control \
 	architecture-ratchet architecture-size-budget architecture-freeze \
@@ -197,6 +198,26 @@ provider-architecture-p5: provider-p0-goldens
 		./internal/persist/state/eventlog
 	$(GO) test -race -count=1 \
 		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine
+	cd $(VSCODE_DIR) && $(NPM) run check:protocol
+	$(MAKE) architecture-ratchet
+
+provider-architecture-p6: provider-p0-goldens
+	$(GO) test -count=1 \
+		./internal/adapter/model \
+		./internal/adapter/tool \
+		./internal/adapter/provider/...
+	$(GO) test -count=1 \
+		./internal/runtime/protocol \
+		./internal/runtime/agent/promptcontext \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app \
+		./internal/runtime/app/wire \
+		./internal/persist/state/eventlog
+	$(GO) test -race -count=1 \
+		./internal/adapter/tool \
+		./internal/adapter/provider/deepseek \
 		./internal/runtime/agent/engine
 	cd $(VSCODE_DIR) && $(NPM) run check:protocol
 	$(MAKE) architecture-ratchet

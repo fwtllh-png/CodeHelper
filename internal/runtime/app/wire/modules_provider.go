@@ -179,10 +179,6 @@ func selectedModelCapabilities(route model.ReadyRoute) protocol.ModelCapabilitie
 	if !capabilities.Reasoning {
 		return capabilities
 	}
-	capabilities.ReasoningEfforts = []string{"low", "medium", "high", "xhigh"}
-	if route.Adapter() == model.AdapterDeepSeek {
-		capabilities.ReasoningEfforts[3] = "max"
-	}
 	capabilities.DefaultReasoningEffort = "low"
 	return capabilities
 }
