@@ -108,6 +108,81 @@ func TestUnifiedProcessProtocolLifecycle(t *testing.T) {
 	}
 }
 
+func TestUnifiedProcessProtocolRejectsInvalidYieldBeforeSessionStart(t *testing.T) {
+	manager := process.NewSessionManager(4096)
+	t.Cleanup(manager.CloseAll)
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithManagerAndBackend(
+		registry,
+		t.TempDir(),
+		manager,
+		passthroughBackend{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	_, registered, _, resolveErr := registry.Resolve("exec_command")
+	if resolveErr != nil {
+		t.Fatal(resolveErr)
+	}
+	registeredProperties, _ := registered.InputSchema["properties"].(map[string]any)
+	if _, ok := registeredProperties["yield_time_ms"]; !ok {
+		t.Fatalf("registered exec schema = %#v", registered.InputSchema)
+	}
+	if validationErr := tool.ValidateArguments(
+		registered.InputSchema,
+		json.RawMessage(`{"command":"true"}`),
+	); validationErr != nil {
+		t.Fatalf("registered exec schema rejected default yield: %v",
+			validationErr)
+	}
+	if validationErr := tool.ValidateArguments(
+		registered.InputSchema,
+		json.RawMessage(`{"command":"true","yield_time_ms":200}`),
+	); validationErr != nil {
+		t.Fatalf("registered exec schema rejected valid yield: %v; schema=%#v",
+			validationErr, registered.InputSchema)
+	}
+
+	raw := json.RawMessage(
+		`{"command":"sleep 60","yield_time_ms":300000}`,
+	)
+	_, executionErr := registry.Execute(
+		tool.WithInvocationIdentity(
+			t.Context(),
+			tool.InvocationIdentity{ThreadID: processTestThread},
+		),
+		tool.Call{
+			Name: "exec_command", Arguments: raw, Authorized: true,
+		},
+	)
+	if !errors.Is(executionErr, tool.ErrInvalidArguments) {
+		t.Fatalf("exec error = %v, want invalid arguments", executionErr)
+	}
+	if manager.Count() != 0 {
+		t.Fatalf("rejected call created %d sessions", manager.Count())
+	}
+
+	for _, descriptor := range []tool.Descriptor{
+		execCommandDescriptor(),
+		writeStdinDescriptor(),
+	} {
+		if !strings.Contains(
+			descriptor.Description,
+			"must not exceed 30000",
+		) {
+			t.Fatalf("%s description = %q", descriptor.Name, descriptor.Description)
+		}
+	}
+	if !strings.Contains(execCommandDescriptor().Description, "defaults to 10000") ||
+		!strings.Contains(writeStdinDescriptor().Description, "defaults to 5000") {
+		t.Fatal("process yield defaults are not model-visible")
+	}
+	if got, err := processYield(0, defaultExecYield); err != nil ||
+		got != defaultExecYield {
+		t.Fatalf("default process yield = %s, %v", got, err)
+	}
+}
+
 func TestUnifiedProcessProtocolEnforcesThreadOwnership(t *testing.T) {
 	manager := process.NewSessionManager(4096)
 	t.Cleanup(manager.CloseAll)

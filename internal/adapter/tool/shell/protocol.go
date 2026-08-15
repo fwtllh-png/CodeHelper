@@ -84,8 +84,12 @@ func registerProcessProtocol(
 	execRuntime, err := typed.Define(typed.Spec[execCommandInput, tool.Result]{
 		Descriptor:  execCommandDescriptor(),
 		Disposition: tool.DispositionDetached,
-		Run:         protocol.execCommand,
-		Encode:      identityResult,
+		Validate: func(input execCommandInput) error {
+			_, yieldErr := processYield(input.YieldTimeMS, defaultExecYield)
+			return yieldErr
+		},
+		Run:    protocol.execCommand,
+		Encode: identityResult,
 	})
 	if err != nil {
 		return err
@@ -107,8 +111,15 @@ func registerProcessProtocol(
 	writeRuntime, err := typed.Define(typed.Spec[writeStdinInput, tool.Result]{
 		Descriptor:  writeStdinDescriptor(),
 		Disposition: tool.DispositionWaitForTeardown,
-		Run:         protocol.writeStdin,
-		Encode:      identityResult,
+		Validate: func(input writeStdinInput) error {
+			_, yieldErr := processYield(
+				input.YieldTimeMS,
+				defaultInteractionWait,
+			)
+			return yieldErr
+		},
+		Run:    protocol.writeStdin,
+		Encode: identityResult,
 	})
 	if err != nil {
 		return err
@@ -131,7 +142,8 @@ func execCommandDescriptor() tool.Descriptor {
 	return tool.Descriptor{
 		Name: "exec_command",
 		Description: "Run a local POSIX sh command. Returns output when it exits " +
-			"within yield_time, otherwise a session_id for write_stdin.",
+			"within yield-time, otherwise a session_id for write_stdin. " +
+			"yield_time_ms defaults to 10000 and must not exceed 30000.",
 		Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessRead,
@@ -184,7 +196,8 @@ func writeStdinDescriptor() tool.Descriptor {
 	return tool.Descriptor{
 		Name: "write_stdin",
 		Description: "Continue an exec_command session: poll output, write chars, " +
-			"resize its TTY, signal it, or close it.",
+			"resize its TTY, signal it, or close it. yield_time_ms defaults " +
+			"to 5000 and must not exceed 30000.",
 		Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessWrite,
