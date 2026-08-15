@@ -71,8 +71,12 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 		t.Fatalf("unsupported syntax result = %+v", unsupported)
 	}
 
-	for _, name := range []string{"shell_read", "shell_run", "terminal_run"} {
-		write, err := registry.Execute(t.Context(), tool.Call{
+	for _, name := range []string{"shell_read", "exec_command"} {
+		ctx := tool.WithInvocationIdentity(
+			t.Context(),
+			tool.InvocationIdentity{ThreadID: processTestThread},
+		)
+		write, err := registry.Execute(ctx, tool.Call{
 			Name:       name,
 			Arguments:  json.RawMessage(`{"command":"printf changed > input.txt"}`),
 			Authorized: true,
@@ -235,7 +239,7 @@ func TestShellRunExactWriteScopeIsGuardedAndObserved(t *testing.T) {
 	}
 
 	result, err := guarded.Execute(
-		t.Context(), "call-declared", "shell_run",
+		t.Context(), "call-declared", "exec_command",
 		json.RawMessage(
 			`{"command":"printf 'after\n' > declared.txt","write_paths":["declared.txt"]}`,
 		),
@@ -258,7 +262,7 @@ func TestShellRunExactWriteScopeIsGuardedAndObserved(t *testing.T) {
 	}
 
 	escaped, err := guarded.Execute(
-		t.Context(), "call-escaped", "shell_run",
+		t.Context(), "call-escaped", "exec_command",
 		json.RawMessage(
 			`{"command":"printf escaped > undeclared.txt","write_paths":["declared.txt"]}`,
 		),
@@ -405,7 +409,7 @@ func TestShellRunWriteGlobsAreJournaledAsExactFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := guarded.Execute(
-		t.Context(), "call-glob", "shell_run", json.RawMessage(
+		t.Context(), "call-glob", "exec_command", json.RawMessage(
 			`{"command":"for f in docs/*/*.md; do printf 'after\n' > \"$f\"; done",`+
 				`"write_globs":["docs/**/*.md"]}`,
 		),
@@ -422,18 +426,18 @@ func TestShellRunWriteGlobsAreJournaledAsExactFiles(t *testing.T) {
 	}
 }
 
-func TestOnlyShellRunAdvertisesExactWritePaths(t *testing.T) {
-	run := (&Tool{}).Descriptor()
+func TestOnlyExecCommandAdvertisesExactWritePaths(t *testing.T) {
+	run := execCommandDescriptor()
 	if run.ResourceResolver.PathsField != "write_paths" {
-		t.Fatalf("shell_run paths field = %q", run.ResourceResolver.PathsField)
+		t.Fatalf("exec_command paths field = %q", run.ResourceResolver.PathsField)
 	}
 	properties, _ := run.InputSchema["properties"].(map[string]any)
 	if _, exists := properties["write_paths"]; !exists {
-		t.Fatal("shell_run does not advertise write_paths")
+		t.Fatal("exec_command does not advertise write_paths")
 	}
 	for _, descriptor := range []tool.Descriptor{
 		(&Tool{readOnly: true}).Descriptor(),
-		(&Tool{pty: true}).Descriptor(),
+		writeStdinDescriptor(),
 	} {
 		if descriptor.ResourceResolver.PathsField != "" {
 			t.Fatalf("%s advertises write paths", descriptor.Name)

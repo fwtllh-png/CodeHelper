@@ -71,8 +71,9 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - `shell_read` 是检查类 Pipeline 的自动执行路径。Strong Sandbox 将 Workspace
   强制挂载为只读、禁用网络，只允许写入 Private Temporary Directory，并且绝不进行
   Unsandboxed Retry。
-- `shell_run`、Terminal 与 Background Process Tool 保留 Process Capability 和原有
-  审批行为，因为它们可以修改 Workspace 或外部系统。
+- `exec_command` 与 `write_stdin` 保留 Process Capability 和原有 Approval
+  行为。`exec_command` 是唯一通用 Command Start 路径；`write_stdin` 在每次
+  Session 交互前校验当前 Thread Lease。
 - 缺少所需 Strong Sandbox 是失败，不是允许 Unsandboxed Execution。
 
 ## 凭证

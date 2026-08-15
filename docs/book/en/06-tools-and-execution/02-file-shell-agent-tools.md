@@ -76,13 +76,14 @@ arguments name disjoint files.
 
 ## Shell Tools
 
-`shell_run` and `terminal_run` declare Process capability, serial policy, whole
-Workspace/process resources, and strong sandbox. Commands run in a validated
-Workspace directory with sanitized environment, timeout/cancellation, bounded
-streaming, exit metadata, and hints for background execution.
+`exec_command` declares Process capability, serial policy, Workspace/process
+resources, and strong Sandbox. It starts either Pipe or PTY execution, yields
+for a bounded interval, and returns terminal output or a Session ID.
+`write_stdin` is the single continuation protocol for poll, input, resize,
+signal, and close. Every continuation validates the Session's Thread lease.
 
-Background session Tools preserve job identity and separate start, poll, input,
-and cancel operations.
+`shell_read` remains a smaller Read-capability path for network-isolated,
+mechanically read-only inspection pipelines.
 
 A Shell Tool is not made safe by argument schema. Its command language is broad,
 so it requires strong OS Sandbox, sanitized environment, canonical working

@@ -76,9 +76,10 @@ No layer should be described as a replacement for another.
   sandbox mounts the workspace read-only, denies network access, and permits
   writes only in the private temporary directory. It never retries
   unsandboxed.
-- `shell_run`, terminal, and background process tools retain process
-  capability and their normal approval behavior because they can mutate the
-  workspace or external systems.
+- `exec_command` and `write_stdin` retain Process capability and their normal
+  Approval behavior. `exec_command` is the only general command start path;
+  `write_stdin` validates the current Thread lease before every Session
+  interaction.
 - A missing required strong sandbox is a failure, not permission to run
   unsandboxed.
 

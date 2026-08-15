@@ -213,8 +213,8 @@ granular denial, and the optional forced edit-plan mode remain authoritative.
 Other write and high-risk operations retain their normal approval behavior.
 Read-only inspection pipelines use `shell_read`: the strong OS sandbox enforces
 a read-only workspace and disabled network, so Auto posture can execute them
-without approval. Arbitrary `shell_run`, terminal, and background commands keep
-their process approval boundary.
+without approval. General commands use `exec_command`; continued Pipe or PTY
+sessions use `write_stdin`. Both retain their Process approval boundary.
 
 Chat approval cards show a bounded semantic summary. File bodies, patches, and
 other long arguments are represented by their target and size rather than

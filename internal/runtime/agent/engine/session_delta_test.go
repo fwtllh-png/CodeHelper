@@ -81,7 +81,7 @@ func TestSessionDeltaRejectsRevisionAndDigestConflicts(t *testing.T) {
 
 func TestSessionDeltaPreservesToolAdmissionReceipt(t *testing.T) {
 	history := []provider.Message{
-		toolCallMessage(1, "call-large", "shell_run", `{}`),
+		toolCallMessage(1, "call-large", "exec_command", `{}`),
 		{
 			Role: provider.RoleTool, Turn: 1,
 			Blocks: []provider.ContentBlock{{

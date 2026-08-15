@@ -2,7 +2,8 @@
 
 [Simplified Chinese](../zh-CN/tool-execution-architecture-upgrade.md) | English
 
-> Status: EX2 `accepted`; EX1 `accepted`; EX0 `baseline_frozen`.
+> Status: EX3 `accepted`; EX2 `accepted`; EX1 `accepted`; EX0
+> `baseline_frozen`.
 >
 > Baseline:
 > [`tool-execution-ex0-baseline.json`](../tool-execution-ex0-baseline.json).
@@ -10,6 +11,8 @@
 > [`tool-execution-ex1-evidence.json`](../tool-execution-ex1-evidence.json).
 > EX2 evidence:
 > [`tool-execution-ex2-evidence.json`](../tool-execution-ex2-evidence.json).
+> EX3 evidence:
+> [`tool-execution-ex3-evidence.json`](../tool-execution-ex3-evidence.json).
 >
 > Scope: tool identity, invocation, result projection, Guard orchestration,
 > resource scheduling, local process execution, cancellation, persistent
@@ -506,6 +509,8 @@ Delivered:
 
 ### EX3: Unified Process Protocol
 
+Status: `accepted`.
+
 Work:
 
 - implement `exec_command` and `write_stdin`;
@@ -523,6 +528,32 @@ Exit:
 - Session ownership denial and cleanup tests pass; and
 - `unified_process_protocol`, `session_owner_enforced`, and
   `event_driven_session_wait` become true.
+
+Delivered:
+
+- `exec_command` now owns both bounded foreground yield and detached Pipe/PTY
+  Session creation; `write_stdin` owns incremental output, stdin, resize,
+  signal, and close;
+- `shell_read` remains as the third optimized Tool because it has a smaller
+  schema, Read capability, a mechanically read-only Workspace, and denied
+  network access;
+- the twelve displaced `shell_run`, `terminal_*`, `background_shell_*`, and
+  `task_shell_*` model protocols were deleted without aliases or a second
+  execution path;
+- every Session read, wait, write, resize, signal, and close validates the
+  caller's Thread lease, while Thread cleanup retains an explicit
+  manager-owned path;
+- Session waiting uses a bounded notification channel driven by output and
+  process exit rather than a ten-millisecond ticker;
+- Pipe and PTY processes share one Session state machine, bounded live buffer,
+  durable archive cursor, timeout, process-group cleanup, and Job Center
+  projection;
+- initial output aggregation is head/tail bounded by the requested
+  `output_tokens` budget, and complete detached output remains available from
+  the Job Log archive; and
+- the model-visible process surface fell from 15 Tools and 3,179 schema bytes
+  to 3 Tools and 1,112 schema bytes, a 65.02% reduction, while all three EX3
+  control probes became true.
 
 ### EX4: Resource Scheduler and Cancellation
 

@@ -666,7 +666,7 @@ func (*itemOwningEngine) StartTurn(
 		return err
 	}
 	if err := sink.Emit(&protocol.ApprovalRequiredData{
-		RequestID: "req-1", CallID: "call-1", Tool: "shell_run",
+		RequestID: "req-1", CallID: "call-1", Tool: "exec_command",
 		Arguments: []byte(`{}`), ArgumentsDigest: "x",
 		ExpiresAt:     time.Now().Add(time.Minute),
 		AllowedScopes: []protocol.ApprovalScope{protocol.ApprovalScopeOnce},
@@ -677,7 +677,7 @@ func (*itemOwningEngine) StartTurn(
 		return err
 	}
 	if err := sink.Emit(&protocol.ToolResultData{
-		Tool: "shell_run", CallID: "call-1", Output: "ok",
+		Tool: "exec_command", CallID: "call-1", Output: "ok",
 	}); err != nil {
 		return err
 	}

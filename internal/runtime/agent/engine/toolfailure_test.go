@@ -571,7 +571,7 @@ func TestToolSelectionKeepsCoreAndBoundedRelevantDefinitions(t *testing.T) {
 	for _, name := range []string{
 		"search_text", "search_files", "search_definition", "search_references",
 		"file_read", "file_list", "file_write", "file_edit", "file_apply",
-		"shell_read", "shell_run", "quality_test", "project_map",
+		"shell_read", "exec_command", "quality_test", "project_map",
 		"special_deploy", "unrelated_fixture",
 	} {
 		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
@@ -590,7 +590,7 @@ func TestToolSelectionKeepsCoreAndBoundedRelevantDefinitions(t *testing.T) {
 	}
 	for _, name := range []string{
 		"tool_search", "search_text", "file_read", "file_write",
-		"shell_run", "quality_test", "special_deploy",
+		"exec_command", "quality_test", "special_deploy",
 	} {
 		if !advertised[name] {
 			t.Fatalf("required or relevant tool %q omitted from %v", name, advertised)

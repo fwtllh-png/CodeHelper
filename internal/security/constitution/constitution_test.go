@@ -53,7 +53,7 @@ func TestRepoOverridesUserPrompt(t *testing.T) {
 	workspace := t.TempDir()
 	home := t.TempDir()
 	writeDoc(t, filepath.Join(home, ".codehelper", "constitution.json"), constitution.Document{
-		Version: 1, Prompt: "user prompt", HoldTools: []string{"shell_run"},
+		Version: 1, Prompt: "user prompt", HoldTools: []string{"exec_command"},
 	})
 	writeDoc(t, filepath.Join(workspace, ".codehelper", "constitution.json"), constitution.Document{
 		Version: 1, Prompt: "repo prompt",

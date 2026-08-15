@@ -28,7 +28,7 @@ func TestNormalizeEffectAndRisk(t *testing.T) {
 		},
 		{
 			name: "declared process write",
-			call: effectInvocation("shell_run", CapabilityProcess, tool.AccessRead, tool.SandboxStrong,
+			call: effectInvocation("exec_command", CapabilityProcess, tool.AccessRead, tool.SandboxStrong,
 				tool.Resource{Kind: "file", Path: "a.go", Access: tool.AccessWrite}),
 			kind: EffectProcessMutating, risk: RiskHigh,
 		},
@@ -105,7 +105,7 @@ func TestEffectRiskDrivesApprovalWithoutToolNameExceptions(t *testing.T) {
 		},
 		{
 			name: "auto process write asks", permission: PermissionAuto,
-			call: effectInvocation("shell_run", CapabilityProcess, tool.AccessRead, tool.SandboxStrong,
+			call: effectInvocation("exec_command", CapabilityProcess, tool.AccessRead, tool.SandboxStrong,
 				tool.Resource{Kind: "file", Path: "a.go", Access: tool.AccessWrite}),
 			want: ActionAsk,
 		},
@@ -135,7 +135,7 @@ func TestBoundedAutoReview(t *testing.T) {
 		tool.Resource{Kind: "agent", ID: "agent-1", Access: tool.AccessWrite},
 	)
 	high := effectInvocation(
-		"shell_run", CapabilityProcess, tool.AccessWrite, tool.SandboxStrong,
+		"exec_command", CapabilityProcess, tool.AccessWrite, tool.SandboxStrong,
 		tool.Resource{Kind: "file", Path: "a.go", Access: tool.AccessWrite},
 	)
 	untyped := effectInvocation(

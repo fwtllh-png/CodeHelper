@@ -41,8 +41,8 @@ func TestToolReceiptGrammar(t *testing.T) {
 		{ToolCard{Name: "read_file", Status: "done", Detail: "path=foo.go"}, "read done"},
 		{ToolCard{Name: "shell", Status: "done", Detail: "command=ls -la"}, "run done"},
 		{ToolCard{Name: "grep_files", Status: "running", Detail: "query=TODO"}, "find running"},
-		{ToolCard{Name: "shell_run", Status: "done", Detail: "error: \n[stderr]\n/bin/sh: cd: /tmp: Not a directory"}, "run failed"},
-		{ToolCard{Name: "shell_run", Status: "done", Detail: "/bin/sh: go: command not found"}, "run failed"},
+		{ToolCard{Name: "exec_command", Status: "done", Detail: "error: \n[stderr]\n/bin/sh: cd: /tmp: Not a directory"}, "run failed"},
+		{ToolCard{Name: "exec_command", Status: "done", Detail: "/bin/sh: go: command not found"}, "run failed"},
 	}
 	for _, tc := range cases {
 		got := tc.card.ReceiptLine()

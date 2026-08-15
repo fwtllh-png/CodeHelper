@@ -10,7 +10,7 @@ import (
 
 func TestLoadRepositoryRules(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "repository-rules.json")
-	data := `[{"tool":"shell_run","command_prefix":"rm","action":"deny"}]`
+	data := `[{"tool":"exec_command","command_prefix":"rm","action":"deny"}]`
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestLoadRepositoryRules(t *testing.T) {
 		rules[0].Action != policy.ActionDeny {
 		t.Fatalf("rules = %+v", rules)
 	}
-	if err := os.WriteFile(path, []byte(`[{"tool":"shell_run","action":"permit"}]`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`[{"tool":"exec_command","action":"permit"}]`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := loadRepositoryRules(path); err == nil {

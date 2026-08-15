@@ -5,10 +5,10 @@
   "expected_prompt": "background lifecycle",
   "streams": ["start.sse", "interact.sse", "wait.sse", "cancel.sse", "complete.sse"],
   "expected_request_fragments": [
-    ["\"name\":\"background_shell_start\""],
+    ["\"name\":\"exec_command\""],
     ["\"role\":\"tool\"", "contract-job"],
-    ["\"name\":\"background_shell_wait\"", "contract-job"],
-    ["\"name\":\"background_shell_cancel\"", "contract-job"],
-    ["\"role\":\"tool\"", "canceled"]
+    ["\"name\":\"write_stdin\"", "contract-job"],
+    ["\"name\":\"write_stdin\"", "\"close\":true", "contract-job"],
+    ["\"role\":\"tool\"", "closed"]
   ]
 }

@@ -20,7 +20,7 @@ import (
 func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	security := policy.DefaultRuntime(policy.ModeOperate, policy.PermissionAuto)
 	security.Repository = []policy.Rule{{
-		Tool: "shell_run", Resource: "*", Action: policy.ActionAsk,
+		Tool: "exec_command", Resource: "*", Action: policy.ActionAsk,
 	}}
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(turnContextBackend{})

@@ -1,4 +1,3 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_start","function":{"name":"background_shell_start","arguments":"{\"session_id\":\"contract-job\",\"command\":\"read value; echo got:$value; sleep 10\",\"timeout_ms\":15000}"}}]},"finish_reason":"tool_calls"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_start","function":{"name":"exec_command","arguments":"{\"session_id\":\"contract-job\",\"command\":\"read value; echo got:$value; sleep 10\",\"tty\":true,\"timeout_ms\":15000,\"yield_time_ms\":100}"}}]},"finish_reason":"tool_calls"}]}
 
 data: [DONE]
-

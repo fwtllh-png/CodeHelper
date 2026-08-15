@@ -73,7 +73,7 @@ func TestQualityEvidenceRejectsSameBatchMutationAndGenericShell(t *testing.T) {
 	}
 	shellResult := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
 	engine.bindVerificationEvidence(provider.ToolCall{
-		ID: "shell-1", Name: "shell_run",
+		ID: "shell-1", Name: "exec_command",
 	}, &shellResult, false, 1)
 	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go"}, 1)
 	if receipt.Status != verify.StatusUnavailable || len(uncovered) != 1 {

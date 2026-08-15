@@ -46,7 +46,7 @@ func TestPermissionRequestDenyWinsAllowBypasses(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := manager.PermissionRequest(context.Background(), ToolCallBeforeInput{
-		CallID: "c1", Tool: "shell_run", Input: json.RawMessage(`{}`),
+		CallID: "c1", Tool: "exec_command", Input: json.RawMessage(`{}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestPermissionRequestDenyWinsAllowBypasses(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err = allowOnly.PermissionRequest(context.Background(), ToolCallBeforeInput{
-		CallID: "c2", Tool: "shell_run", Input: json.RawMessage(`{}`),
+		CallID: "c2", Tool: "exec_command", Input: json.RawMessage(`{}`),
 	})
 	if err != nil {
 		t.Fatal(err)

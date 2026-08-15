@@ -38,10 +38,19 @@ func TestRepositoryToolExecutionBaseline(t *testing.T) {
 		measured.Risks.CancellationLacksDisposition {
 		t.Fatalf("EX2 typed execution core was not detected: %+v", measured.Risks)
 	}
-	if measured.Risks.SessionOwnerEnforced ||
-		measured.Risks.EventDrivenSessionWait ||
-		measured.Risks.UnifiedProcessProtocol {
-		t.Fatalf("remaining EX0 risks were not reproduced: %+v", measured.Risks)
+	if !measured.Risks.SessionOwnerEnforced ||
+		!measured.Risks.EventDrivenSessionWait ||
+		!measured.Risks.UnifiedProcessProtocol {
+		t.Fatalf("EX3 unified process protocol was not detected: %+v", measured.Risks)
+	}
+	if measured.Catalog.ModelVisibleExecutionTools > 3 ||
+		measured.Catalog.InputSchemaBytes*100 >
+			baseline.Catalog.InputSchemaBytes*40 {
+		t.Fatalf(
+			"EX3 process surface did not shrink enough: baseline=%+v measured=%+v",
+			baseline.Catalog,
+			measured.Catalog,
+		)
 	}
 }
 

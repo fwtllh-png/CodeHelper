@@ -32,7 +32,7 @@ func TestLoadAndAppendAllowRoundTrip(t *testing.T) {
 	}
 	content := `
 [[deny]]
-tool = "shell_run"
+tool = "exec_command"
 command_prefix = "rm"
 
 [[ask]]
@@ -40,7 +40,7 @@ tool = "file_write"
 resource = "secrets/"
 
 [[allow]]
-tool = "shell_run"
+tool = "exec_command"
 grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -91,7 +91,7 @@ grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func TestRuleFromInvocation(t *testing.T) {
 	shell, err := RuleFromInvocation(policy.Invocation{
-		Tool: "shell_run", Arguments: json.RawMessage(`{"command":"go test ./..."}`),
+		Tool: "exec_command", Arguments: json.RawMessage(`{"command":"go test ./..."}`),
 		Capability: tool.CapabilityProcess, Access: tool.AccessRead,
 		Sandbox: tool.SandboxStrong,
 	})
@@ -151,7 +151,7 @@ func TestStoreSerializesConcurrentAllows(t *testing.T) {
 func TestPersistedGrantMatchesOnlySameTypedInvocation(t *testing.T) {
 	root := t.TempDir()
 	base := policy.Invocation{
-		CallID: "one", Tool: "shell_run", Capability: tool.CapabilityProcess,
+		CallID: "one", Tool: "exec_command", Capability: tool.CapabilityProcess,
 		Access: tool.AccessRead, Sandbox: tool.SandboxStrong, Validated: true,
 		Arguments: json.RawMessage(`{"command":"go test ./...","cwd":"."}`),
 		Resources: []tool.Resource{{

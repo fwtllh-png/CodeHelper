@@ -112,7 +112,7 @@ func TestResultStoreAppliesTypedTokenBudgetsAndKeepsFullHandle(t *testing.T) {
 	}{
 		{name: "file_read", max: 17 << 10, kind: "read"},
 		{name: "quality_test", max: 13 << 10, kind: "test"},
-		{name: "shell_run", max: 13 << 10, kind: "build"},
+		{name: "exec_command", max: 13 << 10, kind: "build"},
 		{name: "custom_tool", max: 9 << 10, kind: "generic"},
 	} {
 		result := store.RouteFor(test.name, Result{Content: payload})
@@ -131,7 +131,7 @@ func TestResultStoreAppliesTypedTokenBudgetsAndKeepsFullHandle(t *testing.T) {
 func TestResultAdmissionShrinksHundredKiBAndRetainsOriginalByHandle(t *testing.T) {
 	store := NewResultStore(32 << 10)
 	payload := strings.Repeat("0123456789abcdef", 6400)
-	admitted, receipt := store.Admit("shell_run", Result{Content: payload})
+	admitted, receipt := store.Admit("exec_command", Result{Content: payload})
 	if !admitted.Truncated || admitted.Handle == "" ||
 		receipt.Handle != admitted.Handle ||
 		receipt.OriginalBytes != 100<<10 ||
@@ -146,14 +146,14 @@ func TestResultAdmissionShrinksHundredKiBAndRetainsOriginalByHandle(t *testing.T
 	if !ok || full != payload {
 		t.Fatalf("full bytes=%d found=%t", len(full), ok)
 	}
-	again, secondReceipt := store.Admit("shell_run", admitted)
+	again, secondReceipt := store.Admit("exec_command", admitted)
 	if again.Handle != admitted.Handle ||
 		secondReceipt.Digest != receipt.Digest ||
 		secondReceipt.OriginalBytes != receipt.OriginalBytes ||
 		secondReceipt.RetainedBytes != receipt.RetainedBytes {
 		t.Fatalf("idempotent admission=%+v receipt=%+v", again, secondReceipt)
 	}
-	if projected := ModelResult("shell_run", admitted); projected.Admission != nil {
+	if projected := ModelResult("exec_command", admitted); projected.Admission != nil {
 		t.Fatalf("model result leaked admission receipt: %+v", projected)
 	}
 }
@@ -161,7 +161,7 @@ func TestResultAdmissionShrinksHundredKiBAndRetainsOriginalByHandle(t *testing.T
 func TestResultAdmissionRejectsForgedReceipt(t *testing.T) {
 	store := NewResultStore(32 << 10)
 	payload := strings.Repeat("x", 100<<10)
-	admitted, receipt := store.Admit("shell_run", Result{
+	admitted, receipt := store.Admit("exec_command", Result{
 		Content: payload,
 		Admission: &adaptercontent.AdmissionReceipt{
 			Kind: "build", Reason: "inline", Digest: "sha256:forged",
@@ -212,7 +212,7 @@ func TestResultStorePrunesContextSurfaceWithHeadTailAndStableHandle(t *testing.T
 func TestResultGetPagesReconstructFullLargeResult(t *testing.T) {
 	store := NewResultStore(32 << 10)
 	payload := strings.Repeat("0123456789abcdef", 7000)
-	routed := store.RouteFor("shell_run", Result{Content: payload})
+	routed := store.RouteFor("exec_command", Result{Content: payload})
 	registry := NewRegistry(nil, store)
 	var reconstructed strings.Builder
 	offset := 0

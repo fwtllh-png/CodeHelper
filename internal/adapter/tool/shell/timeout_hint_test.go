@@ -8,7 +8,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 )
 
-func TestShellRunTimeoutHint(t *testing.T) {
+func TestShellReadTimeoutHint(t *testing.T) {
 	manager := process.NewSessionManager(4096)
 	defer manager.CloseAll()
 	registry := tool.NewRegistry(nil, nil)
@@ -17,9 +17,13 @@ func TestShellRunTimeoutHint(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	result := executeSessionTool(t, registry, "shell_run", map[string]any{
-		"command": "sleep 5", "timeout_ms": 50,
-	})
+	result := executeProcessTool(
+		t,
+		registry,
+		processTestThread,
+		"shell_read",
+		map[string]any{"command": "sleep 5", "timeout_ms": 50},
+	)
 	if !result.IsError {
 		t.Fatalf("expected error result: %+v", result)
 	}
@@ -30,7 +34,8 @@ func TestShellRunTimeoutHint(t *testing.T) {
 		t.Fatalf("metadata=%+v", result.Metadata)
 	}
 	hint, _ := result.Metadata["timeout_hint"].(string)
-	if !strings.Contains(hint, "task_shell_start") || !strings.Contains(hint, "/jobs") {
+	if !strings.Contains(hint, "exec_command") ||
+		!strings.Contains(hint, "write_stdin") {
 		t.Fatalf("timeout_hint=%q", hint)
 	}
 }

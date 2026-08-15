@@ -196,15 +196,22 @@ func (m *SessionManager) Poll(ctx context.Context, id string, wait bool) (JobInf
 	if err != nil {
 		return JobInfo{}, err
 	}
+	threadID := session.threadID
 	cursor := info.Cursor
 	if wait {
-		waited, waitErr := m.Wait(ctx, id, cursor, 30*time.Second)
+		waited, waitErr := m.Wait(
+			ctx,
+			id,
+			threadID,
+			cursor,
+			30*time.Second,
+		)
 		if waitErr != nil {
 			return JobInfo{}, waitErr
 		}
 		_ = waited
 	} else {
-		if _, err := m.Read(id, cursor); err != nil {
+		if _, err := m.Read(id, threadID, cursor); err != nil {
 			return JobInfo{}, err
 		}
 	}
@@ -220,7 +227,7 @@ func (m *SessionManager) Stdin(id, data string) error {
 	if info.Status == JobStatusStale {
 		return errors.New("stale job cannot accept stdin")
 	}
-	return m.Write(id, []byte(data))
+	return m.Write(id, m.OwnerThread(id), []byte(data))
 }
 
 // Cancel closes a live job or clears a stale journal row.
@@ -233,7 +240,7 @@ func (m *SessionManager) Cancel(id string) error {
 		return nil
 	}
 	m.mu.Unlock()
-	return m.Close(id)
+	return m.Close(id, m.OwnerThread(id))
 }
 
 // CancelAll closes all live sessions and clears stale journal rows.

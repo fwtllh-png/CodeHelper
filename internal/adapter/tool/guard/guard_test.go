@@ -155,7 +155,7 @@ func TestRepositoryAskPausesAndApproveDenyResume(t *testing.T) {
 
 func TestActAutoProcessPausesForApprovalThenResumes(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	descriptor := readDescriptor("shell_run")
+	descriptor := readDescriptor("exec_command")
 	descriptor.Capability = tool.CapabilityProcess
 	descriptor.SandboxRequirement = tool.SandboxNone
 	if err := registry.Register(&testExecutor{descriptor: descriptor}, nil); err != nil {
@@ -175,13 +175,13 @@ func TestActAutoProcessPausesForApprovalThenResumes(t *testing.T) {
 	result := make(chan error, 1)
 	go func() {
 		_, err := guard.Execute(
-			context.Background(), "process-call", "shell_run", json.RawMessage(`{}`),
+			context.Background(), "process-call", "exec_command", json.RawMessage(`{}`),
 		)
 		result <- err
 	}()
 	request := <-requests
-	if request.Tool != "shell_run" {
-		t.Fatalf("approval tool = %q, want shell_run", request.Tool)
+	if request.Tool != "exec_command" {
+		t.Fatalf("approval tool = %q, want exec_command", request.Tool)
 	}
 	if request.Effect != policy.EffectProcessMutating ||
 		request.Risk != policy.RiskHigh || request.ReasonCode == "" {

@@ -37,7 +37,7 @@ func TestCoreToolsRealWorkspace(t *testing.T) {
 		!strings.Contains(search.Content, `"text":"after"`) {
 		t.Fatalf("search result = %q", search.Content)
 	}
-	shell := execute(t, registry, "shell_run", `{"command":"printf stdout; printf stderr >&2; exit 3"}`)
+	shell := execute(t, registry, "exec_command", `{"command":"printf stdout; printf stderr >&2; exit 3"}`)
 	if !shell.IsError || shell.Metadata["exit_code"] != 3 {
 		t.Fatalf("shell result = %+v", shell)
 	}
@@ -76,7 +76,11 @@ func (builtinTestBackend) Prepare(
 
 func execute(t *testing.T, registry *tool.Registry, name, arguments string) tool.Result {
 	t.Helper()
-	result, err := registry.Execute(t.Context(), tool.Call{
+	ctx := tool.WithInvocationIdentity(
+		t.Context(),
+		tool.InvocationIdentity{ThreadID: "thread-builtin-test"},
+	)
+	result, err := registry.Execute(ctx, tool.Call{
 		Name: name, Arguments: json.RawMessage(arguments), Authorized: true,
 	})
 	if err != nil {

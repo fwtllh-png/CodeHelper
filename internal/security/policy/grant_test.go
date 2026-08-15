@@ -10,7 +10,7 @@ import (
 
 func TestShellGrantBindsCommandCWDAndWriteSet(t *testing.T) {
 	base := Invocation{
-		Tool: "shell_run", Capability: CapabilityProcess,
+		Tool: "exec_command", Capability: CapabilityProcess,
 		Access: tool.AccessRead, Sandbox: tool.SandboxStrong, Validated: true,
 		Arguments: json.RawMessage(`{"command":"go test ./...","cwd":"src"}`),
 		Resources: []tool.Resource{
@@ -49,7 +49,7 @@ func TestSessionGrantMatchesOnlyTypedKey(t *testing.T) {
 	now := time.Now()
 	cache := NewApprovalCache()
 	base := Invocation{
-		CallID: "one", Tool: "shell_run", Capability: CapabilityProcess,
+		CallID: "one", Tool: "exec_command", Capability: CapabilityProcess,
 		Access: tool.AccessRead, Sandbox: tool.SandboxStrong, Validated: true,
 		Arguments: json.RawMessage(`{"cwd":".","command":"go test ./..."}`),
 		Resources: []tool.Resource{{

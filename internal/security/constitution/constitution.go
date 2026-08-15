@@ -212,6 +212,6 @@ func normalizeGlob(glob string) string {
 func writeTools() []string {
 	return []string{
 		"file_write", "file_edit", "file_patch",
-		"shell_run", "terminal_run",
+		"exec_command",
 	}
 }

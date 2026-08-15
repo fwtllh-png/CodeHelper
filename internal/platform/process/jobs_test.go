@@ -17,8 +17,9 @@ func TestJobCenterListInfoCancelAndStale(t *testing.T) {
 	manager.SetJournalPath(journal)
 
 	id, err := manager.Create(context.Background(), process.SessionOptions{
-		Command: "printf 'hello-jobs\\n'; sleep 2",
-		Dir:     root,
+		Command:  "printf 'hello-jobs\\n'; sleep 2",
+		Dir:      root,
+		ThreadID: "thread-jobs-test",
 	})
 	if err != nil {
 		t.Fatal(err)

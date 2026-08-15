@@ -26,16 +26,23 @@ func TestWaitingOnAChattyJobRecoversOutputThroughAHandle(t *testing.T) {
 	t.Cleanup(manager.CloseAll)
 
 	content := contentstore.NewMemory(contentstore.Options{})
-	results := tool.NewResultStoreWithStore(1024, content)
+	results := tool.NewResultStoreWithStore(256, content)
 	registry := tool.NewRegistry(nil, results)
 	if err := RegisterWithManagerAndBackend(
 		registry, t.TempDir(), manager, passthroughBackend{},
 	); err != nil {
 		t.Fatal(err)
 	}
-	started := executeSessionTool(t, registry, "background_shell_start", map[string]any{
-		"command": `for index in $(seq 1 400); do printf "line-$index\n"; done`,
-	})
+	started := executeProcessTool(
+		t,
+		registry,
+		processTestThread,
+		"exec_command",
+		map[string]any{
+			"command": `for index in $(seq 1 400); do printf "line-$index\n"; done; sleep 1`,
+			"tty":     true, "yield_time_ms": 10,
+		},
+	)
 	id, _ := started.Metadata["session_id"].(string)
 	if id == "" {
 		t.Fatalf("background start = %+v", started)
@@ -44,9 +51,15 @@ func TestWaitingOnAChattyJobRecoversOutputThroughAHandle(t *testing.T) {
 	var archived tool.Result
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		archived = executeSessionTool(t, registry, "background_shell_wait", map[string]any{
-			"session_id": id, "cursor": 0, "timeout_ms": 200,
-		})
+		archived = executeProcessTool(
+			t,
+			registry,
+			processTestThread,
+			"write_stdin",
+			map[string]any{
+				"session_id": id, "cursor": 0, "yield_time_ms": 200,
+			},
+		)
 		if archived.Metadata["archived"] == true {
 			break
 		}
@@ -89,13 +102,26 @@ func TestAPollerThatKeepsUpSeesNoArchiveMarker(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	started := executeSessionTool(t, registry, "background_shell_start", map[string]any{
-		"command": `printf "ready\n"`,
-	})
+	started := executeProcessTool(
+		t,
+		registry,
+		processTestThread,
+		"exec_command",
+		map[string]any{
+			"command": `printf "ready\n"; sleep 1`,
+			"tty":     true, "yield_time_ms": 10,
+		},
+	)
 	id, _ := started.Metadata["session_id"].(string)
-	waited := executeSessionTool(t, registry, "background_shell_wait", map[string]any{
-		"session_id": id, "cursor": 0, "timeout_ms": 2000,
-	})
+	waited := executeProcessTool(
+		t,
+		registry,
+		processTestThread,
+		"write_stdin",
+		map[string]any{
+			"session_id": id, "cursor": 0, "yield_time_ms": 2000,
+		},
+	)
 	if !strings.Contains(waited.Content, "ready") {
 		t.Fatalf("wait = %+v", waited)
 	}

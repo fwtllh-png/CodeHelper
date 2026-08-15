@@ -24,7 +24,7 @@ func TestGranularAllowDoesNotBypassAutoApproval(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionAuto)
 	runtime.Granular.Sandbox = SurfaceAllow
 	call := Invocation{
-		CallID: "c1", Tool: "shell_run", Capability: CapabilityProcess,
+		CallID: "c1", Tool: "exec_command", Capability: CapabilityProcess,
 		Arguments: json.RawMessage(`{}`), Validated: true,
 		Resources: []tool.Resource{{Kind: "process", ID: "shell", Access: tool.AccessWrite}},
 	}
@@ -41,7 +41,7 @@ func TestClassifySurface(t *testing.T) {
 	if got := ClassifySurface("load_skill", CapabilityRead); got != SurfaceSkills {
 		t.Fatalf("skills = %s", got)
 	}
-	if got := ClassifySurface("shell_run", CapabilityProcess); got != SurfaceSandbox {
+	if got := ClassifySurface("exec_command", CapabilityProcess); got != SurfaceSandbox {
 		t.Fatalf("sandbox = %s", got)
 	}
 	if got := ClassifySurface("shell_read", CapabilityRead); got != SurfaceSandbox {

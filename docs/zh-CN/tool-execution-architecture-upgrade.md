@@ -2,7 +2,8 @@
 
 简体中文 | [English](../en/tool-execution-architecture-upgrade.md)
 
-> 状态：EX2 `accepted`；EX1 `accepted`；EX0 `baseline_frozen`。
+> 状态：EX3 `accepted`；EX2 `accepted`；EX1 `accepted`；EX0
+> `baseline_frozen`。
 >
 > 基线：
 > [`tool-execution-ex0-baseline.json`](../tool-execution-ex0-baseline.json)。
@@ -10,6 +11,8 @@
 > [`tool-execution-ex1-evidence.json`](../tool-execution-ex1-evidence.json)。
 > EX2 证据：
 > [`tool-execution-ex2-evidence.json`](../tool-execution-ex2-evidence.json)。
+> EX3 证据：
+> [`tool-execution-ex3-evidence.json`](../tool-execution-ex3-evidence.json)。
 >
 > 范围：Tool 身份、调用、结果投影、Guard 编排、资源调度、本地进程执行、
 > 取消、持久终端 Session、输出准入、可观测性与迁移 Gate。
@@ -474,6 +477,8 @@ Host Output 仍是 Projection，Durable Execution Receipt 是事实来源。
 
 ### EX3：Unified Process Protocol
 
+状态：`accepted`。
+
 工作：
 
 - 实现 `exec_command` 与 `write_stdin`；
@@ -491,6 +496,25 @@ Host Output 仍是 Projection，Durable Execution Receipt 是事实来源。
 - Session Ownership Denial 与 Cleanup Test 通过；
 - `unified_process_protocol`、`session_owner_enforced`、
   `event_driven_session_wait` 变为 true。
+
+已交付：
+
+- `exec_command` 统一负责有界前台 Yield 与 Detached Pipe/PTY Session 创建；
+  `write_stdin` 统一负责增量输出、stdin、Resize、Signal 与 Close；
+- 保留 `shell_read` 作为第三个优化 Tool，因为它具有更小 Schema、Read
+  Capability、机械强制只读 Workspace 与禁用网络；
+- 删除十二个被替代的 `shell_run`、`terminal_*`、`background_shell_*` 和
+  `task_shell_*` 模型协议，不保留 Alias 或第二执行路径；
+- Session Read、Wait、Write、Resize、Signal、Close 均验证调用方 Thread Lease，
+  Thread Cleanup 则保留显式 Manager-owned 路径；
+- Session Wait 改为由输出与进程退出驱动的有界通知 Channel，不再使用十毫秒
+  Ticker；
+- Pipe 与 PTY Process 共用一个 Session State Machine、有界 Live Buffer、
+  Durable Archive Cursor、Timeout、Process-group Cleanup 与 Job Center Projection；
+- Initial Output Aggregation 由请求的 `output_tokens` 预算进行 Head/Tail
+  有界保留，Detached 完整输出继续写入 Job Log Archive；
+- Model-visible Process Surface 从 15 个 Tool、3,179 Schema Bytes 降为 3 个
+  Tool、1,112 Schema Bytes，降幅 65.02%，三项 EX3 风险控制探针均变为 true。
 
 ### EX4：Resource Scheduler 与 Cancellation
 

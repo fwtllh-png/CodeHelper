@@ -176,8 +176,9 @@ Read-before-write、Journal 与原子提交。显式 Repository ask/deny Rule、
 Granular Deny 和可选的强制 Edit Plan 模式仍具有最终约束力。其他写入和高风险操作
 继续采用原有审批行为。
 只读检查 Pipeline 使用 `shell_read`：OS Strong Sandbox 强制 Workspace 只读并禁用
-网络，因此 Auto Posture 可在不审批的情况下执行。任意 `shell_run`、Terminal 和
-Background Command 继续保留 Process Approval 边界。
+网络，因此 Auto Posture 可在不审批的情况下执行。通用 Command 使用
+`exec_command`，持续交互的 Pipe 或 PTY Session 使用 `write_stdin`；二者继续保留
+Process Approval 边界。
 
 Chat Approval 卡片只展示有界的语义摘要。文件正文、Patch 和其他长参数以目标及大小
 表示，不再完整展开；Edit Plan Approval 仍保留原生 Diff Preview 操作。

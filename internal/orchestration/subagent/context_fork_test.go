@@ -86,7 +86,7 @@ func TestLastNTurnsKeepsOnlyCompleteToolPairs(t *testing.T) {
 					Blocks: []subagent.ContextBlock{
 						{Kind: "text", Text: "current"},
 						{Kind: "tool_call", CallID: "paired", ToolName: "file_read", Arguments: `{"path":"a.go"}`},
-						{Kind: "tool_call", CallID: "orphan-call", ToolName: "shell_run"},
+						{Kind: "tool_call", CallID: "orphan-call", ToolName: "exec_command"},
 					},
 				},
 				{

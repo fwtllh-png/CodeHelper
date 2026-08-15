@@ -12,31 +12,45 @@ import (
 	"time"
 )
 
+const testSessionThread = "thread-process-test"
+
+func TestSessionRequiresOwnerThread(t *testing.T) {
+	manager := NewSessionManager(4096)
+	_, err := manager.Create(t.Context(), SessionOptions{
+		Command: "printf denied",
+		Dir:     t.TempDir(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "owner thread is required") {
+		t.Fatalf("Create() error = %v", err)
+	}
+}
+
 func TestSessionLifecycleIncrementalReadResizeSignalAndClose(t *testing.T) {
 	manager := NewSessionManager(4096)
 	defer manager.CloseAll()
 	id, err := manager.Create(t.Context(), SessionOptions{
 		Command: `trap 'printf "resized\n"' WINCH; while IFS= read line; do printf "got:%s\n" "$line"; done`,
-		Dir:     t.TempDir(), Rows: 24, Cols: 80,
+		Dir:     t.TempDir(), Rows: 24, Cols: 80, PTY: true,
+		ThreadID: testSessionThread,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.Write(id, []byte("first\n")); err != nil {
+	if err := manager.Write(id, testSessionThread, []byte("first\n")); err != nil {
 		t.Fatal(err)
 	}
 	first := waitForOutput(t, manager, id, 0, "got:first")
-	if err := manager.Resize(id, 40, 120); err != nil {
+	if err := manager.Resize(id, testSessionThread, 40, 120); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.Signal(id, syscall.SIGWINCH); err != nil {
+	if err := manager.Signal(id, testSessionThread, syscall.SIGWINCH); err != nil {
 		t.Fatal(err)
 	}
 	second := waitForOutput(t, manager, id, first.Cursor, "resized")
 	if strings.Contains(second.Data, "got:first") || second.Cursor <= first.Cursor {
 		t.Fatalf("incremental read = %+v after %+v", second, first)
 	}
-	if err := manager.Close(id); err != nil {
+	if err := manager.Close(id, testSessionThread); err != nil {
 		t.Fatal(err)
 	}
 	if manager.Count() != 0 {
@@ -49,6 +63,7 @@ func TestSessionCancellationKillsProcessGroup(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	id, err := manager.Create(ctx, SessionOptions{
 		Command: `sleep 30 & printf "child:%s\n" "$!"; wait`, Dir: t.TempDir(),
+		ThreadID: testSessionThread,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -104,17 +119,77 @@ func TestSessionDetachSurvivesCallerCancelAndCloseByThread(t *testing.T) {
 	}
 }
 
+func TestSessionOperationsRejectNonOwner(t *testing.T) {
+	manager := NewSessionManager(4096)
+	id, err := manager.Create(t.Context(), SessionOptions{
+		Command: `while IFS= read line; do printf "%s\n" "$line"; done`,
+		Dir:     t.TempDir(), ThreadID: "thread-owner", PTY: true,
+		DetachFromCaller: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDenied := func(name string, err error) {
+		t.Helper()
+		if !errors.Is(err, ErrSessionOwnership) {
+			t.Fatalf("%s error = %v, want ownership denial", name, err)
+		}
+	}
+	assertDenied("write", manager.Write(id, "thread-other", []byte("no\n")))
+	_, err = manager.Read(id, "thread-other", 0)
+	assertDenied("read", err)
+	_, err = manager.Wait(t.Context(), id, "thread-other", 0, 0)
+	assertDenied("wait", err)
+	assertDenied("resize", manager.Resize(id, "thread-other", 24, 80))
+	assertDenied("signal", manager.Signal(id, "thread-other", syscall.SIGINT))
+	assertDenied("close", manager.Close(id, "thread-other"))
+	if manager.Count() != 1 {
+		t.Fatalf("denied close removed session: count=%d", manager.Count())
+	}
+	if err := manager.Close(id, "thread-owner"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionWaitWakesOnOutputNotification(t *testing.T) {
+	manager := NewSessionManager(4096)
+	id, err := manager.Create(t.Context(), SessionOptions{
+		Command: `sleep 0.05; printf notified`,
+		Dir:     t.TempDir(), ThreadID: "thread-owner",
+		DetachFromCaller: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait, err := manager.Wait(
+		t.Context(),
+		id,
+		"thread-owner",
+		0,
+		2*time.Second,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(wait.Data, "notified") {
+		t.Fatalf("wait = %+v", wait)
+	}
+	if err := manager.Close(id, "thread-owner"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSessionRepeatedCreateDestroy(t *testing.T) {
 	manager := NewSessionManager(1024)
 	for range 50 {
 		id, err := manager.Create(t.Context(), SessionOptions{
-			Command: "printf done", Dir: t.TempDir(),
+			Command: "printf done", Dir: t.TempDir(), ThreadID: testSessionThread,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		waitForOutput(t, manager, id, 0, "done")
-		if err := manager.Close(id); err != nil {
+		if err := manager.Close(id, testSessionThread); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -133,7 +208,7 @@ func waitForOutput(
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		read, err := manager.Read(id, cursor)
+		read, err := manager.Read(id, manager.OwnerThread(id), cursor)
 		if err != nil {
 			t.Fatal(err)
 		}

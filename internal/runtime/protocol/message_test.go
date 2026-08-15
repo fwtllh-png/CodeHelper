@@ -517,7 +517,7 @@ func TestExtensionLifecycleValidationFailsClosed(t *testing.T) {
 
 func TestApprovalPresentationFactsFailClosed(t *testing.T) {
 	valid := ApprovalRequiredData{
-		RequestID: "approval_1", CallID: "call_1", Tool: "shell_run",
+		RequestID: "approval_1", CallID: "call_1", Tool: "exec_command",
 		Arguments:       json.RawMessage(`{"command":"go test ./..."}`),
 		ArgumentsDigest: strings.Repeat("a", 64),
 		AllowedScopes:   []ApprovalScope{ApprovalScopeOnce},

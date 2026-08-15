@@ -71,9 +71,13 @@ Conflict。`ParallelSerial` 即使参数指向不同 File，也增加 Synthetic 
 
 ## Shell Tool
 
-`shell_run`/`terminal_run` 声明 Process Capability、Serial Policy、Whole-workspace/
-Process Resource 与 Strong Sandbox。执行包含 Validated CWD、Sanitized Environment、
-Timeout/Cancellation、Bounded Streaming 和 Exit Metadata。
+`exec_command` 声明 Process Capability、Serial Policy、Workspace/Process
+Resource 与 Strong Sandbox。它统一启动 Pipe 或 PTY Process，执行有界 Yield，
+并返回 Terminal Output 或 Session ID。`write_stdin` 是 Poll、Input、Resize、
+Signal 与 Close 的唯一继续协议，每次操作均校验 Session 的 Thread Lease。
+
+`shell_read` 保留为更小的 Read-capability 路径，用于禁用网络、机械强制只读的检查
+Pipeline。
 
 Shell Tool 不会因 Argument Schema 合法就安全。Command Language 很宽，因此必须同时有
 Strong OS Sandbox、Sanitized Environment、Canonical CWD、Process-group Cancellation、

@@ -431,7 +431,7 @@ func TestModelTerminalRouteAllowsDeclarationAndQualityOnly(t *testing.T) {
 		{name: "quality_verify", want: true},
 		{name: "update_plan", want: true},
 		{name: "file_read", want: false},
-		{name: "shell_run", want: false},
+		{name: "exec_command", want: false},
 	} {
 		if got := modelFinishToolAllowed(test.name); got != test.want {
 			t.Fatalf(

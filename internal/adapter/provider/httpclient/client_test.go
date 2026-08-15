@@ -709,14 +709,14 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 			{
 				Kind: protocol.EventToolStart, ThreadID: "thread-1", TurnID: "turn-1", Sequence: 2,
 				Data: &protocol.ToolStartData{
-					Tool: "shell_run", CallID: "call-1",
+					Tool: "exec_command", CallID: "call-1",
 					Arguments: []byte(`{"command":"wc -l"}`),
 				},
 			},
 			{
 				Kind: protocol.EventToolResult, ThreadID: "thread-1", TurnID: "turn-1", Sequence: 3,
 				Data: &protocol.ToolResultData{
-					Tool: "shell_run", CallID: "call-1", Output: "42",
+					Tool: "exec_command", CallID: "call-1", Output: "42",
 				},
 			},
 			{

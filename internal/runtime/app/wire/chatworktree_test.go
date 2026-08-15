@@ -167,7 +167,7 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 		t.Fatalf("git_show result=%+v err=%v", shown, err)
 	}
 	shell, err := toolset.registry.Execute(t.Context(), tool.Call{
-		Name: "shell_run",
+		Name: "exec_command",
 		Arguments: json.RawMessage(
 			`{"command":"git rev-parse --is-inside-work-tree && git log -1 --format=%s"}`,
 		),
@@ -190,7 +190,7 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	write, err := toolset.registry.Execute(t.Context(), tool.Call{
-		Name: "shell_run", Arguments: arguments, Authorized: true,
+		Name: "exec_command", Arguments: arguments, Authorized: true,
 	})
 	if err == nil && !write.IsError {
 		t.Fatalf("main workspace write unexpectedly succeeded: %+v", write)

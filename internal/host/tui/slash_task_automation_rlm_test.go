@@ -91,7 +91,7 @@ func TestPlanWritesPolicyRuntime(t *testing.T) {
 	}
 	runtime := policy.DefaultRuntime(host.mode, host.perm)
 	decision := runtime.Evaluate(policy.Invocation{
-		CallID: "c1", Tool: "shell_run", Capability: policy.CapabilityProcess, Validated: true,
+		CallID: "c1", Tool: "exec_command", Capability: policy.CapabilityProcess, Validated: true,
 	})
 	if decision.Action != policy.ActionDeny {
 		t.Fatalf("decision=%#v", decision)
@@ -117,7 +117,7 @@ func TestModeOperateWritesPolicyRuntime(t *testing.T) {
 	}
 	runtime := policy.DefaultRuntime(host.mode, policy.PermissionAuto)
 	decision := runtime.Evaluate(policy.Invocation{
-		CallID: "c1", Tool: "shell_run", Capability: policy.CapabilityProcess,
+		CallID: "c1", Tool: "exec_command", Capability: policy.CapabilityProcess,
 		Access: tool.AccessRead, Sandbox: tool.SandboxStrong, Validated: true,
 	})
 	if decision.Action != policy.ActionAllow {

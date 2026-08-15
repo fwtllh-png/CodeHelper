@@ -17,7 +17,7 @@
   },
   "expect": {
     "terminal": "completed",
-    "tools_used": ["search_text", "file_read", "file_write", "shell_run"],
+    "tools_used": ["search_text", "file_read", "file_write", "exec_command"],
     "receipt_changes": ["config/loader.go", "config/loader_cycle_test.go"],
     "verify_status": "passed",
     "verify_action": "passed",

@@ -50,6 +50,7 @@ make upgrade-baseline
 make tool-execution-ex0
 make tool-execution-ex1
 make tool-execution-ex2
+make tool-execution-ex3
 make test
 make architecture-freeze
 make host-journey-contract

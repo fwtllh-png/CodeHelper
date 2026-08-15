@@ -23,7 +23,7 @@ func TestPermissionsSlashAndAlwaysApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	permPath := filepath.Join(dataDir, "permissions.toml")
-	if err := os.WriteFile(permPath, []byte("[[deny]]\ntool = \"shell_run\"\ncommand_prefix = \"rm\"\n"), 0o600); err != nil {
+	if err := os.WriteFile(permPath, []byte("[[deny]]\ntool = \"exec_command\"\ncommand_prefix = \"rm\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	host := &recordingHost{}
@@ -34,7 +34,7 @@ func TestPermissionsSlashAndAlwaysApproval(t *testing.T) {
 		t.Fatalf("view=%s", view)
 	}
 
-	updated, _ := model.Update(tui.StreamApprovalMessage("req-always", "shell_run rm -rf /"))
+	updated, _ := model.Update(tui.StreamApprovalMessage("req-always", "exec_command rm -rf /"))
 	model = updated.(tui.Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("always")})
 	model = updated.(tui.Model)

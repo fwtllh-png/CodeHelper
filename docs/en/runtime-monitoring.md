@@ -89,10 +89,11 @@ During every Turn, check structured invariants:
 - a failed Turn Receipt has no success Outcome, while a completed
   `workspace_change` Receipt has `outcome=changed`, observed Changes, and a
   changed Workspace outcome;
-- `shell_read` and `terminal_run` cannot mutate Workspace files; `shell_run`
-  remains read-only unless `write_paths` declares at most 128 existing exact
-  files, and every declared write passes through Approval, Journal, TurnDiff,
-  Sandbox enforcement, and Receipt;
+- `shell_read` cannot mutate Workspace files; `exec_command` remains read-only
+  unless `write_paths` declares at most 512 existing exact files, and every
+  declared write passes through Approval, Journal, TurnDiff, Sandbox
+  enforcement, and Receipt. `write_stdin` can interact only with a Session
+  owned by the current Thread;
 - mutating File Tools are serialized across Preview, Approval, Revalidation,
   and Commit; `edit_plan_stale` is recoverable only by a new read, Plan, and
   Approval;
@@ -103,7 +104,7 @@ During every Turn, check structured invariants:
   are required for `workspace_change` and `operation` Turns;
 - Shell Tools advertise POSIX `sh` as their actual execution dialect; models
   must not use unsupported Bash-only syntax such as Process Substitution with
-  `shell_read`, `shell_run`, or `terminal_run`;
+  `shell_read` or `exec_command`;
 - Shell Tools structurally reject known Bash-only Process Substitution before
   starting a process; descriptor prose is not the only enforcement layer;
 - a missing `file_read` or `file_list` path is a recoverable Tool Failure with
@@ -182,7 +183,7 @@ During every Turn, check structured invariants:
 - a text-only `workspace_change` receives one structured completion repair
   (`required_action=perform_workspace_mutation`) before the no-change contract
   fails closed;
-- `shell_run.write_globs` expands before Approval to at most 512 existing exact
+- `exec_command.write_globs` expands before Approval to at most 512 existing exact
   files; Guard, Journal, Sandbox, reconciliation, and Receipt never receive a
   runtime wildcard grant;
 - an edit match miss never falls back to fuzzy replacement. When a unique

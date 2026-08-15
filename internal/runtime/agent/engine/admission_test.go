@@ -18,7 +18,7 @@ func TestLegacyToolResultIsAdmittedBeforeContextProjection(t *testing.T) {
 	)
 	payload := strings.Repeat("0123456789abcdef", 6400)
 	history := []provider.Message{
-		toolCallMessage(1, "legacy-call", "shell_run", `{}`),
+		toolCallMessage(1, "legacy-call", "exec_command", `{}`),
 		toolResultMessage(1, "legacy-call", payload),
 	}
 	admitted, err := engine.admitToolResultHistory(history)

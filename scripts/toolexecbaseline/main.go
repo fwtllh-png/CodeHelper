@@ -124,11 +124,24 @@ func measure(root, baseCommit string) (report, error) {
 	}
 	typedPath := filepath.Join(absolute, "internal/adapter/tool/typed/typed.go")
 	contracts.TypedAdapterAvailable = regularFile(typedPath)
-	knownGaps := []string{
-		"process_lifecycle_is_split_across_multiple_model_visible_protocols",
-		"tool_outputs_depend_on_stringly_typed_metadata",
-		"session_manager_records_but_does_not_enforce_thread_ownership",
-		"session_wait_polls_on_a_ten_millisecond_ticker",
+	knownGaps := []string{"tool_outputs_depend_on_stringly_typed_metadata"}
+	if !risks.UnifiedProcessProtocol {
+		knownGaps = append(
+			knownGaps,
+			"process_lifecycle_is_split_across_multiple_model_visible_protocols",
+		)
+	}
+	if !risks.SessionOwnerEnforced {
+		knownGaps = append(
+			knownGaps,
+			"session_manager_records_but_does_not_enforce_thread_ownership",
+		)
+	}
+	if !risks.EventDrivenSessionWait {
+		knownGaps = append(
+			knownGaps,
+			"session_wait_polls_on_a_ten_millisecond_ticker",
+		)
 	}
 	if !risks.ForegroundOutputBounded {
 		knownGaps = append(
@@ -209,7 +222,7 @@ func measureCatalog() (catalogMetrics, contractMetrics, error) {
 	if err != nil {
 		return catalogMetrics{}, contractMetrics{}, err
 	}
-	entry, found := snapshot.Lookup("shell_run")
+	entry, found := snapshot.Lookup("exec_command")
 	authorityBound := false
 	if found {
 		binding, bound := snapshot.Binding(entry.Name)
@@ -220,7 +233,7 @@ func measureCatalog() (catalogMetrics, contractMetrics, error) {
 		authorityBound = bound && resolveErr == nil
 	}
 	large := tool.Result{Content: strings.Repeat("x", 64<<10)}
-	admitted, _ := registry.AdmitResult("shell_run", large)
+	admitted, _ := registry.AdmitResult("exec_command", large)
 	contracts := contractMetrics{
 		CatalogAuthorityBound:  authorityBound,
 		ResourceClaimsEnforced: probeClaims(),

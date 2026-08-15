@@ -83,9 +83,10 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   `workspace_change`。不得使用 Mode 或自然语言关键词猜测变更 Intent；
 - Failed Turn Receipt 不携带成功 Outcome；Completed `workspace_change` Receipt
   必须同时具有 `outcome=changed`、Observed Changes 和 Changed Workspace Outcome；
-- `shell_read` 与 `terminal_run` 不能修改 Workspace 文件；`shell_run` 默认仍为
-  Read-only，仅可通过 `write_paths` 声明最多 128 个已存在的精确文件，并且所有
-  声明写入必须经过 Approval、Journal、TurnDiff、Sandbox Enforcement 与 Receipt；
+- `shell_read` 不能修改 Workspace 文件；`exec_command` 默认仍为 Read-only，
+  仅可通过 `write_paths` 声明最多 512 个已存在的精确文件，并且所有声明写入必须
+  经过 Approval、Journal、TurnDiff、Sandbox Enforcement 与 Receipt；
+  `write_stdin` 只能交互当前 Thread 所拥有的 Session；
 - File Mutation Tool 的 Preview、Approval、Revalidation 与 Commit 必须整体串行；
   `edit_plan_stale` 只能通过新的 Read、Plan 与 Approval 恢复；
 - Fatal Tool Batch 必须在 Turn Failed 前为每个已 Start Call 发出且仅发出一个
@@ -93,7 +94,7 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
 - 未解决的结构化 Tool Failure 不能由承诺未来动作的文本清除；`workspace_change`
   与 `operation` Turn 必须有后续成功 Tool Batch 及恢复后的 Completion Check；
 - Shell Tool 必须向模型声明实际执行方言为 POSIX `sh`；模型不得对
-  `shell_read`、`shell_run` 或 `terminal_run` 使用 Bash-only Process
+  `shell_read` 或 `exec_command` 使用 Bash-only Process
   Substitution 等不受支持的语法；
 - Shell Tool 必须在启动进程前结构化拒绝已知 Bash-only Process Substitution；
   Descriptor 的自然语言提示不能作为唯一防线；
@@ -158,7 +159,7 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   Boundary 压缩，但不得持久化当前 Failed Transaction；
 - 纯文本 `workspace_change` 在 No-change Contract Fail Closed 前必须获得一次结构化
   Completion Repair（`required_action=perform_workspace_mutation`）；
-- `shell_run.write_globs` 必须在 Approval 前展开为最多 512 个已存在的精确文件；
+- `exec_command.write_globs` 必须在 Approval 前展开为最多 512 个已存在的精确文件；
   Guard、Journal、Sandbox、Reconciliation 和 Receipt 不得接收 Runtime Wildcard
   Grant；
 - Edit Match Miss 不得降级为模糊替换。存在唯一邻近 Source Anchor 时，Tool Result

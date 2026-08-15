@@ -396,7 +396,7 @@ type testShellTool struct {
 
 func (*testShellTool) Descriptor() tool.Descriptor {
 	return tool.Descriptor{
-		Name: "shell_run", Description: "test shell command",
+		Name: "exec_command", Description: "test shell command",
 		Visibility: tool.VisibleModel, Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessTree,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{

@@ -23,8 +23,8 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		{name: "plan request_user_input", mode: ModePlan, permission: PermissionSuggest, tool: "request_user_input"},
 		{name: "act auto write", mode: ModeAct, permission: PermissionAuto, tool: "file_write"},
 		{name: "act auto read-only shell", mode: ModeAct, permission: PermissionAuto, tool: "shell_read"},
-		{name: "act auto sandboxed process", mode: ModeAct, permission: PermissionAuto, tool: "shell_run"},
-		{name: "operate auto sandboxed process", mode: ModeOperate, permission: PermissionAuto, tool: "shell_run"},
+		{name: "act auto sandboxed process", mode: ModeAct, permission: PermissionAuto, tool: "exec_command"},
+		{name: "operate auto sandboxed process", mode: ModeOperate, permission: PermissionAuto, tool: "exec_command"},
 		{name: "never write denied", mode: ModeAct, permission: PermissionNever, tool: "file_write", wantCode: "permission_denied"},
 		{name: "unknown denied", mode: ModeAct, permission: PermissionBypass, tool: "future_tool", wantCode: "policy_unknown_capability"},
 	}
@@ -183,22 +183,22 @@ func TestRepositoryCommandRulesInspectEveryShellSegment(t *testing.T) {
 	} {
 		runtime := DefaultRuntime(ModeAct, PermissionBypass)
 		runtime.Repository = []Rule{
-			{Tool: "shell_run", CommandPrefix: "rm", Action: ActionDeny},
+			{Tool: "exec_command", CommandPrefix: "rm", Action: ActionDeny},
 		}
 		raw, err := json.Marshal(map[string]string{"command": command})
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = authorize(runtime, invocation("shell_run", command, string(raw)))
+		err = authorize(runtime, invocation("exec_command", command, string(raw)))
 		assertDecisionCode(t, err, "repository_rule_denied")
 	}
 
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
 	runtime.Repository = []Rule{
-		{Tool: "shell_run", CommandPrefix: "rm", Action: ActionDeny},
+		{Tool: "exec_command", CommandPrefix: "rm", Action: ActionDeny},
 	}
 	err := authorize(runtime, invocation(
-		"shell_run", "quoted", `{"command":"printf '%s' 'echo safe; rm target'"}`,
+		"exec_command", "quoted", `{"command":"printf '%s' 'echo safe; rm target'"}`,
 	))
 	assertDecisionCode(t, err, "")
 }
@@ -219,13 +219,13 @@ func TestToolGrantMissingAndDenyCannotBeOverridden(t *testing.T) {
 
 func TestApprovalIsBoundToCallArgumentsResourcesScopeAndExpiry(t *testing.T) {
 	now := time.Unix(2000, 0)
-	base := invocation("shell_run", "call-1", `{"cwd":".","command":"go test ./..."}`)
+	base := invocation("exec_command", "call-1", `{"cwd":".","command":"go test ./..."}`)
 	request, err := NewApprovalRequest(base, now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
 	reorderedCall := invocation(
-		"shell_run", "call-1", `{"command":"go test ./...","cwd":"."}`,
+		"exec_command", "call-1", `{"command":"go test ./...","cwd":"."}`,
 	)
 	reordered, err := NewApprovalRequest(reorderedCall, now.Add(time.Minute))
 	if err != nil {
@@ -266,7 +266,7 @@ func TestApprovalIsBoundToCallArgumentsResourcesScopeAndExpiry(t *testing.T) {
 	}
 
 	for _, changed := range []Invocation{
-		invocation("shell_run", "call-1", `{"cwd":".","command":"rm -rf ."}`),
+		invocation("exec_command", "call-1", `{"cwd":".","command":"rm -rf ."}`),
 		invocation("file_write", "call-1", `{"path":"."}`),
 	} {
 		other, err := NewApprovalRequest(changed, now.Add(time.Minute))
@@ -353,7 +353,7 @@ func invocation(toolName, callID, arguments string) Invocation {
 	raw := json.RawMessage(arguments)
 	capability := map[string]Capability{
 		"file_read": CapabilityRead, "file_write": CapabilityWrite,
-		"shell_read": CapabilityRead, "shell_run": CapabilityProcess,
+		"shell_read": CapabilityRead, "exec_command": CapabilityProcess,
 		"request_user_input": CapabilityRead,
 		"update_plan":        CapabilityWrite,
 	}[toolName]
@@ -379,12 +379,12 @@ func invocation(toolName, callID, arguments string) Invocation {
 		Access: map[string]tool.AccessMode{
 			"file_read": tool.AccessRead, "file_write": tool.AccessWrite,
 			"file_edit": tool.AccessWrite, "shell_read": tool.AccessRead,
-			"shell_run": tool.AccessRead,
+			"exec_command": tool.AccessRead,
 		}[toolName],
 		Sandbox: map[string]tool.SandboxRequirement{
 			"file_read": tool.SandboxNone, "file_write": tool.SandboxNone,
 			"file_edit": tool.SandboxNone, "shell_read": tool.SandboxStrong,
-			"shell_run": tool.SandboxStrong,
+			"exec_command": tool.SandboxStrong,
 		}[toolName],
 		Journaled: toolName == "file_write" || toolName == "file_edit",
 		Validated: true,

@@ -118,7 +118,7 @@ func (e *shellCommandExecutor) Execute(
 	executeContext := tool.WithInvocationIdentity(ctx, tool.InvocationIdentity{
 		CallID: callID, ThreadID: value.ThreadID, TurnID: value.TurnID,
 	})
-	result, err := guard.Execute(executeContext, callID, "shell_run", arguments)
+	result, err := guard.Execute(executeContext, callID, "exec_command", arguments)
 	if err != nil {
 		if ctx.Err() != nil {
 			return worker.Outcome{}, ctx.Err()

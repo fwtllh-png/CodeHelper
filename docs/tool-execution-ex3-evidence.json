@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "stage": "EX3",
+  "status": "accepted",
+  "date": "2026-08-15",
+  "scope": "unified_local_process_protocol",
+  "baseline": {
+    "branch": "refactor/tools-execution",
+    "commit": "10ebed4bb28263b0e4fe90bf8b79450535d69207",
+    "evidence": "docs/tool-execution-ex2-evidence.json"
+  },
+  "protocol": {
+    "model_visible_tools": [
+      "exec_command",
+      "shell_read",
+      "write_stdin"
+    ],
+    "legacy_process_tools_removed": true,
+    "legacy_aliases_retained": false,
+    "pipe_and_pty_share_session_state_machine": true,
+    "bounded_initial_yield": true,
+    "token_bounded_initial_output": true,
+    "durable_archive_recovery_preserved": true,
+    "host_job_center_projection_preserved": true
+  },
+  "ownership": {
+    "thread_lease_checked_on_read": true,
+    "thread_lease_checked_on_wait": true,
+    "thread_lease_checked_on_write": true,
+    "thread_lease_checked_on_resize": true,
+    "thread_lease_checked_on_signal": true,
+    "thread_lease_checked_on_close": true,
+    "cross_thread_denial_tested": true,
+    "thread_cleanup_preserved": true
+  },
+  "waiting": {
+    "output_notification_channel": true,
+    "exit_notification_channel": true,
+    "polling_ticker_removed": true,
+    "context_cancellation_preserved": true,
+    "bounded_timeout_preserved": true
+  },
+  "shell_read_decision": {
+    "retained": true,
+    "reason": "smaller schema with read capability, enforced read-only workspace, and denied network",
+    "general_process_capability": false
+  },
+  "measurements": {
+    "model_visible_process_tools_ex0": 15,
+    "model_visible_process_tools_ex3": 3,
+    "input_schema_bytes_ex0": 3179,
+    "input_schema_bytes_ex3": 1112,
+    "input_schema_reduction_percent": 65.02,
+    "serial_process_tools_ex0": 15,
+    "serial_process_tools_ex3": 3,
+    "session_manager_lines_ex3": 619,
+    "shell_package_lines_ex3": 1339
+  },
+  "risk_probe": {
+    "unified_process_protocol": true,
+    "session_owner_enforced": true,
+    "event_driven_session_wait": true
+  },
+  "remaining_risks": {
+    "process_tools_remain_serial_until_ex4": true,
+    "generic_business_metadata_remains_until_ex5": true,
+    "fair_resource_scheduler_pending_ex4": true
+  },
+  "verification": [
+    {
+      "command": "make tool-execution-ex3",
+      "status": "passed"
+    },
+    {
+      "command": "go test -p 1 -count=1 ./internal/...",
+      "status": "passed"
+    },
+    {
+      "command": "make docs-check",
+      "status": "passed"
+    },
+    {
+      "command": "make book-check",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "architecture": {
+    "ratchet": "67/67",
+    "status": "passed"
+  }
+}

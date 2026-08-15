@@ -539,11 +539,11 @@ func TestAgentToolGateForced(t *testing.T) {
 	var body map[string]any
 	_ = json.Unmarshal([]byte(created.Content), &body)
 	id, _ := body["agent_id"].(string)
-	result, err := manager.ExecuteTool(t.Context(), id, "call-1", "shell_run", json.RawMessage(`{"command":"true"}`))
+	result, err := manager.ExecuteTool(t.Context(), id, "call-1", "exec_command", json.RawMessage(`{"command":"true"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gate.calls != 1 || result.Content != "gated:shell_run" {
+	if gate.calls != 1 || result.Content != "gated:exec_command" {
 		t.Fatalf("gate calls=%d result=%+v", gate.calls, result)
 	}
 }

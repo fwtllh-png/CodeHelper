@@ -60,8 +60,12 @@ type SessionOptions struct {
 	Rows                 uint16
 	Cols                 uint16
 	Env                  []string
+	PTY                  bool
+	Timeout              time.Duration
 	Sandbox              sandbox.Backend
 	RequireStrongSandbox bool
+	WorkspaceReadOnly    bool
+	WorkspaceWritePaths  []string
 	// DetachFromCaller keeps the process alive after Create's ctx ends (background/PTY).
 	DetachFromCaller bool
 }
@@ -71,6 +75,7 @@ type SessionRead struct {
 	Cursor   uint64
 	Running  bool
 	ExitCode int
+	TTY      bool
 	// Archived is true when the data came from the durable log rather than the
 	// live buffer, which tells a caller its cursor had fallen behind.
 	Archived bool
@@ -95,7 +100,10 @@ type Session struct {
 	callID       string
 	createdAt    time.Time
 	command      *exec.Cmd
-	pty          *os.File
+	input        io.WriteCloser
+	outputReader io.ReadCloser
+	terminal     *os.File
+	tty          bool
 
 	archive    Archive
 	mu         sync.RWMutex
@@ -104,6 +112,8 @@ type Session struct {
 	running    bool
 	exitCode   int
 	waitDone   chan struct{}
+	readDone   chan struct{}
+	notify     chan struct{}
 	closeOnce  sync.Once
 	maxOutput  int
 }
@@ -119,6 +129,10 @@ func NewSessionManager(maxOutputBytes int) *SessionManager {
 }
 
 func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (string, error) {
+	ownerThreadID := strings.TrimSpace(options.ThreadID)
+	if ownerThreadID == "" {
+		return "", errors.New("terminal session owner thread is required")
+	}
 	commandText := options.Command
 	if commandText == "" {
 		commandText = "exec ${SHELL:-/bin/sh}"
@@ -129,8 +143,12 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 	}
 	command, err := NewCommand(runCtx, Options{
 		Command: commandText, Dir: options.Dir, DirFile: options.DirFile,
-		Env: options.Env, Sandbox: options.Sandbox, PTY: true,
+		Env: options.Env, Sandbox: options.Sandbox, PTY: options.PTY,
 		RequireStrongSandbox: options.RequireStrongSandbox,
+		WorkspaceReadOnly:    options.WorkspaceReadOnly,
+		WorkspaceWritePaths: append(
+			[]string(nil), options.WorkspaceWritePaths...,
+		),
 	})
 	if err != nil {
 		return "", err
@@ -142,9 +160,44 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 	if cols == 0 {
 		cols = 80
 	}
-	terminal, err := pty.StartWithSize(command, &pty.Winsize{Rows: rows, Cols: cols})
-	if err != nil {
-		return "", err
+	var input io.WriteCloser
+	var output io.ReadCloser
+	var terminal *os.File
+	if options.PTY {
+		terminal, err = pty.StartWithSize(
+			command,
+			&pty.Winsize{Rows: rows, Cols: cols},
+		)
+		if err != nil {
+			return "", err
+		}
+		input = terminal
+		output = terminal
+	} else {
+		stdinReader, stdinWriter, pipeErr := os.Pipe()
+		if pipeErr != nil {
+			return "", pipeErr
+		}
+		outputReader, outputWriter, pipeErr := os.Pipe()
+		if pipeErr != nil {
+			_ = stdinReader.Close()
+			_ = stdinWriter.Close()
+			return "", pipeErr
+		}
+		command.Stdin = stdinReader
+		command.Stdout = outputWriter
+		command.Stderr = outputWriter
+		if err = command.Start(); err != nil {
+			_ = stdinReader.Close()
+			_ = stdinWriter.Close()
+			_ = outputReader.Close()
+			_ = outputWriter.Close()
+			return "", err
+		}
+		_ = stdinReader.Close()
+		_ = outputWriter.Close()
+		input = stdinWriter
+		output = outputReader
 	}
 	sessionID := options.SessionID
 	if sessionID == "" {
@@ -152,19 +205,23 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 	}
 	if !validSessionID(sessionID) {
 		_ = terminateProcessGroup(command.Process)
-		_ = terminal.Close()
+		_ = input.Close()
+		_ = output.Close()
 		_ = command.Wait()
 		return "", errors.New("session id contains unsupported characters")
 	}
 	session := &Session{
 		id: sessionID, commandText: commandText, cwd: options.Dir,
 		linkedTaskID: strings.TrimSpace(options.LinkedTaskID),
-		threadID:     strings.TrimSpace(options.ThreadID),
+		threadID:     ownerThreadID,
 		turnID:       strings.TrimSpace(options.TurnID),
 		callID:       strings.TrimSpace(options.CallID),
 		createdAt:    time.Now().UTC(),
-		command:      command, pty: terminal,
-		running: true, exitCode: -1, waitDone: make(chan struct{}), maxOutput: m.maxOutputBytes,
+		command:      command, input: input, outputReader: output,
+		terminal: terminal, tty: options.PTY,
+		running: true, exitCode: -1,
+		waitDone: make(chan struct{}), readDone: make(chan struct{}),
+		notify: make(chan struct{}, 1), maxOutput: m.maxOutputBytes,
 	}
 	m.mu.RLock()
 	session.archive = m.archive
@@ -173,7 +230,8 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 	if _, exists := m.sessions[session.id]; exists {
 		m.mu.Unlock()
 		_ = terminateProcessGroup(command.Process)
-		_ = terminal.Close()
+		_ = input.Close()
+		_ = output.Close()
 		_ = command.Wait()
 		return "", errors.New("terminal session id already exists")
 	}
@@ -191,7 +249,8 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 	if len(m.sessions) >= m.maxSessions {
 		m.mu.Unlock()
 		_ = terminateProcessGroup(command.Process)
-		_ = terminal.Close()
+		_ = input.Close()
+		_ = output.Close()
 		_ = command.Wait()
 		return "", errors.New("terminal session capacity exceeded")
 	}
@@ -204,11 +263,22 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 	m.mu.Unlock()
 	go session.readLoop()
 	go session.waitLoop()
+	if options.Timeout > 0 {
+		go func() {
+			timer := time.NewTimer(options.Timeout)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				session.close()
+			case <-session.waitDone:
+			}
+		}()
+	}
 	if !options.DetachFromCaller {
 		go func() {
 			select {
 			case <-ctx.Done():
-				_ = m.Close(session.id)
+				_ = m.Close(session.id, session.threadID)
 			case <-session.waitDone:
 			}
 		}()
@@ -232,8 +302,8 @@ func validSessionID(value string) bool {
 	return true
 }
 
-func (m *SessionManager) Write(id string, data []byte) error {
-	session, err := m.get(id)
+func (m *SessionManager) Write(id, threadID string, data []byte) error {
+	session, err := m.getOwned(id, threadID)
 	if err != nil {
 		return err
 	}
@@ -243,7 +313,7 @@ func (m *SessionManager) Write(id string, data []byte) error {
 	if !running {
 		return errors.New("terminal session is not running")
 	}
-	_, err = session.pty.Write(data)
+	_, err = session.input.Write(data)
 	return err
 }
 
@@ -256,15 +326,15 @@ func (m *SessionManager) SetArchive(archive Archive) {
 	m.mu.Unlock()
 }
 
-func (m *SessionManager) Read(id string, cursor uint64) (SessionRead, error) {
-	session, err := m.get(id)
+func (m *SessionManager) Read(id, threadID string, cursor uint64) (SessionRead, error) {
+	session, err := m.getOwned(id, threadID)
 	if err != nil {
 		return SessionRead{}, err
 	}
 	session.mu.RLock()
 	end := session.baseCursor + uint64(len(session.output))
 	base := session.baseCursor
-	running, exitCode := session.running, session.exitCode
+	running, exitCode, tty := session.running, session.exitCode, session.tty
 	var live string
 	if cursor >= base && cursor <= end {
 		live = string(session.output[cursor-base:])
@@ -276,6 +346,7 @@ func (m *SessionManager) Read(id string, cursor uint64) (SessionRead, error) {
 	if cursor >= base {
 		return SessionRead{
 			Data: live, Cursor: end, Running: running, ExitCode: exitCode,
+			TTY: tty,
 		}, nil
 	}
 	// The buffer has moved past this cursor. Without an archive the bytes are gone
@@ -297,27 +368,33 @@ func (m *SessionManager) Read(id string, cursor uint64) (SessionRead, error) {
 	}
 	return SessionRead{
 		Data: string(data), Cursor: next, Running: running, ExitCode: exitCode,
-		Archived: true, Pending: pending,
+		TTY: tty, Archived: true, Pending: pending,
 	}, nil
 }
 
 func (m *SessionManager) Wait(
-	ctx context.Context, id string, cursor uint64, timeout time.Duration,
+	ctx context.Context,
+	id string,
+	threadID string,
+	cursor uint64,
+	timeout time.Duration,
 ) (SessionWait, error) {
 	if timeout < 0 {
 		return SessionWait{}, errors.New("terminal wait timeout must not be negative")
 	}
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
-	if timeout == 0 {
-		if !deadline.Stop() {
-			<-deadline.C
-		}
+	session, err := m.getOwned(id, threadID)
+	if err != nil {
+		return SessionWait{}, err
 	}
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
+	var deadline <-chan time.Time
+	var timer *time.Timer
+	if timeout > 0 {
+		timer = time.NewTimer(timeout)
+		deadline = timer.C
+		defer timer.Stop()
+	}
 	for {
-		read, err := m.Read(id, cursor)
+		read, err := m.Read(id, threadID, cursor)
 		if err != nil {
 			return SessionWait{}, err
 		}
@@ -330,30 +407,33 @@ func (m *SessionManager) Wait(
 		select {
 		case <-ctx.Done():
 			return SessionWait{}, ctx.Err()
-		case <-deadline.C:
-			read, err := m.Read(id, cursor)
+		case <-deadline:
+			read, err := m.Read(id, threadID, cursor)
 			if err != nil {
 				return SessionWait{}, err
 			}
 			return SessionWait{SessionRead: read, TimedOut: read.Running}, nil
-		case <-ticker.C:
+		case <-session.notify:
 		}
 	}
 }
 
-func (m *SessionManager) Resize(id string, rows, cols uint16) error {
-	session, err := m.get(id)
+func (m *SessionManager) Resize(id, threadID string, rows, cols uint16) error {
+	session, err := m.getOwned(id, threadID)
 	if err != nil {
 		return err
+	}
+	if !session.tty || session.terminal == nil {
+		return errors.New("terminal resize requires a TTY session")
 	}
 	if rows == 0 || cols == 0 {
 		return errors.New("terminal rows and columns must be positive")
 	}
-	return pty.Setsize(session.pty, &pty.Winsize{Rows: rows, Cols: cols})
+	return pty.Setsize(session.terminal, &pty.Winsize{Rows: rows, Cols: cols})
 }
 
-func (m *SessionManager) Signal(id string, signal syscall.Signal) error {
-	session, err := m.get(id)
+func (m *SessionManager) Signal(id, threadID string, signal syscall.Signal) error {
+	session, err := m.getOwned(id, threadID)
 	if err != nil {
 		return err
 	}
@@ -366,14 +446,20 @@ func (m *SessionManager) Signal(id string, signal syscall.Signal) error {
 	return signalProcessGroup(session.command.Process, signal)
 }
 
-func (m *SessionManager) Close(id string) error {
-	session, err := m.get(id)
+func (m *SessionManager) Close(id, threadID string) error {
+	session, err := m.getOwned(id, threadID)
 	if err != nil {
 		return err
 	}
+	return m.closeSession(id, session)
+}
+
+func (m *SessionManager) closeSession(id string, session *Session) error {
 	session.close()
 	m.mu.Lock()
-	delete(m.sessions, id)
+	if m.sessions[id] == session {
+		delete(m.sessions, id)
+	}
 	m.rewriteJournalLocked()
 	m.mu.Unlock()
 	return nil
@@ -387,7 +473,10 @@ func (m *SessionManager) CloseAll() {
 	}
 	m.mu.RUnlock()
 	for _, id := range ids {
-		_ = m.Close(id)
+		session, err := m.get(id)
+		if err == nil {
+			_ = m.closeSession(id, session)
+		}
 	}
 }
 
@@ -406,7 +495,10 @@ func (m *SessionManager) CloseByThread(threadID string) int {
 	}
 	m.mu.RUnlock()
 	for _, id := range ids {
-		_ = m.Close(id)
+		session, err := m.get(id)
+		if err == nil {
+			_ = m.closeSession(id, session)
+		}
 	}
 	return len(ids)
 }
@@ -436,10 +528,27 @@ func (m *SessionManager) get(id string) (*Session, error) {
 	return session, nil
 }
 
+func (m *SessionManager) getOwned(id, threadID string) (*Session, error) {
+	session, err := m.get(id)
+	if err != nil {
+		return nil, err
+	}
+	if session.threadID != strings.TrimSpace(threadID) {
+		return nil, fmt.Errorf(
+			"terminal session belongs to another thread: %w",
+			ErrSessionOwnership,
+		)
+	}
+	return session, nil
+}
+
+var ErrSessionOwnership = errors.New("terminal session ownership denied")
+
 func (s *Session) readLoop() {
+	defer close(s.readDone)
 	buffer := make([]byte, 32<<10)
 	for {
-		count, err := s.pty.Read(buffer)
+		count, err := s.outputReader.Read(buffer)
 		if count > 0 {
 			if s.archive != nil {
 				// A failed append costs recoverability, not the session: the live buffer
@@ -453,6 +562,7 @@ func (s *Session) readLoop() {
 				s.baseCursor += uint64(overflow)
 			}
 			s.mu.Unlock()
+			s.signalChange()
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, syscall.EIO) || errors.Is(err, os.ErrClosed) {
@@ -465,11 +575,17 @@ func (s *Session) readLoop() {
 
 func (s *Session) waitLoop() {
 	err := s.command.Wait()
+	if s.terminal != nil {
+		_ = s.terminal.Close()
+	}
+	<-s.readDone
 	s.mu.Lock()
 	s.running = false
 	s.exitCode = ExitCode(err)
 	s.mu.Unlock()
-	_ = s.pty.Close()
+	_ = s.input.Close()
+	_ = s.outputReader.Close()
+	s.signalChange()
 	close(s.waitDone)
 }
 
@@ -481,9 +597,16 @@ func (s *Session) close() {
 		if running {
 			_ = terminateProcessGroup(s.command.Process)
 		}
-		_ = s.pty.Close()
+		_ = s.input.Close()
 		<-s.waitDone
 	})
+}
+
+func (s *Session) signalChange() {
+	select {
+	case s.notify <- struct{}{}:
+	default:
+	}
 }
 
 func randomSessionID() string {

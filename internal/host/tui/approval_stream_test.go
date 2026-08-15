@@ -21,7 +21,7 @@ func TestApprovalDecisionResumesTurnStream(t *testing.T) {
 	m := NewModel(Options{}, host)
 	m.busy = true
 	m.mode = ModeApprove
-	m.approvalCard = &ApprovalCard{ID: "approval_1", Status: "pending", Message: "shell_run"}
+	m.approvalCard = &ApprovalCard{ID: "approval_1", Status: "pending", Message: "exec_command"}
 	m = m.withComposerText("y")
 
 	next, cmd := m.handleEnter()

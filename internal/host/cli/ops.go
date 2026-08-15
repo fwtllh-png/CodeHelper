@@ -71,7 +71,7 @@ func newExecPolicyCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Co
 			switch toolName {
 			case "file_write", "file_edit", "file_patch", "remember", "update_plan":
 				capability = policy.CapabilityWrite
-			case "shell_run", "terminal_run", "code_execution", "task_shell_start":
+			case "exec_command", "write_stdin", "code_execution":
 				capability = policy.CapabilityProcess
 			case "web_fetch", "web_search", "hosted_git", "github_comment":
 				capability = policy.CapabilityNetwork

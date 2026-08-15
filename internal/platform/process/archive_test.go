@@ -8,6 +8,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
 )
 
+const archiveTestThread = "thread-archive-test"
+
 // A poller that falls behind a job's bounded buffer used to be told its cursor
 // expired, and the bytes were gone. With an archive the same cursor still reads.
 func TestAPollerBehindTheBufferStillReadsWhatItMissed(t *testing.T) {
@@ -21,12 +23,12 @@ func TestAPollerBehindTheBufferStillReadsWhatItMissed(t *testing.T) {
 	manager.SetArchive(archive)
 	id, err := manager.Create(t.Context(), SessionOptions{
 		Command: `for index in $(seq 1 200); do printf "line-$index\n"; done`,
-		Dir:     t.TempDir(),
+		Dir:     t.TempDir(), PTY: true, ThreadID: archiveTestThread,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = manager.Close(id) })
+	t.Cleanup(func() { _ = manager.Close(id, archiveTestThread) })
 
 	// Read from the very beginning once the live buffer has moved past it.
 	read := waitForArchivedRead(t, manager, id)
@@ -39,7 +41,7 @@ func TestAPollerBehindTheBufferStillReadsWhatItMissed(t *testing.T) {
 	whole.WriteString(read.Data)
 	cursor := read.Cursor
 	for range 100 {
-		next, err := manager.Read(id, cursor)
+		next, err := manager.Read(id, archiveTestThread, cursor)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -66,15 +68,15 @@ func TestAnExpiredCursorIsStillAnErrorWithoutAnArchive(t *testing.T) {
 	manager := NewSessionManager(64)
 	id, err := manager.Create(t.Context(), SessionOptions{
 		Command: `for index in $(seq 1 200); do printf "line-$index\n"; done`,
-		Dir:     t.TempDir(),
+		Dir:     t.TempDir(), ThreadID: archiveTestThread,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = manager.Close(id) })
+	t.Cleanup(func() { _ = manager.Close(id, archiveTestThread) })
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := manager.Read(id, 0); err != nil {
+		if _, err := manager.Read(id, archiveTestThread, 0); err != nil {
 			if !strings.Contains(err.Error(), "expired") {
 				t.Fatalf("read error = %v, want an expired cursor", err)
 			}
@@ -98,17 +100,17 @@ func TestAnUpToDateCursorReadsTheLiveBuffer(t *testing.T) {
 	manager := NewSessionManager(4096)
 	manager.SetArchive(archive)
 	id, err := manager.Create(t.Context(), SessionOptions{
-		Command: "printf done", Dir: t.TempDir(),
+		Command: "printf done", Dir: t.TempDir(), ThreadID: archiveTestThread,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = manager.Close(id) })
+	t.Cleanup(func() { _ = manager.Close(id, archiveTestThread) })
 	read := waitForOutput(t, manager, id, 0, "done")
 	if read.Archived {
 		t.Fatalf("read = %+v, want the live buffer", read)
 	}
-	if _, err := manager.Read(id, read.Cursor+1); err == nil {
+	if _, err := manager.Read(id, archiveTestThread, read.Cursor+1); err == nil {
 		t.Fatal("a cursor past the end should be rejected")
 	}
 }
@@ -124,7 +126,7 @@ func TestTheJobLogIsReadableAfterTheManagerIsGone(t *testing.T) {
 	manager := NewSessionManager(4096)
 	manager.SetArchive(archive)
 	id, err := manager.Create(t.Context(), SessionOptions{
-		Command: "printf survivor", Dir: t.TempDir(),
+		Command: "printf survivor", Dir: t.TempDir(), ThreadID: archiveTestThread,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +157,7 @@ func waitForArchivedRead(t *testing.T, manager *SessionManager, id string) Sessi
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		read, err := manager.Read(id, 0)
+		read, err := manager.Read(id, manager.OwnerThread(id), 0)
 		if err != nil {
 			t.Fatalf("read from the start of the stream: %v", err)
 		}

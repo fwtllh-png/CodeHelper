@@ -1124,8 +1124,7 @@ func (s *ResultStore) projectionLimit(name, content string) (int, string, int) {
 		kind, tokens = "read", 4096
 	case strings.HasPrefix(name, "quality_"):
 		kind, tokens = "test", 3072
-	case name == "shell_run" || name == "terminal_run" ||
-		strings.Contains(name, "shell_"):
+	case name == "exec_command" || name == "write_stdin":
 		kind, tokens = "build", 3072
 	}
 	return min(s.maxInline, len(content), tokens*4), kind, tokens

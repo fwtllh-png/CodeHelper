@@ -112,7 +112,7 @@ func TestBenchmarkAssertionsFail(t *testing.T) {
 	}
 	expect, _ := task["expect"].(map[string]any)
 	expect["files"] = map[string]any{"calc.py": "def add(a, b):\n    return a * b\n"}
-	expect["tools_used"] = []any{"file_read", "file_edit", "shell_run"}
+	expect["tools_used"] = []any{"file_read", "file_edit", "exec_command"}
 	mutated, err := json.Marshal(task)
 	if err != nil {
 		t.Fatal(err)
