@@ -363,6 +363,34 @@ func TestRunToolsFeedsMissingPathRecoveryBackToModel(t *testing.T) {
 	}
 }
 
+func TestRunToolsFeedsMissingResultHandleBackToModel(t *testing.T) {
+	engine := newEngine(
+		t,
+		&scriptedProvider{},
+		tool.NewRegistry(nil, tool.NewResultStore(32<<10)),
+	)
+	results, err := engine.runTools(
+		t.Context(),
+		"turn-test",
+		[]provider.ToolCall{{
+			ID:        "call_missing_result",
+			Name:      "result_get",
+			Arguments: `{"handle":"tool-call-id"}`,
+		}},
+		make(map[string]tool.Result),
+		func(State, Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("runTools() error = %v, want recoverable result", err)
+	}
+	if len(results) != 1 || !results[0].IsError ||
+		results[0].Metadata["error_category"] != "result_handle_not_found" ||
+		results[0].Metadata["required_action"] != "use_advertised_result_handle" ||
+		results[0].Metadata["retry_original"] != false {
+		t.Fatalf("results = %+v", results)
+	}
+}
+
 func TestRunToolsCategorizesRevokedCatalogEntry(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	change, err := registry.Reconcile(

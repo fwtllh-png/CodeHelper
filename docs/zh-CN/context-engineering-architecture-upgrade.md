@@ -2,7 +2,7 @@
 
 简体中文 | [English](../en/context-engineering-architecture-upgrade.md)
 
-> 状态：`proposed`。
+> 状态：`accepted`。
 >
 > 基线：CodeHelper `f1b1ec1955f4a64149268cfe3bf91b00a0f05d06`；
 > Codex 参考实现 `3bbf1fe75701c97fb190e0867002ba2d9dbda5db`。
@@ -803,3 +803,44 @@ npm test
 11. Architecture Ratchet、Race、Hermetic、Live 和文档门禁全部通过；
 12. 旧 Context Authority、Feature Flag 和双写路径全部删除；
 13. 所有收益都有 Raw Artifact、Comparison 和 Gate Evidence，不能只由文档声明。
+
+## 15. 最终真实运行验收
+
+2026-08-15 使用官方 VS Code 隔离窗口和 `deepseek-v4-flash` 完成
+`r32-ce0-ce7` 综合验收。CE0-CE7 全部通过：
+
+| 不变量 | 结果 |
+| --- | --- |
+| Terminal | completed=1，failed=0，canceled=0 |
+| Provider / Model | Attempts=16，Samples=16，Completion Repairs=0 |
+| Tool Pairing | Start/Result=34/34，Call ID 集合相同，Orphan=0 |
+| World | Full=3，Patch=13 |
+| Window / Compaction | Window 1..10，Compaction=9 |
+| Admission | 24 items，7 spilled，最大可见 item=1,730 tokens |
+| Projection | 16/16 logical/transport equivalent |
+| DeepSeek | 完整 HTTP/SSE，`previous_response_id` 不存在 |
+| Stable Context | 820 tokens/sample，相对 Round 25 的 4,645 下降 82.35% |
+| Terminal Safety | Provider Retry=0，原始 DSML 泄漏=0 |
+| Workspace | unchanged |
+
+Round 27-31 依次暴露并修复了 terminal route 自相矛盾、stale business tool
+proposal、`update_plan` 白名单缺失、Tool Call ID 被误作 result handle，以及
+accepted completion 被 research cap 抢先终止。Round 32 首次满足全部终态不变量。
+
+本轮唯一 Tool Error 是插件强沙箱禁止 `make context-authority` 写入
+`.tmp/context-engineering/ce7-authority.json`。宿主侧执行同一门禁通过：
+扫描 507 个文件，Context Authority Count=1，Owner 为
+`internal/runtime/agent/engine/turn_scope.go:contextLedger`。这是运行环境边界，
+不是 Authority Gate 逻辑失败。
+
+`auto_compact_tokens=12000` 是 Compaction 触发线，不是 Provider Prefill 硬上限。
+最终 Window 10 的 observed prefill 为 38,722 tokens；Mandatory History、Truth
+和 Tool Evidence 已超过触发线且没有可安全删除的候选，因此该值成为新的 observed
+baseline。DeepSeek 使用完整 HTTP/SSE 时 Request Bytes 仍会随不可压缩历史增长，
+这是后续优化项，不影响本次正确性验收。
+
+完整报告和 Raw Artifact 位于
+`.tmp/runtime-monitor/r32-ce0-ce7-report.md` 与
+`.tmp/runtime-monitor/r32-ce0-ce7/`。最终 Runtime Capture、Durable Events 和
+Structured Monitor 分别包含 607、94、205 条记录；其 SHA-256 已固化到
+`docs/context-engineering-ce7-evidence.json`。

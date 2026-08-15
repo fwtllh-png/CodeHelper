@@ -43,7 +43,8 @@ func (e *Engine) modelStep(
 	sampleID string,
 	reason string,
 	providerRetries uint32,
-	finishMode bool,
+	terminalOnly bool,
+	finalAnswerOnly bool,
 	continued *bool,
 	pendingInputInjected *bool,
 	capturedReplay **provider.ReplayState,
@@ -103,8 +104,11 @@ func (e *Engine) modelStep(
 	var providerAttempt uint32
 	var continuationMessages []provider.Message
 	var continuedBlocks []provider.ContentBlock
-	finishAttempted, continuations := finishMode, 0
+	var terminalRepairAttempted bool
+	finishAttempted := terminalOnly || finalAnswerOnly
+	finishMode, continuations := false, 0
 	baseReasoningEffort := e.reasoningEffort(scope, reason)
+sampleLoop:
 	for attempt := 0; ; attempt++ {
 		var turnContext []provider.Message
 		turnReceipts := append([]promptcontext.Receipt(nil), worldReceipts...)
@@ -119,13 +123,15 @@ func (e *Engine) modelStep(
 		requestTools := definitions
 		reasoningEffort := baseReasoningEffort
 		nativeSearch := e.options.NativeSearch
-		if finishMode {
+		if finishMode || finalAnswerOnly {
 			requestTools = nil
+		}
+		if finishMode || terminalOnly || finalAnswerOnly {
 			reasoningEffort = "low"
 			nativeSearch = false
 		}
 		sampleReason := promptcontext.SampleReason(
-			reason, attempt, finishMode || continuations > 0,
+			reason, attempt, finishMode || finalAnswerOnly || continuations > 0,
 		)
 		project := func() contextstore.Snapshot {
 			return contextLedger.Project(contextstore.Projection{
@@ -140,7 +146,8 @@ func (e *Engine) modelStep(
 		}
 		window, err := e.runCompactGate(
 			history, snapshot, promptcontext.OutputLimit(
-				e.maxOutputFor(route), reasoningEffort, finishMode || budgetFinishOnly,
+				e.maxOutputFor(route), reasoningEffort,
+				finishMode || finalAnswerOnly || budgetFinishOnly,
 			), phase, true, send,
 		)
 		if err != nil {
@@ -152,21 +159,21 @@ func (e *Engine) modelStep(
 			snapshot = project()
 			window, err = e.runCompactGate(
 				history, snapshot, promptcontext.OutputLimit(
-					e.maxOutputFor(route), reasoningEffort, finishMode || budgetFinishOnly,
+					e.maxOutputFor(route), reasoningEffort,
+					finishMode || finalAnswerOnly || budgetFinishOnly,
 				), phase, true, send,
 			)
 			if err != nil {
 				return nil, nil, totalUsage, window.estimated, err
 			}
 		}
-		finishOnly := finishMode || budgetFinishOnly ||
+		finishOnly := finishMode || terminalOnly || finalAnswerOnly || budgetFinishOnly ||
 			window.hardLimit > 0 && window.active >= window.hardLimit*85/100
 		if finishOnly && !finishMode {
-			research := scope.spec.Request.Intent == protocol.TurnIntentAnswer || scope.spec.Request.Intent == protocol.TurnIntentPlan
 			requestTools = slices.DeleteFunc(
 				append([]provider.ToolDefinition(nil), requestTools...),
 				func(tool provider.ToolDefinition) bool {
-					return research || tool.Name != "turn_complete" && !strings.HasPrefix(tool.Name, "quality_")
+					return !modelFinishToolAllowed(tool.Name)
 				})
 			reasoningEffort, nativeSearch = "low", false
 		}
@@ -393,21 +400,52 @@ func (e *Engine) modelStep(
 			if len(continuedBlocks) != 0 {
 				replay = nil
 			}
-			if capturedReplay != nil {
-				*capturedReplay = replay
-			}
 			completeBlocks := appendContinuedBlocks(continuedBlocks, blocks)
 			if continued != nil {
 				text := strings.TrimSpace(blocksText(completeBlocks))
 				*continued = strings.HasSuffix(text, ":") || strings.HasSuffix(text, "：")
 			}
-			if finishOnly && len(calls) != 0 {
+			if (finishMode || finalAnswerOnly) && len(calls) != 0 {
+				message := "model finish route attempted a new tool call"
+				if finalAnswerOnly {
+					message = "model final-answer route attempted a new tool call"
+				}
 				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
 					protocol.CodeConflict,
-					"model finish route attempted a new tool call",
+					message,
 					false,
 					nil,
 				)
+			}
+			if finishOnly {
+				for _, call := range calls {
+					if modelFinishToolAllowed(call.Name) {
+						continue
+					}
+					if terminalRepairAttempted {
+						return continuedBlocks, nil, totalUsage, lastEstimate,
+							protocol.NewProblem(
+								protocol.CodeConflict,
+								fmt.Sprintf(
+									"model terminal route attempted non-terminal tool %q",
+									call.Name,
+								),
+								false,
+								nil,
+							)
+					}
+					continuationMessages = append(
+						continuationMessages,
+						terminalToolCorrectionFeedback(e.turn, call.Name),
+					)
+					terminalOnly = true
+					terminalRepairAttempted = true
+					attempt = -1
+					continue sampleLoop
+				}
+			}
+			if capturedReplay != nil {
+				*capturedReplay = replay
 			}
 			for index := range calls {
 				binding, known := catalog.Binding(calls[index].Name)
@@ -464,6 +502,29 @@ func projectionRecoveryID(
 		return ""
 	}
 	return string(recovery.Action) + "\x00" + string(recovery.SourceTurnID)
+}
+
+func modelFinishToolAllowed(name string) bool {
+	return name == "turn_complete" ||
+		name == "update_plan" ||
+		strings.HasPrefix(name, "quality_")
+}
+
+func terminalToolCorrectionFeedback(
+	turn uint64,
+	name string,
+) provider.Message {
+	message := provider.TextMessage(provider.RoleUser, fmt.Sprintf(
+		`[terminal_tool_correction]
+discarded_tool=%q
+The terminal-only sample proposed a non-terminal tool that was not advertised.
+That proposal was discarded and was not executed. Do not repeat it. Use only
+turn_complete, update_plan, or quality_* tools when advertised; otherwise
+produce the concise user-facing final answer from evidence already present.`,
+		name,
+	))
+	message.Turn = turn
+	return message
 }
 
 const maxOutputContinuations = 2

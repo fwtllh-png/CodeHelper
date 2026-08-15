@@ -240,6 +240,25 @@ func TestResultGetPagesReconstructFullLargeResult(t *testing.T) {
 	}
 }
 
+func TestResultGetMissingHandleReturnsStructuredPrecondition(t *testing.T) {
+	registry := NewRegistry(nil, NewResultStore(32<<10))
+	_, err := registry.Execute(t.Context(), Call{
+		Name:       "result_get",
+		Arguments:  json.RawMessage(`{"handle":"call-id-is-not-a-handle"}`),
+		Authorized: true,
+	})
+	if !errors.Is(err, ErrPrecondition) {
+		t.Fatalf("Execute() error = %v, want precondition", err)
+	}
+	hint, ok := RecoveryHintFromError(err)
+	if !ok ||
+		hint.ErrorCategory != "result_handle_not_found" ||
+		hint.RequiredAction != "use_advertised_result_handle" ||
+		hint.RetryOriginal {
+		t.Fatalf("recovery hint = %+v, found = %t", hint, ok)
+	}
+}
+
 func TestModelResultRetainsOnlyModelMetadata(t *testing.T) {
 	input := Result{Content: "ok", Metadata: map[string]any{
 		"error_category":  "retryable",

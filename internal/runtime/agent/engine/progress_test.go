@@ -158,3 +158,59 @@ func TestReadOnlyTurnStopsAfterSixteenTotalSamples(t *testing.T) {
 		t.Fatalf("finish-only request exposed tools: %+v", runtime.requests[12].Tools)
 	}
 }
+
+func TestReadOnlyTurnAllowsOneFinalAnswerAfterAcceptedCompletionAtLimit(
+	t *testing.T,
+) {
+	streams := make([]provider.Stream, 0, 17)
+	for index := range 11 {
+		streams = append(streams, toolCallStream(
+			fmt.Sprintf("read-%d", index),
+			"echo",
+			fmt.Sprintf(`{"text":"read-%d"}`, index),
+		))
+	}
+	for index := range 4 {
+		streams = append(streams, toolCallStream(
+			fmt.Sprintf("quality-%d", index),
+			"quality_verify",
+			`{"covered_paths":["a.go"]}`,
+		))
+	}
+	streams = append(
+		streams,
+		toolCallStream("complete", "turn_complete", `{
+			"status":"complete",
+			"summary":"analysis complete",
+			"pending_actions":[]
+		}`),
+		textStream("final accepted answer"),
+	)
+	runtime := &scriptedProvider{streams: streams}
+	registry := declarationRegistry(t, true)
+	if err := registry.Register(&echoTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
+	engine.options.MaxSteps = 64
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"bounded-completion",
+		"analyze the repository",
+		protocol.TurnIntentAnswer,
+		nil,
+		func(Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.Text != "final accepted answer" || len(runtime.requests) != 17 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	final := runtime.requests[16]
+	if len(final.Tools) != 0 ||
+		!requestContains(final, "[completion_final_answer]") {
+		t.Fatalf("final-answer request = %+v", final)
+	}
+}

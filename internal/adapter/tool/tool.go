@@ -1207,8 +1207,10 @@ type resultRetrieval struct {
 
 func (*resultRetrieval) Descriptor() Descriptor {
 	return Descriptor{
-		Name: "result_get", Description: "Retrieve a bounded excerpt or metadata for a tool result handle", Visibility: VisibleModel,
-		Capability: CapabilityRead, AccessMode: AccessRead,
+		Name:        "result_get",
+		Description: "Retrieve a bounded excerpt or metadata using the exact result_* handle from a truncation notice; tool call IDs are not handles",
+		Visibility:  VisibleModel,
+		Capability:  CapabilityRead, AccessMode: AccessRead,
 		ParallelPolicy: ParallelConcurrent, SandboxRequirement: SandboxNone,
 		Availability: AvailabilityAvailable,
 		ResourceResolver: ResourceResolver{Templates: []ResourceTemplate{{
@@ -1246,7 +1248,14 @@ func (t *resultRetrieval) Execute(_ context.Context, raw json.RawMessage) (Resul
 	}
 	value, exists := t.store.getResult(input.Handle)
 	if !exists {
-		return Result{}, errors.New("result handle not found")
+		return Result{}, Precondition(WithRecoveryHint(
+			errors.New("result handle not found"),
+			RecoveryHint{
+				ErrorCategory:  "result_handle_not_found",
+				RequiredAction: "use_advertised_result_handle",
+				RetryOriginal:  false,
+			},
+		))
 	}
 	if input.Mode == "" {
 		input.Mode = "summary"

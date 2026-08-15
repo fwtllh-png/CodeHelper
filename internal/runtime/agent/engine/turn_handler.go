@@ -624,6 +624,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		kernel: kernel,
 	}
 	sampleReason := promptcontext.SampleNormal
+	var completionFinalSampleAttempted bool
 	invalidateCompletion := func(reason string) error {
 		current := kernel.completion()
 		if current == nil || !current.Accepted {
@@ -645,8 +646,21 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if err != nil {
 			return result, err
 		}
+		completionFinalAnswer := false
 		if progress.stage == turnkernel.ProgressStageExhausted {
-			return result, noProgressProblem(progress)
+			completion := kernel.completion()
+			if completion == nil || !completion.Accepted ||
+				completionFinalSampleAttempted {
+				return result, noProgressProblem(progress)
+			}
+			completionFinalSampleAttempted = true
+			completionFinalAnswer = true
+			progress.stage = turnkernel.ProgressStageFinishOnly
+			progress.stageChanged = false
+			transaction = append(
+				transaction,
+				completionFinalAnswerFeedback(e.turn),
+			)
 		}
 		if progress.stageChanged &&
 			progress.stage != turnkernel.ProgressStageNone {
@@ -704,6 +718,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			kernel.providerRetries(sampleID),
 			progress.stage == turnkernel.ProgressStageFinishOnly &&
 				turnkernel.IsResearchIntent(kernel.intent()),
+			completionFinalAnswer,
 			&modelOutputContinued,
 			&pendingInputInjected,
 			&modelReplay,

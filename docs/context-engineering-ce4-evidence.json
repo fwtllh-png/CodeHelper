@@ -85,6 +85,25 @@
     "content_handle_survives_result_surface_projection": true,
     "fork_and_restart_use_normalized_history": true
   },
+  "live_follow_up": {
+    "status": "passed",
+    "round": "r32-ce0-ce7",
+    "result_handle_contract": "exact advertised result_* handle",
+    "tool_call_id_is_not_result_handle": true,
+    "missing_handle_is_recoverable_precondition": true,
+    "missing_handle_error_category": "result_handle_not_found",
+    "missing_handle_required_action": "use_advertised_result_handle",
+    "missing_handle_retry_original": false,
+    "tool_start_count": 34,
+    "tool_result_count": 34,
+    "call_id_sets_equal": true,
+    "provider_visible_orphans": 0,
+    "admission_items": 24,
+    "admission_spilled_items": 7,
+    "admission_original_tokens": 19032,
+    "admission_retained_tokens": 16744,
+    "max_model_visible_item_tokens": 1730
+  },
   "comparison_to_ce3": {
     "status": "passed",
     "input_tokens_p50_relative": 0,

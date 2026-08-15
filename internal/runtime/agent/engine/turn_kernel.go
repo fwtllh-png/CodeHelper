@@ -765,6 +765,7 @@ func (s *engineTurnKernel) observeProgress(
 	}
 	return progressObservation{
 		stage:             s.state.Progress.Stage,
+		observedSamples:   s.state.Progress.ObservedSamples,
 		noProgressSamples: s.state.Progress.NoProgressSamples,
 		stageChanged:      s.state.Progress.Stage != previousStage,
 	}, nil
@@ -775,6 +776,7 @@ func (s *engineTurnKernel) progressObservation() progressObservation {
 	defer s.mu.Unlock()
 	return progressObservation{
 		stage:             s.state.Progress.Stage,
+		observedSamples:   s.state.Progress.ObservedSamples,
 		noProgressSamples: s.state.Progress.NoProgressSamples,
 	}
 }

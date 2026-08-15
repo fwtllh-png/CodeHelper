@@ -167,7 +167,7 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 	}
 }
 
-func TestTokenWindowFinishOnlyRemovesAllReadOnlyToolsAtEightyFivePercent(t *testing.T) {
+func TestTokenWindowFinishOnlyRetainsOnlyTerminalToolsAtEightyFivePercent(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{textStream("done")}}
 	engine := newEngine(t, runtime, declarationRegistry(t, true))
 	engine.options.StaticContext = []provider.Message{
@@ -180,8 +180,66 @@ func TestTokenWindowFinishOnlyRemovesAllReadOnlyToolsAtEightyFivePercent(t *test
 	if len(runtime.requests) != 1 {
 		t.Fatalf("requests = %+v", runtime.requests)
 	}
-	if len(runtime.requests[0].Tools) != 0 {
-		t.Fatalf("requests = %+v, want no tools", runtime.requests)
+	names := make(map[string]bool, len(runtime.requests[0].Tools))
+	for _, definition := range runtime.requests[0].Tools {
+		names[definition.Name] = true
+	}
+	if !names["turn_complete"] || !names["quality_verify"] ||
+		names["write_fixture"] || len(names) != 2 {
+		t.Fatalf(
+			"terminal tools = %+v, want registered terminal tools only",
+			names,
+		)
+	}
+}
+
+func TestTokenWindowFinishOnlyRepairsOneStaleBusinessToolProposal(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("stale-read", "shell_read", `{"command":"go test ./..."}`),
+		textStream("bounded final answer"),
+	}}
+	engine := newEngine(t, runtime, declarationRegistry(t, true))
+	engine.options.StaticContext = []provider.Message{
+		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 12_100)),
+	}
+
+	result, err := engine.Run(t.Context(), "finish", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "bounded final answer" || len(runtime.requests) != 2 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	for index, request := range runtime.requests {
+		for _, definition := range request.Tools {
+			if !modelFinishToolAllowed(definition.Name) {
+				t.Fatalf("request %d advertised %q", index, definition.Name)
+			}
+		}
+	}
+	if !requestContains(runtime.requests[1], "[terminal_tool_correction]") ||
+		!requestContains(runtime.requests[1], `discarded_tool="shell_read"`) {
+		t.Fatalf("terminal correction missing from %+v", runtime.requests[1].Messages)
+	}
+}
+
+func TestTokenWindowFinishOnlyFailsAfterRepeatedStaleBusinessToolProposal(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("stale-read-1", "shell_read", `{}`),
+		toolCallStream("stale-read-2", "shell_read", `{}`),
+	}}
+	engine := newEngine(t, runtime, declarationRegistry(t, true))
+	engine.options.StaticContext = []provider.Message{
+		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 12_100)),
+	}
+
+	_, err := engine.Run(t.Context(), "finish", nil)
+	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict ||
+		!strings.Contains(err.Error(), `non-terminal tool "shell_read"`) {
+		t.Fatalf("Run() error = %v, want terminal route conflict", err)
+	}
+	if len(runtime.requests) != 2 {
+		t.Fatalf("requests = %d, want two bounded attempts", len(runtime.requests))
 	}
 }
 

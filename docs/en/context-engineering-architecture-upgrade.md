@@ -2,7 +2,7 @@
 
 [Simplified Chinese](../zh-CN/context-engineering-architecture-upgrade.md) | English
 
-> Status: `proposed`.
+> Status: `accepted`.
 >
 > Baselines: CodeHelper `f1b1ec1955f4a64149268cfe3bf91b00a0f05d06`;
 > Codex reference implementation
@@ -827,3 +827,50 @@ The upgrade is complete only when:
 11. architecture ratchet, race, hermetic, live, and documentation gates pass;
 12. old context authorities, feature flags, and dual writes are deleted; and
 13. raw artifacts, comparisons, and gate evidence prove every claimed benefit.
+
+## 15. Final Live Acceptance
+
+On 2026-08-15, `r32-ce0-ce7` completed the combined CE0-CE7 acceptance run in
+an isolated official VS Code window with `deepseek-v4-flash`. Every stage
+passed:
+
+| Invariant | Result |
+| --- | --- |
+| Terminal | completed=1, failed=0, canceled=0 |
+| Provider / Model | Attempts=16, Samples=16, Completion Repairs=0 |
+| Tool Pairing | Start/Result=34/34, identical call-ID sets, Orphans=0 |
+| World | Full=3, Patch=13 |
+| Window / Compaction | Windows 1..10, Compactions=9 |
+| Admission | 24 items, 7 spilled, maximum visible item=1,730 tokens |
+| Projection | 16/16 logical/transport equivalent |
+| DeepSeek | complete HTTP/SSE, no `previous_response_id` |
+| Stable Context | 820 tokens/sample, down 82.35% from Round 25's 4,645 |
+| Terminal Safety | Provider Retries=0, raw DSML leaks=0 |
+| Workspace | unchanged |
+
+Rounds 27-31 successively exposed and fixed a contradictory terminal route, a
+stale business-tool proposal, the missing `update_plan` terminal allowlist,
+Tool Call IDs being mistaken for result handles, and the research cap
+preempting an accepted completion. Round 32 is the first run to satisfy every
+terminal invariant.
+
+The only Tool Error was the extension's strong sandbox denying
+`make context-authority` permission to write
+`.tmp/context-engineering/ce7-authority.json`. The same host-side gate passed:
+507 files scanned, Context Authority Count=1, owned by
+`internal/runtime/agent/engine/turn_scope.go:contextLedger`. This is an
+environment boundary, not an authority-gate logic failure.
+
+`auto_compact_tokens=12000` is a compaction trigger, not a hard Provider
+prefill cap. Final Window 10 had an observed prefill of 38,722 tokens.
+Mandatory History, Truth, and Tool Evidence already exceeded the trigger with
+no safely removable candidate, so that value became the new observed
+baseline. Request bytes can therefore continue to grow with irreducible
+history when DeepSeek uses complete HTTP/SSE. This remains an optimization
+target but does not invalidate correctness acceptance.
+
+The complete report and raw artifacts are in
+`.tmp/runtime-monitor/r32-ce0-ce7-report.md` and
+`.tmp/runtime-monitor/r32-ce0-ce7/`. The final Runtime Capture, Durable Events,
+and Structured Monitor contain 607, 94, and 205 records. Their SHA-256 values
+are recorded in `docs/context-engineering-ce7-evidence.json`.

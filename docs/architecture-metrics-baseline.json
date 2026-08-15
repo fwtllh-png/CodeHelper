@@ -278,13 +278,13 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 24,
-        "production_lines": 10373,
+        "production_lines": 10476,
         "options_fields": 59,
         "mutex_fields": 9
       },
       "relaxations": {
         "internal_fanout": "CE4 projects shared Admission Receipts into durable Tool Result history.",
-        "production_lines": "CE7 deletes TurnContextSnapshot, receipt baselines, and mutable PromptContext ownership while adding the single-authority snapshot API."
+        "production_lines": "Real VS Code and DeepSeek acceptance exposed finish-route convergence gaps; terminal-only samples retain completion, plan bookkeeping, and verification tools, correct one stale proposal without execution, and allow one zero-tool final-answer sample after an accepted declaration reaches the research cap."
       }
     },
     {

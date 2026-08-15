@@ -17,6 +17,7 @@ import (
 
 type progressObservation struct {
 	stage             turnkernel.ProgressStage
+	observedSamples   uint32
 	noProgressSamples uint32
 	stageChanged      bool
 }
@@ -86,6 +87,19 @@ func noProgressFeedback(
 func noProgressProblem(
 	observation progressObservation,
 ) error {
+	if observation.noProgressSamples == 0 &&
+		observation.observedSamples > 0 {
+		return protocol.NewProblem(
+			protocol.CodeResourceExhausted,
+			fmt.Sprintf(
+				"research turn reached the bounded total of %d model steps "+
+					"without completing",
+				observation.observedSamples,
+			),
+			false,
+			nil,
+		)
+	}
 	return protocol.NewProblem(
 		protocol.CodeResourceExhausted,
 		fmt.Sprintf(
@@ -96,6 +110,17 @@ func noProgressProblem(
 		false,
 		nil,
 	)
+}
+
+func completionFinalAnswerFeedback(turn uint64) provider.Message {
+	message := provider.TextMessage(
+		provider.RoleUser,
+		"[completion_final_answer]\n"+
+			"The completion declaration was accepted. Do not call any tools or "+
+			"perform more analysis. Produce the concise user-facing final answer now.",
+	)
+	message.Turn = turn
+	return message
 }
 
 func withFinishOnly(ctx context.Context) context.Context {
