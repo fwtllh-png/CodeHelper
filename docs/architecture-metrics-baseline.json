@@ -175,7 +175,7 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 69,
+        "internal_fanout": 68,
         "production_lines": 7545,
         "options_fields": 70,
         "mutex_fields": 5

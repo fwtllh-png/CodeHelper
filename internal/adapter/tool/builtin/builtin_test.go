@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -62,6 +63,13 @@ func TestBuiltinRegistryUsesTypedOutcomeBoundary(t *testing.T) {
 	registry, err := NewWithSandboxBackend(t.TempDir(), builtinTestBackend{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := snapshot.Lookup(toolsearch.ToolName); !ok {
+		t.Fatal("builtin registry has no bounded tool_search surface")
 	}
 	for _, descriptor := range registry.Descriptors(tool.VisibleModel) {
 		if descriptor.Availability != tool.AvailabilityAvailable {

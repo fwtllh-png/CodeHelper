@@ -15,7 +15,6 @@ import (
 	memorytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/memory"
 	plugintool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/plugin"
 	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/buildinfo"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -202,9 +201,6 @@ func (c skillContributor) Contribute(
 		}
 		if err := skilltool.Register(registry, catalog); err != nil {
 			return fmt.Errorf("skill tool: %w", err)
-		}
-		if err := toolsearch.Register(registry); err != nil {
-			return fmt.Errorf("tool_search: %w", err)
 		}
 		c.output.skillCatalog = catalog
 		return nil

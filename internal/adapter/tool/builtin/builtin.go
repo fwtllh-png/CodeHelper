@@ -15,6 +15,7 @@ import (
 	qualitytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/quality"
 	searchtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/search"
 	shelltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/shell"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
@@ -147,6 +148,9 @@ func NewWithIndex(
 	if err := githubtool.Register(registry, githubtool.Options{
 		Workspace: root, Backend: backend,
 	}); err != nil {
+		return nil, nil, err
+	}
+	if err := toolsearch.Register(registry); err != nil {
 		return nil, nil, err
 	}
 	return registry, handles, nil

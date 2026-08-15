@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -157,6 +158,13 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 	toolset, err := session.childTools.open(isolated.Root)
 	if err != nil {
 		t.Fatal(err)
+	}
+	snapshot, err := toolset.registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := snapshot.Lookup(toolsearch.ToolName); !ok {
+		t.Fatal("isolated Chat toolset has no bounded tool_search surface")
 	}
 	toolContext := tool.WithInvocationIdentity(
 		t.Context(),
