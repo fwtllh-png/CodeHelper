@@ -25,8 +25,12 @@ func (*Adapter) Supports(protocol model.WireProtocol) bool {
 		protocol == model.ProtocolOpenAIResponses
 }
 func (*Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedCall, error) {
+	var (
+		call providerwire.PreparedCall
+		err  error
+	)
 	if request.Route.Protocol() == model.ProtocolOpenAIResponses {
-		return openai.PrepareResponses(
+		call, err = openai.PrepareResponses(
 			request,
 			model.AdapterDeepSeek,
 			openai.ResponsesPolicy{
@@ -34,20 +38,28 @@ func (*Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedCal
 				ReplayAdapter:        model.AdapterDeepSeek,
 			},
 		)
-	}
-	if request.Route.Protocol() != model.ProtocolOpenAIChat {
+	} else if request.Route.Protocol() != model.ProtocolOpenAIChat {
 		return providerwire.PreparedCall{}, fmt.Errorf(
 			"DeepSeek does not support protocol %q", request.Route.Protocol(),
 		)
+	} else {
+		call, err = openai.PrepareChat(
+			request, model.AdapterDeepSeek, openai.ChatPolicy{
+				ReasoningWithToolsOnly: true,
+				RejectImages:           true,
+				EmptyToolOutput:        emptyToolOutput,
+				ThinkingOff:            true,
+			},
+		)
 	}
-	return openai.PrepareChat(
-		request, model.AdapterDeepSeek, openai.ChatPolicy{
-			ReasoningWithToolsOnly: true,
-			RejectImages:           true,
-			EmptyToolOutput:        emptyToolOutput,
-			ThinkingOff:            true,
-		},
+	if err != nil {
+		return providerwire.PreparedCall{}, err
+	}
+	call.Projection = provider.CompleteProjection(
+		request.Projection,
+		provider.ProjectionFallbackCapabilityDisabled,
 	)
+	return call, nil
 }
 func (*Adapter) OpenStream(
 	body io.ReadCloser,

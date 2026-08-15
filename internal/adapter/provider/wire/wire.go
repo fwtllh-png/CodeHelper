@@ -26,6 +26,7 @@ type PreparedCall struct {
 	Auth         AuthStyle
 	Adapter      model.AdapterID
 	Protocol     model.WireProtocol
+	Projection   provider.ProjectionReceipt
 }
 type HTTPFailure struct {
 	Status int
@@ -62,9 +63,35 @@ type SessionAdapter interface {
 }
 
 func Metadata(logical, payload []byte, incremental bool) provider.TransportMetadata {
+	return MetadataWithProjection(
+		logical,
+		payload,
+		incremental,
+		provider.ProjectionReceipt{},
+	)
+}
+
+func MetadataWithProjection(
+	logical []byte,
+	payload []byte,
+	incremental bool,
+	projection provider.ProjectionReceipt,
+) provider.TransportMetadata {
+	if projection.Mode == "" {
+		projection = provider.CompleteProjection(
+			provider.ProjectionContext{},
+			provider.ProjectionFallbackCompleteRequest,
+		)
+	}
+	if incremental {
+		projection.Mode = provider.ProjectionModeIncrementalSession
+		projection.IncrementalEligible = true
+		projection.FallbackReason = ""
+	}
 	return provider.TransportMetadata{
 		RequestBytes: uint64(len(payload)), LogicalRequestDigest: Digest(logical),
 		TransportPayloadDigest: Digest(payload), Incremental: incremental,
+		Projection: projection,
 	}
 }
 func Digest(data []byte) string {

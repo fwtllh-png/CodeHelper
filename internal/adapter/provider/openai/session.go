@@ -20,6 +20,9 @@ type responsesSession struct {
 	conn                         providerwire.Socket
 	cancel                       context.CancelFunc
 	endpoint, previous, property string
+	routeDigest                  string
+	windowID                     string
+	recoveryID                   string
 	prefix                       []json.RawMessage
 	lastUsed                     time.Time
 	idle                         *time.Timer
@@ -30,14 +33,10 @@ func (a *Adapter) TrySession(ctx context.Context, request provider.ModelRequest,
 	if call.Protocol != "openai_responses" || !request.Route.Model().Capabilities.IncrementalResponses || request.PromptCacheKey == "" {
 		return nil, false, nil
 	}
-	session := a.session(request)
-	session.mu.Lock()
-	if session.forceHTTP {
-		session.forceHTTP = false
-		session.mu.Unlock()
+	if call.Projection.Mode == provider.ProjectionModeFullHTTP {
 		return nil, false, nil
 	}
-	session.mu.Unlock()
+	session := a.session(request)
 	attempt, err := transport.BeginSession(ctx, request.Route, call)
 	if err != nil {
 		return nil, true, err
@@ -56,7 +55,7 @@ func (a *Adapter) TrySession(ctx context.Context, request provider.ModelRequest,
 	return attempt.Wrap(stream, metadata), true, nil
 }
 func (a *Adapter) session(request provider.ModelRequest) *responsesSession {
-	key := request.PromptCacheKey + "\x00" + request.Route.ProviderID() + "\x00" + request.Route.Model().ID
+	key := request.PromptCacheKey
 	a.sessionMu.Lock()
 	defer a.sessionMu.Unlock()
 	if a.sessions == nil {
@@ -81,6 +80,7 @@ func (a *Adapter) openSession(ctx context.Context, request provider.ModelRequest
 	if session.conn != nil && idleTimeout > 0 && now.Sub(session.lastUsed) > idleTimeout {
 		session.invalidate()
 	}
+	projection := evaluateProjection(session, request, call, input, property)
 	endpoint, err := websocketEndpoint(request.Route.Endpoint())
 	if err != nil {
 		session.mu.Unlock()
@@ -95,12 +95,22 @@ func (a *Adapter) openSession(ctx context.Context, request provider.ModelRequest
 		}
 		session.conn, session.cancel, session.endpoint = conn, cancel, endpoint
 	}
-	incremental := session.previous != "" && session.property == property && strictExtension(session.prefix, input)
+	incremental := projection.IncrementalEligible
+	transportInput, projection, err := projectTransportInput(
+		session,
+		input,
+		projection,
+	)
+	if err != nil {
+		session.mu.Unlock()
+		return nil, provider.TransportMetadata{}, err
+	}
 	if incremental {
 		body["previous_response_id"] = session.previous
-		body["input"] = input[len(session.prefix):]
+		body["input"] = transportInput
 	}
 	session.previous, session.property, session.prefix = "", "", nil
+	session.routeDigest, session.windowID, session.recoveryID = "", "", ""
 	payload, err := json.Marshal(body)
 	if err != nil {
 		session.mu.Unlock()
@@ -113,11 +123,21 @@ func (a *Adapter) openSession(ctx context.Context, request provider.ModelRequest
 		return nil, provider.TransportMetadata{}, err
 	}
 	session.lastUsed = now
-	stream := &responsesSocketStream{ctx: ctx, session: session, input: input, property: property,
+	stream := &responsesSocketStream{
+		ctx: ctx, session: session, input: input, property: property,
+		routeDigest: projection.RouteDigest,
+		windowID:    request.Projection.WindowID,
+		recoveryID:  request.Projection.RecoveryID,
 		idleTimeout: idleTimeout, decoder: ResponsesDecoder{
 			CaptureState: true, CaptureReplay: true,
-		}}
-	return stream, providerwire.Metadata(call.Body, payload, incremental), nil
+		},
+	}
+	return stream, providerwire.MetadataWithProjection(
+		call.Body,
+		payload,
+		incremental,
+		projection,
+	), nil
 }
 func responsesSocketBody(data []byte) (map[string]any, []json.RawMessage, string, error) {
 	var body map[string]any
@@ -194,6 +214,9 @@ type responsesSocketStream struct {
 	started, stopped, closed bool
 	input                    []json.RawMessage
 	property                 string
+	routeDigest              string
+	windowID                 string
+	recoveryID               string
 	pending                  *provider.ResponseState
 	idleTimeout              time.Duration
 }
@@ -218,6 +241,9 @@ func (s *responsesSocketStream) Recv() (provider.StreamEvent, error) {
 				s.session.previous = s.pending.ID
 				s.session.property = s.property
 				s.session.prefix = append(append([]json.RawMessage(nil), s.input...), replayOutput(s.pending.Output)...)
+				s.session.routeDigest = s.routeDigest
+				s.session.windowID = s.windowID
+				s.session.recoveryID = s.recoveryID
 			}
 			if event.Type == provider.EventMessageStop {
 				s.stopped = true
@@ -270,6 +296,7 @@ func (s *responsesSession) invalidate() {
 		s.idle.Stop()
 	}
 	s.conn, s.cancel, s.previous, s.property, s.prefix = nil, nil, "", "", nil
+	s.routeDigest, s.windowID, s.recoveryID = "", "", ""
 	s.idle = nil
 }
 func replayOutput(items []json.RawMessage) []json.RawMessage {

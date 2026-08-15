@@ -242,6 +242,13 @@ func (e *Engine) modelStep(
 		})
 		stream, err := e.options.Provider.Stream(requestContext, provider.ModelRequest{
 			Route: route, Messages: messages,
+			Projection: provider.ProjectionContext{
+				ContextRevision: attribution.ContextRevision,
+				WindowID:        attribution.WindowID,
+				WindowNumber:    attribution.WindowNumber,
+				Retry:           providerRetries > 0,
+				RecoveryID:      projectionRecoveryID(scope.spec.Request.Recovery),
+			},
 			MaxOutputTokens: maxOutputTokens, Tools: requestTools,
 			ReasoningEffort: reasoningEffort, NativeSearch: nativeSearch,
 			Idempotent:     true,
@@ -448,6 +455,15 @@ func (e *Engine) modelStep(
 		}
 		providerRetries++
 	}
+}
+
+func projectionRecoveryID(
+	recovery *protocol.TurnRecoveryContext,
+) string {
+	if recovery == nil {
+		return ""
+	}
+	return string(recovery.Action) + "\x00" + string(recovery.SourceTurnID)
 }
 
 const maxOutputContinuations = 2

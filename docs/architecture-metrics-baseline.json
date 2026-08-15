@@ -52,13 +52,13 @@
       "path": "internal/adapter/provider",
       "limits": {
         "internal_fanout": 2,
-        "production_lines": 702,
+        "production_lines": 778,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
         "internal_fanout": "CE4 shares content-safe Admission Receipts between Provider history and Tool execution.",
-        "production_lines": "CE4 persists Admission Receipts out of band on Tool Result blocks."
+        "production_lines": "CE6 defines the content-safe Provider Projection continuity and eligibility receipt contract."
       }
     },
     {
@@ -67,9 +67,12 @@
       "path": "internal/adapter/provider/router",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 116,
+        "production_lines": 121,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "CE6 records an explicit full-request fallback when the selected transport has no session capability."
       }
     },
     {
@@ -78,9 +81,12 @@
       "path": "internal/adapter/provider/wire",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 165,
+        "production_lines": 192,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "CE6 carries Provider Projection evidence beside logical and transport request digests."
       }
     },
     {
@@ -104,14 +110,44 @@
       }
     },
     {
+      "id": "provider_projection_file",
+      "kind": "file",
+      "path": "internal/adapter/provider/projection.go",
+      "limits": {
+        "lines": 74,
+        "max_function_lines": 16
+      }
+    },
+    {
+      "id": "provider_openai_projection_file",
+      "kind": "file",
+      "path": "internal/adapter/provider/openai/projection.go",
+      "limits": {
+        "lines": 166,
+        "max_function_lines": 43
+      }
+    },
+    {
+      "id": "provider_openai_session_file",
+      "kind": "file",
+      "path": "internal/adapter/provider/openai/session.go",
+      "limits": {
+        "lines": 352,
+        "max_function_lines": 71
+      }
+    },
+    {
       "id": "provider_openai_package",
       "kind": "package",
       "path": "internal/adapter/provider/openai",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1507,
+        "production_lines": 1709,
         "options_fields": 0,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "CE6 adds exhaustive Responses property, route, lifecycle, stable-prefix, and transport-equivalence checks."
       }
     },
     {
@@ -120,9 +156,12 @@
       "path": "internal/adapter/provider/deepseek",
       "limits": {
         "internal_fanout": 5,
-        "production_lines": 398,
+        "production_lines": 410,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "CE6 makes DeepSeek complete HTTP/SSE projection evidence explicit."
       }
     },
     {
@@ -239,13 +278,13 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 24,
-        "production_lines": 10357,
+        "production_lines": 10373,
         "options_fields": 59,
         "mutex_fields": 9
       },
       "relaxations": {
         "internal_fanout": "CE4 projects shared Admission Receipts into durable Tool Result history.",
-        "production_lines": "CE5 builds Runtime-owned compaction Truth Capsules and commits compaction candidates atomically."
+        "production_lines": "CE6 attaches Runtime-owned Window, Retry, and Recovery continuity to complete logical model requests."
       }
     },
     {
@@ -293,13 +332,13 @@
       "path": "internal/runtime/agent/contextstore",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1187,
+        "production_lines": 1206,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
         "internal_fanout": "CE4 owns provider-independent capability projection and shared Admission Receipt cloning.",
-        "production_lines": "CE4 adds the single Pair/Orphan and Modality Normalizer used by cancellation and Provider projection."
+        "production_lines": "CE6 projects content-safe Provider Projection receipts into per-sample attribution."
       }
     },
     {
@@ -352,12 +391,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 4825,
+        "production_lines": 4873,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "CE5 exposes structured compaction truth and model-downshift evidence."
+        "production_lines": "CE6 persists Provider Projection mode, fallback, stable-prefix, and equivalence evidence."
       }
     },
     {

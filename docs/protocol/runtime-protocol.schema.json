@@ -5160,6 +5160,58 @@
             "provider_framing_tokens": {
               "type": "integer"
             },
+            "provider_projection": {
+              "type": "object",
+              "properties": {
+                "context_revision": {
+                  "type": "integer"
+                },
+                "delta_digest": {
+                  "type": "string"
+                },
+                "fallback_reason": {
+                  "type": "string"
+                },
+                "incremental_eligible": {
+                  "type": "boolean"
+                },
+                "input_digest": {
+                  "type": "string"
+                },
+                "logical_items": {
+                  "type": "integer"
+                },
+                "logical_transport_equivalent": {
+                  "type": "boolean"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "property_digest": {
+                  "type": "string"
+                },
+                "route_digest": {
+                  "type": "string"
+                },
+                "stable_prefix_digest": {
+                  "type": "string"
+                },
+                "transport_items": {
+                  "type": "integer"
+                },
+                "window_id": {
+                  "type": "string"
+                },
+                "window_number": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "logical_transport_equivalent",
+                "mode"
+              ],
+              "additionalProperties": false
+            },
             "reason": {
               "type": "string"
             },

@@ -108,6 +108,11 @@ func (r *Router) Stream(ctx context.Context, request provider.ModelRequest) (pro
 			if handled || err != nil {
 				return stream, err
 			}
+		} else if request.Route.Model().Capabilities.IncrementalResponses {
+			call.Projection.Mode = provider.ProjectionModeFullHTTP
+			call.Projection.IncrementalEligible = false
+			call.Projection.FallbackReason =
+				provider.ProjectionFallbackSessionUnavailable
 		}
 	}
 	return r.transport.Execute(ctx, request, call, adapter)

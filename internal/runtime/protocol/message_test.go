@@ -317,6 +317,35 @@ func TestRejectedIncompleteDeclarationCarriesPendingActions(t *testing.T) {
 	}
 }
 
+func TestUsageRejectsForgedIncrementalProjection(t *testing.T) {
+	meta := EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}
+	valid := &UsageData{Context: &SampleContextData{
+		Reason: "normal", IncrementalTransport: true,
+		ProviderProjection: &ProviderProjectionData{
+			Mode: "incremental_session", IncrementalEligible: true,
+			RouteDigest: "route", PropertyDigest: "property",
+			StablePrefixDigest: "prefix", InputDigest: "input",
+			DeltaDigest: "delta", LogicalTransportEquivalent: true,
+		},
+	}}
+	if _, err := NewEvent(meta, valid); err != nil {
+		t.Fatal(err)
+	}
+	forged := *valid
+	context := *valid.Context
+	projection := *context.ProviderProjection
+	projection.LogicalTransportEquivalent = false
+	context.ProviderProjection = &projection
+	forged.Context = &context
+	if _, err := NewEvent(meta, &forged); err == nil ||
+		!strings.Contains(err.Error(), "evidence is incomplete") {
+		t.Fatalf("forged incremental projection error=%v", err)
+	}
+}
+
 func TestEventTaggedUnionRoundTrip(t *testing.T) {
 	dataValues := []EventData{
 		&TurnStartedData{

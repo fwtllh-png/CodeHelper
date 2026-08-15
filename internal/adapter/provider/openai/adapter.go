@@ -34,18 +34,27 @@ func (a *Adapter) Supports(protocol model.WireProtocol) bool {
 		protocol == model.ProtocolOpenAIResponses
 }
 func (a *Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedCall, error) {
+	var (
+		call providerwire.PreparedCall
+		err  error
+	)
 	switch request.Route.Protocol() {
 	case model.ProtocolOpenAIChat:
-		return PrepareChat(request, a.id, ChatPolicy{})
+		call, err = PrepareChat(request, a.id, ChatPolicy{})
 	case model.ProtocolOpenAIResponses:
 		policy := ResponsesPolicy{IncludeEncryptedReasoning: true}
 		if a.id == model.AdapterOpenAI {
 			policy.ReplayAdapter = model.AdapterOpenAI
 		}
-		return PrepareResponses(request, a.id, policy)
+		call, err = PrepareResponses(request, a.id, policy)
 	default:
 		return providerwire.PreparedCall{}, fmt.Errorf("adapter %q does not support protocol %q", a.id, request.Route.Protocol())
 	}
+	if err != nil {
+		return providerwire.PreparedCall{}, err
+	}
+	call.Projection = a.prepareProjection(request, call)
+	return call, nil
 }
 
 type ChatPolicy struct {

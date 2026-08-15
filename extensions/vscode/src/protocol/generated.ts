@@ -1446,6 +1446,22 @@ export type UsageData = {
       readonly "pairing_visible_orphans"?: number;
       readonly "projected_images"?: number;
       readonly "provider_framing_tokens"?: number;
+      readonly "provider_projection"?: {
+            readonly "context_revision"?: number;
+            readonly "delta_digest"?: string;
+            readonly "fallback_reason"?: string;
+            readonly "incremental_eligible"?: boolean;
+            readonly "input_digest"?: string;
+            readonly "logical_items"?: number;
+            readonly "logical_transport_equivalent": boolean;
+            readonly "mode": string;
+            readonly "property_digest"?: string;
+            readonly "route_digest"?: string;
+            readonly "stable_prefix_digest"?: string;
+            readonly "transport_items"?: number;
+            readonly "window_id"?: string;
+            readonly "window_number"?: number;
+          };
       readonly "reason": string;
       readonly "reasoning_effort"?: string;
       readonly "request_bytes"?: number;

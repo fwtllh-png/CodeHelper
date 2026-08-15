@@ -33,6 +33,25 @@ func ApplyTransport(
 	context.LogicalRequestDigest = value.LogicalRequestDigest
 	context.TransportPayloadDigest = value.TransportPayloadDigest
 	context.IncrementalTransport = value.Incremental
+	projection := value.Projection
+	if projection.Mode != "" {
+		context.ProviderProjection = &protocol.ProviderProjectionData{
+			Mode:                       string(projection.Mode),
+			IncrementalEligible:        projection.IncrementalEligible,
+			FallbackReason:             string(projection.FallbackReason),
+			RouteDigest:                projection.RouteDigest,
+			PropertyDigest:             projection.PropertyDigest,
+			StablePrefixDigest:         projection.StablePrefixDigest,
+			InputDigest:                projection.InputDigest,
+			DeltaDigest:                projection.DeltaDigest,
+			ContextRevision:            projection.ContextRevision,
+			WindowID:                   projection.WindowID,
+			WindowNumber:               projection.WindowNumber,
+			LogicalItems:               projection.LogicalItems,
+			TransportItems:             projection.TransportItems,
+			LogicalTransportEquivalent: projection.LogicalTransportEquivalent,
+		}
+	}
 }
 
 // Measure attributes the complete immutable Snapshot used for one sample.

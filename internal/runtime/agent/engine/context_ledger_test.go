@@ -59,6 +59,19 @@ func TestModelSamplesUseMonotonicContextLedgerSnapshots(t *testing.T) {
 				index+1, context, runtime.requests[index],
 			)
 		}
+		projection := runtime.requests[index].Projection
+		if projection.ContextRevision != context.ContextRevision ||
+			projection.WindowID != context.WindowID ||
+			projection.WindowNumber != context.WindowNumber ||
+			projection.Retry ||
+			projection.RecoveryID != "" {
+			t.Fatalf(
+				"sample %d projection continuity mismatch: context=%+v projection=%+v",
+				index+1,
+				context,
+				projection,
+			)
+		}
 	}
 	if contexts[1].ContextRevision <= contexts[0].ContextRevision {
 		t.Fatalf(
@@ -93,5 +106,17 @@ func TestModelSamplesUseMonotonicContextLedgerSnapshots(t *testing.T) {
 		contexts[0].WorldDigest == "" ||
 		contexts[0].WorldDigest != contexts[1].WorldDigest {
 		t.Fatalf("world projections=%+v", contexts)
+	}
+}
+
+func TestProjectionRecoveryIdentityBindsActionAndSourceTurn(t *testing.T) {
+	recovery := &protocol.TurnRecoveryContext{
+		Action: protocol.TurnRecoveryContinue, SourceTurnID: "turn_blocked",
+	}
+	if got := projectionRecoveryID(recovery); got != "continue\x00turn_blocked" {
+		t.Fatalf("recovery identity=%q", got)
+	}
+	if got := projectionRecoveryID(nil); got != "" {
+		t.Fatalf("nil recovery identity=%q", got)
 	}
 }

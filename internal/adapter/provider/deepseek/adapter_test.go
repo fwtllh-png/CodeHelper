@@ -144,6 +144,15 @@ func TestResponsesPrepareScopesDeepSeekReplayRules(t *testing.T) {
 		!strings.Contains(string(call.Body), reasoningPlaceholder) {
 		t.Fatalf("DeepSeek placeholder missing: %s", call.Body)
 	}
+	if call.Projection.Mode != provider.ProjectionModeFullHTTP ||
+		call.Projection.IncrementalEligible ||
+		call.Projection.FallbackReason !=
+			provider.ProjectionFallbackCapabilityDisabled {
+		t.Fatalf("DeepSeek projection=%+v", call.Projection)
+	}
+	if _, incremental := any(NewAdapter()).(providerwire.SessionAdapter); incremental {
+		t.Fatal("DeepSeek adapter exposed incremental session transport")
+	}
 }
 
 func TestResponsesReplayIsValidatedByDeepSeekAdapter(t *testing.T) {

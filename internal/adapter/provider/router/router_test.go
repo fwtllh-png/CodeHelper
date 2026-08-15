@@ -36,6 +36,7 @@ type testTransport struct {
 	calls   int
 	id      model.AdapterID
 	request provider.ModelRequest
+	call    providerwire.PreparedCall
 }
 
 func (t *testTransport) Execute(
@@ -47,7 +48,19 @@ func (t *testTransport) Execute(
 	t.calls++
 	t.id = call.Adapter
 	t.request = request
+	t.call = call
 	return testStream{}, nil
+}
+
+type sessionTestAdapter struct{ testAdapter }
+
+func (sessionTestAdapter) TrySession(
+	context.Context,
+	provider.ModelRequest,
+	providerwire.PreparedCall,
+	providerwire.SessionTransport,
+) (provider.Stream, bool, error) {
+	return nil, false, nil
 }
 
 func TestRouterFiltersReplayBeforeAdapterAndTransport(t *testing.T) {
@@ -201,6 +214,42 @@ func TestRouterSelectsReadyRouteAdapter(t *testing.T) {
 	_ = stream.Close()
 	if transport.calls != 1 || transport.id != model.AdapterDeepSeek {
 		t.Fatalf("calls=%d adapter=%q", transport.calls, transport.id)
+	}
+}
+
+func TestRouterRecordsMissingSessionTransportFallback(t *testing.T) {
+	adapter := sessionTestAdapter{testAdapter{id: model.AdapterOpenAI}}
+	registry, err := NewRegistry(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := testRoute(t, model.AdapterOpenAI, model.ProtocolOpenAIResponses)
+	capabilities := route.Model().Capabilities
+	capabilities.IncrementalResponses = true
+	route = route.WithCapabilities(capabilities)
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &testTransport{}
+	runtime, err := New(registry, routes, transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := runtime.Stream(t.Context(), provider.ModelRequest{
+		Route: route,
+		Messages: []provider.Message{
+			provider.TextMessage(provider.RoleUser, "test"),
+		},
+		MaxOutputTokens: 16,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = stream.Close()
+	if transport.call.Projection.FallbackReason !=
+		provider.ProjectionFallbackSessionUnavailable {
+		t.Fatalf("projection=%+v", transport.call.Projection)
 	}
 }
 

@@ -193,10 +193,19 @@ func TestApplyTransportAddsWireReceiptWithoutChangingContextIdentity(t *testing.
 	ApplyTransport(context, provider.TransportMetadata{
 		RequestBytes: 42, LogicalRequestDigest: "logical",
 		TransportPayloadDigest: "transport", Incremental: true,
+		Projection: provider.ProjectionReceipt{
+			Mode:                provider.ProjectionModeIncrementalSession,
+			IncrementalEligible: true, StablePrefixDigest: "prefix",
+			LogicalTransportEquivalent: true,
+		},
 	})
 	if context.ContextRevision != 3 || context.ContextDigest != "sha256:context" ||
 		context.RequestBytes != 42 || context.LogicalRequestDigest != "logical" ||
-		context.TransportPayloadDigest != "transport" || !context.IncrementalTransport {
+		context.TransportPayloadDigest != "transport" || !context.IncrementalTransport ||
+		context.ProviderProjection == nil ||
+		context.ProviderProjection.Mode != string(provider.ProjectionModeIncrementalSession) ||
+		context.ProviderProjection.StablePrefixDigest != "prefix" ||
+		!context.ProviderProjection.LogicalTransportEquivalent {
 		t.Fatalf("transport receipt=%+v", context)
 	}
 }

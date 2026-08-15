@@ -98,19 +98,20 @@ type ToolDefinition struct {
 	InputSchema map[string]any `json:"input_schema"`
 }
 type ModelRequest struct {
-	Route           model.ReadyRoute `json:"-"`
-	Purpose         model.Purpose    `json:"purpose,omitempty"`
-	Messages        []Message        `json:"messages"`
-	MaxOutputTokens uint64           `json:"max_output_tokens"`
-	Temperature     *float64         `json:"temperature,omitempty"`
-	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
-	NativeSearch    bool             `json:"native_search,omitempty"`
-	Tools           []ToolDefinition `json:"tools,omitempty"`
-	Idempotent      bool             `json:"idempotent,omitempty"`
-	PromptCacheKey  string           `json:"prompt_cache_key,omitempty"`
-	Store           *bool            `json:"store,omitempty"`
-	ParallelTools   *bool            `json:"parallel_tools,omitempty"`
-	Include         []string         `json:"include,omitempty"`
+	Route           model.ReadyRoute  `json:"-"`
+	Projection      ProjectionContext `json:"-"`
+	Purpose         model.Purpose     `json:"purpose,omitempty"`
+	Messages        []Message         `json:"messages"`
+	MaxOutputTokens uint64            `json:"max_output_tokens"`
+	Temperature     *float64          `json:"temperature,omitempty"`
+	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
+	NativeSearch    bool              `json:"native_search,omitempty"`
+	Tools           []ToolDefinition  `json:"tools,omitempty"`
+	Idempotent      bool              `json:"idempotent,omitempty"`
+	PromptCacheKey  string            `json:"prompt_cache_key,omitempty"`
+	Store           *bool             `json:"store,omitempty"`
+	ParallelTools   *bool             `json:"parallel_tools,omitempty"`
+	Include         []string          `json:"include,omitempty"`
 }
 
 func StickyPromptCacheKey(key string, route model.ReadyRoute) string {
@@ -410,6 +411,7 @@ type TransportMetadata struct {
 	LogicalRequestDigest   string
 	TransportPayloadDigest string
 	Incremental            bool
+	Projection             ProjectionReceipt
 }
 type MetadataStream interface {
 	Stream

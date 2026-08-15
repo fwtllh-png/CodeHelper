@@ -131,7 +131,7 @@ func (c *Client) Execute(
 		release = false
 		return c.wrapStream(
 			stream,
-			providerwire.Metadata(call.Body, call.Body, false),
+			providerwire.MetadataWithProjection(call.Body, call.Body, false, call.Projection),
 			requestCancel,
 		), nil
 	}

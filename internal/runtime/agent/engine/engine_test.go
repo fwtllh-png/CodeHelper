@@ -1328,6 +1328,17 @@ func TestEngineRetriesOnlyBeforeMeaningfulStreamData(t *testing.T) {
 	if result.Text != "ok" || len(runtime.requests) != 2 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
 	}
+	if runtime.requests[0].Projection.Retry ||
+		!runtime.requests[1].Projection.Retry ||
+		runtime.requests[0].Projection.WindowID == "" ||
+		runtime.requests[0].Projection.WindowID !=
+			runtime.requests[1].Projection.WindowID {
+		t.Fatalf(
+			"retry projection: first=%+v second=%+v",
+			runtime.requests[0].Projection,
+			runtime.requests[1].Projection,
+		)
+	}
 }
 
 func TestEngineGuaranteesOneRetryForStructuredTransportFailure(t *testing.T) {
