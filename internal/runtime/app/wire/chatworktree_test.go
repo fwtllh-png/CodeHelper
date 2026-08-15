@@ -158,7 +158,11 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shown, err := toolset.registry.Execute(t.Context(), tool.Call{
+	toolContext := tool.WithInvocationIdentity(
+		t.Context(),
+		tool.InvocationIdentity{ThreadID: "thread-chat-git"},
+	)
+	shown, err := toolset.registry.Execute(toolContext, tool.Call{
 		Name: "git_show", Arguments: json.RawMessage(`{"revision":"HEAD"}`),
 		Authorized: true,
 	})
@@ -166,7 +170,7 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 		!strings.Contains(shown.Content, "codehelper chat baseline") {
 		t.Fatalf("git_show result=%+v err=%v", shown, err)
 	}
-	shell, err := toolset.registry.Execute(t.Context(), tool.Call{
+	shell, err := toolset.registry.Execute(toolContext, tool.Call{
 		Name: "exec_command",
 		Arguments: json.RawMessage(
 			`{"command":"git rev-parse --is-inside-work-tree && git log -1 --format=%s"}`,
@@ -189,7 +193,7 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write, err := toolset.registry.Execute(t.Context(), tool.Call{
+	write, err := toolset.registry.Execute(toolContext, tool.Call{
 		Name: "exec_command", Arguments: arguments, Authorized: true,
 	})
 	if err == nil && !write.IsError {

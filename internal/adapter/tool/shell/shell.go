@@ -109,7 +109,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			{Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true},
 			{Kind: "process", ID: "workspace", Access: tool.AccessRead, Tree: true},
 		}},
-		ParallelPolicy:     tool.ParallelSerial,
+		ParallelPolicy:     tool.ParallelConcurrent,
 		SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
 		RepeatPolicy: tool.RepeatExecute,
 		InputSchema: map[string]any{
@@ -204,7 +204,10 @@ func (t *Tool) execute(ctx context.Context, input foregroundInput) (tool.Result,
 		WorkspaceWritePaths: writePaths,
 		DenyNetwork:         true,
 		OnOutput:            streamOutput(ctx),
-		OutputLimitBytes:    process.ModelOutputLimitBytes,
+		OnTeardown: func(duration time.Duration) {
+			tool.ReportTeardown(ctx, tool.TeardownReport{Duration: duration})
+		},
+		OutputLimitBytes: process.ModelOutputLimitBytes,
 	})
 	durationMS := time.Since(started).Milliseconds()
 	timedOut := errors.Is(err, context.DeadlineExceeded) ||

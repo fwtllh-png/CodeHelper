@@ -52,6 +52,14 @@ func TestRepositoryToolExecutionBaseline(t *testing.T) {
 			measured.Catalog,
 		)
 	}
+	if measured.Catalog.SerialExecutionTools != 0 ||
+		!measured.Risks.FairBudgetAdmission ||
+		!measured.Risks.FairResourceClaims ||
+		!measured.Risks.TerminalOutcomeOwned ||
+		!measured.Risks.TeardownObserved ||
+		!measured.Risks.DetachedCancelCleanup {
+		t.Fatalf("EX4 scheduler/cancellation controls were not detected: %+v", measured)
+	}
 }
 
 func TestValidateCandidateAcceptsImprovements(t *testing.T) {
@@ -67,6 +75,11 @@ func TestValidateCandidateAcceptsImprovements(t *testing.T) {
 	candidate.Risks.SessionOwnerEnforced = true
 	candidate.Risks.EventDrivenSessionWait = true
 	candidate.Risks.UnifiedProcessProtocol = true
+	candidate.Risks.FairBudgetAdmission = true
+	candidate.Risks.FairResourceClaims = true
+	candidate.Risks.TerminalOutcomeOwned = true
+	candidate.Risks.TeardownObserved = true
+	candidate.Risks.DetachedCancelCleanup = true
 	if err := validateCandidate(baseline, candidate); err != nil {
 		t.Fatal(err)
 	}

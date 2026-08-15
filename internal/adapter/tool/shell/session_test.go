@@ -168,6 +168,13 @@ func TestUnifiedProcessCatalogHasOnlyThreeVisibleTools(t *testing.T) {
 		if descriptor.Name == "result_get" {
 			continue
 		}
+		if descriptor.ParallelPolicy != tool.ParallelConcurrent {
+			t.Fatalf(
+				"process tool %q policy = %q",
+				descriptor.Name,
+				descriptor.ParallelPolicy,
+			)
+		}
 		got[descriptor.Name] = true
 	}
 	if len(got) != 3 {

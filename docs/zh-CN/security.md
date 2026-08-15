@@ -74,6 +74,10 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - `exec_command` 与 `write_stdin` 保留 Process Capability 和原有 Approval
   行为。`exec_command` 是唯一通用 Command Start 路径；`write_stdin` 在每次
   Session 交互前校验当前 Thread Lease。
+- Process Tool 通过有界 Fair Budget 与精确 Resource Claim Admission。不同 Session
+  与无关 Path 可并发，冲突 Claim 保持顺序。
+- Cancellation Terminal Ownership 遵循声明的 Execution Disposition；Process
+  Teardown 必须在释放 Consequential Claim 前终止并回收完整 Process Group。
 - 缺少所需 Strong Sandbox 是失败，不是允许 Unsandboxed Execution。
 
 ## 凭证

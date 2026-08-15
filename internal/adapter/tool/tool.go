@@ -711,7 +711,11 @@ func (r *Registry) ExecutePreparedOutcome(
 			outcome = OutcomeFromResult(result)
 		}
 		if err != nil {
-			outcome.Status = OutcomeFailed
+			if errors.Is(err, context.Canceled) {
+				outcome.Status = OutcomeCanceled
+			} else {
+				outcome.Status = OutcomeFailed
+			}
 		}
 		result.Outcome = CloneOutcome(&outcome)
 	}
@@ -1539,12 +1543,17 @@ func queryLines(value, query string, offset, maxLines, limit int) (excerpt strin
 type Claims struct {
 	mu     sync.Mutex
 	active map[uint64][]Resource
-	wait   chan struct{}
+	queue  []*claimWaiter
 	next   uint64
 }
 
+type claimWaiter struct {
+	resources []Resource
+	ready     chan uint64
+}
+
 func NewClaims() *Claims {
-	return &Claims{active: make(map[uint64][]Resource), wait: make(chan struct{})}
+	return &Claims{active: make(map[uint64][]Resource)}
 }
 
 func (c *Claims) Acquire(ctx context.Context, resources []string) (func(), error) {
@@ -1560,24 +1569,38 @@ func (c *Claims) Acquire(ctx context.Context, resources []string) (func(), error
 }
 
 func (c *Claims) AcquireResources(ctx context.Context, resources []Resource) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	resources = uniqueResources(resources)
-	for {
-		c.mu.Lock()
-		if !c.conflicts(resources) {
-			c.next++
-			id := c.next
-			c.active[id] = resources
-			c.mu.Unlock()
-			var once sync.Once
-			return func() { once.Do(func() { c.releaseID(id) }) }, nil
-		}
-		wait := c.wait
+	waiter := &claimWaiter{
+		resources: resources,
+		ready:     make(chan uint64, 1),
+	}
+	c.mu.Lock()
+	if !c.conflictsActive(resources) && !c.conflictsQueued(resources) {
+		id := c.grantLocked(resources)
 		c.mu.Unlock()
-		select {
-		case <-ctx.Done():
+		return c.releaseFunc(id), nil
+	}
+	c.queue = append(c.queue, waiter)
+	c.mu.Unlock()
+	select {
+	case id := <-waiter.ready:
+		return c.releaseFunc(id), nil
+	case <-ctx.Done():
+		c.mu.Lock()
+		if removeClaimWaiter(&c.queue, waiter) {
+			c.dispatchLocked()
+			c.mu.Unlock()
 			return nil, ctx.Err()
-		case <-wait:
 		}
+		c.mu.Unlock()
+		// The grant raced with cancellation. Consume it and release the Claim
+		// before returning so canceled waiters cannot leak ownership.
+		id := <-waiter.ready
+		c.releaseID(id)
+		return nil, ctx.Err()
 	}
 }
 
@@ -1587,26 +1610,96 @@ func (c *Claims) Active() int {
 	return len(c.active)
 }
 
-func (c *Claims) releaseID(id uint64) {
+func (c *Claims) Waiting() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if _, exists := c.active[id]; exists {
-		delete(c.active, id)
-		close(c.wait)
-		c.wait = make(chan struct{})
+	return len(c.queue)
+}
+
+func (c *Claims) releaseFunc(id uint64) func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() { c.releaseID(id) })
 	}
 }
 
-func (c *Claims) conflicts(requested []Resource) bool {
+func (c *Claims) releaseID(id uint64) {
+	c.mu.Lock()
+	if _, exists := c.active[id]; exists {
+		delete(c.active, id)
+		c.dispatchLocked()
+	}
+	c.mu.Unlock()
+}
+
+func (c *Claims) grantLocked(resources []Resource) uint64 {
+	c.next++
+	c.active[c.next] = resources
+	return c.next
+}
+
+func (c *Claims) dispatchLocked() {
+	for index := 0; index < len(c.queue); {
+		waiter := c.queue[index]
+		if c.conflictsActive(waiter.resources) ||
+			c.conflictsEarlierQueued(index, waiter.resources) {
+			index++
+			continue
+		}
+		id := c.grantLocked(waiter.resources)
+		copy(c.queue[index:], c.queue[index+1:])
+		c.queue = c.queue[:len(c.queue)-1]
+		waiter.ready <- id
+	}
+}
+
+func (c *Claims) conflictsActive(requested []Resource) bool {
 	for _, held := range c.active {
-		for _, left := range requested {
-			for _, right := range held {
-				if resourcesOverlap(left, right) &&
-					(left.Access == AccessWrite || right.Access == AccessWrite) {
-					return true
-				}
+		if resourceSetsConflict(requested, held) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Claims) conflictsQueued(requested []Resource) bool {
+	for _, waiter := range c.queue {
+		if resourceSetsConflict(requested, waiter.resources) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Claims) conflictsEarlierQueued(index int, requested []Resource) bool {
+	for earlier := 0; earlier < index; earlier++ {
+		if resourceSetsConflict(requested, c.queue[earlier].resources) {
+			return true
+		}
+	}
+	return false
+}
+
+func resourceSetsConflict(left, right []Resource) bool {
+	for _, requested := range left {
+		for _, held := range right {
+			if resourcesOverlap(requested, held) &&
+				(requested.Access == AccessWrite || held.Access == AccessWrite) {
+				return true
 			}
 		}
+	}
+	return false
+}
+
+func removeClaimWaiter(queue *[]*claimWaiter, target *claimWaiter) bool {
+	for index, waiter := range *queue {
+		if waiter != target {
+			continue
+		}
+		copy((*queue)[index:], (*queue)[index+1:])
+		*queue = (*queue)[:len(*queue)-1]
+		return true
 	}
 	return false
 }

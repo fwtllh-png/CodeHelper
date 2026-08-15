@@ -2,7 +2,7 @@
 
 [Simplified Chinese](../zh-CN/tool-execution-architecture-upgrade.md) | English
 
-> Status: EX3 `accepted`; EX2 `accepted`; EX1 `accepted`; EX0
+> Status: EX4 `accepted`; EX3 `accepted`; EX2 `accepted`; EX1 `accepted`; EX0
 > `baseline_frozen`.
 >
 > Baseline:
@@ -13,6 +13,8 @@
 > [`tool-execution-ex2-evidence.json`](../tool-execution-ex2-evidence.json).
 > EX3 evidence:
 > [`tool-execution-ex3-evidence.json`](../tool-execution-ex3-evidence.json).
+> EX4 evidence:
+> [`tool-execution-ex4-evidence.json`](../tool-execution-ex4-evidence.json).
 >
 > Scope: tool identity, invocation, result projection, Guard orchestration,
 > resource scheduling, local process execution, cancellation, persistent
@@ -557,6 +559,8 @@ Delivered:
 
 ### EX4: Resource Scheduler and Cancellation
 
+Status: `accepted`.
+
 Work:
 
 - replace the global serial RW gate with fair budget admission plus Claims;
@@ -572,6 +576,30 @@ Exit:
 - cancellation P95 is below two seconds in the hermetic suite;
 - every Call has exactly one terminal outcome; and
 - no orphan process remains after Session or Thread close.
+
+Delivered:
+
+- the Engine `ToolScheduler` is now a FIFO bounded-budget queue with no
+  lock-wait helper goroutines; it limits active execution but does not duplicate
+  resource mutual exclusion;
+- Guard Claims now preserve order among conflicting requests while allowing
+  later disjoint requests to proceed, so queued writers cannot be starved by a
+  continuing reader stream;
+- `ParallelSerial` remains a compatibility effect represented by one synthetic
+  Claim, while all three Process Tools are resource-concurrent and rely on
+  repo, exact-path, process, or Session Claims;
+- `abort_immediately` returns ownership to Guard on cancellation, while
+  `wait_for_teardown` keeps ownership with the Executor until cleanup completes;
+- each completed Execution Receipt has exactly one typed terminal status and
+  owner; cancellation keeps the Receipt through Engine projection rather than
+  replacing it with an untyped error Result;
+- process teardown duration is reported through a typed observer into Attempt
+  and Execution Receipts;
+- a canceled detached launch closes and reaps its Session before returning when
+  no Session ID was delivered; explicit Session, Thread, and Runtime close paths
+  continue to kill the full process group; and
+- the 12-sample hermetic process cancellation test measured P95 at 0.504ms,
+  below the two-second gate, with zero retained Sessions or live PIDs.
 
 ### EX5: Convergence and Cleanup
 

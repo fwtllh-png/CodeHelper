@@ -66,12 +66,13 @@ Precondition 通过后才写入；Dry-run 返回同一 Exact Diff，不写磁盘
 Resource Declaration 同时服务 Policy、Approval、Claim、Journal Scope、Receipt Attribution。
 Under-declare 是 Security Defect；Over-declare 会导致不必要 Serialization/Approval。
 
-Hierarchical Claim 允许 Read/Read Overlap，但阻止 Canonical Target 上的 Write/Tree
-Conflict。`ParallelSerial` 即使参数指向不同 File，也增加 Synthetic Serial Claim。
+Hierarchical Claim 对冲突请求保持 FIFO 顺序，允许 Read/Read Overlap，并允许无关请求
+绕过被阻塞的 Conflict。`ParallelSerial` 作为兼容 Effect 保留，由 Synthetic Serial
+Claim 表达。
 
 ## Shell Tool
 
-`exec_command` 声明 Process Capability、Serial Policy、Workspace/Process
+`exec_command` 声明 Process Capability、Resource-concurrent Policy、Workspace/Process
 Resource 与 Strong Sandbox。它统一启动 Pipe 或 PTY Process，执行有界 Yield，
 并返回 Terminal Output 或 Session ID。`write_stdin` 是 Poll、Input、Resize、
 Signal 与 Close 的唯一继续协议，每次操作均校验 Session 的 Thread Lease。
@@ -143,7 +144,7 @@ Resource 与 Change Metadata。
 ## 复习问题
 
 1. Optional Tool 为什么应显示为 Unavailable？
-2. Shell Serialization 为什么也表示为 Resource Claim？
+2. Fair Claim 如何在串行化 Conflict 的同时不阻塞无关 Work？
 3. Agent Integration 为什么属于 Workspace Write？
 4. Tool Under/Over-declare Resource 会导致什么？
 5. 合法 Shell Schema 为什么仍要求 Strong Sandbox？

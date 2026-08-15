@@ -70,15 +70,17 @@ Resource declaration is used by Policy, Approval, Claims, Journal scope, and
 Receipt attribution. Under-declaring is a security defect; over-declaring
 causes unnecessary serialization and Approval.
 
-Hierarchical Claims allow read/read overlap while blocking write/tree conflicts
-on canonical targets. `ParallelSerial` adds a synthetic serial claim even when
-arguments name disjoint files.
+Hierarchical Claims preserve FIFO order among conflicting requests, allow
+read/read overlap, and let disjoint requests bypass a blocked conflict.
+`ParallelSerial` remains a compatibility effect represented by a synthetic
+serial Claim.
 
 ## Shell Tools
 
-`exec_command` declares Process capability, serial policy, Workspace/process
-resources, and strong Sandbox. It starts either Pipe or PTY execution, yields
-for a bounded interval, and returns terminal output or a Session ID.
+`exec_command` declares Process capability, resource-concurrent policy,
+Workspace/process resources, and strong Sandbox. It starts either Pipe or PTY
+execution, yields for a bounded interval, and returns terminal output or a
+Session ID.
 `write_stdin` is the single continuation protocol for poll, input, resize,
 signal, and close. Every continuation validates the Session's Thread lease.
 
@@ -155,7 +157,7 @@ preconditions, resources, and resulting change metadata across both paths.
 ## Review Questions
 
 1. Why do optional Tools stay visible as unavailable?
-2. Why is shell serialization also represented as a resource claim?
+2. How do fair Claims serialize conflicts without blocking disjoint work?
 3. Why is Agent integration treated as a workspace write?
 4. What breaks when a Tool under-declares or over-declares Resources?
 5. Why can a valid Shell schema still require strong Sandbox enforcement?

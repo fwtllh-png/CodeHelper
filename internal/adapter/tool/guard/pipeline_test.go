@@ -113,6 +113,8 @@ func TestSandboxRetryApprovalReleasesAdmissionAndClaims(t *testing.T) {
 		out.result.Execution.Attempts[0].Sandbox != string(SandboxModeStrong) ||
 		out.result.Execution.Attempts[1].Sandbox != string(SandboxModeNone) ||
 		out.result.Execution.Disposition != tool.DispositionWaitForTeardown ||
+		out.result.Execution.TerminalStatus != tool.OutcomeSucceeded ||
+		out.result.Execution.TerminalOwner != tool.TerminalOwnerExecutor ||
 		out.result.Execution.Tool.Validate() != nil {
 		t.Fatalf("execution receipt = %+v", out.result.Execution)
 	}

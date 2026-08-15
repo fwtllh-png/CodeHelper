@@ -142,7 +142,7 @@ func execCommandDescriptor() tool.Descriptor {
 			},
 			PathsField: "write_paths",
 		},
-		ParallelPolicy:     tool.ParallelSerial,
+		ParallelPolicy:     tool.ParallelConcurrent,
 		SandboxRequirement: tool.SandboxStrong,
 		Availability:       processProtocolAvailability(),
 		UnavailableReason:  processProtocolUnavailableReason(),
@@ -191,7 +191,7 @@ func writeStdinDescriptor() tool.Descriptor {
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 			Kind: "session", Field: "session_id", Access: tool.AccessWrite,
 		}}},
-		ParallelPolicy:     tool.ParallelSerial,
+		ParallelPolicy:     tool.ParallelConcurrent,
 		SandboxRequirement: tool.SandboxStrong,
 		Availability:       processProtocolAvailability(),
 		UnavailableReason:  processProtocolUnavailableReason(),
@@ -352,7 +352,12 @@ func (p *commandProtocol) execCommand(
 		outputTokens*4,
 	)
 	if err != nil {
-		return tool.Result{}, err
+		teardownStarted := time.Now()
+		closeErr := p.manager.Close(id, threadID)
+		tool.ReportTeardown(ctx, tool.TeardownReport{
+			Duration: time.Since(teardownStarted),
+		})
+		return tool.Result{}, errors.Join(err, closeErr)
 	}
 	result := sessionResult(id, wait, outputTokens)
 	if omitted > 0 {

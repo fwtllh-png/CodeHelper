@@ -108,7 +108,11 @@ func (e *executor[I, O]) ExecuteOutcome(
 	}
 	output, err := e.spec.Run(ctx, input)
 	if err != nil {
-		return tool.Result{}, tool.Outcome{Status: tool.OutcomeFailed}, err
+		status := tool.OutcomeFailed
+		if errors.Is(err, context.Canceled) {
+			status = tool.OutcomeCanceled
+		}
+		return tool.Result{}, tool.Outcome{Status: status}, err
 	}
 	result, err = e.spec.Encode(output)
 	if err != nil {

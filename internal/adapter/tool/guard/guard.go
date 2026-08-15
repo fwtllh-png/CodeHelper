@@ -659,6 +659,15 @@ func (g *Guard) prepare(
 	if err != nil {
 		return Invocation{}, nil, fmt.Errorf("tool %q resources: %w", canonical, err)
 	}
+	disposition := tool.DispositionFor(executor)
+	if disposition == tool.DispositionAbortImmediately &&
+		(descriptor.Capability != tool.CapabilityRead ||
+			hasConsequentialWrite(resources)) {
+		return Invocation{}, nil, fmt.Errorf(
+			"tool %q cannot abort immediately with consequential effects",
+			canonical,
+		)
+	}
 	if descriptor.ParallelPolicy == tool.ParallelSerial {
 		resources = append(resources, tool.Resource{
 			Kind: "parallel", ID: "serial-tools", Access: tool.AccessWrite, Tree: true,
@@ -674,8 +683,17 @@ func (g *Guard) prepare(
 	return Invocation{
 		Identity: identity, CallID: callID, Tool: canonical, Ref: ref,
 		Arguments: arguments, Resources: resources, Descriptor: descriptor,
-		Source: tool.InvocationSourceFrom(ctx), Disposition: tool.DispositionFor(executor),
+		Source: tool.InvocationSourceFrom(ctx), Disposition: disposition,
 	}, executor, nil
+}
+
+func hasConsequentialWrite(resources []tool.Resource) bool {
+	for _, resource := range resources {
+		if resource.Access == tool.AccessWrite {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *Guard) rewriteAbsolutePathArgs(

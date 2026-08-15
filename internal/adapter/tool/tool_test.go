@@ -445,6 +445,71 @@ func TestHierarchicalClaimsCanonicalTargetConflict(t *testing.T) {
 	release()
 }
 
+func TestClaimsPreserveConflictOrderWithoutBlockingDisjointWork(t *testing.T) {
+	claims := NewClaims()
+	resourceA := Resource{
+		Kind: "file", Path: filepath.Join(t.TempDir(), "a"), Access: AccessRead,
+	}
+	releaseReader, err := claims.AcquireResources(t.Context(), []Resource{resourceA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writerReady := make(chan func(), 1)
+	go func() {
+		write := resourceA
+		write.Access = AccessWrite
+		release, acquireErr := claims.AcquireResources(t.Context(), []Resource{write})
+		if acquireErr == nil {
+			writerReady <- release
+		}
+	}()
+	for claims.Waiting() != 1 {
+		time.Sleep(time.Millisecond)
+	}
+	lateReaderReady := make(chan func(), 1)
+	go func() {
+		release, acquireErr := claims.AcquireResources(t.Context(), []Resource{resourceA})
+		if acquireErr == nil {
+			lateReaderReady <- release
+		}
+	}()
+	for claims.Waiting() != 2 {
+		time.Sleep(time.Millisecond)
+	}
+	resourceB := Resource{
+		Kind: "file", Path: filepath.Join(t.TempDir(), "b"), Access: AccessWrite,
+	}
+	releaseB, err := claims.AcquireResources(t.Context(), []Resource{resourceB})
+	if err != nil {
+		t.Fatalf("disjoint Claim was blocked: %v", err)
+	}
+	releaseB()
+
+	releaseReader()
+	var releaseWriter func()
+	select {
+	case releaseWriter = <-writerReady:
+	case <-time.After(time.Second):
+		t.Fatal("queued writer starved behind readers")
+	}
+	select {
+	case release := <-lateReaderReady:
+		release()
+		t.Fatal("later reader bypassed an earlier conflicting writer")
+	default:
+	}
+	releaseWriter()
+	select {
+	case release := <-lateReaderReady:
+		release()
+	case <-time.After(time.Second):
+		t.Fatal("reader did not acquire after writer released")
+	}
+	if claims.Active() != 0 || claims.Waiting() != 0 {
+		t.Fatalf("Claims leaked active=%d waiting=%d", claims.Active(), claims.Waiting())
+	}
+}
+
 type countingTool struct {
 	calls atomic.Int32
 }

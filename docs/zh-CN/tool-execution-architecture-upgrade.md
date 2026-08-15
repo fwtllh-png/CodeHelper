@@ -2,7 +2,7 @@
 
 简体中文 | [English](../en/tool-execution-architecture-upgrade.md)
 
-> 状态：EX3 `accepted`；EX2 `accepted`；EX1 `accepted`；EX0
+> 状态：EX4 `accepted`；EX3 `accepted`；EX2 `accepted`；EX1 `accepted`；EX0
 > `baseline_frozen`。
 >
 > 基线：
@@ -13,6 +13,8 @@
 > [`tool-execution-ex2-evidence.json`](../tool-execution-ex2-evidence.json)。
 > EX3 证据：
 > [`tool-execution-ex3-evidence.json`](../tool-execution-ex3-evidence.json)。
+> EX4 证据：
+> [`tool-execution-ex4-evidence.json`](../tool-execution-ex4-evidence.json)。
 >
 > 范围：Tool 身份、调用、结果投影、Guard 编排、资源调度、本地进程执行、
 > 取消、持久终端 Session、输出准入、可观测性与迁移 Gate。
@@ -518,6 +520,8 @@ Host Output 仍是 Projection，Durable Execution Receipt 是事实来源。
 
 ### EX4：Resource Scheduler 与 Cancellation
 
+状态：`accepted`。
+
 工作：
 
 - 用 Fair Budget Admission + Claims 替换 Global Serial RW Gate；
@@ -533,6 +537,24 @@ Host Output 仍是 Projection，Durable Execution Receipt 是事实来源。
 - Hermetic Suite 的 Cancellation P95 小于 2 秒；
 - 每个 Call 只有一个 Terminal Outcome；
 - Session/Thread Close 后无 Orphan Process。
+
+已交付：
+
+- Engine `ToolScheduler` 改为 FIFO Bounded-budget Queue，不再创建等待 Lock 的辅助
+  Goroutine；它只限制 Active Execution，不重复承担 Resource Mutual Exclusion；
+- Guard Claims 对冲突请求保持顺序，同时允许后续无关请求继续执行，Queued Writer
+  不会被持续 Reader Stream 饿死；
+- `ParallelSerial` 暂时保留为一个 Synthetic Claim 兼容 Effect，三个 Process Tool
+  均改为 Resource-concurrent，并依赖 Repo、Exact-path、Process 或 Session Claim；
+- `abort_immediately` 在取消时由 Guard 取得终态所有权，
+  `wait_for_teardown` 则由 Executor 持有所有权直至 Cleanup 完成；
+- 每个完成的 Execution Receipt 恰有一个 Typed Terminal Status 与 Owner；
+  Engine 取消投影会保留 Receipt，不再替换成无类型 Error Result；
+- Process Teardown Duration 通过 Typed Observer 写入 Attempt 与 Execution Receipt；
+- Detached Launch 在 Session ID 尚未交付前被取消时，会先关闭并回收 Session；
+  显式 Session、Thread 与 Runtime Close 路径继续终止完整 Process Group；
+- 12 个 Hermetic Process Cancellation 样本的 P95 为 0.504ms，低于两秒 Gate，
+  Retained Session 与 Live PID 均为零。
 
 ### EX5：Convergence 与 Cleanup
 

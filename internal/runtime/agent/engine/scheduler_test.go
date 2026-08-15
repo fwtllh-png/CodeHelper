@@ -10,55 +10,39 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
-func TestToolSchedulerSerialExcludesConcurrent(t *testing.T) {
-	sched := NewToolScheduler(4)
-	var concurrentInside atomic.Int32
-	var serialSawOverlap atomic.Bool
-
-	var wg sync.WaitGroup
-	started := make(chan struct{})
-	serialReady := make(chan struct{})
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		release, err := sched.Admit(context.Background(), tool.ParallelSerial)
-		if err != nil {
-			t.Errorf("serial admit: %v", err)
-			return
-		}
-		close(serialReady)
-		<-started
-		if concurrentInside.Load() != 0 {
-			serialSawOverlap.Store(true)
-		}
-		time.Sleep(30 * time.Millisecond)
-		if concurrentInside.Load() != 0 {
-			serialSawOverlap.Store(true)
-		}
-		release()
-	}()
-
-	<-serialReady
-	for i := 0; i < 3; i++ {
-		wg.Add(1)
+func TestToolSchedulerAdmitsWaitersInFIFOOrder(t *testing.T) {
+	sched := NewToolScheduler(1)
+	release, err := sched.Admit(t.Context(), tool.ParallelConcurrent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acquired := make(chan int, 5)
+	for index := range 5 {
 		go func() {
-			defer wg.Done()
-			release, err := sched.Admit(context.Background(), tool.ParallelConcurrent)
+			release, err := sched.Admit(t.Context(), tool.ParallelSerial)
 			if err != nil {
-				t.Errorf("concurrent admit: %v", err)
 				return
 			}
-			concurrentInside.Add(1)
-			time.Sleep(10 * time.Millisecond)
-			concurrentInside.Add(-1)
+			acquired <- index
 			release()
 		}()
+		for sched.Waiting() != index+1 {
+			time.Sleep(time.Millisecond)
+		}
 	}
-	close(started)
-	wg.Wait()
-	if serialSawOverlap.Load() {
-		t.Fatal("concurrent tool overlapped with serial exclusive section")
+	release()
+	for want := range 5 {
+		select {
+		case got := <-acquired:
+			if got != want {
+				t.Fatalf("FIFO order[%d] = %d", want, got)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("waiter %d starved", want)
+		}
+	}
+	if sched.Active() != 0 || sched.Waiting() != 0 {
+		t.Fatalf("scheduler leaked active=%d waiting=%d", sched.Active(), sched.Waiting())
 	}
 }
 
@@ -118,4 +102,7 @@ func TestToolSchedulerCancelDuringAdmit(t *testing.T) {
 		t.Fatal("admit did not unblock on cancel")
 	}
 	release()
+	if sched.Active() != 0 || sched.Waiting() != 0 {
+		t.Fatalf("scheduler leaked active=%d waiting=%d", sched.Active(), sched.Waiting())
+	}
 }

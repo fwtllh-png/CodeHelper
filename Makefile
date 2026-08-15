@@ -26,7 +26,7 @@ LDFLAGS := -s -w \
 	provider-architecture-p3 provider-architecture-p4 provider-architecture-p5 \
 	provider-architecture-p6 \
 	tool-execution-ex0 tool-execution-ex0-update tool-execution-ex1 tool-execution-ex2 \
-	tool-execution-ex3 \
+	tool-execution-ex3 tool-execution-ex4 \
 	provider-p0-goldens provider-p0-goldens-update \
 	provider-deepseek-live-control provider-deepseek-live-ce7 \
 	architecture-ratchet architecture-size-budget architecture-freeze \
@@ -283,6 +283,21 @@ tool-execution-ex3: tool-execution-ex2
 		./internal/host/cli
 	$(GO) test -race -count=1 \
 		./internal/platform/process \
+		./internal/adapter/tool/shell \
+		./internal/runtime/agent/engine
+
+tool-execution-ex4: tool-execution-ex3
+	$(GO) test -count=1 \
+		./internal/platform/process \
+		./internal/adapter/tool \
+		./internal/adapter/tool/typed \
+		./internal/adapter/tool/guard \
+		./internal/adapter/tool/shell \
+		./internal/runtime/agent/engine
+	$(GO) test -race -count=1 \
+		./internal/platform/process \
+		./internal/adapter/tool \
+		./internal/adapter/tool/guard \
 		./internal/adapter/tool/shell \
 		./internal/runtime/agent/engine
 

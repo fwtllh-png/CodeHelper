@@ -94,6 +94,11 @@ During every Turn, check structured invariants:
   declared write passes through Approval, Journal, TurnDiff, Sandbox
   enforcement, and Receipt. `write_stdin` can interact only with a Session
   owned by the current Thread;
+- execution budget admission is FIFO and bounded; conflicting Claims preserve
+  order while disjoint Claims may run concurrently;
+- every completed Tool Execution Receipt has one terminal status and owner;
+  canceled process calls report teardown latency, retain no unreachable
+  Session, and leave no live process group;
 - mutating File Tools are serialized across Preview, Approval, Revalidation,
   and Commit; `edit_plan_stale` is recoverable only by a new read, Plan, and
   Approval;

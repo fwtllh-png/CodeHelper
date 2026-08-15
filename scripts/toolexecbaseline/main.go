@@ -64,6 +64,11 @@ type riskMetrics struct {
 	SessionOwnerEnforced         bool `json:"session_owner_enforced"`
 	EventDrivenSessionWait       bool `json:"event_driven_session_wait"`
 	UnifiedProcessProtocol       bool `json:"unified_process_protocol"`
+	FairBudgetAdmission          bool `json:"fair_budget_admission"`
+	FairResourceClaims           bool `json:"fair_resource_claims"`
+	TerminalOutcomeOwned         bool `json:"terminal_outcome_owned"`
+	TeardownObserved             bool `json:"teardown_observed"`
+	DetachedCancelCleanup        bool `json:"detached_cancel_cleanup"`
 }
 
 func main() {
@@ -160,6 +165,15 @@ func measure(root, baseCommit string) (report, error) {
 			knownGaps,
 			"tool_cancellation_has_no_explicit_teardown_disposition",
 		)
+	}
+	if !risks.FairBudgetAdmission || !risks.FairResourceClaims {
+		knownGaps = append(knownGaps, "execution_admission_or_claims_are_not_fair")
+	}
+	if !risks.TerminalOutcomeOwned || !risks.TeardownObserved {
+		knownGaps = append(knownGaps, "cancellation_terminal_or_teardown_is_not_observable")
+	}
+	if !risks.DetachedCancelCleanup {
+		knownGaps = append(knownGaps, "canceled_detached_launch_can_leave_an_orphan")
 	}
 	return report{
 		SchemaVersion: schemaVersion,
@@ -267,6 +281,9 @@ func measureRisks(root string, catalog catalogMetrics) (riskMetrics, error) {
 	guardPath := filepath.Join(root, "internal/adapter/tool/guard/guard.go")
 	escalationPath := filepath.Join(root, "internal/adapter/tool/guard/escalation.go")
 	executionPath := filepath.Join(root, "internal/adapter/tool/execution.go")
+	schedulerPath := filepath.Join(root, "internal/adapter/tool/execution_budget.go")
+	toolPath := filepath.Join(root, "internal/adapter/tool/tool.go")
+	protocolPath := filepath.Join(root, "internal/adapter/tool/shell/protocol.go")
 	foregroundBounded, err := foregroundCollectorIsBounded(processPath)
 	if err != nil {
 		return riskMetrics{}, err
@@ -291,6 +308,22 @@ func measureRisks(root string, catalog catalogMetrics) (riskMetrics, error) {
 	if err != nil {
 		return riskMetrics{}, err
 	}
+	schedulerSource, err := os.ReadFile(schedulerPath)
+	if err != nil {
+		return riskMetrics{}, err
+	}
+	toolSource, err := os.ReadFile(toolPath)
+	if err != nil {
+		return riskMetrics{}, err
+	}
+	protocolSource, err := os.ReadFile(protocolPath)
+	if err != nil {
+		return riskMetrics{}, err
+	}
+	processSource, err := os.ReadFile(processPath)
+	if err != nil {
+		return riskMetrics{}, err
+	}
 	securityReadsMetadata := bytes.Contains(
 		guardSource,
 		[]byte(`Metadata["error_category"]`),
@@ -309,6 +342,26 @@ func measureRisks(root string, catalog catalogMetrics) (riskMetrics, error) {
 		SessionOwnerEnforced:   ownerEnforced,
 		EventDrivenSessionWait: eventDriven,
 		UnifiedProcessProtocol: catalog.ModelVisibleExecutionTools <= 3,
+		FairBudgetAdmission: bytes.Contains(
+			schedulerSource,
+			[]byte("[]*budgetWaiter"),
+		) && !bytes.Contains(schedulerSource, []byte("sync.RWMutex")),
+		FairResourceClaims: bytes.Contains(
+			toolSource,
+			[]byte("conflictsEarlierQueued"),
+		),
+		TerminalOutcomeOwned: bytes.Contains(
+			executionSource,
+			[]byte("TerminalStatus"),
+		) && bytes.Contains(executionSource, []byte("TerminalOwner")),
+		TeardownObserved: bytes.Contains(
+			processSource,
+			[]byte("OnTeardown"),
+		) && bytes.Contains(executionSource, []byte("TeardownMS")),
+		DetachedCancelCleanup: bytes.Contains(
+			protocolSource,
+			[]byte("p.manager.Close(id, threadID)"),
+		),
 	}, nil
 }
 

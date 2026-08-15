@@ -38,6 +38,9 @@ type Options struct {
 	// It is called from the reader goroutines, so it must be cheap and must not
 	// block: a slow observer holds up the pipe and thereby the process itself.
 	OnOutput func(Chunk)
+	// OnTeardown reports how long cancellation spent terminating and reaping the
+	// process group. It is called at most once.
+	OnTeardown func(time.Duration)
 	// OutputLimitBytes bounds retained bytes independently for stdout and
 	// stderr. Zero selects DefaultOutputLimitBytes.
 	OutputLimitBytes int
@@ -105,7 +108,14 @@ func Run(ctx context.Context, options Options) (Result, error) {
 		archive = &archiveState{append: options.ArchiveOutput}
 	}
 	if options.PTY {
-		return runPTY(ctx, command, options.OnOutput, archive, limit)
+		return runPTY(
+			ctx,
+			command,
+			options.OnOutput,
+			options.OnTeardown,
+			archive,
+			limit,
+		)
 	}
 	stdout := newObservedBuffer(StreamStdout, limit, options.OnOutput, archive)
 	stderr := newObservedBuffer(StreamStderr, limit, options.OnOutput, archive)
@@ -114,7 +124,10 @@ func Run(ctx context.Context, options Options) (Result, error) {
 	if err := command.Start(); err != nil {
 		return Result{}, err
 	}
-	err = waitAndCancel(ctx, command)
+	err, teardown := waitAndCancel(ctx, command)
+	if teardown > 0 && options.OnTeardown != nil {
+		options.OnTeardown(teardown)
+	}
 	result := Result{
 		Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: ExitCode(err),
 		OutputReceipt: OutputReceipt{
@@ -423,6 +436,7 @@ func runPTY(
 	ctx context.Context,
 	command *exec.Cmd,
 	observe func(Chunk),
+	observeTeardown func(time.Duration),
 	archive *archiveState,
 	limit int,
 ) (Result, error) {
@@ -438,7 +452,10 @@ func runPTY(
 		_, copyErr := io.Copy(output, terminal)
 		copyDone <- copyErr
 	}()
-	waitErr := waitAndCancel(ctx, command)
+	waitErr, teardown := waitAndCancel(ctx, command)
+	if teardown > 0 && observeTeardown != nil {
+		observeTeardown(teardown)
+	}
 	_ = terminal.Close()
 	copyErr := <-copyDone
 	if copyErr != nil &&
@@ -459,16 +476,17 @@ func runPTY(
 	return result, nil
 }
 
-func waitAndCancel(ctx context.Context, command *exec.Cmd) error {
+func waitAndCancel(ctx context.Context, command *exec.Cmd) (error, time.Duration) {
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
 	select {
 	case err := <-done:
-		return err
+		return err, 0
 	case <-ctx.Done():
+		started := time.Now()
 		_ = terminateProcessGroup(command.Process)
 		<-done
-		return ctx.Err()
+		return ctx.Err(), time.Since(started)
 	}
 }
 

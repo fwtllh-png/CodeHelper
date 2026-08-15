@@ -105,6 +105,13 @@ const (
 	OutcomeCanceled  OutcomeStatus = "canceled"
 )
 
+type TerminalOwner string
+
+const (
+	TerminalOwnerGuard    TerminalOwner = "guard"
+	TerminalOwnerExecutor TerminalOwner = "executor"
+)
+
 type NetworkTarget struct {
 	Host     string `json:"host"`
 	Protocol string `json:"protocol"`
@@ -151,23 +158,32 @@ func CloneOutcome(source *Outcome) *Outcome {
 }
 
 type AttemptReceipt struct {
-	Sequence    uint32        `json:"sequence"`
-	Sandbox     string        `json:"sandbox"`
-	Status      OutcomeStatus `json:"status"`
-	Reason      string        `json:"reason,omitempty"`
-	StartedAt   time.Time     `json:"started_at"`
-	CompletedAt time.Time     `json:"completed_at"`
-	DurationMS  int64         `json:"duration_ms"`
+	Sequence         uint32        `json:"sequence"`
+	Sandbox          string        `json:"sandbox"`
+	Status           OutcomeStatus `json:"status"`
+	TerminalOwner    TerminalOwner `json:"terminal_owner"`
+	Reason           string        `json:"reason,omitempty"`
+	StartedAt        time.Time     `json:"started_at"`
+	CompletedAt      time.Time     `json:"completed_at"`
+	DurationMS       int64         `json:"duration_ms"`
+	Teardown         time.Duration `json:"teardown,omitempty"`
+	TeardownMS       int64         `json:"teardown_ms,omitempty"`
+	TeardownTimedOut bool          `json:"teardown_timed_out,omitempty"`
 }
 
 type ExecutionReceipt struct {
-	Tool         ToolRef              `json:"tool"`
-	Source       InvocationSource     `json:"source"`
-	Disposition  ExecutionDisposition `json:"disposition"`
-	Attempts     []AttemptReceipt     `json:"attempts"`
-	ApprovalWait time.Duration        `json:"approval_wait,omitempty"`
-	DispatchWait time.Duration        `json:"dispatch_wait,omitempty"`
-	ClaimWait    time.Duration        `json:"claim_wait,omitempty"`
+	Tool             ToolRef              `json:"tool"`
+	Source           InvocationSource     `json:"source"`
+	Disposition      ExecutionDisposition `json:"disposition"`
+	Attempts         []AttemptReceipt     `json:"attempts"`
+	ApprovalWait     time.Duration        `json:"approval_wait,omitempty"`
+	DispatchWait     time.Duration        `json:"dispatch_wait,omitempty"`
+	ClaimWait        time.Duration        `json:"claim_wait,omitempty"`
+	TerminalStatus   OutcomeStatus        `json:"terminal_status"`
+	TerminalOwner    TerminalOwner        `json:"terminal_owner"`
+	Teardown         time.Duration        `json:"teardown,omitempty"`
+	TeardownMS       int64                `json:"teardown_ms,omitempty"`
+	TeardownTimedOut bool                 `json:"teardown_timed_out,omitempty"`
 }
 
 func CloneExecutionReceipt(source *ExecutionReceipt) *ExecutionReceipt {
@@ -242,4 +258,31 @@ func AdmitExecution(
 		return func() {}, nil
 	}
 	return admission(ctx, policy)
+}
+
+type TeardownReport struct {
+	Duration time.Duration
+	TimedOut bool
+}
+
+type teardownObserverKey struct{}
+
+func WithTeardownObserver(
+	ctx context.Context,
+	observe func(TeardownReport),
+) context.Context {
+	if observe == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, teardownObserverKey{}, observe)
+}
+
+func ReportTeardown(ctx context.Context, report TeardownReport) {
+	if ctx == nil {
+		return
+	}
+	observe, _ := ctx.Value(teardownObserverKey{}).(func(TeardownReport))
+	if observe != nil {
+		observe(report)
+	}
 }

@@ -80,6 +80,12 @@ No layer should be described as a replacement for another.
   Approval behavior. `exec_command` is the only general command start path;
   `write_stdin` validates the current Thread lease before every Session
   interaction.
+- Process Tools are admitted through a bounded fair budget and exact Resource
+  Claims. Distinct Sessions and disjoint paths may overlap; conflicting Claims
+  remain ordered.
+- Cancellation terminal ownership follows the declared execution disposition,
+  and process teardown kills and reaps the full process group before releasing
+  consequential Claims.
 - A missing required strong sandbox is a failure, not permission to run
   unsandboxed.
 

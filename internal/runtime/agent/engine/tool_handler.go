@@ -247,9 +247,12 @@ func (e *Engine) runToolsWithCache(
 					return
 				}
 				if errors.Is(err, context.Canceled) || errors.Is(toolCtx.Err(), context.Canceled) {
-					results[index] = tool.Result{
-						Content: "tool aborted: context canceled", IsError: true,
+					result.Content = "tool aborted: context canceled"
+					result.IsError = true
+					if result.Outcome == nil {
+						result.Outcome = &tool.Outcome{Status: tool.OutcomeCanceled}
 					}
+					results[index] = result
 					return
 				}
 				results[index], errorsByIndex[index] = result, err

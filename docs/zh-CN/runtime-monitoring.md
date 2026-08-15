@@ -87,6 +87,10 @@ Rollback 测试应使用 Fixture 或 Disposable Worktree。
   仅可通过 `write_paths` 声明最多 512 个已存在的精确文件，并且所有声明写入必须
   经过 Approval、Journal、TurnDiff、Sandbox Enforcement 与 Receipt；
   `write_stdin` 只能交互当前 Thread 所拥有的 Session；
+- Execution Budget Admission 必须 FIFO 且有界；冲突 Claim 保持顺序，无关 Claim
+  可以并发执行；
+- 每个完成的 Tool Execution Receipt 只有一个 Terminal Status 与 Owner；取消的
+  Process Call 必须记录 Teardown Latency，不保留不可达 Session 或存活 Process Group；
 - File Mutation Tool 的 Preview、Approval、Revalidation 与 Commit 必须整体串行；
   `edit_plan_stale` 只能通过新的 Read、Plan 与 Approval 恢复；
 - Fatal Tool Batch 必须在 Turn Failed 前为每个已 Start Call 发出且仅发出一个

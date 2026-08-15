@@ -3,6 +3,8 @@ package guard
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"sync"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -28,6 +30,8 @@ type attemptRun struct {
 	receipt      tool.AttemptReceipt
 	dispatchWait time.Duration
 	claimWait    time.Duration
+	teardown     tool.TeardownReport
+	aborted      bool
 }
 
 func (g *Guard) executePipeline(
@@ -80,6 +84,12 @@ func (g *Guard) executePipeline(
 			)
 			receipt.ApprovalWait += waited
 			if approvalErr != nil {
+				setExecutionTerminal(
+					&receipt,
+					terminalStatus(approvalErr, attempt.result),
+					tool.TerminalOwnerGuard,
+					attempt.teardown,
+				)
 				attachExecutionReceipt(&attempt.result, receipt)
 				g.afterAttempt(ctx, prepared.invocation, attempt.result, approvalErr)
 				return attempt.result, approvalErr
@@ -100,17 +110,36 @@ func (g *Guard) executePipeline(
 			if approvalErr == nil {
 				continue
 			}
-			attachExecutionReceipt(&attempt.result, receipt)
 			if softFailEgressApproval(approvalErr) {
+				setExecutionTerminal(
+					&receipt,
+					attempt.receipt.Status,
+					attempt.receipt.TerminalOwner,
+					attempt.teardown,
+				)
+				attachExecutionReceipt(&attempt.result, receipt)
 				g.afterAttempt(ctx, prepared.invocation, attempt.result, nil)
 				if attempt.err != nil {
 					return attempt.result, attempt.err
 				}
 				return attempt.result, nil
 			}
+			setExecutionTerminal(
+				&receipt,
+				terminalStatus(approvalErr, attempt.result),
+				tool.TerminalOwnerGuard,
+				attempt.teardown,
+			)
+			attachExecutionReceipt(&attempt.result, receipt)
 			g.afterAttempt(ctx, prepared.invocation, attempt.result, approvalErr)
 			return attempt.result, approvalErr
 		}
+		setExecutionTerminal(
+			&receipt,
+			attempt.receipt.Status,
+			attempt.receipt.TerminalOwner,
+			attempt.teardown,
+		)
 		attachExecutionReceipt(&attempt.result, receipt)
 		g.afterAttempt(ctx, prepared.invocation, attempt.result, attempt.err)
 		if attempt.err != nil {
@@ -173,11 +202,19 @@ func (g *Guard) runAttempt(
 		return run
 	}
 	runContext := WithSandboxAttempt(executeContext, SandboxAttempt{Mode: mode})
-	run.result, run.outcome, run.err = g.registry.ExecutePreparedOutcome(
+	var teardownMu sync.Mutex
+	runContext = tool.WithTeardownObserver(
 		runContext,
-		invocation.Tool,
-		invocation.Arguments,
-		prepared.executor,
+		func(report tool.TeardownReport) {
+			teardownMu.Lock()
+			run.teardown.Duration += report.Duration
+			run.teardown.TimedOut = run.teardown.TimedOut || report.TimedOut
+			teardownMu.Unlock()
+		},
+	)
+	run.result, run.outcome, run.err, run.aborted = g.executePrepared(
+		runContext,
+		prepared,
 	)
 	if invocation.Tool == "file_read" && run.err == nil {
 		if recordErr := g.recordFileRead(&run.result, invocation, readBefore); recordErr != nil {
@@ -198,6 +235,10 @@ func (g *Guard) runAttempt(
 		}
 	}
 	release()
+	teardownMu.Lock()
+	teardown := run.teardown
+	teardownMu.Unlock()
+	run.teardown = teardown
 	status := run.outcome.Status
 	if status == "" {
 		status = tool.OutcomeFromResult(run.result).Status
@@ -221,11 +262,65 @@ func (g *Guard) runAttempt(
 	} else if run.result.IsError {
 		reason = "tool_error"
 	}
-	if run.err != nil {
+	if errors.Is(run.err, context.Canceled) {
+		status = tool.OutcomeCanceled
+		reason = "context_canceled"
+	} else if run.err != nil {
 		status = tool.OutcomeFailed
 	}
 	run.receipt = attemptReceipt(sequence, mode, started, g.now(), status, reason)
+	run.receipt.TerminalOwner = tool.TerminalOwnerExecutor
+	if run.aborted {
+		run.receipt.TerminalOwner = tool.TerminalOwnerGuard
+	}
+	run.receipt.Teardown = run.teardown.Duration
+	run.receipt.TeardownMS = run.teardown.Duration.Milliseconds()
+	run.receipt.TeardownTimedOut = run.teardown.TimedOut
 	return run
+}
+
+type preparedOutcome struct {
+	result  tool.Result
+	outcome tool.Outcome
+	err     error
+}
+
+func (g *Guard) executePrepared(
+	ctx context.Context,
+	prepared preparedExecution,
+) (tool.Result, tool.Outcome, error, bool) {
+	invocation := prepared.invocation
+	if invocation.Disposition != tool.DispositionAbortImmediately {
+		result, outcome, err := g.registry.ExecutePreparedOutcome(
+			ctx,
+			invocation.Tool,
+			invocation.Arguments,
+			prepared.executor,
+		)
+		return result, outcome, err, false
+	}
+	if err := ctx.Err(); err != nil {
+		return tool.Result{}, tool.Outcome{Status: tool.OutcomeCanceled}, err, true
+	}
+	done := make(chan preparedOutcome, 1)
+	go func() {
+		result, outcome, err := g.registry.ExecutePreparedOutcome(
+			ctx,
+			invocation.Tool,
+			invocation.Arguments,
+			prepared.executor,
+		)
+		done <- preparedOutcome{result: result, outcome: outcome, err: err}
+	}()
+	select {
+	case completed := <-done:
+		return completed.result, completed.outcome, completed.err, false
+	case <-ctx.Done():
+		return tool.Result{},
+			tool.Outcome{Status: tool.OutcomeCanceled},
+			ctx.Err(),
+			true
+	}
 }
 
 func (g *Guard) snapshotReadTarget(
@@ -305,10 +400,50 @@ func attemptReceipt(
 		status = tool.OutcomeFailed
 	}
 	return tool.AttemptReceipt{
-		Sequence: sequence, Sandbox: string(mode), Status: status, Reason: reason,
+		Sequence: sequence, Sandbox: string(mode), Status: status,
+		TerminalOwner: tool.TerminalOwnerGuard, Reason: reason,
 		StartedAt: started, CompletedAt: completed,
 		DurationMS: completed.Sub(started).Milliseconds(),
 	}
+}
+
+func setExecutionTerminal(
+	receipt *tool.ExecutionReceipt,
+	status tool.OutcomeStatus,
+	owner tool.TerminalOwner,
+	teardown tool.TeardownReport,
+) {
+	if receipt == nil || receipt.TerminalStatus != "" {
+		return
+	}
+	if status == "" {
+		status = tool.OutcomeFailed
+	}
+	if owner == "" {
+		owner = tool.TerminalOwnerGuard
+	}
+	receipt.TerminalStatus = status
+	receipt.TerminalOwner = owner
+	receipt.Teardown = teardown.Duration
+	receipt.TeardownMS = teardown.Duration.Milliseconds()
+	receipt.TeardownTimedOut = teardown.TimedOut
+}
+
+func terminalStatus(err error, result tool.Result) tool.OutcomeStatus {
+	if errors.Is(err, context.Canceled) {
+		return tool.OutcomeCanceled
+	}
+	if err != nil {
+		var decision *policy.DecisionError
+		if errors.As(err, &decision) {
+			if decision.Code == "approval_canceled" {
+				return tool.OutcomeCanceled
+			}
+			return tool.OutcomeRejected
+		}
+		return tool.OutcomeFailed
+	}
+	return tool.OutcomeFromResult(result).Status
 }
 
 func attachExecutionReceipt(result *tool.Result, receipt tool.ExecutionReceipt) {

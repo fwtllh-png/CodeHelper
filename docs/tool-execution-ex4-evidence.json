@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "stage": "EX4",
+  "status": "accepted",
+  "date": "2026-08-15",
+  "scope": "fair_resource_scheduler_and_cancellation",
+  "baseline": {
+    "branch": "refactor/tools-execution",
+    "commit": "7b60ebcf0c3615268530916af13f1ac47200e6e7",
+    "evidence": "docs/tool-execution-ex3-evidence.json"
+  },
+  "scheduler": {
+    "fifo_budget_admission": true,
+    "bounded_active_execution": true,
+    "lock_wait_helper_goroutines": false,
+    "cancel_grant_race_releases_budget": true,
+    "resource_conflicts_owned_by_claims": true,
+    "approval_wait_holds_budget": false
+  },
+  "claims": {
+    "conflicting_requests_preserve_order": true,
+    "disjoint_requests_may_bypass_blocked_conflicts": true,
+    "queued_writer_starvation_prevented": true,
+    "cancel_grant_race_releases_claim": true,
+    "parallel_serial_uses_synthetic_claim": true,
+    "session_interaction_uses_exact_claim": true
+  },
+  "cancellation": {
+    "abort_immediately_owner": "guard",
+    "wait_for_teardown_owner": "executor",
+    "detached_launch_cleans_unpublished_session": true,
+    "typed_terminal_status": true,
+    "typed_terminal_owner": true,
+    "teardown_latency_observed": true,
+    "engine_preserves_cancellation_receipt": true,
+    "single_terminal_outcome": true
+  },
+  "process_teardown": {
+    "samples": 12,
+    "p95_ms": 0.504,
+    "gate_ms": 2000,
+    "retained_sessions": 0,
+    "live_pids": 0,
+    "session_close_kills_process_group": true,
+    "thread_close_kills_process_group": true,
+    "runtime_close_kills_process_group": true
+  },
+  "measurements": {
+    "model_visible_process_tools": 3,
+    "input_schema_bytes": 1112,
+    "serial_process_tools_ex3": 3,
+    "serial_process_tools_ex4": 0,
+    "engine_package_lines": 10416,
+    "engine_mutex_fields": 8,
+    "engine_tool_handler_lines": 506,
+    "guard_lines": 1537,
+    "process_runner_lines": 503,
+    "session_manager_lines": 619,
+    "shell_package_lines": 1347
+  },
+  "risk_probe": {
+    "fair_budget_admission": true,
+    "fair_resource_claims": true,
+    "terminal_outcome_owned": true,
+    "teardown_observed": true,
+    "detached_cancel_cleanup": true
+  },
+  "remaining_risks": {
+    "generic_business_metadata_remains_until_ex5": true,
+    "parallel_serial_compatibility_effect_remains_until_ex5": true,
+    "remaining_builtin_typed_migration_pending_ex5": true
+  },
+  "verification": [
+    {
+      "command": "make tool-execution-ex4",
+      "status": "passed"
+    },
+    {
+      "command": "go test -p 1 -count=1 ./internal/...",
+      "status": "passed"
+    },
+    {
+      "command": "make docs-check",
+      "status": "passed"
+    },
+    {
+      "command": "make book-check",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "architecture": {
+    "ratchet": "67/67",
+    "engine_mutex_limit_tightened_from": 9,
+    "engine_mutex_limit_tightened_to": 8,
+    "status": "passed"
+  }
+}

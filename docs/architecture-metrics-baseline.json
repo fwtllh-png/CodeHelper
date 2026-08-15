@@ -264,7 +264,7 @@
         "internal_fanout": 24,
         "production_lines": 10476,
         "options_fields": 59,
-        "mutex_fields": 9
+        "mutex_fields": 8
       }
     },
     {
