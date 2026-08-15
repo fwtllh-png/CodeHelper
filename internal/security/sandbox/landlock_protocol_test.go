@@ -14,6 +14,7 @@ func TestLandlockHelperProtocolRoundTripAndSecretIsolation(t *testing.T) {
 	request := landlockRequest{
 		SchemaVersion: landlockSchemaVersion,
 		PolicyID:      "sandbox-v1-0123456789abcdef",
+		SyscallPolicy: syscallPolicyRestricted,
 		ReadOnly:      []string{"/bin", "/usr"},
 		ReadWrite:     []string{"/private/tmp", "/workspace"},
 		Executable:    "/bin/sh",
@@ -43,6 +44,7 @@ func TestLandlockHelperProtocolRejectsUnknownAndMalformedInput(t *testing.T) {
 	valid := `{
 		"schema_version":1,
 		"policy_id":"sandbox-v1-0123456789abcdef",
+		"syscall_policy":"restricted",
 		"read_only":["/bin"],
 		"read_write":["/workspace"],
 		"executable":"/bin/sh",
@@ -54,12 +56,28 @@ func TestLandlockHelperProtocolRejectsUnknownAndMalformedInput(t *testing.T) {
 		"root":     strings.Replace(valid, `["/bin"]`, `["/"]`, 1),
 		"unsorted": strings.Replace(valid, `["/bin"]`, `["/usr","/bin"]`, 1),
 		"argv":     strings.Replace(valid, `["/bin/sh"]`, `["sh"]`, 1),
+		"syscalls": strings.Replace(valid, `"restricted"`, `"unknown"`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := decodeLandlockRequest(strings.NewReader(input)); err == nil {
 				t.Fatalf("malformed helper request was accepted: %s", input)
 			}
 		})
+	}
+}
+
+func TestPolicySyscallModeIsMonotonic(t *testing.T) {
+	for _, test := range []struct {
+		policy Policy
+		want   string
+	}{
+		{policy: Policy{}, want: syscallPolicyRestricted},
+		{policy: Policy{ManagedProxyPort: 43128}, want: syscallPolicyProxyRouted},
+		{policy: Policy{AllowNetwork: true}, want: syscallPolicyDirect},
+	} {
+		if got := policySyscallMode(test.policy); got != test.want {
+			t.Fatalf("policySyscallMode(%+v) = %q, want %q", test.policy, got, test.want)
+		}
 	}
 }
 

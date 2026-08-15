@@ -15,6 +15,8 @@ type preparedExecution struct {
 	invocation Invocation
 	executor   tool.Executor
 	arguments  json.RawMessage
+	runtime    *policy.Runtime
+	decision   policy.Decision
 	waited     time.Duration
 }
 
@@ -33,9 +35,16 @@ func (g *Guard) authorize(
 		if err != nil {
 			return preparedExecution{}, err
 		}
+		if err := g.checkControlPlaneWrites(invocation.Resources); err != nil {
+			return preparedExecution{
+				invocation: invocation, executor: executor, arguments: arguments,
+				waited: approvalWait,
+			}, err
+		}
 		policyInvocation := policyInput(callID, invocation)
 		started := g.now()
-		decision := g.policy.Evaluate(policyInvocation)
+		runtime := g.Policy().CloneSampling()
+		decision := runtime.Evaluate(policyInvocation)
 		reviewLatency := g.now().Sub(started)
 		if g.forceEditPlanApproval && mediatedFileWriter(invocation.Tool) &&
 			decision.Action == policy.ActionAllow {
@@ -47,7 +56,11 @@ func (g *Guard) authorize(
 		if decision.Action == policy.ActionAsk || decision.Code == "auto_review_allowed" {
 			hookAction, err = g.permissionAction(ctx, invocation)
 			if err != nil {
-				return preparedExecution{}, err
+				return preparedExecution{
+					invocation: invocation, executor: executor,
+					arguments: arguments, runtime: runtime,
+					decision: decision, waited: approvalWait,
+				}, err
 			}
 			if decision.Code == "auto_review_allowed" && hookAction == PermissionAsk {
 				decision = policy.Decision{
@@ -60,9 +73,13 @@ func (g *Guard) authorize(
 		switch decision.Action {
 		case policy.ActionDeny, policy.ActionHold:
 			g.observeApproval("denied", policyInvocation, decision, 0)
-			return preparedExecution{}, &policy.DecisionError{
-				Code: decision.Code, Reason: decision.Reason,
-			}
+			return preparedExecution{
+					invocation: invocation, executor: executor,
+					arguments: arguments, runtime: runtime,
+					decision: decision, waited: approvalWait,
+				}, &policy.DecisionError{
+					Code: decision.Code, Reason: decision.Reason,
+				}
 		case policy.ActionAllow:
 			if decision.Code == "auto_review_allowed" {
 				g.observeApproval("auto_allowed", policyInvocation, decision, reviewLatency)
@@ -70,7 +87,8 @@ func (g *Guard) authorize(
 			g.grantNetworkHosts(invocation.Resources)
 			return preparedExecution{
 				invocation: invocation, executor: executor,
-				arguments: arguments, waited: approvalWait,
+				arguments: arguments, runtime: runtime,
+				decision: decision, waited: approvalWait,
 			}, nil
 		case policy.ActionAsk:
 			authorized, replacement, waited, err := g.authorizeAsk(
@@ -84,12 +102,17 @@ func (g *Guard) authorize(
 			)
 			approvalWait += waited
 			if err != nil {
-				return preparedExecution{}, err
+				return preparedExecution{
+					invocation: invocation, executor: executor,
+					arguments: arguments, runtime: runtime,
+					decision: decision, waited: approvalWait,
+				}, err
 			}
 			if authorized {
 				return preparedExecution{
 					invocation: invocation, executor: executor,
-					arguments: arguments, waited: approvalWait,
+					arguments: arguments, runtime: runtime,
+					decision: decision, waited: approvalWait,
 				}, nil
 			}
 			if len(replacement) != 0 {
@@ -99,6 +122,24 @@ func (g *Guard) authorize(
 			return preparedExecution{}, errors.New("tool guard received invalid policy action")
 		}
 	}
+}
+
+func (g *Guard) checkControlPlaneWrites(resources []tool.Resource) error {
+	for _, resource := range resources {
+		if resource.Access != tool.AccessWrite ||
+			!isPathKind(resource.Kind) ||
+			resource.Path == "" {
+			continue
+		}
+		tree := resource.Tree || resource.Kind != "file"
+		if err := g.controlPlane.CheckWrite(resource.Path, tree); err != nil {
+			return &policy.DecisionError{
+				Code:   "control_plane_protected",
+				Reason: err.Error(),
+			}
+		}
+	}
+	return nil
 }
 
 func (g *Guard) authorizeAsk(

@@ -119,6 +119,40 @@ func TestSessionDetachSurvivesCallerCancelAndCloseByThread(t *testing.T) {
 	}
 }
 
+func TestCloseByTurnPreservesConcurrentTurnInSameThread(t *testing.T) {
+	manager := NewSessionManager(4096)
+	defer manager.CloseAll()
+	first, err := manager.Create(t.Context(), SessionOptions{
+		Command: `while true; do sleep 1; done`, Dir: t.TempDir(),
+		ThreadID: "thread-a", TurnID: "turn-1", CallID: "call-1",
+		DetachFromCaller: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.Create(t.Context(), SessionOptions{
+		Command: `while true; do sleep 1; done`, Dir: t.TempDir(),
+		ThreadID: "thread-a", TurnID: "turn-2", CallID: "call-2",
+		DetachFromCaller: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := manager.CloseByTurn("turn-1"); n != 1 {
+		t.Fatalf("CloseByTurn = %d, want 1", n)
+	}
+	if manager.OwnerThread(first) != "" {
+		t.Fatal("turn-1 session should be gone")
+	}
+	if manager.Count() != 1 || manager.OwnerThread(second) != "thread-a" {
+		t.Fatalf(
+			"turn-2 session should remain: count=%d owner=%q",
+			manager.Count(),
+			manager.OwnerThread(second),
+		)
+	}
+}
+
 func TestSessionOperationsRejectNonOwner(t *testing.T) {
 	manager := NewSessionManager(4096)
 	id, err := manager.Create(t.Context(), SessionOptions{

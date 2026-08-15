@@ -243,7 +243,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		Visibility:  tool.VisibleModel,
 		Capability:  tool.CapabilityPlugin, AccessMode: tool.AccessTree,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{
-			{Kind: "repo", ID: ".", Access: tool.AccessWrite, Tree: true},
+			{Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true},
 			{Kind: "plugin", ID: t.plugin.Name(), Access: tool.AccessWrite, Tree: true},
 		}},
 		ParallelPolicy:     tool.ParallelSerial,

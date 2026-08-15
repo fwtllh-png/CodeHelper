@@ -54,9 +54,15 @@ strong isolation cannot be satisfied by a backend merely named "sandbox".
 
 ## Platform Backends
 
-- macOS Seatbelt builds an SBPL profile with explicit roots and network mode.
+- macOS Seatbelt builds an SBPL profile with explicit roots; managed process
+  networking grants only the Runtime-owned loopback proxy port.
 - Linux Bubblewrap uses namespace/mount isolation and may add Landlock through
-  a secret-free helper protocol.
+  a secret-free helper protocol. Process networking remains denied until a
+  namespace-to-proxy bridge is enforced.
+- The Linux helper pins Landlock, `no_new_privs`, seccomp, and `execve` to one
+  OS thread. Seccomp rejects ptrace, cross-process memory access, namespace
+  clone operations, `clone3`, and `io_uring`; network syscall families are
+  compiled from the effective network mode.
 - Unsupported or failed probes return an unavailable backend that preserves the
   reason and fails execution.
 

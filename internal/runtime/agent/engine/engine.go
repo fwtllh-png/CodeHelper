@@ -72,7 +72,7 @@ type Options struct {
 	ProfilePermissionCeiling policy.Permission
 	Guard                    *toolguard.Guard
 	// OnNetworkAllow grants approved egress to the session Gate.
-	OnNetworkAllow     func(host, protocol string)
+	OnNetworkAllow     toolguard.NetworkAllow
 	Workspace          string
 	WorkspaceIsolation string
 	Metrics            Metrics
@@ -92,9 +92,11 @@ type Options struct {
 	TurnKernelObserver func(turnkernel.TransitionRecord)
 	// TurnCoordinatorRuntime owns Coordinator construction and persistence.
 	TurnCoordinatorRuntime turnkernel.CoordinatorRuntime
-	Hooks                  *hooks.Manager
-	SessionID              string
-	InputHost              *interact.Host
+	// ReleaseTurnResources tears down resources that may outlive one tool call.
+	ReleaseTurnResources func(TurnIdentity)
+	Hooks                *hooks.Manager
+	SessionID            string
+	InputHost            *interact.Host
 	// PromptCacheKey is the session sticky cache hint.
 	PromptCacheKey string
 	// ProfileRevision is frozen into each TurnCoordinator snapshot.

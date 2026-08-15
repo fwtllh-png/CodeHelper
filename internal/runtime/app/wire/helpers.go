@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -183,18 +182,8 @@ func loadRepositoryRules(path string) ([]policy.Rule, error) {
 		}
 		return nil, err
 	}
-	for index, rule := range rules {
-		if rule.Tool == "" {
-			return nil, fmt.Errorf("rule %d: tool is required", index)
-		}
-		switch rule.Action {
-		case policy.ActionAllow, policy.ActionAsk, policy.ActionDeny, policy.ActionHold:
-		default:
-			return nil, fmt.Errorf("rule %d: invalid action %q", index, rule.Action)
-		}
-		if rule.Action == policy.ActionHold && rule.Code == "" {
-			return nil, fmt.Errorf("rule %d: hold code is required", index)
-		}
+	if err := policy.ValidateRules(policy.SourceRepository, rules); err != nil {
+		return nil, err
 	}
 	return rules, nil
 }

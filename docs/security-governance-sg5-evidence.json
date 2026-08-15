@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "stage": "SG5",
+  "status": "accepted",
+  "base_commit": "ca3c4ba4ef7846864bde326324f6b78256c52a9b",
+  "baseline": "docs/security-governance-sg0-baseline.json",
+  "controls": {
+    "linux_syscall_filter": true,
+    "baseline_controls_enabled": 14,
+    "baseline_controls_total": 15,
+    "known_gaps": 1
+  },
+  "attack_cases": {
+    "SG-ATTACK-005": "blocked"
+  },
+  "implementation": {
+    "no_new_privs": true,
+    "seccomp_filter": true,
+    "same_os_thread_enforcement": true,
+    "audit_arch_check": [
+      "amd64",
+      "arm64"
+    ],
+    "blocked_process_syscalls": [
+      "ptrace",
+      "process_vm_readv",
+      "process_vm_writev",
+      "clone3",
+      "unshare",
+      "setns",
+      "io_uring_setup",
+      "io_uring_enter",
+      "io_uring_register"
+    ],
+    "dangerous_clone_flags_blocked": true,
+    "network_modes": [
+      "restricted",
+      "proxy_routed",
+      "direct"
+    ],
+    "landlock_retained": true,
+    "macos_proxy_port_only": true,
+    "windows_strong_unavailable": true
+  },
+  "verification": {
+    "linux_amd64_cross_compile": true,
+    "linux_arm64_cross_compile": true,
+    "linux_live_test_defined": true,
+    "linux_live_test_executed_via_local_docker": true,
+    "linux_live_runtime": "docker linux/arm64"
+  },
+  "commands": {
+    "stage": "make security-governance-sg5",
+    "security": "make security-test",
+    "sandbox": "make sandbox-attack-test",
+    "linux_live": "CODEHELPER_SANDBOX_STAGE=1 go test -tags=capability -race ./internal/security/sandbox -run 'Test(LandlockHelperAppliesStrictPolicy|LandlockHelperAppliesSyscallPolicy)'",
+    "linux_docker": "docker run --rm --security-opt no-new-privileges --mount type=bind,src=.tmp/security-governance/sandbox-linux-arm64.test,dst=/sandbox.test,readonly -e CODEHELPER_SANDBOX_STAGE=1 golang:1.24-bookworm /sandbox.test -test.v -test.run '^Test(LandlockHelperAppliesStrictPolicy|LandlockHelperAppliesSyscallPolicy)$'",
+    "docs": "make docs-check && make book-check && make markdownlint-check",
+    "architecture": "make architecture-ratchet"
+  }
+}

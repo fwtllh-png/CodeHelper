@@ -27,6 +27,10 @@ LDFLAGS := -s -w \
 	provider-architecture-p6 \
 	tool-execution-ex0 tool-execution-ex0-update tool-execution-ex1 tool-execution-ex2 \
 	tool-execution-ex3 tool-execution-ex4 tool-execution-ex5 \
+	security-governance-sg0 security-governance-sg0-update \
+	security-governance-sg1 security-governance-sg2 security-governance-sg3 \
+	security-governance-sg4 security-governance-sg5 security-governance-sg6 \
+	security-governance-sg7 \
 	provider-p0-goldens provider-p0-goldens-update \
 	provider-deepseek-live-control provider-deepseek-live-ce7 \
 	architecture-ratchet architecture-size-budget architecture-freeze \
@@ -63,6 +67,8 @@ PROVIDER_ARCHITECTURE_SIZE_REPORT ?= .tmp/architecture/provider-p0-size.json
 PROVIDER_ARCHITECTURE_SIZE_PATHS ?= internal/adapter/model,internal/adapter/provider,internal/runtime/app/wire/modules_provider.go
 TOOL_EXECUTION_BASELINE := docs/tool-execution-ex0-baseline.json
 TOOL_EXECUTION_REPORT ?= .tmp/tool-execution/ex0-report.json
+SECURITY_GOVERNANCE_BASELINE := docs/security-governance-sg0-baseline.json
+SECURITY_GOVERNANCE_REPORT ?= .tmp/security-governance/sg0-report.json
 
 FUZZTIME ?= 30s
 RELEASE_STAGE ?= experimental
@@ -253,6 +259,123 @@ tool-execution-ex0-update:
 	$(GO) run ./scripts/toolexecbaseline -root . \
 		-baseline '$(TOOL_EXECUTION_BASELINE)' \
 		-write-baseline
+
+security-governance-sg0:
+	$(GO) test -count=1 ./scripts/securitygovernancebaseline
+	$(GO) run ./scripts/securitygovernancebaseline -root . \
+		-baseline '$(SECURITY_GOVERNANCE_BASELINE)' \
+		-report '$(SECURITY_GOVERNANCE_REPORT)'
+	$(GO) test -count=1 \
+		./internal/security/... \
+		./internal/adapter/tool/guard/... \
+		./internal/platform/process/...
+	$(MAKE) architecture-ratchet
+
+security-governance-sg0-update:
+	$(GO) run ./scripts/securitygovernancebaseline -root . \
+		-baseline '$(SECURITY_GOVERNANCE_BASELINE)' \
+		-write-baseline
+
+security-governance-sg1: security-governance-sg0
+	$(GO) test -race -count=1 \
+		./internal/security/... \
+		./internal/adapter/tool/guard/... \
+		./internal/adapter/plugin/... \
+		./internal/adapter/tool/plugin/... \
+		./internal/adapter/tool/task/...
+	$(MAKE) sandbox-attack-test
+
+security-governance-sg2: security-governance-sg1
+	$(GO) test -race -count=1 \
+		./internal/security/authority \
+		./internal/security/sandbox \
+		./internal/platform/process \
+		./internal/adapter/tool/guard
+
+security-governance-sg3: security-governance-sg2
+	$(GO) test -count=1 \
+		./internal/security/authority \
+		./internal/security/sandbox \
+		./internal/platform/process \
+		./internal/adapter/tool/guard \
+		./internal/adapter/tool/file \
+		./internal/adapter/tool/shell
+	$(GO) test -race -count=1 \
+		./internal/security/authority \
+		./internal/security/sandbox \
+		./internal/platform/process \
+		./internal/adapter/tool/guard
+	$(MAKE) sandbox-attack-test
+
+security-governance-sg4: security-governance-sg3
+	$(GO) test -count=1 \
+		./internal/security/egress \
+		./internal/security/policy \
+		./internal/security/authority \
+		./internal/security/sandbox \
+		./internal/platform/process \
+		./internal/adapter/tool/guard \
+		./internal/adapter/tool/shell \
+		./internal/adapter/tool/web \
+		./internal/adapter/provider/httpclient \
+		./internal/adapter/mcp
+	$(GO) test -race -count=1 \
+		./internal/security/egress \
+		./internal/security/sandbox \
+		./internal/platform/process \
+		./internal/adapter/tool/guard
+	$(MAKE) sandbox-attack-test
+
+security-governance-sg5: security-governance-sg4
+	$(GO) test -count=1 \
+		./internal/security/sandbox \
+		./internal/platform/process \
+		./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/security/sandbox \
+		./internal/platform/process
+	mkdir -p .tmp/security-governance
+	GOOS=linux GOARCH=amd64 $(GO) test -c -tags=capability \
+		./internal/security/sandbox \
+		-o .tmp/security-governance/sandbox-linux-amd64.test
+	GOOS=linux GOARCH=arm64 $(GO) test -c -tags=capability \
+		./internal/security/sandbox \
+		-o .tmp/security-governance/sandbox-linux-arm64.test
+	CODEHELPER_SANDBOX_STAGE=1 $(GO) test -tags=capability -race \
+		./internal/security/sandbox \
+		-run 'Test(LandlockHelperAppliesStrictPolicy|LandlockHelperAppliesSyscallPolicy|LandlockBubblewrapPreparationMountsHelperLiteral)'
+	$(MAKE) sandbox-attack-test
+
+security-governance-sg6: security-governance-sg5
+	$(GO) test -count=1 \
+		./internal/security/policy \
+		./internal/security/permissions \
+		./internal/security/authority \
+		./internal/adapter/tool/guard \
+		./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/security/policy \
+		./internal/security/permissions \
+		./internal/security/authority \
+		./internal/adapter/tool/guard
+	$(MAKE) architecture-ratchet
+
+security-governance-sg7: security-governance-sg6
+	$(GO) test -count=1 \
+		./internal/adapter/tool \
+		./internal/adapter/tool/guard \
+		./internal/security/policy \
+		./internal/security/authority \
+		./scripts/securitygovernancebaseline
+	$(GO) test -race -count=1 \
+		./internal/adapter/tool \
+		./internal/adapter/tool/guard \
+		./internal/security/policy \
+		./internal/security/authority
+	$(GO) run ./scripts/securitygovernancebaseline -root . \
+		-baseline '$(SECURITY_GOVERNANCE_BASELINE)' \
+		-report '$(SECURITY_GOVERNANCE_REPORT)'
+	$(MAKE) architecture-ratchet
 
 tool-execution-ex1: tool-execution-ex0
 	$(GO) test -count=1 ./internal/platform/process ./internal/adapter/tool/shell
@@ -491,7 +614,7 @@ sandbox-attack-test:
 		./internal/security/sandbox/... ./internal/adapter/tool/file/... ./internal/adapter/tool/shell/...
 	CODEHELPER_SANDBOX_STAGE=1 $(GO) test -tags=capability -race \
 		./internal/platform/process/... \
-		-run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunPinsWorkingDirectoryToDescriptor|SessionCancellationKillsProcessGroup|RealSandboxAttackCorpus)'
+		-run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunPinsWorkingDirectoryToDescriptor|SessionCancellationKillsProcessGroup|RealSandboxAttackCorpus|RealManagedProxyBlocksDirectEgress)'
 
 secret-leak-test: build
 	./scripts/test-secret-leak.sh ./$(BINARY)

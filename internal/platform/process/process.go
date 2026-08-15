@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -28,8 +30,12 @@ type Options struct {
 	Sandbox              sandbox.Backend
 	RequireStrongSandbox bool
 	WorkspaceReadOnly    bool
+	AdditionalReadPaths  []string
 	WorkspaceWritePaths  []string
 	DenyNetwork          bool
+	NetworkHost          string
+	NetworkProtocol      string
+	NetworkPort          uint16
 	// OnOutput, when set, is called with each chunk as the process produces it,
 	// before the command finishes. A caller that only wants the final Result can
 	// leave it nil; a caller that has to show progress on a command that runs for
@@ -142,6 +148,17 @@ func Run(ctx context.Context, options Options) (Result, error) {
 }
 
 func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
+	readPaths, err := canonicalReadPaths(options.AdditionalReadPaths)
+	if err != nil {
+		return nil, err
+	}
+	options.AdditionalReadPaths = readPaths
+	executionAuthority, authorityBound := sandbox.ExecutionAuthorityFromContext(ctx)
+	if authorityBound {
+		if err := validateExecutionAuthority(options, executionAuthority); err != nil {
+			return nil, err
+		}
+	}
 	environment, err := SanitizedEnvironment(options.Env)
 	if err != nil {
 		return nil, err
@@ -161,8 +178,12 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 	commandSpec := sandbox.Command{
 		Dir: options.Dir, Env: environment,
 		WorkspaceReadOnly:   options.WorkspaceReadOnly,
+		AdditionalReadPaths: append([]string(nil), options.AdditionalReadPaths...),
 		WorkspaceWritePaths: append([]string(nil), options.WorkspaceWritePaths...),
 		DenyNetwork:         options.DenyNetwork,
+	}
+	if authorityBound {
+		commandSpec.AuthorityDigest = executionAuthority.Digest
 	}
 	if options.DirFile != nil {
 		commandSpec.DirectoryFD = 3
@@ -188,7 +209,10 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 	}
 	if options.RequireStrongSandbox {
 		if err := sandbox.RequireStrong(options.Sandbox); err != nil {
-			return nil, err
+			return nil, sandbox.Denied(sandbox.Denial{
+				Backend: backendName(options.Sandbox), Operation: sandbox.DenialProcess,
+				Resource: "strong_sandbox", ReasonCode: sandbox.ReasonBackendUnavailable,
+			}, err)
 		}
 		if options.DirFile == nil {
 			return nil, errors.New("strong sandbox execution requires a pinned workspace cwd descriptor")
@@ -212,11 +236,14 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		if options.RequireStrongSandbox && !ok {
 			return nil, errors.New("strong sandbox backend has no prepared policy identity")
 		}
-		environment = sandboxEnvironment(environment, policy)
+		environment = sandboxEnvironment(environment, policy, options.DenyNetwork)
 		commandSpec.Env = environment
 		commandSpec, err = options.Sandbox.Prepare(ctx, commandSpec)
 		if err != nil {
-			return nil, err
+			return nil, sandbox.WithDenialBackend(
+				err,
+				options.Sandbox.Capability().Backend,
+			)
 		}
 		if options.RequireStrongSandbox &&
 			(commandSpec.PreparedPolicyID == "" ||
@@ -224,14 +251,32 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 				commandSpec.PreparedStrength != sandbox.StrengthStrong) {
 			return nil, errors.New("strong sandbox backend returned an unverified prepared policy")
 		}
+		if authorityBound &&
+			commandSpec.PreparedAuthorityDigest != executionAuthority.Digest {
+			return nil, sandbox.Denied(sandbox.Denial{
+				Backend:   options.Sandbox.Capability().Backend,
+				Operation: sandbox.DenialProcess, Resource: executionAuthority.Digest,
+				ReasonCode: sandbox.ReasonAuthorityUnverified,
+			}, errors.New("sandbox backend returned an unverified execution authority"))
+		}
 		if options.WorkspaceReadOnly && !commandSpec.PreparedReadOnly {
-			return nil, errors.New("sandbox backend did not enforce a read-only workspace")
+			return nil, unenforcedRestriction(options.Sandbox, "workspace_read_only")
+		}
+		if !slices.Equal(options.AdditionalReadPaths, commandSpec.PreparedReadPaths) {
+			return nil, unenforcedRestriction(options.Sandbox, "additional_read_paths")
 		}
 		if !slices.Equal(options.WorkspaceWritePaths, commandSpec.PreparedWritePaths) {
 			return nil, errors.New("sandbox backend did not enforce exact workspace write paths")
 		}
 		if options.DenyNetwork && !commandSpec.PreparedNetworkDenied {
 			return nil, errors.New("sandbox backend did not enforce network isolation")
+		}
+		expectedProxyPort := policy.ManagedProxyPort
+		if options.DenyNetwork {
+			expectedProxyPort = 0
+		}
+		if commandSpec.PreparedProxyPort != expectedProxyPort {
+			return nil, unenforcedRestriction(options.Sandbox, "managed_network_proxy")
 		}
 	}
 	if commandSpec.Path == "" || len(commandSpec.Args) == 0 {
@@ -252,7 +297,121 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 	return command, nil
 }
 
-func sandboxEnvironment(environment []string, policy sandbox.Policy) []string {
+func validateExecutionAuthority(
+	options Options,
+	authority sandbox.ExecutionAuthority,
+) error {
+	if err := authority.Validate(); err != nil {
+		return err
+	}
+	switch authority.Enforcement {
+	case "strong":
+		if !options.RequireStrongSandbox || options.Sandbox == nil {
+			return sandbox.Denied(sandbox.Denial{
+				Operation: sandbox.DenialProcess, Resource: "strong_sandbox",
+				ReasonCode: sandbox.ReasonEnforcementMismatch,
+			}, errors.New("strong execution authority requires strong sandbox enforcement"))
+		}
+	case "none":
+		if options.RequireStrongSandbox {
+			return sandbox.Denied(sandbox.Denial{
+				Operation: sandbox.DenialProcess, Resource: "unsandboxed",
+				ReasonCode: sandbox.ReasonEnforcementMismatch,
+			}, errors.New("unsandboxed execution authority cannot request a strong sandbox"))
+		}
+	}
+	if !authority.AllowProcess {
+		return sandbox.Denied(sandbox.Denial{
+			Operation: sandbox.DenialProcess, Resource: "process",
+			ReasonCode: sandbox.ReasonProcessNotAuthorized,
+		}, nil)
+	}
+	if !authority.WorkspaceBaseWrite && !options.WorkspaceReadOnly {
+		return sandbox.Denied(sandbox.Denial{
+			Operation: sandbox.DenialWrite, Resource: authority.WorkspaceRoot,
+			ReasonCode: sandbox.ReasonWorkspaceTreeDenied,
+		}, nil)
+	}
+	if path, denied := authority.DeniedReadPath(options.AdditionalReadPaths); denied {
+		return sandbox.Denied(sandbox.Denial{
+			Operation: sandbox.DenialRead, Resource: path,
+			ReasonCode: sandbox.ReasonPathReadNotAuthorized,
+		}, nil)
+	}
+	if path, denied := authority.DeniedWritePath(options.WorkspaceWritePaths); denied {
+		return sandbox.Denied(sandbox.Denial{
+			Operation: sandbox.DenialWrite, Resource: path,
+			ReasonCode: sandbox.ReasonPathWriteNotAuthorized,
+		}, nil)
+	}
+	if options.NetworkHost != "" &&
+		!slices.Contains(authority.NetworkTargets, networkTarget(options)) {
+		return sandbox.Denied(sandbox.Denial{
+			Operation: sandbox.DenialNetwork, Resource: options.NetworkHost,
+			Protocol: options.NetworkProtocol, Port: options.NetworkPort,
+			ReasonCode: sandbox.ReasonNetworkNotAuthorized,
+		}, nil)
+	}
+	if !authority.AllowNetwork && !options.DenyNetwork {
+		policyValue, policyBound := sandbox.BackendPolicy(options.Sandbox)
+		if !policyBound || policyValue.AllowNetwork {
+			return errors.New("process network access exceeds the effective permission profile")
+		}
+	}
+	if policyValue, ok := sandbox.BackendPolicy(options.Sandbox); ok &&
+		authority.ManagedProxyPort != policyValue.ManagedProxyPort {
+		return sandbox.Denied(sandbox.Denial{
+			Operation: sandbox.DenialNetwork, Resource: "managed_proxy",
+			ReasonCode: sandbox.ReasonAuthorityUnverified,
+		}, errors.New("managed proxy does not match the effective permission profile"))
+	}
+	return nil
+}
+
+func canonicalReadPaths(paths []string) ([]string, error) {
+	canonical := make([]string, 0, len(paths))
+	for _, path := range paths {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return nil, err
+		}
+		absolute, err := filepath.Abs(resolved)
+		if err != nil {
+			return nil, err
+		}
+		canonical = append(canonical, filepath.Clean(absolute))
+	}
+	slices.Sort(canonical)
+	return slices.Compact(canonical), nil
+}
+
+func networkTarget(options Options) string {
+	return strings.ToLower(options.NetworkProtocol) + "://" +
+		net.JoinHostPort(
+			strings.ToLower(options.NetworkHost),
+			strconv.Itoa(int(options.NetworkPort)),
+		)
+}
+
+func backendName(backend sandbox.Backend) string {
+	if backend == nil {
+		return "none"
+	}
+	return backend.Capability().Backend
+}
+
+func unenforcedRestriction(backend sandbox.Backend, resource string) error {
+	return sandbox.Denied(sandbox.Denial{
+		Backend: backendName(backend), Operation: sandbox.DenialProcess,
+		Resource: resource, ReasonCode: sandbox.ReasonRestrictionUnenforced,
+	}, nil)
+}
+
+func sandboxEnvironment(
+	environment []string,
+	policy sandbox.Policy,
+	denyNetwork bool,
+) []string {
 	if policy.PrivateTemp == "" {
 		return environment
 	}
@@ -262,6 +421,9 @@ func sandboxEnvironment(environment []string, policy sandbox.Policy) []string {
 			strings.HasPrefix(entry, "TMP=") || strings.HasPrefix(entry, "TEMP=") ||
 			strings.HasPrefix(entry, "GOTMPDIR=") ||
 			strings.HasPrefix(entry, "GOCACHE=") || strings.HasPrefix(entry, "GOMODCACHE=") {
+			continue
+		}
+		if proxyEnvironmentEntry(entry) {
 			continue
 		}
 		result = append(result, entry)
@@ -274,7 +436,25 @@ func sandboxEnvironment(environment []string, policy sandbox.Policy) []string {
 		"GOCACHE="+filepath.Join(policy.PrivateTemp, "go-build"),
 		"GOMODCACHE="+filepath.Join(policy.PrivateTemp, "pkg", "mod"),
 	)
+	if policy.ManagedProxyPort != 0 && !denyNetwork {
+		proxyURL := "http://127.0.0.1:" + strconv.Itoa(int(policy.ManagedProxyPort))
+		result = append(result,
+			"HTTP_PROXY="+proxyURL, "HTTPS_PROXY="+proxyURL,
+			"http_proxy="+proxyURL, "https_proxy="+proxyURL,
+			"NO_PROXY=", "no_proxy=",
+		)
+	}
 	return result
+}
+
+func proxyEnvironmentEntry(entry string) bool {
+	name, _, _ := strings.Cut(entry, "=")
+	switch strings.ToUpper(name) {
+	case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY":
+		return true
+	default:
+		return false
+	}
 }
 
 func ensureGoToolchain(environment []string) []string {

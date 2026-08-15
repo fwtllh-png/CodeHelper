@@ -110,7 +110,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		ProfilePermissionCeiling: approvalPosture,
 		Workspace:                execution.Workspace,
 		WorkspaceIsolation:       "shared",
-		OnNetworkAllow:           state.provider.egress.Allow,
+		OnNetworkAllow:           state.security.guardFactory.onNetworkAllow,
 		Journal:                  state.security.journal,
 		WorkspaceTurnGate:        workspaceTurnGate,
 		Diagnostics:              state.security.diagnostics,
@@ -126,8 +126,13 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		Metrics:                      session.metrics,
 		Trace:                        traceSink,
 		TurnCoordinatorRuntime:       coordinatorRuntime,
-		ReasoningEffort:              reasoningEffort,
-		NativeSearch:                 execution.NativeSearch,
+		ReleaseTurnResources: func(identity agentengine.TurnIdentity) {
+			if session.processes != nil {
+				session.processes.CloseByTurn(identity.TurnID)
+			}
+		},
+		ReasoningEffort: reasoningEffort,
+		NativeSearch:    execution.NativeSearch,
 		Budget: agentengine.Budget{
 			MaxTokens:  execution.BudgetTokens,
 			MaxCostUSD: execution.BudgetUSD,
@@ -277,6 +282,9 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 				options.ReadTracker = workspacejournal.NewReadTracker()
 				options.Diagnostics = toolset.diagnostics
 				options.Verify.Runner = toolset.verify
+				options.ReleaseTurnResources = func(identity agentengine.TurnIdentity) {
+					toolset.processes.CloseByTurn(identity.TurnID)
+				}
 			}
 			restrictChildTools(
 				options.Security, spec, seedOptions.Tools, options.Tools,

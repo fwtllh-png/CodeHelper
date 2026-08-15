@@ -424,16 +424,170 @@ func TestRunRejectsBackendThatDoesNotAcknowledgeRestrictions(t *testing.T) {
 		RequireStrongSandbox: true,
 		WorkspaceReadOnly:    true, DenyNetwork: true,
 	})
-	if err == nil || !strings.Contains(err.Error(), "read-only workspace") {
-		t.Fatalf("Run() error = %v", err)
+	denial, ok := sandbox.DenialFromError(err)
+	if !ok || denial.ReasonCode != sandbox.ReasonRestrictionUnenforced {
+		t.Fatalf("Run() denial = %+v error=%v", denial, err)
+	}
+}
+
+func TestRunVerifiesEffectiveExecutionAuthority(t *testing.T) {
+	root := t.TempDir()
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("a", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: false, AllowProcess: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Run(ctx, Options{
+		Command: "true", Dir: root, DirFile: directoryFile,
+		Sandbox: &recordingBackend{
+			root: root, ignoreAuthority: true,
+		},
+		RequireStrongSandbox: true,
+		WorkspaceReadOnly:    true, DenyNetwork: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "execution authority") {
+		t.Fatalf("unverified authority error = %v", err)
+	}
+	result, err := Run(ctx, Options{
+		Command: "printf ok", Dir: root, DirFile: directoryFile,
+		Sandbox:              &recordingBackend{root: root},
+		RequireStrongSandbox: true,
+		WorkspaceReadOnly:    true, DenyNetwork: true,
+	})
+	if err != nil || result.Stdout != "ok" {
+		t.Fatalf("verified authority result=%+v error=%v", result, err)
+	}
+}
+
+func TestRunRejectsProcessBroaderThanEffectiveAuthority(t *testing.T) {
+	root := t.TempDir()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("b", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: false, AllowProcess: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewCommand(ctx, Options{
+		Command: "true", Dir: root,
+		Sandbox: &recordingBackend{root: root}, RequireStrongSandbox: true,
+	})
+	denial, ok := sandbox.DenialFromError(err)
+	if !ok || denial.ReasonCode != sandbox.ReasonWorkspaceTreeDenied ||
+		denial.Amendable() {
+		t.Fatalf("broader process denial = %+v error=%v", denial, err)
+	}
+}
+
+func TestRunProducesAmendableTypedPathDenial(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "result.txt")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("c", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: true, AllowProcess: true,
+		ReadPaths: []string{root},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewCommand(ctx, Options{
+		Command: "true", Dir: root,
+		Sandbox: &recordingBackend{root: root}, RequireStrongSandbox: true,
+		WorkspaceReadOnly: true, WorkspaceWritePaths: []string{path},
+	})
+	denial, ok := sandbox.DenialFromError(err)
+	if !ok || denial.Operation != sandbox.DenialWrite ||
+		denial.Resource != path || !denial.Amendable() {
+		t.Fatalf("path denial = %+v error=%v", denial, err)
+	}
+}
+
+func TestRunAppliesApprovedAdditionalReadPath(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "workspace")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(parent, "approved.txt")
+	if err := os.WriteFile(path, []byte("approved"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("d", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: false, AllowProcess: true,
+		ReadPaths: []string{root, path},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Run(ctx, Options{
+		Path: "cat", Args: []string{path}, Dir: root, DirFile: directoryFile,
+		Sandbox: &recordingBackend{root: root}, RequireStrongSandbox: true,
+		WorkspaceReadOnly: true, AdditionalReadPaths: []string{path},
+		DenyNetwork: true,
+	})
+	if err != nil || result.Stdout != "approved" {
+		t.Fatalf("Run() result=%+v error=%v", result, err)
+	}
+}
+
+func TestRunInjectsOnlyVerifiedManagedProxy(t *testing.T) {
+	root := t.TempDir()
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("e", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: true, AllowProcess: true,
+		ReadPaths: []string{root}, ManagedProxyPort: 43128,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &recordingBackend{root: root, proxyPort: 43128}
+	_, err = Run(ctx, Options{
+		Command: "true", Dir: root, DirFile: directoryFile,
+		Sandbox: backend, RequireStrongSandbox: true,
+		WorkspaceReadOnly: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if environmentValue(backend.command.Env, "HTTPS_PROXY") !=
+		"http://127.0.0.1:43128" ||
+		environmentValue(backend.command.Env, "NO_PROXY") != "" {
+		t.Fatalf("managed proxy environment = %v", backend.command.Env)
 	}
 }
 
 type recordingBackend struct {
 	command            sandbox.Command
 	root               string
+	proxyPort          uint16
 	ignoreRestrictions bool
 	ignoreWritePaths   bool
+	ignoreAuthority    bool
 }
 
 func (b *recordingBackend) Capability() sandbox.Capability {
@@ -447,9 +601,17 @@ func (b *recordingBackend) Prepare(_ context.Context, command sandbox.Command) (
 	b.command = command
 	command.PreparedPolicyID = "fixture-policy"
 	command.PreparedStrength = sandbox.StrengthStrong
+	if !b.ignoreAuthority {
+		command.PreparedAuthorityDigest = command.AuthorityDigest
+	}
 	if !b.ignoreRestrictions {
 		command.PreparedReadOnly = command.WorkspaceReadOnly
+		command.PreparedReadPaths = append(
+			[]string(nil),
+			command.AdditionalReadPaths...,
+		)
 		command.PreparedNetworkDenied = command.DenyNetwork
+		command.PreparedProxyPort = b.proxyPort
 		if !b.ignoreWritePaths {
 			command.PreparedWritePaths = append(
 				[]string(nil), command.WorkspaceWritePaths...,
@@ -462,7 +624,7 @@ func (b *recordingBackend) Prepare(_ context.Context, command sandbox.Command) (
 func (b *recordingBackend) Policy() sandbox.Policy {
 	return sandbox.Policy{
 		Version: 1, ID: "fixture-policy", WorkspaceRoot: b.root,
-		PrivateTemp: b.root,
+		PrivateTemp: b.root, ManagedProxyPort: b.proxyPort,
 	}
 }
 

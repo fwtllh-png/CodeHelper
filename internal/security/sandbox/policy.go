@@ -17,6 +17,23 @@ import (
 
 const policyVersion = 1
 
+func SupportsManagedNetworkProxy() bool { return runtime.GOOS == "darwin" }
+
+func ManagedNetworkProxyPort(port uint16) uint16 {
+	if SupportsManagedNetworkProxy() {
+		return port
+	}
+	return 0
+}
+
+func BackendManagedProxyPort(backend Backend) uint16 {
+	policy, ok := BackendPolicy(backend)
+	if !ok {
+		return 0
+	}
+	return policy.ManagedProxyPort
+}
+
 type Options struct {
 	WorkspaceRoot string
 	HostReadRoots []string
@@ -26,7 +43,8 @@ type Options struct {
 	// AllowNetwork permits outbound/inbound sockets inside the OS sandbox.
 	// codehelper enables it for the interactive tool session so host CLIs like
 	// ubomcli can reach their APIs.
-	AllowNetwork bool
+	AllowNetwork     bool
+	ManagedProxyPort uint16
 	// SkipPATHReadRoots disables inheriting absolute PATH directories as
 	// HostReadRoots. Default (false) lets user-installed tools run (e.g.
 	// ~/.local/bin/ubomcli) without opening the entire home directory.
@@ -38,6 +56,7 @@ type Controls struct {
 	WriteIsolation   bool `json:"write_isolation"`
 	NetworkIsolation bool `json:"network_isolation"`
 	ProcessIsolation bool `json:"process_isolation"`
+	SyscallIsolation bool `json:"syscall_isolation"`
 	SymlinkSafe      bool `json:"symlink_safe"`
 }
 
@@ -50,6 +69,7 @@ type Policy struct {
 	HostReadRoots    []string `json:"host_read_roots"`
 	HostReadFiles    []string `json:"host_read_files,omitempty"`
 	AllowNetwork     bool     `json:"allow_network,omitempty"`
+	ManagedProxyPort uint16   `json:"managed_proxy_port,omitempty"`
 	Controls         Controls `json:"controls"`
 	ownsPrivateTemp  bool
 }
@@ -57,6 +77,9 @@ type Policy struct {
 func BuildPolicy(options Options) (Policy, error) {
 	if strings.TrimSpace(options.WorkspaceRoot) == "" {
 		return Policy{}, errors.New("sandbox workspace root is required")
+	}
+	if options.AllowNetwork && options.ManagedProxyPort != 0 {
+		return Policy{}, errors.New("broad and managed sandbox network modes conflict")
 	}
 	workspace, err := canonicalDirectory(options.WorkspaceRoot)
 	if err != nil {
@@ -148,12 +171,14 @@ func BuildPolicy(options Options) (Policy, error) {
 	policy := Policy{
 		Version: policyVersion, WorkspaceRoot: workspace, PrivateTemp: privateTemp,
 		RuntimeReadRoots: runtimeRoots, HostReadRoots: hostRoots,
-		HostReadFiles: hostFiles,
-		AllowNetwork:  options.AllowNetwork,
+		HostReadFiles:    hostFiles,
+		AllowNetwork:     options.AllowNetwork,
+		ManagedProxyPort: options.ManagedProxyPort,
 		Controls: Controls{
 			ReadIsolation: true, WriteIsolation: true,
 			NetworkIsolation: !options.AllowNetwork,
-			ProcessIsolation: true, SymlinkSafe: true,
+			ProcessIsolation: true, SyscallIsolation: runtime.GOOS == "linux",
+			SymlinkSafe: true,
 		},
 		ownsPrivateTemp: ownsPrivateTemp,
 	}
@@ -214,6 +239,7 @@ func (b *policyBinding) Prepare(ctx context.Context, command Command) (Command, 
 		return Command{}, err
 	}
 	prepared.PreparedPolicyID = b.policy.ID
+	prepared.PreparedAuthorityDigest = command.AuthorityDigest
 	prepared.PreparedStrength = b.Backend.Capability().Strength
 	return prepared, nil
 }

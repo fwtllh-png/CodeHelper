@@ -74,6 +74,39 @@ func TestExactWorkspaceWritePathLimitMatchesToolExpansion(t *testing.T) {
 	}
 }
 
+func TestExactWorkspaceWritesRejectControlPlaneAndWritableBase(t *testing.T) {
+	root := t.TempDir()
+	protected := filepath.Join(root, ".codehelper", "state.json")
+	if err := os.MkdirAll(filepath.Dir(protected), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(protected, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateExactWorkspaceWritePaths(
+		workspace,
+		true,
+		[]string{".codehelper/state.json"},
+	); err == nil || !strings.Contains(err.Error(), "control-plane") {
+		t.Fatalf("protected exact write error = %v", err)
+	}
+	ordinary := filepath.Join(root, "ordinary.txt")
+	if err := os.WriteFile(ordinary, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateExactWorkspaceWritePaths(
+		workspace,
+		false,
+		[]string{ordinary},
+	); err == nil || !strings.Contains(err.Error(), "read-only workspace") {
+		t.Fatalf("exact write on writable base error = %v", err)
+	}
+}
+
 func TestBackendProfilesNeverAdmitHostRoot(t *testing.T) {
 	root := t.TempDir()
 	policy, err := BuildPolicy(Options{
@@ -163,7 +196,7 @@ func TestSeatbeltCommandCanRestrictWorkspaceAndNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile := seatbeltProfileForCommand(policy, "/bin/sh", true, nil, true)
+	profile := seatbeltProfileForCommand(policy, "/bin/sh", true, nil, nil, true)
 	workspaceWrite := "(allow file-write* (subpath " + seatbeltQuote(policy.WorkspaceRoot) + "))"
 	if strings.Contains(profile, workspaceWrite) {
 		t.Fatalf("read-only profile permits workspace writes:\n%s", profile)
@@ -175,6 +208,68 @@ func TestSeatbeltCommandCanRestrictWorkspaceAndNetwork(t *testing.T) {
 	if !strings.Contains(profile, "(deny network*)") ||
 		strings.Contains(profile, "(allow network-outbound)") {
 		t.Fatalf("network-restricted profile permits network:\n%s", profile)
+	}
+}
+
+func TestSeatbeltManagedNetworkAllowsOnlyProxyPort(t *testing.T) {
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: t.TempDir(), PrivateTemp: t.TempDir(),
+		ManagedProxyPort: 43128, SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := seatbeltProfileForCommand(policy, "/bin/sh", true, nil, nil, false)
+	if !strings.Contains(
+		profile,
+		`(allow network-outbound (remote ip "localhost:43128"))`,
+	) || strings.Contains(profile, "\n(allow network-outbound)\n") ||
+		strings.Contains(profile, `remote ip "localhost:*"`) {
+		t.Fatalf("managed network profile is broader than the proxy port:\n%s", profile)
+	}
+}
+
+func TestSeatbeltPreparedProxyPortReflectsCommandNetworkPolicy(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("seatbelt is only available on macOS")
+	}
+	backend, err := NewPlatformBackend(Options{
+		WorkspaceRoot: t.TempDir(), PrivateTemp: t.TempDir(),
+		ManagedProxyPort: 43128, SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer CloseBackend(backend)
+	for _, test := range []struct {
+		name        string
+		denyNetwork bool
+		wantPort    uint16
+	}{
+		{name: "managed", wantPort: 43128},
+		{name: "denied", denyNetwork: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			prepared, err := backend.Prepare(t.Context(), Command{
+				Path: "/bin/sh", Args: []string{"/bin/sh", "-c", "true"},
+				Dir:               backend.(PolicyBackend).Policy().WorkspaceRoot,
+				Env:               []string{"PATH=/usr/bin:/bin"},
+				WorkspaceReadOnly: true, DenyNetwork: test.denyNetwork,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if prepared.PreparedProxyPort != test.wantPort ||
+				prepared.PreparedNetworkDenied != test.denyNetwork {
+				t.Fatalf(
+					"prepared port=%d denied=%t, want port=%d denied=%t",
+					prepared.PreparedProxyPort,
+					prepared.PreparedNetworkDenied,
+					test.wantPort,
+					test.denyNetwork,
+				)
+			}
+		})
 	}
 }
 
@@ -196,7 +291,7 @@ func TestSeatbeltCommandAllowsOnlyDeclaredWorkspaceFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := seatbeltProfileForCommand(
-		policy, "/bin/sh", true, []string{declared}, true,
+		policy, "/bin/sh", true, nil, []string{declared}, true,
 	)
 	declaredWrite := "(allow file-write* (literal " + seatbeltQuote(declared) + "))"
 	if !strings.Contains(profile, declaredWrite) {
@@ -209,6 +304,39 @@ func TestSeatbeltCommandAllowsOnlyDeclaredWorkspaceFiles(t *testing.T) {
 	workspaceWrite := "(allow file-write* (subpath " + seatbeltQuote(root) + "))"
 	if strings.Contains(profile, workspaceWrite) {
 		t.Fatalf("workspace-wide write grant present:\n%s", profile)
+	}
+}
+
+func TestSeatbeltProfileAddsOnlyApprovedReadPath(t *testing.T) {
+	parent := t.TempDir()
+	workspace := filepath.Join(parent, "workspace")
+	privateTemp := filepath.Join(parent, "private")
+	approved := filepath.Join(parent, "approved.txt")
+	for _, directory := range []string{workspace, privateTemp} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(approved, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: workspace, PrivateTemp: privateTemp,
+		SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := validateAdditionalReadPaths(policy, []string{approved})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := seatbeltProfileForCommand(
+		policy, "/bin/sh", true, paths, nil, true,
+	)
+	rule := "(allow file-read* (literal " + seatbeltQuote(paths[0]) + "))"
+	if !strings.Contains(profile, rule) {
+		t.Fatalf("approved read grant missing:\n%s", profile)
 	}
 }
 
@@ -297,7 +425,8 @@ func TestBackendsPreserveDescriptorRelativeWorkingDirectory(t *testing.T) {
 	input := Command{
 		Path: "sh", Args: []string{"sh", "-lc", "pwd"},
 		Dir: workspace.Root(), DirectoryFD: 3,
-		Env: []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
+		Env:               []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
+		WorkspaceReadOnly: true,
 	}
 	policy, err := BuildPolicy(Options{WorkspaceRoot: workspace.Root(), PrivateTemp: t.TempDir()})
 	if err != nil {

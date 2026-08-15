@@ -329,7 +329,11 @@ func TestPersistentSessionPublishesAgentSpawnLive(t *testing.T) {
 
 func TestNeverPostureRejectsPersistedWorkspaceAllow(t *testing.T) {
 	workspace := t.TempDir()
-	permissionPath := permissions.Path(workspace)
+	stateDataDir := t.TempDir()
+	permissionPath, err := permissions.Path(stateDataDir, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Dir(permissionPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +349,7 @@ grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		FixturePath: subagentFixture(t, "openai"),
 		Permission:  "never",
 		ConfigOverrides: config.Overrides{
-			Tools: &tools, Workspace: &workspace,
+			Tools: &tools, Workspace: &workspace, StateDataDir: &stateDataDir,
 		},
 	})
 	if err != nil {

@@ -322,6 +322,25 @@ func (a *EngineAdapter) StartTurn(
 				Reason: protocol.NormalizeCancelReason(event.CancelReason),
 			})
 		case agentengine.AwaitingApproval:
+			if event.ApprovalResolution != nil {
+				resolved := &protocol.ApprovalResolvedData{
+					RequestID: event.ApprovalResolution.RequestID,
+					Decision:  protocol.ApprovalDecision(event.ApprovalResolution.Decision),
+					Source:    a.approvalSource,
+				}
+				if event.ApprovalResolution.Reason != "" {
+					resolved.Problem = protocol.NewProblemWithDetails(
+						protocol.CodeConflict,
+						"tool approval expired",
+						false,
+						protocol.ProblemDetails{
+							Reason: event.ApprovalResolution.Reason,
+						},
+						nil,
+					)
+				}
+				return sink.Emit(resolved)
+			}
 			if event.Approval == nil {
 				return nil
 			}
@@ -451,7 +470,8 @@ func (a *EngineAdapter) StartTurn(
 				if err := sink.Emit(&protocol.ToolResultData{
 					Tool: event.ToolCall.Name, CallID: event.ToolCall.ID,
 					Output: event.Result.Content, IsError: event.Result.IsError,
-					Changes: changes, Recovery: recovery, Completion: completion,
+					Execution: projectToolExecutionReceipt(event.Result.Execution),
+					Changes:   changes, Recovery: recovery, Completion: completion,
 					WorkspaceWriteScope: workspaceWriteScope,
 					ObservedChanges:     observedChanges,
 				}); err != nil {

@@ -263,8 +263,11 @@
       "limits": {
         "internal_fanout": 24,
         "production_lines": 10476,
-        "options_fields": 59,
+        "options_fields": 60,
         "mutex_fields": 8
+      },
+      "relaxations": {
+        "options_fields": "SG7 adds one Engine-owned Turn resource release callback so terminal cleanup cannot leak Process Sessions."
       }
     },
     {
@@ -273,9 +276,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7696,
+        "production_lines": 7806,
         "options_fields": 18,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "SG7 durably projects typed Tool Execution Receipts without coupling runtime protocol to adapter or sandbox packages."
       }
     },
     {
@@ -361,9 +367,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 4873,
+        "production_lines": 5000,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "SG7 publishes a typed, validated Tool Execution Receipt wire contract for durable audit recovery."
       }
     },
     {
@@ -445,8 +454,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 426,
-        "max_function_lines": 333
+        "lines": 434,
+        "max_function_lines": 341
+      },
+      "relaxations": {
+        "lines": "SG7 wires Turn-terminal Process Session cleanup for parent and child workspaces.",
+        "max_function_lines": "SG7 keeps parent and child Process Session ownership explicit in the runtime composition root."
       }
     },
     {
@@ -526,8 +539,11 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 517,
+        "lines": 518,
         "max_function_lines": 128
+      },
+      "relaxations": {
+        "lines": "SG7 documents the Engine-owned Turn resource release option beside the frozen Turn lifecycle options."
       }
     },
     {

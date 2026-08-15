@@ -308,6 +308,7 @@ type ToolResultData struct {
 	CallID              string                 `json:"call_id"`
 	Output              string                 `json:"output"`
 	IsError             bool                   `json:"is_error"`
+	Execution           *ToolExecutionReceipt  `json:"execution,omitempty"`
 	Changes             []FileChange           `json:"changes,omitempty"`
 	Recovery            *ToolRecovery          `json:"recovery,omitempty"`
 	Completion          *CompletionDeclaration `json:"completion,omitempty"`
@@ -486,6 +487,9 @@ func (d *ToolResultData) validate() error {
 		if err := d.Completion.validate(); err != nil {
 			return err
 		}
+	}
+	if err := d.Execution.validate(); err != nil {
+		return err
 	}
 	return nil
 }

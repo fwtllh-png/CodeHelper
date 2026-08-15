@@ -78,8 +78,9 @@ Tool 不能构造/关闭 Sandbox，只有 Wiring 拥有 Platform Backend Constru
 ## Availability 不扩大 Authority
 
 Repo Index 等 Optional Orientation Feature 可 Graceful Degrade；Consequential Action 的
-Enforcement Mechanism 缺失时不可降级。单独 Approve 的 `sandbox:none` 是 New Authority，
-不是 Degradation。
+Enforcement Mechanism 缺失时不可降级。Typed Denial 可以申请窄化且独立审批的 Profile
+Amendment，但重试仍处于同一 Strong Sandbox；缺少 Enforcement、Untyped Denial 或重复
+Denial 均 Fail Closed。
 
 Operator Diagnostic 必须诚实区分 Not Evaluated、Unavailable、Zero Findings。
 

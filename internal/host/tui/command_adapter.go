@@ -3,6 +3,12 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
 	"github.com/fwtllh-png/CodeHelper/internal/host/review"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui/commands"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
@@ -13,11 +19,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
 	"github.com/fwtllh-png/CodeHelper/internal/security/permissions"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"time"
 )
 
 func (m Model) dispatchSlash(action commands.Action) Model {
@@ -469,11 +470,15 @@ func (m Model) constitutionStatusLine() string {
 }
 
 func (m Model) permissionsStatusLine() string {
-	workspace := "."
-	if m.dataDir != "" {
-		workspace = filepath.Dir(m.dataDir)
+	workspace := m.workspaceRoot
+	if workspace == "" {
+		workspace = "."
 	}
-	bundle, err := permissions.Load(workspace)
+	path, err := permissions.Path(m.dataDir, workspace)
+	if err != nil {
+		return "permissions:error:" + err.Error()
+	}
+	bundle, err := permissions.Load(path)
 	if err != nil {
 		return "permissions:error:" + err.Error()
 	}
@@ -484,9 +489,6 @@ func (m Model) permissionsStatusLine() string {
 	)
 }
 
-// contextStatusLine reports what the last turn's prompt context carried. It says
-// so explicitly when no turn has run yet, rather than looking like an empty
-// context.
 func (m Model) contextStatusLine() string {
 	if m.lastContextLine == "" {
 		return "context: no turn has reported its context yet"

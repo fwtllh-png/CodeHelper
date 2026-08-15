@@ -82,7 +82,7 @@ func buildChildOrchestration(
 		state.platform.helperPath, session.content, state.platform.web,
 		execution.Verify, execution.Journal, state.config.diagnosticCommands,
 		state.config.diagnosticReadRoots, state.config.diagnosticReadFiles,
-		gitCommonDir,
+		gitCommonDir, sandbox.BackendManagedProxyPort(state.platform.backend),
 	)
 	session.childTools = output.childToolsets
 	chatRoot := filepath.Join(orchestrationRoot, "chats")

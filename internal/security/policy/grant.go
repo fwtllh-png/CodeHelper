@@ -32,11 +32,19 @@ func GrantForInvocation(call Invocation) (Grant, bool) {
 		if input.Command == "" && kinds&4 == 0 {
 			return Grant{}, false
 		}
+		commandIdentity := input.Command
+		if input.Command != "" {
+			var ok bool
+			commandIdentity, ok = commandGrantIdentity(input.Command)
+			if !ok {
+				return Grant{}, false
+			}
+		}
 		kind, summary = "shell", "command: "+input.Command
 		if input.Command == "" {
 			kind, summary = "sandbox", "sandbox escalation: "+strings.Join(resources, ", ")
 		}
-		writeFingerprintField(hash, input.Command)
+		writeFingerprintField(hash, commandIdentity)
 		writeFingerprintField(hash, cleanGrantPath(input.CWD))
 	case call.Journaled && len(resources) != 0:
 		kind, summary = "file", "workspace paths: "+strings.Join(resources, ", ")

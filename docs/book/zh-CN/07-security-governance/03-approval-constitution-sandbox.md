@@ -114,8 +114,9 @@ Policy 评估包含 Call ID、Tool、Argument、Resource、Capability 与 Reposi
 
 - `plan` 只允许 Read Capability；
 - `act`、`operate` 允许更广能力，但仍受 Rule 控制；
-- Grant 确定 Tool/Resource 是否在 Scope；
-- Repository Rule 可以 Deny、Hold、Ask 或 Allow；
+- Managed Grant 定义 Tool/Resource 的最大 Scope；
+- Repository Rule 只能 Deny、Hold 或 Ask；
+- User Rule 可记忆 Bounded Approval，但不能覆盖高权 Deny；
 - Permission Posture 决定 Automatic 与 Interactive Handling；
 - Granular Surface 只能收紧，不能弱化 Hard Denial。
 
@@ -156,8 +157,14 @@ Tool Descriptor 声明 Sandbox Requirement。Strong Execution 会验证：
 平台能力不同，Probe 必须如实报告。要求 Strong Isolation 但不可用时返回
 `sandbox_unavailable`。
 
-可选 Escalation 只有在独立 Approval 明确包含 `sandbox:none` Resource 后，才允许
-Unsandboxed Retry；Strong Execution 的 Approval 不覆盖 Escalation。
+可增权的 Typed Denial 可通过独立 Critical One-shot Approval 申请一个额外 Path、
+Host/Port 或 Process Capability。Amended Authority 保留 Immutable Deny，并在同一
+Strong Sandbox 下最多重试一次；原始 Strong Execution 的 Approval 不覆盖 Amendment。
+
+每次实际执行的 Attempt 都保留准确 Effective Permission Profile 的 Audit
+Projection：Revision/Digest、Enforcement Backend、Filesystem/Network Ceiling、
+Source/Grant Provenance、Typed Denial 与 Amendment Decision。Amendment 同时记录
+Base 和 Replacement Digest，因此可以证明重试实际由哪个 Profile 授权。
 
 ## Journal 与 Verification
 
@@ -224,7 +231,7 @@ make build
 
 1. 为什么 Approval 不能替代 Sandbox？
 2. 为什么 Replacement Argument 必须重新评估？
-3. `sandbox:none` Resource 代表了什么额外权限？
+3. Additional Permission 为什么必须绑定 Base Profile Digest？
 4. Passing Verification 为什么不能修复 Missing Authorization？
 5. Approval UI 必须显示哪些 Canonical Fact？
 

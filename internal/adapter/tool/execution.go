@@ -10,6 +10,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 // ToolRef is the authority-frozen identity of one executable catalog entry.
@@ -122,8 +123,8 @@ type NetworkTarget struct {
 
 // SecuritySignal carries policy-relevant output outside arbitrary Metadata.
 type SecuritySignal struct {
-	SandboxDenied bool           `json:"sandbox_denied,omitempty"`
-	EgressDenied  *NetworkTarget `json:"egress_denied,omitempty"`
+	SandboxDenied *sandbox.Denial `json:"sandbox_denied,omitempty"`
+	EgressDenied  *NetworkTarget  `json:"egress_denied,omitempty"`
 }
 
 // Outcome is the typed, non-model execution projection. Result remains the
@@ -300,23 +301,66 @@ func CloneOutcome(source *Outcome) *Outcome {
 			egress := *source.Security.EgressDenied
 			security.EgressDenied = &egress
 		}
+		if source.Security.SandboxDenied != nil {
+			denial := *source.Security.SandboxDenied
+			security.SandboxDenied = &denial
+		}
 		cloned.Security = &security
 	}
 	return &cloned
 }
 
+type PermissionProvenance struct {
+	Kind     string `json:"kind"`
+	Value    string `json:"value"`
+	Digest   string `json:"digest,omitempty"`
+	Revision uint64 `json:"revision,omitempty"`
+}
+
+type PermissionAmendmentReceipt struct {
+	BasePermissionDigest    string     `json:"base_permission_digest"`
+	Kind                    string     `json:"kind"`
+	Resource                string     `json:"resource"`
+	Protocol                string     `json:"protocol,omitempty"`
+	Port                    uint16     `json:"port,omitempty"`
+	Capability              Capability `json:"capability,omitempty"`
+	Decision                string     `json:"decision"`
+	AmendedPermissionDigest string     `json:"amended_permission_digest,omitempty"`
+}
+
 type AttemptReceipt struct {
-	Sequence         uint32        `json:"sequence"`
-	Sandbox          string        `json:"sandbox"`
-	Status           OutcomeStatus `json:"status"`
-	TerminalOwner    TerminalOwner `json:"terminal_owner"`
-	Reason           string        `json:"reason,omitempty"`
-	StartedAt        time.Time     `json:"started_at"`
-	CompletedAt      time.Time     `json:"completed_at"`
-	DurationMS       int64         `json:"duration_ms"`
-	Teardown         time.Duration `json:"teardown,omitempty"`
-	TeardownMS       int64         `json:"teardown_ms,omitempty"`
-	TeardownTimedOut bool          `json:"teardown_timed_out,omitempty"`
+	Sequence                uint32                      `json:"sequence"`
+	Sandbox                 string                      `json:"sandbox"`
+	Status                  OutcomeStatus               `json:"status"`
+	TerminalOwner           TerminalOwner               `json:"terminal_owner"`
+	Reason                  string                      `json:"reason,omitempty"`
+	PermissionSchemaVersion int                         `json:"permission_schema_version,omitempty"`
+	PermissionRevision      uint64                      `json:"permission_revision,omitempty"`
+	PermissionDigest        string                      `json:"permission_digest,omitempty"`
+	PermissionCapability    Capability                  `json:"permission_capability,omitempty"`
+	PermissionAccess        AccessMode                  `json:"permission_access,omitempty"`
+	Enforcement             string                      `json:"enforcement,omitempty"`
+	Backend                 string                      `json:"backend,omitempty"`
+	SandboxStrength         string                      `json:"sandbox_strength,omitempty"`
+	WorkspaceRoot           string                      `json:"workspace_root,omitempty"`
+	ReadRoots               []string                    `json:"read_roots,omitempty"`
+	WritePaths              []string                    `json:"write_paths,omitempty"`
+	DeniedWriteRoots        []string                    `json:"denied_write_roots,omitempty"`
+	WorkspaceBaseWrite      bool                        `json:"workspace_base_write,omitempty"`
+	FilesystemUnrestricted  bool                        `json:"filesystem_unrestricted,omitempty"`
+	NetworkMode             string                      `json:"network_mode,omitempty"`
+	NetworkTargets          []string                    `json:"network_targets,omitempty"`
+	ManagedProxyPort        uint16                      `json:"managed_proxy_port,omitempty"`
+	ProcessAllowed          bool                        `json:"process_allowed,omitempty"`
+	Provenance              []PermissionProvenance      `json:"provenance,omitempty"`
+	Denial                  *sandbox.Denial             `json:"denial,omitempty"`
+	Amendment               *PermissionAmendmentReceipt `json:"amendment,omitempty"`
+	StartedAt               time.Time                   `json:"started_at"`
+	CompletedAt             time.Time                   `json:"completed_at"`
+	DurationMS              int64                       `json:"duration_ms"`
+	Teardown                time.Duration               `json:"teardown,omitempty"`
+	TeardownMS              int64                       `json:"teardown_ms,omitempty"`
+	TeardownTimedOut        bool                        `json:"teardown_timed_out,omitempty"`
 }
 
 type ExecutionReceipt struct {
@@ -339,8 +383,29 @@ func CloneExecutionReceipt(source *ExecutionReceipt) *ExecutionReceipt {
 		return nil
 	}
 	cloned := *source
-	cloned.Attempts = append([]AttemptReceipt(nil), source.Attempts...)
+	cloned.Attempts = make([]AttemptReceipt, len(source.Attempts))
+	for index := range source.Attempts {
+		cloned.Attempts[index] = cloneAttemptReceipt(source.Attempts[index])
+	}
 	return &cloned
+}
+
+func cloneAttemptReceipt(source AttemptReceipt) AttemptReceipt {
+	cloned := source
+	cloned.ReadRoots = append([]string(nil), source.ReadRoots...)
+	cloned.WritePaths = append([]string(nil), source.WritePaths...)
+	cloned.DeniedWriteRoots = append([]string(nil), source.DeniedWriteRoots...)
+	cloned.NetworkTargets = append([]string(nil), source.NetworkTargets...)
+	cloned.Provenance = append([]PermissionProvenance(nil), source.Provenance...)
+	if source.Denial != nil {
+		denial := *source.Denial
+		cloned.Denial = &denial
+	}
+	if source.Amendment != nil {
+		amendment := *source.Amendment
+		cloned.Amendment = &amendment
+	}
+	return cloned
 }
 
 // OutcomeExecutor is the authoritative built-in execution boundary. Dynamic

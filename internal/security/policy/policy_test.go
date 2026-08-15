@@ -62,7 +62,6 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		err := authorize(runtime, call)
 		assertDecisionCode(t, err, "approval_required")
 	})
-
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
 	runtime.Repository = []Rule{
 		{Tool: "file_write", Resource: "protected", Action: ActionDeny},
@@ -76,17 +75,17 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 	assertDecisionCode(t, err, "release_hold")
 
 	runtime = DefaultRuntime(ModeAct, PermissionSuggest)
-	runtime.Repository = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
+	runtime.User = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
 	err = authorize(runtime, invocation("file_write", "call-allow", `{"path":"notes.txt"}`))
 	assertDecisionCode(t, err, "")
 
 	runtime = DefaultRuntime(ModeAct, PermissionNever)
-	runtime.Repository = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
+	runtime.User = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
 	err = authorize(runtime, invocation("file_write", "call-never", `{"path":"notes.txt"}`))
 	assertDecisionCode(t, err, "permission_denied")
 
 	runtime = DefaultRuntime(ModePlan, PermissionSuggest)
-	runtime.Repository = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
+	runtime.User = []Rule{{Tool: "file_write", Resource: "notes.txt", Action: ActionAllow}}
 	err = authorize(runtime, invocation("file_write", "call-plan", `{"path":"notes.txt"}`))
 	assertDecisionCode(t, err, "mode_denied")
 

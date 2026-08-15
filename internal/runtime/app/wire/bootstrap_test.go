@@ -28,4 +28,14 @@ func TestLoadRepositoryRules(t *testing.T) {
 	if _, err := loadRepositoryRules(path); err == nil {
 		t.Fatal("invalid repository action succeeded")
 	}
+	if err := os.WriteFile(
+		path,
+		[]byte(`[{"tool":"exec_command","action":"allow"}]`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadRepositoryRules(path); err == nil {
+		t.Fatal("repository allow rule expanded authority")
+	}
 }

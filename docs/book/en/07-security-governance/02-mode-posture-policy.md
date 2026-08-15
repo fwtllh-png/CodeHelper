@@ -48,18 +48,20 @@ Constitution Hold, or required Sandbox.
 
 ```text
 validated Invocation
- -> strongest repository rule (deny/hold wins)
- -> matching Tool Grant required
+ -> matching Managed Tool Grant required
+ -> Repository deny/hold/ask
+ -> User deny/ask/allow
  -> Mode capability check
- -> explicit repository allow, or Permission decision
+ -> Permission decision
  -> Approval requirement
  -> granular surface tightening
 ```
 
 Unknown Mode/Permission/Capability, an unvalidated Invocation, or a missing
-Grant denies. Specific rules beat broad rules; stronger actions win. Shell
-command rules inspect every command segment rather than trusting a prefix on
-the first segment.
+Grant denies. Lower-authority sources cannot override a higher-authority deny
+or ask. Repository authority can only tighten. Shell rules use a Bash AST and
+static argv prefixes; allow cannot cross a pipeline, redirect, subshell,
+dynamic word, or interpreter payload.
 
 ## Decision Matrix
 
@@ -75,14 +77,15 @@ not permission by documentation.
 
 ## Persistent Workspace Permissions
 
-An `always` decision can be compiled into a Workspace permission Rule only for
-supported Invocation shapes. It records canonical Tool/resource or command
-prefix, never raw credentials. Loading is strict; malformed state fails rather
+An `always` decision can be compiled into a User permission Rule only for
+supported Invocation shapes. Shell grants use an AST-canonical command
+identity. Persistent allow prefixes reject shells, interpreters, and broad
+single-token `git` or `rm`. Loading is strict; malformed state fails rather
 than broadening authority.
 
-Turn sampling uses a clone of Mode, Permission, and rules so mid-Turn UI changes
-do not alter an already running decision context. Approval cache remains
-session-coherent but is bound to Invocation fingerprints and expiry.
+Managed, User, and Repository rules are atomically published as a revisioned
+snapshot. Guard binds one revision before authorization, and Profile provenance
+records the revision and each source digest.
 
 ## Verification
 

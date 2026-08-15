@@ -84,8 +84,8 @@ granular surface tightening. Deny/Hold fail immediately. Ask can use a scoped,
 argument/resource-bound approval cache or an asynchronous host request.
 
 Replacement arguments are prepared and evaluated again. Edit-plan approval is
-one-shot. Network redirects and sandbox escalation require distinct host or
-unsandboxed resources; prior approval of the original call does not imply them.
+one-shot. Network redirects and typed Sandbox denial amendments require
+distinct resources; prior approval of the original call does not imply them.
 
 Approval-cache reuse is a subset check over canonical Tool, arguments,
 Resources, scope, and expiry. Deny always wins; a broader mode or permission
@@ -99,7 +99,11 @@ Writes establish before-images/fingerprints, execute through the Registry, then
 observe actual disk changes and run diagnostics. Results may be routed to
 bounded content handles.
 
-Strong sandbox denial may retry unsandboxed only after explicit reapproval.
+A structured, amendable Sandbox denial may request one path, Host/Port, or
+Process capability through a separate critical one-shot Approval. The amended
+Profile receives a new revision and digest, preserves immutable denies, and
+retries once under the same strong Sandbox. Untyped or repeated denial fails
+closed.
 
 Claims are acquired after authority is known and released on every return path,
 including cancellation and panic-safe execution boundaries. They coordinate
@@ -131,6 +135,8 @@ rules. A central Guard keeps execution uniform and fails closed.
 - Approval is bound to call, arguments, resources, scope, and expiry.
 - Replacement arguments repeat validation and Policy.
 - Sandbox escalation and new network hosts require separate authority.
+- Every executed Attempt receipt binds the Profile revision/digest, backend,
+  roots, network mode, Grant provenance, denial, and amendment decision.
 - Claims are released on every return path.
 
 ## Tests and Verification
@@ -142,8 +148,10 @@ go test ./internal/security/policy ./internal/security/sandbox ./internal/securi
 
 ## Hands-On Lab
 
-Trace `TestSandboxStrongApprovalDoesNotCoverEscalate`. List the resources and
-Policy decisions for the original strong attempt and the unsandboxed retry.
+Trace `TestSandboxStrongApprovalDoesNotCoverAdditionalPermission`. List the
+resources, Profile revisions/digests, typed denial, and Approval decision for
+both strong attempts. Verify that the first amendment's replacement digest is
+the second Attempt's Profile digest.
 
 ## Review Questions
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -30,9 +31,9 @@ func TestAllocatedGuardGrantsEgressAfterApproval(t *testing.T) {
 		Provider: &scriptedProvider{}, Route: testRoute(t), Tools: registry,
 		Workspace: t.TempDir(),
 		Security:  policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		OnNetworkAllow: func(host, _ string) {
+		OnNetworkAllow: func(target egress.Target) {
 			grantedMu.Lock()
-			granted = append(granted, host)
+			granted = append(granted, target.Host)
 			grantedMu.Unlock()
 		},
 	})

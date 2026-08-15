@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -213,9 +212,6 @@ func (t *Tool) execute(ctx context.Context, input foregroundInput) (tool.Result,
 	timedOut := errors.Is(err, context.DeadlineExceeded) ||
 		errors.Is(ctx.Err(), context.DeadlineExceeded)
 	if err != nil && !timedOut {
-		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
-			return tool.Result{}, guard.MarkSandboxDenial(err, "shell")
-		}
 		if recovery := t.recoverWorkspaceChange(err); recovery != nil {
 			return tool.Result{}, recovery
 		}

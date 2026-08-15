@@ -47,17 +47,19 @@ Ask；`bypass` 不能击穿 Deny、Constitution Hold 或 Required Sandbox。
 
 ```text
 validated invocation
- -> strongest repository rule (deny/hold wins)
- -> matching tool grant required
+ -> matching Managed tool grant required
+ -> Repository deny/hold/ask
+ -> User deny/ask/allow
  -> mode capability check
- -> repository allow or permission decision
+ -> permission decision
  -> approval requirement
  -> granular surface tightening
 ```
 
 Unknown Mode/Permission/Capability、Unvalidated Invocation、Missing Grant 全部 Deny。
-Specific Rule 优先于 Broad Rule，Stronger Action 胜出。Shell Rule 检查每个 Command
-Segment，而不是只信任第一个 Prefix。
+低权 Authority Source 不能覆盖高权 Deny/Ask，Repository 只能收紧。Shell Rule 使用
+Bash AST 与 Static argv Prefix；Allow 不能跨 Pipeline、Redirect、Subshell、Dynamic
+Word 或 Interpreter Payload。
 
 ## Decision Orientation
 
@@ -72,13 +74,12 @@ Segment，而不是只信任第一个 Prefix。
 
 ## Persistent Workspace Permission
 
-`always` Decision 只有在 Supported Invocation Shape 下才可编译为 Workspace Rule。记录
-Canonical Tool/Resource 或 Command Prefix，不记录 Raw Credential。Malformed State
-Fail Closed，不能扩大 Authority。
+`always` Decision 只有在 Supported Invocation Shape 下才可编译为 User Rule。Shell
+Grant 使用 AST-canonical Command Identity。Persistent Allow Prefix 禁止 Shell、
+Interpreter，以及单 Token `git`/`rm`。Malformed State Fail Closed，不能扩大 Authority。
 
-Turn Sampling Clone Mode、Permission、Rule，因此 Mid-turn UI Change 不改变 Running
-Decision Context。Approval Cache 保持 Session Coherent，但仍绑定 Invocation Fingerprint/
-Expiry。
+Managed、User、Repository Rule 以 Revisioned Snapshot 原子发布。Guard 在 Authorization
+前绑定一个 Revision，Profile Provenance 记录 Revision 与每个 Source Digest。
 
 ## 验证
 

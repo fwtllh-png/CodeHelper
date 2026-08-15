@@ -3,6 +3,7 @@ package guard
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -60,7 +61,57 @@ func TestApprovalWaitHoldsNeitherAdmissionNorClaims(t *testing.T) {
 	}
 }
 
-func TestSandboxRetryApprovalReleasesAdmissionAndClaims(t *testing.T) {
+func TestInitialApprovalDenialReturnsGuardTerminalReceipt(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	descriptor := readDescriptor("approval_denied_receipt")
+	descriptor.Capability = tool.CapabilityProcess
+	descriptor.AccessMode = tool.AccessWrite
+	if err := registry.Register(&testExecutor{descriptor: descriptor}, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
+	runtime.DisableAutoReview = true
+	requests := make(chan ApprovalRequest, 1)
+	guard, err := New(Options{
+		Registry: registry, Policy: runtime, Workspace: t.TempDir(),
+		Approvals: func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type execution struct {
+		result tool.Result
+		err    error
+	}
+	done := make(chan execution, 1)
+	go func() {
+		result, executeErr := guard.Execute(
+			t.Context(), "call-denied-receipt", "approval_denied_receipt",
+			json.RawMessage(`{}`),
+		)
+		done <- execution{result: result, err: executeErr}
+	}()
+	request := <-requests
+	if err := guard.Decide(ApprovalDecision{RequestID: request.RequestID}); err != nil {
+		t.Fatal(err)
+	}
+	out := <-done
+	if out.err == nil || out.result.Execution == nil || !out.result.IsError {
+		t.Fatalf("denied result = %+v error=%v", out.result, out.err)
+	}
+	receipt := out.result.Execution
+	if len(receipt.Attempts) != 0 ||
+		receipt.Tool.Name != "approval_denied_receipt" ||
+		receipt.TerminalStatus != tool.OutcomeRejected ||
+		receipt.TerminalOwner != tool.TerminalOwnerGuard {
+		t.Fatalf("denied receipt = %+v", receipt)
+	}
+}
+
+func TestAdditionalPermissionApprovalReleasesAdmissionAndClaims(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("retry_release")}
@@ -99,7 +150,7 @@ func TestSandboxRetryApprovalReleasesAdmissionAndClaims(t *testing.T) {
 		done <- execution{result: result, err: executeErr}
 	}()
 	escalation := <-requests
-	if escalation.ReasonCode != ApprovalReasonSandboxEscalate {
+	if escalation.ReasonCode != ApprovalReasonAdditionalPermission {
 		t.Fatalf("escalation reason = %q", escalation.ReasonCode)
 	}
 	assertApprovalResourcesReleased(t, registry, escalation, &active)
@@ -111,15 +162,96 @@ func TestSandboxRetryApprovalReleasesAdmissionAndClaims(t *testing.T) {
 	if out.result.Execution == nil ||
 		len(out.result.Execution.Attempts) != 2 ||
 		out.result.Execution.Attempts[0].Sandbox != string(SandboxModeStrong) ||
-		out.result.Execution.Attempts[1].Sandbox != string(SandboxModeNone) ||
+		out.result.Execution.Attempts[1].Sandbox != string(SandboxModeStrong) ||
 		out.result.Execution.Disposition != tool.DispositionWaitForTeardown ||
 		out.result.Execution.TerminalStatus != tool.OutcomeSucceeded ||
 		out.result.Execution.TerminalOwner != tool.TerminalOwnerExecutor ||
 		out.result.Execution.Tool.Validate() != nil {
 		t.Fatalf("execution receipt = %+v", out.result.Execution)
 	}
+	first, second := out.result.Execution.Attempts[0], out.result.Execution.Attempts[1]
+	if first.PermissionRevision != 1 || second.PermissionRevision != 2 ||
+		first.PermissionDigest == "" || second.PermissionDigest == "" ||
+		first.PermissionDigest == second.PermissionDigest ||
+		first.Enforcement != "strong" || second.Enforcement != "strong" ||
+		first.Backend != "test" || second.Backend != "test" ||
+		first.NetworkMode != "denied" || second.NetworkMode != "denied" ||
+		first.WorkspaceRoot == "" || len(first.ReadRoots) == 0 {
+		t.Fatalf("attempt authority receipts = %+v", out.result.Execution.Attempts)
+	}
+	if first.Denial == nil ||
+		first.Denial.ReasonCode != "path_write_not_authorized" ||
+		first.Amendment == nil ||
+		first.Amendment.Decision != "approved" ||
+		first.Amendment.BasePermissionDigest != first.PermissionDigest ||
+		first.Amendment.AmendedPermissionDigest != second.PermissionDigest ||
+		!receiptHasProvenance(first, "grant") ||
+		!receiptHasProvenance(second, "amendment") {
+		t.Fatalf("attempt authority chain = %+v", out.result.Execution.Attempts)
+	}
 	if active.Load() != 0 {
 		t.Fatalf("active admissions = %d", active.Load())
+	}
+}
+
+func receiptHasProvenance(receipt tool.AttemptReceipt, kind string) bool {
+	for _, source := range receipt.Provenance {
+		if source.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRejectedAdditionalPermissionRetainsAuthorityEvidence(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	registry.SetSandboxBackend(strongBackend{})
+	executor := &escalateExecutor{descriptor: sandboxedDescriptor("retry_rejected")}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan ApprovalRequest, 1)
+	guard, err := New(Options{
+		Registry:  registry,
+		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		Workspace: t.TempDir(),
+		Approvals: func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type execution struct {
+		result tool.Result
+		err    error
+	}
+	done := make(chan execution, 1)
+	go func() {
+		result, executeErr := guard.Execute(
+			t.Context(), "call-retry-rejected", "retry_rejected", json.RawMessage(`{}`),
+		)
+		done <- execution{result: result, err: executeErr}
+	}()
+	request := <-requests
+	if err := guard.Decide(ApprovalDecision{RequestID: request.RequestID}); err != nil {
+		t.Fatal(err)
+	}
+	out := <-done
+	if out.err == nil || out.result.Execution == nil ||
+		len(out.result.Execution.Attempts) != 1 {
+		t.Fatalf("rejected execution = %+v error=%v", out.result.Execution, out.err)
+	}
+	attempt := out.result.Execution.Attempts[0]
+	if attempt.PermissionDigest == "" || attempt.Denial == nil ||
+		attempt.Amendment == nil ||
+		attempt.Amendment.Decision != "rejected" ||
+		attempt.Amendment.BasePermissionDigest != attempt.PermissionDigest ||
+		attempt.Amendment.AmendedPermissionDigest != "" ||
+		out.result.Execution.TerminalStatus != tool.OutcomeRejected ||
+		out.result.Execution.TerminalOwner != tool.TerminalOwnerGuard {
+		t.Fatalf("rejected authority receipt = %+v", out.result.Execution)
 	}
 }
 
@@ -178,6 +310,22 @@ func TestReplacementArgumentsRepeatPreparationAndAuthorization(t *testing.T) {
 	}
 	if out.result.Content != `{"path":"b.txt","value":"after"}` {
 		t.Fatalf("executed arguments = %s", out.result.Content)
+	}
+	profiles := executor.profilesSnapshot()
+	if len(profiles) != 1 ||
+		len(profiles[0].Filesystem.WritePaths) != 1 ||
+		!strings.HasSuffix(profiles[0].Filesystem.WritePaths[0], "b.txt") {
+		t.Fatalf("replacement authority profiles = %+v", profiles)
+	}
+	if out.result.Execution == nil ||
+		len(out.result.Execution.Attempts) != 1 ||
+		out.result.Execution.Attempts[0].PermissionDigest != profiles[0].Digest ||
+		out.result.Execution.Attempts[0].PermissionRevision != profiles[0].Revision {
+		t.Fatalf(
+			"executed profile = %+v receipt = %+v",
+			profiles[0],
+			out.result.Execution,
+		)
 	}
 	first, second := <-authorized, <-authorized
 	if string(first.Arguments) == string(second.Arguments) ||

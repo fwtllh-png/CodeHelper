@@ -50,6 +50,7 @@ type Event struct {
 	Compaction         *CompactionReceipt          `json:"compaction,omitempty"`
 	ContextBudget      *ContextBudgetSnapshot      `json:"context_budget,omitempty"`
 	Approval           *toolguard.ApprovalRequest  `json:"approval,omitempty"`
+	ApprovalResolution *ApprovalResolution         `json:"approval_resolution,omitempty"`
 	Input              *interact.Request           `json:"input,omitempty"`
 	Diagnostics        []diagnostics.Receipt       `json:"diagnostics,omitempty"`
 	FileChanges        []tool.WorkspaceChange      `json:"file_changes,omitempty"`
@@ -62,6 +63,12 @@ type Event struct {
 	CatalogChanged     *CatalogChanged             `json:"catalog_changed,omitempty"`
 	MCPHealthChanged   *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
 	ExtensionLifecycle *ExtensionLifecycleChanged  `json:"extension_lifecycle,omitempty"`
+}
+
+type ApprovalResolution struct {
+	RequestID string `json:"request_id"`
+	Decision  string `json:"decision"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 type ModelExecution struct {

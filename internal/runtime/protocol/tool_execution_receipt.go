@@ -1,0 +1,123 @@
+package protocol
+
+import (
+	"errors"
+	"strings"
+	"time"
+)
+
+// ToolExecutionReceipt is the durable protocol projection of one guarded tool
+// execution. It remains separate from the per-Turn ExecutionReceiptData.
+type ToolExecutionReceipt struct {
+	Tool             ToolExecutionRef     `json:"tool"`
+	Source           string               `json:"source"`
+	Disposition      string               `json:"disposition"`
+	Attempts         []ToolAttemptReceipt `json:"attempts"`
+	ApprovalWait     time.Duration        `json:"approval_wait,omitempty"`
+	DispatchWait     time.Duration        `json:"dispatch_wait,omitempty"`
+	ClaimWait        time.Duration        `json:"claim_wait,omitempty"`
+	TerminalStatus   string               `json:"terminal_status"`
+	TerminalOwner    string               `json:"terminal_owner"`
+	Teardown         time.Duration        `json:"teardown,omitempty"`
+	TeardownMS       int64                `json:"teardown_ms,omitempty"`
+	TeardownTimedOut bool                 `json:"teardown_timed_out,omitempty"`
+}
+
+type ToolExecutionRef struct {
+	Name       string `json:"name"`
+	Source     string `json:"source"`
+	CatalogID  string `json:"catalog_id"`
+	Generation uint64 `json:"generation"`
+	Revision   uint64 `json:"revision"`
+}
+
+type ToolPermissionProvenance struct {
+	Kind     string `json:"kind"`
+	Value    string `json:"value"`
+	Digest   string `json:"digest,omitempty"`
+	Revision uint64 `json:"revision,omitempty"`
+}
+
+type ToolPermissionAmendmentReceipt struct {
+	BasePermissionDigest    string `json:"base_permission_digest"`
+	Kind                    string `json:"kind"`
+	Resource                string `json:"resource"`
+	Protocol                string `json:"protocol,omitempty"`
+	Port                    uint16 `json:"port,omitempty"`
+	Capability              string `json:"capability,omitempty"`
+	Decision                string `json:"decision"`
+	AmendedPermissionDigest string `json:"amended_permission_digest,omitempty"`
+}
+
+type ToolSandboxDenial struct {
+	Backend    string `json:"backend"`
+	Operation  string `json:"operation"`
+	Resource   string `json:"resource"`
+	ReasonCode string `json:"reason_code"`
+	Protocol   string `json:"protocol,omitempty"`
+	Port       uint16 `json:"port,omitempty"`
+}
+
+type ToolAttemptReceipt struct {
+	Sequence                uint32                          `json:"sequence"`
+	Sandbox                 string                          `json:"sandbox"`
+	Status                  string                          `json:"status"`
+	TerminalOwner           string                          `json:"terminal_owner"`
+	Reason                  string                          `json:"reason,omitempty"`
+	PermissionSchemaVersion int                             `json:"permission_schema_version,omitempty"`
+	PermissionRevision      uint64                          `json:"permission_revision,omitempty"`
+	PermissionDigest        string                          `json:"permission_digest,omitempty"`
+	PermissionCapability    string                          `json:"permission_capability,omitempty"`
+	PermissionAccess        string                          `json:"permission_access,omitempty"`
+	Enforcement             string                          `json:"enforcement,omitempty"`
+	Backend                 string                          `json:"backend,omitempty"`
+	SandboxStrength         string                          `json:"sandbox_strength,omitempty"`
+	WorkspaceRoot           string                          `json:"workspace_root,omitempty"`
+	ReadRoots               []string                        `json:"read_roots,omitempty"`
+	WritePaths              []string                        `json:"write_paths,omitempty"`
+	DeniedWriteRoots        []string                        `json:"denied_write_roots,omitempty"`
+	WorkspaceBaseWrite      bool                            `json:"workspace_base_write,omitempty"`
+	FilesystemUnrestricted  bool                            `json:"filesystem_unrestricted,omitempty"`
+	NetworkMode             string                          `json:"network_mode,omitempty"`
+	NetworkTargets          []string                        `json:"network_targets,omitempty"`
+	ManagedProxyPort        uint16                          `json:"managed_proxy_port,omitempty"`
+	ProcessAllowed          bool                            `json:"process_allowed,omitempty"`
+	Provenance              []ToolPermissionProvenance      `json:"provenance,omitempty"`
+	Denial                  *ToolSandboxDenial              `json:"denial,omitempty"`
+	Amendment               *ToolPermissionAmendmentReceipt `json:"amendment,omitempty"`
+	StartedAt               time.Time                       `json:"started_at"`
+	CompletedAt             time.Time                       `json:"completed_at"`
+	DurationMS              int64                           `json:"duration_ms"`
+	Teardown                time.Duration                   `json:"teardown,omitempty"`
+	TeardownMS              int64                           `json:"teardown_ms,omitempty"`
+	TeardownTimedOut        bool                            `json:"teardown_timed_out,omitempty"`
+}
+
+func (r *ToolExecutionReceipt) validate() error {
+	if r == nil {
+		return nil
+	}
+	if strings.TrimSpace(r.Tool.Name) == "" ||
+		strings.TrimSpace(r.Tool.Source) == "" ||
+		strings.TrimSpace(r.Tool.CatalogID) == "" ||
+		r.Tool.Generation == 0 ||
+		r.Tool.Revision == 0 {
+		return errors.New("tool execution receipt identity is incomplete")
+	}
+	if r.Source == "" || r.Disposition == "" ||
+		r.TerminalStatus == "" || r.TerminalOwner == "" {
+		return errors.New("tool execution receipt terminal evidence is incomplete")
+	}
+	for _, attempt := range r.Attempts {
+		if attempt.Sequence == 0 || attempt.Sandbox == "" ||
+			attempt.Status == "" || attempt.TerminalOwner == "" ||
+			attempt.StartedAt.IsZero() || attempt.CompletedAt.IsZero() {
+			return errors.New("tool execution attempt receipt is incomplete")
+		}
+		if attempt.PermissionDigest != "" &&
+			len(attempt.PermissionDigest) != 64 {
+			return errors.New("tool execution permission digest is invalid")
+		}
+	}
+	return nil
+}

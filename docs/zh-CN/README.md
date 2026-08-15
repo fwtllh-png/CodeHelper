@@ -24,8 +24,10 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 9. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
 10. [Provider 架构升级方案](./provider-architecture-upgrade.md)
 11. [Tool 与本地执行架构升级方案](./tool-execution-architecture-upgrade.md)
-12. [安全模型](./security.md)
-13. [本地开发与脚本](./development.md)
+12. [Security Governance 与 Sandbox 架构升级方案](./security-governance-architecture-upgrade.md)
+13. [State Observability 架构升级方案](./state-observability-architecture-upgrade.md)
+14. [安全模型](./security.md)
+15. [本地开发与脚本](./development.md)
 
 ### 我要使用 CodeHelper
 
@@ -55,14 +57,16 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 5. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
 6. [Provider 架构升级方案](./provider-architecture-upgrade.md)
 7. [Tool 与本地执行架构升级方案](./tool-execution-architecture-upgrade.md)
-8. [安全模型](./security.md)
-9. [本地开发与脚本](./development.md)
-10. [Agent 指南](./agent-guide.md)
-11. [TUI 与 VS Code 体验契约](./experience.md)
-12. [VS Code Runtime 标准监测](./runtime-monitoring.md)
-13. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
-14. [文档治理](./documentation-governance.md)
-15. [后续规划](./roadmap.md)
+8. [Security Governance 与 Sandbox 架构升级方案](./security-governance-architecture-upgrade.md)
+9. [State Observability 架构升级方案](./state-observability-architecture-upgrade.md)
+10. [安全模型](./security.md)
+11. [本地开发与脚本](./development.md)
+12. [Agent 指南](./agent-guide.md)
+13. [TUI 与 VS Code 体验契约](./experience.md)
+14. [VS Code Runtime 标准监测](./runtime-monitoring.md)
+15. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
+16. [文档治理](./documentation-governance.md)
+17. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 

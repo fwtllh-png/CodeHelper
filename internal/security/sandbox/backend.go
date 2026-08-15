@@ -10,11 +10,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlplane"
 )
 
 const ErrUnavailableCode = "sandbox_unavailable"
@@ -43,19 +46,24 @@ type Capability struct {
 }
 
 type Command struct {
-	Path                  string
-	Args                  []string
-	Dir                   string
-	Env                   []string
-	DirectoryFD           int
-	WorkspaceReadOnly     bool
-	WorkspaceWritePaths   []string
-	DenyNetwork           bool
-	PreparedPolicyID      string
-	PreparedStrength      Strength
-	PreparedReadOnly      bool
-	PreparedWritePaths    []string
-	PreparedNetworkDenied bool
+	Path                    string
+	Args                    []string
+	Dir                     string
+	Env                     []string
+	DirectoryFD             int
+	WorkspaceReadOnly       bool
+	AdditionalReadPaths     []string
+	WorkspaceWritePaths     []string
+	DenyNetwork             bool
+	AuthorityDigest         string
+	PreparedPolicyID        string
+	PreparedAuthorityDigest string
+	PreparedStrength        Strength
+	PreparedReadOnly        bool
+	PreparedReadPaths       []string
+	PreparedWritePaths      []string
+	PreparedNetworkDenied   bool
+	PreparedProxyPort       uint16
 }
 
 type Backend interface {
@@ -119,7 +127,7 @@ func DeclaredCapability() Capability {
 			Platform: "darwin", Backend: "seatbelt", Strength: StrengthStrong, Available: true,
 			Controls: Controls{
 				ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-				ProcessIsolation: true, SymlinkSafe: true,
+				ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
 			},
 		}
 	case "linux":
@@ -243,10 +251,15 @@ func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command
 	if err != nil {
 		return Command{}, err
 	}
+	readPaths, err := validateAdditionalReadPaths(b.policy, command.AdditionalReadPaths)
+	if err != nil {
+		return Command{}, err
+	}
 	profile := seatbeltProfileForCommand(
 		b.policy,
 		executable,
 		command.WorkspaceReadOnly,
+		readPaths,
 		writePaths,
 		command.DenyNetwork,
 	)
@@ -256,16 +269,25 @@ func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command
 	}
 	args := []string{sandboxExec, "-p", profile, "--", executable}
 	args = append(args, command.Args[1:]...)
+	preparedProxyPort := b.policy.ManagedProxyPort
+	if command.DenyNetwork {
+		preparedProxyPort = 0
+	}
 	return Command{
 		Path: sandboxExec, Args: args, Dir: command.Dir, Env: command.Env,
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
-		PreparedStrength:      b.capability.Strength,
-		WorkspaceReadOnly:     command.WorkspaceReadOnly,
-		WorkspaceWritePaths:   append([]string(nil), writePaths...),
-		DenyNetwork:           command.DenyNetwork,
-		PreparedReadOnly:      command.WorkspaceReadOnly,
-		PreparedWritePaths:    append([]string(nil), writePaths...),
-		PreparedNetworkDenied: command.DenyNetwork,
+		AuthorityDigest:         command.AuthorityDigest,
+		PreparedAuthorityDigest: command.AuthorityDigest,
+		PreparedStrength:        b.capability.Strength,
+		WorkspaceReadOnly:       command.WorkspaceReadOnly,
+		AdditionalReadPaths:     append([]string(nil), readPaths...),
+		WorkspaceWritePaths:     append([]string(nil), writePaths...),
+		DenyNetwork:             command.DenyNetwork,
+		PreparedReadOnly:        command.WorkspaceReadOnly,
+		PreparedReadPaths:       append([]string(nil), readPaths...),
+		PreparedWritePaths:      append([]string(nil), writePaths...),
+		PreparedNetworkDenied:   command.DenyNetwork,
+		PreparedProxyPort:       preparedProxyPort,
 	}, nil
 }
 
@@ -314,12 +336,16 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 	if err != nil {
 		return Command{}, err
 	}
+	readPaths, err := validateAdditionalReadPaths(b.policy, command.AdditionalReadPaths)
+	if err != nil {
+		return Command{}, err
+	}
 	var helper, requestPath string
 	if b.useLandlock {
 		helper, requestPath, err = prepareLandlockInvocation(
 			b.policy, b.helperPath, b.requestRoot,
 			executable, command.Args[1:], command.Env, command.WorkspaceReadOnly,
-			writePaths,
+			readPaths, writePaths,
 		)
 		if err != nil {
 			return Command{}, err
@@ -338,6 +364,9 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 		args = appendMount(args, created, root, root, true)
 	}
 	for _, root := range b.probeReads {
+		args = appendMount(args, created, root, root, true)
+	}
+	for _, root := range readPaths {
 		args = appendMount(args, created, root, root, true)
 	}
 	args = appendMount(
@@ -378,13 +407,18 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 	return Command{
 		Path: bwrap, Args: args, Dir: command.Dir, Env: command.Env,
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
-		PreparedStrength:      b.capability.Strength,
-		WorkspaceReadOnly:     command.WorkspaceReadOnly,
-		WorkspaceWritePaths:   append([]string(nil), writePaths...),
-		DenyNetwork:           command.DenyNetwork,
-		PreparedReadOnly:      command.WorkspaceReadOnly,
-		PreparedWritePaths:    append([]string(nil), writePaths...),
-		PreparedNetworkDenied: command.DenyNetwork,
+		AuthorityDigest:         command.AuthorityDigest,
+		PreparedAuthorityDigest: command.AuthorityDigest,
+		PreparedStrength:        b.capability.Strength,
+		WorkspaceReadOnly:       command.WorkspaceReadOnly,
+		AdditionalReadPaths:     append([]string(nil), readPaths...),
+		WorkspaceWritePaths:     append([]string(nil), writePaths...),
+		DenyNetwork:             command.DenyNetwork,
+		PreparedReadOnly:        command.WorkspaceReadOnly,
+		PreparedReadPaths:       append([]string(nil), readPaths...),
+		PreparedWritePaths:      append([]string(nil), writePaths...),
+		PreparedNetworkDenied:   command.DenyNetwork,
+		PreparedProxyPort:       0,
 	}, nil
 }
 
@@ -404,14 +438,36 @@ func CloseBackend(backend Backend) error {
 	return nil
 }
 
+type closeBinding struct {
+	Backend
+	close func() error
+}
+
+func WithClose(backend Backend, close func() error) Backend {
+	if backend == nil || close == nil {
+		return backend
+	}
+	return &closeBinding{Backend: backend, close: close}
+}
+
+func (b *closeBinding) Close() error {
+	return errors.Join(CloseBackend(b.Backend), b.close())
+}
+
+func (b *closeBinding) Policy() Policy {
+	policy, _ := BackendPolicy(b.Backend)
+	return policy
+}
+
 func seatbeltProfile(policy Policy, executable string) string {
-	return seatbeltProfileForCommand(policy, executable, false, nil, false)
+	return seatbeltProfileForCommand(policy, executable, false, nil, nil, false)
 }
 
 func seatbeltProfileForCommand(
 	policy Policy,
 	executable string,
 	workspaceReadOnly bool,
+	additionalReadPaths []string,
 	workspaceWritePaths []string,
 	denyNetwork bool,
 ) string {
@@ -422,6 +478,7 @@ func seatbeltProfileForCommand(
 	profile.WriteString("(allow sysctl-read)\n")
 	readRoots := append(append([]string{}, policy.RuntimeReadRoots...), policy.HostReadRoots...)
 	readRoots = append(readRoots, policy.HostReadFiles...)
+	readRoots = append(readRoots, additionalReadPaths...)
 	readRoots = append(readRoots, policy.WorkspaceRoot, policy.PrivateTemp, executable)
 	for _, root := range readRoots {
 		info, err := os.Stat(root)
@@ -494,7 +551,13 @@ func seatbeltProfileForCommand(
 			fmt.Fprintf(&profile, "(deny file-read* file-write* (subpath %s))\n", seatbeltQuote(sensitive))
 		}
 	}
-	if policy.AllowNetwork && !denyNetwork {
+	if policy.ManagedProxyPort != 0 && !denyNetwork {
+		fmt.Fprintf(
+			&profile,
+			"(allow network-outbound (remote ip \"localhost:%d\"))\n",
+			policy.ManagedProxyPort,
+		)
+	} else if policy.AllowNetwork && !denyNetwork {
 		profile.WriteString("(allow network-outbound)\n")
 		profile.WriteString("(allow network-inbound)\n")
 		profile.WriteString("(allow system-socket)\n")
@@ -521,6 +584,10 @@ func validateExactWorkspaceWritePaths(
 			MaxExactWorkspaceWritePaths,
 		)
 	}
+	classifier, err := controlplane.New(workspace.Root())
+	if err != nil {
+		return nil, err
+	}
 	canonical := make([]string, 0, len(paths))
 	for _, path := range paths {
 		resolved, err := workspace.Resolve(path, MustExist)
@@ -534,6 +601,9 @@ func validateExactWorkspaceWritePaths(
 		if !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("exact write path %q is not a regular file", path)
 		}
+		if err := classifier.CheckWrite(resolved, false); err != nil {
+			return nil, err
+		}
 		canonical = append(canonical, resolved)
 	}
 	sort.Strings(canonical)
@@ -542,6 +612,29 @@ func validateExactWorkspaceWritePaths(
 			return nil, fmt.Errorf("duplicate exact write path %q", canonical[index])
 		}
 	}
+	return canonical, nil
+}
+
+func validateAdditionalReadPaths(policy Policy, paths []string) ([]string, error) {
+	if len(paths) > MaxExactWorkspaceWritePaths {
+		return nil, fmt.Errorf(
+			"additional read paths exceed the %d-path limit",
+			MaxExactWorkspaceWritePaths,
+		)
+	}
+	canonical := make([]string, 0, len(paths))
+	for _, path := range paths {
+		_, resolved, err := canonicalHostReadRoot(path)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateInjectedRoot(resolved, policy.WorkspaceRoot); err != nil {
+			return nil, err
+		}
+		canonical = append(canonical, resolved)
+	}
+	sort.Strings(canonical)
+	canonical = slices.Compact(canonical)
 	return canonical, nil
 }
 
@@ -791,6 +884,10 @@ func runAttackProbe(helperPath string) Capability {
 		base.Reason = err.Error()
 		return base
 	}
+	if err := os.WriteFile(filepath.Join(workspace, "output"), nil, 0o600); err != nil {
+		base.Reason = err.Error()
+		return base
+	}
 	secret := filepath.Join(external, "secret")
 	outsideWrite := filepath.Join(external, "write")
 	if err := os.WriteFile(secret, []byte("fixture-secret"), 0o600); err != nil {
@@ -807,7 +904,7 @@ func runAttackProbe(helperPath string) Capability {
 	if runtime.GOOS == "linux" {
 		base.Controls = Controls{
 			ReadIsolation: true, WriteIsolation: true,
-			NetworkIsolation: true, SymlinkSafe: true,
+			NetworkIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
 		}
 	}
 	candidate := base
@@ -856,11 +953,14 @@ EOF
 		secret, outsideWrite, networkTest,
 	)
 	if runtime.GOOS == "linux" {
-		script = `test "$CODEHELPER_LANDLOCK_ACTIVE" = 1; ` + script
+		script = `test "$CODEHELPER_LANDLOCK_ACTIVE" = 1; ` +
+			`test "$CODEHELPER_NO_NEW_PRIVS_ACTIVE" = 1; ` +
+			`test "$CODEHELPER_SECCOMP_ACTIVE" = restricted; ` + script
 	}
 	prepared, err := backend.Prepare(context.Background(), Command{
 		Path: "/bin/sh", Args: []string{"/bin/sh", "-c", script},
 		Dir: policy.WorkspaceRoot, Env: []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
+		WorkspaceReadOnly: true, WorkspaceWritePaths: []string{"output"},
 	})
 	if err != nil {
 		if runtime.GOOS == "linux" {

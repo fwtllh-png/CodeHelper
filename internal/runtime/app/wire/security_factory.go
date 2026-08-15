@@ -20,7 +20,7 @@ type guardFactory struct {
 	journal         *workspacejournal.Manager
 	diagnostics     diagnostics.Runner
 	permissions     *permissions.Store
-	onNetworkAllow  func(string, string)
+	onNetworkAllow  toolguard.NetworkAllow
 	forceEditReview bool
 }
 
@@ -36,11 +36,8 @@ func (f guardFactory) Build(context.Context) (*toolguard.Guard, error) {
 			if err != nil {
 				return err
 			}
-			f.runtime.Repository = append(
-				[]policy.Rule{rule},
-				f.runtime.Repository...,
-			)
-			return nil
+			_, err = f.runtime.AppendUserRule(rule)
+			return err
 		},
 	})
 }

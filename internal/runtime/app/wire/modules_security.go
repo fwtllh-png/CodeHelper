@@ -62,8 +62,9 @@ func (securityModule) Build(
 		return fmt.Errorf("constitution: %w", err)
 	}
 	session.Constitution = constitutionBundle.Status
+	var repositoryRules []policy.Rule
 	if state.options.RepositoryRulesPath != "" {
-		securityRuntime.Repository, err = loadRepositoryRules(
+		repositoryRules, err = loadRepositoryRules(
 			state.options.RepositoryRulesPath,
 		)
 		if err != nil {
@@ -71,20 +72,19 @@ func (securityModule) Build(
 		}
 	}
 	if len(constitutionBundle.Rules) > 0 {
-		securityRuntime.Repository = append(
+		repositoryRules = append(
 			append([]policy.Rule{}, constitutionBundle.Rules...),
-			securityRuntime.Repository...,
+			repositoryRules...,
 		)
 	}
-	permissionStore, err := permissions.OpenStore(execution.Workspace)
+	permissionStore, err := permissions.OpenWorkspaceStore(state.config.snapshot.Config.State.DataDir, execution.Workspace)
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)
 	}
-	if rules := permissionStore.Rules(); len(rules) > 0 {
-		securityRuntime.Repository = append(
-			rules,
-			securityRuntime.Repository...,
-		)
+	if _, err := securityRuntime.ReloadSources(
+		permissionStore.Rules(), repositoryRules,
+	); err != nil {
+		return fmt.Errorf("policy sources: %w", err)
 	}
 	session.constitutionPrompt = constitutionBundle.Prompt
 	factory := guardFactory{
@@ -92,7 +92,7 @@ func (securityModule) Build(
 		workspace: execution.Workspace, hooks: session.hooks,
 		journal: journal, diagnostics: diagnosticRunner,
 		permissions:     permissionStore,
-		onNetworkAllow:  state.provider.egress.Allow,
+		onNetworkAllow:  state.provider.egress.AllowTarget,
 		forceEditReview: state.options.ForceEditPlanApproval,
 	}
 	guard, err := factory.Build(ctx)

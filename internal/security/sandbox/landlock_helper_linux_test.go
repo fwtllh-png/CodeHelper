@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestLandlockReadOnlyRequestSeparatesWorkspaceFromWritableTemp(t *testing.T) {
@@ -32,7 +34,7 @@ func TestLandlockReadOnlyRequestSeparatesWorkspaceFromWritableTemp(t *testing.T)
 	_, requestPath, err := prepareLandlockInvocation(
 		policy, helper, requestRoot, "/bin/sh", []string{"-c", "true"},
 		[]string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
-		true, nil,
+		true, nil, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -86,13 +88,15 @@ func TestLandlockHelperAppliesStrictPolicy(t *testing.T) {
 	defer os.RemoveAll(requestRoot)
 	script := "set -eu; " +
 		`test "$CODEHELPER_LANDLOCK_ACTIVE" = 1; ` +
+		`test "$CODEHELPER_NO_NEW_PRIVS_ACTIVE" = 1; ` +
+		`test "$CODEHELPER_SECCOMP_ACTIVE" = restricted; ` +
 		`test "$(cat input)" = workspace; ` +
 		"printf ok > output; " +
 		"! cat '" + strings.ReplaceAll(secret, "'", "'\\''") + "' >/dev/null 2>&1"
 	helper, requestPath, err := prepareLandlockInvocation(
 		policy, helper, requestRoot, "/bin/sh", []string{"-c", script},
 		[]string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
-		false, nil,
+		false, nil, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -111,6 +115,95 @@ func TestLandlockHelperAppliesStrictPolicy(t *testing.T) {
 		string(output) != "ok" {
 		t.Fatalf("workspace output = %q, %v", output, err)
 	}
+}
+
+func TestLandlockHelperAppliesSyscallPolicy(t *testing.T) {
+	if os.Getenv("CODEHELPER_SANDBOX_STAGE") != "1" {
+		t.Skip("seccomp execution runs in the required sandbox stage")
+	}
+	workspace := t.TempDir()
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: workspace, PrivateTemp: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestRoot, err := createLandlockRequestRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(requestRoot)
+	helper, requestPath, err := prepareLandlockInvocation(
+		policy, helper, requestRoot, helper,
+		[]string{"-test.run=^TestSeccompProbeProcess$"},
+		[]string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
+		true, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arguments := landlockHelperArgs(helper, requestPath, policy.ID)
+	command := exec.Command(arguments[0], arguments[1:]...)
+	command.Dir = workspace
+	command.Env = []string{
+		"PATH=/usr/bin:/bin:/usr/sbin:/sbin",
+		"CODEHELPER_SECCOMP_PROBE=1",
+	}
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("seccomp helper failed: %v: %s", err, output)
+	}
+}
+
+func TestSeccompProbeProcess(t *testing.T) {
+	if os.Getenv("CODEHELPER_SECCOMP_PROBE") != "1" {
+		t.Skip("seccomp probe child only")
+	}
+	value, err := unix.PrctlRetInt(unix.PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0)
+	if err != nil || value != 1 {
+		t.Fatalf("no_new_privs = %d, %v", value, err)
+	}
+	for name, probe := range map[string]func() unix.Errno{
+		"ptrace": func() unix.Errno {
+			_, _, errno := unix.RawSyscall6(
+				unix.SYS_PTRACE, unix.PTRACE_ATTACH, ^uintptr(0), 0, 0, 0, 0,
+			)
+			return errno
+		},
+		"process_vm_readv": func() unix.Errno {
+			_, _, errno := unix.RawSyscall6(
+				unix.SYS_PROCESS_VM_READV, 0, 0, 0, 0, 0, 0,
+			)
+			return errno
+		},
+		"io_uring_setup": func() unix.Errno {
+			_, _, errno := unix.RawSyscall(unix.SYS_IO_URING_SETUP, 1, 0, 0)
+			return errno
+		},
+		"clone3": func() unix.Errno {
+			_, _, errno := unix.RawSyscall(unix.SYS_CLONE3, 0, 0, 0)
+			return errno
+		},
+		"inet_socket": func() unix.Errno {
+			_, _, errno := unix.RawSyscall(
+				unix.SYS_SOCKET, unix.AF_INET, unix.SOCK_STREAM, 0,
+			)
+			return errno
+		},
+	} {
+		if errno := probe(); errno != unix.EPERM {
+			t.Fatalf("%s errno = %v, want EPERM", name, errno)
+		}
+	}
+	pair, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatalf("AF_UNIX socketpair was blocked: %v", err)
+	}
+	_ = unix.Close(pair[0])
+	_ = unix.Close(pair[1])
 }
 
 func TestLandlockBubblewrapPreparationMountsHelperLiteral(t *testing.T) {

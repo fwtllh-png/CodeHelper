@@ -80,7 +80,7 @@ Execution 成功。
 Policy 合并 Repository Rule、Tool Grant、Mode、Permission Posture 和 Granular Surface。
 Deny/Hold 立即失败；Ask 可命中与 Argument/Resource/Scope/Expiry 绑定的 Cache，或异步
 请求 Host。Replacement Argument 必须重新 Prepare/Evaluate。Edit Plan 是 One-shot；
-Network Redirect 与 Sandbox Escalation 需要新的 Host/Unsandboxed Resource Authority。
+Network Redirect 与 Typed Sandbox Denial Amendment 需要新的精确 Resource Authority。
 
 Approval Cache Reuse 是 Canonical Tool、Argument、Resource、Scope、Expiry 的 Subset
 Check。Deny 始终优先；更宽 Mode/Permission 不能削弱 Constitution/Repository Denial。
@@ -89,8 +89,10 @@ Check。Deny 始终优先；更宽 Mode/Permission 不能削弱 Constitution/Rep
 ## Execution 与 Observation
 
 Resource Claim 序列化冲突访问，Hook 包围执行。写操作建立 Before-image/Fingerprint，
-经 Registry 执行后观察实际磁盘变化并运行 Diagnostics。Strong Sandbox Denial 只有在
-显式 Reapproval 后才能 Unsandboxed Retry。
+经 Registry 执行后观察实际磁盘变化并运行 Diagnostics。可增权的 Typed Sandbox
+Denial 可通过独立 Critical One-shot Approval 申请单个 Path、Host/Port 或 Process
+Capability。新 Profile 使用递增 Revision 和 Digest，保留 Immutable Deny，并在同一
+Strong Sandbox 下最多重试一次；Untyped 或重复 Denial 均 Fail Closed。
 
 Claim 在 Authority 已知后 Acquire，并在 Cancellation 等所有 Return Path Release。它
 协调 Concurrent Call，但不能替代 Filesystem Precondition/Journal Fingerprint，因为
@@ -120,6 +122,8 @@ External Process 仍可能修改 Workspace。
 - Approval 绑定 Call、Argument、Resource、Scope、Expiry。
 - Replacement Argument 从头验证。
 - Sandbox Escalation/New Host 需要独立 Authority。
+- 每次实际执行的 Attempt Receipt 都绑定 Profile Revision/Digest、Backend、Root、
+  Network Mode、Grant Provenance、Denial 与 Amendment Decision。
 - 所有返回路径释放 Claim。
 
 ## 测试与验证
@@ -131,8 +135,9 @@ go test ./internal/security/policy ./internal/security/sandbox ./internal/securi
 
 ## 动手实验
 
-追踪 `TestSandboxStrongApprovalDoesNotCoverEscalate`，列出 Strong Attempt 与 Unsandboxed
-Retry 的 Resource 和 Policy Decision。
+追踪 `TestSandboxStrongApprovalDoesNotCoverAdditionalPermission`，列出两次 Strong
+Attempt 的 Resource、Profile Revision/Digest、Typed Denial 和 Approval Decision，
+并验证第一次 Amendment 的 Replacement Digest 等于第二次 Attempt 的 Profile Digest。
 
 ## 复习问题
 

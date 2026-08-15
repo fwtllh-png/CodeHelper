@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "stage": "SG3",
+  "status": "accepted",
+  "base_commit": "ca3c4ba4ef7846864bde326324f6b78256c52a9b",
+  "baseline": "docs/security-governance-sg0-baseline.json",
+  "controls": {
+    "typed_sandbox_denial_producer": true,
+    "coherent_sandbox_escalation": true,
+    "baseline_controls_enabled": 11,
+    "baseline_controls_total": 15,
+    "known_gaps": 4
+  },
+  "attack_cases": {
+    "SG-ATTACK-003": "blocked",
+    "SG-ATTACK-004": "blocked"
+  },
+  "implementation": {
+    "typed_denial": true,
+    "base_profile_digest_bound": true,
+    "single_path_or_target_amendment": true,
+    "immutable_denies_preserved": true,
+    "critical_once_approval": true,
+    "approval_cache_reuse": false,
+    "maximum_amendments_per_call": 1,
+    "nested_process_authority_declared": true,
+    "strong_sandbox_retry": true,
+    "generic_unsandbox_fallback": false,
+    "untyped_denial_fails_closed": true
+  },
+  "commands": {
+    "stage": "make security-governance-sg3",
+    "security": "make security-test",
+    "sandbox": "make sandbox-attack-test",
+    "race": "go test -race ./internal/security/... ./internal/adapter/tool/guard/... ./internal/platform/process/...",
+    "docs": "make docs-check && make book-check && make markdownlint-check",
+    "architecture": "make architecture-ratchet"
+  }
+}

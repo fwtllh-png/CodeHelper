@@ -536,7 +536,7 @@ func TestFileMutationToolsAreSerial(t *testing.T) {
 	}
 }
 
-func TestFilePatchHonorsUnsandboxAttempt(t *testing.T) {
+func TestFilePatchCannotBypassSandboxAttempt(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "sample.txt"), []byte("one\n"), 0o644); err != nil {
 		t.Fatal(err)

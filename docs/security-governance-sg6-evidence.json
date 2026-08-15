@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "stage": "SG6",
+  "status": "accepted",
+  "base_commit": "ca3c4ba4ef7846864bde326324f6b78256c52a9b",
+  "baseline": "docs/security-governance-sg0-baseline.json",
+  "controls": {
+    "baseline_controls_enabled": 14,
+    "baseline_controls_total": 15,
+    "known_gaps": 1
+  },
+  "implementation": {
+    "shell_ast_parser": "mvdan.cc/sh/v3/syntax",
+    "argv_native_prefix": true,
+    "host_executable_resolution": true,
+    "shell_payload_recursive_parse": true,
+    "opaque_interpreter_boundary": true,
+    "cross_segment_allow": false,
+    "dynamic_allow": false,
+    "unsafe_persistent_prefix": false,
+    "authority_sources": [
+      "managed",
+      "user",
+      "repository"
+    ],
+    "repository_can_allow": false,
+    "lower_source_overrides_deny": false,
+    "atomic_reload": true,
+    "revisioned_snapshot": true,
+    "profile_revision_provenance": true,
+    "malformed_reload_fail_closed": true
+  },
+  "verification": {
+    "pipeline_boundary": "blocked",
+    "redirect_boundary": "blocked",
+    "subshell_boundary": "blocked",
+    "interpreter_payload_boundary": "blocked",
+    "repository_allow": "blocked",
+    "failed_reload_preserves_snapshot": true,
+    "concurrent_reload_race": "passed"
+  },
+  "commands": {
+    "stage": "make security-governance-sg6",
+    "security": "make security-test",
+    "focused_race": "go test -race ./internal/security/policy ./internal/security/permissions ./internal/security/authority ./internal/adapter/tool/guard",
+    "docs": "make docs-check && make book-check && make markdownlint-check",
+    "architecture": "make architecture-ratchet"
+  }
+}

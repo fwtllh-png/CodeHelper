@@ -89,13 +89,11 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 	if err != nil {
 		return fmt.Errorf("resolve sandbox helper executable: %w", err)
 	}
-	backend, err := newPlatformBackend(sandbox.Options{
-		WorkspaceRoot: execution.Workspace,
-		HelperPath:    helperPath,
-		AllowNetwork:  true,
+	backend, err := egress.NewManagedBackend(state.provider.egress, sandbox.Options{
+		WorkspaceRoot: execution.Workspace, HelperPath: helperPath,
 		HostReadRoots: state.config.diagnosticReadRoots,
 		HostReadFiles: state.config.diagnosticReadFiles,
-	})
+	}, newPlatformBackend)
 	if err != nil {
 		return fmt.Errorf("create sandbox: %w", err)
 	}

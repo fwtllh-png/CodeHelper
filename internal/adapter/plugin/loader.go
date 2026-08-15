@@ -259,6 +259,7 @@ func (p *Loaded) Run(ctx context.Context, arguments json.RawMessage) (process.Re
 	return process.Run(ctx, process.Options{
 		Path: executable, Args: commandArguments, Dir: directoryPath,
 		DirFile: directory, Sandbox: backend, RequireStrongSandbox: true,
+		WorkspaceReadOnly: true,
 	})
 }
 

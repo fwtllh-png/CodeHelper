@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"syscall"
 
@@ -33,6 +34,7 @@ func prepareLandlockInvocation(
 	arguments []string,
 	environment []string,
 	workspaceReadOnly bool,
+	additionalReadPaths []string,
 	workspaceWritePaths []string,
 ) (string, string, error) {
 	if helperPath == "" {
@@ -45,9 +47,14 @@ func prepareLandlockInvocation(
 	if err != nil {
 		return "", "", fmt.Errorf("resolve Landlock helper: %w", err)
 	}
+	target, err := resolveExecutableLiteral(executable, environment)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve Landlock target: %w", err)
+	}
 	readOnly := append(append([]string{}, policy.RuntimeReadRoots...), policy.HostReadRoots...)
 	readOnly = append(readOnly, policy.HostReadFiles...)
-	readOnly = append(readOnly, executable, helper)
+	readOnly = append(readOnly, additionalReadPaths...)
+	readOnly = append(readOnly, target, helper)
 	if workspaceReadOnly {
 		readOnly = append(readOnly, policy.WorkspaceRoot)
 	}
@@ -62,10 +69,11 @@ func prepareLandlockInvocation(
 	request := landlockRequest{
 		SchemaVersion: landlockSchemaVersion,
 		PolicyID:      policy.ID,
+		SyscallPolicy: policySyscallMode(policy),
 		ReadOnly:      readOnly,
 		ReadWrite:     readWrite,
-		Executable:    executable,
-		Arguments:     append([]string{executable}, arguments...),
+		Executable:    target,
+		Arguments:     append([]string{target}, arguments...),
 	}
 	encoded, err := encodeLandlockRequest(request)
 	if err != nil {
@@ -126,6 +134,8 @@ func createLandlockRequestRoot() (string, error) {
 }
 
 func runLandlockHelper(arguments []string) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	requestPath, expectedPolicyID, err := parseLandlockHelperArguments(arguments)
 	if err != nil {
 		return err
@@ -194,8 +204,17 @@ func runLandlockHelper(arguments []string) error {
 	if err := landlock.V3.RestrictPaths(rules...); err != nil {
 		return fmt.Errorf("apply Landlock ABI v3 policy: %w", err)
 	}
+	if err := applyLinuxSyscallPolicy(request.SyscallPolicy); err != nil {
+		return err
+	}
 	if err := os.Setenv("CODEHELPER_LANDLOCK_ACTIVE", "1"); err != nil {
 		return errors.New("set Landlock activation marker")
+	}
+	if err := os.Setenv("CODEHELPER_NO_NEW_PRIVS_ACTIVE", "1"); err != nil {
+		return errors.New("set no-new-privs activation marker")
+	}
+	if err := os.Setenv("CODEHELPER_SECCOMP_ACTIVE", request.SyscallPolicy); err != nil {
+		return errors.New("set seccomp activation marker")
 	}
 	if err := syscall.Exec(request.Executable, request.Arguments, os.Environ()); err != nil {
 		return fmt.Errorf("exec sandbox target: %w", err)

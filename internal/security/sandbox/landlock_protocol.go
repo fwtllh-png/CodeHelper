@@ -20,6 +20,7 @@ const (
 type landlockRequest struct {
 	SchemaVersion int      `json:"schema_version"`
 	PolicyID      string   `json:"policy_id"`
+	SyscallPolicy string   `json:"syscall_policy"`
 	ReadOnly      []string `json:"read_only"`
 	ReadWrite     []string `json:"read_write"`
 	Executable    string   `json:"executable"`
@@ -74,6 +75,9 @@ func validateLandlockRequest(request landlockRequest) error {
 	if !strings.HasPrefix(request.PolicyID, "sandbox-v1-") {
 		return errors.New("invalid Landlock helper policy identity")
 	}
+	if !validSyscallPolicy(request.SyscallPolicy) {
+		return errors.New("invalid Linux syscall policy")
+	}
 	if err := validateLandlockPaths("read_only", request.ReadOnly); err != nil {
 		return err
 	}
@@ -95,6 +99,31 @@ func validateLandlockRequest(request landlockRequest) error {
 		}
 	}
 	return nil
+}
+
+const (
+	syscallPolicyRestricted  = "restricted"
+	syscallPolicyProxyRouted = "proxy_routed"
+	syscallPolicyDirect      = "direct"
+)
+
+func validSyscallPolicy(value string) bool {
+	switch value {
+	case syscallPolicyRestricted, syscallPolicyProxyRouted, syscallPolicyDirect:
+		return true
+	default:
+		return false
+	}
+}
+
+func policySyscallMode(policy Policy) string {
+	if policy.ManagedProxyPort != 0 {
+		return syscallPolicyProxyRouted
+	}
+	if policy.AllowNetwork {
+		return syscallPolicyDirect
+	}
+	return syscallPolicyRestricted
 }
 
 func validateLandlockPaths(field string, paths []string) error {

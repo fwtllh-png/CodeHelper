@@ -1,0 +1,107 @@
+package authority
+
+import (
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+)
+
+func TestAmendAddsOnePathWithoutRemovingDenies(t *testing.T) {
+	input := fixtureCompileInput(t)
+	base, err := Compile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(input.SandboxPolicy.WorkspaceRoot, "result.txt")
+	request, err := RequestFromDenial(base, sandbox.Denial{
+		Operation: sandbox.DenialWrite, Resource: path,
+		ReasonCode: sandbox.ReasonPathWriteNotAuthorized,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	amended, err := Amend(base, request, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(amended.Filesystem.WritePaths, path) ||
+		!slices.Equal(
+			amended.Filesystem.DeniedWriteRoots,
+			base.Filesystem.DeniedWriteRoots,
+		) ||
+		amended.Digest == base.Digest {
+		t.Fatalf("amended profile = %+v", amended)
+	}
+}
+
+func TestAmendRejectsControlPlaneAndCrossProfileRequest(t *testing.T) {
+	input := fixtureCompileInput(t)
+	base, err := Compile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := AdditionalPermissionRequest{
+		BaseProfileDigest: base.Digest,
+		Permission: AdditionalPermission{
+			Kind: AdditionalPathWrite,
+			Resource: filepath.Join(
+				input.SandboxPolicy.WorkspaceRoot,
+				".codehelper",
+				"permissions.toml",
+			),
+		},
+	}
+	if _, err := Amend(base, request, 2); err == nil {
+		t.Fatal("control-plane amendment succeeded")
+	}
+	request.Permission.Resource = filepath.Join(
+		input.SandboxPolicy.WorkspaceRoot,
+		"result.txt",
+	)
+	request.BaseProfileDigest = "another-profile"
+	if _, err := Amend(base, request, 2); err == nil {
+		t.Fatal("cross-profile amendment succeeded")
+	}
+}
+
+func TestNetworkAmendmentIsHostPortScoped(t *testing.T) {
+	base, err := Compile(fixtureCompileInput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := RequestFromDenial(base, sandbox.Denial{
+		Operation: sandbox.DenialNetwork, Resource: "api.example.com",
+		Protocol: "https", Port: 443,
+		ReasonCode: sandbox.ReasonNetworkNotAuthorized,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	amended, err := Amend(base, request, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(
+		amended.Network.Targets,
+		"https://api.example.com:443",
+	) || amended.Network.Mode != "denied" {
+		t.Fatalf("network authority = %+v", amended.Network)
+	}
+}
+
+func TestNonAmendableDenialFailsClosed(t *testing.T) {
+	base, err := Compile(fixtureCompileInput(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = RequestFromDenial(base, sandbox.Denial{
+		Operation:  sandbox.DenialWrite,
+		Resource:   base.Filesystem.WorkspaceRoot,
+		ReasonCode: sandbox.ReasonWorkspaceTreeDenied,
+	})
+	if err == nil {
+		t.Fatal("workspace tree denial became amendable")
+	}
+}

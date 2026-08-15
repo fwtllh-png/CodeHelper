@@ -169,7 +169,8 @@ type ResourceResolver struct {
 	// ReadPathsField binds read-only verification coverage.
 	ReadPathsField string `json:"read_paths_field,omitempty"`
 	// ChangesField resolves transaction "path" and "to" entries.
-	ChangesField string `json:"changes_field,omitempty"`
+	ChangesField        string `json:"changes_field,omitempty"`
+	NetworkTargetsField string `json:"network_targets_field,omitempty"`
 }
 
 type DeferredLoading struct {
@@ -194,15 +195,23 @@ type Descriptor struct {
 }
 
 type Resource struct {
-	Kind   string     `json:"kind"`
-	Path   string     `json:"path,omitempty"`
-	ID     string     `json:"id,omitempty"`
-	Access AccessMode `json:"access"`
-	Tree   bool       `json:"tree,omitempty"`
+	Kind         string     `json:"kind"`
+	Path         string     `json:"path,omitempty"`
+	ID           string     `json:"id,omitempty"`
+	Access       AccessMode `json:"access"`
+	Tree         bool       `json:"tree,omitempty"`
+	Protocol     string     `json:"protocol,omitempty"`
+	Port         uint16     `json:"port,omitempty"`
+	Methods      []string   `json:"methods,omitempty"`
+	AllowPrivate bool       `json:"allow_private,omitempty"`
 }
 
 func (r Resource) Key() string {
-	return strings.Join([]string{r.Kind, r.Path, r.ID, string(r.Access), fmt.Sprint(r.Tree)}, "\x00")
+	return strings.Join([]string{
+		r.Kind, r.Path, r.ID, string(r.Access), fmt.Sprint(r.Tree),
+		r.Protocol, fmt.Sprint(r.Port), strings.Join(r.Methods, ","),
+		fmt.Sprint(r.AllowPrivate),
+	}, "\x00")
 }
 
 type Result struct {

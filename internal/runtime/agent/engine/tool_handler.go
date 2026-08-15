@@ -236,17 +236,8 @@ func (e *Engine) runToolsWithCache(
 			)
 			e.endToolSpan(call, span, result, err)
 			if err != nil {
-				if content, recoverable := recoverableToolFailure(err); recoverable {
-					results[index] = tool.Result{Content: content, IsError: true}
-					if metadata := toolFailureRecoveryMetadata(err); metadata != nil {
-						results[index].Metadata = metadata
-					} else if category := toolFailureCategory(err); category != "" {
-						results[index].Metadata = map[string]any{"error_category": category}
-					}
-					if category := toolFailureCategory(err); category != "" {
-						tool.EnsureOutcomeFacts(&results[index]).Failure =
-							&tool.FailureFact{Category: category}
-					}
+				if recovered, recoverable := recoverableToolResult(result, err); recoverable {
+					results[index] = recovered
 					return
 				}
 				if errors.Is(err, context.Canceled) || errors.Is(toolCtx.Err(), context.Canceled) {
@@ -475,6 +466,32 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 		return err
 	}
 	return nil
+}
+
+func recoverableToolResult(result tool.Result, err error) (tool.Result, bool) {
+	content, recoverable := recoverableToolFailure(err)
+	if !recoverable {
+		return result, false
+	}
+	result.Content = content
+	result.IsError = true
+	result.Metadata = maps.Clone(result.Metadata)
+	if metadata := toolFailureRecoveryMetadata(err); metadata != nil {
+		if result.Metadata == nil {
+			result.Metadata = make(map[string]any, len(metadata))
+		}
+		maps.Copy(result.Metadata, metadata)
+	} else if category := toolFailureCategory(err); category != "" {
+		if result.Metadata == nil {
+			result.Metadata = make(map[string]any, 1)
+		}
+		result.Metadata["error_category"] = category
+	}
+	if category := toolFailureCategory(err); category != "" {
+		tool.EnsureOutcomeFacts(&result).Failure =
+			&tool.FailureFact{Category: category}
+	}
+	return result, true
 }
 
 func cachedToolResult(result tool.Result, sourceCallID string) tool.Result {

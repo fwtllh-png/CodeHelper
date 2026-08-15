@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui/commands"
+	"github.com/fwtllh-png/CodeHelper/internal/security/permissions"
 )
 
 func TestPermissionsSlashAndAlwaysApproval(t *testing.T) {
@@ -18,16 +19,28 @@ func TestPermissionsSlashAndAlwaysApproval(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	dataDir := filepath.Join(root, ".codehelper")
+	workspace := filepath.Join(root, "workspace")
+	dataDir := filepath.Join(root, "state")
+	if err := os.MkdirAll(workspace, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	permPath := filepath.Join(dataDir, "permissions.toml")
+	permPath, err := permissions.Path(dataDir, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(permPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(permPath, []byte("[[deny]]\ntool = \"exec_command\"\ncommand_prefix = \"rm\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	host := &recordingHost{}
-	model := tui.NewModel(tui.Options{DataDir: dataDir}, host)
+	model := tui.NewModel(tui.Options{
+		DataDir: dataDir, Workspace: workspace,
+	}, host)
 	model = enterSlash(model, "/permissions")
 	view := model.View()
 	if !strings.Contains(view, "permissions:path=") || !strings.Contains(view, "deny=1") {

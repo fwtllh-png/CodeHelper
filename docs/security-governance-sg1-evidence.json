@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "stage": "SG1",
+  "status": "accepted",
+  "base_commit": "ca3c4ba4ef7846864bde326324f6b78256c52a9b",
+  "baseline": "docs/security-governance-sg0-baseline.json",
+  "controls": {
+    "control_plane_protected": true,
+    "authority_store_outside_workspace": true,
+    "baseline_controls_enabled": 8,
+    "baseline_controls_total": 15,
+    "known_gaps": 7
+  },
+  "attack_cases": {
+    "SG-ATTACK-001": "blocked"
+  },
+  "implementation": {
+    "classifier": "internal/security/controlplane",
+    "guard_pre_authorization_denial": true,
+    "sandbox_exact_write_recheck": true,
+    "workspace_identity_path_device_inode_bound": true,
+    "runtime_owned_permission_store": true,
+    "repository_allow_rejected": true,
+    "legacy_workspace_permission_auto_import": false
+  },
+  "commands": {
+    "stage": "make security-governance-sg1",
+    "security": "make security-test",
+    "sandbox": "make sandbox-attack-test",
+    "race": "go test -race ./internal/security/... ./internal/adapter/tool/guard/... ./internal/adapter/plugin/... ./internal/adapter/tool/plugin/... ./internal/adapter/tool/task/...",
+    "docs": "make docs-check && make book-check && make markdownlint-check",
+    "architecture": "make architecture-ratchet"
+  }
+}

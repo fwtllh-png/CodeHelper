@@ -57,7 +57,7 @@ func TestWaitingOnAChattyJobRecoversOutputThroughAHandle(t *testing.T) {
 			processTestThread,
 			"write_stdin",
 			map[string]any{
-				"session_id": id, "cursor": 0, "yield_time_ms": 200,
+				"session_id": id, "yield_time_ms": 200,
 			},
 		)
 		if archived.Metadata["archived"] == true {
@@ -71,8 +71,9 @@ func TestWaitingOnAChattyJobRecoversOutputThroughAHandle(t *testing.T) {
 	if _, reported := archived.Metadata["pending_bytes"]; !reported {
 		t.Fatalf("wait = %+v, want it to say how much is still unread", archived.Metadata)
 	}
-	// The recovered span is larger than the inline budget, so it is addressable
-	// rather than dropped: the handle is how the model reads the rest.
+	// The recovered continuation is larger than the inline budget, so it is
+	// addressable rather than dropped. Already-delivered initial bytes are not
+	// replayed by write_stdin.
 	if archived.Handle == "" {
 		t.Fatalf("wait = %+v, want a content handle for the recovered output", archived)
 	}
@@ -80,8 +81,19 @@ func TestWaitingOnAChattyJobRecoversOutputThroughAHandle(t *testing.T) {
 	if !exists {
 		t.Fatalf("handle %q is not readable", archived.Handle)
 	}
-	if !strings.Contains(whole, "line-1\r") {
-		t.Fatalf("handled output lost the beginning: %d bytes", len(whole))
+	initial := started.Content
+	if started.Handle != "" {
+		if handled, ok := results.Get(started.Handle); ok {
+			initial = handled
+		}
+	}
+	if !strings.Contains(initial+whole, "line-1\r") {
+		t.Fatalf(
+			"initial + continuation lost output: initial=%d continuation=%d head=%q",
+			len(initial),
+			len(whole),
+			whole[:min(len(whole), 80)],
+		)
 	}
 }
 
@@ -119,7 +131,7 @@ func TestAPollerThatKeepsUpSeesNoArchiveMarker(t *testing.T) {
 		processTestThread,
 		"write_stdin",
 		map[string]any{
-			"session_id": id, "cursor": 0, "yield_time_ms": 2000,
+			"session_id": id, "yield_time_ms": 2000,
 		},
 	)
 	if !strings.Contains(waited.Content, "ready") {

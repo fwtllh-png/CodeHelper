@@ -288,11 +288,9 @@ func cloneThreadSecurity(source *policy.Runtime) *policy.Runtime {
 	if source == nil {
 		return nil
 	}
-	cloned := *source
-	cloned.Grants = append([]policy.Rule(nil), source.Grants...)
-	cloned.Repository = append([]policy.Rule(nil), source.Repository...)
+	cloned := source.CloneSampling()
 	cloned.Approvals = policy.NewApprovalCache()
-	return &cloned
+	return cloned
 }
 
 func adaptEngine(

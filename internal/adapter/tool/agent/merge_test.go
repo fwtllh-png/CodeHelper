@@ -276,7 +276,7 @@ func TestAgentMergeUsesLastSuccessfulResultAfterFailedFollowUp(t *testing.T) {
 func TestIntegrateAgentUsesGuardExpansion(t *testing.T) {
 	_, guard, manager, workspace, _ := openMergeHarness(t)
 	agentID := settleWritingChild(t, manager)
-	guard.Policy().Repository = []policy.Rule{{
+	guard.Policy().User = []policy.Rule{{
 		Tool: "integrate_agent", Resource: "*", Action: policy.ActionAllow,
 	}}
 

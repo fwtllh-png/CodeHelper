@@ -205,6 +205,33 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 	}
 }
 
+func TestRecoverableToolResultPreservesGuardExecutionReceipt(t *testing.T) {
+	receipt := &tool.ExecutionReceipt{
+		Tool: tool.ToolRef{
+			Name: "exec_command", Source: "builtin:exec_command",
+			CatalogID: "catalog-1", Generation: 1, Revision: 1, Authority: 1,
+		},
+		Source:         tool.InvocationSourceModel,
+		Disposition:    tool.DispositionWaitForTeardown,
+		TerminalStatus: tool.OutcomeRejected,
+		TerminalOwner:  tool.TerminalOwnerGuard,
+	}
+	result, recovered := recoverableToolResult(tool.Result{
+		Execution: receipt,
+		Metadata:  map[string]any{"guard": "retained"},
+	}, &policy.DecisionError{
+		Code: "approval_denied", Reason: "approval was denied",
+	})
+	if !recovered || !result.IsError ||
+		!strings.Contains(result.Content, "approval was denied") ||
+		result.Execution != receipt ||
+		result.Execution.TerminalStatus != tool.OutcomeRejected ||
+		result.Execution.TerminalOwner != tool.TerminalOwnerGuard ||
+		result.Metadata["guard"] != "retained" {
+		t.Fatalf("recovered result = %+v", result)
+	}
+}
+
 func TestEditPlanStaleRecoveryMetadataRequiresNewPlan(t *testing.T) {
 	err := &policy.DecisionError{
 		Code: "edit_plan_stale", Reason: "workspace changed after edit preview",
@@ -571,7 +598,7 @@ func TestToolSelectionKeepsCoreAndBoundedRelevantDefinitions(t *testing.T) {
 	for _, name := range []string{
 		"search_text", "search_files", "search_definition", "search_references",
 		"file_read", "file_list", "file_write", "file_edit", "file_apply",
-		"shell_read", "exec_command", "quality_test", "project_map",
+		"shell_read", "exec_command", "write_stdin", "quality_test", "project_map",
 		"special_deploy", "unrelated_fixture",
 	} {
 		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
@@ -590,7 +617,7 @@ func TestToolSelectionKeepsCoreAndBoundedRelevantDefinitions(t *testing.T) {
 	}
 	for _, name := range []string{
 		"tool_search", "search_text", "file_read", "file_write",
-		"exec_command", "quality_test", "special_deploy",
+		"exec_command", "write_stdin", "quality_test", "special_deploy",
 	} {
 		if !advertised[name] {
 			t.Fatalf("required or relevant tool %q omitted from %v", name, advertised)

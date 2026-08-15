@@ -15,6 +15,8 @@ var allowedEnvironment = map[string]bool{
 	"GOTOOLCHAIN": true, "GOFLAGS": true, "GO111MODULE": true,
 	"GOPROXY": true, "GOPRIVATE": true, "GONOPROXY": true,
 	"GOSUMDB": true, "GONOSUMDB": true, "GOVCS": true,
+	"HTTP_PROXY": true, "HTTPS_PROXY": true, "ALL_PROXY": true, "NO_PROXY": true,
+	"http_proxy": true, "https_proxy": true, "all_proxy": true, "no_proxy": true,
 	"OPENSSL_CONF": true,
 	"SYSTEMROOT":   true, "COMSPEC": true, "PATHEXT": true, "WINDIR": true,
 }

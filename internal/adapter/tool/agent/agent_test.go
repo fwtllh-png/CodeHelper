@@ -139,7 +139,7 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 	}
 	descriptors := registry.Descriptors(tool.VisibleModel)
 	names := make([]string, 0, len(descriptors))
-	var spawnDescriptor, waitDescriptor tool.Descriptor
+	var spawnDescriptor, waitDescriptor, integrateDescriptor tool.Descriptor
 	for _, descriptor := range descriptors {
 		if descriptor.Name != "result_get" {
 			names = append(names, descriptor.Name)
@@ -149,6 +149,9 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 		}
 		if descriptor.Name == "wait_agent" {
 			waitDescriptor = descriptor
+		}
+		if descriptor.Name == "integrate_agent" {
+			integrateDescriptor = descriptor
 		}
 	}
 	want := []string{
@@ -163,6 +166,16 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 			"wait_agent parallel policy = %q, want concurrent",
 			waitDescriptor.ParallelPolicy,
 		)
+	}
+	hasGitProcess := false
+	for _, template := range integrateDescriptor.ResourceResolver.Templates {
+		if template.Kind == "process" && template.ID == "git" &&
+			template.Access == tool.AccessRead {
+			hasGitProcess = true
+		}
+	}
+	if !hasGitProcess {
+		t.Fatal("integrate_agent does not declare its internal git process")
 	}
 	properties := spawnDescriptor.InputSchema["properties"].(map[string]any)
 	for _, field := range []string{"context_mode", "context_turns"} {

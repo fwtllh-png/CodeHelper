@@ -587,9 +587,6 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 		Dir: t.root, DirFile: directory, Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
 	})
 	if err != nil {
-		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
-			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch check")
-		}
 		return tool.Result{}, err
 	}
 	check.Stdin = strings.NewReader(patch)
@@ -602,9 +599,6 @@ func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Resul
 		Dir: t.root, DirFile: directory, Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
 	})
 	if err != nil {
-		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
-			return tool.Result{}, guard.MarkSandboxDenial(err, "file_patch apply")
-		}
 		return tool.Result{}, err
 	}
 	apply.Stdin = strings.NewReader(patch)

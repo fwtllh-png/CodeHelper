@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -30,6 +33,22 @@ func TestMalformedArgumentsFailBeforePolicy(t *testing.T) {
 	_, err := guard.Execute(t.Context(), "call", "write", json.RawMessage(`{"path":`))
 	if err == nil || !contains(err.Error(), "arguments") || contains(err.Error(), "hold") {
 		t.Fatalf("error = %v, want schema error before policy", err)
+	}
+}
+
+func TestNetworkTargetsResolveHostPortMethodAndPrivateScope(t *testing.T) {
+	resources, err := networkTargets([]any{map[string]any{
+		"host": "API.Example.com.", "protocol": "https", "port": float64(8443),
+		"methods": []any{"post", "GET", "GET"}, "allow_private": true,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resources) != 1 || resources[0].ID != "api.example.com" ||
+		resources[0].Protocol != "https" || resources[0].Port != 8443 ||
+		!reflect.DeepEqual(resources[0].Methods, []string{"GET", "POST"}) ||
+		!resources[0].AllowPrivate {
+		t.Fatalf("network resources = %+v", resources)
 	}
 }
 
@@ -226,8 +245,8 @@ func TestActAutoReadOnlyShellDoesNotAsk(t *testing.T) {
 	if approvals.Load() != 0 {
 		t.Fatalf("read-only shell requested %d approvals", approvals.Load())
 	}
-	if guard.canEscalate(Invocation{Descriptor: descriptor}) {
-		t.Fatal("read-only shell may not escalate outside the sandbox")
+	if !guard.canEscalate(Invocation{Descriptor: descriptor}) {
+		t.Fatal("read-only shell must support bounded path-read amendments")
 	}
 }
 
@@ -253,10 +272,10 @@ func TestApprovalAlwaysPersistsAllow(t *testing.T) {
 		},
 		PersistAllow: func(invocation policy.Invocation) error {
 			persisted.Add(1)
-			runtime.Repository = append([]policy.Rule{{
+			_, err := runtime.AppendUserRule(policy.Rule{
 				Tool: invocation.Tool, Resource: "*", Action: policy.ActionAllow,
-			}}, runtime.Repository...)
-			return nil
+			})
+			return err
 		},
 	})
 	if err != nil {
@@ -474,6 +493,11 @@ func TestPendingApprovalExpiresFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var expired ApprovalWait
+	guard.SetApprovalExpiryHandler(func(wait ApprovalWait) error {
+		expired = wait
+		return nil
+	})
 	_, err = guard.Execute(
 		t.Context(), "expires", "write",
 		json.RawMessage(`{"path":"a","value":"x"}`),
@@ -483,6 +507,10 @@ func TestPendingApprovalExpiresFailClosed(t *testing.T) {
 	}
 	if executor.calls.Load() != 0 || guard.Pending() != 0 {
 		t.Fatalf("expired call executed or remained pending: calls=%d pending=%d", executor.calls.Load(), guard.Pending())
+	}
+	if expired.CallID != "expires" ||
+		expired.Outcome != ApprovalWaitExpired {
+		t.Fatalf("expiry handler wait = %+v", expired)
 	}
 }
 
@@ -632,6 +660,8 @@ func TestPatchRenameAndSymlinkTargetsCanonicalizeIdentically(t *testing.T) {
 type testExecutor struct {
 	descriptor tool.Descriptor
 	calls      atomic.Int32
+	mu         sync.Mutex
+	profiles   []authority.EffectivePermissionProfile
 }
 
 type approvalMetricSink struct {
@@ -679,9 +709,20 @@ func (*failingExpanderExecutor) ExpandArguments(
 }
 
 func (e *testExecutor) Descriptor() tool.Descriptor { return e.descriptor }
-func (e *testExecutor) Execute(_ context.Context, raw json.RawMessage) (tool.Result, error) {
+func (e *testExecutor) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
 	e.calls.Add(1)
+	if profile, ok := authority.ProfileFromContext(ctx); ok {
+		e.mu.Lock()
+		e.profiles = append(e.profiles, profile)
+		e.mu.Unlock()
+	}
 	return tool.Result{Content: string(raw)}, nil
+}
+
+func (e *testExecutor) profilesSnapshot() []authority.EffectivePermissionProfile {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]authority.EffectivePermissionProfile(nil), e.profiles...)
 }
 
 func TestEgressDeniedAsksThenRetries(t *testing.T) {
@@ -701,9 +742,9 @@ func TestEgressDeniedAsksThenRetries(t *testing.T) {
 			requests <- request
 			return nil
 		},
-		OnNetworkAllow: func(host, _ string) {
+		OnNetworkAllow: func(target egress.Target) {
 			grantedMu.Lock()
-			granted = append(granted, host)
+			granted = append(granted, target.Host)
 			grantedMu.Unlock()
 		},
 	})
@@ -777,9 +818,9 @@ func TestEgressDeniedBypassAutoGrantsWithoutAsk(t *testing.T) {
 			t.Fatal("bypass must not ask for mid-flight egress hosts")
 			return nil
 		},
-		OnNetworkAllow: func(host, _ string) {
+		OnNetworkAllow: func(target egress.Target) {
 			grantedMu.Lock()
-			granted = append(granted, host)
+			granted = append(granted, target.Host)
 			grantedMu.Unlock()
 		},
 	})
@@ -1073,6 +1114,43 @@ func writeDescriptor() tool.Descriptor {
 	return descriptor
 }
 
+func TestControlPlaneWriteCannotBeApprovedOrBypassed(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	executor := &testExecutor{descriptor: writeDescriptor()}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	requested := atomic.Bool{}
+	guard := newTestGuard(
+		t,
+		registry,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		func(context.Context, ApprovalRequest) error {
+			requested.Store(true)
+			return nil
+		},
+		nil,
+	)
+	_, err := guard.Execute(
+		t.Context(),
+		"control-plane-write",
+		"write",
+		json.RawMessage(`{"path":".codehelper/permissions.toml","value":"allow"}`),
+	)
+	var denied *policy.DecisionError
+	if !errors.As(err, &denied) ||
+		denied.Code != "control_plane_protected" {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if requested.Load() || executor.calls.Load() != 0 {
+		t.Fatalf(
+			"approval requested=%v executor calls=%d",
+			requested.Load(),
+			executor.calls.Load(),
+		)
+	}
+}
+
 func readDescriptor(name string) tool.Descriptor {
 	return tool.Descriptor{
 		Name: name, Description: "test tool", Visibility: tool.VisibleModel,
@@ -1110,7 +1188,7 @@ func (strongBackend) Prepare(_ context.Context, command sandbox.Command) (sandbo
 	return command, nil
 }
 
-func TestSandboxEscalateRequiresReapproval(t *testing.T) {
+func TestAdditionalPermissionRequiresReapproval(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("escalate")}
@@ -1134,22 +1212,26 @@ func TestSandboxEscalateRequiresReapproval(t *testing.T) {
 		result <- err
 	}()
 	request := <-requests
-	if request.ReasonCode != ApprovalReasonSandboxEscalate {
-		t.Fatalf("reason = %q, want %s", request.ReasonCode, ApprovalReasonSandboxEscalate)
+	if request.ReasonCode != ApprovalReasonAdditionalPermission {
+		t.Fatalf("reason = %q, want %s", request.ReasonCode, ApprovalReasonAdditionalPermission)
 	}
-	hasNone := false
+	hasPath := false
 	for _, resource := range request.Resources {
-		if resource.Kind == "sandbox" && resource.ID == string(SandboxModeNone) {
-			hasNone = true
+		if resource.Kind == "file" && resource.Access == tool.AccessWrite {
+			hasPath = true
 		}
 	}
-	if !hasNone {
-		t.Fatalf("escalate resources = %+v, want sandbox:none", request.Resources)
+	if !hasPath || request.AdditionalPermission == nil ||
+		request.AdditionalPermission.Permission.Kind != authority.AdditionalPathWrite {
+		t.Fatalf("additional permission request = %+v", request)
 	}
-	for _, scope := range request.AllowedScopes {
-		if scope == policy.ApprovalAlways {
-			t.Fatal("unsandbox escalate must not offer always persist")
-		}
+	if len(request.AllowedScopes) != 1 ||
+		request.AllowedScopes[0] != policy.ApprovalOnce {
+		t.Fatalf("additional permission scopes = %v", request.AllowedScopes)
+	}
+	if request.Effect != policy.EffectExternalMutation ||
+		request.Risk != policy.RiskCritical {
+		t.Fatalf("additional permission risk = %s/%s", request.Effect, request.Risk)
 	}
 	if err := guard.Decide(ApprovalDecision{RequestID: request.RequestID}); err != nil {
 		t.Fatal(err)
@@ -1162,7 +1244,7 @@ func TestSandboxEscalateRequiresReapproval(t *testing.T) {
 	}
 }
 
-func TestSandboxEscalateSessionCacheReuse(t *testing.T) {
+func TestAdditionalPermissionRequiresApprovalForEveryInvocation(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("escalate")}
@@ -1186,32 +1268,83 @@ func TestSandboxEscalateSessionCacheReuse(t *testing.T) {
 		first <- err
 	}()
 	request := <-requests
-	mustDecide(t, guard, request, policy.ApprovalSession, nil)
+	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
 	if err := <-first; err != nil {
 		t.Fatal(err)
 	}
 	if modes := executor.modesSnapshot(); len(modes) != 2 ||
-		modes[0] != SandboxModeStrong || modes[1] != SandboxModeNone {
+		modes[0] != SandboxModeStrong || modes[1] != SandboxModeStrong {
 		t.Fatalf("first modes = %v", modes)
 	}
 
-	if _, err := guard.Execute(
-		context.Background(), "esc-cache-2", "escalate", json.RawMessage(`{}`),
-	); err != nil {
+	second := make(chan error, 1)
+	go func() {
+		_, err := guard.Execute(
+			context.Background(), "esc-cache-2", "escalate", json.RawMessage(`{}`),
+		)
+		second <- err
+	}()
+	request = <-requests
+	if request.ReasonCode != ApprovalReasonAdditionalPermission {
+		t.Fatalf("second reason = %q", request.ReasonCode)
+	}
+	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
+	if err := <-second; err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case unexpected := <-requests:
-		t.Fatalf("session escalate grant should skip re-ask: %+v", unexpected)
-	default:
-	}
 	if modes := executor.modesSnapshot(); len(modes) != 4 ||
-		modes[2] != SandboxModeStrong || modes[3] != SandboxModeNone {
+		modes[2] != SandboxModeStrong || modes[3] != SandboxModeStrong {
 		t.Fatalf("second modes = %v", modes)
 	}
 }
 
-func TestSandboxStrongApprovalDoesNotCoverEscalate(t *testing.T) {
+func TestAdditionalPermissionRetriesAtMostOnce(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	registry.SetSandboxBackend(strongBackend{})
+	executor := &repeatedEscalateExecutor{
+		descriptor: sandboxedDescriptor("repeated_escalate"),
+	}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan ApprovalRequest, 2)
+	guard := newTestGuard(
+		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		}, nil,
+	)
+	done := make(chan error, 1)
+	go func() {
+		_, err := guard.Execute(
+			context.Background(),
+			"esc-once",
+			"repeated_escalate",
+			json.RawMessage(`{}`),
+		)
+		done <- err
+	}()
+	request := <-requests
+	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
+	select {
+	case unexpected := <-requests:
+		_ = guard.Decide(ApprovalDecision{RequestID: unexpected.RequestID})
+		t.Fatalf("second amendment approval requested: %+v", unexpected)
+	case err := <-done:
+		denial, ok := sandbox.DenialFromError(err)
+		if !ok || denial.ReasonCode != sandbox.ReasonPathWriteNotAuthorized {
+			t.Fatalf("second denial = %+v error=%v", denial, err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for bounded amendment retry")
+	}
+	if executor.calls.Load() != 2 {
+		t.Fatalf("attempts = %d, want 2", executor.calls.Load())
+	}
+}
+
+func TestSandboxStrongApprovalDoesNotCoverAdditionalPermission(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("escalate")}
@@ -1233,16 +1366,20 @@ func TestSandboxStrongApprovalDoesNotCoverEscalate(t *testing.T) {
 		first <- err
 	}()
 	escalateAsk := <-requests
-	if escalateAsk.ReasonCode != ApprovalReasonSandboxEscalate {
+	if escalateAsk.ReasonCode != ApprovalReasonAdditionalPermission {
 		t.Fatalf("ask reason = %q", escalateAsk.ReasonCode)
 	}
-	mustDecide(t, guard, escalateAsk, policy.ApprovalSession, nil)
+	if len(escalateAsk.AllowedScopes) != 1 ||
+		escalateAsk.AllowedScopes[0] != policy.ApprovalOnce {
+		t.Fatalf("additional permission scopes = %v", escalateAsk.AllowedScopes)
+	}
+	mustDecide(t, guard, escalateAsk, policy.ApprovalOnce, nil)
 	if err := <-first; err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestSandboxEscalateDisabled(t *testing.T) {
+func TestAdditionalPermissionDisabled(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("escalate")}
@@ -1262,8 +1399,9 @@ func TestSandboxEscalateDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = guard.Execute(t.Context(), "no-esc", "escalate", json.RawMessage(`{}`))
-	if !errors.Is(err, ErrSandboxDenied) {
-		t.Fatalf("error = %v, want ErrSandboxDenied", err)
+	denial, ok := sandbox.DenialFromError(err)
+	if !ok || denial.ReasonCode != sandbox.ReasonPathWriteNotAuthorized {
+		t.Fatalf("error = %v, denial = %+v", err, denial)
 	}
 	if modes := executor.modesSnapshot(); len(modes) != 1 || modes[0] != SandboxModeStrong {
 		t.Fatalf("modes = %v", modes)
@@ -1271,8 +1409,12 @@ func TestSandboxEscalateDisabled(t *testing.T) {
 }
 
 func TestIsSandboxDenial(t *testing.T) {
-	if !IsSandboxDenial(ErrSandboxDenied, tool.Outcome{}) {
-		t.Fatal("ErrSandboxDenied should match")
+	typed := sandbox.Denied(sandbox.Denial{
+		Operation: sandbox.DenialWrite, Resource: "/tmp/result",
+		ReasonCode: sandbox.ReasonPathWriteNotAuthorized,
+	}, nil)
+	if !IsSandboxDenial(typed, tool.Outcome{}) {
+		t.Fatal("typed denial should match")
 	}
 	if IsSandboxDenial(errors.New("sandbox denied by policy"), tool.Outcome{}) {
 		t.Fatal("untyped sandbox text must not authorize escalation")
@@ -1281,12 +1423,41 @@ func TestIsSandboxDenial(t *testing.T) {
 		t.Fatal("OS error text must not authorize escalation")
 	}
 	if !IsSandboxDenial(nil, tool.Outcome{
-		Security: &tool.SecuritySignal{SandboxDenied: true},
+		Security: &tool.SecuritySignal{SandboxDenied: &sandbox.Denial{
+			Operation: sandbox.DenialRead, Resource: "/tmp/input",
+			ReasonCode: sandbox.ReasonPathReadNotAuthorized,
+		}},
 	}) {
 		t.Fatal("typed sandbox signal should match")
 	}
 	if IsSandboxDenial(errors.New("command failed"), tool.Outcome{}) {
 		t.Fatal("generic error must not match")
+	}
+}
+
+func TestUntypedSandboxFailureFailsClosedWithoutApproval(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	registry.SetSandboxBackend(strongBackend{})
+	executor := &errorExecutor{
+		descriptor: sandboxedDescriptor("untyped_denial"),
+		err:        errors.New("Operation not permitted"),
+	}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	guard := newTestGuard(
+		t,
+		registry,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		func(context.Context, ApprovalRequest) error {
+			t.Fatal("untyped denial must not request additional permission")
+			return nil
+		},
+		nil,
+	)
+	_, err := guard.Execute(t.Context(), "untyped", "untyped_denial", json.RawMessage(`{}`))
+	if err == nil || err.Error() != "Operation not permitted" {
+		t.Fatalf("Execute() error = %v", err)
 	}
 }
 
@@ -1298,9 +1469,19 @@ func TestProcessSandboxHonorsAttempt(t *testing.T) {
 	}
 	ctx := WithSandboxAttempt(context.Background(), SandboxAttempt{Mode: SandboxModeNone})
 	got, requireStrong = ProcessSandbox(ctx, backend)
-	if got != nil || requireStrong {
-		t.Fatalf("none attempt = (%v, %v), want (nil, false)", got, requireStrong)
+	if got != backend || !requireStrong {
+		t.Fatalf("none attempt = (%v, %v), want strong backend", got, requireStrong)
 	}
+}
+
+type errorExecutor struct {
+	descriptor tool.Descriptor
+	err        error
+}
+
+func (e *errorExecutor) Descriptor() tool.Descriptor { return e.descriptor }
+func (e *errorExecutor) Execute(context.Context, json.RawMessage) (tool.Result, error) {
+	return tool.Result{}, e.err
 }
 
 type escalateExecutor struct {
@@ -1308,6 +1489,34 @@ type escalateExecutor struct {
 	mu         sync.Mutex
 	modes      []SandboxMode
 	calls      atomic.Int32
+}
+
+type repeatedEscalateExecutor struct {
+	descriptor tool.Descriptor
+	calls      atomic.Int32
+}
+
+func (e *repeatedEscalateExecutor) Descriptor() tool.Descriptor {
+	return e.descriptor
+}
+
+func (e *repeatedEscalateExecutor) Execute(
+	ctx context.Context,
+	_ json.RawMessage,
+) (tool.Result, error) {
+	call := e.calls.Add(1)
+	profile, ok := authority.ProfileFromContext(ctx)
+	if !ok {
+		return tool.Result{}, errors.New("effective profile is missing")
+	}
+	return tool.Result{}, sandbox.Denied(sandbox.Denial{
+		Backend: "test", Operation: sandbox.DenialWrite,
+		Resource: filepath.Join(
+			profile.Filesystem.WorkspaceRoot,
+			fmt.Sprintf("amended-result-%d.txt", call),
+		),
+		ReasonCode: sandbox.ReasonPathWriteNotAuthorized,
+	}, nil)
 }
 
 func (e *escalateExecutor) Descriptor() tool.Descriptor { return e.descriptor }
@@ -1321,10 +1530,20 @@ func (e *escalateExecutor) Execute(ctx context.Context, _ json.RawMessage) (tool
 	e.mu.Lock()
 	e.modes = append(e.modes, mode)
 	e.mu.Unlock()
-	if mode != SandboxModeNone {
-		return tool.Result{}, ErrSandboxDenied
+	profile, ok := authority.ProfileFromContext(ctx)
+	if !ok {
+		return tool.Result{}, errors.New("effective profile is missing")
 	}
-	return tool.Result{Content: "unsandboxed-ok"}, nil
+	path := filepath.Join(profile.Filesystem.WorkspaceRoot, "amended-result.txt")
+	for _, allowed := range profile.Filesystem.WritePaths {
+		if allowed == path {
+			return tool.Result{Content: "amended-ok"}, nil
+		}
+	}
+	return tool.Result{}, sandbox.Denied(sandbox.Denial{
+		Backend: "test", Operation: sandbox.DenialWrite, Resource: path,
+		ReasonCode: sandbox.ReasonPathWriteNotAuthorized,
+	}, nil)
 }
 
 func (e *escalateExecutor) modesSnapshot() []SandboxMode {
@@ -1336,6 +1555,7 @@ func (e *escalateExecutor) modesSnapshot() []SandboxMode {
 func sandboxedDescriptor(name string) tool.Descriptor {
 	descriptor := readDescriptor(name)
 	descriptor.Capability = tool.CapabilityProcess
+	descriptor.AccessMode = tool.AccessWrite
 	descriptor.SandboxRequirement = tool.SandboxStrong
 	return descriptor
 }

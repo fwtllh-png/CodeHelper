@@ -400,7 +400,7 @@ func (*testShellTool) Descriptor() tool.Descriptor {
 		Visibility: tool.VisibleModel, Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessTree,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{
-			{Kind: "repo", ID: ".", Access: tool.AccessWrite, Tree: true},
+			{Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true},
 		}},
 		ParallelPolicy:     tool.ParallelSerial,
 		SandboxRequirement: tool.SandboxStrong,

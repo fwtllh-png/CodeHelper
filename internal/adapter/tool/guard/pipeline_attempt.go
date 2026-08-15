@@ -9,15 +9,17 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 type retryKind string
 
 const (
-	retryNone    retryKind = ""
-	retrySandbox retryKind = "sandbox_escalation"
-	retryEgress  retryKind = "egress_approval"
+	retryNone       retryKind = ""
+	retryPermission retryKind = "additional_permission"
+	retryEgress     retryKind = "egress_approval"
 )
 
 type attemptRun struct {
@@ -32,6 +34,8 @@ type attemptRun struct {
 	claimWait    time.Duration
 	teardown     tool.TeardownReport
 	aborted      bool
+	profile      authority.EffectivePermissionProfile
+	permission   authority.AdditionalPermissionRequest
 }
 
 func (g *Guard) executePipeline(
@@ -42,13 +46,36 @@ func (g *Guard) executePipeline(
 ) (tool.Result, error) {
 	mode := SandboxModeStrong
 	egressRetried := false
+	permissionRetried := false
 	hooksStarted := false
+	var retryPrepared *preparedExecution
+	var retryProfile *authority.EffectivePermissionProfile
 	var receipt tool.ExecutionReceipt
 	for {
-		prepared, err := g.authorize(ctx, callID, name, raw, binding)
-		receipt.ApprovalWait += prepared.waited
-		if err != nil {
-			return tool.Result{}, err
+		var prepared preparedExecution
+		if retryPrepared != nil {
+			prepared = *retryPrepared
+			retryPrepared = nil
+		} else {
+			authorized, err := g.authorize(ctx, callID, name, raw, binding)
+			receipt.ApprovalWait += authorized.waited
+			if err != nil {
+				result := tool.Result{IsError: true}
+				if authorized.invocation.Ref.Name != "" {
+					receipt.Tool = authorized.invocation.Ref
+					receipt.Source = authorized.invocation.Source
+					receipt.Disposition = authorized.invocation.Disposition
+					setExecutionTerminal(
+						&receipt,
+						terminalStatus(err, result),
+						tool.TerminalOwnerGuard,
+						tool.TeardownReport{},
+					)
+					attachExecutionReceipt(&result, receipt)
+				}
+				return result, err
+			}
+			prepared = authorized
 		}
 		raw = append(json.RawMessage(nil), prepared.arguments...)
 		if !hooksStarted && g.hooks != nil {
@@ -71,19 +98,28 @@ func (g *Guard) executePipeline(
 			mode,
 			uint32(len(receipt.Attempts)+1),
 			egressRetried,
+			permissionRetried,
+			retryProfile,
 		)
+		retryProfile = nil
 		receipt.Attempts = append(receipt.Attempts, attempt.receipt)
 		receipt.DispatchWait += attempt.dispatchWait
 		receipt.ClaimWait += attempt.claimWait
 		switch attempt.retry {
-		case retrySandbox:
-			waited, approvalErr := g.approveSandboxEscalation(
+		case retryPermission:
+			waited, approvalErr := g.approveAdditionalPermission(
 				ctx,
 				prepared.invocation,
 				callID,
+				attempt.permission,
 			)
 			receipt.ApprovalWait += waited
 			if approvalErr != nil {
+				setAmendmentDecision(
+					&receipt,
+					amendmentDecision(approvalErr),
+					"",
+				)
 				setExecutionTerminal(
 					&receipt,
 					terminalStatus(approvalErr, attempt.result),
@@ -94,7 +130,43 @@ func (g *Guard) executePipeline(
 				g.afterAttempt(ctx, prepared.invocation, attempt.result, approvalErr)
 				return attempt.result, approvalErr
 			}
-			mode = SandboxModeNone
+			amended, amendErr := authority.Amend(
+				attempt.profile,
+				attempt.permission,
+				uint64(len(receipt.Attempts)+1),
+			)
+			if amendErr != nil {
+				setAmendmentDecision(&receipt, "failed", "")
+				setExecutionTerminal(
+					&receipt,
+					tool.OutcomeFailed,
+					tool.TerminalOwnerGuard,
+					attempt.teardown,
+				)
+				attachExecutionReceipt(&attempt.result, receipt)
+				g.afterAttempt(ctx, prepared.invocation, attempt.result, amendErr)
+				return attempt.result, amendErr
+			}
+			setAmendmentDecision(&receipt, "approved", amended.Digest)
+			updated, updateErr := g.applyAdditionalPermission(
+				prepared,
+				attempt.permission.Permission,
+			)
+			if updateErr != nil {
+				setAmendmentDecision(&receipt, "failed", amended.Digest)
+				setExecutionTerminal(
+					&receipt,
+					tool.OutcomeFailed,
+					tool.TerminalOwnerGuard,
+					attempt.teardown,
+				)
+				attachExecutionReceipt(&attempt.result, receipt)
+				g.afterAttempt(ctx, prepared.invocation, attempt.result, updateErr)
+				return attempt.result, updateErr
+			}
+			retryPrepared = &updated
+			retryProfile = &amended
+			permissionRetried = true
 			continue
 		case retryEgress:
 			egressRetried = true
@@ -155,16 +227,40 @@ func (g *Guard) runAttempt(
 	mode SandboxMode,
 	sequence uint32,
 	egressRetried bool,
+	permissionRetried bool,
+	profileOverride *authority.EffectivePermissionProfile,
 ) attemptRun {
 	invocation := prepared.invocation
 	started := g.now()
 	run := attemptRun{}
+	var profile authority.EffectivePermissionProfile
+	var err error
+	if profileOverride == nil {
+		profile, err = g.compileAuthority(prepared, mode, uint64(sequence))
+	} else {
+		profile = *profileOverride
+		err = profile.Validate()
+	}
+	if err != nil || profile.Revision != uint64(sequence) {
+		if err == nil {
+			err = errors.New("additional permission profile revision is invalid")
+		}
+		run.err = err
+		run.receipt = attemptReceipt(
+			sequence, mode, started, g.now(), tool.OutcomeRejected, "authority_compile",
+			run.profile,
+		)
+		return run
+	}
+	run.profile = profile
 	dispatchStarted := g.now()
 	releaseAdmission, err := tool.AdmitExecution(ctx, invocation.Descriptor.ParallelPolicy)
 	run.dispatchWait = g.now().Sub(dispatchStarted)
 	if err != nil {
 		run.err = err
-		run.receipt = attemptReceipt(sequence, mode, started, g.now(), tool.OutcomeCanceled, "dispatch")
+		run.receipt = attemptReceipt(
+			sequence, mode, started, g.now(), tool.OutcomeCanceled, "dispatch", run.profile,
+		)
 		return run
 	}
 	claimStarted := g.now()
@@ -173,7 +269,9 @@ func (g *Guard) runAttempt(
 	if err != nil {
 		releaseAdmission()
 		run.err = err
-		run.receipt = attemptReceipt(sequence, mode, started, g.now(), tool.OutcomeCanceled, "claim")
+		run.receipt = attemptReceipt(
+			sequence, mode, started, g.now(), tool.OutcomeCanceled, "claim", run.profile,
+		)
 		return run
 	}
 	release := func() {
@@ -188,6 +286,7 @@ func (g *Guard) runAttempt(
 		run.err = err
 		run.receipt = attemptReceipt(
 			sequence, mode, started, g.now(), tool.OutcomeRejected, "prepare_writes",
+			run.profile,
 		)
 		return run
 	}
@@ -198,10 +297,34 @@ func (g *Guard) runAttempt(
 		run.err = err
 		run.receipt = attemptReceipt(
 			sequence, mode, started, g.now(), tool.OutcomeFailed, "snapshot_read",
+			run.profile,
 		)
 		return run
 	}
-	runContext := WithSandboxAttempt(executeContext, SandboxAttempt{Mode: mode})
+	runContext, err := authority.WithProfile(executeContext, profile)
+	if err != nil {
+		release()
+		run.err = err
+		run.receipt = attemptReceipt(
+			sequence, mode, started, g.now(), tool.OutcomeRejected, "authority_context",
+			run.profile,
+		)
+		return run
+	}
+	runContext, err = sandbox.WithExecutionAuthority(
+		runContext,
+		profile.ExecutionAuthority(),
+	)
+	if err != nil {
+		release()
+		run.err = err
+		run.receipt = attemptReceipt(
+			sequence, mode, started, g.now(), tool.OutcomeRejected, "authority_context",
+			run.profile,
+		)
+		return run
+	}
+	runContext = WithSandboxAttempt(runContext, SandboxAttempt{Mode: mode})
 	var teardownMu sync.Mutex
 	runContext = tool.WithTeardownObserver(
 		runContext,
@@ -244,10 +367,19 @@ func (g *Guard) runAttempt(
 		status = tool.OutcomeFromResult(run.result).Status
 	}
 	reason := ""
-	if IsSandboxDenial(run.err, run.outcome) &&
-		mode != SandboxModeNone &&
+	denial, denied := SandboxDenial(run.err, run.outcome)
+	if denied &&
+		mode == SandboxModeStrong &&
+		!permissionRetried &&
 		g.canEscalate(invocation) {
-		run.retry, reason = retrySandbox, string(retrySandbox)
+		request, requestErr := authority.RequestFromDenial(profile, denial)
+		if requestErr == nil &&
+			additionalPermissionAllowed(invocation, request.Permission) {
+			run.retry, run.permission = retryPermission, request
+			reason = string(retryPermission)
+		} else {
+			reason = "sandbox_denied_fail_closed"
+		}
 	} else if !egressRetried {
 		if host, protocol, ok := egressDeniedTarget(run.outcome, run.err); ok {
 			run.retry, reason = retryEgress, string(retryEgress)
@@ -268,7 +400,15 @@ func (g *Guard) runAttempt(
 	} else if run.err != nil {
 		status = tool.OutcomeFailed
 	}
-	run.receipt = attemptReceipt(sequence, mode, started, g.now(), status, reason)
+	run.receipt = attemptReceipt(
+		sequence, mode, started, g.now(), status, reason, run.profile,
+	)
+	if denied {
+		run.receipt.Denial = &denial
+	}
+	if run.retry == retryPermission {
+		run.receipt.Amendment = amendmentReceipt(run.permission)
+	}
 	run.receipt.TerminalOwner = tool.TerminalOwnerExecutor
 	if run.aborted {
 		run.receipt.TerminalOwner = tool.TerminalOwnerGuard
@@ -277,6 +417,27 @@ func (g *Guard) runAttempt(
 	run.receipt.TeardownMS = run.teardown.Duration.Milliseconds()
 	run.receipt.TeardownTimedOut = run.teardown.TimedOut
 	return run
+}
+
+func additionalPermissionAllowed(
+	invocation Invocation,
+	permission authority.AdditionalPermission,
+) bool {
+	switch permission.Kind {
+	case authority.AdditionalPathRead:
+		return true
+	case authority.AdditionalPathWrite:
+		return invocation.Descriptor.AccessMode != tool.AccessRead
+	case authority.AdditionalNetwork:
+		return invocation.Descriptor.Capability == tool.CapabilityNetwork ||
+			invocation.Descriptor.Capability == tool.CapabilityProcess ||
+			invocation.Descriptor.Capability == tool.CapabilityPlugin
+	case authority.AdditionalProcess:
+		return invocation.Descriptor.Capability == tool.CapabilityProcess ||
+			invocation.Descriptor.Capability == tool.CapabilityPlugin
+	default:
+		return false
+	}
 }
 
 type preparedOutcome struct {
@@ -342,40 +503,52 @@ func (g *Guard) snapshotReadTarget(
 	return nil, nil
 }
 
-func (g *Guard) approveSandboxEscalation(
+func (g *Guard) approveAdditionalPermission(
 	ctx context.Context,
 	invocation Invocation,
 	callID string,
+	request authority.AdditionalPermissionRequest,
 ) (time.Duration, error) {
 	escalation := policyInput(callID, invocation)
-	escalation.Resources = withSandboxNoneResource(invocation.Resources)
-	escalation.Sandbox = tool.SandboxNone
+	escalation.Resources = append(
+		append([]tool.Resource(nil), invocation.Resources...),
+		authority.PermissionResource(request.Permission),
+	)
 	now := g.now()
-	if g.policy.Approvals != nil && g.policy.Approvals.MatchInvocation(escalation, now) {
-		return 0, nil
-	}
 	started := g.now()
-	approval, err := g.waitForApproval(
+	_, err := g.waitForApproval(
 		ctx,
 		invocation,
 		escalation,
 		now,
 		approvalAsk{
-			Code: ApprovalReasonSandboxEscalate,
-			AllowedScopes: []policy.ApprovalScope{
-				policy.ApprovalOnce, policy.ApprovalSession,
-			},
-			DisableReplace: true,
+			Code:                 ApprovalReasonAdditionalPermission,
+			AllowedScopes:        []policy.ApprovalScope{policy.ApprovalOnce},
+			DisableReplace:       true,
+			AdditionalPermission: &request,
 		},
 	)
 	waited := g.now().Sub(started)
 	if err != nil {
 		return waited, err
 	}
-	if err := g.cacheApproval(escalation, approval); err != nil {
-		return waited, err
-	}
 	return waited, nil
+}
+
+func (g *Guard) applyAdditionalPermission(
+	prepared preparedExecution,
+	permission authority.AdditionalPermission,
+) (preparedExecution, error) {
+	resource := authority.PermissionResource(permission)
+	resources := append(
+		append([]tool.Resource(nil), prepared.invocation.Resources...),
+		resource,
+	)
+	if err := g.checkControlPlaneWrites(resources); err != nil {
+		return preparedExecution{}, err
+	}
+	prepared.invocation.Resources = resources
+	return prepared, nil
 }
 
 func (g *Guard) afterAttempt(
@@ -395,16 +568,94 @@ func attemptReceipt(
 	started, completed time.Time,
 	status tool.OutcomeStatus,
 	reason string,
+	profile authority.EffectivePermissionProfile,
 ) tool.AttemptReceipt {
 	if status == "" {
 		status = tool.OutcomeFailed
 	}
-	return tool.AttemptReceipt{
+	receipt := tool.AttemptReceipt{
 		Sequence: sequence, Sandbox: string(mode), Status: status,
 		TerminalOwner: tool.TerminalOwnerGuard, Reason: reason,
 		StartedAt: started, CompletedAt: completed,
 		DurationMS: completed.Sub(started).Milliseconds(),
 	}
+	bindAttemptAuthority(&receipt, profile)
+	return receipt
+}
+
+func bindAttemptAuthority(
+	receipt *tool.AttemptReceipt,
+	profile authority.EffectivePermissionProfile,
+) {
+	if receipt == nil || profile.Validate() != nil {
+		return
+	}
+	receipt.PermissionSchemaVersion = profile.SchemaVersion
+	receipt.PermissionRevision = profile.Revision
+	receipt.PermissionDigest = profile.Digest
+	receipt.PermissionCapability = profile.Capability
+	receipt.PermissionAccess = profile.Access
+	receipt.Enforcement = profile.Process.Enforcement
+	receipt.Backend = profile.Process.Backend
+	receipt.SandboxStrength = profile.Process.Strength
+	receipt.WorkspaceRoot = profile.Filesystem.WorkspaceRoot
+	receipt.ReadRoots = append([]string(nil), profile.Filesystem.ReadRoots...)
+	receipt.WritePaths = append([]string(nil), profile.Filesystem.WritePaths...)
+	receipt.DeniedWriteRoots = append(
+		[]string(nil),
+		profile.Filesystem.DeniedWriteRoots...,
+	)
+	receipt.WorkspaceBaseWrite = profile.Filesystem.WorkspaceBaseWrite
+	receipt.FilesystemUnrestricted = profile.Filesystem.Unrestricted
+	receipt.NetworkMode = profile.Network.Mode
+	receipt.NetworkTargets = append([]string(nil), profile.Network.Targets...)
+	receipt.ManagedProxyPort = profile.Network.ProxyPort
+	receipt.ProcessAllowed = profile.Process.Allowed
+	receipt.Provenance = make(
+		[]tool.PermissionProvenance,
+		len(profile.Provenance),
+	)
+	for index, source := range profile.Provenance {
+		receipt.Provenance[index] = tool.PermissionProvenance{
+			Kind: source.Kind, Value: source.Value,
+			Digest: source.Digest, Revision: source.Revision,
+		}
+	}
+}
+
+func amendmentReceipt(
+	request authority.AdditionalPermissionRequest,
+) *tool.PermissionAmendmentReceipt {
+	permission := request.Permission
+	return &tool.PermissionAmendmentReceipt{
+		BasePermissionDigest: request.BaseProfileDigest,
+		Kind:                 string(permission.Kind), Resource: permission.Resource,
+		Protocol: permission.Protocol, Port: permission.Port,
+		Capability: permission.Capability, Decision: "requested",
+	}
+}
+
+func amendmentDecision(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	return "rejected"
+}
+
+func setAmendmentDecision(
+	receipt *tool.ExecutionReceipt,
+	decision,
+	amendedDigest string,
+) {
+	if receipt == nil || len(receipt.Attempts) == 0 {
+		return
+	}
+	amendment := receipt.Attempts[len(receipt.Attempts)-1].Amendment
+	if amendment == nil {
+		return
+	}
+	amendment.Decision = decision
+	amendment.AmendedPermissionDigest = amendedDigest
 }
 
 func setExecutionTerminal(

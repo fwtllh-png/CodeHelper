@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 
@@ -21,13 +20,11 @@ type Entry struct {
 	GrantKey      string `toml:"grant_key,omitempty"`
 	Code          string `toml:"code,omitempty"`
 }
-
 type Document struct {
 	Deny  []Entry `toml:"deny,omitempty"`
 	Ask   []Entry `toml:"ask,omitempty"`
 	Allow []Entry `toml:"allow,omitempty"`
 }
-
 type Bundle struct {
 	Path    string
 	Present bool
@@ -35,20 +32,20 @@ type Bundle struct {
 	Doc     Document
 }
 
-// Path returns `{workspace}/.codehelper/permissions.toml`.
-func Path(workspace string) string {
-	return filepath.Join(workspace, ".codehelper", FileName)
-}
-
-// Load reads permissions.toml. Missing file yields an empty bundle.
-func Load(workspace string) (Bundle, error) {
-	path := Path(workspace)
+func Load(path string) (Bundle, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Bundle{Path: path}, nil
 		}
 		return Bundle{}, err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return Bundle{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return Bundle{}, errors.New("permissions authority must be a regular file")
 	}
 	var doc Document
 	if err := toml.Unmarshal(data, &doc); err != nil {
@@ -60,14 +57,10 @@ func Load(workspace string) (Bundle, error) {
 	}
 	return Bundle{Path: path, Present: true, Rules: rules, Doc: doc}, nil
 }
-
-// Summary returns deny/ask/allow counts for TUI/CLI display.
 func (b Bundle) Summary() (deny, ask, allow int) {
 	return len(b.Doc.Deny), len(b.Doc.Ask), len(b.Doc.Allow)
 }
-
-// AppendAllow appends an allow rule and rewrites permissions.toml atomically.
-func AppendAllow(workspace string, rule policy.Rule) (Bundle, error) {
+func AppendAllow(path string, rule policy.Rule) (Bundle, error) {
 	if rule.Tool == "" {
 		return Bundle{}, errors.New("allow rule tool is required")
 	}
@@ -75,7 +68,7 @@ func AppendAllow(workspace string, rule policy.Rule) (Bundle, error) {
 		return Bundle{}, errors.New("allow rule grant_key must be a SHA-256")
 	}
 	rule.Action = policy.ActionAllow
-	bundle, err := Load(workspace)
+	bundle, err := Load(path)
 	if err != nil {
 		return Bundle{}, err
 	}
@@ -100,7 +93,6 @@ func AppendAllow(workspace string, rule policy.Rule) (Bundle, error) {
 	bundle.Rules = rules
 	return bundle, nil
 }
-
 func RuleFromInvocation(invocation policy.Invocation) (policy.Rule, error) {
 	grant, ok := policy.GrantForInvocation(invocation)
 	if !ok {
@@ -111,14 +103,10 @@ func RuleFromInvocation(invocation policy.Invocation) (policy.Rule, error) {
 		Code: "permissions_always_allow",
 	}, nil
 }
-
 func compile(doc Document) ([]policy.Rule, error) {
 	var rules []policy.Rule
 	add := func(entries []Entry, action policy.Action) error {
 		for _, entry := range entries {
-			if strings.TrimSpace(entry.Tool) == "" {
-				return errors.New("permissions entry tool is required")
-			}
 			if action == policy.ActionAllow && len(entry.GrantKey) != 64 {
 				return errors.New("permissions allow entry requires a SHA-256 grant_key")
 			}
@@ -139,24 +127,49 @@ func compile(doc Document) ([]policy.Rule, error) {
 	if err := add(doc.Allow, policy.ActionAllow); err != nil {
 		return nil, err
 	}
+	if err := policy.ValidateRules(policy.SourceUser, rules); err != nil {
+		return nil, err
+	}
 	return rules, nil
 }
-
 func writeDocument(path string, doc Document) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return errors.New("permissions authority must be a regular file")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	data, err := toml.Marshal(doc)
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".permissions-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err == nil {
+		_, err = tmp.Write(data)
+	}
+	if err == nil {
+		err = tmp.Sync()
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
-
 func entryEqual(a, b Entry) bool {
 	return a.Tool == b.Tool && a.Resource == b.Resource &&
 		a.CommandPrefix == b.CommandPrefix && a.GrantKey == b.GrantKey &&

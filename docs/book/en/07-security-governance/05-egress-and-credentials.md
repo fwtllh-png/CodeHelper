@@ -49,15 +49,18 @@ in depth, not permission to record secrets.
 
 ## Egress Gate
 
-An enforcing `egress.Gate` is a session-scoped allowlist of normalized
-protocol+host pairs. Wrapped HTTP transports check every request. Redirects
-re-enter the transport, so a redirect to a new host requires separate
-authority.
+An enforcing `egress.Gate` is a session-scoped allowlist of normalized Host,
+Port, Protocol, HTTP Method, and private-address permissions. It resolves DNS
+immediately before connection and pins the approved IP for dialing. Redirects
+and CONNECT targets re-enter the Gate.
 
-Network Approval is host-scoped. Approval for `https://api.example` does not
-cover another scheme, arbitrary subdomain, redirect destination, or raw socket
-created outside the governed client. Provider endpoint configuration and MCP/
-web backends are security-sensitive inputs.
+Process traffic on macOS can reach only the Runtime-owned loopback proxy port.
+`exec_command` declares `network_targets`; undeclared targets, private
+resolution, metadata addresses, and direct sockets fail closed. Linux remains
+process-network-denied until its namespace proxy bridge is available.
+
+Every decision emits the same bounded `egress.Receipt` shape for Process, Web,
+Provider, and MCP paths.
 
 ## Leakage Channels and Mitigations
 

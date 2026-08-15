@@ -75,13 +75,15 @@ func TestUnifiedProcessProtocolLifecycle(t *testing.T) {
 		"write_stdin",
 		map[string]any{
 			"session_id":    id,
-			"cursor":        started.Metadata["cursor"],
 			"chars":         "hello\n",
 			"rows":          30,
 			"cols":          100,
 			"yield_time_ms": 2000,
 		},
 	)
+	if strings.Contains(continued.Content, "ready") {
+		t.Fatalf("write_stdin replayed delivered output: %+v", continued)
+	}
 	combined := continued.Content
 	for range 5 {
 		if continued.Metadata["running"] != true {
@@ -94,7 +96,6 @@ func TestUnifiedProcessProtocolLifecycle(t *testing.T) {
 			"write_stdin",
 			map[string]any{
 				"session_id":    id,
-				"cursor":        continued.Metadata["cursor"],
 				"yield_time_ms": 2000,
 			},
 		)
@@ -129,6 +130,13 @@ func TestUnifiedProcessProtocolRejectsInvalidYieldBeforeSessionStart(t *testing.
 	if _, ok := registeredProperties["yield_time_ms"]; !ok {
 		t.Fatalf("registered exec schema = %#v", registered.InputSchema)
 	}
+	if _, ok := registeredProperties["session_id"]; ok {
+		t.Fatalf("exec_command must not advertise continuation identity: %#v", registered.InputSchema)
+	}
+	writeProperties, _ := writeStdinDescriptor().InputSchema["properties"].(map[string]any)
+	if _, ok := writeProperties["cursor"]; ok {
+		t.Fatalf("write_stdin must keep its cursor Runtime-owned: %#v", writeStdinDescriptor().InputSchema)
+	}
 	if validationErr := tool.ValidateArguments(
 		registered.InputSchema,
 		json.RawMessage(`{"command":"true"}`),
@@ -142,6 +150,12 @@ func TestUnifiedProcessProtocolRejectsInvalidYieldBeforeSessionStart(t *testing.
 	); validationErr != nil {
 		t.Fatalf("registered exec schema rejected valid yield: %v; schema=%#v",
 			validationErr, registered.InputSchema)
+	}
+	if validationErr := tool.ValidateArguments(
+		registered.InputSchema,
+		json.RawMessage(`{"command":"true","session_id":"term-existing"}`),
+	); validationErr == nil {
+		t.Fatal("exec_command accepted a continuation session_id")
 	}
 
 	raw := json.RawMessage(
@@ -181,6 +195,57 @@ func TestUnifiedProcessProtocolRejectsInvalidYieldBeforeSessionStart(t *testing.
 	if got, err := processYield(0, defaultExecYield); err != nil ||
 		got != defaultExecYield {
 		t.Fatalf("default process yield = %s, %v", got, err)
+	}
+}
+
+func TestExecCommandValidatesCompactNetworkTargetSchema(t *testing.T) {
+	methods := make([]string, 17)
+	for index := range methods {
+		methods[index] = "GET"
+	}
+	targets := make([]networkTargetInput, 33)
+	for index := range targets {
+		targets[index] = networkTargetInput{
+			Host: "example.com", Protocol: "https", Port: 443,
+		}
+	}
+	tests := []struct {
+		name    string
+		targets []networkTargetInput
+	}{
+		{name: "valid", targets: []networkTargetInput{{
+			Host: "example.com", Protocol: "https", Port: 443,
+			Methods: []string{"GET"},
+		}}},
+		{name: "missing host", targets: []networkTargetInput{{
+			Protocol: "https", Port: 443,
+		}}},
+		{name: "invalid protocol", targets: []networkTargetInput{{
+			Host: "example.com", Protocol: "tcp", Port: 443,
+		}}},
+		{name: "missing port", targets: []networkTargetInput{{
+			Host: "example.com", Protocol: "https",
+		}}},
+		{name: "empty method", targets: []networkTargetInput{{
+			Host: "example.com", Protocol: "https", Port: 443,
+			Methods: []string{""},
+		}}},
+		{name: "too many methods", targets: []networkTargetInput{{
+			Host: "example.com", Protocol: "https", Port: 443,
+			Methods: methods,
+		}}},
+		{name: "too many targets", targets: targets},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateNetworkTargets(test.targets)
+			if test.name == "valid" && err != nil {
+				t.Fatalf("valid targets rejected: %v", err)
+			}
+			if test.name != "valid" && err == nil {
+				t.Fatal("invalid targets accepted")
+			}
+		})
 	}
 }
 

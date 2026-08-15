@@ -234,7 +234,7 @@ func (e *executor) Descriptor() tool.Descriptor {
 			SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{
 				{Kind: "task", Field: "task_id", Access: tool.AccessWrite},
-				{Kind: "repo", ID: ".", Access: tool.AccessWrite, Tree: true},
+				{Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true},
 				{Kind: "process", ID: "workspace", Access: tool.AccessWrite, Tree: true},
 			}},
 			InputSchema: map[string]any{
@@ -568,6 +568,7 @@ func (t *Tools) gateRun(ctx context.Context, raw json.RawMessage) (tool.Result, 
 	result, err := process.Run(runCtx, process.Options{
 		Command: input.Command, Dir: directory, DirFile: directoryFile,
 		Sandbox: t.backend, RequireStrongSandbox: true,
+		WorkspaceReadOnly: true,
 	})
 	if err != nil {
 		return tool.Result{}, err

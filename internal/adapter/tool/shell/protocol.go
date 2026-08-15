@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -25,23 +25,30 @@ const (
 )
 
 type execCommandInput struct {
-	Command      string   `json:"command"`
-	SessionID    string   `json:"session_id"`
-	CWD          string   `json:"cwd"`
-	TTY          bool     `json:"tty"`
-	YieldTimeMS  int64    `json:"yield_time_ms"`
-	TimeoutMS    int64    `json:"timeout_ms"`
-	OutputTokens int      `json:"output_tokens"`
-	Rows         uint16   `json:"rows"`
-	Cols         uint16   `json:"cols"`
-	Description  string   `json:"description"`
-	WritePaths   []string `json:"write_paths"`
+	Command        string               `json:"command"`
+	CWD            string               `json:"cwd"`
+	TTY            bool                 `json:"tty"`
+	YieldTimeMS    int64                `json:"yield_time_ms"`
+	TimeoutMS      int64                `json:"timeout_ms"`
+	OutputTokens   int                  `json:"output_tokens"`
+	Rows           uint16               `json:"rows"`
+	Cols           uint16               `json:"cols"`
+	Description    string               `json:"description"`
+	WritePaths     []string             `json:"write_paths"`
+	NetworkTargets []networkTargetInput `json:"network_targets"`
+}
+
+type networkTargetInput struct {
+	Host         string   `json:"host"`
+	Protocol     string   `json:"protocol"`
+	Port         uint16   `json:"port"`
+	Methods      []string `json:"methods"`
+	AllowPrivate bool     `json:"allow_private"`
 }
 
 type writeStdinInput struct {
 	SessionID    string `json:"session_id"`
 	Chars        string `json:"chars"`
-	Cursor       uint64 `json:"cursor"`
 	YieldTimeMS  int64  `json:"yield_time_ms"`
 	OutputTokens int    `json:"output_tokens"`
 	Rows         uint16 `json:"rows"`
@@ -85,8 +92,10 @@ func registerProcessProtocol(
 		Descriptor:  execCommandDescriptor(),
 		Disposition: tool.DispositionDetached,
 		Validate: func(input execCommandInput) error {
-			_, yieldErr := processYield(input.YieldTimeMS, defaultExecYield)
-			return yieldErr
+			if _, err := processYield(input.YieldTimeMS, defaultExecYield); err != nil {
+				return err
+			}
+			return validateNetworkTargets(input.NetworkTargets)
 		},
 		Run:     protocol.execCommand,
 		Encode:  identityResult,
@@ -187,7 +196,8 @@ func execCommandDescriptor() tool.Descriptor {
 		Name: "exec_command",
 		Description: "Run a local POSIX sh command. Returns output when it exits " +
 			"within yield-time, otherwise a session_id for write_stdin. " +
-			"yield_time_ms defaults to 10000 and must not exceed 30000.",
+			"yield-time_ms defaults to 10000 and must not exceed 30000. " +
+			"network_targets contain host, protocol, port, methods, and allow_private.",
 		Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessRead,
@@ -196,7 +206,8 @@ func execCommandDescriptor() tool.Descriptor {
 				{Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true},
 				{Kind: "process", ID: "workspace", Access: tool.AccessRead, Tree: true},
 			},
-			PathsField: "write_paths",
+			PathsField:          "write_paths",
+			NetworkTargetsField: "network_targets",
 		},
 		ParallelPolicy:     tool.ParallelConcurrent,
 		SandboxRequirement: tool.SandboxStrong,
@@ -206,8 +217,7 @@ func execCommandDescriptor() tool.Descriptor {
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"command":       map[string]any{"type": "string", "minLength": float64(1)},
-				"session_id":    map[string]any{"type": "string"},
+				"command":       map[string]any{"type": "string"},
 				"cwd":           map[string]any{"type": "string"},
 				"tty":           map[string]any{"type": "boolean"},
 				"yield_time_ms": map[string]any{"type": "integer"},
@@ -217,23 +227,42 @@ func execCommandDescriptor() tool.Descriptor {
 				"cols":          map[string]any{"type": "integer"},
 				"description":   map[string]any{"type": "string"},
 				"write_paths": map[string]any{
-					"type": "array",
-					"items": map[string]any{
-						"type": "string",
-					},
-					"maxItems": float64(sandbox.MaxExactWorkspaceWritePaths),
+					"type":  "array",
+					"items": map[string]any{"type": "string"},
 				},
 				"write_globs": map[string]any{
 					"type": "array",
-					"items": map[string]any{
-						"type": "string",
-					},
+				},
+				"network_targets": map[string]any{
+					"type": "array",
 				},
 			},
 			"required":             []string{"command"},
 			"additionalProperties": false,
 		},
 	}
+}
+
+func validateNetworkTargets(targets []networkTargetInput) error {
+	if len(targets) > 32 {
+		return errors.New("network_targets exceeds 32 entries")
+	}
+	for _, target := range targets {
+		if strings.TrimSpace(target.Host) == "" ||
+			(target.Protocol != "http" && target.Protocol != "https") ||
+			target.Port == 0 {
+			return errors.New("network target requires host, http/https protocol, and port")
+		}
+		if len(target.Methods) > 16 {
+			return errors.New("network target exceeds 16 methods")
+		}
+		for _, method := range target.Methods {
+			if strings.TrimSpace(method) == "" {
+				return errors.New("network target method is empty")
+			}
+		}
+	}
+	return nil
 }
 
 func writeStdinDescriptor() tool.Descriptor {
@@ -258,7 +287,6 @@ func writeStdinDescriptor() tool.Descriptor {
 			"properties": map[string]any{
 				"session_id":    map[string]any{"type": "string"},
 				"chars":         map[string]any{"type": "string"},
-				"cursor":        map[string]any{"type": "integer"},
 				"yield_time_ms": map[string]any{"type": "integer"},
 				"output_tokens": map[string]any{"type": "integer"},
 				"rows":          map[string]any{"type": "integer"},
@@ -378,7 +406,6 @@ func (p *commandProtocol) execCommand(
 		context.WithoutCancel(ctx),
 		process.SessionOptions{
 			Command:              command,
-			SessionID:            input.SessionID,
 			Dir:                  directory,
 			DirFile:              directoryFile,
 			ThreadID:             threadID,
@@ -396,9 +423,6 @@ func (p *commandProtocol) execCommand(
 		},
 	)
 	if err != nil {
-		if requireStrong && errors.Is(err, guard.ErrSandboxDenied) {
-			return tool.Result{}, guard.MarkSandboxDenial(err, "exec_command")
-		}
 		return tool.Result{}, err
 	}
 	wait, omitted, err := p.waitInitial(
@@ -429,11 +453,32 @@ func (p *commandProtocol) execCommand(
 			input.WritePaths...,
 		)
 	}
+	if receipts := declaredEgressReceipts(input.NetworkTargets); len(receipts) != 0 {
+		result.Metadata["egress_receipts"] = receipts
+	}
 	if !wait.Running {
 		_ = p.manager.Close(id, threadID)
 		delete(result.Metadata, "session_id")
 	}
 	return result, nil
+}
+
+func declaredEgressReceipts(targets []networkTargetInput) []egress.Receipt {
+	receipts := make([]egress.Receipt, 0, len(targets))
+	for _, target := range targets {
+		methods := target.Methods
+		if len(methods) == 0 {
+			methods = []string{""}
+		}
+		for _, method := range methods {
+			receipts = append(receipts, egress.Receipt{
+				At: time.Now().UTC(), Source: "process",
+				Host: target.Host, Protocol: target.Protocol, Port: target.Port,
+				Method: strings.ToUpper(method), Decision: "authorized",
+			})
+		}
+	}
+	return receipts
 }
 
 func (p *commandProtocol) waitInitial(
@@ -453,11 +498,10 @@ func (p *commandProtocol) waitInitial(
 			aggregate.TimedOut = aggregate.Running
 			return aggregate, combined.Omitted(), nil
 		}
-		wait, err := p.manager.Wait(
+		wait, err := p.manager.WaitNext(
 			ctx,
 			id,
 			threadID,
-			aggregate.Cursor,
 			remaining,
 		)
 		if err != nil {
@@ -576,11 +620,10 @@ func (p *commandProtocol) writeStdin(
 			return tool.Result{}, err
 		}
 	}
-	wait, err := p.manager.Wait(
+	wait, err := p.manager.WaitNext(
 		ctx,
 		input.SessionID,
 		threadID,
-		input.Cursor,
 		yield,
 	)
 	if err != nil {

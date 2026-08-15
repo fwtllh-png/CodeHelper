@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/fwtllh-png/CodeHelper/internal/buildinfo"
+	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/contentdeps"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
@@ -51,10 +52,16 @@ func DiagnosticsReport(workspace string) DiagnosticsReportPayload {
 		"ffmpeg":         contentdeps.FeatureStatus(probe["ffmpeg"]),
 		"code_execution": contentdeps.FeatureStatus(contentdeps.CodeExecutionReady()),
 	}
-	permPath := permissions.Path(workspace)
+	permissionStatus := "unavailable"
+	if permPath, err := permissions.Path(
+		config.Defaults().State.DataDir,
+		workspace,
+	); err == nil {
+		permissionStatus = fileStatus(permPath)
+	}
 	constPath := filepath.Join(workspace, ".codehelper", constitution.FileName)
 	policyStatus := map[string]string{
-		"permissions_toml": fileStatus(permPath),
+		"permissions_toml": permissionStatus,
 		"constitution":     fileStatus(constPath),
 	}
 	lspBinary := lookPathStatus("CODEHELPER_LSP_BINARY", "clangd")
@@ -101,15 +108,23 @@ func diagnosticsReadinessChecks(
 			Action: "install clangd or set CODEHELPER_LSP_BINARY",
 		})
 	}
-	if policyStatus["permissions_toml"] == "present" {
+	switch policyStatus["permissions_toml"] {
+	case "present":
 		checks = append(checks, protocol.ReadinessCheck{
 			ID: "policy.permissions", Status: protocol.ReadinessReady,
-			Reason: "workspace permissions policy is present",
+			Reason: "runtime permission authority is present",
 		})
-	} else {
+	case "missing":
 		checks = append(checks, protocol.ReadinessCheck{
 			ID: "policy.permissions", Status: protocol.ReadinessReady,
-			Reason: "no workspace permissions file; built-in policy remains active",
+			Reason: "no runtime permission authority; built-in policy remains active",
+		})
+	default:
+		checks = append(checks, protocol.ReadinessCheck{
+			ID: "policy.permissions", Status: protocol.ReadinessBlocked,
+			Reason: "runtime permission authority is unavailable",
+			Impact: "durable approvals cannot be loaded safely",
+			Action: "configure state.data_dir outside the workspace",
 		})
 	}
 	switch journal["interrupted_turns"] {

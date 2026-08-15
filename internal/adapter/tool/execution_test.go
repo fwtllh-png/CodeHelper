@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 func TestResolveBoundRefFreezesCatalogAuthority(t *testing.T) {
@@ -69,6 +70,86 @@ func TestResultStorePreservesTypedOutcomeAndExecutionReceipt(t *testing.T) {
 		routed.Outcome.Security.EgressDenied == nil ||
 		routed.Execution == nil || len(routed.Execution.Attempts) != 1 {
 		t.Fatalf("routed result = %+v", routed)
+	}
+}
+
+func TestCloneExecutionReceiptDeepCopiesAuthorityEvidence(t *testing.T) {
+	source := &tool.ExecutionReceipt{
+		Attempts: []tool.AttemptReceipt{{
+			ReadRoots:      []string{"/workspace"},
+			WritePaths:     []string{"/workspace/result.txt"},
+			NetworkTargets: []string{"https://example.com:443"},
+			Provenance: []tool.PermissionProvenance{{
+				Kind: "grant", Value: "managed", Digest: "grant-digest",
+			}},
+			Denial: &sandbox.Denial{
+				Operation: sandbox.DenialWrite,
+				Resource:  "/workspace/result.txt", ReasonCode: "denied",
+			},
+			Amendment: &tool.PermissionAmendmentReceipt{
+				BasePermissionDigest: "base", Kind: "path_write",
+				Resource: "/workspace/result.txt", Decision: "approved",
+			},
+		}},
+	}
+	cloned := tool.CloneExecutionReceipt(source)
+	source.Attempts[0].ReadRoots[0] = "/tampered"
+	source.Attempts[0].WritePaths[0] = "/tampered"
+	source.Attempts[0].NetworkTargets[0] = "https://tampered:443"
+	source.Attempts[0].Provenance[0].Digest = "tampered"
+	source.Attempts[0].Denial.Resource = "/tampered"
+	source.Attempts[0].Amendment.Resource = "/tampered"
+	attempt := cloned.Attempts[0]
+	if attempt.ReadRoots[0] != "/workspace" ||
+		attempt.WritePaths[0] != "/workspace/result.txt" ||
+		attempt.NetworkTargets[0] != "https://example.com:443" ||
+		attempt.Provenance[0].Digest != "grant-digest" ||
+		attempt.Denial.Resource != "/workspace/result.txt" ||
+		attempt.Amendment.Resource != "/workspace/result.txt" {
+		t.Fatalf("cloned authority evidence was mutated: %+v", attempt)
+	}
+}
+
+func TestExecutionReceiptAuthorityEvidenceRoundTripsJSON(t *testing.T) {
+	source := tool.ExecutionReceipt{Attempts: []tool.AttemptReceipt{{
+		PermissionSchemaVersion: 1,
+		PermissionRevision:      2,
+		PermissionDigest:        strings.Repeat("a", 64),
+		Enforcement:             "strong",
+		Backend:                 "seatbelt",
+		ReadRoots:               []string{"/workspace"},
+		NetworkMode:             "managed",
+		Provenance: []tool.PermissionProvenance{{
+			Kind: "policy", Value: "snapshot", Revision: 7,
+		}},
+		Amendment: &tool.PermissionAmendmentReceipt{
+			BasePermissionDigest: strings.Repeat("b", 64),
+			Kind:                 "path_read",
+			Resource:             "/workspace/input.txt",
+			Decision:             "approved",
+			AmendedPermissionDigest: strings.Repeat(
+				"a",
+				64,
+			),
+		},
+	}}}
+	encoded, err := json.Marshal(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded tool.ExecutionReceipt
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	attempt := decoded.Attempts[0]
+	if attempt.PermissionRevision != 2 ||
+		attempt.PermissionDigest != strings.Repeat("a", 64) ||
+		attempt.Enforcement != "strong" ||
+		attempt.Backend != "seatbelt" ||
+		attempt.NetworkMode != "managed" ||
+		attempt.Provenance[0].Revision != 7 ||
+		attempt.Amendment.AmendedPermissionDigest != strings.Repeat("a", 64) {
+		t.Fatalf("round-tripped authority evidence = %+v", attempt)
 	}
 }
 

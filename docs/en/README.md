@@ -28,8 +28,10 @@ architecture and delivery stages are defined in the
 9. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
 10. [Provider architecture upgrade](./provider-architecture-upgrade.md)
 11. [Tool and local execution architecture upgrade](./tool-execution-architecture-upgrade.md)
-12. [Security model](./security.md)
-13. [Local development and scripts](./development.md)
+12. [Security Governance 与 Sandbox 架构升级方案（仅中文）](./security-governance-architecture-upgrade.md)
+13. [State Observability 架构升级方案（仅中文）](./state-observability-architecture-upgrade.md)
+14. [Security model](./security.md)
+15. [Local development and scripts](./development.md)
 
 ### I want to use CodeHelper
 
@@ -59,14 +61,16 @@ architecture and delivery stages are defined in the
 5. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
 6. [Provider architecture upgrade](./provider-architecture-upgrade.md)
 7. [Tool and local execution architecture upgrade](./tool-execution-architecture-upgrade.md)
-8. [Security model](./security.md)
-9. [Local development and scripts](./development.md)
-10. [Agent guide](./agent-guide.md)
-11. [TUI and VS Code experience contract](./experience.md)
-12. [VS Code Runtime monitoring](./runtime-monitoring.md)
-13. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-14. [Documentation governance](./documentation-governance.md)
-15. [Roadmap](./roadmap.md)
+8. [Security Governance 与 Sandbox 架构升级方案（仅中文）](./security-governance-architecture-upgrade.md)
+9. [State Observability 架构升级方案（仅中文）](./state-observability-architecture-upgrade.md)
+10. [Security model](./security.md)
+11. [Local development and scripts](./development.md)
+12. [Agent guide](./agent-guide.md)
+13. [TUI and VS Code experience contract](./experience.md)
+14. [VS Code Runtime monitoring](./runtime-monitoring.md)
+15. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+16. [Documentation governance](./documentation-governance.md)
+17. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 

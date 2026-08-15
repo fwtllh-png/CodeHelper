@@ -48,6 +48,7 @@ func (e *Engine) configureApprovalHandlers() {
 	e.guard.SetApprovalHandler(e.emitApproval)
 	e.guard.SetApprovalRecoveryHandler(e.restoreApprovalWait)
 	e.guard.SetApprovalWaitObserver(e.observeApprovalWait)
+	e.guard.SetApprovalExpiryHandler(e.expireApprovalWait)
 }
 
 func (e *Engine) RestoreApprovalRequest(
@@ -274,6 +275,37 @@ func (e *Engine) registerApprovalWait(
 		return nil, err
 	}
 	return scope, nil
+}
+
+func (e *Engine) expireApprovalWait(wait toolguard.ApprovalWait) error {
+	scope := e.runningScope()
+	if scope == nil {
+		return errors.New("approval host is not connected to an active turn")
+	}
+	if err := scope.state.requests.Resolve(
+		turnexec.RequestApproval,
+		wait.RequestID,
+	); err != nil {
+		return err
+	}
+	kernel, err := scope.kernel()
+	if err != nil {
+		return err
+	}
+	if err := kernel.resolveApproval(wait.RequestID, false); err != nil {
+		return err
+	}
+	scope.mu.Lock()
+	emit := scope.state.approvalEmit
+	scope.mu.Unlock()
+	if emit == nil {
+		return errors.New("approval host is not connected to an active turn")
+	}
+	return emit(Event{ApprovalResolution: &ApprovalResolution{
+		RequestID: wait.RequestID,
+		Decision:  "deny",
+		Reason:    "approval_expired",
+	}})
 }
 
 func (e *Engine) queueRecoveredApproval(

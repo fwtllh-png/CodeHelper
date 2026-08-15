@@ -52,9 +52,13 @@ Strong Isolation。
 
 ## Platform Backend
 
-- macOS Seatbelt 生成显式 Root/Network Mode 的 SBPL；
+- macOS Seatbelt 生成显式 Root 的 SBPL；Managed Process Network 只放行
+  Runtime-owned loopback proxy port；
 - Linux Bubblewrap 提供 Namespace/Mount Isolation，并可通过不含 Secret 的 Helper
-  Protocol 增加 Landlock；
+  Protocol 增加 Landlock；Namespace-to-proxy Bridge 可强制执行前，Process 保持全禁网；
+- Linux Helper 将 Landlock、`no_new_privs`、seccomp 和 `execve` 固定在同一 OS
+  Thread。Seccomp 拒绝 ptrace、跨进程内存、Namespace Clone、`clone3` 与
+  `io_uring`，并从 Effective Network Mode 编译 Network Syscall Family；
 - Unsupported/Failed Probe 返回带 Reason 的 Unavailable Backend，执行 Fail Closed。
 
 Platform Parity 指 Equivalent Documented Guarantee，不是相同 Command Line。启动命令所需

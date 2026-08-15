@@ -71,6 +71,25 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - `shell_read` 是检查类 Pipeline 的自动执行路径。Strong Sandbox 将 Workspace
   强制挂载为只读、禁用网络，只允许写入 Private Temporary Directory，并且绝不进行
   Unsandboxed Retry。
+- 可增权的 Typed Sandbox Denial 可通过 Critical One-shot Approval 申请一个精确
+  Path、Host/Port 或 Process Capability。重试使用递增 Revision 的 Permission
+  Profile，并保持在同一 Strong Sandbox；Untyped 或重复 Denial 均 Fail Closed。
+- macOS 上的 `exec_command` 进程出口仅允许通过 Runtime-owned loopback proxy，
+  并要求用 `network_targets` 显式声明 Host、Port、Protocol、HTTP Method 和私网
+  权限。Sandbox 只能连接代理端口，直连和未声明目标均 Fail Closed。Linux 在
+  namespace proxy bridge 交付前保持进程全禁网。
+- Linux Strong Sandbox 将 Landlock、`no_new_privs`、seccomp 与 `execve` 固定在
+  同一个 OS Thread。Seccomp 拒绝 Tracing、跨进程内存访问、Namespace 创建、
+  `clone3` 与 `io_uring`；Restricted Network Mode 只保留 AF_UNIX 进程内 IPC。
+- Command Policy 使用 Bash AST 与 Static argv Segment。Managed Authority 定义
+  Ceiling，Repository 只能收紧，User Approval 不能覆盖高权 Deny/Ask。Policy Reload
+  原子发布新 Revision，并绑定到 Profile Provenance。
+- 每次实际执行的 Tool Attempt 都记录准确的 Effective Permission Profile
+  Revision/Digest、Enforcement Backend、Filesystem Root、Network Mode、Grant
+  Provenance，以及 Typed Denial 或 One-shot Amendment。Amendment Receipt 将 Base
+  Digest 与获批后的 Replacement Digest 绑定，重试不会覆盖前一次 Attempt 的证据。
+  `tool.result.execution` 将这条证据链持久投影到 Runtime Event；对话历史重建只消费
+  Tool Output，不把该审计字段送回 Model Context。
 - `exec_command` 与 `write_stdin` 保留 Process Capability 和原有 Approval
   行为。`exec_command` 是唯一通用 Command Start 路径；`write_stdin` 在每次
   Session 交互前校验当前 Thread Lease。
@@ -140,12 +159,17 @@ Hook 应保持最小、有界、显式，不能成为绕过 Tool Policy 的隐�
 
 Redaction 降低意外泄漏，但不会让 Log 变成公开数据。应限制访问并设置 Retention。结构化
 Error 在 Remote/Filesystem Error 可能含 Secret 时，不应原样输出。
+Attempt Receipt 包含 Canonical Path 和 Network Target；即使其中没有 Credential
+Value，也必须作为受限 Audit Record 处理。Runtime Capture 会包含
+`tool.result.execution`，因此 Capture 与 Event Log 必须采用相同的访问控制和
+Retention。
 
 ## 安全测试
 
 ```bash
 make security-test
 make sandbox-attack-test
+make security-governance-sg7
 make secret-leak-test
 make vscode-security
 ```

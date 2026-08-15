@@ -161,9 +161,10 @@ func (o *operation) Descriptor() tool.Descriptor {
 			AccessMode: tool.AccessTree, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{
-				Templates: []tool.ResourceTemplate{{
-					Kind: "agent", Field: "agent_id", Access: tool.AccessWrite,
-				}},
+				Templates: []tool.ResourceTemplate{
+					{Kind: "agent", Field: "agent_id", Access: tool.AccessWrite},
+					{Kind: "process", ID: "git", Access: tool.AccessRead},
+				},
 				ChangesField: "changes",
 			},
 			InputSchema: map[string]any{

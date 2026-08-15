@@ -328,6 +328,7 @@ type childToolsets struct {
 	diagnosticReadRoots []string
 	diagnosticReadFiles []string
 	gitCommonDir        string
+	managedProxyPort    uint16
 	agents              *subagent.AgentControl
 	agentSession        string
 	agentRelease        func(string)
@@ -352,7 +353,7 @@ func newChildToolsets(
 	diagnosticCommands map[string]diagnostics.Command,
 	diagnosticReadRoots []string,
 	diagnosticReadFiles []string,
-	gitCommonDir string,
+	gitCommonDir string, managedProxyPort uint16,
 ) *childToolsets {
 	return &childToolsets{
 		helperPath: helperPath, content: content, web: web, verify: verifyConfig,
@@ -360,6 +361,7 @@ func newChildToolsets(
 		diagnosticReadRoots: append([]string(nil), diagnosticReadRoots...),
 		diagnosticReadFiles: append([]string(nil), diagnosticReadFiles...),
 		gitCommonDir:        gitCommonDir,
+		managedProxyPort:    managedProxyPort,
 		built:               make(map[string]*childToolset),
 	}
 }
@@ -381,7 +383,7 @@ func (c *childToolsets) open(root string) (*childToolset, error) {
 	hostReadRoots = append(hostReadRoots, gitRoots...)
 	backend, err := newPlatformBackend(sandbox.Options{
 		WorkspaceRoot: root, HelperPath: c.helperPath,
-		AllowNetwork: true, HostReadRoots: hostReadRoots,
+		ManagedProxyPort: c.managedProxyPort, HostReadRoots: hostReadRoots,
 		HostReadFiles: c.diagnosticReadFiles,
 	})
 	if err != nil {

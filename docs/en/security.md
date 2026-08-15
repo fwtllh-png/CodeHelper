@@ -76,6 +76,31 @@ No layer should be described as a replacement for another.
   sandbox mounts the workspace read-only, denies network access, and permits
   writes only in the private temporary directory. It never retries
   unsandboxed.
+- An amendable typed Sandbox denial may request one exact path, Host/Port, or
+  Process capability through a critical one-shot Approval. The retry uses a
+  revisioned permission Profile and remains in the same strong Sandbox.
+  Untyped or repeated denial fails closed.
+- `exec_command` process egress is proxy-only on macOS and requires explicit
+  `network_targets` scoped by Host, Port, Protocol, HTTP Method, and private
+  address access. The Sandbox can connect only to the Runtime-owned loopback
+  proxy; direct sockets and undeclared targets fail closed. Linux remains
+  process-network-denied until its namespace proxy bridge is available.
+- Linux strong Sandbox fixes Landlock, `no_new_privs`, seccomp, and `execve`
+  to one OS thread. Seccomp denies tracing, cross-process memory access,
+  namespace creation, `clone3`, and `io_uring`; restricted network mode permits
+  only AF_UNIX process-local IPC.
+- Command policy uses a Bash AST and static argv segments. Managed authority
+  defines the ceiling, Repository authority can only tighten, and User
+  approvals cannot override higher-source deny/ask decisions. Atomic policy
+  reloads publish a new revision which is bound into Profile provenance.
+- Every executed Tool attempt records the exact Effective Permission Profile
+  revision and digest, enforcement backend, filesystem roots, network mode,
+  Grant provenance, and any typed denial or one-shot amendment. An amendment
+  receipt binds its base digest to the approved replacement digest; retries
+  never overwrite the prior attempt's evidence.
+  `tool.result.execution` durably projects this evidence chain into the Runtime
+  Event. Conversation reconstruction consumes only Tool output and does not
+  return this audit field to Model context.
 - `exec_command` and `write_stdin` retain Process capability and their normal
   Approval behavior. `exec_command` is the only general command start path;
   `write_stdin` validates the current Thread lease before every Session
@@ -153,12 +178,17 @@ around tool policy.
 Redaction reduces accidental leakage but does not make logs public. Store them
 with restrictive access and bounded retention. Structured error output should
 avoid raw remote/filesystem errors when they may contain secrets.
+Attempt receipts contain canonical paths and network targets. Treat them as
+restricted audit records even though they do not contain credential values.
+Runtime Captures include `tool.result.execution`, so Captures and Event Logs
+require the same access control and retention policy.
 
 ## Security Testing
 
 ```bash
 make security-test
 make sandbox-attack-test
+make security-governance-sg7
 make secret-leak-test
 make vscode-security
 ```

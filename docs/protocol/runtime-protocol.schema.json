@@ -3557,6 +3557,288 @@
           ],
           "additionalProperties": false
         },
+        "execution": {
+          "type": "object",
+          "properties": {
+            "approval_wait": {
+              "type": "integer"
+            },
+            "attempts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "amendment": {
+                    "type": "object",
+                    "properties": {
+                      "amended_permission_digest": {
+                        "type": "string"
+                      },
+                      "base_permission_digest": {
+                        "type": "string"
+                      },
+                      "capability": {
+                        "type": "string"
+                      },
+                      "decision": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      },
+                      "protocol": {
+                        "type": "string"
+                      },
+                      "resource": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "base_permission_digest",
+                      "decision",
+                      "kind",
+                      "resource"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "backend": {
+                    "type": "string"
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "denial": {
+                    "type": "object",
+                    "properties": {
+                      "backend": {
+                        "type": "string"
+                      },
+                      "operation": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      },
+                      "protocol": {
+                        "type": "string"
+                      },
+                      "reason_code": {
+                        "type": "string"
+                      },
+                      "resource": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "backend",
+                      "operation",
+                      "reason_code",
+                      "resource"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "denied_write_roots": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "duration_ms": {
+                    "type": "integer"
+                  },
+                  "enforcement": {
+                    "type": "string"
+                  },
+                  "filesystem_unrestricted": {
+                    "type": "boolean"
+                  },
+                  "managed_proxy_port": {
+                    "type": "integer"
+                  },
+                  "network_mode": {
+                    "type": "string"
+                  },
+                  "network_targets": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "permission_access": {
+                    "type": "string"
+                  },
+                  "permission_capability": {
+                    "type": "string"
+                  },
+                  "permission_digest": {
+                    "type": "string"
+                  },
+                  "permission_revision": {
+                    "type": "integer"
+                  },
+                  "permission_schema_version": {
+                    "type": "integer"
+                  },
+                  "process_allowed": {
+                    "type": "boolean"
+                  },
+                  "provenance": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "digest": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "type": "integer"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "read_roots": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "sandbox": {
+                    "type": "string"
+                  },
+                  "sandbox_strength": {
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "type": "integer"
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "teardown": {
+                    "type": "integer"
+                  },
+                  "teardown_ms": {
+                    "type": "integer"
+                  },
+                  "teardown_timed_out": {
+                    "type": "boolean"
+                  },
+                  "terminal_owner": {
+                    "type": "string"
+                  },
+                  "workspace_base_write": {
+                    "type": "boolean"
+                  },
+                  "workspace_root": {
+                    "type": "string"
+                  },
+                  "write_paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "completed_at",
+                  "duration_ms",
+                  "sandbox",
+                  "sequence",
+                  "started_at",
+                  "status",
+                  "terminal_owner"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "claim_wait": {
+              "type": "integer"
+            },
+            "dispatch_wait": {
+              "type": "integer"
+            },
+            "disposition": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "teardown": {
+              "type": "integer"
+            },
+            "teardown_ms": {
+              "type": "integer"
+            },
+            "teardown_timed_out": {
+              "type": "boolean"
+            },
+            "terminal_owner": {
+              "type": "string"
+            },
+            "terminal_status": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "object",
+              "properties": {
+                "catalog_id": {
+                  "type": "string"
+                },
+                "generation": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "integer"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "catalog_id",
+                "generation",
+                "name",
+                "revision",
+                "source"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "attempts",
+            "disposition",
+            "source",
+            "terminal_owner",
+            "terminal_status",
+            "tool"
+          ],
+          "additionalProperties": false
+        },
         "is_error": {
           "type": "boolean"
         },

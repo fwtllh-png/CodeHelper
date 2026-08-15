@@ -81,8 +81,10 @@ platform backend construction.
 
 Graceful degradation is appropriate for optional orientation features such as
 a Repo Index. It is not appropriate when the missing component is the
-enforcement mechanism for a consequential action. An explicit, separately
-approved `sandbox:none` escalation is new authority, not degradation.
+enforcement mechanism for a consequential action. Typed denial may request a
+narrow, separately approved Profile amendment, but the retry remains under the
+same strong Sandbox. Missing enforcement, untyped denial, or a repeated denial
+fails closed.
 
 Operator diagnostics should remain honest: "not evaluated", "unavailable",
 and "zero findings" are distinct.

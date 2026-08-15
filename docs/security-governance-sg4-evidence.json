@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "stage": "SG4",
+  "status": "accepted",
+  "base_commit": "ca3c4ba4ef7846864bde326324f6b78256c52a9b",
+  "baseline": "docs/security-governance-sg0-baseline.json",
+  "controls": {
+    "restricted_process_egress": true,
+    "managed_network_proxy": true,
+    "baseline_controls_enabled": 13,
+    "baseline_controls_total": 15,
+    "known_gaps": 2
+  },
+  "attack_cases": {
+    "SG-ATTACK-002": "blocked"
+  },
+  "implementation": {
+    "runtime_owned_loopback_proxy": true,
+    "http_connect_proxy": true,
+    "host_port_protocol_method_policy": true,
+    "dns_resolution_pinned_to_dial": true,
+    "redirect_target_rechecked": true,
+    "private_and_metadata_default_deny": true,
+    "bounded_egress_receipts": 256,
+    "macos_proxy_port_only": true,
+    "macos_direct_socket_blocked": true,
+    "linux_process_network_default_deny": true,
+    "linux_proxy_bridge": false
+  },
+  "commands": {
+    "stage": "make security-governance-sg4",
+    "security": "make security-test",
+    "sandbox": "make sandbox-attack-test",
+    "live_macos": "CODEHELPER_SANDBOX_STAGE=1 go test -tags=capability -count=1 ./internal/platform/process -run '^TestRealManagedProxyBlocksDirectEgress$'",
+    "docs": "make docs-check && make book-check && make markdownlint-check",
+    "architecture": "make architecture-ratchet"
+  }
+}

@@ -2,9 +2,6 @@ package guard
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -23,8 +20,8 @@ type SandboxAttempt struct {
 	Mode SandboxMode
 }
 
-// EscalationPolicy controls whether sandbox denial may retry without sandbox
-// after an explicit re-approval. Unsandboxed execution never proceeds silently.
+// EscalationPolicy controls whether a typed sandbox denial may request one
+// narrowly scoped permission amendment before retrying in the strong sandbox.
 type EscalationPolicy struct {
 	EscalateOnFailure bool
 }
@@ -34,12 +31,7 @@ func DefaultEscalationPolicy() EscalationPolicy {
 	return EscalationPolicy{EscalateOnFailure: true}
 }
 
-// ErrSandboxDenied marks a sandbox denial that may trigger escalation.
-var ErrSandboxDenied = errors.New("sandbox denied")
-
-// ApprovalReasonSandboxEscalate is set on ApprovalRequest.Reason when Guard
-// asks to retry without sandbox after a strong-sandbox denial.
-const ApprovalReasonSandboxEscalate = "sandbox_escalate"
+const ApprovalReasonAdditionalPermission = "additional_permission"
 
 // ApprovalReasonNetworkHost is set when Guard asks to allow egress to a host
 // (Immediate for web/MCP; Deferred reserved for shell managed egress).
@@ -64,52 +56,26 @@ func SandboxAttemptFromContext(ctx context.Context) (SandboxAttempt, bool) {
 	return attempt, ok
 }
 
-// ProcessSandbox selects backend strength from the Guard SandboxAttempt on ctx.
-// Unsandboxed retries only happen after an explicit escalate approval.
-func ProcessSandbox(ctx context.Context, backend sandbox.Backend) (sandbox.Backend, bool) {
-	if attempt, ok := SandboxAttemptFromContext(ctx); ok && attempt.Mode == SandboxModeNone {
-		return nil, false
-	}
+// ProcessSandbox keeps process-backed tools on the injected strong backend.
+func ProcessSandbox(_ context.Context, backend sandbox.Backend) (sandbox.Backend, bool) {
 	return backend, true
 }
 
-// IsSandboxDenial reports whether an execution failure looks like a sandbox deny.
+// IsSandboxDenial reports only structured sandbox denials.
 func IsSandboxDenial(err error, outcome tool.Outcome) bool {
-	if err != nil {
-		if errors.Is(err, ErrSandboxDenied) {
-			return true
+	_, ok := SandboxDenial(err, outcome)
+	return ok
+}
+
+func SandboxDenial(err error, outcome tool.Outcome) (sandbox.Denial, bool) {
+	if denial, ok := sandbox.DenialFromError(err); ok {
+		return denial, true
+	}
+	if outcome.Security != nil && outcome.Security.SandboxDenied != nil {
+		denial := *outcome.Security.SandboxDenied
+		if denial.Validate() == nil {
+			return denial, true
 		}
 	}
-	return outcome.Security != nil && outcome.Security.SandboxDenied
-}
-
-// MarkSandboxDenial wraps err (or builds one from detail) as ErrSandboxDenied.
-func MarkSandboxDenial(err error, detail string) error {
-	detail = strings.TrimSpace(detail)
-	switch {
-	case err == nil && detail == "":
-		return ErrSandboxDenied
-	case err == nil:
-		return fmt.Errorf("%w: %s", ErrSandboxDenied, detail)
-	case detail == "":
-		return fmt.Errorf("%w: %v", ErrSandboxDenied, err)
-	default:
-		return fmt.Errorf("%w: %s: %v", ErrSandboxDenied, detail, err)
-	}
-}
-
-func sandboxNoneResource() tool.Resource {
-	return tool.Resource{
-		Kind: "sandbox", ID: string(SandboxModeNone), Access: tool.AccessWrite,
-	}
-}
-
-func withSandboxNoneResource(resources []tool.Resource) []tool.Resource {
-	out := append([]tool.Resource(nil), resources...)
-	for _, resource := range out {
-		if resource.Kind == "sandbox" && resource.ID == string(SandboxModeNone) {
-			return out
-		}
-	}
-	return append(out, sandboxNoneResource())
+	return sandbox.Denial{}, false
 }

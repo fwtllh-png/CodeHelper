@@ -2,6 +2,7 @@ package permissions
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,9 +14,47 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
+func TestAuthorityPathIsStableAndOutsideWorkspace(t *testing.T) {
+	parent := t.TempDir()
+	workspace := filepath.Join(parent, "workspace")
+	if err := os.MkdirAll(workspace, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dataDir := filepath.Join(parent, "state")
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	first, err := Path(dataDir, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(parent, "workspace-link")
+	if err := os.Symlink(workspace, link); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Path(dataDir, link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second || strings.HasPrefix(first, workspace+string(filepath.Separator)) {
+		t.Fatalf("authority paths first=%q second=%q workspace=%q", first, second, workspace)
+	}
+}
+
+func TestAuthorityPathRejectsDataDirectoryInsideWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	dataDir := filepath.Join(workspace, ".codehelper", "state")
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Path(dataDir, workspace)
+	if !errors.Is(err, ErrAuthorityInsideWorkspace) {
+		t.Fatalf("Path() error = %v", err)
+	}
+}
+
 func TestLoadMissingIsEmpty(t *testing.T) {
-	root := t.TempDir()
-	bundle, err := Load(root)
+	bundle, err := Load(filepath.Join(t.TempDir(), FileName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,8 +64,7 @@ func TestLoadMissingIsEmpty(t *testing.T) {
 }
 
 func TestLoadAndAppendAllowRoundTrip(t *testing.T) {
-	root := t.TempDir()
-	path := Path(root)
+	path := filepath.Join(t.TempDir(), FileName)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +84,7 @@ grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	bundle, err := Load(root)
+	bundle, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +96,7 @@ grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		t.Fatalf("rules = %+v", bundle.Rules)
 	}
 
-	updated, err := AppendAllow(root, policy.Rule{
+	updated, err := AppendAllow(path, policy.Rule{
 		Tool: "file_write", GrantKey: strings.Repeat("b", 64), Action: policy.ActionAllow,
 	})
 	if err != nil {
@@ -68,7 +106,7 @@ grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	if allow != 2 {
 		t.Fatalf("allow count = %d", allow)
 	}
-	reloaded, err := Load(root)
+	reloaded, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +115,7 @@ grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		t.Fatalf("reloaded allow = %d", allow)
 	}
 	// idempotent
-	again, err := AppendAllow(root, policy.Rule{
+	again, err := AppendAllow(path, policy.Rule{
 		Tool: "file_write", GrantKey: strings.Repeat("b", 64), Action: policy.ActionAllow,
 	})
 	if err != nil {
@@ -86,6 +124,22 @@ grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	_, _, allow = again.Summary()
 	if allow != 2 {
 		t.Fatalf("dedupe allow = %d", allow)
+	}
+}
+
+func TestLoadRejectsUnsafePersistentCommandPrefix(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	input := `
+[[allow]]
+tool = "exec_command"
+command_prefix = "git"
+grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+`
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("unsafe persistent command prefix was accepted")
 	}
 }
 
@@ -118,7 +172,7 @@ func TestRuleFromInvocation(t *testing.T) {
 }
 
 func TestStoreSerializesConcurrentAllows(t *testing.T) {
-	store, err := OpenStore(t.TempDir())
+	store, err := OpenStore(filepath.Join(t.TempDir(), FileName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +203,7 @@ func TestStoreSerializesConcurrentAllows(t *testing.T) {
 }
 
 func TestPersistedGrantMatchesOnlySameTypedInvocation(t *testing.T) {
-	root := t.TempDir()
+	path := filepath.Join(t.TempDir(), FileName)
 	base := policy.Invocation{
 		CallID: "one", Tool: "exec_command", Capability: tool.CapabilityProcess,
 		Access: tool.AccessRead, Sandbox: tool.SandboxStrong, Validated: true,
@@ -164,15 +218,15 @@ func TestPersistedGrantMatchesOnlySameTypedInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := AppendAllow(root, rule); err != nil {
+	if _, err := AppendAllow(path, rule); err != nil {
 		t.Fatal(err)
 	}
-	reloaded, err := Load(root)
+	reloaded, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
-	runtime.Repository = reloaded.Rules
+	runtime.User = reloaded.Rules
 	if decision := runtime.Evaluate(base); decision.Action != policy.ActionAllow {
 		t.Fatalf("same invocation = %+v", decision)
 	}

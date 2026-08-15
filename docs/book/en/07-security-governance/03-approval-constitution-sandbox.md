@@ -117,8 +117,9 @@ resources, capability, and repository rules.
 
 - `plan` permits read capability only.
 - `act` and `operate` allow broader capability subject to rules.
-- Grants establish whether a Tool/resource is in scope.
-- Repository rules can deny, hold, ask, or allow.
+- Managed grants establish the maximum Tool/resource scope.
+- Repository rules can only deny, hold, or ask.
+- User rules may remember bounded approvals but cannot override higher denies.
 - Permission posture determines automatic versus interactive treatment.
 - Granular surfaces may tighten a decision but never weaken a hard denial.
 
@@ -169,9 +170,16 @@ Platform implementations differ. Capability probing reports the truth. If
 strong isolation is required and unavailable, execution returns
 `sandbox_unavailable`.
 
-An optional escalation path may retry without Sandbox only after a separate,
-explicit Approval containing a `sandbox:none` resource. Approval for strong
-execution does not cover escalation.
+An amendable typed denial may request one additional path, Host/Port, or Process
+capability through a separate critical one-shot Approval. The amended authority
+keeps immutable denies and retries once with the same strong Sandbox. Approval
+for the original execution does not cover the amendment.
+
+Each executed Attempt retains an audit projection of the exact Effective
+Permission Profile: revision/digest, enforcement backend, filesystem and
+network ceilings, source and Grant provenance, typed denial, and amendment
+decision. The amendment records both its base and replacement digests, so an
+auditor can prove which Profile authorized the retry.
 
 ## Journal and Verification
 
@@ -256,7 +264,7 @@ layers and with different evidence.
 
 1. Why can Approval not replace Sandbox?
 2. Why must replacement arguments be re-evaluated?
-3. What extra authority is represented by the `sandbox:none` resource?
+3. Why must an Additional Permission bind the base Profile digest?
 4. Why can passing Verification not repair missing authorization?
 5. Which canonical facts must an Approval UI display?
 

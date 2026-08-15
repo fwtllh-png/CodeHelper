@@ -1,13 +1,17 @@
 package egress
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -19,6 +23,8 @@ var ErrDenied = errors.New("egress denied")
 type DeniedError struct {
 	Host     string
 	Protocol string
+	Port     uint16
+	Method   string
 	Reason   string
 }
 
@@ -54,44 +60,78 @@ func DeniedTarget(err error) (host, protocol string, ok bool) {
 // Enforce is true; with Enforce false (or a nil *Gate on WrapClient) traffic
 // passes through unchanged so unit tests that never wired a broker keep working.
 type Gate struct {
-	mu      sync.RWMutex
-	Enforce bool
-	allowed map[string]struct{}
+	mu       sync.RWMutex
+	Enforce  bool
+	LookupIP func(context.Context, string) ([]net.IP, error)
+	allowed  map[string]Target
+	receipts []Receipt
 }
 
-func key(host, protocol string) string {
-	host = strings.ToLower(strings.TrimSpace(host))
-	protocol = strings.ToLower(strings.TrimSpace(protocol))
-	if protocol == "" {
-		protocol = "https"
-	}
-	return protocol + "://" + host
+type Target struct {
+	Host         string
+	Protocol     string
+	Port         uint16
+	Methods      []string
+	AllowPrivate bool
+}
+
+type Receipt struct {
+	At          time.Time `json:"at"`
+	Source      string    `json:"source"`
+	Host        string    `json:"host"`
+	Protocol    string    `json:"protocol"`
+	Port        uint16    `json:"port"`
+	Method      string    `json:"method,omitempty"`
+	Decision    string    `json:"decision"`
+	Reason      string    `json:"reason,omitempty"`
+	ResolvedIPs []string  `json:"resolved_ips,omitempty"`
+}
+
+const maxReceipts = 256
+
+func key(target Target) string {
+	return target.Protocol + "://" + net.JoinHostPort(
+		target.Host,
+		strconv.Itoa(int(target.Port)),
+	)
 }
 
 // Allow grants host+protocol for subsequent RoundTrips.
 func (g *Gate) Allow(host, protocol string) {
+	target := Target{
+		Host: host, Protocol: protocol,
+		AllowPrivate: true,
+	}
+	g.AllowTarget(target)
+}
+
+func (g *Gate) AllowTarget(target Target) {
 	if g == nil {
 		return
 	}
-	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" {
+	target, err := normalizeTarget(target)
+	if err != nil {
 		return
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.allowed == nil {
-		g.allowed = make(map[string]struct{})
+		g.allowed = make(map[string]Target)
 	}
-	g.allowed[key(host, protocol)] = struct{}{}
+	g.allowed[key(target)] = target
 }
 
 // AllowURL grants the host+scheme of a URL or bare endpoint string.
 func (g *Gate) AllowURL(raw string) bool {
-	target, ok := policy.ParseNetworkTarget(raw)
+	parsed, ok := policy.ParseNetworkTarget(raw)
 	if !ok {
 		return false
 	}
-	g.Allow(target.Host, target.Protocol)
+	target := Target{
+		Host: parsed.Host, Protocol: parsed.Protocol, Port: parsed.Port,
+		AllowPrivate: true,
+	}
+	g.AllowTarget(target)
 	return true
 }
 
@@ -105,7 +145,11 @@ func (g *Gate) Allowed(host, protocol string) bool {
 	if !g.Enforce {
 		return true
 	}
-	_, ok := g.allowed[key(host, protocol)]
+	target, err := normalizeTarget(Target{Host: host, Protocol: protocol})
+	if err != nil {
+		return false
+	}
+	_, ok := g.allowed[key(target)]
 	return ok
 }
 
@@ -128,10 +172,82 @@ func (g *Gate) Check(req *http.Request) error {
 	if protocol == "" {
 		protocol = "https"
 	}
-	if g.Allowed(host, protocol) {
+	port, err := requestPort(req.URL)
+	if err != nil {
+		return &DeniedError{Host: host, Protocol: protocol, Reason: err.Error()}
+	}
+	_, err = g.Authorize(req.Context(), Target{
+		Host: host, Protocol: protocol, Port: port, Methods: []string{req.Method},
+	}, "http")
+	return err
+}
+
+func (g *Gate) Authorize(
+	ctx context.Context,
+	request Target,
+	source string,
+) ([]net.IP, error) {
+	request, err := normalizeTarget(request)
+	if err != nil {
+		g.record(Receipt{
+			At: time.Now().UTC(), Source: source, Decision: "deny",
+			Reason: err.Error(),
+		})
+		return nil, &DeniedError{Reason: err.Error()}
+	}
+	if g == nil || !g.Enforce {
+		return nil, nil
+	}
+	g.mu.RLock()
+	grant, allowed := g.allowed[key(request)]
+	g.mu.RUnlock()
+	if !allowed || !methodsAllowed(grant.Methods, request.Methods) {
+		err := &DeniedError{
+			Host: request.Host, Protocol: request.Protocol,
+			Port: request.Port, Method: firstMethod(request.Methods),
+			Reason: "target is not granted",
+		}
+		g.recordDenied(source, request, err.Reason)
+		return nil, err
+	}
+	ips, err := g.resolve(ctx, request.Host)
+	if err != nil {
+		g.recordDenied(source, request, "DNS resolution failed")
+		return nil, &DeniedError{
+			Host: request.Host, Protocol: request.Protocol,
+			Port: request.Port, Reason: "DNS resolution failed",
+		}
+	}
+	for _, ip := range ips {
+		if nonPublicIP(ip) && !grant.AllowPrivate {
+			g.recordDenied(source, request, "local or private address is not granted")
+			return nil, &DeniedError{
+				Host: request.Host, Protocol: request.Protocol,
+				Port: request.Port, Reason: "local or private address is not granted",
+			}
+		}
+	}
+	g.record(Receipt{
+		At: time.Now().UTC(), Source: source,
+		Host: request.Host, Protocol: request.Protocol, Port: request.Port,
+		Method: firstMethod(request.Methods), Decision: "allow",
+		ResolvedIPs: ipStrings(ips),
+	})
+	return ips, nil
+}
+
+func (g *Gate) Receipts() []Receipt {
+	if g == nil {
 		return nil
 	}
-	return &DeniedError{Host: strings.ToLower(host), Protocol: protocol}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	out := make([]Receipt, len(g.receipts))
+	copy(out, g.receipts)
+	for index := range out {
+		out[index].ResolvedIPs = append([]string(nil), out[index].ResolvedIPs...)
+	}
+	return out
 }
 
 // RoundTripper wraps base and refuses ungranted hosts when Enforce is on.
@@ -162,10 +278,27 @@ type transport struct {
 }
 
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if err := t.gate.Check(req); err != nil {
+	if req == nil || req.URL == nil {
+		return nil, &DeniedError{Reason: "missing request URL"}
+	}
+	port, err := requestPort(req.URL)
+	if err != nil {
 		return nil, err
 	}
-	// Redirects re-enter RoundTrip with a new URL; Check runs again.
+	ips, err := t.gate.Authorize(req.Context(), Target{
+		Host: req.URL.Hostname(), Protocol: req.URL.Scheme, Port: port,
+		Methods: []string{req.Method},
+	}, "http")
+	if err != nil {
+		return nil, err
+	}
+	if base, ok := t.base.(*http.Transport); ok && len(ips) != 0 {
+		pinned := base.Clone()
+		pinned.Proxy = nil
+		pinned.DisableKeepAlives = true
+		pinned.DialContext = pinnedDialer(ips, req.URL.Hostname(), port)
+		return pinned.RoundTrip(req)
+	}
 	return t.base.RoundTrip(req)
 }
 
@@ -179,4 +312,128 @@ func HostOf(u *url.URL) (host, protocol string, ok bool) {
 		protocol = "https"
 	}
 	return strings.ToLower(u.Hostname()), protocol, true
+}
+
+func normalizeTarget(target Target) (Target, error) {
+	target.Host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(target.Host), "."))
+	target.Protocol = strings.ToLower(strings.TrimSpace(target.Protocol))
+	if target.Protocol == "" {
+		target.Protocol = "https"
+	}
+	if target.Host == "" || strings.ContainsAny(target.Host, "/\\@") {
+		return Target{}, errors.New("network target requires one host")
+	}
+	if target.Port == 0 {
+		switch target.Protocol {
+		case "http":
+			target.Port = 80
+		case "https":
+			target.Port = 443
+		default:
+			return Target{}, errors.New("network target requires one port")
+		}
+	}
+	if target.Protocol != "http" && target.Protocol != "https" {
+		return Target{}, errors.New("network target protocol is invalid")
+	}
+	methods := make([]string, 0, len(target.Methods))
+	for _, method := range target.Methods {
+		method = strings.ToUpper(strings.TrimSpace(method))
+		if method == "" {
+			continue
+		}
+		if strings.ContainsAny(method, " \t\r\n") {
+			return Target{}, errors.New("network target method is invalid")
+		}
+		methods = append(methods, method)
+	}
+	slices.Sort(methods)
+	target.Methods = slices.Compact(methods)
+	return target, nil
+}
+
+func requestPort(value *url.URL) (uint16, error) {
+	if value == nil {
+		return 0, errors.New("missing request URL")
+	}
+	if raw := value.Port(); raw != "" {
+		port, err := strconv.ParseUint(raw, 10, 16)
+		return uint16(port), err
+	}
+	switch strings.ToLower(value.Scheme) {
+	case "http":
+		return 80, nil
+	case "https":
+		return 443, nil
+	default:
+		return 0, errors.New("request protocol is invalid")
+	}
+}
+
+func methodsAllowed(granted, requested []string) bool {
+	if len(granted) == 0 || len(requested) == 0 {
+		return true
+	}
+	for _, method := range requested {
+		if !slices.Contains(granted, method) {
+			return false
+		}
+	}
+	return true
+}
+
+func firstMethod(methods []string) string {
+	if len(methods) == 0 {
+		return ""
+	}
+	return methods[0]
+}
+
+func (g *Gate) resolve(ctx context.Context, host string) ([]net.IP, error) {
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+		return []net.IP{ip}, nil
+	}
+	if g.LookupIP != nil {
+		return g.LookupIP(ctx, host)
+	}
+	addresses, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil {
+		return nil, err
+	}
+	return addresses, nil
+}
+
+func nonPublicIP(ip net.IP) bool {
+	return ip == nil || ip.IsUnspecified() || ip.IsLoopback() ||
+		ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast()
+}
+
+func ipStrings(ips []net.IP) []string {
+	out := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		out = append(out, ip.String())
+	}
+	return out
+}
+
+func (g *Gate) recordDenied(source string, target Target, reason string) {
+	g.record(Receipt{
+		At: time.Now().UTC(), Source: source,
+		Host: target.Host, Protocol: target.Protocol, Port: target.Port,
+		Method: firstMethod(target.Methods), Decision: "deny", Reason: reason,
+	})
+}
+
+func (g *Gate) record(receipt Receipt) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.receipts = append(g.receipts, receipt)
+	if len(g.receipts) > maxReceipts {
+		copy(g.receipts, g.receipts[len(g.receipts)-maxReceipts:])
+		g.receipts = g.receipts[:maxReceipts]
+	}
 }

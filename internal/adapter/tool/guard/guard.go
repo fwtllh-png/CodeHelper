@@ -19,28 +19,31 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/textdiff"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlplane"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 type ApprovalRequest struct {
-	RequestID           string                  `json:"request_id"`
-	CallID              string                  `json:"call_id"`
-	Tool                string                  `json:"tool"`
-	Arguments           json.RawMessage         `json:"arguments"`
-	ArgumentsDigest     string                  `json:"arguments_digest"`
-	Resources           []tool.Resource         `json:"resources"`
-	AllowedScopes       []policy.ApprovalScope  `json:"allowed_scopes"`
-	ExpiresAt           time.Time               `json:"expires_at"`
-	ReplacementAllowed  bool                    `json:"replacement_allowed"`
-	ModifiableArguments []string                `json:"modifiable_arguments"`
-	Effect              policy.EffectKind       `json:"effect"`
-	Risk                policy.RiskLevel        `json:"risk"`
-	ReasonCode          string                  `json:"reason_code"`
-	Network             *NetworkApprovalContext `json:"network,omitempty"`
-	EditPlan            *tool.EditPlan          `json:"edit_plan,omitempty"`
-	Grant               *policy.Grant           `json:"grant,omitempty"`
+	RequestID            string                                 `json:"request_id"`
+	CallID               string                                 `json:"call_id"`
+	Tool                 string                                 `json:"tool"`
+	Arguments            json.RawMessage                        `json:"arguments"`
+	ArgumentsDigest      string                                 `json:"arguments_digest"`
+	Resources            []tool.Resource                        `json:"resources"`
+	AllowedScopes        []policy.ApprovalScope                 `json:"allowed_scopes"`
+	ExpiresAt            time.Time                              `json:"expires_at"`
+	ReplacementAllowed   bool                                   `json:"replacement_allowed"`
+	ModifiableArguments  []string                               `json:"modifiable_arguments"`
+	Effect               policy.EffectKind                      `json:"effect"`
+	Risk                 policy.RiskLevel                       `json:"risk"`
+	ReasonCode           string                                 `json:"reason_code"`
+	Network              *NetworkApprovalContext                `json:"network,omitempty"`
+	EditPlan             *tool.EditPlan                         `json:"edit_plan,omitempty"`
+	Grant                *policy.Grant                          `json:"grant,omitempty"`
+	AdditionalPermission *authority.AdditionalPermissionRequest `json:"additional_permission,omitempty"`
 }
 
 type FileChange = tool.WorkspaceChange
@@ -52,10 +55,15 @@ const (
 )
 
 type NetworkApprovalContext struct {
-	Host     string `json:"host"`
-	Protocol string `json:"protocol"`
-	Mode     string `json:"mode"`
+	Host         string   `json:"host"`
+	Protocol     string   `json:"protocol"`
+	Port         uint16   `json:"port,omitempty"`
+	Methods      []string `json:"methods,omitempty"`
+	AllowPrivate bool     `json:"allow_private,omitempty"`
+	Mode         string   `json:"mode"`
 }
+
+type NetworkAllow func(egress.Target)
 
 type ApprovalDecision struct {
 	RequestID            string
@@ -99,7 +107,7 @@ type Options struct {
 	Workspace             string
 	Approvals             func(context.Context, ApprovalRequest) error
 	PersistAllow          func(policy.Invocation) error
-	OnNetworkAllow        func(host, protocol string)
+	OnNetworkAllow        NetworkAllow
 	Hooks                 Hooks
 	PermissionHooks       PermissionRequester
 	Now                   func() time.Time
@@ -140,9 +148,10 @@ type Guard struct {
 	registry              *tool.Registry
 	policy                *policy.Runtime
 	workspace             string
+	controlPlane          *controlplane.Classifier
 	approvals             func(context.Context, ApprovalRequest) error
 	persistAllow          func(policy.Invocation) error
-	onNetworkAllow        func(host, protocol string)
+	onNetworkAllow        NetworkAllow
 	hooks                 Hooks
 	permissionHooks       PermissionRequester
 	now                   func() time.Time
@@ -159,15 +168,17 @@ type Guard struct {
 	recovered    map[string]ApprovalRequest
 	restoreWait  func(ApprovalRequest) error
 	approvalWait func(ApprovalWait)
+	expireWait   func(ApprovalWait) error
 	observe      ApprovalObserver
 }
 
 type approvalAsk struct {
-	Code           string
-	AllowedScopes  []policy.ApprovalScope
-	DisableReplace bool
-	Network        *NetworkApprovalContext
-	EditPlan       *tool.EditPlan
+	Code                 string
+	AllowedScopes        []policy.ApprovalScope
+	DisableReplace       bool
+	Network              *NetworkApprovalContext
+	EditPlan             *tool.EditPlan
+	AdditionalPermission *authority.AdditionalPermissionRequest
 }
 
 func New(options Options) (*Guard, error) {
@@ -218,9 +229,14 @@ func New(options Options) (*Guard, error) {
 			return nil, fmt.Errorf("grant rule: %w", err)
 		}
 	}
+	controlPlane, err := controlplane.New(absolute)
+	if err != nil {
+		return nil, err
+	}
 	return &Guard{
 		registry: options.Registry, policy: options.Policy, workspace: absolute,
-		approvals: options.Approvals, persistAllow: options.PersistAllow,
+		controlPlane: controlPlane,
+		approvals:    options.Approvals, persistAllow: options.PersistAllow,
 		onNetworkAllow: options.OnNetworkAllow,
 		hooks:          options.Hooks, permissionHooks: options.PermissionHooks, now: options.Now,
 		approvalTTL: options.ApprovalTTL,
@@ -259,8 +275,7 @@ func (g *Guard) ExecuteBound(
 
 func (g *Guard) canEscalate(invocation Invocation) bool {
 	return g.escalation.EscalateOnFailure &&
-		invocation.Descriptor.SandboxRequirement == tool.SandboxStrong &&
-		invocation.Descriptor.Capability != tool.CapabilityRead
+		invocation.Descriptor.SandboxRequirement == tool.SandboxStrong
 }
 
 func policyInput(callID string, invocation Invocation) policy.Invocation {
@@ -858,11 +873,16 @@ func (g *Guard) waitForApproval(
 		ExpiresAt: expiresAt, ReplacementAllowed: replacementAllowed,
 		ModifiableArguments: modifiable, ReasonCode: opts.Code,
 		Network: opts.Network, EditPlan: opts.EditPlan, Grant: request.Grant,
+		AdditionalPermission: opts.AdditionalPermission,
 	}
 	effect := policy.NormalizeEffect(policyInvocation)
 	event.Effect, event.Risk = effect.Kind, effect.Risk
 	if recovering {
 		event = recovered
+	}
+	if opts.AdditionalPermission != nil {
+		event.Effect = policy.EffectExternalMutation
+		event.Risk = policy.RiskCritical
 	}
 	entry := &pending{
 		callID: invocation.CallID, decision: make(chan ApprovalDecision, 1),
@@ -886,18 +906,20 @@ func (g *Guard) waitForApproval(
 		}
 	}
 	parked := g.now()
-	reportWait := func(outcome ApprovalWaitOutcome) {
+	reportWait := func(outcome ApprovalWaitOutcome) ApprovalWait {
 		waited := g.now().Sub(parked)
+		wait := ApprovalWait{
+			RequestID: requestID, CallID: invocation.CallID, Tool: invocation.Tool,
+			Waited: waited, Outcome: outcome,
+		}
 		observe := g.approvalWaitObserver()
 		if observe != nil {
-			observe(ApprovalWait{
-				RequestID: requestID, CallID: invocation.CallID, Tool: invocation.Tool,
-				Waited: waited, Outcome: outcome,
-			})
+			observe(wait)
 		}
 		g.observeApproval(
 			"waited", policyInvocation, policy.Decision{Code: event.ReasonCode}, waited,
 		)
+		return wait
 	}
 	if !recovering {
 		if err := handler(ctx, event); err != nil {
@@ -911,7 +933,14 @@ func (g *Guard) waitForApproval(
 		reportWait(ApprovalWaitCanceled)
 		return ApprovalDecision{}, ctx.Err()
 	case <-timer.C:
-		reportWait(ApprovalWaitExpired)
+		wait := reportWait(ApprovalWaitExpired)
+		if expire := g.approvalExpiryHandler(); expire != nil {
+			if err := expire(wait); err != nil {
+				return ApprovalDecision{}, fmt.Errorf(
+					"expire approval wait: %w", err,
+				)
+			}
+		}
 		return ApprovalDecision{}, &policy.DecisionError{
 			Code: "approval_expired", Reason: "approval request expired",
 		}
@@ -1045,36 +1074,38 @@ func (g *Guard) cacheApproval(
 func networkApprovalAsk(
 	invocation policy.Invocation, capability tool.Capability,
 ) approvalAsk {
-	if capability != tool.CapabilityNetwork {
+	if capability != tool.CapabilityNetwork && capability != tool.CapabilityProcess {
 		return approvalAsk{}
 	}
-	host := ""
-	protocol := "https"
+	var network *NetworkApprovalContext
 	for _, resource := range invocation.Resources {
 		if resource.Kind == "url" && strings.TrimSpace(resource.ID) != "" {
 			if target, ok := policy.ParseNetworkTarget(resource.ID); ok {
-				host = target.Host
-				protocol = target.Protocol
+				network = &NetworkApprovalContext{
+					Host: target.Host, Protocol: target.Protocol, Port: target.Port,
+				}
 				break
 			}
 		}
 	}
-	if host == "" {
+	if network == nil {
 		for _, resource := range invocation.Resources {
 			if resource.Kind == "host" && strings.TrimSpace(resource.ID) != "" {
-				host = strings.ToLower(strings.TrimSpace(resource.ID))
+				network = &NetworkApprovalContext{
+					Host: resource.ID, Protocol: resource.Protocol, Port: resource.Port,
+					Methods:      append([]string(nil), resource.Methods...),
+					AllowPrivate: resource.AllowPrivate,
+				}
 				break
 			}
 		}
 	}
-	if host == "" {
+	if network == nil {
 		return approvalAsk{}
 	}
+	network.Mode = string(policy.NetworkImmediate)
 	return approvalAsk{
-		Code: ApprovalReasonNetworkHost,
-		Network: &NetworkApprovalContext{
-			Host: host, Protocol: protocol, Mode: string(policy.NetworkImmediate),
-		},
+		Code: ApprovalReasonNetworkHost, Network: network,
 	}
 }
 
@@ -1085,13 +1116,16 @@ func (g *Guard) grantNetworkHosts(resources []tool.Resource) {
 	for _, resource := range resources {
 		switch resource.Kind {
 		case "host":
-			host := strings.ToLower(strings.TrimSpace(resource.ID))
-			if host != "" {
-				g.onNetworkAllow(host, "https")
-			}
+			g.onNetworkAllow(egress.Target{
+				Host: resource.ID, Protocol: resource.Protocol, Port: resource.Port,
+				Methods: resource.Methods, AllowPrivate: resource.AllowPrivate,
+			})
 		case "url":
 			if target, ok := policy.ParseNetworkTarget(resource.ID); ok {
-				g.onNetworkAllow(target.Host, target.Protocol)
+				g.onNetworkAllow(egress.Target{
+					Host: target.Host, Protocol: target.Protocol, Port: target.Port,
+					AllowPrivate: true,
+				})
 			}
 		}
 	}
@@ -1177,6 +1211,14 @@ func (g *Guard) SetApprovalWaitObserver(observe func(ApprovalWait)) {
 	g.approvalWait = observe
 	g.mu.Unlock()
 }
+func (g *Guard) SetApprovalExpiryHandler(expire func(ApprovalWait) error) {
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	g.expireWait = expire
+	g.mu.Unlock()
+}
 func (g *Guard) SwapPolicy(next *policy.Runtime) *policy.Runtime {
 	if g == nil {
 		return nil
@@ -1214,6 +1256,12 @@ func (g *Guard) approvalWaitObserver() func(ApprovalWait) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.approvalWait
+}
+
+func (g *Guard) approvalExpiryHandler() func(ApprovalWait) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.expireWait
 }
 
 func (g *Guard) resolveResources(
@@ -1306,6 +1354,13 @@ func (g *Guard) resolveResources(
 			})
 		}
 	}
+	if field := descriptor.ResourceResolver.NetworkTargetsField; field != "" {
+		targets, err := networkTargets(values[field])
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, targets...)
+	}
 	if field := descriptor.ResourceResolver.ChangesField; field != "" {
 		paths, err := changePaths(values[field])
 		if err != nil {
@@ -1348,6 +1403,68 @@ func exactPaths(value any, access string) ([]string, error) {
 		paths = append(paths, path)
 	}
 	return paths, nil
+}
+
+func networkTargets(value any) ([]tool.Resource, error) {
+	if value == nil {
+		return nil, nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil, errors.New("network targets must be an array")
+	}
+	if len(items) > 32 {
+		return nil, errors.New("network targets exceed the 32-target limit")
+	}
+	resources := make([]tool.Resource, 0, len(items))
+	for _, item := range items {
+		target, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("network target must be an object")
+		}
+		host, _ := target["host"].(string)
+		protocol, _ := target["protocol"].(string)
+		portValue, _ := target["port"].(float64)
+		allowPrivate, _ := target["allow_private"].(bool)
+		host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+		protocol = strings.ToLower(strings.TrimSpace(protocol))
+		if host == "" || strings.ContainsAny(host, "/\\@") ||
+			(protocol != "http" && protocol != "https") ||
+			portValue < 1 || portValue > 65535 || portValue != float64(uint16(portValue)) {
+			return nil, errors.New("network target requires host, protocol, and port")
+		}
+		methods, err := networkMethods(target["methods"])
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, tool.Resource{
+			Kind: "host", ID: host, Access: tool.AccessWrite,
+			Protocol: protocol, Port: uint16(portValue),
+			Methods: methods, AllowPrivate: allowPrivate,
+		})
+	}
+	return resources, nil
+}
+
+func networkMethods(value any) ([]string, error) {
+	items, ok := value.([]any)
+	if value == nil {
+		return nil, nil
+	}
+	if !ok || len(items) > 16 {
+		return nil, errors.New("network target methods must be a bounded array")
+	}
+	methods := make([]string, 0, len(items))
+	for _, item := range items {
+		method, ok := item.(string)
+		method = strings.ToUpper(strings.TrimSpace(method))
+		if !ok || method == "" || strings.ContainsAny(method, " \t\r\n") {
+			return nil, errors.New("network target method is invalid")
+		}
+		methods = append(methods, method)
+	}
+	slices.Sort(methods)
+	return slices.Compact(methods), nil
 }
 
 func (g *Guard) canonicalPath(value string, glob bool) (string, error) {

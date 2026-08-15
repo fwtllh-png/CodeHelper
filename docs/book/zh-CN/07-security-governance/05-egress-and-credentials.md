@@ -47,12 +47,15 @@ Diagnostic Dump、Child Environment。Redaction 是 Defense in Depth，不是记
 
 ## Egress Gate
 
-Enforcing `egress.Gate` 是 Session-scoped Normalized Protocol+Host Allowlist。Wrapped
-Transport 检查每次 Request；Redirect 会重新进入 Transport，因此 New Host 需要新 Authority。
+Enforcing `egress.Gate` 是 Session-scoped Host、Port、Protocol、HTTP Method 与
+Private-address Permission Allowlist。它在连接前解析 DNS，并用已批准 IP 固定拨号；
+Redirect 与 CONNECT Target 都会重新进入 Gate。
 
-对 `https://api.example` 的 Approval 不覆盖 Other Scheme、Arbitrary Subdomain、Redirect
-Destination 或绕过 Governed Client 创建的 Raw Socket。Provider Endpoint、MCP/Web
-Backend 都是 Security-sensitive Input。
+macOS Process 只能访问 Runtime-owned loopback proxy port。`exec_command` 必须声明
+`network_targets`；Undeclared Target、Private Resolution、Metadata Address 和 Direct
+Socket 均 Fail Closed。Linux 在 Namespace Proxy Bridge 可用前保持 Process 全禁网。
+
+Process、Web、Provider 与 MCP 的每次决策使用同一个有界 `egress.Receipt` 结构。
 
 ## Leakage Channel
 

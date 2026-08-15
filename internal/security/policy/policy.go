@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -68,14 +69,16 @@ type Rule struct {
 }
 
 type Runtime struct {
+	mu         sync.RWMutex
+	Revision   uint64
 	Mode       Mode
 	Permission Permission
 	// DisableAutoReview is the fail-closed operational kill switch.
-	DisableAutoReview  bool
-	Grants, Repository []Rule
-	Approvals          *ApprovalCache
-	Granular           Granular
-	Now                func() time.Time
+	DisableAutoReview        bool
+	Grants, User, Repository []Rule
+	Approvals                *ApprovalCache
+	Granular                 Granular
+	Now                      func() time.Time
 }
 
 type Decision struct {
@@ -93,7 +96,7 @@ func (e *DecisionError) Error() string {
 
 func DefaultRuntime(mode Mode, permission Permission) *Runtime {
 	return &Runtime{
-		Mode: mode, Permission: permission,
+		Revision: 1, Mode: mode, Permission: permission,
 		Grants:    []Rule{{Tool: "*", Resource: "*", Action: ActionAllow}},
 		Approvals: NewApprovalCache(), Now: time.Now,
 	}
@@ -120,15 +123,34 @@ func (r *Runtime) CloneSampling() *Runtime {
 	if r == nil {
 		return nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return &Runtime{
-		Mode: r.Mode, Permission: r.Permission, DisableAutoReview: r.DisableAutoReview,
-		Grants:     append([]Rule(nil), r.Grants...),
-		Repository: append([]Rule(nil), r.Repository...),
-		Approvals:  r.Approvals, Granular: r.Granular, Now: r.Now,
+		Revision: r.Revision, Mode: r.Mode, Permission: r.Permission,
+		DisableAutoReview: r.DisableAutoReview,
+		Grants:            append([]Rule(nil), r.Grants...),
+		User:              append([]Rule(nil), r.User...),
+		Repository:        append([]Rule(nil), r.Repository...),
+		Approvals:         r.Approvals, Granular: r.Granular, Now: r.Now,
 	}
 }
 
 func (r *Runtime) Evaluate(invocation Invocation) Decision {
+	if r == nil {
+		return deny("policy_unavailable", "security runtime is required")
+	}
+	return r.CloneSampling().evaluate(invocation)
+}
+
+func (r *Runtime) ManagedGrant(invocation Invocation) (Rule, bool) {
+	if r == nil {
+		return Rule{}, false
+	}
+	snapshot := r.CloneSampling()
+	return strongestMatch(snapshot.Grants, invocation)
+}
+
+func (r *Runtime) evaluate(invocation Invocation) Decision {
 	if invocation.CallID == "" || invocation.Tool == "" {
 		return deny("policy_invalid_invocation", "call id and tool are required")
 	}
@@ -138,12 +160,14 @@ func (r *Runtime) Evaluate(invocation Invocation) Decision {
 	if invocation.Capability == "" {
 		return deny("policy_unknown_capability", "descriptor capability is required")
 	}
-	if r == nil {
-		return deny("policy_unavailable", "security runtime is required")
+	grant, ok := strongestMatch(r.Grants, invocation)
+	if !ok {
+		return deny("tool_grant_missing", "no matching managed tool grant")
 	}
-
+	if grant.Action == ActionDeny || grant.Action == ActionHold {
+		return deny("tool_grant_denied", "managed tool grant denied this invocation")
+	}
 	repositoryAsk := false
-	repositoryAllow := false
 	if rule, ok := strongestMatch(r.Repository, invocation); ok {
 		switch rule.Action {
 		case ActionDeny:
@@ -157,15 +181,19 @@ func (r *Runtime) Evaluate(invocation Invocation) Decision {
 		case ActionAsk:
 			repositoryAsk = true
 		case ActionAllow:
-			repositoryAllow = true
+			return deny("repository_source_invalid", "repository authority cannot allow")
 		}
 	}
-	grant, ok := strongestMatch(r.Grants, invocation)
-	if !ok {
-		return deny("tool_grant_missing", "no matching tool grant")
-	}
-	if grant.Action == ActionDeny || grant.Action == ActionHold {
-		return deny("tool_grant_denied", "tool grant denied this invocation")
+	userAsk, userAllow := false, false
+	if rule, ok := strongestMatch(r.User, invocation); ok {
+		switch rule.Action {
+		case ActionDeny, ActionHold:
+			return deny("user_rule_denied", "user authority denied this invocation")
+		case ActionAsk:
+			userAsk = true
+		case ActionAllow:
+			userAllow = true
+		}
 	}
 	if err := modeDecision(r.Mode, invocation.Capability); err != nil {
 		return decisionFromError(err)
@@ -175,13 +203,8 @@ func (r *Runtime) Evaluate(invocation Invocation) Decision {
 	if err != nil {
 		return decisionFromError(err)
 	}
-	if repositoryAllow {
-		return ApplySurfaceTightening(
-			Decision{Action: ActionAllow},
-			ClassifySurface(invocation.Tool, invocation.Capability), r.Granular,
-		)
-	}
-	needsApproval := repositoryAsk || permissionAction == ActionAsk || grant.Action == ActionAsk
+	needsApproval := repositoryAsk || userAsk || grant.Action == ActionAsk ||
+		(permissionAction == ActionAsk && !userAllow)
 	decision := Decision{Action: ActionAllow}
 	if needsApproval {
 		decision = Decision{Action: ActionAsk, Code: "approval_required", Reason: "approval is required"}
@@ -300,70 +323,6 @@ func ruleMatches(rule Rule, invocation Invocation) bool {
 	return true
 }
 
-func commandRuleMatches(command, prefix string, action Action) bool {
-	segments := shellCommandSegments(command)
-	if len(segments) == 0 {
-		return false
-	}
-	if action == ActionDeny || action == ActionHold {
-		for _, segment := range segments {
-			if commandPrefixMatches(segment, prefix) {
-				return true
-			}
-		}
-		return false
-	}
-	return len(segments) == 1 && commandPrefixMatches(segments[0], prefix)
-}
-
-func commandPrefixMatches(command, prefix string) bool {
-	command = strings.Join(strings.Fields(command), " ")
-	prefix = strings.Join(strings.Fields(prefix), " ")
-	if command == prefix {
-		return true
-	}
-	return strings.HasPrefix(command, prefix+" ")
-}
-
-func shellCommandSegments(command string) []string {
-	var segments []string
-	start := 0
-	quote := rune(0)
-	escaped := false
-	runes := []rune(command)
-	appendSegment := func(end int) {
-		if segment := strings.TrimSpace(string(runes[start:end])); segment != "" {
-			segments = append(segments, segment)
-		}
-	}
-	for index, current := range runes {
-		if escaped {
-			escaped = false
-			continue
-		}
-		if current == '\\' && quote != '\'' {
-			escaped = true
-			continue
-		}
-		if quote != 0 {
-			if current == quote {
-				quote = 0
-			}
-			continue
-		}
-		if current == '\'' || current == '"' || current == '`' {
-			quote = current
-			continue
-		}
-		if current == ';' || current == '\n' || current == '|' || current == '&' {
-			appendSegment(index)
-			start = index + 1
-		}
-	}
-	appendSegment(len(runes))
-	return segments
-}
-
 func actionPriority(action Action) int {
 	return map[Action]int{
 		ActionAllow: 1, ActionAsk: 2, ActionDeny: 3, ActionHold: 4,
@@ -383,6 +342,15 @@ func Validate(runtime *Runtime) error {
 	}
 	if _, err := permissionDecision(runtime.Permission, tool.CapabilityRead, RiskLow); err != nil {
 		return fmt.Errorf("permission: %w", err)
+	}
+	if err := ValidateRules(SourceManaged, runtime.Grants); err != nil {
+		return err
+	}
+	if err := ValidateRules(SourceUser, runtime.User); err != nil {
+		return err
+	}
+	if err := ValidateRules(SourceRepository, runtime.Repository); err != nil {
+		return err
 	}
 	return nil
 }

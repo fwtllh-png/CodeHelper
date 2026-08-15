@@ -107,6 +107,8 @@ type Session struct {
 
 	archive    Archive
 	mu         sync.RWMutex
+	deliveryMu sync.Mutex
+	delivered  uint64
 	output     []byte
 	baseCursor uint64
 	running    bool
@@ -418,6 +420,33 @@ func (m *SessionManager) Wait(
 	}
 }
 
+// WaitNext advances the Runtime-owned delivery cursor for one session. Tool
+// callers do not need to echo a cursor that the Runtime already knows.
+func (m *SessionManager) WaitNext(
+	ctx context.Context,
+	id string,
+	threadID string,
+	timeout time.Duration,
+) (SessionWait, error) {
+	session, err := m.getOwned(id, threadID)
+	if err != nil {
+		return SessionWait{}, err
+	}
+	session.deliveryMu.Lock()
+	defer session.deliveryMu.Unlock()
+	wait, err := m.Wait(
+		ctx,
+		id,
+		threadID,
+		session.delivered,
+		timeout,
+	)
+	if err == nil {
+		session.delivered = wait.Cursor
+	}
+	return wait, err
+}
+
 func (m *SessionManager) Resize(id, threadID string, rows, cols uint16) error {
 	session, err := m.getOwned(id, threadID)
 	if err != nil {
@@ -490,6 +519,30 @@ func (m *SessionManager) CloseByThread(threadID string) int {
 	ids := make([]string, 0)
 	for id, session := range m.sessions {
 		if session.threadID == threadID {
+			ids = append(ids, id)
+		}
+	}
+	m.mu.RUnlock()
+	for _, id := range ids {
+		session, err := m.get(id)
+		if err == nil {
+			_ = m.closeSession(id, session)
+		}
+	}
+	return len(ids)
+}
+
+// CloseByTurn terminates sessions created by one Runtime turn without
+// disturbing concurrent turns in the same thread.
+func (m *SessionManager) CloseByTurn(turnID string) int {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return 0
+	}
+	m.mu.RLock()
+	ids := make([]string, 0)
+	for id, session := range m.sessions {
+		if session.turnID == turnID {
 			ids = append(ids, id)
 		}
 	}

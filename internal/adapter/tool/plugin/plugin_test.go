@@ -329,6 +329,11 @@ func (lifecycleTestBackend) Prepare(
 	_ context.Context,
 	command sandbox.Command,
 ) (sandbox.Command, error) {
+	command.PreparedReadOnly = command.WorkspaceReadOnly
+	command.PreparedWritePaths = append(
+		[]string(nil),
+		command.WorkspaceWritePaths...,
+	)
 	return command, nil
 }
 

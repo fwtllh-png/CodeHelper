@@ -144,6 +144,9 @@ func (e *Engine) publishScope(scope *Scope) {
 	e.scopeMu.Unlock()
 }
 func (e *Engine) finishScope(scope *Scope) {
+	if release := e.options.ReleaseTurnResources; release != nil {
+		release(scope.spec.Identity)
+	}
 	scope.mu.Lock()
 	var held []PendingInput
 	for _, item := range scope.state.mailbox.Drain() {

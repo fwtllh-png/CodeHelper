@@ -877,9 +877,8 @@ func consume(
 
 const (
 	commonToolSet    = ",tool_search,result_get,handle_read,request_user_input,update_plan,turn_complete,"
-	readToolSet      = ",search_text,search_files,search_definition,search_references,file_read,file_list,file_write,file_edit,file_apply,shell_read,exec_command,quality_test,project_map,"
+	readToolSet      = ",search_text,search_files,search_definition,search_references,file_read,file_list,file_write,file_edit,file_apply,shell_read,exec_command,write_stdin,quality_test,project_map,"
 	writeToolSet     = ",search_related_tests,quality_diagnostics,quality_verify,"
-	operateToolSet   = ",write_stdin,"
 	maxRelevantTools = 4
 )
 
@@ -983,7 +982,7 @@ func coreTool(intent protocol.TurnIntent, name string) bool {
 	case protocol.TurnIntentWorkspaceChange:
 		return in(writeToolSet)
 	case protocol.TurnIntentOperation:
-		return in(writeToolSet) || in(operateToolSet)
+		return in(writeToolSet)
 	default:
 		return false
 	}
