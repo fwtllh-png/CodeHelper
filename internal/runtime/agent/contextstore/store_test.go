@@ -1,6 +1,7 @@
 package contextstore
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -89,6 +90,26 @@ func TestLedgerProjectsOneOrderedImmutableSnapshot(t *testing.T) {
 		rewritten.Partition(KindHistory)[0].Text() != "compacted" ||
 		changed.Partition(KindHistory)[0].Text() != "history" {
 		t.Fatalf("history rewrite changed source snapshot: old=%+v new=%+v", changed, rewritten)
+	}
+}
+
+func TestSnapshotPreservesEmptySchemaArrays(t *testing.T) {
+	snapshot := New(Input{Definitions: []provider.ToolDefinition{{
+		Name: "capabilities", Description: "probe capabilities",
+		InputSchema: map[string]any{
+			"type": "object", "required": []string{},
+		},
+	}}}).Snapshot()
+	required, ok := snapshot.Definitions()[0].InputSchema["required"].([]string)
+	if !ok || required == nil || len(required) != 0 {
+		t.Fatalf("required = %#v, want non-nil empty array", required)
+	}
+	encoded, err := json.Marshal(snapshot.Definitions()[0].InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) != `{"required":[],"type":"object"}` {
+		t.Fatalf("schema = %s", encoded)
 	}
 }
 

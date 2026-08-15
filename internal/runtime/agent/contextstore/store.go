@@ -306,7 +306,7 @@ func cloneValue(value any) any {
 		}
 		return result
 	case []string:
-		return append([]string(nil), item...)
+		return append([]string{}, item...)
 	case json.RawMessage:
 		return append(json.RawMessage(nil), item...)
 	default:
