@@ -59,6 +59,14 @@ func TestUnifiedProcessProtocolLifecycle(t *testing.T) {
 		!strings.Contains(started.Content, "ready") {
 		t.Fatalf("started command = %+v", started)
 	}
+	fact := started.Outcome.Facts.ProcessSession
+	projected := tool.ModelResult("exec_command", started)
+	if fact == nil || fact.SessionID != id || !fact.Running ||
+		projected.Metadata["session_id"] != id ||
+		projected.Metadata["running"] != true ||
+		projected.Outcome != nil {
+		t.Fatalf("started process projection = %+v fact = %+v", projected, fact)
+	}
 
 	continued := executeProcessTool(
 		t,
@@ -96,13 +104,6 @@ func TestUnifiedProcessProtocolLifecycle(t *testing.T) {
 		!strings.Contains(combined, "got:hello") {
 		t.Fatalf("continued command = %+v", continued)
 	}
-	executeProcessTool(
-		t,
-		registry,
-		processTestThread,
-		"write_stdin",
-		map[string]any{"session_id": id, "close": true},
-	)
 	if manager.Count() != 0 {
 		t.Fatalf("session count = %d", manager.Count())
 	}

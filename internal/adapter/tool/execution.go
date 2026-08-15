@@ -144,6 +144,7 @@ type OutcomeFacts struct {
 	Verification     *verify.Evidence       `json:"verification,omitempty"`
 	Completion       *CompletionDeclaration `json:"completion,omitempty"`
 	Failure          *FailureFact           `json:"failure,omitempty"`
+	ProcessSession   *ProcessSessionFact    `json:"process_session,omitempty"`
 	ResultHandle     string                 `json:"result_handle,omitempty"`
 }
 
@@ -168,6 +169,18 @@ type WorkspaceChange struct {
 
 type FailureFact struct {
 	Category string `json:"category,omitempty"`
+}
+
+type ProcessSessionFact struct {
+	SessionID    string `json:"session_id,omitempty"`
+	Cursor       uint64 `json:"cursor"`
+	Running      bool   `json:"running"`
+	ExitCode     int    `json:"exit_code"`
+	TimedOut     bool   `json:"timed_out"`
+	TTY          bool   `json:"tty"`
+	Archived     bool   `json:"archived,omitempty"`
+	PendingBytes int    `json:"pending_bytes,omitempty"`
+	OmittedBytes int    `json:"omitted_bytes,omitempty"`
 }
 
 func OutcomeFromResult(result Result) Outcome {
@@ -274,6 +287,10 @@ func CloneOutcome(source *Outcome) *Outcome {
 		if source.Facts.Failure != nil {
 			failure := *source.Facts.Failure
 			facts.Failure = &failure
+		}
+		if source.Facts.ProcessSession != nil {
+			session := *source.Facts.ProcessSession
+			facts.ProcessSession = &session
 		}
 		cloned.Facts = &facts
 	}

@@ -1198,6 +1198,10 @@ func projectionFailure(result Result, limit int, err error) Result {
 }
 
 func ModelResult(name string, result Result) Result {
+	var processSession *ProcessSessionFact
+	if result.Outcome != nil && result.Outcome.Facts != nil {
+		processSession = result.Outcome.Facts.ProcessSession
+	}
 	if result.Outcome != nil && result.Outcome.Facts != nil &&
 		len(result.Outcome.Facts.Diagnostics) != 0 {
 		result.Metadata = cloneMetadata(result.Metadata)
@@ -1222,6 +1226,26 @@ func ModelResult(name string, result Result) Result {
 			"verification_evidence_rejection", "replayed_from_call_id",
 			"citations", "diagnostics":
 			metadata[key] = value
+		}
+	}
+	if (name == "exec_command" || name == "write_stdin") &&
+		processSession != nil {
+		metadata["cursor"] = processSession.Cursor
+		metadata["running"] = processSession.Running
+		metadata["exit_code"] = processSession.ExitCode
+		metadata["timed_out"] = processSession.TimedOut
+		metadata["tty"] = processSession.TTY
+		if processSession.SessionID != "" {
+			metadata["session_id"] = processSession.SessionID
+		}
+		if processSession.Archived {
+			metadata["archived"] = true
+		}
+		if processSession.PendingBytes != 0 {
+			metadata["pending_bytes"] = processSession.PendingBytes
+		}
+		if processSession.OmittedBytes != 0 {
+			metadata["omitted_bytes"] = processSession.OmittedBytes
 		}
 	}
 	result.Metadata = metadata

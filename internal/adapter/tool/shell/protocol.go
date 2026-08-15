@@ -88,8 +88,9 @@ func registerProcessProtocol(
 			_, yieldErr := processYield(input.YieldTimeMS, defaultExecYield)
 			return yieldErr
 		},
-		Run:    protocol.execCommand,
-		Encode: identityResult,
+		Run:     protocol.execCommand,
+		Encode:  identityResult,
+		Outcome: processOutcome,
 	})
 	if err != nil {
 		return err
@@ -118,8 +119,9 @@ func registerProcessProtocol(
 			)
 			return yieldErr
 		},
-		Run:    protocol.writeStdin,
-		Encode: identityResult,
+		Run:     protocol.writeStdin,
+		Encode:  identityResult,
+		Outcome: processOutcome,
 	})
 	if err != nil {
 		return err
@@ -136,6 +138,48 @@ func registerProcessProtocol(
 
 func identityResult(result tool.Result) (tool.Result, error) {
 	return result, nil
+}
+
+func processOutcome(result tool.Result) tool.Outcome {
+	outcome := tool.OutcomeFromResult(result)
+	if result.Metadata == nil {
+		return outcome
+	}
+	if outcome.Facts == nil {
+		outcome.Facts = &tool.OutcomeFacts{}
+	}
+	outcome.Facts.ProcessSession = &tool.ProcessSessionFact{
+		SessionID:    stringMetadata(result.Metadata, "session_id"),
+		Cursor:       uint64Metadata(result.Metadata, "cursor"),
+		Running:      boolMetadata(result.Metadata, "running"),
+		ExitCode:     intMetadata(result.Metadata, "exit_code"),
+		TimedOut:     boolMetadata(result.Metadata, "timed_out"),
+		TTY:          boolMetadata(result.Metadata, "tty"),
+		Archived:     boolMetadata(result.Metadata, "archived"),
+		PendingBytes: intMetadata(result.Metadata, "pending_bytes"),
+		OmittedBytes: intMetadata(result.Metadata, "omitted_bytes"),
+	}
+	return outcome
+}
+
+func stringMetadata(metadata map[string]any, key string) string {
+	value, _ := metadata[key].(string)
+	return value
+}
+
+func boolMetadata(metadata map[string]any, key string) bool {
+	value, _ := metadata[key].(bool)
+	return value
+}
+
+func intMetadata(metadata map[string]any, key string) int {
+	value, _ := metadata[key].(int)
+	return value
+}
+
+func uint64Metadata(metadata map[string]any, key string) uint64 {
+	value, _ := metadata[key].(uint64)
+	return value
 }
 
 func execCommandDescriptor() tool.Descriptor {
@@ -542,7 +586,19 @@ func (p *commandProtocol) writeStdin(
 	if err != nil {
 		return tool.Result{}, err
 	}
-	return sessionResult(input.SessionID, wait, outputTokens), nil
+	result := sessionResult(input.SessionID, wait, outputTokens)
+	if !wait.Running {
+		teardownStarted := time.Now()
+		closeErr := p.manager.Close(input.SessionID, threadID)
+		tool.ReportTeardown(ctx, tool.TeardownReport{
+			Duration: time.Since(teardownStarted),
+		})
+		if closeErr != nil {
+			return result, closeErr
+		}
+		delete(result.Metadata, "session_id")
+	}
+	return result, nil
 }
 
 func processYield(value int64, fallback time.Duration) (time.Duration, error) {
