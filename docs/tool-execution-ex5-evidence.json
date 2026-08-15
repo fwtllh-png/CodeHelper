@@ -67,6 +67,64 @@
     "duration_ms": 179656,
     "status": "passed"
   },
+  "runtime_acceptance": {
+    "commit": "181a2f4d6df12000d072549ec7b334e16f7641e7",
+    "provider": "deepseek-v4-flash",
+    "model": "deepseek-v4-flash",
+    "turn_id": "turn_97e527bd25a2269288c6ef9782026d7a",
+    "evidence_directory": ".tmp/runtime-monitor/r39-tools-ex5-session-projection",
+    "capture": {
+      "records": 179,
+      "bytes": 164994,
+      "sha256": "86614752a12cfe0047442e2dd1bae8679c118ad8458eabc1aa89929f562a3f9a",
+      "tracked": false
+    },
+    "process_lifecycle": {
+      "sessionized": true,
+      "exec_command_calls": 1,
+      "write_stdin_calls": 2,
+      "initial_cursor": 14,
+      "terminal_cursor": 31,
+      "exit_code": 0,
+      "running_at_terminal": false,
+      "tool_starts": 6,
+      "tool_results": 6,
+      "terminal_events": 1,
+      "process_residues": 0,
+      "session_residues": 0,
+      "pending_outbox": 0,
+      "active_leases": 0,
+      "open_spans": 0
+    },
+    "usage": {
+      "provider_attempts": 7,
+      "model_samples": 7,
+      "completion_repairs": 0,
+      "input_tokens": 56080,
+      "output_tokens": 1395,
+      "reasoning_tokens": 193,
+      "cached_tokens": 39680,
+      "cached_share_basis_points": 7076,
+      "stable_tokens": 820,
+      "tool_definition_tokens_initial": 2607,
+      "tool_definition_tokens_after_materialization": 2827,
+      "compactions": 0
+    },
+    "comparison": {
+      "ex5_input_p50": 55115,
+      "runtime_input_delta": 965,
+      "runtime_input_delta_percent": 1.75,
+      "directly_comparable_to_token_gate": false,
+      "reason": "runtime acceptance includes a full detached process lifecycle, deferred tool materialization, and two write_stdin samples",
+      "standard_token_gate_status": "passed"
+    },
+    "fixed_regressions": [
+      "invalid yield bounds terminated the turn",
+      "typed process session fields were removed by model projection",
+      "admission re-projection removed process session fields before the next provider sample"
+    ],
+    "status": "accepted"
+  },
   "verification": [
     {
       "command": "make tool-execution-ex5",
