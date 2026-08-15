@@ -17,6 +17,7 @@ root unless a script explicitly states otherwise.
 | `test-secret-leak.sh` | no | validates binary redaction behavior |
 | `run-test-lane.py` | command-dependent | writes passed, failed, or unavailable JSON lane evidence |
 | `check-hotspot-baseline.go` | no | validates the Stage 0 hotspot freeze and post-split responsibility owners |
+| `toolexecbaseline` | no | records and validates the EX0 local tool-execution surface, safety contracts, and known risks |
 | `commanddocs` | no | generates or checks bilingual command lists from the Cobra tree |
 | `upgradebaseline` | no | writes Stage 0 benchmark metrics and capability availability |
 | `experiencecontract` | no | validates the shared experience baseline |
@@ -47,6 +48,7 @@ make book-check
 make book-navigation
 make command-docs
 make upgrade-baseline
+make tool-execution-ex0
 make test
 make architecture-freeze
 make host-journey-contract

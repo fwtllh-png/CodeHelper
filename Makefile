@@ -25,6 +25,7 @@ LDFLAGS := -s -w \
 	provider-architecture-p0 provider-architecture-p1 provider-architecture-p2 \
 	provider-architecture-p3 provider-architecture-p4 provider-architecture-p5 \
 	provider-architecture-p6 \
+	tool-execution-ex0 tool-execution-ex0-update \
 	provider-p0-goldens provider-p0-goldens-update \
 	provider-deepseek-live-control provider-deepseek-live-ce7 \
 	architecture-ratchet architecture-size-budget architecture-freeze \
@@ -59,6 +60,8 @@ PROVIDER_ARCHITECTURE_BASE_REF ?= origin/main
 PROVIDER_ARCHITECTURE_P2_BASE_REF ?= c8c0a59
 PROVIDER_ARCHITECTURE_SIZE_REPORT ?= .tmp/architecture/provider-p0-size.json
 PROVIDER_ARCHITECTURE_SIZE_PATHS ?= internal/adapter/model,internal/adapter/provider,internal/runtime/app/wire/modules_provider.go
+TOOL_EXECUTION_BASELINE := docs/tool-execution-ex0-baseline.json
+TOOL_EXECUTION_REPORT ?= .tmp/tool-execution/ex0-report.json
 
 FUZZTIME ?= 30s
 RELEASE_STAGE ?= experimental
@@ -233,6 +236,22 @@ provider-architecture-p6: provider-p0-goldens
 		./internal/runtime/agent/engine
 	cd $(VSCODE_DIR) && $(NPM) run check:protocol
 	$(MAKE) architecture-ratchet
+
+tool-execution-ex0:
+	$(GO) test -count=1 ./scripts/toolexecbaseline
+	$(GO) run ./scripts/toolexecbaseline -root . \
+		-baseline '$(TOOL_EXECUTION_BASELINE)' \
+		-report '$(TOOL_EXECUTION_REPORT)'
+	$(GO) test -count=1 \
+		./internal/adapter/tool/... \
+		./internal/platform/process \
+		./internal/runtime/agent/engine
+	$(MAKE) architecture-ratchet
+
+tool-execution-ex0-update:
+	$(GO) run ./scripts/toolexecbaseline -root . \
+		-baseline '$(TOOL_EXECUTION_BASELINE)' \
+		-write-baseline
 
 provider-deepseek-live-control:
 	CODEHELPER_DEEPSEEK_LIVE_CONTROL=1 \

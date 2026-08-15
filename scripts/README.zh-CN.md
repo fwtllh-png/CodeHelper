@@ -16,6 +16,7 @@ Root 运行。
 | `test-secret-leak.sh` | 无 | 验证 Binary Redaction |
 | `run-test-lane.py` | 取决于被测命令 | 写入 Passed、Failed 或 Unavailable JSON Lane 证据 |
 | `check-hotspot-baseline.go` | 无 | 校验 Stage 0 热点冻结与拆分后的职责归属 |
+| `toolexecbaseline` | 无 | 记录并校验 EX0 本地 Tool 执行 Surface、安全 Contract 与已知风险 |
 | `commanddocs` | 无 | 从 Cobra Command Tree 生成或校验双语命令清单 |
 | `upgradebaseline` | 无 | 写入 Stage 0 Benchmark 指标与能力可用性 |
 | `experiencecontract` | 无 | 校验共享 Experience Baseline |
@@ -46,6 +47,7 @@ make book-check
 make book-navigation
 make command-docs
 make upgrade-baseline
+make tool-execution-ex0
 make test
 make architecture-freeze
 make host-journey-contract

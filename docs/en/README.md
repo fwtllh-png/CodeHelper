@@ -27,8 +27,9 @@ architecture and delivery stages are defined in the
 8. [Approval architecture upgrade](./approval-architecture-upgrade.md)
 9. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
 10. [Provider architecture upgrade](./provider-architecture-upgrade.md)
-11. [Security model](./security.md)
-12. [Local development and scripts](./development.md)
+11. [Tool and local execution architecture upgrade](./tool-execution-architecture-upgrade.md)
+12. [Security model](./security.md)
+13. [Local development and scripts](./development.md)
 
 ### I want to use CodeHelper
 
@@ -57,14 +58,15 @@ architecture and delivery stages are defined in the
 4. [Approval architecture upgrade](./approval-architecture-upgrade.md)
 5. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
 6. [Provider architecture upgrade](./provider-architecture-upgrade.md)
-7. [Security model](./security.md)
-8. [Local development and scripts](./development.md)
-9. [Agent guide](./agent-guide.md)
-10. [TUI and VS Code experience contract](./experience.md)
-11. [VS Code Runtime monitoring](./runtime-monitoring.md)
-12. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-13. [Documentation governance](./documentation-governance.md)
-14. [Roadmap](./roadmap.md)
+7. [Tool and local execution architecture upgrade](./tool-execution-architecture-upgrade.md)
+8. [Security model](./security.md)
+9. [Local development and scripts](./development.md)
+10. [Agent guide](./agent-guide.md)
+11. [TUI and VS Code experience contract](./experience.md)
+12. [VS Code Runtime monitoring](./runtime-monitoring.md)
+13. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+14. [Documentation governance](./documentation-governance.md)
+15. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 
