@@ -109,6 +109,9 @@ func ConfigurePersistentSubagents(
 	attach func(any) error,
 ) error {
 	manager.SetChildRegistrar(func(threadID protocol.ThreadID, spec app.ChildSpec) error {
+		if spec.HostSeeded {
+			return nil
+		}
 		return EnsureThread(
 			context.Background(), store, threadID, sessionID, spec.Workspace,
 		)
@@ -126,11 +129,8 @@ func EnsureThread(
 	threadID protocol.ThreadID,
 	sessionID, workspaceRoot string,
 ) error {
-	if store == nil {
-		return errors.New("persistent state store is required")
-	}
-	if threadID == "" {
-		return errors.New("thread id is required")
+	if store == nil || threadID == "" {
+		return errors.New("persistent state store and thread id are required")
 	}
 	repositories, err := NewPersistentRepositories(store)
 	if err != nil {

@@ -53,11 +53,11 @@ type ChildSpec struct {
 	AllowedTools  []string
 	CanDelegate   bool
 	// Serialized means this child deliberately shares the host workspace and
-	// inherits its whole-turn gate (and journal when writable).
-	Serialized bool
-	MaxSteps   int
-	MaxTokens  uint64
-	MaxCostUSD float64
+	// inherits its gate; HostSeeded leaves durable creation to the Host protocol.
+	Serialized, HostSeeded bool
+	MaxSteps               int
+	MaxTokens              uint64
+	MaxCostUSD             float64
 }
 
 // ChildFactory builds the Engine for a thread registered via RegisterChild.

@@ -217,7 +217,7 @@ func (c *chatWorkspaces) register(value chatWorkspace) error {
 	c.mu.Unlock()
 	if err := c.threads.RegisterChild(value.threadID, app.ChildSpec{
 		AgentID: value.sessionID, Role: "chat", Stance: string(subagent.StanceWrite),
-		Workspace: value.worktree.Path,
+		Workspace: value.worktree.Path, HostSeeded: true,
 	}); err != nil {
 		return err
 	}
