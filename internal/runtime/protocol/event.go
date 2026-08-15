@@ -851,6 +851,13 @@ type ThreadCompactedData struct {
 	FirstWindowID      string             `json:"first_window_id,omitempty"`
 	PreviousWindowID   string             `json:"previous_window_id,omitempty"`
 	WindowID           string             `json:"window_id,omitempty"`
+	TruthGeneration    uint64             `json:"truth_generation,omitempty"`
+	TruthEntities      int                `json:"truth_entities,omitempty"`
+	CriticalFacts      int                `json:"critical_facts,omitempty"`
+	CompatibilityHash  string             `json:"compatibility_hash,omitempty"`
+	ModelDownshifted   bool               `json:"model_downshifted,omitempty"`
+	DownshiftPolicy    string             `json:"downshift_policy,omitempty"`
+	NarrativeIncluded  bool               `json:"narrative_included,omitempty"`
 }
 
 // CompactedMessage is durable model-visible history; Turn is retained for resume.
@@ -887,6 +894,10 @@ func (d *ThreadCompactedData) validate() error {
 	if len(d.ReplacementHistory) > 0 && d.WindowID == "" {
 		return errors.New("compaction window_id is required when replacement_history is set")
 	}
+	if d.TruthGeneration != 0 &&
+		(d.CompatibilityHash == "" || d.DownshiftPolicy == "") {
+		return errors.New("compaction truth metadata is incomplete")
+	}
 	return nil
 }
 
@@ -905,10 +916,19 @@ type TurnCompactionData struct {
 	Sections []string `json:"sections,omitempty"`
 	// SummaryTruncated reports that the summary budget cut sections, so a host can
 	// distinguish a complete account of the removed history from a partial one.
-	SummaryTruncated  bool     `json:"summary_truncated,omitempty"`
-	RemovedTurns      []uint64 `json:"removed_turns,omitempty"`
-	PrunedToolResults int      `json:"pruned_tool_results,omitempty"`
-	PrunedBytes       int      `json:"pruned_bytes,omitempty"`
+	SummaryTruncated     bool     `json:"summary_truncated,omitempty"`
+	RemovedTurns         []uint64 `json:"removed_turns,omitempty"`
+	PrunedToolResults    int      `json:"pruned_tool_results,omitempty"`
+	PrunedBytes          int      `json:"pruned_bytes,omitempty"`
+	TruthGeneration      uint64   `json:"truth_generation,omitempty"`
+	TruthEntities        int      `json:"truth_entities,omitempty"`
+	CriticalFacts        int      `json:"critical_facts,omitempty"`
+	CompatibilityHash    string   `json:"compatibility_hash,omitempty"`
+	CompatibilityMatched bool     `json:"compatibility_matched,omitempty"`
+	ModelDownshifted     bool     `json:"model_downshifted,omitempty"`
+	DownshiftPolicy      string   `json:"downshift_policy,omitempty"`
+	NarrativeIncluded    bool     `json:"narrative_included,omitempty"`
+	CapsuleBytes         int      `json:"capsule_bytes,omitempty"`
 }
 
 func (*TurnCompactionData) eventKind() EventKind { return EventTurnCompaction }
@@ -919,6 +939,10 @@ func (d *TurnCompactionData) validate() error {
 	}
 	if d.Summary == "" {
 		return errors.New("compaction summary is required")
+	}
+	if d.TruthGeneration != 0 &&
+		(d.CompatibilityHash == "" || d.DownshiftPolicy == "") {
+		return errors.New("turn compaction truth metadata is incomplete")
 	}
 	return nil
 }

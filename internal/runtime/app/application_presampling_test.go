@@ -9,6 +9,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -19,7 +20,7 @@ func TestRuntimeEmitsTurnCompactionOnPreSamplingGate(t *testing.T) {
 		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
 		MaxOutputTokens: 128, CompactWindow: agentengine.CompactWindowPolicy{
 			AutoTokens: 300,
-		}, SummaryMaxBytes: 100,
+		}, SummaryMaxBytes: 2 << 10,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +55,10 @@ func TestRuntimeEmitsTurnCompactionOnPreSamplingGate(t *testing.T) {
 		case event := <-events:
 			if event.Kind == protocol.EventTurnCompaction {
 				data, ok := event.Data.(*protocol.TurnCompactionData)
-				if !ok || data.Phase != agentengine.CompactionPhasePreSampling || data.Summary == "" {
+				if !ok || data.Phase != agentengine.CompactionPhasePreSampling ||
+					data.Summary == "" || data.TruthGeneration != 1 ||
+					data.CompatibilityHash == "" ||
+					data.DownshiftPolicy != compact.DownshiftRuntimeTruthOnly {
 					t.Fatalf("turn.compaction = %#v", event.Data)
 				}
 				sawCompaction = true

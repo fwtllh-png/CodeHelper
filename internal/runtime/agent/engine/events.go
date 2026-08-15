@@ -164,6 +164,15 @@ type CompactionReceipt struct {
 	TruncationReason     string `json:"truncation_reason,omitempty"`
 	PrunedToolResults    int    `json:"pruned_tool_results,omitempty"`
 	PrunedBytes          int    `json:"pruned_bytes,omitempty"`
+	TruthGeneration      uint64 `json:"truth_generation,omitempty"`
+	TruthEntities        int    `json:"truth_entities,omitempty"`
+	CriticalFacts        int    `json:"critical_facts,omitempty"`
+	CompatibilityHash    string `json:"compatibility_hash,omitempty"`
+	CompatibilityMatched bool   `json:"compatibility_matched,omitempty"`
+	ModelDownshifted     bool   `json:"model_downshifted,omitempty"`
+	DownshiftPolicy      string `json:"downshift_policy,omitempty"`
+	NarrativeIncluded    bool   `json:"narrative_included,omitempty"`
+	CapsuleBytes         int    `json:"capsule_bytes,omitempty"`
 	// Sections names the parts of the summary that survived the budget, so a host
 	// can tell a compaction that carried the goal from one that only had room for
 	// a transcript.

@@ -239,13 +239,13 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 24,
-        "production_lines": 10127,
+        "production_lines": 10357,
         "options_fields": 59,
         "mutex_fields": 9
       },
       "relaxations": {
         "internal_fanout": "CE4 projects shared Admission Receipts into durable Tool Result history.",
-        "production_lines": "CE4 adds legacy-result admission, final item bounds, and normalization evidence."
+        "production_lines": "CE5 builds Runtime-owned compaction Truth Capsules and commits compaction candidates atomically."
       }
     },
     {
@@ -254,12 +254,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 17,
-        "production_lines": 7666,
+        "production_lines": 7696,
         "options_fields": 18,
         "mutex_fields": 5
       },
       "relaxations": {
-        "production_lines": "CE3 projects Window accounting into receipts and makes compact, fork, and restart consume the Engine-owned Window identity."
+        "production_lines": "CE5 projects structured compaction truth metadata into durable thread and turn events."
       }
     },
     {
@@ -279,9 +279,12 @@
       "path": "internal/runtime/agent/compact",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 653,
+        "production_lines": 966,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "CE5 adds stable truth entities, compatibility hashing, multi-generation merge, and optional narrative rendering."
       }
     },
     {
@@ -349,12 +352,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 4801,
+        "production_lines": 4825,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "CE4 exposes Pairing, Modality, Admission, and maximum-item evidence."
+        "production_lines": "CE5 exposes structured compaction truth and model-downshift evidence."
       }
     },
     {
@@ -577,6 +580,24 @@
       "limits": {
         "lines": 58,
         "max_function_lines": 43
+      }
+    },
+    {
+      "id": "compact_truth_file",
+      "kind": "file",
+      "path": "internal/runtime/agent/compact/truth.go",
+      "limits": {
+        "lines": 345,
+        "max_function_lines": 75
+      }
+    },
+    {
+      "id": "engine_compaction_truth_file",
+      "kind": "file",
+      "path": "internal/runtime/agent/engine/compaction_truth.go",
+      "limits": {
+        "lines": 143,
+        "max_function_lines": 105
       }
     },
     {

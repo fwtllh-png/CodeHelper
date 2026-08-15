@@ -954,7 +954,12 @@ export type SearchResultData = {
 };
 
 export type ThreadCompactedData = {
+  readonly "compatibility_hash"?: string;
+  readonly "critical_facts"?: number;
+  readonly "downshift_policy"?: string;
   readonly "first_window_id"?: string;
+  readonly "model_downshifted"?: boolean;
+  readonly "narrative_included"?: boolean;
   readonly "previous_window_id"?: string;
   readonly "replacement_history"?: ReadonlyArray<{
       readonly "content": unknown;
@@ -962,6 +967,8 @@ export type ThreadCompactedData = {
       readonly "turn"?: number;
     }>;
   readonly "summary": string;
+  readonly "truth_entities"?: number;
+  readonly "truth_generation"?: number;
   readonly "window_id"?: string;
   readonly "window_number"?: number;
 };
@@ -1057,6 +1064,13 @@ export type TurnCanceledData = {
 };
 
 export type TurnCompactionData = {
+  readonly "capsule_bytes"?: number;
+  readonly "compatibility_hash"?: string;
+  readonly "compatibility_matched"?: boolean;
+  readonly "critical_facts"?: number;
+  readonly "downshift_policy"?: string;
+  readonly "model_downshifted"?: boolean;
+  readonly "narrative_included"?: boolean;
   readonly "original_bytes"?: number;
   readonly "phase": string;
   readonly "pruned_bytes"?: number;
@@ -1067,6 +1081,8 @@ export type TurnCompactionData = {
   readonly "sections"?: ReadonlyArray<string>;
   readonly "summary": string;
   readonly "summary_truncated"?: boolean;
+  readonly "truth_entities"?: number;
+  readonly "truth_generation"?: number;
 };
 
 export type TurnCompletedData = {

@@ -507,16 +507,25 @@ func (a *EngineAdapter) StartTurn(
 				return nil
 			}
 			return sink.Emit(&protocol.TurnCompactionData{
-				Phase:             nonEmpty(event.Compaction.Phase, agentengine.CompactionPhasePreSampling),
-				Summary:           formatCompactionSummary(event.Compaction),
-				RemovedMessages:   event.Compaction.RemovedMessages,
-				OriginalBytes:     event.Compaction.OriginalBytes,
-				RetainedBytes:     event.Compaction.RetainedBytes,
-				Sections:          append([]string(nil), event.Compaction.Sections...),
-				SummaryTruncated:  event.Compaction.SummaryTruncated,
-				RemovedTurns:      append([]uint64(nil), event.Compaction.RemovedTurns...),
-				PrunedToolResults: event.Compaction.PrunedToolResults,
-				PrunedBytes:       event.Compaction.PrunedBytes,
+				Phase:                nonEmpty(event.Compaction.Phase, agentengine.CompactionPhasePreSampling),
+				Summary:              formatCompactionSummary(event.Compaction),
+				RemovedMessages:      event.Compaction.RemovedMessages,
+				OriginalBytes:        event.Compaction.OriginalBytes,
+				RetainedBytes:        event.Compaction.RetainedBytes,
+				Sections:             append([]string(nil), event.Compaction.Sections...),
+				SummaryTruncated:     event.Compaction.SummaryTruncated,
+				RemovedTurns:         append([]uint64(nil), event.Compaction.RemovedTurns...),
+				PrunedToolResults:    event.Compaction.PrunedToolResults,
+				PrunedBytes:          event.Compaction.PrunedBytes,
+				TruthGeneration:      event.Compaction.TruthGeneration,
+				TruthEntities:        event.Compaction.TruthEntities,
+				CriticalFacts:        event.Compaction.CriticalFacts,
+				CompatibilityHash:    event.Compaction.CompatibilityHash,
+				CompatibilityMatched: event.Compaction.CompatibilityMatched,
+				ModelDownshifted:     event.Compaction.ModelDownshifted,
+				DownshiftPolicy:      event.Compaction.DownshiftPolicy,
+				NarrativeIncluded:    event.Compaction.NarrativeIncluded,
+				CapsuleBytes:         event.Compaction.CapsuleBytes,
 			})
 		}
 		return sink.Emit(&protocol.ToolStateData{State: string(event.State), Text: event.Text})
@@ -724,15 +733,34 @@ func (a *EngineAdapter) CompactThread(
 	if windowID == beforeID {
 		windowID, windowNumber = a.engine.AdvanceTokenWindow()
 	}
-	return sink.Emit(&protocol.ThreadCompactedData{
+	data := &protocol.ThreadCompactedData{
 		Summary:            summary,
 		ReplacementHistory: encoded,
 		WindowNumber:       windowNumber,
 		FirstWindowID:      beforeID,
 		PreviousWindowID:   beforeID,
 		WindowID:           windowID,
-	})
+	}
+	applyThreadCompactionTruth(data, receipt)
+	return sink.Emit(data)
 }
+
+func applyThreadCompactionTruth(
+	data *protocol.ThreadCompactedData,
+	receipt *agentengine.CompactionReceipt,
+) {
+	if data == nil || receipt == nil {
+		return
+	}
+	data.TruthGeneration = receipt.TruthGeneration
+	data.TruthEntities = receipt.TruthEntities
+	data.CriticalFacts = receipt.CriticalFacts
+	data.CompatibilityHash = receipt.CompatibilityHash
+	data.ModelDownshifted = receipt.ModelDownshifted
+	data.DownshiftPolicy = receipt.DownshiftPolicy
+	data.NarrativeIncluded = receipt.NarrativeIncluded
+}
+
 func formatCompactionSummary(receipt *agentengine.CompactionReceipt) string {
 	if receipt.RemovedMessages == 0 && receipt.PrunedToolResults != 0 {
 		return fmt.Sprintf(

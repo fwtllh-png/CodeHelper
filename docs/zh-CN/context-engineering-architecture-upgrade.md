@@ -23,7 +23,9 @@
   [`context-engineering-ce3-evidence.json`](../context-engineering-ce3-evidence.json)；
 - CE4：`accepted`，证据见
   [`context-engineering-ce4-evidence.json`](../context-engineering-ce4-evidence.json)；
-- CE5-CE7：尚未开始。
+- CE5：`accepted`，证据见
+  [`context-engineering-ce5-evidence.json`](../context-engineering-ce5-evidence.json)；
+- CE6-CE7：尚未开始。
 
 ## 1. 执行摘要
 

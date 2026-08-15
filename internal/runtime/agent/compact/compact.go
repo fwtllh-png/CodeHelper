@@ -28,13 +28,15 @@ import (
 // compaction event, so a host can tell a summary that carried the goal from one
 // that only had room for a transcript.
 const (
-	SectionGoals    = "goals"
-	SectionTodos    = "todos"
-	SectionFailures = "failures"
-	SectionChanges  = "changes"
-	SectionCritical = "critical_paths"
-	SectionFacts    = "facts"
-	SectionDigest   = "digest"
+	SectionTruth     = "truth_capsule"
+	SectionGoals     = "goals"
+	SectionTodos     = "todos"
+	SectionFailures  = "failures"
+	SectionChanges   = "changes"
+	SectionCritical  = "critical_paths"
+	SectionFacts     = "facts"
+	SectionDigest    = "digest"
+	SectionNarrative = "narrative"
 )
 
 // MarkerStart and MarkerEnd wrap a rendered summary inside the message that
@@ -108,15 +110,13 @@ type Summary struct {
 	OmittedFacts int
 	// Digest is the per-message running record of what was removed, newest first.
 	Digest []string
-	// Carried is the body of the previous summary, passed through verbatim.
-	Carried string
 }
 
 // Empty reports whether the summary has nothing to say.
 func (s Summary) Empty() bool {
 	return strings.TrimSpace(s.Goal) == "" && len(s.Todos) == 0 && len(s.Failures) == 0 &&
 		len(s.Changes) == 0 && len(s.CriticalPaths) == 0 && len(s.Facts) == 0 &&
-		len(s.Digest) == 0 && strings.TrimSpace(s.Carried) == ""
+		len(s.Digest) == 0
 }
 
 // Render writes the summary, dropping whole sections from the end until it fits
@@ -232,7 +232,7 @@ func (s Summary) blocks() []*block {
 			blocks = append(blocks, candidate)
 		}
 	}
-	if len(s.Digest) > 0 || strings.TrimSpace(s.Carried) != "" {
+	if len(s.Digest) > 0 {
 		blocks = append(blocks, &block{name: SectionDigest, body: s.renderDigest})
 	}
 	return blocks
@@ -345,8 +345,7 @@ func (s Summary) renderFacts() string {
 	return b.String()
 }
 
-// renderDigest writes the removed messages newest first, then the previous
-// summary underneath it.
+// renderDigest writes removed ordinary messages newest first.
 //
 // Newest first is the whole point: the turns nearest the cut are the ones the
 // next sample continues from, so when the budget runs out it is the distant past
@@ -370,18 +369,6 @@ func (s Summary) renderDigest(room int) (string, bool) {
 			b.WriteString(entry)
 		}
 	}
-	carried := strings.TrimSpace(stripMarkers(s.Carried))
-	if carried == "" {
-		return b.String(), partial
-	}
-	// The carried block is indented rather than reformatted: it was rendered
-	// under a budget of its own, and re-wrapping it would only invite the next
-	// compaction to re-wrap it again.
-	block := "Earlier summary:\n" + indent(carried) + "\n"
-	if room != unbounded && b.Len()+len(block) > room {
-		return b.String(), true
-	}
-	b.WriteString(block)
 	return b.String(), partial
 }
 
@@ -403,25 +390,6 @@ func Carry(text string) (string, bool) {
 		return "", false
 	}
 	return body, true
-}
-
-// stripMarkers removes summary markers from a carried body. A body carried twice
-// would otherwise nest markers, and Carry would then match the outer pair while
-// the model read two openings.
-func stripMarkers(text string) string {
-	text = strings.ReplaceAll(text, MarkerStart, "")
-	return strings.ReplaceAll(text, MarkerEnd, "")
-}
-
-func indent(text string) string {
-	lines := strings.Split(text, "\n")
-	for index, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		lines[index] = "  " + line
-	}
-	return strings.Join(lines, "\n")
 }
 
 // collapse folds whitespace so one wrapped message cannot occupy ten lines of a

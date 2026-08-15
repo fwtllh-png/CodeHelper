@@ -10,6 +10,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -196,8 +197,9 @@ func (e *Engine) compactHistoryWithPolicy(
 	}
 	size := historyBytes(*history)
 	originalMessages := len(*history)
+	workingHistory := cloneMessages(*history)
 	pruned, prunedWindow, err := e.pruneToolResultSurfaces(
-		history,
+		&workingHistory,
 		input,
 		outputReserve,
 		force,
@@ -209,7 +211,7 @@ func (e *Engine) compactHistoryWithPolicy(
 		return &CompactionReceipt{
 			OriginalMessages:      originalMessages,
 			OriginalBytes:         size,
-			RetainedBytes:         historyBytes(*history),
+			RetainedBytes:         historyBytes(workingHistory),
 			OriginalTokens:        originalWindow.active,
 			RetainedTokens:        prunedWindow.active,
 			TruncationReason:      "tool_result_surface_pruning",
@@ -223,6 +225,7 @@ func (e *Engine) compactHistoryWithPolicy(
 			prunedWindow.total <= prunedWindow.hardLimit ||
 			force && originalWindow.total <= originalWindow.hardLimit)
 	if pruningEnough {
+		*history = workingHistory
 		return finish(pruningReceipt())
 	}
 	workingWindow := originalWindow
@@ -230,7 +233,7 @@ func (e *Engine) compactHistoryWithPolicy(
 		workingWindow = prunedWindow
 	}
 	target := originalWindow.compactLimit
-	cuts := compactionCuts(*history, allowCurrentTurn)
+	cuts := compactionCuts(workingHistory, allowCurrentTurn)
 	if len(cuts) == 0 {
 		if pruned.results != 0 {
 			return finish(pruningReceipt())
@@ -239,9 +242,33 @@ func (e *Engine) compactHistoryWithPolicy(
 	}
 	var selected *compactionCandidate
 	for _, cut := range cuts {
-		candidate := e.buildCompactionCandidate(*history, cut)
+		candidate, buildErr := e.buildCompactionCandidate(
+			workingHistory,
+			cut,
+			true,
+		)
+		if buildErr != nil {
+			continue
+		}
 		input = input.WithHistory(candidate.history)
 		window, estimateErr := e.measureTokenWindow(input, outputReserve)
+		if estimateErr == nil && window.active > target {
+			minimal, minimalErr := e.buildCompactionCandidate(
+				workingHistory,
+				cut,
+				false,
+			)
+			if minimalErr == nil {
+				minimalInput := input.WithHistory(minimal.history)
+				minimalWindow, measureErr := e.measureTokenWindow(
+					minimalInput,
+					outputReserve,
+				)
+				if measureErr == nil && minimalWindow.active < window.active {
+					candidate, window = minimal, minimalWindow
+				}
+			}
+		}
 		if estimateErr != nil ||
 			window.active >= workingWindow.active &&
 				window.total >= workingWindow.total {
@@ -258,6 +285,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	}
 	if selected == nil {
 		if pruned.results != 0 {
+			*history = workingHistory
 			return finish(pruningReceipt())
 		}
 		return nil
@@ -275,6 +303,15 @@ func (e *Engine) compactHistoryWithPolicy(
 		RemovedTurns:         uniqueMessageTurns(selected.removed),
 		PrunedToolResults:    pruned.results,
 		PrunedBytes:          pruned.bytes,
+		TruthGeneration:      selected.truth.Generation,
+		TruthEntities:        selected.truth.EntityCount,
+		CriticalFacts:        selected.truth.CriticalEntityCount,
+		CompatibilityHash:    selected.compatibilityHash,
+		CompatibilityMatched: selected.truth.CompatibilityMatched,
+		ModelDownshifted:     selected.truth.ModelDownshifted,
+		DownshiftPolicy:      compact.DownshiftRuntimeTruthOnly,
+		NarrativeIncluded:    selected.narrativeIncluded,
+		CapsuleBytes:         selected.capsuleBytes,
 
 		PromptContextReceipts: e.contextReceipts(),
 		WorkingSet:            workingSet, CriticalPaths: criticalPaths,
@@ -286,21 +323,26 @@ func (e *Engine) compactHistoryWithPolicy(
 }
 
 type compactionCandidate struct {
-	cut              int
-	history          []provider.Message
-	removed          []provider.Message
-	toSummarize      []provider.Message
-	rendered         string
-	retainedBytes    int
-	retainedTokens   uint64
-	summaryTruncated bool
-	sections         []string
+	cut               int
+	history           []provider.Message
+	removed           []provider.Message
+	toSummarize       []provider.Message
+	rendered          string
+	retainedBytes     int
+	retainedTokens    uint64
+	summaryTruncated  bool
+	sections          []string
+	truth             compact.MergeReceipt
+	compatibilityHash string
+	narrativeIncluded bool
+	capsuleBytes      int
 }
 
 func (e *Engine) buildCompactionCandidate(
 	history []provider.Message,
 	cut int,
-) compactionCandidate {
+	includeNarrative bool,
+) (compactionCandidate, error) {
 	removed := cloneMessages(history[:cut])
 	toSummarize := contextstore.StripWorldState(
 		promptcontext.StripContextualFragments(cloneMessages(removed)),
@@ -316,17 +358,63 @@ func (e *Engine) buildCompactionCandidate(
 		}
 		summary.Goal = goal
 	}
-	rendered, truncated, sections := summary.Render(e.summaryBudget())
-	compacted := provider.TextMessage(provider.RoleSystem, rendered)
+	previous, err := previousTruthCapsules(toSummarize)
+	if err != nil {
+		return compactionCandidate{}, err
+	}
+	current := e.buildTruthCapsule(summary)
+	capsule, mergeReceipt, err := compact.MergeTruthCapsules(
+		current,
+		previous...,
+	)
+	if err != nil {
+		return compactionCandidate{}, err
+	}
+	narrative := compact.Narrative{Lines: append([]string(nil), summary.Digest...)}
+	if mergeReceipt.ModelDownshifted {
+		narrative = compact.Narrative{}
+	}
+	renderSummary := summary
+	if !includeNarrative {
+		narrative = compact.Narrative{}
+		renderSummary = compact.Summary{Window: summary.Window}
+	}
+	rendered, err := compact.RenderStructured(
+		renderSummary,
+		capsule,
+		narrative,
+		e.summaryBudget(),
+	)
+	if err != nil {
+		return compactionCandidate{}, err
+	}
+	compacted := provider.TextMessage(provider.RoleSystem, rendered.Text)
 	tail := contextstore.StripWorldState(
 		promptcontext.StripContextualFragments(cloneMessages(history[cut:])),
 	)
 	candidate := append([]provider.Message{compacted}, tail...)
+	if historyBytes(candidate) >= historyBytes(history) &&
+		(rendered.NarrativeIncluded || len(rendered.Sections) > 1) {
+		rendered, err = compact.RenderStructured(
+			compact.Summary{Window: summary.Window},
+			capsule,
+			compact.Narrative{},
+			e.summaryBudget(),
+		)
+		if err != nil {
+			return compactionCandidate{}, err
+		}
+		compacted = provider.TextMessage(provider.RoleSystem, rendered.Text)
+		candidate = append([]provider.Message{compacted}, tail...)
+	}
 	return compactionCandidate{
 		cut: cut, history: candidate, removed: removed, toSummarize: toSummarize,
-		rendered: rendered, retainedBytes: historyBytes(candidate),
-		summaryTruncated: truncated, sections: sections,
-	}
+		rendered: rendered.Text, retainedBytes: historyBytes(candidate),
+		summaryTruncated: rendered.Truncated, sections: rendered.Sections,
+		truth: mergeReceipt, compatibilityHash: capsule.CompatibilityHash,
+		narrativeIncluded: rendered.NarrativeIncluded,
+		capsuleBytes:      rendered.CapsuleBytes,
+	}, nil
 }
 
 func activeTurnGoal(history []provider.Message) string {

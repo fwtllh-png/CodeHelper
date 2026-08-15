@@ -3244,8 +3244,23 @@
     "thread.compacted": {
       "type": "object",
       "properties": {
+        "compatibility_hash": {
+          "type": "string"
+        },
+        "critical_facts": {
+          "type": "integer"
+        },
+        "downshift_policy": {
+          "type": "string"
+        },
         "first_window_id": {
           "type": "string"
+        },
+        "model_downshifted": {
+          "type": "boolean"
+        },
+        "narrative_included": {
+          "type": "boolean"
         },
         "previous_window_id": {
           "type": "string"
@@ -3274,6 +3289,12 @@
         },
         "summary": {
           "type": "string"
+        },
+        "truth_entities": {
+          "type": "integer"
+        },
+        "truth_generation": {
+          "type": "integer"
         },
         "window_id": {
           "type": "string"
@@ -3632,6 +3653,27 @@
     "turn.compaction": {
       "type": "object",
       "properties": {
+        "capsule_bytes": {
+          "type": "integer"
+        },
+        "compatibility_hash": {
+          "type": "string"
+        },
+        "compatibility_matched": {
+          "type": "boolean"
+        },
+        "critical_facts": {
+          "type": "integer"
+        },
+        "downshift_policy": {
+          "type": "string"
+        },
+        "model_downshifted": {
+          "type": "boolean"
+        },
+        "narrative_included": {
+          "type": "boolean"
+        },
         "original_bytes": {
           "type": "integer"
         },
@@ -3667,6 +3709,12 @@
         },
         "summary_truncated": {
           "type": "boolean"
+        },
+        "truth_entities": {
+          "type": "integer"
+        },
+        "truth_generation": {
+          "type": "integer"
         }
       },
       "required": [

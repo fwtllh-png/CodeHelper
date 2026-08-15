@@ -35,6 +35,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -1914,8 +1915,9 @@ func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 		len(receipt.WorkingSet) != 1 {
 		t.Fatalf("compaction receipt = %+v", receipt)
 	}
-	if !slices.Contains(receipt.Sections, compact.SectionCritical) ||
-		!slices.Contains(receipt.Sections, compact.SectionDigest) {
+	if !slices.Contains(receipt.Sections, compact.SectionTruth) ||
+		!slices.Contains(receipt.Sections, compact.SectionCritical) ||
+		!slices.Contains(receipt.Sections, compact.SectionNarrative) {
 		t.Fatalf("compaction sections = %v", receipt.Sections)
 	}
 	assertToolPairs(t, engine.history)
@@ -1925,10 +1927,10 @@ func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 // sample continues from.
 func TestEngineCompactionDropsTheOldestDigestLinesFirst(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.CompactWindow.AutoTokens = 228
-	engine.options.SummaryMaxBytes = 320
+	engine.options.CompactWindow.AutoTokens = 400
+	engine.options.SummaryMaxBytes = 1024
 	engine.history = []provider.Message{
-		messageWithText(provider.RoleUser, "first ancient request "+strings.Repeat("filler ", 60), 1),
+		messageWithText(provider.RoleUser, "first ancient request "+strings.Repeat("filler ", 200), 1),
 		messageWithText(provider.RoleAssistant, "an answer in the middle", 1),
 		messageWithText(provider.RoleUser, "one more question", 1),
 		messageWithText(provider.RoleAssistant, "last thing before the cut", 1),
@@ -1951,16 +1953,20 @@ func TestEngineCompactionDropsTheOldestDigestLinesFirst(t *testing.T) {
 // A second compaction has to pass the first summary through whole. Flattening it
 // like an ordinary message would cut everything the first compaction preserved
 // down to one line, which is how a long session loses its early history.
-func TestEngineSecondCompactionCarriesTheFirstSummaryVerbatim(t *testing.T) {
+func TestEngineCompactionMergesTruthCapsulesAcrossGenerations(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.CompactWindow.AutoTokens = 378
-	engine.options.SummaryMaxBytes = 800
+	engine.options.CompactWindow.AutoTokens = 650
+	engine.options.SummaryMaxBytes = 4 << 10
 	engine.ApplyPlan(interact.Plan{
 		Objective: "teach the parser about trailing commas",
 		Steps:     []interact.PlanStep{{Title: "update the lexer", Status: interact.StepInProgress}},
 	})
+	engine.evidenceSet().Observe(evidence.Fact{
+		Kind: evidence.KindDefinition, Path: "parser/lex.go",
+		Line: 41, Symbol: "Lex", Tool: "search_definition", Turn: 1,
+	})
 	engine.history = []provider.Message{
-		messageWithText(provider.RoleUser, strings.Repeat("early ", 300), 1),
+		messageWithText(provider.RoleUser, strings.Repeat("early ", 500), 1),
 		messageWithText(provider.RoleAssistant, "the first answer", 1),
 		messageWithText(provider.RoleUser, "second request", 2),
 	}
@@ -1971,16 +1977,20 @@ func TestEngineSecondCompactionCarriesTheFirstSummaryVerbatim(t *testing.T) {
 	if _, ok := compact.Carry(first); !ok {
 		t.Fatalf("first summary is not marked as one:\n%s", first)
 	}
+	firstCapsule, found, err := compact.ParseTruthCapsule(first)
+	if err != nil || !found || firstCapsule.Generation != 1 {
+		t.Fatalf("first capsule=%+v found=%t err=%v", firstCapsule, found, err)
+	}
 
-	// The plan changes before the second compaction, so a summary that regenerates
-	// its sections reports the new objective while the old one survives inside the
-	// carried block.
+	// Drop the live evidence to prove the second generation keeps the prior
+	// authoritative fact by stable entity ID rather than relying on the ledger.
+	engine.evidence = evidence.New()
 	engine.ApplyPlan(interact.Plan{
 		Objective: "also accept trailing commas in calls",
 		Steps:     []interact.PlanStep{{Title: "update the parser", Status: interact.StepPending}},
 	})
 	engine.history = append(engine.history,
-		messageWithText(provider.RoleAssistant, strings.Repeat("later ", 250), 2),
+		messageWithText(provider.RoleAssistant, strings.Repeat("later ", 400), 2),
 		messageWithText(provider.RoleUser, "third request", 3),
 	)
 	if receipt := engine.compact(); receipt == nil {
@@ -1990,12 +2000,21 @@ func TestEngineSecondCompactionCarriesTheFirstSummaryVerbatim(t *testing.T) {
 	if !strings.Contains(second, "Goal: also accept trailing commas in calls") {
 		t.Fatalf("second summary lost the current goal:\n%s", second)
 	}
-	if !strings.Contains(second, "Earlier summary:") ||
-		!strings.Contains(second, "teach the parser about trailing commas") {
-		t.Fatalf("second summary did not carry the first one:\n%s", second)
+	secondCapsule, found, err := compact.ParseTruthCapsule(second)
+	if err != nil || !found || secondCapsule.Generation != 2 {
+		t.Fatalf("second capsule=%+v found=%t err=%v", secondCapsule, found, err)
 	}
-	if !strings.Contains(second, "the first answer") {
-		t.Fatalf("second summary lost the first summary's digest:\n%s", second)
+	var retainedFact bool
+	for _, entity := range secondCapsule.Entities {
+		retainedFact = retainedFact ||
+			entity.Kind == compact.EntityFact &&
+				strings.Contains(entity.Value, "parser/lex.go:41")
+	}
+	if !retainedFact {
+		t.Fatalf("second capsule lost first-generation fact: %+v", secondCapsule)
+	}
+	if strings.Contains(second, "Earlier summary:") {
+		t.Fatalf("second summary carried prior narrative verbatim:\n%s", second)
 	}
 	if strings.Count(second, compact.MarkerStart) != 1 {
 		t.Fatalf("carried summary nested its markers:\n%s", second)
@@ -2005,7 +2024,7 @@ func TestEngineSecondCompactionCarriesTheFirstSummaryVerbatim(t *testing.T) {
 func TestEngineCompactStripsFragmentsAndPromptContextReinjects(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.options.CompactWindow.AutoTokens = 228
-	engine.options.SummaryMaxBytes = 100
+	engine.options.SummaryMaxBytes = 2 << 10
 	skills := promptcontext.WrapFragment(promptcontext.FragmentSkills, "skill catalog body")
 	constitution := promptcontext.WrapFragment(promptcontext.FragmentConstitution, "constitution body")
 	engine.options.PromptContext = []provider.Message{
@@ -2068,6 +2087,30 @@ func TestEngineCompactForcedRejectsAReplacementThatWouldGrowHistory(t *testing.T
 	}
 }
 
+func TestStructuredCompactionFailureLeavesOriginalHistoryIntact(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.SummaryMaxBytes = 2 << 10
+	engine.history = []provider.Message{
+		provider.TextMessage(
+			provider.RoleSystem,
+			compact.MarkerStart+"\n"+
+				compact.TruthMarkerStart+"\n{invalid}\n"+
+				compact.TruthMarkerEnd+"\n"+
+				compact.MarkerEnd,
+		),
+		messageWithText(provider.RoleUser, strings.Repeat("old ", 400), 1),
+		messageWithText(provider.RoleAssistant, strings.Repeat("answer ", 400), 1),
+		messageWithText(provider.RoleUser, "current", 2),
+	}
+	before := engine.History()
+	if receipt := engine.CompactForced(); receipt != nil {
+		t.Fatalf("malformed truth produced receipt: %+v", receipt)
+	}
+	if !reflect.DeepEqual(engine.History(), before) {
+		t.Fatalf("failed structured compaction changed history: %+v", engine.History())
+	}
+}
+
 func TestEngineCompactionRetainsToolPairingAtomically(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.options.CompactWindow.AutoTokens = 500
@@ -2105,14 +2148,14 @@ func TestEngineCompactionRetainsToolPairingAtomically(t *testing.T) {
 
 func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.CompactWindow.AutoTokens = 278
-	engine.options.SummaryMaxBytes = 400
+	engine.options.CompactWindow.AutoTokens = 500
+	engine.options.SummaryMaxBytes = 2 << 10
 	history := []provider.Message{
 		messageWithText(provider.RoleUser, "fix the parser "+strings.Repeat("context ", 80), 1),
 		toolCallMessage(1, "call_1", "read", `{}`),
-		toolResultMessage(1, "call_1", strings.Repeat("first ", 100)),
+		toolResultMessage(1, "call_1", strings.Repeat("first ", 200)),
 		toolCallMessage(1, "call_2", "read", `{}`),
-		toolResultMessage(1, "call_2", strings.Repeat("second ", 100)),
+		toolResultMessage(1, "call_2", strings.Repeat("second ", 200)),
 		toolCallMessage(1, "call_3", "read", `{}`),
 		toolResultMessage(1, "call_3", "latest"),
 	}
@@ -2131,8 +2174,15 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 		receipt.OriginalBytes != original {
 		t.Fatalf("mid-turn receipt = %+v", receipt)
 	}
-	if !strings.Contains(history[0].Text(), "Goal: fix the parser") {
-		t.Fatalf("summary lost active goal: %q", history[0].Text())
+	capsule, found, parseErr := compact.ParseTruthCapsule(history[0].Text())
+	if parseErr != nil || !found ||
+		!truthEntityContains(capsule, compact.EntityGoal, "fix the parser") {
+		t.Fatalf(
+			"summary lost active goal: capsule=%+v found=%t err=%v",
+			capsule,
+			found,
+			parseErr,
+		)
 	}
 	assertToolPairs(t, history)
 	if len(history) != 3 ||
@@ -2274,13 +2324,13 @@ func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
 		&errorStream{err: errors.New("provider failed")},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.CompactWindow.AutoTokens = 253
-	engine.options.SummaryMaxBytes = 160
+	engine.options.CompactWindow.AutoTokens = 700
+	engine.options.SummaryMaxBytes = 2 << 10
 	engine.history = []provider.Message{
-		messageWithText(provider.RoleUser, strings.Repeat("old request ", 10), 1),
-		messageWithText(provider.RoleAssistant, strings.Repeat("old answer ", 10), 1),
-		messageWithText(provider.RoleUser, strings.Repeat("recent request ", 10), 2),
-		messageWithText(provider.RoleAssistant, strings.Repeat("recent answer ", 10), 2),
+		messageWithText(provider.RoleUser, strings.Repeat("old request ", 60), 1),
+		messageWithText(provider.RoleAssistant, strings.Repeat("old answer ", 60), 1),
+		messageWithText(provider.RoleUser, strings.Repeat("recent request ", 60), 2),
+		messageWithText(provider.RoleAssistant, strings.Repeat("recent answer ", 60), 2),
 	}
 	engine.turn = 2
 	var terminalBudget *ContextBudgetSnapshot
@@ -2320,8 +2370,8 @@ func TestFailedTurnCompactsWithinOversizedDurableLastTurn(t *testing.T) {
 		&errorStream{err: errors.New("provider failed")},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.CompactWindow.AutoTokens = 253
-	engine.options.SummaryMaxBytes = 160
+	engine.options.CompactWindow.AutoTokens = 500
+	engine.options.SummaryMaxBytes = 2 << 10
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("durable request ", 20), 1),
 		toolCallMessage(1, "call_1", "read", `{}`),
@@ -2373,7 +2423,7 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
 	engine.options.CompactWindow.AutoTokens = 300
-	engine.options.SummaryMaxBytes = 100
+	engine.options.SummaryMaxBytes = 2 << 10
 	engine.options.ContextReceipts = []promptcontext.Receipt{{
 		Kind: promptcontext.PartitionBase, SourcePath: "builtin://base-system",
 		OriginalBytes: 4, RetainedBytes: 4, OriginalTokens: 1, RetainedTokens: 1,
@@ -2399,6 +2449,10 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 		compaction.Phase != CompactionPhasePreSampling ||
 		compaction.RemovedMessages != 2 ||
 		len(compaction.PromptContextReceipts) != 2 ||
+		compaction.TruthGeneration != 1 ||
+		compaction.TruthEntities == 0 ||
+		compaction.CompatibilityHash == "" ||
+		compaction.DownshiftPolicy != compact.DownshiftRuntimeTruthOnly ||
 		compaction.RetainedTokens > engine.options.CompactWindow.AutoTokens {
 		t.Fatalf("compaction event = %+v", compaction)
 	}
@@ -2427,7 +2481,7 @@ func TestEnginePreSamplingGateBeforeModelCall(t *testing.T) {
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
 	engine.options.CompactWindow.AutoTokens = 300
-	engine.options.SummaryMaxBytes = 100
+	engine.options.SummaryMaxBytes = 2 << 10
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("old ", 80), 1),
 		messageWithText(provider.RoleAssistant, strings.Repeat("ans ", 80), 1),
@@ -3103,6 +3157,19 @@ func assertOneTerminal(t *testing.T, states []State, want State) {
 	if count != 1 || got != want {
 		t.Fatalf("terminal count=%d state=%q all=%v", count, got, states)
 	}
+}
+
+func truthEntityContains(
+	capsule compact.TruthCapsule,
+	kind string,
+	fragment string,
+) bool {
+	for _, entity := range capsule.Entities {
+		if entity.Kind == kind && strings.Contains(entity.Value, fragment) {
+			return true
+		}
+	}
+	return false
 }
 
 func assertToolPairs(t *testing.T, messages []provider.Message) {

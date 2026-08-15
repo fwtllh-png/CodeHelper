@@ -379,14 +379,16 @@ func (m *ThreadManager) CompactThread(
 	window := m.recordWindow(
 		payload.ThreadID, beforeID, windowID, windowNumber,
 	)
-	return sink.Emit(&protocol.ThreadCompactedData{
+	data := &protocol.ThreadCompactedData{
 		Summary:            summary,
 		ReplacementHistory: encoded,
 		WindowNumber:       window.Number,
 		FirstWindowID:      window.FirstID,
 		PreviousWindowID:   window.previous,
 		WindowID:           window.Current,
-	})
+	}
+	applyThreadCompactionTruth(data, receipt)
+	return sink.Emit(data)
 }
 
 type advancedWindow struct {

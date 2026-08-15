@@ -147,7 +147,7 @@ func TestHeuristicEstimatorAccountsForImageTilesByKind(t *testing.T) {
 func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.options.CompactWindow.Scope = compactScopeBodyAfterPrefix
-	engine.options.SummaryMaxBytes = 100
+	engine.options.SummaryMaxBytes = 2 << 10
 	history := []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("h", 4000), 1),
 		messageWithText(provider.RoleUser, "current", 2),

@@ -96,28 +96,6 @@ func TestRenderReportsNothingForEmptySummary(t *testing.T) {
 	}
 }
 
-func TestCarryRoundTripsThroughRender(t *testing.T) {
-	first, _, _ := sample().Render(0)
-	body, ok := Carry("Context so far:\n" + first)
-	if !ok {
-		t.Fatalf("Carry did not recognise a rendered summary")
-	}
-	if strings.Contains(body, MarkerStart) || strings.Contains(body, MarkerEnd) {
-		t.Fatalf("carried body kept its markers: %s", body)
-	}
-	second := Summary{Goal: "same task", Carried: body}
-	text, truncated, _ := second.Render(0)
-	if truncated {
-		t.Fatalf("carrying a summary forward truncated it: %s", text)
-	}
-	if !strings.Contains(text, "Goal: make the parser accept trailing commas") {
-		t.Fatalf("second compaction lost the first summary's goal:\n%s", text)
-	}
-	if strings.Count(text, MarkerStart) != 1 {
-		t.Fatalf("carried body nested markers:\n%s", text)
-	}
-}
-
 func TestCarryIgnoresOrdinaryText(t *testing.T) {
 	if _, ok := Carry("user: nothing to see here"); ok {
 		t.Fatal("Carry claimed an ordinary message was a summary")

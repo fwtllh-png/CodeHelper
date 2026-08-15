@@ -55,32 +55,22 @@ func (e *Engine) buildCompactSummary(removed []provider.Message) compact.Summary
 		summary.Facts = append(summary.Facts, compact.Fact{Line: fact.Describe()})
 	}
 	summary.OmittedFacts = snapshot.OmittedFacts
-	summary.Digest, summary.Carried = e.digestRemoved(removed)
+	summary.Digest = e.digestRemoved(removed)
 	return summary
 }
 
-// digestRemoved flattens the messages leaving the window, newest first, and picks
-// out a previous summary to pass through whole.
-//
-// A previous summary flattened like an ordinary message loses everything the last
-// compaction paid for: it is one long system message, so a per-message line
-// budget cuts it to its first sentence. Recognising it is what makes a second
-// compaction non-destructive.
-func (e *Engine) digestRemoved(removed []provider.Message) ([]string, string) {
+// digestRemoved flattens ordinary messages leaving the window, newest first.
+// Structured summaries are omitted: their Truth Capsules merge separately, and
+// their Narrative is deliberately regenerated rather than carried verbatim.
+func (e *Engine) digestRemoved(removed []provider.Message) []string {
 	limit := e.options.MaxDigestEntries
 	if limit <= 0 {
 		limit = defaultMaxDigestEntries
 	}
 	var digest []string
-	var carried string
 	for index := len(removed) - 1; index >= 0; index-- {
 		message := removed[index]
-		if body, ok := compact.Carry(message.Text()); ok {
-			// Two carried summaries in one window can only happen if history was
-			// spliced; the newest is the one that already absorbed the older.
-			if carried == "" {
-				carried = body
-			}
+		if _, ok := compact.Carry(message.Text()); ok {
 			continue
 		}
 		if len(digest) == limit {
@@ -88,7 +78,7 @@ func (e *Engine) digestRemoved(removed []provider.Message) ([]string, string) {
 		}
 		digest = append(digest, summaryLine(message))
 	}
-	return digest, carried
+	return digest
 }
 
 // summaryBudget is how many bytes a rendered summary may occupy.

@@ -1,0 +1,141 @@
+package compact
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestTruthCapsuleRetainsCriticalFactsAcrossThreeCompactions(t *testing.T) {
+	compatibility := Compatibility{
+		SchemaVersion: TruthSchemaVersion,
+		Adapter:       "deepseek", Provider: "deepseek", Model: "deepseek-chat",
+		ContextTokens: 64_000, ToolCalls: true,
+		SummaryMaxBytes: 8192, MaxDigestEntries: 120,
+		DownshiftPolicy: DownshiftRuntimeTruthOnly,
+	}.Hash()
+	var previous []TruthCapsule
+	for generation, path := range []string{"a.go:10", "b.go:20", "c.go:30"} {
+		current := truthFixture(compatibility, "deepseek-chat", 64_000)
+		current.Entities = []TruthEntity{
+			NewTruthEntity(EntityFact, path, "definition "+path, "runtime.evidence"),
+		}
+		current.Seal()
+		merged, receipt, err := MergeTruthCapsules(current, previous...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if receipt.Generation != uint64(generation+1) {
+			t.Fatalf("generation=%d receipt=%+v", generation, receipt)
+		}
+		previous = []TruthCapsule{merged}
+	}
+	final := previous[0]
+	facts := 0
+	for _, entity := range final.Entities {
+		if entity.Kind == EntityFact {
+			facts++
+		}
+	}
+	if facts != 3 || final.Generation != 3 {
+		t.Fatalf("final capsule=%+v", final)
+	}
+}
+
+func TestTruthCapsuleRejectsInventedVerification(t *testing.T) {
+	capsule := truthFixture("sha256:compat", "fixture-model", 4096)
+	change := NewTruthEntity(
+		EntityChange, "a.go", "a.go", "runtime.evidence",
+	)
+	change.Verified = true
+	change.VerificationSource = "model.narrative"
+	capsule.Entities = []TruthEntity{change}
+	capsule.Seal()
+	if err := capsule.Validate(); err == nil ||
+		!strings.Contains(err.Error(), "runtime evidence") {
+		t.Fatalf("invented verification accepted: %v", err)
+	}
+}
+
+func TestTruthCapsuleSealCanonicalizesDuplicateEntities(t *testing.T) {
+	capsule := truthFixture("sha256:compat", "fixture-model", 4096)
+	first := NewTruthEntity(EntityTodo, "same step", "first", "runtime.plan")
+	first.Status = "pending"
+	last := NewTruthEntity(EntityTodo, "same step", "last", "runtime.plan")
+	last.Status = "done"
+	capsule.Entities = []TruthEntity{first, last}
+	capsule.Seal()
+	if err := capsule.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if len(capsule.Entities) != 1 ||
+		capsule.Entities[0].Value != "last" ||
+		capsule.Entities[0].Status != "done" {
+		t.Fatalf("entities=%+v", capsule.Entities)
+	}
+}
+
+func TestTruthMergeDetectsCompatibilityAndModelDownshift(t *testing.T) {
+	previous := truthFixture("sha256:old", "large-model", 128_000)
+	previous.Entities = []TruthEntity{
+		NewTruthEntity(
+			EntityCriticalPath, "critical.go", "critical.go",
+			"runtime.working_set",
+		),
+	}
+	previous.Seal()
+	current := truthFixture("sha256:new", "small-model", 32_000)
+	current.Seal()
+	merged, receipt, err := MergeTruthCapsules(current, previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.CompatibilityMatched || !receipt.ModelDownshifted ||
+		receipt.CriticalEntityCount != 1 || len(merged.Entities) != 1 {
+		t.Fatalf("merged=%+v receipt=%+v", merged, receipt)
+	}
+}
+
+func TestStructuredRenderMakesTruthMandatoryAndNarrativeOptional(t *testing.T) {
+	capsule := truthFixture("sha256:compat", "fixture-model", 4096)
+	capsule.Entities = []TruthEntity{
+		NewTruthEntity(EntityGoal, "active", "finish CE5", "runtime.plan"),
+	}
+	capsule.Seal()
+	summary := Summary{Window: 12, Goal: "finish CE5"}
+	full, err := RenderStructured(
+		summary,
+		capsule,
+		Narrative{Lines: []string{"assistant: optional detail"}},
+		4096,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !full.NarrativeIncluded ||
+		!strings.Contains(full.Text, TruthMarkerStart) ||
+		!strings.Contains(full.Text, "optional detail") {
+		t.Fatalf("render=%+v", full)
+	}
+	_, found, err := ParseTruthCapsule(full.Text)
+	if err != nil || !found {
+		t.Fatalf("parse found=%t err=%v", found, err)
+	}
+	if _, err := RenderStructured(summary, capsule, Narrative{}, 32); err == nil {
+		t.Fatal("truth capsule fit an impossible budget")
+	}
+}
+
+func truthFixture(
+	compatibility string,
+	modelID string,
+	contextTokens uint64,
+) TruthCapsule {
+	value := TruthCapsule{
+		SchemaVersion: TruthSchemaVersion, Generation: 1,
+		CompatibilityHash: compatibility,
+		ModelID:           modelID, ContextTokens: contextTokens,
+		DownshiftPolicy: DownshiftRuntimeTruthOnly,
+	}
+	value.Seal()
+	return value
+}
