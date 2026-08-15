@@ -62,6 +62,11 @@ func (e *Engine) modelStep(
 	if scope == nil {
 		return nil, nil, provider.Usage{}, 0, errors.New("turn scope is not active")
 	}
+	admittedHistory, err := e.admitToolResultHistory(*history)
+	if err != nil {
+		return nil, nil, provider.Usage{}, 0, err
+	}
+	*history = admittedHistory
 	if err := e.emitExtensionLifecycleChanges(scope.spec.Extensions, send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
@@ -169,6 +174,13 @@ func (e *Engine) modelStep(
 			e.maxOutputFor(route), reasoningEffort, finishOnly,
 		)
 		snapshot = project()
+		snapshot, normalization, normalizationErr := snapshot.Normalize(
+			route.Model().Capabilities,
+		)
+		if normalizationErr != nil {
+			return nil, nil, totalUsage, lastEstimate,
+				fmt.Errorf("normalize context projection: %w", normalizationErr)
+		}
 		requestTools = snapshot.Definitions()
 		attribution, attributionErr := snapshot.Measure(
 			sampleReason, reasoningEffort, e.options.TokenEstimator,
@@ -176,10 +188,30 @@ func (e *Engine) modelStep(
 		if attributionErr != nil {
 			return nil, nil, totalUsage, lastEstimate, attributionErr
 		}
+		if attribution.MaxItemTokens > maxModelVisibleItemTokens {
+			return nil, nil, totalUsage, attribution.EstimatedTokens,
+				protocol.NewProblem(
+					protocol.CodeResourceExhausted,
+					fmt.Sprintf(
+						"normalized context item requires %d tokens; limit is %d",
+						attribution.MaxItemTokens,
+						maxModelVisibleItemTokens,
+					),
+					false,
+					nil,
+				)
+		}
 		attribution.WorldRevision = worldProjection.Baseline.Revision
 		attribution.WorldDigest = worldProjection.Baseline.Digest
 		attribution.WorldMode = string(worldProjection.Mode)
 		attribution.WorldChangedSections = len(worldProjection.Changed)
+		attribution.PairingCalls = normalization.ToolCalls
+		attribution.PairingResults = normalization.ToolResults
+		attribution.PairingPairs = normalization.PairedCalls
+		attribution.PairingDroppedOrphans = normalization.DroppedOrphans
+		attribution.PairingVisibleOrphans = normalization.ModelVisibleOrphans
+		attribution.ProjectedImages = normalization.ProjectedImages
+		attribution.DroppedReasoning = normalization.DroppedReasoning
 		lastEstimate = attribution.EstimatedTokens
 		windowProjection := e.prepareTokenWindow(&attribution, maxOutputTokens)
 		if _, err := e.checkBudget(

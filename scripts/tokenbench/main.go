@@ -72,6 +72,15 @@ type report struct {
 	UnpricedCalls         int               `json:"unpriced_calls"`
 	EstimatorErrorP95     float64           `json:"estimator_error_p95"`
 	TriggerErrorP95       float64           `json:"compaction_trigger_error_p95"`
+	PairingCalls          int               `json:"pairing_calls"`
+	PairingResults        int               `json:"pairing_results"`
+	PairingPairs          int               `json:"pairing_pairs"`
+	PairingVisibleOrphans int               `json:"pairing_visible_orphans"`
+	MaxItemTokens         uint64            `json:"max_item_tokens"`
+	AdmissionItems        int               `json:"admission_items"`
+	AdmissionSpilledItems int               `json:"admission_spilled_items"`
+	AdmissionOriginal     uint64            `json:"admission_original_tokens"`
+	AdmissionRetained     uint64            `json:"admission_retained_tokens"`
 	ContextP50            map[string]uint64 `json:"context_p50"`
 	Reasons               map[string]int    `json:"sample_reasons"`
 }
@@ -544,6 +553,10 @@ func summarize(results []bench.Result) report {
 	var errors, triggerErrors []float64
 	passed := 0
 	unpricedCalls := 0
+	pairingCalls, pairingResults, pairingPairs := 0, 0, 0
+	pairingVisibleOrphans := 0
+	admissionItems, admissionSpilledItems := 0, 0
+	var maxItemTokens, admissionOriginal, admissionRetained uint64
 	for _, result := range results {
 		if result.Passed {
 			passed++
@@ -569,6 +582,15 @@ func summarize(results []bench.Result) report {
 			attributedSamples++
 			value := sample.Context
 			reasons[value.Reason]++
+			pairingCalls += value.PairingCalls
+			pairingResults += value.PairingResults
+			pairingPairs += value.PairingPairs
+			pairingVisibleOrphans += value.PairingVisibleOrphans
+			maxItemTokens = max(maxItemTokens, value.MaxItemTokens)
+			admissionItems += value.AdmissionItems
+			admissionSpilledItems += value.AdmissionSpilledItems
+			admissionOriginal += value.AdmissionOriginalTokens
+			admissionRetained += value.AdmissionRetainedTokens
 			for name, tokens := range map[string]uint64{
 				"stable": value.StableTokens, "history_user": value.HistoryUserTokens,
 				"history_assistant": value.HistoryAssistantTokens,
@@ -628,7 +650,12 @@ func summarize(results []bench.Result) report {
 		UnpricedCalls:     unpricedCalls,
 		EstimatorErrorP95: errorP95,
 		TriggerErrorP95:   triggerErrorP95,
-		ContextP50:        contextP50, Reasons: reasons,
+		PairingCalls:      pairingCalls, PairingResults: pairingResults,
+		PairingPairs: pairingPairs, PairingVisibleOrphans: pairingVisibleOrphans,
+		MaxItemTokens:  maxItemTokens,
+		AdmissionItems: admissionItems, AdmissionSpilledItems: admissionSpilledItems,
+		AdmissionOriginal: admissionOriginal, AdmissionRetained: admissionRetained,
+		ContextP50: contextP50, Reasons: reasons,
 	}
 }
 
@@ -679,7 +706,9 @@ func renderMarkdown(manifest manifest, report report) string {
 			"| Sample count | %d | %d | %d |\n"+
 			"| Attribution coverage (bp) | %d | %d | %d |\n\n"+
 			"Estimator error P95: `%.2f%%`\n\n"+
-			"Compaction trigger error P95: `%.2f%%`\n",
+			"Compaction trigger error P95: `%.2f%%`\n\n"+
+			"Pairing: `%d/%d calls`, results `%d`, visible orphans `%d`\n\n"+
+			"Max model-visible item: `%d tokens`\n",
 		manifest.Commit, manifest.Dirty, manifest.PromptDigest, report.Passed, report.Runs,
 		report.Input.P50, report.Input.P90, report.Input.MAD,
 		report.UncachedInput.P50, report.UncachedInput.P90, report.UncachedInput.MAD,
@@ -692,6 +721,11 @@ func renderMarkdown(manifest manifest, report report) string {
 		report.AttributionCoverageBP.MAD,
 		report.EstimatorErrorP95*100,
 		report.TriggerErrorP95*100,
+		report.PairingPairs,
+		report.PairingCalls,
+		report.PairingResults,
+		report.PairingVisibleOrphans,
+		report.MaxItemTokens,
 	)
 }
 

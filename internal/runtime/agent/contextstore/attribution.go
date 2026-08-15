@@ -51,6 +51,13 @@ func (s Snapshot) Measure(
 		MessageCount:        len(stable) + len(history) + len(dynamic) + len(continuation),
 		ToolDefinitionCount: len(s.definitions),
 	}
+	for _, item := range s.items {
+		tokens, itemErr := estimate.Estimate([]provider.Message{item.Message})
+		if itemErr != nil {
+			return protocol.SampleContextData{}, itemErr
+		}
+		result.MaxItemTokens = max(result.MaxItemTokens, tokens)
+	}
 	digest, err := s.Digest()
 	if err != nil {
 		return protocol.SampleContextData{}, fmt.Errorf("digest context snapshot: %w", err)
@@ -83,6 +90,16 @@ func (s Snapshot) Measure(
 	}
 	for _, message := range s.Messages() {
 		for _, block := range message.Blocks {
+			if block.ToolResult != nil &&
+				block.ToolResult.Admission != nil {
+				receipt := block.ToolResult.Admission
+				result.AdmissionItems++
+				if receipt.Truncated {
+					result.AdmissionSpilledItems++
+				}
+				result.AdmissionOriginalTokens += receipt.OriginalTokens
+				result.AdmissionRetainedTokens += receipt.RetainedTokens
+			}
 			if block.Type != provider.ContentImage || block.Attachment == nil {
 				continue
 			}
@@ -106,6 +123,20 @@ func (s Snapshot) Measure(
 			)
 		}
 		result.ToolDefinitionTokens = uint64((len(encoded) + 3) / 4)
+		for _, definition := range s.definitions {
+			itemData, marshalErr := json.Marshal(definition)
+			if marshalErr != nil {
+				return protocol.SampleContextData{}, fmt.Errorf(
+					"marshal tool definition %q: %w",
+					definition.Name,
+					marshalErr,
+				)
+			}
+			result.MaxItemTokens = max(
+				result.MaxItemTokens,
+				uint64((len(itemData)+3)/4),
+			)
+		}
 	}
 	result.EstimatedTokens = result.StableTokens + result.HistoryUserTokens +
 		result.HistoryAssistantTokens + result.HistoryToolTokens +

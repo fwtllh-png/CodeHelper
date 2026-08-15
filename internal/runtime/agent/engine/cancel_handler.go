@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 )
 
 // EnqueueMailbox queues an inter-agent mailbox message.
@@ -101,35 +102,9 @@ func (e *Engine) cancellationReason() string {
 }
 
 func retainCanceledHistory(messages []provider.Message) []provider.Message {
-	calls := make(map[string]struct{})
-	results := make(map[string]struct{})
-	for _, message := range messages {
-		for _, block := range message.Blocks {
-			if block.ToolCall != nil {
-				calls[block.ToolCall.ID] = struct{}{}
-			}
-			if block.ToolResult != nil {
-				results[block.ToolResult.CallID] = struct{}{}
-			}
-		}
+	retained, _, err := contextstore.NormalizePairs(messages)
+	if err != nil {
+		return nil
 	}
-	retained := make([]provider.Message, 0, len(messages))
-	for _, message := range messages {
-		paired := true
-		for _, block := range message.Blocks {
-			if block.ToolCall != nil {
-				_, paired = results[block.ToolCall.ID]
-			}
-			if paired && block.ToolResult != nil {
-				_, paired = calls[block.ToolResult.CallID]
-			}
-			if !paired {
-				break
-			}
-		}
-		if paired {
-			retained = append(retained, message)
-		}
-	}
-	return cloneMessages(retained)
+	return retained
 }

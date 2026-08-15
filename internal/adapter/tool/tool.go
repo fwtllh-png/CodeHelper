@@ -3,6 +3,8 @@ package tool
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -202,12 +205,13 @@ func (r Resource) Key() string {
 }
 
 type Result struct {
-	Content       string         `json:"content"`
-	IsError       bool           `json:"is_error,omitempty"`
-	Metadata      map[string]any `json:"metadata,omitempty"`
-	Truncated     bool           `json:"truncated,omitempty"`
-	OriginalBytes int            `json:"original_bytes,omitempty"`
-	Handle        string         `json:"handle,omitempty"`
+	Content       string                           `json:"content"`
+	IsError       bool                             `json:"is_error,omitempty"`
+	Metadata      map[string]any                   `json:"metadata,omitempty"`
+	Truncated     bool                             `json:"truncated,omitempty"`
+	OriginalBytes int                              `json:"original_bytes,omitempty"`
+	Handle        string                           `json:"handle,omitempty"`
+	Admission     *adaptercontent.AdmissionReceipt `json:"admission,omitempty"`
 }
 
 const MetadataCompletionDeclaration = "completion_declaration"
@@ -659,6 +663,13 @@ func (r *Registry) PruneResultSurface(
 	return r.results.PruneSurface(name, result, maxBytes)
 }
 
+func (r *Registry) AdmitResult(
+	name string,
+	result Result,
+) (Result, adaptercontent.AdmissionReceipt) {
+	return r.results.Admit(name, result)
+}
+
 func RepairArguments(raw json.RawMessage) json.RawMessage {
 	value := strings.TrimSpace(string(raw))
 	if value == "" {
@@ -865,24 +876,68 @@ func (s *ResultStore) Route(result Result) Result {
 }
 
 func (s *ResultStore) RouteFor(name string, result Result) Result {
-	result.OriginalBytes = len(result.Content)
-	limit, kind, tokens := s.projectionLimit(name, result.Content)
-	if len(result.Content) <= limit {
-		return result
+	admitted, _ := s.Admit(name, result)
+	return admitted
+}
+
+func (s *ResultStore) Admit(
+	name string,
+	result Result,
+) (Result, adaptercontent.AdmissionReceipt) {
+	if s.validAdmission(result) {
+		result.Admission = adaptercontent.CloneAdmissionReceipt(result.Admission)
+		return result, *result.Admission
+	}
+	result.Admission = nil
+	retrieval := name == "result_get" || name == "handle_read"
+	if !retrieval && result.Truncated && result.Handle != "" {
+		if stored, ok := s.getResult(result.Handle); ok {
+			result = Result{
+				Content: stored.Content, IsError: stored.IsError,
+				Metadata: cloneMetadata(stored.Metadata),
+			}
+		}
+	}
+	original := result.Content
+	originalBytes := len(original)
+	originalTokens := estimateResultTokens(original)
+	limit, kind, tokens := s.projectionLimit(name, original)
+	receipt := adaptercontent.AdmissionReceipt{
+		Kind: kind, Reason: "inline", Digest: resultDigest(original),
+		OriginalBytes: originalBytes, RetainedBytes: originalBytes,
+		OriginalTokens: originalTokens, RetainedTokens: originalTokens,
+		TokenLimit: uint64(tokens),
+	}
+	result.OriginalBytes = originalBytes
+	if originalTokens <= uint64(tokens) && len(original) <= limit {
+		result.Admission = &receipt
+		return result, receipt
 	}
 	stored := storedResult{
-		Content: result.Content, IsError: result.IsError, Metadata: cloneMetadata(result.Metadata),
+		Content: original, IsError: result.IsError,
+		Metadata: cloneMetadata(result.Metadata),
 	}
 	data, err := json.Marshal(stored)
 	if err != nil {
-		return projectionFailure(result, limit, err)
+		result = projectionFailure(result, limit, err)
+		receipt.Reason = "store_failure"
+		receipt.Truncated = true
+		receipt.RetainedBytes = len(result.Content)
+		receipt.RetainedTokens = estimateResultTokens(result.Content)
+		result.Admission = &receipt
+		return result, receipt
 	}
 	handle := contentstore.StableHandle("result", data)
 	if err := s.store.Put(context.Background(), handle, data); err != nil {
-		return projectionFailure(result, limit, err)
+		result = projectionFailure(result, limit, err)
+		receipt.Reason = "store_failure"
+		receipt.Truncated = true
+		receipt.RetainedBytes = len(result.Content)
+		receipt.RetainedTokens = estimateResultTokens(result.Content)
+		result.Admission = &receipt
+		return result, receipt
 	}
-	body, _ := boundedSlice(result.Content, 0, limit)
-	result.Content = TruncationNotice(result.OriginalBytes, handle, body)
+	result.Content = fitTruncationNotice(original, handle, limit, uint64(tokens))
 	result.Truncated = true
 	result.Handle = handle
 	if result.Metadata == nil {
@@ -895,7 +950,13 @@ func (s *ResultStore) RouteFor(name string, result Result) Result {
 	result.Metadata["handle"] = handle
 	result.Metadata["projection_kind"] = kind
 	result.Metadata["projection_tokens"] = tokens
-	return result
+	receipt.Reason = "token_limit"
+	receipt.Handle = handle
+	receipt.Truncated = true
+	receipt.RetainedBytes = len(result.Content)
+	receipt.RetainedTokens = estimateResultTokens(result.Content)
+	result.Admission = &receipt
+	return result, receipt
 }
 
 func (s *ResultStore) PruneSurface(
@@ -953,12 +1014,27 @@ func (s *ResultStore) PruneSurface(
 	result.Metadata["truncated"] = true
 	result.Metadata["handle"] = handle
 	result.Metadata["projection_kind"] = "context_surface"
+	retainedTokens := estimateResultTokens(result.Content)
+	result.Admission = &adaptercontent.AdmissionReceipt{
+		Kind: "context_surface", Reason: "pressure_limit",
+		Digest: resultDigest(full.Content), Handle: handle,
+		OriginalBytes: len(full.Content), RetainedBytes: len(result.Content),
+		OriginalTokens: estimateResultTokens(full.Content),
+		RetainedTokens: retainedTokens,
+		TokenLimit: max(
+			retainedTokens,
+			uint64(max(1, (maxBytes+3)/4)),
+		),
+		Truncated: true,
+	}
 	return result, true
 }
 
 func (s *ResultStore) projectionLimit(name, content string) (int, string, int) {
 	kind, tokens := "generic", 2048
 	switch {
+	case name == "result_get" || name == "handle_read":
+		kind, tokens = "retrieval", 10_000
 	case name == "spawn_agent" || name == "send_input" ||
 		name == "wait_agent" || name == "close_agent":
 		kind, tokens = "structured", 8192
@@ -974,6 +1050,65 @@ func (s *ResultStore) projectionLimit(name, content string) (int, string, int) {
 	return min(s.maxInline, len(content), tokens*4), kind, tokens
 }
 
+func estimateResultTokens(value string) uint64 {
+	if value == "" {
+		return 0
+	}
+	return uint64((utf8.RuneCountInString(value) + 3) / 4)
+}
+
+func (s *ResultStore) validAdmission(result Result) bool {
+	receipt := result.Admission
+	if receipt == nil || receipt.TokenLimit == 0 ||
+		receipt.TokenLimit > 10_000 ||
+		receipt.RetainedBytes != len(result.Content) ||
+		receipt.RetainedTokens != estimateResultTokens(result.Content) ||
+		receipt.RetainedTokens > receipt.TokenLimit {
+		return false
+	}
+	if !receipt.Truncated {
+		return receipt.Handle == "" &&
+			receipt.OriginalBytes == receipt.RetainedBytes &&
+			receipt.OriginalTokens == receipt.RetainedTokens &&
+			receipt.Digest == resultDigest(result.Content)
+	}
+	if receipt.Handle == "" || result.Handle != receipt.Handle {
+		return false
+	}
+	stored, ok := s.getResult(receipt.Handle)
+	return ok &&
+		receipt.Digest == resultDigest(stored.Content) &&
+		receipt.OriginalBytes == len(stored.Content) &&
+		receipt.OriginalTokens == estimateResultTokens(stored.Content)
+}
+
+func resultDigest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func fitTruncationNotice(
+	original string,
+	handle string,
+	maxBodyBytes int,
+	tokenLimit uint64,
+) string {
+	low, high := 0, min(len(original), maxBodyBytes)
+	best := TruncationNotice(len(original), handle, "")
+	for low <= high {
+		middle := low + (high-low)/2
+		body, _ := boundedSlice(original, 0, middle)
+		candidate := TruncationNotice(len(original), handle, body)
+		if estimateResultTokens(candidate) <= tokenLimit {
+			best = candidate
+			low = middle + 1
+		} else {
+			high = middle - 1
+		}
+	}
+	return best
+}
+
 func projectionFailure(result Result, limit int, err error) Result {
 	body, _ := boundedSlice(result.Content, 0, limit)
 	result.Content = TruncationNotice(result.OriginalBytes, "", body)
@@ -986,6 +1121,7 @@ func projectionFailure(result Result, limit int, err error) Result {
 }
 
 func ModelResult(name string, result Result) Result {
+	result.Admission = nil
 	if name == "result_get" || name == "handle_read" || result.Metadata == nil {
 		return result
 	}

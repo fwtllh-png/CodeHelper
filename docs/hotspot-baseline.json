@@ -84,6 +84,7 @@
         "terminal": ["turnEmitter", "newTurnEmitter", "finish"],
         "cancel": ["Cancel", "Steer"],
         "history_and_recovery": ["History", "ReplaceHistory", "RevertWorkspace"],
+        "context_admission": ["admitToolResultHistory"],
         "turn_kernel_coordinator": ["newEngineTurnKernelForTurn"]
       },
       "responsibility_files": {
@@ -97,9 +98,11 @@
         "terminal": "terminal_handler.go",
         "cancel": "turn_scope.go",
         "history_and_recovery": "history_recovery.go",
+        "context_admission": "admission.go",
         "turn_kernel_coordinator": "turn_kernel.go"
       },
       "allowed_internal_imports": [
+        "internal/adapter/content",
         "internal/adapter/hooks",
         "internal/adapter/mcp",
         "internal/adapter/model",

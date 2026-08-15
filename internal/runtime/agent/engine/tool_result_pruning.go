@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 
+	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
@@ -59,6 +60,9 @@ func (e *Engine) pruneToolResultSurfaces(
 			stats.bytes += len(block.ToolResult.Content) - len(encoded)
 			block.ToolResult.Content = string(encoded)
 			block.ToolResult.IsError = projected.IsError
+			block.ToolResult.Admission = adaptercontent.CloneAdmissionReceipt(
+				projected.Admission,
+			)
 			input = input.WithHistory(*history)
 			window, err = e.measureTokenWindow(input, outputReserve)
 			if err != nil {

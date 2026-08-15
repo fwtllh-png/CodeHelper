@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -607,6 +608,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					ToolResult: &provider.ToolResult{
 						CallID: call.ID, Content: string(data),
 						IsError: results[index].IsError,
+						Admission: adaptercontent.CloneAdmissionReceipt(
+							results[index].Admission,
+						),
 					},
 				}},
 			})
@@ -956,6 +960,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					Type: provider.ContentToolResult,
 					ToolResult: &provider.ToolResult{
 						CallID: call.ID, Content: string(data), IsError: results[index].IsError,
+						Admission: adaptercontent.CloneAdmissionReceipt(
+							results[index].Admission,
+						),
 					},
 				}},
 			})

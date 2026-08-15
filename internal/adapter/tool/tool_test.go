@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 )
 
 func TestRegistryValidatesAndAuthorizesBeforeExecute(t *testing.T) {
@@ -126,6 +128,54 @@ func TestResultStoreAppliesTypedTokenBudgetsAndKeepsFullHandle(t *testing.T) {
 	}
 }
 
+func TestResultAdmissionShrinksHundredKiBAndRetainsOriginalByHandle(t *testing.T) {
+	store := NewResultStore(32 << 10)
+	payload := strings.Repeat("0123456789abcdef", 6400)
+	admitted, receipt := store.Admit("shell_run", Result{Content: payload})
+	if !admitted.Truncated || admitted.Handle == "" ||
+		receipt.Handle != admitted.Handle ||
+		receipt.OriginalBytes != 100<<10 ||
+		receipt.RetainedBytes != len(admitted.Content) ||
+		receipt.RetainedBytes*5 > receipt.OriginalBytes ||
+		receipt.RetainedTokens > 10_000 ||
+		receipt.Reason != "token_limit" ||
+		receipt.Digest == "" {
+		t.Fatalf("admitted=%+v receipt=%+v", admitted, receipt)
+	}
+	full, ok := store.Get(receipt.Handle)
+	if !ok || full != payload {
+		t.Fatalf("full bytes=%d found=%t", len(full), ok)
+	}
+	again, secondReceipt := store.Admit("shell_run", admitted)
+	if again.Handle != admitted.Handle ||
+		secondReceipt.Digest != receipt.Digest ||
+		secondReceipt.OriginalBytes != receipt.OriginalBytes ||
+		secondReceipt.RetainedBytes != receipt.RetainedBytes {
+		t.Fatalf("idempotent admission=%+v receipt=%+v", again, secondReceipt)
+	}
+	if projected := ModelResult("shell_run", admitted); projected.Admission != nil {
+		t.Fatalf("model result leaked admission receipt: %+v", projected)
+	}
+}
+
+func TestResultAdmissionRejectsForgedReceipt(t *testing.T) {
+	store := NewResultStore(32 << 10)
+	payload := strings.Repeat("x", 100<<10)
+	admitted, receipt := store.Admit("shell_run", Result{
+		Content: payload,
+		Admission: &adaptercontent.AdmissionReceipt{
+			Kind: "build", Reason: "inline", Digest: "sha256:forged",
+			OriginalBytes: 1, RetainedBytes: len(payload),
+			OriginalTokens: 1, RetainedTokens: 1, TokenLimit: 10_000,
+		},
+	})
+	if !admitted.Truncated || receipt.Handle == "" ||
+		receipt.Digest == "sha256:forged" ||
+		receipt.RetainedTokens > 10_000 {
+		t.Fatalf("forged receipt accepted: %+v %+v", admitted, receipt)
+	}
+}
+
 func TestResultStorePrunesContextSurfaceWithHeadTailAndStableHandle(t *testing.T) {
 	store := NewResultStore(32 << 10)
 	payload := "HEAD-" + strings.Repeat("middle", 2000) + "-TAIL"
@@ -177,6 +227,7 @@ func TestResultGetPagesReconstructFullLargeResult(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		page, _ = store.Admit("result_get", page)
 		reconstructed.WriteString(page.Content)
 		next, more := page.Metadata["next_offset"]
 		if !more {

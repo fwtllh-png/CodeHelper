@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -140,15 +141,34 @@ func TestSnapshotClonesAttachmentsAndReplayState(t *testing.T) {
 			Replay: &provider.ReplayState{Version: 1, Data: []byte(`{"id":"replay"}`)},
 		},
 	}
-	ledger := New(Input{History: []provider.Message{message}})
+	resultMessage := provider.Message{
+		Role: provider.RoleTool,
+		Blocks: []provider.ContentBlock{{
+			Type: provider.ContentToolResult,
+			ToolResult: &provider.ToolResult{
+				CallID: "call-1", Content: "bounded",
+				Admission: &adaptercontent.AdmissionReceipt{
+					Digest: "sha256:original", Handle: "result_original",
+				},
+			},
+		}},
+	}
+	ledger := New(Input{History: []provider.Message{message, resultMessage}})
 	snapshot := ledger.Snapshot()
 	projected := snapshot.Messages()
 	projected[0].Blocks[0].Attachment.Data[0] = 'X'
 	projected[0].Provenance.Replay.Data[0] = '['
+	projected[1].Blocks[0].ToolResult.Admission.Handle = "mutated"
 	again := ledger.Snapshot().Messages()[0]
+	againResult := ledger.Snapshot().Messages()[1]
 	if string(again.Blocks[0].Attachment.Data) != "image" ||
-		string(again.Provenance.Replay.Data) != `{"id":"replay"}` {
-		t.Fatalf("nested model content was not cloned: %+v", again)
+		string(again.Provenance.Replay.Data) != `{"id":"replay"}` ||
+		againResult.Blocks[0].ToolResult.Admission.Handle != "result_original" {
+		t.Fatalf(
+			"nested model content was not cloned: %+v %+v",
+			again,
+			againResult,
+		)
 	}
 }
 

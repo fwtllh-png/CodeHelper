@@ -137,7 +137,7 @@ func (e *Engine) runToolsWithCache(
 		e.noteToolCall(call)
 		callCopy := call
 		if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
-			closeErr := publishAbortedToolResults(
+			closeErr := e.publishAbortedToolResults(
 				publishedCalls,
 				"tool batch aborted during lifecycle registration",
 				send,
@@ -152,7 +152,7 @@ func (e *Engine) runToolsWithCache(
 			)
 		}
 		if err := kernel.startTool(call.ID); err != nil {
-			closeErr := publishAbortedToolResults(
+			closeErr := e.publishAbortedToolResults(
 				publishedCalls,
 				"tool batch aborted before execution",
 				send,
@@ -163,7 +163,7 @@ func (e *Engine) runToolsWithCache(
 			return nil, errors.Join(err, closeErr, abortErr)
 		}
 		if err := send(RunningTools, Event{ToolCall: &callCopy}); err != nil {
-			closeErr := publishAbortedToolResults(
+			closeErr := e.publishAbortedToolResults(
 				publishedCalls,
 				"tool batch aborted before execution",
 				send,
@@ -298,6 +298,12 @@ func (e *Engine) runToolsWithCache(
 		result.Metadata["fatal"] = true
 		results[index] = result
 	}
+	for index := range results {
+		results[index], _ = e.options.Tools.AdmitResult(
+			calls[index].Name,
+			results[index],
+		)
+	}
 	batchMutated := false
 	for _, result := range results {
 		if len(observedFileChanges(result.Metadata)) != 0 {
@@ -400,7 +406,7 @@ func (e *Engine) runToolsWithCache(
 	return results, nil
 }
 
-func publishAbortedToolResults(
+func (e *Engine) publishAbortedToolResults(
 	calls []provider.ToolCall,
 	reason string,
 	send func(State, Event) error,
@@ -416,6 +422,7 @@ func publishAbortedToolResults(
 				"fatal":          true,
 			},
 		}
+		result, _ = e.options.Tools.AdmitResult(call.Name, result)
 		if err := send(RunningTools, Event{
 			ToolCall: &call,
 			Result:   &result,

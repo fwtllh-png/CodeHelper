@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
@@ -75,6 +76,48 @@ func TestSessionDeltaRejectsRevisionAndDigestConflicts(t *testing.T) {
 	scope.state.delta = &stale
 	if err := engine.applySessionDelta(); err == nil {
 		t.Fatal("revision conflict was accepted")
+	}
+}
+
+func TestSessionDeltaPreservesToolAdmissionReceipt(t *testing.T) {
+	history := []provider.Message{
+		toolCallMessage(1, "call-large", "shell_run", `{}`),
+		{
+			Role: provider.RoleTool, Turn: 1,
+			Blocks: []provider.ContentBlock{{
+				Type: provider.ContentToolResult,
+				ToolResult: &provider.ToolResult{
+					CallID: "call-large", Content: "bounded",
+					Admission: &adaptercontent.AdmissionReceipt{
+						Kind: "build", Reason: "token_limit",
+						Digest: "sha256:fixture", Handle: "result_fixture",
+						OriginalBytes: 100 << 10, RetainedBytes: 12 << 10,
+						OriginalTokens: 25_600, RetainedTokens: 3072,
+						TokenLimit: 3072, Truncated: true,
+					},
+				},
+			}},
+		},
+	}
+	delta, err := prepareSessionDelta(
+		"turn-admission", 0, history, provider.Usage{}, 0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(delta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := newEngine(t, &scriptedProvider{}, nil)
+	if err := target.RestoreSessionDelta(raw); err != nil {
+		t.Fatal(err)
+	}
+	receipt := target.History()[1].Blocks[0].ToolResult.Admission
+	if receipt == nil || receipt.Handle != "result_fixture" ||
+		receipt.OriginalBytes != 100<<10 ||
+		receipt.RetainedTokens != 3072 {
+		t.Fatalf("restored admission=%+v", receipt)
 	}
 }
 

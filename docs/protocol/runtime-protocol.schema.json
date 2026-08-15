@@ -5034,6 +5034,18 @@
         "context": {
           "type": "object",
           "properties": {
+            "admission_items": {
+              "type": "integer"
+            },
+            "admission_original_tokens": {
+              "type": "integer"
+            },
+            "admission_retained_tokens": {
+              "type": "integer"
+            },
+            "admission_spilled_items": {
+              "type": "integer"
+            },
             "context_digest": {
               "type": "string"
             },
@@ -5041,6 +5053,9 @@
               "type": "integer"
             },
             "continuation_tokens": {
+              "type": "integer"
+            },
+            "dropped_reasoning": {
               "type": "integer"
             },
             "dynamic_tokens": {
@@ -5070,7 +5085,28 @@
             "logical_request_digest": {
               "type": "string"
             },
+            "max_item_tokens": {
+              "type": "integer"
+            },
             "message_count": {
+              "type": "integer"
+            },
+            "pairing_calls": {
+              "type": "integer"
+            },
+            "pairing_dropped_orphans": {
+              "type": "integer"
+            },
+            "pairing_pairs": {
+              "type": "integer"
+            },
+            "pairing_results": {
+              "type": "integer"
+            },
+            "pairing_visible_orphans": {
+              "type": "integer"
+            },
+            "projected_images": {
               "type": "integer"
             },
             "provider_framing_tokens": {

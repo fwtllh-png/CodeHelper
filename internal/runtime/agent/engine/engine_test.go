@@ -101,6 +101,13 @@ func TestEngineExecutesToolAndFeedsResultOnce(t *testing.T) {
 	if toolMessage.Role != provider.RoleTool || messageToolResultID(toolMessage) != "call_1" {
 		t.Fatalf("tool message = %+v", toolMessage)
 	}
+	toolResult := toolMessage.Blocks[0].ToolResult
+	if toolResult.Admission == nil ||
+		toolResult.Admission.Reason != "inline" ||
+		toolResult.Admission.Digest == "" ||
+		strings.Contains(toolResult.Content, `"admission"`) {
+		t.Fatalf("tool result admission = %+v", toolResult)
+	}
 	assertOneTerminal(t, states, Completed)
 }
 

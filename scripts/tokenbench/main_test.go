@@ -24,6 +24,10 @@ func TestSummarizeAttributesEverySample(t *testing.T) {
 				Reason: "normal", StableTokens: 20, DynamicTokens: 10,
 				ToolDefinitionTokens: 40, EstimatedTokens: 70,
 				WindowProjectedTokens: 80,
+				PairingCalls:          2, PairingResults: 2, PairingPairs: 2,
+				MaxItemTokens:  55,
+				AdmissionItems: 2, AdmissionSpilledItems: 1,
+				AdmissionOriginalTokens: 100, AdmissionRetainedTokens: 60,
 			},
 		}},
 	}}
@@ -32,6 +36,11 @@ func TestSummarizeAttributesEverySample(t *testing.T) {
 		got.Calls.P50 != 1 || got.ContextP50["tool_definitions"] != 40 ||
 		got.Reasons["normal"] != 1 || got.EstimatorErrorP95 != 0.3 ||
 		got.TriggerErrorP95 != 0.2 ||
+		got.PairingCalls != 2 || got.PairingResults != 2 ||
+		got.PairingPairs != 2 || got.PairingVisibleOrphans != 0 ||
+		got.MaxItemTokens != 55 ||
+		got.AdmissionItems != 2 || got.AdmissionSpilledItems != 1 ||
+		got.AdmissionOriginal != 100 || got.AdmissionRetained != 60 ||
 		got.AttributionCoverageBP.P50 != 10_000 {
 		t.Fatalf("report=%+v", got)
 	}

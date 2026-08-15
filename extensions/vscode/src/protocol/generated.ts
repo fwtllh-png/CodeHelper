@@ -1404,9 +1404,14 @@ export type TurnVerificationData = {
 export type UsageData = {
   readonly "cached_tokens"?: number;
   readonly "context"?: {
+      readonly "admission_items"?: number;
+      readonly "admission_original_tokens"?: number;
+      readonly "admission_retained_tokens"?: number;
+      readonly "admission_spilled_items"?: number;
       readonly "context_digest"?: string;
       readonly "context_revision"?: number;
       readonly "continuation_tokens"?: number;
+      readonly "dropped_reasoning"?: number;
       readonly "dynamic_tokens"?: number;
       readonly "estimated_tokens"?: number;
       readonly "history_assistant_tokens"?: number;
@@ -1416,7 +1421,14 @@ export type UsageData = {
       readonly "image_tokens"?: number;
       readonly "incremental_transport"?: boolean;
       readonly "logical_request_digest"?: string;
+      readonly "max_item_tokens"?: number;
       readonly "message_count"?: number;
+      readonly "pairing_calls"?: number;
+      readonly "pairing_dropped_orphans"?: number;
+      readonly "pairing_pairs"?: number;
+      readonly "pairing_results"?: number;
+      readonly "pairing_visible_orphans"?: number;
+      readonly "projected_images"?: number;
       readonly "provider_framing_tokens"?: number;
       readonly "reason": string;
       readonly "reasoning_effort"?: string;

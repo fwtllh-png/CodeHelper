@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 
+	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 )
 
@@ -246,6 +247,9 @@ func CloneBlocks(blocks []provider.ContentBlock) []provider.ContentBlock {
 		}
 		if block.ToolResult != nil {
 			value := *block.ToolResult
+			value.Admission = adaptercontent.CloneAdmissionReceipt(
+				block.ToolResult.Admission,
+			)
 			result[index].ToolResult = &value
 		}
 		if block.Search != nil {
