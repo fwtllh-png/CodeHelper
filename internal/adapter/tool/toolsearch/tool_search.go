@@ -81,8 +81,9 @@ type match struct {
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[input, tool.Result]{
-		Descriptor: t.Descriptor(),
-		Run:        t.run,
+		Descriptor:  t.Descriptor(),
+		Disposition: tool.DispositionWaitForTeardown,
+		Run:         t.run,
 		Encode: func(value tool.Result) (tool.Result, error) {
 			return value, nil
 		},

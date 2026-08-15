@@ -235,6 +235,11 @@ func TestEgressDeniedClassified(t *testing.T) {
 	if result.Metadata["host"] != "example.com" {
 		t.Fatalf("host = %#v", result.Metadata["host"])
 	}
+	if result.Outcome == nil || result.Outcome.Security == nil ||
+		result.Outcome.Security.EgressDenied == nil ||
+		result.Outcome.Security.EgressDenied.Host != "example.com" {
+		t.Fatalf("typed egress outcome = %+v", result.Outcome)
+	}
 	if !strings.Contains(result.Content, "egress denied · host=example.com") {
 		t.Fatalf("content = %q", result.Content)
 	}

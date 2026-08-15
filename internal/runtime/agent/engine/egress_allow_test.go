@@ -98,6 +98,14 @@ func (e *egressRetryTool) Execute(context.Context, json.RawMessage) (tool.Result
 				"error_category": "egress_denied", "host": "cdn.example",
 				"protocol": "https", "status_code": 0,
 			},
+			Outcome: &tool.Outcome{
+				Status: tool.OutcomeFailed,
+				Security: &tool.SecuritySignal{
+					EgressDenied: &tool.NetworkTarget{
+						Host: "cdn.example", Protocol: "https",
+					},
+				},
+			},
 		}, nil
 	}
 	return tool.Result{Content: `{"ok":true}`}, nil

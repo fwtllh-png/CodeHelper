@@ -2,12 +2,14 @@
 
 简体中文 | [English](../en/tool-execution-architecture-upgrade.md)
 
-> 状态：EX1 `accepted`；EX0 `baseline_frozen`。
+> 状态：EX2 `accepted`；EX1 `accepted`；EX0 `baseline_frozen`。
 >
 > 基线：
 > [`tool-execution-ex0-baseline.json`](../tool-execution-ex0-baseline.json)。
 > EX1 证据：
 > [`tool-execution-ex1-evidence.json`](../tool-execution-ex1-evidence.json)。
+> EX2 证据：
+> [`tool-execution-ex2-evidence.json`](../tool-execution-ex2-evidence.json)。
 >
 > 范围：Tool 身份、调用、结果投影、Guard 编排、资源调度、本地进程执行、
 > 取消、持久终端 Session、输出准入、可观测性与迁移 Gate。
@@ -434,6 +436,8 @@ Host Output 仍是 Projection，Durable Execution Receipt 是事实来源。
 
 ### EX2：Typed Execution Core 与 Guard Pipeline
 
+状态：`accepted`。
+
 工作：
 
 - 新增结构化 ToolRef、Prepared Invocation、Outcome、Attempt 和 Disposition；
@@ -449,6 +453,24 @@ Host Output 仍是 Projection，Durable Execution Receipt 是事实来源。
 - Approval Wait 不占 Execution Slot 或 Claim；
 - 现有 Approval 与 Journal Test 保持等价；
 - Guard 仍是唯一 Consequential Entry。
+
+已交付：
+
+- Authority-frozen `ToolRef`、不可变 Prepared Invocation、Invocation Source、
+  显式 Cancellation Disposition、Typed Outcome/Security Signal 和
+  Attempt/Execution Receipt Contract；
+- Registry 原生 `OutcomeExecutor` 适配，Typed Outcome 与 Execution Receipt
+  可跨 ResultStore Projection 保留；
+- 每个 `typed.Define` Executor 显式声明 Disposition，Foreground Shell Tool
+  已迁移到 Typed Boundary，同时保留 Argument Expansion；
+- Guard 拆分为 Preparation/Authorization 与 Admitted Attempt 组件；
+- Engine 通过 Context 注入 Execution Admission，Guard 仅在 Resource Claims
+  与实际 Attempt 紧邻前获取 Scheduler Slot；
+- Initial、Sandbox Escalation、Egress Approval 均在释放 Scheduler 与 Claim 后等待；
+- Sandbox 与 Egress 安全决策只读取 Typed Signal 或 Typed Error，不读取任意
+  Result Metadata；
+- Replacement Arguments 会生成新的 Prepared Invocation，并在执行前重新经过
+  Policy 与 Permission Hook Authorization。
 
 ### EX3：Unified Process Protocol
 

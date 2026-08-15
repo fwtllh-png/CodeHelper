@@ -85,7 +85,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[input, output]{
-		Descriptor: t.Descriptor(),
+		Descriptor:  t.Descriptor(),
+		Disposition: tool.DispositionWaitForTeardown,
 		Run: func(_ context.Context, value input) (output, error) {
 			if err := t.store.Append(value.Note); err != nil {
 				return output{}, err

@@ -224,7 +224,8 @@ func (t *ReadTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Resul
 
 func (t *ReadTool) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[readInput, tool.Result]{
-		Descriptor: t.Descriptor(),
+		Descriptor:  t.Descriptor(),
+		Disposition: tool.DispositionWaitForTeardown,
 		Run: func(_ context.Context, value readInput) (tool.Result, error) {
 			return t.read(value)
 		},

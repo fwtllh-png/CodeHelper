@@ -82,13 +82,7 @@ type Hooks interface {
 	After(context.Context, Invocation, tool.Result, error)
 }
 
-type Invocation struct {
-	CallID     string
-	Tool       string
-	Arguments  json.RawMessage
-	Resources  []tool.Resource
-	Descriptor tool.Descriptor
-}
+type Invocation = tool.PreparedInvocation
 
 type PermissionRequester interface {
 	PermissionRequest(ctx context.Context, invocation Invocation) (PermissionDecision, error)
@@ -269,259 +263,7 @@ func (g *Guard) ExecuteBound(
 	identity := tool.InvocationIdentityFrom(ctx)
 	identity.CallID = callID
 	ctx = tool.WithInvocationIdentity(ctx, identity)
-	for {
-		invocation, executor, err := g.prepare(ctx, name, callID, raw, binding)
-		if err != nil {
-			return tool.Result{}, err
-		}
-		policyInvocation := policyInput(callID, invocation)
-		started := g.now()
-		decision := g.policy.Evaluate(policyInvocation)
-		reviewLatency := g.now().Sub(started)
-		if g.forceEditPlanApproval && mediatedFileWriter(invocation.Tool) &&
-			decision.Action == policy.ActionAllow {
-			decision.Action = policy.ActionAsk
-			decision.Code = "edit_plan_required"
-			decision.Reason = "workspace writes require a fresh edit plan approval"
-		}
-		hookAction := PermissionAction("")
-		if decision.Action == policy.ActionAsk || decision.Code == "auto_review_allowed" {
-			hookAction, err = g.permissionAction(ctx, invocation)
-			if err != nil {
-				return tool.Result{}, err
-			}
-			if decision.Code == "auto_review_allowed" && hookAction == PermissionAsk {
-				decision = policy.Decision{
-					Action: policy.ActionAsk, Code: "permission_hook_ask",
-					Reason: "permission hook requires human approval",
-				}
-			}
-		}
-		g.observeApproval("evaluated", policyInvocation, decision, 0)
-		switch decision.Action {
-		case policy.ActionDeny, policy.ActionHold:
-			g.observeApproval("denied", policyInvocation, decision, 0)
-			return tool.Result{}, &policy.DecisionError{Code: decision.Code, Reason: decision.Reason}
-		case policy.ActionAsk:
-			now := g.now()
-			if !g.forceEditPlanApproval &&
-				g.policy.Approvals != nil &&
-				g.policy.Approvals.MatchInvocation(policyInvocation, now) {
-				g.observeApproval("grant_hit", policyInvocation, decision, 0)
-				break
-			}
-			if hookAction == PermissionAllow {
-				break
-			}
-			var editPlan *tool.EditPlan
-			if mediatedFileWriter(invocation.Tool) {
-				planner, ok := executor.(tool.EditPlanner)
-				if !ok {
-					return tool.Result{}, &policy.DecisionError{
-						Code:   "edit_plan_unavailable",
-						Reason: "workspace writer cannot produce a safe edit preview",
-					}
-				}
-				plan, err := planner.PlanEdit(ctx, invocation.Arguments)
-				if err != nil {
-					return tool.Result{}, fmt.Errorf("plan workspace edit: %w", err)
-				}
-				editPlan = &plan
-			}
-			ask := networkApprovalAsk(policyInvocation, invocation.Descriptor.Capability)
-			if ask.Code == "" {
-				ask.Code = decision.Code
-			}
-			if editPlan != nil {
-				ask.AllowedScopes = []policy.ApprovalScope{policy.ApprovalOnce}
-				ask.DisableReplace = true
-				ask.EditPlan = editPlan
-			}
-			g.observeApproval("human_required", policyInvocation, decision, reviewLatency)
-			approval, err := g.waitForApproval(
-				ctx, invocation, policyInvocation, now, ask,
-			)
-			if err != nil {
-				return tool.Result{}, err
-			}
-			if editPlan != nil {
-				if approval.PlanID != editPlan.ID {
-					return tool.Result{}, &policy.DecisionError{
-						Code:   "edit_plan_mismatch",
-						Reason: "approval does not identify the displayed edit plan",
-					}
-				}
-				current, err := executor.(tool.EditPlanner).PlanEdit(ctx, invocation.Arguments)
-				if err != nil {
-					return tool.Result{}, fmt.Errorf("revalidate workspace edit: %w", err)
-				}
-				if current.ID != editPlan.ID {
-					return tool.Result{}, &policy.DecisionError{
-						Code:   "edit_plan_stale",
-						Reason: "workspace changed after edit preview",
-					}
-				}
-				break
-			}
-			if len(approval.ReplacementArguments) != 0 {
-				raw = append(json.RawMessage(nil), approval.ReplacementArguments...)
-				replacement, _, err := g.prepare(ctx, name, callID, raw, binding)
-				if err != nil {
-					return tool.Result{}, fmt.Errorf("replacement arguments: %w", err)
-				}
-				replacementInvocation := policyInput(callID, replacement)
-				replacementDecision := g.policy.Evaluate(replacementInvocation)
-				if replacementDecision.Action != policy.ActionAsk {
-					if replacementDecision.Action == policy.ActionAllow {
-						continue
-					}
-					return tool.Result{}, &policy.DecisionError{
-						Code: replacementDecision.Code, Reason: replacementDecision.Reason,
-					}
-				}
-				if err := g.cacheApproval(replacementInvocation, approval); err != nil {
-					return tool.Result{}, err
-				}
-				continue
-			}
-			if err := g.cacheApproval(policyInvocation, approval); err != nil {
-				return tool.Result{}, err
-			}
-			continue
-		case policy.ActionAllow:
-			if decision.Code == "auto_review_allowed" {
-				g.observeApproval("auto_allowed", policyInvocation, decision, reviewLatency)
-			}
-			g.grantNetworkHosts(invocation.Resources)
-		default:
-			return tool.Result{}, errors.New("tool guard received invalid policy action")
-		}
-
-		release, err := g.registry.Claims().AcquireResources(ctx, invocation.Resources)
-		if err != nil {
-			return tool.Result{}, err
-		}
-		if g.hooks != nil {
-			if err := g.hooks.Before(ctx, invocation); err != nil {
-				release()
-				return tool.Result{}, err
-			}
-		}
-		writePaths := invocationWritePaths(invocation)
-		requireRead := mediatedFileWriter(invocation.Tool)
-		expectedWrites, err := g.prepareFileWrites(ctx, writePaths, requireRead)
-		if err != nil {
-			release()
-			return tool.Result{}, err
-		}
-		executeContext := workspacejournal.WithExpectedWrites(ctx, expectedWrites)
-		var readBefore *workspacejournal.Fingerprint
-		if invocation.Tool == "file_read" {
-			for _, resource := range invocation.Resources {
-				if resource.Kind == "file" && resource.Path != "" {
-					value, _, _, err := workspacejournal.Snapshot(resource.Path)
-					if err != nil {
-						release()
-						return tool.Result{}, err
-					}
-					readBefore = &value
-					break
-				}
-			}
-		}
-		egressRetried := false
-		for {
-			attempt := SandboxModeStrong
-			var result tool.Result
-			var executeErr error
-			for {
-				runContext := WithSandboxAttempt(executeContext, SandboxAttempt{Mode: attempt})
-				result, executeErr = g.registry.ExecutePrepared(
-					runContext, invocation.Tool, invocation.Arguments, executor,
-				)
-				if !IsSandboxDenial(executeErr, result) ||
-					attempt == SandboxModeNone ||
-					!g.canEscalate(invocation) {
-					break
-				}
-				escalateInvocation := policyInput(callID, invocation)
-				escalateInvocation.Resources = withSandboxNoneResource(invocation.Resources)
-				escalateInvocation.Sandbox = tool.SandboxNone
-				now := g.now()
-				if g.policy.Approvals == nil || !g.policy.Approvals.MatchInvocation(escalateInvocation, now) {
-					approval, err := g.waitForApproval(
-						ctx, invocation, escalateInvocation, now,
-						approvalAsk{
-							Code: ApprovalReasonSandboxEscalate,
-							AllowedScopes: []policy.ApprovalScope{
-								policy.ApprovalOnce, policy.ApprovalSession,
-							},
-							DisableReplace: true,
-						},
-					)
-					if err != nil {
-						if g.hooks != nil {
-							g.hooks.After(ctx, invocation, result, err)
-						}
-						release()
-						return tool.Result{}, err
-					}
-					if err := g.cacheApproval(escalateInvocation, approval); err != nil {
-						if g.hooks != nil {
-							g.hooks.After(ctx, invocation, result, err)
-						}
-						release()
-						return tool.Result{}, err
-					}
-				}
-				attempt = SandboxModeNone
-			}
-			if invocation.Tool == "file_read" && executeErr == nil {
-				if err := g.recordFileRead(&result, invocation, readBefore); err != nil {
-					executeErr = err
-				}
-			}
-			if len(writePaths) != 0 {
-				if err := g.finishFileWrites(
-					ctx, writePaths, expectedWrites, &result,
-					executeErr == nil,
-					mediatedFileWriter(invocation.Tool),
-					mediatedFileWriter(invocation.Tool),
-				); err != nil && executeErr == nil {
-					executeErr = err
-				}
-			}
-			if host, protocol, ok := egressDeniedTarget(result, executeErr); ok && !egressRetried {
-				egressRetried = true
-				if err := g.approveEgressHost(ctx, invocation, callID, host, protocol); err != nil {
-					if softFailEgressApproval(err) {
-						if g.hooks != nil {
-							g.hooks.After(ctx, invocation, result, nil)
-						}
-						release()
-						if executeErr != nil {
-							return tool.Result{}, executeErr
-						}
-						return result, nil
-					}
-					if g.hooks != nil {
-						g.hooks.After(ctx, invocation, result, err)
-					}
-					release()
-					return tool.Result{}, err
-				}
-				continue
-			}
-			if g.hooks != nil {
-				g.hooks.After(ctx, invocation, result, executeErr)
-			}
-			release()
-			if executeErr != nil {
-				return tool.Result{}, executeErr
-			}
-			return result, nil
-		}
-	}
+	return g.executePipeline(ctx, callID, name, raw, binding)
 }
 
 func (g *Guard) canEscalate(invocation Invocation) bool {
@@ -540,17 +282,15 @@ func policyInput(callID string, invocation Invocation) policy.Invocation {
 	}
 }
 
-func egressDeniedTarget(result tool.Result, executeErr error) (host, protocol string, ok bool) {
+func egressDeniedTarget(outcome tool.Outcome, executeErr error) (host, protocol string, ok bool) {
 	protocol = "https"
-	if result.IsError && result.Metadata != nil {
-		if category, _ := result.Metadata["error_category"].(string); category == "egress_denied" {
-			host, _ = result.Metadata["host"].(string)
-			if p, _ := result.Metadata["protocol"].(string); p != "" {
-				protocol = p
-			}
-			if host != "" {
-				return strings.ToLower(host), protocol, true
-			}
+	if outcome.Security != nil && outcome.Security.EgressDenied != nil {
+		host = strings.ToLower(strings.TrimSpace(outcome.Security.EgressDenied.Host))
+		if value := strings.TrimSpace(outcome.Security.EgressDenied.Protocol); value != "" {
+			protocol = value
+		}
+		if host != "" {
+			return host, protocol, true
 		}
 	}
 	if executeErr != nil && errors.Is(executeErr, egress.ErrDenied) {
@@ -890,10 +630,11 @@ func mediatedFileWriter(name string) bool {
 func (g *Guard) prepare(
 	ctx context.Context, name, callID string, raw json.RawMessage, binding tool.CatalogBinding,
 ) (Invocation, tool.Executor, error) {
-	canonical, descriptor, executor, err := g.registry.ResolveBound(name, binding)
+	ref, descriptor, executor, err := g.registry.ResolveBoundRef(name, binding)
 	if err != nil {
 		return Invocation{}, nil, err
 	}
+	canonical := ref.Name
 	repaired := tool.RepairArguments(raw)
 	arguments, err := tool.NormalizeArguments(descriptor.InputSchema, repaired)
 	if err != nil {
@@ -928,9 +669,12 @@ func (g *Guard) prepare(
 			return Invocation{}, nil, err
 		}
 	}
+	identity := tool.InvocationIdentityFrom(ctx)
+	identity.CallID = callID
 	return Invocation{
-		CallID: callID, Tool: canonical, Arguments: arguments,
-		Resources: resources, Descriptor: descriptor,
+		Identity: identity, CallID: callID, Tool: canonical, Ref: ref,
+		Arguments: arguments, Resources: resources, Descriptor: descriptor,
+		Source: tool.InvocationSourceFrom(ctx), Disposition: tool.DispositionFor(executor),
 	}, executor, nil
 }
 

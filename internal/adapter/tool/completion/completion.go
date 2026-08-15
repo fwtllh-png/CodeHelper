@@ -77,8 +77,9 @@ func (*Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, err
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[tool.CompletionDeclaration, output]{
-		Descriptor: t.Descriptor(),
-		Validate:   validateDeclaration,
+		Descriptor:  t.Descriptor(),
+		Disposition: tool.DispositionAbortImmediately,
+		Validate:    validateDeclaration,
 		Run: func(_ context.Context, declaration tool.CompletionDeclaration) (output, error) {
 			return output{
 				Status:      "pending_runtime_validation",

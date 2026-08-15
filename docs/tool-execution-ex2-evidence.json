@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "stage": "EX2",
+  "status": "accepted",
+  "date": "2026-08-15",
+  "scope": "typed_local_execution_and_guard_pipeline",
+  "baseline": {
+    "branch": "refactor/tools-execution",
+    "commit": "0ca88c4cfdf8f59f6f945a6a39b31f226705bd01",
+    "evidence": "docs/tool-execution-ex1-evidence.json"
+  },
+  "contracts": {
+    "authority_frozen_tool_ref": true,
+    "immutable_prepared_invocation": true,
+    "typed_outcome_executor": true,
+    "typed_security_signal": true,
+    "explicit_execution_disposition": true,
+    "typed_attempt_receipt": true,
+    "typed_execution_receipt": true,
+    "result_store_preserves_typed_projection": true,
+    "guard_is_only_consequential_entry": true
+  },
+  "pipeline": {
+    "phases": [
+      "prepare",
+      "authorize",
+      "approve",
+      "admit",
+      "attempt",
+      "commit",
+      "project"
+    ],
+    "initial_approval_holds_admission": false,
+    "initial_approval_holds_claims": false,
+    "sandbox_approval_holds_admission": false,
+    "sandbox_approval_holds_claims": false,
+    "egress_approval_holds_admission": false,
+    "egress_approval_holds_claims": false,
+    "replacement_repeats_preparation": true,
+    "replacement_repeats_authorization": true
+  },
+  "typed_migration": {
+    "typed_define_requires_disposition": true,
+    "foreground_shell_uses_typed_define": true,
+    "foreground_shell_preserves_argument_expansion": true,
+    "raw_dynamic_protocols_remain_adapted": true
+  },
+  "security": {
+    "sandbox_decision_reads_result_metadata": false,
+    "egress_decision_reads_result_metadata": false,
+    "sandbox_signal": "typed_outcome_or_typed_error",
+    "egress_signal": "typed_outcome_or_typed_error"
+  },
+  "measurements": {
+    "model_visible_execution_tools": 15,
+    "input_schema_bytes": 3179,
+    "serial_execution_tools": 15,
+    "input_schema_regression_bytes": 0,
+    "guard_hotspot_lines_ex0": 1775,
+    "guard_hotspot_lines_ex2": 1519,
+    "engine_tool_handler_lines_ex0": 512,
+    "engine_tool_handler_lines_ex2": 501
+  },
+  "remaining_risks": {
+    "process_protocol_is_fragmented": true,
+    "generic_business_metadata_remains": true,
+    "session_owner_is_not_enforced": true,
+    "session_wait_is_polling": true
+  },
+  "verification": [
+    {
+      "command": "make tool-execution-ex2",
+      "status": "passed"
+    },
+    {
+      "command": "go test -p 1 -count=1 ./internal/...",
+      "status": "passed"
+    },
+    {
+      "command": "make docs-check",
+      "status": "passed"
+    },
+    {
+      "command": "make book-check",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "architecture": {
+    "ratchet": "67/67",
+    "status": "passed"
+  }
+}

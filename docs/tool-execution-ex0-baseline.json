@@ -33,6 +33,9 @@
   },
   "risks": {
     "foreground_output_bounded": false,
+    "approval_wait_holds_admission": true,
+    "security_reads_result_metadata": true,
+    "cancellation_lacks_disposition": true,
     "session_owner_enforced": false,
     "event_driven_session_wait": false,
     "unified_process_protocol": false

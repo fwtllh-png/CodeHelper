@@ -439,8 +439,9 @@ func (e *helperExecutor) Execute(
 
 func (e *helperExecutor) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[helperInput, tool.Result]{
-		Descriptor: e.Descriptor(),
-		Run:        e.run,
+		Descriptor:  e.Descriptor(),
+		Disposition: tool.DispositionWaitForTeardown,
+		Run:         e.run,
 		Encode: func(value tool.Result) (tool.Result, error) {
 			return value, nil
 		},

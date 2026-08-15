@@ -112,8 +112,9 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[input, tool.Result]{
-		Descriptor: t.Descriptor(),
-		Run:        t.runTyped,
+		Descriptor:  t.Descriptor(),
+		Disposition: tool.DispositionWaitForTeardown,
+		Run:         t.runTyped,
 		Encode: func(value tool.Result) (tool.Result, error) {
 			return value, nil
 		},

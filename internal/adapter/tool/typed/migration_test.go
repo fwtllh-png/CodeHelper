@@ -45,6 +45,7 @@ func TestTierTwoToolsUseTypedBoundaryOrDocumentException(t *testing.T) {
 		{path: "quality/quality.go", typed: true, forbidRawRoot: true},
 		{path: "automation/automation.go", typed: true, forbidRawRoot: true},
 		{path: "handle/handle.go", typed: true},
+		{path: "shell/shell.go", typed: true, forbidRawRoot: true},
 		{path: "plugin/plugin.go", exception: true},
 		{path: "mcp/mcp.go", typed: true, exception: true},
 	}

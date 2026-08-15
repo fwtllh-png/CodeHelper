@@ -650,6 +650,15 @@ func httpTransportFailure(err error, requestURL string) tool.Result {
 		} else {
 			message = "egress denied"
 		}
+		return tool.Result{
+			Content: message, IsError: true, Metadata: meta,
+			Outcome: &tool.Outcome{
+				Status: tool.OutcomeFailed,
+				Security: &tool.SecuritySignal{
+					EgressDenied: &tool.NetworkTarget{Host: host, Protocol: protocol},
+				},
+			},
+		}
 	case errors.Is(err, errRedirectLimit):
 		category = "redirect_limit"
 		meta["error_category"] = category

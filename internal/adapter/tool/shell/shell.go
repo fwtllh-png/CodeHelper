@@ -14,6 +14,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -26,6 +27,22 @@ type Tool struct {
 	backend   sandbox.Backend
 	pty       bool
 	readOnly  bool
+}
+
+type foregroundInput struct {
+	Command     string   `json:"command"`
+	CWD         string   `json:"cwd"`
+	TimeoutMS   int64    `json:"timeout_ms"`
+	Description string   `json:"description"`
+	WritePaths  []string `json:"write_paths"`
+}
+
+type foregroundExecutor struct {
+	tool    *Tool
+	runtime interface {
+		tool.OutcomeExecutor
+		tool.DispositionProvider
+	}
 }
 
 func RegisterWithManagerAndBackend(
@@ -58,11 +75,15 @@ func registerWithBackend(
 	backend sandbox.Backend,
 ) error {
 	registry.SetSandboxBackend(backend)
-	for _, executor := range []tool.Executor{
+	for _, implementation := range []*Tool{
 		&Tool{workspace: workspace, backend: backend},
 		&Tool{workspace: workspace, backend: backend, readOnly: true},
 		&Tool{workspace: workspace, backend: backend, pty: true},
 	} {
+		executor, err := newForegroundExecutor(implementation)
+		if err != nil {
+			return err
+		}
 		if err := registry.Register(executor, nil); err != nil {
 			return err
 		}
@@ -138,6 +159,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		ResourceResolver:   resolver,
 		ParallelPolicy:     tool.ParallelSerial,
 		SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
+		RepeatPolicy: tool.RepeatExecute,
 		InputSchema: map[string]any{
 			"type":                 "object",
 			"properties":           properties,
@@ -158,16 +180,14 @@ func (t *Tool) ExpandArguments(
 }
 
 func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Command     string   `json:"command"`
-		CWD         string   `json:"cwd"`
-		TimeoutMS   int64    `json:"timeout_ms"`
-		Description string   `json:"description"`
-		WritePaths  []string `json:"write_paths"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
+	input, err := typed.DecodeStrict[foregroundInput](raw)
+	if err != nil {
 		return tool.Result{}, err
 	}
+	return t.execute(ctx, input)
+}
+
+func (t *Tool) execute(ctx context.Context, input foregroundInput) (tool.Result, error) {
 	if token := unsupportedPOSIXShellSyntax(input.Command); token != "" {
 		content, _ := json.Marshal(map[string]any{
 			"status":          "rejected",
@@ -307,6 +327,57 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		IsError:  result.ExitCode != 0,
 		Metadata: metadata,
 	}, nil
+}
+
+func newForegroundExecutor(implementation *Tool) (tool.Executor, error) {
+	executor, err := typed.Define(typed.Spec[foregroundInput, tool.Result]{
+		Descriptor:  implementation.Descriptor(),
+		Disposition: tool.DispositionWaitForTeardown,
+		Run:         implementation.execute,
+		Encode: func(result tool.Result) (tool.Result, error) {
+			return result, nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	runtime, ok := executor.(interface {
+		tool.OutcomeExecutor
+		tool.DispositionProvider
+	})
+	if !ok {
+		return nil, errors.New("typed shell executor has no outcome runtime")
+	}
+	return &foregroundExecutor{tool: implementation, runtime: runtime}, nil
+}
+
+func (e *foregroundExecutor) Descriptor() tool.Descriptor {
+	return e.runtime.Descriptor()
+}
+
+func (e *foregroundExecutor) ExecutionDisposition() tool.ExecutionDisposition {
+	return e.runtime.ExecutionDisposition()
+}
+
+func (e *foregroundExecutor) Execute(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, error) {
+	return e.runtime.Execute(ctx, raw)
+}
+
+func (e *foregroundExecutor) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, tool.Outcome, error) {
+	return e.runtime.ExecuteOutcome(ctx, raw)
+}
+
+func (e *foregroundExecutor) ExpandArguments(
+	ctx context.Context,
+	raw json.RawMessage,
+) (json.RawMessage, error) {
+	return e.tool.ExpandArguments(ctx, raw)
 }
 
 func (t *Tool) recoverWorkspaceChange(err error) error {

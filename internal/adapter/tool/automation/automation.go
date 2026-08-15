@@ -226,8 +226,9 @@ func mutatorDescriptor(name, description string) tool.Descriptor {
 
 func (e *executor) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[input, tool.Result]{
-		Descriptor: e.Descriptor(),
-		Run:        e.run,
+		Descriptor:  e.Descriptor(),
+		Disposition: tool.DispositionWaitForTeardown,
+		Run:         e.run,
 		Encode: func(value tool.Result) (tool.Result, error) {
 			return value, nil
 		},

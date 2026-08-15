@@ -31,6 +31,12 @@ func TestDefineExecutesStrictTypedContract(t *testing.T) {
 	if value.Content != `{"greeting":"hello Ada"}` || value.Metadata["greeting"] != "hello Ada" {
 		t.Fatalf("result = %+v", value)
 	}
+	if value.Outcome == nil || value.Outcome.Status != tool.OutcomeSucceeded {
+		t.Fatalf("typed outcome = %+v", value.Outcome)
+	}
+	if disposition := tool.DispositionFor(executor); disposition != tool.DispositionAbortImmediately {
+		t.Fatalf("execution disposition = %q", disposition)
+	}
 	for _, raw := range []string{
 		`{"name":"Ada","unknown":true}`,
 		`{"name":"Ada"} {"name":"Grace"}`,
@@ -120,6 +126,13 @@ func TestDefineValidatesDescriptorAndRequiredRun(t *testing.T) {
 	if _, err := Define(spec); err == nil {
 		t.Fatal("implicit RepeatPolicy succeeded")
 	}
+	spec = fixtureSpec(func(context.Context, fixtureInput) (fixtureOutput, error) {
+		return fixtureOutput{}, nil
+	})
+	spec.Disposition = ""
+	if _, err := Define(spec); err == nil {
+		t.Fatal("implicit execution disposition succeeded")
+	}
 }
 
 func TestDescriptorBuildersRequirePolicySensitiveOptions(t *testing.T) {
@@ -186,8 +199,9 @@ func fixtureSpec(
 		},
 	)
 	return Spec[fixtureInput, fixtureOutput]{
-		Descriptor: descriptor,
-		Run:        run,
+		Descriptor:  descriptor,
+		Disposition: tool.DispositionAbortImmediately,
+		Run:         run,
 		Metadata: func(output fixtureOutput) map[string]any {
 			return map[string]any{"greeting": output.Greeting}
 		},

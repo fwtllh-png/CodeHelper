@@ -19,6 +19,16 @@ func TestShellRunPublishesBoundedOutputReceipt(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	_, _, executor, err := registry.Resolve("shell_run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := executor.(tool.OutcomeExecutor); !ok {
+		t.Fatalf("shell_run executor %T has no typed outcome boundary", executor)
+	}
+	if tool.DispositionFor(executor) != tool.DispositionWaitForTeardown {
+		t.Fatalf("shell_run disposition = %q", tool.DispositionFor(executor))
+	}
 	result := executeSessionTool(t, registry, "shell_run", map[string]any{
 		"command": `dd if=/dev/zero bs=2097152 count=1 2>/dev/null | tr '\000' x`,
 	})

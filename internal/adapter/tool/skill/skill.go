@@ -80,8 +80,9 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[input, tool.Result]{
-		Descriptor: t.Descriptor(),
-		Run:        t.run,
+		Descriptor:  t.Descriptor(),
+		Disposition: tool.DispositionAbortImmediately,
+		Run:         t.run,
 		Encode: func(value tool.Result) (tool.Result, error) {
 			return value, nil
 		},

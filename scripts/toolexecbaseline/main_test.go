@@ -31,6 +31,13 @@ func TestRepositoryToolExecutionBaseline(t *testing.T) {
 	if !measured.Risks.ForegroundOutputBounded {
 		t.Fatalf("EX1 bounded output was not detected: %+v", measured.Risks)
 	}
+	if measured.Risks.ApprovalWaitHoldsAdmission {
+		t.Fatalf("EX2 approval admission split was not detected: %+v", measured.Risks)
+	}
+	if measured.Risks.SecurityReadsResultMetadata ||
+		measured.Risks.CancellationLacksDisposition {
+		t.Fatalf("EX2 typed execution core was not detected: %+v", measured.Risks)
+	}
 	if measured.Risks.SessionOwnerEnforced ||
 		measured.Risks.EventDrivenSessionWait ||
 		measured.Risks.UnifiedProcessProtocol {
@@ -45,6 +52,9 @@ func TestValidateCandidateAcceptsImprovements(t *testing.T) {
 	candidate.Catalog.InputSchemaBytes--
 	candidate.Catalog.SerialExecutionTools--
 	candidate.Risks.ForegroundOutputBounded = true
+	candidate.Risks.ApprovalWaitHoldsAdmission = false
+	candidate.Risks.SecurityReadsResultMetadata = false
+	candidate.Risks.CancellationLacksDisposition = false
 	candidate.Risks.SessionOwnerEnforced = true
 	candidate.Risks.EventDrivenSessionWait = true
 	candidate.Risks.UnifiedProcessProtocol = true

@@ -185,9 +185,10 @@ func contractExecutor(
 		},
 	)
 	executor, err := typed.Define(typed.Spec[contractInput, contractOutput]{
-		Descriptor: descriptor,
-		Run:        run,
-		Metadata:   metadata,
+		Descriptor:  descriptor,
+		Disposition: tool.DispositionAbortImmediately,
+		Run:         run,
+		Metadata:    metadata,
 	})
 	if err != nil {
 		t.Fatal(err)

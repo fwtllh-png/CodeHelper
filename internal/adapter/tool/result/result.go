@@ -58,6 +58,12 @@ func Validate(value tool.Result) error {
 	if _, err := json.Marshal(value.Metadata); err != nil {
 		return fmt.Errorf("tool result metadata is not JSON-compatible: %w", err)
 	}
+	if _, err := json.Marshal(value.Outcome); err != nil {
+		return fmt.Errorf("tool outcome is not JSON-compatible: %w", err)
+	}
+	if _, err := json.Marshal(value.Execution); err != nil {
+		return fmt.Errorf("tool execution receipt is not JSON-compatible: %w", err)
+	}
 	return nil
 }
 

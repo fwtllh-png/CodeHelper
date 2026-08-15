@@ -61,6 +61,7 @@ func (e *Engine) runToolsWithCache(
 	}
 	toolCtx, cancel := context.WithCancelCause(ctx)
 	toolCtx = tool.WithInvocationIdentity(toolCtx, identity)
+	toolCtx = tool.WithInvocationSource(toolCtx, tool.InvocationSourceModel)
 
 	toolCtx = withToolAccount(toolCtx, &toolAccount{
 		engine: e,
@@ -226,23 +227,11 @@ func (e *Engine) runToolsWithCache(
 				}
 				return
 			}
-			policyKind := tool.ParallelSerial
-			if _, desc, _, err := e.options.Tools.ResolveBound(call.Name, binding); err == nil {
-				policyKind = desc.ParallelPolicy
-			}
-			release, err := sched.Admit(toolCtx, policyKind)
-			if err != nil {
-				results[index] = tool.Result{
-					Content: "tool aborted: " + err.Error(), IsError: true,
-				}
-				return
-			}
-			defer release()
-
 			span := e.beginToolSpan(call)
 			e.options.Metrics.ToolExecution()
 
 			callCtx := tool.WithOutputObserver(toolCtx, stream.observe(call))
+			callCtx = tool.WithExecutionAdmission(callCtx, sched.Admit)
 			result, err := e.executeToolBound(
 				callCtx, call.ID, call.Name, json.RawMessage(call.Arguments), binding,
 			)
@@ -484,6 +473,8 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 func cachedToolResult(result tool.Result, sourceCallID string) tool.Result {
 	copy := result
 	copy.Metadata = maps.Clone(result.Metadata)
+	copy.Outcome = tool.CloneOutcome(result.Outcome)
+	copy.Execution = tool.CloneExecutionReceipt(result.Execution)
 	if copy.Metadata == nil {
 		copy.Metadata = make(map[string]any)
 	}

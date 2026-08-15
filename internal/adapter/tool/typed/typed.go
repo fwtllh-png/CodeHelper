@@ -20,12 +20,14 @@ type Decoder[I any] func(json.RawMessage) (I, error)
 type Encoder[O any] func(O) (tool.Result, error)
 
 type Spec[I, O any] struct {
-	Descriptor tool.Descriptor
-	Decode     Decoder[I]
-	Validate   func(I) error
-	Run        func(context.Context, I) (O, error)
-	Encode     Encoder[O]
-	Metadata   func(O) map[string]any
+	Descriptor  tool.Descriptor
+	Disposition tool.ExecutionDisposition
+	Decode      Decoder[I]
+	Validate    func(I) error
+	Run         func(context.Context, I) (O, error)
+	Encode      Encoder[O]
+	Outcome     func(O) tool.Outcome
+	Metadata    func(O) map[string]any
 }
 
 // DescriptorPolicy contains the policy-sensitive fields that descriptor
@@ -51,6 +53,9 @@ func Define[I, O any](spec Spec[I, O]) (tool.Executor, error) {
 	if spec.Run == nil {
 		return nil, errors.New("typed tool Run function is required")
 	}
+	if !spec.Disposition.Valid() {
+		return nil, errors.New("typed tool execution disposition must be explicit")
+	}
 	if spec.Decode == nil {
 		spec.Decode = DecodeStrict[I]
 	}
@@ -64,35 +69,50 @@ func (e *executor[I, O]) Descriptor() tool.Descriptor {
 	return e.spec.Descriptor
 }
 
+func (e *executor[I, O]) ExecutionDisposition() tool.ExecutionDisposition {
+	return e.spec.Disposition
+}
+
 func (e *executor[I, O]) Execute(
 	ctx context.Context,
 	raw json.RawMessage,
 ) (result tool.Result, err error) {
+	result, _, err = e.ExecuteOutcome(ctx, raw)
+	return result, err
+}
+
+func (e *executor[I, O]) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (result tool.Result, outcome tool.Outcome, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("typed tool %q panicked: %v", e.spec.Descriptor.Name, recovered)
 			result = tool.Result{}
+			outcome = tool.Outcome{Status: tool.OutcomeFailed}
 		}
 	}()
 	if contextErr := ctx.Err(); contextErr != nil {
-		return tool.Result{}, contextErr
+		return tool.Result{}, tool.Outcome{Status: tool.OutcomeCanceled}, contextErr
 	}
 	input, err := e.spec.Decode(raw)
 	if err != nil {
-		return tool.Result{}, fmt.Errorf("%w: %v", tool.ErrInvalidArguments, err)
+		return tool.Result{}, tool.Outcome{Status: tool.OutcomeRejected},
+			fmt.Errorf("%w: %v", tool.ErrInvalidArguments, err)
 	}
 	if e.spec.Validate != nil {
 		if validationErr := e.spec.Validate(input); validationErr != nil {
-			return tool.Result{}, fmt.Errorf("%w: %v", tool.ErrInvalidArguments, validationErr)
+			return tool.Result{}, tool.Outcome{Status: tool.OutcomeRejected},
+				fmt.Errorf("%w: %v", tool.ErrInvalidArguments, validationErr)
 		}
 	}
 	output, err := e.spec.Run(ctx, input)
 	if err != nil {
-		return tool.Result{}, err
+		return tool.Result{}, tool.Outcome{Status: tool.OutcomeFailed}, err
 	}
 	result, err = e.spec.Encode(output)
 	if err != nil {
-		return tool.Result{}, err
+		return tool.Result{}, tool.Outcome{Status: tool.OutcomeFailed}, err
 	}
 	if e.spec.Metadata != nil {
 		if result.Metadata == nil {
@@ -100,10 +120,18 @@ func (e *executor[I, O]) Execute(
 		}
 		maps.Copy(result.Metadata, e.spec.Metadata(output))
 	}
-	if err := toolresult.Validate(result); err != nil {
-		return tool.Result{}, err
+	if result.Outcome != nil {
+		outcome = *tool.CloneOutcome(result.Outcome)
+	} else if e.spec.Outcome != nil {
+		outcome = e.spec.Outcome(output)
+	} else {
+		outcome = tool.OutcomeFromResult(result)
 	}
-	return result, nil
+	result.Outcome = tool.CloneOutcome(&outcome)
+	if err := toolresult.Validate(result); err != nil {
+		return tool.Result{}, tool.Outcome{Status: tool.OutcomeFailed}, err
+	}
+	return result, outcome, nil
 }
 
 func DecodeStrict[I any](raw json.RawMessage) (I, error) {

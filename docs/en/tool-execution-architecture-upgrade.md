@@ -2,12 +2,14 @@
 
 [Simplified Chinese](../zh-CN/tool-execution-architecture-upgrade.md) | English
 
-> Status: EX1 `accepted`; EX0 `baseline_frozen`.
+> Status: EX2 `accepted`; EX1 `accepted`; EX0 `baseline_frozen`.
 >
 > Baseline:
 > [`tool-execution-ex0-baseline.json`](../tool-execution-ex0-baseline.json).
 > EX1 evidence:
 > [`tool-execution-ex1-evidence.json`](../tool-execution-ex1-evidence.json).
+> EX2 evidence:
+> [`tool-execution-ex2-evidence.json`](../tool-execution-ex2-evidence.json).
 >
 > Scope: tool identity, invocation, result projection, Guard orchestration,
 > resource scheduling, local process execution, cancellation, persistent
@@ -463,6 +465,8 @@ Delivered:
 
 ### EX2: Typed Execution Core and Guard Pipeline
 
+Status: `accepted`.
+
 Work:
 
 - add structured ToolRef, prepared Invocation, Outcome, Attempt, and
@@ -479,6 +483,26 @@ Exit:
 - approval waits consume no execution slot or Claim;
 - existing approval and journal tests remain equivalent; and
 - Guard remains the only consequential entry.
+
+Delivered:
+
+- authority-frozen `ToolRef`, immutable Prepared Invocation, Invocation Source,
+  explicit cancellation Disposition, Typed Outcome/Security Signal, and
+  Attempt/Execution Receipt contracts;
+- Registry-native `OutcomeExecutor` adaptation, preserving typed Outcome and
+  Execution Receipt through ResultStore projection;
+- explicit Disposition on every `typed.Define` executor, with foreground Shell
+  tools migrated to the typed boundary while retaining argument expansion;
+- Guard split into preparation/authorization and admitted-attempt components;
+- Engine injects execution Admission through Context, and Guard acquires the
+  scheduler slot only immediately before resource Claims and the actual
+  attempt;
+- initial, Sandbox escalation, and Egress approvals run after scheduler and
+  Claim release;
+- Sandbox and Egress security decisions consume typed signals or typed errors,
+  never arbitrary Result Metadata; and
+- replacement arguments generate a new Prepared Invocation and repeat policy
+  and permission-hook authorization before execution.
 
 ### EX3: Unified Process Protocol
 

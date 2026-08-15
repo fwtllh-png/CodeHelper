@@ -878,6 +878,14 @@ func (e *egressRetryExecutor) Execute(_ context.Context, _ json.RawMessage) (too
 				"error_category": "egress_denied", "host": "cdn.example",
 				"protocol": "https", "status_code": 0,
 			},
+			Outcome: &tool.Outcome{
+				Status: tool.OutcomeFailed,
+				Security: &tool.SecuritySignal{
+					EgressDenied: &tool.NetworkTarget{
+						Host: "cdn.example", Protocol: "https",
+					},
+				},
+			},
 		}, nil
 	}
 	return tool.Result{Content: `{"ok":true}`}, nil
@@ -1263,19 +1271,21 @@ func TestSandboxEscalateDisabled(t *testing.T) {
 }
 
 func TestIsSandboxDenial(t *testing.T) {
-	if !IsSandboxDenial(ErrSandboxDenied, tool.Result{}) {
+	if !IsSandboxDenial(ErrSandboxDenied, tool.Outcome{}) {
 		t.Fatal("ErrSandboxDenied should match")
 	}
-	if IsSandboxDenial(errors.New("sandbox denied by policy"), tool.Result{}) {
+	if IsSandboxDenial(errors.New("sandbox denied by policy"), tool.Outcome{}) {
 		t.Fatal("untyped sandbox text must not authorize escalation")
 	}
-	if IsSandboxDenial(errors.New("Operation not permitted"), tool.Result{}) {
+	if IsSandboxDenial(errors.New("Operation not permitted"), tool.Outcome{}) {
 		t.Fatal("OS error text must not authorize escalation")
 	}
-	if !IsSandboxDenial(nil, tool.Result{Metadata: map[string]any{"sandbox_denied": true}}) {
-		t.Fatal("metadata flag should match")
+	if !IsSandboxDenial(nil, tool.Outcome{
+		Security: &tool.SecuritySignal{SandboxDenied: true},
+	}) {
+		t.Fatal("typed sandbox signal should match")
 	}
-	if IsSandboxDenial(errors.New("command failed"), tool.Result{}) {
+	if IsSandboxDenial(errors.New("command failed"), tool.Outcome{}) {
 		t.Fatal("generic error must not match")
 	}
 }

@@ -74,18 +74,13 @@ func ProcessSandbox(ctx context.Context, backend sandbox.Backend) (sandbox.Backe
 }
 
 // IsSandboxDenial reports whether an execution failure looks like a sandbox deny.
-func IsSandboxDenial(err error, result tool.Result) bool {
+func IsSandboxDenial(err error, outcome tool.Outcome) bool {
 	if err != nil {
 		if errors.Is(err, ErrSandboxDenied) {
 			return true
 		}
 	}
-	if result.Metadata != nil {
-		if denied, ok := result.Metadata["sandbox_denied"].(bool); ok && denied {
-			return true
-		}
-	}
-	return false
+	return outcome.Security != nil && outcome.Security.SandboxDenied
 }
 
 // MarkSandboxDenial wraps err (or builds one from detail) as ErrSandboxDenied.

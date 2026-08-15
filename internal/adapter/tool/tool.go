@@ -208,6 +208,8 @@ type Result struct {
 	Content       string                           `json:"content"`
 	IsError       bool                             `json:"is_error,omitempty"`
 	Metadata      map[string]any                   `json:"metadata,omitempty"`
+	Outcome       *Outcome                         `json:"outcome,omitempty"`
+	Execution     *ExecutionReceipt                `json:"execution,omitempty"`
 	Truncated     bool                             `json:"truncated,omitempty"`
 	OriginalBytes int                              `json:"original_bytes,omitempty"`
 	Handle        string                           `json:"handle,omitempty"`
@@ -420,6 +422,44 @@ func (r *Registry) ResolveBound(
 		)
 	}
 	return r.resolve(name, &binding)
+}
+
+func (r *Registry) ResolveBoundRef(
+	name string,
+	binding CatalogBinding,
+) (ToolRef, Descriptor, Executor, error) {
+	canonical, descriptor, executor, err := r.ResolveBound(name, binding)
+	if err != nil {
+		return ToolRef{}, Descriptor{}, nil, err
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	item := r.tools[canonical]
+	if item == nil || !reflect.DeepEqual(item.descriptor, descriptor) {
+		return ToolRef{}, Descriptor{}, nil, fmt.Errorf(
+			"%w for tool %q: execution authority changed",
+			ErrCatalogStale,
+			canonical,
+		)
+	}
+	if binding.CatalogID != "" {
+		if err := r.validateBindingLocked(canonical, item, &binding); err != nil {
+			return ToolRef{}, Descriptor{}, nil, err
+		}
+	}
+	generation := r.generation
+	if binding.Generation != 0 {
+		generation = binding.Generation
+	}
+	ref := ToolRef{
+		Name: canonical, Source: item.source,
+		CatalogID: r.catalogID, Generation: generation,
+		Revision: item.revision, Authority: item.token,
+	}
+	if err := ref.Validate(); err != nil {
+		return ToolRef{}, Descriptor{}, nil, err
+	}
+	return ref, descriptor, executor, nil
 }
 
 // ResolveCatalogToolID validates a sampled binding without materializing or
@@ -643,14 +683,45 @@ func (r *Registry) Execute(ctx context.Context, call Call) (Result, error) {
 func (r *Registry) ExecutePrepared(
 	ctx context.Context, canonicalName string, arguments json.RawMessage, executor Executor,
 ) (Result, error) {
-	result, err := executor.Execute(ctx, arguments)
+	result, _, err := r.ExecutePreparedOutcome(ctx, canonicalName, arguments, executor)
+	return result, err
+}
+
+func (r *Registry) ExecutePreparedOutcome(
+	ctx context.Context,
+	canonicalName string,
+	arguments json.RawMessage,
+	executor Executor,
+) (Result, Outcome, error) {
+	var (
+		result  Result
+		outcome Outcome
+		err     error
+	)
+	if typed, ok := executor.(OutcomeExecutor); ok {
+		result, outcome, err = typed.ExecuteOutcome(ctx, arguments)
+	} else {
+		result, err = executor.Execute(ctx, arguments)
+		outcome = OutcomeFromResult(result)
+	}
+	if result.Outcome != nil {
+		outcome = *CloneOutcome(result.Outcome)
+	} else {
+		if outcome.Status == "" {
+			outcome = OutcomeFromResult(result)
+		}
+		if err != nil {
+			outcome.Status = OutcomeFailed
+		}
+		result.Outcome = CloneOutcome(&outcome)
+	}
 	if err != nil {
-		return Result{}, err
+		return result, outcome, err
 	}
 	if canonicalName == "result_get" || canonicalName == "handle_read" {
-		return result, nil
+		return result, outcome, nil
 	}
-	return r.results.RouteFor(canonicalName, result), nil
+	return r.results.RouteFor(canonicalName, result), outcome, nil
 }
 
 // PruneResultSurface stores the full result and returns a deterministic,
@@ -849,9 +920,11 @@ type ResultStore struct {
 }
 
 type storedResult struct {
-	Content  string         `json:"content"`
-	IsError  bool           `json:"is_error"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Content   string            `json:"content"`
+	IsError   bool              `json:"is_error"`
+	Metadata  map[string]any    `json:"metadata,omitempty"`
+	Outcome   *Outcome          `json:"outcome,omitempty"`
+	Execution *ExecutionReceipt `json:"execution,omitempty"`
 }
 
 func NewResultStore(maxInline int) *ResultStore {
@@ -894,7 +967,9 @@ func (s *ResultStore) Admit(
 		if stored, ok := s.getResult(result.Handle); ok {
 			result = Result{
 				Content: stored.Content, IsError: stored.IsError,
-				Metadata: cloneMetadata(stored.Metadata),
+				Metadata:  cloneMetadata(stored.Metadata),
+				Outcome:   CloneOutcome(stored.Outcome),
+				Execution: CloneExecutionReceipt(stored.Execution),
 			}
 		}
 	}
@@ -915,7 +990,9 @@ func (s *ResultStore) Admit(
 	}
 	stored := storedResult{
 		Content: original, IsError: result.IsError,
-		Metadata: cloneMetadata(result.Metadata),
+		Metadata:  cloneMetadata(result.Metadata),
+		Outcome:   CloneOutcome(result.Outcome),
+		Execution: CloneExecutionReceipt(result.Execution),
 	}
 	data, err := json.Marshal(stored)
 	if err != nil {
@@ -969,7 +1046,9 @@ func (s *ResultStore) PruneSurface(
 	}
 	full := storedResult{
 		Content: result.Content, IsError: result.IsError,
-		Metadata: cloneMetadata(result.Metadata),
+		Metadata:  cloneMetadata(result.Metadata),
+		Outcome:   CloneOutcome(result.Outcome),
+		Execution: CloneExecutionReceipt(result.Execution),
 	}
 	if result.Handle != "" {
 		stored, ok := s.getResult(result.Handle)
@@ -1007,6 +1086,8 @@ func (s *ResultStore) PruneSurface(
 	result.OriginalBytes = len(full.Content)
 	result.Handle = handle
 	result.Metadata = cloneMetadata(full.Metadata)
+	result.Outcome = CloneOutcome(full.Outcome)
+	result.Execution = CloneExecutionReceipt(full.Execution)
 	if result.Metadata == nil {
 		result.Metadata = map[string]any{}
 	}

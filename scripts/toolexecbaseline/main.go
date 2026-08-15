@@ -57,10 +57,13 @@ type contractMetrics struct {
 }
 
 type riskMetrics struct {
-	ForegroundOutputBounded bool `json:"foreground_output_bounded"`
-	SessionOwnerEnforced    bool `json:"session_owner_enforced"`
-	EventDrivenSessionWait  bool `json:"event_driven_session_wait"`
-	UnifiedProcessProtocol  bool `json:"unified_process_protocol"`
+	ForegroundOutputBounded      bool `json:"foreground_output_bounded"`
+	ApprovalWaitHoldsAdmission   bool `json:"approval_wait_holds_admission"`
+	SecurityReadsResultMetadata  bool `json:"security_reads_result_metadata"`
+	CancellationLacksDisposition bool `json:"cancellation_lacks_disposition"`
+	SessionOwnerEnforced         bool `json:"session_owner_enforced"`
+	EventDrivenSessionWait       bool `json:"event_driven_session_wait"`
+	UnifiedProcessProtocol       bool `json:"unified_process_protocol"`
 }
 
 func main() {
@@ -122,10 +125,8 @@ func measure(root, baseCommit string) (report, error) {
 	typedPath := filepath.Join(absolute, "internal/adapter/tool/typed/typed.go")
 	contracts.TypedAdapterAvailable = regularFile(typedPath)
 	knownGaps := []string{
-		"approval_wait_holds_the_engine_parallel_policy_gate",
 		"process_lifecycle_is_split_across_multiple_model_visible_protocols",
 		"tool_outputs_depend_on_stringly_typed_metadata",
-		"tool_cancellation_has_no_explicit_teardown_disposition",
 		"session_manager_records_but_does_not_enforce_thread_ownership",
 		"session_wait_polls_on_a_ten_millisecond_ticker",
 	}
@@ -133,6 +134,18 @@ func measure(root, baseCommit string) (report, error) {
 		knownGaps = append(
 			[]string{"foreground_process_output_is_accumulated_before_result_admission"},
 			knownGaps...,
+		)
+	}
+	if risks.ApprovalWaitHoldsAdmission {
+		knownGaps = append(
+			[]string{"approval_wait_holds_the_engine_parallel_policy_gate"},
+			knownGaps...,
+		)
+	}
+	if risks.CancellationLacksDisposition {
+		knownGaps = append(
+			knownGaps,
+			"tool_cancellation_has_no_explicit_teardown_disposition",
 		)
 	}
 	return report{
@@ -237,6 +250,10 @@ func probeClaims() bool {
 func measureRisks(root string, catalog catalogMetrics) (riskMetrics, error) {
 	processPath := filepath.Join(root, "internal/platform/process/process.go")
 	sessionPath := filepath.Join(root, "internal/platform/process/session.go")
+	handlerPath := filepath.Join(root, "internal/runtime/agent/engine/tool_handler.go")
+	guardPath := filepath.Join(root, "internal/adapter/tool/guard/guard.go")
+	escalationPath := filepath.Join(root, "internal/adapter/tool/guard/escalation.go")
+	executionPath := filepath.Join(root, "internal/adapter/tool/execution.go")
 	foregroundBounded, err := foregroundCollectorIsBounded(processPath)
 	if err != nil {
 		return riskMetrics{}, err
@@ -245,11 +262,40 @@ func measureRisks(root string, catalog catalogMetrics) (riskMetrics, error) {
 	if err != nil {
 		return riskMetrics{}, err
 	}
+	handlerSource, err := os.ReadFile(handlerPath)
+	if err != nil {
+		return riskMetrics{}, err
+	}
+	guardSource, err := os.ReadFile(guardPath)
+	if err != nil {
+		return riskMetrics{}, err
+	}
+	escalationSource, err := os.ReadFile(escalationPath)
+	if err != nil {
+		return riskMetrics{}, err
+	}
+	executionSource, err := os.ReadFile(executionPath)
+	if err != nil {
+		return riskMetrics{}, err
+	}
+	securityReadsMetadata := bytes.Contains(
+		guardSource,
+		[]byte(`Metadata["error_category"]`),
+	) || bytes.Contains(escalationSource, []byte(`Metadata["sandbox_denied"]`))
 	return riskMetrics{
 		ForegroundOutputBounded: foregroundBounded,
-		SessionOwnerEnforced:    ownerEnforced,
-		EventDrivenSessionWait:  eventDriven,
-		UnifiedProcessProtocol:  catalog.ModelVisibleExecutionTools <= 3,
+		ApprovalWaitHoldsAdmission: bytes.Contains(
+			handlerSource,
+			[]byte("release, err := sched.Admit"),
+		),
+		SecurityReadsResultMetadata: securityReadsMetadata,
+		CancellationLacksDisposition: !bytes.Contains(
+			executionSource,
+			[]byte("DispositionWaitForTeardown"),
+		),
+		SessionOwnerEnforced:   ownerEnforced,
+		EventDrivenSessionWait: eventDriven,
+		UnifiedProcessProtocol: catalog.ModelVisibleExecutionTools <= 3,
 	}, nil
 }
 

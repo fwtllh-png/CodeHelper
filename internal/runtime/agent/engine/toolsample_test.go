@@ -105,15 +105,19 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 	}
 
 	var usageEvents []Event
+	var toolResults []tool.Result
 	result, err := engine.RunForTurn(t.Context(), "turn-1", "look at the screenshot",
 		func(event Event) error {
 			if event.Usage != nil && event.Sample != 0 {
 				usageEvents = append(usageEvents, event)
 			}
+			if event.Result != nil {
+				toolResults = append(toolResults, *event.Result)
+			}
 			return nil
 		})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("RunForTurn() error = %v, tool results = %+v", err, toolResults)
 	}
 
 	// The tool's tokens are in the turn total: 100+200 from the turn's own two

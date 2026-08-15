@@ -63,7 +63,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {
 	return typed.Define(typed.Spec[input, []diagnostics.Diagnostic]{
-		Descriptor: t.Descriptor(),
+		Descriptor:  t.Descriptor(),
+		Disposition: tool.DispositionWaitForTeardown,
 		Run: func(ctx context.Context, value input) ([]diagnostics.Diagnostic, error) {
 			return t.checker.Analyze(ctx, value.Files, value.Changes)
 		},
