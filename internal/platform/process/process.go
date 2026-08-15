@@ -1,7 +1,6 @@
 package process
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -39,6 +38,12 @@ type Options struct {
 	// It is called from the reader goroutines, so it must be cheap and must not
 	// block: a slow observer holds up the pipe and thereby the process itself.
 	OnOutput func(Chunk)
+	// OutputLimitBytes bounds retained bytes independently for stdout and
+	// stderr. Zero selects DefaultOutputLimitBytes.
+	OutputLimitBytes int
+	// ArchiveOutput receives every complete chunk even when the returned
+	// head/tail result is truncated.
+	ArchiveOutput OutputArchive
 }
 
 // Stream names which of a process's two output streams a chunk came from. PTY
@@ -61,9 +66,10 @@ type Chunk struct {
 }
 
 type Result struct {
-	Stdout   string
-	Stderr   string
-	ExitCode int
+	Stdout        string
+	Stderr        string
+	ExitCode      int
+	OutputReceipt OutputReceipt
 }
 
 func OpenPinnedDirectory(backend sandbox.Backend, directory string) (*os.File, error) {
@@ -83,22 +89,39 @@ func OpenPinnedDirectory(backend sandbox.Backend, directory string) (*os.File, e
 }
 
 func Run(ctx context.Context, options Options) (Result, error) {
+	if options.OutputLimitBytes < 0 {
+		return Result{}, errors.New("process output limit must not be negative")
+	}
 	command, err := NewCommand(ctx, options)
 	if err != nil {
 		return Result{}, err
 	}
-	if options.PTY {
-		return runPTY(ctx, command, options.OnOutput)
+	limit := options.OutputLimitBytes
+	if limit == 0 {
+		limit = DefaultOutputLimitBytes
 	}
-	stdout := &observedBuffer{stream: StreamStdout, observe: options.OnOutput}
-	stderr := &observedBuffer{stream: StreamStderr, observe: options.OnOutput}
+	var archive *archiveState
+	if options.ArchiveOutput != nil {
+		archive = &archiveState{append: options.ArchiveOutput}
+	}
+	if options.PTY {
+		return runPTY(ctx, command, options.OnOutput, archive, limit)
+	}
+	stdout := newObservedBuffer(StreamStdout, limit, options.OnOutput, archive)
+	stderr := newObservedBuffer(StreamStderr, limit, options.OnOutput, archive)
 	command.Stdout = stdout
 	command.Stderr = stderr
 	if err := command.Start(); err != nil {
 		return Result{}, err
 	}
 	err = waitAndCancel(ctx, command)
-	result := Result{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: ExitCode(err)}
+	result := Result{
+		Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: ExitCode(err),
+		OutputReceipt: OutputReceipt{
+			Stdout: stdout.Receipt(), Stderr: stderr.Receipt(),
+			ArchiveError: archive.errorString(),
+		},
+	}
 	if ctx.Err() != nil {
 		return result, ctx.Err()
 	}
@@ -353,38 +376,63 @@ func setEnvironmentValue(environment []string, name, value string) []string {
 	return result
 }
 
-// observedBuffer accumulates everything written to it, and hands each write to an
-// observer as it happens. Both jobs are needed: the tool result is the whole
-// output, and a caller watching a slow command needs the pieces.
+// observedBuffer retains bounded head/tail output while forwarding complete
+// chunks to live observers and an optional durable archive.
 type observedBuffer struct {
-	buffer  bytes.Buffer
+	buffer  *headTailBuffer
 	stream  Stream
 	observe func(Chunk)
+	archive *archiveState
 	cursor  uint64
+}
+
+func newObservedBuffer(
+	stream Stream,
+	limit int,
+	observe func(Chunk),
+	archive *archiveState,
+) *observedBuffer {
+	return &observedBuffer{
+		buffer: newHeadTailBuffer(limit), stream: stream, observe: observe, archive: archive,
+	}
 }
 
 func (o *observedBuffer) Write(data []byte) (int, error) {
 	count, err := o.buffer.Write(data)
-	if count > 0 && o.observe != nil {
+	if count > 0 {
 		o.cursor += uint64(count)
-		// The observer gets its own copy: exec reuses this slice for the next read.
-		chunk := make([]byte, count)
-		copy(chunk, data[:count])
-		o.observe(Chunk{Stream: o.stream, Data: chunk, Cursor: o.cursor})
+		if o.observe != nil || o.archive != nil {
+			// Readers reuse their slice. Both consumers receive a stable copy for
+			// the duration of their synchronous callback.
+			chunkData := append([]byte(nil), data[:count]...)
+			chunk := Chunk{Stream: o.stream, Data: chunkData, Cursor: o.cursor}
+			o.archive.write(chunk)
+			if o.observe != nil {
+				o.observe(chunk)
+			}
+		}
 	}
 	return count, err
 }
 
 func (o *observedBuffer) String() string { return o.buffer.String() }
 
-func runPTY(ctx context.Context, command *exec.Cmd, observe func(Chunk)) (Result, error) {
+func (o *observedBuffer) Receipt() StreamReceipt { return o.buffer.Receipt() }
+
+func runPTY(
+	ctx context.Context,
+	command *exec.Cmd,
+	observe func(Chunk),
+	archive *archiveState,
+	limit int,
+) (Result, error) {
 	terminal, err := pty.Start(command)
 	if err != nil {
 		return Result{}, err
 	}
 	// A pty merges the two streams, so everything it produces is reported as
 	// stdout rather than guessed at.
-	output := &observedBuffer{stream: StreamStdout, observe: observe}
+	output := newObservedBuffer(StreamStdout, limit, observe, archive)
 	copyDone := make(chan error, 1)
 	go func() {
 		_, copyErr := io.Copy(output, terminal)
@@ -399,7 +447,12 @@ func runPTY(ctx context.Context, command *exec.Cmd, observe func(Chunk)) (Result
 		ctx.Err() == nil {
 		return Result{}, copyErr
 	}
-	result := Result{Stdout: output.String(), ExitCode: ExitCode(waitErr)}
+	result := Result{
+		Stdout: output.String(), ExitCode: ExitCode(waitErr),
+		OutputReceipt: OutputReceipt{
+			Stdout: output.Receipt(), ArchiveError: archive.errorString(),
+		},
+	}
 	if ctx.Err() != nil {
 		return result, ctx.Err()
 	}

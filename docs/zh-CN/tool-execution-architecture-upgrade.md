@@ -2,10 +2,12 @@
 
 简体中文 | [English](../en/tool-execution-architecture-upgrade.md)
 
-> 状态：EX0 `baseline_frozen`。
+> 状态：EX1 `accepted`；EX0 `baseline_frozen`。
 >
 > 基线：
 > [`tool-execution-ex0-baseline.json`](../tool-execution-ex0-baseline.json)。
+> EX1 证据：
+> [`tool-execution-ex1-evidence.json`](../tool-execution-ex1-evidence.json)。
 >
 > 范围：Tool 身份、调用、结果投影、Guard 编排、资源调度、本地进程执行、
 > 取消、持久终端 Session、输出准入、可观测性与迁移 Gate。
@@ -402,6 +404,8 @@ Host Output 仍是 Projection，Durable Execution Receipt 是事实来源。
 
 ### EX1：Bounded Output Collection
 
+状态：`accepted`。
+
 工作：
 
 - 引入共享 Bounded Head/Tail Collector；
@@ -416,6 +420,17 @@ Host Output 仍是 Projection，Durable Execution Receipt 是事实来源。
 - 小命令输出 Byte-for-byte 兼容；
 - Stream Cursor 单调；
 - `foreground_output_bounded` 变为 true。
+
+已交付：
+
+- `process.Run` 默认每个 stdout/stderr Stream 最多保留 8 MiB；
+- 模型可见 Shell 在 ResultStore Token Admission 前每个 Stream 最多保留 1 MiB；
+- 共享 Head/Tail Collector 对小输出保持完全一致，并记录 Total、Retained 与
+  Omitted Bytes；
+- stdout、stderr 与 Merged PTY 使用同一有界 Collector；
+- 可选同步 Archive Sink 接收每个完整 Chunk，通过 Backpressure 保持内存有界，
+  Archive 降级时保留有界命令结果并报告错误；
+- 1 GiB Synthetic Stream Test 证明 Collector Capacity 始终为 1 MiB。
 
 ### EX2：Typed Execution Core 与 Guard Pipeline
 

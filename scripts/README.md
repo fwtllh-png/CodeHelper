@@ -49,6 +49,7 @@ make book-navigation
 make command-docs
 make upgrade-baseline
 make tool-execution-ex0
+make tool-execution-ex1
 make test
 make architecture-freeze
 make host-journey-contract

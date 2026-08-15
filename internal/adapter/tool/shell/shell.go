@@ -232,6 +232,7 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		WorkspaceWritePaths: writePaths,
 		DenyNetwork:         t.readOnly,
 		OnOutput:            streamOutput(ctx),
+		OutputLimitBytes:    process.ModelOutputLimitBytes,
 	})
 	durationMS := time.Since(started).Milliseconds()
 	timedOut := errors.Is(err, context.DeadlineExceeded) ||
@@ -270,6 +271,7 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	callID := identity.CallID
 	metadata := map[string]any{
 		"stdout": result.Stdout, "stderr": result.Stderr, "exit_code": result.ExitCode, "pty": t.pty,
+		"output_receipt": result.OutputReceipt,
 		"workspace_write_scope": func() string {
 			if len(input.WritePaths) == 0 {
 				return "none"
@@ -279,6 +281,10 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		"command_execution": map[string]any{
 			"command": input.Command, "status": status, "exit_code": exitCode,
 			"duration_ms": durationMS, "output_tail": tail, "call_id": callID,
+			"stdout_bytes": result.OutputReceipt.Stdout.TotalBytes,
+			"stderr_bytes": result.OutputReceipt.Stderr.TotalBytes,
+			"omitted_bytes": result.OutputReceipt.Stdout.OmittedBytes +
+				result.OutputReceipt.Stderr.OmittedBytes,
 		},
 	}
 	if input.Description != "" {

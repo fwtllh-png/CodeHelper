@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,131 @@ func TestRunCapturesStreamsAndExitCode(t *testing.T) {
 	}
 	if result.Stdout != "out" || result.Stderr != "err" || result.ExitCode != 7 {
 		t.Fatalf("result = %+v", result)
+	}
+	if result.OutputReceipt.Stdout.TotalBytes != 3 ||
+		result.OutputReceipt.Stderr.TotalBytes != 3 ||
+		result.OutputReceipt.Stdout.Truncated() ||
+		result.OutputReceipt.Stderr.Truncated() {
+		t.Fatalf("output receipt = %+v", result.OutputReceipt)
+	}
+}
+
+func TestRunBoundsStreamsAndArchivesCompleteOutput(t *testing.T) {
+	const (
+		produced = 2048
+		limit    = 1024
+	)
+	type archiveValue struct {
+		mu     sync.Mutex
+		totals map[Stream]uint64
+	}
+	archive := &archiveValue{totals: make(map[Stream]uint64)}
+	var streamed sync.Map
+	result, err := Run(t.Context(), Options{
+		Command: `(dd if=/dev/zero bs=2048 count=1 2>/dev/null | tr '\000' x); ` +
+			`(dd if=/dev/zero bs=2048 count=1 2>/dev/null | tr '\000' y >&2)`,
+		Dir:              t.TempDir(),
+		OutputLimitBytes: limit,
+		OnOutput: func(chunk Chunk) {
+			value, _ := streamed.LoadOrStore(chunk.Stream, new(uint64))
+			*value.(*uint64) = chunk.Cursor
+		},
+		ArchiveOutput: func(chunk Chunk) error {
+			archive.mu.Lock()
+			archive.totals[chunk.Stream] += uint64(len(chunk.Data))
+			archive.mu.Unlock()
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stream := range []Stream{StreamStdout, StreamStderr} {
+		var receipt StreamReceipt
+		if stream == StreamStdout {
+			receipt = result.OutputReceipt.Stdout
+		} else {
+			receipt = result.OutputReceipt.Stderr
+		}
+		if receipt != (StreamReceipt{
+			TotalBytes: produced, RetainedBytes: limit, OmittedBytes: produced - limit,
+		}) {
+			t.Fatalf("%s receipt = %+v", stream, receipt)
+		}
+		value, ok := streamed.Load(stream)
+		if !ok || *value.(*uint64) != produced {
+			t.Fatalf("%s streamed cursor = %v", stream, value)
+		}
+		archive.mu.Lock()
+		archived := archive.totals[stream]
+		archive.mu.Unlock()
+		if archived != produced {
+			t.Fatalf("%s archived bytes = %d", stream, archived)
+		}
+	}
+	if len(result.Stdout) > limit+128 || len(result.Stderr) > limit+128 {
+		t.Fatalf("bounded result lengths = stdout:%d stderr:%d", len(result.Stdout), len(result.Stderr))
+	}
+}
+
+func TestRunBoundsPTYMergedOutput(t *testing.T) {
+	result, err := Run(t.Context(), Options{
+		Command:          `dd if=/dev/zero bs=2048 count=1 2>/dev/null | tr '\000' z`,
+		Dir:              t.TempDir(),
+		PTY:              true,
+		OutputLimitBytes: 1024,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OutputReceipt.Stdout.TotalBytes != 2048 ||
+		result.OutputReceipt.Stdout.RetainedBytes != 1024 ||
+		result.OutputReceipt.Stdout.OmittedBytes != 1024 ||
+		result.OutputReceipt.Stderr.TotalBytes != 0 ||
+		len(result.Stdout) > 1024+128 {
+		t.Fatalf("PTY result = %+v", result)
+	}
+}
+
+func TestRunReportsArchiveFailureWithoutLosingBoundedResult(t *testing.T) {
+	result, err := Run(t.Context(), Options{
+		Command: "printf retained",
+		Dir:     t.TempDir(),
+		ArchiveOutput: func(Chunk) error {
+			return errors.New("archive unavailable")
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Stdout != "retained" ||
+		result.OutputReceipt.ArchiveError != "archive unavailable" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestRunRejectsNegativeOutputLimit(t *testing.T) {
+	_, err := Run(t.Context(), Options{
+		Command: "true", Dir: t.TempDir(), OutputLimitBytes: -1,
+	})
+	if err == nil || !strings.Contains(err.Error(), "output limit") {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestRunCancellationRetainsBoundedOutput(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+	defer cancel()
+	result, err := Run(ctx, Options{
+		Command: `while :; do printf '0123456789abcdef'; done`,
+		Dir:     t.TempDir(), OutputLimitBytes: 1024,
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.OutputReceipt.Stdout.RetainedBytes > 1024 ||
+		len(result.Stdout) > 1024+128 {
+		t.Fatalf("result was not bounded: %+v", result.OutputReceipt.Stdout)
 	}
 }
 

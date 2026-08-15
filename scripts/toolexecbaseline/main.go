@@ -121,6 +121,20 @@ func measure(root, baseCommit string) (report, error) {
 	}
 	typedPath := filepath.Join(absolute, "internal/adapter/tool/typed/typed.go")
 	contracts.TypedAdapterAvailable = regularFile(typedPath)
+	knownGaps := []string{
+		"approval_wait_holds_the_engine_parallel_policy_gate",
+		"process_lifecycle_is_split_across_multiple_model_visible_protocols",
+		"tool_outputs_depend_on_stringly_typed_metadata",
+		"tool_cancellation_has_no_explicit_teardown_disposition",
+		"session_manager_records_but_does_not_enforce_thread_ownership",
+		"session_wait_polls_on_a_ten_millisecond_ticker",
+	}
+	if !risks.ForegroundOutputBounded {
+		knownGaps = append(
+			[]string{"foreground_process_output_is_accumulated_before_result_admission"},
+			knownGaps...,
+		)
+	}
 	return report{
 		SchemaVersion: schemaVersion,
 		Stage:         stageEX0,
@@ -130,15 +144,7 @@ func measure(root, baseCommit string) (report, error) {
 		Contracts:     contracts,
 		Risks:         risks,
 		Hotspots:      hotspots,
-		KnownGaps: []string{
-			"foreground_process_output_is_accumulated_before_result_admission",
-			"approval_wait_holds_the_engine_parallel_policy_gate",
-			"process_lifecycle_is_split_across_multiple_model_visible_protocols",
-			"tool_outputs_depend_on_stringly_typed_metadata",
-			"tool_cancellation_has_no_explicit_teardown_disposition",
-			"session_manager_records_but_does_not_enforce_thread_ownership",
-			"session_wait_polls_on_a_ten_millisecond_ticker",
-		},
+		KnownGaps:     knownGaps,
 		Commands: map[string]string{
 			"baseline": "make tool-execution-ex0",
 			"update":   "make tool-execution-ex0-update",

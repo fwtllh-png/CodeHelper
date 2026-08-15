@@ -28,11 +28,13 @@ func TestRepositoryToolExecutionBaseline(t *testing.T) {
 		measured.Catalog.InputSchemaBytes == 0 {
 		t.Fatalf("catalog metrics = %+v", measured.Catalog)
 	}
-	if measured.Risks.ForegroundOutputBounded ||
-		measured.Risks.SessionOwnerEnforced ||
+	if !measured.Risks.ForegroundOutputBounded {
+		t.Fatalf("EX1 bounded output was not detected: %+v", measured.Risks)
+	}
+	if measured.Risks.SessionOwnerEnforced ||
 		measured.Risks.EventDrivenSessionWait ||
 		measured.Risks.UnifiedProcessProtocol {
-		t.Fatalf("EX0 risks were not reproduced: %+v", measured.Risks)
+		t.Fatalf("remaining EX0 risks were not reproduced: %+v", measured.Risks)
 	}
 }
 

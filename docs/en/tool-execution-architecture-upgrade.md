@@ -2,10 +2,12 @@
 
 [Simplified Chinese](../zh-CN/tool-execution-architecture-upgrade.md) | English
 
-> Status: EX0 `baseline_frozen`.
+> Status: EX1 `accepted`; EX0 `baseline_frozen`.
 >
 > Baseline:
 > [`tool-execution-ex0-baseline.json`](../tool-execution-ex0-baseline.json).
+> EX1 evidence:
+> [`tool-execution-ex1-evidence.json`](../tool-execution-ex1-evidence.json).
 >
 > Scope: tool identity, invocation, result projection, Guard orchestration,
 > resource scheduling, local process execution, cancellation, persistent
@@ -428,6 +430,8 @@ Exit:
 
 ### EX1: Bounded Output Collection
 
+Status: `accepted`.
+
 Work:
 
 - introduce a shared bounded head/tail collector;
@@ -443,6 +447,19 @@ Exit:
 - small command output is byte-for-byte compatible;
 - stream cursors remain monotonic; and
 - `foreground_output_bounded` becomes true.
+
+Delivered:
+
+- `process.Run` retains at most 8 MiB per stdout/stderr stream by default;
+- model-facing Shell execution retains at most 1 MiB per stream before
+  ResultStore token admission;
+- a shared head/tail collector preserves exact small output and reports total,
+  retained, and omitted bytes;
+- stdout, stderr, and merged PTY output use the same bounded collector;
+- an optional synchronous Archive Sink receives every complete chunk with
+  bounded-memory backpressure and reports degraded archival without losing the
+  bounded command result; and
+- a 1 GiB synthetic-stream test proves collector capacity remains 1 MiB.
 
 ### EX2: Typed Execution Core and Guard Pipeline
 
