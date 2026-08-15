@@ -1199,6 +1199,7 @@ func projectionFailure(result Result, limit int, err error) Result {
 
 func ModelResult(name string, result Result) Result {
 	var processSession *ProcessSessionFact
+	processTool := name == "exec_command" || name == "write_stdin"
 	if result.Outcome != nil && result.Outcome.Facts != nil {
 		processSession = result.Outcome.Facts.ProcessSession
 	}
@@ -1213,7 +1214,8 @@ func ModelResult(name string, result Result) Result {
 	result.Admission = nil
 	result.Outcome = nil
 	result.Execution = nil
-	if name == "result_get" || name == "handle_read" || result.Metadata == nil {
+	if name == "result_get" || name == "handle_read" ||
+		(result.Metadata == nil && processSession == nil) {
 		return result
 	}
 	metadata := make(map[string]any)
@@ -1226,10 +1228,17 @@ func ModelResult(name string, result Result) Result {
 			"verification_evidence_rejection", "replayed_from_call_id",
 			"citations", "diagnostics":
 			metadata[key] = value
+		case "session_id", "cursor", "running", "exit_code", "timed_out",
+			"tty", "archived", "pending_bytes", "omitted_bytes":
+			// Tool Results are admitted and projected again before every
+			// sample. Preserve only the prior controlled process projection
+			// when the internal Outcome has already been removed.
+			if processTool && processSession == nil {
+				metadata[key] = value
+			}
 		}
 	}
-	if (name == "exec_command" || name == "write_stdin") &&
-		processSession != nil {
+	if processTool && processSession != nil {
 		metadata["cursor"] = processSession.Cursor
 		metadata["running"] = processSession.Running
 		metadata["exit_code"] = processSession.ExitCode

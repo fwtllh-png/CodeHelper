@@ -285,6 +285,37 @@ func TestModelResultRetainsOnlyModelMetadata(t *testing.T) {
 	}
 }
 
+func TestModelResultProcessProjectionIsIdempotent(t *testing.T) {
+	input := Result{
+		Content:  "partial output",
+		Metadata: map[string]any{"description": "internal"},
+		Outcome: &Outcome{
+			Status: OutcomeSucceeded,
+			Facts: &OutcomeFacts{ProcessSession: &ProcessSessionFact{
+				SessionID: "session-1",
+				Cursor:    42,
+				Running:   true,
+			}},
+		},
+	}
+	first := ModelResult("exec_command", input)
+	encoded, err := json.Marshal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored Result
+	if err := json.Unmarshal(encoded, &restored); err != nil {
+		t.Fatal(err)
+	}
+	second := ModelResult("exec_command", restored)
+	if second.Metadata["session_id"] != "session-1" ||
+		second.Metadata["cursor"] != float64(42) ||
+		second.Metadata["running"] != true ||
+		second.Outcome != nil {
+		t.Fatalf("second projection = %#v", second)
+	}
+}
+
 func TestResultRetrievalModesAreBoundedAndPagePastInlineContent(t *testing.T) {
 	const content = "line1\nline2\nneedle-three\nline4\nomega"
 	store := NewResultStore(16)

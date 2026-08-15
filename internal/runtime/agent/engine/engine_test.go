@@ -112,6 +112,50 @@ func TestEngineExecutesToolAndFeedsResultOnce(t *testing.T) {
 	assertOneTerminal(t, states, Completed)
 }
 
+func TestEnginePreservesProcessSessionForNextProviderSample(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "process-call", Name: "exec_command",
+				Arguments: `{}`,
+			}},
+			{Type: provider.EventMessageStop},
+		}},
+		textStream("done"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(processSessionTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
+	if _, err := engine.Run(t.Context(), "work", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.requests) != 2 {
+		t.Fatalf("provider requests = %d, want 2", len(runtime.requests))
+	}
+	for _, message := range runtime.requests[1].Messages {
+		if messageToolResultID(message) != "process-call" {
+			continue
+		}
+		var projected tool.Result
+		if err := json.Unmarshal(
+			[]byte(message.Blocks[0].ToolResult.Content),
+			&projected,
+		); err != nil {
+			t.Fatal(err)
+		}
+		if projected.Metadata["session_id"] != "session-1" ||
+			projected.Metadata["cursor"] != float64(7) ||
+			projected.Metadata["running"] != true ||
+			projected.Outcome != nil {
+			t.Fatalf("process projection = %#v", projected)
+		}
+		return
+	}
+	t.Fatal("second provider request has no process Tool Result")
+}
+
 func TestEngineReplaysCanonicalDuplicateToolCallsWithinTurn(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
@@ -3084,6 +3128,53 @@ func (*steerStream) Close() error { return nil }
 
 type echoTool struct {
 	calls atomic.Int32
+}
+
+type processSessionTool struct{}
+
+func (processSessionTool) Descriptor() tool.Descriptor {
+	return tool.Descriptor{
+		Name: "exec_command", Description: "process fixture",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityProcess,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type":                 "object",
+			"properties":           map[string]any{},
+			"additionalProperties": false,
+		},
+	}
+}
+
+func (processSessionTool) Execute(
+	context.Context,
+	json.RawMessage,
+) (tool.Result, error) {
+	return tool.Result{}, errors.New("Execute should not be called")
+}
+
+func (processSessionTool) ExecuteOutcome(
+	context.Context,
+	json.RawMessage,
+) (tool.Result, tool.Outcome, error) {
+	outcome := tool.Outcome{
+		Status: tool.OutcomeSucceeded,
+		Facts: &tool.OutcomeFacts{ProcessSession: &tool.ProcessSessionFact{
+			SessionID: "session-1",
+			Cursor:    7,
+			Running:   true,
+		}},
+	}
+	return tool.Result{
+		Content: "partial output",
+		Metadata: map[string]any{
+			"session_id": "session-1",
+			"cursor":     uint64(7),
+			"running":    true,
+		},
+		Outcome: tool.CloneOutcome(&outcome),
+	}, outcome, nil
 }
 
 type countingCatalogExecutor struct {
