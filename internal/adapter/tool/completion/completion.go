@@ -93,6 +93,13 @@ func (t *Tool) typedExecutor() (tool.Executor, error) {
 		Metadata: func(value output) map[string]any {
 			return map[string]any{tool.MetadataCompletionDeclaration: value.Declaration}
 		},
+		Outcome: func(value output) tool.Outcome {
+			declaration := value.Declaration
+			return tool.Outcome{
+				Status: tool.OutcomeSucceeded,
+				Facts:  &tool.OutcomeFacts{Completion: &declaration},
+			}
+		},
 	})
 }
 

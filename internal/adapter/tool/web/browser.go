@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 )
 
 const BrowserUnavailableReason = "browser runtime is unavailable"
@@ -169,6 +170,17 @@ func (b *browserTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Re
 	default:
 		return tool.Result{}, fmt.Errorf("unsupported web_run action %q", input.Action)
 	}
+}
+
+func (*browserTool) ExecutionDisposition() tool.ExecutionDisposition {
+	return tool.DispositionWaitForTeardown
+}
+
+func (b *browserTool) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, tool.Outcome, error) {
+	return typed.ExecuteOutcome(ctx, b, raw)
 }
 
 // FakeBrowser is an in-process hermetic browser for tests and CODEHELPER_BROWSER_FIXTURE.

@@ -25,8 +25,11 @@ import (
 )
 
 const (
-	schemaVersion = 1
-	stageEX0      = "EX0"
+	schemaVersion            = 1
+	stageEX0                 = "EX0"
+	modelVisibleToolLimit    = 3
+	inputSchemaBytesLimit    = 1112
+	serialExecutionToolLimit = 0
 )
 
 type report struct {
@@ -69,6 +72,11 @@ type riskMetrics struct {
 	TerminalOutcomeOwned         bool `json:"terminal_outcome_owned"`
 	TeardownObserved             bool `json:"teardown_observed"`
 	DetachedCancelCleanup        bool `json:"detached_cancel_cleanup"`
+	OutcomeFactsAuthority        bool `json:"outcome_facts_authority"`
+	BuiltinTypedOutcomes         bool `json:"builtin_typed_outcomes"`
+	UnifiedRegistryOutcomePath   bool `json:"unified_registry_outcome_path"`
+	EngineBusinessReadsMetadata  bool `json:"engine_business_reads_metadata"`
+	GuardWritesLegacyMetadata    bool `json:"guard_writes_legacy_metadata"`
 }
 
 func main() {
@@ -129,7 +137,7 @@ func measure(root, baseCommit string) (report, error) {
 	}
 	typedPath := filepath.Join(absolute, "internal/adapter/tool/typed/typed.go")
 	contracts.TypedAdapterAvailable = regularFile(typedPath)
-	knownGaps := []string{"tool_outputs_depend_on_stringly_typed_metadata"}
+	var knownGaps []string
 	if !risks.UnifiedProcessProtocol {
 		knownGaps = append(
 			knownGaps,
@@ -174,6 +182,17 @@ func measure(root, baseCommit string) (report, error) {
 	}
 	if !risks.DetachedCancelCleanup {
 		knownGaps = append(knownGaps, "canceled_detached_launch_can_leave_an_orphan")
+	}
+	if !risks.OutcomeFactsAuthority || !risks.BuiltinTypedOutcomes ||
+		!risks.UnifiedRegistryOutcomePath {
+		knownGaps = append(
+			knownGaps,
+			"tool_outputs_depend_on_stringly_typed_metadata",
+			"typed_execution_convergence_is_incomplete",
+		)
+	}
+	if risks.EngineBusinessReadsMetadata || risks.GuardWritesLegacyMetadata {
+		knownGaps = append(knownGaps, "legacy_business_metadata_remains_authoritative")
 	}
 	return report{
 		SchemaVersion: schemaVersion,
@@ -320,6 +339,50 @@ func measureRisks(root string, catalog catalogMetrics) (riskMetrics, error) {
 	if err != nil {
 		return riskMetrics{}, err
 	}
+	engineSource, err := readProductionGo(
+		filepath.Join(root, "internal/runtime/agent/engine"),
+	)
+	if err != nil {
+		return riskMetrics{}, err
+	}
+	builtinSources := []string{
+		"content/content.go",
+		"file/file.go",
+		"git/git.go",
+		"git/hosted.go",
+		"github/github.go",
+		"search/search.go",
+		"search/symbol.go",
+		"web/web.go",
+		"web/browser.go",
+	}
+	builtinTyped := true
+	for _, relative := range builtinSources {
+		source, readErr := os.ReadFile(filepath.Join(
+			root,
+			"internal/adapter/tool",
+			relative,
+		))
+		if readErr != nil {
+			return riskMetrics{}, readErr
+		}
+		if !bytes.Contains(source, []byte("ExecuteOutcome(")) ||
+			!bytes.Contains(source, []byte("ExecutionDisposition()")) {
+			builtinTyped = false
+		}
+	}
+	engineMetadataReads := false
+	for _, fragment := range []string{
+		"observedFileChanges(result.Metadata)",
+		"observedFileRead(result.Metadata)",
+		"decodeCompletionDeclaration(",
+		"decodeVerificationEvidence(",
+		`Metadata["diagnostics"].(`,
+		`Metadata["error_category"].(`,
+	} {
+		engineMetadataReads = engineMetadataReads ||
+			bytes.Contains(engineSource, []byte(fragment))
+	}
 	processSource, err := os.ReadFile(processPath)
 	if err != nil {
 		return riskMetrics{}, err
@@ -362,7 +425,41 @@ func measureRisks(root string, catalog catalogMetrics) (riskMetrics, error) {
 			protocolSource,
 			[]byte("p.manager.Close(id, threadID)"),
 		),
+		OutcomeFactsAuthority: bytes.Contains(
+			executionSource,
+			[]byte("type OutcomeFacts struct"),
+		),
+		BuiltinTypedOutcomes: builtinTyped,
+		UnifiedRegistryOutcomePath: bytes.Contains(
+			toolSource,
+			[]byte("r.ExecutePreparedOutcome(ctx, name, arguments, executor)"),
+		),
+		EngineBusinessReadsMetadata: engineMetadataReads,
+		GuardWritesLegacyMetadata: bytes.Contains(
+			guardSource,
+			[]byte("MetadataChanges"),
+		) || bytes.Contains(guardSource, []byte("MetadataCanonicalPath")),
 	}, nil
+}
+
+func readProductionGo(directory string) ([]byte, error) {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil, err
+	}
+	var joined []byte
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") ||
+			strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		source, readErr := os.ReadFile(filepath.Join(directory, entry.Name()))
+		if readErr != nil {
+			return nil, readErr
+		}
+		joined = append(joined, source...)
+	}
+	return joined, nil
 }
 
 func foregroundCollectorIsBounded(path string) (bool, error) {
@@ -522,26 +619,24 @@ func validateCandidate(baseline, candidate report) error {
 	if baseline.SchemaVersion != schemaVersion || baseline.Stage != stageEX0 {
 		return errors.New("tool execution baseline has an unsupported schema or stage")
 	}
-	if candidate.Catalog.ModelVisibleExecutionTools >
-		baseline.Catalog.ModelVisibleExecutionTools {
+	if candidate.Catalog.ModelVisibleExecutionTools > modelVisibleToolLimit {
 		return fmt.Errorf(
-			"model-visible execution tools regressed: baseline=%d candidate=%d",
-			baseline.Catalog.ModelVisibleExecutionTools,
+			"model-visible execution tools regressed: limit=%d candidate=%d",
+			modelVisibleToolLimit,
 			candidate.Catalog.ModelVisibleExecutionTools,
 		)
 	}
-	if candidate.Catalog.InputSchemaBytes > baseline.Catalog.InputSchemaBytes {
+	if candidate.Catalog.InputSchemaBytes > inputSchemaBytesLimit {
 		return fmt.Errorf(
-			"execution schema bytes regressed: baseline=%d candidate=%d",
-			baseline.Catalog.InputSchemaBytes,
+			"execution schema bytes regressed: limit=%d candidate=%d",
+			inputSchemaBytesLimit,
 			candidate.Catalog.InputSchemaBytes,
 		)
 	}
-	if candidate.Catalog.SerialExecutionTools >
-		baseline.Catalog.SerialExecutionTools {
+	if candidate.Catalog.SerialExecutionTools > serialExecutionToolLimit {
 		return fmt.Errorf(
-			"serial execution tools regressed: baseline=%d candidate=%d",
-			baseline.Catalog.SerialExecutionTools,
+			"serial execution tools regressed: limit=%d candidate=%d",
+			serialExecutionToolLimit,
 			candidate.Catalog.SerialExecutionTools,
 		)
 	}
@@ -550,6 +645,13 @@ func validateCandidate(baseline, candidate report) error {
 		!candidate.Contracts.ResultHandlesAvailable ||
 		!candidate.Contracts.TypedAdapterAvailable {
 		return errors.New("tool execution safety contract regressed")
+	}
+	if !candidate.Risks.OutcomeFactsAuthority ||
+		!candidate.Risks.BuiltinTypedOutcomes ||
+		!candidate.Risks.UnifiedRegistryOutcomePath ||
+		candidate.Risks.EngineBusinessReadsMetadata ||
+		candidate.Risks.GuardWritesLegacyMetadata {
+		return errors.New("typed execution authority regressed")
 	}
 	return nil
 }

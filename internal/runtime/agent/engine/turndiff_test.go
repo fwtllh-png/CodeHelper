@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
 func TestTurnDiffTrackerRecordAndFormat(t *testing.T) {
@@ -28,21 +28,18 @@ func TestTurnDiffTrackerRecordAndFormat(t *testing.T) {
 	}
 }
 
-func TestObservedFileChangesReadsGuardMetadata(t *testing.T) {
+func TestObservedFileChangesReadsTypedFacts(t *testing.T) {
 	t.Parallel()
-	if got := observedFileChanges(nil); got != nil {
-		t.Fatalf("changes from nil metadata = %+v", got)
+	if got := observedFileChanges(tool.Result{}); got != nil {
+		t.Fatalf("changes from empty result = %+v", got)
 	}
-	if got := observedFileChanges(map[string]any{"bytes": 3}); got != nil {
-		t.Fatalf("changes without the guard key = %+v", got)
-	}
-	metadata := map[string]any{
-		toolguard.MetadataChanges: []toolguard.FileChange{
-			{Path: "a.txt", Kind: toolguard.FileCreated},
+	result := tool.Result{Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+		WorkspaceChanges: []tool.WorkspaceChange{
+			{Path: "a.txt", Kind: tool.WorkspaceCreated},
 		},
-	}
-	got := observedFileChanges(metadata)
-	if len(got) != 1 || got[0].Path != "a.txt" || got[0].Kind != toolguard.FileCreated {
+	}}}
+	got := observedFileChanges(result)
+	if len(got) != 1 || got[0].Path != "a.txt" || got[0].Kind != tool.WorkspaceCreated {
 		t.Fatalf("changes = %+v", got)
 	}
 }

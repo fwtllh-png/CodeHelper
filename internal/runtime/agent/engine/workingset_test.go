@@ -8,7 +8,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
@@ -116,17 +115,18 @@ func TestReadObservationsFollowTheGuardMetadataKey(t *testing.T) {
 	engine.options.Workspace = t.TempDir()
 	engine.turn = 1
 
-	// The engine learns about reads from exactly this metadata key. If the guard
-	// stops writing it, the working set silently empties, so pin it here.
+	// The engine learns about reads from typed outcome facts.
 	path := filepath.Join(engine.options.Workspace, "read.go")
-	engine.observePath(workingset.SourceRead, observedFileRead(map[string]any{
-		toolguard.MetadataCanonicalPath: path,
+	engine.observePath(workingset.SourceRead, observedFileRead(tool.Result{
+		Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+			WorkspaceRead: &tool.WorkspaceReadFact{Path: path},
+		}},
 	}))
 	if paths := engine.ReadPaths(1); len(paths) != 1 || paths[0] != "read.go" {
 		t.Fatalf("read paths = %v", paths)
 	}
-	if observedFileRead(nil) != "" || observedFileRead(map[string]any{"other": 1}) != "" {
-		t.Fatal("a result without the key must report no read")
+	if observedFileRead(tool.Result{}) != "" {
+		t.Fatal("a result without typed read facts must report no read")
 	}
 }
 

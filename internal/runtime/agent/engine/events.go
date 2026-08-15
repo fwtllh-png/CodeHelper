@@ -52,7 +52,7 @@ type Event struct {
 	Approval           *toolguard.ApprovalRequest  `json:"approval,omitempty"`
 	Input              *interact.Request           `json:"input,omitempty"`
 	Diagnostics        []diagnostics.Receipt       `json:"diagnostics,omitempty"`
-	FileChanges        []toolguard.FileChange      `json:"file_changes,omitempty"`
+	FileChanges        []tool.WorkspaceChange      `json:"file_changes,omitempty"`
 	Plan               *ProposedPlanUpdate         `json:"plan,omitempty"`
 	Verification       *VerificationReceipt        `json:"verification,omitempty"`
 	Completion         *tool.CompletionDeclaration `json:"completion,omitempty"`

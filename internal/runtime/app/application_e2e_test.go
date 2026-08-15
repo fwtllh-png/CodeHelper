@@ -14,7 +14,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
@@ -740,11 +739,11 @@ func (t *runtimeWriteTool) Execute(context.Context, json.RawMessage) (tool.Resul
 	t.calls.Add(1)
 	return tool.Result{
 		Content: "written",
-		Metadata: map[string]any{
-			toolguard.MetadataChanges: []toolguard.FileChange{{
-				Path: "out.txt", Kind: toolguard.FileCreated, Added: 1,
+		Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+			WorkspaceChanges: []tool.WorkspaceChange{{
+				Path: "out.txt", Kind: tool.WorkspaceCreated, Added: 1,
 			}},
-		},
+		}},
 	}, nil
 }
 

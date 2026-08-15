@@ -433,19 +433,19 @@ func (a *EngineAdapter) StartTurn(
 						observedChanges = &count
 					}
 					workspaceWriteScope, _ = metadata["workspace_write_scope"].(string)
-					if declaration, ok := metadata[tool.MetadataCompletionDeclaration].(tool.CompletionDeclaration); ok {
-						accepted, _ := metadata["completion_declaration_accepted"].(bool)
-						rejection, _ := metadata["completion_declaration_rejection"].(string)
-						completion = &protocol.CompletionDeclaration{
-							Status: declaration.Status, Summary: declaration.Summary,
-							ChangedPaths: append([]string(nil), declaration.ChangedPaths...),
-							VerificationCallIDs: append(
-								[]string(nil), declaration.VerificationCallIDs...,
-							),
-							PendingActions:   append([]string(nil), declaration.PendingActions...),
-							MutationRevision: declaration.MutationRevision,
-							CallID:           declaration.CallID, Accepted: accepted, Rejection: rejection,
-						}
+				}
+				if event.Result.Outcome != nil && event.Result.Outcome.Facts != nil &&
+					event.Result.Outcome.Facts.Completion != nil {
+					declaration := event.Result.Outcome.Facts.Completion
+					accepted, _ := event.Result.Metadata["completion_declaration_accepted"].(bool)
+					rejection, _ := event.Result.Metadata["completion_declaration_rejection"].(string)
+					completion = &protocol.CompletionDeclaration{
+						Status: declaration.Status, Summary: declaration.Summary,
+						ChangedPaths:        append([]string(nil), declaration.ChangedPaths...),
+						VerificationCallIDs: append([]string(nil), declaration.VerificationCallIDs...),
+						PendingActions:      append([]string(nil), declaration.PendingActions...),
+						MutationRevision:    declaration.MutationRevision,
+						CallID:              declaration.CallID, Accepted: accepted, Rejection: rejection,
 					}
 				}
 				if err := sink.Emit(&protocol.ToolResultData{

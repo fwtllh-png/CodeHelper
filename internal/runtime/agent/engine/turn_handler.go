@@ -10,7 +10,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
@@ -334,7 +333,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				Path: change.Path, Tool: "recovery_draft", Kind: change.Kind,
 			})
 			e.observePath(workingset.SourceEdited, change.Path)
-			e.observeChangeEvidence(toolguard.FileChange{
+			e.observeChangeEvidence(tool.WorkspaceChange{
 				Path: change.Path, Kind: change.Kind,
 			})
 		}

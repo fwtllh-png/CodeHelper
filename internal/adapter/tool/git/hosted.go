@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 )
 
 const hostedResponseLimit = 2 << 20
@@ -120,6 +121,17 @@ func (t *HostedTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Res
 			"provider": input.Provider, "operation": input.Operation, "pages": len(pages),
 		},
 	}, nil
+}
+
+func (*HostedTool) ExecutionDisposition() tool.ExecutionDisposition {
+	return tool.DispositionWaitForTeardown
+}
+
+func (t *HostedTool) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, tool.Outcome, error) {
+	return typed.ExecuteOutcome(ctx, t, raw)
 }
 
 func validateHostedInput(input hostedInput) error {

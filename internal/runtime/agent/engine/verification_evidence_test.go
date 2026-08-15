@@ -7,7 +7,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -37,9 +36,9 @@ func TestQualityEvidenceCoversCurrentMutationRevision(t *testing.T) {
 	if receipt.Status != verify.StatusPassed || len(uncovered) != 0 {
 		t.Fatalf("receipt = %+v, uncovered = %v", receipt, uncovered)
 	}
-	evidence, ok := result.Metadata[verify.EvidenceMetadataKey].(verify.Evidence)
-	if !ok || evidence.CallID != "verify-1" || evidence.MutationRevision != 1 {
-		t.Fatalf("bound evidence = %#v", result.Metadata)
+	evidence := result.Outcome.Facts.Verification
+	if evidence == nil || evidence.CallID != "verify-1" || evidence.MutationRevision != 1 {
+		t.Fatalf("bound evidence = %#v", result.Outcome)
 	}
 }
 
@@ -155,9 +154,9 @@ func seedKernelMutation(t *testing.T, kernel *engineTurnKernel) {
 	if err := kernel.closeTool(
 		call,
 		tool.Result{},
-		[]toolguard.FileChange{{
+		[]tool.WorkspaceChange{{
 			Path: "a.go",
-			Kind: toolguard.FileModified,
+			Kind: tool.WorkspaceModified,
 		}},
 	); err != nil {
 		t.Fatal(err)
@@ -201,10 +200,10 @@ func TestStrictVerifyGateDoesNotReportFailedVerification(t *testing.T) {
 }
 
 func qualityEvidenceResult(status string, paths []string) tool.Result {
-	return tool.Result{Metadata: map[string]any{
-		verify.EvidenceMetadataKey: verify.Evidence{
+	return tool.Result{Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+		Verification: &verify.Evidence{
 			SchemaVersion: 1, Kind: "verify", Status: status,
 			CoveredPaths: paths, CommandDigest: "sha256:test",
 		},
-	}}
+	}}}
 }

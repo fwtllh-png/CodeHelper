@@ -265,16 +265,23 @@ func TestModelResultRetainsOnlyModelMetadata(t *testing.T) {
 		"required_action": "file_read",
 		"canonical_path":  "/private/workspace/a.go",
 		"fingerprint":     map[string]any{"runtime_only": true},
-	}}
+	}, Outcome: &Outcome{
+		Status: OutcomeSucceeded,
+		Facts:  &OutcomeFacts{ResultHandle: "internal-handle"},
+	}, Execution: &ExecutionReceipt{}, Admission: &adaptercontent.AdmissionReceipt{}}
 	projected := ModelResult("file_write", input)
 	if len(projected.Metadata) != 2 ||
 		projected.Metadata["error_category"] != "retryable" ||
-		projected.Metadata["required_action"] != "file_read" {
-		t.Fatalf("model metadata = %#v", projected.Metadata)
+		projected.Metadata["required_action"] != "file_read" ||
+		projected.Outcome != nil || projected.Execution != nil ||
+		projected.Admission != nil {
+		t.Fatalf("model result = %#v", projected)
 	}
 	retrieved := ModelResult("result_get", input)
-	if len(retrieved.Metadata) != len(input.Metadata) {
-		t.Fatalf("retrieval metadata = %#v", retrieved.Metadata)
+	if len(retrieved.Metadata) != len(input.Metadata) ||
+		retrieved.Outcome != nil || retrieved.Execution != nil ||
+		retrieved.Admission != nil {
+		t.Fatalf("retrieval result = %#v", retrieved)
 	}
 }
 

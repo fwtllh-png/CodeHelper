@@ -6,7 +6,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -201,8 +200,8 @@ func TestTurnKernelC2ToolResultsBypassObserver(t *testing.T) {
 	if err := kernel.closeTool(
 		write,
 		writeResult,
-		[]toolguard.FileChange{{
-			Path: "a.go", Kind: toolguard.FileModified,
+		[]tool.WorkspaceChange{{
+			Path: "a.go", Kind: tool.WorkspaceModified,
 		}},
 	); err != nil {
 		t.Fatal(err)
@@ -216,12 +215,14 @@ func TestTurnKernelC2ToolResultsBypassObserver(t *testing.T) {
 	}
 	completeResult := tool.Result{
 		Content: `{"status":"accepted"}`,
-		Metadata: map[string]any{
-			tool.MetadataCompletionDeclaration: tool.CompletionDeclaration{
+		Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+			Completion: &tool.CompletionDeclaration{
 				Status: "complete", Summary: "implemented",
 				ChangedPaths: []string{"a.go"}, MutationRevision: 1,
 				CallID: "complete-1",
 			},
+		}},
+		Metadata: map[string]any{
 			"completion_declaration_accepted": true,
 		},
 	}

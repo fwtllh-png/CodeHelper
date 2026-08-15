@@ -37,6 +37,10 @@ func TestCoreToolsRealWorkspace(t *testing.T) {
 		!strings.Contains(search.Content, `"text":"after"`) {
 		t.Fatalf("search result = %q", search.Content)
 	}
+	if search.Outcome == nil || search.Outcome.Facts == nil ||
+		len(search.Outcome.Facts.Evidence) == 0 {
+		t.Fatalf("search typed facts = %+v", search.Outcome)
+	}
 	shell := execute(t, registry, "exec_command", `{"command":"printf stdout; printf stderr >&2; exit 3"}`)
 	if !shell.IsError || shell.Metadata["exit_code"] != 3 {
 		t.Fatalf("shell result = %+v", shell)
@@ -51,6 +55,28 @@ func TestCoreToolsRealWorkspace(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("file mode = %o", info.Mode().Perm())
+	}
+}
+
+func TestBuiltinRegistryUsesTypedOutcomeBoundary(t *testing.T) {
+	registry, err := NewWithSandboxBackend(t.TempDir(), builtinTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, descriptor := range registry.Descriptors(tool.VisibleModel) {
+		if descriptor.Availability != tool.AvailabilityAvailable {
+			continue
+		}
+		_, _, executor, resolveErr := registry.Resolve(descriptor.Name)
+		if resolveErr != nil {
+			t.Fatalf("resolve %s: %v", descriptor.Name, resolveErr)
+		}
+		if _, ok := executor.(tool.OutcomeExecutor); !ok {
+			t.Errorf("%s executor %T has no typed Outcome boundary", descriptor.Name, executor)
+		}
+		if !tool.DispositionFor(executor).Valid() {
+			t.Errorf("%s executor %T has no explicit disposition", descriptor.Name, executor)
+		}
 	}
 }
 

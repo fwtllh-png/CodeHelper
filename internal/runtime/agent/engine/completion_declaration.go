@@ -24,10 +24,11 @@ func (e *Engine) completionCandidate(
 		BatchSize:      batchSize,
 		ToolError:      result.IsError,
 	}
-	declaration, ok := decodeCompletionDeclaration(
-		result.Metadata[tool.MetadataCompletionDeclaration],
-	)
-	if ok {
+	var declaration *tool.CompletionDeclaration
+	if result.Outcome != nil && result.Outcome.Facts != nil {
+		declaration = result.Outcome.Facts.Completion
+	}
+	if declaration != nil {
 		candidate.DeclarationValid = true
 		candidate.Status = declaration.Status
 		candidate.Summary = declaration.Summary
@@ -68,21 +69,18 @@ func bindCompletionDecision(
 		}
 	}
 	if decision.Accepted {
-		declaration, ok := decodeCompletionDeclaration(
-			result.Metadata[tool.MetadataCompletionDeclaration],
-		)
-		if ok {
-			declaration.ChangedPaths = append(
+		facts := tool.EnsureOutcomeFacts(result)
+		if facts.Completion != nil {
+			facts.Completion.ChangedPaths = append(
 				[]string(nil),
 				decision.ChangedPaths...,
 			)
-			declaration.VerificationCallIDs = append(
+			facts.Completion.VerificationCallIDs = append(
 				[]string(nil),
 				decision.QualityCalls...,
 			)
-			declaration.MutationRevision = decision.Mutation
-			declaration.CallID = decision.CompletionCall
-			result.Metadata[tool.MetadataCompletionDeclaration] = declaration
+			facts.Completion.MutationRevision = decision.Mutation
+			facts.Completion.CallID = decision.CompletionCall
 		}
 	}
 	result.Content = completionDecisionContent(
@@ -126,22 +124,4 @@ func sortedMapKeys(values map[string]struct{}) []string {
 	}
 	slices.Sort(keys)
 	return keys
-}
-
-func decodeCompletionDeclaration(value any) (tool.CompletionDeclaration, bool) {
-	if value == nil {
-		return tool.CompletionDeclaration{}, false
-	}
-	if declaration, ok := value.(tool.CompletionDeclaration); ok {
-		return declaration, true
-	}
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return tool.CompletionDeclaration{}, false
-	}
-	var declaration tool.CompletionDeclaration
-	if err := json.Unmarshal(raw, &declaration); err != nil {
-		return tool.CompletionDeclaration{}, false
-	}
-	return declaration, true
 }

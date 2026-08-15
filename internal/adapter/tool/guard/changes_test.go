@@ -208,10 +208,10 @@ func TestGuardObservesWritesFromToolsWithoutPathArguments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	changes, ok := result.Metadata[MetadataChanges].([]FileChange)
-	if !ok {
-		t.Fatalf("metadata = %+v, want observed changes", result.Metadata)
+	if result.Outcome == nil || result.Outcome.Facts == nil {
+		t.Fatalf("outcome = %+v, want observed changes", result.Outcome)
 	}
+	changes := result.Outcome.Facts.WorkspaceChanges
 	got := make(map[string]string, len(changes))
 	for _, change := range changes {
 		got[change.Path] = change.Kind
@@ -258,8 +258,9 @@ func TestGuardReportsNoChangesWhenNothingWasWritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, present := result.Metadata[MetadataChanges]; present {
-		t.Fatalf("metadata = %+v, want no observed changes", result.Metadata)
+	if result.Outcome != nil && result.Outcome.Facts != nil &&
+		len(result.Outcome.Facts.WorkspaceChanges) != 0 {
+		t.Fatalf("outcome = %+v, want no observed changes", result.Outcome)
 	}
 }
 
@@ -300,13 +301,13 @@ func TestGuardCountsLinesAgainstTheTurnsStartingContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observe := func(call string) FileChange {
+	observe := func(call string) tool.WorkspaceChange {
 		t.Helper()
 		result, err := guard.Execute(t.Context(), call, "patch", arguments)
 		if err != nil {
 			t.Fatal(err)
 		}
-		changes, _ := result.Metadata[MetadataChanges].([]FileChange)
+		changes := result.Outcome.Facts.WorkspaceChanges
 		if len(changes) != 1 {
 			t.Fatalf("changes = %+v, want one", changes)
 		}
@@ -445,9 +446,9 @@ func TestGuardKeepsSuccessfulWritesWhenPostEditDiagnosticsFail(t *testing.T) {
 	if err != nil || runner.calls.Load() != int32(len(paths)) {
 		t.Fatalf("finishFileWrites() error = %v, diagnostic calls = %d", err, runner.calls.Load())
 	}
-	receipts, ok := result.Metadata["diagnostics"].([]diagnostics.Receipt)
-	if !ok || len(receipts) != len(paths) {
-		t.Fatalf("diagnostic receipts = %#v", result.Metadata["diagnostics"])
+	receipts := result.Outcome.Facts.Diagnostics
+	if len(receipts) != len(paths) {
+		t.Fatalf("diagnostic receipts = %#v", receipts)
 	}
 	for _, receipt := range receipts {
 		if receipt.Status != "unavailable" ||

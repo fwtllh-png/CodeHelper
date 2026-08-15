@@ -10,7 +10,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -277,7 +276,7 @@ func (s *engineTurnKernel) validateToolStarts(
 func (s *engineTurnKernel) closeTool(
 	call provider.ToolCall,
 	result tool.Result,
-	fileChanges []toolguard.FileChange,
+	fileChanges []tool.WorkspaceChange,
 ) error {
 	if s == nil {
 		return nil
@@ -782,7 +781,7 @@ func (s *engineTurnKernel) progressObservation() progressObservation {
 }
 
 func kernelObservedChanges(
-	fileChanges []toolguard.FileChange,
+	fileChanges []tool.WorkspaceChange,
 ) []turnkernel.ObservedChange {
 	changes := make([]turnkernel.ObservedChange, 0, len(fileChanges))
 	for _, change := range fileChanges {

@@ -43,22 +43,13 @@ type ApprovalRequest struct {
 	Grant               *policy.Grant           `json:"grant,omitempty"`
 }
 
-type FileChange struct {
-	Path    string `json:"path"`
-	Kind    string `json:"kind"`
-	Added   int    `json:"added,omitempty"`
-	Removed int    `json:"removed,omitempty"`
-}
+type FileChange = tool.WorkspaceChange
 
 const (
-	FileCreated  = workspacejournal.ChangeCreated
-	FileModified = workspacejournal.ChangeModified
-	FileDeleted  = workspacejournal.ChangeDeleted
+	FileCreated  = tool.WorkspaceCreated
+	FileModified = tool.WorkspaceModified
+	FileDeleted  = tool.WorkspaceDeleted
 )
-
-const MetadataChanges = "changes"
-
-const MetadataCanonicalPath = "canonical_path"
 
 type NetworkApprovalContext struct {
 	Host     string `json:"host"`
@@ -470,13 +461,9 @@ func (g *Guard) recordFileRead(
 			g.readTracker.Invalidate(resource.Path)
 			return fmt.Errorf("file read race %q: %w", resource.Path, workspacejournal.ErrStale)
 		}
-		if result.Metadata == nil {
-			result.Metadata = make(map[string]any)
+		tool.EnsureOutcomeFacts(result).WorkspaceRead = &tool.WorkspaceReadFact{
+			Path: fingerprint.Path, Digest: fingerprint.SHA256,
 		}
-		result.Metadata[MetadataCanonicalPath] = fingerprint.Path
-		result.Metadata["content_sha256"] = fingerprint.SHA256
-		result.Metadata["identity"] = fingerprint.Identity
-		result.Metadata["fingerprint"] = fingerprint
 	}
 	return nil
 }
@@ -528,10 +515,8 @@ func (g *Guard) finishFileWrites(
 		return nil
 	}
 	if len(changes) != 0 {
-		if result.Metadata == nil {
-			result.Metadata = make(map[string]any)
-		}
-		result.Metadata[MetadataChanges] = changes
+		facts := tool.EnsureOutcomeFacts(result)
+		facts.WorkspaceChanges = append(facts.WorkspaceChanges, changes...)
 	}
 	if result.Metadata == nil {
 		result.Metadata = make(map[string]any)
@@ -552,10 +537,10 @@ func (g *Guard) finishFileWrites(
 			}
 			receipts = append(receipts, receipt)
 		}
-		if result.Metadata == nil {
-			result.Metadata = make(map[string]any)
-		}
-		result.Metadata["diagnostics"] = receipts
+		tool.EnsureOutcomeFacts(result).Diagnostics = append(
+			[]diagnostics.Receipt(nil),
+			receipts...,
+		)
 	}
 	return nil
 }

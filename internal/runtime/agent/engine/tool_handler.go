@@ -12,7 +12,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
@@ -244,6 +243,10 @@ func (e *Engine) runToolsWithCache(
 					} else if category := toolFailureCategory(err); category != "" {
 						results[index].Metadata = map[string]any{"error_category": category}
 					}
+					if category := toolFailureCategory(err); category != "" {
+						tool.EnsureOutcomeFacts(&results[index]).Failure =
+							&tool.FailureFact{Category: category}
+					}
 					return
 				}
 				if errors.Is(err, context.Canceled) || errors.Is(toolCtx.Err(), context.Canceled) {
@@ -288,6 +291,8 @@ func (e *Engine) runToolsWithCache(
 		}
 		result.Metadata["error_category"] = category
 		result.Metadata["fatal"] = true
+		tool.EnsureOutcomeFacts(&result).Failure =
+			&tool.FailureFact{Category: category}
 		results[index] = result
 	}
 	for index := range results {
@@ -298,7 +303,7 @@ func (e *Engine) runToolsWithCache(
 	}
 	batchMutated := false
 	for _, result := range results {
-		if len(observedFileChanges(result.Metadata)) != 0 {
+		if len(observedFileChanges(result)) != 0 {
 			batchMutated = true
 			break
 		}
@@ -318,7 +323,7 @@ func (e *Engine) runToolsWithCache(
 		copy := results[index]
 		call := calls[index]
 		if !copy.IsError {
-			for _, change := range observedFileChanges(copy.Metadata) {
+			for _, change := range observedFileChanges(copy) {
 				scope.state.diff.Record(TurnDiffEntry{
 					Path: change.Path, Tool: call.Name, Kind: change.Kind,
 					Added: change.Added, Removed: change.Removed,
@@ -326,16 +331,15 @@ func (e *Engine) runToolsWithCache(
 				e.observePath(workingset.SourceEdited, change.Path)
 				e.observeChangeEvidence(change)
 			}
-			e.observePath(workingset.SourceRead, observedFileRead(copy.Metadata))
+			e.observePath(workingset.SourceRead, observedFileRead(copy))
 			e.observeEvidence(call, copy)
 		} else {
 			e.observeToolFailure(call, copy)
 		}
 		var diagnosticReceipts []diagnostics.Receipt
-		var fileChanges []toolguard.FileChange
-		if copy.Metadata != nil {
-			diagnosticReceipts, _ = copy.Metadata["diagnostics"].([]diagnostics.Receipt)
-			fileChanges = observedFileChanges(copy.Metadata)
+		fileChanges := observedFileChanges(copy)
+		if copy.Outcome != nil && copy.Outcome.Facts != nil {
+			diagnosticReceipts = copy.Outcome.Facts.Diagnostics
 		}
 		e.recordTurnDiagnostics(diagnosticReceipts)
 		e.observeDiagnosticsEvidence(diagnosticReceipts)

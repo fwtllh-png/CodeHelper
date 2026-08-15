@@ -87,8 +87,11 @@ func TestReadBeforeEditContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	canonicalPath, _ := filepath.EvalSymlinks(path)
-	if read.Metadata["canonical_path"] != canonicalPath || read.Metadata["content_sha256"] == "" || read.Metadata["identity"] == nil {
-		t.Fatalf("read fingerprint metadata = %#v", read.Metadata)
+	if read.Outcome == nil || read.Outcome.Facts == nil ||
+		read.Outcome.Facts.WorkspaceRead == nil ||
+		read.Outcome.Facts.WorkspaceRead.Path != canonicalPath ||
+		read.Outcome.Facts.WorkspaceRead.Digest == "" {
+		t.Fatalf("read fingerprint facts = %#v", read.Outcome)
 	}
 	if _, err := execute("edit", "file_edit", `{"path":"sample.txt","old":"one","new":"two"}`); err != nil {
 		t.Fatal(err)

@@ -250,10 +250,10 @@ func TestShellRunExactWriteScopeIsGuardedAndObserved(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("declared write failed: %+v", result)
 	}
-	changes, _ := result.Metadata[toolguard.MetadataChanges].([]toolguard.FileChange)
+	changes := result.Outcome.Facts.WorkspaceChanges
 	if len(changes) != 1 ||
 		changes[0].Path != "declared.txt" ||
-		changes[0].Kind != toolguard.FileModified {
+		changes[0].Kind != tool.WorkspaceModified {
 		t.Fatalf("observed changes = %+v", changes)
 	}
 	data, err := os.ReadFile(declared)
@@ -417,7 +417,7 @@ func TestShellRunWriteGlobsAreJournaledAsExactFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	changes, _ := result.Metadata[toolguard.MetadataChanges].([]toolguard.FileChange)
+	changes := result.Outcome.Facts.WorkspaceChanges
 	if result.IsError || len(changes) != 2 {
 		t.Fatalf("glob write result = %+v changes = %+v", result, changes)
 	}

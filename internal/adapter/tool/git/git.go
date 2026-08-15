@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -136,6 +137,17 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		Content: string(output), IsError: exitCode != 0,
 		Metadata: map[string]any{"exit_code": exitCode},
 	}, nil
+}
+
+func (*Tool) ExecutionDisposition() tool.ExecutionDisposition {
+	return tool.DispositionWaitForTeardown
+}
+
+func (t *Tool) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, tool.Outcome, error) {
+	return typed.ExecuteOutcome(ctx, t, raw)
 }
 
 // gitExecutable prefers the real Command Line Tools / Xcode binary so Apple's

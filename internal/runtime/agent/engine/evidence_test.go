@@ -8,7 +8,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
@@ -28,14 +27,14 @@ func evidenceEngine(t *testing.T) *Engine {
 func TestSearchHitsBecomeFactsAndTheWeakestWorkingSetSource(t *testing.T) {
 	engine := evidenceEngine(t)
 	call := provider.ToolCall{Name: "search_definition", Arguments: `{"name":"Verify"}`}
-	engine.observeEvidence(call, tool.Result{Metadata: map[string]any{
-		tool.MetadataEvidence: []tool.EvidenceHit{
+	engine.observeEvidence(call, tool.Result{Outcome: &tool.Outcome{
+		Facts: &tool.OutcomeFacts{Evidence: []tool.EvidenceHit{
 			{Kind: tool.EvidenceDefinition, Path: "auth/token.go", Line: 12, Symbol: "Verify"},
 			// A path outside the workspace is dropped: the ledger points at code the
 			// agent can act on.
 			{Kind: tool.EvidenceReference, Path: filepath.Join(engine.options.Workspace, "..", "x.go")},
 		},
-	}})
+		}}})
 
 	facts := engine.EvidenceSnapshot().Facts
 	if len(facts) != 1 {
@@ -70,9 +69,9 @@ func TestAnEditAfterAReadIsNotBlind(t *testing.T) {
 	engine := evidenceEngine(t)
 	read := filepath.Join(engine.options.Workspace, "a.go")
 	engine.observePath(workingset.SourceRead, read)
-	engine.observeChangeEvidence(toolguard.FileChange{Path: read, Kind: toolguard.FileModified})
-	engine.observeChangeEvidence(toolguard.FileChange{Path: "b.go", Kind: toolguard.FileModified})
-	engine.observeChangeEvidence(toolguard.FileChange{Path: "new.go", Kind: toolguard.FileCreated})
+	engine.observeChangeEvidence(tool.WorkspaceChange{Path: read, Kind: tool.WorkspaceModified})
+	engine.observeChangeEvidence(tool.WorkspaceChange{Path: "b.go", Kind: tool.WorkspaceModified})
+	engine.observeChangeEvidence(tool.WorkspaceChange{Path: "new.go", Kind: tool.WorkspaceCreated})
 
 	blind := map[string]bool{}
 	for _, risk := range engine.EvidenceSnapshot().Risks {
@@ -87,7 +86,7 @@ func TestAnEditAfterAReadIsNotBlind(t *testing.T) {
 
 func TestDiagnosticsCloseAndOpenTheEvidenceGap(t *testing.T) {
 	engine := evidenceEngine(t)
-	engine.observeChangeEvidence(toolguard.FileChange{Path: "a.go", Kind: toolguard.FileModified})
+	engine.observeChangeEvidence(tool.WorkspaceChange{Path: "a.go", Kind: tool.WorkspaceModified})
 	engine.observeDiagnosticsEvidence([]diagnostics.Receipt{{
 		Path: "a.go", Status: "failed",
 		Diagnostics: []diagnostics.Diagnostic{{Path: "a.go", Message: "broken"}},
@@ -109,7 +108,7 @@ func TestDiagnosticsCloseAndOpenTheEvidenceGap(t *testing.T) {
 func TestVerifiedPathsClearTheRiskWorkspaceRelative(t *testing.T) {
 	engine := evidenceEngine(t)
 	absolute := filepath.Join(engine.options.Workspace, "a.go")
-	engine.observeChangeEvidence(toolguard.FileChange{Path: absolute, Kind: toolguard.FileModified})
+	engine.observeChangeEvidence(tool.WorkspaceChange{Path: absolute, Kind: tool.WorkspaceModified})
 	if !hasRisk(engine, evidence.RiskUnverifiedChange) {
 		t.Fatal("a fresh change is not unverified")
 	}
@@ -132,7 +131,9 @@ func TestRepeatedCallAndConsumedHandleAreObservedFromCalls(t *testing.T) {
 
 	engine.observeEvidence(
 		provider.ToolCall{Name: "search_project"},
-		tool.Result{Metadata: map[string]any{"handle": "h1"}},
+		tool.Result{Outcome: &tool.Outcome{
+			Facts: &tool.OutcomeFacts{ResultHandle: "h1"},
+		}},
 	)
 	engine.turn = 2
 	engine.evidence.BeginTurn(2)
@@ -148,9 +149,9 @@ func TestRepeatedCallAndConsumedHandleAreObservedFromCalls(t *testing.T) {
 func TestRereadingAnUnchangedFileReminds(t *testing.T) {
 	engine := evidenceEngine(t)
 	path := filepath.Join(engine.options.Workspace, "a.go")
-	result := tool.Result{Metadata: map[string]any{
-		toolguard.MetadataCanonicalPath: path, "content_sha256": "sha-1",
-	}}
+	result := tool.Result{Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+		WorkspaceRead: &tool.WorkspaceReadFact{Path: path, Digest: "sha-1"},
+	}}}
 	call := provider.ToolCall{Name: "file_read"}
 	engine.observeEvidence(call, result)
 	if hasReminder(engine, evidence.ReminderRepeatedRead) {
@@ -164,7 +165,7 @@ func TestRereadingAnUnchangedFileReminds(t *testing.T) {
 
 func TestForkInheritsTheEvidenceWithoutSharingIt(t *testing.T) {
 	parent := evidenceEngine(t)
-	parent.observeChangeEvidence(toolguard.FileChange{Path: "a.go", Kind: toolguard.FileModified})
+	parent.observeChangeEvidence(tool.WorkspaceChange{Path: "a.go", Kind: tool.WorkspaceModified})
 	child := parent.Fork()
 	parent.observeVerifiedEvidence([]string{"a.go"})
 
@@ -177,8 +178,8 @@ func TestForkInheritsTheEvidenceWithoutSharingIt(t *testing.T) {
 // happened, so the summary has to say which edits are still unproved.
 func TestCompactionSummaryCarriesUnverifiedChanges(t *testing.T) {
 	engine := evidenceEngine(t)
-	engine.observeChangeEvidence(toolguard.FileChange{Path: "a.go", Kind: toolguard.FileModified})
-	engine.observeChangeEvidence(toolguard.FileChange{Path: "b.go", Kind: toolguard.FileModified})
+	engine.observeChangeEvidence(tool.WorkspaceChange{Path: "a.go", Kind: tool.WorkspaceModified})
+	engine.observeChangeEvidence(tool.WorkspaceChange{Path: "b.go", Kind: tool.WorkspaceModified})
 	engine.observeVerifiedEvidence([]string{"b.go"})
 
 	rendered, _, sections := engine.buildCompactSummary(nil).Render(0)
@@ -198,7 +199,7 @@ func TestTailRenderCountsRisksAndReminders(t *testing.T) {
 	metrics := telemetry.NewMetrics()
 	engine.options.Metrics = metrics
 	engine.options.RepoContext = &stubRepoContext{}
-	engine.observeChangeEvidence(toolguard.FileChange{Path: "a.go", Kind: toolguard.FileModified})
+	engine.observeChangeEvidence(tool.WorkspaceChange{Path: "a.go", Kind: tool.WorkspaceModified})
 	engine.noteToolCall(provider.ToolCall{Name: "search_text", Arguments: `{"query":"a"}`})
 	engine.noteToolCall(provider.ToolCall{Name: "search_text", Arguments: `{"query":"a"}`})
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -309,6 +310,17 @@ func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Resu
 	default:
 		return tool.Result{}, errors.New("unknown file operation")
 	}
+}
+
+func (*operation) ExecutionDisposition() tool.ExecutionDisposition {
+	return tool.DispositionWaitForTeardown
+}
+
+func (o *operation) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, tool.Outcome, error) {
+	return typed.ExecuteOutcome(ctx, o, raw)
 }
 
 func (t *Tools) recoverMissingPath(err error, path string) error {

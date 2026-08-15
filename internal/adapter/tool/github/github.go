@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -282,6 +283,17 @@ func (e *executor) Execute(ctx context.Context, raw json.RawMessage) (tool.Resul
 	default:
 		return tool.Result{}, fmt.Errorf("unknown github tool %q", e.name)
 	}
+}
+
+func (*executor) ExecutionDisposition() tool.ExecutionDisposition {
+	return tool.DispositionWaitForTeardown
+}
+
+func (e *executor) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, tool.Outcome, error) {
+	return typed.ExecuteOutcome(ctx, e, raw)
 }
 
 type contextInput struct {

@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"encoding/json"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -18,17 +17,20 @@ func (e *Engine) bindVerificationEvidence(
 	batchMutated bool,
 	mutationRevision uint64,
 ) {
-	if result == nil || result.Metadata == nil ||
+	if result == nil || result.Outcome == nil || result.Outcome.Facts == nil ||
 		(call.Name != "quality_test" && call.Name != "quality_verify") {
 		return
 	}
-	evidence, ok := decodeVerificationEvidence(
-		result.Metadata[verify.EvidenceMetadataKey],
-	)
-	if !ok {
+	source := result.Outcome.Facts.Verification
+	if source == nil || source.SchemaVersion != 1 {
 		return
 	}
+	evidence := *source
+	evidence.CoveredPaths = append([]string(nil), source.CoveredPaths...)
 	result.Metadata = maps.Clone(result.Metadata)
+	if result.Metadata == nil {
+		result.Metadata = make(map[string]any)
+	}
 	if batchMutated {
 		result.Metadata["verification_evidence_accepted"] = false
 		result.Metadata["verification_evidence_rejection"] = "same_batch_mutation"
@@ -55,7 +57,7 @@ func (e *Engine) bindVerificationEvidence(
 	evidence.CoveredPaths = covered
 	evidence.CallID = call.ID
 	evidence.MutationRevision = mutationRevision
-	result.Metadata[verify.EvidenceMetadataKey] = evidence
+	result.Outcome.Facts.Verification = &evidence
 	result.Metadata["verification_evidence_accepted"] = true
 	scope := e.executionScope()
 	if scope == nil {
@@ -64,25 +66,6 @@ func (e *Engine) bindVerificationEvidence(
 	scope.mu.Lock()
 	scope.state.verification = append(scope.state.verification, evidence)
 	scope.mu.Unlock()
-}
-
-func decodeVerificationEvidence(value any) (verify.Evidence, bool) {
-	if value == nil {
-		return verify.Evidence{}, false
-	}
-	if evidence, ok := value.(verify.Evidence); ok {
-		return evidence, evidence.SchemaVersion == 1
-	}
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return verify.Evidence{}, false
-	}
-	var evidence verify.Evidence
-	if err := json.Unmarshal(raw, &evidence); err != nil ||
-		evidence.SchemaVersion != 1 {
-		return verify.Evidence{}, false
-	}
-	return evidence, true
 }
 
 func canonicalEvidencePath(path string) (string, bool) {

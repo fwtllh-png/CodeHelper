@@ -60,6 +60,14 @@ func TestRepositoryToolExecutionBaseline(t *testing.T) {
 		!measured.Risks.DetachedCancelCleanup {
 		t.Fatalf("EX4 scheduler/cancellation controls were not detected: %+v", measured)
 	}
+	if !measured.Risks.OutcomeFactsAuthority ||
+		!measured.Risks.BuiltinTypedOutcomes ||
+		!measured.Risks.UnifiedRegistryOutcomePath ||
+		measured.Risks.EngineBusinessReadsMetadata ||
+		measured.Risks.GuardWritesLegacyMetadata ||
+		len(measured.KnownGaps) != 0 {
+		t.Fatalf("EX5 convergence controls were not detected: %+v", measured)
+	}
 }
 
 func TestValidateCandidateAcceptsImprovements(t *testing.T) {
@@ -67,7 +75,6 @@ func TestValidateCandidateAcceptsImprovements(t *testing.T) {
 	candidate := fixtureReport()
 	candidate.Catalog.ModelVisibleExecutionTools--
 	candidate.Catalog.InputSchemaBytes--
-	candidate.Catalog.SerialExecutionTools--
 	candidate.Risks.ForegroundOutputBounded = true
 	candidate.Risks.ApprovalWaitHoldsAdmission = false
 	candidate.Risks.SecurityReadsResultMetadata = false
@@ -80,6 +87,9 @@ func TestValidateCandidateAcceptsImprovements(t *testing.T) {
 	candidate.Risks.TerminalOutcomeOwned = true
 	candidate.Risks.TeardownObserved = true
 	candidate.Risks.DetachedCancelCleanup = true
+	candidate.Risks.OutcomeFactsAuthority = true
+	candidate.Risks.BuiltinTypedOutcomes = true
+	candidate.Risks.UnifiedRegistryOutcomePath = true
 	if err := validateCandidate(baseline, candidate); err != nil {
 		t.Fatal(err)
 	}
@@ -137,15 +147,20 @@ func fixtureReport() report {
 		SchemaVersion: schemaVersion,
 		Stage:         stageEX0,
 		Catalog: catalogMetrics{
-			ModelVisibleExecutionTools: 15,
-			InputSchemaBytes:           100,
-			SerialExecutionTools:       15,
+			ModelVisibleExecutionTools: modelVisibleToolLimit,
+			InputSchemaBytes:           inputSchemaBytesLimit,
+			SerialExecutionTools:       serialExecutionToolLimit,
 		},
 		Contracts: contractMetrics{
 			CatalogAuthorityBound:  true,
 			ResourceClaimsEnforced: true,
 			ResultHandlesAvailable: true,
 			TypedAdapterAvailable:  true,
+		},
+		Risks: riskMetrics{
+			OutcomeFactsAuthority:      true,
+			BuiltinTypedOutcomes:       true,
+			UnifiedRegistryOutcomePath: true,
 		},
 	}
 }

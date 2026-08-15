@@ -213,9 +213,9 @@ func TestAgentMergePreviewAndApply(t *testing.T) {
 	if string(body) != "from-child\n" {
 		t.Fatalf("parent content = %q", body)
 	}
-	changes, _ := result.Metadata[toolguard.MetadataChanges].([]toolguard.FileChange)
+	changes := result.Outcome.Facts.WorkspaceChanges
 	if len(changes) == 0 {
-		t.Fatalf("expected MetadataChanges for turnDiff, got %#v", result.Metadata)
+		t.Fatalf("expected typed changes for turnDiff, got %#v", result.Outcome)
 	}
 }
 
@@ -300,7 +300,7 @@ func TestIntegrateAgentUsesGuardExpansion(t *testing.T) {
 	if string(body) != "from-child\n" {
 		t.Fatalf("parent content = %q", body)
 	}
-	changes, _ := result.Metadata[toolguard.MetadataChanges].([]toolguard.FileChange)
+	changes := result.Outcome.Facts.WorkspaceChanges
 	if len(changes) == 0 {
 		t.Fatalf("integration bypassed guarded file changes: %#v", result.Metadata)
 	}

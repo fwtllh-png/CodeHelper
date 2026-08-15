@@ -5,7 +5,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
@@ -44,13 +43,15 @@ func (e *Engine) noteToolCall(call provider.ToolCall) {
 
 // observeEvidence folds one successful tool result into the evidence set.
 //
-// Everything it records comes from result metadata the tools already produce, so
+// Everything it records comes from typed outcome facts, so
 // a tool that says nothing about what it found costs the ledger nothing.
 func (e *Engine) observeEvidence(call provider.ToolCall, result tool.Result) {
-	if e.evidenceSet() == nil || result.Metadata == nil {
+	if e.evidenceSet() == nil || result.Outcome == nil ||
+		result.Outcome.Facts == nil {
 		return
 	}
-	for _, hit := range observedEvidenceHits(result.Metadata) {
+	facts := result.Outcome.Facts
+	for _, hit := range facts.Evidence {
 		path, ok := e.workspaceRelative(hit.Path)
 		if !ok {
 			continue
@@ -63,12 +64,13 @@ func (e *Engine) observeEvidence(call provider.ToolCall, result tool.Result) {
 		// place worth looking at, which is less than having looked.
 		e.observePath(workingset.SourceSearch, hit.Path)
 	}
-	if path, ok := e.workspaceRelative(observedFileRead(result.Metadata)); ok {
-		digest, _ := result.Metadata["content_sha256"].(string)
-		e.evidenceSet().NoteRead(path, digest)
+	if facts.WorkspaceRead != nil {
+		if path, ok := e.workspaceRelative(facts.WorkspaceRead.Path); ok {
+			e.evidenceSet().NoteRead(path, facts.WorkspaceRead.Digest)
+		}
 	}
-	if handle, _ := result.Metadata["handle"].(string); handle != "" {
-		e.evidenceSet().NoteHandle(handle, call.Name)
+	if facts.ResultHandle != "" {
+		e.evidenceSet().NoteHandle(facts.ResultHandle, call.Name)
 	}
 }
 
@@ -83,8 +85,10 @@ func (e *Engine) observeToolFailure(call provider.ToolCall, result tool.Result) 
 		return
 	}
 	reason := result.Content
-	if category, _ := result.Metadata["error_category"].(string); category != "" {
-		reason = category + ": " + reason
+	if result.Outcome != nil && result.Outcome.Facts != nil &&
+		result.Outcome.Facts.Failure != nil &&
+		result.Outcome.Facts.Failure.Category != "" {
+		reason = result.Outcome.Facts.Failure.Category + ": " + reason
 	}
 	e.failureLedger().NoteTool(e.turn, call.Name, reason)
 }
@@ -109,7 +113,7 @@ func (e *Engine) Failures() []compact.Failure {
 
 // observeChangeEvidence records a write. A path the thread read first, or one it
 // created, rests on evidence; anything else was written blind.
-func (e *Engine) observeChangeEvidence(change toolguard.FileChange) {
+func (e *Engine) observeChangeEvidence(change tool.WorkspaceChange) {
 	if e.evidenceSet() == nil {
 		return
 	}
@@ -117,7 +121,8 @@ func (e *Engine) observeChangeEvidence(change toolguard.FileChange) {
 	if !ok {
 		return
 	}
-	read := change.Kind == toolguard.FileCreated || e.workingLedger().HasSource(workingset.SourceRead, path)
+	read := change.Kind == tool.WorkspaceCreated ||
+		e.workingLedger().HasSource(workingset.SourceRead, path)
 	e.evidenceSet().MarkChanged(path, e.turn, read)
 }
 
@@ -160,9 +165,4 @@ func (e *Engine) EvidenceSnapshot() evidence.Snapshot {
 		return evidence.Snapshot{}
 	}
 	return e.evidenceSet().Snapshot(e.options.EvidenceLimit)
-}
-
-func observedEvidenceHits(metadata map[string]any) []tool.EvidenceHit {
-	hits, _ := metadata[tool.MetadataEvidence].([]tool.EvidenceHit)
-	return hits
 }

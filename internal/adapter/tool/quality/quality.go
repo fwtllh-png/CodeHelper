@@ -118,6 +118,14 @@ func (t *Tool) typedExecutor() (tool.Executor, error) {
 		Encode: func(value tool.Result) (tool.Result, error) {
 			return value, nil
 		},
+		Outcome: func(value tool.Result) tool.Outcome {
+			outcome := tool.OutcomeFromResult(value)
+			if evidence, ok := value.Metadata[verify.EvidenceMetadataKey].(verify.Evidence); ok {
+				copy := evidence
+				outcome.Facts = &tool.OutcomeFacts{Verification: &copy}
+			}
+			return outcome
+		},
 	})
 }
 

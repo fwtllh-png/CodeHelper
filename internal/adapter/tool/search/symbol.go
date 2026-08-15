@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
@@ -204,6 +205,17 @@ func (t *symbolTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Res
 			Limit: results(input.MaxResults, defaultSymbolResults),
 		}, input.PathPrefix, input.ExportedOnly)
 	}
+}
+
+func (*symbolTool) ExecutionDisposition() tool.ExecutionDisposition {
+	return tool.DispositionWaitForTeardown
+}
+
+func (t *symbolTool) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, tool.Outcome, error) {
+	return typed.ExecuteOutcome(ctx, t, raw)
 }
 
 type symbolMatch struct {

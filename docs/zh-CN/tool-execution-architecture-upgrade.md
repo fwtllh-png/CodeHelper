@@ -2,8 +2,8 @@
 
 简体中文 | [English](../en/tool-execution-architecture-upgrade.md)
 
-> 状态：EX4 `accepted`；EX3 `accepted`；EX2 `accepted`；EX1 `accepted`；EX0
-> `baseline_frozen`。
+> 状态：EX5 `accepted`；EX4 `accepted`；EX3 `accepted`；EX2 `accepted`；EX1
+> `accepted`；EX0 `baseline_frozen`。
 >
 > 基线：
 > [`tool-execution-ex0-baseline.json`](../tool-execution-ex0-baseline.json)。
@@ -15,6 +15,8 @@
 > [`tool-execution-ex3-evidence.json`](../tool-execution-ex3-evidence.json)。
 > EX4 证据：
 > [`tool-execution-ex4-evidence.json`](../tool-execution-ex4-evidence.json)。
+> EX5 证据：
+> [`tool-execution-ex5-evidence.json`](../tool-execution-ex5-evidence.json)。
 >
 > 范围：Tool 身份、调用、结果投影、Guard 编排、资源调度、本地进程执行、
 > 取消、持久终端 Session、输出准入、可观测性与迁移 Gate。
@@ -575,6 +577,21 @@ Host Output 仍是 Projection，Durable Execution Receipt 是事实来源。
 - Security Coverage 保持 100%；
 - Architecture Ratchet 无回退；
 - 所有版本化 Evidence 已提交。
+
+已交付：
+
+- `Outcome.Facts` 成为 Engine 读取 Workspace Read/Change、Diagnostics、
+  Evidence、Verification、Completion、Failure 与 Result Handle 的权威来源，
+  兼容 Metadata 仅保留展示用途；
+- 所有 Builtin 显式实现 `OutcomeExecutor` 与 Cancellation Disposition，
+  Dynamic 和 Plugin Ingress 仅在 Registry 边界统一规范化一次；
+- Registry Direct Execute 统一委托 `ExecutePreparedOutcome`，只保留一条
+  Production Execution Path，并删除旧 Prepared Adapter；
+- Architecture Probe 会拒绝 Engine 从 Metadata 读取业务事实、Guard 写入旧权威
+  字段、Builtin 缺失 Typed Outcome，以及 Process Schema 超过 EX3/EX4 的
+  1,112 Bytes Surface；
+- Hermetic、Race、Security、VS Code、Docs、Architecture 与 CE7 Token 对比结果
+  统一记录在 EX5 Evidence 中。
 
 ## 14. 验收 Gate
 

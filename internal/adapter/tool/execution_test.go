@@ -91,6 +91,37 @@ func TestExecutionAdmissionComesFromContext(t *testing.T) {
 	}
 }
 
+func TestOutcomeFactsCloneWithoutMetadataAuthority(t *testing.T) {
+	result := tool.Result{Outcome: &tool.Outcome{
+		Status: tool.OutcomeSucceeded,
+		Facts: &tool.OutcomeFacts{
+			WorkspaceRead: &tool.WorkspaceReadFact{
+				Path: "a.go", Digest: "sha256:a",
+			},
+			WorkspaceChanges: []tool.WorkspaceChange{{
+				Path: "a.go", Kind: tool.WorkspaceModified, Added: 1,
+			}},
+			Evidence: []tool.EvidenceHit{{
+				Kind: tool.EvidenceDefinition, Path: "a.go",
+			}},
+			Completion: &tool.CompletionDeclaration{
+				Status: "complete", ChangedPaths: []string{"a.go"},
+			},
+		},
+	}}
+	cloned := tool.CloneOutcome(result.Outcome)
+	cloned.Facts.WorkspaceRead.Path = "b.go"
+	cloned.Facts.WorkspaceChanges[0].Path = "b.go"
+	cloned.Facts.Evidence[0].Path = "b.go"
+	cloned.Facts.Completion.ChangedPaths[0] = "b.go"
+	if result.Outcome.Facts.WorkspaceRead.Path != "a.go" ||
+		result.Outcome.Facts.WorkspaceChanges[0].Path != "a.go" ||
+		result.Outcome.Facts.Evidence[0].Path != "a.go" ||
+		result.Outcome.Facts.Completion.ChangedPaths[0] != "a.go" {
+		t.Fatalf("Outcome Facts clone aliased source: %+v", result.Outcome.Facts)
+	}
+}
+
 type executionFixture struct{ name string }
 
 func (e *executionFixture) Descriptor() tool.Descriptor {

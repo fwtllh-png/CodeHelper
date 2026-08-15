@@ -10,7 +10,6 @@ import (
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -37,11 +36,11 @@ func (declarationWriteTool) Execute(
 ) (tool.Result, error) {
 	return tool.Result{
 		Content: `{"status":"written"}`,
-		Metadata: map[string]any{
-			toolguard.MetadataChanges: []toolguard.FileChange{{
-				Path: "a.go", Kind: toolguard.FileModified, Added: 1,
+		Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+			WorkspaceChanges: []tool.WorkspaceChange{{
+				Path: "a.go", Kind: tool.WorkspaceModified, Added: 1,
 			}},
-		},
+		}},
 	}, nil
 }
 
@@ -293,9 +292,9 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	declaration := tool.CompletionDeclaration{
 		Status: "complete", Summary: "done",
 	}
-	sameBatch := tool.Result{Metadata: map[string]any{
-		tool.MetadataCompletionDeclaration: declaration,
-	}}
+	sameBatch := tool.Result{Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+		Completion: &declaration,
+	}}}
 	sameBatchCandidate := engine.completionCandidate(
 		provider.ToolCall{
 			ID: "complete-same-batch", Name: completiontool.Name,
@@ -316,9 +315,9 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 		t.Fatalf("same-batch declaration accepted: %#v", sameBatch.Metadata)
 	}
 
-	accepted := tool.Result{Metadata: map[string]any{
-		tool.MetadataCompletionDeclaration: declaration,
-	}}
+	accepted := tool.Result{Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+		Completion: &declaration,
+	}}}
 	bindCompletionDecision(&accepted, turnkernel.CompletionDecision{
 		Accepted:       true,
 		Summary:        "done",
@@ -328,11 +327,9 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 		QualityCalls:   []string{"verify-1"},
 		CompletionCall: "complete-1",
 	})
-	bound, ok := decodeCompletionDeclaration(
-		accepted.Metadata[tool.MetadataCompletionDeclaration],
-	)
-	if !ok {
-		t.Fatalf("exact declaration rejected: %#v", accepted.Metadata)
+	bound := accepted.Outcome.Facts.Completion
+	if bound == nil {
+		t.Fatalf("exact declaration rejected: %#v", accepted.Outcome)
 	}
 	if got := bound.ChangedPaths; len(got) != 1 || got[0] != "a.go" {
 		t.Fatalf("runtime-bound changed paths = %v", got)
@@ -349,11 +346,11 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 func TestRejectedCompletionResultExposesTheRuntimeDecision(t *testing.T) {
 	result := tool.Result{
 		Content: `{"status":"pending_runtime_validation"}`,
-		Metadata: map[string]any{
-			tool.MetadataCompletionDeclaration: tool.CompletionDeclaration{
+		Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+			Completion: &tool.CompletionDeclaration{
 				Status: "complete", Summary: "read-only review complete",
 			},
-		},
+		}},
 	}
 
 	bindCompletionDecision(&result, turnkernel.CompletionDecision{

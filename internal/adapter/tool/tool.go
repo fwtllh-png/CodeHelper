@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -670,20 +671,7 @@ func (r *Registry) Execute(ctx context.Context, call Call) (Result, error) {
 	if err := ValidateArguments(descriptor.InputSchema, arguments); err != nil {
 		return Result{}, fmt.Errorf("tool %q arguments: %w", name, err)
 	}
-	result, err := executor.Execute(ctx, arguments)
-	if err != nil {
-		return Result{}, err
-	}
-	if name == "result_get" || name == "handle_read" {
-		return result, nil
-	}
-	return r.results.RouteFor(name, result), nil
-}
-
-func (r *Registry) ExecutePrepared(
-	ctx context.Context, canonicalName string, arguments json.RawMessage, executor Executor,
-) (Result, error) {
-	result, _, err := r.ExecutePreparedOutcome(ctx, canonicalName, arguments, executor)
+	result, _, err := r.ExecutePreparedOutcome(ctx, name, arguments, executor)
 	return result, err
 }
 
@@ -718,6 +706,10 @@ func (r *Registry) ExecutePreparedOutcome(
 			}
 		}
 		result.Outcome = CloneOutcome(&outcome)
+	}
+	if outcome.Status == "" {
+		outcome.Status = OutcomeFromResult(result).Status
+		result.Outcome.Status = outcome.Status
 	}
 	if err != nil {
 		return result, outcome, err
@@ -1021,6 +1013,7 @@ func (s *ResultStore) Admit(
 	result.Content = fitTruncationNotice(original, handle, limit, uint64(tokens))
 	result.Truncated = true
 	result.Handle = handle
+	EnsureOutcomeFacts(&result).ResultHandle = handle
 	if result.Metadata == nil {
 		result.Metadata = map[string]any{}
 	} else {
@@ -1205,7 +1198,17 @@ func projectionFailure(result Result, limit int, err error) Result {
 }
 
 func ModelResult(name string, result Result) Result {
+	if result.Outcome != nil && result.Outcome.Facts != nil &&
+		len(result.Outcome.Facts.Diagnostics) != 0 {
+		result.Metadata = cloneMetadata(result.Metadata)
+		result.Metadata["diagnostics"] = append(
+			[]diagnostics.Receipt(nil),
+			result.Outcome.Facts.Diagnostics...,
+		)
+	}
 	result.Admission = nil
+	result.Outcome = nil
+	result.Execution = nil
 	if name == "result_get" || name == "handle_read" || result.Metadata == nil {
 		return result
 	}
@@ -1420,6 +1423,26 @@ func (t *resultRetrieval) Execute(_ context.Context, raw json.RawMessage) (Resul
 		Content: excerpt, IsError: value.IsError, Metadata: metadata,
 		Truncated: more, OriginalBytes: len(value.Content), Handle: input.Handle,
 	}, nil
+}
+
+func (*resultRetrieval) ExecutionDisposition() ExecutionDisposition {
+	return DispositionAbortImmediately
+}
+
+func (t *resultRetrieval) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (Result, Outcome, error) {
+	if err := ctx.Err(); err != nil {
+		return Result{}, Outcome{Status: OutcomeCanceled}, err
+	}
+	result, err := t.Execute(ctx, raw)
+	outcome := OutcomeFromResult(result)
+	if err != nil {
+		outcome.Status = OutcomeFailed
+	}
+	result.Outcome = CloneOutcome(&outcome)
+	return result, outcome, err
 }
 
 func boundedSlice(value string, offset, limit int) (string, bool) {

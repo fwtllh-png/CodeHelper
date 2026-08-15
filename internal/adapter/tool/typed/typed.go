@@ -43,6 +43,35 @@ type executor[I, O any] struct {
 	spec Spec[I, O]
 }
 
+// ExecuteOutcome adapts a package's existing typed-by-schema Execute method to
+// the structured Outcome boundary while that package keeps specialized
+// decoding or optional Executor interfaces such as EditPlanner.
+func ExecuteOutcome(ctx context.Context, executor tool.Executor, raw json.RawMessage) (
+	result tool.Result, outcome tool.Outcome, err error,
+) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("tool %q panicked: %v", executor.Descriptor().Name, recovered)
+			result = tool.Result{}
+			outcome = tool.Outcome{Status: tool.OutcomeFailed}
+		}
+	}()
+	if contextErr := ctx.Err(); contextErr != nil {
+		return tool.Result{}, tool.Outcome{Status: tool.OutcomeCanceled}, contextErr
+	}
+	result, err = executor.Execute(ctx, raw)
+	outcome = tool.OutcomeFromResult(result)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			outcome.Status = tool.OutcomeCanceled
+		} else {
+			outcome.Status = tool.OutcomeFailed
+		}
+	}
+	result.Outcome = tool.CloneOutcome(&outcome)
+	return result, outcome, err
+}
+
 func Define[I, O any](spec Spec[I, O]) (tool.Executor, error) {
 	if err := tool.ValidateDescriptor(spec.Descriptor); err != nil {
 		return nil, err

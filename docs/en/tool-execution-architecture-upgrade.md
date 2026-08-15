@@ -2,8 +2,8 @@
 
 [Simplified Chinese](../zh-CN/tool-execution-architecture-upgrade.md) | English
 
-> Status: EX4 `accepted`; EX3 `accepted`; EX2 `accepted`; EX1 `accepted`; EX0
-> `baseline_frozen`.
+> Status: EX5 `accepted`; EX4 `accepted`; EX3 `accepted`; EX2 `accepted`; EX1
+> `accepted`; EX0 `baseline_frozen`.
 >
 > Baseline:
 > [`tool-execution-ex0-baseline.json`](../tool-execution-ex0-baseline.json).
@@ -15,6 +15,8 @@
 > [`tool-execution-ex3-evidence.json`](../tool-execution-ex3-evidence.json).
 > EX4 evidence:
 > [`tool-execution-ex4-evidence.json`](../tool-execution-ex4-evidence.json).
+> EX5 evidence:
+> [`tool-execution-ex5-evidence.json`](../tool-execution-ex5-evidence.json).
 >
 > Scope: tool identity, invocation, result projection, Guard orchestration,
 > resource scheduling, local process execution, cancellation, persistent
@@ -620,6 +622,22 @@ Exit:
 - security coverage remains 100%;
 - Architecture Ratchet has no regression; and
 - all versioned evidence is committed.
+
+Delivered:
+
+- `Outcome.Facts` is now the Engine authority for workspace reads and changes,
+  diagnostics, evidence, verification, completion, failures, and result
+  handles; compatibility Metadata remains presentation-only;
+- all built-ins expose an explicit `OutcomeExecutor` and cancellation
+  disposition, while dynamic and plugin ingress is normalized once at the
+  Registry boundary;
+- direct Registry execution delegates to `ExecutePreparedOutcome`, leaving one
+  production execution path and removing the legacy prepared adapter;
+- architecture probes reject Engine business reads from Metadata, Guard writes
+  of legacy authority fields, missing built-in typed outcomes, and process
+  schema growth above the 1,112-byte EX3/EX4 surface; and
+- the hermetic, race, security, VS Code, documentation, architecture, and CE7
+  token comparison results are recorded in the EX5 evidence.
 
 ## 14. Acceptance Gates
 

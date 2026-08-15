@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
 // TurnDiffEntry is one path a tool observably changed in the active turn (N18).
@@ -103,21 +103,20 @@ func (t *TurnDiffTracker) Format() string {
 
 // observedFileChanges reads the guard's write observations off a tool result.
 // A tool that changed nothing (or declared no write resources) carries none.
-func observedFileChanges(metadata map[string]any) []toolguard.FileChange {
-	if metadata == nil {
+func observedFileChanges(result tool.Result) []tool.WorkspaceChange {
+	if result.Outcome == nil || result.Outcome.Facts == nil {
 		return nil
 	}
-	changes, _ := metadata[toolguard.MetadataChanges].([]toolguard.FileChange)
-	return changes
+	return result.Outcome.Facts.WorkspaceChanges
 }
 
 // observedFileRead reads the path a read-tracked tool fingerprinted, which is the
 // only record that a tool read a file rather than wrote one. It is absolute, as
 // the fingerprint is.
-func observedFileRead(metadata map[string]any) string {
-	if metadata == nil {
+func observedFileRead(result tool.Result) string {
+	if result.Outcome == nil || result.Outcome.Facts == nil ||
+		result.Outcome.Facts.WorkspaceRead == nil {
 		return ""
 	}
-	path, _ := metadata[toolguard.MetadataCanonicalPath].(string)
-	return path
+	return result.Outcome.Facts.WorkspaceRead.Path
 }

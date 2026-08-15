@@ -71,3 +71,34 @@ func TestTierTwoToolsUseTypedBoundaryOrDocumentException(t *testing.T) {
 		})
 	}
 }
+
+func TestRemainingBuiltinsExposeTypedOutcomeBoundary(t *testing.T) {
+	root := filepath.Clean("..")
+	files := []string{
+		"content/content.go",
+		"file/file.go",
+		"git/git.go",
+		"git/hosted.go",
+		"github/github.go",
+		"search/search.go",
+		"search/symbol.go",
+		"web/web.go",
+		"web/browser.go",
+	}
+	for _, relative := range files {
+		t.Run(relative, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join(root, relative))
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := string(data)
+			if !strings.Contains(source, "ExecuteOutcome(") ||
+				!strings.Contains(source, "typed.ExecuteOutcome(") {
+				t.Fatal("builtin does not expose the typed Outcome boundary")
+			}
+			if !strings.Contains(source, "ExecutionDisposition()") {
+				t.Fatal("builtin does not declare cancellation disposition")
+			}
+		})
+	}
+}

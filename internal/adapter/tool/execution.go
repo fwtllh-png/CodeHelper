@@ -7,6 +7,9 @@ import (
 	"maps"
 	"strings"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 )
 
 // ToolRef is the authority-frozen identity of one executable catalog entry.
@@ -128,8 +131,43 @@ type SecuritySignal struct {
 type Outcome struct {
 	Status    OutcomeStatus   `json:"status"`
 	Security  *SecuritySignal `json:"security,omitempty"`
+	Facts     *OutcomeFacts   `json:"facts,omitempty"`
 	Hook      any             `json:"hook,omitempty"`
 	Telemetry map[string]any  `json:"telemetry,omitempty"`
+}
+
+type OutcomeFacts struct {
+	WorkspaceRead    *WorkspaceReadFact     `json:"workspace_read,omitempty"`
+	WorkspaceChanges []WorkspaceChange      `json:"workspace_changes,omitempty"`
+	Diagnostics      []diagnostics.Receipt  `json:"diagnostics,omitempty"`
+	Evidence         []EvidenceHit          `json:"evidence,omitempty"`
+	Verification     *verify.Evidence       `json:"verification,omitempty"`
+	Completion       *CompletionDeclaration `json:"completion,omitempty"`
+	Failure          *FailureFact           `json:"failure,omitempty"`
+	ResultHandle     string                 `json:"result_handle,omitempty"`
+}
+
+type WorkspaceReadFact struct {
+	Path   string `json:"path"`
+	Digest string `json:"digest"`
+}
+
+const (
+	WorkspaceCreated  = "created"
+	WorkspaceModified = "modified"
+	WorkspaceDeleted  = "deleted"
+)
+
+type WorkspaceChange struct {
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`
+	Added   int    `json:"added,omitempty"`
+	Removed int    `json:"removed,omitempty"`
+	Summary string `json:"summary,omitempty"`
+}
+
+type FailureFact struct {
+	Category string `json:"category,omitempty"`
 }
 
 func OutcomeFromResult(result Result) Outcome {
@@ -137,7 +175,55 @@ func OutcomeFromResult(result Result) Outcome {
 	if result.IsError {
 		status = OutcomeFailed
 	}
-	return Outcome{Status: status}
+	outcome := Outcome{Status: status}
+	facts := factsFromResult(result)
+	if facts != nil {
+		outcome.Facts = facts
+	}
+	return outcome
+}
+
+func EnsureOutcomeFacts(result *Result) *OutcomeFacts {
+	if result.Outcome == nil {
+		outcome := OutcomeFromResult(*result)
+		result.Outcome = &outcome
+	}
+	if result.Outcome.Facts == nil {
+		result.Outcome.Facts = &OutcomeFacts{}
+	}
+	return result.Outcome.Facts
+}
+
+func factsFromResult(result Result) *OutcomeFacts {
+	facts := &OutcomeFacts{ResultHandle: result.Handle}
+	if result.Metadata != nil {
+		if value, ok := result.Metadata[MetadataEvidence].([]EvidenceHit); ok {
+			facts.Evidence = append([]EvidenceHit(nil), value...)
+		}
+		if value, ok := result.Metadata["diagnostics"].([]diagnostics.Receipt); ok {
+			facts.Diagnostics = append([]diagnostics.Receipt(nil), value...)
+		}
+		if value, ok := result.Metadata[MetadataCompletionDeclaration].(CompletionDeclaration); ok {
+			copy := value
+			facts.Completion = &copy
+		}
+		if value, ok := result.Metadata[verify.EvidenceMetadataKey].(verify.Evidence); ok {
+			copy := value
+			facts.Verification = &copy
+		}
+		if value, ok := result.Metadata["error_category"].(string); ok {
+			facts.Failure = &FailureFact{Category: value}
+		}
+		if facts.ResultHandle == "" {
+			facts.ResultHandle, _ = result.Metadata["handle"].(string)
+		}
+	}
+	if facts.ResultHandle == "" && len(facts.Evidence) == 0 &&
+		len(facts.Diagnostics) == 0 && facts.Completion == nil &&
+		facts.Verification == nil && facts.Failure == nil {
+		return nil
+	}
+	return facts
 }
 
 func CloneOutcome(source *Outcome) *Outcome {
@@ -146,6 +232,51 @@ func CloneOutcome(source *Outcome) *Outcome {
 	}
 	cloned := *source
 	cloned.Telemetry = maps.Clone(source.Telemetry)
+	if source.Facts != nil {
+		facts := *source.Facts
+		facts.WorkspaceChanges = append(
+			[]WorkspaceChange(nil),
+			source.Facts.WorkspaceChanges...,
+		)
+		facts.Diagnostics = append(
+			[]diagnostics.Receipt(nil),
+			source.Facts.Diagnostics...,
+		)
+		facts.Evidence = append([]EvidenceHit(nil), source.Facts.Evidence...)
+		if source.Facts.WorkspaceRead != nil {
+			read := *source.Facts.WorkspaceRead
+			facts.WorkspaceRead = &read
+		}
+		if source.Facts.Verification != nil {
+			verification := *source.Facts.Verification
+			verification.CoveredPaths = append(
+				[]string(nil),
+				source.Facts.Verification.CoveredPaths...,
+			)
+			facts.Verification = &verification
+		}
+		if source.Facts.Completion != nil {
+			completion := *source.Facts.Completion
+			completion.ChangedPaths = append(
+				[]string(nil),
+				source.Facts.Completion.ChangedPaths...,
+			)
+			completion.VerificationCallIDs = append(
+				[]string(nil),
+				source.Facts.Completion.VerificationCallIDs...,
+			)
+			completion.PendingActions = append(
+				[]string(nil),
+				source.Facts.Completion.PendingActions...,
+			)
+			facts.Completion = &completion
+		}
+		if source.Facts.Failure != nil {
+			failure := *source.Facts.Failure
+			facts.Failure = &failure
+		}
+		cloned.Facts = &facts
+	}
 	if source.Security != nil {
 		security := *source.Security
 		if source.Security.EgressDenied != nil {
@@ -195,8 +326,8 @@ func CloneExecutionReceipt(source *ExecutionReceipt) *ExecutionReceipt {
 	return &cloned
 }
 
-// OutcomeExecutor is the preferred core boundary. Legacy Executor values are
-// adapted by Registry until their package is migrated.
+// OutcomeExecutor is the authoritative built-in execution boundary. Dynamic
+// ecosystem executors may still be projected at Registry ingress.
 type OutcomeExecutor interface {
 	Executor
 	ExecuteOutcome(context.Context, json.RawMessage) (Result, Outcome, error)

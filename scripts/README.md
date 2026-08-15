@@ -53,6 +53,7 @@ make tool-execution-ex1
 make tool-execution-ex2
 make tool-execution-ex3
 make tool-execution-ex4
+make tool-execution-ex5
 make test
 make architecture-freeze
 make host-journey-contract

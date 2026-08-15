@@ -17,6 +17,7 @@ import (
 	"unicode"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 	"golang.org/x/net/html"
 )
@@ -202,6 +203,17 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		return t.search(ctx, value)
 	}
 	return t.fetch(ctx, value, t.kind == "web_scrape")
+}
+
+func (*Tool) ExecutionDisposition() tool.ExecutionDisposition {
+	return tool.DispositionWaitForTeardown
+}
+
+func (t *Tool) ExecuteOutcome(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.Result, tool.Outcome, error) {
+	return typed.ExecuteOutcome(ctx, t, raw)
 }
 
 func (t *Tool) search(ctx context.Context, value input) (tool.Result, error) {

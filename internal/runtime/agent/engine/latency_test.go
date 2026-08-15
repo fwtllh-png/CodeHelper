@@ -109,11 +109,14 @@ func (latencyTool) Descriptor() tool.Descriptor {
 
 func (t latencyTool) Execute(_ context.Context, raw json.RawMessage) (tool.Result, error) {
 	t.clock.advance(t.spent)
-	return tool.Result{Content: string(raw), Metadata: map[string]any{
-		toolguard.MetadataChanges: []toolguard.FileChange{
-			{Path: "a.txt", Kind: toolguard.FileModified, Added: 1},
-		},
-	}}, nil
+	return tool.Result{
+		Content: string(raw),
+		Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+			WorkspaceChanges: []tool.WorkspaceChange{
+				{Path: "a.txt", Kind: tool.WorkspaceModified, Added: 1},
+			},
+		}},
+	}, nil
 }
 
 // timedVerifier spends a known amount of time in the gate.
