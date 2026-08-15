@@ -34,6 +34,10 @@ CodeHelper 的高 Token 消耗不是由某一段异常大的 Prompt 单独造成
 8. 开启 Tool 后，Read-only Turn 也要求 `turn_complete`，可能增加收尾和 Repair
    Sample。
 
+CE7 已删除第三项模型可见重复。文本 Tool Catalog 现在只保留紧凑的可用性计数和
+`tool_search` 指引；名称、描述与 Schema 在 Provider `tools[]` 中只有一个模型可见
+Owner。
+
 单次请求可能仍在模型窗口内，但整个 Turn 的累计输入会随步骤数近似二次增长。若固定
 上下文与 Tool 定义为 `B`，每步新增历史平均为 `g`，模型调用数为 `N`：
 

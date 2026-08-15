@@ -62,7 +62,6 @@ func (p *Provider) Build(
 	}
 	turnOptions := promptcontext.TurnOptions{
 		Turn: state.Turn, Budgets: p.options.Budgets, Tokens: p.options.Tokens,
-		PreviousReceipts: state.PreviousReceipts,
 	}
 	if p.options.WorkingSet {
 		turnOptions.WorkingSet = state.WorkingSet

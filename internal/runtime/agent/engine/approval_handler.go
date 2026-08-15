@@ -7,6 +7,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
@@ -166,28 +167,42 @@ func (e *Engine) ContextReceipts() []promptcontext.Receipt {
 	return e.contextReceipts()
 }
 
-// promptMessages is the stable prefix of every request. It holds marked
-// skills/constitution fragments, which are reinjected on every sample after
-// compact strips them from history.
+// ContextSnapshot returns the sole model-context authority visible to the most
+// recent sample. Before the first sample it returns the equivalent initial
+// Stable+History ledger snapshot.
+func (e *Engine) ContextSnapshot() contextstore.Snapshot {
+	if scope := e.currentScope(); scope != nil {
+		scope.mu.Lock()
+		if scope.state.contextLedger != nil {
+			snapshot := scope.state.contextLedger.Snapshot()
+			scope.mu.Unlock()
+			return snapshot
+		}
+		scope.mu.Unlock()
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return contextstore.New(contextstore.Input{
+		Stable:  e.promptMessages(),
+		History: cloneMessages(e.history),
+	}).Snapshot()
+}
+
+// promptMessages is the immutable static prefix of every request. Dynamic
+// sections are projected through WorldBaseline and the ContextLedger.
 //
 // Nothing that changes during a session belongs here: the bytes are identical
 // from one sample to the next so a provider can serve them from its prompt cache.
 // Scope World State is composed separately; later digest changes enter History.
 func (e *Engine) promptMessages() []provider.Message {
-	if scope := e.runningScope(); scope != nil {
-		return cloneMessages(scope.spec.Context.Messages)
-	}
-	return cloneMessages(e.options.PromptContext)
+	return cloneMessages(e.options.StaticContext)
 }
 
 func (e *Engine) contextReceipts() []promptcontext.Receipt {
-	var receipts []promptcontext.Receipt
-	if scope := e.currentScope(); scope != nil &&
-		len(scope.spec.Context.Receipts) != 0 {
-		receipts = append(receipts, scope.spec.Context.Receipts...)
-	} else {
-		receipts = append(receipts, e.options.ContextReceipts...)
-	}
+	receipts := append(
+		[]promptcontext.Receipt(nil),
+		e.options.StaticContextReceipts...,
+	)
 	e.planMu.Lock()
 	if e.planReceipt != nil {
 		filtered := receipts[:0]

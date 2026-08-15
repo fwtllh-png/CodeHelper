@@ -12,9 +12,6 @@ func TestCurrentTurnSpecReturnsFrozenActiveSpec(t *testing.T) {
 		engine: engine,
 		spec: TurnSpec{
 			Identity: TurnIdentity{TurnID: "turn-active"},
-			History: []provider.Message{
-				provider.TextMessage(provider.RoleUser, "parent history"),
-			},
 			Request: TurnRequest{
 				Prompt: "inspect auth",
 				Attachments: []provider.Attachment{{
@@ -31,11 +28,9 @@ func TestCurrentTurnSpecReturnsFrozenActiveSpec(t *testing.T) {
 		t.Fatalf("snapshot = %+v", first)
 	}
 	first.Request.Attachments[0].Name = "mutated.txt"
-	first.History[0].Blocks[0].Text = "mutated history"
 
 	second := engine.CurrentTurnSpec()
-	if second.Request.Attachments[0].Name != "context.txt" ||
-		second.History[0].Text() != "parent history" {
+	if second.Request.Attachments[0].Name != "context.txt" {
 		t.Fatalf("snapshot aliases engine state: %+v", second)
 	}
 }

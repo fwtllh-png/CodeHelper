@@ -209,15 +209,15 @@ func (e *Engine) compactHistoryWithPolicy(
 	}
 	pruningReceipt := func() *CompactionReceipt {
 		return &CompactionReceipt{
-			OriginalMessages:      originalMessages,
-			OriginalBytes:         size,
-			RetainedBytes:         historyBytes(workingHistory),
-			OriginalTokens:        originalWindow.active,
-			RetainedTokens:        prunedWindow.active,
-			TruncationReason:      "tool_result_surface_pruning",
-			PrunedToolResults:     pruned.results,
-			PrunedBytes:           pruned.bytes,
-			PromptContextReceipts: e.contextReceipts(),
+			OriginalMessages:  originalMessages,
+			OriginalBytes:     size,
+			RetainedBytes:     historyBytes(workingHistory),
+			OriginalTokens:    originalWindow.active,
+			RetainedTokens:    prunedWindow.active,
+			TruncationReason:  "tool_result_surface_pruning",
+			PrunedToolResults: pruned.results,
+			PrunedBytes:       pruned.bytes,
+			ContextReceipts:   e.contextReceipts(),
 		}
 	}
 	pruningEnough := pruned.results != 0 &&
@@ -313,8 +313,8 @@ func (e *Engine) compactHistoryWithPolicy(
 		NarrativeIncluded:    selected.narrativeIncluded,
 		CapsuleBytes:         selected.capsuleBytes,
 
-		PromptContextReceipts: e.contextReceipts(),
-		WorkingSet:            workingSet, CriticalPaths: criticalPaths,
+		ContextReceipts: e.contextReceipts(),
+		WorkingSet:      workingSet, CriticalPaths: criticalPaths,
 	}
 	if selected.summaryTruncated {
 		receipt.TruncationReason = "summary_byte_budget"

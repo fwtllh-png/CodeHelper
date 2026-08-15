@@ -7,13 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 )
 
 var repositoryInstructionNames = []string{
@@ -23,22 +21,15 @@ var repositoryInstructionNames = []string{
 
 type Options struct {
 	BaseSystem    string
-	Mode          string
 	Workspace     string
 	ToolPrefix    string
-	Plan          string
 	Constitution  string
 	Budgets       map[string]Budget
 	WorkingSet    []FileContext
-	Skills        []skill.Summary
 	MemoryEnabled bool
 	Memory        *memory.Store
 	Loader        FileLoader
 	Tokens        TokenCounter
-	// Sections are optional WorldState partitions (policy, tool catalog, …).
-	Sections []WorldStateSection
-	// PreviousReceipts enable digest-skip for Sections (unchanged → receipt only).
-	PreviousReceipts []Receipt
 }
 
 const (
@@ -107,54 +98,6 @@ type Context struct {
 	CriticalPaths []string           `json:"critical_paths,omitempty"`
 }
 
-// RefreshMode replaces the mode partition while preserving the stable prompt
-// ordering and its audit receipt. Session Profile changes call this between
-// turns so the model instructions match the frozen policy mode.
-func RefreshMode(
-	messages []provider.Message,
-	receipts []Receipt,
-	mode string,
-	budget Budget,
-) ([]provider.Message, []Receipt) {
-	text := ModeInstructionPack(mode)
-	tokens := HeuristicTokenCounter{}
-	retained, reason := retain(text, budget, 0, 0, tokens)
-	receipt := newReceipt(
-		PartitionMode,
-		"session://profile.mode",
-		text,
-		retained,
-		reason,
-		tokens,
-	)
-	nextMessages := append([]provider.Message(nil), messages...)
-	replacement := provider.TextMessage(provider.RoleSystem, retained)
-	replaced := false
-	for index, message := range nextMessages {
-		if message.Role == provider.RoleSystem &&
-			strings.HasPrefix(strings.TrimSpace(message.Text()), "Mode:") {
-			if strings.TrimSpace(retained) == "" {
-				nextMessages = append(nextMessages[:index], nextMessages[index+1:]...)
-			} else {
-				nextMessages[index] = replacement
-			}
-			replaced = true
-			break
-		}
-	}
-	if !replaced && strings.TrimSpace(retained) != "" {
-		nextMessages = append(nextMessages, replacement)
-	}
-	nextReceipts := append([]Receipt(nil), receipts...)
-	for index := range nextReceipts {
-		if nextReceipts[index].Kind == PartitionMode {
-			nextReceipts[index] = receipt
-			return nextMessages, nextReceipts
-		}
-	}
-	return nextMessages, append(nextReceipts, receipt)
-}
-
 // Assemble builds system context in a stable order and reads instructions only
 // from fixed paths rooted inside Workspace.
 func Assemble(options Options) (Context, error) {
@@ -207,9 +150,6 @@ func Assemble(options Options) (Context, error) {
 		}
 	}
 	appendSection(PartitionBase, options.BaseSystem, "builtin://base-system")
-	if options.Mode != "" {
-		appendSection(PartitionMode, ModeInstructionPack(options.Mode), "config://execution.mode")
-	}
 	for _, name := range repositoryInstructionNames {
 		path, resolveErr := canonicalPath(workspace, name, true)
 		if errors.Is(resolveErr, os.ErrNotExist) {
@@ -261,15 +201,6 @@ func Assemble(options Options) (Context, error) {
 			result.CriticalPaths = append(result.CriticalPaths, file.canonical)
 		}
 	}
-	if text := renderSkills(options.Skills); text != "" {
-		budget := budgets[PartitionSkills]
-		if budget.MaxBytes <= 0 || budget.MaxBytes > MaxSkillsPromptBytes {
-			budget.MaxBytes = MaxSkillsPromptBytes
-		}
-		budget = ApplyFragmentTokenCeiling(budget)
-		budgets[PartitionSkills] = budget
-		appendFragmentSection(FragmentSkills, PartitionSkills, text, "skill://catalog")
-	}
 	if options.MemoryEnabled && options.Memory != nil {
 		block, ok, memErr := options.Memory.ComposeBlock()
 		if memErr != nil {
@@ -284,9 +215,6 @@ func Assemble(options Options) (Context, error) {
 			appendSection(PartitionUserMemory, block, options.Memory.Path())
 		}
 	}
-	if strings.TrimSpace(options.Plan) != "" {
-		appendSection(PartitionPlan, options.Plan, "session://plan")
-	}
 	if strings.TrimSpace(options.Constitution) != "" {
 		budget := ApplyFragmentTokenCeiling(budgets[PartitionConstitution])
 		budgets[PartitionConstitution] = budget
@@ -294,70 +222,8 @@ func Assemble(options Options) (Context, error) {
 			FragmentConstitution, PartitionConstitution, options.Constitution, "session://constitution",
 		)
 	}
-	previous := SectionDigestMap(options.PreviousReceipts)
-	for _, section := range options.Sections {
-		if section == nil {
-			continue
-		}
-		body := section.Render()
-		digest := section.Digest()
-		source := "worldstate://" + section.ID()
-		if previous[section.ID()] == digest {
-			// Unchanged: emit receipt for sticky-cache tracking without re-injecting body.
-			result.Receipts = append(result.Receipts, Receipt{
-				Kind: section.ID(), SourcePath: source, Digest: digest,
-				OriginalBytes: len(body), RetainedBytes: 0,
-			})
-			continue
-		}
-		if strings.TrimSpace(body) != "" {
-			appendSection(section.ID(), body, source)
-			// Ensure digest matches Snapshot (appendSection recomputes from text).
-			if n := len(result.Receipts); n > 0 {
-				result.Receipts[n-1].Digest = digest
-			}
-		} else {
-			result.Receipts = append(result.Receipts, Receipt{
-				Kind: section.ID(), SourcePath: source, Digest: digest,
-			})
-		}
-	}
 	appendSection(PartitionToolPrefix, options.ToolPrefix, "builtin://tool-prefix")
 	return result, nil
-}
-
-func renderSkills(values []skill.Summary) string {
-	if len(values) == 0 {
-		return ""
-	}
-	values = append([]skill.Summary(nil), values...)
-	sort.Slice(values, func(i, j int) bool {
-		if values[i].Name != values[j].Name {
-			return values[i].Name < values[j].Name
-		}
-		if values[i].Source != values[j].Source {
-			return values[i].Source < values[j].Source
-		}
-		return values[i].Path < values[j].Path
-	})
-	var builder strings.Builder
-	builder.WriteString("Available skills (metadata only). Call load_skill with a name before following its instructions.\n")
-	for _, value := range values {
-		builder.WriteString("- name=")
-		builder.WriteString(strconv.Quote(value.Name))
-		builder.WriteString(" description=")
-		builder.WriteString(strconv.Quote(value.Description))
-		builder.WriteString(" source=")
-		builder.WriteString(strconv.Quote(string(value.Source)))
-		builder.WriteString(" path=")
-		builder.WriteString(strconv.Quote(value.Path))
-		if value.Plugin != "" {
-			builder.WriteString(" plugin=")
-			builder.WriteString(strconv.Quote(value.Plugin))
-		}
-		builder.WriteByte('\n')
-	}
-	return strings.TrimSuffix(builder.String(), "\n")
 }
 
 type resolvedFile struct {

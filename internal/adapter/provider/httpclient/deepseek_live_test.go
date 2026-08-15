@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,36 +22,7 @@ func TestDeepSeekP0LiveControl(t *testing.T) {
 	if os.Getenv(deepSeekLiveControlEnv) != "1" {
 		t.Skipf("DeepSeek live control disabled; set %s=1", deepSeekLiveControlEnv)
 	}
-	route := p0BundledRoute(t, "deepseek-v4-flash", "deepseek-v4-flash")
-	credential, err := DefaultCredentials().Resolve(t.Context(), route.Credential())
-	if err != nil {
-		t.Skipf("DeepSeek live control skipped: configured credential is unavailable: %v", err)
-	}
-
-	gate := &egress.Gate{Enforce: true}
-	if !gate.AllowURL(route.Endpoint()) {
-		t.Fatalf("cannot grant DeepSeek endpoint %q", route.Endpoint())
-	}
-	metrics := telemetry.NewMetrics()
-	client := New()
-	client.HTTP = &http.Client{Timeout: 3 * time.Minute}
-	client.Credentials = p0LiveCredential(credential)
-	client.Egress = gate
-	client.Metrics = metrics
-	client.IdleTimeout = 2 * time.Minute
-	adapter := deepseek.NewAdapter()
-	registry, err := providerrouter.NewRegistry(adapter)
-	if err != nil {
-		t.Fatal(err)
-	}
-	routes, err := model.NewRouteSet(route, nil, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	runtime, err := providerrouter.New(registry, routes, client)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runtime, route, metrics := deepSeekLiveRuntime(t)
 	stream, err := runtime.Stream(t.Context(), provider.ModelRequest{
 		Route: route,
 		Messages: []provider.Message{
@@ -92,6 +64,98 @@ func TestDeepSeekP0LiveControl(t *testing.T) {
 	if requests := metrics.Snapshot().ProviderRequests; requests != 1 {
 		t.Fatalf("DeepSeek live control provider requests = %d, want 1", requests)
 	}
+}
+
+func TestDeepSeekCE7LiveCacheShare(t *testing.T) {
+	if os.Getenv(deepSeekLiveControlEnv) != "1" {
+		t.Skipf("DeepSeek live control disabled; set %s=1", deepSeekLiveControlEnv)
+	}
+	runtime, route, _ := deepSeekLiveRuntime(t)
+	prefix := strings.Repeat(
+		"CodeHelper cache continuity fixture with stable deterministic text. ",
+		800,
+	)
+	var last provider.Usage
+	for sample := 1; sample <= 3; sample++ {
+		stream, err := runtime.Stream(t.Context(), provider.ModelRequest{
+			Route: route,
+			Messages: []provider.Message{
+				provider.TextMessage(provider.RoleSystem, prefix),
+				provider.TextMessage(
+					provider.RoleUser,
+					"Reply with exactly ok. sample="+string(rune('0'+sample)),
+				),
+			},
+			MaxOutputTokens: 32,
+			ReasoningEffort: "low",
+			Idempotent:      true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		events, err := provider.Drain(stream)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, event := range events {
+			if event.Type == provider.EventUsage && event.Usage != nil {
+				last = *event.Usage
+			}
+		}
+	}
+	if last.InputTokens == 0 {
+		t.Fatal("DeepSeek cache probe returned no input usage")
+	}
+	shareBasisPoints := last.CachedTokens * 10_000 / last.InputTokens
+	t.Logf(
+		"DeepSeek sample-3 cache share: cached=%d input=%d share_bps=%d",
+		last.CachedTokens,
+		last.InputTokens,
+		shareBasisPoints,
+	)
+	if shareBasisPoints < 9_500 {
+		t.Fatalf(
+			"DeepSeek sample-3 cache share = %d basis points, want at least 9500",
+			shareBasisPoints,
+		)
+	}
+}
+
+func deepSeekLiveRuntime(
+	t *testing.T,
+) (provider.Provider, model.ReadyRoute, *telemetry.Metrics) {
+	t.Helper()
+	route := p0BundledRoute(t, "deepseek-v4-flash", "deepseek-v4-flash")
+	credential, err := DefaultCredentials().Resolve(t.Context(), route.Credential())
+	if err != nil {
+		t.Skipf("DeepSeek live control skipped: configured credential is unavailable: %v", err)
+	}
+
+	gate := &egress.Gate{Enforce: true}
+	if !gate.AllowURL(route.Endpoint()) {
+		t.Fatalf("cannot grant DeepSeek endpoint %q", route.Endpoint())
+	}
+	metrics := telemetry.NewMetrics()
+	client := New()
+	client.HTTP = &http.Client{Timeout: 3 * time.Minute}
+	client.Credentials = p0LiveCredential(credential)
+	client.Egress = gate
+	client.Metrics = metrics
+	client.IdleTimeout = 2 * time.Minute
+	adapter := deepseek.NewAdapter()
+	registry, err := providerrouter.NewRegistry(adapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := providerrouter.New(registry, routes, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runtime, route, metrics
 }
 
 type p0LiveCredential string

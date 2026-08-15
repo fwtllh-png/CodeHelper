@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 )
 
@@ -81,5 +82,36 @@ func TestProjectMessagesExcludesOpaqueParentContent(t *testing.T) {
 		!strings.Contains(rendered.String(), "visible") ||
 		!strings.Contains(rendered.String(), "file body") {
 		t.Fatalf("projected messages = %+v", projected)
+	}
+}
+
+func TestLatestWorldTextUsesTypedMarkerAndTombstone(t *testing.T) {
+	message := provider.TextMessage(provider.RoleSystem, "coding rules")
+	full, err := contextstore.ProjectWorld(
+		[]contextstore.WorldSection{{
+			ID: "coding_policy", Digest: "digest-1",
+			Present: true, Message: &message,
+		}},
+		contextstore.WorldBaseline{},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := latestWorldText(full.Messages, "coding_policy"); got != "coding rules" {
+		t.Fatalf("world text=%q", got)
+	}
+	history := append([]provider.Message(nil), full.Messages...)
+	removed, err := contextstore.ProjectWorld(
+		nil,
+		full.Baseline,
+		history,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history = append(history, removed.Messages...)
+	if got := latestWorldText(history, "coding_policy"); got != "" {
+		t.Fatalf("removed world text=%q", got)
 	}
 }

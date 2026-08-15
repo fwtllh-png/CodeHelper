@@ -1877,7 +1877,7 @@ func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 	engine.options.Workspace = "/workspace"
 	engine.options.WorkingSet = []string{"/workspace/a.go"}
 	engine.seedWorkingSet()
-	engine.options.ContextReceipts = []promptcontext.Receipt{{
+	engine.options.StaticContextReceipts = []promptcontext.Receipt{{
 		Kind: promptcontext.PartitionWorkingSet, SourcePath: "/workspace/a.go",
 		OriginalBytes: 20, RetainedBytes: 10, OriginalTokens: 5, RetainedTokens: 3,
 		Digest: "sha256:test", Truncated: true, TruncationReason: "byte_budget",
@@ -1913,7 +1913,7 @@ func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 	}
 	// Partition byte and digest detail belongs to the audit trail, not to every
 	// sample after the compaction.
-	if strings.Contains(summary, "PromptContextReceipts") {
+	if strings.Contains(summary, "ContextReceipts") {
 		t.Fatalf("summary inlined receipt detail: %s", summary)
 	}
 	if receipt == nil ||
@@ -1921,7 +1921,7 @@ func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 		len(receipt.RemovedTurns) != 1 ||
 		receipt.RemovedTurns[0] != 1 ||
 		receipt.SummaryTruncated ||
-		len(receipt.PromptContextReceipts) != 1 ||
+		len(receipt.ContextReceipts) != 1 ||
 		len(receipt.CriticalPaths) != 1 || receipt.CriticalPaths[0] != "a.go" ||
 		len(receipt.WorkingSet) != 1 {
 		t.Fatalf("compaction receipt = %+v", receipt)
@@ -2032,18 +2032,16 @@ func TestEngineCompactionMergesTruthCapsulesAcrossGenerations(t *testing.T) {
 	}
 }
 
-func TestEngineCompactStripsFragmentsAndPromptContextReinjects(t *testing.T) {
+func TestEngineCompactStripsConstitutionAndStaticContextReinjects(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	engine.options.CompactWindow.AutoTokens = 228
 	engine.options.SummaryMaxBytes = 2 << 10
-	skills := promptcontext.WrapFragment(promptcontext.FragmentSkills, "skill catalog body")
 	constitution := promptcontext.WrapFragment(promptcontext.FragmentConstitution, "constitution body")
-	engine.options.PromptContext = []provider.Message{
-		provider.TextMessage(provider.RoleSystem, skills),
+	engine.options.StaticContext = []provider.Message{
 		provider.TextMessage(provider.RoleSystem, constitution),
 	}
 	engine.history = []provider.Message{
-		provider.TextMessage(provider.RoleSystem, skills),
+		provider.TextMessage(provider.RoleSystem, constitution),
 		messageWithText(provider.RoleUser, strings.Repeat("old ", 80), 1),
 		messageWithText(provider.RoleAssistant, strings.Repeat("ans ", 80), 1),
 		messageWithText(provider.RoleUser, "keep", 2),
@@ -2058,22 +2056,18 @@ func TestEngineCompactStripsFragmentsAndPromptContextReinjects(t *testing.T) {
 		}
 	}
 	prompt := engine.promptMessages()
-	var sawSkills, sawConstitution bool
+	var sawConstitution bool
 	for _, message := range prompt {
 		kind, ok := promptcontext.MatchFragment(message.Text())
 		if !ok {
 			continue
 		}
-		switch kind {
-		case promptcontext.FragmentSkills:
-			sawSkills = true
-		case promptcontext.FragmentConstitution:
+		if kind == promptcontext.FragmentConstitution {
 			sawConstitution = true
 		}
 	}
-	if !sawSkills || !sawConstitution {
-		t.Fatalf("prompt reinjection missing skills=%v constitution=%v prompt=%+v",
-			sawSkills, sawConstitution, prompt)
+	if !sawConstitution {
+		t.Fatalf("prompt reinjection missing constitution: prompt=%+v", prompt)
 	}
 }
 
@@ -2435,7 +2429,7 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
 	engine.options.CompactWindow.AutoTokens = 300
 	engine.options.SummaryMaxBytes = 2 << 10
-	engine.options.ContextReceipts = []promptcontext.Receipt{{
+	engine.options.StaticContextReceipts = []promptcontext.Receipt{{
 		Kind: promptcontext.PartitionBase, SourcePath: "builtin://base-system",
 		OriginalBytes: 4, RetainedBytes: 4, OriginalTokens: 1, RetainedTokens: 1,
 		Digest: "sha256:base",
@@ -2459,7 +2453,7 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 	if compaction == nil ||
 		compaction.Phase != CompactionPhasePreSampling ||
 		compaction.RemovedMessages != 2 ||
-		len(compaction.PromptContextReceipts) != 2 ||
+		len(compaction.ContextReceipts) < 3 ||
 		compaction.TruthGeneration != 1 ||
 		compaction.TruthEntities == 0 ||
 		compaction.CompatibilityHash == "" ||

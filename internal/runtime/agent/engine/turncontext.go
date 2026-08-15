@@ -7,7 +7,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -36,18 +35,11 @@ type TurnLimits struct {
 	Budget          Budget
 }
 
-// TurnContextSnapshot is the stable prompt prefix and its receipts.
-type TurnContextSnapshot struct {
-	Messages []provider.Message
-	Receipts []promptcontext.Receipt
-}
-
 // TurnSpec is the complete immutable input for one Engine Scope. Host profile,
 // policy, route, catalog, and skill mutations apply only to the next Scope.
 type TurnSpec struct {
 	Identity TurnIdentity
 	Request  TurnRequest
-	History  []provider.Message
 	Profile  protocol.SessionProfile
 	// Purpose is what this turn samples for, derived from the frozen mode. It is
 	// what selects Route out of the session's routing table.
@@ -65,7 +57,6 @@ type TurnSpec struct {
 	Policy     *policy.Runtime
 	Kernel     turnkernel.Policy
 	Limits     TurnLimits
-	Context    TurnContextSnapshot
 	World      contextstore.WorldBaseline
 	Window     contextstore.WindowLedger
 	Catalog    tool.CatalogSnapshot
@@ -177,10 +168,6 @@ func SnapshotTurnSpec(
 			MaxOutputTokens: options.MaxOutputTokens,
 			Budget:          options.Budget,
 		},
-		Context: TurnContextSnapshot{
-			Messages: cloneMessages(options.PromptContext),
-			Receipts: staticContextReceipts(options.ContextReceipts),
-		},
 		Catalog: catalog,
 	}
 	if options.TurnSnapshots.Skills != nil {
@@ -197,20 +184,6 @@ func SnapshotTurnSpec(
 		spec.Extensions = append([]ExtensionSnapshot(nil), spec.Extensions...)
 	}
 	return spec, nil
-}
-
-func staticContextReceipts(
-	receipts []promptcontext.Receipt,
-) []promptcontext.Receipt {
-	result := make([]promptcontext.Receipt, 0, len(receipts))
-	for _, receipt := range receipts {
-		if receipt.Kind == promptcontext.PartitionPolicy ||
-			receipt.Kind == promptcontext.PartitionSkills {
-			continue
-		}
-		result = append(result, receipt)
-	}
-	return result
 }
 
 // effectiveRoutes is the routing table an Options describes: the one it carries,

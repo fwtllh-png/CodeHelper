@@ -37,7 +37,7 @@ type Item struct {
 	Message provider.Message `json:"message"`
 }
 
-// Input is the one-way adapter from the current prompt and history owners.
+// Input constructs the single model-context authority at Scope admission.
 type Input struct {
 	Stable       []provider.Message
 	History      []provider.Message

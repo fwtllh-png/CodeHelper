@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 )
 
 func TestAssembleStableOrderAndWorkspaceBoundaries(t *testing.T) {
@@ -29,13 +28,12 @@ func TestAssembleStableOrderAndWorkspaceBoundaries(t *testing.T) {
 	t.Cleanup(func() { _ = os.Remove(outside) })
 
 	context, err := Assemble(Options{
-		BaseSystem: "base", Mode: "act", Workspace: workspace, ToolPrefix: "tools",
+		BaseSystem: "base", Workspace: workspace, ToolPrefix: "tools",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	modePack := ModeInstructionPack("act")
-	want := []string{"base", modePack, "root rules", "local rules", "tools"}
+	want := []string{"base", "root rules", "local rules", "tools"}
 	if len(context.Messages) != len(want) {
 		t.Fatalf("messages = %+v", context.Messages)
 	}
@@ -43,9 +41,6 @@ func TestAssembleStableOrderAndWorkspaceBoundaries(t *testing.T) {
 		if context.Messages[index].Text() != text {
 			t.Fatalf("message %d = %q, want %q", index, context.Messages[index].Text(), text)
 		}
-	}
-	if !strings.Contains(modePack, "Act mode") {
-		t.Fatalf("mode pack missing Act guidance: %q", modePack)
 	}
 }
 
@@ -56,12 +51,10 @@ func TestAssembleBudgetsAreDeterministicUTF8SafeAndReceipted(t *testing.T) {
 	}
 	options := Options{
 		BaseSystem: "你好世界-base",
-		Mode:       "operate",
 		Workspace:  workspace,
 		ToolPrefix: "tool-prefix",
 		Budgets: map[string]Budget{
 			PartitionBase:       {MaxBytes: 7},
-			PartitionMode:       {MaxTokens: 2},
 			PartitionRepository: {MaxBytes: 8},
 			PartitionToolPrefix: {MaxTokens: 1},
 		},
@@ -74,7 +67,7 @@ func TestAssembleBudgetsAreDeterministicUTF8SafeAndReceipted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Receipts) != 4 {
+	if len(first.Receipts) != 3 {
 		t.Fatalf("receipts = %+v", first.Receipts)
 	}
 	for index, receipt := range first.Receipts {
@@ -89,7 +82,9 @@ func TestAssembleBudgetsAreDeterministicUTF8SafeAndReceipted(t *testing.T) {
 	if !first.Receipts[0].Truncated ||
 		first.Receipts[0].TruncationReason != "byte_budget" ||
 		!first.Receipts[1].Truncated ||
-		first.Receipts[1].TruncationReason != "token_budget" {
+		first.Receipts[1].TruncationReason != "byte_budget" ||
+		!first.Receipts[2].Truncated ||
+		first.Receipts[2].TruncationReason != "token_budget" {
 		t.Fatalf("truncation receipts = %+v", first.Receipts)
 	}
 	for _, message := range first.Messages {
@@ -167,49 +162,6 @@ func TestAssembleWorkingSetInjectionCanonicalizationAndSymlinkEscape(t *testing.
 		Workspace: workspace, WorkingSet: []FileContext{{Path: "escape.go"}},
 	}); err == nil || !strings.Contains(err.Error(), "escapes workspace") {
 		t.Fatalf("symlink escape error = %v", err)
-	}
-}
-
-func TestAssembleSkillsPartitionHasHardBudgetAndStableOrder(t *testing.T) {
-	workspace := t.TempDir()
-	skills := make([]skill.Summary, 80)
-	for index := range skills {
-		skills[index] = skill.Summary{
-			Name:        "skill-" + string(rune('a'+index%26)) + strings.Repeat("x", index/26),
-			Description: strings.Repeat("description-", 40),
-			Source:      skill.SourceWorkspace,
-			Path:        filepath.Join(workspace, "skills", string(rune('a'+index%26)), "SKILL.md"),
-		}
-	}
-	context, err := Assemble(Options{
-		Workspace: workspace,
-		Skills:    skills,
-		Budgets: map[string]Budget{
-			PartitionSkills: {MaxBytes: MaxSkillsPromptBytes * 2},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var receipt *Receipt
-	for index := range context.Receipts {
-		if context.Receipts[index].Kind == PartitionSkills {
-			receipt = &context.Receipts[index]
-			break
-		}
-	}
-	if receipt == nil {
-		t.Fatal("skills receipt is missing")
-	}
-	if receipt.RetainedBytes > MaxSkillsPromptBytes || !receipt.Truncated ||
-		receipt.TruncationReason != "byte_budget" {
-		t.Fatalf("skills receipt = %+v", *receipt)
-	}
-	if len(context.Messages) != 1 ||
-		!strings.Contains(context.Messages[0].Text(), "Available skills") ||
-		!IsContextualFragment(context.Messages[0].Text()) ||
-		!utf8.ValidString(context.Messages[0].Text()) {
-		t.Fatalf("skills prompt messages = %+v", context.Messages)
 	}
 }
 

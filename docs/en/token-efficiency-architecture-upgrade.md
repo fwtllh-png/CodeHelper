@@ -40,6 +40,11 @@ prompt. It is the combined effect of:
 8. requiring `turn_complete` for read-only tool turns, which can add finish and
    repair samples.
 
+CE7 removed the third duplication from the model-visible surface. The textual
+catalog now carries compact availability counts and a `tool_search` instruction;
+names, descriptions, and schemas have one model-visible owner in Provider
+`tools[]`.
+
 If fixed context and tool definitions cost `B`, each step adds `g` history
 tokens on average, and a turn makes `N` model calls, cumulative input is:
 

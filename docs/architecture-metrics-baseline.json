@@ -192,7 +192,7 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 69,
-        "production_lines": 7570,
+        "production_lines": 7545,
         "options_fields": 70,
         "mutex_fields": 5
       }
@@ -284,7 +284,7 @@
       },
       "relaxations": {
         "internal_fanout": "CE4 projects shared Admission Receipts into durable Tool Result history.",
-        "production_lines": "CE6 attaches Runtime-owned Window, Retry, and Recovery continuity to complete logical model requests."
+        "production_lines": "CE7 deletes TurnContextSnapshot, receipt baselines, and mutable PromptContext ownership while adding the single-authority snapshot API."
       }
     },
     {
@@ -478,8 +478,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 433,
-        "max_function_lines": 340
+        "lines": 426,
+        "max_function_lines": 333
       }
     },
     {
@@ -572,8 +572,17 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/world_state.go",
       "limits": {
-        "lines": 251,
-        "max_function_lines": 95
+        "lines": 271,
+        "max_function_lines": 73
+      }
+    },
+    {
+      "id": "context_authority_gate_file",
+      "kind": "file",
+      "path": "scripts/contextauthority/main.go",
+      "limits": {
+        "lines": 215,
+        "max_function_lines": 49
       }
     },
     {

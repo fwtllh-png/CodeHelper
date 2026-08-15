@@ -106,12 +106,6 @@ func (s *Scope) Spec() TurnSpec {
 		recovery := *spec.Request.Recovery
 		spec.Request.Recovery = &recovery
 	}
-	spec.History = cloneMessages(spec.History)
-	spec.Context.Messages = cloneMessages(spec.Context.Messages)
-	spec.Context.Receipts = append(
-		[]promptcontext.Receipt(nil),
-		spec.Context.Receipts...,
-	)
 	spec.World = contextstore.CloneWorldBaseline(spec.World)
 	spec.Window = contextstore.CloneWindowLedger(spec.Window)
 	spec.Skills = append([]SkillSummary(nil), spec.Skills...)

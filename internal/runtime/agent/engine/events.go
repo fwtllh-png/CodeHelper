@@ -176,11 +176,11 @@ type CompactionReceipt struct {
 	// Sections names the parts of the summary that survived the budget, so a host
 	// can tell a compaction that carried the goal from one that only had room for
 	// a transcript.
-	Sections              []string                `json:"sections,omitempty"`
-	RemovedTurns          []uint64                `json:"removed_turns"`
-	PromptContextReceipts []promptcontext.Receipt `json:"prompt_context_receipts"`
-	WorkingSet            []string                `json:"working_set"`
-	CriticalPaths         []string                `json:"critical_paths"`
+	Sections        []string                `json:"sections,omitempty"`
+	RemovedTurns    []uint64                `json:"removed_turns"`
+	ContextReceipts []promptcontext.Receipt `json:"context_receipts"`
+	WorkingSet      []string                `json:"working_set"`
+	CriticalPaths   []string                `json:"critical_paths"`
 }
 
 const (

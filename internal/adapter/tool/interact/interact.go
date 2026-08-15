@@ -205,7 +205,7 @@ func (e *executor) Descriptor() tool.Descriptor {
 		}
 	case "update_plan":
 		return tool.Descriptor{
-			Name: e.name, Description: "Replace the structured working plan injected into PromptContext.",
+			Name: e.name, Description: "Replace the structured working plan projected through ContextLedger.",
 			Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
@@ -665,7 +665,7 @@ func (t *Tools) Plan() (Plan, bool) {
 	return t.plan, true
 }
 
-// FormatPlan renders a plan partition for PromptContext.
+// FormatPlan renders a plan partition for WorldState projection.
 func FormatPlan(plan Plan) string {
 	var b strings.Builder
 	b.WriteString("<plan")
@@ -725,7 +725,7 @@ func writePlanList(b *strings.Builder, name string, values []string) {
 	}
 }
 
-// PlanReceipt builds a PromptContext receipt for an applied plan.
+// PlanReceipt builds the audit receipt for an applied plan.
 func PlanReceipt(plan Plan) promptcontext.Receipt {
 	text := FormatPlan(plan)
 	tokens := promptcontext.HeuristicTokenCounter{}.Count(text)

@@ -33,19 +33,10 @@ func (e *Engine) projectWorldState(
 	scope.mu.Lock()
 	baseline := contextstore.CloneWorldBaseline(scope.state.world)
 	scope.mu.Unlock()
-	valid := contextstore.WorldBaselineValid(history, baseline)
-	var previous []promptcontext.Receipt
-	if valid {
-		for _, entry := range baseline.Entries {
-			previous = append(previous, promptcontext.Receipt{
-				Kind: entry.ID, Digest: entry.Digest,
-			})
-		}
-	}
-	stable, sections, receipts := frozenWorldSections(scope.spec, e.turn)
+	sections, receipts := e.frozenWorldSections(scope.spec, e.turn)
 	catalogMessages, catalogReceipt := promptcontext.AssembleToolCatalog(
 		promptcontext.NewToolCatalogSectionFromSnapshot(catalog, advertised),
-		e.options.ToolCatalogBudget,
+		e.contextBudget(promptcontext.PartitionToolCatalog),
 	)
 	sections = append(
 		sections,
@@ -59,10 +50,9 @@ func (e *Engine) projectWorldState(
 	if e.options.RepoContext != nil {
 		snapshot := e.evidenceSet().Snapshot(e.options.EvidenceLimit)
 		built = e.options.RepoContext.Build(ctx, promptcontext.TurnState{
-			Turn:             e.turn,
-			WorkingSet:       e.workingLedger().Select(e.turn, e.options.WorkingSetLimit),
-			Evidence:         snapshot,
-			PreviousReceipts: previous,
+			Turn:       e.turn,
+			WorkingSet: e.workingLedger().Select(e.turn, e.options.WorkingSetLimit),
+			Evidence:   snapshot,
 		})
 		e.options.Metrics.Evidence(len(snapshot.Risks), len(snapshot.Reminders))
 	}
@@ -77,89 +67,98 @@ func (e *Engine) projectWorldState(
 	}
 	e.planMu.Unlock()
 	if planReceipt != nil {
-		if promptcontext.SectionDigestMap(previous)[promptcontext.PartitionPlan] ==
-			planReceipt.Digest {
-			planReceipt.RetainedBytes, planReceipt.RetainedTokens = 0, 0
-		} else {
-			message := provider.TextMessage(provider.RoleSystem, plan)
-			message.Turn = e.turn
-			sections = append(
-				sections,
-				worldSectionFromReceipt(*planReceipt, &message, e.turn),
-			)
-		}
-		if planReceipt.RetainedBytes == 0 {
-			sections = append(
-				sections,
-				worldSectionFromReceipt(*planReceipt, nil, e.turn),
-			)
-		}
+		message := provider.TextMessage(provider.RoleSystem, plan)
+		sections = append(
+			sections,
+			worldSectionFromReceipt(*planReceipt, &message, e.turn),
+		)
 		receipts = append(receipts, *planReceipt)
 	}
 	projection, err := contextstore.ProjectWorld(sections, baseline, history)
 	if err != nil {
 		return nil, nil, nil, contextstore.WorldProjection{}, err
 	}
+	receipts = projectWorldReceipts(receipts, projection.Changed)
 	scope.mu.Lock()
 	scope.state.selections = cloneSelections(built.Selections)
 	scope.state.contextSeen = append([]promptcontext.Receipt(nil), receipts...)
 	scope.state.world = contextstore.CloneWorldBaseline(projection.Baseline)
 	scope.mu.Unlock()
-	return stable, cloneMessages(projection.Messages), receipts, projection, nil
+	return e.promptMessages(), cloneMessages(projection.Messages), receipts, projection, nil
 }
 
-func frozenWorldSections(
+func projectWorldReceipts(
+	receipts []promptcontext.Receipt,
+	changed []string,
+) []promptcontext.Receipt {
+	changedSet := make(map[string]struct{}, len(changed))
+	for _, id := range changed {
+		changedSet[id] = struct{}{}
+	}
+	result := append([]promptcontext.Receipt(nil), receipts...)
+	for index := range result {
+		if _, changed := changedSet[result[index].Kind]; changed {
+			continue
+		}
+		result[index].RetainedBytes = 0
+		result[index].RetainedTokens = 0
+	}
+	return result
+}
+
+func (e *Engine) frozenWorldSections(
 	spec TurnSpec,
 	turn uint64,
-) ([]provider.Message, []contextstore.WorldSection, []promptcontext.Receipt) {
-	var stable []provider.Message
+) ([]contextstore.WorldSection, []promptcontext.Receipt) {
 	var sections []contextstore.WorldSection
 	var receipts []promptcontext.Receipt
-	for _, message := range spec.Context.Messages {
-		text := strings.TrimSpace(message.Text())
-		if strings.HasPrefix(text, "Policy snapshot:") {
-			continue
-		}
-		fragment, marked := promptcontext.MatchFragment(text)
-		if marked && fragment == promptcontext.FragmentSkills {
-			continue
-		}
-		stable = append(stable, cloneMessages([]provider.Message{message})...)
-	}
-	policy := promptcontext.NewPolicySection(spec.Policy)
-	body := policy.Render()
-	message := provider.TextMessage(provider.RoleSystem, body)
-	message.Turn = turn
-	sections = append(sections, contextstore.WorldSection{
-		ID: policy.ID(), Digest: policy.Digest(),
-		Present: true, Message: &message,
-	})
-	receipts = append(receipts, promptcontext.Receipt{
-		Kind:          policy.ID(),
-		SourcePath:    "worldstate://" + policy.ID(),
-		OriginalBytes: len(body),
-		RetainedBytes: len(body),
-		Digest:        policy.Digest(),
-	})
-	if body := renderSkillWorld(spec.Skills); body != "" {
-		skillMessage := provider.TextMessage(
-			provider.RoleSystem,
-			promptcontext.WrapFragment(promptcontext.FragmentSkills, body),
+	appendSection := func(id, source, body, digest string) {
+		messages, receipt := promptcontext.AssembleWorldText(
+			id,
+			source,
+			body,
+			e.contextBudget(id),
 		)
-		skillMessage.Turn = turn
-		digest := provider.MessageContentDigest(skillMessage)
-		sections = append(sections, contextstore.WorldSection{
-			ID: promptcontext.PartitionSkills, Digest: digest,
-			Present: true, Message: &skillMessage,
-		})
-		receipts = append(receipts, promptcontext.Receipt{
-			Kind:          promptcontext.PartitionSkills,
-			SourcePath:    "worldstate://" + promptcontext.PartitionSkills,
-			OriginalBytes: len(skillMessage.Text()),
-			RetainedBytes: len(skillMessage.Text()), Digest: digest,
-		})
+		if digest != "" {
+			receipt.Digest = digest
+		}
+		sections = append(
+			sections,
+			worldSectionFromReceipt(receipt, firstMessage(messages), turn),
+		)
+		receipts = append(receipts, receipt)
 	}
-	return stable, sections, receipts
+	appendSection(
+		promptcontext.PartitionMode,
+		"session://profile.mode",
+		promptcontext.ModeInstructionPack(string(spec.Mode)),
+		"",
+	)
+	policy := promptcontext.NewPolicySection(spec.Policy)
+	appendSection(
+		policy.ID(),
+		"worldstate://"+policy.ID(),
+		policy.Render(),
+		policy.Digest(),
+	)
+	if e.options.CodingPolicy {
+		coding := promptcontext.NewCodingPolicySection()
+		appendSection(
+			coding.ID(),
+			"worldstate://"+coding.ID(),
+			coding.Render(),
+			coding.Digest(),
+		)
+	}
+	if body := renderSkillWorld(spec.Skills); body != "" {
+		appendSection(
+			promptcontext.PartitionSkills,
+			"skill://catalog",
+			body,
+			"",
+		)
+	}
+	return sections, receipts
 }
 
 func renderSkillWorld(values []SkillSummary) string {
@@ -184,18 +183,39 @@ func renderSkillWorld(values []SkillSummary) string {
 		builder.WriteString("- name=")
 		builder.WriteString(strconv.Quote(value.Name))
 		builder.WriteString(" description=")
-		builder.WriteString(strconv.Quote(value.Description))
+		description := strings.TrimSpace(value.Description)
+		runes := []rune(description)
+		if len(runes) > 160 {
+			description = string(runes[:157]) + "..."
+		}
+		builder.WriteString(strconv.Quote(description))
 		builder.WriteString(" source=")
 		builder.WriteString(strconv.Quote(value.Source))
-		builder.WriteString(" path=")
-		builder.WriteString(strconv.Quote(value.Path))
-		if value.Plugin != "" {
-			builder.WriteString(" plugin=")
-			builder.WriteString(strconv.Quote(value.Plugin))
-		}
 		builder.WriteByte('\n')
 	}
 	return strings.TrimSuffix(builder.String(), "\n")
+}
+
+func (e *Engine) contextBudget(kind string) promptcontext.Budget {
+	if budget, ok := e.options.ContextBudgets[kind]; ok {
+		return budget
+	}
+	switch kind {
+	case promptcontext.PartitionMode:
+		return promptcontext.Budget{MaxBytes: 1 << 10, MaxTokens: 256}
+	case promptcontext.PartitionPolicy,
+		promptcontext.PartitionCodingPolicy:
+		return promptcontext.Budget{MaxBytes: 2 << 10, MaxTokens: 512}
+	case promptcontext.PartitionSkills:
+		return promptcontext.Budget{
+			MaxBytes:  promptcontext.MaxSkillsPromptBytes,
+			MaxTokens: promptcontext.MaxFragmentTokens,
+		}
+	case promptcontext.PartitionToolCatalog:
+		return promptcontext.Budget{MaxBytes: 16 << 10, MaxTokens: 4 << 10}
+	default:
+		return promptcontext.Budget{}
+	}
 }
 
 func worldSectionsFromTurnContext(

@@ -170,7 +170,7 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 func TestTokenWindowFinishOnlyRemovesAllReadOnlyToolsAtEightyFivePercent(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{textStream("done")}}
 	engine := newEngine(t, runtime, declarationRegistry(t, true))
-	engine.options.PromptContext = []provider.Message{
+	engine.options.StaticContext = []provider.Message{
 		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 12_100)),
 	}
 

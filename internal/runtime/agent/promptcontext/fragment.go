@@ -15,13 +15,10 @@ const MaxFragmentTokens = 10_000
 type FragmentKind string
 
 const (
-	FragmentSkills       FragmentKind = "skills"
 	FragmentConstitution FragmentKind = "constitution"
 )
 
 const (
-	markerSkillsStart       = "<codehelper_fragment kind=\"skills\">"
-	markerSkillsEnd         = "</codehelper_fragment>"
 	markerConstitutionStart = "<codehelper_fragment kind=\"constitution\">"
 	markerConstitutionEnd   = "</codehelper_fragment>"
 )
@@ -29,8 +26,6 @@ const (
 // FragmentMarkers returns start/end markers for a contextual fragment kind.
 func FragmentMarkers(kind FragmentKind) (start, end string) {
 	switch kind {
-	case FragmentSkills:
-		return markerSkillsStart, markerSkillsEnd
 	case FragmentConstitution:
 		return markerConstitutionStart, markerConstitutionEnd
 	default:
@@ -54,7 +49,7 @@ func WrapFragment(kind FragmentKind, body string) string {
 // MatchFragment reports whether text is a marked contextual fragment.
 func MatchFragment(text string) (FragmentKind, bool) {
 	trimmed := strings.TrimSpace(text)
-	for _, kind := range []FragmentKind{FragmentSkills, FragmentConstitution} {
+	for _, kind := range []FragmentKind{FragmentConstitution} {
 		start, end := FragmentMarkers(kind)
 		if start == "" {
 			continue
@@ -74,8 +69,8 @@ func IsContextualFragment(text string) bool {
 }
 
 // StripContextualFragments removes marked contextual injections from history so
-// compact summaries do not embed stale skills/constitution copies. Fresh
-// fragments remain available via PromptContext reinjection.
+// compact summaries do not embed stale constitution copies. Fresh static
+// fragments are projected by ContextLedger on every sample.
 func StripContextualFragments(messages []provider.Message) []provider.Message {
 	if len(messages) == 0 {
 		return messages

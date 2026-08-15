@@ -18,14 +18,6 @@ const (
 	PartitionToolCatalog = "tool_catalog"
 )
 
-// WorldStateSection is a diffable prompt partition (N7). Stable ID + digest let
-// Assemble skip unchanged bodies while still emitting receipts.
-type WorldStateSection interface {
-	ID() string
-	Digest() string
-	Render() string
-}
-
 func digestJSON(value any) string {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -86,9 +78,6 @@ type ToolCatalogEntry struct {
 
 // ToolCatalogSection lists visible tools (including deferred) for cache-aware diffs.
 type ToolCatalogSection struct {
-	CatalogID         string             `json:"catalog_id,omitempty"`
-	Generation        uint64             `json:"generation,omitempty"`
-	CatalogDigest     string             `json:"catalog_digest,omitempty"`
 	Entries           []ToolCatalogEntry `json:"entries"`
 	Materialized      []string           `json:"materialized,omitempty"`
 	DeferredAvailable int                `json:"deferred_available,omitempty"`
@@ -123,10 +112,7 @@ func NewToolCatalogSectionFromSnapshot(
 	snapshot tool.CatalogSnapshot,
 	advertised map[string]bool,
 ) ToolCatalogSection {
-	section := ToolCatalogSection{
-		CatalogID: snapshot.CatalogID, Generation: snapshot.Generation,
-		CatalogDigest: snapshot.Digest,
-	}
+	var section ToolCatalogSection
 	for _, entry := range snapshot.Entries() {
 		if entry.Descriptor.Visibility != tool.VisibleModel ||
 			entry.Descriptor.Availability == tool.AvailabilityUnavailable {
@@ -164,11 +150,28 @@ func AssembleToolCatalog(
 	section ToolCatalogSection,
 	budget Budget,
 ) ([]provider.Message, Receipt) {
-	text := section.Render()
+	messages, receipt := AssembleWorldText(
+		PartitionToolCatalog,
+		"session://tool-catalog",
+		section.Render(),
+		budget,
+	)
+	receipt.Digest = section.Digest()
+	return messages, receipt
+}
+
+// AssembleWorldText applies one section budget without deciding whether the
+// section changed. ContextStore's WorldBaseline is the only diff authority.
+func AssembleWorldText(
+	kind string,
+	source string,
+	text string,
+	budget Budget,
+) ([]provider.Message, Receipt) {
 	tokens := HeuristicTokenCounter{}
 	retained, reason := retain(text, budget, len(truncationNotice), 0, tokens)
 	receipt := newReceipt(
-		PartitionToolCatalog, "session://tool-catalog", text, retained, reason, tokens,
+		kind, source, text, retained, reason, tokens,
 	)
 	if reason != "" {
 		retained += truncationNotice
@@ -181,42 +184,35 @@ func AssembleToolCatalog(
 
 func (t ToolCatalogSection) ID() string { return PartitionToolCatalog }
 
-func (t ToolCatalogSection) Digest() string { return digestJSON(t) }
+func (t ToolCatalogSection) Digest() string {
+	return digestJSON(struct {
+		Advertised        int `json:"advertised"`
+		Materialized      int `json:"materialized"`
+		DeferredAvailable int `json:"deferred_available"`
+		Omitted           int `json:"omitted"`
+	}{
+		Advertised: len(t.Entries), Materialized: len(t.Materialized),
+		DeferredAvailable: t.DeferredAvailable, Omitted: t.Omitted,
+	})
+}
 
 func (t ToolCatalogSection) Render() string {
-	if len(t.Entries) == 0 {
+	if len(t.Entries) == 0 && len(t.Materialized) == 0 &&
+		t.DeferredAvailable == 0 && t.Omitted == 0 {
 		return ""
 	}
 	var b strings.Builder
+	b.WriteString("[tool_catalog]\n")
 	fmt.Fprintf(
-		&b, "[tool_catalog id=%s generation=%d digest=%s]\n",
-		t.CatalogID, t.Generation, t.CatalogDigest,
+		&b,
+		"advertised=%d materialized=%d deferred_available=%d omitted=%d\n",
+		len(t.Entries),
+		len(t.Materialized),
+		t.DeferredAvailable,
+		t.Omitted,
 	)
-	if len(t.Materialized) != 0 {
-		fmt.Fprintf(&b, "materialized: %s\n", strings.Join(t.Materialized, ", "))
-	}
 	if t.DeferredAvailable > 0 || t.Omitted > 0 {
-		fmt.Fprintf(
-			&b, "deferred_available=%d omitted=%d; use tool_search to load omitted tools.\n",
-			t.DeferredAvailable, t.Omitted,
-		)
-	}
-	for _, entry := range t.Entries {
-		line := fmt.Sprintf("- %s [%s]", entry.Name, entry.Availability)
-		if entry.Description != "" {
-			line += ": " + entry.Description
-		}
-		b.WriteString(line)
-		b.WriteByte('\n')
+		b.WriteString("Use tool_search to load omitted tools.\n")
 	}
 	return strings.TrimSpace(b.String())
-}
-
-// SectionDigestMap indexes previous receipts by Kind for skip decisions.
-func SectionDigestMap(receipts []Receipt) map[string]string {
-	index := make(map[string]string, len(receipts))
-	for _, receipt := range receipts {
-		index[receipt.Kind] = receipt.Digest
-	}
-	return index
 }

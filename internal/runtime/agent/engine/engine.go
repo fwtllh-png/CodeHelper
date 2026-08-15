@@ -47,26 +47,27 @@ type Options struct {
 	// Route is the act route and the fallback for single-route callers.
 	Route model.ReadyRoute
 	// Routes overrides Route with a locked per-purpose table.
-	Routes           model.RouteSet
-	Tools            *tool.Registry
-	PromptContext    []provider.Message
-	ModePromptBudget promptcontext.Budget
-	MaxOutputTokens  uint64
-	MaxSteps         int
-	MaxRetries       int
-	MaxRetryDelay    time.Duration
-	CompactWindow    CompactWindowPolicy
-	SummaryMaxBytes  int
-	MaxDigestEntries int
-	ReasoningEffort  string
-	NativeSearch     bool
-	Budget           Budget
-	TokenEstimator   TokenEstimator
-	WorkingSet       []string
-	CriticalPaths    []string
-	ContextReceipts  []promptcontext.Receipt
-	Authorize        func(provider.ToolCall) bool
-	Security         *policy.Runtime
+	Routes                model.RouteSet
+	Tools                 *tool.Registry
+	StaticContext         []provider.Message
+	ContextBudgets        map[string]promptcontext.Budget
+	CodingPolicy          bool
+	MaxOutputTokens       uint64
+	MaxSteps              int
+	MaxRetries            int
+	MaxRetryDelay         time.Duration
+	CompactWindow         CompactWindowPolicy
+	SummaryMaxBytes       int
+	MaxDigestEntries      int
+	ReasoningEffort       string
+	NativeSearch          bool
+	Budget                Budget
+	TokenEstimator        TokenEstimator
+	WorkingSet            []string
+	CriticalPaths         []string
+	StaticContextReceipts []promptcontext.Receipt
+	Authorize             func(provider.ToolCall) bool
+	Security              *policy.Runtime
 	// ProfilePermissionCeiling is fixed by the Host.
 	ProfilePermissionCeiling policy.Permission
 	Guard                    *toolguard.Guard
@@ -103,7 +104,6 @@ type Options struct {
 	MaxToolStreamBytes int
 	MaxToolDefinitions int
 	MaxToolSchemaBytes int
-	ToolCatalogBudget  promptcontext.Budget
 	// ToolCatalogSync reconciles external tools before the Turn snapshot.
 	ToolCatalogSync func() error
 	TurnSnapshots   TurnSnapshotSources
@@ -293,12 +293,12 @@ func New(options Options) (*Engine, error) {
 	if options.MaxToolSchemaBytes <= 0 {
 		options.MaxToolSchemaBytes = 128 << 10
 	}
-	if options.ToolCatalogBudget.MaxBytes <= 0 {
-		options.ToolCatalogBudget.MaxBytes = 16 << 10
-	}
-	if options.ToolCatalogBudget.MaxTokens == 0 {
-		options.ToolCatalogBudget.MaxTokens = 4 << 10
-	}
+	options.StaticContext = cloneMessages(options.StaticContext)
+	options.StaticContextReceipts = append(
+		[]promptcontext.Receipt(nil),
+		options.StaticContextReceipts...,
+	)
+	options.ContextBudgets = cloneContextBudgets(options.ContextBudgets)
 	options.Tools.SetMaterializeLimits(
 		tool.DefaultMaxMaterialized, tool.DefaultMaxMaterializedSchemaBytes,
 	)
@@ -391,8 +391,17 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 			profilePermissionCeiling(e.options),
 		)
 	}
-	e.refreshPromptMode(profile.Mode)
 	return nil
+}
+
+func cloneContextBudgets(
+	values map[string]promptcontext.Budget,
+) map[string]promptcontext.Budget {
+	cloned := make(map[string]promptcontext.Budget, len(values))
+	for kind, budget := range values {
+		cloned[kind] = budget
+	}
+	return cloned
 }
 
 func (e *Engine) toolEnabled(entry tool.CatalogEntrySnapshot) bool {
@@ -465,16 +474,6 @@ func (e *Engine) SetPolicyMode(mode policy.Mode) {
 	if e.options.Security != nil {
 		e.options.Security.Mode = mode
 	}
-	e.refreshPromptMode(string(mode))
-}
-
-func (e *Engine) refreshPromptMode(mode string) {
-	e.options.PromptContext, e.options.ContextReceipts = promptcontext.RefreshMode(
-		e.options.PromptContext,
-		e.options.ContextReceipts,
-		mode,
-		e.options.ModePromptBudget,
-	)
 }
 
 func (e *Engine) SetPermission(permission policy.Permission) {

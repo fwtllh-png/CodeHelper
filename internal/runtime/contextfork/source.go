@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 )
@@ -51,7 +52,20 @@ func (s *Source) Snapshot(
 			spec.Identity.TurnID,
 		)
 	}
-	history := spec.History
+	contextSnapshot := engine.ContextSnapshot()
+	history := contextSnapshot.Partition(contextstore.KindHistory)
+	workspaceRules := promptcontext.PartitionTexts(
+		contextSnapshot.Partition(contextstore.KindStable),
+		engine.ContextReceipts(),
+		promptcontext.PartitionRepository,
+		promptcontext.PartitionConstitution,
+	)
+	if coding := latestWorldText(
+		history,
+		promptcontext.PartitionCodingPolicy,
+	); coding != "" {
+		workspaceRules = append(workspaceRules, coding)
+	}
 	evidence := engine.EvidenceSnapshot()
 	turn := evidence.Turn
 	if turn == 0 {
@@ -62,17 +76,11 @@ func (s *Source) Snapshot(
 		}
 	}
 	snapshot := ParentContextSnapshot{
-		SourceThread: ref.ThreadID,
-		SourceTurn:   spec.Identity.TurnID,
-		UserRequest:  spec.Request.Prompt,
-		Messages:     projectMessages(history),
-		WorkspaceRules: promptcontext.PartitionTexts(
-			spec.Context.Messages,
-			spec.Context.Receipts,
-			promptcontext.PartitionRepository,
-			promptcontext.PartitionCodingPolicy,
-			promptcontext.PartitionConstitution,
-		),
+		SourceThread:   ref.ThreadID,
+		SourceTurn:     spec.Identity.TurnID,
+		UserRequest:    spec.Request.Prompt,
+		Messages:       projectMessages(history),
+		WorkspaceRules: workspaceRules,
 	}
 	snapshot.ParentGoal = parentGoal(snapshot.Messages, snapshot.UserRequest)
 	for _, entry := range engine.WorkingSetEntries(turn, 32) {
@@ -97,6 +105,25 @@ func (s *Source) Snapshot(
 		})
 	}
 	return snapshot, nil
+}
+
+func latestWorldText(
+	messages []provider.Message,
+	id string,
+) string {
+	var result string
+	for _, message := range messages {
+		entry, _, ok := contextstore.InspectWorldMessage(message)
+		if !ok || entry.ID != id {
+			continue
+		}
+		if entry.Present {
+			result = message.Text()
+		} else {
+			result = ""
+		}
+	}
+	return result
 }
 
 func projectMessages(messages []provider.Message) []ContextMessage {

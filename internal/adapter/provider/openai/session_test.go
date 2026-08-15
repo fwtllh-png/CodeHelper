@@ -580,6 +580,67 @@ func TestResponsesProjectionRetryOwnsForcedHTTPFallback(t *testing.T) {
 	}
 }
 
+func TestResponsesStablePrefixReuseAfterSampleThreeExceeds95Percent(t *testing.T) {
+	request := incrementalRequest(t, "https://api.openai.test")
+	request.Projection.WindowID = "window_1"
+	adapter, err := NewAdapter(model.AdapterOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := adapter.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := make([]json.RawMessage, 100)
+	for index := range prefix {
+		encoded, err := json.Marshal(map[string]any{
+			"type": "message", "role": "user", "content": index,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		prefix[index] = encoded
+	}
+	logical := append(
+		append([]json.RawMessage(nil), prefix...),
+		json.RawMessage(`{"type":"message","role":"user","content":"delta"}`),
+	)
+	session := responsesSession{
+		previous: "resp-3", property: call.Projection.PropertyDigest,
+		routeDigest: call.Projection.RouteDigest,
+		windowID:    request.Projection.WindowID,
+		prefix:      prefix,
+	}
+	receipt := evaluateProjection(
+		&session,
+		request,
+		call,
+		logical,
+		call.Projection.PropertyDigest,
+	)
+	transport, receipt, err := projectTransportInput(
+		&session,
+		logical,
+		receipt,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reuseBasisPoints := (len(logical) - len(transport)) * 10_000 /
+		len(logical)
+	if !receipt.IncrementalEligible ||
+		!receipt.LogicalTransportEquivalent ||
+		reuseBasisPoints < 9_500 {
+		t.Fatalf(
+			"receipt=%+v logical=%d transport=%d reuse_bps=%d",
+			receipt,
+			len(logical),
+			len(transport),
+			reuseBasisPoints,
+		)
+	}
+}
+
 func incrementalRequest(t *testing.T, endpoint string) provider.ModelRequest {
 	request := testRequest(t, endpoint, model.ProtocolOpenAIResponses)
 	capabilities := request.Route.Model().Capabilities

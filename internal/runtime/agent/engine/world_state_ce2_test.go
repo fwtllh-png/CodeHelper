@@ -8,6 +8,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -108,7 +109,7 @@ func TestHistoryReplacementAndCompactionInvalidateWorldBaseline(t *testing.T) {
 	if _, err := engine.Run(t.Context(), "second", nil); err != nil {
 		t.Fatal(err)
 	}
-	if countWorldMode(runtime.requests[1].Messages, "full") != 1 {
+	if countWorldMode(runtime.requests[1].Messages, "full") != 3 {
 		t.Fatalf("replacement did not force full state: %+v", runtime.requests[1].Messages)
 	}
 
@@ -197,6 +198,79 @@ func TestToolCatalogChangeProducesTypedPatch(t *testing.T) {
 	if countWorldSection(request, "tool_catalog") != 2 ||
 		countWorldMode(request, "patch") != 1 {
 		t.Fatalf("catalog patch request=%+v", request)
+	}
+}
+
+func TestSkillWorldUsesSingleBudgetedAuthority(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.ContextBudgets = map[string]promptcontext.Budget{
+		promptcontext.PartitionSkills: {MaxBytes: 256, MaxTokens: 128},
+	}
+	spec := TurnSpec{
+		Mode: policy.ModeAct,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionBypass,
+		),
+		Skills: []SkillSummary{{
+			Name: "large", Description: strings.Repeat("description ", 100),
+			Source: "workspace", Path: "skills/large/SKILL.md",
+		}},
+	}
+	sections, receipts := engine.frozenWorldSections(spec, 1)
+	var skill *contextstore.WorldSection
+	for index := range sections {
+		if sections[index].ID == promptcontext.PartitionSkills {
+			skill = &sections[index]
+			break
+		}
+	}
+	if skill == nil || skill.Message == nil ||
+		len(skill.Message.Text()) > 256 {
+		t.Fatalf("skill section=%+v", skill)
+	}
+	var receipt *promptcontext.Receipt
+	for index := range receipts {
+		if receipts[index].Kind == promptcontext.PartitionSkills {
+			receipt = &receipts[index]
+			break
+		}
+	}
+	if receipt == nil || !receipt.Truncated ||
+		receipt.TruncationReason == "" {
+		t.Fatalf("skill receipt=%+v", receipt)
+	}
+}
+
+func TestSkillWorldOmitsInternalPathsAndBoundsDescriptions(t *testing.T) {
+	rendered := renderSkillWorld([]SkillSummary{{
+		Name: "review", Description: strings.Repeat("界", 200),
+		Source: "workspace", Path: "/private/skills/review/SKILL.md",
+		Plugin: "private-plugin",
+	}})
+	if strings.Contains(rendered, "/private/") ||
+		strings.Contains(rendered, "private-plugin") ||
+		!strings.Contains(rendered, "...") {
+		t.Fatalf("rendered skills=%q", rendered)
+	}
+}
+
+func TestWorldReceiptsReflectOnlyProjectedChanges(t *testing.T) {
+	receipts := projectWorldReceipts([]promptcontext.Receipt{
+		{
+			Kind:          promptcontext.PartitionMode,
+			RetainedBytes: 10, RetainedTokens: 3,
+		},
+		{
+			Kind:          promptcontext.PartitionPolicy,
+			RetainedBytes: 20, RetainedTokens: 5,
+		},
+	}, []string{promptcontext.PartitionPolicy})
+	if receipts[0].RetainedBytes != 0 ||
+		receipts[0].RetainedTokens != 0 ||
+		receipts[1].RetainedBytes != 20 ||
+		receipts[1].RetainedTokens != 5 {
+		t.Fatalf("projected receipts=%+v", receipts)
 	}
 }
 

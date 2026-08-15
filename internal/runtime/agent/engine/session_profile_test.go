@@ -66,18 +66,8 @@ func TestProfilePermissionCeilingClampsEveryPosture(t *testing.T) {
 	}
 }
 
-func TestSessionProfileModeRefreshesModelInstructionsAndReceipt(t *testing.T) {
+func TestSessionProfileModeProjectsThroughWorldState(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.ModePromptBudget = promptcontext.Budget{
-		MaxBytes: 1 << 10, MaxTokens: 256,
-	}
-	engine.options.PromptContext, engine.options.ContextReceipts =
-		promptcontext.RefreshMode(
-			engine.options.PromptContext,
-			engine.options.ContextReceipts,
-			"act",
-			engine.options.ModePromptBudget,
-		)
 	route := engine.options.Routes.Act()
 	profile := protocol.SessionProfile{
 		Version: protocol.SessionProfileVersion, Revision: 2,
@@ -88,19 +78,35 @@ func TestSessionProfileModeRefreshesModelInstructionsAndReceipt(t *testing.T) {
 	if err := engine.ApplySessionProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	var prompt string
-	for _, message := range engine.promptMessages() {
-		prompt += message.Text()
+	spec, err := SnapshotTurnSpec(
+		engine.options,
+		TurnIdentity{
+			SessionID: "session", TurnID: "turn",
+			ProfileRevision: profile.Revision,
+		},
+		TurnRequest{},
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "Mode: plan") ||
-		strings.Contains(prompt, "Mode: act") {
-		t.Fatalf("prompt after Plan profile = %q", prompt)
+	sections, receipts := engine.frozenWorldSections(spec, 1)
+	var mode string
+	for _, section := range sections {
+		if section.ID == promptcontext.PartitionMode &&
+			section.Message != nil {
+			mode = section.Message.Text()
+		}
 	}
-	receipts := engine.contextReceipts()
-	if len(receipts) != 1 ||
-		receipts[0].Kind != promptcontext.PartitionMode ||
-		receipts[0].SourcePath != "session://profile.mode" {
-		t.Fatalf("mode receipts = %+v", receipts)
+	if !strings.Contains(mode, "Mode: plan") ||
+		strings.Contains(mode, "Mode: act") {
+		t.Fatalf("projected mode = %q", mode)
+	}
+	found := false
+	for _, receipt := range receipts {
+		found = found || receipt.Kind == promptcontext.PartitionMode
+	}
+	if !found {
+		t.Fatalf("world receipts = %+v", receipts)
 	}
 }
 

@@ -21,12 +21,12 @@ LDFLAGS := -s -w \
 	token-bench token-bench-live token-bench-compare \
 	context-engineering-ce0 context-engineering-ce1 context-engineering-ce2 \
 	context-engineering-ce3 context-engineering-ce4 context-engineering-ce5 \
-	context-engineering-ce6 \
+	context-engineering-ce6 context-engineering-ce7 context-authority \
 	provider-architecture-p0 provider-architecture-p1 provider-architecture-p2 \
 	provider-architecture-p3 provider-architecture-p4 provider-architecture-p5 \
 	provider-architecture-p6 \
 	provider-p0-goldens provider-p0-goldens-update \
-	provider-deepseek-live-control \
+	provider-deepseek-live-control provider-deepseek-live-ce7 \
 	architecture-ratchet architecture-size-budget architecture-freeze \
 	book-navigation command-docs command-docs-check \
 	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
@@ -84,6 +84,8 @@ CONTEXT_ENGINEERING_CE3_ARTIFACT ?= .tmp/context-engineering/ce3-candidate
 CONTEXT_ENGINEERING_CE4_ARTIFACT ?= .tmp/context-engineering/ce4-candidate
 CONTEXT_ENGINEERING_CE5_ARTIFACT ?= .tmp/context-engineering/ce5-candidate
 CONTEXT_ENGINEERING_CE6_ARTIFACT ?= .tmp/context-engineering/ce6-candidate
+CONTEXT_ENGINEERING_CE7_ARTIFACT ?= .tmp/context-engineering/ce7-candidate
+CONTEXT_AUTHORITY_REPORT ?= .tmp/context-engineering/ce7-authority.json
 TEST_HOME_ENV := HOME='$(TEST_HOME)' GOPATH='$(TEST_GOPATH)' \
 	GOMODCACHE='$(TEST_GOMODCACHE)' GOCACHE='$(TEST_GOCACHE)'
 PLATFORM_CAPABILITY_ARGS := --available-on darwin --available-on linux
@@ -236,6 +238,11 @@ provider-deepseek-live-control:
 	CODEHELPER_DEEPSEEK_LIVE_CONTROL=1 \
 		$(GO) test -count=1 -v ./internal/adapter/provider/httpclient \
 		-run '^TestDeepSeekP0LiveControl$$'
+
+provider-deepseek-live-ce7:
+	CODEHELPER_DEEPSEEK_LIVE_CONTROL=1 \
+		$(GO) test -count=1 -v ./internal/adapter/provider/httpclient \
+		-run '^TestDeepSeek(P0LiveControl|CE7LiveCacheShare)$$'
 
 # Architecture behavior freeze. Package tests carry characterization, visual/wire
 # goldens, config provenance drift, state transitions, and schema drift. Race is
@@ -726,6 +733,31 @@ context-engineering-ce6:
 	$(MAKE) token-bench \
 		TOKEN_BENCH_RUNS='$(TOKEN_BENCH_RUNS)' \
 		TOKEN_BENCH_ARTIFACT='$(CONTEXT_ENGINEERING_CE6_ARTIFACT)'
+	$(MAKE) architecture-ratchet
+	$(MAKE) vscode-protocol-check
+	$(MAKE) docs-check
+	$(MAKE) book-check
+
+context-authority:
+	$(GO) test -count=1 ./scripts/contextauthority
+	$(GO) run ./scripts/contextauthority \
+		-root . \
+		-output '$(CONTEXT_AUTHORITY_REPORT)'
+
+context-engineering-ce7:
+	$(GO) test -count=1 \
+		./internal/runtime/agent/... \
+		./internal/runtime/contextfork \
+		./internal/runtime/app/... \
+		./internal/adapter/provider/... \
+		./internal/adapter/tool/... \
+		./internal/persist/... \
+		./scripts/contextauthority \
+		./scripts/tokenbench
+	$(MAKE) context-authority
+	$(MAKE) token-bench \
+		TOKEN_BENCH_RUNS='$(TOKEN_BENCH_RUNS)' \
+		TOKEN_BENCH_ARTIFACT='$(CONTEXT_ENGINEERING_CE7_ARTIFACT)'
 	$(MAKE) architecture-ratchet
 	$(MAKE) vscode-protocol-check
 	$(MAKE) docs-check

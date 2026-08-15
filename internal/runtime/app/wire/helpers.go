@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
@@ -142,23 +141,6 @@ func newRepoContext(
 		Map:        repomap.Options{MaxDirectories: settings.RepoMap.MaxDirectories},
 		Budgets:    scoped,
 	})
-}
-
-// promptSections lists the stable-prefix partitions a session carries.
-//
-// The coding method is only sent to a session that has tools: it is a method for
-// changing a repository, and a chat-only session cannot follow it, so sending it
-// would be prompt spent on instructions that cannot be obeyed.
-func promptSections(
-	security *policy.Runtime, _ *tool.Registry, settings config.Context, tools bool,
-) []promptcontext.WorldStateSection {
-	sections := []promptcontext.WorldStateSection{
-		promptcontext.NewPolicySection(security),
-	}
-	if tools && settings.CodingPolicy.Enabled {
-		sections = append(sections, promptcontext.NewCodingPolicySection())
-	}
-	return sections
 }
 
 // promptWorkingSet translates the host's vocabulary into the prompt assembler's.

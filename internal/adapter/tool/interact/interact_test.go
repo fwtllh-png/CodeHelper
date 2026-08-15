@@ -129,7 +129,7 @@ func TestUpdatePlanAppearsInContextReceipts(t *testing.T) {
 		Provider: &noopProvider{}, Route: testRoute(t), Tools: registry,
 		Metrics: telemetry.NewMetrics(), MaxOutputTokens: 64,
 		TurnCoordinatorRuntime: turnkernel.NewEphemeralCoordinatorRuntime(),
-		ContextReceipts: []promptcontext.Receipt{{
+		StaticContextReceipts: []promptcontext.Receipt{{
 			Kind: promptcontext.PartitionBase, SourcePath: "builtin://base-system",
 		}},
 	})

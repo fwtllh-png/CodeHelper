@@ -29,7 +29,12 @@ Implementation progress:
   [`context-engineering-ce5-evidence.json`](../context-engineering-ce5-evidence.json).
 - CE6: `accepted`; see
   [`context-engineering-ce6-evidence.json`](../context-engineering-ce6-evidence.json).
-- CE7: not started.
+- CE7: `accepted`; see
+  [`context-engineering-ce7-evidence.json`](../context-engineering-ce7-evidence.json).
+
+All implementation stages are complete. The final CE7 comparison records
+`input_tokens` P50 down 22.59%, `uncached_input_tokens` P50 down 22.59%, and
+DeepSeek Sample 3 live cache share at 99.03%.
 
 ## 1. Executive Summary
 
@@ -729,6 +734,15 @@ Exit:
 - production growth has explicit ownership and test evidence, with replaced paths deleted;
 - no feature flag or permanent dual write remains; and
 - all correctness, efficiency, and architecture gates pass.
+
+Accepted outcome:
+
+- `Scope.state.contextLedger` is the only production Context authority;
+- Mode, Policy, Skills, CodingPolicy, catalog status, repository state, evidence,
+  and plan all use WorldBaseline projection;
+- the textual Tool Catalog no longer duplicates Provider tool definitions; and
+- the AST authority gate rejects removed owners, receipt baselines, feature
+  flags, and dual-write symbols.
 
 ## 11. Test Matrix
 

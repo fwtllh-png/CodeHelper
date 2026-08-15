@@ -22,13 +22,12 @@ const truncationNotice = "(this section was cut to fit its budget; " +
 
 // TurnOptions uses workspace-relative paths matching the repository index.
 type TurnOptions struct {
-	Turn             uint64
-	RepoMap          repomap.Map
-	WorkingSet       []workingset.Entry
-	Evidence         evidence.Snapshot
-	Budgets          map[string]Budget
-	Tokens           TokenCounter
-	PreviousReceipts []Receipt
+	Turn       uint64
+	RepoMap    repomap.Map
+	WorkingSet []workingset.Entry
+	Evidence   evidence.Snapshot
+	Budgets    map[string]Budget
+	Tokens     TokenCounter
 }
 
 // TurnContext is a snapshot or replacement delta of repository state.
@@ -64,10 +63,9 @@ type SelectionEvidence struct {
 
 // TurnState is the engine snapshot visible to a context provider.
 type TurnState struct {
-	Turn             uint64
-	WorkingSet       []workingset.Entry
-	Evidence         evidence.Snapshot
-	PreviousReceipts []Receipt
+	Turn       uint64
+	WorkingSet []workingset.Entry
+	Evidence   evidence.Snapshot
 }
 
 // AssembleTurn emits full sections initially and only digest changes afterwards.
@@ -76,7 +74,6 @@ func AssembleTurn(options TurnOptions) TurnContext {
 	if tokens == nil {
 		tokens = HeuristicTokenCounter{}
 	}
-	previous := SectionDigestMap(options.PreviousReceipts)
 	var result TurnContext
 	appendSection := func(kind, text, sourcePath string) (string, string) {
 		// The notice is charged to the budget up front, so a section that runs out
@@ -87,11 +84,6 @@ func AssembleTurn(options TurnOptions) TurnContext {
 			result.Receipts,
 			newReceipt(kind, sourcePath, text, retained, reason, tokens),
 		)
-		if previous[kind] == result.Receipts[len(result.Receipts)-1].Digest {
-			result.Receipts[len(result.Receipts)-1].RetainedBytes = 0
-			result.Receipts[len(result.Receipts)-1].RetainedTokens = 0
-			return retained, reason
-		}
 		if reason != "" {
 			retained += truncationNotice
 		}
@@ -103,25 +95,18 @@ func AssembleTurn(options TurnOptions) TurnContext {
 		}
 		return retained, reason
 	}
-	// A zero map means disabled; an empty previously visible section needs a tombstone.
 	if options.RepoMap.Status != "" {
 		_, _ = appendSection(PartitionRepoMap, renderRepoMap(options), "session://repo-map")
 	}
-	if len(options.WorkingSet) != 0 || previous[PartitionWorkingSetLedger] != "" {
+	if len(options.WorkingSet) != 0 {
 		text := renderWorkingSet(options)
-		if text == "" {
-			text = fmt.Sprintf("[working_set turn=%d]\n(no paths remain in the working set)\n", options.Turn)
-		}
 		retained, reason := appendSection(
 			PartitionWorkingSetLedger, text, "session://working-set",
 		)
 		result.Selections = explainSelections(options, retained, reason)
 	}
-	if !options.Evidence.Empty() || previous[PartitionEvidence] != "" {
+	if !options.Evidence.Empty() {
 		text := renderEvidence(options)
-		if options.Evidence.Empty() {
-			text = fmt.Sprintf("[evidence turn=%d]\n(no current facts, risks, or reminders)\n", options.Turn)
-		}
 		_, _ = appendSection(PartitionEvidence, text, "session://evidence")
 	}
 	return result

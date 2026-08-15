@@ -137,7 +137,6 @@ func (e *Engine) prepareTurnSpec(
 	if err != nil {
 		return TurnSpec{}, "", err
 	}
-	spec.History = cloneMessages(e.history)
 	spec.World = contextstore.CloneWorldBaseline(e.world)
 	spec.Window = contextstore.CloneWindowLedger(e.window)
 	return spec, persistedTurnID, nil

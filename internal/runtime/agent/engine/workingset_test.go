@@ -36,10 +36,6 @@ func (e *Engine) turnContextMessages(
 	ctx context.Context,
 ) ([]provider.Message, []promptcontext.Receipt) {
 	scope := e.executionScope()
-	scope.spec.Context = TurnContextSnapshot{
-		Messages: cloneMessages(e.options.PromptContext),
-		Receipts: staticContextReceipts(e.options.ContextReceipts),
-	}
 	scope.spec.Policy = e.options.Security.CloneSampling()
 	catalog, err := e.options.Tools.Snapshot()
 	if err != nil {
@@ -88,12 +84,6 @@ func (s *stubRepoContext) Build(
 			OriginalBytes: size, RetainedBytes: size,
 		}
 		receipts = append(receipts, receipt)
-		if promptcontext.SectionDigestMap(state.PreviousReceipts)[receipt.Kind] ==
-			receipt.Digest {
-			return promptcontext.TurnContext{
-				Receipts: receipts, Selections: selections,
-			}
-		}
 	}
 	return promptcontext.TurnContext{
 		Messages: []provider.Message{message},
@@ -206,7 +196,7 @@ func TestWorldStateFullIsRetainedInDurableHistory(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.Workspace = t.TempDir()
 	engine.options.RepoContext = stub
-	engine.options.PromptContext = []provider.Message{
+	engine.options.StaticContext = []provider.Message{
 		provider.TextMessage(provider.RoleSystem, "stable prefix"),
 	}
 	engine.turn = 4
@@ -249,7 +239,7 @@ func TestFrozenToolCatalogPrecedesChangingHistory(t *testing.T) {
 		catalog, world, user := -1, -1, -1
 		worldCount := 0
 		for index, message := range request.Messages {
-			if strings.Contains(message.Text(), "[tool_catalog ") {
+			if strings.Contains(message.Text(), "[tool_catalog]") {
 				catalog = index
 			}
 			if strings.Contains(message.Text(), "[working_set]") {
@@ -327,7 +317,7 @@ func TestTurnContextReceiptsJoinTheContextReceipts(t *testing.T) {
 	}}}
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.RepoContext = stub
-	engine.options.ContextReceipts = []promptcontext.Receipt{
+	engine.options.StaticContextReceipts = []promptcontext.Receipt{
 		{Kind: promptcontext.PartitionBase, RetainedBytes: 3},
 	}
 

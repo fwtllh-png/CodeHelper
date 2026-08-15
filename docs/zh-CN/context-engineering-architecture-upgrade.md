@@ -27,7 +27,12 @@
   [`context-engineering-ce5-evidence.json`](../context-engineering-ce5-evidence.json)；
 - CE6：`accepted`，证据见
   [`context-engineering-ce6-evidence.json`](../context-engineering-ce6-evidence.json)；
-- CE7：尚未开始。
+- CE7：`accepted`，证据见
+  [`context-engineering-ce7-evidence.json`](../context-engineering-ce7-evidence.json)。
+
+所有实施阶段均已完成。CE7 最终对比显示 `input_tokens` P50 下降 22.59%，
+`uncached_input_tokens` P50 下降 22.59%，DeepSeek 第三次 Sample 的 Live Cache
+Share 为 99.03%。
 
 ## 1. 执行摘要
 
@@ -706,6 +711,14 @@ Sample Count、P50/P95、Gate Status 和失败原因。
 - 生产代码增长有明确所有权和测试证据，不保留被替代的重复路径；
 - 无 Feature Flag 和长期双写；
 - 所有 Hard Gate、Efficiency Gate 和 Architecture Gate 通过。
+
+验收结果：
+
+- `Scope.state.contextLedger` 是唯一的生产 Context Authority；
+- Mode、Policy、Skills、CodingPolicy、Catalog 状态、Repository State、
+  Evidence 和 Plan 全部通过 WorldBaseline 投影；
+- 文本 Tool Catalog 不再重复 Provider Tool Definitions；
+- AST Authority Gate 会拒绝旧 Owner、Receipt Baseline、Feature Flag 和双写符号。
 
 ## 11. 测试矩阵
 
