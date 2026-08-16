@@ -9,9 +9,8 @@ import (
 	"io"
 	"strings"
 
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/buildinfo"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type extensionFlags struct {
@@ -65,14 +64,16 @@ func runPlugin(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	if len(args) == 0 {
 		_, _ = fmt.Fprintln(
 			stderr,
-			"codehelper: plugin requires list, trust, enable, disable, revoke, install, update, rollback, or security-revoke",
+			"codehelper: plugin requires list, trust, enable, disable, capability-enable, capability-disable, revoke, install, update, rollback, or security-revoke",
 		)
 		return 2
 	}
 	action := args[0]
 	switch action {
-	case "list", "trust", "enable", "disable", "revoke",
-		"install", "update", "rollback", "security-revoke":
+	case "list", "detail", "health", "permissions", "receipts",
+		"trust", "enable", "disable", "revoke",
+		"capability-enable", "capability-disable",
+		"install", "update", "rollback", "security-revoke", "lint":
 	default:
 		_, _ = fmt.Fprintf(stderr, "codehelper: unsupported plugin action %q\n", action)
 		return 2
@@ -81,11 +82,18 @@ func runPlugin(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", "", "CodeHelper extension state directory")
 	workspace := flags.String("workspace", ".", "plugin execution workspace")
+	operationID := flags.String("operation-id", "", "idempotent extension operation ID")
 	extensions := addExtensionFlags(flags)
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
-	if (action == "list" && flags.NArg() != 0) || (action != "list" && flags.NArg() != 1) {
+	wantsCapability := action == "capability-enable" || action == "capability-disable"
+	query := action == "list" || action == "detail" || action == "health" ||
+		action == "permissions" || action == "receipts"
+	if (action == "list" && flags.NArg() != 0) ||
+		(query && action != "list" && flags.NArg() > 1) ||
+		(wantsCapability && flags.NArg() != 2) ||
+		(!query && !wantsCapability && flags.NArg() != 1) {
 		_, _ = fmt.Fprintf(stderr, "codehelper: plugin %s received invalid arguments\n", action)
 		return 2
 	}
@@ -94,76 +102,42 @@ func runPlugin(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		_, _ = fmt.Fprintf(stderr, "codehelper: plugin paths: %v\n", err)
 		return 1
 	}
-	control, err := wire.OpenPluginControl(paths, *workspace)
+	control, err := wire.OpenExtensionControlPlane(paths, *workspace)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "codehelper: plugin registry: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "codehelper: extension runtime: %v\n", err)
 		return 1
 	}
 	defer control.Close()
-	registry := control.Registry
-	if action != "revoke" && action != "security-revoke" {
-		if err := registry.Reload(); err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: plugin reload: %v\n", err)
-			return 1
-		}
+	operation, err := extensionControlOperation(
+		protocol.ExtensionControlPlugin, action, *operationID,
+	)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "codehelper: plugin operation: %v\n", err)
+		return 2
 	}
-	if action == "list" {
-		plugins, listErr := registry.List()
-		if listErr != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: plugin list: %v\n", listErr)
-			return 1
-		}
-		encoder := json.NewEncoder(stdout)
-		encoder.SetEscapeHTML(false)
-		if err := encoder.Encode(plugins); err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: plugin list encode: %v\n", err)
-			return 1
-		}
-		return 0
+	if flags.NArg() != 0 {
+		operation.Name = flags.Arg(0)
 	}
-	name := flags.Arg(0)
 	if action == "install" || action == "update" {
-		name, version, parseErr := parsePluginCoordinate(name)
+		name, version, parseErr := parsePluginCoordinate(operation.Name)
 		if parseErr != nil {
 			_, _ = fmt.Fprintf(stderr, "codehelper: plugin %s: %v\n", action, parseErr)
 			return 2
 		}
-		var receipt any
-		if action == "install" {
-			receipt, err = control.Install(ctx, name, version)
-		} else {
-			receipt, err = control.Update(ctx, name, version)
-		}
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: plugin %s: %v\n", action, err)
-			return 1
-		}
-		return encodeExtensionList(stdout, stderr, "plugin", receipt)
+		operation.Name, operation.VersionValue = name, version
 	}
-	switch action {
-	case "trust":
-		_, err = registry.Trust(name)
-	case "enable":
-		err = registry.Enable(name)
-	case "disable":
-		err = registry.Disable(name)
-	case "revoke":
-		err = registry.Revoke(name)
-	case "rollback":
-		var receipt any
-		receipt, err = control.Rollback(name)
-		if err == nil {
-			return encodeExtensionList(stdout, stderr, "plugin", receipt)
-		}
-	case "security-revoke":
-		err = registry.SecurityRevoke(name)
+	if wantsCapability {
+		operation.Capability = flags.Arg(1)
 	}
+	result, err := control.Plane.Submit(ctx, operation)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "codehelper: plugin %s: %v\n", action, err)
 		return 1
 	}
-	_, _ = fmt.Fprintf(stdout, "plugin %s %s\n", name, action)
-	return 0
+	if action == "lint" && len(result.Detail) != 0 {
+		return encodeExtensionList(stdout, stderr, "plugin", result.Detail)
+	}
+	return encodeExtensionList(stdout, stderr, "plugin", result)
 }
 
 func parsePluginCoordinate(value string) (string, string, error) {
@@ -172,6 +146,23 @@ func parsePluginCoordinate(value string) (string, string, error) {
 		return "", "", errors.New("expected name@version")
 	}
 	return value[:index], value[index+1:], nil
+}
+
+func extensionControlOperation(
+	kind protocol.ExtensionControlKind,
+	action, id string,
+) (protocol.ExtensionControlOperation, error) {
+	mapped := protocol.ExtensionControlAction(
+		strings.ReplaceAll(action, "-", "_"),
+	)
+	operation, err := protocol.NewExtensionControlOperation(kind, mapped)
+	if err != nil {
+		return protocol.ExtensionControlOperation{}, err
+	}
+	if strings.TrimSpace(id) != "" {
+		operation.ID = strings.TrimSpace(id)
+	}
+	return operation, nil
 }
 
 func runSkill(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -184,7 +175,8 @@ func runSkill(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	}
 	action := args[0]
 	switch action {
-	case "list", "enable", "disable", "revoke", "lint", "lock", "verify":
+	case "list", "detail", "health", "permissions", "receipts",
+		"enable", "disable", "revoke", "lint", "lock", "verify":
 	default:
 		_, _ = fmt.Fprintf(stderr, "codehelper: unsupported skill action %q\n", action)
 		return 2
@@ -193,13 +185,19 @@ func runSkill(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 	flags.SetOutput(stderr)
 	dataDir := flags.String("data-dir", "", "CodeHelper extension state directory")
 	workspace := flags.String("workspace", ".", "skill discovery workspace")
+	operationID := flags.String("operation-id", "", "idempotent extension operation ID")
 	extensions := addExtensionFlags(flags)
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
-	wantsName := action == "enable" || action == "disable" || action == "revoke" ||
-		action == "lint"
-	if (!wantsName && flags.NArg() != 0) || (wantsName && flags.NArg() != 1) {
+	wantsName := action == "enable" || action == "disable" ||
+		action == "revoke" || action == "lint"
+	query := action == "detail" || action == "health" ||
+		action == "permissions" || action == "receipts"
+	if (action == "list" && flags.NArg() != 0) ||
+		(query && flags.NArg() > 1) ||
+		(wantsName && flags.NArg() != 1) ||
+		(!query && !wantsName && action != "list" && flags.NArg() != 0) {
 		_, _ = fmt.Fprintf(stderr, "codehelper: skill %s received invalid arguments\n", action)
 		return 2
 	}
@@ -208,64 +206,40 @@ func runSkill(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		_, _ = fmt.Fprintf(stderr, "codehelper: skill paths: %v\n", err)
 		return 1
 	}
-	if action == "lint" {
-		result, lintErr := skillruntime.Lint(flags.Arg(0), buildinfo.Version)
-		if lintErr != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: skill lint: %v\n", lintErr)
-			return 1
-		}
-		return encodeExtensionList(stdout, stderr, "skill", result)
-	}
-	state, err := skillruntime.NewStateStore(paths.SkillsStatePath)
+	control, err := wire.OpenExtensionControlPlane(paths, *workspace)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "codehelper: skill state: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "codehelper: extension runtime: %v\n", err)
 		return 1
 	}
-	lock, err := skillruntime.NewLockStore(paths.SkillsLockPath)
+	defer control.Close()
+	operation, err := extensionControlOperation(
+		protocol.ExtensionControlSkill, action, *operationID,
+	)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "codehelper: skill lock: %v\n", err)
-		return 1
+		_, _ = fmt.Fprintf(stderr, "codehelper: skill operation: %v\n", err)
+		return 2
 	}
-	catalog, err := skillruntime.Discover(skillruntime.DiscoveryOptions{
-		Workspace: *workspace, ConfiguredDir: paths.SkillsConfiguredDir,
-		UserHome: paths.UserHome, Locale: paths.SkillsLocale, State: state,
-		Lock: lock, RuntimeVersion: buildinfo.Version,
-	})
+	if flags.NArg() != 0 {
+		operation.Name = flags.Arg(0)
+	}
+	result, err := control.Plane.Submit(ctx, operation)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "codehelper: skill discovery: %v\n", err)
-		return 1
-	}
-	if action == "list" {
-		summaries, issues := catalog.List(ctx)
-		return encodeExtensionList(stdout, stderr, "skill", struct {
-			Skills any `json:"skills"`
-			Issues any `json:"issues,omitempty"`
-		}{Skills: summaries, Issues: issues})
-	}
-	if action == "lock" {
-		lockfile, lockErr := catalog.WriteLock(ctx)
-		if lockErr != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: skill lock: %v\n", lockErr)
-			return 1
-		}
-		return encodeExtensionList(stdout, stderr, "skill", lockfile)
-	}
-	if action == "verify" {
-		if verifyErr := catalog.Verify(ctx); verifyErr != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: skill verify: %v\n", verifyErr)
-			return 1
-		}
-		return encodeExtensionList(stdout, stderr, "skill", map[string]any{
-			"ok": true, "lock": paths.SkillsLockPath,
-		})
-	}
-	enabled := action == "enable"
-	if err := catalog.SetEnabled(flags.Arg(0), enabled); err != nil {
 		_, _ = fmt.Fprintf(stderr, "codehelper: skill %s: %v\n", action, err)
 		return 1
 	}
-	_, _ = fmt.Fprintf(stdout, "skill %s %s\n", flags.Arg(0), action)
-	return 0
+	if action == "lint" && len(result.Detail) != 0 {
+		return encodeExtensionList(stdout, stderr, "skill", result.Detail)
+	}
+	if action == "list" {
+		visible := result.Extensions[:0]
+		for _, extension := range result.Extensions {
+			if extension.Enabled {
+				visible = append(visible, extension)
+			}
+		}
+		result.Extensions = visible
+	}
+	return encodeExtensionList(stdout, stderr, "skill", result)
 }
 
 func encodeExtensionList(stdout, stderr io.Writer, kind string, value any) int {

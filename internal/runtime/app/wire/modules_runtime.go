@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
+	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -179,53 +180,26 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 				}
 				return result
 			},
-			Extensions: func() ([]agentengine.ExtensionSnapshot, error) {
-				if session.pluginRegistry == nil {
-					return nil, nil
+			ExtensionPlan: func() (runtimeextension.Plan, error) {
+				if session.extensions == nil {
+					return runtimeextension.Plan{}, nil
 				}
-				if session.pluginTools != nil {
-					if syncErr := session.pluginTools.Sync(); syncErr != nil {
-						return nil, syncErr
-					}
-				}
-				snapshots, snapshotErr := session.pluginRegistry.LifecycleSnapshots()
-				if snapshotErr != nil {
-					return nil, snapshotErr
-				}
-				result := make([]agentengine.ExtensionSnapshot, 0, len(snapshots))
-				for _, snapshot := range snapshots {
-					result = append(result, agentengine.ExtensionSnapshot{
-						Kind:       "plugin",
-						Name:       snapshot.Name,
-						Version:    snapshot.Version,
-						Source:     snapshot.Source,
-						Publisher:  snapshot.Publisher,
-						Trust:      snapshot.Trust,
-						Digest:     snapshot.Digest,
-						Generation: snapshot.Generation,
-						Enabled:    snapshot.Enabled,
-						LastAction: snapshot.LastAction,
-						ChangedAt:  snapshot.ChangedAt,
-					})
-				}
-				return result, nil
+				return session.extensions.SnapshotPlan(context.Background())
 			},
-			Skills: func() []agentengine.SkillSummary {
-				if catalog == nil {
-					return nil
-				}
-				summaries := catalog.Summaries(context.Background())
-				out := make([]agentengine.SkillSummary, 0, len(summaries))
-				for _, summary := range summaries {
-					out = append(out, agentengine.SkillSummary{
-						Name: summary.Name, Description: summary.Description,
-						Source: string(summary.Source), Path: summary.Path, Plugin: summary.Plugin,
-					})
-				}
-				return out
+			SkillSelection: func(
+				query string,
+			) ([]agentengine.SkillSummary, agentengine.SkillSelectionMetrics, error) {
+				return selectTurnSkills(catalog, query)
 			},
 		},
 	}
+	engineGuardFactory := state.security.guardFactory
+	approvalObserver := session.metrics.Approval
+	bindEngineGuardFactory(
+		&seedOptions,
+		engineGuardFactory,
+		approvalObserver,
+	)
 	defaultProfile := protocol.SessionProfile{
 		Version:             protocol.SessionProfileVersion,
 		Revision:            1,
@@ -257,6 +231,11 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	threadManager := app.NewThreadManager(func() (*app.EngineAdapter, error) {
 		threadOptions := seedOptions
 		threadOptions.Security = cloneThreadSecurity(seedOptions.Security)
+		bindEngineGuardFactory(
+			&threadOptions,
+			engineGuardFactory,
+			approvalObserver,
+		)
 		worker, workerErr := agentengine.New(threadOptions)
 		if workerErr != nil {
 			return nil, workerErr
@@ -288,6 +267,11 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 			}
 			restrictChildTools(
 				options.Security, spec, seedOptions.Tools, options.Tools,
+			)
+			bindEngineGuardFactory(
+				&options,
+				engineGuardFactory,
+				approvalObserver,
 			)
 			worker, workerErr := agentengine.New(options)
 			if workerErr != nil {

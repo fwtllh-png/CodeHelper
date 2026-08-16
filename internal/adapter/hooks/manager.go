@@ -147,6 +147,18 @@ func (m *Manager) ToolCallBefore(
 		var outputKeys []string
 		input.Input = current
 		execution := m.executor.run(ctx, ToolCallBefore, hook, input)
+		if hook.Mode == ModeObserve {
+			outcome := "observed"
+			if execution.err != nil || execution.exitCode != 0 ||
+				execution.stdoutTruncated {
+				outcome = "observed_failure"
+			}
+			m.executor.audit(
+				ctx, ToolCallBefore, hook.ID, hookInputKeys, nil,
+				execution, outcome, "",
+			)
+			continue
+		}
 		if execution.exitCode == 2 {
 			result := ToolCallBeforeResult{Action: ActionDeny, HookID: hook.ID}
 			m.executor.audit(
@@ -291,6 +303,18 @@ func (m *Manager) PermissionRequest(
 	for _, hook := range hooks {
 		input.Input = current
 		execution := m.executor.run(ctx, PermissionRequest, hook, input)
+		if hook.Mode == ModeObserve {
+			outcome := "observed"
+			if execution.err != nil || execution.exitCode != 0 ||
+				execution.stdoutTruncated {
+				outcome = "observed_failure"
+			}
+			m.executor.audit(
+				ctx, PermissionRequest, hook.ID, inputKeys, nil,
+				execution, outcome, "",
+			)
+			continue
+		}
 		if execution.exitCode == 2 {
 			m.executor.audit(
 				ctx, PermissionRequest, hook.ID, inputKeys, nil,

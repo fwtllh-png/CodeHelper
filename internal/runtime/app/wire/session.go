@@ -113,15 +113,7 @@ func (s *Session) ContributionReceipts() []ContributionReceipt {
 	if s == nil {
 		return nil
 	}
-	result := make([]ContributionReceipt, len(s.contributionReceipts))
-	for index, receipt := range s.contributionReceipts {
-		result[index] = ContributionReceipt{
-			Contributor: receipt.Contributor,
-			Tools:       append([]string(nil), receipt.Tools...),
-			Outputs:     append([]string(nil), receipt.Outputs...),
-		}
-	}
-	return result
+	return s.extensions.contributionReceipts()
 }
 
 func (s *Session) Jobs() process.JobCenter {
@@ -183,16 +175,13 @@ func (s *Session) registerResourceClosers() error {
 			return s.fixture.Close(ctx)
 		}},
 		{name: "plugin-registry", close: func(context.Context) error {
-			if s.pluginRegistry == nil {
-				return nil
-			}
-			return s.pluginRegistry.Close()
+			return s.extensions.closePluginRegistry()
 		}},
 		{name: "plugin-tools", close: func(context.Context) error {
-			if s.pluginTools == nil {
-				return nil
-			}
-			return s.pluginTools.Close()
+			return s.extensions.closePluginTools()
+		}},
+		{name: "extension-lifecycle", close: func(ctx context.Context) error {
+			return s.extensions.closeLifecycle(ctx)
 		}},
 		{name: "loaded-plugins", close: func(context.Context) error {
 			closeErrors := make([]error, 0, len(s.plugins))

@@ -2,27 +2,18 @@ package wire
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
 	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
-	memorytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/memory"
 	plugintool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/plugin"
-	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/buildinfo"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
-func newExtensionContributors(state *buildState) []extensionContributor {
+func newExtensionContributors(state *buildState) []extensionActivation {
 	output := &state.extensions
-	return []extensionContributor{
+	return []extensionActivation{
 		pluginBundleContributor{
 			bundle: state.options.PluginBundle, receipt: state.options.PluginReceipt,
 			workspace: state.config.execution.Workspace,
@@ -36,10 +27,7 @@ func newExtensionContributors(state *buildState) []extensionContributor {
 			paths: state.config.extensionPaths, workspace: state.config.execution.Workspace,
 			output: output,
 		},
-		memoryContributor{
-			config: state.config.snapshot.Config.Memory,
-			output: output,
-		},
+		newMemoryContributor(state.config.snapshot.Config.Memory, output),
 		dynamicToolContributor{
 			enabled: state.options.TrustedDynamicTools,
 			output:  output,
@@ -55,27 +43,6 @@ func newExtensionContributors(state *buildState) []extensionContributor {
 			output:     output,
 		},
 	}
-}
-
-func publishExtensionOutputs(state *buildState) {
-	if state == nil || state.session == nil {
-		return
-	}
-	output := &state.extensions
-	session := state.session
-	session.plugins = output.plugins
-	session.pluginRegistry = output.pluginRegistry
-	session.pluginTools = output.pluginTools
-	session.memory = output.memory
-	session.hooks = output.hooks
-	session.mcpPool = output.mcpPool
-	session.mcpPrewarm = output.mcpPrewarm
-	session.dynamicTools = output.dynamicTools
-	session.contributionReceipts = append(
-		[]ContributionReceipt(nil),
-		output.receipts...,
-	)
-	state.tools.skillCatalog = output.skillCatalog
 }
 
 func runContribution(
@@ -145,7 +112,7 @@ type pluginRegistryContributor struct {
 func (pluginRegistryContributor) ID() string { return "plugin-registry" }
 
 func (c pluginRegistryContributor) Contribute(
-	_ context.Context,
+	ctx context.Context,
 	registry *tool.Registry,
 ) (ContributionReceipt, error) {
 	return runContribution(registry, c.ID(), []string{"plugin-registry"}, func() error {
@@ -162,74 +129,14 @@ func (c pluginRegistryContributor) Contribute(
 			_ = lifecycle.Close()
 			return fmt.Errorf("register lifecycle plugin tools: %w", err)
 		}
+		capabilities, err := lifecycle.CapabilityBundles(ctx)
+		if err != nil {
+			_ = adapter.Close()
+			_ = lifecycle.Close()
+			return fmt.Errorf("compile plugin capabilities: %w", err)
+		}
 		c.output.pluginRegistry, c.output.pluginTools = lifecycle, adapter
-		return nil
-	})
-}
-
-type skillContributor struct {
-	paths     ExtensionPaths
-	workspace string
-	output    *extensionBuildState
-}
-
-func (skillContributor) ID() string { return "skills" }
-
-func (c skillContributor) Contribute(
-	ctx context.Context,
-	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), []string{"skill-catalog"}, func() error {
-		stateStore, err := skill.NewStateStore(c.paths.SkillsStatePath)
-		if err != nil {
-			return fmt.Errorf("skill state: %w", err)
-		}
-		lockStore, err := skill.NewLockStore(c.paths.SkillsLockPath)
-		if err != nil {
-			return fmt.Errorf("skill lock: %w", err)
-		}
-		catalog, err := skill.Discover(skill.DiscoveryOptions{
-			Workspace: c.workspace, ConfiguredDir: c.paths.SkillsConfiguredDir,
-			UserHome: c.paths.UserHome, Locale: c.paths.SkillsLocale,
-			State: stateStore, Lock: lockStore, RuntimeVersion: buildinfo.Version,
-		})
-		if err != nil {
-			return fmt.Errorf("skill discovery: %w", err)
-		}
-		if err := catalog.Verify(ctx); err != nil {
-			return fmt.Errorf("skill lock verify: %w", err)
-		}
-		if err := skilltool.Register(registry, catalog); err != nil {
-			return fmt.Errorf("skill tool: %w", err)
-		}
-		c.output.skillCatalog = catalog
-		return nil
-	})
-}
-
-type memoryContributor struct {
-	config config.Memory
-	output *extensionBuildState
-}
-
-func (memoryContributor) ID() string { return "memory" }
-
-func (c memoryContributor) Contribute(
-	_ context.Context,
-	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), []string{"memory-store"}, func() error {
-		if !c.config.Enabled {
-			return nil
-		}
-		store, err := memory.Open(c.config.Path)
-		if err != nil {
-			return fmt.Errorf("memory store: %w", err)
-		}
-		if err := memorytool.Register(registry, store); err != nil {
-			return fmt.Errorf("remember tool: %w", err)
-		}
-		c.output.memory = store
+		c.output.pluginCapabilities = capabilities
 		return nil
 	})
 }
@@ -257,69 +164,6 @@ func (c dynamicToolContributor) Contribute(
 			return fmt.Errorf("dynamic tool manager: %w", err)
 		}
 		c.output.dynamicTools = manager
-		return nil
-	})
-}
-
-type hookContributor struct {
-	path, workspace string
-	explicit        bool
-	backend         sandbox.Backend
-	output          *extensionBuildState
-}
-
-func (hookContributor) ID() string { return "hooks" }
-
-func (c hookContributor) Contribute(
-	_ context.Context,
-	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), []string{"hook-manager"}, func() error {
-		info, err := os.Lstat(c.path)
-		if err != nil {
-			if c.explicit || !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("hooks config: %w", err)
-			}
-			return nil
-		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			return errors.New("hooks config must be a regular non-symlink file")
-		}
-		config, err := hooks.LoadConfig(c.path)
-		if err != nil {
-			return fmt.Errorf("hooks config: %w", err)
-		}
-		manager, err := hooks.New(config, hooks.Options{
-			Workspace: c.workspace, Sandbox: c.backend, RequireStrongSandbox: true,
-		})
-		if err != nil {
-			return fmt.Errorf("hooks manager: %w", err)
-		}
-		c.output.hooks = manager
-		return nil
-	})
-}
-
-type mcpContributor struct {
-	configPath string
-	output     *extensionBuildState
-}
-
-func (mcpContributor) ID() string { return "mcp" }
-
-func (c mcpContributor) Contribute(
-	ctx context.Context,
-	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), []string{"mcp-pool", "mcp-prewarm"}, func() error {
-		if c.configPath == "" {
-			return nil
-		}
-		pool, prewarm, err := RegisterMCPTools(ctx, registry, c.configPath)
-		if err != nil {
-			return fmt.Errorf("MCP tools: %w", err)
-		}
-		c.output.mcpPool, c.output.mcpPrewarm = pool, prewarm
 		return nil
 	})
 }

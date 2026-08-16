@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "stage": "EE0",
+  "status": "baseline_frozen",
+  "base_commit": "30ae1f137dd99c6e309499728c4205580773a505",
+  "reference": {
+    "repository": "../codex",
+    "commit": "3bbf1fe75701c97fb190e0867002ba2d9dbda5db"
+  },
+  "sample_policy": {
+    "initial_runs": 5,
+    "extended_runs": 10,
+    "max_mad_basis_points": 1500
+  },
+  "skill_scales": [
+    {
+      "count": 0,
+      "fixture_create_micros": 1155,
+      "cold_discovery_micros": 396,
+      "discovery": {
+        "runs": 5,
+        "median_micros": 288,
+        "p95_micros": 296,
+        "mad_micros": 6,
+        "mad_basis_points": 208
+      },
+      "refresh": {
+        "runs": 5,
+        "median_micros": 279,
+        "p95_micros": 282,
+        "mad_micros": 3,
+        "mad_basis_points": 107
+      },
+      "discovered": 0,
+      "issues": 0,
+      "raw_catalog_bytes": 0,
+      "raw_catalog_tokens": 0,
+      "prompt_catalog_bytes": 0,
+      "prompt_catalog_tokens": 0,
+      "prompt_truncated": false,
+      "catalog_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "count": 10,
+      "fixture_create_micros": 5746,
+      "cold_discovery_micros": 10824,
+      "discovery": {
+        "runs": 5,
+        "median_micros": 5084,
+        "p95_micros": 5516,
+        "mad_micros": 356,
+        "mad_basis_points": 700
+      },
+      "refresh": {
+        "runs": 5,
+        "median_micros": 4009,
+        "p95_micros": 4272,
+        "mad_micros": 27,
+        "mad_basis_points": 67
+      },
+      "discovered": 10,
+      "issues": 0,
+      "raw_catalog_bytes": 1516,
+      "raw_catalog_tokens": 379,
+      "prompt_catalog_bytes": 1516,
+      "prompt_catalog_tokens": 379,
+      "prompt_truncated": false,
+      "catalog_digest": "sha256:649cfb99c5eb56113fe21addab74844e9bc800c087911e1d43aa3b9eb808c850"
+    },
+    {
+      "count": 100,
+      "fixture_create_micros": 34932,
+      "cold_discovery_micros": 281286,
+      "discovery": {
+        "runs": 5,
+        "median_micros": 68550,
+        "p95_micros": 70420,
+        "mad_micros": 1651,
+        "mad_basis_points": 240
+      },
+      "refresh": {
+        "runs": 5,
+        "median_micros": 75537,
+        "p95_micros": 100724,
+        "mad_micros": 4903,
+        "mad_basis_points": 649
+      },
+      "discovered": 100,
+      "issues": 0,
+      "raw_catalog_bytes": 14296,
+      "raw_catalog_tokens": 3574,
+      "prompt_catalog_bytes": 12288,
+      "prompt_catalog_tokens": 3052,
+      "prompt_truncated": true,
+      "catalog_digest": "sha256:5db34f1057efdae4f4dd5f0116811c275bf6f381a3fbf53c45e0592615ca2264"
+    },
+    {
+      "count": 1000,
+      "fixture_create_micros": 300738,
+      "cold_discovery_micros": 628862,
+      "discovery": {
+        "runs": 5,
+        "median_micros": 363366,
+        "p95_micros": 740992,
+        "mad_micros": 2614,
+        "mad_basis_points": 71
+      },
+      "refresh": {
+        "runs": 5,
+        "median_micros": 361342,
+        "p95_micros": 392355,
+        "mad_micros": 4595,
+        "mad_basis_points": 127
+      },
+      "discovered": 1000,
+      "issues": 0,
+      "raw_catalog_bytes": 142096,
+      "raw_catalog_tokens": 35524,
+      "prompt_catalog_bytes": 12288,
+      "prompt_catalog_tokens": 3052,
+      "prompt_truncated": true,
+      "catalog_digest": "sha256:eed3308572c428cb281a8bc589bd4d7a284eac50cddb3bd3e17eee56f2ed36fd"
+    }
+  ],
+  "plugin_scales": [
+    {
+      "count": 0,
+      "fixture_create_micros": 319,
+      "cold_discovery_micros": 151,
+      "discovery": {
+        "runs": 5,
+        "median_micros": 146,
+        "p95_micros": 401,
+        "mad_micros": 13,
+        "mad_basis_points": 890
+      },
+      "refresh": {
+        "runs": 5,
+        "median_micros": 141,
+        "p95_micros": 144,
+        "mad_micros": 3,
+        "mad_basis_points": 212
+      },
+      "discovered": 0,
+      "manifest_bytes": 0,
+      "catalog_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "count": 10,
+      "fixture_create_micros": 5387,
+      "cold_discovery_micros": 5976,
+      "discovery": {
+        "runs": 5,
+        "median_micros": 5556,
+        "p95_micros": 5899,
+        "mad_micros": 185,
+        "mad_basis_points": 332
+      },
+      "refresh": {
+        "runs": 5,
+        "median_micros": 5526,
+        "p95_micros": 5610,
+        "mad_micros": 84,
+        "mad_basis_points": 152
+      },
+      "discovered": 10,
+      "manifest_bytes": 3061,
+      "catalog_digest": "sha256:722c4b54f4856eefddf48a947e076420dce3578ef53365873d68b70175ebc120"
+    },
+    {
+      "count": 100,
+      "fixture_create_micros": 48350,
+      "cold_discovery_micros": 55202,
+      "discovery": {
+        "runs": 5,
+        "median_micros": 55652,
+        "p95_micros": 55995,
+        "mad_micros": 241,
+        "mad_basis_points": 43
+      },
+      "refresh": {
+        "runs": 5,
+        "median_micros": 54396,
+        "p95_micros": 55838,
+        "mad_micros": 415,
+        "mad_basis_points": 76
+      },
+      "discovered": 100,
+      "manifest_bytes": 30782,
+      "catalog_digest": "sha256:4998a193917c4237770f8bbce2a07c732d14d86383b6997ff7c45680591921d2"
+    }
+  ],
+  "combined_golden": {
+    "digest": "sha256:ffaf761c814b7d8b59089b014233fb8090e6dafd40609e5327f2a202f30af62a",
+    "plugin": "fixture-plugin",
+    "skill": "fixture-skill",
+    "mcp_server": "fixture",
+    "mcp_tool": "fixture.echo",
+    "hook_event": "ToolCallBefore",
+    "hook_id": "fixture-gate",
+    "model_tools": [
+      "load_skill",
+      "plugin_run",
+      "result_get"
+    ],
+    "tool_schema_bytes": 642,
+    "fixture_hermetic": true
+  },
+  "lifecycle_goldens": [
+    {
+      "scenario": "update_and_drain",
+      "test": "internal/adapter/plugin:TestSignedRegistryInstallUpdateDrainRollbackAndSecurityRevoke",
+      "required_outcome": "old_generation_drains_while_new_calls_use_new_generation",
+      "measured": true
+    },
+    {
+      "scenario": "rollback",
+      "test": "internal/adapter/plugin:TestSignedRegistryInstallUpdateDrainRollbackAndSecurityRevoke",
+      "required_outcome": "rollback_selects_verified_predecessor",
+      "measured": true
+    },
+    {
+      "scenario": "security_revoke",
+      "test": "internal/adapter/plugin:TestSecurityRevokeCancelsInflightPluginCall",
+      "required_outcome": "new_and_inflight_calls_are_revoked",
+      "measured": true
+    },
+    {
+      "scenario": "mcp_quarantine",
+      "test": "internal/adapter/tool/mcp:TestAsyncSyncQuarantinesStaleCatalogAndRecovers",
+      "required_outcome": "stale_catalog_is_removed_and_recovery_is_source_scoped",
+      "measured": true
+    },
+    {
+      "scenario": "restart",
+      "test": "scripts/extensionecosystembaseline:TestLocalLifecycleRestartAndRevoke",
+      "required_outcome": "durable_enabled_state_reloads_without_duplicate_authority",
+      "measured": true
+    }
+  ],
+  "host_parity": {
+    "acp": [],
+    "cli": [
+      "mcp.add",
+      "mcp.disable",
+      "mcp.enable",
+      "mcp.list",
+      "mcp.remove",
+      "plugin.disable",
+      "plugin.enable",
+      "plugin.install",
+      "plugin.list",
+      "plugin.revoke",
+      "plugin.rollback",
+      "plugin.security_revoke",
+      "plugin.trust",
+      "plugin.update",
+      "skill.disable",
+      "skill.enable",
+      "skill.list",
+      "skill.lock",
+      "skill.revoke",
+      "skill.verify"
+    ],
+    "runtime_protocol": [],
+    "tui": [],
+    "vscode": []
+  },
+  "contracts": {
+    "shared_tool_registry": true,
+    "consequential_tools_guarded": true,
+    "plugin_supply_chain_verified": true,
+    "skill_authority_and_lockfile": true,
+    "mcp_source_reconcile": true,
+    "hook_sandbox_and_bounded_output": true,
+    "turn_frozen_extension_snapshot": true,
+    "typed_extension_api": false,
+    "plugin_capability_bundle": false,
+    "unified_extension_lifecycle": false,
+    "runtime_extension_control_plane": false,
+    "on_demand_skill_catalog": false,
+    "plugin_skill_production_reachable": false
+  },
+  "known_gaps": [
+    "all_enabled_skill_metadata_is_projected_by_default",
+    "extension_contract_is_private_to_wire_and_tool_contribution",
+    "extension_lifecycle_is_split_across_subsystems",
+    "hosts_execute_extension_management_outside_runtime_protocol",
+    "plugin_manifest_only_models_one_executable_tool",
+    "plugin_skill_snapshot_is_not_connected_to_production_wiring"
+  ],
+  "commands": {
+    "baseline": "make extension-ecosystem-ee0",
+    "update": "make extension-ecosystem-ee0-update"
+  }
+}

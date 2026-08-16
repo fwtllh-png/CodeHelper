@@ -17,6 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -68,7 +69,7 @@ func (e *Engine) modelStep(
 		return nil, nil, provider.Usage{}, 0, err
 	}
 	*history = admittedHistory
-	if err := e.emitExtensionLifecycleChanges(scope.spec.Extensions, send); err != nil {
+	if err := e.emitExtensionLifecycleChanges(scope.spec.ExtensionPlan, send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
 	if err := e.emitMCPHealthChanges(scope.spec.MCP, send); err != nil {
@@ -587,9 +588,10 @@ func appendContinuedBlocks(
 }
 
 func (e *Engine) emitExtensionLifecycleChanges(
-	current []ExtensionSnapshot,
+	plan runtimeextension.Plan,
 	send func(State, Event) error,
 ) error {
+	current := append([]runtimeextension.Candidate(nil), plan.Extensions...)
 	sort.Slice(current, func(i, j int) bool {
 		if current[i].Kind != current[j].Kind {
 			return current[i].Kind < current[j].Kind
@@ -607,17 +609,26 @@ func (e *Engine) emitExtensionLifecycleChanges(
 	}
 	scope.state.extensionsProjected = true
 	scope.mu.Unlock()
-	for _, snapshot := range current {
-		if snapshot.Kind == "" || snapshot.Name == "" {
+	for _, candidate := range current {
+		if !candidate.Observable || candidate.Kind == "" || candidate.Name == "" {
 			continue
 		}
 		action := "active"
-		if !snapshot.Enabled {
+		if !candidate.Enabled {
 			action = "disabled"
 		}
 		if err := send(CallingModel, Event{
 			ExtensionLifecycle: &ExtensionLifecycleChanged{
-				Action: action, Current: snapshot,
+				Action: action,
+				Current: ExtensionSnapshot{
+					Kind: candidate.Kind, Name: candidate.Name,
+					Version:   candidate.Version,
+					Source:    strings.TrimPrefix(candidate.Source.ID, "plugin:"),
+					Publisher: candidate.Publisher, Trust: candidate.Trust,
+					Digest: candidate.Digest, Generation: candidate.Generation,
+					Enabled: candidate.Enabled, LastAction: candidate.LastAction,
+					ChangedAt: candidate.ChangedAt,
+				},
 			},
 		}); err != nil {
 			return err

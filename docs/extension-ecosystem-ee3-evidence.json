@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "stage": "EE3",
+  "status": "accepted",
+  "branch": "main",
+  "base_commit": "30ae1f137dd99c6e309499728c4205580773a505",
+  "contracts": {
+    "manifest_v2": true,
+    "capability_bundle": true,
+    "tool_capability": true,
+    "skill_capability": true,
+    "mcp_capability": true,
+    "hook_capability": true,
+    "independent_source_digest": true,
+    "independent_permission_digest": true,
+    "independent_authority_token": true,
+    "capability_enable_disable": true,
+    "interface_metadata_excluded_from_policy_digest": true,
+    "v1_normalized_to_tool_capability": true,
+    "plugin_skill_in_production_plan": true,
+    "package_receipt_binds_capability_digest": true
+  },
+  "ownership": {
+    "manifest_and_compiler": "internal/adapter/plugin",
+    "capability_projection": "internal/adapter/extension/plugin",
+    "plan_projection": "internal/runtime/app/extension",
+    "composition": "internal/runtime/app/wire",
+    "turn_authority": "engine.TurnSpec.ExtensionPlan",
+    "plugin_skill_lock_authority": "plugin package receipt plus capability authority",
+    "native_skill_lock_authority": "skill lockfile",
+    "dual_plugin_skill_lock_authority": false
+  },
+  "security": {
+    "package_root_escape_rejected": true,
+    "absolute_resource_path_rejected": true,
+    "noncanonical_resource_path_rejected": true,
+    "symlink_resource_rejected": true,
+    "digest_drift_rejected": true,
+    "capability_token_reverified_on_projection": true,
+    "tool_permission_ceiling_enforced": true,
+    "plugin_tool_uses_shared_registry_and_guard": true,
+    "security_controls_passed": 15,
+    "security_controls_total": 15,
+    "known_security_gaps": 0
+  },
+  "isolation": {
+    "disable_hook_preserves_skill": true,
+    "mcp_failure_preserves_skill": true,
+    "capability_disable_is_scoped": true,
+    "mcp_server_namespaced": true
+  },
+  "compatibility": {
+    "v1_manifest_supported": true,
+    "ee0_combined_golden_digest": "sha256:ffaf761c814b7d8b59089b014233fb8090e6dafd40609e5327f2a202f30af62a",
+    "candidate_combined_golden_digest": "sha256:ffaf761c814b7d8b59089b014233fb8090e6dafd40609e5327f2a202f30af62a",
+    "model_visible_tools": [
+      "load_skill",
+      "plugin_run",
+      "result_get"
+    ],
+    "tool_schema_bytes": 642,
+    "provider_behavior_changed": false,
+    "host_behavior_changed": false
+  },
+  "architecture": {
+    "targets_passed": 90,
+    "targets_total": 90,
+    "new_targets": [
+      "adapter_plugin_package",
+      "adapter_extension_plugin_package",
+      "wire_contributors_capabilities_file"
+    ],
+    "adapter_plugin_production_lines": 4409,
+    "adapter_extension_plugin_production_lines": 169,
+    "runtime_app_extension_production_lines": 316,
+    "wire_production_lines": 8145,
+    "wire_internal_fanout": 72,
+    "wire_mutex_fields": 5,
+    "wire_capability_file_lines": 191,
+    "legacy_contributor_file_lines": 169
+  },
+  "validation": {
+    "ee0_replay": "passed",
+    "ee1_gate": "passed",
+    "ee2_gate": "passed",
+    "ee3_focused_go_tests": "passed",
+    "ee3_race": "passed",
+    "go_vet": "passed",
+    "security_baseline": "passed",
+    "architecture_ratchet": "passed",
+    "full_go_suite_serial": "passed",
+    "markdown_docs_book": "passed",
+    "git_diff_check": "passed"
+  },
+  "known_limits": [
+    "capability state changes are applied on the next projection or runtime construction; live drain and reconcile belong to EE4",
+    "Manifest V2 currently permits one process Tool capability until a tool-specific loader replaces the executable-wide loader"
+  ],
+  "commands": {
+    "stage": "make extension-ecosystem-ee3",
+    "security": "make security-governance-sg0",
+    "full": "go test -p 1 ./...",
+    "docs": "make markdownlint-check && make docs-check && make book-check",
+    "architecture": "make architecture-ratchet"
+  }
+}

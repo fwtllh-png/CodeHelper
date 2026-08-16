@@ -226,12 +226,30 @@ func runPersistentACPHost(
 		_, _ = fmt.Fprintf(stderr, "codehelper: ACP repositories: %v\n", err)
 		return 1
 	}
+	extensionPaths, err := wire.ResolveExtensionPaths(
+		options.Extensions, loaded.Config.Execution.Workspace,
+	)
+	if err != nil {
+		closeACPApplication(application, stderr)
+		_, _ = fmt.Fprintf(stderr, "codehelper: ACP extension paths: %v\n", err)
+		return 1
+	}
+	extensionControl, err := wire.OpenExtensionControlPlane(
+		extensionPaths, loaded.Config.Execution.Workspace,
+	)
+	if err != nil {
+		closeACPApplication(application, stderr)
+		_, _ = fmt.Fprintf(stderr, "codehelper: ACP extension control: %v\n", err)
+		return 1
+	}
+	defer extensionControl.Close()
 	server, err := acp.New(acp.Dependencies{
 		Runtime: application.Runtime, Sessions: repositories.Sessions,
 		Threads: repositories.Threads, Tasks: repositories.Tasks,
 		Usage: repositories.Usage, Agents: application.Subagents(),
 		DynamicTools:      application.DynamicTools(),
 		SessionWorkspaces: application.SessionWorkspaces(),
+		Extensions:        extensionControl.Plane,
 	}, stdout, acp.Options{
 		ProviderID: application.ProviderID(), ModelID: application.ModelID(),
 		ModelCapabilities: application.ModelCapabilities(),

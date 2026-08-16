@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"strings"
 
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -90,12 +88,22 @@ func (t *Tool) typedExecutor() (tool.Executor, error) {
 }
 
 func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
-	if allowed := AllowedNamesFrom(ctx); allowed != nil {
-		if _, ok := allowed[value.Name]; !ok {
+	handle := ""
+	if allowed := AllowedSkillsFrom(ctx); allowed != nil {
+		var ok bool
+		handle, ok = allowed[value.Name]
+		if !ok {
 			return tool.Result{}, errors.New("skill is not in this turn's catalog snapshot")
 		}
 	}
-	plan, err := t.catalog.LoadPlan(ctx, value.Name)
+	var err error
+	if handle == "" {
+		handle, err = t.catalog.HandleForName(ctx, value.Name)
+		if err != nil {
+			return tool.Result{}, err
+		}
+	}
+	plan, err := t.catalog.LoadHandle(ctx, handle)
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -111,26 +119,14 @@ func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
 			Dependencies: item.Dependencies, Locked: item.Locked,
 		})
 	}
-	content := loaded.Content
-	if len(plan) > 1 {
-		var sections []string
-		for index, item := range plan {
-			role := "dependency"
-			if index == len(plan)-1 {
-				role = "root"
-			}
-			sections = append(sections, fmt.Sprintf(
-				"# Skill %s: %s@%s\n\n%s", role, item.Name, item.Version, item.Content,
-			))
-		}
-		content = strings.Join(sections, "\n\n")
-	}
+	content := renderLoadedPlan(plan)
 	return tool.Result{
 		Content: content,
 		Metadata: map[string]any{
 			"name": loaded.Name, "description": loaded.Description,
 			"source": loaded.Source, "path": loaded.Path, "plugin": loaded.Plugin,
 			"version": loaded.Version, "digest": loaded.Digest, "locked": loaded.Locked,
+			"handle":          handle,
 			"resolved_skills": resolved,
 		},
 	}, nil

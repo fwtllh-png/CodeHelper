@@ -104,11 +104,25 @@
     "correlation": "effect",
     "terminal": false
   },
+  "extension.control": {
+    "class": "audit",
+    "item_owner": "operation",
+    "durability": "retained",
+    "correlation": "operation",
+    "terminal": false
+  },
   "extension.lifecycle": {
     "class": "audit",
     "item_owner": "turn",
     "durability": "retained",
     "correlation": "extension",
+    "terminal": false
+  },
+  "hook.execution": {
+    "class": "audit",
+    "item_owner": "tool",
+    "durability": "retained",
+    "correlation": "hook",
     "terminal": false
   },
   "host.command": {

@@ -275,18 +275,24 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			turnID,
 		)
 	}()
-	if len(spec.Skills) != 0 {
-		names := make([]string, 0, len(spec.Skills))
+	if len(spec.Skills) != 0 || spec.SkillSelection.Method != "" {
+		skills := make(map[string]string, len(spec.Skills))
 		for _, summary := range spec.Skills {
-			names = append(names, summary.Name)
+			skills[summary.Name] = summary.Handle
 		}
-		ctx = skilltool.WithAllowedNames(ctx, names)
+		ctx = skilltool.WithAllowedSkills(ctx, skills)
 	}
 	if e.guard != nil && spec.Policy != nil {
 		sessionPolicy := e.guard.SwapPolicy(spec.Policy)
 		defer e.guard.SwapPolicy(sessionPolicy)
 	}
 	if e.options.Hooks != nil {
+		ctx = hooks.WithAuditEmitter(ctx, func(record hooks.AuditRecord) {
+			value := record
+			_ = emit(Event{
+				State: Preparing, Turn: e.turn + 1, HookAudit: &value,
+			})
+		})
 		if err := e.options.Hooks.MessageSubmit(ctx, hooks.MessageSubmitInput{
 			SessionID: e.options.SessionID, TurnID: turnID, Message: prompt,
 		}); err != nil {

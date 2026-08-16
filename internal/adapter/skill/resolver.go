@@ -67,17 +67,17 @@ func (c *Catalog) Verify(ctx context.Context) error {
 		}
 		return fmt.Errorf("%w: governed skills require a lock store", ErrLockDrift)
 	}
+	expected := lockfileFor(c.runtimeVersion, items)
 	lockfile, err := c.lock.Read()
 	if err != nil {
-		if len(items) == 0 && errors.Is(err, os.ErrNotExist) {
+		if len(expected.Skills) == 0 && errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("%w: read skill lock: %v", ErrLockDrift, err)
 	}
-	if len(items) == 0 && len(lockfile.Skills) == 0 {
+	if len(expected.Skills) == 0 && len(lockfile.Skills) == 0 {
 		return nil
 	}
-	expected := lockfileFor(c.runtimeVersion, items)
 	if err := compareLockfiles(expected, lockfile); err != nil {
 		return fmt.Errorf("%w: %v", ErrLockDrift, err)
 	}
@@ -338,7 +338,7 @@ func lockfileFor(runtimeVersion string, items []candidate) Lockfile {
 		Skills:         make([]LockEntry, 0, len(items)),
 	}
 	for _, item := range items {
-		if item.manifest == nil {
+		if item.manifest == nil || item.source == SourcePlugin {
 			continue
 		}
 		lockfile.Skills = append(lockfile.Skills, LockEntry{

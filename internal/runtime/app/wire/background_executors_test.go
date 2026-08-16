@@ -421,7 +421,7 @@ func TestSchedulerWorkflowNodeTimeoutCancelsEveryProductionTurn(t *testing.T) {
 				Goal: "timeout",
 				Nodes: []workflow.Node{{
 					ID: "slow", Kind: workflow.NodeTask, Prompt: "slow",
-					TimeoutMS: 20, Retry: &workflow.Retry{MaxAttempts: 2},
+					TimeoutMS: 200, Retry: &workflow.Retry{MaxAttempts: 2},
 				}},
 			},
 		},
@@ -442,18 +442,25 @@ func TestSchedulerWorkflowNodeTimeoutCancelsEveryProductionTurn(t *testing.T) {
 		t.Fatalf("timeout workflow run = %+v", result.Run)
 	}
 
-	events, _, err := session.Runtime.ReplayEvents(t.Context(), 0, 1000)
-	if err != nil {
-		t.Fatal(err)
-	}
-	canceled := 0
-	for _, event := range events {
-		if event.Kind == protocol.EventTurnCanceled {
-			canceled++
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		events, _, err := session.Runtime.ReplayEvents(t.Context(), 0, 1000)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if canceled != 2 {
-		t.Fatalf("canceled turns = %d, want 2", canceled)
+		canceled := 0
+		for _, event := range events {
+			if event.Kind == protocol.EventTurnCanceled {
+				canceled++
+			}
+		}
+		if canceled == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("canceled turns = %d, want 2", canceled)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

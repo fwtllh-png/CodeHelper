@@ -125,6 +125,7 @@
         "internal/runtime/agent/turnexec",
         "internal/runtime/agent/turnkernel",
         "internal/runtime/agent/workingset",
+        "internal/runtime/extension",
         "internal/runtime/protocol",
         "internal/security/policy"
       ],

@@ -37,15 +37,26 @@ func Register(registry *tool.Registry, store *memorystore.Store) error {
 	if registry == nil {
 		return errors.New("remember registry is required")
 	}
-	executor, err := New(store)
+	registration, err := Registration(store)
 	if err != nil {
 		return err
+	}
+	return registry.Register(registration.Executor(), nil)
+}
+
+// Registration builds the source-owned remember tool contribution without
+// mutating a Registry. Extension assembly uses it to preserve one catalog
+// commit boundary.
+func Registration(store *memorystore.Store) (tool.Registration, error) {
+	executor, err := New(store)
+	if err != nil {
+		return tool.Registration{}, err
 	}
 	typedExecutor, err := executor.typedExecutor()
 	if err != nil {
-		return err
+		return tool.Registration{}, err
 	}
-	return registry.Register(typedExecutor, nil)
+	return tool.NewRegistration(typedExecutor), nil
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {

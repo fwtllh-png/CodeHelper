@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "stage": "EE2",
+  "status": "accepted",
+  "branch": "main",
+  "base_commit": "30ae1f137dd99c6e309499728c4205580773a505",
+  "contracts": {
+    "process_scope": true,
+    "session_scope": true,
+    "thread_scope": true,
+    "turn_scope": true,
+    "extension_namespace": true,
+    "schema_versioned_state_key": true,
+    "compare_and_swap": true,
+    "typed_revision_conflict": true,
+    "typed_budget_failure": true,
+    "cross_extension_access_rejected": true,
+    "scope_cleanup": true,
+    "source_resolver": true,
+    "source_priority": true,
+    "ambiguous_source_rejected": true,
+    "immutable_plan": true,
+    "source_digest_bound": true,
+    "permission_digest_bound": true,
+    "turn_plan_frozen": true,
+    "durable_plan_receipt": true,
+    "restart_revision_restore": true
+  },
+  "state_budgets": {
+    "default_max_entries_per_scope": 256,
+    "default_max_bytes_per_scope": 1048576,
+    "default_max_value_bytes": 65536
+  },
+  "ownership": {
+    "plan_runtime": "internal/runtime/app/extension",
+    "plan_contract": "internal/runtime/extension",
+    "durable_receipt": "internal/persist/extensionplan",
+    "composition": "internal/runtime/app/wire/extension_plan.go",
+    "turn_authority": "engine.TurnSpec.ExtensionPlan",
+    "legacy_session_fields_removed": [
+      "pluginRegistry",
+      "pluginTools",
+      "contributionReceipts"
+    ],
+    "dual_plan_authority": false
+  },
+  "restart": {
+    "same_content_reuses_revision": true,
+    "source_change_advances_revision": true,
+    "permission_change_advances_revision": true,
+    "receipt_write": "atomic_rename_and_directory_fsync",
+    "symlink_receipt_rejected": true
+  },
+  "behavior": {
+    "ee0_combined_golden_digest": "sha256:ffaf761c814b7d8b59089b014233fb8090e6dafd40609e5327f2a202f30af62a",
+    "candidate_combined_golden_digest": "sha256:ffaf761c814b7d8b59089b014233fb8090e6dafd40609e5327f2a202f30af62a",
+    "model_visible_tools": [
+      "load_skill",
+      "plugin_run",
+      "result_get"
+    ],
+    "tool_schema_bytes": 642,
+    "provider_behavior_changed": false,
+    "host_behavior_changed": false,
+    "remaining_known_gaps": [
+      "all_enabled_skill_metadata_is_projected_by_default",
+      "extension_lifecycle_is_split_across_subsystems",
+      "hosts_execute_extension_management_outside_runtime_protocol",
+      "plugin_manifest_only_models_one_executable_tool",
+      "plugin_skill_snapshot_is_not_connected_to_production_wiring"
+    ]
+  },
+  "architecture": {
+    "targets_passed": 87,
+    "targets_total": 87,
+    "new_targets": [
+      "runtime_app_extension_package",
+      "persist_extensionplan_package"
+    ],
+    "runtime_extension_production_lines": 1214,
+    "runtime_app_extension_production_lines": 285,
+    "persist_extensionplan_production_lines": 220,
+    "wire_production_lines": 8024,
+    "wire_mutex_fields": 5,
+    "legacy_contributor_file_lines": 271,
+    "runtime_module_lines": 411
+  },
+  "validation": {
+    "ee0_replay": "passed",
+    "ee1_gate": "passed",
+    "ee2_focused_go_tests": "passed",
+    "ee2_race": "passed",
+    "go_vet": "passed",
+    "architecture_ratchet": "passed",
+    "hotspot_baseline": "passed",
+    "full_go_suite_serial": "passed",
+    "markdown_docs_book": "passed"
+  },
+  "test_hardening": {
+    "test": "TestSchedulerWorkflowNodeTimeoutCancelsEveryProductionTurn",
+    "issue": "20ms fixture timeout could fire before a race-instrumented child turn became cancelable",
+    "fix": "use a 200ms fixture timeout and bounded event convergence",
+    "production_behavior_changed": false
+  },
+  "commands": {
+    "stage": "make extension-ecosystem-ee2",
+    "focused": "go test -count=1 ./internal/runtime/extension/... ./internal/runtime/app/extension ./internal/persist/extensionplan ./internal/runtime/agent/engine ./internal/runtime/app/wire",
+    "race": "go test -race -count=1 ./internal/runtime/extension/... ./internal/runtime/app/extension ./internal/persist/extensionplan ./internal/runtime/agent/engine ./internal/runtime/app/wire",
+    "architecture": "make architecture-ratchet",
+    "full": "go test -p 1 ./..."
+  }
+}

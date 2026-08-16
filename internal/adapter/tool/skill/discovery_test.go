@@ -1,0 +1,181 @@
+package skill
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+)
+
+func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {
+	workspace := t.TempDir()
+	root := filepath.Join(workspace, ".agents", "skills")
+	for index := range 25 {
+		name := fmt.Sprintf("skill-%02d", index)
+		body := "body " + name
+		if index == 0 {
+			body = strings.Repeat("bounded content\n", 5000)
+		}
+		writeToolSkill(t, root, name, "Operate "+name, body)
+	}
+	catalog, err := skillruntime.Discover(skillruntime.DiscoveryOptions{
+		Workspace: workspace, UserHome: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterDiscovery(registry, catalog); err != nil {
+		t.Fatal(err)
+	}
+	first, err := registry.Execute(context.Background(), tool.Call{
+		Name: "skills.list", Arguments: json.RawMessage(`{}`), Authorized: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var page struct {
+		Skills     []listedSkill `json:"skills"`
+		NextCursor string        `json:"next_cursor"`
+	}
+	if err := json.Unmarshal([]byte(first.Content), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Skills) != 20 || page.NextCursor == "" {
+		t.Fatalf("first page = %+v", page)
+	}
+	secondArgs, _ := json.Marshal(listInput{Cursor: page.NextCursor})
+	second, err := registry.Execute(context.Background(), tool.Call{
+		Name: "skills.list", Arguments: secondArgs, Authorized: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var secondPage struct {
+		Skills []listedSkill `json:"skills"`
+	}
+	if err := json.Unmarshal([]byte(second.Content), &secondPage); err != nil {
+		t.Fatal(err)
+	}
+	if len(secondPage.Skills) != 5 {
+		t.Fatalf("second page count = %d", len(secondPage.Skills))
+	}
+
+	target := page.Skills[0]
+	readArgs, _ := json.Marshal(readInput{
+		Handle: target.Handle,
+	})
+	read, err := registry.Execute(context.Background(), tool.Call{
+		Name: "skills.read", Arguments: readArgs, Authorized: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(read.Content) > skillReadBytes || read.Metadata["next_cursor"] == "" ||
+		read.Admission == nil || read.Admission.Kind != "skill" {
+		t.Fatalf("read result = %+v", read)
+	}
+	staleArgs, _ := json.Marshal(readInput{
+		Handle: "skh_" + strings.Repeat("0", 40),
+	})
+	if _, err := registry.Execute(context.Background(), tool.Call{
+		Name: "skills.read", Arguments: staleArgs, Authorized: true,
+	}); err == nil {
+		t.Fatal("mismatched authority-bound resource was accepted")
+	}
+}
+
+func TestLoadSkillUsesTurnFrozenAuthorityHandle(t *testing.T) {
+	workspace := t.TempDir()
+	root := filepath.Join(workspace, ".agents", "skills")
+	writeToolSkill(t, root, "review", "Review code.", "review body")
+	catalog, err := skillruntime.Discover(skillruntime.DiscoveryOptions{
+		Workspace: workspace, UserHome: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := catalog.HandleForName(t.Context(), "review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor, err := New(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithAllowedSkills(t.Context(), map[string]string{
+		"review": handle,
+	})
+	result, err := executor.Execute(ctx, json.RawMessage(`{"name":"review"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Metadata["handle"] != handle {
+		t.Fatalf("load_skill handle = %v", result.Metadata["handle"])
+	}
+	if _, err := executor.Execute(
+		WithAllowedSkills(t.Context(), map[string]string{"review": "skh_" + strings.Repeat("0", 40)}),
+		json.RawMessage(`{"name":"review"}`),
+	); err == nil {
+		t.Fatal("stale turn handle was accepted")
+	}
+	if _, err := executor.Execute(
+		WithAllowedSkills(t.Context(), map[string]string{}),
+		json.RawMessage(`{"name":"review"}`),
+	); err == nil {
+		t.Fatal("unselected skill was accepted")
+	}
+}
+
+func TestSkillDiscoveryToolSchemaFitsCE7RegressionBudget(t *testing.T) {
+	type schema struct {
+		Name        string         `json:"name"`
+		Description string         `json:"description"`
+		Input       map[string]any `json:"input_schema"`
+	}
+	var total int
+	for _, descriptor := range []tool.Descriptor{
+		listDescriptor(), readDescriptor(),
+	} {
+		data, err := json.Marshal(schema{
+			Name: descriptor.Name, Description: descriptor.Description,
+			Input: descriptor.InputSchema,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += len(data)
+	}
+	const maxSchemaDeltaBytes = 640
+	if total > maxSchemaDeltaBytes {
+		t.Fatalf(
+			"skill discovery schema delta = %d bytes, maximum = %d",
+			total, maxSchemaDeltaBytes,
+		)
+	}
+	t.Logf("skill discovery schema delta = %d bytes", total)
+}
+
+func writeToolSkill(
+	t *testing.T,
+	root, name, description, body string,
+) {
+	t.Helper()
+	directory := filepath.Join(root, name)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: " + name + "\ndescription: " + description +
+		"\n---\n" + body + "\n"
+	if err := os.WriteFile(
+		filepath.Join(directory, "SKILL.md"), []byte(content), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+}

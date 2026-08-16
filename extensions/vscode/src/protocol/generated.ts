@@ -36,7 +36,9 @@ export const eventKinds = [
   "command.execution",
   "diagnostics.result",
   "execution.bound",
+  "extension.control",
   "extension.lifecycle",
+  "hook.execution",
   "host.command",
   "input.required",
   "input.resolved",
@@ -75,7 +77,7 @@ export type EventKind = (typeof eventKinds)[number];
 export type EventClass = "accounting" | "artifact" | "artifact_stream" | "audit" | "evidence" | "interaction" | "lifecycle" | "orchestration" | "stream" | "terminal" | "terminal_operation";
 export type ItemOwner = "agent" | "approval" | "attempt" | "checkpoint" | "input" | "node" | "operation" | "run" | "thread" | "tool" | "turn";
 export type Durability = "atomic" | "bounded" | "retained" | "terminal_projection" | "transient";
-export type CorrelationKind = "agent" | "attempt" | "call" | "catalog" | "checkpoint" | "command" | "effect" | "extension" | "mutation" | "node" | "operation" | "plan" | "request" | "run" | "sample" | "server" | "target_turn" | "thread" | "turn";
+export type CorrelationKind = "agent" | "attempt" | "call" | "catalog" | "checkpoint" | "command" | "effect" | "extension" | "hook" | "mutation" | "node" | "operation" | "plan" | "request" | "run" | "sample" | "server" | "target_turn" | "thread" | "turn";
 export interface EventTraits {
   readonly class: EventClass;
   readonly item_owner: ItemOwner;
@@ -99,7 +101,9 @@ export const eventTraits = {
   "command.execution": {"class":"audit","item_owner":"tool","durability":"retained","correlation":"call","terminal":false},
   "diagnostics.result": {"class":"evidence","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
   "execution.bound": {"class":"orchestration","item_owner":"attempt","durability":"retained","correlation":"effect","terminal":false},
+  "extension.control": {"class":"audit","item_owner":"operation","durability":"retained","correlation":"operation","terminal":false},
   "extension.lifecycle": {"class":"audit","item_owner":"turn","durability":"retained","correlation":"extension","terminal":false},
+  "hook.execution": {"class":"audit","item_owner":"tool","durability":"retained","correlation":"hook","terminal":false},
   "host.command": {"class":"interaction","item_owner":"turn","durability":"retained","correlation":"command","terminal":false},
   "input.required": {"class":"interaction","item_owner":"input","durability":"retained","correlation":"request","terminal":false},
   "input.resolved": {"class":"interaction","item_owner":"input","durability":"retained","correlation":"request","terminal":false},
@@ -147,7 +151,7 @@ export type EventEnvelope = {
   readonly "data": Readonly<Record<string, unknown>>;
   readonly "id": string;
   readonly "item_id": string;
-  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "checkpoint.created" | "checkpoint.restored" | "checkpoint.forked" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "agent.integration" | "run.started" | "run.status" | "run.completed" | "run.failed" | "run.canceled" | "node.status" | "attempt.status" | "execution.bound" | "budget.updated" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
+  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "extension.control" | "hook.execution" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "checkpoint.created" | "checkpoint.restored" | "checkpoint.forked" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "agent.integration" | "run.started" | "run.status" | "run.completed" | "run.failed" | "run.canceled" | "node.status" | "attempt.status" | "execution.bound" | "budget.updated" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
   readonly "operation_id": string;
   readonly "sequence": number;
   readonly "thread_id": string;
@@ -1003,6 +1007,19 @@ export type ExecutionBoundData = {
   readonly "turn_id"?: string;
 };
 
+export type ExtensionControlData = {
+  readonly "action": string;
+  readonly "capability"?: string;
+  readonly "digest": string;
+  readonly "kind": string;
+  readonly "name"?: string;
+  readonly "occurred_at": string;
+  readonly "operation_id": string;
+  readonly "revision": number;
+  readonly "status": string;
+  readonly "version_value"?: string;
+};
+
 export type ExtensionLifecycleData = {
   readonly "action": string;
   readonly "changed_at": string;
@@ -1016,6 +1033,27 @@ export type ExtensionLifecycleData = {
   readonly "source": string;
   readonly "trust": string;
   readonly "version": string;
+};
+
+export type HookExecutionData = {
+  readonly "action"?: string;
+  readonly "canceled"?: boolean;
+  readonly "duration_ms": number;
+  readonly "error_code"?: string;
+  readonly "exit_code": number;
+  readonly "hook_event": string;
+  readonly "hook_id": string;
+  readonly "mode": string;
+  readonly "occurred_at": string;
+  readonly "outcome": string;
+  readonly "scope": string;
+  readonly "source": string;
+  readonly "stderr_bytes": number;
+  readonly "stderr_truncated"?: boolean;
+  readonly "stdout_bytes": number;
+  readonly "stdout_truncated"?: boolean;
+  readonly "timed_out"?: boolean;
+  readonly "trust": string;
 };
 
 export type HostCommandData = {
@@ -1781,7 +1819,9 @@ export interface EventDataByKind {
   readonly "command.execution": CommandExecutionData;
   readonly "diagnostics.result": DiagnosticsResultData;
   readonly "execution.bound": ExecutionBoundData;
+  readonly "extension.control": ExtensionControlData;
   readonly "extension.lifecycle": ExtensionLifecycleData;
+  readonly "hook.execution": HookExecutionData;
   readonly "host.command": HostCommandData;
   readonly "input.required": InputRequiredData;
   readonly "input.resolved": InputResolvedData;

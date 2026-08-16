@@ -40,13 +40,14 @@ type managedHandle struct {
 // lifecycle state. Replaced executors reject new calls while already-started
 // calls drain; their immutable handles close when the last call exits.
 type Adapter struct {
-	mu          sync.Mutex
-	registry    *tool.Registry
-	lifecycle   *pluginruntime.Registry
-	active      map[string]managedHandle
-	unsubscribe func()
-	lastErr     error
-	closed      bool
+	mu             sync.Mutex
+	registry       *tool.Registry
+	lifecycle      *pluginruntime.Registry
+	active         map[string]managedHandle
+	unsubscribe    func()
+	lastErr        error
+	refreshPending bool
+	closed         bool
 }
 
 func NewAdapter(
@@ -62,14 +63,9 @@ func NewAdapter(
 	}
 	adapter.unsubscribe = lifecycle.SubscribeLifecycle(func() {
 		adapter.mu.Lock()
-		if adapter.closed {
-			adapter.mu.Unlock()
-			return
+		if !adapter.closed {
+			adapter.refreshPending = true
 		}
-		adapter.mu.Unlock()
-		err := adapter.Sync()
-		adapter.mu.Lock()
-		adapter.lastErr = err
 		adapter.mu.Unlock()
 	})
 	if err := adapter.Sync(); err != nil {
@@ -103,6 +99,19 @@ func (a *Adapter) Sync() error {
 	var opened []*pluginruntime.Loaded
 	for _, snapshot := range snapshots {
 		if !snapshot.Enabled {
+			continue
+		}
+		enabled, capabilityErr := a.lifecycle.HasEnabledCapability(
+			snapshot.Name,
+			pluginruntime.CapabilityTool,
+		)
+		if capabilityErr != nil {
+			for _, value := range opened {
+				_ = value.Close()
+			}
+			return a.failClosedLocked(capabilityErr)
+		}
+		if !enabled {
 			continue
 		}
 		identity := lifecycleIdentity{
@@ -152,6 +161,7 @@ func (a *Adapter) Sync() error {
 	}
 	a.active = nextActive
 	a.lastErr = nil
+	a.refreshPending = false
 	return nil
 }
 
@@ -173,6 +183,17 @@ func (a *Adapter) LastError() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.lastErr
+}
+
+// RefreshPending reports a watcher-observed source change. Watchers never
+// mutate runtime authority; the runtime consumes this signal through Sync.
+func (a *Adapter) RefreshPending() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.refreshPending
 }
 
 func (a *Adapter) Close() error {

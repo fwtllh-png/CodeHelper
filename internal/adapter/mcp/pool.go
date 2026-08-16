@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -16,6 +17,7 @@ type CatalogEntry struct {
 	Tool       Tool
 	Binding    ToolBinding
 	Connection *Connection
+	Authority  func(context.Context) error
 }
 
 type ResourceCatalogEntry struct {
@@ -233,6 +235,7 @@ func (p *Pool) connectServer(
 			Server: name, RemoteName: discovered.Name,
 			ModelName: ModelToolName(name, discovered.Name),
 			Tool:      discovered, Binding: binding, Connection: connection,
+			Authority: server.Authority,
 		})
 	}
 	for configuredName := range server.Tools {
@@ -570,6 +573,48 @@ func (p *Pool) ServerNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// RemoveServerPrefix atomically removes one namespaced capability source and
+// closes only its connections. A later explicit Reload may restore it.
+func (p *Pool) RemoveServerPrefix(
+	ctx context.Context,
+	prefix string,
+) error {
+	if p == nil || strings.TrimSpace(prefix) == "" {
+		return nil
+	}
+	p.lifecycle.Lock()
+	defer p.lifecycle.Unlock()
+	p.mu.Lock()
+	next := make(map[string]*serverRuntime, len(p.servers))
+	var removed []*Connection
+	for name, runtime := range p.servers {
+		if strings.HasPrefix(name, prefix) {
+			if runtime.connection != nil {
+				removed = append(removed, runtime.connection)
+			}
+			continue
+		}
+		next[name] = runtime
+	}
+	connections, catalog, resources, templates, prompts :=
+		aggregateServerRuntimes(next)
+	p.servers = next
+	p.connections = connections
+	p.catalog = catalog
+	p.resources = resources
+	p.resourceTemplates = templates
+	p.prompts = prompts
+	p.hash = ""
+	p.invalidated = true
+	p.mu.Unlock()
+	p.emitCatalog()
+	var closeErr error
+	for _, connection := range removed {
+		closeErr = errors.Join(closeErr, connection.Close(ctx))
+	}
+	return closeErr
 }
 
 func (p *Pool) HealthSnapshots() []HealthSnapshot {

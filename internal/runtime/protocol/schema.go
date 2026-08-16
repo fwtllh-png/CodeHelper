@@ -109,6 +109,15 @@ func GenerateSchema() *Schema {
 	schema.Envelope["plan_transition_request"] = schemaOf(
 		reflect.TypeOf(&PlanTransitionRequest{}),
 	)
+	schema.Envelope["extension_control_operation"] = schemaOf(
+		reflect.TypeOf(&ExtensionControlOperation{}),
+	)
+	schema.Envelope["extension_control_result"] = schemaOf(
+		reflect.TypeOf(&ExtensionControlResult{}),
+	)
+	schema.Envelope["extension_control_event"] = schemaOf(
+		reflect.TypeOf(&ExtensionControlEvent{}),
+	)
 	return schema
 }
 

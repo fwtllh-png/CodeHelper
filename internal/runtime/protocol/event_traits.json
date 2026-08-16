@@ -14,6 +14,8 @@
   "command.execution": {"class":"audit","item_owner":"tool","durability":"retained","correlation":"call","terminal":false},
   "diagnostics.result": {"class":"evidence","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
   "extension.lifecycle": {"class":"audit","item_owner":"turn","durability":"retained","correlation":"extension","terminal":false},
+  "extension.control": {"class":"audit","item_owner":"operation","durability":"retained","correlation":"operation","terminal":false},
+  "hook.execution": {"class":"audit","item_owner":"tool","durability":"retained","correlation":"hook","terminal":false},
   "execution.bound": {"class":"orchestration","item_owner":"attempt","durability":"retained","correlation":"effect","terminal":false},
   "host.command": {"class":"interaction","item_owner":"turn","durability":"retained","correlation":"command","terminal":false},
   "input.required": {"class":"interaction","item_owner":"input","durability":"retained","correlation":"request","terminal":false},

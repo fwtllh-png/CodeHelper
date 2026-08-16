@@ -107,6 +107,7 @@ func TestDefaultBuildModuleOrder(t *testing.T) {
 		"builtin-tools",
 		"extension-tools",
 		"security",
+		"extension-plan",
 		"orchestration",
 		"agent",
 		"runtime",
@@ -353,7 +354,7 @@ func TestExtensionModulePublishesPartialOutputsForRollback(t *testing.T) {
 	state := &buildState{session: &Session{}}
 	state.config.execution.Tools = true
 	state.tools.registry = tool.NewRegistry(nil, nil)
-	module := extensionToolsModule{contributors: []extensionContributor{
+	module := extensionToolsModule{contributors: []extensionActivation{
 		testExtensionContributor{id: "created", fn: func(
 			*tool.Registry,
 		) (ContributionReceipt, error) {

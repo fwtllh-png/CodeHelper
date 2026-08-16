@@ -216,7 +216,7 @@ func (d *Distributor) ResolveAndStage(
 			"%w: plugin manifest digest does not match Registry", ErrDigestMismatch,
 		)
 	}
-	capabilityHash, err := HashCapabilities(manifest.Capabilities)
+	capabilityHash, err := ManifestCapabilityHash(manifest)
 	if err != nil {
 		return VerifiedRelease{}, err
 	}

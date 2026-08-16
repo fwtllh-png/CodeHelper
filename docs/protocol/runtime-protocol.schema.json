@@ -380,6 +380,8 @@
             "tool.catalog.changed",
             "mcp.health.changed",
             "extension.lifecycle",
+            "extension.control",
+            "hook.execution",
             "diagnostics.result",
             "turn.completed",
             "turn.failed",
@@ -444,6 +446,493 @@
         "thread_id",
         "turn_id",
         "version"
+      ],
+      "additionalProperties": false
+    },
+    "extension_control_event": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "projection": {
+          "type": "object",
+          "properties": {
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "authority_token": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "permission_digest": {
+                    "type": "string"
+                  },
+                  "source_digest": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "id",
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "changed_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "generation": {
+              "type": "integer"
+            },
+            "health": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "last_action": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "permissions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "publisher": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "trust": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "enabled",
+            "health",
+            "kind",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "receipt": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "digest",
+            "kind",
+            "occurred_at",
+            "operation_id",
+            "revision",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "sequence": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action",
+        "occurred_at",
+        "operation_id",
+        "receipt",
+        "sequence"
+      ],
+      "additionalProperties": false
+    },
+    "extension_control_operation": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "capability": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "version_value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "created_at",
+        "id",
+        "kind",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "extension_control_result": {
+      "type": "object",
+      "properties": {
+        "detail": {
+          "description": "arbitrary JSON"
+        },
+        "diagnostics": {
+          "type": "object",
+          "properties": {
+            "alerts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "type": "integer"
+                  },
+                  "last_seen_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "code",
+                  "count",
+                  "last_seen_at"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "committed": {
+                  "type": "integer"
+                },
+                "duplicates": {
+                  "type": "integer"
+                },
+                "failed": {
+                  "type": "integer"
+                },
+                "operations": {
+                  "type": "integer"
+                },
+                "revokes": {
+                  "type": "integer"
+                },
+                "subscriber_drops": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "committed",
+                "duplicates",
+                "failed",
+                "operations",
+                "revokes",
+                "subscriber_drops"
+              ],
+              "additionalProperties": false
+            },
+            "traces": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "duration_ms": {
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "occurred_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action",
+                  "duration_ms",
+                  "kind",
+                  "occurred_at",
+                  "operation_id",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "metrics"
+          ],
+          "additionalProperties": false
+        },
+        "duplicate": {
+          "type": "boolean"
+        },
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "authority_token": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "permission_digest": {
+                      "type": "string"
+                    },
+                    "source_digest": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "enabled",
+                    "id",
+                    "kind"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "changed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "generation": {
+                "type": "integer"
+              },
+              "health": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "last_action": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "publisher": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "trust": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "enabled",
+              "health",
+              "kind",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "receipt": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "occurred_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "digest",
+            "kind",
+            "occurred_at",
+            "operation_id",
+            "revision",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "receipts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "occurred_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "operation_id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "digest",
+              "kind",
+              "occurred_at",
+              "operation_id",
+              "revision",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "revision": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operation_id",
+        "revision"
       ],
       "additionalProperties": false
     },
@@ -3352,6 +3841,52 @@
       ],
       "additionalProperties": false
     },
+    "extension.control": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "capability": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        },
+        "version_value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "digest",
+        "kind",
+        "occurred_at",
+        "operation_id",
+        "revision",
+        "status"
+      ],
+      "additionalProperties": false
+    },
     "extension.lifecycle": {
       "type": "object",
       "properties": {
@@ -3404,6 +3939,81 @@
         "source",
         "trust",
         "version"
+      ],
+      "additionalProperties": false
+    },
+    "hook.execution": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "canceled": {
+          "type": "boolean"
+        },
+        "duration_ms": {
+          "type": "integer"
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "hook_event": {
+          "type": "string"
+        },
+        "hook_id": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "stderr_bytes": {
+          "type": "integer"
+        },
+        "stderr_truncated": {
+          "type": "boolean"
+        },
+        "stdout_bytes": {
+          "type": "integer"
+        },
+        "stdout_truncated": {
+          "type": "boolean"
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "trust": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "duration_ms",
+        "exit_code",
+        "hook_event",
+        "hook_id",
+        "mode",
+        "occurred_at",
+        "outcome",
+        "scope",
+        "source",
+        "stderr_bytes",
+        "stdout_bytes",
+        "trust"
       ],
       "additionalProperties": false
     },
@@ -6337,11 +6947,25 @@
       "correlation": "effect",
       "terminal": false
     },
+    "extension.control": {
+      "class": "audit",
+      "item_owner": "operation",
+      "durability": "retained",
+      "correlation": "operation",
+      "terminal": false
+    },
     "extension.lifecycle": {
       "class": "audit",
       "item_owner": "turn",
       "durability": "retained",
       "correlation": "extension",
+      "terminal": false
+    },
+    "hook.execution": {
+      "class": "audit",
+      "item_owner": "tool",
+      "durability": "retained",
+      "correlation": "hook",
       "terminal": false
     },
     "host.command": {

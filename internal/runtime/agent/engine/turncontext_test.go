@@ -12,6 +12,7 @@ import (
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -68,6 +69,81 @@ func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	security.Repository[0].Action = policy.ActionDeny
 	if snapshot.Policy.Repository[0].Action != policy.ActionAsk {
 		t.Fatal("repository slice must be copied")
+	}
+}
+
+func TestSnapshotTurnSpecFreezesExtensionPlan(t *testing.T) {
+	source := runtimeextension.SourceRef{
+		Kind: runtimeextension.SourceBuiltin, ID: "builtin",
+		Priority: 10, Revision: 1, Digest: "source-one",
+	}
+	plan, err := (runtimeextension.Compiler{}).Compile(
+		[]runtimeextension.Candidate{{
+			ID: "builtin/memory", Kind: "builtin", Name: "memory",
+			Version: "builtin-v1", Digest: "memory-digest",
+			Generation: 1, Enabled: true, Source: source,
+		}},
+		"permission-one",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	options := Options{
+		Route: testRoute(t), Tools: registry,
+		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		TurnSnapshots: TurnSnapshotSources{
+			ExtensionPlan: func() (runtimeextension.Plan, error) {
+				return plan, nil
+			},
+		},
+	}
+	snapshot, err := SnapshotTurnSpec(
+		options,
+		TurnIdentity{SessionID: "session-1", TurnID: "turn-1", ProfileRevision: 1},
+		TurnRequest{Prompt: "inspect"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Extensions[0].Version = "mutated"
+	if snapshot.ExtensionPlan.Extensions[0].Version != "builtin-v1" {
+		t.Fatalf("turn plan followed source mutation: %+v", snapshot.ExtensionPlan)
+	}
+}
+
+func TestSnapshotTurnSpecSelectsSkillsFromFrozenPrompt(t *testing.T) {
+	options := Options{
+		Route: testRoute(t), Tools: tool.NewRegistry(nil, nil),
+		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+	}
+	options.TurnSnapshots.SkillSelection = func(
+		query string,
+	) ([]SkillSummary, SkillSelectionMetrics, error) {
+		if query != "review this change" {
+			t.Fatalf("selection query = %q", query)
+		}
+		return []SkillSummary{{
+				Name: "code-review", Description: "Review code.",
+				Handle: "skh_handle", PackageHandle: "skp_package",
+				ResourceHandle: "skr_resource",
+			}}, SkillSelectionMetrics{
+				Method: "weighted_lexical_v1", CatalogSize: 1000,
+				CandidateSize: 1, VisibleSize: 1, TokenSavings: 0.99,
+			}, nil
+	}
+	spec, err := SnapshotTurnSpec(
+		options,
+		TurnIdentity{SessionID: "session", TurnID: "turn", ProfileRevision: 1},
+		TurnRequest{Prompt: "review this change"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spec.Skills) != 1 || spec.Skills[0].Name != "code-review" ||
+		spec.SkillSelection.CatalogSize != 1000 ||
+		spec.SkillSelection.TokenSavings != 0.99 {
+		t.Fatalf("skill selection snapshot = %+v %+v", spec.Skills, spec.SkillSelection)
 	}
 }
 

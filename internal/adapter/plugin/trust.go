@@ -70,6 +70,30 @@ func Review(
 	}, nil
 }
 
+func ReviewManifest(
+	bundleRoot string,
+	manifest Manifest,
+	now time.Time,
+) (Receipt, error) {
+	if manifest.Generation == 0 {
+		return Receipt{}, errors.New("plugin generation must be positive")
+	}
+	contentHash, err := HashBundle(bundleRoot)
+	if err != nil {
+		return Receipt{}, err
+	}
+	capabilityHash, err := ManifestCapabilityHash(manifest)
+	if err != nil {
+		return Receipt{}, err
+	}
+	return Receipt{
+		SchemaVersion: 1, ContentHash: contentHash,
+		CapabilityHash: capabilityHash, Generation: manifest.Generation,
+		ReviewedAt: now.UTC(), Trust: TrustUnsignedLocal,
+		Version: manifest.Version, Publisher: manifest.Publisher,
+	}, nil
+}
+
 func Verify(
 	bundleRoot string,
 	capabilities CapabilityInventory,
@@ -90,6 +114,37 @@ func Verify(
 		return err
 	}
 	capabilityHash, err := HashCapabilities(capabilities)
+	if err != nil {
+		return err
+	}
+	if !equalHash(contentHash, receipt.ContentHash) {
+		return errors.New("plugin content changed after review")
+	}
+	if !equalHash(capabilityHash, receipt.CapabilityHash) {
+		return errors.New("plugin capabilities changed after review")
+	}
+	return nil
+}
+
+func VerifyManifest(
+	bundleRoot string,
+	manifest Manifest,
+	receipt Receipt,
+) error {
+	if receipt.SchemaVersion != 1 ||
+		receipt.ContentHash == "" ||
+		receipt.CapabilityHash == "" ||
+		receipt.Generation == 0 {
+		return errors.New("plugin trust receipt is missing or unsupported")
+	}
+	if manifest.Generation != receipt.Generation {
+		return errors.New("plugin trust generation changed")
+	}
+	contentHash, err := HashBundle(bundleRoot)
+	if err != nil {
+		return err
+	}
+	capabilityHash, err := ManifestCapabilityHash(manifest)
 	if err != nil {
 		return err
 	}

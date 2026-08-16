@@ -8,6 +8,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -36,6 +37,13 @@ type TurnLimits struct {
 	Budget          Budget
 }
 
+type TurnSnapshotSources struct {
+	MCP            func() []MCPHealthSnapshot
+	ExtensionPlan  func() (runtimeextension.Plan, error)
+	Skills         func() []SkillSummary
+	SkillSelection func(string) ([]SkillSummary, SkillSelectionMetrics, error)
+}
+
 // TurnSpec is the complete immutable input for one Engine Scope. Host profile,
 // policy, route, catalog, and skill mutations apply only to the next Scope.
 type TurnSpec struct {
@@ -48,31 +56,49 @@ type TurnSpec struct {
 	// Route is the model this turn samples on. Freezing it with the mode is what
 	// keeps a mid-turn switch to plan from changing which model is already
 	// answering.
-	Route      model.ReadyRoute
-	Provider   string
-	Model      string
-	Mode       policy.Mode
-	Posture    policy.Permission
-	Workspace  string
-	Sandbox    string
-	Policy     *policy.Runtime
-	Kernel     turnkernel.Policy
-	Limits     TurnLimits
-	World      contextstore.WorldBaseline
-	Window     contextstore.WindowLedger
-	Catalog    tool.CatalogSnapshot
-	Skills     []SkillSummary
-	MCP        []MCPHealthSnapshot
-	Extensions []ExtensionSnapshot
+	Route          model.ReadyRoute
+	Provider       string
+	Model          string
+	Mode           policy.Mode
+	Posture        policy.Permission
+	Workspace      string
+	Sandbox        string
+	Policy         *policy.Runtime
+	Kernel         turnkernel.Policy
+	Limits         TurnLimits
+	World          contextstore.WorldBaseline
+	Window         contextstore.WindowLedger
+	Catalog        tool.CatalogSnapshot
+	Skills         []SkillSummary
+	SkillSelection SkillSelectionMetrics
+	MCP            []MCPHealthSnapshot
+	ExtensionPlan  runtimeextension.Plan
 }
 
 // SkillSummary is a turn-frozen skill catalog entry (N10).
 type SkillSummary struct {
-	Name        string
-	Description string
-	Source      string
-	Path        string
-	Plugin      string
+	Name           string
+	Description    string
+	Source         string
+	Path           string
+	Plugin         string
+	Handle         string
+	PackageHandle  string
+	ResourceHandle string
+}
+
+type SkillSelectionMetrics struct {
+	Method          string
+	CatalogSize     int
+	CandidateSize   int
+	VisibleSize     int
+	ExplicitMatches int
+	OriginalTokens  uint64
+	ProjectedTokens uint64
+	TokenSavings    float64
+	Recall          float64
+	Precision       float64
+	CacheHit        bool
 }
 
 // PurposeForMode is which route a turn in this mode samples on. Plan mode is the
@@ -174,18 +200,25 @@ func SnapshotTurnSpec(
 		},
 		Catalog: catalog,
 	}
-	if options.TurnSnapshots.Skills != nil {
+	if options.TurnSnapshots.SkillSelection != nil {
+		spec.Skills, spec.SkillSelection, err =
+			options.TurnSnapshots.SkillSelection(request.Prompt)
+		if err != nil {
+			return TurnSpec{}, fmt.Errorf("select turn skills: %w", err)
+		}
+		spec.Skills = append([]SkillSummary(nil), spec.Skills...)
+	} else if options.TurnSnapshots.Skills != nil {
 		spec.Skills = append([]SkillSummary(nil), options.TurnSnapshots.Skills()...)
 	}
 	if options.TurnSnapshots.MCP != nil {
 		spec.MCP = append([]MCPHealthSnapshot(nil), options.TurnSnapshots.MCP()...)
 	}
-	if options.TurnSnapshots.Extensions != nil {
-		spec.Extensions, err = options.TurnSnapshots.Extensions()
+	if options.TurnSnapshots.ExtensionPlan != nil {
+		spec.ExtensionPlan, err = options.TurnSnapshots.ExtensionPlan()
 		if err != nil {
-			return TurnSpec{}, fmt.Errorf("snapshot turn extensions: %w", err)
+			return TurnSpec{}, fmt.Errorf("snapshot turn extension plan: %w", err)
 		}
-		spec.Extensions = append([]ExtensionSnapshot(nil), spec.Extensions...)
+		spec.ExtensionPlan = spec.ExtensionPlan.Clone()
 	}
 	return spec, nil
 }

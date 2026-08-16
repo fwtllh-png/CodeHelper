@@ -25,6 +25,7 @@ const expectedViews = [
   "codehelper.agents",
   "codehelper.approvals",
   "codehelper.usage",
+  "codehelper.extensions",
 ] as const;
 const selectionCommands = [
   "codehelper.explainSelection",

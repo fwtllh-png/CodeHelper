@@ -177,7 +177,7 @@ func renderSkillWorld(values []SkillSummary) string {
 	})
 	var builder strings.Builder
 	builder.WriteString(
-		"Available skills (metadata only). Call load_skill with a name before following its instructions.\n",
+		"Selected skills (metadata only). Use load_skill by name or skills_read with the exact handles before following instructions. Use skills_list for more.\n",
 	)
 	for _, value := range values {
 		builder.WriteString("- name=")
@@ -191,6 +191,12 @@ func renderSkillWorld(values []SkillSummary) string {
 		builder.WriteString(strconv.Quote(description))
 		builder.WriteString(" source=")
 		builder.WriteString(strconv.Quote(value.Source))
+		builder.WriteString(" handle=")
+		builder.WriteString(strconv.Quote(value.Handle))
+		builder.WriteString(" package=")
+		builder.WriteString(strconv.Quote(value.PackageHandle))
+		builder.WriteString(" resource=")
+		builder.WriteString(strconv.Quote(value.ResourceHandle))
 		builder.WriteByte('\n')
 	}
 	return strings.TrimSuffix(builder.String(), "\n")

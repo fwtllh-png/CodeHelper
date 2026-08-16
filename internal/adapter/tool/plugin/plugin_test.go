@@ -68,6 +68,11 @@ func TestAdapterTracksDurableEnableReplaceDisableAndRevoke(t *testing.T) {
 	if err := control.Enable("fixture"); err != nil {
 		t.Fatal(err)
 	}
+	waitForRefreshPending(t, adapter)
+	assertToolRevoked(t, tools, name)
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	waitForToolOutput(t, tools, name, "v1")
 	before, err := tools.Snapshot()
 	if err != nil {
@@ -86,8 +91,14 @@ func TestAdapterTracksDurableEnableReplaceDisableAndRevoke(t *testing.T) {
 	if _, err := control.Trust("fixture"); err != nil {
 		t.Fatal(err)
 	}
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	waitForToolRevoked(t, tools, name)
 	if err := control.Enable("fixture"); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.Sync(); err != nil {
 		t.Fatal(err)
 	}
 	waitForToolOutput(t, tools, name, "v2")
@@ -109,12 +120,21 @@ func TestAdapterTracksDurableEnableReplaceDisableAndRevoke(t *testing.T) {
 	if err := control.Disable("fixture"); err != nil {
 		t.Fatal(err)
 	}
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	waitForToolRevoked(t, tools, name)
 	if err := control.Enable("fixture"); err != nil {
 		t.Fatal(err)
 	}
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	waitForToolOutput(t, tools, name, "v2")
 	if err := control.Revoke("fixture"); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.Sync(); err != nil {
 		t.Fatal(err)
 	}
 	waitForToolRevoked(t, tools, name)
@@ -154,6 +174,9 @@ func TestAdapterSwitchesSignedUpdateAndRollbackWhileOldExecutorDrains(t *testing
 	if _, err := control.Install(t.Context(), "fixture", "1.0.0"); err != nil {
 		t.Fatal(err)
 	}
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	waitForToolOutput(t, tools, name, "v1")
 	_, _, oldExecutor, err := tools.Resolve(name)
 	if err != nil {
@@ -178,6 +201,9 @@ func TestAdapterSwitchesSignedUpdateAndRollbackWhileOldExecutorDrains(t *testing
 	if _, err := control.Update(t.Context(), "fixture", "2.0.0"); err != nil {
 		t.Fatal(err)
 	}
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	waitForToolOutput(t, tools, name, "v2")
 	oldCall := <-oldDone
 	if oldCall.err != nil || strings.TrimSpace(oldCall.result.Content) != "v1" {
@@ -195,6 +221,9 @@ func TestAdapterSwitchesSignedUpdateAndRollbackWhileOldExecutorDrains(t *testing
 	if _, err := control.Rollback("fixture"); err != nil {
 		t.Fatal(err)
 	}
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	waitForToolOutput(t, tools, name, "v1")
 	_, _, rollbackExecutor, err := tools.Resolve(name)
 	if err != nil {
@@ -209,6 +238,9 @@ func TestAdapterSwitchesSignedUpdateAndRollbackWhileOldExecutorDrains(t *testing
 	}()
 	time.Sleep(50 * time.Millisecond)
 	if err := control.SecurityRevoke("fixture"); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.Sync(); err != nil {
 		t.Fatal(err)
 	}
 	waitForToolRevoked(t, tools, name)
@@ -295,6 +327,18 @@ func waitForToolOutput(
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("tool %q did not produce %q; adapter error = %v", name, expected, nil)
+}
+
+func waitForRefreshPending(t *testing.T, adapter *Adapter) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if adapter.RefreshPending() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("plugin watcher did not request a refresh operation")
 }
 
 func waitForToolRevoked(t *testing.T, registry *tool.Registry, name string) {

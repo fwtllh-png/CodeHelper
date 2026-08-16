@@ -174,9 +174,8 @@ func (r *Registry) Trust(name string) (Receipt, error) {
 	if candidate.Trust == TrustSignedRegistry {
 		return Receipt{}, errors.New("Registry-signed plugin does not use manual trust")
 	}
-	receipt, err := Review(
-		candidate.Directory, candidate.Manifest.Capabilities,
-		candidate.Manifest.Generation, r.config.Now(),
+	receipt, err := ReviewManifest(
+		candidate.Directory, candidate.Manifest, r.config.Now(),
 	)
 	if err != nil {
 		return Receipt{}, err
@@ -190,6 +189,7 @@ func (r *Registry) Trust(name string) (Receipt, error) {
 	}
 	r.revokeLocked(name, "plugin trust changed")
 	err = r.state.Update(func(state *PersistentState) error {
+		delete(state.SecurityRevocations, name)
 		state.Plugins[name] = PluginState{
 			Receipt: receipt, Source: candidate.Root,
 			StagedHash: staged.ContentHash, Enabled: false,
@@ -253,6 +253,7 @@ func (r *Registry) install(
 	}
 	var activated ActivationRecord
 	err = r.state.Update(func(state *PersistentState) error {
+		delete(state.SecurityRevocations, name)
 		record, exists := state.Plugins[name]
 		if exists && record.Activation == nil {
 			return errors.New("local plugin state conflicts with Registry install")
@@ -343,7 +344,34 @@ func (r *Registry) Rollback(name string) (ActivationRecord, error) {
 // SecurityRevoke removes durable trust and immediately cancels all in-flight
 // calls. It is deliberately stronger than normal update and rollback.
 func (r *Registry) SecurityRevoke(name string) error {
-	return r.Revoke(name)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.ready(); err != nil {
+		return err
+	}
+	if err := validatePluginName(name); err != nil {
+		return err
+	}
+	err := r.state.Update(func(state *PersistentState) error {
+		record, ok := state.Plugins[name]
+		if !ok {
+			return errors.New("plugin is not trusted")
+		}
+		generation := record.Receipt.Generation
+		if generation == 0 {
+			generation = 1
+		}
+		delete(state.Plugins, name)
+		if state.SecurityRevocations == nil {
+			state.SecurityRevocations = make(map[string]uint64)
+		}
+		state.SecurityRevocations[name] = generation
+		return nil
+	})
+	if err == nil {
+		r.revokeLocked(name, "plugin security revoked")
+	}
+	return err
 }
 
 // Enable verifies current discovery against trust, stages it, and enables it.
@@ -363,9 +391,8 @@ func (r *Registry) Enable(name string) error {
 		if !ok {
 			return errors.New("plugin is not trusted")
 		}
-		if err := Verify(
-			candidate.Directory, candidate.Manifest.Capabilities,
-			candidate.Manifest.Generation, record.Receipt,
+		if err := VerifyManifest(
+			candidate.Directory, candidate.Manifest, record.Receipt,
 		); err != nil {
 			delete(state.Plugins, name)
 			invalidated = fmt.Errorf("plugin trust invalidated: %w", err)
@@ -417,6 +444,217 @@ func (r *Registry) Disable(name string) error {
 	return err
 }
 
+func (r *Registry) EnableCapability(name, capability string) error {
+	return r.setCapabilityEnabled(name, capability, true)
+}
+
+func (r *Registry) DisableCapability(name, capability string) error {
+	return r.setCapabilityEnabled(name, capability, false)
+}
+
+func (r *Registry) setCapabilityEnabled(
+	name, capability string,
+	enabled bool,
+) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.ready(); err != nil {
+		return err
+	}
+	if err := validatePluginName(capability); err != nil {
+		return fmt.Errorf("plugin capability: %w", err)
+	}
+	candidate, err := r.candidate(name)
+	if err != nil {
+		return err
+	}
+	snapshot, err := r.state.Read()
+	if err != nil {
+		return err
+	}
+	record, ok := snapshot.Plugins[name]
+	if !ok {
+		return errors.New("plugin is not trusted")
+	}
+	bundle, err := verifiedCapabilityBundle(candidate, record)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, value := range bundle.Capabilities {
+		found = found || value.ID == capability
+	}
+	if !found {
+		return errors.New("plugin capability was not discovered")
+	}
+	err = r.state.Update(func(state *PersistentState) error {
+		record, ok := state.Plugins[name]
+		if !ok {
+			return errors.New("plugin is not trusted")
+		}
+		if record.DisabledCapabilities == nil {
+			record.DisabledCapabilities = make(map[string]bool)
+		}
+		if enabled {
+			delete(record.DisabledCapabilities, capability)
+		} else {
+			record.DisabledCapabilities[capability] = true
+		}
+		state.Plugins[name] = record
+		return nil
+	})
+	return err
+}
+
+func (r *Registry) CapabilityBundles(
+	ctx context.Context,
+) ([]CompiledBundle, error) {
+	if ctx == nil {
+		return nil, errors.New("plugin capability context is required")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.ready(); err != nil {
+		return nil, err
+	}
+	state, err := r.state.Read()
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(state.Plugins))
+	for name, record := range state.Plugins {
+		if record.Enabled {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	result := make([]CompiledBundle, 0, len(names))
+	for _, name := range names {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		candidate, err := r.candidate(name)
+		if err != nil {
+			return nil, err
+		}
+		bundle, err := verifiedCapabilityBundle(candidate, state.Plugins[name])
+		if err != nil {
+			return nil, err
+		}
+		applyCapabilityState(&bundle, state.Plugins[name])
+		result = append(result, bundle)
+	}
+	return result, nil
+}
+
+func (r *Registry) HasEnabledCapability(
+	name string,
+	kind CapabilityKind,
+) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.ready(); err != nil {
+		return false, err
+	}
+	state, err := r.state.Read()
+	if err != nil {
+		return false, err
+	}
+	record, ok := state.Plugins[name]
+	if !ok || !record.Enabled {
+		return false, nil
+	}
+	candidate, err := r.candidate(name)
+	if err != nil {
+		return false, err
+	}
+	bundle, err := verifiedCapabilityBundle(candidate, record)
+	if err != nil {
+		return false, err
+	}
+	applyCapabilityState(&bundle, record)
+	for _, capability := range bundle.Capabilities {
+		if capability.Kind == kind && capability.Enabled {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *Registry) VerifyCapabilityToken(
+	ctx context.Context,
+	pluginName string,
+	generation uint64,
+	token string,
+) error {
+	if ctx == nil {
+		return errors.New("plugin capability context is required")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.ready(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	state, err := r.state.Read()
+	if err != nil {
+		return err
+	}
+	record, ok := state.Plugins[pluginName]
+	if !ok || !record.Enabled {
+		return errors.New("plugin capability authority is disabled")
+	}
+	candidate, err := r.candidate(pluginName)
+	if err != nil {
+		return err
+	}
+	bundle, err := verifiedCapabilityBundle(candidate, record)
+	if err != nil {
+		return err
+	}
+	applyCapabilityState(&bundle, record)
+	for _, capability := range bundle.Capabilities {
+		if capability.Enabled &&
+			capability.Authority.Generation == generation &&
+			equalHash(capability.Authority.Token, token) {
+			return nil
+		}
+	}
+	return errors.New("plugin capability authority is stale or disabled")
+}
+
+func applyCapabilityState(bundle *CompiledBundle, record PluginState) {
+	if bundle == nil {
+		return
+	}
+	for index := range bundle.Capabilities {
+		if record.DisabledCapabilities[bundle.Capabilities[index].ID] {
+			bundle.Capabilities[index].Enabled = false
+		}
+	}
+}
+
+func verifiedCapabilityBundle(
+	candidate Candidate,
+	record PluginState,
+) (CompiledBundle, error) {
+	if err := VerifyManifest(
+		candidate.Directory,
+		candidate.Manifest,
+		record.Receipt,
+	); err != nil {
+		return CompiledBundle{}, err
+	}
+	bundle, err := CompileCapabilityBundle(candidate.Directory, candidate.Manifest)
+	if err != nil {
+		return CompiledBundle{}, err
+	}
+	bundle.Trust = record.Receipt.Trust
+	return bundle, nil
+}
+
 // Revoke removes trust and immediately revokes runtime authority.
 func (r *Registry) Revoke(name string) error {
 	r.mu.Lock()
@@ -429,12 +667,31 @@ func (r *Registry) Revoke(name string) error {
 	}
 	err := r.state.Update(func(state *PersistentState) error {
 		delete(state.Plugins, name)
+		delete(state.SecurityRevocations, name)
 		return nil
 	})
 	if err == nil {
 		r.revokeLocked(name, "plugin trust revoked")
 	}
 	return err
+}
+
+// SecurityRevocations returns durable revoke fences for runtime reconciliation.
+func (r *Registry) SecurityRevocations() (map[string]uint64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.ready(); err != nil {
+		return nil, err
+	}
+	state, err := r.state.Read()
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]uint64, len(state.SecurityRevocations))
+	for name, generation := range state.SecurityRevocations {
+		result[name] = generation
+	}
+	return result, nil
 }
 
 // Reload reconciles all persisted records with deterministic discovery.
@@ -472,9 +729,8 @@ func (r *Registry) Reload() error {
 				delete(state.Plugins, name)
 				continue
 			}
-			if err := Verify(
-				candidate.Directory, candidate.Manifest.Capabilities,
-				candidate.Manifest.Generation, record.Receipt,
+			if err := VerifyManifest(
+				candidate.Directory, candidate.Manifest, record.Receipt,
 			); err != nil {
 				delete(state.Plugins, name)
 				continue
@@ -518,9 +774,22 @@ func (r *Registry) Load(name string) (*Loaded, error) {
 		r.invalidateLocked(name, "plugin discovery changed")
 		return nil, err
 	}
-	if err := Verify(
-		candidate.Directory, candidate.Manifest.Capabilities,
-		candidate.Manifest.Generation, record.Receipt,
+	bundle, err := CompileCapabilityBundle(candidate.Directory, candidate.Manifest)
+	if err != nil {
+		r.invalidateLocked(name, "plugin capability bundle drifted")
+		return nil, err
+	}
+	applyCapabilityState(&bundle, record)
+	toolEnabled := false
+	for _, capability := range bundle.Capabilities {
+		toolEnabled = toolEnabled ||
+			(capability.Kind == CapabilityTool && capability.Enabled)
+	}
+	if !toolEnabled {
+		return nil, errors.New("plugin tool capability is disabled or missing")
+	}
+	if err := VerifyManifest(
+		candidate.Directory, candidate.Manifest, record.Receipt,
 	); err != nil {
 		r.invalidateLocked(name, "plugin trust drifted")
 		return nil, fmt.Errorf("plugin trust invalidated: %w", err)
@@ -772,7 +1041,7 @@ func (r *Registry) signedCandidate(record PluginState) (Candidate, error) {
 			"%w: installed plugin manifest digest changed", ErrDigestMismatch,
 		)
 	}
-	capabilityHash, err := HashCapabilities(manifest.Capabilities)
+	capabilityHash, err := ManifestCapabilityHash(manifest)
 	if err != nil || !equalHash(capabilityHash, active.CapabilitySHA256) {
 		return Candidate{}, fmt.Errorf(
 			"%w: installed plugin capabilities changed", ErrDigestMismatch,

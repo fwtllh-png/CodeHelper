@@ -28,6 +28,10 @@ import { registerDiagnosticActions } from "./diagnostics/actions.js";
 import { ChangesView, unavailableChangesView } from "./edits/changes.js";
 import { EditPlanPreview } from "./edits/preview.js";
 import {
+  ExtensionView,
+  unavailableExtensionView,
+} from "./extensions/view.js";
+import {
   autoStartEnabled,
   WorkspaceRuntimeRegistry,
 } from "./workspace/registry.js";
@@ -181,6 +185,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
         output,
       ),
       new BackgroundViews(registry, output),
+      new ExtensionView(registry),
       vscode.window.registerWebviewViewProvider("codehelper.chat", chat, {
         webviewOptions: { retainContextWhenHidden: true },
       }),
@@ -190,6 +195,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
     context.subscriptions.push(
       unavailableChangesView(message),
       unavailableBackgroundViews(message),
+      unavailableExtensionView(message),
       vscode.window.registerWebviewViewProvider(
         "codehelper.chat",
         new UnavailableChatViewProvider(message),
@@ -199,6 +205,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
     context.subscriptions.push(
       unavailableChangesView("Open a folder to review CodeHelper changes."),
       unavailableBackgroundViews("Open a folder to start CodeHelper."),
+      unavailableExtensionView("Open a folder to inspect CodeHelper extensions."),
       vscode.window.registerWebviewViewProvider(
         "codehelper.chat",
         new UnavailableChatViewProvider("Open a folder to start CodeHelper."),

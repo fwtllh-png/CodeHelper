@@ -121,10 +121,38 @@ type AuditSink interface {
 	Record(context.Context, AuditRecord)
 }
 
+type auditEmitterKey struct{}
+
+// WithAuditEmitter binds a turn-owned, content-safe audit projection without
+// giving the Hook adapter direct access to Runtime persistence.
+func WithAuditEmitter(
+	ctx context.Context,
+	emit func(AuditRecord),
+) context.Context {
+	if ctx == nil || emit == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, auditEmitterKey{}, emit)
+}
+
+func emitContextAudit(ctx context.Context, record AuditRecord) {
+	if ctx == nil {
+		return
+	}
+	emit, _ := ctx.Value(auditEmitterKey{}).(func(AuditRecord))
+	if emit != nil {
+		emit(record)
+	}
+}
+
 type AuditRecord struct {
 	Time            time.Time     `json:"time"`
 	Event           Event         `json:"event"`
 	HookID          string        `json:"hook_id"`
+	Source          Source        `json:"source"`
+	Trust           Trust         `json:"trust"`
+	Scope           Scope         `json:"scope"`
+	Mode            Mode          `json:"mode"`
 	Outcome         string        `json:"outcome"`
 	Action          Action        `json:"action,omitempty"`
 	ErrorCode       string        `json:"error_code,omitempty"`

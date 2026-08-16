@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "stage": "EE6",
+  "status": "accepted",
+  "contracts": {
+    "runtime_owned_control_plane": true,
+    "protocol_operations_results_events": true,
+    "durable_operation_journal": true,
+    "prepared_commit_reconciliation": true,
+    "operation_id_idempotency": true,
+    "conflicting_payload_fails_closed": true,
+    "event_replay_rebuilds_projection": true,
+    "slow_subscriber_non_blocking": true,
+    "receipt_queries": true
+  },
+  "host_parity": {
+    "cli": true,
+    "tui": true,
+    "vscode": true,
+    "acp": true,
+    "shared_projection_contract": true,
+    "cli_plugin_skill_adapter_imports": 0
+  },
+  "persistence": {
+    "atomic_rename_and_fsync": true,
+    "symlink_rejected": true,
+    "restart_idempotency": true,
+    "prepared_operation_never_reexecutes": true,
+    "maximum_operations": 4096
+  },
+  "protocol": {
+    "event_kind": "extension.control",
+    "event_class": "audit",
+    "durability": "retained",
+    "acp_methods": [
+      "extension/list",
+      "extension/control"
+    ],
+    "generated_schema_current": true,
+    "generated_types_current": true
+  },
+  "validation": {
+    "focused_go_tests": "passed",
+    "race": "passed",
+    "acp_binary_interop": "passed",
+    "vscode_protocol_check": "passed",
+    "vscode_extension_projection": "passed",
+    "ee0_golden": "sha256:ffaf761c814b7d8b59089b014233fb8090e6dafd40609e5327f2a202f30af62a",
+    "architecture_targets": "103/103",
+    "git_diff_check": "passed"
+  },
+  "artifacts": {
+    "baseline_report": ".tmp/extension-ecosystem/ee7-report.json",
+    "architecture_report": ".tmp/architecture/metrics.json"
+  },
+  "commands": {
+    "stage": "make extension-ecosystem-ee6",
+    "protocol": "make protocol-schema",
+    "architecture": "make architecture-ratchet"
+  }
+}

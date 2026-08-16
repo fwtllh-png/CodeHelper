@@ -110,7 +110,7 @@ func (s *Scope) Spec() TurnSpec {
 	spec.Window = contextstore.CloneWindowLedger(spec.Window)
 	spec.Skills = append([]SkillSummary(nil), spec.Skills...)
 	spec.MCP = append([]MCPHealthSnapshot(nil), spec.MCP...)
-	spec.Extensions = append([]ExtensionSnapshot(nil), spec.Extensions...)
+	spec.ExtensionPlan = spec.ExtensionPlan.Clone()
 	return spec
 }
 

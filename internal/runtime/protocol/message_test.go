@@ -401,6 +401,12 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 			Digest: strings.Repeat("a", 64), Generation: 2, Enabled: true,
 			ChangedAt: time.Now().UTC(),
 		},
+		&HookExecutionData{
+			HookEvent: "ToolCallBefore", HookID: "review-observer",
+			Source: "plugin", Trust: "workspace", Scope: "turn",
+			Mode: "observe", Outcome: "observed", ExitCode: 0,
+			DurationMS: 2, StdoutBytes: 32, OccurredAt: time.Now().UTC(),
+		},
 		&DiagnosticsData{
 			Tool: "file_edit", CallID: "call_1",
 			Receipts: []DiagnosticReceipt{{

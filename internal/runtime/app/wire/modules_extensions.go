@@ -9,21 +9,13 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
-// ContributionReceipt is the deterministic construction record for one
-// extension contributor. It contains identities only, never runtime services.
-type ContributionReceipt struct {
-	Contributor string
-	Tools       []string
-	Outputs     []string
-}
-
-type extensionContributor interface {
+type extensionActivation interface {
 	ID() string
 	Contribute(context.Context, *tool.Registry) (ContributionReceipt, error)
 }
 
 type extensionToolsModule struct {
-	contributors []extensionContributor
+	contributors []extensionActivation
 }
 
 func newExtensionToolsModule() extensionToolsModule {
@@ -55,7 +47,7 @@ func (m extensionToolsModule) Build(
 func contributeExtensions(
 	ctx context.Context,
 	registry *tool.Registry,
-	contributors []extensionContributor,
+	contributors []extensionActivation,
 ) ([]ContributionReceipt, error) {
 	seen := make(map[string]struct{}, len(contributors))
 	receipts := make([]ContributionReceipt, 0, len(contributors))

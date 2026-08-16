@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,7 +19,9 @@ type MCPPrewarm struct {
 	pool        *mcpruntime.Pool
 	adapter     *mcptool.Adapter
 	registry    *tool.Registry
-	configPath  string
+	loadConfig  func() (mcpruntime.Config, error)
+	configMu    sync.Mutex
+	blocked     map[string]bool
 	cancel      context.CancelFunc
 	unsubscribe func()
 	done        sync.WaitGroup
@@ -26,8 +29,54 @@ type MCPPrewarm struct {
 
 func NewMCPPrewarm(pool *mcpruntime.Pool, configPath string) *MCPPrewarm {
 	return &MCPPrewarm{
-		ch: make(chan struct{}, 1), pool: pool, configPath: configPath,
+		ch: make(chan struct{}, 1), pool: pool,
+		blocked: make(map[string]bool),
+		loadConfig: func() (mcpruntime.Config, error) {
+			return mcpruntime.LoadConfig(configPath)
+		},
 	}
+}
+
+func NewMCPPrewarmConfig(
+	pool *mcpruntime.Pool,
+	config mcpruntime.Config,
+) *MCPPrewarm {
+	snapshot := mcpruntime.CloneConfig(config)
+	return &MCPPrewarm{
+		ch: make(chan struct{}, 1), pool: pool,
+		blocked: make(map[string]bool),
+		loadConfig: func() (mcpruntime.Config, error) {
+			return mcpruntime.CloneConfig(snapshot), nil
+		},
+	}
+}
+
+func (p *MCPPrewarm) SetServerPrefixEnabled(prefix string, enabled bool) {
+	if p == nil || prefix == "" {
+		return
+	}
+	p.configMu.Lock()
+	if p.blocked == nil {
+		p.blocked = make(map[string]bool)
+	}
+	if enabled {
+		delete(p.blocked, prefix)
+	} else {
+		p.blocked[prefix] = true
+	}
+	p.configMu.Unlock()
+	p.dirty.Store(true)
+}
+
+func (p *MCPPrewarm) DisableServerPrefix(
+	ctx context.Context,
+	prefix string,
+) error {
+	if p == nil || p.pool == nil {
+		return nil
+	}
+	p.SetServerPrefixEnabled(prefix, false)
+	return p.pool.RemoveServerPrefix(ctx, prefix)
 }
 
 func (p *MCPPrewarm) SetRegistry(registry *tool.Registry) {
@@ -151,17 +200,31 @@ func (p *MCPPrewarm) refreshIfDirty(ctx context.Context) error {
 	if !p.dirty.Swap(false) {
 		return nil
 	}
-	if p.pool == nil || p.configPath == "" {
+	if p.pool == nil || p.loadConfig == nil {
 		return nil
 	}
 	if err := p.ensureAdapter(); err != nil {
 		p.dirty.Store(true)
 		return err
 	}
-	config, err := mcpruntime.LoadConfig(p.configPath)
+	config, err := p.loadConfig()
 	if err != nil {
 		p.dirty.Store(true)
 		return err
+	}
+	p.configMu.Lock()
+	blocked := make(map[string]bool, len(p.blocked))
+	for prefix := range p.blocked {
+		blocked[prefix] = true
+	}
+	p.configMu.Unlock()
+	for name := range config.Servers {
+		for prefix := range blocked {
+			if strings.HasPrefix(name, prefix) {
+				delete(config.Servers, name)
+				break
+			}
+		}
 	}
 	if _, err := p.pool.Reload(ctx, config); err != nil {
 		p.dirty.Store(true)

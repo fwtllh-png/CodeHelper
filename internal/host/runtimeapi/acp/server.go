@@ -66,6 +66,7 @@ var methods = []string{
 	"session/tool/catalog",
 	"checkpoint/list", "checkpoint/get", "checkpoint/restore", "checkpoint/fork",
 	"turn/recover", "plan/get", "plan/implement", "shutdown",
+	"extension/list", "extension/control",
 }
 
 var dynamicMethods = []string{
@@ -81,6 +82,16 @@ type Dependencies struct {
 	Agents            *subagent.AgentControl
 	DynamicTools      *dynamictool.Manager
 	SessionWorkspaces app.SessionWorkspaceManager
+	Extensions        interface {
+		Submit(
+			context.Context,
+			protocol.ExtensionControlOperation,
+		) (protocol.ExtensionControlResult, error)
+		Snapshot(
+			context.Context,
+			protocol.ExtensionControlKind,
+		) (protocol.ExtensionControlResult, error)
+	}
 }
 
 type Options struct {
@@ -542,6 +553,10 @@ func (s *Server) dispatch(request rpcRequest) bool {
 		s.revokeDynamicTool(request)
 	case "tool/call/result":
 		s.completeDynamicCall(request)
+	case "extension/list":
+		s.extensionList(request)
+	case "extension/control":
+		s.extensionControl(request)
 	case "shutdown":
 		s.mu.Lock()
 		already := s.shutting
@@ -1409,6 +1424,53 @@ func (s *Server) sessionList(request rpcRequest) {
 			Limit:           params.Limit,
 		},
 	)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+type extensionListParams struct {
+	Kind protocol.ExtensionControlKind `json:"kind,omitempty"`
+}
+
+func (s *Server) extensionList(request rpcRequest) {
+	if s.dependencies.Extensions == nil {
+		s.replyError(request, &rpcError{
+			Code: codeUnavailable, Message: "extension control is unavailable",
+		})
+		return
+	}
+	var params extensionListParams
+	if err := decodeParams(request.Params, &params); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	if params.Kind == "" {
+		params.Kind = protocol.ExtensionControlAll
+	}
+	result, err := s.dependencies.Extensions.Snapshot(s.ctx, params.Kind)
+	if err != nil {
+		s.replyApplicationError(request, err)
+		return
+	}
+	s.replyResult(request, result)
+}
+
+func (s *Server) extensionControl(request rpcRequest) {
+	if s.dependencies.Extensions == nil {
+		s.replyError(request, &rpcError{
+			Code: codeUnavailable, Message: "extension control is unavailable",
+		})
+		return
+	}
+	var operation protocol.ExtensionControlOperation
+	if err := decodeParams(request.Params, &operation); err != nil {
+		s.invalidParams(request, err)
+		return
+	}
+	result, err := s.dependencies.Extensions.Submit(s.ctx, operation)
 	if err != nil {
 		s.replyApplicationError(request, err)
 		return

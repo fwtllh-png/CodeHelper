@@ -31,6 +31,9 @@ LDFLAGS := -s -w \
 	security-governance-sg1 security-governance-sg2 security-governance-sg3 \
 	security-governance-sg4 security-governance-sg5 security-governance-sg6 \
 	security-governance-sg7 \
+	extension-ecosystem-ee0 extension-ecosystem-ee0-update extension-ecosystem-ee1 \
+	extension-ecosystem-ee2 extension-ecosystem-ee3 extension-ecosystem-ee4 \
+	extension-ecosystem-ee5 extension-ecosystem-ee6 extension-ecosystem-ee7 \
 	task-orchestration-or0 task-orchestration-or1 task-orchestration-or2 \
 	task-orchestration-or3 task-orchestration-or4 task-orchestration-or5 \
 	task-orchestration-or6 task-orchestration-or7 \
@@ -72,6 +75,8 @@ TOOL_EXECUTION_BASELINE := docs/tool-execution-ex0-baseline.json
 TOOL_EXECUTION_REPORT ?= .tmp/tool-execution/ex0-report.json
 SECURITY_GOVERNANCE_BASELINE := docs/security-governance-sg0-baseline.json
 SECURITY_GOVERNANCE_REPORT ?= .tmp/security-governance/sg0-report.json
+EXTENSION_ECOSYSTEM_BASELINE := docs/extension-ecosystem-ee0-baseline.json
+EXTENSION_ECOSYSTEM_REPORT ?= .tmp/extension-ecosystem/ee0-report.json
 TASK_ORCHESTRATION_BASELINE := docs/task-orchestration-or0-scheduler-baseline.json
 TASK_ORCHESTRATION_REPORT ?= .tmp/task-orchestration/or0-scheduler-report.json
 
@@ -499,6 +504,204 @@ security-governance-sg0-update:
 	$(GO) run ./scripts/securitygovernancebaseline -root . \
 		-baseline '$(SECURITY_GOVERNANCE_BASELINE)' \
 		-write-baseline
+
+extension-ecosystem-ee0:
+	$(GO) test -count=1 ./scripts/extensionecosystembaseline
+	$(GO) run ./scripts/extensionecosystembaseline -root . \
+		-baseline '$(EXTENSION_ECOSYSTEM_BASELINE)' \
+		-report '$(EXTENSION_ECOSYSTEM_REPORT)'
+	$(GO) test -count=1 \
+		./internal/adapter/plugin \
+		./internal/adapter/skill \
+		./internal/adapter/hooks \
+		./internal/adapter/mcp \
+		./internal/adapter/tool/mcp \
+		./internal/runtime/app/wire
+
+extension-ecosystem-ee0-update:
+	$(GO) run ./scripts/extensionecosystembaseline -root . \
+		-baseline '$(EXTENSION_ECOSYSTEM_BASELINE)' \
+		-write-baseline
+
+extension-ecosystem-ee1: extension-ecosystem-ee0
+	$(GO) test -count=1 \
+		./internal/runtime/extension/... \
+		./internal/adapter/extension/memory \
+		./internal/adapter/tool/memory \
+		./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/runtime/extension/... \
+		./internal/adapter/extension/memory \
+		./internal/adapter/tool/memory \
+		./internal/runtime/app/wire
+	$(GO) vet \
+		./internal/runtime/extension/... \
+		./internal/adapter/extension/memory \
+		./internal/adapter/tool/memory \
+		./internal/runtime/app/wire
+	$(MAKE) architecture-ratchet
+
+extension-ecosystem-ee2: extension-ecosystem-ee1
+	$(GO) test -count=1 \
+		./internal/runtime/extension/... \
+		./internal/runtime/app/extension \
+		./internal/persist/extensionplan \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/runtime/extension/... \
+		./internal/runtime/app/extension \
+		./internal/persist/extensionplan \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app/wire
+	$(GO) vet \
+		./internal/runtime/extension/... \
+		./internal/runtime/app/extension \
+		./internal/persist/extensionplan \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app/wire
+	$(MAKE) architecture-ratchet
+
+extension-ecosystem-ee3: extension-ecosystem-ee2
+	$(GO) test -count=1 \
+		./internal/adapter/plugin \
+		./internal/adapter/extension/plugin \
+		./internal/adapter/skill \
+		./internal/adapter/mcp \
+		./internal/adapter/tool/plugin \
+		./internal/runtime/app/extension \
+		./internal/runtime/app/wire \
+		./internal/host/cli
+	$(GO) test -race -count=1 \
+		./internal/adapter/plugin \
+		./internal/adapter/extension/plugin \
+		./internal/adapter/skill \
+		./internal/adapter/mcp \
+		./internal/adapter/tool/plugin \
+		./internal/runtime/app/extension \
+		./internal/runtime/app/wire \
+		./internal/host/cli
+	$(GO) vet \
+		./internal/adapter/plugin \
+		./internal/adapter/extension/plugin \
+		./internal/adapter/skill \
+		./internal/adapter/mcp \
+		./internal/adapter/tool/plugin \
+		./internal/runtime/app/extension \
+		./internal/runtime/app/wire \
+		./internal/host/cli
+	$(MAKE) architecture-ratchet
+
+extension-ecosystem-ee4: extension-ecosystem-ee3
+	$(GO) test -count=1 \
+		./internal/runtime/extension/... \
+		./internal/runtime/app/extension \
+		./internal/persist/extensionlifecycle \
+		./internal/adapter/plugin \
+		./internal/adapter/extension/plugin \
+		./internal/adapter/hooks \
+		./internal/adapter/mcp \
+		./internal/adapter/tool/mcp \
+		./internal/adapter/tool/plugin \
+		./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/runtime/extension/... \
+		./internal/runtime/app/extension \
+		./internal/persist/extensionlifecycle \
+		./internal/adapter/plugin \
+		./internal/adapter/extension/plugin \
+		./internal/adapter/hooks \
+		./internal/adapter/mcp \
+		./internal/adapter/tool/mcp \
+		./internal/adapter/tool/plugin \
+		./internal/runtime/app/wire
+	$(GO) vet \
+		./internal/runtime/extension/... \
+		./internal/runtime/app/extension \
+		./internal/persist/extensionlifecycle \
+		./internal/adapter/plugin \
+		./internal/adapter/extension/plugin \
+		./internal/adapter/hooks \
+		./internal/adapter/mcp \
+		./internal/adapter/tool/mcp \
+		./internal/adapter/tool/plugin \
+		./internal/runtime/app/wire
+	$(MAKE) architecture-ratchet
+
+extension-ecosystem-ee5: extension-ecosystem-ee4
+	$(GO) test -count=1 \
+		./internal/adapter/skill \
+		./internal/adapter/tool/skill \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app/wire \
+		./scripts/extensionecosystembaseline
+	$(GO) test -race -count=1 \
+		./internal/adapter/skill \
+		./internal/adapter/tool/skill \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app/wire
+	$(GO) vet \
+		./internal/adapter/skill \
+		./internal/adapter/tool/skill \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app/wire \
+		./scripts/extensionecosystembaseline
+	$(GO) run ./scripts/extensionecosystembaseline \
+		-root . \
+		-baseline docs/extension-ecosystem-ee0-baseline.json \
+		-report .tmp/extension-ecosystem/ee0-report.json
+	$(MAKE) context-authority
+	$(MAKE) token-bench \
+		TOKEN_BENCH_RUNS='$(TOKEN_BENCH_RUNS)' \
+		TOKEN_BENCH_ARTIFACT='.tmp/extension-ecosystem/ee5-token'
+	$(MAKE) architecture-ratchet
+
+extension-ecosystem-ee6: extension-ecosystem-ee5
+	$(GO) test -count=1 \
+		./internal/runtime/protocol \
+		./internal/persist/extensioncontrol \
+		./internal/runtime/app/extension \
+		./internal/runtime/app/wire \
+		./internal/host/cli \
+		./internal/host/tui \
+		./internal/host/runtimeapi/acp
+	$(GO) test -race -count=1 \
+		./internal/persist/extensioncontrol \
+		./internal/runtime/app/extension \
+		./internal/runtime/app/wire \
+		./internal/host/runtimeapi/acp
+	$(MAKE) protocol-schema
+	cd $(VSCODE_DIR) && $(NPM) run check && $(NPM) test -- extensions
+	$(MAKE) architecture-ratchet
+
+extension-ecosystem-ee7: extension-ecosystem-ee6
+	$(GO) test -count=1 \
+		./internal/adapter/hooks \
+		./internal/adapter/plugin \
+		./internal/adapter/extension/plugin \
+		./internal/adapter/mcp \
+		./internal/adapter/tool/mcp \
+		./internal/adapter/tool/plugin \
+		./internal/runtime/extension/... \
+		./internal/runtime/app/extension \
+		./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/adapter/hooks \
+		./internal/adapter/plugin \
+		./internal/runtime/app/extension \
+		./internal/runtime/app/wire
+	$(GO) vet \
+		./internal/adapter/hooks \
+		./internal/adapter/plugin \
+		./internal/persist/extensioncontrol \
+		./internal/runtime/app/extension \
+		./internal/runtime/app/wire
+	$(MAKE) sandbox-attack-test
+	$(MAKE) vscode-check
+	$(MAKE) vscode-test
+	$(MAKE) architecture-ratchet
+	$(MAKE) docs-check
+	$(MAKE) book-check
 
 security-governance-sg1: security-governance-sg0
 	$(GO) test -race -count=1 \

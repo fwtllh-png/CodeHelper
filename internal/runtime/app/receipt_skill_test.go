@@ -39,3 +39,28 @@ func TestReceiptRecordsResolvedSkillIdentity(t *testing.T) {
 		t.Fatalf("skills = %+v", receipt.Skills)
 	}
 }
+
+func TestReceiptRecordsSkillsReadInvocation(t *testing.T) {
+	recorder := newReceiptRecorder("review")
+	recorder.observe(agentengine.Event{
+		State: agentengine.RunningTools,
+		ToolCall: &provider.ToolCall{
+			ID: "call-1", Name: "skills_read", Arguments: `{"handle":"skh"}`,
+		},
+		Result: &tool.Result{
+			Content: "instructions",
+			Metadata: map[string]any{
+				"resolved_skills": []skillruntime.ResolvedSkill{{
+					Name: "review", Version: "1.0.0",
+					Source: skillruntime.SourcePlugin, Plugin: "fixture",
+					Digest: strings.Repeat("c", 64), Locked: true,
+				}},
+			},
+		},
+	})
+	receipt := recorder.build(turnObservations{})
+	if len(receipt.Skills) != 1 || receipt.Skills[0].Name != "review" ||
+		receipt.Skills[0].Plugin != "fixture" {
+		t.Fatalf("skills = %+v", receipt.Skills)
+	}
+}

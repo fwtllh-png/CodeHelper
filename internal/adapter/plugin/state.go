@@ -23,20 +23,22 @@ const maxLifecycleReceipts = 64
 
 // PluginState is the durable trust and enablement record for one plugin.
 type PluginState struct {
-	Receipt    Receipt           `json:"receipt"`
-	Enabled    bool              `json:"enabled"`
-	Source     RootKind          `json:"source"`
-	StagedHash string            `json:"staged_hash,omitempty"`
-	Activation *ActivationRecord `json:"activation,omitempty"`
+	Receipt              Receipt           `json:"receipt"`
+	Enabled              bool              `json:"enabled"`
+	Source               RootKind          `json:"source"`
+	StagedHash           string            `json:"staged_hash,omitempty"`
+	Activation           *ActivationRecord `json:"activation,omitempty"`
+	DisabledCapabilities map[string]bool   `json:"disabled_capabilities,omitempty"`
 }
 
 func (s *PluginState) UnmarshalJSON(data []byte) error {
 	type wireState struct {
-		Receipt    *Receipt          `json:"receipt"`
-		Enabled    *bool             `json:"enabled"`
-		Source     *RootKind         `json:"source"`
-		StagedHash string            `json:"staged_hash,omitempty"`
-		Activation *ActivationRecord `json:"activation,omitempty"`
+		Receipt              *Receipt          `json:"receipt"`
+		Enabled              *bool             `json:"enabled"`
+		Source               *RootKind         `json:"source"`
+		StagedHash           string            `json:"staged_hash,omitempty"`
+		Activation           *ActivationRecord `json:"activation,omitempty"`
+		DisabledCapabilities map[string]bool   `json:"disabled_capabilities,omitempty"`
 	}
 	var wire wireState
 	if err := decodeStrict(data, &wire); err != nil {
@@ -48,16 +50,18 @@ func (s *PluginState) UnmarshalJSON(data []byte) error {
 	*s = PluginState{
 		Receipt: *wire.Receipt, Enabled: *wire.Enabled,
 		Source: *wire.Source, StagedHash: wire.StagedHash,
-		Activation: cloneActivation(wire.Activation),
+		Activation:           cloneActivation(wire.Activation),
+		DisabledCapabilities: cloneBoolMap(wire.DisabledCapabilities),
 	}
 	return nil
 }
 
 // PersistentState is the complete on-disk registry state.
 type PersistentState struct {
-	SchemaVersion     int                           `json:"schema_version"`
-	Plugins           map[string]PluginState        `json:"plugins"`
-	LifecycleReceipts map[string][]ActivationRecord `json:"lifecycle_receipts,omitempty"`
+	SchemaVersion       int                           `json:"schema_version"`
+	Plugins             map[string]PluginState        `json:"plugins"`
+	LifecycleReceipts   map[string][]ActivationRecord `json:"lifecycle_receipts,omitempty"`
+	SecurityRevocations map[string]uint64             `json:"security_revocations,omitempty"`
 }
 
 // StateStore serializes process and cross-process state transactions.
@@ -143,7 +147,8 @@ func (s *StateStore) readUnlocked() (PersistentState, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		return PersistentState{
 			SchemaVersion: stateSchemaV1, Plugins: make(map[string]PluginState),
-			LifecycleReceipts: make(map[string][]ActivationRecord),
+			LifecycleReceipts:   make(map[string][]ActivationRecord),
+			SecurityRevocations: make(map[string]uint64),
 		}, nil
 	}
 	if err != nil {
@@ -205,6 +210,13 @@ func validatePersistentState(state PersistentState) error {
 		if record.Enabled && record.StagedHash == "" {
 			return fmt.Errorf("enabled plugin %q has no staged content", name)
 		}
+		for capability, disabled := range record.DisabledCapabilities {
+			if err := validatePluginName(capability); err != nil || !disabled {
+				return fmt.Errorf(
+					"plugin state capability %q for %q is invalid", capability, name,
+				)
+			}
+		}
 		if record.Activation != nil {
 			if err := validateActivationRecord(*record.Activation); err != nil {
 				return fmt.Errorf("plugin activation %q: %w", name, err)
@@ -248,6 +260,16 @@ func validatePersistentState(state PersistentState) error {
 			}
 		}
 	}
+	for name, generation := range state.SecurityRevocations {
+		if err := validatePluginName(name); err != nil || generation == 0 {
+			return fmt.Errorf("plugin security revocation %q is invalid", name)
+		}
+		if _, active := state.Plugins[name]; active {
+			return fmt.Errorf(
+				"plugin security revocation %q conflicts with active state", name,
+			)
+		}
+	}
 	return nil
 }
 
@@ -264,10 +286,20 @@ func validateReceipt(receipt Receipt) error {
 	}
 	switch receipt.Trust {
 	case "", TrustUnsignedLocal:
-		if receipt.Version != "" || receipt.Publisher != "" ||
-			receipt.ArtifactHash != "" || receipt.ManifestHash != "" ||
+		if (receipt.Version == "") != (receipt.Publisher == "") {
+			return errors.New("unsigned-local receipt has partial package identity")
+		}
+		if receipt.Version != "" {
+			if _, err := semver.StrictNewVersion(receipt.Version); err != nil {
+				return errors.New("unsigned-local receipt version is not strict SemVer")
+			}
+			if err := validatePublisher(receipt.Publisher); err != nil {
+				return err
+			}
+		}
+		if receipt.ArtifactHash != "" || receipt.ManifestHash != "" ||
 			receipt.Signature != "" {
-			return errors.New("unsigned-local receipt contains registry identity")
+			return errors.New("unsigned-local receipt contains registry signature identity")
 		}
 	case TrustSignedRegistry:
 		if _, err := semver.StrictNewVersion(receipt.Version); err != nil {
@@ -294,16 +326,32 @@ func validateReceipt(receipt Receipt) error {
 
 func clonePersistentState(state PersistentState) PersistentState {
 	result := PersistentState{
-		SchemaVersion:     state.SchemaVersion,
-		Plugins:           make(map[string]PluginState, len(state.Plugins)),
-		LifecycleReceipts: make(map[string][]ActivationRecord, len(state.LifecycleReceipts)),
+		SchemaVersion:       state.SchemaVersion,
+		Plugins:             make(map[string]PluginState, len(state.Plugins)),
+		LifecycleReceipts:   make(map[string][]ActivationRecord, len(state.LifecycleReceipts)),
+		SecurityRevocations: make(map[string]uint64, len(state.SecurityRevocations)),
 	}
 	for name, record := range state.Plugins {
 		record.Activation = cloneActivation(record.Activation)
+		record.DisabledCapabilities = cloneBoolMap(record.DisabledCapabilities)
 		result.Plugins[name] = record
 	}
 	for name, receipts := range state.LifecycleReceipts {
 		result.LifecycleReceipts[name] = cloneActivationReceipts(receipts)
+	}
+	for name, generation := range state.SecurityRevocations {
+		result.SecurityRevocations[name] = generation
+	}
+	return result
+}
+
+func cloneBoolMap(values map[string]bool) map[string]bool {
+	if values == nil {
+		return nil
+	}
+	result := make(map[string]bool, len(values))
+	for key, value := range values {
+		result[key] = value
 	}
 	return result
 }

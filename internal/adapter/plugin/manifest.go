@@ -24,6 +24,7 @@ const (
 	// TOMLManifestName is the preferred manifest name for lifecycle-managed bundles.
 	TOMLManifestName = "plugin.toml"
 	ManifestSchemaV1 = 1
+	ManifestSchemaV2 = 2
 	maxManifestBytes = 1 << 20
 )
 
@@ -40,6 +41,8 @@ type Manifest struct {
 	Arguments        []string            `json:"arguments,omitempty" toml:"arguments,omitempty"`
 	Generation       uint64              `json:"generation" toml:"generation"`
 	Capabilities     CapabilityInventory `json:"capabilities" toml:"capabilities"`
+	Bundle           CapabilityBundle    `json:"bundle,omitempty" toml:"bundle,omitempty"`
+	Interface        InterfaceMetadata   `json:"interface,omitempty" toml:"interface,omitempty"`
 }
 
 // ReadManifest reads one manifest without following links. plugin.toml takes
@@ -112,36 +115,42 @@ func ValidateBundle(bundleRoot string) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, err
 	}
-	executable, err := workspace.OpenFile(manifest.Executable)
-	if err != nil {
-		return Manifest{}, fmt.Errorf("open plugin executable: %w", err)
+	if manifest.Executable != "" {
+		executable, openErr := workspace.OpenFile(manifest.Executable)
+		if openErr != nil {
+			return Manifest{}, fmt.Errorf("open plugin executable: %w", openErr)
+		}
+		info, statErr := executable.Stat()
+		if statErr != nil {
+			executable.Close()
+			return Manifest{}, statErr
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+			executable.Close()
+			return Manifest{}, errors.New("plugin executable is not executable")
+		}
+		hash := sha256.New()
+		written, copyErr := io.Copy(hash, io.LimitReader(executable, maxBundleBytes+1))
+		closeErr := executable.Close()
+		if joined := errors.Join(copyErr, closeErr); joined != nil {
+			return Manifest{}, joined
+		}
+		if written > maxBundleBytes ||
+			!equalHash(hex.EncodeToString(hash.Sum(nil)), manifest.ExecutableSHA256) {
+			return Manifest{}, errors.New("plugin executable hash does not match manifest")
+		}
 	}
-	info, statErr := executable.Stat()
-	if statErr != nil {
-		executable.Close()
-		return Manifest{}, statErr
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
-		executable.Close()
-		return Manifest{}, errors.New("plugin executable is not executable")
-	}
-	hash := sha256.New()
-	written, copyErr := io.Copy(hash, io.LimitReader(executable, maxBundleBytes+1))
-	closeErr := executable.Close()
-	if err := errors.Join(copyErr, closeErr); err != nil {
+	if _, err := CompileCapabilityBundle(bundleRoot, manifest); err != nil {
 		return Manifest{}, err
-	}
-	if written > maxBundleBytes ||
-		!equalHash(hex.EncodeToString(hash.Sum(nil)), manifest.ExecutableSHA256) {
-		return Manifest{}, errors.New("plugin executable hash does not match manifest")
 	}
 	return manifest, nil
 }
 
 // NormalizeManifest validates and canonicalizes a manifest.
 func NormalizeManifest(manifest Manifest) (Manifest, error) {
-	if manifest.SchemaVersion != ManifestSchemaV1 {
-		return Manifest{}, errors.New("plugin manifest schema_version must be 1")
+	if manifest.SchemaVersion != ManifestSchemaV1 &&
+		manifest.SchemaVersion != ManifestSchemaV2 {
+		return Manifest{}, errors.New("plugin manifest schema_version must be 1 or 2")
 	}
 	manifest.Name = strings.TrimSpace(manifest.Name)
 	if manifest.Name == "" || manifest.Name == "." || manifest.Name == ".." ||
@@ -177,6 +186,27 @@ func NormalizeManifest(manifest Manifest) (Manifest, error) {
 	if manifest.Generation == 0 {
 		return Manifest{}, errors.New("plugin manifest generation must be positive")
 	}
+	if manifest.SchemaVersion == ManifestSchemaV2 {
+		if manifest.Executable != "" || manifest.ExecutableSHA256 != "" ||
+			len(manifest.Arguments) != 0 ||
+			len(manifest.Capabilities.Tools) != 0 ||
+			len(manifest.Capabilities.FilesystemRoots) != 0 ||
+			len(manifest.Capabilities.NetworkHosts) != 0 ||
+			manifest.Capabilities.AllowProcess {
+			return Manifest{}, errors.New(
+				"plugin manifest v2 cannot declare legacy executable fields",
+			)
+		}
+		bundle, err := normalizeCapabilityBundle(manifest.Bundle)
+		if err != nil {
+			return Manifest{}, err
+		}
+		manifest.Bundle = bundle
+		manifest.Interface.DisplayName = strings.TrimSpace(manifest.Interface.DisplayName)
+		manifest.Interface.Description = strings.TrimSpace(manifest.Interface.Description)
+		manifest.Interface.Homepage = strings.TrimSpace(manifest.Interface.Homepage)
+		return manifest, nil
+	}
 	if manifest.Executable == "" || filepath.IsAbs(manifest.Executable) {
 		return Manifest{}, errors.New("plugin executable must be a relative bundle path")
 	}
@@ -209,7 +239,20 @@ func NormalizeManifest(manifest Manifest) (Manifest, error) {
 			"plugin capabilities must exactly match plugin_run, workspace, process, and no network",
 		)
 	}
+	manifest.Bundle = CapabilityBundle{Tools: []ToolCapability{{
+		ID: "plugin-run", Executable: manifest.Executable,
+		ExecutableSHA256: manifest.ExecutableSHA256,
+		Arguments:        append([]string(nil), manifest.Arguments...),
+		Permissions:      manifest.Capabilities,
+	}}}
 	return manifest, nil
+}
+
+func (m Manifest) processTool() (ToolCapability, bool) {
+	if len(m.Bundle.Tools) == 0 {
+		return ToolCapability{}, false
+	}
+	return m.Bundle.Tools[0], true
 }
 
 func validatePublisher(publisher string) error {

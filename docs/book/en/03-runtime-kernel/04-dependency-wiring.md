@@ -122,7 +122,7 @@ journaled apply.
 
 Builtin and extension tools receive the same `Registry` instance. Plugin,
 Skill, Memory, Dynamic Tool, Hook, and MCP integrations implement the
-`extensionContributor` contract (`ID()` and `Contribute`), receive only
+construction-only `extensionActivation` contract (`ID()` and `Contribute`), receive only
 their explicit construction capabilities plus the shared `Registry` — never
 `buildState` — and run in the `extension-tools` module in fixed order with
 unique IDs. Each contributor returns a deterministic `ContributionReceipt`

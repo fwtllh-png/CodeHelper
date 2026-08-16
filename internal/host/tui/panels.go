@@ -10,14 +10,13 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui/commands"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui/facade"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/fleet"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/lane"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func (m Model) openPanel(kind PanelKind) Model {
@@ -151,40 +150,28 @@ func (m Model) renderExtensionPanel(kind string) string {
 	if err != nil {
 		return kind + ": paths error: " + err.Error()
 	}
+	control, err := wire.OpenExtensionControlPlane(paths, ".")
+	if err != nil {
+		return kind + ": runtime error: " + err.Error()
+	}
+	defer control.Close()
+	controlKind := protocol.ExtensionControlSkill
 	if kind == "plugin" {
-		candidates, err := pluginruntime.Discover(pluginruntime.DiscoveryOptions{
-			WorkspaceRoot: paths.PluginWorkspaceRoot,
-			UserRoot:      paths.PluginUserRoot,
-			BuiltinRoot:   paths.PluginBuiltinRoot,
-		})
-		if err != nil {
-			return "plugin: " + err.Error()
-		}
-		names := make([]string, 0, len(candidates))
-		for _, candidate := range candidates {
-			names = append(names, candidate.Name)
-		}
-		sort.Strings(names)
-		return fmt.Sprintf("plugin: count=%d [%s] (Enter refreshes)", len(names), strings.Join(names, ","))
+		controlKind = protocol.ExtensionControlPlugin
 	}
-	stateStore, err := skillruntime.NewStateStore(paths.SkillsStatePath)
+	result, err := control.Plane.Snapshot(context.Background(), controlKind)
 	if err != nil {
-		return "skill: " + err.Error()
+		return kind + ": " + err.Error()
 	}
-	catalog, err := skillruntime.Discover(skillruntime.DiscoveryOptions{
-		Workspace: ".", ConfiguredDir: paths.SkillsConfiguredDir,
-		UserHome: paths.UserHome, Locale: paths.SkillsLocale, State: stateStore,
-	})
-	if err != nil {
-		return "skill: " + err.Error()
-	}
-	summaries, _ := catalog.List(context.Background())
-	names := make([]string, 0, len(summaries))
-	for _, summary := range summaries {
-		names = append(names, summary.Name)
+	names := make([]string, 0, len(result.Extensions))
+	for _, extension := range result.Extensions {
+		names = append(names, extension.Name+":"+extension.Health)
 	}
 	sort.Strings(names)
-	return fmt.Sprintf("skill: count=%d [%s] (Enter refreshes)", len(names), strings.Join(names, ","))
+	return fmt.Sprintf(
+		"%s: count=%d [%s] (Enter refreshes)",
+		kind, len(names), strings.Join(names, ","),
+	)
 }
 
 func (m Model) panelAction() Model {

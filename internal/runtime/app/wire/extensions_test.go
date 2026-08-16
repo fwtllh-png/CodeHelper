@@ -12,6 +12,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/config"
+	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -94,6 +97,114 @@ func TestGuardFailsClosedOnHookAskAndUpdatedInput(t *testing.T) {
 				t.Fatalf("extension executed %d times after hook %s", executions.Load(), response)
 			}
 		})
+	}
+}
+
+func TestEngineGuardFactoryRunsConfiguredHook(t *testing.T) {
+	workspace := t.TempDir()
+	manager, err := hooks.New(hooks.Config{
+		Version: hooks.ConfigVersion,
+		Hooks: map[hooks.Event][]hooks.HookConfig{
+			hooks.ToolCallBefore: {{
+				ID: "engine-observer", Source: hooks.SourceRepository,
+				Trust: hooks.TrustWorkspace, Scope: hooks.ScopeTurn,
+				Mode: hooks.ModeObserve, Command: "/usr/bin/true",
+			}},
+		},
+	}, hooks.Options{Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var executions atomic.Int32
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&guardProbe{executions: &executions}, nil); err != nil {
+		t.Fatal(err)
+	}
+	security := policy.DefaultRuntime(
+		policy.ModeAct,
+		policy.PermissionBypass,
+	)
+	options := agentengine.Options{
+		Tools: registry, Security: security, Workspace: workspace,
+	}
+	bindEngineGuardFactory(&options, guardFactory{
+		registry: registry, runtime: security,
+		workspace: workspace, hooks: manager,
+	}, nil)
+	first, err := options.GuardFactory(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := options.GuardFactory(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("guard factory reused stateful Guard")
+	}
+	var audits []hooks.AuditRecord
+	ctx := hooks.WithAuditEmitter(
+		t.Context(),
+		func(record hooks.AuditRecord) {
+			audits = append(audits, record)
+		},
+	)
+	if _, err := first.Execute(
+		ctx,
+		"call",
+		"extension_probe",
+		json.RawMessage(`{"value":"original"}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if executions.Load() != 1 ||
+		len(audits) != 1 ||
+		audits[0].HookID != "engine-observer" ||
+		audits[0].Outcome != "observed" {
+		t.Fatalf(
+			"executions=%d audits=%+v",
+			executions.Load(),
+			audits,
+		)
+	}
+}
+
+func TestMemoryContributorUsesTypedExtensionContract(t *testing.T) {
+	var output extensionBuildState
+	contributor := newMemoryContributor(config.Memory{
+		Enabled: true,
+		Path:    t.TempDir(),
+	}, &output)
+	registry := tool.NewRegistry(nil, nil)
+	receipt, err := contributor.Contribute(t.Context(), registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Contributor != "memory" ||
+		receipt.Typed == nil ||
+		receipt.Typed.Kind != runtimeextension.KindTool ||
+		receipt.Typed.Status != runtimeextension.OutcomeSucceeded ||
+		len(receipt.Tools) != 1 ||
+		receipt.Tools[0] != "remember" ||
+		output.memory == nil {
+		t.Fatalf("memory contribution = %+v, store=%v", receipt, output.memory)
+	}
+}
+
+func TestDisabledMemoryContributorPublishesTypedSkip(t *testing.T) {
+	var output extensionBuildState
+	contributor := newMemoryContributor(config.Memory{}, &output)
+	registry := tool.NewRegistry(nil, nil)
+	receipt, err := contributor.Contribute(t.Context(), registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Typed == nil ||
+		receipt.Typed.Status != runtimeextension.OutcomeSkipped ||
+		receipt.Typed.Code != "disabled" ||
+		len(receipt.Tools) != 0 ||
+		output.memory != nil {
+		t.Fatalf("disabled memory contribution = %+v, store=%v", receipt, output.memory)
 	}
 }
 

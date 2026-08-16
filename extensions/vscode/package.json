@@ -75,6 +75,12 @@
           "name": "Usage",
           "icon": "media/codehelper.svg",
           "visibility": "collapsed"
+        },
+        {
+          "id": "codehelper.extensions",
+          "name": "Extensions",
+          "icon": "media/codehelper.svg",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -128,6 +134,19 @@
         "title": "CodeHelper: Select Chat"
       },
       {
+        "command": "codehelper.refreshExtensions",
+        "title": "CodeHelper: Refresh Extensions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "codehelper.enableExtension",
+        "title": "Enable Extension"
+      },
+      {
+        "command": "codehelper.disableExtension",
+        "title": "Disable Extension"
+      },
+      {
         "command": "codehelper.explainSelection",
         "title": "CodeHelper: Explain Selection",
         "enablement": "resourceScheme == file && editorHasSelection"
@@ -149,6 +168,25 @@
       }
     ],
     "menus": {
+      "view/title": [
+        {
+          "command": "codehelper.refreshExtensions",
+          "when": "view == codehelper.extensions",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "codehelper.enableExtension",
+          "when": "view == codehelper.extensions && viewItem == codehelperExtensionDisabled",
+          "group": "inline"
+        },
+        {
+          "command": "codehelper.disableExtension",
+          "when": "view == codehelper.extensions && viewItem == codehelperExtensionEnabled",
+          "group": "inline"
+        }
+      ],
       "editor/context": [
         {
           "command": "codehelper.explainSelection",

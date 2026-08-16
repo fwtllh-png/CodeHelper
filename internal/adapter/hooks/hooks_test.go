@@ -184,6 +184,28 @@ func TestObserverHooksFailOpenAndAudit(t *testing.T) {
 	}
 }
 
+func TestHookAuditProjectsThroughTurnContextWithoutConfiguredSink(t *testing.T) {
+	manager := newTestManager(t, map[Event][]HookConfig{
+		ToolCallBefore: {
+			testHook(t, "context-audit", "emit", `{"decision":"allow"}`),
+		},
+	}, nil)
+	var records []AuditRecord
+	ctx := WithAuditEmitter(t.Context(), func(record AuditRecord) {
+		records = append(records, record)
+	})
+	if _, err := manager.ToolCallBefore(
+		ctx, beforeInput(`{"path":"redacted"}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 ||
+		records[0].HookID != "context-audit" ||
+		records[0].Outcome != "allowed" {
+		t.Fatalf("context audit records = %+v", records)
+	}
+}
+
 func TestShellEnvFailsOpenAndAuditsNamesOnly(t *testing.T) {
 	const secret = "super-secret-value"
 	audit := &auditCollector{}
@@ -295,13 +317,55 @@ func TestManagerConcurrentUse(t *testing.T) {
 
 func TestConfigVersionAndStrictDecode(t *testing.T) {
 	for _, data := range []string{
-		`{"version":2,"hooks":{}}`,
+		`{"version":3,"hooks":{}}`,
 		`{"version":1,"hooks":{},"unknown":true}`,
 		`{"version":1,"hooks":{"Unknown":[]}}`,
 	} {
 		if _, err := DecodeConfig([]byte(data)); err == nil {
 			t.Fatalf("DecodeConfig(%s) succeeded", data)
 		}
+	}
+}
+
+func TestHookV1NormalizesToV2Metadata(t *testing.T) {
+	config, err := DecodeConfig([]byte(`{
+		"version": 1,
+		"hooks": {
+			"ToolCallBefore": [{
+				"id": "legacy",
+				"command": "/bin/true"
+			}]
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook := config.Hooks[ToolCallBefore][0]
+	if config.Version != ConfigVersion ||
+		hook.Source != SourceRepository ||
+		hook.Trust != TrustWorkspace ||
+		hook.Scope != ScopeProcess ||
+		hook.Mode != ModeEnforce {
+		t.Fatalf("normalized config = %+v", config)
+	}
+}
+
+func TestObserveHookCannotChangeToolDecision(t *testing.T) {
+	hook := testHook(
+		t, "observe", "emit", `{"decision":"deny","reason":"ignored"}`,
+	)
+	hook.Mode = ModeObserve
+	manager := newTestManager(t, map[Event][]HookConfig{
+		ToolCallBefore: {hook},
+	}, nil)
+	result, err := manager.ToolCallBefore(
+		t.Context(), beforeInput(`{"path":"a"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Action != ActionAllow {
+		t.Fatalf("observe result = %+v", result)
 	}
 }
 

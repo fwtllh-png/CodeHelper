@@ -20,6 +20,9 @@ type Catalog struct {
 	verifier       AuthorityVerifier
 	runtimeVersion string
 	lock           *LockStore
+	selectionMu    sync.Mutex
+	selectionCache map[string]Selection
+	selectionOrder []string
 }
 
 func Discover(options DiscoveryOptions) (*Catalog, error) {
@@ -68,6 +71,7 @@ func Discover(options DiscoveryOptions) (*Catalog, error) {
 		state: options.State, verifier: options.Verifier,
 		runtimeVersion: normalizeRuntimeVersion(options.RuntimeVersion),
 		lock:           options.Lock,
+		selectionCache: make(map[string]Selection),
 	}, nil
 }
 
@@ -152,6 +156,9 @@ func (c *Catalog) summary(item candidate, locked bool) Summary {
 		Source: item.source, Path: item.path, Plugin: item.plugin,
 		Version: version, Compatibility: compatibility,
 		Digest: item.digest, Locked: locked,
+		Handle: skillHandle(item), PackageHandle: skillPackageHandle(item),
+		ResourceHandle: skillResourceHandle(item),
+		ModelInvocable: !item.metadata.DisableModelInvocation,
 	}
 }
 

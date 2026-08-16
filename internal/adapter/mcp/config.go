@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -54,8 +55,9 @@ type ServerConfig struct {
 	PermissionProfile   *PermissionProfile     `json:"permission_profile,omitempty"`
 	CircuitBreaker      CircuitBreakerConfig   `json:"circuit_breaker,omitempty"`
 
-	HTTPClient    *http.Client  `json:"-"`
-	OAuthProvider OAuthProvider `json:"-"`
+	HTTPClient    *http.Client                `json:"-"`
+	OAuthProvider OAuthProvider               `json:"-"`
+	Authority     func(context.Context) error `json:"-"`
 }
 
 type PermissionProfile struct {
@@ -68,6 +70,64 @@ type CircuitBreakerConfig struct {
 	FailureThreshold int           `json:"failure_threshold,omitempty"`
 	CooldownText     string        `json:"cooldown,omitempty"`
 	Cooldown         time.Duration `json:"-"`
+}
+
+func CloneConfig(value Config) Config {
+	result := Config{
+		Version: value.Version,
+		Servers: make(map[string]ServerConfig, len(value.Servers)),
+	}
+	for name, server := range value.Servers {
+		server.Args = append([]string(nil), server.Args...)
+		server.Env = append([]string(nil), server.Env...)
+		server.Headers = cloneStringMap(server.Headers)
+		server.HeaderEnv = cloneStringMap(server.HeaderEnv)
+		server.Resources = append([]string(nil), server.Resources...)
+		server.Prompts = append([]string(nil), server.Prompts...)
+		if server.Enabled != nil {
+			enabled := *server.Enabled
+			server.Enabled = &enabled
+		}
+		if server.OAuth != nil {
+			oauth := *server.OAuth
+			oauth.Scopes = append([]string(nil), server.OAuth.Scopes...)
+			server.OAuth = &oauth
+		}
+		if server.PermissionProfile != nil {
+			profile := *server.PermissionProfile
+			profile.Capabilities = append(
+				[]string(nil),
+				server.PermissionProfile.Capabilities...,
+			)
+			profile.ResourceKinds = append(
+				[]string(nil),
+				server.PermissionProfile.ResourceKinds...,
+			)
+			profile.NetworkHosts = append(
+				[]string(nil),
+				server.PermissionProfile.NetworkHosts...,
+			)
+			server.PermissionProfile = &profile
+		}
+		server.Tools = make(map[string]ToolBinding, len(value.Servers[name].Tools))
+		for toolName, binding := range value.Servers[name].Tools {
+			binding.Resources = append([]ResourceBinding(nil), binding.Resources...)
+			server.Tools[toolName] = binding
+		}
+		result.Servers[name] = server
+	}
+	return result
+}
+
+func cloneStringMap(value map[string]string) map[string]string {
+	if value == nil {
+		return nil
+	}
+	result := make(map[string]string, len(value))
+	for key, item := range value {
+		result[key] = item
+	}
+	return result
 }
 
 // IsEnabled reports whether the server is active (default true).

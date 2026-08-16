@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -71,6 +72,8 @@ type Options struct {
 	// ProfilePermissionCeiling is fixed by the Host.
 	ProfilePermissionCeiling policy.Permission
 	Guard                    *toolguard.Guard
+	// GuardFactory creates one stateful Guard for this Engine.
+	GuardFactory func(context.Context) (*toolguard.Guard, error)
 	// OnNetworkAllow grants approved egress to the session Gate.
 	OnNetworkAllow     toolguard.NetworkAllow
 	Workspace          string
@@ -131,12 +134,6 @@ func (noopMetrics) Error()                        {}
 func (noopMetrics) Evidence(int, int)             {}
 func (noopMetrics) Compaction(int)                {}
 func (noopMetrics) TurnKernelObserver(bool, bool) {}
-
-type TurnSnapshotSources struct {
-	MCP        func() []MCPHealthSnapshot
-	Extensions func() ([]ExtensionSnapshot, error)
-	Skills     func() []SkillSummary
-}
 
 type Engine struct {
 	mu              sync.Mutex
@@ -325,13 +322,18 @@ func New(options Options) (*Engine, error) {
 	engine.seedWorkingSet()
 	engine.lastScope = &Scope{engine: engine, state: newScopeState(engine)}
 	if engine.guard == nil {
-		guard, err := toolguard.New(toolguard.Options{
-			Registry: options.Tools, Policy: options.Security, Workspace: options.Workspace,
-			ReadTracker: options.ReadTracker, Journal: options.Journal, Diagnostics: options.Diagnostics,
-			OnNetworkAllow: options.OnNetworkAllow,
+		var guard *toolguard.Guard
+		if options.GuardFactory != nil {
+			guard, err = options.GuardFactory(context.Background())
+		} else {
+			guard, err = toolguard.New(toolguard.Options{
+				Registry: options.Tools, Policy: options.Security, Workspace: options.Workspace,
+				ReadTracker: options.ReadTracker, Journal: options.Journal, Diagnostics: options.Diagnostics,
+				OnNetworkAllow: options.OnNetworkAllow,
 
-			Now: options.Now,
-		})
+				Now: options.Now,
+			})
+		}
 		if err != nil {
 			return nil, err
 		}

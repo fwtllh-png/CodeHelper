@@ -543,6 +543,23 @@ codehelper = ">=0.0.0-0"
 	}
 }
 
+func TestPluginLintRoutesThroughControlPlane(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	root := t.TempDir()
+	code := Run([]string{
+		"plugin", "lint",
+		"--workspace", root,
+		"--data-dir", filepath.Join(root, "data"),
+		filepath.Join(root, "missing-plugin"),
+	}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run() code = %d, stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "unsupported plugin action") {
+		t.Fatalf("plugin lint bypassed ControlPlane: %q", stderr.String())
+	}
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

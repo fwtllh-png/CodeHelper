@@ -41,12 +41,13 @@ func Register(registry *tool.Registry, pool *mcpruntime.Pool) error {
 }
 
 type Adapter struct {
-	mu          sync.Mutex
-	registry    *tool.Registry
-	pool        *mcpruntime.Pool
-	sources     map[string]bool
-	unsubscribe []func()
-	lastErr     error
+	mu             sync.Mutex
+	registry       *tool.Registry
+	pool           *mcpruntime.Pool
+	sources        map[string]bool
+	unsubscribe    []func()
+	lastErr        error
+	refreshPending bool
 }
 
 type registrationIdentity struct {
@@ -64,13 +65,15 @@ func NewAdapter(registry *tool.Registry, pool *mcpruntime.Pool) (*Adapter, error
 	adapter := &Adapter{
 		registry: registry, pool: pool, sources: make(map[string]bool),
 	}
-	syncCatalog := func() {
-		_ = adapter.Sync()
+	requestRefresh := func() {
+		adapter.mu.Lock()
+		adapter.refreshPending = true
+		adapter.mu.Unlock()
 	}
 	adapter.unsubscribe = append(
 		adapter.unsubscribe,
-		pool.SubscribeHealth(func(mcpruntime.HealthChange) { syncCatalog() }),
-		pool.SubscribeCatalog(syncCatalog),
+		pool.SubscribeHealth(func(mcpruntime.HealthChange) { requestRefresh() }),
+		pool.SubscribeCatalog(requestRefresh),
 	)
 	if err := adapter.Sync(); err != nil {
 		adapter.Close()
@@ -92,6 +95,9 @@ func (a *Adapter) Sync() error {
 		}
 	}
 	a.lastErr = err
+	if err == nil {
+		a.refreshPending = false
+	}
 	return err
 }
 
@@ -247,6 +253,15 @@ func (a *Adapter) LastError() error {
 	return a.lastErr
 }
 
+func (a *Adapter) RefreshPending() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.refreshPending
+}
+
 func (a *Adapter) Close() {
 	if a == nil {
 		return
@@ -337,6 +352,11 @@ func (e *executor) Execute(
 	ctx context.Context,
 	arguments json.RawMessage,
 ) (tool.Result, error) {
+	if e.entry.Authority != nil {
+		if err := e.entry.Authority(ctx); err != nil {
+			return tool.Result{}, fmt.Errorf("MCP capability authority: %w", err)
+		}
+	}
 	// typed-boundary-exception: the remote catalog owns this dynamic schema.
 	// Passing validated raw JSON avoids precision loss and provider-specific
 	// value normalization at a boundary with no local static input type.

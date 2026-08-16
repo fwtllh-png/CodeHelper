@@ -17,7 +17,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	plugintool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
@@ -92,51 +91,49 @@ type ContextFile struct {
 type Session struct {
 	Runtime *app.Runtime
 
-	metrics              *telemetry.Metrics
-	metricsPath          string
-	logger               *slog.Logger
-	logFile              *os.File
-	fixture              *fixture.Server
-	plugins              []*pluginruntime.Loaded
-	pluginRegistry       *pluginruntime.Registry
-	pluginTools          *plugintool.Adapter
-	contributionReceipts []ContributionReceipt
-	dynamicTools         *dynamictool.Manager
-	providerID           string
-	modelID              string
-	modelCapabilities    protocol.ModelCapabilities
-	providerCatalog      protocol.ProviderCatalog
-	modelCatalog         protocol.ModelCatalog
-	processes            *process.SessionManager
-	jobLogs              *joblog.Store
-	mcpPool              *mcpruntime.Pool
-	mcpPrewarm           *MCPPrewarm
-	sandbox              sandbox.Backend
-	content              *contentstore.Memory
-	memory               *memory.Store
-	automations          *automation.Repository
-	tasks                *taskstate.Repository
-	ephemeralTasks       *sqlitestate.Store
-	ephemeralTasksDir    string
-	hooks                *hooks.Manager
-	inputHost            *interacttool.Host
-	applyPlan            func(interacttool.Plan)
-	security             *policy.Runtime
-	rlmStore             *rlm.Store
-	children             *childRuntime
-	childTools           *childToolsets
-	chatWorkspaces       *chatWorkspaces
-	threads              *app.ThreadManager
-	turnCoordinators     *durableCoordinatorRuntime
-	journal              *workspacejournal.Manager
-	journalRecovery      workspacejournal.Recovery
-	subagents            *subagent.AgentControl
-	scheduler            *worker.Scheduler
-	Constitution         constitution.Status
-	constitutionPrompt   string
-	resources            *assembly.ResourceStack
-	closeOnce            sync.Once
-	closeErr             error
+	metrics            *telemetry.Metrics
+	metricsPath        string
+	logger             *slog.Logger
+	logFile            *os.File
+	fixture            *fixture.Server
+	plugins            []*pluginruntime.Loaded
+	extensions         *extensionSession
+	dynamicTools       *dynamictool.Manager
+	providerID         string
+	modelID            string
+	modelCapabilities  protocol.ModelCapabilities
+	providerCatalog    protocol.ProviderCatalog
+	modelCatalog       protocol.ModelCatalog
+	processes          *process.SessionManager
+	jobLogs            *joblog.Store
+	mcpPool            *mcpruntime.Pool
+	mcpPrewarm         *MCPPrewarm
+	sandbox            sandbox.Backend
+	content            *contentstore.Memory
+	memory             *memory.Store
+	automations        *automation.Repository
+	tasks              *taskstate.Repository
+	ephemeralTasks     *sqlitestate.Store
+	ephemeralTasksDir  string
+	hooks              *hooks.Manager
+	inputHost          *interacttool.Host
+	applyPlan          func(interacttool.Plan)
+	security           *policy.Runtime
+	rlmStore           *rlm.Store
+	children           *childRuntime
+	childTools         *childToolsets
+	chatWorkspaces     *chatWorkspaces
+	threads            *app.ThreadManager
+	turnCoordinators   *durableCoordinatorRuntime
+	journal            *workspacejournal.Manager
+	journalRecovery    workspacejournal.Recovery
+	subagents          *subagent.AgentControl
+	scheduler          *worker.Scheduler
+	Constitution       constitution.Status
+	constitutionPrompt string
+	resources          *assembly.ResourceStack
+	closeOnce          sync.Once
+	closeErr           error
 }
 
 func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr error) {
@@ -152,6 +149,7 @@ func defaultBuildModules() []buildModule {
 		builtinToolsModule{},
 		newExtensionToolsModule(),
 		securityModule{},
+		extensionPlanModule{},
 		orchestrationModule{},
 		agentModule{},
 		runtimeModule{},

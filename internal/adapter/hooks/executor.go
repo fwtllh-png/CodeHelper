@@ -30,6 +30,10 @@ type executor struct {
 }
 
 type execution struct {
+	source          Source
+	trust           Trust
+	scope           Scope
+	mode            Mode
 	stdout          []byte
 	stderr          []byte
 	stdoutBytes     int64
@@ -45,9 +49,13 @@ type execution struct {
 }
 
 type hookEnvelope struct {
-	Version int   `json:"version"`
-	Event   Event `json:"event"`
-	Input   any   `json:"input"`
+	Version int    `json:"version"`
+	Event   Event  `json:"event"`
+	Source  Source `json:"source"`
+	Trust   Trust  `json:"trust"`
+	Scope   Scope  `json:"scope"`
+	Mode    Mode   `json:"mode"`
+	Input   any    `json:"input"`
 }
 
 func newExecutor(options Options) *executor {
@@ -64,6 +72,19 @@ func newExecutor(options Options) *executor {
 }
 
 func (e *executor) run(ctx context.Context, event Event, hook HookConfig, input any) execution {
+	started := e.options.Now()
+	metadata := execution{
+		source: hook.Source, trust: hook.Trust, scope: hook.Scope, mode: hook.Mode,
+	}
+	if hook.Authority != nil {
+		if err := hook.Authority(ctx); err != nil {
+			metadata.exitCode = -1
+			metadata.errCode = "authority_revoked"
+			metadata.err = err
+			metadata.duration = e.options.Now().Sub(started)
+			return metadata
+		}
+	}
 	timeout := hook.Timeout
 	if timeout <= 0 {
 		timeout = e.options.DefaultTimeout
@@ -72,11 +93,14 @@ func (e *executor) run(ctx context.Context, event Event, hook HookConfig, input 
 	if limit <= 0 {
 		limit = e.options.MaxOutputBytes
 	}
-	started := e.options.Now()
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	payload, err := json.Marshal(hookEnvelope{Version: ConfigVersion, Event: event, Input: input})
+	payload, err := json.Marshal(hookEnvelope{
+		Version: ConfigVersion, Event: event,
+		Source: hook.Source, Trust: hook.Trust, Scope: hook.Scope, Mode: hook.Mode,
+		Input: input,
+	})
 	if err != nil {
 		result := execution{exitCode: -1, errCode: "encode_input", err: err}
 		result.duration = e.options.Now().Sub(started)
@@ -133,6 +157,7 @@ func (e *executor) run(ctx context.Context, event Event, hook HookConfig, input 
 		waitErr = <-done
 	}
 	result := execution{
+		source: hook.Source, trust: hook.Trust, scope: hook.Scope, mode: hook.Mode,
 		stdout: stdout.Bytes(), stderr: stderr.Bytes(),
 		stdoutBytes: stdout.Total(), stderrBytes: stderr.Total(),
 		stdoutTruncated: stdout.Truncated(), stderrTruncated: stderr.Truncated(),
@@ -167,11 +192,10 @@ func (e *executor) audit(
 	outcome string,
 	action Action,
 ) {
-	if e.options.Audit == nil {
-		return
-	}
-	e.options.Audit.Record(context.WithoutCancel(ctx), AuditRecord{
+	record := AuditRecord{
 		Time: e.options.Now(), Event: event, HookID: hookID,
+		Source: result.source, Trust: result.trust,
+		Scope: result.scope, Mode: result.mode,
 		Outcome: outcome, Action: action, ErrorCode: result.errCode,
 		ExitCode: result.exitCode, Duration: result.duration,
 		TimedOut: result.timedOut, Canceled: result.canceled,
@@ -179,7 +203,12 @@ func (e *executor) audit(
 		StdoutTruncated: result.stdoutTruncated, StderrTruncated: result.stderrTruncated,
 		InputKeys:  append([]string(nil), inputKeys...),
 		OutputKeys: append([]string(nil), outputKeys...),
-	})
+	}
+	auditCtx := context.WithoutCancel(ctx)
+	if e.options.Audit != nil {
+		e.options.Audit.Record(auditCtx, record)
+	}
+	emitContextAudit(auditCtx, record)
 }
 
 type boundedBuffer struct {

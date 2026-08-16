@@ -41,15 +41,19 @@ func (m Metadata) DescriptionFor(locale string) string {
 }
 
 type Summary struct {
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	Source        Source `json:"source"`
-	Path          string `json:"path"`
-	Plugin        string `json:"plugin,omitempty"`
-	Version       string `json:"version"`
-	Compatibility string `json:"compatibility,omitempty"`
-	Digest        string `json:"digest"`
-	Locked        bool   `json:"locked"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	Source         Source `json:"source"`
+	Path           string `json:"path"`
+	Plugin         string `json:"plugin,omitempty"`
+	Version        string `json:"version"`
+	Compatibility  string `json:"compatibility,omitempty"`
+	Digest         string `json:"digest"`
+	Locked         bool   `json:"locked"`
+	Handle         string `json:"handle"`
+	PackageHandle  string `json:"package_handle"`
+	ResourceHandle string `json:"resource_handle"`
+	ModelInvocable bool   `json:"model_invocable"`
 }
 
 type Loaded struct {

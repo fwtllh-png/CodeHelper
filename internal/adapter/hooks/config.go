@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +12,42 @@ import (
 	"time"
 )
 
-const ConfigVersion = 1
+const (
+	LegacyConfigVersion = 1
+	ConfigVersion       = 2
+)
+
+type Source string
+
+const (
+	SourceRepository Source = "repository"
+	SourcePlugin     Source = "plugin"
+	SourceBuiltin    Source = "builtin"
+)
+
+type Trust string
+
+const (
+	TrustWorkspace Trust = "workspace"
+	TrustSigned    Trust = "signed_registry"
+	TrustBuiltin   Trust = "builtin"
+)
+
+type Scope string
+
+const (
+	ScopeProcess Scope = "process"
+	ScopeSession Scope = "session"
+	ScopeThread  Scope = "thread"
+	ScopeTurn    Scope = "turn"
+)
+
+type Mode string
+
+const (
+	ModeObserve Mode = "observe"
+	ModeEnforce Mode = "enforce"
+)
 
 const (
 	defaultTimeout        = 30 * time.Second
@@ -26,15 +62,20 @@ type Config struct {
 }
 
 type HookConfig struct {
-	ID               string        `json:"id"`
-	Command          string        `json:"command"`
-	Args             []string      `json:"args,omitempty"`
-	Env              []string      `json:"env,omitempty"`
-	WorkingDirectory string        `json:"working_directory,omitempty"`
-	ContinueOnError  bool          `json:"continue_on_error,omitempty"`
-	TimeoutText      string        `json:"timeout,omitempty"`
-	Timeout          time.Duration `json:"-"`
-	MaxOutputBytes   int           `json:"max_output_bytes,omitempty"`
+	ID               string                      `json:"id"`
+	Source           Source                      `json:"source,omitempty"`
+	Trust            Trust                       `json:"trust,omitempty"`
+	Scope            Scope                       `json:"scope,omitempty"`
+	Mode             Mode                        `json:"mode,omitempty"`
+	Command          string                      `json:"command"`
+	Args             []string                    `json:"args,omitempty"`
+	Env              []string                    `json:"env,omitempty"`
+	WorkingDirectory string                      `json:"working_directory,omitempty"`
+	ContinueOnError  bool                        `json:"continue_on_error,omitempty"`
+	TimeoutText      string                      `json:"timeout,omitempty"`
+	Timeout          time.Duration               `json:"-"`
+	MaxOutputBytes   int                         `json:"max_output_bytes,omitempty"`
+	Authority        func(context.Context) error `json:"-"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -65,7 +106,7 @@ func DecodeConfig(data []byte) (Config, error) {
 }
 
 func (c *Config) Validate() error {
-	if c.Version != ConfigVersion {
+	if c.Version != LegacyConfigVersion && c.Version != ConfigVersion {
 		return fmt.Errorf("unsupported hooks config version %d", c.Version)
 	}
 	if c.Hooks == nil {
@@ -78,6 +119,21 @@ func (c *Config) Validate() error {
 		}
 		for index := range configured {
 			hook := &configured[index]
+			if hook.Source == "" {
+				hook.Source = SourceRepository
+			}
+			if hook.Trust == "" {
+				hook.Trust = TrustWorkspace
+			}
+			if hook.Scope == "" {
+				hook.Scope = ScopeProcess
+			}
+			if hook.Mode == "" {
+				hook.Mode = ModeEnforce
+			}
+			if !validHookMetadata(*hook) {
+				return fmt.Errorf("hook %q: source, trust, scope, or mode is invalid", hook.ID)
+			}
 			if strings.TrimSpace(hook.ID) == "" {
 				return fmt.Errorf("hook %s[%d]: id is required", event, index)
 			}
@@ -112,5 +168,25 @@ func (c *Config) Validate() error {
 		}
 		c.Hooks[event] = configured
 	}
+	c.Version = ConfigVersion
 	return nil
+}
+
+func validHookMetadata(hook HookConfig) bool {
+	switch hook.Source {
+	case SourceRepository, SourcePlugin, SourceBuiltin:
+	default:
+		return false
+	}
+	switch hook.Trust {
+	case TrustWorkspace, TrustSigned, TrustBuiltin:
+	default:
+		return false
+	}
+	switch hook.Scope {
+	case ScopeProcess, ScopeSession, ScopeThread, ScopeTurn:
+	default:
+		return false
+	}
+	return hook.Mode == ModeObserve || hook.Mode == ModeEnforce
 }

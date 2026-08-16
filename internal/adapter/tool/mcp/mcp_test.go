@@ -492,6 +492,12 @@ func TestAdapterRevokesOpenServerAndRestoresAfterProbe(t *testing.T) {
 	); err == nil {
 		t.Fatal("failing MCP call succeeded")
 	}
+	if !adapter.RefreshPending() {
+		t.Fatal("MCP health watcher did not request refresh")
+	}
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, _, err := registry.Resolve(
 		"mcp_remote_danger",
 	); !errors.Is(err, tool.ErrToolRevoked) {
@@ -502,8 +508,27 @@ func TestAdapterRevokesOpenServerAndRestoresAfterProbe(t *testing.T) {
 	if err := pool.ProbeOpen(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, _, err := registry.Resolve("mcp_remote_danger"); err != nil {
 		t.Fatalf("recovered server tool was not restored: %v", err)
+	}
+}
+
+func TestExecutorRejectsRevokedCapabilityBeforeRemoteCall(t *testing.T) {
+	executor := &executor{
+		entry: mcpruntime.CatalogEntry{
+			RemoteName: "danger",
+			Authority: func(context.Context) error {
+				return errors.New("revoked")
+			},
+		},
+	}
+	if _, err := executor.Execute(
+		t.Context(), json.RawMessage(`{}`),
+	); err == nil || !strings.Contains(err.Error(), "authority") {
+		t.Fatalf("revoked MCP execution error = %v", err)
 	}
 }
 
@@ -570,6 +595,10 @@ func TestAsyncSyncQuarantinesStaleCatalogAndRecovers(t *testing.T) {
 	if _, err := pool.Reload(t.Context(), config); err != nil {
 		t.Fatal(err)
 	}
+	if !adapter.RefreshPending() {
+		t.Fatal("MCP catalog watcher did not request refresh")
+	}
+	_ = adapter.Sync()
 	syncErr := adapter.LastError()
 	if syncErr == nil {
 		t.Fatal("async Sync error was not retained")
@@ -651,7 +680,10 @@ func TestAdapterReplacesExecutorWhenConnectionChanges(t *testing.T) {
 	if _, err := pool.Reload(t.Context(), config); err != nil {
 		t.Fatal(err)
 	}
-	if err := adapter.LastError(); err != nil {
+	if !adapter.RefreshPending() {
+		t.Fatal("MCP reconnect did not request refresh")
+	}
+	if err := adapter.Sync(); err != nil {
 		t.Fatal(err)
 	}
 	after, err := registry.Snapshot()
@@ -717,22 +749,38 @@ func TestCatalogNotificationReconcilesOnlyServerSource(t *testing.T) {
 	first.notify(mcpruntime.Notification{Method: "notifications/tools/list_changed"})
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		after, snapshotErr := registry.Snapshot()
-		if snapshotErr != nil {
-			t.Fatal(snapshotErr)
-		}
-		entry, ok := after.Lookup("mcp_remote_echo")
-		if ok && entry.Revision > beforeEntry.Revision &&
-			entry.Descriptor.Description == "version 2" {
-			if entry.State != tool.CatalogEntryDeferred ||
-				entry.Descriptor.Availability != tool.AvailabilityDeferred {
-				t.Fatalf("replacement entry = %+v, want deferred", entry)
-			}
-			return
+		catalog := pool.Catalog()
+		if len(catalog) == 1 &&
+			catalog[0].Tool.Description == "version 2" &&
+			adapter.RefreshPending() {
+			break
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("catalog notification did not reconcile the server source")
+	stale, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleEntry, _ := stale.Lookup("mcp_remote_echo")
+	if staleEntry.Revision != beforeEntry.Revision {
+		t.Fatal("MCP watcher changed runtime authority directly")
+	}
+	if err := adapter.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := after.Lookup("mcp_remote_echo")
+	if !ok || entry.Revision <= beforeEntry.Revision ||
+		entry.Descriptor.Description != "version 2" {
+		t.Fatalf("replacement entry = %+v", entry)
+	}
+	if entry.State != tool.CatalogEntryDeferred ||
+		entry.Descriptor.Availability != tool.AvailabilityDeferred {
+		t.Fatalf("replacement entry = %+v, want deferred", entry)
+	}
 }
 
 type notifyingTransport struct {

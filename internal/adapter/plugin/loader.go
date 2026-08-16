@@ -106,10 +106,14 @@ func (l *Loader) Load(bundleName string, receipt Receipt) (*Loaded, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := Verify(bundleRoot, manifest.Capabilities, manifest.Generation, receipt); err != nil {
+	if err := VerifyManifest(bundleRoot, manifest, receipt); err != nil {
 		return nil, fmt.Errorf("verify plugin trust: %w", err)
 	}
-	executableFile, err := bundle.OpenFile(manifest.Executable)
+	processTool, ok := manifest.processTool()
+	if !ok {
+		return nil, errors.New("plugin has no enabled tool capability")
+	}
+	executableFile, err := bundle.OpenFile(processTool.Executable)
 	if err != nil {
 		return nil, fmt.Errorf("open plugin executable: %w", err)
 	}
@@ -144,7 +148,7 @@ func (l *Loader) Load(bundleName string, receipt Receipt) (*Loaded, error) {
 		return nil, errors.Join(copyErr, closeSourceErr, closeSnapshotErr)
 	}
 	if written > maxBundleBytes ||
-		!equalHash(hex.EncodeToString(hash.Sum(nil)), manifest.ExecutableSHA256) {
+		!equalHash(hex.EncodeToString(hash.Sum(nil)), processTool.ExecutableSHA256) {
 		cleanup()
 		return nil, errors.New("plugin executable hash does not match trusted manifest")
 	}
@@ -152,9 +156,9 @@ func (l *Loader) Load(bundleName string, receipt Receipt) (*Loaded, error) {
 		name: manifest.Name, version: manifest.Version,
 		publisher: manifest.Publisher, trust: receipt.Trust,
 		executable: snapshotPath,
-		arguments:  append([]string(nil), manifest.Arguments...),
+		arguments:  append([]string(nil), processTool.Arguments...),
 		directory:  l.directory, backend: l.backend,
-		inventory: manifest.Capabilities,
+		inventory: processTool.Permissions,
 		cleanup:   snapshotPath,
 	}, nil
 }

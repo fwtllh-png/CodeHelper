@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,6 +26,8 @@ const (
 	EventToolCatalogChanged EventKind = "tool.catalog.changed"
 	EventMCPHealthChanged   EventKind = "mcp.health.changed"
 	EventExtensionLifecycle EventKind = "extension.lifecycle"
+	EventExtensionControl   EventKind = "extension.control"
+	EventHookExecution      EventKind = "hook.execution"
 	EventDiagnostics        EventKind = "diagnostics.result"
 	EventTurnCompleted      EventKind = "turn.completed"
 	EventTurnFailed         EventKind = "turn.failed"
@@ -419,6 +422,79 @@ type ExtensionLifecycleData struct {
 	Generation      uint64    `json:"generation"`
 	Enabled         bool      `json:"enabled"`
 	ChangedAt       time.Time `json:"changed_at"`
+}
+
+type ExtensionControlData struct {
+	OperationID  string                 `json:"operation_id"`
+	Action       ExtensionControlAction `json:"action"`
+	Kind         ExtensionControlKind   `json:"kind"`
+	Name         string                 `json:"name,omitempty"`
+	VersionValue string                 `json:"version_value,omitempty"`
+	Capability   string                 `json:"capability,omitempty"`
+	Status       string                 `json:"status"`
+	Revision     uint64                 `json:"revision"`
+	Digest       string                 `json:"digest"`
+	OccurredAt   time.Time              `json:"occurred_at"`
+}
+
+type HookExecutionData struct {
+	HookEvent       string    `json:"hook_event"`
+	HookID          string    `json:"hook_id"`
+	Source          string    `json:"source"`
+	Trust           string    `json:"trust"`
+	Scope           string    `json:"scope"`
+	Mode            string    `json:"mode"`
+	Outcome         string    `json:"outcome"`
+	Action          string    `json:"action,omitempty"`
+	ErrorCode       string    `json:"error_code,omitempty"`
+	ExitCode        int       `json:"exit_code"`
+	DurationMS      uint64    `json:"duration_ms"`
+	TimedOut        bool      `json:"timed_out,omitempty"`
+	Canceled        bool      `json:"canceled,omitempty"`
+	StdoutBytes     int64     `json:"stdout_bytes"`
+	StderrBytes     int64     `json:"stderr_bytes"`
+	StdoutTruncated bool      `json:"stdout_truncated,omitempty"`
+	StderrTruncated bool      `json:"stderr_truncated,omitempty"`
+	OccurredAt      time.Time `json:"occurred_at"`
+}
+
+func (*HookExecutionData) eventKind() EventKind { return EventHookExecution }
+
+func (d *HookExecutionData) validate() error {
+	if d.HookEvent == "" || d.HookID == "" || d.Outcome == "" ||
+		d.OccurredAt.IsZero() || d.StdoutBytes < 0 || d.StderrBytes < 0 {
+		return errors.New("hook execution event is invalid")
+	}
+	if !slices.Contains([]string{"repository", "plugin", "builtin"}, d.Source) ||
+		!slices.Contains([]string{"workspace", "signed_registry", "builtin"}, d.Trust) ||
+		!slices.Contains([]string{"process", "session", "thread", "turn"}, d.Scope) ||
+		!slices.Contains([]string{"observe", "enforce"}, d.Mode) {
+		return errors.New("hook execution authority metadata is invalid")
+	}
+	if d.Action != "" &&
+		!slices.Contains([]string{"allow", "deny", "ask"}, d.Action) {
+		return errors.New("hook execution action is invalid")
+	}
+	return nil
+}
+
+func (*ExtensionControlData) eventKind() EventKind { return EventExtensionControl }
+
+func (d *ExtensionControlData) validate() error {
+	if !extensionControlIDPattern.MatchString(d.OperationID) ||
+		d.Revision == 0 || d.OccurredAt.IsZero() ||
+		d.Status == "" || !validSHA256(d.Digest) {
+		return errors.New("extension control event is invalid")
+	}
+	operation := ExtensionControlOperation{
+		Version: Version, ID: d.OperationID, Kind: d.Kind, Action: d.Action,
+		Name: d.Name, VersionValue: d.VersionValue, Capability: d.Capability,
+		CreatedAt: d.OccurredAt,
+	}
+	if operation.Query() {
+		return errors.New("extension control event cannot represent query")
+	}
+	return operation.Validate()
 }
 
 func (*ExtensionLifecycleData) eventKind() EventKind { return EventExtensionLifecycle }

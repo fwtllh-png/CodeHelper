@@ -114,7 +114,7 @@ Merge 同样是构造模块：`app/persistence` 组合 Repository 与 Recovery�
 `chatmerge.Service` 拥有隔离 Workspace 的 Baseline、Preview 与 Journaled Apply。
 
 Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Plugin、Skill、Memory、
-Dynamic Tool、Hook 和 MCP 实现 `extensionContributor` 契约（`ID()` 与
+Dynamic Tool、Hook 和 MCP 实现仅用于构造期的 `extensionActivation` 契约（`ID()` 与
 `Contribute`），只接收显式构造能力与共享 `Registry`，不接收 `buildState`；在
 `extension-tools` Module 中按固定顺序、ID 唯一执行。每个 Contributor 返回确定性
 的 `ContributionReceipt`，记录新增 Tool Identity 与命名输出，任何 Extension 都

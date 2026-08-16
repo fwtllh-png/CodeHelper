@@ -38,6 +38,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -1563,15 +1564,25 @@ func TestMCPHealthSnapshotProjectsOncePerTurn(t *testing.T) {
 
 func TestExtensionSnapshotProjectsOncePerTurn(t *testing.T) {
 	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
-	snapshots := []ExtensionSnapshot{{
-		Kind: "plugin", Name: "review", Version: "1.0.0",
-		Source: "builtin", Publisher: "platform", Trust: "signed-registry",
-		Digest: strings.Repeat("a", 64), Generation: 1, Enabled: true,
-		LastAction: "install", ChangedAt: now,
-	}}
+	source := runtimeextension.SourceRef{
+		Kind: runtimeextension.SourceBuiltin, ID: "plugin:builtin",
+		Priority: 10, Revision: 1, Digest: "source-digest",
+	}
+	plan, err := (runtimeextension.Compiler{}).Compile(
+		[]runtimeextension.Candidate{{
+			ID: "plugin/review", Kind: "plugin", Name: "review", Version: "1.0.0",
+			Publisher: "platform", Trust: "signed-registry",
+			Digest: strings.Repeat("a", 64), Generation: 1, Enabled: true,
+			LastAction: "install", ChangedAt: now, Observable: true, Source: source,
+		}},
+		"permission-digest",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.TurnSnapshots.Extensions = func() ([]ExtensionSnapshot, error) {
-		return append([]ExtensionSnapshot(nil), snapshots...), nil
+	engine.options.TurnSnapshots.ExtensionPlan = func() (runtimeextension.Plan, error) {
+		return plan.Clone(), nil
 	}
 	engine.options.Now = func() time.Time { return now }
 	var changes []ExtensionLifecycleChanged
@@ -1581,10 +1592,10 @@ func TestExtensionSnapshotProjectsOncePerTurn(t *testing.T) {
 		}
 		return nil
 	}
-	if err := engine.emitExtensionLifecycleChanges(append([]ExtensionSnapshot(nil), snapshots...), send); err != nil {
+	if err := engine.emitExtensionLifecycleChanges(plan, send); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.emitExtensionLifecycleChanges(append([]ExtensionSnapshot(nil), snapshots...), send); err != nil {
+	if err := engine.emitExtensionLifecycleChanges(plan, send); err != nil {
 		t.Fatal(err)
 	}
 	if len(changes) != 1 || changes[0].Action != "active" {

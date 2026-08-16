@@ -1,7 +1,6 @@
 package wire
 
 import (
-	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,7 +13,10 @@ import (
 	"time"
 
 	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
+	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/buildinfo"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/extensioncontrol"
+	extensionapp "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -58,12 +60,67 @@ type ExtensionPaths struct {
 	HooksConfigPath      string
 }
 
-type PluginControl struct {
+type pluginRuntimeHandle struct {
 	Registry *pluginruntime.Registry
 	backend  sandbox.Backend
 }
 
-func OpenPluginControl(paths ExtensionPaths, workspace string) (*PluginControl, error) {
+type ExtensionControlHandle struct {
+	Plane   *extensionapp.ControlPlane
+	plugins *pluginRuntimeHandle
+}
+
+func OpenExtensionControlPlane(
+	paths ExtensionPaths,
+	workspace string,
+) (*ExtensionControlHandle, error) {
+	plugins, err := openPluginRuntime(paths, workspace)
+	if err != nil {
+		return nil, err
+	}
+	fail := func(cause error) (*ExtensionControlHandle, error) {
+		return nil, errors.Join(cause, plugins.Close())
+	}
+	state, err := skillruntime.NewStateStore(paths.SkillsStatePath)
+	if err != nil {
+		return fail(err)
+	}
+	lock, err := skillruntime.NewLockStore(paths.SkillsLockPath)
+	if err != nil {
+		return fail(err)
+	}
+	skills, err := skillruntime.Discover(skillruntime.DiscoveryOptions{
+		Workspace: workspace, ConfiguredDir: paths.SkillsConfiguredDir,
+		UserHome: paths.UserHome, Locale: paths.SkillsLocale,
+		State: state, Lock: lock, RuntimeVersion: buildinfo.Version,
+	})
+	if err != nil {
+		return fail(err)
+	}
+	store, err := extensioncontrol.Open(
+		filepath.Join(paths.DataDir, extensioncontrol.FileName),
+	)
+	if err != nil {
+		return fail(err)
+	}
+	plane, err := extensionapp.NewControlPlane(plugins.Registry, skills, store)
+	if err != nil {
+		return fail(err)
+	}
+	return &ExtensionControlHandle{Plane: plane, plugins: plugins}, nil
+}
+
+func (h *ExtensionControlHandle) Close() error {
+	if h == nil || h.plugins == nil {
+		return nil
+	}
+	return h.plugins.Close()
+}
+
+func openPluginRuntime(
+	paths ExtensionPaths,
+	workspace string,
+) (*pluginRuntimeHandle, error) {
 	helper, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("resolve plugin sandbox helper: %w", err)
@@ -79,10 +136,10 @@ func OpenPluginControl(paths ExtensionPaths, workspace string) (*PluginControl, 
 		_ = sandbox.CloseBackend(backend)
 		return nil, err
 	}
-	return &PluginControl{Registry: registry, backend: backend}, nil
+	return &pluginRuntimeHandle{Registry: registry, backend: backend}, nil
 }
 
-func (c *PluginControl) Close() error {
+func (c *pluginRuntimeHandle) Close() error {
 	if c == nil {
 		return nil
 	}
@@ -91,33 +148,6 @@ func (c *PluginControl) Close() error {
 		registryErr = c.Registry.Close()
 	}
 	return errors.Join(registryErr, sandbox.CloseBackend(c.backend))
-}
-
-func (c *PluginControl) Install(
-	ctx context.Context,
-	name, version string,
-) (pluginruntime.ActivationRecord, error) {
-	if c == nil || c.Registry == nil {
-		return pluginruntime.ActivationRecord{}, errors.New("plugin control is unavailable")
-	}
-	return c.Registry.Install(ctx, name, version)
-}
-
-func (c *PluginControl) Update(
-	ctx context.Context,
-	name, version string,
-) (pluginruntime.ActivationRecord, error) {
-	if c == nil || c.Registry == nil {
-		return pluginruntime.ActivationRecord{}, errors.New("plugin control is unavailable")
-	}
-	return c.Registry.Update(ctx, name, version)
-}
-
-func (c *PluginControl) Rollback(name string) (pluginruntime.ActivationRecord, error) {
-	if c == nil || c.Registry == nil {
-		return pluginruntime.ActivationRecord{}, errors.New("plugin control is unavailable")
-	}
-	return c.Registry.Rollback(name)
 }
 
 func ResolveExtensionPaths(options ExtensionOptions, workspace string) (ExtensionPaths, error) {

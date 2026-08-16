@@ -28,6 +28,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
+	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
@@ -63,16 +64,18 @@ type persistenceBuildState struct {
 }
 
 type extensionBuildState struct {
-	receipts       []ContributionReceipt
-	plugins        []*pluginruntime.Loaded
-	pluginRegistry *pluginruntime.Registry
-	pluginTools    *plugintool.Adapter
-	skillCatalog   *skill.Catalog
-	memory         *memory.Store
-	hooks          *hooks.Manager
-	mcpPool        *mcpruntime.Pool
-	mcpPrewarm     *MCPPrewarm
-	dynamicTools   *dynamictool.Manager
+	receipts           []ContributionReceipt
+	registry           *runtimeextension.Registry
+	plugins            []*pluginruntime.Loaded
+	pluginRegistry     *pluginruntime.Registry
+	pluginTools        *plugintool.Adapter
+	pluginCapabilities []pluginruntime.CompiledBundle
+	skillCatalog       *skill.Catalog
+	memory             *memory.Store
+	hooks              *hooks.Manager
+	mcpPool            *mcpruntime.Pool
+	mcpPrewarm         *MCPPrewarm
+	dynamicTools       *dynamictool.Manager
 }
 
 type securityBuildState struct {

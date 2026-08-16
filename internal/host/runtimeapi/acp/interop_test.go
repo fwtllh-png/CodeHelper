@@ -260,6 +260,7 @@ func TestBinaryInteropStructuredInitialize(t *testing.T) {
 		"session/profile/get", "session/profile/update",
 		"session/tool/catalog",
 		"thread/list", "thread/get", "task/list", "agent/list", "usage/query",
+		"extension/list", "extension/control",
 	} {
 		if !slices.Contains(negotiated.Methods, method) {
 			t.Fatalf("advertised methods=%v missing %s", negotiated.Methods, method)
@@ -271,6 +272,15 @@ func TestBinaryInteropStructuredInitialize(t *testing.T) {
 	}
 	if _, present := raw["capabilities"]; present {
 		t.Fatalf("boolean capabilities are still advertised: %s", frame.Result)
+	}
+	extensions := host.call(
+		t, "extensions", "extension/list", map[string]any{"kind": "all"},
+	)
+	requireResult(t, extensions)
+	var extensionResult protocol.ExtensionControlResult
+	if err := json.Unmarshal(extensions.Result, &extensionResult); err != nil ||
+		extensionResult.OperationID == "" {
+		t.Fatalf("extension/list result=%s err=%v", extensions.Result, err)
 	}
 
 	requireResult(t, host.call(t, "down", "shutdown", map[string]any{}))
