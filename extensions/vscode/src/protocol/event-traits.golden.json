@@ -41,6 +41,20 @@
     "correlation": "request",
     "terminal": false
   },
+  "attempt.status": {
+    "class": "orchestration",
+    "item_owner": "attempt",
+    "durability": "retained",
+    "correlation": "attempt",
+    "terminal": false
+  },
+  "budget.updated": {
+    "class": "accounting",
+    "item_owner": "attempt",
+    "durability": "retained",
+    "correlation": "attempt",
+    "terminal": false
+  },
   "checkpoint.created": {
     "class": "artifact",
     "item_owner": "checkpoint",
@@ -83,6 +97,13 @@
     "correlation": "turn",
     "terminal": false
   },
+  "execution.bound": {
+    "class": "orchestration",
+    "item_owner": "attempt",
+    "durability": "retained",
+    "correlation": "effect",
+    "terminal": false
+  },
   "extension.lifecycle": {
     "class": "audit",
     "item_owner": "turn",
@@ -118,6 +139,13 @@
     "correlation": "server",
     "terminal": false
   },
+  "node.status": {
+    "class": "orchestration",
+    "item_owner": "node",
+    "durability": "retained",
+    "correlation": "node",
+    "terminal": false
+  },
   "operation.rejected": {
     "class": "terminal_operation",
     "item_owner": "operation",
@@ -144,6 +172,41 @@
     "item_owner": "turn",
     "durability": "retained",
     "correlation": "turn",
+    "terminal": false
+  },
+  "run.canceled": {
+    "class": "orchestration",
+    "item_owner": "run",
+    "durability": "retained",
+    "correlation": "run",
+    "terminal": false
+  },
+  "run.completed": {
+    "class": "orchestration",
+    "item_owner": "run",
+    "durability": "retained",
+    "correlation": "run",
+    "terminal": false
+  },
+  "run.failed": {
+    "class": "orchestration",
+    "item_owner": "run",
+    "durability": "retained",
+    "correlation": "run",
+    "terminal": false
+  },
+  "run.started": {
+    "class": "orchestration",
+    "item_owner": "run",
+    "durability": "retained",
+    "correlation": "run",
+    "terminal": false
+  },
+  "run.status": {
+    "class": "orchestration",
+    "item_owner": "run",
+    "durability": "retained",
+    "correlation": "run",
     "terminal": false
   },
   "search.result": {

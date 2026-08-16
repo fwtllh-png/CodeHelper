@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "requirement_id": "TASK-ORCHESTRATION-OR5",
+  "status": "accepted",
+  "captured_on": "2026-08-16",
+  "baseline_commit": "18e1ce8f052794d18f6cc19d16db44b904f6e70f",
+  "workgraph": {
+    "spawn_declares_agent_node": true,
+    "run_scope": "one durable WorkGraph per Agent",
+    "node_kind": "agent_turn",
+    "turn_claims_attempt": true,
+    "runtime_turn_binds_execution": true,
+    "terminal_event_settles_attempt": true,
+    "follow_up_retries_same_node": true,
+    "follow_up_creates_new_attempt": true,
+    "runtime_correlation_uses_workgraph_identity": true
+  },
+  "runtime": {
+    "child_is_runtime_thread": true,
+    "child_runtime_role": "Turn Executor Adapter",
+    "event_delivery": "in-process observer after durable append and Runtime projection",
+    "event_pump_removed": true,
+    "runtime_events_polling_removed": true,
+    "release_polling_removed": true,
+    "external_subscriber_created": false,
+    "approval_events_drive_waiting": true,
+    "terminal_events_drive_completion_and_release": true
+  },
+  "residency": {
+    "max_total": "durable Agent count",
+    "max_resident": "loaded child Runtime Thread count",
+    "max_running": "starting, running, or waiting Turn count",
+    "requested_counts_as_running": false,
+    "lru_unloads_terminal_agent": true,
+    "running_agent_is_not_evictable": true,
+    "on_demand_restore": true,
+    "restored_context_consistent": true,
+    "restored_authority_consistent": true,
+    "restored_mailbox_consistent": true,
+    "worktree_survives_unload": true,
+    "engine_and_toolset_released": true
+  },
+  "wake_latency": {
+    "samples_per_run": 64,
+    "runs": 5,
+    "threshold_ms": 50,
+    "p95_microseconds": [
+      21.708,
+      32.375,
+      23.625,
+      24.0,
+      21.5
+    ],
+    "maximum_p95_microseconds": 32.375
+  },
+  "performance": {
+    "platform": {
+      "os": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M5 Pro"
+    },
+    "command": "go test -run '^$' -bench '^BenchmarkOR0ResidentAgents$' -benchtime=1x -count=1 ./internal/orchestration/subagent",
+    "agents_8": {
+      "ns_per_op": 4227083,
+      "bytes_per_op": 73104,
+      "allocs_per_op": 676
+    },
+    "agents_32": {
+      "ns_per_op": 12524291,
+      "bytes_per_op": 176512,
+      "allocs_per_op": 1393
+    },
+    "or0_agents_8": {
+      "ns_per_op": 7736625,
+      "bytes_per_op": 31176,
+      "allocs_per_op": 381
+    },
+    "or0_agents_32": {
+      "ns_per_op": 42505291,
+      "bytes_per_op": 178968,
+      "allocs_per_op": 1309
+    }
+  },
+  "architecture": {
+    "ratchet_targets": 76,
+    "subagent_internal_fanout": 6,
+    "subagent_production_lines": 4216,
+    "eventhub_internal_fanout": 1,
+    "eventhub_production_lines": 212,
+    "scheduler_goroutines": 9,
+    "scheduler_timers": 3,
+    "scheduler_subscriptions": 0,
+    "or4_scheduler_goroutines": 11,
+    "or4_scheduler_timers": 5
+  },
+  "validation": {
+    "reducer_fuzz_executions": 110084,
+    "race": "passed",
+    "nested_agent": "passed",
+    "approval": "passed",
+    "integration": "passed",
+    "runtime_recovery": "passed",
+    "vscode": "passed",
+    "docs": "passed",
+    "book": "passed"
+  },
+  "validation_observations": {
+    "full_go_first_attempt": "one unrelated existing shell chatty-job archive timing test lost its first output line under parallel load",
+    "isolated_shell_single_retry": "passed",
+    "isolated_shell_five_repetitions": "one pass and four failures; no OR5-owned package is involved",
+    "full_go_second_attempt": "passed"
+  },
+  "gates": [
+    "make task-orchestration-or5",
+    "go test -count=1 -p 4 ./...",
+    "make vscode-check",
+    "make architecture-ratchet",
+    "make docs-check",
+    "make book-check",
+    "git diff --check"
+  ]
+}

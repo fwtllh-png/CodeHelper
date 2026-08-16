@@ -229,6 +229,9 @@ func (a *EngineAdapter) StartTurn(
 		return resolveErr
 	}
 	receipt := newReceiptRecorder(payload.Prompt)
+	receipt.orchestration = protocol.CloneOrchestrationCorrelation(
+		payload.Orchestration,
+	)
 	receipt.intent = intent
 	receipt.editorContext = append(
 		[]protocol.EditorContextReceipt(nil), editorContext...,
@@ -292,6 +295,9 @@ func (a *EngineAdapter) StartTurn(
 			}
 			return sink.Emit(&protocol.TurnStartedData{
 				Provider: event.Provider, Model: event.Model,
+				Orchestration: protocol.CloneOrchestrationCorrelation(
+					payload.Orchestration,
+				),
 				Intent: intent,
 				Mode:   event.Mode, Posture: event.Posture,
 				Workspace:          event.Workspace,
@@ -555,7 +561,7 @@ func (a *EngineAdapter) StartTurn(
 		string(payload.TurnID),
 		agentengine.TurnRequest{
 			Prompt: modelPrompt, Intent: intent, Attachments: attachments,
-			Recovery: payload.Recovery,
+			Orchestration: payload.Orchestration, Recovery: payload.Recovery,
 		},
 		emit,
 	)

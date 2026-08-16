@@ -31,13 +31,17 @@ func TestOrchestrateCreatesFleetAndLane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = session.Close() })
 	runID := "wf_test_1"
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := session.Begin(ctx, runID); err != nil {
 		t.Fatal(err)
 	}
-	result, err := workflow.NewRuntime().Run(ctx, workflow.RunOptions{
+	result, err := workflow.NewRuntimeWithControllerAndBudget(
+		session.Fleet.Controller(),
+		session.Budget,
+	).Run(ctx, workflow.RunOptions{
 		ID: runID,
 		Spec: workflow.Spec{
 			Goal: "ship",
@@ -45,7 +49,7 @@ func TestOrchestrateCreatesFleetAndLane(t *testing.T) {
 				{ID: "a", Kind: workflow.NodeTask, Prompt: "do it"},
 			},
 		},
-		Driver: session.Driver(),
+		Driver: session.Driver(), LaneID: session.LaneID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +62,8 @@ func TestOrchestrateCreatesFleetAndLane(t *testing.T) {
 	}
 
 	lanes := session.Lanes.List()
-	if len(lanes) != 1 || lanes[0].ID != "lane-"+runID {
+	if len(lanes) != 1 || lanes[0].ID != "lane-"+runID ||
+		lanes[0].Status != "exited" || lanes[0].PID != 0 {
 		t.Fatalf("lanes=%+v", lanes)
 	}
 	state, err := session.Fleet.Replay()

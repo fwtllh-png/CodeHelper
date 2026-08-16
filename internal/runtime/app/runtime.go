@@ -15,6 +15,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
+	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -104,6 +106,10 @@ type SessionProfileEngine interface {
 
 type SessionToolCatalog interface {
 	Snapshot() (tool.CatalogSnapshot, error)
+}
+
+type OrchestrationController interface {
+	Execute(context.Context, kernel.Command) (kernel.Result, error)
 }
 
 type SessionLifecycleStore interface {
@@ -205,6 +211,7 @@ type Options struct {
 	SessionWorkspaces   SessionWorkspaceManager
 	SessionArtifacts    SessionArtifactStore
 	TerminalStore       turnkernel.TerminalEnvelopeStore
+	Orchestration       OrchestrationController
 }
 
 type Snapshot struct {
@@ -226,25 +233,27 @@ type acceptedOperation struct {
 }
 
 type Runtime struct {
-	ctx                 context.Context
-	cancel              context.CancelFunc
-	opts                Options
-	engine              Engine
-	events              EventStore
-	hub                 *eventhub.Hub
-	content             ContentStore
-	lifecycle           DurableLifecycle
-	metrics             *telemetry.Metrics
-	logger              *slog.Logger
-	profiles            SessionProfileStore
-	defaultProfile      protocol.SessionProfile
-	profileCapabilities protocol.SessionProfileCapabilities
-	toolCatalog         SessionToolCatalog
-	sessionLifecycle    SessionLifecycleStore
-	sessionWorkspaces   SessionWorkspaceManager
-	sessionArtifacts    SessionArtifactStore
-	terminalStore       turnkernel.TerminalEnvelopeStore
-	terminal            *TerminalPublisher
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	opts                 Options
+	engine               Engine
+	events               EventStore
+	hub                  *eventhub.Hub
+	content              ContentStore
+	lifecycle            DurableLifecycle
+	metrics              *telemetry.Metrics
+	logger               *slog.Logger
+	profiles             SessionProfileStore
+	defaultProfile       protocol.SessionProfile
+	profileCapabilities  protocol.SessionProfileCapabilities
+	toolCatalog          SessionToolCatalog
+	sessionLifecycle     SessionLifecycleStore
+	sessionWorkspaces    SessionWorkspaceManager
+	sessionArtifacts     SessionArtifactStore
+	terminalStore        turnkernel.TerminalEnvelopeStore
+	terminal             *TerminalPublisher
+	orchestration        OrchestrationController
+	orchestrationEffects sync.Mutex
 	*SessionService
 	*ArtifactService
 
@@ -268,11 +277,45 @@ type Runtime struct {
 
 	active *ActiveTurnRegistry
 
+	observerMu   sync.Mutex
+	observers    map[uint64]func(protocol.Event)
+	nextObserver uint64
+
 	// Event-owned items (F5): tool/approval/input get stable ItemIDs distinct
 	// from the turn.start operation item.
 	toolItems     map[string]protocol.ItemID // call_id -> item
 	approvalItems map[string]protocol.ItemID // request_id -> item
 	inputItems    map[string]protocol.ItemID // request_id -> item
+}
+
+// ObserveEvents registers an in-process projection observer. Observers run
+// after durable append and Runtime projection, before external fanout.
+func (r *Runtime) ObserveEvents(observer func(protocol.Event)) func() {
+	if r == nil || observer == nil {
+		return func() {}
+	}
+	r.observerMu.Lock()
+	r.nextObserver++
+	id := r.nextObserver
+	r.observers[id] = observer
+	r.observerMu.Unlock()
+	return func() {
+		r.observerMu.Lock()
+		delete(r.observers, id)
+		r.observerMu.Unlock()
+	}
+}
+
+func (r *Runtime) observeEvent(event protocol.Event) {
+	r.observerMu.Lock()
+	observers := make([]func(protocol.Event), 0, len(r.observers))
+	for _, observer := range r.observers {
+		observers = append(observers, observer)
+	}
+	r.observerMu.Unlock()
+	for _, observer := range observers {
+		observer(event)
+	}
 }
 
 func (r *SessionService) SessionLifecycleAvailable() bool {
@@ -1325,16 +1368,23 @@ func (r StartTurnHandler) Handle(operation protocol.Operation, payload *protocol
 		}
 		err := startTurnSafely(r.engine, turnContext, payload, sink)
 		if r.lifecycle != nil && !sink.terminalCommitAttempted {
-			releaseActive()
 			if err == nil {
 				err = errors.New(
 					"durable turn returned without atomic terminal commit",
 				)
 			}
-			if rejectErr := r.reject(operation, err); rejectErr == nil {
-				r.commit(operation.ID)
+			if terminalErr := r.commitStartupTerminal(
+				payload,
+				sink,
+				err,
+			); terminalErr != nil {
+				releaseActive()
+				err = errors.Join(err, terminalErr)
+				if rejectErr := r.reject(operation, err); rejectErr == nil {
+					r.commit(operation.ID)
+				}
+				return
 			}
-			return
 		}
 		if sink.terminalCommitAttempted && sink.terminal == nil {
 			releaseActive()
@@ -1435,7 +1485,9 @@ func (r CancelTurnHandler) Handle(operation protocol.Operation, payload *protoco
 	}
 	sink := &runtimeSink{runtime: r.Runtime, operation: operation}
 	if err := r.engine.CancelTurn(r.ctx, payload, sink); err != nil {
-		return finishOutcome(err)
+		if !errors.Is(err, agentengine.ErrTurnCoordinatorNotActive) {
+			return finishOutcome(err)
+		}
 	}
 	cancel, err := r.active.RecordCancel(
 		payload.TurnID,
@@ -1483,6 +1535,20 @@ func (s *runtimeSink) Emit(data protocol.EventData) error {
 	}
 	threadID, turnID, itemID := protocol.OperationReferences(s.operation)
 	return s.runtime.publish(s.operation.ID, threadID, turnID, itemID, data)
+}
+func (s *runtimeSink) EmitStable(
+	eventID protocol.EventID,
+	data protocol.EventData,
+) error {
+	threadID, turnID, itemID := protocol.OperationReferences(s.operation)
+	return s.runtime.publishStable(
+		s.operation.ID,
+		threadID,
+		turnID,
+		itemID,
+		eventID,
+		data,
+	)
 }
 func (s *runtimeSink) CommitTerminal(material TerminalMaterial) error {
 	s.terminalCommitAttempted = true
@@ -1578,32 +1644,35 @@ func (r *Runtime) recoverPendingTurns(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if operation.Kind != protocol.OperationStartTurn {
+		if operation.Kind != protocol.OperationStartTurn &&
+			!protocol.IsWorkGraphOperation(operation.Kind) {
 			continue
 		}
-		threadID, turnID, _ := protocol.OperationReferences(operation)
-		if pendingOperation.SessionID != "" && r.profiles != nil {
-			if _, err := r.RestoreSessionProfile(
-				ctx,
-				pendingOperation.SessionID,
-				threadID,
-			); err != nil {
-				return fmt.Errorf(
-					"restore profile before interrupted turn %s: %w",
-					turnID,
-					err,
-				)
+		if operation.Kind == protocol.OperationStartTurn {
+			threadID, turnID, _ := protocol.OperationReferences(operation)
+			if pendingOperation.SessionID != "" && r.profiles != nil {
+				if _, err := r.RestoreSessionProfile(
+					ctx,
+					pendingOperation.SessionID,
+					threadID,
+				); err != nil {
+					return fmt.Errorf(
+						"restore profile before interrupted turn %s: %w",
+						turnID,
+						err,
+					)
+				}
 			}
-		}
-		facts, err := r.terminalStore.LoadDomainFacts(
-			ctx,
-			string(turnID),
-		)
-		if err != nil {
-			return err
-		}
-		if len(facts) == 0 {
-			continue
+			facts, err := r.terminalStore.LoadDomainFacts(
+				ctx,
+				string(turnID),
+			)
+			if err != nil {
+				return err
+			}
+			if len(facts) == 0 {
+				continue
+			}
 		}
 		select {
 		case r.operations <- acceptedOperation{
@@ -1699,6 +1768,43 @@ func (r *Runtime) publish(
 	itemID protocol.ItemID,
 	data protocol.EventData,
 ) error {
+	return r.publishWithIdentity(
+		operationID,
+		threadID,
+		turnID,
+		itemID,
+		"",
+		data,
+	)
+}
+func (r *Runtime) publishStable(
+	operationID protocol.OperationID,
+	threadID protocol.ThreadID,
+	turnID protocol.TurnID,
+	itemID protocol.ItemID,
+	eventID protocol.EventID,
+	data protocol.EventData,
+) error {
+	if eventID == "" {
+		return errors.New("stable event id is required")
+	}
+	return r.publishWithIdentity(
+		operationID,
+		threadID,
+		turnID,
+		itemID,
+		eventID,
+		data,
+	)
+}
+func (r *Runtime) publishWithIdentity(
+	operationID protocol.OperationID,
+	threadID protocol.ThreadID,
+	turnID protocol.TurnID,
+	itemID protocol.ItemID,
+	eventID protocol.EventID,
+	data protocol.EventData,
+) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	itemID = r.eventOwnedItemID(data, itemID)
@@ -1723,10 +1829,11 @@ func (r *Runtime) publish(
 		}
 		r.terminals[turnID] = kind
 	}
-	err := r.hub.Publish(protocol.EventMeta{
+	meta := protocol.EventMeta{
 		OperationID: operationID, ThreadID: threadID,
 		TurnID: turnID, ItemID: itemID,
-	}, data, func(event protocol.Event) error {
+	}
+	project := func(event protocol.Event) error {
 		var projectionErr error
 		if r.lifecycle != nil {
 			projectionErr = r.lifecycle.Project(context.Background(), event)
@@ -1756,7 +1863,13 @@ func (r *Runtime) publish(
 			r.clearPendingTurn(turnID)
 		}
 		return projectionErr
-	})
+	}
+	var err error
+	if eventID == "" {
+		err = r.hub.Publish(meta, data, project)
+	} else {
+		err = r.hub.PublishStable(meta, eventID, data, project)
+	}
 	if err != nil {
 		if protocol.IsTerminalEvent(kind) {
 			delete(r.terminals, turnID)

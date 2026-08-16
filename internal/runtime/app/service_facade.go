@@ -18,6 +18,7 @@ func newEventHub(ctx context.Context, runtime *Runtime) *eventhub.Hub {
 			return &ReplayLimitError{Requested: cursor, Limit: limit}
 		},
 		OnPublished: runtime.metrics.EventPublished, OnDropped: runtime.metrics.SubscriberDropped,
+		OnEvent: runtime.observeEvent,
 	})
 }
 

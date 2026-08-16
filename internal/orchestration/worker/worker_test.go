@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ func TestSchedulerRunsAClaimedTaskAndRecordsTheAttempt(t *testing.T) {
 			// A real agent executor knows the thread and turn it ran on, and that
 			// is the whole point of the audit trail.
 			ThreadID: "thread-task-1", TurnID: "turn-abc",
+			PermissionDigests: []string{strings.Repeat("a", 64)},
 		},
 	}
 	scheduler := testScheduler(t, tasks, nil, executor, 2)
@@ -52,7 +54,8 @@ func TestSchedulerRunsAClaimedTaskAndRecordsTheAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(attempts) != 1 || attempts[0].ThreadID != "thread-task-1" ||
-		attempts[0].TurnID != "turn-abc" || attempts[0].Status != task.AttemptCompleted {
+		attempts[0].TurnID != "turn-abc" || attempts[0].Status != task.AttemptCompleted ||
+		len(attempts[0].PermissionDigests) != 1 {
 		t.Fatalf("attempt audit = %+v", attempts)
 	}
 	if executor.calls() != 1 {
@@ -108,6 +111,34 @@ func TestSchedulerFailsATaskWhoseAttemptsAreSpent(t *testing.T) {
 	}
 	if failed.State != task.StateFailed || failed.FailureReason != "worktree is gone" {
 		t.Fatalf("task = %+v, want failed with the executor's reason", failed)
+	}
+}
+
+func TestSchedulerDrainsEffectsWhenRetryReleaseExhaustsAttempts(t *testing.T) {
+	tasks := testTasks(t)
+	created := mustCreate(t, tasks, "turn-1", 1)
+	executor := &fakeExecutor{outcome: Outcome{
+		State: task.StateFailed, Reason: "budget exhausted", Retryable: true,
+	}}
+	scheduler := testScheduler(t, tasks, nil, executor, 2)
+	drains := 0
+	scheduler.drainEffects = func(context.Context) error {
+		drains++
+		return nil
+	}
+	if _, err := scheduler.Dispatch(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	scheduler.Wait()
+	failed, err := tasks.Get(t.Context(), created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != task.StateFailed {
+		t.Fatalf("task state = %s, want failed", failed.State)
+	}
+	if drains != 1 {
+		t.Fatalf("effect drains = %d, want 1", drains)
 	}
 }
 
@@ -224,9 +255,12 @@ func TestAnotherProcessTakesOverWorkAbandonedWithALease(t *testing.T) {
 		t.Fatalf("task state = %s, want completed", finished.State)
 	}
 	// The dead owner coming back to life must not overwrite the result.
-	if _, err := tasks.Settle(t.Context(), created.ID, "worker-dead", task.Transition{
-		State: task.StateFailed, Reason: "i was here first", At: now,
-	}); !errors.Is(err, task.ErrClaimLost) {
+	if _, err := tasks.SettleAttempt(
+		t.Context(), created.ID, "worker-dead", claimed[0].LeaseEpoch,
+		task.Transition{
+			State: task.StateFailed, Reason: "i was here first", At: now,
+		},
+	); !errors.Is(err, task.ErrClaimLost) {
 		t.Fatalf("stale owner settle error = %v, want ErrClaimLost", err)
 	}
 	attempts, err := tasks.Attempts(t.Context(), created.ID)

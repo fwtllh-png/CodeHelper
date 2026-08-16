@@ -8,8 +8,76 @@ import (
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
+
+func TestLifecycleAcceptsWorkGraphOperationWithoutTurnRow(t *testing.T) {
+	store, err := state.Open(t.Context(), state.Options{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close(t.Context()) })
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, statement := range []string{
+		`INSERT INTO workspaces(id, root_path, created_at, updated_at)
+		 VALUES ('workspace', '/workspace', ?, ?)`,
+		`INSERT INTO sessions(id, workspace_id, status, created_at, updated_at)
+		 VALUES ('session', 'workspace', 'open', ?, ?)`,
+		`INSERT INTO threads(id, session_id, title, status, created_at, updated_at)
+		 VALUES ('thread', 'session', 'chat', 'open', ?, ?)`,
+	} {
+		if _, err := store.SQLite().DB().ExecContext(
+			t.Context(),
+			statement,
+			now,
+			now,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	operation, err := protocol.NewOperation(&protocol.SubmitRunPayload{
+		ThreadID: "thread", TurnID: "control-turn", ItemID: "control-item",
+		RunID: "run", Kind: "workflow", Source: "host",
+		SessionID: "session", RootThreadID: "thread",
+		Nodes: []protocol.RunNodeSpec{{ID: "node", Kind: "agent_turn"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := app.CanonicalOperationPayload(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := NewLifecycle(store).Accept(
+		t.Context(),
+		operation,
+		"",
+		canonical,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted.OperationID != operation.ID || accepted.Duplicate {
+		t.Fatalf("acceptance = %+v", accepted)
+	}
+	var turnCount, itemCount int
+	if err := store.SQLite().DB().QueryRowContext(
+		t.Context(),
+		`SELECT COUNT(*) FROM turns`,
+	).Scan(&turnCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SQLite().DB().QueryRowContext(
+		t.Context(),
+		`SELECT COUNT(*) FROM items`,
+	).Scan(&itemCount); err != nil {
+		t.Fatal(err)
+	}
+	if turnCount != 0 || itemCount != 0 {
+		t.Fatalf("work graph operation created turns=%d items=%d", turnCount, itemCount)
+	}
+}
 
 func TestCreateSeedReusesWorkspaceRoot(t *testing.T) {
 	store, err := sqlitestate.Open(t.Context(), filepath.Join(t.TempDir(), "state.db"))

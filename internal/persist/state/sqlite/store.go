@@ -630,35 +630,6 @@ CREATE TABLE task_attempts (
     PRIMARY KEY (task_id, attempt)
 );
 CREATE INDEX task_attempts_owner ON task_attempts(owner, status);
-
-CREATE TABLE workflow_runs (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
-    spec_hash TEXT NOT NULL,
-    spec_json TEXT NOT NULL,
-    status TEXT NOT NULL,
-    goal TEXT NOT NULL DEFAULT '',
-    error TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    CHECK (json_valid(spec_json))
-);
-CREATE INDEX workflow_runs_session_created ON workflow_runs(session_id, created_at);
-CREATE INDEX workflow_runs_status_updated ON workflow_runs(status, updated_at);
-
-CREATE TABLE workflow_nodes (
-    run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
-    node_id TEXT NOT NULL,
-    status TEXT NOT NULL,
-    attempt INTEGER NOT NULL DEFAULT 0,
-    output_handle TEXT,
-    reason TEXT,
-    started_at TEXT,
-    ended_at TEXT,
-    PRIMARY KEY (run_id, node_id)
-);
-CREATE INDEX workflow_nodes_run_status ON workflow_nodes(run_id, status);
 `
 
 // A local trace has one row per span, keyed by the turn it belongs to.

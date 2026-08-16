@@ -9,18 +9,23 @@ import (
 	"strings"
 	"time"
 
+	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 // Repository persists automations and run ledgers in CodeHelper SQLite state.
 type Repository struct {
-	db *sql.DB
+	db         *sql.DB
+	workGraphs *orchestrationstore.Store
+	initErr    error
 }
 
 func NewRepository(db *sql.DB) *Repository {
-	return &Repository{db: db}
+	workGraphs, err := orchestrationstore.OpenDB(context.Background(), db)
+	return &Repository{db: db, workGraphs: workGraphs, initErr: err}
 }
 
 func NewSQLiteRepository(store *sqlitestate.Store) *Repository {
@@ -279,7 +284,7 @@ func (r *Repository) RunNow(ctx context.Context, id string, expectedVersion uint
 		if current.Version != expectedVersion {
 			return ErrVersionConflict
 		}
-		run, err = enqueue(ctx, tx, current, at, TriggerManual, at)
+		run, err = enqueue(ctx, tx, r.workGraphs, current, at, TriggerManual, at)
 		if err != nil {
 			return err
 		}
@@ -341,7 +346,15 @@ func (r *Repository) Tick(ctx context.Context, now time.Time) ([]Run, error) {
 				continue
 			}
 			scheduledFor := current.NextRunAt.UTC()
-			run, err := enqueue(ctx, tx, current, scheduledFor, TriggerScheduled, now)
+			run, err := enqueue(
+				ctx,
+				tx,
+				r.workGraphs,
+				current,
+				scheduledFor,
+				TriggerScheduled,
+				now,
+			)
 			if errors.Is(err, errDuplicateSlot) {
 				rule, parseErr := ParseRRULE(current.RRULE)
 				if parseErr != nil {
@@ -473,18 +486,26 @@ func reconcileNextRuns(ctx context.Context, tx *sql.Tx, now time.Time) error {
 }
 
 func enqueue(
-	ctx context.Context, tx *sql.Tx, current Automation, scheduledFor time.Time, trigger Trigger, at time.Time,
+	ctx context.Context,
+	tx *sql.Tx,
+	workGraphs *orchestrationstore.Store,
+	current Automation,
+	scheduledFor time.Time,
+	trigger Trigger,
+	at time.Time,
 ) (Run, error) {
+	if workGraphs == nil {
+		return Run{}, errors.New("automation WorkGraph store is required")
+	}
 	taskID := "task_auto_" + current.ID + "_" + scheduledFor.UTC().Format("20060102T150405.000000000")
 	if trigger == TriggerManual {
 		taskID = "task_auto_manual_" + current.ID + "_" + at.UTC().Format("20060102T150405.000000000")
 	}
 	idempotency := fmt.Sprintf("automation:%s:%s:%s", current.ID, trigger, scheduledFor.UTC().Format(time.RFC3339Nano))
-	runID := "run_" + current.ID + "_" + scheduledFor.UTC().Format("20060102T150405.000000000")
 	if trigger == TriggerManual {
-		runID = "run_manual_" + current.ID + "_" + at.UTC().Format("20060102T150405.000000000")
 		idempotency = fmt.Sprintf("automation:%s:manual:%s", current.ID, at.UTC().Format(time.RFC3339Nano))
 	}
+	runID := string(task.WorkGraphRunID(taskID))
 	payload, err := sqlkit.CanonicalObject(current.TaskPayload)
 	if err != nil {
 		return Run{}, err
@@ -493,32 +514,65 @@ func enqueue(
 	if attempts <= 0 {
 		attempts = 1
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO tasks(
-			id, session_id, thread_id, turn_id, kind, state, payload_json,
-			lifecycle_sequence, created_at, updated_at,
-			executor, attempt, max_attempts
-		) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 0, ?)`,
-		taskID, current.SessionID, sqlkit.NullableString(current.ThreadID), sqlkit.NullableString(current.TurnID),
-		current.TaskKind, task.StateQueued, string(payload), sqlkit.Timestamp(at), sqlkit.Timestamp(at),
-		sqlkit.NullableString(current.TaskExecutor), attempts,
+	run := Run{
+		ID: runID, Version: 1, AutomationID: current.ID, ScheduledFor: scheduledFor.UTC(),
+		Trigger: trigger, Status: RunQueued, TaskID: taskID, TaskIdempotencyKey: idempotency,
+		ThreadID: current.ThreadID, TurnID: current.TurnID, CreatedAt: at, UpdatedAt: at,
+	}
+	taskValue := task.Task{
+		ID: taskID, SessionID: current.SessionID,
+		ThreadID: current.ThreadID, TurnID: current.TurnID,
+		Kind: current.TaskKind, State: task.StateQueued,
+		Payload: payload, Executor: current.TaskExecutor,
+		MaxAttempts: attempts, CreatedAt: at, UpdatedAt: at,
+	}
+	if current.TaskExecutor == "" {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO tasks(
+				id, session_id, thread_id, turn_id, kind, state, payload_json,
+				lifecycle_sequence, created_at, updated_at,
+				executor, attempt, max_attempts
+			) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, NULL, 0, 1)`,
+			taskValue.ID,
+			taskValue.SessionID,
+			sqlkit.NullableString(taskValue.ThreadID),
+			sqlkit.NullableString(taskValue.TurnID),
+			taskValue.Kind,
+			task.StateQueued,
+			string(taskValue.Payload),
+			sqlkit.Timestamp(at),
+			sqlkit.Timestamp(at),
+		); err != nil {
+			if sqlitestate.IsUniqueConstraintViolation(err) {
+				return Run{}, errDuplicateSlot
+			}
+			return Run{}, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO task_lifecycle(task_id, sequence, state, created_at)
+			VALUES (?, 1, ?, ?)`,
+			taskValue.ID,
+			task.StateQueued,
+			sqlkit.Timestamp(at),
+		); err != nil {
+			return Run{}, err
+		}
+	} else if _, err := task.SubmitExecutableTx(
+		ctx,
+		tx,
+		workGraphs,
+		taskValue,
+		task.Submission{
+			RunID:     protocol.RunID(run.ID),
+			CommandID: idempotency,
+			Source:    "automation",
+			At:        at,
+		},
 	); err != nil {
 		if sqlitestate.IsUniqueConstraintViolation(err) {
 			return Run{}, errDuplicateSlot
 		}
 		return Run{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO task_lifecycle(task_id, sequence, state, reason, created_at)
-		VALUES (?, 1, ?, NULL, ?)`,
-		taskID, task.StateQueued, sqlkit.Timestamp(at),
-	); err != nil {
-		return Run{}, err
-	}
-	run := Run{
-		ID: runID, Version: 1, AutomationID: current.ID, ScheduledFor: scheduledFor.UTC(),
-		Trigger: trigger, Status: RunQueued, TaskID: taskID, TaskIdempotencyKey: idempotency,
-		ThreadID: current.ThreadID, TurnID: current.TurnID, CreatedAt: at, UpdatedAt: at,
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO automation_runs(

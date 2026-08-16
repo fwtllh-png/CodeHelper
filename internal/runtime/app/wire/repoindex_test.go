@@ -35,7 +35,7 @@ func TestRepositoryIndexOpensOverTheEphemeralDatabase(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	_, ephemeral, err := openOrchestrationStore(t.Context(), nil, root)
+	_, ephemeral, _, err := openOrchestrationStore(t.Context(), nil, root, true)
 	if err != nil {
 		t.Fatal(err)
 	}

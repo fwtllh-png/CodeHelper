@@ -6,6 +6,11 @@ export const protocolVersion = 1 as const;
 export const operationKinds = [
   "approval.decision",
   "input.reply",
+  "node.retry",
+  "node.skip",
+  "run.cancel",
+  "run.resume",
+  "run.submit",
   "thread.compact",
   "thread.fork",
   "turn.cancel",
@@ -22,21 +27,30 @@ export const eventKinds = [
   "agent.status",
   "approval.required",
   "approval.resolved",
+  "attempt.status",
+  "budget.updated",
   "checkpoint.created",
   "checkpoint.forked",
   "checkpoint.restored",
   "citation",
   "command.execution",
   "diagnostics.result",
+  "execution.bound",
   "extension.lifecycle",
   "host.command",
   "input.required",
   "input.resolved",
   "mcp.health.changed",
+  "node.status",
   "operation.rejected",
   "output.delta",
   "plan.delta",
   "reasoning.delta",
+  "run.canceled",
+  "run.completed",
+  "run.failed",
+  "run.started",
+  "run.status",
   "search.result",
   "thread.compacted",
   "thread.forked",
@@ -59,9 +73,9 @@ export const eventKinds = [
 export type EventKind = (typeof eventKinds)[number];
 
 export type EventClass = "accounting" | "artifact" | "artifact_stream" | "audit" | "evidence" | "interaction" | "lifecycle" | "orchestration" | "stream" | "terminal" | "terminal_operation";
-export type ItemOwner = "agent" | "approval" | "checkpoint" | "input" | "operation" | "thread" | "tool" | "turn";
+export type ItemOwner = "agent" | "approval" | "attempt" | "checkpoint" | "input" | "node" | "operation" | "run" | "thread" | "tool" | "turn";
 export type Durability = "atomic" | "bounded" | "retained" | "terminal_projection" | "transient";
-export type CorrelationKind = "agent" | "call" | "catalog" | "checkpoint" | "command" | "extension" | "mutation" | "operation" | "plan" | "request" | "sample" | "server" | "target_turn" | "thread" | "turn";
+export type CorrelationKind = "agent" | "attempt" | "call" | "catalog" | "checkpoint" | "command" | "effect" | "extension" | "mutation" | "node" | "operation" | "plan" | "request" | "run" | "sample" | "server" | "target_turn" | "thread" | "turn";
 export interface EventTraits {
   readonly class: EventClass;
   readonly item_owner: ItemOwner;
@@ -76,21 +90,30 @@ export const eventTraits = {
   "agent.status": {"class":"orchestration","item_owner":"agent","durability":"retained","correlation":"agent","terminal":false},
   "approval.required": {"class":"interaction","item_owner":"approval","durability":"retained","correlation":"request","terminal":false},
   "approval.resolved": {"class":"interaction","item_owner":"approval","durability":"retained","correlation":"request","terminal":false},
+  "attempt.status": {"class":"orchestration","item_owner":"attempt","durability":"retained","correlation":"attempt","terminal":false},
+  "budget.updated": {"class":"accounting","item_owner":"attempt","durability":"retained","correlation":"attempt","terminal":false},
   "checkpoint.created": {"class":"artifact","item_owner":"checkpoint","durability":"retained","correlation":"checkpoint","terminal":false},
   "checkpoint.forked": {"class":"artifact","item_owner":"checkpoint","durability":"retained","correlation":"checkpoint","terminal":false},
   "checkpoint.restored": {"class":"artifact","item_owner":"checkpoint","durability":"retained","correlation":"checkpoint","terminal":false},
   "citation": {"class":"evidence","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
   "command.execution": {"class":"audit","item_owner":"tool","durability":"retained","correlation":"call","terminal":false},
   "diagnostics.result": {"class":"evidence","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
+  "execution.bound": {"class":"orchestration","item_owner":"attempt","durability":"retained","correlation":"effect","terminal":false},
   "extension.lifecycle": {"class":"audit","item_owner":"turn","durability":"retained","correlation":"extension","terminal":false},
   "host.command": {"class":"interaction","item_owner":"turn","durability":"retained","correlation":"command","terminal":false},
   "input.required": {"class":"interaction","item_owner":"input","durability":"retained","correlation":"request","terminal":false},
   "input.resolved": {"class":"interaction","item_owner":"input","durability":"retained","correlation":"request","terminal":false},
   "mcp.health.changed": {"class":"audit","item_owner":"turn","durability":"retained","correlation":"server","terminal":false},
+  "node.status": {"class":"orchestration","item_owner":"node","durability":"retained","correlation":"node","terminal":false},
   "operation.rejected": {"class":"terminal_operation","item_owner":"operation","durability":"retained","correlation":"operation","terminal":false},
   "output.delta": {"class":"stream","item_owner":"turn","durability":"terminal_projection","correlation":"turn","terminal":false},
   "plan.delta": {"class":"artifact_stream","item_owner":"turn","durability":"retained","correlation":"plan","terminal":false},
   "reasoning.delta": {"class":"stream","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
+  "run.canceled": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
+  "run.completed": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
+  "run.failed": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
+  "run.started": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
+  "run.status": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
   "search.result": {"class":"evidence","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
   "thread.compacted": {"class":"lifecycle","item_owner":"thread","durability":"retained","correlation":"thread","terminal":false},
   "thread.forked": {"class":"lifecycle","item_owner":"thread","durability":"retained","correlation":"thread","terminal":false},
@@ -114,7 +137,7 @@ export const eventTraits = {
 export type OperationEnvelope = {
   readonly "created_at": string;
   readonly "id": string;
-  readonly "kind": "turn.start" | "turn.cancel" | "turn.steer" | "approval.decision" | "input.reply" | "thread.compact" | "thread.fork" | "turn.revert";
+  readonly "kind": "turn.start" | "turn.cancel" | "turn.steer" | "approval.decision" | "input.reply" | "thread.compact" | "thread.fork" | "turn.revert" | "run.submit" | "run.cancel" | "run.resume" | "node.retry" | "node.skip";
   readonly "payload": Readonly<Record<string, unknown>>;
   readonly "version": number;
 };
@@ -124,7 +147,7 @@ export type EventEnvelope = {
   readonly "data": Readonly<Record<string, unknown>>;
   readonly "id": string;
   readonly "item_id": string;
-  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "checkpoint.created" | "checkpoint.restored" | "checkpoint.forked" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "agent.integration" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
+  readonly "kind": "turn.started" | "output.delta" | "reasoning.delta" | "search.result" | "citation" | "usage" | "tool.state" | "tool.start" | "tool.output" | "tool.result" | "tool.catalog.changed" | "mcp.health.changed" | "extension.lifecycle" | "diagnostics.result" | "turn.completed" | "turn.failed" | "turn.canceled" | "operation.rejected" | "turn.steered" | "approval.required" | "approval.resolved" | "input.required" | "input.resolved" | "thread.compacted" | "thread.forked" | "turn.reverted" | "checkpoint.created" | "checkpoint.restored" | "checkpoint.forked" | "turn.compaction" | "agent.spawned" | "agent.status" | "agent.message" | "agent.integration" | "run.started" | "run.status" | "run.completed" | "run.failed" | "run.canceled" | "node.status" | "attempt.status" | "execution.bound" | "budget.updated" | "plan.delta" | "command.execution" | "host.command" | "turn.receipt" | "turn.verification";
   readonly "operation_id": string;
   readonly "sequence": number;
   readonly "thread_id": string;
@@ -521,6 +544,61 @@ export type InputReplyPayload = {
   readonly "values"?: Readonly<Record<string, unknown>>;
 };
 
+export type NodeRetryPayload = {
+  readonly "expected_revision": number;
+  readonly "item_id": string;
+  readonly "node_id": string;
+  readonly "run_id": string;
+  readonly "thread_id": string;
+  readonly "turn_id": string;
+};
+
+export type NodeSkipPayload = {
+  readonly "expected_revision": number;
+  readonly "item_id": string;
+  readonly "node_id": string;
+  readonly "reason": string;
+  readonly "run_id": string;
+  readonly "thread_id": string;
+  readonly "turn_id": string;
+};
+
+export type RunCancelPayload = {
+  readonly "expected_revision": number;
+  readonly "item_id": string;
+  readonly "reason": string;
+  readonly "run_id": string;
+  readonly "thread_id": string;
+  readonly "turn_id": string;
+};
+
+export type RunResumePayload = {
+  readonly "expected_revision": number;
+  readonly "item_id": string;
+  readonly "run_id": string;
+  readonly "thread_id": string;
+  readonly "turn_id": string;
+};
+
+export type RunSubmitPayload = {
+  readonly "authority_digest"?: string;
+  readonly "item_id": string;
+  readonly "kind": string;
+  readonly "nodes": ReadonlyArray<{
+      readonly "authority_digest"?: string;
+      readonly "dependencies"?: ReadonlyArray<string>;
+      readonly "id": string;
+      readonly "kind": string;
+    }>;
+  readonly "root_thread_id": string;
+  readonly "run_id": string;
+  readonly "session_id": string;
+  readonly "source": string;
+  readonly "thread_id": string;
+  readonly "turn_id": string;
+  readonly "workspace"?: string;
+};
+
 export type ThreadCompactPayload = {
   readonly "item_id": string;
   readonly "thread_id": string;
@@ -606,6 +684,12 @@ export type TurnStartPayload = {
   readonly "idle"?: boolean;
   readonly "intent"?: string;
   readonly "item_id": string;
+  readonly "orchestration"?: {
+      readonly "attempt_id": string;
+      readonly "effect_id": string;
+      readonly "node_id": string;
+      readonly "run_id": string;
+    };
   readonly "prompt": string;
   readonly "recovery"?: {
       readonly "action": string;
@@ -632,6 +716,11 @@ export type TurnSteerPayload = {
 export interface OperationPayloadByKind {
   readonly "approval.decision": ApprovalDecisionPayload;
   readonly "input.reply": InputReplyPayload;
+  readonly "node.retry": NodeRetryPayload;
+  readonly "node.skip": NodeSkipPayload;
+  readonly "run.cancel": RunCancelPayload;
+  readonly "run.resume": RunResumePayload;
+  readonly "run.submit": RunSubmitPayload;
   readonly "thread.compact": ThreadCompactPayload;
   readonly "thread.fork": ThreadForkPayload;
   readonly "turn.cancel": TurnCancelPayload;
@@ -774,6 +863,32 @@ export type ApprovalResolvedData = {
     };
 };
 
+export type AttemptStatusData = {
+  readonly "attempt": {
+      readonly "attempt_id": string;
+      readonly "node_id": string;
+      readonly "run_id": string;
+    };
+  readonly "lease_epoch"?: number;
+  readonly "lease_owner"?: string;
+  readonly "reason"?: string;
+  readonly "revision": number;
+  readonly "state": string;
+};
+
+export type BudgetUpdatedData = {
+  readonly "attempt": {
+      readonly "attempt_id": string;
+      readonly "node_id": string;
+      readonly "run_id": string;
+    };
+  readonly "cost_microunits": number;
+  readonly "max_cost_microunits"?: number;
+  readonly "max_tokens"?: number;
+  readonly "reserved"?: boolean;
+  readonly "tokens_used": number;
+};
+
 export type CheckpointCreatedData = {
   readonly "checkpoint": {
       readonly "can_fork": boolean;
@@ -874,6 +989,20 @@ export type DiagnosticsResultData = {
   readonly "tool": string;
 };
 
+export type ExecutionBoundData = {
+  readonly "correlation": {
+      readonly "attempt_id": string;
+      readonly "effect_id": string;
+      readonly "node_id": string;
+      readonly "run_id": string;
+    };
+  readonly "kind": string;
+  readonly "lane_id"?: string;
+  readonly "process_id"?: string;
+  readonly "thread_id"?: string;
+  readonly "turn_id"?: string;
+};
+
 export type ExtensionLifecycleData = {
   readonly "action": string;
   readonly "changed_at": string;
@@ -920,6 +1049,16 @@ export type McpHealthChangedData = {
   readonly "state": string;
 };
 
+export type NodeStatusData = {
+  readonly "node": {
+      readonly "node_id": string;
+      readonly "run_id": string;
+    };
+  readonly "reason"?: string;
+  readonly "revision": number;
+  readonly "state": string;
+};
+
 export type OperationRejectedData = {
   readonly "code": string;
   readonly "message": string;
@@ -942,6 +1081,51 @@ export type PlanDeltaData = {
 
 export type ReasoningDeltaData = {
   readonly "text": string;
+};
+
+export type RunCanceledData = {
+  readonly "reason": string;
+  readonly "revision": number;
+  readonly "run": {
+      readonly "run_id": string;
+    };
+};
+
+export type RunCompletedData = {
+  readonly "result_ref"?: string;
+  readonly "revision": number;
+  readonly "run": {
+      readonly "run_id": string;
+    };
+  readonly "summary"?: string;
+};
+
+export type RunFailedData = {
+  readonly "code": string;
+  readonly "message": string;
+  readonly "revision": number;
+  readonly "run": {
+      readonly "run_id": string;
+    };
+};
+
+export type RunStartedData = {
+  readonly "authority_digest"?: string;
+  readonly "kind": string;
+  readonly "revision": number;
+  readonly "run": {
+      readonly "run_id": string;
+    };
+  readonly "source": string;
+};
+
+export type RunStatusData = {
+  readonly "reason"?: string;
+  readonly "revision": number;
+  readonly "run": {
+      readonly "run_id": string;
+    };
+  readonly "state": string;
 };
 
 export type SearchResultData = {
@@ -1332,8 +1516,15 @@ export type TurnReceiptData = {
       readonly "provider_attempts": number;
     };
   readonly "not_collected"?: ReadonlyArray<string>;
+  readonly "orchestration"?: {
+      readonly "attempt_id": string;
+      readonly "effect_id": string;
+      readonly "node_id": string;
+      readonly "run_id": string;
+    };
   readonly "outcome"?: string;
   readonly "output_tokens": number;
+  readonly "permission_digests"?: ReadonlyArray<string>;
   readonly "plan"?: string;
   readonly "posture"?: string;
   readonly "provider_retry"?: {
@@ -1457,6 +1648,12 @@ export type TurnStartedData = {
   readonly "intent"?: string;
   readonly "mode"?: string;
   readonly "model": string;
+  readonly "orchestration"?: {
+      readonly "attempt_id": string;
+      readonly "effect_id": string;
+      readonly "node_id": string;
+      readonly "run_id": string;
+    };
   readonly "posture"?: string;
   readonly "prompt"?: string;
   readonly "provider": string;
@@ -1575,21 +1772,30 @@ export interface EventDataByKind {
   readonly "agent.status": AgentStatusData;
   readonly "approval.required": ApprovalRequiredData;
   readonly "approval.resolved": ApprovalResolvedData;
+  readonly "attempt.status": AttemptStatusData;
+  readonly "budget.updated": BudgetUpdatedData;
   readonly "checkpoint.created": CheckpointCreatedData;
   readonly "checkpoint.forked": CheckpointForkedData;
   readonly "checkpoint.restored": CheckpointRestoredData;
   readonly "citation": CitationData;
   readonly "command.execution": CommandExecutionData;
   readonly "diagnostics.result": DiagnosticsResultData;
+  readonly "execution.bound": ExecutionBoundData;
   readonly "extension.lifecycle": ExtensionLifecycleData;
   readonly "host.command": HostCommandData;
   readonly "input.required": InputRequiredData;
   readonly "input.resolved": InputResolvedData;
   readonly "mcp.health.changed": McpHealthChangedData;
+  readonly "node.status": NodeStatusData;
   readonly "operation.rejected": OperationRejectedData;
   readonly "output.delta": OutputDeltaData;
   readonly "plan.delta": PlanDeltaData;
   readonly "reasoning.delta": ReasoningDeltaData;
+  readonly "run.canceled": RunCanceledData;
+  readonly "run.completed": RunCompletedData;
+  readonly "run.failed": RunFailedData;
+  readonly "run.started": RunStartedData;
+  readonly "run.status": RunStatusData;
   readonly "search.result": SearchResultData;
   readonly "thread.compacted": ThreadCompactedData;
   readonly "thread.forked": ThreadForkedData;

@@ -646,3 +646,24 @@ func TestReceiptDistinguishesUnavailableDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+func TestReceiptCollectsActualSG7PermissionDigests(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	recorder := newReceiptRecorder("inspect")
+	recorder.observe(agentengine.Event{
+		State:    agentengine.RunningTools,
+		ToolCall: &provider.ToolCall{Name: "file_read", ID: "call-read"},
+		Result: &tool.Result{
+			Content: "ok",
+			Execution: &tool.ExecutionReceipt{Attempts: []tool.AttemptReceipt{
+				{PermissionDigest: digest},
+				{PermissionDigest: digest},
+			}},
+		},
+	})
+	receipt := recorder.build(turnObservations{})
+	if len(receipt.PermissionDigests) != 1 ||
+		receipt.PermissionDigests[0] != digest {
+		t.Fatalf("permission digests = %v", receipt.PermissionDigests)
+	}
+}

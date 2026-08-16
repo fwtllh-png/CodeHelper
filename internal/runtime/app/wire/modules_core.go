@@ -143,13 +143,11 @@ func (persistenceModule) Build(
 		state.session.jobLogs = jobs
 		state.persistence.jobLogs = jobs
 	}
-	if !state.config.execution.Tools {
-		return nil
-	}
-	store, ephemeral, err := openOrchestrationStore(
+	store, ephemeral, cleanupDir, err := openOrchestrationStore(
 		ctx,
 		state.options.PersistentStore,
 		state.config.execution.Workspace,
+		state.config.execution.Tools,
 	)
 	if err != nil {
 		return fmt.Errorf("orchestration store: %w", err)
@@ -157,6 +155,7 @@ func (persistenceModule) Build(
 	state.persistence.taskStore = store
 	state.persistence.ephemeralTask = ephemeral
 	state.session.ephemeralTasks = ephemeral
+	state.session.ephemeralTasksDir = cleanupDir
 	return nil
 }
 

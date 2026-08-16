@@ -3,6 +3,7 @@ package wire
 import (
 	"context"
 	"errors"
+	"os"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
@@ -225,12 +226,17 @@ func (s *Session) registerResourceClosers() error {
 			return err
 		}},
 		{name: "ephemeral-tasks", close: func(context.Context) error {
-			if s.ephemeralTasks == nil {
-				return nil
+			var closeErr error
+			if s.ephemeralTasks != nil {
+				closeErr = s.ephemeralTasks.Close()
+				s.ephemeralTasks = nil
 			}
-			err := s.ephemeralTasks.Close()
-			s.ephemeralTasks = nil
-			return err
+			var cleanupErr error
+			if s.ephemeralTasksDir != "" {
+				cleanupErr = os.RemoveAll(s.ephemeralTasksDir)
+				s.ephemeralTasksDir = ""
+			}
+			return errors.Join(closeErr, cleanupErr)
 		}},
 		{name: "content-store", close: func(ctx context.Context) error {
 			if s.content == nil {

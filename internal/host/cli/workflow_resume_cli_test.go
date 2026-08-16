@@ -13,7 +13,7 @@ import (
 
 // A workflow that dies halfway must not redo the nodes that finished, and it must
 // refuse to continue against a spec that has changed underneath it.
-func TestWorkflowRunResumesFromItsNodeCheckpoint(t *testing.T) {
+func TestWorkflowRunResumesFromItsDurableWorkGraph(t *testing.T) {
 	root := t.TempDir()
 	specPath := filepath.Join(root, "wf.json")
 	// The second node fails because it demands a capability the spec denies, which
@@ -59,12 +59,12 @@ func TestWorkflowRunResumesFromItsNodeCheckpoint(t *testing.T) {
 	for _, node := range status.Nodes {
 		recorded[node.ID] = node.Status
 	}
-	if recorded["one"] != "completed" || recorded["two"] != "failed" {
-		t.Fatalf("node checkpoint = %v", recorded)
+	if recorded["one"] != "succeeded" || recorded["two"] != "failed" {
+		t.Fatalf("node projection = %v", recorded)
 	}
 
 	// Fix the spec's permission and the resume must be refused, because the graph
-	// it would continue is no longer the graph the checkpoint describes.
+	// it would continue is no longer the submitted WorkGraph.
 	writeSpec(t, specPath, `{
 		"goal": "ship",
 		"permissions": {"shell": true},
@@ -125,7 +125,7 @@ func TestWorkflowRunSkipsCompletedNodesOnResume(t *testing.T) {
 	}, &stdout, &stderr); code != 0 {
 		t.Fatalf("workflow status: %d %q", code, stderr.String())
 	}
-	// One node row per node, not one per attempt: the checkpoint is state, not a log.
+	// One node row per node, not one per Attempt.
 	if got := strings.Count(stdout.String(), "\n"); got != 3 {
 		t.Fatalf("status output = %q", stdout.String())
 	}
@@ -171,8 +171,8 @@ func TestCompletedNodeOutputIsAddressableAcrossProcesses(t *testing.T) {
 		if node.ID != "one" {
 			continue
 		}
-		if node.Status != "completed" || node.OutputHandle == "" {
-			t.Fatalf("node one = %+v, want a completed node with its output addressable", node)
+		if node.Status != "succeeded" || node.OutputHandle == "" {
+			t.Fatalf("node one = %+v, want a succeeded node with its output addressable", node)
 		}
 		return
 	}

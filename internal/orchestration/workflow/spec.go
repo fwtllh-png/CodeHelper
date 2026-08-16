@@ -20,6 +20,7 @@ var (
 	ErrInvalidSpec      = errors.New("invalid workflow spec")
 	ErrPermissionDenied = errors.New("workflow permission denied")
 	ErrBudgetExhausted  = errors.New("workflow budget exhausted")
+	ErrSpecChanged      = errors.New("workflow spec changed since the run started")
 )
 
 type Permissions struct {
@@ -373,42 +374,17 @@ type Run struct {
 
 // NodeResult is one node's outcome within a run, in dependency order.
 type NodeResult struct {
-	ID      string     `json:"id"`
-	Status  NodeStatus `json:"status"`
-	Attempt int        `json:"attempt,omitempty"`
-	Reason  string     `json:"reason,omitempty"`
-	Content string     `json:"content,omitempty"`
+	ID                string     `json:"id"`
+	Status            NodeStatus `json:"status"`
+	Attempt           int        `json:"attempt,omitempty"`
+	Reason            string     `json:"reason,omitempty"`
+	Content           string     `json:"content,omitempty"`
+	Usage             WorkUsage  `json:"usage,omitempty"`
+	PermissionDigests []string   `json:"permission_digests,omitempty"`
 	// Resumed marks a node whose outcome was read from the checkpoint instead of
 	// executed again, which is the difference an operator asks about first.
-	Resumed bool `json:"resumed,omitempty"`
-}
-
-// NodeRecord is what a checkpoint stores about one node.
-type NodeRecord struct {
-	ID      string
-	Status  NodeStatus
-	Attempt int
-	Reason  string
-	// Content is the node's output. A checkpoint may store it out of line and
-	// report where under OutputHandle; a resumed run reads it back from here, so
-	// its summary includes nodes that finished before the interruption.
-	Content      string
-	OutputHandle string
-	StartedAt    time.Time
-	EndedAt      time.Time
-}
-
-// Checkpoint persists node outcomes so that a run interrupted halfway can be
-// resumed. It is an interface because the runtime must stay usable without a
-// database: `workflow run` on a spec file has nowhere to write.
-type Checkpoint interface {
-	// LoadNodes returns what is already known about this run's nodes.
-	LoadNodes(ctx context.Context, runID string) (map[string]NodeRecord, error)
-	// NodeStarted records an attempt beginning. A crash leaves this row behind as
-	// `running`, which is how the next process knows the node was interrupted.
-	NodeStarted(ctx context.Context, runID string, record NodeRecord) error
-	// NodeSettled records a terminal node status.
-	NodeSettled(ctx context.Context, runID string, record NodeRecord) error
+	Resumed   bool `json:"resumed,omitempty"`
+	retryable bool
 }
 
 type ProgressKind string
@@ -432,6 +408,9 @@ type Driver interface {
 }
 
 type TaskRequest struct {
+	RunID   string          `json:"run_id,omitempty"`
+	NodeID  string          `json:"node_id,omitempty"`
+	Attempt int             `json:"attempt,omitempty"`
 	Role    string          `json:"role,omitempty"`
 	Prompt  string          `json:"prompt"`
 	Profile string          `json:"profile,omitempty"`
@@ -439,10 +418,18 @@ type TaskRequest struct {
 }
 
 type TaskResult struct {
-	Success bool            `json:"success"`
-	Content string          `json:"content"`
-	Data    json.RawMessage `json:"data,omitempty"`
-	Error   string          `json:"error,omitempty"`
+	Success           bool            `json:"success"`
+	Content           string          `json:"content"`
+	Data              json.RawMessage `json:"data,omitempty"`
+	Error             string          `json:"error,omitempty"`
+	Usage             WorkUsage       `json:"usage,omitempty"`
+	PermissionDigests []string        `json:"permission_digests,omitempty"`
+}
+
+type WorkUsage struct {
+	Tokens     uint64 `json:"tokens,omitempty"`
+	CostMicros uint64 `json:"cost_micros,omitempty"`
+	CostKnown  bool   `json:"cost_known,omitempty"`
 }
 
 type BudgetSnapshot struct {

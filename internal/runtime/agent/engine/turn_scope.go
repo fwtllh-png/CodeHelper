@@ -237,7 +237,7 @@ func (s *Scope) kernel() (*engineTurnKernel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.state.kernel == nil {
-		return nil, errors.New("turn coordinator is not active")
+		return nil, ErrTurnCoordinatorNotActive
 	}
 	return s.state.kernel, nil
 }

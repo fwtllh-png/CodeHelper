@@ -77,3 +77,34 @@ func TestHubStableIdentityIsIdempotent(t *testing.T) {
 		t.Fatalf("cursor error = %v", err)
 	}
 }
+
+func TestHubObservesAfterProjectionWithoutSubscriber(t *testing.T) {
+	var phases []string
+	hub := eventhub.New(eventhub.Config{
+		Store: app.NewMemoryEventStore(8), Context: t.Context(),
+		OnEvent: func(event protocol.Event) {
+			phases = append(phases, "observe:"+string(event.Kind))
+		},
+	})
+	err := hub.Publish(
+		protocol.EventMeta{
+			OperationID: "op", ThreadID: "thread",
+			TurnID: "turn", ItemID: "item",
+		},
+		&protocol.TurnCompletedData{},
+		func(protocol.Event) error {
+			phases = append(phases, "project")
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(phases) != 2 || phases[0] != "project" ||
+		phases[1] != "observe:turn.completed" {
+		t.Fatalf("event phases = %v", phases)
+	}
+	if subscribers := hub.Snapshot().Subscribers; subscribers != 0 {
+		t.Fatalf("observer created %d subscribers", subscribers)
+	}
+}

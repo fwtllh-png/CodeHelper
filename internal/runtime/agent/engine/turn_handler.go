@@ -112,6 +112,16 @@ func (e *Engine) prepareTurnSpec(
 			nil,
 		)
 	}
+	if request.Orchestration != nil {
+		if err := request.Orchestration.Validate(); err != nil {
+			return TurnSpec{}, "", protocol.NewProblem(
+				protocol.CodeInvalidArgument,
+				err.Error(),
+				false,
+				err,
+			)
+		}
+	}
 	if request.Recovery != nil {
 		if err := request.Recovery.Validate(); err != nil {
 			return TurnSpec{}, "", protocol.NewProblem(

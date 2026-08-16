@@ -435,6 +435,18 @@ func (c *AgentControl) AgentSession(agentID string) (string, bool) {
 	return c.manager.AgentSession(agentID)
 }
 
+func (c *AgentControl) ActivateResident(agentID string) ([]Agent, error) {
+	return c.manager.ActivateResident(agentID)
+}
+
+func (c *AgentControl) DeactivateResident(agentID string) {
+	c.manager.DeactivateResident(agentID)
+}
+
+func (c *AgentControl) TouchResident(agentID string) {
+	c.manager.TouchResident(agentID)
+}
+
 func (c *AgentControl) IsDescendant(parentID, agentID string) bool {
 	return c.manager.IsDescendant(parentID, agentID)
 }

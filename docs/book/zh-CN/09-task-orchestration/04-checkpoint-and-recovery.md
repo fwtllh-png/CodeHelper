@@ -9,17 +9,18 @@ prerequisites:
   - task-automation-workflow
   - state-session-snapshot-journal
 code_paths:
-  - internal/orchestration/workflow/checkpoint
+  - internal/orchestration/kernel
+  - internal/orchestration/store
   - internal/orchestration/workflow
-  - internal/persist/state/cas
+  - internal/orchestration/projection
 test_paths:
-  - internal/orchestration/workflow/checkpoint/checkpoint_test.go
-  - internal/orchestration/workflow/dag_test.go
+  - internal/orchestration/store/store_test.go
+  - internal/orchestration/workflow/workgraph_test.go
 source_of_truth:
-  - internal/orchestration/workflow/checkpoint/checkpoint.go
+  - internal/orchestration/store/store.go
   - internal/orchestration/workflow/runtime.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-16
 ---
 
 # Checkpoint 与恢复
@@ -28,92 +29,100 @@ last_verified: 2026-08-10
 
 ## 学习目标
 
-理解 Workflow Fingerprint、Node Checkpoint、Output Handle 与 Resume-only-unfinished。
+理解 WorkGraph Fact、Snapshot、Command Receipt、Effect Outbox、Fingerprint
+校验与只恢复未完成节点的语义。
 
-## Checkpoint Contract
+## Durable Contract
+
+Workflow Checkpoint 已退出生产架构。Workflow Spec 编译为一个 Durable WorkGraph，
+所有生命周期变化都通过 Kernel Command 完成。
 
 ```mermaid
 sequenceDiagram
     participant R as Workflow Runtime
-    participant C as Checkpoint Repository
-    R->>C: Ensure(run ID, fingerprint)
-    C-->>R: existing/new run
-    R->>C: LoadNodes
-    loop ready nodes
-      R->>C: NodeStarted
-      R->>C: NodeSettled(status, output)
-    end
-    R->>C: Settle run
+    participant K as WorkGraph Kernel
+    participant S as SQLite Store
+    R->>K: Command(expected revision)
+    K-->>R: Facts + Effects + Aggregate
+    R->>S: atomic commit
+    S-->>R: Aggregate + Facts + Receipt + Outbox
 ```
 
-`Ensure` 仅在 Workflow Fingerprint 一致时创建或 Adopt Run。Node Record 跨 Restart
-保存并原位更新。Large Output 放在 Content Handle 后；Missing Output 与 Node Status
-分开报告。
-
-Resume 不重跑 Completed Terminal Node；Failed/Skipped Dependency Semantics 保留，
-只执行 Unfinished Eligible Node。Node Attempt、Retry、Timeout 与 Output Validation
-在 Recovery 后仍有效。
+同一事务提交 Aggregate Snapshot、Ordered Facts、Command Receipt 与 Effect Outbox。
+Snapshot 用于加速读取，Facts 是重建权威。同一 Run ID 搭配不同 Definition Digest
+时必须 Fail Closed。
 
 ## Node Commit Window
 
 ```text
-node_started durable
- -> driver external/runtime execution
- -> validate output
- -> store output handle
- -> node_settled durable
+Claim Node + create Attempt + queue Effect
+ -> bind Runtime/Process execution
+ -> validate output and usage
+ -> settle Attempt and Node
+ -> queue terminal Effect
 ```
 
-`NodeStarted` 后 Settlement 前 Crash 留下 Unfinished Node；能否重跑取决于 Effect/
-Idempotency Contract，而非只看 Checkpoint。Output Store 后 Settlement 前可能留下
-Reclaimable Content；Settlement 不能指向 Store Failure。
+事务提交前 Crash 不会留下局部生命周期状态。Claim 后、Settlement 前 Crash 会留下带
+Lease 的 Attempt；恢复过程依据 Lease Epoch、Retry 与 Effect Idempotency Policy
+处理。新的 Epoch 接管后，旧 Worker 不能再提交结果。
 
-Status/Output Handle 分离，使系统可表达“Completed but Output Unavailable”，而不是篡改为
-“Not Run”。
+Node Result 与稳定的 `workgraph://.../nodes/...` 引用随 Settlement Fact 持久化。
+Fleet 和 Host 只能投影这些状态。
 
 ## Resume Decision
 
-| Node Record | Behavior |
+| Durable State | Resume Behavior |
 | --- | --- |
-| Terminal + Valid Output | Reuse |
-| Terminal + Missing Output | Preserve Status/Report Missing |
-| Started/Non-terminal | 按 Retry/Effect Policy 恢复 |
-| Absent + Dependency Ready | Next Wave Eligible |
-| Failed Dependency Skip | Preserve |
-| Fingerprint Mismatch | Refuse Resume |
+| Succeeded Node | 复用，不再执行 |
+| Failed Retryable Node | 创建新 Attempt |
+| Active Attempt + Live Lease | 保留当前 Owner |
+| Expired Lease | 通过 Fenced Command Release/Reclaim |
+| Dependency-ready Node | 可进入 Claim |
+| Definition Digest Mismatch | 拒绝整个 Run |
+| Snapshot/Fact Drift | 报告 Drift，仅修复 Snapshot |
+
+## Audit 与 Repair
+
+`Store.Audit` 在同一 Read Transaction 中比较 Snapshot Digest 与 Replay Digest，并
+报告 Pending Effect。`RepairSnapshot` 在单个事务中只重建
+`work_runs.aggregate_json`、Revision、State 与更新时间，不改写 Fact、Command
+Receipt 或 Outbox。
 
 ## Recovery Layers
 
-Task Recovery 恢复 Ownership/Queue；Workflow Checkpoint 恢复 Graph Progress；Runtime
-Event 恢复 Child Turn；Workspace Journal 恢复 File Effect。它们协调但互不替代。
+WorkGraph Recovery 恢复 Run/Node/Attempt/Effect；Runtime Event Recovery 恢复 Child
+Turn；Workspace Journal 恢复文件 Effect。Session Checkpoint 仍是独立的用户历史与
+Fork 能力，不是 Workflow 执行权威。
 
 ## 失败与安全边界
 
-- Changed Workflow Fingerprint 拒绝 Resume。
-- Non-terminal Status 不能 Settle Node。
-- Output Store Failure 不伪装 Success。
-- Missing Output 不擦除 Terminal Status。
-- Resume 不重跑 Completed Node。
-- Checkpoint 不自动使 External Effect 幂等。
+- Revision CAS 拒绝并发过期 Command。
+- Lease Epoch 拒绝过期 Settlement。
+- Definition Digest Drift 拒绝 Resume。
+- Terminal Settlement 与 Terminal Outbox 原子提交。
+- Snapshot Repair 不能改写 Durable Fact 或 Receipt。
+- Recovery 不会自动让 External Effect 幂等。
 
 ## 测试与验证
 
 ```bash
-go test ./internal/orchestration/workflow/checkpoint
-go test ./internal/orchestration/workflow -run 'TestResume|TestFingerprint'
+go test ./internal/orchestration/kernel ./internal/orchestration/store
+go test ./internal/orchestration/workflow -run 'TestDurable|TestSpecDrift'
 ```
 
 ## 动手实验
 
-在一个 Node Settle 后停止 DAG，重开 Checkpoint Repository，确认只执行剩余 Wave。
+让 Workflow 在一个 Node 成功后失败，重开 SQLite Store，以相同 Run ID Resume，
+确认只有失败节点获得新 Attempt。随后篡改 Aggregate Snapshot，通过 Audit/Repair
+从 Facts 重建。
 
 ## 复习问题
 
-1. Checkpoint 为什么绑定 Spec Fingerprint？
-2. Output 为什么与 Node Status 分开存储？
-3. 哪个 Recovery Layer 处理 Workspace Byte？
-4. 什么 Crash Window 会留下 Stored/Unreferenced Output？
-5. Started Node 为什么不一定可安全重跑？
+1. Ordered Facts 为什么比 Snapshot 更权威？
+2. 哪些记录与生命周期 Command 原子提交？
+3. 过期 Lease Epoch 为什么不能 Settle？
+4. Snapshot Repair 可以修改哪些数据？
+5. Session Checkpoint 与 Workflow Recovery 有何区别？
 
 ## 延伸阅读
 
@@ -125,4 +134,4 @@ go test ./internal/orchestration/workflow -run 'TestResume|TestFingerprint'
 | --- | --- |
 | Catalog ID | `task-checkpoint-recovery` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-10 |
+| 最后验证 | 2026-08-16 |

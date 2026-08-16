@@ -1,10 +1,11 @@
 package eventhub
+
 import (
 	"context"
 	"errors"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"sync"
 	"time"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type Store interface {
@@ -28,6 +29,7 @@ type Config struct {
 	ReplayOverflow func(protocol.Cursor, int) error
 	OnPublished    func()
 	OnDropped      func()
+	OnEvent        func(protocol.Event)
 }
 type Snapshot struct {
 	LastSequence protocol.Cursor
@@ -41,6 +43,7 @@ type Hub struct {
 	subscribers map[uint64]chan protocol.Event
 	closed      bool
 }
+
 func New(config Config) *Hub {
 	h := &Hub{config: config, subscribers: make(map[uint64]chan protocol.Event)}
 	if last, err := config.Store.LastSequence(context.Background()); err == nil {
@@ -141,6 +144,9 @@ func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time
 			h.last = event.Sequence
 			if err = project(event); err != nil {
 				return err
+			}
+			if h.config.OnEvent != nil {
+				h.config.OnEvent(event)
 			}
 			h.fanout(event)
 			return nil

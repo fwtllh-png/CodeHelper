@@ -114,9 +114,9 @@ Observability 可以报告失败，但不应秘密改变 Authority；Persistence
 
 ## 7. Orchestration
 
-Orchestration 拥有 Task、Worker Lease/Retry、Automation、Workflow Checkpoint、Lane、
-Fleet、Subagent。它通过显式 Adapter 启动 Runtime Operation，不直接调用 Provider/
-Tool Executor。
+Orchestration 拥有 Durable WorkGraph、Task Projection、Worker Lease/Retry、
+Automation、Workflow DAG Compiler、Lane Placement、Fleet Projection 与 Subagent。
+它通过显式 Adapter 启动 Runtime Operation，不直接调用 Provider/Tool Executor。
 
 ## 8. Change 放置示例
 

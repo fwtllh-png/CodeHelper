@@ -260,18 +260,19 @@ type ReceiptModelExecution struct {
 // Every field reflects observed execution. Sections the runtime cannot yet
 // determine are listed in NotCollected rather than left silently empty.
 type ExecutionReceiptData struct {
-	Goal               string                 `json:"goal"`
-	Intent             TurnIntent             `json:"intent,omitempty"`
-	Outcome            TurnOutcome            `json:"outcome,omitempty"`
-	Plan               string                 `json:"plan,omitempty"`
-	Mode               string                 `json:"mode,omitempty"`
-	Posture            string                 `json:"posture,omitempty"`
-	Sandbox            string                 `json:"sandbox,omitempty"`
-	Workspace          string                 `json:"workspace,omitempty"`
-	WorkspaceIsolation string                 `json:"workspace_isolation,omitempty"`
-	Completion         *CompletionDeclaration `json:"completion,omitempty"`
-	ProviderRetry      *ReceiptProviderRetry  `json:"provider_retry,omitempty"`
-	ModelExecution     ReceiptModelExecution  `json:"model_execution"`
+	Goal               string                    `json:"goal"`
+	Orchestration      *OrchestrationCorrelation `json:"orchestration,omitempty"`
+	Intent             TurnIntent                `json:"intent,omitempty"`
+	Outcome            TurnOutcome               `json:"outcome,omitempty"`
+	Plan               string                    `json:"plan,omitempty"`
+	Mode               string                    `json:"mode,omitempty"`
+	Posture            string                    `json:"posture,omitempty"`
+	Sandbox            string                    `json:"sandbox,omitempty"`
+	Workspace          string                    `json:"workspace,omitempty"`
+	WorkspaceIsolation string                    `json:"workspace_isolation,omitempty"`
+	Completion         *CompletionDeclaration    `json:"completion,omitempty"`
+	ProviderRetry      *ReceiptProviderRetry     `json:"provider_retry,omitempty"`
+	ModelExecution     ReceiptModelExecution     `json:"model_execution"`
 
 	// Routes are the routes the turn actually sampled on, one entry per purpose.
 	// It is what the turn did, not the table it could have used: a slot the turn
@@ -321,6 +322,9 @@ type ExecutionReceiptData struct {
 	// CostKnown is false when the model has no pricing metadata; CostMicrounits
 	// is then meaningless and must be shown as unknown rather than zero.
 	CostKnown bool `json:"cost_known"`
+	// PermissionDigests are the distinct SG7 EffectivePermissionProfile
+	// digests actually used by guarded tool attempts during this Turn.
+	PermissionDigests []string `json:"permission_digests,omitempty"`
 	// LatencyMS is the turn's wall clock, kept flat beside the partition for the
 	// hosts that only want one number. It equals Latency.TotalMS whenever a
 	// partition is present.
@@ -356,6 +360,11 @@ func (*ExecutionReceiptData) eventKind() EventKind { return EventExecutionReceip
 
 func (d *ExecutionReceiptData) validate() error {
 	d.Verification.normalize()
+	if d.Orchestration != nil {
+		if err := d.Orchestration.Validate(); err != nil {
+			return err
+		}
+	}
 	if !NormalizeTurnIntent(d.Intent).Valid() {
 		return errors.New("receipt turn intent is invalid")
 	}
@@ -403,6 +412,11 @@ func (d *ExecutionReceiptData) validate() error {
 	}
 	if d.WorkspaceOutcome != nil && d.WorkspaceOutcome.Status == "" {
 		return errors.New("receipt workspace outcome requires status")
+	}
+	for _, digest := range d.PermissionDigests {
+		if !validSHA256(digest) {
+			return errors.New("receipt permission digest is invalid")
+		}
 	}
 	for _, selection := range d.ContextSelections {
 		if selection.Path == "" || selection.Kind == "" || len(selection.Reasons) == 0 {

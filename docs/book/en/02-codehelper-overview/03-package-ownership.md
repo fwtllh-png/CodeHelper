@@ -145,11 +145,11 @@ Persistence may restore state but should not invent business transitions.
 
 Orchestration owns work above a single Turn:
 
-- Tasks and lifecycle;
+- Durable WorkGraph lifecycle and Task projections;
 - Worker leases and retry;
 - Automation schedules;
-- Workflow DAG/checkpoint;
-- Lanes and Fleet read models;
+- Workflow DAG compilation;
+- Lane placement and Fleet WorkGraph read models;
 - Subagent topology and budgets.
 
 It can start Runtime Operations through explicit adapters. It does not call

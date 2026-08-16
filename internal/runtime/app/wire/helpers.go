@@ -32,23 +32,40 @@ func openOrchestrationStore(
 	ctx context.Context,
 	persistent *state.Store,
 	workspace string,
-) (*sqlitestate.Store, *sqlitestate.Store, error) {
+	workspaceScoped bool,
+) (*sqlitestate.Store, *sqlitestate.Store, string, error) {
 	if persistent != nil {
-		return persistent.SQLite(), nil, nil
+		return persistent.SQLite(), nil, "", nil
 	}
-	root := strings.TrimSpace(workspace)
-	if root == "" {
-		root = "."
-	}
-	dir := filepath.Join(root, ".codehelper")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, nil, err
+	var dir string
+	var err error
+	if workspaceScoped {
+		root := strings.TrimSpace(workspace)
+		if root == "" {
+			root = "."
+		}
+		dir = filepath.Join(root, ".codehelper")
+		if err = os.MkdirAll(dir, 0o755); err != nil {
+			return nil, nil, "", err
+		}
+	} else {
+		dir, err = os.MkdirTemp("", "codehelper-orchestration-")
+		if err != nil {
+			return nil, nil, "", err
+		}
 	}
 	store, err := sqlitestate.Open(ctx, filepath.Join(dir, "tasks-ephemeral.db"))
 	if err != nil {
-		return nil, nil, err
+		if !workspaceScoped {
+			_ = os.RemoveAll(dir)
+		}
+		return nil, nil, "", err
 	}
-	return store, store, nil
+	cleanupDir := ""
+	if !workspaceScoped {
+		cleanupDir = dir
+	}
+	return store, store, cleanupDir, nil
 }
 
 // openRepositoryIndex builds the repository index over whichever state database

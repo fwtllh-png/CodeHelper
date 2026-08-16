@@ -401,6 +401,15 @@
             "agent.status",
             "agent.message",
             "agent.integration",
+            "run.started",
+            "run.status",
+            "run.completed",
+            "run.failed",
+            "run.canceled",
+            "node.status",
+            "attempt.status",
+            "execution.bound",
+            "budget.updated",
             "plan.delta",
             "command.execution",
             "host.command",
@@ -572,7 +581,12 @@
             "input.reply",
             "thread.compact",
             "thread.fork",
-            "turn.revert"
+            "turn.revert",
+            "run.submit",
+            "run.cancel",
+            "run.resume",
+            "node.retry",
+            "node.skip"
           ]
         },
         "payload": {
@@ -1655,6 +1669,209 @@
       ],
       "additionalProperties": false
     },
+    "node.retry": {
+      "type": "object",
+      "properties": {
+        "expected_revision": {
+          "type": "integer"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "item_id",
+        "node_id",
+        "run_id",
+        "thread_id",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
+    "node.skip": {
+      "type": "object",
+      "properties": {
+        "expected_revision": {
+          "type": "integer"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "item_id",
+        "node_id",
+        "reason",
+        "run_id",
+        "thread_id",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
+    "run.cancel": {
+      "type": "object",
+      "properties": {
+        "expected_revision": {
+          "type": "integer"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "item_id",
+        "reason",
+        "run_id",
+        "thread_id",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
+    "run.resume": {
+      "type": "object",
+      "properties": {
+        "expected_revision": {
+          "type": "integer"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "item_id",
+        "run_id",
+        "thread_id",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
+    "run.submit": {
+      "type": "object",
+      "properties": {
+        "authority_digest": {
+          "type": "string"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "authority_digest": {
+                "type": "string"
+              },
+              "dependencies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "root_thread_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "kind",
+        "nodes",
+        "root_thread_id",
+        "run_id",
+        "session_id",
+        "source",
+        "thread_id",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
     "thread.compact": {
       "type": "object",
       "properties": {
@@ -1993,6 +2210,30 @@
         },
         "item_id": {
           "type": "string"
+        },
+        "orchestration": {
+          "type": "object",
+          "properties": {
+            "attempt_id": {
+              "type": "string"
+            },
+            "effect_id": {
+              "type": "string"
+            },
+            "node_id": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "attempt_id",
+            "effect_id",
+            "node_id",
+            "run_id"
+          ],
+          "additionalProperties": false
         },
         "prompt": {
           "type": "string"
@@ -2587,6 +2828,98 @@
       ],
       "additionalProperties": false
     },
+    "attempt.status": {
+      "type": "object",
+      "properties": {
+        "attempt": {
+          "type": "object",
+          "properties": {
+            "attempt_id": {
+              "type": "string"
+            },
+            "node_id": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "attempt_id",
+            "node_id",
+            "run_id"
+          ],
+          "additionalProperties": false
+        },
+        "lease_epoch": {
+          "type": "integer"
+        },
+        "lease_owner": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempt",
+        "revision",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "budget.updated": {
+      "type": "object",
+      "properties": {
+        "attempt": {
+          "type": "object",
+          "properties": {
+            "attempt_id": {
+              "type": "string"
+            },
+            "node_id": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "attempt_id",
+            "node_id",
+            "run_id"
+          ],
+          "additionalProperties": false
+        },
+        "cost_microunits": {
+          "type": "integer"
+        },
+        "max_cost_microunits": {
+          "type": "integer"
+        },
+        "max_tokens": {
+          "type": "integer"
+        },
+        "reserved": {
+          "type": "boolean"
+        },
+        "tokens_used": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attempt",
+        "cost_microunits",
+        "tokens_used"
+      ],
+      "additionalProperties": false
+    },
     "checkpoint.created": {
       "type": "object",
       "properties": {
@@ -2970,6 +3303,55 @@
       ],
       "additionalProperties": false
     },
+    "execution.bound": {
+      "type": "object",
+      "properties": {
+        "correlation": {
+          "type": "object",
+          "properties": {
+            "attempt_id": {
+              "type": "string"
+            },
+            "effect_id": {
+              "type": "string"
+            },
+            "node_id": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "attempt_id",
+            "effect_id",
+            "node_id",
+            "run_id"
+          ],
+          "additionalProperties": false
+        },
+        "kind": {
+          "type": "string"
+        },
+        "lane_id": {
+          "type": "string"
+        },
+        "process_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "correlation",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
     "extension.lifecycle": {
       "type": "object",
       "properties": {
@@ -3135,6 +3517,42 @@
       ],
       "additionalProperties": false
     },
+    "node.status": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "type": "object",
+          "properties": {
+            "node_id": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "node_id",
+            "run_id"
+          ],
+          "additionalProperties": false
+        },
+        "reason": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "node",
+        "revision",
+        "state"
+      ],
+      "additionalProperties": false
+    },
     "operation.rejected": {
       "type": "object",
       "properties": {
@@ -3202,6 +3620,167 @@
       },
       "required": [
         "text"
+      ],
+      "additionalProperties": false
+    },
+    "run.canceled": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "run_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "reason",
+        "revision",
+        "run"
+      ],
+      "additionalProperties": false
+    },
+    "run.completed": {
+      "type": "object",
+      "properties": {
+        "result_ref": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "run_id"
+          ],
+          "additionalProperties": false
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "run"
+      ],
+      "additionalProperties": false
+    },
+    "run.failed": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "run_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "revision",
+        "run"
+      ],
+      "additionalProperties": false
+    },
+    "run.started": {
+      "type": "object",
+      "properties": {
+        "authority_digest": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "run_id"
+          ],
+          "additionalProperties": false
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "revision",
+        "run",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "run.status": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "run_id"
+          ],
+          "additionalProperties": false
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "run",
+        "state"
       ],
       "additionalProperties": false
     },
@@ -4698,11 +5277,41 @@
             "type": "string"
           }
         },
+        "orchestration": {
+          "type": "object",
+          "properties": {
+            "attempt_id": {
+              "type": "string"
+            },
+            "effect_id": {
+              "type": "string"
+            },
+            "node_id": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "attempt_id",
+            "effect_id",
+            "node_id",
+            "run_id"
+          ],
+          "additionalProperties": false
+        },
         "outcome": {
           "type": "string"
         },
         "output_tokens": {
           "type": "integer"
+        },
+        "permission_digests": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "plan": {
           "type": "string"
@@ -5235,6 +5844,30 @@
         "model": {
           "type": "string"
         },
+        "orchestration": {
+          "type": "object",
+          "properties": {
+            "attempt_id": {
+              "type": "string"
+            },
+            "effect_id": {
+              "type": "string"
+            },
+            "node_id": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "attempt_id",
+            "effect_id",
+            "node_id",
+            "run_id"
+          ],
+          "additionalProperties": false
+        },
         "posture": {
           "type": "string"
         },
@@ -5641,6 +6274,20 @@
       "correlation": "request",
       "terminal": false
     },
+    "attempt.status": {
+      "class": "orchestration",
+      "item_owner": "attempt",
+      "durability": "retained",
+      "correlation": "attempt",
+      "terminal": false
+    },
+    "budget.updated": {
+      "class": "accounting",
+      "item_owner": "attempt",
+      "durability": "retained",
+      "correlation": "attempt",
+      "terminal": false
+    },
     "checkpoint.created": {
       "class": "artifact",
       "item_owner": "checkpoint",
@@ -5683,6 +6330,13 @@
       "correlation": "turn",
       "terminal": false
     },
+    "execution.bound": {
+      "class": "orchestration",
+      "item_owner": "attempt",
+      "durability": "retained",
+      "correlation": "effect",
+      "terminal": false
+    },
     "extension.lifecycle": {
       "class": "audit",
       "item_owner": "turn",
@@ -5718,6 +6372,13 @@
       "correlation": "server",
       "terminal": false
     },
+    "node.status": {
+      "class": "orchestration",
+      "item_owner": "node",
+      "durability": "retained",
+      "correlation": "node",
+      "terminal": false
+    },
     "operation.rejected": {
       "class": "terminal_operation",
       "item_owner": "operation",
@@ -5744,6 +6405,41 @@
       "item_owner": "turn",
       "durability": "retained",
       "correlation": "turn",
+      "terminal": false
+    },
+    "run.canceled": {
+      "class": "orchestration",
+      "item_owner": "run",
+      "durability": "retained",
+      "correlation": "run",
+      "terminal": false
+    },
+    "run.completed": {
+      "class": "orchestration",
+      "item_owner": "run",
+      "durability": "retained",
+      "correlation": "run",
+      "terminal": false
+    },
+    "run.failed": {
+      "class": "orchestration",
+      "item_owner": "run",
+      "durability": "retained",
+      "correlation": "run",
+      "terminal": false
+    },
+    "run.started": {
+      "class": "orchestration",
+      "item_owner": "run",
+      "durability": "retained",
+      "correlation": "run",
+      "terminal": false
+    },
+    "run.status": {
+      "class": "orchestration",
+      "item_owner": "run",
+      "durability": "retained",
+      "correlation": "run",
       "terminal": false
     },
     "search.result": {

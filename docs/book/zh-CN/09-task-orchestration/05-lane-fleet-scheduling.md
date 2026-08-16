@@ -10,6 +10,7 @@ prerequisites:
 code_paths:
   - internal/orchestration/lane
   - internal/orchestration/fleet
+  - internal/orchestration/projection
   - internal/orchestration/workflow/orchestrate
 test_paths:
   - internal/orchestration/lane/lane_test.go
@@ -19,7 +20,7 @@ source_of_truth:
   - internal/orchestration/lane/lane.go
   - internal/orchestration/fleet/ledger.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-16
 ---
 
 # Lane、Fleet 与调度
@@ -28,65 +29,63 @@ last_verified: 2026-08-10
 
 ## 学习目标
 
-理解 Lane Process Placement、Fleet Durable Projection、Profile Limit，以及它们与
-Workflow Execution 的 Bridge。
+理解 Lane Placement、Fleet WorkGraph Projection、Profile Limit 与唯一执行权威。
 
 ## Responsibilities
 
-- **Lane**：管理 Inline/Tmux Worker 的 Start/Stop/Status/Attach/Log，绑定 Worktree
-  与 NDJSON Contract。
-- **Fleet**：Append-only Run/Task/Terminal Ledger 和 Replay Inspection View。
-- **Profile**：Concurrency、Lease Timeout、Heartbeat Alert 与 Worker Setting。
-- **Orchestrate Session**：在 Workflow Driver 周围创建 Fleet/Lane Context。
+- **Lane**：记录 Durable Placement Metadata；显式 Lane CLI 操作仍可启动或控制
+  Inline/Tmux Process。
+- **Fleet**：读取 WorkGraph Aggregate/Facts，构建 Host View，审计 Snapshot Drift，
+  并且只修复可重建 Snapshot。
+- **Profile**：声明 Concurrency、Lease、Heartbeat 与 Worker Setting。
+- **Orchestrate Session**：把 Workflow Run 绑定到一个 WorkGraph Controller、Budget
+  Ledger 与 Lane Placement。
 
 ```mermaid
 flowchart LR
-    W[Workflow Run] --> O[Orchestrate Session]
-    O --> F[Fleet Ledger]
-    O --> L[Lane Registry]
-    L --> P[Worker Process]
-    P --> F
-    F --> I[Inspect / Logs]
+    W[Workflow Runtime] --> K[WorkGraph Kernel]
+    K --> S[(SQLite Facts / Snapshot / Outbox)]
+    S --> F[Fleet Projection]
+    F --> H[CLI / TUI / Host View]
+    W --> L[Lane Placement]
 ```
 
-Lane State 持久化，但 Persisted Record 不证明 Process 存活；Status Check 负责 Reconcile。
-Inline/Tmux Backend 显式报告 Availability。Environment 经过 Filter，Secret-shaped
-Variable 被拒绝。
+Fleet 不提供 Append、Enqueue、Claim、Settle 或 Resume Writer。Inspection 与 Logs
+只是 WorkGraph State 和 Ordered Facts 的 Projection。`Audit` 比较 Snapshot 与 Fact
+Replay；`Repair` 不能修改 Facts、Command Receipts 或 Outbox。
 
-Fleet Ledger 将 Concurrent Append 序列化为 Monotonic Sequence，修复 Torn Final Line，
-Replay 当前 Run/Task State，并兼容 Retired Record Kind。Inspection 是 Projection，
-不是 Execution Authority。
+Workflow Orchestrate 使用 `Lane.Place`：同一 Run 与 Placement 幂等，冲突 Placement
+Fail Closed；它不会启动 Dummy Process，也不会创建第二 Scheduler。
 
 ## Control Plane、Placement 与 Evidence
 
 | Component | Owns | Does Not Prove |
 | --- | --- | --- |
-| Profile | Desired Limit/Timeout | Active Enforcement/Liveness |
-| Lane Registry | Process Placement/Control | Task Ownership |
-| Worker Lease | Current Task Fence | Process Progress |
-| Fleet Ledger | Audit Sequence | Execution Authority |
-| Workflow Checkpoint | Node Progress | OS Process Liveness |
+| WorkGraph Kernel | Lifecycle Transition | External Process Liveness |
+| Worker Claim | 当前 Lease/Epoch Ownership | Future Progress |
+| Lane Registry | Placement 与显式 Process Adapter Metadata | Lifecycle Authority |
+| Fleet | Read Model、Audit、Snapshot Repair | Execution Authority |
+| Profile | Desired Limit/Timeout | Active Lease Ownership |
 
-Lane `Status` 将 Persisted Metadata 与 Backend Reconcile；只有 Backend 支持时才返回 Attach。
-Log 使用 Bounded NDJSON，便于关联 Placement，且不把 Arbitrary Output 当 Control Message。
+Task Projection 可以与 WorkGraph Facts 在同一 SQLite 事务更新，但不能独立 Transition。
+Host 读取同一个 Run View：Run、Node、Attempt、Effect、Authority Digest、Permission
+Digest、Lane ID 与稳定 Result Reference。
 
 ## Scheduling Layer
 
-Workflow 选择 Dependency-ready Work；Profile 限制 Desired Parallelism；Worker Capacity
-Admission；Repository Claim 授予 Durable Ownership；Lane 放置 Process。每层可降低
-Concurrency，但不能扩大 Policy/Task Payload 的 Authority。
-
-Fleet Sequence 保证 Concurrent Writer 下 Deterministic Inspection。读取 Retired Record
-是 Compatibility，不授权创建 Legacy Work。
+Kernel 推导 Dependency-ready Node；Hierarchical Fair Selector 对
+Workspace/Session/Run Candidate 排序；Worker 保持唯一 Claim Authority。Budget
+Admission 与 Profile Capacity 可以降低并发，但不能扩大 WorkGraph Command 或
+Security Profile 授予的 Authority。
 
 ## 失败与安全边界
 
-- 缺少 tmux 时 Fail Closed。
-- Worktree Binding/Command Contract 被验证。
-- Secret Environment 被拒绝。
-- Concurrent Append 获得不同 Sequence。
-- Torn-tail Repair 不容忍 Committed Corruption。
-- Profile Limit 不证明 Live Lease。
+- 显式 tmux 执行缺少 tmux 时 Fail Closed。
+- 冲突 Durable Lane Placement 被拒绝。
+- Fleet 不能创建或修改 Run。
+- Snapshot Drift 可见，Repair 只修改 Snapshot Cache。
+- 过期 Revision 或 Lease Epoch 不能 Settle。
+- Profile Limit 是配置，不证明 Live Lease。
 
 ## 测试与验证
 
@@ -97,16 +96,17 @@ go test ./internal/orchestration/workflow/orchestrate
 
 ## 动手实验
 
-在 Fixture 启动 Inline Lane、读取 NDJSON Log、Stop，再 Replay Fleet State，对比 Process
-State 与 Projected Task State。
+使用持久化 Data Directory 运行 Workflow，通过 Fleet Inspect；然后以相同 Run
+重新打开，验证 Lane Placement 幂等及 Node Attempt 可恢复。只篡改 Snapshot，
+确认 Audit 检出并修复 Drift。
 
 ## 复习问题
 
-1. Lane 与 Worker 有何区别？
+1. 哪个 Component 拥有 Lifecycle Transition？
 2. Fleet Inspection 为什么不是 Authority？
-3. Persisted Lane Record 能证明什么？
+3. Lane Placement 在什么条件下幂等？
 4. 哪个 Component 授予 Durable Task Ownership？
-5. Scheduling Layer 为什么只能降低而不能扩大 Authority？
+5. Snapshot Repair 可以修改哪些 Evidence？
 
 ## 延伸阅读
 
@@ -118,4 +118,4 @@ State 与 Projected Task State。
 | --- | --- |
 | Catalog ID | `task-lane-fleet` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-10 |
+| 最后验证 | 2026-08-16 |

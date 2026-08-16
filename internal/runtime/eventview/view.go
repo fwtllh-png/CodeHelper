@@ -60,6 +60,18 @@ type AgentUpdate struct {
 	Message     *protocol.AgentMessageData
 	Integration *protocol.AgentIntegrationData
 }
+type OrchestrationUpdate struct {
+	Base
+	RunStarted    *protocol.RunStartedData
+	RunStatus     *protocol.RunStatusData
+	RunCompleted  *protocol.RunCompletedData
+	RunFailed     *protocol.RunFailedData
+	RunCanceled   *protocol.RunCanceledData
+	NodeStatus    *protocol.NodeStatusData
+	AttemptStatus *protocol.AttemptStatusData
+	Execution     *protocol.ExecutionBoundData
+	Budget        *protocol.BudgetUpdatedData
+}
 type TerminalUpdate struct {
 	Base
 	Status, Message string
@@ -123,6 +135,24 @@ func Project(event protocol.Event) (Update, error) {
 		return AgentUpdate{Base: base, Message: data}, nil
 	case *protocol.AgentIntegrationData:
 		return AgentUpdate{Base: base, Integration: data}, nil
+	case *protocol.RunStartedData:
+		return OrchestrationUpdate{Base: base, RunStarted: data}, nil
+	case *protocol.RunStatusData:
+		return OrchestrationUpdate{Base: base, RunStatus: data}, nil
+	case *protocol.RunCompletedData:
+		return OrchestrationUpdate{Base: base, RunCompleted: data}, nil
+	case *protocol.RunFailedData:
+		return OrchestrationUpdate{Base: base, RunFailed: data}, nil
+	case *protocol.RunCanceledData:
+		return OrchestrationUpdate{Base: base, RunCanceled: data}, nil
+	case *protocol.NodeStatusData:
+		return OrchestrationUpdate{Base: base, NodeStatus: data}, nil
+	case *protocol.AttemptStatusData:
+		return OrchestrationUpdate{Base: base, AttemptStatus: data}, nil
+	case *protocol.ExecutionBoundData:
+		return OrchestrationUpdate{Base: base, Execution: data}, nil
+	case *protocol.BudgetUpdatedData:
+		return OrchestrationUpdate{Base: base, Budget: data}, nil
 	case *protocol.TurnCompletedData:
 		return TerminalUpdate{Base: base, Status: "completed", Message: data.Text}, nil
 	case *protocol.TurnFailedData:

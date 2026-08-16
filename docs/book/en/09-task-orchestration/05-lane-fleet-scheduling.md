@@ -10,6 +10,7 @@ prerequisites:
 code_paths:
   - internal/orchestration/lane
   - internal/orchestration/fleet
+  - internal/orchestration/projection
   - internal/orchestration/workflow/orchestrate
 test_paths:
   - internal/orchestration/lane/lane_test.go
@@ -19,7 +20,7 @@ source_of_truth:
   - internal/orchestration/lane/lane.go
   - internal/orchestration/fleet/ledger.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-16
 ---
 
 # Lanes, Fleets, and Scheduling
@@ -28,69 +29,67 @@ English | [简体中文](../../zh-CN/09-task-orchestration/05-lane-fleet-schedul
 
 ## Learning Objectives
 
-Understand Lane process placement, Fleet durable projection, profile limits,
-and their bridge to Workflow execution.
+Understand Lane placement, Fleet WorkGraph projection, profile limits, and the
+single execution authority.
 
 ## Responsibilities
 
-- **Lane:** start/stop/status/attach/log for an inline or tmux worker process,
-  bound to a worktree and NDJSON control contract.
-- **Fleet:** append-only run/task/terminal ledger plus replayed inspection view.
-- **Profile:** concurrency, lease timeout, heartbeat alert, and worker settings.
-- **Orchestrate Session:** creates Fleet/Lane context around a Workflow Driver.
+- **Lane:** records durable placement metadata. Explicit Lane CLI operations may
+  still start or control inline/tmux processes.
+- **Fleet:** reads WorkGraph aggregates and facts, builds Host views, audits
+  snapshot drift, and repairs only rebuildable snapshots.
+- **Profile:** declares concurrency, lease, heartbeat, and worker settings.
+- **Orchestrate Session:** binds a Workflow Run to one WorkGraph controller,
+  Budget Ledger, and Lane placement.
 
 ```mermaid
 flowchart LR
-    W[Workflow Run] --> O[Orchestrate Session]
-    O --> F[Fleet Ledger]
-    O --> L[Lane Registry]
-    L --> P[Worker Process]
-    P --> F
-    F --> I[Inspect / Logs]
+    W[Workflow Runtime] --> K[WorkGraph Kernel]
+    K --> S[(SQLite Facts / Snapshot / Outbox)]
+    S --> F[Fleet Projection]
+    F --> H[CLI / TUI / Host View]
+    W --> L[Lane Placement]
 ```
 
-Lane state is persisted, but a persisted record does not prove the process is
-alive; status checks reconcile it. Inline and tmux backends expose explicit
-availability. Environment is filtered and secret-shaped variables are refused.
+Fleet has no append, enqueue, claim, settle, or resume writer. Inspection and
+logs are projections of WorkGraph state and ordered facts. `Audit` compares the
+snapshot with fact replay; `Repair` cannot modify facts, command receipts, or
+outbox rows.
 
-Fleet Ledger serializes concurrent appends into monotonic sequence, repairs a
-torn final line, replays current Run/Task state, and retains compatibility with
-retired record kinds. Inspection is a projection, not execution authority.
+Workflow orchestration uses `Lane.Place`, which is idempotent for the same Run
+and placement and fails closed on conflicting placement. It does not start a
+dummy process or create another scheduler.
 
 ## Control Plane, Placement, and Evidence
 
 | Component | Owns | Does not prove |
 | --- | --- | --- |
-| Profile | desired limits/timeouts | active enforcement or liveness |
-| Lane Registry | process placement/control metadata | Task ownership |
-| Worker lease | current Task ownership fence | process progress |
-| Fleet Ledger | orchestration audit sequence | authority to execute |
-| Workflow checkpoint | node progress | OS process liveness |
+| WorkGraph Kernel | lifecycle transitions | external process liveness |
+| Worker Claim | current Lease/Epoch ownership | future progress |
+| Lane Registry | placement and explicit process adapter metadata | lifecycle authority |
+| Fleet | read model, audit, snapshot repair | authority to execute |
+| Profile | desired limits and timeouts | active Lease ownership |
 
-Lane `Status` reconciles persisted metadata with the backend. An attach command
-is returned only for a backend that can support it. Logs use bounded NDJSON
-records so operators can correlate placement without treating arbitrary process
-output as control messages.
+Task projections may be updated in the same SQLite transaction as WorkGraph
+facts, but they cannot transition independently. Hosts read the same Run View:
+Run, Node, Attempt, Effect, authority digest, permission digest, Lane ID, and
+stable result reference.
 
 ## Scheduling Layers
 
-Workflow chooses dependency-ready work; Profile bounds desired parallelism;
-Worker capacity admits Tasks; repository Claim grants durable ownership; Lane
-places a process. Each layer may reduce concurrency, and none may expand the
-authority granted by Policy/Task payload.
-
-Fleet sequence provides deterministic inspection under concurrent writers.
-Compatibility with retired record kinds is read compatibility, not permission
-to create legacy work.
+The Kernel derives dependency-ready Nodes. The hierarchical fair selector orders
+Workspace/Session/Run candidates. Worker remains the only Claim authority.
+Budget admission and profile capacity may reduce concurrency; neither can grant
+authority beyond the WorkGraph command and security profile.
 
 ## Failure Boundaries
 
-- Missing tmux fails closed instead of pretending a detached worker exists.
-- Worktree binding and command contract are validated.
-- Secret environment is rejected.
-- Concurrent Fleet append receives distinct sequence.
-- Torn tail repair does not excuse committed corruption.
-- Profile limits remain configuration, not proof of a live lease.
+- Missing tmux fails closed for explicit tmux execution.
+- Conflicting durable Lane placement is rejected.
+- Fleet cannot create or mutate a Run.
+- Snapshot drift is visible and repair changes only the snapshot cache.
+- Stale Revision or Lease Epoch cannot settle work.
+- Profile limits are configuration, not proof of a live Lease.
 
 ## Tests and Verification
 
@@ -101,16 +100,17 @@ go test ./internal/orchestration/workflow/orchestrate
 
 ## Hands-On Lab
 
-Start an inline Lane in the test fixture, read NDJSON logs, stop it, then replay
-Fleet state and compare process state with projected task state.
+Run a Workflow with a persistent data directory, inspect it through Fleet, then
+reopen the same Run and verify idempotent Lane placement and durable Node
+Attempts. Tamper only with the snapshot and verify Audit detects and repairs it.
 
 ## Review Questions
 
-1. What is the difference between Lane and Worker?
+1. Which component owns lifecycle transitions?
 2. Why is Fleet inspection not authority?
-3. What can a persisted Lane record prove?
+3. When is Lane placement idempotent?
 4. Which component grants durable Task ownership?
-5. Why can scheduling layers reduce but not expand authority?
+5. What evidence may snapshot repair modify?
 
 ## Further Reading
 
@@ -122,4 +122,4 @@ Fleet state and compare process state with projected task state.
 | --- | --- |
 | Catalog ID | `task-lane-fleet` |
 | Status | `verified` |
-| Last verified | 2026-08-10 |
+| Last verified | 2026-08-16 |

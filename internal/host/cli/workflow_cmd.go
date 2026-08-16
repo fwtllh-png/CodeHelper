@@ -9,14 +9,10 @@ import (
 	"path/filepath"
 	"time"
 
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/fleet"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow/checkpoint"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow/jsvm"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow/orchestrate"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
 	"github.com/spf13/cobra"
 )
 
@@ -125,6 +121,7 @@ func newWorkflowCommand(ctx context.Context, stdout, stderr io.Writer, setCode f
 					setCode(1)
 					return
 				}
+				defer session.Close()
 				if err := session.Begin(ctx, runID); err != nil {
 					_, _ = fmt.Fprintf(stderr, "codehelper: workflow begin: %v\n", err)
 					setCode(1)
@@ -175,26 +172,19 @@ func newWorkflowCommand(ctx context.Context, stdout, stderr io.Writer, setCode f
 				setCode(1)
 				return
 			}
-			// Node outcomes are recorded only when there is a database to record
-			// them in. Without --data-dir the run has no memory, and rerunning it
-			// repeats every node.
-			var record *workflowCheckpoint
-			if dataDir != "" {
-				record, err = openWorkflowCheckpoint(ctx, dataDir, runID, spec, workspace)
-				if err != nil {
-					_, _ = fmt.Fprintf(stderr, "codehelper: workflow checkpoint: %v\n", err)
-					setCode(1)
-					return
-				}
-				defer record.close()
-			}
-			result, err := workflow.NewRuntime().Run(ctx, workflow.RunOptions{
+			workflowRuntime := workflow.NewRuntime()
+			runOptions := workflow.RunOptions{
 				ID: runID, Spec: spec, Driver: driver,
-				Checkpoint: record.sink(),
-			})
-			if record != nil {
-				record.settle(ctx, result, err)
+				SessionID: "workflow-cli", Workspace: workspace,
 			}
+			if session != nil {
+				workflowRuntime = workflow.NewRuntimeWithControllerAndBudget(
+					session.Fleet.Controller(),
+					session.Budget,
+				)
+				runOptions.LaneID = session.LaneID
+			}
+			result, err := workflowRuntime.Run(ctx, runOptions)
 			if session != nil {
 				status := string(result.Status)
 				if status == "" {
@@ -212,9 +202,7 @@ func newWorkflowCommand(ctx context.Context, stdout, stderr io.Writer, setCode f
 					"id": result.ID, "status": result.Status, "goal": result.Goal,
 					"driver": driverName, "nodes": result.Nodes,
 				}
-				if record != nil && record.resumed {
-					payload["resumed"] = true
-				}
+				payload["resumed"] = resumedNodes(result.Nodes) > 0
 				if runtimeDriver != nil && runtimeDriver.LastContent != "" {
 					payload["turn_content"] = runtimeDriver.LastContent
 				}
@@ -236,7 +224,7 @@ func newWorkflowCommand(ctx context.Context, stdout, stderr io.Writer, setCode f
 			setCode(0)
 		},
 	}
-	run.Flags().String("id", "", "run id; reusing one resumes that run from its checkpoint")
+	run.Flags().String("id", "", "run id; reusing one resumes its durable WorkGraph")
 	run.Flags().String("spec", "", "workflow JSON spec path")
 	run.Flags().String("script", "", "workflow JS script path (goja host)")
 	run.Flags().String("data-dir", "", "record durable fleet+lane under this product data-dir")
@@ -250,12 +238,11 @@ func newWorkflowCommand(ctx context.Context, stdout, stderr io.Writer, setCode f
 	return cmd
 }
 
-// newWorkflowStatusCommand shows a run's per-node checkpoint, which is what tells
-// an operator what a resume would skip.
+// newWorkflowStatusCommand shows the durable per-node WorkGraph projection.
 func newWorkflowStatusCommand(
 	ctx context.Context, stdout, stderr io.Writer, setCode func(int),
 ) *cobra.Command {
-	cmd := &cobra.Command{Use: "status", Short: "Show a workflow run and its node checkpoints"}
+	cmd := &cobra.Command{Use: "status", Short: "Show a workflow run and its durable nodes"}
 	cmd.Flags().String("data-dir", "", "persistent state directory (required)")
 	cmd.Flags().String("id", "", "run id (required)")
 	cmd.Flags().Bool("json", false, "emit JSON")
@@ -268,49 +255,43 @@ func newWorkflowStatusCommand(
 			setCode(2)
 			return
 		}
-		store, err := state.Open(ctx, state.Options{DataDir: dataDir})
+		ledger, err := fleet.Open(filepath.Join(dataDir, "fleet"))
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "codehelper: workflow status: %v\n", err)
 			setCode(1)
 			return
 		}
-		defer func() { _ = store.Close(context.Background()) }()
-		repository := checkpoint.NewSQLiteRepository(store.SQLite(), workflowOutputs(store))
-		run, err := repository.Get(ctx, runID)
+		defer ledger.Close()
+		view, err := ledger.Inspect(runID, 50)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "codehelper: workflow status: %v\n", err)
 			setCode(1)
 			return
 		}
-		nodes, err := repository.Nodes(ctx, runID)
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: workflow status: %v\n", err)
-			setCode(1)
-			return
-		}
-		rows := make([]map[string]any, 0, len(nodes))
-		for _, node := range nodes {
+		rows := make([]map[string]any, 0, len(view.Run.View.Nodes))
+		for _, node := range view.Run.View.Nodes {
 			row := map[string]any{
-				"id": node.ID, "status": string(node.Status), "attempt": node.Attempt,
+				"id": node.ID, "status": string(node.State),
+				"attempts":         node.AttemptCount,
+				"authority_digest": node.AuthorityDigest,
+			}
+			if node.ResultRef != "" {
+				row["output_handle"] = node.ResultRef
 			}
 			if node.Reason != "" {
 				row["reason"] = node.Reason
-			}
-			// The output handle says where the node's result went, which is what
-			// makes a resumed run able to report work it did before the restart.
-			if node.OutputHandle != "" {
-				row["output_handle"] = node.OutputHandle
 			}
 			rows = append(rows, row)
 		}
 		if asJSON {
 			_ = json.NewEncoder(stdout).Encode(map[string]any{
-				"id": run.ID, "status": string(run.Status), "goal": run.Goal,
-				"spec_hash": run.SpecHash, "error": run.Error, "nodes": rows,
+				"id": view.Run.ID, "status": string(view.Run.Status),
+				"revision": view.Run.Revision, "nodes": rows,
+				"attempts": view.Run.View.Attempts, "audit": view.Audit,
 			})
 		} else {
 			_, _ = fmt.Fprintf(stdout, "id=%s status=%s nodes=%d\n",
-				run.ID, run.Status, len(rows))
+				view.Run.ID, view.Run.Status, len(rows))
 			for _, row := range rows {
 				_, _ = fmt.Fprintf(stdout, "  %s\t%s\n", row["id"], row["status"])
 			}
@@ -320,84 +301,14 @@ func newWorkflowStatusCommand(
 	return cmd
 }
 
-// workflowCheckpoint keeps the state store open for the length of a run and
-// records the run header around it.
-type workflowCheckpoint struct {
-	store      *state.Store
-	repository *checkpoint.Repository
-	runID      string
-	resumed    bool
-}
-
-func openWorkflowCheckpoint(
-	ctx context.Context, dataDir, runID string, spec workflow.Spec, workspace string,
-) (*workflowCheckpoint, error) {
-	store, err := state.Open(ctx, state.Options{DataDir: dataDir})
-	if err != nil {
-		return nil, err
-	}
-	repository := checkpoint.NewSQLiteRepository(store.SQLite(), workflowOutputs(store))
-	sessionID := "workflow-cli"
-	if err := taskstate.NewSQLiteRepository(store.SQLite()).EnsureSession(
-		ctx, sessionID, firstNonEmptyString(workspace, "."),
-	); err != nil {
-		_ = store.Close(context.Background())
-		return nil, err
-	}
-	run, err := repository.Ensure(ctx, checkpoint.EnsureRequest{
-		ID: runID, SessionID: sessionID, Spec: spec,
-	})
-	if err != nil {
-		_ = store.Close(context.Background())
-		return nil, err
-	}
-	return &workflowCheckpoint{
-		store: store, repository: repository, runID: runID, resumed: run.Resumed,
-	}, nil
-}
-
-// workflowOutputs points node output at the data directory's content store, so a
-// resumed run reports what the nodes that already finished produced instead of an
-// empty summary.
-func workflowOutputs(store *state.Store) checkpoint.Outputs {
-	if store == nil || store.Content() == nil {
-		return nil
-	}
-	return contentstore.NewDurable(store.Content(), cas.ErrNotFound)
-}
-
-// sink returns the interface value the runtime wants, keeping a nil checkpoint
-// nil rather than a non-nil interface holding a nil pointer.
-func (c *workflowCheckpoint) sink() workflow.Checkpoint {
-	if c == nil {
-		return nil
-	}
-	return c.repository
-}
-
-func (c *workflowCheckpoint) settle(ctx context.Context, run workflow.Run, cause error) {
-	status := run.Status
-	if status == "" || status == workflow.RunRunning {
-		status = workflow.RunFailed
-	}
-	failure := run.Error
-	if failure == "" && cause != nil {
-		failure = cause.Error()
-	}
-	_ = c.repository.Settle(ctx, c.runID, status, failure, time.Now().UTC())
-}
-
-func (c *workflowCheckpoint) close() {
-	_ = c.store.Close(context.Background())
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
+func resumedNodes(nodes []workflow.NodeResult) int {
+	count := 0
+	for _, node := range nodes {
+		if node.Resumed {
+			count++
 		}
 	}
-	return ""
+	return count
 }
 
 func loadWorkflowSpec(path string) (workflow.Spec, error) {

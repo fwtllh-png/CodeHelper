@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -105,7 +106,12 @@ func (e *executor) Descriptor() tool.Descriptor {
 					"kind":    map[string]any{"type": "string", "minLength": float64(1)},
 					"title":   map[string]any{"type": "string"},
 					"task_id": map[string]any{"type": "string", "minLength": float64(1)},
-					"payload": map[string]any{"type": "object"},
+					"payload": map[string]any{
+						"type": "object",
+						"description": "Executor-specific payload. For kind=workflow_run use " +
+							"{version, idempotent, spec:{goal, budget, permissions, nodes}}; " +
+							"keep the spec wrapper and do not flatten its fields.",
+					},
 				},
 				"additionalProperties": false,
 			},
@@ -302,7 +308,9 @@ func (t *Tools) create(ctx context.Context, raw json.RawMessage) (tool.Result, e
 			return tool.Result{}, fmt.Errorf("payload: %w", err)
 		}
 	}
-	if title := strings.TrimSpace(input.Title); title != "" {
+	executor := executableKind(kind)
+	payload = normalizeExecutablePayload(executor, payload)
+	if title := strings.TrimSpace(input.Title); title != "" && executor == "" {
 		payload["title"] = title
 	}
 	encoded, err := json.Marshal(payload)
@@ -310,7 +318,8 @@ func (t *Tools) create(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		return tool.Result{}, err
 	}
 	created, err := t.repo.Create(ctx, taskstate.Task{
-		ID: id, SessionID: t.sessionID, Kind: kind, State: taskstate.StateQueued, Payload: encoded,
+		ID: id, SessionID: t.sessionID, Kind: kind, State: taskstate.StateQueued,
+		Payload: encoded, Executor: executor,
 	})
 	if err != nil {
 		return tool.Result{}, err
@@ -323,6 +332,42 @@ func (t *Tools) create(ctx context.Context, raw json.RawMessage) (tool.Result, e
 			"kind": created.Kind, "state": string(created.State),
 		},
 	}, nil
+}
+
+func executableKind(kind string) string {
+	switch kind {
+	case taskstate.ExecutorAgentTurn,
+		taskstate.ExecutorWorkflowRun,
+		taskstate.ExecutorShellCommand:
+		return kind
+	default:
+		return ""
+	}
+}
+
+func normalizeExecutablePayload(
+	executor string,
+	payload map[string]any,
+) map[string]any {
+	if executor != taskstate.ExecutorWorkflowRun || payload["spec"] != nil {
+		return payload
+	}
+	if _, hasGoal := payload["goal"]; !hasGoal {
+		return payload
+	}
+	spec := make(map[string]any, len(payload))
+	maps.Copy(spec, payload)
+	version := any(float64(1))
+	if value, exists := spec["version"]; exists {
+		version = value
+		delete(spec, "version")
+	}
+	normalized := map[string]any{"version": version, "spec": spec}
+	if value, exists := spec["idempotent"]; exists {
+		normalized["idempotent"] = value
+		delete(spec, "idempotent")
+	}
+	return normalized
 }
 
 func (t *Tools) list(ctx context.Context, raw json.RawMessage) (tool.Result, error) {

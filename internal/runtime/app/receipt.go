@@ -19,6 +19,7 @@ import (
 type receiptRecorder struct {
 	started            time.Time
 	goal               string
+	orchestration      *protocol.OrchestrationCorrelation
 	intent             protocol.TurnIntent
 	outcome            protocol.TurnOutcome
 	plan               string
@@ -37,6 +38,7 @@ type receiptRecorder struct {
 	diagnosticsStatus  string
 	usage              protocol.UsageData
 	costKnown          bool
+	permissionDigests  []string
 	// routes is which model answered for which purpose, in the order the turn
 	// used them.
 	routes []protocol.ReceiptRoute
@@ -275,6 +277,16 @@ func (r *receiptRecorder) observeTool(event agentengine.Event) {
 	} else {
 		r.toolsSucceeded = appendUniqueString(r.toolsSucceeded, event.ToolCall.Name)
 	}
+	if event.Result.Execution != nil {
+		for _, attempt := range event.Result.Execution.Attempts {
+			if attempt.PermissionDigest != "" {
+				r.permissionDigests = appendUniqueString(
+					r.permissionDigests,
+					attempt.PermissionDigest,
+				)
+			}
+		}
+	}
 	if event.ToolCall.Name == "load_skill" {
 		var resolved []struct {
 			Name, Version, Source, Plugin, Digest string
@@ -333,7 +345,9 @@ func (r *receiptRecorder) build(
 		return nil
 	}
 	receipt := &protocol.ExecutionReceiptData{
-		Goal: r.goal, Intent: r.intent, Outcome: r.outcome,
+		Goal:          r.goal,
+		Orchestration: protocol.CloneOrchestrationCorrelation(r.orchestration),
+		Intent:        r.intent, Outcome: r.outcome,
 		Plan: r.plan, Mode: r.mode, Posture: r.posture,
 		Sandbox: r.sandbox, Workspace: r.workspace,
 		WorkspaceIsolation: r.workspaceIsolation,
@@ -362,6 +376,10 @@ func (r *receiptRecorder) build(
 		InputTokens:        r.usage.InputTokens, OutputTokens: r.usage.OutputTokens,
 		ReasoningTokens: r.usage.ReasoningTokens, CachedTokens: r.usage.CachedTokens,
 		CostMicrounits: r.usage.CostMicrounits, CostKnown: r.costKnown,
+		PermissionDigests: append(
+			[]string(nil),
+			r.permissionDigests...,
+		),
 		LatencyMS:        time.Since(r.started).Milliseconds(),
 		Latency:          receiptLatency(observed.latency),
 		Budget:           r.receiptBudget(observed.spend),

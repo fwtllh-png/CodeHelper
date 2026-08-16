@@ -8,44 +8,58 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/model"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-// Runtime executes validated Workflow specs. One run at a time per Runtime: the
-// driver seam is a single host connection, and two runs sharing it would
-// interleave their side effects.
+// Runtime compiles a Workflow into WorkGraph and dispatches only nodes the
+// Kernel marks Ready. Dependency and terminal state are never owned here.
 type Runtime struct {
-	mu      sync.Mutex
-	running bool
+	mu         sync.Mutex
+	running    bool
+	controller GraphController
+	ledger     *workbudget.Ledger
 }
 
 func NewRuntime() *Runtime {
-	return &Runtime{}
+	return NewRuntimeWithControllerAndBudget(
+		newMemoryController(),
+		workbudget.NewLedger(),
+	)
+}
+
+func NewRuntimeWithController(controller GraphController) *Runtime {
+	return NewRuntimeWithControllerAndBudget(controller, workbudget.NewLedger())
+}
+
+func NewRuntimeWithControllerAndBudget(
+	controller GraphController,
+	ledger *workbudget.Ledger,
+) *Runtime {
+	if ledger == nil {
+		ledger = workbudget.NewLedger()
+	}
+	return &Runtime{controller: controller, ledger: ledger}
 }
 
 type RunOptions struct {
-	ID     string
-	Spec   Spec
-	Driver Driver
-	Now    func() time.Time
-	// Checkpoint is optional. Without it a run has no memory: an interrupted run
-	// starts over, which is why the durable hosts pass one.
-	Checkpoint Checkpoint
-	// Sleep waits out a node's retry backoff. Tests replace it to keep hermetic.
-	Sleep func(ctx context.Context, delay time.Duration) error
+	ID           string
+	Spec         Spec
+	Driver       Driver
+	Now          func() time.Time
+	SessionID    string
+	Workspace    string
+	RootThreadID protocol.ThreadID
+	LaneID       string
+	Sleep        func(ctx context.Context, delay time.Duration) error
 }
 
-// Run executes the spec's nodes in dependency order, running independent nodes
-// concurrently, and returns the run with one result per node.
 func (r *Runtime) Run(ctx context.Context, options RunOptions) (Run, error) {
-	if err := options.Spec.Validate(); err != nil {
-		return Run{}, err
-	}
 	if options.Driver == nil {
 		return Run{}, errors.New("workflow driver is required")
-	}
-	ordered, err := options.Spec.order()
-	if err != nil {
-		return Run{}, err
 	}
 	now := time.Now().UTC()
 	if options.Now != nil {
@@ -55,7 +69,17 @@ func (r *Runtime) Run(ctx context.Context, options RunOptions) (Run, error) {
 	if id == "" {
 		id = fmt.Sprintf("wf_%d", now.UnixNano())
 	}
-
+	runID := protocol.RunID(id)
+	compiled, err := Compile(options.Spec, CompileOptions{
+		RunID: runID, SessionID: options.SessionID,
+		Workspace: options.Workspace, RootThreadID: options.RootThreadID,
+	})
+	if err != nil {
+		return Run{}, err
+	}
+	if r == nil || r.controller == nil {
+		return Run{}, errors.New("workflow WorkGraph controller is required")
+	}
 	r.mu.Lock()
 	if r.running {
 		r.mu.Unlock()
@@ -70,268 +94,605 @@ func (r *Runtime) Run(ctx context.Context, options RunOptions) (Run, error) {
 		_ = options.Driver.CancelAll()
 	}()
 
-	run := Run{
+	started := Run{
 		ID: id, SpecID: options.Spec.ID, Goal: options.Spec.Goal,
 		Status: RunRunning, CreatedAt: now, UpdatedAt: now,
 	}
-	execution := &execution{
-		run:      id,
-		spec:     options.Spec,
-		driver:   options.Driver,
-		record:   options.Checkpoint,
-		sleep:    options.Sleep,
-		clock:    options.Now,
-		budget:   options.Spec.Budget.WithDefaults(),
-		statuses: make(map[string]NodeStatus, len(ordered)),
-		results:  make(map[string]NodeResult, len(ordered)),
+	execution := &graphExecution{
+		runID: runID, spec: options.Spec, ordered: compiled.Ordered,
+		driver: options.Driver, controller: r.controller,
+		laneID: options.LaneID,
+		sleep:  options.Sleep,
+		clock:  options.Now, logicalNow: now,
+		budget:  options.Spec.Budget.WithDefaults(),
+		ledger:  r.ledger,
+		resumed: make(map[protocol.NodeID]bool),
+	}
+	if err := execution.prepareBudget(options.Workspace, options.SessionID); err != nil {
+		started.Status, started.Error = RunFailed, err.Error()
+		return started, err
 	}
 	if execution.sleep == nil {
 		execution.sleep = sleepFor
 	}
-	if err := execution.resume(ctx); err != nil {
-		return run, err
+	graph, err := execution.prepare(ctx, compiled.Submit)
+	if err != nil {
+		started.Status, started.Error = RunFailed, err.Error()
+		return started, err
 	}
-
-	runErr := execution.walk(ctx, ordered)
-	run.Nodes = execution.ordered(ordered)
-	run.UpdatedAt = execution.now()
-	run.Result = summarize(run.Nodes)
+	graph, runErr := execution.dispatch(ctx, graph)
+	nodes := execution.results(graph)
+	started.Nodes = nodes
+	started.Result = summarize(nodes)
+	started.UpdatedAt = execution.now()
 	switch {
-	case runErr != nil && errors.Is(runErr, context.Canceled),
-		runErr != nil && errors.Is(runErr, context.DeadlineExceeded):
-		run.Status, run.Error = RunCanceled, runErr.Error()
+	case runErr != nil && (errors.Is(runErr, context.Canceled) ||
+		errors.Is(runErr, context.DeadlineExceeded)):
+		started.Status, started.Error = RunCanceled, runErr.Error()
 	case runErr != nil:
-		run.Status, run.Error = RunFailed, runErr.Error()
+		started.Status, started.Error = RunFailed, runErr.Error()
+	case graph.Run.State == protocol.RunStateCompleted:
+		started.Status = RunCompleted
+	case graph.Run.State == protocol.RunStateCanceled:
+		started.Status, started.Error = RunCanceled, graph.Run.Reason
 	default:
-		run.Status = RunCompleted
+		started.Status, started.Error = RunFailed, graph.Run.Reason
+		runErr = execution.failure(nodes)
 	}
-	return run, runErr
+	return started, runErr
 }
 
-type execution struct {
-	run    string
-	spec   Spec
-	driver Driver
-	record Checkpoint
-	sleep  func(context.Context, time.Duration) error
-	clock  func() time.Time
-	budget Budget
-
-	mu       sync.Mutex
-	statuses map[string]NodeStatus
-	results  map[string]NodeResult
-	steps    int
+type graphExecution struct {
+	runID       protocol.RunID
+	spec        Spec
+	ordered     []Node
+	driver      Driver
+	controller  GraphController
+	laneID      string
+	sleep       func(context.Context, time.Duration) error
+	clock       func() time.Time
+	logicalNow  time.Time
+	budget      Budget
+	ledger      *workbudget.Ledger
+	budgetScope string
+	steps       int
+	resumed     map[protocol.NodeID]bool
 }
 
-func (e *execution) now() time.Time {
+type claimedNode struct {
+	node          Node
+	attemptID     protocol.AttemptID
+	effectID      protocol.EffectID
+	epoch         uint64
+	attempt       int
+	reservationID string
+}
+
+type nodeCompletion struct {
+	claim  claimedNode
+	result NodeResult
+	fatal  error
+}
+
+func (e *graphExecution) now() time.Time {
+	value := time.Now().UTC()
 	if e.clock != nil {
-		return e.clock().UTC()
+		value = e.clock().UTC()
 	}
-	return time.Now().UTC()
+	if value.Before(e.logicalNow) {
+		return e.logicalNow
+	}
+	e.logicalNow = value
+	return value
 }
 
-// resume adopts node outcomes an earlier process already recorded. Only
-// completed nodes are adopted: a node left `running` by a crash may have done
-// half its work, and the honest move is to run it again rather than assume.
-func (e *execution) resume(ctx context.Context) error {
-	if e.record == nil {
+func (e *graphExecution) prepareBudget(workspace, sessionID string) error {
+	if e.ledger == nil {
+		return errors.New("workflow budget ledger is required")
+	}
+	if workspace == "" {
+		workspace = "_"
+	}
+	if sessionID == "" {
+		sessionID = "_"
+	}
+	workspaceScope := "workspace:" + workspace
+	sessionScope := workspaceScope + "/session:" + sessionID
+	e.budgetScope = sessionScope + "/run:" + string(e.runID)
+	if err := e.ledger.EnsureScope(
+		workspaceScope,
+		"",
+		workbudget.Limits{},
+	); err != nil {
+		return err
+	}
+	if err := e.ledger.EnsureScope(
+		sessionScope,
+		workspaceScope,
+		workbudget.Limits{},
+	); err != nil {
+		return err
+	}
+	return e.ledger.EnsureScope(
+		e.budgetScope,
+		sessionScope,
+		workbudget.Limits{
+			MaxTokens:     e.budget.MaxTokens,
+			MaxCostMicros: uint64(e.budget.MaxCostUSD * 1e6),
+			MaxSlots:      e.budget.MaxParallel,
+		},
+	)
+}
+
+func (e *graphExecution) reserveAttempt(id string) error {
+	snapshot, err := e.ledger.Snapshot(e.budgetScope)
+	if err != nil {
+		return err
+	}
+	availableSlots := e.budget.MaxParallel - snapshot.Reserved.Slots
+	if availableSlots <= 0 {
+		return workbudget.ErrExhausted
+	}
+	amount := workbudget.Usage{Slots: 1}
+	if e.budget.MaxTokens > 0 {
+		used := snapshot.Reserved.Tokens + snapshot.Spent.Tokens
+		if used >= e.budget.MaxTokens {
+			return ErrBudgetExhausted
+		}
+		amount.Tokens = divideCeil(
+			e.budget.MaxTokens-used,
+			uint64(availableSlots),
+		)
+	}
+	maxCost := uint64(e.budget.MaxCostUSD * 1e6)
+	if maxCost > 0 {
+		used := snapshot.Reserved.CostMicros + snapshot.Spent.CostMicros
+		if used >= maxCost {
+			return ErrBudgetExhausted
+		}
+		amount.CostMicros = divideCeil(maxCost-used, uint64(availableSlots))
+	}
+	return e.ledger.Reserve(workbudget.Reservation{
+		ID: id, ScopeID: e.budgetScope, Amount: amount,
+	})
+}
+
+func divideCeil(value, divisor uint64) uint64 {
+	if divisor == 0 || value == 0 {
+		return 0
+	}
+	return 1 + (value-1)/divisor
+}
+
+func (e *graphExecution) restoreBudget(graph model.Graph) error {
+	snapshot, err := e.ledger.Snapshot(e.budgetScope)
+	if err != nil {
+		return err
+	}
+	if snapshot.Spent.Tokens != 0 || snapshot.Spent.CostMicros != 0 {
 		return nil
 	}
-	known, err := e.record.LoadNodes(ctx, e.run)
-	if err != nil {
-		return fmt.Errorf("load workflow checkpoint: %w", err)
-	}
-	for id, node := range known {
-		if node.Status != NodeStatusCompleted && node.Status != NodeStatusSkipped {
+	for _, node := range graph.Nodes {
+		if len(node.Result) == 0 {
 			continue
 		}
-		e.statuses[id] = node.Status
-		e.results[id] = NodeResult{
-			ID: id, Status: node.Status, Attempt: node.Attempt,
-			Reason: node.Reason, Content: node.Content, Resumed: true,
+		var result NodeResult
+		if decodeErr := json.Unmarshal(node.Result, &result); decodeErr != nil {
+			return fmt.Errorf("restore workflow budget for %s: %w", node.ID, decodeErr)
+		}
+		if result.Usage == (WorkUsage{}) {
+			continue
+		}
+		reservationID := "workflow:budget:restore:" +
+			string(e.runID) + ":" + string(node.ID)
+		if err := e.ledger.Reserve(workbudget.Reservation{
+			ID: reservationID, ScopeID: e.budgetScope,
+		}); err != nil {
+			return err
+		}
+		if err := e.ledger.Settle(reservationID, workbudget.Usage{
+			Tokens:     result.Usage.Tokens,
+			CostMicros: result.Usage.CostMicros,
+		}); err != nil {
+			if errors.Is(err, workbudget.ErrExhausted) {
+				return ErrBudgetExhausted
+			}
+			return err
 		}
 	}
 	return nil
 }
 
-// walk runs the graph in waves. Every node whose dependencies are terminal goes
-// in the same wave, which is what makes independent nodes concurrent without a
-// separate "parallel" construct.
-func (e *execution) walk(ctx context.Context, ordered []Node) error {
-	remaining := make([]Node, 0, len(ordered))
-	for _, node := range ordered {
-		if _, done := e.statuses[node.ID]; !done {
-			remaining = append(remaining, node)
+func (e *graphExecution) prepare(
+	ctx context.Context,
+	submit kernel.SubmitData,
+) (model.Graph, error) {
+	graph, err := e.controller.Load(ctx, e.runID)
+	newGraph := errors.Is(err, kernel.ErrNotFound)
+	if err != nil && !newGraph {
+		return model.Graph{}, err
+	}
+	if newGraph {
+		result, err := e.controller.Execute(ctx, kernel.Command{
+			ID:   "workflow:submit:" + string(e.runID),
+			Kind: kernel.CommandSubmit, RunID: e.runID,
+			At: e.now(), Submit: &submit,
+		})
+		if err != nil {
+			return model.Graph{}, err
+		}
+		graph = result.Graph
+	} else if graph.Run.DefinitionDigest != e.spec.Fingerprint() {
+		return model.Graph{}, fmt.Errorf(
+			"%w: run %s started from %s",
+			ErrSpecChanged,
+			e.runID,
+			graph.Run.DefinitionDigest,
+		)
+	}
+	if err := e.restoreBudget(graph); err != nil {
+		return graph, err
+	}
+	for id, node := range graph.Nodes {
+		if node.State == protocol.NodeStateSucceeded ||
+			(node.State == protocol.NodeStateSkipped &&
+				graph.Run.State == protocol.RunStateCompleted) {
+			e.resumed[id] = true
 		}
 	}
-	for len(remaining) > 0 {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		wave := make([]Node, 0, len(remaining))
-		waiting := make([]Node, 0, len(remaining))
-		for _, node := range remaining {
-			if e.ready(node) {
-				wave = append(wave, node)
+	if runTerminalState(graph.Run.State) &&
+		graph.Run.State != protocol.RunStateCompleted {
+		for _, node := range e.ordered {
+			current := graph.Nodes[protocol.NodeID(node.ID)]
+			if current.State != protocol.NodeStateFailed &&
+				current.State != protocol.NodeStateSkipped &&
+				current.State != protocol.NodeStateCanceled &&
+				current.State != protocol.NodeStateBlocked {
 				continue
 			}
-			waiting = append(waiting, node)
-		}
-		if len(wave) == 0 {
-			// The graph is acyclic and every dependency is in it, so a wave with
-			// nothing ready cannot happen; treating it as a failure beats looping.
-			return fmt.Errorf("%w: no runnable node among %d remaining", ErrInvalidSpec, len(remaining))
-		}
-		if err := e.runWave(ctx, wave); err != nil {
-			return err
-		}
-		remaining = waiting
-	}
-	return e.failure()
-}
-
-func (e *execution) ready(node Node) bool {
-	for _, need := range node.dependencies() {
-		status, known := e.statuses[need]
-		if !known || !status.Terminal() {
-			return false
+			result, err := e.controller.Execute(ctx, kernel.Command{
+				ID: fmt.Sprintf(
+					"workflow:resume:%s:%s:%d",
+					e.runID,
+					node.ID,
+					graph.Run.Revision,
+				),
+				Kind: kernel.CommandRetryNode, RunID: e.runID,
+				NodeID:           protocol.NodeID(node.ID),
+				ExpectedRevision: graph.Run.Revision, At: e.now(),
+			})
+			if err != nil {
+				return model.Graph{}, err
+			}
+			graph = result.Graph
 		}
 	}
-	return true
-}
-
-func (e *execution) runWave(ctx context.Context, wave []Node) error {
-	limit := e.budget.MaxParallel
-	if limit <= 0 || limit > len(wave) {
-		limit = len(wave)
-	}
-	slots := make(chan struct{}, limit)
-	var (
-		group sync.WaitGroup
-		fatal error
-		once  sync.Once
-	)
-	for _, node := range wave {
-		if err := e.charge(); err != nil {
-			once.Do(func() { fatal = err })
+	for {
+		attempt, found := activeAttempt(graph)
+		if !found {
 			break
 		}
-		group.Add(1)
-		go func(node Node) {
-			defer group.Done()
-			slots <- struct{}{}
-			defer func() { <-slots }()
-			if err := e.runNode(ctx, node); err != nil {
-				// A node's own failure is graph state, not a fatal error; only a
-				// broken host or a canceled run stops the whole walk.
-				once.Do(func() { fatal = err })
+		result, err := e.controller.Execute(ctx, kernel.Command{
+			ID: fmt.Sprintf(
+				"workflow:interrupt:%s:%s:%d",
+				e.runID,
+				attempt.ID,
+				graph.Run.Revision,
+			),
+			Kind: kernel.CommandReleaseAttempt, RunID: e.runID,
+			AttemptID: attempt.ID, ExpectedRevision: graph.Run.Revision,
+			At: e.now(), LeaseOwner: attempt.LeaseOwner,
+			LeaseEpoch: attempt.LeaseEpoch, Reason: "interrupted",
+		})
+		if err != nil {
+			return model.Graph{}, err
+		}
+		graph = result.Graph
+	}
+	if graph.Run.State == protocol.RunStateCanceling {
+		canceled, err := e.controller.Execute(ctx, kernel.Command{
+			ID: fmt.Sprintf(
+				"workflow:finish-cancel:%s:%d",
+				e.runID,
+				graph.Run.Revision,
+			),
+			Kind: kernel.CommandCancel, RunID: e.runID,
+			ExpectedRevision: graph.Run.Revision, At: e.now(),
+			Reason: firstNonEmpty(graph.Run.Reason, "interrupted"),
+		})
+		if err != nil {
+			return model.Graph{}, err
+		}
+		graph = canceled.Graph
+		for _, node := range e.ordered {
+			current := graph.Nodes[protocol.NodeID(node.ID)]
+			if current.State != protocol.NodeStateCanceled &&
+				current.State != protocol.NodeStateSkipped {
+				continue
 			}
-		}(node)
+			retried, err := e.controller.Execute(ctx, kernel.Command{
+				ID: fmt.Sprintf(
+					"workflow:restart-canceled:%s:%s:%d",
+					e.runID,
+					node.ID,
+					graph.Run.Revision,
+				),
+				Kind: kernel.CommandRetryNode, RunID: e.runID,
+				NodeID:           protocol.NodeID(node.ID),
+				ExpectedRevision: graph.Run.Revision, At: e.now(),
+			})
+			if err != nil {
+				return model.Graph{}, err
+			}
+			graph = retried.Graph
+		}
 	}
-	group.Wait()
-	return fatal
+	return graph, nil
 }
 
-func (e *execution) charge() error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.steps++
-	if e.budget.MaxSteps > 0 && e.steps > e.budget.MaxSteps {
-		return ErrBudgetExhausted
+func (e *graphExecution) dispatch(
+	ctx context.Context,
+	graph model.Graph,
+) (model.Graph, error) {
+	maxParallel := e.budget.MaxParallel
+	if maxParallel <= 0 {
+		maxParallel = 1
 	}
-	return nil
-}
-
-// runNode decides whether a node runs at all, then runs it with its own retry
-// and timeout policy. It returns an error only for conditions that end the run.
-func (e *execution) runNode(ctx context.Context, node Node) error {
-	if skip, reason := e.skipReason(node); skip {
-		return e.settle(ctx, node, NodeResult{
-			ID: node.ID, Status: NodeStatusSkipped, Reason: reason,
-		})
-	}
-	// A denied capability is a decision about the spec, not a flake, so it fails
-	// the node once instead of burning the node's attempts on the same refusal.
-	if err := e.permitted(node); err != nil {
-		return e.settle(ctx, node, NodeResult{
-			ID: node.ID, Status: NodeStatusFailed, Reason: err.Error(),
-		})
-	}
-	attempts := node.attempts()
-	var last NodeResult
-	for attempt := 1; attempt <= attempts; attempt++ {
+	completed := make(chan nodeCompletion, maxParallel)
+	running := make(map[protocol.NodeID]claimedNode)
+	for {
 		if err := ctx.Err(); err != nil {
-			return err
+			return e.cancel(ctx, graph, err)
 		}
-		if e.record != nil {
-			started := NodeRecord{
-				ID: node.ID, Status: NodeStatusRunning,
-				Attempt: attempt, StartedAt: e.now(),
+		if runTerminalState(graph.Run.State) && len(running) == 0 {
+			return graph, e.failure(e.results(graph))
+		}
+		launched := false
+		for len(running) < maxParallel {
+			node, found := e.nextReady(graph, running, e.now())
+			if !found {
+				break
 			}
-			if err := e.record.NodeStarted(ctx, e.run, started); err != nil {
-				return fmt.Errorf("checkpoint node %q: %w", node.ID, err)
+			if e.budget.MaxSteps > 0 && e.steps >= e.budget.MaxSteps {
+				return e.cancel(ctx, graph, ErrBudgetExhausted)
+			}
+			e.steps++
+			claim, next, err := e.claim(ctx, graph, node)
+			if err != nil {
+				if errors.Is(err, ErrBudgetExhausted) {
+					e.refundRunning(running)
+					return e.cancel(ctx, graph, ErrBudgetExhausted)
+				}
+				return graph, err
+			}
+			graph = next
+			running[protocol.NodeID(node.ID)] = claim
+			launched = true
+			states := joinStates(graph, node)
+			go func(states map[protocol.NodeID]protocol.NodeState, claim claimedNode) {
+				result, fatal := e.executeNode(ctx, states, claim)
+				completed <- nodeCompletion{
+					claim: claim, result: result, fatal: fatal,
+				}
+			}(states, claim)
+		}
+		if len(running) == 0 {
+			if runTerminalState(graph.Run.State) {
+				continue
+			}
+			retryAt, found := earliestRetry(graph)
+			if found {
+				delay := retryAt.Sub(e.now())
+				if delay > 0 {
+					if err := e.sleep(ctx, delay); err != nil {
+						return e.cancel(ctx, graph, err)
+					}
+				}
+				if retryAt.After(e.logicalNow) {
+					e.logicalNow = retryAt
+				}
+				continue
+			}
+			if !launched {
+				return graph, fmt.Errorf(
+					"%w: no ready WorkGraph node",
+					ErrInvalidSpec,
+				)
 			}
 		}
-		result, fatal := e.execute(ctx, node)
-		if fatal != nil {
-			return fatal
-		}
-		result.ID, result.Attempt = node.ID, attempt
-		last = result
-		if result.Status == NodeStatusCompleted || attempt == attempts {
-			break
-		}
-		if delay := node.backoff(); delay > 0 {
-			if err := e.sleep(ctx, delay); err != nil {
-				return err
+		select {
+		case <-ctx.Done():
+			e.refundRunning(running)
+			return e.cancel(ctx, graph, ctx.Err())
+		case completion := <-completed:
+			delete(running, protocol.NodeID(completion.claim.node.ID))
+			if completion.fatal != nil {
+				_ = e.ledger.Refund(completion.claim.reservationID)
+				e.refundRunning(running)
+				return e.cancel(ctx, graph, completion.fatal)
 			}
+			next, err := e.complete(ctx, graph, completion)
+			if err != nil {
+				e.refundRunning(running)
+				if errors.Is(err, ErrBudgetExhausted) {
+					return e.cancel(ctx, next, err)
+				}
+				return next, err
+			}
+			graph = next
 		}
 	}
-	return e.settle(ctx, node, last)
 }
 
-// skipReason applies the node's condition. Without one, a node needs all of its
-// dependencies to have completed; a condition is what lets a node run on an
-// upstream failure instead.
-func (e *execution) skipReason(node Node) (bool, string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if node.When != nil {
-		actual := e.statuses[node.When.Node]
-		if actual == node.When.Status {
-			return false, ""
-		}
-		return true, fmt.Sprintf("condition not met: %s is %s, want %s",
-			node.When.Node, actual, node.When.Status)
+func (e *graphExecution) refundRunning(
+	running map[protocol.NodeID]claimedNode,
+) {
+	for _, claim := range running {
+		_ = e.ledger.Refund(claim.reservationID)
 	}
-	for _, need := range node.dependencies() {
-		if status := e.statuses[need]; status != NodeStatusCompleted {
-			return true, fmt.Sprintf("dependency %s is %s", need, status)
-		}
-	}
-	return false, ""
 }
 
-// permitted checks the capability a task node's role implies against the spec's
-// permissions, which default to denying the host entirely.
-func (e *execution) permitted(node Node) error {
-	if node.Kind != NodeTask {
-		return nil
-	}
-	for _, capability := range []string{"filesystem", "shell", "network"} {
-		if node.Role != capability {
-			continue
+func (e *graphExecution) claim(
+	ctx context.Context,
+	graph model.Graph,
+	node Node,
+) (claimedNode, model.Graph, error) {
+	nodeID := protocol.NodeID(node.ID)
+	epoch := graph.Run.Revision + 1
+	attemptID := protocol.AttemptID(fmt.Sprintf(
+		"attempt_%s_%s_%d",
+		e.runID,
+		node.ID,
+		epoch,
+	))
+	effectID := protocol.EffectID("effect_" + string(attemptID))
+	reservationID := "workflow:budget:" + string(attemptID)
+	if err := e.reserveAttempt(reservationID); err != nil {
+		if errors.Is(err, workbudget.ErrExhausted) {
+			err = ErrBudgetExhausted
 		}
-		if err := e.spec.AssertAllowed(node, capability); err != nil {
-			return err
-		}
+		return claimedNode{}, graph, err
 	}
-	return nil
+	now := e.now()
+	expires := now.Add(24 * time.Hour)
+	claimed, err := e.controller.Execute(ctx, kernel.Command{
+		ID:   "workflow:claim:" + string(attemptID),
+		Kind: kernel.CommandClaimNode, RunID: e.runID, NodeID: nodeID,
+		AttemptID: attemptID, EffectID: effectID,
+		ExpectedRevision: graph.Run.Revision, At: now,
+		LeaseOwner: "workflow:" + string(e.runID),
+		LeaseEpoch: epoch, LeaseExpiresAt: &expires,
+		ExpectedAuthorityDigest: workflowAuthorityDigest(e.spec, node),
+	})
+	if err != nil {
+		_ = e.ledger.Refund(reservationID)
+		return claimedNode{}, graph, err
+	}
+	bound, err := e.controller.Execute(ctx, kernel.Command{
+		ID:    "workflow:bind:" + string(attemptID),
+		Kind:  kernel.CommandBindExecution,
+		RunID: e.runID, AttemptID: attemptID,
+		ExpectedRevision: claimed.Graph.Run.Revision, At: now,
+		LeaseOwner: "workflow:" + string(e.runID), LeaseEpoch: epoch,
+		Execution: &model.ExecutionRef{
+			Kind: "workflow_node", EffectID: effectID,
+			ProcessID: "workflow:" + string(e.runID) + ":" + node.ID,
+			LaneID:    e.laneID,
+		},
+	})
+	if err != nil {
+		_ = e.ledger.Refund(reservationID)
+		return claimedNode{}, graph, err
+	}
+	attempt := bound.Graph.Attempts[attemptID]
+	return claimedNode{
+		node: node, attemptID: attemptID, effectID: effectID,
+		epoch: epoch, attempt: attempt.Number,
+		reservationID: reservationID,
+	}, bound.Graph, nil
 }
 
-// execute performs one attempt. The returned error is reserved for failures of
-// the host itself; a failed task is a NodeResult so the graph can react to it.
-func (e *execution) execute(ctx context.Context, node Node) (NodeResult, error) {
+func (e *graphExecution) complete(
+	ctx context.Context,
+	graph model.Graph,
+	completion nodeCompletion,
+) (model.Graph, error) {
+	result := completion.result
+	result.ID = completion.claim.node.ID
+	result.Attempt = completion.claim.attempt
+	budgetErr := e.ledger.Settle(
+		completion.claim.reservationID,
+		workbudget.Usage{
+			Tokens:     result.Usage.Tokens,
+			CostMicros: result.Usage.CostMicros,
+		},
+	)
+	if budgetErr != nil {
+		if !errors.Is(budgetErr, workbudget.ErrExhausted) {
+			return graph, budgetErr
+		}
+		result.Status = NodeStatusFailed
+		result.Reason = ErrBudgetExhausted.Error() + ": " + budgetErr.Error()
+		result.retryable = false
+		budgetErr = ErrBudgetExhausted
+	}
+	if result.Status == "" {
+		result.Status, result.Reason =
+			NodeStatusFailed, firstNonEmpty(result.Reason, "node produced no status")
+		result.retryable = true
+	}
+	if result.Status == NodeStatusFailed && result.retryable &&
+		completion.claim.attempt < completion.claim.node.attempts() {
+		retryAt := e.now().Add(completion.claim.node.backoff())
+		released, err := e.controller.Execute(ctx, kernel.Command{
+			ID: fmt.Sprintf(
+				"workflow:retry:%s:%s:%d",
+				e.runID,
+				completion.claim.node.ID,
+				completion.claim.epoch,
+			),
+			Kind:  kernel.CommandReleaseAttempt,
+			RunID: e.runID, AttemptID: completion.claim.attemptID,
+			ExpectedRevision: graph.Run.Revision, At: e.now(),
+			LeaseOwner: "workflow:" + string(e.runID),
+			LeaseEpoch: completion.claim.epoch,
+			Reason:     "workflow_retry", RetryAt: &retryAt,
+			ConsumeAttempt: true,
+		})
+		return released.Graph, err
+	}
+	state := protocol.NodeStateSucceeded
+	switch result.Status {
+	case NodeStatusFailed:
+		state = protocol.NodeStateFailed
+	case NodeStatusSkipped:
+		state = protocol.NodeStateSkipped
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return graph, err
+	}
+	settled, err := e.controller.Execute(ctx, kernel.Command{
+		ID: fmt.Sprintf(
+			"workflow:settle:%s:%s:%d",
+			e.runID,
+			completion.claim.node.ID,
+			completion.claim.epoch,
+		),
+		Kind:  kernel.CommandSettleExecution,
+		RunID: e.runID, AttemptID: completion.claim.attemptID,
+		ExpectedRevision: graph.Run.Revision, At: e.now(),
+		LeaseOwner: "workflow:" + string(e.runID),
+		LeaseEpoch: completion.claim.epoch,
+		Settlement: &kernel.SettlementData{
+			State: state,
+			ResultRef: fmt.Sprintf(
+				"workgraph://%s/nodes/%s",
+				e.runID,
+				completion.claim.node.ID,
+			),
+			Result: encoded, Reason: result.Reason,
+			PermissionDigests: append(
+				[]string(nil),
+				result.PermissionDigests...,
+			),
+		},
+	})
+	if err != nil {
+		return graph, err
+	}
+	return settled.Graph, budgetErr
+}
+
+func (e *graphExecution) executeNode(
+	ctx context.Context,
+	states map[protocol.NodeID]protocol.NodeState,
+	claim claimedNode,
+) (NodeResult, error) {
+	node := claim.node
+	if err := e.permitted(node); err != nil {
+		return failedNode(err.Error(), false), nil
+	}
 	attemptCtx := ctx
 	if timeout := node.timeout(); timeout > 0 {
 		var cancel context.CancelFunc
@@ -347,93 +708,202 @@ func (e *execution) execute(ctx context.Context, node Node) (NodeResult, error) 
 		}
 		return NodeResult{Status: NodeStatusCompleted}, nil
 	case NodeParallel:
-		// The children are ordinary nodes that already ran in an earlier wave;
-		// this node is the join, so its outcome is whether they all completed.
-		return e.join(node), nil
-	case NodeTask:
-		return e.spawn(attemptCtx, node)
-	default:
-		return NodeResult{}, fmt.Errorf("%w: unsupported node kind %q", ErrInvalidSpec, node.Kind)
-	}
-}
-
-// spawn runs a task node with the attempt context. A timeout therefore reaches
-// the underlying turn before this attempt returns and a retry can begin.
-func (e *execution) spawn(ctx context.Context, node Node) (NodeResult, error) {
-	result, err := e.driver.SpawnTask(ctx, TaskRequest{
-		Role: node.Role, Prompt: firstNonEmpty(node.Prompt, e.spec.Goal),
-		Profile: node.Profile, Schema: node.Schema,
-	})
-	if ctx.Err() != nil {
-		return NodeResult{
-			Status: NodeStatusFailed,
-			Reason: fmt.Sprintf("node %s: %v", node.ID, ctx.Err()),
-		}, nil
-	}
-	if err != nil {
-		return NodeResult{Status: NodeStatusFailed, Reason: err.Error()}, nil
-	}
-	if !result.Success {
-		return NodeResult{
-			Status: NodeStatusFailed,
-			Reason: firstNonEmpty(result.Error, "task failed"),
-		}, nil
-	}
-	return NodeResult{
-		Status: NodeStatusCompleted, Content: result.Content,
-	}, nil
-}
-
-func (e *execution) join(node Node) NodeResult {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	for _, child := range node.Children {
-		if status := e.statuses[child]; status != NodeStatusCompleted {
-			return NodeResult{
-				Status: NodeStatusFailed,
-				Reason: fmt.Sprintf("child %s is %s", child, status),
+		for _, child := range node.Children {
+			if states[protocol.NodeID(child)] != protocol.NodeStateSucceeded {
+				return failedNode(
+					fmt.Sprintf(
+						"child %s is %s",
+						child,
+						states[protocol.NodeID(child)],
+					),
+					true,
+				), nil
 			}
 		}
+		return NodeResult{Status: NodeStatusCompleted}, nil
+	case NodeTask:
+		taskResult, err := e.driver.SpawnTask(attemptCtx, TaskRequest{
+			RunID: string(e.runID), NodeID: node.ID,
+			Attempt: claim.attempt, Role: node.Role,
+			Prompt:  firstNonEmpty(node.Prompt, e.spec.Goal),
+			Profile: node.Profile, Schema: node.Schema,
+		})
+		if attemptCtx.Err() != nil {
+			result := failedNode(
+				fmt.Sprintf("node %s: %v", node.ID, attemptCtx.Err()),
+				true,
+			)
+			result.Usage, result.PermissionDigests =
+				taskResult.Usage,
+				append([]string(nil), taskResult.PermissionDigests...)
+			return result, nil
+		}
+		if err != nil {
+			result := failedNode(err.Error(), true)
+			result.Usage, result.PermissionDigests =
+				taskResult.Usage,
+				append([]string(nil), taskResult.PermissionDigests...)
+			return result, nil
+		}
+		if !taskResult.Success {
+			result := failedNode(
+				firstNonEmpty(taskResult.Error, "task failed"),
+				true,
+			)
+			result.Usage, result.PermissionDigests =
+				taskResult.Usage,
+				append([]string(nil), taskResult.PermissionDigests...)
+			return result, nil
+		}
+		return NodeResult{
+			Status: NodeStatusCompleted, Content: taskResult.Content,
+			Usage: taskResult.Usage,
+			PermissionDigests: append(
+				[]string(nil),
+				taskResult.PermissionDigests...,
+			),
+		}, nil
+	default:
+		return NodeResult{}, fmt.Errorf(
+			"%w: unsupported node kind %q",
+			ErrInvalidSpec,
+			node.Kind,
+		)
 	}
-	return NodeResult{Status: NodeStatusCompleted}
 }
 
-func (e *execution) settle(ctx context.Context, node Node, result NodeResult) error {
-	if result.ID == "" {
-		result.ID = node.ID
+func failedNode(reason string, retryable bool) NodeResult {
+	return NodeResult{
+		Status: NodeStatusFailed, Reason: reason, retryable: retryable,
 	}
-	if result.Status == "" {
-		result.Status = NodeStatusFailed
-		result.Reason = firstNonEmpty(result.Reason, "node produced no status")
-	}
-	e.mu.Lock()
-	e.statuses[node.ID] = result.Status
-	e.results[node.ID] = result
-	e.mu.Unlock()
+}
 
-	if e.record == nil {
+func (e *graphExecution) permitted(node Node) error {
+	if node.Kind != NodeTask {
 		return nil
 	}
-	at := e.now()
-	err := e.record.NodeSettled(ctx, e.run, NodeRecord{
-		ID: node.ID, Status: result.Status, Attempt: result.Attempt,
-		Reason: result.Reason, Content: result.Content, StartedAt: at, EndedAt: at,
-	})
-	if err != nil {
-		return fmt.Errorf("checkpoint node %q: %w", node.ID, err)
+	for _, capability := range []string{"filesystem", "shell", "network"} {
+		if node.Role != capability {
+			continue
+		}
+		if err := e.spec.AssertAllowed(node, capability); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-// failure turns node outcomes into the run's verdict. A skipped node is not a
-// failure: skipping is what a condition asked for.
-func (e *execution) failure() error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	failed := make([]string, 0, len(e.results))
-	for id, result := range e.results {
+func (e *graphExecution) nextReady(
+	graph model.Graph,
+	running map[protocol.NodeID]claimedNode,
+	now time.Time,
+) (Node, bool) {
+	for _, node := range e.ordered {
+		id := protocol.NodeID(node.ID)
+		current := graph.Nodes[id]
+		if current.State != protocol.NodeStateReady {
+			continue
+		}
+		if current.RetryAt != nil && now.Before(*current.RetryAt) {
+			continue
+		}
+		if _, exists := running[id]; exists {
+			continue
+		}
+		return node, true
+	}
+	return Node{}, false
+}
+
+func joinStates(
+	graph model.Graph,
+	node Node,
+) map[protocol.NodeID]protocol.NodeState {
+	states := make(map[protocol.NodeID]protocol.NodeState, len(node.Children))
+	for _, child := range node.Children {
+		id := protocol.NodeID(child)
+		states[id] = graph.Nodes[id].State
+	}
+	return states
+}
+
+func (e *graphExecution) results(graph model.Graph) []NodeResult {
+	results := make([]NodeResult, 0, len(e.ordered))
+	for _, node := range e.ordered {
+		current, exists := graph.Nodes[protocol.NodeID(node.ID)]
+		if !exists || !terminalNodeState(current.State) {
+			continue
+		}
+		results = append(results, e.nodeResult(graph, node))
+	}
+	return results
+}
+
+func (e *graphExecution) nodeResult(
+	graph model.Graph,
+	node Node,
+) NodeResult {
+	current := graph.Nodes[protocol.NodeID(node.ID)]
+	result := NodeResult{
+		ID: node.ID, Status: protocolWorkflowStatus(current.State),
+		Attempt: current.AttemptsConsumed, Reason: current.Reason,
+		Resumed: e.resumed[protocol.NodeID(node.ID)],
+	}
+	if len(current.Result) != 0 {
+		var stored NodeResult
+		if json.Unmarshal(current.Result, &stored) == nil {
+			result.Content = stored.Content
+			result.Usage = stored.Usage
+			result.PermissionDigests = append(
+				[]string(nil),
+				stored.PermissionDigests...,
+			)
+			result.Attempt = stored.Attempt
+			result.Reason = firstNonEmpty(stored.Reason, result.Reason)
+		}
+	}
+	for _, attempt := range graph.Attempts {
+		if attempt.NodeID == current.ID && attempt.Number > result.Attempt {
+			result.Attempt = attempt.Number
+		}
+	}
+	return result
+}
+
+func (e *graphExecution) cancel(
+	ctx context.Context,
+	graph model.Graph,
+	cause error,
+) (model.Graph, error) {
+	if !runTerminalState(graph.Run.State) {
+		result, err := e.controller.Execute(
+			context.WithoutCancel(ctx),
+			kernel.Command{
+				ID: fmt.Sprintf(
+					"workflow:cancel:%s:%d",
+					e.runID,
+					graph.Run.Revision,
+				),
+				Kind: kernel.CommandCancel, RunID: e.runID,
+				ExpectedRevision: graph.Run.Revision,
+				At:               e.now(), Reason: cause.Error(),
+			},
+		)
+		if err == nil {
+			graph = result.Graph
+		}
+	}
+	return graph, cause
+}
+
+func (e *graphExecution) failure(results []NodeResult) error {
+	var failed []string
+	for _, result := range results {
 		if result.Status == NodeStatusFailed {
-			failed = append(failed, id+": "+firstNonEmpty(result.Reason, "failed"))
+			failed = append(
+				failed,
+				result.ID+": "+firstNonEmpty(result.Reason, "failed"),
+			)
 		}
 	}
 	if len(failed) == 0 {
@@ -443,21 +913,56 @@ func (e *execution) failure() error {
 	return errors.New(failed[0])
 }
 
-func (e *execution) ordered(nodes []Node) []NodeResult {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	results := make([]NodeResult, 0, len(nodes))
-	for _, node := range nodes {
-		if result, ok := e.results[node.ID]; ok {
-			results = append(results, result)
+func activeAttempt(graph model.Graph) (model.Attempt, bool) {
+	for _, attempt := range graph.Attempts {
+		if !attempt.State.Terminal() {
+			return attempt, true
 		}
 	}
-	return results
+	return model.Attempt{}, false
 }
 
-// summarize reports the last content a node produced in dependency order.
-// Reading it off the ordered results rather than off whichever goroutine
-// finished last keeps a concurrent run's output reproducible.
+func earliestRetry(graph model.Graph) (time.Time, bool) {
+	var earliest time.Time
+	for _, node := range graph.Nodes {
+		if node.State != protocol.NodeStateReady || node.RetryAt == nil {
+			continue
+		}
+		if earliest.IsZero() || node.RetryAt.Before(earliest) {
+			earliest = *node.RetryAt
+		}
+	}
+	return earliest, !earliest.IsZero()
+}
+
+func protocolWorkflowStatus(state protocol.NodeState) NodeStatus {
+	switch state {
+	case protocol.NodeStateSucceeded:
+		return NodeStatusCompleted
+	case protocol.NodeStateSkipped:
+		return NodeStatusSkipped
+	case protocol.NodeStateFailed, protocol.NodeStateBlocked,
+		protocol.NodeStateCanceled:
+		return NodeStatusFailed
+	default:
+		return NodeStatusPending
+	}
+}
+
+func terminalNodeState(state protocol.NodeState) bool {
+	return state == protocol.NodeStateSucceeded ||
+		state == protocol.NodeStateFailed ||
+		state == protocol.NodeStateSkipped ||
+		state == protocol.NodeStateCanceled ||
+		state == protocol.NodeStateBlocked
+}
+
+func runTerminalState(state protocol.RunState) bool {
+	return state == protocol.RunStateCompleted ||
+		state == protocol.RunStateFailed ||
+		state == protocol.RunStateCanceled
+}
+
 func summarize(results []NodeResult) json.RawMessage {
 	content := ""
 	for _, result := range results {
@@ -466,7 +971,8 @@ func summarize(results []NodeResult) json.RawMessage {
 		}
 	}
 	if content != "" {
-		return json.RawMessage(strconvQuote(content))
+		encoded, _ := json.Marshal(content)
+		return encoded
 	}
 	return json.RawMessage(`{"ok":true}`)
 }
@@ -489,9 +995,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func strconvQuote(value string) string {
-	data, _ := json.Marshal(value)
-	return string(data)
 }

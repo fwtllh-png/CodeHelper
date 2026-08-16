@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/model"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestTickEnqueuesExactlyOnceAcrossRestart(t *testing.T) {
@@ -84,6 +86,52 @@ func TestTickEnqueuesExactlyOnceAcrossRestart(t *testing.T) {
 	}
 	if createdTask.State != task.StateQueued || createdTask.Kind != "automation" {
 		t.Fatalf("task = %+v", createdTask)
+	}
+}
+
+func TestExecutableSlotAtomicallyCreatesWorkGraphAndProjection(t *testing.T) {
+	repo := testRepository(t)
+	createdAt := time.Date(2026, 3, 2, 8, 0, 0, 0, time.UTC)
+	if _, err := repo.Create(t.Context(), CreateRequest{
+		ID: "auto-workgraph", SessionID: "session-1", Name: "execute",
+		RRULE: "FREQ=HOURLY", TaskKind: "automation",
+		TaskExecutor: task.ExecutorAgentTurn, TaskMaxAttempts: 2,
+		TaskPayload: []byte(`{"execution":{"version":1,"prompt":"run"}}`),
+		CreatedAt:   createdAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := repo.Tick(t.Context(), createdAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("runs = %+v", runs)
+	}
+	graph, err := repo.workGraphs.Load(
+		t.Context(),
+		protocol.RunID(runs[0].ID),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := graph.Nodes["node_task"]
+	if graph.Run.Kind != model.RunKindAutomation ||
+		node.Execution == nil ||
+		node.Execution.TaskID != runs[0].TaskID ||
+		node.Execution.MaxAttempts != 2 {
+		t.Fatalf("automation WorkGraph = %+v", graph)
+	}
+	projected, err := task.NewRepository(repo.db).Get(
+		t.Context(),
+		runs[0].TaskID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projected.State != task.StateQueued ||
+		projected.Executor != task.ExecutorAgentTurn {
+		t.Fatalf("automation task projection = %+v", projected)
 	}
 }
 

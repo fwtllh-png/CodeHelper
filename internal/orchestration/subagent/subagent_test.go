@@ -144,8 +144,15 @@ func TestDepthAndConcurrencyBudgets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Spawn("", subagent.RoleGeneral, "blocked"); err == nil {
-		t.Fatal("expected concurrency rejection")
+	if _, err := manager.Takeover(t.Context(), parent.ID, "run"); err != nil {
+		t.Fatal(err)
+	}
+	blocked, err := manager.Spawn("", subagent.RoleGeneral, "blocked")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Takeover(t.Context(), blocked.ID, "run"); err == nil {
+		t.Fatal("expected running concurrency rejection")
 	}
 	if err := manager.Close(parent.ID); err != nil {
 		t.Fatal(err)
@@ -193,30 +200,36 @@ func TestResidentAndTotalTreeBudgets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	third, err := manager.Spawn("", subagent.RoleExplore, "third")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ActivateResident(first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ActivateResident(second.ID); err != nil {
+		t.Fatal(err)
+	}
 	if err := manager.Complete(first.ID, "done"); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.Complete(second.ID, "done"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Spawn("", subagent.RoleExplore, "resident"); err == nil {
-		t.Fatal("completed resident agents must still consume resident capacity")
-	}
-	if err := manager.Close(first.ID); err != nil {
-		t.Fatal(err)
-	}
-	third, err := manager.Spawn("", subagent.RoleExplore, "third")
+	evicted, err := manager.ActivateResident(third.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.Close(second.ID); err != nil {
-		t.Fatal(err)
+	if len(evicted) != 1 || evicted[0].ID != first.ID {
+		t.Fatalf("LRU eviction = %+v, want %s", evicted, first.ID)
 	}
-	if err := manager.Close(third.ID); err != nil {
-		t.Fatal(err)
+	firstSnapshot, _ := manager.Agent(first.ID)
+	thirdSnapshot, _ := manager.Agent(third.ID)
+	if firstSnapshot.Resident || !thirdSnapshot.Resident {
+		t.Fatalf("residency first=%+v third=%+v", firstSnapshot, thirdSnapshot)
 	}
 	if _, err := manager.Spawn("", subagent.RoleExplore, "total"); err == nil {
-		t.Fatal("closed agents must still consume total spawn capacity")
+		t.Fatal("all agents must consume total spawn capacity")
 	}
 }
 
@@ -265,7 +278,7 @@ func TestNestedAgentBudgetCanOnlyNarrowParentCeiling(t *testing.T) {
 	}
 	if child.Budget.MaxSteps != 10 || child.Budget.MaxTokens != 200 ||
 		child.Budget.MaxCostUSD != 2 ||
-		child.ReservedTokens != 200 || child.ReservedMicros != 2_000_000 {
+		child.ReservedTokens != 0 || child.ReservedMicros != 0 {
 		t.Fatalf("nested budget = %+v", child)
 	}
 }

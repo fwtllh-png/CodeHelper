@@ -41,7 +41,7 @@ Generated from the Cobra command tree. Do not edit this block by hand.
 | `codehelper exec [flags] PROMPT` | Run a non-interactive agent turn |
 | `codehelper execpolicy [flags]` | Evaluate sandbox/approval decision for a tool invocation |
 | `codehelper features [flags]` | List feature readiness flags (read-only) |
-| `codehelper fleet` | Read the Fleet JSONL audit trail |
+| `codehelper fleet` | Inspect the Fleet WorkGraph projection |
 | `codehelper fleet inspect [flags]` | Inspect a run with tasks and recent events |
 | `codehelper fleet list [flags]` | List runs from a fleet ledger |
 | `codehelper fleet logs [flags]` | Print recent ledger events for a run |
@@ -121,7 +121,7 @@ Generated from the Cobra command tree. Do not edit this block by hand.
 | `codehelper worker run [flags]` | Run the scheduler in the foreground until interrupted |
 | `codehelper workflow` | Validate and run Workflow IR specs |
 | `codehelper workflow run [flags]` | Run a workflow (RuntimeDriver by default; --driver=fake for unit) |
-| `codehelper workflow status [flags]` | Show a workflow run and its node checkpoints |
+| `codehelper workflow status [flags]` | Show a workflow run and its durable nodes |
 | `codehelper workflow validate [flags]` | Validate a workflow JSON spec |
 <!-- END GENERATED COMMAND LIST -->
 

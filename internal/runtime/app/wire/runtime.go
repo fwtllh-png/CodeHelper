@@ -117,6 +117,7 @@ type Session struct {
 	automations          *automation.Repository
 	tasks                *taskstate.Repository
 	ephemeralTasks       *sqlitestate.Store
+	ephemeralTasksDir    string
 	hooks                *hooks.Manager
 	inputHost            *interacttool.Host
 	applyPlan            func(interacttool.Plan)

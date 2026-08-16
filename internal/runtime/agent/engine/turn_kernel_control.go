@@ -7,6 +7,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
 
+var ErrTurnCoordinatorNotActive = errors.New("turn coordinator is not active")
+
 type FrozenTerminalState struct {
 	TurnID      string
 	State       turnkernel.State
@@ -18,7 +20,7 @@ func (e *Engine) FrozenTerminalState(
 ) (FrozenTerminalState, error) {
 	scope := e.currentScope()
 	if scope == nil {
-		return FrozenTerminalState{}, errors.New("turn coordinator is not active")
+		return FrozenTerminalState{}, ErrTurnCoordinatorNotActive
 	}
 	kernel, err := scope.kernel()
 	if err != nil {

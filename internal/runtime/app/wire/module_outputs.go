@@ -16,6 +16,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
+	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
+	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
@@ -85,6 +87,8 @@ type securityBuildState struct {
 }
 
 type orchestrationBuildState struct {
+	workGraph      *orchestrationstore.Store
+	workBudget     *workbudget.Ledger
 	sharedGovernor *rlm.Governor
 	childGovernor  *rlm.Governor
 	children       *childRuntime
@@ -94,6 +98,5 @@ type orchestrationBuildState struct {
 	subagents      *subagent.AgentControl
 	tasks          *taskstate.Repository
 	automations    *automation.Repository
-	workflowRuns   workflowRunStore
 	scheduler      schedulerFactory
 }

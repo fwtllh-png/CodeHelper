@@ -234,7 +234,13 @@ func (e *agentTurnExecutor) closeAgent(agentID string) {
 }
 
 func agentTurnOutcome(result subagent.Result, turnID string, merged bool) worker.Outcome {
-	outcome := worker.Outcome{ThreadID: result.ThreadID, TurnID: result.TurnID}
+	outcome := worker.Outcome{
+		ThreadID: result.ThreadID, TurnID: result.TurnID,
+		PermissionDigests: append(
+			[]string(nil),
+			result.PermissionDigests...,
+		),
+	}
 	if outcome.TurnID == "" {
 		outcome.TurnID = turnID
 	}

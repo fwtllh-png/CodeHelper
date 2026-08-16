@@ -106,6 +106,17 @@ func (r *Runtime) BindThreadSession(
 	return manager.BindSession(threadID, sessionID)
 }
 
+func (r *Runtime) RegisterChildThread(
+	threadID protocol.ThreadID,
+	spec ChildSpec,
+) error {
+	manager, ok := r.engine.(*ThreadManager)
+	if !ok {
+		return errors.New("runtime engine does not support child thread registration")
+	}
+	return manager.RegisterChild(threadID, spec)
+}
+
 func (r *Runtime) ReleaseThread(threadID protocol.ThreadID) {
 	if manager, ok := r.engine.(*ThreadManager); ok {
 		manager.Release(threadID)

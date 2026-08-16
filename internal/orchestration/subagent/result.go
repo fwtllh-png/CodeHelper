@@ -44,17 +44,18 @@ func (u ResultUsage) CostUSD() float64 {
 // projection of the child turn's own execution receipt, so the child cannot
 // claim more than the runtime observed.
 type Result struct {
-	AgentID      string                       `json:"agent_id"`
-	ThreadID     string                       `json:"thread_id"`
-	TurnID       string                       `json:"turn_id"`
-	Status       Status                       `json:"status"`
-	Summary      string                       `json:"summary,omitempty"`
-	Evidence     *protocol.ReceiptEvidence    `json:"evidence,omitempty"`
-	Diff         []protocol.ReceiptChange     `json:"diff,omitempty"`
-	Verification protocol.ReceiptVerification `json:"verification"`
-	Unresolved   []string                     `json:"unresolved,omitempty"`
-	Usage        ResultUsage                  `json:"usage"`
-	Context      ContextReceipt               `json:"context"`
+	AgentID           string                       `json:"agent_id"`
+	ThreadID          string                       `json:"thread_id"`
+	TurnID            string                       `json:"turn_id"`
+	Status            Status                       `json:"status"`
+	Summary           string                       `json:"summary,omitempty"`
+	Evidence          *protocol.ReceiptEvidence    `json:"evidence,omitempty"`
+	Diff              []protocol.ReceiptChange     `json:"diff,omitempty"`
+	Verification      protocol.ReceiptVerification `json:"verification"`
+	Unresolved        []string                     `json:"unresolved,omitempty"`
+	Usage             ResultUsage                  `json:"usage"`
+	PermissionDigests []string                     `json:"permission_digests,omitempty"`
+	Context           ContextReceipt               `json:"context"`
 }
 
 // WritePaths lists the paths the child actually changed, which is what the

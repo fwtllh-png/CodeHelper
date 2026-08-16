@@ -85,55 +85,6 @@ func (d *recordingDriver) peak() int {
 	return d.maxLive
 }
 
-// memoryCheckpoint is a workflow.Checkpoint that survives only as long as the
-// test, which is exactly what a crash-and-resume test needs.
-type memoryCheckpoint struct {
-	mu      sync.Mutex
-	records map[string]workflow.NodeRecord
-	starts  []string
-}
-
-func newMemoryCheckpoint() *memoryCheckpoint {
-	return &memoryCheckpoint{records: map[string]workflow.NodeRecord{}}
-}
-
-func (c *memoryCheckpoint) LoadNodes(
-	context.Context, string,
-) (map[string]workflow.NodeRecord, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	copied := make(map[string]workflow.NodeRecord, len(c.records))
-	for id, record := range c.records {
-		copied[id] = record
-	}
-	return copied, nil
-}
-
-func (c *memoryCheckpoint) NodeStarted(
-	_ context.Context, _ string, record workflow.NodeRecord,
-) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.starts = append(c.starts, record.ID)
-	c.records[record.ID] = record
-	return nil
-}
-
-func (c *memoryCheckpoint) NodeSettled(
-	_ context.Context, _ string, record workflow.NodeRecord,
-) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.records[record.ID] = record
-	return nil
-}
-
-func (c *memoryCheckpoint) status(id string) workflow.NodeStatus {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.records[id].Status
-}
-
 func TestDependenciesDecideOrderRatherThanArrayPosition(t *testing.T) {
 	driver := &recordingDriver{}
 	// The spec lists the dependent node first on purpose: array order used to be
@@ -361,53 +312,6 @@ func TestNodeTimeoutFailsTheAttemptRatherThanHanging(t *testing.T) {
 	}
 	if peak := driver.peak(); peak != 1 {
 		t.Fatalf("concurrent attempts = %d, want 1", peak)
-	}
-}
-
-func TestResumeOnlyRunsWhatDidNotFinish(t *testing.T) {
-	record := newMemoryCheckpoint()
-	spec := workflow.Spec{
-		Goal: "ship",
-		Nodes: []workflow.Node{
-			{ID: "one", Kind: workflow.NodeTask, Prompt: "one"},
-			{ID: "two", Kind: workflow.NodeTask, Prompt: "two", Needs: []string{"one"}},
-			{ID: "three", Kind: workflow.NodeTask, Prompt: "three", Needs: []string{"two"}},
-		},
-	}
-	// First process dies after the second node: cancel the run while "two" is
-	// settling by failing the third node's host call.
-	first := &recordingDriver{fail: map[string]int{"three": 3}}
-	if _, err := workflow.NewRuntime().Run(t.Context(), workflow.RunOptions{
-		ID: "run-1", Spec: spec, Driver: first, Checkpoint: record,
-	}); err == nil {
-		t.Fatal("expected the third node to fail")
-	}
-	if record.status("one") != workflow.NodeStatusCompleted ||
-		record.status("three") != workflow.NodeStatusFailed {
-		t.Fatalf("checkpoint = %+v", record.records)
-	}
-
-	second := &recordingDriver{}
-	run, err := workflow.NewRuntime().Run(t.Context(), workflow.RunOptions{
-		ID: "run-1", Spec: spec, Driver: second, Checkpoint: record,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if run.Status != workflow.RunCompleted {
-		t.Fatalf("resumed run = %+v", run)
-	}
-	if seen := second.seen(); len(seen) != 1 || seen[0] != "three" {
-		t.Fatalf("resume re-ran %v, want only three", seen)
-	}
-	resumed := 0
-	for _, node := range run.Nodes {
-		if node.Resumed {
-			resumed++
-		}
-	}
-	if resumed != 2 {
-		t.Fatalf("resumed node count = %d, want 2", resumed)
 	}
 }
 

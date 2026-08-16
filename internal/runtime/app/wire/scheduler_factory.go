@@ -10,9 +10,12 @@ import (
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
+	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/worker"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
@@ -23,20 +26,22 @@ import (
 // dependency except the Runtime and Turn gate, which do not exist until later
 // modules. BackgroundModule materializes and starts the scheduler.
 type schedulerFactory struct {
-	settings     config.Worker
-	owner        string
-	workspace    string
-	registry     *tool.Registry
-	guard        *toolguard.Guard
-	journal      *workspacejournal.Manager
-	workflowRuns workflowRunStore
-	tasks        *taskstate.Repository
-	automations  *automation.Repository
-	subagents    *subagent.AgentControl
-	children     *childRuntime
-	security     *policy.Runtime
-	hooks        *hooks.Manager
-	logger       *slog.Logger
+	settings    config.Worker
+	owner       string
+	workspace   string
+	registry    *tool.Registry
+	guard       *toolguard.Guard
+	journal     *workspacejournal.Manager
+	workGraphs  workflow.GraphController
+	workBudget  *workbudget.Ledger
+	persistent  *state.Store
+	tasks       *taskstate.Repository
+	automations *automation.Repository
+	subagents   *subagent.AgentControl
+	children    *childRuntime
+	security    *policy.Runtime
+	hooks       *hooks.Manager
+	logger      *slog.Logger
 }
 
 func (f schedulerFactory) Build(
@@ -60,7 +65,13 @@ func (f schedulerFactory) Build(
 		}
 		executors = append(executors, agentTurns)
 	}
-	workflowRuns, err := newWorkflowRunExecutor(runtime, f.workflowRuns)
+	workflowRuns, err := newWorkflowRunExecutor(
+		runtime,
+		f.workGraphs,
+		f.workBudget,
+		f.workspace,
+		f.persistent,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("workflow_run executor: %w", err)
 	}
@@ -91,6 +102,7 @@ func (f schedulerFactory) Build(
 			Base: f.settings.RetryBackoff,
 			Max:  f.settings.RetryBackoffMax,
 		},
-		Logger: f.logger,
+		Logger:       f.logger,
+		DrainEffects: runtime.DrainWorkGraphEffects,
 	})
 }

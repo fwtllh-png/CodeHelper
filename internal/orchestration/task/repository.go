@@ -10,6 +10,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/fairqueue"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
+	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 )
@@ -43,6 +46,7 @@ type Task struct {
 	Reason            string
 	FailureReason     string
 	LeaseOwner        string
+	LeaseEpoch        uint64
 	LeaseExpiresAt    *time.Time
 	TerminalAt        *time.Time
 	CreatedAt         time.Time
@@ -58,12 +62,13 @@ type Task struct {
 }
 
 type Transition struct {
-	State          State
-	Result         json.RawMessage
-	Reason         string
-	LeaseOwner     string
-	LeaseExpiresAt *time.Time
-	At             time.Time
+	State             State
+	Result            json.RawMessage
+	Reason            string
+	LeaseOwner        string
+	LeaseExpiresAt    *time.Time
+	At                time.Time
+	PermissionDigests []string
 }
 
 type LifecycleEntry struct {
@@ -83,12 +88,19 @@ type Filter struct {
 }
 
 type Repository struct {
-	db      *sql.DB
-	queries taskQueries
+	db           *sql.DB
+	queries      taskQueries
+	workGraphs   *orchestrationstore.Store
+	workGraphErr error
+	fair         *fairqueue.Selector
 }
 
 func NewRepository(db *sql.DB) *Repository {
-	return &Repository{db: db, queries: db}
+	workGraphs, err := orchestrationstore.OpenDB(context.Background(), db)
+	return &Repository{
+		db: db, queries: db, workGraphs: workGraphs, workGraphErr: err,
+		fair: fairqueue.NewSelector(),
+	}
 }
 
 func NewSQLiteRepository(store *sqlitestate.Store) *Repository {
@@ -125,7 +137,11 @@ func (r *Repository) Create(ctx context.Context, value Task) (Task, error) {
 	if value.UpdatedAt.IsZero() {
 		value.UpdatedAt = value.CreatedAt
 	}
+	value.Payload = payload
 	value.LifecycleSequence = 1
+	if value.Executor != "" {
+		return r.createExecutable(ctx, value)
+	}
 	err = sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO tasks(
@@ -156,6 +172,11 @@ func (r *Repository) Create(ctx context.Context, value Task) (Task, error) {
 func (r *Repository) Get(ctx context.Context, id string) (Task, error) {
 	if r.db == nil {
 		return Task{}, errors.New("task repository database is required")
+	}
+	if graph, found, err := r.executableGraph(ctx, id); err != nil {
+		return Task{}, err
+	} else if found {
+		return projectTask(graph)
 	}
 	return get(ctx, r.queries, id)
 }
@@ -199,7 +220,26 @@ func (r *Repository) List(ctx context.Context, filter Filter, limit int) ([]Task
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
 	}
-	return sqlkit.ScanAll(rows, scanTask)
+	values, err := sqlkit.ScanAll(rows, scanTask)
+	if err != nil {
+		return nil, err
+	}
+	for index := range values {
+		if values[index].Executor == "" {
+			continue
+		}
+		graph, found, err := r.executableGraph(ctx, values[index].ID)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			values[index], err = projectTask(graph)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return values, nil
 }
 
 // Update atomically validates the state transition, updates all task fields,
@@ -210,6 +250,31 @@ func (r *Repository) Update(ctx context.Context, id string, change Transition) (
 	}
 	if change.At.IsZero() {
 		change.At = time.Now().UTC()
+	}
+	if graph, found, err := r.executableGraph(ctx, id); err != nil {
+		return Task{}, err
+	} else if found {
+		if change.State != StateCanceled {
+			return Task{}, fmt.Errorf(
+				"%w: executable Task transitions use WorkGraph Attempt commands",
+				ErrInvalidTransition,
+			)
+		}
+		reason := change.Reason
+		if reason == "" {
+			reason = "canceled"
+		}
+		result, err := r.workGraphs.ExecuteProjected(ctx, kernel.Command{
+			ID:   fmt.Sprintf("task:cancel:%s:%d", id, graph.Run.Revision),
+			Kind: kernel.CommandCancel, RunID: graph.Run.ID,
+			ExpectedRevision: graph.Run.Revision, At: change.At, Reason: reason,
+		}, func(tx *sql.Tx, result kernel.Result) error {
+			return updateTaskProjection(ctx, tx, result.Graph, true)
+		})
+		if err != nil {
+			return Task{}, err
+		}
+		return projectTask(result.Graph)
 	}
 	var updated Task
 	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
@@ -294,6 +359,13 @@ func (r *Repository) PatchPayload(ctx context.Context, id string, patch map[stri
 	if len(patch) == 0 {
 		return r.Get(ctx, id)
 	}
+	if _, found, err := r.executableGraph(ctx, id); err != nil {
+		return Task{}, err
+	} else if found {
+		return Task{}, errors.New(
+			"executable Task payload is immutable after WorkGraph submission",
+		)
+	}
 	var updated Task
 	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		current, err := get(ctx, tx, id)
@@ -362,7 +434,8 @@ func (r *Repository) RecoverInterrupted(ctx context.Context, at time.Time) (Reco
 	err := sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
 		rows, err := tx.QueryContext(ctx, `
 				SELECT id FROM tasks
-				WHERE state = ? AND lease_owner IS NULL AND lease_expires_at IS NULL
+				WHERE state = ? AND executor IS NULL
+					AND lease_owner IS NULL AND lease_expires_at IS NULL
 				ORDER BY id`, StateRunning,
 		)
 		if err != nil {
@@ -389,24 +462,10 @@ func (r *Repository) RecoverInterrupted(ctx context.Context, at time.Time) (Reco
 			if err != nil {
 				return err
 			}
-			if current.Executor == "" {
-				if err := failInterrupted(ctx, tx, current, at); err != nil {
-					return err
-				}
-				recovery.Failed++
-				continue
-			}
-			// Delay zero: the work was interrupted rather than failing on its own
-			// merits, so there is nothing to wait out before trying again.
-			recovered, err := requeueLocked(ctx, tx, current, ReasonInterrupted, at, 0)
-			if err != nil {
+			if err := failInterrupted(ctx, tx, current, at); err != nil {
 				return err
 			}
-			if recovered.State == StateQueued {
-				recovery.Requeued++
-			} else {
-				recovery.Failed++
-			}
+			recovery.Failed++
 		}
 		return nil
 	})
@@ -436,7 +495,7 @@ func failInterrupted(ctx context.Context, tx *sql.Tx, current Task, at time.Time
 	); err != nil {
 		return err
 	}
-	return endAttempt(ctx, tx, current.ID, current.Attempt, AttemptInterrupted, ReasonInterrupted, at)
+	return nil
 }
 
 func (r *Repository) Lifecycle(ctx context.Context, id string) ([]LifecycleEntry, error) {

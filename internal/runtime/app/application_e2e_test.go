@@ -105,6 +105,60 @@ func TestStartTurnSeparatesModelAndDisplayPrompts(t *testing.T) {
 	}
 }
 
+func TestStartTurnPreservesOrchestrationCorrelationThroughReceipt(t *testing.T) {
+	worker, err := newTestAgentEngine(agentengine.Options{
+		Provider: &singleAnswerProvider{}, Route: runtimeTestRoute(t),
+		Tools: tool.NewRegistry(nil, nil), Workspace: t.TempDir(),
+		Metrics: telemetry.NewMetrics(), MaxOutputTokens: 128,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{Engine: AdaptEngine(worker)})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	correlation := protocol.OrchestrationCorrelation{
+		RunID: "run-correlation", NodeID: "node-correlation",
+		AttemptID: "attempt-correlation", EffectID: "effect-correlation",
+	}
+	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: "thread-correlation", TurnID: "turn-correlation",
+		ItemID: "item-correlation", Prompt: "answer",
+		Orchestration: &correlation,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	var started, receipt bool
+	for {
+		event := receiveEvent(t, events)
+		switch data := event.Data.(type) {
+		case *protocol.TurnStartedData:
+			if data.Orchestration == nil || *data.Orchestration != correlation {
+				t.Fatalf("turn.started correlation = %+v", data.Orchestration)
+			}
+			started = true
+		case *protocol.ExecutionReceiptData:
+			if data.Orchestration == nil || *data.Orchestration != correlation {
+				t.Fatalf("turn.receipt correlation = %+v", data.Orchestration)
+			}
+			receipt = true
+		}
+		if protocol.IsTerminalEvent(event.Kind) {
+			if !started || !receipt {
+				t.Fatalf("terminal before correlated started/receipt: started=%v receipt=%v", started, receipt)
+			}
+			return
+		}
+	}
+}
+
 func TestWorkspaceChangeReceiptMatchesTerminalOutcome(t *testing.T) {
 	t.Run("failed_without_changes", func(t *testing.T) {
 		worker, err := newTestAgentEngine(agentengine.Options{

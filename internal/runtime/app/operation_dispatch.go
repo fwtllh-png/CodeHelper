@@ -1,6 +1,8 @@
 package app
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -41,13 +43,32 @@ type operationDispatcher struct {
 }
 
 func (d operationDispatcher) Dispatch(accepted acceptedOperation) OperationOutcome {
-	if d.runtime == nil || d.runtime.engine == nil {
+	if d.runtime == nil {
 		return OperationOutcome{
-			Kind: OutcomeRejected, Problem: outcomeProblem(errors.New("runtime engine is not configured")),
+			Kind: OutcomeRejected, Problem: outcomeProblem(errors.New("runtime is not configured")),
 			CommitMode: CommitNow,
 		}
 	}
 	operation := accepted.operation
+	switch payload := operation.Payload.(type) {
+	case *protocol.SubmitRunPayload:
+		return (OrchestrationHandler{d.runtime}).Submit(operation, payload)
+	case *protocol.CancelRunPayload:
+		return (OrchestrationHandler{d.runtime}).Cancel(operation, payload)
+	case *protocol.ResumeRunPayload:
+		return (OrchestrationHandler{d.runtime}).Resume(operation, payload)
+	case *protocol.RetryNodePayload:
+		return (OrchestrationHandler{d.runtime}).RetryNode(operation, payload)
+	case *protocol.SkipNodePayload:
+		return (OrchestrationHandler{d.runtime}).SkipNode(operation, payload)
+	}
+	if d.runtime.engine == nil {
+		return OperationOutcome{
+			Kind:       OutcomeRejected,
+			Problem:    outcomeProblem(errors.New("runtime engine is not configured")),
+			CommitMode: CommitNow,
+		}
+	}
 	switch payload := operation.Payload.(type) {
 	case *protocol.StartTurnPayload:
 		return StartTurnHandler{d.runtime}.Handle(operation, payload)
@@ -124,13 +145,44 @@ func (d operationDispatcher) Apply(operation protocol.Operation, outcome Operati
 		return
 	}
 	if outcome.Kind == OutcomeCommitted {
-		for _, event := range outcome.Events {
-			if err := (&runtimeSink{runtime: d.runtime, operation: operation}).Emit(event); err != nil {
+		sink := &runtimeSink{runtime: d.runtime, operation: operation}
+		for index, event := range outcome.Events {
+			var err error
+			if protocol.IsWorkGraphOperation(operation.Kind) {
+				err = sink.EmitStable(
+					workGraphEventID(operation.ID, index),
+					event,
+				)
+			} else {
+				err = sink.Emit(event)
+			}
+			if err != nil {
 				return
 			}
 		}
 		d.runtime.commit(operation.ID)
+		if protocol.IsWorkGraphOperation(operation.Kind) {
+			if err := d.runtime.DrainWorkGraphEffects(d.runtime.ctx); err != nil {
+				d.runtime.logger.Warn(
+					"drain WorkGraph effects after operation",
+					"operation", operation.ID,
+					"error", err,
+				)
+			}
+		}
 	}
+}
+
+func workGraphEventID(
+	operationID protocol.OperationID,
+	index int,
+) protocol.EventID {
+	sum := sha256.Sum256([]byte(fmt.Sprintf(
+		"work-graph-event\x00%s\x00%d",
+		operationID,
+		index,
+	)))
+	return protocol.EventID("evt_" + hex.EncodeToString(sum[:]))
 }
 func validateOperationOutcome(outcome OperationOutcome) error {
 	noProblem, noAsync, noEvents := outcome.Problem == nil, outcome.Async == nil, len(outcome.Events) == 0

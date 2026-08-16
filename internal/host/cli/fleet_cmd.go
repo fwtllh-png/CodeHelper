@@ -11,11 +11,9 @@ import (
 )
 
 func newFleetCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command {
-	// The ledger is an audit trail, not a queue: execution moved to the tasks
-	// table and `codehelper worker`. The verbs that used to schedule
-	// work here — create, enqueue, interrupt, resume — are gone rather than
-	// silently doing nothing.
-	cmd := &cobra.Command{Use: "fleet", Short: "Read the Fleet JSONL audit trail"}
+	// Fleet is a WorkGraph projection, not a queue. The verbs that used to
+	// schedule work here are intentionally absent.
+	cmd := &cobra.Command{Use: "fleet", Short: "Inspect the Fleet WorkGraph projection"}
 	cmd.Run = func(c *cobra.Command, args []string) {
 		_, _ = fmt.Fprintln(stderr,
 			"codehelper: fleet requires a subcommand (list|status|inspect|logs|profile); "+
@@ -47,6 +45,7 @@ func newFleetCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command
 			if !ok {
 				return
 			}
+			defer ledger.Close()
 			state, err := ledger.Replay()
 			if err != nil {
 				_, _ = fmt.Fprintf(stderr, "codehelper: fleet list: %v\n", err)
@@ -96,6 +95,7 @@ func newFleetCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command
 			if !ok {
 				return
 			}
+			defer ledger.Close()
 			state, err := ledger.Replay()
 			if err != nil {
 				_, _ = fmt.Fprintf(stderr, "codehelper: fleet status: %v\n", err)
@@ -153,6 +153,7 @@ func newFleetCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command
 			if !ok {
 				return
 			}
+			defer ledger.Close()
 			view, err := ledger.Inspect(runID, limit)
 			if err != nil {
 				_, _ = fmt.Fprintf(stderr, "codehelper: fleet inspect: %v\n", err)
@@ -192,6 +193,7 @@ func newFleetCommand(stdout, stderr io.Writer, setCode func(int)) *cobra.Command
 			if !ok {
 				return
 			}
+			defer ledger.Close()
 			records, err := ledger.Logs(runID, limit)
 			if err != nil {
 				_, _ = fmt.Fprintf(stderr, "codehelper: fleet logs: %v\n", err)

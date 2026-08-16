@@ -33,7 +33,7 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 		"agent_nodes", "agent_messages", "agent_results", "agent_budget_ledger",
 		"agent_integrations",
 		"repo_index_files", "repo_index_symbols", "repo_index_meta",
-		"task_attempts", "workflow_runs", "workflow_nodes", "spans",
+		"task_attempts", "spans",
 		"provider_capabilities",
 	}
 	for _, table := range wantTables {

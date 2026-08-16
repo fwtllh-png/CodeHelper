@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "requirement_id": "TASK-ORCHESTRATION-OR0",
+  "roots": [
+    "internal/orchestration",
+    "internal/runtime/app/wire/background_executors.go",
+    "internal/runtime/app/wire/childruntime.go"
+  ],
+  "sites": {
+    "internal/orchestration/lane/lane.go": {
+      "go_statements": 1
+    },
+    "internal/orchestration/subagent/control.go": {
+      "after_funcs": 1
+    },
+    "internal/orchestration/worker/worker.go": {
+      "go_statements": 3,
+      "new_tickers": 2
+    },
+    "internal/orchestration/workflow/jsvm/vm.go": {
+      "go_statements": 2
+    },
+    "internal/orchestration/workflow/runtime.go": {
+      "go_statements": 1
+    },
+    "internal/runtime/app/wire/childruntime.go": {
+      "go_statements": 4,
+      "after_calls": 2
+    }
+  }
+}

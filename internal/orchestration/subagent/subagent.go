@@ -117,6 +117,10 @@ type RuntimeHost interface {
 	CancelTurn(ctx context.Context, agentID, turnID string) error
 }
 
+type graphRuntimeHost interface {
+	DeclareAgent(context.Context, Agent) error
+}
+
 type Options struct {
 	Root      string
 	Workspace string
@@ -189,6 +193,8 @@ type Agent struct {
 	Budget            AgentBudget
 	ReservedTokens    uint64
 	ReservedMicros    uint64
+	Resident          bool
+	LastActiveAt      time.Time
 }
 
 func Open(options Options) (*Manager, error) {
@@ -286,12 +292,6 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		return nil, fmt.Errorf("recursion depth %d exceeds limit %d", depth, m.budget.MaxDepth)
 	}
 	ledger := m.ledgers[sessionID]
-	if m.active[sessionID] >= m.budget.MaxParallel {
-		return nil, errors.New("subagent concurrency budget exhausted")
-	}
-	if m.residentLocked(sessionID) >= m.budget.MaxResident {
-		return nil, errors.New("subagent resident budget exhausted")
-	}
 	if ledger.TotalSpawned >= m.budget.MaxTotal {
 		return nil, errors.New("subagent total spawn budget exhausted")
 	}
@@ -325,8 +325,7 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		Role: spec.Role, Profile: spec.Profile, Stance: spec.Stance,
 		Depth: depth, TaskName: strings.TrimSpace(intent.TaskName),
 		OwnedPaths: append([]string(nil), intent.OwnedPaths...),
-		Budget:     requested, ReservedTokens: requested.MaxTokens,
-		ReservedMicros: reservedMicros,
+		Budget:     requested,
 	}
 	if err := m.recordWorktreeAllocation(allocation); err != nil {
 		return nil, fmt.Errorf("record worktree allocation: %w", err)
@@ -363,8 +362,18 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		DelegationTrigger: intent.Trigger,
 		RoleInstructions:  spec.Instructions,
 		Budget:            requested,
-		ReservedTokens:    requested.MaxTokens,
-		ReservedMicros:    reservedMicros,
+	}
+	if runtime, ok := m.runtime.(graphRuntimeHost); ok {
+		if err := runtime.DeclareAgent(context.Background(), *agent); err != nil {
+			discardErr := m.trees.Discard(wt)
+			if discardErr == nil {
+				_ = m.clearWorktreeAllocation(id)
+			}
+			return nil, errors.Join(
+				fmt.Errorf("declare agent WorkGraph node: %w", err),
+				discardErr,
+			)
+		}
 	}
 	if err := m.recordSpawnLocked(agent); err != nil {
 		discardErr := m.trees.Discard(wt)
@@ -379,10 +388,6 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	_ = m.clearWorktreeAllocation(id)
 	m.agents[id] = agent
 	m.worktrees[id] = &wt
-	m.active[sessionID]++
-	ledger.ReservedSlots++
-	ledger.ReservedTokens += requested.MaxTokens
-	ledger.ReservedMicros += reservedMicros
 	ledger.TotalSpawned++
 	m.ledgers[sessionID] = ledger
 	m.wait.Broadcast()
@@ -436,11 +441,68 @@ func (m *Manager) residentLocked(sessionID string) int {
 	resident := 0
 	for _, agent := range m.agents {
 		if agent != nil && agent.SessionID == sessionID &&
-			!agent.Closed && agent.Status != StatusClosed {
+			!agent.Closed && agent.Status != StatusClosed && agent.Resident {
 			resident++
 		}
 	}
 	return resident
+}
+
+// ActivateResident marks an Agent's Runtime Thread resident and returns any
+// terminal LRU Agents that must be unloaded first.
+func (m *Manager) ActivateResident(agentID string) ([]Agent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	agent, ok := m.agents[agentID]
+	if !ok || agent.Closed || agent.Status == StatusClosed {
+		return nil, errors.New("agent not found")
+	}
+	now := time.Now().UTC()
+	if agent.Resident {
+		agent.LastActiveAt = now
+		return nil, nil
+	}
+	var evicted []Agent
+	if m.residentLocked(agent.SessionID) >= m.budget.MaxResident {
+		var candidate *Agent
+		for _, current := range m.agents {
+			if current == nil || current.ID == agentID ||
+				current.SessionID != agent.SessionID || !current.Resident ||
+				current.Closed || occupiesSlot(current.Status) {
+				continue
+			}
+			if candidate == nil ||
+				current.LastActiveAt.Before(candidate.LastActiveAt) ||
+				(current.LastActiveAt.Equal(candidate.LastActiveAt) &&
+					current.ID < candidate.ID) {
+				candidate = current
+			}
+		}
+		if candidate == nil {
+			return nil, errors.New("subagent resident budget exhausted")
+		}
+		candidate.Resident = false
+		evicted = append(evicted, cloneAgent(candidate))
+	}
+	agent.Resident = true
+	agent.LastActiveAt = now
+	return evicted, nil
+}
+
+func (m *Manager) DeactivateResident(agentID string) {
+	m.mu.Lock()
+	if agent := m.agents[agentID]; agent != nil {
+		agent.Resident = false
+	}
+	m.mu.Unlock()
+}
+
+func (m *Manager) TouchResident(agentID string) {
+	m.mu.Lock()
+	if agent := m.agents[agentID]; agent != nil && agent.Resident {
+		agent.LastActiveAt = time.Now().UTC()
+	}
+	m.mu.Unlock()
 }
 
 func (m *Manager) ExecuteTool(ctx context.Context, agentID, callID, name string, raw json.RawMessage) (tool.Result, error) {

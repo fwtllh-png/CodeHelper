@@ -14,6 +14,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
+	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	snapshotstate "github.com/fwtllh-png/CodeHelper/internal/persist/snapshot"
@@ -75,6 +76,10 @@ func PreparePersistentRuntime(
 		return nil, fmt.Errorf("recover interrupted tasks: %w", err)
 	}
 	terminalStore := turnstate.NewSQLiteRepository(options.Store.SQLite())
+	orchestration, err := orchestrationstore.Open(ctx, options.Store.SQLite())
+	if err != nil {
+		return nil, fmt.Errorf("open work graph orchestration: %w", err)
+	}
 	if manager, ok := options.Engine.(*app.ThreadManager); ok {
 		manager.SetSessionDeltaRestorer(terminalStore.LatestSessionDelta)
 	}
@@ -88,6 +93,7 @@ func PreparePersistentRuntime(
 		Metrics:          options.Metrics,
 		Logger:           options.Logger,
 		TerminalStore:    terminalStore,
+		Orchestration:    orchestration,
 	}
 	if options.DefaultProfile.Version != 0 {
 		runtimeOptions.SessionProfiles = repositories.Sessions

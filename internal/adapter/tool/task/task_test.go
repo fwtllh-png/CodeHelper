@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
@@ -121,6 +122,48 @@ func TestTaskSurvivesReopen(t *testing.T) {
 	}
 	if value.State != taskstate.StateQueued {
 		t.Fatalf("state = %s", value.State)
+	}
+}
+
+func TestTaskCreateMapsExecutableKindToWorkGraph(t *testing.T) {
+	workspace := t.TempDir()
+	repo := testRepo(t, workspace)
+	registry := tool.NewRegistry(nil, nil)
+	if err := tasktool.Register(registry, tasktool.Options{
+		Repository: repo, SessionID: "session-1", Workspace: workspace,
+		Backend: passthroughBackend{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	created := execute(t, registry, "task_create", map[string]any{
+		"task_id": "workflow-task",
+		"kind":    taskstate.ExecutorWorkflowRun,
+		"title":   "workflow title is not execution payload",
+		"payload": map[string]any{
+			"version":     1,
+			"goal":        "verify executable mapping",
+			"budget":      map[string]any{},
+			"permissions": map[string]any{},
+			"nodes": []any{map[string]any{
+				"id": "inspect", "kind": "task", "prompt": "inspect",
+			}},
+		},
+	})
+	if created.Metadata["kind"] != taskstate.ExecutorWorkflowRun {
+		t.Fatalf("created = %+v", created)
+	}
+	claimed, err := repo.Claim(t.Context(), taskstate.ClaimRequest{
+		Owner: "worker-1", Executors: []string{taskstate.ExecutorWorkflowRun},
+		Lease: time.Minute, Limit: 1, WorkspaceRoot: workspace,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claimed) != 1 ||
+		claimed[0].ID != "workflow-task" ||
+		claimed[0].Executor != taskstate.ExecutorWorkflowRun ||
+		claimed[0].LeaseEpoch == 0 {
+		t.Fatalf("claimed = %+v", claimed)
 	}
 }
 

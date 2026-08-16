@@ -9,17 +9,18 @@ prerequisites:
   - task-automation-workflow
   - state-session-snapshot-journal
 code_paths:
-  - internal/orchestration/workflow/checkpoint
+  - internal/orchestration/kernel
+  - internal/orchestration/store
   - internal/orchestration/workflow
-  - internal/persist/state/cas
+  - internal/orchestration/projection
 test_paths:
-  - internal/orchestration/workflow/checkpoint/checkpoint_test.go
-  - internal/orchestration/workflow/dag_test.go
+  - internal/orchestration/store/store_test.go
+  - internal/orchestration/workflow/workgraph_test.go
 source_of_truth:
-  - internal/orchestration/workflow/checkpoint/checkpoint.go
+  - internal/orchestration/store/store.go
   - internal/orchestration/workflow/runtime.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-16
 ---
 
 # Checkpoints and Recovery
@@ -28,98 +29,103 @@ English | [简体中文](../../zh-CN/09-task-orchestration/04-checkpoint-and-rec
 
 ## Learning Objectives
 
-Understand Workflow fingerprints, node checkpoints, output handles, and
-resume-only-unfinished semantics.
+Understand WorkGraph facts, snapshots, command receipts, effect outbox rows,
+fingerprint checks, and resume-only-unfinished semantics.
 
-## Checkpoint Contract
+## Durable Contract
+
+Workflow checkpoints are retired. A Workflow Spec compiles into one durable
+WorkGraph, and every lifecycle change is a Kernel command.
 
 ```mermaid
 sequenceDiagram
     participant R as Workflow Runtime
-    participant C as Checkpoint Repository
-    R->>C: Ensure(run ID, spec fingerprint)
-    C-->>R: existing/new run
-    R->>C: LoadNodes
-    loop ready nodes
-      R->>C: NodeStarted
-      R->>C: NodeSettled(status, output handle)
-    end
-    R->>C: Settle run verdict
+    participant K as WorkGraph Kernel
+    participant S as SQLite Store
+    R->>K: Command(expected revision)
+    K-->>R: Facts + Effects + Aggregate
+    R->>S: atomic commit
+    S-->>R: Aggregate + Facts + Receipt + Outbox
 ```
 
-`Ensure` creates or adopts a run only when Workflow fingerprint matches.
-Node records survive restart and update in place. Large outputs live behind
-content handles; missing output is reported separately from node status.
-
-On resume, completed terminal nodes are not rerun. Failed/skipped dependency
-semantics remain in the graph; only unfinished eligible nodes execute. Node
-attempts, retry, timeout, and output validation still apply after recovery.
+The transaction commits the aggregate snapshot, ordered facts, command receipt,
+and effect outbox together. The snapshot accelerates reads; facts remain the
+rebuild authority. Reusing a Run ID with a different Definition Digest fails
+closed.
 
 ## Node Commit Windows
 
 ```text
-NodeStarted durable
- -> Driver external/Runtime execution
- -> validate output
- -> store output handle
- -> NodeSettled durable
+Claim Node + create Attempt + queue Effect
+ -> bind Runtime/Process execution
+ -> validate output and usage
+ -> settle Attempt and Node
+ -> queue terminal Effect
 ```
 
-A crash after `NodeStarted` but before settlement leaves an unfinished node.
-Whether it may rerun depends on the node's effect/idempotency contract, not only
-checkpoint status. A crash after output storage but before settlement can leave
-reclaimable content; settlement must never point at content that failed to
-store.
+A crash before a transaction commits leaves no partial lifecycle state. A crash
+after Claim but before Settlement leaves a leased Attempt; recovery applies the
+lease epoch, retry, and effect-idempotency policy. A stale worker cannot settle
+after another epoch takes ownership.
 
-The checkpoint records status and output handle separately so it can state
-"completed but output unavailable" without rewriting history as "not run".
+Node result bytes and a stable `workgraph://.../nodes/...` result reference are
+stored with the settlement fact. Fleet and Hosts only project this state.
 
 ## Resume Decision Table
 
-| Node record | Resume behavior |
+| Durable state | Resume behavior |
 | --- | --- |
-| terminal + valid output | reuse, do not run |
-| terminal + missing output | preserve status, report unavailable data |
-| started/non-terminal | recover according to retry/effect policy |
-| absent + dependencies satisfied | eligible for next wave |
-| skipped by failed dependency | preserve graph semantics |
-| fingerprint mismatch | refuse entire resume |
+| succeeded Node | reuse, do not execute |
+| failed retryable Node | create a new Attempt |
+| active Attempt with live Lease | keep current owner |
+| expired Lease | release or reclaim through a fenced command |
+| dependency-ready Node | eligible for Claim |
+| Definition Digest mismatch | refuse the Run |
+| snapshot/fact drift | report drift; repair only the snapshot |
+
+## Audit and Repair
+
+`Store.Audit` compares the snapshot digest with a replay digest in one read
+transaction and reports pending Effects. `RepairSnapshot` rebuilds only
+`work_runs.aggregate_json`, revision, state, and update time in one transaction.
+It never rewrites facts, command receipts, or outbox rows.
 
 ## Recovery Layers
 
-Task recovery restores ownership/queue state. Workflow checkpoint recovery
-restores graph progress. Runtime Event recovery restores child Turn state.
-Workspace Journal restores file effects. These layers coordinate but do not
-substitute for one another.
+WorkGraph recovery restores Run/Node/Attempt/Effect state. Runtime Event recovery
+restores child Turn state. Workspace Journal restores file effects. Session
+Checkpoints remain a separate user history/fork feature and are not Workflow
+execution authority.
 
 ## Failure Boundaries
 
-- Changed Workflow fingerprint refuses resume.
-- Non-terminal status cannot settle a node.
-- Output storage failure cannot masquerade as node success.
-- Missing output does not erase terminal status.
-- Resume does not rerun completed nodes.
-- Checkpoint does not make an external side effect idempotent.
+- Revision CAS rejects concurrent stale commands.
+- Lease epoch rejects stale settlement.
+- Definition Digest drift rejects resume.
+- Terminal settlement and terminal outbox insertion are atomic.
+- Snapshot repair cannot rewrite durable facts or receipts.
+- Recovery does not make an external side effect idempotent.
 
 ## Tests and Verification
 
 ```bash
-go test ./internal/orchestration/workflow/checkpoint
-go test ./internal/orchestration/workflow -run 'TestResume|TestFingerprint'
+go test ./internal/orchestration/kernel ./internal/orchestration/store
+go test ./internal/orchestration/workflow -run 'TestDurable|TestSpecDrift'
 ```
 
 ## Hands-On Lab
 
-Stop a DAG after one node settles, reopen the checkpoint repository, and verify
-that resume executes only the remaining wave.
+Fail a Workflow after one Node succeeds, reopen the SQLite Store, resume the
+same Run ID, and verify that only the failed Node receives a new Attempt. Then
+tamper with the aggregate snapshot and use Audit/Repair to rebuild it from facts.
 
 ## Review Questions
 
-1. Why bind checkpoint to Spec fingerprint?
-2. Why store output separately from node status?
-3. Which recovery layer handles workspace bytes?
-4. What crash window can leave stored but unreferenced output?
-5. Why is a started node not automatically safe to rerun?
+1. Why are ordered facts authoritative over the snapshot?
+2. Which rows commit atomically with a lifecycle command?
+3. Why does a stale Lease epoch reject settlement?
+4. What data may snapshot repair change?
+5. How are Session Checkpoints different from Workflow recovery?
 
 ## Further Reading
 
@@ -131,4 +137,4 @@ that resume executes only the remaining wave.
 | --- | --- |
 | Catalog ID | `task-checkpoint-recovery` |
 | Status | `verified` |
-| Last verified | 2026-08-10 |
+| Last verified | 2026-08-16 |

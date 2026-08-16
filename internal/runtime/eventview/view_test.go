@@ -72,3 +72,32 @@ func TestProjectAgentEventsWithoutHostPayloadSwitches(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectOrchestrationEvents(t *testing.T) {
+	correlation := protocol.OrchestrationCorrelation{
+		RunID: "run", NodeID: "node", AttemptID: "attempt", EffectID: "effect",
+	}
+	event, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &protocol.NodeStatusData{
+		Node: protocol.NodeReference{
+			RunID: correlation.RunID, NodeID: correlation.NodeID,
+		},
+		State: protocol.NodeStateRunning, Revision: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	update, err := Project(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, ok := update.(OrchestrationUpdate)
+	if !ok || projected.NodeStatus == nil ||
+		projected.NodeStatus.Node.RunID != correlation.RunID ||
+		projected.NodeStatus.Node.NodeID != correlation.NodeID ||
+		projected.Traits().Correlation != protocol.CorrelationKind("node") {
+		t.Fatalf("update = %#v", update)
+	}
+}

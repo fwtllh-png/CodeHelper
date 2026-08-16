@@ -122,7 +122,7 @@ func (m *Manager) transitionLocked(
 
 func occupiesSlot(status Status) bool {
 	switch status {
-	case StatusRequested, StatusStarting, StatusRunning, StatusWaiting:
+	case StatusStarting, StatusRunning, StatusWaiting:
 		return true
 	default:
 		return false

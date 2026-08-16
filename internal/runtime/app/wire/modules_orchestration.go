@@ -10,10 +10,14 @@ func (orchestrationModule) Build(
 	ctx context.Context,
 	state *buildState,
 ) error {
+	output := orchestrationBuildState{}
+	if err := buildWorkGraphStore(ctx, state, &output); err != nil {
+		return err
+	}
 	if !state.config.execution.Tools {
+		state.orchestration = output
 		return nil
 	}
-	output := orchestrationBuildState{}
 	for _, build := range []func(
 		context.Context,
 		*buildState,

@@ -61,6 +61,11 @@ type StartSpec struct {
 	Worktree    bool
 }
 
+type PlacementSpec struct {
+	Backend Backend
+	CWD     string
+}
+
 type Registry struct {
 	mu      sync.Mutex
 	root    string
@@ -187,6 +192,68 @@ func (r *Registry) Start(ctx context.Context, id string, spec StartSpec) (Record
 	}
 	r.mu.Lock()
 	r.records[id] = record
+	snapshot := *record
+	r.mu.Unlock()
+	if err := r.persist(&snapshot); err != nil {
+		return Record{}, err
+	}
+	return snapshot, nil
+}
+
+// Place records scheduler placement without starting a second worker process.
+func (r *Registry) Place(id string, spec PlacementSpec) (Record, error) {
+	if id == "" {
+		return Record{}, errors.New("lane placement id is required")
+	}
+	backend := spec.Backend
+	if backend == "" {
+		backend = BackendInline
+	}
+	now := time.Now().UTC()
+	record := &Record{
+		ID: id, Backend: backend, Status: StatusQueued, CWD: spec.CWD,
+		LogPath:   filepath.Join(r.root, id+".ndjson"),
+		CreatedAt: now, UpdatedAt: now,
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if existing, exists := r.records[id]; exists {
+		if existing.Backend != backend || existing.CWD != spec.CWD {
+			return Record{}, fmt.Errorf("lane placement %q conflicts with its durable placement", id)
+		}
+		copied := *existing
+		record = &copied
+		record.Status = StatusQueued
+		record.UpdatedAt = now
+		snapshot := *record
+		if err := r.persist(&snapshot); err != nil {
+			return Record{}, err
+		}
+		r.records[id] = record
+		return snapshot, nil
+	}
+	snapshot := *record
+	if err := r.persist(&snapshot); err != nil {
+		return Record{}, err
+	}
+	r.records[id] = record
+	return snapshot, nil
+}
+
+func (r *Registry) Mark(id string, status Status) (Record, error) {
+	switch status {
+	case StatusRunning, StatusStopped, StatusFailed, StatusExited:
+	default:
+		return Record{}, fmt.Errorf("lane placement status %q is invalid", status)
+	}
+	r.mu.Lock()
+	record := r.records[id]
+	if record == nil {
+		r.mu.Unlock()
+		return Record{}, errors.New("lane not found")
+	}
+	record.Status = status
+	record.UpdatedAt = time.Now().UTC()
 	snapshot := *record
 	r.mu.Unlock()
 	if err := r.persist(&snapshot); err != nil {

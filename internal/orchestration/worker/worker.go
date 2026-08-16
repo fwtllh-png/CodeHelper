@@ -27,9 +27,10 @@ type Outcome struct {
 	// executor that cannot tell whether its side effects already landed must
 	// leave this false: a retry that repeats an external action is worse than a
 	// failure someone reads.
-	Retryable bool
-	ThreadID  string
-	TurnID    string
+	Retryable         bool
+	ThreadID          string
+	TurnID            string
+	PermissionDigests []string
 }
 
 // Executor runs one kind of task to completion.
@@ -63,6 +64,7 @@ type Options struct {
 	Backoff            task.Backoff
 	Clock              func() time.Time
 	Logger             *slog.Logger
+	DrainEffects       func(context.Context) error
 }
 
 // Scheduler claims tasks, keeps their leases alive while they run, settles their
@@ -85,6 +87,7 @@ type Scheduler struct {
 	backoff            task.Backoff
 	clock              func() time.Time
 	logger             *slog.Logger
+	drainEffects       func(context.Context) error
 
 	mu       sync.Mutex
 	running  map[string]context.CancelFunc
@@ -120,6 +123,7 @@ func New(options Options) (*Scheduler, error) {
 		backoff:       options.Backoff,
 		clock:         options.Clock,
 		logger:        options.Logger,
+		drainEffects:  options.DrainEffects,
 		running:       make(map[string]context.CancelFunc),
 
 		claimInterval:      options.ClaimInterval,
@@ -389,10 +393,10 @@ func (s *Scheduler) start(ctx context.Context, value task.Task) bool {
 func (s *Scheduler) run(
 	ctx context.Context, cancel context.CancelFunc, executor Executor, value task.Task,
 ) {
-	beats := s.beat(ctx, cancel, value.ID)
-	defer close(beats)
+	stopHeartbeat := s.beat(ctx, cancel, value)
 
 	outcome, err := executor.Execute(ctx, value)
+	stopHeartbeat()
 	// Cancellation means the process is stopping or the lease was lost, and in
 	// both cases the outcome belongs to whoever holds the task next.
 	if ctx.Err() != nil {
@@ -409,9 +413,15 @@ func (s *Scheduler) run(
 // beat keeps the lease alive while the executor works, and cancels the work if
 // the lease is gone: two workers running the same task is the one outcome the
 // lease exists to prevent.
-func (s *Scheduler) beat(ctx context.Context, cancel context.CancelFunc, id string) chan struct{} {
+func (s *Scheduler) beat(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	value task.Task,
+) func() {
 	done := make(chan struct{})
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		ticker := time.NewTicker(s.heartbeat)
 		defer ticker.Stop()
 		for {
@@ -421,20 +431,30 @@ func (s *Scheduler) beat(ctx context.Context, cancel context.CancelFunc, id stri
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				err := s.tasks.Heartbeat(ctx, id, s.owner, s.clock().Add(s.lease))
+				err := s.tasks.HeartbeatAttempt(
+					ctx,
+					value.ID,
+					s.owner,
+					value.LeaseEpoch,
+					s.clock().Add(s.lease),
+				)
 				if err == nil {
 					continue
 				}
 				if errors.Is(err, task.ErrClaimLost) {
-					s.logger.Warn("lost the lease on a running task", "task", id)
+					s.logger.Warn("lost the lease on a running task", "task", value.ID)
 					cancel()
 					return
 				}
-				s.logger.Warn("heartbeat task", "task", id, "error", err)
+				s.logger.Warn("heartbeat task", "task", value.ID, "error", err)
 			}
 		}
 	}()
-	return done
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(done) })
+		<-stopped
+	}
 }
 
 func (s *Scheduler) settle(ctx context.Context, value task.Task, outcome Outcome) {
@@ -451,16 +471,28 @@ func (s *Scheduler) settle(ctx context.Context, value task.Task, outcome Outcome
 		reason = "executor reported failure without a reason"
 	}
 	if outcome.ThreadID != "" || outcome.TurnID != "" {
-		if err := s.tasks.RecordAttemptTurn(
-			ctx, value.ID, s.owner, outcome.ThreadID, outcome.TurnID,
+		if err := s.tasks.RecordAttemptExecution(
+			ctx,
+			value.ID,
+			s.owner,
+			value.LeaseEpoch,
+			outcome.ThreadID,
+			outcome.TurnID,
 		); err != nil && !errors.Is(err, task.ErrClaimLost) {
 			s.logger.Warn("record task attempt turn", "task", value.ID, "error", err)
 		}
 	}
-	if _, err := s.tasks.Settle(ctx, value.ID, s.owner, task.Transition{
-		State: state, Result: outcome.Result, Reason: reason, At: s.clock(),
-	}); err != nil && !errors.Is(err, task.ErrClaimLost) {
+	if _, err := s.tasks.SettleAttempt(
+		ctx, value.ID, s.owner, value.LeaseEpoch, task.Transition{
+			State: state, Result: outcome.Result, Reason: reason, At: s.clock(),
+			PermissionDigests: append(
+				[]string(nil),
+				outcome.PermissionDigests...,
+			),
+		}); err != nil && !errors.Is(err, task.ErrClaimLost) {
 		s.logger.Warn("settle task", "task", value.ID, "error", err)
+	} else if err == nil {
+		s.drainWorkGraphEffects(ctx)
 	}
 }
 
@@ -469,25 +501,47 @@ func (s *Scheduler) settleFailure(ctx context.Context, value task.Task, cause er
 		s.requeueWithBackoff(ctx, value, task.ReasonRetry)
 		return
 	}
-	if _, err := s.tasks.Settle(ctx, value.ID, s.owner, task.Transition{
-		State: task.StateFailed, Reason: cause.Error(), At: s.clock(),
-	}); err != nil && !errors.Is(err, task.ErrClaimLost) {
+	if _, err := s.tasks.SettleAttempt(
+		ctx, value.ID, s.owner, value.LeaseEpoch, task.Transition{
+			State: task.StateFailed, Reason: cause.Error(), At: s.clock(),
+		}); err != nil && !errors.Is(err, task.ErrClaimLost) {
 		s.logger.Warn("settle failed task", "task", value.ID, "error", err)
+	} else if err == nil {
+		s.drainWorkGraphEffects(ctx)
+	}
+}
+
+func (s *Scheduler) drainWorkGraphEffects(ctx context.Context) {
+	if s.drainEffects == nil {
+		return
+	}
+	if err := s.drainEffects(ctx); err != nil {
+		s.logger.Warn("drain WorkGraph effects", "error", err)
 	}
 }
 
 func (s *Scheduler) requeue(ctx context.Context, value task.Task, reason string) {
-	if _, err := s.tasks.Requeue(
-		ctx, value.ID, s.owner, reason, s.clock(), 0,
+	if _, err := s.tasks.ReleaseAttempt(
+		ctx, value.ID, s.owner, value.LeaseEpoch, reason, s.clock(), 0,
 	); err != nil && !errors.Is(err, task.ErrClaimLost) {
 		s.logger.Warn("requeue task", "task", value.ID, "reason", reason, "error", err)
+	} else if err == nil {
+		s.drainWorkGraphEffects(ctx)
 	}
 }
 
 func (s *Scheduler) requeueWithBackoff(ctx context.Context, value task.Task, reason string) {
-	if _, err := s.tasks.Requeue(
-		ctx, value.ID, s.owner, reason, s.clock(), s.backoff.Delay(value.Attempt),
+	if _, err := s.tasks.ReleaseAttempt(
+		ctx,
+		value.ID,
+		s.owner,
+		value.LeaseEpoch,
+		reason,
+		s.clock(),
+		s.backoff.Delay(value.Attempt),
 	); err != nil && !errors.Is(err, task.ErrClaimLost) {
 		s.logger.Warn("requeue task", "task", value.ID, "reason", reason, "error", err)
+	} else if err == nil {
+		s.drainWorkGraphEffects(ctx)
 	}
 }

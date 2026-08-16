@@ -1,11 +1,16 @@
 package task
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
 )
 
 func TestClaimSkipsTasksWithoutAnExecutor(t *testing.T) {
@@ -82,6 +87,171 @@ func TestOnlyOneOwnerWinsAClaim(t *testing.T) {
 	}
 	if len(attempts) != 1 || attempts[0].Owner != "worker-1" || attempts[0].Status != AttemptRunning {
 		t.Fatalf("attempts = %+v", attempts)
+	}
+}
+
+func TestFairClaimDoesNotLetLargeSessionStarveSmallRun(t *testing.T) {
+	repository := testRepository(t)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := repository.db.ExecContext(t.Context(), `
+		INSERT INTO sessions(id, workspace_id, status, created_at, updated_at)
+		VALUES ('session-2', 'workspace-1', 'open', ?, ?)`,
+		now,
+		now,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for index := range 20 {
+		_, err := repository.Create(t.Context(), Task{
+			ID:        fmt.Sprintf("large-%02d", index),
+			SessionID: "session-1", Kind: "turn",
+			Executor: ExecutorAgentTurn, MaxAttempts: 1,
+			Payload: []byte(`{"execution":{"version":1,"prompt":"large"}}`),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := repository.Create(t.Context(), Task{
+		ID: "small", SessionID: "session-2", Kind: "turn",
+		Executor: ExecutorAgentTurn, MaxAttempts: 1,
+		Payload: []byte(`{"execution":{"version":1,"prompt":"small"}}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := repository.Claim(t.Context(), ClaimRequest{
+		Owner: "worker-1", Executors: []string{ExecutorAgentTurn},
+		Lease: time.Minute, Limit: 2, WorkspaceRoot: "/workspace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(claimed) != 2 {
+		t.Fatalf("claimed = %d, want 2", len(claimed))
+	}
+	foundSmall := false
+	for _, value := range claimed {
+		foundSmall = foundSmall || value.ID == "small"
+	}
+	if !foundSmall {
+		t.Fatalf("small Run starved behind claims %+v", claimed)
+	}
+}
+
+func TestConcurrentClaimsHaveOneWorkGraphWinner(t *testing.T) {
+	repository := testRepository(t)
+	mustCreateExecutable(t, repository, "turn-race", ExecutorAgentTurn, 1)
+	var wait sync.WaitGroup
+	results := make(chan []Task, 2)
+	errs := make(chan error, 2)
+	for _, owner := range []string{"worker-1", "worker-2"} {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			claimed, err := repository.Claim(context.Background(), ClaimRequest{
+				Owner: owner, Executors: []string{ExecutorAgentTurn},
+				Lease: time.Minute, Limit: 1, WorkspaceRoot: "/workspace",
+			})
+			results <- claimed
+			errs <- err
+		}()
+	}
+	wait.Wait()
+	close(results)
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	winners := 0
+	for claimed := range results {
+		winners += len(claimed)
+	}
+	if winners != 1 {
+		t.Fatalf("concurrent WorkGraph claim winners = %d, want 1", winners)
+	}
+}
+
+func TestLeaseEpochFencesStaleResultFromSameOwner(t *testing.T) {
+	repository := testRepository(t)
+	mustCreateExecutable(t, repository, "turn-epoch", ExecutorAgentTurn, 3)
+	first := mustClaim(t, repository, "worker-reused", 1)[0]
+	after := first.LeaseExpiresAt.Add(time.Second)
+	reclaimed, err := repository.Reclaim(
+		t.Context(),
+		after,
+		Backoff{Base: time.Second, Max: time.Second},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondClaim, err := repository.Claim(t.Context(), ClaimRequest{
+		Owner: "worker-reused", Executors: []string{ExecutorAgentTurn},
+		Lease: time.Minute, Limit: 1,
+		Now: after.Add(2 * time.Second), WorkspaceRoot: "/workspace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reclaimed) != 1 || len(secondClaim) != 1 ||
+		secondClaim[0].LeaseEpoch == first.LeaseEpoch {
+		t.Fatalf("first=%+v reclaimed=%+v second=%+v", first, reclaimed, secondClaim)
+	}
+	if _, err := repository.SettleAttempt(
+		t.Context(),
+		first.ID,
+		"worker-reused",
+		first.LeaseEpoch,
+		Transition{State: StateCompleted},
+	); !errors.Is(err, ErrClaimLost) {
+		t.Fatalf("stale same-owner settle error = %v", err)
+	}
+	if _, err := repository.SettleAttempt(
+		t.Context(),
+		first.ID,
+		"worker-reused",
+		secondClaim[0].LeaseEpoch,
+		Transition{State: StateCompleted},
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExecutableProjectionFailureRollsBackWorkGraph(t *testing.T) {
+	repository := testRepository(t)
+	if _, err := repository.Create(t.Context(), Task{
+		ID: "duplicate", SessionID: "session-1", Kind: "board",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Create(t.Context(), Task{
+		ID: "duplicate", SessionID: "session-1", Kind: "turn",
+		Executor: ExecutorAgentTurn, MaxAttempts: 1,
+	}); err == nil {
+		t.Fatal("duplicate projection unexpectedly succeeded")
+	}
+	if _, err := repository.workGraphs.Load(
+		t.Context(),
+		WorkGraphRunID("duplicate"),
+	); !errors.Is(err, kernel.ErrNotFound) {
+		t.Fatalf("WorkGraph survived rolled back projection: %v", err)
+	}
+}
+
+func TestWorkBoardTaskNeverCreatesWorkGraph(t *testing.T) {
+	repository := testRepository(t)
+	if _, err := repository.Create(t.Context(), Task{
+		ID: "board-only", SessionID: "session-1", Kind: "board",
+		Payload: []byte(`{"title":"review manually"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.workGraphs.Load(
+		t.Context(),
+		WorkGraphRunID("board-only"),
+	); !errors.Is(err, kernel.ErrNotFound) {
+		t.Fatalf("work board created executable WorkGraph: %v", err)
 	}
 }
 
@@ -167,24 +337,30 @@ func TestSettleAndHeartbeatRefuseAnOwnerThatLostTheLease(t *testing.T) {
 	mustCreateExecutable(t, repository, "turn-1", ExecutorAgentTurn, 2)
 	claimed := mustClaim(t, repository, "worker-1", 1)
 
-	if err := repository.Heartbeat(
-		t.Context(), claimed[0].ID, "worker-2", time.Now().Add(time.Minute),
+	if err := repository.HeartbeatAttempt(
+		t.Context(), claimed[0].ID, "worker-2", claimed[0].LeaseEpoch,
+		time.Now().Add(time.Minute),
 	); !errors.Is(err, ErrClaimLost) {
 		t.Fatalf("heartbeat by the wrong owner error = %v, want ErrClaimLost", err)
 	}
-	if err := repository.RecordAttemptTurn(
-		t.Context(), claimed[0].ID, "worker-1", "thread-1", "turn-abc",
+	if err := repository.RecordAttemptExecution(
+		t.Context(), claimed[0].ID, "worker-1", claimed[0].LeaseEpoch,
+		"thread-1", "turn-abc",
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repository.Settle(t.Context(), claimed[0].ID, "worker-2", Transition{
-		State: StateCompleted,
-	}); !errors.Is(err, ErrClaimLost) {
+	if _, err := repository.SettleAttempt(
+		t.Context(), claimed[0].ID, "worker-2", claimed[0].LeaseEpoch,
+		Transition{State: StateCompleted},
+	); !errors.Is(err, ErrClaimLost) {
 		t.Fatalf("settle by the wrong owner error = %v, want ErrClaimLost", err)
 	}
-	settled, err := repository.Settle(t.Context(), claimed[0].ID, "worker-1", Transition{
-		State: StateCompleted, Result: []byte(`{"summary":"done"}`),
-	})
+	settled, err := repository.SettleAttempt(
+		t.Context(), claimed[0].ID, "worker-1", claimed[0].LeaseEpoch,
+		Transition{
+			State: StateCompleted, Result: []byte(`{"summary":"done"}`),
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,9 +403,10 @@ func TestReclaimRequeuesAnExpiredLeaseAndFencesTheOldOwner(t *testing.T) {
 			reclaimed[0].FailureReason)
 	}
 	// The old worker is still alive and finishes late. Its result must not land.
-	if _, err := repository.Settle(t.Context(), "turn-1", "stuck-worker", Transition{
-		State: StateCompleted,
-	}); !errors.Is(err, ErrClaimLost) {
+	if _, err := repository.SettleAttempt(
+		t.Context(), "turn-1", "stuck-worker", claimed[0].LeaseEpoch,
+		Transition{State: StateCompleted},
+	); !errors.Is(err, ErrClaimLost) {
 		t.Fatalf("late settle error = %v, want ErrClaimLost", err)
 	}
 
@@ -262,8 +439,9 @@ func TestRequeueFailsWhenAttemptsAreSpent(t *testing.T) {
 	repository := testRepository(t)
 	mustCreateExecutable(t, repository, "turn-1", ExecutorAgentTurn, 1)
 	claimed := mustClaim(t, repository, "worker-1", 1)
-	requeued, err := repository.Requeue(
-		t.Context(), claimed[0].ID, "worker-1", ReasonRetry, time.Now(), time.Minute,
+	requeued, err := repository.ReleaseAttempt(
+		t.Context(), claimed[0].ID, "worker-1", claimed[0].LeaseEpoch,
+		ReasonRetry, time.Now(), time.Minute,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -282,8 +460,9 @@ func TestDrainReturnsWorkToTheQueueAndGivesTheAttemptBack(t *testing.T) {
 	repository := testRepository(t)
 	mustCreateExecutable(t, repository, "turn-1", ExecutorAgentTurn, 1)
 	claimed := mustClaim(t, repository, "worker-1", 1)
-	drained, err := repository.Requeue(
-		t.Context(), claimed[0].ID, "worker-1", ReasonDraining, time.Now(), 0,
+	drained, err := repository.ReleaseAttempt(
+		t.Context(), claimed[0].ID, "worker-1", claimed[0].LeaseEpoch,
+		ReasonDraining, time.Now(), 0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -325,7 +504,7 @@ func TestLeaseExpiryConsumesTheAttempt(t *testing.T) {
 	}
 }
 
-func TestRecoveryRequeuesExecutableWorkAndFailsTheRest(t *testing.T) {
+func TestLegacyRecoveryDoesNotOverrideExecutableWorkGraphState(t *testing.T) {
 	repository := testRepository(t)
 	mustCreateExecutable(t, repository, "retryable", ExecutorAgentTurn, 2)
 	mustCreateExecutable(t, repository, "spent", ExecutorAgentTurn, 1)
@@ -351,11 +530,11 @@ func TestRecoveryRequeuesExecutableWorkAndFailsTheRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if recovery.Requeued != 1 || recovery.Failed != 2 {
-		t.Fatalf("recovery = %+v, want one requeued and two failed", recovery)
+	if recovery.Requeued != 0 || recovery.Failed != 1 {
+		t.Fatalf("recovery = %+v, want only the legacy gate failed", recovery)
 	}
 	states := map[string]State{
-		"retryable": StateQueued, "spent": StateFailed, "gate": StateFailed,
+		"retryable": StateQueued, "spent": StateQueued, "gate": StateFailed,
 	}
 	for id, want := range states {
 		value, err := repository.Get(t.Context(), id)

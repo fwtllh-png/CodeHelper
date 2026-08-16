@@ -12,6 +12,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
+	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -126,13 +127,13 @@ func TestBindRestoresActiveChildObservation(t *testing.T) {
 	threadID := protocol.ThreadID(child.ThreadID)
 	children.mu.Lock()
 	recovered := children.turns[threadID]
-	pumpStarted := children.stop != nil
+	observerBound := children.removeObserver != nil
 	children.mu.Unlock()
 	if recovered == nil || recovered.turnID != protocol.TurnID(child.TurnID) ||
-		!pumpStarted {
+		!observerBound {
 		t.Fatalf(
-			"recovered turn = %+v, pump_started=%v, child=%+v",
-			recovered, pumpStarted, child,
+			"recovered turn = %+v, observer_bound=%v, child=%+v",
+			recovered, observerBound, child,
 		)
 	}
 
@@ -511,9 +512,9 @@ func TestChildAgentRunsRealEngineTurn(t *testing.T) {
 	// The child's turn must be visible in the event stream under its own thread,
 	// which is what makes it auditable and replayable like any other turn.
 	childThread := protocol.ThreadID(subagent.ThreadIDFor(child.ID))
-	sawReceipt, sawCompleted := false, false
+	sawStarted, sawReceipt, sawCompleted := false, false, false
 	deadline := time.After(5 * time.Second)
-	for !sawReceipt || !sawCompleted {
+	for !sawStarted || !sawReceipt || !sawCompleted {
 		select {
 		case event, open := <-events:
 			if !open {
@@ -523,14 +524,175 @@ func TestChildAgentRunsRealEngineTurn(t *testing.T) {
 				continue
 			}
 			switch event.Kind {
+			case protocol.EventTurnStarted:
+				started, _ := event.Data.(*protocol.TurnStartedData)
+				if started == nil || started.Orchestration == nil ||
+					started.Orchestration.NodeID != protocol.NodeID("node_"+child.ID) {
+					t.Fatalf("child turn correlation = %+v", started)
+				}
+				sawStarted = true
 			case protocol.EventExecutionReceipt:
+				receipt, _ := event.Data.(*protocol.ExecutionReceiptData)
+				if receipt == nil || receipt.Orchestration == nil ||
+					receipt.Orchestration.RunID !=
+						protocol.RunID("run_agent_"+child.SessionID+"_"+child.ID) {
+					t.Fatalf("child receipt correlation = %+v", receipt)
+				}
 				sawReceipt = true
 			case protocol.EventTurnCompleted:
 				sawCompleted = true
 			}
 		case <-deadline:
-			t.Fatalf("child thread events missing: receipt=%v completed=%v", sawReceipt, sawCompleted)
+			t.Fatalf(
+				"child thread events missing: started=%v receipt=%v completed=%v",
+				sawStarted,
+				sawReceipt,
+				sawCompleted,
+			)
 		}
+	}
+}
+
+func TestChildFollowUpCreatesSecondDurableWorkGraphAttempt(t *testing.T) {
+	session := openChildSession(t, "subagent", nil)
+	manager := session.subagents
+	child, err := manager.Spawn("", subagent.RoleExplore, "count the packages")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, nodeID := subagent.AgentWorkGraphIDs(*child)
+	graph, err := session.children.workGraphs.Load(t.Context(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if graph.Nodes[nodeID].State != protocol.NodeStateReady ||
+		len(graph.Attempts) != 0 {
+		t.Fatalf("declared Agent WorkGraph = %+v", graph)
+	}
+	if _, err := manager.Takeover(t.Context(), child.ID, "count the packages"); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStatus(t, manager, child.ID, subagent.StatusCompleted)
+	graph, err = session.children.workGraphs.Load(t.Context(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if graph.Nodes[nodeID].State != protocol.NodeStateSucceeded ||
+		len(graph.Attempts) != 1 {
+		t.Fatalf("first Agent attempt = %+v", graph)
+	}
+	if _, err := manager.FollowUp(t.Context(), child.ID, "count the packages"); err != nil {
+		t.Fatal(err)
+	}
+	waited, err := manager.Wait(t.Context(), []string{child.ID}, 5*time.Second)
+	if err != nil || waited.TimedOut {
+		t.Fatalf("follow-up wait = %+v, err=%v", waited, err)
+	}
+	graph, err = session.children.workGraphs.Load(t.Context(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := graph.Nodes[nodeID].State
+	if (state != protocol.NodeStateSucceeded &&
+		state != protocol.NodeStateFailed) ||
+		len(graph.Attempts) != 2 {
+		t.Fatalf("follow-up Agent attempts = %+v", graph)
+	}
+}
+
+func TestChildResidencyLRUUnloadAndOnDemandRestore(t *testing.T) {
+	session := openChildSession(t, "subagent", func(overrides *config.Overrides) {
+		parallel, resident, total := 1, 1, 3
+		overrides.SubagentMaxParallel = &parallel
+		overrides.SubagentMaxResident = &resident
+		overrides.SubagentMaxTotal = &total
+	})
+	manager := session.subagents
+	first, err := manager.Spawn("", subagent.RoleExplore, "count the packages")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Takeover(
+		t.Context(),
+		first.ID,
+		"count the packages",
+	); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStatus(t, manager, first.ID, subagent.StatusCompleted)
+	firstThread := protocol.ThreadID(first.ThreadID)
+	firstSpec, ok := session.threads.ChildSpecFor(firstThread)
+	if !ok {
+		t.Fatal("first child was not resident after completion")
+	}
+	before, _ := manager.Agent(first.ID)
+	if _, err := manager.Mailbox().Enqueue(subagent.Message{
+		SessionID: first.SessionID, From: "parent", To: first.ID,
+		Kind: subagent.MessageContext, Body: json.RawMessage(`{"note":"resume"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := manager.Spawn("", subagent.RoleExplore, "count the packages")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Takeover(
+		t.Context(),
+		second.ID,
+		"count the packages",
+	); err != nil {
+		t.Fatal(err)
+	}
+	waited, err := manager.Wait(t.Context(), []string{second.ID}, 5*time.Second)
+	if err != nil || waited.TimedOut {
+		t.Fatalf("second child wait = %+v, err=%v", waited, err)
+	}
+	if _, ok := session.threads.ChildSpecFor(firstThread); ok {
+		t.Fatal("LRU child thread remained resident")
+	}
+	firstUnloaded, _ := manager.Agent(first.ID)
+	if firstUnloaded.Resident {
+		t.Fatalf("first Agent remained resident: %+v", firstUnloaded)
+	}
+
+	if _, err := manager.FollowUp(
+		t.Context(),
+		first.ID,
+		"count the packages",
+	); err != nil {
+		t.Fatal(err)
+	}
+	reloadedSpec, ok := session.threads.ChildSpecFor(firstThread)
+	if !ok {
+		t.Fatal("first child thread was not restored on demand")
+	}
+	if reloadedSpec.Role != firstSpec.Role ||
+		reloadedSpec.Stance != firstSpec.Stance ||
+		reloadedSpec.Workspace != firstSpec.Workspace ||
+		strings.Join(reloadedSpec.AllowedTools, "\x00") !=
+			strings.Join(firstSpec.AllowedTools, "\x00") {
+		t.Fatalf("restored authority changed: before=%+v after=%+v", firstSpec, reloadedSpec)
+	}
+	after, _ := manager.Agent(first.ID)
+	if before.Context != nil && (after.Context == nil ||
+		after.Context.Digest != before.Context.Digest) {
+		t.Fatalf("restored Context changed: before=%+v after=%+v", before.Context, after.Context)
+	}
+	if pending := manager.Mailbox().PendingSession(first.SessionID, first.ID); len(pending) != 0 {
+		t.Fatalf("restored mailbox retained delivered messages: %+v", pending)
+	}
+	secondThread := protocol.ThreadID(second.ThreadID)
+	if _, ok := session.threads.ChildSpecFor(secondThread); ok {
+		t.Fatal("second LRU child thread remained resident")
+	}
+	secondUnloaded, _ := manager.Agent(second.ID)
+	if secondUnloaded.Resident {
+		t.Fatalf("second Agent remained resident: %+v", secondUnloaded)
+	}
+	waited, err = manager.Wait(t.Context(), []string{first.ID}, 5*time.Second)
+	if err != nil || waited.TimedOut {
+		t.Fatalf("restored child wait = %+v, err=%v", waited, err)
 	}
 }
 
@@ -836,7 +998,7 @@ func TestChildAgentWallClockCancelsTurn(t *testing.T) {
 	}
 }
 
-func TestReleaseWaitsForRunningChildCancellation(t *testing.T) {
+func TestReleaseCompletesFromRunningChildTerminalEvent(t *testing.T) {
 	session := openChildSession(t, "subagent-slow", nil)
 	child, err := session.subagents.Spawn(
 		"", subagent.RoleExplore, "wait until canceled",
@@ -854,28 +1016,30 @@ func TestReleaseWaitsForRunningChildCancellation(t *testing.T) {
 	if _, ok := session.threads.ChildSpecFor(threadID); !ok {
 		t.Fatal("child spec was not registered")
 	}
-	session.children.release(child.ID)
-	if _, ok := session.threads.ChildSpecFor(threadID); ok {
-		t.Fatal("child spec remained after cancellation reached terminal")
-	}
-	events, _, err := session.Runtime.ReplayEvents(t.Context(), 0, 1000)
+	events, err := session.Runtime.Events(
+		t.Context(),
+		session.Runtime.Snapshot(t.Context()).LastSequence,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var kinds []protocol.EventKind
-	for _, event := range events {
-		if event.TurnID == protocol.TurnID(turnID) &&
-			event.Kind == protocol.EventTurnCanceled {
-			return
-		}
-		if event.TurnID == protocol.TurnID(turnID) {
-			kinds = append(kinds, event.Kind)
-			if rejected, ok := event.Data.(*protocol.OperationRejectedData); ok {
-				t.Logf("rejected: %s", rejected.Message)
+	session.children.release(child.ID)
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			if event.TurnID != protocol.TurnID(turnID) ||
+				event.Kind != protocol.EventTurnCanceled {
+				continue
 			}
+			if _, ok := session.threads.ChildSpecFor(threadID); ok {
+				t.Fatal("child spec remained after cancellation reached terminal")
+			}
+			return
+		case <-deadline:
+			t.Fatal("child cancellation did not reach a terminal event")
 		}
 	}
-	t.Fatalf("child turn %s was released before turn.canceled: %v", turnID, kinds)
 }
 
 func TestChildAgentSpendIsChargedToTheSharedLedger(t *testing.T) {
@@ -895,6 +1059,19 @@ func TestChildAgentSpendIsChargedToTheSharedLedger(t *testing.T) {
 	// The turn's lease is held for the child's whole lifetime and must be back.
 	if spent.InFlight != 0 {
 		t.Fatalf("in-flight leases after settle = %d", spent.InFlight)
+	}
+	agent, ok := session.subagents.Agent(result.AgentID)
+	if !ok {
+		t.Fatal("settled Agent is unavailable")
+	}
+	scope := "workspace:" + session.children.root +
+		"/session:" + agent.SessionID + "/agents"
+	work, err := session.children.budget.Snapshot(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if work.Spent.Tokens != 17 || work.Reserved != (workbudget.Usage{}) {
+		t.Fatalf("hierarchical Agent budget = %+v", work)
 	}
 }
 

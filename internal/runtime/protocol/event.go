@@ -47,6 +47,15 @@ const (
 	EventAgentStatus        EventKind = "agent.status"
 	EventAgentMessage       EventKind = "agent.message"
 	EventAgentIntegration   EventKind = "agent.integration"
+	EventRunStarted         EventKind = "run.started"
+	EventRunStatus          EventKind = "run.status"
+	EventRunCompleted       EventKind = "run.completed"
+	EventRunFailed          EventKind = "run.failed"
+	EventRunCanceled        EventKind = "run.canceled"
+	EventNodeStatus         EventKind = "node.status"
+	EventAttemptStatus      EventKind = "attempt.status"
+	EventExecutionBound     EventKind = "execution.bound"
+	EventBudgetUpdated      EventKind = "budget.updated"
 	EventPlanDelta          EventKind = "plan.delta"
 	EventCommandExecution   EventKind = "command.execution"
 	EventHostCommand        EventKind = "host.command"
@@ -59,14 +68,15 @@ type EventData interface {
 }
 
 type TurnStartedData struct {
-	Provider           string     `json:"provider"`
-	Model              string     `json:"model"`
-	Intent             TurnIntent `json:"intent,omitempty"`
-	Mode               string     `json:"mode,omitempty"`
-	Posture            string     `json:"posture,omitempty"`
-	Workspace          string     `json:"workspace,omitempty"`
-	WorkspaceIsolation string     `json:"workspace_isolation,omitempty"`
-	Sandbox            string     `json:"sandbox,omitempty"`
+	Provider           string                    `json:"provider"`
+	Model              string                    `json:"model"`
+	Orchestration      *OrchestrationCorrelation `json:"orchestration,omitempty"`
+	Intent             TurnIntent                `json:"intent,omitempty"`
+	Mode               string                    `json:"mode,omitempty"`
+	Posture            string                    `json:"posture,omitempty"`
+	Workspace          string                    `json:"workspace,omitempty"`
+	WorkspaceIsolation string                    `json:"workspace_isolation,omitempty"`
+	Sandbox            string                    `json:"sandbox,omitempty"`
 	// Prompt is model-visible durable reconstruction input. Optional for older events.
 	Prompt string `json:"prompt,omitempty"`
 	// DisplayPrompt omits expanded editor context and is safe for chat projection.
@@ -80,6 +90,11 @@ func (*TurnStartedData) eventKind() EventKind { return EventTurnStarted }
 func (d *TurnStartedData) validate() error {
 	if d.Provider == "" || d.Model == "" {
 		return errors.New("turn started provider and model are required")
+	}
+	if d.Orchestration != nil {
+		if err := d.Orchestration.Validate(); err != nil {
+			return err
+		}
 	}
 	if !NormalizeTurnIntent(d.Intent).Valid() {
 		return errors.New("turn started intent is invalid")

@@ -4,15 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/config"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow"
-	workflowcheckpoint "github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow/checkpoint"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -127,7 +129,7 @@ func TestShellCommandRequiresIdempotencyForTaskRetry(t *testing.T) {
 	}
 }
 
-func TestSchedulerRunsWorkflowAndPersistsCheckpoint(t *testing.T) {
+func TestSchedulerRunsWorkflowAndPersistsWorkGraph(t *testing.T) {
 	session := openWorkerSession(t, "subagent")
 	taskID := "task-workflow-1"
 	runID := "workflow-" + taskID
@@ -163,23 +165,130 @@ func TestSchedulerRunsWorkflowAndPersistsCheckpoint(t *testing.T) {
 		result.Run.Nodes[0].Content != "the workspace has one package" {
 		t.Fatalf("workflow result = %+v", result)
 	}
-	repository := workflowcheckpoint.NewSQLiteRepository(session.ephemeralTasks, session.content)
-	persisted, err := repository.Get(context.Background(), runID)
+	persisted, err := session.children.workGraphs.Load(
+		context.Background(),
+		protocol.RunID(runID),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if persisted.Status != workflow.RunCompleted ||
-		persisted.TaskID != id ||
-		persisted.SessionID != workerTestSession {
-		t.Fatalf("persisted workflow run = %+v", persisted)
+	if persisted.Run.State != protocol.RunStateCompleted ||
+		persisted.Run.SessionID != workerTestSession {
+		t.Fatalf("persisted workflow graph = %+v", persisted.Run)
 	}
-	nodes, err := repository.LoadNodes(context.Background(), runID)
+	if persisted.Nodes["inspect"].State != protocol.NodeStateSucceeded ||
+		persisted.Nodes["inspect"].AttemptsConsumed != 1 {
+		t.Fatalf("workflow nodes = %+v", persisted.Nodes)
+	}
+}
+
+func TestPersistentSchedulerSeedsWorkflowNodeThreads(t *testing.T) {
+	workspace := t.TempDir()
+	store, err := state.Open(t.Context(), state.Options{
+		DataDir:     filepath.Join(t.TempDir(), "state"),
+		BusyTimeout: time.Second,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if nodes["inspect"].Status != workflow.NodeStatusCompleted ||
-		nodes["inspect"].Content != "the workspace has one package" {
-		t.Fatalf("workflow nodes = %+v", nodes)
+	tools := true
+	workerEnabled := true
+	claimInterval := 20 * time.Millisecond
+	session, err := NewExec(t.Context(), ExecOptions{
+		FixturePath:     subagentFixture(t, "workflow-parallel"),
+		Permission:      "bypass",
+		PersistentStore: store,
+		ConfigOverrides: config.Overrides{
+			Tools: &tools, Workspace: &workspace,
+			WorkerEnabled: &workerEnabled, WorkerClaimInterval: &claimInterval,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = session.Close(context.Background())
+		_ = store.CloseAll(context.Background())
+	})
+	if err := session.Tasks().EnsureSession(
+		t.Context(),
+		workerTestSession,
+		workspace,
+	); err != nil {
+		t.Fatal(err)
+	}
+	id := queueBackgroundTask(
+		t,
+		session,
+		"task-persistent-workflow",
+		taskstate.ExecutorWorkflowRun,
+		WorkflowRunPayload{
+			Version: WorkflowRunPayloadVersion,
+			Spec: workflow.Spec{
+				ID: "persistent-worker-spec", Goal: "inspect the workspace",
+				Budget: workflow.Budget{MaxSteps: 2, MaxParallel: 1},
+				Nodes: []workflow.Node{{
+					ID: "inspect", Kind: workflow.NodeTask,
+					Prompt: "count the packages",
+				}},
+			},
+		},
+		1,
+	)
+	settled := awaitTerminal(t, session, id)
+	if settled.State != taskstate.StateCompleted {
+		t.Fatalf("workflow task = %+v", settled)
+	}
+	var threadCount int
+	if err := store.SQLite().DB().QueryRowContext(
+		t.Context(),
+		`SELECT COUNT(*) FROM threads WHERE session_id = ?`,
+		workerTestSession,
+	).Scan(&threadCount); err != nil {
+		t.Fatal(err)
+	}
+	if threadCount != 1 {
+		t.Fatalf("workflow node thread count = %d, want 1", threadCount)
+	}
+}
+
+func TestProductionWorkflowProviderUsageEnforcesTokenBudget(t *testing.T) {
+	session := openWorkerSession(t, "subagent")
+	spec := workflow.Spec{
+		ID: "budget-spec", Goal: "inspect the workspace",
+		Budget: workflow.Budget{
+			MaxSteps: 2, MaxTokens: 1, MaxParallel: 1,
+		},
+		Nodes: []workflow.Node{{
+			ID: "inspect", Kind: workflow.NodeTask,
+			Prompt: "count the packages",
+		}},
+	}
+	id := queueBackgroundTask(
+		t,
+		session,
+		"task-workflow-budget",
+		taskstate.ExecutorWorkflowRun,
+		WorkflowRunPayload{
+			Version: WorkflowRunPayloadVersion, Spec: spec,
+		},
+		1,
+	)
+	settled := awaitTerminal(t, session, id)
+	if settled.State != taskstate.StateFailed ||
+		!strings.Contains(settled.FailureReason, workflow.ErrBudgetExhausted.Error()) ||
+		settled.Attempt != 1 {
+		t.Fatalf("budgeted workflow task = %+v", settled)
+	}
+	var result struct {
+		Run workflow.Run `json:"run"`
+	}
+	if err := json.Unmarshal(settled.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Run.Nodes) != 1 ||
+		result.Run.Nodes[0].Usage.Tokens <= spec.Budget.MaxTokens {
+		t.Fatalf("workflow Provider Usage was not persisted: %+v", result.Run)
 	}
 }
 
@@ -333,21 +442,18 @@ func TestSchedulerWorkflowNodeTimeoutCancelsEveryProductionTurn(t *testing.T) {
 		t.Fatalf("timeout workflow run = %+v", result.Run)
 	}
 
-	events, err := session.Runtime.Events(t.Context(), 0)
+	events, _, err := session.Runtime.ReplayEvents(t.Context(), 0, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.After(5 * time.Second)
 	canceled := 0
-	for canceled < 2 {
-		select {
-		case <-deadline:
-			t.Fatalf("canceled turns = %d, want 2", canceled)
-		case event := <-events:
-			if event.Kind == protocol.EventTurnCanceled {
-				canceled++
-			}
+	for _, event := range events {
+		if event.Kind == protocol.EventTurnCanceled {
+			canceled++
 		}
+	}
+	if canceled != 2 {
+		t.Fatalf("canceled turns = %d, want 2", canceled)
 	}
 }
 
@@ -360,6 +466,22 @@ func TestBackgroundWorkflowDriverRejectsProfileBeforeTurn(t *testing.T) {
 		result.Success ||
 		!strings.Contains(result.Error, "profile") {
 		t.Fatalf("profile result=%+v err=%v", result, err)
+	}
+}
+
+func TestWorkflowTaskCorrelationPreservesRunNodeAttempt(t *testing.T) {
+	correlation, err := workflowTaskCorrelation(workflow.TaskRequest{
+		RunID: "workflow-run", NodeID: "compile", Attempt: 2,
+		Prompt: "compile",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if correlation.RunID != "workflow-run" ||
+		correlation.NodeID != "compile" ||
+		correlation.AttemptID != "attempt_workflow-run_compile_2" ||
+		correlation.EffectID == "" {
+		t.Fatalf("workflow correlation = %+v", correlation)
 	}
 }
 

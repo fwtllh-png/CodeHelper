@@ -394,7 +394,7 @@ func projectAgentSpawnTx(
 		INSERT INTO agent_budget_ledger(
 			workspace_root, session_id, agent_id, reserved_tokens, reserved_microunits,
 			reserved_slots, source_sequence, updated_at
-		) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
 		edge.Workspace, edge.SessionID, edge.ChildID,
 		edge.ReservedTokens, edge.ReservedMicros,
 		int64(event.Sequence), now,

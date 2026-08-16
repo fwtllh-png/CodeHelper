@@ -8,15 +8,16 @@ prerequisites:
   - task-checkpoint-recovery
 code_paths:
   - internal/orchestration/workflow
-  - internal/orchestration/workflow/checkpoint
+  - internal/orchestration/kernel
+  - internal/orchestration/store
 test_paths:
-  - internal/orchestration/workflow/workflow_test.go
-  - internal/orchestration/workflow/checkpoint/checkpoint_test.go
+  - internal/orchestration/workflow/workgraph_test.go
+  - internal/orchestration/store/store_test.go
 source_of_truth:
   - internal/orchestration/workflow/runtime.go
-  - internal/orchestration/workflow/checkpoint/checkpoint.go
+  - internal/orchestration/store/store.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-16
 ---
 
 # 构建可恢复 Workflow
@@ -25,18 +26,18 @@ last_verified: 2026-08-10
 
 ## 目标与前置条件
 
-运行小型 DAG，在 Checkpoint 后失败并恢复，避免重复已完成 Side Effect。
+运行小型 DAG，在 Durable WorkGraph Settlement 后失败并恢复，避免重复已完成工作。
 
 ## 步骤
 
 1. 定义 Prepare、Execute、Verify 三个 Node。
-2. 每个成功 Node 后持久化 Checkpoint。
+2. 每个成功 Node 通过 WorkGraph Settlement Command 持久化。
 3. 在 Verify 完成前注入确定性失败。
-4. 从 Durable Workflow/Checkpoint 重建。
+4. 从 Ordered WorkGraph Facts 重建。
 5. Resume 并断言 Prepare/Execute 不重复。
 
 ```bash
-go test ./internal/orchestration/workflow ./internal/orchestration/workflow/checkpoint
+go test ./internal/orchestration/workflow ./internal/orchestration/store
 ```
 
 ## Crash-window Matrix
@@ -45,34 +46,34 @@ go test ./internal/orchestration/workflow ./internal/orchestration/workflow/chec
 
 | Stop Point | Resume |
 | --- | --- |
-| Before `NodeStarted` | Eligible |
-| Started/Before Effect | 仅按 Node Policy Retry |
+| Claim Commit 前 | Node 保持 Eligible |
+| Claim 后/Effect Bind 前 | 按 Lease/Epoch Policy 恢复 |
 | After Effect/Before Settle | 需 Idempotency/Journal，否则 Indeterminate |
-| Output Store/Before Settle | Orphan Content 可回收 |
-| After `NodeSettled` | Reuse/Never Rerun |
+| Terminal Transaction 中 | Settlement 与 Outbox 同时 Commit 或 Rollback |
+| After Settlement | Reuse/Never Rerun |
 
 ```bash
-go test ./internal/orchestration/workflow -run 'Test(ResumeOnlyRunsWhatDidNotFinish|NodeRetry|NodeTimeout)'
-go test ./internal/orchestration/workflow/checkpoint -run 'Test(NodeOutputSurvives|ANodeWhoseOutputIsGone|ResumeRefuses)'
+go test ./internal/orchestration/workflow -run 'Test(DurableWorkGraph|NodeTimeout|SpecDrift)'
+go test ./internal/orchestration/store -run 'Test(StoreTerminalCommit|AuditDetects)'
 ```
 
 ## Graph-drift Control
 
-首个 Checkpoint 后修改 Dependency/Prompt，并用相同 Run ID Resume。Fingerprint Mismatch
+首个 Settlement 后修改 Dependency/Prompt，并用相同 Run ID Resume。Fingerprint Mismatch
 必须在 Node 执行前停止。记录前后的 Run/Node Status、Attempt、Output Handle、Counter。
 
 ## 预期结果
 
-DAG 只推进 Ready Node；Failed Node 可诊断；Resume 使用最新 Compatible Checkpoint；
+DAG 只推进 Ready Node；Failed Node 可诊断；Resume 使用同一个 Fact-replayed WorkGraph；
 Terminal State 唯一。
 
 ## 失败诊断
 
-Execute 重复表示 Idempotency/Checkpoint Commit 缺失；Graph 不兼容必须显式失败。
+Execute 重复表示 Idempotency/Settlement 缺失；Graph 不兼容必须显式失败。
 
 ## 清理
 
-删除临时 State Directory，不复用 Checkpoint ID。
+删除临时 State Directory，不复用 Run ID。
 
 ## 复习问题
 
@@ -86,4 +87,4 @@ Execute 重复表示 Idempotency/Checkpoint Commit 缺失；Graph 不兼容必�
 | --- | --- |
 | Catalog ID | `lab-recoverable-workflow` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-10 |
+| 最后验证 | 2026-08-16 |

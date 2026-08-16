@@ -393,10 +393,11 @@ func (runtimeModule) Build(
 		session.Runtime = runtime
 	} else {
 		runtime, err := app.PrepareRuntime(ctx, app.Options{
-			Engine:       state.agent.threads,
-			ContentStore: session.content,
-			Metrics:      session.metrics,
-			Logger:       session.logger,
+			Engine:        state.agent.threads,
+			ContentStore:  session.content,
+			Metrics:       session.metrics,
+			Logger:        session.logger,
+			Orchestration: state.orchestration.workGraph,
 		})
 		if err != nil {
 			return fmt.Errorf("prepare runtime: %w", err)

@@ -48,6 +48,7 @@ func TestWaitingOnAChattyJobRecoversOutputThroughAHandle(t *testing.T) {
 		t.Fatalf("background start = %+v", started)
 	}
 
+	delivered := processResultContent(results, started)
 	var archived tool.Result
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -60,6 +61,7 @@ func TestWaitingOnAChattyJobRecoversOutputThroughAHandle(t *testing.T) {
 				"session_id": id, "yield_time_ms": 200,
 			},
 		)
+		delivered += processResultContent(results, archived)
 		if archived.Metadata["archived"] == true {
 			break
 		}
@@ -72,8 +74,8 @@ func TestWaitingOnAChattyJobRecoversOutputThroughAHandle(t *testing.T) {
 		t.Fatalf("wait = %+v, want it to say how much is still unread", archived.Metadata)
 	}
 	// The recovered continuation is larger than the inline budget, so it is
-	// addressable rather than dropped. Already-delivered initial bytes are not
-	// replayed by write_stdin.
+	// addressable rather than dropped. Bytes delivered by the initial result or
+	// an earlier poll are not replayed by a later write_stdin call.
 	if archived.Handle == "" {
 		t.Fatalf("wait = %+v, want a content handle for the recovered output", archived)
 	}
@@ -81,20 +83,25 @@ func TestWaitingOnAChattyJobRecoversOutputThroughAHandle(t *testing.T) {
 	if !exists {
 		t.Fatalf("handle %q is not readable", archived.Handle)
 	}
-	initial := started.Content
-	if started.Handle != "" {
-		if handled, ok := results.Get(started.Handle); ok {
-			initial = handled
-		}
-	}
-	if !strings.Contains(initial+whole, "line-1\r") {
+	if !strings.Contains(delivered, "line-1\r") {
 		t.Fatalf(
-			"initial + continuation lost output: initial=%d continuation=%d head=%q",
-			len(initial),
+			"poll sequence lost output: delivered=%d continuation=%d "+
+				"metadata=%+v head=%q",
+			len(delivered),
 			len(whole),
+			started.Metadata,
 			whole[:min(len(whole), 80)],
 		)
 	}
+}
+
+func processResultContent(results *tool.ResultStore, result tool.Result) string {
+	if result.Handle != "" {
+		if handled, ok := results.Get(result.Handle); ok {
+			return handled
+		}
+	}
+	return result.Content
 }
 
 // A poller that keeps up must see none of this: no archive marker, no handle.

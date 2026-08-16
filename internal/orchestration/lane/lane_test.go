@@ -140,6 +140,40 @@ func TestSecretEnvironmentRejected(t *testing.T) {
 	}
 }
 
+func TestPlacementResumeIsIdempotentAndConflictsFailClosed(t *testing.T) {
+	registry, err := lane.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := registry.Place("run-lane", lane.PlacementSpec{
+		Backend: lane.BackendInline,
+		CWD:     "/workspace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.Mark(first.ID, lane.StatusFailed); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := registry.Place("run-lane", lane.PlacementSpec{
+		Backend: lane.BackendInline,
+		CWD:     "/workspace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.Status != lane.StatusQueued ||
+		!resumed.CreatedAt.Equal(first.CreatedAt) {
+		t.Fatalf("resumed placement = %+v", resumed)
+	}
+	if _, err := registry.Place("run-lane", lane.PlacementSpec{
+		Backend: lane.BackendInline,
+		CWD:     "/other",
+	}); err == nil {
+		t.Fatal("conflicting durable placement was accepted")
+	}
+}
+
 func helperBinary(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "helper")

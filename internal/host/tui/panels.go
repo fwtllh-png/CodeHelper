@@ -68,6 +68,7 @@ func (m Model) renderPanel(kind PanelKind) string {
 		if err != nil {
 			return "fleet: error open: " + err.Error()
 		}
+		defer ledger.Close()
 		state, err := ledger.Replay()
 		if err != nil {
 			return "fleet: error replay: " + err.Error() + " (ledger may be corrupt)"

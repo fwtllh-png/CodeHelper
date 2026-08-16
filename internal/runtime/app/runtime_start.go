@@ -85,6 +85,7 @@ func prepareRuntime(
 		sessionWorkspaces: options.SessionWorkspaces,
 		sessionArtifacts:  options.SessionArtifacts,
 		terminalStore:     options.TerminalStore,
+		orchestration:     options.Orchestration,
 		operations:        make(chan acceptedOperation, options.OperationBuffer),
 		done:              make(chan struct{}),
 		terminals:         make(map[protocol.TurnID]protocol.EventKind),
@@ -94,6 +95,7 @@ func prepareRuntime(
 		acceptedKeys:      make(map[string]protocol.OperationID),
 		committed:         make(map[protocol.OperationID]PendingOperation),
 		active:            NewActiveTurnRegistry(),
+		observers:         make(map[uint64]func(protocol.Event)),
 		toolItems:         make(map[string]protocol.ItemID),
 		approvalItems:     make(map[string]protocol.ItemID),
 		inputItems:        make(map[string]protocol.ItemID),
@@ -139,6 +141,11 @@ func (r *Runtime) activate(ctx context.Context) error {
 			go r.loop()
 			close(r.operations)
 			return fmt.Errorf("recover terminal projections: %w", err)
+		}
+		if err := r.DrainWorkGraphEffects(ctx); err != nil {
+			go r.loop()
+			close(r.operations)
+			return fmt.Errorf("recover WorkGraph effects: %w", err)
 		}
 	}
 	r.mu.Lock()

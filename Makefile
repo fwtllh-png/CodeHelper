@@ -31,6 +31,9 @@ LDFLAGS := -s -w \
 	security-governance-sg1 security-governance-sg2 security-governance-sg3 \
 	security-governance-sg4 security-governance-sg5 security-governance-sg6 \
 	security-governance-sg7 \
+	task-orchestration-or0 task-orchestration-or1 task-orchestration-or2 \
+	task-orchestration-or3 task-orchestration-or4 task-orchestration-or5 \
+	task-orchestration-or6 task-orchestration-or7 \
 	provider-p0-goldens provider-p0-goldens-update \
 	provider-deepseek-live-control provider-deepseek-live-ce7 \
 	architecture-ratchet architecture-size-budget architecture-freeze \
@@ -69,6 +72,8 @@ TOOL_EXECUTION_BASELINE := docs/tool-execution-ex0-baseline.json
 TOOL_EXECUTION_REPORT ?= .tmp/tool-execution/ex0-report.json
 SECURITY_GOVERNANCE_BASELINE := docs/security-governance-sg0-baseline.json
 SECURITY_GOVERNANCE_REPORT ?= .tmp/security-governance/sg0-report.json
+TASK_ORCHESTRATION_BASELINE := docs/task-orchestration-or0-scheduler-baseline.json
+TASK_ORCHESTRATION_REPORT ?= .tmp/task-orchestration/or0-scheduler-report.json
 
 FUZZTIME ?= 30s
 RELEASE_STAGE ?= experimental
@@ -145,6 +150,225 @@ architecture-size-budget:
 		-paths '$(ARCHITECTURE_SIZE_PATHS)' \
 		-max-net '$(ARCHITECTURE_SIZE_MAX_NET)' \
 		-report '$(ARCHITECTURE_SIZE_REPORT)'
+
+task-orchestration-or0:
+	$(GO) test -count=1 ./scripts/orchestrationbaseline ./internal/orchestration/...
+	$(GO) test -run '^$$' -bench '^BenchmarkOR0' -benchtime=1x -count=1 \
+		./internal/orchestration/workflow \
+		./internal/orchestration/subagent
+	$(GO) run ./scripts/orchestrationbaseline \
+		-root . \
+		-baseline '$(TASK_ORCHESTRATION_BASELINE)' \
+		-report '$(TASK_ORCHESTRATION_REPORT)'
+	$(MAKE) architecture-ratchet
+	$(MAKE) docs-check
+	$(MAKE) book-check
+
+task-orchestration-or1:
+	$(GO) test -count=1 \
+		./internal/runtime/protocol \
+		./internal/runtime/eventview \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app/...
+	$(GO) run ./scripts/orchestrationbaseline \
+		-root . \
+		-baseline '$(TASK_ORCHESTRATION_BASELINE)'
+	$(MAKE) architecture-ratchet
+	$(MAKE) vscode-protocol-check
+	$(MAKE) docs-check
+	$(MAKE) book-check
+
+task-orchestration-or2:
+	$(GO) test -count=1 \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/runtime/protocol \
+		./internal/runtime/eventview \
+		./internal/runtime/app/... \
+		./internal/host/runtimeapi/thread
+	$(GO) test ./internal/orchestration/kernel \
+		-run '^$$' -fuzz '^FuzzReducerPreservesInvariants$$' -fuzztime=5s
+	$(GO) test -race -count=1 -p 1 \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/runtime/protocol \
+		./internal/runtime/app
+	$(GO) run ./scripts/orchestrationbaseline \
+		-root . \
+		-baseline '$(TASK_ORCHESTRATION_BASELINE)'
+	$(MAKE) architecture-ratchet
+	$(MAKE) vscode-protocol-check
+	$(MAKE) docs-check
+	$(MAKE) book-check
+
+task-orchestration-or3:
+	$(GO) test -count=1 \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/task \
+		./internal/orchestration/worker \
+		./internal/orchestration/automation \
+		./internal/runtime/app/... \
+		./internal/adapter/tool/task \
+		./internal/adapter/tool/automation \
+		./internal/host/runtimeapi/acp/...
+	$(GO) test ./internal/orchestration/kernel \
+		-run '^$$' -fuzz '^FuzzReducerPreservesInvariants$$' -fuzztime=5s
+	$(GO) test -race -count=1 -p 1 \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/task \
+		./internal/orchestration/worker \
+		./internal/orchestration/automation
+	$(GO) run ./scripts/orchestrationbaseline \
+		-root . \
+		-baseline '$(TASK_ORCHESTRATION_BASELINE)'
+	$(MAKE) architecture-ratchet
+	$(MAKE) vscode-protocol-check
+	$(MAKE) docs-check
+	$(MAKE) book-check
+
+task-orchestration-or4:
+	$(GO) test -count=1 \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/workflow/... \
+		./internal/runtime/app/wire
+	$(GO) test ./internal/orchestration/kernel \
+		-run '^$$' -fuzz '^FuzzReducerPreservesInvariants$$' -fuzztime=5s
+	$(GO) test -race -count=1 -p 1 \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/workflow/...
+	$(GO) test -run '^$$' -bench '^BenchmarkOR0WorkflowDAG$$' \
+		-benchtime=1x -count=1 ./internal/orchestration/workflow
+	$(GO) run ./scripts/orchestrationbaseline \
+		-root . \
+		-baseline '$(TASK_ORCHESTRATION_BASELINE)'
+	$(MAKE) architecture-ratchet
+	$(MAKE) vscode-protocol-check
+	$(MAKE) docs-check
+	$(MAKE) book-check
+
+task-orchestration-or5:
+	$(GO) test -count=1 \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/subagent \
+		./internal/persist/state \
+		./internal/runtime/app/eventhub \
+		./internal/runtime/app/... \
+		./internal/adapter/tool/agent \
+		./internal/host/runtimeapi/...
+	$(GO) test -count=5 -v ./internal/orchestration/subagent \
+		-run '^TestParentCompletionWakeP95$$'
+	$(GO) test ./internal/orchestration/kernel \
+		-run '^$$' -fuzz '^FuzzReducerPreservesInvariants$$' -fuzztime=5s
+	$(GO) test -race -count=1 -p 1 \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/subagent \
+		./internal/persist/state \
+		./internal/runtime/app/eventhub \
+		./internal/runtime/app/wire
+	$(GO) test -run '^$$' -bench '^BenchmarkOR0ResidentAgents$$' \
+		-benchtime=1x -count=1 ./internal/orchestration/subagent
+	$(GO) run ./scripts/orchestrationbaseline \
+		-root . \
+		-baseline '$(TASK_ORCHESTRATION_BASELINE)'
+	$(MAKE) architecture-ratchet
+	$(MAKE) vscode-protocol-check
+	$(MAKE) docs-check
+	$(MAKE) book-check
+
+task-orchestration-or6:
+	$(GO) test -count=1 \
+		./internal/orchestration/budget \
+		./internal/orchestration/fairqueue \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/task \
+		./internal/orchestration/worker \
+		./internal/orchestration/subagent \
+		./internal/orchestration/workflow/... \
+		./internal/runtime/app \
+		./internal/runtime/app/wire \
+		./internal/runtime/protocol \
+		./internal/security/authority \
+		./internal/adapter/tool/guard
+	$(GO) test ./internal/orchestration/kernel \
+		-run '^$$' -fuzz '^FuzzReducerPreservesInvariants$$' -fuzztime=5s
+	$(GO) test -race -count=1 -p 1 \
+		./internal/orchestration/budget \
+		./internal/orchestration/fairqueue \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/task \
+		./internal/orchestration/worker \
+		./internal/orchestration/subagent \
+		./internal/orchestration/workflow \
+		./internal/runtime/app/wire
+	$(GO) run ./scripts/orchestrationbaseline \
+		-root . \
+		-baseline '$(TASK_ORCHESTRATION_BASELINE)'
+	$(MAKE) architecture-ratchet
+	$(MAKE) vscode-protocol-check
+	$(MAKE) docs-check
+	$(MAKE) book-check
+
+task-orchestration-or7:
+	$(GO) test -count=1 \
+		./internal/orchestration/budget \
+		./internal/orchestration/fairqueue \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/projection \
+		./internal/orchestration/fleet \
+		./internal/orchestration/lane \
+		./internal/orchestration/task \
+		./internal/orchestration/worker \
+		./internal/orchestration/subagent \
+		./internal/orchestration/workflow/... \
+		./internal/runtime/app \
+		./internal/runtime/app/wire \
+		./internal/host/cli \
+		./internal/host/tui
+	$(GO) test -race -count=1 -p 1 \
+		./internal/orchestration/budget \
+		./internal/orchestration/fairqueue \
+		./internal/orchestration/model \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store \
+		./internal/orchestration/fleet \
+		./internal/orchestration/lane \
+		./internal/orchestration/task \
+		./internal/orchestration/worker \
+		./internal/orchestration/subagent \
+		./internal/orchestration/workflow \
+		./internal/runtime/app/wire
+	$(GO) test ./internal/orchestration/kernel \
+		-run '^$$' -fuzz '^FuzzReducerPreservesInvariants$$' -fuzztime=5s
+	$(GO) test -run '^$$' -bench '^BenchmarkOR0WorkflowDAG/1000$$' \
+		-benchtime=1x -count=1 ./internal/orchestration/workflow
+	$(GO) run ./scripts/orchestrationbaseline \
+		-root . \
+		-baseline '$(TASK_ORCHESTRATION_BASELINE)'
+	$(MAKE) security-governance-sg7
+	$(MAKE) architecture-ratchet
+	$(MAKE) vscode-protocol-check
+	$(MAKE) docs-check
+	$(MAKE) book-check
 
 provider-p0-goldens:
 	$(GO) test -count=1 ./internal/adapter/provider/httpclient -run '^TestP0'

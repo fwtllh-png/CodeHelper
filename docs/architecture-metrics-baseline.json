@@ -3,6 +3,167 @@
   "requirement_id": "ARCH-RATCHET-001",
   "targets": [
     {
+      "id": "orchestration_task_package",
+      "kind": "package",
+      "path": "internal/orchestration/task",
+      "limits": {
+        "internal_fanout": 7,
+        "production_lines": 1974,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "orchestration_worker_package",
+      "kind": "package",
+      "path": "internal/orchestration/worker",
+      "limits": {
+        "internal_fanout": 2,
+      "production_lines": 547,
+      "options_fields": 16,
+        "mutex_fields": 1
+    },
+    "relaxations": {
+      "options_fields": "OR7 injects one terminal Effect drain callback into Worker construction.",
+      "production_lines": "OR7 drains durable terminal Effects after settle and release-to-terminal transitions without adding polling."
+      }
+    },
+    {
+      "id": "orchestration_automation_package",
+      "kind": "package",
+      "path": "internal/orchestration/automation",
+      "limits": {
+        "internal_fanout": 5,
+        "production_lines": 1084,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "orchestration_model_package",
+      "kind": "package",
+      "path": "internal/orchestration/model",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 531,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "orchestration_kernel_package",
+      "kind": "package",
+      "path": "internal/orchestration/kernel",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 952,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "orchestration_store_package",
+      "kind": "package",
+      "path": "internal/orchestration/store",
+      "limits": {
+        "internal_fanout": 5,
+      "production_lines": 748,
+        "options_fields": 0,
+        "mutex_fields": 0
+    },
+    "relaxations": {
+      "production_lines": "OR7 adds the bounded global pending terminal Effect query used for startup recovery and immediate drain."
+      }
+    },
+    {
+      "id": "orchestration_workflow_package",
+      "kind": "package",
+      "path": "internal/orchestration/workflow",
+      "limits": {
+        "internal_fanout": 4,
+        "production_lines": 1753,
+        "options_fields": 13,
+        "mutex_fields": 2
+      }
+    },
+    {
+      "id": "orchestration_subagent_package",
+      "kind": "package",
+      "path": "internal/orchestration/subagent",
+      "limits": {
+        "internal_fanout": 6,
+        "production_lines": 4254,
+        "options_fields": 8,
+        "mutex_fields": 3
+      }
+    },
+    {
+      "id": "runtime_eventhub_package",
+      "kind": "package",
+      "path": "internal/runtime/app/eventhub",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 212,
+        "options_fields": 0,
+        "mutex_fields": 1
+      }
+    },
+    {
+      "id": "orchestration_budget_package",
+      "kind": "package",
+      "path": "internal/orchestration/budget",
+      "limits": {
+        "internal_fanout": 0,
+        "production_lines": 252,
+        "options_fields": 0,
+        "mutex_fields": 1
+      }
+    },
+    {
+      "id": "orchestration_fairqueue_package",
+      "kind": "package",
+      "path": "internal/orchestration/fairqueue",
+      "limits": {
+        "internal_fanout": 0,
+        "production_lines": 128,
+        "options_fields": 0,
+        "mutex_fields": 1
+      }
+    },
+    {
+      "id": "orchestration_projection_package",
+      "kind": "package",
+      "path": "internal/orchestration/projection",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 139,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "orchestration_fleet_package",
+      "kind": "package",
+      "path": "internal/orchestration/fleet",
+      "limits": {
+        "internal_fanout": 5,
+        "production_lines": 371,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "orchestration_lane_package",
+      "kind": "package",
+      "path": "internal/orchestration/lane",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 477,
+        "options_fields": 0,
+        "mutex_fields": 1
+      }
+    },
+    {
       "id": "persist_sqlkit_package",
       "kind": "package",
       "path": "internal/persist/sqlkit",
@@ -176,9 +337,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 68,
-        "production_lines": 7545,
+        "production_lines": 7883,
         "options_fields": 70,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "OR1 correlation through OR6 durable Workflow, Agent, Budget, and Authority adapters add explicit orchestration wiring while reducing scheduler sites."
       }
     },
     {
@@ -208,10 +372,14 @@
       "kind": "package",
       "path": "internal/runtime/app/persistence",
       "limits": {
-        "internal_fanout": 12,
-        "production_lines": 172,
+        "internal_fanout": 13,
+        "production_lines": 178,
         "options_fields": 10,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "OR2 persistent Runtime opens the typed WorkGraph Store from the shared SQLite owner.",
+        "production_lines": "OR2 restores durable WorkGraph command execution alongside existing Runtime recovery."
       }
     },
     {
@@ -265,9 +433,6 @@
         "production_lines": 10476,
         "options_fields": 60,
         "mutex_fields": 8
-      },
-      "relaxations": {
-        "options_fields": "SG7 adds one Engine-owned Turn resource release callback so terminal cleanup cannot leak Process Sessions."
       }
     },
     {
@@ -275,13 +440,16 @@
       "kind": "package",
       "path": "internal/runtime/app",
       "limits": {
-        "internal_fanout": 17,
-        "production_lines": 7806,
-        "options_fields": 18,
-        "mutex_fields": 5
+      "internal_fanout": 20,
+      "production_lines": 8406,
+        "options_fields": 19,
+      "mutex_fields": 7
       },
       "relaxations": {
-        "production_lines": "SG7 durably projects typed Tool Execution Receipts without coupling runtime protocol to adapter or sandbox packages."
+      "internal_fanout": "OR2-OR7 add narrow WorkGraph Store and Agent Engine dependencies for durable Effect delivery and pre-coordinator cancellation.",
+      "mutex_fields": "OR5-OR7 isolate observer registration and terminal Effect drain serialization from the Runtime state lock.",
+        "options_fields": "OR2 injects one OrchestrationController interface into Runtime construction.",
+      "production_lines": "SG7 receipts through OR7 add event observation, stable terminal Effect delivery, restart recovery, and zero-Fact startup terminalization while reducers remain outside runtime/app."
       }
     },
     {
@@ -356,9 +524,12 @@
       "path": "internal/host/tui",
       "limits": {
         "internal_fanout": 24,
-        "production_lines": 7489,
+        "production_lines": 7490,
         "options_fields": 28,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "OR7 closes the Fleet SQLite projection handle after each TUI panel read."
       }
     },
     {
@@ -367,12 +538,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 5000,
+        "production_lines": 5608,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "SG7 publishes a typed, validated Tool Execution Receipt wire contract for durable audit recovery."
+        "production_lines": "SG7 execution audit, OR1 correlation, and OR2 validated run.submit/cancel/resume and node.retry/skip contracts intentionally expand the public Runtime protocol."
       }
     },
     {
@@ -391,8 +562,12 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2064,
-        "max_function_lines": 132
+      "lines": 2172,
+      "max_function_lines": 135
+      },
+      "relaxations": {
+      "lines": "OR2-OR7 store the injected controller, expose lock-isolated observers, and close accepted Turns when coordinator startup fails.",
+      "max_function_lines": "OR7 keeps accepted Turn startup failure handling inside the existing StartTurn ownership boundary."
       }
     },
     {
@@ -445,8 +620,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_orchestration.go",
       "limits": {
-        "lines": 34,
-        "max_function_lines": 26
+        "lines": 38,
+        "max_function_lines": 30
+      },
+      "relaxations": {
+        "lines": "OR2 initializes WorkGraph persistence before optional model-facing orchestration tools.",
+        "max_function_lines": "OR2 keeps module ordering and the tools-disabled path explicit in the orchestration composition function."
       }
     },
     {
@@ -454,12 +633,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 434,
+        "lines": 435,
         "max_function_lines": 341
       },
       "relaxations": {
-        "lines": "SG7 wires Turn-terminal Process Session cleanup for parent and child workspaces.",
-        "max_function_lines": "SG7 keeps parent and child Process Session ownership explicit in the runtime composition root."
+        "lines": "OR2 injects the ephemeral WorkGraph controller into Runtime construction."
       }
     },
     {
@@ -467,8 +645,11 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime_start.go",
       "limits": {
-        "lines": 170,
+      "lines": 172,
         "max_function_lines": 82
+    },
+    "relaxations": {
+      "lines": "OR7 restores pending WorkGraph terminal Effects before activating the Runtime operation loop."
       }
     },
     {
@@ -476,8 +657,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/module_outputs.go",
       "limits": {
-        "lines": 99,
+        "lines": 103,
         "max_function_lines": 0
+      },
+      "relaxations": {
+        "lines": "OR2 records the typed WorkGraph Store in orchestration build state."
       }
     },
     {
@@ -503,8 +687,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/orchestration_components.go",
       "limits": {
-        "lines": 232,
+        "lines": 253,
         "max_function_lines": 84
+      },
+      "relaxations": {
+        "lines": "OR2 adds WorkGraph construction; OR4-OR6 inject WorkGraph and Budget controllers into Workflow and Agent execution."
       }
     },
     {
@@ -512,8 +699,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/scheduler_factory.go",
       "limits": {
-        "lines": 96,
-        "max_function_lines": 55
+      "lines": 108,
+      "max_function_lines": 62
+      },
+      "relaxations": {
+      "lines": "OR4-OR7 carry shared WorkGraph, Budget, and terminal Effect drain dependencies through scheduler construction.",
+      "max_function_lines": "OR4-OR7 validate and inject WorkGraph, Budget, and terminal Effect delivery when constructing background executors."
       }
     },
     {
@@ -541,9 +732,6 @@
       "limits": {
         "lines": 518,
         "max_function_lines": 128
-      },
-      "relaxations": {
-        "lines": "SG7 documents the Engine-owned Turn resource release option beside the frozen Turn lifecycle options."
       }
     },
     {

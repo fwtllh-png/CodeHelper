@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -22,6 +23,7 @@ const (
 type Tool struct {
 	registry *tool.Registry
 	limit    int
+	mu       sync.Mutex
 }
 
 type input struct {
@@ -91,6 +93,8 @@ func (t *Tool) typedExecutor() (tool.Executor, error) {
 }
 
 func (t *Tool) run(_ context.Context, input input) (tool.Result, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	query := strings.ToLower(strings.TrimSpace(input.Query))
 	if query == "" {
 		return tool.Result{}, errors.New("tool_search query is required")

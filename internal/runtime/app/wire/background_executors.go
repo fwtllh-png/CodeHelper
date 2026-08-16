@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -13,15 +14,13 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/worker"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow"
-	workflowcheckpoint "github.com/fwtllh-png/CodeHelper/internal/orchestration/workflow/checkpoint"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -48,7 +47,7 @@ type ShellCommandPayload struct {
 
 // WorkflowRunPayload carries the immutable graph in the task row. The run ID is
 // deliberately not caller-controlled: it is derived from the task ID so two
-// tasks can never adopt each other's checkpoint.
+// tasks can never share an authoritative WorkGraph.
 type WorkflowRunPayload struct {
 	Version    int           `json:"version"`
 	Spec       workflow.Spec `json:"spec"`
@@ -148,7 +147,10 @@ func (e *shellCommandExecutor) Execute(
 	if encodeErr != nil {
 		return failedOutcome(encodeErr), nil
 	}
-	outcome := worker.Outcome{State: state, Result: encoded}
+	outcome := worker.Outcome{
+		State: state, Result: encoded,
+		PermissionDigests: toolPermissionDigests(result.Execution),
+	}
 	if result.IsError {
 		outcome.Reason = shellFailureReason(result)
 		outcome.Retryable = payload.Idempotent
@@ -199,40 +201,30 @@ func shellFailureReason(result tool.Result) string {
 	return "shell command failed"
 }
 
-type workflowRunStore interface {
-	workflow.Checkpoint
-	Ensure(context.Context, workflowcheckpoint.EnsureRequest) (workflowcheckpoint.Run, error)
-	Settle(context.Context, string, workflow.RunStatus, string, time.Time) error
-}
-
-func newWorkflowRunStore(
-	persistent *state.Store,
-	ephemeral *sqlitestate.Store,
-	memory *contentstore.Memory,
-) workflowRunStore {
-	if persistent != nil {
-		outputs := contentstore.NewDurable(persistent.Content(), cas.ErrNotFound)
-		return workflowcheckpoint.NewSQLiteRepository(persistent.SQLite(), outputs)
-	}
-	if ephemeral != nil {
-		return workflowcheckpoint.NewSQLiteRepository(ephemeral, memory)
-	}
-	return nil
-}
-
 type workflowRunExecutor struct {
-	runtime     *app.Runtime
-	checkpoints workflowRunStore
+	runtime    *app.Runtime
+	workGraphs workflow.GraphController
+	workBudget *workbudget.Ledger
+	workspace  string
+	persistent *state.Store
 }
 
 func newWorkflowRunExecutor(
 	runtime *app.Runtime,
-	checkpoints workflowRunStore,
+	workGraphs workflow.GraphController,
+	workBudget *workbudget.Ledger,
+	workspace string,
+	persistent *state.Store,
 ) (*workflowRunExecutor, error) {
-	if runtime == nil || checkpoints == nil {
-		return nil, errors.New("workflow_run executor requires runtime and checkpoint store")
+	if runtime == nil || workGraphs == nil || workBudget == nil {
+		return nil, errors.New(
+			"workflow_run executor requires runtime, WorkGraph, and Budget stores",
+		)
 	}
-	return &workflowRunExecutor{runtime: runtime, checkpoints: checkpoints}, nil
+	return &workflowRunExecutor{
+		runtime: runtime, workGraphs: workGraphs,
+		workBudget: workBudget, workspace: workspace, persistent: persistent,
+	}, nil
 }
 
 func (*workflowRunExecutor) Name() string { return taskstate.ExecutorWorkflowRun }
@@ -251,25 +243,19 @@ func (e *workflowRunExecutor) Execute(
 		)), nil
 	}
 	runID := "workflow-" + value.ID
-	if _, err := e.checkpoints.Ensure(ctx, workflowcheckpoint.EnsureRequest{
-		ID: runID, SessionID: value.SessionID, TaskID: value.ID, Spec: payload.Spec,
-	}); err != nil {
-		return failedOutcome(err), nil
-	}
 	driver := newBackgroundWorkflowDriver(ctx, e.runtime, value.SessionID)
-	run, runErr := workflow.NewRuntime().Run(ctx, workflow.RunOptions{
-		ID: runID, Spec: payload.Spec, Driver: driver, Checkpoint: e.checkpoints,
-	})
-	failure := run.Error
-	if failure == "" && runErr != nil {
-		failure = runErr.Error()
-	}
-	settleContext := context.WithoutCancel(ctx)
-	if err := e.checkpoints.Settle(
-		settleContext, runID, normalizedRunStatus(run.Status), failure, time.Now().UTC(),
-	); err != nil && runErr == nil {
-		runErr = err
-	}
+	driver.persistent = e.persistent
+	driver.workspace = e.workspace
+	run, runErr := workflow.NewRuntimeWithControllerAndBudget(
+		e.workGraphs,
+		e.workBudget,
+	).Run(
+		ctx,
+		workflow.RunOptions{
+			ID: runID, Spec: payload.Spec, Driver: driver,
+			SessionID: value.SessionID, Workspace: e.workspace,
+			RootThreadID: protocol.ThreadID(value.ThreadID),
+		})
 	if ctx.Err() != nil {
 		return worker.Outcome{}, ctx.Err()
 	}
@@ -285,10 +271,40 @@ func (e *workflowRunExecutor) Execute(
 	if runErr != nil {
 		return worker.Outcome{
 			State: taskstate.StateFailed, Result: encoded, Reason: runErr.Error(),
-			Retryable: payload.Idempotent,
+			Retryable:         payload.Idempotent,
+			PermissionDigests: workflowPermissionDigests(run),
 		}, nil
 	}
-	return worker.Outcome{State: taskstate.StateCompleted, Result: encoded}, nil
+	return worker.Outcome{
+		State: taskstate.StateCompleted, Result: encoded,
+		PermissionDigests: workflowPermissionDigests(run),
+	}, nil
+}
+
+func workflowPermissionDigests(run workflow.Run) []string {
+	var digests []string
+	for _, node := range run.Nodes {
+		for _, digest := range node.PermissionDigests {
+			if !slices.Contains(digests, digest) {
+				digests = append(digests, digest)
+			}
+		}
+	}
+	return digests
+}
+
+func toolPermissionDigests(execution *tool.ExecutionReceipt) []string {
+	if execution == nil {
+		return nil
+	}
+	var digests []string
+	for _, attempt := range execution.Attempts {
+		if attempt.PermissionDigest != "" &&
+			!slices.Contains(digests, attempt.PermissionDigest) {
+			digests = append(digests, attempt.PermissionDigest)
+		}
+	}
+	return digests
 }
 
 func parseWorkflowRunPayload(raw json.RawMessage) (WorkflowRunPayload, error) {
@@ -308,19 +324,16 @@ func parseWorkflowRunPayload(raw json.RawMessage) (WorkflowRunPayload, error) {
 	return payload, nil
 }
 
-func normalizedRunStatus(status workflow.RunStatus) workflow.RunStatus {
-	if status == "" || status == workflow.RunRunning {
-		return workflow.RunFailed
-	}
-	return status
-}
-
 type backgroundWorkflowDriver struct {
-	ctx       context.Context
-	runtime   *app.Runtime
-	sessionID string
-	mu        sync.Mutex
-	active    map[protocol.TurnID]protocol.ThreadID
+	ctx             context.Context
+	runtime         *app.Runtime
+	sessionID       string
+	workspace       string
+	persistent      *state.Store
+	mu              sync.Mutex
+	active          map[protocol.TurnID]protocol.ThreadID
+	spentTokens     uint64
+	spentCostMicros uint64
 }
 
 func newBackgroundWorkflowDriver(
@@ -345,15 +358,33 @@ func (d *backgroundWorkflowDriver) SpawnTask(
 	if err := workflow.ValidateTaskRequest(request); err != nil {
 		return workflow.TaskResult{Success: false, Error: err.Error()}, err
 	}
-	content, err := d.runTurn(ctx, strings.TrimSpace(request.Prompt))
+	correlation, err := workflowTaskCorrelation(request)
 	if err != nil {
 		return workflow.TaskResult{Success: false, Error: err.Error()}, err
 	}
+	content, usage, permissionDigests, err := d.runTurn(
+		ctx,
+		strings.TrimSpace(request.Prompt),
+		request.Role,
+		correlation,
+	)
+	if err != nil {
+		return workflow.TaskResult{
+			Success: false, Error: err.Error(), Usage: usage,
+			PermissionDigests: permissionDigests,
+		}, err
+	}
 	data, err := workflow.ValidateTaskOutput(request, content)
 	if err != nil {
-		return workflow.TaskResult{Success: false, Content: content, Error: err.Error()}, err
+		return workflow.TaskResult{
+			Success: false, Content: content, Error: err.Error(), Usage: usage,
+			PermissionDigests: permissionDigests,
+		}, err
 	}
-	return workflow.TaskResult{Success: true, Content: content, Data: data}, nil
+	return workflow.TaskResult{
+		Success: true, Content: content, Data: data, Usage: usage,
+		PermissionDigests: permissionDigests,
+	}, nil
 }
 
 func (d *backgroundWorkflowDriver) CancelAll() error {
@@ -370,46 +401,77 @@ func (d *backgroundWorkflowDriver) CancelAll() error {
 	return errors.Join(cancelErrors...)
 }
 
-func (*backgroundWorkflowDriver) Budget() workflow.BudgetSnapshot {
-	return workflow.BudgetSnapshot{}
+func (d *backgroundWorkflowDriver) Budget() workflow.BudgetSnapshot {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return workflow.BudgetSnapshot{
+		SpentTokens:  d.spentTokens,
+		SpentCostUSD: float64(d.spentCostMicros) / 1e6,
+	}
 }
 
 func (*backgroundWorkflowDriver) Progress(workflow.ProgressEvent) error { return nil }
 
-func (d *backgroundWorkflowDriver) runTurn(ctx context.Context, prompt string) (string, error) {
+func (d *backgroundWorkflowDriver) runTurn(
+	ctx context.Context,
+	prompt string,
+	role string,
+	correlation protocol.OrchestrationCorrelation,
+) (string, workflow.WorkUsage, []string, error) {
+	var usage workflow.WorkUsage
+	var permissionDigests []string
 	if prompt == "" {
-		return "", errors.New("workflow task prompt is required")
+		return "", usage, nil, errors.New("workflow task prompt is required")
 	}
 	threadID, err := protocol.NewThreadID()
 	if err != nil {
-		return "", err
+		return "", usage, nil, err
 	}
 	turnID, err := protocol.NewTurnID()
 	if err != nil {
-		return "", err
+		return "", usage, nil, err
 	}
 	itemID, err := protocol.NewItemID()
 	if err != nil {
-		return "", err
+		return "", usage, nil, err
 	}
 	cursor := d.runtime.Snapshot(context.Background()).LastSequence
 	streamContext, stopStream := context.WithCancel(context.Background())
 	defer stopStream()
 	events, err := d.runtime.Events(streamContext, cursor)
 	if err != nil {
-		return "", err
+		return "", usage, nil, err
 	}
 	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
 		ThreadID: threadID, TurnID: turnID, ItemID: itemID, Prompt: prompt,
+		Orchestration: &correlation,
 	})
 	if err != nil {
-		return "", err
+		return "", usage, nil, err
 	}
+	if d.persistent != nil {
+		if err := apppersistence.EnsureThread(
+			ctx,
+			d.persistent,
+			threadID,
+			d.sessionID,
+			d.workspace,
+		); err != nil {
+			return "", usage, nil, err
+		}
+	}
+	if err := d.runtime.RegisterChildThread(threadID, app.ChildSpec{
+		Role: role, Stance: "workflow",
+		Workspace: d.workspace, HostWorkspace: d.workspace,
+		SessionID: d.sessionID, ReadOnly: true,
+	}); err != nil {
+		return "", usage, nil, err
+	}
+	defer d.runtime.ReleaseThread(threadID)
 	if d.sessionID != "" {
 		if err := d.runtime.BindThreadSession(threadID, d.sessionID); err != nil {
-			return "", err
+			return "", usage, nil, err
 		}
-		defer d.runtime.ReleaseThread(threadID)
 	}
 	d.mu.Lock()
 	d.active[turnID] = threadID
@@ -420,7 +482,7 @@ func (d *backgroundWorkflowDriver) runTurn(ctx context.Context, prompt string) (
 		d.mu.Unlock()
 	}()
 	if err := d.runtime.Submit(ctx, operation); err != nil {
-		return "", err
+		return "", usage, nil, err
 	}
 	var content strings.Builder
 	ctxDone := ctx.Done()
@@ -437,19 +499,21 @@ func (d *backgroundWorkflowDriver) runTurn(ctx context.Context, prompt string) (
 		case <-ctxDone:
 			canceledErr = ctx.Err()
 			if err := d.cancel(threadID, turnID); err != nil {
-				return content.String(), errors.Join(canceledErr, err)
+				return content.String(), usage, permissionDigests,
+					errors.Join(canceledErr, err)
 			}
 			ctxDone = nil
 			cancelTimer = time.NewTimer(2 * time.Second)
 			cancelDeadline = cancelTimer.C
 		case <-cancelDeadline:
-			return content.String(), errors.Join(
+			return content.String(), usage, permissionDigests, errors.Join(
 				canceledErr,
 				errors.New("timed out waiting for canceled turn terminal"),
 			)
 		case event, ok := <-events:
 			if !ok {
-				return content.String(), errors.New("workflow runtime event stream closed")
+				return content.String(), usage, permissionDigests,
+					errors.New("workflow runtime event stream closed")
 			}
 			if event.TurnID != turnID {
 				continue
@@ -459,42 +523,108 @@ func (d *backgroundWorkflowDriver) runTurn(ctx context.Context, prompt string) (
 				if data, _ := event.Data.(*protocol.OutputDeltaData); data != nil {
 					content.WriteString(data.Text)
 				}
+			case protocol.EventExecutionReceipt:
+				if data, _ := event.Data.(*protocol.ExecutionReceiptData); data != nil {
+					usage = workflow.WorkUsage{
+						Tokens:    data.InputTokens + data.OutputTokens,
+						CostKnown: data.CostKnown,
+					}
+					if data.CostKnown {
+						usage.CostMicros = data.CostMicrounits
+					}
+					permissionDigests = append(
+						[]string(nil),
+						data.PermissionDigests...,
+					)
+					d.mu.Lock()
+					d.spentTokens += usage.Tokens
+					if usage.CostKnown {
+						d.spentCostMicros += usage.CostMicros
+					}
+					d.mu.Unlock()
+				}
 			case protocol.EventTurnCompleted:
 				if canceledErr != nil {
-					return content.String(), canceledErr
+					return content.String(), usage, permissionDigests, canceledErr
 				}
 				if content.Len() == 0 {
 					if data, _ := event.Data.(*protocol.TurnCompletedData); data != nil {
 						content.WriteString(data.Text)
 					}
 				}
-				return strings.TrimSpace(content.String()), nil
+				return strings.TrimSpace(content.String()), usage, permissionDigests, nil
 			case protocol.EventTurnFailed:
 				if canceledErr != nil {
-					return content.String(), canceledErr
+					return content.String(), usage, permissionDigests, canceledErr
 				}
 				data, _ := event.Data.(*protocol.TurnFailedData)
 				if data != nil {
-					return content.String(), errors.New(data.Message)
+					return content.String(), usage, permissionDigests,
+						errors.New(data.Message)
 				}
-				return content.String(), errors.New("workflow turn failed")
+				return content.String(), usage, permissionDigests,
+					errors.New("workflow turn failed")
 			case protocol.EventTurnCanceled:
 				if canceledErr != nil {
-					return content.String(), canceledErr
+					return content.String(), usage, permissionDigests, canceledErr
 				}
-				return content.String(), errors.New("workflow turn canceled")
+				return content.String(), usage, permissionDigests,
+					errors.New("workflow turn canceled")
 			case protocol.EventOperationRejected:
 				if canceledErr != nil {
-					return content.String(), canceledErr
+					return content.String(), usage, permissionDigests, canceledErr
 				}
 				data, _ := event.Data.(*protocol.OperationRejectedData)
 				if data != nil {
-					return content.String(), errors.New(data.Message)
+					return content.String(), usage, permissionDigests,
+						errors.New(data.Message)
 				}
-				return content.String(), errors.New("workflow turn rejected")
+				return content.String(), usage, permissionDigests,
+					errors.New("workflow turn rejected")
 			}
 		}
 	}
+}
+
+func workflowTaskCorrelation(
+	request workflow.TaskRequest,
+) (protocol.OrchestrationCorrelation, error) {
+	runID := protocol.RunID(request.RunID)
+	if runID == "" {
+		generated, err := protocol.NewRunID()
+		if err != nil {
+			return protocol.OrchestrationCorrelation{}, err
+		}
+		runID = generated
+	}
+	nodeID := protocol.NodeID(request.NodeID)
+	if nodeID == "" {
+		generated, err := protocol.NewNodeID()
+		if err != nil {
+			return protocol.OrchestrationCorrelation{}, err
+		}
+		nodeID = generated
+	}
+	attemptID := protocol.AttemptID("")
+	if request.Attempt > 0 && request.RunID != "" && request.NodeID != "" {
+		attemptID = protocol.AttemptID(fmt.Sprintf(
+			"attempt_%s_%s_%d",
+			request.RunID,
+			request.NodeID,
+			request.Attempt,
+		))
+	} else {
+		generated, err := protocol.NewAttemptID()
+		if err != nil {
+			return protocol.OrchestrationCorrelation{}, err
+		}
+		attemptID = generated
+	}
+	return protocol.OrchestrationCorrelation{
+		RunID: runID, NodeID: nodeID,
+		AttemptID: attemptID,
+		EffectID:  protocol.EffectID("effect_" + string(attemptID)),
+	}, nil
 }
 
 func (d *backgroundWorkflowDriver) cancel(
