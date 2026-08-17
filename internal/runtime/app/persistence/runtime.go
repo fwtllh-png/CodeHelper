@@ -5,13 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
@@ -29,8 +27,7 @@ type PersistentRuntimeOptions struct {
 	Engine              app.Engine
 	OperationBuffer     int
 	SubscriberBuffer    int
-	Metrics             *telemetry.Metrics
-	Logger              *slog.Logger
+	Observability       app.RuntimeObservability
 	DefaultProfile      protocol.SessionProfile
 	ProfileCapabilities protocol.SessionProfileCapabilities
 	ToolCatalog         *tool.Registry
@@ -90,8 +87,7 @@ func PreparePersistentRuntime(
 		Lifecycle:        repositories.Lifecycle,
 		OperationBuffer:  options.OperationBuffer,
 		SubscriberBuffer: options.SubscriberBuffer,
-		Metrics:          options.Metrics,
-		Logger:           options.Logger,
+		Observability:    options.Observability,
 		TerminalStore:    terminalStore,
 		Orchestration:    orchestration,
 	}

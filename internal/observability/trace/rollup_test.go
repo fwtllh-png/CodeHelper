@@ -2,6 +2,7 @@ package trace_test
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
 
 // TestRollupSummarizesEachPhaseWithinItsScope is the read side of T4: a scope
@@ -148,6 +150,67 @@ func TestRollupOfAnUntracedScopeIsEmptyNotZero(t *testing.T) {
 	}
 	if _, ok := rollup.Phase(trace.NameTurn); ok {
 		t.Fatal("an untraced scope must not claim a turn phase")
+	}
+}
+
+func TestAccountingProjectsLatencyFromTerminalMeasurementWithoutSpanRows(t *testing.T) {
+	fixture := newFixture(t)
+	measurement, err := turnkernel.NewTerminalMeasurementSnapshot(
+		fixture.base.Add(5*time.Second),
+		&turnkernel.TerminalLatencyMeasurement{
+			Turn: turnkernel.DurationMeasurement{
+				Recorded: true, Milliseconds: 5000,
+			},
+			Provider: turnkernel.DurationMeasurement{
+				Recorded: true, Milliseconds: 1200,
+			},
+		},
+		turnkernel.UsageState{Frozen: true},
+		true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := json.Marshal(map[string]any{
+		"measurement": measurement,
+		"frozen_state": map[string]any{
+			"terminal": turnkernel.TerminalDecision{
+				Kind: turnkernel.TerminalCompleted,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.database.ExecContext(
+		t.Context(),
+		`INSERT INTO turn_terminal_envelopes(
+			turn_id, effect_id, digest, envelope_json, marker_json
+		) VALUES (?, 'terminal:turn-2', 'digest', ?, '{}')`,
+		"turn-2",
+		string(envelope),
+	); err != nil {
+		t.Fatal(err)
+	}
+	rollup, err := fixture.repository.QueryRollup(
+		t.Context(),
+		trace.Scope{TurnID: "turn-2"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollup.Turns != 1 || rollup.TurnP50MS != 5000 {
+		t.Fatalf("rollup = %+v", rollup)
+	}
+	if provider, ok := rollup.Phase(trace.NameModelCall); !ok || provider.TotalMS != 1200 {
+		t.Fatalf("provider phase = %+v ok=%t", provider, ok)
+	}
+	records, err := fixture.repository.QueryByTurn(
+		t.Context(),
+		"turn-2",
+	)
+	if err != nil || len(records) != 2 {
+		t.Fatalf("records=%+v error=%v", records, err)
 	}
 }
 
@@ -302,7 +365,40 @@ func (f *fixture) writeTurn(t *testing.T, turnID string, phases ...phase) {
 
 func (f *fixture) write(t *testing.T, turnID string, records []trace.Record) {
 	t.Helper()
-	if err := f.repository.Write(t.Context(), turnID, records); err != nil {
-		t.Fatal(err)
+	for _, record := range records {
+		attributes, err := json.Marshal(record.Attributes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(attributes) == "null" {
+			attributes = []byte("{}")
+		}
+		var parent any
+		if record.ParentID != 0 {
+			parent = record.ParentID
+		}
+		var ended, duration any
+		if !record.Ended.IsZero() {
+			ended = record.Ended.UTC().Format(time.RFC3339Nano)
+			duration = record.Duration().Milliseconds()
+		}
+		if _, err := f.database.ExecContext(
+			t.Context(),
+			`INSERT INTO spans(
+				turn_id, span_id, parent_span_id, name,
+				started_at, ended_at, duration_ms, status, attributes_json
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			turnID,
+			record.ID,
+			parent,
+			record.Name,
+			record.Started.UTC().Format(time.RFC3339Nano),
+			ended,
+			duration,
+			string(record.Status),
+			string(attributes),
+		); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

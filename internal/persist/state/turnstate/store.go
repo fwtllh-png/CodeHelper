@@ -1,6 +1,7 @@
 package turnstate
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -44,20 +45,28 @@ func (s *Store) AppendDomainFacts(
 		if terminal != 0 {
 			return errors.New("terminal turn rejects new domain facts")
 		}
-		var count uint64
-		if err := tx.QueryRowContext(
-			ctx,
-			`SELECT COUNT(*) FROM turn_domain_facts WHERE turn_id = ?`,
-			turnID,
-		).Scan(&count); err != nil {
+		encodedFacts, err := loadEncodedFacts(ctx, tx, turnID)
+		if err != nil {
 			return err
 		}
+		existing, err := decodeDomainFacts(encodedFacts)
+		if err != nil {
+			return err
+		}
+		count := uint64(len(existing))
 		if expectedNext != count+1 {
 			return fmt.Errorf(
 				"domain fact sequence conflict: got %d want %d",
 				expectedNext,
 				count+1,
 			)
+		}
+		var previous *turnkernel.State
+		var previousDigest string
+		if len(existing) != 0 {
+			state := existing[len(existing)-1].State
+			previous = &state
+			previousDigest = existing[len(existing)-1].StateDigest
 		}
 		for index, fact := range facts {
 			if fact.TurnID != turnID ||
@@ -68,7 +77,11 @@ func (s *Store) AppendDomainFacts(
 			if err != nil || digest != fact.StateDigest {
 				return fmt.Errorf("domain fact digest mismatch at index %d", index)
 			}
-			encoded, err := json.Marshal(fact)
+			encoded, err := encodeDomainFact(
+				fact,
+				previous,
+				previousDigest,
+			)
 			if err != nil {
 				return err
 			}
@@ -82,6 +95,9 @@ func (s *Store) AppendDomainFacts(
 			); err != nil {
 				return err
 			}
+			state := fact.State
+			previous = &state
+			previousDigest = fact.StateDigest
 		}
 		return nil
 	})
@@ -91,29 +107,11 @@ func (s *Store) LoadDomainFacts(
 	ctx context.Context,
 	turnID string,
 ) ([]turnkernel.DomainFact, error) {
-	rows, err := s.database.DB().QueryContext(
-		ctx,
-		`SELECT fact_json FROM turn_domain_facts
-		 WHERE turn_id = ? ORDER BY sequence`,
-		turnID,
-	)
+	encoded, err := loadEncodedFacts(ctx, s.database.DB(), turnID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var facts []turnkernel.DomainFact
-	for rows.Next() {
-		var encoded string
-		if err := rows.Scan(&encoded); err != nil {
-			return nil, err
-		}
-		var fact turnkernel.DomainFact
-		if err := json.Unmarshal([]byte(encoded), &fact); err != nil {
-			return nil, err
-		}
-		facts = append(facts, fact)
-	}
-	return facts, rows.Err()
+	return decodeDomainFacts(encoded)
 }
 
 func (s *Store) CommitTerminal(
@@ -171,49 +169,42 @@ func (s *Store) commitTerminal(
 		case !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		var count int
-		if err := tx.QueryRowContext(
-			ctx,
-			`SELECT COUNT(*) FROM turn_domain_facts WHERE turn_id = ?`,
-			envelope.TurnID,
-		).Scan(&count); err != nil {
-			return err
-		}
-		if count > len(envelope.DomainFacts) {
-			return turnkernel.ErrTerminalEnvelopeConflict
-		}
-		rows, err := tx.QueryContext(
-			ctx,
-			`SELECT sequence, fact_json FROM turn_domain_facts
-			 WHERE turn_id = ? ORDER BY sequence`,
-			envelope.TurnID,
-		)
+		encodedFacts, err := loadEncodedFacts(ctx, tx, envelope.TurnID)
 		if err != nil {
 			return err
 		}
-		for rows.Next() {
-			var sequence int
-			var encoded string
-			if err := rows.Scan(&sequence, &encoded); err != nil {
-				_ = rows.Close()
-				return err
+		existingFacts, err := decodeDomainFacts(encodedFacts)
+		if err != nil {
+			return err
+		}
+		count := len(existingFacts)
+		if count > len(envelope.DomainFacts) {
+			return turnkernel.ErrTerminalEnvelopeConflict
+		}
+		for index, existing := range existingFacts {
+			left, marshalErr := json.Marshal(existing)
+			if marshalErr != nil {
+				return marshalErr
 			}
-			if sequence <= 0 || sequence > len(envelope.DomainFacts) {
-				_ = rows.Close()
-				return turnkernel.ErrTerminalEnvelopeConflict
-			}
-			expected, err := json.Marshal(envelope.DomainFacts[sequence-1])
-			if err != nil || string(expected) != encoded {
-				_ = rows.Close()
+			right, marshalErr := json.Marshal(envelope.DomainFacts[index])
+			if marshalErr != nil || !bytes.Equal(left, right) {
 				return turnkernel.ErrTerminalEnvelopeConflict
 			}
 		}
-		if err := rows.Close(); err != nil {
-			return err
+		var previous *turnkernel.State
+		var previousDigest string
+		if count != 0 {
+			state := existingFacts[count-1].State
+			previous = &state
+			previousDigest = existingFacts[count-1].StateDigest
 		}
 		for index := count; index < len(envelope.DomainFacts); index++ {
 			fact := envelope.DomainFacts[index]
-			encoded, marshalErr := json.Marshal(fact)
+			encoded, marshalErr := encodeDomainFact(
+				fact,
+				previous,
+				previousDigest,
+			)
 			if marshalErr != nil {
 				return marshalErr
 			}
@@ -227,6 +218,9 @@ func (s *Store) commitTerminal(
 			); err != nil {
 				return err
 			}
+			state := fact.State
+			previous = &state
+			previousDigest = fact.StateDigest
 		}
 		marker = turnkernel.TerminalCommitMarker{
 			TurnID: envelope.TurnID, EffectID: envelope.EffectID,

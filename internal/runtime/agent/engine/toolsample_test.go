@@ -77,7 +77,6 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 	// testRoute is a different price, which is how the assertion can tell which
 	// price was applied to which tokens.
 	visionRoute := namedRoute(t, "eyes")
-	sink := &recordingSink{}
 	scripted := &scriptedProvider{streams: []provider.Stream{
 		// Step one asks for the tool.
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
@@ -98,7 +97,7 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 	}
 	engine, err := New(Options{
 		Provider: scripted, Route: testRoute(t), Tools: registry,
-		Workspace: t.TempDir(), MaxOutputTokens: 128, MaxSteps: 3, Trace: sink,
+		Workspace: t.TempDir(), MaxOutputTokens: 128, MaxSteps: 3,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +158,7 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 		t.Fatalf("the tool's sample reused number %d", toolSample.Sample)
 	}
 
-	_, spans, _ := sink.snapshot()
+	spans := engine.TurnSpans()
 	var modelCalls, nested int
 	byID := make(map[uint64]trace.Record, len(spans))
 	for _, span := range spans {

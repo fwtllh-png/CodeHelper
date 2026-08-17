@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -81,16 +82,29 @@ func (r *Runtime) commitStartupTerminal(
 	if err != nil {
 		return err
 	}
+	frozen := coordinator.Snapshot()
+	measurement, err := turnkernel.NewTerminalMeasurementSnapshot(
+		time.Now().UTC(),
+		nil,
+		frozen.Usage,
+		true,
+	)
+	if err != nil {
+		return err
+	}
 	return sink.CommitTerminal(TerminalMaterial{
-		FrozenState: coordinator.Snapshot(),
+		FrozenState: frozen,
 		DomainFacts: domainFacts,
+		Measurement: measurement,
 		Receipt: &protocol.ExecutionReceiptData{
 			Goal: payload.Prompt,
 			Orchestration: protocol.CloneOrchestrationCorrelation(
 				payload.Orchestration,
 			),
-			Intent: protocol.NormalizeTurnIntent(payload.Intent),
-			Mode:   mode,
+			Intent:            protocol.NormalizeTurnIntent(payload.Intent),
+			Mode:              mode,
+			MeasurementDigest: measurement.Digest,
+			UsageDigest:       measurement.UsageDigest,
 		},
 		Terminal: terminal,
 	})

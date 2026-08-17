@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -57,6 +58,8 @@ func (s *engineTurnKernel) finishModelSample(
 	text string,
 	calls []provider.ToolCall,
 	usage provider.Usage,
+	cost float64,
+	costKnown bool,
 	continued bool,
 	sampleErr error,
 ) error {
@@ -88,6 +91,8 @@ func (s *engineTurnKernel) finishModelSample(
 			OutputTokens:    usage.OutputTokens,
 			ReasoningTokens: usage.ReasoningTokens,
 			CachedTokens:    usage.CachedTokens,
+			CostMicrounits:  uint64(math.Round(cost * 1_000_000)),
+			CostKnown:       costKnown,
 		},
 		Text:      text,
 		Calls:     states,
@@ -104,6 +109,29 @@ func (s *engineTurnKernel) finishModelSample(
 	}
 	s.recordAcceptedLocked(command, from)
 	return nil
+}
+
+func (s *engineTurnKernel) recordSupplementalUsage(
+	source, sampleID string,
+	usage provider.Usage,
+	cost float64,
+	costKnown bool,
+) error {
+	return s.applyAuthoritative(
+		turnkernel.SupplementalUsageRecorded{
+			Source: source, SampleID: sampleID,
+			Usage: turnkernel.UsageState{
+				InputTokens:     usage.InputTokens,
+				OutputTokens:    usage.OutputTokens,
+				ReasoningTokens: usage.ReasoningTokens,
+				CachedTokens:    usage.CachedTokens,
+				CostMicrounits: uint64(
+					math.Round(cost * 1_000_000),
+				),
+				CostKnown: costKnown,
+			},
+		},
+	)
 }
 
 func (s *engineTurnKernel) providerRetry(

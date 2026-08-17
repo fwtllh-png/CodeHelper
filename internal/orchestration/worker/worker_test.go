@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
@@ -60,6 +61,30 @@ func TestSchedulerRunsAClaimedTaskAndRecordsTheAttempt(t *testing.T) {
 	}
 	if executor.calls() != 1 {
 		t.Fatalf("executor calls = %d, want 1", executor.calls())
+	}
+}
+
+func TestSchedulerCreatesChildTraceForExecutor(t *testing.T) {
+	tasks := testTasks(t)
+	mustCreate(t, tasks, "turn-traced", 1)
+	executor := &fakeExecutor{
+		outcome: Outcome{State: task.StateCompleted},
+	}
+	scheduler := testScheduler(t, tasks, nil, executor, 1)
+	ctx, err := tracecontext.NewRoot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, _ := tracecontext.Current(ctx)
+	if started, err := scheduler.Dispatch(ctx); err != nil || started != 1 {
+		t.Fatalf("dispatch=%d error=%v", started, err)
+	}
+	scheduler.Wait()
+	child := executor.traceLink()
+	if child.TraceID != parent.TraceID ||
+		child.SpanID == "" ||
+		child.SpanID == parent.SpanID {
+		t.Fatalf("parent=%+v child=%+v", parent, child)
 	}
 }
 
@@ -390,6 +415,7 @@ type fakeExecutor struct {
 	mu       sync.Mutex
 	count    int
 	canceled bool
+	trace    tracecontext.Link
 	running  chan struct{}
 	once     sync.Once
 }
@@ -397,8 +423,10 @@ type fakeExecutor struct {
 func (f *fakeExecutor) Name() string { return task.ExecutorAgentTurn }
 
 func (f *fakeExecutor) Execute(ctx context.Context, _ task.Task) (Outcome, error) {
+	link, _ := tracecontext.Current(ctx)
 	f.mu.Lock()
 	f.count++
+	f.trace = link
 	f.mu.Unlock()
 	f.once.Do(func() {})
 	if f.running != nil {
@@ -415,6 +443,12 @@ func (f *fakeExecutor) Execute(ctx context.Context, _ task.Task) (Outcome, error
 		return Outcome{}, ctx.Err()
 	}
 	return f.outcome, f.err
+}
+
+func (f *fakeExecutor) traceLink() tracecontext.Link {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.trace
 }
 
 func (f *fakeExecutor) calls() int {

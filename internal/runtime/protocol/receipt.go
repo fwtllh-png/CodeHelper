@@ -322,6 +322,12 @@ type ExecutionReceiptData struct {
 	// CostKnown is false when the model has no pricing metadata; CostMicrounits
 	// is then meaningless and must be shown as unknown rather than zero.
 	CostKnown bool `json:"cost_known"`
+	// MeasurementRecorded is true only when both frozen Usage and Turn wall
+	// time were measured. Digests bind this Receipt to the Terminal Envelope's
+	// immutable measurement snapshot.
+	MeasurementRecorded bool   `json:"measurement_recorded"`
+	MeasurementDigest   string `json:"measurement_digest,omitempty"`
+	UsageDigest         string `json:"usage_digest,omitempty"`
 	// PermissionDigests are the distinct SG7 EffectivePermissionProfile
 	// digests actually used by guarded tool attempts during this Turn.
 	PermissionDigests []string `json:"permission_digests,omitempty"`

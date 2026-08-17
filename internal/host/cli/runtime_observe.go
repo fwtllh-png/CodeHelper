@@ -62,8 +62,10 @@ func runRuntimeObserve(args []string, stdout, stderr io.Writer) int {
 		EventHistory:     snapshot.Config.Runtime.EventHistory,
 		SubscriberBuffer: snapshot.Config.Runtime.SubscriberBuffer,
 		Engine:           app.NoopEngine{},
-		Metrics:          metrics,
-		Logger:           logger,
+		Observability: app.RuntimeObservability{
+			Metrics: metrics,
+			Logger:  logger,
+		},
 	})
 	eventStream, err := runtime.Events(context.Background(), 0)
 	if err != nil {

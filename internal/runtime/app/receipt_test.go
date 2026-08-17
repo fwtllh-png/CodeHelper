@@ -13,6 +13,7 @@ import (
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -227,23 +228,33 @@ func TestReceiptReportsReadPathsAndContextSections(t *testing.T) {
 // TestReceiptPrefersTerminalUsage pins that the turn-cumulative usage on the
 // terminal event replaces the streaming sum. Adding them together inflated
 // every receipt by the last call's tokens.
-func TestReceiptPrefersTerminalUsage(t *testing.T) {
+func TestReceiptUsesFrozenKernelUsage(t *testing.T) {
 	recorder := newReceiptRecorder("fix add")
 	recorder.observe(agentengine.Event{
 		State: agentengine.Streaming, Sample: 1,
-		Usage: &provider.Usage{InputTokens: 48, OutputTokens: 6, CachedTokens: 16},
+		Usage: &provider.Usage{InputTokens: 999, OutputTokens: 999},
 	})
 	recorder.observe(agentengine.Event{
 		State:   agentengine.Completed,
-		Usage:   &provider.Usage{InputTokens: 48, OutputTokens: 6, CachedTokens: 16},
-		CostUSD: 0.000_5, CostKnown: true,
+		Usage:   &provider.Usage{InputTokens: 888, OutputTokens: 888},
+		CostUSD: 99, CostKnown: true,
 	})
-	receipt := recorder.build(turnObservations{})
+	receipt := recorder.build(turnObservations{
+		measurement: receiptMeasurement(t, turnkernel.UsageState{
+			InputTokens: 48, OutputTokens: 6, CachedTokens: 16,
+			CostMicrounits: 500, CostKnown: true, Frozen: true,
+		}, &trace.Latency{}),
+	})
 	if receipt.InputTokens != 48 || receipt.OutputTokens != 6 || receipt.CachedTokens != 16 {
 		t.Fatalf("receipt usage = %+v", receipt)
 	}
 	if receipt.CostMicrounits != 500 || !receipt.CostKnown {
 		t.Fatalf("receipt cost = %d known=%v", receipt.CostMicrounits, receipt.CostKnown)
+	}
+	if !receipt.MeasurementRecorded ||
+		receipt.MeasurementDigest == "" ||
+		receipt.UsageDigest == "" {
+		t.Fatalf("measurement binding = %+v", receipt)
 	}
 }
 
@@ -260,7 +271,12 @@ func TestReceiptCostKnownComesFromPricingNotAmount(t *testing.T) {
 		// A priced model whose rates are zero: cost is known to be nothing.
 		CostUSD: 0, CostKnown: true,
 	})
-	receipt := free.build(turnObservations{})
+	receipt := free.build(turnObservations{
+		measurement: receiptMeasurement(t, turnkernel.UsageState{
+			InputTokens: 12, OutputTokens: 3,
+			CostKnown: true, Frozen: true,
+		}, &trace.Latency{}),
+	})
 	if receipt.CostMicrounits != 0 || !receipt.CostKnown {
 		t.Fatalf("free call = %d known=%v, want a known zero", receipt.CostMicrounits, receipt.CostKnown)
 	}
@@ -270,7 +286,11 @@ func TestReceiptCostKnownComesFromPricingNotAmount(t *testing.T) {
 		State: agentengine.Completed,
 		Usage: &provider.Usage{InputTokens: 12, OutputTokens: 3},
 	})
-	receipt = unpriced.build(turnObservations{})
+	receipt = unpriced.build(turnObservations{
+		measurement: receiptMeasurement(t, turnkernel.UsageState{
+			InputTokens: 12, OutputTokens: 3, Frozen: true,
+		}, &trace.Latency{}),
+	})
 	if receipt.CostKnown {
 		t.Fatal("unpriced call reported a known cost")
 	}
@@ -280,7 +300,7 @@ func TestReceiptCostKnownComesFromPricingNotAmount(t *testing.T) {
 // provider that reports input and output separately: the two events are
 // cumulative snapshots of one call, so the receipt keeps the later one instead of
 // adding them and counting the input twice.
-func TestReceiptFallbackKeepsLastReportPerCall(t *testing.T) {
+func TestReceiptDoesNotReaggregateStreamingUsage(t *testing.T) {
 	recorder := newReceiptRecorder("fix add")
 	recorder.observe(agentengine.Event{
 		State: agentengine.Streaming, Sample: 1, CostKnown: true,
@@ -294,7 +314,12 @@ func TestReceiptFallbackKeepsLastReportPerCall(t *testing.T) {
 		State: agentengine.Streaming, Sample: 2, CostKnown: true,
 		Usage: &provider.Usage{InputTokens: 30, OutputTokens: 8},
 	})
-	receipt := recorder.build(turnObservations{})
+	receipt := recorder.build(turnObservations{
+		measurement: receiptMeasurement(t, turnkernel.UsageState{
+			InputTokens: 130, OutputTokens: 58,
+			CostKnown: true, Frozen: true,
+		}, &trace.Latency{}),
+	})
 	if receipt.InputTokens != 130 || receipt.OutputTokens != 58 {
 		t.Fatalf("receipt usage = %d in / %d out, want 130 / 58", receipt.InputTokens, receipt.OutputTokens)
 	}
@@ -302,14 +327,18 @@ func TestReceiptFallbackKeepsLastReportPerCall(t *testing.T) {
 
 // TestReceiptFallsBackToStreamingUsage covers failed turns, whose terminal
 // event carries no cumulative usage.
-func TestReceiptFallsBackToStreamingUsage(t *testing.T) {
+func TestFailedReceiptUsesFrozenKernelUsage(t *testing.T) {
 	recorder := newReceiptRecorder("fix add")
 	recorder.observe(agentengine.Event{
 		State: agentengine.Streaming,
 		Usage: &provider.Usage{InputTokens: 30, OutputTokens: 4},
 	})
 	recorder.observe(agentengine.Event{State: agentengine.Failed, Error: "tool file_edit failed"})
-	receipt := recorder.build(turnObservations{})
+	receipt := recorder.build(turnObservations{
+		measurement: receiptMeasurement(t, turnkernel.UsageState{
+			InputTokens: 30, OutputTokens: 4, Frozen: true,
+		}, &trace.Latency{}),
+	})
 	if receipt.InputTokens != 30 || receipt.OutputTokens != 4 {
 		t.Fatalf("receipt usage = %+v", receipt)
 	}
@@ -349,10 +378,12 @@ func TestReceiptCarriesTheMeasuredLatencyPartition(t *testing.T) {
 	recorder := newReceiptRecorder("fix add")
 	firstToken := 250 * time.Millisecond
 	receipt := recorder.build(turnObservations{
-		latency: &trace.Latency{
+		measurement: receiptMeasurement(t, turnkernel.UsageState{
+			Frozen: true,
+		}, &trace.Latency{
 			Total: 6 * time.Second, FirstToken: &firstToken,
 			Provider: 1200 * time.Millisecond, Tool: 3 * time.Second,
-		},
+		}),
 	})
 
 	if receipt.Latency == nil {
@@ -399,6 +430,10 @@ func TestReceiptBudgetIncludesThisTurn(t *testing.T) {
 		CostUSD: 2, CostKnown: true,
 	})
 	receipt := recorder.build(turnObservations{
+		measurement: receiptMeasurement(t, turnkernel.UsageState{
+			InputTokens: 300, OutputTokens: 100,
+			CostMicrounits: 2_000_000, CostKnown: true, Frozen: true,
+		}, &trace.Latency{}),
 		spend: agentengine.BudgetSnapshot{
 			TokensUsed: 1000, MaxTokens: 10_000, CostUSD: 3, MaxCostUSD: 25,
 		},
@@ -666,4 +701,25 @@ func TestReceiptCollectsActualSG7PermissionDigests(t *testing.T) {
 		receipt.PermissionDigests[0] != digest {
 		t.Fatalf("permission digests = %v", receipt.PermissionDigests)
 	}
+}
+
+func receiptMeasurement(
+	t *testing.T,
+	usage turnkernel.UsageState,
+	latency *trace.Latency,
+) *turnkernel.TerminalMeasurementSnapshot {
+	t.Helper()
+	var frozen trace.FrozenMeasurement
+	if latency != nil {
+		frozen = trace.FrozenMeasurement{
+			FrozenAt: time.Unix(10, 0),
+			Latency:  *latency,
+			Recorded: true,
+		}
+	}
+	measurement, err := freezeTerminalMeasurement(frozen, usage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &measurement
 }

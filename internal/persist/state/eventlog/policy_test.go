@@ -14,7 +14,7 @@ func TestShouldPersistTable(t *testing.T) {
 		{protocol.EventOutputDelta, false},
 		{protocol.EventReasoningDelta, false},
 		{protocol.EventToolState, false},
-		{protocol.EventTurnCompaction, false},
+		{protocol.EventTurnCompaction, true},
 		{protocol.EventTurnStarted, true},
 		{protocol.EventTurnCompleted, true},
 		{protocol.EventTurnFailed, true},
@@ -41,6 +41,18 @@ func TestShouldPersistTable(t *testing.T) {
 	for _, test := range cases {
 		if got := ShouldPersist(test.kind); got != test.want {
 			t.Fatalf("ShouldPersist(%q) = %v, want %v", test.kind, got, test.want)
+		}
+	}
+}
+
+func TestShouldPersistMatchesEveryDeclaredTrait(t *testing.T) {
+	for _, kind := range protocol.EventKinds() {
+		traits, ok := protocol.Traits(kind)
+		if !ok {
+			t.Fatalf("event %q has no traits", kind)
+		}
+		if got, want := ShouldPersist(kind), traits.Durability.Persisted(); got != want {
+			t.Fatalf("ShouldPersist(%q) = %t, traits require %t", kind, got, want)
 		}
 	}
 }

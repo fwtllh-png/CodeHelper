@@ -1,0 +1,500 @@
+// Command observationtraitgen generates the cross-host observation contract.
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"go/format"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"unicode"
+)
+
+type trait struct {
+	Owner        string   `json:"owner"`
+	Durability   string   `json:"durability"`
+	Payload      string   `json:"payload"`
+	Retention    string   `json:"retention"`
+	Correlations []string `json:"correlations"`
+	OTEL         string   `json:"otel"`
+	Priority     string   `json:"priority"`
+}
+
+type generated struct {
+	goSource   []byte
+	typeScript []byte
+	schema     []byte
+}
+
+func main() {
+	manifestPath := flag.String(
+		"manifest",
+		"internal/observability/schema/observation_traits.json",
+		"observation traits manifest",
+	)
+	goPath := flag.String(
+		"go",
+		"internal/observability/observation/traits.gen.go",
+		"generated Go output",
+	)
+	typeScriptPath := flag.String(
+		"typescript",
+		"extensions/vscode/src/protocol/observation.generated.ts",
+		"generated TypeScript output",
+	)
+	schemaPath := flag.String(
+		"schema",
+		"docs/protocol/observation.schema.json",
+		"generated JSON Schema output",
+	)
+	check := flag.Bool("check", false, "fail if committed outputs are stale")
+	flag.Parse()
+
+	manifest, err := readManifest(*manifestPath)
+	if err == nil {
+		var output generated
+		output, err = generate(manifest)
+		if err == nil {
+			paths := []string{*goPath, *typeScriptPath, *schemaPath}
+			values := [][]byte{output.goSource, output.typeScript, output.schema}
+			for index, path := range paths {
+				if *check {
+					err = checkFile(path, values[index])
+				} else {
+					err = writeFile(path, values[index])
+				}
+				if err != nil {
+					break
+				}
+			}
+		}
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "generate observation traits:", err)
+		os.Exit(1)
+	}
+}
+
+func readManifest(path string) (map[string]trait, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var manifest map[string]trait
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		return nil, err
+	}
+	if err := validateManifest(manifest); err != nil {
+		return nil, err
+	}
+	return manifest, nil
+}
+
+func validateManifest(manifest map[string]trait) error {
+	if len(manifest) == 0 {
+		return errors.New("manifest is empty")
+	}
+	owners := set(
+		"runtime", "operation", "turn_kernel", "effect_dispatcher",
+		"provider_adapter", "context_ledger", "tool_runtime", "process_runtime",
+		"security_runtime", "workspace_journal", "verification",
+		"orchestration", "extension_runtime",
+	)
+	durabilities := set("retained", "bounded", "transient")
+	payloads := set("forbidden", "optional", "optional_sensitive", "required")
+	retentions := set("audit", "diagnostic", "sensitive", "ephemeral")
+	otelMappings := set("none", "span_start", "span_end", "event", "metric")
+	priorities := set("critical", "normal", "bulk")
+	correlations := set(
+		"runtime", "session", "thread", "turn", "operation", "run", "node",
+		"attempt", "effect", "event", "fact", "sample", "call", "tool_attempt",
+		"agent", "extension",
+	)
+	names := make(map[string]string, len(manifest))
+	for kind, value := range manifest {
+		if !validKind(kind) {
+			return fmt.Errorf("kind %q is invalid", kind)
+		}
+		name := goName(kind)
+		if previous := names[name]; previous != "" {
+			return fmt.Errorf("kinds %q and %q generate the same Go name", previous, kind)
+		}
+		names[name] = kind
+		if !owners[value.Owner] || !durabilities[value.Durability] ||
+			!payloads[value.Payload] || !retentions[value.Retention] ||
+			!otelMappings[value.OTEL] || !priorities[value.Priority] {
+			return fmt.Errorf("kind %q has an invalid trait value", kind)
+		}
+		if len(value.Correlations) == 0 || value.Correlations[0] != "runtime" {
+			return fmt.Errorf("kind %q must start correlations with runtime", kind)
+		}
+		seen := make(map[string]bool, len(value.Correlations))
+		for _, correlation := range value.Correlations {
+			if !correlations[correlation] || seen[correlation] {
+				return fmt.Errorf("kind %q has invalid correlation %q", kind, correlation)
+			}
+			seen[correlation] = true
+		}
+		if value.Payload == "optional_sensitive" && value.Retention != "sensitive" &&
+			value.Retention != "ephemeral" {
+			return fmt.Errorf("kind %q sensitive payload has unsafe retention", kind)
+		}
+	}
+	return nil
+}
+
+func generate(manifest map[string]trait) (generated, error) {
+	kinds := sortedKinds(manifest)
+	goSource, err := generateGo(kinds, manifest)
+	if err != nil {
+		return generated{}, err
+	}
+	typeScript := generateTypeScript(kinds, manifest)
+	schema, err := generateSchema(kinds)
+	if err != nil {
+		return generated{}, err
+	}
+	return generated{goSource: goSource, typeScript: typeScript, schema: schema}, nil
+}
+
+func generateGo(kinds []string, manifest map[string]trait) ([]byte, error) {
+	var output bytes.Buffer
+	output.WriteString("// Code generated by observationtraitgen; DO NOT EDIT.\n\n")
+	output.WriteString("package observation\n\n")
+	output.WriteString("const (\n")
+	for _, kind := range kinds {
+		fmt.Fprintf(&output, "Kind%s Kind = %q\n", goName(kind), kind)
+	}
+	output.WriteString(")\n\nvar observationKinds = []Kind{\n")
+	for _, kind := range kinds {
+		fmt.Fprintf(&output, "Kind%s,\n", goName(kind))
+	}
+	output.WriteString("}\n\nvar observationTraits = map[Kind]Traits{\n")
+	for _, kind := range kinds {
+		value := manifest[kind]
+		fmt.Fprintf(
+			&output,
+			"Kind%s: {Owner: %q, Durability: %q, Payload: %q, Retention: %q, Correlations: %#v, OTEL: %q, Priority: %q},\n",
+			goName(kind),
+			value.Owner,
+			value.Durability,
+			value.Payload,
+			value.Retention,
+			value.Correlations,
+			value.OTEL,
+			value.Priority,
+		)
+	}
+	output.WriteString("}\n")
+	return format.Source(output.Bytes())
+}
+
+func generateTypeScript(kinds []string, manifest map[string]trait) []byte {
+	var output bytes.Buffer
+	output.WriteString("// Code generated by observationtraitgen. DO NOT EDIT.\n\n")
+	output.WriteString("export const observationKinds = [\n")
+	for _, kind := range kinds {
+		fmt.Fprintf(&output, "  %q,\n", kind)
+	}
+	output.WriteString("] as const;\n")
+	output.WriteString("export type ObservationKind = (typeof observationKinds)[number];\n\n")
+	fmt.Fprintf(
+		&output,
+		"export type ObservationOwner = %s;\n",
+		typeScriptUnion(uniqueTraitValues(manifest, func(value trait) []string {
+			return []string{value.Owner}
+		})),
+	)
+	fmt.Fprintf(
+		&output,
+		"export type ObservationCorrelation = %s;\n\n",
+		typeScriptUnion(uniqueTraitValues(manifest, func(value trait) []string {
+			return value.Correlations
+		})),
+	)
+	output.WriteString("export interface ObservationTraits {\n")
+	output.WriteString("  readonly owner: ObservationOwner;\n")
+	output.WriteString("  readonly durability: \"retained\" | \"bounded\" | \"transient\";\n")
+	output.WriteString("  readonly payload: \"forbidden\" | \"optional\" | \"optional_sensitive\" | \"required\";\n")
+	output.WriteString("  readonly retention: \"audit\" | \"diagnostic\" | \"sensitive\" | \"ephemeral\";\n")
+	output.WriteString("  readonly correlations: readonly ObservationCorrelation[];\n")
+	output.WriteString("  readonly otel: \"none\" | \"span_start\" | \"span_end\" | \"event\" | \"metric\";\n")
+	output.WriteString("  readonly priority: \"critical\" | \"normal\" | \"bulk\";\n")
+	output.WriteString("}\n\n")
+	output.WriteString("export const observationTraits = {\n")
+	for _, kind := range kinds {
+		encoded, _ := json.Marshal(manifest[kind])
+		fmt.Fprintf(&output, "  %q: %s,\n", kind, encoded)
+	}
+	output.WriteString("} as const satisfies Record<ObservationKind, ObservationTraits>;\n")
+	return output.Bytes()
+}
+
+func generateSchema(kinds []string) ([]byte, error) {
+	stringID := func() map[string]any {
+		return map[string]any{"type": "string", "maxLength": 256}
+	}
+	properties := map[string]any{
+		"schema_version": map[string]any{"const": 1},
+		"id": map[string]any{
+			"type": "string", "pattern": "^obs_[0-9a-f]{32}$",
+		},
+		"kind": map[string]any{"type": "string", "enum": kinds},
+		"observed_sequence": map[string]any{
+			"type": "integer", "minimum": 1,
+		},
+		"sequence":    map[string]any{"type": "integer", "minimum": 1},
+		"recorded_at": map[string]any{"type": "string", "format": "date-time"},
+		"monotonic_ns": map[string]any{
+			"type": "integer", "minimum": 0,
+		},
+		"identity": map[string]any{
+			"type":                 "object",
+			"required":             []string{"runtime_id"},
+			"additionalProperties": false,
+			"properties": map[string]any{
+				"runtime_id":             stringProperty(),
+				"session_id":             stringProperty(),
+				"thread_id":              stringProperty(),
+				"turn_id":                stringProperty(),
+				"operation_id":           stringProperty(),
+				"run_id":                 stringProperty(),
+				"node_id":                stringProperty(),
+				"attempt_id":             stringProperty(),
+				"effect_id":              stringProperty(),
+				"event_id":               stringProperty(),
+				"event_cursor":           integerProperty(),
+				"fact_sequence":          integerProperty(),
+				"sample_id":              stringProperty(),
+				"call_id":                stringProperty(),
+				"attempt":                integerProperty(),
+				"agent_id":               stringProperty(),
+				"extension_operation_id": stringProperty(),
+			},
+		},
+		"trace": map[string]any{
+			"type": "object", "additionalProperties": false,
+			"required": []string{"trace_id", "span_id"},
+			"properties": map[string]any{
+				"trace_id": map[string]any{
+					"type": "string", "pattern": "^[0-9a-f]{32}$",
+				},
+				"span_id": map[string]any{
+					"type": "string", "pattern": "^[0-9a-f]{16}$",
+				},
+				"parent_span_id": map[string]any{
+					"type": "string", "pattern": "^[0-9a-f]{16}$",
+				},
+				"trace_flags": map[string]any{
+					"type": "integer", "minimum": 0, "maximum": 255,
+				},
+				"trace_state": map[string]any{
+					"type": "string", "maxLength": 512,
+				},
+			},
+		},
+		"causality": map[string]any{
+			"type": "object", "additionalProperties": false,
+			"properties": map[string]any{
+				"parent_observation_id": map[string]any{
+					"type": "string", "pattern": "^obs_[0-9a-f]{32}$",
+				},
+				"links": map[string]any{
+					"type": "array",
+					"items": map[string]any{
+						"type": "object", "additionalProperties": false,
+						"required": []string{"relation", "target"},
+						"properties": map[string]any{
+							"relation": map[string]any{
+								"type": "string",
+								"enum": []string{
+									"caused_by", "produced", "observed_by",
+									"delivered_to", "retried_from", "recovered_from",
+									"projected_as", "verified_by", "committed_with",
+								},
+							},
+							"target": map[string]any{
+								"type": "string", "pattern": "^obs_[0-9a-f]{32}$",
+							},
+						},
+					},
+				},
+			},
+		},
+		"policy": map[string]any{
+			"type": "object", "additionalProperties": false,
+			"required": []string{"class", "redaction"},
+			"properties": map[string]any{
+				"class": map[string]any{
+					"type": "string",
+					"enum": []string{
+						"public_metadata", "operational", "workspace_content",
+						"conversation_content", "credential", "restricted",
+					},
+				},
+				"redaction": map[string]any{
+					"type": "string",
+					"enum": []string{"not_required", "applied", "unavailable"},
+				},
+			},
+		},
+		"payload": map[string]any{
+			"type": "object", "additionalProperties": false,
+			"required": []string{
+				"digest", "media_type", "original_bytes", "stored_bytes",
+				"data_class", "redaction",
+			},
+			"properties": map[string]any{
+				"digest": map[string]any{
+					"type": "string", "pattern": "^sha256:[0-9a-f]{64}$",
+				},
+				"media_type":     stringID(),
+				"encoding":       stringID(),
+				"original_bytes": map[string]any{"type": "integer", "minimum": 0},
+				"stored_bytes":   map[string]any{"type": "integer", "minimum": 0},
+				"truncated":      map[string]any{"type": "boolean"},
+				"data_class": map[string]any{
+					"type": "string",
+					"enum": []string{
+						"public_metadata", "operational", "workspace_content",
+						"conversation_content", "credential", "restricted",
+					},
+				},
+				"redaction": map[string]any{
+					"type": "string",
+					"enum": []string{"not_required", "applied", "unavailable"},
+				},
+			},
+		},
+		"summary": map[string]any{},
+	}
+	schema := map[string]any{
+		"$schema":              "https://json-schema.org/draft/2020-12/schema",
+		"$id":                  "https://codehelper.dev/schemas/observation-v1.json",
+		"title":                "CodeHelper Observation Envelope",
+		"type":                 "object",
+		"additionalProperties": false,
+		"required": []string{
+			"schema_version", "id", "kind", "observed_sequence",
+			"sequence", "recorded_at",
+			"identity", "policy",
+		},
+		"properties": properties,
+	}
+	content, err := json.MarshalIndent(schema, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(content, '\n'), nil
+}
+
+func stringProperty() map[string]any {
+	return map[string]any{"type": "string", "maxLength": 256}
+}
+
+func integerProperty() map[string]any {
+	return map[string]any{"type": "integer", "minimum": 1}
+}
+
+func uniqueTraitValues(
+	manifest map[string]trait,
+	selectValues func(trait) []string,
+) []string {
+	seen := make(map[string]bool)
+	for _, value := range manifest {
+		for _, selected := range selectValues(value) {
+			seen[selected] = true
+		}
+	}
+	result := make([]string, 0, len(seen))
+	for value := range seen {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func typeScriptUnion(values []string) string {
+	encoded := make([]string, len(values))
+	for index, value := range values {
+		content, _ := json.Marshal(value)
+		encoded[index] = string(content)
+	}
+	return strings.Join(encoded, " | ")
+}
+
+func sortedKinds(manifest map[string]trait) []string {
+	kinds := make([]string, 0, len(manifest))
+	for kind := range manifest {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	return kinds
+}
+
+func validKind(value string) bool {
+	if value == "" || strings.HasPrefix(value, ".") || strings.HasSuffix(value, ".") {
+		return false
+	}
+	for _, part := range strings.Split(value, ".") {
+		if part == "" {
+			return false
+		}
+		for _, character := range part {
+			if !unicode.IsLower(character) && !unicode.IsDigit(character) &&
+				character != '_' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func goName(kind string) string {
+	var result strings.Builder
+	upper := true
+	for _, character := range kind {
+		if character == '.' || character == '_' || character == '-' {
+			upper = true
+			continue
+		}
+		if upper {
+			result.WriteRune(unicode.ToUpper(character))
+			upper = false
+		} else {
+			result.WriteRune(character)
+		}
+	}
+	return result.String()
+}
+
+func set(values ...string) map[string]bool {
+	result := make(map[string]bool, len(values))
+	for _, value := range values {
+		result[value] = true
+	}
+	return result
+}
+
+func checkFile(path string, expected []byte) error {
+	actual, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(actual, expected) {
+		return fmt.Errorf("%s is stale; run make observation-traits", path)
+	}
+	return nil
+}
+
+func writeFile(path string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, content, 0o644)
+}

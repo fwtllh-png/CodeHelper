@@ -125,6 +125,7 @@ type Session struct {
 	chatWorkspaces     *chatWorkspaces
 	threads            *app.ThreadManager
 	turnCoordinators   *durableCoordinatorRuntime
+	observability      observationSession
 	journal            *workspacejournal.Manager
 	journalRecovery    workspacejournal.Recovery
 	subagents          *subagent.AgentControl
@@ -151,6 +152,7 @@ func defaultBuildModules() []buildModule {
 		securityModule{},
 		extensionPlanModule{},
 		orchestrationModule{},
+		observabilityModule{},
 		agentModule{},
 		runtimeModule{},
 		backgroundModule{},

@@ -51,7 +51,7 @@ func (e *Engine) providerRetry(
 		delayMS = maxDelayMS
 	}
 	delay := time.Duration(delayMS) * time.Millisecond
-	now := e.options.Now()
+	now := e.options.Observability.Now()
 	return ProviderRetry{
 		Attempt:        int(retries + 1),
 		Retry:          retries + 1,

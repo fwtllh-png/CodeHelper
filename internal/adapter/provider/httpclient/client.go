@@ -22,6 +22,7 @@ import (
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/providerdump"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 )
@@ -104,8 +105,8 @@ func (c *Client) Execute(
 		)
 	}
 	applyHeaders(httpRequest, call, credential)
+	tracecontext.InjectHTTP(requestContext, httpRequest.Header)
 	httpRequest.Header.Set("Idempotency-Key", requestKey(call.Body))
-	c.providerRequest()
 	response, err := httpClient.Do(httpRequest)
 	if err != nil {
 		if ctx.Err() != nil {

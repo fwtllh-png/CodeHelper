@@ -3,13 +3,12 @@ package app
 import (
 	"encoding/json"
 	"strings"
-	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -17,7 +16,6 @@ import (
 // event stream. It only records what it observes, so a receipt never claims a
 // check that did not run.
 type receiptRecorder struct {
-	started            time.Time
 	goal               string
 	orchestration      *protocol.OrchestrationCorrelation
 	intent             protocol.TurnIntent
@@ -36,18 +34,10 @@ type receiptRecorder struct {
 	approvals          int
 	diagnosticCount    int
 	diagnosticsStatus  string
-	usage              protocol.UsageData
-	costKnown          bool
 	permissionDigests  []string
 	// routes is which model answered for which purpose, in the order the turn
 	// used them.
-	routes []protocol.ReceiptRoute
-	// usageFinal marks that the terminal event supplied the turn-cumulative
-	// usage, which supersedes anything accumulated from streaming events.
-	usageFinal bool
-	// samples holds the last streaming report per provider call, which is what
-	// the fallback path sums. It is dropped once a terminal total arrives.
-	samples       map[uint32]protocol.UsageData
+	routes        []protocol.ReceiptRoute
 	issues        []string
 	secondary     []protocol.TerminalIssue
 	skills        []protocol.ReceiptSkill
@@ -82,17 +72,15 @@ type turnObservations struct {
 	budget *protocol.ReceiptContextBudget
 	// conflicts are paths an automatic rollback could not restore, which the turn
 	// leaves behind for a human.
-	conflicts []string
-	// latency is where the turn spent its wall clock, and nil when the engine
-	// does not measure it.
-	latency *trace.Latency
+	conflicts   []string
+	measurement *turnkernel.TerminalMeasurementSnapshot
 	// spend is the thread's pool as the engine sees it, before this turn's own
 	// usage is folded in.
 	spend agentengine.BudgetSnapshot
 }
 
 func newReceiptRecorder(goal string) *receiptRecorder {
-	return &receiptRecorder{started: time.Now(), goal: goal}
+	return &receiptRecorder{goal: goal}
 }
 
 // observe folds one engine event into the receipt.
@@ -186,24 +174,26 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 	// with its usage, and a receipt that listed only the turn's own route would
 	// omit the model that produced part of the bill.
 	r.observeRoute(event)
-	r.observeUsage(event)
 }
 
-func (r *receiptRecorder) freeze(engine *agentengine.Engine) {
+func (r *receiptRecorder) freeze(
+	engine *agentengine.Engine,
+	measurement *turnkernel.TerminalMeasurementSnapshot,
+) {
 	if r == nil || engine == nil || r.frozen != nil {
 		return
 	}
 	r.frozen = &turnObservations{
-		changes:    engine.TurnDiff(),
-		readPaths:  engine.ReadPaths(r.turn),
-		context:    engine.ContextReceipts(),
-		selections: engine.ContextSelections(),
-		catalog:    engine.CatalogReceipt(),
-		evidence:   engine.EvidenceSnapshot(),
-		budget:     r.budget,
-		conflicts:  engine.RollbackConflicts(),
-		latency:    engine.TurnLatency(),
-		spend:      engine.BudgetSnapshot(),
+		changes:     engine.TurnDiff(),
+		readPaths:   engine.ReadPaths(r.turn),
+		context:     engine.ContextReceipts(),
+		selections:  engine.ContextSelections(),
+		catalog:     engine.CatalogReceipt(),
+		evidence:    engine.EvidenceSnapshot(),
+		budget:      r.budget,
+		conflicts:   engine.RollbackConflicts(),
+		measurement: measurement,
+		spend:       engine.BudgetSnapshot(),
 	}
 }
 
@@ -222,50 +212,6 @@ func (r *receiptRecorder) observeRoute(event agentengine.Event) {
 	r.routes = append(r.routes, protocol.ReceiptRoute{
 		Purpose: event.Purpose, Provider: event.Provider, Model: event.Model,
 	})
-}
-
-// observeUsage folds usage into the receipt. Terminal events carry the
-// turn-cumulative total, so they replace anything accumulated from streaming
-// events; streaming events are only a fallback for turns that end without one.
-//
-// The fallback keeps the last report per sample rather than adding every report
-// up, because streaming usage is cumulative within its provider call: a
-// provider that reports input and output separately sends two snapshots of the
-// same call, and summing them counts the input twice.
-func (r *receiptRecorder) observeUsage(event agentengine.Event) {
-	if event.Usage == nil {
-		return
-	}
-	terminal := event.State == agentengine.Completed || event.State == agentengine.Failed
-	if r.usageFinal && !terminal {
-		return
-	}
-	// Pricing is a property of the model, not of any one call, so it is known
-	// or unknown regardless of whether this call happened to cost anything.
-	r.costKnown = event.CostKnown
-	usage := protocol.UsageData{
-		InputTokens: event.Usage.InputTokens, OutputTokens: event.Usage.OutputTokens,
-		ReasoningTokens: event.Usage.ReasoningTokens, CachedTokens: event.Usage.CachedTokens,
-		CostMicrounits: costMicrounits(event.CostUSD),
-	}
-	if terminal {
-		r.usage = usage
-		r.usageFinal = true
-		r.samples = nil
-		return
-	}
-	if r.samples == nil {
-		r.samples = make(map[uint32]protocol.UsageData)
-	}
-	r.samples[event.Sample] = usage
-	r.usage = protocol.UsageData{}
-	for _, sample := range r.samples {
-		r.usage.InputTokens += sample.InputTokens
-		r.usage.OutputTokens += sample.OutputTokens
-		r.usage.ReasoningTokens += sample.ReasoningTokens
-		r.usage.CachedTokens += sample.CachedTokens
-		r.usage.CostMicrounits += sample.CostMicrounits
-	}
 }
 
 func (r *receiptRecorder) observeTool(event agentengine.Event) {
@@ -346,6 +292,11 @@ func (r *receiptRecorder) build(
 	default:
 		return nil
 	}
+	var measurement turnkernel.TerminalMeasurementSnapshot
+	if observed.measurement != nil {
+		measurement = *observed.measurement
+	}
+	usage := measurement.Usage
 	receipt := &protocol.ExecutionReceiptData{
 		Goal:          r.goal,
 		Orchestration: protocol.CloneOrchestrationCorrelation(r.orchestration),
@@ -375,16 +326,18 @@ func (r *receiptRecorder) build(
 		ContextBudget:      observed.budget,
 		Evidence:           receiptEvidence(observed.evidence),
 		ReadPaths:          append([]string(nil), observed.readPaths...),
-		InputTokens:        r.usage.InputTokens, OutputTokens: r.usage.OutputTokens,
-		ReasoningTokens: r.usage.ReasoningTokens, CachedTokens: r.usage.CachedTokens,
-		CostMicrounits: r.usage.CostMicrounits, CostKnown: r.costKnown,
+		InputTokens:        usage.InputTokens, OutputTokens: usage.OutputTokens,
+		ReasoningTokens: usage.ReasoningTokens, CachedTokens: usage.CachedTokens,
+		CostMicrounits: usage.CostMicrounits, CostKnown: usage.CostKnown,
+		MeasurementRecorded: measurement.Recorded(),
+		MeasurementDigest:   measurement.Digest,
+		UsageDigest:         measurement.UsageDigest,
 		PermissionDigests: append(
 			[]string(nil),
 			r.permissionDigests...,
 		),
-		LatencyMS:        time.Since(r.started).Milliseconds(),
-		Latency:          receiptLatency(observed.latency),
-		Budget:           r.receiptBudget(observed.spend),
+		Latency:          receiptLatency(observed.measurement),
+		Budget:           r.receiptBudget(observed.spend, usage),
 		UnresolvedIssues: append(append([]string(nil), r.issues...), observed.conflicts...),
 		SecondaryIssues:  append([]protocol.TerminalIssue(nil), r.secondary...),
 		NotCollected:     protocol.UncollectedReceiptSections,
@@ -412,19 +365,22 @@ func (r *receiptRecorder) build(
 // receiptLatency renders the measured phases. Everything but the first token is
 // reported even when it is zero: a zero says the phase cost nothing, which is a
 // fact about the turn, while an absent partition says nobody measured.
-func receiptLatency(latency *trace.Latency) *protocol.ReceiptLatency {
-	if latency == nil {
+func receiptLatency(
+	measurement *turnkernel.TerminalMeasurementSnapshot,
+) *protocol.ReceiptLatency {
+	if measurement == nil || !measurement.Latency.Turn.Recorded {
 		return nil
 	}
+	latency := measurement.Latency
 	rendered := &protocol.ReceiptLatency{
-		TotalMS:        latency.Total.Milliseconds(),
-		ProviderMS:     latency.Provider.Milliseconds(),
-		ToolMS:         latency.Tool.Milliseconds(),
-		ApprovalWaitMS: latency.ApprovalWait.Milliseconds(),
-		VerifyMS:       latency.Verify.Milliseconds(),
+		TotalMS:        latency.Turn.Milliseconds,
+		ProviderMS:     latency.Provider.Milliseconds,
+		ToolMS:         latency.Tool.Milliseconds,
+		ApprovalWaitMS: latency.ApprovalWait.Milliseconds,
+		VerifyMS:       latency.Verification.Milliseconds,
 	}
-	if latency.FirstToken != nil {
-		first := latency.FirstToken.Milliseconds()
+	if latency.FirstOutput.Recorded {
+		first := latency.FirstOutput.Milliseconds
 		rendered.FirstTokenMS = &first
 	}
 	return rendered
@@ -433,14 +389,17 @@ func receiptLatency(latency *trace.Latency) *protocol.ReceiptLatency {
 // receiptBudget adds this turn's spend to the pool the engine reports, because
 // the engine only folds a turn in once it completes and a receipt that excluded
 // its own turn would overstate what is left.
-func (r *receiptRecorder) receiptBudget(spend agentengine.BudgetSnapshot) *protocol.ReceiptBudget {
+func (r *receiptRecorder) receiptBudget(
+	spend agentengine.BudgetSnapshot,
+	usage turnkernel.UsageState,
+) *protocol.ReceiptBudget {
 	if spend == (agentengine.BudgetSnapshot{}) {
 		return nil
 	}
 	return &protocol.ReceiptBudget{
-		TokensUsed:        spend.TokensUsed + r.usage.InputTokens + r.usage.OutputTokens,
+		TokensUsed:        spend.TokensUsed + usage.InputTokens + usage.OutputTokens,
 		MaxTokens:         spend.MaxTokens,
-		CostMicrounits:    costMicrounits(spend.CostUSD) + r.usage.CostMicrounits,
+		CostMicrounits:    costMicrounits(spend.CostUSD) + usage.CostMicrounits,
 		MaxCostMicrounits: costMicrounits(spend.MaxCostUSD),
 	}
 }

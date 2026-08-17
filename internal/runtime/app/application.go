@@ -606,12 +606,21 @@ func (a *EngineAdapter) commitTerminal(
 	completed bool,
 	terminal protocol.EventData,
 ) error {
-	recorder.freeze(a.engine)
-	receipt, err := a.buildReceipt(recorder, completed)
+	frozen, err := a.engine.FrozenTerminalState(context.WithoutCancel(ctx))
 	if err != nil {
 		return err
 	}
-	frozen, err := a.engine.FrozenTerminalState(context.WithoutCancel(ctx))
+	measurement, err := freezeTerminalMeasurement(
+		a.engine.FreezeTerminalMeasurement(
+			terminalTraceStatus(terminal),
+		),
+		frozen.State.Usage,
+	)
+	if err != nil {
+		return err
+	}
+	recorder.freeze(a.engine, &measurement)
+	receipt, err := a.buildReceipt(recorder, completed)
 	if err != nil {
 		return err
 	}
@@ -626,6 +635,7 @@ func (a *EngineAdapter) commitTerminal(
 		return commitSink.CommitTerminal(TerminalMaterial{
 			FrozenState:  frozen.State,
 			DomainFacts:  frozen.DomainFacts,
+			Measurement:  measurement,
 			Receipt:      receipt,
 			Terminal:     terminal,
 			SessionDelta: sessionDelta,

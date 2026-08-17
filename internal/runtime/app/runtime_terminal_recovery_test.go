@@ -136,6 +136,18 @@ func TestC5RuntimeRecoveryIsRepeatableAfterOutboxDrain(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("events after repeated recovery = %+v", events)
 	}
+	stored, _, err := terminalStore.LoadTerminal(
+		t.Context(),
+		envelope.TurnID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Measurement.Usage.InputTokens != 10 ||
+		stored.Measurement.Usage.Calls != 1 ||
+		stored.Receipt.InputTokens != 10 {
+		t.Fatalf("recovery changed usage: %+v", stored.Measurement.Usage)
+	}
 }
 
 func TestC5ConcurrentRecoveryProjectsOneEventPerOutboxEntry(t *testing.T) {
@@ -873,16 +885,35 @@ func c5TerminalEnvelope(t *testing.T) turnkernel.TerminalEnvelope {
 	apply(turnkernel.PreparationFinished{})
 	apply(turnkernel.ModelTextReceived{Text: "done"})
 	apply(turnkernel.ReleaseProvisionalOutput{})
+	apply(turnkernel.SupplementalUsageRecorded{
+		Source: "fixture", SampleID: "sample-1",
+		Usage: turnkernel.UsageState{
+			InputTokens: 10, CostKnown: true,
+		},
+	})
 	apply(turnkernel.TerminalRequested{})
 	apply(turnkernel.FinishTerminal{})
 	digest, err := turnkernel.Digest(state)
 	if err != nil {
 		t.Fatal(err)
 	}
+	measurement, err := turnkernel.NewTerminalMeasurementSnapshot(
+		time.Unix(1, 0),
+		nil,
+		state.Usage,
+		true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	receipt := &protocol.ExecutionReceiptData{
-		Goal:    "answer",
-		Intent:  protocol.TurnIntentAnswer,
-		Outcome: protocol.TurnOutcomeAnswered,
+		Goal:              "answer",
+		Intent:            protocol.TurnIntentAnswer,
+		Outcome:           protocol.TurnOutcomeAnswered,
+		InputTokens:       state.Usage.InputTokens,
+		CostKnown:         state.Usage.CostKnown,
+		MeasurementDigest: measurement.Digest,
+		UsageDigest:       measurement.UsageDigest,
 	}
 	receiptPayload, err := json.Marshal(receipt)
 	if err != nil {
@@ -927,6 +958,7 @@ func c5TerminalEnvelope(t *testing.T) turnkernel.TerminalEnvelope {
 			State:       state,
 			StateDigest: digest,
 		}},
+		Measurement: measurement,
 		Receipt:     receipt,
 		FinalOutput: append([]string(nil), state.FinalOutput...),
 		TerminalEvent: turnkernel.Event{

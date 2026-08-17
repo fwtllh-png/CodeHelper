@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "stage": "SO2",
+  "status": "accepted",
+  "captured_on": "2026-08-16",
+  "base_commit": "38cc88710a7881a4943f05b248ff05acb0c0ad1c",
+  "journal": {
+    "format": "segmented_jsonl_v1",
+    "manifest": "manifest-v1.json",
+    "journal_sequence": "monotonic",
+    "digest": "sha256",
+    "previous_digest_chain": true,
+    "segment_rotation": true,
+    "torn_final_tail_repair": true,
+    "interior_corruption_fails_closed": true,
+    "directory_mode": "0700",
+    "file_mode": "0600"
+  },
+  "ordering": {
+    "observed_sequence": "assigned at router admission and preserves gaps after priority eviction",
+    "sequence": "assigned at journal append and defines deterministic replay order"
+  },
+  "router": {
+    "metadata_capacity": 4096,
+    "payload_byte_budget": 33554432,
+    "max_payload_bytes": 262144,
+    "payload_first": true,
+    "priorities": {
+      "bulk": 1,
+      "critical": 38,
+      "normal": 22
+    },
+    "critical_start_is_synchronous": true,
+    "normal_and_bulk_are_asynchronous": true,
+    "bulk_evicted_before_normal": true,
+    "cas_failure_retains_metadata_without_payload_ref": true,
+    "journal_failure_releases_payload_reference": true,
+    "writer_failure_changes_business_result": false
+  },
+  "health": {
+    "accepted": true,
+    "written": true,
+    "payload_written": true,
+    "payload_dropped": true,
+    "drops_by_reason": true,
+    "write_failures_by_kind": true,
+    "queue_depth": true,
+    "queue_bytes": true,
+    "in_flight": true,
+    "last_error": true
+  },
+  "runtime_taps": {
+    "post_commit_domain_fact": true,
+    "provider_start_end": true,
+    "tool_start_end": true,
+    "approval_start_end": true,
+    "verification_start_end": true,
+    "terminal_prepared_committed": true,
+    "open_span_fabricates_completed_end": false,
+    "end_to_end_kinds": [
+      "turn.started",
+      "turn.transition.committed",
+      "model.request.sent",
+      "model.response.completed",
+      "tool.started",
+      "tool.finished",
+      "turn.terminal.prepared",
+      "turn.terminal.committed"
+    ]
+  },
+  "performance": {
+    "environment": {
+      "os": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M5 Pro",
+      "benchtime": "50x",
+      "count": 5,
+      "provider_delay": "5ms",
+      "observations_per_turn": 16
+    },
+    "journal_append_median": {
+      "ns_per_op": 6073,
+      "bytes_per_op": 258,
+      "allocs_per_op": 4
+    },
+    "critical_metadata_admission_median": {
+      "ns_per_op": 266.7,
+      "bytes_per_op": 52,
+      "allocs_per_op": 1
+    },
+    "turn_disabled_median": {
+      "ns_per_op": 7511750,
+      "allocs_per_op": 2894
+    },
+    "turn_enabled_median": {
+      "ns_per_op": 7549056,
+      "allocs_per_op": 2960
+    },
+    "latency_regression_percent": 0.5,
+    "allocation_regression_percent": 2.28,
+    "latency_gate_percent": 2,
+    "allocation_gate_percent": 3,
+    "passed": true
+  },
+  "architecture": {
+    "authority_plane_changed": false,
+    "observation_failure_can_approve_or_dispatch": false,
+    "wire_module": "observability",
+    "architecture_metrics": "103/103"
+  },
+  "gates": [
+    "make state-observability-so2",
+    "go test -race ./internal/observability/health ./internal/observability/journal ./internal/observability/router ./internal/observability/trace ./internal/runtime/agent/turnkernel",
+    "go test -run '^$' -bench '^BenchmarkSO2' -benchmem -benchtime=50x -count=5 ./internal/observability/journal ./internal/observability/router ./internal/runtime/agent/engine",
+    "make architecture-metrics",
+    "make docs-check"
+  ]
+}

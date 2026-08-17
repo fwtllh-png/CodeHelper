@@ -200,6 +200,7 @@ type TerminalDecision struct {
 }
 
 type UsageState struct {
+	Calls           uint32 `json:"calls,omitempty"`
 	InputTokens     uint64 `json:"input_tokens"`
 	OutputTokens    uint64 `json:"output_tokens"`
 	ReasoningTokens uint64 `json:"reasoning_tokens,omitempty"`

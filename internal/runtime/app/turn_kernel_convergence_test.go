@@ -107,7 +107,8 @@ func TestRound13ObserveReadOnlyJournalLifecycle(t *testing.T) {
 	eventStore := NewMemoryEventStore(32)
 	runtime := NewRuntime(Options{
 		Engine: AdaptEngine(worker), EventStore: eventStore,
-		TerminalStore: terminalStore, Metrics: metrics,
+		TerminalStore: terminalStore,
+		Observability: RuntimeObservability{Metrics: metrics},
 	})
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	operation := c0StartOperation(t, "round13-read-only-journal")

@@ -208,7 +208,11 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	}
 	defer releaseWorkspace()
 
-	recorder, turnSpan := e.beginTrace(spec.Purpose)
+	ctx, recorder, turnSpan := e.beginTrace(
+		ctx,
+		spec.Purpose,
+		spec.Identity,
+	)
 	defer func() {
 		e.endTrace(context.WithoutCancel(ctx), recorder, turnSpan, persistedTurnID, result.State)
 	}()
@@ -259,6 +263,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		recorder,
 		turnSpan.ID(),
 		e.options.TurnKernelObserver,
+		e.domainFactObserver(spec.Identity),
 		e.options.Metrics,
 		spec.Kernel,
 		e.options.TurnCoordinatorRuntime,
@@ -315,7 +320,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	defer e.setApprovalEmit(nil)
 	disconnectInput := e.connectInputHost(kernel, emit)
 	defer disconnectInput()
-	e.options.Metrics.AgentTurn()
 	e.turn++
 	result.Turn = e.turn
 	kernelTerminalFinalized := false
@@ -740,11 +744,18 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			modelSend,
 		)
 		sampleReason = promptcontext.SampleNormal
+		sampleCost := estimateCost(spec.Route.Model().Pricing, usage)
+		sampleCostKnown := pricingKnown(
+			spec.Route.Model().Pricing,
+			usage,
+		)
 		if finishErr := kernel.finishModelSample(
 			sampleID,
 			blocksText(blocks),
 			calls,
 			usage,
+			sampleCost,
+			sampleCostKnown,
 			modelOutputContinued,
 			err,
 		); finishErr != nil {
@@ -970,6 +981,15 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		toolSpent.samples += spend.samples
 		if spend.samples != 0 {
 			toolSpent.known = toolSpent.known && spend.known
+			if usageErr := kernel.recordSupplementalUsage(
+				"tool",
+				fmt.Sprintf("tool-batch-%d", step),
+				spend.usage,
+				spend.cost,
+				spend.known,
+			); usageErr != nil {
+				return result, errors.Join(err, usageErr)
+			}
 		}
 		if err != nil {
 			return result, err

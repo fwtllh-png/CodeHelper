@@ -120,6 +120,7 @@ func (t *StdioTransport) Request(
 	if err != nil {
 		return err
 	}
+	rawParams = withTraceMetadata(ctx, rawParams)
 	responseChannel := make(chan Response, 1)
 	key := string(rawID)
 	t.mu.Lock()
@@ -171,6 +172,7 @@ func (t *StdioTransport) Notify(ctx context.Context, method string, params any) 
 	if err != nil {
 		return err
 	}
+	rawParams = withTraceMetadata(ctx, rawParams)
 	return t.write(Request{
 		JSONRPC: JSONRPCVersion,
 		Method:  method,

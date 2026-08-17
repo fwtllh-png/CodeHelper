@@ -153,6 +153,9 @@ func (r *Repository) QueryRollup(ctx context.Context, scope Scope) (Rollup, erro
 	rollup.Phases = sortPhases(phases)
 	rollup.TurnP50MS = percentile(turnDurations, 50)
 	rollup.TurnP95MS = percentile(turnDurations, 95)
+	if rollup.Empty() {
+		return r.queryMeasurementRollup(ctx, scope)
+	}
 	return rollup, nil
 }
 

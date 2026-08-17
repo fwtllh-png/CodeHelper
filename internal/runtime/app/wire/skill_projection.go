@@ -37,10 +37,10 @@ func selectTurnSkills(
 		Method: metrics.Method, CatalogSize: metrics.CatalogSize,
 		CandidateSize: metrics.CandidateSize, VisibleSize: metrics.VisibleSize,
 		ExplicitMatches: metrics.ExplicitMatches,
-		OriginalTokens: metrics.OriginalTokens,
+		OriginalTokens:  metrics.OriginalTokens,
 		ProjectedTokens: metrics.ProjectedTokens,
-		TokenSavings: metrics.TokenSavings,
-		Recall: metrics.Recall, Precision: metrics.Precision,
+		TokenSavings:    metrics.TokenSavings,
+		Recall:          metrics.Recall, Precision: metrics.Precision,
 		CacheHit: metrics.CacheHit,
 	}, nil
 }

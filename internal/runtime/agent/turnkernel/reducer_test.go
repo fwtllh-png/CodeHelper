@@ -667,6 +667,42 @@ func TestPhase4R1SampleUsageContextAndCancelAreStructured(t *testing.T) {
 	}
 }
 
+func TestSO4SupplementalUsageJoinsFrozenKernelAuthority(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state = apply(t, state, SupplementalUsageRecorded{
+		Source: "vision", SampleID: "tool-sample-1",
+		Usage: UsageState{
+			InputTokens:    1500,
+			CostMicrounits: 20,
+			CostKnown:      true,
+		},
+	}).State
+	state = apply(t, state, SupplementalUsageRecorded{
+		Source: "sub_query", SampleID: "tool-sample-2",
+		Usage: UsageState{
+			InputTokens: 20,
+			CostKnown:   false,
+		},
+	}).State
+	if state.Usage.Calls != 2 ||
+		state.Usage.InputTokens != 1520 ||
+		state.Usage.CostMicrounits != 20 ||
+		state.Usage.CostKnown {
+		t.Fatalf("usage = %+v", state.Usage)
+	}
+	state = apply(t, state, ModelTextReceived{Text: "done"}).State
+	state = apply(t, state, ReleaseProvisionalOutput{}).State
+	state = apply(t, state, TerminalRequested{}).State
+	if !state.Usage.Frozen {
+		t.Fatal("terminal request did not freeze supplemental usage")
+	}
+	if _, err := (Reducer{}).Apply(state, SupplementalUsageRecorded{
+		Source: "late", SampleID: "late",
+	}); err == nil {
+		t.Fatal("late usage changed frozen terminal state")
+	}
+}
+
 func TestPermanentProviderFailureIsPersistedWithoutRetry(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
 	state = apply(t, state, ModelSampleRequested{SampleID: "sample-auth"}).State

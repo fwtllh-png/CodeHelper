@@ -184,6 +184,40 @@ func TestCloseEndsOpenSpansAndSaysTheyWereOpen(t *testing.T) {
 	}
 }
 
+func TestTerminalFreezeMakesLatencyImmutableAndSeparatesCleanup(t *testing.T) {
+	clock := newClock()
+	recorder := trace.NewRecorder(clock.now)
+	recorder.Start(trace.NameTurn, 0, nil)
+	model := recorder.Start(trace.NameModelCall, 0, nil)
+	clock.advance(2 * time.Second)
+	model.End(trace.StatusOK)
+	clock.advance(time.Second)
+	frozen := recorder.FreezeTerminal(trace.StatusOK)
+	if !frozen.Recorded ||
+		frozen.Latency.Total != 3*time.Second ||
+		frozen.Latency.Provider != 2*time.Second {
+		t.Fatalf("frozen = %+v", frozen)
+	}
+	clock.advance(5 * time.Second)
+	spans := recorder.CloseWithCleanup(trace.StatusOK)
+	if latency := recorder.Latency(); latency != frozen.Latency {
+		t.Fatalf("latency changed after freeze: %+v", latency)
+	}
+	cleanup := spans[len(spans)-1]
+	if cleanup.Name != trace.NameCleanup ||
+		cleanup.Duration() != 5*time.Second ||
+		cleanup.Attributes["excluded_from_terminal_measurement"] != true {
+		t.Fatalf("cleanup = %+v", cleanup)
+	}
+	if spans[0].Duration() != 3*time.Second {
+		t.Fatalf("root duration = %s", spans[0].Duration())
+	}
+	if repeated := recorder.CloseWithCleanup(trace.StatusOK); len(repeated) !=
+		len(spans) {
+		t.Fatalf("cleanup close is not idempotent: %d, %d", len(spans), len(repeated))
+	}
+}
+
 // TestRecorderTakesConcurrentSpans exists because the tool phase runs several
 // tools at once; under -race this is the assertion that matters.
 func TestRecorderTakesConcurrentSpans(t *testing.T) {

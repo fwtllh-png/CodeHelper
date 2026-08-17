@@ -5858,6 +5858,12 @@
         "latency_ms": {
           "type": "integer"
         },
+        "measurement_digest": {
+          "type": "string"
+        },
+        "measurement_recorded": {
+          "type": "boolean"
+        },
         "mode": {
           "type": "string"
         },
@@ -6059,6 +6065,9 @@
             "type": "string"
           }
         },
+        "usage_digest": {
+          "type": "string"
+        },
         "verification": {
           "type": "object",
           "properties": {
@@ -6222,6 +6231,7 @@
         "goal",
         "input_tokens",
         "latency_ms",
+        "measurement_recorded",
         "model_execution",
         "output_tokens",
         "verification"
@@ -7027,7 +7037,7 @@
     "reasoning.delta": {
       "class": "stream",
       "item_owner": "turn",
-      "durability": "retained",
+      "durability": "transient",
       "correlation": "turn",
       "terminal": false
     },

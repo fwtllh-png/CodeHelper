@@ -66,6 +66,7 @@ type SessionOptions struct {
 	RequireStrongSandbox bool
 	WorkspaceReadOnly    bool
 	WorkspaceWritePaths  []string
+	TrustedRuntimeHelper bool
 	// DetachFromCaller keeps the process alive after Create's ctx ends (background/PTY).
 	DetachFromCaller bool
 }
@@ -146,6 +147,7 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 	command, err := NewCommand(runCtx, Options{
 		Command: commandText, Dir: options.Dir, DirFile: options.DirFile,
 		Env: options.Env, Sandbox: options.Sandbox, PTY: options.PTY,
+		TrustedRuntimeHelper: options.TrustedRuntimeHelper,
 		RequireStrongSandbox: options.RequireStrongSandbox,
 		WorkspaceReadOnly:    options.WorkspaceReadOnly,
 		WorkspaceWritePaths: append(

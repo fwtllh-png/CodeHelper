@@ -70,7 +70,7 @@ func bindEngineGuardFactory(
 	factory.readTracker = options.ReadTracker
 	factory.diagnostics = options.Diagnostics
 	factory.onNetworkAllow = options.OnNetworkAllow
-	factory.now = options.Now
+	factory.now = options.Observability.Now
 	if options.Workspace != base.workspace {
 		factory.hooks = nil
 		factory.permissions = nil

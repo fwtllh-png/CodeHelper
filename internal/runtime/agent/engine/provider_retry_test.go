@@ -9,15 +9,15 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestProviderRetryMatrix(t *testing.T) {
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	engine := &Engine{options: Options{
-		MaxRetries:    2,
-		MaxRetryDelay: 2 * time.Minute,
-		Now:           func() time.Time { return now },
+		MaxRetries: 2, MaxRetryDelay: 2 * time.Minute,
+		Observability: trace.Runtime{Clock: func() time.Time { return now }},
 	}}
 	failure := func(code provider.FailureCode, retryAfter uint64) error {
 		return protocol.NewProblem(
@@ -87,7 +87,7 @@ func TestProviderRetryCapsProviderDelay(t *testing.T) {
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	engine := &Engine{options: Options{
 		MaxRetries: 1, MaxRetryDelay: 5 * time.Second,
-		Now: func() time.Time { return now },
+		Observability: trace.Runtime{Clock: func() time.Time { return now }},
 	}}
 	err := protocol.NewProblem(
 		protocol.CodeUnavailable,

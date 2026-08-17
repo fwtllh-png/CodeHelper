@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 )
 
@@ -18,18 +19,27 @@ type recordingRuntime struct {
 	cancels  int
 	lastTurn string
 	failOnce bool
+	trace    tracecontext.Link
 }
 
-func (r *recordingRuntime) StartTurn(_ context.Context, agentID, prompt string) (string, error) {
+func (r *recordingRuntime) StartTurn(ctx context.Context, agentID, prompt string) (string, error) {
+	link, _ := tracecontext.Current(ctx)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.starts++
+	r.trace = link
 	if r.failOnce {
 		r.failOnce = false
 		return "", errors.New("turn failed")
 	}
 	r.lastTurn = "turn:" + agentID + ":" + prompt
 	return r.lastTurn, nil
+}
+
+func (r *recordingRuntime) traceLink() tracecontext.Link {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.trace
 }
 
 func (r *recordingRuntime) CancelTurn(_ context.Context, _, turnID string) error {

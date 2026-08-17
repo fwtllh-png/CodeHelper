@@ -3,7 +3,9 @@ package eventhub_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
@@ -107,4 +109,73 @@ func TestHubObservesAfterProjectionWithoutSubscriber(t *testing.T) {
 	if subscribers := hub.Snapshot().Subscribers; subscribers != 0 {
 		t.Fatalf("observer created %d subscribers", subscribers)
 	}
+}
+
+func TestHubDoesNotHoldStateLockAcrossStoreOrProjection(t *testing.T) {
+	store := &blockingStore{
+		Store:   app.NewMemoryEventStore(8),
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	hub := eventhub.New(eventhub.Config{
+		Store: store, Context: t.Context(),
+	})
+	projectEntered := make(chan struct{})
+	projectRelease := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- hub.Publish(
+			protocol.EventMeta{
+				OperationID: "op", ThreadID: "thread",
+				TurnID: "turn", ItemID: "item",
+			},
+			&protocol.OutputDeltaData{Text: "one"},
+			func(protocol.Event) error {
+				close(projectEntered)
+				<-projectRelease
+				return nil
+			},
+		)
+	}()
+	<-store.entered
+	assertSnapshotResponsive(t, hub)
+	close(store.release)
+	<-projectEntered
+	assertSnapshotResponsive(t, hub)
+	close(projectRelease)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertSnapshotResponsive(t *testing.T, hub *eventhub.Hub) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		_ = hub.Snapshot()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("event hub state lock was held across external work")
+	}
+}
+
+type blockingStore struct {
+	eventhub.Store
+	once    sync.Once
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingStore) Append(
+	ctx context.Context,
+	event protocol.Event,
+) error {
+	s.once.Do(func() {
+		close(s.entered)
+		<-s.release
+	})
+	return s.Store.Append(ctx, event)
 }

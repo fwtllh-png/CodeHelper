@@ -18,6 +18,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 )
 
 var (
@@ -165,6 +167,7 @@ func (t *HTTPTransport) Request(
 	if err != nil {
 		return err
 	}
+	rawParams = withTraceMetadata(ctx, rawParams)
 	request := Request{
 		JSONRPC: JSONRPCVersion,
 		ID:      id,
@@ -250,6 +253,7 @@ func (t *HTTPTransport) Notify(ctx context.Context, method string, params any) e
 	if err != nil {
 		return err
 	}
+	rawParams = withTraceMetadata(ctx, rawParams)
 	request := Request{JSONRPC: JSONRPCVersion, Method: method, Params: rawParams}
 	generation := t.currentGeneration()
 	_, err = t.requestOnce(ctx, request)
@@ -312,6 +316,7 @@ func (t *HTTPTransport) requestStreamable(
 	if err := t.applyHeaders(readCtx, request, "application/json, text/event-stream"); err != nil {
 		return Response{}, err
 	}
+	tracecontext.InjectHTTP(readCtx, request.Header)
 	request.Header.Set("Content-Type", "application/json")
 	t.mu.RLock()
 	session := t.session
@@ -488,6 +493,7 @@ func (t *HTTPTransport) connectLegacy(ctx context.Context) error {
 		streamCancel()
 		return err
 	}
+	tracecontext.InjectHTTP(ctx, request.Header)
 	response, err := t.client.Do(request)
 	close(connectDone)
 	timer.Stop()
@@ -668,6 +674,7 @@ func (t *HTTPTransport) requestLegacy(
 	if err := t.applyHeaders(readCtx, request, "application/json, text/event-stream"); err != nil {
 		return Response{}, err
 	}
+	tracecontext.InjectHTTP(readCtx, request.Header)
 	request.Header.Set("Content-Type", "application/json")
 	t.mu.RLock()
 	session := t.session
@@ -764,6 +771,7 @@ func (t *HTTPTransport) Close(ctx context.Context) error {
 			err = t.applyHeaders(ctx, request, "application/json")
 		}
 		if err == nil {
+			tracecontext.InjectHTTP(ctx, request.Header)
 			request.Header.Set("Mcp-Session-Id", session)
 			response, requestErr := t.client.Do(request)
 			if requestErr == nil {

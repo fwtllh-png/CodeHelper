@@ -233,6 +233,12 @@ func (s *Session) registerResourceClosers() error {
 			}
 			return s.content.Close(ctx)
 		}},
+		{name: "observation-router", close: func(ctx context.Context) error {
+			if s.observability.router == nil {
+				return nil
+			}
+			return s.observability.router.Close(ctx)
+		}},
 		{name: "workspace-journal", close: func(ctx context.Context) error {
 			if s.journal == nil {
 				return nil

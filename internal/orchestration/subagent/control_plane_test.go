@@ -1,9 +1,11 @@
 package subagent_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 )
 
@@ -105,5 +107,53 @@ func TestRoleCatalogAndAgentControlFreezeSpawnContract(t *testing.T) {
 		if !strings.Contains(prompt, fragment) {
 			t.Fatalf("child prompt %q missing %q", prompt, fragment)
 		}
+	}
+}
+
+func TestAgentControlPropagatesChildTraceIntoTurn(t *testing.T) {
+	runtime := &recordingRuntime{}
+	manager, err := subagent.Open(subagent.Options{
+		Root: t.TempDir(), Gate: &fakeGate{}, Runtime: runtime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := subagent.NewDelegationPolicy(subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := subagent.NewAgentControl(
+		manager,
+		subagent.DefaultRoleCatalog(),
+		policy,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := tracecontext.NewRoot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, _ := tracecontext.Current(ctx)
+	agent, err := control.SpawnIntentContext(ctx, subagent.DelegationIntent{
+		TaskName: "trace_runtime", Role: subagent.RoleExplore,
+		Objective: "trace runtime", ExpectedOutput: "trace evidence",
+		Trigger: subagent.TriggerDeveloper,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Takeover(
+		context.Background(),
+		agent.ID,
+		"trace",
+	); err != nil {
+		t.Fatal(err)
+	}
+	child := runtime.traceLink()
+	if child.TraceID != parent.TraceID ||
+		child.SpanID == "" ||
+		child.SpanID == parent.SpanID {
+		t.Fatalf("parent=%+v child=%+v", parent, child)
 	}
 }

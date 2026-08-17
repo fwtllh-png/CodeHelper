@@ -184,7 +184,7 @@
   "reasoning.delta": {
     "class": "stream",
     "item_owner": "turn",
-    "durability": "retained",
+    "durability": "transient",
     "correlation": "turn",
     "terminal": false
   },

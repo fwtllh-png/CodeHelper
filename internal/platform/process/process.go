@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -33,6 +34,9 @@ type Options struct {
 	AdditionalReadPaths  []string
 	WorkspaceWritePaths  []string
 	DenyNetwork          bool
+	// TrustedRuntimeHelper is reserved for CodeHelper-owned helper processes.
+	// Arbitrary user commands never receive internal W3C trace context.
+	TrustedRuntimeHelper bool
 	NetworkHost          string
 	NetworkProtocol      string
 	NetworkPort          uint16
@@ -162,6 +166,12 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 	environment, err := SanitizedEnvironment(options.Env)
 	if err != nil {
 		return nil, err
+	}
+	if options.TrustedRuntimeHelper {
+		environment = append(
+			environment,
+			tracecontext.Environment(ctx)...,
+		)
 	}
 	environment = ensureGoToolchain(environment)
 	environment = ensureGitToolchain(environment)

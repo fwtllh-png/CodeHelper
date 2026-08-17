@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
+	observationjournal "github.com/fwtllh-png/CodeHelper/internal/observability/journal"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/observation"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
@@ -129,14 +132,12 @@ model = "fixture-model"
 		t.Fatalf("usage rollup = %+v, want the image's 1500 input tokens counted", rollup)
 	}
 
-	// The span table is where "how long did the image take" is answered, and the
-	// vision call has to be in it as a model call rather than as an opaque tool.
-	// The write follows the terminal event, so this polls rather than assuming
-	// the two have already been ordered.
+	// SO4 projects the frozen provider aggregate instead of rewriting the
+	// Engine's mutable span tree after the Receipt was frozen.
 	repository := trace.NewSQLiteRepository(store.SQLite())
 	var spans []trace.Record
-	visionSpans := 0
-	for attempt := 0; attempt < 100 && visionSpans == 0; attempt++ {
+	modelSpans := 0
+	for attempt := 0; attempt < 100 && modelSpans == 0; attempt++ {
 		if attempt > 0 {
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -144,15 +145,65 @@ model = "fixture-model"
 		if err != nil {
 			t.Fatal(err)
 		}
-		visionSpans = 0
+		modelSpans = 0
 		for _, span := range spans {
 			if span.Name == trace.NameModelCall &&
-				span.Attributes["purpose"] == string(model.PurposeVision) {
-				visionSpans++
+				span.Attributes["aggregate"] == true &&
+				span.Attributes["measurement_digest"] ==
+					receipt.MeasurementDigest {
+				modelSpans++
 			}
 		}
 	}
-	if visionSpans != 1 {
-		t.Fatalf("vision model call spans = %d, want 1: %+v", visionSpans, spans)
+	if modelSpans != 1 {
+		t.Fatalf("measurement model spans = %d, want 1: %+v", modelSpans, spans)
+	}
+
+	if err := session.observability.router.Flush(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	observations, err := observationjournal.ReadAll(filepath.Join(
+		store.Root(), "observability", "journal-v1",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := make(map[observation.Kind]int)
+	for _, record := range observations {
+		kinds[record.Envelope.Kind]++
+		if record.Envelope.Kind ==
+			observation.KindTurnTerminalPrepared ||
+			record.Envelope.Kind ==
+				observation.KindTurnTerminalCommitted {
+			var summary struct {
+				MeasurementDigest string `json:"measurement_digest"`
+			}
+			if err := json.Unmarshal(
+				record.Envelope.Summary,
+				&summary,
+			); err != nil ||
+				summary.MeasurementDigest !=
+					receipt.MeasurementDigest {
+				t.Fatalf(
+					"terminal observation summary=%s error=%v",
+					record.Envelope.Summary,
+					err,
+				)
+			}
+		}
+	}
+	for _, kind := range []observation.Kind{
+		observation.KindTurnStarted,
+		observation.KindTurnTransitionCommitted,
+		observation.KindModelRequestSent,
+		observation.KindModelResponseCompleted,
+		observation.KindToolStarted,
+		observation.KindToolFinished,
+		observation.KindTurnTerminalPrepared,
+		observation.KindTurnTerminalCommitted,
+	} {
+		if kinds[kind] == 0 {
+			t.Fatalf("observation %q is missing: %+v", kind, kinds)
+		}
 	}
 }

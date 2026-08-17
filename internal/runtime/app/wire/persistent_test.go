@@ -361,6 +361,17 @@ func commitPersistentTestTerminal(
 	if err != nil {
 		return err
 	}
+	measurement, err := turnkernel.NewTerminalMeasurementSnapshot(
+		time.Now().UTC(),
+		nil,
+		state.Usage,
+		true,
+	)
+	if err != nil {
+		return err
+	}
+	receipt.MeasurementDigest = measurement.Digest
+	receipt.UsageDigest = measurement.UsageDigest
 	return commitSink.CommitTerminal(app.TerminalMaterial{
 		FrozenState: state,
 		DomainFacts: []turnkernel.DomainFact{{
@@ -370,8 +381,9 @@ func commitPersistentTestTerminal(
 			State:       state,
 			StateDigest: digest,
 		}},
-		Receipt:  receipt,
-		Terminal: terminal,
+		Measurement: measurement,
+		Receipt:     receipt,
+		Terminal:    terminal,
 	})
 }
 
@@ -672,10 +684,21 @@ func round13TerminalEnvelope(
 	if err != nil {
 		t.Fatal(err)
 	}
+	measurement, err := turnkernel.NewTerminalMeasurementSnapshot(
+		time.Unix(1, 0),
+		nil,
+		state.Usage,
+		true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	receipt := &protocol.ExecutionReceiptData{
-		Goal:    "round13",
-		Intent:  protocol.TurnIntentAnswer,
-		Outcome: protocol.TurnOutcomeAnswered,
+		Goal:              "round13",
+		Intent:            protocol.TurnIntentAnswer,
+		Outcome:           protocol.TurnOutcomeAnswered,
+		MeasurementDigest: measurement.Digest,
+		UsageDigest:       measurement.UsageDigest,
 	}
 	receiptPayload, err := json.Marshal(receipt)
 	if err != nil {
@@ -726,6 +749,7 @@ func round13TerminalEnvelope(
 			State:       state,
 			StateDigest: digest,
 		}},
+		Measurement: measurement,
 		Receipt:     receipt,
 		FinalOutput: append([]string(nil), state.FinalOutput...),
 		TerminalEvent: turnkernel.Event{

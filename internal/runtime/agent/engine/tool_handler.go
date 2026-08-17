@@ -227,10 +227,10 @@ func (e *Engine) runToolsWithCache(
 				return
 			}
 			span := e.beginToolSpan(call)
-			e.options.Metrics.ToolExecution()
 
 			callCtx := tool.WithOutputObserver(toolCtx, stream.observe(call))
 			callCtx = tool.WithExecutionAdmission(callCtx, sched.Admit)
+			callCtx = e.tracer().Context(callCtx, span.ID())
 			result, err := e.executeToolBound(
 				callCtx, call.ID, call.Name, json.RawMessage(call.Arguments), binding,
 			)

@@ -6,7 +6,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	reverttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/revert"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
@@ -56,12 +55,6 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		snapshot.Config.Context,
 		budgets,
 	)
-	var traceSink trace.Sink
-	if state.options.PersistentStore != nil {
-		traceSink = trace.NewSQLiteRepository(
-			state.options.PersistentStore.SQLite(),
-		)
-	}
 	var workspaceTurnGate *agentengine.WorkspaceTurnGate
 	if state.security.journal != nil {
 		workspaceTurnGate = agentengine.NewWorkspaceTurnGate()
@@ -125,7 +118,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		},
 		RequireCompletionDeclaration: execution.Tools,
 		Metrics:                      session.metrics,
-		Trace:                        traceSink,
+		Observability:                engineObservability(state),
 		TurnCoordinatorRuntime:       coordinatorRuntime,
 		ReleaseTurnResources: func(identity agentengine.TurnIdentity) {
 			if session.processes != nil {
@@ -361,11 +354,11 @@ func (runtimeModule) Build(
 	session := state.session
 	if state.options.PersistentStore != nil {
 		runtime, err := apppersistence.PreparePersistentRuntime(ctx, apppersistence.PersistentRuntimeOptions{
-			Store:            state.options.PersistentStore,
-			Engine:           state.agent.threads,
-			OperationBuffer:  state.config.snapshot.Config.Runtime.OperationBuffer,
-			SubscriberBuffer: state.config.snapshot.Config.Runtime.SubscriberBuffer,
-			Metrics:          session.metrics, Logger: session.logger,
+			Store:               state.options.PersistentStore,
+			Engine:              state.agent.threads,
+			OperationBuffer:     state.config.snapshot.Config.Runtime.OperationBuffer,
+			SubscriberBuffer:    state.config.snapshot.Config.Runtime.SubscriberBuffer,
+			Observability:       runtimeObservability(state),
 			DefaultProfile:      state.agent.defaultProfile,
 			ToolCatalog:         state.tools.registry,
 			ProfileCapabilities: state.agent.profileCapabilities,
@@ -379,9 +372,8 @@ func (runtimeModule) Build(
 		runtime, err := app.PrepareRuntime(ctx, app.Options{
 			Engine:        state.agent.threads,
 			ContentStore:  session.content,
-			Metrics:       session.metrics,
-			Logger:        session.logger,
 			Orchestration: state.orchestration.workGraph,
+			Observability: runtimeObservability(state),
 		})
 		if err != nil {
 			return fmt.Errorf("prepare runtime: %w", err)

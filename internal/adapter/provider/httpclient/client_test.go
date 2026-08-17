@@ -19,6 +19,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	runtimeapp "github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -67,6 +68,46 @@ func TestClientOpenAIRequestAndStream(t *testing.T) {
 	tools, exists := requestBody["tools"].([]any)
 	if !exists || len(tools) != 2 {
 		t.Fatalf("native search missing from request: %+v", requestBody)
+	}
+}
+
+func TestClientPropagatesW3CTraceContext(t *testing.T) {
+	var propagated tracecontext.Link
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
+		extracted, err := tracecontext.ExtractHTTP(
+			context.Background(),
+			request.Header,
+		)
+		if err != nil {
+			t.Errorf("extract trace context: %v", err)
+		} else {
+			propagated, _ = tracecontext.Current(extracted)
+		}
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(writer, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+	ctx, err := tracecontext.NewRoot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := tracecontext.Current(ctx)
+	stream, err := testClient().Stream(
+		ctx,
+		testRequest(t, server.URL, model.ProtocolOpenAIChat),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Drain(stream); err != nil {
+		t.Fatal(err)
+	}
+	if propagated.TraceID != want.TraceID ||
+		propagated.SpanID != want.SpanID {
+		t.Fatalf("want=%+v propagated=%+v", want, propagated)
 	}
 }
 

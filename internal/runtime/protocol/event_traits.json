@@ -25,7 +25,7 @@
   "operation.rejected": {"class":"terminal_operation","item_owner":"operation","durability":"retained","correlation":"operation","terminal":false},
   "output.delta": {"class":"stream","item_owner":"turn","durability":"terminal_projection","correlation":"turn","terminal":false},
   "plan.delta": {"class":"artifact_stream","item_owner":"turn","durability":"retained","correlation":"plan","terminal":false},
-  "reasoning.delta": {"class":"stream","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
+  "reasoning.delta": {"class":"stream","item_owner":"turn","durability":"transient","correlation":"turn","terminal":false},
   "run.canceled": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
   "run.completed": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
   "run.failed": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},

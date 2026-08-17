@@ -3,9 +3,10 @@ package eventhub
 import (
 	"context"
 	"errors"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"sync"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type Store interface {
@@ -37,6 +38,7 @@ type Snapshot struct {
 }
 type Hub struct {
 	config      Config
+	publishMu   sync.Mutex
 	mu          sync.Mutex
 	last        protocol.Cursor
 	next        uint64
@@ -52,14 +54,18 @@ func New(config Config) *Hub {
 	return h
 }
 func (h *Hub) Events(ctx context.Context, cursor protocol.Cursor, limit int) (<-chan protocol.Event, error) {
+	h.publishMu.Lock()
+	defer h.publishMu.Unlock()
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if h.closed {
+		h.mu.Unlock()
 		return nil, h.config.Closed
 	}
 	if cursor > h.last {
+		h.mu.Unlock()
 		return nil, h.config.CursorAhead
 	}
+	h.mu.Unlock()
 	replay, more, err := h.replay(ctx, cursor, limit)
 	if err != nil {
 		return nil, err
@@ -71,9 +77,11 @@ func (h *Hub) Events(ctx context.Context, cursor protocol.Cursor, limit int) (<-
 	for _, event := range replay {
 		channel <- event
 	}
+	h.mu.Lock()
 	h.next++
 	id := h.next
 	h.subscribers[id] = channel
+	h.mu.Unlock()
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -84,14 +92,18 @@ func (h *Hub) Events(ctx context.Context, cursor protocol.Cursor, limit int) (<-
 	return channel, nil
 }
 func (h *Hub) Replay(ctx context.Context, cursor protocol.Cursor, limit int) ([]protocol.Event, bool, error) {
+	h.publishMu.Lock()
+	defer h.publishMu.Unlock()
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if h.closed {
+		h.mu.Unlock()
 		return nil, false, h.config.Closed
 	}
 	if cursor > h.last {
+		h.mu.Unlock()
 		return nil, false, h.config.CursorAhead
 	}
+	h.mu.Unlock()
 	page, more, err := h.replay(ctx, cursor, limit)
 	return page, more, err
 }
@@ -114,8 +126,15 @@ func (h *Hub) PublishStable(meta protocol.EventMeta, id protocol.EventID, data p
 	return h.publish(meta, id, time.Now(), data, project)
 }
 func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time, data protocol.EventData, project func(protocol.Event) error) error {
+	h.publishMu.Lock()
+	defer h.publishMu.Unlock()
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	if h.closed {
+		h.mu.Unlock()
+		return h.config.Closed
+	}
+	last := h.last
+	h.mu.Unlock()
 	identity, stable := h.config.Store.(IdentityStore)
 	if id != "" && !stable {
 		return errors.New("stable event requires identity store")
@@ -124,12 +143,14 @@ func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time
 		if event, exists, err := identity.EventByID(context.Background(), id); err != nil {
 			return err
 		} else if exists {
+			h.mu.Lock()
 			h.last = max(h.last, event.Sequence)
+			h.mu.Unlock()
 			return project(event)
 		}
 	}
 	for attempt := 0; ; attempt++ {
-		meta.Sequence = h.last + 1
+		meta.Sequence = last + 1
 		var event protocol.Event
 		var err error
 		if id == "" {
@@ -141,7 +162,9 @@ func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time
 			return err
 		}
 		if err = h.config.Store.Append(context.Background(), event); err == nil {
+			h.mu.Lock()
 			h.last = event.Sequence
+			h.mu.Unlock()
 			if err = project(event); err != nil {
 				return err
 			}
@@ -155,30 +178,43 @@ func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time
 			if existing, exists, lookupErr := identity.EventByID(context.Background(), id); lookupErr != nil {
 				return errors.Join(err, lookupErr)
 			} else if exists {
+				h.mu.Lock()
 				h.last = max(h.last, existing.Sequence)
+				h.mu.Unlock()
 				return project(existing)
 			}
 		}
-		last, sequenceErr := h.config.Store.LastSequence(context.Background())
+		storedLast, sequenceErr := h.config.Store.LastSequence(
+			context.Background(),
+		)
 		if sequenceErr != nil || attempt >= 3 {
 			return err
 		}
-		h.last = max(h.last, last)
+		last = max(last, storedLast)
+		h.mu.Lock()
+		h.last = max(h.last, storedLast)
+		h.mu.Unlock()
 	}
 }
 func (h *Hub) fanout(event protocol.Event) {
-	if h.config.OnPublished != nil {
-		h.config.OnPublished()
-	}
+	h.mu.Lock()
+	dropped := 0
 	for id, subscriber := range h.subscribers {
 		select {
 		case subscriber <- event:
 		default:
 			close(subscriber)
 			delete(h.subscribers, id)
-			if h.config.OnDropped != nil {
-				h.config.OnDropped()
-			}
+			dropped++
+		}
+	}
+	h.mu.Unlock()
+	if h.config.OnPublished != nil {
+		h.config.OnPublished()
+	}
+	if h.config.OnDropped != nil {
+		for range dropped {
+			h.config.OnDropped()
 		}
 	}
 }
@@ -193,6 +229,7 @@ func (h *Hub) Restore(sequence protocol.Cursor) {
 	h.mu.Unlock()
 }
 func (h *Hub) Close(ctx context.Context) error {
+	h.publishMu.Lock()
 	h.mu.Lock()
 	h.closed = true
 	for id, subscriber := range h.subscribers {
@@ -200,6 +237,7 @@ func (h *Hub) Close(ctx context.Context) error {
 		delete(h.subscribers, id)
 	}
 	h.mu.Unlock()
+	h.publishMu.Unlock()
 	return h.config.Store.Close(ctx)
 }
 func (h *Hub) remove(id uint64) {

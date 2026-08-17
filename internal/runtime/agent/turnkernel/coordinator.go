@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sync"
 )
 
@@ -21,6 +22,10 @@ type EffectExecutor interface {
 type EffectDispatcher interface {
 	Dispatch(context.Context, Effect, func(Command) error) error
 }
+
+// DomainFactObserver receives facts only after their authoritative append
+// succeeds. It is diagnostics-only: errors cannot flow back into the Kernel.
+type DomainFactObserver func(context.Context, []DomainFact)
 
 type SynchronousEffectDispatcher struct {
 	Executors map[EffectKind]EffectExecutor
@@ -59,7 +64,17 @@ type TurnCoordinator struct {
 	reducer    Reducer
 	store      DomainFactStore
 	dispatcher EffectDispatcher
+	observer   DomainFactObserver
 	nextFact   uint64
+}
+
+func (c *TurnCoordinator) SetDomainFactObserver(observer DomainFactObserver) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.observer = observer
 }
 
 func NewTurnCoordinator(
@@ -223,7 +238,22 @@ func (c *TurnCoordinator) transition(
 	}
 	c.state = transition.State
 	c.nextFact += uint64(len(facts))
+	c.observeFacts(facts)
 	return append([]Effect(nil), transition.Effects...), nil
+}
+
+func (c *TurnCoordinator) observeFacts(facts []DomainFact) {
+	if c.observer == nil || len(facts) == 0 {
+		return
+	}
+	func() {
+		defer func() {
+			if recover() != nil {
+				_ = debug.Stack()
+			}
+		}()
+		c.observer(context.Background(), facts)
+	}()
 }
 
 func resultEffectID(command Command) string {

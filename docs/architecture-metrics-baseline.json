@@ -18,10 +18,14 @@
       "kind": "package",
       "path": "internal/orchestration/worker",
       "limits": {
-        "internal_fanout": 2,
-        "production_lines": 547,
+        "internal_fanout": 3,
+        "production_lines": 551,
         "options_fields": 16,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "SO5 creates a standard child W3C Trace Context for each claimed Worker execution.",
+        "production_lines": "SO5 propagates one child Trace Context through the existing Worker executor boundary."
       }
     },
     {
@@ -73,10 +77,14 @@
       "kind": "package",
       "path": "internal/orchestration/workflow",
       "limits": {
-        "internal_fanout": 4,
-        "production_lines": 1753,
+        "internal_fanout": 5,
+        "production_lines": 1767,
         "options_fields": 13,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "internal_fanout": "SO5 uses the isolated tracecontext adapter at the Workflow task boundary.",
+        "production_lines": "SO5 persists W3C traceparent and tracestate in each Workflow TaskRequest."
       }
     },
     {
@@ -84,10 +92,14 @@
       "kind": "package",
       "path": "internal/orchestration/subagent",
       "limits": {
-        "internal_fanout": 6,
-        "production_lines": 4254,
+        "internal_fanout": 7,
+        "production_lines": 4300,
         "options_fields": 8,
         "mutex_fields": 3
+      },
+      "relaxations": {
+        "internal_fanout": "SO5 uses the isolated tracecontext adapter for Subagent spawn and Turn handoff.",
+        "production_lines": "SO5 carries a bounded W3C parent through DelegationIntent, Agent state, and child Turn Context."
       }
     },
     {
@@ -96,9 +108,13 @@
       "path": "internal/runtime/app/eventhub",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 212,
+        "production_lines": 250,
         "options_fields": 0,
-        "mutex_fields": 1
+        "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "SO7 releases the Event Hub state lock around Store I/O, projections, and observation callbacks while preserving ordered fanout.",
+        "mutex_fields": "SO7 uses a separate publish serializer so sequence and subscription registration remain gap-free without holding the state lock across external work."
       }
     },
     {
@@ -238,10 +254,14 @@
       "kind": "package",
       "path": "internal/adapter/provider/httpclient",
       "limits": {
-        "internal_fanout": 8,
-        "production_lines": 673,
+        "internal_fanout": 9,
+        "production_lines": 683,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "SO5 injects W3C Trace Context through the dedicated observability adapter.",
+        "production_lines": "SO5 propagates traceparent and tracestate across HTTP and Responses WebSocket handshakes."
       }
     },
     {
@@ -249,8 +269,12 @@
       "kind": "file",
       "path": "internal/adapter/provider/httpclient/client.go",
       "limits": {
-        "lines": 407,
-        "max_function_lines": 77
+        "lines": 409,
+        "max_function_lines": 78
+      },
+      "relaxations": {
+        "lines": "SO5 injects W3C Trace Context after governed Provider headers are prepared.",
+        "max_function_lines": "SO5 adds one non-authoritative trace injection call to Provider Execute."
       }
     },
     {
@@ -329,14 +353,14 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 74,
-        "production_lines": 8423,
+        "internal_fanout": 75,
+        "production_lines": 8460,
         "options_fields": 70,
         "mutex_fields": 6
       },
       "relaxations": {
-        "internal_fanout": "EE1 installs typed extensions; EE2 adds Plan/Persist ports; EE3 installs Plugin Capability projection; EE4 opens the durable lifecycle receipt store; EE6 opens the journaled Runtime Control Plane.",
-        "production_lines": "EE1-EE3 compose typed plans and capabilities; EE4 adds lifecycle composition; EE5 adds bounded Skill Candidate projection; EE6 constructs the Host-neutral Control Plane.",
+        "internal_fanout": "EE1 installs typed extensions; EE2 adds Plan/Persist ports; EE3 installs Plugin Capability projection; EE4 opens the durable lifecycle receipt store; EE6 opens the journaled Runtime Control Plane; SO6 binds trusted Capture configuration.",
+        "production_lines": "EE1-EE3 compose typed plans and capabilities; EE4 adds lifecycle composition; EE5 adds bounded Skill Candidate projection; EE6 constructs the Host-neutral Control Plane; SO2 constructs the durable Observation Runtime; SO6 resolves Capture Mode and credential redaction only during Wiring.",
         "mutex_fields": "EE4 serializes dynamic MCP capability config filters independently from the prewarm worker."
       }
     },
@@ -479,6 +503,75 @@
       }
     },
     {
+      "id": "observability_semantic_package",
+      "kind": "package",
+      "path": "internal/observability/semantic",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 1820,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "SO3 hardens Projection source identity with a digest over the complete Journal prefix and rejects same-source nondeterminism."
+      }
+    },
+    {
+      "id": "observability_tracecontext_package",
+      "kind": "package",
+      "path": "internal/observability/tracecontext",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 257,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "observability_otel_package",
+      "kind": "package",
+      "path": "internal/observability/otel",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 1109,
+        "options_fields": 5,
+        "mutex_fields": 4
+      }
+    },
+    {
+      "id": "observability_privacy_package",
+      "kind": "package",
+      "path": "internal/observability/privacy",
+      "limits": {
+        "internal_fanout": 2,
+        "production_lines": 241,
+        "options_fields": 3,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "observability_retention_package",
+      "kind": "package",
+      "path": "internal/observability/retention",
+      "limits": {
+        "internal_fanout": 3,
+        "production_lines": 139,
+        "options_fields": 0,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "observability_supportbundle_package",
+      "kind": "package",
+      "path": "internal/observability/supportbundle",
+      "limits": {
+        "internal_fanout": 3,
+        "production_lines": 195,
+        "options_fields": 6,
+        "mutex_fields": 0
+      }
+    },
+    {
       "id": "runtime_app_chatmerge_package",
       "kind": "package",
       "path": "internal/runtime/app/chatmerge",
@@ -494,9 +587,9 @@
       "kind": "package",
       "path": "internal/runtime/app/persistence",
       "limits": {
-        "internal_fanout": 13,
+        "internal_fanout": 12,
         "production_lines": 178,
-        "options_fields": 10,
+        "options_fields": 9,
         "mutex_fields": 0
       }
     },
@@ -548,14 +641,14 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-      "production_lines": 10516,
-      "options_fields": 61,
+        "production_lines": 10610,
+        "options_fields": 60,
         "mutex_fields": 8
       },
       "relaxations": {
         "internal_fanout": "EE2 freezes one runtime-owned Extension Plan in TurnSpec instead of copying mutable extension snapshots.",
-      "production_lines": "EE5 freezes Skill Candidate Handles; EE7 binds content-safe Hook audit emission to the current Turn context and constructs one stateful Guard per Engine.",
-      "options_fields": "EE7 carries a Guard factory so each Engine receives independent approval state with the same Hook-aware security boundary."
+        "production_lines": "EE5 freezes Skill Candidate Handles; EE7 binds content-safe Hook audit emission to the current Turn context and constructs one stateful Guard per Engine; SO2 emits post-commit Domain Fact references through the grouped observability runtime; SO3 binds the explicit Tool Attempt ordinal into Observation Identity; SO4 freezes Trace latency once and records model/tool usage through Kernel facts before terminal measurement; SO5 places Turn, Provider, and Tool spans into the propagated W3C Context.",
+        "options_fields": "EE7 carries a Guard factory so each Engine receives independent approval state with the same Hook-aware security boundary."
       }
     },
     {
@@ -564,12 +657,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 20,
-        "production_lines": 8424,
-        "options_fields": 19,
+        "production_lines": 8602,
+        "options_fields": 18,
         "mutex_fields": 7
       },
       "relaxations": {
-        "production_lines": "EE5 records Skill invocation receipts; EE7 maps redacted Hook audit records into retained Runtime events."
+        "production_lines": "EE5 records Skill invocation receipts; EE7 maps redacted Hook audit records into retained Runtime events; SO2 records Terminal prepared/committed evidence through the observation adapter; SO4 builds Receipt and deterministic Trace projections from one frozen Terminal Measurement."
       }
     },
     {
@@ -633,9 +726,21 @@
       "path": "internal/persist/state/turnstate",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 767,
+        "production_lines": 1046,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "SO7 adds periodic Domain Fact snapshots, typed top-level deltas, digest-chain replay, and legacy logical decoding inside the persistence owner."
+      }
+    },
+    {
+      "id": "turnstate_fact_codec_file",
+      "kind": "file",
+      "path": "internal/persist/state/turnstate/fact_codec.go",
+      "limits": {
+        "lines": 285,
+        "max_function_lines": 82
       }
     },
     {
@@ -745,8 +850,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-      "lines": 419,
-      "max_function_lines": 324
+        "lines": 419,
+        "max_function_lines": 318
       }
     },
     {
@@ -1075,6 +1180,22 @@
       "path": "extensions/vscode/src/extensions/model.ts",
       "limits": {
         "lines": 57
+      }
+    },
+    {
+      "id": "turnkernel_terminal_measurement_file",
+      "kind": "file",
+      "path": "internal/runtime/agent/turnkernel/measurement.go",
+      "limits": {
+        "lines": 152
+      }
+    },
+    {
+      "id": "runtime_terminal_measurement_file",
+      "kind": "file",
+      "path": "internal/runtime/app/terminal_measurement.go",
+      "limits": {
+        "lines": 130
       }
     },
     {

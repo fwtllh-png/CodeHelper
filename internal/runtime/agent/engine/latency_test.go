@@ -134,36 +134,14 @@ func (v *timedVerifier) Verify(
 	return passedReceipt(), nil
 }
 
-// recordingSink stands in for the spans table.
-type recordingSink struct {
-	mu     sync.Mutex
-	turnID string
-	spans  []trace.Record
-	writes int
-}
-
-func (s *recordingSink) Write(_ context.Context, turnID string, spans []trace.Record) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.turnID, s.spans, s.writes = turnID, spans, s.writes+1
-	return nil
-}
-
-func (s *recordingSink) snapshot() (string, []trace.Record, int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.turnID, s.spans, s.writes
-}
-
 // TestTurnReportsEveryLatencyPhase is the T3 acceptance: a turn that called a
 // model, ran a tool, waited for a human and verified itself reports all five
 // numbers, and each one is the stretch that phase actually spent.
 func TestTurnReportsEveryLatencyPhase(t *testing.T) {
 	clock := newLatencyClock()
-	sink := &recordingSink{}
 	verifier := &timedVerifier{clock: clock, spent: 1500 * time.Millisecond}
 	engine := newLatencyEngine(t, latencyEngineOptions{
-		clock: clock, sink: sink, verifier: verifier,
+		clock: clock, verifier: verifier,
 		posture: policy.PermissionSuggest,
 		tool:    latencyTool{clock: clock, spent: time.Second},
 		calls: [][]timedEvent{{
@@ -223,10 +201,7 @@ func TestTurnReportsEveryLatencyPhase(t *testing.T) {
 		t.Fatalf("total = %s, want 7.3s", latency.Total)
 	}
 
-	turnID, spans, writes := sink.snapshot()
-	if writes != 1 || turnID != "turn-1" {
-		t.Fatalf("sink wrote %d times for turn %q, want one write for turn-1", writes, turnID)
-	}
+	spans := engine.TurnSpans()
 	byName := map[string]trace.Record{}
 	for _, span := range spans {
 		byName[span.Name] = span
@@ -321,9 +296,8 @@ func TestTurnWithoutModelOutputReportsNoFirstToken(t *testing.T) {
 // row to hang spans off, so the trace stays in memory rather than failing a write.
 func TestAnUnnamedTurnIsMeasuredButNotPersisted(t *testing.T) {
 	clock := newLatencyClock()
-	sink := &recordingSink{}
 	engine := newLatencyEngine(t, latencyEngineOptions{
-		clock: clock, sink: sink,
+		clock: clock,
 		calls: [][]timedEvent{{
 			{after: 250 * time.Millisecond, event: provider.StreamEvent{
 				Type: provider.EventTextDelta, Text: "done",
@@ -337,9 +311,6 @@ func TestAnUnnamedTurnIsMeasuredButNotPersisted(t *testing.T) {
 	}
 	if latency := engine.TurnLatency(); latency == nil || latency.Total != 250*time.Millisecond {
 		t.Fatalf("latency = %+v, want 250ms measured in memory", latency)
-	}
-	if _, _, writes := sink.snapshot(); writes != 0 {
-		t.Fatalf("sink writes = %d, want none for a turn with no durable row", writes)
 	}
 	var core, transitions int
 	for _, span := range engine.TurnSpans() {
@@ -360,7 +331,6 @@ func TestAnUnnamedTurnIsMeasuredButNotPersisted(t *testing.T) {
 
 type latencyEngineOptions struct {
 	clock    *latencyClock
-	sink     trace.Sink
 	verifier verify.Runner
 	posture  policy.Permission
 	tool     tool.Executor
@@ -383,11 +353,12 @@ func newLatencyEngine(t *testing.T, options latencyEngineOptions) *Engine {
 	engineOptions := Options{
 		Provider: &timedProvider{clock: options.clock, calls: options.calls},
 		Route:    testRoute(t), Tools: registry, MaxOutputTokens: 128, MaxSteps: 8,
-		Security:    policy.DefaultRuntime(policy.ModeAct, posture),
-		Workspace:   root,
-		Journal:     newTestWorkspaceJournal(t, root),
-		Now:         options.clock.now,
-		Trace:       options.sink,
+		Security:  policy.DefaultRuntime(policy.ModeAct, posture),
+		Workspace: root,
+		Journal:   newTestWorkspaceJournal(t, root),
+		Observability: trace.Runtime{
+			Clock: options.clock.now,
+		},
 		Diagnostics: fakeDiagnosticRunner{},
 	}
 	if options.verifier != nil {

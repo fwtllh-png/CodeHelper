@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/host/cli"
-	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -325,20 +324,38 @@ func seedAccounting(t *testing.T, withTrace bool) string {
 		return dataDir
 	}
 	base := time.Now().UTC().Add(-time.Minute)
-	if err := tracestate.NewSQLiteRepository(store.SQLite()).Write(ctx, "turn-1", []tracestate.Record{
-		{
-			ID: 1, Name: tracestate.NameTurn, Started: base,
-			Ended: base.Add(5 * time.Second), Status: tracestate.StatusOK,
+	envelope, err := json.Marshal(map[string]any{
+		"measurement": map[string]any{
+			"version":   1,
+			"frozen_at": base.Add(5 * time.Second),
+			"latency": map[string]any{
+				"turn": map[string]any{
+					"recorded": true, "milliseconds": 5000,
+				},
+				"provider": map[string]any{
+					"recorded": true, "milliseconds": 1200,
+				},
+				"tool": map[string]any{
+					"recorded": true, "milliseconds": 2000,
+				},
+			},
+			"usage": map[string]any{"frozen": true},
 		},
-		{
-			ID: 2, ParentID: 1, Name: tracestate.NameModelCall, Started: base,
-			Ended: base.Add(1200 * time.Millisecond), Status: tracestate.StatusOK,
+		"frozen_state": map[string]any{
+			"terminal": map[string]any{"kind": "completed"},
 		},
-		{
-			ID: 3, ParentID: 1, Name: tracestate.NameTool, Started: base.Add(2 * time.Second),
-			Ended: base.Add(4 * time.Second), Status: tracestate.StatusOK,
-		},
-	}); err != nil {
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SQLite().DB().ExecContext(
+		ctx,
+		`INSERT INTO turn_terminal_envelopes(
+			turn_id, effect_id, digest, envelope_json, marker_json
+		) VALUES (?, 'terminal:turn-1', 'digest', ?, '{}')`,
+		"turn-1",
+		string(envelope),
+	); err != nil {
 		t.Fatal(err)
 	}
 	return dataDir

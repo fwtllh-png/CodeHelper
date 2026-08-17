@@ -56,6 +56,7 @@ type TerminalEnvelope struct {
 	EffectID        string                         `json:"effect_id"`
 	FrozenState     State                          `json:"frozen_state"`
 	DomainFacts     []DomainFact                   `json:"domain_facts"`
+	Measurement     TerminalMeasurementSnapshot    `json:"measurement"`
 	Receipt         *protocol.ExecutionReceiptData `json:"receipt"`
 	SessionDelta    json.RawMessage                `json:"session_delta,omitempty"`
 	FinalOutput     []string                       `json:"final_output,omitempty"`
@@ -75,6 +76,7 @@ type TerminalEnvelopeStage string
 
 const (
 	StageDomainFacts     TerminalEnvelopeStage = "domain_facts"
+	StageMeasurement     TerminalEnvelopeStage = "measurement"
 	StageReceipt         TerminalEnvelopeStage = "receipt"
 	StageSessionDelta    TerminalEnvelopeStage = "session_delta"
 	StageFinalOutput     TerminalEnvelopeStage = "final_output"
@@ -224,6 +226,7 @@ func (s *MemoryTerminalEnvelopeStore) CommitTerminal(
 	}
 	for _, stage := range []TerminalEnvelopeStage{
 		StageDomainFacts,
+		StageMeasurement,
 		StageReceipt,
 		StageSessionDelta,
 		StageFinalOutput,
@@ -385,6 +388,30 @@ func validateTerminalEnvelope(envelope TerminalEnvelope) (string, error) {
 	}
 	if envelope.Receipt == nil {
 		return "", errors.New("terminal envelope receipt is missing")
+	}
+	if err := ValidateTerminalMeasurement(envelope.Measurement); err != nil {
+		return "", fmt.Errorf("terminal envelope measurement: %w", err)
+	}
+	if envelope.Receipt.MeasurementDigest != envelope.Measurement.Digest ||
+		envelope.Receipt.UsageDigest != envelope.Measurement.UsageDigest ||
+		envelope.Receipt.MeasurementRecorded != envelope.Measurement.Recorded() {
+		return "", errors.New(
+			"terminal envelope receipt disagrees with measurement",
+		)
+	}
+	if envelope.Measurement.UsageRecorded {
+		usage := envelope.Measurement.Usage
+		receipt := envelope.Receipt
+		if receipt.InputTokens != usage.InputTokens ||
+			receipt.OutputTokens != usage.OutputTokens ||
+			receipt.ReasoningTokens != usage.ReasoningTokens ||
+			receipt.CachedTokens != usage.CachedTokens ||
+			receipt.CostMicrounits != usage.CostMicrounits ||
+			receipt.CostKnown != usage.CostKnown {
+			return "", errors.New(
+				"terminal envelope receipt usage disagrees with measurement",
+			)
+		}
 	}
 	if len(envelope.SessionDelta) != 0 && !json.Valid(envelope.SessionDelta) {
 		return "", errors.New("terminal envelope session delta is invalid")

@@ -44,8 +44,8 @@ func prepareRuntime(
 			"durable runtime requires event, content, and terminal stores",
 		)
 	}
-	if options.Metrics == nil {
-		options.Metrics = telemetry.NewMetrics()
+	if options.Observability.Metrics == nil {
+		options.Observability.Metrics = telemetry.NewMetrics()
 	}
 	if options.EventStore == nil {
 		options.EventStore = NewMemoryEventStore(options.EventHistory)
@@ -78,7 +78,7 @@ func prepareRuntime(
 		ctx: runtimeContext, cancel: cancel, opts: options,
 		engine: options.Engine, events: options.EventStore,
 		content: options.ContentStore, lifecycle: options.Lifecycle,
-		metrics: options.Metrics, logger: options.Logger,
+		metrics: options.Observability.Metrics, logger: options.Observability.Logger,
 		profiles: options.SessionProfiles, defaultProfile: options.DefaultProfile,
 		profileCapabilities: options.ProfileCapabilities,
 		toolCatalog:         options.ToolCatalog, sessionLifecycle: options.SessionLifecycle,

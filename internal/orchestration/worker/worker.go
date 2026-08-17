@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 )
@@ -395,6 +396,9 @@ func (s *Scheduler) run(
 ) {
 	stopHeartbeat := s.beat(ctx, cancel, value)
 
+	if traced, traceErr := tracecontext.Child(ctx); traceErr == nil {
+		ctx = traced
+	}
 	outcome, err := executor.Execute(ctx, value)
 	stopHeartbeat()
 	// Cancellation means the process is stopping or the lease was lost, and in

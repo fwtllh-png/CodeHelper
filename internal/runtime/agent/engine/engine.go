@@ -79,12 +79,9 @@ type Options struct {
 	Workspace          string
 	WorkspaceIsolation string
 	Metrics            Metrics
-	// Now is the turn clock (nil means time.Now).
-	Now func() time.Time
-	// Trace persists spans; receipts retain in-memory timing without it.
-	Trace       trace.Sink
-	Journal     *workspacejournal.Manager
-	ReadTracker *workspacejournal.ReadTracker
+	Observability      trace.Runtime
+	Journal            *workspacejournal.Manager
+	ReadTracker        *workspacejournal.ReadTracker
 	// WorkspaceTurnGate serializes engines sharing one writable root.
 	WorkspaceTurnGate *WorkspaceTurnGate
 	Diagnostics       diagnostics.Runner
@@ -301,9 +298,6 @@ func New(options Options) (*Engine, error) {
 	options.Tools.SetMaterializeLimits(
 		tool.DefaultMaxMaterialized, tool.DefaultMaxMaterializedSchemaBytes,
 	)
-	if options.Now == nil {
-		options.Now = time.Now
-	}
 	window, err := createWindowLedger(1)
 	if err != nil {
 		return nil, fmt.Errorf("create token window: %w", err)
@@ -331,7 +325,7 @@ func New(options Options) (*Engine, error) {
 				ReadTracker: options.ReadTracker, Journal: options.Journal, Diagnostics: options.Diagnostics,
 				OnNetworkAllow: options.OnNetworkAllow,
 
-				Now: options.Now,
+				Now: options.Observability.Now,
 			})
 		}
 		if err != nil {

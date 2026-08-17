@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "stage": "SO7",
+  "status": "accepted",
+  "captured_on": "2026-08-17",
+  "base_commit": "38cc88710a7881a4943f05b248ff05acb0c0ad1c",
+  "domain_facts": {
+    "snapshot_interval": 16,
+    "delta_granularity": "state_top_level_field",
+    "previous_digest_chain": true,
+    "logical_api_changed": false,
+    "golden_replay_equal": true,
+    "sample_facts": 32,
+    "full_state_bytes": 347246,
+    "snapshot_delta_bytes": 33620,
+    "storage_reduction_percent": 90.32,
+    "target_reduction_percent": 50,
+    "tamper_rejected": true
+  },
+  "convergence": {
+    "engine_trace_sink_exists": false,
+    "terminal_span_table_write_exists": false,
+    "accounting_source": "terminal_measurement_snapshot",
+    "legacy_span_rows_in_live_run": 0,
+    "duplicate_provider_metric_writes": 0,
+    "duplicate_turn_metric_writes": 0,
+    "duplicate_tool_metric_writes": 0,
+    "event_hub_state_lock_covers_store_io": false,
+    "event_hub_state_lock_covers_projection": false,
+    "event_hub_sequence_serialized": true,
+    "observation_monotonic_ns_populated": true,
+    "observation_canonical_clock_serialized": true,
+    "payload_dedup_rate_observable": true
+  },
+  "performance": {
+    "environment": {
+      "os": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M5 Pro"
+    },
+    "domain_fact_replay_median": {
+      "facts": 32,
+      "ns_per_op": 6117458,
+      "bytes_per_op": 3846875,
+      "allocs_per_op": 38200
+    },
+    "turn_observation_p95": {
+      "disabled_ns_per_op": 10307564,
+      "enabled_ns_per_op": 10164216,
+      "regression_percent": -1.39,
+      "maximum_allowed_percent": 2
+    }
+  },
+  "vscode_deepseek_live": {
+    "provider": "deepseek-v4-flash",
+    "model": "deepseek-v4-flash",
+    "turns": 2,
+    "completed_turns": 2,
+    "expected_outputs": [
+      "SO7-TURN-ONE",
+      "SO7-TURN-TWO"
+    ],
+    "model_calls": 2,
+    "input_tokens": 13216,
+    "output_tokens": 14,
+    "cached_tokens": 1792,
+    "turn_p50_ms": 1734,
+    "turn_p95_ms": 3437,
+    "observation_records": 42,
+    "trace_ids": 2,
+    "payload_refs_default_metadata": 0,
+    "active_turns_after_completion": 0,
+    "pending_outbox_after_completion": 0,
+    "leases_after_completion": 0,
+    "open_spans_after_completion": 0,
+    "vscode_processes_after_shutdown": 0,
+    "runtime_processes_after_shutdown": 0,
+    "runtime_monitor_path": ".tmp/runtime-monitor/r50-state-observability-so7-live"
+  },
+  "post_acceptance_live_audit": {
+    "provider": "deepseek-v4-flash",
+    "model": "deepseek-v4-flash",
+    "prompt_kind": "read_only_cross_module_observability_audit",
+    "turns": 1,
+    "completed_turns": 1,
+    "model_samples": 9,
+    "provider_attempts": 10,
+    "tool_results": 21,
+    "tool_errors": 0,
+    "input_tokens": 261964,
+    "output_tokens": 3999,
+    "reasoning_tokens": 1221,
+    "cached_tokens": 71680,
+    "turn_ms": 60922,
+    "observation_records": 260,
+    "canonical_sequence_contiguous": true,
+    "observed_sequence_set_contiguous": true,
+    "monotonic_ns_present": true,
+    "monotonic_ns_strict": true,
+    "recorded_at_nondecreasing": true,
+    "trace_ids": 1,
+    "payload_refs_default_metadata": 0,
+    "domain_facts": 195,
+    "full_fact_bytes": 2478999,
+    "snapshot_delta_bytes": 592133,
+    "storage_reduction_percent": 76.11,
+    "measurement_matches_receipt": true,
+    "expected_output": "SO7-MONOTONIC-RETEST-PASS",
+    "active_turns_after_completion": 0,
+    "pending_outbox_after_completion": 0,
+    "leases_after_completion": 0,
+    "open_spans_after_completion": 0,
+    "vscode_processes_after_shutdown": 0,
+    "runtime_processes_after_shutdown": 0,
+    "runtime_monitor_path": ".tmp/runtime-monitor/r52-state-observability-so7-fixed"
+  },
+  "baseline": {
+    "event_kinds": 50,
+    "durability_drifts": 0,
+    "known_gaps": 0
+  },
+  "architecture": {
+    "authority_ownership_changed": false,
+    "architecture_metrics": "112/112",
+    "new_ratchet_targets": [
+      "observability_privacy_package",
+      "observability_retention_package",
+      "observability_supportbundle_package",
+      "turnstate_fact_codec_file"
+    ]
+  },
+  "commands": [
+    "make state-observability-so7",
+    "make deepseek-vscode",
+    "make architecture-metrics",
+    "make docs-check"
+  ]
+}

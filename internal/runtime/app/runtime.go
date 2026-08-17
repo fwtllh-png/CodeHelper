@@ -67,6 +67,7 @@ type EngineSink interface {
 type TerminalMaterial struct {
 	FrozenState  turnkernel.State
 	DomainFacts  []turnkernel.DomainFact
+	Measurement  turnkernel.TerminalMeasurementSnapshot
 	Receipt      *protocol.ExecutionReceiptData
 	Terminal     protocol.EventData
 	SessionDelta json.RawMessage
@@ -201,8 +202,7 @@ type Options struct {
 	ContentStore        ContentStore
 	Lifecycle           DurableLifecycle
 	Recovery            *RecoveryState
-	Metrics             *telemetry.Metrics
-	Logger              *slog.Logger
+	Observability       RuntimeObservability
 	SessionProfiles     SessionProfileStore
 	DefaultProfile      protocol.SessionProfile
 	ProfileCapabilities protocol.SessionProfileCapabilities

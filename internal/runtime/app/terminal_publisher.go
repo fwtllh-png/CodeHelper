@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -84,6 +85,7 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 	envelope := turnkernel.TerminalEnvelope{
 		TurnID: string(turnID), EffectID: "terminal:" + string(turnID),
 		FrozenState: material.FrozenState, DomainFacts: material.DomainFacts,
+		Measurement:  material.Measurement,
 		Receipt:      material.Receipt,
 		SessionDelta: append(json.RawMessage(nil), material.SessionDelta...),
 		FinalOutput:  append([]string(nil), material.FrozenState.FinalOutput...),
@@ -99,6 +101,16 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 	committed := CommittedTerminal{
 		Operation: request.Operation, OperationID: projectionOperationID, ItemID: itemID,
 	}
+	preparedObservation := p.runtime.opts.Observability.Runtime.ObserveTerminal(
+		context.Background(),
+		trace.TerminalPrepared,
+		threadID,
+		turnID,
+		request.Operation.ID,
+		envelope.EffectID,
+		"",
+		envelope.Measurement.Digest,
+	)
 	if p.runtime.lifecycle != nil {
 		atomicStore, ok := p.runtime.terminalStore.(turnkernel.AtomicTerminalOperationStore)
 		if !ok {
@@ -111,6 +123,18 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 	} else {
 		_, err = p.runtime.terminalStore.CommitTerminal(ctx, envelope)
 		committed.OperationCommitted = err == nil
+	}
+	if err == nil {
+		p.runtime.opts.Observability.Runtime.ObserveTerminal(
+			context.Background(),
+			trace.TerminalCommitted,
+			threadID,
+			turnID,
+			request.Operation.ID,
+			envelope.EffectID,
+			preparedObservation,
+			envelope.Measurement.Digest,
+		)
 	}
 	return committed, err
 }
@@ -158,6 +182,7 @@ func (p *TerminalPublisher) Recover(ctx context.Context) error {
 	}
 	return nil
 }
+
 func (p *TerminalPublisher) publishEntry(
 	ctx context.Context,
 	turnID string,

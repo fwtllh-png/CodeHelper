@@ -337,7 +337,7 @@ func TestRunExecStreamsFixtureEvents(t *testing.T) {
 	}
 }
 
-func TestRunExecExportsProviderAgentAndToolMetrics(t *testing.T) {
+func TestRunExecDoesNotDuplicateObservationMetrics(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	fixturePath := filepath.Join("..", "..", "..", "testdata", "providers", "tools")
 	metricsPath := filepath.Join(t.TempDir(), "metrics.json")
@@ -364,7 +364,11 @@ func TestRunExecExportsProviderAgentAndToolMetrics(t *testing.T) {
 	if err := json.Unmarshal(data, &metrics); err != nil {
 		t.Fatal(err)
 	}
-	if metrics.ProviderRequests != 6 || metrics.AgentTurns != 1 || metrics.ToolExecutions != 5 {
+	if metrics.ProviderRequests != 0 ||
+		metrics.AgentTurns != 0 ||
+		metrics.ToolExecutions != 0 ||
+		metrics.OperationsSubmitted != 1 ||
+		metrics.OperationsProcessed != 1 {
 		t.Fatalf("metrics = %+v", metrics)
 	}
 }

@@ -248,6 +248,10 @@ sampleLoop:
 			"provider": call.provider, "model": call.model,
 			"sample": call.index, "attempt": attempt + 1,
 		})
+		requestContext = e.tracer().Context(
+			requestContext,
+			callSpan.ID(),
+		)
 		stream, err := e.options.Provider.Stream(requestContext, provider.ModelRequest{
 			Route: route, Messages: messages,
 			Projection: provider.ProjectionContext{

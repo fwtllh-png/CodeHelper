@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 )
 
 // Status is the stable agent lifecycle state.
@@ -365,8 +367,18 @@ func (m *Manager) startTurn(
 		return "", err
 	}
 	pending := m.mailbox.PendingSession(agent.SessionID, agentID)
+	traceParent, traceState := agent.TraceParent, agent.TraceState
 	m.mu.Unlock()
 	prompt = promptWithMessages(prompt, pending)
+	if traceParent != "" {
+		carrier := map[string]string{
+			tracecontext.HeaderTraceParent: traceParent,
+			tracecontext.HeaderTraceState:  traceState,
+		}
+		if traced, traceErr := tracecontext.ExtractMap(ctx, carrier); traceErr == nil {
+			ctx = traced
+		}
+	}
 	var (
 		out string
 		err error

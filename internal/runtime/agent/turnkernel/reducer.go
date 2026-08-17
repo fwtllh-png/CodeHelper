@@ -107,6 +107,15 @@ func (Reducer) Apply(current State, command Command) (Transition, error) {
 			return Transition{}, err
 		}
 
+	case SupplementalUsageRecorded:
+		if err := applySupplementalUsage(
+			&transition,
+			current,
+			value,
+		); err != nil {
+			return Transition{}, err
+		}
+
 	case ProviderRetryRequested:
 		if err := applyProviderRetry(&transition, current, value); err != nil {
 			return Transition{}, err
@@ -406,13 +415,7 @@ func applyModelSampleFinished(
 	}
 	transition.State.SampleLedger[command.SampleID] = sample
 	transition.State.ActiveSampleID = ""
-	transition.State.Usage.InputTokens += command.Usage.InputTokens
-	transition.State.Usage.OutputTokens += command.Usage.OutputTokens
-	transition.State.Usage.ReasoningTokens += command.Usage.ReasoningTokens
-	transition.State.Usage.CachedTokens += command.Usage.CachedTokens
-	transition.State.Usage.CostMicrounits += command.Usage.CostMicrounits
-	transition.State.Usage.CostKnown =
-		transition.State.Usage.CostKnown || command.Usage.CostKnown
+	mergeUsage(&transition.State.Usage, command.Usage)
 	transition.State.Context = command.Context
 	transition.State.Context.Frozen = false
 	transition.Events = append(transition.Events, Event{
@@ -472,13 +475,7 @@ func applyModelSampleResult(
 	}
 	transition.State.SampleLedger[command.SampleID] = sample
 	transition.State.ActiveSampleID = ""
-	transition.State.Usage.InputTokens += command.Usage.InputTokens
-	transition.State.Usage.OutputTokens += command.Usage.OutputTokens
-	transition.State.Usage.ReasoningTokens += command.Usage.ReasoningTokens
-	transition.State.Usage.CachedTokens += command.Usage.CachedTokens
-	transition.State.Usage.CostMicrounits += command.Usage.CostMicrounits
-	transition.State.Usage.CostKnown =
-		transition.State.Usage.CostKnown || command.Usage.CostKnown
+	mergeUsage(&transition.State.Usage, command.Usage)
 	transition.State.Context = command.Context
 	transition.State.Context.Frozen = false
 	transition.State.LastModelContinued = command.Continued
@@ -504,6 +501,50 @@ func applyModelSampleResult(
 		)
 	}
 	return nil
+}
+
+func applySupplementalUsage(
+	transition *Transition,
+	current State,
+	command SupplementalUsageRecorded,
+) error {
+	if err := requirePhase(current, command, PhaseSampling); err != nil {
+		return err
+	}
+	if strings.TrimSpace(command.Source) == "" ||
+		strings.TrimSpace(command.SampleID) == "" {
+		return illegal(
+			current,
+			command,
+			"supplemental usage identity is incomplete",
+		)
+	}
+	if command.Usage.Frozen {
+		return illegal(current, command, "supplemental usage is frozen")
+	}
+	mergeUsage(&transition.State.Usage, command.Usage)
+	transition.Events = append(transition.Events, Event{
+		Kind: EventUsageRecorded, SampleID: command.SampleID,
+	})
+	return nil
+}
+
+func mergeUsage(target *UsageState, value UsageState) {
+	calls := value.Calls
+	if calls == 0 {
+		calls = 1
+	}
+	if target.Calls == 0 {
+		target.CostKnown = value.CostKnown
+	} else {
+		target.CostKnown = target.CostKnown && value.CostKnown
+	}
+	target.Calls += calls
+	target.InputTokens += value.InputTokens
+	target.OutputTokens += value.OutputTokens
+	target.ReasoningTokens += value.ReasoningTokens
+	target.CachedTokens += value.CachedTokens
+	target.CostMicrounits += value.CostMicrounits
 }
 
 func applyProviderRetry(

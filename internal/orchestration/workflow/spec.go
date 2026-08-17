@@ -408,13 +408,15 @@ type Driver interface {
 }
 
 type TaskRequest struct {
-	RunID   string          `json:"run_id,omitempty"`
-	NodeID  string          `json:"node_id,omitempty"`
-	Attempt int             `json:"attempt,omitempty"`
-	Role    string          `json:"role,omitempty"`
-	Prompt  string          `json:"prompt"`
-	Profile string          `json:"profile,omitempty"`
-	Schema  json.RawMessage `json:"response_schema,omitempty"`
+	RunID       string          `json:"run_id,omitempty"`
+	NodeID      string          `json:"node_id,omitempty"`
+	Attempt     int             `json:"attempt,omitempty"`
+	TraceParent string          `json:"traceparent,omitempty"`
+	TraceState  string          `json:"tracestate,omitempty"`
+	Role        string          `json:"role,omitempty"`
+	Prompt      string          `json:"prompt"`
+	Profile     string          `json:"profile,omitempty"`
+	Schema      json.RawMessage `json:"response_schema,omitempty"`
 }
 
 type TaskResult struct {

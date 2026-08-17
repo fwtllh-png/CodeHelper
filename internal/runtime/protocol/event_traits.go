@@ -27,6 +27,22 @@ type EventTraits struct {
 	Terminal    bool            `json:"terminal"`
 }
 
+// Persisted reports whether the durable event log owns this event kind.
+// Bounded stream payloads and terminal projections are retained by their
+// dedicated owners rather than duplicated in events-v1.jsonl.
+func (d Durability) Persisted() bool {
+	switch d {
+	case "retained", "atomic":
+		return true
+	case "bounded", "terminal_projection", "transient":
+		return false
+	default:
+		// Unknown future durability values fail open at runtime. The manifest
+		// generator and protocol tests still reject them before release.
+		return true
+	}
+}
+
 func Traits(kind EventKind) (EventTraits, bool) {
 	traits, ok := eventTraits[kind]
 	return traits, ok

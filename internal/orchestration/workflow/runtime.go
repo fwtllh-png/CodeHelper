@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/model"
@@ -60,6 +61,9 @@ type RunOptions struct {
 func (r *Runtime) Run(ctx context.Context, options RunOptions) (Run, error) {
 	if options.Driver == nil {
 		return Run{}, errors.New("workflow driver is required")
+	}
+	if traced, err := tracecontext.NewRoot(ctx); err == nil {
+		ctx = traced
 	}
 	now := time.Now().UTC()
 	if options.Now != nil {
@@ -722,11 +726,19 @@ func (e *graphExecution) executeNode(
 		}
 		return NodeResult{Status: NodeStatusCompleted}, nil
 	case NodeTask:
-		taskResult, err := e.driver.SpawnTask(attemptCtx, TaskRequest{
+		taskCtx := attemptCtx
+		if traced, traceErr := tracecontext.Child(attemptCtx); traceErr == nil {
+			taskCtx = traced
+		}
+		carrier := make(map[string]string, 2)
+		tracecontext.InjectMap(taskCtx, carrier)
+		taskResult, err := e.driver.SpawnTask(taskCtx, TaskRequest{
 			RunID: string(e.runID), NodeID: node.ID,
 			Attempt: claim.attempt, Role: node.Role,
-			Prompt:  firstNonEmpty(node.Prompt, e.spec.Goal),
-			Profile: node.Profile, Schema: node.Schema,
+			TraceParent: carrier[tracecontext.HeaderTraceParent],
+			TraceState:  carrier[tracecontext.HeaderTraceState],
+			Prompt:      firstNonEmpty(node.Prompt, e.spec.Goal),
+			Profile:     node.Profile, Schema: node.Schema,
 		})
 		if attemptCtx.Err() != nil {
 			result := failedNode(

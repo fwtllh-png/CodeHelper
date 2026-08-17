@@ -1543,7 +1543,7 @@ func TestMCPHealthSnapshotProjectsOncePerTurn(t *testing.T) {
 	engine.options.TurnSnapshots.MCP = func() []MCPHealthSnapshot {
 		return append([]MCPHealthSnapshot(nil), snapshots...)
 	}
-	engine.options.Now = func() time.Time { return now }
+	engine.options.Observability.Clock = func() time.Time { return now }
 	var changes []MCPHealthChanged
 	send := func(_ State, event Event) error {
 		if event.MCPHealthChanged != nil {
@@ -1584,7 +1584,7 @@ func TestExtensionSnapshotProjectsOncePerTurn(t *testing.T) {
 	engine.options.TurnSnapshots.ExtensionPlan = func() (runtimeextension.Plan, error) {
 		return plan.Clone(), nil
 	}
-	engine.options.Now = func() time.Time { return now }
+	engine.options.Observability.Clock = func() time.Time { return now }
 	var changes []ExtensionLifecycleChanged
 	send := func(_ State, event Event) error {
 		if event.ExtensionLifecycle != nil {
@@ -2968,11 +2968,11 @@ func toolResultMessage(turn uint64, id string, content string) provider.Message 
 	}
 }
 
-func testRoute(t *testing.T) model.ReadyRoute {
+func testRoute(t testing.TB) model.ReadyRoute {
 	return testRouteProtocol(t, "http://127.0.0.1:1", model.ProtocolOpenAIChat)
 }
 
-func testRouteProtocol(t *testing.T, endpoint string, protocol model.WireProtocol) model.ReadyRoute {
+func testRouteProtocol(t testing.TB, endpoint string, protocol model.WireProtocol) model.ReadyRoute {
 	t.Helper()
 	adapter := model.AdapterOpenAICompatible
 	if protocol == model.ProtocolAnthropic {

@@ -14,9 +14,17 @@ import (
 // recorder is replaced rather than cleared on the way out, so a caller can still
 // read what the last turn spent — the same convention TurnDiff and
 // ContextReceipts already follow.
-func (e *Engine) beginTrace(purpose model.Purpose) (*trace.Recorder, *trace.Span) {
+func (e *Engine) beginTrace(
+	ctx context.Context,
+	purpose model.Purpose,
+	identity TurnIdentity,
+) (context.Context, *trace.Recorder, *trace.Span) {
 	route := e.activeRoute()
-	recorder := trace.NewRecorder(e.options.Now)
+	recorder := e.options.Observability.NewTurnRecorder(
+		ctx,
+		identity.SessionID,
+		identity.TurnID,
+	)
 	span := recorder.Start(trace.NameTurn, 0, map[string]any{
 		"provider": route.ProviderID(),
 		"model":    route.Model().ID,
@@ -28,27 +36,30 @@ func (e *Engine) beginTrace(purpose model.Purpose) (*trace.Recorder, *trace.Span
 		scope.state.toolSpans = make(map[string]uint64)
 		scope.mu.Unlock()
 	}
-	return recorder, span
+	return recorder.Context(ctx, span.ID()), recorder, span
 }
 
-// endTrace closes the turn and persists its spans. A sink that fails is counted
-// and dropped: a trace nobody could write must not change what the turn did, and
-// the turn has already reported its outcome by the time this runs.
+// endTrace closes the in-memory turn recorder. Durable observation is emitted
+// incrementally by the recorder; there is no second end-of-turn Trace writer.
 func (e *Engine) endTrace(
-	ctx context.Context,
+	_ context.Context,
 	recorder *trace.Recorder,
 	turn *trace.Span,
-	turnID string,
+	_ string,
 	state State,
 ) {
-	turn.End(traceStatus(state))
-	spans := recorder.Close()
-	if e.options.Trace == nil || turnID == "" || len(spans) == 0 {
+	if recorder.TerminalFrozen() {
+		recorder.CloseWithCleanup(traceStatus(state))
 		return
 	}
-	if err := e.options.Trace.Write(ctx, turnID, spans); err != nil {
-		e.options.Metrics.Error()
-	}
+	turn.End(traceStatus(state))
+	recorder.Close()
+}
+
+func (e *Engine) FreezeTerminalMeasurement(
+	status trace.Status,
+) trace.FrozenMeasurement {
+	return e.tracer().FreezeTerminal(status)
 }
 
 // tracer is the active turn's recorder. It is nil between turns, and every
@@ -71,7 +82,7 @@ func (e *Engine) tracer() *trace.Recorder {
 func (e *Engine) beginToolSpan(call provider.ToolCall) *trace.Span {
 	recorder := e.tracer()
 	span := recorder.Start(trace.NameTool, 0, map[string]any{
-		"tool": call.Name, "call_id": call.ID,
+		"tool": call.Name, "call_id": call.ID, "attempt": uint32(1),
 	})
 	if span.ID() == 0 || call.ID == "" {
 		return span
@@ -128,7 +139,7 @@ func (e *Engine) observeApprovalWait(wait toolguard.ApprovalWait) {
 	// The wait ended when the guard reported it, so the stretch is placed
 	// backwards from now on the engine's own clock rather than trusting a second
 	// clock's absolute times.
-	ended := e.options.Now()
+	ended := e.options.Observability.Now()
 	status := trace.StatusOK
 	if wait.Outcome != toolguard.ApprovalWaitDecided {
 		status = trace.StatusError
@@ -137,6 +148,7 @@ func (e *Engine) observeApprovalWait(wait toolguard.ApprovalWait) {
 		trace.NameApprovalWait, parent, ended.Add(-wait.Waited), ended, status,
 		map[string]any{
 			"tool": wait.Tool, "call_id": wait.CallID,
+			"attempt":    uint32(1),
 			"request_id": wait.RequestID, "outcome": string(wait.Outcome),
 		},
 	)

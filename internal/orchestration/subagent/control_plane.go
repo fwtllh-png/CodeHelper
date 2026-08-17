@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 )
 
 // DelegationMode controls whether and why a model may create child agents.
@@ -41,6 +43,8 @@ type DelegationIntent struct {
 	ParentID       string
 	Trigger        DelegationTrigger
 	Budget         AgentBudget
+	TraceParent    string
+	TraceState     string
 }
 
 // DelegationPolicy validates the provenance of a spawn proposal. It is an
@@ -367,6 +371,13 @@ func tightenBudget(role, tree Budget) Budget {
 }
 
 func (c *AgentControl) SpawnIntent(intent DelegationIntent) (*Agent, error) {
+	return c.SpawnIntentContext(context.Background(), intent)
+}
+
+func (c *AgentControl) SpawnIntentContext(
+	ctx context.Context,
+	intent DelegationIntent,
+) (*Agent, error) {
 	if c == nil {
 		return nil, errors.New("agent control is unavailable")
 	}
@@ -376,6 +387,12 @@ func (c *AgentControl) SpawnIntent(intent DelegationIntent) (*Agent, error) {
 	spec, err := c.roles.Resolve(intent.Role)
 	if err != nil {
 		return nil, err
+	}
+	if traced, traceErr := tracecontext.Child(ctx); traceErr == nil {
+		carrier := make(map[string]string, 2)
+		tracecontext.InjectMap(traced, carrier)
+		intent.TraceParent = carrier[tracecontext.HeaderTraceParent]
+		intent.TraceState = carrier[tracecontext.HeaderTraceState]
 	}
 	return c.manager.spawn(intent, spec)
 }
@@ -409,7 +426,21 @@ func (c *AgentControl) SpawnBackgroundForSession(
 	role Role,
 	objective string,
 ) (*Agent, error) {
-	return c.SpawnIntent(DelegationIntent{
+	return c.SpawnBackgroundForSessionContext(
+		context.Background(),
+		sessionID,
+		role,
+		objective,
+	)
+}
+
+func (c *AgentControl) SpawnBackgroundForSessionContext(
+	ctx context.Context,
+	sessionID string,
+	role Role,
+	objective string,
+) (*Agent, error) {
+	return c.SpawnIntentContext(ctx, DelegationIntent{
 		SessionID: sessionID, TaskName: "background_task",
 		Role: role, Objective: objective,
 		ExpectedOutput: "Complete the durable task and return structured evidence.",

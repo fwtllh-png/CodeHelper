@@ -75,6 +75,16 @@ func (ModelSampleResultReceived) commandName() string {
 	return "model_sample_result_received"
 }
 
+type SupplementalUsageRecorded struct {
+	Source   string
+	SampleID string
+	Usage    UsageState
+}
+
+func (SupplementalUsageRecorded) commandName() string {
+	return "supplemental_usage_recorded"
+}
+
 type ProviderRetryRequested struct {
 	EffectID         string
 	SampleID         string
@@ -330,6 +340,7 @@ const (
 	EventSampleStarted     EventKind = "sample_started"
 	EventSampleFinished    EventKind = "sample_finished"
 	EventProviderRetry     EventKind = "provider_retry_requested"
+	EventUsageRecorded     EventKind = "usage_recorded"
 	EventCancelAccepted    EventKind = "cancel_accepted"
 	EventRecoveryBound     EventKind = "recovery_bound"
 	EventEffectRequested   EventKind = "effect_requested"

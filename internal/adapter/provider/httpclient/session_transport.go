@@ -9,6 +9,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 )
 
 type sessionAttempt struct {
@@ -16,6 +17,7 @@ type sessionAttempt struct {
 	call        providerwire.PreparedCall
 	credential  string
 	cancel      context.CancelFunc
+	traceHeader http.Header
 	transferred bool
 }
 
@@ -28,12 +30,18 @@ func (c *Client) BeginSession(
 	if err != nil {
 		return nil, err
 	}
+	traceHeader := make(http.Header)
+	tracecontext.InjectHTTP(ctx, traceHeader)
 	return &sessionAttempt{
 		client: c, call: call, credential: credential, cancel: cancel,
+		traceHeader: traceHeader,
 	}, nil
 }
 func (a *sessionAttempt) Dial(endpoint string) (providerwire.Socket, context.CancelFunc, error) {
 	headers := a.call.Headers.Clone()
+	for name, values := range a.traceHeader {
+		headers[name] = append([]string(nil), values...)
+	}
 	applyAuth(headers, a.call.Auth, a.credential)
 	dialContext, cancel := context.WithCancel(context.Background())
 	conn, _, err := websocket.Dial(dialContext, endpoint, &websocket.DialOptions{
@@ -45,7 +53,7 @@ func (a *sessionAttempt) Dial(endpoint string) (providerwire.Socket, context.Can
 	}
 	return socket{conn: conn}, cancel, nil
 }
-func (a *sessionAttempt) ProviderRequest()           { a.client.providerRequest() }
+func (a *sessionAttempt) ProviderRequest()           {}
 func (a *sessionAttempt) IdleTimeout() time.Duration { return a.client.IdleTimeout }
 func (a *sessionAttempt) Wrap(stream provider.Stream, metadata provider.TransportMetadata) provider.Stream {
 	a.transferred = true
@@ -90,7 +98,6 @@ func applyAuth(header http.Header, style providerwire.AuthStyle, credential stri
 		header.Set("x-api-key", credential)
 	}
 }
-func (c *Client) providerRequest() { c.Metrics.ProviderRequest() }
 func (c *Client) wrapStream(
 	stream provider.Stream,
 	metadata provider.TransportMetadata,

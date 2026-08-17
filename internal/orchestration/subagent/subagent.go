@@ -188,6 +188,8 @@ type Agent struct {
 	ExpectedOutput    string
 	OwnedPaths        []string
 	DelegationTrigger DelegationTrigger
+	TraceParent       string
+	TraceState        string
 	RoleInstructions  string
 	Context           *ContextReceipt
 	Budget            AgentBudget
@@ -360,8 +362,9 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		ExpectedOutput:    strings.TrimSpace(intent.ExpectedOutput),
 		OwnedPaths:        append([]string(nil), intent.OwnedPaths...),
 		DelegationTrigger: intent.Trigger,
-		RoleInstructions:  spec.Instructions,
-		Budget:            requested,
+		TraceParent:       intent.TraceParent, TraceState: intent.TraceState,
+		RoleInstructions: spec.Instructions,
+		Budget:           requested,
 	}
 	if runtime, ok := m.runtime.(graphRuntimeHost); ok {
 		if err := runtime.DeclareAgent(context.Background(), *agent); err != nil {

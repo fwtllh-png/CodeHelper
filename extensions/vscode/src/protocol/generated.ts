@@ -112,7 +112,7 @@ export const eventTraits = {
   "operation.rejected": {"class":"terminal_operation","item_owner":"operation","durability":"retained","correlation":"operation","terminal":false},
   "output.delta": {"class":"stream","item_owner":"turn","durability":"terminal_projection","correlation":"turn","terminal":false},
   "plan.delta": {"class":"artifact_stream","item_owner":"turn","durability":"retained","correlation":"plan","terminal":false},
-  "reasoning.delta": {"class":"stream","item_owner":"turn","durability":"retained","correlation":"turn","terminal":false},
+  "reasoning.delta": {"class":"stream","item_owner":"turn","durability":"transient","correlation":"turn","terminal":false},
   "run.canceled": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
   "run.completed": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
   "run.failed": {"class":"orchestration","item_owner":"run","durability":"retained","correlation":"run","terminal":false},
@@ -1547,6 +1547,8 @@ export type TurnReceiptData = {
       readonly "verify_ms": number;
     };
   readonly "latency_ms": number;
+  readonly "measurement_digest"?: string;
+  readonly "measurement_recorded": boolean;
   readonly "mode"?: string;
   readonly "model_execution": {
       readonly "completion_repairs": number;
@@ -1594,6 +1596,7 @@ export type TurnReceiptData = {
   readonly "tools_failed"?: ReadonlyArray<string>;
   readonly "tools_succeeded"?: ReadonlyArray<string>;
   readonly "unresolved_issues"?: ReadonlyArray<string>;
+  readonly "usage_digest"?: string;
   readonly "verification": {
       readonly "diagnostics": string;
       readonly "tests": string;

@@ -388,6 +388,15 @@ func sqliteEnvelopeFixture(t *testing.T) turnkernel.TerminalEnvelope {
 	if err != nil {
 		t.Fatal(err)
 	}
+	measurement, err := turnkernel.NewTerminalMeasurementSnapshot(
+		time.Unix(1, 0),
+		nil,
+		state.Usage,
+		true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	decision := *state.Terminal
 	return turnkernel.TerminalEnvelope{
 		TurnID:      "turn-sqlite",
@@ -397,9 +406,12 @@ func sqliteEnvelopeFixture(t *testing.T) turnkernel.TerminalEnvelope {
 			TurnID: "turn-sqlite", Sequence: 1, Command: "finish_terminal",
 			State: state, StateDigest: digest,
 		}},
+		Measurement: measurement,
 		Receipt: &protocol.ExecutionReceiptData{
 			Goal: "answer", Intent: protocol.TurnIntentAnswer,
-			Outcome: protocol.TurnOutcomeAnswered,
+			Outcome:           protocol.TurnOutcomeAnswered,
+			MeasurementDigest: measurement.Digest,
+			UsageDigest:       measurement.UsageDigest,
 		},
 		FinalOutput: state.FinalOutput,
 		TerminalEvent: turnkernel.Event{

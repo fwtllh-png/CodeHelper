@@ -80,8 +80,8 @@ func (e *agentTurnExecutor) Execute(
 		return worker.Outcome{State: taskstate.StateFailed, Reason: err.Error()}, nil
 	}
 
-	agent, err := e.control.SpawnBackgroundForSession(
-		value.SessionID, role, payload.Prompt,
+	agent, err := e.control.SpawnBackgroundForSessionContext(
+		ctx, value.SessionID, role, payload.Prompt,
 	)
 	if err != nil {
 		// Spawn fails when the budget is spent or when a writing child has nowhere

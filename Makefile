@@ -31,6 +31,11 @@ LDFLAGS := -s -w \
 	security-governance-sg1 security-governance-sg2 security-governance-sg3 \
 	security-governance-sg4 security-governance-sg5 security-governance-sg6 \
 	security-governance-sg7 \
+	state-observability-so0 state-observability-so0-update \
+	state-observability-so1 state-observability-so2 state-observability-so3 \
+	state-observability-so4 state-observability-so5 state-observability-so6 \
+	state-observability-so7 \
+	observation-traits observation-traits-check \
 	extension-ecosystem-ee0 extension-ecosystem-ee0-update extension-ecosystem-ee1 \
 	extension-ecosystem-ee2 extension-ecosystem-ee3 extension-ecosystem-ee4 \
 	extension-ecosystem-ee5 extension-ecosystem-ee6 extension-ecosystem-ee7 \
@@ -75,6 +80,8 @@ TOOL_EXECUTION_BASELINE := docs/tool-execution-ex0-baseline.json
 TOOL_EXECUTION_REPORT ?= .tmp/tool-execution/ex0-report.json
 SECURITY_GOVERNANCE_BASELINE := docs/security-governance-sg0-baseline.json
 SECURITY_GOVERNANCE_REPORT ?= .tmp/security-governance/sg0-report.json
+STATE_OBSERVABILITY_BASELINE := docs/state-observability-so0-baseline.json
+STATE_OBSERVABILITY_REPORT ?= .tmp/state-observability/so0-report.json
 EXTENSION_ECOSYSTEM_BASELINE := docs/extension-ecosystem-ee0-baseline.json
 EXTENSION_ECOSYSTEM_REPORT ?= .tmp/extension-ecosystem/ee0-report.json
 TASK_ORCHESTRATION_BASELINE := docs/task-orchestration-or0-scheduler-baseline.json
@@ -504,6 +511,172 @@ security-governance-sg0-update:
 	$(GO) run ./scripts/securitygovernancebaseline -root . \
 		-baseline '$(SECURITY_GOVERNANCE_BASELINE)' \
 		-write-baseline
+
+state-observability-so0:
+	$(GO) test -count=1 ./scripts/stateobservabilitybaseline
+	$(GO) test -run '^$$' -bench '^BenchmarkSO0' -benchmem -benchtime=3x -count=1 \
+		./scripts/stateobservabilitybaseline
+	$(GO) run ./scripts/stateobservabilitybaseline -root . \
+		-baseline '$(STATE_OBSERVABILITY_BASELINE)' \
+		-report '$(STATE_OBSERVABILITY_REPORT)'
+	$(GO) test -count=1 \
+		./internal/observability/... \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/app/eventhub \
+		./internal/runtime/app/extension \
+		./internal/persist/state/... \
+		./internal/orchestration/kernel \
+		./internal/orchestration/store
+	# SO0 changes only scripts and docs. Check the current architecture limits
+	# without rewriting unrelated stale relaxations inherited from main.
+	$(MAKE) architecture-metrics
+	$(MAKE) docs-check
+
+state-observability-so0-update:
+	$(GO) run ./scripts/stateobservabilitybaseline -root . \
+		-baseline '$(STATE_OBSERVABILITY_BASELINE)' \
+		-write-baseline
+
+state-observability-so1: state-observability-so0 observation-traits-check
+	$(GO) test -count=1 \
+		./scripts/observationtraitgen \
+		./internal/observability/observation \
+		./internal/runtime/protocol \
+		./internal/persist/state/eventlog
+	$(GO) test -race -count=1 \
+		./internal/observability/observation \
+		./internal/runtime/protocol \
+		./internal/persist/state/eventlog
+	cd $(VSCODE_DIR) && $(NPM) run check
+	$(MAKE) architecture-metrics
+	$(MAKE) docs-check
+
+state-observability-so2: state-observability-so1 observation-traits-check
+	$(GO) test -count=1 \
+		./internal/observability/... \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app \
+		./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/observability/health \
+		./internal/observability/journal \
+		./internal/observability/router \
+		./internal/observability/trace \
+		./internal/runtime/agent/turnkernel
+	$(GO) test -run '^$$' -bench '^BenchmarkSO2' -benchmem -benchtime=50x -count=5 \
+		./internal/observability/journal \
+		./internal/observability/router \
+		./internal/runtime/agent/engine
+	$(MAKE) architecture-metrics
+	$(MAKE) docs-check
+
+state-observability-so3: state-observability-so2
+	$(GO) test -count=1 \
+		./internal/observability/semantic \
+		./internal/observability/trace \
+		./internal/runtime/agent/engine
+	$(GO) test -race -count=1 \
+		./internal/observability/semantic \
+		./internal/observability/trace
+	$(GO) test -run '^$$' -bench '^BenchmarkSO3' -benchmem -benchtime=100x -count=3 \
+		./internal/observability/semantic
+	$(MAKE) architecture-metrics
+	$(MAKE) docs-check
+
+state-observability-so4: state-observability-so3
+	$(GO) test -count=1 \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app \
+		./internal/runtime/app/wire \
+		./internal/persist/state/turnstate \
+		./internal/observability/trace
+	$(GO) test -race -count=1 \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/app \
+		./internal/observability/trace
+	$(GO) test -run '^$$' -bench '^BenchmarkSO4' -benchmem -benchtime=100x -count=5 \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/app
+	$(MAKE) architecture-metrics
+	cd $(VSCODE_DIR) && $(NPM) run check
+	$(MAKE) docs-check
+
+state-observability-so5: state-observability-so4
+	$(GO) test -count=1 \
+		./internal/observability/tracecontext \
+		./internal/observability/otel \
+		./internal/observability/router \
+		./internal/observability/trace \
+		./internal/adapter/provider/httpclient \
+		./internal/adapter/mcp \
+		./internal/platform/process \
+		./internal/orchestration/workflow \
+		./internal/orchestration/worker \
+		./internal/orchestration/subagent \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/observability/tracecontext \
+		./internal/observability/otel \
+		./internal/observability/router \
+		./internal/observability/trace \
+		./internal/adapter/provider/httpclient \
+		./internal/adapter/mcp \
+		./internal/platform/process \
+		./internal/orchestration/workflow \
+		./internal/orchestration/worker \
+		./internal/orchestration/subagent
+	$(GO) test -run '^$$' -bench '^BenchmarkSO5' -benchmem -benchtime=100x -count=5 \
+		./internal/observability/tracecontext \
+		./internal/observability/otel
+	$(MAKE) architecture-metrics
+	$(MAKE) docs-check
+
+state-observability-so6: state-observability-so5
+	$(GO) test -count=1 \
+		./internal/observability/privacy \
+		./internal/observability/journal \
+		./internal/observability/retention \
+		./internal/observability/supportbundle \
+		./internal/observability/router \
+		./internal/persist/state/cas \
+		./internal/runtime/app/wire
+	$(GO) test -race -count=1 \
+		./internal/observability/privacy \
+		./internal/observability/journal \
+		./internal/observability/retention \
+		./internal/observability/supportbundle \
+		./internal/observability/router \
+		./internal/persist/state/cas
+	$(GO) test -run '^$$' -bench '^BenchmarkSO6' -benchmem -benchtime=100x -count=5 \
+		./internal/observability/privacy
+	$(MAKE) architecture-metrics
+	$(MAKE) docs-check
+
+state-observability-so7: state-observability-so6
+	$(GO) test -count=1 \
+		./internal/persist/state/turnstate \
+		./internal/runtime/agent/turnkernel \
+		./internal/runtime/agent/engine \
+		./internal/runtime/app/eventhub \
+		./internal/runtime/app \
+		./internal/runtime/app/wire \
+		./internal/observability/trace \
+		./internal/observability/router \
+		./internal/host/cli \
+		./internal/host/tui
+	$(GO) test -race -count=1 \
+		./internal/persist/state/turnstate \
+		./internal/runtime/app/eventhub \
+		./internal/observability/trace \
+		./internal/observability/router
+	$(GO) test -run '^$$' -bench '^BenchmarkSO7' -benchmem -benchtime=100x -count=5 \
+		./internal/persist/state/turnstate
+	$(MAKE) architecture-metrics
+	cd $(VSCODE_DIR) && $(NPM) run check
+	$(MAKE) docs-check
 
 extension-ecosystem-ee0:
 	$(GO) test -count=1 ./scripts/extensionecosystembaseline
@@ -1075,6 +1248,21 @@ protocol-contract:
 protocol-schema:
 	$(GO) run ./scripts/eventtraitgen ./internal/runtime/protocol/event_traits.json ./internal/runtime/protocol/event_traits.gen.go
 	$(GO) run ./internal/runtime/protocol/schemagen $(PROTOCOL_SCHEMA)
+
+observation-traits:
+	$(GO) run ./scripts/observationtraitgen \
+		-manifest internal/observability/schema/observation_traits.json \
+		-go internal/observability/observation/traits.gen.go \
+		-typescript extensions/vscode/src/protocol/observation.generated.ts \
+		-schema docs/protocol/observation.schema.json
+
+observation-traits-check:
+	$(GO) run ./scripts/observationtraitgen \
+		-manifest internal/observability/schema/observation_traits.json \
+		-go internal/observability/observation/traits.gen.go \
+		-typescript extensions/vscode/src/protocol/observation.generated.ts \
+		-schema docs/protocol/observation.schema.json \
+		-check
 
 # VS Code unit and type checks never download Electron. Runtime, Electron, and
 # packaging gates stay separate from default verification.

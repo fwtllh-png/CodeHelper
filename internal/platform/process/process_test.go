@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -188,6 +189,50 @@ func TestRunSanitizesRegularAndPTYEnvironments(t *testing.T) {
 			!strings.Contains(result.Stdout, "path=") {
 			t.Fatalf("PTY=%t output = %q", pty, result.Stdout)
 		}
+	}
+}
+
+func TestTraceContextOnlyReachesTrustedRuntimeHelpers(t *testing.T) {
+	ctx, err := tracecontext.NewRoot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := tracecontext.Current(ctx)
+	regular, err := NewCommand(ctx, Options{
+		Command: "true",
+		Dir:     t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if environmentValue(regular.Env, tracecontext.EnvironmentTraceParent) != "" {
+		t.Fatal("ordinary user command received internal trace context")
+	}
+	trusted, err := NewCommand(ctx, Options{
+		Command:              "true",
+		Dir:                  t.TempDir(),
+		TrustedRuntimeHelper: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	carrier := map[string]string{
+		tracecontext.HeaderTraceParent: environmentValue(
+			trusted.Env,
+			tracecontext.EnvironmentTraceParent,
+		),
+		tracecontext.HeaderTraceState: environmentValue(
+			trusted.Env,
+			tracecontext.EnvironmentTraceState,
+		),
+	}
+	extracted, err := tracecontext.ExtractMap(context.Background(), carrier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := tracecontext.Current(extracted)
+	if !ok || got.TraceID != want.TraceID || got.SpanID != want.SpanID {
+		t.Fatalf("want=%+v got=%+v", want, got)
 	}
 }
 

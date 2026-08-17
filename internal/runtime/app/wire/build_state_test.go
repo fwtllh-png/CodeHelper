@@ -100,18 +100,9 @@ func TestDefaultBuildModuleOrder(t *testing.T) {
 		names = append(names, module.Name())
 	}
 	want := []string{
-		"config",
-		"provider",
-		"persistence",
-		"platform",
-		"builtin-tools",
-		"extension-tools",
-		"security",
-		"extension-plan",
-		"orchestration",
-		"agent",
-		"runtime",
-		"background",
+		"config", "provider", "persistence", "platform", "builtin-tools",
+		"extension-tools", "security", "extension-plan", "orchestration",
+		"observability", "agent", "runtime", "background",
 	}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("module order = %v, want %v", names, want)

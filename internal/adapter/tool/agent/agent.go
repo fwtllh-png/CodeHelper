@@ -208,7 +208,7 @@ func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, err
 		parentID, trigger = caller.ID, subagent.TriggerSystem
 	}
 	objective := strings.TrimSpace(input.Objective)
-	child, err := t.control.SpawnIntent(subagent.DelegationIntent{
+	child, err := t.control.SpawnIntentContext(ctx, subagent.DelegationIntent{
 		SessionID:      sessionID,
 		TaskName:       strings.TrimSpace(input.TaskName),
 		Role:           role,

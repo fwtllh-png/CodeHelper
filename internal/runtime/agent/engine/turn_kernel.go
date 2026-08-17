@@ -45,6 +45,7 @@ func newEngineTurnKernelForTurn(
 	recorder *trace.Recorder,
 	parent uint64,
 	sink func(turnkernel.TransitionRecord),
+	factObserver turnkernel.DomainFactObserver,
 	metrics Metrics,
 	policy turnkernel.Policy,
 	runtime turnkernel.CoordinatorRuntime,
@@ -69,6 +70,7 @@ func newEngineTurnKernelForTurn(
 		return nil, err
 	}
 	coordinator := handle.Coordinator
+	coordinator.SetDomainFactObserver(factObserver)
 	dispatcher := handle.Dispatcher
 	kernel := &engineTurnKernel{
 		state:       coordinator.Snapshot(),

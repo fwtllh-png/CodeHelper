@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 )
 
 func TestStaleResponseRequiresStructuredCode(t *testing.T) {
@@ -121,6 +123,66 @@ func TestLegacySSEFixtureCRLFFallback(t *testing.T) {
 	}
 	if err := command.Wait(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestHTTPTransportPropagatesW3CTraceContext(t *testing.T) {
+	var propagated tracecontext.Link
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
+		extracted, err := tracecontext.ExtractHTTP(
+			context.Background(),
+			request.Header,
+		)
+		if err != nil {
+			t.Errorf("extract trace context: %v", err)
+		} else {
+			propagated, _ = tracecontext.Current(extracted)
+		}
+		defer request.Body.Close()
+		var rpcRequest Request
+		if err := json.NewDecoder(request.Body).Decode(&rpcRequest); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(Response{
+			JSONRPC: JSONRPCVersion,
+			ID:      rpcRequest.ID,
+			Result: mustRawJSON(t, InitializeResult{
+				ProtocolVersion: ProtocolVersion,
+				Capabilities:    map[string]any{},
+				ServerInfo:      ClientInfo{Name: "trace", Version: "1"},
+			}),
+		})
+	}))
+	defer server.Close()
+	transport, err := NewHTTPTransport(t.Context(), ServerConfig{
+		Transport: "http", URL: server.URL,
+		ConnectTimeout: time.Second, ReadTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := tracecontext.NewRoot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := tracecontext.Current(ctx)
+	var result InitializeResult
+	if err := transport.Request(
+		ctx,
+		"initialize",
+		InitializeParams{},
+		&result,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if propagated.TraceID != want.TraceID ||
+		propagated.SpanID != want.SpanID {
+		t.Fatalf("want=%+v propagated=%+v", want, propagated)
 	}
 }
 

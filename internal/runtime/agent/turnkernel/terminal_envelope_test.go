@@ -148,6 +148,7 @@ func TestPhase4R2DomainFactsAreStrictlyOrderedAndTerminallySealed(t *testing.T) 
 func TestPhase4R2TerminalEnvelopeFailureLeaksNoPartialFacts(t *testing.T) {
 	for _, stage := range []TerminalEnvelopeStage{
 		StageDomainFacts,
+		StageMeasurement,
 		StageReceipt,
 		StageFinalOutput,
 		StageTerminalEvent,
@@ -202,6 +203,41 @@ func TestPhase4R2TerminalEnvelopeRejectsConflictingRetry(t *testing.T) {
 	}
 }
 
+func TestSO4TerminalEnvelopeDigestCoversMeasurement(t *testing.T) {
+	first := terminalEnvelopeFixture(t)
+	firstDigest, err := ValidateTerminalEnvelope(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := cloneTerminalEnvelope(first)
+	second.Measurement, err = NewTerminalMeasurementSnapshot(
+		first.Measurement.FrozenAt.Add(time.Second),
+		nil,
+		first.Measurement.Usage,
+		true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.Receipt.MeasurementDigest = second.Measurement.Digest
+	second.Receipt.UsageDigest = second.Measurement.UsageDigest
+	secondDigest, err := ValidateTerminalEnvelope(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstDigest == secondDigest {
+		t.Fatal("terminal envelope digest ignored measurement")
+	}
+}
+
+func TestSO4TerminalEnvelopeRejectsReceiptUsageDrift(t *testing.T) {
+	envelope := terminalEnvelopeFixture(t)
+	envelope.Receipt.InputTokens++
+	if _, err := ValidateTerminalEnvelope(envelope); err == nil {
+		t.Fatal("receipt usage drift was accepted")
+	}
+}
+
 func terminalEnvelopeFixture(t *testing.T) TerminalEnvelope {
 	t.Helper()
 	state := startSampling(t, protocol.TurnIntentAnswer)
@@ -210,6 +246,15 @@ func terminalEnvelopeFixture(t *testing.T) TerminalEnvelope {
 	state = apply(t, state, TerminalRequested{}).State
 	state = apply(t, state, FinishTerminal{}).State
 	digest, err := Digest(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	measurement, err := NewTerminalMeasurementSnapshot(
+		time.Unix(1, 0),
+		nil,
+		state.Usage,
+		true,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,10 +284,13 @@ func terminalEnvelopeFixture(t *testing.T) TerminalEnvelope {
 				StateDigest: digest,
 			},
 		},
+		Measurement: measurement,
 		Receipt: &protocol.ExecutionReceiptData{
-			Goal:    "answer",
-			Intent:  protocol.TurnIntentAnswer,
-			Outcome: protocol.TurnOutcomeAnswered,
+			Goal:              "answer",
+			Intent:            protocol.TurnIntentAnswer,
+			Outcome:           protocol.TurnOutcomeAnswered,
+			MeasurementDigest: measurement.Digest,
+			UsageDigest:       measurement.UsageDigest,
 		},
 		FinalOutput: append([]string(nil), state.FinalOutput...),
 		TerminalEvent: Event{
