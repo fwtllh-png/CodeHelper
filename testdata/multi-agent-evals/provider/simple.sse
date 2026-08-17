@@ -1,5 +1,0 @@
-data: {"choices":[{"delta":{"content":"simple-parent-ok"},"finish_reason":"stop"}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":4}}
-
-data: [DONE]

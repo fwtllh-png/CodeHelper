@@ -9,6 +9,8 @@ prerequisites:
   - runtime-protocol
 code_paths:
   - internal/runtime/app
+  - internal/observability/observation
+  - internal/observability/router
 test_paths:
   - internal/runtime/app/runtime_test.go
   - internal/runtime/app/pendingwork_test.go
@@ -20,11 +22,14 @@ test_paths:
   - internal/runtime/app/persistence/runtime_test.go
   - internal/runtime/app/turn_kernel_convergence_test.go
   - internal/runtime/agent/turnkernel/convergence_baseline_test.go
+  - internal/runtime/app/terminal_measurement_test.go
+  - internal/observability/router/router_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/operation_dispatch.go
   - internal/runtime/app/active_turn_registry.go
   - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/app/terminal_measurement.go
   - internal/runtime/app/service_facade.go
   - internal/runtime/app/eventhub/hub.go
   - internal/runtime/app/session_artifacts.go
@@ -34,7 +39,7 @@ source_of_truth:
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-08-17
 ---
 
 # Application Runtime and State Projection
@@ -146,16 +151,24 @@ the authoritative Turn Kernel snapshot.
 
 `TerminalPublisher` is the sole owner of atomic terminal commit, deterministic
 outbox projection, and restart recovery. A terminal commit durably binds the
-frozen Kernel state, ordered Domain Facts, Session Delta, final output,
-Receipt, terminal Event, real Operation receipt, and deterministic Outbox
-before projection. Durable startup projects pending Outbox entries first, then
-requeues accepted StartTurn Operations only when matching Domain Facts exist.
+frozen Kernel state, ordered Domain Facts, one digested terminal Measurement,
+Session Delta, final output, Receipt, terminal Event, real Operation receipt,
+and deterministic Outbox before projection. Receipt, measurement-derived
+Trace, and Terminal Envelope all use that same Usage/latency snapshot. Durable
+startup projects pending Outbox entries first, then requeues accepted StartTurn
+Operations only when matching Domain Facts exist.
 
 `SessionService` owns lifecycle, Profile, and Tool Catalog behavior.
 `ArtifactService` owns Checkpoint, Plan, Turn recovery, and artifact
 persistence. Runtime exposes their narrow Host-facing methods directly over
 Runtime-owned ports; there is no parallel interface-only package or duplicated
 Host execution logic.
+
+The Observation Plane is attached through narrow Runtime hooks. It receives
+versioned, privacy-admitted envelopes for lifecycle evidence and exports
+bounded semantic/OTLP projections. Observation queue, Journal, payload, or
+exporter failure updates independent health state and never changes Operation
+commit or terminal outcome.
 
 ## Chat Merge and Durable Assembly
 
@@ -217,6 +230,8 @@ owns admission, protocol projection, and terminal publication.
 | Active Turn leases and control | `active_turn_registry.go` |
 | Event sequence, replay, subscribers | `eventhub/hub.go` |
 | Atomic terminal/outbox recovery | `terminal_publisher.go` |
+| Frozen terminal Usage/latency | `terminal_measurement.go` |
+| Observation admission/routing | `internal/observability/observation`, `internal/observability/router` |
 | Session and artifact services | `service_facade.go`, `session_artifacts.go` |
 | Engine adaptation | `application.go` |
 | Turn state-machine authority | `agent/turnkernel/coordinator.go` |
@@ -286,4 +301,4 @@ subscriber catches up.
 | --- | --- |
 | Catalog ID | `runtime-app` |
 | Status | `verified` |
-| Last verified | 2026-08-12 |
+| Last verified | 2026-08-17 |

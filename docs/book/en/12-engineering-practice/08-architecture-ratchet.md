@@ -9,17 +9,15 @@ prerequisites:
   - practice-benchmark
 code_paths:
   - scripts/architecturemetrics
-  - scripts/architecturesize
   - internal/runtime/agent/turnkernel
   - Makefile
 test_paths:
   - scripts/architecturemetrics/main_test.go
-  - scripts/architecturesize/main_test.go
   - internal/runtime/agent/turnkernel/convergence_baseline_test.go
   - internal/runtime/app/turn_kernel_convergence_test.go
 source_of_truth:
-  - docs/architecture-metrics-baseline.json
-  - docs/hotspot-baseline.json
+  - testdata/contracts/architecture-metrics-baseline.json
+  - testdata/contracts/hotspot-baseline.json
   - Makefile
 status: verified
 last_verified: 2026-08-12
@@ -52,7 +50,7 @@ whole team's problem.
 - **Target**: a package, file, or repository-wide scope that the ratchet measures.
 - **Metric**: a countable property of a target, such as lines or dependencies.
 - **Limit**: the current maximum allowed value in the baseline.
-- **Baseline**: `docs/architecture-metrics-baseline.json`, the committed contract
+- **Baseline**: `testdata/contracts/architecture-metrics-baseline.json`, the committed contract
   with schema version 1 and requirement id `ARCH-RATCHET-001`.
 - **Relaxation**: a documented reason that allows a limit to increase.
 - **Retirement**: a documented reason for removing a target or a metric.
@@ -61,10 +59,10 @@ whole team's problem.
 
 ## CodeHelper Design
 
-Two complementary contracts guard the architecture. `docs/hotspot-baseline.json`
+Two complementary contracts guard the architecture. `testdata/contracts/hotspot-baseline.json`
 binds responsibility to Package Symbols and Owner Files and fails on misplaced
 responsibility, unreviewed internal dependencies, hotspot growth, and deleted
-test assets. `docs/architecture-metrics-baseline.json` constrains measurable
+test assets. `testdata/contracts/architecture-metrics-baseline.json` constrains measurable
 shape: direct internal package fanout, production lines, Options and Mutex
 fields, hot file and function size, and duplicated protocol event switch sites.
 
@@ -73,17 +71,6 @@ on drift, and optionally writes a measured report. The Makefile exposes
 `make architecture-metrics` (measure only) and `make architecture-ratchet`
 (measure plus enforce); the ratchet is part of `make verify` and of
 `architecture-freeze`.
-
-The current baseline contains 43 targets: 19 packages, 23 files, and one
-repository-wide Event dispatch target. This count is descriptive, not a fixed
-constant; the committed JSON remains authoritative.
-
-`make architecture-size-budget BASE_REF=origin/main` independently compares
-the configured Runtime ownership closure against a Git base. It excludes
-tests, docs, fixtures, generated sources, and build output, and reports base,
-head, added, deleted, and net production lines. The default net-growth budget
-is zero, so added production lines must be offset by deletion or covered by an
-explicitly reviewed invocation.
 
 Turn-state ownership has an additional semantic gate. The
 `turn-kernel-convergence-baseline` target checks C0-C6 and Phase 4R ownership:
@@ -142,10 +129,9 @@ are reported as one sorted drift list, and the command exits non-zero.
 | Concern | Source | Why it matters |
 | --- | --- | --- |
 | Measurement and enforcement | `scripts/architecturemetrics/main.go` | AST-based counters for packages, files, and the repository |
-| Threshold contract | `docs/architecture-metrics-baseline.json` | Single source of truth for limits |
+| Threshold contract | `testdata/contracts/architecture-metrics-baseline.json` | Single source of truth for limits |
 | Make targets | `Makefile` | `architecture-metrics`, `architecture-ratchet`, `architecture-freeze` |
 | Tests | `scripts/architecturemetrics/main_test.go` | Baseline validation, drift, headroom, and ratchet cases |
-| Ownership size budget | `scripts/architecturesize` | Base/head production LOC and exact relaxation enforcement |
 | Turn Kernel ownership | `turnkernel/convergence_baseline_test.go` | C0-C6 and Phase 4R semantic ownership |
 
 ## Failure Modes and Security Boundaries
@@ -161,7 +147,6 @@ are reported as one sorted drift list, and the command exits non-zero.
 ```bash
 go test ./scripts/architecturemetrics
 make architecture-ratchet
-make architecture-size-budget BASE_REF=origin/main
 make turn-kernel-convergence-baseline
 make turn-kernel-convergence-exit-gate
 make book-check

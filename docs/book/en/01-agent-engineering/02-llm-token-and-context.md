@@ -208,11 +208,6 @@ reasoning, and sample count separate. Transport-byte savings from an
 incremental protocol are another independent metric and must not be reported
 as token savings.
 
-The raw waterfall and final evidence are
-[`token-efficiency-t6-waterfall.json`](../../../token-efficiency-t6-waterfall.json)
-and
-[`token-efficiency-t6-evidence.json`](../../../token-efficiency-t6-evidence.json).
-
 ## 11. Review Questions
 
 1. Why is a context window not model memory?

@@ -333,7 +333,20 @@ Hooks use a versioned JSON configuration supplied with `--hooks-config`. Hooks
 run inside the same governed execution architecture and must have bounded
 timeouts and explicit permissions.
 
+Plugin and Skill commands are projections of one Runtime extension control
+plane. Query operations return Runtime-owned source, trust, generation,
+capability, health, and receipt state. Mutations use a stable operation ID and
+durable prepare/commit receipt, so retrying the same operation cannot silently
+apply a different payload. Disable drains owned effects; revocation fences the
+loaded generation. A Host must not infer extension state by scanning files.
+
 ## Durable Work
+
+Durable Task, Workflow, Automation, verification, background-command, and Agent
+execution use one WorkGraph lifecycle. A transition atomically commits the
+aggregate snapshot, ordered Facts, command receipt, Effect outbox, and any
+compatibility projection. Runs are resumed from unfinished Nodes and Attempts;
+completed Nodes are not re-executed.
 
 ### Worker
 
@@ -381,8 +394,10 @@ codehelper fleet list --data-dir ./.codehelper
 codehelper fleet inspect --data-dir ./.codehelper --id RUN_ID
 ```
 
-Fleet commands inspect the audit ledger; scheduling authority belongs to the
-worker/task subsystem.
+Fleet commands inspect the WorkGraph projection and ordered Facts. Fleet has no
+enqueue, claim, settle, or resume authority. The Worker remains the only claim
+authority, and a stale owner cannot settle after its Lease Epoch changes. Lane
+placement records where work belongs; it does not create another scheduler.
 
 ## Review and Apply
 
@@ -413,6 +428,26 @@ automation and the JSON conclusion cannot disagree.
 
 Logs are redacted, but should still be treated as potentially sensitive
 engineering data.
+
+`runtime-observe` emits a bounded process-local metrics/logging exercise; it
+does not replace persisted Turn accounting. `metrics` and `scorecard` query the
+Usage and Span rows in the selected state database and preserve unknown cost or
+missing latency as unknown rather than zero.
+
+Durable Observation capture is configured on the Runtime process:
+
+```bash
+CODEHELPER_OBSERVATION_CAPTURE=failure \
+CODEHELPER_OTEL_EXPORTER=grpc \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
+codehelper tui --config ./codehelper.toml --workspace .
+```
+
+Capture defaults to metadata-only. `failure` and `full` may retain eligible
+payloads only after redaction; Credential and Restricted payloads are never
+stored. OTLP supports gRPC and HTTP/protobuf. Observation Journal, queue, or
+exporter failures affect observation health, not the completed/failed/canceled
+business outcome of a Turn.
 
 ## Shell Completion
 

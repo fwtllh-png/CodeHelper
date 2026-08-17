@@ -9,16 +9,21 @@ prerequisites:
   - task-worker-executor
   - runtime-resume-recovery
 code_paths:
+  - internal/orchestration/kernel
+  - internal/orchestration/store
   - internal/orchestration/task
   - internal/orchestration/worker
 test_paths:
+  - internal/orchestration/kernel/kernel_test.go
+  - internal/orchestration/store/store_test.go
   - internal/orchestration/task/execution_test.go
   - internal/orchestration/worker/worker_test.go
 source_of_truth:
-  - internal/orchestration/task/execution.go
+  - internal/orchestration/kernel/kernel.go
+  - internal/orchestration/store/store.go
   - internal/orchestration/worker/worker.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-17
 ---
 
 # Lease、Heartbeat、Retry 与幂等性
@@ -35,17 +40,18 @@ Safety 的边界。
 ```mermaid
 sequenceDiagram
     participant W as Worker
-    participant R as Task Repository
-    W->>R: Claim(owner, executor, workspace, lease)
-    R-->>W: running task + attempt
+    participant R as WorkGraph Store
+    W->>R: Claim(expected revision, owner, authority, lease)
+    R-->>W: running Node + Attempt + Lease Epoch
     loop executing
-      W->>R: Heartbeat(owner, expiry)
+      W->>R: Heartbeat(owner, epoch, expiry)
     end
-    W->>R: Settle(owner, transition)
+    W->>R: Settle(owner, epoch, authority digest, result)
 ```
 
-Running Work 的每次 Mutation 都校验 Current Owner。Expired Lease 可由新 Owner Reclaim/
-Requeue；旧 Owner 被 Fence，下一次 Heartbeat/Settle 失败，并触发 Worker Cancellation。
+Running Work 的每次 Mutation 都校验 Current Owner、Lease Epoch、Authority Digest 与
+Expected Revision。Expired Lease 可由新 Owner 以新 Epoch Reclaim/Requeue；旧 Owner
+被 Fence，下一次 Heartbeat/Settle 失败，并触发 Worker Cancellation。
 
 普通 Retry 与 Lease Expiry 消耗 Attempt；Graceful Drain 返还 Attempt。Backoff 递增并
 封顶；Attempt 用尽后 Requeue 转为 Failed。
@@ -65,10 +71,10 @@ Lease 只证明 Repository 在 Stored Expiry 前承认一个 Owner；不证明 P
 Progress，也不保证 External System 遵守 Fence。
 
 ```text
-claim: queued -> running, owner, expiry, attempt++
-heartbeat: require owner + unexpired lease, extend expiry
-settle: require owner + current lease, one transition
-reclaim: require expired lease, close attempt, fence old owner
+claim: ready -> running, owner, epoch, expiry, Attempt + Effect
+heartbeat: require owner + epoch + unexpired lease, extend expiry
+settle: require owner + epoch + authority digest, append one transition
+reclaim: require expired lease, close Attempt, increment epoch, fence old owner
 ```
 
 Heartbeat Cadence 必须显著短于 Lease Duration。另一个 Owner Reclaim 后，Late Heartbeat
@@ -88,6 +94,7 @@ Heartbeat Cadence 必须显著短于 Lease Duration。另一个 Owner Reclaim �
 ## 失败与安全边界
 
 - Stale Owner 的 Heartbeat/Settle 被拒绝。
+- Stale Lease Epoch/Authority Digest 的 Heartbeat/Settle 被拒绝。
 - Claim 不跨 Normalized Workspace。
 - Healthy Lease 不被抢占。
 - Retry Count/Delay 有界。
@@ -97,6 +104,7 @@ Heartbeat Cadence 必须显著短于 Lease Duration。另一个 Owner Reclaim �
 ## 测试与验证
 
 ```bash
+go test ./internal/orchestration/kernel ./internal/orchestration/store
 go test ./internal/orchestration/task -run 'Test(Claim|Settle|Reclaim|Recovery|Backoff)'
 go test ./internal/orchestration/worker -run 'Test.*(Lease|Retry|Takeover)'
 ```
@@ -123,4 +131,4 @@ go test ./internal/orchestration/worker -run 'Test.*(Lease|Retry|Takeover)'
 | --- | --- |
 | Catalog ID | `task-lease-retry` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-10 |
+| 最后验证 | 2026-08-17 |

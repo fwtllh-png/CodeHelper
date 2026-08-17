@@ -501,7 +501,13 @@ codehelper = ">=0.0.0-0"
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"skill", "lint", skillDir}, &stdout, &stderr); code != 0 ||
+	if code := Run([]string{
+		"skill", "lint",
+		"--workspace", workspace,
+		"--data-dir", dataDir,
+		"--skills-dir", skillsDir,
+		skillDir,
+	}, &stdout, &stderr); code != 0 ||
 		!strings.Contains(stdout.String(), `"version":"1.0.0"`) {
 		t.Fatalf("skill lint code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}

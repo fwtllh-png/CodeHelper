@@ -13,7 +13,7 @@ func TestRepositoryArchitectureMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, runErr := run(root, "docs/architecture-metrics-baseline.json", "", ""); runErr != nil {
+	if _, runErr := run(root, "testdata/contracts/architecture-metrics-baseline.json", "", ""); runErr != nil {
 		t.Fatal(runErr)
 	}
 }
@@ -116,7 +116,7 @@ type Options struct {
 	})
 	result, err := run(
 		root,
-		"docs/architecture-metrics-baseline.json",
+		"testdata/contracts/architecture-metrics-baseline.json",
 		".tmp/report.json",
 		"",
 	)
@@ -146,7 +146,7 @@ type Options struct {
 			Limits: map[string]int{"options_fields": 2},
 		}},
 	})
-	_, err := run(root, "docs/architecture-metrics-baseline.json", "", "")
+	_, err := run(root, "testdata/contracts/architecture-metrics-baseline.json", "", "")
 	if err == nil || !strings.Contains(err.Error(), "limit is stale") {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -263,7 +263,7 @@ func writeBaseline(t *testing.T, root string, value baseline) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFixture(t, root, "docs/architecture-metrics-baseline.json", string(data))
+	writeFixture(t, root, "testdata/contracts/architecture-metrics-baseline.json", string(data))
 }
 
 func writeFixture(t *testing.T, root, name, content string) {

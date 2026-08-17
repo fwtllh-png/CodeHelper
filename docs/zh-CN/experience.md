@@ -3,7 +3,8 @@
 简体中文 | [English](../en/experience.md)
 
 本文定义 TUI 与 VS Code Host 共同遵循的交互和呈现基线。机器可读的权威来源是
-[`experience-contract.json`](../experience-contract.json)。Host 可以使用各自的原生
+[`experience-contract.json`](../../testdata/contracts/experience-contract.json)。
+Host 可以使用各自的原生
 控件和表达方式，但必须保留以下语义。
 
 ## 信息架构
@@ -40,7 +41,7 @@ UI 文案应尽量使用 Canonical Label；本契约不重命名 Protocol 或持
 面向用户的生命周期文案比 Canonical State 更具体，包括 `Setup`、`Empty`、`Loading`、
 `Streaming`、`Approval`、`Verify`、`Failure`、`Recovery` 和 `Completed`，每种呈现
 都必须包含下一步动作。事件覆盖和跨 Host 不变量定义在
-[`host-journey-contract.json`](../host-journey-contract.json)。
+[`host-journey-contract.json`](../../testdata/contracts/host-journey-contract.json)。
 
 ## 视觉 Token
 

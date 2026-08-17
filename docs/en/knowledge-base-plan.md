@@ -523,7 +523,6 @@ contract rather than an editorial convention.
 - `docs/book/governance.json` maps 13 source domains and all delivered chapters
   to maintainers, freshness policy, release facts, screenshots, and link
   exceptions;
-- `.github/CODEOWNERS` is generated from that registry and checked for drift;
 - the PR impact gate maps changed source/test/fact paths to affected chapter
   IDs and requires same-PR English and Chinese updates or a reviewed no-impact
   rationale;

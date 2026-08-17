@@ -8,16 +8,21 @@ prerequisites:
   - task-worker-executor
   - task-lease-retry
 code_paths:
+  - internal/orchestration/kernel
+  - internal/orchestration/store
   - internal/orchestration/task
   - internal/orchestration/worker
 test_paths:
+  - internal/orchestration/kernel/kernel_test.go
+  - internal/orchestration/store/store_test.go
   - internal/orchestration/task/execution_test.go
   - internal/orchestration/worker/worker_test.go
 source_of_truth:
-  - internal/orchestration/task/execution.go
+  - internal/orchestration/kernel/kernel.go
+  - internal/orchestration/store/store.go
   - internal/orchestration/worker/worker.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-17
 ---
 
 # Debug Worker Leases and Retries
@@ -33,11 +38,12 @@ active claim and idempotent outcomes.
 
 1. Create a queued Task with deterministic identity.
 2. Claim it using Worker A and advance a fake clock past lease expiry.
-3. Let Worker B take over with a new lease generation.
+3. Let Worker B take over with a new Lease Epoch.
 4. Submit a late heartbeat/result from Worker A.
 5. Inject retryable, terminal, and canceled execution outcomes.
 
 ```bash
+go test ./internal/orchestration/kernel ./internal/orchestration/store
 go test ./internal/orchestration/task ./internal/orchestration/worker
 ```
 
@@ -45,16 +51,17 @@ go test ./internal/orchestration/task ./internal/orchestration/worker
 
 ```text
 t0 create queued task
-t1 A claims -> attempt 1, owner A, expiry E1
+t1 A claims -> Attempt 1, owner A, epoch 1, expiry E1
 t2 clock > E1
-t3 B reclaims -> attempt 2, owner B, expiry E2
+t3 B reclaims -> Attempt 2, owner B, epoch 2, expiry E2
 t4 A heartbeat/settle rejected
 t5 B settles exactly one terminal
 ```
 
-Collect Task version, state, attempt records, owner, expiry, scheduled time,
-failure reason, and Executor call count at each point. The lease is a repository
-fence, not proof that A stopped producing external effects.
+Collect WorkGraph revision, Node state, Attempt Facts, owner, Lease Epoch,
+authority digest, expiry, pending Effect, failure reason, and Executor call
+count at each point. The Lease is a repository fence, not proof that A stopped
+producing external effects.
 
 ## Retry Controls
 
@@ -86,7 +93,7 @@ Delete the temporary Task database and stop both Worker loops.
 
 ## Review Questions
 
-1. Why does a lease need a generation/token?
+1. Why does a Lease need an Epoch and owner token?
 2. Which failures are retryable?
 3. What makes completion idempotent?
 4. Why can lease fencing not undo an external effect?
@@ -97,4 +104,4 @@ Delete the temporary Task database and stop both Worker loops.
 | --- | --- |
 | Catalog ID | `lab-worker-retry` |
 | Status | `verified` |
-| Last verified | 2026-08-10 |
+| Last verified | 2026-08-17 |

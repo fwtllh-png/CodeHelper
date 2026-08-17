@@ -14,17 +14,6 @@ type agentEventPublisher interface {
 	PublishExternal(protocol.EventData) error
 }
 
-func AttachLiveAgentGraph(
-	control *subagent.AgentControl,
-	store *Store,
-	workspaceRoot, sessionID string,
-	publisher agentEventPublisher,
-) error {
-	return control.AttachGraph(NewAgentGraph(
-		store, workspaceRoot, sessionID, publisher,
-	))
-}
-
 // NewAgentGraph binds a Store as one workspace-scoped durable subagent Graph.
 func NewAgentGraph(
 	store *Store,
@@ -118,7 +107,7 @@ func NewAgentGraph(
 		},
 		AppendIntegration: func(candidate subagent.IntegrationCandidate) error {
 			return publishIntegration(
-				appendEvent, workspaceRoot, sessionID, candidate,
+				appendEvent, workspaceRoot, candidate,
 			)
 		},
 		DeliverMessage: func(message subagent.Message) error {
@@ -233,7 +222,7 @@ func NewAgentGraph(
 
 func publishIntegration(
 	appendEvent func(context.Context, protocol.EventData) error,
-	workspaceRoot, sessionID string,
+	workspaceRoot string,
 	candidate subagent.IntegrationCandidate,
 ) error {
 	detail, err := json.Marshal(candidate)
@@ -270,7 +259,7 @@ func reconcileAgentIntegrations(
 			candidate.UpdatedAt = time.Now().UTC()
 			candidate.Message = "integration interrupted before apply began"
 			if err := publishIntegration(
-				appendEvent, workspaceRoot, sessionID, candidate,
+				appendEvent, workspaceRoot, candidate,
 			); err != nil {
 				return err
 			}
@@ -283,7 +272,7 @@ func reconcileAgentIntegrations(
 			candidate.UpdatedAt = time.Now().UTC()
 			candidate.Message = "integration apply interrupted and workspace journal recovered"
 			if err := publishIntegration(
-				appendEvent, workspaceRoot, sessionID, candidate,
+				appendEvent, workspaceRoot, candidate,
 			); err != nil {
 				return err
 			}

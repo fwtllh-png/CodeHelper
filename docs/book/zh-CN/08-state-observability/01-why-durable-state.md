@@ -9,6 +9,7 @@ prerequisites:
   - runtime-resume-recovery
 code_paths:
   - internal/persist
+  - internal/observability
   - internal/runtime/app
   - internal/runtime/agent/turnkernel
 test_paths:
@@ -17,13 +18,16 @@ test_paths:
   - internal/runtime/agent/turnkernel/runtime_test.go
   - internal/persist/state/store_test.go
   - internal/persist/state/turnstate/store_test.go
+  - internal/observability/router/router_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/app/terminal_measurement.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
+  - internal/observability/observation/envelope.go
   - internal/persist/state/store.go
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-08-17
 ---
 
 # Durable State 的必要性
@@ -57,8 +61,10 @@ Event Sequence/Terminal Outcome 说明发生了什么；Projection 支持 Sessio
 查询；Snapshot 加速恢复；CAS 保存 Immutable Payload；Journal 保存 Before-image；
 Lease 区分 Live Owner 与 Abandoned Work；Domain Fact 以 State Digest 记录每个被接受的
 Kernel Transition；Effect 持有 Durable Payload、Lifecycle、Attempt 与 Idempotency
-Identity；Terminal Envelope 原子封存 Final Kernel State、Domain Facts、Session
-Delta、Receipt、Operation Commit 与 Projection Outbox。
+Identity；带 Digest 的 `TerminalMeasurementSnapshot` 只冻结一次 Usage/Latency；
+Terminal Envelope 原子封存 Final Kernel State、Domain Facts、Measurement、Session
+Delta、Receipt、Operation Commit 与 Projection Outbox；版本化 Observation Envelope
+保存脱敏因果证据，但不获得执行权威。
 
 ## Authority/Lifetime Matrix
 
@@ -67,7 +73,9 @@ Delta、Receipt、Operation Commit 与 Projection Outbox。
 | Accepted Operation | Request Identity/Idempotency | Admission/Duplicate Detection |
 | Turn Domain Fact | 权威 Reducer Transition/State Digest | Restart/Invariant Audit |
 | Pending Effect | Executable Intent/Payload/Idempotency | Conditional Continuation |
+| Terminal Measurement | Frozen Usage/Latency Fact | Receipt/Trace/Terminal 一致性 |
 | Event Sequence | Canonical Lifecycle Fact | Replay/Host/Audit |
+| Observation Journal | 脱敏因果证据 | Diagnosis/Telemetry/Semantic Replay |
 | SQLite Projection | Derived Query View | List/Filter/Aggregate |
 | Snapshot | Integrity-checked Checkpoint | Accelerate Reconstruction |
 | Workspace Journal | Filesystem Effect Evidence | Rollback/Recovery |
@@ -75,7 +83,8 @@ Delta、Receipt、Operation Commit 与 Projection Outbox。
 | Execution Receipt | Turn-level Joined Projection | Explanation |
 
 Derived Record 不高于 Source：Projection 可从 Event 重建；Snapshot 不覆盖 Later Event；
-Receipt 不能让 Unobserved Effect 消失。
+Receipt 不能让 Unobserved Effect 消失。Observation Writer/Exporter Failure 会进入
+Observation Health，但不能改写业务 Turn Result。
 
 ## Acceptance 不等于 Completion
 
@@ -110,12 +119,15 @@ Event、Typed Projection、Integrity-checked Snapshot 与 Side-effect Journal。
 - Sequence Gap/Committed Corruption Fail Closed。
 - Recovery 保留健康 Foreign Lease。
 - Missing Measurement 不解释为零。
+- Receipt、Trace 与 Terminal Envelope 共享同一 Measurement Digest。
+- Observation Failure 与业务执行隔离。
 - Rollback 不覆盖后续 External Edit。
 
 ## 测试与验证
 
 ```bash
 go test ./internal/persist/state/...
+go test ./internal/observability/...
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
 go test ./internal/runtime/app -run 'Test(C5|C6|Phase4R)'
 go test ./internal/runtime/agent/turnkernel
@@ -145,4 +157,4 @@ Terminal Projection 幂等。
 | --- | --- |
 | Catalog ID | `state-why-durable` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-12 |
+| 最后验证 | 2026-08-17 |

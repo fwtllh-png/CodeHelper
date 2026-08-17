@@ -38,7 +38,7 @@ CLI / TUI / VS Code / ACP
 | Security | `internal/security` | Policy、Permission、Constitution、Sandbox |
 | Orchestration | `internal/orchestration` | Task、Worker、Automation、Workflow、Lane、Fleet |
 | Persistence | `internal/persist` | 关系状态、Event、CAS、Session、Snapshot、Journal |
-| Observability | `internal/observability` | Usage、Trace、Diagnostics、Verify、Telemetry |
+| Observability | `internal/observability` | 版本化 Observation、Usage、Trace、Diagnostics、Verify、Telemetry |
 | Platform | `internal/platform` | 进程、PTY、操作系统差异 |
 | Configuration | `internal/config` | 默认值、TOML、环境变量、校验、Provenance |
 
@@ -62,8 +62,9 @@ Architecture Test 会检查重要 Import 限制。需要违反这些规则的设
 
 ```text
 config -> provider -> persistence -> platform -> builtin tools
-       -> extension contributors -> security -> orchestration
-       -> agent -> runtime -> background services
+       -> extension contributors -> security -> extension plan
+       -> orchestration -> observability -> agent -> runtime
+       -> background services
 ```
 
 每个 Module 只拥有一个构造边界，并仅向后续 Module 暴露必要结果。Runtime、Engine 和
@@ -118,6 +119,9 @@ eventview + VS Code Projector -> 仅负责 Host Presentation
 | Operation Dispatcher | `internal/runtime/app` | Typed Operation Handler Selection 与 Synchronous Commit |
 | Turn Coordinator/Scope | `internal/runtime/agent` | Reducer Authority、Effect、Control 与 Turn-local State |
 | Event Hub/Terminal Publisher | `internal/runtime/app/eventhub`、`internal/runtime/app` | Sequence/Fanout 与 Atomic Terminal Publication |
+| WorkGraph Kernel/Store | `internal/orchestration/kernel`、`internal/orchestration/store` | Durable Run、Node、Attempt、Lease 与 Effect Transition |
+| Extension Runtime | `internal/runtime/extension`、`internal/runtime/app/extension` | Typed Contributor、Source Plan、Generation、Lifecycle Effect 与 Control Receipt |
+| Observation Plane | `internal/observability/observation`、`internal/observability/router` | Evidence Schema、Privacy Admission、Durable Routing 与 Exporter Isolation |
 | Session/Artifact Service | `internal/runtime/app` | Runtime-owned Port 上的 Host-facing Query 行为 |
 | Go Host Projection | `internal/runtime/eventview` | Event Payload 的唯一 Typed Interpretation |
 | VS Code Projection | `extensions/vscode/src/chat/projector` | Exhaustive Event Class Presentation |
@@ -200,15 +204,19 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
     Verification-blocked Draft。
 13. Scope 准备带 Revision 与 Digest 的 `SessionDelta`，包含 History、Usage、Cost、
     Working Set、Evidence、Failures 与 Compaction State。
-14. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Session Delta、
-    Final Output、Receipt、Terminal Event、Outbox 与真实 Operation Receipt。
-15. Engine 只在该 Commit 成功后幂等 Apply Session Delta；Commit 失败不修改 Session
+14. Runtime 为 Usage 与 Latency 冻结同一份带 Digest 的
+    `TerminalMeasurementSnapshot`。Receipt、由 Measurement 投影的 Trace 与 Terminal
+    Envelope 都引用该 Snapshot，不会再次读取可变 Counter。
+15. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Measurement、
+    Session Delta、Final Output、Receipt、Terminal Event、Outbox 与真实 Operation
+    Receipt。
+16. Engine 只在该 Commit 成功后幂等 Apply Session Delta；Commit 失败不修改 Session
     内存。
-16. 重启时 Runtime 扫描 Pending Terminal Projection，以稳定 Event ID 逐条 Append，
+17. 重启时 Runtime 扫描 Pending Terminal Projection，以稳定 Event ID 逐条 Append，
     成功后再将对应 Entry 标记为 Published。
-17. accepted StartTurn 仅在存在对应非终态 Domain Fact 时自动恢复；Coordinator requeue
+18. accepted StartTurn 仅在存在对应非终态 Domain Fact 时自动恢复；Coordinator requeue
     Running Effect，Engine 从 Durable Payload 接续 Provider、Tool 或 Journal 执行。
-18. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
+19. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
     替代请求。
 
 Engine 始终提交完整逻辑模型请求。只有模型显式广告能力、请求属性不变且输入严格扩展
@@ -258,6 +266,44 @@ Session Checkpoint 与 Plan Artifact 复用 Snapshot Index 和 CAS。Checkpoint 
 经过校验的 Model-visible History Baseline 与 Profile Snapshot；Restore 不能执行历史
 Event。持久化 Restore/Fork Event 保证重启重建结果确定。Fork 血缘与当前 Active
 Session Thread 属于关系型 Lifecycle State，而不是 Host-local State。
+
+## Observation 架构
+
+Runtime Event 继续作为 Host Protocol。Observation Plane 是独立且不具执行权威的证据
+系统，用于因果诊断、Telemetry Export 与 Retention。每条获准记录都会成为版本化
+`ObservationEnvelope`，包含稳定 Observation ID、有序 Sequence、Runtime/Domain
+Identity、可选 W3C Trace Context、Causality Link、Data Policy、有界 Summary，以及
+可选 CAS Payload Reference。
+
+`observation_traits.json` 是每种 Observation Kind 的 Owner、Durability、Payload
+Policy、Retention Class、必需 Correlation、OpenTelemetry Mapping 与 Queue Priority
+的事实来源，并生成 Go Trait Table、TypeScript Table 与
+`docs/protocol/observation.schema.json`。
+
+Router 会在任何 Journal 或 CAS 写入前应用 Privacy Policy。Critical Evidence 在脱离
+业务 Cancellation 的同步路径持久化；Normal 与 Bulk Record 进入有界 Queue。Queue
+Pressure、Privacy Error、Journal Failure、Payload Drop 与 Exporter Failure 只更新
+Observation Health，绝不改写业务 Turn 的成功或失败结果。`Flush` 与 `Shutdown`
+负责排空 Observation/OTLP Queue，但 Observation Plane 不获得执行权威。
+
+Capture 由 `CODEHELPER_OBSERVATION_CAPTURE` 控制：
+
+- `off`：关闭 Observation Admission；
+- `metadata`：默认值，只保留脱敏 Summary，不保留 Raw Payload；
+- `failure`：仅为 Failure-like Observation 保留可接受的脱敏 Payload；
+- `full`：为符合策略的 Observation 保留脱敏 Payload。
+
+Credential 与 Restricted Payload 永不持久化。配置的 Secret Value 以及 State/Config
+Root 会在写入前脱敏。Payload 复用 Content Store，并按 Retention Class 管理：Audit
+与 Diagnostic 默认保留 30 天，Sensitive 保留 24 小时，Ephemeral 保留 1 小时。启动
+清理会释放过期 Reference，只删除已无引用的 CAS Object；Observation Metadata 仍可
+用于解释。
+
+W3C Trace Context 会跨 Provider HTTP、MCP HTTP/stdio、Process、Workflow 与
+Subagent 传播。OTLP Projector 支持通过环境变量选择 In-memory、HTTP/protobuf 和
+gRPC Exporter。Metric Label 来自固定的低基数 Allowlist，不能包含 Path、Prompt、
+Tool Argument 或 Resource ID。Semantic Reducer 可从 Raw Journal 确定性重建可解释
+Graph；Support Bundle 构造会再次脱敏所选记录，并以独占 mode `0600` 写入 Archive。
 
 ## 上下文架构
 
@@ -320,6 +366,21 @@ Execution Receipt 会保留每次 Verification Attempt、命令推导原因、�
 
 ## 扩展架构
 
+`internal/runtime/extension` 为 Thread、Turn、Context、Tool 与 MCP Capability 定义
+统一 Typed Contributor Contract。注册时校验 Identity、Failure Policy、Timeout 与
+Output Budget，随后 Seal 不可变 Registry。Contributor 只接收显式 Capability 并返回
+有界 Receipt，不接收 Construction State 或私有 Tool Registry。
+
+Extension Source 按 Source Priority 确定性解析为绑定当前 Permission Digest 的
+Digested Plan。每个 Process、Connection、Hook、Subscription、Lease、Timer 与 Tool
+Registration 都通过 `EffectOwner` 绑定 Extension、Source、Plan Revision、
+Generation、Capability 和 Effect Kind。Disable 会 Drain 所属 Effect；Revoke 或
+Quarantine 会 Fence 旧 Generation。Lifecycle Receipt 持久化且已脱敏。
+
+Plugin/Skill CLI、ACP `extension/list`/`extension/control` 与 VS Code Extensions View
+使用同一 Runtime Control Plane。Mutation 按 Operation ID 幂等，并持久化
+Prepare/Commit Receipt；Host 只提交 Operation 与投影 Runtime-owned State。
+
 ### MCP
 
 外部 Server 通过协议 Adapter 暴露 Tool。Health、Timeout、Circuit Breaker 和 Tool
@@ -340,19 +401,33 @@ Hook 观察或拦截生命周期点，必须有界，不能成为另一条无 Gu
 
 ## 编排架构
 
-- **Task Repository**：Durable State 与 Lease。
-- **Worker**：Claim 并执行符合条件的 Task。
-- **Automation**：调度 Task Template。
-- **Workflow**：经过校验的 DAG/IR 和 Node Checkpoint。
-- **Lane**：管理 Inline 或 tmux Worker Process。
-- **Fleet Ledger**：分布式 Run/Task Event 的 Read Model。
-- **Subagent**：具有 Depth、Budget 与 Workspace Isolation 的 Child Runtime。
+Task、Workflow、Automation、Background Command、Verification 与 Agent Work 已收敛
+到 Durable WorkGraph Model：
+
+```text
+Command(expected revision)
+  -> pure WorkGraph Kernel
+  -> Aggregate + ordered Facts + Effects
+  -> one SQLite transaction
+     (snapshot + facts + command receipt + effect outbox + projections)
+```
+
+- **WorkGraph Kernel**：拥有 Run、Node、Attempt、Lease Epoch 与 Effect State
+  Transition，不执行 I/O。
+- **WorkGraph Store**：原子提交 Transition、按 Command ID 去重，并检测
+  Snapshot/Fact Drift。
+- **Worker**：唯一 Claim Authority；Heartbeat 与 Settlement 受 Owner、Lease Epoch、
+  Authority Digest 和 Revision Fence。
+- **Automation/Workflow**：将 Schedule 或 DAG 编译为 WorkGraph Node，不维护第二套
+  Checkpoint State Machine。
+- **Lane**：记录 Durable Placement，并显式管理 Inline/tmux Process Adapter；
+  Placement 不是 Lifecycle Authority。
+- **Fleet**：投影并审计 WorkGraph State，不能 Enqueue、Claim、Settle 或 Resume；
+  Repair 只能从 Ordered Fact 重建 Snapshot Cache。
+- **Subagent**：运行有界 Child Runtime，并持久化 Agent Tree、Mailbox、Result、Budget
+  Ledger、Worktree Ownership、Approval Routing 与 Journaled Integration。
 
 所有编排最终仍回到 Runtime、Tool 和 Security 边界。
-委派策略、Context Fork、Durable Agent Tree、Approval 上送、Integration 与 VS Code
-时间线的目标设计见
-[Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)。该文档是实施提案，
-不表示其中的目标行为已经全部交付。
 
 ## 架构变更检查表
 
@@ -362,4 +437,4 @@ Hook 观察或拦截生命周期点，必须有界，不能成为另一条无 Gu
 4. 保持 Guard 与 Sandbox 路径。
 5. 增加 Contract 或 Architecture Test。
 6. 同步更新中英文文档。
-7. 必要时重新生成 Protocol/Compatibility Artifact。
+7. 必要时重新生成 Protocol、Observation Trait 与 Compatibility Artifact。

@@ -38,7 +38,7 @@ func main() {
 	var root string
 	var path string
 	flag.StringVar(&root, "root", ".", "repository root")
-	flag.StringVar(&path, "baseline", "docs/hotspot-baseline.json", "baseline JSON path")
+	flag.StringVar(&path, "baseline", "testdata/contracts/hotspot-baseline.json", "baseline JSON path")
 	flag.Parse()
 
 	if err := run(root, path); err != nil {

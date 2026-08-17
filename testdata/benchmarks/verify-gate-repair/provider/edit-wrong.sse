@@ -1,4 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_edit","function":{"name":"file_edit","arguments":"{\"path\":\"status.txt\",\"old\":\"STATUS=pending\",\"new\":\"STATUS=redy\"}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]
-

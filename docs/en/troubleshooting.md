@@ -137,11 +137,47 @@ OAuth config, and circuit-breaker state. Test one server in isolation.
 ```bash
 codehelper worker list --data-dir ./.codehelper
 codehelper automation list --data-dir ./.codehelper
+codehelper fleet inspect --data-dir ./.codehelper --id RUN_ID
 ```
 
-Check task state, executor, lease owner/expiry, heartbeat, attempt count,
-`next_attempt_at`, and worker budget. A non-executable work-board task must not
-be made executable by manually changing database rows.
+Check Run/Node/Attempt state, executor, Lease owner/epoch/expiry, heartbeat,
+pending Effect, attempt count, `next_attempt_at`, authority digest, and Worker
+budget. A live Lease belongs to its current epoch; do not recover it by editing
+database rows. Fleet is a read projection and cannot resume or settle work.
+
+## Extension State Does Not Converge
+
+Use the matching `plugin` or `skill` list command, then inspect health and
+receipts through a Runtime client or the VS Code Extensions view. Check source
+identity, trust, generation, enabled state, capability state, and the last
+operation receipt.
+
+Retry a mutation only with the same operation identity when the client supports
+it. Reusing an operation ID with different content is rejected. Do not repair
+extension state by editing staged artifacts or durable receipt rows; disable,
+revoke, verify, rollback, or reinstall through the control plane.
+
+## Observations or OTLP Are Missing
+
+Check the Runtime process environment:
+
+```bash
+env | rg '^(CODEHELPER_OBSERVATION_CAPTURE|CODEHELPER_OTEL_EXPORTER|OTEL_EXPORTER_OTLP_)='
+```
+
+- unset capture defaults to `metadata`;
+- `off` intentionally records nothing;
+- `metadata` intentionally omits raw payloads;
+- `failure` captures eligible payloads only for failure-like observations;
+- an invalid capture mode fails Runtime construction explicitly;
+- an unavailable remote OTLP exporter falls back to the in-memory projector.
+
+The durable Observation Journal is under the selected state directory at
+`observability/journal-v1`; changing `--data-dir` changes that location.
+Observation payload retention is time-based and separate from
+`state.event_retention`. Missing OTLP export or a dropped observation affects
+observation health, not the authoritative Turn outcome. Diagnose the collector
+without rewriting Runtime Events, Receipts, or Terminal Envelopes.
 
 ## VS Code Runtime Is Unavailable
 
@@ -168,9 +204,9 @@ restart state, and Session synchronization errors. It is opt-in and uses mode
 `0600` because model output, Tool arguments/results, and diagnostics may contain
 sensitive Workspace data. Review and redact the file before sharing it.
 
-Use the [VS Code Runtime Monitoring Runbook](./runtime-monitoring.md) for the
-standard test matrix, structured invariants, evidence freeze, and report
-contract.
+This VS Code Host capture is distinct from the Runtime Observation Journal.
+Host capture follows ACP and process supervision; the Observation Journal
+records Runtime evidence according to `CODEHELPER_OBSERVATION_CAPTURE`.
 
 ## Tests Fail Only in Full Parallel Run
 

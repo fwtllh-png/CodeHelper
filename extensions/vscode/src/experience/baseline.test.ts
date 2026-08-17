@@ -5,7 +5,10 @@ import test from "node:test";
 
 void test("shared experience contract exposes the required baseline", async () => {
   const value = JSON.parse(await readFile(
-    join(process.cwd(), "..", "..", "docs", "experience-contract.json"),
+    join(
+      process.cwd(), "..", "..", "testdata", "contracts",
+      "experience-contract.json",
+    ),
     "utf8",
   )) as Readonly<Record<string, unknown>>;
   assert.equal(value["version"], 1);

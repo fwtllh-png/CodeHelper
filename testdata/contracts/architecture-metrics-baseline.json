@@ -22,10 +22,6 @@
         "production_lines": 551,
         "options_fields": 16,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "internal_fanout": "SO5 creates a standard child W3C Trace Context for each claimed Worker execution.",
-        "production_lines": "SO5 propagates one child Trace Context through the existing Worker executor boundary."
       }
     },
     {
@@ -81,10 +77,6 @@
         "production_lines": 1767,
         "options_fields": 13,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "internal_fanout": "SO5 uses the isolated tracecontext adapter at the Workflow task boundary.",
-        "production_lines": "SO5 persists W3C traceparent and tracestate in each Workflow TaskRequest."
       }
     },
     {
@@ -96,10 +88,6 @@
         "production_lines": 4300,
         "options_fields": 8,
         "mutex_fields": 3
-      },
-      "relaxations": {
-        "internal_fanout": "SO5 uses the isolated tracecontext adapter for Subagent spawn and Turn handoff.",
-        "production_lines": "SO5 carries a bounded W3C parent through DelegationIntent, Agent state, and child Turn Context."
       }
     },
     {
@@ -111,10 +99,6 @@
         "production_lines": 250,
         "options_fields": 0,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "SO7 releases the Event Hub state lock around Store I/O, projections, and observation callbacks while preserving ordered fanout.",
-        "mutex_fields": "SO7 uses a separate publish serializer so sequence and subscription registration remain gap-free without holding the state lock across external work."
       }
     },
     {
@@ -258,10 +242,6 @@
         "production_lines": 683,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "internal_fanout": "SO5 injects W3C Trace Context through the dedicated observability adapter.",
-        "production_lines": "SO5 propagates traceparent and tracestate across HTTP and Responses WebSocket handshakes."
       }
     },
     {
@@ -271,10 +251,6 @@
       "limits": {
         "lines": 409,
         "max_function_lines": 78
-      },
-      "relaxations": {
-        "lines": "SO5 injects W3C Trace Context after governed Provider headers are prepared.",
-        "max_function_lines": "SO5 adds one non-authoritative trace injection call to Provider Execute."
       }
     },
     {
@@ -357,11 +333,6 @@
         "production_lines": 8460,
         "options_fields": 70,
         "mutex_fields": 6
-      },
-      "relaxations": {
-        "internal_fanout": "EE1 installs typed extensions; EE2 adds Plan/Persist ports; EE3 installs Plugin Capability projection; EE4 opens the durable lifecycle receipt store; EE6 opens the journaled Runtime Control Plane; SO6 binds trusted Capture configuration.",
-        "production_lines": "EE1-EE3 compose typed plans and capabilities; EE4 adds lifecycle composition; EE5 adds bounded Skill Candidate projection; EE6 constructs the Host-neutral Control Plane; SO2 constructs the durable Observation Runtime; SO6 resolves Capture Mode and credential redaction only during Wiring.",
-        "mutex_fields": "EE4 serializes dynamic MCP capability config filters independently from the prewarm worker."
       }
     },
     {
@@ -373,9 +344,6 @@
         "production_lines": 1408,
         "options_fields": 1,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "EE4 adds the host-independent Lifecycle, Effect Owner, Health, and redacted Receipt contracts."
       }
     },
     {
@@ -387,11 +355,6 @@
         "production_lines": 1870,
         "options_fields": 0,
         "mutex_fields": 6
-      },
-      "relaxations": {
-        "internal_fanout": "EE4 persists lifecycle receipts; EE6 owns Plugin/Skill projection and the durable Control Journal.",
-        "production_lines": "EE4 centralizes lifecycle and recovery; EE6-EE7 add idempotent control, prepared-operation reconciliation, bounded traces, metrics, and alerts.",
-        "mutex_fields": "EE4 separates lifecycle serialization; EE6 separates operation serialization from bounded observability state."
       }
     },
     {
@@ -403,9 +366,6 @@
         "production_lines": 4479,
         "options_fields": 3,
         "mutex_fields": 6
-      },
-      "relaxations": {
-        "production_lines": "EE4 adds durable Security Revoke fences; EE7 binds verified Receipt Trust into compiled capability projection."
       }
     },
     {
@@ -417,9 +377,6 @@
         "production_lines": 292,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "EE4 binds Plugin Hook and MCP projections to live authority checks; EE7 normalizes Plugin Hook V2 source and trust metadata."
       }
     },
     {
@@ -475,9 +432,6 @@
         "production_lines": 3070,
         "options_fields": 10,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "EE5 adds bounded selection; EE6 adds disabled-item control projection without exposing full Skill bodies."
       }
     },
     {
@@ -511,9 +465,6 @@
         "production_lines": 1820,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "SO3 hardens Projection source identity with a digest over the complete Journal prefix and rejects same-source nondeterminism."
       }
     },
     {
@@ -644,11 +595,6 @@
         "production_lines": 10610,
         "options_fields": 60,
         "mutex_fields": 8
-      },
-      "relaxations": {
-        "internal_fanout": "EE2 freezes one runtime-owned Extension Plan in TurnSpec instead of copying mutable extension snapshots.",
-        "production_lines": "EE5 freezes Skill Candidate Handles; EE7 binds content-safe Hook audit emission to the current Turn context and constructs one stateful Guard per Engine; SO2 emits post-commit Domain Fact references through the grouped observability runtime; SO3 binds the explicit Tool Attempt ordinal into Observation Identity; SO4 freezes Trace latency once and records model/tool usage through Kernel facts before terminal measurement; SO5 places Turn, Provider, and Tool spans into the propagated W3C Context.",
-        "options_fields": "EE7 carries a Guard factory so each Engine receives independent approval state with the same Hook-aware security boundary."
       }
     },
     {
@@ -660,9 +606,6 @@
         "production_lines": 8602,
         "options_fields": 18,
         "mutex_fields": 7
-      },
-      "relaxations": {
-        "production_lines": "EE5 records Skill invocation receipts; EE7 maps redacted Hook audit records into retained Runtime events; SO2 records Terminal prepared/committed evidence through the observation adapter; SO4 builds Receipt and deterministic Trace projections from one frozen Terminal Measurement."
       }
     },
     {
@@ -729,9 +672,6 @@
         "production_lines": 1046,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "SO7 adds periodic Domain Fact snapshots, typed top-level deltas, digest-chain replay, and legacy logical decoding inside the persistence owner."
       }
     },
     {
@@ -763,9 +703,6 @@
         "production_lines": 5998,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "EE6-EE7 add shared Extension Operation, Projection, Receipt, diagnostics, and replay contracts used by every Host."
       }
     },
     {
@@ -777,9 +714,6 @@
         "production_lines": 3253,
         "options_fields": 10,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "EE6 exposes Extension list and control as ACP transport methods over the shared Runtime contract."
       }
     },
     {
@@ -870,9 +804,6 @@
       "limits": {
         "lines": 105,
         "max_function_lines": 0
-      },
-      "relaxations": {
-        "lines": "EE2 carries the typed Registry; EE3 carries immutable compiled Plugin Capability snapshots between ordered contributors."
       }
     },
     {
@@ -918,9 +849,6 @@
       "limits": {
         "lines": 655,
         "max_function_lines": 111
-      },
-      "relaxations": {
-        "lines": "EE6 adds a control-only summary projection that includes disabled Skills while preserving bounded model selection."
       }
     },
     {
@@ -982,12 +910,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/security_factory.go",
       "limits": {
-      "lines": 87,
-      "max_function_lines": 32
-    },
-    "relaxations": {
-      "lines": "EE7 production validation requires a per-Engine Guard factory that preserves Hook, permission, journal, diagnostics, and sandbox dependencies without sharing approval state.",
-      "max_function_lines": "The Guard binding function snapshots the complete security boundary and strips workspace-local Hook and permission persistence from isolated child workspaces."
+        "lines": 87,
+        "max_function_lines": 32
       }
     },
     {
@@ -997,9 +921,6 @@
       "limits": {
         "lines": 3052,
         "max_function_lines": 124
-      },
-      "relaxations": {
-        "lines": "EE6 adds two thin ACP handlers that delegate Extension queries and mutations to the Runtime Control Plane."
       }
     },
     {
@@ -1007,12 +928,8 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-      "lines": 520,
-      "max_function_lines": 133
-    },
-    "relaxations": {
-      "lines": "EE7 adds the Guard factory contract so production Engines can receive the Hook-aware Guard assembled by Wire.",
-      "max_function_lines": "Engine construction selects an injected per-Engine Guard factory before the legacy standalone fallback."
+        "lines": 520,
+        "max_function_lines": 133
       }
     },
     {
@@ -1022,18 +939,6 @@
       "limits": {
         "lines": 277,
         "max_function_lines": 73
-      },
-      "relaxations": {
-        "lines": "EE5 renders bounded authority, package, and resource handles only for selected Skill candidates."
-      }
-    },
-    {
-      "id": "context_authority_gate_file",
-      "kind": "file",
-      "path": "scripts/contextauthority/main.go",
-      "limits": {
-        "lines": 215,
-        "max_function_lines": 49
       }
     },
     {
@@ -1206,5 +1111,8 @@
         "event_switch_sites": 29
       }
     }
-  ]
+  ],
+  "retirements": {
+    "context_authority_gate_file": "The standalone context-authority phase scanner was retired after context ownership converged into runtime tests and the architecture ratchet."
+  }
 }

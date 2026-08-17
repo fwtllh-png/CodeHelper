@@ -89,18 +89,6 @@ func (p *ManagedNetworkProxy) Port() uint16 {
 	return uint16(address.Port)
 }
 
-func (p *ManagedNetworkProxy) Environment() []string {
-	value := p.URL()
-	if value == "" {
-		return nil
-	}
-	return []string{
-		"HTTP_PROXY=" + value, "HTTPS_PROXY=" + value,
-		"http_proxy=" + value, "https_proxy=" + value,
-		"NO_PROXY=", "no_proxy=",
-	}
-}
-
 func (p *ManagedNetworkProxy) Close(ctx context.Context) error {
 	if p == nil || p.server == nil {
 		return nil

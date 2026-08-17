@@ -12,14 +12,20 @@ code_paths:
   - internal/runtime/app
   - internal/persist/state
   - internal/persist/workspacejournal
-  - internal/observability
+  - internal/observability/journal
+  - internal/observability/semantic
+  - internal/observability/supportbundle
 test_paths:
   - internal/runtime/app/reconstruct_test.go
   - internal/runtime/app/wire/persistent_test.go
   - internal/persist/workspacejournal/recover_test.go
+  - internal/observability/semantic/reducer_test.go
+  - internal/observability/supportbundle/bundle_test.go
 source_of_truth:
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/receipt.go
+  - internal/observability/semantic/reducer.go
+  - internal/observability/semantic/explain.go
 status: draft
 last_verified: null
 ---
@@ -37,11 +43,13 @@ receipts to determine what happened without guessing.
 
 ```mermaid
 flowchart TD
-    I[Identity: workspace/thread/turn] --> E[Durable Event sequence]
+    I[Identity: runtime/workspace/thread/turn] --> E[Durable Event sequence]
     E --> H[Reconstructed paired history]
     E --> P[Projection cross-check]
     H --> J[Workspace journal/change residue]
     P --> T[Trace/usage/verification]
+    I --> O[Observation journal / semantic graph]
+    O --> T
     J --> R[Failure explanation]
     T --> R
 ```
@@ -55,6 +63,26 @@ Next compare projections and Event evidence, inspect active/committed Journal
 records, and determine whether workspace bytes were restored or conflicted.
 Then correlate Provider, Tool, approval, and verification spans with usage and
 the final Execution Receipt.
+
+## Observation Evidence and Semantic Replay
+
+The raw Observation Journal retains privacy-admitted envelopes in sequence.
+The Semantic Reducer deterministically folds them into entities, causal edges,
+attempts, failures, and terminal explanations. Reducer output is a projection:
+it may be rebuilt from the Journal and cannot authorize retry or overwrite
+Runtime lifecycle facts.
+
+Use Observation ID, Trace/Span IDs, parent Observation ID, and domain
+correlations to connect Provider, Tool, WorkGraph, Extension, and process
+evidence. Capture mode limits what can be concluded: metadata-only records
+retain bounded summaries but intentionally omit raw payloads; expired payload
+references remain visible as unavailable content rather than fabricated empty
+data.
+
+The internal Support Bundle builder selects bounded records, re-redacts every
+summary and payload, excludes payloads by default, and writes a private
+mode-`0600` archive. A bundle is transport for evidence, not a stronger source
+of truth than the records it contains.
 
 ## Failure Classes
 
@@ -70,8 +98,10 @@ the final Execution Receipt.
 When records disagree, prefer evidence closest to the claimed fact:
 
 ```text
-durable Event/Journal bytes
+durable Runtime Event / Workspace Journal bytes
   > transactional Projection with matching Event
+  > raw Observation Journal envelope
+  > deterministic Semantic Projection
   > observed Trace/Usage/Verification record
   > Execution Receipt projection
   > model/child self-report
@@ -93,6 +123,8 @@ for the named check scope. State the domain with every conclusion.
 | Was it reverted? | Journal expected/current fingerprints |
 | What did it cost? | per-call/sample Usage and actual Route |
 | Where did time go? | completed/open phase Spans |
+| Which causal links exist? | Observation IDs, Trace Context, semantic edges |
+| Was evidence dropped? | Observation Health and capture mode |
 | What correctness was established? | Verification status/scope/command |
 | What remains unknown? | gaps, unavailable records, conflicts |
 
@@ -110,6 +142,9 @@ must still be inspected.
 - Do not discard sequence gaps or journal conflicts.
 - Do not report self-reported child verification as gate-proven.
 - Redact credentials while preserving IDs and categories.
+- Never treat missing payload under metadata capture or retention as empty
+  successful evidence.
+- Never use Semantic Projection or Support Bundle as execution authority.
 
 ## Tests and Verification
 
@@ -117,6 +152,8 @@ must still be inspected.
 go test ./internal/runtime/app -run TestReconstructThread
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
 go test ./internal/persist/workspacejournal
+go test ./internal/observability/semantic
+go test ./internal/observability/supportbundle
 ```
 
 ## Hands-On Lab

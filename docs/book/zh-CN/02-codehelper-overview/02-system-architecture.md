@@ -87,9 +87,9 @@ flowchart TB
     ENG[Agent Engine]
     ADP[Provider / Tool / Extension Adapters]
     SEC[Policy / Guard / Sandbox]
-    ORC[Task / Workflow / Fleet]
-    PER[SQLite / Events / CAS / Journal]
-    OBS[Trace / Usage / Verify]
+    ORC[WorkGraph / Worker / Workflow / Fleet]
+    PER[SQLite / Domain Facts / Events / CAS / Journal]
+    OBS[Observation / Trace / Usage / OTLP]
     PLT[Process / OS]
     Hosts --> P --> APP --> ENG
     ENG --> ADP
@@ -115,9 +115,9 @@ Pairing/QR 和 REST/SSE 不属于受支持的产品面。
 | Runtime | `internal/runtime` | Protocol、Lifecycle、Agent Loop、Wiring |
 | Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Plugin、Hook |
 | Security | `internal/security` | Policy、Permission、Constitution、Sandbox |
-| Orchestration | `internal/orchestration` | Task、Worker、Workflow、Fleet |
+| Orchestration | `internal/orchestration` | WorkGraph、Worker、Automation、Workflow、Lane、Fleet、Subagent |
 | Persistence | `internal/persist` | SQLite、Event、CAS、Session、Journal |
-| Observability | `internal/observability` | Trace、Usage、Diagnostics、Verification |
+| Observability | `internal/observability` | 版本化 Observation、Trace、Usage、Diagnostics、Verification、OTLP |
 | Platform | `internal/platform` | Process 与 OS Integration |
 | VS Code | `extensions/vscode` | Editor UI 与 ACP Client |
 
@@ -141,7 +141,7 @@ Session、Profile、Tool Policy、Lifecycle、Artifact 与 Execution 的唯一 O
 `internal/host/cli/architecture_test.go` 会解析 Import；CLI 直接依赖执行实现时测试失败。
 架构边界因此是可验证属性。
 
-`docs/hotspot-baseline.json` 冻结 TUI、Engine、Config、Protocol 的职责和文件体积
+`testdata/contracts/hotspot-baseline.json` 冻结 TUI、Engine、Config、Protocol 的职责和文件体积
 边界。Characterization、Golden、Schema Drift 和 Race Test 在职责演进时保护行为。
 
 ## Runtime Protocol
@@ -165,8 +165,9 @@ Event 包含 Sequence、Operation、Thread、Turn 和 Item Identity，使 Host �
 
 ```text
 config -> provider -> persistence -> platform -> builtin tools
-       -> extension contributors -> security -> orchestration
-       -> agent -> runtime -> background services
+       -> extension contributors -> security -> extension plan
+       -> orchestration -> observability -> agent -> runtime
+       -> background services
 ```
 
 每个 Module 只拥有一个构造边界，仅向后续 Module 发布必要结果。Runtime、Engine 和
@@ -177,10 +178,11 @@ Child Worktree/Toolset。Provider 发布所选 Provider/Model Catalog，Security
 Permission Store 与 Guard Factory。
 
 Builtin 与 Extension Tool 共享同一个 Registry。Plugin、Skill、Memory、Dynamic
-Tool、Hook 和 MCP Contributor 只接收显式构造能力与共享 Registry，不接收
-`buildState`；每个 Contributor 返回确定性的 `ContributionReceipt`，记录新增 Tool
-Identity 与命名输出。Task/Automation 注册归 Orchestration，而非 Extension
-Contributor Chain。
+Tool、Hook 和 MCP Contributor 注册 Typed Contract，只接收显式 Capability，并返回
+有界 Receipt。随后 Source Resolution 生成 Digested Extension Plan；Runtime
+Lifecycle 拥有 Generation 与每个 Process、Connection、Subscription、Lease、Timer、
+Tool Registration。Task/Automation 注册归 Orchestration，而非 Extension Contributor
+Chain。
 
 Runtime 构造具有 Prepared 状态：`RuntimeModule` 只构造 Facade 并恢复静态 Durable
 State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh、启动
@@ -201,6 +203,9 @@ Automation，最后启动 Worker Scheduler。任一步失败都会终止构造�
 | Chat Merge | `runtime/app/chatmerge` | Preview 并 Journal-apply 隔离 Worktree Change |
 | Operation | `runtime/app` | Dispatch、Reservation、Event Hub、Terminal Commit |
 | Turn | `runtime/agent` | Coordinator、Scope、Effect、Control、Verification |
+| Work Lifecycle | `orchestration/kernel`、`orchestration/store` | Run/Node/Attempt/Lease/Effect Transition 与 Atomic Fact |
+| Extension Lifecycle | `runtime/extension`、`runtime/app/extension` | Plan、Generation、Effect Ownership、Control Receipt |
+| Observation Plane | `observability/observation`、`observability/router` | Privacy Admission、Evidence Routing、Exporter Isolation |
 | Go Projection | `runtime/eventview` | Go Host 共享的 Typed Event Interpretation |
 | VS Code Projection | `extensions/vscode/src/chat/projector` | Exhaustive Generated Event Class Dispatch |
 
@@ -211,11 +216,14 @@ Chat Merge 与 Durable Repository 行为成为可独立测试的 Service，不�
 
 ## Persistence 与 Orchestration
 
-SQLite 保存关系 Projection，Event Log 保存有序事实，CAS 保存不可变 Payload，
-Snapshot 加速恢复，Workspace Journal 记录 Edit Before-image。
+SQLite 保存关系 Projection 与 WorkGraph/Turn Fact；Runtime Event Log 保存 Host-facing
+Lifecycle Evidence；CAS 保存不可变 Payload；Snapshot 加速恢复；Workspace Journal
+记录 Edit Before-image。独立 Observation Journal 保存通过 Privacy Admission 的因果
+证据，用于 Semantic Replay/OTLP，但不获得执行权威。
 
-Task、Worker、Workflow、Lane、Fleet 和 Subagent 最终仍回到 Runtime、Guard 和
-Sandbox。Orchestration 不是治理例外。
+Task、Workflow、Automation、Background Command、Verification 与 Agent Work 编译为
+统一 Durable WorkGraph。Worker 是唯一 Claim Authority；Fleet 是 Read/Audit
+Projection，Lane 是 Placement。所有执行最终回到 Runtime、Guard 与 Sandbox。
 
 ## 设计取舍与替代方案
 

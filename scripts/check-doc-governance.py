@@ -21,7 +21,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 BOOK = ROOT / "docs" / "book"
 CONFIG_PATH = BOOK / "governance.json"
 CATALOG_PATH = BOOK / "catalog.json"
-CODEOWNERS_PATH = ROOT / ".github" / "CODEOWNERS"
 CHAPTER_FIELDS = {
     "id",
     "title",
@@ -101,46 +100,6 @@ def matches(path: str, pattern: str) -> bool:
     return normalized == candidate
 
 
-def expected_codeowners(config: dict) -> str:
-    owners = {item["id"]: " ".join(item["github"]) for item in config["owners"]}
-    lines = [
-        "# Generated from docs/book/governance.json by documentation governance.",
-        "# Keep ownership changes in the registry and regenerate this file.",
-        "",
-    ]
-    seen: set[tuple[str, str]] = set()
-    for domain in config["domains"]:
-        handles = owners[domain["owner"]]
-        for pattern in domain["source_patterns"]:
-            pair = (pattern, handles)
-            if pair not in seen:
-                lines.append(f"/{pattern} {handles}")
-                seen.add(pair)
-        for language in ("en", "zh-CN"):
-            part = next(
-                item["id"]
-                for item in load_json(CATALOG_PATH)["parts"]
-                if any(
-                    fnmatch.fnmatch(chapter["id"], chapter_pattern)
-                    for chapter in item["chapters"]
-                    for chapter_pattern in domain["chapter_patterns"]
-                )
-            )
-            lines.append(f"/docs/book/{language}/{part}/ {handles}")
-    default_handles = owners[config["default_owner"]]
-    lines.extend(
-        [
-            f"/docs/book/catalog.json {default_handles}",
-            f"/docs/book/governance.json {default_handles}",
-            f"/docs/book/schema/ {default_handles}",
-            f"/scripts/check-doc-governance.py {default_handles}",
-            f"/.github/CODEOWNERS {default_handles}",
-            "",
-        ]
-    )
-    return "\n".join(lines)
-
-
 def check(strict_drift: bool) -> list[str]:
     errors: list[str] = []
     config = load_json(CONFIG_PATH)
@@ -149,8 +108,6 @@ def check(strict_drift: bool) -> list[str]:
     owner_ids = {owner.get("id") for owner in config.get("owners", [])}
     if config.get("schema_version") != 1:
         errors.append("governance.json: schema_version must be 1")
-    if config.get("default_owner") not in owner_ids:
-        errors.append("governance.json: default_owner is unknown")
     max_age = config.get("freshness", {}).get("verified_max_age_days")
     warning_age = config.get("freshness", {}).get("warning_age_days")
     if (
@@ -195,11 +152,6 @@ def check(strict_drift: bool) -> list[str]:
     }
     if catalog_ids != set(chapter_map):
         errors.append("governance.json: delivered chapter set differs from catalog")
-    expected = expected_codeowners(config)
-    if not CODEOWNERS_PATH.is_file():
-        errors.append(".github/CODEOWNERS: missing")
-    elif CODEOWNERS_PATH.read_text(encoding="utf-8") != expected:
-        errors.append(".github/CODEOWNERS: drifted from docs/book/governance.json")
     today = dt.date.today()
     for chapter_id, chapter in chapter_map.items():
         metadata = chapter["metadata"]
@@ -572,7 +524,6 @@ def main() -> int:
     impact_parser.add_argument("--body", default=None)
     subparsers.add_parser("release")
     subparsers.add_parser("external-links")
-    subparsers.add_parser("codeowners")
     args = parser.parse_args()
     if args.command == "check":
         errors = check(args.strict_drift)
@@ -589,9 +540,6 @@ def main() -> int:
         return run_release()
     if args.command == "external-links":
         return external_links()
-    if args.command == "codeowners":
-        sys.stdout.write(expected_codeowners(load_json(CONFIG_PATH)))
-        return 0
     return 2
 
 

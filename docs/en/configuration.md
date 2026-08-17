@@ -106,46 +106,6 @@ max_cost_usd = 0
 wall_time = "5m"
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
 
-An empty `reasoning_effort` selects low for read-only work, medium for normal
-coding, and high for complex architecture/debugging; repair failures escalate
-one level. An explicit effort remains fixed and must be advertised by every
-configured route; unsupported values fail before provider I/O. `max_output_tokens`
-is always the hard request ceiling; stage reserves never raise an explicit value.
-
-`delegation = "explicit"` exposes `spawn_agent` only with user, developer,
-Skill, or internal system authority. `adaptive` also allows the model to
-delegate independent work when parallel benefit exceeds coordination cost.
-`disabled` hides Agent lifecycle tools from the model while preserving
-internally authorized durable worker execution.
-
-`spawn_agent` captures parent context from the active runtime Turn. Its
-`context_mode` is `task_capsule` by default; `fresh` inherits no parent context,
-`last_n_turns` adds up to `context_turns` complete recent tool exchanges, and
-`full` requires explicit authority or role policy. The tool returns a
-`context_receipt` with source identity, inclusion/exclusion reasons, byte and
-token budgets, and a SHA-256 digest. Legacy `fork_context` and `parent_context`
-arguments are not accepted.
-
-The Agent Tree, Mailbox, Result, and Budget Ledger live in the workspace state
-store. Every Agent has a canonical path and CAS revision; terminal Result and
-Completion Outbox commit atomically. Completion notifies the parent
-automatically, while `wait_agent` synchronizes on the same fact. Stable Message
-IDs and `Receive/Ack` preserve unacknowledged delivery across restart.
-`max_parallel` limits active children, `max_resident` includes completed
-children whose Result or worktree is still retained, and `max_total` bounds all
-spawns for the durable tree, including closed agents. Depth, token, and cost
-admission also apply to nested agents; a child may narrow but never expand its
-parent's budget.
-
-Child authority can only narrow the active Session profile. Effective posture
-follows `never < suggest < auto < bypass`, writable tools are the intersection
-of the parent catalog and the child role contract, and read-only roles use
-`never`. Under `suggest`, a child approval appears in the host with its Agent
-path and role. The host submits the original Request ID through the parent
-Session; Runtime routes the decision to the authoritative child Thread and
-preserves pending approvals across restart. A denial produces a structured
-Problem and an `approval_denied` tool result for the child.
-
 [execution.worker]
 enabled = false
 max_parallel = 2
@@ -204,11 +164,48 @@ model = "gpt-4.1-mini"
 
 [web]
 search_backend = "duckduckgo"
-
-[diagnostics.commands.".md"]
-name = "markdownlint-cli2"
-args = ["--no-globs", "--", "{path}"]
 ```
+
+An empty `reasoning_effort` selects low for read-only work, medium for normal
+coding, and high for complex architecture/debugging; repair failures escalate
+one level. An explicit effort remains fixed and must be advertised by every
+configured route; unsupported values fail before provider I/O.
+`max_output_tokens` is always the hard request ceiling; stage reserves never
+raise an explicit value.
+
+`delegation = "explicit"` exposes `spawn_agent` only with user, developer,
+Skill, or internal system authority. `adaptive` also allows the model to
+delegate independent work when parallel benefit exceeds coordination cost.
+`disabled` hides Agent lifecycle tools from the model while preserving
+internally authorized durable worker execution.
+
+`spawn_agent` captures parent context from the active Runtime Turn. Its
+`context_mode` is `task_capsule` by default; `fresh` inherits no parent context,
+`last_n_turns` adds up to `context_turns` complete recent Tool exchanges, and
+`full` requires explicit authority or role policy. The Tool returns a
+`context_receipt` with source identity, inclusion/exclusion reasons, byte and
+token budgets, and a SHA-256 digest. Legacy `fork_context` and `parent_context`
+arguments are not accepted.
+
+The Agent Tree, Mailbox, Result, and Budget Ledger live in the Workspace state
+store. Every Agent has a canonical path and CAS revision; terminal Result and
+Completion Outbox commit atomically. Completion notifies the parent
+automatically, while `wait_agent` synchronizes on the same fact. Stable Message
+IDs and `Receive/Ack` preserve unacknowledged delivery across restart.
+`max_parallel` limits active children, `max_resident` includes completed
+children whose Result or worktree is still retained, and `max_total` bounds all
+spawns for the durable tree, including closed agents. Depth, token, and cost
+admission also apply to nested agents; a child may narrow but never expand its
+parent's budget.
+
+Child authority can only narrow the active Session Profile. Effective posture
+follows `never < suggest < auto < bypass`, writable Tools are the intersection
+of the parent catalog and the child Role Contract, and read-only Roles use
+`never`. Under `suggest`, a child Approval appears in the Host with its Agent
+path and Role. The Host submits the original Request ID through the parent
+Session; Runtime routes the decision to the authoritative child Thread and
+preserves pending approvals across restart. A denial produces a structured
+Problem and an `approval_denied` Tool Result for the child.
 
 Bundled `openai-responses` routes that advertise incremental transport keep a
 Provider-owned WebSocket per sticky session key. The first sample sends the
@@ -318,19 +315,6 @@ executables. Each command must include `{path}` in its bounded argument list.
 These commands execute after guarded file edits, so repository-local config
 cannot define them unless that config was explicitly trusted.
 
-For Markdown, install the pinned development dependency with
-`make vscode-install`, or install the same CLI on the Host PATH:
-
-```bash
-npm install --global markdownlint-cli2@0.23.2
-```
-
-The repository's `.markdownlint-cli2.jsonc` keeps single-file post-edit checks
-consistent with the repository-wide `markdownlint-cli2` run. Markdown linting
-supplements rather than replaces `make docs-check` and `make book-check`; those
-commands remain authoritative for bilingual parity, navigation, governance, and
-book structure.
-
 ## State and Persistence
 
 The default user data directory is `~/.codehelper/v1`. A workspace can use a
@@ -342,6 +326,34 @@ not depend on compatibility with development databases from older commits.
 
 `execution.journal.durable=true` stores enough edit evidence to recover
 interrupted turns. Keep it enabled for real repositories.
+
+## Observation Capture and Export
+
+`[telemetry].log_level` controls structured Runtime logging. Observation
+capture and OTLP export are process-level operational settings rather than TOML
+fields:
+
+| Variable | Values | Behavior |
+| --- | --- | --- |
+| `CODEHELPER_OBSERVATION_CAPTURE` | `off`, `metadata`, `failure`, `full` | controls durable Observation admission; default is `metadata` |
+| `CODEHELPER_OTEL_EXPORTER` | `memory`, `off`, `http/protobuf`, `grpc` | selects the Observation OTLP projector |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | collector endpoint | enables standard OTLP endpoint configuration |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` or `http/protobuf` | standard protocol selection when an endpoint is set |
+
+`metadata` keeps redacted summaries and drops raw payloads. `failure` keeps
+eligible redacted payloads only for failure-like observations. `full` still
+rejects Credential and Restricted payloads and redacts configured secrets,
+state paths, and config paths before any Journal or CAS write.
+
+Observation payload retention is separate from `[state].event_retention`.
+`event_retention` bounds Runtime Event history by count. Observation payload
+references use internal time-based classes: audit and diagnostic default to 30
+days, sensitive to 24 hours, and ephemeral to one hour. Startup pruning
+releases expired references and deletes only unreferenced CAS objects.
+
+If remote OTLP construction fails, Runtime falls back to the in-memory
+projector. Observation queue, Journal, or exporter failures are reported as
+observation health and never change the business result of a Turn.
 
 ## Context Controls
 
@@ -374,6 +386,8 @@ Common overrides:
 | `CODEHELPER_SUBAGENT_*` | delegation, tree limits, child budgets, wall time, and workspace strategy |
 | `CODEHELPER_VERIFY_*` | verification behavior |
 | `CODEHELPER_STATE_*` | persistence |
+| `CODEHELPER_LOG_LEVEL` | structured Runtime logging |
+| `CODEHELPER_OBSERVATION_CAPTURE`, `CODEHELPER_OTEL_EXPORTER`, `OTEL_EXPORTER_OTLP_*` | observation capture and OTLP export |
 | `CODEHELPER_CREDENTIAL_KIND`, `CODEHELPER_CREDENTIAL_NAME` | secret reference |
 | `CODEHELPER_INDEX_*`, `CODEHELPER_REPO_MAP_*` | repository context |
 | `CODEHELPER_WORKING_SET_*`, `CODEHELPER_EVIDENCE_*` | session context |

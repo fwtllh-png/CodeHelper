@@ -22,16 +22,8 @@ architecture and delivery stages are defined in the
 3. [Book navigation and chapter status](../book/en/NAVIGATION.md)
 4. [Knowledge documentation plan](./knowledge-base-plan.md)
 5. [Architecture](./architecture.md)
-6. [Context engineering architecture upgrade](./context-engineering-architecture-upgrade.md)
-7. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
-8. [Approval architecture upgrade](./approval-architecture-upgrade.md)
-9. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
-10. [Provider architecture upgrade](./provider-architecture-upgrade.md)
-11. [Tool and local execution architecture upgrade](./tool-execution-architecture-upgrade.md)
-12. [Security Governance 与 Sandbox 架构升级方案（仅中文）](./security-governance-architecture-upgrade.md)
-13. [State Observability 架构升级方案（仅中文）](./state-observability-architecture-upgrade.md)
-14. [Security model](./security.md)
-15. [Local development and scripts](./development.md)
+6. [Security model](./security.md)
+7. [Local development and scripts](./development.md)
 
 ### I want to use CodeHelper
 
@@ -49,28 +41,18 @@ architecture and delivery stages are defined in the
 2. [One-click local DeepSeek](./deepseek-local.md)
 3. [VS Code extension](./vscode.md)
 4. [Configuration](./configuration.md)
-5. [VS Code Runtime monitoring](./runtime-monitoring.md)
-6. [Troubleshooting](./troubleshooting.md)
+5. [Troubleshooting](./troubleshooting.md)
 
 ### I want to contribute
 
 1. [Architecture](./architecture.md)
-2. [Context engineering architecture upgrade](./context-engineering-architecture-upgrade.md)
-3. [Multi-Agent architecture upgrade](./multi-agent-architecture-upgrade.md)
-4. [Approval architecture upgrade](./approval-architecture-upgrade.md)
-5. [Token efficiency architecture upgrade](./token-efficiency-architecture-upgrade.md)
-6. [Provider architecture upgrade](./provider-architecture-upgrade.md)
-7. [Tool and local execution architecture upgrade](./tool-execution-architecture-upgrade.md)
-8. [Security Governance 与 Sandbox 架构升级方案（仅中文）](./security-governance-architecture-upgrade.md)
-9. [State Observability 架构升级方案（仅中文）](./state-observability-architecture-upgrade.md)
-10. [Security model](./security.md)
-11. [Local development and scripts](./development.md)
-12. [Agent guide](./agent-guide.md)
-13. [TUI and VS Code experience contract](./experience.md)
-14. [VS Code Runtime monitoring](./runtime-monitoring.md)
-15. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-16. [Documentation governance](./documentation-governance.md)
-17. [Roadmap](./roadmap.md)
+2. [Security model](./security.md)
+3. [Local development and scripts](./development.md)
+4. [Agent guide](./agent-guide.md)
+5. [TUI and VS Code experience contract](./experience.md)
+6. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+7. [Documentation governance](./documentation-governance.md)
+8. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 
@@ -82,7 +64,7 @@ architecture and delivery stages are defined in the
 | Architecture boundaries | import graph and architecture tests |
 | Build/test commands | `Makefile` and package scripts |
 | VS Code compatibility | `extensions/vscode/compatibility.json` |
-| TUI and VS Code experience semantics | `docs/experience-contract.json` |
+| TUI and VS Code experience semantics | `testdata/contracts/experience-contract.json` |
 | Knowledge book structure and delivery | `knowledge-base-plan.md` |
 | Book catalog and chapter status | `docs/book/catalog.json` |
 | Book ownership, freshness, and release facts | `docs/book/governance.json` |

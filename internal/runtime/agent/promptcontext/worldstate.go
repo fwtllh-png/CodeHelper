@@ -182,8 +182,6 @@ func AssembleWorldText(
 	return []provider.Message{provider.TextMessage(provider.RoleSystem, retained)}, receipt
 }
 
-func (t ToolCatalogSection) ID() string { return PartitionToolCatalog }
-
 func (t ToolCatalogSection) Digest() string {
 	return digestJSON(struct {
 		Advertised        int `json:"advertised"`

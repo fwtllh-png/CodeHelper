@@ -93,9 +93,9 @@ flowchart TB
     ENG[Agent Engine]
     ADP[Provider / Tool / Extension Adapters]
     SEC[Policy / Guard / Sandbox]
-    ORC[Task / Workflow / Fleet]
-    PER[SQLite / Events / CAS / Journal]
-    OBS[Trace / Usage / Verify]
+    ORC[WorkGraph / Worker / Workflow / Fleet]
+    PER[SQLite / Domain Facts / Events / CAS / Journal]
+    OBS[Observation / Trace / Usage / OTLP]
     PLT[Process / OS]
 
     Hosts --> P --> APP --> ENG
@@ -125,9 +125,9 @@ not supported product surfaces.
 | Runtime | `internal/runtime` | protocol, app lifecycle, Agent loop, wiring |
 | Adapters | `internal/adapter` | providers, tools, MCP, skills, plugins, hooks |
 | Security | `internal/security` | policy, permissions, constitution, sandbox |
-| Orchestration | `internal/orchestration` | task, worker, automation, workflow, fleet |
+| Orchestration | `internal/orchestration` | WorkGraph, worker, automation, workflow, lane, fleet, subagent |
 | Persistence | `internal/persist` | SQLite, event log, CAS, sessions, journal |
-| Observability | `internal/observability` | traces, usage, diagnostics, verification |
+| Observability | `internal/observability` | versioned observations, traces, usage, diagnostics, verification, OTLP |
 | Platform | `internal/platform` | process and OS integration |
 | VS Code | `extensions/vscode` | editor presentation and ACP client |
 
@@ -153,7 +153,7 @@ SSH, Dev Containers, and Codespaces are outside this product surface.
 depends directly on execution implementations. Architecture is therefore a
 tested property.
 
-`docs/hotspot-baseline.json` freezes responsibility and file-size boundaries
+`testdata/contracts/hotspot-baseline.json` freezes responsibility and file-size boundaries
 for TUI, Engine, Config, and Protocol. Characterization, Golden, Schema drift,
 and Race tests protect behavior while those responsibilities evolve.
 
@@ -183,8 +183,9 @@ closed module sequence:
 
 ```text
 config -> provider -> persistence -> platform -> builtin tools
-       -> extension contributors -> security -> orchestration
-       -> agent -> runtime -> background services
+       -> extension contributors -> security -> extension plan
+       -> orchestration -> observability -> agent -> runtime
+       -> background services
 ```
 
 Each module owns one construction boundary and publishes only what later
@@ -196,12 +197,13 @@ Subagents, and child worktrees/toolsets. Provider publishes the selected
 Provider/Model catalogs, while Security publishes its Permission Store and
 Guard Factory.
 
-Builtin and extension tools share one Registry. Plugin, Skill, Memory,
-Dynamic Tool, Hook, and MCP contributors receive only their explicit
-construction capabilities and the shared Registry, never `buildState`. Each
-returns a deterministic `ContributionReceipt` listing added Tool identities
-and named outputs. Task/Automation registration belongs to Orchestration
-rather than the extension contributor chain.
+Builtin and extension tools share one Registry. Plugin, Skill, Memory, Dynamic
+Tool, Hook, and MCP contributors register typed contracts, receive only
+explicit construction capabilities, and return bounded receipts. Source
+resolution then produces a digested Extension Plan; Runtime lifecycle owns
+generations and every process, connection, subscription, lease, timer, and Tool
+registration. Task/Automation registration belongs to Orchestration rather
+than the extension contributor chain.
 
 Runtime construction has a prepared state: `RuntimeModule` constructs the
 facade and restores static durable state without accepting operations;
@@ -226,6 +228,9 @@ becoming a second business loop.
 | Chat merge | `runtime/app/chatmerge` | previews and journal-applies isolated worktree changes |
 | Operations | `runtime/app` | dispatch, reservation, Event Hub, terminal commit |
 | Turns | `runtime/agent` | Coordinator, Scope, effects, controls, verification |
+| Work lifecycle | `orchestration/kernel`, `orchestration/store` | Run/Node/Attempt/Lease/Effect transitions and atomic facts |
+| Extension lifecycle | `runtime/extension`, `runtime/app/extension` | Plan, generation, Effect ownership, control receipts |
+| Observation plane | `observability/observation`, `observability/router` | privacy admission, evidence routing, exporter isolation |
 | Go projection | `runtime/eventview` | typed Event interpretation shared by Go Hosts |
 | VS Code projection | `extensions/vscode/src/chat/projector` | exhaustive generated Event Class dispatch |
 
@@ -237,13 +242,16 @@ inside `wire`.
 
 ## Persistence and Orchestration
 
-SQLite stores relational projections; the event log stores ordered facts; CAS
-stores immutable payloads; snapshots speed restoration; the workspace journal
-records edit before-images.
+SQLite stores relational projections and WorkGraph/Turn facts; the Runtime
+Event Log stores Host-facing lifecycle evidence; CAS stores immutable payloads;
+snapshots speed restoration; the Workspace Journal records edit before-images.
+The separate Observation Journal stores privacy-admitted causal evidence for
+semantic replay and OTLP projection without becoming execution authority.
 
-Tasks, workers, workflows, lanes, fleets, and subagents may create or schedule
-work, but ultimately return to the same Runtime, Guard, and sandbox boundaries.
-Orchestration is not an exception to governance.
+Tasks, Workflows, Automation, background commands, verification, and Agent work
+compile to one durable WorkGraph. Worker is the only Claim authority; Fleet is
+a read/audit projection and Lane is placement. All execution returns to the
+same Runtime, Guard, and Sandbox boundaries.
 
 ## Tradeoffs and Alternatives
 

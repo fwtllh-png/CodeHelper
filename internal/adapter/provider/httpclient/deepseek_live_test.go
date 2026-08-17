@@ -125,7 +125,7 @@ func deepSeekLiveRuntime(
 	t *testing.T,
 ) (provider.Provider, model.ReadyRoute, *telemetry.Metrics) {
 	t.Helper()
-	route := p0BundledRoute(t, "deepseek-v4-flash", "deepseek-v4-flash")
+	route := bundledRoute(t, "deepseek-v4-flash", "deepseek-v4-flash")
 	credential, err := DefaultCredentials().Resolve(t.Context(), route.Credential())
 	if err != nil {
 		t.Skipf("DeepSeek live control skipped: configured credential is unavailable: %v", err)
@@ -156,6 +156,23 @@ func deepSeekLiveRuntime(
 		t.Fatal(err)
 	}
 	return runtime, route, metrics
+}
+
+func bundledRoute(t *testing.T, providerID, modelID string) model.ReadyRoute {
+	t.Helper()
+	resolver, err := model.NewResolver(model.DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(model.RouteRequest{
+		ProviderID: providerID,
+		ModelID:    modelID,
+		Provenance: model.ProvenanceBundled,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return route
 }
 
 type p0LiveCredential string

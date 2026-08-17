@@ -36,7 +36,7 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 | Verify Gate | Commit 前收集正确性证据 |
 | OS Sandbox | 强制进程、文件系统和网络边界 |
 | Egress Control | 约束远程 Endpoint 与出网 Client |
-| Observability | 记录脱敏 Event、Receipt、Usage 与 Trace |
+| Observability | 通过 Privacy、Retention 与有界 Export Policy 接收版本化证据 |
 
 任何一层都不能被描述为另一层的替代品。
 
@@ -164,12 +164,33 @@ Value，也必须作为受限 Audit Record 处理。Runtime Capture 会包含
 `tool.result.execution`，因此 Capture 与 Event Log 必须采用相同的访问控制和
 Retention。
 
+Durable Observation Router 会在任何 Observation Journal 或 CAS 写入前应用 Capture
+Policy：
+
+- `off`：不持久化 Observation；
+- `metadata`：默认值，只保留脱敏 Summary；
+- `failure`：为 Failure-like Observation 保留符合条件的脱敏 Payload；
+- `full`：为 Trait 允许的 Observation Kind 保留符合条件的脱敏 Payload。
+
+所有模式都禁止 Credential 与 Restricted Payload。Secret-bearing JSON Key、配置
+Credential Value、State Root 与 Config Path 会在持久化前脱敏。Sensitive Payload
+Reference 比 Audit Metadata 更早过期；只有 Reference Count 降为 0 后，CAS GC 才会
+删除 Object。
+
+OTLP Export 是脱敏 Observation Envelope 的独立有界 Projection。Metric Label 使用
+固定低基数 Allowlist，绝不能包含 Prompt、Path、Argument、Resource ID 或 Raw Error。
+Collector Endpoint 与 Header 是安全敏感环境配置。Exporter Failure 会反映在
+Observation Health 中，但不能改变业务 Turn Result。
+
+内部 Support Bundle Builder 会读取 Observation Journal，对所有 Summary/Payload
+再次脱敏，默认不包含 Payload，以独占方式创建 Archive，并强制 mode `0600`。Bundle
+仍是敏感数据，分享前必须人工检查。
+
 ## 安全测试
 
 ```bash
 make security-test
 make sandbox-attack-test
-make security-governance-sg7
 make secret-leak-test
 make vscode-security
 ```

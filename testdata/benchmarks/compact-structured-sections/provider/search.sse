@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_search","function":{"name":"search_text","arguments":"{\"query\":\"greeting\"}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

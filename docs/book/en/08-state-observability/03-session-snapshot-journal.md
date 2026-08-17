@@ -14,6 +14,9 @@ code_paths:
   - internal/persist/state/cas
   - internal/persist/workspacejournal
   - internal/persist/sqlkit
+  - internal/observability/privacy
+  - internal/observability/retention
+  - internal/observability/supportbundle
 test_paths:
   - internal/runtime/app/session_artifacts_test.go
   - internal/persist/session/lifecycle_test.go
@@ -21,11 +24,14 @@ test_paths:
   - internal/persist/state/cas/store_test.go
   - internal/persist/workspacejournal/recover_test.go
   - internal/persist/sqlkit/ownership_test.go
+  - internal/observability/retention/retention_test.go
+  - internal/observability/supportbundle/bundle_test.go
 source_of_truth:
   - internal/runtime/app/session_artifacts.go
   - internal/persist/session/lifecycle.go
   - internal/persist/snapshot/repository.go
   - internal/persist/workspacejournal/journal.go
+  - internal/observability/retention/retention.go
 status: draft
 last_verified: null
 ---
@@ -109,6 +115,29 @@ durable owner/before-image -> Workspace write -> after fingerprint -> Turn commi
 Both protocols prefer recoverable leftovers over dangling authoritative
 references.
 
+## Observation Payload Retention
+
+Observation metadata and Observation payloads have different lifetimes.
+Privacy policy runs before the Router writes either the Observation Journal or
+CAS. `metadata` capture stores only bounded redacted summaries; `failure` and
+`full` may retain eligible redacted payloads. Credential and Restricted
+payloads are never persisted.
+
+Payload references use time-based retention classes rather than the Runtime
+Event-count limit:
+
+| Class | Default lifetime |
+| --- | --- |
+| audit / diagnostic | 30 days |
+| sensitive | 24 hours |
+| ephemeral | 1 hour |
+
+Startup retention releases expired references and deletes a CAS object only
+when it is unreferenced. Observation metadata remains available for explanation
+after its payload expires. Support bundle construction re-redacts selected
+records, excludes payloads by default, and creates the archive exclusively with
+mode `0600`.
+
 ## Identity Boundaries
 
 Session identifies Workspace lifecycle; Thread/Turn identify causal history;
@@ -131,6 +160,8 @@ Journal remains necessary.
   repairing it.
 - CAS tampering, symlinks, invalid IDs, and bad reference metadata fail closed.
 - Last-reference release deletes content; retained content survives restart.
+- Observation retention never deletes a still-referenced CAS object.
+- Capture policy rejects Credential and Restricted payloads in every mode.
 - Journal before-image failure blocks the edit.
 - Recovery never clobbers an external edit.
 - State-only Restore cannot replay Tool, Command, Network, or file effects.
@@ -143,6 +174,8 @@ go test ./internal/runtime/app -run 'Test(SessionCheckpoint|Restore|Fork|Plan)'
 go test ./internal/persist/session ./internal/persist/snapshot
 go test ./internal/persist/state/cas ./internal/persist/workspacejournal
 go test ./internal/persist/sqlkit
+go test ./internal/observability/privacy ./internal/observability/retention
+go test ./internal/observability/supportbundle
 ```
 
 ## Hands-On Lab

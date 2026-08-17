@@ -15,12 +15,9 @@ Root 运行。
 | `test-brand-check.sh` | 无 | Brand Scanner 自测 |
 | `test-secret-leak.sh` | 无 | 验证 Binary Redaction |
 | `run-test-lane.py` | 取决于被测命令 | 写入 Passed、Failed 或 Unavailable JSON Lane 证据 |
-| `check-hotspot-baseline.go` | 无 | 校验 Stage 0 热点冻结与拆分后的职责归属 |
-| `toolexecbaseline` | 无 | 记录并校验 EX0 本地 Tool 执行 Surface、安全 Contract 与已知风险 |
+| `check-hotspot-baseline.go` | 无 | 校验当前热点职责归属与体积预算 |
 | `commanddocs` | 无 | 从 Cobra Command Tree 生成或校验双语命令清单 |
-| `upgradebaseline` | 无 | 写入 Stage 0 Benchmark 指标与能力可用性 |
 | `experiencecontract` | 无 | 校验共享 Experience Baseline |
-| `content-fixture-smoke.sh` | 无 | 临时 Content Dependency Fixture |
 | `live-model-smoke.sh` | 有 | 单 Agent 或 Multi Agent 真实 Provider Smoke，不持久化 Secret |
 | `package-release.sh` | 无 | `dist/release` Binary、Checksum、SBOM、Manifest |
 | `deepseek-local.sh` | 配置或打包可能联网 | 本机 DeepSeek 编译、Keychain 配置、TUI 与 VS Code |
@@ -46,12 +43,6 @@ make docs-check
 make book-check
 make book-navigation
 make command-docs
-make upgrade-baseline
-make tool-execution-ex0
-make tool-execution-ex1
-make tool-execution-ex2
-make tool-execution-ex3
-make tool-execution-ex4
 make test
 make architecture-freeze
 make host-journey-contract

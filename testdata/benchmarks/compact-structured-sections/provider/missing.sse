@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_missing","function":{"name":"file_rewrite","arguments":"{\"path\":\"service.py\"}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

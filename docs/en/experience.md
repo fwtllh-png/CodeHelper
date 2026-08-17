@@ -4,7 +4,7 @@
 
 This document defines the shared interaction and presentation baseline for the
 TUI and VS Code hosts. The machine-readable source is
-[`experience-contract.json`](../experience-contract.json). Host-specific
+[`experience-contract.json`](../../testdata/contracts/experience-contract.json). Host-specific
 implementations may use native controls and vocabulary, but they must preserve
 the semantics below.
 
@@ -46,7 +46,7 @@ The user-facing lifecycle vocabulary is more specific than the canonical state
 catalog: `Setup`, `Empty`, `Loading`, `Streaming`, `Approval`, `Verify`,
 `Failure`, `Recovery`, and `Completed`. Each presentation includes a next
 action. Their event coverage and cross-host invariants are defined in
-[`host-journey-contract.json`](../host-journey-contract.json).
+[`host-journey-contract.json`](../../testdata/contracts/host-journey-contract.json).
 
 ## Visual Tokens
 

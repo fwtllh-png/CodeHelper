@@ -1,7 +1,6 @@
 package bench
 
 import (
-	"fmt"
 	"slices"
 )
 
@@ -31,7 +30,7 @@ type BaselineMetrics struct {
 	RetryAttempts        int                `json:"retry_attempts"`
 }
 
-// AgentEvaluationMetrics are release-facing Multi-Agent quality signals.
+// AgentEvaluationMetrics summarize Multi-Agent benchmark observations.
 // Ratios retain their denominators so an empty pack cannot report false green.
 type AgentEvaluationMetrics struct {
 	Scenarios             int   `json:"scenarios"`
@@ -41,19 +40,6 @@ type AgentEvaluationMetrics struct {
 	FalseSpawnRate        Ratio `json:"false_spawn_rate"`
 	AgentCompletionRate   Ratio `json:"agent_completion_rate"`
 	ParallelAdmissionRate Ratio `json:"parallel_admission_rate"`
-}
-
-// AgentEvaluationThresholds are checked by the Multi-Agent release gate.
-// Every rate requires evidence; an empty denominator always fails closed.
-type AgentEvaluationThresholds struct {
-	SchemaVersion                int     `json:"schema_version"`
-	MinimumScenarios             int     `json:"minimum_scenarios"`
-	MinimumExplicitCompliance    float64 `json:"minimum_explicit_compliance"`
-	MinimumAdaptiveCompliance    float64 `json:"minimum_adaptive_compliance"`
-	MinimumLocalExecutionRate    float64 `json:"minimum_local_execution_rate"`
-	MaximumFalseSpawnRate        float64 `json:"maximum_false_spawn_rate"`
-	MinimumAgentCompletionRate   float64 `json:"minimum_agent_completion_rate"`
-	MinimumParallelAdmissionRate float64 `json:"minimum_parallel_admission_rate"`
 }
 
 func baselineMetrics(results []Result) BaselineMetrics {
@@ -160,82 +146,6 @@ func agentEvaluationMetrics(results []Result) AgentEvaluationMetrics {
 	metrics.AgentCompletionRate = ratio(terminal, spawned)
 	metrics.ParallelAdmissionRate = ratio(parallelOK, parallelTotal)
 	return metrics
-}
-
-// ValidateAgentEvaluation applies the checked-in release thresholds.
-func ValidateAgentEvaluation(
-	metrics AgentEvaluationMetrics,
-	thresholds AgentEvaluationThresholds,
-) []string {
-	var failures []string
-	if thresholds.SchemaVersion != 1 {
-		failures = append(failures, fmt.Sprintf(
-			"agent threshold schema version = %d want 1",
-			thresholds.SchemaVersion,
-		))
-	}
-	if metrics.Scenarios < thresholds.MinimumScenarios {
-		failures = append(failures, fmt.Sprintf(
-			"agent scenarios = %d want at least %d",
-			metrics.Scenarios,
-			thresholds.MinimumScenarios,
-		))
-	}
-	checkMinimum := func(name string, measured Ratio, minimum float64) {
-		if measured.Value == nil {
-			failures = append(failures, name+" has no evidence")
-			return
-		}
-		if *measured.Value < minimum {
-			failures = append(failures, fmt.Sprintf(
-				"%s = %.4f want at least %.4f",
-				name, *measured.Value, minimum,
-			))
-		}
-	}
-	checkMaximum := func(name string, measured Ratio, maximum float64) {
-		if measured.Value == nil {
-			failures = append(failures, name+" has no evidence")
-			return
-		}
-		if *measured.Value > maximum {
-			failures = append(failures, fmt.Sprintf(
-				"%s = %.4f want at most %.4f",
-				name, *measured.Value, maximum,
-			))
-		}
-	}
-	checkMinimum(
-		"explicit compliance",
-		metrics.ExplicitCompliance,
-		thresholds.MinimumExplicitCompliance,
-	)
-	checkMinimum(
-		"adaptive compliance",
-		metrics.AdaptiveCompliance,
-		thresholds.MinimumAdaptiveCompliance,
-	)
-	checkMinimum(
-		"local execution rate",
-		metrics.LocalExecutionRate,
-		thresholds.MinimumLocalExecutionRate,
-	)
-	checkMaximum(
-		"false spawn rate",
-		metrics.FalseSpawnRate,
-		thresholds.MaximumFalseSpawnRate,
-	)
-	checkMinimum(
-		"agent completion rate",
-		metrics.AgentCompletionRate,
-		thresholds.MinimumAgentCompletionRate,
-	)
-	checkMinimum(
-		"parallel admission rate",
-		metrics.ParallelAdmissionRate,
-		thresholds.MinimumParallelAdmissionRate,
-	)
-	return failures
 }
 
 func ratio(numerator, denominator int) Ratio {

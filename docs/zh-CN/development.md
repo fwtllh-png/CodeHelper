@@ -99,6 +99,8 @@ make brand-check
 | `make acp-interop` | 真实二进制 ACP Stdio 生命周期 |
 | `make protocol-contract` | ACP 上的共享 Runtime 场景 |
 | `make protocol-schema` | 重新生成 Runtime Protocol Schema |
+| `make observation-traits` | 重新生成 Go、TypeScript 与 JSON Schema 的 Observation Trait |
+| `make observation-traits-check` | 检测生成的 Observation Artifact 是否漂移 |
 
 ### VS Code
 
@@ -121,9 +123,7 @@ make brand-check
 | Target | 作用 |
 | --- | --- |
 | `make bench` | 在强宿主机 Sandbox 上执行 Fixture Coding Benchmark |
-| `make upgrade-baseline` | 写入带版本的 Coding 指标报告 |
 | `make catalog-bench` | Dynamic Tool Catalog Scale Benchmark |
-| `make multi-agent-eval` | Hermetic 委派、Completion 与并行度发布阈值 |
 | `make multi-agent-performance` | 有界 Agent Event 投影性能预算 |
 | `make live-model-smoke` | 显式、非 Hermetic 的真实模型冒烟 |
 | `make live-multi-agent-smoke` | 需要凭据的真实 Provider Agent Spawn/Wait/Completion 冒烟 |
@@ -140,17 +140,15 @@ make brand-check
 | `scripts/test-brand-check.sh` | Brand Scanner 自测 |
 | `scripts/test-secret-leak.sh` | 对已构建二进制执行脱敏测试 |
 | `scripts/run-test-lane.py` | 执行 Test Lane 并写入结构化证据 |
-| `scripts/upgradebaseline` | 将 Benchmark 结果聚合为 Stage 0 基线 |
+| `scripts/commanddocs` | 生成或校验双语命令清单 |
+| `scripts/observationtraitgen` | 从单一 Manifest 生成 Observation Trait 与公开 Schema |
 | `scripts/live-model-smoke.sh` | 调用一个显式配置的真实模型 |
-| `scripts/content-fixture-smoke.sh` | 验证可选内容依赖探测 |
 | `scripts/package-release.sh` | 构建五个平台、Checksum、SBOM、Manifest 与 Smoke |
 | `scripts/deepseek-local.sh` | 编译配置本机 DeepSeek，并启动 TUI 或 VS Code |
 | `scripts/setup-vscode-local.sh` | macOS 官方 VS Code 本地安装 |
 
-提交的 `docs/upgrade-baseline.json` 记录任务成功率、Nearest-rank P50/P95
-墙钟时延、发生重试任务率、验证覆盖率、未定价调用率和恢复成功率。每个比率都携带分子
-与分母；分母为空时输出 `null`，不会用 0 冒充已测量结果。仅因宿主机缺少强 Sandbox
-而阻塞的任务记为 `unavailable`，并从指标分母中排除。`make bench` 仍是严格 Release
+Benchmark 与评估报告是临时 `.tmp` 或 CI Artifact。每个比率都携带分子与分母；
+分母为空时输出 `null`，不会用 0 冒充已测量结果。`make bench` 仍是严格 Release
 Gate，不会把 Unavailable 任务视为 Passed。
 
 `extensions/vscode/scripts` 管理 TypeScript Build、Protocol/Compatibility 生成、
@@ -172,6 +170,9 @@ RC Report。
 不要手工编辑：
 
 - `docs/protocol/runtime-protocol.schema.json`
+- `docs/protocol/observation.schema.json`
+- `internal/observability/observation/traits.gen.go`
+- `extensions/vscode/src/protocol/observation.generated.ts`
 - `extensions/vscode/src/protocol/generated.ts`
 - `extensions/vscode/src/compatibility/generated.ts`
 
@@ -179,12 +180,17 @@ RC Report。
 
 ```bash
 make protocol-schema
+make observation-traits
 cd extensions/vscode
 npm run generate:protocol
 npm run generate:compatibility
 ```
 
 生成结果应与源变更一起提交。
+
+`internal/observability/schema/observation_traits.json` 是唯一手工维护的 Observation
+Trait Manifest。新增 Kind 必须先声明 Owner、Durability、Payload Policy、Retention
+Class、必需 Correlation、OTLP Mapping 与 Priority，生成才能通过。
 
 ## 测试策略
 
@@ -203,11 +209,12 @@ npm run generate:compatibility
 
 架构回归由两个互补契约约束：
 
-- `docs/hotspot-baseline.json` 将职责绑定到 Package Symbol 和 Owner File。职责丢失或
-  错位、未审阅内部依赖、热点增长和测试资产删除都会使 `make hotspot-baseline` 失败。
-- `docs/architecture-metrics-baseline.json` 限制直接内部 Package Fanout、生产代码行数、
-  Options/Mutex 字段、热点文件/函数体积以及重复的 Protocol Event Switch 站点。
-  `make architecture-ratchet` 会测量当前仓库，并在
+- `testdata/contracts/hotspot-baseline.json` 将职责绑定到 Package Symbol 和 Owner
+  File。职责丢失或错位、未审阅内部依赖、热点增长和测试资产删除都会使
+  `make hotspot-baseline` 失败。
+- `testdata/contracts/architecture-metrics-baseline.json` 限制直接内部 Package
+  Fanout、生产代码行数、Options/Mutex 字段、热点文件/函数体积以及重复的 Protocol
+  Event Switch 站点。`make architecture-ratchet` 会测量当前仓库，并在
   `ARCHITECTURE_BASE_REF` 包含旧基线时比较新旧阈值。
 
 架构阈值只能单调收紧。提高阈值必须为对应指标填写非空 `relaxations` 理由；删除目标或
@@ -253,6 +260,7 @@ go test -run '^$' -bench BenchmarkList1000 -benchtime=1x \
 | 局部纯函数 | Package Test |
 | 共享 Runtime 行为 | Package + 依赖 Runtime Test |
 | Protocol | Schema Drift + ACP + HTTP Contract |
+| Observation Kind/Exporter | Trait Generation + Observation/Router/OTLP Test |
 | Persistence | Repository + State Package Test |
 | Guard/Security | 聚焦 Race Test + Attack Corpus |
 | VS Code State/UI | Typecheck、ESLint、相关 Node Test |

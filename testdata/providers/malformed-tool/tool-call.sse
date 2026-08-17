@@ -1,4 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_bad","function":{"name":"file_write","arguments":"{\"path\":17,\"content\":\"must not run\"}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]
-

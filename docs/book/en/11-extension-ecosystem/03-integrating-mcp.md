@@ -10,14 +10,19 @@ prerequisites:
 code_paths:
   - internal/adapter/mcp
   - internal/adapter/tool/mcp
+  - internal/runtime/extension
+  - internal/runtime/app/extension
   - internal/runtime/app/wire
 test_paths:
   - internal/adapter/mcp/contract/fixture_test.go
   - internal/adapter/mcp/stdio_integration_test.go
   - internal/adapter/mcp/http_integration_test.go
+  - internal/runtime/app/extension/lifecycle_test.go
 source_of_truth:
   - internal/adapter/mcp/config.go
   - internal/adapter/mcp/pool.go
+  - internal/runtime/extension/plan.go
+  - internal/runtime/extension/lifecycle.go
 status: draft
 last_verified: null
 ---
@@ -35,7 +40,8 @@ permissions, health isolation, and shutdown.
 
 ```mermaid
 flowchart LR
-    C[Strict MCP config] --> P[Pool]
+    C[Strict MCP config] --> E[Extension Source Plan]
+    E --> P[Pool]
     P --> T[Stdio / HTTP transport]
     T --> D[Initialize + paginated discovery]
     D --> R[Tool Catalog reconcile]
@@ -52,6 +58,12 @@ prompts, and normalizes calls. Pool reloads only changed servers, isolates
 health/circuit state, publishes catalog notifications, and shuts all transports
 down. Discovered Tools enter the normal Registry and Guard with configured
 permission profiles; MCP is not a policy bypass.
+
+The Runtime extension Plan binds each server source to the active permission
+digest and generation. Connections, subscriptions, processes, leases, and Tool
+registrations carry an `EffectOwner`. Disable drains owned Effects; revocation
+or quarantine fences the generation and prevents stale catalog handles from
+executing. Lifecycle transitions emit durable redacted receipts.
 
 ## Source-Scoped Reconciliation
 
@@ -85,6 +97,10 @@ updates health, revokes visibility when required, and triggers bounded probes.
 Shutdown removes observers, cancels requests, closes HTTP streams or the whole
 stdio process group, and waits within a deadline.
 
+W3C Trace Context propagates through HTTP headers and bounded stdio metadata.
+MCP must not accept malformed or all-zero context, and propagated metadata
+never carries credentials or raw Tool payloads.
+
 ## Failure Boundaries
 
 - Secret environment and dynamic resource escalation are rejected.
@@ -93,12 +109,15 @@ stdio process group, and waits within a deadline.
 - One failed server does not hide healthy servers.
 - Stale HTTP session reconnects without duplicating the request.
 - Catalog refresh is generation/revision bound.
+- Every live transport or registration is attributable to an Effect Owner.
+- Trace propagation cannot widen MCP authority or expose secrets.
 
 ## Tests and Verification
 
 ```bash
 go test ./internal/adapter/mcp/...
 go test ./internal/adapter/tool/mcp
+go test ./internal/runtime/extension ./internal/runtime/app/extension
 go test ./internal/runtime/app/wire -run TestMCP
 ```
 

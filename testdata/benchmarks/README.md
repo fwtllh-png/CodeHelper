@@ -77,7 +77,7 @@
 
 ## Benchmark V2
 
-`docs/benchmark-v2.json` 是六条用户旅程及其能力分层的权威清单：
+`testdata/contracts/benchmark-v2.json` 是六条用户旅程及其能力分层的权威清单：
 Cross-file Edit、Test Selection、Crash Recovery、Approval、Budget 和 Host Replay。
 `make benchmark-v2` 先校验清单与 Evidence，再运行 Fixture Benchmark、Workspace
 Journal Recovery 和 ACP Replay。需要 Strong Sandbox 的任务明确归入

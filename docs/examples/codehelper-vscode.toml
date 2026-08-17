@@ -9,7 +9,3 @@ max_steps = 128
 [credential]
 kind = "keyring"
 name = "deepseek/default"
-
-[diagnostics.commands.".md"]
-name = "markdownlint-cli2"
-args = ["--no-globs", "--", "{path}"]

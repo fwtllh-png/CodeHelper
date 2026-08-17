@@ -28,11 +28,6 @@ func New(tb testing.TB, values ...extension.Extension) *Harness {
 	return &Harness{tb: tb, registry: registry}
 }
 
-func (h *Harness) Registry() *extension.Registry {
-	h.tb.Helper()
-	return h.registry
-}
-
 func (h *Harness) Tool(
 	ctx context.Context,
 	id extension.ID,

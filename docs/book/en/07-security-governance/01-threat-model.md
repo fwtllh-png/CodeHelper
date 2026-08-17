@@ -11,6 +11,8 @@ prerequisites:
 code_paths:
   - internal/security
   - internal/adapter/tool/guard
+  - internal/observability/privacy
+  - internal/observability/retention
 test_paths:
   - internal/security/policy/policy_test.go
   - internal/security/sandbox/workspace_test.go
@@ -39,6 +41,7 @@ goals, and residual risk for a local Coding Agent Runtime.
 | User intent/Approval | integrity and narrow scope |
 | Runtime Policy/Constitution | non-bypassable enforcement |
 | Event log/Journal/Receipt | integrity and recoverability |
+| Observation Journal/CAS payload | privacy, bounded retention, causal integrity |
 | Host machine/process/network | isolation from model-selected effects |
 | Plugin/MCP/Skill supply chain | identity, integrity, revocation |
 
@@ -80,6 +83,7 @@ Guard, Policy, Constitution, Sandbox, and Egress.
 | interrupted/partial write | Edit Plan, atomic Tool, durable Journal |
 | malicious extension update | signature/digest/capability receipt/revocation |
 | misleading success claim | observed changes and Verification Receipt |
+| telemetry leaks prompt/path/secret | pre-write privacy policy, capture modes, low-cardinality allowlist |
 
 ## Explicit Non-Goals and Residual Risk
 

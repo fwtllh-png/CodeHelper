@@ -9,16 +9,21 @@ prerequisites:
   - task-worker-executor
   - runtime-resume-recovery
 code_paths:
+  - internal/orchestration/kernel
+  - internal/orchestration/store
   - internal/orchestration/task
   - internal/orchestration/worker
 test_paths:
+  - internal/orchestration/kernel/kernel_test.go
+  - internal/orchestration/store/store_test.go
   - internal/orchestration/task/execution_test.go
   - internal/orchestration/worker/worker_test.go
 source_of_truth:
-  - internal/orchestration/task/execution.go
+  - internal/orchestration/kernel/kernel.go
+  - internal/orchestration/store/store.go
   - internal/orchestration/worker/worker.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-17
 ---
 
 # Leases, Heartbeats, Retries, and Idempotency
@@ -35,17 +40,18 @@ and the limits of retry safety.
 ```mermaid
 sequenceDiagram
     participant W as Worker
-    participant R as Task Repository
-    W->>R: Claim(owner, executors, workspace, lease)
-    R-->>W: running Task + attempt
+    participant R as WorkGraph Store
+    W->>R: Claim(expected revision, owner, authority, lease)
+    R-->>W: running Node + Attempt + Lease Epoch
     loop while executing
-      W->>R: Heartbeat(owner, new expiry)
+      W->>R: Heartbeat(owner, epoch, new expiry)
     end
-    W->>R: Settle(owner, terminal transition)
+    W->>R: Settle(owner, epoch, authority digest, result)
 ```
 
-Every mutation of running work checks the current owner. An expired lease can
-be reclaimed and requeued; the old owner is fenced and its next heartbeat or
+Every mutation of running work checks the current owner, Lease Epoch, authority
+digest, and expected aggregate revision. An expired lease can be reclaimed and
+requeued under a new epoch; the old owner is fenced and its next heartbeat or
 settlement fails. Worker cancellation follows lease loss.
 
 Attempt consumption depends on why work returned: ordinary retry and lease
@@ -70,10 +76,10 @@ stored expiry. It does not prove the process is alive, that work is progressing,
 or that external systems honor the fence.
 
 ```text
-claim transaction: queued -> running, owner, expiry, attempt++
-heartbeat: require owner + unexpired lease, extend expiry
-settle: require owner + current lease, write one transition
-reclaim: require expired lease, close attempt, fence old owner
+claim transaction: ready -> running, owner, epoch, expiry, Attempt + Effect
+heartbeat: require owner + epoch + unexpired lease, extend expiry
+settle: require owner + epoch + authority digest, append one transition
+reclaim: require expired lease, close Attempt, increment epoch, fence old owner
 ```
 
 Worker heartbeat cadence must be comfortably below lease duration. Clock
@@ -94,6 +100,7 @@ resurrect ownership after another owner reclaimed it.
 ## Failure Boundaries
 
 - Heartbeat/settle by stale owner is rejected.
+- Heartbeat/settle under a stale Lease Epoch or authority digest is rejected.
 - Claim cannot cross normalized Workspace identity.
 - Healthy lease is not stolen.
 - Retry count and delay are bounded.
@@ -103,6 +110,7 @@ resurrect ownership after another owner reclaimed it.
 ## Tests and Verification
 
 ```bash
+go test ./internal/orchestration/kernel ./internal/orchestration/store
 go test ./internal/orchestration/task -run 'Test(Claim|Settle|Reclaim|Recovery|Backoff)'
 go test ./internal/orchestration/worker -run 'Test.*(Lease|Retry|Takeover)'
 ```
@@ -130,4 +138,4 @@ attempt heartbeat and settle from the old owner. Explain each fence.
 | --- | --- |
 | Catalog ID | `task-lease-retry` |
 | Status | `verified` |
-| Last verified | 2026-08-10 |
+| Last verified | 2026-08-17 |

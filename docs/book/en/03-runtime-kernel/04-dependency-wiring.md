@@ -10,6 +10,8 @@ prerequisites:
 code_paths:
   - internal/runtime/app/wire
   - internal/runtime/app/persistence
+  - internal/runtime/extension
+  - internal/observability
 test_paths:
   - internal/runtime/app/wire/bootstrap_test.go
   - internal/runtime/app/wire/model_test.go
@@ -24,17 +26,20 @@ source_of_truth:
   - internal/runtime/app/wire/modules_core.go
   - internal/runtime/app/wire/modules_provider.go
   - internal/runtime/app/wire/modules_extensions.go
+  - internal/runtime/app/wire/extension_plan.go
   - internal/runtime/app/wire/contributors_extensions.go
   - internal/runtime/app/wire/modules_security.go
   - internal/runtime/app/wire/security_factory.go
   - internal/runtime/app/wire/modules_orchestration.go
+  - internal/runtime/app/wire/modules_observability.go
   - internal/runtime/app/wire/orchestration_components.go
   - internal/runtime/app/wire/scheduler_factory.go
   - internal/runtime/app/wire/modules_runtime.go
   - internal/runtime/app/wire/assembly/resources.go
   - internal/runtime/app/runtime_start.go
   - internal/runtime/app/persistence/runtime.go
-  - internal/adapter/extension/orchestration/contributor.go
+  - internal/runtime/extension/registry.go
+  - internal/runtime/extension/plan.go
 status: draft
 last_verified: null
 ---
@@ -71,7 +76,7 @@ flowchart TD
     S --> G[Tool Registry and Guard]
     P --> G
     G --> E
-    C --> D[Persistence / Trace / Journal]
+    C --> D[Persistence / Observation / Trace / Journal]
     D --> A[Application Runtime]
     E --> A
     A --> H[Host Facade]
@@ -88,6 +93,8 @@ implementations to:
 - assemble stable Prompt Context and partition budgets;
 - connect Journal, Diagnostics, Verify, Trace, Usage, and stores;
 - initialize MCP, Skill, Plugin, Hook, and Dynamic Tool managers;
+- resolve one typed Extension Plan and lifecycle owner;
+- attach Observation privacy, Journal, Router, retention, and OTLP projection;
 - build child runtimes, Worktrees, and background executors;
 - choose persistent or in-memory application Runtime;
 - construct `chatmerge.Service` and the durable assembly; merge, journal, and
@@ -101,8 +108,9 @@ module sequence:
 
 ```text
 config -> provider -> persistence -> platform -> builtin tools
-       -> extension contributors -> security -> orchestration
-       -> agent -> runtime -> background services
+       -> extension contributors -> security -> extension plan
+       -> orchestration -> observability -> agent -> runtime
+       -> background services
 ```
 
 Each module implements the `buildModule` contract (`Name()` and `Build`),
@@ -121,14 +129,13 @@ resource stack. Durable assembly and Chat merge are constructed modules too:
 journaled apply.
 
 Builtin and extension tools receive the same `Registry` instance. Plugin,
-Skill, Memory, Dynamic Tool, Hook, and MCP integrations implement the
-construction-only `extensionActivation` contract (`ID()` and `Contribute`), receive only
-their explicit construction capabilities plus the shared `Registry` — never
-`buildState` — and run in the `extension-tools` module in fixed order with
-unique IDs. Each contributor returns a deterministic `ContributionReceipt`
-listing added Tool identities and named outputs, so no extension modifies the
-Agent module. Task/Automation registration belongs to the Orchestration
-module rather than the extension contributor chain.
+Skill, Memory, Dynamic Tool, Hook, and MCP integrations register typed
+contributors, receive only explicit capabilities — never `buildState` — and
+return bounded receipts. The sealed Registry resolves deterministic source
+state into a digested Plan bound to the permission digest. Runtime lifecycle
+then owns generations and every contributed Effect. Task/Automation
+registration belongs to Orchestration rather than the extension contributor
+chain.
 
 Construction and shutdown share `assembly.ResourceStack`. `NewExec` registers
 resource closers once; both partial-build rollback and normal shutdown close
@@ -162,15 +169,16 @@ or one group of modules:
 3. resolve model metadata, routes, limits, and credential references;
 4. probe platform/Sandbox capability;
 5. build Policy, permissions, Constitution, Registry, and Guard;
-6. initialize extensions and reconcile their catalog contributions;
-7. connect context, evidence, diagnostics, verification, usage, and trace;
-8. create Thread/Engine factories;
-9. construct the Runtime facade in a prepared state and restore static
+6. initialize typed contributors and resolve the Extension Plan;
+7. build WorkGraph/Worker ownership and Observation routing/export;
+8. connect context, evidence, diagnostics, verification, usage, and trace;
+9. create Thread/Engine factories;
+10. construct the Runtime facade in a prepared state and restore static
    durable state without accepting operations (`RuntimeModule`);
-10. start background services in order: initial MCP refresh, Runtime
+11. start background services in order: initial MCP refresh, Runtime
     terminal outbox and pending-Turn recovery, MCP prewarm, Automation
     reconciliation, then the Worker Scheduler (`BackgroundModule`);
-11. expose the Host facade only after the Runtime is accepting operations.
+12. expose the Host facade only after the Runtime is accepting operations.
 
 Ownership transfers at each successful step. If a later step fails, already
 opened stores, transports, extension processes, and background managers are
@@ -204,8 +212,10 @@ Configuration expresses intent; it cannot manufacture environmental capability.
 | config/persistence/platform/builtin tools | `modules_core.go` |
 | Provider catalog module | `modules_provider.go` |
 | Extension contributors and receipts | `modules_extensions.go`, `contributors_extensions.go` |
+| Extension source Plan | `extension_plan.go`, `internal/runtime/extension` |
 | Security module and Guard factory | `modules_security.go`, `security_factory.go` |
 | Orchestration module, components, Task/Automation registration | `modules_orchestration.go`, `orchestration_components.go` |
+| Observation Journal, Router, retention, and OTLP | `modules_observability.go`, `internal/observability` |
 | Scheduler construction | `scheduler_factory.go` |
 | Agent engine, runtime, background services | `modules_runtime.go` |
 | Resource lifecycle | `assembly/resources.go` |

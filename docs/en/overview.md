@@ -59,9 +59,10 @@ security, persistence, and evidence layers.
 | Editing | guarded file operations, edit plans, journaled changes, revert support |
 | Verification | diagnostics/repository/affected scopes, soft or hard gate, repair budget |
 | Security | posture, approvals, workspace permissions, constitution, OS sandbox |
-| Persistence | SQLite projections, event log, snapshots, session metadata, journals |
-| Orchestration | durable tasks, worker, automations, workflows, lanes, fleet, subagents |
-| Ecosystem | model catalog, MCP, skills, plugins, hooks, memory |
+| Persistence | SQLite projections, Domain Facts, Terminal Envelopes, Event Log, CAS, snapshots, journals |
+| Observability | versioned Observation Envelopes, frozen terminal measurements, traces, usage, redaction, retention, OTLP |
+| Orchestration | one durable WorkGraph for runs/nodes/attempts/effects, workers, workflows, lanes, fleet, subagents |
+| Ecosystem | typed extension plans and lifecycle, model catalog, MCP, skills, plugins, hooks, memory |
 | Hosts | CLI, TUI, ACP, VS Code |
 
 ## Product Boundaries
@@ -92,6 +93,7 @@ User or host
   -> policy + approval + journal + sandbox
   -> side effect
   -> Event + receipt + verification evidence
+  -> redacted Observation + bounded telemetry projection
 ```
 
 Every host should observe the same semantics. An editor extension must not gain

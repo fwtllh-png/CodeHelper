@@ -15,6 +15,7 @@ code_paths:
   - internal/persist/snapshot
   - internal/persist/workspacejournal
   - internal/persist/state/turnstate
+  - internal/observability/journal
 test_paths:
   - internal/runtime/app/reconstruct_test.go
   - internal/runtime/app/session_artifacts_test.go
@@ -22,6 +23,7 @@ test_paths:
   - internal/runtime/app/wire/persistent_test.go
   - internal/runtime/agent/turnkernel/runtime_test.go
   - internal/runtime/agent/turnkernel/effect_dispatcher_test.go
+  - internal/runtime/agent/turnkernel/measurement_test.go
   - internal/persist/state/turnstate/store_test.go
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
@@ -34,8 +36,9 @@ source_of_truth:
   - internal/runtime/app/wire/turn_coordinator.go
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
+  - internal/runtime/agent/turnkernel/measurement.go
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-08-17
 ---
 
 # Resume, Recovery, and Idempotency
@@ -101,6 +104,8 @@ Recovery restores:
 - requested/running Provider, Tool, Approval, Input, Verification, and Journal
   Effects with payload digests and idempotency keys;
 - pending terminal outbox projections and Item identity;
+- the frozen terminal Measurement shared by Receipt, Trace, and Terminal
+  Envelope;
 - last Event cursor;
 - thread history and snapshots;
 - workspace Journal state;
@@ -109,12 +114,17 @@ Recovery restores:
   with each Turn's Terminal Envelope.
 
 Turn state is committed as a `SessionDelta` bundled with the Terminal
-Envelope. The Engine stages the delta during execution and applies it exactly
-once, only after the envelope is durably committed; a commit failure leaves
-Session memory unchanged. On restart, `ThreadManager` restores the latest
-durable delta for each Thread from `persist/state/turnstate`, so Usage, Cost,
-Working Set, Evidence, Failures, and Compaction counters survive a crash
-alongside committed History.
+Envelope and its digested `TerminalMeasurementSnapshot`. The Engine stages the
+delta during execution and applies it exactly once, only after the envelope is
+durably committed; a commit failure leaves Session memory unchanged. On
+restart, `ThreadManager` restores the latest durable delta for each Thread from
+`persist/state/turnstate`, so Usage, Cost, Working Set, Evidence, Failures, and
+Compaction counters survive a crash alongside committed History.
+
+The Observation Journal may help explain recovery through correlated evidence,
+but it is not a continuation source. Missing or failed Observation export
+cannot authorize Effect dispatch, synthesize Domain Facts, or change a terminal
+business result.
 
 `durableCoordinatorRuntime` claims expired active-Turn leases, restores each
 Coordinator from strictly ordered Domain Facts, and renews ownership while it
@@ -219,6 +229,7 @@ arbitrary shell command idempotent.
 | Checkpoint/Plan/Turn recovery | `runtime/app/session_artifacts.go` |
 | Thread session state restore | `runtime/app/thread_manager.go` |
 | Terminal turn state store | `persist/state/turnstate` |
+| Observation evidence, not recovery authority | `observability/journal` |
 | Workspace recovery | `persist/workspacejournal` |
 
 ## Tradeoffs and Alternatives
@@ -291,4 +302,4 @@ recovery, lease recovery, or effect recovery.
 | --- | --- |
 | Catalog ID | `runtime-resume-recovery` |
 | Status | `verified` |
-| Last verified | 2026-08-12 |
+| Last verified | 2026-08-17 |

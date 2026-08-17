@@ -12,13 +12,19 @@ code_paths:
   - internal/adapter/plugin
   - internal/adapter/skill
   - internal/adapter/hooks
+  - internal/runtime/extension
+  - internal/runtime/app/extension
 test_paths:
   - internal/adapter/mcp/pool_t3_test.go
   - internal/adapter/plugin/distribution_test.go
   - internal/adapter/skill/resolver_test.go
+  - internal/runtime/extension/state_test.go
+  - internal/runtime/app/extension/lifecycle_test.go
 source_of_truth:
   - internal/adapter/mcp/health.go
   - internal/adapter/plugin/registry.go
+  - internal/runtime/extension/lifecycle.go
+  - internal/runtime/app/extension/control.go
 status: draft
 last_verified: null
 ---
@@ -68,13 +74,18 @@ Validation 证明 Shape/Integrity；Authorization 授予 Bounded Capability；Ac
 一个 Generation。每个 In-flight Call 绑定该 Identity。Disable 停止 New Admission 并可
 Drain；Security Revoke 立即优先，Cancel Call、移除 Authority、Fence Cached Handle。
 
+Runtime 通过 `EffectOwner` 跟踪每个 Live Effect。Plan Revision/Permission Digest
+防止旧 Authority 下解析的 Source 静默重启。Control Mutation 使用 Durable
+Prepare/Commit Receipt 与幂等 Operation ID；Startup 在发布 Healthy State 前协调
+Committed Intent 与 Owned Effect。
+
 ## Failure Domain Matrix
 
 | Failure | Containment | Recovery |
 | --- | --- | --- |
 | Provider | One Sample/Route | Meaningful Output 前 Retry |
 | Tool | One Bound Call/Turn | 按 Effect Phase Feedback/Terminal |
-| MCP | One Server Circuit/Source | Probe/Reconnect/New Generation |
+| MCP | One Server Circuit/Source/Effect Owner | Probe/Reconnect/New Generation |
 | Skill | One Dependency Plan | Repair Lock/Reload |
 | Plugin | One Generation | Verified Rollback/Update |
 | Hook | One Callback | Kill Tree/Failure Policy |
@@ -86,8 +97,12 @@ Limit、Catalog Source、Cancellation、Generation Fence。
 ## Feedback/Observability
 
 Model Feedback 只包含 Stable、Actionable、Sanitized Category 和 Retry Safety。Operator
-Record 保留 Extension Identity、Source、Generation、Transition、Bounded Cause、Affected
-Call。Unknown、Tamper、Partial-effect Failure 不转成 Retry Advice。
+Record 保留 Extension Identity、Source、Plan Revision、Permission Digest、Generation、
+Effect Owner、Transition、Bounded Cause 与 Affected Call。Unknown、Tamper、
+Partial-effect Failure 不转成 Retry Advice。
+
+Lifecycle Fact 也以脱敏 Evidence 进入 Observation Router。Observation/Exporter Failure
+不能让 Failed Extension 变成 Healthy，也不能改变 Call 的业务结果。
 
 Health 不是 Authority。Healthy Process + Revoked Generation 仍不可运行；Optional
 Extension Unhealthy 不影响无关 Runtime Function。
@@ -100,6 +115,8 @@ Extension Unhealthy 不影响无关 Runtime Function。
 - Retry 有界且不重复 Meaningful Work。
 - Source Reconcile 不替换其他 Source Tool。
 - Error/Log Bounded/Redacted。
+- Disable/Revoke 不能遗留无归属 Live Effect。
+- Receipt/Observation Projection 不能成为 Lifecycle Authority。
 
 ## 测试与验证
 
@@ -107,6 +124,7 @@ Extension Unhealthy 不影响无关 Runtime Function。
 go test ./internal/adapter/mcp -run 'Test(Pool|Circuit)'
 go test ./internal/adapter/plugin
 go test ./internal/adapter/skill ./internal/adapter/hooks
+go test ./internal/runtime/extension ./internal/runtime/app/extension
 ```
 
 ## 动手实验

@@ -9,6 +9,8 @@ prerequisites:
   - runtime-protocol
 code_paths:
   - internal/runtime/app
+  - internal/observability/observation
+  - internal/observability/router
 test_paths:
   - internal/runtime/app/runtime_test.go
   - internal/runtime/app/pendingwork_test.go
@@ -20,11 +22,14 @@ test_paths:
   - internal/runtime/app/persistence/runtime_test.go
   - internal/runtime/app/turn_kernel_convergence_test.go
   - internal/runtime/agent/turnkernel/convergence_baseline_test.go
+  - internal/runtime/app/terminal_measurement_test.go
+  - internal/observability/router/router_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/operation_dispatch.go
   - internal/runtime/app/active_turn_registry.go
   - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/app/terminal_measurement.go
   - internal/runtime/app/service_facade.go
   - internal/runtime/app/eventhub/hub.go
   - internal/runtime/app/session_artifacts.go
@@ -34,7 +39,7 @@ source_of_truth:
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-08-17
 ---
 
 # Application Runtime 与状态投影
@@ -134,15 +139,21 @@ Kernel Snapshot。
 
 `TerminalPublisher` 是 Atomic Terminal Commit、Deterministic Outbox Projection 和
 Restart Recovery 的唯一 Owner。Terminal Commit 在 Projection 前持久绑定 Frozen
-Kernel State、有序 Domain Facts、Session Delta、Final Output、Receipt、Terminal
-Event、真实 Operation Receipt 与 Deterministic Outbox。Durable Startup 先投影
-Pending Outbox Entry，再且仅在存在匹配 Domain Facts 时重排已接受的 StartTurn
-Operation。
+Kernel State、有序 Domain Facts、单一 Digested Terminal Measurement、Session
+Delta、Final Output、Receipt、Terminal Event、Operation Receipt 与 Deterministic
+Outbox。Receipt、Measurement-derived Trace 与 Terminal Envelope 都使用同一
+Usage/Latency Snapshot。Durable Startup 先投影 Pending Outbox Entry，再且仅在存在
+匹配 Domain Facts 时重排已接受的 StartTurn Operation。
 
 `SessionService` 拥有 Lifecycle、Profile 和 Tool Catalog；`ArtifactService` 拥有
 Checkpoint、Plan、Turn Recovery 与 Artifact Persistence。Runtime 直接通过
 Runtime-owned Port 暴露窄化的 Host Query Method，不再保留平行的 Interface-only
 Package，也不复制 Host Execution Logic。
+
+Observation Plane 通过窄 Runtime Hook 接入，接收版本化、通过 Privacy Admission 的
+Lifecycle Evidence，并导出有界 Semantic/OTLP Projection。Observation Queue、
+Journal、Payload 或 Exporter Failure 更新独立 Health State，但不改变 Operation
+Commit 或 Terminal Outcome。
 
 ## Chat Merge 与 Durable Assembly
 
@@ -192,6 +203,8 @@ Stream、不授权 Tool，也不调用 `turnkernel.Reducer.Apply`。Turn Coordin
 | Active Turn Lease/Control | `active_turn_registry.go` |
 | Event Sequence/Replay/Subscriber | `eventhub/hub.go` |
 | Atomic Terminal/Outbox Recovery | `terminal_publisher.go` |
+| Frozen Terminal Usage/Latency | `terminal_measurement.go` |
+| Observation Admission/Routing | `internal/observability/observation`、`internal/observability/router` |
 | Session/Artifact Service | `service_facade.go`、`session_artifacts.go` |
 | Engine Adapter | `application.go` |
 | Turn 状态机权威 | `agent/turnkernel/coordinator.go` |
@@ -256,4 +269,4 @@ Complete Accounting；再分析 Dropped Subscriber 如何通过 `ReplayEvents` �
 | --- | --- |
 | Catalog ID | `runtime-app` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-12 |
+| 最后验证 | 2026-08-17 |

@@ -8,17 +8,25 @@ audience:
 prerequisites:
   - state-why-durable
 code_paths:
+  - internal/orchestration/kernel
+  - internal/orchestration/store
+  - internal/orchestration/model
+  - internal/orchestration/projection
   - internal/orchestration/task
   - internal/orchestration/worker
   - internal/runtime/app/wire
   - internal/persist/sqlkit
 test_paths:
+  - internal/orchestration/kernel/kernel_test.go
+  - internal/orchestration/store/store_test.go
   - internal/orchestration/task/repository_test.go
   - internal/orchestration/worker/worker_test.go
   - internal/runtime/app/wire/agentexecutor_test.go
   - internal/persist/sqlkit/ownership_test.go
 source_of_truth:
-  - internal/orchestration/task/repository.go
+  - internal/orchestration/kernel/kernel.go
+  - internal/orchestration/store/store.go
+  - internal/orchestration/task/workgraph.go
   - internal/orchestration/worker/worker.go
 status: draft
 last_verified: null
@@ -30,29 +38,34 @@ last_verified: null
 
 ## 学习目标
 
-理解 Durable Task State、Worker Scheduling、Executor Contract，以及 Background Work
-为何仍必须进入 Production Runtime。
+理解 Durable WorkGraph Lifecycle、Worker Claim、Executor Contract、Task 兼容
+Projection，以及 Background Work 为何仍进入 Production Runtime。
 
 ## Lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> queued
-    queued --> running: claim
-    running --> completed: success
-    running --> queued: retry/drain
+    [*] --> pending
+    pending --> ready: dependencies satisfied
+    ready --> running: claim Node + Attempt + Lease Epoch
+    running --> succeeded: success
+    running --> ready: retry/drain
     running --> failed: terminal
-    queued --> canceled: cancel
+    pending --> canceled: cancel
 ```
 
-Task 记录 Executor、Payload、Workspace/Session Identity、Attempt、Lease Owner/Expiry、
-Schedule、Result、Failure Reason 与 Version。Repository 校验 `CanTransition` 并追加
-Lifecycle Entry；Transition 与 Session/Execution Write 在 `sqlkit.WithTx` 内执行，
-Optimistic Version Update 用 `RequireAffected` 校验精确行数。
+权威模型是包含 Run、Node、Attempt、Lease Epoch 与 Effect State 的统一 WorkGraph
+Aggregate。纯 Kernel 校验带 Revision 的 Command，生成 Ordered Fact 与 Effect。
+Store 在同一 SQLite 事务提交 Aggregate Snapshot、Fact、Command Receipt、Effect
+Outbox 与兼容 Projection。
+
+Task Record 继续提供有界兼容/查询视图，包含 Executor、Payload、Workspace/Session、
+Schedule、Result 与 Failure Reason，但不能脱离生成它的 WorkGraph Fact 独立 Transition。
 
 Worker Scheduler 只广告有限 Executor Set，只 Claim 匹配 Task，遵守 `MaxParallel`，
-启动 Heartbeat，在 Cancellation 下运行 Executor，再 Settle Success/Failure/Retry/
-Drain。Duplicate Executor 与 Unknown Task Executor 在构造/Create 时失败。
+启动 Heartbeat，在 Cancellation 下运行 Executor，再提交 WorkGraph Settlement
+Command 表达 Success/Failure/Retry/Drain。Duplicate Executor 与 Unknown Task
+Executor 在构造/Create 时失败。
 
 Production Executor 将 Agent Turn、Shell、Workflow 送入 Guard、Policy、Runtime、
 Journal 与 Receipt。Host 只 Submit/Observe Task，不执行 Provider/Tool Logic。
@@ -61,25 +74,26 @@ Journal 与 Receipt。Host 只 Submit/Observe Task，不执行 Provider/Tool Log
 
 | Identity | Meaning | 可重复？ |
 | --- | --- | --- |
-| Task ID | Durable Requested Work | 否 |
-| Attempt | Leased Execution Opportunity | 有界重复 |
+| Run/Node ID | Durable Graph/Executable Unit | 同一 Graph 内否 |
+| Attempt ID | Leased Execution Opportunity | 按 Node 有界重复 |
 | Thread/Turn ID | Attempt 产生的 Runtime Execution | 每次新建 |
 
-Task State 是 Scheduling Authority；Attempt 解释 Ownership/Retry；Runtime Event/Receipt
-解释 Agent Execution。混用会让 Retried Turn 看似 Duplicate Task Completion。
+WorkGraph State 是 Scheduling Authority；Task Row 是 Projection；Attempt Fact 解释
+Ownership/Retry；Runtime Event/Receipt 解释 Agent Execution。
 
 ## Executor Contract
 
 Executor 广告 Stable Name，并返回区分 Success、Retryable、Terminal、Drain 的 `Outcome`。
 它必须响应 Context Cancellation，在 Effect 前验证 Payload，报告 Turn Identity，并说明
-Retry Safety。Scheduler 而非 Executor 拥有 Task Transition/Lease Settlement。
+Retry Safety。Worker（而非 Executor/Fleet Projection）拥有 Claim 与 Settlement Command。
 
 构造时验证 Finite Executor Set，防止 Worker Claim Opaque Work 后才发现无法执行。
 
 ## 正确性边界
 
 - Claim 受 Workspace Scope 限制且只有一个 Winner。
-- Execution 前记录 Running Attempt。
+- Execution 前记录 Running Attempt、Lease Epoch 与 Effect。
+- Snapshot、Fact、Receipt、Outbox 与 Task Projection 原子提交。
 - Scheduler Close 在安全时把 Work 放回 Queue。
 - Unsupported Payload 不盲目 Retry。
 - Writing Child Result 通过 Guarded File Merge。
@@ -90,6 +104,7 @@ Retry Safety。Scheduler 而非 Executor 拥有 Task Transition/Lease Settlement
 ## 测试与验证
 
 ```bash
+go test ./internal/orchestration/kernel ./internal/orchestration/store
 go test ./internal/orchestration/task ./internal/orchestration/worker
 go test ./internal/runtime/app/wire -run 'TestScheduler|TestQueuedTask'
 ```

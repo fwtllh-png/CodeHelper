@@ -18,16 +18,8 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 3. [书籍导航与章节状态](../book/zh-CN/NAVIGATION.md)
 4. [知识文档体系建设方案](./knowledge-base-plan.md)
 5. [架构设计](./architecture.md)
-6. [Context Engineering 架构升级方案](./context-engineering-architecture-upgrade.md)
-7. [Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)
-8. [Approval 架构升级方案](./approval-architecture-upgrade.md)
-9. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
-10. [Provider 架构升级方案](./provider-architecture-upgrade.md)
-11. [Tool 与本地执行架构升级方案](./tool-execution-architecture-upgrade.md)
-12. [Security Governance 与 Sandbox 架构升级方案](./security-governance-architecture-upgrade.md)
-13. [State Observability 架构升级方案](./state-observability-architecture-upgrade.md)
-14. [安全模型](./security.md)
-15. [本地开发与脚本](./development.md)
+6. [安全模型](./security.md)
+7. [本地开发与脚本](./development.md)
 
 ### 我要使用 CodeHelper
 
@@ -45,28 +37,18 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 2. [本机 DeepSeek 一键配置与运行](./deepseek-local.md)
 3. [VS Code 插件](./vscode.md)
 4. [配置说明](./configuration.md)
-5. [VS Code Runtime 标准监测](./runtime-monitoring.md)
-6. [排障指南](./troubleshooting.md)
+5. [排障指南](./troubleshooting.md)
 
 ### 我要参与开发
 
 1. [架构设计](./architecture.md)
-2. [Context Engineering 架构升级方案](./context-engineering-architecture-upgrade.md)
-3. [Multi Agent 架构升级方案](./multi-agent-architecture-upgrade.md)
-4. [Approval 架构升级方案](./approval-architecture-upgrade.md)
-5. [Token 效率架构升级方案](./token-efficiency-architecture-upgrade.md)
-6. [Provider 架构升级方案](./provider-architecture-upgrade.md)
-7. [Tool 与本地执行架构升级方案](./tool-execution-architecture-upgrade.md)
-8. [Security Governance 与 Sandbox 架构升级方案](./security-governance-architecture-upgrade.md)
-9. [State Observability 架构升级方案](./state-observability-architecture-upgrade.md)
-10. [安全模型](./security.md)
-11. [本地开发与脚本](./development.md)
-12. [Agent 指南](./agent-guide.md)
-13. [TUI 与 VS Code 体验契约](./experience.md)
-14. [VS Code Runtime 标准监测](./runtime-monitoring.md)
-15. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
-16. [文档治理](./documentation-governance.md)
-17. [后续规划](./roadmap.md)
+2. [安全模型](./security.md)
+3. [本地开发与脚本](./development.md)
+4. [Agent 指南](./agent-guide.md)
+5. [TUI 与 VS Code 体验契约](./experience.md)
+6. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
+7. [文档治理](./documentation-governance.md)
+8. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 
@@ -78,7 +60,7 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 | 架构边界 | Import 图和 Architecture Test |
 | 构建测试命令 | `Makefile` 与扩展 package scripts |
 | VS Code 兼容范围 | `extensions/vscode/compatibility.json` |
-| TUI 与 VS Code 体验语义 | `docs/experience-contract.json` |
+| TUI 与 VS Code 体验语义 | `testdata/contracts/experience-contract.json` |
 | 知识书籍结构与建设阶段 | `knowledge-base-plan.md` |
 | 书籍目录与章节状态 | `docs/book/catalog.json` |
 | 书籍 Ownership、新鲜度与发布事实 | `docs/book/governance.json` |

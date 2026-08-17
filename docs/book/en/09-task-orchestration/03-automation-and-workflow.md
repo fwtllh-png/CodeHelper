@@ -9,13 +9,17 @@ prerequisites:
   - task-worker-executor
 code_paths:
   - internal/orchestration/automation
+  - internal/orchestration/kernel
+  - internal/orchestration/store
   - internal/orchestration/workflow
 test_paths:
   - internal/orchestration/automation/repository_test.go
+  - internal/orchestration/store/store_test.go
   - internal/orchestration/workflow/dag_test.go
-  - internal/orchestration/workflow/workflow_test.go
+  - internal/orchestration/workflow/workgraph_test.go
 source_of_truth:
   - internal/orchestration/automation/repository.go
+  - internal/orchestration/workflow/compiler.go
   - internal/orchestration/workflow/runtime.go
 status: draft
 last_verified: null
@@ -46,17 +50,24 @@ than impersonating a scheduled slot.
 
 ```mermaid
 flowchart LR
-    A[Automation Slot] --> T[Durable Task]
+    A[Automation Slot] --> T[WorkGraph Run]
     T --> W[Workflow Spec]
-    W --> D[DAG Waves]
+    W --> C[Compiled Nodes / Definition Digest]
+    C --> D[DAG Waves]
     D --> X[Driver: Runtime Tasks]
-    X --> C[Checkpoint / Structured Output]
+    X --> S[Attempt Settlement / Structured Output]
 ```
 
 Workflow `Spec` validates unique nodes, dependencies, acyclicity, conditions,
 retry, timeout, permissions, and budgets. Ready independent nodes run as a
 bounded parallel wave; joins wait, failed dependencies skip descendants, and
 compensation can run conditionally.
+
+The Spec compiles into a WorkGraph definition with a stable digest. Workflow
+checkpoints are retired: every Claim, Attempt, Effect, Result, and terminal
+transition is a revision-checked Kernel Command. Store commit atomically writes
+the aggregate snapshot, ordered Facts, command Receipt, Effect Outbox, and
+compatibility projection.
 
 Permissions deny host capabilities by default. Task response schema is
 validated without external references. The JS VM removes nondeterministic host
@@ -75,18 +86,23 @@ Each node has its own attempt/timeout/retry policy, but the Workflow budget is
 shared. A retry does not erase prior attempt evidence. Structured output is
 validated before it becomes input to downstream nodes.
 
+Resume replays ordered Facts and executes only unfinished Nodes. A succeeded
+Node reuses its stable `workgraph://.../nodes/...` result reference. Reusing a
+Run ID with a different Definition Digest fails before execution.
+
 ## Determinism Boundary
 
-The Spec fingerprint covers executable graph semantics. The JS host removes
+The Definition Digest covers executable graph semantics. The JS host removes
 clock/random/global process access, exposes allowlisted environment and
 Workspace reads, and routes spawned work through the Driver. External Tasks can
-still be nondeterministic; their durable results/checkpoints are the replay
-boundary.
+still be nondeterministic; their durable WorkGraph Result and effect-specific
+idempotency evidence are the replay boundary.
 
 ## Failure Boundaries
 
 - Concurrent ticks cannot duplicate a schedule slot.
 - Invalid graph/fingerprint is rejected before execution/resume.
+- Snapshot/fact drift is reported; repair may rebuild only the snapshot.
 - Node retry and timeout are bounded.
 - Failed dependency is not silently treated as empty output.
 - Secret environment access and Workspace escape are denied.
@@ -96,6 +112,7 @@ boundary.
 
 ```bash
 go test ./internal/orchestration/automation
+go test ./internal/orchestration/kernel ./internal/orchestration/store
 go test ./internal/orchestration/workflow/...
 ```
 

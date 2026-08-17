@@ -31,11 +31,13 @@ maintainability over feature count.
 | turn/session state | `internal/runtime/app` |
 | model/tool loop | `internal/runtime/agent` |
 | dependency construction | `internal/runtime/app/wire` |
+| typed extension lifecycle | `internal/runtime/extension`, `internal/runtime/app/extension` |
 | model/provider behavior | `internal/adapter/model`, `internal/adapter/provider` |
 | tool behavior | `internal/adapter/tool` |
 | approvals and sandbox | `internal/security`, `internal/adapter/tool/guard` |
-| tasks/workflows | `internal/orchestration` |
+| tasks/workflows/leases | `internal/orchestration/kernel`, `internal/orchestration/store` |
 | durable data | `internal/persist` |
+| observations, usage, traces | `internal/observability` |
 | VS Code | `extensions/vscode` |
 
 ## Non-Negotiable Invariants
@@ -44,6 +46,10 @@ maintainability over feature count.
 - Do not put business loops in `wire`.
 - Do not introduce a second runtime path for VS Code.
 - Do not bypass guard, policy, constitution, journal, or sandbox checks.
+- Do not write orchestration lifecycle state outside the transactional
+  WorkGraph command/store path.
+- Do not let observation, capture, or exporter failures change the business
+  result of a Turn.
 - Do not store raw credentials in tracked config, logs, fixtures, or docs.
 - Never read, print, summarize, patch, or force-add the ignored
   `docs/DEEPSEEK-LIVE.zh-CN.md` local runbook.
@@ -126,6 +132,27 @@ plugin trust:
 4. run focused race/security tests;
 5. avoid weakening platform claims.
 
+### Orchestration
+
+When changing Task, Workflow, Worker, Fleet, Lane, or Subagent lifecycle:
+
+1. express the transition as a revision-checked WorkGraph command;
+2. keep aggregate, Facts, command receipt, Effect outbox, and compatibility
+   projection in one SQLite transaction;
+3. fence claims and settlement by Lease owner and epoch;
+4. keep Fleet and Host views read-only;
+5. test restart, duplicate command, stale lease, and terminal atomicity.
+
+### Observability
+
+When changing Observation kinds, capture, retention, traces, or exporters:
+
+1. update `internal/observability/schema/observation_traits.json`;
+2. run `make observation-traits`;
+3. preserve privacy admission before Journal/CAS persistence;
+4. use bounded low-cardinality metric labels;
+5. prove writer/exporter failure is isolated from business execution.
+
 ## Testing Expectations
 
 | Risk | Expected tests |
@@ -133,6 +160,7 @@ plugin trust:
 | local logic | unit tests |
 | shared component | unit + integration consumers |
 | protocol | golden/schema + transport contracts |
+| observation | trait generation + privacy/router/exporter failure tests |
 | persistence | create/read/update + failure/reopen |
 | concurrency | deterministic synchronization + race |
 | security | allow, deny, malformed input, cleanup |

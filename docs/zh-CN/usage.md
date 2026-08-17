@@ -324,7 +324,18 @@ Plugin Registry、Publisher、Receipt 和 Staging Artifact 在激活前都要验
 Hook 使用 `--hooks-config` 提供的版本化 JSON。Hook 仍位于同一受治理架构内，应具有
 有界超时和显式权限。
 
+Plugin 与 Skill 命令投影同一个 Runtime Extension Control Plane。Query 返回
+Runtime-owned Source、Trust、Generation、Capability、Health 与 Receipt State。
+Mutation 使用稳定 Operation ID 和 Durable Prepare/Commit Receipt，因此以同一 ID
+重试时不能静默应用不同 Payload。Disable 会 Drain 所属 Effect，Revoke 会 Fence
+已加载 Generation。Host 不能通过扫描文件推断 Extension State。
+
 ## 持久化任务
+
+Durable Task、Workflow、Automation、Verification、Background Command 与 Agent
+Execution 使用同一套 WorkGraph Lifecycle。一次 Transition 会在同一事务提交
+Aggregate Snapshot、Ordered Fact、Command Receipt、Effect Outbox 与兼容 Projection。
+恢复时只接续未完成 Node/Attempt，不会重新执行已完成 Node。
 
 ### Worker
 
@@ -371,7 +382,9 @@ codehelper fleet list --data-dir ./.codehelper
 codehelper fleet inspect --data-dir ./.codehelper --id RUN_ID
 ```
 
-Fleet 命令用于检查 Audit Ledger；调度权属于 Worker/Task 子系统。
+Fleet 命令只检查 WorkGraph Projection 与 Ordered Fact，不拥有 Enqueue、Claim、
+Settle 或 Resume 权限。Worker 是唯一 Claim Authority；Lease Epoch 变化后，旧 Owner
+不能再提交 Settlement。Lane Placement 只记录工作位置，不会创建另一套 Scheduler。
 
 ## Review 与 Apply
 
@@ -399,6 +412,24 @@ codehelper scorecard --data-dir ./.codehelper --json
 分别为 `0`、`1`、`2`，自动化判断不会再与 JSON 结论冲突。
 
 日志会脱敏，但仍可能包含敏感工程信息。
+
+`runtime-observe` 执行有界的进程内 Metric/Log 演练，不替代持久化 Turn Accounting。
+`metrics` 与 `scorecard` 查询所选 State Database 中的 Usage/Span Row；未知 Cost 或
+缺失 Latency 会保持 Unknown，不会被写成 0。
+
+Durable Observation Capture 在 Runtime Process 上配置：
+
+```bash
+CODEHELPER_OBSERVATION_CAPTURE=failure \
+CODEHELPER_OTEL_EXPORTER=grpc \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 \
+codehelper tui --config ./codehelper.toml --workspace .
+```
+
+Capture 默认只保留 Metadata。`failure` 与 `full` 只有在完成 Redaction 后才可能保留
+符合条件的 Payload；Credential 与 Restricted Payload 永不持久化。OTLP 支持 gRPC
+与 HTTP/protobuf。Observation Journal、Queue 或 Exporter Failure 只影响
+Observation Health，不改变 Turn 的 Completed/Failed/Canceled 业务结果。
 
 ## Shell 补全
 

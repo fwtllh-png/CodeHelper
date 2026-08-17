@@ -11,14 +11,20 @@ prerequisites:
 code_paths:
   - internal/orchestration/subagent
   - internal/adapter/tool/agent
+  - internal/persist/state
   - internal/runtime/app/wire
 test_paths:
   - internal/orchestration/subagent/subagent_test.go
   - internal/orchestration/subagent/control_test.go
+  - internal/orchestration/subagent/control_plane_test.go
+  - internal/persist/state/agentgraph_test.go
   - internal/runtime/app/wire/childworktree_test.go
 source_of_truth:
   - internal/orchestration/subagent/subagent.go
-  - internal/orchestration/subagent/worktree.go
+  - internal/orchestration/subagent/control_plane.go
+  - internal/orchestration/subagent/lifecycle.go
+  - internal/orchestration/subagent/result.go
+  - internal/orchestration/subagent/workgraph.go
 status: draft
 last_verified: null
 ---
@@ -52,8 +58,14 @@ Manager 解析有限 Role，映射 Profile/Stance，限制 Depth/Concurrency，P
 Worktree，记录 Graph Edge/Status，并通过 Gate 路由 Tool。RuntimeHost 拥有真实 Child
 Turn。
 
-Control 支持 List、Wait、Follow-up、Interrupt、Complete/Fail、Close。Mailbox Delivery
-Monotonic/Ordered。Result 记录 Usage、Artifact、Verification Status 与 Write Path。
+Agent Tree、Mailbox、Result、Completion Outbox、Budget Ledger 与 Worktree Ownership
+都是 Durable Workspace State。每个 Agent 有 Canonical Path/CAS Revision；Terminal
+Result 与 Completion Outbox 原子提交，Parent Notification 可跨 Restart。稳定 Message
+ID 与 `Receive/Ack` 保留未确认投递。
+
+Control 支持 List、Wait、Follow-up、Interrupt、Complete/Fail、Close。`wait_agent`
+同步的正是自动通知 Parent 的同一 Durable Completion Fact。Result 记录 Usage、
+Artifact、Verification Status 与 Write Path。
 
 Writing Child 使用 Isolated Git Worktree。Path Claim 检测重叠写入。Merge 将 Child
 Result 展开为 Parent Concrete File Resource，检查 Baseline Drift，Preview/Dry-run，
@@ -67,8 +79,19 @@ Profile/Stance；Budget 只能收紧 Depth、Concurrency、Token、Cost、Wall-c
 仍通过 Guard/Policy。Takeover/Writing Stance 不能制造 Missing Sandbox、Git Workspace、
 Approval Host。
 
-Durable Graph Edge 跨 Restart 记录 Parent/Child Identity/Status。Mailbox Sequence 只排序
-Message；除非 Control Contract 规定，否则 Delivery 不自动 Start Turn。
+`spawn_agent` 从 Active Runtime Turn 捕获 Parent Context。默认 `task_capsule` 包含有界
+Task Evidence；`fresh`、`last_n_turns` 与经授权的 `full` 是显式模式。Context Receipt
+记录 Source Identity、包含/排除原因、Byte/Token Budget 与 Digest。旧的 Caller-supplied
+Parent Context Payload 被拒绝。
+
+Durable Graph Edge 跨 Restart 记录 Parent/Child Identity/Status。`max_parallel` 限制
+Active Child，`max_resident` 还计入保留 Result/Worktree 的 Completed Child，
+`max_total` 限制 Durable Tree 的全部 Spawn。Mailbox Sequence 只排序 Message；除非
+Control Contract 规定，否则 Delivery 不自动 Start Turn。
+
+Child Authority 只能收紧 Parent Session Profile。在 `suggest` 下，Child Approval 携带
+Agent Path/Role 出现在 Host；Host 通过 Parent Session 提交原 Request ID，Runtime 将
+Decision 路由到权威 Child Thread。Pending Approval 跨 Restart 保留。
 
 ## Merge 两阶段集成
 
@@ -96,12 +119,15 @@ Worktree 隔离 Filesystem Mutation，Write Claim 协调 Semantic Merge Target�
 - Overlapping Write Claim 冲突。
 - Child Self-report 不是 Gate-proven。
 - Parent Drift 阻止 Merge。
+- Terminal Result 与 Parent Completion Outbox 不能分开提交。
+- Child Approval 不能扩大 Parent Authority 或替换 Request ID。
 
 ## 测试与验证
 
 ```bash
 go test ./internal/orchestration/subagent
 go test ./internal/adapter/tool/agent
+go test ./internal/persist/state -run TestAgent
 go test ./internal/runtime/app/wire -run 'Test.*(Child|Worktree|Agent)'
 ```
 

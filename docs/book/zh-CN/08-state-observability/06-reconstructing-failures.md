@@ -12,14 +12,20 @@ code_paths:
   - internal/runtime/app
   - internal/persist/state
   - internal/persist/workspacejournal
-  - internal/observability
+  - internal/observability/journal
+  - internal/observability/semantic
+  - internal/observability/supportbundle
 test_paths:
   - internal/runtime/app/reconstruct_test.go
   - internal/runtime/app/wire/persistent_test.go
   - internal/persist/workspacejournal/recover_test.go
+  - internal/observability/semantic/reducer_test.go
+  - internal/observability/supportbundle/bundle_test.go
 source_of_truth:
   - internal/runtime/app/reconstruct.go
   - internal/runtime/app/receipt.go
+  - internal/observability/semantic/reducer.go
+  - internal/observability/semantic/explain.go
 status: draft
 last_verified: null
 ---
@@ -37,11 +43,13 @@ Failure，避免猜测。
 
 ```mermaid
 flowchart TD
-    I[Workspace / Thread / Turn] --> E[Durable Event Sequence]
+    I[Runtime / Workspace / Thread / Turn] --> E[Durable Event Sequence]
     E --> H[Paired History]
     E --> P[Projection Cross-check]
     H --> J[Journal / Workspace Residue]
     P --> T[Trace / Usage / Verification]
+    I --> O[Observation Journal / Semantic Graph]
+    O --> T
     J --> R[Failure Explanation]
     T --> R
 ```
@@ -53,6 +61,22 @@ Tool Result Pair；Orphan Result 与 Interrupted Partial Turn 不进入 Model Hi
 随后比较 Projection/Event Evidence，检查 Active/Committed Journal，判断 Workspace
 Byte 是 Restored 还是 Conflicted；最后关联 Provider、Tool、Approval、Verification
 Span、Usage 与 Execution Receipt。
+
+## Observation Evidence 与 Semantic Replay
+
+Raw Observation Journal 按顺序保留通过 Privacy Admission 的 Envelope。Semantic
+Reducer 确定性 Fold 为 Entity、Causal Edge、Attempt、Failure 与 Terminal
+Explanation。Reducer Output 是可重建 Projection，不能授权 Retry 或覆盖 Runtime
+Lifecycle Fact。
+
+使用 Observation ID、Trace/Span ID、Parent Observation ID 与 Domain Correlation
+连接 Provider、Tool、WorkGraph、Extension 与 Process Evidence。Capture Mode 限制
+可得结论：Metadata-only Record 有意省略 Raw Payload；过期 Payload Reference 保持为
+Unavailable Content，不能伪造成 Empty Data。
+
+内部 Support Bundle Builder 选择有界记录，对 Summary/Payload 再次脱敏，默认排除
+Payload，并以 mode `0600` 写入私有 Archive。Bundle 只是 Evidence Transport，不高于
+其包含的 Source Record。
 
 ## Failure Class
 
@@ -68,8 +92,10 @@ Span、Usage 与 Execution Receipt。
 Record 冲突时，优先使用最接近 Claim 的 Evidence：
 
 ```text
-durable event/journal bytes
+durable runtime event / workspace journal bytes
   > transactional projection with matching event
+  > raw observation journal envelope
+  > deterministic semantic projection
   > observed trace/usage/verification
   > execution receipt projection
   > model/child self-report
@@ -90,6 +116,8 @@ Lifecycle 最强；Verification 对 Named Check Scope 最强。每个结论必�
 | 是否 Reverted？ | Expected/Current Fingerprint |
 | Cost？ | Per-call/Sample Usage/Actual Route |
 | Time？ | Completed/Open Phase Span |
+| 哪些 Causal Link 存在？ | Observation ID、Trace Context、Semantic Edge |
+| Evidence 是否被 Drop？ | Observation Health/Capture Mode |
 | 建立何种 Correctness？ | Verification Status/Scope/Command |
 | 哪些 Unknown？ | Gap/Unavailable/Conflict |
 
@@ -106,6 +134,8 @@ Effect，还需检查 Journal 与 External Side Effect。
 - 不丢弃 Sequence Gap/Journal Conflict。
 - 不把 Child Self-report 当作 Gate-proven。
 - Redact Credential，同时保留 ID/Category。
+- Metadata Capture/Retention 下缺少 Payload 不能解释为空的成功证据。
+- Semantic Projection/Support Bundle 不能成为执行权威。
 
 ## 测试与验证
 
@@ -113,6 +143,8 @@ Effect，还需检查 Journal 与 External Side Effect。
 go test ./internal/runtime/app -run TestReconstructThread
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
 go test ./internal/persist/workspacejournal
+go test ./internal/observability/semantic
+go test ./internal/observability/supportbundle
 ```
 
 ## 动手实验

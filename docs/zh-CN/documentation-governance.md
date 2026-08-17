@@ -12,16 +12,16 @@ CodeHelper 将文档结论视为持续维护的工程契约。书籍通过 Owner
 | `docs/book/catalog.json` | Part 顺序、章节身份、双语标题和交付状态 |
 | `docs/book/schema/chapter.schema.json` | 章节 Front Matter 契约 |
 | `docs/book/governance.json` | Owner、源码责任域、新鲜度 SLA、发布事实、截图和外链例外 |
-| `.github/CODEOWNERS` | 生成的 GitHub Review 路由 |
 | 章节 Front Matter | 章节特定的代码、测试和事实依赖 |
 
-Ownership 变化时先修改注册表，再用以下命令重新生成 `.github/CODEOWNERS`：
+Ownership 或源码责任域映射变化时，先修改注册表。
 
-```bash
-python3 scripts/check-doc-governance.py codeowners
-```
+## 机器契约 Artifact
 
-生成结果必须与 Tracked 文件完全一致。
+当前命令与测试消费的仓库级 JSON 统一放在 `testdata/contracts`。`docs` 仅在受治理
+位置保留文档注册表和生成的文档 Schema。一次性阶段 Evidence、Benchmark Run 和验收
+Snapshot 保留在 `.tmp`、CI Artifact 与 Git 历史中。持久结论应汇总到持续维护的双语
+文档，而不是新增逐阶段 Evidence JSON 文件。
 
 ## PR 文档影响门禁
 

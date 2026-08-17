@@ -211,16 +211,6 @@ func ToObservation(ctx context.Context) *observation.TraceContext {
 	}
 }
 
-func FromObservation(
-	ctx context.Context,
-	value observation.TraceContext,
-) (context.Context, error) {
-	return WithLink(ctx, Link{
-		TraceID: value.TraceID, SpanID: value.SpanID,
-		TraceState: value.TraceState, TraceFlags: value.TraceFlags,
-	}, false)
-}
-
 func validateTraceState(value string) error {
 	if len(value) > 512 {
 		return errors.New("tracestate exceeds 512 bytes")

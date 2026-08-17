@@ -1,10 +1,8 @@
 {
   "schema_version": 1,
-  "default_owner": "maintainers",
   "owners": [
     {
       "id": "maintainers",
-      "github": ["@fwtllh-png"],
       "responsibility": "Final review for runtime contracts, security claims, and book governance"
     }
   ],
@@ -69,7 +67,11 @@
       "id": "state-observability",
       "owner": "maintainers",
       "chapter_patterns": ["state-*"],
-      "source_patterns": ["internal/observability/**", "internal/persist/**"]
+      "source_patterns": [
+        "internal/observability/**",
+        "internal/persist/**",
+        "docs/protocol/observation.schema.json"
+      ]
     },
     {
       "id": "task-orchestration",
@@ -84,8 +86,8 @@
       "source_patterns": [
         "internal/host/**",
         "extensions/vscode/**",
-        "docs/experience-contract.json",
-        "docs/host-journey-contract.json"
+        "testdata/contracts/experience-contract.json",
+        "testdata/contracts/host-journey-contract.json"
       ]
     },
     {
@@ -97,7 +99,12 @@
         "internal/adapter/hooks/**",
         "internal/adapter/mcp/**",
         "internal/adapter/plugin/**",
-        "internal/adapter/skill/**"
+        "internal/adapter/skill/**",
+        "internal/runtime/extension/**",
+        "internal/runtime/app/extension/**",
+        "internal/persist/extensioncontrol/**",
+        "internal/persist/extensionlifecycle/**",
+        "internal/persist/extensionplan/**"
       ]
     },
     {
@@ -112,8 +119,8 @@
         "extensions/vscode/scripts/**",
         "extensions/vscode/src/performance/**",
         "extensions/vscode/src/test/suite/**",
-        "docs/benchmark-v2.json",
-        "docs/hotspot-baseline.json"
+        "testdata/contracts/benchmark-v2.json",
+        "testdata/contracts/hotspot-baseline.json"
       ]
     },
     {
@@ -139,6 +146,10 @@
     {
       "id": "protocol-schema",
       "command": ["go", "test", "./internal/runtime/protocol", "-run", "TestTheCommittedSchemaMatchesThisBuild"]
+    },
+    {
+      "id": "observation-traits",
+      "command": ["make", "observation-traits-check"]
     },
     {
       "id": "compatibility-manifest",

@@ -13,19 +13,25 @@ code_paths:
   - internal/runtime/agent/engine
   - internal/runtime/agent/turnexec
   - internal/runtime/agent/turnkernel
+  - internal/observability/observation
+  - internal/observability/router
 test_paths:
   - internal/runtime/protocol/message_test.go
   - internal/runtime/app/runtime_test.go
   - internal/runtime/app/runtime_terminal_recovery_test.go
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/turnkernel/coordinator_test.go
+  - internal/runtime/agent/turnkernel/measurement_test.go
+  - internal/observability/router/router_test.go
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
   - internal/runtime/protocol/message.go
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/command.go
+  - internal/runtime/agent/turnkernel/measurement.go
+  - internal/observability/observation/envelope.go
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-08-17
 ---
 
 # The Complete Lifecycle of an Agent Turn
@@ -184,12 +190,20 @@ Changed paths can trigger diagnostics and configured Verify checks. A hard
 failure can fail the Turn and roll back journaled edits. The Receipt captures
 what was read, changed, approved, verified, spent, and timed.
 
-Scope prepares a revisioned and digested `SessionDelta` for History, Usage,
-Cost, Working Set, Evidence, Failures, and Compaction. Runtime commits it with
-the frozen Kernel state, ordered Domain Facts, final output, Receipt, real
-Operation receipt, terminal Event, and deterministic projection Outbox in the
-Terminal Envelope. Engine applies the Delta exactly once only after durable
+Scope freezes one digested `TerminalMeasurementSnapshot` for Usage and latency,
+then prepares a revisioned and digested `SessionDelta` for History, Cost,
+Working Set, Evidence, Failures, and Compaction. Receipt,
+measurement-derived Trace, and Terminal Envelope all reference the same
+Measurement. Runtime commits it with frozen Kernel state, ordered Domain Facts,
+final output, real Operation receipt, terminal Event, and deterministic
+projection Outbox. Engine applies the Delta exactly once only after durable
 commit. The Runtime enforces one terminal Event per Turn.
+
+During the lifecycle, privacy-admitted `ObservationEnvelope` records correlate
+Provider, Tool, Approval, Verification, process, and terminal evidence. The
+Observation Router writes critical evidence synchronously and queues lower
+priorities. Observation or exporter failure updates health but cannot alter the
+Turn's completed, failed, or canceled business outcome.
 
 ## Control Operations
 
@@ -217,6 +231,8 @@ commands fail with structured errors.
 | Authoritative reducer, Coordinator, and Effects | `internal/runtime/agent/turnkernel` |
 | Model/tool executor | `internal/runtime/agent/engine` |
 | Receipt projection | `internal/runtime/app/receipt.go` |
+| Frozen terminal measurement | `internal/runtime/agent/turnkernel/measurement.go` |
+| Observation evidence | `internal/observability/observation`, `internal/observability/router` |
 | Durable Runtime assembly | `internal/runtime/app/persistence/runtime.go` |
 | Turn Domain Facts and leases | `internal/persist/state/turnstate` |
 
@@ -294,4 +310,4 @@ changing the prompt.
 | --- | --- |
 | Catalog ID | `overview-turn-lifecycle` |
 | Status | `verified` |
-| Last verified | 2026-08-12 |
+| Last verified | 2026-08-17 |

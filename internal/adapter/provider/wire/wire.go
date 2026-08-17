@@ -62,15 +62,6 @@ type SessionAdapter interface {
 	TrySession(context.Context, provider.ModelRequest, PreparedCall, SessionTransport) (provider.Stream, bool, error)
 }
 
-func Metadata(logical, payload []byte, incremental bool) provider.TransportMetadata {
-	return MetadataWithProjection(
-		logical,
-		payload,
-		incremental,
-		provider.ProjectionReceipt{},
-	)
-}
-
 func MetadataWithProjection(
 	logical []byte,
 	payload []byte,

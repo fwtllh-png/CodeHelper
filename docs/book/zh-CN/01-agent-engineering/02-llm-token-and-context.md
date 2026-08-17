@@ -186,11 +186,6 @@ Share 达到 93.86%。
 Input、Cache Share、Reasoning 与 Sample Count。Incremental Protocol 的 Transport
 Byte 降幅是另一个独立指标，不能报告成 Token 降幅。
 
-原始瀑布和最终证据见
-[`token-efficiency-t6-waterfall.json`](../../../token-efficiency-t6-waterfall.json)
-与
-[`token-efficiency-t6-evidence.json`](../../../token-efficiency-t6-evidence.json)。
-
 ## 11. 复习问题
 
 1. 为什么 Context Window 不是 Model Memory？

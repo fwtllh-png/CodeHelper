@@ -104,37 +104,6 @@ max_cost_usd = 0
 wall_time = "5m"
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
 
-`reasoning_effort` 为空时，Read-only 使用 Low，常规编码使用 Medium，复杂架构或
-Debug 使用 High；Repair 失败后提升一档。显式 Effort 始终固定，且必须由所有已配置
-Route 广告；不支持的值会在 Provider I/O 前失败。`max_output_tokens` 始终是请求硬
-上限，阶段 Reserve 不会提高显式配置值。
-
-`delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
-`spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。
-`disabled` 对模型隐藏 Agent Lifecycle Tool，但保留内部授权的 Durable Worker 执行。
-
-`spawn_agent` 从当前 Runtime Turn 自动捕获 Parent Context。`context_mode` 默认是
-`task_capsule`；`fresh` 不继承 Parent Context，`last_n_turns` 最多加入
-`context_turns` 个包含完整 Tool Call/Result 配对的最近 Turn，`full` 需要明确授权或
-Role Policy。Tool 返回 `context_receipt`，记录来源、包含/排除原因、字节和 Token
-预算及 SHA-256 Digest。旧的 `fork_context` 和 `parent_context` 参数不再接受。
-
-Agent Tree、Mailbox、Result 和 Budget Ledger 持久化在 Workspace State Store。
-每个 Agent 具有 Canonical Path 和 CAS Revision；终态 Result 与 Completion Outbox
-原子提交。Completion 自动通知 Parent，`wait_agent` 只是对同一事实的主动同步方式。
-Mailbox 使用稳定 Message ID 和 `Receive/Ack`，未确认消息在重启后重投。
-`max_parallel` 限制活跃 Child 数，`max_resident` 还计入仍保留 Result 或 Worktree 的
-已完成 Child，`max_total` 则限制整棵 Durable Tree 的累计 Spawn 数，包括已关闭
-Agent。Depth、Token 和 Cost Admission 同样作用于 Nested Agent；Child 只能收窄，
-不能扩大 Parent Budget。
-
-Child Authority 只能收紧当前 Session Profile。有效 Posture 遵循
-`never < suggest < auto < bypass`；写工具权限是 Parent Tool Catalog 与 Child Role
-Contract 的交集，Read-only Role 固定使用 `never`。在 `suggest` 下，Child Approval
-会在 Host 中显示 Agent Path 与 Role。Host 通过 Parent Session 提交原 Request ID，
-Runtime 将决定路由到权威 Child Thread，并在重启后保留 Pending Approval。Deny 会向
-Child 返回结构化 Problem 与 `approval_denied` Tool Result。
-
 [execution.worker]
 enabled = false
 max_parallel = 2
@@ -193,11 +162,38 @@ model = "gpt-4.1-mini"
 
 [web]
 search_backend = "duckduckgo"
-
-[diagnostics.commands.".md"]
-name = "markdownlint-cli2"
-args = ["--no-globs", "--", "{path}"]
 ```
+
+`reasoning_effort` 为空时，Read-only 使用 Low，常规编码使用 Medium，复杂架构或
+Debug 使用 High；Repair 失败后提升一档。显式 Effort 始终固定，且必须由所有已配置
+Route 广告；不支持的值会在 Provider I/O 前失败。`max_output_tokens` 始终是请求硬
+上限，阶段 Reserve 不会提高显式配置值。
+
+`delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
+`spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。
+`disabled` 对模型隐藏 Agent Lifecycle Tool，但保留内部授权的 Durable Worker 执行。
+
+`spawn_agent` 从当前 Runtime Turn 自动捕获 Parent Context。`context_mode` 默认是
+`task_capsule`；`fresh` 不继承 Parent Context，`last_n_turns` 最多加入
+`context_turns` 个包含完整 Tool Call/Result 配对的最近 Turn，`full` 需要明确授权或
+Role Policy。Tool 返回 `context_receipt`，记录来源、包含/排除原因、字节和 Token
+预算及 SHA-256 Digest。旧的 `fork_context` 和 `parent_context` 参数不再接受。
+
+Agent Tree、Mailbox、Result 和 Budget Ledger 持久化在 Workspace State Store。
+每个 Agent 具有 Canonical Path 和 CAS Revision；终态 Result 与 Completion Outbox
+原子提交。Completion 自动通知 Parent，`wait_agent` 只是对同一事实的主动同步方式。
+Mailbox 使用稳定 Message ID 和 `Receive/Ack`，未确认消息在重启后重投。
+`max_parallel` 限制活跃 Child 数，`max_resident` 还计入仍保留 Result 或 Worktree 的
+已完成 Child，`max_total` 则限制整棵 Durable Tree 的累计 Spawn 数，包括已关闭
+Agent。Depth、Token 和 Cost Admission 同样作用于 Nested Agent；Child 只能收窄，
+不能扩大 Parent Budget。
+
+Child Authority 只能收紧当前 Session Profile。有效 Posture 遵循
+`never < suggest < auto < bypass`；写工具权限是 Parent Tool Catalog 与 Child Role
+Contract 的交集，Read-only Role 固定使用 `never`。在 `suggest` 下，Child Approval
+会在 Host 中显示 Agent Path 与 Role。Host 通过 Parent Session 提交原 Request ID，
+Runtime 将决定路由到权威 Child Thread，并在重启后保留 Pending Approval。Deny 会向
+Child 返回结构化 Problem 与 `approval_denied` Tool Result。
 
 Bundled `openai-responses` 路由只有在显式广告 Incremental Transport 时，才会
 按 Sticky Session Key 复用 Provider 所有的 WebSocket。第一个 Sample 发送完整
@@ -292,18 +288,6 @@ Suite。每个 `turn.verification` Check 都包含命令推导原因。无法识
 每个命令的有界参数列表必须包含 `{path}`。这些命令会在受 Guard 管理的文件编辑后
 执行，因此仓库本地配置只有在被显式信任后才能定义它们。
 
-Markdown 可通过 `make vscode-install` 安装仓库锁定的开发依赖，也可以在 Host PATH
-中安装相同版本：
-
-```bash
-npm install --global markdownlint-cli2@0.23.2
-```
-
-仓库的 `.markdownlint-cli2.jsonc` 让单文件编辑后检查与仓库级
-`markdownlint-cli2` 检查保持一致。Markdown Lint 只作为补充，不替代
-`make docs-check` 和 `make book-check`；双语一致性、导航、治理与书籍结构仍以这两个
-命令为权威门禁。
-
 ## 状态与持久化
 
 默认用户数据目录为 `~/.codehelper/v1`。工作区可通过 `--data-dir` 或
@@ -314,6 +298,32 @@ npm install --global markdownlint-cli2@0.23.2
 
 `execution.journal.durable=true` 会保留中断 Turn 恢复所需的编辑证据，真实仓库应保持
 开启。
+
+## Observation Capture 与 Export
+
+`[telemetry].log_level` 控制结构化 Runtime Log。Observation Capture 与 OTLP Export
+属于进程级运维设置，不是 TOML Field：
+
+| 变量 | 取值 | 行为 |
+| --- | --- | --- |
+| `CODEHELPER_OBSERVATION_CAPTURE` | `off`、`metadata`、`failure`、`full` | 控制 Durable Observation Admission；默认为 `metadata` |
+| `CODEHELPER_OTEL_EXPORTER` | `memory`、`off`、`http/protobuf`、`grpc` | 选择 Observation OTLP Projector |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector Endpoint | 使用标准 OTLP Endpoint 配置 |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` 或 `http/protobuf` | 配置 Endpoint 时选择标准 Protocol |
+
+`metadata` 只保留脱敏 Summary，并丢弃 Raw Payload。`failure` 仅为 Failure-like
+Observation 保留符合条件的脱敏 Payload。即使使用 `full`，Credential 与 Restricted
+Payload 仍会被拒绝；配置 Secret、State Path 与 Config Path 会在任何 Journal/CAS
+写入前脱敏。
+
+Observation Payload Retention 与 `[state].event_retention` 不同。
+`event_retention` 按条数限制 Runtime Event History；Observation Payload Reference
+按内部时间类别管理：Audit/Diagnostic 默认 30 天，Sensitive 24 小时，Ephemeral
+1 小时。启动清理释放过期 Reference，只删除已无引用的 CAS Object。
+
+Remote OTLP 构造失败时，Runtime 会回退到 In-memory Projector。Observation Queue、
+Journal 或 Exporter Failure 会反映在 Observation Health 中，但绝不会改变 Turn 的
+业务结果。
 
 ## 上下文控制
 
@@ -345,6 +355,8 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | `CODEHELPER_SUBAGENT_*` | 委派模式、Tree 限制、Child 预算、Wall Time 与 Workspace 策略 |
 | `CODEHELPER_VERIFY_*` | 验证行为 |
 | `CODEHELPER_STATE_*` | 持久化 |
+| `CODEHELPER_LOG_LEVEL` | 结构化 Runtime Log |
+| `CODEHELPER_OBSERVATION_CAPTURE`、`CODEHELPER_OTEL_EXPORTER`、`OTEL_EXPORTER_OTLP_*` | Observation Capture 与 OTLP Export |
 | `CODEHELPER_CREDENTIAL_KIND`、`CODEHELPER_CREDENTIAL_NAME` | Secret 引用 |
 | `CODEHELPER_INDEX_*`、`CODEHELPER_REPO_MAP_*` | 仓库上下文 |
 | `CODEHELPER_WORKING_SET_*`、`CODEHELPER_EVIDENCE_*` | 会话上下文 |

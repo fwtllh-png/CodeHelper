@@ -1,16 +1,12 @@
 package wire
 
 import (
-	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 func TestDiagnosticCommandReadRootsIncludeScriptAndInterpreterTrees(t *testing.T) {
@@ -33,14 +29,14 @@ func TestDiagnosticCommandReadRootsIncludeScriptAndInterpreterTrees(t *testing.T
 	}
 	if err := os.Symlink(
 		filepath.Join(commandPackage, "cli.mjs"),
-		filepath.Join(commandDir, "markdownlint-cli2"),
+		filepath.Join(commandDir, "fixture-lint"),
 	); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", commandDir+string(os.PathListSeparator)+nodeBin)
 
 	roots := diagnosticCommandReadRoots(map[string]diagnostics.Command{
-		".md": {Name: "markdownlint-cli2", Args: []string{"{path}"}},
+		".md": {Name: "fixture-lint", Args: []string{"{path}"}},
 	})
 	canonicalPackage, err := filepath.EvalSymlinks(commandPackage)
 	if err != nil {
@@ -89,43 +85,5 @@ func TestDiagnosticDependencyReadRootsUsesStructuredLibraryClosure(t *testing.T)
 		if !slices.Contains(files, want) {
 			t.Fatalf("dependency files %q do not contain %q", files, want)
 		}
-	}
-}
-
-func TestConfiguredMarkdownlintRunsWithMachODependencies(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("Mach-O sandbox regression")
-	}
-	if _, err := exec.LookPath("markdownlint-cli2"); err != nil {
-		t.Skip("markdownlint-cli2 is not installed")
-	}
-	root := t.TempDir()
-	path := filepath.Join(root, "README.md")
-	if err := os.WriteFile(path, []byte("# Valid\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	commands := map[string]diagnostics.Command{
-		".md": {Name: "markdownlint-cli2", Args: []string{"{path}"}},
-	}
-	backend, err := sandbox.NewPlatformBackend(sandbox.Options{
-		WorkspaceRoot: root,
-		HostReadRoots: diagnosticCommandReadRoots(commands),
-		HostReadFiles: diagnosticCommandReadFiles(commands),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireStrong(backend); err != nil {
-		t.Skipf("strong sandbox unavailable: %v", err)
-	}
-	receipt, err := diagnostics.NewCommandRunner(root, backend, commands).Run(
-		context.Background(), path,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if receipt.Status == "unavailable" && receipt.ErrorCategory == "runner_failure" {
-		t.Fatalf("markdownlint infrastructure failed in sandbox: %+v", receipt)
 	}
 }

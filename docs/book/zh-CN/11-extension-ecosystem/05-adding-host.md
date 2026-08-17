@@ -10,6 +10,7 @@ prerequisites:
 code_paths:
   - internal/host
   - internal/runtime/app
+  - internal/runtime/app/extension
   - internal/runtime/app/wire
 test_paths:
   - internal/testsupport/runtimecontract
@@ -64,6 +65,7 @@ Capture；不得 Sample Model、Execute Tool、Resolve Credential、Construct Sa
 | Platform Context | Host Capture + Runtime Revalidate |
 | Execution Capability | Governed Adapter/Tool |
 | Construction Choice | Wire |
+| Extension Query/Mutation | `extension/list` / `extension/control` Runtime Operation |
 
 若两个 Host 都需要某 Behavior，它不能只存在于一个 Host。Shared Contract 验证产品
 Host 的 Start、Stream、Approve、Input、Cancel、Verify、Recover、Receipt、Terminal
@@ -78,6 +80,10 @@ Unknown Operation 不可猜测。
 Transport DTO/Framing 可不同，但 Operation/Event Identity、One Terminal、Cursor Replay、
 Workspace Scope、Approval Binding、Problem Code 必须一致。
 
+Extension State 遵循同一规则。Host 查询 Runtime-owned Source、Trust、Generation、
+Capability、Health 与 Receipt State。Mutation 携带唯一 Operation ID，不能编辑
+Enablement File 或 Staging Artifact。幂等 Replay 返回已提交结果；冲突复用失败。
+
 Shutdown 先停止 Admission，再 Drain/Cancel Active Interaction，关闭 Subscription，最后
 释放 Shared Session；不能关闭仍由其他 Host 拥有的 Runtime Resource。
 
@@ -89,6 +95,7 @@ Shutdown 先停止 Admission，再 Drain/Cancel Active Interaction，关闭 Subs
 - Approval/Input Decision 绑定 Request。
 - Unknown Event 不误分类。
 - Host-only State 不成为 Runtime Authority。
+- Host Extension UI 不能绕过 Lifecycle Receipt、Generation Fence 或 Tool Guard。
 
 ## 测试与验证
 

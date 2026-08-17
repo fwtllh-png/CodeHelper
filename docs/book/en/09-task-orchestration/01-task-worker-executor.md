@@ -8,17 +8,25 @@ audience:
 prerequisites:
   - state-why-durable
 code_paths:
+  - internal/orchestration/kernel
+  - internal/orchestration/store
+  - internal/orchestration/model
+  - internal/orchestration/projection
   - internal/orchestration/task
   - internal/orchestration/worker
   - internal/runtime/app/wire
   - internal/persist/sqlkit
 test_paths:
+  - internal/orchestration/kernel/kernel_test.go
+  - internal/orchestration/store/store_test.go
   - internal/orchestration/task/repository_test.go
   - internal/orchestration/worker/worker_test.go
   - internal/runtime/app/wire/agentexecutor_test.go
   - internal/persist/sqlkit/ownership_test.go
 source_of_truth:
-  - internal/orchestration/task/repository.go
+  - internal/orchestration/kernel/kernel.go
+  - internal/orchestration/store/store.go
+  - internal/orchestration/task/workgraph.go
   - internal/orchestration/worker/worker.go
 status: draft
 last_verified: null
@@ -30,32 +38,39 @@ English | [简体中文](../../zh-CN/09-task-orchestration/01-task-worker-execut
 
 ## Learning Objectives
 
-Understand durable Task state, Worker scheduling, Executor contracts, and why
-background work still enters the production Runtime.
+Understand the durable WorkGraph lifecycle, Worker claims, Executor contracts,
+Task compatibility projections, and why background work still enters the
+production Runtime.
 
 ## Lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> queued
-    queued --> running: claim
-    running --> completed: settle success
-    running --> queued: retry/drain
+    [*] --> pending
+    pending --> ready: dependencies satisfied
+    ready --> running: claim Node + Attempt + Lease Epoch
+    running --> succeeded: settle success
+    running --> ready: retry/drain
     running --> failed: terminal failure
-    queued --> canceled: cancel
+    pending --> canceled: cancel
 ```
 
-Task records executor name, payload, workspace/session identity, attempts,
-lease owner/expiry, schedule time, result, failure reason, and version.
-Repository transitions validate `CanTransition` and append lifecycle entries;
-transitions and session/execution writes run inside `sqlkit.WithTx`, and
-optimistic version updates assert the exact affected row count with
-`RequireAffected`.
+The authoritative model is one WorkGraph aggregate containing Run, Node,
+Attempt, Lease Epoch, and Effect state. A pure Kernel validates a
+revision-checked Command and emits ordered Facts plus Effects. The Store commits
+aggregate snapshot, Facts, command Receipt, Effect Outbox, and compatibility
+projections in one SQLite transaction.
+
+Task records remain a bounded compatibility and query surface for executor
+name, payload, workspace/session identity, schedule, result, and failure
+reason. They cannot transition independently of the WorkGraph facts that
+produced them.
 
 Worker Scheduler advertises a finite Executor set, claims only matching Tasks,
 respects `MaxParallel`, starts heartbeats, runs each Executor under cancellation,
-then settles success, failure, retry, or drain. Duplicate Executor names and
-unknown Task executors fail at construction/create boundaries.
+then submits WorkGraph settlement Commands for success, failure, retry, or
+drain. Duplicate Executor names and unknown Task executors fail at
+construction/create boundaries.
 
 Production Executors route agent Turns, shell commands, and workflows through
 Guard, Policy, Runtime, Journal, and receipts. A Host submits or observes Tasks;
@@ -65,21 +80,21 @@ it does not execute provider or Tool logic.
 
 | Identity | Meaning | May repeat? |
 | --- | --- | --- |
-| Task ID | durable requested unit of work | no |
-| Attempt | one leased execution opportunity | yes, bounded |
+| Run/Node ID | durable graph and executable unit | no within one graph |
+| Attempt ID | one leased execution opportunity | yes, bounded per Node |
 | Thread/Turn ID | Runtime conversation/execution produced by an attempt | new per executed attempt |
 
-Task state is the scheduling authority; Attempt records explain ownership and
-retry; Runtime Events/Receipts explain Agent execution. Conflating them makes a
-retried Turn look like duplicate Task completion.
+WorkGraph state is the scheduling authority; Task rows are projections, Attempt
+Facts explain ownership and retry, and Runtime Events/Receipts explain Agent
+execution. Conflating them makes a retried Turn look like duplicate completion.
 
 ## Executor Contract
 
 An Executor advertises a stable name and returns an `Outcome` that separates
 success, retryable failure, terminal failure, and drain. It must honor Context
 cancellation, validate payload before effects, report created Turn identity,
-and state whether retry is safe. The Scheduler, not the Executor, owns Task
-transition and lease settlement.
+and state whether retry is safe. The Worker, not the Executor or Fleet
+projection, owns Claim and settlement Commands.
 
 Construction validates the finite Executor set. This prevents a Worker from
 claiming opaque work and only discovering after ownership transfer that it
@@ -88,7 +103,8 @@ cannot execute it.
 ## Correctness Boundaries
 
 - Claim is workspace-scoped and won by one owner.
-- Running attempt is recorded before execution.
+- Running Attempt, Lease Epoch, and Effect are recorded before execution.
+- Snapshot, Facts, Receipt, Outbox, and Task projection commit atomically.
 - Scheduler close returns running work to queue when safe.
 - Unsupported payload fails without blind retry.
 - Writing child results merge through guarded file operations.
@@ -99,6 +115,7 @@ cannot execute it.
 ## Tests and Verification
 
 ```bash
+go test ./internal/orchestration/kernel ./internal/orchestration/store
 go test ./internal/orchestration/task ./internal/orchestration/worker
 go test ./internal/runtime/app/wire -run 'TestScheduler|TestQueuedTask'
 ```

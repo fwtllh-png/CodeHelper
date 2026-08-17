@@ -13,17 +13,18 @@ freshness, and reader feedback rather than by occasional editorial cleanup.
 | `docs/book/catalog.json` | part order, chapter identity, language titles, and delivery status |
 | `docs/book/schema/chapter.schema.json` | chapter Front Matter contract |
 | `docs/book/governance.json` | owners, source domains, freshness SLA, release facts, screenshots, and link exclusions |
-| `.github/CODEOWNERS` | generated GitHub review routing |
 | Chapter Front Matter | chapter-specific code, test, and fact dependencies |
 
-Change the registry first when ownership changes, then regenerate
-`.github/CODEOWNERS` with:
+Change the registry first when ownership or source-domain mapping changes.
 
-```bash
-python3 scripts/check-doc-governance.py codeowners
-```
+## Machine Contract Artifacts
 
-The generated output must match the tracked file exactly.
+Repository-level JSON consumed by current commands and tests lives under
+`testdata/contracts`. The `docs` tree keeps only documentation registries and
+generated documentation schemas at their governed locations. One-time phase
+evidence, benchmark runs, and acceptance snapshots stay in `.tmp`, CI
+artifacts, and Git history. Summarize durable conclusions in the maintained
+bilingual document instead of adding per-stage evidence JSON files.
 
 ## Pull Request Impact Gate
 

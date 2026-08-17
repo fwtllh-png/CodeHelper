@@ -87,7 +87,6 @@ type InspectView struct {
 }
 
 type Ledger struct {
-	root   string
 	sqlite *sqlitestate.Store
 	graphs *orchestrationstore.Store
 }
@@ -111,7 +110,7 @@ func Open(root string) (*Ledger, error) {
 		_ = sqlite.Close()
 		return nil, err
 	}
-	return &Ledger{root: root, sqlite: sqlite, graphs: graphs}, nil
+	return &Ledger{sqlite: sqlite, graphs: graphs}, nil
 }
 
 func (l *Ledger) Close() error {
@@ -119,13 +118,6 @@ func (l *Ledger) Close() error {
 		return nil
 	}
 	return l.sqlite.Close()
-}
-
-func (l *Ledger) Path() string {
-	if l == nil {
-		return ""
-	}
-	return filepath.Join(l.root, "state.db")
 }
 
 func (l *Ledger) Controller() *orchestrationstore.Store {
@@ -227,13 +219,6 @@ func (l *Ledger) Logs(runID string, limit int) ([]Record, error) {
 		})
 	}
 	return records, nil
-}
-
-func (l *Ledger) Repair(runID string) (orchestrationstore.Audit, error) {
-	return l.graphs.RepairSnapshot(
-		context.Background(),
-		protocol.RunID(runID),
-	)
 }
 
 func projectRunStatus(state protocol.RunState) RunStatus {

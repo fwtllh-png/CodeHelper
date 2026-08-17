@@ -12,7 +12,7 @@
 | Automation（自动化） | Trigger 或 Schedule 匹配时创建持久工作的规则。 | 与交互式 Agent Turn 区分。 |
 | Capability（能力） | Model、Provider、Runtime 或 Host 声明支持的功能。 | 例如 Streaming 与 Tool Call。 |
 | Catalog（目录） | 用于发现 Model、Tool 或书籍章节的结构化注册表。 | 必须说明具体是哪一种 Catalog。 |
-| Checkpoint（检查点） | 可以继续执行的持久化进度信息。 | 不一定是完整 Snapshot。 |
+| Checkpoint（检查点） | 用于 State-only Restore/Fork 的不可变 Session History/Profile Artifact。 | Workflow Execution 使用 WorkGraph Fact，不维护独立 Checkpoint State Machine。 |
 | Constitution（宪法约束） | 不可绕过的 Runtime Tool 执行规则。 | 保留 CodeHelper 类型的英文名称。 |
 | Context（上下文） | 当前推理时提供给模型的信息。 | 与持久状态、模型训练数据区分。 |
 | Context compaction（上下文压缩） | 在保留后续工作所需信息的同时缩小 Context。 | 必须说明信息损失取舍。 |
@@ -20,16 +20,18 @@
 | Event（事件） | Operation 推进时产生的不可变 Runtime 事实。 | 与当前 Projection State 区分。 |
 | Fail closed（失败关闭） | 无法确认安全决策或能力时拒绝执行。 | 静默降级不能称为 Fail-closed。 |
 | Fixture（夹具） | 在没有真实依赖时驱动实际 Runtime 的确定性记录输入输出。 | 无网络时优先写作 Hermetic Fixture。 |
-| Fleet（执行集群） | 在多个 Lane 或执行资源间进行协调调度的领域对象。 | 使用 CodeHelper 领域含义。 |
+| Effect Owner | 附着于 Process、Connection、Registration、Subscription、Lease 或 Timer 的 Extension/Source/Plan/Generation Identity。 | Disable/Revoke 用它 Drain/Fence Effect。 |
+| Fleet（执行集群） | WorkGraph State 与 Ordered Fact 的 Read/Audit Projection。 | Fleet 不 Enqueue、Claim、Settle 或 Resume Work。 |
 | Guard（执行守卫） | 按 Policy、Permission、Approval、Constitution、Journal 和 Sandbox 要求检查 Tool 的边界。 | Host 不能绕过。 |
 | Host（交互宿主） | 提交 Operation 并投影 Event 的用户或 Client Adapter。 | CLI、TUI、ACP、VS Code 都是 Host。 |
 | Idempotency（幂等性） | 重试操作不会产生非预期重复副作用的性质。 | 必须说明幂等 Key 或边界。 |
 | Journal（工作区日志） | 记录预期和已完成 Workspace 副作用，用于证据与恢复的持久数据。 | 不是普通应用日志。 |
-| Lane（执行通道） | 协调相关工作的有序执行边界。 | 不是 OS Thread。 |
+| Lane（执行通道） | Durable Placement 与显式 Inline/tmux Process Adapter。 | Placement 不是 Lifecycle/Scheduling Authority。 |
 | Lease（租约） | Worker 对持久工作的限时所有权。 | 通常与 Heartbeat、接管规则一起说明。 |
 | MCP | Model Context Protocol，通过外部 Server 暴露 Tool 和 Resource。 | 每章首次出现时写出全称。 |
 | Model（模型） | 由 Model ID 或 Wire ID 寻址的推理系统。 | 不与 Provider 混用。 |
 | Operation（操作） | 提交给 Runtime、包含身份、输入、Mode 和执行选项的请求。 | Event 与 Receipt 归属于 Operation。 |
+| Observation Envelope | 带版本、通过 Privacy Admission 的因果证据记录，包含稳定 Identity、Correlation、有界 Summary 与可选 CAS Payload Reference。 | 不是 Runtime Event 或执行权威。 |
 | Permission posture（权限姿态） | 处理 Tool 风险的策略，例如 `never`、`suggest`、`auto`、`bypass`。 | `bypass` 下仍应用硬约束。 |
 | Plugin（插件） | 通过受治理扩展边界加载的打包扩展。 | 必须解释 Trust 与 Lifecycle。 |
 | Policy（策略） | 对动作进行 Allow、Deny 或 Require Approval 的可配置规则。 | 与 Constitution 区分。 |
@@ -45,13 +47,15 @@
 | Snapshot（快照） | 用于加速恢复或检查的物化状态镜像。 | 必须解释与 Event Source 的一致性。 |
 | Span（跨度） | Trace 内部有时间范围的嵌套工作单元。 | 用于可观测性，不是产品状态。 |
 | Task（任务） | 具有 Lifecycle、Attempt 和 Ownership 的持久可执行工作单元。 | 没有 Executor 的 Task Record 不可执行。 |
+| Terminal Measurement Snapshot | Terminal Convergence 时只冻结一次的 Digested Usage/Latency Fact。 | Receipt、Trace 与 Terminal Envelope 共享它。 |
 | Tool（工具） | 模型可以请求、用于检查或影响环境的类型化能力。 | 有后果的 Tool 必须经过 Guard。 |
 | Trace（追踪） | 关联 Span 与 Runtime Identity 的端到端可观测记录。 | 不嵌入 Secret 或原始敏感数据。 |
 | Turn（轮次） | 一次 User 到 Agent 的交互，可以包含多个模型和 Tool Step。 | 与单次 Inference Request 区分。 |
 | Verification（验证） | 检查工作是否满足验收条件并产生证据的过程。 | Tool Call 成功本身不等于验证。 |
 | Wire ID | 通过传输协议发送给 Provider 的 Model Identifier。 | 可能与 Catalog Model ID 不同。 |
 | Worker（工作进程） | Claim 并执行 Durable Task 的 Process 或 Loop。 | Ownership 由 Lease 和 Heartbeat 管理。 |
-| Workflow（工作流） | 具有 Dependency、Checkpoint 和 Recovery 语义的持久多步骤图。 | 与单个 Agent Loop 区分。 |
+| WorkGraph | 以 Snapshot、Ordered Fact、Receipt 与 Outbox Row 原子提交的权威 Run/Node/Attempt/Lease/Effect State Machine。 | Worker 是 Claim Authority；Projection 只读。 |
+| Workflow（工作流） | 编译为统一 Durable WorkGraph 的 Validated Multi-step Graph。 | 与单个 Agent Loop、Session Checkpoint 区分。 |
 | Workspace（工作区） | CodeHelper 操作的 Repository 或 Directory 边界。 | Identity 与 Trust 都按它划分。 |
 
 ## 翻译与风格

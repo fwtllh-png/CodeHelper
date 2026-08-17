@@ -100,6 +100,8 @@ make brand-check
 | `make acp-interop` | real binary ACP stdio lifecycle |
 | `make protocol-contract` | shared runtime scenarios over ACP |
 | `make protocol-schema` | regenerate committed runtime protocol schema |
+| `make observation-traits` | regenerate Observation traits for Go, TypeScript, and JSON Schema |
+| `make observation-traits-check` | fail when generated Observation artifacts drift |
 
 ### VS Code
 
@@ -122,9 +124,7 @@ make brand-check
 | Target | Purpose |
 | --- | --- |
 | `make bench` | fixture coding benchmark on a strong host sandbox |
-| `make upgrade-baseline` | write the versioned coding metrics report |
 | `make catalog-bench` | dynamic tool catalog scale benchmark |
-| `make multi-agent-eval` | hermetic delegation/completion/parallelism release thresholds |
 | `make multi-agent-performance` | bounded Agent Event projection budget |
 | `make live-model-smoke` | explicit, non-hermetic provider smoke |
 | `make live-multi-agent-smoke` | credentialed real-provider Agent spawn/wait/completion smoke |
@@ -141,20 +141,17 @@ make brand-check
 | `scripts/test-brand-check.sh` | self-tests the brand scanner |
 | `scripts/test-secret-leak.sh` | runs redaction checks against a built binary |
 | `scripts/run-test-lane.py` | runs a test lane and writes structured evidence |
-| `scripts/upgradebaseline` | aggregates benchmark results into the Stage 0 baseline |
+| `scripts/commanddocs` | generates or checks bilingual command inventories |
+| `scripts/observationtraitgen` | generates Observation traits and public schema from one manifest |
 | `scripts/live-model-smoke.sh` | calls one explicitly configured live model |
-| `scripts/content-fixture-smoke.sh` | validates optional content dependency detection |
 | `scripts/package-release.sh` | builds five targets, checksums, SBOM, manifest, smoke |
 | `scripts/deepseek-local.sh` | builds/configures local DeepSeek and launches TUI or VS Code |
 | `scripts/setup-vscode-local.sh` | macOS official-VS-Code local installation |
 
-The committed `docs/upgrade-baseline.json` records task success rate,
-nearest-rank P50/P95 wall latency, retried-task rate, verification coverage,
-unpriced-call rate, and recovery success rate. Every rate carries its numerator
-and denominator; an empty denominator produces `null`, not a misleading zero.
-Tasks blocked only by a missing strong host sandbox are recorded as
-`unavailable` and excluded from metric denominators. `make bench` remains the
-strict release gate and does not accept unavailable tasks as passed.
+Benchmark and evaluation reports are transient `.tmp` or CI artifacts. Every
+rate carries its numerator and denominator; an empty denominator produces
+`null`, not a misleading zero. `make bench` remains the strict release gate
+and does not accept unavailable tasks as passed.
 
 Extension scripts under `extensions/vscode/scripts` own TypeScript build,
 protocol/compatibility generation, Electron/remote integration, VSIX packaging,
@@ -175,6 +172,9 @@ Every script must:
 Do not hand-edit:
 
 - `docs/protocol/runtime-protocol.schema.json`;
+- `docs/protocol/observation.schema.json`;
+- `internal/observability/observation/traits.gen.go`;
+- `extensions/vscode/src/protocol/observation.generated.ts`;
 - `extensions/vscode/src/protocol/generated.ts`;
 - `extensions/vscode/src/compatibility/generated.ts`.
 
@@ -182,12 +182,18 @@ Use:
 
 ```bash
 make protocol-schema
+make observation-traits
 cd extensions/vscode
 npm run generate:protocol
 npm run generate:compatibility
 ```
 
 Commit generated output with the source change.
+
+`internal/observability/schema/observation_traits.json` is the only
+hand-maintained Observation trait manifest. A new kind must declare owner,
+durability, payload policy, retention class, required correlations, OTLP
+mapping, and priority before generation succeeds.
 
 ## Test Strategy
 
@@ -207,13 +213,13 @@ pretending that the capability passed.
 
 Architecture regression uses two complementary contracts:
 
-- `docs/hotspot-baseline.json` binds responsibilities to package symbols and
-  owner files. Missing or misplaced responsibilities, unreviewed internal
-  dependencies, hotspot growth, and removed test assets fail
+- `testdata/contracts/hotspot-baseline.json` binds responsibilities to package
+  symbols and owner files. Missing or misplaced responsibilities, unreviewed
+  internal dependencies, hotspot growth, and removed test assets fail
   `make hotspot-baseline`.
-- `docs/architecture-metrics-baseline.json` limits direct internal package
-  fanout, production lines, Options and Mutex fields, hotspot file/function
-  size, and duplicated Protocol Event switch sites. `make
+- `testdata/contracts/architecture-metrics-baseline.json` limits direct
+  internal package fanout, production lines, Options and Mutex fields, hotspot
+  file/function size, and duplicated Protocol Event switch sites. `make
   architecture-ratchet` measures the repository and compares limits with
   `ARCHITECTURE_BASE_REF` when that ref contains a baseline.
 
@@ -268,6 +274,7 @@ Choose tests by risk:
 | local pure function | package test |
 | shared runtime behavior | package + dependent runtime tests |
 | protocol | schema drift + ACP + HTTP contracts |
+| observation kind or exporter | trait generation + observation/router/OTLP tests |
 | persistence | repository + state package tests |
 | guard/security | focused race tests and attack corpus |
 | VS Code state/UI | typecheck, ESLint, relevant Node tests |

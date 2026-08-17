@@ -13,13 +13,19 @@ code_paths:
   - internal/adapter/skill
   - internal/adapter/plugin
   - internal/adapter/hooks
+  - internal/runtime/extension
+  - internal/runtime/app/extension
 test_paths:
   - internal/adapter/plugin/trust_test.go
   - internal/adapter/plugin/distribution_test.go
   - internal/adapter/hooks/hooks_test.go
+  - internal/runtime/extension/plan_test.go
+  - internal/runtime/app/extension/lifecycle_test.go
 source_of_truth:
   - internal/adapter/plugin/trust.go
   - internal/adapter/plugin/distribution.go
+  - internal/runtime/extension/plan.go
+  - internal/runtime/extension/lifecycle.go
 status: draft
 last_verified: null
 ---
@@ -44,6 +50,12 @@ Signed Distribution、Revocation 与 Hook Failure Policy。
 
 Extension Tool 仍进入 Registry/Catalog 并通过 Guard；“Trusted Extension”不等于 Direct
 Execution Authority。
+
+Trust Admission 与 Lifecycle Ownership 相互独立。Runtime 将 Trusted Source 解析为
+绑定 Permission Digest 的 Digested Plan。每个 Process、Connection、Hook、
+Subscription、Timer、Lease 与 Tool Registration 都归因到 Extension Source、Plan
+Revision、Generation、Capability 与 Effect Kind。Disable Drain 所属 Effect；
+Revoke/Quarantine Fence Generation。
 
 ## Plugin Trust Chain
 
@@ -77,11 +89,16 @@ MCP Schema/Capability Change 触发 Catalog Reconcile，Stale Binding 被 Fence�
 Health 隔离失败 Server。Skill Lock 保证 Resolution Reproducible，但 Skill Text 仍是
 Untrusted Model Context，不能授予 Tool Authority。
 
+Plugin/Skill CLI、ACP 与 VS Code 向同一 Runtime Owner 提交幂等 Control Operation。
+Durable Prepare/Commit Receipt 使 Restart/Retry 可审计。Host 不能通过编辑 Local State
+或报告 Extension Healthy 建立 Trust。
+
 ## 验证
 
 ```bash
 go test ./internal/adapter/plugin ./internal/adapter/hooks
 go test ./internal/adapter/mcp ./internal/adapter/skill
+go test ./internal/runtime/extension ./internal/runtime/app/extension
 ```
 
 ## 复习问题

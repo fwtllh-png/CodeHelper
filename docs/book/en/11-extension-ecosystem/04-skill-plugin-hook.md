@@ -11,14 +11,24 @@ code_paths:
   - internal/adapter/skill
   - internal/adapter/plugin
   - internal/adapter/hooks
+  - internal/runtime/extension
+  - internal/runtime/app/extension
+  - internal/persist/extensioncontrol
+  - internal/persist/extensionlifecycle
+  - internal/persist/extensionplan
 test_paths:
   - internal/adapter/skill/resolver_test.go
   - internal/adapter/plugin/lifecycle_test.go
   - internal/adapter/hooks/hooks_test.go
+  - internal/runtime/extension/plan_test.go
+  - internal/runtime/app/extension/lifecycle_test.go
 source_of_truth:
   - internal/adapter/skill/catalog.go
   - internal/adapter/plugin/registry.go
   - internal/adapter/hooks/manager.go
+  - internal/runtime/extension/registry.go
+  - internal/runtime/extension/plan.go
+  - internal/runtime/extension/lifecycle.go
 status: draft
 last_verified: null
 ---
@@ -52,6 +62,27 @@ in-flight cancellation. Loader snapshots executable content and runs sandboxed.
 Hooks run at defined lifecycle points through Manager/Adapter. Permission hooks
 may allow, deny, or ask, but Guard revalidates updated inputs and fails closed
 on hook errors or unresolved ask.
+
+## Shared Runtime Extension Contract
+
+Skills, Plugins, Hooks, Memory, Dynamic Tools, and MCP adapt into one typed
+Runtime extension core. A contributor declares identity, phase, capabilities,
+failure policy, timeout, and output budget. Registration validates the
+contract, seals an immutable Registry, and invokes contributors with explicit
+capabilities rather than construction state or a private Tool Registry.
+
+Source resolution produces a deterministic, digested Plan bound to the current
+permission digest. Every process, connection, Hook, subscription, lease, timer,
+and Tool registration carries an `EffectOwner`:
+
+```text
+Extension + Source + Plan Revision + Generation + Capability + Effect Kind
+```
+
+Lifecycle transitions persist redacted Receipts. Disable drains owned Effects;
+security revoke or quarantine fences stale generations. Restart reconciliation
+uses durable Plan, lifecycle, and control stores rather than scanning files and
+guessing what was active.
 
 ## Authority Comparison
 
@@ -89,6 +120,11 @@ Hook failure policy is event-specific: observer failures may be audited and
 fail open, while message/tool/permission gates fail closed. Output and
 environment are bounded and sanitized in both cases.
 
+Plugin and Skill CLI, ACP `extension/list`/`extension/control`, and the VS Code
+Extensions view submit to this same control plane. Mutations are idempotent by
+Operation ID and persist prepare/commit receipts. Hosts project Runtime-owned
+state; they do not implement extension lifecycle.
+
 ## Failure Boundaries
 
 - Symlink traversal, malformed state/lock, and digest drift fail.
@@ -97,6 +133,8 @@ environment are bounded and sanitized in both cases.
 - Security revoke cancels in-flight Plugin calls.
 - Hook timeout/process failure cannot silently allow.
 - No extension receives raw secrets by default.
+- An Extension generation cannot retain Effects after revoke/quarantine.
+- Reusing an Operation ID with different content fails closed.
 
 ## Tests and Verification
 
@@ -104,6 +142,9 @@ environment are bounded and sanitized in both cases.
 go test ./internal/adapter/skill
 go test ./internal/adapter/plugin
 go test ./internal/adapter/hooks
+go test ./internal/runtime/extension ./internal/runtime/app/extension
+go test ./internal/persist/extensioncontrol ./internal/persist/extensionlifecycle
+go test ./internal/persist/extensionplan
 ```
 
 ## Hands-On Lab

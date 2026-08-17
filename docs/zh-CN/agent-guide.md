@@ -29,11 +29,13 @@
 | Turn/Session State | `internal/runtime/app` |
 | Model/Tool Loop | `internal/runtime/agent` |
 | Dependency Construction | `internal/runtime/app/wire` |
+| Typed Extension Lifecycle | `internal/runtime/extension`、`internal/runtime/app/extension` |
 | Model/Provider | `internal/adapter/model`、`internal/adapter/provider` |
 | Tool | `internal/adapter/tool` |
 | Approval/Sandbox | `internal/security`、`internal/adapter/tool/guard` |
-| Task/Workflow | `internal/orchestration` |
+| Task/Workflow/Lease | `internal/orchestration/kernel`、`internal/orchestration/store` |
 | Durable Data | `internal/persist` |
+| Observation/Usage/Trace | `internal/observability` |
 | VS Code | `extensions/vscode` |
 
 ## 不可破坏的约束
@@ -42,6 +44,8 @@
 - `wire` 不实现业务循环。
 - VS Code 不建立第二套 Runtime。
 - 不绕过 Guard、Policy、Constitution、Journal 或 Sandbox。
+- 不在事务化 WorkGraph Command/Store 路径之外写入 Orchestration Lifecycle State。
+- Observation、Capture 或 Exporter Failure 不能改变 Turn 的业务结果。
 - 受 Git 跟踪的 Config、Log、Fixture、Docs 中不保存原始凭证。
 - 不读取、打印、总结、Patch 或强制添加被忽略的
   `docs/DEEPSEEK-LIVE.zh-CN.md` 本机 Runbook。
@@ -121,6 +125,27 @@ Trust 时：
 4. 运行聚焦 Race/Security Test；
 5. 不弱化平台能力声明。
 
+### Orchestration
+
+修改 Task、Workflow、Worker、Fleet、Lane 或 Subagent Lifecycle 时：
+
+1. 将 Transition 表达为带 Revision 的 WorkGraph Command；
+2. 在同一 SQLite 事务提交 Aggregate、Fact、Command Receipt、Effect Outbox 与兼容
+   Projection；
+3. 使用 Lease Owner/Epoch Fence Claim 与 Settlement；
+4. 保持 Fleet 与 Host View 只读；
+5. 测试 Restart、Duplicate Command、Stale Lease 与 Terminal Atomicity。
+
+### Observability
+
+修改 Observation Kind、Capture、Retention、Trace 或 Exporter 时：
+
+1. 更新 `internal/observability/schema/observation_traits.json`；
+2. 运行 `make observation-traits`；
+3. 保持 Privacy Admission 先于 Journal/CAS Persistence；
+4. 只使用有界低基数 Metric Label；
+5. 证明 Writer/Exporter Failure 与业务执行隔离。
+
 ## 测试预期
 
 | 风险 | 预期测试 |
@@ -128,6 +153,7 @@ Trust 时：
 | 局部逻辑 | Unit Test |
 | 共享组件 | Unit + Integration Consumer |
 | Protocol | Golden/Schema + Transport Contract |
+| Observation | Trait Generation + Privacy/Router/Exporter Failure Test |
 | Persistence | Create/Read/Update + Failure/Reopen |
 | Concurrency | 确定性同步 + Race |
 | Security | Allow、Deny、Malformed Input、Cleanup |

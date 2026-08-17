@@ -47,7 +47,12 @@ func main() {
 }
 
 func check(root string) error {
-	data, err := os.ReadFile(filepath.Join(root, "docs", "benchmark-v2.json"))
+	data, err := os.ReadFile(filepath.Join(
+		root,
+		"testdata",
+		"contracts",
+		"benchmark-v2.json",
+	))
 	if err != nil {
 		return err
 	}

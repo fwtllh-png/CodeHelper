@@ -14,6 +14,9 @@ code_paths:
   - internal/persist/state/cas
   - internal/persist/workspacejournal
   - internal/persist/sqlkit
+  - internal/observability/privacy
+  - internal/observability/retention
+  - internal/observability/supportbundle
 test_paths:
   - internal/runtime/app/session_artifacts_test.go
   - internal/persist/session/lifecycle_test.go
@@ -21,11 +24,14 @@ test_paths:
   - internal/persist/state/cas/store_test.go
   - internal/persist/workspacejournal/recover_test.go
   - internal/persist/sqlkit/ownership_test.go
+  - internal/observability/retention/retention_test.go
+  - internal/observability/supportbundle/bundle_test.go
 source_of_truth:
   - internal/runtime/app/session_artifacts.go
   - internal/persist/session/lifecycle.go
   - internal/persist/snapshot/repository.go
   - internal/persist/workspacejournal/journal.go
+  - internal/observability/retention/retention.go
 status: draft
 last_verified: null
 ---
@@ -101,6 +107,25 @@ durable owner/before-image -> workspace write -> after fingerprint -> turn commi
 
 两者都宁可留下 Recoverable Leftover，也不创建 Dangling Authoritative Reference。
 
+## Observation Payload Retention
+
+Observation Metadata 与 Payload 具有不同生命周期。Privacy Policy 在 Router 写入
+Observation Journal/CAS 前执行。`metadata` Capture 只保留有界脱敏 Summary；
+`failure` 与 `full` 可以保留符合条件的脱敏 Payload。Credential 与 Restricted Payload
+永不持久化。
+
+Payload Reference 使用时间类别，而不是 Runtime Event 条数限制：
+
+| Class | 默认生命周期 |
+| --- | --- |
+| Audit / Diagnostic | 30 天 |
+| Sensitive | 24 小时 |
+| Ephemeral | 1 小时 |
+
+启动 Retention 会释放过期 Reference，只有 CAS Object 已无引用时才删除。Payload
+过期后 Observation Metadata 仍可用于解释。Support Bundle 会再次脱敏所选记录，默认
+不包含 Payload，并以独占 mode `0600` 创建 Archive。
+
 ## Identity Boundary
 
 Session 标识 Workspace Lifecycle；Thread/Turn 标识 Causal History；Checkpoint/Plan ID
@@ -119,6 +144,8 @@ Git 无法覆盖 Untracked File、Partial Turn 和 Non-Git Workspace，因此 Jo
   Stored Metadata 也 Fail Closed（Integrity Error），而非静默修复。
 - CAS Tampering、Symlink、Invalid ID/Reference Fail Closed。
 - Last-reference Release 删除内容。
+- Observation Retention 不删除仍被引用的 CAS Object。
+- 所有 Capture Mode 都拒绝 Credential 与 Restricted Payload。
 - Before-image Failure 阻止 Edit。
 - Recovery 不覆盖 External Edit。
 - State-only Restore 不能重放 Tool、Command、Network 或 File Effect。
@@ -131,6 +158,8 @@ go test ./internal/runtime/app -run 'Test(SessionCheckpoint|Restore|Fork|Plan)'
 go test ./internal/persist/session ./internal/persist/snapshot
 go test ./internal/persist/state/cas ./internal/persist/workspacejournal
 go test ./internal/persist/sqlkit
+go test ./internal/observability/privacy ./internal/observability/retention
+go test ./internal/observability/supportbundle
 ```
 
 ## 动手实验

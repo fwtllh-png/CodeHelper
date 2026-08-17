@@ -38,7 +38,7 @@ mistakes and compromised dependencies remain in scope.
 | verify gate | collects correctness evidence before commit |
 | OS sandbox | enforces process/filesystem/network boundaries |
 | egress controls | constrains remote endpoints and outbound clients |
-| observability | records redacted events, receipts, usage, and traces |
+| observability | admits versioned evidence through privacy, retention, and bounded export policy |
 
 No layer should be described as a replacement for another.
 
@@ -183,12 +183,38 @@ restricted audit records even though they do not contain credential values.
 Runtime Captures include `tool.result.execution`, so Captures and Event Logs
 require the same access control and retention policy.
 
+The durable Observation Router applies capture policy before any Observation
+Journal or CAS write. Capture modes are:
+
+- `off`: no durable observations;
+- `metadata`: redacted summaries only and the default;
+- `failure`: eligible redacted payloads for failure-like observations;
+- `full`: eligible redacted payloads for all observation kinds whose traits
+  permit them.
+
+Credential and Restricted payloads are forbidden in every mode. Secret-bearing
+JSON keys, configured credential values, state roots, and config paths are
+redacted before persistence. Sensitive payload references expire sooner than
+audit metadata, and CAS collection deletes an object only after its reference
+count reaches zero.
+
+OTLP export is a separate bounded projection of the redacted Observation
+Envelope. Metric labels use a fixed low-cardinality allowlist and must never
+contain prompts, paths, arguments, resource IDs, or raw errors. Collector
+endpoints and headers are security-sensitive environment configuration.
+Exporter failure is visible in observation health but cannot change a business
+Turn result.
+
+The internal support-bundle builder reads the Observation Journal, re-redacts
+every included summary and payload, omits payloads by default, creates the
+archive exclusively, and enforces mode `0600`. A bundle is still sensitive and
+must be reviewed before sharing.
+
 ## Security Testing
 
 ```bash
 make security-test
 make sandbox-attack-test
-make security-governance-sg7
 make secret-leak-test
 make vscode-security
 ```

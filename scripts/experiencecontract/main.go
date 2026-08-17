@@ -70,7 +70,7 @@ type actionLevel struct {
 }
 
 func main() {
-	path := "docs/experience-contract.json"
+	path := "testdata/contracts/experience-contract.json"
 	if len(os.Args) > 2 {
 		fmt.Fprintln(os.Stderr, "usage: experiencecontract [path]")
 		os.Exit(2)

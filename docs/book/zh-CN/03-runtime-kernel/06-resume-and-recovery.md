@@ -15,6 +15,7 @@ code_paths:
   - internal/persist/snapshot
   - internal/persist/workspacejournal
   - internal/persist/state/turnstate
+  - internal/observability/journal
 test_paths:
   - internal/runtime/app/reconstruct_test.go
   - internal/runtime/app/session_artifacts_test.go
@@ -22,6 +23,7 @@ test_paths:
   - internal/runtime/app/wire/persistent_test.go
   - internal/runtime/agent/turnkernel/runtime_test.go
   - internal/runtime/agent/turnkernel/effect_dispatcher_test.go
+  - internal/runtime/agent/turnkernel/measurement_test.go
   - internal/persist/state/turnstate/store_test.go
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
@@ -34,8 +36,9 @@ source_of_truth:
   - internal/runtime/app/wire/turn_coordinator.go
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
+  - internal/runtime/agent/turnkernel/measurement.go
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-08-17
 ---
 
 # Resume、Recovery 与幂等边界
@@ -92,17 +95,22 @@ History 只保留 Completed 且 Tool Pair 完整的 Exchange；Failed/Incomplete
 Recovery 恢复 Accepted/Committed Operation、Pending Turn/Approval/Input、有序且
 带 Digest 的 Turn Domain Facts/Frozen Kernel State、带 Payload Digest 与
 Idempotency Key 的 Provider/Tool/Approval/Input/Verification/Journal Effect、
-Terminal Outbox Projection/Item Identity、Last Cursor、Thread History/Snapshot
+Terminal Outbox Projection/Item Identity、Receipt/Trace/Terminal Envelope 共享的 Frozen
+Terminal Measurement、Last Cursor、Thread History/Snapshot
 与 Workspace Journal，
 以及每个 Thread 最新 Durable SessionDelta（随 Turn 的 Terminal Envelope 提交，
 含 History、Usage、Cost、Working Set、Evidence、Failures、Compaction 与
 Revision/Digest）。
 
-Turn 状态以 `SessionDelta` 随 Terminal Envelope 原子提交。Engine 在执行期间
-Stage Delta，并且只在 Envelope Durable Commit 后应用一次；Commit 失败时
-Session Memory 保持不变。重启后 `ThreadManager` 从 `persist/state/turnstate`
-恢复每个 Thread 的最新 Delta，使 Usage、Cost、Working Set、Evidence、Failures
-与 Compaction 计数和 Committed History 一起跨 Crash 存活。
+Turn 状态以 `SessionDelta` 与 Digested `TerminalMeasurementSnapshot` 随 Terminal
+Envelope 原子提交。Engine 在执行期间 Stage Delta，并且只在 Envelope Durable
+Commit 后应用一次；Commit 失败时 Session Memory 保持不变。重启后 `ThreadManager`
+从 `persist/state/turnstate` 恢复每个 Thread 的最新 Delta，使 Usage、Cost、Working
+Set、Evidence、Failures 与 Compaction 计数和 Committed History 一起跨 Crash 存活。
+
+Observation Journal 可通过 Correlated Evidence 帮助解释 Recovery，但不是
+Continuation Source。Missing/Failed Observation Export 不能授权 Effect Dispatch、
+合成 Domain Fact 或改变 Terminal Business Result。
 
 `durableCoordinatorRuntime` Claim 已过期的 Active-turn Lease，从严格有序的 Domain
 Facts 恢复每个 Coordinator，并在 Active 期间续租。Restore 先通过持久化
@@ -198,6 +206,7 @@ Idempotency 只在局部边界成立；一个 Key 不能使任意 Shell Command 
 | Checkpoint/Plan/Turn Recovery | `runtime/app/session_artifacts.go` |
 | Thread Session State Restore | `runtime/app/thread_manager.go` |
 | Terminal Turn State Store | `persist/state/turnstate` |
+| Observation Evidence（非 Recovery Authority） | `observability/journal` |
 | Workspace Recovery | `persist/workspacejournal` |
 
 ## 设计取舍与替代方案
@@ -265,4 +274,4 @@ go test ./internal/host/cli -run TestExecPersistentResumeListTurns
 | --- | --- |
 | Catalog ID | `runtime-resume-recovery` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-12 |
+| 最后验证 | 2026-08-17 |

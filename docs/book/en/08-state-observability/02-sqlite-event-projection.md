@@ -12,16 +12,22 @@ code_paths:
   - internal/persist/state/eventlog
   - internal/persist/state
   - internal/persist/sqlkit
+  - internal/observability/journal
+  - internal/observability/router
 test_paths:
   - internal/persist/state/sqlite/store_test.go
   - internal/persist/state/eventlog/log_test.go
   - internal/persist/state/store_test.go
   - internal/persist/sqlkit/sqlkit_test.go
   - internal/persist/sqlkit/ownership_test.go
+  - internal/observability/journal/journal_test.go
+  - internal/observability/router/router_test.go
 source_of_truth:
   - internal/persist/state/sqlite/store.go
   - internal/persist/state/eventlog/log.go
   - internal/persist/sqlkit/sqlkit.go
+  - internal/observability/journal/journal.go
+  - internal/observability/router/router.go
 status: draft
 last_verified: null
 ---
@@ -32,8 +38,8 @@ English | [简体中文](../../zh-CN/08-state-observability/02-sqlite-event-proj
 
 ## Learning Objectives
 
-Understand the initial SQLite schema, append-only Event evidence, and
-transactional idempotent projections.
+Understand the SQLite schema, authoritative Runtime Event evidence,
+transactional projections, and the separate Observation Journal.
 
 ## Storage Roles
 
@@ -43,13 +49,16 @@ flowchart LR
     L --> V[Sequence / Hash Evidence]
     E --> T[SQLite Transaction]
     T --> P[Thread / Usage / Trace / Task Projections]
+    O[Observation Envelope] --> J[Observation Journal]
+    J --> X[Semantic / OTLP projections]
     V --> R[Recovery Cross-check]
     P --> R
 ```
 
 SQLite owns relational query state. The Event Log owns ordered durable evidence.
 Projection code turns Events into current query views without changing Event
-meaning.
+meaning. The Observation Journal is a separate, versioned evidence stream: it
+supports diagnosis and telemetry, but never authorizes Runtime continuation.
 
 ## SQLite Store
 
@@ -95,6 +104,26 @@ the result is explicitly indeterminate.
 and audit facts. Projection recovery preserves sequence gaps rather than
 inventing missing Events.
 
+## Observation Journal and Router
+
+The Observation Router accepts a versioned envelope only after privacy policy
+has classified its summary and optional payload. Critical observations append
+synchronously outside business cancellation; normal and bulk observations use
+bounded queues. Every append has a stable Observation ID and monotonically
+increasing sequence. Journal rewrite preserves ordered metadata while
+retention releases expired payload references.
+
+Runtime Event and Observation streams answer different questions:
+
+| Stream | Authority | Primary consumer |
+| --- | --- | --- |
+| Runtime Event Log | lifecycle and Host replay | Runtime recovery and Hosts |
+| Observation Journal | redacted causal evidence | diagnostics, semantic reducer, OTLP |
+
+An Observation queue, Journal, or exporter failure updates health counters. It
+must not synthesize a Runtime Event, change a Receipt outcome, or roll back a
+completed business transition.
+
 ## Projection Rules
 
 Projections are keyed by Event identity/sequence and run transactionally, so
@@ -139,6 +168,8 @@ ownership, effects, accounting, or final outcome.
 - Duplicate/out-of-order Cursor is rejected.
 - Torn tail repair is allowed only at the uncommitted end.
 - Projection replay cannot fill an Event sequence gap.
+- Observation queue pressure and writer failure remain explicit health facts.
+- Observation evidence cannot be used as execution authority.
 
 ## Tests and Verification
 
@@ -147,6 +178,7 @@ go test ./internal/persist/state/sqlite
 go test ./internal/persist/state/eventlog
 go test ./internal/persist/state
 go test ./internal/persist/sqlkit
+go test ./internal/observability/journal ./internal/observability/router
 ```
 
 ## Hands-On Lab

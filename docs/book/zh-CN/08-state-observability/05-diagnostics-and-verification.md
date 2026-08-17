@@ -9,14 +9,20 @@ prerequisites:
   - tool-verification
 code_paths:
   - internal/observability/diagnostics
+  - internal/observability/health
+  - internal/observability/privacy
   - internal/observability/verify
   - internal/runtime/agent/engine
 test_paths:
+  - internal/observability/health/health_test.go
+  - internal/observability/privacy/policy_test.go
   - internal/observability/verify/verify_test.go
   - internal/observability/verify/affected_test.go
   - internal/runtime/agent/engine/verify_gate_test.go
 source_of_truth:
   - internal/observability/diagnostics/diagnostics.go
+  - internal/observability/health/health.go
+  - internal/observability/schema/observation_traits.json
   - internal/observability/verify/verify.go
 status: draft
 last_verified: null
@@ -90,6 +96,23 @@ Maturity 是 Tuple，不是 Badge：
 
 任何元素变化都可能使 Claim 失效。
 
+## Observation Health 不是业务 Outcome
+
+Observation Health 分别统计 Accepted/Dropped Record、Queue Pressure、Privacy
+Rejection、Journal Failure、Payload Loss 与 Exporter Failure。这些 Fact 用于诊断证据
+质量，不能把 Completed Turn 改成 Failed，也不能把 Failed Turn 改成 Completed。
+
+每种 Observation Kind 来自同一 Trait Manifest，声明 Owner、Durability、Payload
+Policy、Retention Class、必需 Correlation、OpenTelemetry Mapping 与 Queue Priority。
+Manifest、Go Table、TypeScript Table 与公开 JSON Schema 的漂移会使构建失败：
+
+```bash
+make observation-traits-check
+```
+
+这相当于 Observability 的 Protocol Schema Drift：新增 Kind 却没有 Privacy、
+Retention 与 Projection 决策，属于不完整实现。
+
 ## 失败与安全边界
 
 - Unknown Scope 被拒绝。
@@ -97,12 +120,16 @@ Maturity 是 Tuple，不是 Badge：
 - Workflow Output Check 不信任 External Schema Reference。
 - Sandbox/Process Failure 显式保留。
 - Hard Mode 不接受 Unavailable Runner。
+- Observation Health 不能解释为 Turn Lifecycle Authority。
+- 新 Observation Kind 缺少 Generated Trait 时验证失败。
 
 ## 测试与验证
 
 ```bash
 go test ./internal/observability/diagnostics ./internal/observability/verify
+go test ./internal/observability/health ./internal/observability/privacy
 go test ./internal/runtime/agent/engine -run TestVerifyGate
+make observation-traits-check
 make benchmark-v2
 ```
 

@@ -41,7 +41,7 @@ CLI / TUI / VS Code / ACP
 | Security | `internal/security` | policy, permissions, constitution, sandbox |
 | Orchestration | `internal/orchestration` | tasks, workers, automations, workflows, lanes, fleet |
 | Persistence | `internal/persist` | relational state, events, CAS, sessions, snapshots, journals |
-| Observability | `internal/observability` | usage, traces, diagnostics, verification, telemetry |
+| Observability | `internal/observability` | versioned observations, usage, traces, diagnostics, verification, telemetry |
 | Platform | `internal/platform` | processes, PTY, OS-specific behavior |
 | Configuration | `internal/config` | defaults, TOML, environment, validation, provenance |
 
@@ -68,8 +68,9 @@ closed module sequence:
 
 ```text
 config -> provider -> persistence -> platform -> builtin tools
-       -> extension contributors -> security -> orchestration
-       -> agent -> runtime -> background services
+       -> extension contributors -> security -> extension plan
+       -> orchestration -> observability -> agent -> runtime
+       -> background services
 ```
 
 Each module owns one construction boundary and publishes only the values needed
@@ -131,6 +132,9 @@ eventview + VS Code projectors -> Host presentation only
 | Operation dispatcher | `internal/runtime/app` | typed Operation handler selection and synchronous commit |
 | Turn coordinator and scope | `internal/runtime/agent` | reducer authority, effects, controls, and Turn-local state |
 | Event hub and terminal publisher | `internal/runtime/app/eventhub`, `internal/runtime/app` | sequence/fanout and atomic terminal publication |
+| WorkGraph kernel and store | `internal/orchestration/kernel`, `internal/orchestration/store` | durable Run, Node, Attempt, Lease, and Effect transitions |
+| Extension runtime | `internal/runtime/extension`, `internal/runtime/app/extension` | typed contributors, source plans, generations, lifecycle effects, and control receipts |
+| Observation plane | `internal/observability/observation`, `internal/observability/router` | evidence schema, privacy admission, durable routing, and exporter isolation |
 | Session and artifact services | `internal/runtime/app` | Host-facing query behavior over Runtime-owned ports |
 | Go Host projection | `internal/runtime/eventview` | one typed interpretation of Event payloads |
 | VS Code projection | `extensions/vscode/src/chat/projector` | exhaustive Event Class presentation |
@@ -230,17 +234,20 @@ rejects late, duplicate, or wrong-kind resolutions.
     draft for a structurally bound Continue Turn.
 13. Scope prepares a revisioned, digested `SessionDelta` containing History,
     Usage, Cost, Working Set, Evidence, Failures, and Compaction state.
-14. Persistent Runtime atomically commits frozen state, Session Delta, final
-    output, receipt, terminal event, outbox, and the real operation receipt in
-    one SQLite transaction.
-15. Engine applies Session Delta exactly once only after that commit. Commit
+14. Runtime freezes one digested `TerminalMeasurementSnapshot` for Usage and
+    latency. The Receipt, measurement-derived Trace, and Terminal Envelope all
+    reference that same snapshot rather than sampling mutable counters again.
+15. Persistent Runtime atomically commits frozen state, Measurement, Session
+    Delta, final output, receipt, terminal event, outbox, and the real operation
+    receipt in one SQLite transaction.
+16. Engine applies Session Delta exactly once only after that commit. Commit
     failure leaves Session memory unchanged.
-16. On restart, Runtime scans pending terminal projections and appends each
+17. On restart, Runtime scans pending terminal projections and appends each
     entry with its stable Event ID before marking that entry published.
-17. Accepted StartTurn operations resume automatically only when matching
+18. Accepted StartTurn operations resume automatically only when matching
     non-terminal Domain Facts exist; Coordinator requeues running Effects and
     Engine resumes Provider, Tool, or Journal execution from durable payloads.
-18. Approval and Input recovery primes the original request IDs before resumed
+19. Approval and Input recovery primes the original request IDs before resumed
     execution, so hosts replay one wait rather than receiving a replacement.
 
 Engine always submits a complete logical model request. A Provider adapter may
@@ -303,6 +310,51 @@ snapshot; restoring it cannot execute historical events. Durable restore and
 fork events make restart reconstruction deterministic. Fork lineage and the
 active Session Thread remain relational lifecycle state rather than Host-local
 state.
+
+## Observation Architecture
+
+Runtime Events remain the Host protocol. The observation plane is a separate,
+non-authoritative evidence system for causal diagnosis, telemetry export, and
+retention. Every admitted record becomes a versioned `ObservationEnvelope`
+containing a stable Observation ID, ordered sequence, Runtime and domain
+identity, optional W3C Trace Context, causality links, data policy, bounded
+summary, and an optional CAS payload reference.
+
+`observation_traits.json` is the source of truth for each observation kind's
+owner, durability, payload policy, retention class, required correlations,
+OpenTelemetry mapping, and queue priority. It generates the Go trait table,
+TypeScript table, and `docs/protocol/observation.schema.json`.
+
+The Router applies privacy policy before any journal or CAS write. Critical
+evidence is written synchronously outside business cancellation; normal and
+bulk records use bounded queues. Queue pressure, privacy errors, journal
+failures, payload drops, and exporter failures update observation health but
+never rewrite a successful or failed business Turn result. `Flush` and
+`Shutdown` drain the observation and OTLP queues without making the
+observability plane an execution authority.
+
+Capture is controlled by `CODEHELPER_OBSERVATION_CAPTURE`:
+
+- `off` disables observation admission;
+- `metadata` is the default and stores redacted summaries without raw payloads;
+- `failure` admits redacted payloads only for failure-like observations;
+- `full` admits eligible redacted payloads.
+
+Credential and restricted payloads are never persisted. Configured secret
+values and the state/config roots are redacted before storage. Payloads use the
+Content Store and retention classes: audit and diagnostic payload references
+default to 30 days, sensitive payloads to 24 hours, and ephemeral payloads to
+one hour. Startup retention releases expired references and deletes only
+unreferenced CAS objects; observation metadata remains available for
+explanation.
+
+W3C Trace Context propagates across Provider HTTP, MCP HTTP/stdio, processes,
+workflows, and subagents. The OTLP projector supports in-memory, HTTP/protobuf,
+and gRPC exporters selected through environment variables. Its metric labels
+come from a fixed low-cardinality allowlist and cannot contain paths, prompts,
+Tool arguments, or resource IDs. The semantic reducer can deterministically
+rebuild an explainable graph from the raw journal; support bundle construction
+re-redacts selected records and writes an exclusive mode-`0600` archive.
 
 ## Context Architecture
 
@@ -371,6 +423,25 @@ execution fails closed.
 
 ## Extension Architecture
 
+`internal/runtime/extension` defines one typed contributor contract for Thread,
+Turn, Context, Tool, and MCP capabilities. Registration validates identity,
+failure policy, timeout, and output budget, then seals an immutable Registry.
+Contributors receive explicit capabilities and return bounded receipts; they do
+not receive construction state or a private Tool Registry.
+
+Extension sources resolve deterministically by source priority into a digested
+Plan bound to the active permission digest. Activation gives every process,
+connection, Hook, subscription, lease, timer, and Tool registration an
+`EffectOwner` containing Extension, source, Plan revision, generation,
+capability, and effect kind. Disable drains owned effects; revocation or
+quarantine fences stale generations. Lifecycle receipts are durable and
+redacted.
+
+Plugin and Skill CLI commands, ACP `extension/list` and `extension/control`,
+and the VS Code Extensions view use the same Runtime control plane. Mutation
+operations are idempotent by operation ID and persist prepare/commit receipts;
+Hosts only submit operations and project Runtime-owned state.
+
 ### MCP
 
 External servers expose tools through a protocol adapter. Health, timeouts,
@@ -395,20 +466,35 @@ become an alternate unguarded execution path.
 
 ## Orchestration Architecture
 
-- **Task repository:** durable state and leases.
-- **Worker:** claims and executes eligible tasks.
-- **Automation:** schedules task templates.
-- **Workflow:** validated DAG/IR with node checkpoints.
-- **Lane:** manages an inline or tmux-backed worker process.
-- **Fleet ledger:** read model for distributed run/task events.
-- **Subagent:** bounded child runtime with depth, budget, and workspace isolation.
+Task, Workflow, Automation, background command, verification, and Agent work
+converge on the durable WorkGraph model:
+
+```text
+Command(expected revision)
+  -> pure WorkGraph Kernel
+  -> Aggregate + ordered Facts + Effects
+  -> one SQLite transaction
+     (snapshot + facts + command receipt + effect outbox + projections)
+```
+
+- **WorkGraph Kernel:** owns Run, Node, Attempt, Lease Epoch, and Effect state
+  transitions without I/O.
+- **WorkGraph Store:** commits transitions atomically, deduplicates command IDs,
+  and detects snapshot/fact drift.
+- **Worker:** is the only claim authority; heartbeats and settlement are fenced
+  by owner, Lease Epoch, authority digest, and revision.
+- **Automation and Workflow:** compile scheduled or DAG work into WorkGraph
+  Nodes rather than maintaining a second checkpoint state machine.
+- **Lane:** records durable placement and explicitly manages inline or
+  tmux-backed process adapters; placement is not lifecycle authority.
+- **Fleet:** projects and audits WorkGraph state. It cannot enqueue, claim,
+  settle, or resume work; repair may rebuild only the snapshot cache from
+  ordered facts.
+- **Subagent:** runs a bounded child Runtime with a durable Agent Tree, Mailbox,
+  Result, Budget Ledger, worktree ownership, approval routing, and journaled
+  integration.
 
 All orchestration eventually returns to runtime/tool/security boundaries.
-The target design for delegation policy, context forking, durable Agent Trees,
-approval routing, integration, and VS Code timelines is specified in the
-[Multi-Agent Architecture Upgrade](./multi-agent-architecture-upgrade.md).
-That document is a proposal and does not claim that its target behavior has
-already shipped.
 
 ## Change Checklist
 
@@ -420,4 +506,5 @@ Before modifying architecture:
 4. Preserve the guard and sandbox path.
 5. Add contract or architecture tests.
 6. Update both language versions of affected documentation.
-7. Regenerate protocol/compatibility artifacts when required.
+7. Regenerate protocol, observation-trait, and compatibility artifacts when
+   required.

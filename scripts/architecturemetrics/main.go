@@ -63,18 +63,31 @@ func main() {
 	var baselinePath string
 	var reportPath string
 	var baseRef string
+	var baseBaselinePath string
 	flag.StringVar(&root, "root", ".", "repository root")
 	flag.StringVar(
 		&baselinePath,
 		"baseline",
-		"docs/architecture-metrics-baseline.json",
+		"testdata/contracts/architecture-metrics-baseline.json",
 		"architecture metrics baseline",
 	)
 	flag.StringVar(&reportPath, "report", "", "optional measured JSON report path")
 	flag.StringVar(&baseRef, "base-ref", "", "optional git ref used to enforce monotonic limits")
+	flag.StringVar(
+		&baseBaselinePath,
+		"base-baseline",
+		"",
+		"optional baseline path at base-ref",
+	)
 	flag.Parse()
 
-	result, err := run(root, baselinePath, reportPath, baseRef)
+	result, err := runWithBaseBaseline(
+		root,
+		baselinePath,
+		reportPath,
+		baseRef,
+		baseBaselinePath,
+	)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -83,6 +96,16 @@ func main() {
 }
 
 func run(root, baselinePath, reportPath, baseRef string) (report, error) {
+	return runWithBaseBaseline(root, baselinePath, reportPath, baseRef, "")
+}
+
+func runWithBaseBaseline(
+	root,
+	baselinePath,
+	reportPath,
+	baseRef,
+	baseBaselinePath string,
+) (report, error) {
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return report{}, err
@@ -95,7 +118,10 @@ func run(root, baselinePath, reportPath, baseRef string) (report, error) {
 		return report{}, err
 	}
 	if strings.TrimSpace(baseRef) != "" {
-		previous, err := baselineAtRef(root, baseRef, baselinePath)
+		if strings.TrimSpace(baseBaselinePath) == "" {
+			baseBaselinePath = baselinePath
+		}
+		previous, err := baselineAtRef(root, baseRef, baseBaselinePath)
 		if err != nil {
 			return report{}, err
 		}

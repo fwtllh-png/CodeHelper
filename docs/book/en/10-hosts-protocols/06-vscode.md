@@ -17,11 +17,13 @@ test_paths:
   - extensions/vscode/src/context/native.test.ts
   - extensions/vscode/src/chat/resources.test.ts
   - extensions/vscode/src/performance/gate.test.ts
+  - extensions/vscode/src/extensions/view.test.ts
 source_of_truth:
   - extensions/vscode/src/extension.ts
   - extensions/vscode/src/chat/view.ts
   - extensions/vscode/src/context/bridge.ts
   - extensions/vscode/src/runtime/controller.ts
+  - extensions/vscode/src/extensions/view.ts
   - extensions/vscode/src/chat/resource-navigator.ts
   - extensions/vscode/RELEASE-EVIDENCE.md
 status: draft
@@ -170,6 +172,24 @@ cross-root definitions, stale IDs, and forged Diff identities fail closed.
 Path text in model output becomes interactive only when it uniquely matches a
 confirmed resource.
 
+## Runtime-Owned Extension View
+
+The Extensions Tree queries ACP `extension/list` for each Workspace Runtime and
+shows Plugin/Skill version, trust, enabled state, and health. Enable and Disable
+submit versioned `extension/control` mutations with unique Operation IDs. The
+Extension Host does not scan extension directories or edit enablement files.
+
+Runtime owns source resolution, permission digest, Plan revision, generation,
+capabilities, lifecycle Effects, receipts, idempotency, and restart
+reconciliation. Repeating the same Operation ID and payload returns the
+committed result; conflicting reuse fails. Disable drains owned Effects, while
+revoke fences the loaded generation. Tool Catalog refresh remains a separate
+Runtime projection and never grants permission.
+
+The current Tree exposes List, Enable, Disable, and Refresh. It does not invent
+partial Webview implementations for Install, Rollback, Trust, Permission, or
+Receipt workflows owned by Runtime/CLI.
+
 ## Supervisor and Session Recovery
 
 ```text
@@ -191,6 +211,11 @@ Cursor persistence is monotonic per exact Workspace/Session binding. Replay is
 paged, filtered Workspace Events still advance the connection Cursor, and live
 Events are ordered after in-flight replay. A gap preserves projected state for
 diagnosis.
+
+Runtime Capture records the Host/ACP/process-supervision view in private
+Workspace storage with mode `0600`. It is distinct from the Go Runtime
+Observation Journal and `CODEHELPER_OBSERVATION_CAPTURE`; both artifacts may
+contain sensitive Workspace data and require review before sharing.
 
 ## Multi-root and Local Identity
 
@@ -218,6 +243,9 @@ incompatible.
 - Replay Cursor gaps preserve state for diagnosis.
 - Stale Transcript Patches do not partially mutate Webview state.
 - Restore, Fork, Retry, and Continue cannot replay historical side effects.
+- Extension UI cannot become lifecycle or Tool authority.
+- Host Runtime Capture and Runtime Observation capture remain separate,
+  explicitly governed evidence paths.
 
 ## Tests and Verification
 

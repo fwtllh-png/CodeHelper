@@ -134,11 +134,45 @@ Config 与 Circuit Breaker。单独测试一个 Server。
 ```bash
 codehelper worker list --data-dir ./.codehelper
 codehelper automation list --data-dir ./.codehelper
+codehelper fleet inspect --data-dir ./.codehelper --id RUN_ID
 ```
 
-检查 Task State、Executor、Lease Owner/Expiry、Heartbeat、Attempt、
-`next_attempt_at` 与 Worker Budget。不能通过手改数据库把不可执行 Work-board Task
-变成可执行任务。
+检查 Run/Node/Attempt State、Executor、Lease Owner/Epoch/Expiry、Heartbeat、
+Pending Effect、Attempt Count、`next_attempt_at`、Authority Digest 与 Worker
+Budget。Live Lease 属于当前 Epoch，不能通过编辑数据库进行恢复。Fleet 是只读
+Projection，不能 Resume 或 Settle Work。
+
+## Extension State 未收敛
+
+使用对应的 `plugin` 或 `skill` List Command，再通过 Runtime Client 或 VS Code
+Extensions View 检查 Health 与 Receipt。重点核对 Source Identity、Trust、
+Generation、Enabled State、Capability State 与最后一条 Operation Receipt。
+
+客户端支持 Operation Identity 时，只使用同一 Identity 重试 Mutation。相同 Operation
+ID 携带不同内容会被拒绝。不能通过修改 Staging Artifact 或 Durable Receipt Row
+修复 Extension State；应通过 Control Plane 执行 Disable、Revoke、Verify、Rollback
+或 Reinstall。
+
+## Observation 或 OTLP 缺失
+
+检查 Runtime Process Environment：
+
+```bash
+env | rg '^(CODEHELPER_OBSERVATION_CAPTURE|CODEHELPER_OTEL_EXPORTER|OTEL_EXPORTER_OTLP_)='
+```
+
+- 未设置 Capture 时默认为 `metadata`；
+- `off` 会有意关闭所有记录；
+- `metadata` 会有意省略 Raw Payload；
+- `failure` 只为 Failure-like Observation 保留符合条件的 Payload；
+- 无效 Capture Mode 会显式阻止 Runtime 构造；
+- Remote OTLP Exporter 不可用时会回退 In-memory Projector。
+
+Durable Observation Journal 位于所选 State Directory 下的
+`observability/journal-v1`；修改 `--data-dir` 会改变该位置。Observation Payload
+Retention 按时间管理，与 `state.event_retention` 不同。OTLP 缺失或 Observation
+Drop 只影响 Observation Health，不改变权威 Turn Outcome。排查 Collector 时不能
+重写 Runtime Event、Receipt 或 Terminal Envelope。
 
 ## VS Code Runtime 不可用
 
@@ -164,8 +198,9 @@ Runtime stderr、进程退出 Code 或 Signal、自动重启状态和 Session �
 默认关闭；采集文件权限为 `0600`，因为 Model Output、Tool Arguments/Results 和
 Diagnostics 可能包含敏感 Workspace 数据。分享前必须检查并脱敏。
 
-标准测试矩阵、结构化不变量、证据冻结与报告契约见
-[VS Code Runtime 标准监测 Runbook](./runtime-monitoring.md)。
+该 VS Code Host Capture 与 Runtime Observation Journal 不同。Host Capture 覆盖 ACP
+与 Process Supervision；Observation Journal 按 `CODEHELPER_OBSERVATION_CAPTURE`
+记录 Runtime Evidence。
 
 ## 只在全仓并发测试中失败
 

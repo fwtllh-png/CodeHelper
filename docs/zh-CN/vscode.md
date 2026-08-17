@@ -25,7 +25,7 @@ VS Code UI 与 Context Bridge
 - Runtime 确认的 File、Range、Directory、Symbol、Diagnostic 和 Edit Plan Diff
   原生导航；
 - Chat 内联 Mermaid 架构图，使用本地惰性渲染并支持源码回退；
-- Background Task、Job、Agent、Usage 和 Change View；
+- Background Task、Job、Agent、Extension、Usage 和 Change View；
 - 本地 UI Extension Host 中的 `file:` Workspace；
 - External、Managed 或 Bundled Runtime；
 - Signed Managed Update、Rollback 与 Revocation。
@@ -183,6 +183,24 @@ Process Approval 边界。
 Chat Approval 卡片只展示有界的语义摘要。文件正文、Patch 和其他长参数以目标及大小
 表示，不再完整展开；Edit Plan Approval 仍保留原生 Diff Preview 操作。
 
+## Runtime-owned Extension Control
+
+Extensions Tree 会对每个 Workspace Runtime 查询 `extension/list`，展示 Plugin/Skill
+Name、Version、Trust、Enabled State 与 Runtime Health。Enable/Disable 会携带唯一
+Operation ID 提交版本化 `extension/control` Operation。Extension Host 不扫描 Plugin
+或 Skill Directory，也不直接修改 Enablement File。
+
+Runtime Control Plane 拥有 Source Resolution、Trust、Generation、Capability、
+Lifecycle Effect、Durable Receipt、Idempotency 与 Restart Reconciliation。相同
+Operation ID 加相同 Payload 会返回已提交结果；同一 ID 携带不同内容会失败。Disable
+会 Drain 所属 Effect，Revoke/Security Revoke 会 Fence 已加载 Generation。Tool
+Catalog Refresh 是独立 Runtime Projection，因此 Extension Action 不会授予 Tool
+Permission，也不能绕过 Guard。
+
+当前 Tree 提供 List、Enable、Disable 与 Refresh。Install、Update、Rollback、Trust、
+Capability Control、Health、Permission 与 Receipt 在对应 CLI 或 Shared Runtime
+Protocol 支持时使用；Webview 不创建不完整的平行实现。
+
 ## Session Lifecycle
 
 Runtime 是 Session 发现和生命周期状态的持久化权威。
@@ -331,6 +349,11 @@ Runtime 启动失败或 Readiness 降级时，执行 `CodeHelper: Repair Runtime
 VS Code Supervisor 启动错误与 `doctor --json`，逐项展示缺失能力的状态、原因、影响和
 修复动作。Binary 解析失败时可直接进入 Settings、托管更新或 Output。Chat 失败面板也
 提供 Setup 和 Repair 按钮。
+
+`CodeHelper: Start Runtime Capture` 会把 Host/ACP/Process Supervision 视角写入私有
+Workspace Storage；`Stop Runtime Capture` 以 mode `0600` 关闭文件。它与 Go Runtime
+Observation Journal 及其 `CODEHELPER_OBSERVATION_CAPTURE` Policy 不同。两种 Artifact
+即使经过 Redaction 也可能包含敏感 Workspace 数据，分享前都必须检查。
 
 `CodeHelper: Run Quickstart` 可从 VS Code 启动内置无网络首轮旅程，不修改当前选中的
 工作区。

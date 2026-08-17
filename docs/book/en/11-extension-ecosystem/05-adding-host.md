@@ -10,6 +10,7 @@ prerequisites:
 code_paths:
   - internal/host
   - internal/runtime/app
+  - internal/runtime/app/extension
   - internal/runtime/app/wire
 test_paths:
   - internal/testsupport/runtimecontract
@@ -67,6 +68,7 @@ Before adding a Host endpoint or command, classify the behavior:
 | new platform context | Host capture + Runtime revalidation |
 | new execution capability | governed Adapter/Tool |
 | new construction choice | Wire |
+| extension query/mutation | `extension/list` / `extension/control` Runtime operation |
 
 If two Hosts need the behavior, it cannot live only in one Host. Shared
 contract scenarios test Start, Stream, Approve, Input, Cancel, Verify, Recover,
@@ -83,6 +85,11 @@ Transport DTOs may differ in framing, but Operation/Event identity, one
 terminal outcome, Cursor replay, Workspace scope, Approval binding, and Problem
 codes remain invariant.
 
+Extension state follows the same rule. A Host requests Runtime-owned source,
+trust, generation, capability, health, and receipt state. Mutations carry a
+unique Operation ID and never edit enablement files or staged artifacts.
+Idempotent replay returns the committed result; conflicting reuse fails.
+
 Host shutdown first stops admission, then drains or cancels active interaction,
 closes subscriptions, and finally releases the shared Session. It must not
 close Runtime resources still owned by another Host.
@@ -95,6 +102,8 @@ close Runtime resources still owned by another Host.
 - Approval/Input decisions remain request-bound.
 - Unknown Event is preserved or safely ignored, not misclassified.
 - Host-only state cannot become Runtime authority.
+- Host extension UI cannot bypass lifecycle receipts, generation fences, or
+  Tool Guard.
 
 ## Tests and Verification
 

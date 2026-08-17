@@ -16,12 +16,9 @@ root unless a script explicitly states otherwise.
 | `test-brand-check.sh` | no | self-tests brand scanner behavior |
 | `test-secret-leak.sh` | no | validates binary redaction behavior |
 | `run-test-lane.py` | command-dependent | writes passed, failed, or unavailable JSON lane evidence |
-| `check-hotspot-baseline.go` | no | validates the Stage 0 hotspot freeze and post-split responsibility owners |
-| `toolexecbaseline` | no | records and validates the EX0 local tool-execution surface, safety contracts, and known risks |
+| `check-hotspot-baseline.go` | no | validates current hotspot responsibility owners and size budgets |
 | `commanddocs` | no | generates or checks bilingual command lists from the Cobra tree |
-| `upgradebaseline` | no | writes Stage 0 benchmark metrics and capability availability |
 | `experiencecontract` | no | validates the shared experience baseline |
-| `content-fixture-smoke.sh` | no | temporary content-dependency fixtures |
 | `live-model-smoke.sh` | yes | single- or Multi-Agent real provider smoke; no persistent secret |
 | `package-release.sh` | no | `dist/release`: binaries, checksums, SBOM, manifest |
 | `deepseek-local.sh` | setup/package may use network | local DeepSeek build, Keychain config, TUI, and VS Code |
@@ -47,13 +44,6 @@ make docs-check
 make book-check
 make book-navigation
 make command-docs
-make upgrade-baseline
-make tool-execution-ex0
-make tool-execution-ex1
-make tool-execution-ex2
-make tool-execution-ex3
-make tool-execution-ex4
-make tool-execution-ex5
 make test
 make architecture-freeze
 make host-journey-contract

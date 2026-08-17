@@ -12,7 +12,7 @@ func TestRepositoryHotspotBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := run(root, "docs/hotspot-baseline.json"); err != nil {
+	if err := run(root, "testdata/contracts/hotspot-baseline.json"); err != nil {
 		t.Fatal(err)
 	}
 }

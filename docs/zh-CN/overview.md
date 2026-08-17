@@ -56,9 +56,10 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 | 编辑 | 受控文件操作、Edit Plan、Journal、Revert |
 | 验证 | diagnostics/repository/affected 范围，soft/hard Gate，修复预算 |
 | 安全 | Posture、审批、工作区权限、Constitution、OS Sandbox |
-| 持久化 | SQLite Projection、Event Log、Snapshot、Session、Journal |
-| 编排 | Durable Task、Worker、Automation、Workflow、Lane、Fleet、Subagent |
-| 生态 | Model Catalog、MCP、Skill、Plugin、Hook、Memory |
+| 持久化 | SQLite Projection、Domain Fact、Terminal Envelope、Event Log、CAS、Snapshot、Journal |
+| 可观测性 | 版本化 Observation Envelope、冻结终态 Measurement、Trace、Usage、Redaction、Retention、OTLP |
+| 编排 | 统一 Durable WorkGraph 的 Run/Node/Attempt/Effect、Worker、Workflow、Lane、Fleet、Subagent |
+| 生态 | Typed Extension Plan/Lifecycle、Model Catalog、MCP、Skill、Plugin、Hook、Memory |
 | Host | CLI、TUI、ACP、VS Code |
 
 ## 产品边界
@@ -87,6 +88,7 @@ CodeHelper 不是：
   -> Policy + Approval + Journal + Sandbox
   -> 副作用
   -> Event + Receipt + Verify Evidence
+  -> 脱敏 Observation + 有界 Telemetry Projection
 ```
 
 所有 Host 都应观察到相同语义。编辑器插件不能拥有私有文件写路径，后台 Worker 也

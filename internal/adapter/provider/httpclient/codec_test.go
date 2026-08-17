@@ -51,16 +51,6 @@ func encodeRequest(
 	return call.Body, call.Path, err
 }
 
-func decodeStream(
-	body io.ReadCloser,
-	protocol model.WireProtocol,
-) (provider.Stream, error) {
-	if protocol == model.ProtocolAnthropic {
-		return anthropic.NewStream(body)
-	}
-	return openai.NewStream(body, protocol)
-}
-
 func testAdapter(id model.AdapterID) (providerwire.Adapter, error) {
 	if id == model.AdapterAnthropic {
 		return anthropic.NewAdapter(), nil
@@ -114,12 +104,3 @@ func (a legacyOpenAIAdapter) OpenStream(
 ) (provider.Stream, error) {
 	return openai.NewStream(body, call.Protocol)
 }
-
-func transportMetadata(
-	logical, payload []byte,
-	incremental bool,
-) provider.TransportMetadata {
-	return providerwire.Metadata(logical, payload, incremental)
-}
-
-func digest(data []byte) string { return providerwire.Digest(data) }

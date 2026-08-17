@@ -17,11 +17,13 @@ test_paths:
   - extensions/vscode/src/context/native.test.ts
   - extensions/vscode/src/chat/resources.test.ts
   - extensions/vscode/src/performance/gate.test.ts
+  - extensions/vscode/src/extensions/view.test.ts
 source_of_truth:
   - extensions/vscode/src/extension.ts
   - extensions/vscode/src/chat/view.ts
   - extensions/vscode/src/context/bridge.ts
   - extensions/vscode/src/runtime/controller.ts
+  - extensions/vscode/src/extensions/view.ts
   - extensions/vscode/src/chat/resource-navigator.ts
   - extensions/vscode/RELEASE-EVIDENCE.md
 status: draft
@@ -149,6 +151,22 @@ Definition、Diagnostic、Explorer 或 Diff。
 Stale ID 与伪造 Diff Identity 都会 Fail Closed。模型输出中的路径文本只有在唯一匹配
 Runtime 确认资源时才具备交互能力。
 
+## Runtime-owned Extension View
+
+Extensions Tree 对每个 Workspace Runtime 查询 ACP `extension/list`，展示 Plugin/Skill
+Version、Trust、Enabled State 与 Health。Enable/Disable 使用唯一 Operation ID 提交
+版本化 `extension/control` Mutation。Extension Host 不扫描 Extension Directory，也不
+编辑 Enablement File。
+
+Runtime 拥有 Source Resolution、Permission Digest、Plan Revision、Generation、
+Capability、Lifecycle Effect、Receipt、Idempotency 与 Restart Reconciliation。同一
+Operation ID/Payload 返回已提交结果，冲突复用失败。Disable Drain 所属 Effect，Revoke
+Fence 已加载 Generation。Tool Catalog Refresh 是独立 Runtime Projection，不授予
+Permission。
+
+当前 Tree 提供 List、Enable、Disable 与 Refresh，不为 Runtime/CLI 拥有的 Install、
+Rollback、Trust、Permission 或 Receipt Workflow 创建不完整 Webview 实现。
+
 ## Supervisor/Session Recovery
 
 ```text
@@ -168,6 +186,10 @@ Crash Loop 有界并显式报告。
 Cursor 按 Exact Workspace/Session Binding Monotonic Persist。Replay 分页；Filtered
 Workspace Event 仍推进 Connection Cursor；Live Event 排在 In-flight Replay 后。Gap 保留
 Projected State 供诊断。
+
+Runtime Capture 将 Host/ACP/Process Supervision 视角以 mode `0600` 写入私有 Workspace
+Storage。它与 Go Runtime Observation Journal 及 `CODEHELPER_OBSERVATION_CAPTURE`
+不同；两种 Artifact 都可能包含敏感 Workspace 数据，分享前必须检查。
 
 ## Multi-root/Local Identity
 
@@ -192,6 +214,8 @@ Binary 能启动不代表 Compatible。
 - Cursor Gap 保留 State 供诊断。
 - Stale Transcript Patch 不会部分修改 Webview State。
 - Restore、Fork、Retry、Continue 不会重放历史 Side Effect。
+- Extension UI 不能成为 Lifecycle/Tool Authority。
+- Host Runtime Capture 与 Runtime Observation Capture 是独立、显式治理的证据路径。
 
 ## 测试与验证
 

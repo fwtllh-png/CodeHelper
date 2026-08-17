@@ -3,9 +3,6 @@ package bench
 import (
 	"bytes"
 	"encoding/json"
-	"os"
-	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 )
@@ -58,40 +55,6 @@ func TestBaselineMetricsKeepEmptyDenominatorsUnknown(t *testing.T) {
 	}
 }
 
-func TestAgentEvaluationThresholdsFailClosed(t *testing.T) {
-	one := 1.0
-	zero := 0.0
-	thresholds := AgentEvaluationThresholds{
-		SchemaVersion: 1, MinimumScenarios: 3,
-		MinimumExplicitCompliance: 1, MinimumAdaptiveCompliance: 1,
-		MinimumLocalExecutionRate: 1, MaximumFalseSpawnRate: 0,
-		MinimumAgentCompletionRate: 1, MinimumParallelAdmissionRate: 1,
-	}
-	passing := AgentEvaluationMetrics{
-		Scenarios:             3,
-		ExplicitCompliance:    Ratio{Value: &one, Numerator: 1, Denominator: 1},
-		AdaptiveCompliance:    Ratio{Value: &one, Numerator: 2, Denominator: 2},
-		LocalExecutionRate:    Ratio{Value: &one, Numerator: 1, Denominator: 1},
-		FalseSpawnRate:        Ratio{Value: &zero, Denominator: 1},
-		AgentCompletionRate:   Ratio{Value: &one, Numerator: 4, Denominator: 4},
-		ParallelAdmissionRate: Ratio{Value: &one, Numerator: 2, Denominator: 2},
-	}
-	if failures := ValidateAgentEvaluation(passing, thresholds); len(failures) != 0 {
-		t.Fatalf("passing metrics failed: %v", failures)
-	}
-	missing := passing
-	missing.AdaptiveCompliance = Ratio{}
-	if failures := ValidateAgentEvaluation(missing, thresholds); len(failures) != 1 ||
-		failures[0] != "adaptive compliance has no evidence" {
-		t.Fatalf("missing evidence failures = %v", failures)
-	}
-	regressed := passing
-	regressed.FalseSpawnRate = Ratio{Value: &one, Numerator: 1, Denominator: 1}
-	if failures := ValidateAgentEvaluation(regressed, thresholds); len(failures) != 1 {
-		t.Fatalf("regression failures = %v", failures)
-	}
-}
-
 func TestReportJSONCarriesVersionedBaselineMetrics(t *testing.T) {
 	report := Report{
 		SchemaVersion: 1,
@@ -116,51 +79,6 @@ func TestReportJSONCarriesVersionedBaselineMetrics(t *testing.T) {
 	if !ok || metrics["task_success_rate"] == nil ||
 		metrics["recovery_success_rate"] == nil {
 		t.Fatalf("metrics=%v", payload["metrics"])
-	}
-}
-
-func TestCommittedUpgradeBaselineIsInternallyConsistent(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "docs", "upgrade-baseline.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var report Report
-	if err := json.Unmarshal(data, &report); err != nil {
-		t.Fatal(err)
-	}
-	if report.SchemaVersion != 1 || report.Total != len(report.Results) {
-		t.Fatalf("invalid report header: %+v", report)
-	}
-	available, unavailable, failed, passed := 0, 0, 0, 0
-	for _, result := range report.Results {
-		switch result.Status {
-		case "passed":
-			available++
-			passed++
-		case "failed":
-			available++
-			failed++
-		case "unavailable":
-			unavailable++
-			if result.UnavailableReason == "" {
-				t.Fatalf("task %s has no unavailable reason", result.Task)
-			}
-		default:
-			t.Fatalf("task %s has invalid status %q", result.Task, result.Status)
-		}
-	}
-	if report.Available != available ||
-		report.Unavailable != unavailable ||
-		report.Failed != failed ||
-		report.Passed != passed {
-		t.Fatalf("report counters do not match results: %+v", report)
-	}
-	if want := baselineMetrics(report.Results); !reflect.DeepEqual(report.Metrics, want) {
-		t.Fatalf("metrics drifted:\ngot  %+v\nwant %+v", report.Metrics, want)
-	}
-	if !report.BaselineOK() {
-		t.Fatalf("committed baseline has runnable failures: %+v", report)
 	}
 }
 

@@ -10,11 +10,11 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
-func TestMarkdownlintCLI2OutputParsesAsStructuredDiagnostics(t *testing.T) {
+func TestSpaceDelimitedOutputParsesAsStructuredDiagnostics(t *testing.T) {
 	values := parse(
 		"docs/readme.md:4:7 error MD022/blanks-around-headings "+
 			"Headings should be surrounded by blank lines\n",
-		"markdownlint-cli2",
+		"fixture-lint",
 		"docs/readme.md",
 	)
 	if len(values) != 1 {
@@ -25,7 +25,7 @@ func TestMarkdownlintCLI2OutputParsesAsStructuredDiagnostics(t *testing.T) {
 		diagnostic.Range.Start.Line != 3 ||
 		diagnostic.Range.Start.Character != 6 ||
 		diagnostic.Severity != "error" ||
-		diagnostic.Source != "markdownlint-cli2" {
+		diagnostic.Source != "fixture-lint" {
 		t.Fatalf("diagnostic = %+v", diagnostic)
 	}
 }

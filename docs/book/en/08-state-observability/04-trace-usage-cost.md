@@ -8,18 +8,31 @@ prerequisites:
   - model-stream-reasoning-usage
   - context-quality
 code_paths:
+  - internal/observability/observation
+  - internal/observability/router
   - internal/observability/trace
+  - internal/observability/tracecontext
   - internal/observability/usage
   - internal/observability/telemetry
+  - internal/observability/otel
+  - internal/runtime/agent/turnkernel
 test_paths:
+  - internal/observability/observation/envelope_test.go
+  - internal/observability/router/router_test.go
   - internal/observability/trace/trace_test.go
   - internal/observability/trace/rollup_test.go
+  - internal/observability/otel/projector_test.go
+  - internal/runtime/agent/turnkernel/measurement_test.go
   - internal/observability/usage/repository_test.go
 source_of_truth:
+  - internal/observability/observation/envelope.go
+  - internal/observability/router/router.go
   - internal/observability/trace/trace.go
+  - internal/observability/otel/projector.go
+  - internal/runtime/agent/turnkernel/measurement.go
   - internal/observability/usage/repository.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-17
 ---
 
 # Traces, Spans, Usage, and Cost
@@ -28,18 +41,24 @@ English | [简体中文](../../zh-CN/08-state-observability/04-trace-usage-cost.
 
 ## Learning Objectives
 
-Understand phase spans, latency rollups, multi-sample usage projection, pricing
-provenance, and redacted telemetry.
+Understand versioned observations, frozen terminal measurement, phase spans,
+multi-sample Usage, W3C propagation, pricing provenance, and bounded OTLP
+projection.
 
 ## Observation Model
 
 ```mermaid
 flowchart LR
-    T[Turn Span] --> P[Provider / Tool / Approval / Verify Spans]
+    M[Terminal Measurement Snapshot] --> R[Receipt]
+    M --> T[Measurement-derived Trace]
+    M --> E[Terminal Envelope]
+    T --> P[Provider / Tool / Approval / Verify Spans]
     P --> L[Latency Partition]
     U[Usage Events per Call/Sample] --> A[SQLite Aggregate]
     A --> C[Cost Rollup]
-    L --> R[Execution Receipt]
+    O[Observation Envelope] --> J[Observation Router / Journal]
+    J --> X[Semantic graph / OTLP]
+    L --> R
     C --> R
 ```
 
@@ -59,6 +78,43 @@ percentiles only from completed measurements.
 Telemetry metrics use atomic counters. Structured logging recursively redacts
 configured credentials and propagates writer failures.
 
+## Frozen Terminal Measurement
+
+Usage and latency become a Kernel-owned `TerminalMeasurementSnapshot` with a
+stable digest. The Runtime freezes it once at terminal convergence. Receipt,
+measurement-derived Trace, and Terminal Envelope project that same snapshot;
+none may resample mutable counters after the terminal decision.
+
+Missing Usage, unknown price, and absent latency remain unknown. Tool-side
+model Usage joins the same domain fact instead of being added later by an
+observability-only path.
+
+## Observation Envelope and Routing
+
+Every admitted Observation carries schema version, stable Observation ID,
+sequence, Runtime and domain identity, optional Trace/Span/parent IDs,
+causality links, data policy, bounded summary, and optional CAS payload
+reference. Traits generated from
+`internal/observability/schema/observation_traits.json` define owner,
+durability, required correlations, retention class, priority, and OTLP mapping.
+
+Privacy admission precedes Journal or CAS persistence. Critical evidence is
+written synchronously; normal and bulk evidence use bounded queues. Capture
+defaults to metadata-only. Writer, queue, and exporter failure update
+Observation Health but never change the business Turn result.
+
+## W3C Trace Context and OTLP
+
+W3C `traceparent` and `tracestate` propagate across Provider HTTP, MCP
+HTTP/stdio, processes, workflows, and subagents. Invalid or all-zero context
+fails closed at the parsing boundary.
+
+The OTLP projector supports in-memory, HTTP/protobuf, and gRPC exporters. Span
+attributes and metric labels are selected from a fixed low-cardinality
+allowlist. Paths, prompts, Tool arguments, Resource IDs, and raw errors do not
+become metric labels. Export queues are bounded and `Flush`/`Shutdown` do not
+transfer execution authority to telemetry.
+
 ## Observation Types and Cardinality
 
 | Signal | Identity/cardinality | Suitable use |
@@ -66,6 +122,7 @@ configured credentials and propagates writer failures.
 | Metric | bounded labels/counters | health, rate, saturation |
 | Log | timestamp + structured fields | discrete sanitized diagnosis |
 | Span | Turn/parent/phase IDs | causal timing |
+| Observation | stable ID/sequence + domain correlation | redacted causal evidence |
 | Usage row | Turn/call/sample/purpose/route | accounting |
 | Receipt | one terminal Turn projection | user-facing audit summary |
 
@@ -97,13 +154,19 @@ came from.
 - Duplicate cumulative Usage is not double-counted.
 - Non-USD/unknown pricing cannot become known cost.
 - Raw secrets must not enter logs or attributes.
+- Receipt, Trace, and Terminal Envelope must share one Measurement digest.
+- Exporter failure cannot alter a completed/failed/canceled Turn outcome.
+- High-cardinality or sensitive fields cannot become Metric labels.
 
 ## Tests and Verification
 
 ```bash
-go test ./internal/observability/trace
+go test ./internal/observability/observation ./internal/observability/router
+go test ./internal/observability/trace ./internal/observability/tracecontext
 go test ./internal/observability/usage
 go test ./internal/observability/telemetry
+go test ./internal/observability/otel
+go test ./internal/runtime/agent/turnkernel
 ```
 
 ## Hands-On Lab
@@ -129,4 +192,4 @@ Predict the final token/cost rollup before running the repository tests.
 | --- | --- |
 | Catalog ID | `state-trace-usage-cost` |
 | Status | `verified` |
-| Last verified | 2026-08-10 |
+| Last verified | 2026-08-17 |

@@ -575,7 +575,7 @@ command = "make verify"
 func TestDiagnosticCommandsLoadAndValidate(t *testing.T) {
 	path := writeConfig(t, `
 [diagnostics.commands.".md"]
-name = "markdownlint-cli2"
+name = "fixture-lint"
 args = ["--no-globs", "--", "{path}"]
 `)
 	snapshot, err := Load(LoadOptions{Path: path})
@@ -583,7 +583,7 @@ args = ["--no-globs", "--", "{path}"]
 		t.Fatal(err)
 	}
 	command := snapshot.Config.Diagnostics.Commands[".md"]
-	if command.Name != "markdownlint-cli2" ||
+	if command.Name != "fixture-lint" ||
 		!slices.Equal(command.Args, []string{"--no-globs", "--", "{path}"}) {
 		t.Fatalf("Markdown diagnostics command = %+v", command)
 	}
@@ -611,10 +611,10 @@ args = ["--no-globs", "--", "{path}"]
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			commandName := "markdownlint-cli2"
+			commandName := "fixture-lint"
 			args := `["--no-globs"]`
 			if name == "path command" {
-				commandName = "./node_modules/.bin/markdownlint-cli2"
+				commandName = "./node_modules/.bin/fixture-lint"
 				args = `["{path}"]`
 			}
 			configPath := writeConfig(

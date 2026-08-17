@@ -13,19 +13,25 @@ code_paths:
   - internal/runtime/agent/engine
   - internal/runtime/agent/turnexec
   - internal/runtime/agent/turnkernel
+  - internal/observability/observation
+  - internal/observability/router
 test_paths:
   - internal/runtime/protocol/message_test.go
   - internal/runtime/app/runtime_test.go
   - internal/runtime/app/runtime_terminal_recovery_test.go
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/turnkernel/coordinator_test.go
+  - internal/runtime/agent/turnkernel/measurement_test.go
+  - internal/observability/router/router_test.go
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
   - internal/runtime/protocol/message.go
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/command.go
+  - internal/runtime/agent/turnkernel/measurement.go
+  - internal/observability/observation/envelope.go
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-08-17
 ---
 
 # 一次 Agent Turn 的完整生命周期
@@ -160,11 +166,17 @@ Sample，直到 Model 完成、Budget/Step Gate 停止、Verification 失败或 
 ## 6. Verification 与终止
 
 Changed Path 可以触发 Diagnostics 和 Verify Check。Hard Failure 可使 Turn 失败并回滚
-Journaled Edit。Scope 为 History、Usage、Cost、Working Set、Evidence、Failures 与
-Compaction 准备带 Revision/Digest 的 `SessionDelta`。Runtime 将它与冻结 Kernel
-State、有序 Domain Facts、Final Output、Receipt、真实 Operation Receipt、Terminal
-Event 和确定性 Projection Outbox 一起写入 Terminal Envelope。Engine 只在 Durable
-Commit 成功后幂等 Apply。Runtime 确保一个 Turn 只有一个 Terminal Event。
+Journaled Edit。Scope 先为 Usage/Latency 冻结带 Digest 的
+`TerminalMeasurementSnapshot`，再为 History、Cost、Working Set、Evidence、Failures
+与 Compaction 准备 `SessionDelta`。Receipt、Measurement-derived Trace 与 Terminal
+Envelope 都引用同一 Measurement。Runtime 将它们与 Frozen Kernel State、Ordered
+Domain Fact、Final Output、Operation Receipt、Terminal Event 与 Projection Outbox
+原子提交。Engine 只在 Durable Commit 成功后幂等 Apply。
+
+Lifecycle 中通过 Privacy Admission 的 `ObservationEnvelope` 会关联 Provider、Tool、
+Approval、Verification、Process 与 Terminal Evidence。Critical Evidence 同步写入，
+低优先级使用有界 Queue。Observation/Exporter Failure 只更新 Health，不改变 Turn 的
+Completed/Failed/Canceled 业务结果。
 
 ## Control Operation
 
@@ -190,6 +202,8 @@ Overflow、Late、Duplicate、Kind Mismatch 都返回结构化错误。
 | 权威 Reducer、Coordinator 与 Effect | `internal/runtime/agent/turnkernel` |
 | Model/Tool Executor | `internal/runtime/agent/engine` |
 | Receipt | `internal/runtime/app/receipt.go` |
+| Frozen Terminal Measurement | `internal/runtime/agent/turnkernel/measurement.go` |
+| Observation Evidence | `internal/observability/observation`、`internal/observability/router` |
 | Durable Runtime Assembly | `internal/runtime/app/persistence/runtime.go` |
 | Turn Domain Fact 与 Lease | `internal/persist/state/turnstate` |
 
@@ -257,4 +271,4 @@ Tool Branch。修改 Prompt 前先阅读 `testdata/providers/openai/fixture.json
 | --- | --- |
 | Catalog ID | `overview-turn-lifecycle` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-12 |
+| 最后验证 | 2026-08-17 |

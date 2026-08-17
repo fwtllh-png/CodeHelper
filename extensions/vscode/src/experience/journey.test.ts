@@ -8,7 +8,10 @@ import { decodeEvent } from "../protocol/decode.js";
 
 void test("VS Code projects every shared Host Journey stage", async () => {
   const contract = JSON.parse(await readFile(
-    join(process.cwd(), "..", "..", "docs", "host-journey-contract.json"),
+    join(
+      process.cwd(), "..", "..", "testdata", "contracts",
+      "host-journey-contract.json",
+    ),
     "utf8",
   )) as { readonly journey: readonly { readonly id: string }[] };
   assert.deepEqual(contract.journey.map((step) => step.id), [

@@ -10,6 +10,8 @@ prerequisites:
 code_paths:
   - internal/runtime/app/wire
   - internal/runtime/app/persistence
+  - internal/runtime/extension
+  - internal/observability
 test_paths:
   - internal/runtime/app/wire/bootstrap_test.go
   - internal/runtime/app/wire/model_test.go
@@ -24,17 +26,20 @@ source_of_truth:
   - internal/runtime/app/wire/modules_core.go
   - internal/runtime/app/wire/modules_provider.go
   - internal/runtime/app/wire/modules_extensions.go
+  - internal/runtime/app/wire/extension_plan.go
   - internal/runtime/app/wire/contributors_extensions.go
   - internal/runtime/app/wire/modules_security.go
   - internal/runtime/app/wire/security_factory.go
   - internal/runtime/app/wire/modules_orchestration.go
+  - internal/runtime/app/wire/modules_observability.go
   - internal/runtime/app/wire/orchestration_components.go
   - internal/runtime/app/wire/scheduler_factory.go
   - internal/runtime/app/wire/modules_runtime.go
   - internal/runtime/app/wire/assembly/resources.go
   - internal/runtime/app/runtime_start.go
   - internal/runtime/app/persistence/runtime.go
-  - internal/adapter/extension/orchestration/contributor.go
+  - internal/runtime/extension/registry.go
+  - internal/runtime/extension/plan.go
 status: draft
 last_verified: null
 ---
@@ -86,6 +91,8 @@ flowchart TD
 - 组装 Stable Prompt Context 与 Partition Budget；
 - 连接 Journal、Diagnostics、Verify、Trace、Usage 和 Store；
 - 初始化 MCP、Skill、Plugin、Hook、Dynamic Tool；
+- 解析统一 Typed Extension Plan 与 Lifecycle Owner；
+- 装配 Observation Privacy、Journal、Router、Retention 与 OTLP Projection；
 - 构建 Child Runtime、Worktree 与 Background Executor；
 - 选择 Persistent 或 In-memory Application Runtime；
 - 构造 `chatmerge.Service` 与 Durable Assembly；Merge、Journal、Git 行为保留在
@@ -98,8 +105,9 @@ flowchart TD
 
 ```text
 config -> provider -> persistence -> platform -> builtin tools
-       -> extension contributors -> security -> orchestration
-       -> agent -> runtime -> background services
+       -> extension contributors -> security -> extension plan
+       -> orchestration -> observability -> agent -> runtime
+       -> background services
 ```
 
 每个 Module 实现 `buildModule` 契约（`Name()` 与 `Build`），只拥有一个构造边界，
@@ -114,11 +122,10 @@ Merge 同样是构造模块：`app/persistence` 组合 Repository 与 Recovery�
 `chatmerge.Service` 拥有隔离 Workspace 的 Baseline、Preview 与 Journaled Apply。
 
 Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Plugin、Skill、Memory、
-Dynamic Tool、Hook 和 MCP 实现仅用于构造期的 `extensionActivation` 契约（`ID()` 与
-`Contribute`），只接收显式构造能力与共享 `Registry`，不接收 `buildState`；在
-`extension-tools` Module 中按固定顺序、ID 唯一执行。每个 Contributor 返回确定性
-的 `ContributionReceipt`，记录新增 Tool Identity 与命名输出，任何 Extension 都
-不修改 Agent Module。Task/Automation 注册归 Orchestration Module，而非 Extension
+Dynamic Tool、Hook 和 MCP 注册 Typed Contributor，只接收显式 Capability，不接收
+`buildState`，并返回有界 Receipt。Sealed Registry 将 Source State 确定性解析为绑定
+Permission Digest 的 Digested Plan；Runtime Lifecycle 随后拥有 Generation 与每个
+Contributed Effect。Task/Automation 注册归 Orchestration Module，而非 Extension
 Contributor Chain。
 
 构造与关闭共享 `assembly.ResourceStack`。`NewExec` 只注册一次资源关闭函数；
@@ -142,14 +149,15 @@ Construction 遵循 Dependency Order，而不是简单 Constructor List。上面
 3. 解析 Model Metadata、Route、Limit、Credential Reference；
 4. Probe Platform/Sandbox；
 5. 构建 Policy、Permission、Constitution、Registry、Guard；
-6. 初始化 Extension 并 Reconcile Catalog；
-7. 连接 Context、Evidence、Diagnostics、Verify、Usage、Trace；
-8. 创建 Thread/Engine Factory；
-9. `RuntimeModule` 以 Prepared 状态构造 Runtime Facade 并恢复静态 Durable State，
+6. 初始化 Typed Contributor 并解析 Extension Plan；
+7. 构建 WorkGraph/Worker Ownership 与 Observation Routing/Export；
+8. 连接 Context、Evidence、Diagnostics、Verify、Usage、Trace；
+9. 创建 Thread/Engine Factory；
+10. `RuntimeModule` 以 Prepared 状态构造 Runtime Facade 并恢复静态 Durable State，
    不接受 Operation；
-10. `BackgroundModule` 依次执行 MCP 初次 Refresh、Terminal Outbox/Pending Turn
+11. `BackgroundModule` 依次执行 MCP 初次 Refresh、Terminal Outbox/Pending Turn
     Recovery、MCP Prewarm、Automation 协调，最后启动 Worker Scheduler；
-11. Runtime 开始接受 Operation 后，最后才暴露 Host Facade。
+12. Runtime 开始接受 Operation 后，最后才暴露 Host Facade。
 
 每步成功后 Ownership 转移。后续步骤失败时，已打开 Store、Transport、Extension
 Process、Background Manager 由共享 `ResourceStack` 按注册逆序 Close；任一步失败
@@ -179,8 +187,10 @@ Configuration 表达 Intent，不能制造 Environment Capability。
 | config/persistence/platform/builtin tools | `modules_core.go` |
 | Provider Catalog Module | `modules_provider.go` |
 | Extension Contributor 与 Receipt | `modules_extensions.go`、`contributors_extensions.go` |
+| Extension Source Plan | `extension_plan.go`、`internal/runtime/extension` |
 | Security Module 与 Guard Factory | `modules_security.go`、`security_factory.go` |
 | Orchestration Module、组件与 Task/Automation 注册 | `modules_orchestration.go`、`orchestration_components.go` |
+| Observation Journal/Router/Retention/OTLP | `modules_observability.go`、`internal/observability` |
 | Scheduler 构造 | `scheduler_factory.go` |
 | Agent Engine/Runtime/Background | `modules_runtime.go` |
 | 资源生命周期 | `assembly/resources.go` |

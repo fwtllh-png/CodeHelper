@@ -9,17 +9,15 @@ prerequisites:
   - practice-benchmark
 code_paths:
   - scripts/architecturemetrics
-  - scripts/architecturesize
   - internal/runtime/agent/turnkernel
   - Makefile
 test_paths:
   - scripts/architecturemetrics/main_test.go
-  - scripts/architecturesize/main_test.go
   - internal/runtime/agent/turnkernel/convergence_baseline_test.go
   - internal/runtime/app/turn_kernel_convergence_test.go
 source_of_truth:
-  - docs/architecture-metrics-baseline.json
-  - docs/hotspot-baseline.json
+  - testdata/contracts/architecture-metrics-baseline.json
+  - testdata/contracts/hotspot-baseline.json
   - Makefile
 status: verified
 last_verified: 2026-08-12
@@ -49,7 +47,7 @@ last_verified: 2026-08-12
 - **Target**：Ratchet 测量的范围，可以是 Package、File 或 Repository。
 - **Metric**：Target 的可计数属性，例如行数或依赖数。
 - **Limit**：Baseline 中允许的当前最大值。
-- **Baseline**：`docs/architecture-metrics-baseline.json`，Schema Version 1、
+- **Baseline**：`testdata/contracts/architecture-metrics-baseline.json`，Schema Version 1、
   Requirement ID `ARCH-RATCHET-001` 的已提交契约。
 - **Relaxation**：允许提高某指标阈值的书面理由。
 - **Retirement**：删除某个 Target 或 Metric 的书面理由。
@@ -57,9 +55,9 @@ last_verified: 2026-08-12
 
 ## CodeHelper 设计
 
-两个互补契约约束架构。`docs/hotspot-baseline.json` 把职责绑定到 Package Symbol 与
+两个互补契约约束架构。`testdata/contracts/hotspot-baseline.json` 把职责绑定到 Package Symbol 与
 Owner File，职责丢失或错位、未审阅内部依赖、热点增长和测试资产删除都会使其失败。
-`docs/architecture-metrics-baseline.json` 约束可测量的形态：直接内部 Package Fanout、
+`testdata/contracts/architecture-metrics-baseline.json` 约束可测量的形态：直接内部 Package Fanout、
 生产代码行数、Options/Mutex 字段、热点文件/函数体积，以及重复的 Protocol Event
 Switch 站点。
 
@@ -67,15 +65,6 @@ Switch 站点。
 报告。Makefile 暴露 `make architecture-metrics`（仅测量）与 `make
 architecture-ratchet`（测量并执行）；Ratchet 已加入 `make verify` 和
 `architecture-freeze`。
-
-当前 Baseline 包含 43 个 Target：19 个 Package、23 个 File 和 1 个 Repository-wide
-Event Dispatch Target。该数量只是当前快照，不是固定常量；Committed JSON 始终是
-事实来源。
-
-`make architecture-size-budget BASE_REF=origin/main` 独立比较配置中的 Runtime
-Ownership Closure 与 Git Base。它排除 Test、Docs、Fixture、Generated Source 与
-Build Output，并报告 Base、Head、Added、Deleted、Net Production Lines。默认净增长
-预算为零，因此新增生产代码必须由删除抵消，或通过显式审阅的 Invocation 放宽。
 
 Turn State Ownership 还有语义门禁。`turn-kernel-convergence-baseline` 检查 C0-C6 与
 Phase 4R Ownership：只有 Coordinator 调用 `Reducer.Apply`，External Work 使用
@@ -126,10 +115,9 @@ Headroom 汇总为排序后的漂移列表，命令以非零退出码结束。
 | 关注点 | 来源 | 重要性 |
 | --- | --- | --- |
 | 测量与执行 | `scripts/architecturemetrics/main.go` | 基于 AST 的 Package/File/Repository 计数 |
-| 阈值契约 | `docs/architecture-metrics-baseline.json` | 阈值的唯一事实来源 |
+| 阈值契约 | `testdata/contracts/architecture-metrics-baseline.json` | 阈值的唯一事实来源 |
 | Make 目标 | `Makefile` | `architecture-metrics`、`architecture-ratchet`、`architecture-freeze` |
 | 测试 | `scripts/architecturemetrics/main_test.go` | Baseline 校验、漂移、Headroom 与 Ratchet 用例 |
-| Ownership Size Budget | `scripts/architecturesize` | Base/Head Production LOC 与精确 Relaxation |
 | Turn Kernel Ownership | `turnkernel/convergence_baseline_test.go` | C0-C6 与 Phase 4R 语义 Ownership |
 
 ## 失败模式与安全边界
@@ -144,7 +132,6 @@ Headroom 汇总为排序后的漂移列表，命令以非零退出码结束。
 ```bash
 go test ./scripts/architecturemetrics
 make architecture-ratchet
-make architecture-size-budget BASE_REF=origin/main
 make turn-kernel-convergence-baseline
 make turn-kernel-convergence-exit-gate
 make book-check

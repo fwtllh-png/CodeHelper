@@ -477,7 +477,6 @@ lab-worker-retry、lab-trace-failure）。
 
 - `docs/book/governance.json` 将 13 个源码责任域和全部已交付章节映射到维护者、
   新鲜度策略、发布事实、截图和外链例外；
-- `.github/CODEOWNERS` 由该注册表生成，并接受漂移检查；
 - PR Impact Gate 将 Source/Test/Fact 路径变更映射到受影响 Chapter ID，要求同一
   PR 同步修改中英文，或提供经过 Review 的 No-impact 理由；
 - `make release-fact-check` 在 Release 前验证文档、书籍元数据、Runtime Help、

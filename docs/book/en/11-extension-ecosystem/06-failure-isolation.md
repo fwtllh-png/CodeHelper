@@ -12,13 +12,19 @@ code_paths:
   - internal/adapter/plugin
   - internal/adapter/skill
   - internal/adapter/hooks
+  - internal/runtime/extension
+  - internal/runtime/app/extension
 test_paths:
   - internal/adapter/mcp/pool_t3_test.go
   - internal/adapter/plugin/distribution_test.go
   - internal/adapter/skill/resolver_test.go
+  - internal/runtime/extension/state_test.go
+  - internal/runtime/app/extension/lifecycle_test.go
 source_of_truth:
   - internal/adapter/mcp/health.go
   - internal/adapter/plugin/registry.go
+  - internal/runtime/extension/lifecycle.go
+  - internal/runtime/app/extension/control.go
 status: draft
 last_verified: null
 ---
@@ -71,13 +77,19 @@ activation publishes one generation. Every in-flight call binds that identity.
 Disable stops new admission and may drain; security revoke immediately wins,
 cancels calls, removes authority, and fences cached handles.
 
+The Runtime tracks every live Effect by `EffectOwner`. Plan revision and
+permission digest prevent a source resolved under old authority from silently
+reactivating. Control mutations use durable prepare/commit receipts and
+idempotent Operation IDs; startup reconciles committed intent with owned
+Effects before publishing healthy state.
+
 ## Failure Domain Matrix
 
 | Failure | Containment | Recovery |
 | --- | --- | --- |
 | Provider request | one sample/route | retry only before meaningful output |
 | Tool executor | one bound call/Turn | feedback or terminal by effect phase |
-| MCP transport | one server circuit/source | probe/reconnect/new generation |
+| MCP transport | one server circuit/source/Effect Owner | probe/reconnect/new generation |
 | Skill resolution | one dependency plan | repair manifest/lock, reload |
 | Plugin tamper/revoke | one plugin generation | verified rollback/update |
 | Hook timeout | one lifecycle callback | kill process tree; apply failure policy |
@@ -90,9 +102,14 @@ generation fences.
 ## Feedback and Observability
 
 Model feedback includes only stable, actionable, sanitized categories and
-whether retry is safe. Operator records retain extension identity, source,
-generation, transition, bounded cause, and affected calls. Unknown, tamper, and
-partial-effect failures are never converted into retry advice.
+whether retry is safe. Operator records retain Extension identity, source,
+Plan revision, permission digest, generation, Effect Owner, transition,
+bounded cause, and affected calls. Unknown, tamper, and partial-effect failures
+are never converted into retry advice.
+
+Lifecycle facts also enter the Observation Router as redacted evidence.
+Observation or exporter failure does not make a failed extension healthy and
+does not change the business result of the call.
 
 Health is not authority. A healthy process with revoked generation cannot run;
 an unhealthy optional extension does not make unrelated Runtime functions
@@ -106,6 +123,8 @@ unavailable.
 - Retry is bounded and never duplicates meaningful work.
 - One source reconcile cannot replace another source's Tools.
 - Error/log output is bounded and redacted.
+- Disable/revoke cannot leave unattributed live Effects.
+- Receipt or Observation projection cannot become lifecycle authority.
 
 ## Tests and Verification
 
@@ -113,6 +132,7 @@ unavailable.
 go test ./internal/adapter/mcp -run 'Test(Pool|Circuit)'
 go test ./internal/adapter/plugin
 go test ./internal/adapter/skill ./internal/adapter/hooks
+go test ./internal/runtime/extension ./internal/runtime/app/extension
 ```
 
 ## Hands-On Lab

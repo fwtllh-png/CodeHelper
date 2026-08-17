@@ -11,14 +11,20 @@ prerequisites:
 code_paths:
   - internal/orchestration/subagent
   - internal/adapter/tool/agent
+  - internal/persist/state
   - internal/runtime/app/wire
 test_paths:
   - internal/orchestration/subagent/subagent_test.go
   - internal/orchestration/subagent/control_test.go
+  - internal/orchestration/subagent/control_plane_test.go
+  - internal/persist/state/agentgraph_test.go
   - internal/runtime/app/wire/childworktree_test.go
 source_of_truth:
   - internal/orchestration/subagent/subagent.go
-  - internal/orchestration/subagent/worktree.go
+  - internal/orchestration/subagent/control_plane.go
+  - internal/orchestration/subagent/lifecycle.go
+  - internal/orchestration/subagent/result.go
+  - internal/orchestration/subagent/workgraph.go
 status: draft
 last_verified: null
 ---
@@ -52,9 +58,16 @@ Manager parses a finite Role set, maps Role to profile/stance, enforces depth
 and concurrency budgets, provisions worktrees, records graph edges/status, and
 routes Tool execution through a Gate. RuntimeHost owns real child Turns.
 
+Agent Tree, Mailbox, Result, Completion Outbox, Budget Ledger, and worktree
+ownership are durable Workspace state. Each Agent has a canonical path and CAS
+revision. Terminal Result and Completion Outbox commit atomically, so parent
+notification survives restart. Stable Message IDs plus `Receive/Ack` preserve
+unacknowledged delivery.
+
 Control operations list, wait, follow up, interrupt, complete/fail, and close.
-Mailbox delivery is monotonic and ordered. Result records usage, artifacts,
-verification status, and write paths.
+`wait_agent` synchronizes on the same durable completion fact that also
+notifies the parent. Result records Usage, artifacts, verification status, and
+write paths.
 
 Writing children use isolated Git worktrees when configured. Path claims detect
 overlapping writes. Merge expands the child result into concrete parent file
@@ -70,9 +83,22 @@ depth, concurrency, tokens, cost, and wall-clock. Child Tool Calls still pass
 through its Guard/Policy. Takeover or a writing stance cannot manufacture a
 missing Sandbox, Git Workspace, or Approval Host.
 
+`spawn_agent` captures parent Context from the active Runtime Turn. The default
+`task_capsule` includes bounded task evidence; `fresh`, `last_n_turns`, and
+authorized `full` are explicit modes. The returned Context Receipt records
+source identity, inclusion/exclusion reasons, byte/token budgets, and digest.
+Legacy caller-supplied parent-context payloads are rejected.
+
 Durable graph edges record parent/child identity and status across restart.
-Mailbox sequence orders messages, but message delivery does not itself start a
-Turn unless the control contract says so.
+`max_parallel` bounds active children, `max_resident` also counts completed
+children retaining Result/worktree state, and `max_total` bounds all spawns in
+the durable tree. Mailbox sequence orders messages, but message delivery does
+not itself start a Turn unless the control contract says so.
+
+Child authority can only narrow the parent Session Profile. Under `suggest`, a
+child Approval appears in the Host with Agent path and Role; the Host submits
+the original Request ID through the parent Session and Runtime routes the
+decision to the authoritative child Thread. Pending Approval survives restart.
 
 ## Merge as Two-Phase Integration
 
@@ -102,12 +128,15 @@ conflict but still cannot both merge blindly.
 - Overlapping write claims conflict.
 - Child self-report is not gate-proven verification.
 - Parent drift blocks merge.
+- Terminal Result and parent Completion Outbox cannot commit separately.
+- Child Approval cannot widen parent authority or replace its Request ID.
 
 ## Tests and Verification
 
 ```bash
 go test ./internal/orchestration/subagent
 go test ./internal/adapter/tool/agent
+go test ./internal/persist/state -run TestAgent
 go test ./internal/runtime/app/wire -run 'Test.*(Child|Worktree|Agent)'
 ```
 

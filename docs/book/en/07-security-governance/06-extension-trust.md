@@ -13,13 +13,19 @@ code_paths:
   - internal/adapter/skill
   - internal/adapter/plugin
   - internal/adapter/hooks
+  - internal/runtime/extension
+  - internal/runtime/app/extension
 test_paths:
   - internal/adapter/plugin/trust_test.go
   - internal/adapter/plugin/distribution_test.go
   - internal/adapter/hooks/hooks_test.go
+  - internal/runtime/extension/plan_test.go
+  - internal/runtime/app/extension/lifecycle_test.go
 source_of_truth:
   - internal/adapter/plugin/trust.go
   - internal/adapter/plugin/distribution.go
+  - internal/runtime/extension/plan.go
+  - internal/runtime/extension/lifecycle.go
 status: draft
 last_verified: null
 ---
@@ -44,6 +50,13 @@ capability receipts, signed distribution, revocation, and Hook failure policy.
 
 All extension-provided Tools still enter Registry/Catalog and execute through
 Guard. "Trusted extension" is not direct execution authority.
+
+Trust admission and lifecycle ownership are separate. The Runtime resolves
+trusted sources into a digested Plan bound to the permission digest. Every
+process, connection, Hook, subscription, timer, lease, and Tool registration
+is attributed to an Extension source, Plan revision, generation, capability,
+and Effect kind. Disable drains those owned Effects; revoke and quarantine
+fence the generation.
 
 ## Plugin Trust Chain
 
@@ -81,11 +94,17 @@ are fenced. Circuit/health state isolates failing servers. Skill locks make
 resolution reproducible, but Skill text remains untrusted model Context and
 cannot grant Tool authority.
 
+Plugin/Skill CLI, ACP, and VS Code submit idempotent control Operations to the
+same Runtime owner. Durable prepare/commit receipts make restart and retries
+auditable. A Host cannot establish trust by editing local state or by reporting
+an extension healthy.
+
 ## Verification
 
 ```bash
 go test ./internal/adapter/plugin ./internal/adapter/hooks
 go test ./internal/adapter/mcp ./internal/adapter/skill
+go test ./internal/runtime/extension ./internal/runtime/app/extension
 ```
 
 ## Review Questions

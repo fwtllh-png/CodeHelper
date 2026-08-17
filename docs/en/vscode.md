@@ -28,7 +28,7 @@ the CLI and TUI.
   diagnostics, and edit-plan diffs;
 - inline Mermaid architecture diagrams with local lazy rendering and source
   fallback;
-- background task, job, agent, usage, and change views;
+- background task, job, agent, extension, usage, and change views;
 - local `file:` workspace execution in the UI Extension Host;
 - external, managed, or bundled runtime selection;
 - signed managed updates, rollback, and revocation checks.
@@ -220,6 +220,27 @@ Chat approval cards show a bounded semantic summary. File bodies, patches, and
 other long arguments are represented by their target and size rather than
 rendered in full; edit-plan approvals retain the native diff preview action.
 
+## Runtime-Owned Extension Control
+
+The Extensions Tree queries `extension/list` for each Workspace Runtime and
+shows Plugin/Skill name, version, trust, enabled state, and Runtime health.
+Enable and Disable submit versioned `extension/control` operations with unique
+operation IDs. The Extension Host does not scan plugin or Skill directories and
+does not mutate enablement files directly.
+
+The Runtime control plane owns source resolution, trust, generation,
+capabilities, lifecycle effects, durable receipts, idempotency, and restart
+reconciliation. A repeated operation ID with the same payload returns its
+committed result; the same ID with different content fails. Disable drains
+owned effects, while revoke or security revoke fences the loaded generation.
+Tool Catalog refresh remains a separate Runtime projection, so an extension
+action never grants Tool permission or bypasses Guard.
+
+The current Tree exposes List, Enable, Disable, and Refresh. Install, Update,
+Rollback, Trust, capability controls, Health, Permissions, and Receipts remain
+available through the shared Runtime protocol or CLI where supported; the
+Webview does not invent partial equivalents.
+
 ## Session Lifecycle
 
 The Runtime is the durable authority for Session discovery and lifecycle state.
@@ -399,6 +420,12 @@ The command combines the VS Code Supervisor failure with `doctor --json`, then
 shows each missing capability with its status, reason, impact, and repair
 action. Binary-resolution failures offer Settings, managed update, and Output
 actions. The Chat failure panel provides direct Setup and Repair buttons.
+
+`CodeHelper: Start Runtime Capture` records the Host/ACP/process-supervision
+view under private Workspace storage and `Stop Runtime Capture` closes it with
+mode `0600`. This is separate from the Go Runtime Observation Journal and its
+`CODEHELPER_OBSERVATION_CAPTURE` policy. Both artifacts can contain sensitive
+Workspace data after redaction and require review before sharing.
 
 `CodeHelper: Run Quickstart` runs the bundled network-free first-turn journey
 from VS Code without changing the selected workspace.

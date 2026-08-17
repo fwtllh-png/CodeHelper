@@ -9,16 +9,23 @@ prerequisites:
   - state-trace-usage-cost
   - state-reconstruct-failure
 code_paths:
+  - internal/observability/journal
+  - internal/observability/semantic
+  - internal/observability/supportbundle
   - internal/observability/trace
   - internal/persist/state/eventlog
 test_paths:
+  - internal/observability/semantic/reducer_test.go
+  - internal/observability/supportbundle/bundle_test.go
   - internal/observability/trace/trace_test.go
   - internal/persist/state/eventlog/log_test.go
 source_of_truth:
+  - internal/observability/semantic/reducer.go
+  - internal/observability/semantic/explain.go
   - internal/observability/trace/trace.go
   - internal/persist/state/eventlog/log.go
 status: verified
-last_verified: 2026-08-10
+last_verified: 2026-08-17
 ---
 
 # Investigate a Failure from Traces
@@ -27,20 +34,26 @@ English | [简体中文](../../zh-CN/13-hands-on-labs/09-trace-failure.md)
 
 ## Goal and Prerequisites
 
-Reconstruct a failed Turn from identity-linked Events, spans, usage, receipts,
-and durable state without relying on a UI screenshot.
+Reconstruct a failed Turn from Runtime Events, Observation Envelopes, semantic
+replay, spans, Usage, Receipts, and durable state without relying on a UI
+screenshot.
 
 ## Procedure
 
 1. Run the malformed-Tool Fixture and retain its temporary state.
 2. Start from terminal Event; record Operation/Thread/Turn/Item IDs.
-3. Follow parent/child spans and Provider/Tool attempt metadata.
-4. Correlate Catalog binding, policy/approval, sandbox, journal, and verify receipts.
-5. Replay Event Log from the prior cursor and compare Projection.
-6. State the earliest evidenced fault and rule out downstream symptoms.
+3. Find correlated Observation IDs and replay the Observation Journal through
+   the Semantic Reducer.
+4. Follow parent/child spans and Provider/Tool attempt metadata.
+5. Correlate Catalog binding, Policy/Approval, Sandbox, Journal, and Verify
+   Receipts.
+6. Replay Runtime Event Log from the prior cursor and compare Projection.
+7. State the earliest evidenced fault and rule out downstream symptoms.
 
 ```bash
-go test ./internal/observability/trace ./internal/persist/state/eventlog
+go test ./internal/observability/trace ./internal/observability/semantic
+go test ./internal/observability/supportbundle
+go test ./internal/persist/state/eventlog
 go test ./internal/adapter/provider/openai -run TestChatStreamRejectsMalformedAndAbruptStreams
 go test ./internal/adapter/tool/guard -run TestMalformedArgumentsFailBeforePolicy
 ```
@@ -51,12 +64,14 @@ go test ./internal/adapter/tool/guard -run TestMalformedArgumentsFailBeforePolic
 | --- | --- |
 | What was accepted? | Operation ID and admission Event |
 | What is canonical order? | Event Cursor/hash evidence |
+| Which causal records correlate? | Observation/Trace/Span/parent IDs |
 | Which phase first failed? | Provider/Tool/Approval/Verify Span |
 | Did an effect occur? | Tool pairing, Journal, observed changes |
 | Was it authorized? | Catalog binding, Policy, Approval identity |
 | Was it reverted? | Journal fingerprints/recovery Receipt |
 | What was measured? | Usage/Cost/Latency with known/unknown flags |
 | What remains uncertain? | gaps, open spans, missing output, conflicts |
+| Was evidence intentionally omitted? | capture mode, retention, Observation Health |
 
 Build the timeline by Cursor, then attach timestamps. Label every statement as
 **evidence**, **inference**, or **unknown**.
@@ -70,6 +85,10 @@ repairable; changed committed bytes must fail closed. Do not rerun the Agent to
 Write a short incident report with impact, earliest fault, propagation,
 terminal classification, recovery action, residual uncertainty, and a
 regression test.
+
+Build a metadata-only Support Bundle and verify that it has mode `0600`, omits
+payloads by default, and re-redacts summaries. The bundle is a transport for
+selected evidence, not lifecycle authority.
 
 ## Expected Result
 
@@ -98,4 +117,4 @@ Delete retained temporary state after redacted evidence is recorded.
 | --- | --- |
 | Catalog ID | `lab-trace-failure` |
 | Status | `verified` |
-| Last verified | 2026-08-10 |
+| Last verified | 2026-08-17 |

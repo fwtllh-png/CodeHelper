@@ -9,14 +9,20 @@ prerequisites:
   - tool-verification
 code_paths:
   - internal/observability/diagnostics
+  - internal/observability/health
+  - internal/observability/privacy
   - internal/observability/verify
   - internal/runtime/agent/engine
 test_paths:
+  - internal/observability/health/health_test.go
+  - internal/observability/privacy/policy_test.go
   - internal/observability/verify/verify_test.go
   - internal/observability/verify/affected_test.go
   - internal/runtime/agent/engine/verify_gate_test.go
 source_of_truth:
   - internal/observability/diagnostics/diagnostics.go
+  - internal/observability/health/health.go
+  - internal/observability/schema/observation_traits.json
   - internal/observability/verify/verify.go
 status: draft
 last_verified: null
@@ -97,6 +103,25 @@ Maturity is a tuple, not a badge:
 
 Changing any element can invalidate the claim.
 
+## Observation Health Is Not Business Outcome
+
+Observation Health separately counts accepted/dropped records, queue pressure,
+privacy rejection, Journal failure, payload loss, and exporter failure. These
+facts diagnose evidence quality. They do not convert a completed Turn to failed
+or a failed Turn to completed.
+
+Each Observation Kind is generated from one trait manifest. The trait declares
+owner, durability, payload policy, retention class, required correlations,
+OpenTelemetry mapping, and queue priority. Drift among the manifest, Go table,
+TypeScript table, and public JSON Schema is a build failure:
+
+```bash
+make observation-traits-check
+```
+
+This is the observability equivalent of protocol Schema drift: adding a Kind
+without a privacy, retention, and projection decision is incomplete.
+
 ## Failure Boundaries
 
 - Unknown verification scope is rejected.
@@ -104,12 +129,16 @@ Changing any element can invalidate the claim.
 - External JSON Schema references are not trusted for workflow output checks.
 - Sandbox/process failures remain explicit.
 - Hard mode cannot silently accept an unavailable Runner.
+- Observation Health cannot be interpreted as Turn lifecycle authority.
+- A new Observation Kind without generated traits fails verification.
 
 ## Tests and Verification
 
 ```bash
 go test ./internal/observability/diagnostics ./internal/observability/verify
+go test ./internal/observability/health ./internal/observability/privacy
 go test ./internal/runtime/agent/engine -run TestVerifyGate
+make observation-traits-check
 make benchmark-v2
 ```
 

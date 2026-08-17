@@ -9,6 +9,7 @@ prerequisites:
   - runtime-resume-recovery
 code_paths:
   - internal/persist
+  - internal/observability
   - internal/runtime/app
   - internal/runtime/agent/turnkernel
 test_paths:
@@ -17,13 +18,16 @@ test_paths:
   - internal/runtime/agent/turnkernel/runtime_test.go
   - internal/persist/state/store_test.go
   - internal/persist/state/turnstate/store_test.go
+  - internal/observability/router/router_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/app/terminal_measurement.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
+  - internal/observability/observation/envelope.go
   - internal/persist/state/store.go
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-08-17
 ---
 
 # Why Durable State Is Required
@@ -62,8 +66,12 @@ flowchart LR
 - Leases distinguish live ownership from abandoned work.
 - Domain Facts record every accepted Kernel transition with a state digest.
 - Effects carry durable payload, lifecycle, attempt, and idempotency identity.
+- A digested `TerminalMeasurementSnapshot` freezes Usage and latency once so
+  Receipt, Trace, and Terminal Envelope cannot disagree.
 - A Terminal Envelope atomically seals final Kernel state, Domain Facts,
-  Session Delta, Receipt, Operation commit, and projection Outbox.
+  Measurement, Session Delta, Receipt, Operation commit, and projection Outbox.
+- Versioned Observation Envelopes preserve redacted causal evidence without
+  becoming execution authority.
 
 ## Authority and Lifetime Matrix
 
@@ -72,7 +80,9 @@ flowchart LR
 | accepted Operation | request identity/idempotency evidence | admission and duplicate detection |
 | Turn Domain Fact | authoritative reducer transition and state digest | restart and invariant audit |
 | pending Effect | executable intent plus payload/idempotency identity | conditional continuation |
+| Terminal Measurement | frozen Usage and latency fact | receipt/trace/terminal consistency |
 | Event sequence | canonical lifecycle fact | replay, Host stream, audit |
+| Observation Journal | redacted causal evidence | diagnosis, telemetry, semantic replay |
 | SQLite projection | derived query view | listing, filtering, aggregation |
 | Snapshot | integrity-checked checkpoint | reconstruction acceleration |
 | Workspace Journal | filesystem side-effect evidence | rollback/recovery |
@@ -81,7 +91,8 @@ flowchart LR
 
 Derived records do not outrank their source. A Projection is rebuilt from
 Events; a Snapshot cannot override later Events; a Receipt cannot make an
-unobserved effect disappear.
+unobserved effect disappear. Observation writer or exporter failure is visible
+in Observation Health but cannot rewrite the business Turn result.
 
 ## Acceptance Is Not Completion
 
@@ -119,12 +130,15 @@ typed projections, integrity-checked snapshots, and side-effect journals.
 - Sequence gaps and committed corruption fail closed.
 - Recovery preserves healthy foreign leases.
 - Missing measurement is not converted to zero.
+- Receipt, Trace, and Terminal Envelope share one frozen Measurement digest.
+- Observation failure is isolated from business execution.
 - Workspace rollback never overwrites later external edits.
 
 ## Tests and Verification
 
 ```bash
 go test ./internal/persist/state/...
+go test ./internal/observability/...
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
 go test ./internal/runtime/app -run 'Test(C5|C6|Phase4R)'
 go test ./internal/runtime/agent/turnkernel
@@ -154,4 +168,4 @@ requeued, and which identity keeps terminal projection idempotent.
 | --- | --- |
 | Catalog ID | `state-why-durable` |
 | Status | `verified` |
-| Last verified | 2026-08-12 |
+| Last verified | 2026-08-17 |

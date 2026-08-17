@@ -1,8 +1,6 @@
 package semantic
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"slices"
 	"sort"
@@ -15,15 +13,6 @@ func CanonicalJSON(graph Graph) ([]byte, error) {
 	}
 	normalize(&cloned)
 	return json.Marshal(cloned)
-}
-
-func Digest(graph Graph) (string, error) {
-	encoded, err := CanonicalJSON(graph)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(encoded)
-	return hex.EncodeToString(sum[:]), nil
 }
 
 func cloneGraph(graph Graph) (Graph, error) {

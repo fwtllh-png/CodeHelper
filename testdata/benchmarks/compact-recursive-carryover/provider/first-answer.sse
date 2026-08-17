@@ -1,5 +1,0 @@
-data: {"choices":[{"delta":{"content":"service.py already greets with hello"},"finish_reason":"stop"}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":{{request_input_tokens}},"completion_tokens":8,"prompt_tokens_details":{"cached_tokens":{{request_cached_tokens}}}}}
-
-data: [DONE]

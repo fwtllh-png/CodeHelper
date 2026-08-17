@@ -34,7 +34,7 @@ TUI, VS Code, ACP, workers, and orchestration.
 - Treat `docs/book/catalog.json` as the book structure and status source of
   truth. Do not create empty files for `planned` chapters.
 - Treat `docs/book/governance.json` as the ownership, freshness, and release
-  fact source of truth. Do not hand-edit generated CODEOWNERS independently.
+  fact source of truth.
 - Book chapters move to `draft` or `verified` only with mirrored files and
   valid Front Matter; regenerate navigation through the repository command.
 - Use repository commands for generated protocol and compatibility files.
