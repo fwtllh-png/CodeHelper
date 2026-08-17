@@ -224,30 +224,40 @@ rejects late, duplicate, or wrong-kind resolutions.
 8. Tool, Approval, and Input results return as one retained Result Command;
    Coordinator persists logical closure before host projection.
 9. Mutating tools write through journaled/transactional adapters.
-10. `EvaluateTurnStep` makes Reducer select Repair, Verification, or Complete.
-11. The Verification executor returns evidence through
+10. An interactive main Turn must choose a structured state:
+    `request_user_input` creates a durable Input wait, Tool Calls continue the
+    same Turn, and an accepted `turn_complete` ends it. Provider `message_stop`
+    ends only one Sample; ordinary model prose remains provisional and cannot
+    complete the Turn. For `status=complete`, the declaration `summary` is the
+    exact user-facing final output and is published without another model
+    sample. Runtime never infers required input or completion from prose
+    wording. A Child executor has no Input Host and therefore cannot wait for
+    user input, but it must still continue through Tool Calls or finish through
+    `turn_complete`.
+11. `EvaluateTurnStep` makes Reducer select Repair, Verification, or Complete.
+12. The Verification executor returns evidence through
     `VerificationFinished`; Reducer selects Passed, Repair, Reported, Blocked,
     Failed, or Reverted and owns the repair budget.
-12. Engine submits `TerminalRequested`; Reducer selects Completed, Failed, or
+13. Engine submits `TerminalRequested`; Reducer selects Completed, Failed, or
     Canceled. Journal Commit/Suspend/Rollback then runs as a durable Effect and
     returns `JournalResultReceived`. Suspend retains a verification-blocked
     draft for a structurally bound Continue Turn.
-13. Scope prepares a revisioned, digested `SessionDelta` containing History,
+14. Scope prepares a revisioned, digested `SessionDelta` containing History,
     Usage, Cost, Working Set, Evidence, Failures, and Compaction state.
-14. Runtime freezes one digested `TerminalMeasurementSnapshot` for Usage and
+15. Runtime freezes one digested `TerminalMeasurementSnapshot` for Usage and
     latency. The Receipt, measurement-derived Trace, and Terminal Envelope all
     reference that same snapshot rather than sampling mutable counters again.
-15. Persistent Runtime atomically commits frozen state, Measurement, Session
+16. Persistent Runtime atomically commits frozen state, Measurement, Session
     Delta, final output, receipt, terminal event, outbox, and the real operation
     receipt in one SQLite transaction.
-16. Engine applies Session Delta exactly once only after that commit. Commit
+17. Engine applies Session Delta exactly once only after that commit. Commit
     failure leaves Session memory unchanged.
-17. On restart, Runtime scans pending terminal projections and appends each
+18. On restart, Runtime scans pending terminal projections and appends each
     entry with its stable Event ID before marking that entry published.
-18. Accepted StartTurn operations resume automatically only when matching
+19. Accepted StartTurn operations resume automatically only when matching
     non-terminal Domain Facts exist; Coordinator requeues running Effects and
     Engine resumes Provider, Tool, or Journal execution from durable payloads.
-19. Approval and Input recovery primes the original request IDs before resumed
+20. Approval and Input recovery primes the original request IDs before resumed
     execution, so hosts replay one wait rather than receiving a replacement.
 
 Engine always submits a complete logical model request. A Provider adapter may
@@ -451,7 +461,16 @@ silently corrupting all tool availability.
 ### Skills
 
 Skills package instructions and resources. Discovery, manifests, locks, and
-enablement state make the selected content explicit.
+enablement state make the selected content explicit. Turn selection preserves
+exactly named, required, and previously used Skills before applying the bounded
+lexical candidate limit. The Turn freezes name-to-handle bindings, and loading
+revalidates the content digest, dependency plan, lock, and optional Plugin
+authority. `skills_read` accepts every exact handle it advertises for that
+frozen entry (skill, package, or resource), then returns the canonical Skill
+handle. A genuinely invalid or stale handle returns a structured
+`skills_list` recovery action instead of terminating the Turn. The execution
+receipt records selection size, explicit matches, token projection, cache use,
+and query or candidate truncation.
 
 ### Plugins
 

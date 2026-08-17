@@ -105,6 +105,86 @@ func TestSelectionExplicitMentionAndRequiredSkillHavePerfectRecall(t *testing.T)
 	}
 }
 
+func TestSelectionMatchesASCIINameAdjacentToCJKText(t *testing.T) {
+	workspace := t.TempDir()
+	root := filepath.Join(workspace, ".agents", "skills")
+	writeSkill(t, root, "ubomcli", "Query release operations.", "ubom body")
+	writeSkill(t, root, "unrelated", "Format prose.", "unrelated body")
+	catalog, err := Discover(DiscoveryOptions{
+		Workspace: workspace, UserHome: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selection, err := catalog.Select(t.Context(), SelectionRequest{
+		Query: "你能使用ubomcli这个工具吗", Mode: SelectionCandidate,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection.Candidates) == 0 ||
+		selection.Candidates[0].Name != "ubomcli" {
+		t.Fatalf("mixed-script selection = %+v", selection.Candidates)
+	}
+}
+
+func TestSelectionNameBoundaryRejectsEmbeddedASCIIWord(t *testing.T) {
+	if containsSelectionPhrase("use myubomclitool now", "ubomcli") {
+		t.Fatal("embedded ASCII name was treated as a skill-name boundary")
+	}
+}
+
+func TestSelectionPreservesExplicitNameBeyondCandidateLimit(t *testing.T) {
+	summaries := make([]Summary, 0, MaxSelectionCandidates+1)
+	for index := range MaxSelectionCandidates {
+		summaries = append(summaries, Summary{
+			Name: fmt.Sprintf("skill-%04d", index), ModelInvocable: true,
+		})
+	}
+	summaries = append(summaries, Summary{
+		Name: "zzzz-target", ModelInvocable: true,
+	})
+
+	selection, err := selectSummaries(summaries, SelectionRequest{
+		Query: "请使用zzzz-target处理", Mode: SelectionCandidate,
+		Limit: DefaultSelectionLimit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !summaryNamed(selection.Candidates, "zzzz-target") ||
+		selection.Metrics.ExplicitMatches != 1 ||
+		!selection.Metrics.CandidateSetTruncated {
+		t.Fatalf("bounded explicit selection = %+v", selection)
+	}
+}
+
+func TestSelectionExactNameOutranksLexicalCompetitors(t *testing.T) {
+	const query = "use target-skill alpha beta gamma delta epsilon zeta eta theta iota kappa lambda"
+	summaries := []Summary{{
+		Name: "target-skill", Description: "Load the named skill.", ModelInvocable: true,
+	}}
+	for index := range DefaultSelectionLimit {
+		summaries = append(summaries, Summary{
+			Name:           fmt.Sprintf("competitor-%02d", index),
+			Description:    "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda",
+			ModelInvocable: true,
+		})
+	}
+
+	selection, err := selectSummaries(summaries, SelectionRequest{
+		Query: query, Mode: SelectionCandidate, Limit: DefaultSelectionLimit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !summaryNamed(selection.Candidates, "target-skill") ||
+		selection.Metrics.ExplicitMatches != 1 {
+		t.Fatalf("exact-name selection = %+v", selection.Candidates)
+	}
+}
+
 func TestSelectionShadowRecordsCandidatesWithoutChangingVisibleCatalog(t *testing.T) {
 	workspace := t.TempDir()
 	root := filepath.Join(workspace, ".agents", "skills")
@@ -147,6 +227,45 @@ func TestSkillHandleRejectsDigestDrift(t *testing.T) {
 	writeSkill(t, root, "review", "Review code.", "changed body")
 	if _, err := catalog.LoadHandle(t.Context(), handle); err == nil {
 		t.Fatal("digest-drifted skill handle was accepted")
+	}
+}
+
+func TestSkillHandleVariantsResolveOneCanonicalSkill(t *testing.T) {
+	workspace := t.TempDir()
+	root := filepath.Join(workspace, ".agents", "skills")
+	writeSkill(t, root, "review", "Review code.", "review body")
+	catalog, err := Discover(DiscoveryOptions{
+		Workspace: workspace, UserHome: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	summaries, err := catalog.ListHandles(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("summaries = %+v", summaries)
+	}
+	expected := summaries[0]
+	for name, handle := range map[string]string{
+		"skill": expected.Handle, "package": expected.PackageHandle,
+		"resource": expected.ResourceHandle,
+	} {
+		t.Run(name, func(t *testing.T) {
+			summary, summaryErr := catalog.SummaryForHandle(t.Context(), handle)
+			if summaryErr != nil {
+				t.Fatal(summaryErr)
+			}
+			plan, loadErr := catalog.LoadHandle(t.Context(), handle)
+			if loadErr != nil {
+				t.Fatal(loadErr)
+			}
+			if summary.Handle != expected.Handle ||
+				len(plan) != 1 || plan[0].Name != expected.Name {
+				t.Fatalf("summary=%+v plan=%+v", summary, plan)
+			}
+		})
 	}
 }
 

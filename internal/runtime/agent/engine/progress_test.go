@@ -54,6 +54,9 @@ func TestFinishOnlyAllowsMutationAndQualityTools(t *testing.T) {
 		{name: "file_apply", capability: tool.CapabilityWrite, want: true},
 		{name: "quality_test", capability: tool.CapabilityRead, want: true},
 		{name: "file_read", capability: tool.CapabilityRead, want: true},
+		{name: "exec_command", capability: tool.CapabilityProcess, want: true},
+		{name: "write_stdin", capability: tool.CapabilityProcess, want: true},
+		{name: "request_user_input", capability: tool.CapabilityRead, want: true},
 		{name: "shell_read", capability: tool.CapabilityRead, want: false},
 		{name: "search_text", capability: tool.CapabilityRead, want: false},
 	} {
@@ -122,6 +125,24 @@ func TestWorkspaceTurnStopsAfterFortyEightNoProgressSamples(t *testing.T) {
 	assertProgressFeedback(32, "finish_only")
 }
 
+func TestNoProgressProblemDistinguishesResearchAndStalledWork(t *testing.T) {
+	research := noProgressProblem(progressObservation{
+		observedSamples:   16,
+		noProgressSamples: 1,
+		readOnlyResearch:  true,
+	})
+	if !strings.Contains(research.Error(), "bounded total of 16") {
+		t.Fatalf("research error = %v", research)
+	}
+	stalled := noProgressProblem(progressObservation{
+		observedSamples:   16,
+		noProgressSamples: 1,
+	})
+	if !strings.Contains(stalled.Error(), "no structured progress for 1") {
+		t.Fatalf("stalled error = %v", stalled)
+	}
+}
+
 func TestReadOnlyTurnStopsAfterSixteenTotalSamples(t *testing.T) {
 	streams := make([]provider.Stream, 0, 13)
 	for index := range 12 {
@@ -159,10 +180,57 @@ func TestReadOnlyTurnStopsAfterSixteenTotalSamples(t *testing.T) {
 	}
 }
 
-func TestReadOnlyTurnAllowsOneFinalAnswerAfterAcceptedCompletionAtLimit(
+func TestReadOnlyFinishOnlyCompletesCurrentProcess(t *testing.T) {
+	streams := make([]provider.Stream, 0, 14)
+	for index := range 12 {
+		streams = append(streams, toolCallStream(
+			fmt.Sprintf("read-%d", index),
+			"echo",
+			fmt.Sprintf(`{"text":"read-%d"}`, index),
+		))
+	}
+	streams = append(
+		streams,
+		toolCallStream("exec", "exec_command", `{}`),
+		textStream("process completed"),
+	)
+	runtime := &scriptedProvider{streams: streams}
+	registry := tool.NewRegistry(nil, nil)
+	for _, executor := range []tool.Executor{&echoTool{}, finishProcessTool{}} {
+		if err := registry.Register(executor, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, runtime, registry)
+	engine.options.MaxSteps = 64
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"finish-current-process",
+		"analyze then complete the configured command",
+		protocol.TurnIntentAnswer,
+		nil,
+		func(Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "process completed" || len(runtime.requests) != 14 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	names := make(map[string]bool)
+	for _, definition := range runtime.requests[12].Tools {
+		names[definition.Name] = true
+	}
+	if !names["exec_command"] || names["echo"] {
+		t.Fatalf("finish-only tools = %+v", names)
+	}
+}
+
+func TestAcceptedCompletionPublishesSummaryWithoutFinalAnswerSampleAtLimit(
 	t *testing.T,
 ) {
-	streams := make([]provider.Stream, 0, 17)
+	streams := make([]provider.Stream, 0, 16)
 	for index := range 11 {
 		streams = append(streams, toolCallStream(
 			fmt.Sprintf("read-%d", index),
@@ -184,7 +252,6 @@ func TestReadOnlyTurnAllowsOneFinalAnswerAfterAcceptedCompletionAtLimit(
 			"summary":"analysis complete",
 			"pending_actions":[]
 		}`),
-		textStream("final accepted answer"),
 	)
 	runtime := &scriptedProvider{streams: streams}
 	registry := declarationRegistry(t, true)
@@ -205,12 +272,7 @@ func TestReadOnlyTurnAllowsOneFinalAnswerAfterAcceptedCompletionAtLimit(
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if result.Text != "final accepted answer" || len(runtime.requests) != 17 {
+	if result.Text != "analysis complete" || len(runtime.requests) != 16 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
-	}
-	final := runtime.requests[16]
-	if len(final.Tools) != 0 ||
-		!requestContains(final, "[completion_final_answer]") {
-		t.Fatalf("final-answer request = %+v", final)
 	}
 }

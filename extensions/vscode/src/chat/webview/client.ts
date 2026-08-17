@@ -98,6 +98,8 @@ type SessionVirtualItem =
 
 let sessionVirtualItems: readonly SessionVirtualItem[] = [];
 let lastRevealedTurn = "";
+let lastRevealedApproval = "";
+let lastRevealedApprovalElement: HTMLElement | undefined;
 const chatStore = new ChatWebviewStore();
 let transcriptRenderFrame: number | undefined;
 let transcriptPatchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -123,6 +125,7 @@ const transcriptActions: TranscriptActions = {
     post({ type: "preview", requestId });
   },
   approve: (requestId, scope, planId) => {
+    followLatest = true;
     post({
       type: "approval",
       requestId,
@@ -132,6 +135,7 @@ const transcriptActions: TranscriptActions = {
     });
   },
   deny: (requestId) => {
+    followLatest = true;
     post({
       type: "approval",
       requestId,
@@ -140,6 +144,7 @@ const transcriptActions: TranscriptActions = {
     });
   },
   cancel: (requestId) => {
+    followLatest = true;
     post({
       type: "approval",
       requestId,
@@ -434,6 +439,8 @@ function renderSnapshot(
   if (selectedSession !== selectedTranscriptSession) {
     selectedTranscriptSession = selectedSession;
     followLatest = true;
+    lastRevealedApproval = "";
+    lastRevealedApprovalElement = undefined;
   }
   chatTitle.textContent = selected?.title ?? "CodeHelper";
   messageMergePlanId = message.runtime.mergePlanId;
@@ -470,7 +477,9 @@ function renderSnapshot(
   repairDetail.textContent = message.runtime.error ??
     "Run readiness checks to identify missing configuration or capabilities.";
   empty.hidden = !message.presentation.emptyVisible;
-  const revealIndex = message.runtime.revealTurnId === undefined
+  const pendingApproval = latestPendingApproval(message);
+  const revealIndex = pendingApproval !== undefined ||
+    message.runtime.revealTurnId === undefined
     ? -1
     : message.snapshot.turns.findIndex(
         (turn) => turn.id === message.runtime.revealTurnId,
@@ -485,10 +494,16 @@ function renderSnapshot(
   } else {
     scheduleTranscriptPatch(message, patch);
   }
-  if (message.runtime.revealTurnId !== undefined) {
+  if (pendingApproval !== undefined) {
+    revealApproval(message.runtime.selectedSessionId, pendingApproval);
+  } else if (message.runtime.revealTurnId !== undefined) {
+    lastRevealedApproval = "";
+    lastRevealedApprovalElement = undefined;
     revealTurn(message.runtime.selectedSessionId, message.runtime.revealTurnId);
   } else {
     lastRevealedTurn = "";
+    lastRevealedApproval = "";
+    lastRevealedApprovalElement = undefined;
   }
 }
 
@@ -526,10 +541,9 @@ function flushPendingTranscriptPatch(): void {
   const removed = new Set(pendingRemovedTurns);
   pendingChangedTurns.clear();
   pendingRemovedTurns.clear();
-  const shouldFollowLatest = followLatest;
   programmaticTranscriptScroll = true;
   renderTranscriptProjection(message, undefined, false, changed, removed);
-  if (shouldFollowLatest) turns.scrollTop = turns.scrollHeight;
+  if (followLatest) turns.scrollTop = turns.scrollHeight;
   requestAnimationFrame(() => {
     programmaticTranscriptScroll = false;
   });
@@ -606,6 +620,10 @@ function renderTranscriptProjection(
   }
   updateTranscriptSpacers(window.paddingBefore, window.paddingAfter);
   applyRecoveryStates();
+  const pendingApproval = latestPendingApproval(message);
+  if (pendingApproval !== undefined) {
+    revealApproval(message.runtime.selectedSessionId, pendingApproval);
+  }
 }
 
 function applyRecoveryStatus(message: ChatRecoveryStatusMessage): void {
@@ -886,6 +904,66 @@ function revealTurn(sessionId: string | undefined, turnId: string): void {
   target.focus({ preventScroll: true });
   setTimeout(() => {
     target.classList.remove("search-turn-match");
+  }, 2_000);
+}
+
+function latestPendingApproval(
+  message: ChatSnapshotMessage,
+): { readonly requestId: string; readonly turnId: string } | undefined {
+  for (let turnIndex = message.snapshot.turns.length - 1;
+    turnIndex >= 0; turnIndex--) {
+    const turn = message.snapshot.turns[turnIndex];
+    if (turn === undefined) continue;
+    for (let approvalIndex = turn.approvals.length - 1;
+      approvalIndex >= 0; approvalIndex--) {
+      const approval = turn.approvals[approvalIndex];
+      if (approval === undefined) continue;
+      if (approval.resolved === undefined &&
+        Date.parse(approval.expiresAt) > Date.now()) {
+        return { requestId: approval.requestId, turnId: turn.id };
+      }
+    }
+  }
+  return undefined;
+}
+
+function revealApproval(
+  sessionId: string | undefined,
+  approval: { readonly requestId: string; readonly turnId: string },
+): void {
+  const identity = `${sessionId ?? ""}:${approval.requestId}`;
+  const target = [...turns.querySelectorAll<HTMLElement>(
+    ".approval-card[data-state-key]",
+  )].find((candidate) =>
+    candidate.dataset["stateKey"] === `approval:${approval.requestId}`);
+  if (target === undefined) return;
+  if (lastRevealedApproval === identity &&
+    lastRevealedApprovalElement === target) return;
+  lastRevealedApproval = identity;
+  lastRevealedApprovalElement = target;
+  lastRevealedTurn = `${sessionId ?? ""}:${approval.turnId}`;
+  followLatest = false;
+  programmaticTranscriptScroll = true;
+  const viewport = turns.getBoundingClientRect();
+  const bounds = target.getBoundingClientRect();
+  const centeredOffset = Math.max(
+    0,
+    (turns.clientHeight - Math.min(bounds.height, turns.clientHeight)) / 2,
+  );
+  turns.scrollTop = Math.max(
+    0,
+    turns.scrollTop + bounds.top - viewport.top - centeredOffset,
+  );
+  target.classList.add("approval-revealed");
+  const focus = target.querySelector<HTMLButtonElement>(
+    ".approval-actions button:not(:disabled)",
+  ) ?? target;
+  focus.focus({ preventScroll: true });
+  requestAnimationFrame(() => {
+    programmaticTranscriptScroll = false;
+  });
+  setTimeout(() => {
+    target.classList.remove("approval-revealed");
   }, 2_000);
 }
 

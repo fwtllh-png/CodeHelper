@@ -32,10 +32,12 @@ func Register(registry *tool.Registry) error {
 func (*Tool) Descriptor() tool.Descriptor {
 	return tool.Descriptor{
 		Name: Name,
-		Description: "Report the state of tool-assisted work. Use status=complete only after " +
-			"every pending action, the last mutation, and all required quality checks; set " +
-			"pending_actions to an empty array. If work remains, use status=incomplete with " +
-			"the concrete pending actions so the runtime continues the current turn.",
+		Description: "Choose the terminal state of the current Turn. Use status=complete " +
+			"only after every requested action, the last mutation, and all required quality " +
+			"checks. For complete, summary is the exact user-facing final response and " +
+			"pending_actions must be empty; the runtime publishes summary without another " +
+			"model sample. If work remains, use status=incomplete with a progress summary " +
+			"and concrete pending actions so the runtime continues the same Turn.",
 		Visibility:         tool.VisibleModel,
 		Capability:         tool.CapabilityRead,
 		AccessMode:         tool.AccessRead,
@@ -50,7 +52,8 @@ func (*Tool) Descriptor() tool.Descriptor {
 					"type": "string", "enum": []string{"complete", "incomplete"},
 				},
 				"summary": map[string]any{
-					"type": "string", "minLength": 1, "maxLength": 4096,
+					"type": "string", "minLength": 1, "maxLength": 32768,
+					"description": "Exact final response for complete; progress summary for incomplete.",
 				},
 				"pending_actions": map[string]any{
 					"type": "array", "maxItems": 32,

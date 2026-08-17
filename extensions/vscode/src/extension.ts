@@ -323,6 +323,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionAPI {
           !event.affectsConfiguration("codehelper.binarySource") &&
           !event.affectsConfiguration("codehelper.runtime.autoStart") &&
           !event.affectsConfiguration("codehelper.runtime.configPath") &&
+          !event.affectsConfiguration("codehelper.runtime.mcpConfigPath") &&
           !event.affectsConfiguration("codehelper.runtime.maxSteps"))) {
         return;
       }

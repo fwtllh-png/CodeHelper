@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
@@ -584,7 +585,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	transaction = append(transaction, user)
 	executed := make(map[string]tool.Result)
 	cache := &toolResultCache{}
-	var finalText string
 	progress := kernel.progressObservation()
 	if recoveredCalls := kernel.pendingToolCalls(); len(recoveredCalls) != 0 {
 		blocks := make([]provider.ContentBlock, 0, len(recoveredCalls))
@@ -643,7 +643,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		kernel: kernel,
 	}
 	sampleReason := promptcontext.SampleNormal
-	var completionFinalSampleAttempted bool
 	invalidateCompletion := func(reason string) error {
 		current := kernel.completion()
 		if current == nil || !current.Accepted {
@@ -651,11 +650,194 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		return kernel.invalidateCompletion(reason)
 	}
+	completeTurn := func(outcome verifyOutcome) error {
+		if outcome.receipt != nil {
+			result.Verification = outcome.receipt
+		}
+		if err := kernel.validateFinalReadiness(); err != nil {
+			return err
+		}
+		pricing := e.activeRoute().Model().Pricing
+		cost := estimateCost(pricing, sampled) + toolSpent.cost
+		costKnown := pricingKnown(pricing, sampled) &&
+			(toolSpent.samples == 0 || toolSpent.known)
+		result.CostUSD = cost
+		journalRevert = outcome.action == verifyActionReverted
+		if e.journal == nil && journalRevert {
+			return errors.New(
+				"verification requested rollback without a workspace journal",
+			)
+		}
+		if outcome.receipt != nil && outcome.receipt.Workspace == nil {
+			outcome.receipt.Workspace = &VerificationWorkspace{Status: "changed"}
+		}
+		output, err := kernel.releaseOutput()
+		if err != nil {
+			return err
+		}
+		finalText := strings.Join(output, "")
+		transaction = append(
+			transaction,
+			provider.ProducedAssistant(
+				spec.Route,
+				[]provider.ContentBlock{{
+					Type: provider.ContentText,
+					Text: finalText,
+				}},
+				e.turn,
+				nil,
+			),
+		)
+		result.Text, result.State = finalText, Completed
+		snapshot, err := e.finalizeTerminalContext(
+			transaction, true, false, result.Usage, cost, send,
+		)
+		if err != nil {
+			return err
+		}
+		contextFinalized = true
+		terminal.setContextBudget(snapshot)
+		if err := finalizeKernel(
+			turnkernel.TerminalRequested{},
+			nil,
+		); err != nil {
+			return err
+		}
+		if !journalRevert && e.journal != nil {
+			e.turnIDs[turnID] = e.turn
+		}
+		if err := send(Completed, Event{
+			Text: finalText, Usage: &result.Usage, CostUSD: cost,
+			CostKnown: costKnown, Verification: outcome.receipt,
+			Completion: kernel.completionDeclaration(),
+		}); err != nil {
+			contextFinalized = false
+			return err
+		}
+		return nil
+	}
+	advanceTurn := func() (bool, error) {
+		var outcome verifyOutcome
+		action, actionErr := kernel.evaluateTurnStep(
+			kernel.repairProgressKey(),
+		)
+		if actionErr != nil {
+			var exhausted *turnkernel.RepairBudgetExhaustedError
+			if errors.As(actionErr, &exhausted) &&
+				exhausted.Kind == turnkernel.RepairWorkspace {
+				return false, protocol.NewProblem(
+					protocol.CodeConflict,
+					"workspace_change turn produced no observed workspace changes",
+					false,
+					actionErr,
+				)
+			}
+			if errors.Is(actionErr, turnkernel.ErrRepairBudgetExhausted) {
+				return false, protocol.NewProblem(
+					protocol.CodeConflict,
+					"turn repair made no progress",
+					true,
+					actionErr,
+				)
+			}
+			return false, actionErr
+		}
+		switch action {
+		case turnkernel.StepActionRepairToolFailure:
+			if err := kernel.discardOutput("tool_failure_repair"); err != nil {
+				return false, err
+			}
+			transaction = append(
+				transaction,
+				toolFailureCompletionFeedback(e.turn),
+			)
+			sampleReason = promptcontext.SampleToolFailureRepair
+			return false, nil
+		case turnkernel.StepActionRepairCompletion:
+			if err := kernel.discardOutput("completion_repair"); err != nil {
+				return false, err
+			}
+			transaction = append(transaction, completionFeedback(e.turn))
+			sampleReason = promptcontext.SampleCompletionRepair
+			return false, nil
+		case turnkernel.StepActionRepairWorkspace:
+			if err := kernel.discardOutput("workspace_change_repair"); err != nil {
+				return false, err
+			}
+			transaction = append(
+				transaction,
+				workspaceChangeRequiredFeedback(e.turn),
+			)
+			sampleReason = promptcontext.SampleWorkspaceRepair
+			return false, nil
+		case turnkernel.StepActionRepairDeclaration:
+			if err := kernel.discardOutput("completion_declaration_repair"); err != nil {
+				return false, err
+			}
+			transaction = append(
+				transaction,
+				completionDeclarationFeedback(e.turn),
+			)
+			sampleReason = promptcontext.SampleDeclarationRepair
+			return false, nil
+		case turnkernel.StepActionVerify:
+			var err error
+			outcome, err = gate.evaluate(ctx, send)
+			if err != nil {
+				return false, err
+			}
+			result.Verification = outcome.receipt
+			switch outcome.action {
+			case verifyActionRepair:
+				if err := kernel.discardOutput("verification_repair"); err != nil {
+					return false, err
+				}
+				transaction = append(
+					transaction,
+					verifyFeedback(outcome.receipt, e.turn),
+				)
+				sampleReason = promptcontext.SampleVerificationRepair
+				return false, nil
+			case verifyActionBlocked, verifyActionFailed:
+				return false, protocol.NewProblem(
+					protocol.CodeConflict,
+					outcome.receipt.problemMessage(),
+					false,
+					nil,
+				)
+			}
+		case turnkernel.StepActionComplete:
+		default:
+			return false, protocol.NewProblem(
+				protocol.CodeInternal,
+				fmt.Sprintf(
+					"kernel returned unsupported step action %q",
+					action,
+				),
+				false,
+				nil,
+			)
+		}
+		if err := completeTurn(outcome); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
 	for step := 0; step <
 		spec.Limits.MaxSteps+kernel.repairStepTotal(); step++ {
 		if e.appendSteering(&transaction) && kernel.completion() != nil {
 			if err := invalidateCompletion("turn_steered"); err != nil {
 				return result, err
+			}
+		}
+		if completion := kernel.completion(); completion != nil &&
+			completion.Accepted {
+			completed, err := advanceTurn()
+			if err != nil {
+				return result, err
+			}
+			if completed {
+				return result, nil
 			}
 		}
 		if remaining := stepBudgetWarningRemaining(spec.Limits.MaxSteps, step); remaining > 0 {
@@ -665,21 +847,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if err != nil {
 			return result, err
 		}
-		completionFinalAnswer := false
 		if progress.stage == turnkernel.ProgressStageExhausted {
-			completion := kernel.completion()
-			if completion == nil || !completion.Accepted ||
-				completionFinalSampleAttempted {
-				return result, noProgressProblem(progress)
-			}
-			completionFinalSampleAttempted = true
-			completionFinalAnswer = true
-			progress.stage = turnkernel.ProgressStageFinishOnly
-			progress.stageChanged = false
-			transaction = append(
-				transaction,
-				completionFinalAnswerFeedback(e.turn),
-			)
+			return result, noProgressProblem(progress)
 		}
 		if progress.stageChanged &&
 			progress.stage != turnkernel.ProgressStageNone {
@@ -737,7 +906,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			kernel.providerRetries(sampleID),
 			progress.stage == turnkernel.ProgressStageFinishOnly &&
 				turnkernel.IsResearchIntent(kernel.intent()),
-			completionFinalAnswer,
 			&modelOutputContinued,
 			&pendingInputInjected,
 			&modelReplay,
@@ -771,7 +939,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		result.Usage.Add(usage)
 		sampled.Add(usage)
-		text := blocksText(blocks)
 		result.Reasoning += blocksReasoning(blocks)
 		for _, block := range blocks {
 			if block.Type == provider.ContentSearch && block.Search != nil {
@@ -796,7 +963,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 						),
 					)
 				}
-				finalText += text
 				continue
 			}
 			transaction = append(
@@ -805,147 +971,14 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					spec.Route, blocks, e.turn, modelReplay,
 				),
 			)
-			var outcome verifyOutcome
-			action, actionErr := kernel.evaluateTurnStep(
-				kernel.repairProgressKey(),
-			)
-			if actionErr != nil {
-				var exhausted *turnkernel.RepairBudgetExhaustedError
-				if errors.As(actionErr, &exhausted) &&
-					exhausted.Kind == turnkernel.RepairWorkspace {
-					return result, protocol.NewProblem(
-						protocol.CodeConflict,
-						"workspace_change turn produced no observed workspace changes",
-						false,
-						actionErr,
-					)
-				}
-				if errors.Is(actionErr, turnkernel.ErrRepairBudgetExhausted) {
-					return result, protocol.NewProblem(
-						protocol.CodeConflict,
-						"turn repair made no progress",
-						true,
-						actionErr,
-					)
-				}
-				return result, actionErr
-			}
-			switch action {
-			case turnkernel.StepActionRepairToolFailure:
-				if err := kernel.discardOutput("tool_failure_repair"); err != nil {
-					return result, err
-				}
-				transaction = append(transaction, toolFailureCompletionFeedback(e.turn))
-				sampleReason = promptcontext.SampleToolFailureRepair
-				continue
-			case turnkernel.StepActionRepairCompletion:
-				if err := kernel.discardOutput("completion_repair"); err != nil {
-					return result, err
-				}
-				transaction = append(transaction, completionFeedback(e.turn))
-				sampleReason = promptcontext.SampleCompletionRepair
-				continue
-			case turnkernel.StepActionRepairWorkspace:
-				if err := kernel.discardOutput("workspace_change_repair"); err != nil {
-					return result, err
-				}
-				transaction = append(
-					transaction,
-					workspaceChangeRequiredFeedback(e.turn),
-				)
-				sampleReason = promptcontext.SampleWorkspaceRepair
-				continue
-			case turnkernel.StepActionRepairDeclaration:
-				if err := kernel.discardOutput("completion_declaration_repair"); err != nil {
-					return result, err
-				}
-				transaction = append(
-					transaction,
-					completionDeclarationFeedback(e.turn),
-				)
-				sampleReason = promptcontext.SampleDeclarationRepair
-				continue
-			case turnkernel.StepActionVerify:
-				outcome, err = gate.evaluate(ctx, send)
-				if err != nil {
-					return result, err
-				}
-				result.Verification = outcome.receipt
-				switch outcome.action {
-				case verifyActionRepair:
-					if err := kernel.discardOutput("verification_repair"); err != nil {
-						return result, err
-					}
-					transaction = append(
-						transaction, verifyFeedback(outcome.receipt, e.turn),
-					)
-					sampleReason = promptcontext.SampleVerificationRepair
-					continue
-				case verifyActionBlocked, verifyActionFailed:
-					return result, protocol.NewProblem(
-						protocol.CodeConflict,
-						outcome.receipt.problemMessage(),
-						false,
-						nil,
-					)
-				}
-			case turnkernel.StepActionComplete:
-			default:
-				return result, protocol.NewProblem(
-					protocol.CodeInternal,
-					fmt.Sprintf("kernel returned unsupported step action %q", action),
-					false,
-					nil,
-				)
-			}
-			finalText += text
-			result.Verification = outcome.receipt
-			if err := kernel.validateFinalReadiness(); err != nil {
-				return result, err
-			}
-			pricing := e.activeRoute().Model().Pricing
-			cost := estimateCost(pricing, sampled) + toolSpent.cost
-			costKnown := pricingKnown(pricing, sampled) &&
-				(toolSpent.samples == 0 || toolSpent.known)
-			result.CostUSD = cost
-
-			result.Text, result.State = finalText, Completed
-			journalRevert = outcome.action == verifyActionReverted
-			if e.journal == nil && journalRevert {
-				return result, errors.New("verification requested rollback without a workspace journal")
-			}
-			if outcome.receipt != nil && outcome.receipt.Workspace == nil {
-				outcome.receipt.Workspace = &VerificationWorkspace{Status: "changed"}
-			}
-			snapshot, err := e.finalizeTerminalContext(
-				transaction, true, false, result.Usage, cost, send,
-			)
+			completed, err := advanceTurn()
 			if err != nil {
 				return result, err
 			}
-			contextFinalized = true
-			terminal.setContextBudget(snapshot)
-			if _, err := kernel.releaseOutput(); err != nil {
-				return result, err
+			if completed {
+				return result, nil
 			}
-			if err := finalizeKernel(
-				turnkernel.TerminalRequested{},
-				nil,
-			); err != nil {
-				return result, err
-			}
-			if !journalRevert && e.journal != nil {
-				e.turnIDs[turnID] = e.turn
-			}
-			if err := send(Completed, Event{
-				Text: finalText, Usage: &result.Usage, CostUSD: cost,
-				CostKnown: costKnown, Verification: outcome.receipt,
-				Completion: kernel.completionDeclaration(),
-			}); err != nil {
-				contextFinalized = false
-				return result, err
-			}
-			return result, nil
+			continue
 		}
 		if err := send(PreparingTools, Event{}); err != nil {
 			return result, err
@@ -1016,6 +1049,16 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				}},
 			})
 		}
+		if completion := kernel.completion(); completion != nil &&
+			completion.Accepted {
+			completed, err := advanceTurn()
+			if err != nil {
+				return result, err
+			}
+			if completed {
+				return result, nil
+			}
+		}
 	}
 	return result, protocol.NewProblem(
 		protocol.CodeResourceExhausted,
@@ -1085,12 +1128,16 @@ func completionDeclarationFeedback(turn uint64) provider.Message {
 	message := provider.TextMessage(
 		provider.RoleUser,
 		"[completion_declaration_required]\n"+
-			"required_action=turn_complete\n"+
+			"required_action=choose_structured_turn_state\n"+
 			"retry_original=false\n"+
-			"Report the actual work state through turn_complete. Use status=complete, "+
-			"a non-empty summary, and pending_actions=[] only when every requested action "+
-			"is finished. If any work remains, use status=incomplete and list each concrete "+
-			"pending action; the runtime will continue this same turn. "+
+			"Provider message_stop ended only the previous model sample; it did not "+
+			"complete this Turn. If request_user_input is available and progress requires "+
+			"a user answer, call it now and wait in this same Turn. Otherwise report the "+
+			"actual work state through turn_complete. Use status=complete only when every "+
+			"requested action is finished, put the exact user-facing final response in "+
+			"summary, and set pending_actions=[]. The runtime publishes that summary "+
+			"without another model sample. If any work remains, use status=incomplete and "+
+			"list each concrete pending action; the runtime will continue this same Turn. "+
 			"The runtime binds any changed paths and accepted verification evidence automatically. "+
 			"Do not move requested work to a future turn.",
 	)
@@ -1100,9 +1147,11 @@ func completionDeclarationFeedback(turn uint64) provider.Message {
 
 func completionFeedback(turn uint64) provider.Message {
 	message := provider.TextMessage(provider.RoleUser, `[completion_required]
-Your previous response did not contain a complete user-facing final answer.
-Do not stop at reasoning or narration of future work. Either call the required
-tool now, or provide a concise final answer based on the available evidence.`)
+Your previous model sample did not select a structured Turn state. Do not stop
+at reasoning or narration of future work. Call the required Tool now, call
+request_user_input if available and genuinely blocked on the user, or call
+turn_complete. For status=complete, put the exact user-facing final response in
+summary; ordinary assistant text cannot complete this Turn.`)
 	message.Turn = turn
 	return message
 }

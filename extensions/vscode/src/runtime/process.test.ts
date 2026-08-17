@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import {
   discoverBinary,
   enrichRuntimeError,
+  resolveMCPConfigPath,
   runtimeArguments,
   verifyBinary,
   type RuntimeLaunchOptions,
@@ -82,6 +83,37 @@ void test("runtimeArguments forwards an explicit trusted config path", () => {
 
 void test("runtimeArguments omits config when environment configuration is used", () => {
   assert.equal(runtimeArguments(runtimeOptions()).includes("--config"), false);
+});
+
+void test("runtimeArguments forwards the resolved MCP config path", () => {
+  const mcpConfigPath = "/workspace/.codehelper/mcp.json";
+  const args = runtimeArguments({ ...runtimeOptions(), mcpConfigPath });
+  const index = args.indexOf("--mcp-config");
+  assert.notEqual(index, -1);
+  assert.equal(args[index + 1], mcpConfigPath);
+});
+
+void test("runtimeArguments omits MCP config when it is not configured", () => {
+  assert.equal(
+    runtimeArguments(runtimeOptions()).includes("--mcp-config"),
+    false,
+  );
+});
+
+void test("resolveMCPConfigPath resolves workspace paths and rejects escape", () => {
+  assert.equal(
+    resolveMCPConfigPath("/workspace", ".codehelper/mcp.json"),
+    "/workspace/.codehelper/mcp.json",
+  );
+  assert.equal(
+    resolveMCPConfigPath("/workspace", "/shared/mcp.json"),
+    "/shared/mcp.json",
+  );
+  assert.equal(resolveMCPConfigPath("/workspace", "  "), undefined);
+  assert.throws(
+    () => resolveMCPConfigPath("/workspace", "../mcp.json"),
+    /must not escape the workspace root/u,
+  );
 });
 
 void test("runtimeArguments do not force approval for every workspace write", () => {

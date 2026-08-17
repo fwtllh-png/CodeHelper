@@ -466,29 +466,6 @@ func TestEngineDoesNotUseFinishRouteForPartialToolCall(t *testing.T) {
 	}
 }
 
-func TestModelTerminalRouteAllowsDeclarationAndQualityOnly(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		want bool
-	}{
-		{name: "turn_complete", want: true},
-		{name: "quality_test", want: true},
-		{name: "quality_verify", want: true},
-		{name: "update_plan", want: true},
-		{name: "file_read", want: false},
-		{name: "exec_command", want: false},
-	} {
-		if got := modelFinishToolAllowed(test.name); got != test.want {
-			t.Fatalf(
-				"modelFinishToolAllowed(%q) = %t, want %t",
-				test.name,
-				got,
-				test.want,
-			)
-		}
-	}
-}
-
 func TestEngineFailsAfterBoundedIncompleteContinuations(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{

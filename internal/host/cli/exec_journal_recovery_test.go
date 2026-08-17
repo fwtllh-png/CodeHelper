@@ -45,7 +45,9 @@ func TestExecUndoesAnEditLeftBehindByAKilledProcess(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := cli.Run([]string{
-		"exec", "--provider-fixture", filepath.Join("..", "..", "..", "testdata", "providers", "openai"),
+		"exec", "--provider-fixture", filepath.Join(
+			"..", "..", "..", "testdata", "providers", "openai-structured",
+		),
 		"--provider", "openai", "--model", "gpt-fixture", "--mode", "act",
 		"--enable-tools", "--workspace", workspace, "--data-dir", t.TempDir(),
 		"say hello",

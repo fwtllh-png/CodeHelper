@@ -2,6 +2,7 @@ package completion
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -26,9 +27,20 @@ func TestCompletionToolReturnsStructuredDeclaration(t *testing.T) {
 	}
 	declaration, ok := result.Metadata[tool.MetadataCompletionDeclaration].(tool.CompletionDeclaration)
 	if !ok || declaration.Status != "complete" ||
+		declaration.Summary != "implemented and verified" ||
 		len(declaration.ChangedPaths) != 0 ||
 		len(declaration.VerificationCallIDs) != 0 {
 		t.Fatalf("declaration = %#v", result.Metadata)
+	}
+}
+
+func TestCompletionToolDeclaresOneStepFinalOutputContract(t *testing.T) {
+	descriptor := (&Tool{}).Descriptor()
+	summary := descriptor.InputSchema["properties"].(map[string]any)["summary"].(map[string]any)
+	if !strings.Contains(descriptor.Description, "exact user-facing final response") ||
+		!strings.Contains(descriptor.Description, "without another model sample") ||
+		!strings.Contains(summary["description"].(string), "Exact final response") {
+		t.Fatalf("completion descriptor = %+v", descriptor)
 	}
 }
 

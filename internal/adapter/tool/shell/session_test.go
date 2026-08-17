@@ -215,7 +215,18 @@ func TestExecCommandValidatesCompactNetworkTargetSchema(t *testing.T) {
 	}{
 		{name: "valid", targets: []networkTargetInput{{
 			Host: "example.com", Protocol: "https", Port: 443,
+			Methods: []string{"CONNECT"},
+		}}},
+		{name: "https without connect", targets: []networkTargetInput{{
+			Host: "example.com", Protocol: "https", Port: 443,
 			Methods: []string{"GET"},
+		}}},
+		{name: "http with connect", targets: []networkTargetInput{{
+			Host: "example.com", Protocol: "http", Port: 80,
+			Methods: []string{"CONNECT"},
+		}}},
+		{name: "missing methods", targets: []networkTargetInput{{
+			Host: "example.com", Protocol: "https", Port: 443,
 		}}},
 		{name: "missing host", targets: []networkTargetInput{{
 			Protocol: "https", Port: 443,

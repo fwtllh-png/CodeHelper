@@ -138,7 +138,7 @@ void test("ChatProjector preserves model and tool chronology", () => {
     turn.timeline[4].final, true);
 });
 
-void test("ChatProjector preserves progress when completion identifies its final suffix", () => {
+void test("ChatProjector deduplicates a terminal summary already present in streamed output", () => {
   const projector = new ChatProjector();
   projector.apply(event(1, "turn.started", {
     provider: "fixture",
@@ -186,7 +186,7 @@ void test("ChatProjector preserves progress when completion identifies its final
     turn.timeline[2].final, true);
 });
 
-void test("ChatProjector appends a resampled completion without removing output", () => {
+void test("ChatProjector appends a structured terminal summary after provisional output", () => {
   const projector = new ChatProjector();
   projector.apply(event(1, "turn.started", {
     provider: "fixture",

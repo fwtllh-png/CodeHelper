@@ -150,6 +150,37 @@ void test("VS Code turns default to 256 model and tool steps", async () => {
   );
 });
 
+void test("VS Code forwards trusted Workspace MCP configuration to ACP", async () => {
+  const manifest = JSON.parse(await readFile(
+    join(process.cwd(), "package.json"),
+    "utf8",
+  )) as {
+    readonly contributes: {
+      readonly configuration: {
+        readonly properties: Readonly<Record<string, {
+          readonly default?: unknown;
+          readonly scope?: string;
+        }>>;
+      };
+    };
+  };
+  const setting = manifest.contributes.configuration.properties[
+    "codehelper.runtime.mcpConfigPath"
+  ];
+  assert.equal(setting?.default, "");
+  assert.equal(setting.scope, "resource");
+
+  const controller = await sourceFile("runtime", "controller.ts");
+  const processSource = await sourceFile("runtime", "process.ts");
+  const extension = await sourceFile("extension.ts");
+  assert.match(controller, /vscode\.workspace\.isTrusted\s*\?\s*resolveMCPConfigPath/u);
+  assert.match(processSource, /\["--mcp-config", options\.mcpConfigPath\]/u);
+  assert.match(
+    extension,
+    /affectsConfiguration\("codehelper\.runtime\.mcpConfigPath"\)/u,
+  );
+});
+
 void test("deleting the last Session replaces it with an empty Session", async () => {
   const controller = await sourceFile("runtime", "controller.ts");
   const start = controller.indexOf("public async deleteChat(");
@@ -249,10 +280,10 @@ void test("Chat exposes a collapsible responsive Sessions layout", async () => {
     styles,
     /#turns > article\.active-turn\s*\{[^}]*content-visibility: visible/su,
   );
-  assert.match(client, /const shouldFollowLatest = followLatest/u);
+  assert.doesNotMatch(client, /const shouldFollowLatest = followLatest/u);
   assert.match(
     client,
-    /if \(shouldFollowLatest\) turns\.scrollTop = turns\.scrollHeight/u,
+    /if \(followLatest\) turns\.scrollTop = turns\.scrollHeight/u,
   );
   assert.doesNotMatch(client, /window\.scrollTo/u);
 });
@@ -474,6 +505,7 @@ void test("Setup and Repair preserve trust and consequential-action rules", asyn
 
 void test("Approval uses one accessible inline decision surface", async () => {
   const view = await sourceFile("chat", "view.ts");
+  const client = await sourceFile("chat", "webview", "client.ts");
   const styles = await sourceFile("chat", "webview", "styles.css");
   const transcript = await sourceFile("chat", "webview", "transcript.ts");
 
@@ -485,11 +517,58 @@ void test("Approval uses one accessible inline decision surface", async () => {
   assert.match(transcript, /"Request details"/u);
   assert.match(transcript, /trusted \? reusable : \[\]/u);
   assert.match(transcript, /pending approvals; scroll horizontally/u);
+  assert.match(transcript, /box\.tabIndex = -1/u);
+  assert.match(client, /function latestPendingApproval\(/u);
+  assert.match(
+    client,
+    /const identity = `\$\{sessionId \?\? ""\}:\$\{approval\.requestId\}`/u,
+  );
+  assert.match(
+    client,
+    /const revealIndex = pendingApproval !== undefined \|\|[\s\S]*\? -1/u,
+  );
+  assert.match(
+    client,
+    /lastRevealedApproval === identity &&\s*lastRevealedApprovalElement === target/u,
+  );
+  assert.doesNotMatch(client, /const shouldFollowLatest = followLatest/u);
+  assert.match(client, /if \(followLatest\) turns\.scrollTop = turns\.scrollHeight/u);
+  assert.match(client, /followLatest = false/u);
+  assert.match(
+    client,
+    /\.approval-actions button:not\(:disabled\)/u,
+  );
+  assert.match(client, /focus\.focus\(\{ preventScroll: true \}\)/u);
+  assert.match(
+    client,
+    /turns\.scrollTop \+ bounds\.top - viewport\.top - centeredOffset/u,
+  );
+  assert.match(
+    styles,
+    /\.approval-card\.approval-revealed\s*\{[^}]*border-color: var\(--vscode-focusBorder\)/su,
+  );
   assert.match(styles, /@media \(max-height: 320px\)[\s\S]+approval-card:has\(\.approval-actions\)/u);
   assert.match(
     view,
     /const revealTurnId = state\.revealTurnId \?\?[\s\S]+projector\.pendingApprovals\(\)\.at\(-1\)\?\.turnId/u,
   );
+});
+
+void test("Required input uses one complete inline answer surface", async () => {
+  const view = await sourceFile("chat", "view.ts");
+  const styles = await sourceFile("chat", "webview", "styles.css");
+  const transcript = await sourceFile("chat", "webview", "transcript.ts");
+
+  assert.doesNotMatch(view, /#showInput|#modalInputs/u);
+  assert.match(transcript, /`Input required: \$\{input\.prompt\}`/u);
+  assert.match(transcript, /"input-question-label", "Question"/u);
+  assert.match(transcript, /inputOptionButton\(index \+ 1/u);
+  assert.match(transcript, /inputOptionButton\(customIndex, "Other answer"/u);
+  assert.match(transcript, /document\.createElement\("textarea"\)/u);
+  assert.match(transcript, /customInput\.maxLength = 64 << 10/u);
+  assert.match(transcript, /actions\.answer\(input\.requestId, answer\)/u);
+  assert.match(styles, /\.input-option-copy\s*\{[^}]*overflow-wrap: anywhere;[^}]*white-space: pre-wrap/su);
+  assert.match(styles, /\.input-card\s*\{[^}]*border-left: 3px solid var\(--vscode-focusBorder\)/su);
 });
 
 async function sourceFile(...segments: string[]): Promise<string> {

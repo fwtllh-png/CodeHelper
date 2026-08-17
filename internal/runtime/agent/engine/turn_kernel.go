@@ -768,7 +768,9 @@ func (s *engineTurnKernel) observeProgress(
 		stage:             s.state.Progress.Stage,
 		observedSamples:   s.state.Progress.ObservedSamples,
 		noProgressSamples: s.state.Progress.NoProgressSamples,
-		stageChanged:      s.state.Progress.Stage != previousStage,
+		readOnlyResearch: turnkernel.IsResearchIntent(s.state.Intent) &&
+			s.state.MutationRevision == 0,
+		stageChanged: s.state.Progress.Stage != previousStage,
 	}, nil
 }
 
@@ -779,6 +781,8 @@ func (s *engineTurnKernel) progressObservation() progressObservation {
 		stage:             s.state.Progress.Stage,
 		observedSamples:   s.state.Progress.ObservedSamples,
 		noProgressSamples: s.state.Progress.NoProgressSamples,
+		readOnlyResearch: turnkernel.IsResearchIntent(s.state.Intent) &&
+			s.state.MutationRevision == 0,
 	}
 }
 

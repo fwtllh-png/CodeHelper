@@ -21,6 +21,11 @@ codehelper config explain execution.verify.mode --config ./codehelper.toml
 `config show` 会输出 Provenance，可确认每个字段最终由哪个来源覆盖。`config explain`
 返回最终值、内置默认值、胜出来源、风险级别和行为影响。
 
+MCP Server 定义使用独立、严格且带版本的 JSON 文件，不属于 Runtime TOML 控制面。
+CLI 与 TUI 通过 `--mcp-config` 传入；VS Code 使用
+`codehelper.runtime.mcpConfigPath`，并将同一路径转发给 ACP Host。可通过
+`codehelper mcp validate --config ./mcp.json` 校验。
+
 ## 配置 Profile
 
 Profile 只控制生成文件中显式写出的默认字段数量，不会形成不同的 Runtime 默认值。
@@ -75,7 +80,7 @@ timeout = "2m"
 idle_timeout = "1m"
 max_concurrent = 8
 rate_limit = 0
-budget_tokens = 0            # 0 表示不增加 Token 上限
+budget_tokens = 0            # 0 表示不设置累计 Session Token 上限
 budget_usd = 0               # 0 表示不增加成本上限
 reasoning_effort = ""        # 空值为自适应；显式值固定 Effort
 native_search = false
@@ -212,12 +217,17 @@ Incremental Transport 固定使用 `store=false`。Response State 只保留在�
 收敛提醒，使模型优先完成一个完整、已验证的结果；若无法在预算内完成，则通过
 `pending_actions` 明确声明未完成工作，而不是毫无预警地被强制终止。
 
-Agent 还会跟踪连续没有结构化进展的 Sample；这不是新的 16 步执行上限。连续 16 步
-无进展时要求模型收敛，32 步时限制继续扩散式探索，但仍允许精确文件读取、工作区
-修改、质量检查、Plan 更新和 Completion；48 步时以明确的无进展错误终止 Turn。
-任何 Mutation、Plan 步骤完成、Verification 或 Completion 推进都会立即清零计数。
-Answer 和 Plan Turn 还会把首次读取的新路径与新 Evidence 计为进展；Operation Turn
-会把成功的业务 Tool 结果计为进展。该进展状态会持久化，并在 Runtime 恢复后延续。
+Agent 还会跟踪连续没有结构化进展的 Sample；对于正在执行 Workspace 工作的 Turn，
+这不是新的 16 步执行上限。连续 16 步无进展时要求模型收敛，32 步时限制继续扩散式
+探索，但仍允许精确文件读取、工作区修改、有界 Process 收尾（`exec_command` /
+`write_stdin`）、必需用户输入、质量检查、Plan 更新和 Completion。Provider 投影与
+Tool Executor 共享同一 Allowlist，因此当前批次已广告的 Tool 不会再被误判为
+Terminal-only 而拒绝。48 步时以明确的无进展错误终止 Turn。任何 Mutation、Plan
+步骤完成、Verification 或 Completion 推进都会立即清零计数。Answer 和 Plan Turn
+还会把首次读取的新路径与新 Evidence 计为进展；Operation Turn 会把成功的业务 Tool
+结果计为进展。该进展状态会持久化，并在 Runtime 恢复后延续。仍保持只读的 Answer
+或 Plan Turn 使用更紧的 8/12/16 总 Sample 研究门禁；即使初始 Intent 被分类为
+Answer，只要 Runtime 观察到 Workspace Mutation，该门禁就会立即停止生效。
 
 未知 TOML 字段会被拒绝。这是有意设计：拼错的安全或预算字段不能“看起来已配置但
 实际没有生效”。

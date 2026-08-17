@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"maps"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -153,9 +154,12 @@ func (e *Engine) CatalogReceipt() *protocol.ReceiptCatalog {
 	if scope == nil {
 		return nil
 	}
-	snapshot := e.scopeCatalog(scope)
-	_, advertised, err := e.toolDefinitionsFromSnapshot(snapshot, scope.spec.Request)
-	if err != nil {
+	scope.mu.Lock()
+	snapshot := scope.state.sampledCatalog
+	advertised := make(map[string]bool, len(scope.state.sampledTools))
+	maps.Copy(advertised, scope.state.sampledTools)
+	scope.mu.Unlock()
+	if snapshot.CatalogID == "" {
 		return nil
 	}
 	receipt := &protocol.ReceiptCatalog{

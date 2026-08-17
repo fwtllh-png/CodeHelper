@@ -65,16 +65,16 @@ func NormalizeEffect(invocation Invocation) Effect {
 		default:
 			return effect(EffectAgentLifecycle, RiskHigh, "bounded")
 		}
+	case invocation.Capability == tool.CapabilityNetwork || resources&4 != 0:
+		if invocation.Access == tool.AccessRead && resources&1 == 0 {
+			return effect(EffectNetworkRead, RiskMedium, "bounded")
+		}
+		return effect(EffectNetworkMutating, RiskHigh, "irreversible")
 	case invocation.Capability == tool.CapabilityProcess || resources&2 != 0:
 		if invocation.Sandbox == tool.SandboxStrong && resources&1 == 0 {
 			return effect(EffectProcessReadOnly, RiskLow, "reversible")
 		}
 		return effect(EffectProcessMutating, RiskHigh, "bounded")
-	case invocation.Capability == tool.CapabilityNetwork || resources&4 != 0:
-		if invocation.Access == tool.AccessRead {
-			return effect(EffectNetworkRead, RiskMedium, "bounded")
-		}
-		return effect(EffectNetworkMutating, RiskHigh, "irreversible")
 	case invocation.Capability == tool.CapabilityWrite && resources&1 != 0 &&
 		invocation.Journaled:
 		return effect(EffectWorkspaceEdit, RiskLow, "reversible")

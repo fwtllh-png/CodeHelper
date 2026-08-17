@@ -6013,6 +6013,70 @@
             "additionalProperties": false
           }
         },
+        "skill_selection": {
+          "type": "object",
+          "properties": {
+            "cache_hit": {
+              "type": "boolean"
+            },
+            "candidate_set_truncated": {
+              "type": "boolean"
+            },
+            "candidate_size": {
+              "type": "integer"
+            },
+            "catalog_size": {
+              "type": "integer"
+            },
+            "explicit_matches": {
+              "type": "integer"
+            },
+            "method": {
+              "type": "string"
+            },
+            "original_tokens": {
+              "type": "integer"
+            },
+            "precision": {
+              "type": "number"
+            },
+            "projected_tokens": {
+              "type": "integer"
+            },
+            "query_terms": {
+              "type": "integer"
+            },
+            "query_truncated": {
+              "type": "boolean"
+            },
+            "recall": {
+              "type": "number"
+            },
+            "token_savings": {
+              "type": "number"
+            },
+            "visible_size": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cache_hit",
+            "candidate_set_truncated",
+            "candidate_size",
+            "catalog_size",
+            "explicit_matches",
+            "method",
+            "original_tokens",
+            "precision",
+            "projected_tokens",
+            "query_terms",
+            "query_truncated",
+            "recall",
+            "token_savings",
+            "visible_size"
+          ],
+          "additionalProperties": false
+        },
         "skills": {
           "type": "array",
           "items": {

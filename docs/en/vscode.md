@@ -37,8 +37,22 @@ the CLI and TUI.
 
 Chat is the primary surface. Changes, Threads, and Approvals are the primary
 review navigation; Agents, Tasks, Jobs, and Usage are collapsed detail views by
-default. Edit Plans use the native Diff editor, choices use Quick Pick, setup
-uses Progress, and durable collections use Tree View.
+default. Edit Plans use the native Diff editor, catalog choices use Quick Pick,
+setup uses Progress, and durable collections use Tree View.
+
+Required user input is a Runtime interaction, not terminal assistant prose.
+The model resolves discoverable facts first, then calls `request_user_input`
+when execution truly depends on an answer. `input.required` keeps the Turn in
+`awaiting_input` and renders one Approval-style card in the Chat timeline. The
+card emphasizes the question, shows complete numbered options, and always ends
+with an Other answer option that expands an inline free-form field.
+`input.resolved` resumes the same Turn. No Quick Pick or Input Box duplicates
+this interaction. Every interactive tool-enabled Turn uses a structured state:
+Tool Calls continue it, `request_user_input` waits, and an accepted
+`turn_complete` ends it. Provider `message_stop` and ordinary assistant prose
+do not complete the Turn. For `status=complete`, `summary` contains the exact
+user-facing final response and Runtime publishes it without a second model
+sample. Runtime does not infer required input or completion from prose wording.
 
 Use `Ctrl+Enter` or `Cmd+Enter` to send and `Escape` to stop an active Turn.
 The lifecycle strip names Setup, Empty, Loading, Streaming, Approval, Verify,
@@ -529,9 +543,20 @@ VS Code settings:
 {
   "codehelper.binarySource": "auto",
   "codehelper.runtime.configPath": "/absolute/path/to/config.toml",
+  "codehelper.runtime.mcpConfigPath": ".codehelper/mcp.json",
   "codehelper.runtime.autoStart": true,
   "codehelper.runtime.maxSteps": 64
 }
+```
+
+`codehelper.runtime.mcpConfigPath` connects the existing Runtime MCP registry to
+the ACP Host; configuring MCP does not require Extension source changes. The
+path may be absolute or relative to the Workspace root. Relative paths cannot
+escape that root, MCP processes start only in a trusted Workspace, and a
+setting change restarts the Runtime. Validate the versioned file before use:
+
+```bash
+codehelper mcp validate --config ./.codehelper/mcp.json
 ```
 
 Binary sources:

@@ -240,6 +240,23 @@ type ReceiptSkill struct {
 	Locked  bool   `json:"locked"`
 }
 
+type ReceiptSkillSelection struct {
+	Method                string  `json:"method"`
+	CatalogSize           int     `json:"catalog_size"`
+	CandidateSize         int     `json:"candidate_size"`
+	VisibleSize           int     `json:"visible_size"`
+	ExplicitMatches       int     `json:"explicit_matches"`
+	QueryTerms            int     `json:"query_terms"`
+	QueryTruncated        bool    `json:"query_truncated"`
+	CandidateSetTruncated bool    `json:"candidate_set_truncated"`
+	OriginalTokens        uint64  `json:"original_tokens"`
+	ProjectedTokens       uint64  `json:"projected_tokens"`
+	TokenSavings          float64 `json:"token_savings"`
+	Recall                float64 `json:"recall"`
+	Precision             float64 `json:"precision"`
+	CacheHit              bool    `json:"cache_hit"`
+}
+
 type ReceiptProviderRetry struct {
 	Count        int       `json:"count"`
 	LastCode     ErrorCode `json:"last_code"`
@@ -284,10 +301,11 @@ type ExecutionReceiptData struct {
 	Changes []ReceiptChange `json:"changes,omitempty"`
 	// ReadPaths is every path the turn read, so a reviewer can tell an edit made
 	// after reading a file from one made blind.
-	ReadPaths      []string       `json:"read_paths,omitempty"`
-	ToolsSucceeded []string       `json:"tools_succeeded,omitempty"`
-	ToolsFailed    []string       `json:"tools_failed,omitempty"`
-	Skills         []ReceiptSkill `json:"skills,omitempty"`
+	ReadPaths      []string               `json:"read_paths,omitempty"`
+	ToolsSucceeded []string               `json:"tools_succeeded,omitempty"`
+	ToolsFailed    []string               `json:"tools_failed,omitempty"`
+	Skills         []ReceiptSkill         `json:"skills,omitempty"`
+	SkillSelection *ReceiptSkillSelection `json:"skill_selection,omitempty"`
 	// ApprovalsRequested counts approval prompts raised during the turn.
 	ApprovalsRequested int `json:"approvals_requested"`
 
@@ -438,6 +456,23 @@ func (d *ExecutionReceiptData) validate() error {
 		if skill.Name == "" || skill.Version == "" || skill.Source == "" ||
 			!validSHA256(skill.Digest) {
 			return errors.New("receipt skill requires name, version, source, and digest")
+		}
+	}
+	if selection := d.SkillSelection; selection != nil {
+		if selection.Method == "" ||
+			selection.CatalogSize < 0 ||
+			selection.CandidateSize < 0 ||
+			selection.VisibleSize < 0 ||
+			selection.ExplicitMatches < 0 ||
+			selection.QueryTerms < 0 ||
+			selection.CandidateSize > selection.CatalogSize ||
+			selection.VisibleSize > selection.CatalogSize ||
+			selection.ExplicitMatches > selection.CandidateSize ||
+			selection.ProjectedTokens > selection.OriginalTokens ||
+			selection.TokenSavings < 0 || selection.TokenSavings > 1 ||
+			selection.Recall < 0 || selection.Recall > 1 ||
+			selection.Precision < 0 || selection.Precision > 1 {
+			return errors.New("receipt skill selection is invalid")
 		}
 	}
 	if d.Evidence != nil {

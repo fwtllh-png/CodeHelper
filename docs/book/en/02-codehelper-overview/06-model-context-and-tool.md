@@ -33,7 +33,7 @@ English | [简体中文](../../zh-CN/02-codehelper-overview/06-model-context-and
 
 You will understand the boundary between Model and Provider, how stable and
 volatile context are assembled, how Tool Definitions become guarded execution,
-and why Tool Results trigger another model sample.
+and how non-terminal Tool Results can trigger another model sample.
 
 ## Prerequisites
 
@@ -164,10 +164,12 @@ The Engine schedules Tool Calls according to concurrency/resource rules and
 passes each Call through Guard. Results can include content, metadata, file
 changes, error categories, and retrievable handles for oversized output.
 
-Successful and recoverable failed Results are appended as Tool messages. The
-next model sample can use that evidence to continue, correct arguments, or
-finish. Unauthorized or structurally invalid execution terminates according to
-the error classification rather than being disguised as ordinary text.
+Successful and recoverable failed Results are appended as Tool messages. A
+non-terminal Result can trigger another model sample that uses the evidence to
+continue or correct arguments. An accepted `turn_complete` Result instead
+publishes its `summary` as the final response without another sample.
+Unauthorized or structurally invalid execution terminates according to the
+error classification rather than being disguised as ordinary text.
 
 ## Code Map
 

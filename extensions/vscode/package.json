@@ -264,6 +264,12 @@
           "scope": "machine",
           "description": "Host-local absolute path to a trusted CodeHelper TOML configuration containing the provider, model, and credential reference."
         },
+        "codehelper.runtime.mcpConfigPath": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Workspace-relative or Host-local absolute path to a versioned MCP stdio server configuration. MCP servers start only after Workspace Trust is granted."
+        },
         "codehelper.runtime.maxSteps": {
           "type": "integer",
           "default": 256,

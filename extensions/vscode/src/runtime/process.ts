@@ -1,6 +1,14 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
-import { delimiter, extname, isAbsolute, join } from "node:path";
+import {
+  delimiter,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import {
   execFile,
   spawn,
@@ -38,6 +46,7 @@ export interface RuntimeLaunchOptions {
   readonly workspaceRoot: string;
   readonly dataDirectory: string;
   readonly configPath?: string;
+  readonly mcpConfigPath?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly posture: RuntimePosture;
   readonly maxSteps: number;
@@ -223,6 +232,9 @@ export function runtimeArguments(options: RuntimeLaunchOptions): readonly string
     "--adapter", "acp",
     "--data-dir", options.dataDirectory,
     ...(options.configPath === undefined ? [] : ["--config", options.configPath]),
+    ...(options.mcpConfigPath === undefined
+      ? []
+      : ["--mcp-config", options.mcpConfigPath]),
     "--workspace", options.workspaceRoot,
     "--workspace-uri", options.workspaceIdentity.editor_uri,
     "--workspace-root-id", options.workspaceIdentity.root_id,
@@ -230,6 +242,25 @@ export function runtimeArguments(options: RuntimeLaunchOptions): readonly string
     "--max-steps", String(options.maxSteps),
     "--enable-tools",
   ];
+}
+
+export function resolveMCPConfigPath(
+  workspaceRoot: string,
+  configuredPath: string,
+): string | undefined {
+  const path = configuredPath.trim();
+  if (path.length === 0) return undefined;
+  if (isAbsolute(path)) return path;
+  const candidate = resolve(workspaceRoot, path);
+  const workspaceRelative = relative(workspaceRoot, candidate);
+  if (workspaceRelative === ".." ||
+    workspaceRelative.startsWith(`..${sep}`) ||
+    isAbsolute(workspaceRelative)) {
+    throw new Error(
+      "codehelper.runtime.mcpConfigPath must not escape the workspace root",
+    );
+  }
+  return candidate;
 }
 
 export function enrichRuntimeError(cause: unknown, stderr: string): Error {

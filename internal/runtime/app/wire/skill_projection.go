@@ -36,11 +36,15 @@ func selectTurnSkills(
 	return out, agentengine.SkillSelectionMetrics{
 		Method: metrics.Method, CatalogSize: metrics.CatalogSize,
 		CandidateSize: metrics.CandidateSize, VisibleSize: metrics.VisibleSize,
-		ExplicitMatches: metrics.ExplicitMatches,
-		OriginalTokens:  metrics.OriginalTokens,
-		ProjectedTokens: metrics.ProjectedTokens,
-		TokenSavings:    metrics.TokenSavings,
-		Recall:          metrics.Recall, Precision: metrics.Precision,
-		CacheHit: metrics.CacheHit,
+		ExplicitMatches:       metrics.ExplicitMatches,
+		QueryTerms:            metrics.QueryTerms,
+		QueryTruncated:        metrics.QueryTruncated,
+		CandidateSetTruncated: metrics.CandidateSetTruncated,
+		OriginalTokens:        metrics.OriginalTokens,
+		ProjectedTokens:       metrics.ProjectedTokens,
+		TokenSavings:          metrics.TokenSavings,
+		Recall:                metrics.Recall,
+		Precision:             metrics.Precision,
+		CacheHit:              metrics.CacheHit,
 	}, nil
 }

@@ -47,6 +47,8 @@ type scopeState struct {
 	selections          []promptcontext.Selection
 	catalog             tool.CatalogSnapshot
 	catalogProjected    tool.CatalogSnapshot
+	sampledCatalog      tool.CatalogSnapshot
+	sampledTools        map[string]bool
 	world               contextstore.WorldBaseline
 	window              contextstore.WindowLedger
 	contextLedger       *contextstore.Ledger

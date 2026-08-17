@@ -197,7 +197,9 @@ func execCommandDescriptor() tool.Descriptor {
 		Description: "Run a local POSIX sh command. Returns output when it exits " +
 			"within yield-time, otherwise a session_id for write_stdin. " +
 			"yield-time_ms defaults to 10000 and must not exceed 30000. " +
-			"network_targets contain host, protocol, port, methods, and allow_private.",
+			"Commands that access the network must declare every destination in " +
+			"network_targets; use method CONNECT for HTTPS targets. Undeclared " +
+			"egress is denied by the local managed proxy.",
 		Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessRead,
@@ -235,6 +237,37 @@ func execCommandDescriptor() tool.Descriptor {
 				},
 				"network_targets": map[string]any{
 					"type": "array",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"host": map[string]any{
+								"type":        "string",
+								"description": "DNS host without scheme or port.",
+							},
+							"protocol": map[string]any{
+								"type": "string",
+								"enum": []string{"http", "https"},
+							},
+							"port": map[string]any{
+								"type": "integer", "minimum": 1, "maximum": 65535,
+							},
+							"methods": map[string]any{
+								"type":        "array",
+								"items":       map[string]any{"type": "string"},
+								"minItems":    1,
+								"description": "Use exactly CONNECT for HTTPS; use HTTP methods for HTTP.",
+							},
+							"allow_private": map[string]any{
+								"type":        "boolean",
+								"description": "Required for private or local resolved IPs.",
+							},
+						},
+						"required": []string{
+							"host", "protocol", "port", "methods", "allow_private",
+						},
+						"additionalProperties": false,
+					},
+					"maxItems": 32,
 				},
 			},
 			"required":             []string{"command"},
@@ -253,12 +286,19 @@ func validateNetworkTargets(targets []networkTargetInput) error {
 			target.Port == 0 {
 			return errors.New("network target requires host, http/https protocol, and port")
 		}
-		if len(target.Methods) > 16 {
-			return errors.New("network target exceeds 16 methods")
+		if len(target.Methods) == 0 || len(target.Methods) > 16 {
+			return errors.New("network target requires 1-16 methods")
 		}
 		for _, method := range target.Methods {
-			if strings.TrimSpace(method) == "" {
+			method = strings.ToUpper(strings.TrimSpace(method))
+			if method == "" {
 				return errors.New("network target method is empty")
+			}
+			if target.Protocol == "https" && method != "CONNECT" {
+				return errors.New("https network target requires method CONNECT")
+			}
+			if target.Protocol == "http" && method == "CONNECT" {
+				return errors.New("http network target cannot use method CONNECT")
 			}
 		}
 	}
@@ -346,7 +386,18 @@ func (e *protocolExecutor) ExpandArguments(
 	if !e.expand {
 		return raw, nil
 	}
-	return (&Tool{workspace: e.protocol.workspace}).ExpandArguments(ctx, raw)
+	expanded, err := (&Tool{workspace: e.protocol.workspace}).ExpandArguments(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	var input execCommandInput
+	if err := json.Unmarshal(expanded, &input); err != nil {
+		return nil, err
+	}
+	if err := validateNetworkTargets(input.NetworkTargets); err != nil {
+		return nil, err
+	}
+	return expanded, nil
 }
 
 func (p *commandProtocol) execCommand(

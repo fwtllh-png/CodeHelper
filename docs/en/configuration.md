@@ -22,6 +22,11 @@ codehelper config explain execution.verify.mode --config ./codehelper.toml
 for each field. `config explain` returns the resolved value, built-in default,
 winning source, risk level, and behavioral impact.
 
+MCP server definitions use a separate strict, versioned JSON file rather than
+the Runtime TOML control plane. CLI and TUI pass it with `--mcp-config`; VS Code
+uses `codehelper.runtime.mcpConfigPath` and forwards the same path to its ACP
+Host. Validate it with `codehelper mcp validate --config ./mcp.json`.
+
 ## Configuration Profiles
 
 Profiles control how many defaults are written explicitly; they do not create
@@ -77,7 +82,7 @@ timeout = "2m"
 idle_timeout = "1m"
 max_concurrent = 8
 rate_limit = 0
-budget_tokens = 0            # 0 means no additional token cap
+budget_tokens = 0            # 0 means no cumulative session token cap
 budget_usd = 0               # 0 means no additional cost cap
 reasoning_effort = ""        # empty = adaptive; explicit value fixes the effort
 native_search = false
@@ -228,14 +233,21 @@ remaining so the model can finish a coherent result or declare concrete
 `pending_actions` instead of being terminated without notice.
 
 The Agent also tracks consecutive samples without structured progress. This is
-not a 16-step execution limit. At 16 no-progress samples it asks the model to
-converge, at 32 it limits further exploration while retaining exact file reads,
-workspace mutations, quality checks, plan updates, and completion, and at 48 it
-stops the Turn with an explicit no-progress error. Any mutation, completed plan
-step, verification, or completion resets the counter immediately. Answer and
-Plan Turns additionally count newly read paths and new evidence; Operation
-Turns count successful business Tool results. The progress state is durable
-across Runtime recovery.
+not a 16-step execution limit for active workspace work. At 16 no-progress
+samples it asks the model to converge, at 32 it limits further exploration
+while retaining exact file reads, workspace mutations, bounded process
+completion (`exec_command` /
+`write_stdin`), required user input, quality checks, plan updates, and
+completion. The Provider projection and Tool executor share this allowlist, so
+a tool advertised for the current batch cannot be rejected as terminal-only.
+At 48 Runtime stops the Turn with an explicit no-progress error. Any mutation,
+completed plan step, verification, or completion resets the counter
+immediately. Answer and Plan Turns additionally count newly read paths and new
+evidence; Operation Turns count successful business Tool results. The progress
+state is durable across Runtime recovery. A still-read-only Answer or Plan Turn
+uses a tighter 8/12/16 total-sample research guard. That guard stops applying
+as soon as Runtime observes a workspace mutation, even if the original intent
+was classified as Answer.
 
 Unknown TOML fields are rejected. This is intentional: a misspelled safety or
 budget field must not look configured while having no effect.

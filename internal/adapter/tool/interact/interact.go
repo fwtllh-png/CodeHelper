@@ -186,7 +186,10 @@ func (e *executor) Descriptor() tool.Descriptor {
 	switch e.name {
 	case "request_user_input":
 		return tool.Descriptor{
-			Name: e.name, Description: "Ask the user a question and block until the host replies.",
+			Name: e.name,
+			Description: "Request required user input and block the current Turn until the host replies. " +
+				"Resolve discoverable facts first, include options for finite choices, and never ask " +
+				"for required input in ordinary final text.",
 			Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
@@ -196,8 +199,11 @@ func (e *executor) Descriptor() tool.Descriptor {
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"prompt":  map[string]any{"type": "string", "minLength": float64(1)},
-					"options": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"prompt": map[string]any{"type": "string", "minLength": float64(1)},
+					"options": map[string]any{
+						"type": "array", "maxItems": float64(12), "uniqueItems": true,
+						"items": map[string]any{"type": "string", "minLength": float64(1)},
+					},
 				},
 				"required":             []string{"prompt"},
 				"additionalProperties": false,

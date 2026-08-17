@@ -1,4 +1,4 @@
-data: {"choices":[{"delta":{"content":"{\"packages\":1}"},"finish_reason":"stop"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"{\\\"packages\\\":1}\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}
 

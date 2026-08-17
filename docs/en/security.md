@@ -81,10 +81,16 @@ No layer should be described as a replacement for another.
   revisioned permission Profile and remains in the same strong Sandbox.
   Untyped or repeated denial fails closed.
 - `exec_command` process egress is proxy-only on macOS and requires explicit
-  `network_targets` scoped by Host, Port, Protocol, HTTP Method, and private
-  address access. The Sandbox can connect only to the Runtime-owned loopback
-  proxy; direct sockets and undeclared targets fail closed. Linux remains
-  process-network-denied until its namespace proxy bridge is available.
+  `network_targets` scoped by Host, Port, Protocol, transport Method, and
+  private-address access. HTTPS targets must use `CONNECT`; HTTP targets use
+  ordinary HTTP methods. Declared process-network resources are classified as
+  network effects before process effects: `suggest` requires a human Network
+  Approval, while `auto` may auto-review an exact read-only target. The Sandbox
+  can connect only to the Runtime-owned loopback proxy; direct sockets and
+  undeclared targets fail closed. A CONNECT 403 from that loopback proxy means
+  the target was not declared or granted, not that the remote service is
+  unreachable. Linux remains process-network-denied until its namespace proxy
+  bridge is available.
 - Linux strong Sandbox fixes Landlock, `no_new_privs`, seccomp, and `execve`
   to one OS thread. Seccomp denies tracing, cross-process memory access,
   namespace creation, `clone3`, and `io_uring`; restricted network mode permits

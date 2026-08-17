@@ -115,9 +115,9 @@ func (e *Engine) checkBudget(
 func (e *Engine) budgetConvergence(used uint64) (provider.Message, bool) {
 	limit := e.options.Budget.MaxTokens
 	if limit == 0 {
-		limit = e.activeRoute().Model().Limits.ContextTokens
+		return provider.Message{}, false
 	}
-	if limit == 0 || used < limit*70/100 {
+	if used < limit*70/100 {
 		return provider.Message{}, false
 	}
 	stage := uint8(1)

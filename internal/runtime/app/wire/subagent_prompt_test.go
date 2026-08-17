@@ -29,7 +29,7 @@ func TestSimpleModelTurnDoesNotSpawnAgent(t *testing.T) {
 	workspace := t.TempDir()
 	tools := true
 	session, err := NewExec(t.Context(), ExecOptions{
-		FixturePath: subagentFixture(t, "openai"),
+		FixturePath: subagentFixture(t, "openai-structured"),
 		Permission:  "bypass",
 		ConfigOverrides: config.Overrides{
 			Workspace: &workspace, Tools: &tools,

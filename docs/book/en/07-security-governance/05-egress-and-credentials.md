@@ -55,8 +55,11 @@ immediately before connection and pins the approved IP for dialing. Redirects
 and CONNECT targets re-enter the Gate.
 
 Process traffic on macOS can reach only the Runtime-owned loopback proxy port.
-`exec_command` declares `network_targets`; undeclared targets, private
-resolution, metadata addresses, and direct sockets fail closed. Linux remains
+`exec_command` declares `network_targets`; HTTPS targets use `CONNECT`, and
+HTTP targets use ordinary HTTP methods. Under `suggest`, a declared process
+network target requires a human Network Approval before execution; `auto` may
+auto-review an exact read-only target. Undeclared targets, private resolution,
+metadata addresses, and direct sockets fail closed. Linux remains
 process-network-denied until its namespace proxy bridge is available.
 
 Every decision emits the same bounded `egress.Receipt` shape for Process, Web,

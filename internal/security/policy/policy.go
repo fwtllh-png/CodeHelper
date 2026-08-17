@@ -213,7 +213,8 @@ func (r *Runtime) evaluate(invocation Invocation) Decision {
 		if !r.DisableAutoReview && permissionAction == ActionAsk &&
 			!repositoryAsk && grant.Action != ActionAsk && typed &&
 			effect.Risk == RiskMedium &&
-			(effect.Kind == EffectNetworkRead || effect.Kind == EffectAgentLifecycle) {
+			(effect.Kind == EffectAgentLifecycle ||
+				(effect.Kind == EffectNetworkRead && r.Permission == PermissionAuto)) {
 			decision = Decision{
 				Action: ActionAllow, Code: "auto_review_allowed",
 				Reason: "bounded medium-risk effect has an exact typed grant",

@@ -654,7 +654,147 @@ details.context-selection {
 }
 
 .input-card {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0;
+  padding: 12px;
   border: 1px solid var(--vscode-panel-border);
+  border-left: 3px solid var(--vscode-focusBorder);
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background);
+}
+
+.input-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.input-badge {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  color: var(--vscode-badge-foreground);
+  font-size: 0.78em;
+  font-weight: 600;
+  background: var(--vscode-badge-background);
+  border-radius: 10px;
+}
+
+.input-title {
+  min-width: 0;
+  font-size: 0.95em;
+}
+
+.input-question {
+  padding: 9px 10px;
+  background: var(--vscode-textBlockQuote-background);
+  border-left: 2px solid var(--vscode-textBlockQuote-border);
+}
+
+.input-question-label {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.input-prompt {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.input-options {
+  display: grid;
+  gap: 6px;
+}
+
+.input-option {
+  display: grid;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  color: var(--vscode-button-secondaryForeground);
+  text-align: left;
+  background: var(--vscode-button-secondaryBackground);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+}
+
+.input-option:hover,
+.input-option.selected {
+  background: var(--vscode-button-secondaryHoverBackground);
+  border-color: var(--vscode-focusBorder);
+}
+
+.input-option-index {
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.input-option-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.input-option-custom {
+  border-style: dashed;
+}
+
+.input-custom-form {
+  display: grid;
+  gap: 7px;
+}
+
+.input-custom-form[hidden] {
+  display: none;
+}
+
+.input-custom-answer {
+  width: 100%;
+  min-height: 64px;
+  padding: 7px 8px;
+  resize: vertical;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+}
+
+.input-submit {
+  width: fit-content;
+  padding: 5px 10px;
+  justify-self: end;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.input-submit.primary {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.input-submit.primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.input-outcome {
+  display: grid;
+  gap: 3px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.input-outcome-answer {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .approval-card {
@@ -663,6 +803,11 @@ details.context-selection {
   border: 1px solid var(--vscode-panel-border);
   border-left: 3px solid var(--vscode-editorWarning-foreground);
   border-radius: 6px; background: var(--vscode-editorWidget-background);
+}
+
+.approval-card.approval-revealed {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 }
 
 .approval-header,
@@ -707,8 +852,11 @@ details.context-selection {
 .approval-carousel > .approval-card { min-width: calc(100% - 24px); scroll-snap-align: start; }
 
 @media (max-height: 320px) {
-  body:has(.approval-card .approval-actions) #composer-region { display: none; }
-  .approval-card:has(.approval-actions) {
+  body:has(.approval-card .approval-actions, .input-card .input-options) #composer-region {
+    display: none;
+  }
+  .approval-card:has(.approval-actions),
+  .input-card:has(.input-options) {
     position: fixed; z-index: 10; inset: 35px 8px 4px; margin: 0; overflow: auto;
   }
   .approval-card:has(.approval-actions) .approval-actions { grid-row: 2; flex-wrap: wrap; }

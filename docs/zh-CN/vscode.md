@@ -33,8 +33,19 @@ VS Code UI 与 Context Bridge
 ## 工作台与键盘主路径
 
 Chat 是主界面；Changes、Threads 和 Approvals 是主要 Review 导航；Agents、Tasks、
-Jobs 和 Usage 默认折叠为 Detail View。Edit Plan 使用原生 Diff Editor，选项使用
-Quick Pick，Setup 使用 Progress，持久化集合使用 Tree View。
+Jobs 和 Usage 默认折叠为 Detail View。Edit Plan 使用原生 Diff Editor，Catalog
+选择使用 Quick Pick，Setup 使用 Progress，持久化集合使用 Tree View。
+
+必需的用户输入属于 Runtime Interaction，而不是终结性的 Assistant 正文。模型先解析
+可通过 Tool 查证的事实；只有执行确实依赖回答时才调用 `request_user_input`。
+`input.required` 让 Turn 保持 `awaiting_input`，并在 Chat 时间线内渲染唯一的
+Approval 风格卡片。卡片突出问题，完整展示带序号的选项，并固定以“Other answer”
+作为最后一项；选择后会在卡片内展开自由输入框。`input.resolved` 恢复同一个 Turn，
+不再用 Quick Pick 或 Input Box 重复投影该交互。每个交互式 Tool-enabled Turn 都使用
+结构化状态：Tool Call 继续当前 Turn，`request_user_input` 进入等待，被接受的
+`turn_complete` 才结束 Turn。Provider `message_stop` 和普通 Assistant 正文都不能完成
+Turn。对于 `status=complete`，`summary` 包含精确的用户可见 Final Response，Runtime
+无需第二次 Model Sample 即可发布。Runtime 不根据正文措辞推断必需输入或完成状态。
 
 使用 `Ctrl+Enter` 或 `Cmd+Enter` 发送，使用 `Escape` 停止活动 Turn。生命周期状态带
 明确展示 Setup、Empty、Loading、Streaming、Approval、Verify、Failure、Recovery 和
@@ -453,9 +464,19 @@ VS Code Settings：
 {
   "codehelper.binarySource": "auto",
   "codehelper.runtime.configPath": "/absolute/path/to/config.toml",
+  "codehelper.runtime.mcpConfigPath": ".codehelper/mcp.json",
   "codehelper.runtime.autoStart": true,
   "codehelper.runtime.maxSteps": 64
 }
+```
+
+`codehelper.runtime.mcpConfigPath` 将现有 Runtime MCP Registry 接入 ACP Host，配置 MCP
+不再需要修改 Extension 源码。该路径可以是绝对路径，也可以相对 Workspace Root；
+相对路径不能逃出 Workspace Root，只有受信任 Workspace 才会启动 MCP 进程，设置变化
+会触发 Runtime 重启。使用前应校验版本化配置：
+
+```bash
+codehelper mcp validate --config ./.codehelper/mcp.json
 ```
 
 Binary Source：

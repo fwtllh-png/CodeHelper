@@ -104,8 +104,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   readonly #editPreview: EditPlanPreview;
   readonly #resourceNavigator: ResourceNavigator;
   readonly #subscriptions: vscode.Disposable[];
-  readonly #modalInputs = new Set<string>();
   readonly #submittedApprovals = new Set<string>();
+  readonly #submittedInputs = new Set<string>();
   readonly #submittedRecoveries = new Set<string>();
   readonly #mergePlans = new Map<string, EditPlanCard>();
   readonly #mergeOperations = new Set<string>();
@@ -291,10 +291,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       this.#submittedApprovals.delete(sessionKey(
         root.rootId, sessionId, event.data.request_id,
       ));
-    } else if (event.kind === "input.required") {
-      const card = projector.pendingInputs().find((input) =>
-        input.requestId === event.data.request_id);
-      if (card !== undefined) void this.#showInput(root, sessionId, card);
+    } else if (event.kind === "input.resolved") {
+      this.#submittedInputs.delete(sessionKey(
+        root.rootId, sessionId, event.data.request_id,
+      ));
     }
   }
 
@@ -692,12 +692,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           const input = this.#input(
             root.rootId, session.sessionId, message.requestId,
           );
-          await root.controller.replyInput(
-            session.sessionId,
-            input.turnId,
-            input.requestId,
-            message.answer,
-          );
+          await this.#answerInput(root, session.sessionId, input, message.answer);
           break;
         }
         case "merge-chat": {
@@ -990,40 +985,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.#scheduleFlush();
   }
 
-  async #showInput(
-    root: WorkspaceRuntime,
-    sessionId: string,
-    input: InputCard,
-  ): Promise<void> {
-    const key = sessionKey(root.rootId, sessionId, input.requestId);
-    if (this.#modalInputs.has(key) || isExpired(input.expiresAt)) {
-      return;
-    }
-    this.#modalInputs.add(key);
-    try {
-      const answer = input.options.length > 0
-        ? await vscode.window.showQuickPick([...input.options], {
-            title: `${root.label}: ${input.prompt}`,
-            ignoreFocusOut: true,
-          })
-        : await vscode.window.showInputBox({
-            title: `${root.label}: ${input.prompt}`,
-            ignoreFocusOut: true,
-          });
-      if (answer !== undefined) {
-        await root.controller.replyInput(
-          sessionId, input.turnId, input.requestId, answer,
-        );
-      }
-    } catch (error) {
-      this.#post(createChatErrorMessage(
-        error instanceof Error ? error.message : String(error),
-      ));
-    } finally {
-      this.#modalInputs.delete(key);
-    }
-  }
-
   async #decide(
     root: WorkspaceRuntime,
     sessionId: string,
@@ -1084,6 +1045,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       throw new Error("input request is unknown or already resolved");
     }
     return input;
+  }
+
+  async #answerInput(
+    root: WorkspaceRuntime,
+    sessionId: string,
+    input: InputCard,
+    answer: string,
+  ): Promise<void> {
+    const current = this.#input(root.rootId, sessionId, input.requestId);
+    if (current.turnId !== input.turnId || current.itemId !== input.itemId) {
+      throw new Error("input request identity changed");
+    }
+    if (answer.trim().length === 0) {
+      throw new Error("input answer must not be empty");
+    }
+    if (isExpired(current.expiresAt)) {
+      throw new Error("input request has expired");
+    }
+    const key = sessionKey(root.rootId, sessionId, current.requestId);
+    if (this.#submittedInputs.has(key)) {
+      throw new Error("input answer is already submitted");
+    }
+    this.#submittedInputs.add(key);
+    try {
+      await root.controller.replyInput(
+        sessionId,
+        current.turnId,
+        current.requestId,
+        answer,
+      );
+    } catch (error) {
+      this.#submittedInputs.delete(key);
+      throw error;
+    }
   }
 
   #scheduleFlush(): void {

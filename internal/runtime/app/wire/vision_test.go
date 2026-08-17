@@ -104,8 +104,9 @@ model = "fixture-model"
 		}
 	}
 
-	// 11 + 30 for the read-only turn's samples, 1500 for the image. T4 removes
-	// the declaration and finish samples because no mutation occurred.
+	// 11 for image_analyze plus 30 for the one-step turn_complete declaration,
+	// plus 1500 for the image. The declaration summary is the final output, so
+	// there is no separate final-answer sample.
 	if receipt.InputTokens != 1541 {
 		t.Fatalf("receipt input tokens = %d, want the image included", receipt.InputTokens)
 	}

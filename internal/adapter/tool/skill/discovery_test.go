@@ -3,6 +3,7 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -68,18 +69,26 @@ func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {
 	}
 
 	target := page.Skills[0]
-	readArgs, _ := json.Marshal(readInput{
-		Handle: target.Handle,
-	})
-	read, err := registry.Execute(context.Background(), tool.Call{
-		Name: "skills.read", Arguments: readArgs, Authorized: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(read.Content) > skillReadBytes || read.Metadata["next_cursor"] == "" ||
-		read.Admission == nil || read.Admission.Kind != "skill" {
-		t.Fatalf("read result = %+v", read)
+	for name, handle := range map[string]string{
+		"skill":    target.Handle,
+		"package":  target.PackageHandle,
+		"resource": target.ResourceHandle,
+	} {
+		t.Run(name+"_handle", func(t *testing.T) {
+			readArgs, _ := json.Marshal(readInput{Handle: handle})
+			read, readErr := registry.Execute(context.Background(), tool.Call{
+				Name: "skills.read", Arguments: readArgs, Authorized: true,
+			})
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if len(read.Content) > skillReadBytes ||
+				read.Metadata["next_cursor"] == "" ||
+				read.Metadata["handle"] != target.Handle ||
+				read.Admission == nil || read.Admission.Kind != "skill" {
+				t.Fatalf("read result = %+v", read)
+			}
+		})
 	}
 	staleArgs, _ := json.Marshal(readInput{
 		Handle: "skh_" + strings.Repeat("0", 40),
@@ -88,6 +97,10 @@ func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {
 		Name: "skills.read", Arguments: staleArgs, Authorized: true,
 	}); err == nil {
 		t.Fatal("mismatched authority-bound resource was accepted")
+	} else if hint, ok := tool.RecoveryHintFromError(err); !ok ||
+		hint.ErrorCategory != skillruntime.ErrorCategoryHandleInvalid ||
+		hint.RequiredAction != "skills_list" || hint.RetryOriginal {
+		t.Fatalf("stale skill recovery hint = %+v, found = %t", hint, ok)
 	}
 }
 
@@ -128,8 +141,13 @@ func TestLoadSkillUsesTurnFrozenAuthorityHandle(t *testing.T) {
 	if _, err := executor.Execute(
 		WithAllowedSkills(t.Context(), map[string]string{}),
 		json.RawMessage(`{"name":"review"}`),
-	); err == nil {
-		t.Fatal("unselected skill was accepted")
+	); !errors.Is(err, skillruntime.ErrNotSelected) {
+		t.Fatalf("unselected skill error = %v", err)
+	} else if hint, ok := tool.RecoveryHintFromError(err); !ok ||
+		hint.ErrorCategory != skillruntime.ErrorCategoryNotSelected ||
+		hint.RequiredAction != "skills_list" ||
+		hint.RetryOriginal {
+		t.Fatalf("unselected skill recovery hint = %+v, found = %t", hint, ok)
 	}
 }
 

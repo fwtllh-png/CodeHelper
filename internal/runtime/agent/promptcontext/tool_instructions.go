@@ -22,8 +22,13 @@ func ToolInstructions(enabled bool, domain string) string {
 		return ""
 	}
 	base := "Use only the supplied tools and honor their schemas and policy decisions. " +
-		"A turn that mutates the workspace is not complete until turn_complete is called " +
-		"after the last mutation and every required quality check."
+		"Before ending a tool-enabled Turn, choose one structured state: call " +
+		"request_user_input when progress truly requires a user answer and wait in the " +
+		"same Turn, or call turn_complete. Ordinary assistant text is provisional and " +
+		"cannot terminate the Turn. For status=complete, put the exact user-facing final " +
+		"response in summary; the runtime publishes it without another model sample. " +
+		"Call complete only after the last requested action, mutation, and required " +
+		"quality check. Use status=incomplete with concrete pending_actions when work remains."
 	if domain = strings.TrimSpace(domain); domain != "" {
 		return base + " " + domain
 	}

@@ -1183,7 +1183,8 @@ func applyObserveProgress(
 	default:
 		progress.Stage = ProgressStageNone
 	}
-	if IsResearchIntent(current.Intent) {
+	if IsResearchIntent(current.Intent) &&
+		current.MutationRevision == 0 {
 		researchStage := ProgressStageNone
 		switch {
 		case command.CompletedSamples >= researchExhaustedSamples:
@@ -1570,6 +1571,13 @@ func applyCompletion(
 	}
 	if !decision.Accepted {
 		decision.RequiredAction = completionRejectionAction(decision.Reason)
+	} else {
+		// The accepted declaration owns the exact user-facing terminal output.
+		// Any earlier model prose was progress narration and remains provisional.
+		transition.State.ProvisionalOutput = []string{
+			strings.TrimSpace(candidate.Summary),
+		}
+		transition.State.OutputEligibility = false
 	}
 	copy := decision
 	copy.ChangedPaths = append([]string(nil), decision.ChangedPaths...)

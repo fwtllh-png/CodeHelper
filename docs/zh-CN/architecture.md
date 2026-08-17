@@ -195,28 +195,35 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
 8. Tool、Approval、Input Result 以一个可保留重试的 Result Command 返回；Coordinator
    在 Host Projection 前持久化逻辑闭合。
 9. 修改型工具通过 Journal/事务 Adapter 写入。
-10. `EvaluateTurnStep` 由 Reducer 选择 Repair、Verification 或 Complete。
-11. Verification Executor 通过 `VerificationFinished` 返回证据；Reducer 选择 Passed、
+10. 交互式主 Turn 必须选择结构化状态：`request_user_input` 创建可持久化的 Input
+    Wait，Tool Call 继续同一个 Turn，被接受的 `turn_complete` 才结束 Turn。
+    Provider `message_stop` 只结束一次 Sample；普通模型正文保持 Provisional，不能完成
+    Turn。对于 `status=complete`，声明中的 `summary` 是精确的用户可见 Final Output，
+    Runtime 无需额外 Model Sample 即可发布。Runtime 不根据正文措辞推断必需输入或完成
+    状态。Child Executor 没有 Input Host，不能等待用户输入，但仍必须通过 Tool Call
+    继续或通过 `turn_complete` 完成。
+11. `EvaluateTurnStep` 由 Reducer 选择 Repair、Verification 或 Complete。
+12. Verification Executor 通过 `VerificationFinished` 返回证据；Reducer 选择 Passed、
     Repair、Reported、Blocked、Failed 或 Reverted，并独占 Repair Budget。
-12. Engine 提交 `TerminalRequested`；Reducer 选择 Completed、Failed 或 Canceled。
+13. Engine 提交 `TerminalRequested`；Reducer 选择 Completed、Failed 或 Canceled。
     随后 Journal Commit/Suspend/Rollback 作为 Durable Effect 执行，并返回
     `JournalResultReceived`。Suspend 会为结构化绑定的 Continue Turn 保留
     Verification-blocked Draft。
-13. Scope 准备带 Revision 与 Digest 的 `SessionDelta`，包含 History、Usage、Cost、
+14. Scope 准备带 Revision 与 Digest 的 `SessionDelta`，包含 History、Usage、Cost、
     Working Set、Evidence、Failures 与 Compaction State。
-14. Runtime 为 Usage 与 Latency 冻结同一份带 Digest 的
+15. Runtime 为 Usage 与 Latency 冻结同一份带 Digest 的
     `TerminalMeasurementSnapshot`。Receipt、由 Measurement 投影的 Trace 与 Terminal
     Envelope 都引用该 Snapshot，不会再次读取可变 Counter。
-15. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Measurement、
+16. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Measurement、
     Session Delta、Final Output、Receipt、Terminal Event、Outbox 与真实 Operation
     Receipt。
-16. Engine 只在该 Commit 成功后幂等 Apply Session Delta；Commit 失败不修改 Session
+17. Engine 只在该 Commit 成功后幂等 Apply Session Delta；Commit 失败不修改 Session
     内存。
-17. 重启时 Runtime 扫描 Pending Terminal Projection，以稳定 Event ID 逐条 Append，
+18. 重启时 Runtime 扫描 Pending Terminal Projection，以稳定 Event ID 逐条 Append，
     成功后再将对应 Entry 标记为 Published。
-18. accepted StartTurn 仅在存在对应非终态 Domain Fact 时自动恢复；Coordinator requeue
+19. accepted StartTurn 仅在存在对应非终态 Domain Fact 时自动恢复；Coordinator requeue
     Running Effect，Engine 从 Durable Payload 接续 Provider、Tool 或 Journal 执行。
-19. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
+20. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
     替代请求。
 
 Engine 始终提交完整逻辑模型请求。只有模型显式广告能力、请求属性不变且输入严格扩展
@@ -389,6 +396,13 @@ Binding 隔离避免单个 Server 故障污染全部工具。
 ### Skill
 
 Skill 打包指令和资源。Discovery、Manifest、Lock 与 Enablement State 让最终内容可见。
+Turn Selection 会先保留被精确点名、Required 以及此前使用过的 Skill，再应用有界词法
+候选上限。Turn 会冻结 Name-to-handle Binding；加载时重新校验 Content Digest、
+Dependency Plan、Lock 与可选 Plugin Authority。`skills_read` 接受该冻结条目广告的
+任一精确 Handle（Skill、Package 或 Resource），并在结果中返回规范化 Skill Handle。
+真正无效或过期的 Handle 会返回结构化 `skills_list` 恢复动作，而不会直接终止 Turn。
+Execution Receipt 会记录选择规模、显式命中、Token Projection、Cache 使用情况以及
+Query/Candidate 截断。
 
 ### Plugin
 

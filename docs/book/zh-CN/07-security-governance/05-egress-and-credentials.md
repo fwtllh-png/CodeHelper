@@ -52,8 +52,11 @@ Private-address Permission Allowlist。它在连接前解析 DNS，并用已批�
 Redirect 与 CONNECT Target 都会重新进入 Gate。
 
 macOS Process 只能访问 Runtime-owned loopback proxy port。`exec_command` 必须声明
-`network_targets`；Undeclared Target、Private Resolution、Metadata Address 和 Direct
-Socket 均 Fail Closed。Linux 在 Namespace Proxy Bridge 可用前保持 Process 全禁网。
+`network_targets`；HTTPS 目标使用 `CONNECT`，HTTP 目标使用普通 HTTP Method。
+在 `suggest` 下，已声明的 Process Network Target 必须先经过人工 Network Approval；
+`auto` 才可以自动 Review 精确的只读目标。Undeclared Target、Private Resolution、
+Metadata Address 和 Direct Socket 均 Fail Closed。Linux 在 Namespace Proxy Bridge
+可用前保持 Process 全禁网。
 
 Process、Web、Provider 与 MCP 的每次决策使用同一个有界 `egress.Receipt` 结构。
 

@@ -1,0 +1,9 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "streams": [
+    "completion-call.sse"
+  ],
+  "expected_prompt": "say hello"
+}

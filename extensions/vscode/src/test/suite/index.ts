@@ -101,7 +101,7 @@ export async function run(): Promise<void> {
     assert.equal(vscode.workspace.workspaceFolders?.length, 1);
     assert.equal(api.workspaceMode, "single");
     assert.equal(api.runtimeAutoStartScheduled, true);
-    await verifyNativeFlows(api);
+    await verifyApprovalFocus(api);
   } else if (scenario === "native") {
     assert.equal(vscode.workspace.workspaceFolders?.length, 1);
     assert.equal(api.workspaceMode, "single");
@@ -716,6 +716,126 @@ async function waitForMultiRootReceipt(
       terminals.get(`${expectedRoot}:${turnId}`) === "turn.completed",
     `multi-root turn ${turnId} did not complete in ${folder.name}`,
   );
+}
+
+async function verifyApprovalFocus(api: ExtensionAPI): Promise<void> {
+  assert.ok(api.runtimeSnapshot);
+  assert.ok(api.onRuntimeEvent);
+  assert.ok(api.chatSessions);
+  assert.ok(api.testSubmitPrompt);
+  assert.ok(api.testDecideApproval);
+  assert.ok(api.testCancelTurn);
+  await waitFor(
+    () => api.runtimeSnapshot?.().state === "ready",
+    `CodeHelper Runtime did not become ready: ${JSON.stringify(api.runtimeSnapshot())}`,
+  );
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+  const session = api.chatSessions().find((candidate) => candidate.selected);
+  assert.ok(workspace);
+  assert.ok(session);
+  const approvals: {
+    readonly turnId: string;
+    readonly requestId: string;
+    readonly expiresAt: string;
+  }[] = [];
+  const resolved = new Set<string>();
+  const terminals = new Map<string, string>();
+  const evidenceEvents: unknown[] = [];
+  const evidenceDir = process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"];
+  const subscription = api.onRuntimeEvent((event, replayed) => {
+    if (replayed || isUnknownEvent(event)) return;
+    if (event.kind === "approval.required") {
+      approvals.push({
+        turnId: event.turn_id,
+        requestId: event.data.request_id,
+        expiresAt: event.data.expires_at,
+      });
+    } else if (event.kind === "approval.resolved") {
+      resolved.add(event.data.request_id);
+    } else if (event.kind === "turn.completed" ||
+      event.kind === "turn.failed" ||
+      event.kind === "turn.canceled") {
+      terminals.set(event.turn_id, event.kind);
+    }
+    if (event.kind.startsWith("approval.") ||
+      event.kind === "turn.completed" ||
+      event.kind === "turn.failed" ||
+      event.kind === "turn.canceled") {
+      evidenceEvents.push(event);
+    }
+  });
+  try {
+    await vscode.commands.executeCommand("codehelper.chat.focus");
+    for (let index = 0; index < 8; index++)
+      await vscode.commands.executeCommand("workbench.action.increaseViewSize");
+    const turn = await api.testSubmitPrompt(
+      session.sessionId,
+      "Run two guarded workspace mutations in one turn",
+    );
+    await waitFor(
+      () => approvals.filter((approval) =>
+        approval.turnId === turn.turnId).length >= 1,
+      "first guarded mutation did not request approval",
+    );
+    const first = approvals.find((approval) => approval.turnId === turn.turnId);
+    assert.ok(first);
+    if (evidenceDir !== undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await captureApprovalFocusEvidence(
+        "approval-pending-1.png",
+        first.requestId,
+      );
+    }
+    await api.testDecideApproval(
+      session.sessionId,
+      turn.turnId,
+      first.requestId,
+      first.expiresAt,
+    );
+    await waitFor(
+      () => approvals.filter((approval) =>
+        approval.turnId === turn.turnId).length >= 2,
+      "second guarded mutation did not request approval",
+    );
+    const second = approvals.filter((approval) =>
+      approval.turnId === turn.turnId)[1];
+    assert.ok(second);
+    assert.notEqual(second.requestId, first.requestId);
+    if (evidenceDir !== undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await captureApprovalFocusEvidence(
+        "approval-pending-2.png",
+        second.requestId,
+      );
+    }
+    await api.testCancelTurn(session.sessionId, turn.turnId);
+    await waitFor(
+      () => terminals.has(turn.turnId),
+      "approval focus turn did not terminate",
+    );
+    assert.equal(terminals.get(turn.turnId), "turn.canceled");
+    assert.equal(resolved.has(first.requestId), true);
+    assert.equal(
+      new TextDecoder().decode(await vscode.workspace.fs.readFile(
+        vscode.Uri.joinPath(workspace.uri, "risk.txt"),
+      )),
+      "baseline\n",
+    );
+  } finally {
+    subscription.dispose();
+    if (evidenceDir !== undefined) {
+      await writeFile(
+        join(evidenceDir, "approval-focus-evidence.json"),
+        JSON.stringify({
+          schema_version: 1,
+          approvals,
+          resolved_approval_ids: [...resolved],
+          terminals: [...terminals.entries()],
+          events: evidenceEvents,
+        }, null, 2),
+      );
+    }
+  }
 }
 
 async function verifyNativeFlows(
@@ -1857,6 +1977,155 @@ async function verifyHighRiskApproval(
   );
 }
 
+interface ApprovalFocusDOMEvidence {
+  readonly stateKey: string;
+  readonly activeTag: string;
+  readonly activeText: string;
+  readonly activeIsApprovalAction: boolean;
+  readonly activeInsideApproval: boolean;
+  readonly promptFocused: boolean;
+  readonly card: {
+    readonly top: number;
+    readonly bottom: number;
+    readonly height: number;
+  };
+  readonly viewport: {
+    readonly top: number;
+    readonly bottom: number;
+    readonly height: number;
+  };
+}
+
+async function captureApprovalFocusEvidence(
+  name: string,
+  requestId: string,
+): Promise<void> {
+  const directory = process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"];
+  const port = process.env["CODEHELPER_APPROVAL_DEBUG_PORT"];
+  assert.ok(directory && port);
+  const response = await fetch(`http://127.0.0.1:${port}/json/list`);
+  const targets = await response.json() as readonly {
+    readonly type?: string;
+    readonly title?: string;
+    readonly url?: string;
+    readonly webSocketDebuggerUrl?: string;
+  }[];
+  const stateKey = `approval:${requestId}`;
+  const expression = `JSON.stringify((() => {
+    const documents = [document];
+    for (let index = 0; index < documents.length; index++) {
+      for (const frame of documents[index].querySelectorAll("iframe")) {
+        try {
+          if (frame.contentDocument && !documents.includes(frame.contentDocument)) {
+            documents.push(frame.contentDocument);
+          }
+        } catch {}
+      }
+    }
+    const owner = documents.find((candidate) =>
+      [...candidate.querySelectorAll(".approval-card[data-state-key]")]
+        .some((card) => card.dataset.stateKey === ${JSON.stringify(stateKey)}));
+    const card = owner === undefined ? undefined
+      : [...owner.querySelectorAll(".approval-card[data-state-key]")]
+        .find((candidate) => candidate.dataset.stateKey === ${JSON.stringify(stateKey)});
+    const viewport = owner?.querySelector("#turns");
+    if (card === undefined || viewport === null || viewport === undefined) return null;
+    const active = owner.activeElement;
+    const rectangle = (element) => {
+      const bounds = element.getBoundingClientRect();
+      return { top: bounds.top, bottom: bounds.bottom, height: bounds.height };
+    };
+    return {
+      stateKey: card.dataset.stateKey,
+      activeTag: active?.tagName ?? "",
+      activeText: active?.textContent?.trim() ?? "",
+      activeIsApprovalAction: active?.matches(
+        ".approval-actions button:not(:disabled)"
+      ) ?? false,
+      activeInsideApproval: active !== null && card.contains(active),
+      promptFocused: active === owner.querySelector("#prompt"),
+      card: rectangle(card),
+      viewport: rectangle(viewport),
+    };
+  })())`;
+  const script = [
+    "const socket = new WebSocket(process.argv[1]);",
+    "socket.onopen = () => socket.send(JSON.stringify({",
+    "id: 1, method: 'Runtime.evaluate',",
+    "params: { expression: process.argv[2], returnByValue: true }",
+    "}));",
+    "socket.onmessage = (message) => {",
+    "const response = JSON.parse(String(message.data));",
+    "if (response.id !== 1) return;",
+    "process.stdout.write(JSON.stringify(response.result?.result?.value ?? null));",
+    "socket.close();",
+    "};",
+    "socket.onerror = () => { process.exitCode = 1; };",
+  ].join("");
+  let evidence: {
+    readonly type?: string;
+    readonly title?: string;
+    readonly url?: string;
+    readonly state: ApprovalFocusDOMEvidence | null;
+  }[] = [];
+  let state: ApprovalFocusDOMEvidence | null | undefined;
+  for (let attempt = 0; attempt < 10 && state === undefined; attempt++) {
+    evidence = [];
+    for (const target of targets) {
+      if (target.webSocketDebuggerUrl === undefined ||
+        (target.type !== "page" && target.type !== "iframe")) {
+        continue;
+      }
+      try {
+        const result = await execFile("node", [
+          "-e",
+          script,
+          target.webSocketDebuggerUrl,
+          expression,
+        ], { timeout: 2_000 });
+        const serialized = JSON.parse(result.stdout) as unknown;
+        evidence.push({
+          type: target.type,
+          ...(target.title === undefined ? {} : { title: target.title }),
+          ...(target.url === undefined ? {} : { url: target.url }),
+          state: typeof serialized === "string"
+            ? JSON.parse(serialized) as ApprovalFocusDOMEvidence | null
+            : null,
+        });
+      } catch {
+        evidence.push({
+          type: target.type,
+          ...(target.title === undefined ? {} : { title: target.title }),
+          ...(target.url === undefined ? {} : { url: target.url }),
+          state: null,
+        });
+      }
+    }
+    state = evidence.find((entry) =>
+      entry.state?.stateKey === stateKey)?.state;
+    if (state === undefined) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  await writeFile(
+    join(directory, name.replace(/\.png$/u, ".json")),
+    JSON.stringify(evidence, null, 2),
+  );
+  assert.ok(state, `Approval ${requestId} was not found in a CDP target`);
+  assert.equal(state.promptFocused, false, "Prompt retained focus during Approval");
+  assert.equal(
+    state.activeIsApprovalAction,
+    true,
+    `Approval action was not focused: ${state.activeTag} ${state.activeText}`,
+  );
+  assert.equal(state.activeInsideApproval, true);
+  assert.ok(
+    state.card.top >= state.viewport.top - 2 &&
+      state.card.bottom <= state.viewport.bottom + 2,
+    `Approval Card is outside the transcript viewport: ${JSON.stringify(state)}`,
+  );
+}
+
 async function captureApprovalScreenshot(name: string): Promise<void> {
   const directory = process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"];
   const port = process.env["CODEHELPER_APPROVAL_DEBUG_PORT"];
@@ -1889,7 +2158,7 @@ async function captureApprovalScreenshot(name: string): Promise<void> {
   ].join("");
   await execFile("node", [
     "-e", script, target.webSocketDebuggerUrl, join(directory, name),
-  ]);
+  ], { timeout: 5_000 });
 }
 
 async function verifyDiagnosticActions(

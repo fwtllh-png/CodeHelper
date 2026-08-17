@@ -21,4 +21,15 @@ func TestModeInstructionPackDiffersByMode(t *testing.T) {
 		!strings.Contains(operate, "shell_read") {
 		t.Fatalf("operate pack incomplete: %q", operate)
 	}
+	for mode, pack := range map[string]string{
+		"plan": plan, "act": act, "operate": operate,
+	} {
+		if !strings.Contains(pack, "request_user_input") ||
+			!strings.Contains(pack, "ordinary assistant text") ||
+			!strings.Contains(pack, "cannot replace") ||
+			!strings.Contains(pack, "turn_complete") ||
+			!strings.Contains(pack, "Resolve facts available through tools") {
+			t.Fatalf("%s interaction contract incomplete: %q", mode, pack)
+		}
+	}
 }

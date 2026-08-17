@@ -43,7 +43,7 @@ func Register(registry *tool.Registry, catalog *skillruntime.Catalog) error {
 func (*Tool) Descriptor() tool.Descriptor {
 	return tool.Descriptor{
 		Name:        "load_skill",
-		Description: "Load the bounded instructions for an enabled, discovered skill",
+		Description: "Load bounded instructions for a skill selected in this Turn's frozen catalog",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -93,7 +93,14 @@ func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
 		var ok bool
 		handle, ok = allowed[value.Name]
 		if !ok {
-			return tool.Result{}, errors.New("skill is not in this turn's catalog snapshot")
+			return tool.Result{}, tool.WithRecoveryHint(
+				skillruntime.ErrNotSelected,
+				tool.RecoveryHint{
+					ErrorCategory:  skillruntime.ErrorCategoryNotSelected,
+					RequiredAction: "skills_list",
+					RetryOriginal:  false,
+				},
+			)
 		}
 	}
 	var err error

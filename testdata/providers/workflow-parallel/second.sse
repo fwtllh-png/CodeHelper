@@ -1,4 +1,4 @@
-data: {"choices":[{"delta":{"content":"second complete"},"finish_reason":"stop"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete_second","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"second complete\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":2}}
 

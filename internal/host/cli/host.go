@@ -30,6 +30,7 @@ func runHost(
 	adapter := flags.String("adapter", "", "host adapter: acp")
 	dataDir := flags.String("data-dir", "", "persistent ACP state directory")
 	configPath := flags.String("config", "", "TOML configuration file")
+	mcpConfig := flags.String("mcp-config", "", "versioned MCP stdio server config JSON")
 	providerFixture := flags.String("provider-fixture", "", "provider fixture directory")
 	providerID := flags.String("provider", "", "explicit provider id")
 	modelID := flags.String("model", "", "model id within the selected provider")
@@ -95,6 +96,7 @@ func runHost(
 	}
 	return runPersistentACPHost(ctx, persistentACPHostOptions{
 		DataDir: *dataDir, ConfigPath: *configPath,
+		MCPConfigPath:   *mcpConfig,
 		ProviderFixture: *providerFixture, ProviderID: *providerID,
 		ModelID: *modelID, BaseURL: *baseURL, APIKeyEnv: *apiKeyEnv,
 		EnableTools: *enableTools, Workspace: *workspace, Posture: *posture,
@@ -112,6 +114,7 @@ func runHost(
 type persistentACPHostOptions struct {
 	DataDir               string
 	ConfigPath            string
+	MCPConfigPath         string
 	ProviderFixture       string
 	ProviderID            string
 	ModelID               string
@@ -207,7 +210,8 @@ func runPersistentACPHost(
 	}
 	application, err := wire.NewExec(context.Background(), wire.ExecOptions{
 		ConfigPath: options.ConfigPath, ConfigOverrides: overrides,
-		BaseURL: options.BaseURL, APIKeyEnv: options.APIKeyEnv,
+		MCPConfigPath: options.MCPConfigPath,
+		BaseURL:       options.BaseURL, APIKeyEnv: options.APIKeyEnv,
 		FixturePath: options.ProviderFixture, Permission: options.Posture,
 		RepositoryRulesPath: options.RepositoryRules, PersistentStore: store,
 		TrustedDynamicTools:   options.TrustedDynamicTools,

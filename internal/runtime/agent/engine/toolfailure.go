@@ -79,7 +79,8 @@ func recoverableToolFailure(err error) (string, bool) {
 		errors.Is(err, skillruntime.ErrDependencyConflict),
 		errors.Is(err, skillruntime.ErrDependencyCycle),
 		errors.Is(err, skillruntime.ErrCompatibilityMismatch),
-		errors.Is(err, skillruntime.ErrLockDrift):
+		errors.Is(err, skillruntime.ErrLockDrift),
+		errors.Is(err, skillruntime.ErrNotSelected):
 		return err.Error(), true
 	case errors.Is(err, tool.ErrPrecondition):
 		// The tool refused before touching anything, so replaying is free: the

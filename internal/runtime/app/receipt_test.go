@@ -138,6 +138,26 @@ func TestReceiptReportsProviderRetrySummary(t *testing.T) {
 	}
 }
 
+func TestReceiptProjectsSkillSelectionDiagnostics(t *testing.T) {
+	selection := receiptSkillSelection(agentengine.SkillSelectionMetrics{
+		Method: "weighted_lexical_v1", CatalogSize: 1024,
+		CandidateSize: 20, VisibleSize: 20, ExplicitMatches: 1,
+		QueryTerms: 64, QueryTruncated: true, CandidateSetTruncated: true,
+		OriginalTokens: 4096, ProjectedTokens: 512, TokenSavings: 0.875,
+		Recall: 1, Precision: 0.05, CacheHit: true,
+	})
+	receipt := newReceiptRecorder("load target").build(turnObservations{
+		skillSelection: selection,
+	})
+	if receipt.SkillSelection == nil ||
+		receipt.SkillSelection.CatalogSize != 1024 ||
+		!receipt.SkillSelection.QueryTruncated ||
+		!receipt.SkillSelection.CandidateSetTruncated ||
+		receipt.SkillSelection.ExplicitMatches != 1 {
+		t.Fatalf("skill selection = %+v", receipt.SkillSelection)
+	}
+}
+
 func TestReceiptSeparatesProviderAttemptsSamplesAndCompletionRepairs(t *testing.T) {
 	recorder := newReceiptRecorder("repair model output")
 	for _, event := range []agentengine.ModelExecution{

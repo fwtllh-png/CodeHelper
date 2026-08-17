@@ -50,6 +50,29 @@ func TestRequestUserInputRejectsBlankAndDuplicateOptions(t *testing.T) {
 	}
 }
 
+func TestRequestUserInputDescriptorRequiresStructuredWait(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := snapshot.Lookup("request_user_input")
+	if !ok ||
+		!strings.Contains(entry.Descriptor.Description, "block the current Turn") ||
+		!strings.Contains(entry.Descriptor.Description, "ordinary final text") {
+		t.Fatalf("request_user_input descriptor = %+v", entry.Descriptor)
+	}
+	options := entry.Descriptor.InputSchema["properties"].(map[string]any)["options"].(map[string]any)
+	if options["uniqueItems"] != true || options["maxItems"] != float64(12) {
+		t.Fatalf("request_user_input options schema = %+v", options)
+	}
+}
+
 func TestRequestUserInputFailClosedWithoutHost(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := interact.Register(registry, interact.Options{

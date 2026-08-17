@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -160,6 +161,21 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 		"skill lock drift": {
 			err:             fmt.Errorf("load skill: %w", skillruntime.ErrLockDrift),
 			wantRecoverable: true, wantContains: "lock drift",
+		},
+		"skill not selected": {
+			err:             skillruntime.ErrNotSelected,
+			wantRecoverable: true, wantContains: "catalog snapshot",
+		},
+		"skill handle invalid": {
+			err: tool.WithRecoveryHint(
+				skillruntime.ErrSkillHandleInvalid,
+				tool.RecoveryHint{
+					ErrorCategory:  skillruntime.ErrorCategoryHandleInvalid,
+					RequiredAction: "skills_list",
+					RetryOriginal:  false,
+				},
+			),
+			wantRecoverable: true, wantContains: "required_action=skills_list",
 		},
 		"precondition": {
 			err: fmt.Errorf("tool %q: %w", "file_apply", tool.Precondition(
@@ -637,6 +653,36 @@ func TestToolSelectionKeepsCoreAndBoundedRelevantDefinitions(t *testing.T) {
 	repeated, _ := json.Marshal(second)
 	if string(repeated) != string(encoded) {
 		t.Fatal("unchanged selection changed provider definitions")
+	}
+}
+
+func TestCatalogReceiptUsesLastProviderToolDefinitions(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	for _, name := range []string{
+		"turn_complete", "update_plan", "quality_test", "shell_read", "exec_command",
+	} {
+		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	scope := attachTestScope(t, engine)
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope.spec.Catalog = snapshot
+	engine.recordSampledTools(scope, snapshot, []provider.ToolDefinition{
+		{Name: "turn_complete"}, {Name: "update_plan"}, {Name: "quality_test"},
+	})
+
+	receipt := engine.CatalogReceipt()
+	if receipt == nil ||
+		slices.Contains(receipt.Advertised, "shell_read") ||
+		slices.Contains(receipt.Advertised, "exec_command") ||
+		!slices.Contains(receipt.Advertised, "turn_complete") ||
+		receipt.OmittedCount != 3 {
+		t.Fatalf("catalog receipt = %+v", receipt)
 	}
 }
 

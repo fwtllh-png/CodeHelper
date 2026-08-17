@@ -51,6 +51,21 @@ func TestNormalizeEffectAndRisk(t *testing.T) {
 			kind: EffectNetworkRead, risk: RiskMedium,
 		},
 		{
+			name: "process with declared network target",
+			call: effectInvocation("exec_command", CapabilityProcess, tool.AccessRead, tool.SandboxStrong,
+				tool.Resource{Kind: "process", ID: "workspace", Access: tool.AccessRead},
+				tool.Resource{Kind: "host", ID: "example.com", Access: tool.AccessWrite}),
+			kind: EffectNetworkRead, risk: RiskMedium,
+		},
+		{
+			name: "process with network and file mutation",
+			call: effectInvocation("exec_command", CapabilityProcess, tool.AccessRead, tool.SandboxStrong,
+				tool.Resource{Kind: "process", ID: "workspace", Access: tool.AccessRead},
+				tool.Resource{Kind: "host", ID: "example.com", Access: tool.AccessWrite},
+				tool.Resource{Kind: "file", Path: "result.json", Access: tool.AccessWrite}),
+			kind: EffectNetworkMutating, risk: RiskHigh,
+		},
+		{
 			name: "plugin high",
 			call: effectInvocation("plugin_call", CapabilityPlugin, tool.AccessTree, tool.SandboxStrong),
 			kind: EffectExternalMutation, risk: RiskHigh,
@@ -98,6 +113,12 @@ func TestEffectRiskDrivesApprovalWithoutToolNameExceptions(t *testing.T) {
 			want: ActionAllow,
 		},
 		{
+			name: "suggest network read asks", permission: PermissionSuggest,
+			call: effectInvocation("web_fetch", CapabilityNetwork, tool.AccessRead, tool.SandboxNone,
+				tool.Resource{Kind: "host", ID: "example.com", Access: tool.AccessRead}),
+			want: ActionAsk,
+		},
+		{
 			name: "auto network read auto reviews", permission: PermissionAuto,
 			call: effectInvocation("web_fetch", CapabilityNetwork, tool.AccessRead, tool.SandboxNone,
 				tool.Resource{Kind: "host", ID: "example.com", Access: tool.AccessRead}),
@@ -141,12 +162,18 @@ func TestBoundedAutoReview(t *testing.T) {
 	untyped := effectInvocation(
 		"unknown_write", CapabilityWrite, "", "",
 	)
-	for _, call := range []Invocation{network, agent} {
-		runtime := DefaultRuntime(ModeAct, PermissionSuggest)
-		reviewed := runtime.Evaluate(call)
-		if reviewed.Action != ActionAllow || reviewed.Code != "auto_review_allowed" {
-			t.Fatalf("reviewed = %+v", reviewed)
-		}
+	suggest := DefaultRuntime(ModeAct, PermissionSuggest)
+	if reviewed := suggest.Evaluate(network); reviewed.Action != ActionAsk {
+		t.Fatalf("suggest network review = %+v", reviewed)
+	}
+	if reviewed := suggest.Evaluate(agent); reviewed.Action != ActionAllow ||
+		reviewed.Code != "auto_review_allowed" {
+		t.Fatalf("suggest agent review = %+v", reviewed)
+	}
+	auto := DefaultRuntime(ModeAct, PermissionAuto)
+	if reviewed := auto.Evaluate(network); reviewed.Action != ActionAllow ||
+		reviewed.Code != "auto_review_allowed" {
+		t.Fatalf("auto network review = %+v", reviewed)
 	}
 	runtime := DefaultRuntime(ModeAct, PermissionSuggest)
 	if reviewed := runtime.Evaluate(high); reviewed.Action != ActionAsk {

@@ -330,9 +330,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 75,
-        "production_lines": 8460,
+        "production_lines": 8464,
         "options_fields": 70,
         "mutex_fields": 6
+      },
+      "relaxations": {
+        "production_lines": "Project Skill selection truncation diagnostics through Runtime wiring."
       }
     },
     {
@@ -592,9 +595,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 10610,
+        "production_lines": 10635,
         "options_fields": 60,
         "mutex_fields": 8
+      },
+      "relaxations": {
+        "production_lines": "Freeze the Provider-visible Tool catalog, keep uncapped Sessions operational, and require structured terminal state."
       }
     },
     {
@@ -603,9 +609,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 20,
-        "production_lines": 8602,
+        "production_lines": 8605,
         "options_fields": 18,
         "mutex_fields": 7
+      },
+      "relaxations": {
+        "production_lines": "Record frozen Skill selection diagnostics in the execution receipt."
       }
     },
     {
@@ -700,9 +709,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 5998,
+        "production_lines": 6000,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Publish the structured Skill selection receipt contract."
       }
     },
     {
@@ -838,8 +850,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/skill_projection.go",
       "limits": {
-        "lines": 46,
-        "max_function_lines": 37
+        "lines": 50,
+        "max_function_lines": 41
+      },
+      "relaxations": {
+        "lines": "Project all bounded Skill selection diagnostics without dropping truncation evidence.",
+        "max_function_lines": "Keep the Skill summary and diagnostic projection atomic."
       }
     },
     {
@@ -847,8 +863,12 @@
       "kind": "file",
       "path": "internal/adapter/skill/selection.go",
       "limits": {
-        "lines": 655,
-        "max_function_lines": 111
+        "lines": 680,
+        "max_function_lines": 114
+      },
+      "relaxations": {
+        "lines": "Guarantee explicit Skill recall before bounded lexical candidate selection.",
+        "max_function_lines": "Preserve explicit, required, and previously used candidates in one deterministic selection pass."
       }
     },
     {
@@ -1111,8 +1131,5 @@
         "event_switch_sites": 29
       }
     }
-  ],
-  "retirements": {
-    "context_authority_gate_file": "The standalone context-authority phase scanner was retired after context ownership converged into runtime tests and the architecture ratchet."
-  }
+  ]
 }

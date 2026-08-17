@@ -114,7 +114,7 @@ func readDescriptor() tool.Descriptor {
 	}
 	return tool.Descriptor{
 		Name:        "skills_read",
-		Description: "Read an authority-bound skill",
+		Description: "Read a skill by any advertised skill, package, or resource handle",
 		Aliases:     []tool.Alias{{Name: "skills.read", Hidden: true}},
 		InputSchema: map[string]any{
 			"type": "object", "properties": properties,
@@ -186,11 +186,11 @@ func (t *readTool) run(
 ) (tool.Result, error) {
 	summary, err := t.catalog.SummaryForHandle(ctx, input.Handle)
 	if err != nil {
-		return tool.Result{}, err
+		return tool.Result{}, recoverableSkillHandleError(err)
 	}
 	plan, err := t.catalog.LoadHandle(ctx, input.Handle)
 	if err != nil {
-		return tool.Result{}, err
+		return tool.Result{}, recoverableSkillHandleError(err)
 	}
 	content := renderLoadedPlan(plan)
 	digest := contentDigest(content)

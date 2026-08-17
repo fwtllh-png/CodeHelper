@@ -2,6 +2,8 @@ package engine
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
@@ -13,6 +15,29 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
+
+type finishProcessTool struct{}
+
+func (finishProcessTool) Descriptor() tool.Descriptor {
+	return tool.Descriptor{
+		Name: "exec_command", Description: "finish the current command",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityProcess,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelSerial,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type": "object", "properties": map[string]any{},
+			"additionalProperties": false,
+		},
+	}
+}
+
+func (finishProcessTool) Execute(
+	context.Context,
+	json.RawMessage,
+) (tool.Result, error) {
+	return tool.Result{Content: "command complete"}, nil
+}
 
 func TestTokenWindowIncludesStableDynamicToolsAndOutputReserve(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
@@ -167,11 +192,15 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 	}
 }
 
-func TestTokenWindowFinishOnlyRetainsOnlyTerminalToolsAtEightyFivePercent(t *testing.T) {
+func TestTokenWindowFinishOnlyRetainsCompletionToolsAtEightyFivePercent(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{textStream("done")}}
-	engine := newEngine(t, runtime, declarationRegistry(t, true))
+	registry := declarationRegistry(t, true)
+	if err := registry.Register(finishProcessTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
 	engine.options.StaticContext = []provider.Message{
-		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 12_100)),
+		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 11_000)),
 	}
 
 	if _, err := engine.Run(t.Context(), "finish", nil); err != nil {
@@ -185,61 +214,58 @@ func TestTokenWindowFinishOnlyRetainsOnlyTerminalToolsAtEightyFivePercent(t *tes
 		names[definition.Name] = true
 	}
 	if !names["turn_complete"] || !names["quality_verify"] ||
-		names["write_fixture"] || len(names) != 2 {
+		!names["write_fixture"] || !names["exec_command"] || len(names) != 4 {
 		t.Fatalf(
-			"terminal tools = %+v, want registered terminal tools only",
+			"finish-only tools = %+v, want completion tools",
 			names,
 		)
 	}
 }
 
-func TestTokenWindowFinishOnlyRepairsOneStaleBusinessToolProposal(t *testing.T) {
+func TestTokenWindowFinishOnlyExecutesCompletionMutation(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		toolCallStream("stale-read", "shell_read", `{"command":"go test ./..."}`),
+		toolCallStream("exec", "exec_command", `{}`),
 		textStream("bounded final answer"),
 	}}
-	engine := newEngine(t, runtime, declarationRegistry(t, true))
+	registry := declarationRegistry(t, true)
+	if err := registry.Register(finishProcessTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
 	engine.options.StaticContext = []provider.Message{
-		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 12_100)),
+		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 11_000)),
 	}
 
 	result, err := engine.Run(t.Context(), "finish", nil)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Run() error = %v requests=%+v", err, runtime.requests)
 	}
 	if result.Text != "bounded final answer" || len(runtime.requests) != 2 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
 	}
-	for index, request := range runtime.requests {
-		for _, definition := range request.Tools {
-			if !modelFinishToolAllowed(definition.Name) {
-				t.Fatalf("request %d advertised %q", index, definition.Name)
-			}
-		}
-	}
-	if !requestContains(runtime.requests[1], "[terminal_tool_correction]") ||
-		!requestContains(runtime.requests[1], `discarded_tool="shell_read"`) {
-		t.Fatalf("terminal correction missing from %+v", runtime.requests[1].Messages)
+	if result.State != Completed {
+		t.Fatalf("state = %s", result.State)
 	}
 }
 
-func TestTokenWindowFinishOnlyFailsAfterRepeatedStaleBusinessToolProposal(t *testing.T) {
+func TestTokenWindowFinishOnlyReturnsUnadvertisedToolAsRecoverableFailure(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		toolCallStream("stale-read-1", "shell_read", `{}`),
-		toolCallStream("stale-read-2", "shell_read", `{}`),
+		toolCallStream("stale-read", "shell_read", `{}`),
+		textStream("tool was unavailable"),
+		textStream("bounded final answer"),
 	}}
 	engine := newEngine(t, runtime, declarationRegistry(t, true))
 	engine.options.StaticContext = []provider.Message{
-		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 12_100)),
+		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 10_700)),
 	}
 
-	_, err := engine.Run(t.Context(), "finish", nil)
-	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict ||
-		!strings.Contains(err.Error(), `non-terminal tool "shell_read"`) {
-		t.Fatalf("Run() error = %v, want terminal route conflict", err)
+	result, err := engine.Run(t.Context(), "finish", nil)
+	if err != nil {
+		t.Fatalf("Run() error = %v requests=%+v", err, runtime.requests)
 	}
-	if len(runtime.requests) != 2 {
-		t.Fatalf("requests = %d, want two bounded attempts", len(runtime.requests))
+	if result.Text != "bounded final answer" || len(runtime.requests) != 3 ||
+		len(result.Tools) != 1 || result.Tools[0].CatalogRevision != 0 {
+		t.Fatalf("result=%+v requests=%+v", result, runtime.requests)
 	}
 }
 

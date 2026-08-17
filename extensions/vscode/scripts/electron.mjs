@@ -26,6 +26,7 @@ const workspaceB = join(fixtureRoot, "workspace-b");
 const multiWorkspace = join(fixtureRoot, "multi.code-workspace");
 const nativeBinary = process.env["CODEHELPER_VSCODE_BINARY"];
 const nativeFixture = process.env["CODEHELPER_VSCODE_SELECTION_FIXTURE"];
+const approvalFixture = process.env["CODEHELPER_VSCODE_APPROVAL_FIXTURE"];
 const subagentFixture = process.env["CODEHELPER_VSCODE_SUBAGENT_FIXTURE"];
 const testPlatform = process.env["CODEHELPER_VSCODE_TEST_PLATFORM"];
 const expectedHostArch = process.env["CODEHELPER_EXPECTED_HOST_ARCH"];
@@ -58,9 +59,22 @@ try {
       "CODEHELPER_VSCODE_BINARY and CODEHELPER_VSCODE_SELECTION_FIXTURE must be set together",
     );
   }
+  if (approvalFixture !== undefined && nativeBinary === undefined) {
+    throw new Error(
+      "CODEHELPER_VSCODE_APPROVAL_FIXTURE requires CODEHELPER_VSCODE_BINARY",
+    );
+  }
   const nativeWrapper = nativeBinary === undefined
     ? undefined
     : await fixtureWrapper(fixtureRoot, nativeBinary, nativeFixture);
+  const approvalWrapper = approvalFixture === undefined
+    ? nativeWrapper
+    : await fixtureWrapper(
+      fixtureRoot,
+      nativeBinary,
+      approvalFixture,
+      "codehelper-approval-fixture",
+    );
   if (subagentFixture !== undefined && nativeBinary === undefined) {
     throw new Error(
       "CODEHELPER_VSCODE_SUBAGENT_FIXTURE requires CODEHELPER_VSCODE_BINARY",
@@ -91,7 +105,7 @@ try {
     "empty",
     "workspace",
     "accessibility",
-    ...(nativeWrapper === undefined ? [] : ["approval"]),
+    ...(approvalWrapper === undefined ? [] : ["approval"]),
     ...(nativeWrapper === undefined ? [] : ["native"]),
     ...(nativeWrapper === undefined ? [] : ["multi"]),
     ...(subagentWrapper === undefined ? [] : ["subagent"]),
@@ -111,7 +125,7 @@ try {
         scenario === "subagent";
       const binaryPath = scenario === "subagent"
         ? subagentWrapper
-        : nativeWrapper;
+        : scenario === "approval" ? approvalWrapper : nativeWrapper;
       const settings = {
         "codehelper.runtime.autoStart": native,
         ...(native ? { "codehelper.binaryPath": binaryPath } : {}),

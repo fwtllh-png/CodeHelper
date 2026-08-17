@@ -66,6 +66,8 @@ type turnObservations struct {
 	selections []promptcontext.Selection
 	// catalog is the exact snapshot used by the turn's latest model sample.
 	catalog *protocol.ReceiptCatalog
+	// skillSelection records how the frozen Turn Skill catalog was reduced.
+	skillSelection *protocol.ReceiptSkillSelection
 	// evidence is what the session has established and what it has not proved.
 	evidence evidence.Snapshot
 	// budget is how much of the compaction threshold the history occupies.
@@ -183,17 +185,19 @@ func (r *receiptRecorder) freeze(
 	if r == nil || engine == nil || r.frozen != nil {
 		return
 	}
+	spec := engine.CurrentTurnSpec()
 	r.frozen = &turnObservations{
-		changes:     engine.TurnDiff(),
-		readPaths:   engine.ReadPaths(r.turn),
-		context:     engine.ContextReceipts(),
-		selections:  engine.ContextSelections(),
-		catalog:     engine.CatalogReceipt(),
-		evidence:    engine.EvidenceSnapshot(),
-		budget:      r.budget,
-		conflicts:   engine.RollbackConflicts(),
-		measurement: measurement,
-		spend:       engine.BudgetSnapshot(),
+		changes:        engine.TurnDiff(),
+		readPaths:      engine.ReadPaths(r.turn),
+		context:        engine.ContextReceipts(),
+		selections:     engine.ContextSelections(),
+		catalog:        engine.CatalogReceipt(),
+		skillSelection: receiptSkillSelection(spec.SkillSelection),
+		evidence:       engine.EvidenceSnapshot(),
+		budget:         r.budget,
+		conflicts:      engine.RollbackConflicts(),
+		measurement:    measurement,
+		spend:          engine.BudgetSnapshot(),
 	}
 }
 
@@ -310,6 +314,7 @@ func (r *receiptRecorder) build(
 		Routes:             append([]protocol.ReceiptRoute(nil), r.routes...),
 		ToolsSucceeded:     r.toolsSucceeded, ToolsFailed: r.toolsFailed,
 		Skills:             append([]protocol.ReceiptSkill(nil), r.skills...),
+		SkillSelection:     observed.skillSelection,
 		ApprovalsRequested: r.approvals,
 		Verification: protocol.ReceiptVerification{
 			Diagnostics: diagnosticsOutcome(r.diagnosticsStatus),
@@ -360,6 +365,30 @@ func (r *receiptRecorder) build(
 		})
 	}
 	return receipt
+}
+
+func receiptSkillSelection(
+	metrics agentengine.SkillSelectionMetrics,
+) *protocol.ReceiptSkillSelection {
+	if metrics.Method == "" {
+		return nil
+	}
+	return &protocol.ReceiptSkillSelection{
+		Method:                metrics.Method,
+		CatalogSize:           metrics.CatalogSize,
+		CandidateSize:         metrics.CandidateSize,
+		VisibleSize:           metrics.VisibleSize,
+		ExplicitMatches:       metrics.ExplicitMatches,
+		QueryTerms:            metrics.QueryTerms,
+		QueryTruncated:        metrics.QueryTruncated,
+		CandidateSetTruncated: metrics.CandidateSetTruncated,
+		OriginalTokens:        metrics.OriginalTokens,
+		ProjectedTokens:       metrics.ProjectedTokens,
+		TokenSavings:          metrics.TokenSavings,
+		Recall:                metrics.Recall,
+		Precision:             metrics.Precision,
+		CacheHit:              metrics.CacheHit,
+	}
 }
 
 // receiptLatency renders the measured phases. Everything but the first token is

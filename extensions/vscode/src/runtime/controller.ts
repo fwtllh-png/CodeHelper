@@ -11,6 +11,7 @@ import {
 } from "./recovery.js";
 import {
   launchRuntime,
+  resolveMCPConfigPath,
   verifyBinary,
   type BinaryVersion,
   type RuntimeProcess,
@@ -927,6 +928,18 @@ export class RuntimeController {
     if (configuredConfigPath.length > 0 && !isAbsolute(configuredConfigPath)) {
       throw new Error("codehelper.runtime.configPath must be a Host-local absolute path");
     }
+    const configuredMCPConfigPath = configuration
+      .get<string>("runtime.mcpConfigPath", "")
+      .trim();
+    const mcpConfigPath = vscode.workspace.isTrusted
+      ? resolveMCPConfigPath(workspaceRoot, configuredMCPConfigPath)
+      : undefined;
+    if (!vscode.workspace.isTrusted && configuredMCPConfigPath.length > 0) {
+      this.#output.appendLine(
+        `[runtime:${this.#workspace.name}] MCP config is disabled until ` +
+        "Workspace Trust is granted",
+      );
+    }
     const credentialProvider = this.#context.workspaceState.get<string>(
       this.#credentialProviderKey,
     );
@@ -948,6 +961,7 @@ export class RuntimeController {
       ...(configuredConfigPath.length === 0
         ? {}
         : { configPath: configuredConfigPath }),
+      ...(mcpConfigPath === undefined ? {} : { mcpConfigPath }),
       environment: credentialEnvironment,
       posture: runtimePosture(vscode.workspace.isTrusted),
       maxSteps,

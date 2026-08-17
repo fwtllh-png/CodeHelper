@@ -409,6 +409,8 @@ vscode-approval-integration: build vscode-install
 	cd $(VSCODE_DIR) && \
 		CODEHELPER_VSCODE_BINARY='$(CURDIR)/$(BINARY)' \
 		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
+		CODEHELPER_VSCODE_APPROVAL_FIXTURE='$(CURDIR)/testdata/providers/vscode-approval-focus' \
+		CODEHELPER_APPROVAL_EVIDENCE_DIR='$(CURDIR)/$(VSCODE_DIR)/.tmp/approval-evidence' \
 		CODEHELPER_ELECTRON_SCENARIOS=approval \
 		$(NPM) run test:electron
 

@@ -75,9 +75,13 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
   Path、Host/Port 或 Process Capability。重试使用递增 Revision 的 Permission
   Profile，并保持在同一 Strong Sandbox；Untyped 或重复 Denial 均 Fail Closed。
 - macOS 上的 `exec_command` 进程出口仅允许通过 Runtime-owned loopback proxy，
-  并要求用 `network_targets` 显式声明 Host、Port、Protocol、HTTP Method 和私网
-  权限。Sandbox 只能连接代理端口，直连和未声明目标均 Fail Closed。Linux 在
-  namespace proxy bridge 交付前保持进程全禁网。
+  并要求用 `network_targets` 显式声明 Host、Port、Protocol、传输 Method 和私网
+  权限。HTTPS 目标必须使用 `CONNECT`，HTTP 目标使用普通 HTTP Method。已声明的
+  Process Network Resource 会先于 Process Effect 被归类：`suggest` 必须经过人工
+  Network Approval，`auto` 才可以自动 Review 精确的只读目标。Sandbox 只能连接
+  代理端口，直连和未声明目标均 Fail Closed。该 Loopback Proxy 返回 CONNECT 403
+  表示目标未声明或未授权，并不表示远端服务不可达。Linux 在 namespace proxy
+  bridge 交付前保持进程全禁网。
 - Linux Strong Sandbox 将 Landlock、`no_new_privs`、seccomp 与 `execve` 固定在
   同一个 OS Thread。Seccomp 拒绝 Tracing、跨进程内存访问、Namespace 创建、
   `clone3` 与 `io_uring`；Restricted Network Mode 只保留 AF_UNIX 进程内 IPC。

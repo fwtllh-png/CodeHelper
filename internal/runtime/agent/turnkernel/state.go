@@ -132,16 +132,17 @@ type ProgressState struct {
 }
 
 type Policy struct {
-	CompletionRequired      bool   `json:"completion_required"`
-	VerificationRequired    bool   `json:"verification_required"`
-	VerificationMustPass    bool   `json:"verification_must_pass"`
-	VerificationMode        string `json:"verification_mode,omitempty"`
-	VerificationOnFailure   string `json:"verification_on_failure,omitempty"`
-	CompletionRepairLimit   uint32 `json:"completion_repair_limit"`
-	WorkspaceRepairLimit    uint32 `json:"workspace_repair_limit"`
-	DeclarationRepairLimit  uint32 `json:"declaration_repair_limit"`
-	VerificationRepairLimit uint32 `json:"verification_repair_limit"`
-	JournalRequired         bool   `json:"journal_required"`
+	CompletionRequired         bool   `json:"completion_required"`
+	StructuredTerminalRequired bool   `json:"structured_terminal_required"`
+	VerificationRequired       bool   `json:"verification_required"`
+	VerificationMustPass       bool   `json:"verification_must_pass"`
+	VerificationMode           string `json:"verification_mode,omitempty"`
+	VerificationOnFailure      string `json:"verification_on_failure,omitempty"`
+	CompletionRepairLimit      uint32 `json:"completion_repair_limit"`
+	WorkspaceRepairLimit       uint32 `json:"workspace_repair_limit"`
+	DeclarationRepairLimit     uint32 `json:"declaration_repair_limit"`
+	VerificationRepairLimit    uint32 `json:"verification_repair_limit"`
+	JournalRequired            bool   `json:"journal_required"`
 }
 
 type ToolCallState struct {
@@ -332,6 +333,12 @@ func NewStateWithPolicy(
 }
 
 func RequiresCompletion(state State) bool {
+	if !state.Policy.CompletionRequired {
+		return false
+	}
+	if state.Policy.StructuredTerminalRequired {
+		return true
+	}
 	required := state.MutationRevision != 0 ||
 		state.Intent == protocol.TurnIntentWorkspaceChange
 	if state.Intent == protocol.TurnIntentOperation {
@@ -339,7 +346,7 @@ func RequiresCompletion(state State) bool {
 			required = required || !result.IsError
 		}
 	}
-	return state.Policy.CompletionRequired && required
+	return required
 }
 
 func IsResearchIntent(intent protocol.TurnIntent) bool {

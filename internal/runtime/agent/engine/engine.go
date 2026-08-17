@@ -86,7 +86,8 @@ type Options struct {
 	WorkspaceTurnGate *WorkspaceTurnGate
 	Diagnostics       diagnostics.Runner
 	Verify            VerifyOptions
-	// RequireCompletionDeclaration binds turn_complete to mutation revision.
+	// RequireCompletionDeclaration requires an explicit terminal declaration
+	// and binds accepted completion to the current mutation revision.
 	RequireCompletionDeclaration bool
 	// TurnKernelObserver is diagnostics-only and panic-contained.
 	TurnKernelObserver func(turnkernel.TransitionRecord)

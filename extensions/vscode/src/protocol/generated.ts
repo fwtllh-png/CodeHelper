@@ -1585,6 +1585,22 @@ export type TurnReceiptData = {
       readonly "message": string;
       readonly "phase": string;
     }>;
+  readonly "skill_selection"?: {
+      readonly "cache_hit": boolean;
+      readonly "candidate_set_truncated": boolean;
+      readonly "candidate_size": number;
+      readonly "catalog_size": number;
+      readonly "explicit_matches": number;
+      readonly "method": string;
+      readonly "original_tokens": number;
+      readonly "precision": number;
+      readonly "projected_tokens": number;
+      readonly "query_terms": number;
+      readonly "query_truncated": boolean;
+      readonly "recall": number;
+      readonly "token_savings": number;
+      readonly "visible_size": number;
+    };
   readonly "skills"?: ReadonlyArray<{
       readonly "digest": string;
       readonly "locked": boolean;

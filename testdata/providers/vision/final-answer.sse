@@ -1,5 +1,0 @@
-data: {"choices":[{"delta":{"content":"The screenshot shows a login form."},"finish_reason":null}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":50,"completion_tokens":8}}
-
-data: [DONE]

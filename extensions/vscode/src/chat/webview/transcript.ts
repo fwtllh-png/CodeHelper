@@ -775,6 +775,7 @@ function approvalCard(
   box.dataset["stateKey"] = `approval:${approval.requestId}`;
   box.setAttribute("role", "region");
   box.setAttribute("aria-label", `${content.risk}: ${content.title}`);
+  box.tabIndex = -1;
   const header = document.createElement("div");
   header.className = "approval-header";
   appendText(header, "span", `approval-risk ${approval.risk}`, content.risk);
@@ -870,20 +871,104 @@ function inputCard(
   input: InputCard,
   actions: TranscriptActions,
 ): HTMLElement {
-  const box = document.createElement("details");
+  const box = document.createElement("section");
   box.className = "input-card";
   box.dataset["stateKey"] = `input:${input.requestId}`;
-  box.open = input.resolved === undefined;
-  appendText(box, "summary", "", "Input required");
-  appendText(box, "div", "", input.prompt);
-  if (input.resolved === undefined) {
-    for (const option of input.options) {
-      box.append(actionButton(option, () => {
-        actions.answer(input.requestId, option);
-      }));
+  box.setAttribute("role", "region");
+  box.setAttribute("aria-label", `Input required: ${input.prompt}`);
+
+  const header = document.createElement("div");
+  header.className = "input-header";
+  appendText(header, "span", "input-badge", "Input required");
+  appendText(header, "strong", "input-title", "Your answer is needed");
+  box.append(header);
+
+  const question = document.createElement("div");
+  question.className = "input-question";
+  appendText(question, "span", "input-question-label", "Question");
+  appendText(question, "p", "input-prompt", input.prompt);
+  box.append(question);
+
+  const expired = Date.parse(input.expiresAt) <= Date.now();
+  if (input.resolved !== undefined || expired) {
+    const outcome = document.createElement("div");
+    outcome.className = "input-outcome";
+    appendText(
+      outcome,
+      "strong",
+      "input-outcome-label",
+      input.resolved === undefined ? "Expired" : "Answered",
+    );
+    if (input.resolved !== undefined) {
+      appendText(outcome, "span", "input-outcome-answer", input.resolved);
     }
+    box.append(outcome);
+    return box;
   }
+
+  const options = document.createElement("div");
+  options.className = "input-options";
+  options.setAttribute("role", "group");
+  options.setAttribute("aria-label", "Answer options");
+  input.options.forEach((option, index) => {
+    options.append(inputOptionButton(index + 1, option, () => {
+      actions.answer(input.requestId, option);
+    }));
+  });
+
+  const customIndex = input.options.length + 1;
+  const customForm = document.createElement("form");
+  customForm.className = "input-custom-form";
+  customForm.hidden = true;
+  const customInput = document.createElement("textarea");
+  customInput.className = "input-custom-answer";
+  customInput.rows = 3;
+  customInput.maxLength = 64 << 10;
+  customInput.placeholder = "Type another answer";
+  customInput.setAttribute("aria-label", "Other answer");
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.className = "input-submit primary";
+  submit.textContent = "Submit answer";
+  submit.disabled = true;
+  customInput.addEventListener("input", () => {
+    submit.disabled = customInput.value.trim().length === 0;
+  });
+  customForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const answer = customInput.value;
+    if (answer.trim().length > 0) actions.answer(input.requestId, answer);
+  });
+  customForm.append(customInput, submit);
+
+  const custom = inputOptionButton(customIndex, "Other answer", () => {
+    customForm.hidden = false;
+    custom.classList.add("selected");
+    custom.setAttribute("aria-expanded", "true");
+    customInput.focus();
+  });
+  custom.classList.add("input-option-custom");
+  custom.setAttribute("aria-controls", `input-custom-${input.requestId}`);
+  custom.setAttribute("aria-expanded", "false");
+  customForm.id = `input-custom-${input.requestId}`;
+  options.append(custom);
+  box.append(options, customForm);
   return box;
+}
+
+function inputOptionButton(
+  index: number,
+  label: string,
+  handler: () => void,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "input-option";
+  button.setAttribute("aria-label", `${String(index)}. ${label}`);
+  appendText(button, "span", "input-option-index", `${String(index)}.`);
+  appendText(button, "span", "input-option-copy", label);
+  button.addEventListener("click", handler);
+  return button;
 }
 
 interface TranscriptState {

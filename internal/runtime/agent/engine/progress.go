@@ -19,6 +19,7 @@ type progressObservation struct {
 	stage             turnkernel.ProgressStage
 	observedSamples   uint32
 	noProgressSamples uint32
+	readOnlyResearch  bool
 	stageChanged      bool
 }
 
@@ -87,8 +88,7 @@ func noProgressFeedback(
 func noProgressProblem(
 	observation progressObservation,
 ) error {
-	if observation.noProgressSamples == 0 &&
-		observation.observedSamples > 0 {
+	if observation.readOnlyResearch {
 		return protocol.NewProblem(
 			protocol.CodeResourceExhausted,
 			fmt.Sprintf(
@@ -112,17 +112,6 @@ func noProgressProblem(
 	)
 }
 
-func completionFinalAnswerFeedback(turn uint64) provider.Message {
-	message := provider.TextMessage(
-		provider.RoleUser,
-		"[completion_final_answer]\n"+
-			"The completion declaration was accepted. Do not call any tools or "+
-			"perform more analysis. Produce the concise user-facing final answer now.",
-	)
-	message.Turn = turn
-	return message
-}
-
 func withFinishOnly(ctx context.Context) context.Context {
 	return context.WithValue(ctx, finishOnlyContextKey{}, true)
 }
@@ -141,7 +130,10 @@ func finishOnlyToolAllowed(name string, descriptor tool.Descriptor) bool {
 	switch name {
 	case "turn_complete",
 		"update_plan",
+		"request_user_input",
 		"file_read",
+		"exec_command",
+		"write_stdin",
 		"git_diff",
 		"git_status",
 		"quality_test",
@@ -152,4 +144,12 @@ func finishOnlyToolAllowed(name string, descriptor tool.Descriptor) bool {
 	default:
 		return false
 	}
+}
+
+func finishOnlyDefinitionAllowed(
+	catalog tool.CatalogSnapshot,
+	definition provider.ToolDefinition,
+) bool {
+	entry, ok := catalog.Lookup(definition.Name)
+	return ok && finishOnlyToolAllowed(definition.Name, entry.Descriptor)
 }

@@ -1009,6 +1009,74 @@ func TestNetworkHostApprovalSessionReuseAndCancel(t *testing.T) {
 	_ = canceled
 }
 
+func TestProcessNetworkTargetRequiresApprovalUnderSuggest(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	registry.SetSandboxBackend(strongBackend{})
+	executor := &testExecutor{descriptor: processNetworkDescriptor()}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan ApprovalRequest, 1)
+	grants := make(chan egress.Target, 1)
+	guard, err := New(Options{
+		Registry:  registry,
+		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
+		Workspace: t.TempDir(),
+		Approvals: func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		},
+		OnNetworkAllow: func(target egress.Target) {
+			grants <- target
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := guard.Execute(
+			context.Background(),
+			"call-process-network",
+			"process_network",
+			json.RawMessage(`{"network_targets":[{
+				"host":"api.example.com",
+				"protocol":"https",
+				"port":443,
+				"methods":["CONNECT"],
+				"allow_private":false
+			}]}`),
+		)
+		done <- err
+	}()
+	request := <-requests
+	if request.ReasonCode != ApprovalReasonNetworkHost ||
+		request.Network == nil ||
+		request.Network.Host != "api.example.com" ||
+		request.Network.Protocol != "https" ||
+		request.Network.Port != 443 ||
+		!reflect.DeepEqual(request.Network.Methods, []string{"CONNECT"}) {
+		t.Fatalf("process network approval = %+v", request)
+	}
+	if executor.calls.Load() != 0 {
+		t.Fatalf("process executed before approval: calls=%d", executor.calls.Load())
+	}
+	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	grant := <-grants
+	if grant.Host != "api.example.com" ||
+		grant.Protocol != "https" ||
+		grant.Port != 443 ||
+		!reflect.DeepEqual(grant.Methods, []string{"CONNECT"}) {
+		t.Fatalf("network grant = %+v", grant)
+	}
+	if executor.calls.Load() != 1 {
+		t.Fatalf("process calls = %d, want 1", executor.calls.Load())
+	}
+}
+
 func TestNetworkAutoReviewsUnderActAuto(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &testExecutor{descriptor: networkFetchDescriptor()}
@@ -1092,6 +1160,52 @@ func networkFetchDescriptor() tool.Descriptor {
 				"url": map[string]any{"type": "string", "minLength": 1},
 			},
 			"required": []string{"url"}, "additionalProperties": false,
+		},
+	}
+}
+
+func processNetworkDescriptor() tool.Descriptor {
+	return tool.Descriptor{
+		Name: "process_network", Description: "test process network",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityProcess,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+		SandboxRequirement: tool.SandboxStrong,
+		ResourceResolver: tool.ResourceResolver{
+			Templates: []tool.ResourceTemplate{{
+				Kind: "process", ID: "workspace", Access: tool.AccessRead, Tree: true,
+			}},
+			NetworkTargetsField: "network_targets",
+		},
+		Availability: tool.AvailabilityAvailable,
+		RepeatPolicy: tool.RepeatExecute,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"network_targets": map[string]any{
+					"type": "array",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"host": map[string]any{"type": "string"},
+							"protocol": map[string]any{
+								"type": "string", "enum": []string{"http", "https"},
+							},
+							"port": map[string]any{
+								"type": "integer", "minimum": 1, "maximum": 65535,
+							},
+							"methods": map[string]any{
+								"type": "array", "items": map[string]any{"type": "string"},
+							},
+							"allow_private": map[string]any{"type": "boolean"},
+						},
+						"required": []string{
+							"host", "protocol", "port", "methods", "allow_private",
+						},
+						"additionalProperties": false,
+					},
+				},
+			},
+			"required": []string{"network_targets"}, "additionalProperties": false,
 		},
 	}
 }

@@ -130,7 +130,6 @@ func TestEngineMutationTurnHasNoKernelDecisionDrift(t *testing.T) {
 			"summary":"implemented and verified",
 			"pending_actions":[]
 		}`),
-		textStream("Implemented and verified."),
 	}}
 	engine := declarationEngine(t, runtime, registry, passedReceipt())
 	var records []turnkernel.TransitionRecord
@@ -149,7 +148,7 @@ func TestEngineMutationTurnHasNoKernelDecisionDrift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.State != Completed {
+	if result.State != Completed || result.Text != "implemented and verified" {
 		t.Fatalf("result = %+v", result)
 	}
 	if len(records) == 0 ||
@@ -244,9 +243,6 @@ func TestTurnKernelC2ToolResultsBypassObserver(t *testing.T) {
 	if _, err := kernel.finishVerification(turnkernel.VerificationFinished{
 		Status: turnkernel.VerificationPassed,
 	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := kernel.bufferOutput("implemented"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := kernel.releaseOutput(); err != nil {

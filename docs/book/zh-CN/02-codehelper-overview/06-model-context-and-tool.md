@@ -32,7 +32,7 @@ last_verified: null
 ## 学习目标
 
 理解 Model 与 Provider 的边界、稳定和动态 Context 的组装方式、Tool Definition 如何
-进入受治理执行，以及 Tool Result 为什么触发下一次 Model Sample。
+进入受治理执行，以及非终态 Tool Result 如何触发下一次 Model Sample。
 
 ## 前置知识
 
@@ -138,8 +138,9 @@ Closed。
 Engine 按 Concurrency/Resource Rule 调度 Call，并统一经过 Guard。
 
 Result 可以包含 Content、Metadata、File Change、Error Category 和大输出 Handle。
-成功或 Recoverable Failure 作为 Tool Message 进入下一次 Sample，Model 可以继续、
-修正 Argument 或结束。
+成功或 Recoverable Failure 作为 Tool Message 追加到 Conversation。非终态 Result
+可以触发下一次 Sample，让 Model 基于证据继续或修正 Argument；已接受的
+`turn_complete` Result 则直接发布其 `summary`，不再发起下一次 Sample。
 
 ## 代码地图
 

@@ -7,6 +7,7 @@ var (
 	ErrDependencyCycle       = errors.New("skill dependency cycle")
 	ErrCompatibilityMismatch = errors.New("skill compatibility mismatch")
 	ErrLockDrift             = errors.New("skill lock drift")
+	ErrNotSelected           = errors.New("skill is not in this turn's catalog snapshot")
 )
 
 const (
@@ -14,6 +15,8 @@ const (
 	ErrorCategoryDependencyCycle       = "dependency_cycle"
 	ErrorCategoryCompatibilityMismatch = "compatibility_mismatch"
 	ErrorCategoryLockDrift             = "skill_lock_drift"
+	ErrorCategoryNotSelected           = "skill_not_selected"
+	ErrorCategoryHandleInvalid         = "skill_handle_invalid"
 )
 
 func ErrorCategory(err error) string {
@@ -26,6 +29,10 @@ func ErrorCategory(err error) string {
 		return ErrorCategoryCompatibilityMismatch
 	case errors.Is(err, ErrLockDrift):
 		return ErrorCategoryLockDrift
+	case errors.Is(err, ErrNotSelected):
+		return ErrorCategoryNotSelected
+	case errors.Is(err, ErrSkillHandleInvalid):
+		return ErrorCategoryHandleInvalid
 	default:
 		return ""
 	}

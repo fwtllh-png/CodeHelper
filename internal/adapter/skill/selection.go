@@ -199,9 +199,15 @@ func (c *Catalog) candidateForHandle(
 	if stateErr != nil {
 		return candidate{}, stateErr
 	}
+	var matched candidate
+	found := false
 	for _, item := range entries {
-		if skillHandle(item) != handle || !enabledFor(item, state, nil) {
+		if !candidateMatchesHandle(item, handle) ||
+			!enabledFor(item, state, nil) {
 			continue
+		}
+		if found {
+			return candidate{}, ErrSkillHandleInvalid
 		}
 		if item.source == SourcePlugin {
 			if err := c.verify(ctx, item); err != nil {
@@ -210,7 +216,11 @@ func (c *Catalog) candidateForHandle(
 				)
 			}
 		}
-		return item, nil
+		matched = item
+		found = true
+	}
+	if found {
+		return matched, nil
 	}
 	return candidate{}, ErrSkillHandleInvalid
 }
@@ -265,6 +275,12 @@ func selectSummaries(
 	queryPhrase := normalizeSelectionText(boundedQuery)
 	terms, termsTruncated := selectionTerms(queryPhrase)
 	explicit := explicitSkillNames(boundedQuery, request.Explicit)
+	for _, summary := range summaries {
+		name := normalizeSelectionText(summary.Name)
+		if name != "" && containsSelectionPhrase(queryPhrase, name) {
+			explicit[summary.Name] = true
+		}
+	}
 	required := make(map[string]bool, len(request.Required))
 	for _, name := range request.Required {
 		required[name] = true
@@ -273,11 +289,8 @@ func selectSummaries(
 	for _, handle := range request.UsedHandles {
 		used[handle] = true
 	}
-	candidateSetTruncated := len(summaries) > MaxSelectionCandidates
-	visiblePool := summaries
-	if len(visiblePool) > MaxSelectionCandidates {
-		visiblePool = visiblePool[:MaxSelectionCandidates]
-	}
+	visiblePool := boundedSelectionPool(summaries, explicit, required, used)
+	candidateSetTruncated := len(visiblePool) < len(summaries)
 	scored := make([]scoredSkill, 0, len(visiblePool))
 	requiredMatched := make(map[string]bool, len(required))
 	mandatoryMatches := 0
@@ -337,9 +350,9 @@ func selectSummaries(
 	}
 	visible := candidates
 	if request.Mode == SelectionShadow {
-		visible = append([]Summary(nil), visiblePool...)
+		visible = append([]Summary(nil), summaries...)
 	}
-	originalTokens := estimateMetadataTokens(visiblePool)
+	originalTokens := estimateMetadataTokens(summaries)
 	projectedTokens := estimateMetadataTokens(visible)
 	savings := 0.0
 	if originalTokens != 0 {
@@ -365,6 +378,32 @@ func selectSummaries(
 			TokenSavings: savings, Recall: recall, Precision: precision,
 		},
 	}, nil
+}
+
+func boundedSelectionPool(
+	summaries []Summary,
+	explicit, required map[string]bool,
+	used map[string]bool,
+) []Summary {
+	if len(summaries) <= MaxSelectionCandidates {
+		return summaries
+	}
+	result := make([]Summary, 0, MaxSelectionCandidates)
+	for _, summary := range summaries {
+		if explicit[summary.Name] || required[summary.Name] || used[summary.Handle] {
+			result = append(result, summary)
+		}
+	}
+	for _, summary := range summaries {
+		if len(result) >= MaxSelectionCandidates {
+			break
+		}
+		if explicit[summary.Name] || required[summary.Name] || used[summary.Handle] {
+			continue
+		}
+		result = append(result, summary)
+	}
+	return result
 }
 
 func normalizeSelectionRequest(request SelectionRequest) SelectionRequest {
@@ -509,43 +548,29 @@ func relatedSelectionTerm(terms map[string]bool, query string) bool {
 }
 
 func containsSelectionPhrase(haystack, needle string) bool {
-	return haystack == needle ||
-		strings.HasPrefix(haystack, needle+" ") ||
-		strings.HasSuffix(haystack, " "+needle) ||
-		strings.Contains(haystack, " "+needle+" ")
-}
-
-func skillHandle(item candidate) string {
-	return boundedSkillHandle("skh", strings.Join([]string{
-		item.metadata.Name, string(item.source), item.plugin, item.digest,
-		fmt.Sprint(item.authority.Generation), item.authority.Token,
-	}, "\x00"))
-}
-
-func skillPackageHandle(item candidate) string {
-	return boundedSkillHandle("skp", strings.Join([]string{
-		string(item.source), item.plugin, item.digest,
-		fmt.Sprint(item.authority.Generation), item.authority.Token,
-	}, "\x00"))
-}
-
-func skillResourceHandle(item candidate) string {
-	return boundedSkillHandle("skr", strings.Join([]string{
-		skillPackageHandle(item), item.relative, item.digest,
-	}, "\x00"))
-}
-
-func boundedSkillHandle(prefix, value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return prefix + "_" + hex.EncodeToString(sum[:20])
-}
-
-func validSkillHandle(value string) bool {
-	if len(value) != 44 || !strings.HasPrefix(value, "skh_") {
+	if needle == "" {
 		return false
 	}
-	_, err := hex.DecodeString(value[4:])
-	return err == nil
+	for offset := 0; offset <= len(haystack)-len(needle); {
+		match := strings.Index(haystack[offset:], needle)
+		if match < 0 {
+			return false
+		}
+		start := offset + match
+		end := start + len(needle)
+		leftBoundary := start == 0 || !isASCIISelectionWordByte(haystack[start-1])
+		rightBoundary := end == len(haystack) || !isASCIISelectionWordByte(haystack[end])
+		if leftBoundary && rightBoundary {
+			return true
+		}
+		offset = start + 1
+	}
+	return false
+}
+
+func isASCIISelectionWordByte(value byte) bool {
+	return value >= 'a' && value <= 'z' ||
+		value >= '0' && value <= '9'
 }
 
 func selectionCacheKey(

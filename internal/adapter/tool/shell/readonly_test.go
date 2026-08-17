@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -435,6 +436,26 @@ func TestOnlyExecCommandAdvertisesExactWritePaths(t *testing.T) {
 	if _, exists := properties["write_paths"]; !exists {
 		t.Fatal("exec_command does not advertise write_paths")
 	}
+	network, _ := properties["network_targets"].(map[string]any)
+	items, _ := network["items"].(map[string]any)
+	targetProperties, _ := items["properties"].(map[string]any)
+	required, _ := items["required"].([]string)
+	if network["maxItems"] != 32 ||
+		targetProperties["host"] == nil ||
+		targetProperties["protocol"] == nil ||
+		targetProperties["port"] == nil ||
+		targetProperties["methods"] == nil ||
+		targetProperties["allow_private"] == nil ||
+		len(required) != 5 ||
+		!strings.Contains(run.Description, "use method CONNECT for HTTPS") ||
+		!strings.Contains(run.Description, "Undeclared egress is denied") {
+		t.Fatalf("exec_command network target schema = %#v", network)
+	}
+	methods, _ := targetProperties["methods"].(map[string]any)
+	if methods["minItems"] != 1 ||
+		!strings.Contains(methods["description"].(string), "exactly CONNECT") {
+		t.Fatalf("exec_command method schema = %#v", methods)
+	}
 	for _, descriptor := range []tool.Descriptor{
 		(&Tool{readOnly: true}).Descriptor(),
 		writeStdinDescriptor(),
@@ -446,5 +467,57 @@ func TestOnlyExecCommandAdvertisesExactWritePaths(t *testing.T) {
 		if _, exists := properties["write_paths"]; exists {
 			t.Fatalf("%s schema accepts write_paths", descriptor.Name)
 		}
+	}
+}
+
+func TestExecCommandRejectsInvalidHTTPSMethodBeforeApproval(t *testing.T) {
+	root := t.TempDir()
+	manager := process.NewSessionManager(4096)
+	t.Cleanup(manager.CloseAll)
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithManagerAndBackend(
+		registry,
+		root,
+		manager,
+		passthroughBackend{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	requested := false
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionSuggest,
+		),
+		Workspace: root,
+		Approvals: func(context.Context, toolguard.ApprovalRequest) error {
+			requested = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = guarded.Execute(
+		t.Context(),
+		"invalid-https-method",
+		"exec_command",
+		json.RawMessage(`{
+			"command":"curl https://api.example.com/",
+			"network_targets":[{
+				"host":"api.example.com",
+				"protocol":"https",
+				"port":443,
+				"methods":["GET"],
+				"allow_private":false
+			}]
+		}`),
+	)
+	if err == nil || !strings.Contains(err.Error(), "requires method CONNECT") {
+		t.Fatalf("invalid HTTPS method error = %v", err)
+	}
+	if requested {
+		t.Fatal("invalid HTTPS target requested approval before validation")
 	}
 }

@@ -10,6 +10,7 @@ import (
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -85,10 +86,9 @@ func TestWorkspaceChangeRequiresCompletionDeclaration(t *testing.T) {
 		textStream("Next I will run the remaining validation."),
 		toolCallStream("complete-1", completiontool.Name, `{
 			"status":"complete",
-			"summary":"implemented and verified",
+			"summary":"Implemented and verified.",
 			"pending_actions":[]
 		}`),
-		textStream("Implemented and verified."),
 	}}
 	engine := declarationEngine(t, runtime, registry, passedReceipt())
 	var events []Event
@@ -107,7 +107,7 @@ func TestWorkspaceChangeRequiresCompletionDeclaration(t *testing.T) {
 	if result.State != Completed || result.Text != "Implemented and verified." {
 		t.Fatalf("result = %+v", result)
 	}
-	if len(runtime.requests) != 4 ||
+	if len(runtime.requests) != 3 ||
 		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
 		t.Fatalf("requests did not contain declaration repair: %+v", runtime.requests)
 	}
@@ -137,10 +137,9 @@ func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
 		textStream("I changed the file without declaring completion."),
 		toolCallStream("complete-1", completiontool.Name, `{
 			"status":"complete",
-			"summary":"implemented and verified",
+			"summary":"Implemented and verified.",
 			"pending_actions":[]
 		}`),
-		textStream("Implemented and verified."),
 	}}
 	engine := declarationEngine(t, runtime, registry, passedReceipt())
 	var events []Event
@@ -159,7 +158,7 @@ func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
 	if result.State != Completed || result.Text != "Implemented and verified." {
 		t.Fatalf("result = %+v", result)
 	}
-	if len(runtime.requests) != 4 ||
+	if len(runtime.requests) != 3 ||
 		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
 		t.Fatalf("mutation did not activate completion gate: %+v", runtime.requests)
 	}
@@ -170,14 +169,19 @@ func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
 	}
 }
 
-func TestReadOnlyToolTurnCompletesWithoutDeclarationRepair(t *testing.T) {
+func TestStructuredReadOnlyToolTurnRequiresDeclaration(t *testing.T) {
 	registry := declarationRegistry(t, false)
 	if err := registry.Register(&echoTool{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		toolCallStream("read-1", "echo", `{"text":"evidence"}`),
-		textStream("The review is complete and the findings are ready."),
+		textStream("I will now prepare the findings."),
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"The review is complete and the findings are ready.",
+			"pending_actions":[]
+		}`),
 	}}
 	engine := declarationEngine(t, runtime, registry, passedReceipt())
 	var events []Event
@@ -197,13 +201,52 @@ func TestReadOnlyToolTurnCompletesWithoutDeclarationRepair(t *testing.T) {
 		result.Text != "The review is complete and the findings are ready." {
 		t.Fatalf("result = %+v", result)
 	}
-	if len(runtime.requests) != 2 {
-		t.Fatalf("read-only tool turn used declaration repair: %+v", runtime.requests)
+	if len(runtime.requests) != 3 ||
+		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
+		t.Fatalf("read-only tool turn skipped declaration repair: %+v", runtime.requests)
 	}
-	for _, request := range runtime.requests {
-		if requestContains(request, "[completion_declaration_required]") {
-			t.Fatalf("read-only turn received declaration feedback: %+v", events)
+	for _, event := range events {
+		if event.Text == "I will now prepare the findings." {
+			t.Fatalf("provisional narration reached stable output: %+v", events)
 		}
+	}
+}
+
+func TestStructuredNoToolPlanRequiresDeclaration(t *testing.T) {
+	registry := declarationRegistry(t, false)
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		textStream("I will now provide the implementation plan."),
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"The implementation plan is ready.",
+			"pending_actions":[]
+		}`),
+	}}
+	engine := declarationEngine(t, runtime, registry, passedReceipt())
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-read-only-plan", "plan the change",
+		protocol.TurnIntentPlan, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed ||
+		result.Text != "The implementation plan is ready." ||
+		len(runtime.requests) != 2 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	if !requestContains(runtime.requests[1], "[completion_declaration_required]") {
+		t.Fatalf("plan skipped declaration repair: %+v", runtime.requests)
+	}
+	history := engine.History()
+	if len(history) == 0 {
+		t.Fatal("completed declaration did not commit history")
+	}
+	final := history[len(history)-1]
+	if final.Role != provider.RoleAssistant ||
+		blocksText(final.Blocks) != "The implementation plan is ready." {
+		t.Fatalf("final history message = %+v", final)
 	}
 }
 
@@ -223,10 +266,9 @@ func TestIncompleteDeclarationContinuesCurrentTurn(t *testing.T) {
 		toolCallStream("read-2", "echo", `{"text":"second evidence"}`),
 		toolCallStream("complete-1", completiontool.Name, `{
 			"status":"complete",
-			"summary":"both evidence checks completed",
+			"summary":"Both evidence checks are complete.",
 			"pending_actions":[]
 		}`),
-		textStream("Both evidence checks are complete."),
 	}}
 	engine := declarationEngine(t, runtime, registry, passedReceipt())
 	var events []Event
@@ -246,7 +288,7 @@ func TestIncompleteDeclarationContinuesCurrentTurn(t *testing.T) {
 		result.Text != "Both evidence checks are complete." {
 		t.Fatalf("result = %+v", result)
 	}
-	if len(runtime.requests) != 6 ||
+	if len(runtime.requests) != 5 ||
 		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
 		t.Fatalf("incomplete declaration did not continue the turn: %+v",
 			runtime.requests)
@@ -444,19 +486,12 @@ func TestVerificationRepairInvalidatesCompletionDeclaration(t *testing.T) {
 			"summary":"mutation complete",
 			"pending_actions":[]
 		}`),
-		toolCallStream("complete-premature", completiontool.Name, `{
-			"status":"complete",
-			"summary":"declared without quality evidence",
-			"pending_actions":[]
-		}`),
-		textStream("I will finish now."),
 		toolCallStream("verify-1", "quality_verify", `{"covered_paths":["a.go"]}`),
 		toolCallStream("complete-2", completiontool.Name, `{
 			"status":"complete",
-			"summary":"implemented and verified",
+			"summary":"Implemented and verified.",
 			"pending_actions":[]
 		}`),
-		textStream("Implemented and verified."),
 	}}
 	engine := declarationEngine(t, runtime, registry, verify.Receipt{
 		Scope: verify.ScopeDiagnostics, Status: verify.StatusUnavailable,
@@ -481,8 +516,8 @@ func TestVerificationRepairInvalidatesCompletionDeclaration(t *testing.T) {
 		result.Verification.Status != verify.StatusPassed {
 		t.Fatalf("result = %+v", result)
 	}
-	if len(runtime.requests) != 7 ||
-		!requestContains(runtime.requests[4], "[verify]") ||
+	if len(runtime.requests) != 4 ||
+		!requestContains(runtime.requests[2], "[verify]") ||
 		completion == nil ||
 		completion.CallID != "complete-2" {
 		t.Fatalf("repair sequence = %+v", runtime.requests)
@@ -504,10 +539,9 @@ func TestCompletionRepairBudgetResetsAfterAcceptedQualityEvidence(t *testing.T) 
 		textStream("Quality evidence is now available."),
 		toolCallStream("complete-2", completiontool.Name, `{
 			"status":"complete",
-			"summary":"implemented and verified",
+			"summary":"Implemented and verified.",
 			"pending_actions":[]
 		}`),
-		textStream("Implemented and verified."),
 	}}
 	engine := declarationEngine(t, runtime, registry, verify.Receipt{
 		Scope: verify.ScopeDiagnostics, Status: verify.StatusUnavailable,
@@ -559,6 +593,7 @@ func declarationEngine(
 		Workspace: root, Journal: newTestWorkspaceJournal(t, root),
 		Authorize:                    func(provider.ToolCall) bool { return true },
 		RequireCompletionDeclaration: true,
+		InputHost:                    interact.NewHost(0),
 		Verify: VerifyOptions{
 			Mode: VerifyModeSoft, Scope: verify.ScopeDiagnostics,
 			MaxRepairSteps: 1,

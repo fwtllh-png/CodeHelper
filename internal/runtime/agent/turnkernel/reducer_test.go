@@ -10,55 +10,116 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-func TestReadOnlyAnswerCompletesWithoutMutationContract(t *testing.T) {
-	state := startSampling(t, protocol.TurnIntentAnswer)
-	state = apply(t, state, ModelTextReceived{Text: "analysis complete"}).State
-	released := apply(t, state, ReleaseProvisionalOutput{})
-	if len(released.Effects) != 0 ||
-		!released.State.OutputEligibility ||
-		len(released.State.ProvisionalOutput) != 1 {
-		t.Fatalf("release effects = %+v", released.Effects)
-	}
-	state = released.State
+func TestNonInteractiveReadOnlyResearchCompletesWithoutDeclaration(t *testing.T) {
+	for _, intent := range []protocol.TurnIntent{
+		protocol.TurnIntentAnswer,
+		protocol.TurnIntentPlan,
+	} {
+		t.Run(string(intent), func(t *testing.T) {
+			state := startSampling(t, intent)
+			state = apply(t, state, ModelTextReceived{
+				Text: "analysis complete",
+			}).State
+			released := apply(t, state, ReleaseProvisionalOutput{})
+			if len(released.Effects) != 0 ||
+				!released.State.OutputEligibility ||
+				len(released.State.ProvisionalOutput) != 1 {
+				t.Fatalf("release effects = %+v", released.Effects)
+			}
+			state = released.State
 
-	prepared := apply(t, state, TerminalRequested{})
-	if prepared.State.Phase != PhaseCommitting ||
-		len(prepared.Effects) != 0 {
-		t.Fatalf("prepared = %+v", prepared)
-	}
-	finished := apply(t, prepared.State, FinishTerminal{})
-	if finished.State.Phase != PhaseCompleted ||
-		finished.State.Terminal == nil ||
-		len(finished.Effects) != 0 {
-		t.Fatalf("finished = %+v", finished)
-	}
-	if len(finished.State.ProvisionalOutput) != 0 ||
-		!finished.State.OutputEligibility ||
-		len(finished.State.FinalOutput) != 1 {
-		t.Fatalf("output state = %+v", finished.State)
+			prepared := apply(t, state, TerminalRequested{})
+			if prepared.State.Phase != PhaseCommitting ||
+				len(prepared.Effects) != 0 {
+				t.Fatalf("prepared = %+v", prepared)
+			}
+			finished := apply(t, prepared.State, FinishTerminal{})
+			if finished.State.Phase != PhaseCompleted ||
+				finished.State.Terminal == nil ||
+				len(finished.Effects) != 0 {
+				t.Fatalf("finished = %+v", finished)
+			}
+			if len(finished.State.ProvisionalOutput) != 0 ||
+				!finished.State.OutputEligibility ||
+				len(finished.State.FinalOutput) != 1 {
+				t.Fatalf("output state = %+v", finished.State)
+			}
+		})
 	}
 }
 
-func TestCompletionRequirementUsesMutationIntentAndIntegrationFacts(t *testing.T) {
+func TestStructuredInteractiveTurnRequiresDeclarationAndUsesItsSummary(
+	t *testing.T,
+) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state.Policy.StructuredTerminalRequired = true
+	state = apply(t, state, ModelTextReceived{
+		Text: "I will continue investigating.",
+	}).State
+	repair := apply(t, state, EvaluateTurnStep{
+		ProgressKey: "sample=1",
+	})
+	if repair.State.NextAction != StepActionRepairDeclaration {
+		t.Fatalf("ordinary text action = %q", repair.State.NextAction)
+	}
+	state = apply(t, repair.State, CompletionEvaluated{
+		Candidate: CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "complete",
+			Summary:          "The investigation is complete.",
+			CompletionCall:   "complete-1",
+			BatchSize:        1,
+		},
+	}).State
+	if state.Completion == nil || !state.Completion.Accepted ||
+		len(state.ProvisionalOutput) != 1 ||
+		state.ProvisionalOutput[0] != "The investigation is complete." {
+		t.Fatalf("completion output = %+v", state)
+	}
+	completed := apply(t, state, EvaluateTurnStep{
+		ProgressKey: "sample=2",
+	})
+	if completed.State.NextAction != StepActionComplete {
+		t.Fatalf("declared action = %q", completed.State.NextAction)
+	}
+}
+
+func TestCompletionRequirementUsesMutationIntentAndOperationFacts(t *testing.T) {
 	answer := startSampling(t, protocol.TurnIntentAnswer)
 	answer.ClosedCalls["read"] = ToolResultState{ID: "read", Name: "file_read"}
 	if RequiresCompletion(answer) {
 		t.Fatal("read-only answer requires completion")
 	}
+	answer.Policy.StructuredTerminalRequired = true
+	if !RequiresCompletion(answer) {
+		t.Fatal("structured interactive answer does not require completion")
+	}
+	answer.Policy.StructuredTerminalRequired = false
+	answer.ClosedCalls["read"] = ToolResultState{ID: "read", Name: "file_read"}
 	answer.MutationRevision = 1
 	if !RequiresCompletion(answer) {
 		t.Fatal("observed mutation does not require completion")
 	}
 	operation := startSampling(t, protocol.TurnIntentOperation)
-	operation.ClosedCalls["deploy"] = ToolResultState{ID: "deploy", Name: "deploy"}
+	operation.ClosedCalls["deploy"] = ToolResultState{
+		ID: "deploy", Name: "deploy",
+	}
 	if !RequiresCompletion(operation) {
-		t.Fatal("successful integration does not require completion")
+		t.Fatal("successful operation does not require completion")
 	}
 	operation.ClosedCalls["deploy"] = ToolResultState{
 		ID: "deploy", Name: "deploy", IsError: true,
 	}
 	if RequiresCompletion(operation) {
-		t.Fatal("failed integration was treated as completed")
+		t.Fatal("failed operation was treated as completed")
+	}
+	workspaceChange := startSampling(t, protocol.TurnIntentWorkspaceChange)
+	if !RequiresCompletion(workspaceChange) {
+		t.Fatal("workspace change intent does not require completion")
+	}
+	workspaceChange.Policy.CompletionRequired = false
+	if RequiresCompletion(workspaceChange) {
+		t.Fatal("disabled completion policy still requires completion")
 	}
 }
 
@@ -395,6 +456,38 @@ func TestReadOnlyProgressHasBoundedTotalSampleStages(t *testing.T) {
 			t.Fatalf("samples=%d stage=%q, want %q",
 				test.samples, state.Progress.Stage, test.want)
 		}
+	}
+}
+
+func TestResearchProgressLeavesTotalSampleCapAfterMutation(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state = apply(t, state, ObserveProgress{
+		Signature:        "mutation=0",
+		CompletedSamples: researchFinishOnlySamples,
+	}).State
+	if state.Progress.Stage != ProgressStageFinishOnly {
+		t.Fatalf("pre-mutation progress = %+v", state.Progress)
+	}
+
+	proposed := apply(t, state, ToolCallsProposed{
+		Calls: []ToolCallState{{ID: "write-1", Name: "file_write"}},
+	})
+	effect := proposed.Effects[0]
+	state = apply(t, proposed.State, EffectStarted{
+		EffectID: effect.ID, Attempt: 1,
+	}).State
+	state = apply(t, state, ToolResultReceived{
+		EffectID: effect.ID,
+		CallID:   "write-1",
+		Changes:  []ObservedChange{{Path: "mcp.json", Kind: "created"}},
+	}).State
+	state = apply(t, state, ObserveProgress{
+		Signature:        "mutation=1",
+		CompletedSamples: researchExhaustedSamples,
+	}).State
+	if state.Progress.Stage != ProgressStageNone ||
+		state.Progress.NoProgressSamples != 0 {
+		t.Fatalf("post-mutation progress = %+v", state.Progress)
 	}
 }
 

@@ -67,6 +67,25 @@ func TestExecutionReceiptKeepsUnavailableVerification(t *testing.T) {
 	}
 }
 
+func TestExecutionReceiptValidatesSkillSelection(t *testing.T) {
+	valid := ReceiptSkillSelection{
+		Method: "weighted_lexical_v1", CatalogSize: 1024,
+		CandidateSize: 20, VisibleSize: 20, ExplicitMatches: 1,
+		QueryTerms: 64, QueryTruncated: true, CandidateSetTruncated: true,
+		OriginalTokens: 4096, ProjectedTokens: 512, TokenSavings: 0.875,
+		Recall: 1, Precision: 0.05,
+	}
+	receipt := &ExecutionReceiptData{SkillSelection: &valid}
+	if err := receipt.validate(); err != nil {
+		t.Fatal(err)
+	}
+	invalid := valid
+	invalid.ExplicitMatches = invalid.CandidateSize + 1
+	if err := (&ExecutionReceiptData{SkillSelection: &invalid}).validate(); err == nil {
+		t.Fatal("invalid skill selection was accepted")
+	}
+}
+
 func TestExecutionReceiptValidatesDetailedVerificationAndWorkspace(t *testing.T) {
 	receipt := &ExecutionReceiptData{
 		VerificationDetail: &ReceiptVerificationDetail{

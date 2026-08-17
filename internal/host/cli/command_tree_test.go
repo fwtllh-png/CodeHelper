@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -45,6 +46,41 @@ func TestThreadListRequiresDataDir(t *testing.T) {
 	code := cli.Run([]string{"thread", "list"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("code=%d", code)
+	}
+}
+
+func TestHostExposesMCPConfig(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := cli.Run([]string{"host", "--help"}, &stdout, &stderr)
+	if code != 0 && code != 2 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if output := stdout.String() + stderr.String(); !strings.Contains(output, "-mcp-config") {
+		t.Fatalf("host help does not expose MCP config: %q", output)
+	}
+}
+
+func TestHostForwardsMCPConfigToRuntime(t *testing.T) {
+	workspace := t.TempDir()
+	missing := filepath.Join(workspace, "missing-mcp.json")
+	var stdout, stderr bytes.Buffer
+	code := cli.Run([]string{
+		"host", "--adapter", "acp",
+		"--data-dir", t.TempDir(),
+		"--provider-fixture", filepath.Join(
+			"..", "..", "..", "testdata", "providers", "openai",
+		),
+		"--provider", "openai",
+		"--model", "gpt-fixture",
+		"--workspace", workspace,
+		"--enable-tools",
+		"--mcp-config", missing,
+	}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), missing) {
+		t.Fatalf("MCP config path did not reach Runtime: %q", stderr.String())
 	}
 }
 

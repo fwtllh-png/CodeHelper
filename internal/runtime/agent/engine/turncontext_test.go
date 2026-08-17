@@ -12,6 +12,7 @@ import (
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -69,6 +70,49 @@ func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	security.Repository[0].Action = policy.ActionDeny
 	if snapshot.Policy.Repository[0].Action != policy.ActionAsk {
 		t.Fatal("repository slice must be copied")
+	}
+}
+
+func TestSnapshotTurnSpecRequiresStructuredTerminalForEveryToolEnabledEngine(
+	t *testing.T,
+) {
+	for _, test := range []struct {
+		name      string
+		inputHost *interact.Host
+		want      bool
+	}{
+		{name: "interactive", inputHost: interact.NewHost(0), want: true},
+		{name: "child", want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spec, err := SnapshotTurnSpec(
+				Options{
+					Route: testRoute(t),
+					Tools: tool.NewRegistry(nil, nil),
+					Security: policy.DefaultRuntime(
+						policy.ModeAct,
+						policy.PermissionBypass,
+					),
+					RequireCompletionDeclaration: true,
+					InputHost:                    test.inputHost,
+				},
+				TurnIdentity{TurnID: "turn-1"},
+				TurnRequest{
+					Prompt: "answer",
+					Intent: protocol.TurnIntentAnswer,
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if spec.Kernel.StructuredTerminalRequired != test.want {
+				t.Fatalf(
+					"structured terminal = %t, want %t",
+					spec.Kernel.StructuredTerminalRequired,
+					test.want,
+				)
+			}
+		})
 	}
 }
 
@@ -130,6 +174,7 @@ func TestSnapshotTurnSpecSelectsSkillsFromFrozenPrompt(t *testing.T) {
 			}}, SkillSelectionMetrics{
 				Method: "weighted_lexical_v1", CatalogSize: 1000,
 				CandidateSize: 1, VisibleSize: 1, TokenSavings: 0.99,
+				QueryTerms: 2, QueryTruncated: true, CandidateSetTruncated: true,
 			}, nil
 	}
 	spec, err := SnapshotTurnSpec(
@@ -142,7 +187,10 @@ func TestSnapshotTurnSpecSelectsSkillsFromFrozenPrompt(t *testing.T) {
 	}
 	if len(spec.Skills) != 1 || spec.Skills[0].Name != "code-review" ||
 		spec.SkillSelection.CatalogSize != 1000 ||
-		spec.SkillSelection.TokenSavings != 0.99 {
+		spec.SkillSelection.TokenSavings != 0.99 ||
+		spec.SkillSelection.QueryTerms != 2 ||
+		!spec.SkillSelection.QueryTruncated ||
+		!spec.SkillSelection.CandidateSetTruncated {
 		t.Fatalf("skill selection snapshot = %+v %+v", spec.Skills, spec.SkillSelection)
 	}
 }

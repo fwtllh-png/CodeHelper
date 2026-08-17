@@ -88,17 +88,20 @@ type SkillSummary struct {
 }
 
 type SkillSelectionMetrics struct {
-	Method          string
-	CatalogSize     int
-	CandidateSize   int
-	VisibleSize     int
-	ExplicitMatches int
-	OriginalTokens  uint64
-	ProjectedTokens uint64
-	TokenSavings    float64
-	Recall          float64
-	Precision       float64
-	CacheHit        bool
+	Method                string
+	CatalogSize           int
+	CandidateSize         int
+	VisibleSize           int
+	ExplicitMatches       int
+	QueryTerms            int
+	QueryTruncated        bool
+	CandidateSetTruncated bool
+	OriginalTokens        uint64
+	ProjectedTokens       uint64
+	TokenSavings          float64
+	Recall                float64
+	Precision             float64
+	CacheHit              bool
 }
 
 // PurposeForMode is which route a turn in this mode samples on. Plan mode is the
@@ -178,7 +181,8 @@ func SnapshotTurnSpec(
 		Workspace: options.Workspace, Sandbox: sandboxIdentity(options.Tools),
 		Policy: security.CloneSampling(),
 		Kernel: turnkernel.Policy{
-			CompletionRequired: options.RequireCompletionDeclaration,
+			CompletionRequired:         options.RequireCompletionDeclaration,
+			StructuredTerminalRequired: options.RequireCompletionDeclaration,
 			VerificationRequired: options.Verify.enabled() ||
 				request.Intent == protocol.TurnIntentWorkspaceChange ||
 				options.RequireCompletionDeclaration,
