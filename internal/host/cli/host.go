@@ -53,7 +53,7 @@ func runHost(
 	)
 	posture := flags.String("posture", "auto", "tool permission posture")
 	repositoryRules := flags.String("repository-rules", "", "JSON repository policy rules")
-	maxSteps := flags.Int("max-steps", 256, "maximum model steps")
+	maxSteps := flags.Int("max-steps", 0, "explicit model step budget (0 disables)")
 	nativeSearch := flags.Bool("native-search", false, "enable provider-native search")
 	providerProtocol := flags.String("provider-protocol", "openai_chat", "provider wire protocol")
 	approvalStdin := flags.Bool("approval-stdin", false, "read approval decisions after request")
@@ -149,8 +149,8 @@ func runPersistentACPHost(
 		)
 		return 2
 	}
-	if options.MaxSteps <= 0 {
-		_, _ = fmt.Fprintln(stderr, "codehelper: host --max-steps must be positive")
+	if options.MaxSteps < 0 {
+		_, _ = fmt.Fprintln(stderr, "codehelper: host --max-steps must be non-negative")
 		return 2
 	}
 	if options.ReplayLimit <= 0 {

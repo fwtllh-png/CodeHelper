@@ -261,7 +261,7 @@
         "codehelper.runtime.configPath": {
           "type": "string",
           "default": "",
-          "scope": "machine",
+          "scope": "machine-overridable",
           "description": "Host-local absolute path to a trusted CodeHelper TOML configuration containing the provider, model, and credential reference."
         },
         "codehelper.runtime.mcpConfigPath": {
@@ -272,11 +272,11 @@
         },
         "codehelper.runtime.maxSteps": {
           "type": "integer",
-          "default": 256,
-          "minimum": 1,
+          "default": 0,
+          "minimum": 0,
           "maximum": 1000,
           "scope": "window",
-          "description": "Hard maximum model/tool steps per VS Code turn. CodeHelper emits a convergence warning before exhausting this budget."
+          "description": "Explicit maximum model/tool steps per VS Code turn. Zero leaves the step budget unset; positive values request Kernel convergence at the configured limit."
         }
       }
     }

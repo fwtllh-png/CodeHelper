@@ -87,10 +87,14 @@ func (e *Engine) checkBudget(
 	usedTokens := e.usage.Total() + turnUsage.Total() + stepUsage.Total() + estimatedInput
 	if limit := e.options.Budget.MaxTokens; limit > 0 {
 		if usedTokens >= limit {
-			return 0, protocol.NewProblem(
-				protocol.CodeResourceExhausted,
-				fmt.Sprintf("token budget exhausted: used %d, limit %d", usedTokens, limit),
-				false, nil,
+			return 0, protocol.NewBudgetExhausted(
+				protocol.BudgetExhaustion{
+					Resource: protocol.BudgetResourceTokens,
+					Scope:    e.turnBudgetScope(),
+					Used:     usedTokens,
+					Limit:    limit,
+				},
+				nil,
 			)
 		}
 		outputReserve = min(outputReserve, limit-usedTokens)
@@ -107,10 +111,14 @@ func (e *Engine) checkBudget(
 		projectedUsage.Add(provider.Usage{InputTokens: estimatedInput})
 		spent := e.costUSD + estimateCost(pricing, projectedUsage)
 		if spent >= limit {
-			return 0, protocol.NewProblem(
-				protocol.CodeResourceExhausted,
-				fmt.Sprintf("cost budget exhausted: used %.6f, limit %.6f", spent, limit),
-				false, nil,
+			return 0, protocol.NewBudgetExhausted(
+				protocol.BudgetExhaustion{
+					Resource: protocol.BudgetResourceCostMicrounits,
+					Scope:    e.turnBudgetScope(),
+					Used:     uint64(math.Ceil(spent * 1e6)),
+					Limit:    max(uint64(1), uint64(math.Ceil(limit*1e6))),
+				},
+				nil,
 			)
 		}
 		if pricing.OutputPerMillion > 0 {
@@ -118,6 +126,17 @@ func (e *Engine) checkBudget(
 				(limit - spent) * 1_000_000 / pricing.OutputPerMillion,
 			))
 			outputReserve = min(outputReserve, affordable)
+			if outputReserve == 0 {
+				return 0, protocol.NewBudgetExhausted(
+					protocol.BudgetExhaustion{
+						Resource: protocol.BudgetResourceCostMicrounits,
+						Scope:    e.turnBudgetScope(),
+						Used:     uint64(math.Ceil(spent * 1e6)),
+						Limit:    max(uint64(1), uint64(math.Ceil(limit*1e6))),
+					},
+					nil,
+				)
+			}
 		}
 	}
 	if outputReserve == 0 {
@@ -128,6 +147,14 @@ func (e *Engine) checkBudget(
 		)
 	}
 	return outputReserve, nil
+}
+
+func (e *Engine) turnBudgetScope() string {
+	if scope := e.runningScope(); scope != nil &&
+		scope.spec.Identity.TurnID != "" {
+		return "turn:" + scope.spec.Identity.TurnID
+	}
+	return "turn"
 }
 
 func (e *Engine) budgetConvergence(used uint64) (provider.Message, bool) {

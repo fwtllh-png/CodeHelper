@@ -148,6 +148,7 @@ type Engine struct {
 	guard           *toolguard.Guard
 	journal         *workspacejournal.Manager
 	turnIDs         map[string]uint64
+	historyTurns    map[string]uint64
 
 	planMu      sync.Mutex
 	planText    string
@@ -235,11 +236,8 @@ func New(options Options) (*Engine, error) {
 		}
 		options.Routes = routes
 	}
-	if options.MaxSteps == 0 {
-		options.MaxSteps = 256
-	}
-	if options.MaxSteps < 1 {
-		return nil, errors.New("max steps must be positive")
+	if options.MaxSteps < 0 {
+		return nil, errors.New("max steps must be non-negative")
 	}
 	if err := normalizeEngineOptions(&options); err != nil {
 		return nil, err

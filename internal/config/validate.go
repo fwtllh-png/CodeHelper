@@ -126,8 +126,8 @@ func (s Snapshot) Validate() error {
 	if execution.Workspace == "" {
 		return fieldError(fieldWorkspace, s.Provenance, "must not be empty")
 	}
-	if execution.MaxSteps < 1 {
-		return fieldError(fieldMaxSteps, s.Provenance, "must be positive")
+	if execution.MaxSteps < 0 {
+		return fieldError(fieldMaxSteps, s.Provenance, "must be non-negative")
 	}
 	if execution.Timeout <= 0 {
 		return fieldError(fieldTimeout, s.Provenance, "must be positive")
@@ -269,14 +269,14 @@ func (s Snapshot) validateSubagent() error {
 			"must be at least execution.subagent.max_resident",
 		)
 	}
-	if child.MaxSteps < 1 {
-		return fieldError(fieldSubagentMaxSteps, s.Provenance, "must be positive")
+	if child.MaxSteps < 0 {
+		return fieldError(fieldSubagentMaxSteps, s.Provenance, "must be non-negative")
 	}
 	if child.MaxCostUSD < 0 {
 		return fieldError(fieldSubagentMaxCostUSD, s.Provenance, "must be non-negative")
 	}
-	if child.WallTime <= 0 {
-		return fieldError(fieldSubagentWallTime, s.Provenance, "must be positive")
+	if child.WallTime < 0 {
+		return fieldError(fieldSubagentWallTime, s.Provenance, "must be non-negative")
 	}
 	return nil
 }

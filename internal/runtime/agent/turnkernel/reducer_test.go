@@ -671,6 +671,53 @@ func TestResearchProgressLeavesTotalSampleCapAfterMutation(t *testing.T) {
 	}
 }
 
+func TestExplicitStepBudgetConvergesInsideKernel(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state.Policy.ExecutionStepLimit = 2
+	state.SampleLedger["sample-1"] = ModelSampleState{
+		ID: "sample-1", Status: SampleCompleted, Attempt: 1,
+	}
+	first := apply(t, state, ObserveProgress{
+		Signature: "evidence=one", CompletedSamples: 1,
+	})
+	if first.State.Convergence != nil {
+		t.Fatalf("first sample converged = %+v", first.State.Convergence)
+	}
+	first.State.SampleLedger["sample-2"] = ModelSampleState{
+		ID: "sample-2", Status: SampleCompleted, Attempt: 1,
+	}
+	second := apply(t, first.State, ObserveProgress{
+		Signature: "evidence=two", CompletedSamples: 2,
+	})
+	if second.State.Convergence == nil ||
+		second.State.Convergence.Cause != ConvergenceStepLimit ||
+		second.State.Convergence.Used != 2 ||
+		second.State.Convergence.Limit != 2 {
+		t.Fatalf("explicit step convergence = %+v", second.State.Convergence)
+	}
+}
+
+func TestProgressingTurnHasNoImplicitStepBudget(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	for sample := uint32(1); sample <= 128; sample++ {
+		id := fmt.Sprintf("sample-%d", sample)
+		state.SampleLedger[id] = ModelSampleState{
+			ID: id, Status: SampleCompleted, Attempt: 1,
+		}
+		state = apply(t, state, ObserveProgress{
+			Signature:        fmt.Sprintf("evidence=%d", sample),
+			CompletedSamples: sample,
+		}).State
+		if state.Convergence != nil {
+			t.Fatalf(
+				"progressing sample %d converged = %+v",
+				sample,
+				state.Convergence,
+			)
+		}
+	}
+}
+
 func TestToolAndApprovalLifecycleIsClosedExactlyOnce(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
 	started := apply(t, state, ToolCallsProposed{

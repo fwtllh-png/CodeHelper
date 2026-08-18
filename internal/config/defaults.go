@@ -37,7 +37,7 @@ func Defaults() Config {
 		Telemetry: Telemetry{LogLevel: "info"},
 		Execution: Execution{
 			Protocol: "openai_chat", Mode: "act", Workspace: ".",
-			MaxSteps: 256, Timeout: 2 * time.Minute,
+			Timeout:     2 * time.Minute,
 			IdleTimeout: 60 * time.Second, MaxConcurrent: 8,
 
 			Verify: Verify{
@@ -48,8 +48,7 @@ func Defaults() Config {
 			Subagent: Subagent{
 				Delegation: SubagentDelegationExplicit,
 				MaxDepth:   5, MaxParallel: 4, MaxResident: 8, MaxTotal: 16,
-				MaxSteps: 24,
-				WallTime: 5 * time.Minute, Workspace: SubagentWorkspaceAuto,
+				Workspace: SubagentWorkspaceAuto,
 			},
 
 			Worker: Worker{

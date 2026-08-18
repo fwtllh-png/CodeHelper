@@ -87,8 +87,12 @@ func runExec(
 	inputPrice := flags.Float64("input-price-per-million", 0, "custom model input price")
 	outputPrice := flags.Float64("output-price-per-million", 0, "custom model output price")
 	pricingCurrency := flags.String("pricing-currency", "", "custom model pricing currency")
-	maxSteps := flags.Int("max-steps", 256, "maximum model steps for a turn")
-	timeout := flags.Duration("timeout", 2*time.Minute, "overall provider request timeout")
+	maxSteps := flags.Int("max-steps", 0, "explicit model step budget (0 disables)")
+	timeout := flags.Duration(
+		"timeout",
+		2*time.Minute,
+		"provider connection and response-header timeout",
+	)
 	idleTimeout := flags.Duration("stream-idle-timeout", time.Minute, "maximum stream idle duration")
 	maxConcurrent := flags.Int("provider-concurrency", 8, "maximum concurrent provider streams")
 	rateLimit := flags.Float64("provider-rate-limit", 0, "provider requests per second; zero disables")

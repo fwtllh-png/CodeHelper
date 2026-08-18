@@ -11,7 +11,7 @@ mode = "act"
 workspace = "."
 tools = true
 max_output_tokens = 0 # derive from the active model and remaining context
-max_steps = 256
+max_steps = 0 # no implicit step limit; set a positive value only for an explicit cap
 timeout = "2m"
 idle_timeout = "1m"
 

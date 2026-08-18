@@ -77,9 +77,9 @@ mode = "act"                 # plan | act | operate
 workspace = "."
 tools = true
 max_output_tokens = 0           # 0 = active model capability
-max_steps = 256
-timeout = "2m"
-idle_timeout = "1m"
+max_steps = 0                   # 0 = no implicit step budget
+timeout = "2m"                  # connection, TLS, and response headers
+idle_timeout = "1m"             # renewed by every stream event
 max_concurrent = 8
 rate_limit = 0
 budget_tokens = 0            # 0 means no cumulative session token cap
@@ -105,10 +105,10 @@ max_depth = 5
 max_parallel = 4
 max_resident = 8
 max_total = 16
-max_steps = 24
+max_steps = 0                   # 0 = inherit progress convergence only
 max_tokens = 0
 max_cost_usd = 0
-wall_time = "5m"
+wall_time = "0s"                # 0 = no child execution lease
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
 
 [execution.worker]
@@ -230,12 +230,14 @@ Usage events persist request byte counts plus SHA-256 logical and transport
 digests, never prompt content. Request-byte savings are transport evidence and
 are not reported as token savings.
 
-`execution.max_steps` bounds normal work, not structured finalization. The
-default is 256 for coding Turns and the supported range is 1-1000. For budgets
-of at least 64 steps, Runtime injects one convergence warning with 16-32 steps
-remaining. Exhausting normal work requests one Kernel-owned finalization Sample
-outside that budget; it can only request required input or declare complete or
-incomplete state. It cannot continue exploration or mutations.
+`execution.max_steps` is an optional explicit budget for normal work, not
+structured finalization. The default is `0`, which installs no implicit step
+budget. A positive value is frozen into Turn Kernel policy. For budgets of at
+least 64 steps, Runtime injects one convergence warning with 16-32 steps
+remaining. Exhausting an explicit normal-work budget requests one Kernel-owned
+finalization Sample outside that budget; it can only request required input or
+declare complete or incomplete state. It cannot continue exploration or
+mutations. Kernel-authorized Repair Steps remain independent of that budget.
 
 The Agent also tracks consecutive samples without structured progress. This is
 not a 16-step execution limit for active workspace work. At 16 no-progress
@@ -254,15 +256,36 @@ paths and new evidence; Operation Turns count successful business Tool results.
 The progress and convergence states are durable across Runtime recovery.
 Read-only Answer and Plan Turns use tighter 8/12/16 thresholds, but those
 thresholds count only consecutive samples without new paths or evidence.
-Research that continues to discover evidence is bounded by the explicit
+Research that continues to discover evidence is bounded by an explicitly set
 `execution.max_steps`, Context Window, and Token/Cost budgets rather than an
 internal total-sample cap. Incomplete provider output likewise continues
 without a default retry-count ceiling while those real capacities remain.
+
+`execution.subagent.max_steps` follows the same zero-is-unset rule. The optional
+`execution.subagent.wall_time` is a renewable execution lease: observable child
+Runtime progress renews it, and an idle expiry interrupts the child into a
+resumable state rather than recording a permanent failure.
+
+`execution.timeout` is no longer a total wall-clock limit for a Provider call.
+It independently bounds connection establishment, TLS negotiation, and waiting
+for response headers. After the response body starts, lifetime is owned by the
+Turn Context or an explicit execution Lease. `execution.idle_timeout` bounds the
+gap between stream events and renews on every event, so a progressing long
+stream is not interrupted at a fixed two-minute boundary.
 
 These convergence budgets are different from physical or user-configured hard
 boundaries. Runtime does not spend beyond Token/Cost ceilings, infer a partial
 Tool Call, bypass a content filter, or sample a request that cannot fit after
 safe compaction.
+
+When an explicit `budget_tokens`, `budget_usd`, Subagent, or Workflow Token/Cost
+budget is exhausted, Runtime returns a structured `resource_exhausted` Fault
+with Scope, resource kind, and Used/Limit facts, while `resume_turn` preserves
+the continuation entry. Main Turns retain recoverable state, Workflow and
+background Tasks enter durable `blocked`/`waiting`, and Child admission refuses
+the new Turn before submission. Runtime does not automatically retry until the
+budget changes; recovery does not replay completed WorkGraph Nodes or closed
+Tool Effects.
 
 Unknown TOML fields are rejected. This is intentional: a misspelled safety or
 budget field must not look configured while having no effect.

@@ -275,11 +275,30 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	s.mu.Lock()
 	s.state.kernel = kernel
 	s.mu.Unlock()
-	defer func() {
-		_ = e.options.TurnCoordinatorRuntime.Release(
+	releasedCoordinator := false
+	releaseCoordinator := func() error {
+		if releasedCoordinator {
+			return nil
+		}
+		if err := e.options.TurnCoordinatorRuntime.Release(
 			context.WithoutCancel(ctx),
 			turnID,
-		)
+		); err != nil {
+			return err
+		}
+		releasedCoordinator = true
+		return nil
+	}
+	var terminal *turnEmitter
+	defer func() {
+		if err := releaseCoordinator(); err != nil {
+			if terminal != nil {
+				terminal.addReleaseIssue(err)
+			}
+			if terminal == nil || !terminal.emitted {
+				resultErr = errors.Join(resultErr, err)
+			}
+		}
 	}()
 	if len(spec.Skills) != 0 || spec.SkillSelection.Method != "" {
 		skills := make(map[string]string, len(spec.Skills))
@@ -370,8 +389,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			})
 		}
 	}
-	transaction := cloneMessages(e.history)
-	terminal := newTurnEmitter(e.turn, emit)
+	transaction := e.recoveryBaseHistory(spec.Request.Recovery)
+	terminal = newTurnEmitter(e.turn, emit)
 	terminal.setCommitted(e.applySessionDelta)
 	terminal.setCancelReason(func() string {
 		if reason := kernel.cancellationReason(); reason != "" {
@@ -380,6 +399,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		return e.cancellationReason()
 	})
 	terminal.setTerminalDecision(kernel.terminalDecision)
+	terminal.setRelease(releaseCoordinator)
 	send := terminal.send
 	defer terminal.finish(ctx, &result, &resultErr)
 	contextFinalized := false
@@ -506,12 +526,12 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					},
 					journalErr,
 				)
-				_ = send(AwaitingRecovery, Event{
+				projectionErr := send(AwaitingRecovery, Event{
 					ErrorCode: fault.Code,
 					Error:     fault.Message,
 					Fault:     fault.Fault,
 				})
-				return fault
+				return errors.Join(fault, projectionErr)
 			}
 		}
 		if err := kernel.finishTerminal(); err != nil {
@@ -950,27 +970,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		return true, nil
 	}
 	for step := 0; ; step++ {
-		if kernel.convergence() == nil &&
-			step >= spec.Limits.MaxSteps+kernel.repairStepTotal() {
-			limit := uint32(spec.Limits.MaxSteps + kernel.repairStepTotal())
-			if err := kernel.requestConvergence(
-				turnkernel.ConvergenceRequested{
-					Cause: turnkernel.ConvergenceStepLimit,
-					Used:  uint32(step),
-					Limit: limit,
-				},
-			); err != nil {
-				return result, err
-			}
-			completed, err := advanceTurn()
-			if err != nil {
-				return result, err
-			}
-			if completed {
-				return result, nil
-			}
-			continue
-		}
 		if e.appendSteering(&transaction) && kernel.completion() != nil {
 			if err := invalidateCompletion("turn_steered"); err != nil {
 				return result, err

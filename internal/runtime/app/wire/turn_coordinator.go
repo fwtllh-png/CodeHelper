@@ -23,9 +23,10 @@ type durableCoordinatorRuntime struct {
 	done     chan struct{}
 	closeOne sync.Once
 
-	mu     sync.Mutex
-	active map[string]struct{}
-	err    error
+	mu        sync.Mutex
+	active    map[string]struct{}
+	releasing map[string]struct{}
+	err       error
 }
 
 type leaseGuardedFactStore struct {
@@ -45,12 +46,13 @@ func newDurableCoordinatorRuntime(
 		lease = defaultTurnCoordinatorLease
 	}
 	runtime := &durableCoordinatorRuntime{
-		store:  store,
-		owner:  owner,
-		lease:  lease,
-		stop:   make(chan struct{}),
-		done:   make(chan struct{}),
-		active: make(map[string]struct{}),
+		store:     store,
+		owner:     owner,
+		lease:     lease,
+		stop:      make(chan struct{}),
+		done:      make(chan struct{}),
+		active:    make(map[string]struct{}),
+		releasing: make(map[string]struct{}),
 	}
 	kernel, err := turnkernel.NewStoreCoordinatorRuntime(
 		leaseGuardedFactStore{runtime: runtime, store: store},
@@ -69,7 +71,7 @@ func (r *durableCoordinatorRuntime) RecoverActiveTurns(
 	if err := r.health(); err != nil {
 		return nil, err
 	}
-	if len(r.activeTurnIDs()) != 0 {
+	if len(r.trackedTurnIDs()) != 0 {
 		return nil, turnkernel.ErrCoordinatorAlreadyActive
 	}
 	turns, err := r.store.ClaimActiveTurns(ctx, r.owner, r.lease)
@@ -81,27 +83,36 @@ func (r *durableCoordinatorRuntime) RecoverActiveTurns(
 		r.track(turn.TurnID)
 		if _, err := r.kernel.Restore(ctx, turn.TurnID); err != nil {
 			r.untrack(turn.TurnID)
-			_ = r.store.ReleaseTurns(
+			cleanupErr := r.store.ReleaseTurns(
 				context.WithoutCancel(ctx),
 				r.owner,
 				[]string{turn.TurnID},
 			)
 			for _, active := range restored {
-				_ = r.kernel.Release(
-					context.WithoutCancel(ctx),
-					active.TurnID,
+				cleanupErr = errors.Join(
+					cleanupErr,
+					r.kernel.Release(
+						context.WithoutCancel(ctx),
+						active.TurnID,
+					),
 				)
 				r.untrack(active.TurnID)
 			}
-			_ = r.store.ReleaseTurns(
-				context.WithoutCancel(ctx),
-				r.owner,
-				activeTurnIDs(restored),
+			cleanupErr = errors.Join(
+				cleanupErr,
+				r.store.ReleaseTurns(
+					context.WithoutCancel(ctx),
+					r.owner,
+					activeTurnIDs(restored),
+				),
 			)
-			return nil, fmt.Errorf(
-				"restore active turn %q: %w",
-				turn.TurnID,
-				err,
+			return nil, errors.Join(
+				fmt.Errorf(
+					"restore active turn %q: %w",
+					turn.TurnID,
+					err,
+				),
+				cleanupErr,
 			)
 		}
 		restored = append(restored, turn)
@@ -128,12 +139,12 @@ func (r *durableCoordinatorRuntime) Open(
 	handle, err := r.kernel.Open(ctx, turnID, state)
 	if err != nil {
 		r.untrack(turnID)
-		_ = r.store.ReleaseTurns(
+		releaseErr := r.store.ReleaseTurns(
 			context.WithoutCancel(ctx),
 			r.owner,
 			[]string{turnID},
 		)
-		return turnkernel.CoordinatorHandle{}, err
+		return turnkernel.CoordinatorHandle{}, errors.Join(err, releaseErr)
 	}
 	return handle, nil
 }
@@ -180,12 +191,12 @@ func (r *durableCoordinatorRuntime) Restore(
 	handle, err := r.kernel.Restore(ctx, turnID)
 	if err != nil {
 		r.untrack(turnID)
-		_ = r.store.ReleaseTurns(
+		releaseErr := r.store.ReleaseTurns(
 			context.WithoutCancel(ctx),
 			r.owner,
 			[]string{turnID},
 		)
-		return turnkernel.CoordinatorHandle{}, err
+		return turnkernel.CoordinatorHandle{}, errors.Join(err, releaseErr)
 	}
 	return handle, nil
 }
@@ -194,10 +205,18 @@ func (r *durableCoordinatorRuntime) Release(
 	ctx context.Context,
 	turnID string,
 ) error {
-	if err := r.kernel.Release(ctx, turnID); err != nil {
+	r.markReleasing(turnID)
+	return r.releaseTurn(ctx, turnID)
+}
+
+func (r *durableCoordinatorRuntime) releaseTurn(
+	ctx context.Context,
+	turnID string,
+) error {
+	if err := r.store.ReleaseTurns(ctx, r.owner, []string{turnID}); err != nil {
 		return err
 	}
-	if err := r.store.ReleaseTurns(ctx, r.owner, []string{turnID}); err != nil {
+	if err := r.kernel.Release(ctx, turnID); err != nil {
 		return err
 	}
 	r.untrack(turnID)
@@ -209,17 +228,14 @@ func (r *durableCoordinatorRuntime) Close(ctx context.Context) error {
 		close(r.stop)
 		<-r.done
 	})
-	turnIDs := r.activeTurnIDs()
+	turnIDs := r.trackedTurnIDs()
 	for _, turnID := range turnIDs {
-		_ = r.kernel.Release(ctx, turnID)
+		r.markReleasing(turnID)
+		if err := r.releaseTurn(ctx, turnID); err != nil {
+			return err
+		}
 	}
-	err := r.store.ReleaseTurns(ctx, r.owner, turnIDs)
-	if err == nil {
-		r.mu.Lock()
-		clear(r.active)
-		r.mu.Unlock()
-	}
-	return err
+	return nil
 }
 
 func (r *durableCoordinatorRuntime) heartbeat() {
@@ -231,6 +247,14 @@ func (r *durableCoordinatorRuntime) heartbeat() {
 		case <-r.stop:
 			return
 		case <-ticker.C:
+			for _, turnID := range r.releasingTurnIDs() {
+				ctx, cancel := context.WithTimeout(
+					context.Background(),
+					r.lease/3,
+				)
+				_ = r.releaseTurn(ctx, turnID)
+				cancel()
+			}
 			turnIDs := r.activeTurnIDs()
 			if len(turnIDs) == 0 {
 				continue
@@ -273,6 +297,7 @@ func (r *durableCoordinatorRuntime) untrack(turnID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.active, turnID)
+	delete(r.releasing, turnID)
 }
 
 func (r *durableCoordinatorRuntime) activeTurnIDs() []string {
@@ -280,6 +305,39 @@ func (r *durableCoordinatorRuntime) activeTurnIDs() []string {
 	defer r.mu.Unlock()
 	turnIDs := make([]string, 0, len(r.active))
 	for turnID := range r.active {
+		if _, releasing := r.releasing[turnID]; releasing {
+			continue
+		}
+		turnIDs = append(turnIDs, turnID)
+	}
+	slices.Sort(turnIDs)
+	return turnIDs
+}
+
+func (r *durableCoordinatorRuntime) trackedTurnIDs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	turnIDs := make([]string, 0, len(r.active))
+	for turnID := range r.active {
+		turnIDs = append(turnIDs, turnID)
+	}
+	slices.Sort(turnIDs)
+	return turnIDs
+}
+
+func (r *durableCoordinatorRuntime) markReleasing(turnID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, active := r.active[turnID]; active {
+		r.releasing[turnID] = struct{}{}
+	}
+}
+
+func (r *durableCoordinatorRuntime) releasingTurnIDs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	turnIDs := make([]string, 0, len(r.releasing))
+	for turnID := range r.releasing {
 		turnIDs = append(turnIDs, turnID)
 	}
 	slices.Sort(turnIDs)

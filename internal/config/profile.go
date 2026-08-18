@@ -101,7 +101,7 @@ workspace = %q
 mode = "act"
 tools = false
 max_output_tokens = 0
-max_steps = 256
+max_steps = 0
 timeout = "2m"
 idle_timeout = "1m"
 max_concurrent = 8
@@ -127,10 +127,10 @@ max_depth = 5
 max_parallel = 4
 max_resident = 8
 max_total = 16
-max_steps = 24
+max_steps = 0
 max_tokens = 0
 max_cost_usd = 0
-wall_time = "5m"
+wall_time = "0s"
 workspace = "auto"
 
 [execution.worker]

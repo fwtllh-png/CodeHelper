@@ -180,6 +180,8 @@ type CompactionReceipt struct {
 	CriticalFacts        int    `json:"critical_facts,omitempty"`
 	CompatibilityHash    string `json:"compatibility_hash,omitempty"`
 	CompatibilityMatched bool   `json:"compatibility_matched,omitempty"`
+	AuthorityDigest      string `json:"authority_digest,omitempty"`
+	AuthorityEquivalent  bool   `json:"authority_equivalent,omitempty"`
 	ModelDownshifted     bool   `json:"model_downshifted,omitempty"`
 	DownshiftPolicy      string `json:"downshift_policy,omitempty"`
 	NarrativeIncluded    bool   `json:"narrative_included,omitempty"`

@@ -551,9 +551,13 @@ VS Code settings:
   "codehelper.runtime.configPath": "/absolute/path/to/config.toml",
   "codehelper.runtime.mcpConfigPath": ".codehelper/mcp.json",
   "codehelper.runtime.autoStart": true,
-  "codehelper.runtime.maxSteps": 64
+  "codehelper.runtime.maxSteps": 0
 }
 ```
+
+`codehelper.runtime.maxSteps = 0` leaves the Turn step budget unset. Set a
+positive value only when the workspace intentionally requires an explicit cap;
+the Turn Kernel still applies progress and convergence checks.
 
 `codehelper.runtime.mcpConfigPath` connects the existing Runtime MCP registry to
 the ACP Host; configuring MCP does not require Extension source changes. The

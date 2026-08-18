@@ -268,6 +268,20 @@ func (e *workflowRunExecutor) Execute(
 	if err != nil {
 		return failedOutcome(err), nil
 	}
+	if run.Status == workflow.RunBlocked ||
+		errors.Is(runErr, workflow.ErrBudgetExhausted) {
+		reason := ""
+		if runErr != nil {
+			reason = runErr.Error()
+		}
+		if reason == "" {
+			reason = run.Error
+		}
+		return worker.Outcome{
+			State: taskstate.StateWaiting, Result: encoded, Reason: reason,
+			PermissionDigests: workflowPermissionDigests(run),
+		}, nil
+	}
 	if runErr != nil {
 		return worker.Outcome{
 			State: taskstate.StateFailed, Result: encoded, Reason: runErr.Error(),

@@ -471,9 +471,12 @@ VS Code Settings：
   "codehelper.runtime.configPath": "/absolute/path/to/config.toml",
   "codehelper.runtime.mcpConfigPath": ".codehelper/mcp.json",
   "codehelper.runtime.autoStart": true,
-  "codehelper.runtime.maxSteps": 64
+  "codehelper.runtime.maxSteps": 0
 }
 ```
+
+`codehelper.runtime.maxSteps = 0` 表示不设置 Turn Step Budget。仅当 Workspace
+明确需要上限时才填写正数；Turn Kernel 仍会执行进展检测与收敛判断。
 
 `codehelper.runtime.mcpConfigPath` 将现有 Runtime MCP Registry 接入 ACP Host，配置 MCP
 不再需要修改 Extension 源码。该路径可以是绝对路径，也可以相对 Workspace Root；

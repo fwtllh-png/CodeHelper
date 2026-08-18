@@ -118,6 +118,8 @@ func workflowProtocolState(status NodeStatus) (protocol.NodeState, error) {
 	switch status {
 	case NodeStatusCompleted:
 		return protocol.NodeStateSucceeded, nil
+	case NodeStatusBlocked:
+		return protocol.NodeStateBlocked, nil
 	case NodeStatusFailed:
 		return protocol.NodeStateFailed, nil
 	case NodeStatusSkipped:

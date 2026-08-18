@@ -724,16 +724,6 @@ func (s *engineTurnKernel) validateFinalReadiness() error {
 	return nil
 }
 
-func (s *engineTurnKernel) repairStepTotal() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	total := uint32(0)
-	for _, budget := range s.state.RepairBudgets {
-		total += budget.Steps
-	}
-	return int(total)
-}
-
 func (s *engineTurnKernel) repairProgressKey() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

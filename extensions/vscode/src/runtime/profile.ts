@@ -228,7 +228,7 @@ function decodeProfile(value: unknown): SessionProfileSnapshot["profile"] {
       "execution target",
       new Set(["local"]),
     ),
-    max_steps: requirePositiveInteger(object["max_steps"], "max steps"),
+    max_steps: requireNonNegativeInteger(object["max_steps"], "max steps"),
     prompt_cache_revision: requirePositiveInteger(
       object["prompt_cache_revision"],
       "prompt cache revision",
@@ -251,6 +251,13 @@ function requireObject(value: unknown, name: string): JsonObject {
     throw new Error(`${name} is invalid`);
   }
   return value as JsonObject;
+}
+
+function requireNonNegativeInteger(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return value;
 }
 
 function requireKeys(

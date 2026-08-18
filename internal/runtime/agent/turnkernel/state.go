@@ -162,18 +162,21 @@ type ConvergencePolicy struct {
 }
 
 type Policy struct {
-	CompletionRequired         bool              `json:"completion_required"`
-	StructuredTerminalRequired bool              `json:"structured_terminal_required"`
-	VerificationRequired       bool              `json:"verification_required"`
-	VerificationMustPass       bool              `json:"verification_must_pass"`
-	VerificationMode           string            `json:"verification_mode,omitempty"`
-	VerificationOnFailure      string            `json:"verification_on_failure,omitempty"`
-	CompletionRepairLimit      uint32            `json:"completion_repair_limit"`
-	WorkspaceRepairLimit       uint32            `json:"workspace_repair_limit"`
-	DeclarationRepairLimit     uint32            `json:"declaration_repair_limit"`
-	VerificationRepairLimit    uint32            `json:"verification_repair_limit"`
-	JournalRequired            bool              `json:"journal_required"`
-	Convergence                ConvergencePolicy `json:"convergence"`
+	CompletionRequired         bool   `json:"completion_required"`
+	StructuredTerminalRequired bool   `json:"structured_terminal_required"`
+	VerificationRequired       bool   `json:"verification_required"`
+	VerificationMustPass       bool   `json:"verification_must_pass"`
+	VerificationMode           string `json:"verification_mode,omitempty"`
+	VerificationOnFailure      string `json:"verification_on_failure,omitempty"`
+	CompletionRepairLimit      uint32 `json:"completion_repair_limit"`
+	WorkspaceRepairLimit       uint32 `json:"workspace_repair_limit"`
+	DeclarationRepairLimit     uint32 `json:"declaration_repair_limit"`
+	VerificationRepairLimit    uint32 `json:"verification_repair_limit"`
+	// ExecutionStepLimit is an explicit caller budget. Zero leaves execution
+	// bounded only by progress convergence and other explicit resource budgets.
+	ExecutionStepLimit uint32            `json:"execution_step_limit,omitempty"`
+	JournalRequired    bool              `json:"journal_required"`
+	Convergence        ConvergencePolicy `json:"convergence"`
 }
 
 func DefaultConvergencePolicy() ConvergencePolicy {

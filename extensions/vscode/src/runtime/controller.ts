@@ -918,9 +918,9 @@ export class RuntimeController {
       this.#context.extensionMode !== vscode.ExtensionMode.Production ||
         testBuildEnabled,
     );
-    const maxSteps = configuration.get<number>("runtime.maxSteps", 256);
-    if (!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 1000) {
-      throw new Error("codehelper.runtime.maxSteps must be an integer between 1 and 1000");
+    const maxSteps = configuration.get<number>("runtime.maxSteps", 0);
+    if (!Number.isInteger(maxSteps) || maxSteps < 0 || maxSteps > 1000) {
+      throw new Error("codehelper.runtime.maxSteps must be an integer between 0 and 1000");
     }
     const configuredConfigPath = configuration
       .get<string>("runtime.configPath", "")

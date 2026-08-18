@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -121,6 +122,13 @@ func (r *Runtime) Run(ctx context.Context, options RunOptions) (Run, error) {
 	}
 	graph, err := execution.prepare(ctx, compiled.Submit)
 	if err != nil {
+		if errors.Is(err, ErrBudgetExhausted) {
+			started.Nodes = execution.results(graph)
+			started.Result = summarize(started.Nodes)
+			started.Status, started.Error = RunBlocked, err.Error()
+			started.UpdatedAt = execution.now()
+			return started, err
+		}
 		started.Status, started.Error = RunFailed, err.Error()
 		return started, err
 	}
@@ -133,6 +141,12 @@ func (r *Runtime) Run(ctx context.Context, options RunOptions) (Run, error) {
 	case runErr != nil && (errors.Is(runErr, context.Canceled) ||
 		errors.Is(runErr, context.DeadlineExceeded)):
 		started.Status, started.Error = RunCanceled, runErr.Error()
+	case errors.Is(runErr, ErrBudgetExhausted) ||
+		graph.Run.State == protocol.RunStateBlocked:
+		started.Status, started.Error = RunBlocked, graph.Run.Reason
+		if started.Error == "" && runErr != nil {
+			started.Error = runErr.Error()
+		}
 	case runErr != nil:
 		started.Status, started.Error = RunFailed, runErr.Error()
 	case graph.Run.State == protocol.RunStateCompleted:
@@ -222,7 +236,7 @@ func (e *graphExecution) prepareBudget(workspace, sessionID string) error {
 		sessionScope,
 		workbudget.Limits{
 			MaxTokens:     e.budget.MaxTokens,
-			MaxCostMicros: uint64(e.budget.MaxCostUSD * 1e6),
+			MaxCostMicros: budgetCostMicrounits(e.budget.MaxCostUSD),
 			MaxSlots:      e.budget.MaxParallel,
 		},
 	)
@@ -241,24 +255,37 @@ func (e *graphExecution) reserveAttempt(id string) error {
 	if e.budget.MaxTokens > 0 {
 		used := snapshot.Reserved.Tokens + snapshot.Spent.Tokens
 		if used >= e.budget.MaxTokens {
-			return ErrBudgetExhausted
+			return workflowBudgetExhausted(
+				protocol.BudgetResourceTokens,
+				e.budgetScope,
+				used,
+				e.budget.MaxTokens,
+				ErrBudgetExhausted,
+			)
 		}
 		amount.Tokens = divideCeil(
 			e.budget.MaxTokens-used,
 			uint64(availableSlots),
 		)
 	}
-	maxCost := uint64(e.budget.MaxCostUSD * 1e6)
+	maxCost := budgetCostMicrounits(e.budget.MaxCostUSD)
 	if maxCost > 0 {
 		used := snapshot.Reserved.CostMicros + snapshot.Spent.CostMicros
 		if used >= maxCost {
-			return ErrBudgetExhausted
+			return workflowBudgetExhausted(
+				protocol.BudgetResourceCostMicrounits,
+				e.budgetScope,
+				used,
+				maxCost,
+				ErrBudgetExhausted,
+			)
 		}
 		amount.CostMicros = divideCeil(maxCost-used, uint64(availableSlots))
 	}
-	return e.ledger.Reserve(workbudget.Reservation{
+	err = e.ledger.Reserve(workbudget.Reservation{
 		ID: id, ScopeID: e.budgetScope, Amount: amount,
 	})
+	return resumableWorkflowBudgetError(err)
 }
 
 func divideCeil(value, divisor uint64) uint64 {
@@ -266,6 +293,13 @@ func divideCeil(value, divisor uint64) uint64 {
 		return 0
 	}
 	return 1 + (value-1)/divisor
+}
+
+func budgetCostMicrounits(costUSD float64) uint64 {
+	if costUSD <= 0 {
+		return 0
+	}
+	return max(uint64(1), uint64(math.Ceil(costUSD*1e6)))
 }
 
 func (e *graphExecution) restoreBudget(graph model.Graph) error {
@@ -299,7 +333,7 @@ func (e *graphExecution) restoreBudget(graph model.Graph) error {
 			CostMicros: result.Usage.CostMicros,
 		}); err != nil {
 			if errors.Is(err, workbudget.ErrExhausted) {
-				return ErrBudgetExhausted
+				return resumableWorkflowBudgetError(err)
 			}
 			return err
 		}
@@ -444,11 +478,18 @@ func (e *graphExecution) dispatch(
 	}
 	completed := make(chan nodeCompletion, maxParallel)
 	running := make(map[protocol.NodeID]claimedNode)
+	budgetPending := false
 	for {
 		if err := ctx.Err(); err != nil {
 			return e.cancel(ctx, graph, err)
 		}
+		if budgetPending && len(running) == 0 {
+			return e.block(ctx, graph, ErrBudgetExhausted)
+		}
 		if runTerminalState(graph.Run.State) && len(running) == 0 {
+			if graph.Run.State == protocol.RunStateBlocked {
+				return graph, ErrBudgetExhausted
+			}
 			return graph, e.failure(e.results(graph))
 		}
 		launched := false
@@ -458,14 +499,15 @@ func (e *graphExecution) dispatch(
 				break
 			}
 			if e.budget.MaxSteps > 0 && e.steps >= e.budget.MaxSteps {
-				return e.cancel(ctx, graph, ErrBudgetExhausted)
+				budgetPending = true
+				break
 			}
 			e.steps++
 			claim, next, err := e.claim(ctx, graph, node)
 			if err != nil {
 				if errors.Is(err, ErrBudgetExhausted) {
 					e.refundRunning(running)
-					return e.cancel(ctx, graph, ErrBudgetExhausted)
+					return e.block(ctx, graph, err)
 				}
 				return graph, err
 			}
@@ -519,7 +561,7 @@ func (e *graphExecution) dispatch(
 			if err != nil {
 				e.refundRunning(running)
 				if errors.Is(err, ErrBudgetExhausted) {
-					return e.cancel(ctx, next, err)
+					return e.block(ctx, next, err)
 				}
 				return next, err
 			}
@@ -552,9 +594,6 @@ func (e *graphExecution) claim(
 	effectID := protocol.EffectID("effect_" + string(attemptID))
 	reservationID := "workflow:budget:" + string(attemptID)
 	if err := e.reserveAttempt(reservationID); err != nil {
-		if errors.Is(err, workbudget.ErrExhausted) {
-			err = ErrBudgetExhausted
-		}
 		return claimedNode{}, graph, err
 	}
 	now := e.now()
@@ -615,10 +654,10 @@ func (e *graphExecution) complete(
 		if !errors.Is(budgetErr, workbudget.ErrExhausted) {
 			return graph, budgetErr
 		}
-		result.Status = NodeStatusFailed
-		result.Reason = ErrBudgetExhausted.Error() + ": " + budgetErr.Error()
+		budgetErr = resumableWorkflowBudgetError(budgetErr)
+		result.Status = NodeStatusBlocked
+		result.Reason = budgetErr.Error()
 		result.retryable = false
-		budgetErr = ErrBudgetExhausted
 	}
 	if result.Status == "" {
 		result.Status, result.Reason =
@@ -649,6 +688,8 @@ func (e *graphExecution) complete(
 	switch result.Status {
 	case NodeStatusFailed:
 		state = protocol.NodeStateFailed
+	case NodeStatusBlocked:
+		state = protocol.NodeStateBlocked
 	case NodeStatusSkipped:
 		state = protocol.NodeStateSkipped
 	}
@@ -908,6 +949,33 @@ func (e *graphExecution) cancel(
 	return graph, cause
 }
 
+func (e *graphExecution) block(
+	ctx context.Context,
+	graph model.Graph,
+	cause error,
+) (model.Graph, error) {
+	if graph.Run.State != protocol.RunStateBlocked {
+		result, err := e.controller.Execute(
+			context.WithoutCancel(ctx),
+			kernel.Command{
+				ID: fmt.Sprintf(
+					"workflow:block:%s:%d",
+					e.runID,
+					graph.Run.Revision,
+				),
+				Kind: kernel.CommandBlock, RunID: e.runID,
+				ExpectedRevision: graph.Run.Revision,
+				At:               e.now(), Reason: cause.Error(),
+			},
+		)
+		if err != nil {
+			return graph, errors.Join(cause, err)
+		}
+		graph = result.Graph
+	}
+	return graph, cause
+}
+
 func (e *graphExecution) failure(results []NodeResult) error {
 	var failed []string
 	for _, result := range results {
@@ -953,8 +1021,9 @@ func protocolWorkflowStatus(state protocol.NodeState) NodeStatus {
 		return NodeStatusCompleted
 	case protocol.NodeStateSkipped:
 		return NodeStatusSkipped
-	case protocol.NodeStateFailed, protocol.NodeStateBlocked,
-		protocol.NodeStateCanceled:
+	case protocol.NodeStateBlocked:
+		return NodeStatusBlocked
+	case protocol.NodeStateFailed, protocol.NodeStateCanceled:
 		return NodeStatusFailed
 	default:
 		return NodeStatusPending
@@ -972,7 +1041,8 @@ func terminalNodeState(state protocol.NodeState) bool {
 func runTerminalState(state protocol.RunState) bool {
 	return state == protocol.RunStateCompleted ||
 		state == protocol.RunStateFailed ||
-		state == protocol.RunStateCanceled
+		state == protocol.RunStateCanceled ||
+		state == protocol.RunStateBlocked
 }
 
 func summarize(results []NodeResult) json.RawMessage {

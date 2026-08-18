@@ -274,9 +274,10 @@ func TestProductionWorkflowProviderUsageEnforcesTokenBudget(t *testing.T) {
 		},
 		1,
 	)
-	settled := awaitTerminal(t, session, id)
-	if settled.State != taskstate.StateFailed ||
-		!strings.Contains(settled.FailureReason, workflow.ErrBudgetExhausted.Error()) ||
+	settled := awaitTaskState(t, session, id, taskstate.StateWaiting)
+	if settled.State != taskstate.StateWaiting ||
+		!strings.Contains(settled.Reason, "token budget exhausted") ||
+		settled.FailureReason != "" ||
 		settled.Attempt != 1 {
 		t.Fatalf("budgeted workflow task = %+v", settled)
 	}
@@ -289,6 +290,32 @@ func TestProductionWorkflowProviderUsageEnforcesTokenBudget(t *testing.T) {
 	if len(result.Run.Nodes) != 1 ||
 		result.Run.Nodes[0].Usage.Tokens <= spec.Budget.MaxTokens {
 		t.Fatalf("workflow Provider Usage was not persisted: %+v", result.Run)
+	}
+}
+
+func awaitTaskState(
+	t *testing.T,
+	session *Session,
+	id string,
+	want taskstate.State,
+) taskstate.Task {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		value, err := session.Tasks().Get(context.Background(), id)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if value.State == want {
+			return value
+		}
+		if value.State == taskstate.StateCompleted ||
+			value.State == taskstate.StateFailed ||
+			value.State == taskstate.StateCanceled ||
+			time.Now().After(deadline) {
+			t.Fatalf("task %s reached %s, want %s", id, value.State, want)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

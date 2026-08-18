@@ -4,7 +4,7 @@ model = "deepseek-v4-flash"
 protocol = "openai_responses"
 mode = "act"
 tools = true
-max_steps = 128
+max_steps = 0
 
 [credential]
 kind = "keyring"

@@ -4521,6 +4521,12 @@
     "thread.compacted": {
       "type": "object",
       "properties": {
+        "authority_digest": {
+          "type": "string"
+        },
+        "authority_equivalent": {
+          "type": "boolean"
+        },
         "compatibility_hash": {
           "type": "string"
         },
@@ -5218,6 +5224,12 @@
     "turn.compaction": {
       "type": "object",
       "properties": {
+        "authority_digest": {
+          "type": "string"
+        },
+        "authority_equivalent": {
+          "type": "boolean"
+        },
         "capsule_bytes": {
           "type": "integer"
         },

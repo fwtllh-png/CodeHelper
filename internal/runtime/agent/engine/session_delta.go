@@ -21,14 +21,15 @@ type CompactionDelta struct {
 }
 
 type SessionStateDelta struct {
-	Turn       uint64                     `json:"turn,omitempty"`
-	WorkingSet workingset.Delta           `json:"working_set"`
-	Evidence   evidence.Delta             `json:"evidence"`
-	Failures   compact.FailureDelta       `json:"failures"`
-	Compaction CompactionDelta            `json:"compaction"`
-	Plan       *interact.Plan             `json:"plan,omitempty"`
-	World      contextstore.WorldBaseline `json:"world,omitempty"`
-	Window     contextstore.WindowLedger  `json:"window"`
+	Turn         uint64                     `json:"turn,omitempty"`
+	HistoryTurns map[string]uint64          `json:"history_turns,omitempty"`
+	WorkingSet   workingset.Delta           `json:"working_set"`
+	Evidence     evidence.Delta             `json:"evidence"`
+	Failures     compact.FailureDelta       `json:"failures"`
+	Compaction   CompactionDelta            `json:"compaction"`
+	Plan         *interact.Plan             `json:"plan,omitempty"`
+	World        contextstore.WorldBaseline `json:"world,omitempty"`
+	Window       contextstore.WindowLedger  `json:"window"`
 }
 
 type SessionDelta struct {
@@ -36,6 +37,8 @@ type SessionDelta struct {
 	Turn           uint64                     `json:"turn,omitempty"`
 	BaseRevision   uint64                     `json:"base_revision"`
 	History        []provider.Message         `json:"history"`
+	MessageTurns   []uint64                   `json:"message_turns,omitempty"`
+	HistoryTurns   map[string]uint64          `json:"history_turns,omitempty"`
 	Usage          provider.Usage             `json:"usage"`
 	CostMicrounits uint64                     `json:"cost_microunits"`
 	WorkingSet     workingset.Delta           `json:"working_set"`
@@ -70,6 +73,8 @@ func prepareSessionDelta(
 		TurnID:         turnID,
 		BaseRevision:   baseRevision,
 		History:        cloneMessages(history),
+		MessageTurns:   make([]uint64, len(history)),
+		HistoryTurns:   cloneHistoryTurns(sessionState.HistoryTurns),
 		Usage:          usage,
 		CostMicrounits: uint64(math.Round(cost * 1_000_000)),
 		WorkingSet:     sessionState.WorkingSet, Evidence: sessionState.Evidence,
@@ -81,6 +86,20 @@ func prepareSessionDelta(
 	for _, message := range history {
 		delta.Turn = max(delta.Turn, message.Turn)
 	}
+	for index, message := range history {
+		delta.MessageTurns[index] = message.Turn
+	}
+	if sessionState.Turn != 0 &&
+		historyContainsTurn(history, sessionState.Turn) {
+		if delta.HistoryTurns == nil {
+			delta.HistoryTurns = make(map[string]uint64)
+		}
+		delta.HistoryTurns[turnID] = sessionState.Turn
+	}
+	reconcileHistoryTurnBindings(
+		delta.HistoryTurns,
+		delta.MessageTurns,
+	)
 	payload, err := json.Marshal(delta)
 	if err != nil {
 		return SessionDelta{}, fmt.Errorf("encode session delta: %w", err)
@@ -137,7 +156,16 @@ func (e *Engine) applyDurableSessionDelta(delta SessionDelta) error {
 			return fmt.Errorf("restore token window: %w", err)
 		}
 	}
+	if len(delta.MessageTurns) != 0 &&
+		len(delta.MessageTurns) != len(delta.History) {
+		return errors.New("session delta message turn count mismatch")
+	}
 	e.history = cloneMessages(delta.History)
+	for index, turn := range delta.MessageTurns {
+		e.history[index].Turn = turn
+	}
+	e.historyTurns = cloneHistoryTurns(delta.HistoryTurns)
+	e.reconcileHistoryTurns(e.history, delta.TurnID, delta.Turn)
 	e.turn = max(e.turn, delta.Turn)
 	e.usage.Add(delta.Usage)
 	e.costUSD += float64(delta.CostMicrounits) / 1_000_000
@@ -171,6 +199,8 @@ func (e *Engine) PreparedSessionDelta() (SessionDelta, bool) {
 	}
 	delta := *scope.state.delta
 	delta.History = cloneMessages(delta.History)
+	delta.MessageTurns = append([]uint64(nil), delta.MessageTurns...)
+	delta.HistoryTurns = cloneHistoryTurns(delta.HistoryTurns)
 	delta.World = contextstore.CloneWorldBaseline(delta.World)
 	delta.Window = contextstore.CloneWindowLedger(delta.Window)
 	return delta, true

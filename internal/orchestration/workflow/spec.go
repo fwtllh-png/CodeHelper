@@ -48,9 +48,6 @@ func (b Budget) WithDefaults() Budget {
 	if b.MaxParallel <= 0 {
 		b.MaxParallel = 1000
 	}
-	if b.MaxSteps <= 0 {
-		b.MaxSteps = 256
-	}
 	return b
 }
 
@@ -70,6 +67,7 @@ const (
 	NodeStatusPending   NodeStatus = "pending"
 	NodeStatusRunning   NodeStatus = "running"
 	NodeStatusCompleted NodeStatus = "completed"
+	NodeStatusBlocked   NodeStatus = "blocked"
 	NodeStatusFailed    NodeStatus = "failed"
 	NodeStatusSkipped   NodeStatus = "skipped"
 )
@@ -77,7 +75,8 @@ const (
 // Terminal reports whether a status is one a dependent node may act on.
 func (s NodeStatus) Terminal() bool {
 	switch s {
-	case NodeStatusCompleted, NodeStatusFailed, NodeStatusSkipped:
+	case NodeStatusCompleted, NodeStatusBlocked, NodeStatusFailed,
+		NodeStatusSkipped:
 		return true
 	default:
 		return false
@@ -245,7 +244,8 @@ func (s Spec) validateEdges(node Node, known map[string]bool) error {
 				ErrInvalidSpec, node.ID, node.When.Node)
 		}
 		switch node.When.Status {
-		case NodeStatusCompleted, NodeStatusFailed, NodeStatusSkipped:
+		case NodeStatusCompleted, NodeStatusBlocked, NodeStatusFailed,
+			NodeStatusSkipped:
 		default:
 			return fmt.Errorf("%w: node %q conditions on unsupported status %q",
 				ErrInvalidSpec, node.ID, node.When.Status)
@@ -356,6 +356,7 @@ const (
 	RunQueued    RunStatus = "queued"
 	RunRunning   RunStatus = "running"
 	RunCompleted RunStatus = "completed"
+	RunBlocked   RunStatus = "blocked"
 	RunFailed    RunStatus = "failed"
 	RunCanceled  RunStatus = "canceled"
 )

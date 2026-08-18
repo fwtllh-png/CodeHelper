@@ -565,6 +565,8 @@ func (a *EngineAdapter) StartTurn(
 				CriticalFacts:        event.Compaction.CriticalFacts,
 				CompatibilityHash:    event.Compaction.CompatibilityHash,
 				CompatibilityMatched: event.Compaction.CompatibilityMatched,
+				AuthorityDigest:      event.Compaction.AuthorityDigest,
+				AuthorityEquivalent:  event.Compaction.AuthorityEquivalent,
 				ModelDownshifted:     event.Compaction.ModelDownshifted,
 				DownshiftPolicy:      event.Compaction.DownshiftPolicy,
 				NarrativeIncluded:    event.Compaction.NarrativeIncluded,
@@ -810,6 +812,8 @@ func applyThreadCompactionTruth(
 	data.TruthEntities = receipt.TruthEntities
 	data.CriticalFacts = receipt.CriticalFacts
 	data.CompatibilityHash = receipt.CompatibilityHash
+	data.AuthorityDigest = receipt.AuthorityDigest
+	data.AuthorityEquivalent = receipt.AuthorityEquivalent
 	data.ModelDownshifted = receipt.ModelDownshifted
 	data.DownshiftPolicy = receipt.DownshiftPolicy
 	data.NarrativeIncluded = receipt.NarrativeIncluded

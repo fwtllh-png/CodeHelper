@@ -39,14 +39,18 @@ type childRuntime struct {
 	agentGraphs *subagent.WorkGraph
 	budget      *workbudget.Ledger
 
-	mu      sync.Mutex
-	runtime *app.Runtime
-	threads *app.ThreadManager
-	manager *subagent.AgentControl
-	turns   map[protocol.ThreadID]*childTurn
-	bound   bool
+	mu               sync.Mutex
+	runtime          *app.Runtime
+	threads          *app.ThreadManager
+	manager          *subagent.AgentControl
+	turns            map[protocol.ThreadID]*childTurn
+	bound            bool
+	settlementErrors map[protocol.TurnID]error
 
 	removeObserver func()
+	stop           chan struct{}
+	stopOnce       sync.Once
+	settlers       sync.WaitGroup
 }
 
 // childTurn accumulates what a child turn observed until its terminal event
@@ -61,6 +65,7 @@ type childTurn struct {
 	text              string
 	notes             []string
 	deadline          context.CancelFunc
+	leaseRenewal      chan struct{}
 	timedOut          bool
 	startedAt         time.Time
 	lease             rlm.Lease
@@ -87,7 +92,9 @@ func newChildRuntime(
 	}
 	value := &childRuntime{
 		limits: limits, root: workspace, governor: governor, tools: tools,
-		turns: make(map[protocol.ThreadID]*childTurn),
+		turns:            make(map[protocol.ThreadID]*childTurn),
+		settlementErrors: make(map[protocol.TurnID]error),
+		stop:             make(chan struct{}),
 	}
 	if len(controllers) > 0 {
 		value.workGraphs = controllers[0]
@@ -170,6 +177,7 @@ func (c *childRuntime) bind(
 		turnID := protocol.TurnID(agent.TurnID)
 		recoveredTurn := &childTurn{
 			agentID: agent.ID, turnID: turnID, startedAt: time.Now(),
+			leaseRenewal:   make(chan struct{}, 1),
 			startedSignal:  make(chan struct{}),
 			terminalSignal: make(chan struct{}),
 		}
@@ -216,6 +224,8 @@ func (c *childRuntime) close() {
 	if removeObserver != nil {
 		removeObserver()
 	}
+	c.stopOnce.Do(func() { close(c.stop) })
+	c.settlers.Wait()
 }
 
 func (c *childRuntime) DeclareAgent(
@@ -230,8 +240,21 @@ func (c *childRuntime) DeclareAgent(
 // pointless and would deadlock the parent turn that called the agent tool.
 func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (string, error) {
 	c.mu.Lock()
-	runtime, threads, manager, bound := c.runtime, c.threads, c.manager, c.bound
+	runtime, threads, manager, bound :=
+		c.runtime, c.threads, c.manager, c.bound
+	var settlementErrors []error
+	for _, err := range c.settlementErrors {
+		settlementErrors = append(settlementErrors, err)
+	}
 	c.mu.Unlock()
+	if runtimeErr := errors.Join(settlementErrors...); runtimeErr != nil {
+		return "", protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"child settlement recovery is pending",
+			true,
+			runtimeErr,
+		)
+	}
 	if !bound {
 		return "", protocol.NewProblem(
 			protocol.CodeUnavailable, "child agent runtime is not bound to a session", false, nil,
@@ -317,11 +340,15 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 		Orchestration: &workAttempt.Correlation,
 	})
 	if err != nil {
-		_ = c.agentGraphs.Release(ctx, workAttempt, "operation_invalid")
+		releaseErr := c.agentGraphs.Release(
+			ctx,
+			workAttempt,
+			"operation_invalid",
+		)
 		refundBudget()
 		rollbackResident()
 		c.governor.Release(lease)
-		return "", err
+		return "", errors.Join(err, releaseErr)
 	}
 	c.mu.Lock()
 	c.turns[threadID] = &childTurn{
@@ -330,6 +357,7 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 		lease:     lease, leased: true,
 		workAttempt:       workAttempt,
 		budgetReservation: budgetReservation,
+		leaseRenewal:      make(chan struct{}, 1),
 		startedSignal:     make(chan struct{}),
 		terminalSignal:    make(chan struct{}),
 	}
@@ -339,11 +367,15 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 		c.mu.Lock()
 		delete(c.turns, threadID)
 		c.mu.Unlock()
-		_ = c.agentGraphs.Release(ctx, workAttempt, "submit_rejected")
+		releaseErr := c.agentGraphs.Release(
+			ctx,
+			workAttempt,
+			"submit_rejected",
+		)
 		refundBudget()
 		rollbackResident()
 		c.governor.Release(lease)
-		return "", err
+		return "", errors.Join(err, releaseErr)
 	}
 	c.armDeadline(threadID, turnID)
 	return string(turnID), nil
@@ -562,7 +594,7 @@ func (c *childRuntime) reserveChildBudget(
 			sessionScope,
 			workbudget.Limits{
 				MaxTokens:     c.limits.MaxTokens,
-				MaxCostMicros: uint64(c.limits.MaxCostUSD * 1e6),
+				MaxCostMicros: childBudgetMicrounits(c.limits.MaxCostUSD),
 				MaxSlots:      c.limits.MaxParallel,
 			},
 		},
@@ -571,7 +603,7 @@ func (c *childRuntime) reserveChildBudget(
 			treeScope,
 			workbudget.Limits{
 				MaxTokens:     agent.Budget.MaxTokens,
-				MaxCostMicros: uint64(agent.Budget.MaxCostUSD * 1e6),
+				MaxCostMicros: childBudgetMicrounits(agent.Budget.MaxCostUSD),
 				MaxSlots:      1,
 			},
 		},
@@ -585,17 +617,12 @@ func (c *childRuntime) reserveChildBudget(
 		ID: reservationID, ScopeID: agentScope,
 		Amount: workbudget.Usage{
 			Tokens:     agent.Budget.MaxTokens,
-			CostMicros: uint64(agent.Budget.MaxCostUSD * 1e6),
+			CostMicros: childBudgetMicrounits(agent.Budget.MaxCostUSD),
 			Slots:      1,
 		},
 	})
 	if errors.Is(err, workbudget.ErrExhausted) {
-		return "", protocol.NewProblem(
-			protocol.CodeResourceExhausted,
-			"child Agent budget reservation is exhausted",
-			false,
-			nil,
-		)
+		return "", resumableChildBudgetError(err)
 	}
 	return reservationID, err
 }
@@ -609,25 +636,21 @@ func (c *childRuntime) admit(depth int) (rlm.Lease, error) {
 	limits := c.governor.Limits()
 	spent := c.governor.Snapshot()
 	if limits.MaxTokens > 0 && spent.SpentTokens >= limits.MaxTokens {
-		return rlm.Lease{}, protocol.NewProblem(
-			protocol.CodeResourceExhausted,
-			fmt.Sprintf(
-				"child agents have spent their shared token budget (%d of %d); "+
-					"raise execution.subagent.max_tokens to run more children",
-				spent.SpentTokens, limits.MaxTokens,
-			),
-			false, nil,
+		return rlm.Lease{}, childBudgetExhausted(
+			protocol.BudgetResourceTokens,
+			"child_tree:"+c.root,
+			spent.SpentTokens,
+			limits.MaxTokens,
+			rlm.ErrTokenBudget,
 		)
 	}
 	if limits.MaxCostUSD > 0 && spent.SpentCostUSD >= limits.MaxCostUSD {
-		return rlm.Lease{}, protocol.NewProblem(
-			protocol.CodeResourceExhausted,
-			fmt.Sprintf(
-				"child agents have spent their shared cost budget ($%.6f of $%.6f); "+
-					"raise execution.subagent.max_cost_usd to run more children",
-				spent.SpentCostUSD, limits.MaxCostUSD,
-			),
-			false, nil,
+		return rlm.Lease{}, childBudgetExhausted(
+			protocol.BudgetResourceCostMicrounits,
+			"child_tree:"+c.root,
+			childBudgetMicrounits(spent.SpentCostUSD),
+			childBudgetMicrounits(limits.MaxCostUSD),
+			rlm.ErrCostBudget,
 		)
 	}
 	lease, err := c.governor.Admit(depth, 0, 0)
@@ -680,11 +703,23 @@ func (c *childRuntime) armDeadline(threadID protocol.ThreadID, turnID protocol.T
 	go func() {
 		timer := time.NewTimer(wallTime)
 		defer timer.Stop()
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-turn.leaseRenewal:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(wallTime)
+			case <-timer.C:
+				goto expired
+			}
 		}
+	expired:
 		c.mu.Lock()
 		current := c.turns[threadID]
 		if current == nil || current.turnID != turnID {
@@ -694,8 +729,8 @@ func (c *childRuntime) armDeadline(threadID protocol.ThreadID, turnID protocol.T
 		current.timedOut = true
 		agentID := current.agentID
 		c.mu.Unlock()
-		// Still running past its wall clock: cancel through the normal path. The
-		// terminal event turns it into an errored child with timeout evidence.
+		// An idle lease expires through the normal cancel path. The terminal
+		// event preserves it as an interrupted child that can be taken over.
 		_ = c.CancelTurn(context.Background(), agentID, string(turnID))
 	}()
 }
@@ -741,9 +776,6 @@ func (c *childRuntime) observe(event protocol.Event) {
 		settle, status = true, subagent.StatusErrored
 	case *protocol.TurnCanceledData:
 		settle, status = true, subagent.StatusInterrupted
-		if turn.timedOut {
-			status = subagent.StatusErrored
-		}
 	case *protocol.OperationRejectedData:
 		turn.notes = append(turn.notes, fmt.Sprintf(
 			"operation rejected: %s",
@@ -754,6 +786,10 @@ func (c *childRuntime) observe(event protocol.Event) {
 		}
 	}
 	if !settle {
+		select {
+		case turn.leaseRenewal <- struct{}{}:
+		default:
+		}
 		manager := c.manager
 		agentID := turn.agentID
 		turnID := turn.turnID
@@ -809,23 +845,107 @@ func (c *childRuntime) observe(event protocol.Event) {
 	delete(c.turns, event.ThreadID)
 	c.mu.Unlock()
 
+	if err := c.settleChildAttempt(turn, result, manager); err == nil {
+		c.completeChildSettlement(
+			event.ThreadID,
+			turn,
+			manager,
+			releasePending,
+		)
+		return
+	} else {
+		c.recordSettlementError(turn, err)
+	}
+	c.settlers.Add(1)
+	go c.retryChildSettlement(
+		event.ThreadID, turn, result, manager, releasePending,
+	)
+}
+
+func (c *childRuntime) settleChildAttempt(
+	turn *childTurn,
+	result subagent.Result,
+	manager *subagent.AgentControl,
+) error {
 	if err := c.agentGraphs.Settle(
 		context.Background(),
 		turn.workAttempt,
 		result,
 	); err != nil {
-		result.Status = subagent.StatusErrored
-		result.Unresolved = append(result.Unresolved, "settle Agent WorkGraph: "+err.Error())
+		return err
 	}
 	if manager != nil {
-		_ = manager.Settle(result)
+		return manager.Settle(result)
+	}
+	return nil
+}
+
+func (c *childRuntime) completeChildSettlement(
+	threadID protocol.ThreadID,
+	turn *childTurn,
+	manager *subagent.AgentControl,
+	releasePending bool,
+) {
+	c.mu.Lock()
+	delete(c.settlementErrors, turn.turnID)
+	c.mu.Unlock()
+	if manager != nil {
 		manager.TouchResident(turn.agentID)
 	}
 	if releasePending {
-		c.releaseThread(event.ThreadID)
+		c.releaseThread(threadID)
 	}
 	if turn.terminalSignal != nil {
 		close(turn.terminalSignal)
+	}
+}
+
+func (c *childRuntime) recordSettlementError(
+	turn *childTurn,
+	err error,
+) {
+	c.mu.Lock()
+	c.settlementErrors[turn.turnID] = fmt.Errorf(
+		"settle child %s turn %s: %w",
+		turn.agentID,
+		turn.turnID,
+		err,
+	)
+	c.mu.Unlock()
+}
+
+func (c *childRuntime) retryChildSettlement(
+	threadID protocol.ThreadID,
+	turn *childTurn,
+	result subagent.Result,
+	manager *subagent.AgentControl,
+	releasePending bool,
+) {
+	defer c.settlers.Done()
+	delay := 25 * time.Millisecond
+	for {
+		timer := time.NewTimer(delay)
+		select {
+		case <-c.stop:
+			timer.Stop()
+			if turn.terminalSignal != nil {
+				close(turn.terminalSignal)
+			}
+			return
+		case <-timer.C:
+		}
+		if err := c.settleChildAttempt(turn, result, manager); err == nil {
+			c.completeChildSettlement(
+				threadID,
+				turn,
+				manager,
+				releasePending,
+			)
+			return
+		} else {
+			c.recordSettlementError(turn, err)
+		}
+		delay = min(delay*2, time.Second)
 	}
 }
 
@@ -836,7 +956,7 @@ func (t *childTurn) result(threadID protocol.ThreadID, status subagent.Status) s
 	}
 	if t.timedOut {
 		result.Unresolved = append(result.Unresolved, fmt.Sprintf(
-			"child agent exceeded its wall-clock budget after %s and was canceled",
+			"child execution lease expired after %s without runtime progress",
 			time.Since(t.startedAt).Round(time.Second),
 		))
 	}

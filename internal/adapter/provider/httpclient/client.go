@@ -57,13 +57,13 @@ type Health struct {
 }
 
 func New() *Client {
-	return &Client{
+	return withConnectionTimeout(&Client{
 		HTTP:          &http.Client{},
 		Credentials:   DefaultCredentials(),
 		IdleTimeout:   60 * time.Second,
 		MaxConcurrent: 8,
 		health:        Health{Healthy: true, UpdatedAt: time.Now()},
-	}
+	}, 2*time.Minute)
 }
 func (c *Client) httpClient() *http.Client {
 	base := c.HTTP
@@ -75,6 +75,7 @@ func (c *Client) httpClient() *http.Client {
 	}
 	return egress.WrapClient(base, c.Egress)
 }
+
 func (c *Client) Execute(
 	ctx context.Context,
 	request provider.ModelRequest,

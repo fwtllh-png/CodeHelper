@@ -1863,8 +1863,24 @@ func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := engine.Run(t.Context(), "too large", nil); !protocol.IsCode(err, protocol.CodeResourceExhausted) {
+	var terminalFault *protocol.FaultMetadata
+	result, err := engine.Run(t.Context(), "too large", func(event Event) error {
+		if event.State == Failed {
+			terminalFault = protocol.CloneFaultMetadata(event.Fault)
+		}
+		return nil
+	})
+	if !protocol.IsCode(err, protocol.CodeResourceExhausted) {
 		t.Fatalf("Run() error = %v", err)
+	}
+	if result.State != Failed ||
+		terminalFault == nil ||
+		terminalFault.Disposition != protocol.FaultResumeTurn {
+		t.Fatalf(
+			"budget terminal = state:%s fault:%+v",
+			result.State,
+			terminalFault,
+		)
 	}
 	if history := engine.History(); len(history) != 0 {
 		t.Fatalf("failed turn committed history: %+v", history)
@@ -2121,7 +2137,9 @@ func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 		receipt.SummaryTruncated ||
 		len(receipt.ContextReceipts) != 1 ||
 		len(receipt.CriticalPaths) != 1 || receipt.CriticalPaths[0] != "a.go" ||
-		len(receipt.WorkingSet) != 1 {
+		len(receipt.WorkingSet) != 1 ||
+		receipt.AuthorityDigest == "" ||
+		!receipt.AuthorityEquivalent {
 		t.Fatalf("compaction receipt = %+v", receipt)
 	}
 	if !slices.Contains(receipt.Sections, compact.SectionTruth) ||

@@ -1045,19 +1045,21 @@ func validateApprovalSource(source *ApprovalSource) error {
 }
 
 type ThreadCompactedData struct {
-	Summary            string             `json:"summary"`
-	ReplacementHistory []CompactedMessage `json:"replacement_history,omitempty"`
-	WindowNumber       uint64             `json:"window_number,omitempty"`
-	FirstWindowID      string             `json:"first_window_id,omitempty"`
-	PreviousWindowID   string             `json:"previous_window_id,omitempty"`
-	WindowID           string             `json:"window_id,omitempty"`
-	TruthGeneration    uint64             `json:"truth_generation,omitempty"`
-	TruthEntities      int                `json:"truth_entities,omitempty"`
-	CriticalFacts      int                `json:"critical_facts,omitempty"`
-	CompatibilityHash  string             `json:"compatibility_hash,omitempty"`
-	ModelDownshifted   bool               `json:"model_downshifted,omitempty"`
-	DownshiftPolicy    string             `json:"downshift_policy,omitempty"`
-	NarrativeIncluded  bool               `json:"narrative_included,omitempty"`
+	Summary             string             `json:"summary"`
+	ReplacementHistory  []CompactedMessage `json:"replacement_history,omitempty"`
+	WindowNumber        uint64             `json:"window_number,omitempty"`
+	FirstWindowID       string             `json:"first_window_id,omitempty"`
+	PreviousWindowID    string             `json:"previous_window_id,omitempty"`
+	WindowID            string             `json:"window_id,omitempty"`
+	TruthGeneration     uint64             `json:"truth_generation,omitempty"`
+	TruthEntities       int                `json:"truth_entities,omitempty"`
+	CriticalFacts       int                `json:"critical_facts,omitempty"`
+	CompatibilityHash   string             `json:"compatibility_hash,omitempty"`
+	AuthorityDigest     string             `json:"authority_digest,omitempty"`
+	AuthorityEquivalent bool               `json:"authority_equivalent,omitempty"`
+	ModelDownshifted    bool               `json:"model_downshifted,omitempty"`
+	DownshiftPolicy     string             `json:"downshift_policy,omitempty"`
+	NarrativeIncluded   bool               `json:"narrative_included,omitempty"`
 }
 
 // CompactedMessage is durable model-visible history; Turn is retained for resume.
@@ -1095,7 +1097,8 @@ func (d *ThreadCompactedData) validate() error {
 		return errors.New("compaction window_id is required when replacement_history is set")
 	}
 	if d.TruthGeneration != 0 &&
-		(d.CompatibilityHash == "" || d.DownshiftPolicy == "") {
+		(d.CompatibilityHash == "" || d.DownshiftPolicy == "" ||
+			d.AuthorityDigest == "" || !d.AuthorityEquivalent) {
 		return errors.New("compaction truth metadata is incomplete")
 	}
 	return nil
@@ -1125,6 +1128,8 @@ type TurnCompactionData struct {
 	CriticalFacts        int      `json:"critical_facts,omitempty"`
 	CompatibilityHash    string   `json:"compatibility_hash,omitempty"`
 	CompatibilityMatched bool     `json:"compatibility_matched,omitempty"`
+	AuthorityDigest      string   `json:"authority_digest,omitempty"`
+	AuthorityEquivalent  bool     `json:"authority_equivalent,omitempty"`
 	ModelDownshifted     bool     `json:"model_downshifted,omitempty"`
 	DownshiftPolicy      string   `json:"downshift_policy,omitempty"`
 	NarrativeIncluded    bool     `json:"narrative_included,omitempty"`
@@ -1141,7 +1146,8 @@ func (d *TurnCompactionData) validate() error {
 		return errors.New("compaction summary is required")
 	}
 	if d.TruthGeneration != 0 &&
-		(d.CompatibilityHash == "" || d.DownshiftPolicy == "") {
+		(d.CompatibilityHash == "" || d.DownshiftPolicy == "" ||
+			d.AuthorityDigest == "" || !d.AuthorityEquivalent) {
 		return errors.New("turn compaction truth metadata is incomplete")
 	}
 	return nil

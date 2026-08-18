@@ -62,6 +62,14 @@ func TestSessionProfileValidationRejectsUnsafeOrUnsupportedValues(t *testing.T) 
 	}
 }
 
+func TestSessionProfileAllowsUncappedExecutionSteps(t *testing.T) {
+	profile := testSessionProfile()
+	profile.MaxSteps = 0
+	if err := profile.Validate(); err != nil {
+		t.Fatalf("uncapped profile: %v", err)
+	}
+}
+
 func testSessionProfile() SessionProfile {
 	return SessionProfile{
 		Version:             SessionProfileVersion,

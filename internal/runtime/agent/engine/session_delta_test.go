@@ -16,8 +16,8 @@ func TestSessionDeltaApplyIsRevisionedAndIdempotent(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	scope := attachTestScope(t, engine)
 	history := []provider.Message{
-		provider.TextMessage(provider.RoleUser, "request"),
-		provider.TextMessage(provider.RoleAssistant, "answer"),
+		messageWithText(provider.RoleUser, "request", 1),
+		messageWithText(provider.RoleAssistant, "answer", 1),
 	}
 	delta, err := prepareSessionDelta(
 		"turn-1",
@@ -39,7 +39,8 @@ func TestSessionDeltaApplyIsRevisionedAndIdempotent(t *testing.T) {
 	usage, cost := engine.Usage()
 	if usage.InputTokens != 10 || usage.OutputTokens != 4 ||
 		cost != 0.125 || engine.sessionRevision != 1 ||
-		len(engine.History()) != 2 {
+		len(engine.History()) != 2 ||
+		engine.historyTurns["turn-1"] != 1 {
 		t.Fatalf(
 			"usage=%+v cost=%f revision=%d history=%d",
 			usage,
@@ -47,6 +48,52 @@ func TestSessionDeltaApplyIsRevisionedAndIdempotent(t *testing.T) {
 			engine.sessionRevision,
 			len(engine.History()),
 		)
+	}
+}
+
+func TestSessionDeltaRestoresRecoveryHistoryIdentity(t *testing.T) {
+	source := newEngine(t, &scriptedProvider{}, nil)
+	history := []provider.Message{
+		messageWithText(provider.RoleUser, "earlier", 1),
+		messageWithText(provider.RoleAssistant, "done", 1),
+		messageWithText(provider.RoleUser, "recovery envelope", 2),
+		messageWithText(provider.RoleAssistant, "partial", 2),
+	}
+	delta, err := prepareSessionDelta(
+		"recovery-1",
+		0,
+		history,
+		provider.Usage{},
+		0,
+		SessionStateDelta{
+			Turn:         2,
+			HistoryTurns: map[string]uint64{"earlier": 1},
+			Window:       contextstore.CloneWindowLedger(source.window),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(delta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := newEngine(t, &scriptedProvider{}, nil)
+	if err := target.RestoreSessionDelta(raw); err != nil {
+		t.Fatal(err)
+	}
+	if target.historyTurns["earlier"] != 1 ||
+		target.historyTurns["recovery-1"] != 2 {
+		t.Fatalf("restored history bindings = %+v", target.historyTurns)
+	}
+	base := target.recoveryBaseHistory(&protocol.TurnRecoveryContext{
+		Action:       protocol.TurnRecoveryContinue,
+		SourceTurnID: "recovery-1",
+	})
+	if len(base) != 2 ||
+		base[0].Text() != "earlier" ||
+		base[1].Text() != "done" {
+		t.Fatalf("restored recovery base = %+v", base)
 	}
 }
 

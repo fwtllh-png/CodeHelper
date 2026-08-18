@@ -197,6 +197,11 @@ func (e *Engine) compactHistoryWithPolicy(
 	}
 	size := historyBytes(*history)
 	originalMessages := len(*history)
+	authority := e.buildTruthCapsule(e.buildCompactSummary(nil))
+	authorityDigest, err := authority.AuthorityDigest()
+	if err != nil {
+		return nil
+	}
 	workingHistory := cloneMessages(*history)
 	pruned, prunedWindow, err := e.pruneToolResultSurfaces(
 		&workingHistory,
@@ -207,17 +212,23 @@ func (e *Engine) compactHistoryWithPolicy(
 	if err != nil {
 		return nil
 	}
+	if pruned.results != 0 &&
+		!toolPairIdentityEquivalent(*history, workingHistory) {
+		return nil
+	}
 	pruningReceipt := func() *CompactionReceipt {
 		return &CompactionReceipt{
-			OriginalMessages:  originalMessages,
-			OriginalBytes:     size,
-			RetainedBytes:     historyBytes(workingHistory),
-			OriginalTokens:    originalWindow.active,
-			RetainedTokens:    prunedWindow.active,
-			TruncationReason:  "tool_result_surface_pruning",
-			PrunedToolResults: pruned.results,
-			PrunedBytes:       pruned.bytes,
-			ContextReceipts:   e.contextReceipts(),
+			OriginalMessages:    originalMessages,
+			OriginalBytes:       size,
+			RetainedBytes:       historyBytes(workingHistory),
+			OriginalTokens:      originalWindow.active,
+			RetainedTokens:      prunedWindow.active,
+			TruncationReason:    "tool_result_surface_pruning",
+			PrunedToolResults:   pruned.results,
+			PrunedBytes:         pruned.bytes,
+			AuthorityDigest:     authorityDigest,
+			AuthorityEquivalent: true,
+			ContextReceipts:     e.contextReceipts(),
 		}
 	}
 	pruningEnough := pruned.results != 0 &&
@@ -274,6 +285,18 @@ func (e *Engine) compactHistoryWithPolicy(
 				window.total >= workingWindow.total {
 			continue
 		}
+		if !toolPairsClosed(candidate.history) {
+			continue
+		}
+		required := candidate.authority
+		if err := candidate.capsule.ContainsAuthority(required); err != nil {
+			continue
+		}
+		authorityDigest, err := required.AuthorityDigest()
+		if err != nil {
+			continue
+		}
+		candidate.authorityDigest = authorityDigest
 		candidate.retainedTokens = window.active
 		if force || window.active <= target ||
 			e.options.CompactWindow.Scope == compactScopeBodyAfterPrefix &&
@@ -308,6 +331,8 @@ func (e *Engine) compactHistoryWithPolicy(
 		CriticalFacts:        selected.truth.CriticalEntityCount,
 		CompatibilityHash:    selected.compatibilityHash,
 		CompatibilityMatched: selected.truth.CompatibilityMatched,
+		AuthorityDigest:      selected.authorityDigest,
+		AuthorityEquivalent:  true,
 		ModelDownshifted:     selected.truth.ModelDownshifted,
 		DownshiftPolicy:      compact.DownshiftRuntimeTruthOnly,
 		NarrativeIncluded:    selected.narrativeIncluded,
@@ -333,7 +358,10 @@ type compactionCandidate struct {
 	summaryTruncated  bool
 	sections          []string
 	truth             compact.MergeReceipt
+	capsule           compact.TruthCapsule
+	authority         compact.TruthCapsule
 	compatibilityHash string
+	authorityDigest   string
 	narrativeIncluded bool
 	capsuleBytes      int
 }
@@ -363,6 +391,11 @@ func (e *Engine) buildCompactionCandidate(
 		return compactionCandidate{}, err
 	}
 	current := e.buildTruthCapsule(summary)
+	authority := current
+	authority.Entities = append(
+		[]compact.TruthEntity(nil),
+		current.Entities...,
+	)
 	capsule, mergeReceipt, err := compact.MergeTruthCapsules(
 		current,
 		previous...,
@@ -411,7 +444,8 @@ func (e *Engine) buildCompactionCandidate(
 		cut: cut, history: candidate, removed: removed, toSummarize: toSummarize,
 		rendered: rendered.Text, retainedBytes: historyBytes(candidate),
 		summaryTruncated: rendered.Truncated, sections: rendered.Sections,
-		truth: mergeReceipt, compatibilityHash: capsule.CompatibilityHash,
+		truth: mergeReceipt, capsule: capsule, authority: authority,
+		compatibilityHash: capsule.CompatibilityHash,
 		narrativeIncluded: rendered.NarrativeIncluded,
 		capsuleBytes:      rendered.CapsuleBytes,
 	}, nil
@@ -490,6 +524,44 @@ func toolPairsClosed(messages []provider.Message) bool {
 	return true
 }
 
+type toolPairIdentity struct {
+	name           string
+	calls, results int
+}
+
+func toolPairIdentityEquivalent(
+	before []provider.Message,
+	after []provider.Message,
+) bool {
+	identities := func(messages []provider.Message) map[string]toolPairIdentity {
+		result := make(map[string]toolPairIdentity)
+		for _, message := range messages {
+			for _, call := range messageToolCalls(message) {
+				value := result[call.ID]
+				value.name = call.Name
+				value.calls++
+				result[call.ID] = value
+			}
+			if id := messageToolResultID(message); id != "" {
+				value := result[id]
+				value.results++
+				result[id] = value
+			}
+		}
+		return result
+	}
+	left, right := identities(before), identities(after)
+	if len(left) != len(right) {
+		return false
+	}
+	for id, value := range left {
+		if right[id] != value {
+			return false
+		}
+	}
+	return true
+}
+
 func historyBytes(messages []provider.Message) int {
 	size := 0
 	for _, message := range messages {
@@ -521,6 +593,7 @@ func (e *Engine) ReplaceHistory(messages []provider.Message) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.history = cloneMessages(messages)
+	e.reconcileHistoryTurns(e.history, "", 0)
 	e.advanceTokenWindow()
 	if !contextstore.WorldBaselineValid(e.history, e.world) {
 		e.world = contextstore.WorldBaseline{}
@@ -552,13 +625,14 @@ func (e *Engine) Fork() *Engine {
 	}
 	forked := &Engine{
 		options: e.options, history: cloneMessages(e.history),
-		mailboxHold: append([]PendingInput(nil), e.mailboxHold...),
-		turn:        e.turn,
-		working:     e.working.Clone(),
-		evidence:    e.evidence.Clone(),
-		failures:    e.failures.Clone(),
-		world:       contextstore.CloneWorldBaseline(e.world),
-		window:      forkWindow,
+		mailboxHold:  append([]PendingInput(nil), e.mailboxHold...),
+		turn:         e.turn,
+		working:      e.working.Clone(),
+		evidence:     e.evidence.Clone(),
+		failures:     e.failures.Clone(),
+		world:        contextstore.CloneWorldBaseline(e.world),
+		window:       forkWindow,
+		historyTurns: cloneHistoryTurns(e.historyTurns),
 
 		planText: e.planText,
 		plan:     e.plan.Clone(),
@@ -618,6 +692,7 @@ func (e *Engine) RevertWorkspace(
 	e.advanceTokenWindow()
 	e.reconcileWorldBaseline(e.history)
 	delete(e.turnIDs, targetTurnID)
+	delete(e.historyTurns, targetTurnID)
 	return receipt, nil
 }
 

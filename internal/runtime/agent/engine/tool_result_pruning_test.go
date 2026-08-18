@@ -49,6 +49,8 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 		receipt.PrunedToolResults != 1 ||
 		receipt.PrunedBytes <= 0 ||
 		receipt.TruncationReason != "tool_result_surface_pruning" ||
+		receipt.AuthorityDigest == "" ||
+		!receipt.AuthorityEquivalent ||
 		window.active > window.compactLimit {
 		t.Fatalf("window=%+v receipt=%+v", window, receipt)
 	}
@@ -111,6 +113,18 @@ func TestToolResultPruningSkipsMalformedAndRetrievalResults(t *testing.T) {
 	if stats.results != 0 ||
 		historyBytes(history) != historyBytes(before) {
 		t.Fatalf("stats=%+v history=%+v", stats, history)
+	}
+}
+
+func TestToolPairIdentityEquivalenceRejectsRewrittenCalls(t *testing.T) {
+	before := []provider.Message{
+		toolCallMessage(1, "call-stable", "file_read", `{}`),
+		toolResultMessage(1, "call-stable", "result"),
+	}
+	after := cloneMessages(before)
+	after[1].Blocks[0].ToolResult.CallID = "call-drifted"
+	if toolPairIdentityEquivalent(before, after) {
+		t.Fatal("rewritten Tool Call/Result identity was accepted")
 	}
 }
 

@@ -80,6 +80,15 @@ func TestParentLimitRejectsChildReservationAtomically(t *testing.T) {
 		Amount: budget.Usage{Tokens: 11, Slots: 1},
 	}); !errors.Is(err, budget.ErrExhausted) {
 		t.Fatalf("reserve error = %v", err)
+	} else {
+		var exhausted *budget.ExhaustedError
+		if !errors.As(err, &exhausted) ||
+			exhausted.ScopeID != "workspace" ||
+			exhausted.Resource != budget.ResourceTokens ||
+			exhausted.Used != 11 ||
+			exhausted.Limit != 10 {
+			t.Fatalf("typed exhaustion = %+v", exhausted)
+		}
 	}
 	for _, id := range []string{"workspace", "run"} {
 		snapshot, err := ledger.Snapshot(id)

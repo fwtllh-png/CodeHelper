@@ -23,6 +23,7 @@ type CommandKind string
 const (
 	CommandSubmit           CommandKind = "submit_run"
 	CommandCancel           CommandKind = "cancel_run"
+	CommandBlock            CommandKind = "block_run"
 	CommandResume           CommandKind = "resume_run"
 	CommandRetryNode        CommandKind = "retry_node"
 	CommandSkipNode         CommandKind = "skip_node"
@@ -154,6 +155,8 @@ func reduce(
 		err = builder.submit(*command.Submit)
 	case CommandCancel:
 		err = builder.cancel(command.Reason)
+	case CommandBlock:
+		err = builder.block(command.Reason)
 	case CommandResume:
 		err = builder.resume()
 	case CommandRetryNode:
@@ -204,6 +207,10 @@ func validateCommand(command Command) error {
 	case CommandSubmit:
 		if command.Submit == nil {
 			return errors.New("submit command payload is required")
+		}
+	case CommandCancel, CommandBlock:
+		if strings.TrimSpace(command.Reason) == "" {
+			return errors.New("run transition reason is required")
 		}
 	case CommandRetryNode, CommandSkipNode:
 		if command.NodeID == "" {
@@ -450,6 +457,33 @@ func (b *transitionBuilder) cancel(reason string) error {
 	if !active {
 		b.settleRun(protocol.RunStateCanceled, reason)
 	}
+	return nil
+}
+
+func (b *transitionBuilder) block(reason string) error {
+	if b.graph.Run.Revision == 0 {
+		return ErrNotFound
+	}
+	if runTerminal(b.graph.Run.State) ||
+		b.graph.Run.State == protocol.RunStateBlocked {
+		return fmt.Errorf("%w: run cannot be blocked from %s", ErrInvalidTransition, b.graph.Run.State)
+	}
+	for _, node := range b.graph.Nodes {
+		switch node.State {
+		case protocol.NodeStateLeased, protocol.NodeStateRunning,
+			protocol.NodeStateWaiting:
+			return fmt.Errorf("%w: active run cannot be blocked", ErrInvalidTransition)
+		}
+	}
+	for _, id := range model.SortedNodeIDs(b.graph.Nodes) {
+		node := b.graph.Nodes[id]
+		switch node.State {
+		case protocol.NodeStatePending, protocol.NodeStateReady:
+			node.State, node.Reason = protocol.NodeStateBlocked, reason
+			b.setNode(node, FactNodeStatus)
+		}
+	}
+	b.settleRun(protocol.RunStateBlocked, reason)
 	return nil
 }
 

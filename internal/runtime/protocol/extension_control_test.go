@@ -16,10 +16,10 @@ func TestExtensionControlOperationValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := map[string]func(*ExtensionControlOperation){
-		"id":         func(value *ExtensionControlOperation) { value.ID = "../bad" },
-		"kind":       func(value *ExtensionControlOperation) { value.Kind = "unknown" },
-		"action":     func(value *ExtensionControlOperation) { value.Action = "execute" },
-		"version":    func(value *ExtensionControlOperation) { value.VersionValue = "" },
+		"id":      func(value *ExtensionControlOperation) { value.ID = "../bad" },
+		"kind":    func(value *ExtensionControlOperation) { value.Kind = "unknown" },
+		"action":  func(value *ExtensionControlOperation) { value.Action = "execute" },
+		"version": func(value *ExtensionControlOperation) { value.VersionValue = "" },
 		"capability": func(value *ExtensionControlOperation) {
 			value.Action = ExtensionActionCapabilityEnable
 			value.Capability = ""

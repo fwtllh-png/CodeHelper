@@ -23,6 +23,9 @@ type turnEmitter struct {
 	secondary       []TerminalIssue
 	emitFunc        func(Event) error
 	committed       func() error
+	release         func() error
+	released        bool
+	releaseReported bool
 	cancelReason    func() string
 	decision        func() (turnkernel.TerminalDecision, bool)
 }
@@ -48,6 +51,13 @@ func (h *turnEmitter) send(state State, event Event) error {
 		if h.emitted {
 			return nil
 		}
+		if err := h.releaseTurn(); err != nil {
+			h.addReleaseIssue(err)
+		}
+		event.SecondaryIssues = mergeTerminalIssues(
+			event.SecondaryIssues,
+			h.secondary,
+		)
 		event.ContextBudget = h.contextBudget
 	}
 	if err := h.emitFunc(event); err != nil {
@@ -102,6 +112,49 @@ func (h *turnEmitter) setContextBudget(snapshot ContextBudgetSnapshot) {
 
 func (h *turnEmitter) setCommitted(apply func() error) {
 	h.committed = apply
+}
+
+func (h *turnEmitter) setRelease(release func() error) {
+	h.release = release
+}
+
+func (h *turnEmitter) releaseTurn() error {
+	if h.released || h.release == nil {
+		return nil
+	}
+	if err := h.release(); err != nil {
+		return err
+	}
+	h.released = true
+	return nil
+}
+
+func (h *turnEmitter) addReleaseIssue(err error) {
+	if err == nil || h.releaseReported {
+		return
+	}
+	h.releaseReported = true
+	h.addSecondary("turn_coordinator_release", err)
+}
+
+func mergeTerminalIssues(
+	eventIssues []TerminalIssue,
+	issues []TerminalIssue,
+) []TerminalIssue {
+	result := append([]TerminalIssue(nil), eventIssues...)
+	for _, issue := range issues {
+		found := false
+		for _, current := range result {
+			if current == issue {
+				found = true
+				break
+			}
+		}
+		if !found {
+			result = append(result, issue)
+		}
+	}
+	return result
 }
 
 func (h *turnEmitter) suspendForRecovery() {
@@ -194,14 +247,15 @@ func (e *Engine) finalizeTerminalContext(
 		usage,
 		cost,
 		SessionStateDelta{
-			Turn:       e.turn,
-			WorkingSet: e.workingLedger().Delta(),
-			Evidence:   e.evidenceSet().Delta(),
-			Failures:   e.failureLedger().Delta(),
-			Compaction: CompactionDelta{Count: e.compactionTotal()},
-			Plan:       &plan,
-			World:      world,
-			Window:     window,
+			Turn:         e.turn,
+			HistoryTurns: cloneHistoryTurns(e.historyTurns),
+			WorkingSet:   e.workingLedger().Delta(),
+			Evidence:     e.evidenceSet().Delta(),
+			Failures:     e.failureLedger().Delta(),
+			Compaction:   CompactionDelta{Count: e.compactionTotal()},
+			Plan:         &plan,
+			World:        world,
+			Window:       window,
 		},
 	)
 	if err != nil {
@@ -246,7 +300,11 @@ func (h *turnEmitter) finish(ctx context.Context, result *Result, resultErr *err
 			}
 		}
 	}
-	_ = h.send(state, event)
+	if err := h.send(state, event); err != nil {
+		*resultErr = errors.Join(*resultErr, err)
+		result.State = AwaitingRecovery
+		return
+	}
 	result.State = state
 }
 

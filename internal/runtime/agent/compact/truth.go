@@ -11,10 +11,9 @@ import (
 )
 
 const (
-	TruthSchemaVersion = 1
-	TruthMarkerStart   = "<codehelper_truth_capsule>"
-	TruthMarkerEnd     = "</codehelper_truth_capsule>"
-
+	TruthSchemaVersion        = 1
+	TruthMarkerStart          = "<codehelper_truth_capsule>"
+	TruthMarkerEnd            = "</codehelper_truth_capsule>"
 	DownshiftRuntimeTruthOnly = "runtime_truth_only"
 
 	EntityGoal          = "goal"
@@ -176,6 +175,7 @@ func MergeTruthCapsules(
 	if err := current.Validate(); err != nil {
 		return TruthCapsule{}, MergeReceipt{}, err
 	}
+	current.Entities = append([]TruthEntity(nil), current.Entities...)
 	entities := make(map[string]TruthEntity)
 	maxGeneration := uint64(0)
 	receipt := MergeReceipt{

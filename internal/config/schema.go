@@ -105,15 +105,19 @@ type Index struct {
 // Execution configures the main agent loop. MaxOutputTokens is an optional
 // operator ceiling; zero uses the active model capability and remaining window.
 type Execution struct {
-	Provider        string        `json:"provider" toml:"provider"`
-	Model           string        `json:"model" toml:"model"`
-	Protocol        string        `json:"protocol" toml:"protocol"`
-	Mode            string        `json:"mode" toml:"mode"`
-	Workspace       string        `json:"workspace" toml:"workspace"`
-	Tools           bool          `json:"tools" toml:"tools"`
-	MaxOutputTokens uint64        `json:"max_output_tokens" toml:"max_output_tokens"`
-	MaxSteps        int           `json:"max_steps" toml:"max_steps"`
-	Timeout         time.Duration `json:"timeout" toml:"-"`
+	Provider        string `json:"provider" toml:"provider"`
+	Model           string `json:"model" toml:"model"`
+	Protocol        string `json:"protocol" toml:"protocol"`
+	Mode            string `json:"mode" toml:"mode"`
+	Workspace       string `json:"workspace" toml:"workspace"`
+	Tools           bool   `json:"tools" toml:"tools"`
+	MaxOutputTokens uint64 `json:"max_output_tokens" toml:"max_output_tokens"`
+	MaxSteps        int    `json:"max_steps" toml:"max_steps"`
+	// Timeout covers connection establishment, TLS negotiation, and response
+	// headers. Streaming body lifetime is governed by the caller Context and
+	// IdleTimeout, so active streams do not inherit a fixed wall-clock limit.
+	Timeout time.Duration `json:"timeout" toml:"-"`
+	// IdleTimeout is renewed by every provider stream event.
 	IdleTimeout     time.Duration `json:"idle_timeout" toml:"-"`
 	MaxConcurrent   int           `json:"max_concurrent" toml:"max_concurrent"`
 	RateLimit       float64       `json:"rate_limit" toml:"rate_limit"`
@@ -178,7 +182,8 @@ type Subagent struct {
 	MaxParallel int    `json:"max_parallel" toml:"max_parallel"`
 	MaxResident int    `json:"max_resident" toml:"max_resident"`
 	MaxTotal    int    `json:"max_total" toml:"max_total"`
-	// MaxSteps is the child's own step quota, independent of Execution.MaxSteps.
+	// MaxSteps is an optional explicit child quota. Zero uses progress
+	// convergence and spend budgets without an implicit step cap.
 	MaxSteps int `json:"max_steps" toml:"max_steps"`
 	// MaxTokens and MaxCostUSD bound all child agents in the session together,
 	// and each child is capped by the same number on its own: the shared ledger
@@ -187,7 +192,8 @@ type Subagent struct {
 	// the session budget the child inherits.
 	MaxTokens  uint64  `json:"max_tokens" toml:"max_tokens"`
 	MaxCostUSD float64 `json:"max_cost_usd" toml:"max_cost_usd"`
-	// WallTime is how long one child turn may run before it is canceled.
+	// WallTime is an optional renewable child execution lease. Runtime progress
+	// renews it; zero disables it.
 	WallTime time.Duration `json:"wall_time" toml:"-"`
 	// Workspace selects the isolation strategy: auto picks per stance,
 	// read_only shares the parent workspace without a journal, worktree

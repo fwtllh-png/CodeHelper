@@ -13,11 +13,11 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/acp"
+	"github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/runtimecontract"
 	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/runtimecontract"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 

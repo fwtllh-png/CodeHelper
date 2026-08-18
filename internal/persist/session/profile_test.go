@@ -109,12 +109,12 @@ func TestEnsureProfileMigratesOnlyUntouchedLegacyStepDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	defaults := persistedProfile()
-	defaults.MaxSteps = 256
+	defaults.MaxSteps = 0
 	migrated, err := repository.EnsureProfile(t.Context(), "legacy", defaults)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if migrated.MaxSteps != 256 || migrated.Revision != 2 {
+	if migrated.MaxSteps != 0 || migrated.Revision != 2 {
 		t.Fatalf("migrated profile = %+v", migrated)
 	}
 

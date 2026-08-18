@@ -14,6 +14,37 @@ var (
 	ErrConflict           = errors.New("budget identity conflict")
 )
 
+type Resource string
+
+const (
+	ResourceTokens         Resource = "tokens"
+	ResourceCostMicrounits Resource = "cost_microunits"
+	ResourceSlots          Resource = "slots"
+)
+
+type ExhaustedError struct {
+	ScopeID  string
+	Resource Resource
+	Used     uint64
+	Limit    uint64
+}
+
+func (e *ExhaustedError) Error() string {
+	if e == nil {
+		return ErrExhausted.Error()
+	}
+	return fmt.Sprintf(
+		"%s: scope %s resource %s used %d limit %d",
+		ErrExhausted,
+		e.ScopeID,
+		e.Resource,
+		e.Used,
+		e.Limit,
+	)
+}
+
+func (*ExhaustedError) Unwrap() error { return ErrExhausted }
+
 type Limits struct {
 	MaxTokens     uint64
 	MaxCostMicros uint64
@@ -108,8 +139,13 @@ func (l *Ledger) Reserve(value Reservation) error {
 	}
 	for _, current := range path {
 		next := addUsage(current.snapshot.Reserved, value.Amount)
-		if exceeds(current.snapshot.Limits, next, current.snapshot.Spent) {
-			return fmt.Errorf("%w: scope %s", ErrExhausted, current.snapshot.ID)
+		if exhausted := budgetExhaustion(
+			current.snapshot.ID,
+			current.snapshot.Limits,
+			next,
+			current.snapshot.Spent,
+		); exhausted != nil {
+			return exhausted
 		}
 	}
 	for _, current := range path {
@@ -152,8 +188,13 @@ func (l *Ledger) Settle(id string, actual Usage) error {
 	}
 	current.active = false
 	for _, scope := range path {
-		if exceeds(scope.snapshot.Limits, scope.snapshot.Reserved, scope.snapshot.Spent) {
-			return fmt.Errorf("%w: scope %s", ErrExhausted, scope.snapshot.ID)
+		if exhausted := budgetExhaustion(
+			scope.snapshot.ID,
+			scope.snapshot.Limits,
+			scope.snapshot.Reserved,
+			scope.snapshot.Spent,
+		); exhausted != nil {
+			return exhausted
 		}
 	}
 	return nil
@@ -221,13 +262,40 @@ func (l *Ledger) pathLocked(id string) ([]*account, error) {
 	return path, nil
 }
 
-func exceeds(limits Limits, reserved, spent Usage) bool {
-	return limits.MaxTokens > 0 &&
-		reserved.Tokens+spent.Tokens > limits.MaxTokens ||
-		limits.MaxCostMicros > 0 &&
-			reserved.CostMicros+spent.CostMicros > limits.MaxCostMicros ||
-		limits.MaxSlots > 0 &&
-			reserved.Slots+spent.Slots > limits.MaxSlots
+func budgetExhaustion(
+	scopeID string,
+	limits Limits,
+	reserved Usage,
+	spent Usage,
+) *ExhaustedError {
+	if used := reserved.Tokens + spent.Tokens; limits.MaxTokens > 0 &&
+		used > limits.MaxTokens {
+		return &ExhaustedError{
+			ScopeID:  scopeID,
+			Resource: ResourceTokens,
+			Used:     used,
+			Limit:    limits.MaxTokens,
+		}
+	}
+	if used := reserved.CostMicros + spent.CostMicros; limits.MaxCostMicros > 0 &&
+		used > limits.MaxCostMicros {
+		return &ExhaustedError{
+			ScopeID:  scopeID,
+			Resource: ResourceCostMicrounits,
+			Used:     used,
+			Limit:    limits.MaxCostMicros,
+		}
+	}
+	if used := reserved.Slots + spent.Slots; limits.MaxSlots > 0 &&
+		used > limits.MaxSlots {
+		return &ExhaustedError{
+			ScopeID:  scopeID,
+			Resource: ResourceSlots,
+			Used:     uint64(used),
+			Limit:    uint64(limits.MaxSlots),
+		}
+	}
+	return nil
 }
 
 func addUsage(left, right Usage) Usage {

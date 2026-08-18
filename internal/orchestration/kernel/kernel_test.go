@@ -120,6 +120,37 @@ func TestReducerCancelAndRevisionConflict(t *testing.T) {
 	}
 }
 
+func TestReducerBlocksAndResumesRunWithoutCancelingWork(t *testing.T) {
+	runID := protocol.RunID("run-block")
+	now := time.Unix(250, 0).UTC()
+	graph := mustReduce(
+		t,
+		model.Empty(runID),
+		submitCommand(runID, now),
+	).Graph
+	blocked := mustReduce(t, graph, Command{
+		ID: "block", Kind: CommandBlock, RunID: runID,
+		ExpectedRevision: graph.Run.Revision,
+		At:               now.Add(time.Second),
+		Reason:           "explicit budget exhausted",
+	})
+	if blocked.Graph.Run.State != protocol.RunStateBlocked ||
+		blocked.Graph.Nodes["node-a"].State != protocol.NodeStateBlocked ||
+		blocked.Graph.Nodes["node-b"].State != protocol.NodeStateBlocked {
+		t.Fatalf("blocked graph = %+v", blocked.Graph)
+	}
+	resumed := mustReduce(t, blocked.Graph, Command{
+		ID: "resume", Kind: CommandResume, RunID: runID,
+		ExpectedRevision: blocked.Graph.Run.Revision,
+		At:               now.Add(2 * time.Second),
+	})
+	if resumed.Graph.Run.State != protocol.RunStateActive ||
+		resumed.Graph.Nodes["node-a"].State != protocol.NodeStateReady ||
+		resumed.Graph.Nodes["node-b"].State != protocol.NodeStatePending {
+		t.Fatalf("resumed graph = %+v", resumed.Graph)
+	}
+}
+
 func TestReducerRetryFailedNodeReactivatesRun(t *testing.T) {
 	runID := protocol.RunID("run-retry")
 	now := time.Unix(300, 0).UTC()

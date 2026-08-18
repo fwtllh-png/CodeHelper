@@ -52,9 +52,12 @@
       "path": "internal/orchestration/kernel",
       "limits": {
         "internal_fanout": 2,
-        "production_lines": 952,
+        "production_lines": 980,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "WorkGraph Kernel now owns durable block and resume transitions for recoverable explicit-budget exhaustion"
       }
     },
     {
@@ -74,9 +77,12 @@
       "path": "internal/orchestration/workflow",
       "limits": {
         "internal_fanout": 5,
-        "production_lines": 1767,
+        "production_lines": 1896,
         "options_fields": 13,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Workflow normalizes explicit Token and Cost exhaustion through the shared resumable contract and projects durable blocked state"
       }
     },
     {
@@ -107,9 +113,12 @@
       "path": "internal/orchestration/budget",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 252,
+        "production_lines": 320,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Budget Ledger reports typed Scope, resource, used, and limit facts for resumable Token and Cost exhaustion"
       }
     },
     {
@@ -239,9 +248,12 @@
       "path": "internal/adapter/provider/httpclient",
       "limits": {
         "internal_fanout": 9,
-        "production_lines": 683,
+        "production_lines": 725,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Provider HTTP transport separates connection and response-header deadlines from renewable stream idle lifetime"
       }
     },
     {
@@ -330,9 +342,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 75,
-        "production_lines": 8464,
+        "production_lines": 8727,
         "options_fields": 70,
         "mutex_fields": 6
+      },
+      "relaxations": {
+        "production_lines": "Wire owns renewable child leases, resumable child and background Workflow budget projection, plus durable settlement and Coordinator release retry"
       }
     },
     {
@@ -592,9 +607,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 24,
-        "production_lines": 10771,
+        "production_lines": 11042,
         "options_fields": 60,
         "mutex_fields": 8
+      },
+      "relaxations": {
+        "production_lines": "Agent Engine validates Context authority, persists recovery history identity, prevents duplicate Resume injection, and reports Terminal and release failures"
       }
     },
     {
@@ -606,9 +624,6 @@
         "production_lines": 8624,
         "options_fields": 18,
         "mutex_fields": 7
-      },
-      "relaxations": {
-        "internal_fanout": "Runtime app delegates terminal and WorkGraph event conversion to one projection boundary"
       }
     },
     {
@@ -628,9 +643,12 @@
       "path": "internal/runtime/agent/compact",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 966,
+        "production_lines": 1014,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Compaction defines stable authority digests and entity-level equivalence validation"
       }
     },
     {
@@ -703,12 +721,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6060,
+        "production_lines": 6149,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "internal_fanout": "Protocol delegates Fault implementation while preserving its stable public aliases"
+        "production_lines": "Protocol owns the shared structured and resumable Token and Cost budget exhaustion contract"
       }
     },
     {
@@ -935,7 +953,7 @@
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
         "lines": 520,
-        "max_function_lines": 132
+        "max_function_lines": 124
       }
     },
     {

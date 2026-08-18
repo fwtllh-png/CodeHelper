@@ -55,6 +55,34 @@ void test("session profile decoder preserves revision and capabilities", () => {
   assert.equal(decoded.capabilities.model_capabilities.prompt_cache, true);
 });
 
+void test("session profile decoder accepts an uncapped step budget", () => {
+  const decoded = decodeSessionProfileSnapshot({
+    profile: { ...profile, max_steps: 0 },
+    capabilities: {
+      provider: "fixture",
+      model: "fixture-model",
+      model_capabilities: {
+        display_name: "Fixture Model",
+        context_window: 128_000,
+        max_output_tokens: 8_192,
+        streaming: true,
+        reasoning: true,
+        tool_calls: true,
+        parallel_tool_calls: "unknown",
+        native_search: false,
+        vision: false,
+        image_input: false,
+        prompt_cache: true,
+        credential_status: "unknown",
+        availability: "available",
+        selection_mode: "fixed",
+      },
+      mutable_fields: ["max_steps"],
+    },
+  });
+  assert.equal(decoded.profile.max_steps, 0);
+});
+
 void test("session profile decoder rejects drift and route mismatch", () => {
   assert.throws(() => decodeSessionProfileSnapshot({
     profile,

@@ -100,8 +100,8 @@ func (p SessionProfile) Validate() error {
 	if p.ExecutionTarget != "local" {
 		return errors.New("session profile execution_target must be local")
 	}
-	if p.MaxSteps < 1 || p.MaxSteps > 1000 {
-		return errors.New("session profile max_steps must be between 1 and 1000")
+	if p.MaxSteps < 0 {
+		return errors.New("session profile max_steps must be non-negative")
 	}
 	if len(p.EnabledToolIDs) > 512 {
 		return errors.New("session profile accepts at most 512 enabled tools")

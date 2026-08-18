@@ -20,6 +20,13 @@ type budgetDriver struct {
 	usage workflow.WorkUsage
 }
 
+func TestWorkflowDefaultsDoNotInjectStepLimit(t *testing.T) {
+	budget := (workflow.Budget{}).WithDefaults()
+	if budget.MaxSteps != 0 {
+		t.Fatalf("default max steps = %d, want uncapped", budget.MaxSteps)
+	}
+}
+
 func (d *budgetDriver) SpawnTask(
 	context.Context,
 	workflow.TaskRequest,
@@ -85,9 +92,14 @@ func TestWorkflowBudgetExhaustionBlocksNewAttemptsAcrossRestart(t *testing.T) {
 		},
 	)
 	if !errors.Is(err, workflow.ErrBudgetExhausted) ||
-		run.Status != workflow.RunFailed {
+		run.Status != workflow.RunBlocked {
 		t.Fatalf("first run = %+v, err=%v", run, err)
 	}
+	assertResumableBudgetError(
+		t,
+		err,
+		protocol.ProblemReasonTokenBudgetExhausted,
+	)
 	if first.count() != 2 {
 		t.Fatalf("first run calls = %d, want 2", first.count())
 	}
@@ -117,6 +129,11 @@ func TestWorkflowBudgetExhaustionBlocksNewAttemptsAcrossRestart(t *testing.T) {
 	if !errors.Is(err, workflow.ErrBudgetExhausted) {
 		t.Fatalf("resumed error = %v", err)
 	}
+	assertResumableBudgetError(
+		t,
+		err,
+		protocol.ProblemReasonTokenBudgetExhausted,
+	)
 	if second.count() != 0 {
 		t.Fatalf("resumed run created %d new attempts", second.count())
 	}
@@ -147,8 +164,31 @@ func TestWorkflowCostBudgetUsesProviderMicrounits(t *testing.T) {
 		Driver: driver,
 	})
 	if !errors.Is(err, workflow.ErrBudgetExhausted) ||
-		run.Status != workflow.RunFailed ||
+		run.Status != workflow.RunBlocked ||
 		driver.count() != 1 {
 		t.Fatalf("cost run = %+v, calls=%d, err=%v", run, driver.count(), err)
+	}
+	assertResumableBudgetError(
+		t,
+		err,
+		protocol.ProblemReasonCostBudgetExhausted,
+	)
+}
+
+func assertResumableBudgetError(
+	t *testing.T,
+	err error,
+	reason string,
+) {
+	t.Helper()
+	var problem *protocol.Problem
+	if !errors.As(err, &problem) ||
+		problem.Code != protocol.CodeResourceExhausted ||
+		problem.Retryable ||
+		problem.Fault == nil ||
+		problem.Fault.Disposition != protocol.FaultResumeTurn ||
+		problem.Details == nil ||
+		problem.Details.Reason != reason {
+		t.Fatalf("budget error = %+v", problem)
 	}
 }

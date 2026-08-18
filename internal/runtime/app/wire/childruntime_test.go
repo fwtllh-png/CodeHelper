@@ -7,12 +7,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/model"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -31,6 +34,45 @@ func (authorityTestTool) Execute(context.Context, json.RawMessage) (tool.Result,
 }
 
 type recoveredChildRuntimeHost struct{}
+
+type flakyWorkGraphController struct {
+	mu             sync.Mutex
+	graph          model.Graph
+	settleFailures int
+	settleCalls    int
+}
+
+func (c *flakyWorkGraphController) Execute(
+	_ context.Context,
+	command kernel.Command,
+) (kernel.Result, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if command.Kind == kernel.CommandSettleExecution {
+		c.settleCalls++
+		if c.settleFailures > 0 {
+			c.settleFailures--
+			return kernel.Result{}, errors.New("injected settlement failure")
+		}
+	}
+	result, err := kernel.Reduce(c.graph, command)
+	if err == nil {
+		c.graph = model.Clone(result.Graph)
+	}
+	return result, err
+}
+
+func (c *flakyWorkGraphController) Load(
+	_ context.Context,
+	runID protocol.RunID,
+) (model.Graph, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.graph.Run.ID == "" || c.graph.Run.ID != runID {
+		return model.Graph{}, kernel.ErrNotFound
+	}
+	return model.Clone(c.graph), nil
+}
 
 func (recoveredChildRuntimeHost) StartTurn(
 	context.Context, string, string,
@@ -79,6 +121,81 @@ func TestChildTurnIntentUsesEffectiveWorkspaceAuthority(t *testing.T) {
 				testCase.want,
 			)
 		}
+	}
+}
+
+func TestChildTerminalSettlementRetriesUntilDurable(t *testing.T) {
+	control, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: recoveryToolGate{},
+		Runtime: recoveredChildRuntimeHost{}, Workspace: t.TempDir(),
+		SessionID: "session-settlement-retry",
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := control.SpawnSystem(
+		"retry child settlement", "", subagent.RoleExplore, "inspect", "report",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := control.Takeover(
+		t.Context(),
+		child.ID,
+		"run",
+	); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := control.Agent(child.ID)
+	controller := &flakyWorkGraphController{settleFailures: 2}
+	children := newChildRuntime(
+		config.Subagent{},
+		t.TempDir(),
+		nil,
+		nil,
+		controller,
+	)
+	t.Cleanup(children.close)
+	children.manager = control
+	if err := children.agentGraphs.Declare(t.Context(), agent); err != nil {
+		t.Fatal(err)
+	}
+	turnID := protocol.TurnID(agent.TurnID)
+	attempt, err := children.agentGraphs.Claim(t.Context(), agent, turnID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	threadID := protocol.ThreadID(child.ThreadID)
+	terminal := make(chan struct{})
+	children.turns[threadID] = &childTurn{
+		agentID: child.ID, turnID: turnID, startedAt: time.Now(),
+		workAttempt: attempt, terminalSignal: terminal,
+		leaseRenewal: make(chan struct{}, 1),
+	}
+	children.observe(protocol.Event{
+		ThreadID: threadID, TurnID: turnID,
+		Data: &protocol.TurnCompletedData{Text: "done"},
+	})
+	select {
+	case <-terminal:
+	case <-time.After(time.Second):
+		t.Fatal("child settlement retry did not converge")
+	}
+	controller.mu.Lock()
+	settleCalls := controller.settleCalls
+	controller.mu.Unlock()
+	if settleCalls != 3 {
+		t.Fatalf("settle calls = %d, want 3", settleCalls)
+	}
+	result, ok := control.Result(child.ID)
+	if !ok || result.Status != subagent.StatusCompleted {
+		t.Fatalf("settled result = %+v, ok=%t", result, ok)
+	}
+	children.mu.Lock()
+	pending := len(children.settlementErrors)
+	children.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending settlement errors = %d", pending)
 	}
 }
 
@@ -980,18 +1097,19 @@ func TestChildAgentStepQuotaUsesReservedFinalization(t *testing.T) {
 	}
 }
 
-func TestChildAgentWallClockCancelsTurn(t *testing.T) {
-	// The provider fixture trickles its stream, so the wall clock is guaranteed
-	// to fire while the child is still mid-turn.
+func TestChildAgentIdleLeaseInterruptsTurnRecoverably(t *testing.T) {
+	// The explicit child lease is short enough to expire between observable
+	// progress events. Expiry interrupts the child so a later takeover can
+	// continue it instead of terminalizing it as a permanent failure.
 	session := openChildSession(t, "subagent-slow", func(overrides *config.Overrides) {
 		wallTime := 50 * time.Millisecond
 		overrides.SubagentWallTime = &wallTime
 	})
 	result := runChild(t, session, subagent.RoleExplore)
-	if result.Status != subagent.StatusErrored {
-		t.Fatalf("status = %q, want errored: %+v", result.Status, result)
+	if result.Status != subagent.StatusInterrupted {
+		t.Fatalf("status = %q, want interrupted: %+v", result.Status, result)
 	}
-	if !unresolvedContains(result, "wall-clock budget") {
+	if !unresolvedContains(result, "execution lease expired") {
 		t.Fatalf("unresolved = %v", result.Unresolved)
 	}
 }
@@ -1123,8 +1241,15 @@ func TestChildAgentRefusedWhenSharedBudgetIsSpent(t *testing.T) {
 	if !protocol.IsCode(err, protocol.CodeResourceExhausted) {
 		t.Fatalf("Takeover error = %v (want resource_exhausted)", err)
 	}
-	if !strings.Contains(err.Error(), "execution.subagent.max_tokens") {
-		t.Fatalf("error does not name the limit to raise: %v", err)
+	var problem *protocol.Problem
+	if !errors.As(err, &problem) ||
+		problem.Retryable ||
+		problem.Fault == nil ||
+		problem.Fault.Disposition != protocol.FaultResumeTurn ||
+		problem.Details == nil ||
+		problem.Details.Reason !=
+			protocol.ProblemReasonTokenBudgetExhausted {
+		t.Fatalf("child budget error = %+v", problem)
 	}
 	// Refused before submission means no turn was consumed and no lease leaked.
 	if spent := session.children.governor.Snapshot(); spent.InFlight != 0 {

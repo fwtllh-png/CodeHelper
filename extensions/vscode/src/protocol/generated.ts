@@ -1200,6 +1200,8 @@ export type SearchResultData = {
 };
 
 export type ThreadCompactedData = {
+  readonly "authority_digest"?: string;
+  readonly "authority_equivalent"?: boolean;
   readonly "compatibility_hash"?: string;
   readonly "critical_facts"?: number;
   readonly "downshift_policy"?: string;
@@ -1386,6 +1388,8 @@ export type TurnCanceledData = {
 };
 
 export type TurnCompactionData = {
+  readonly "authority_digest"?: string;
+  readonly "authority_equivalent"?: boolean;
   readonly "capsule_bytes"?: number;
   readonly "compatibility_hash"?: string;
   readonly "compatibility_matched"?: boolean;

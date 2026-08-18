@@ -53,6 +53,82 @@ type journalClosingProvider struct {
 	journal *workspacejournal.Manager
 }
 
+type releaseFailingCoordinatorRuntime struct {
+	turnkernel.CoordinatorRuntime
+	err   error
+	calls int
+}
+
+func (r *releaseFailingCoordinatorRuntime) Release(
+	context.Context,
+	string,
+) error {
+	r.calls++
+	return r.err
+}
+
+func TestTurnCoordinatorReleaseFailureIsReportedOnTerminal(t *testing.T) {
+	engine := newEngine(
+		t,
+		&scriptedProvider{streams: []provider.Stream{textStream("done")}},
+		tool.NewRegistry(nil, nil),
+	)
+	releaseErr := errors.New("injected coordinator release failure")
+	runtime := &releaseFailingCoordinatorRuntime{
+		CoordinatorRuntime: turnkernel.NewEphemeralCoordinatorRuntime(),
+		err:                releaseErr,
+	}
+	engine.options.TurnCoordinatorRuntime = runtime
+	var terminal Event
+	result, err := engine.RunForTurn(
+		t.Context(),
+		"release-failure",
+		"answer",
+		func(event Event) error {
+			if event.State == Completed {
+				terminal = event
+			}
+			return nil
+		},
+	)
+	if err != nil || result.State != Completed {
+		t.Fatalf("result=%+v error=%v", result, err)
+	}
+	if runtime.calls < 2 {
+		t.Fatalf("release calls = %d, want terminal attempt and deferred retry", runtime.calls)
+	}
+	if len(terminal.SecondaryIssues) != 1 ||
+		terminal.SecondaryIssues[0].Phase != "turn_coordinator_release" ||
+		terminal.SecondaryIssues[0].Message != releaseErr.Error() {
+		t.Fatalf("terminal secondary issues = %+v", terminal.SecondaryIssues)
+	}
+}
+
+func TestTerminalProjectionFailureReturnsRecoverableError(t *testing.T) {
+	engine := newEngine(
+		t,
+		&scriptedProvider{streams: []provider.Stream{textStream("done")}},
+		tool.NewRegistry(nil, nil),
+	)
+	projectionErr := errors.New("injected terminal projection failure")
+	result, err := engine.RunForTurn(
+		t.Context(),
+		"terminal-projection-failure",
+		"answer",
+		func(event Event) error {
+			if event.State == Completed {
+				return projectionErr
+			}
+			return nil
+		},
+	)
+	if err == nil || !errors.Is(err, projectionErr) ||
+		protocol.DispositionOf(err) != protocol.FaultRetryStep ||
+		result.State != AwaitingRecovery {
+		t.Fatalf("result=%+v problem=%+v", result, protocol.ProblemOf(err))
+	}
+}
+
 func (p journalClosingProvider) Stream(
 	context.Context,
 	provider.ModelRequest,

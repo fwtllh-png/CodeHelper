@@ -94,12 +94,12 @@ Priority definitions:
 
 | ID | Workstream | Priority | Status | Primary ownership |
 | --- | --- | --- | --- | --- |
-| R0 | Failure baseline and repository-wide limit inventory | P0 | unassessed | Runtime / Engineering |
-| R1 | Turn state machine and terminal convergence | P0 | unassessed | `internal/runtime/agent` |
-| R2 | Dynamic budgets, progress detection, and Context | P0 | unassessed | Agent / Context / Config |
+| R0 | Failure baseline and repository-wide limit inventory | P0 | verified | Runtime / Engineering |
+| R1 | Turn state machine and terminal convergence | P0 | verified | `internal/runtime/agent` |
+| R2 | Dynamic budgets, progress detection, and Context | P0 | verified | Agent / Context / Config |
 | R3 | Provider streams and incomplete-call recovery | P0 | unassessed | Provider / Agent |
-| R4 | Typed faults, Retry, and Deadline semantics | P0 | unassessed | Protocol / Runtime / Adapters |
-| R5 | Persistence, Journal, idempotency, and crash recovery | P0 | unassessed | Persist / Runtime |
+| R4 | Typed faults, Retry, and Deadline semantics | P0 | repairing | Protocol / Runtime / Adapters |
+| R5 | Persistence, Journal, idempotency, and crash recovery | P0 | repairing | Persist / Runtime |
 | R6 | Tool, Guard, Sandbox, and side-effect consistency | P0 | unassessed | Tool / Security / Platform |
 | R7 | Concurrency, cancellation, backpressure, and resources | P1 | unassessed | Runtime / Platform |
 | R8 | Protocol and cross-Host behavior | P1 | unassessed | Protocol / Hosts |
@@ -134,7 +134,144 @@ Priority definitions:
 - every exit maps to a typed Fault and Kernel state;
 - every failure sample maps to one primary R1-R11 workstream.
 
+### R0 Baseline Result (2026-08-18)
+
+`verified` means that the audit and root-cause consolidation are complete. It
+does not mean that the findings below have been repaired. This baseline targets
+`main@9b12c5a`; implementation work tracks the stable IDs below.
+
+| Item | Baseline |
+| --- | --- |
+| Repository source files | 1,279: 1,104 Go, 146 TypeScript, 20 Python, 9 Shell |
+| Focused production code | 601 Go and 87 VS Code TypeScript files |
+| Concurrency candidates | 68 Goroutine starts and 138 Channel declarations or constructors |
+| Persistence candidates | 167 Transaction/Commit/Rollback related locations |
+| External side-effect candidates | 308 file, process, network, or system-call locations |
+| Non-test exits | 27 `panic`, 10 `os.Exit`, and 0 `log.Fatal` calls |
+| Existing reliability tests | 259 recovery/cancel/retry-like tests by name and 29 explicit injection points |
+
+These are static candidate boundaries, not defect counts. Sixteen `panic` calls
+are the goja mechanism for raising JavaScript exceptions. `os.Exit` appears only
+in process entry points, isolation helpers, and the Schema Generator. They stay
+in the classification inventory but should not be removed mechanically.
+
+### Limit-Purpose Inventory
+
+| Domain | Current rule | Class | R0 decision | Follow-up |
+| --- | --- | --- | --- | --- |
+| Main Turn | 256 Steps by default and 1,000 maximum in Profile; then request one Finalization | Implicit convergence limit | Do not converge progressing work by count alone; use an explicit budget or renewable Lease | R1, R2 |
+| No-progress detection | Normal Turns stage at 16/32/48 Samples; Research at 8/12/16 | Kernel convergence policy | Keep structured state, but derive thresholds from progress semantics and an observable policy | R1, R2 |
+| Repair | Completion/Workspace/Declaration/Verification default to 2/1/2/1 Steps | Repair budget | New progress must reset failure accounting; exhaustion must retain resumable state | R1, R2 |
+| Provider | Two-minute request Timeout and one-minute Idle Timeout | Fixed Deadline | `http.Client.Timeout` can terminate an actively streaming request; split connection, idle, and renewable lease scopes | R2, R4 |
+| Provider Retry | Configuration defaults to zero, but a typed retryable Fault gets at least one Retry and Empty Response gets one | Implicit retry count | Choose Retry from Fault, idempotency, progress, and total budget instead of an adapter-local count | R3, R4 |
+| Subagent | 24 Steps and five-minute Wall Time by default; expiry cancels and records Errored | Fixed terminator | Replace with a renewable Lease under the Parent budget and a resumable result | R2, R7 |
+| Workflow / JS VM | 256 Steps by default; Lifetime 1,000, Parallel Items 1,000, concurrency 16 | Mixed budget | Keep capacity protection; Step/Lifetime exhaustion should suspend durably rather than cancel the entire Run | R2, R7 |
+| Worker | One Attempt, 30-second Lease, and one-second Claim Interval by default | Durable attempt budget | Explicit task budgets can remain, but defaults, Retry, and Lease need one typed reason | R4, R7 |
+| VS Code Supervisor | Restart after 250/500/1,000ms and enter Failed after three attempts | Host-local retry count | A Host count must not declare Runtime work permanently failed; expose durable, actionable recovery | R8, R9 |
+| Runtime / Control Queue | Operation, Subscriber, and Turn Mailbox default to 64 | Backpressure capacity | Keep capacity, but critical control cannot return only `resource_exhausted` and make callers guess about replay | R7, R8 |
+| Replay / Frame | ACP Replay 256, Frame 4 MiB, and paginated History | Transport capacity | Keep pagination and safety limits; all Hosts need one Continuation/Desync contract | R8 |
+| Tool / Process Output | Shell defaults to 4,096 and caps at 10,000 Tokens; Process retains 1/8 MiB and supports Archive | Result-retention capacity | Never terminate a task for this; truncation needs a Receipt, Handle, or Durable Archive | R2, R6 |
+| MCP / Web / Hook / Git | Fixed Call, Connect, Close, and Shutdown Deadlines from 250ms to two minutes | Operation Deadline | Separate connection, idle, call, and close scopes; Cleanup Timeout cannot become business failure | R4, R7, R9 |
+| Context / Payload / Security | Fragment, file, Schema, Frame, Manifest, and Sandbox path-count limits | Safety or memory boundary | Retain and register centrally; return typed capacity results without silently truncating critical state | R2, R6, R8 |
+
+This program is not removing real model Context/Output capabilities, explicit
+user Cost/Token budgets, protocol pagination, security payload limits, Sandbox
+path limits, or presentation retention limits that provide both a truncation
+Receipt and complete Archive. The defects are implicit termination, silent
+loss, and several owners deciding the same budget independently.
+
+### Root-Cause Inventory
+
+| ID | Priority | Root cause and evidence | Primary workstream |
+| --- | --- | --- | --- |
+| R0-001 | P0 | Main Turn, Subagent, Workflow, Verification, and JS VM each own fixed Step, Wall-time, or Lifetime terminators. The Kernel converts the Main Turn Step Limit into Convergence, but it can still converge work that continues to make progress. | R1, R2 |
+| R0-002 | P0 | Provider total request Timeout, Subagent Wall Time, and several 30-second Tool limits conflate connection, idle, business operation, and execution Lease. In particular, `internal/runtime/app/wire/modules_provider.go` applies the two-minute setting to `http.Client.Timeout`, which active stream progress cannot renew. | R2, R4 |
+| R0-003 | P0 | Provider Retry, Worker Attempt, Workflow Retry, and VS Code Runtime Restart use independent local counts. The Provider currently guarantees at most one default Retry, while VS Code permanently enters `failed` after three failed launches. | R3, R4, R9 |
+| R0-004 | P0 | Critical errors are discarded from Terminal Event `send`, Turn Coordinator `Release`, in-memory rollback after failed Checkpoint publication, Child `Settle`, Lane status persistence, Process Session Journal, and asynchronous Observation writes. These can produce completed-but-unrecorded state, retained Leases, or permanent Running. | R1, R5, R7, R10 |
+| R0-005 | P1 | A shared `Problem/Fault` exists, but Metadata lacks Stage and Operation/Effect/Attempt IDs; unclassified errors default to recoverable `unavailable`. Egress, VS Code revocation, and TUI projection still depend on error text. | R4, R8, R10 |
+| R0-006 | P1 | Eleven non-goja Runtime `panic` calls include random ID generation, a Process Output invariant, invalid Permission Kind, and static Catalog/Manifest loading. Static Must helpers may remain at a build-fact boundary; runtime input and entropy failures must return typed Faults. | R4, R9 |
+| R0-007 | P1 | Queue, Replay, Frame, Output, Context, and Payload limits are distributed across Config, Protocol, Host, and Adapter. Trigger behavior varies among Reject, Truncate, Drop, Desync, Converge, and Panic without one capacity contract. | R2, R6, R7, R8 |
+| R0-008 | P1 | `max_steps` is duplicated in Go Defaults, Engine fallback, Session Profile, ACP, VS Code Settings, and Package Schema; Timeout and Retry have similar duplicate defaults. A Host can still alter Runtime termination policy. | R8, R9 |
+| R0-009 | P1 | Strong tests cover Terminal Atomicity, Outbox, Lease, Provider Disconnect, and Tool Cancel, but no matrix spans every asynchronous boundary. Gaps include progressing Deadline, discarded Terminal/Release errors, Disk Full, Observation write failure, and Host restart exhaustion. | R5, R7, R10, R11 |
+
+### Exit and Error-Handling Conclusions
+
+- process-level `os.Exit` calls are at valid process boundaries and remain;
+- goja Host Function `panic(runtime.NewGoError(...))` calls are recovered at the
+  VM boundary and may remain, but `fmt.Errorf("%v", recovered)` currently loses
+  the typed cause chain and belongs to R4;
+- static Must helpers such as `DefaultCatalog`, `MustLoad`, and `MustReadiness`
+  may handle only compile-time embedded facts backed by tests; they must not
+  expand to user input or external runtime state;
+- random ID, Permission mapping, and Process Output runtime panics should become
+  typed errors converged by the correct owner;
+- best-effort cleanup Close/Remove failures may be secondary, but must enter
+  Secondary Issue or Health. Errors changing Durable State, Lease, Terminal, or
+  Result cannot be ignored.
+
+### Async and Fault-Injection Baseline
+
+Current tests cover Event Log torn tails, Domain Fact/Terminal Commit failure,
+Terminal Outbox recovery, Journal Draft recovery, Lease fencing, Provider SSE
+disconnect, Tool cancellation, Approval/Input recovery, and VS Code cursor
+replay. The Durable Kernel therefore has a strong base, but coverage clusters
+around a few boundaries rather than a boundary-by-fault-by-state-by-recovery
+matrix.
+
+`go test -count=1 ./...` produced three timing-sensitive failures during this
+audit:
+
+- the MCP Stdio fixture exceeded its five-second initialization Context;
+- two Lane tests remained `running` through their five-second polling windows.
+
+Each focused test passed with `-count=5`, so current evidence indicates
+fixed-Deadline flakes under parallel package load rather than stable functional
+failures. The repository's standard serial `make test-hermetic` lane passed in
+full; `npm run check` passed; `npm test -- runtime` reported 54 passes and four
+skipped real-Runtime integration scenarios. R11 should convert those skipped
+and timing-sensitive cases into deterministic gates.
+
+### R0 Handoff Order
+
+1. R1/R2 unify Progress, Convergence, explicit Budget, and renewable Execution
+   Lease;
+2. R4 defines complete Fault/Deadline/Retry decisions, then R3 integrates
+   Provider Partial Stream behavior;
+3. R5 repairs every discarded Durable/Terminal/Lease error;
+4. R7/R8/R9 unify Queue, Host restart, configuration sources, and resource
+   lifecycle;
+5. R10/R11 establish failure reconstruction and the full-boundary fault matrix.
+
 ## R1: Turn State Machine and Terminal Convergence
+
+**Current progress (2026-08-18)**
+
+- explicit Main Turn Step Budget is frozen into Turn Kernel Policy and the
+  Reducer triggers Convergence from completed Samples; the Engine loop no longer
+  owns a fixed-step terminator;
+- Main Turn, Subagent, and Workflow `max_steps` now default to zero and install
+  no implicit limit;
+- Kernel-authorized Repair Steps retain an independent consecutive-no-progress
+  budget and are not consumed by the normal-work budget;
+- explicit Workflow budget exhaustion now produces durable `blocked` nodes that
+  can Resume instead of canceling the entire Run;
+- Terminal Projection failure returns a recoverable Fault; Turn Coordinator
+  Release failure enters `secondary_issues` and Durable Runtime retries it
+  continuously. Child WorkGraph/Manager Settlement errors are no longer
+  discarded;
+- the executable state graph in `state_graph_property_test.go` covers all eleven
+  Kernel phases, all three terminal kinds, illegal transitions, duplicate and
+  late Commands, and order equivalence for independent Tool and Approval
+  results. A rejected Command must preserve the original State Digest;
+- Approval and Input waits are rebuilt through real durable Domain Facts. The
+  restored Coordinator preserves both the State Digest and Request ID.
+
+**Acceptance result (2026-08-18)**
+
+- state graph, single-terminal, Command ordering, and cross-process interaction
+  recovery tests pass;
+- focused Turn Kernel, Agent Engine, Workflow, Protocol, and Wire tests pass;
+- Hermetic, Race, Architecture Ratchet, VS Code, Docs, and Book gates pass.
 
 **Audit scope**
 
@@ -162,6 +299,48 @@ Priority definitions:
 - every interactive wait recovers its original Request ID across processes.
 
 ## R2: Dynamic Budgets, Progress Detection, and Context
+
+**Current progress (2026-08-18)**
+
+- `zero = unset` now spans Config, Session Profile, CLI, ACP/VS Code decoding,
+  and Engine. Historical default Profiles at `8/64/256` migrate to zero while
+  explicit user budgets remain unchanged;
+- a changing Progress Signature has no total-Sample limit. Durable Kernel
+  no-progress stages at 8/12/16 or 16/32/48 remain active;
+- Subagent `wall_time` is now a renewable execution Lease rather than an
+  absolute wall-clock terminator. Runtime progress renews it and idle expiry
+  produces recoverable `interrupted` state;
+- Workflow no longer injects 256 Steps by default, and explicit Step/Token/Cost
+  exhaustion produces `blocked`;
+- Provider no longer uses a total-wall-clock `http.Client.Timeout`: connection,
+  TLS, and response headers have phase limits, stream events renew Idle Timeout,
+  and Turn Context/Lease owns call lifetime;
+- Context candidates verify an Authority Capsule before commit. Goal, Plan/Todo,
+  Failure, Change, Critical Path, and Evidence Fact/Handle entities must remain
+  equal, while Tool Pairs remain closed. Receipts and Protocol Events carry the
+  Authority Digest and equivalence result;
+- Protocol provides one `BudgetExhaustion` contract. Explicit Main Turn,
+  Workflow, and Child Token/Cost exhaustion carries Scope, resource kind,
+  Used/Limit, `resource_exhausted`, and `resume_turn`; execution does not
+  automatically retry before the budget changes;
+- every Workflow budget-exhaustion branch enters durable `blocked`, while a
+  background Workflow Task projects `waiting` rather than `failed`. Increasing
+  the budget resumes from WorkGraph state without replaying completed nodes;
+- Session Delta persists the binding between Turn identity and model-visible
+  history groups. Continue removes only the source group replaced by the
+  Recovery Capsule, preserving older facts and closed Tool Pairs. Repeated
+  Continue and process restart no longer recursively inject old Recovery
+  Prompts.
+
+**Acceptance result (2026-08-18)**
+
+- Main, Workflow, and Child Token and Cost exhaustion share one recoverable
+  Fault contract;
+- recovery-history identity, repeated Continue, Session Delta restart, and
+  post-compaction binding cleanup tests pass;
+- progressing work, deterministic no-progress convergence, Context Authority
+  equivalence, and Tool Pair closure tests pass;
+- Hermetic, Race, Architecture Ratchet, VS Code, Docs, and Book gates pass.
 
 **Audit scope**
 
@@ -223,6 +402,17 @@ Priority definitions:
 
 ## R4: Typed Faults, Retry, and Deadline Semantics
 
+**Current progress (2026-08-18)**
+
+- Provider Deadline is split across Connection, TLS Handshake, Response Header,
+  and Stream Idle phases; a progressing stream has no fixed total-wall-clock
+  limit;
+- Terminal Projection failure returns a `RetryStep` Fault and preserves
+  recoverable state. Awaiting Recovery projection failure is joined with the
+  primary Fault;
+- one Retry owner and complete Deadline Metadata across Provider, Worker,
+  Workflow, and Host remain.
+
 **Audit scope**
 
 - string-matched errors, causes lost through wrapping, and missing failure
@@ -249,6 +439,19 @@ Priority definitions:
   state.
 
 ## R5: Persistence, Journal, Idempotency, and Crash Recovery
+
+**Current progress (2026-08-18)**
+
+- Turn Coordinator Release runs before terminal publication and failure is
+  recorded as a Terminal Secondary Issue. Durable Runtime continuously retries
+  failed releases without renewing their Leases and removes the in-memory
+  Coordinator only after success;
+- Coordinator Open/Restore rollback errors are joined with the primary error;
+- Child WorkGraph and Manager Settlement use idempotent retry without a fixed
+  attempt count. New Child Turns return typed `unavailable` while recovery is
+  pending instead of deleting Settlement errors;
+- discarded Checkpoint rollback, Observation writes, and Process Journal errors
+  from the rest of R0-004 remain.
 
 **Audit scope**
 

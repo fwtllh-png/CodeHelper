@@ -228,6 +228,73 @@ func TestDurableCoordinatorOpenWaitsForInterruptedTurnLease(t *testing.T) {
 	}
 }
 
+func TestDurableCoordinatorRetriesReleaseWithoutRenewingLease(t *testing.T) {
+	store := seedPersistentState(t, t.TempDir())
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	repositories, err := apppersistence.NewPersistentRepositories(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := persistentStartOperation(
+		t,
+		"turn-release-retry",
+		"item-release-retry",
+	)
+	canonical, err := app.CanonicalOperationPayload(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repositories.Lifecycle.Accept(
+		t.Context(),
+		operation,
+		"request-release-retry",
+		canonical,
+	); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := newDurableCoordinatorRuntime(
+		turnstate.NewSQLiteRepository(store.SQLite()),
+		"owner-release-retry",
+		60*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	handle, err := runtime.Open(
+		t.Context(),
+		"turn-release-retry",
+		turnkernel.NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handle.Coordinator.Submit(
+		t.Context(),
+		turnkernel.StartTurn{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := runtime.Release(
+		canceled,
+		"turn-release-retry",
+	); !errors.Is(err, context.Canceled) {
+		t.Fatalf("release error = %v", err)
+	}
+	if got := runtime.activeTurnIDs(); len(got) != 0 {
+		t.Fatalf("releasing turn is still renewed: %v", got)
+	}
+	deadline := time.Now().Add(time.Second)
+	for len(runtime.trackedTurnIDs()) != 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := runtime.trackedTurnIDs(); len(got) != 0 {
+		t.Fatalf("release retry did not drain: %v", got)
+	}
+}
+
 func TestC1DurableCoordinatorRuntimeFailsClosedOnIncompleteFacts(
 	t *testing.T,
 ) {

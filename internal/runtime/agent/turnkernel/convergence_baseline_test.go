@@ -200,8 +200,9 @@ func TestC3ConvergenceBudgetOwnershipBaseline(t *testing.T) {
 		root,
 		"internal/runtime/agent/engine/turn_handler.go",
 	)
-	if !fileCalls(handler, "requestConvergence") {
-		t.Fatal("Engine work-step exhaustion does not hand off to Turn Kernel")
+	run := findFunction(handler, "RunForTurnWithIntentAndAttachments")
+	if functionCalls(run, "requestConvergence") {
+		t.Fatal("Engine turn loop still owns work-step convergence")
 	}
 	if fileHasIdentifier(handler, "CodeResourceExhausted") {
 		t.Fatal("Engine turn loop still chooses a resource-exhausted terminal")

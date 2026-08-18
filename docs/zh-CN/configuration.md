@@ -75,9 +75,9 @@ mode = "act"                 # plan | act | operate
 workspace = "."
 tools = true
 max_output_tokens = 0           # 0 = 当前模型能力自动值
-max_steps = 256
-timeout = "2m"
-idle_timeout = "1m"
+max_steps = 0                   # 0 = 不设置隐式 Step Budget
+timeout = "2m"                  # 连接、TLS 和响应头阶段
+idle_timeout = "1m"             # 每个流事件都会续期
 max_concurrent = 8
 rate_limit = 0
 budget_tokens = 0            # 0 表示不设置累计 Session Token 上限
@@ -103,10 +103,10 @@ max_depth = 5
 max_parallel = 4
 max_resident = 8
 max_total = 16
-max_steps = 24
+max_steps = 0                   # 0 = 只继承进展收敛策略
 max_tokens = 0
 max_cost_usd = 0
-wall_time = "5m"
+wall_time = "0s"                # 0 = 不设置子 Agent 执行 Lease
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
 
 [execution.worker]
@@ -215,10 +215,12 @@ Incremental Transport 固定使用 `store=false`。Response State 只保留在�
 以及 Logical/Transport 的 SHA-256 Digest，不保存 Prompt 内容。Request Byte
 下降只属于传输证据，不会被报告为 Token 降幅。
 
-`execution.max_steps` 限制普通工作，不限制结构化 Finalization。代码 Turn 默认值为
-256，支持范围为 1-1000。当预算不少于 64 步时，Runtime 会在剩余 16-32 步时注入
-一次收敛提醒。普通工作预算耗尽后，Kernel 会在预算之外保留一次 Finalization
-Sample；它只能请求必需输入，或声明 Complete/Incomplete 状态，不能继续探索或修改。
+`execution.max_steps` 是普通工作的可选显式预算，不限制结构化 Finalization。默认值为
+`0`，表示不注入隐式 Step Budget；正数会被冻结进 Turn Kernel Policy。当显式预算
+不少于 64 步时，Runtime 会在剩余 16-32 步时注入一次收敛提醒。显式普通工作预算
+耗尽后，Kernel 会在预算之外保留一次 Finalization Sample；它只能请求必需输入，
+或声明 Complete/Incomplete 状态，不能继续探索或修改。Kernel 授权的 Repair Steps
+拥有独立预算。
 
 Agent 还会跟踪连续没有结构化进展的 Sample；对于正在执行 Workspace 工作的 Turn，
 这不是新的 16 步执行上限。连续 16 步无进展时要求模型收敛，32 步时限制继续扩散式
@@ -232,13 +234,28 @@ Terminal-only 而拒绝。48 步时 Kernel 进入同一条结构化 Finalization
 计为进展；Operation Turn 会把成功的业务 Tool 结果计为进展。Progress 与
 Convergence 状态都会持久化并在 Runtime 恢复后延续。仍保持只读的 Answer 或 Plan
 Turn 使用更紧的 8/12/16 阈值，但它只统计连续没有新路径或新 Evidence 的 Sample。
-持续发现 Evidence 的研究由显式 `execution.max_steps`、Context Window 和 Token/Cost
-Budget 约束，不再受内部总 Sample 上限影响。Provider 输出不完整时也不再有默认续写
-次数上限，只要这些真实容量仍然可用就继续。
+持续发现 Evidence 的研究由明确设置的 `execution.max_steps`、Context Window 和
+Token/Cost Budget 约束，不再受内部总 Sample 上限影响。Provider 输出不完整时也不再
+有默认续写次数上限，只要这些真实容量仍然可用就继续。
+
+`execution.subagent.max_steps` 同样使用 `0 = 未设置` 语义。可选的
+`execution.subagent.wall_time` 是可续期执行 Lease：可观测的子 Runtime 进展会续期；
+空闲到期时子 Agent 进入可恢复的 Interrupted 状态，而不是记录为永久失败。
+
+`execution.timeout` 不再是 Provider 调用的总墙钟上限。它分别约束连接建立、TLS
+协商和等待响应头；响应体开始后，生命周期只由 Turn Context 或显式执行 Lease 决定。
+`execution.idle_timeout` 约束相邻流事件之间的空闲时间，每收到一个事件就重新计时。
+因此持续产出进展的长流不会在固定两分钟后被中断。
 
 这些 Convergence Budget 不等于物理边界或用户配置的硬上限。Runtime 不会越过
 Token/Cost Ceiling，不会猜测半截 Tool Call，不会绕过 Content Filter，也不会在安全
 Compaction 后请求仍无法放入 Context 的 Sample。
+
+显式 `budget_tokens`、`budget_usd`、Subagent 或 Workflow Token/Cost Budget 耗尽时，
+Runtime 返回包含 Scope、资源类型和 Used/Limit 的结构化 `resource_exhausted` Fault，
+并使用 `resume_turn` 保留继续入口。Main Turn 保留可恢复状态，Workflow/后台 Task
+进入 Durable `blocked`/`waiting`，Child 在提交新 Turn 前拒绝准入。预算未提高或补充
+前不会自动重试；恢复后不会重跑已完成的 WorkGraph Node 或已闭合 Tool Effect。
 
 未知 TOML 字段会被拒绝。这是有意设计：拼错的安全或预算字段不能“看起来已配置但
 实际没有生效”。

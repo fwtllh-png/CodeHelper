@@ -41,6 +41,81 @@ func TestTruthCapsuleRetainsCriticalFactsAcrossThreeCompactions(t *testing.T) {
 	}
 }
 
+func TestTruthCapsuleAuthorityEquivalenceIgnoresGenerationMetadata(t *testing.T) {
+	required := testTruthCapsule(1, []TruthEntity{
+		NewTruthEntity(EntityGoal, "active", "finish recovery", "runtime.plan"),
+		NewTruthEntity(EntityCriticalPath, "runtime.go", "runtime.go", "runtime.working_set"),
+	})
+	retained := testTruthCapsule(3, append(
+		append([]TruthEntity(nil), required.Entities...),
+		NewTruthEntity(EntityFact, "extra", "extra evidence", "runtime.evidence"),
+	))
+	if err := retained.ContainsAuthority(required); err != nil {
+		t.Fatal(err)
+	}
+	first, err := required.AuthorityDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	required.Generation = 9
+	required.Seal()
+	second, err := required.AuthorityDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("authority digest changed with generation: %q != %q", first, second)
+	}
+}
+
+func TestTruthCapsuleAuthorityEquivalenceRejectsLossOrMutation(t *testing.T) {
+	required := testTruthCapsule(1, []TruthEntity{
+		NewTruthEntity(EntityGoal, "active", "finish recovery", "runtime.plan"),
+		NewTruthEntity(EntityTodo, "verify", "verify", "runtime.plan"),
+	})
+	lost := testTruthCapsule(2, required.Entities[:1])
+	if err := lost.ContainsAuthority(required); err == nil {
+		t.Fatal("lost authority entity was accepted")
+	}
+	changed := append([]TruthEntity(nil), required.Entities...)
+	changed[0].Value = "different goal"
+	mutated := testTruthCapsule(2, changed)
+	if err := mutated.ContainsAuthority(required); err == nil {
+		t.Fatal("mutated authority entity was accepted")
+	}
+}
+
+func TestMergeTruthCapsulesDoesNotMutateAuthorityInput(t *testing.T) {
+	current := testTruthCapsule(1, []TruthEntity{
+		NewTruthEntity(EntityGoal, "active", "finish recovery", "runtime.plan"),
+	})
+	before := current.Entities[0]
+	previous := testTruthCapsule(2, []TruthEntity{
+		NewTruthEntity(EntityFact, "old", "old fact", "runtime.evidence"),
+	})
+	if _, _, err := MergeTruthCapsules(current, previous); err != nil {
+		t.Fatal(err)
+	}
+	if len(current.Entities) != 1 || current.Entities[0] != before {
+		t.Fatalf("authority input mutated = %+v", current.Entities)
+	}
+}
+
+func testTruthCapsule(
+	generation uint64,
+	entities []TruthEntity,
+) TruthCapsule {
+	capsule := TruthCapsule{
+		SchemaVersion: TruthSchemaVersion,
+		Generation:    generation, CompatibilityHash: "sha256:compat",
+		ModelID: "model", ContextTokens: 8192,
+		DownshiftPolicy: DownshiftRuntimeTruthOnly,
+		Entities:        append([]TruthEntity(nil), entities...),
+	}
+	capsule.Seal()
+	return capsule
+}
+
 func TestTruthCapsuleRejectsInventedVerification(t *testing.T) {
 	capsule := truthFixture("sha256:compat", "fixture-model", 4096)
 	change := NewTruthEntity(

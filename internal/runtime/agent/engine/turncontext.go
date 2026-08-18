@@ -176,6 +176,7 @@ func SnapshotTurnSpec(
 	kernelPolicy.VerificationOnFailure = options.Verify.OnFailure
 	kernelPolicy.VerificationRepairLimit =
 		uint32(max(options.Verify.MaxRepairSteps, 0))
+	kernelPolicy.ExecutionStepLimit = uint32(max(options.MaxSteps, 0))
 	kernelPolicy.JournalRequired = options.Journal != nil
 	spec := TurnSpec{
 		Identity: identity,

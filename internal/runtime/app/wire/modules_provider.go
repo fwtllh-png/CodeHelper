@@ -38,7 +38,7 @@ func (providerModule) Build(ctx context.Context, state *buildState) error {
 	grantRouteHosts(egressGate, routes)
 	client := httpclient.New()
 	client.Egress, client.Metrics = egressGate, session.metrics
-	client.HTTP.Timeout = execution.Timeout
+	client.SetConnectionTimeout(execution.Timeout)
 	client.IdleTimeout = execution.IdleTimeout
 	client.MaxConcurrent = execution.MaxConcurrent
 	client.RequestsPerSecond = execution.RateLimit
