@@ -56,4 +56,29 @@ void test("decodeEvent rejects malformed envelopes", () => {
     /event\.id/,
   );
   assert.throws(() => decodeEvent(null), /event must be an object/);
+  assert.throws(
+    () => decodeEvent({
+      version: 1,
+      id: "evt_null",
+      ...eventReferences,
+      kind: "future.capability",
+      created_at: "2026-08-04T00:00:00Z",
+      data: null,
+    }),
+    /event\.data must be present and non-null/u,
+  );
+});
+
+void test("decodeEvent rejects version skew before known-kind projection", () => {
+  assert.throws(
+    () => decodeEvent({
+      version: 2,
+      id: "evt_future_version",
+      ...eventReferences,
+      kind: "output.delta",
+      created_at: "2026-08-04T00:00:00Z",
+      data: { text: "must not be cast as current protocol" },
+    }),
+    /event\.version 2 is unsupported/u,
+  );
 });

@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -68,6 +69,40 @@ const (
 type EventData interface {
 	eventKind() EventKind
 	validate() error
+}
+
+// UnknownEventData preserves one same-version Event kind that this build does
+// not understand. Hosts may display it as read-only protocol data, but Runtime
+// semantics never infer lifecycle or terminal state from it.
+type UnknownEventData struct {
+	Kind EventKind       `json:"-"`
+	Raw  json.RawMessage `json:"-"`
+}
+
+func (d *UnknownEventData) eventKind() EventKind {
+	if d == nil {
+		return ""
+	}
+	return d.Kind
+}
+
+func (d *UnknownEventData) validate() error {
+	if d == nil || d.Kind == "" {
+		return errors.New("unknown event kind is required")
+	}
+	if len(bytes.TrimSpace(d.Raw)) == 0 ||
+		bytes.Equal(bytes.TrimSpace(d.Raw), []byte("null")) ||
+		!json.Valid(d.Raw) {
+		return errors.New("unknown event data must be valid non-null JSON")
+	}
+	return nil
+}
+
+func (d UnknownEventData) MarshalJSON() ([]byte, error) {
+	if err := (&d).validate(); err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), d.Raw...), nil
 }
 
 type TurnStartedData struct {

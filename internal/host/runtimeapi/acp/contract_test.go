@@ -13,7 +13,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/acp"
-	"github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/runtimecontract"
+	contract "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/runtimecontract"
 	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
@@ -81,8 +81,9 @@ func newContractHost(t *testing.T, setup contract.Setup) contract.Host {
 	clientReader, serverWriter := io.Pipe()
 	serverReader, clientWriter := io.Pipe()
 	server, err := acp.New(acp.Dependencies{
-		Runtime: session.Runtime, Sessions: repositories.Sessions,
-		Threads: repositories.Threads, Tasks: repositories.Tasks,
+		Runtime: session.Runtime, DefaultProfile: session.DefaultProfile(),
+		Sessions: repositories.Sessions,
+		Threads:  repositories.Threads, Tasks: repositories.Tasks,
 		Usage: repositories.Usage, Agents: session.Subagents(),
 		DynamicTools:      session.DynamicTools(),
 		SessionWorkspaces: session.SessionWorkspaces(),

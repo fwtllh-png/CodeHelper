@@ -57,6 +57,7 @@ func (configModule) Build(_ context.Context, state *buildState) error {
 		diagnosticReadRoots: diagnosticCommandReadRoots(commands),
 		diagnosticReadFiles: diagnosticCommandReadFiles(commands),
 	}
+	state.session.configuration.snapshot = config.CloneSnapshot(snapshot)
 	return nil
 }
 

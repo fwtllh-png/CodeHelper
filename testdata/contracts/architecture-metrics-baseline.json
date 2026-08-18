@@ -99,9 +99,6 @@
         "production_lines": 274,
         "options_fields": 0,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "R7 gives every subscription an explicit owner signal so slow-consumer eviction closes both stream and cleanup lifetime without losing durable events"
       }
     },
     {
@@ -344,9 +341,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 75,
-        "production_lines": 8806,
+        "production_lines": 8835,
         "options_fields": 70,
         "mutex_fields": 6
+      },
+      "relaxations": {
+        "production_lines": "R9 exposes one immutable resolved configuration/profile snapshot and preserves rollback close failures at the Composition Root"
       }
     },
     {
@@ -609,9 +609,6 @@
         "production_lines": 11548,
         "options_fields": 60,
         "mutex_fields": 8
-      },
-      "relaxations": {
-        "production_lines": "R3-R5 durable stream and cancellation convergence plus R7 typed mailbox backpressure bound provider, terminal, and cross-Turn work"
       }
     },
     {
@@ -717,9 +714,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6204,
+        "production_lines": 6247,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "R8 preserves same-version unknown Event data as opaque read-only protocol state while rejecting version skew before payload projection"
       }
     },
     {

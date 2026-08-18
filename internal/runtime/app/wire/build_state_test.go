@@ -93,6 +93,90 @@ func TestNewExecRollsBackResourcesWhenModuleFails(t *testing.T) {
 	}
 }
 
+func TestNewExecRollsBackEveryConstructionBoundaryInReverseOrder(t *testing.T) {
+	moduleNames := []string{
+		"config", "provider", "persistence", "platform", "builtin-tools",
+		"extension-tools", "security", "extension-plan", "orchestration",
+		"observability", "agent", "runtime", "background",
+	}
+	for failureIndex, failureName := range moduleNames {
+		t.Run(failureName, func(t *testing.T) {
+			failure := errors.New("injected construction failure")
+			var built, closed []string
+			modules := make([]buildModule, 0, len(moduleNames))
+			for index, name := range moduleNames {
+				modules = append(modules, buildModuleFunc{
+					name: name,
+					fn: func(
+						_ context.Context,
+						state *buildState,
+					) error {
+						built = append(built, name)
+						if err := state.session.resources.Add(
+							"synthetic-"+name,
+							func(context.Context) error {
+								closed = append(closed, name)
+								return nil
+							},
+						); err != nil {
+							return err
+						}
+						if index == failureIndex {
+							return failure
+						}
+						return nil
+					},
+				})
+			}
+			session, err := newExec(t.Context(), ExecOptions{}, modules)
+			if session != nil || !errors.Is(err, failure) {
+				t.Fatalf("newExec = (%v, %v)", session, err)
+			}
+			wantBuilt := moduleNames[:failureIndex+1]
+			if !reflect.DeepEqual(built, wantBuilt) {
+				t.Fatalf("built modules = %v, want %v", built, wantBuilt)
+			}
+			wantClosed := append([]string(nil), wantBuilt...)
+			for left, right := 0, len(wantClosed)-1; left < right; left, right = left+1, right-1 {
+				wantClosed[left], wantClosed[right] = wantClosed[right], wantClosed[left]
+			}
+			if !reflect.DeepEqual(closed, wantClosed) {
+				t.Fatalf("closed resources = %v, want %v", closed, wantClosed)
+			}
+		})
+	}
+}
+
+func TestNewExecJoinsConstructionAndRollbackFailures(t *testing.T) {
+	constructionErr := errors.New("construction failed")
+	rollbackErr := errors.New("rollback failed")
+	modules := []buildModule{
+		buildModuleFunc{name: "resource", fn: func(
+			_ context.Context,
+			state *buildState,
+		) error {
+			return state.session.resources.Add(
+				"failing-resource",
+				func(context.Context) error { return rollbackErr },
+			)
+		}},
+		buildModuleFunc{name: "failure", fn: func(
+			context.Context,
+			*buildState,
+		) error {
+			return constructionErr
+		}},
+	}
+	session, err := newExec(t.Context(), ExecOptions{}, modules)
+	if session != nil || !errors.Is(err, constructionErr) ||
+		!errors.Is(err, rollbackErr) {
+		t.Fatalf("newExec = (%v, %v)", session, err)
+	}
+	if !strings.Contains(err.Error(), `resource "failing-resource"`) {
+		t.Fatalf("rollback resource identity missing from error: %v", err)
+	}
+}
+
 func TestDefaultBuildModuleOrder(t *testing.T) {
 	modules := defaultBuildModules()
 	names := make([]string, 0, len(modules))

@@ -248,8 +248,9 @@ func runPersistentACPHost(
 	}
 	defer extensionControl.Close()
 	server, err := acp.New(acp.Dependencies{
-		Runtime: application.Runtime, Sessions: repositories.Sessions,
-		Threads: repositories.Threads, Tasks: repositories.Tasks,
+		Runtime: application.Runtime, DefaultProfile: application.DefaultProfile(),
+		Sessions: repositories.Sessions,
+		Threads:  repositories.Threads, Tasks: repositories.Tasks,
 		Usage: repositories.Usage, Agents: application.Subagents(),
 		DynamicTools:      application.DynamicTools(),
 		SessionWorkspaces: application.SessionWorkspaces(),

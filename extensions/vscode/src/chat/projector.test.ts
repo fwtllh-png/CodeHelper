@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 
 import { ChatProjector } from "./projector.js";
@@ -536,6 +538,51 @@ void test("ChatProjector preserves unknown events as read-only cards and dedupli
   assert.ok(unknown);
   assert.equal(unknown.length, 1);
   assert.match(unknown[0] ?? "", /future\.event/);
+});
+
+void test("ChatProjector matches the recorded cross-host event contract", () => {
+  const fixture = JSON.parse(readFileSync(resolve(
+    process.cwd(), "..", "..", "testdata", "contracts",
+    "host-event-sequence.json",
+  ), "utf8")) as {
+    readonly events: readonly unknown[];
+    readonly version_skew_event: unknown;
+    readonly expected: {
+      readonly accepted_sequences: readonly number[];
+      readonly output: string;
+      readonly status: string;
+      readonly unknown_event_kinds: readonly string[];
+      readonly terminal: boolean;
+    };
+  };
+  const projector = new ChatProjector();
+  const accepted: number[] = [];
+  for (const raw of fixture.events) {
+    const decoded = decodeEvent(raw);
+    if (projector.apply(decoded)) accepted.push(decoded.sequence);
+  }
+
+  const snapshot = projector.snapshot();
+  const turn = snapshot.turns[0];
+  assert.ok(turn);
+  assert.deepEqual(accepted, fixture.expected.accepted_sequences);
+  assert.equal(turn.output, fixture.expected.output);
+  assert.equal(turn.status, fixture.expected.status);
+  assert.equal(
+    snapshot.activeTurnId === undefined,
+    fixture.expected.terminal,
+  );
+  assert.deepEqual(
+    turn.unknownEvents.map((raw) => {
+      const event = JSON.parse(raw) as { readonly kind: string };
+      return event.kind;
+    }),
+    fixture.expected.unknown_event_kinds,
+  );
+  assert.throws(
+    () => decodeEvent(fixture.version_skew_event),
+    /event\.version 2 is unsupported/u,
+  );
 });
 
 void test("ChatProjector exposes verification-blocked recovery state structurally", () => {

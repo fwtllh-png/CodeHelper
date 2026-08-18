@@ -1,6 +1,11 @@
 package eventview
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -52,10 +57,107 @@ func TestProjectTreatsConvergenceAsStructuredIncomplete(t *testing.T) {
 	}
 }
 
-func TestProjectFailsClosedForUnknownEvent(t *testing.T) {
-	_, err := Project(protocol.Event{Kind: "future.event"})
-	if err == nil {
-		t.Fatal("unknown event projected without traits")
+func TestProjectPreservesSameVersionUnknownEventAsReadOnly(t *testing.T) {
+	var event protocol.Event
+	err := json.Unmarshal([]byte(`{
+		"version":1,
+		"id":"evt_future",
+		"sequence":1,
+		"operation_id":"op",
+		"thread_id":"thread",
+		"turn_id":"turn",
+		"item_id":"item",
+		"kind":"future.event",
+		"created_at":"2026-08-18T00:00:00Z",
+		"data":{"safe":true}
+	}`), &event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	update, err := Project(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknown, ok := update.(UnknownUpdate)
+	if !ok || unknown.Kind != "future.event" ||
+		string(unknown.Raw) != `{"safe":true}` ||
+		unknown.Traits().Terminal {
+		t.Fatalf("unknown update = %#v", update)
+	}
+}
+
+func TestRecordedHostEventSequenceContract(t *testing.T) {
+	type expectedProjection struct {
+		AcceptedSequences []protocol.Cursor `json:"accepted_sequences"`
+		Output            string            `json:"output"`
+		Status            string            `json:"status"`
+		UnknownEventKinds []string          `json:"unknown_event_kinds"`
+		Terminal          bool              `json:"terminal"`
+	}
+	var fixture struct {
+		Events           []json.RawMessage  `json:"events"`
+		VersionSkewEvent json.RawMessage    `json:"version_skew_event"`
+		Expected         expectedProjection `json:"expected"`
+	}
+	raw, err := os.ReadFile(filepath.Join(
+		"..", "..", "..", "testdata", "contracts", "host-event-sequence.json",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+
+	var accepted []protocol.Cursor
+	var output, status string
+	var unknownKinds []string
+	var terminal bool
+	var cursor protocol.Cursor
+	for _, rawEvent := range fixture.Events {
+		var event protocol.Event
+		if err := json.Unmarshal(rawEvent, &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Sequence <= cursor {
+			continue
+		}
+		cursor = event.Sequence
+		accepted = append(accepted, event.Sequence)
+		update, err := Project(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch projected := update.(type) {
+		case TextUpdate:
+			if projected.Channel == "output" {
+				output += projected.Text
+			}
+		case UnknownUpdate:
+			unknownKinds = append(unknownKinds, string(projected.Kind))
+			if projected.Traits().Terminal {
+				t.Fatal("unknown event inferred terminal state")
+			}
+		case TerminalUpdate:
+			status = projected.Status
+			terminal = projected.Traits().Terminal
+		}
+	}
+	if !reflect.DeepEqual(accepted, fixture.Expected.AcceptedSequences) ||
+		output != fixture.Expected.Output ||
+		status != fixture.Expected.Status ||
+		!reflect.DeepEqual(unknownKinds, fixture.Expected.UnknownEventKinds) ||
+		terminal != fixture.Expected.Terminal {
+		t.Fatalf(
+			"projection = sequences:%v output:%q status:%q unknown:%v terminal:%t; expected %+v",
+			accepted, output, status, unknownKinds, terminal, fixture.Expected,
+		)
+	}
+
+	var future protocol.Event
+	if err := json.Unmarshal(fixture.VersionSkewEvent, &future); err == nil ||
+		!strings.Contains(err.Error(), "unsupported event version 2") {
+		t.Fatalf("version skew error = %v", err)
 	}
 }
 

@@ -585,7 +585,6 @@ func TestTaggedUnionsRejectUnknownAndMalformedJSON(t *testing.T) {
 		}
 	}
 	eventCases := []string{
-		`{"version":1,"id":"evt_00000000000000000000000000000000","sequence":1,"operation_id":"op","thread_id":"t","turn_id":"u","item_id":"i","kind":"unknown","created_at":"` + validTime + `","data":{}}`,
 		`{"version":1,"id":"evt_00000000000000000000000000000000","sequence":1,"operation_id":"op","thread_id":"t","turn_id":"u","item_id":"i","kind":"output.delta","created_at":"` + validTime + `","data":{"text":"x","extra":true}}`,
 		`{"version":1,"id":"evt_00000000000000000000000000000000","sequence":1,"operation_id":"op","thread_id":"t","turn_id":"u","item_id":"i","kind":"turn.failed","created_at":"` + validTime + `","data":{"code":"","message":""}}`,
 	}
@@ -744,5 +743,79 @@ func TestMessageGolden(t *testing.T) {
 	}
 	if strings.TrimSpace(got) != strings.TrimSpace(string(want)) {
 		t.Fatalf("golden mismatch\ngot:  %s\nwant: %s", got, want)
+	}
+}
+
+func TestEventCodecPreservesSameVersionUnknownKind(t *testing.T) {
+	raw := []byte(`{
+		"version":1,
+		"id":"evt_future",
+		"sequence":7,
+		"operation_id":"op",
+		"thread_id":"thread",
+		"turn_id":"turn",
+		"item_id":"item",
+		"kind":"future.capability",
+		"created_at":"2026-08-18T00:00:00Z",
+		"data":{"safe":true,"count":2}
+	}`)
+	var event Event
+	if err := json.Unmarshal(raw, &event); err != nil {
+		t.Fatal(err)
+	}
+	unknown, ok := event.Data.(*UnknownEventData)
+	if !ok || unknown.Kind != "future.capability" ||
+		string(unknown.Raw) != `{"safe":true,"count":2}` {
+		t.Fatalf("unknown event = %#v", event)
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roundTrip map[string]any
+	if err := json.Unmarshal(encoded, &roundTrip); err != nil {
+		t.Fatal(err)
+	}
+	if roundTrip["kind"] != "future.capability" {
+		t.Fatalf("round-trip event = %s", encoded)
+	}
+	data, ok := roundTrip["data"].(map[string]any)
+	if !ok || data["safe"] != true || data["count"] != float64(2) {
+		t.Fatalf("round-trip data = %#v", roundTrip["data"])
+	}
+}
+
+func TestEventCodecRejectsVersionSkewBeforeProjection(t *testing.T) {
+	raw := []byte(`{
+		"version":2,
+		"id":"evt_future",
+		"sequence":1,
+		"operation_id":"op",
+		"thread_id":"thread",
+		"turn_id":"turn",
+		"item_id":"item",
+		"kind":"output.delta",
+		"created_at":"2026-08-18T00:00:00Z",
+		"data":{"future_shape":"must not decode as current schema"}
+	}`)
+	var event Event
+	if err := json.Unmarshal(raw, &event); err == nil ||
+		!strings.Contains(err.Error(), "unsupported event version 2") {
+		t.Fatalf("version skew error = %v", err)
+	}
+}
+
+func TestOperationCodecRejectsVersionSkewBeforePayloadDecode(t *testing.T) {
+	raw := []byte(`{
+		"version":2,
+		"id":"op_future",
+		"kind":"future.operation",
+		"created_at":"2026-08-18T00:00:00Z",
+		"payload":{"future_shape":true}
+	}`)
+	var operation Operation
+	if err := json.Unmarshal(raw, &operation); err == nil ||
+		!strings.Contains(err.Error(), "unsupported operation version 2") {
+		t.Fatalf("version skew error = %v", err)
 	}
 }

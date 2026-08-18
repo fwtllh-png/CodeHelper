@@ -1,0 +1,132 @@
+{
+  "events": [
+    {
+      "version": 1,
+      "id": "evt_started",
+      "sequence": 1,
+      "operation_id": "op_contract",
+      "thread_id": "thread_contract",
+      "turn_id": "turn_contract",
+      "item_id": "item_contract",
+      "kind": "turn.started",
+      "created_at": "2026-08-18T00:00:00Z",
+      "data": {
+        "provider": "fixture",
+        "model": "fixture-model",
+        "prompt": "exercise host projection",
+        "display_prompt": "exercise host projection"
+      }
+    },
+    {
+      "version": 1,
+      "id": "evt_output",
+      "sequence": 2,
+      "operation_id": "op_contract",
+      "thread_id": "thread_contract",
+      "turn_id": "turn_contract",
+      "item_id": "item_contract",
+      "kind": "output.delta",
+      "created_at": "2026-08-18T00:00:01Z",
+      "data": {
+        "text": "partial result"
+      }
+    },
+    {
+      "version": 1,
+      "id": "evt_output",
+      "sequence": 2,
+      "operation_id": "op_contract",
+      "thread_id": "thread_contract",
+      "turn_id": "turn_contract",
+      "item_id": "item_contract",
+      "kind": "output.delta",
+      "created_at": "2026-08-18T00:00:01Z",
+      "data": {
+        "text": "partial result"
+      }
+    },
+    {
+      "version": 1,
+      "id": "evt_started",
+      "sequence": 1,
+      "operation_id": "op_contract",
+      "thread_id": "thread_contract",
+      "turn_id": "turn_contract",
+      "item_id": "item_contract",
+      "kind": "turn.started",
+      "created_at": "2026-08-18T00:00:00Z",
+      "data": {
+        "provider": "fixture",
+        "model": "fixture-model",
+        "prompt": "exercise host projection",
+        "display_prompt": "exercise host projection"
+      }
+    },
+    {
+      "version": 1,
+      "id": "evt_unknown",
+      "sequence": 4,
+      "operation_id": "op_contract",
+      "thread_id": "thread_contract",
+      "turn_id": "turn_contract",
+      "item_id": "item_contract",
+      "kind": "future.capability",
+      "created_at": "2026-08-18T00:00:03Z",
+      "data": {
+        "safe": true
+      }
+    },
+    {
+      "version": 1,
+      "id": "evt_incomplete",
+      "sequence": 5,
+      "operation_id": "op_contract",
+      "thread_id": "thread_contract",
+      "turn_id": "turn_contract",
+      "item_id": "item_contract",
+      "kind": "turn.failed",
+      "created_at": "2026-08-18T00:00:04Z",
+      "data": {
+        "code": "conflict",
+        "message": "convergence budget exhausted",
+        "convergence": {
+          "cause": "output_limit",
+          "used": 3,
+          "limit": 3,
+          "summary": "The result is partial.",
+          "pending_actions": [
+            "Continue the remaining work."
+          ]
+        }
+      }
+    }
+  ],
+  "version_skew_event": {
+    "version": 2,
+    "id": "evt_future_version",
+    "sequence": 6,
+    "operation_id": "op_contract",
+    "thread_id": "thread_contract",
+    "turn_id": "turn_contract",
+    "item_id": "item_contract",
+    "kind": "output.delta",
+    "created_at": "2026-08-18T00:00:05Z",
+    "data": {
+      "text": "must not be projected"
+    }
+  },
+  "expected": {
+    "accepted_sequences": [
+      1,
+      2,
+      4,
+      5
+    ],
+    "output": "partial result",
+    "status": "incomplete",
+    "unknown_event_kinds": [
+      "future.capability"
+    ],
+    "terminal": true
+  }
+}

@@ -79,8 +79,20 @@ type TerminalUpdate struct {
 	Convergence     *protocol.TurnConvergence
 }
 type IgnoredUpdate struct{ Base }
+type UnknownUpdate struct {
+	Base
+	Kind protocol.EventKind
+	Raw  []byte
+}
 
 func Project(event protocol.Event) (Update, error) {
+	if data, ok := event.Data.(*protocol.UnknownEventData); ok {
+		return UnknownUpdate{
+			Base: Base{EventKind: event.Kind},
+			Kind: data.Kind,
+			Raw:  append([]byte(nil), data.Raw...),
+		}, nil
+	}
 	traits, ok := protocol.Traits(event.Kind)
 	if !ok {
 		return nil, fmt.Errorf("event %q has no protocol traits", event.Kind)

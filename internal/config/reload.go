@@ -1,9 +1,10 @@
 package config
 
 import (
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"maps"
 	"sync"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type Manager struct {
@@ -29,7 +30,7 @@ func NewManager(options LoadOptions) (*Manager, error) {
 func (m *Manager) Current() Snapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return cloneSnapshot(m.current)
+	return CloneSnapshot(m.current)
 }
 
 func (m *Manager) Reload() (Snapshot, error) {
@@ -37,7 +38,7 @@ func (m *Manager) Reload() (Snapshot, error) {
 	if event.Problem != nil {
 		return Snapshot{}, event.Problem
 	}
-	return cloneSnapshot(event.Current), nil
+	return CloneSnapshot(event.Current), nil
 }
 
 func (m *Manager) ReloadEvent() ReloadEvent {
@@ -60,12 +61,26 @@ func (m *Manager) ReloadFrom(options LoadOptions) ReloadEvent {
 	m.options = options
 	m.current = snapshot
 	m.mu.Unlock()
-	return ReloadEvent{Type: "config.reload.succeeded", Current: cloneSnapshot(snapshot)}
+	return ReloadEvent{Type: "config.reload.succeeded", Current: CloneSnapshot(snapshot)}
 }
 
-func cloneSnapshot(snapshot Snapshot) Snapshot {
+// CloneSnapshot returns an independent runtime-safe copy of one resolved
+// configuration and its provenance.
+func CloneSnapshot(snapshot Snapshot) Snapshot {
 	provenance := make(map[string]Source, len(snapshot.Provenance))
 	maps.Copy(provenance, snapshot.Provenance)
 	snapshot.Provenance = provenance
+	snapshot.Config.Route.Slots = maps.Clone(snapshot.Config.Route.Slots)
+	if snapshot.Config.Diagnostics.Commands != nil {
+		commands := make(
+			map[string]DiagnosticCommand,
+			len(snapshot.Config.Diagnostics.Commands),
+		)
+		for extension, command := range snapshot.Config.Diagnostics.Commands {
+			command.Args = append([]string(nil), command.Args...)
+			commands[extension] = command
+		}
+		snapshot.Config.Diagnostics.Commands = commands
+	}
 	return snapshot
 }

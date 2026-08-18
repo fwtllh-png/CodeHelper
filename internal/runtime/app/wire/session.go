@@ -7,6 +7,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
+	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
@@ -19,6 +20,11 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
+
+type sessionConfiguration struct {
+	snapshot config.Snapshot
+	profile  protocol.SessionProfile
+}
 
 func (s *Session) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
@@ -46,6 +52,27 @@ func (s *Session) ProviderCatalog() protocol.ProviderCatalog {
 
 func (s *Session) ModelCatalog() protocol.ModelCatalog {
 	return s.modelCatalog
+}
+
+// DefaultProfile is the immutable Runtime profile derived from the resolved
+// configuration. Hosts may validate transport capabilities against it, but do
+// not own or replace its defaults.
+func (s *Session) DefaultProfile() protocol.SessionProfile {
+	if s == nil {
+		return protocol.SessionProfile{}
+	}
+	profile := s.configuration.profile
+	profile.EnabledToolIDs = append([]string(nil), profile.EnabledToolIDs...)
+	return profile
+}
+
+// ConfigSnapshot reports the resolved configuration and field provenance used
+// to construct this Runtime.
+func (s *Session) ConfigSnapshot() config.Snapshot {
+	if s == nil {
+		return config.Snapshot{}
+	}
+	return config.CloneSnapshot(s.configuration.snapshot)
 }
 
 func (s *Session) SessionWorkspaces() app.SessionWorkspaceManager {

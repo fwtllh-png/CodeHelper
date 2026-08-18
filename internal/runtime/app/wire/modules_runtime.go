@@ -193,8 +193,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		approvalObserver,
 	)
 	defaultProfile := protocol.SessionProfile{
-		Version:             protocol.SessionProfileVersion,
-		Revision:            1,
+		Version: protocol.SessionProfileVersion, Revision: 1,
 		Mode:                execution.Mode,
 		Provider:            route.ProviderID(),
 		Model:               route.Model().ID,
@@ -204,6 +203,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		MaxSteps:            execution.MaxSteps,
 		PromptCacheRevision: 1,
 	}
+	session.configuration.profile = defaultProfile
 	mutableFields := []string{"mode", "max_steps"}
 	if modelCapabilities.ToolCalls {
 		mutableFields = append(mutableFields, "enabled_tool_ids")

@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -89,8 +90,7 @@ type ContextFile struct {
 }
 
 type Session struct {
-	Runtime *app.Runtime
-
+	Runtime            *app.Runtime
 	metrics            *telemetry.Metrics
 	metricsPath        string
 	logger             *slog.Logger
@@ -104,6 +104,7 @@ type Session struct {
 	modelCapabilities  protocol.ModelCapabilities
 	providerCatalog    protocol.ProviderCatalog
 	modelCatalog       protocol.ModelCatalog
+	configuration      sessionConfiguration
 	processes          *process.SessionManager
 	jobLogs            *joblog.Store
 	mcpPool            *mcpruntime.Pool
@@ -176,7 +177,7 @@ func newExec(
 	}
 	defer func() {
 		if resultErr != nil {
-			_ = session.resources.Close(context.Background())
+			resultErr = errors.Join(resultErr, session.resources.Close(context.Background()))
 		}
 	}()
 	state := &buildState{options: options, session: session}

@@ -102,8 +102,8 @@ Priority definitions:
 | R5 | Persistence, Journal, idempotency, and crash recovery | P0 | verified | Persist / Runtime |
 | R6 | Tool, Guard, Sandbox, and side-effect consistency | P0 | verified | Tool / Security / Platform |
 | R7 | Concurrency, cancellation, backpressure, and resources | P1 | verified | Runtime / Platform |
-| R8 | Protocol and cross-Host behavior | P1 | unassessed | Protocol / Hosts |
-| R9 | Startup, shutdown, wiring, configuration, and environment | P1 | unassessed | Wire / Config / Hosts |
+| R8 | Protocol and cross-Host behavior | P1 | verified | Protocol / Hosts |
+| R9 | Startup, shutdown, wiring, configuration, and environment | P1 | verified | Wire / Config / Hosts |
 | R10 | Observability and failure reconstruction | P1 | unassessed | Observability / Persist |
 | R11 | Fault injection and reliability gates | P1 | unassessed | Tests / CI |
 
@@ -639,6 +639,17 @@ joined-error coverage.
 - a new Event without Traits or projection handling fails the build;
 - Replay, Reconnect, and Unknown Event behavior has an explicit contract.
 
+R8 rejects protocol-version skew before decoding a current Operation payload or
+Event data shape in both Go and VS Code. A same-version unknown Event is
+preserved as opaque JSON, projects as read-only data, and has no Traits from
+which a Host could infer terminal or lifecycle state. The shared
+`testdata/contracts/host-event-sequence.json` recording covers a sequence gap,
+duplicate and reordered Events, an unknown Event, and structured incomplete
+terminal convergence. Go `eventview` and the VS Code `ChatProjector` consume
+that same recording, while CLI/TUI/Bench share `eventview` and the ACP Host
+contract continues to cover cursor replay, reconnect without duplicates, and
+desynchronization.
+
 ## R9: Startup, Shutdown, Wiring, Configuration, and Environment
 
 **Audit scope**
@@ -663,6 +674,18 @@ joined-error coverage.
 - failure at every construction step leaks no previously created resources;
 - every Host resolves the same configuration to the same TurnSpec;
 - platform tests do not rely on silent degradation.
+
+R9 keeps `wire.NewExec` as the single Composition Root and now joins rollback
+close failures with the primary module-construction error instead of discarding
+them. A fault matrix injects failure at every one of the 13 module boundaries
+and verifies reverse-order closure; Resource Stack tests retain idempotent close
+and resource-identity error aggregation. Session exposes independent copies of
+the resolved configuration plus field provenance and the Runtime-derived
+default Session Profile. ACP validates capabilities against that profile rather
+than defining Host-local mode, posture, or step defaults. The background module
+ordering gate continues to require Runtime recovery before MCP background
+prewarm, Automation reconciliation, or Scheduler start, and platform capability
+tests require explicit typed Unavailable behavior where isolation is absent.
 
 ## R10: Observability and Failure Reconstruction
 

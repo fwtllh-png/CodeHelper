@@ -1,5 +1,6 @@
 import {
   eventKinds,
+  protocolVersion,
   type EventKind,
   type KnownEvent,
 } from "./generated.js";
@@ -47,8 +48,10 @@ export function decodeEvent(value: unknown): DecodedEvent {
     throw new TypeError("event must be an object");
   }
   const version = value["version"];
-  if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
-    throw new TypeError("event.version must be a positive integer");
+  if (version !== protocolVersion) {
+    throw new TypeError(
+      `event.version ${String(version)} is unsupported; expected ${String(protocolVersion)}`,
+    );
   }
   const id = requireString(value["id"], "id");
   const sequence = value["sequence"];
@@ -63,8 +66,8 @@ export function decodeEvent(value: unknown): DecodedEvent {
   const itemID = requirePresentString(value["item_id"], "item_id");
   const kind = requireString(value["kind"], "kind");
   const createdAt = requireString(value["created_at"], "created_at");
-  if (!Object.hasOwn(value, "data")) {
-    throw new TypeError("event.data is required");
+  if (!Object.hasOwn(value, "data") || value["data"] === null) {
+    throw new TypeError("event.data must be present and non-null");
   }
 
   if (knownEventKinds.has(kind)) {

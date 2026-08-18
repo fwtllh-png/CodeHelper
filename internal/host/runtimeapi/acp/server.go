@@ -75,6 +75,7 @@ var dynamicMethods = []string{
 
 type Dependencies struct {
 	Runtime           *app.Runtime
+	DefaultProfile    protocol.SessionProfile
 	Sessions          *sessionstate.Repository
 	Threads           *threadstate.Repository
 	Tasks             *taskstate.Repository
@@ -174,17 +175,8 @@ func New(dependencies Dependencies, output io.Writer, options Options) (*Server,
 	if options.ProviderID == "" || options.ModelID == "" {
 		return nil, errors.New("ACP provider and model are required")
 	}
-	capabilities := protocol.SessionProfileCapabilities{
-		Provider: options.ProviderID, Model: options.ModelID,
-		ModelCapabilities: options.ModelCapabilities,
-	}
-	if err := capabilities.Validate(protocol.SessionProfile{
-		Version: protocol.SessionProfileVersion, Revision: 1,
-		Mode: "act", Provider: options.ProviderID, Model: options.ModelID,
-		ApprovalPosture: "never", ExecutionTarget: "local",
-		MaxSteps: 1, PromptCacheRevision: 1,
-	}); err != nil {
-		return nil, fmt.Errorf("ACP model capabilities: %w", err)
+	if err := validateDefaultProfile(dependencies.DefaultProfile, options); err != nil {
+		return nil, err
 	}
 	if len(options.ProviderCatalog.Providers) != 0 {
 		if err := options.ProviderCatalog.Validate(); err != nil {

@@ -89,8 +89,8 @@ CLI / TUI / VS Code / ACP / Worker
 | R5 | 持久化、Journal、幂等与崩溃恢复 | P0 | 已验证 | Persist / Runtime |
 | R6 | Tool、Guard、Sandbox 与副作用一致性 | P0 | 已验证 | Tool / Security / Platform |
 | R7 | 并发、取消、背压与资源生命周期 | P1 | 已验证 | Runtime / Platform |
-| R8 | Protocol 与多 Host 行为一致性 | P1 | 待评估 | Protocol / Hosts |
-| R9 | 启停、装配、配置与环境差异 | P1 | 待评估 | Wire / Config / Hosts |
+| R8 | Protocol 与多 Host 行为一致性 | P1 | 已验证 | Protocol / Hosts |
+| R9 | 启停、装配、配置与环境差异 | P1 | 已验证 | Wire / Config / Hosts |
 | R10 | 可观测性与失败重建 | P1 | 待评估 | Observability / Persist |
 | R11 | 故障注入与可靠性门禁 | P1 | 待评估 | Tests / CI |
 
@@ -530,6 +530,14 @@ Event 仍持久且可 Replay。取消风暴测试验证 128 个并发 Subscripti
 - 新增 Event 缺少 Trait 或投影处理时构建失败；
 - Replay、Reconnect 和 Unknown Event 行为有明确契约。
 
+R8 在 Go 和 VS Code 中都先拒绝协议版本差异，再按当前版本的 Operation Payload 或
+Event Data Schema 解码。同版本未知 Event 会保留为 Opaque JSON，仅提供只读投影，
+且不具备可供 Host 推断终态或生命周期状态的 Traits。共享录制
+`testdata/contracts/host-event-sequence.json` 覆盖 Sequence Gap、重复和乱序 Event、
+未知 Event 以及结构化 Incomplete Terminal Convergence。Go `eventview` 与 VS Code
+`ChatProjector` 消费同一录制；CLI/TUI/Bench 共用 `eventview`，ACP Host Contract
+继续覆盖 Cursor Replay、无重复 Reconnect 和 Desynchronization。
+
 ## R9：启停、装配、配置与环境差异
 
 **扫描范围**
@@ -551,6 +559,15 @@ Event 仍持久且可 Replay。取消风暴测试验证 128 个并发 Subscripti
 - 每个构造步骤失败都不会泄漏已创建资源；
 - 相同配置在所有 Host 解析为同一 TurnSpec；
 - 平台差异测试不会依赖静默降级。
+
+R9 保持 `wire.NewExec` 为唯一 Composition Root。模块构造失败时，Rollback Close
+Error 现在会与主错误聚合，不再被丢弃。故障矩阵在 13 个模块边界逐一注入失败并验证
+逆序关闭；Resource Stack 测试继续保证幂等 Close、错误聚合和资源身份。Session
+对外提供解析后配置、字段 Provenance 和 Runtime 派生默认 Session Profile 的独立
+副本。ACP 使用该 Profile 校验能力，不再自行定义 Mode、Posture 或 Step 默认值。
+Background Module 顺序门禁继续要求先完成 Runtime Recovery，再启动 MCP 后台
+Prewarm、Automation Reconcile 和 Scheduler；平台能力测试要求隔离能力缺失时显式
+返回类型化 Unavailable。
 
 ## R10：可观测性与失败重建
 

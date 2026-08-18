@@ -116,6 +116,9 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 	if err := decodeStrict(data, &envelope); err != nil {
 		return fmt.Errorf("decode operation envelope: %w", err)
 	}
+	if envelope.Version != Version {
+		return fmt.Errorf("unsupported operation version %d", envelope.Version)
+	}
 	payload, err := operationPayloadFor(envelope.Kind)
 	if err != nil {
 		return err
@@ -168,14 +171,19 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 	if err := decodeStrict(data, &envelope); err != nil {
 		return fmt.Errorf("decode event envelope: %w", err)
 	}
-	eventData, err := eventDataFor(envelope.Kind)
-	if err != nil {
-		return err
+	if envelope.Version != Version {
+		return fmt.Errorf("unsupported event version %d", envelope.Version)
 	}
 	if len(envelope.Data) == 0 || bytes.Equal(envelope.Data, []byte("null")) {
 		return errors.New("event data is required")
 	}
-	if err := decodeStrict(envelope.Data, eventData); err != nil {
+	eventData, err := eventDataFor(envelope.Kind)
+	if err != nil {
+		eventData = &UnknownEventData{
+			Kind: envelope.Kind,
+			Raw:  append(json.RawMessage(nil), envelope.Data...),
+		}
+	} else if err := decodeStrict(envelope.Data, eventData); err != nil {
 		return fmt.Errorf("decode %s data: %w", envelope.Kind, err)
 	}
 	*e = Event{
