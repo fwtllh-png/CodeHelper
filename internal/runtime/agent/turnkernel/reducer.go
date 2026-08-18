@@ -1144,6 +1144,10 @@ func applyEvaluateTurnStep(
 	}
 	transition.State.NextAction = StepActionNone
 	spend := func(kind RepairKind, limit uint32, action StepAction) error {
+		if limit == 0 {
+			transition.State.NextAction = action
+			return nil
+		}
 		if err := spendRepairBudget(
 			transition,
 			kind,

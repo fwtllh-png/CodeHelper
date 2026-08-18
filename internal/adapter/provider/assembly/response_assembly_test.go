@@ -111,6 +111,79 @@ func TestResponseAssemblyDeduplicatesAndRejectsReorderedEvents(t *testing.T) {
 	}
 }
 
+func TestResponseAssemblyAcceptsSparseMonotonicProviderSequences(t *testing.T) {
+	assembly := NewResponseAssembly("sample-sparse")
+	if err := assembly.BeginTransport(TransportMetadata{
+		LogicalRequestID:   "sample-sparse",
+		TransportRequestID: "request-sparse",
+		Attempt:            1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []StreamEvent{
+		{
+			Type: EventReasoningDelta, Text: "inspect",
+			Sequenced: true, Sequence: 350,
+		},
+		{
+			Type: EventToolCallDelta,
+			ToolCall: &ToolCallFragment{
+				Index: 0, ID: "call-1", Name: "read",
+			},
+			Sequenced: true, Sequence: 377,
+		},
+		{
+			Type: EventToolCallDelta,
+			ToolCall: &ToolCallFragment{
+				Index: 0, Arguments: `{"path":"README.md"}`,
+			},
+			Sequenced: true, Sequence: 379,
+		},
+		{
+			Type: EventMessageStop, StopReason: StopReasonToolUse,
+			Sequenced: true, Sequence: 380,
+		},
+	} {
+		if applied, err := assembly.Apply(event); err != nil || !applied {
+			t.Fatalf("apply %+v = %t, %v", event, applied, err)
+		}
+	}
+	calls, err := assembly.ExecutableToolCalls()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0].Name != "read" {
+		t.Fatalf("calls = %+v", calls)
+	}
+	if segment := assembly.Segments[0]; !segment.HasSequence ||
+		segment.LastSequence != 380 {
+		t.Fatalf("segment = %+v", segment)
+	}
+}
+
+func TestResponseAssemblyPreservesRepeatedReasoningDeltas(t *testing.T) {
+	assembly := NewResponseAssembly("sample-repeated-reasoning")
+	if err := assembly.BeginTransport(TransportMetadata{
+		LogicalRequestID:   "sample-repeated-reasoning",
+		TransportRequestID: "request-repeated-reasoning",
+		Attempt:            1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for sequence := uint64(1); sequence <= 3; sequence++ {
+		if _, err := assembly.Apply(StreamEvent{
+			Type: EventReasoningDelta, Text: "x",
+			Sequenced: true, Sequence: sequence,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blocks := assembly.CurrentBlocks()
+	if len(blocks) != 1 || blocks[0].Text != "xxx" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
 func TestResponseAssemblySeparatesInterruptedAndCompleteTransport(t *testing.T) {
 	assembly := NewResponseAssembly("sample-1")
 	if err := assembly.BeginTransport(TransportMetadata{

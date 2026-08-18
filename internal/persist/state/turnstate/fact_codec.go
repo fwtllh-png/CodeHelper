@@ -25,15 +25,16 @@ type factQueryer interface {
 }
 
 type storedDomainFact struct {
-	StorageVersion      uint32                     `json:"storage_version"`
-	TurnID              string                     `json:"turn_id"`
-	Sequence            uint64                     `json:"sequence"`
-	Command             string                     `json:"command"`
-	Event               turnkernel.Event           `json:"event"`
-	Snapshot            json.RawMessage            `json:"snapshot,omitempty"`
-	Delta               map[string]json.RawMessage `json:"delta,omitempty"`
-	PreviousStateDigest string                     `json:"previous_state_digest,omitempty"`
-	StateDigest         string                     `json:"state_digest"`
+	StorageVersion      uint32                                `json:"storage_version"`
+	TurnID              string                                `json:"turn_id"`
+	Sequence            uint64                                `json:"sequence"`
+	Command             string                                `json:"command"`
+	Event               turnkernel.Event                      `json:"event"`
+	Snapshot            json.RawMessage                       `json:"snapshot,omitempty"`
+	Delta               map[string]json.RawMessage            `json:"delta,omitempty"`
+	ObjectDelta         map[string]map[string]json.RawMessage `json:"object_delta,omitempty"`
+	PreviousStateDigest string                                `json:"previous_state_digest,omitempty"`
+	StateDigest         string                                `json:"state_digest"`
 }
 
 func encodeDomainFact(
@@ -58,7 +59,8 @@ func encodeDomainFact(
 		(fact.Sequence-1)%domainFactSnapshotEvery == 0 {
 		stored.Snapshot, err = json.Marshal(fact.State)
 	} else {
-		stored.Delta, err = stateDelta(*previous, fact.State)
+		stored.Delta, stored.ObjectDelta, err =
+			stateDelta(*previous, fact.State)
 	}
 	if err != nil {
 		return nil, err
@@ -69,10 +71,33 @@ func encodeDomainFact(
 func decodeDomainFacts(
 	encodedFacts [][]byte,
 ) ([]turnkernel.DomainFact, error) {
+	return decodeDomainFactSequence(encodedFacts, 1, "")
+}
+
+func decodeDomainFactSuffix(
+	encodedFacts [][]byte,
+	startSequence uint64,
+	previousDigest string,
+) ([]turnkernel.DomainFact, error) {
+	if startSequence == 0 {
+		return nil, errors.New("domain fact suffix sequence is required")
+	}
+	return decodeDomainFactSequence(
+		encodedFacts,
+		startSequence,
+		previousDigest,
+	)
+}
+
+func decodeDomainFactSequence(
+	encodedFacts [][]byte,
+	startSequence uint64,
+	previousDigest string,
+) ([]turnkernel.DomainFact, error) {
 	facts := make([]turnkernel.DomainFact, 0, len(encodedFacts))
 	var previous *turnkernel.State
-	var previousDigest string
 	for index, encoded := range encodedFacts {
+		expectedSequence := startSequence + uint64(index)
 		var version struct {
 			StorageVersion uint32 `json:"storage_version"`
 		}
@@ -80,16 +105,12 @@ func decodeDomainFacts(
 			return nil, err
 		}
 		if version.StorageVersion == 0 {
-			var legacy turnkernel.DomainFact
-			if err := json.Unmarshal(encoded, &legacy); err != nil {
-				return nil, err
-			}
-			if err := validateDecodedFact(
-				legacy,
-				uint64(index+1),
+			legacy, err := decodeLegacyDomainFact(
+				encoded,
+				expectedSequence,
 				previousDigest,
-				"",
-			); err != nil {
+			)
+			if err != nil {
 				return nil, err
 			}
 			facts = append(facts, legacy)
@@ -108,7 +129,7 @@ func decodeDomainFacts(
 		if err := json.Unmarshal(encoded, &stored); err != nil {
 			return nil, err
 		}
-		if stored.Sequence != uint64(index+1) {
+		if stored.Sequence != expectedSequence {
 			return nil, fmt.Errorf(
 				"domain fact sequence %d at index %d",
 				stored.Sequence,
@@ -136,7 +157,7 @@ func decodeDomainFacts(
 		}
 		if err := validateDecodedFact(
 			fact,
-			uint64(index+1),
+			expectedSequence,
 			previousDigest,
 			stored.PreviousStateDigest,
 		); err != nil {
@@ -147,6 +168,44 @@ func decodeDomainFacts(
 		previousDigest = fact.StateDigest
 	}
 	return facts, nil
+}
+
+func decodeLegacyDomainFact(
+	encoded []byte,
+	expectedSequence uint64,
+	previousDigest string,
+) (turnkernel.DomainFact, error) {
+	var legacy turnkernel.DomainFact
+	if err := json.Unmarshal(encoded, &legacy); err != nil {
+		return legacy, err
+	}
+	if err := validateDecodedFact(
+		legacy,
+		expectedSequence,
+		previousDigest,
+		"",
+	); err != nil {
+		return legacy, err
+	}
+	return legacy, nil
+}
+
+func decodeStoredFactDigest(encoded []byte) (string, error) {
+	var stored storedDomainFact
+	if err := json.Unmarshal(encoded, &stored); err != nil {
+		return "", err
+	}
+	if stored.StorageVersion != 0 &&
+		stored.StorageVersion != domainFactStorageVersion {
+		return "", fmt.Errorf(
+			"unsupported domain fact storage version %d",
+			stored.StorageVersion,
+		)
+	}
+	if stored.StateDigest == "" {
+		return "", errors.New("domain fact state digest is missing")
+	}
+	return stored.StateDigest, nil
 }
 
 func restoreState(
@@ -177,6 +236,33 @@ func restoreState(
 			current[key] = value
 		}
 	}
+	for key, patch := range stored.ObjectDelta {
+		var object map[string]json.RawMessage
+		if encoded := current[key]; len(encoded) != 0 {
+			if err := json.Unmarshal(encoded, &object); err != nil {
+				return state, fmt.Errorf(
+					"restore object delta %q: %w",
+					key,
+					err,
+				)
+			}
+		}
+		if object == nil {
+			object = make(map[string]json.RawMessage)
+		}
+		for member, value := range patch {
+			if bytes.Equal(value, []byte("null")) {
+				delete(object, member)
+			} else {
+				object[member] = value
+			}
+		}
+		encoded, err := json.Marshal(object)
+		if err != nil {
+			return state, err
+		}
+		current[key] = encoded
+	}
 	encoded, err := json.Marshal(current)
 	if err != nil {
 		return state, err
@@ -190,18 +276,35 @@ func restoreState(
 func stateDelta(
 	previous turnkernel.State,
 	current turnkernel.State,
-) (map[string]json.RawMessage, error) {
+) (
+	map[string]json.RawMessage,
+	map[string]map[string]json.RawMessage,
+	error,
+) {
 	left, err := stateObject(previous)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	right, err := stateObject(current)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	delta := make(map[string]json.RawMessage)
+	objectDelta := make(map[string]map[string]json.RawMessage)
 	for key, value := range right {
-		if !bytes.Equal(left[key], value) {
+		if bytes.Equal(left[key], value) {
+			delete(left, key)
+			continue
+		}
+		if key == "sample_ledger" {
+			patch, patchErr := rawObjectDelta(left[key], value)
+			if patchErr != nil {
+				return nil, nil, patchErr
+			}
+			if len(patch) != 0 {
+				objectDelta[key] = patch
+			}
+		} else {
 			delta[key] = value
 		}
 		delete(left, key)
@@ -209,7 +312,33 @@ func stateDelta(
 	for key := range left {
 		delta[key] = json.RawMessage("null")
 	}
-	return delta, nil
+	return delta, objectDelta, nil
+}
+
+func rawObjectDelta(
+	previous json.RawMessage,
+	current json.RawMessage,
+) (map[string]json.RawMessage, error) {
+	var left, right map[string]json.RawMessage
+	if len(previous) != 0 {
+		if err := json.Unmarshal(previous, &left); err != nil {
+			return nil, err
+		}
+	}
+	if err := json.Unmarshal(current, &right); err != nil {
+		return nil, err
+	}
+	patch := make(map[string]json.RawMessage)
+	for key, value := range right {
+		if !bytes.Equal(left[key], value) {
+			patch[key] = value
+		}
+		delete(left, key)
+	}
+	for key := range left {
+		patch[key] = json.RawMessage("null")
+	}
+	return patch, nil
 }
 
 func stateObject(
@@ -260,11 +389,21 @@ func loadEncodedFacts(
 	queryer factQueryer,
 	turnID string,
 ) ([][]byte, error) {
+	return loadEncodedFactsFrom(ctx, queryer, turnID, 1)
+}
+
+func loadEncodedFactsFrom(
+	ctx context.Context,
+	queryer factQueryer,
+	turnID string,
+	startSequence uint64,
+) ([][]byte, error) {
 	rows, err := queryer.QueryContext(
 		ctx,
 		`SELECT fact_json FROM turn_domain_facts
-		 WHERE turn_id = ? ORDER BY sequence`,
+		 WHERE turn_id = ? AND sequence >= ? ORDER BY sequence`,
 		turnID,
+		startSequence,
 	)
 	if err != nil {
 		return nil, err

@@ -250,6 +250,47 @@ func TestStructuredNoToolPlanRequiresDeclaration(t *testing.T) {
 	}
 }
 
+func TestDeclarationRepairsContinueWhileProgressChanges(t *testing.T) {
+	registry := declarationRegistry(t, false)
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		textStream("I am checking the provider evidence."),
+		textStream("I am checking the persistence evidence."),
+		textStream("I am checking the recovery evidence."),
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"The R3, R4, and R5 evidence review is complete.",
+			"pending_actions":[]
+		}`),
+	}}
+	engine := declarationEngine(t, runtime, registry, passedReceipt())
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-progressing-declarations",
+		"review R3, R4, and R5 evidence",
+		protocol.TurnIntentPlan, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed ||
+		result.Text != "The R3, R4, and R5 evidence review is complete." ||
+		len(runtime.requests) != 4 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	for index := 1; index < len(runtime.requests); index++ {
+		if !requestContains(
+			runtime.requests[index],
+			"[completion_declaration_required]",
+		) {
+			t.Fatalf(
+				"request %d skipped declaration repair: %+v",
+				index,
+				runtime.requests[index],
+			)
+		}
+	}
+}
+
 func TestIncompleteDeclarationContinuesCurrentTurn(t *testing.T) {
 	registry := declarationRegistry(t, false)
 	if err := registry.Register(&echoTool{}, nil); err != nil {

@@ -265,6 +265,9 @@ R11 应把这些跳过项和时间敏感用例转换为确定性门禁。
   历史默认 Profile 的 `8/64/256` 会迁移为 `0`，显式用户预算保持不变；
 - 持续变化的 Progress Signature 不受总 Sample 数限制；无进展 8/12/16 或
   16/32/48 策略仍由 Kernel 持久化并收敛；
+- Declaration Repair Limit 使用 `0 = 未设置`；重复的临时声明不会终止仍有进展的
+  Turn，Completion Repair 保留独立上限，真正无进展的循环仍由统一 Progress
+  Signature 收敛；
 - Subagent `wall_time` 已从绝对 Wall-clock 终止器改为可续期执行 Lease，Runtime
   进展会续期，空闲到期进入可恢复 `interrupted`；
 - Workflow 默认不再注入 256 Steps，显式 Step/Token/Cost Budget 耗尽进入

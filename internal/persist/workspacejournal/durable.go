@@ -137,6 +137,11 @@ func (m *Manager) Recover(ctx context.Context) (Recovery, error) {
 			// Our own record from earlier in this process's life: the in-memory
 			// manager already owns it, so the ledger copy is not something to act on.
 			keep = append(keep, turn)
+		case turn.Draft && !pendingTurnHasChanges(turn):
+			// Older runtimes could suspend a failed read-only turn as an empty
+			// draft. It has no workspace state to recover and must not block every
+			// later turn in this workspace.
+			m.releaseRecords(turn)
 		case turn.Committed:
 			// A committed turn passed its verify gate; undoing it would throw away
 			// finished work. Its before-images are released because cross-restart
@@ -172,6 +177,15 @@ func (m *Manager) Recover(ctx context.Context) (Recovery, error) {
 		return recovery, err
 	}
 	return recovery, nil
+}
+
+func pendingTurnHasChanges(turn pendingTurn) bool {
+	for _, path := range turn.Order {
+		if record := turn.Records[path]; record != nil && record.Kind() != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Close releases what this process is still holding and leaves the ledger with

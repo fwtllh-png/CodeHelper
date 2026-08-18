@@ -300,6 +300,15 @@ func TestRetainedDraftConflictTerminalizesNewTurn(t *testing.T) {
 	if err := fixture.journal.Begin("turn-source-draft"); err != nil {
 		t.Fatal(err)
 	}
+	if err := fixture.journal.Before(t.Context(), fixture.path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fixture.path, []byte("draft\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.journal.After(fixture.path); err != nil {
+		t.Fatal(err)
+	}
 	if err := fixture.journal.Suspend("turn-source-draft"); err != nil {
 		t.Fatal(err)
 	}

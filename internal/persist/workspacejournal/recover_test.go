@@ -133,6 +133,36 @@ func TestRecoveryRetainsAndResumesDraftAcrossProcessRestart(t *testing.T) {
 	}
 }
 
+func TestRecoveryDropsLegacyEmptyDraftAcrossProcessRestart(t *testing.T) {
+	root := t.TempDir()
+	killed := openJournal(t, root)
+	killed.pid = deadPID(t)
+	if err := killed.Begin("empty"); err != nil {
+		t.Fatal(err)
+	}
+	if err := killed.ledger.append(entry{
+		Phase: phaseDraft, TurnID: "empty",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	survivor := openJournal(t, root)
+	recovery, err := survivor.Recover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !recovery.Empty() || survivor.HasDraft("empty") {
+		t.Fatalf(
+			"recovery = %+v, retained=%v; want empty legacy draft discarded",
+			recovery,
+			survivor.HasDraft("empty"),
+		)
+	}
+	if err := survivor.Begin("next"); err != nil {
+		t.Fatalf("begin after legacy empty draft: %v", err)
+	}
+}
+
 // Two hosts can share a workspace. Rolling back a turn the other one is still
 // running would destroy live work, so an owner that is still alive wins.
 func TestRecoverySkipsTurnsWhoseProcessIsStillRunning(t *testing.T) {

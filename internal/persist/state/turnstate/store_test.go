@@ -214,8 +214,21 @@ func TestSQLiteTerminalEnvelopeStorePersistsFactsAndOutbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	if marker.Digest == "" ||
-		loaded.FrozenState.Phase != turnkernel.PhaseCompleted {
+		loaded.FrozenState.Phase != turnkernel.PhaseCompleted ||
+		len(loaded.DomainFacts) != len(envelope.DomainFacts) {
 		t.Fatalf("loaded terminal = %+v marker=%+v", loaded, marker)
+	}
+	var storedFactsType string
+	if err := database.DB().QueryRowContext(
+		t.Context(),
+		`SELECT json_type(envelope_json, '$.domain_facts')
+		 FROM turn_terminal_envelopes WHERE turn_id = ?`,
+		envelope.TurnID,
+	).Scan(&storedFactsType); err != nil {
+		t.Fatal(err)
+	}
+	if storedFactsType != "null" {
+		t.Fatalf("stored terminal facts type = %q, want null", storedFactsType)
 	}
 	pending, err := store.PendingOutbox(t.Context(), envelope.TurnID)
 	if err != nil || len(pending) != 2 {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
@@ -70,6 +71,81 @@ func TestSnapshotDeltaReplayMatchesFullStateAndCutsStorage(t *testing.T) {
 			storedBytes,
 			fullBytes,
 			reduction,
+		)
+	}
+}
+
+func TestSampleLedgerUsesMemberDeltas(t *testing.T) {
+	database, err := sqlitestate.Open(
+		t.Context(),
+		filepath.Join(t.TempDir(), "state.db"),
+		sqlitestate.Options{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	store := NewSQLiteRepository(database)
+	facts := sampleLedgerDomainFacts(t, 32)
+	if err := store.AppendDomainFacts(
+		t.Context(),
+		"turn-sample-delta",
+		1,
+		facts,
+	); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := store.LoadDomainFacts(
+		t.Context(),
+		"turn-sample-delta",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, _ := json.Marshal(facts)
+	right, _ := json.Marshal(restored)
+	if string(left) != string(right) {
+		t.Fatal("sample ledger member-delta replay differs from full state")
+	}
+	var second []byte
+	if err := database.DB().QueryRowContext(
+		t.Context(),
+		`SELECT fact_json FROM turn_domain_facts
+		 WHERE turn_id = ? AND sequence = 2`,
+		"turn-sample-delta",
+	).Scan(&second); err != nil {
+		t.Fatal(err)
+	}
+	var stored storedDomainFact
+	if err := json.Unmarshal(second, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if len(stored.ObjectDelta["sample_ledger"]) != 1 ||
+		stored.Delta["sample_ledger"] != nil {
+		t.Fatalf("sample ledger delta = %+v", stored)
+	}
+	var storedBytes int64
+	if err := database.DB().QueryRowContext(
+		t.Context(),
+		`SELECT SUM(LENGTH(fact_json)) FROM turn_domain_facts
+		 WHERE turn_id = ?`,
+		"turn-sample-delta",
+	).Scan(&storedBytes); err != nil {
+		t.Fatal(err)
+	}
+	var fullBytes int
+	for _, fact := range facts {
+		encoded, err := json.Marshal(fact)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fullBytes += len(encoded)
+	}
+	if storedBytes*3 >= int64(fullBytes) {
+		t.Fatalf(
+			"sample ledger stored=%d full=%d, want >66%% reduction",
+			storedBytes,
+			fullBytes,
 		)
 	}
 }
@@ -164,6 +240,36 @@ func largeDomainFacts(tb testing.TB, count int) []turnkernel.DomainFact {
 				To:   turnkernel.PhaseCreated,
 			},
 			State: state, StateDigest: digest,
+		})
+	}
+	return facts
+}
+
+func sampleLedgerDomainFacts(
+	tb testing.TB,
+	count int,
+) []turnkernel.DomainFact {
+	tb.Helper()
+	facts := make([]turnkernel.DomainFact, 0, count)
+	for index := 1; index <= count; index++ {
+		state := turnkernel.NewState(protocol.TurnIntentAnswer, "act", 1)
+		for sample := 1; sample <= index; sample++ {
+			id := fmt.Sprintf("sample-%03d", sample)
+			state.SampleLedger[id] = turnkernel.ModelSampleState{
+				ID:      id,
+				Attempt: 1,
+				Status:  turnkernel.SampleFailed,
+				Error:   strings.Repeat("e", 2<<10),
+			}
+		}
+		digest, err := turnkernel.Digest(state)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		facts = append(facts, turnkernel.DomainFact{
+			TurnID: "turn-sample-delta", Sequence: uint64(index),
+			Command: "model_sample_progress_recorded",
+			State:   state, StateDigest: digest,
 		})
 	}
 	return facts

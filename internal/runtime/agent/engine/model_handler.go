@@ -717,8 +717,9 @@ func consume(
 	assembly *providerassembly.ResponseAssembly,
 	checkpoint func(*providerassembly.ResponseAssembly) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, bool, error) {
-	defer stream.Close()
 	metadata := provider.Metadata(stream)
+	stream = newDeltaCoalescingStream(stream, firstOutput)
+	defer stream.Close()
 	if metadata.LogicalRequestID == "" {
 		metadata.LogicalRequestID = assembly.LogicalRequestID
 	}

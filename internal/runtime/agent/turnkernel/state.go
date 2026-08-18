@@ -200,7 +200,6 @@ func DefaultPolicy() Policy {
 		VerificationOnFailure:   "fail",
 		CompletionRepairLimit:   2,
 		WorkspaceRepairLimit:    1,
-		DeclarationRepairLimit:  2,
 		VerificationRepairLimit: 1,
 		Convergence:             DefaultConvergencePolicy(),
 	}

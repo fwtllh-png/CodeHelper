@@ -238,6 +238,37 @@ func TestSO4TerminalEnvelopeRejectsReceiptUsageDrift(t *testing.T) {
 	}
 }
 
+func TestTerminalEnvelopeComparesTypedFaultsByValue(t *testing.T) {
+	envelope := terminalEnvelopeFixture(t)
+	fault := &protocol.FaultMetadata{
+		Origin:      protocol.FaultOriginProvider,
+		Disposition: protocol.FaultFailTurn,
+		SideEffects: protocol.SideEffectNone,
+		Stage:       protocol.FaultStageModelSample,
+	}
+	envelope.FrozenState.Terminal.Fault = fault
+	envelope.TerminalEvent.Terminal.Fault =
+		protocol.CloneFaultMetadata(fault)
+	if _, err := ValidateTerminalEnvelope(envelope); err != nil {
+		t.Fatalf("equivalent cloned fault was rejected: %v", err)
+	}
+}
+
+func TestTerminalEnvelopeRejectsTypedFaultValueDrift(t *testing.T) {
+	envelope := terminalEnvelopeFixture(t)
+	envelope.FrozenState.Terminal.Fault = &protocol.FaultMetadata{
+		Origin:      protocol.FaultOriginProvider,
+		Disposition: protocol.FaultFailTurn,
+	}
+	envelope.TerminalEvent.Terminal.Fault = &protocol.FaultMetadata{
+		Origin:      protocol.FaultOriginProvider,
+		Disposition: protocol.FaultResumeTurn,
+	}
+	if _, err := ValidateTerminalEnvelope(envelope); err == nil {
+		t.Fatal("terminal fault value drift was accepted")
+	}
+}
+
 func terminalEnvelopeFixture(t *testing.T) TerminalEnvelope {
 	t.Helper()
 	state := startSampling(t, protocol.TurnIntentAnswer)

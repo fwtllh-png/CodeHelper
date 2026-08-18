@@ -307,6 +307,10 @@ and timing-sensitive cases into deterministic gates.
   explicit user budgets remain unchanged;
 - a changing Progress Signature has no total-Sample limit. Durable Kernel
   no-progress stages at 8/12/16 or 16/32/48 remain active;
+- the declaration repair limit uses `zero = unset`; repeated provisional
+  declarations cannot terminate a progressing Turn, while Completion repairs
+  retain their independent bound and the shared Progress Signature still
+  converges a true no-progress loop;
 - Subagent `wall_time` is now a renewable execution Lease rather than an
   absolute wall-clock terminator. Runtime progress renews it and idle expiry
   produces recoverable `interrupted` state;

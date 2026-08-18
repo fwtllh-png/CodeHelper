@@ -136,6 +136,128 @@ func TestR3IncompleteToolFragmentIsRetainedAndExecutedOnlyAfterClosure(
 	}
 }
 
+func TestR3SparseProviderSequencesPreserveCompleteToolCalls(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{
+				Type: provider.EventReasoningDelta, Text: "inspect",
+				Sequenced: true, Sequence: 350,
+			},
+			{
+				Type: provider.EventToolCallDelta,
+				ToolCall: &provider.ToolCallFragment{
+					Index: 0, ID: "call-1", Name: "echo",
+					Arguments: `{"text":"evidence"}`,
+				},
+				Sequenced: true, Sequence: 377,
+			},
+			{
+				Type:       provider.EventMessageStop,
+				StopReason: provider.StopReasonToolUse,
+				Sequenced:  true, Sequence: 380,
+			},
+		}},
+		textStream("done"),
+	}}
+	executor := &echoTool{}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	result, err := newEngine(t, runtime, registry).Run(
+		t.Context(),
+		"review",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "done" ||
+		executor.calls.Load() != 1 ||
+		len(result.Tools) != 1 {
+		t.Fatalf(
+			"result=%+v executions=%d",
+			result,
+			executor.calls.Load(),
+		)
+	}
+}
+
+func TestR3FineGrainedDeltasAreCoalescedBeforeDurableCheckpoint(t *testing.T) {
+	const deltaCount = 1_000
+	events := make([]provider.StreamEvent, 0, deltaCount+2)
+	for range deltaCount {
+		events = append(events, provider.StreamEvent{
+			Type: provider.EventReasoningDelta,
+			Text: "x",
+		})
+	}
+	events = append(events,
+		provider.StreamEvent{
+			Type: provider.EventTextDelta,
+			Text: "done",
+		},
+		provider.StreamEvent{
+			Type:       provider.EventMessageStop,
+			StopReason: provider.StopReasonEndTurn,
+		},
+	)
+	store := turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
+	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: events},
+	}}
+	engine := newEngine(t, runtime, nil)
+	engine.options.TurnCoordinatorRuntime = coordinators
+	result, err := engine.RunForTurn(
+		t.Context(),
+		"turn-r3-coalesced-checkpoint",
+		"review",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "done" ||
+		result.Reasoning != strings.Repeat("x", deltaCount) {
+		t.Fatalf(
+			"text=%q reasoning_length=%d",
+			result.Text,
+			len(result.Reasoning),
+		)
+	}
+	facts, err := store.LoadDomainFacts(
+		t.Context(),
+		"turn-r3-coalesced-checkpoint",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var progress int
+	var assembly *providerassembly.ResponseAssembly
+	for _, fact := range facts {
+		if fact.Command != "model_sample_progress_recorded" {
+			continue
+		}
+		progress++
+		assembly = fact.State.SampleLedger["turn-1-step-1"].Assembly
+	}
+	if progress >= deltaCount/20 || assembly == nil ||
+		assembly.State != providerassembly.ResponseComplete ||
+		assembly.EventCount() >= deltaCount/20 ||
+		len(assembly.ConfirmedBlocks()) != 2 {
+		t.Fatalf(
+			"progress=%d assembly=%+v facts=%d",
+			progress,
+			assembly,
+			len(facts),
+		)
+	}
+}
+
 func TestR3EnginePersistsEveryConfirmedProviderIncrement(t *testing.T) {
 	store := turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
 	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(store)

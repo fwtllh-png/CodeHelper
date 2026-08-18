@@ -62,7 +62,7 @@ func TestResponsesStream(t *testing.T) {
 		"",
 		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"search"}}`,
 		"",
-		`data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"call_1","delta":"{\"q\":\"docs\"}"}`,
+		`data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","delta":"{\"q\":\"docs\"}"}`,
 		"",
 		`data: {"type":"response.output_item.done","output_index":1,"item":{"type":"reasoning","id":"rs_1","encrypted_content":"ciphertext","summary":[]}}`,
 		"",
@@ -86,6 +86,9 @@ func TestResponsesStream(t *testing.T) {
 	}
 	if events[3].ToolCall.Name != "search" || events[4].ToolCall.Arguments == "" {
 		t.Fatalf("tool fragments = %+v %+v", events[3], events[4])
+	}
+	if events[3].ToolCall.ID != "call_1" || events[4].ToolCall.ID != "" {
+		t.Fatalf("tool identities = %+v %+v", events[3], events[4])
 	}
 	for _, event := range events {
 		if len(event.ReplayFragment) != 0 || event.Type == provider.EventReplayState {

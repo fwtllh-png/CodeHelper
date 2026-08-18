@@ -582,6 +582,15 @@ func (m *Manager) Suspend(turnID string) error {
 	if m.active == nil || m.active.id != turnID {
 		return errors.New("workspace journal active turn does not match suspension")
 	}
+	if !journalHasChanges(m.active) {
+		if err := m.ledger.append(entry{
+			Phase: phaseSettled, TurnID: turnID,
+		}); err != nil {
+			return err
+		}
+		_, err := m.finishActiveLocked(turnID)
+		return err
+	}
 	if err := m.ledger.append(entry{
 		Phase: phaseDraft, TurnID: turnID,
 	}); err != nil {
@@ -591,6 +600,18 @@ func (m *Manager) Suspend(turnID string) error {
 	m.active = nil
 	m.drafts[turnID] = journal
 	return nil
+}
+
+func journalHasChanges(journal *turnJournal) bool {
+	if journal == nil {
+		return false
+	}
+	for _, path := range journal.order {
+		if record := journal.records[path]; record != nil && record.Kind() != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // HasDraft reports whether a terminal Turn retained a resumable workspace

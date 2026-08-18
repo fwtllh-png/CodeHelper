@@ -167,6 +167,28 @@ func TestJournalDraftResumeCommitsOriginalBaseline(t *testing.T) {
 	}
 }
 
+func TestJournalDoesNotRetainEmptyDraft(t *testing.T) {
+	manager, err := New(
+		t.TempDir(),
+		contentstore.NewMemory(contentstore.Options{}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Begin("empty"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Suspend("empty"); err != nil {
+		t.Fatal(err)
+	}
+	if manager.HasDraft("empty") {
+		t.Fatal("read-only Turn retained an empty draft")
+	}
+	if err := manager.Begin("next"); err != nil {
+		t.Fatalf("begin after empty draft: %v", err)
+	}
+}
+
 // write records a turn write end to end: before-image, the write itself, and the
 // after fingerprint.
 func write(t *testing.T, manager *Manager, path, content string) {

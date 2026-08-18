@@ -615,6 +615,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		return result, nil
 	}
+	if kernel.cancellationReason() != "" {
+		return result, context.Canceled
+	}
 	if err := send(Preparing, Event{
 		Provider: spec.Provider, Model: spec.Model,
 		Purpose: string(spec.Purpose),

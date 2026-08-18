@@ -1,6 +1,9 @@
 package engine
 
 import (
+	"context"
+	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -72,6 +75,74 @@ func TestEngineRecoveryProjectsAlreadyTerminalKernelWithoutProvider(t *testing.T
 	}
 	if _, err := journal.Rollback(t.Context(), "next-turn"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEngineRecoveryFinalizesAcceptedCancellationWithoutProvider(t *testing.T) {
+	store := turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
+	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := coordinators.Open(
+		t.Context(),
+		"canceled-recovery",
+		turnkernel.NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []turnkernel.Command{
+		turnkernel.StartTurn{},
+		turnkernel.PreparationFinished{},
+		turnkernel.ModelSampleRequested{SampleID: "sample"},
+		turnkernel.CancelRequested{Reason: protocol.CancelReasonShutdown},
+	} {
+		if err := handle.Coordinator.Submit(t.Context(), command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := coordinators.Release(t.Context(), "canceled-recovery"); err != nil {
+		t.Fatal(err)
+	}
+
+	providerRuntime := &scriptedProvider{}
+	engine := newEngine(t, providerRuntime, tool.NewRegistry(nil, nil))
+	engine.options.TurnCoordinatorRuntime = coordinators
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"canceled-recovery",
+		"must not sample",
+		protocol.TurnIntentAnswer,
+		nil,
+		func(Event) error { return nil },
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("recovered cancellation error = %v", err)
+	}
+	if result.State != Canceled || len(providerRuntime.requests) != 0 {
+		t.Fatalf(
+			"recovered result = %+v, provider requests = %d",
+			result,
+			len(providerRuntime.requests),
+		)
+	}
+	facts, loadErr := store.LoadDomainFacts(
+		t.Context(),
+		"canceled-recovery",
+	)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	state := facts[len(facts)-1].State
+	if state.Phase != turnkernel.PhaseCanceled ||
+		len(state.PendingEffects) != 0 {
+		t.Fatalf(
+			"recovered terminal state = %+v; result=%+v err=%v",
+			state,
+			result,
+			err,
+		)
 	}
 }
 
@@ -616,6 +687,39 @@ func TestTurnKernelRejectsNewWorkAfterAcceptedCancel(t *testing.T) {
 	if len(kernel.state.OpenCalls) != 0 ||
 		len(kernel.state.PendingEffects) != 0 {
 		t.Fatalf("post-cancel work leaked: %+v", kernel.state)
+	}
+}
+
+func TestTurnKernelCancellationClosesRunningProviderBeforeTerminal(t *testing.T) {
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	if err := kernel.beginModelSample(t.Context(), "sample"); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.requestCancel(protocol.CancelReasonShutdown); err != nil {
+		t.Fatal(err)
+	}
+
+	finalizeKernelForTest(t, kernel, turnkernel.TerminalDecision{
+		Kind:    turnkernel.TerminalCanceled,
+		Message: protocol.CancelReasonShutdown,
+	})
+
+	if kernel.state.Phase != turnkernel.PhaseCanceled ||
+		len(kernel.state.PendingEffects) != 0 ||
+		kernel.state.ActiveSampleID != "" {
+		t.Fatalf("canceled provider state = %+v", kernel.state)
+	}
+	sample := kernel.state.SampleLedger["sample"]
+	if sample.Status != turnkernel.SampleFailed ||
+		!strings.Contains(sample.Error, protocol.CancelReasonShutdown) {
+		t.Fatalf("canceled sample = %+v", sample)
 	}
 }
 

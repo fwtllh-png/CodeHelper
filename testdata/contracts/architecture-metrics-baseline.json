@@ -344,9 +344,6 @@
         "production_lines": 8806,
         "options_fields": 70,
         "mutex_fields": 6
-      },
-      "relaxations": {
-        "production_lines": "Composition wiring maps Provider deadlines and owns Process Journal recovery, cleanup error aggregation, and health reporting"
       }
     },
     {
@@ -606,9 +603,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 11345,
+        "production_lines": 11535,
         "options_fields": 60,
         "mutex_fields": 8
+      },
+      "relaxations": {
+        "production_lines": "R3 stream coalescing and R4/R5 durable cancellation convergence add bounded provider buffering and terminal effect closure"
       }
     },
     {
@@ -683,9 +683,12 @@
       "path": "internal/persist/state/turnstate",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 1046,
+        "production_lines": 1243,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "R3/R5 durable facts use suffix validation, member-level deltas, and terminal envelope reconstruction to bound persistence amplification"
       }
     },
     {
@@ -693,8 +696,11 @@
       "kind": "file",
       "path": "internal/persist/state/turnstate/fact_codec.go",
       "limits": {
-        "lines": 285,
+        "lines": 424,
         "max_function_lines": 82
+      },
+      "relaxations": {
+        "lines": "Versioned fact decoding now supports suffix replay and backward-compatible object-member deltas without weakening digest validation"
       }
     },
     {
@@ -706,9 +712,6 @@
         "production_lines": 7504,
         "options_fields": 28,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "TUI reports durable process-journal failure when cancel-all cannot be recorded"
       }
     },
     {

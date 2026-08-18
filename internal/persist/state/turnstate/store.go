@@ -45,15 +45,18 @@ func (s *Store) AppendDomainFacts(
 		if terminal != 0 {
 			return errors.New("terminal turn rejects new domain facts")
 		}
-		encodedFacts, err := loadEncodedFacts(ctx, tx, turnID)
-		if err != nil {
+		var count, lastSequence uint64
+		if err := tx.QueryRowContext(
+			ctx,
+			`SELECT COUNT(*), COALESCE(MAX(sequence), 0)
+			 FROM turn_domain_facts WHERE turn_id = ?`,
+			turnID,
+		).Scan(&count, &lastSequence); err != nil {
 			return err
 		}
-		existing, err := decodeDomainFacts(encodedFacts)
-		if err != nil {
-			return err
+		if count != lastSequence {
+			return errors.New("domain fact sequence is not contiguous")
 		}
-		count := uint64(len(existing))
 		if expectedNext != count+1 {
 			return fmt.Errorf(
 				"domain fact sequence conflict: got %d want %d",
@@ -63,10 +66,50 @@ func (s *Store) AppendDomainFacts(
 		}
 		var previous *turnkernel.State
 		var previousDigest string
-		if len(existing) != 0 {
-			state := existing[len(existing)-1].State
+		if count != 0 {
+			snapshotSequence :=
+				((count - 1) / domainFactSnapshotEvery *
+					domainFactSnapshotEvery) + 1
+			if snapshotSequence > 1 {
+				var encodedPrevious []byte
+				if err := tx.QueryRowContext(
+					ctx,
+					`SELECT fact_json FROM turn_domain_facts
+					 WHERE turn_id = ? AND sequence = ?`,
+					turnID,
+					snapshotSequence-1,
+				).Scan(&encodedPrevious); err != nil {
+					return err
+				}
+				digest, err := decodeStoredFactDigest(encodedPrevious)
+				if err != nil {
+					return err
+				}
+				previousDigest = digest
+			}
+			encodedTail, err := loadEncodedFactsFrom(
+				ctx,
+				tx,
+				turnID,
+				snapshotSequence,
+			)
+			if err != nil {
+				return err
+			}
+			tail, err := decodeDomainFactSuffix(
+				encodedTail,
+				snapshotSequence,
+				previousDigest,
+			)
+			if err != nil {
+				return err
+			}
+			if len(tail) == 0 || tail[len(tail)-1].Sequence != count {
+				return errors.New("domain fact tail is incomplete")
+			}
+			state := tail[len(tail)-1].State
 			previous = &state
-			previousDigest = existing[len(existing)-1].StateDigest
+			previousDigest = tail[len(tail)-1].StateDigest
 		}
 		for index, fact := range facts {
 			if fact.TurnID != turnID ||
@@ -226,7 +269,9 @@ func (s *Store) commitTerminal(
 			TurnID: envelope.TurnID, EffectID: envelope.EffectID,
 			Digest: digest, CommittedAt: s.now().UTC(),
 		}
-		envelopeJSON, err := json.Marshal(envelope)
+		storedEnvelope := envelope
+		storedEnvelope.DomainFacts = nil
+		envelopeJSON, err := json.Marshal(storedEnvelope)
 		if err != nil {
 			return err
 		}
@@ -377,6 +422,19 @@ func (s *Store) LoadTerminal(
 	}
 	if err := json.Unmarshal([]byte(markerJSON), &marker); err != nil {
 		return envelope, marker, err
+	}
+	if len(envelope.DomainFacts) == 0 {
+		envelope.DomainFacts, err = s.LoadDomainFacts(ctx, turnID)
+		if err != nil {
+			return envelope, marker, err
+		}
+	}
+	digest, err := turnkernel.ValidateTerminalEnvelope(envelope)
+	if err != nil {
+		return envelope, marker, err
+	}
+	if digest != marker.Digest {
+		return envelope, marker, turnkernel.ErrTerminalEnvelopeConflict
 	}
 	return envelope, marker, nil
 }

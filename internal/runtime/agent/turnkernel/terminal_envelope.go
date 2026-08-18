@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -486,8 +487,15 @@ func validateTerminalEnvelope(envelope TerminalEnvelope) (string, error) {
 	}
 	if envelope.TerminalEvent.Kind != EventTerminalCommitted ||
 		envelope.TerminalEvent.Terminal == nil ||
-		*envelope.TerminalEvent.Terminal != *envelope.FrozenState.Terminal {
-		return "", errors.New("terminal envelope event disagrees with frozen state")
+		!reflect.DeepEqual(
+			envelope.TerminalEvent.Terminal,
+			envelope.FrozenState.Terminal,
+		) {
+		return "", fmt.Errorf(
+			"terminal envelope event disagrees with frozen state: event=%+v frozen=%+v",
+			envelope.TerminalEvent.Terminal,
+			envelope.FrozenState.Terminal,
+		)
 	}
 	if !slices.Equal(envelope.FinalOutput, envelope.FrozenState.FinalOutput) {
 		return "", errors.New("terminal envelope output disagrees with frozen state")

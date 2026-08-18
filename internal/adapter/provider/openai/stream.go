@@ -457,7 +457,6 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 	case "response.function_call_arguments.delta":
 		fragment := provider.ToolCallFragment{
 			Index:     int(number(chunk["output_index"])),
-			ID:        stringValue(chunk["item_id"]),
 			Name:      stringValue(chunk["name"]),
 			Arguments: stringValue(chunk["delta"]),
 		}

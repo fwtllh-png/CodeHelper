@@ -208,13 +208,6 @@ func (a *ResponseAssembly) Apply(event StreamEvent) (bool, error) {
 					"provider event ordinal moved backward at sequence %d",
 					event.Sequence,
 				)
-			case segment.HasSequence &&
-				event.Sequence > segment.LastSequence+1:
-				return false, fmt.Errorf(
-					"provider event sequence skipped from %d to %d",
-					segment.LastSequence,
-					event.Sequence,
-				)
 			}
 			segment.HasSequence = true
 			segment.LastSequence = event.Sequence
@@ -671,17 +664,7 @@ func appendResponseBlock(
 		}
 		if block.Type == ContentReasoning &&
 			(last.ID == "" || block.ID == "" || last.ID == block.ID) {
-			switch {
-			case last.Text == "":
-				last.Text = block.Text
-			case block.Text == "":
-			case strings.Contains(block.Text, last.Text) &&
-				len(block.Text) >= len(last.Text):
-				last.Text = block.Text
-			case strings.Contains(last.Text, block.Text):
-			default:
-				last.Text += block.Text
-			}
+			last.Text += block.Text
 			if last.ID == "" {
 				last.ID = block.ID
 			}

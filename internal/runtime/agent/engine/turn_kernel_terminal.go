@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
 
@@ -42,7 +43,61 @@ func (s *engineTurnKernel) abortForTerminal(reason string) error {
 		}
 	}
 	s.mu.Unlock()
-	return s.abortTools(reason)
+	return errors.Join(
+		s.abortProviderSamples(reason),
+		s.abortTools(reason),
+	)
+}
+
+func (s *engineTurnKernel) abortProviderSamples(reason string) error {
+	var result error
+	for _, effect := range s.dispatcher.PendingRouted(
+		turnkernel.EffectSampleProvider,
+	) {
+		if err := s.startProviderForAbort(effect.CallID); err != nil {
+			result = errors.Join(result, err)
+			continue
+		}
+		result = errors.Join(
+			result,
+			s.finishModelSample(
+				effect.CallID,
+				"",
+				nil,
+				provider.Usage{},
+				0,
+				false,
+				false,
+				errors.New(reason),
+			),
+		)
+	}
+	return result
+}
+
+func (s *engineTurnKernel) startProviderForAbort(sampleID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	effect, started, err := s.dispatcher.Routed(
+		turnkernel.EffectSampleProvider,
+		sampleID,
+	)
+	if err != nil || started {
+		return err
+	}
+	from := s.state.Phase
+	effect, err = s.dispatcher.Start(
+		turnkernel.EffectSampleProvider,
+		sampleID,
+	)
+	if err != nil {
+		return err
+	}
+	s.recordAcceptedLocked(turnkernel.EffectStarted{
+		EffectID: effect.ID,
+		Attempt:  effect.Attempt,
+	}, from)
+	return nil
 }
 
 func (s *engineTurnKernel) startJournal(
