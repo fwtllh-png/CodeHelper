@@ -1166,7 +1166,28 @@
         "fault": {
           "type": "object",
           "properties": {
+            "deadline": {
+              "type": "object",
+              "properties": {
+                "renewable": {
+                  "type": "boolean"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "timeout_ms": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "scope"
+              ],
+              "additionalProperties": false
+            },
             "disposition": {
+              "type": "string"
+            },
+            "operation_id": {
               "type": "string"
             },
             "origin": {
@@ -1175,7 +1196,16 @@
             "recovery_action": {
               "type": "string"
             },
+            "resume_hint": {
+              "type": "string"
+            },
+            "retry_owner": {
+              "type": "string"
+            },
             "side_effects": {
+              "type": "string"
+            },
+            "stage": {
               "type": "string"
             }
           },
@@ -3257,7 +3287,28 @@
             "fault": {
               "type": "object",
               "properties": {
+                "deadline": {
+                  "type": "object",
+                  "properties": {
+                    "renewable": {
+                      "type": "boolean"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "timeout_ms": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "scope"
+                  ],
+                  "additionalProperties": false
+                },
                 "disposition": {
+                  "type": "string"
+                },
+                "operation_id": {
                   "type": "string"
                 },
                 "origin": {
@@ -3266,7 +3317,16 @@
                 "recovery_action": {
                   "type": "string"
                 },
+                "resume_hint": {
+                  "type": "string"
+                },
+                "retry_owner": {
+                  "type": "string"
+                },
                 "side_effects": {
+                  "type": "string"
+                },
+                "stage": {
                   "type": "string"
                 }
               },
@@ -4216,7 +4276,28 @@
         "fault": {
           "type": "object",
           "properties": {
+            "deadline": {
+              "type": "object",
+              "properties": {
+                "renewable": {
+                  "type": "boolean"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "timeout_ms": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "scope"
+              ],
+              "additionalProperties": false
+            },
             "disposition": {
+              "type": "string"
+            },
+            "operation_id": {
               "type": "string"
             },
             "origin": {
@@ -4225,7 +4306,16 @@
             "recovery_action": {
               "type": "string"
             },
+            "resume_hint": {
+              "type": "string"
+            },
+            "retry_owner": {
+              "type": "string"
+            },
             "side_effects": {
+              "type": "string"
+            },
+            "stage": {
               "type": "string"
             }
           },
@@ -4368,7 +4458,28 @@
         "fault": {
           "type": "object",
           "properties": {
+            "deadline": {
+              "type": "object",
+              "properties": {
+                "renewable": {
+                  "type": "boolean"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "timeout_ms": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "scope"
+              ],
+              "additionalProperties": false
+            },
             "disposition": {
+              "type": "string"
+            },
+            "operation_id": {
               "type": "string"
             },
             "origin": {
@@ -4377,7 +4488,16 @@
             "recovery_action": {
               "type": "string"
             },
+            "resume_hint": {
+              "type": "string"
+            },
+            "retry_owner": {
+              "type": "string"
+            },
             "side_effects": {
+              "type": "string"
+            },
+            "stage": {
               "type": "string"
             }
           },
@@ -5381,7 +5501,28 @@
         "fault": {
           "type": "object",
           "properties": {
+            "deadline": {
+              "type": "object",
+              "properties": {
+                "renewable": {
+                  "type": "boolean"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "timeout_ms": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "scope"
+              ],
+              "additionalProperties": false
+            },
             "disposition": {
+              "type": "string"
+            },
+            "operation_id": {
               "type": "string"
             },
             "origin": {
@@ -5390,7 +5531,16 @@
             "recovery_action": {
               "type": "string"
             },
+            "resume_hint": {
+              "type": "string"
+            },
+            "retry_owner": {
+              "type": "string"
+            },
             "side_effects": {
+              "type": "string"
+            },
+            "stage": {
               "type": "string"
             }
           },

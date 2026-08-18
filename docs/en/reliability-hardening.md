@@ -98,7 +98,7 @@ Priority definitions:
 | R1 | Turn state machine and terminal convergence | P0 | verified | `internal/runtime/agent` |
 | R2 | Dynamic budgets, progress detection, and Context | P0 | verified | Agent / Context / Config |
 | R3 | Provider streams and incomplete-call recovery | P0 | verified | Provider / Agent |
-| R4 | Typed faults, Retry, and Deadline semantics | P0 | repairing | Protocol / Runtime / Adapters |
+| R4 | Typed faults, Retry, and Deadline semantics | P0 | verified | Protocol / Runtime / Adapters |
 | R5 | Persistence, Journal, idempotency, and crash recovery | P0 | repairing | Persist / Runtime |
 | R6 | Tool, Guard, Sandbox, and side-effect consistency | P0 | unassessed | Tool / Security / Platform |
 | R7 | Concurrency, cancellation, backpressure, and resources | P1 | unassessed | Runtime / Platform |
@@ -432,14 +432,20 @@ tests pass; Architecture Ratchet covers 112/112 targets.
 
 **Current progress (2026-08-18)**
 
-- Provider Deadline is split across Connection, TLS Handshake, Response Header,
-  and Stream Idle phases; a progressing stream has no fixed total-wall-clock
-  limit;
-- Terminal Projection failure returns a `RetryStep` Fault and preserves
-  recoverable state. Awaiting Recovery projection failure is joined with the
-  primary Fault;
-- one Retry owner and complete Deadline Metadata across Provider, Worker,
-  Workflow, and Host remain.
+- versioned Fault metadata now carries Origin, Stage, Retry Owner, Operation ID,
+  Resume Hint, Side Effect state, and optional Deadline Scope;
+- one recovery decision validates Retry Owner, idempotency, progress, and
+  attempt budget before selecting Retry, Wait, Resume, Block, Fail, or Reject;
+- Engine exclusively owns Provider sample retries. HTTP and WebSocket adapters
+  classify one transport attempt and never retry it themselves;
+- Provider Deadline is independently configurable and classified across
+  Connection, TLS Handshake, Response Header, and renewable Stream Idle phases;
+  a progressing stream has no fixed total-wall-clock limit;
+- Workflow retries only explicitly idempotent Nodes, while Worker retries only
+  explicitly retryable Outcomes. Bare executor errors and another owner's Fault
+  fail instead of entering a retry loop;
+- Retry-After takes precedence over deterministic exponential backoff with
+  jitter, both remain cancelable and bounded by the configured maximum delay.
 
 **Audit scope**
 
@@ -465,6 +471,11 @@ tests pass; Architecture Ratchet covers 112/112 targets.
 - the same Fault has the same machine semantics in every Host;
 - every timeout identifies its scope and cannot leave unrecoverable Running
   state.
+
+The R4 matrix covers Fault JSON round trips, Owner mismatch, unsafe replay,
+exhausted attempts, permanent errors, Provider status classes, Connection/TLS/
+Header/Idle scopes, caller cancellation, Retry-After capping, deterministic
+backoff, Workflow idempotency, and Worker attempt settlement.
 
 ## R5: Persistence, Journal, Idempotency, and Crash Recovery
 

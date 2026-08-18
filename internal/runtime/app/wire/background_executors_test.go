@@ -448,7 +448,8 @@ func TestSchedulerWorkflowNodeTimeoutCancelsEveryProductionTurn(t *testing.T) {
 				Goal: "timeout",
 				Nodes: []workflow.Node{{
 					ID: "slow", Kind: workflow.NodeTask, Prompt: "slow",
-					TimeoutMS: 200, Retry: &workflow.Retry{MaxAttempts: 2},
+					TimeoutMS: 200,
+					Retry:     &workflow.Retry{MaxAttempts: 2, Idempotent: true},
 				}},
 			},
 		},

@@ -262,7 +262,9 @@ func TestNodeRetryTurnsAFlakeIntoASuccess(t *testing.T) {
 			Goal: "ship",
 			Nodes: []workflow.Node{{
 				ID: "build", Kind: workflow.NodeTask, Prompt: "build",
-				Retry: &workflow.Retry{MaxAttempts: 2, BackoffMS: 50},
+				Retry: &workflow.Retry{
+					MaxAttempts: 2, BackoffMS: 50, Idempotent: true,
+				},
 			}},
 		},
 		Driver: driver,
@@ -288,6 +290,28 @@ func TestNodeRetryTurnsAFlakeIntoASuccess(t *testing.T) {
 	}
 }
 
+func TestNodeRetryRequiresIdempotencyDeclaration(t *testing.T) {
+	driver := &recordingDriver{fail: map[string]int{"flaky": 1}}
+	run, err := workflow.NewRuntime().Run(t.Context(), workflow.RunOptions{
+		ID: "retry-not-idempotent",
+		Spec: workflow.Spec{
+			Goal: "test retry owner",
+			Nodes: []workflow.Node{{
+				ID: "flaky", Kind: workflow.NodeTask, Prompt: "flaky",
+				Retry: &workflow.Retry{MaxAttempts: 2},
+			}},
+		},
+		Driver: driver,
+	})
+	if err == nil {
+		t.Fatal("Run() error = nil")
+	}
+	if len(run.Nodes) != 1 || run.Nodes[0].Attempt != 1 ||
+		run.Nodes[0].Status != workflow.NodeStatusFailed {
+		t.Fatalf("run = %+v", run)
+	}
+}
+
 func TestNodeTimeoutFailsTheAttemptRatherThanHanging(t *testing.T) {
 	driver := &recordingDriver{blockOn: "slow", blocking: make(chan struct{}, 1)}
 	run, err := workflow.NewRuntime().Run(t.Context(), workflow.RunOptions{
@@ -295,7 +319,7 @@ func TestNodeTimeoutFailsTheAttemptRatherThanHanging(t *testing.T) {
 			Goal: "ship",
 			Nodes: []workflow.Node{{
 				ID: "slow", Kind: workflow.NodeTask, Prompt: "slow", TimeoutMS: 20,
-				Retry: &workflow.Retry{MaxAttempts: 2},
+				Retry: &workflow.Retry{MaxAttempts: 2, Idempotent: true},
 			}},
 		},
 		Driver: driver,

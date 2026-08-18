@@ -124,3 +124,88 @@ func TestInternalProblemMustCarryFailTurnDisposition(t *testing.T) {
 		t.Fatalf("problem = %+v", problem)
 	}
 }
+
+func TestFaultMetadataRoundTripsRecoveryOwnershipAndDeadline(t *testing.T) {
+	problem := NewFault(
+		CodeDeadlineExceeded,
+		"provider stream idle timeout",
+		true,
+		FaultMetadata{
+			Origin:      FaultOriginProvider,
+			Stage:       FaultStageStreamIdle,
+			OperationID: "sample-1",
+			RetryOwner:  FaultRetryOwnerEngine,
+			ResumeHint:  FaultResumeRetryStep,
+			SideEffects: SideEffectUnchanged,
+			Deadline: &DeadlineMetadata{
+				Scope: DeadlineProviderStreamIdle, TimeoutMS: 30000,
+				Renewable: true,
+			},
+		},
+		context.DeadlineExceeded,
+	)
+	data, err := json.Marshal(problem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Problem
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Fault == nil ||
+		decoded.Fault.Stage != FaultStageStreamIdle ||
+		decoded.Fault.OperationID != "sample-1" ||
+		decoded.Fault.RetryOwner != FaultRetryOwnerEngine ||
+		decoded.Fault.ResumeHint != FaultResumeRetryStep ||
+		decoded.Fault.Deadline == nil ||
+		decoded.Fault.Deadline.Scope != DeadlineProviderStreamIdle ||
+		!decoded.Fault.Deadline.Renewable {
+		t.Fatalf("decoded fault = %+v", decoded.Fault)
+	}
+}
+
+func TestRecoveryDecisionRequiresMatchingOwnerAndSafeReplay(t *testing.T) {
+	problem := NewFault(
+		CodeUnavailable,
+		"provider unavailable",
+		true,
+		FaultMetadata{
+			Origin: FaultOriginProvider, Stage: FaultStageModelSample,
+			RetryOwner:  FaultRetryOwnerEngine,
+			SideEffects: SideEffectUnchanged,
+		},
+		nil,
+	)
+	retry := DecideRecovery(problem, RecoveryContext{
+		Owner: FaultRetryOwnerEngine, Idempotent: true,
+		Attempt: 1, MaxAttempts: 3,
+	})
+	if retry.Action != RecoveryRetry {
+		t.Fatalf("matching owner decision = %+v", retry)
+	}
+	for name, context := range map[string]RecoveryContext{
+		"wrong owner": {
+			Owner: FaultRetryOwnerWorker, Idempotent: true,
+			Attempt: 1, MaxAttempts: 3,
+		},
+		"not idempotent": {
+			Owner: FaultRetryOwnerEngine, Idempotent: false,
+			Attempt: 1, MaxAttempts: 3,
+		},
+		"progress": {
+			Owner: FaultRetryOwnerEngine, Idempotent: true, Progress: true,
+			Attempt: 1, MaxAttempts: 3,
+		},
+		"exhausted": {
+			Owner: FaultRetryOwnerEngine, Idempotent: true,
+			Attempt: 3, MaxAttempts: 3,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			decision := DecideRecovery(problem, context)
+			if decision.Action != RecoveryResume {
+				t.Fatalf("decision = %+v", decision)
+			}
+		})
+	}
+}

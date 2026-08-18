@@ -25,27 +25,49 @@ func (e *Engine) providerRetry(
 	if limit < 1 && protocol.IsRetryable(err) {
 		limit = 1
 	}
-	retryable := false
+	eligible := false
 	switch failure.Code {
 	case provider.FailureRateLimit,
 		provider.FailureServer,
 		provider.FailureTransport:
-		retryable = !meaningful && int(retries) < limit
+		eligible = true
 	case provider.FailureStreamClosed:
-		retryable = !meaningful && int(retries) < limit
+		eligible = true
 	case provider.FailureTimeout:
-		retryable = int(retries) < limit
+		eligible = true
 	case provider.FailureContextWindowExceeded:
-		retryable = contextChanged && retries < uint32(max(1, limit))
+		eligible = contextChanged
+		limit = max(1, limit)
 	case provider.FailureEmptyResponse:
-		retryable = retries < 1
+		eligible = true
+		limit = 1
 	case provider.FailureUnknown:
-		retryable = int(retries) < limit
+		eligible = protocol.IsRetryable(err)
 	}
-	if !retryable {
+	if !eligible {
+		return ProviderRetry{}, false
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	decision := protocol.DecideRecovery(
+		providerRecoveryFault(err, failure),
+		protocol.RecoveryContext{
+			Owner:       protocol.FaultRetryOwnerEngine,
+			Idempotent:  true,
+			Progress:    meaningful,
+			Attempt:     int(retries),
+			MaxAttempts: limit,
+		},
+	)
+	if decision.Action != protocol.RecoveryRetry &&
+		decision.Action != protocol.RecoveryWait {
 		return ProviderRetry{}, false
 	}
 	delayMS := failure.RetryAfterMS
+	if delayMS == 0 {
+		delayMS = uint64(providerRetryBackoff(retries) / time.Millisecond)
+	}
 	maxDelayMS := uint64(e.options.MaxRetryDelay / time.Millisecond)
 	if maxDelayMS > 0 && delayMS > maxDelayMS {
 		delayMS = maxDelayMS
@@ -62,6 +84,61 @@ func (e *Engine) providerRetry(
 		RetryAt:        now.Add(delay),
 		PolicyRevision: providerRetryPolicyRevision,
 	}, true
+}
+
+func providerRetryBackoff(retries uint32) time.Duration {
+	delay := 10 * time.Millisecond
+	for index := uint32(0); index < retries && delay < 30*time.Second; index++ {
+		delay *= 2
+	}
+	if delay > 30*time.Second {
+		delay = 30 * time.Second
+	}
+	// Deterministic jitter keeps replay tests stable while preventing every
+	// concurrent sample from sharing the exact exponential boundary.
+	jitterSteps := (retries % 4) + 1
+	return delay + (delay/20)*time.Duration(jitterSteps)
+}
+
+func providerRecoveryFault(
+	err error,
+	failure provider.Failure,
+) error {
+	problem := protocol.ProblemOf(err)
+	code := protocol.CodeUnavailable
+	retryable := protocol.IsRetryable(err)
+	switch failure.Code {
+	case provider.FailureRateLimit,
+		provider.FailureServer,
+		provider.FailureTransport,
+		provider.FailureStreamClosed,
+		provider.FailureTimeout,
+		provider.FailureContextWindowExceeded,
+		provider.FailureEmptyResponse:
+		retryable = true
+	}
+	if failure.Code == provider.FailureTimeout ||
+		errors.Is(err, context.DeadlineExceeded) {
+		code = protocol.CodeDeadlineExceeded
+		retryable = true
+	}
+	if problem != nil {
+		code = problem.Code
+	}
+	return protocol.NewFault(
+		code,
+		failure.Message,
+		retryable,
+		protocol.FaultMetadata{
+			Origin:      protocol.FaultOriginProvider,
+			Stage:       protocol.FaultStageModelSample,
+			RetryOwner:  protocol.FaultRetryOwnerEngine,
+			ResumeHint:  protocol.FaultResumeRetryStep,
+			Disposition: protocol.FaultRetryStep,
+			SideEffects: protocol.SideEffectUnchanged,
+		},
+		err,
+	)
 }
 
 func (e *Engine) recoverContextOverflow(

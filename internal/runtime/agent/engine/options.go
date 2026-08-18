@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -25,6 +26,20 @@ func normalizeEngineOptions(options *Options) error {
 		options.MaxRetryDelay = 2 * time.Minute
 	}
 	return nil
+}
+
+func waitRetryDelay(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func validateReasoningEffort(

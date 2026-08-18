@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,7 +21,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/providerdump"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -42,6 +42,7 @@ type Client struct {
 	IdleTimeout       time.Duration
 	MaxConcurrent     int
 	RequestsPerSecond float64
+	deadlines         DeadlineConfig
 
 	mu          sync.Mutex
 	active      int
@@ -108,50 +109,41 @@ func (c *Client) Execute(
 	tracecontext.InjectHTTP(requestContext, httpRequest.Header)
 	transportRequestID := requestKey(call.Body)
 	httpRequest.Header.Set("Idempotency-Key", transportRequestID)
+	phase := newRequestPhase()
+	httpRequest = httpRequest.WithContext(httptrace.WithClientTrace(
+		httpRequest.Context(),
+		phase.trace(),
+	))
 	response, err := httpClient.Do(httpRequest)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, operationContextFault(
+				ctx.Err(),
+				request.LogicalRequestID,
+			)
 		}
-		problem := protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"provider request failed",
-			retryableTransportError(err),
+		problem := providerTransportFault(
 			err,
+			request,
+			transportRequestID,
+			phase.stage(),
+			c.deadlineFor(phase.stage()),
 		)
 		c.recordFailure(problem)
 		return nil, problem
 	}
-	if response.StatusCode >= 200 && response.StatusCode < 300 {
-		stream, err := adapter.OpenStream(response.Body, call)
-		if err != nil {
-			_ = response.Body.Close()
-			requestCancel()
-			c.recordFailure(err)
-			return nil, err
-		}
+	stream, transferred, err := c.openResponse(
+		response,
+		request,
+		call,
+		adapter,
+		transportRequestID,
+		requestCancel,
+	)
+	if transferred {
 		release = false
-		return c.wrapStream(
-			stream,
-			completeTransportMetadata(request, call, transportRequestID),
-			requestCancel,
-		), nil
 	}
-	errorText := boundedBody(response.Body)
-	problem := adapter.ClassifyHTTP(providerwire.HTTPFailure{
-		Status: response.StatusCode, Header: response.Header, Body: errorText,
-	})
-	if providerdump.Enabled(response.StatusCode) {
-		if dumpPath, dumpErr := providerdump.Write(
-			request, call.Body, call.Path, response.StatusCode, errorText,
-		); dumpErr == nil && dumpPath != "" {
-			if typed, ok := problem.(*protocol.Problem); ok {
-				typed.Message += " [diagnostic: " + dumpPath + "]"
-			}
-		}
-	}
-	c.recordFailure(problem)
-	return nil, problem
+	return stream, err
 }
 func (c *Client) begin(
 	ctx context.Context,
@@ -182,107 +174,6 @@ func (c *Client) begin(
 	return requestContext, cancel, credential, nil
 }
 
-type managedStream struct {
-	stream      provider.Stream
-	cancel      context.CancelFunc
-	release     func()
-	idleTimeout time.Duration
-	success     func()
-	failure     func(error)
-	closeOnce   sync.Once
-}
-
-func (s *managedStream) TransportMetadata() provider.TransportMetadata {
-	return provider.Metadata(s.stream)
-}
-
-type metadataStream struct {
-	provider.Stream
-	metadata provider.TransportMetadata
-}
-
-func (s *metadataStream) TransportMetadata() provider.TransportMetadata {
-	return s.metadata
-}
-func (s *metadataStream) Recv() (provider.StreamEvent, error) {
-	event, err := s.Stream.Recv()
-	if event.Usage != nil {
-		event.Usage.Transport = s.metadata
-	}
-	return event, err
-}
-
-type receiveResult struct {
-	event provider.StreamEvent
-	err   error
-}
-
-func (s *managedStream) Recv() (provider.StreamEvent, error) {
-	if s.idleTimeout <= 0 {
-		event, err := s.stream.Recv()
-		err = normalizeStreamError(err)
-		s.observe(event, err)
-		return event, err
-	}
-	result := make(chan receiveResult, 1)
-	go func() {
-		event, err := s.stream.Recv()
-		result <- receiveResult{event: event, err: err}
-	}()
-	timer := time.NewTimer(s.idleTimeout)
-	defer timer.Stop()
-	select {
-	case value := <-result:
-		err := normalizeStreamError(value.err)
-		s.observe(value.event, err)
-		return value.event, err
-	case <-timer.C:
-		err := protocol.NewProblem(
-			protocol.CodeUnavailable,
-			fmt.Sprintf("provider stream idle timeout after %s", s.idleTimeout),
-			true,
-			context.DeadlineExceeded,
-		)
-		s.failure(err)
-		s.cancel()
-		<-result
-		_ = s.Close()
-		return provider.StreamEvent{}, err
-	}
-}
-func normalizeStreamError(err error) error {
-	if err == nil || errors.Is(err, io.EOF) || protocol.CodeOf(err) != protocol.CodeInternal {
-		return err
-	}
-	if retryableTransportError(err) {
-		return protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"provider stream transport failed",
-			true,
-			err,
-		)
-	}
-	return err
-}
-func (s *managedStream) observe(event provider.StreamEvent, err error) {
-	if err != nil && !errors.Is(err, io.EOF) {
-		s.failure(err)
-	}
-	if event.Type == provider.EventMessageStop {
-		s.success()
-	}
-	if err != nil || event.Type == provider.EventMessageStop {
-		_ = s.Close()
-	}
-}
-func (s *managedStream) Close() (result error) {
-	s.closeOnce.Do(func() {
-		s.cancel()
-		result = s.stream.Close()
-		s.release()
-	})
-	return result
-}
 func (c *Client) acquire(ctx context.Context) error {
 	for {
 		c.mu.Lock()

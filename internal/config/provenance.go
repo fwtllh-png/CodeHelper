@@ -37,31 +37,34 @@ const (
 	fieldCompactSummaryMax = "context.compact.summary_max_bytes"
 	fieldCompactMaxDigest  = "context.compact.max_digest_entries"
 
-	fieldLogLevel        = "telemetry.log_level"
-	fieldCredentialKind  = "credential.kind"
-	fieldCredentialName  = "credential.name"
-	fieldProvider        = "execution.provider"
-	fieldModel           = "execution.model"
-	fieldProtocol        = "execution.protocol"
-	fieldMode            = "execution.mode"
-	fieldWorkspace       = "execution.workspace"
-	fieldTools           = "execution.tools"
-	fieldMaxOutputTokens = "execution.max_output_tokens"
-	fieldMaxSteps        = "execution.max_steps"
-	fieldTimeout         = "execution.timeout"
-	fieldIdleTimeout     = "execution.idle_timeout"
-	fieldMaxConcurrent   = "execution.max_concurrent"
-	fieldRateLimit       = "execution.rate_limit"
-	fieldBudgetTokens    = "execution.budget_tokens"
-	fieldBudgetUSD       = "execution.budget_usd"
-	fieldReasoning       = "execution.reasoning_effort"
-	fieldNativeSearch    = "execution.native_search"
-	fieldVerifyMode      = "execution.verify.mode"
-	fieldVerifyScope     = "execution.verify.scope"
-	fieldVerifyOnFailure = "execution.verify.on_failure"
-	fieldVerifyCommand   = "execution.verify.command"
-	fieldVerifyRepair    = "execution.verify.max_repair_steps"
-	fieldVerifyTimeout   = "execution.verify.timeout"
+	fieldLogLevel              = "telemetry.log_level"
+	fieldCredentialKind        = "credential.kind"
+	fieldCredentialName        = "credential.name"
+	fieldProvider              = "execution.provider"
+	fieldModel                 = "execution.model"
+	fieldProtocol              = "execution.protocol"
+	fieldMode                  = "execution.mode"
+	fieldWorkspace             = "execution.workspace"
+	fieldTools                 = "execution.tools"
+	fieldMaxOutputTokens       = "execution.max_output_tokens"
+	fieldMaxSteps              = "execution.max_steps"
+	fieldTimeout               = "execution.timeout"
+	fieldConnectionTimeout     = "execution.connection_timeout"
+	fieldTLSHandshakeTimeout   = "execution.tls_handshake_timeout"
+	fieldResponseHeaderTimeout = "execution.response_header_timeout"
+	fieldIdleTimeout           = "execution.idle_timeout"
+	fieldMaxConcurrent         = "execution.max_concurrent"
+	fieldRateLimit             = "execution.rate_limit"
+	fieldBudgetTokens          = "execution.budget_tokens"
+	fieldBudgetUSD             = "execution.budget_usd"
+	fieldReasoning             = "execution.reasoning_effort"
+	fieldNativeSearch          = "execution.native_search"
+	fieldVerifyMode            = "execution.verify.mode"
+	fieldVerifyScope           = "execution.verify.scope"
+	fieldVerifyOnFailure       = "execution.verify.on_failure"
+	fieldVerifyCommand         = "execution.verify.command"
+	fieldVerifyRepair          = "execution.verify.max_repair_steps"
+	fieldVerifyTimeout         = "execution.verify.timeout"
 
 	fieldSubagentDelegation  = "execution.subagent.delegation"
 	fieldSubagentMaxDepth    = "execution.subagent.max_depth"
@@ -147,31 +150,34 @@ func defaultProvenance() map[string]Source {
 		fieldCompactSummaryMax:     SourceDefault,
 		fieldCompactMaxDigest:      SourceDefault,
 
-		fieldLogLevel:        SourceDefault,
-		fieldCredentialKind:  SourceDefault,
-		fieldCredentialName:  SourceDefault,
-		fieldProvider:        SourceDefault,
-		fieldModel:           SourceDefault,
-		fieldProtocol:        SourceDefault,
-		fieldMode:            SourceDefault,
-		fieldWorkspace:       SourceDefault,
-		fieldTools:           SourceDefault,
-		fieldMaxOutputTokens: SourceDefault,
-		fieldMaxSteps:        SourceDefault,
-		fieldTimeout:         SourceDefault,
-		fieldIdleTimeout:     SourceDefault,
-		fieldMaxConcurrent:   SourceDefault,
-		fieldRateLimit:       SourceDefault,
-		fieldBudgetTokens:    SourceDefault,
-		fieldBudgetUSD:       SourceDefault,
-		fieldReasoning:       SourceDefault,
-		fieldNativeSearch:    SourceDefault,
-		fieldVerifyMode:      SourceDefault,
-		fieldVerifyScope:     SourceDefault,
-		fieldVerifyOnFailure: SourceDefault,
-		fieldVerifyCommand:   SourceDefault,
-		fieldVerifyRepair:    SourceDefault,
-		fieldVerifyTimeout:   SourceDefault,
+		fieldLogLevel:              SourceDefault,
+		fieldCredentialKind:        SourceDefault,
+		fieldCredentialName:        SourceDefault,
+		fieldProvider:              SourceDefault,
+		fieldModel:                 SourceDefault,
+		fieldProtocol:              SourceDefault,
+		fieldMode:                  SourceDefault,
+		fieldWorkspace:             SourceDefault,
+		fieldTools:                 SourceDefault,
+		fieldMaxOutputTokens:       SourceDefault,
+		fieldMaxSteps:              SourceDefault,
+		fieldTimeout:               SourceDefault,
+		fieldConnectionTimeout:     SourceDefault,
+		fieldTLSHandshakeTimeout:   SourceDefault,
+		fieldResponseHeaderTimeout: SourceDefault,
+		fieldIdleTimeout:           SourceDefault,
+		fieldMaxConcurrent:         SourceDefault,
+		fieldRateLimit:             SourceDefault,
+		fieldBudgetTokens:          SourceDefault,
+		fieldBudgetUSD:             SourceDefault,
+		fieldReasoning:             SourceDefault,
+		fieldNativeSearch:          SourceDefault,
+		fieldVerifyMode:            SourceDefault,
+		fieldVerifyScope:           SourceDefault,
+		fieldVerifyOnFailure:       SourceDefault,
+		fieldVerifyCommand:         SourceDefault,
+		fieldVerifyRepair:          SourceDefault,
+		fieldVerifyTimeout:         SourceDefault,
 
 		fieldSubagentDelegation:  SourceDefault,
 		fieldSubagentMaxDepth:    SourceDefault,

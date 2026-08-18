@@ -340,6 +340,12 @@ func (e *Engine) modelStep(
 				}); sendErr != nil {
 					return nil, nil, totalUsage, lastEstimate, sendErr
 				}
+				if waitErr := waitRetryDelay(
+					ctx,
+					retry.EffectiveDelay,
+				); waitErr != nil {
+					return nil, nil, totalUsage, lastEstimate, waitErr
+				}
 				providerRetries++
 				continue
 			}
@@ -486,6 +492,12 @@ func (e *Engine) modelStep(
 			ProviderRetry: &retry,
 		}); sendErr != nil {
 			return nil, nil, totalUsage, lastEstimate, sendErr
+		}
+		if waitErr := waitRetryDelay(
+			ctx,
+			retry.EffectiveDelay,
+		); waitErr != nil {
+			return nil, nil, totalUsage, lastEstimate, waitErr
 		}
 		providerRetries++
 	}

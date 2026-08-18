@@ -782,9 +782,19 @@ func (e *graphExecution) executeNode(
 			Profile:     node.Profile, Schema: node.Schema,
 		})
 		if attemptCtx.Err() != nil {
+			fault := workflowNodeFault(
+				attemptCtx.Err(),
+				node.ID,
+				node.timeout(),
+			)
 			result := failedNode(
-				fmt.Sprintf("node %s: %v", node.ID, attemptCtx.Err()),
-				true,
+				fmt.Sprintf("node %s: %v", node.ID, fault),
+				workflowRetryable(
+					fault,
+					claim.attempt,
+					node.attempts(),
+					node.Retry != nil && node.Retry.Idempotent,
+				),
 			)
 			result.Usage, result.PermissionDigests =
 				taskResult.Usage,
@@ -792,7 +802,16 @@ func (e *graphExecution) executeNode(
 			return result, nil
 		}
 		if err != nil {
-			result := failedNode(err.Error(), true)
+			fault := workflowNodeFault(err, node.ID, 0)
+			result := failedNode(
+				fault.Error(),
+				workflowRetryable(
+					fault,
+					claim.attempt,
+					node.attempts(),
+					node.Retry != nil && node.Retry.Idempotent,
+				),
+			)
 			result.Usage, result.PermissionDigests =
 				taskResult.Usage,
 				append([]string(nil), taskResult.PermissionDigests...)
@@ -801,7 +820,7 @@ func (e *graphExecution) executeNode(
 		if !taskResult.Success {
 			result := failedNode(
 				firstNonEmpty(taskResult.Error, "task failed"),
-				true,
+				node.Retry != nil && node.Retry.Idempotent,
 			)
 			result.Usage, result.PermissionDigests =
 				taskResult.Usage,
@@ -829,6 +848,59 @@ func failedNode(reason string, retryable bool) NodeResult {
 	return NodeResult{
 		Status: NodeStatusFailed, Reason: reason, retryable: retryable,
 	}
+}
+
+func workflowNodeFault(
+	err error,
+	nodeID string,
+	timeout time.Duration,
+) error {
+	problem := protocol.ProblemOf(err)
+	retryable := problem != nil && problem.Retryable &&
+		problem.Fault != nil &&
+		problem.Fault.SideEffects != protocol.SideEffectUnknown
+	code := protocol.CodeOf(err)
+	if errors.Is(err, context.DeadlineExceeded) {
+		code, retryable = protocol.CodeDeadlineExceeded, true
+	}
+	metadata := protocol.FaultMetadata{
+		Origin:      protocol.FaultOriginRuntime,
+		Stage:       protocol.FaultStageWorkflowNode,
+		OperationID: nodeID,
+		RetryOwner:  protocol.FaultRetryOwnerWorkflow,
+		ResumeHint:  protocol.FaultResumeRetryStep,
+		Disposition: protocol.FaultRetryStep,
+		SideEffects: protocol.SideEffectUnchanged,
+	}
+	if code == protocol.CodeDeadlineExceeded {
+		metadata.Deadline = &protocol.DeadlineMetadata{
+			Scope:     protocol.DeadlineWorkflowNode,
+			TimeoutMS: uint64(timeout / time.Millisecond),
+		}
+	}
+	return protocol.NewFault(
+		code,
+		err.Error(),
+		retryable,
+		metadata,
+		err,
+	)
+}
+
+func workflowRetryable(
+	err error,
+	attempt int,
+	maxAttempts int,
+	idempotent bool,
+) bool {
+	decision := protocol.DecideRecovery(err, protocol.RecoveryContext{
+		Owner:       protocol.FaultRetryOwnerWorkflow,
+		Idempotent:  idempotent,
+		Attempt:     attempt,
+		MaxAttempts: maxAttempts,
+	})
+	return decision.Action == protocol.RecoveryRetry ||
+		decision.Action == protocol.RecoveryWait
 }
 
 func (e *graphExecution) permitted(node Node) error {

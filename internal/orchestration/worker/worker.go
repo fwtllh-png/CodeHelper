@@ -462,7 +462,8 @@ func (s *Scheduler) beat(
 }
 
 func (s *Scheduler) settle(ctx context.Context, value task.Task, outcome Outcome) {
-	if outcome.Retryable && outcome.State == task.StateFailed {
+	if outcome.Retryable && outcome.State == task.StateFailed &&
+		value.Attempt < value.MaxAttempts {
 		s.requeueWithBackoff(ctx, value, task.ReasonRetry)
 		return
 	}
@@ -501,10 +502,6 @@ func (s *Scheduler) settle(ctx context.Context, value task.Task, outcome Outcome
 }
 
 func (s *Scheduler) settleFailure(ctx context.Context, value task.Task, cause error) {
-	if value.Attempt < value.MaxAttempts {
-		s.requeueWithBackoff(ctx, value, task.ReasonRetry)
-		return
-	}
 	if _, err := s.tasks.SettleAttempt(
 		ctx, value.ID, s.owner, value.LeaseEpoch, task.Transition{
 			State: task.StateFailed, Reason: cause.Error(), At: s.clock(),

@@ -1147,6 +1147,40 @@ func TestConnectionTimeoutDoesNotCapProgressingStreamLifetime(t *testing.T) {
 	}
 }
 
+func TestProviderRequestDeadlineReportsResponseHeaderScope(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		http.ResponseWriter,
+		*http.Request,
+	) {
+		time.Sleep(100 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	client := testClient()
+	client.SetDeadlineConfig(DeadlineConfig{
+		Connection:      time.Second,
+		TLSHandshake:    time.Second,
+		ResponseHeaders: 10 * time.Millisecond,
+	})
+	request := testRequest(t, server.URL, model.ProtocolOpenAIChat)
+	request.LogicalRequestID = "sample-header-timeout"
+	_, err := client.Stream(t.Context(), request)
+	if !protocol.IsCode(err, protocol.CodeDeadlineExceeded) {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	problem := protocol.ProblemOf(err)
+	if problem.Fault == nil ||
+		problem.Fault.Stage != protocol.FaultStageResponseHeaders ||
+		problem.Fault.OperationID != "sample-header-timeout" ||
+		problem.Fault.RetryOwner != protocol.FaultRetryOwnerEngine ||
+		problem.Fault.Deadline == nil ||
+		problem.Fault.Deadline.Scope !=
+			protocol.DeadlineProviderResponseHeaders ||
+		problem.Fault.Deadline.TimeoutMS != 10 {
+		t.Fatalf("response header fault = %+v", problem.Fault)
+	}
+}
+
 func TestClientDoesNotReplayAfterStreamStarts(t *testing.T) {
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -1170,11 +1204,21 @@ func TestClientDoesNotReplayAfterStreamStarts(t *testing.T) {
 }
 
 func TestNormalizeStreamErrorClassifiesConnectionReset(t *testing.T) {
-	err := normalizeStreamError(fmt.Errorf("read stream: %w", syscall.ECONNRESET))
+	err := normalizeStreamError(
+		fmt.Errorf("read stream: %w", syscall.ECONNRESET),
+		provider.TransportMetadata{LogicalRequestID: "sample-1"},
+	)
 	if !protocol.IsCode(err, protocol.CodeUnavailable) ||
 		!protocol.IsRetryable(err) ||
 		!errors.Is(err, syscall.ECONNRESET) {
 		t.Fatalf("normalizeStreamError() = %#v", err)
+	}
+	problem := protocol.ProblemOf(err)
+	if problem.Fault == nil ||
+		problem.Fault.Stage != protocol.FaultStageModelSample ||
+		problem.Fault.OperationID != "sample-1" ||
+		problem.Fault.RetryOwner != protocol.FaultRetryOwnerEngine {
+		t.Fatalf("fault = %+v", problem.Fault)
 	}
 }
 
@@ -1198,8 +1242,17 @@ func TestClientStreamIdleTimeoutAndNonIdempotentRetry(t *testing.T) {
 		if _, err := stream.Recv(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := stream.Recv(); !protocol.IsCode(err, protocol.CodeUnavailable) {
+		if _, err := stream.Recv(); !protocol.IsCode(err, protocol.CodeDeadlineExceeded) {
 			t.Fatalf("idle Recv() error = %v", err)
+		} else {
+			problem := protocol.ProblemOf(err)
+			if problem.Fault == nil ||
+				problem.Fault.Stage != protocol.FaultStageStreamIdle ||
+				problem.Fault.Deadline == nil ||
+				problem.Fault.Deadline.Scope != protocol.DeadlineProviderStreamIdle ||
+				!problem.Fault.Deadline.Renewable {
+				t.Fatalf("idle fault = %+v", problem.Fault)
+			}
 		}
 	})
 

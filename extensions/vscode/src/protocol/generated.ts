@@ -169,10 +169,19 @@ export type ProtocolProblem = {
       readonly "session_status"?: string;
     };
   readonly "fault"?: {
+      readonly "deadline"?: {
+            readonly "renewable"?: boolean;
+            readonly "scope": string;
+            readonly "timeout_ms"?: number;
+          };
       readonly "disposition": string;
+      readonly "operation_id"?: string;
       readonly "origin": string;
       readonly "recovery_action"?: string;
+      readonly "resume_hint"?: string;
+      readonly "retry_owner"?: string;
       readonly "side_effects"?: string;
+      readonly "stage"?: string;
     };
   readonly "http_status"?: number;
   readonly "message": string;
@@ -851,10 +860,19 @@ export type ApprovalResolvedData = {
             readonly "session_status"?: string;
           };
       readonly "fault"?: {
+            readonly "deadline"?: {
+                    readonly "renewable"?: boolean;
+                    readonly "scope": string;
+                    readonly "timeout_ms"?: number;
+                  };
             readonly "disposition": string;
+            readonly "operation_id"?: string;
             readonly "origin": string;
             readonly "recovery_action"?: string;
+            readonly "resume_hint"?: string;
+            readonly "retry_owner"?: string;
             readonly "side_effects"?: string;
+            readonly "stage"?: string;
           };
       readonly "http_status"?: number;
       readonly "message": string;
@@ -1112,10 +1130,19 @@ export type NodeStatusData = {
 export type OperationRejectedData = {
   readonly "code": string;
   readonly "fault"?: {
+      readonly "deadline"?: {
+            readonly "renewable"?: boolean;
+            readonly "scope": string;
+            readonly "timeout_ms"?: number;
+          };
       readonly "disposition": string;
+      readonly "operation_id"?: string;
       readonly "origin": string;
       readonly "recovery_action"?: string;
+      readonly "resume_hint"?: string;
+      readonly "retry_owner"?: string;
       readonly "side_effects"?: string;
+      readonly "stage"?: string;
     };
   readonly "message": string;
 };
@@ -1159,10 +1186,19 @@ export type RunCompletedData = {
 export type RunFailedData = {
   readonly "code": string;
   readonly "fault"?: {
+      readonly "deadline"?: {
+            readonly "renewable"?: boolean;
+            readonly "scope": string;
+            readonly "timeout_ms"?: number;
+          };
       readonly "disposition": string;
+      readonly "operation_id"?: string;
       readonly "origin": string;
       readonly "recovery_action"?: string;
+      readonly "resume_hint"?: string;
+      readonly "retry_owner"?: string;
       readonly "side_effects"?: string;
+      readonly "stage"?: string;
     };
   readonly "message": string;
   readonly "revision": number;
@@ -1432,10 +1468,19 @@ export type TurnFailedData = {
       readonly "used": number;
     };
   readonly "fault"?: {
+      readonly "deadline"?: {
+            readonly "renewable"?: boolean;
+            readonly "scope": string;
+            readonly "timeout_ms"?: number;
+          };
       readonly "disposition": string;
+      readonly "operation_id"?: string;
       readonly "origin": string;
       readonly "recovery_action"?: string;
+      readonly "resume_hint"?: string;
+      readonly "retry_owner"?: string;
       readonly "side_effects"?: string;
+      readonly "stage"?: string;
     };
   readonly "message": string;
   readonly "secondary_issues"?: ReadonlyArray<{

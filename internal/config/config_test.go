@@ -430,6 +430,35 @@ func TestDefaultProvenanceFieldSetGolden(t *testing.T) {
 	}
 }
 
+func TestProviderPhaseDeadlinesOverrideCompatibleTimeout(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "codehelper.toml")
+	err := os.WriteFile(path, []byte(`
+[execution]
+timeout = "2m"
+connection_timeout = "3s"
+tls_handshake_timeout = "4s"
+response_header_timeout = "5s"
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := Load(LoadOptions{
+		Path:      path,
+		LookupEnv: envLookup(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution := settings.Config.Execution
+	if execution.Timeout != 2*time.Minute ||
+		execution.ConnectionTimeout != 3*time.Second ||
+		execution.TLSHandshakeTimeout != 4*time.Second ||
+		execution.ResponseHeaderTimeout != 5*time.Second {
+		t.Fatalf("execution deadlines = %+v", execution)
+	}
+}
+
 func TestManagerReloadEventKeepsLastValidSnapshot(t *testing.T) {
 	manager, err := NewManager(LoadOptions{LookupEnv: envLookup(nil)})
 	if err != nil {

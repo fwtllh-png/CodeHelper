@@ -10,12 +10,14 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type sessionAttempt struct {
 	client      *Client
 	call        providerwire.PreparedCall
 	credential  string
+	ctx         context.Context
 	cancel      context.CancelFunc
 	traceHeader http.Header
 	requestID   string
@@ -27,30 +29,55 @@ func (c *Client) BeginSession(
 	route model.ReadyRoute,
 	call providerwire.PreparedCall,
 ) (providerwire.SessionAttempt, error) {
-	_, cancel, credential, err := c.begin(ctx, route)
+	requestContext, cancel, credential, err := c.begin(ctx, route)
 	if err != nil {
 		return nil, err
 	}
 	traceHeader := make(http.Header)
 	tracecontext.InjectHTTP(ctx, traceHeader)
 	return &sessionAttempt{
-		client: c, call: call, credential: credential, cancel: cancel,
+		client: c, call: call, credential: credential,
+		ctx: requestContext, cancel: cancel,
 		traceHeader: traceHeader,
 	}, nil
 }
 func (a *sessionAttempt) Dial(endpoint string) (providerwire.Socket, context.CancelFunc, error) {
+	a.ProviderRequest()
 	headers := a.call.Headers.Clone()
 	for name, values := range a.traceHeader {
 		headers[name] = append([]string(nil), values...)
 	}
 	applyAuth(headers, a.call.Auth, a.credential)
-	dialContext, cancel := context.WithCancel(context.Background())
+	dialContext, cancel := context.WithCancel(a.ctx)
 	conn, _, err := websocket.Dial(dialContext, endpoint, &websocket.DialOptions{
 		HTTPClient: a.client.httpClient(), HTTPHeader: headers,
 	})
 	if err != nil {
 		cancel()
-		return nil, nil, err
+		if a.ctx.Err() != nil {
+			return nil, nil, operationContextFault(a.ctx.Err(), a.requestID)
+		}
+		return nil, nil, protocol.NewFault(
+			protocol.CodeUnavailable,
+			"provider WebSocket connection failed",
+			retryableTransportError(err),
+			protocol.FaultMetadata{
+				Origin:      protocol.FaultOriginProvider,
+				Stage:       protocol.FaultStageConnection,
+				OperationID: a.requestID,
+				RetryOwner:  protocol.FaultRetryOwnerEngine,
+				ResumeHint:  protocol.FaultResumeRetryStep,
+				Disposition: protocol.FaultRetryStep,
+				SideEffects: protocol.SideEffectUnchanged,
+				Deadline: &protocol.DeadlineMetadata{
+					Scope: protocol.DeadlineProviderConnection,
+					TimeoutMS: uint64(
+						a.client.deadlines.Connection / time.Millisecond,
+					),
+				},
+			},
+			err,
+		)
 	}
 	return socket{conn: conn}, cancel, nil
 }

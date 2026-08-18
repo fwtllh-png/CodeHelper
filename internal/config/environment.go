@@ -156,6 +156,15 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 	if err := applyEnvDuration(lookup, "CODEHELPER_TIMEOUT", fieldTimeout, &execution.Timeout, provenance); err != nil {
 		return err
 	}
+	if err := applyEnvDuration(lookup, "CODEHELPER_CONNECTION_TIMEOUT", fieldConnectionTimeout, &execution.ConnectionTimeout, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvDuration(lookup, "CODEHELPER_TLS_HANDSHAKE_TIMEOUT", fieldTLSHandshakeTimeout, &execution.TLSHandshakeTimeout, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvDuration(lookup, "CODEHELPER_RESPONSE_HEADER_TIMEOUT", fieldResponseHeaderTimeout, &execution.ResponseHeaderTimeout, provenance); err != nil {
+		return err
+	}
 	if err := applyEnvDuration(lookup, "CODEHELPER_IDLE_TIMEOUT", fieldIdleTimeout, &execution.IdleTimeout, provenance); err != nil {
 		return err
 	}

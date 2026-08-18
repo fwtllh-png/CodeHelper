@@ -33,6 +33,65 @@ const (
 	OriginKernel       Origin = "kernel"
 )
 
+type Stage string
+
+const (
+	StageAdmission       Stage = "admission"
+	StageConnection      Stage = "connection"
+	StageTLSHandshake    Stage = "tls_handshake"
+	StageResponseHeaders Stage = "response_headers"
+	StageStreamIdle      Stage = "stream_idle"
+	StageModelSample     Stage = "model_sample"
+	StageWorkflowNode    Stage = "workflow_node"
+	StageWorkerAttempt   Stage = "worker_attempt"
+	StageTurnLease       Stage = "turn_lease"
+	StagePersistence     Stage = "persistence"
+	StageProjection      Stage = "projection"
+	StageTerminal        Stage = "terminal"
+)
+
+type RetryOwner string
+
+const (
+	RetryOwnerNone     RetryOwner = "none"
+	RetryOwnerEngine   RetryOwner = "engine"
+	RetryOwnerWorkflow RetryOwner = "workflow"
+	RetryOwnerWorker   RetryOwner = "worker"
+	RetryOwnerHost     RetryOwner = "host"
+)
+
+type ResumeHint string
+
+const (
+	ResumeNone       ResumeHint = "none"
+	ResumeRetryStep  ResumeHint = "retry_step"
+	ResumeRetryTurn  ResumeHint = "retry_turn"
+	ResumeResumeTurn ResumeHint = "resume_turn"
+	ResumeWait       ResumeHint = "wait"
+	ResumeBlock      ResumeHint = "block"
+	ResumeFail       ResumeHint = "fail"
+	ResumeReject     ResumeHint = "reject"
+)
+
+type DeadlineScope string
+
+const (
+	DeadlineProviderConnection      DeadlineScope = "provider_connection"
+	DeadlineProviderTLSHandshake    DeadlineScope = "provider_tls_handshake"
+	DeadlineProviderResponseHeaders DeadlineScope = "provider_response_headers"
+	DeadlineProviderStreamIdle      DeadlineScope = "provider_stream_idle"
+	DeadlineWorkflowNode            DeadlineScope = "workflow_node"
+	DeadlineWorkerLease             DeadlineScope = "worker_lease"
+	DeadlineTurnLease               DeadlineScope = "turn_lease"
+	DeadlineHostOperation           DeadlineScope = "host_operation"
+)
+
+type DeadlineMetadata struct {
+	Scope     DeadlineScope `json:"scope"`
+	TimeoutMS uint64        `json:"timeout_ms,omitempty"`
+	Renewable bool          `json:"renewable,omitempty"`
+}
+
 type Disposition string
 
 const (
@@ -55,10 +114,15 @@ const (
 )
 
 type Metadata struct {
-	Origin         Origin          `json:"origin"`
-	Disposition    Disposition     `json:"disposition"`
-	SideEffects    SideEffectState `json:"side_effects,omitempty"`
-	RecoveryAction string          `json:"recovery_action,omitempty"`
+	Origin         Origin            `json:"origin"`
+	Disposition    Disposition       `json:"disposition"`
+	SideEffects    SideEffectState   `json:"side_effects,omitempty"`
+	Stage          Stage             `json:"stage,omitempty"`
+	OperationID    string            `json:"operation_id,omitempty"`
+	RetryOwner     RetryOwner        `json:"retry_owner,omitempty"`
+	ResumeHint     ResumeHint        `json:"resume_hint,omitempty"`
+	Deadline       *DeadlineMetadata `json:"deadline,omitempty"`
+	RecoveryAction string            `json:"recovery_action,omitempty"`
 }
 
 type Details struct {
@@ -139,8 +203,25 @@ func NewClassified(
 	cause error,
 ) *Problem {
 	problem := New(code, message, retryable, cause)
+	normalizeMetadata(&metadata, code)
 	problem.Fault = &metadata
 	return problem
+}
+
+func normalizeMetadata(metadata *Metadata, code Code) {
+	if metadata == nil {
+		return
+	}
+	defaults := defaultMetadata(code)
+	if metadata.Origin == "" {
+		metadata.Origin = defaults.Origin
+	}
+	if metadata.Disposition == "" {
+		metadata.Disposition = defaults.Disposition
+	}
+	if metadata.SideEffects == "" {
+		metadata.SideEffects = defaults.SideEffects
+	}
 }
 
 func (p *Problem) Error() string {
@@ -247,6 +328,10 @@ func Clone(source *Problem) *Problem {
 	}
 	if source.Fault != nil {
 		value := *source.Fault
+		if source.Fault.Deadline != nil {
+			deadline := *source.Fault.Deadline
+			value.Deadline = &deadline
+		}
 		copy.Fault = &value
 	}
 	copy.cause = nil
@@ -258,7 +343,75 @@ func CloneMetadata(source *Metadata) *Metadata {
 		return nil
 	}
 	value := *source
+	if source.Deadline != nil {
+		deadline := *source.Deadline
+		value.Deadline = &deadline
+	}
 	return &value
+}
+
+type RecoveryAction string
+
+const (
+	RecoveryRetry  RecoveryAction = "retry"
+	RecoveryResume RecoveryAction = "resume"
+	RecoveryWait   RecoveryAction = "wait"
+	RecoveryBlock  RecoveryAction = "block"
+	RecoveryFail   RecoveryAction = "fail"
+	RecoveryReject RecoveryAction = "reject"
+)
+
+type RecoveryContext struct {
+	Owner       RetryOwner
+	Idempotent  bool
+	Progress    bool
+	Attempt     int
+	MaxAttempts int
+}
+
+type RecoveryDecision struct {
+	Action     RecoveryAction
+	RetryAfter uint64
+}
+
+func Decide(err error, context RecoveryContext) RecoveryDecision {
+	problem := Of(err)
+	if problem == nil {
+		return RecoveryDecision{}
+	}
+	if problem.Code == Canceled {
+		return RecoveryDecision{Action: RecoveryReject}
+	}
+	if problem.Code == ResourceExhausted {
+		return RecoveryDecision{Action: RecoveryBlock}
+	}
+	metadata := problem.Fault
+	if metadata == nil {
+		return RecoveryDecision{Action: RecoveryFail}
+	}
+	if !problem.Retryable {
+		switch metadata.Disposition {
+		case Reject:
+			return RecoveryDecision{Action: RecoveryReject}
+		case ResumeTurn, RetryTurn:
+			return RecoveryDecision{Action: RecoveryResume}
+		default:
+			return RecoveryDecision{Action: RecoveryFail}
+		}
+	}
+	if metadata.RetryOwner != context.Owner ||
+		!context.Idempotent ||
+		context.Progress ||
+		metadata.SideEffects == SideEffectUnknown ||
+		(context.MaxAttempts > 0 && context.Attempt >= context.MaxAttempts) {
+		return RecoveryDecision{Action: RecoveryResume}
+	}
+	if problem.RateLimit != nil && problem.RateLimit.RetryAfterMS > 0 {
+		return RecoveryDecision{
+			Action: RecoveryWait, RetryAfter: problem.RateLimit.RetryAfterMS,
+		}
+	}
+	return RecoveryDecision{Action: RecoveryRetry}
 }
 
 func DispositionOf(err error) Disposition {

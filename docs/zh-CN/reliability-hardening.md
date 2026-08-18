@@ -85,7 +85,7 @@ CLI / TUI / VS Code / ACP / Worker
 | R1 | Turn 状态机与终态收敛 | P0 | 已验证 | `internal/runtime/agent` |
 | R2 | 动态预算、进展检测与 Context | P0 | 已验证 | Agent / Context / Config |
 | R3 | Provider 流式输出与残缺调用恢复 | P0 | 已验证 | Provider / Agent |
-| R4 | 类型化错误、Retry 与 Deadline | P0 | 修复中 | Protocol / Runtime / Adapters |
+| R4 | 类型化错误、Retry 与 Deadline | P0 | 已验证 | Protocol / Runtime / Adapters |
 | R5 | 持久化、Journal、幂等与崩溃恢复 | P0 | 修复中 | Persist / Runtime |
 | R6 | Tool、Guard、Sandbox 与副作用一致性 | P0 | 待评估 | Tool / Security / Platform |
 | R7 | 并发、取消、背压与资源生命周期 | P1 | 待评估 | Runtime / Platform |
@@ -364,12 +364,17 @@ Provider、Turn Kernel、Engine、Runtime App 和 Wire 包测试通过；Archite
 
 **当前进展（2026-08-18）**
 
-- Provider Deadline 已拆成 Connection、TLS Handshake、Response Header 和 Stream
-  Idle 四个阶段；持续进展的流不再受固定总墙钟限制；
-- Terminal Projection 失败返回 `RetryStep` Fault 并保持可恢复状态，Awaiting
-  Recovery Projection 错误也会和主 Fault 一起返回；
-- 尚需统一 Provider、Worker、Workflow 与 Host 的 Retry Owner 和 Deadline
-  Metadata。
+- 版本化 Fault Metadata 统一携带 Origin、Stage、Retry Owner、Operation ID、
+  Resume Hint、Side Effect State 和可选 Deadline Scope；
+- 统一 Recovery Decision 会先校验 Retry Owner、幂等性、进展和 Attempt Budget，再
+  选择 Retry、Wait、Resume、Block、Fail 或 Reject；
+- Engine 独占 Provider Sample Retry；HTTP 和 WebSocket Adapter 只分类单次
+  Transport Attempt，自身不做 Retry；
+- Provider Deadline 可按 Connection、TLS Handshake、Response Header 和可续期
+  Stream Idle 独立配置和分类；持续进展的流不受固定总墙钟限制；
+- Workflow 只重试显式声明幂等的 Node，Worker 只重试显式 Retryable Outcome；裸
+  Executor Error 和属于其他 Owner 的 Fault 不会进入重试循环；
+- Retry-After 优先于确定性指数退避与抖动，两者均可取消并受最大延迟配置约束。
 
 **扫描范围**
 
@@ -390,6 +395,10 @@ Provider、Turn Kernel、Engine、Runtime App 和 Wire 包测试通过；Archite
 - 每个错误只由一个层级决定 Retry；
 - 相同 Fault 在所有 Host 中具有相同机器语义；
 - Timeout 能明确指出作用域，且不会留下无法恢复的 Running 记录。
+
+R4 故障矩阵覆盖 Fault JSON 往返、Owner 不匹配、不安全重放、Attempt 耗尽、永久
+错误、Provider 状态分类、Connection/TLS/Header/Idle Scope、调用方取消、
+Retry-After 上限、确定性退避、Workflow 幂等声明和 Worker Attempt Settlement。
 
 ## R5：持久化、Journal、幂等与崩溃恢复
 

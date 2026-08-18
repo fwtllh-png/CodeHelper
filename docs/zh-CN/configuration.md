@@ -77,6 +77,9 @@ tools = true
 max_output_tokens = 0           # 0 = 当前模型能力自动值
 max_steps = 0                   # 0 = 不设置隐式 Step Budget
 timeout = "2m"                  # 连接、TLS 和响应头阶段
+connection_timeout = "0s"       # 0 表示继承 timeout
+tls_handshake_timeout = "0s"    # 0 表示继承 timeout
+response_header_timeout = "0s"  # 0 表示继承 timeout
 idle_timeout = "1m"             # 每个流事件都会续期
 max_concurrent = 8
 rate_limit = 0
@@ -242,9 +245,11 @@ Token/Cost Budget 约束，不再受内部总 Sample 上限影响。Provider 输
 `execution.subagent.wall_time` 是可续期执行 Lease：可观测的子 Runtime 进展会续期；
 空闲到期时子 Agent 进入可恢复的 Interrupted 状态，而不是记录为永久失败。
 
-`execution.timeout` 不再是 Provider 调用的总墙钟上限。它分别约束连接建立、TLS
-协商和等待响应头；响应体开始后，生命周期只由 Turn Context 或显式执行 Lease 决定。
-`execution.idle_timeout` 约束相邻流事件之间的空闲时间，每收到一个事件就重新计时。
+`execution.timeout` 不再是 Provider 调用的总墙钟上限，而是连接建立、TLS 协商和
+等待响应头的兼容默认值。非零的 `execution.connection_timeout`、
+`execution.tls_handshake_timeout` 和 `execution.response_header_timeout` 可分别覆盖
+对应阶段；响应体开始后，生命周期只由 Turn Context 或显式执行 Lease 决定。
+`execution.idle_timeout` 约束相邻流事件之间的空闲时间，每收到一个事件就重新计时，
 因此持续产出进展的长流不会在固定两分钟后被中断。
 
 这些 Convergence Budget 不等于物理边界或用户配置的硬上限。Runtime 不会越过
@@ -388,7 +393,7 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | --- | --- |
 | `CODEHELPER_PROVIDER`、`CODEHELPER_MODEL`、`CODEHELPER_PROTOCOL` | 主模型路由 |
 | `CODEHELPER_MODE`、`CODEHELPER_WORKSPACE`、`CODEHELPER_TOOLS` | 执行行为 |
-| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT` | 限制 |
+| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT` | 限制 |
 | `CODEHELPER_BUDGET_TOKENS`、`CODEHELPER_BUDGET_USD` | 会话预算 |
 | `CODEHELPER_SUBAGENT_*` | 委派模式、Tree 限制、Child 预算、Wall Time 与 Workspace 策略 |
 | `CODEHELPER_VERIFY_*` | 验证行为 |

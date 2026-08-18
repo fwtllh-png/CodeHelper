@@ -139,6 +139,24 @@ func TestSchedulerFailsATaskWhoseAttemptsAreSpent(t *testing.T) {
 	}
 }
 
+func TestSchedulerDoesNotRetryUnclassifiedExecutorError(t *testing.T) {
+	tasks := testTasks(t)
+	created := mustCreate(t, tasks, "turn-permanent", 3)
+	executor := &fakeExecutor{err: errors.New("invalid task payload")}
+	scheduler := testScheduler(t, tasks, nil, executor, 1)
+	if _, err := scheduler.Dispatch(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	scheduler.Wait()
+	failed, err := tasks.Get(t.Context(), created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != task.StateFailed || failed.Attempt != 1 {
+		t.Fatalf("unclassified error retried: %+v", failed)
+	}
+}
+
 func TestSchedulerDrainsEffectsWhenRetryReleaseExhaustsAttempts(t *testing.T) {
 	tasks := testTasks(t)
 	created := mustCreate(t, tasks, "turn-1", 1)

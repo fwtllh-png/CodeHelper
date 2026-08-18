@@ -79,6 +79,9 @@ tools = true
 max_output_tokens = 0           # 0 = active model capability
 max_steps = 0                   # 0 = no implicit step budget
 timeout = "2m"                  # connection, TLS, and response headers
+connection_timeout = "0s"       # 0 inherits timeout
+tls_handshake_timeout = "0s"    # 0 inherits timeout
+response_header_timeout = "0s"  # 0 inherits timeout
 idle_timeout = "1m"             # renewed by every stream event
 max_concurrent = 8
 rate_limit = 0
@@ -267,11 +270,14 @@ Runtime progress renews it, and an idle expiry interrupts the child into a
 resumable state rather than recording a permanent failure.
 
 `execution.timeout` is no longer a total wall-clock limit for a Provider call.
-It independently bounds connection establishment, TLS negotiation, and waiting
-for response headers. After the response body starts, lifetime is owned by the
-Turn Context or an explicit execution Lease. `execution.idle_timeout` bounds the
-gap between stream events and renews on every event, so a progressing long
-stream is not interrupted at a fixed two-minute boundary.
+It is the compatible default for connection establishment, TLS negotiation, and
+waiting for response headers. `execution.connection_timeout`,
+`execution.tls_handshake_timeout`, and `execution.response_header_timeout`
+override those phases independently when non-zero. After the response body
+starts, lifetime is owned by the Turn Context or an explicit execution Lease.
+`execution.idle_timeout` bounds the gap between stream events and renews on
+every event, so a progressing long stream is not interrupted at a fixed
+two-minute boundary.
 
 These convergence budgets are different from physical or user-configured hard
 boundaries. Runtime does not spend beyond Token/Cost ceilings, infer a partial
@@ -431,7 +437,7 @@ Common overrides:
 | --- | --- |
 | `CODEHELPER_PROVIDER`, `CODEHELPER_MODEL`, `CODEHELPER_PROTOCOL` | primary model route |
 | `CODEHELPER_MODE`, `CODEHELPER_WORKSPACE`, `CODEHELPER_TOOLS` | execution behavior |
-| `CODEHELPER_MAX_*`, `CODEHELPER_TIMEOUT`, `CODEHELPER_IDLE_TIMEOUT` | limits |
+| `CODEHELPER_MAX_*`, `CODEHELPER_TIMEOUT`, `CODEHELPER_CONNECTION_TIMEOUT`, `CODEHELPER_TLS_HANDSHAKE_TIMEOUT`, `CODEHELPER_RESPONSE_HEADER_TIMEOUT`, `CODEHELPER_IDLE_TIMEOUT` | limits |
 | `CODEHELPER_BUDGET_TOKENS`, `CODEHELPER_BUDGET_USD` | session budgets |
 | `CODEHELPER_SUBAGENT_*` | delegation, tree limits, child budgets, wall time, and workspace strategy |
 | `CODEHELPER_VERIFY_*` | verification behavior |

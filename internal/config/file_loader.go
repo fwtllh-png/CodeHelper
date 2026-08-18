@@ -9,23 +9,26 @@ import (
 )
 
 type executionFileConfig struct {
-	Provider        *string  `toml:"provider"`
-	Model           *string  `toml:"model"`
-	Protocol        *string  `toml:"protocol"`
-	Mode            *string  `toml:"mode"`
-	Workspace       *string  `toml:"workspace"`
-	Tools           *bool    `toml:"tools"`
-	MaxOutputTokens *uint64  `toml:"max_output_tokens"`
-	MaxSteps        *int     `toml:"max_steps"`
-	Timeout         *string  `toml:"timeout"`
-	IdleTimeout     *string  `toml:"idle_timeout"`
-	MaxConcurrent   *int     `toml:"max_concurrent"`
-	RateLimit       *float64 `toml:"rate_limit"`
-	BudgetTokens    *uint64  `toml:"budget_tokens"`
-	BudgetUSD       *float64 `toml:"budget_usd"`
-	ReasoningEffort *string  `toml:"reasoning_effort"`
-	NativeSearch    *bool    `toml:"native_search"`
-	Verify          struct {
+	Provider              *string  `toml:"provider"`
+	Model                 *string  `toml:"model"`
+	Protocol              *string  `toml:"protocol"`
+	Mode                  *string  `toml:"mode"`
+	Workspace             *string  `toml:"workspace"`
+	Tools                 *bool    `toml:"tools"`
+	MaxOutputTokens       *uint64  `toml:"max_output_tokens"`
+	MaxSteps              *int     `toml:"max_steps"`
+	Timeout               *string  `toml:"timeout"`
+	ConnectionTimeout     *string  `toml:"connection_timeout"`
+	TLSHandshakeTimeout   *string  `toml:"tls_handshake_timeout"`
+	ResponseHeaderTimeout *string  `toml:"response_header_timeout"`
+	IdleTimeout           *string  `toml:"idle_timeout"`
+	MaxConcurrent         *int     `toml:"max_concurrent"`
+	RateLimit             *float64 `toml:"rate_limit"`
+	BudgetTokens          *uint64  `toml:"budget_tokens"`
+	BudgetUSD             *float64 `toml:"budget_usd"`
+	ReasoningEffort       *string  `toml:"reasoning_effort"`
+	NativeSearch          *bool    `toml:"native_search"`
+	Verify                struct {
 		Mode           *string `toml:"mode"`
 		Scope          *string `toml:"scope"`
 		OnFailure      *string `toml:"on_failure"`
@@ -293,6 +296,9 @@ func applyExecutionFile(
 	applyUint64(input.MaxOutputTokens, &execution.MaxOutputTokens, fieldMaxOutputTokens, source, provenance)
 	applyInt(input.MaxSteps, &execution.MaxSteps, fieldMaxSteps, source, provenance)
 	applyDurationString(input.Timeout, &execution.Timeout, fieldTimeout, source, provenance)
+	applyDurationString(input.ConnectionTimeout, &execution.ConnectionTimeout, fieldConnectionTimeout, source, provenance)
+	applyDurationString(input.TLSHandshakeTimeout, &execution.TLSHandshakeTimeout, fieldTLSHandshakeTimeout, source, provenance)
+	applyDurationString(input.ResponseHeaderTimeout, &execution.ResponseHeaderTimeout, fieldResponseHeaderTimeout, source, provenance)
 	applyDurationString(input.IdleTimeout, &execution.IdleTimeout, fieldIdleTimeout, source, provenance)
 	applyInt(input.MaxConcurrent, &execution.MaxConcurrent, fieldMaxConcurrent, source, provenance)
 	applyFloat64(input.RateLimit, &execution.RateLimit, fieldRateLimit, source, provenance)

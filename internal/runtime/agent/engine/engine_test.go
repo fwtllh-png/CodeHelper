@@ -1498,7 +1498,14 @@ func TestEngineUsesWebSearchCitationToCompleteTurn(t *testing.T) {
 
 func TestEngineRetriesOnlyBeforeMeaningfulStreamData(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
-		&errorStream{err: errors.New("temporary")},
+		&errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"temporary",
+			true,
+			&provider.Failure{
+				Code: provider.FailureTransport, Message: "temporary",
+			},
+		)},
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStart},
 			{Type: provider.EventTextDelta, Text: "ok"},
@@ -1626,7 +1633,15 @@ func TestProviderRetryReusesCatalogSnapshot(t *testing.T) {
 	runtime := &catalogMutationProvider{
 		registry: registry,
 		streams: []provider.Stream{
-			&errorStream{err: errors.New("temporary")},
+			&errorStream{err: protocol.NewProblem(
+				protocol.CodeUnavailable,
+				"temporary",
+				true,
+				&provider.Failure{
+					Code:    provider.FailureTransport,
+					Message: "temporary",
+				},
+			)},
 			&providerfixture.SliceStream{Events: []provider.StreamEvent{
 				{Type: provider.EventTextDelta, Text: "ok"},
 				{Type: provider.EventMessageStop},

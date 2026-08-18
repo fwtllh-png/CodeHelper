@@ -117,6 +117,10 @@ type Execution struct {
 	// headers. Streaming body lifetime is governed by the caller Context and
 	// IdleTimeout, so active streams do not inherit a fixed wall-clock limit.
 	Timeout time.Duration `json:"timeout" toml:"-"`
+	// The phase-specific values override Timeout when non-zero.
+	ConnectionTimeout     time.Duration `json:"connection_timeout" toml:"-"`
+	TLSHandshakeTimeout   time.Duration `json:"tls_handshake_timeout" toml:"-"`
+	ResponseHeaderTimeout time.Duration `json:"response_header_timeout" toml:"-"`
 	// IdleTimeout is renewed by every provider stream event.
 	IdleTimeout     time.Duration `json:"idle_timeout" toml:"-"`
 	MaxConcurrent   int           `json:"max_concurrent" toml:"max_concurrent"`
@@ -312,31 +316,34 @@ type Overrides struct {
 	CompactSummaryMax     *int
 	CompactMaxDigest      *int
 
-	LogLevel        *string
-	CredentialKind  *string
-	CredentialName  *string
-	Provider        *string
-	Model           *string
-	Protocol        *string
-	Mode            *string
-	Workspace       *string
-	Tools           *bool
-	MaxOutputTokens *uint64
-	MaxSteps        *int
-	Timeout         *time.Duration
-	IdleTimeout     *time.Duration
-	MaxConcurrent   *int
-	RateLimit       *float64
-	BudgetTokens    *uint64
-	BudgetUSD       *float64
-	ReasoningEffort *string
-	NativeSearch    *bool
-	VerifyMode      *string
-	VerifyScope     *string
-	VerifyOnFailure *string
-	VerifyCommand   *string
-	VerifyRepair    *int
-	VerifyTimeout   *time.Duration
+	LogLevel              *string
+	CredentialKind        *string
+	CredentialName        *string
+	Provider              *string
+	Model                 *string
+	Protocol              *string
+	Mode                  *string
+	Workspace             *string
+	Tools                 *bool
+	MaxOutputTokens       *uint64
+	MaxSteps              *int
+	Timeout               *time.Duration
+	ConnectionTimeout     *time.Duration
+	TLSHandshakeTimeout   *time.Duration
+	ResponseHeaderTimeout *time.Duration
+	IdleTimeout           *time.Duration
+	MaxConcurrent         *int
+	RateLimit             *float64
+	BudgetTokens          *uint64
+	BudgetUSD             *float64
+	ReasoningEffort       *string
+	NativeSearch          *bool
+	VerifyMode            *string
+	VerifyScope           *string
+	VerifyOnFailure       *string
+	VerifyCommand         *string
+	VerifyRepair          *int
+	VerifyTimeout         *time.Duration
 
 	SubagentMaxDepth    *int
 	SubagentDelegation  *string

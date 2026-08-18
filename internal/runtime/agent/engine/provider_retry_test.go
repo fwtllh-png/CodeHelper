@@ -106,6 +106,30 @@ func TestProviderRetryCapsProviderDelay(t *testing.T) {
 	}
 }
 
+func TestProviderRetryUsesDeterministicBackoffWithoutRetryAfter(t *testing.T) {
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	engine := &Engine{options: Options{
+		MaxRetries: 2, MaxRetryDelay: time.Minute,
+		Observability: trace.Runtime{Clock: func() time.Time { return now }},
+	}}
+	err := protocol.NewProblem(
+		protocol.CodeUnavailable,
+		"server unavailable",
+		true,
+		&provider.Failure{
+			Code: provider.FailureServer, Message: "server unavailable",
+		},
+	)
+	first, ok := engine.providerRetry(err, false, 0, false)
+	if !ok || first.EffectiveDelay != 10*time.Millisecond {
+		t.Fatalf("first retry = %+v", first)
+	}
+	second, ok := engine.providerRetry(err, false, 1, false)
+	if !ok || second.EffectiveDelay != 22*time.Millisecond {
+		t.Fatalf("second retry = %+v", second)
+	}
+}
+
 func TestContextOverflowRetriesOnlyAfterVisibleCompaction(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&errorStream{err: protocol.NewProblem(

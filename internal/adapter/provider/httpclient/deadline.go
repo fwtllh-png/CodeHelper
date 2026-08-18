@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+type DeadlineConfig struct {
+	Connection      time.Duration
+	TLSHandshake    time.Duration
+	ResponseHeaders time.Duration
+}
+
 func withConnectionTimeout(
 	client *Client,
 	timeout time.Duration,
@@ -18,6 +24,13 @@ func withConnectionTimeout(
 // negotiation, and response headers. It deliberately leaves http.Client.Timeout
 // unset because that wall-clock deadline also covers a healthy streaming body.
 func (c *Client) SetConnectionTimeout(timeout time.Duration) {
+	c.SetDeadlineConfig(DeadlineConfig{
+		Connection: timeout, TLSHandshake: timeout, ResponseHeaders: timeout,
+	})
+}
+
+func (c *Client) SetDeadlineConfig(config DeadlineConfig) {
+	c.deadlines = config
 	if c.HTTP == nil {
 		c.HTTP = &http.Client{}
 	}
@@ -31,13 +44,13 @@ func (c *Client) SetConnectionTimeout(timeout time.Duration) {
 		return
 	}
 	clone := transport.Clone()
-	if timeout > 0 {
+	if config.Connection > 0 {
 		clone.DialContext = (&net.Dialer{
-			Timeout:   timeout,
+			Timeout:   config.Connection,
 			KeepAlive: 30 * time.Second,
 		}).DialContext
-		clone.TLSHandshakeTimeout = timeout
-		clone.ResponseHeaderTimeout = timeout
 	}
+	clone.TLSHandshakeTimeout = config.TLSHandshake
+	clone.ResponseHeaderTimeout = config.ResponseHeaders
 	c.HTTP.Transport = clone
 }

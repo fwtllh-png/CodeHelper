@@ -19,6 +19,7 @@ credential.kind
 credential.name
 execution.budget_tokens
 execution.budget_usd
+execution.connection_timeout
 execution.idle_timeout
 execution.journal.durable
 execution.journal.recover_on_start
@@ -32,6 +33,7 @@ execution.protocol
 execution.provider
 execution.rate_limit
 execution.reasoning_effort
+execution.response_header_timeout
 execution.subagent.delegation
 execution.subagent.max_cost_usd
 execution.subagent.max_depth
@@ -43,6 +45,7 @@ execution.subagent.max_total
 execution.subagent.wall_time
 execution.subagent.workspace
 execution.timeout
+execution.tls_handshake_timeout
 execution.tools
 execution.verify.command
 execution.verify.max_repair_steps

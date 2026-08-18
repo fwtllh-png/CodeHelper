@@ -8,7 +8,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -36,12 +35,7 @@ func (providerModule) Build(ctx context.Context, state *buildState) error {
 	}
 	egressGate := &egress.Gate{Enforce: true}
 	grantRouteHosts(egressGate, routes)
-	client := httpclient.New()
-	client.Egress, client.Metrics = egressGate, session.metrics
-	client.SetConnectionTimeout(execution.Timeout)
-	client.IdleTimeout = execution.IdleTimeout
-	client.MaxConcurrent = execution.MaxConcurrent
-	client.RequestsPerSecond = execution.RateLimit
+	client := configureProviderClient(execution, egressGate, session.metrics)
 	runtimeProvider, err := newProviderRouter(client, routes)
 	if err != nil {
 		return err

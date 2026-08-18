@@ -97,6 +97,9 @@ type Condition struct {
 type Retry struct {
 	MaxAttempts int `json:"max_attempts,omitempty"`
 	BackoffMS   int `json:"backoff_ms,omitempty"`
+	// Idempotent declares that a repeated Node attempt cannot duplicate an
+	// external effect. Retry ownership remains in Workflow Runtime.
+	Idempotent bool `json:"idempotent,omitempty"`
 }
 
 type Node struct {

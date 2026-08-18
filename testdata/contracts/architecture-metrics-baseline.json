@@ -74,9 +74,12 @@
       "path": "internal/orchestration/workflow",
       "limits": {
         "internal_fanout": 5,
-        "production_lines": 1896,
+        "production_lines": 1971,
         "options_fields": 13,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Workflow Runtime owns Node retry admission and requires explicit idempotency before replay"
       }
     },
     {
@@ -209,9 +212,6 @@
         "production_lines": 798,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Provider core carries stable stream event identity and logical-versus-transport request attribution"
       }
     },
     {
@@ -253,12 +253,12 @@
       "path": "internal/adapter/provider/httpclient",
       "limits": {
         "internal_fanout": 9,
-        "production_lines": 757,
+        "production_lines": 1081,
         "options_fields": 0,
         "mutex_fields": 1
       },
       "relaxations": {
-        "production_lines": "Provider HTTP transport separates deadlines and assigns one transport request identity inside each logical sample"
+        "production_lines": "Provider HTTP transport separates request attribution, response classification, stream lifecycle, and four scoped deadline phases without owning retries"
       }
     },
     {
@@ -266,8 +266,8 @@
       "kind": "file",
       "path": "internal/adapter/provider/httpclient/client.go",
       "limits": {
-        "lines": 409,
-        "max_function_lines": 78
+        "lines": 300,
+        "max_function_lines": 69
       }
     },
     {
@@ -306,9 +306,6 @@
         "production_lines": 1843,
         "options_fields": 0,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "OpenAI adapter validates sequenced Responses events and forces complete HTTP fallback after uncertain WebSocket chains"
       }
     },
     {
@@ -331,9 +328,6 @@
         "production_lines": 641,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Anthropic adapter preserves stable SSE event identities for incremental assembly deduplication"
       }
     },
     {
@@ -353,9 +347,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 75,
-        "production_lines": 8727,
+        "production_lines": 8765,
         "options_fields": 70,
         "mutex_fields": 6
+      },
+      "relaxations": {
+        "production_lines": "Composition wiring maps backward-compatible execution settings into independently scoped Provider deadlines"
       }
     },
     {
@@ -615,13 +612,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 11241,
+        "production_lines": 11345,
         "options_fields": 60,
         "mutex_fields": 8
       },
       "relaxations": {
-        "internal_fanout": "Agent Engine consumes the provider-owned incremental assembly without implementing provider-specific branches",
-        "production_lines": "Agent Engine checkpoints confirmed provider increments before Host projection and resumes incomplete logical samples without executing partial tool calls"
+        "production_lines": "Agent Engine checkpoints confirmed provider increments before Host projection, resumes incomplete logical samples, and exclusively owns idempotent provider retry policy"
       }
     },
     {
@@ -727,9 +723,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6149,
+        "production_lines": 6204,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Runtime Protocol exposes stable Fault stage, retry owner, resume hint, side-effect, and deadline metadata to every Host"
       }
     },
     {
