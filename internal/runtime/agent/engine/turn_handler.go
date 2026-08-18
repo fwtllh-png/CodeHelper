@@ -10,6 +10,7 @@ import (
 	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
@@ -1024,6 +1025,10 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}); err != nil {
 			return result, err
 		}
+		assembly := kernel.sampleAssembly(sampleID)
+		if assembly == nil {
+			assembly = providerassembly.NewResponseAssembly(sampleID)
+		}
 		if err := kernel.beginModelSample(ctx, sampleID); err != nil {
 			return result, err
 		}
@@ -1064,6 +1069,13 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			&pendingInputInjected,
 			&modelReplay,
 			&modelConvergence,
+			assembly,
+			func(current *providerassembly.ResponseAssembly) error {
+				return kernel.recordModelSampleProgress(
+					sampleID,
+					current,
+				)
+			},
 			modelSend,
 		)
 		convergenceFinalization = false

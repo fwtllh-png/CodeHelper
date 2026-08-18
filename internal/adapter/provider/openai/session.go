@@ -123,21 +123,21 @@ func (a *Adapter) openSession(ctx context.Context, request provider.ModelRequest
 		return nil, provider.TransportMetadata{}, err
 	}
 	session.lastUsed = now
-	stream := &responsesSocketStream{
-		ctx: ctx, session: session, input: input, property: property,
-		routeDigest: projection.RouteDigest,
-		windowID:    request.Projection.WindowID,
-		recoveryID:  request.Projection.RecoveryID,
-		idleTimeout: idleTimeout, decoder: ResponsesDecoder{
-			CaptureState: true, CaptureReplay: true,
-		},
-	}
-	return stream, providerwire.MetadataWithProjection(
-		call.Body,
-		payload,
-		incremental,
-		projection,
-	), nil
+	return newResponsesSocketStream(
+			ctx,
+			session,
+			input,
+			property,
+			projection,
+			request.Projection,
+			idleTimeout,
+		), sessionMetadata(
+			request,
+			call,
+			payload,
+			incremental,
+			projection,
+		), nil
 }
 func responsesSocketBody(data []byte) (map[string]any, []json.RawMessage, string, error) {
 	var body map[string]any
@@ -250,40 +250,10 @@ func (s *responsesSocketStream) Recv() (provider.StreamEvent, error) {
 			}
 			return event, nil
 		}
-		data, err := s.session.conn.Read(s.ctx)
-		if err != nil {
-			s.session.invalidate()
+		if err := s.read(); err != nil {
 			return provider.StreamEvent{}, err
 		}
-		events, err := s.decoder.Decode(data)
-		if err != nil {
-			s.session.invalidate()
-			return provider.StreamEvent{}, err
-		}
-		s.queue = append(s.queue, events...)
 	}
-}
-func (s *responsesSocketStream) Close() error {
-	if s.closed {
-		return nil
-	}
-	s.closed = true
-	s.session.lastUsed = time.Now()
-	if s.session.idle != nil {
-		s.session.idle.Stop()
-	}
-	if s.idleTimeout > 0 {
-		session := s.session
-		session.idle = time.AfterFunc(s.idleTimeout, func() {
-			session.mu.Lock()
-			defer session.mu.Unlock()
-			if time.Since(session.lastUsed) >= s.idleTimeout {
-				session.invalidate()
-			}
-		})
-	}
-	s.session.mu.Unlock()
-	return nil
 }
 func (s *responsesSession) invalidate() {
 	if s.conn != nil {
@@ -348,5 +318,4 @@ func appendJSON(items []json.RawMessage, value any) []json.RawMessage {
 	return items
 }
 
-var _ provider.Stream = (*responsesSocketStream)(nil)
 var _ providerwire.SessionAdapter = (*Adapter)(nil)

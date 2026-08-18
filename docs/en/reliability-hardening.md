@@ -97,7 +97,7 @@ Priority definitions:
 | R0 | Failure baseline and repository-wide limit inventory | P0 | verified | Runtime / Engineering |
 | R1 | Turn state machine and terminal convergence | P0 | verified | `internal/runtime/agent` |
 | R2 | Dynamic budgets, progress detection, and Context | P0 | verified | Agent / Context / Config |
-| R3 | Provider streams and incomplete-call recovery | P0 | unassessed | Provider / Agent |
+| R3 | Provider streams and incomplete-call recovery | P0 | verified | Provider / Agent |
 | R4 | Typed faults, Retry, and Deadline semantics | P0 | repairing | Protocol / Runtime / Adapters |
 | R5 | Persistence, Journal, idempotency, and crash recovery | P0 | repairing | Persist / Runtime |
 | R6 | Tool, Guard, Sandbox, and side-effect consistency | P0 | unassessed | Tool / Security / Platform |
@@ -372,6 +372,27 @@ and timing-sensitive cases into deterministic gates.
 
 ## R3: Provider Streams and Incomplete-Call Recovery
 
+**Current progress (2026-08-18)**
+
+- the versioned `provider/assembly.ResponseAssembly` owns incremental response
+  completeness, transport segments, confirmed text and reasoning, raw Tool Call
+  fragments, Usage, replay state, and stable event identities;
+- every accepted Provider event is persisted through
+  `ModelSampleProgressRecorded` before Host projection. Turn Coordinator restore
+  requeues the Provider Effect while retaining the exact confirmed assembly;
+- incomplete Tool Calls remain non-executable. Continuation receives the
+  retained raw fragments, and only a later complete segment with valid JSON can
+  create Tool Effects, so an interrupted call cannot execute twice;
+- Responses `event_id` and `sequence_number` detect duplicate, rewritten,
+  reordered, and skipped events. Known lifecycle events remain durable
+  transport progress, while unknown format drift fails closed in the adapter;
+- every transport segment carries one logical request ID, a distinct transport
+  request ID, and an attempt number. Usage remains attributable across HTTP and
+  WebSocket attempts;
+- WebSocket EOF, decode failure, connection reset, retry, Resume, compaction,
+  route change, property change, and history rebase all invalidate uncertain
+  incremental chains and force a complete request before reuse.
+
 **Audit scope**
 
 - EOF, connection reset, rate limiting, empty responses, duplicate chunks,
@@ -399,6 +420,13 @@ and timing-sensitive cases into deterministic gates.
 - Retry cannot execute a closed Tool Call twice;
 - provider contract tests cover disconnects, duplicates, reordering, empty
   responses, and format drift.
+
+The focused R3 matrix covers every stream boundary, parallel partial Tool Calls,
+duplicate and reordered sequence identities, unknown Responses event shapes,
+mid-stream WebSocket reset with complete HTTP fallback, Kernel restore with
+retained assembly, empty completion repair, and cancellation during Provider or
+Tool execution. Provider, Turn Kernel, Engine, Runtime App, and Wire package
+tests pass; Architecture Ratchet covers 112/112 targets.
 
 ## R4: Typed Faults, Retry, and Deadline Semantics
 

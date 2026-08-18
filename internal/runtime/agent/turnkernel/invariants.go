@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -55,6 +56,21 @@ func Validate(state State) error {
 			(sample.LastFailure.Code == "" ||
 				strings.TrimSpace(sample.LastFailure.Message) == "") {
 			return fmt.Errorf("model sample %q has an invalid failure", sampleID)
+		}
+		if sample.Assembly != nil {
+			if sample.Assembly.LogicalRequestID != sampleID {
+				return fmt.Errorf(
+					"model sample %q has mismatched response assembly identity",
+					sampleID,
+				)
+			}
+			if err := sample.Assembly.Validate(); err != nil {
+				return fmt.Errorf(
+					"model sample %q response assembly: %w",
+					sampleID,
+					err,
+				)
+			}
 		}
 		if sample.Retry != nil {
 			effect, ok := state.PendingEffects[sample.Retry.EffectID]
@@ -486,6 +502,9 @@ func cloneState(state State) State {
 			value := *sample.Retry
 			sample.Retry = &value
 		}
+		sample.Assembly = providerassembly.CloneResponseAssembly(
+			sample.Assembly,
+		)
 		cloned.SampleLedger[sampleID] = sample
 	}
 	cloned.PendingEffects = make(map[string]Effect, len(state.PendingEffects))

@@ -21,6 +21,7 @@ type stream struct {
 	started    bool
 	finished   bool
 	stopReason provider.StopReason
+	stopEvent  provider.StreamEvent
 	usage      *provider.Usage
 	stopped    bool
 	closed     bool
@@ -103,9 +104,11 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 				if s.protocol == model.ProtocolOpenAIChat {
 					s.finished = true
 					s.stopReason = event.StopReason
+					s.stopEvent = event
 					continue
 				}
 				stopReason = event.StopReason
+				s.stopEvent = event
 				continue
 			}
 			if event.Type == provider.EventUsage && s.options.FinalUsage {
@@ -132,6 +135,11 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 	events, err := parseResponsesChunk(data)
 	if err != nil {
 		return nil, err
+	}
+	if len(events) == 0 {
+		events = []provider.StreamEvent{{
+			Type: provider.EventTransportProgress,
+		}}
 	}
 	if d.reasoning == nil {
 		d.reasoning = make(map[int]string)
@@ -204,7 +212,46 @@ func (d *ResponsesDecoder) Decode(data []byte) ([]provider.StreamEvent, error) {
 		}
 		reconciled = append(reconciled, event)
 	}
+	if len(reconciled) == 0 {
+		reconciled = append(reconciled, provider.StreamEvent{
+			Type: provider.EventTransportProgress,
+		})
+	}
+	if err := stampResponsesEventIdentity(
+		data,
+		reconciled,
+	); err != nil {
+		return nil, err
+	}
 	return reconciled, nil
+}
+
+func stampResponsesEventIdentity(
+	data []byte,
+	events []provider.StreamEvent,
+) error {
+	var envelope struct {
+		EventID        string  `json:"event_id"`
+		SequenceNumber *uint64 `json:"sequence_number"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return fmt.Errorf("decode Responses event identity: %w", err)
+	}
+	for index := range events {
+		events[index].Ordinal = uint32(index)
+		if envelope.SequenceNumber != nil {
+			events[index].Sequenced = true
+			events[index].Sequence = *envelope.SequenceNumber
+		}
+		if envelope.EventID != "" {
+			events[index].EventID = fmt.Sprintf(
+				"%s#%d",
+				envelope.EventID,
+				index,
+			)
+		}
+	}
+	return nil
 }
 
 func reasoningTextMatchingVisible(item map[string]any, seen string) string {
@@ -235,9 +282,10 @@ func (s *stream) finish(reason provider.StopReason) {
 			Type: provider.EventUsage, Usage: s.usage,
 		})
 	}
-	s.queue = append(s.queue, provider.StreamEvent{
-		Type: provider.EventMessageStop, StopReason: reason,
-	})
+	stop := s.stopEvent
+	stop.Type = provider.EventMessageStop
+	stop.StopReason = reason
+	s.queue = append(s.queue, stop)
 }
 func (s *stream) Close() error {
 	if s.closed {
@@ -523,8 +571,24 @@ func parseResponsesChunk(data []byte) ([]provider.StreamEvent, error) {
 			message = "unknown Responses stream failure"
 		}
 		return nil, fmt.Errorf("OpenAI Responses stream error: %s", message)
-	default:
+	case "response.created",
+		"response.in_progress",
+		"response.queued",
+		"response.content_part.added",
+		"response.content_part.done",
+		"response.output_text.done",
+		"response.function_call_arguments.done",
+		"response.reasoning_summary_part.added",
+		"response.reasoning_summary_part.done":
 		return nil, nil
+	default:
+		if eventType == "" {
+			return nil, errors.New("OpenAI Responses event type is missing")
+		}
+		return nil, fmt.Errorf(
+			"unsupported OpenAI Responses event type %q",
+			eventType,
+		)
 	}
 }
 func responsesReasoningTextEvent(

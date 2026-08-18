@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
 
@@ -173,6 +174,41 @@ func (s *engineTurnKernel) providerRetries(sampleID string) uint32 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.SampleLedger[sampleID].ProviderRetries
+}
+
+func (s *engineTurnKernel) sampleAssembly(
+	sampleID string,
+) *providerassembly.ResponseAssembly {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return providerassembly.CloneResponseAssembly(
+		s.state.SampleLedger[sampleID].Assembly,
+	)
+}
+
+func (s *engineTurnKernel) recordModelSampleProgress(
+	sampleID string,
+	assembly *providerassembly.ResponseAssembly,
+) error {
+	if assembly == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	effect, _, err := s.dispatcher.Routed(
+		turnkernel.EffectSampleProvider,
+		sampleID,
+	)
+	if err != nil {
+		return err
+	}
+	command := turnkernel.ModelSampleProgressRecorded{
+		EffectID: effect.ID,
+		SampleID: sampleID,
+		Attempt:  effect.Attempt,
+		Assembly: *providerassembly.CloneResponseAssembly(assembly),
+	}
+	return s.applyAuthoritativeLocked(command)
 }
 
 func (s *engineTurnKernel) evaluateTurnStep(

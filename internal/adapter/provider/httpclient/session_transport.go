@@ -18,6 +18,7 @@ type sessionAttempt struct {
 	credential  string
 	cancel      context.CancelFunc
 	traceHeader http.Header
+	requestID   string
 	transferred bool
 }
 
@@ -53,10 +54,18 @@ func (a *sessionAttempt) Dial(endpoint string) (providerwire.Socket, context.Can
 	}
 	return socket{conn: conn}, cancel, nil
 }
-func (a *sessionAttempt) ProviderRequest()           {}
+func (a *sessionAttempt) ProviderRequest() {
+	if a.requestID == "" {
+		a.requestID = requestKey(a.call.Body)
+	}
+}
 func (a *sessionAttempt) IdleTimeout() time.Duration { return a.client.IdleTimeout }
 func (a *sessionAttempt) Wrap(stream provider.Stream, metadata provider.TransportMetadata) provider.Stream {
 	a.transferred = true
+	if a.requestID == "" {
+		a.ProviderRequest()
+	}
+	metadata.TransportRequestID = a.requestID
 	return a.client.wrapStream(stream, metadata, a.cancel)
 }
 func (a *sessionAttempt) Close() {

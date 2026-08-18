@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -99,6 +100,15 @@ func (Reducer) Apply(current State, command Command) (Transition, error) {
 
 	case ModelSampleFinished:
 		if err := applyModelSampleFinished(&transition, current, value); err != nil {
+			return Transition{}, err
+		}
+
+	case ModelSampleProgressRecorded:
+		if err := applyModelSampleProgress(
+			&transition,
+			current,
+			value,
+		); err != nil {
 			return Transition{}, err
 		}
 
@@ -445,6 +455,51 @@ func applyModelSampleFinished(
 	transition.Events = append(transition.Events, Event{
 		Kind: EventSampleFinished, SampleID: command.SampleID,
 	})
+	return nil
+}
+
+func applyModelSampleProgress(
+	transition *Transition,
+	current State,
+	command ModelSampleProgressRecorded,
+) error {
+	if err := requirePhase(current, command, PhaseSampling); err != nil {
+		return err
+	}
+	effect, ok := current.PendingEffects[command.EffectID]
+	sample, sampleOK := current.SampleLedger[command.SampleID]
+	if strings.TrimSpace(command.EffectID) == "" ||
+		strings.TrimSpace(command.SampleID) == "" ||
+		command.Attempt == 0 ||
+		!ok ||
+		effect.Kind != EffectSampleProvider ||
+		effect.CallID != command.SampleID ||
+		effect.Status != EffectRunning ||
+		effect.Attempt != command.Attempt ||
+		!sampleOK ||
+		sample.Status != SampleRunning ||
+		sample.Attempt != command.Attempt ||
+		current.ActiveSampleID != command.SampleID {
+		return illegal(
+			current,
+			command,
+			"sample progress does not match the running provider effect",
+		)
+	}
+	if command.Assembly.LogicalRequestID != command.SampleID {
+		return illegal(
+			current,
+			command,
+			"sample progress changed logical request identity",
+		)
+	}
+	if err := command.Assembly.ValidateExtension(sample.Assembly); err != nil {
+		return illegal(current, command, err.Error())
+	}
+	sample.Assembly = providerassembly.CloneResponseAssembly(
+		&command.Assembly,
+	)
+	transition.State.SampleLedger[command.SampleID] = sample
 	return nil
 }
 

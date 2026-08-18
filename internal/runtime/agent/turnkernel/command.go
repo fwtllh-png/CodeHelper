@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -59,6 +60,17 @@ type ModelSampleFinished struct {
 }
 
 func (ModelSampleFinished) commandName() string { return "model_sample_finished" }
+
+type ModelSampleProgressRecorded struct {
+	EffectID string
+	SampleID string
+	Attempt  uint32
+	Assembly providerassembly.ResponseAssembly
+}
+
+func (ModelSampleProgressRecorded) commandName() string {
+	return "model_sample_progress_recorded"
+}
 
 type ModelSampleResultReceived struct {
 	EffectID  string

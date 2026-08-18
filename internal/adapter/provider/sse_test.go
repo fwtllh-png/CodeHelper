@@ -43,6 +43,21 @@ func TestSSEDecoderRejectsOversizedEvent(t *testing.T) {
 	}
 }
 
+func TestSSEDecoderPreservesEventIdentity(t *testing.T) {
+	decoder := NewSSEDecoder(strings.NewReader(
+		"id: event-7\nevent: delta\ndata: one\n\n",
+	))
+	record, err := decoder.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.ID != "event-7" ||
+		record.Event != "delta" ||
+		record.Data != "one" {
+		t.Fatalf("record = %+v", record)
+	}
+}
+
 func FuzzStreamParser(f *testing.F) {
 	f.Add([]byte("data: {\"ok\":true}\n\ndata: [DONE]\n\n"), uint8(1))
 	f.Add([]byte("event: ping\r\ndata: {}\r\n\r\n"), uint8(7))

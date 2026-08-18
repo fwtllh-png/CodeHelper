@@ -13,11 +13,13 @@ var ErrSSEEventTooLarge = errors.New("SSE event exceeds size limit")
 
 type SSERecord struct {
 	Event string
+	ID    string
 	Data  string
 }
 type SSEDecoder struct {
 	scanner *bufio.Scanner
 	event   string
+	id      string
 	data    []string
 	bytes   int
 	done    bool
@@ -48,6 +50,8 @@ func (d *SSEDecoder) Next() (SSERecord, error) {
 		switch field {
 		case "event":
 			d.event = value
+		case "id":
+			d.id = value
 		case "data":
 			d.bytes += len(value)
 			if d.bytes > defaultMaxSSEEventBytes {
@@ -68,11 +72,15 @@ func (d *SSEDecoder) Next() (SSERecord, error) {
 }
 func (d *SSEDecoder) take() (SSERecord, bool) {
 	if len(d.data) == 0 {
-		d.event = ""
+		d.event, d.id = "", ""
 		return SSERecord{}, false
 	}
-	record := SSERecord{Event: d.event, Data: strings.Join(d.data, "\n")}
-	d.event = ""
+	record := SSERecord{
+		Event: d.event,
+		ID:    d.id,
+		Data:  strings.Join(d.data, "\n"),
+	}
+	d.event, d.id = "", ""
 	d.data = d.data[:0]
 	d.bytes = 0
 	return record, true
@@ -86,7 +94,7 @@ func Drain(stream Stream) ([]StreamEvent, error) {
 			return events, nil
 		}
 		if err != nil {
-			return nil, err
+			return events, err
 		}
 		events = append(events, event)
 	}

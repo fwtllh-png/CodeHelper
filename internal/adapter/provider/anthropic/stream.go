@@ -60,7 +60,14 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 		if err != nil {
 			return provider.StreamEvent{}, err
 		}
-		for _, event := range events {
+		for index, event := range events {
+			if record.ID != "" {
+				event.EventID = fmt.Sprintf(
+					"%s#%d",
+					record.ID,
+					index,
+				)
+			}
 			if event.Type == provider.EventMessageStop {
 				s.stopped = true
 			}

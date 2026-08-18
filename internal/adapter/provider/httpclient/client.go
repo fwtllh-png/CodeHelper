@@ -75,7 +75,6 @@ func (c *Client) httpClient() *http.Client {
 	}
 	return egress.WrapClient(base, c.Egress)
 }
-
 func (c *Client) Execute(
 	ctx context.Context,
 	request provider.ModelRequest,
@@ -107,7 +106,8 @@ func (c *Client) Execute(
 	}
 	applyHeaders(httpRequest, call, credential)
 	tracecontext.InjectHTTP(requestContext, httpRequest.Header)
-	httpRequest.Header.Set("Idempotency-Key", requestKey(call.Body))
+	transportRequestID := requestKey(call.Body)
+	httpRequest.Header.Set("Idempotency-Key", transportRequestID)
 	response, err := httpClient.Do(httpRequest)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -133,7 +133,7 @@ func (c *Client) Execute(
 		release = false
 		return c.wrapStream(
 			stream,
-			providerwire.MetadataWithProjection(call.Body, call.Body, false, call.Projection),
+			completeTransportMetadata(request, call, transportRequestID),
 			requestCancel,
 		), nil
 	}

@@ -78,7 +78,10 @@ func TestResponsesStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 7 || events[1].Text != "thinking" || events[2].Text != "answer" {
+	if len(events) != 8 ||
+		events[1].Text != "thinking" ||
+		events[2].Text != "answer" ||
+		events[5].Type != provider.EventTransportProgress {
 		t.Fatalf("events = %+v", events)
 	}
 	if events[3].ToolCall.Name != "search" || events[4].ToolCall.Arguments == "" {
@@ -477,6 +480,52 @@ func TestResponsesStreamClassifiesIncompleteDetails(t *testing.T) {
 				t.Fatalf("terminal event = %+v", got)
 			}
 		})
+	}
+}
+
+func TestResponsesStreamCarriesStableSequenceIdentity(t *testing.T) {
+	input := strings.Join([]string{
+		`data: {"type":"response.output_text.delta","sequence_number":0,"event_id":"evt-0","delta":"one"}`,
+		"",
+		`data: {"type":"response.completed","sequence_number":1,"event_id":"evt-1","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		"",
+		"",
+	}, "\n")
+	stream, err := NewStream(
+		io.NopCloser(strings.NewReader(input)),
+		model.ProtocolOpenAIResponses,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 4 {
+		t.Fatalf("events = %+v", events)
+	}
+	if !events[1].Sequenced || events[1].Sequence != 0 ||
+		events[1].EventID != "evt-0#0" ||
+		!events[2].Sequenced || events[2].Sequence != 1 ||
+		events[2].Ordinal != 0 || events[3].Ordinal != 1 {
+		t.Fatalf("event identities = %+v", events)
+	}
+}
+
+func TestResponsesStreamRejectsUnknownFormatDrift(t *testing.T) {
+	input := "data: {\"type\":\"response.future_delta\",\"delta\":\"unsafe\"}\n\n"
+	stream, err := NewStream(
+		io.NopCloser(strings.NewReader(input)),
+		model.ProtocolOpenAIResponses,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = stream.Recv()
+	if _, err := stream.Recv(); err == nil ||
+		!strings.Contains(err.Error(), "unsupported OpenAI Responses") {
+		t.Fatalf("format drift error = %v", err)
 	}
 }
 

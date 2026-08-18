@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -153,6 +154,39 @@ func TestC3CoordinatorRuntimeRequeuesRunningModelEffect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assembly := providerassembly.NewResponseAssembly("sample-restore")
+	if err := assembly.BeginTransport(provider.TransportMetadata{
+		LogicalRequestID:   "sample-restore",
+		TransportRequestID: "transport-1",
+		Attempt:            1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []provider.StreamEvent{
+		{Type: provider.EventTextDelta, Text: "confirmed"},
+		{
+			Type: provider.EventToolCallDelta,
+			ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call-1", Name: "read",
+				Arguments: `{"path":`,
+			},
+		},
+	} {
+		if _, err := assembly.Apply(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := handle.Coordinator.Submit(
+		t.Context(),
+		ModelSampleProgressRecorded{
+			EffectID: effect.ID,
+			SampleID: "sample-restore",
+			Attempt:  effect.Attempt,
+			Assembly: *assembly,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
 	if err := first.Release(
 		t.Context(),
 		"turn-c3-model-restore",
@@ -179,6 +213,16 @@ func TestC3CoordinatorRuntimeRequeuesRunningModelEffect(t *testing.T) {
 	if state.SampleLedger["sample-restore"].Status != SampleRequested ||
 		state.ActiveSampleID != "" {
 		t.Fatalf("restored sample state = %+v", state)
+	}
+	restoredAssembly := state.SampleLedger["sample-restore"].Assembly
+	if restoredAssembly == nil ||
+		restoredAssembly.EventCount() != 2 ||
+		len(restoredAssembly.CurrentBlocks()) != 1 ||
+		restoredAssembly.CurrentBlocks()[0].Text != "confirmed" ||
+		len(restoredAssembly.Segments[0].ToolFragments) != 1 ||
+		restoredAssembly.Segments[0].ToolFragments[0].Arguments !=
+			`{"path":` {
+		t.Fatalf("restored response assembly = %+v", restoredAssembly)
 	}
 }
 

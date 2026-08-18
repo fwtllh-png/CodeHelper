@@ -107,6 +107,7 @@
         "internal/adapter/mcp",
         "internal/adapter/model",
         "internal/adapter/provider",
+        "internal/adapter/provider/assembly",
         "internal/adapter/skill",
         "internal/adapter/tool",
         "internal/adapter/tool/guard",

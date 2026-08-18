@@ -12,6 +12,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
@@ -51,6 +52,8 @@ func (e *Engine) modelStep(
 	pendingInputInjected *bool,
 	capturedReplay **provider.ReplayState,
 	convergence *turnkernel.ConvergenceRequested,
+	assembly *providerassembly.ResponseAssembly,
+	checkpoint func(*providerassembly.ResponseAssembly) error,
 	send func(State, Event) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, uint64, error) {
 	if continued != nil {
@@ -64,6 +67,26 @@ func (e *Engine) modelStep(
 	}
 	if convergence != nil {
 		*convergence = turnkernel.ConvergenceRequested{}
+	}
+	if assembly == nil {
+		assembly = providerassembly.NewResponseAssembly(sampleID)
+	}
+	if err := assembly.Validate(); err != nil {
+		return nil, nil, provider.Usage{}, 0,
+			fmt.Errorf("restore provider response assembly: %w", err)
+	}
+	if assembly.State == providerassembly.ResponseComplete {
+		calls, err := assembly.ExecutableToolCalls()
+		if err == nil {
+			if continued != nil {
+				*continued = assembly.TransportCount() > 1
+			}
+			if capturedReplay != nil {
+				*capturedReplay = assembly.CurrentReplay()
+			}
+			return assembly.ConfirmedBlocks(), calls,
+				assembly.TotalUsage(), 0, nil
+		}
 	}
 	scope := e.runningScope()
 	if scope == nil {
@@ -105,12 +128,38 @@ func (e *Engine) modelStep(
 	}
 	contextLedger := scope.state.contextLedger
 	scope.mu.Unlock()
-	var totalUsage provider.Usage
+	totalUsage := assembly.TotalUsage()
 	var lastEstimate uint64
 	var providerAttempt uint32
 	var continuationMessages []provider.Message
 	var continuedBlocks []provider.ContentBlock
 	continuations := uint32(0)
+	if assembly.TransportCount() != 0 {
+		continuedBlocks = assembly.ConfirmedBlocks()
+		if len(continuedBlocks) != 0 {
+			continuationMessages = append(
+				continuationMessages,
+				provider.ProducedAssistant(
+					e.activeRoute(),
+					cloneBlocks(continuedBlocks),
+					e.turn,
+					nil,
+				),
+			)
+		}
+		continuationMessages = append(
+			continuationMessages,
+			incompleteOutputFeedback(
+				provider.StopReasonIncomplete,
+				assembly.IncompleteToolFragments(),
+				e.turn,
+			),
+		)
+		continuations = uint32(assembly.TransportCount())
+		if continued != nil {
+			*continued = true
+		}
+	}
 	baseReasoningEffort := e.reasoningEffort(scope, reason)
 	for attempt := 0; ; attempt++ {
 		var turnContext []provider.Message
@@ -244,12 +293,15 @@ func (e *Engine) modelStep(
 		)
 		stream, err := e.options.Provider.Stream(requestContext, provider.ModelRequest{
 			Route: route, Messages: messages,
+			LogicalRequestID: sampleID,
+			TransportAttempt: assembly.NextTransportAttempt(),
 			Projection: provider.ProjectionContext{
 				ContextRevision: attribution.ContextRevision,
 				WindowID:        attribution.WindowID,
 				WindowNumber:    attribution.WindowNumber,
-				Retry:           providerRetries > 0,
-				RecoveryID:      projectionRecoveryID(scope.spec.Request.Recovery),
+				Retry: providerRetries > 0 ||
+					assembly.TransportCount() > 0,
+				RecoveryID: projectionRecoveryID(scope.spec.Request.Recovery),
 			},
 			MaxOutputTokens: maxOutputTokens, Tools: requestTools,
 			ReasoningEffort: reasoningEffort, NativeSearch: nativeSearch,
@@ -300,6 +352,8 @@ func (e *Engine) modelStep(
 			},
 			e.tracer().NoteFirstOutput,
 			&replay,
+			assembly,
+			checkpoint,
 		)
 		e.clearActiveCancel()
 		cancel(nil)
@@ -349,7 +403,7 @@ func (e *Engine) modelStep(
 				continuationMessages,
 				incompleteOutputFeedback(
 					incomplete.Reason,
-					incomplete.HasToolCallFragment,
+					incomplete.ToolFragments,
 					e.turn,
 				),
 			)
@@ -447,21 +501,47 @@ func projectionRecoveryID(
 }
 
 type incompleteModelOutputError struct {
-	Reason              provider.StopReason
-	HasToolCallFragment bool
+	Reason        provider.StopReason
+	ToolFragments []provider.ToolCallFragment
+	Cause         error
 }
 
 func (e *incompleteModelOutputError) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf(
+			"model output stopped before completion (%s): %v",
+			e.Reason,
+			e.Cause,
+		)
+	}
 	return fmt.Sprintf("model output stopped before completion (%s)", e.Reason)
 }
 
-func incompleteOutputFeedback(reason provider.StopReason, hasToolCallFragment bool, turn uint64) provider.Message {
+func (e *incompleteModelOutputError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+func incompleteOutputFeedback(
+	reason provider.StopReason,
+	fragments []provider.ToolCallFragment,
+	turn uint64,
+) provider.Message {
 	instruction := `Continue exactly from the captured response. Do not repeat
 completed content. Finish the pending user-facing answer.`
-	if hasToolCallFragment {
-		instruction = `The incomplete tool call could not be executed. Do not
-regenerate the same oversized arguments. Split the operation into smaller,
-independently valid tool calls and continue the unfinished work.`
+	if len(fragments) != 0 {
+		encoded, _ := json.Marshal(fragments)
+		instruction = fmt.Sprintf(
+			`The following tool call fragments were retained but were not
+executed because the provider response did not close them:
+%s
+Continue from these exact fragments. Emit only complete, independently valid
+tool calls. Split the operation into smaller calls when it is oversized. Do
+not assume that any retained fragment already ran.`,
+			encoded,
+		)
 	}
 	message := provider.TextMessage(provider.RoleUser, fmt.Sprintf(
 		`[continue_after_incomplete stop_reason=%s]
@@ -622,162 +702,234 @@ func consume(
 	emit func(Event) error,
 	firstOutput func(),
 	capturedReplay **provider.ReplayState,
+	assembly *providerassembly.ResponseAssembly,
+	checkpoint func(*providerassembly.ResponseAssembly) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, bool, error) {
-	stream = newDeltaCoalescingStream(stream)
 	defer stream.Close()
-	var blocks []provider.ContentBlock
-	var usage provider.Usage
-	var replay *provider.ReplayState
-	fragments := make(map[int]provider.ToolCall)
-	meaningful := false
-
+	metadata := provider.Metadata(stream)
+	if metadata.LogicalRequestID == "" {
+		metadata.LogicalRequestID = assembly.LogicalRequestID
+	}
+	if metadata.Attempt == 0 {
+		metadata.Attempt = assembly.NextTransportAttempt()
+	}
+	if err := assembly.BeginTransport(metadata); err != nil {
+		return nil, nil, provider.Usage{}, false, err
+	}
+	persist := func() error {
+		if checkpoint == nil {
+			return nil
+		}
+		return checkpoint(assembly)
+	}
+	if err := persist(); err != nil {
+		return nil, nil, provider.Usage{}, false, err
+	}
 	output := func() {
-		meaningful = true
 		if firstOutput != nil {
 			firstOutput()
 		}
 	}
+	current := func() (
+		[]provider.ContentBlock,
+		provider.Usage,
+		bool,
+	) {
+		return assembly.CurrentBlocks(),
+			assembly.CurrentUsage(),
+			assembly.CurrentMeaningful()
+	}
 	var planParser ProposedPlanParser
 	for {
 		event, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			return blocks, nil, usage, meaningful, protocol.NewProblem(
-				protocol.CodeUnavailable,
-				"model stream ended without a valid stop event",
-				true,
-				io.ErrUnexpectedEOF,
-			)
-		}
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				err = protocol.NewProblem(
+					protocol.CodeUnavailable,
+					"model stream ended without a valid stop event",
+					true,
+					io.ErrUnexpectedEOF,
+				)
+			}
+			blocks, usage, meaningful := current()
+			if interruptErr := assembly.Interrupt(err); interruptErr != nil {
+				return blocks, nil, usage, meaningful,
+					errors.Join(err, interruptErr)
+			}
+			if persistErr := persist(); persistErr != nil {
+				return blocks, nil, usage, meaningful, persistErr
+			}
+			if errors.Is(err, context.Canceled) {
+				return blocks, nil, usage, meaningful, err
+			}
+			if meaningful {
+				return blocks, nil, usage, true,
+					&incompleteModelOutputError{
+						Reason: provider.StopReasonIncomplete,
+						ToolFragments: assembly.
+							IncompleteToolFragments(),
+						Cause: err,
+					}
+			}
+			return blocks, nil, usage, false, err
+		}
+		applied, applyErr := assembly.Apply(event)
+		if applyErr != nil {
+			failure := &provider.Failure{
+				Code:    provider.FailureMalformedResponse,
+				Message: "provider stream violated the incremental response contract",
+			}
+			_ = assembly.Fail(applyErr)
+			if persistErr := persist(); persistErr != nil {
+				return nil, nil, assembly.CurrentUsage(),
+					assembly.CurrentMeaningful(),
+					errors.Join(applyErr, persistErr)
+			}
+			return assembly.CurrentBlocks(), nil,
+				assembly.CurrentUsage(),
+				assembly.CurrentMeaningful(),
+				protocol.NewProblem(
+					protocol.CodeUnavailable,
+					failure.Message,
+					false,
+					errors.Join(failure, applyErr),
+				)
+		}
+		if !applied {
+			continue
+		}
+		if err := persist(); err != nil {
+			blocks, usage, meaningful := current()
 			return blocks, nil, usage, meaningful, err
 		}
+		blocks, usage, meaningful := current()
 		switch event.Type {
-		case provider.EventMessageStart:
+		case provider.EventMessageStart,
+			provider.EventTransportProgress:
 		case provider.EventTextDelta:
 			output()
 			block := eventBlock(event, provider.ContentText)
-			blocks = appendStreamBlock(blocks, event.Index, block)
 			visible := block
 			visible.Text = event.Text
-			if err := emit(Event{Text: event.Text, Block: &visible}); err != nil {
-				return nil, nil, usage, meaningful, err
+			if err := emit(Event{
+				Text:  event.Text,
+				Block: &visible,
+			}); err != nil {
+				return blocks, nil, usage, meaningful, err
 			}
 			for _, update := range planParser.Feed(event.Text) {
 				copy := update
 				if err := emit(Event{Plan: &copy}); err != nil {
-					return nil, nil, usage, meaningful, err
+					return blocks, nil, usage, meaningful, err
 				}
 			}
 		case provider.EventReasoningDelta:
 			output()
 			block := eventBlock(event, provider.ContentReasoning)
-			blocks = appendStreamBlock(blocks, event.Index, block)
 			visible := block
 			visible.Text = event.Text
 			if visible.Text == "" {
 				continue
 			}
-			if err := emit(Event{Text: event.Text, Block: &visible}); err != nil {
-				return nil, nil, usage, meaningful, err
+			if err := emit(Event{
+				Text:  event.Text,
+				Block: &visible,
+			}); err != nil {
+				return blocks, nil, usage, meaningful, err
 			}
-		case provider.EventReasoningSignature:
-			return nil, nil, usage, meaningful, errors.New(
-				"provider signature was not captured as replay state",
-			)
 		case provider.EventSearchResult, provider.EventCitation:
 			output()
 			block := eventBlock(event, "")
-			blocks = append(blocks, block)
-			engineEvent := Event{Block: &block, Search: event.Search, Citation: event.Citation}
+			engineEvent := Event{
+				Block: &block, Search: event.Search,
+				Citation: event.Citation,
+			}
 			if err := emit(engineEvent); err != nil {
-				return nil, nil, usage, meaningful, err
+				return blocks, nil, usage, meaningful, err
 			}
 		case provider.EventUsage:
-			usage.Add(*event.Usage)
-			contextstore.ApplyTransport(call.context, event.Usage.Transport)
+			contextstore.ApplyTransport(
+				call.context,
+				event.Usage.Transport,
+			)
 			copy := usage
 			if call.observe != nil {
-				call.observe(call.context, copy.InputTokens, copy.CachedTokens)
+				call.observe(
+					call.context,
+					copy.InputTokens,
+					copy.CachedTokens,
+				)
 			}
-
 			cost := estimateCost(call.pricing, copy)
 			if err := emit(Event{
-				Usage: &copy, CostUSD: cost, CostKnown: pricingKnown(call.pricing, copy),
-				Sample: call.index, Provider: call.provider, Model: call.model,
-				SampleContext: call.context,
+				Usage: &copy, CostUSD: cost,
+				CostKnown: pricingKnown(call.pricing, copy),
+				Sample:    call.index, Provider: call.provider,
+				Model: call.model, SampleContext: call.context,
 			}); err != nil {
-				return nil, nil, usage, meaningful, err
+				return blocks, nil, usage, meaningful, err
 			}
-		case provider.EventReplayState:
-			if replay != nil || event.Replay == nil {
-				return nil, nil, usage, meaningful, errors.New(
-					"provider emitted duplicate or empty replay state",
-				)
-			}
-			copy := *event.Replay
-			copy.Data = append(json.RawMessage(nil), event.Replay.Data...)
-			replay = &copy
+		case provider.EventReplayState, provider.EventResponseState:
 		case provider.EventToolCallDelta:
 			output()
-			call := fragments[event.ToolCall.Index]
-			if event.ToolCall.ID != "" {
-				call.ID = event.ToolCall.ID
-			}
-			if event.ToolCall.Name != "" {
-				call.Name = event.ToolCall.Name
-			}
-			call.Arguments += event.ToolCall.Arguments
-			fragments[event.ToolCall.Index] = call
 		case provider.EventMessageStop:
 			if capturedReplay != nil {
-				*capturedReplay = replay
+				*capturedReplay = assembly.CurrentReplay()
 			}
-			switch event.StopReason {
-			case provider.StopReasonMaxTokens, provider.StopReasonIncomplete:
-				return blocks, nil, usage, meaningful, &incompleteModelOutputError{
-					Reason:              event.StopReason,
-					HasToolCallFragment: len(fragments) != 0,
-				}
+			reason := assembly.CurrentStopReason()
+			switch reason {
+			case provider.StopReasonMaxTokens,
+				provider.StopReasonIncomplete:
+				return blocks, nil, usage, meaningful,
+					&incompleteModelOutputError{
+						Reason: reason,
+						ToolFragments: assembly.
+							IncompleteToolFragments(),
+					}
 			case provider.StopReasonContentFilter:
-				return blocks, nil, usage, meaningful, protocol.NewProblem(
-					protocol.CodeInvalidArgument,
-					"model output was blocked by the provider content filter",
-					false,
-					nil,
-				)
+				return blocks, nil, usage, meaningful,
+					protocol.NewProblem(
+						protocol.CodeInvalidArgument,
+						"model output was blocked by the provider content filter",
+						false,
+						nil,
+					)
+			case provider.StopReasonUnknown:
+				return blocks, nil, usage, meaningful,
+					protocol.NewProblem(
+						protocol.CodeUnavailable,
+						"provider returned an unknown model stop reason",
+						true,
+						nil,
+					)
 			}
-			if event.StopReason == provider.StopReasonUnknown {
-				return blocks, nil, usage, meaningful, protocol.NewProblem(
-					protocol.CodeUnavailable,
-					"provider returned an unknown model stop reason",
-					true,
-					nil,
-				)
-			}
-			if event.StopReason == provider.StopReasonToolUse && len(fragments) == 0 {
-				return blocks, nil, usage, meaningful, protocol.NewProblem(
-					protocol.CodeUnavailable,
-					"provider stopped for tool use without emitting a tool call",
-					true,
-					nil,
-				)
-			}
-			indexes := make([]int, 0, len(fragments))
-			for index := range fragments {
-				indexes = append(indexes, index)
-			}
-			sort.Ints(indexes)
-			calls := make([]provider.ToolCall, 0, len(indexes))
-			for _, index := range indexes {
-				call := fragments[index]
-				if call.ID == "" {
-					call.ID = fmt.Sprintf("call_%d", index)
+			calls, callErr := assembly.ExecutableToolCalls()
+			if callErr != nil {
+				if len(assembly.Segments[len(assembly.Segments)-1].ToolFragments) != 0 {
+					return blocks, nil, usage, meaningful,
+						&incompleteModelOutputError{
+							Reason: provider.StopReasonIncomplete,
+							ToolFragments: assembly.
+								IncompleteToolFragments(),
+							Cause: callErr,
+						}
 				}
-				calls = append(calls, call)
+				calls = nil
+			}
+			if reason == provider.StopReasonToolUse &&
+				len(calls) == 0 {
+				return blocks, nil, usage, meaningful,
+					protocol.NewProblem(
+						protocol.CodeUnavailable,
+						"provider stopped for tool use without emitting a tool call",
+						true,
+						nil,
+					)
 			}
 			return blocks, calls, usage, meaningful, nil
 		default:
-			return nil, nil, usage, meaningful, errors.New("unknown provider event")
+			return blocks, nil, usage, meaningful,
+				errors.New("unknown provider event")
 		}
 	}
 }

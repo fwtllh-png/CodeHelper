@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -286,13 +287,14 @@ type ContextState struct {
 }
 
 type ModelSampleState struct {
-	ID              string              `json:"id"`
-	Attempt         uint32              `json:"attempt"`
-	Status          SampleStatus        `json:"status"`
-	ProviderRetries uint32              `json:"provider_retries,omitempty"`
-	LastFailure     *provider.Failure   `json:"last_failure,omitempty"`
-	Retry           *ProviderRetryState `json:"retry,omitempty"`
-	Error           string              `json:"error,omitempty"`
+	ID              string                             `json:"id"`
+	Attempt         uint32                             `json:"attempt"`
+	Status          SampleStatus                       `json:"status"`
+	ProviderRetries uint32                             `json:"provider_retries,omitempty"`
+	LastFailure     *provider.Failure                  `json:"last_failure,omitempty"`
+	Retry           *ProviderRetryState                `json:"retry,omitempty"`
+	Assembly        *providerassembly.ResponseAssembly `json:"assembly,omitempty"`
+	Error           string                             `json:"error,omitempty"`
 }
 
 type ProviderRetryState struct {

@@ -55,9 +55,6 @@
         "production_lines": 980,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "WorkGraph Kernel now owns durable block and resume transitions for recoverable explicit-budget exhaustion"
       }
     },
     {
@@ -80,9 +77,6 @@
         "production_lines": 1896,
         "options_fields": 13,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "Workflow normalizes explicit Token and Cost exhaustion through the shared resumable contract and projects durable blocked state"
       }
     },
     {
@@ -116,9 +110,6 @@
         "production_lines": 320,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Budget Ledger reports typed Scope, resource, used, and limit facts for resumable Token and Cost exhaustion"
       }
     },
     {
@@ -215,7 +206,21 @@
       "path": "internal/adapter/provider",
       "limits": {
         "internal_fanout": 2,
-        "production_lines": 778,
+        "production_lines": 798,
+        "options_fields": 0,
+        "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Provider core carries stable stream event identity and logical-versus-transport request attribution"
+      }
+    },
+    {
+      "id": "provider_assembly_package",
+      "kind": "package",
+      "path": "internal/adapter/provider/assembly",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 728,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -248,12 +253,12 @@
       "path": "internal/adapter/provider/httpclient",
       "limits": {
         "internal_fanout": 9,
-        "production_lines": 725,
+        "production_lines": 757,
         "options_fields": 0,
         "mutex_fields": 1
       },
       "relaxations": {
-        "production_lines": "Provider HTTP transport separates connection and response-header deadlines from renewable stream idle lifetime"
+        "production_lines": "Provider HTTP transport separates deadlines and assigns one transport request identity inside each logical sample"
       }
     },
     {
@@ -288,7 +293,7 @@
       "kind": "file",
       "path": "internal/adapter/provider/openai/session.go",
       "limits": {
-        "lines": 352,
+        "lines": 321,
         "max_function_lines": 71
       }
     },
@@ -298,9 +303,12 @@
       "path": "internal/adapter/provider/openai",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1709,
+        "production_lines": 1843,
         "options_fields": 0,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "OpenAI adapter validates sequenced Responses events and forces complete HTTP fallback after uncertain WebSocket chains"
       }
     },
     {
@@ -320,9 +328,12 @@
       "path": "internal/adapter/provider/anthropic",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 634,
+        "production_lines": 641,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Anthropic adapter preserves stable SSE event identities for incremental assembly deduplication"
       }
     },
     {
@@ -345,9 +356,6 @@
         "production_lines": 8727,
         "options_fields": 70,
         "mutex_fields": 6
-      },
-      "relaxations": {
-        "production_lines": "Wire owns renewable child leases, resumable child and background Workflow budget projection, plus durable settlement and Coordinator release retry"
       }
     },
     {
@@ -606,13 +614,14 @@
       "kind": "package",
       "path": "internal/runtime/agent/engine",
       "limits": {
-        "internal_fanout": 24,
-        "production_lines": 11042,
+        "internal_fanout": 25,
+        "production_lines": 11241,
         "options_fields": 60,
         "mutex_fields": 8
       },
       "relaxations": {
-        "production_lines": "Agent Engine validates Context authority, persists recovery history identity, prevents duplicate Resume injection, and reports Terminal and release failures"
+        "internal_fanout": "Agent Engine consumes the provider-owned incremental assembly without implementing provider-specific branches",
+        "production_lines": "Agent Engine checkpoints confirmed provider increments before Host projection and resumes incomplete logical samples without executing partial tool calls"
       }
     },
     {
@@ -646,9 +655,6 @@
         "production_lines": 1014,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Compaction defines stable authority digests and entity-level equivalence validation"
       }
     },
     {
@@ -724,9 +730,6 @@
         "production_lines": 6149,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Protocol owns the shared structured and resumable Token and Cost budget exhaustion contract"
       }
     },
     {

@@ -289,6 +289,97 @@ func TestResponsesSessionConnectionResetDefersFullFallbackToNextCall(t *testing.
 	}
 }
 
+func TestResponsesSessionMidStreamResetForcesNextCallToCompleteHTTP(
+	t *testing.T,
+) {
+	var fullFallback map[string]any
+	server := httptest.NewServer(http.HandlerFunc(
+		func(writer http.ResponseWriter, request *http.Request) {
+			if request.Header.Get("Upgrade") == "" {
+				if err := json.NewDecoder(request.Body).Decode(
+					&fullFallback,
+				); err != nil {
+					t.Error(err)
+				}
+				writer.Header().Set(
+					"Content-Type",
+					"text/event-stream",
+				)
+				_, _ = io.WriteString(
+					writer,
+					"data: {\"type\":\"response.completed\","+
+						"\"response\":{\"id\":\"http\","+
+						"\"usage\":{\"input_tokens\":1,"+
+						"\"output_tokens\":1}}}\n\n",
+				)
+				return
+			}
+			conn, err := websocket.Accept(writer, request, nil)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer conn.CloseNow()
+			if _, _, err := conn.Read(request.Context()); err != nil {
+				t.Error(err)
+				return
+			}
+			writeResponseEvent(
+				t,
+				request.Context(),
+				conn,
+				map[string]any{
+					"type":            "response.output_text.delta",
+					"sequence_number": 0,
+					"delta":           "partial",
+				},
+			)
+		},
+	))
+	defer server.Close()
+
+	client := testClient()
+	first := incrementalRequest(t, server.URL)
+	stream, err := client.Stream(t.Context(), first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err == nil {
+		t.Fatalf("mid-stream reset events=%+v error=nil", events)
+	}
+	if len(events) != 2 ||
+		events[1].Type != provider.EventTextDelta ||
+		events[1].Text != "partial" {
+		t.Fatalf("confirmed events = %+v", events)
+	}
+
+	second := first
+	second.Messages = append(
+		second.Messages,
+		provider.TextMessage(provider.RoleAssistant, "partial"),
+		provider.TextMessage(provider.RoleUser, "continue"),
+	)
+	stream, err = client.Stream(t.Context(), second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Drain(stream); err != nil {
+		t.Fatal(err)
+	}
+	metadata := provider.Metadata(stream)
+	if metadata.Incremental ||
+		metadata.Projection.Mode != provider.ProjectionModeFullHTTP ||
+		metadata.Projection.FallbackReason !=
+			provider.ProjectionFallbackConnectionReset {
+		t.Fatalf("fallback metadata = %+v", metadata)
+	}
+	if fullFallback == nil ||
+		fullFallback["previous_response_id"] != nil {
+		t.Fatalf("full fallback body = %#v", fullFallback)
+	}
+}
+
 func TestResponsesSessionReplayOutputMatchesLogicalInputEncoding(t *testing.T) {
 	route := testRequest(
 		t, "https://api.openai.test", model.ProtocolOpenAIResponses,

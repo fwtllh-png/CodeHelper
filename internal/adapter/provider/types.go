@@ -98,20 +98,22 @@ type ToolDefinition struct {
 	InputSchema map[string]any `json:"input_schema"`
 }
 type ModelRequest struct {
-	Route           model.ReadyRoute  `json:"-"`
-	Projection      ProjectionContext `json:"-"`
-	Purpose         model.Purpose     `json:"purpose,omitempty"`
-	Messages        []Message         `json:"messages"`
-	MaxOutputTokens uint64            `json:"max_output_tokens"`
-	Temperature     *float64          `json:"temperature,omitempty"`
-	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
-	NativeSearch    bool              `json:"native_search,omitempty"`
-	Tools           []ToolDefinition  `json:"tools,omitempty"`
-	Idempotent      bool              `json:"idempotent,omitempty"`
-	PromptCacheKey  string            `json:"prompt_cache_key,omitempty"`
-	Store           *bool             `json:"store,omitempty"`
-	ParallelTools   *bool             `json:"parallel_tools,omitempty"`
-	Include         []string          `json:"include,omitempty"`
+	Route            model.ReadyRoute  `json:"-"`
+	Projection       ProjectionContext `json:"-"`
+	LogicalRequestID string            `json:"-"`
+	TransportAttempt uint32            `json:"-"`
+	Purpose          model.Purpose     `json:"purpose,omitempty"`
+	Messages         []Message         `json:"messages"`
+	MaxOutputTokens  uint64            `json:"max_output_tokens"`
+	Temperature      *float64          `json:"temperature,omitempty"`
+	ReasoningEffort  string            `json:"reasoning_effort,omitempty"`
+	NativeSearch     bool              `json:"native_search,omitempty"`
+	Tools            []ToolDefinition  `json:"tools,omitempty"`
+	Idempotent       bool              `json:"idempotent,omitempty"`
+	PromptCacheKey   string            `json:"prompt_cache_key,omitempty"`
+	Store            *bool             `json:"store,omitempty"`
+	ParallelTools    *bool             `json:"parallel_tools,omitempty"`
+	Include          []string          `json:"include,omitempty"`
 }
 
 func StickyPromptCacheKey(key string, route model.ReadyRoute) string {
@@ -249,6 +251,7 @@ const (
 	EventUsage              StreamEventType = "usage"
 	EventReplayState        StreamEventType = "replay_state"
 	EventResponseState      StreamEventType = "response_state"
+	EventTransportProgress  StreamEventType = "transport_progress"
 	EventMessageStop        StreamEventType = "message_stop"
 )
 
@@ -319,6 +322,10 @@ type Citation struct {
 }
 type StreamEvent struct {
 	Type           StreamEventType   `json:"type"`
+	EventID        string            `json:"event_id,omitempty"`
+	Sequenced      bool              `json:"sequenced,omitempty"`
+	Sequence       uint64            `json:"sequence,omitempty"`
+	Ordinal        uint32            `json:"ordinal,omitempty"`
 	StopReason     StopReason        `json:"stop_reason,omitempty"`
 	Index          int               `json:"index,omitempty"`
 	Block          *ContentBlock     `json:"block,omitempty"`
@@ -383,6 +390,8 @@ func (e StreamEvent) Validate() error {
 		if e.Response == nil || e.Response.ID == "" {
 			return errors.New("response state id is required")
 		}
+	case EventTransportProgress:
+		return nil
 	case EventSearchResult:
 		if e.Search == nil {
 			return errors.New("search result is required")
@@ -407,11 +416,14 @@ type Stream interface {
 	Close() error
 }
 type TransportMetadata struct {
-	RequestBytes           uint64
-	LogicalRequestDigest   string
-	TransportPayloadDigest string
-	Incremental            bool
-	Projection             ProjectionReceipt
+	LogicalRequestID       string            `json:"logical_request_id,omitempty"`
+	TransportRequestID     string            `json:"transport_request_id,omitempty"`
+	Attempt                uint32            `json:"attempt,omitempty"`
+	RequestBytes           uint64            `json:"request_bytes"`
+	LogicalRequestDigest   string            `json:"logical_request_digest,omitempty"`
+	TransportPayloadDigest string            `json:"transport_payload_digest,omitempty"`
+	Incremental            bool              `json:"incremental,omitempty"`
+	Projection             ProjectionReceipt `json:"projection"`
 }
 type MetadataStream interface {
 	Stream

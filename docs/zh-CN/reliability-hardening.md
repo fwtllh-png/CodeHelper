@@ -84,7 +84,7 @@ CLI / TUI / VS Code / ACP / Worker
 | R0 | 失败基线与全仓限制清点 | P0 | 已验证 | Runtime / Engineering |
 | R1 | Turn 状态机与终态收敛 | P0 | 已验证 | `internal/runtime/agent` |
 | R2 | 动态预算、进展检测与 Context | P0 | 已验证 | Agent / Context / Config |
-| R3 | Provider 流式输出与残缺调用恢复 | P0 | 待评估 | Provider / Agent |
+| R3 | Provider 流式输出与残缺调用恢复 | P0 | 已验证 | Provider / Agent |
 | R4 | 类型化错误、Retry 与 Deadline | P0 | 修复中 | Protocol / Runtime / Adapters |
 | R5 | 持久化、Journal、幂等与崩溃恢复 | P0 | 修复中 | Persist / Runtime |
 | R6 | Tool、Guard、Sandbox 与副作用一致性 | P0 | 待评估 | Tool / Security / Platform |
@@ -315,6 +315,25 @@ R11 应把这些跳过项和时间敏感用例转换为确定性门禁。
 
 ## R3：Provider 流式输出与残缺调用恢复
 
+**当前进展（2026-08-18）**
+
+- 版本化 `provider/assembly.ResponseAssembly` 统一拥有增量响应完整性、Transport
+  Segment、已确认文本与 Reasoning、原始 Tool Call Fragment、Usage、Replay State
+  和稳定事件身份；
+- 每个已接受 Provider Event 都先通过 `ModelSampleProgressRecorded` 持久化，再向
+  Host 投影。Turn Coordinator 恢复时重排队 Provider Effect，同时原样保留已确认
+  Assembly；
+- 残缺 Tool Call 始终不可执行。Continuation 会收到保留的原始 Fragment，只有后续
+  完整 Segment 且 JSON 有效时才能创建 Tool Effect，因此断流调用不会重复执行；
+- Responses 的 `event_id` 和 `sequence_number` 用于识别重复、改写、乱序和跳号
+  Event。已知 Lifecycle Event 作为 Durable Transport Progress 保留，未知格式漂移在
+  Adapter 层 Fail Closed；
+- 每个 Transport Segment 同时记录统一的 Logical Request ID、独立 Transport Request
+  ID 和 Attempt；Usage 可跨 HTTP 与 WebSocket Attempt 准确归因；
+- WebSocket EOF、Decode Failure、Connection Reset、Retry、Resume、Compaction、
+  Route/Property 变化和 History Rebase 都会使不确定的增量链失效，并在复用前强制
+  完整请求。
+
 **扫描范围**
 
 - EOF、连接重置、限流、空响应、重复 Chunk、乱序 Chunk 和缺失 Finish Reason；
@@ -334,6 +353,12 @@ R11 应把这些跳过项和时间敏感用例转换为确定性门禁。
 - 在任意 Chunk 边界断流均不会静默丢失已确认数据；
 - Retry 不会重复执行已闭合 Tool Call；
 - Provider 契约测试覆盖断流、重复、乱序、空响应和格式漂移。
+
+R3 聚焦矩阵覆盖每个断流边界、并行残缺 Tool Call、重复与乱序 Sequence Identity、
+未知 Responses Event 形状、WebSocket 中途断开后的完整 HTTP 回退、保留 Assembly
+的 Kernel 恢复、空响应 Completion Repair，以及 Provider/Tool 执行中取消。
+Provider、Turn Kernel、Engine、Runtime App 和 Wire 包测试通过；Architecture Ratchet
+覆盖 112/112 项。
 
 ## R4：类型化错误、Retry 与 Deadline
 
