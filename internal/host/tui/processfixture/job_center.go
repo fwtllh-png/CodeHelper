@@ -83,8 +83,9 @@ func (f *JobCenter) Cancel(id string) error {
 	return nil
 }
 
-func (f *JobCenter) CancelAll() {
+func (f *JobCenter) CancelAll() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Jobs = map[string]process.JobInfo{}
+	return nil
 }

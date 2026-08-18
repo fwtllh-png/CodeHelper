@@ -24,8 +24,10 @@ const defaultSessionLimit = 128
 type SessionManager struct {
 	mu             sync.RWMutex
 	sessions       map[string]*Session
+	starting       map[string]journalEntry
 	stale          map[string]journalEntry
 	journalPath    string
+	journalErr     error
 	archive        Archive
 	maxOutputBytes int
 	maxSessions    int
@@ -126,12 +128,16 @@ func NewSessionManager(maxOutputBytes int) *SessionManager {
 		maxOutputBytes = defaultSessionOutputLimit
 	}
 	return &SessionManager{
-		sessions: make(map[string]*Session), stale: make(map[string]journalEntry),
+		sessions: make(map[string]*Session), starting: make(map[string]journalEntry),
+		stale:          make(map[string]journalEntry),
 		maxOutputBytes: maxOutputBytes, maxSessions: defaultSessionLimit,
 	}
 }
 
-func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (string, error) {
+func (m *SessionManager) Create(
+	ctx context.Context,
+	options SessionOptions,
+) (_ string, resultErr error) {
 	ownerThreadID := strings.TrimSpace(options.ThreadID)
 	if ownerThreadID == "" {
 		return "", errors.New("terminal session owner thread is required")
@@ -140,6 +146,34 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 	if commandText == "" {
 		commandText = "exec ${SHELL:-/bin/sh}"
 	}
+	sessionID := options.SessionID
+	if sessionID == "" {
+		sessionID = randomSessionID()
+	}
+	if !validSessionID(sessionID) {
+		return "", errors.New("session id contains unsupported characters")
+	}
+	createdAt := time.Now().UTC()
+	if err := m.prepareSession(
+		sessionID,
+		journalEntry{
+			ID: sessionID, Command: commandText, Cwd: options.Dir,
+			CreatedAt:    createdAt,
+			LinkedTaskID: strings.TrimSpace(options.LinkedTaskID),
+		},
+	); err != nil {
+		return "", err
+	}
+	registered := false
+	defer func() {
+		if registered {
+			return
+		}
+		resultErr = errors.Join(
+			resultErr,
+			m.rollbackPreparedSession(sessionID),
+		)
+	}()
 	runCtx := ctx
 	if options.DetachFromCaller {
 		runCtx = context.WithoutCancel(ctx)
@@ -203,24 +237,13 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 		input = stdinWriter
 		output = outputReader
 	}
-	sessionID := options.SessionID
-	if sessionID == "" {
-		sessionID = randomSessionID()
-	}
-	if !validSessionID(sessionID) {
-		_ = terminateProcessGroup(command.Process)
-		_ = input.Close()
-		_ = output.Close()
-		_ = command.Wait()
-		return "", errors.New("session id contains unsupported characters")
-	}
 	session := &Session{
 		id: sessionID, commandText: commandText, cwd: options.Dir,
 		linkedTaskID: strings.TrimSpace(options.LinkedTaskID),
 		threadID:     ownerThreadID,
 		turnID:       strings.TrimSpace(options.TurnID),
 		callID:       strings.TrimSpace(options.CallID),
-		createdAt:    time.Now().UTC(),
+		createdAt:    createdAt,
 		command:      command, input: input, outputReader: output,
 		terminal: terminal, tty: options.PTY,
 		running: true, exitCode: -1,
@@ -231,40 +254,11 @@ func (m *SessionManager) Create(ctx context.Context, options SessionOptions) (st
 	session.archive = m.archive
 	m.mu.RUnlock()
 	m.mu.Lock()
-	if _, exists := m.sessions[session.id]; exists {
-		m.mu.Unlock()
-		_ = terminateProcessGroup(command.Process)
-		_ = input.Close()
-		_ = output.Close()
-		_ = command.Wait()
-		return "", errors.New("terminal session id already exists")
-	}
-	if len(m.sessions) >= m.maxSessions {
-		for id, existing := range m.sessions {
-			existing.mu.RLock()
-			running := existing.running
-			existing.mu.RUnlock()
-			if !running {
-				delete(m.sessions, id)
-				break
-			}
-		}
-	}
-	if len(m.sessions) >= m.maxSessions {
-		m.mu.Unlock()
-		_ = terminateProcessGroup(command.Process)
-		_ = input.Close()
-		_ = output.Close()
-		_ = command.Wait()
-		return "", errors.New("terminal session capacity exceeded")
-	}
+	delete(m.starting, session.id)
 	m.sessions[session.id] = session
 	delete(m.stale, session.id)
-	m.appendJournalLocked(journalEntry{
-		ID: session.id, Command: session.commandText, Cwd: session.cwd,
-		CreatedAt: session.createdAt, LinkedTaskID: session.linkedTaskID,
-	})
 	m.mu.Unlock()
+	registered = true
 	go session.readLoop()
 	go session.waitLoop()
 	if options.Timeout > 0 {
@@ -491,31 +485,59 @@ func (m *SessionManager) closeSession(id string, session *Session) error {
 	if m.sessions[id] == session {
 		delete(m.sessions, id)
 	}
-	m.rewriteJournalLocked()
+	journalErr := m.rewriteJournalLocked()
+	if journalErr != nil {
+		m.stale[id] = journalEntry{
+			ID: session.id, Command: session.commandText, Cwd: session.cwd,
+			CreatedAt: session.createdAt, LinkedTaskID: session.linkedTaskID,
+		}
+		m.journalErr = errors.Join(m.journalErr, journalErr)
+	}
 	m.mu.Unlock()
+	if journalErr != nil {
+		return fmt.Errorf(
+			"remove terminal session from process journal: %w",
+			journalErr,
+		)
+	}
 	return nil
 }
 
+func (m *SessionManager) JournalError() error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.journalErr
+}
+
 func (m *SessionManager) CloseAll() {
+	_ = m.CloseAllWithError()
+}
+
+func (m *SessionManager) CloseAllWithError() error {
 	m.mu.RLock()
 	ids := make([]string, 0, len(m.sessions))
 	for id := range m.sessions {
 		ids = append(ids, id)
 	}
 	m.mu.RUnlock()
+	var closeErrors []error
 	for _, id := range ids {
 		session, err := m.get(id)
 		if err == nil {
-			_ = m.closeSession(id, session)
+			closeErrors = append(
+				closeErrors,
+				m.closeSession(id, session),
+			)
 		}
 	}
+	return errors.Join(closeErrors...)
 }
 
 // CloseByThread terminates sessions leased to threadID. Returns how many were closed.
-func (m *SessionManager) CloseByThread(threadID string) int {
+func (m *SessionManager) CloseByThread(threadID string) (int, error) {
 	threadID = strings.TrimSpace(threadID)
 	if threadID == "" {
-		return 0
+		return 0, nil
 	}
 	m.mu.RLock()
 	ids := make([]string, 0)
@@ -525,21 +547,25 @@ func (m *SessionManager) CloseByThread(threadID string) int {
 		}
 	}
 	m.mu.RUnlock()
+	var closeErrors []error
 	for _, id := range ids {
 		session, err := m.get(id)
 		if err == nil {
-			_ = m.closeSession(id, session)
+			closeErrors = append(
+				closeErrors,
+				m.closeSession(id, session),
+			)
 		}
 	}
-	return len(ids)
+	return len(ids), errors.Join(closeErrors...)
 }
 
 // CloseByTurn terminates sessions created by one Runtime turn without
 // disturbing concurrent turns in the same thread.
-func (m *SessionManager) CloseByTurn(turnID string) int {
+func (m *SessionManager) CloseByTurn(turnID string) (int, error) {
 	turnID = strings.TrimSpace(turnID)
 	if turnID == "" {
-		return 0
+		return 0, nil
 	}
 	m.mu.RLock()
 	ids := make([]string, 0)
@@ -549,13 +575,17 @@ func (m *SessionManager) CloseByTurn(turnID string) int {
 		}
 	}
 	m.mu.RUnlock()
+	var closeErrors []error
 	for _, id := range ids {
 		session, err := m.get(id)
 		if err == nil {
-			_ = m.closeSession(id, session)
+			closeErrors = append(
+				closeErrors,
+				m.closeSession(id, session),
+			)
 		}
 	}
-	return len(ids)
+	return len(ids), errors.Join(closeErrors...)
 }
 
 // OwnerThread returns the lease thread for a live session, or empty if unknown.

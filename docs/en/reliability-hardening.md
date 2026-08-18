@@ -99,7 +99,7 @@ Priority definitions:
 | R2 | Dynamic budgets, progress detection, and Context | P0 | verified | Agent / Context / Config |
 | R3 | Provider streams and incomplete-call recovery | P0 | verified | Provider / Agent |
 | R4 | Typed faults, Retry, and Deadline semantics | P0 | verified | Protocol / Runtime / Adapters |
-| R5 | Persistence, Journal, idempotency, and crash recovery | P0 | repairing | Persist / Runtime |
+| R5 | Persistence, Journal, idempotency, and crash recovery | P0 | verified | Persist / Runtime |
 | R6 | Tool, Guard, Sandbox, and side-effect consistency | P0 | unassessed | Tool / Security / Platform |
 | R7 | Concurrency, cancellation, backpressure, and resources | P1 | unassessed | Runtime / Platform |
 | R8 | Protocol and cross-Host behavior | P1 | unassessed | Protocol / Hosts |
@@ -489,8 +489,17 @@ backoff, Workflow idempotency, and Worker attempt settlement.
 - Child WorkGraph and Manager Settlement use idempotent retry without a fixed
   attempt count. New Child Turns return typed `unavailable` while recovery is
   pending instead of deleting Settlement errors;
-- discarded Checkpoint rollback, Observation writes, and Process Journal errors
-  from the rest of R0-004 remain.
+- Checkpoint restore joins publication and in-memory rollback failures, so a
+  failed rollback cannot hide behind the original Event failure;
+- asynchronous Observation journal failures are retained by the Router and
+  returned by `Flush` and `Close`. Critical admission still reports
+  `writer_failed` without rewriting the business terminal decision;
+- Process Sessions are not admitted without a durable journal identity.
+  Journal rewrites use temp-write, file sync, rename, and directory sync;
+  complete corrupt records fail recovery while only a torn final line is
+  ignored;
+- Process Journal cleanup failures remain visible through explicit APIs,
+  Runtime resource-stack shutdown, metrics, and logs instead of being dropped.
 
 **Audit scope**
 
@@ -518,6 +527,15 @@ backoff, Workflow idempotency, and Worker attempt settlement.
 - Terminal Events are neither lost nor logically duplicated;
 - Outcome Unknown has a dedicated path that does not blindly retry side
   effects.
+
+The R5 fault matrix injects failure at Domain Fact, Terminal Envelope, Terminal
+Outbox, and Operation Commit writes. Every failed transaction leaves zero
+partial rows; retry after fault removal creates one envelope, one logical
+terminal, and the expected outbox exactly once. Stable Event IDs close the
+publish-before-ack crash window, and repeated or concurrent recovery projects
+one logical Event per outbox entry. Focused Checkpoint rollback, Observation
+writer, Process Journal corruption/disk failure, SQLite transaction, and
+Runtime outbox recovery tests pass.
 
 ## R6: Tool, Guard, Sandbox, and Side-Effect Consistency
 

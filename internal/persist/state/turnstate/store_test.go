@@ -270,6 +270,93 @@ func TestC4SQLiteAtomicCommitRollsBackEnvelopeWhenOperationIsMissing(
 	}
 }
 
+func TestR5TerminalCommitCrashPointMatrixIsAtomicAndIdempotent(
+	t *testing.T,
+) {
+	tests := []struct {
+		name            string
+		table           string
+		operationCommit bool
+	}{
+		{name: "domain_fact", table: "turn_domain_facts"},
+		{name: "terminal_envelope", table: "turn_terminal_envelopes"},
+		{name: "terminal_outbox", table: "turn_terminal_outbox"},
+		{
+			name:            "operation_commit",
+			table:           "operations",
+			operationCommit: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			database, err := sqlitestate.Open(
+				t.Context(),
+				filepath.Join(t.TempDir(), "state.db"),
+				sqlitestate.Options{},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = database.Close() })
+			store := NewSQLiteRepository(database)
+			envelope := sqliteEnvelopeFixture(t)
+			action := "INSERT"
+			if test.operationCommit {
+				envelope.OperationCommit.Receipt = []byte(
+					`{"status":"committed"}`,
+				)
+				seedTerminalOperation(t, database, envelope)
+				action = "UPDATE"
+			}
+			trigger := "inject_terminal_" + test.name
+			if _, err := database.DB().ExecContext(
+				t.Context(),
+				"CREATE TRIGGER "+trigger+" BEFORE "+action+" ON "+
+					test.table+` BEGIN
+						SELECT RAISE(FAIL, 'injected terminal crash point');
+					END`,
+			); err != nil {
+				t.Fatal(err)
+			}
+			commit := func() error {
+				if test.operationCommit {
+					_, err := store.CommitTerminalOperation(
+						t.Context(),
+						envelope,
+					)
+					return err
+				}
+				_, err := store.CommitTerminal(t.Context(), envelope)
+				return err
+			}
+			if err := commit(); err == nil {
+				t.Fatal("injected terminal crash point was ignored")
+			}
+			assertTerminalRows(t, database, 0, 0, 0)
+			if _, err := database.DB().ExecContext(
+				t.Context(),
+				"DROP TRIGGER "+trigger,
+			); err != nil {
+				t.Fatal(err)
+			}
+			if err := commit(); err != nil {
+				t.Fatal(err)
+			}
+			if err := commit(); err != nil {
+				t.Fatalf("idempotent terminal retry: %v", err)
+			}
+			assertTerminalRows(t, database, 1, 1, 2)
+			pending, err := store.PendingOutbox(
+				t.Context(),
+				envelope.TurnID,
+			)
+			if err != nil || len(pending) != 2 {
+				t.Fatalf("pending outbox = %+v, err=%v", pending, err)
+			}
+		})
+	}
+}
+
 func TestSQLiteTerminalCommitUpgradesCommittedReceiptForActiveTurn(
 	t *testing.T,
 ) {
@@ -330,6 +417,63 @@ func TestSQLiteTerminalCommitUpgradesCommittedReceiptForActiveTurn(
 	}
 	if response != string(envelope.OperationCommit.Receipt) {
 		t.Fatalf("operation response = %s", response)
+	}
+}
+
+func seedTerminalOperation(
+	t *testing.T,
+	database *sqlitestate.Store,
+	envelope turnkernel.TerminalEnvelope,
+) {
+	t.Helper()
+	seedActiveTurn(
+		t,
+		database,
+		envelope.TurnID,
+		string(envelope.Outbox[0].ThreadID),
+	)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := database.DB().ExecContext(t.Context(), `
+		INSERT INTO operations(
+			id, session_id, kind, status, request_json,
+			created_at, updated_at
+		) VALUES (?, 'session-lease', 'turn.start', 'accepted', '{}', ?, ?)`,
+		envelope.OperationCommit.OperationID,
+		now,
+		now,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().ExecContext(t.Context(), `
+		UPDATE turns SET operation_id = ? WHERE id = ?`,
+		envelope.OperationCommit.OperationID,
+		envelope.TurnID,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertTerminalRows(
+	t *testing.T,
+	database *sqlitestate.Store,
+	facts, envelopes, outbox int,
+) {
+	t.Helper()
+	for table, want := range map[string]int{
+		"turn_domain_facts":       facts,
+		"turn_terminal_envelopes": envelopes,
+		"turn_terminal_outbox":    outbox,
+	} {
+		var got int
+		if err := database.DB().QueryRowContext(
+			t.Context(),
+			"SELECT COUNT(*) FROM "+table,
+		).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("%s rows = %d, want %d", table, got, want)
+		}
 	}
 }
 

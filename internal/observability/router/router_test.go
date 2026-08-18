@@ -365,6 +365,28 @@ func TestJournalFailureReleasesPayloadAndDoesNotEscape(t *testing.T) {
 	}
 }
 
+func TestAsynchronousJournalFailureIsReturnedByFlush(t *testing.T) {
+	writeErr := errors.New("injected asynchronous disk full")
+	router, err := New(&fakeJournal{appendErr: writeErr}, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := modelRecord()
+	receipt := router.Record(t.Context(), record)
+	if receipt.Status != observation.AdmissionAccepted {
+		t.Fatalf("Record() receipt = %+v", receipt)
+	}
+	if err := router.Flush(t.Context()); !errors.Is(err, writeErr) {
+		t.Fatalf("Flush() error = %v, want %v", err, writeErr)
+	}
+	if err := router.Close(t.Context()); !errors.Is(err, writeErr) {
+		t.Fatalf("Close() error = %v, want %v", err, writeErr)
+	}
+	if router.Snapshot().WriteFailures["journal_write"] != 1 {
+		t.Fatalf("health = %+v", router.Snapshot())
+	}
+}
+
 func TestProjectorReceivesOnlyDurableEnvelope(t *testing.T) {
 	writer := &fakeJournal{}
 	projector := &fakeProjector{}

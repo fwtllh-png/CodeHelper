@@ -53,9 +53,10 @@ func ServeMCP(
 	manager := process.NewSessionManager(0)
 	store := contentstore.NewMemory(contentstore.Options{})
 	defer func() {
-		manager.CloseAll()
 		resultErr = errors.Join(
 			resultErr,
+			manager.CloseAllWithError(),
+			manager.JournalError(),
 			store.Close(context.Background()),
 			sandbox.CloseBackend(backend),
 		)

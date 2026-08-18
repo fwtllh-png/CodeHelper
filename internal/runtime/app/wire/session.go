@@ -271,7 +271,10 @@ func (s *Session) registerResourceClosers() error {
 		}},
 		{name: "processes", close: func(context.Context) error {
 			if s.processes != nil {
-				s.processes.CloseAll()
+				return errors.Join(
+					s.processes.CloseAllWithError(),
+					s.processes.JournalError(),
+				)
 			}
 			return nil
 		}},

@@ -76,6 +76,7 @@ type Router struct {
 	observed        atomic.Uint64
 	lastRecordedAt  time.Time
 	lastMonotonicNS uint64
+	writeErr        error
 	accepting       bool
 	closed          bool
 	wake            chan struct{}
@@ -194,6 +195,7 @@ func (r *Router) Record(
 		payloadUnavailable, persistErr := r.persist(context.Background(), item)
 		r.finishSynchronous()
 		if persistErr != nil {
+			r.recordWriteError(persistErr)
 			return observation.AdmissionReceipt{
 				Status: observation.AdmissionWriterFailed,
 				ID:     id,
@@ -230,7 +232,11 @@ func (r *Router) Flush(ctx context.Context) error {
 			if r.projector != nil {
 				projectorErr = r.projector.ForceFlush(ctx)
 			}
-			return errors.Join(journalErr, projectorErr)
+			return errors.Join(
+				r.persistenceError(),
+				journalErr,
+				projectorErr,
+			)
 		}
 		select {
 		case <-ctx.Done():
@@ -370,7 +376,8 @@ func (r *Router) run() {
 				if !ok {
 					break
 				}
-				_, _ = r.persist(context.Background(), item)
+				_, persistErr := r.persist(context.Background(), item)
+				r.recordWriteError(persistErr)
 				r.finishAsynchronous()
 			}
 		}
@@ -489,6 +496,23 @@ func (r *Router) persist(
 
 func (r *Router) updateQueueHealthLocked() {
 	r.health.Queue(r.depth, r.bytes, r.inFlight)
+}
+
+func (r *Router) recordWriteError(err error) {
+	if err == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.writeErr == nil {
+		r.writeErr = err
+	}
+}
+
+func (r *Router) persistenceError() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.writeErr
 }
 
 func recordBytes(record observation.Record) int64 {

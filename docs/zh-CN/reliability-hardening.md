@@ -86,7 +86,7 @@ CLI / TUI / VS Code / ACP / Worker
 | R2 | 动态预算、进展检测与 Context | P0 | 已验证 | Agent / Context / Config |
 | R3 | Provider 流式输出与残缺调用恢复 | P0 | 已验证 | Provider / Agent |
 | R4 | 类型化错误、Retry 与 Deadline | P0 | 已验证 | Protocol / Runtime / Adapters |
-| R5 | 持久化、Journal、幂等与崩溃恢复 | P0 | 修复中 | Persist / Runtime |
+| R5 | 持久化、Journal、幂等与崩溃恢复 | P0 | 已验证 | Persist / Runtime |
 | R6 | Tool、Guard、Sandbox 与副作用一致性 | P0 | 待评估 | Tool / Security / Platform |
 | R7 | 并发、取消、背压与资源生命周期 | P1 | 待评估 | Runtime / Platform |
 | R8 | Protocol 与多 Host 行为一致性 | P1 | 待评估 | Protocol / Hosts |
@@ -409,8 +409,15 @@ Retry-After 上限、确定性退避、Workflow 幂等声明和 Worker Attempt S
 - Coordinator Open/Restore 回滚错误会与主错误聚合返回；
 - Child WorkGraph 与 Manager Settlement 使用幂等、无固定次数的后台重试；恢复期间新
   Child Turn 返回结构化 `unavailable`，不再删除 Settlement 错误；
-- 尚需继续清理 Checkpoint 回滚、Observation 写入和 Process Journal 等 R0-004
-  剩余错误丢弃点。
+- Checkpoint Restore 会聚合 Event 发布与内存回滚错误，回滚失败不会再被原始发布
+  错误掩盖；
+- Observation Router 会锁存异步 Journal 写入错误，并由 `Flush` 和 `Close` 返回；
+  Critical Admission 仍返回 `writer_failed`，不会反向改写业务终态；
+- Process Session 必须先获得 Durable Journal Identity 才能对外可见。Journal 重写
+  使用临时文件写入、文件同步、重命名和目录同步；完整损坏记录会使恢复失败，仅允许
+  忽略崩溃产生的最后一条 Torn Line；
+- Process Journal 清理错误通过显式 API、Runtime Resource Stack 关闭、Metrics 和
+  Log 保留，不再静默丢弃。
 
 **扫描范围**
 
@@ -431,6 +438,13 @@ Retry-After 上限、确定性退避、Workflow 幂等声明和 Worker Attempt S
 - 在每个持久化写入点注入崩溃后，恢复结果仍确定；
 - Terminal Event 不丢失、不重复产生逻辑终态；
 - Outcome Unknown 有专用处理路径，不会盲目重试副作用。
+
+R5 故障矩阵分别在 Domain Fact、Terminal Envelope、Terminal Outbox 和 Operation
+Commit 写点注入失败。每次失败后事务均不残留部分记录；移除故障后的重复提交只产生
+一个 Envelope、一个逻辑终态和预期 Outbox。稳定 Event ID 关闭 Publish-before-ack
+崩溃窗口，重复或并发恢复对每个 Outbox Entry 只投影一个逻辑 Event。Checkpoint
+回滚、Observation Writer、Process Journal 损坏/磁盘故障、SQLite 事务和 Runtime
+Outbox 恢复的定向测试均通过。
 
 ## R6：Tool、Guard、Sandbox 与副作用一致性
 

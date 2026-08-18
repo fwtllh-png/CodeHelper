@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -483,8 +484,11 @@ func (r *ArtifactService) RestoreCheckpoint(
 		},
 	)
 	if publishErr != nil {
-		_ = manager.RestoreCheckpoint(current.ThreadID, previous)
-		return protocol.CheckpointRestoreResult{}, publishErr
+		rollbackErr := manager.RestoreCheckpoint(current.ThreadID, previous)
+		return protocol.CheckpointRestoreResult{}, errors.Join(
+			publishErr,
+			rollbackErr,
+		)
 	}
 	return protocol.CheckpointRestoreResult{
 		Version:             protocol.CheckpointProtocolVersion,

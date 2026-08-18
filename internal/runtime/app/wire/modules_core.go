@@ -71,7 +71,9 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 	processes.SetJournalPath(
 		filepath.Join(execution.Workspace, ".codehelper", "jobs-journal.jsonl"),
 	)
-	_ = processes.LoadStaleJournal()
+	if err := processes.LoadStaleJournal(); err != nil {
+		return fmt.Errorf("load process session journal: %w", err)
+	}
 	if state.persistence.jobLogs != nil {
 		processes.SetArchive(state.persistence.jobLogs)
 	}

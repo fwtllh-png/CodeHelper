@@ -120,11 +120,10 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		Metrics:                      session.metrics,
 		Observability:                engineObservability(state),
 		TurnCoordinatorRuntime:       coordinatorRuntime,
-		ReleaseTurnResources: func(identity agentengine.TurnIdentity) {
-			if session.processes != nil {
-				session.processes.CloseByTurn(identity.TurnID)
-			}
-		},
+		ReleaseTurnResources: session.turnProcessReleaser(
+			session.processes,
+			"main",
+		),
 		ReasoningEffort: reasoningEffort,
 		NativeSearch:    execution.NativeSearch,
 		Budget: agentengine.Budget{
@@ -254,9 +253,10 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 				options.ReadTracker = workspacejournal.NewReadTracker()
 				options.Diagnostics = toolset.diagnostics
 				options.Verify.Runner = toolset.verify
-				options.ReleaseTurnResources = func(identity agentengine.TurnIdentity) {
-					toolset.processes.CloseByTurn(identity.TurnID)
-				}
+				options.ReleaseTurnResources = session.turnProcessReleaser(
+					toolset.processes,
+					"child",
+				)
 			}
 			restrictChildTools(
 				options.Security, spec, seedOptions.Tools, options.Tools,

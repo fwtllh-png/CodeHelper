@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -41,7 +42,7 @@ type JobCenter interface {
 	Poll(ctx context.Context, id string, wait bool) (JobInfo, error)
 	Stdin(id, data string) error
 	Cancel(id string) error
-	CancelAll()
+	CancelAll() error
 }
 
 type journalEntry struct {
@@ -76,14 +77,27 @@ func (m *SessionManager) LoadStaleJournal() error {
 	if m.stale == nil {
 		m.stale = map[string]journalEntry{}
 	}
-	for _, line := range strings.Split(string(payload), "\n") {
+	lines := strings.Split(string(payload), "\n")
+	for index, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 		var entry journalEntry
-		if json.Unmarshal([]byte(line), &entry) != nil || entry.ID == "" {
-			continue
+		if err := json.Unmarshal([]byte(line), &entry); err != nil ||
+			entry.ID == "" {
+			if index == len(lines)-1 &&
+				!strings.HasSuffix(string(payload), "\n") {
+				break
+			}
+			if err == nil {
+				err = errors.New("process journal entry has no id")
+			}
+			return fmt.Errorf(
+				"decode process journal line %d: %w",
+				index+1,
+				err,
+			)
 		}
 		if _, live := m.sessions[entry.ID]; live {
 			continue
@@ -93,30 +107,90 @@ func (m *SessionManager) LoadStaleJournal() error {
 	return nil
 }
 
-func (m *SessionManager) appendJournalLocked(entry journalEntry) {
+func (m *SessionManager) appendJournalLocked(entry journalEntry) error {
 	if m.journalPath == "" {
-		return
+		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(m.journalPath), 0o700); err != nil {
-		return
+		return err
 	}
 	file, err := os.OpenFile(m.journalPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
-		return
+		return err
 	}
-	defer file.Close()
 	payload, err := json.Marshal(entry)
 	if err != nil {
-		return
+		return errors.Join(err, file.Close())
 	}
-	_, _ = file.Write(append(payload, '\n'))
+	if _, err := file.Write(append(payload, '\n')); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	if err := file.Sync(); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	return file.Close()
 }
 
-func (m *SessionManager) rewriteJournalLocked() {
-	if m.journalPath == "" {
-		return
+func (m *SessionManager) prepareSession(
+	id string,
+	entry journalEntry,
+) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.sessions[id]; exists {
+		return errors.New("terminal session id already exists")
 	}
-	entries := make([]journalEntry, 0, len(m.sessions)+len(m.stale))
+	if _, exists := m.starting[id]; exists {
+		return errors.New("terminal session id already exists")
+	}
+	if len(m.sessions)+len(m.starting) >= m.maxSessions {
+		for existingID, session := range m.sessions {
+			session.mu.RLock()
+			running := session.running
+			session.mu.RUnlock()
+			if !running {
+				delete(m.sessions, existingID)
+				break
+			}
+		}
+	}
+	if len(m.sessions)+len(m.starting) >= m.maxSessions {
+		return errors.New("terminal session capacity exceeded")
+	}
+	m.starting[id] = entry
+	if err := m.appendJournalLocked(entry); err != nil {
+		delete(m.starting, id)
+		return fmt.Errorf(
+			"record terminal session in process journal: %w",
+			err,
+		)
+	}
+	return nil
+}
+
+func (m *SessionManager) rollbackPreparedSession(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.starting[id]; !exists {
+		return nil
+	}
+	delete(m.starting, id)
+	err := m.rewriteJournalLocked()
+	if err != nil {
+		m.journalErr = errors.Join(m.journalErr, err)
+	}
+	return err
+}
+
+func (m *SessionManager) rewriteJournalLocked() error {
+	if m.journalPath == "" {
+		return nil
+	}
+	entries := make(
+		[]journalEntry,
+		0,
+		len(m.sessions)+len(m.stale)+len(m.starting),
+	)
 	for _, session := range m.sessions {
 		entries = append(entries, journalEntry{
 			ID: session.id, Command: session.commandText, Cwd: session.cwd,
@@ -126,6 +200,9 @@ func (m *SessionManager) rewriteJournalLocked() {
 	for _, entry := range m.stale {
 		entries = append(entries, entry)
 	}
+	for _, entry := range m.starting {
+		entries = append(entries, entry)
+	}
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].CreatedAt.Before(entries[j].CreatedAt)
 	})
@@ -133,13 +210,41 @@ func (m *SessionManager) rewriteJournalLocked() {
 	for _, entry := range entries {
 		payload, err := json.Marshal(entry)
 		if err != nil {
-			continue
+			return err
 		}
 		builder.Write(payload)
 		builder.WriteByte('\n')
 	}
-	_ = os.MkdirAll(filepath.Dir(m.journalPath), 0o700)
-	_ = os.WriteFile(m.journalPath, []byte(builder.String()), 0o600)
+	parent := filepath.Dir(m.journalPath)
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(parent, ".jobs-journal-*.tmp")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		return errors.Join(err, temporary.Close())
+	}
+	if _, err := temporary.WriteString(builder.String()); err != nil {
+		return errors.Join(err, temporary.Close())
+	}
+	if err := temporary.Sync(); err != nil {
+		return errors.Join(err, temporary.Close())
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporaryPath, m.journalPath); err != nil {
+		return err
+	}
+	directory, err := os.Open(parent)
+	if err != nil {
+		return err
+	}
+	return errors.Join(directory.Sync(), directory.Close())
 }
 
 // List returns live sessions plus stale journal rows.
@@ -234,22 +339,33 @@ func (m *SessionManager) Stdin(id, data string) error {
 func (m *SessionManager) Cancel(id string) error {
 	m.mu.Lock()
 	if _, stale := m.stale[id]; stale {
+		entry := m.stale[id]
 		delete(m.stale, id)
-		m.rewriteJournalLocked()
+		err := m.rewriteJournalLocked()
+		if err != nil {
+			m.stale[id] = entry
+			m.journalErr = errors.Join(m.journalErr, err)
+		}
 		m.mu.Unlock()
-		return nil
+		return err
 	}
 	m.mu.Unlock()
 	return m.Close(id, m.OwnerThread(id))
 }
 
 // CancelAll closes all live sessions and clears stale journal rows.
-func (m *SessionManager) CancelAll() {
-	m.CloseAll()
+func (m *SessionManager) CancelAll() error {
+	closeErr := m.CloseAllWithError()
 	m.mu.Lock()
+	previous := m.stale
 	m.stale = map[string]journalEntry{}
-	m.rewriteJournalLocked()
+	rewriteErr := m.rewriteJournalLocked()
+	if rewriteErr != nil {
+		m.stale = previous
+		m.journalErr = errors.Join(m.journalErr, rewriteErr)
+	}
 	m.mu.Unlock()
+	return errors.Join(closeErr, rewriteErr)
 }
 
 func (s *Session) jobInfo() JobInfo {

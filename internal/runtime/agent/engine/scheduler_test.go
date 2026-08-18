@@ -17,8 +17,11 @@ func TestToolSchedulerAdmitsWaitersInFIFOOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	acquired := make(chan int, 5)
+	var wg sync.WaitGroup
 	for index := range 5 {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			release, err := sched.Admit(t.Context(), tool.ParallelSerial)
 			if err != nil {
 				return
@@ -41,6 +44,7 @@ func TestToolSchedulerAdmitsWaitersInFIFOOrder(t *testing.T) {
 			t.Fatalf("waiter %d starved", want)
 		}
 	}
+	wg.Wait()
 	if sched.Active() != 0 || sched.Waiting() != 0 {
 		t.Fatalf("scheduler leaked active=%d waiting=%d", sched.Active(), sched.Waiting())
 	}

@@ -83,9 +83,27 @@ func (s *memoryArtifactStore) LatestPlan(
 
 type artifactTestEngine struct {
 	profileTestEngine
-	history  []provider.Message
-	restores int
-	forks    map[protocol.ThreadID][]provider.Message
+	history      []provider.Message
+	restores     int
+	restoreErrAt int
+	restoreErr   error
+	forks        map[protocol.ThreadID][]provider.Message
+}
+
+type artifactFailingEventStore struct {
+	EventStore
+	kind protocol.EventKind
+	err  error
+}
+
+func (s artifactFailingEventStore) Append(
+	ctx context.Context,
+	event protocol.Event,
+) error {
+	if event.Kind == s.kind {
+		return s.err
+	}
+	return s.EventStore.Append(ctx, event)
 }
 
 func (e *artifactTestEngine) History(
@@ -98,8 +116,11 @@ func (e *artifactTestEngine) RestoreCheckpoint(
 	_ protocol.ThreadID,
 	history []provider.Message,
 ) error {
-	e.history = append([]provider.Message(nil), history...)
 	e.restores++
+	if e.restoreErrAt == e.restores {
+		return e.restoreErr
+	}
+	e.history = append([]provider.Message(nil), history...)
 	return nil
 }
 
@@ -199,6 +220,65 @@ func TestCheckpointRestoreIsStateOnlyAndForkPreservesLineage(t *testing.T) {
 		lifecycle.summary.ThreadID != forked.ThreadID ||
 		lifecycle.summary.ParentThreadID != "thread-profile" {
 		t.Fatalf("Fork result=%+v lifecycle=%+v", forked, lifecycle.summary)
+	}
+}
+
+func TestCheckpointRestoreJoinsPublicationAndRollbackFailures(t *testing.T) {
+	profile := runtimeTestProfile()
+	encoded, err := EncodeCompactedHistory([]provider.Message{
+		provider.TextMessage(provider.RoleUser, "checkpoint prompt"),
+		provider.TextMessage(provider.RoleAssistant, "checkpoint result"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rollbackErr := errors.New("injected checkpoint rollback failure")
+	publishErr := errors.New("injected checkpoint publication failure")
+	engine := &artifactTestEngine{
+		profileTestEngine: profileTestEngine{},
+		history: []provider.Message{
+			provider.TextMessage(provider.RoleUser, "current history"),
+		},
+		restoreErrAt: 2,
+		restoreErr:   rollbackErr,
+	}
+	events := artifactFailingEventStore{
+		EventStore: NewMemoryEventStore(16),
+		kind:       protocol.EventCheckpointRestored,
+		err:        publishErr,
+	}
+	runtime := NewRuntime(Options{
+		Engine:              engine,
+		EventStore:          events,
+		SessionProfiles:     &memoryProfileStore{profile: profile},
+		DefaultProfile:      profile,
+		ProfileCapabilities: runtimeTestCapabilities(profile),
+		SessionLifecycle:    artifactLifecycle(),
+		SessionArtifacts: &memoryArtifactStore{
+			checkpoint: protocol.SessionCheckpoint{
+				Version: protocol.CheckpointProtocolVersion,
+				ID:      "checkpoint-rollback", SessionID: "session-profile",
+				ThreadID: "thread-profile", TurnID: "turn-checkpoint",
+				Cursor: 8, Status: protocol.CheckpointCompleted,
+				ProfileRevision: profile.Revision, CanRestore: true,
+			},
+			history: encoded,
+			profile: profile,
+		},
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	_, err = runtime.RestoreCheckpoint(
+		t.Context(),
+		"session-profile",
+		"checkpoint-rollback",
+	)
+	if err == nil ||
+		!errors.Is(err, publishErr) ||
+		!errors.Is(err, rollbackErr) {
+		t.Fatalf("RestoreCheckpoint() error = %v", err)
+	}
+	if engine.restores != 2 {
+		t.Fatalf("RestoreCheckpoint() calls = %d, want 2", engine.restores)
 	}
 }
 

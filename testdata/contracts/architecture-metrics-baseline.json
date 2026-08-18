@@ -77,9 +77,6 @@
         "production_lines": 1971,
         "options_fields": 13,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "Workflow Runtime owns Node retry admission and requires explicit idempotency before replay"
       }
     },
     {
@@ -256,9 +253,6 @@
         "production_lines": 1081,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Provider HTTP transport separates request attribution, response classification, stream lifecycle, and four scoped deadline phases without owning retries"
       }
     },
     {
@@ -347,12 +341,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 75,
-        "production_lines": 8765,
+        "production_lines": 8806,
         "options_fields": 70,
         "mutex_fields": 6
       },
       "relaxations": {
-        "production_lines": "Composition wiring maps backward-compatible execution settings into independently scoped Provider deadlines"
+        "production_lines": "Composition wiring maps Provider deadlines and owns Process Journal recovery, cleanup error aggregation, and health reporting"
       }
     },
     {
@@ -615,9 +609,6 @@
         "production_lines": 11345,
         "options_fields": 60,
         "mutex_fields": 8
-      },
-      "relaxations": {
-        "production_lines": "Agent Engine checkpoints confirmed provider increments before Host projection, resumes incomplete logical samples, and exclusively owns idempotent provider retry policy"
       }
     },
     {
@@ -712,9 +703,12 @@
       "path": "internal/host/tui",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 7501,
+        "production_lines": 7504,
         "options_fields": 28,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "TUI reports durable process-journal failure when cancel-all cannot be recorded"
       }
     },
     {
@@ -726,9 +720,6 @@
         "production_lines": 6204,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Runtime Protocol exposes stable Fault stage, retry owner, resume hint, side-effect, and deadline metadata to every Host"
       }
     },
     {

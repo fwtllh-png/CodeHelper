@@ -108,7 +108,7 @@ func TestSessionDetachSurvivesCallerCancelAndCloseByThread(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := manager.CloseByThread("thread-a"); n != 1 {
+	if n, err := manager.CloseByThread("thread-a"); err != nil || n != 1 {
 		t.Fatalf("CloseByThread = %d, want 1", n)
 	}
 	if manager.OwnerThread(id) != "" {
@@ -138,7 +138,7 @@ func TestCloseByTurnPreservesConcurrentTurnInSameThread(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := manager.CloseByTurn("turn-1"); n != 1 {
+	if n, err := manager.CloseByTurn("turn-1"); err != nil || n != 1 {
 		t.Fatalf("CloseByTurn = %d, want 1", n)
 	}
 	if manager.OwnerThread(first) != "" {

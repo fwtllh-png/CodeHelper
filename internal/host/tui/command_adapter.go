@@ -577,7 +577,10 @@ func (m Model) handleJobs(args []string) Model {
 		}
 		m = m.noteStatus("jobs:canceled:" + rest[0])
 	case "cancel-all", "cancelall":
-		m.jobs.CancelAll()
+		if err := m.jobs.CancelAll(); err != nil {
+			m = m.noteStatus("jobs:error:" + err.Error())
+			return m
+		}
 		m = m.noteStatus("jobs:canceled-all")
 	default:
 		m = m.noteStatus("jobs:usage list|show|poll|wait|stdin|cancel|cancel-all")
