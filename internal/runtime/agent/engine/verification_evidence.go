@@ -2,9 +2,7 @@ package engine
 
 import (
 	"maps"
-	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -36,14 +34,21 @@ func (e *Engine) bindVerificationEvidence(
 		result.Metadata["verification_evidence_rejection"] = "same_batch_mutation"
 		return
 	}
-	if result.IsError || evidence.Status != verify.StatusPassed ||
-		len(evidence.CoveredPaths) == 0 {
+	switch evidence.Status {
+	case verify.StatusPassed, verify.StatusFailed, verify.StatusUnavailable:
+	default:
 		result.Metadata["verification_evidence_accepted"] = false
+		result.Metadata["verification_evidence_rejection"] = "invalid_status"
+		return
+	}
+	if len(evidence.CoveredPaths) == 0 {
+		result.Metadata["verification_evidence_accepted"] = false
+		result.Metadata["verification_evidence_rejection"] = "missing_covered_paths"
 		return
 	}
 	covered := make([]string, 0, len(evidence.CoveredPaths))
 	for _, path := range evidence.CoveredPaths {
-		relative, ok := canonicalEvidencePath(path)
+		relative, ok := verify.CanonicalEvidencePath(path)
 		if !ok {
 			result.Metadata["verification_evidence_accepted"] = false
 			result.Metadata["verification_evidence_rejection"] = "invalid_covered_path"
@@ -68,63 +73,22 @@ func (e *Engine) bindVerificationEvidence(
 	scope.mu.Unlock()
 }
 
-func canonicalEvidencePath(path string) (string, bool) {
-	path = strings.TrimSpace(path)
-	if path == "" || filepath.IsAbs(path) {
-		return "", false
-	}
-	clean := filepath.Clean(path)
-	if clean == "." || clean == ".." ||
-		strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", false
-	}
-	return filepath.ToSlash(clean), true
-}
-
 func (e *Engine) qualityVerificationReceipt(
 	paths []string,
 	mutationRevision uint64,
 ) (verify.Receipt, []string) {
-	covered := make(map[string]struct{})
-	evidenceInputs := e.verificationEvidence()
-	checks := make([]verify.Check, 0, len(evidenceInputs))
-	for _, evidence := range evidenceInputs {
-		if evidence.Status != verify.StatusPassed ||
-			evidence.MutationRevision != mutationRevision {
-			continue
-		}
-		for _, path := range evidence.CoveredPaths {
-			covered[path] = struct{}{}
-		}
-		checks = append(checks, verify.Check{
-			Name: evidence.Kind, Command: evidence.CommandDigest,
-			Reason: "structured quality evidence covers exact changed paths",
-			Status: verify.StatusPassed, ExitCode: evidence.ExitCode,
-		})
-	}
-	uncovered := make([]string, 0)
+	canonical := make([]string, 0, len(paths))
 	for _, path := range paths {
-		canonical, ok := canonicalEvidencePath(path)
-		if !ok {
-			uncovered = append(uncovered, path)
-			continue
+		if relative, ok := e.workspaceRelative(path); ok {
+			path = relative
 		}
-		if _, ok := covered[canonical]; !ok {
-			uncovered = append(uncovered, canonical)
+		if !slices.Contains(canonical, path) {
+			canonical = append(canonical, path)
 		}
 	}
-	slices.Sort(uncovered)
-	if len(uncovered) != 0 {
-		return verify.Receipt{
-			Scope: verify.ScopeQuality, Status: verify.StatusUnavailable,
-			Checks:  checks,
-			Message: "structured quality evidence does not cover every changed path",
-		}, uncovered
-	}
-	return verify.Receipt{
-		Scope: verify.ScopeQuality, Status: verify.StatusPassed, Checks: checks,
-		Message: "post-mutation structured quality evidence covers every changed path",
-	}, nil
+	return verify.QualityEvidenceReceipt(
+		canonical, mutationRevision, e.verificationEvidence(),
+	)
 }
 
 func (e *Engine) verificationEvidence() []verify.Evidence {

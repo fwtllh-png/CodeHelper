@@ -9,9 +9,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-// commitStartupTerminal closes a durable Turn accepted before its Engine
-// coordinator could start. It is deliberately limited to Turns with no domain
-// facts so it cannot overwrite or fork an Engine-owned state machine.
+// commitStartupTerminal closes a durable Turn accepted before its Engine could
+// publish a terminal envelope. Existing facts are only reused after their
+// coordinator has already reached a terminal state.
 func (r *Runtime) commitStartupTerminal(
 	payload *protocol.StartTurnPayload,
 	sink *runtimeSink,
@@ -25,58 +25,22 @@ func (r *Runtime) commitStartupTerminal(
 	if err != nil {
 		return err
 	}
-	if len(facts) != 0 {
-		return errors.New("turn coordinator already owns durable domain facts")
-	}
-
-	revision := r.defaultProfile.Revision
-	if revision == 0 {
-		revision = 1
-	}
-	mode := r.defaultProfile.Mode
-	if mode == "" {
-		mode = "act"
-	}
-	state := turnkernel.NewState(
-		protocol.NormalizeTurnIntent(payload.Intent),
-		mode,
-		revision,
-	)
-	coordinator, err := turnkernel.NewTurnCoordinator(
-		string(payload.TurnID),
-		state,
+	coordinator, err := turnkernel.StartupTerminalCoordinator(
+		ctx,
+		payload.TurnID,
+		payload.Intent,
+		r.defaultProfile.Mode,
+		r.defaultProfile.Revision,
 		r.terminalStore,
-		turnkernel.NewDurableEffectDispatcher(),
+		facts,
 	)
 	if err != nil {
 		return err
 	}
-
-	message := "turn engine failed before coordinator startup"
-	if cause != nil {
-		message = cause.Error()
-	}
-	canceled := errors.Is(cause, context.Canceled)
-	request := turnkernel.TerminalRequested{
-		FailureCode:    string(protocol.CodeOf(cause)),
-		FailureMessage: message,
-	}
-	var terminal protocol.EventData = &protocol.TurnFailedData{
-		Code: protocol.CodeOf(cause), Message: message,
-	}
-	if canceled {
-		request = turnkernel.TerminalRequested{
-			CancelReason: protocol.CancelReasonHostInterrupted,
+	if len(facts) == 0 {
+		if err := turnkernel.RequestStartupTerminal(ctx, coordinator, cause); err != nil {
+			return err
 		}
-		terminal = &protocol.TurnCanceledData{
-			Reason: protocol.CancelReasonHostInterrupted,
-		}
-	}
-	if err := coordinator.Submit(ctx, request); err != nil {
-		return err
-	}
-	if err := coordinator.Submit(ctx, turnkernel.FinishTerminal{}); err != nil {
-		return err
 	}
 	domainFacts, err := coordinator.DomainFacts(ctx)
 	if err != nil {
@@ -92,6 +56,10 @@ func (r *Runtime) commitStartupTerminal(
 	if err != nil {
 		return err
 	}
+	terminal, err := turnkernel.ProtocolTerminalEvent(frozen)
+	if err != nil {
+		return err
+	}
 	return sink.CommitTerminal(TerminalMaterial{
 		FrozenState: frozen,
 		DomainFacts: domainFacts,
@@ -102,7 +70,7 @@ func (r *Runtime) commitStartupTerminal(
 				payload.Orchestration,
 			),
 			Intent:            protocol.NormalizeTurnIntent(payload.Intent),
-			Mode:              mode,
+			Mode:              frozen.Mode,
 			MeasurementDigest: measurement.Digest,
 			UsageDigest:       measurement.UsageDigest,
 		},

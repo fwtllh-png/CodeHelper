@@ -4845,6 +4845,9 @@
                   "filesystem_unrestricted": {
                     "type": "boolean"
                   },
+                  "loopback_allowed": {
+                    "type": "boolean"
+                  },
                   "managed_proxy_port": {
                     "type": "integer"
                   },

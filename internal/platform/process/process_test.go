@@ -626,6 +626,36 @@ func TestRunInjectsOnlyVerifiedManagedProxy(t *testing.T) {
 	}
 }
 
+func TestRunBindsApprovedLoopbackToSandboxCommand(t *testing.T) {
+	root := t.TempDir()
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("f", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: true, AllowProcess: true,
+		ReadPaths: []string{root}, ManagedProxyPort: 43128,
+		AllowLoopback: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &recordingBackend{root: root, proxyPort: 43128}
+	_, err = Run(ctx, Options{
+		Command: "true", Dir: root, DirFile: directoryFile,
+		Sandbox: backend, RequireStrongSandbox: true,
+		WorkspaceReadOnly: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !backend.command.AllowLoopback {
+		t.Fatal("approved loopback was not bound to the sandbox command")
+	}
+}
+
 type recordingBackend struct {
 	command            sandbox.Command
 	root               string
@@ -656,6 +686,7 @@ func (b *recordingBackend) Prepare(_ context.Context, command sandbox.Command) (
 			command.AdditionalReadPaths...,
 		)
 		command.PreparedNetworkDenied = command.DenyNetwork
+		command.PreparedLoopbackAllowed = command.AllowLoopback && !command.DenyNetwork
 		command.PreparedProxyPort = b.proxyPort
 		if !b.ignoreWritePaths {
 			command.PreparedWritePaths = append(

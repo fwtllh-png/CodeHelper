@@ -7,8 +7,8 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui/commands"
+	"github.com/fwtllh-png/CodeHelper/internal/host/tui/processfixture"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/testsupport/processfixture"
 )
 
 func TestJobsAliasesAndVerbs(t *testing.T) {

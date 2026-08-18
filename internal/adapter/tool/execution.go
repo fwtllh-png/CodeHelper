@@ -351,6 +351,7 @@ type AttemptReceipt struct {
 	NetworkMode             string                      `json:"network_mode,omitempty"`
 	NetworkTargets          []string                    `json:"network_targets,omitempty"`
 	ManagedProxyPort        uint16                      `json:"managed_proxy_port,omitempty"`
+	LoopbackAllowed         bool                        `json:"loopback_allowed,omitempty"`
 	ProcessAllowed          bool                        `json:"process_allowed,omitempty"`
 	Provenance              []PermissionProvenance      `json:"provenance,omitempty"`
 	Denial                  *sandbox.Denial             `json:"denial,omitempty"`

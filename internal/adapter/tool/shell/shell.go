@@ -92,7 +92,9 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	description := "Run a read-only, network-isolated POSIX sh command. " +
 		"The sandbox permits workspace reads and private temporary files, " +
 		"but rejects workspace writes and network access. Quote shell " +
-		"metacharacters with single quotes."
+		"metacharacters with single quotes. Use cwd instead of prepending cd. " +
+		"Do not pipe verification commands through head or tail because POSIX " +
+		"pipelines report the last command's status."
 	description += " Commands run under POSIX sh, not Bash. Do not use Bash-only " +
 		"syntax such as process substitution (<(...))."
 	properties := map[string]any{

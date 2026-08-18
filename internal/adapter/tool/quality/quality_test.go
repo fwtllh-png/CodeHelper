@@ -46,6 +46,33 @@ func TestQualityToolsReturnIndependentStructuredResults(t *testing.T) {
 	}
 }
 
+func TestQualityVerificationToolsDeclareGuardedNetworkTargets(t *testing.T) {
+	for _, kind := range []string{"quality_test", "quality_verify"} {
+		descriptor := (&Tool{kind: kind}).Descriptor()
+		if descriptor.ResourceResolver.NetworkTargetsField != "network_targets" {
+			t.Fatalf("%s network target field = %q", kind,
+				descriptor.ResourceResolver.NetworkTargetsField)
+		}
+		if descriptor.ResourceResolver.LoopbackField != "allow_loopback" {
+			t.Fatalf("%s loopback field = %q", kind,
+				descriptor.ResourceResolver.LoopbackField)
+		}
+		properties, _ := descriptor.InputSchema["properties"].(map[string]any)
+		network, ok := properties["network_targets"].(map[string]any)
+		if !ok || network["maxItems"] != 32 {
+			t.Fatalf("%s network schema = %#v", kind, properties["network_targets"])
+		}
+		loopback, ok := properties["allow_loopback"].(map[string]any)
+		if !ok || loopback["type"] != "boolean" {
+			t.Fatalf("%s loopback schema = %#v", kind, properties["allow_loopback"])
+		}
+		if descriptor.ResourceResolver.ReadPathsField != "covered_paths" {
+			t.Fatalf("%s covered paths field = %q", kind,
+				descriptor.ResourceResolver.ReadPathsField)
+		}
+	}
+}
+
 func TestQualityDiagnosticsAndReviewParseCommandOutput(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := RegisterWithBackend(registry, t.TempDir(), qualityTestBackend{}); err != nil {

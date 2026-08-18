@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -42,6 +43,23 @@ func TestQualityEvidenceCoversCurrentMutationRevision(t *testing.T) {
 	}
 }
 
+func TestQualityEvidenceCoversAbsoluteRecoveryDraftPaths(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.Workspace = t.TempDir()
+	result := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "verify-1", Name: "quality_verify",
+	}, &result, false, 1)
+
+	receipt, uncovered := engine.qualityVerificationReceipt(
+		[]string{filepath.Join(engine.options.Workspace, "a.go")},
+		1,
+	)
+	if receipt.Status != verify.StatusPassed || len(uncovered) != 0 {
+		t.Fatalf("receipt = %+v, uncovered = %v", receipt, uncovered)
+	}
+}
+
 func TestQualityEvidenceRejectsPartialAndStaleCoverage(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	result := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
@@ -58,6 +76,75 @@ func TestQualityEvidenceRejectsPartialAndStaleCoverage(t *testing.T) {
 	if receipt.Status != verify.StatusUnavailable ||
 		len(uncovered) != 1 || uncovered[0] != "a.go" {
 		t.Fatalf("stale receipt = %+v, uncovered = %v", receipt, uncovered)
+	}
+}
+
+func TestQualityEvidenceRetainsFailureWithoutGrantingCoverage(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	result := qualityEvidenceResult(verify.StatusFailed, []string{"a.go"})
+	result.IsError = true
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "verify-failed", Name: "quality_test",
+	}, &result, false, 1)
+
+	if accepted, _ := result.Metadata["verification_evidence_accepted"].(bool); !accepted {
+		t.Fatalf("failed structured evidence was discarded: %#v", result.Metadata)
+	}
+	candidate := engine.completionCandidate(
+		provider.ToolCall{ID: "complete", Name: "turn_complete"},
+		tool.Result{}, false, 1, 1,
+	)
+	if len(candidate.QualityCalls) != 0 {
+		t.Fatalf("failed quality calls bound to completion: %+v", candidate.QualityCalls)
+	}
+	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go"}, 1)
+	if receipt.Status != verify.StatusFailed || receipt.Errors != 1 ||
+		len(receipt.Checks) != 1 ||
+		receipt.Checks[0].Status != verify.StatusFailed ||
+		len(uncovered) != 1 || uncovered[0] != "a.go" {
+		t.Fatalf("receipt = %+v, uncovered = %v", receipt, uncovered)
+	}
+}
+
+func TestLaterPassingQualityRetrySupersedesSameFailedCommand(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	failed := qualityEvidenceResult(verify.StatusFailed, []string{"a.go"})
+	failed.IsError = true
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "verify-failed", Name: "quality_test",
+	}, &failed, false, 1)
+	passed := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "verify-passed", Name: "quality_test",
+	}, &passed, false, 1)
+
+	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go"}, 1)
+	if receipt.Status != verify.StatusPassed || len(uncovered) != 0 ||
+		len(receipt.Checks) != 1 ||
+		receipt.Checks[0].Status != verify.StatusPassed {
+		t.Fatalf("receipt = %+v, uncovered = %v", receipt, uncovered)
+	}
+}
+
+func TestCorrectedQualityCommandSupersedesFailedCoverage(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	failed := qualityEvidenceResult(verify.StatusFailed, []string{"a.go"})
+	failed.IsError = true
+	failed.Outcome.Facts.Verification.CommandDigest = "sha256:bad-command"
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "verify-failed", Name: "quality_test",
+	}, &failed, false, 1)
+	passed := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
+	passed.Outcome.Facts.Verification.CommandDigest = "sha256:fixed-command"
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "verify-passed", Name: "quality_test",
+	}, &passed, false, 1)
+
+	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go"}, 1)
+	if receipt.Status != verify.StatusPassed || len(uncovered) != 0 ||
+		len(receipt.Checks) != 1 ||
+		receipt.Checks[0].Command != "sha256:fixed-command" {
+		t.Fatalf("receipt = %+v, uncovered = %v", receipt, uncovered)
 	}
 }
 
@@ -139,6 +226,31 @@ func TestVerifyGateRequestsStructuredRepairForMissingCoverage(t *testing.T) {
 	feedback := verifyFeedback(outcome.receipt, 1)
 	if !strings.Contains(feedback.Text(), "required_action=quality_verify") {
 		t.Fatalf("feedback = %q", feedback.Text())
+	}
+}
+
+func TestFailedQualityFeedbackRequiresPassingStructuredRetry(t *testing.T) {
+	receipt := &VerificationReceipt{
+		Receipt: verify.Receipt{
+			Scope: verify.ScopeQuality, Status: verify.StatusFailed,
+			Message: "structured quality command failed",
+			Checks: []verify.Check{{
+				Name: "test", Command: "sha256:test",
+				Status: verify.StatusFailed, ExitCode: 1,
+			}},
+		},
+		UncoveredPaths: []string{"a.go"},
+	}
+	feedback := verifyFeedback(receipt, 1).Text()
+	for _, expected := range []string{
+		"required_action=repair_quality_verification",
+		`uncovered_paths=["a.go"]`,
+		"network_targets",
+		"Do not call turn_complete",
+	} {
+		if !strings.Contains(feedback, expected) {
+			t.Fatalf("feedback %q does not contain %q", feedback, expected)
+		}
 	}
 }
 

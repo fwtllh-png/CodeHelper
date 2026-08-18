@@ -81,7 +81,7 @@ export class ChatProjector {
         reasoningActive: false, timeline: [], tools: new Map(),
         approvals: new Map(), inputs: new Map(), contextReceipts: [],
         contextSelections: [], diagnostics: new Map(), diagnosticNotices: [],
-        unknownEvents: [], lastSequence: 0,
+        verificationUncoveredPaths: [], unknownEvents: [], lastSequence: 0,
       };
       this.#turns.set(id, turn);
       if (this.#turns.size > maxChatTurns) {

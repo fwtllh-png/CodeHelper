@@ -1089,7 +1089,8 @@ func applyEvaluateTurnStep(
 			transition.State.UnresolvedToolFailure = false
 			transition.State.RecoveryToolSucceeded = false
 		}
-	case current.LastModelContinued && len(current.ClosedCalls) != 0:
+	case current.LastModelContinued && len(current.ClosedCalls) != 0 &&
+		(current.Completion == nil || !current.Completion.Accepted):
 		if err := spend(
 			RepairCompletion,
 			current.Policy.CompletionRepairLimit,
@@ -1567,7 +1568,12 @@ func applyCompletion(
 		decision.Reason = "quality_verification_required"
 	default:
 		decision.Accepted = true
-		decision.RequiredAction = "final_answer"
+		if current.MutationRevision != 0 &&
+			current.Policy.VerificationRequired {
+			decision.RequiredAction = "await_runtime_verification"
+		} else {
+			decision.RequiredAction = "final_answer"
+		}
 	}
 	if !decision.Accepted {
 		decision.RequiredAction = completionRejectionAction(decision.Reason)

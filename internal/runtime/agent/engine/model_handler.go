@@ -837,8 +837,8 @@ func consume(
 
 const (
 	commonToolSet    = ",tool_search,result_get,handle_read,request_user_input,update_plan,turn_complete,"
-	readToolSet      = ",search_text,search_files,search_definition,search_references,file_read,file_list,file_write,file_edit,file_apply,shell_read,exec_command,write_stdin,quality_test,project_map,"
-	writeToolSet     = ",search_related_tests,quality_diagnostics,quality_verify,"
+	readToolSet      = ",search_text,search_files,search_definition,search_references,file_read,file_list,file_write,file_edit,file_apply,shell_read,exec_command,write_stdin,quality_test,quality_verify,project_map,"
+	writeToolSet     = ",search_related_tests,quality_diagnostics,"
 	maxRelevantTools = 4
 )
 

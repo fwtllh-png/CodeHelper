@@ -33,6 +33,7 @@ type NetworkAuthority struct {
 	Mode      string   `json:"mode"`
 	Targets   []string `json:"targets,omitempty"`
 	ProxyPort uint16   `json:"proxy_port,omitempty"`
+	Loopback  bool     `json:"loopback,omitempty"`
 }
 
 type ProcessAuthority struct {
@@ -160,6 +161,7 @@ func (p EffectivePermissionProfile) ExecutionAuthority() sandbox.ExecutionAuthor
 		WorkspaceWritePaths: append([]string(nil), p.Filesystem.WritePaths...),
 		NetworkTargets:      append([]string(nil), p.Network.Targets...),
 		ManagedProxyPort:    p.Network.ProxyPort,
+		AllowLoopback:       p.Network.Loopback,
 		AllowNetwork:        p.Network.Mode != "denied",
 		AllowProcess:        p.Process.Allowed,
 	}
@@ -181,6 +183,14 @@ func compileResources(profile *EffectivePermissionProfile, invocation policy.Inv
 				profile.Filesystem.WritePaths = append(profile.Filesystem.WritePaths, value)
 			}
 		case "host", "url":
+			if resource.Kind == "host" && resource.Protocol == "loopback" {
+				profile.Network.Loopback = true
+				profile.Network.Targets = append(
+					profile.Network.Targets,
+					"loopback://localhost:0",
+				)
+				continue
+			}
 			target, ok := policy.ParseNetworkTarget(value)
 			if resource.Kind == "host" && resource.Protocol != "" {
 				target = policy.NetworkTarget{

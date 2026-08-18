@@ -284,6 +284,7 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 			state:     mutated,
 			candidate: base,
 			accepted:  true,
+			action:    "await_runtime_verification",
 		},
 		{
 			name:  "same batch mutation",
@@ -310,6 +311,7 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 			state:     startSampling(t, protocol.TurnIntentAnswer),
 			candidate: base,
 			accepted:  true,
+			action:    "final_answer",
 		},
 		{
 			name:      "workspace change without mutation",
@@ -393,6 +395,37 @@ func TestToolAssistedReadOnlyTurnCompletesWithoutDeclaration(t *testing.T) {
 	if transition.State.NextAction != StepActionComplete {
 		t.Fatalf("next action = %q, want %q",
 			transition.State.NextAction, StepActionComplete)
+	}
+}
+
+func TestAcceptedCompletionOutranksProviderContinuation(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state = apply(t, state, ToolCallsProposed{
+		Calls: []ToolCallState{{ID: "write-1", Name: "file_write"}},
+	}).State
+	state = apply(t, state, ToolResultReceived{
+		CallID:  "write-1",
+		Changes: []ObservedChange{{Path: "a.go", Kind: "modified"}},
+	}).State
+	state = apply(t, state, CompletionEvaluated{
+		Candidate: CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "complete",
+			Summary:          "implemented",
+			CompletionCall:   "complete-1",
+			BatchSize:        1,
+		},
+	}).State
+	state.LastModelContinued = true
+
+	transition := apply(t, state, EvaluateTurnStep{ProgressKey: "accepted"})
+	if transition.State.NextAction != StepActionVerify {
+		t.Fatalf("next action = %q, want %q",
+			transition.State.NextAction, StepActionVerify)
+	}
+	if transition.State.RepairBudgets[RepairCompletion].Steps != 0 {
+		t.Fatalf("accepted completion spent repair budget: %+v",
+			transition.State.RepairBudgets[RepairCompletion])
 	}
 }
 

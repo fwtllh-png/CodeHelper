@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-// ToolExecutionReceipt is the durable protocol projection of one guarded tool
-// execution. It remains separate from the per-Turn ExecutionReceiptData.
+// ToolExecutionReceipt is the durable projection of one guarded tool execution.
 type ToolExecutionReceipt struct {
 	Tool             ToolExecutionRef     `json:"tool"`
 	Source           string               `json:"source"`
@@ -81,6 +80,7 @@ type ToolAttemptReceipt struct {
 	NetworkMode             string                          `json:"network_mode,omitempty"`
 	NetworkTargets          []string                        `json:"network_targets,omitempty"`
 	ManagedProxyPort        uint16                          `json:"managed_proxy_port,omitempty"`
+	LoopbackAllowed         bool                            `json:"loopback_allowed,omitempty"`
 	ProcessAllowed          bool                            `json:"process_allowed,omitempty"`
 	Provenance              []ToolPermissionProvenance      `json:"provenance,omitempty"`
 	Denial                  *ToolSandboxDenial              `json:"denial,omitempty"`

@@ -55,6 +55,7 @@ type Command struct {
 	AdditionalReadPaths     []string
 	WorkspaceWritePaths     []string
 	DenyNetwork             bool
+	AllowLoopback           bool
 	AuthorityDigest         string
 	PreparedPolicyID        string
 	PreparedAuthorityDigest string
@@ -63,6 +64,7 @@ type Command struct {
 	PreparedReadPaths       []string
 	PreparedWritePaths      []string
 	PreparedNetworkDenied   bool
+	PreparedLoopbackAllowed bool
 	PreparedProxyPort       uint16
 }
 
@@ -262,6 +264,7 @@ func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command
 		readPaths,
 		writePaths,
 		command.DenyNetwork,
+		command.AllowLoopback,
 	)
 	sandboxExec, err := resolveExecutableLiteral("/usr/bin/sandbox-exec", command.Env)
 	if err != nil {
@@ -287,6 +290,7 @@ func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command
 		PreparedReadPaths:       append([]string(nil), readPaths...),
 		PreparedWritePaths:      append([]string(nil), writePaths...),
 		PreparedNetworkDenied:   command.DenyNetwork,
+		PreparedLoopbackAllowed: command.AllowLoopback && !command.DenyNetwork,
 		PreparedProxyPort:       preparedProxyPort,
 	}, nil
 }
@@ -418,6 +422,7 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 		PreparedReadPaths:       append([]string(nil), readPaths...),
 		PreparedWritePaths:      append([]string(nil), writePaths...),
 		PreparedNetworkDenied:   command.DenyNetwork,
+		PreparedLoopbackAllowed: false,
 		PreparedProxyPort:       0,
 	}, nil
 }
@@ -460,7 +465,9 @@ func (b *closeBinding) Policy() Policy {
 }
 
 func seatbeltProfile(policy Policy, executable string) string {
-	return seatbeltProfileForCommand(policy, executable, false, nil, nil, false)
+	return seatbeltProfileForCommand(
+		policy, executable, false, nil, nil, false, false,
+	)
 }
 
 func seatbeltProfileForCommand(
@@ -470,6 +477,7 @@ func seatbeltProfileForCommand(
 	additionalReadPaths []string,
 	workspaceWritePaths []string,
 	denyNetwork bool,
+	allowLoopback bool,
 ) string {
 	var profile strings.Builder
 	profile.WriteString("(version 1)\n(deny default)\n")
@@ -551,12 +559,22 @@ func seatbeltProfileForCommand(
 			fmt.Fprintf(&profile, "(deny file-read* file-write* (subpath %s))\n", seatbeltQuote(sensitive))
 		}
 	}
-	if policy.ManagedProxyPort != 0 && !denyNetwork {
-		fmt.Fprintf(
-			&profile,
-			"(allow network-outbound (remote ip \"localhost:%d\"))\n",
-			policy.ManagedProxyPort,
-		)
+	if !denyNetwork && (policy.ManagedProxyPort != 0 || allowLoopback) {
+		if policy.ManagedProxyPort != 0 {
+			fmt.Fprintf(
+				&profile,
+				"(allow network-outbound (remote ip \"localhost:%d\"))\n",
+				policy.ManagedProxyPort,
+			)
+		}
+		if allowLoopback {
+			profile.WriteString(
+				"(allow network-inbound (local ip \"localhost:*\"))\n",
+			)
+			profile.WriteString(
+				"(allow network-outbound (remote ip \"localhost:*\"))\n",
+			)
+		}
 	} else if policy.AllowNetwork && !denyNetwork {
 		profile.WriteString("(allow network-outbound)\n")
 		profile.WriteString("(allow network-inbound)\n")

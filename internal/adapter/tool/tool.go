@@ -171,6 +171,8 @@ type ResourceResolver struct {
 	// ChangesField resolves transaction "path" and "to" entries.
 	ChangesField        string `json:"changes_field,omitempty"`
 	NetworkTargetsField string `json:"network_targets_field,omitempty"`
+	// LoopbackField resolves an explicit local fixture-network grant.
+	LoopbackField string `json:"loopback_field,omitempty"`
 }
 
 type DeferredLoading struct {

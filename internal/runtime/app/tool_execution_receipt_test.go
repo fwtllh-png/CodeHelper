@@ -30,7 +30,7 @@ func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {
 			Backend: "seatbelt", SandboxStrength: "strong",
 			WorkspaceRoot: "/workspace", ReadRoots: []string{"/workspace"},
 			WritePaths:  []string{"/workspace/result.txt"},
-			NetworkMode: "deny", ProcessAllowed: true,
+			NetworkMode: "managed", LoopbackAllowed: true, ProcessAllowed: true,
 			Provenance: []tool.PermissionProvenance{{
 				Kind: "managed", Value: "grant", Digest: digest, Revision: 7,
 			}},
@@ -57,6 +57,7 @@ func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {
 		len(projected.Attempts) != 1 ||
 		projected.Attempts[0].PermissionDigest != digest ||
 		projected.Attempts[0].ReadRoots[0] != "/workspace" ||
+		!projected.Attempts[0].LoopbackAllowed ||
 		projected.Attempts[0].Denial.Resource != "/workspace/result.txt" {
 		t.Fatalf("projected receipt = %+v", projected)
 	}
@@ -80,7 +81,8 @@ func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {
 	}
 	result, ok := decoded.Data.(*protocol.ToolResultData)
 	if !ok || result.Execution == nil ||
-		result.Execution.Attempts[0].PermissionDigest != digest {
+		result.Execution.Attempts[0].PermissionDigest != digest ||
+		!result.Execution.Attempts[0].LoopbackAllowed {
 		t.Fatalf("decoded result = %#v", decoded.Data)
 	}
 }

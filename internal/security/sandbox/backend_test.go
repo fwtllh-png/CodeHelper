@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -196,7 +197,9 @@ func TestSeatbeltCommandCanRestrictWorkspaceAndNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile := seatbeltProfileForCommand(policy, "/bin/sh", true, nil, nil, true)
+	profile := seatbeltProfileForCommand(
+		policy, "/bin/sh", true, nil, nil, true, false,
+	)
 	workspaceWrite := "(allow file-write* (subpath " + seatbeltQuote(policy.WorkspaceRoot) + "))"
 	if strings.Contains(profile, workspaceWrite) {
 		t.Fatalf("read-only profile permits workspace writes:\n%s", profile)
@@ -219,13 +222,88 @@ func TestSeatbeltManagedNetworkAllowsOnlyProxyPort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	profile := seatbeltProfileForCommand(policy, "/bin/sh", true, nil, nil, false)
+	profile := seatbeltProfileForCommand(
+		policy, "/bin/sh", true, nil, nil, false, false,
+	)
 	if !strings.Contains(
 		profile,
 		`(allow network-outbound (remote ip "localhost:43128"))`,
 	) || strings.Contains(profile, "\n(allow network-outbound)\n") ||
 		strings.Contains(profile, `remote ip "localhost:*"`) {
 		t.Fatalf("managed network profile is broader than the proxy port:\n%s", profile)
+	}
+}
+
+func TestSeatbeltManagedNetworkCanAddExplicitLoopback(t *testing.T) {
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: t.TempDir(), PrivateTemp: t.TempDir(),
+		ManagedProxyPort: 43128, SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := seatbeltProfileForCommand(
+		policy, "/bin/sh", true, nil, nil, false, true,
+	)
+	for _, rule := range []string{
+		`(allow network-outbound (remote ip "localhost:43128"))`,
+		`(allow network-inbound (local ip "localhost:*"))`,
+		`(allow network-outbound (remote ip "localhost:*"))`,
+	} {
+		if !strings.Contains(profile, rule) {
+			t.Fatalf("managed loopback profile missing %q:\n%s", rule, profile)
+		}
+	}
+	if strings.Contains(profile, "\n(allow network-outbound)\n") {
+		t.Fatalf("managed loopback profile permits direct external network:\n%s", profile)
+	}
+}
+
+func TestSeatbeltCanAllowLoopbackWithoutManagedProxy(t *testing.T) {
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: t.TempDir(), PrivateTemp: t.TempDir(),
+		SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := seatbeltProfileForCommand(
+		policy, "/bin/sh", true, nil, nil, false, true,
+	)
+	if !strings.Contains(profile, `remote ip "localhost:*"`) ||
+		strings.Contains(profile, "\n(allow network-outbound)\n") {
+		t.Fatalf("loopback-only profile is not confined:\n%s", profile)
+	}
+}
+
+func TestSeatbeltExplicitLoopbackSupportsLocalFixtureServer(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("seatbelt is only available on macOS")
+	}
+	backend, err := NewPlatformBackend(Options{
+		WorkspaceRoot: t.TempDir(), PrivateTemp: t.TempDir(),
+		ManagedProxyPort: 43128, SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer CloseBackend(backend)
+	prepared, err := backend.Prepare(t.Context(), Command{
+		Path: "/usr/bin/python3",
+		Args: []string{"/usr/bin/python3", "-c",
+			`import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); s.listen(); c=socket.create_connection(s.getsockname()); a,_=s.accept(); c.sendall(b"x"); assert a.recv(1)==b"x"`},
+		Dir: backend.(PolicyBackend).Policy().WorkspaceRoot,
+		Env: []string{"PATH=/usr/bin:/bin"}, WorkspaceReadOnly: true,
+		AllowLoopback: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.CommandContext(t.Context(), prepared.Path, prepared.Args[1:]...)
+	command.Dir = prepared.Dir
+	command.Env = prepared.Env
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("loopback fixture failed: %v\n%s", err, output)
 	}
 }
 
@@ -291,7 +369,7 @@ func TestSeatbeltCommandAllowsOnlyDeclaredWorkspaceFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := seatbeltProfileForCommand(
-		policy, "/bin/sh", true, nil, []string{declared}, true,
+		policy, "/bin/sh", true, nil, []string{declared}, true, false,
 	)
 	declaredWrite := "(allow file-write* (literal " + seatbeltQuote(declared) + "))"
 	if !strings.Contains(profile, declaredWrite) {
@@ -332,7 +410,7 @@ func TestSeatbeltProfileAddsOnlyApprovedReadPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := seatbeltProfileForCommand(
-		policy, "/bin/sh", true, paths, nil, true,
+		policy, "/bin/sh", true, paths, nil, true, false,
 	)
 	rule := "(allow file-read* (literal " + seatbeltQuote(paths[0]) + "))"
 	if !strings.Contains(profile, rule) {
@@ -427,6 +505,7 @@ func TestBackendsPreserveDescriptorRelativeWorkingDirectory(t *testing.T) {
 		Dir: workspace.Root(), DirectoryFD: 3,
 		Env:               []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin"},
 		WorkspaceReadOnly: true,
+		AllowLoopback:     true,
 	}
 	policy, err := BuildPolicy(Options{WorkspaceRoot: workspace.Root(), PrivateTemp: t.TempDir()})
 	if err != nil {
@@ -440,8 +519,8 @@ func TestBackendsPreserveDescriptorRelativeWorkingDirectory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if seatbelt.DirectoryFD != 3 {
-			t.Fatalf("seatbelt directory fd = %d", seatbelt.DirectoryFD)
+		if seatbelt.DirectoryFD != 3 || !seatbelt.PreparedLoopbackAllowed {
+			t.Fatalf("seatbelt command = %+v", seatbelt)
 		}
 	}
 	if runtime.GOOS == "linux" {
@@ -457,7 +536,9 @@ func TestBackendsPreserveDescriptorRelativeWorkingDirectory(t *testing.T) {
 		}
 		index := slices.Index(bubblewrap.Args, "--chdir")
 		if bubblewrap.DirectoryFD != 3 || index < 0 ||
-			index+1 >= len(bubblewrap.Args) || bubblewrap.Args[index+1] != "/proc/self/fd/3" {
+			index+1 >= len(bubblewrap.Args) ||
+			bubblewrap.Args[index+1] != "/proc/self/fd/3" ||
+			bubblewrap.PreparedLoopbackAllowed {
 			t.Fatalf("bubblewrap command = %+v", bubblewrap)
 		}
 	}

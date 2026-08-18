@@ -25,25 +25,17 @@ const (
 )
 
 type execCommandInput struct {
-	Command        string               `json:"command"`
-	CWD            string               `json:"cwd"`
-	TTY            bool                 `json:"tty"`
-	YieldTimeMS    int64                `json:"yield_time_ms"`
-	TimeoutMS      int64                `json:"timeout_ms"`
-	OutputTokens   int                  `json:"output_tokens"`
-	Rows           uint16               `json:"rows"`
-	Cols           uint16               `json:"cols"`
-	Description    string               `json:"description"`
-	WritePaths     []string             `json:"write_paths"`
-	NetworkTargets []networkTargetInput `json:"network_targets"`
-}
-
-type networkTargetInput struct {
-	Host         string   `json:"host"`
-	Protocol     string   `json:"protocol"`
-	Port         uint16   `json:"port"`
-	Methods      []string `json:"methods"`
-	AllowPrivate bool     `json:"allow_private"`
+	Command        string                       `json:"command"`
+	CWD            string                       `json:"cwd"`
+	TTY            bool                         `json:"tty"`
+	YieldTimeMS    int64                        `json:"yield_time_ms"`
+	TimeoutMS      int64                        `json:"timeout_ms"`
+	OutputTokens   int                          `json:"output_tokens"`
+	Rows           uint16                       `json:"rows"`
+	Cols           uint16                       `json:"cols"`
+	Description    string                       `json:"description"`
+	WritePaths     []string                     `json:"write_paths"`
+	NetworkTargets []tool.DeclaredNetworkTarget `json:"network_targets"`
 }
 
 type writeStdinInput struct {
@@ -197,6 +189,9 @@ func execCommandDescriptor() tool.Descriptor {
 		Description: "Run a local POSIX sh command. Returns output when it exits " +
 			"within yield-time, otherwise a session_id for write_stdin. " +
 			"yield-time_ms defaults to 10000 and must not exceed 30000. " +
+			"Use cwd instead of prepending cd. Do not pipe verification commands " +
+			"through head or tail because POSIX pipelines report the last command's " +
+			"status; use output_tokens or a quality tool to bound output. " +
 			"Commands that access the network must declare every destination in " +
 			"network_targets; use method CONNECT for HTTPS targets. Undeclared " +
 			"egress is denied by the local managed proxy.",
@@ -235,40 +230,7 @@ func execCommandDescriptor() tool.Descriptor {
 				"write_globs": map[string]any{
 					"type": "array",
 				},
-				"network_targets": map[string]any{
-					"type": "array",
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"host": map[string]any{
-								"type":        "string",
-								"description": "DNS host without scheme or port.",
-							},
-							"protocol": map[string]any{
-								"type": "string",
-								"enum": []string{"http", "https"},
-							},
-							"port": map[string]any{
-								"type": "integer", "minimum": 1, "maximum": 65535,
-							},
-							"methods": map[string]any{
-								"type":        "array",
-								"items":       map[string]any{"type": "string"},
-								"minItems":    1,
-								"description": "Use exactly CONNECT for HTTPS; use HTTP methods for HTTP.",
-							},
-							"allow_private": map[string]any{
-								"type":        "boolean",
-								"description": "Required for private or local resolved IPs.",
-							},
-						},
-						"required": []string{
-							"host", "protocol", "port", "methods", "allow_private",
-						},
-						"additionalProperties": false,
-					},
-					"maxItems": 32,
-				},
+				"network_targets": tool.NetworkTargetsInputSchema(),
 			},
 			"required":             []string{"command"},
 			"additionalProperties": false,
@@ -276,33 +238,8 @@ func execCommandDescriptor() tool.Descriptor {
 	}
 }
 
-func validateNetworkTargets(targets []networkTargetInput) error {
-	if len(targets) > 32 {
-		return errors.New("network_targets exceeds 32 entries")
-	}
-	for _, target := range targets {
-		if strings.TrimSpace(target.Host) == "" ||
-			(target.Protocol != "http" && target.Protocol != "https") ||
-			target.Port == 0 {
-			return errors.New("network target requires host, http/https protocol, and port")
-		}
-		if len(target.Methods) == 0 || len(target.Methods) > 16 {
-			return errors.New("network target requires 1-16 methods")
-		}
-		for _, method := range target.Methods {
-			method = strings.ToUpper(strings.TrimSpace(method))
-			if method == "" {
-				return errors.New("network target method is empty")
-			}
-			if target.Protocol == "https" && method != "CONNECT" {
-				return errors.New("https network target requires method CONNECT")
-			}
-			if target.Protocol == "http" && method == "CONNECT" {
-				return errors.New("http network target cannot use method CONNECT")
-			}
-		}
-	}
-	return nil
+func validateNetworkTargets(targets []tool.DeclaredNetworkTarget) error {
+	return tool.ValidateDeclaredNetworkTargets(targets)
 }
 
 func writeStdinDescriptor() tool.Descriptor {
@@ -514,7 +451,7 @@ func (p *commandProtocol) execCommand(
 	return result, nil
 }
 
-func declaredEgressReceipts(targets []networkTargetInput) []egress.Receipt {
+func declaredEgressReceipts(targets []tool.DeclaredNetworkTarget) []egress.Receipt {
 	receipts := make([]egress.Receipt, 0, len(targets))
 	for _, target := range targets {
 		methods := target.Methods

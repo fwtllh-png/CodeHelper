@@ -347,6 +347,17 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			journalErr = e.journal.Begin(turnID)
 		}
 		if journalErr != nil {
+			if terminalErr := turnkernel.FailBeforeJournal(
+				context.Background(),
+				kernel.coordinator,
+				kernel.dispatcher,
+				journalErr.Error(),
+			); terminalErr != nil {
+				return result, errors.Join(journalErr, terminalErr)
+			}
+			kernelTerminalStarted = true
+			kernelTerminalFinalized = true
+			result.State = Failed
 			return result, journalErr
 		}
 		for _, change := range draftChanges {

@@ -80,6 +80,24 @@ func TestCompileRejectsUnauthorizedAndDeniedInvocation(t *testing.T) {
 	}
 }
 
+func TestCompileCarriesExplicitLoopbackAuthority(t *testing.T) {
+	input := fixtureCompileInput(t)
+	input.Invocation.Resources = append(input.Invocation.Resources, tool.Resource{
+		Kind: "host", ID: "localhost", Access: tool.AccessWrite,
+		Protocol: "loopback", Methods: []string{"BIND", "CONNECT"},
+		AllowPrivate: true,
+	})
+	profile, err := Compile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution := profile.ExecutionAuthority()
+	if !profile.Network.Loopback || !execution.AllowLoopback ||
+		!slices.Contains(profile.Network.Targets, "loopback://localhost:0") {
+		t.Fatalf("loopback profile = %+v execution = %+v", profile.Network, execution)
+	}
+}
+
 func TestProfileDigestDetectsMutation(t *testing.T) {
 	profile, err := Compile(fixtureCompileInput(t))
 	if err != nil {

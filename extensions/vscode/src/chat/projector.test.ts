@@ -550,11 +550,24 @@ void test("ChatProjector exposes verification-blocked recovery state structurall
     status: "failed",
     action: "blocked",
     repair_steps: 1,
+    uncovered_paths: ["src/value.ts"],
     checks: [],
   }));
   assert.equal(projector.snapshot().turns[0]?.verificationBlocked, true);
+  assert.deepEqual(
+    projector.snapshot().turns[0]?.verificationUncoveredPaths,
+    ["src/value.ts"],
+  );
+  projector.apply(event(3, "turn.failed", {
+    code: "verification_failed",
+    message: "quality_test failed: compile error",
+  }));
+  assert.equal(
+    projector.snapshot().turns[0]?.error,
+    "verification_failed: quality_test failed: compile error",
+  );
 
-  projector.apply(event(3, "turn.verification", {
+  projector.apply(event(4, "turn.verification", {
     scope: "diagnostics",
     mode: "soft",
     status: "passed",
@@ -563,6 +576,10 @@ void test("ChatProjector exposes verification-blocked recovery state structurall
     checks: [],
   }));
   assert.equal(projector.snapshot().turns[0]?.verificationBlocked, false);
+  assert.deepEqual(
+    projector.snapshot().turns[0]?.verificationUncoveredPaths,
+    [],
+  );
 });
 
 void test("ChatProjector exposes verification attribution and workspace outcome", () => {

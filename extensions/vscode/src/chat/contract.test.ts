@@ -82,6 +82,7 @@ void test("Chat Patch carries only changed Turns and replacement projections", (
         contextReceipts: [],
         contextSelections: [],
         diagnostics: [],
+        verificationUncoveredPaths: [],
         unknownEvents: [],
       }],
       activeTurnId: "turn_1",

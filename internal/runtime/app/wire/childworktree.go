@@ -267,7 +267,7 @@ func worktreeGitReadRoots(root, expectedCommonDir string) ([]string, error) {
 	candidates := []string{
 		gitDir,
 		filepath.Join(common, "objects"),
-		filepath.Join(common, "refs"),
+		filepath.Join(common, "refs"), filepath.Join(common, "info"),
 		filepath.Join(common, "packed-refs"),
 		filepath.Join(common, "HEAD"),
 		filepath.Join(common, "shallow"),

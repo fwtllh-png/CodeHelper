@@ -65,6 +65,32 @@ type TerminalEnvelope struct {
 	Outbox          []ProjectionOutboxEntry        `json:"outbox"`
 }
 
+func ProtocolTerminalEvent(state State) (protocol.EventData, error) {
+	if state.Terminal == nil || !state.Phase.Terminal() {
+		return nil, errors.New("terminal state is not finalized")
+	}
+	switch state.Terminal.Kind {
+	case TerminalCompleted:
+		return &protocol.TurnCompletedData{
+			Text: strings.Join(state.FinalOutput, ""),
+		}, nil
+	case TerminalFailed:
+		code := protocol.ErrorCode(state.Terminal.Code)
+		if code == "" {
+			code = protocol.CodeInternal
+		}
+		return &protocol.TurnFailedData{
+			Code: code, Message: state.Terminal.Message,
+		}, nil
+	case TerminalCanceled:
+		return &protocol.TurnCanceledData{
+			Reason: protocol.NormalizeCancelReason(state.Terminal.Message),
+		}, nil
+	default:
+		return nil, errors.New("terminal decision is invalid")
+	}
+}
+
 type TerminalCommitMarker struct {
 	TurnID      string    `json:"turn_id"`
 	EffectID    string    `json:"effect_id"`

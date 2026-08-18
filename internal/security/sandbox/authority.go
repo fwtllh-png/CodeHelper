@@ -17,6 +17,7 @@ type ExecutionAuthority struct {
 	WorkspaceWritePaths []string
 	NetworkTargets      []string
 	ManagedProxyPort    uint16
+	AllowLoopback       bool
 	AllowNetwork        bool
 	AllowProcess        bool
 }

@@ -51,6 +51,7 @@ const snapshot = {
     contextReceipts: [],
     contextSelections: [],
     diagnostics: [],
+    verificationUncoveredPaths: [],
     unknownEvents: [],
   }],
 };

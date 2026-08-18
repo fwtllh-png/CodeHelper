@@ -53,6 +53,7 @@ func projectToolAttemptReceipt(
 		NetworkMode:            source.NetworkMode,
 		NetworkTargets:         append([]string(nil), source.NetworkTargets...),
 		ManagedProxyPort:       source.ManagedProxyPort,
+		LoopbackAllowed:        source.LoopbackAllowed,
 		ProcessAllowed:         source.ProcessAllowed,
 		StartedAt:              source.StartedAt, CompletedAt: source.CompletedAt,
 		DurationMS: source.DurationMS, Teardown: source.Teardown,

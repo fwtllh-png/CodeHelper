@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -285,6 +286,55 @@ func TestWorkspaceVerificationBlockRetainsDraftForContinue(t *testing.T) {
 	}
 	if fixture.contents(t) != "before\n" {
 		t.Fatalf("reverted recovery = %q, want original baseline", fixture.contents(t))
+	}
+}
+
+func TestRetainedDraftConflictTerminalizesNewTurn(t *testing.T) {
+	fixture := newVerifyGateFixture(
+		t,
+		VerifyOptions{},
+		&scriptedVerifier{receipts: []verify.Receipt{passedReceipt()}},
+		0,
+		4,
+	)
+	if err := fixture.journal.Begin("turn-source-draft"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.journal.Suspend("turn-source-draft"); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := fixture.engine.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"turn-journal-conflict",
+		"unrelated request",
+		protocol.TurnIntentAnswer,
+		nil,
+		func(Event) error { return nil },
+	)
+	if err == nil || !strings.Contains(err.Error(), "retained draft") {
+		t.Fatalf("result = %+v, error = %v", result, err)
+	}
+	handle, err := fixture.engine.options.TurnCoordinatorRuntime.Restore(
+		t.Context(),
+		"turn-journal-conflict",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = fixture.engine.options.TurnCoordinatorRuntime.Release(
+			context.Background(),
+			"turn-journal-conflict",
+		)
+	})
+	state := handle.Coordinator.Snapshot()
+	if state.Phase != turnkernel.PhaseFailed ||
+		state.Terminal == nil ||
+		state.Terminal.Kind != turnkernel.TerminalFailed ||
+		state.Journal != turnkernel.JournalRolledBack ||
+		!fixture.journal.HasDraft("turn-source-draft") {
+		t.Fatalf("terminal state = %+v", state)
 	}
 }
 

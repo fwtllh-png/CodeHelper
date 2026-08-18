@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 var ErrCoordinatorAlreadyActive = errors.New("turn coordinator is already active")
@@ -47,6 +49,98 @@ func NewEphemeralCoordinatorRuntime() *StoreCoordinatorRuntime {
 		panic(err)
 	}
 	return runtime
+}
+
+// FailBeforeJournal terminalizes a prepared Turn whose workspace journal never
+// opened. With no Turn-owned mutations, rollback is vacuously complete.
+func FailBeforeJournal(
+	ctx context.Context,
+	coordinator *TurnCoordinator,
+	dispatcher *DurableEffectDispatcher,
+	message string,
+) error {
+	if coordinator == nil || dispatcher == nil || message == "" {
+		return errors.New("journal startup failure dependencies are incomplete")
+	}
+	if err := coordinator.Submit(ctx, TerminalRequested{
+		FailureCode: "conflict", FailureMessage: message,
+	}); err != nil {
+		return err
+	}
+	effect, err := dispatcher.Start(EffectRollbackJournal, "")
+	if err != nil {
+		return err
+	}
+	if err := dispatcher.Resolve(JournalResultReceived{
+		EffectID: effect.ID, Status: JournalRolledBack,
+	}); err != nil {
+		return err
+	}
+	return coordinator.Submit(ctx, FinishTerminal{})
+}
+
+func StartupTerminalCoordinator(
+	ctx context.Context,
+	turnID protocol.TurnID,
+	intent protocol.TurnIntent,
+	mode string,
+	revision uint64,
+	store TerminalEnvelopeStore,
+	facts []DomainFact,
+) (*TurnCoordinator, error) {
+	if len(facts) != 0 {
+		coordinator, err := RestoreTurnCoordinator(
+			ctx,
+			string(turnID),
+			store,
+			NewDurableEffectDispatcher(),
+		)
+		if err != nil {
+			return nil, err
+		}
+		if !coordinator.Snapshot().Phase.Terminal() {
+			return nil, errors.New(
+				"turn coordinator owns non-terminal durable domain facts",
+			)
+		}
+		return coordinator, nil
+	}
+	if revision == 0 {
+		revision = 1
+	}
+	if mode == "" {
+		mode = "act"
+	}
+	return NewTurnCoordinator(
+		string(turnID),
+		NewState(protocol.NormalizeTurnIntent(intent), mode, revision),
+		store,
+		NewDurableEffectDispatcher(),
+	)
+}
+
+func RequestStartupTerminal(
+	ctx context.Context,
+	coordinator *TurnCoordinator,
+	cause error,
+) error {
+	message := "turn engine failed before coordinator startup"
+	if cause != nil {
+		message = cause.Error()
+	}
+	request := TerminalRequested{
+		FailureCode:    string(protocol.CodeOf(cause)),
+		FailureMessage: message,
+	}
+	if errors.Is(cause, context.Canceled) {
+		request = TerminalRequested{
+			CancelReason: protocol.CancelReasonHostInterrupted,
+		}
+	}
+	if err := coordinator.Submit(ctx, request); err != nil {
+		return err
+	}
+	return coordinator.Submit(ctx, FinishTerminal{})
 }
 
 func (r *StoreCoordinatorRuntime) Open(

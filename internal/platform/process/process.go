@@ -191,6 +191,9 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		AdditionalReadPaths: append([]string(nil), options.AdditionalReadPaths...),
 		WorkspaceWritePaths: append([]string(nil), options.WorkspaceWritePaths...),
 		DenyNetwork:         options.DenyNetwork,
+		AllowLoopback: authorityBound &&
+			executionAuthority.AllowLoopback &&
+			!options.DenyNetwork,
 	}
 	if authorityBound {
 		commandSpec.AuthorityDigest = executionAuthority.Digest
@@ -280,6 +283,12 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		}
 		if options.DenyNetwork && !commandSpec.PreparedNetworkDenied {
 			return nil, errors.New("sandbox backend did not enforce network isolation")
+		}
+		expectedLoopback := authorityBound &&
+			executionAuthority.AllowLoopback &&
+			!options.DenyNetwork
+		if commandSpec.PreparedLoopbackAllowed != expectedLoopback {
+			return nil, unenforcedRestriction(options.Sandbox, "loopback_network")
 		}
 		expectedProxyPort := policy.ManagedProxyPort
 		if options.DenyNetwork {

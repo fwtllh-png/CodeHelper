@@ -50,6 +50,40 @@ func (*startupFailureEngine) StartTurn(
 	return errors.New("engine construction failed")
 }
 
+type startupTerminalFactEngine struct {
+	testEngine
+	store turnkernel.TerminalEnvelopeStore
+}
+
+func (e *startupTerminalFactEngine) StartTurn(
+	ctx context.Context,
+	payload *protocol.StartTurnPayload,
+	_ EngineSink,
+) error {
+	coordinator, err := turnkernel.NewTurnCoordinator(
+		string(payload.TurnID),
+		turnkernel.NewState(payload.Intent, "act", 1),
+		e.store,
+		turnkernel.NewDurableEffectDispatcher(),
+	)
+	if err != nil {
+		return err
+	}
+	for _, command := range []turnkernel.Command{
+		turnkernel.StartTurn{},
+		turnkernel.PreparationFinished{},
+		turnkernel.TerminalRequested{
+			FailureCode: "conflict", FailureMessage: "journal start failed",
+		},
+		turnkernel.FinishTerminal{},
+	} {
+		if err := coordinator.Submit(ctx, command); err != nil {
+			return err
+		}
+	}
+	return errors.New("journal start failed")
+}
+
 type startupCancelEngine struct {
 	testEngine
 	started chan struct{}
@@ -128,6 +162,58 @@ func TestDurableStartupFailureCommitsTerminalEnvelope(t *testing.T) {
 	}
 	if envelope.FrozenState.Phase != turnkernel.PhaseFailed ||
 		len(envelope.DomainFacts) != 4 ||
+		runtime.Snapshot(t.Context()).ActiveTurns != 0 {
+		t.Fatalf(
+			"startup terminal phase=%s facts=%d active=%d",
+			envelope.FrozenState.Phase,
+			len(envelope.DomainFacts),
+			runtime.Snapshot(t.Context()).ActiveTurns,
+		)
+	}
+}
+
+func TestDurableStartupFailurePublishesExistingTerminalFacts(t *testing.T) {
+	store := &c5AtomicTerminalStore{
+		MemoryTerminalEnvelopeStore: turnkernel.NewMemoryTerminalEnvelopeStore(
+			nil,
+			nil,
+		),
+	}
+	runtime, err := PrepareRuntimeWithRecovery(t.Context(), Options{
+		Engine:        &startupTerminalFactEngine{store: store},
+		EventStore:    NewMemoryEventStore(32),
+		ContentStore:  NewMemoryContentStore(),
+		TerminalStore: store,
+		Lifecycle:     startupTerminalLifecycle{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := startOperation(t, 803)
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	if event := receiveEvent(t, events); event.Kind != protocol.EventExecutionReceipt {
+		t.Fatalf("first event = %s", event.Kind)
+	}
+	if terminal := receiveEvent(t, events); terminal.Kind != protocol.EventTurnFailed {
+		t.Fatalf("terminal = %s", terminal.Kind)
+	}
+	_, turnID, _ := protocol.OperationReferences(operation)
+	envelope, _, err := store.LoadTerminal(t.Context(), string(turnID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if envelope.FrozenState.Phase != turnkernel.PhaseFailed ||
+		len(envelope.DomainFacts) < 4 ||
 		runtime.Snapshot(t.Context()).ActiveTurns != 0 {
 		t.Fatalf(
 			"startup terminal phase=%s facts=%d active=%d",

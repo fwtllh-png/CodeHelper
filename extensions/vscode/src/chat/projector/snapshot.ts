@@ -43,6 +43,7 @@ export function projectSnapshot(
     ...(turn.verificationBlocked === undefined
       ? {}
       : { verificationBlocked: turn.verificationBlocked }),
+    verificationUncoveredPaths: [...turn.verificationUncoveredPaths],
     ...(turn.workspaceChange === undefined
       ? {}
       : { workspaceChange: { ...turn.workspaceChange } }),

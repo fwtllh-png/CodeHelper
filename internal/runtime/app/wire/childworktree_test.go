@@ -102,6 +102,55 @@ func TestWorktreeGitReadRootsRejectsMismatchedCommonDir(t *testing.T) {
 	}
 }
 
+func TestWorktreeGitReadRootsIncludeCommonInfoDirectory(t *testing.T) {
+	base := t.TempDir()
+	common := filepath.Join(base, "repository.git")
+	gitDir := filepath.Join(common, "worktrees", "chat")
+	root := filepath.Join(base, "worktree")
+	for _, directory := range []string{
+		filepath.Join(common, "objects"),
+		filepath.Join(common, "refs"),
+		filepath.Join(common, "info"),
+		gitDir,
+		root,
+	} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(
+		filepath.Join(common, "info", "exclude"), []byte("fixture\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, ".git"), []byte("gitdir: "+gitDir+"\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(gitDir, "commondir"), []byte("../..\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	roots, err := worktreeGitReadRoots(root, common)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedCommon, err := filepath.EvalSymlinks(common)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(resolvedCommon, "info")
+	for _, candidate := range roots {
+		if candidate == want {
+			return
+		}
+	}
+	t.Fatalf("common info directory %q missing from %v", want, roots)
+}
+
 func removeGitWorkspace(t *testing.T, workspace string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

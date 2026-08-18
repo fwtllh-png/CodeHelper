@@ -27,8 +27,10 @@ type Tool struct {
 }
 
 type input struct {
-	Command      string   `json:"command"`
-	CoveredPaths []string `json:"covered_paths"`
+	Command        string                       `json:"command"`
+	CoveredPaths   []string                     `json:"covered_paths"`
+	NetworkTargets []tool.DeclaredNetworkTarget `json:"network_targets"`
+	AllowLoopback  bool                         `json:"allow_loopback"`
 }
 
 func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.Backend) error {
@@ -62,10 +64,10 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 
 func (t *Tool) Descriptor() tool.Descriptor {
 	description := map[string]string{
-		"quality_test":        "Run a test command and return a structured test result",
+		"quality_test":        "Run a test command and return a structured test result. Declare every dependency-download destination in network_targets. Set allow_loopback only for tests that bind or connect to local fixture servers",
 		"quality_diagnostics": "Run a static diagnostics command and return a structured diagnostics result",
 		"quality_review":      "Run a read-only review command and return a structured review result",
-		"quality_verify":      "Run a verifier command and return a structured verifier result",
+		"quality_verify":      "Run a verifier command and return a structured verifier result. Declare every dependency-download destination in network_targets. Set allow_loopback only for verifiers that use local fixture servers",
 	}[t.kind]
 	defaultCommand := map[string]string{
 		"quality_test":        "go test ./...",
@@ -86,7 +88,14 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"type": "array", "maxItems": 128,
 			"items": map[string]any{"type": "string", "minLength": 1},
 		}
+		properties["network_targets"] = tool.NetworkTargetsInputSchema()
+		properties["allow_loopback"] = map[string]any{
+			"type":        "boolean",
+			"description": "Permit localhost bind/connect for local test fixtures. Requires approval and does not permit non-loopback direct network.",
+		}
 		resolver.ReadPathsField = "covered_paths"
+		resolver.NetworkTargetsField = "network_targets"
+		resolver.LoopbackField = "allow_loopback"
 	}
 	return tool.Descriptor{
 		Name: t.kind, Description: description, Visibility: tool.VisibleModel,
@@ -130,6 +139,9 @@ func (t *Tool) typedExecutor() (tool.Executor, error) {
 }
 
 func (t *Tool) runTyped(ctx context.Context, value input) (tool.Result, error) {
+	if err := tool.ValidateDeclaredNetworkTargets(value.NetworkTargets); err != nil {
+		return tool.Result{}, err
+	}
 	coveredPaths, err := t.canonicalCoveredPaths(value.CoveredPaths)
 	if err != nil {
 		return tool.Result{}, err

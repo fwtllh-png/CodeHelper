@@ -273,6 +273,24 @@ func currentVerificationCallIDs(
 // tool_result pair pollutes the history and can trip provider-side pairing
 // checks.
 func verifyFeedback(receipt *VerificationReceipt, turn uint64) provider.Message {
+	if receipt != nil && receipt.Scope == verify.ScopeQuality &&
+		receipt.Status == verify.StatusFailed {
+		paths, _ := json.Marshal(receipt.UncoveredPaths)
+		message := provider.TextMessage(
+			provider.RoleUser,
+			"[verify] a structured quality command failed and provides no coverage.\n"+
+				"required_action=repair_quality_verification\n"+
+				"retry_original=false\n"+
+				"uncovered_paths="+string(paths)+"\n"+
+				receipt.Feedback(verifyFeedbackLimit)+"\n"+
+				"Fix the command or code, then rerun quality_test or quality_verify "+
+				"with these exact covered_paths. If dependency downloads are required, "+
+				"declare their exact network_targets on the quality tool. Do not call "+
+				"turn_complete until a structured quality command passes.",
+		)
+		message.Turn = turn
+		return message
+	}
 	if receipt != nil && receipt.Status == verify.StatusUnavailable {
 		paths, _ := json.Marshal(receipt.UncoveredPaths)
 		message := provider.TextMessage(

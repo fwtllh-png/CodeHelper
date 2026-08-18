@@ -610,6 +610,7 @@ func bindAttemptAuthority(
 	receipt.NetworkMode = profile.Network.Mode
 	receipt.NetworkTargets = append([]string(nil), profile.Network.Targets...)
 	receipt.ManagedProxyPort = profile.Network.ProxyPort
+	receipt.LoopbackAllowed = profile.Network.Loopback
 	receipt.ProcessAllowed = profile.Process.Allowed
 	receipt.Provenance = make(
 		[]tool.PermissionProvenance,

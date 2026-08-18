@@ -58,8 +58,9 @@ func (s *memoryProfileStore) UpdateProfile(
 
 type profileTestEngine struct {
 	testEngine
-	mu      sync.Mutex
-	applied protocol.SessionProfile
+	mu             sync.Mutex
+	applied        protocol.SessionProfile
+	beforeValidate func() error
 }
 
 type observingEventStore struct {
@@ -84,6 +85,11 @@ func (e *profileTestEngine) ValidateSessionProfile(
 	_ protocol.ThreadID,
 	profile protocol.SessionProfile,
 ) error {
+	if e.beforeValidate != nil {
+		if err := e.beforeValidate(); err != nil {
+			return err
+		}
+	}
 	return profile.Validate()
 }
 
@@ -140,6 +146,72 @@ func TestSessionProfileUpdateRejectsActiveTurnBeforePersistence(t *testing.T) {
 	}
 	if store.writes != 0 {
 		t.Fatalf("active update persisted %d writes", store.writes)
+	}
+}
+
+func TestRestoreSessionProfileRestoresIsolatedWorkspaceFirst(t *testing.T) {
+	defaults := runtimeTestProfile()
+	profiles := &memoryProfileStore{profile: defaults}
+	workspaces := &memorySessionWorkspaces{}
+	engine := &profileTestEngine{}
+	engine.beforeValidate = func() error {
+		if !workspaces.restored {
+			return errors.New("profile validated before isolated workspace restore")
+		}
+		return nil
+	}
+	lifecycle := &memorySessionLifecycleStore{summary: protocol.SessionSummary{
+		Version: protocol.SessionLifecycleVersion, Revision: 1,
+		SessionID: "session-worktree-profile", ThreadID: "thread-worktree-profile",
+		Title: "Worktree profile", Status: protocol.SessionStatusRunning,
+		Isolation: SessionIsolationWorktree, WorkspaceRoot: "/workspace",
+		WorkspaceLabel: "workspace",
+	}}
+	runtime := NewRuntime(Options{
+		Engine:              engine,
+		SessionProfiles:     profiles,
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+		SessionLifecycle:    lifecycle,
+		SessionWorkspaces:   workspaces,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	if _, err := runtime.RestoreSessionProfile(
+		t.Context(),
+		lifecycle.summary.SessionID,
+		lifecycle.summary.ThreadID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !workspaces.restored {
+		t.Fatal("isolated workspace was not restored")
+	}
+}
+
+func TestRestoreChildSessionProfileDoesNotRestoreHostWorktree(t *testing.T) {
+	defaults := runtimeTestProfile()
+	workspaces := &memorySessionWorkspaces{}
+	lifecycle := &memorySessionLifecycleStore{summary: protocol.SessionSummary{
+		Version: protocol.SessionLifecycleVersion, Revision: 1,
+		SessionID: "session-child-profile", ThreadID: "thread-host",
+		Status: protocol.SessionStatusRunning, Isolation: SessionIsolationWorktree,
+		WorkspaceRoot: "/workspace", WorkspaceLabel: "workspace",
+	}}
+	runtime := NewRuntime(Options{
+		Engine: &profileTestEngine{}, SessionProfiles: &memoryProfileStore{profile: defaults},
+		DefaultProfile: defaults, ProfileCapabilities: runtimeTestCapabilities(defaults),
+		SessionLifecycle: lifecycle, SessionWorkspaces: workspaces,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	if _, err := runtime.RestoreSessionProfile(
+		t.Context(), lifecycle.summary.SessionID, "thread-child",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if workspaces.restored {
+		t.Fatal("child profile restore replaced the registered child engine")
 	}
 }
 

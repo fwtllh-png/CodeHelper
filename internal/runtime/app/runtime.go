@@ -923,7 +923,7 @@ func (r *SessionService) RestoreSessionProfile(
 	sessionID string,
 	threadID protocol.ThreadID,
 ) (protocol.SessionProfileSnapshot, error) {
-	snapshot, err := r.SessionProfile(ctx, sessionID)
+	snapshot, err := r.sessionProfileForRestore(ctx, sessionID, threadID)
 	if err != nil {
 		return protocol.SessionProfileSnapshot{}, err
 	}

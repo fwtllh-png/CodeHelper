@@ -80,17 +80,23 @@ No layer should be described as a replacement for another.
   Process capability through a critical one-shot Approval. The retry uses a
   revisioned permission Profile and remains in the same strong Sandbox.
   Untyped or repeated denial fails closed.
-- `exec_command` process egress is proxy-only on macOS and requires explicit
-  `network_targets` scoped by Host, Port, Protocol, transport Method, and
-  private-address access. HTTPS targets must use `CONNECT`; HTTP targets use
-  ordinary HTTP methods. Declared process-network resources are classified as
-  network effects before process effects: `suggest` requires a human Network
-  Approval, while `auto` may auto-review an exact read-only target. The Sandbox
-  can connect only to the Runtime-owned loopback proxy; direct sockets and
-  undeclared targets fail closed. A CONNECT 403 from that loopback proxy means
-  the target was not declared or granted, not that the remote service is
-  unreachable. Linux remains process-network-denied until its namespace proxy
-  bridge is available.
+- Process egress from `exec_command`, `quality_test`, and `quality_verify` is
+  proxy-only on macOS and requires explicit `network_targets` scoped by Host,
+  Port, Protocol, transport Method, and private-address access. HTTPS targets
+  must use `CONNECT`; HTTP targets use ordinary HTTP methods. Declared
+  process-network resources are classified as network effects before process
+  effects: `suggest` requires a human Network Approval, while `auto` may
+  auto-review an exact read-only target. The Sandbox can connect only to the
+  Runtime-owned loopback proxy; direct sockets and undeclared targets fail
+  closed. A CONNECT 403 from that loopback proxy means the target was not
+  declared or granted, not that the remote service is unreachable. Linux
+  remains process-network-denied until its namespace proxy bridge is available.
+- `quality_test` and `quality_verify` may request `allow_loopback` when a test
+  fixture must bind and connect to an ephemeral localhost port. It is disabled
+  by default and creates a separate high-risk Network Approval. On macOS the
+  approved Profile adds only localhost inbound and outbound Seatbelt rules;
+  non-loopback traffic still requires exact proxy targets. The effective
+  Profile and Attempt Receipt record the loopback grant.
 - Linux strong Sandbox fixes Landlock, `no_new_privs`, seccomp, and `execve`
   to one OS thread. Seccomp denies tracing, cross-process memory access,
   namespace creation, `clone3`, and `io_uring`; restricted network mode permits

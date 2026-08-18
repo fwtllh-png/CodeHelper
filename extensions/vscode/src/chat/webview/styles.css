@@ -1198,7 +1198,21 @@ pre {
 
 .error {
   color: var(--vscode-errorForeground);
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.verification-path-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.verification-path {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--vscode-descriptionForeground);
+  white-space: normal;
 }
 
 .receipt {

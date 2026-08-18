@@ -203,45 +203,45 @@ func TestExecCommandValidatesCompactNetworkTargetSchema(t *testing.T) {
 	for index := range methods {
 		methods[index] = "GET"
 	}
-	targets := make([]networkTargetInput, 33)
+	targets := make([]tool.DeclaredNetworkTarget, 33)
 	for index := range targets {
-		targets[index] = networkTargetInput{
+		targets[index] = tool.DeclaredNetworkTarget{
 			Host: "example.com", Protocol: "https", Port: 443,
 		}
 	}
 	tests := []struct {
 		name    string
-		targets []networkTargetInput
+		targets []tool.DeclaredNetworkTarget
 	}{
-		{name: "valid", targets: []networkTargetInput{{
+		{name: "valid", targets: []tool.DeclaredNetworkTarget{{
 			Host: "example.com", Protocol: "https", Port: 443,
 			Methods: []string{"CONNECT"},
 		}}},
-		{name: "https without connect", targets: []networkTargetInput{{
+		{name: "https without connect", targets: []tool.DeclaredNetworkTarget{{
 			Host: "example.com", Protocol: "https", Port: 443,
 			Methods: []string{"GET"},
 		}}},
-		{name: "http with connect", targets: []networkTargetInput{{
+		{name: "http with connect", targets: []tool.DeclaredNetworkTarget{{
 			Host: "example.com", Protocol: "http", Port: 80,
 			Methods: []string{"CONNECT"},
 		}}},
-		{name: "missing methods", targets: []networkTargetInput{{
+		{name: "missing methods", targets: []tool.DeclaredNetworkTarget{{
 			Host: "example.com", Protocol: "https", Port: 443,
 		}}},
-		{name: "missing host", targets: []networkTargetInput{{
+		{name: "missing host", targets: []tool.DeclaredNetworkTarget{{
 			Protocol: "https", Port: 443,
 		}}},
-		{name: "invalid protocol", targets: []networkTargetInput{{
+		{name: "invalid protocol", targets: []tool.DeclaredNetworkTarget{{
 			Host: "example.com", Protocol: "tcp", Port: 443,
 		}}},
-		{name: "missing port", targets: []networkTargetInput{{
+		{name: "missing port", targets: []tool.DeclaredNetworkTarget{{
 			Host: "example.com", Protocol: "https",
 		}}},
-		{name: "empty method", targets: []networkTargetInput{{
+		{name: "empty method", targets: []tool.DeclaredNetworkTarget{{
 			Host: "example.com", Protocol: "https", Port: 443,
 			Methods: []string{""},
 		}}},
-		{name: "too many methods", targets: []networkTargetInput{{
+		{name: "too many methods", targets: []tool.DeclaredNetworkTarget{{
 			Host: "example.com", Protocol: "https", Port: 443,
 			Methods: methods,
 		}}},

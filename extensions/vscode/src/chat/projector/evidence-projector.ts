@@ -36,6 +36,9 @@ export function projectEvidence(event: DecodedEvent, turn: MutableTurn): boolean
       );
       turn.verification = verification;
       turn.verificationBlocked = event.data.action === "blocked";
+      turn.verificationUncoveredPaths = [
+        ...(event.data.uncovered_paths ?? []),
+      ];
       turn.timeline.push({
         id: `verification:${String(event.sequence)}`,
         sequence: event.sequence,

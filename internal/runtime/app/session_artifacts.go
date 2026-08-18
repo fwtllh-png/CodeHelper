@@ -161,6 +161,7 @@ func (r *ArtifactService) PrepareTurnRecovery(
 	if strings.TrimSpace(sourcePrompt) == "" {
 		return TurnRecoveryPreparation{}, runtimeProblem(protocol.CodeConflict, "source Turn has no durable model-visible request", nil)
 	}
+	sourcePrompt = recoverySourcePrompt(sourcePrompt)
 	sourceDisplayPrompt := recoveryDisplayPrompt(
 		sourcePrompt,
 		started.DisplayPrompt,
@@ -217,39 +218,42 @@ func (r *ArtifactService) PrepareTurnRecovery(
 		},
 	}, nil
 }
+func recoverySourcePrompt(prompt string) string {
+	value := strings.TrimSpace(prompt)
+	extracted, ok := recoveryTaggedSection(value, "source_request")
+	if !strings.HasPrefix(value, turnRecoveryPromptPrefix) || !ok {
+		return value
+	}
+	return recoverySourcePrompt(extracted)
+}
 func recoveryDisplayPrompt(modelPrompt string, displayPrompt string) string {
 	value := strings.TrimSpace(displayPrompt)
 	if value == "" {
 		value = strings.TrimSpace(modelPrompt)
 	}
-	for range 8 {
-		if !strings.HasPrefix(value, turnRecoveryPromptPrefix) {
-			break
-		}
-		extracted, ok := recoveryTaggedSection(value, "source_request")
-		if !ok {
-			break
-		}
-		value = strings.TrimSpace(extracted)
-	}
+	value = recoverySourcePrompt(value)
 	for strings.HasPrefix(value, "Continue: ") {
 		value = strings.TrimSpace(strings.TrimPrefix(value, "Continue: "))
 	}
 	return value
 }
 func recoveryTaggedSection(prompt string, tag string) (string, bool) {
-	open := "<" + tag + ">"
-	close := "</" + tag + ">"
-	start := strings.Index(prompt, open)
-	if start < 0 {
+	open, close := "<"+tag+">", "</"+tag+">"
+	_, body, ok := strings.Cut(prompt, open)
+	if !ok {
 		return "", false
 	}
-	start += len(open)
-	end := strings.Index(prompt[start:], close)
-	if end < 0 {
-		return "", false
+	for end := 0; ; end += len(close) {
+		offset := strings.Index(body[end:], close)
+		if offset < 0 {
+			return "", false
+		}
+		end += offset
+		if section := body[:end]; strings.Count(section, open) ==
+			strings.Count(section, close) {
+			return section, true
+		}
 	}
-	return prompt[start : start+end], true
 }
 func renderRecoveryEvidence(
 	sourceTurnID protocol.TurnID,

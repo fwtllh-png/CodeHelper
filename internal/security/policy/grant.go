@@ -91,7 +91,18 @@ func normalizedGrantResources(
 			}
 			value = target.Protocol + "://" + target.Host
 		} else {
-			value = resource.Kind + ":" + cleanGrantPath(value) + ":" + string(resource.Access)
+			canonical := cleanGrantPath(value)
+			value = resource.Kind + ":" + canonical + ":" + string(resource.Access)
+			if resource.Tree || resource.Protocol != "" || resource.Port != 0 ||
+				len(resource.Methods) != 0 || resource.AllowPrivate {
+				identity := resource
+				identity.Path, identity.ID = "", canonical
+				identity.Protocol = strings.ToLower(identity.Protocol)
+				identity.Methods = append([]string(nil), identity.Methods...)
+				sort.Strings(identity.Methods)
+				sum := sha256.Sum256([]byte(identity.Key()))
+				value += ":" + hex.EncodeToString(sum[:])
+			}
 		}
 		values = append(values, value)
 	}

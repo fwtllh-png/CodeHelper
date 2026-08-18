@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui"
+	"github.com/fwtllh-png/CodeHelper/internal/host/tui/processfixture"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/testsupport/processfixture"
 )
 
 func openPanelKey(t *testing.T, model tui.Model, key string) tui.Model {

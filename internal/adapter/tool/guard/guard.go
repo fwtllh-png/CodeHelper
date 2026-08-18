@@ -1116,6 +1116,9 @@ func (g *Guard) grantNetworkHosts(resources []tool.Resource) {
 	for _, resource := range resources {
 		switch resource.Kind {
 		case "host":
+			if resource.Protocol == "loopback" {
+				continue
+			}
 			g.onNetworkAllow(egress.Target{
 				Host: resource.ID, Protocol: resource.Protocol, Port: resource.Port,
 				Methods: resource.Methods, AllowPrivate: resource.AllowPrivate,
@@ -1360,6 +1363,19 @@ func (g *Guard) resolveResources(
 			return nil, err
 		}
 		resources = append(resources, targets...)
+	}
+	if field := descriptor.ResourceResolver.LoopbackField; field != "" {
+		enabled, ok := values[field].(bool)
+		if values[field] != nil && !ok {
+			return nil, errors.New("allow_loopback must be a boolean")
+		}
+		if enabled {
+			resources = append(resources, tool.Resource{
+				Kind: "host", ID: "localhost", Access: tool.AccessWrite,
+				Protocol: "loopback", Methods: []string{"BIND", "CONNECT"},
+				AllowPrivate: true,
+			})
+		}
 	}
 	if field := descriptor.ResourceResolver.ChangesField; field != "" {
 		paths, err := changePaths(values[field])

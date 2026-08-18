@@ -53,3 +53,30 @@ type SessionWorkspaceManager interface {
 		planID string,
 	) (tool.EditPlan, error)
 }
+
+func (r *SessionService) sessionProfileForRestore(
+	ctx context.Context,
+	sessionID string,
+	threadID protocol.ThreadID,
+) (protocol.SessionProfileSnapshot, error) {
+	if r.sessionLifecycle == nil {
+		return r.SessionProfile(ctx, sessionID)
+	}
+	current, err := r.SessionStatus(ctx, sessionID)
+	if err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	if current.ThreadID != threadID ||
+		current.Isolation != SessionIsolationWorktree {
+		return r.SessionProfile(ctx, sessionID)
+	}
+	if r.sessionWorkspaces == nil {
+		return protocol.SessionProfileSnapshot{}, runtimeProblem(protocol.CodeUnavailable,
+			"isolated Chat workspaces are unavailable", nil)
+	}
+	if _, err := r.sessionWorkspaces.Restore(ctx,
+		current.SessionID, current.ThreadID); err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
+	return r.SessionProfile(ctx, sessionID)
+}

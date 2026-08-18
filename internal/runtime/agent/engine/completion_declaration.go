@@ -8,6 +8,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
 
@@ -40,7 +41,9 @@ func (e *Engine) completionCandidate(
 	evidenceInputs := e.verificationEvidence()
 	currentEvidence := make(map[string]struct{}, len(evidenceInputs))
 	for _, evidence := range evidenceInputs {
-		if evidence.MutationRevision == mutationRevision && evidence.CallID != "" {
+		if evidence.Status == verify.StatusPassed &&
+			evidence.MutationRevision == mutationRevision &&
+			evidence.CallID != "" {
 			currentEvidence[evidence.CallID] = struct{}{}
 		}
 	}

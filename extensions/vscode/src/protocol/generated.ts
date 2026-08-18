@@ -1284,6 +1284,7 @@ export type ToolResultData = {
             readonly "duration_ms": number;
             readonly "enforcement"?: string;
             readonly "filesystem_unrestricted"?: boolean;
+            readonly "loopback_allowed"?: boolean;
             readonly "managed_proxy_port"?: number;
             readonly "network_mode"?: string;
             readonly "network_targets"?: ReadonlyArray<string>;

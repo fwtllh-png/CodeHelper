@@ -1077,6 +1077,73 @@ func TestProcessNetworkTargetRequiresApprovalUnderSuggest(t *testing.T) {
 	}
 }
 
+func TestProcessLoopbackRequiresApprovalAndBindsAuthority(t *testing.T) {
+	descriptor := processNetworkDescriptor()
+	descriptor.ResourceResolver.NetworkTargetsField = ""
+	descriptor.ResourceResolver.LoopbackField = "allow_loopback"
+	descriptor.InputSchema = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"allow_loopback": map[string]any{"type": "boolean"},
+		},
+		"additionalProperties": false,
+	}
+	registry := tool.NewRegistry(nil, nil)
+	registry.SetSandboxBackend(strongBackend{})
+	executor := &testExecutor{descriptor: descriptor}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan ApprovalRequest, 1)
+	guard, err := New(Options{
+		Registry:  registry,
+		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
+		Workspace: t.TempDir(),
+		Approvals: func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan tool.Result, 1)
+	errs := make(chan error, 1)
+	go func() {
+		result, executeErr := guard.Execute(
+			context.Background(),
+			"call-process-loopback",
+			descriptor.Name,
+			json.RawMessage(`{"allow_loopback":true}`),
+		)
+		done <- result
+		errs <- executeErr
+	}()
+	request := <-requests
+	if request.ReasonCode != ApprovalReasonNetworkHost ||
+		request.Network == nil ||
+		request.Network.Host != "localhost" ||
+		request.Network.Protocol != "loopback" ||
+		!request.Network.AllowPrivate ||
+		!reflect.DeepEqual(request.Network.Methods, []string{"BIND", "CONNECT"}) {
+		t.Fatalf("loopback approval = %+v", request)
+	}
+	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
+	result := <-done
+	if err := <-errs; err != nil {
+		t.Fatal(err)
+	}
+	profiles := executor.profilesSnapshot()
+	if len(profiles) != 1 || !profiles[0].Network.Loopback {
+		t.Fatalf("loopback profiles = %+v", profiles)
+	}
+	if result.Execution == nil ||
+		len(result.Execution.Attempts) != 1 ||
+		!result.Execution.Attempts[0].LoopbackAllowed {
+		t.Fatalf("loopback execution receipt = %+v", result.Execution)
+	}
+}
+
 func TestNetworkAutoReviewsUnderActAuto(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &testExecutor{descriptor: networkFetchDescriptor()}

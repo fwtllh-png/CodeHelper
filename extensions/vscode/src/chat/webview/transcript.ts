@@ -210,11 +210,14 @@ function renderTurn(
       appendText(receipt, "div", "meta", turn.receipt);
       article.append(receipt);
     }
+    const retainedDraft = turn.verificationBlocked === true;
+    if (retainedDraft) {
+      appendVerificationBlock(article, turn);
+    }
     if (turn.error !== undefined) {
       appendText(article, "div", "error", turn.error);
     }
     if (turn.status === "failed" || turn.status === "canceled") {
-      const retainedDraft = turn.verificationBlocked === true;
       if (retainedDraft) {
         appendText(
           article,
@@ -268,12 +271,41 @@ function turnStatus(turn: ChatTurn): string | undefined {
     case "awaiting_input":
       return "Waiting for input";
     case "failed":
-      return "Incomplete";
+      return turn.verificationBlocked === true
+        ? "Verification required"
+        : "Incomplete";
     case "canceled":
       return "Canceled";
     case "completed":
       return undefined;
   }
+}
+
+function appendVerificationBlock(article: HTMLElement, turn: ChatTurn): void {
+  const count = turn.verificationUncoveredPaths.length;
+  const message = count === 0
+    ? "Verification blocked before the retained changes could be accepted."
+    : `Verification blocked: ${String(count)} changed ` +
+      `${count === 1 ? "path lacks" : "paths lack"} passing structured evidence.`;
+  appendText(article, "div", "error verification-error", message);
+  if (count === 0) return;
+
+  const details = document.createElement("details");
+  details.className = "verification-paths";
+  details.dataset["stateKey"] = `turn:${turn.id}:verification-paths`;
+  appendText(
+    details,
+    "summary",
+    "",
+    `Uncovered paths · ${String(count)}`,
+  );
+  const paths = document.createElement("div");
+  paths.className = "verification-path-list";
+  for (const path of turn.verificationUncoveredPaths) {
+    appendText(paths, "code", "verification-path", path);
+  }
+  details.append(paths);
+  article.append(details);
 }
 
 function appendTimeline(

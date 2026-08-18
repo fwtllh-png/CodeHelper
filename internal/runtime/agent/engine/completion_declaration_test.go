@@ -363,7 +363,7 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	bindCompletionDecision(&accepted, turnkernel.CompletionDecision{
 		Accepted:       true,
 		Summary:        "done",
-		RequiredAction: "final_answer",
+		RequiredAction: "await_runtime_verification",
 		Mutation:       1,
 		ChangedPaths:   []string{"a.go"},
 		QualityCalls:   []string{"verify-1"},

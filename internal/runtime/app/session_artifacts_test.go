@@ -569,6 +569,29 @@ Fix the parser
 	if got := recoveryDisplayPrompt(legacy, legacy); got != "Fix the parser" {
 		t.Fatalf("legacy recovery display prompt = %q", got)
 	}
+	nested := turnRecoveryPromptPrefix + ` Do not infer the task.
+
+Original model-visible request:
+<source_request>
+` + legacy + `
+</source_request>`
+	if got := recoverySourcePrompt(nested); got != "Fix the parser" {
+		t.Fatalf("nested recovery source prompt = %q", got)
+	}
+	withQuotedClose := turnRecoveryPromptPrefix + ` Do not infer the task.
+
+Original model-visible request:
+<source_request>
+Fix the parser
+</source_request>
+
+Recovery guidance:
+<guidance>
+Explain the literal </source_request> tag.
+</guidance>`
+	if got := recoverySourcePrompt(withQuotedClose); got != "Fix the parser" {
+		t.Fatalf("quoted close recovery source prompt = %q", got)
+	}
 	if got := recoveryDisplayPrompt(
 		"internal recovery context",
 		"Continue: Continue: Fix the parser",

@@ -150,6 +150,7 @@ function turn(
     contextReceipts: [],
     contextSelections: [],
     diagnostics: [],
+    verificationUncoveredPaths: [],
     unknownEvents: [],
     ...overrides,
   };

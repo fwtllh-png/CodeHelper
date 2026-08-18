@@ -45,6 +45,33 @@ func TestShellGrantBindsCommandCWDAndWriteSet(t *testing.T) {
 	}
 }
 
+func TestShellGrantBindsLoopbackResourceSemantics(t *testing.T) {
+	base := Invocation{
+		Tool: "quality_test", Capability: CapabilityProcess,
+		Access: tool.AccessWrite, Sandbox: tool.SandboxStrong, Validated: true,
+		Arguments: json.RawMessage(`{"command":"go test ./..."}`),
+		Resources: []tool.Resource{{
+			Kind: "host", ID: "localhost", Access: tool.AccessWrite,
+			Protocol: "http", Port: 8080, Methods: []string{"GET"},
+			AllowPrivate: true,
+		}},
+	}
+	httpGrant, ok := GrantForInvocation(base)
+	if !ok {
+		t.Fatal("HTTP invocation did not produce a grant")
+	}
+	loopback := base
+	loopback.Resources = []tool.Resource{{
+		Kind: "host", ID: "localhost", Access: tool.AccessWrite,
+		Protocol: "loopback", Methods: []string{"BIND", "CONNECT"},
+		AllowPrivate: true,
+	}}
+	loopbackGrant, ok := GrantForInvocation(loopback)
+	if !ok || loopbackGrant.Key == httpGrant.Key {
+		t.Fatalf("loopback grant = %+v, HTTP grant = %+v", loopbackGrant, httpGrant)
+	}
+}
+
 func TestSessionGrantMatchesOnlyTypedKey(t *testing.T) {
 	now := time.Now()
 	cache := NewApprovalCache()

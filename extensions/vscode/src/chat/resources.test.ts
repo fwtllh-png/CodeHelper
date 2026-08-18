@@ -218,6 +218,7 @@ function turn(overrides: Partial<ChatTurn>): ChatTurn {
     contextReceipts: [],
     contextSelections: [],
     diagnostics: [],
+    verificationUncoveredPaths: [],
     unknownEvents: [],
     ...overrides,
   };

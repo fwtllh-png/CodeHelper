@@ -333,9 +333,6 @@
         "production_lines": 8464,
         "options_fields": 70,
         "mutex_fields": 6
-      },
-      "relaxations": {
-        "production_lines": "Project Skill selection truncation diagnostics through Runtime wiring."
       }
     },
     {
@@ -598,9 +595,6 @@
         "production_lines": 10635,
         "options_fields": 60,
         "mutex_fields": 8
-      },
-      "relaxations": {
-        "production_lines": "Freeze the Provider-visible Tool catalog, keep uncapped Sessions operational, and require structured terminal state."
       }
     },
     {
@@ -612,9 +606,6 @@
         "production_lines": 8605,
         "options_fields": 18,
         "mutex_fields": 7
-      },
-      "relaxations": {
-        "production_lines": "Record frozen Skill selection diagnostics in the execution receipt."
       }
     },
     {
@@ -712,9 +703,6 @@
         "production_lines": 6000,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Publish the structured Skill selection receipt contract."
       }
     },
     {
@@ -852,10 +840,6 @@
       "limits": {
         "lines": 50,
         "max_function_lines": 41
-      },
-      "relaxations": {
-        "lines": "Project all bounded Skill selection diagnostics without dropping truncation evidence.",
-        "max_function_lines": "Keep the Skill summary and diagnostic projection atomic."
       }
     },
     {
@@ -865,10 +849,6 @@
       "limits": {
         "lines": 680,
         "max_function_lines": 114
-      },
-      "relaxations": {
-        "lines": "Guarantee explicit Skill recall before bounded lexical candidate selection.",
-        "max_function_lines": "Preserve explicit, required, and previously used candidates in one deterministic selection pass."
       }
     },
     {

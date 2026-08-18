@@ -202,6 +202,7 @@ type memorySessionWorkspaces struct {
 	plan      tool.EditPlan
 	planErr   error
 	discarded bool
+	restored  bool
 }
 
 func (m *memorySessionWorkspaces) Provision(
@@ -217,6 +218,7 @@ func (m *memorySessionWorkspaces) Restore(
 	string,
 	protocol.ThreadID,
 ) (SessionWorkspace, error) {
+	m.restored = true
 	return SessionWorkspace{
 		Mode: SessionIsolationWorktree,
 		Root: "/workspace/.worktree",
