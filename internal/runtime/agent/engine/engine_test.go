@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -2870,6 +2871,33 @@ func TestEngineMailboxNonTriggerHeldUntilNextTurn(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("held mailbox not promoted on next turn: %+v", msgs)
+	}
+}
+
+func TestEngineMailboxBacklogIsBoundedAndObservable(t *testing.T) {
+	engine := newEngine(
+		t,
+		&scriptedProvider{},
+		tool.NewRegistry(nil, nil),
+	)
+	for index := range maxMailboxBacklog {
+		if err := engine.EnqueueMailbox(
+			fmt.Sprintf("mail-%d", index),
+			false,
+		); err != nil {
+			t.Fatalf("enqueue %d: %v", index, err)
+		}
+	}
+	err := engine.EnqueueMailbox("overflow", false)
+	if !protocol.IsCode(err, protocol.CodeResourceExhausted) {
+		t.Fatalf("overflow error = %v", err)
+	}
+	if len(engine.mailboxHold) != maxMailboxBacklog {
+		t.Fatalf(
+			"mailbox backlog = %d, want %d",
+			len(engine.mailboxHold),
+			maxMailboxBacklog,
+		)
 	}
 }
 

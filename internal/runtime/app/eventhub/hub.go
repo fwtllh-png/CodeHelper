@@ -36,18 +36,41 @@ type Snapshot struct {
 	LastSequence protocol.Cursor
 	Subscribers  int
 }
+type subscription struct {
+	events chan protocol.Event
+	done   chan struct{}
+	once   sync.Once
+}
+
+func newSubscription(capacity int) *subscription {
+	return &subscription{
+		events: make(chan protocol.Event, capacity),
+		done:   make(chan struct{}),
+	}
+}
+
+func (s *subscription) close() {
+	s.once.Do(func() {
+		close(s.events)
+		close(s.done)
+	})
+}
+
 type Hub struct {
 	config      Config
 	publishMu   sync.Mutex
 	mu          sync.Mutex
 	last        protocol.Cursor
 	next        uint64
-	subscribers map[uint64]chan protocol.Event
+	subscribers map[uint64]*subscription
 	closed      bool
 }
 
 func New(config Config) *Hub {
-	h := &Hub{config: config, subscribers: make(map[uint64]chan protocol.Event)}
+	h := &Hub{
+		config:      config,
+		subscribers: make(map[uint64]*subscription),
+	}
 	if last, err := config.Store.LastSequence(context.Background()); err == nil {
 		h.last = last
 	}
@@ -73,23 +96,24 @@ func (h *Hub) Events(ctx context.Context, cursor protocol.Cursor, limit int) (<-
 	if more {
 		return nil, h.config.ReplayOverflow(cursor, limit)
 	}
-	channel := make(chan protocol.Event, max(h.config.Buffer, len(replay)+1))
+	subscriber := newSubscription(max(h.config.Buffer, len(replay)+1))
 	for _, event := range replay {
-		channel <- event
+		subscriber.events <- event
 	}
 	h.mu.Lock()
 	h.next++
 	id := h.next
-	h.subscribers[id] = channel
+	h.subscribers[id] = subscriber
 	h.mu.Unlock()
 	go func() {
 		select {
 		case <-ctx.Done():
 		case <-h.config.Context.Done():
+		case <-subscriber.done:
 		}
 		h.remove(id)
 	}()
-	return channel, nil
+	return subscriber.events, nil
 }
 func (h *Hub) Replay(ctx context.Context, cursor protocol.Cursor, limit int) ([]protocol.Event, bool, error) {
 	h.publishMu.Lock()
@@ -201,10 +225,10 @@ func (h *Hub) fanout(event protocol.Event) {
 	dropped := 0
 	for id, subscriber := range h.subscribers {
 		select {
-		case subscriber <- event:
+		case subscriber.events <- event:
 		default:
-			close(subscriber)
 			delete(h.subscribers, id)
+			subscriber.close()
 			dropped++
 		}
 	}
@@ -233,8 +257,8 @@ func (h *Hub) Close(ctx context.Context) error {
 	h.mu.Lock()
 	h.closed = true
 	for id, subscriber := range h.subscribers {
-		close(subscriber)
 		delete(h.subscribers, id)
+		subscriber.close()
 	}
 	h.mu.Unlock()
 	h.publishMu.Unlock()
@@ -243,8 +267,8 @@ func (h *Hub) Close(ctx context.Context) error {
 func (h *Hub) remove(id uint64) {
 	h.mu.Lock()
 	if subscriber, exists := h.subscribers[id]; exists {
-		close(subscriber)
 		delete(h.subscribers, id)
+		subscriber.close()
 	}
 	h.mu.Unlock()
 }

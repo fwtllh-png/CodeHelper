@@ -6,7 +6,11 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
+
+const maxMailboxBacklog = 2 * turnexec.DefaultMailboxCapacity
 
 // EnqueueMailbox queues an inter-agent mailbox message.
 // triggerTurn=true injects into the current turn (cancels sampling, like Steer).
@@ -17,17 +21,11 @@ func (e *Engine) EnqueueMailbox(prompt string, triggerTurn bool) error {
 	}
 	item := PendingInput{Source: PendingMailbox, Prompt: prompt, TriggerTurn: triggerTurn}
 	if !triggerTurn {
-		e.scopeMu.Lock()
-		e.mailboxHold = append(e.mailboxHold, item)
-		e.scopeMu.Unlock()
-		return nil
+		return e.holdMailbox(item)
 	}
 	scope := e.runningScope()
 	if scope == nil {
-		e.scopeMu.Lock()
-		e.mailboxHold = append(e.mailboxHold, item)
-		e.scopeMu.Unlock()
-		return nil
+		return e.holdMailbox(item)
 	}
 	scope.mu.Lock()
 	err := scope.state.mailbox.Offer(item)
@@ -39,6 +37,21 @@ func (e *Engine) EnqueueMailbox(prompt string, triggerTurn bool) error {
 	if cancel != nil {
 		cancel(errors.New("mailbox input"))
 	}
+	return nil
+}
+
+func (e *Engine) holdMailbox(item PendingInput) error {
+	e.scopeMu.Lock()
+	defer e.scopeMu.Unlock()
+	if len(e.mailboxHold) >= maxMailboxBacklog {
+		return protocol.NewProblem(
+			protocol.CodeResourceExhausted,
+			"turn mailbox backlog is full",
+			true,
+			nil,
+		)
+	}
+	e.mailboxHold = append(e.mailboxHold, item)
 	return nil
 }
 

@@ -3,6 +3,7 @@ package guard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -191,6 +192,74 @@ func TestAdditionalPermissionApprovalReleasesAdmissionAndClaims(t *testing.T) {
 	}
 	if active.Load() != 0 {
 		t.Fatalf("active admissions = %d", active.Load())
+	}
+}
+
+func TestAdditionalPermissionRetryRejectsChangedAuthorization(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	registry.SetSandboxBackend(strongBackend{})
+	executor := &escalateExecutor{
+		descriptor: sandboxedDescriptor("retry_reauthorize"),
+	}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan ApprovalRequest, 1)
+	guard, err := New(Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionBypass,
+		),
+		Workspace: t.TempDir(),
+		Approvals: func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type execution struct {
+		result tool.Result
+		err    error
+	}
+	done := make(chan execution, 1)
+	go func() {
+		result, executeErr := guard.Execute(
+			t.Context(),
+			"call-retry-reauthorize",
+			"retry_reauthorize",
+			json.RawMessage(`{}`),
+		)
+		done <- execution{result: result, err: executeErr}
+	}()
+	request := <-requests
+	if request.ReasonCode != ApprovalReasonAdditionalPermission {
+		t.Fatalf("approval reason = %q", request.ReasonCode)
+	}
+	guard.SwapPolicy(
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionNever),
+	)
+	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
+
+	out := <-done
+	var denied *policy.DecisionError
+	if !errors.As(out.err, &denied) ||
+		denied.Code != "authorization_changed" {
+		t.Fatalf("result=%+v error=%v", out.result, out.err)
+	}
+	if executor.calls.Load() != 1 {
+		t.Fatalf("executor attempts = %d, want 1", executor.calls.Load())
+	}
+	receipt := out.result.Execution
+	if receipt == nil ||
+		len(receipt.Attempts) != 1 ||
+		receipt.Attempts[0].Amendment == nil ||
+		receipt.Attempts[0].Amendment.Decision != "rejected" ||
+		receipt.TerminalStatus != tool.OutcomeRejected ||
+		receipt.TerminalOwner != tool.TerminalOwnerGuard {
+		t.Fatalf("execution receipt = %+v", receipt)
 	}
 }
 

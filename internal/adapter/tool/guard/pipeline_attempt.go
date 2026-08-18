@@ -107,7 +107,7 @@ func (g *Guard) executePipeline(
 		receipt.ClaimWait += attempt.claimWait
 		switch attempt.retry {
 		case retryPermission:
-			waited, approvalErr := g.approveAdditionalPermission(
+			waited, approval, approvalErr := g.approveAdditionalPermission(
 				ctx,
 				prepared.invocation,
 				callID,
@@ -147,16 +147,23 @@ func (g *Guard) executePipeline(
 				g.afterAttempt(ctx, prepared.invocation, attempt.result, amendErr)
 				return attempt.result, amendErr
 			}
-			setAmendmentDecision(&receipt, "approved", amended.Digest)
-			updated, updateErr := g.applyAdditionalPermission(
+			updated, updateErr := g.reauthorizeAdditionalPermission(
+				ctx,
 				prepared,
+				mode,
+				attempt.profile,
 				attempt.permission.Permission,
+				approval,
 			)
 			if updateErr != nil {
-				setAmendmentDecision(&receipt, "failed", amended.Digest)
+				setAmendmentDecision(
+					&receipt,
+					amendmentDecision(updateErr),
+					"",
+				)
 				setExecutionTerminal(
 					&receipt,
-					tool.OutcomeFailed,
+					terminalStatus(updateErr, attempt.result),
 					tool.TerminalOwnerGuard,
 					attempt.teardown,
 				)
@@ -164,6 +171,7 @@ func (g *Guard) executePipeline(
 				g.afterAttempt(ctx, prepared.invocation, attempt.result, updateErr)
 				return attempt.result, updateErr
 			}
+			setAmendmentDecision(&receipt, "approved", amended.Digest)
 			retryPrepared = &updated
 			retryProfile = &amended
 			permissionRetried = true
@@ -508,7 +516,7 @@ func (g *Guard) approveAdditionalPermission(
 	invocation Invocation,
 	callID string,
 	request authority.AdditionalPermissionRequest,
-) (time.Duration, error) {
+) (time.Duration, ApprovalDecision, error) {
 	escalation := policyInput(callID, invocation)
 	escalation.Resources = append(
 		append([]tool.Resource(nil), invocation.Resources...),
@@ -516,7 +524,7 @@ func (g *Guard) approveAdditionalPermission(
 	)
 	now := g.now()
 	started := g.now()
-	_, err := g.waitForApproval(
+	approval, err := g.waitForApproval(
 		ctx,
 		invocation,
 		escalation,
@@ -530,24 +538,88 @@ func (g *Guard) approveAdditionalPermission(
 	)
 	waited := g.now().Sub(started)
 	if err != nil {
-		return waited, err
+		return waited, ApprovalDecision{}, err
 	}
-	return waited, nil
+	return waited, approval, nil
 }
 
-func (g *Guard) applyAdditionalPermission(
+func (g *Guard) reauthorizeAdditionalPermission(
+	ctx context.Context,
 	prepared preparedExecution,
+	mode SandboxMode,
+	base authority.EffectivePermissionProfile,
 	permission authority.AdditionalPermission,
+	approval ApprovalDecision,
 ) (preparedExecution, error) {
+	runtime := g.Policy().CloneSampling()
+	baseline := prepared
+	baseline.runtime = runtime
+	baseline.decision = runtime.Evaluate(
+		policyInput(prepared.invocation.CallID, prepared.invocation),
+	)
+	current, err := g.compileAuthority(baseline, mode, base.Revision)
+	if err != nil || current.Digest != base.Digest {
+		return preparedExecution{}, &policy.DecisionError{
+			Code:   "authorization_changed",
+			Reason: "tool authorization changed before the amended retry",
+		}
+	}
 	resource := authority.PermissionResource(permission)
 	resources := append(
 		append([]tool.Resource(nil), prepared.invocation.Resources...),
 		resource,
 	)
-	if err := g.checkControlPlaneWrites(resources); err != nil {
-		return preparedExecution{}, err
+	if writeErr := g.checkControlPlaneWrites(resources); writeErr != nil {
+		return preparedExecution{}, writeErr
 	}
 	prepared.invocation.Resources = resources
+	invocation := policyInput(
+		prepared.invocation.CallID,
+		prepared.invocation,
+	)
+	decision := runtime.Evaluate(invocation)
+	hookAction := PermissionAction("")
+	if decision.Action == policy.ActionAsk ||
+		decision.Code == "auto_review_allowed" {
+		hookAction, err = g.permissionAction(ctx, prepared.invocation)
+		if err != nil {
+			return preparedExecution{}, err
+		}
+		if decision.Code == "auto_review_allowed" &&
+			hookAction == PermissionAsk {
+			decision = policy.Decision{
+				Action: policy.ActionAsk, Code: "permission_hook_ask",
+				Reason: "permission hook requires human approval",
+			}
+		}
+	}
+	switch decision.Action {
+	case policy.ActionDeny, policy.ActionHold:
+		return preparedExecution{}, &policy.DecisionError{
+			Code: decision.Code, Reason: decision.Reason,
+		}
+	case policy.ActionAsk:
+		if hookAction != PermissionAllow {
+			if err := g.cacheApproval(invocation, approval); err != nil {
+				return preparedExecution{}, err
+			}
+			if runtime.Approvals == nil ||
+				!runtime.Approvals.MatchInvocation(invocation, g.now()) {
+				return preparedExecution{}, &policy.DecisionError{
+					Code:   "approval_expired",
+					Reason: "amended tool approval is no longer valid",
+				}
+			}
+		}
+	case policy.ActionAllow:
+	default:
+		return preparedExecution{}, errors.New(
+			"tool guard received invalid amended policy action",
+		)
+	}
+	prepared.runtime = runtime
+	prepared.decision = decision
+	g.grantNetworkHosts(resources)
 	return prepared, nil
 }
 

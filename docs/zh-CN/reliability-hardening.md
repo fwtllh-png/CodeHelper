@@ -87,8 +87,8 @@ CLI / TUI / VS Code / ACP / Worker
 | R3 | Provider 流式输出与残缺调用恢复 | P0 | 已验证 | Provider / Agent |
 | R4 | 类型化错误、Retry 与 Deadline | P0 | 已验证 | Protocol / Runtime / Adapters |
 | R5 | 持久化、Journal、幂等与崩溃恢复 | P0 | 已验证 | Persist / Runtime |
-| R6 | Tool、Guard、Sandbox 与副作用一致性 | P0 | 待评估 | Tool / Security / Platform |
-| R7 | 并发、取消、背压与资源生命周期 | P1 | 待评估 | Runtime / Platform |
+| R6 | Tool、Guard、Sandbox 与副作用一致性 | P0 | 已验证 | Tool / Security / Platform |
+| R7 | 并发、取消、背压与资源生命周期 | P1 | 已验证 | Runtime / Platform |
 | R8 | Protocol 与多 Host 行为一致性 | P1 | 待评估 | Protocol / Hosts |
 | R9 | 启停、装配、配置与环境差异 | P1 | 待评估 | Wire / Config / Hosts |
 | R10 | 可观测性与失败重建 | P1 | 待评估 | Observability / Persist |
@@ -472,6 +472,13 @@ Outbox 恢复的定向测试均通过。
 - 重放不会重复应用文件或外部副作用；
 - macOS、Linux、Windows 能力差异产生结构化且可测试的结果。
 
+R6 现在会在每次追加权限重试前使用新的 Policy Snapshot 重新授权，再扩展不可变的
+Effective Permission Profile。因此，Policy 漂移、Control Plane 保护、Permission
+Hook 和审批过期都能在第一次 Denied Attempt 后阻止重试；原始拒绝和 Amendment
+Decision 仍保留在 Execution Receipt 中。仓库 AST 契约会拒绝生产代码绕过 Guard
+调用 Registry 执行入口，定向 Guard 测试覆盖审批资源释放、权限连续性、取消所有权、
+Sandbox Denial 和有界重试。
+
 ## R7：并发、取消、背压与资源生命周期
 
 **扫描范围**
@@ -493,6 +500,13 @@ Outbox 恢复的定向测试均通过。
 - Race、Leak 和取消风暴测试稳定通过；
 - 慢消费者不会拖死 Runtime，也不会丢失 Terminal Event；
 - 取消后所有资源在有界观察期内释放，状态进入合法终态或等待态。
+
+R7 为每个 Event Hub Subscription 增加显式 Owner Signal。慢消费者被移除时会立即
+关闭 Event Stream 和 Owner 生命周期，后台 Context Watcher 不再成为孤儿；Terminal
+Event 仍持久且可 Replay。取消风暴测试验证 128 个并发 Subscription Owner 最终收敛
+到零。跨 Turn Mailbox 暂存上限为 128 条，满载时返回类型化
+`resource_exhausted` 背压，不再静默增长。既有 Process、Guard、Scope、Scheduler
+和 ResourceStack 测试继续覆盖有界 Teardown、幂等 Close、逆序清理和错误聚合。
 
 ## R8：Protocol 与多 Host 行为一致性
 

@@ -96,9 +96,12 @@
       "path": "internal/runtime/app/eventhub",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 250,
+        "production_lines": 274,
         "options_fields": 0,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "R7 gives every subscription an explicit owner signal so slow-consumer eviction closes both stream and cleanup lifetime without losing durable events"
       }
     },
     {
@@ -603,12 +606,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 11535,
+        "production_lines": 11548,
         "options_fields": 60,
         "mutex_fields": 8
       },
       "relaxations": {
-        "production_lines": "R3 stream coalescing and R4/R5 durable cancellation convergence add bounded provider buffering and terminal effect closure"
+        "production_lines": "R3-R5 durable stream and cancellation convergence plus R7 typed mailbox backpressure bound provider, terminal, and cross-Turn work"
       }
     },
     {
@@ -686,9 +689,6 @@
         "production_lines": 1243,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "R3/R5 durable facts use suffix validation, member-level deltas, and terminal envelope reconstruction to bound persistence amplification"
       }
     },
     {
@@ -698,9 +698,6 @@
       "limits": {
         "lines": 424,
         "max_function_lines": 82
-      },
-      "relaxations": {
-        "lines": "Versioned fact decoding now supports suffix replay and backward-compatible object-member deltas without weakening digest validation"
       }
     },
     {

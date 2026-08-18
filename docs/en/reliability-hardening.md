@@ -100,8 +100,8 @@ Priority definitions:
 | R3 | Provider streams and incomplete-call recovery | P0 | verified | Provider / Agent |
 | R4 | Typed faults, Retry, and Deadline semantics | P0 | verified | Protocol / Runtime / Adapters |
 | R5 | Persistence, Journal, idempotency, and crash recovery | P0 | verified | Persist / Runtime |
-| R6 | Tool, Guard, Sandbox, and side-effect consistency | P0 | unassessed | Tool / Security / Platform |
-| R7 | Concurrency, cancellation, backpressure, and resources | P1 | unassessed | Runtime / Platform |
+| R6 | Tool, Guard, Sandbox, and side-effect consistency | P0 | verified | Tool / Security / Platform |
+| R7 | Concurrency, cancellation, backpressure, and resources | P1 | verified | Runtime / Platform |
 | R8 | Protocol and cross-Host behavior | P1 | unassessed | Protocol / Hosts |
 | R9 | Startup, shutdown, wiring, configuration, and environment | P1 | unassessed | Wire / Config / Hosts |
 | R10 | Observability and failure reconstruction | P1 | unassessed | Observability / Persist |
@@ -569,6 +569,15 @@ Runtime outbox recovery tests pass.
 - macOS, Linux, and Windows capability differences produce structured,
   testable outcomes.
 
+R6 now reauthorizes every amended retry against a fresh Policy snapshot before
+expanding the immutable Effective Permission Profile. Policy drift, control
+plane protection, Permission Hooks, and approval expiry can therefore stop the
+retry after the first denied Attempt; the original denial and amendment
+decision remain in the Execution Receipt. A repository AST contract rejects
+production calls to Registry execution below Guard, while focused Guard tests
+cover approval release, authority continuity, cancellation ownership, Sandbox
+denial, and bounded retries.
+
 ## R7: Concurrency, Cancellation, Backpressure, and Resources
 
 **Audit scope**
@@ -596,6 +605,16 @@ Runtime outbox recovery tests pass.
 - a slow consumer cannot deadlock Runtime or lose a Terminal Event;
 - after cancellation, resources are released within an observable bound and
   state enters a valid terminal or waiting state.
+
+R7 gives each Event Hub subscription an explicit owner signal. Dropping a slow
+consumer now closes both its Event stream and owner lifetime immediately, so a
+background Context watcher cannot remain orphaned; Terminal Events remain
+durable and replayable. Cancellation-storm coverage verifies 128 concurrent
+subscription owners converge to zero. Cross-Turn mailbox retention is bounded
+to 128 messages and returns typed `resource_exhausted` backpressure instead of
+growing silently. Existing Process, Guard, Scope, Scheduler, and ResourceStack
+tests retain bounded teardown, idempotent Close, reverse-order cleanup, and
+joined-error coverage.
 
 ## R8: Protocol and Cross-Host Behavior
 
