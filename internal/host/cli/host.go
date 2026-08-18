@@ -53,7 +53,7 @@ func runHost(
 	)
 	posture := flags.String("posture", "auto", "tool permission posture")
 	repositoryRules := flags.String("repository-rules", "", "JSON repository policy rules")
-	maxSteps := flags.Int("max-steps", 1, "maximum model steps")
+	maxSteps := flags.Int("max-steps", 256, "maximum model steps")
 	nativeSearch := flags.Bool("native-search", false, "enable provider-native search")
 	providerProtocol := flags.String("provider-protocol", "openai_chat", "provider wire protocol")
 	approvalStdin := flags.Bool("approval-stdin", false, "read approval decisions after request")

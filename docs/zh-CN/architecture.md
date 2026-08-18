@@ -204,10 +204,21 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
     正文措辞推断必需输入或完成状态。Child Executor 没有 Input Host，不能等待用户
     输入，但仍必须通过 Tool Call 继续或通过 `turn_complete` 完成。
 11. `EvaluateTurnStep` 由 Reducer 选择 Repair、Verification、Finalize、Block 或
-    Complete。Output Continuation、Repair、No-progress 与普通 Work Step Limit 只会
-    请求类型化 Kernel Convergence，不会由 Engine 或 Provider 局部循环直接决定终态
-    错误。Kernel 允许一次只保留 Terminal/Input 能力的 Finalization Sample。Complete
-    进入正常 Commit；Incomplete 记录用于恢复的摘要与 Pending Actions。
+    Complete。Repair、连续 No-progress 与显式普通 Work Step Limit 只会请求类型化
+    Kernel Convergence，不会由 Engine 或 Provider 局部循环直接决定终态错误。
+    Provider 输出不完整时没有默认续写次数上限，只要 Context 与显式 Budget 允许就继续。
+    Kernel 允许一次只保留 Terminal/Input 能力的 Finalization Sample。Complete 进入
+    正常 Commit；Incomplete 记录用于恢复的摘要与 Pending Actions。
+12. 跨层故障统一使用协议 `Fault` 契约：Error Code、Origin、Disposition、
+    Retryability、Side-effect State 和 Recovery Action。未分类的边界错误默认是
+    `unavailable/resume_turn`；只有显式不变量故障才能以
+    `internal/fail_turn` 终止。
+13. Journal Commit、Suspend 和 Rollback 是幂等 Durable Effect。持久化失败时
+    Effect 保持 Requested，Turn 保持 `committing`；Runtime 拒绝当前 Operation，
+    但不会伪造 Failed Turn Terminal。恢复流程重试同一个 Effect。
+14. 业务 Terminal Decision 在 Turn 后 Context 维护之前冻结。Compaction、
+    Session Delta 应用和非控制事件投影失败只能成为 Secondary Issue 或可重放
+    Outbox 工作，不能把已完成 Turn 改写为失败。
 12. Verification Executor 通过 `VerificationFinished` 返回证据；Reducer 选择 Passed、
     Repair、Reported、Blocked、Failed 或 Reverted，并独占 Repair Budget。
 13. Engine 提交 `TerminalRequested`；Reducer 选择 Completed、Failed 或 Canceled。

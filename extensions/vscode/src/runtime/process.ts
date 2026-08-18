@@ -174,7 +174,6 @@ export async function verifyBinary(binaryPath: string): Promise<BinaryVersion> {
     ({ stdout } = await execFileAsync(binaryPath, ["version", "--json"], {
       encoding: "utf8",
       maxBuffer: 64 << 10,
-      timeout: 5_000,
       windowsHide: true,
     }));
   } catch (error) {

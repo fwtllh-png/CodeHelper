@@ -50,7 +50,6 @@ void test("AcpClient rejects pending requests after an oversized frame", async (
   const serverInput = new PassThrough();
   const client = new AcpClient(serverOutput, serverInput, {
     maxFrameBytes: 32,
-    requestTimeoutMS: 1_000,
   });
   const request = client.request("initialize");
   await readLine(serverInput);

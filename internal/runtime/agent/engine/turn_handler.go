@@ -492,7 +492,26 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				return errors.Join(journalErr, err)
 			}
 			if journalErr != nil {
-				return journalErr
+				terminal.suspendForRecovery()
+				result.State = AwaitingRecovery
+				fault := protocol.NewFault(
+					protocol.CodeUnavailable,
+					"workspace journal finalization is awaiting recovery",
+					true,
+					protocol.FaultMetadata{
+						Origin:         protocol.FaultOriginPersistence,
+						Disposition:    protocol.FaultRetryStep,
+						SideEffects:    protocol.SideEffectUnknown,
+						RecoveryAction: "retry the pending idempotent journal effect",
+					},
+					journalErr,
+				)
+				_ = send(AwaitingRecovery, Event{
+					ErrorCode: fault.Code,
+					Error:     fault.Message,
+					Fault:     fault.Fault,
+				})
+				return fault
 			}
 		}
 		if err := kernel.finishTerminal(); err != nil {
@@ -705,11 +724,11 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		snapshot, err := e.finalizeTerminalContext(
 			transaction, true, false, result.Usage, cost, send,
 		)
-		if err != nil {
-			return err
-		}
 		contextFinalized = true
 		terminal.setContextBudget(snapshot)
+		if err != nil {
+			terminal.addSecondary("terminal_context", err)
+		}
 		if err := finalizeKernel(
 			turnkernel.TerminalRequested{},
 			nil,
@@ -723,8 +742,11 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			Text: finalText, Usage: &result.Usage, CostUSD: cost,
 			CostKnown: costKnown, Verification: outcome.receipt,
 			Completion: kernel.completionDeclaration(),
+			SecondaryIssues: append(
+				[]TerminalIssue(nil),
+				terminal.secondary...,
+			),
 		}); err != nil {
-			contextFinalized = false
 			return err
 		}
 		return nil
@@ -765,16 +787,19 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			cost,
 			send,
 		)
-		if err != nil {
-			return errors.Join(blocked, err)
-		}
 		contextFinalized = true
 		terminal.setContextBudget(snapshot)
+		if err != nil {
+			terminal.addSecondary("terminal_context", err)
+		}
 		if err := finalizeKernel(
 			turnkernel.TerminalRequested{
 				FailureCode:    string(protocol.CodeConflict),
 				FailureMessage: message,
-				Convergence:    convergence,
+				Fault: protocol.CloneFaultMetadata(
+					blocked.Fault,
+				),
+				Convergence: convergence,
 			},
 			nil,
 		); err != nil {
@@ -791,8 +816,11 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			CostKnown:    costKnown,
 			Verification: result.Verification,
 			Completion:   kernel.blockedCompletionDeclaration(),
+			SecondaryIssues: append(
+				[]TerminalIssue(nil),
+				terminal.secondary...,
+			),
 		}); err != nil {
-			contextFinalized = false
 			return errors.Join(blocked, err)
 		}
 		return blocked

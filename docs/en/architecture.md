@@ -237,12 +237,25 @@ rejects late, duplicate, or wrong-kind resolutions.
     wait for user input, but it must still continue through Tool Calls or finish
     through `turn_complete`.
 11. `EvaluateTurnStep` makes Reducer select Repair, Verification, Finalize,
-    Block, or Complete. Output-continuation, repair, no-progress, and normal
+    Block, or Complete. Repair, consecutive no-progress, and explicit normal
     work-step limits only request typed Kernel convergence; they do not choose a
-    terminal error in Engine or Provider loops. Kernel allows one reserved
-    finalization Sample with only terminal/input capabilities. Complete follows
-    the normal commit path; incomplete records a summary and pending actions for
-    recovery.
+    terminal error in Engine or Provider loops. Incomplete Provider output has
+    no default continuation-count limit and continues while Context and explicit
+    budgets permit. Kernel allows one reserved finalization Sample with only
+    terminal/input capabilities. Complete follows the normal commit path;
+    incomplete records a summary and pending actions for recovery.
+12. Cross-layer failures use the protocol `Fault` contract: error code, origin,
+    disposition, retryability, side-effect state, and recovery action. An
+    untyped boundary error defaults to `unavailable/resume_turn`; only an
+    explicit invariant fault may terminate as `internal/fail_turn`.
+13. Journal Commit, Suspend, and Rollback are idempotent durable Effects.
+    Persistence failure leaves the Effect requested and the Turn in
+    `committing`; Runtime rejects the current operation without manufacturing a
+    failed Turn terminal. Recovery retries the same Effect.
+14. The business terminal decision is frozen before post-turn context
+    maintenance. Compaction, Session Delta application, and non-control event
+    projection failures are secondary issues or replayable outbox work; they
+    cannot rewrite a completed Turn as failed.
 12. The Verification executor returns evidence through
     `VerificationFinished`; Reducer selects Passed, Repair, Reported, Blocked,
     Failed, or Reverted and owns the repair budget.

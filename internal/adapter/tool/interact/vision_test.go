@@ -82,6 +82,13 @@ func TestVisionSamplesThroughTheProviderAbstraction(t *testing.T) {
 	if !request.Idempotent {
 		t.Fatal("describing an image is idempotent and should be retryable")
 	}
+	if request.MaxOutputTokens != request.Route.Model().Limits.MaxOutputTokens {
+		t.Fatalf(
+			"max output tokens = %d, want model capability %d",
+			request.MaxOutputTokens,
+			request.Route.Model().Limits.MaxOutputTokens,
+		)
+	}
 	if err := request.Validate(); err != nil {
 		t.Fatalf("the vision request must be a valid model request: %v", err)
 	}

@@ -218,10 +218,11 @@ func (d *RunCompletedData) validate() error {
 }
 
 type RunFailedData struct {
-	Run      RunReference `json:"run"`
-	Revision uint64       `json:"revision"`
-	Code     ErrorCode    `json:"code"`
-	Message  string       `json:"message"`
+	Run      RunReference   `json:"run"`
+	Revision uint64         `json:"revision"`
+	Code     ErrorCode      `json:"code"`
+	Message  string         `json:"message"`
+	Fault    *FaultMetadata `json:"fault,omitempty"`
 }
 
 func (*RunFailedData) eventKind() EventKind { return EventRunFailed }

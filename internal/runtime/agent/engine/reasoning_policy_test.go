@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -53,20 +54,34 @@ func TestAdaptiveReasoningUsesHighForComplexArchitecture(t *testing.T) {
 	}
 }
 
-func TestStageOutputLimitReservesByExecutionStage(t *testing.T) {
-	for _, test := range []struct {
-		effort string
-		finish bool
-		want   uint64
-	}{
-		{"low", false, 2048},
-		{"medium", false, 4096},
-		{"high", false, 8192},
-		{"high", true, 2048},
-	} {
-		if got := promptcontext.OutputLimit(16_384, test.effort, test.finish); got != test.want {
-			t.Fatalf("OutputLimit(%q, %t) = %d, want %d", test.effort, test.finish, got, test.want)
-		}
+func TestOutputCapacityIsIndependentOfReasoningEffort(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	engine.options.MaxOutputTokens = 0
+	route := reasoningRoute(t)
+	if got := engine.maxOutputFor(route); got != 16_384 {
+		t.Fatalf("automatic output limit = %d", got)
+	}
+	engine.options.MaxOutputTokens = 12_000
+	if got := engine.maxOutputFor(route); got != 12_000 {
+		t.Fatalf("configured output limit = %d", got)
+	}
+}
+
+func TestEngineUsesModelOutputCapacityWithAdaptiveMedium(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		textStream("done"),
+	}}
+	engine := newEngine(t, runtime, nil)
+	engine.options.MaxOutputTokens = 0
+	engine.options.Route = reasoningRoute(t)
+	engine.options.Routes, _ = model.NewRouteSet(engine.options.Route, nil, false)
+	if _, err := engine.Run(t.Context(), "answer the question", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.requests) != 1 ||
+		runtime.requests[0].MaxOutputTokens != 16_384 ||
+		runtime.requests[0].ReasoningEffort != "medium" {
+		t.Fatalf("request = %+v", runtime.requests)
 	}
 }
 

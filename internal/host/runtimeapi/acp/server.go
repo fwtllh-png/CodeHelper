@@ -2510,8 +2510,10 @@ func (s *Server) advance(active *activeTurn, event protocol.Event) {
 		s.replyActiveResult(active, s.turnResult(active, "cancelled"))
 	case protocol.EventTurnFailed:
 		code, message := protocol.CodeInternal, "turn failed"
+		var fault *protocol.FaultMetadata
 		if data, ok := event.Data.(*protocol.TurnFailedData); ok {
 			code, message = data.Code, data.Message
+			fault = data.Fault
 			if data.Convergence != nil {
 				if active.output.Len() == 0 {
 					active.output.WriteString(data.Convergence.Summary)
@@ -2524,20 +2526,28 @@ func (s *Server) advance(active *activeTurn, event protocol.Event) {
 			}
 		}
 		s.replyActiveError(active, &rpcError{
-			Code: codeInternalError, Message: message,
-			Data: map[string]any{"code": code, "turnId": active.turnID},
+			Code: acpCodeForProblem(code), Message: message,
+			Data: map[string]any{
+				"code": code, "turnId": active.turnID,
+				"fault": fault,
+			},
 		})
 	case protocol.EventOperationRejected:
 		if event.OperationID != active.operationID {
 			return
 		}
 		code, message := protocol.CodeConflict, "operation rejected"
+		var fault *protocol.FaultMetadata
 		if data, ok := event.Data.(*protocol.OperationRejectedData); ok {
 			code, message = data.Code, data.Message
+			fault = data.Fault
 		}
 		s.replyActiveError(active, &rpcError{
-			Code: codeConflict, Message: message,
-			Data: map[string]any{"code": code, "turnId": active.turnID},
+			Code: acpCodeForProblem(code), Message: message,
+			Data: map[string]any{
+				"code": code, "turnId": active.turnID,
+				"fault": fault,
+			},
 		})
 	default:
 		return

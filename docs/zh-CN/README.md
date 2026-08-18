@@ -43,14 +43,15 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 ### 我要参与开发
 
 1. [架构设计](./architecture.md)
-2. [安全模型](./security.md)
-3. [本地开发与脚本](./development.md)
-4. [源码阅读路线指南](./reading-guide.md)
-5. [Agent 指南](./agent-guide.md)
-6. [TUI 与 VS Code 体验契约](./experience.md)
-6. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
-7. [文档治理](./documentation-governance.md)
-8. [后续规划](./roadmap.md)
+2. [运行时可靠性系统治理](./reliability-hardening.md)
+3. [安全模型](./security.md)
+4. [本地开发与脚本](./development.md)
+5. [源码阅读路线指南](./reading-guide.md)
+6. [Agent 指南](./agent-guide.md)
+7. [TUI 与 VS Code 体验契约](./experience.md)
+8. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
+9. [文档治理](./documentation-governance.md)
+10. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 
@@ -66,6 +67,7 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 | 知识书籍结构与建设阶段 | `knowledge-base-plan.md` |
 | 书籍目录与章节状态 | `docs/book/catalog.json` |
 | 书籍 Ownership、新鲜度与发布事实 | `docs/book/governance.json` |
+| 可靠性治理状态 | `reliability-hardening.md` 中带验收证据的工作流状态 |
 | 路线图 | 只描述目标，不作为“已交付”证明 |
 
 实现与文档不一致时，应先核对实现，在同一变更中修正文档；适合自动化的内容应补充

@@ -1,19 +1,16 @@
 import type { Readable, Writable } from "node:stream";
 
 const defaultMaxFrameBytes = 4 << 20;
-const defaultRequestTimeoutMS = 30_000;
 
 type JsonObject = Readonly<Record<string, unknown>>;
 
 interface PendingRequest {
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: Error) => void;
-  readonly timer: NodeJS.Timeout;
 }
 
 export interface AcpClientOptions {
   readonly maxFrameBytes?: number;
-  readonly requestTimeoutMS?: number;
 }
 
 export interface RpcNotification {
@@ -35,7 +32,6 @@ export class RpcError extends Error {
 export class AcpClient {
   readonly #output: Writable;
   readonly #maxFrameBytes: number;
-  readonly #requestTimeoutMS: number;
   readonly #pending = new Map<string, PendingRequest>();
   readonly #notificationListeners = new Set<(notification: RpcNotification) => void>();
   readonly #closeListeners = new Set<(error: Error) => void>();
@@ -46,7 +42,6 @@ export class AcpClient {
   public constructor(input: Readable, output: Writable, options: AcpClientOptions = {}) {
     this.#output = output;
     this.#maxFrameBytes = options.maxFrameBytes ?? defaultMaxFrameBytes;
-    this.#requestTimeoutMS = options.requestTimeoutMS ?? defaultRequestTimeoutMS;
     input.on("data", (chunk: Buffer | string) => {
       this.#accept(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
@@ -84,18 +79,13 @@ export class AcpClient {
     }
     const id = String(++this.#nextID);
     const response = new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.#pending.delete(id);
-        reject(new Error(`ACP request ${method} timed out`));
-      }, this.#requestTimeoutMS);
-      this.#pending.set(id, { resolve, reject, timer });
+      this.#pending.set(id, { resolve, reject });
     });
     try {
       await this.#write({ jsonrpc: "2.0", id, method, params });
     } catch (error) {
       const pending = this.#pending.get(id);
       if (pending !== undefined) {
-        clearTimeout(pending.timer);
         this.#pending.delete(id);
         pending.reject(asError(error));
       }
@@ -177,7 +167,6 @@ export class AcpClient {
     if (pending === undefined) {
       return;
     }
-    clearTimeout(pending.timer);
     this.#pending.delete(String(id));
     if (Object.hasOwn(value, "error")) {
       const rpcError = value["error"];
@@ -203,7 +192,6 @@ export class AcpClient {
     }
     this.#closedError = error;
     for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timer);
       pending.reject(error);
     }
     this.#pending.clear();

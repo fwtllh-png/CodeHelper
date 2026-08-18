@@ -209,7 +209,9 @@ func TestRuntimeRejectsEnginePanicWithoutSyntheticTerminal(t *testing.T) {
 		t.Fatalf("result = %s, want %s", rejected.Kind, protocol.EventOperationRejected)
 	}
 	data, ok := rejected.Data.(*protocol.OperationRejectedData)
-	if !ok || data.Code != protocol.CodeConflict ||
+	if !ok || data.Code != protocol.CodeInternal ||
+		data.Fault == nil ||
+		data.Fault.Disposition != protocol.FaultFailTurn ||
 		!strings.Contains(data.Message, "engine panicked") {
 		t.Fatalf("rejection data = %+v", rejected.Data)
 	}

@@ -25,3 +25,17 @@ func TestEstimateCostUsesCachedInputPrice(t *testing.T) {
 		t.Fatal("cached usage without cached pricing reported known")
 	}
 }
+
+func TestCheckBudgetFitsAvailableOutputCapacity(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	engine.options.Budget.MaxTokens = 500
+	got, err := engine.checkBudget(
+		200,
+		provider.Usage{InputTokens: 100},
+		provider.Usage{},
+		1_000,
+	)
+	if err != nil || got != 200 {
+		t.Fatalf("output capacity = %d, %v", got, err)
+	}
+}

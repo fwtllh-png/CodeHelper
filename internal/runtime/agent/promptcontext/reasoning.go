@@ -20,15 +20,20 @@ func ReasoningEffort(
 	if len(adaptive) == 0 {
 		return ""
 	}
+	level := mediumEffortIndex(adaptive)
 	prompt = strings.ToLower(prompt)
-	level := 0
-	switch {
-	case strings.Contains(prompt, "architecture") || strings.Contains(prompt, "module") ||
-		strings.Contains(prompt, "root cause") || strings.Contains(prompt, "deadlock") || strings.Contains(prompt, "race condition"):
-		level = 2
-	case intent == "workspace_change" || intent == "operation" ||
-		strings.Contains(prompt, "fix ") || strings.Contains(prompt, "implement") || strings.Contains(prompt, "refactor"):
-		level = max(level, 1)
+	if intent == "operation" ||
+		strings.Contains(prompt, "architecture") ||
+		strings.Contains(prompt, "cross-module") ||
+		strings.Contains(prompt, "root cause") ||
+		strings.Contains(prompt, "deadlock") ||
+		strings.Contains(prompt, "race condition") ||
+		strings.Contains(prompt, "架构") ||
+		strings.Contains(prompt, "跨模块") ||
+		strings.Contains(prompt, "根因") ||
+		strings.Contains(prompt, "死锁") ||
+		strings.Contains(prompt, "竞态") {
+		level++
 	}
 	level += int(escalation)
 	if level >= len(adaptive) {
@@ -37,12 +42,16 @@ func ReasoningEffort(
 	return adaptive[level]
 }
 
-func OutputLimit(limit uint64, effort string, finish bool) uint64 {
-	if finish || effort == "minimal" || effort == "low" {
-		return min(limit, 2048)
+func mediumEffortIndex(efforts []string) int {
+	for index, effort := range efforts {
+		if effort == "medium" {
+			return index
+		}
 	}
-	if effort == "medium" || effort == "" {
-		return min(limit, 4096)
+	for index, effort := range efforts {
+		if effort == "high" || effort == "xhigh" || effort == "max" {
+			return index
+		}
 	}
-	return min(limit, 8192)
+	return len(efforts) - 1
 }

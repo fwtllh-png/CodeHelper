@@ -1163,6 +1163,28 @@
           ],
           "additionalProperties": false
         },
+        "fault": {
+          "type": "object",
+          "properties": {
+            "disposition": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "recovery_action": {
+              "type": "string"
+            },
+            "side_effects": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "disposition",
+            "origin"
+          ],
+          "additionalProperties": false
+        },
         "http_status": {
           "type": "integer"
         },
@@ -3232,6 +3254,28 @@
               ],
               "additionalProperties": false
             },
+            "fault": {
+              "type": "object",
+              "properties": {
+                "disposition": {
+                  "type": "string"
+                },
+                "origin": {
+                  "type": "string"
+                },
+                "recovery_action": {
+                  "type": "string"
+                },
+                "side_effects": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "disposition",
+                "origin"
+              ],
+              "additionalProperties": false
+            },
             "http_status": {
               "type": "integer"
             },
@@ -4169,6 +4213,28 @@
         "code": {
           "type": "string"
         },
+        "fault": {
+          "type": "object",
+          "properties": {
+            "disposition": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "recovery_action": {
+              "type": "string"
+            },
+            "side_effects": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "disposition",
+            "origin"
+          ],
+          "additionalProperties": false
+        },
         "message": {
           "type": "string"
         }
@@ -4298,6 +4364,28 @@
       "properties": {
         "code": {
           "type": "string"
+        },
+        "fault": {
+          "type": "object",
+          "properties": {
+            "disposition": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "recovery_action": {
+              "type": "string"
+            },
+            "side_effects": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "disposition",
+            "origin"
+          ],
+          "additionalProperties": false
         },
         "message": {
           "type": "string"
@@ -5206,6 +5294,29 @@
         "outcome": {
           "type": "string"
         },
+        "secondary_issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "phase": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "phase"
+            ],
+            "additionalProperties": false
+          }
+        },
         "text": {
           "type": "string"
         }
@@ -5252,6 +5363,28 @@
             "pending_actions",
             "summary",
             "used"
+          ],
+          "additionalProperties": false
+        },
+        "fault": {
+          "type": "object",
+          "properties": {
+            "disposition": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "recovery_action": {
+              "type": "string"
+            },
+            "side_effects": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "disposition",
+            "origin"
           ],
           "additionalProperties": false
         },

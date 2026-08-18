@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"io"
 	"path/filepath"
 	"regexp"
@@ -119,7 +121,21 @@ func (m *Manager) MessageSubmit(ctx context.Context, input MessageSubmitInput) e
 				return ctx.Err()
 			}
 			if !hook.ContinueOnError {
-				return fmt.Errorf("message submit hook %q failed (%s)", hook.ID, code)
+				return protocol.NewFault(
+					protocol.CodeConflict,
+					fmt.Sprintf(
+						"message submit hook %q rejected the turn (%s)",
+						hook.ID,
+						code,
+					),
+					false,
+					protocol.FaultMetadata{
+						Origin:      protocol.FaultOriginHook,
+						Disposition: protocol.FaultReject,
+						SideEffects: protocol.SideEffectNone,
+					},
+					result.err,
+				)
 			}
 			continue
 		}

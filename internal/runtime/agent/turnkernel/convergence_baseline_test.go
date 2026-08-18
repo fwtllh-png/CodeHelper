@@ -178,10 +178,14 @@ func TestC3ConvergenceBudgetOwnershipBaseline(t *testing.T) {
 	root := convergenceRepositoryRoot(t)
 	for _, identifier := range []string{
 		"maxOutputContinuations",
+		"OutputContinuations",
 		"noProgressProblem",
 		"maxCompletionRepairs",
 		"maxWorkspaceChangeRepairs",
 		"maxDeclarationRepairs",
+		"OutputLimit",
+		"maxModelVisibleItemTokens",
+		"visionMaxOutputTokens",
 	} {
 		if sites := productionIdentifierSites(t, root, identifier); len(sites) != 0 {
 			t.Fatalf(
@@ -272,6 +276,48 @@ func TestC4TerminalCommitOwnershipBaseline(t *testing.T) {
 	)
 	if findFunction(storeFile, "CommitTerminalOperation") == nil {
 		t.Fatal("atomic Terminal/Operation SQLite commit port is missing")
+	}
+}
+
+func TestFaultDispositionOwnershipBaseline(t *testing.T) {
+	root := convergenceRepositoryRoot(t)
+	protocolFile := parseProductionFile(
+		t,
+		root,
+		"internal/runtime/protocol/fault.go",
+	)
+	for _, name := range []string{
+		"FaultMetadata",
+		"FaultDisposition",
+		"SideEffectState",
+	} {
+		if !hasTypeDeclaration(protocolFile, name) {
+			t.Fatalf("protocol Fault contract %q is missing", name)
+		}
+	}
+	terminalFile := parseProductionFile(
+		t,
+		root,
+		"internal/runtime/agent/engine/terminal_handler.go",
+	)
+	if !functionCalls(findFunction(terminalFile, "setPrimary"), "ProblemOf") {
+		t.Fatal("Turn terminal boundary does not classify errors through ProblemOf")
+	}
+	operationFile := parseProductionFile(
+		t,
+		root,
+		"internal/runtime/app/operation_failure.go",
+	)
+	if !functionCalls(findFunction(operationFile, "reject"), "ProblemOf") {
+		t.Fatal("Runtime operation boundary bypasses Fault classification")
+	}
+	stateFile := parseProductionFile(
+		t,
+		root,
+		"internal/runtime/agent/turnkernel/state.go",
+	)
+	if !structHasNamedField(stateFile, "TerminalDecision", "Fault") {
+		t.Fatal("durable TerminalDecision does not retain Fault metadata")
 	}
 }
 

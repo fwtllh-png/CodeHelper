@@ -126,9 +126,6 @@ func (s Snapshot) Validate() error {
 	if execution.Workspace == "" {
 		return fieldError(fieldWorkspace, s.Provenance, "must not be empty")
 	}
-	if execution.MaxOutputTokens == 0 {
-		return fieldError(fieldMaxOutputTokens, s.Provenance, "must be positive")
-	}
 	if execution.MaxSteps < 1 {
 		return fieldError(fieldMaxSteps, s.Provenance, "must be positive")
 	}

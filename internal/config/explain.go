@@ -97,6 +97,7 @@ func fieldRisk(field string) (string, string) {
 		strings.HasPrefix(field, "route."):
 		return "medium", "changes which provider route handles model work"
 	case strings.HasPrefix(field, "execution.budget_") ||
+		field == fieldMaxOutputTokens ||
 		field == fieldMaxSteps ||
 		field == fieldMaxConcurrent:
 		return "medium", "changes execution resource limits"

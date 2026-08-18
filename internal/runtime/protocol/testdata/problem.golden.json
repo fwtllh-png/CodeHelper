@@ -1,1 +1,1 @@
-{"version":1,"code":"unavailable","message":"provider unavailable","retryable":true}
+{"version":1,"code":"unavailable","message":"provider unavailable","retryable":true,"fault":{"origin":"runtime","disposition":"resume_turn","side_effects":"unknown"}}

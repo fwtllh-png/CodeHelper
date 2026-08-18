@@ -47,12 +47,6 @@ func (r RouteSubQuery) Query(ctx context.Context, prompt, slice string) (string,
 		return "", fmt.Errorf("sub_query prompt or slice is required")
 	}
 	maxOut := r.Route.Model().Limits.MaxOutputTokens
-	if maxOut == 0 {
-		maxOut = 1024
-	}
-	if maxOut > 2048 {
-		maxOut = 2048
-	}
 	stream, err := r.Provider.Stream(ctx, provider.ModelRequest{
 		Route: r.Route,
 		Messages: []provider.Message{

@@ -9,8 +9,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
-const maxModelVisibleItemTokens = 10_000
-
 // admitToolResultHistory upgrades legacy or externally restored Tool Results
 // before they enter the ContextLedger. Already admitted results are idempotent.
 func (e *Engine) admitToolResultHistory(

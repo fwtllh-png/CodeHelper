@@ -14,6 +14,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/toolfailure"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -187,10 +188,16 @@ func (e *Engine) runToolsWithCache(
 			defer group.Done()
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					errorsByIndex[index] = protocol.NewProblem(
-						protocol.CodeInternal,
-						"tool execution panicked",
-						false,
+					errorsByIndex[index] = protocol.NewFault(
+						protocol.CodeConflict,
+						"tool execution stopped unexpectedly",
+						true,
+						protocol.FaultMetadata{
+							Origin:         protocol.FaultOriginTool,
+							Disposition:    protocol.FaultResumeTurn,
+							SideEffects:    protocol.SideEffectUnknown,
+							RecoveryAction: "inspect side effects and continue the retained draft",
+						},
 						fmt.Errorf("tool %s panic: %v", call.Name, recovered),
 					)
 				}
@@ -236,7 +243,11 @@ func (e *Engine) runToolsWithCache(
 			)
 			e.endToolSpan(call, span, result, err)
 			if err != nil {
-				if recovered, recoverable := recoverableToolResult(result, err); recoverable {
+				if recovered, recoverable := e.recoverableToolResult(
+					call,
+					result,
+					err,
+				); recoverable {
 					results[index] = recovered
 					return
 				}
@@ -276,12 +287,13 @@ func (e *Engine) runToolsWithCache(
 		if result.Metadata == nil {
 			result.Metadata = make(map[string]any)
 		}
-		category := toolFailureCategory(err)
+		category := toolfailure.Category(err)
 		if category == "" {
 			category = "tool_execution_failed"
 		}
 		result.Metadata["error_category"] = category
-		result.Metadata["fatal"] = true
+		result.Metadata["fatal"] =
+			protocol.DispositionOf(err) == protocol.FaultResumeTurn
 		tool.EnsureOutcomeFacts(&result).Failure =
 			&tool.FailureFact{Category: category}
 		results[index] = result
@@ -468,29 +480,53 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 	return nil
 }
 
-func recoverableToolResult(result tool.Result, err error) (tool.Result, bool) {
-	content, recoverable := recoverableToolFailure(err)
+func (e *Engine) recoverableToolResult(
+	call provider.ToolCall,
+	result tool.Result,
+	err error,
+) (tool.Result, bool) {
+	content, recoverable := toolfailure.Recoverable(err)
+	if !recoverable {
+		_, descriptor, _, resolveErr := e.options.Tools.ResolveBound(
+			call.Name,
+			bindingForCall(call),
+		)
+		recoverable = resolveErr == nil &&
+			(descriptor.Capability == tool.CapabilityRead ||
+				result.Content != "" ||
+				result.Outcome != nil)
+		content = err.Error()
+	}
 	if !recoverable {
 		return result, false
 	}
 	result.Content = content
 	result.IsError = true
 	result.Metadata = maps.Clone(result.Metadata)
-	if metadata := toolFailureRecoveryMetadata(err); metadata != nil {
+	if metadata := toolfailure.Metadata(err); metadata != nil {
 		if result.Metadata == nil {
 			result.Metadata = make(map[string]any, len(metadata))
 		}
 		maps.Copy(result.Metadata, metadata)
-	} else if category := toolFailureCategory(err); category != "" {
+	} else if category := toolfailure.Category(err); category != "" {
 		if result.Metadata == nil {
 			result.Metadata = make(map[string]any, 1)
 		}
 		result.Metadata["error_category"] = category
 	}
-	if category := toolFailureCategory(err); category != "" {
-		tool.EnsureOutcomeFacts(&result).Failure =
-			&tool.FailureFact{Category: category}
+	category := toolfailure.Category(err)
+	if category == "" {
+		category, _ = result.Metadata["error_category"].(string)
 	}
+	if category == "" {
+		category = "tool_execution_failed"
+		if result.Metadata == nil {
+			result.Metadata = make(map[string]any, 1)
+		}
+		result.Metadata["error_category"] = category
+	}
+	tool.EnsureOutcomeFacts(&result).Failure =
+		&tool.FailureFact{Category: category}
 	return result, true
 }
 
@@ -514,10 +550,16 @@ func (e *Engine) executeToolBound(
 ) (result tool.Result, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			err = protocol.NewProblem(
-				protocol.CodeInternal,
-				"tool execution panicked",
-				false,
+			err = protocol.NewFault(
+				protocol.CodeConflict,
+				"tool execution stopped unexpectedly",
+				true,
+				protocol.FaultMetadata{
+					Origin:         protocol.FaultOriginTool,
+					Disposition:    protocol.FaultResumeTurn,
+					SideEffects:    protocol.SideEffectUnknown,
+					RecoveryAction: "inspect side effects and continue the retained draft",
+				},
 				fmt.Errorf("tool %s panic: %v", name, recovered),
 			)
 		}

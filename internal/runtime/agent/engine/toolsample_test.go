@@ -247,7 +247,7 @@ func TestToolSampleUsageEmitFailureStopsTheStream(t *testing.T) {
 	}
 }
 
-func TestToolSampleUsageEmitFailureFailsTheTurn(t *testing.T) {
+func TestToolSampleUsageProjectionFailureIsSecondary(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	sampler := NewToolSampler(&scriptedProvider{streams: []provider.Stream{
 		usageStream("an image", provider.Usage{InputTokens: 23, OutputTokens: 4}),
@@ -265,6 +265,7 @@ func TestToolSampleUsageEmitFailureFailsTheTurn(t *testing.T) {
 				}},
 				{Type: provider.EventMessageStop},
 			}},
+			textStream("done"),
 		}},
 		Route: testRoute(t), Tools: registry,
 		Workspace: t.TempDir(), MaxOutputTokens: 128, MaxSteps: 2,
@@ -273,6 +274,7 @@ func TestToolSampleUsageEmitFailureFailsTheTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	persistErr := errors.New("usage projection failed")
+	var terminal Event
 	result, err := engine.RunForTurn(
 		t.Context(),
 		"turn-usage-failure",
@@ -281,13 +283,21 @@ func TestToolSampleUsageEmitFailureFailsTheTurn(t *testing.T) {
 			if event.Usage != nil && event.Purpose == string(model.PurposeVision) {
 				return persistErr
 			}
+			if event.State == Completed {
+				terminal = event
+			}
 			return nil
 		},
 	)
-	if !errors.Is(err, persistErr) {
-		t.Fatalf("turn error = %v, want %v", err, persistErr)
+	if err != nil || result.State != Completed {
+		t.Fatalf("result=%+v error=%v", result, err)
 	}
 	if result.Usage.InputTokens != 23 || result.Usage.OutputTokens != 4 {
-		t.Fatalf("failed turn usage = %+v", result.Usage)
+		t.Fatalf("turn usage = %+v", result.Usage)
+	}
+	if len(terminal.SecondaryIssues) != 1 ||
+		terminal.SecondaryIssues[0].Phase != "event_projection" ||
+		terminal.SecondaryIssues[0].Message != persistErr.Error() {
+		t.Fatalf("terminal secondary issues = %+v", terminal.SecondaryIssues)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type Command interface {
@@ -318,6 +319,7 @@ func (PersistenceResultReceived) commandName() string {
 type TerminalRequested struct {
 	FailureCode    string
 	FailureMessage string
+	Fault          *protocol.FaultMetadata
 	CancelReason   string
 	Convergence    *ConvergenceState
 }

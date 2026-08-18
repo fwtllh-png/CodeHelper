@@ -106,3 +106,21 @@ func TestWrapProblemNilCauseReturnsNil(t *testing.T) {
 		t.Fatalf("WrapProblem() = %v, want nil", err)
 	}
 }
+
+func TestUnclassifiedErrorDefaultsToRecoverableUnavailableFault(t *testing.T) {
+	problem := ProblemOf(errors.New("external boundary failed"))
+	if problem.Code != CodeUnavailable ||
+		!problem.Retryable ||
+		problem.Fault == nil ||
+		problem.Fault.Disposition != FaultResumeTurn {
+		t.Fatalf("problem = %+v", problem)
+	}
+}
+
+func TestInternalProblemMustCarryFailTurnDisposition(t *testing.T) {
+	problem := NewProblem(CodeInternal, "kernel invariant failed", false, nil)
+	if problem.Fault == nil ||
+		problem.Fault.Disposition != FaultFailTurn {
+		t.Fatalf("problem = %+v", problem)
+	}
+}

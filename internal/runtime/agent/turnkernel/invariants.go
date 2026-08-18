@@ -112,8 +112,7 @@ func Validate(state State) error {
 		return errors.New("usage and context freeze state disagree")
 	}
 	convergence := state.Policy.Convergence
-	if convergence.OutputContinuations == 0 ||
-		convergence.ProgressConverge == 0 ||
+	if convergence.ProgressConverge == 0 ||
 		convergence.ProgressConverge >= convergence.ProgressFinishOnly ||
 		convergence.ProgressFinishOnly >= convergence.ProgressLimit ||
 		convergence.ResearchConverge == 0 ||
@@ -517,11 +516,13 @@ func cloneState(state State) State {
 	cloned.Convergence = cloneConvergence(state.Convergence)
 	if state.PendingTerminal != nil {
 		value := *state.PendingTerminal
+		value.Fault = cloneFault(state.PendingTerminal.Fault)
 		value.Convergence = cloneConvergence(state.PendingTerminal.Convergence)
 		cloned.PendingTerminal = &value
 	}
 	if state.Terminal != nil {
 		value := *state.Terminal
+		value.Fault = cloneFault(state.Terminal.Fault)
 		value.Convergence = cloneConvergence(state.Terminal.Convergence)
 		cloned.Terminal = &value
 	}
@@ -530,6 +531,16 @@ func cloneState(state State) State {
 		cloned.RecoveryRelation = &value
 	}
 	return cloned
+}
+
+func cloneFault(
+	source *protocol.FaultMetadata,
+) *protocol.FaultMetadata {
+	if source == nil {
+		return nil
+	}
+	value := *source
+	return &value
 }
 
 func cloneConvergence(source *ConvergenceState) *ConvergenceState {

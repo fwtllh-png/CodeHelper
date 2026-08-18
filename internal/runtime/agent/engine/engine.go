@@ -38,6 +38,7 @@ const (
 	AwaitingInput    State = "awaiting_input"
 	FeedingResults   State = "feeding_results"
 	Verifying        State = "verifying"
+	AwaitingRecovery State = "awaiting_recovery"
 	Completed        State = "completed"
 	Failed           State = "failed"
 	Canceled         State = "canceled"
@@ -233,9 +234,6 @@ func New(options Options) (*Engine, error) {
 			return nil, err
 		}
 		options.Routes = routes
-	}
-	if options.MaxOutputTokens == 0 {
-		options.MaxOutputTokens = min(4096, options.Route.Model().Limits.MaxOutputTokens)
 	}
 	if options.MaxSteps == 0 {
 		options.MaxSteps = 256

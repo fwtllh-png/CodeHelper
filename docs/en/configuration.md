@@ -76,7 +76,7 @@ protocol = "openai_chat"
 mode = "act"                 # plan | act | operate
 workspace = "."
 tools = true
-max_output_tokens = 4096
+max_output_tokens = 0           # 0 = active model capability
 max_steps = 256
 timeout = "2m"
 idle_timeout = "1m"
@@ -171,12 +171,16 @@ model = "gpt-4.1-mini"
 search_backend = "duckduckgo"
 ```
 
-An empty `reasoning_effort` selects low for read-only work, medium for normal
-coding, and high for complex architecture/debugging; repair failures escalate
-one level. An explicit effort remains fixed and must be advertised by every
-configured route; unsupported values fail before provider I/O.
-`max_output_tokens` is always the hard request ceiling; stage reserves never
-raise an explicit value.
+An empty `reasoning_effort` starts at medium, selects high for complex
+architecture/debugging, and escalates one supported level after repair
+failures. An explicit effort remains fixed and must be advertised by every
+configured route; unsupported values fail before provider I/O. Reasoning effort
+does not change output capacity.
+
+`max_output_tokens = 0` derives each request ceiling from the active model
+catalog and the context space remaining after input projection. A positive
+value is an explicit operator ceiling and is still clamped by those two model
+boundaries.
 
 `delegation = "explicit"` exposes `spawn_agent` only with user, developer,
 Skill, or internal system authority. `adaptive` also allows the model to
@@ -247,10 +251,13 @@ incomplete declaration records a recoverable summary and concrete pending
 actions. Any mutation, completed plan step, verification, or completion resets
 the counter immediately. Answer and Plan Turns additionally count newly read
 paths and new evidence; Operation Turns count successful business Tool results.
-The progress and convergence states are durable across Runtime recovery. A
-still-read-only Answer or Plan Turn uses a tighter 8/12/16 total-sample
-research guard. That guard stops applying as soon as Runtime observes a
-workspace mutation, even if the original intent was classified as Answer.
+The progress and convergence states are durable across Runtime recovery.
+Read-only Answer and Plan Turns use tighter 8/12/16 thresholds, but those
+thresholds count only consecutive samples without new paths or evidence.
+Research that continues to discover evidence is bounded by the explicit
+`execution.max_steps`, Context Window, and Token/Cost budgets rather than an
+internal total-sample cap. Incomplete provider output likewise continues
+without a default retry-count ceiling while those real capacities remain.
 
 These convergence budgets are different from physical or user-configured hard
 boundaries. Runtime does not spend beyond Token/Cost ceilings, infer a partial

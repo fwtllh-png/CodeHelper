@@ -128,9 +128,19 @@ func RequestStartupTerminal(
 	if cause != nil {
 		message = cause.Error()
 	}
+	problem := protocol.NewProblem(
+		protocol.CodeInternal,
+		message,
+		false,
+		cause,
+	)
+	if cause != nil {
+		problem = protocol.ProblemOf(cause)
+	}
 	request := TerminalRequested{
-		FailureCode:    string(protocol.CodeOf(cause)),
+		FailureCode:    string(problem.Code),
 		FailureMessage: message,
+		Fault:          protocol.CloneFaultMetadata(problem.Fault),
 	}
 	if errors.Is(cause, context.Canceled) {
 		request = TerminalRequested{

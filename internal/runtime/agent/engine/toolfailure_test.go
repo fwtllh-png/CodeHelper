@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/toolfailure"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -201,7 +202,7 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			content, recoverable := recoverableToolFailure(test.err)
+			content, recoverable := toolfailure.Recoverable(test.err)
 			if recoverable != test.wantRecoverable {
 				t.Fatalf(
 					"recoverableToolFailure(%v) recoverable = %v, want %v",
@@ -232,12 +233,20 @@ func TestRecoverableToolResultPreservesGuardExecutionReceipt(t *testing.T) {
 		TerminalStatus: tool.OutcomeRejected,
 		TerminalOwner:  tool.TerminalOwnerGuard,
 	}
-	result, recovered := recoverableToolResult(tool.Result{
-		Execution: receipt,
-		Metadata:  map[string]any{"guard": "retained"},
-	}, &policy.DecisionError{
-		Code: "approval_denied", Reason: "approval was denied",
-	})
+	result, recovered := newEngine(
+		t,
+		&scriptedProvider{},
+		nil,
+	).recoverableToolResult(
+		provider.ToolCall{Name: "missing"},
+		tool.Result{
+			Execution: receipt,
+			Metadata:  map[string]any{"guard": "retained"},
+		},
+		&policy.DecisionError{
+			Code: "approval_denied", Reason: "approval was denied",
+		},
+	)
 	if !recovered || !result.IsError ||
 		!strings.Contains(result.Content, "approval was denied") ||
 		result.Execution != receipt ||
@@ -252,7 +261,7 @@ func TestEditPlanStaleRecoveryMetadataRequiresNewPlan(t *testing.T) {
 	err := &policy.DecisionError{
 		Code: "edit_plan_stale", Reason: "workspace changed after edit preview",
 	}
-	metadata := toolFailureRecoveryMetadata(err)
+	metadata := toolfailure.Metadata(err)
 	if metadata["error_category"] != "edit_plan_stale" ||
 		metadata["required_action"] != "file_read" ||
 		metadata["retry_original"] != false ||
@@ -276,7 +285,7 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 		}),
 	))
 
-	metadata := toolFailureRecoveryMetadata(err)
+	metadata := toolfailure.Metadata(err)
 
 	if metadata["error_category"] != "edit_precondition_failed" ||
 		metadata["required_action"] != "replace_failed_change" ||
@@ -290,7 +299,7 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 		t.Fatalf("metadata = %#v", metadata)
 	}
 
-	content, recoverable := recoverableToolFailure(err)
+	content, recoverable := toolfailure.Recoverable(err)
 	if !recoverable ||
 		!strings.Contains(content, "failed_change=6; match_count=0") ||
 		!strings.Contains(content, "current_excerpt_lines=74-80:\ncurrent text") {
@@ -357,7 +366,7 @@ func TestMissingPathRecoveryExposesExactCandidatesToModel(t *testing.T) {
 		},
 	))
 
-	content, recoverable := recoverableToolFailure(err)
+	content, recoverable := toolfailure.Recoverable(err)
 	if !recoverable ||
 		!strings.Contains(
 			content,
@@ -366,7 +375,7 @@ func TestMissingPathRecoveryExposesExactCandidatesToModel(t *testing.T) {
 		) {
 		t.Fatalf("content = %q, recoverable = %v", content, recoverable)
 	}
-	metadata := toolFailureRecoveryMetadata(err)
+	metadata := toolfailure.Metadata(err)
 	candidates, ok := metadata["candidate_paths"].([]string)
 	if !ok || len(candidates) != 2 ||
 		candidates[0] != "docs/01-prompt-message-context.md" {
@@ -468,14 +477,14 @@ func TestRunToolsCategorizesRevokedCatalogEntry(t *testing.T) {
 
 func TestToolFailureCategoryIncludesMCPCircuit(t *testing.T) {
 	err := fmt.Errorf("remote call: %w", mcpruntime.ErrCircuitOpen)
-	if got := toolFailureCategory(err); got != mcpruntime.ErrorCategoryCircuitOpen {
+	if got := toolfailure.Category(err); got != mcpruntime.ErrorCategoryCircuitOpen {
 		t.Fatalf("category = %q, want %q", got, mcpruntime.ErrorCategoryCircuitOpen)
 	}
 }
 
 func TestToolFailureCategoryIncludesSkillDependency(t *testing.T) {
 	err := fmt.Errorf("load skill: %w", skillruntime.ErrDependencyConflict)
-	if got := toolFailureCategory(err); got != skillruntime.ErrorCategoryDependencyConflict {
+	if got := toolfailure.Category(err); got != skillruntime.ErrorCategoryDependencyConflict {
 		t.Fatalf("category = %q, want %q", got, skillruntime.ErrorCategoryDependencyConflict)
 	}
 }

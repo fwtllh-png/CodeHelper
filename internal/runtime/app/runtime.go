@@ -1335,12 +1335,7 @@ func (r StartTurnHandler) Handle(operation protocol.Operation, payload *protocol
 		return finishOutcome(errors.New("turn already has a terminal event"))
 	}
 	turnContext, cancel := context.WithCancel(r.ctx)
-	lease, err := r.active.Reserve(
-		payload.ThreadID,
-		payload.TurnID,
-		operation.ID,
-		payload.ItemID,
-	)
+	lease, err := r.active.Reserve(payload.ThreadID, payload.TurnID, operation.ID, payload.ItemID)
 	if err != nil {
 		cancel()
 		return finishOutcome(err)
@@ -1368,6 +1363,10 @@ func (r StartTurnHandler) Handle(operation protocol.Operation, payload *protocol
 		}
 		err := startTurnSafely(r.engine, turnContext, payload, sink)
 		if r.lifecycle != nil && !sink.terminalCommitAttempted {
+			if !turnkernel.HasTerminalFacts(context.Background(), r.terminalStore, string(payload.TurnID)) &&
+				r.rejectResumableOperation(operation, err, releaseActive) {
+				return
+			}
 			if err == nil {
 				err = errors.New(
 					"durable turn returned without atomic terminal commit",
@@ -1506,15 +1505,6 @@ func (r *Runtime) invoke(
 ) error {
 	sink := &runtimeSink{runtime: r, operation: operation}
 	return call(sink)
-}
-func (r *Runtime) reject(operation protocol.Operation, err error) error {
-	code := protocol.CodeOf(err)
-	if code == protocol.CodeInternal {
-		code = protocol.CodeConflict
-	}
-	return (&runtimeSink{runtime: r, operation: operation}).Emit(
-		&protocol.OperationRejectedData{Code: code, Message: err.Error()},
-	)
 }
 
 type runtimeSink struct {

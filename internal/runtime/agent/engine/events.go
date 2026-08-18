@@ -46,6 +46,7 @@ type Event struct {
 	SampleContext      *protocol.SampleContextData `json:"sample_context,omitempty"`
 	ErrorCode          protocol.ErrorCode          `json:"error_code,omitempty"`
 	Error              string                      `json:"error,omitempty"`
+	Fault              *protocol.FaultMetadata     `json:"fault,omitempty"`
 	Convergence        *protocol.TurnConvergence   `json:"convergence,omitempty"`
 	CancelReason       string                      `json:"cancel_reason,omitempty"`
 	SecondaryIssues    []TerminalIssue             `json:"secondary_issues,omitempty"`

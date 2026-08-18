@@ -102,6 +102,8 @@ type Index struct {
 	MaxFiles     int   `json:"max_files" toml:"max_files"`
 }
 
+// Execution configures the main agent loop. MaxOutputTokens is an optional
+// operator ceiling; zero uses the active model capability and remaining window.
 type Execution struct {
 	Provider        string        `json:"provider" toml:"provider"`
 	Model           string        `json:"model" toml:"model"`

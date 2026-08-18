@@ -76,6 +76,7 @@ func (d *DurableEffectDispatcher) Start(
 	}
 	entry.effect.Status = EffectRunning
 	entry.effect.Attempt = attempt
+	entry.effect.Error = ""
 	return entry.effect, nil
 }
 
@@ -160,6 +161,14 @@ func (d *DurableEffectDispatcher) Resolve(command Command) error {
 	entry.resolving = false
 	if err != nil {
 		return err
+	}
+	if journal, ok := result.(JournalResultReceived); ok &&
+		journal.Error != "" {
+		entry.result = nil
+		entry.started = false
+		entry.effect.Status = EffectRequested
+		entry.effect.Error = journal.Error
+		return nil
 	}
 	if d.routed[effectID] == entry {
 		delete(d.routed, effectID)

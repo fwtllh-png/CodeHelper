@@ -69,19 +69,22 @@ void test("Webview messages and editor context retain explicit size boundaries",
   const messages = await sourceFile("chat", "messages.ts");
   const context = await sourceFile("context", "bridge.ts");
   const native = await sourceFile("context", "native.ts");
+  const runtimeClient = await sourceFile("runtime", "client.ts");
+  const runtimeProcess = await sourceFile("runtime", "process.ts");
   const projectorHelpers = await sourceFile(
     "chat", "projector", "helpers.ts",
   );
   assert.match(messages, /64 << 10/u);
   assert.match(context, /const maxContextFileBytes = 1 << 20/u);
   assert.match(context, /const maxProviderSymbols = 4096/u);
-  assert.match(context, /const maxProviderDiagnostics = 4096/u);
   assert.match(context, /isWorkspaceDocumentScheme\(document\.uri\.scheme\)/u);
   assert.match(context, /return value === "file"/u);
   assert.match(context, /document\.isDirty/u);
   assert.match(native, /const maxDiagnostics = 32/u);
   assert.match(native, /const maxDiagnosticMessageBytes = 8192/u);
   assert.match(native, /const maxDiagnosticMetadataBytes = 256/u);
+  assert.doesNotMatch(runtimeClient, /defaultRequestTimeoutMS|requestTimeoutMS/u);
+  assert.doesNotMatch(runtimeProcess, /timeout:\s*5_000/u);
   assert.match(projectorHelpers, /values\.slice\(0, 8\)/u);
 });
 

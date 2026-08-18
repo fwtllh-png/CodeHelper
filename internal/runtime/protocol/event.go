@@ -712,8 +712,9 @@ func (d *DiagnosticsData) validate() error {
 }
 
 type TurnCompletedData struct {
-	Text    string      `json:"text"`
-	Outcome TurnOutcome `json:"outcome,omitempty"`
+	Text            string          `json:"text"`
+	Outcome         TurnOutcome     `json:"outcome,omitempty"`
+	SecondaryIssues []TerminalIssue `json:"secondary_issues,omitempty"`
 }
 
 func (*TurnCompletedData) eventKind() EventKind { return EventTurnCompleted }
@@ -721,6 +722,14 @@ func (*TurnCompletedData) eventKind() EventKind { return EventTurnCompleted }
 func (d *TurnCompletedData) validate() error {
 	switch d.Outcome {
 	case "", TurnOutcomeAnswered, TurnOutcomePlanned, TurnOutcomeChanged, TurnOutcomeOperated:
+		for _, issue := range d.SecondaryIssues {
+			if issue.Phase == "" || issue.Code == "" ||
+				issue.Message == "" {
+				return errors.New(
+					"turn completion secondary issue requires phase, code, and message",
+				)
+			}
+		}
 		return nil
 	default:
 		return errors.New("turn completed outcome is invalid")
@@ -730,6 +739,7 @@ func (d *TurnCompletedData) validate() error {
 type TurnFailedData struct {
 	Code            ErrorCode        `json:"code"`
 	Message         string           `json:"message"`
+	Fault           *FaultMetadata   `json:"fault,omitempty"`
 	Convergence     *TurnConvergence `json:"convergence,omitempty"`
 	SecondaryIssues []TerminalIssue  `json:"secondary_issues,omitempty"`
 }
@@ -804,8 +814,9 @@ func (d *TurnCanceledData) validate() error {
 }
 
 type OperationRejectedData struct {
-	Code    ErrorCode `json:"code"`
-	Message string    `json:"message"`
+	Code    ErrorCode      `json:"code"`
+	Message string         `json:"message"`
+	Fault   *FaultMetadata `json:"fault,omitempty"`
 }
 
 func (*OperationRejectedData) eventKind() EventKind { return EventOperationRejected }

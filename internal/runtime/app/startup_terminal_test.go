@@ -47,7 +47,38 @@ func (*startupFailureEngine) StartTurn(
 	*protocol.StartTurnPayload,
 	EngineSink,
 ) error {
-	return errors.New("engine construction failed")
+	return protocol.NewProblem(
+		protocol.CodeInternal,
+		"engine construction failed",
+		false,
+		nil,
+	)
+}
+
+type recoverableStartupEngine struct{ testEngine }
+
+func (*recoverableStartupEngine) StartTurn(
+	_ context.Context,
+	_ *protocol.StartTurnPayload,
+	sink EngineSink,
+) error {
+	if err := sink.Emit(&protocol.TurnStartedData{
+		Provider: "test",
+		Model:    "test",
+	}); err != nil {
+		return err
+	}
+	return protocol.NewFault(
+		protocol.CodeUnavailable,
+		"journal finalization is awaiting recovery",
+		true,
+		protocol.FaultMetadata{
+			Origin:      protocol.FaultOriginPersistence,
+			Disposition: protocol.FaultRetryStep,
+			SideEffects: protocol.SideEffectUnknown,
+		},
+		errors.New("injected journal failure"),
+	)
 }
 
 type startupTerminalFactEngine struct {
@@ -169,6 +200,42 @@ func TestDurableStartupFailureCommitsTerminalEnvelope(t *testing.T) {
 			len(envelope.DomainFacts),
 			runtime.Snapshot(t.Context()).ActiveTurns,
 		)
+	}
+}
+
+func TestDurableRecoverableFailureDoesNotCommitTurnTerminal(t *testing.T) {
+	runtime, store := newStartupTerminalRuntime(
+		t,
+		&recoverableStartupEngine{},
+	)
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := startOperation(t, 804)
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	if event := receiveEvent(t, events); event.Kind != protocol.EventTurnStarted {
+		t.Fatalf("first event = %s", event.Kind)
+	}
+	rejected := receiveEvent(t, events)
+	if rejected.Kind != protocol.EventOperationRejected {
+		t.Fatalf("second event = %s", rejected.Kind)
+	}
+	data := rejected.Data.(*protocol.OperationRejectedData)
+	if data.Code != protocol.CodeUnavailable {
+		t.Fatalf("rejection = %+v", data)
+	}
+	_, turnID, _ := protocol.OperationReferences(operation)
+	if _, _, err := store.LoadTerminal(
+		t.Context(),
+		string(turnID),
+	); err == nil {
+		t.Fatal("recoverable operation committed a Turn terminal")
+	}
+	if active := runtime.Snapshot(t.Context()).ActiveTurns; active != 0 {
+		t.Fatalf("active turns = %d", active)
 	}
 }
 

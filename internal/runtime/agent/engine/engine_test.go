@@ -408,7 +408,7 @@ func TestEngineDoesNotRepairCompletedPostToolContinuation(t *testing.T) {
 	}
 }
 
-func TestEngineUsesKernelConvergenceAfterRepeatedReasoningLimits(t *testing.T) {
+func TestEngineContinuesRepeatedReasoningLimitsAtSameEffort(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventReasoningDelta, Text: "completed analysis"},
@@ -459,21 +459,18 @@ func TestEngineUsesKernelConvergenceAfterRepeatedReasoningLimits(t *testing.T) {
 		t.Fatalf("same-effort continuation = %+v", continuation)
 	}
 	finish := runtime.requests[3]
-	if finish.ReasoningEffort != "low" || finish.MaxOutputTokens > 4096 {
-		t.Fatalf("finish request = %+v", finish)
+	if finish.ReasoningEffort != "max" ||
+		finish.MaxOutputTokens != runtime.requests[0].MaxOutputTokens {
+		t.Fatalf("continued request = %+v", finish)
 	}
-	if len(finish.Tools) != 1 || finish.Tools[0].Name != completiontool.Name {
-		t.Fatalf("convergence tools = %+v", finish.Tools)
+	if len(finish.Tools) != len(runtime.requests[0].Tools) {
+		t.Fatalf("continued tools = %+v", finish.Tools)
 	}
-	var foundFeedback bool
 	for _, message := range finish.Messages {
 		if message.Role == provider.RoleUser &&
 			strings.Contains(message.Text(), "[convergence_finalization]") {
-			foundFeedback = true
+			t.Fatalf("unexpected convergence feedback in %+v", finish.Messages)
 		}
-	}
-	if !foundFeedback {
-		t.Fatalf("finish feedback missing from %+v", finish.Messages)
 	}
 }
 
@@ -508,9 +505,64 @@ func TestEngineDoesNotUseFinishRouteForPartialToolCall(t *testing.T) {
 	if continuation.ReasoningEffort != "max" || len(continuation.Tools) == 0 {
 		t.Fatalf("partial tool continuation entered finish route: %+v", continuation)
 	}
+	var foundSplitGuidance bool
+	for _, message := range continuation.Messages {
+		if message.Role == provider.RoleUser &&
+			strings.Contains(message.Text(), "Split the operation into smaller") {
+			foundSplitGuidance = true
+		}
+	}
+	if !foundSplitGuidance {
+		t.Fatalf("partial tool continuation lacks split guidance: %+v", continuation.Messages)
+	}
 }
 
-func TestEngineFinalizesAfterBoundedIncompleteContinuations(t *testing.T) {
+func TestEngineConvergesRepeatedPartialToolCallsWithoutResourceExhaustion(
+	t *testing.T,
+) {
+	partial := func(id string) provider.Stream {
+		return &providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: id, Name: "echo", Arguments: `{"text":`,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}}
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		partial("partial-1"),
+		partial("partial-2"),
+		partial("partial-3"),
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"Recovered through structured convergence.",
+			"output_mode":"exact",
+			"pending_actions":[]
+		}`),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	for _, executor := range []tool.Executor{
+		&echoTool{},
+		&completiontool.Tool{},
+	} {
+		if err := registry.Register(executor, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := newEngine(t, runtime, registry).Run(
+		t.Context(),
+		"review",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "Recovered through structured convergence." ||
+		len(runtime.requests) != 4 {
+		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+}
+
+func TestEngineContinuesIncompleteOutputUntilProviderCompletes(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "one"},
@@ -524,35 +576,26 @@ func TestEngineFinalizesAfterBoundedIncompleteContinuations(t *testing.T) {
 			{Type: provider.EventTextDelta, Text: " three"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonIncomplete},
 		}},
-		toolCallStream("complete-1", completiontool.Name, `{
-			"status":"complete",
-			"summary":"Done.",
-			"output_mode":"preserve_provisional",
-			"pending_actions":[]
-		}`),
+		textStream(" done"),
 	}}
 	var states []State
-	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
-		t.Fatal(err)
-	}
-	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", func(event Event) error {
+	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", func(event Event) error {
 		states = append(states, event.State)
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Text != "one two three\n\nDone." {
+	if result.Text != "one two three done" {
 		t.Fatalf("result=%+v", result)
 	}
-	if len(runtime.requests) != int(turnkernel.DefaultConvergencePolicy().OutputContinuations)+2 {
+	if len(runtime.requests) != 4 {
 		t.Fatalf("requests=%d", len(runtime.requests))
 	}
 	assertOneTerminal(t, states, Completed)
 }
 
-func TestEngineBlocksWhenReservedFinalizationHitsOutputLimit(t *testing.T) {
+func TestEngineDoesNotConvergeOnRepeatedIncompleteOutput(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "one"},
@@ -570,25 +613,17 @@ func TestEngineBlocksWhenReservedFinalizationHitsOutputLimit(t *testing.T) {
 			{Type: provider.EventTextDelta, Text: " closing"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
 		}},
+		textStream(" done"),
 	}}
-	var terminal Event
-	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", func(event Event) error {
-		if event.State == Failed {
-			terminal = event
-		}
-		return nil
-	})
-	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
-		t.Fatalf("result=%+v err=%v", result, err)
+	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(runtime.requests) != 4 {
-		t.Fatalf("provider requests = %d, want one reserved finalization", len(runtime.requests))
+	if result.Text != "one two three closing done" {
+		t.Fatalf("result=%+v", result)
 	}
-	if terminal.Convergence == nil ||
-		terminal.Convergence.Cause != string(turnkernel.ConvergenceOutputLimit) ||
-		terminal.Convergence.Summary == "" ||
-		len(terminal.Convergence.PendingActions) != 1 {
-		t.Fatalf("terminal = %+v", terminal)
+	if len(runtime.requests) != 5 {
+		t.Fatalf("provider requests = %d", len(runtime.requests))
 	}
 }
 
@@ -884,7 +919,7 @@ func TestEngineResetsCompletionRepairBudgetAfterToolProgress(t *testing.T) {
 	}
 }
 
-func TestRunToolsClosesEveryStartedCallBeforeFatalBatchFailure(t *testing.T) {
+func TestRunToolsReturnsReadFailureToModelAndClosesEveryStartedCall(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := registry.Register(&echoTool{}, nil); err != nil {
 		t.Fatal(err)
@@ -921,7 +956,7 @@ func TestRunToolsClosesEveryStartedCallBeforeFatalBatchFailure(t *testing.T) {
 		},
 	)
 
-	if err == nil || !strings.Contains(err.Error(), "intentional failure") {
+	if err != nil {
 		t.Fatalf("runTools() error = %v", err)
 	}
 	if len(emitted) != 2 {
@@ -1280,7 +1315,7 @@ func TestRunToolsCancellationClosesKernelLifecycle(t *testing.T) {
 	}
 }
 
-func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
+func TestEngineReturnsReadToolPanicToModelAndContinues(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
@@ -1288,6 +1323,8 @@ func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
 			}},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonToolUse},
 		}},
+		textStream("recovered"),
+		textStream("done"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
 	if err := registry.Register(panickingTool{}, nil); err != nil {
@@ -1303,10 +1340,10 @@ func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
 		states = append(states, event.State)
 		return nil
 	})
-	if err == nil || protocol.CodeOf(err) != protocol.CodeInternal {
+	if err != nil || result.Text != "done" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	assertOneTerminal(t, states, Failed)
+	assertOneTerminal(t, states, Completed)
 	var started, closed int
 	for _, record := range kernelRecords {
 		if record.Drift != "" {
@@ -1319,7 +1356,7 @@ func TestEngineContainsToolPanicAsFailedTurn(t *testing.T) {
 			closed++
 		}
 	}
-	if started != 1 || closed != 1 {
+	if started != 3 || closed != 1 {
 		t.Fatalf(
 			"kernel lifecycle starts=%d results=%d records=%+v",
 			started,
@@ -2547,7 +2584,7 @@ func TestFailedTurnCompactsWithinOversizedDurableLastTurn(t *testing.T) {
 		&errorStream{err: errors.New("provider failed")},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.CompactWindow.AutoTokens = 500
+	engine.options.CompactWindow.AutoTokens = 400
 	engine.options.SummaryMaxBytes = 2 << 10
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("durable request ", 20), 1),
@@ -2657,7 +2694,7 @@ func TestEnginePreSamplingGateBeforeModelCall(t *testing.T) {
 		}},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.CompactWindow.AutoTokens = 300
+	engine.options.CompactWindow.AutoTokens = 200
 	engine.options.SummaryMaxBytes = 2 << 10
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("old ", 80), 1),

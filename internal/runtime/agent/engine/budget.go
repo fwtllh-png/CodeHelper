@@ -7,6 +7,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"math"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -73,43 +74,60 @@ func (e *Engine) checkBudget(
 	outputReserve uint64,
 ) (uint64, error) {
 	route := e.activeRoute()
-	if estimatedInput+outputReserve > route.Model().Limits.ContextTokens {
-		return estimatedInput, protocol.NewProblem(
-			protocol.CodeResourceExhausted, "context window exceeded", false, nil,
-		)
-	}
-	projectedTokens := e.usage.Total() + turnUsage.Total() + stepUsage.Total() +
-		estimatedInput + outputReserve
-	if limit := e.options.Budget.MaxTokens; limit > 0 && projectedTokens > limit {
-		return estimatedInput, protocol.NewProblem(
+	contextTokens := route.Model().Limits.ContextTokens
+	if estimatedInput >= contextTokens {
+		return 0, protocol.NewProblem(
 			protocol.CodeResourceExhausted,
-			fmt.Sprintf("token budget exceeded: projected %d, limit %d", projectedTokens, limit),
-			false,
+			"context window has no remaining output capacity",
+			true,
 			nil,
 		)
+	}
+	outputReserve = min(outputReserve, contextTokens-estimatedInput)
+	usedTokens := e.usage.Total() + turnUsage.Total() + stepUsage.Total() + estimatedInput
+	if limit := e.options.Budget.MaxTokens; limit > 0 {
+		if usedTokens >= limit {
+			return 0, protocol.NewProblem(
+				protocol.CodeResourceExhausted,
+				fmt.Sprintf("token budget exhausted: used %d, limit %d", usedTokens, limit),
+				false, nil,
+			)
+		}
+		outputReserve = min(outputReserve, limit-usedTokens)
 	}
 	if limit := e.options.Budget.MaxCostUSD; limit > 0 {
 		pricing := route.Model().Pricing
 		if !pricing.Known {
-			return estimatedInput, protocol.NewProblem(
+			return 0, protocol.NewProblem(
 				protocol.CodeInvalidArgument, "cost budget requires known model pricing", false, nil,
 			)
 		}
 		projectedUsage := turnUsage
 		projectedUsage.Add(stepUsage)
-		projectedUsage.Add(provider.Usage{
-			InputTokens: estimatedInput, OutputTokens: outputReserve,
-		})
-		if projected := e.costUSD + estimateCost(pricing, projectedUsage); projected > limit {
-			return estimatedInput, protocol.NewProblem(
+		projectedUsage.Add(provider.Usage{InputTokens: estimatedInput})
+		spent := e.costUSD + estimateCost(pricing, projectedUsage)
+		if spent >= limit {
+			return 0, protocol.NewProblem(
 				protocol.CodeResourceExhausted,
-				fmt.Sprintf("cost budget exceeded: projected %.6f, limit %.6f", projected, limit),
-				false,
-				nil,
+				fmt.Sprintf("cost budget exhausted: used %.6f, limit %.6f", spent, limit),
+				false, nil,
 			)
 		}
+		if pricing.OutputPerMillion > 0 {
+			affordable := uint64(math.Floor(
+				(limit - spent) * 1_000_000 / pricing.OutputPerMillion,
+			))
+			outputReserve = min(outputReserve, affordable)
+		}
 	}
-	return estimatedInput, nil
+	if outputReserve == 0 {
+		return 0, protocol.NewProblem(
+			protocol.CodeResourceExhausted,
+			"budget has no remaining output capacity",
+			false, nil,
+		)
+	}
+	return outputReserve, nil
 }
 
 func (e *Engine) budgetConvergence(used uint64) (provider.Message, bool) {

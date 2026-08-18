@@ -153,13 +153,12 @@ type ConvergenceState struct {
 }
 
 type ConvergencePolicy struct {
-	OutputContinuations uint32 `json:"output_continuations"`
-	ProgressConverge    uint32 `json:"progress_converge"`
-	ProgressFinishOnly  uint32 `json:"progress_finish_only"`
-	ProgressLimit       uint32 `json:"progress_limit"`
-	ResearchConverge    uint32 `json:"research_converge"`
-	ResearchFinishOnly  uint32 `json:"research_finish_only"`
-	ResearchLimit       uint32 `json:"research_limit"`
+	ProgressConverge   uint32 `json:"progress_converge"`
+	ProgressFinishOnly uint32 `json:"progress_finish_only"`
+	ProgressLimit      uint32 `json:"progress_limit"`
+	ResearchConverge   uint32 `json:"research_converge"`
+	ResearchFinishOnly uint32 `json:"research_finish_only"`
+	ResearchLimit      uint32 `json:"research_limit"`
 }
 
 type Policy struct {
@@ -179,13 +178,12 @@ type Policy struct {
 
 func DefaultConvergencePolicy() ConvergencePolicy {
 	return ConvergencePolicy{
-		OutputContinuations: 2,
-		ProgressConverge:    16,
-		ProgressFinishOnly:  32,
-		ProgressLimit:       48,
-		ResearchConverge:    8,
-		ResearchFinishOnly:  12,
-		ResearchLimit:       16,
+		ProgressConverge:   16,
+		ProgressFinishOnly: 32,
+		ProgressLimit:      48,
+		ResearchConverge:   8,
+		ResearchFinishOnly: 12,
+		ResearchLimit:      16,
 	}
 }
 
@@ -256,10 +254,11 @@ type VerificationState struct {
 }
 
 type TerminalDecision struct {
-	Kind        TerminalKind      `json:"kind"`
-	Code        string            `json:"code,omitempty"`
-	Message     string            `json:"message,omitempty"`
-	Convergence *ConvergenceState `json:"convergence,omitempty"`
+	Kind        TerminalKind            `json:"kind"`
+	Code        string                  `json:"code,omitempty"`
+	Message     string                  `json:"message,omitempty"`
+	Fault       *protocol.FaultMetadata `json:"fault,omitempty"`
+	Convergence *ConvergenceState       `json:"convergence,omitempty"`
 }
 
 type UsageState struct {

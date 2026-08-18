@@ -45,7 +45,7 @@ type operationDispatcher struct {
 func (d operationDispatcher) Dispatch(accepted acceptedOperation) OperationOutcome {
 	if d.runtime == nil {
 		return OperationOutcome{
-			Kind: OutcomeRejected, Problem: outcomeProblem(errors.New("runtime is not configured")),
+			Kind: OutcomeRejected, Problem: protocol.ProblemOf(errors.New("runtime is not configured")),
 			CommitMode: CommitNow,
 		}
 	}
@@ -65,7 +65,7 @@ func (d operationDispatcher) Dispatch(accepted acceptedOperation) OperationOutco
 	if d.runtime.engine == nil {
 		return OperationOutcome{
 			Kind:       OutcomeRejected,
-			Problem:    outcomeProblem(errors.New("runtime engine is not configured")),
+			Problem:    protocol.ProblemOf(errors.New("runtime engine is not configured")),
 			CommitMode: CommitNow,
 		}
 	}
@@ -127,7 +127,7 @@ func (h RevertTurnHandler) Handle(operation protocol.Operation, payload *protoco
 }
 func finishOutcome(err error) OperationOutcome {
 	if err != nil {
-		return OperationOutcome{Kind: OutcomeRejected, Problem: outcomeProblem(err), CommitMode: CommitNow}
+		return OperationOutcome{Kind: OutcomeRejected, Problem: protocol.ProblemOf(err), CommitMode: CommitNow}
 	}
 	return OperationOutcome{Kind: OutcomeCommitted, CommitMode: CommitNow}
 }
@@ -198,14 +198,4 @@ func validateOperationOutcome(outcome OperationOutcome) error {
 		outcome.Kind,
 		outcome.Problem != nil,
 	)
-}
-func outcomeProblem(err error) *protocol.Problem {
-	if problem, ok := err.(*protocol.Problem); ok {
-		return problem
-	}
-	code := protocol.CodeOf(err)
-	if code == protocol.CodeInternal {
-		code = protocol.CodeConflict
-	}
-	return protocol.NewProblem(code, err.Error(), false, err)
 }

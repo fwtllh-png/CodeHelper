@@ -32,7 +32,6 @@ interface DocumentIdentity {
 const maxContextFileBytes = 1 << 20;
 const maxContextImageBytes = 5 << 20;
 const maxProviderSymbols = 4096;
-const maxProviderDiagnostics = 4096;
 
 export class ContextBridge {
   readonly #workspace: vscode.WorkspaceFolder;
@@ -74,11 +73,6 @@ export class ContextBridge {
     let diagnostics: ReturnType<typeof prepareDiagnostics> | undefined;
     if (directives.has("diagnostics")) {
       const visible = vscode.languages.getDiagnostics(document.uri);
-      if (visible.length > maxProviderDiagnostics) {
-        throw new Error(
-          `diagnostic provider exceeds ${String(maxProviderDiagnostics)} entries`,
-        );
-      }
       diagnostics = prepareDiagnostics(visible.map(toNativeDiagnostic));
     }
     const identity = await this.#captureIdentity(
@@ -232,11 +226,6 @@ export class ContextBridge {
         throw new Error("diagnostic action is stale because its document changed");
       }
       const current = vscode.languages.getDiagnostics(document.uri);
-      if (current.length > maxProviderDiagnostics) {
-        throw new Error(
-          `diagnostic provider exceeds ${String(maxProviderDiagnostics)} entries`,
-        );
-      }
       if (!current.map(toNativeDiagnostic).some(
         (diagnostic) => sameDiagnostic(diagnostic, prepared),
       )) {

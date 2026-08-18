@@ -11,7 +11,7 @@ func TestReasoningEffortUsesExplicitModelLevels(t *testing.T) {
 		escalation uint8
 		want       string
 	}{
-		{"simple", "answer the question", "answer", 0, "low"},
+		{"simple", "answer the question", "answer", 0, "medium"},
 		{"change", "implement the fix", "workspace_change", 0, "medium"},
 		{"architecture", "analyze architecture", "answer", 0, "high"},
 		{"escalated", "analyze architecture", "answer", 1, "max"},
@@ -56,5 +56,14 @@ func TestReasoningEffortUsesExplicitModelLevels(t *testing.T) {
 		"off",
 	); got != "off" {
 		t.Fatalf("disabled effort = %q", got)
+	}
+	if got := ReasoningEffort(
+		"answer",
+		"answer",
+		0,
+		[]string{"off", "low", "high"},
+		"",
+	); got != "high" {
+		t.Fatalf("medium fallback effort = %q", got)
 	}
 }

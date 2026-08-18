@@ -95,6 +95,10 @@ func TestPhase4R3PersistenceFailureCommitsNoStateOrEffect(t *testing.T) {
 	if err == nil {
 		t.Fatal("injected persistence failure was ignored")
 	}
+	if protocol.CodeOf(err) != protocol.CodeUnavailable ||
+		protocol.DispositionOf(err) != protocol.FaultResumeTurn {
+		t.Fatalf("persistence fault = %#v", protocol.ProblemOf(err))
+	}
 	after, digestErr := Digest(coordinator.Snapshot())
 	if digestErr != nil {
 		t.Fatal(digestErr)

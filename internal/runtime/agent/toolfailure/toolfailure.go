@@ -1,4 +1,4 @@
-package engine
+package toolfailure
 
 import (
 	"errors"
@@ -12,15 +12,10 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
-// recoverableToolFailure decides whether a tool error is handed back to the
-// model as a failed tool result, or aborts the turn.
-//
-// Recoverable means the model can plausibly fix it by issuing a different call:
-// a malformed or unknown call, or an edit that skipped the mandatory read.
-// Policy and sandbox rejections are deliberately not recoverable — replaying a
-// rejection invites the model to keep probing the permission boundary, which
-// would require a per-turn rejection budget before it is safe.
-func recoverableToolFailure(err error) (string, bool) {
+// Recoverable decides whether a tool error is handed back to the model as a
+// failed tool result. Recoverable errors are known to have no uncertain side
+// effects, so the model can correct the call without duplicating an action.
+func Recoverable(err error) (string, bool) {
 	if err == nil {
 		return "", false
 	}
@@ -36,13 +31,18 @@ func recoverableToolFailure(err error) (string, bool) {
 			content += "; path=" + hint.Path
 		}
 		if hint.FailedChange > 0 {
-			content += fmt.Sprintf("; failed_change=%d; match_count=%d",
-				hint.FailedChange, hint.MatchCount)
+			content += fmt.Sprintf(
+				"; failed_change=%d; match_count=%d",
+				hint.FailedChange,
+				hint.MatchCount,
+			)
 		}
 		if hint.CurrentExcerpt != "" {
 			content += fmt.Sprintf(
 				"; current_excerpt_lines=%d-%d:\n%s",
-				hint.StartLine, hint.EndLine, hint.CurrentExcerpt,
+				hint.StartLine,
+				hint.EndLine,
+				hint.CurrentExcerpt,
 			)
 		}
 		if len(hint.CandidatePaths) != 0 {
@@ -64,9 +64,11 @@ func recoverableToolFailure(err error) (string, bool) {
 	}
 	switch {
 	case errors.Is(err, workspacejournal.ErrUnread):
-		return err.Error() + "; read the file with file_read before editing it", true
+		return err.Error() +
+			"; read the file with file_read before editing it", true
 	case errors.Is(err, workspacejournal.ErrStale):
-		return err.Error() + "; re-read the file to refresh its fingerprint, then retry", true
+		return err.Error() +
+			"; re-read the file to refresh its fingerprint, then retry", true
 	case errors.Is(err, tool.ErrInvalidArguments),
 		errors.Is(err, tool.ErrUnknownTool),
 		errors.Is(err, tool.ErrToolUnavailable),
@@ -83,14 +85,12 @@ func recoverableToolFailure(err error) (string, bool) {
 		errors.Is(err, skillruntime.ErrNotSelected):
 		return err.Error(), true
 	case errors.Is(err, tool.ErrPrecondition):
-		// The tool refused before touching anything, so replaying is free: the
-		// model can fix the call without the workspace holding a partial change.
 		return err.Error() + "; the workspace was not changed", true
 	}
 	return "", false
 }
 
-func toolFailureRecoveryMetadata(err error) map[string]any {
+func Metadata(err error) map[string]any {
 	if hint, ok := tool.RecoveryHintFromError(err); ok {
 		metadata := map[string]any{
 			"error_category":  hint.ErrorCategory,
@@ -116,7 +116,8 @@ func toolFailureRecoveryMetadata(err error) map[string]any {
 		return metadata
 	}
 	var decision *policy.DecisionError
-	if errors.As(err, &decision) && decision.Code == "edit_plan_stale" {
+	if errors.As(err, &decision) &&
+		decision.Code == "edit_plan_stale" {
 		return map[string]any{
 			"error_category":    "edit_plan_stale",
 			"required_action":   "file_read",
@@ -140,7 +141,7 @@ func toolFailureRecoveryMetadata(err error) map[string]any {
 	}
 }
 
-func toolFailureCategory(err error) string {
+func Category(err error) string {
 	if category := tool.ErrorCategory(err); category != "" {
 		return category
 	}

@@ -2,6 +2,7 @@ package turnkernel
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -330,6 +331,22 @@ func TestMutationCompletesThroughDeclarationVerificationAndJournal(t *testing.T)
 	state = apply(t, state, JournalResultReceived{
 		EffectID: effect.ID,
 		Status:   JournalCommitted,
+		Error:    "injected durable journal failure",
+	}).State
+	retry := state.PendingEffects[effect.ID]
+	if retry.Status != EffectRequested ||
+		retry.Attempt != 1 ||
+		retry.Error == "" ||
+		state.Phase != PhaseCommitting {
+		t.Fatalf("retryable journal state = %+v", state)
+	}
+	state = apply(t, state, EffectStarted{
+		EffectID: effect.ID,
+		Attempt:  2,
+	}).State
+	state = apply(t, state, JournalResultReceived{
+		EffectID: effect.ID,
+		Status:   JournalCommitted,
 	}).State
 	state = apply(t, state, FinishTerminal{}).State
 	if state.Phase != PhaseCompleted ||
@@ -447,6 +464,30 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 	}
 }
 
+func TestRecoverableFaultsSuspendJournalInsteadOfRollingBack(t *testing.T) {
+	state := NewState(protocol.TurnIntentWorkspaceChange, "act", 1)
+	state.MutationRevision = 1
+	state.Journal = JournalOpen
+	for _, disposition := range []protocol.FaultDisposition{
+		protocol.FaultRetryStep,
+		protocol.FaultRetryTurn,
+		protocol.FaultResumeTurn,
+	} {
+		kind, status := terminalJournalOutcome(state, TerminalDecision{
+			Kind:  TerminalFailed,
+			Fault: &protocol.FaultMetadata{Disposition: disposition},
+		})
+		if kind != EffectSuspendJournal || status != JournalSuspended {
+			t.Fatalf(
+				"disposition %s outcome = %s/%s",
+				disposition,
+				kind,
+				status,
+			)
+		}
+	}
+}
+
 func TestMutationInvalidatesCompletionAndVerification(t *testing.T) {
 	state := verifiedMutation(t)
 	state = apply(t, state, ToolCallsProposed{
@@ -554,8 +595,11 @@ func TestObserveProgressUsesConservativeDurableThresholds(t *testing.T) {
 	}
 }
 
-func TestReadOnlyProgressHasBoundedTotalSampleStages(t *testing.T) {
+func TestReadOnlyProgressUsesConsecutiveNoProgressStages(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
+	state = apply(t, state, ObserveProgress{
+		Signature: "evidence-0",
+	}).State
 	for _, test := range []struct {
 		samples uint32
 		want    ProgressStage
@@ -566,7 +610,7 @@ func TestReadOnlyProgressHasBoundedTotalSampleStages(t *testing.T) {
 		{samples: 16, want: ProgressStageExhausted},
 	} {
 		state = apply(t, state, ObserveProgress{
-			Signature:        "evidence-changed-" + string(test.want),
+			Signature:        "evidence-0",
 			CompletedSamples: test.samples,
 		}).State
 		if state.Progress.Stage != test.want {
@@ -576,8 +620,27 @@ func TestReadOnlyProgressHasBoundedTotalSampleStages(t *testing.T) {
 	}
 }
 
+func TestReadOnlyProgressDoesNotConvergeWhileEvidenceAdvances(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	for samples := uint32(0); samples <=
+		state.Policy.Convergence.ResearchLimit*2; samples++ {
+		state = apply(t, state, ObserveProgress{
+			Signature:        fmt.Sprintf("evidence-%d", samples),
+			CompletedSamples: samples,
+		}).State
+		if state.Progress.Stage != ProgressStageNone ||
+			state.Convergence != nil {
+			t.Fatalf("samples=%d progress=%+v convergence=%+v",
+				samples, state.Progress, state.Convergence)
+		}
+	}
+}
+
 func TestResearchProgressLeavesTotalSampleCapAfterMutation(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
+	state = apply(t, state, ObserveProgress{
+		Signature: "mutation=0",
+	}).State
 	state = apply(t, state, ObserveProgress{
 		Signature:        "mutation=0",
 		CompletedSamples: state.Policy.Convergence.ResearchFinishOnly,

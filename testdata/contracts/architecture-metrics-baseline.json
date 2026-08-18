@@ -591,13 +591,10 @@
       "kind": "package",
       "path": "internal/runtime/agent/engine",
       "limits": {
-        "internal_fanout": 25,
+        "internal_fanout": 24,
         "production_lines": 10771,
         "options_fields": 60,
         "mutex_fields": 8
-      },
-      "relaxations": {
-        "production_lines": "Kernel-owned convergence replaces output, repair, progress, and work-step terminal loops with one reserved finalization path."
       }
     },
     {
@@ -605,13 +602,13 @@
       "kind": "package",
       "path": "internal/runtime/app",
       "limits": {
-        "internal_fanout": 20,
+        "internal_fanout": 21,
         "production_lines": 8624,
         "options_fields": 18,
         "mutex_fields": 7
       },
       "relaxations": {
-        "production_lines": "Runtime terminal publication and receipts now preserve the typed convergence outcome across atomic commit."
+        "internal_fanout": "Runtime app delegates terminal and WorkGraph event conversion to one projection boundary"
       }
     },
     {
@@ -698,9 +695,6 @@
         "production_lines": 7501,
         "options_fields": 28,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "TUI projects the shared recoverable incomplete terminal state instead of presenting convergence as failure."
       }
     },
     {
@@ -708,13 +702,13 @@
       "kind": "package",
       "path": "internal/runtime/protocol",
       "limits": {
-        "internal_fanout": 0,
+        "internal_fanout": 1,
         "production_lines": 6060,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "The public protocol and execution receipt carry typed convergence cause, summary, pending actions, and provisional-output mode."
+        "internal_fanout": "Protocol delegates Fault implementation while preserving its stable public aliases"
       }
     },
     {
@@ -941,7 +935,7 @@
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
         "lines": 520,
-        "max_function_lines": 133
+        "max_function_lines": 132
       }
     },
     {

@@ -155,7 +155,18 @@ func (g *verifyGate) evaluate(
 					err.Error(),
 				),
 			)
-			return verifyOutcome{}, fmt.Errorf("verification (%s): %w", scope, err)
+			return verifyOutcome{}, protocol.NewFault(
+				protocol.CodeUnavailable,
+				fmt.Sprintf("verification (%s) is unavailable", scope),
+				true,
+				protocol.FaultMetadata{
+					Origin:         protocol.FaultOriginVerification,
+					Disposition:    protocol.FaultResumeTurn,
+					SideEffects:    protocol.SideEffectDraft,
+					RecoveryAction: "restore verification and continue the retained draft",
+				},
+				err,
+			)
 		}
 		receipt = verify.Receipt{
 			Scope: scope, Status: verify.StatusUnavailable, Message: err.Error(),

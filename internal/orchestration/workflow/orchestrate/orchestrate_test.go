@@ -24,6 +24,13 @@ func TestRuntimeDriverRejectsUnsupportedProfileBeforeSessionStart(t *testing.T) 
 	}
 }
 
+func TestRuntimeDriverHasNoImplicitTaskDeadline(t *testing.T) {
+	driver := &orchestrate.RuntimeDriver{}
+	if driver.Timeout != 0 {
+		t.Fatalf("implicit timeout = %s", driver.Timeout)
+	}
+}
+
 func TestOrchestrateCreatesFleetAndLane(t *testing.T) {
 	root := t.TempDir()
 	inner := &jsvm.FakeDriver{}

@@ -58,7 +58,7 @@ func (e *Engine) runTerminalCompactGate(
 ) error {
 	input := contextstore.New(contextstore.Input{Stable: e.promptMessages()}).Snapshot()
 	window, err := e.runCompactGate(
-		history, input, e.maxOutputFor(e.activeRoute()),
+		history, input, 0,
 		CompactionPhasePostTurn, allowCurrentTurn, send,
 	)
 	if err == nil && window.total > window.hardLimit {
@@ -81,11 +81,11 @@ func (e *Engine) measureTokenWindow(
 		return tokenWindow{}, err
 	}
 	projected := e.projectTokenWindow(&measured, outputReserve)
-	active := projected.FullActiveTokens + outputReserve
+	active := projected.FullActiveTokens
 	if e.options.CompactWindow.Scope == compactScopeBodyAfterPrefix {
-		active = projected.BodyTokens + outputReserve
+		active = projected.BodyTokens
 		if !projected.Observed {
-			active = projected.PendingTokens + outputReserve
+			active = projected.PendingTokens
 		}
 	}
 	return tokenWindow{
@@ -153,7 +153,7 @@ func (e *Engine) reconcileWorldBaseline(history []provider.Message) {
 func (e *Engine) compactHistory(history *[]provider.Message, force bool) *CompactionReceipt {
 	input := contextstore.New(contextstore.Input{Stable: e.promptMessages()}).Snapshot()
 	return e.compactHistoryWithPolicy(
-		history, force, false, input, e.maxOutputFor(e.activeRoute()),
+		history, force, false, input, 0,
 	)
 }
 

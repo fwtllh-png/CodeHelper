@@ -74,6 +74,56 @@ func TestJournalCommitRevertAndConflict(t *testing.T) {
 	}
 }
 
+func TestJournalCommitRetainsOwnershipUntilLedgerPersists(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(t.TempDir(), "journal")
+	manager, err := Open(root, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Begin("turn-retry"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.ledger.close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Commit("turn-retry"); err == nil {
+		t.Fatal("commit succeeded after the durable ledger was closed")
+	}
+	if manager.active == nil ||
+		manager.active.id != "turn-retry" ||
+		manager.committed["turn-retry"] != nil {
+		t.Fatalf(
+			"failed commit lost journal ownership: active=%+v committed=%+v",
+			manager.active,
+			manager.committed,
+		)
+	}
+	reopened, err := os.OpenFile(
+		filepath.Join(directory, ledgerName),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
+		0o600,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.ledger.file = reopened
+	if err := manager.Commit("turn-retry"); err != nil {
+		t.Fatal(err)
+	}
+	if manager.active != nil ||
+		manager.committed["turn-retry"] == nil {
+		t.Fatalf(
+			"retried commit state: active=%+v committed=%+v",
+			manager.active,
+			manager.committed,
+		)
+	}
+	if err := manager.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestJournalDraftResumeCommitsOriginalBaseline(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "value.txt")

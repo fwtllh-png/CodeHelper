@@ -17,7 +17,7 @@ test_paths:
   - internal/runtime/agent/engine/engine_test.go
   - internal/adapter/tool/fault_injection_test.go
 source_of_truth:
-  - internal/runtime/agent/engine/toolfailure.go
+  - internal/runtime/agent/toolfailure/toolfailure.go
   - internal/runtime/agent/engine/engine.go
 status: draft
 last_verified: null

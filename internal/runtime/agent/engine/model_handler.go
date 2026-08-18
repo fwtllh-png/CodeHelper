@@ -111,10 +111,6 @@ func (e *Engine) modelStep(
 	var continuationMessages []provider.Message
 	var continuedBlocks []provider.ContentBlock
 	continuations := uint32(0)
-	continuationLimit := scope.spec.Kernel.Convergence.OutputContinuations
-	if convergenceOnly {
-		continuationLimit = 0
-	}
 	baseReasoningEffort := e.reasoningEffort(scope, reason)
 	for attempt := 0; ; attempt++ {
 		var turnContext []provider.Message
@@ -149,10 +145,7 @@ func (e *Engine) modelStep(
 			phase = CompactionPhasePreSampling
 		}
 		window, err := e.runCompactGate(
-			history, snapshot, promptcontext.OutputLimit(
-				e.maxOutputFor(route), reasoningEffort,
-				finishOnly || convergenceOnly || budgetFinishOnly,
-			), phase, true, send,
+			history, snapshot, 0, phase, true, send,
 		)
 		if err != nil {
 			return nil, nil, totalUsage, window.estimated, err
@@ -162,10 +155,7 @@ func (e *Engine) modelStep(
 			turnContext = append(turnContext, contextWindowFeedback(e.turn))
 			snapshot = project()
 			window, err = e.runCompactGate(
-				history, snapshot, promptcontext.OutputLimit(
-					e.maxOutputFor(route), reasoningEffort,
-					finishOnly || convergenceOnly || budgetFinishOnly,
-				), phase, true, send,
+				history, snapshot, 0, phase, true, send,
 			)
 			if err != nil {
 				return nil, nil, totalUsage, window.estimated, err
@@ -184,9 +174,7 @@ func (e *Engine) modelStep(
 				})
 			reasoningEffort, nativeSearch = "low", false
 		}
-		maxOutputTokens := promptcontext.OutputLimit(
-			e.maxOutputFor(route), reasoningEffort, finishOnly,
-		)
+		maxOutputTokens := e.maxOutputFor(route)
 		snapshot = project()
 		snapshot, normalization, normalizationErr := snapshot.Normalize(
 			route.Model().Capabilities,
@@ -203,19 +191,6 @@ func (e *Engine) modelStep(
 		if attributionErr != nil {
 			return nil, nil, totalUsage, lastEstimate, attributionErr
 		}
-		if attribution.MaxItemTokens > maxModelVisibleItemTokens {
-			return nil, nil, totalUsage, attribution.EstimatedTokens,
-				protocol.NewProblem(
-					protocol.CodeResourceExhausted,
-					fmt.Sprintf(
-						"normalized context item requires %d tokens; limit is %d",
-						attribution.MaxItemTokens,
-						maxModelVisibleItemTokens,
-					),
-					false,
-					nil,
-				)
-		}
 		attribution.WorldRevision = worldProjection.Baseline.Revision
 		attribution.WorldDigest = worldProjection.Baseline.Digest
 		attribution.WorldMode = string(worldProjection.Mode)
@@ -228,12 +203,20 @@ func (e *Engine) modelStep(
 		attribution.ProjectedImages = normalization.ProjectedImages
 		attribution.DroppedReasoning = normalization.DroppedReasoning
 		lastEstimate = attribution.EstimatedTokens
-		windowProjection := e.prepareTokenWindow(&attribution, maxOutputTokens)
-		if _, err := e.checkBudget(
-			windowProjection.FullActiveTokens, turnUsage, totalUsage, maxOutputTokens,
-		); err != nil {
+		windowProjection := e.prepareTokenWindow(&attribution, 0)
+		maxOutputTokens, err = e.checkBudget(
+			windowProjection.FullActiveTokens,
+			turnUsage,
+			totalUsage,
+			maxOutputTokens,
+		)
+		if err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
 		}
+		windowProjection = e.prepareTokenWindow(
+			&attribution,
+			maxOutputTokens,
+		)
 		messages := snapshot.Messages()
 		providerAttempt++
 		if err := send(CallingModel, Event{
@@ -354,25 +337,6 @@ func (e *Engine) modelStep(
 				*continued = true
 			}
 			continuedBlocks = appendContinuedBlocks(continuedBlocks, blocks)
-			if continuations >= continuationLimit {
-				if incomplete.HasToolCallFragment {
-					return continuedBlocks, nil, totalUsage, lastEstimate,
-						protocol.NewProblem(
-							protocol.CodeResourceExhausted,
-							"model output limit left a partial tool call",
-							true,
-							err,
-						)
-				}
-				if convergence != nil {
-					*convergence = turnkernel.ConvergenceRequested{
-						Cause: turnkernel.ConvergenceOutputLimit,
-						Used:  continuations + 1,
-						Limit: continuationLimit + 1,
-					}
-				}
-				return continuedBlocks, nil, totalUsage, lastEstimate, nil
-			}
 			if len(blocks) != 0 {
 				continuationMessages = append(
 					continuationMessages,
@@ -383,7 +347,11 @@ func (e *Engine) modelStep(
 			}
 			continuationMessages = append(
 				continuationMessages,
-				incompleteOutputFeedback(incomplete.Reason, e.turn),
+				incompleteOutputFeedback(
+					incomplete.Reason,
+					incomplete.HasToolCallFragment,
+					e.turn,
+				),
 			)
 			continuations++
 			attempt = -1
@@ -438,7 +406,27 @@ func (e *Engine) modelStep(
 			contextChanged,
 		)
 		if !retryable || ctx.Err() != nil {
-			return blocks, nil, totalUsage, lastEstimate, err
+			if ctx.Err() != nil {
+				return blocks, nil, totalUsage, lastEstimate, ctx.Err()
+			}
+			var problem *protocol.Problem
+			if errors.As(err, &problem) {
+				return blocks, nil, totalUsage, lastEstimate, err
+			}
+			return blocks, nil, totalUsage, lastEstimate,
+				protocol.NewFault(
+					protocol.CodeUnavailable,
+					"provider could not complete the model sample: "+
+						errorText(err),
+					true,
+					protocol.FaultMetadata{
+						Origin:         protocol.FaultOriginProvider,
+						Disposition:    protocol.FaultRetryTurn,
+						SideEffects:    protocol.SideEffectUnchanged,
+						RecoveryAction: "retry the turn from its durable checkpoint",
+					},
+					err,
+				)
 		}
 		if sendErr := send(CallingModel, Event{
 			ProviderRetry: &retry,
@@ -467,16 +455,19 @@ func (e *incompleteModelOutputError) Error() string {
 	return fmt.Sprintf("model output stopped before completion (%s)", e.Reason)
 }
 
-func incompleteOutputFeedback(
-	reason provider.StopReason,
-	turn uint64,
-) provider.Message {
+func incompleteOutputFeedback(reason provider.StopReason, hasToolCallFragment bool, turn uint64) provider.Message {
+	instruction := `Continue exactly from the captured response. Do not repeat
+completed content. Finish the pending user-facing answer.`
+	if hasToolCallFragment {
+		instruction = `The incomplete tool call could not be executed. Do not
+regenerate the same oversized arguments. Split the operation into smaller,
+independently valid tool calls and continue the unfinished work.`
+	}
 	message := provider.TextMessage(provider.RoleUser, fmt.Sprintf(
 		`[continue_after_incomplete stop_reason=%s]
-The provider stopped the previous response before completion. Continue exactly
-from the captured response. Do not repeat completed content. Finish the pending
-tool call or user-facing answer.`,
+The provider stopped the previous response before completion. %s`,
 		reason,
+		instruction,
 	))
 	message.Turn = turn
 	return message
@@ -938,11 +929,12 @@ func onlyRetrievalHelpers(descriptors []tool.Descriptor) bool {
 
 // maxOutputFor clamps the session ceiling to the active route.
 func (e *Engine) maxOutputFor(route model.ReadyRoute) uint64 {
-	limit := route.Model().Limits.MaxOutputTokens
-	if limit == 0 || e.options.MaxOutputTokens <= limit {
-		return e.options.MaxOutputTokens
+	modelLimit := route.Model().Limits.MaxOutputTokens
+	if e.options.MaxOutputTokens == 0 ||
+		e.options.MaxOutputTokens > modelLimit {
+		return modelLimit
 	}
-	return limit
+	return e.options.MaxOutputTokens
 }
 
 func eventBlock(event provider.StreamEvent, fallback provider.ContentType) provider.ContentBlock {

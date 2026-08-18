@@ -41,11 +41,11 @@ func (d *RuntimeDriver) SpawnTask(
 	d.mu.Lock()
 	d.Tasks++
 	d.mu.Unlock()
-	timeout := d.Timeout
-	if timeout <= 0 {
-		timeout = 2 * time.Minute
+	ctx := parent
+	cancel := func() {}
+	if d.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(parent, d.Timeout)
 	}
-	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	workspace := d.Workspace

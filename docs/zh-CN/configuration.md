@@ -74,7 +74,7 @@ protocol = "openai_chat"
 mode = "act"                 # plan | act | operate
 workspace = "."
 tools = true
-max_output_tokens = 4096
+max_output_tokens = 0           # 0 = 当前模型能力自动值
 max_steps = 256
 timeout = "2m"
 idle_timeout = "1m"
@@ -169,10 +169,13 @@ model = "gpt-4.1-mini"
 search_backend = "duckduckgo"
 ```
 
-`reasoning_effort` 为空时，Read-only 使用 Low，常规编码使用 Medium，复杂架构或
-Debug 使用 High；Repair 失败后提升一档。显式 Effort 始终固定，且必须由所有已配置
-Route 广告；不支持的值会在 Provider I/O 前失败。`max_output_tokens` 始终是请求硬
-上限，阶段 Reserve 不会提高显式配置值。
+`reasoning_effort` 为空时从 Medium 开始，复杂架构或 Debug 使用 High；Repair
+失败后按模型支持的档位提升一级。显式 Effort 始终固定，且必须由所有已配置 Route
+广告；不支持的值会在 Provider I/O 前失败。Reasoning Effort 不再改变输出容量。
+
+`max_output_tokens = 0` 会根据当前 Model Catalog 能力和输入投影后剩余的 Context
+空间，为每次请求动态计算上限。正值表示 Operator 显式上限，并且仍受这两个模型
+边界约束。
 
 `delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
 `spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。
@@ -228,8 +231,10 @@ Terminal-only 而拒绝。48 步时 Kernel 进入同一条结构化 Finalization
 推进都会立即清零计数。Answer 和 Plan Turn 还会把首次读取的新路径与新 Evidence
 计为进展；Operation Turn 会把成功的业务 Tool 结果计为进展。Progress 与
 Convergence 状态都会持久化并在 Runtime 恢复后延续。仍保持只读的 Answer 或 Plan
-Turn 使用更紧的 8/12/16 总 Sample 研究门禁；即使初始 Intent 被分类为 Answer，
-只要 Runtime 观察到 Workspace Mutation，该门禁就会立即停止生效。
+Turn 使用更紧的 8/12/16 阈值，但它只统计连续没有新路径或新 Evidence 的 Sample。
+持续发现 Evidence 的研究由显式 `execution.max_steps`、Context Window 和 Token/Cost
+Budget 约束，不再受内部总 Sample 上限影响。Provider 输出不完整时也不再有默认续写
+次数上限，只要这些真实容量仍然可用就继续。
 
 这些 Convergence Budget 不等于物理边界或用户配置的硬上限。Runtime 不会越过
 Token/Cost Ceiling，不会猜测半截 Tool Call，不会绕过 Content Filter，也不会在安全

@@ -4,13 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/model"
 	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/projection"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -81,7 +81,7 @@ func (r *Runtime) publishWorkGraphTerminal(
 	if err != nil {
 		return fmt.Errorf("load terminal WorkGraph %s: %w", effect.RunID, err)
 	}
-	data, err := terminalRunEvent(graph)
+	data, err := projection.RunTerminal(graph)
 	if err != nil {
 		return err
 	}
@@ -109,29 +109,6 @@ func (r *Runtime) publishWorkGraphTerminal(
 		return fmt.Errorf("acknowledge terminal WorkGraph effect %s: %w", effect.ID, err)
 	}
 	return nil
-}
-
-func terminalRunEvent(graph model.Graph) (protocol.EventData, error) {
-	reference := protocol.RunReference{RunID: graph.Run.ID}
-	switch graph.Run.State {
-	case protocol.RunStateCompleted:
-		return &protocol.RunCompletedData{
-			Run: reference, Revision: graph.Run.Revision,
-		}, nil
-	case protocol.RunStateFailed:
-		return &protocol.RunFailedData{
-			Run: reference, Revision: graph.Run.Revision,
-			Code:    protocol.CodeInternal,
-			Message: nonEmpty(graph.Run.Reason, "run failed"),
-		}, nil
-	case protocol.RunStateCanceled:
-		return &protocol.RunCanceledData{
-			Run: reference, Revision: graph.Run.Revision,
-			Reason: nonEmpty(graph.Run.Reason, "run canceled"),
-		}, nil
-	default:
-		return nil, errors.New("terminal WorkGraph effect belongs to a non-terminal run")
-	}
 }
 
 func stableWorkGraphEffectIdentity(effectID protocol.EffectID) string {

@@ -185,6 +185,7 @@ testdata/                hermetic provider and benchmark fixtures
 | Agent engineering book | [Book and navigation](./docs/book/en/README.md) | [书籍与导航](./docs/book/zh-CN/README.md) |
 | Knowledge system plan | [Documentation plan](./docs/en/knowledge-base-plan.md) | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) |
 | Documentation governance | [Ownership and gates](./docs/en/documentation-governance.md) | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) |
+| Runtime reliability | [Hardening program](./docs/en/reliability-hardening.md) | [系统治理](./docs/zh-CN/reliability-hardening.md) |
 | Product direction | [Roadmap](./docs/en/roadmap.md) | [后续规划](./docs/zh-CN/roadmap.md) |
 
 ## Development

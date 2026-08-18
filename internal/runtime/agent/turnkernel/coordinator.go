@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sync"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 var ErrEffectResultIdentity = errors.New("effect result identity mismatch")
@@ -234,7 +236,18 @@ func (c *TurnCoordinator) transition(
 		c.nextFact,
 		facts,
 	); err != nil {
-		return nil, err
+		return nil, protocol.NewFault(
+			protocol.CodeUnavailable,
+			"turn domain facts could not be persisted",
+			true,
+			protocol.FaultMetadata{
+				Origin:         protocol.FaultOriginPersistence,
+				Disposition:    protocol.FaultResumeTurn,
+				SideEffects:    protocol.SideEffectUnknown,
+				RecoveryAction: "restore persistence and resume from durable facts",
+			},
+			err,
+		)
 	}
 	c.state = transition.State
 	c.nextFact += uint64(len(facts))

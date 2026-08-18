@@ -893,17 +893,21 @@ func (s *engineTurnKernel) applyAuthoritativeLocked(
 		record.Rejection = err.Error()
 		record.StateDigest, _ = turnkernel.Digest(s.state)
 		s.recordLocked(record)
-		code := protocol.CodeInternal
-		retryable := false
-		switch command.(type) {
-		case turnkernel.ToolCallsProposed:
-			code = protocol.CodeConflict
-			retryable = true
+		var problem *protocol.Problem
+		if errors.As(err, &problem) &&
+			problem.Code != protocol.CodeInternal {
+			return problem
 		}
-		return protocol.NewProblem(
-			code,
-			"turn kernel rejected authoritative command: "+err.Error(),
-			retryable,
+		return protocol.NewFault(
+			protocol.CodeConflict,
+			"turn kernel rejected an authoritative command",
+			true,
+			protocol.FaultMetadata{
+				Origin:         protocol.FaultOriginKernel,
+				Disposition:    protocol.FaultRetryStep,
+				SideEffects:    protocol.SideEffectUnchanged,
+				RecoveryAction: "reconcile the command with the durable turn state",
+			},
 			err,
 		)
 	}
@@ -913,10 +917,15 @@ func (s *engineTurnKernel) applyAuthoritativeLocked(
 	if err != nil {
 		record.Drift = err.Error()
 		s.recordLocked(record)
-		return protocol.NewProblem(
+		return protocol.NewFault(
 			protocol.CodeInternal,
 			"turn kernel could not digest authoritative command",
 			false,
+			protocol.FaultMetadata{
+				Origin:      protocol.FaultOriginKernel,
+				Disposition: protocol.FaultFailTurn,
+				SideEffects: protocol.SideEffectUnknown,
+			},
 			err,
 		)
 	}

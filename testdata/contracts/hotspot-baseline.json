@@ -122,6 +122,7 @@
         "internal/runtime/agent/contextstore",
         "internal/runtime/agent/evidence",
         "internal/runtime/agent/promptcontext",
+        "internal/runtime/agent/toolfailure",
         "internal/runtime/agent/turnexec",
         "internal/runtime/agent/turnkernel",
         "internal/runtime/agent/workingset",
@@ -214,7 +215,9 @@
         "schema": "schema.go",
         "problem_and_error_normalization": "problem.go"
       },
-      "allowed_internal_imports": [],
+      "allowed_internal_imports": [
+        "internal/runtime/fault"
+      ],
       "required_test_assets": [
         "internal/runtime/protocol/message_test.go",
         "internal/runtime/protocol/operation.go",

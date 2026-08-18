@@ -59,6 +59,9 @@ context window.
 - bounded long-session compaction with quality evaluation;
 - resource isolation for concurrent providers, tools, and workers.
 
+The [Runtime Reliability Hardening](./reliability-hardening.md) program tracks
+the detailed audit workstreams, priorities, status, and acceptance evidence.
+
 ## Medium-Term: Security and Governance
 
 - stronger cross-platform sandbox evidence;

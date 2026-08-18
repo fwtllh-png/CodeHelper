@@ -39,7 +39,11 @@ func runExec(
 	apiKeyEnv := flags.String("api-key-env", "", "environment variable containing the provider credential")
 	fixturePath := flags.String("provider-fixture", "", "directory containing an HTTP provider fixture")
 	outputFormat := flags.String("output-format", "stream-json", "output format")
-	maxOutputTokens := flags.Uint64("max-output-tokens", 4096, "maximum output tokens")
+	maxOutputTokens := flags.Uint64(
+		"max-output-tokens",
+		0,
+		"maximum output tokens; zero uses model and budget capacity",
+	)
 	budgetTokens := flags.Uint64("budget-tokens", 0, "maximum projected cumulative tokens")
 	budgetUSD := flags.Float64("budget-usd", 0, "maximum projected cumulative cost")
 	reasoningEffort := flags.String("reasoning-effort", "", "provider reasoning effort")
@@ -83,7 +87,7 @@ func runExec(
 	inputPrice := flags.Float64("input-price-per-million", 0, "custom model input price")
 	outputPrice := flags.Float64("output-price-per-million", 0, "custom model output price")
 	pricingCurrency := flags.String("pricing-currency", "", "custom model pricing currency")
-	maxSteps := flags.Int("max-steps", 1, "maximum model steps for a turn")
+	maxSteps := flags.Int("max-steps", 256, "maximum model steps for a turn")
 	timeout := flags.Duration("timeout", 2*time.Minute, "overall provider request timeout")
 	idleTimeout := flags.Duration("stream-idle-timeout", time.Minute, "maximum stream idle duration")
 	maxConcurrent := flags.Int("provider-concurrency", 8, "maximum concurrent provider streams")

@@ -8,7 +8,7 @@ import (
 )
 
 func TestOperationOutcomeContract(t *testing.T) {
-	problem := outcomeProblem(errors.New("rejected"))
+	problem := protocol.ProblemOf(errors.New("rejected"))
 	async := &AsyncTurn{ThreadID: "thread", TurnID: "turn", OperationID: "operation", ItemID: "item"}
 	tests := []struct {
 		name    string

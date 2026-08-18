@@ -57,6 +57,9 @@
 - 可评估质量的有界长会话 Compact；
 - 并发 Provider、Tool 与 Worker 的资源隔离。
 
+具体扫描工作流、优先级、状态和验收证据统一记录在
+[运行时可靠性系统治理](./reliability-hardening.md)中。
+
 ## 中期：安全与治理
 
 - 更强的跨平台 Sandbox 动态证据；

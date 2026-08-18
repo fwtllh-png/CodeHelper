@@ -57,6 +57,51 @@ func TestConvergenceFailureReturnsRecoverablePromptResult(t *testing.T) {
 	}
 }
 
+func TestUnavailableTurnFailurePreservesRecoverableACPCode(t *testing.T) {
+	var output bytes.Buffer
+	active := &activeTurn{
+		sessionID: "session-1",
+		turnID:    "turn-1",
+		requestID: json.RawMessage(`"prompt-1"`),
+		done:      make(chan struct{}),
+	}
+	server := &Server{
+		output: &frameWriter{buffer: bufio.NewWriter(&output)},
+		active: map[string]*activeTurn{active.sessionID: active},
+	}
+	fault := &protocol.FaultMetadata{
+		Origin:      protocol.FaultOriginProvider,
+		Disposition: protocol.FaultRetryTurn,
+		SideEffects: protocol.SideEffectUnchanged,
+	}
+	server.advance(active, protocol.Event{
+		Kind: protocol.EventTurnFailed,
+		Data: &protocol.TurnFailedData{
+			Code:    protocol.CodeUnavailable,
+			Message: "provider unavailable",
+			Fault:   fault,
+		},
+	})
+	var frame struct {
+		Error struct {
+			Code int `json:"code"`
+			Data struct {
+				Code  protocol.ErrorCode      `json:"code"`
+				Fault *protocol.FaultMetadata `json:"fault"`
+			} `json:"data"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &frame); err != nil {
+		t.Fatal(err)
+	}
+	if frame.Error.Code != codeUnavailable ||
+		frame.Error.Data.Code != protocol.CodeUnavailable ||
+		frame.Error.Data.Fault == nil ||
+		frame.Error.Data.Fault.Disposition != protocol.FaultRetryTurn {
+		t.Fatalf("ACP unavailable frame = %+v", frame)
+	}
+}
+
 func TestPreparedStartTurnPreservesIntent(t *testing.T) {
 	request := preparedStartTurn(
 		"internal recovery context",

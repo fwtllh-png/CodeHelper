@@ -16,11 +16,6 @@ import (
 
 const VisionUnavailableReason = "vision provider is unavailable"
 
-// visionMaxOutputTokens bounds a description. An image analysis is a paragraph,
-// not an essay, and the ceiling is also what keeps one image_analyze call from
-// spending a turn's whole output budget.
-const visionMaxOutputTokens = 2048
-
 // VisionClient analyzes a workspace image with an optional prompt.
 type VisionClient interface {
 	Analyze(ctx context.Context, imagePath, prompt string) (string, error)
@@ -67,9 +62,6 @@ func (r RouteVision) Analyze(ctx context.Context, imagePath, prompt string) (str
 		question = "Describe this image."
 	}
 	maxOut := r.Route.Model().Limits.MaxOutputTokens
-	if maxOut == 0 || maxOut > visionMaxOutputTokens {
-		maxOut = visionMaxOutputTokens
-	}
 	stream, err := r.Provider.Stream(ctx, provider.ModelRequest{
 		Route:   r.Route,
 		Purpose: model.PurposeVision,

@@ -47,14 +47,15 @@ architecture and delivery stages are defined in the
 ### I want to contribute
 
 1. [Architecture](./architecture.md)
-2. [Security model](./security.md)
-3. [Local development and scripts](./development.md)
-4. [Source code reading guide](./reading-guide.md)
-5. [Agent guide](./agent-guide.md)
-6. [TUI and VS Code experience contract](./experience.md)
-6. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-7. [Documentation governance](./documentation-governance.md)
-8. [Roadmap](./roadmap.md)
+2. [Runtime reliability hardening](./reliability-hardening.md)
+3. [Security model](./security.md)
+4. [Local development and scripts](./development.md)
+5. [Source code reading guide](./reading-guide.md)
+6. [Agent guide](./agent-guide.md)
+7. [TUI and VS Code experience contract](./experience.md)
+8. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+9. [Documentation governance](./documentation-governance.md)
+10. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 
@@ -70,6 +71,7 @@ architecture and delivery stages are defined in the
 | Knowledge book structure and delivery | `knowledge-base-plan.md` |
 | Book catalog and chapter status | `docs/book/catalog.json` |
 | Book ownership, freshness, and release facts | `docs/book/governance.json` |
+| Reliability program status | evidenced workstream status in `reliability-hardening.md` |
 | Roadmap | desired outcomes, never a claim of shipped behavior |
 
 When implementation and documentation disagree, verify the implementation,

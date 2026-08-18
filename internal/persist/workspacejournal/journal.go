@@ -550,6 +550,17 @@ func canonicalPath(path string) (string, error) {
 func (m *Manager) Commit(turnID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.committed[turnID] != nil {
+		return nil
+	}
+	if m.active == nil || m.active.id != turnID {
+		return errors.New("workspace journal active turn does not match finalization")
+	}
+	if err := m.ledger.append(entry{
+		Phase: phaseCommit, TurnID: turnID,
+	}); err != nil {
+		return err
+	}
 	journal, err := m.finishActiveLocked(turnID)
 	if err != nil {
 		return err
@@ -557,7 +568,7 @@ func (m *Manager) Commit(turnID string) error {
 	m.committed[turnID] = journal
 	// A committed turn is no longer something a later process should undo: it
 	// passed its gate, so its changes are finished work.
-	return m.ledger.append(entry{Phase: phaseCommit, TurnID: turnID})
+	return nil
 }
 
 // Suspend preserves an unverified Turn as a resumable draft. Unlike Commit, it
@@ -565,13 +576,21 @@ func (m *Manager) Commit(turnID string) error {
 func (m *Manager) Suspend(turnID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.drafts[turnID] != nil {
+		return nil
+	}
 	if m.active == nil || m.active.id != turnID {
 		return errors.New("workspace journal active turn does not match suspension")
+	}
+	if err := m.ledger.append(entry{
+		Phase: phaseDraft, TurnID: turnID,
+	}); err != nil {
+		return err
 	}
 	journal := m.active
 	m.active = nil
 	m.drafts[turnID] = journal
-	return m.ledger.append(entry{Phase: phaseDraft, TurnID: turnID})
+	return nil
 }
 
 // HasDraft reports whether a terminal Turn retained a resumable workspace
@@ -677,19 +696,23 @@ func (m *Manager) Rollback(ctx context.Context, turnID string) (Receipt, error) 
 	receipt, err := m.restore(ctx, journal)
 	resolved := err == nil && len(receipt.Conflicts) == 0
 	m.mu.Lock()
-	if resolved {
-		delete(m.unresolved, turnID)
-	} else {
+	if !resolved {
 		m.unresolved[turnID] = journal
 	}
 	m.mu.Unlock()
 	if resolved {
-		m.release(journal)
 		if settleErr := m.ledger.append(entry{
 			Phase: phaseSettled, TurnID: turnID,
-		}); settleErr != nil && err == nil {
-			err = settleErr
+		}); settleErr != nil {
+			m.mu.Lock()
+			m.unresolved[turnID] = journal
+			m.mu.Unlock()
+			return receipt, settleErr
 		}
+		m.mu.Lock()
+		delete(m.unresolved, turnID)
+		m.mu.Unlock()
+		m.release(journal)
 	}
 	return receipt, err
 }

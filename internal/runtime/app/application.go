@@ -13,6 +13,7 @@ import (
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/projection"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -324,19 +325,17 @@ func (a *EngineAdapter) StartTurn(
 			})
 		case agentengine.Completed:
 			receipt.outcome = protocol.OutcomeForIntent(intent)
+			secondary := projection.TerminalIssues(event.SecondaryIssues)
 			return a.commitTerminal(ctx, receipt, sink, true, &protocol.TurnCompletedData{
 				Text: event.Text, Outcome: protocol.OutcomeForIntent(intent),
+				SecondaryIssues: secondary,
 			})
 		case agentengine.Failed:
-			secondary := make([]protocol.TerminalIssue, len(event.SecondaryIssues))
-			for index, issue := range event.SecondaryIssues {
-				secondary[index] = protocol.TerminalIssue{
-					Phase: issue.Phase, Code: issue.Code, Message: issue.Message,
-				}
-			}
+			secondary := projection.TerminalIssues(event.SecondaryIssues)
 			return a.commitTerminal(ctx, receipt, sink, false, &protocol.TurnFailedData{
 				Code:            nonEmptyCode(event.ErrorCode, protocol.CodeInternal),
 				Message:         nonEmpty(event.Error, "turn failed"),
+				Fault:           protocol.CloneFaultMetadata(event.Fault),
 				Convergence:     event.Convergence,
 				SecondaryIssues: secondary,
 			})
@@ -585,6 +584,7 @@ func (a *EngineAdapter) StartTurn(
 	)
 	return runErr
 }
+
 func (a *EngineAdapter) buildReceipt(
 	recorder *receiptRecorder,
 	completed bool,

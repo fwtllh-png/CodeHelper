@@ -300,11 +300,13 @@ func (Reducer) Apply(current State, command Command) (Transition, error) {
 			decision.Kind = TerminalFailed
 			decision.Code = value.FailureCode
 			decision.Message = value.FailureMessage
+			decision.Fault = cloneFault(value.Fault)
 			decision.Convergence = cloneConvergence(value.Convergence)
 		case strings.TrimSpace(value.FailureMessage) != "":
 			decision.Kind = TerminalFailed
 			decision.Code = value.FailureCode
 			decision.Message = value.FailureMessage
+			decision.Fault = cloneFault(value.Fault)
 		}
 		if err := applyTerminalRequested(
 			&transition,
@@ -764,6 +766,7 @@ func applyEffectStarted(
 	}
 	effect.Status = EffectRunning
 	effect.Attempt = command.Attempt
+	effect.Error = ""
 	transition.State.PendingEffects[command.EffectID] = effect
 	if effect.Kind == EffectSampleProvider {
 		sample, ok := current.SampleLedger[effect.CallID]
@@ -1215,40 +1218,28 @@ func applyObserveProgress(
 	}
 	progress.ObservedSamples = command.CompletedSamples
 	policy := current.Policy.Convergence
+	convergeAt := policy.ProgressConverge
+	finishOnlyAt := policy.ProgressFinishOnly
+	limit := policy.ProgressLimit
+	if IsResearchIntent(current.Intent) &&
+		current.MutationRevision == 0 {
+		convergeAt = policy.ResearchConverge
+		finishOnlyAt = policy.ResearchFinishOnly
+		limit = policy.ResearchLimit
+	}
 	switch {
-	case progress.NoProgressSamples >= policy.ProgressLimit:
+	case progress.NoProgressSamples >= limit:
 		progress.Stage = ProgressStageExhausted
-	case progress.NoProgressSamples >= policy.ProgressFinishOnly:
+	case progress.NoProgressSamples >= finishOnlyAt:
 		progress.Stage = ProgressStageFinishOnly
-	case progress.NoProgressSamples >= policy.ProgressConverge:
+	case progress.NoProgressSamples >= convergeAt:
 		progress.Stage = ProgressStageConverge
 	default:
 		progress.Stage = ProgressStageNone
 	}
-	if IsResearchIntent(current.Intent) &&
-		current.MutationRevision == 0 {
-		researchStage := ProgressStageNone
-		switch {
-		case command.CompletedSamples >= policy.ResearchLimit:
-			researchStage = ProgressStageExhausted
-		case command.CompletedSamples >= policy.ResearchFinishOnly:
-			researchStage = ProgressStageFinishOnly
-		case command.CompletedSamples >= policy.ResearchConverge:
-			researchStage = ProgressStageConverge
-		}
-		if progressStageRank(researchStage) > progressStageRank(progress.Stage) {
-			progress.Stage = researchStage
-		}
-	}
 	transition.State.Progress = progress
 	if progress.Stage == ProgressStageExhausted {
-		limit := policy.ProgressLimit
 		used := progress.NoProgressSamples
-		if IsResearchIntent(current.Intent) &&
-			current.MutationRevision == 0 {
-			limit = policy.ResearchLimit
-			used = progress.ObservedSamples
-		}
 		beginConvergence(
 			transition,
 			ConvergenceRequested{
@@ -1335,19 +1326,6 @@ func validConvergenceRequest(command ConvergenceRequested) bool {
 		return validRepairKind(command.RepairKind)
 	default:
 		return false
-	}
-}
-
-func progressStageRank(stage ProgressStage) int {
-	switch stage {
-	case ProgressStageConverge:
-		return 1
-	case ProgressStageFinishOnly:
-		return 2
-	case ProgressStageExhausted:
-		return 3
-	default:
-		return 0
 	}
 }
 
@@ -1950,17 +1928,24 @@ func applyJournalResult(
 	} else if current.Journal != JournalOpen {
 		return illegal(current, command, "changed turn has no open journal")
 	}
+	if command.Error != "" {
+		effect.Status = EffectRequested
+		effect.Error = command.Error
+		transition.State.PendingEffects[command.EffectID] = effect
+		transition.Events = append(transition.Events, Event{
+			Kind: EventEffectRequeued, EffectID: command.EffectID,
+		})
+		return nil
+	}
 	if err := finishEffect(
 		transition,
 		command.EffectID,
-		command.Error == "",
-		command.Error,
+		true,
+		"",
 	); err != nil {
 		return illegal(current, command, err.Error())
 	}
-	if command.Error == "" {
-		transition.State.Journal = command.Status
-	}
+	transition.State.Journal = command.Status
 	return nil
 }
 
@@ -2019,11 +2004,26 @@ func terminalJournalOutcome(
 	case decision.Kind == TerminalFailed &&
 		(state.Verification.Action == VerificationActionBlocked ||
 			decision.Convergence != nil ||
+			recoverableTerminalFault(decision.Fault) ||
 			state.RecoveryRelation != nil &&
 				state.RecoveryRelation.DraftResumed):
 		return EffectSuspendJournal, JournalSuspended
 	default:
 		return EffectRollbackJournal, JournalRolledBack
+	}
+}
+
+func recoverableTerminalFault(fault *protocol.FaultMetadata) bool {
+	if fault == nil {
+		return false
+	}
+	switch fault.Disposition {
+	case protocol.FaultRetryStep,
+		protocol.FaultRetryTurn,
+		protocol.FaultResumeTurn:
+		return true
+	default:
+		return false
 	}
 }
 

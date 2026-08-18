@@ -82,6 +82,7 @@ func ProtocolTerminalEvent(state State) (protocol.EventData, error) {
 		return &protocol.TurnFailedData{
 			Code:    code,
 			Message: state.Terminal.Message,
+			Fault:   cloneFault(state.Terminal.Fault),
 			Convergence: ProtocolConvergence(
 				state.Terminal.Convergence,
 			),
@@ -119,6 +120,20 @@ type TerminalCommitMarker struct {
 	EffectID    string    `json:"effect_id"`
 	Digest      string    `json:"digest"`
 	CommittedAt time.Time `json:"committed_at"`
+}
+
+func HasTerminalFacts(
+	ctx context.Context,
+	store DomainFactStore,
+	turnID string,
+) bool {
+	if store == nil || turnID == "" {
+		return false
+	}
+	facts, err := store.LoadDomainFacts(ctx, turnID)
+	return err == nil &&
+		len(facts) != 0 &&
+		facts[len(facts)-1].State.Phase.Terminal()
 }
 
 type TerminalEnvelopeStage string

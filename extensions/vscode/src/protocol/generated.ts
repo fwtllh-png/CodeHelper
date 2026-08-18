@@ -168,6 +168,12 @@ export type ProtocolProblem = {
       readonly "resource_id"?: string;
       readonly "session_status"?: string;
     };
+  readonly "fault"?: {
+      readonly "disposition": string;
+      readonly "origin": string;
+      readonly "recovery_action"?: string;
+      readonly "side_effects"?: string;
+    };
   readonly "http_status"?: number;
   readonly "message": string;
   readonly "rate_limit"?: {
@@ -844,6 +850,12 @@ export type ApprovalResolvedData = {
             readonly "resource_id"?: string;
             readonly "session_status"?: string;
           };
+      readonly "fault"?: {
+            readonly "disposition": string;
+            readonly "origin": string;
+            readonly "recovery_action"?: string;
+            readonly "side_effects"?: string;
+          };
       readonly "http_status"?: number;
       readonly "message": string;
       readonly "rate_limit"?: {
@@ -1099,6 +1111,12 @@ export type NodeStatusData = {
 
 export type OperationRejectedData = {
   readonly "code": string;
+  readonly "fault"?: {
+      readonly "disposition": string;
+      readonly "origin": string;
+      readonly "recovery_action"?: string;
+      readonly "side_effects"?: string;
+    };
   readonly "message": string;
 };
 
@@ -1140,6 +1158,12 @@ export type RunCompletedData = {
 
 export type RunFailedData = {
   readonly "code": string;
+  readonly "fault"?: {
+      readonly "disposition": string;
+      readonly "origin": string;
+      readonly "recovery_action"?: string;
+      readonly "side_effects"?: string;
+    };
   readonly "message": string;
   readonly "revision": number;
   readonly "run": {
@@ -1385,6 +1409,11 @@ export type TurnCompactionData = {
 
 export type TurnCompletedData = {
   readonly "outcome"?: string;
+  readonly "secondary_issues"?: ReadonlyArray<{
+      readonly "code": string;
+      readonly "message": string;
+      readonly "phase": string;
+    }>;
   readonly "text": string;
 };
 
@@ -1397,6 +1426,12 @@ export type TurnFailedData = {
       readonly "repair_kind"?: string;
       readonly "summary": string;
       readonly "used": number;
+    };
+  readonly "fault"?: {
+      readonly "disposition": string;
+      readonly "origin": string;
+      readonly "recovery_action"?: string;
+      readonly "side_effects"?: string;
     };
   readonly "message": string;
   readonly "secondary_issues"?: ReadonlyArray<{

@@ -177,6 +177,7 @@ testdata/                Hermetic Provider 与 Benchmark Fixture
 | Agent 工程知识书籍 | [书籍与导航](./docs/book/zh-CN/README.md) | [Book and navigation](./docs/book/en/README.md) |
 | 知识体系方案 | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) | [Documentation plan](./docs/en/knowledge-base-plan.md) |
 | 文档治理 | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) | [Ownership and gates](./docs/en/documentation-governance.md) |
+| 运行时可靠性 | [系统治理](./docs/zh-CN/reliability-hardening.md) | [Hardening program](./docs/en/reliability-hardening.md) |
 | 产品方向 | [后续规划](./docs/zh-CN/roadmap.md) | [Roadmap](./docs/en/roadmap.md) |
 
 ## 开发
