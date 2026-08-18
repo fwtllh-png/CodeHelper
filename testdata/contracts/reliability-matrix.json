@@ -1,0 +1,374 @@
+{
+  "version": 1,
+  "boundaries": [
+    {
+      "id": "provider",
+      "owner": "internal/adapter/provider",
+      "invariants": [
+        "no_duplicate_side_effect",
+        "terminal_accounted",
+        "not_permanently_running"
+      ],
+      "cases": {
+        "success": {
+          "package": "./internal/adapter/provider/httpclient",
+          "test": "TestClientOpenAIRequestAndStream",
+          "expected_state": "response completed once",
+          "recovery": "none"
+        },
+        "retryable_failure": {
+          "package": "./internal/adapter/provider/httpclient",
+          "test": "TestClientMakesOneAttemptForRetryableHTTPStatusMatrix",
+          "expected_state": "typed retryable failure returned without adapter replay",
+          "recovery": "engine-owned retry"
+        },
+        "permanent_failure": {
+          "package": "./internal/adapter/provider/httpclient",
+          "test": "TestClientDoesNotRetryPermanentClientError",
+          "expected_state": "permanent failure returned after one attempt",
+          "recovery": "fail turn"
+        },
+        "cancellation": {
+          "package": "./internal/adapter/provider/httpclient",
+          "test": "TestClientCancellationClosesResponse",
+          "expected_state": "request and stream closed",
+          "recovery": "commit canceled terminal"
+        },
+        "crash_recovery": {
+          "package": "./internal/adapter/provider/httpclient",
+          "test": "TestClientDoesNotReplayAfterStreamStarts",
+          "expected_state": "partial stream is not replayed",
+          "recovery": "resume from durable turn facts"
+        }
+      }
+    },
+    {
+      "id": "tool",
+      "owner": "internal/adapter/tool",
+      "invariants": [
+        "no_duplicate_side_effect",
+        "terminal_accounted",
+        "not_permanently_running"
+      ],
+      "cases": {
+        "success": {
+          "package": "./internal/adapter/tool/guard",
+          "test": "TestGuardKeepsSuccessfulWritesWhenPostEditDiagnosticsFail",
+          "expected_state": "authorized mutation retained once",
+          "recovery": "report diagnostic failure"
+        },
+        "retryable_failure": {
+          "package": "./internal/adapter/tool/guard",
+          "test": "TestAdditionalPermissionRequiresReapproval",
+          "expected_state": "expanded authority is reauthorized before one retry",
+          "recovery": "guard-owned bounded retry"
+        },
+        "permanent_failure": {
+          "package": "./internal/adapter/tool/guard",
+          "test": "TestEgressDeniedApprovalDenyKeepsFailure",
+          "expected_state": "denied effect remains failed",
+          "recovery": "return policy denial"
+        },
+        "cancellation": {
+          "package": "./internal/adapter/tool",
+          "test": "TestFaultInjectionToolCancelReleasesClaim",
+          "expected_state": "resource claim released",
+          "recovery": "cancel tool attempt"
+        },
+        "crash_recovery": {
+          "package": "./internal/runtime/app",
+          "test": "TestRuntimeRetriesTransientDurableToolLifecycleFailure",
+          "expected_state": "durable lifecycle resumes without repeated effect",
+          "recovery": "retry durable transition"
+        }
+      }
+    },
+    {
+      "id": "approval",
+      "owner": "internal/runtime/app",
+      "invariants": [
+        "no_duplicate_side_effect",
+        "terminal_accounted",
+        "not_permanently_running"
+      ],
+      "cases": {
+        "success": {
+          "package": "./internal/runtime/app",
+          "test": "TestRuntimeApprovalPauseResumeE2E",
+          "expected_state": "parked turn resumes once",
+          "recovery": "apply approval result"
+        },
+        "retryable_failure": {
+          "package": "./internal/adapter/tool/guard",
+          "test": "TestApprovalCancelDuplicateLateAndWrongRequest",
+          "expected_state": "stale and duplicate resolutions are rejected",
+          "recovery": "wait for matching resolution"
+        },
+        "permanent_failure": {
+          "package": "./internal/adapter/tool/guard",
+          "test": "TestEgressDeniedApprovalDenyKeepsFailure",
+          "expected_state": "denial remains authoritative",
+          "recovery": "fail guarded effect"
+        },
+        "cancellation": {
+          "package": "./internal/runtime/agent/engine",
+          "test": "TestTurnKernelCancellationClosesToolAwaitingApproval",
+          "expected_state": "approval wait and tool close before terminal",
+          "recovery": "commit canceled terminal"
+        },
+        "crash_recovery": {
+          "package": "./internal/runtime/app",
+          "test": "TestC5RuntimePrimesRecoveredApprovalAndInputWaits",
+          "expected_state": "pending approval is reconstructed",
+          "recovery": "resume parked turn"
+        }
+      }
+    },
+    {
+      "id": "input",
+      "owner": "internal/runtime/app",
+      "invariants": [
+        "no_duplicate_side_effect",
+        "terminal_accounted",
+        "not_permanently_running"
+      ],
+      "cases": {
+        "success": {
+          "package": "./internal/runtime/app",
+          "test": "TestRuntimeInputPauseResumeE2E",
+          "expected_state": "matching input resumes turn once",
+          "recovery": "apply input result"
+        },
+        "retryable_failure": {
+          "package": "./internal/runtime/agent/engine",
+          "test": "TestTurnKernelAcceptsInputResultBeforeResolution",
+          "expected_state": "early result is serialized through kernel",
+          "recovery": "continue durable transition"
+        },
+        "permanent_failure": {
+          "package": "./internal/runtime/app",
+          "test": "TestPhase4RRejectedCancelLeavesTurnActive",
+          "expected_state": "rejected control cannot mutate active turn",
+          "recovery": "return typed rejection"
+        },
+        "cancellation": {
+          "package": "./internal/runtime/agent/engine",
+          "test": "TestTurnKernelCancellationClosesToolAwaitingInput",
+          "expected_state": "input wait and tool close before terminal",
+          "recovery": "commit canceled terminal"
+        },
+        "crash_recovery": {
+          "package": "./internal/runtime/app",
+          "test": "TestC5RuntimePrimesRecoveredApprovalAndInputWaits",
+          "expected_state": "pending input is reconstructed",
+          "recovery": "resume parked turn"
+        }
+      }
+    },
+    {
+      "id": "journal",
+      "owner": "internal/persist/state/eventlog",
+      "invariants": [
+        "no_duplicate_side_effect",
+        "terminal_accounted",
+        "not_permanently_running"
+      ],
+      "cases": {
+        "success": {
+          "package": "./internal/persist/state/eventlog",
+          "test": "TestAppendReplayReopenAndEvidence",
+          "expected_state": "committed records replay byte-identically",
+          "recovery": "reopen at committed cursor"
+        },
+        "retryable_failure": {
+          "package": "./internal/persist/state/eventlog",
+          "test": "TestFailedWriteRollsBackAndCanRetry",
+          "expected_state": "failed append leaves prior cursor",
+          "recovery": "retry append"
+        },
+        "permanent_failure": {
+          "package": "./internal/persist/state/eventlog",
+          "test": "TestFaultInjectionTornJSONLFailsClosed",
+          "expected_state": "committed corruption is rejected",
+          "recovery": "operator repair"
+        },
+        "cancellation": {
+          "package": "./internal/persist/state/eventlog",
+          "test": "TestCloseAndCanceledContext",
+          "expected_state": "canceled operation does not advance cursor",
+          "recovery": "reopen journal"
+        },
+        "crash_recovery": {
+          "package": "./internal/persist/state/eventlog",
+          "test": "TestFaultInjectionKillMidWriteRepairsTornTail",
+          "expected_state": "torn final append is discarded",
+          "recovery": "resume from last committed record"
+        }
+      }
+    },
+    {
+      "id": "sqlite",
+      "owner": "internal/persist/state/turnstate",
+      "invariants": [
+        "no_duplicate_side_effect",
+        "terminal_accounted",
+        "not_permanently_running"
+      ],
+      "cases": {
+        "success": {
+          "package": "./internal/persist/state/turnstate",
+          "test": "TestSQLiteTerminalEnvelopeStorePersistsFactsAndOutbox",
+          "expected_state": "terminal facts and outbox commit atomically",
+          "recovery": "drain outbox"
+        },
+        "retryable_failure": {
+          "package": "./internal/persist/state/turnstate",
+          "test": "TestR5TerminalCommitCrashPointMatrixIsAtomicAndIdempotent",
+          "expected_state": "failed transaction leaves no partial rows",
+          "recovery": "retry same envelope"
+        },
+        "permanent_failure": {
+          "package": "./internal/persist/state/turnstate",
+          "test": "TestC4SQLiteAtomicCommitRollsBackEnvelopeWhenOperationIsMissing",
+          "expected_state": "invalid terminal transaction fails closed",
+          "recovery": "repair operation state"
+        },
+        "cancellation": {
+          "package": "./internal/persist/state/turnstate",
+          "test": "TestC1ActiveTurnLeaseSerializesRecoveryAndExpires",
+          "expected_state": "canceled lease owner cannot commit stale state",
+          "recovery": "new owner acquires expired lease"
+        },
+        "crash_recovery": {
+          "package": "./internal/persist/state/turnstate",
+          "test": "TestR5TerminalCommitCrashPointMatrixIsAtomicAndIdempotent",
+          "expected_state": "all transaction crash points are atomic",
+          "recovery": "idempotent terminal retry"
+        }
+      }
+    },
+    {
+      "id": "outbox",
+      "owner": "internal/runtime/app",
+      "invariants": [
+        "no_duplicate_side_effect",
+        "terminal_accounted",
+        "not_permanently_running"
+      ],
+      "cases": {
+        "success": {
+          "package": "./internal/runtime/app",
+          "test": "TestC5RuntimeRecoversTerminalOutboxWithoutDuplicateEvent",
+          "expected_state": "each outbox entry projects once",
+          "recovery": "mark projection complete"
+        },
+        "retryable_failure": {
+          "package": "./internal/runtime/app",
+          "test": "TestPhase4RBaselineTerminalAppendFailureLeavesDurableReceipt",
+          "expected_state": "durable receipt survives projection failure",
+          "recovery": "retry projection"
+        },
+        "permanent_failure": {
+          "package": "./internal/runtime/app",
+          "test": "TestTerminalEnvelopeFailurePublishesNoReceiptOrTerminal",
+          "expected_state": "uncommitted envelope publishes nothing",
+          "recovery": "fail operation"
+        },
+        "cancellation": {
+          "package": "./internal/runtime/app",
+          "test": "TestRuntimeCancelDuringProviderAndToolHasOneCanceledTerminal",
+          "expected_state": "one canceled terminal is projected",
+          "recovery": "drain canceled terminal outbox"
+        },
+        "crash_recovery": {
+          "package": "./internal/runtime/app",
+          "test": "TestC5RuntimeRecoveryIsRepeatableAfterOutboxDrain",
+          "expected_state": "repeated startup recovery emits no duplicate",
+          "recovery": "idempotent outbox scan"
+        }
+      }
+    },
+    {
+      "id": "host",
+      "owner": "internal/host/runtimeapi/acp",
+      "invariants": [
+        "no_duplicate_side_effect",
+        "terminal_accounted",
+        "not_permanently_running"
+      ],
+      "cases": {
+        "success": {
+          "package": "./internal/host/runtimeapi/acp",
+          "test": "TestACPHostMeetsTheProtocolContract",
+          "expected_state": "host projection matches runtime contract",
+          "recovery": "none"
+        },
+        "retryable_failure": {
+          "package": "./internal/host/runtimeapi/acp",
+          "test": "TestUnavailableTurnFailurePreservesRecoverableACPCode",
+          "expected_state": "recoverable failure remains typed",
+          "recovery": "resume through runtime"
+        },
+        "permanent_failure": {
+          "package": "./internal/host/runtimeapi/acp",
+          "test": "TestConvergenceFailureReturnsRecoverablePromptResult",
+          "expected_state": "incomplete terminal is explicit",
+          "recovery": "new continuation turn"
+        },
+        "cancellation": {
+          "package": "./internal/runtime/app",
+          "test": "TestRuntimeCancelActuallyCancelsActiveTurn",
+          "expected_state": "host cancel reaches one runtime terminal",
+          "recovery": "reconnect at terminal cursor"
+        },
+        "crash_recovery": {
+          "package": "./internal/host/runtimeapi/acp",
+          "test": "TestBinaryInteropFramingConcurrencyAndShutdown",
+          "expected_state": "transport shutdown does not fabricate state",
+          "recovery": "reconnect and replay cursor"
+        }
+      }
+    },
+    {
+      "id": "shutdown",
+      "owner": "internal/runtime/app/wire",
+      "invariants": [
+        "no_duplicate_side_effect",
+        "terminal_accounted",
+        "not_permanently_running"
+      ],
+      "cases": {
+        "success": {
+          "package": "./internal/runtime/app/wire/assembly",
+          "test": "TestResourceStackClosesOnceInReverseOrder",
+          "expected_state": "all resources close once in reverse order",
+          "recovery": "none"
+        },
+        "retryable_failure": {
+          "package": "./internal/runtime/app/wire/assembly",
+          "test": "TestResourceStackContinuesAndJoinsCloseFailures",
+          "expected_state": "later closers run after one close failure",
+          "recovery": "report joined cleanup errors"
+        },
+        "permanent_failure": {
+          "package": "./internal/runtime/app/wire",
+          "test": "TestModulesFailClosedOnMissingRequirements",
+          "expected_state": "invalid composition never starts runtime",
+          "recovery": "repair configuration"
+        },
+        "cancellation": {
+          "package": "./internal/runtime/app/eventhub",
+          "test": "TestSubscriptionCancellationStormReleasesOwners",
+          "expected_state": "all subscription owners terminate",
+          "recovery": "close runtime resources"
+        },
+        "crash_recovery": {
+          "package": "./internal/runtime/app/wire",
+          "test": "TestNewExecRollsBackEveryConstructionBoundaryInReverseOrder",
+          "expected_state": "partial construction leaks no resources",
+          "recovery": "restart from clean composition"
+        }
+      }
+    }
+  ]
+}

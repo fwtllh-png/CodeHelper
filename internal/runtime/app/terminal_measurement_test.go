@@ -1,11 +1,15 @@
 package app
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/observability/observation"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestSO4ReceiptAndTraceUseOneFrozenMeasurement(t *testing.T) {
@@ -74,6 +78,39 @@ func TestSO4MissingLatencyDoesNotProjectMeasuredZero(t *testing.T) {
 			},
 		)) != 0 {
 		t.Fatalf("receipt=%+v measurement=%+v", receipt, measurement)
+	}
+}
+
+func TestTerminalObservationOutcomeOmitsRawFailureMessage(t *testing.T) {
+	const secret = "api-key-do-not-persist"
+	outcome := terminalObservationOutcome(turnkernel.TerminalDecision{
+		Kind:    turnkernel.TerminalFailed,
+		Code:    string(protocol.CodeUnavailable),
+		Message: secret,
+		Fault: &protocol.FaultMetadata{
+			Origin:      protocol.FaultOriginProvider,
+			Stage:       protocol.FaultStageConnection,
+			Disposition: protocol.FaultRetryTurn,
+			ResumeHint:  protocol.FaultResumeRetryTurn,
+		},
+	})
+	encoded, err := observation.EncodeTerminalSummary("digest", outcome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), secret) || !json.Valid(encoded) {
+		t.Fatalf("unsafe terminal summary = %s", encoded)
+	}
+	decoded, err := observation.DecodeTerminalSummary(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Outcome == nil ||
+		decoded.Outcome.Status != observation.TerminalFailed ||
+		decoded.Outcome.Code != string(protocol.CodeUnavailable) ||
+		decoded.Outcome.Fault == nil ||
+		decoded.Outcome.Fault.Stage != protocol.FaultStageConnection {
+		t.Fatalf("decoded terminal summary = %+v", decoded)
 	}
 }
 

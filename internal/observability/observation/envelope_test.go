@@ -70,6 +70,55 @@ func TestEnvelopeRequiresTraitCorrelations(t *testing.T) {
 	}
 }
 
+func TestEnvelopeValidatesLeaseAndResumeCorrelation(t *testing.T) {
+	envelope := validEnvelope(KindTurnRecovered)
+	envelope.Identity.LeaseOwner = "worker-1"
+	if err := envelope.Validate(); err == nil ||
+		!strings.Contains(err.Error(), "lease_owner and lease_epoch") {
+		t.Fatalf("partial lease error = %v", err)
+	}
+	envelope.Identity.LeaseEpoch = 4
+	envelope.Identity.ResumeID = "operation-resume-1"
+	if err := envelope.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := AppendJSON(nil, envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeJSON(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Identity.LeaseOwner != "worker-1" ||
+		decoded.Identity.LeaseEpoch != 4 ||
+		decoded.Identity.ResumeID != "operation-resume-1" {
+		t.Fatalf("decoded correlation = %+v", decoded.Identity)
+	}
+}
+
+func TestTerminalSummaryRejectsUnsupportedAndCompletedFailureMetadata(
+	t *testing.T,
+) {
+	if _, err := EncodeTerminalSummary("digest", TerminalOutcome{
+		Status: TerminalFailed,
+		Code:   "provider_secret_error",
+	}); err == nil {
+		t.Fatal("unsupported terminal code was accepted")
+	}
+	if _, err := EncodeTerminalSummary("digest", TerminalOutcome{
+		Status: TerminalCompleted,
+		Code:   string(protocol.CodeInternal),
+	}); err == nil {
+		t.Fatal("completed outcome accepted failure metadata")
+	}
+	if _, err := DecodeTerminalSummary(json.RawMessage(
+		`{"outcome":{"status":"failed","code":"internal","message":"secret"}}`,
+	)); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("unknown terminal summary field error = %v", err)
+	}
+}
+
 func TestEnvelopeRejectsForbiddenAndSensitivePayload(t *testing.T) {
 	forbidden := validEnvelope(KindRuntimeReady)
 	forbidden.Payload = payload(DataOperational, RedactionNotRequired)

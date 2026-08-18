@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +72,132 @@ func TestReducerBuildsLifecycleVisibilityAndExplainGraph(t *testing.T) {
 	}
 	if len(visibility.Visibility) != 1 {
 		t.Fatalf("visibility explanation = %+v", visibility)
+	}
+}
+
+func TestExplainFailureReconstructsStopAttemptsRecoveryAndCorrelation(
+	t *testing.T,
+) {
+	turnIdentity := observation.Identity{
+		RuntimeID: "runtime-1", SessionID: "session-1",
+		ThreadID: "thread-1", TurnID: "turn-failed",
+		ResumeID: "operation-resume-1",
+	}
+	providerIdentity := withAttempt(
+		withSample(turnIdentity, "sample-2"),
+		2,
+	)
+	effectIdentity := observation.Identity{
+		RuntimeID: "runtime-1", EffectID: "terminal:turn-failed",
+		RunID: "run-1", NodeID: "node-1", AttemptID: "attempt-2",
+		LeaseOwner: "worker-1", LeaseEpoch: 7,
+	}
+	terminalIdentity := withTerminal(turnIdentity)
+	terminalIdentity.EffectID = "terminal:turn-failed"
+	outcome := observation.TerminalOutcome{
+		Status: observation.TerminalFailed,
+		Code:   string(protocol.CodeUnavailable),
+		Fault: &protocol.FaultMetadata{
+			Origin:      protocol.FaultOriginProvider,
+			Stage:       protocol.FaultStageModelSample,
+			Disposition: protocol.FaultRetryTurn,
+			RetryOwner:  protocol.FaultRetryOwnerEngine,
+			ResumeHint:  protocol.FaultResumeRetryTurn,
+			SideEffects: protocol.SideEffectUnchanged,
+		},
+	}
+	summary, err := observation.EncodeTerminalSummary("measurement-1", outcome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelopes := []observation.Envelope{
+		testEnvelope(observation.KindTurnStarted, 1, turnIdentity),
+		testEnvelope(observation.KindModelRequestSent, 2, providerIdentity),
+		testEnvelope(observation.KindModelRequestFailed, 3, providerIdentity),
+		testEnvelope(observation.KindEffectRequested, 4, effectIdentity),
+		testEnvelope(observation.KindEffectStarted, 5, effectIdentity),
+		testEnvelope(observation.KindEffectFinished, 6, effectIdentity),
+		testEnvelope(
+			observation.KindTurnTerminalPrepared,
+			7,
+			terminalIdentity,
+		),
+		testEnvelope(
+			observation.KindTurnTerminalCommitted,
+			8,
+			terminalIdentity,
+		),
+	}
+	envelopes[6].Summary, envelopes[7].Summary = summary, summary
+	graph, err := (Reducer{}).Reduce(t.Context(), envelopes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	explanation, err := graph.ExplainFailure("turn-failed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	failure := explanation.Failure
+	if explanation.Conclusion != "turn failed" || failure == nil ||
+		failure.StoppedAt != string(protocol.FaultStageModelSample) ||
+		failure.ReasonCode != string(protocol.CodeUnavailable) ||
+		!failure.CanContinue ||
+		failure.RecoveryAction != string(protocol.FaultResumeRetryTurn) ||
+		len(failure.Attempts) != 2 ||
+		failure.Correlation.OperationID != "operation-1" ||
+		failure.Correlation.EffectID != "terminal:turn-failed" ||
+		failure.Correlation.LeaseOwner != "worker-1" ||
+		failure.Correlation.LeaseEpoch != 7 ||
+		!slices.Equal(
+			failure.Correlation.ResumeIDs,
+			[]string{"operation-resume-1"},
+		) {
+		t.Fatalf("failure explanation = %+v", explanation)
+	}
+}
+
+func TestExplainFailureDoesNotTreatPreparedOutcomeAsCommitted(t *testing.T) {
+	identity := observation.Identity{
+		RuntimeID: "runtime-1", TurnID: "turn-prepared",
+		OperationID: "operation-1", EffectID: "effect-1",
+	}
+	summary, err := observation.EncodeTerminalSummary(
+		"measurement-1",
+		observation.TerminalOutcome{
+			Status: observation.TerminalFailed,
+			Code:   string(protocol.CodeInternal),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := testEnvelope(
+		observation.KindTurnStarted,
+		1,
+		identity,
+	)
+	prepared := testEnvelope(
+		observation.KindTurnTerminalPrepared,
+		2,
+		identity,
+	)
+	prepared.Summary = summary
+	graph, err := (Reducer{}).Reduce(
+		t.Context(),
+		[]observation.Envelope{started, prepared},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	explanation, err := graph.ExplainFailure("turn-prepared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if explanation.Failure != nil ||
+		explanation.Conclusion != "no failed terminal observation is present" ||
+		explanation.NextEvidence !=
+			"committed structured terminal outcome observation" {
+		t.Fatalf("prepared failure explanation = %+v", explanation)
 	}
 }
 

@@ -101,6 +101,7 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 	committed := CommittedTerminal{
 		Operation: request.Operation, OperationID: projectionOperationID, ItemID: itemID,
 	}
+	observationOutcome := terminalObservationOutcome(decision)
 	preparedObservation := p.runtime.opts.Observability.Runtime.ObserveTerminal(
 		context.Background(),
 		trace.TerminalPrepared,
@@ -110,6 +111,7 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 		envelope.EffectID,
 		"",
 		envelope.Measurement.Digest,
+		observationOutcome,
 	)
 	if p.runtime.lifecycle != nil {
 		atomicStore, ok := p.runtime.terminalStore.(turnkernel.AtomicTerminalOperationStore)
@@ -134,6 +136,7 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 			envelope.EffectID,
 			preparedObservation,
 			envelope.Measurement.Digest,
+			observationOutcome,
 		)
 	}
 	return committed, err

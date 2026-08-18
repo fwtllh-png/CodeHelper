@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -193,6 +194,12 @@ func (r Reducer) reduceIdentity(
 	if envelope.Kind == observation.KindTurnRecovered {
 		turn.Recovered = true
 	}
+	if identity.ResumeID != "" {
+		turn.ResumeIDs = appendUnique(
+			turn.ResumeIDs,
+			string(identity.ResumeID),
+		)
+	}
 	if envelope.Kind == observation.KindTurnTerminalCommitted {
 		applyEnd(graph, "turn", key, &turn.Window, envelope, StatusCommitted)
 	}
@@ -377,8 +384,10 @@ func reduceEffect(
 			ID: key, RuntimeID: identity.RuntimeID,
 			EffectID: string(identity.EffectID),
 			RunID:    string(identity.RunID), NodeID: string(identity.NodeID),
-			AttemptID: string(identity.AttemptID),
-			Window:    ExecutionWindow{Status: StatusUnknown},
+			AttemptID:  string(identity.AttemptID),
+			LeaseOwner: identity.LeaseOwner,
+			LeaseEpoch: identity.LeaseEpoch,
+			Window:     ExecutionWindow{Status: StatusUnknown},
 		}
 	}
 	node.Evidence = append(node.Evidence, evidence)
@@ -456,6 +465,24 @@ func reduceTerminal(
 		}
 	}
 	mergeTerminalIdentity(graph, &node, envelope)
+	summary, summaryErr := observation.DecodeTerminalSummary(envelope.Summary)
+	switch {
+	case summaryErr != nil:
+		graph.Unknowns = append(graph.Unknowns, UnknownFact{
+			Code: "terminal_summary_invalid", ObjectKind: "terminal",
+			ObjectID: key, Sequence: envelope.Sequence,
+			Observation: envelope.ID, Detail: summaryErr.Error(),
+		})
+	case summary.Outcome != nil && node.Outcome == nil:
+		node.Outcome = observation.CloneTerminalOutcome(summary.Outcome)
+	case summary.Outcome != nil &&
+		!reflect.DeepEqual(node.Outcome, summary.Outcome):
+		addConflict(
+			graph, "terminal_outcome_conflict", "terminal", key,
+			node.Window.StartedSequence, envelope,
+			"prepared and committed terminal outcomes differ",
+		)
+	}
 	node.Evidence = append(node.Evidence, evidence)
 	if envelope.Kind == observation.KindTurnTerminalPrepared {
 		applyStart(graph, "terminal", key, &node.Window, envelope)

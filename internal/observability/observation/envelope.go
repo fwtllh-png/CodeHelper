@@ -61,6 +61,9 @@ type Identity struct {
 	NodeID               protocol.NodeID      `json:"node_id,omitempty"`
 	AttemptID            protocol.AttemptID   `json:"attempt_id,omitempty"`
 	EffectID             protocol.EffectID    `json:"effect_id,omitempty"`
+	LeaseOwner           string               `json:"lease_owner,omitempty"`
+	LeaseEpoch           uint64               `json:"lease_epoch,omitempty"`
+	ResumeID             protocol.OperationID `json:"resume_id,omitempty"`
 	EventID              protocol.EventID     `json:"event_id,omitempty"`
 	EventCursor          protocol.Cursor      `json:"event_cursor,omitempty"`
 	FactSequence         uint64               `json:"fact_sequence,omitempty"`
@@ -179,6 +182,13 @@ func (e Envelope) Validate() error {
 	if len(e.Summary) != 0 && !json.Valid(e.Summary) {
 		return errors.New("observation summary must be valid JSON")
 	}
+	if (e.Kind == KindTurnTerminalPrepared ||
+		e.Kind == KindTurnTerminalCommitted) &&
+		len(e.Summary) != 0 {
+		if _, err := DecodeTerminalSummary(e.Summary); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -190,12 +200,18 @@ func (i Identity) validate(traits Traits) error {
 		i.RuntimeID, i.SessionID, string(i.ThreadID), string(i.TurnID),
 		string(i.OperationID), string(i.RunID), string(i.NodeID),
 		string(i.AttemptID), string(i.EffectID), string(i.EventID),
-		i.SampleID, i.CallID, i.AgentID, i.ExtensionOperationID,
+		i.LeaseOwner, string(i.ResumeID), i.SampleID, i.CallID,
+		i.AgentID, i.ExtensionOperationID,
 	}
 	for _, value := range values {
 		if len(value) > maxIdentitySize {
 			return fmt.Errorf("observation identity exceeds %d bytes", maxIdentitySize)
 		}
+	}
+	if (i.LeaseOwner == "") != (i.LeaseEpoch == 0) {
+		return errors.New(
+			"observation lease_owner and lease_epoch must be set together",
+		)
 	}
 	for _, required := range traits.Correlations {
 		if !i.has(required) {
@@ -228,6 +244,10 @@ func (i Identity) has(name string) bool {
 		return i.AttemptID != ""
 	case "effect":
 		return i.EffectID != ""
+	case "lease":
+		return i.LeaseOwner != "" && i.LeaseEpoch != 0
+	case "resume":
+		return i.ResumeID != ""
 	case "event":
 		return i.EventID != "" && i.EventCursor != 0
 	case "fact":

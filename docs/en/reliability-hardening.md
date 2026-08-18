@@ -104,8 +104,8 @@ Priority definitions:
 | R7 | Concurrency, cancellation, backpressure, and resources | P1 | verified | Runtime / Platform |
 | R8 | Protocol and cross-Host behavior | P1 | verified | Protocol / Hosts |
 | R9 | Startup, shutdown, wiring, configuration, and environment | P1 | verified | Wire / Config / Hosts |
-| R10 | Observability and failure reconstruction | P1 | unassessed | Observability / Persist |
-| R11 | Fault injection and reliability gates | P1 | unassessed | Tests / CI |
+| R10 | Observability and failure reconstruction | P1 | verified | Observability / Persist |
+| R11 | Fault injection and reliability gates | P1 | verified | Tests / CI |
 
 ## R0: Failure Baseline and Limit Inventory
 
@@ -715,6 +715,19 @@ tests require explicit typed Unavailable behavior where isolation is absent.
 - IDs correlate Retry, Resume, and repeated side effects;
 - Secret Leak Tests and observation schema gates pass.
 
+R10 retains a bounded Terminal Outcome summary containing only status, a closed
+error code, and typed Fault metadata; raw failure prose is deliberately omitted.
+The semantic projection now reconstructs the stopping stage, reason code,
+provider/tool/effect attempts, recovery action, continuation eligibility, and
+Runtime/Session/Thread/Turn/Operation/Effect/Attempt/Lease/Resume correlation.
+Turn recovery emits a stable Resume operation identity, and Observation
+Identity supports lease owner/epoch correlation. OTEL terminal spans and the
+`codehelper.turn.terminal.count` metric distinguish completed, canceled,
+resource-exhausted, unavailable, and internal outcomes without high-cardinality
+labels; existing approval-denial counters identify policy denial separately.
+Observation schema generation, privacy policy, and Secret Leak gates govern the
+retained evidence.
+
 ## R11: Fault Injection and Reliability Gates
 
 **Audit scope**
@@ -741,6 +754,15 @@ tests require explicit typed Unavailable behavior where isolation is absent.
 - fault tests prove no repeated side effects, missing terminal states, or
   permanent Running state;
 - reliability gates are part of standard, reproducible validation.
+
+R11 is enforced by `testdata/contracts/reliability-matrix.json`. Its machine
+checker requires Provider, Tool, Approval, Input, Journal, SQLite, Outbox, Host,
+and Shutdown to each declare success, retryable failure, permanent failure,
+cancellation, and crash recovery, together with expected state, recovery action,
+and the invariants preventing duplicate effects, missing terminal accounting,
+or permanent Running state. `make reliability-gate` verifies every referenced
+test exists, executes the deterministic cases, and runs the Observation Trait
+schema drift gate. It is included in both `make verify` and the release gate.
 
 ## Recommended Execution Order
 

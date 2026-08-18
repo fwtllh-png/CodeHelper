@@ -65,6 +65,11 @@ func appendIdentityJSON(dst []byte, identity Identity) []byte {
 	dst = appendStringField(dst, "node_id", string(identity.NodeID), true)
 	dst = appendStringField(dst, "attempt_id", string(identity.AttemptID), true)
 	dst = appendStringField(dst, "effect_id", string(identity.EffectID), true)
+	dst = appendStringField(dst, "lease_owner", identity.LeaseOwner, true)
+	if identity.LeaseEpoch != 0 {
+		dst = appendUintField(dst, "lease_epoch", identity.LeaseEpoch, false)
+	}
+	dst = appendStringField(dst, "resume_id", string(identity.ResumeID), true)
 	dst = appendStringField(dst, "event_id", string(identity.EventID), true)
 	if identity.EventCursor != 0 {
 		dst = appendUintField(dst, "event_cursor", uint64(identity.EventCursor), false)

@@ -1345,6 +1345,7 @@ func (r StartTurnHandler) Handle(operation protocol.Operation, payload *protocol
 		cancel()
 		return finishOutcome(err)
 	}
+	r.observeRecovery(turnContext, operation.ID, payload)
 	r.workers.Add(1)
 	go func() {
 		defer r.workers.Done()

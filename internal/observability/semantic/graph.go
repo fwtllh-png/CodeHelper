@@ -72,6 +72,7 @@ type TurnNode struct {
 	ThreadID  string          `json:"thread_id,omitempty"`
 	TurnID    string          `json:"turn_id"`
 	Recovered bool            `json:"recovered,omitempty"`
+	ResumeIDs []string        `json:"resume_ids,omitempty"`
 	Window    ExecutionWindow `json:"window"`
 	Evidence  []Evidence      `json:"evidence"`
 }
@@ -107,6 +108,8 @@ type EffectNode struct {
 	RunID          string           `json:"run_id,omitempty"`
 	NodeID         string           `json:"node_id,omitempty"`
 	AttemptID      string           `json:"attempt_id,omitempty"`
+	LeaseOwner     string           `json:"lease_owner,omitempty"`
+	LeaseEpoch     uint64           `json:"lease_epoch,omitempty"`
 	RequestedAt    uint64           `json:"requested_sequence,omitempty"`
 	ResultRetained *PayloadEvidence `json:"result_retained,omitempty"`
 	Requeues       []uint64         `json:"requeues,omitempty"`
@@ -124,13 +127,14 @@ type ApprovalNode struct {
 }
 
 type TerminalNode struct {
-	ID          string          `json:"id"`
-	RuntimeID   string          `json:"runtime_id"`
-	TurnID      string          `json:"turn_id"`
-	OperationID string          `json:"operation_id,omitempty"`
-	EffectID    string          `json:"effect_id,omitempty"`
-	Window      ExecutionWindow `json:"window"`
-	Evidence    []Evidence      `json:"evidence"`
+	ID          string                       `json:"id"`
+	RuntimeID   string                       `json:"runtime_id"`
+	TurnID      string                       `json:"turn_id"`
+	OperationID string                       `json:"operation_id,omitempty"`
+	EffectID    string                       `json:"effect_id,omitempty"`
+	Outcome     *observation.TerminalOutcome `json:"outcome,omitempty"`
+	Window      ExecutionWindow              `json:"window"`
+	Evidence    []Evidence                   `json:"evidence"`
 }
 
 type VerificationNode struct {

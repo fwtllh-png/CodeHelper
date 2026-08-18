@@ -97,6 +97,17 @@ func TestTerminalCommitMetricUsesPreparedObservation(t *testing.T) {
 	start := otelEnvelope(observation.KindTurnStarted, 1)
 	prepared := otelEnvelope(observation.KindTurnTerminalPrepared, 2)
 	committed := otelEnvelope(observation.KindTurnTerminalCommitted, 3)
+	summary, err := observation.EncodeTerminalSummary(
+		"measurement-1",
+		observation.TerminalOutcome{
+			Status: observation.TerminalFailed,
+			Code:   string(protocol.CodeResourceExhausted),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared.Summary, committed.Summary = summary, summary
 	prepared.RecordedAt = start.RecordedAt.Add(time.Second)
 	committed.RecordedAt = prepared.RecordedAt.Add(250 * time.Millisecond)
 	service.Project(start)
@@ -112,6 +123,12 @@ func TestTerminalCommitMetricUsesPreparedObservation(t *testing.T) {
 	)
 	if !ok || point.Count != 1 || point.Sum != 250 {
 		t.Fatalf("terminal metric = %+v, all=%+v", point, points)
+	}
+	outcome, ok := metricNamed(points, "codehelper.turn.terminal.count")
+	if !ok || outcome.Count != 1 ||
+		outcome.Labels["status"] != "failed" ||
+		outcome.Labels["error_category"] != "resource_exhausted" {
+		t.Fatalf("terminal outcome metric = %+v, all=%+v", outcome, points)
 	}
 }
 

@@ -344,9 +344,6 @@
         "production_lines": 8835,
         "options_fields": 70,
         "mutex_fields": 6
-      },
-      "relaxations": {
-        "production_lines": "R9 exposes one immutable resolved configuration/profile snapshot and preserves rollback close failures at the Composition Root"
       }
     },
     {
@@ -476,9 +473,12 @@
       "path": "internal/observability/semantic",
       "limits": {
         "internal_fanout": 2,
-        "production_lines": 1820,
+        "production_lines": 1964,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "R10 reconstructs failed turns from bounded terminal outcomes, attempts, recovery decisions, and stable correlation identities"
       }
     },
     {
@@ -498,9 +498,12 @@
       "path": "internal/observability/otel",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 1109,
+        "production_lines": 1141,
         "options_fields": 5,
         "mutex_fields": 4
+      },
+      "relaxations": {
+        "production_lines": "R10 projects typed terminal outcomes into low-cardinality status and error-category metrics"
       }
     },
     {
@@ -617,9 +620,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 21,
-        "production_lines": 8624,
+        "production_lines": 8676,
         "options_fields": 18,
         "mutex_fields": 7
+      },
+      "relaxations": {
+        "production_lines": "R10 records bounded terminal outcome and resume correlation at the Runtime-owned terminal and recovery boundaries"
       }
     },
     {
@@ -717,9 +723,6 @@
         "production_lines": 6247,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "R8 preserves same-version unknown Event data as opaque read-only protocol state while rejecting version skew before payload projection"
       }
     },
     {

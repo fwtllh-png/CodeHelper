@@ -143,6 +143,13 @@ func (r Record) Validate() error {
 		(len(r.Summary) != 0 && !json.Valid(r.Summary)) {
 		return errors.New("observation summary is invalid")
 	}
+	if (r.Kind == KindTurnTerminalPrepared ||
+		r.Kind == KindTurnTerminalCommitted) &&
+		len(r.Summary) != 0 {
+		if _, err := DecodeTerminalSummary(r.Summary); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

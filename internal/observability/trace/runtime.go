@@ -75,6 +75,14 @@ const (
 	TerminalCommitted TerminalPhase = "committed"
 )
 
+type TerminalOutcome = observation.TerminalOutcome
+
+const (
+	TerminalCompleted = observation.TerminalCompleted
+	TerminalFailed    = observation.TerminalFailed
+	TerminalCanceled  = observation.TerminalCanceled
+)
+
 func (r Runtime) Now() time.Time {
 	if r.Clock == nil {
 		return time.Now()
@@ -136,6 +144,37 @@ func (r Runtime) ObserveTransition(
 	})
 }
 
+func (r Runtime) ObserveRecovery(
+	ctx context.Context,
+	threadID protocol.ThreadID,
+	turnID protocol.TurnID,
+	resumeID protocol.OperationID,
+	sourceTurnID protocol.TurnID,
+) {
+	if r.Recorder == nil {
+		return
+	}
+	summary, err := json.Marshal(struct {
+		SourceTurnID protocol.TurnID `json:"source_turn_id"`
+	}{SourceTurnID: sourceTurnID})
+	if err != nil {
+		return
+	}
+	_ = r.Recorder.Record(ctx, observation.Record{
+		Kind: observation.KindTurnRecovered,
+		Identity: observation.Identity{
+			RuntimeID: r.RuntimeID, ThreadID: threadID, TurnID: turnID,
+			ResumeID: resumeID,
+		},
+		Trace:   tracecontext.ToObservation(ctx),
+		Summary: summary,
+		Policy: observation.DataPolicy{
+			Class:     observation.DataOperational,
+			Redaction: observation.RedactionNotRequired,
+		},
+	})
+}
+
 func (r Runtime) ObserveTerminal(
 	ctx context.Context,
 	phase TerminalPhase,
@@ -145,6 +184,7 @@ func (r Runtime) ObserveTerminal(
 	effectID string,
 	parent string,
 	measurementDigest string,
+	outcome observation.TerminalOutcome,
 ) string {
 	if r.Recorder == nil {
 		return ""
@@ -159,9 +199,13 @@ func (r Runtime) ObserveTerminal(
 			ParentObservationID: observation.ObservationID(parent),
 		}
 	}
-	summary, _ := json.Marshal(struct {
-		MeasurementDigest string `json:"measurement_digest"`
-	}{MeasurementDigest: measurementDigest})
+	summary, err := observation.EncodeTerminalSummary(
+		measurementDigest,
+		outcome,
+	)
+	if err != nil {
+		return ""
+	}
 	traceContext := r.contexts.lookup(turnID)
 	if traceContext == nil {
 		traceContext = tracecontext.ToObservation(ctx)

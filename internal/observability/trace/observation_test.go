@@ -3,6 +3,7 @@ package trace
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -117,6 +118,7 @@ func TestRuntimeTerminalObservationClosesTurnTraceIdentity(t *testing.T) {
 		"terminal:turn-test",
 		"",
 		"digest-test",
+		observation.TerminalOutcome{Status: observation.TerminalCompleted},
 	)
 	runtime.ObserveTerminal(
 		t.Context(),
@@ -127,6 +129,7 @@ func TestRuntimeTerminalObservationClosesTurnTraceIdentity(t *testing.T) {
 		"terminal:turn-test",
 		prepared,
 		"digest-test",
+		observation.TerminalOutcome{Status: observation.TerminalCompleted},
 	)
 	records := observer.snapshot()
 	if len(records) != 4 {
@@ -147,6 +150,27 @@ func TestRuntimeTerminalObservationClosesTurnTraceIdentity(t *testing.T) {
 	recorder.Close()
 	if contexts.lookup(protocol.TurnID("turn-test")) != nil {
 		t.Fatal("closed turn retained its trace context")
+	}
+}
+
+func TestRuntimeRecoveryObservationCarriesStableResumeIdentity(t *testing.T) {
+	observer := &recordingObserver{}
+	runtime := Runtime{Recorder: observer, RuntimeID: "runtime-test"}
+	runtime.ObserveRecovery(
+		t.Context(),
+		"thread-test",
+		"turn-test",
+		"operation-resume",
+		"turn-source",
+	)
+	records := observer.snapshot()
+	if len(records) != 1 ||
+		records[0].Kind != observation.KindTurnRecovered ||
+		records[0].Identity.ThreadID != "thread-test" ||
+		records[0].Identity.TurnID != "turn-test" ||
+		records[0].Identity.ResumeID != "operation-resume" ||
+		!strings.Contains(string(records[0].Summary), "turn-source") {
+		t.Fatalf("recovery observation = %+v", records)
 	}
 }
 

@@ -57,6 +57,7 @@ type Service struct {
 	toolDuration     otelmetric.Float64Histogram
 	approvalDuration otelmetric.Float64Histogram
 	turnDuration     otelmetric.Float64Histogram
+	terminalCount    otelmetric.Int64Counter
 	terminalDuration otelmetric.Float64Histogram
 
 	mu    sync.Mutex
@@ -422,6 +423,16 @@ func (s *Service) endSpan(
 		observation.KindOperationRejected:
 		status = "failed"
 		entry.span.SetStatus(codes.Error, status)
+	case observation.KindTurnTerminalCommitted:
+		summary, err := observation.DecodeTerminalSummary(envelope.Summary)
+		if err == nil && summary.Outcome != nil {
+			status = string(summary.Outcome.Status)
+		}
+		if status == string(observation.TerminalCompleted) {
+			entry.span.SetStatus(codes.Ok, status)
+		} else {
+			entry.span.SetStatus(codes.Error, status)
+		}
 	default:
 		entry.span.SetStatus(codes.Ok, status)
 	}
@@ -549,6 +560,12 @@ func (s *Service) initMetrics() error {
 	if err != nil {
 		return err
 	}
+	s.terminalCount, err = meter.Int64Counter(
+		"codehelper.turn.terminal.count",
+	)
+	if err != nil {
+		return err
+	}
 	s.terminalDuration, err = meter.Float64Histogram(
 		"codehelper.terminal.commit.duration",
 	)
@@ -567,6 +584,21 @@ func (s *Service) recordMetric(
 			Labels{"status": "accepted"},
 			1,
 		)
+	}
+	if envelope.Kind == observation.KindTurnTerminalCommitted {
+		summary, err := observation.DecodeTerminalSummary(envelope.Summary)
+		if err == nil && summary.Outcome != nil {
+			labels := Labels{"status": string(summary.Outcome.Status)}
+			if summary.Outcome.Code != "" {
+				labels["error_category"] = summary.Outcome.Code
+			}
+			s.terminalCount.Add(
+				context.Background(),
+				1,
+				otelmetric.WithAttributes(metricAttributes(labels)...),
+			)
+			s.metrics.Add("codehelper.turn.terminal.count", labels, 1)
+		}
 	}
 }
 

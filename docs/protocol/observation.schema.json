@@ -87,11 +87,23 @@
           "minimum": 1,
           "type": "integer"
         },
+        "lease_epoch": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "lease_owner": {
+          "maxLength": 256,
+          "type": "string"
+        },
         "node_id": {
           "maxLength": 256,
           "type": "string"
         },
         "operation_id": {
+          "maxLength": 256,
+          "type": "string"
+        },
+        "resume_id": {
           "maxLength": 256,
           "type": "string"
         },

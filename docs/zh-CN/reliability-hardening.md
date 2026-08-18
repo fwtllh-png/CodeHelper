@@ -91,8 +91,8 @@ CLI / TUI / VS Code / ACP / Worker
 | R7 | 并发、取消、背压与资源生命周期 | P1 | 已验证 | Runtime / Platform |
 | R8 | Protocol 与多 Host 行为一致性 | P1 | 已验证 | Protocol / Hosts |
 | R9 | 启停、装配、配置与环境差异 | P1 | 已验证 | Wire / Config / Hosts |
-| R10 | 可观测性与失败重建 | P1 | 待评估 | Observability / Persist |
-| R11 | 故障注入与可靠性门禁 | P1 | 待评估 | Tests / CI |
+| R10 | 可观测性与失败重建 | P1 | 已验证 | Observability / Persist |
+| R11 | 故障注入与可靠性门禁 | P1 | 已验证 | Tests / CI |
 
 ## R0：失败基线与全仓限制清点
 
@@ -591,6 +591,16 @@ Prewarm、Automation Reconcile 和 Scheduler；平台能力测试要求隔离能
 - Retry、Resume 和重复副作用能够通过 ID 关联；
 - Secret Leak Test 和观测 Schema Gate 通过。
 
+R10 持久化受限的 Terminal Outcome Summary，只包含状态、闭集错误码和类型化 Fault
+元数据，明确不记录原始失败文本。Semantic Projection 现在可以重建停止阶段、原因码、
+Provider/Tool/Effect 尝试、恢复动作、是否可继续，以及
+Runtime/Session/Thread/Turn/Operation/Effect/Attempt/Lease/Resume 关联。Turn
+Recovery 会记录稳定的 Resume Operation Identity，Observation Identity 也支持 Lease
+Owner/Epoch 关联。OTEL Terminal Span 与 `codehelper.turn.terminal.count` 指标可区分
+完成、取消、资源耗尽、不可用和内部错误，现有 Approval Denial Counter 单独标识策略
+拒绝，且均不引入高基数标签。Observation Schema 生成、Privacy Policy 和 Secret Leak
+门禁共同约束保留证据。
+
 ## R11：故障注入与可靠性门禁
 
 **扫描范围**
@@ -612,6 +622,13 @@ Prewarm、Automation Reconcile 和 Scheduler；平台能力测试要求隔离能
 - P0 边界至少覆盖成功、可重试、永久失败、取消和崩溃恢复；
 - 故障测试能够证明无重复副作用、无终态丢失和无永久 Running；
 - 可靠性门禁纳入标准验证命令并保持可重复。
+
+R11 由 `testdata/contracts/reliability-matrix.json` 强制执行。机器检查要求 Provider、
+Tool、Approval、Input、Journal、SQLite、Outbox、Host 和 Shutdown 分别声明成功、
+可重试失败、永久失败、取消和崩溃恢复，并给出预期状态、恢复动作以及防止重复副作用、
+终态漏记和永久 Running 的不变量。`make reliability-gate` 会校验每个引用测试真实
+存在、执行确定性用例并运行 Observation Trait Schema Drift Gate；该门禁已纳入
+`make verify` 和 Release Gate。
 
 ## 推荐执行顺序
 

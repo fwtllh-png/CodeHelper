@@ -12,7 +12,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.Date=$(BUILD_DATE)
 
-.PHONY: fmt verify test test-hermetic test-platform-capability test-integration \
+.PHONY: fmt verify test test-hermetic test-platform-capability reliability-gate test-integration \
 	test-release integration-gate release-gate race build cross-build smoke \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
@@ -41,6 +41,7 @@ LDFLAGS := -s -w \
 
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
 ARCHITECTURE_METRICS_BASELINE := testdata/contracts/architecture-metrics-baseline.json
+RELIABILITY_MATRIX := testdata/contracts/reliability-matrix.json
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
@@ -72,7 +73,7 @@ fmt:
 	$(GO) fmt ./...
 
 verify: architecture-ratchet docs-check book-check brand-check \
-	vscode-check vscode-test multi-agent-performance
+	vscode-check vscode-test multi-agent-performance reliability-gate
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
 	$(GO) vet ./...
 	$(MAKE) test-hermetic
@@ -144,6 +145,10 @@ test-platform-capability:
 		-- $(GO) test -tags=capability -count=1 \
 			./internal/security/sandbox/... ./internal/platform/process/...
 
+reliability-gate: observation-traits-check
+	python3 scripts/check-reliability-matrix.py \
+		'$(RELIABILITY_MATRIX)' --run
+
 test-integration:
 	python3 scripts/run-test-lane.py integration \
 		--report '$(TEST_LANE_REPORT_DIR)/integration.json' \
@@ -163,7 +168,7 @@ test-release:
 		--require-available \
 		-- $(MAKE) release-gate
 
-release-gate: cross-build smoke race secret-leak-test benchmark-v2 \
+release-gate: cross-build smoke race secret-leak-test reliability-gate benchmark-v2 \
 	multi-agent-performance vscode-release-dry-run
 
 race:

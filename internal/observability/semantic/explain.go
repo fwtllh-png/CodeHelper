@@ -15,16 +15,46 @@ var (
 )
 
 type Explanation struct {
-	SubjectKind     string            `json:"subject_kind"`
-	SubjectID       string            `json:"subject_id"`
-	Conclusion      string            `json:"conclusion"`
-	AuthoritySource []string          `json:"authority_sources"`
-	Observations    []Evidence        `json:"observations"`
-	Payloads        []PayloadEvidence `json:"payloads,omitempty"`
-	Visibility      []VisibilityEdge  `json:"visibility,omitempty"`
-	Unknowns        []UnknownFact     `json:"unknowns,omitempty"`
-	Inconsistencies []Inconsistency   `json:"inconsistencies,omitempty"`
-	NextEvidence    string            `json:"next_evidence,omitempty"`
+	SubjectKind     string                 `json:"subject_kind"`
+	SubjectID       string                 `json:"subject_id"`
+	Conclusion      string                 `json:"conclusion"`
+	AuthoritySource []string               `json:"authority_sources"`
+	Observations    []Evidence             `json:"observations"`
+	Payloads        []PayloadEvidence      `json:"payloads,omitempty"`
+	Visibility      []VisibilityEdge       `json:"visibility,omitempty"`
+	Unknowns        []UnknownFact          `json:"unknowns,omitempty"`
+	Inconsistencies []Inconsistency        `json:"inconsistencies,omitempty"`
+	Failure         *FailureReconstruction `json:"failure,omitempty"`
+	NextEvidence    string                 `json:"next_evidence,omitempty"`
+}
+
+type FailureAttempt struct {
+	Kind      string `json:"kind"`
+	ID        string `json:"id"`
+	Attempt   uint32 `json:"attempt,omitempty"`
+	AttemptID string `json:"attempt_id,omitempty"`
+	Status    Status `json:"status"`
+}
+
+type FailureCorrelation struct {
+	RuntimeID   string   `json:"runtime_id"`
+	SessionID   string   `json:"session_id,omitempty"`
+	ThreadID    string   `json:"thread_id,omitempty"`
+	TurnID      string   `json:"turn_id"`
+	OperationID string   `json:"operation_id,omitempty"`
+	EffectID    string   `json:"effect_id,omitempty"`
+	ResumeIDs   []string `json:"resume_ids,omitempty"`
+	LeaseOwner  string   `json:"lease_owner,omitempty"`
+	LeaseEpoch  uint64   `json:"lease_epoch,omitempty"`
+}
+
+type FailureReconstruction struct {
+	StoppedAt      string             `json:"stopped_at"`
+	ReasonCode     string             `json:"reason_code"`
+	Attempts       []FailureAttempt   `json:"attempts"`
+	CanContinue    bool               `json:"can_continue"`
+	RecoveryAction string             `json:"recovery_action"`
+	Correlation    FailureCorrelation `json:"correlation"`
 }
 
 func (g Graph) ExplainTurn(turnID string) (Explanation, error) {
@@ -84,12 +114,106 @@ func (g Graph) ExplainFailure(turnID string) (Explanation, error) {
 		explanation.Conclusion = "turn evidence is inconsistent"
 	case len(explanation.Unknowns) != 0:
 		explanation.Conclusion = "turn outcome is indeterminate"
-	case strings.Contains(explanation.Conclusion, string(StatusFailed)):
-		explanation.Conclusion = "turn failed"
 	default:
-		explanation.Conclusion = "no failed terminal observation is present"
+		turn := g.Turns[explanation.SubjectID]
+		terminal := g.TerminalOps[semanticID(
+			"terminal",
+			turn.RuntimeID,
+			turn.TurnID,
+		)]
+		if terminal.Window.Status != StatusCommitted ||
+			terminal.Outcome == nil ||
+			terminal.Outcome.Status == observation.TerminalCompleted {
+			explanation.Conclusion = "no failed terminal observation is present"
+			explanation.NextEvidence =
+				"committed structured terminal outcome observation"
+			return explanation, nil
+		}
+		explanation.Failure = g.reconstructFailure(turn, terminal)
+		explanation.Conclusion = "turn " + string(terminal.Outcome.Status)
 	}
 	return explanation, nil
+}
+
+func (g Graph) reconstructFailure(
+	turn TurnNode,
+	terminal TerminalNode,
+) *FailureReconstruction {
+	outcome := terminal.Outcome
+	result := &FailureReconstruction{
+		StoppedAt:  "terminal",
+		ReasonCode: outcome.Code,
+		Correlation: FailureCorrelation{
+			RuntimeID: turn.RuntimeID, SessionID: turn.SessionID,
+			ThreadID: turn.ThreadID, TurnID: turn.TurnID,
+			OperationID: terminal.OperationID, EffectID: terminal.EffectID,
+			ResumeIDs: append([]string(nil), turn.ResumeIDs...),
+		},
+	}
+	for _, inference := range g.InferenceCalls {
+		if inference.RuntimeID == turn.RuntimeID &&
+			inference.TurnID == turn.TurnID {
+			result.Attempts = append(result.Attempts, FailureAttempt{
+				Kind: "provider", ID: inference.SampleID,
+				Attempt: inference.Attempt, Status: inference.Window.Status,
+			})
+		}
+	}
+	for _, tool := range g.ToolAttempts {
+		if tool.RuntimeID == turn.RuntimeID && tool.TurnID == turn.TurnID {
+			result.Attempts = append(result.Attempts, FailureAttempt{
+				Kind: "tool", ID: tool.CallID,
+				Attempt: tool.Attempt, Status: tool.Window.Status,
+			})
+		}
+	}
+	for _, effect := range g.Effects {
+		if effect.RuntimeID == turn.RuntimeID &&
+			effect.EffectID == terminal.EffectID {
+			result.Attempts = append(result.Attempts, FailureAttempt{
+				Kind: "effect", ID: effect.EffectID,
+				AttemptID: effect.AttemptID, Status: effect.Window.Status,
+			})
+			result.Correlation.LeaseOwner = effect.LeaseOwner
+			result.Correlation.LeaseEpoch = effect.LeaseEpoch
+		}
+	}
+	sort.Slice(result.Attempts, func(left, right int) bool {
+		if result.Attempts[left].Kind != result.Attempts[right].Kind {
+			return result.Attempts[left].Kind < result.Attempts[right].Kind
+		}
+		return result.Attempts[left].ID < result.Attempts[right].ID
+	})
+	if outcome.Fault != nil {
+		fault := outcome.Fault
+		if fault.Stage != "" {
+			result.StoppedAt = string(fault.Stage)
+		} else if fault.Origin != "" {
+			result.StoppedAt = string(fault.Origin)
+		}
+		result.RecoveryAction = fault.RecoveryAction
+		if result.RecoveryAction == "" {
+			result.RecoveryAction = string(fault.ResumeHint)
+		}
+		if result.RecoveryAction == "" {
+			result.RecoveryAction = string(fault.Disposition)
+		}
+		switch fault.Disposition {
+		case "retry_step", "retry_turn", "resume_turn":
+			result.CanContinue = true
+		}
+		switch fault.ResumeHint {
+		case "retry_step", "retry_turn", "resume_turn", "wait":
+			result.CanContinue = true
+		}
+	} else {
+		switch outcome.Code {
+		case "unavailable", "deadline_exceeded", "resource_exhausted":
+			result.CanContinue = true
+			result.RecoveryAction = "retry_or_resume"
+		}
+	}
+	return result
 }
 
 func (g Graph) ExplainCost(turnID string) (Explanation, error) {
