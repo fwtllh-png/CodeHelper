@@ -27,6 +27,7 @@ type receiptRecorder struct {
 	workspace          string
 	workspaceIsolation string
 	completion         *protocol.CompletionDeclaration
+	convergence        *protocol.TurnConvergence
 	providerRetry      *protocol.ReceiptProviderRetry
 	modelExecution     protocol.ReceiptModelExecution
 	toolsSucceeded     []string
@@ -105,6 +106,14 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 		if event.Error != "" {
 			r.issues = append(r.issues, event.Error)
 		}
+		if event.Convergence != nil {
+			value := *event.Convergence
+			value.PendingActions = append(
+				[]string(nil),
+				event.Convergence.PendingActions...,
+			)
+			r.convergence = &value
+		}
 		for _, issue := range event.SecondaryIssues {
 			r.secondary = append(r.secondary, protocol.TerminalIssue{
 				Phase: issue.Phase, Code: issue.Code, Message: issue.Message,
@@ -116,15 +125,22 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 	}
 	if event.Completion != nil {
 		declaration := event.Completion
+		rejection := ""
+		if declaration.Status == "incomplete" {
+			rejection = "convergence_blocked"
+		}
 		r.completion = &protocol.CompletionDeclaration{
 			Status: declaration.Status, Summary: declaration.Summary,
+			OutputMode:   declaration.OutputMode,
 			ChangedPaths: append([]string(nil), declaration.ChangedPaths...),
 			VerificationCallIDs: append(
 				[]string(nil), declaration.VerificationCallIDs...,
 			),
 			PendingActions:   append([]string(nil), declaration.PendingActions...),
 			MutationRevision: declaration.MutationRevision,
-			CallID:           declaration.CallID, Accepted: true,
+			CallID:           declaration.CallID,
+			Accepted:         declaration.Status == "complete",
+			Rejection:        rejection,
 		}
 	}
 	if event.ProviderRetry != nil {
@@ -309,6 +325,7 @@ func (r *receiptRecorder) build(
 		Sandbox: r.sandbox, Workspace: r.workspace,
 		WorkspaceIsolation: r.workspaceIsolation,
 		Completion:         r.completion,
+		Convergence:        r.convergence,
 		ProviderRetry:      r.providerRetry,
 		ModelExecution:     r.modelExecution,
 		Routes:             append([]protocol.ReceiptRoute(nil), r.routes...),

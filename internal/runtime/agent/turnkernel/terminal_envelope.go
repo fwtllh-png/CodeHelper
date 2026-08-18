@@ -80,7 +80,11 @@ func ProtocolTerminalEvent(state State) (protocol.EventData, error) {
 			code = protocol.CodeInternal
 		}
 		return &protocol.TurnFailedData{
-			Code: code, Message: state.Terminal.Message,
+			Code:    code,
+			Message: state.Terminal.Message,
+			Convergence: ProtocolConvergence(
+				state.Terminal.Convergence,
+			),
 		}, nil
 	case TerminalCanceled:
 		return &protocol.TurnCanceledData{
@@ -88,6 +92,25 @@ func ProtocolTerminalEvent(state State) (protocol.EventData, error) {
 		}, nil
 	default:
 		return nil, errors.New("terminal decision is invalid")
+	}
+}
+
+func ProtocolConvergence(
+	source *ConvergenceState,
+) *protocol.TurnConvergence {
+	if source == nil {
+		return nil
+	}
+	return &protocol.TurnConvergence{
+		Cause:      string(source.Cause),
+		Used:       source.Used,
+		Limit:      source.Limit,
+		RepairKind: string(source.RepairKind),
+		Summary:    source.Summary,
+		PendingActions: append(
+			[]string(nil),
+			source.PendingActions...,
+		),
 	}
 }
 

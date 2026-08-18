@@ -13,6 +13,14 @@ export function projectTerminal(
       }
       return "completed";
     case "turn.failed":
+      if (event.data.convergence !== undefined) {
+        turn.convergence = {
+          ...event.data.convergence,
+          pending_actions: [...event.data.convergence.pending_actions],
+        };
+        delete turn.error;
+        return "incomplete";
+      }
       turn.error = truncate(`${event.data.code}: ${event.data.message}`);
       return "failed";
     case "turn.canceled":

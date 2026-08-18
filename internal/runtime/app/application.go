@@ -337,6 +337,7 @@ func (a *EngineAdapter) StartTurn(
 			return a.commitTerminal(ctx, receipt, sink, false, &protocol.TurnFailedData{
 				Code:            nonEmptyCode(event.ErrorCode, protocol.CodeInternal),
 				Message:         nonEmpty(event.Error, "turn failed"),
+				Convergence:     event.Convergence,
 				SecondaryIssues: secondary,
 			})
 		case agentengine.Canceled:
@@ -482,6 +483,7 @@ func (a *EngineAdapter) StartTurn(
 					rejection, _ := event.Result.Metadata["completion_declaration_rejection"].(string)
 					completion = &protocol.CompletionDeclaration{
 						Status: declaration.Status, Summary: declaration.Summary,
+						OutputMode:          declaration.OutputMode,
 						ChangedPaths:        append([]string(nil), declaration.ChangedPaths...),
 						VerificationCallIDs: append([]string(nil), declaration.VerificationCallIDs...),
 						PendingActions:      append([]string(nil), declaration.PendingActions...),

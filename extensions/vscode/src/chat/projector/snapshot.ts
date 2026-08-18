@@ -43,6 +43,14 @@ export function projectSnapshot(
     ...(turn.verificationBlocked === undefined
       ? {}
       : { verificationBlocked: turn.verificationBlocked }),
+    ...(turn.convergence === undefined
+      ? {}
+      : {
+          convergence: {
+            ...turn.convergence,
+            pending_actions: [...turn.convergence.pending_actions],
+          },
+        }),
     verificationUncoveredPaths: [...turn.verificationUncoveredPaths],
     ...(turn.workspaceChange === undefined
       ? {}

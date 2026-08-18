@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"errors"
+	"slices"
 )
 
 // Verification outcomes carried by ExecutionReceiptData. NotEvaluated means the
@@ -288,6 +289,7 @@ type ExecutionReceiptData struct {
 	Workspace          string                    `json:"workspace,omitempty"`
 	WorkspaceIsolation string                    `json:"workspace_isolation,omitempty"`
 	Completion         *CompletionDeclaration    `json:"completion,omitempty"`
+	Convergence        *TurnConvergence          `json:"convergence,omitempty"`
 	ProviderRetry      *ReceiptProviderRetry     `json:"provider_retry,omitempty"`
 	ModelExecution     ReceiptModelExecution     `json:"model_execution"`
 
@@ -413,8 +415,20 @@ func (d *ExecutionReceiptData) validate() error {
 		if err := d.Completion.validate(); err != nil {
 			return err
 		}
-		if !d.Completion.Accepted {
+		if !d.Completion.Accepted &&
+			(d.Convergence == nil ||
+				d.Completion.Status != "incomplete" ||
+				d.Completion.Summary != d.Convergence.Summary ||
+				!slices.Equal(
+					d.Completion.PendingActions,
+					d.Convergence.PendingActions,
+				)) {
 			return errors.New("receipt completion declaration must be accepted")
+		}
+	}
+	if d.Convergence != nil {
+		if err := d.Convergence.validate(); err != nil {
+			return err
 		}
 	}
 	for _, change := range d.Changes {

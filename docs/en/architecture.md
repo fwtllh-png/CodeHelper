@@ -230,18 +230,26 @@ rejects late, duplicate, or wrong-kind resolutions.
     ends only one Sample; ordinary model prose remains provisional and cannot
     complete the Turn. For `status=complete`, the declaration `summary` is the
     exact user-facing final output and is published without another model
-    sample. Runtime never infers required input or completion from prose
-    wording. A Child executor has no Input Host and therefore cannot wait for
-    user input, but it must still continue through Tool Calls or finish through
-    `turn_complete`.
-11. `EvaluateTurnStep` makes Reducer select Repair, Verification, or Complete.
+    sample. A convergence finalization may instead use
+    `output_mode=preserve_provisional` to retain captured output and append a
+    concise closing summary. Runtime never infers required input or completion
+    from prose wording. A Child executor has no Input Host and therefore cannot
+    wait for user input, but it must still continue through Tool Calls or finish
+    through `turn_complete`.
+11. `EvaluateTurnStep` makes Reducer select Repair, Verification, Finalize,
+    Block, or Complete. Output-continuation, repair, no-progress, and normal
+    work-step limits only request typed Kernel convergence; they do not choose a
+    terminal error in Engine or Provider loops. Kernel allows one reserved
+    finalization Sample with only terminal/input capabilities. Complete follows
+    the normal commit path; incomplete records a summary and pending actions for
+    recovery.
 12. The Verification executor returns evidence through
     `VerificationFinished`; Reducer selects Passed, Repair, Reported, Blocked,
     Failed, or Reverted and owns the repair budget.
 13. Engine submits `TerminalRequested`; Reducer selects Completed, Failed, or
     Canceled. Journal Commit/Suspend/Rollback then runs as a durable Effect and
-    returns `JournalResultReceived`. Suspend retains a verification-blocked
-    draft for a structurally bound Continue Turn.
+    returns `JournalResultReceived`. Suspend retains verification-blocked or
+    convergence-blocked changes for a structurally bound Continue Turn.
 14. Scope prepares a revisioned, digested `SessionDelta` containing History,
     Usage, Cost, Working Set, Evidence, Failures, and Compaction state.
 15. Runtime freezes one digested `TerminalMeasurementSnapshot` for Usage and

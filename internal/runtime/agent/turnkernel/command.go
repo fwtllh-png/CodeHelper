@@ -139,6 +139,23 @@ type ObserveProgress struct {
 
 func (ObserveProgress) commandName() string { return "observe_progress" }
 
+type ConvergenceRequested struct {
+	Cause      ConvergenceCause
+	Used       uint32
+	Limit      uint32
+	RepairKind RepairKind
+}
+
+func (ConvergenceRequested) commandName() string {
+	return "convergence_requested"
+}
+
+type ConvergenceFinalizationStarted struct{}
+
+func (ConvergenceFinalizationStarted) commandName() string {
+	return "convergence_finalization_started"
+}
+
 type ToolCallsProposed struct {
 	Calls []ToolCallState
 }
@@ -224,6 +241,7 @@ type CompletionCandidate struct {
 	DeclarationValid bool
 	Status           string
 	Summary          string
+	OutputMode       string
 	PendingActions   []string
 	CompletionCall   string
 	BatchMutated     bool
@@ -301,6 +319,7 @@ type TerminalRequested struct {
 	FailureCode    string
 	FailureMessage string
 	CancelReason   string
+	Convergence    *ConvergenceState
 }
 
 func (TerminalRequested) commandName() string { return "terminal_requested" }
@@ -337,6 +356,7 @@ const (
 	EventOutputReleased    EventKind = "output_released"
 	EventOutputDiscarded   EventKind = "output_discarded"
 	EventRepairRequested   EventKind = "repair_requested"
+	EventConvergence       EventKind = "convergence_requested"
 	EventSampleStarted     EventKind = "sample_started"
 	EventSampleFinished    EventKind = "sample_finished"
 	EventProviderRetry     EventKind = "provider_retry_requested"

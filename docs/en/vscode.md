@@ -75,15 +75,21 @@ last activity of a completed Turn receives the Final Result label. Completion
 reconciliation never removes output already shown to the user: an existing
 final suffix is split out, while a newly sampled final response is appended.
 The Runtime never infers completion from wording in model output. Structured
-`max_tokens` and `incomplete` stop reasons trigger at most two continuation
-samples; captured blocks are replayed as context and merged into the
-authoritative final text. A third incomplete stop fails explicitly, while a
-content-filter stop fails immediately without continuation. An empty visible
-answer triggers bounded repair, and an Engine that returns without a terminal
-event fails closed. Tool or Engine panics and typed Tool failures are contained
-at the Turn boundary and projected as one explicit failure. Permissions,
-retries, and terminal state are driven only by typed errors, protocol fields,
-and explicit metadata.
+`max_tokens` and `incomplete` stop reasons trigger bounded continuation samples;
+captured blocks are replayed as context and merged once. Exhausting that
+continuation strategy does not fail the Turn locally. Turn Kernel records a
+typed convergence cause and reserves one finalization Sample outside the normal
+work-step budget. That Sample can only request input or call `turn_complete`.
+It may preserve captured output when declaring success, or return a structured
+incomplete summary and pending actions that VS Code renders as recoverable
+`Incomplete` state. Content filters, unsafe partial Tool Calls, context that
+cannot fit after safe compaction, and configured Token/Cost ceilings remain
+explicit failures because Runtime cannot safely continue past them. An empty
+visible answer and exhausted repair/no-progress/step strategies use the same
+Kernel-owned convergence path. Tool or Engine panics and typed Tool failures
+remain contained at the Turn boundary. Permissions, retries, convergence, and
+terminal state are driven only by typed errors, protocol fields, and explicit
+metadata.
 Command nodes are collapsed by default: their title contains only execution
 state and a bounded single-line command preview, while the expanded body shows
 the full command, auxiliary parameters, and output in separate sections.

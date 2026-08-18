@@ -130,6 +130,29 @@ func TestHostJourneyCancelIsTerminalFailureAndRecoveryKeepsComposer(t *testing.T
 	}
 }
 
+func TestHostJourneyConvergenceRetainsIncompleteOutcome(t *testing.T) {
+	model := NewModel(Options{}, &fakeRuntime{})
+	model = applyRuntimeEvent(t, model, protocol.Event{
+		Kind: protocol.EventTurnFailed,
+		Data: &protocol.TurnFailedData{
+			Code: protocol.CodeConflict, Message: "turn needs continuation",
+			Convergence: &protocol.TurnConvergence{
+				Cause: "step_limit", Used: 4, Limit: 4,
+				Summary:        "Progress retained.",
+				PendingActions: []string{"Finish the remaining verification."},
+			},
+		},
+	})
+	updated, _ := model.Update(StreamDoneMessage())
+	model = updated.(Model)
+	view := model.View()
+	if model.phase != PhaseIncomplete ||
+		!strings.Contains(view, "turn.incomplete: Progress retained.") ||
+		!strings.Contains(view, "pending: Finish the remaining verification.") {
+		t.Fatalf("incomplete convergence was not retained:\n%s", view)
+	}
+}
+
 func typeAndEnter(t *testing.T, model Model, text string) Model {
 	t.Helper()
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(text)})

@@ -592,9 +592,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 10635,
+        "production_lines": 10771,
         "options_fields": 60,
         "mutex_fields": 8
+      },
+      "relaxations": {
+        "production_lines": "Kernel-owned convergence replaces output, repair, progress, and work-step terminal loops with one reserved finalization path."
       }
     },
     {
@@ -603,9 +606,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 20,
-        "production_lines": 8605,
+        "production_lines": 8624,
         "options_fields": 18,
         "mutex_fields": 7
+      },
+      "relaxations": {
+        "production_lines": "Runtime terminal publication and receipts now preserve the typed convergence outcome across atomic commit."
       }
     },
     {
@@ -689,9 +695,12 @@
       "path": "internal/host/tui",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 7490,
+        "production_lines": 7501,
         "options_fields": 28,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "TUI projects the shared recoverable incomplete terminal state instead of presenting convergence as failure."
       }
     },
     {
@@ -700,9 +709,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 6000,
+        "production_lines": 6060,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "The public protocol and execution receipt carry typed convergence cause, summary, pending actions, and provisional-output mode."
       }
     },
     {

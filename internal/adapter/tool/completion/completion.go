@@ -36,8 +36,10 @@ func (*Tool) Descriptor() tool.Descriptor {
 			"only after every requested action, the last mutation, and all required quality " +
 			"checks. For complete, summary is the exact user-facing final response and " +
 			"pending_actions must be empty; the runtime publishes summary without another " +
-			"model sample. If work remains, use status=incomplete with a progress summary " +
-			"and concrete pending actions so the runtime continues the same Turn.",
+			"model sample. During convergence finalization only, output_mode=" +
+			"preserve_provisional keeps the captured response and appends summary. If work " +
+			"remains, use status=incomplete with a progress summary and concrete pending " +
+			"actions so the runtime records a resumable blocked outcome.",
 		Visibility:         tool.VisibleModel,
 		Capability:         tool.CapabilityRead,
 		AccessMode:         tool.AccessRead,
@@ -54,6 +56,11 @@ func (*Tool) Descriptor() tool.Descriptor {
 				"summary": map[string]any{
 					"type": "string", "minLength": 1, "maxLength": 32768,
 					"description": "Exact final response for complete; progress summary for incomplete.",
+				},
+				"output_mode": map[string]any{
+					"type":        "string",
+					"enum":        []string{"exact", "preserve_provisional"},
+					"description": "Use preserve_provisional only when convergence finalization says captured output is available.",
 				},
 				"pending_actions": map[string]any{
 					"type": "array", "maxItems": 32,
@@ -107,6 +114,11 @@ func (t *Tool) typedExecutor() (tool.Executor, error) {
 }
 
 func validateDeclaration(declaration tool.CompletionDeclaration) error {
+	switch declaration.OutputMode {
+	case "", "exact", "preserve_provisional":
+	default:
+		return errors.New("unsupported completion output mode")
+	}
 	switch declaration.Status {
 	case "complete":
 		if len(declaration.PendingActions) != 0 {
@@ -118,6 +130,11 @@ func validateDeclaration(declaration tool.CompletionDeclaration) error {
 		if len(declaration.PendingActions) == 0 {
 			return errors.New(
 				"incomplete declaration requires pending actions",
+			)
+		}
+		if declaration.OutputMode == "preserve_provisional" {
+			return errors.New(
+				"incomplete declaration cannot preserve provisional output",
 			)
 		}
 	default:

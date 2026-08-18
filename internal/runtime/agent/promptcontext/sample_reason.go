@@ -8,6 +8,7 @@ const (
 	SampleDeclarationRepair  = "declaration_repair"
 	SampleVerificationRepair = "verification_repair"
 	SampleToolFailureRepair  = "tool_failure_repair"
+	SampleConvergence        = "convergence_finalization"
 	SampleProviderRetry      = "provider_retry"
 )
 

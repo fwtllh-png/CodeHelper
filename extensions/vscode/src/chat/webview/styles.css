@@ -1202,6 +1202,27 @@ pre {
   white-space: pre-wrap;
 }
 
+.convergence-outcome {
+  border-left: 3px solid var(--vscode-editorWarning-foreground);
+  padding: 8px 10px;
+}
+
+.convergence-summary {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.convergence-actions {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.convergence-actions li {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+
 .verification-path-list {
   display: grid;
   gap: 4px;

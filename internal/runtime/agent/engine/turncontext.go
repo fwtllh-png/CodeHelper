@@ -162,6 +162,21 @@ func SnapshotTurnSpec(
 		recovery := *request.Recovery
 		request.Recovery = &recovery
 	}
+	kernelPolicy := turnkernel.DefaultPolicy()
+	kernelPolicy.CompletionRequired = options.RequireCompletionDeclaration
+	kernelPolicy.StructuredTerminalRequired =
+		options.RequireCompletionDeclaration
+	kernelPolicy.VerificationRequired = options.Verify.enabled() ||
+		request.Intent == protocol.TurnIntentWorkspaceChange ||
+		options.RequireCompletionDeclaration
+	kernelPolicy.VerificationMustPass =
+		request.Intent == protocol.TurnIntentWorkspaceChange ||
+			options.RequireCompletionDeclaration
+	kernelPolicy.VerificationMode = options.Verify.Mode
+	kernelPolicy.VerificationOnFailure = options.Verify.OnFailure
+	kernelPolicy.VerificationRepairLimit =
+		uint32(max(options.Verify.MaxRepairSteps, 0))
+	kernelPolicy.JournalRequired = options.Journal != nil
 	spec := TurnSpec{
 		Identity: identity,
 		Request:  request,
@@ -180,23 +195,7 @@ func SnapshotTurnSpec(
 		Mode: security.Mode, Posture: security.Permission,
 		Workspace: options.Workspace, Sandbox: sandboxIdentity(options.Tools),
 		Policy: security.CloneSampling(),
-		Kernel: turnkernel.Policy{
-			CompletionRequired:         options.RequireCompletionDeclaration,
-			StructuredTerminalRequired: options.RequireCompletionDeclaration,
-			VerificationRequired: options.Verify.enabled() ||
-				request.Intent == protocol.TurnIntentWorkspaceChange ||
-				options.RequireCompletionDeclaration,
-			VerificationMustPass: request.Intent ==
-				protocol.TurnIntentWorkspaceChange ||
-				options.RequireCompletionDeclaration,
-			VerificationMode:        options.Verify.Mode,
-			VerificationOnFailure:   options.Verify.OnFailure,
-			CompletionRepairLimit:   maxCompletionRepairs,
-			WorkspaceRepairLimit:    maxWorkspaceChangeRepairs,
-			DeclarationRepairLimit:  maxDeclarationRepairs,
-			VerificationRepairLimit: uint32(max(options.Verify.MaxRepairSteps, 0)),
-			JournalRequired:         options.Journal != nil,
-		},
+		Kernel: kernelPolicy,
 		Limits: TurnLimits{
 			MaxSteps:        options.MaxSteps,
 			MaxOutputTokens: options.MaxOutputTokens,

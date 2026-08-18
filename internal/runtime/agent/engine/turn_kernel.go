@@ -343,9 +343,45 @@ func (s *engineTurnKernel) completion() *turnkernel.CompletionDecision {
 		return nil
 	}
 	copy := *s.state.Completion
+	copy.PendingActions = append([]string(nil), copy.PendingActions...)
 	copy.ChangedPaths = append([]string(nil), copy.ChangedPaths...)
 	copy.QualityCalls = append([]string(nil), copy.QualityCalls...)
 	return &copy
+}
+func (s *engineTurnKernel) convergence() *turnkernel.ConvergenceState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Convergence == nil {
+		return nil
+	}
+	copy := *s.state.Convergence
+	copy.PendingActions = append(
+		[]string(nil),
+		s.state.Convergence.PendingActions...,
+	)
+	return &copy
+}
+func (s *engineTurnKernel) hasProvisionalOutput() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.state.ProvisionalOutput) != 0
+}
+func (s *engineTurnKernel) requestConvergence(
+	request turnkernel.ConvergenceRequested,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Convergence != nil {
+		return nil
+	}
+	return s.applyAuthoritativeLocked(request)
+}
+func (s *engineTurnKernel) beginConvergenceFinalization() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.applyAuthoritativeLocked(
+		turnkernel.ConvergenceFinalizationStarted{},
+	)
 }
 func (s *engineTurnKernel) completionDeclaration() *tool.CompletionDeclaration {
 	s.mu.Lock()
@@ -357,10 +393,28 @@ func (s *engineTurnKernel) completionDeclaration() *tool.CompletionDeclaration {
 	return &tool.CompletionDeclaration{
 		Status:              "complete",
 		Summary:             decision.Summary,
+		OutputMode:          decision.OutputMode,
 		ChangedPaths:        append([]string(nil), decision.ChangedPaths...),
 		VerificationCallIDs: append([]string(nil), decision.QualityCalls...),
 		MutationRevision:    decision.Mutation,
 		CallID:              decision.CompletionCall,
+	}
+}
+func (s *engineTurnKernel) blockedCompletionDeclaration() *tool.CompletionDeclaration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Convergence == nil ||
+		strings.TrimSpace(s.state.Convergence.Summary) == "" ||
+		len(s.state.Convergence.PendingActions) == 0 {
+		return nil
+	}
+	return &tool.CompletionDeclaration{
+		Status:  "incomplete",
+		Summary: s.state.Convergence.Summary,
+		PendingActions: append(
+			[]string(nil),
+			s.state.Convergence.PendingActions...,
+		),
 	}
 }
 func (s *engineTurnKernel) evaluateCompletion(

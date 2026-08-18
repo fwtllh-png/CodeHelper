@@ -23,7 +23,8 @@ architecture and delivery stages are defined in the
 4. [Knowledge documentation plan](./knowledge-base-plan.md)
 5. [Architecture](./architecture.md)
 6. [Security model](./security.md)
-7. [Local development and scripts](./development.md)
+7. [Source code reading guide](./reading-guide.md)
+8. [Local development and scripts](./development.md)
 
 ### I want to use CodeHelper
 
@@ -48,8 +49,9 @@ architecture and delivery stages are defined in the
 1. [Architecture](./architecture.md)
 2. [Security model](./security.md)
 3. [Local development and scripts](./development.md)
-4. [Agent guide](./agent-guide.md)
-5. [TUI and VS Code experience contract](./experience.md)
+4. [Source code reading guide](./reading-guide.md)
+5. [Agent guide](./agent-guide.md)
+6. [TUI and VS Code experience contract](./experience.md)
 6. [CONTRIBUTING.md](../../CONTRIBUTING.md)
 7. [Documentation governance](./documentation-governance.md)
 8. [Roadmap](./roadmap.md)

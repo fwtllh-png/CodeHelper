@@ -556,6 +556,8 @@ func runRuntimeTurn(
 						return "", err
 					}
 					waitingForRevert = true
+				case "incomplete":
+					return turnID, nil
 				case "failed", "canceled", "rejected":
 					return "", protocol.NewProblem(data.Code, data.Message, false, nil)
 				}

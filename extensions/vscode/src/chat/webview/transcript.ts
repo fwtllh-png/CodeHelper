@@ -210,20 +210,29 @@ function renderTurn(
       appendText(receipt, "div", "meta", turn.receipt);
       article.append(receipt);
     }
-    const retainedDraft = turn.verificationBlocked === true;
-    if (retainedDraft) {
+    const retainedDraft = turn.verificationBlocked === true ||
+      (turn.convergence !== undefined &&
+        (turn.workspaceChange?.changedCount ?? 0) > 0);
+    if (turn.verificationBlocked === true) {
       appendVerificationBlock(article, turn);
+    }
+    if (turn.convergence !== undefined) {
+      appendConvergenceBlock(article, turn);
     }
     if (turn.error !== undefined) {
       appendText(article, "div", "error", turn.error);
     }
-    if (turn.status === "failed" || turn.status === "canceled") {
+    if (turn.status === "incomplete" ||
+      turn.status === "failed" ||
+      turn.status === "canceled") {
       if (retainedDraft) {
         appendText(
           article,
           "div",
           "meta",
-          "Verification blocked. Workspace changes are retained for repair.",
+          turn.verificationBlocked === true
+            ? "Verification blocked. Workspace changes are retained for repair."
+            : "Workspace changes are retained for continuation.",
         );
       }
       const recovery = document.createElement("div");
@@ -270,6 +279,8 @@ function turnStatus(turn: ChatTurn): string | undefined {
       return "Waiting for approval";
     case "awaiting_input":
       return "Waiting for input";
+    case "incomplete":
+      return "Incomplete";
     case "failed":
       return turn.verificationBlocked === true
         ? "Verification required"
@@ -279,6 +290,21 @@ function turnStatus(turn: ChatTurn): string | undefined {
     case "completed":
       return undefined;
   }
+}
+
+function appendConvergenceBlock(article: HTMLElement, turn: ChatTurn): void {
+  const convergence = turn.convergence;
+  if (convergence === undefined) return;
+  const section = document.createElement("section");
+  section.className = "convergence-outcome";
+  appendText(section, "div", "convergence-summary", convergence.summary);
+  const pending = document.createElement("ul");
+  pending.className = "convergence-actions";
+  for (const action of convergence.pending_actions) {
+    appendText(pending, "li", "", action);
+  }
+  section.append(pending);
+  article.append(section);
 }
 
 function appendVerificationBlock(article: HTMLElement, turn: ChatTurn): void {

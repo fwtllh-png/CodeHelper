@@ -62,6 +62,9 @@ function journeyLabel(
   if (latest?.verification !== undefined) {
     return "Verify · Verdict available · Review checks and Receipt";
   }
+  if (latest?.status === "incomplete") {
+    return "Incomplete · Progress retained · Continue or retry";
+  }
   if (latest?.status === "failed" || latest?.status === "canceled") {
     return "Failure · Turn did not complete · Review reason and retry";
   }

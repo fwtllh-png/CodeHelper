@@ -582,6 +582,36 @@ void test("ChatProjector exposes verification-blocked recovery state structurall
   );
 });
 
+void test("ChatProjector exposes convergence as incomplete instead of failed", () => {
+  const projector = new ChatProjector();
+  projector.apply(event(1, "turn.started", {
+    provider: "fixture",
+    model: "fixture-model",
+  }));
+  projector.apply(event(2, "turn.failed", {
+    code: "conflict",
+    message: "convergence budget exhausted",
+    convergence: {
+      cause: "output_limit",
+      used: 3,
+      limit: 3,
+      summary: "The guide is partially complete.",
+      pending_actions: ["Continue the remaining sections."],
+    },
+  }));
+  const turn = projector.snapshot().turns[0];
+  assert.ok(turn);
+  assert.equal(turn.status, "incomplete");
+  assert.equal(turn.error, undefined);
+  assert.deepEqual(turn.convergence, {
+    cause: "output_limit",
+    used: 3,
+    limit: 3,
+    summary: "The guide is partially complete.",
+    pending_actions: ["Continue the remaining sections."],
+  });
+});
+
 void test("ChatProjector exposes verification attribution and workspace outcome", () => {
   const projector = new ChatProjector();
   projector.apply(event(1, "turn.started", {

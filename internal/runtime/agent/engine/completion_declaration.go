@@ -33,6 +33,7 @@ func (e *Engine) completionCandidate(
 		candidate.DeclarationValid = true
 		candidate.Status = declaration.Status
 		candidate.Summary = declaration.Summary
+		candidate.OutputMode = declaration.OutputMode
 		candidate.PendingActions = append(
 			[]string(nil),
 			declaration.PendingActions...,

@@ -234,6 +234,7 @@ const MetadataCompletionDeclaration = "completion_declaration"
 type CompletionDeclaration struct {
 	Status              string   `json:"status"`
 	Summary             string   `json:"summary"`
+	OutputMode          string   `json:"output_mode,omitempty"`
 	ChangedPaths        []string `json:"changed_paths"`
 	VerificationCallIDs []string `json:"verification_call_ids"`
 	PendingActions      []string `json:"pending_actions"`

@@ -159,6 +159,23 @@ func (Reducer) Apply(current State, command Command) (Transition, error) {
 			return Transition{}, err
 		}
 
+	case ConvergenceRequested:
+		if err := applyConvergenceRequested(
+			&transition,
+			current,
+			value,
+		); err != nil {
+			return Transition{}, err
+		}
+
+	case ConvergenceFinalizationStarted:
+		if err := applyConvergenceFinalizationStarted(
+			&transition,
+			current,
+		); err != nil {
+			return Transition{}, err
+		}
+
 	case ToolCallsProposed:
 		if err := applyToolCalls(&transition, current, value); err != nil {
 			return Transition{}, err
@@ -279,6 +296,11 @@ func (Reducer) Apply(current State, command Command) (Transition, error) {
 		case strings.TrimSpace(value.CancelReason) != "":
 			decision.Kind = TerminalCanceled
 			decision.Message = value.CancelReason
+		case value.Convergence != nil:
+			decision.Kind = TerminalFailed
+			decision.Code = value.FailureCode
+			decision.Message = value.FailureMessage
+			decision.Convergence = cloneConvergence(value.Convergence)
 		case strings.TrimSpace(value.FailureMessage) != "":
 			decision.Kind = TerminalFailed
 			decision.Code = value.FailureCode
@@ -843,7 +865,8 @@ func applyToolCalls(
 	}
 	transition.State.Completion = nil
 	transition.State.OutputEligibility = false
-	if len(current.ProvisionalOutput) != 0 {
+	if len(current.ProvisionalOutput) != 0 &&
+		current.Convergence == nil {
 		transition.State.ProvisionalOutput = nil
 		transition.Events = append(
 			transition.Events,
@@ -1069,12 +1092,38 @@ func applyEvaluateTurnStep(
 			command.ProgressKey,
 			limit,
 		); err != nil {
+			if errors.Is(err, ErrRepairBudgetExhausted) {
+				beginConvergence(transition, ConvergenceRequested{
+					Cause:      ConvergenceRepairBudget,
+					Used:       limit,
+					Limit:      limit,
+					RepairKind: kind,
+				})
+				return nil
+			}
 			return err
 		}
 		transition.State.NextAction = action
 		return nil
 	}
 	switch {
+	case current.Completion != nil && current.Completion.Accepted:
+		if current.Policy.VerificationRequired &&
+			current.MutationRevision != 0 &&
+			(current.Verification.Mutation != current.MutationRevision ||
+				(current.Verification.Action != VerificationActionPassed &&
+					current.Verification.Action != VerificationActionReported &&
+					current.Verification.Action != VerificationActionReverted)) {
+			transition.State.NextAction = StepActionVerify
+		} else {
+			transition.State.NextAction = StepActionComplete
+		}
+	case current.Convergence != nil:
+		if current.Convergence.FinalizationAttempted {
+			transition.State.NextAction = StepActionBlock
+		} else {
+			transition.State.NextAction = StepActionFinalize
+		}
 	case current.UnresolvedToolFailure:
 		if err := spend(
 			RepairCompletion,
@@ -1137,15 +1186,6 @@ func applyEvaluateTurnStep(
 	return nil
 }
 
-const (
-	progressConvergeSamples   = 16
-	progressFinishOnlySamples = 32
-	progressExhaustedSamples  = 48
-	researchConvergeSamples   = 8
-	researchFinishOnlySamples = 12
-	researchExhaustedSamples  = 16
-)
-
 func applyObserveProgress(
 	transition *Transition,
 	current State,
@@ -1174,12 +1214,13 @@ func applyObserveProgress(
 			command.CompletedSamples - progress.ObservedSamples
 	}
 	progress.ObservedSamples = command.CompletedSamples
+	policy := current.Policy.Convergence
 	switch {
-	case progress.NoProgressSamples >= progressExhaustedSamples:
+	case progress.NoProgressSamples >= policy.ProgressLimit:
 		progress.Stage = ProgressStageExhausted
-	case progress.NoProgressSamples >= progressFinishOnlySamples:
+	case progress.NoProgressSamples >= policy.ProgressFinishOnly:
 		progress.Stage = ProgressStageFinishOnly
-	case progress.NoProgressSamples >= progressConvergeSamples:
+	case progress.NoProgressSamples >= policy.ProgressConverge:
 		progress.Stage = ProgressStageConverge
 	default:
 		progress.Stage = ProgressStageNone
@@ -1188,11 +1229,11 @@ func applyObserveProgress(
 		current.MutationRevision == 0 {
 		researchStage := ProgressStageNone
 		switch {
-		case command.CompletedSamples >= researchExhaustedSamples:
+		case command.CompletedSamples >= policy.ResearchLimit:
 			researchStage = ProgressStageExhausted
-		case command.CompletedSamples >= researchFinishOnlySamples:
+		case command.CompletedSamples >= policy.ResearchFinishOnly:
 			researchStage = ProgressStageFinishOnly
-		case command.CompletedSamples >= researchConvergeSamples:
+		case command.CompletedSamples >= policy.ResearchConverge:
 			researchStage = ProgressStageConverge
 		}
 		if progressStageRank(researchStage) > progressStageRank(progress.Stage) {
@@ -1200,7 +1241,101 @@ func applyObserveProgress(
 		}
 	}
 	transition.State.Progress = progress
+	if progress.Stage == ProgressStageExhausted {
+		limit := policy.ProgressLimit
+		used := progress.NoProgressSamples
+		if IsResearchIntent(current.Intent) &&
+			current.MutationRevision == 0 {
+			limit = policy.ResearchLimit
+			used = progress.ObservedSamples
+		}
+		beginConvergence(
+			transition,
+			ConvergenceRequested{
+				Cause: ConvergenceNoProgress,
+				Used:  used,
+				Limit: limit,
+			},
+		)
+	}
 	return nil
+}
+
+func applyConvergenceRequested(
+	transition *Transition,
+	current State,
+	command ConvergenceRequested,
+) error {
+	if err := requirePhase(current, command, PhaseSampling); err != nil {
+		return err
+	}
+	if current.ActiveSampleID != "" {
+		return illegal(current, command, "model sample is active")
+	}
+	if !validConvergenceRequest(command) {
+		return illegal(current, command, "convergence request is invalid")
+	}
+	beginConvergence(transition, command)
+	return nil
+}
+
+func applyConvergenceFinalizationStarted(
+	transition *Transition,
+	current State,
+) error {
+	command := ConvergenceFinalizationStarted{}
+	if err := requirePhase(current, command, PhaseSampling); err != nil {
+		return err
+	}
+	if current.ActiveSampleID != "" {
+		return illegal(current, command, "model sample is active")
+	}
+	if current.Convergence == nil {
+		return illegal(current, command, "convergence is not active")
+	}
+	if current.Convergence.FinalizationAttempted {
+		return illegal(current, command, "convergence finalization already started")
+	}
+	transition.State.Convergence.FinalizationAttempted = true
+	transition.State.NextAction = StepActionNone
+	return nil
+}
+
+func beginConvergence(
+	transition *Transition,
+	command ConvergenceRequested,
+) {
+	if transition.State.Convergence != nil {
+		return
+	}
+	transition.State.Convergence = &ConvergenceState{
+		Cause:      command.Cause,
+		Used:       command.Used,
+		Limit:      command.Limit,
+		RepairKind: command.RepairKind,
+	}
+	transition.State.NextAction = StepActionFinalize
+	transition.Events = append(
+		transition.Events,
+		Event{Kind: EventConvergence},
+	)
+}
+
+func validConvergenceRequest(command ConvergenceRequested) bool {
+	if command.Used == 0 || command.Limit == 0 ||
+		command.Used < command.Limit {
+		return false
+	}
+	switch command.Cause {
+	case ConvergenceOutputLimit,
+		ConvergenceNoProgress,
+		ConvergenceStepLimit:
+		return command.RepairKind == ""
+	case ConvergenceRepairBudget:
+		return validRepairKind(command.RepairKind)
+	default:
+		return false
+	}
 }
 
 func progressStageRank(stage ProgressStage) int {
@@ -1270,6 +1405,11 @@ func applyInputResolved(
 		return illegal(current, command, "input request does not match")
 	}
 	transition.State.PendingInput = nil
+	if transition.State.Convergence != nil {
+		transition.State.Convergence.FinalizationAttempted = false
+		transition.State.Convergence.Summary = ""
+		transition.State.Convergence.PendingActions = nil
+	}
 	closeEffectByIdentity(
 		transition,
 		EffectAwaitInput,
@@ -1540,6 +1680,8 @@ func applyCompletion(
 	}
 	decision := CompletionDecision{
 		Summary:        candidate.Summary,
+		OutputMode:     candidate.OutputMode,
+		PendingActions: append([]string(nil), candidate.PendingActions...),
 		Mutation:       current.MutationRevision,
 		ChangedPaths:   changedPaths(current.Changes),
 		QualityCalls:   append([]string(nil), candidate.QualityCalls...),
@@ -1552,6 +1694,22 @@ func applyCompletion(
 		decision.Reason = "declaration_must_be_only_call"
 	case !candidate.DeclarationValid:
 		decision.Reason = "invalid_declaration"
+	case candidate.OutputMode != "" &&
+		candidate.OutputMode != "exact" &&
+		candidate.OutputMode != "preserve_provisional":
+		decision.Reason = "invalid_output_mode"
+	case candidate.Status == "incomplete" &&
+		strings.TrimSpace(candidate.Summary) != "" &&
+		len(candidate.PendingActions) != 0 &&
+		current.Convergence != nil &&
+		current.Convergence.FinalizationAttempted:
+		decision.Reason = "convergence_blocked"
+		transition.State.Convergence.Summary =
+			strings.TrimSpace(candidate.Summary)
+		transition.State.Convergence.PendingActions = append(
+			[]string(nil),
+			candidate.PendingActions...,
+		)
 	case candidate.Status == "incomplete" &&
 		strings.TrimSpace(candidate.Summary) != "" &&
 		len(candidate.PendingActions) != 0:
@@ -1566,6 +1724,11 @@ func applyCompletion(
 		decision.Reason = "no_observed_changes"
 	case candidate.QualityRequired && len(candidate.QualityCalls) == 0:
 		decision.Reason = "quality_verification_required"
+	case candidate.OutputMode == "preserve_provisional" &&
+		(current.Convergence == nil ||
+			!current.Convergence.FinalizationAttempted ||
+			len(current.ProvisionalOutput) == 0):
+		decision.Reason = "provisional_output_unavailable"
 	default:
 		decision.Accepted = true
 		if current.MutationRevision != 0 &&
@@ -1578,14 +1741,24 @@ func applyCompletion(
 	if !decision.Accepted {
 		decision.RequiredAction = completionRejectionAction(decision.Reason)
 	} else {
-		// The accepted declaration owns the exact user-facing terminal output.
-		// Any earlier model prose was progress narration and remains provisional.
-		transition.State.ProvisionalOutput = []string{
-			strings.TrimSpace(candidate.Summary),
+		summary := strings.TrimSpace(candidate.Summary)
+		if candidate.OutputMode == "preserve_provisional" {
+			transition.State.ProvisionalOutput = append(
+				transition.State.ProvisionalOutput,
+				"\n\n"+summary,
+			)
+		} else {
+			// Outside convergence finalization, the accepted declaration owns
+			// the exact user-facing terminal output.
+			transition.State.ProvisionalOutput = []string{summary}
 		}
 		transition.State.OutputEligibility = false
 	}
 	copy := decision
+	copy.PendingActions = append(
+		[]string(nil),
+		decision.PendingActions...,
+	)
 	copy.ChangedPaths = append([]string(nil), decision.ChangedPaths...)
 	copy.QualityCalls = append([]string(nil), decision.QualityCalls...)
 	transition.State.Completion = &copy
@@ -1626,6 +1799,8 @@ func completionRejectionAction(reason string) string {
 		return "run_quality_verification"
 	case "pending_actions":
 		return "continue_work"
+	case "convergence_blocked":
+		return "finalize_blocked"
 	default:
 		return "correct_and_retry_turn_complete"
 	}
@@ -1667,6 +1842,20 @@ func applyTerminalRequested(
 		if strings.TrimSpace(decision.Message) == "" {
 			return illegal(current, command, "non-success terminal message is empty")
 		}
+		if decision.Convergence != nil {
+			if decision.Kind != TerminalFailed ||
+				current.Convergence == nil ||
+				!current.Convergence.FinalizationAttempted {
+				return illegal(
+					current,
+					command,
+					"convergence terminal is not ready",
+				)
+			}
+			decision.Convergence = blockedConvergence(current.Convergence)
+			transition.State.Convergence =
+				cloneConvergence(decision.Convergence)
+		}
 	default:
 		return illegal(current, command, "terminal kind is invalid")
 	}
@@ -1689,6 +1878,23 @@ func applyTerminalRequested(
 		)
 	}
 	return nil
+}
+
+func blockedConvergence(source *ConvergenceState) *ConvergenceState {
+	outcome := cloneConvergence(source)
+	if outcome == nil {
+		return nil
+	}
+	if strings.TrimSpace(outcome.Summary) == "" {
+		outcome.Summary = fmt.Sprintf(
+			"Turn could not complete after the %s convergence budget was exhausted.",
+			outcome.Cause,
+		)
+		outcome.PendingActions = []string{
+			"Continue the unfinished work from the retained turn context.",
+		}
+	}
+	return outcome
 }
 
 func applyJournalFinalized(
@@ -1812,6 +2018,7 @@ func terminalJournalOutcome(
 		return EffectCommitJournal, JournalCommitted
 	case decision.Kind == TerminalFailed &&
 		(state.Verification.Action == VerificationActionBlocked ||
+			decision.Convergence != nil ||
 			state.RecoveryRelation != nil &&
 				state.RecoveryRelation.DraftResumed):
 		return EffectSuspendJournal, JournalSuspended

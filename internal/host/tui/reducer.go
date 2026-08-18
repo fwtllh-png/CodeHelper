@@ -195,7 +195,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.phase = PhaseWorking
 		} else if msg.text != "" && msg.phaseHint == "" {
-			if strings.HasPrefix(msg.text, "turn.failed") ||
+			if strings.HasPrefix(msg.text, "turn.incomplete:") {
+				m = m.appendSystem(msg.text)
+				m.phase = PhaseIncomplete
+			} else if strings.HasPrefix(msg.text, "turn.failed") ||
 				strings.HasPrefix(msg.text, "turn.canceled") ||
 				strings.HasPrefix(msg.text, "rejected:") {
 				if m.activeTool != nil {
@@ -258,6 +261,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streamOutIdx = -1
 		m.streamReasonIdx = -1
 		failed := m.phase == PhaseFailed
+		incomplete := m.phase == PhaseIncomplete
 		m = m.finishPendingTurnCard()
 		if m.exploring != nil {
 			m = m.flushExploring()
@@ -271,6 +275,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.renderAssistantMarkdown()
 		if failed {
 			m.phase = PhaseFailed
+			m.doneBreathUntil = time.Time{}
+		} else if incomplete {
+			m.phase = PhaseIncomplete
 			m.doneBreathUntil = time.Time{}
 		} else {
 			m = m.beginDoneBreath()

@@ -504,7 +504,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
             session.sessionId,
           ).snapshot().turns.find((candidate) => candidate.id === message.turnId);
           if (turn === undefined ||
-            (turn.status !== "failed" && turn.status !== "canceled")) {
+            (turn.status !== "incomplete" &&
+              turn.status !== "failed" &&
+              turn.status !== "canceled")) {
             this.#post(createChatRecoveryStatusMessage(
               message.turnId,
               message.action,

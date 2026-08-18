@@ -174,6 +174,70 @@ func TestC3ModelDecisionOwnershipBaseline(t *testing.T) {
 	}
 }
 
+func TestC3ConvergenceBudgetOwnershipBaseline(t *testing.T) {
+	root := convergenceRepositoryRoot(t)
+	for _, identifier := range []string{
+		"maxOutputContinuations",
+		"noProgressProblem",
+		"maxCompletionRepairs",
+		"maxWorkspaceChangeRepairs",
+		"maxDeclarationRepairs",
+	} {
+		if sites := productionIdentifierSites(t, root, identifier); len(sites) != 0 {
+			t.Fatalf(
+				"local convergence terminal %s remains in production: %v",
+				identifier,
+				sites,
+			)
+		}
+	}
+	handler := parseProductionFile(
+		t,
+		root,
+		"internal/runtime/agent/engine/turn_handler.go",
+	)
+	if !fileCalls(handler, "requestConvergence") {
+		t.Fatal("Engine work-step exhaustion does not hand off to Turn Kernel")
+	}
+	if fileHasIdentifier(handler, "CodeResourceExhausted") {
+		t.Fatal("Engine turn loop still chooses a resource-exhausted terminal")
+	}
+	progress := parseProductionFile(
+		t,
+		root,
+		"internal/runtime/agent/engine/progress.go",
+	)
+	if fileHasIdentifier(progress, "CodeResourceExhausted") {
+		t.Fatal("Engine progress policy still chooses a resource-exhausted terminal")
+	}
+	state := parseProductionFile(
+		t,
+		root,
+		"internal/runtime/agent/turnkernel/state.go",
+	)
+	if !structHasNamedFieldType(
+		state,
+		"State",
+		"Convergence",
+		"ConvergenceState",
+	) {
+		t.Fatal("Turn Kernel state does not own convergence")
+	}
+	command := parseProductionFile(
+		t,
+		root,
+		"internal/runtime/agent/turnkernel/command.go",
+	)
+	for _, name := range []string{
+		"ConvergenceRequested",
+		"ConvergenceFinalizationStarted",
+	} {
+		if !hasTypeDeclaration(command, name) {
+			t.Fatalf("Turn Kernel convergence command %q is missing", name)
+		}
+	}
+}
+
 func TestC4TerminalCommitOwnershipBaseline(t *testing.T) {
 	root := convergenceRepositoryRoot(t)
 	kernelFile := parseProductionFile(
@@ -588,6 +652,22 @@ func findFunction(file *ast.File, name string) *ast.FuncDecl {
 	return nil
 }
 
+func hasTypeDeclaration(file *ast.File, name string) bool {
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.TYPE {
+			continue
+		}
+		for _, specification := range general.Specs {
+			typeSpec, ok := specification.(*ast.TypeSpec)
+			if ok && typeSpec.Name.Name == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func functionCalls(function *ast.FuncDecl, name string) bool {
 	if function == nil || function.Body == nil {
 		return false
@@ -609,6 +689,19 @@ func fileCalls(file *ast.File, name string) bool {
 	ast.Inspect(file, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
 		if ok && calledName(call.Fun) == name {
+			found = true
+			return false
+		}
+		return !found
+	})
+	return found
+}
+
+func fileHasIdentifier(file *ast.File, name string) bool {
+	found := false
+	ast.Inspect(file, func(node ast.Node) bool {
+		identifier, ok := node.(*ast.Ident)
+		if ok && identifier.Name == name {
 			found = true
 			return false
 		}

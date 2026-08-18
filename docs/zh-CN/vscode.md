@@ -63,11 +63,16 @@ Approval 或待输入节点之间连续出现的所有非正文事件，统一�
 `Final Result`。完成事件收口时不会删除用户已经看到的正文：已存在的最终后缀会被拆分为
 独立结论，重新采样的最终回答则追加展示。
 Runtime 不根据模型输出中的措辞推断是否完成。结构化 `max_tokens` 或 `incomplete`
-Stop Reason 最多触发两次自动续写；已捕获的 Blocks 会作为上下文重放，并合并进权威
-最终正文。第三次仍未完成时明确失败；Content Filter 停止则不续写并立即失败。可见
-正文为空时触发有界收口修复；Engine 未发布终态便返回时按失败收口。Tool 或 Engine
-Panic 以及类型化 Tool 错误会被限制在 Turn 边界，并投影为唯一且明确的失败终态。
-权限、重试和终态只由类型化错误、协议字段与显式 Metadata 驱动。
+Stop Reason 会触发有界自动续写；已捕获的 Blocks 只作为上下文重放并合并一次。续写
+策略耗尽不会再由局部循环直接判定 Turn 失败。Turn Kernel 会记录类型化 Convergence
+Cause，并在普通工作 Step Budget 之外保留一次 Finalization Sample；该 Sample 只能
+请求输入或调用 `turn_complete`。完成时可以保留已捕获正文；未完成时返回结构化摘要与
+Pending Actions，VS Code 将其展示为可恢复的 `Incomplete` 状态。Content Filter、不安全
+的半截 Tool Call、安全压缩后仍放不进 Context 的请求，以及用户配置的 Token/Cost
+硬上限仍明确失败，因为 Runtime 无法安全越过这些边界。空正文、Repair Budget、
+No-progress Budget 与 Step Budget 耗尽统一进入同一条 Kernel-owned Convergence 路径。
+Tool 或 Engine Panic 以及类型化 Tool 错误仍被限制在 Turn 边界。权限、重试、
+Convergence 与终态只由类型化错误、协议字段与显式 Metadata 驱动。
 命令节点默认折叠：标题只显示执行状态和有界的单行命令缩略内容；展开后分区展示完整
 命令、附加参数与输出。
 已完成的文件编辑节点按 Guard 实际观察到的文件逐行展示，包含语言感知的类型标识和

@@ -95,7 +95,18 @@ const (
 	StepActionRepairWorkspace   StepAction = "repair_workspace"
 	StepActionRepairDeclaration StepAction = "repair_declaration"
 	StepActionVerify            StepAction = "verify"
+	StepActionFinalize          StepAction = "finalize"
+	StepActionBlock             StepAction = "block"
 	StepActionComplete          StepAction = "complete"
+)
+
+type ConvergenceCause string
+
+const (
+	ConvergenceOutputLimit  ConvergenceCause = "output_limit"
+	ConvergenceNoProgress   ConvergenceCause = "no_progress"
+	ConvergenceRepairBudget ConvergenceCause = "repair_budget"
+	ConvergenceStepLimit    ConvergenceCause = "step_limit"
 )
 
 type VerificationAction string
@@ -131,18 +142,66 @@ type ProgressState struct {
 	Stage             ProgressStage `json:"stage,omitempty"`
 }
 
+type ConvergenceState struct {
+	Cause                 ConvergenceCause `json:"cause"`
+	Used                  uint32           `json:"used"`
+	Limit                 uint32           `json:"limit"`
+	RepairKind            RepairKind       `json:"repair_kind,omitempty"`
+	FinalizationAttempted bool             `json:"finalization_attempted,omitempty"`
+	Summary               string           `json:"summary,omitempty"`
+	PendingActions        []string         `json:"pending_actions,omitempty"`
+}
+
+type ConvergencePolicy struct {
+	OutputContinuations uint32 `json:"output_continuations"`
+	ProgressConverge    uint32 `json:"progress_converge"`
+	ProgressFinishOnly  uint32 `json:"progress_finish_only"`
+	ProgressLimit       uint32 `json:"progress_limit"`
+	ResearchConverge    uint32 `json:"research_converge"`
+	ResearchFinishOnly  uint32 `json:"research_finish_only"`
+	ResearchLimit       uint32 `json:"research_limit"`
+}
+
 type Policy struct {
-	CompletionRequired         bool   `json:"completion_required"`
-	StructuredTerminalRequired bool   `json:"structured_terminal_required"`
-	VerificationRequired       bool   `json:"verification_required"`
-	VerificationMustPass       bool   `json:"verification_must_pass"`
-	VerificationMode           string `json:"verification_mode,omitempty"`
-	VerificationOnFailure      string `json:"verification_on_failure,omitempty"`
-	CompletionRepairLimit      uint32 `json:"completion_repair_limit"`
-	WorkspaceRepairLimit       uint32 `json:"workspace_repair_limit"`
-	DeclarationRepairLimit     uint32 `json:"declaration_repair_limit"`
-	VerificationRepairLimit    uint32 `json:"verification_repair_limit"`
-	JournalRequired            bool   `json:"journal_required"`
+	CompletionRequired         bool              `json:"completion_required"`
+	StructuredTerminalRequired bool              `json:"structured_terminal_required"`
+	VerificationRequired       bool              `json:"verification_required"`
+	VerificationMustPass       bool              `json:"verification_must_pass"`
+	VerificationMode           string            `json:"verification_mode,omitempty"`
+	VerificationOnFailure      string            `json:"verification_on_failure,omitempty"`
+	CompletionRepairLimit      uint32            `json:"completion_repair_limit"`
+	WorkspaceRepairLimit       uint32            `json:"workspace_repair_limit"`
+	DeclarationRepairLimit     uint32            `json:"declaration_repair_limit"`
+	VerificationRepairLimit    uint32            `json:"verification_repair_limit"`
+	JournalRequired            bool              `json:"journal_required"`
+	Convergence                ConvergencePolicy `json:"convergence"`
+}
+
+func DefaultConvergencePolicy() ConvergencePolicy {
+	return ConvergencePolicy{
+		OutputContinuations: 2,
+		ProgressConverge:    16,
+		ProgressFinishOnly:  32,
+		ProgressLimit:       48,
+		ResearchConverge:    8,
+		ResearchFinishOnly:  12,
+		ResearchLimit:       16,
+	}
+}
+
+func DefaultPolicy() Policy {
+	return Policy{
+		CompletionRequired:      true,
+		VerificationRequired:    true,
+		VerificationMustPass:    true,
+		VerificationMode:        "hard",
+		VerificationOnFailure:   "fail",
+		CompletionRepairLimit:   2,
+		WorkspaceRepairLimit:    1,
+		DeclarationRepairLimit:  2,
+		VerificationRepairLimit: 1,
+		Convergence:             DefaultConvergencePolicy(),
+	}
 }
 
 type ToolCallState struct {
@@ -180,6 +239,8 @@ type CompletionDecision struct {
 	Summary        string   `json:"summary,omitempty"`
 	Reason         string   `json:"reason,omitempty"`
 	RequiredAction string   `json:"required_action,omitempty"`
+	OutputMode     string   `json:"output_mode,omitempty"`
+	PendingActions []string `json:"pending_actions,omitempty"`
 	Mutation       uint64   `json:"mutation_revision"`
 	ChangedPaths   []string `json:"changed_paths,omitempty"`
 	QualityCalls   []string `json:"quality_call_ids,omitempty"`
@@ -195,9 +256,10 @@ type VerificationState struct {
 }
 
 type TerminalDecision struct {
-	Kind    TerminalKind `json:"kind"`
-	Code    string       `json:"code,omitempty"`
-	Message string       `json:"message,omitempty"`
+	Kind        TerminalKind      `json:"kind"`
+	Code        string            `json:"code,omitempty"`
+	Message     string            `json:"message,omitempty"`
+	Convergence *ConvergenceState `json:"convergence,omitempty"`
 }
 
 type UsageState struct {
@@ -282,6 +344,7 @@ type State struct {
 	OutputEligibility     bool                        `json:"output_eligibility"`
 	RepairBudgets         map[RepairKind]RepairBudget `json:"repair_budgets"`
 	Progress              ProgressState               `json:"progress"`
+	Convergence           *ConvergenceState           `json:"convergence,omitempty"`
 	NextAction            StepAction                  `json:"next_action,omitempty"`
 	LastModelContinued    bool                        `json:"last_model_continued,omitempty"`
 	UnresolvedToolFailure bool                        `json:"unresolved_tool_failure,omitempty"`
@@ -292,21 +355,11 @@ type State struct {
 
 func NewState(intent protocol.TurnIntent, mode string, profileRevision uint64) State {
 	return State{
-		Phase:           PhaseCreated,
-		Intent:          protocol.NormalizeTurnIntent(intent),
-		Mode:            mode,
-		ProfileRevision: profileRevision,
-		Policy: Policy{
-			CompletionRequired:      true,
-			VerificationRequired:    true,
-			VerificationMustPass:    true,
-			VerificationMode:        "hard",
-			CompletionRepairLimit:   2,
-			WorkspaceRepairLimit:    1,
-			DeclarationRepairLimit:  2,
-			VerificationRepairLimit: 1,
-			VerificationOnFailure:   "fail",
-		},
+		Phase:            PhaseCreated,
+		Intent:           protocol.NormalizeTurnIntent(intent),
+		Mode:             mode,
+		ProfileRevision:  profileRevision,
+		Policy:           DefaultPolicy(),
 		OpenCalls:        make(map[string]ToolCallState),
 		ClosedCalls:      make(map[string]ToolResultState),
 		PendingApprovals: make(map[string]ApprovalState),
@@ -328,6 +381,9 @@ func NewStateWithPolicy(
 	policy Policy,
 ) State {
 	state := NewState(intent, mode, profileRevision)
+	if policy.Convergence == (ConvergencePolicy{}) {
+		policy.Convergence = DefaultConvergencePolicy()
+	}
 	state.Policy = policy
 	return state
 }

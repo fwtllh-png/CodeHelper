@@ -27,6 +27,7 @@ import (
 	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
@@ -212,7 +213,7 @@ func TestEngineReplaysCanonicalDuplicateToolCallsWithinTurn(t *testing.T) {
 	}
 }
 
-func TestEngineFailsWhenCompletionRepairRemainsEmpty(t *testing.T) {
+func TestEngineBlocksWhenCompletionRepairRemainsEmpty(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
@@ -223,13 +224,32 @@ func TestEngineFailsWhenCompletionRepairRemainsEmpty(t *testing.T) {
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
 		}},
+		toolCallStream("incomplete-1", completiontool.Name, `{
+			"status":"incomplete",
+			"summary":"No user-facing answer was produced.",
+			"pending_actions":["Produce the requested review."]
+		}`),
 	}}
-	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", nil)
-	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
-		t.Fatalf("result=%+v err=%v, want explicit completion failure", result, err)
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
+		t.Fatal(err)
 	}
-	if result.State == Completed {
-		t.Fatalf("incomplete result reported completed: %+v", result)
+	var terminal Event
+	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", func(event Event) error {
+		if event.State == Failed {
+			terminal = event
+		}
+		return nil
+	})
+	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("result=%+v err=%v, want blocked convergence", result, err)
+	}
+	if result.State != Failed ||
+		terminal.Convergence == nil ||
+		terminal.Convergence.Cause != string(turnkernel.ConvergenceRepairBudget) ||
+		terminal.Completion == nil ||
+		terminal.Completion.Status != "incomplete" {
+		t.Fatalf("blocked result=%+v terminal=%+v", result, terminal)
 	}
 }
 
@@ -265,8 +285,17 @@ func TestWorkspaceChangeIntentRejectsTextOnlyCompletion(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		textStream("I will make the change next."),
 		textStream("I still did not change it."),
+		toolCallStream("incomplete-1", completiontool.Name, `{
+			"status":"incomplete",
+			"summary":"No workspace mutation was produced.",
+			"pending_actions":["Apply the requested workspace change."]
+		}`),
 	}}
-	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
 	var states []State
 	result, err := engine.RunForTurnWithIntentAndAttachments(
 		t.Context(),
@@ -286,8 +315,8 @@ func TestWorkspaceChangeIntentRejectsTextOnlyCompletion(t *testing.T) {
 		t.Fatalf("result state = %q, want failed", result.State)
 	}
 	assertOneTerminal(t, states, Failed)
-	if len(engine.History()) != 0 {
-		t.Fatalf("failed workspace change committed history: %+v", engine.History())
+	if len(engine.History()) == 0 {
+		t.Fatal("blocked workspace change did not retain recovery context")
 	}
 }
 
@@ -379,7 +408,7 @@ func TestEngineDoesNotRepairCompletedPostToolContinuation(t *testing.T) {
 	}
 }
 
-func TestEngineUsesBoundedFinishRouteAfterRepeatedReasoningLimits(t *testing.T) {
+func TestEngineUsesKernelConvergenceAfterRepeatedReasoningLimits(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventReasoningDelta, Text: "completed analysis"},
@@ -389,11 +418,24 @@ func TestEngineUsesBoundedFinishRouteAfterRepeatedReasoningLimits(t *testing.T) 
 			{Type: provider.EventReasoningDelta, Text: " with more detail"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
 		}},
-		textStream("final answer"),
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventReasoningDelta, Text: " and final checks"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"final answer",
+			"output_mode":"exact",
+			"pending_actions":[]
+		}`),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
-		t.Fatal(err)
+	for _, executor := range []tool.Executor{
+		&echoTool{}, &completiontool.Tool{},
+	} {
+		if err := registry.Register(executor, nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 	engine := newEngine(t, runtime, registry)
 	engine.options.ReasoningEffort = "max"
@@ -405,8 +447,8 @@ func TestEngineUsesBoundedFinishRouteAfterRepeatedReasoningLimits(t *testing.T) 
 		t.Fatal(err)
 	}
 	if result.Text != "final answer" ||
-		result.Reasoning != "completed analysis with more detail" ||
-		len(runtime.requests) != 3 {
+		result.Reasoning != "completed analysis with more detail and final checks" ||
+		len(runtime.requests) != 4 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
 	}
 	if len(runtime.requests[0].Tools) == 0 {
@@ -416,15 +458,17 @@ func TestEngineUsesBoundedFinishRouteAfterRepeatedReasoningLimits(t *testing.T) 
 	if continuation.ReasoningEffort != "max" || len(continuation.Tools) == 0 {
 		t.Fatalf("same-effort continuation = %+v", continuation)
 	}
-	finish := runtime.requests[2]
-	if finish.ReasoningEffort != "low" || len(finish.Tools) != 0 ||
-		finish.MaxOutputTokens > 4096 {
+	finish := runtime.requests[3]
+	if finish.ReasoningEffort != "low" || finish.MaxOutputTokens > 4096 {
 		t.Fatalf("finish request = %+v", finish)
+	}
+	if len(finish.Tools) != 1 || finish.Tools[0].Name != completiontool.Name {
+		t.Fatalf("convergence tools = %+v", finish.Tools)
 	}
 	var foundFeedback bool
 	for _, message := range finish.Messages {
 		if message.Role == provider.RoleUser &&
-			strings.Contains(message.Text(), "[finish_after_reasoning_limit]") {
+			strings.Contains(message.Text(), "[convergence_finalization]") {
 			foundFeedback = true
 		}
 	}
@@ -466,7 +510,7 @@ func TestEngineDoesNotUseFinishRouteForPartialToolCall(t *testing.T) {
 	}
 }
 
-func TestEngineFailsAfterBoundedIncompleteContinuations(t *testing.T) {
+func TestEngineFinalizesAfterBoundedIncompleteContinuations(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventTextDelta, Text: "one"},
@@ -480,19 +524,72 @@ func TestEngineFailsAfterBoundedIncompleteContinuations(t *testing.T) {
 			{Type: provider.EventTextDelta, Text: " three"},
 			{Type: provider.EventMessageStop, StopReason: provider.StopReasonIncomplete},
 		}},
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"Done.",
+			"output_mode":"preserve_provisional",
+			"pending_actions":[]
+		}`),
 	}}
 	var states []State
-	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", func(event Event) error {
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", func(event Event) error {
 		states = append(states, event.State)
 		return nil
 	})
-	if err == nil || protocol.CodeOf(err) != protocol.CodeResourceExhausted {
-		t.Fatalf("result=%+v err=%v", result, err)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(runtime.requests) != maxOutputContinuations+1 {
+	if result.Text != "one two three\n\nDone." {
+		t.Fatalf("result=%+v", result)
+	}
+	if len(runtime.requests) != int(turnkernel.DefaultConvergencePolicy().OutputContinuations)+2 {
 		t.Fatalf("requests=%d", len(runtime.requests))
 	}
-	assertOneTerminal(t, states, Failed)
+	assertOneTerminal(t, states, Completed)
+}
+
+func TestEngineBlocksWhenReservedFinalizationHitsOutputLimit(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "one"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: " two"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: " three"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: " closing"},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+		}},
+	}}
+	var terminal Event
+	result, err := newEngine(t, runtime, nil).Run(t.Context(), "review", func(event Event) error {
+		if event.State == Failed {
+			terminal = event
+		}
+		return nil
+	})
+	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if len(runtime.requests) != 4 {
+		t.Fatalf("provider requests = %d, want one reserved finalization", len(runtime.requests))
+	}
+	if terminal.Convergence == nil ||
+		terminal.Convergence.Cause != string(turnkernel.ConvergenceOutputLimit) ||
+		terminal.Convergence.Summary == "" ||
+		len(terminal.Convergence.PendingActions) != 1 {
+		t.Fatalf("terminal = %+v", terminal)
+	}
 }
 
 func TestEngineDoesNotContinueContentFilterStop(t *testing.T) {
@@ -652,10 +749,19 @@ func TestEngineDoesNotClearToolFailureWithTextOnlyPromises(t *testing.T) {
 		textStream("I will retry the failed edit next."),
 		textStream("The remaining fix still needs to be applied."),
 		textStream("Continuing with the repair."),
+		toolCallStream("incomplete-1", completiontool.Name, `{
+			"status":"incomplete",
+			"summary":"The structured tool failure remains unresolved.",
+			"pending_actions":["Retry the failed operation with corrected input."]
+		}`),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(resultErrorTool{}, nil); err != nil {
-		t.Fatal(err)
+	for _, executor := range []tool.Executor{
+		resultErrorTool{}, &completiontool.Tool{},
+	} {
+		if err := registry.Register(executor, nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	result, err := newEngine(t, runtime, registry).RunForTurnWithIntentAndAttachments(
@@ -2296,12 +2402,21 @@ func TestTerminalCompletionFailsClosedWhenFinalMessageExceedsContextBudget(t *te
 	}
 }
 
-func TestWorkspaceChangeGetsOneStructuredRepairBeforeNoChangeConflict(t *testing.T) {
+func TestWorkspaceChangeGetsOneRepairBeforeConvergenceFinalization(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		textStream("done without changing"),
 		textStream("still done without changing"),
+		toolCallStream("incomplete-1", completiontool.Name, `{
+			"status":"incomplete",
+			"summary":"No workspace mutation was observed.",
+			"pending_actions":["Apply the requested workspace change."]
+		}`),
 	}}
-	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
 	engine.options.MaxSteps = 1
 
 	_, err := engine.RunForTurnWithIntentAndAttachments(
@@ -2309,11 +2424,13 @@ func TestWorkspaceChangeGetsOneStructuredRepairBeforeNoChangeConflict(t *testing
 		protocol.TurnIntentWorkspaceChange, nil, func(Event) error { return nil },
 	)
 
-	if err == nil || !strings.Contains(err.Error(), "no observed workspace changes") {
+	if err == nil ||
+		protocol.CodeOf(err) != protocol.CodeConflict ||
+		!strings.Contains(err.Error(), "repair_budget") {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if len(runtime.requests) != 2 {
-		t.Fatalf("provider requests = %d, want one repair sample", len(runtime.requests))
+	if len(runtime.requests) != 3 {
+		t.Fatalf("provider requests = %d, want repair plus finalization", len(runtime.requests))
 	}
 	feedback := runtime.requests[1].Messages[len(runtime.requests[1].Messages)-1].Text()
 	if !strings.Contains(feedback, "required_action=perform_workspace_mutation") ||

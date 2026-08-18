@@ -17,6 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -44,10 +45,12 @@ func (e *Engine) modelStep(
 	sampleID string,
 	reason string,
 	providerRetries uint32,
-	terminalOnly bool,
+	finishOnly bool,
+	convergenceOnly bool,
 	continued *bool,
 	pendingInputInjected *bool,
 	capturedReplay **provider.ReplayState,
+	convergence *turnkernel.ConvergenceRequested,
 	send func(State, Event) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, uint64, error) {
 	if continued != nil {
@@ -58,6 +61,9 @@ func (e *Engine) modelStep(
 	}
 	if capturedReplay != nil {
 		*capturedReplay = nil
+	}
+	if convergence != nil {
+		*convergence = turnkernel.ConvergenceRequested{}
 	}
 	scope := e.runningScope()
 	if scope == nil {
@@ -104,8 +110,11 @@ func (e *Engine) modelStep(
 	var providerAttempt uint32
 	var continuationMessages []provider.Message
 	var continuedBlocks []provider.ContentBlock
-	finishAttempted := terminalOnly
-	finishMode, continuations := false, 0
+	continuations := uint32(0)
+	continuationLimit := scope.spec.Kernel.Convergence.OutputContinuations
+	if convergenceOnly {
+		continuationLimit = 0
+	}
 	baseReasoningEffort := e.reasoningEffort(scope, reason)
 	for attempt := 0; ; attempt++ {
 		var turnContext []provider.Message
@@ -121,15 +130,12 @@ func (e *Engine) modelStep(
 		requestTools := definitions
 		reasoningEffort := baseReasoningEffort
 		nativeSearch := e.options.NativeSearch
-		if finishMode {
-			requestTools = nil
-		}
-		if finishMode || terminalOnly {
+		if convergenceOnly {
 			reasoningEffort = "low"
 			nativeSearch = false
 		}
 		sampleReason := promptcontext.SampleReason(
-			reason, attempt, finishMode || continuations > 0,
+			reason, attempt, continuations > 0,
 		)
 		project := func() contextstore.Snapshot {
 			return contextLedger.Project(contextstore.Projection{
@@ -145,7 +151,7 @@ func (e *Engine) modelStep(
 		window, err := e.runCompactGate(
 			history, snapshot, promptcontext.OutputLimit(
 				e.maxOutputFor(route), reasoningEffort,
-				finishMode || budgetFinishOnly,
+				finishOnly || convergenceOnly || budgetFinishOnly,
 			), phase, true, send,
 		)
 		if err != nil {
@@ -158,19 +164,22 @@ func (e *Engine) modelStep(
 			window, err = e.runCompactGate(
 				history, snapshot, promptcontext.OutputLimit(
 					e.maxOutputFor(route), reasoningEffort,
-					finishMode || budgetFinishOnly,
+					finishOnly || convergenceOnly || budgetFinishOnly,
 				), phase, true, send,
 			)
 			if err != nil {
 				return nil, nil, totalUsage, window.estimated, err
 			}
 		}
-		finishOnly := finishMode || terminalOnly || budgetFinishOnly ||
+		finishOnly = finishOnly || convergenceOnly || budgetFinishOnly ||
 			window.hardLimit > 0 && window.active >= window.hardLimit*85/100
-		if finishOnly && !finishMode {
+		if finishOnly {
 			requestTools = slices.DeleteFunc(
 				append([]provider.ToolDefinition(nil), requestTools...),
 				func(definition provider.ToolDefinition) bool {
+					if convergenceOnly {
+						return !convergenceDefinitionAllowed(definition)
+					}
 					return !finishOnlyDefinitionAllowed(catalog, definition)
 				})
 			reasoningEffort, nativeSearch = "low", false
@@ -336,8 +345,6 @@ func (e *Engine) modelStep(
 			continuationMessages = nil
 			continuedBlocks = nil
 			continuations = 0
-			finishAttempted = false
-			finishMode = false
 			attempt = -1
 			continue
 		}
@@ -347,41 +354,24 @@ func (e *Engine) modelStep(
 				*continued = true
 			}
 			continuedBlocks = appendContinuedBlocks(continuedBlocks, blocks)
-			if finishMode {
-				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
-					protocol.CodeResourceExhausted,
-					"model finish route remained incomplete after one bounded attempt",
-					true,
-					err,
-				)
-			}
-			if incomplete.Reason == provider.StopReasonMaxTokens &&
-				!incomplete.HasToolCallFragment &&
-				reasoningOnlyBlocks(continuedBlocks) &&
-				!finishAttempted && continuations > 0 {
-				if len(blocks) != 0 {
-					continuationMessages = append(
-						continuationMessages,
-						provider.ProducedAssistant(
-							route, cloneBlocks(blocks), e.turn, nil,
-						),
-					)
+			if continuations >= continuationLimit {
+				if incomplete.HasToolCallFragment {
+					return continuedBlocks, nil, totalUsage, lastEstimate,
+						protocol.NewProblem(
+							protocol.CodeResourceExhausted,
+							"model output limit left a partial tool call",
+							true,
+							err,
+						)
 				}
-				continuationMessages = append(continuationMessages, finishOutputFeedback(e.turn))
-				finishAttempted, finishMode, attempt = true, true, -1
-				continue
-			}
-			if continuations >= maxOutputContinuations {
-				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
-					protocol.CodeResourceExhausted,
-					fmt.Sprintf(
-						"model output remained incomplete after %d continuation attempts (%s)",
-						maxOutputContinuations,
-						incomplete.Reason,
-					),
-					true,
-					err,
-				)
+				if convergence != nil {
+					*convergence = turnkernel.ConvergenceRequested{
+						Cause: turnkernel.ConvergenceOutputLimit,
+						Used:  continuations + 1,
+						Limit: continuationLimit + 1,
+					}
+				}
+				return continuedBlocks, nil, totalUsage, lastEstimate, nil
 			}
 			if len(blocks) != 0 {
 				continuationMessages = append(
@@ -407,15 +397,6 @@ func (e *Engine) modelStep(
 			if continued != nil {
 				text := strings.TrimSpace(blocksText(completeBlocks))
 				*continued = strings.HasSuffix(text, ":") || strings.HasSuffix(text, "：")
-			}
-			if finishMode && len(calls) != 0 {
-				message := "model finish route attempted a new tool call"
-				return continuedBlocks, nil, totalUsage, lastEstimate, protocol.NewProblem(
-					protocol.CodeConflict,
-					message,
-					false,
-					nil,
-				)
 			}
 			if capturedReplay != nil {
 				*capturedReplay = replay
@@ -477,8 +458,6 @@ func projectionRecoveryID(
 	return string(recovery.Action) + "\x00" + string(recovery.SourceTurnID)
 }
 
-const maxOutputContinuations = 2
-
 type incompleteModelOutputError struct {
 	Reason              provider.StopReason
 	HasToolCallFragment bool
@@ -501,29 +480,6 @@ tool call or user-facing answer.`,
 	))
 	message.Turn = turn
 	return message
-}
-
-func finishOutputFeedback(turn uint64) provider.Message {
-	message := provider.TextMessage(provider.RoleUser, `[finish_after_reasoning_limit]
-The reasoning phase reached its output limit. Do not call tools or start new
-analysis. Produce one concise user-facing final answer from the evidence already
-present. If the requested operation is not complete, report that blocked outcome
-and its structured failure instead of claiming success.`)
-	message.Turn = turn
-	return message
-}
-
-func reasoningOnlyBlocks(blocks []provider.ContentBlock) bool {
-	meaningful := false
-	for _, block := range blocks {
-		if block.Type != provider.ContentReasoning {
-			return false
-		}
-		if block.Text != "" {
-			meaningful = true
-		}
-	}
-	return meaningful
 }
 
 func appendContinuedBlocks(

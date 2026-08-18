@@ -4712,6 +4712,9 @@
             "mutation_revision": {
               "type": "integer"
             },
+            "output_mode": {
+              "type": "string"
+            },
             "pending_actions": {
               "type": "array",
               "items": {
@@ -5218,6 +5221,40 @@
         "code": {
           "type": "string"
         },
+        "convergence": {
+          "type": "object",
+          "properties": {
+            "cause": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "integer"
+            },
+            "pending_actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "repair_kind": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "used": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "limit",
+            "pending_actions",
+            "summary",
+            "used"
+          ],
+          "additionalProperties": false
+        },
         "message": {
           "type": "string"
         },
@@ -5370,6 +5407,9 @@
             },
             "mutation_revision": {
               "type": "integer"
+            },
+            "output_mode": {
+              "type": "string"
             },
             "pending_actions": {
               "type": "array",
@@ -5574,6 +5614,40 @@
             ],
             "additionalProperties": false
           }
+        },
+        "convergence": {
+          "type": "object",
+          "properties": {
+            "cause": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "integer"
+            },
+            "pending_actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "repair_kind": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "used": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "limit",
+            "pending_actions",
+            "summary",
+            "used"
+          ],
+          "additionalProperties": false
         },
         "cost_known": {
           "type": "boolean"

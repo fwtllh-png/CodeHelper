@@ -63,6 +63,12 @@ void test("Chat presentation freezes every lifecycle label", () => {
     {
       state: "ready",
       trusted: true,
+      snapshot: { turns: [turn("incomplete")] },
+      label: "Incomplete · Progress retained · Continue or retry",
+    },
+    {
+      state: "ready",
+      trusted: true,
       snapshot: { turns: [turn("canceled")] },
       label: "Failure · Turn did not complete · Review reason and retry",
     },

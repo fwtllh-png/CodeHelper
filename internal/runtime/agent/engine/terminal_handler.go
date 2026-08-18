@@ -186,6 +186,9 @@ func (h *turnEmitter) finish(ctx context.Context, result *Result, resultErr *err
 				event = Event{
 					ErrorCode: protocol.ErrorCode(decision.Code),
 					Error:     decision.Message,
+					Convergence: turnkernel.ProtocolConvergence(
+						decision.Convergence,
+					),
 					SecondaryIssues: append(
 						[]TerminalIssue(nil),
 						h.secondary...,

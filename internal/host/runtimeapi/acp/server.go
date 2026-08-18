@@ -2512,6 +2512,16 @@ func (s *Server) advance(active *activeTurn, event protocol.Event) {
 		code, message := protocol.CodeInternal, "turn failed"
 		if data, ok := event.Data.(*protocol.TurnFailedData); ok {
 			code, message = data.Code, data.Message
+			if data.Convergence != nil {
+				if active.output.Len() == 0 {
+					active.output.WriteString(data.Convergence.Summary)
+				}
+				s.replyActiveResult(
+					active,
+					s.turnResult(active, "max_tokens"),
+				)
+				break
+			}
 		}
 		s.replyActiveError(active, &rpcError{
 			Code: codeInternalError, Message: message,

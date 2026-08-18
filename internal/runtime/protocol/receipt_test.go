@@ -67,6 +67,32 @@ func TestExecutionReceiptKeepsUnavailableVerification(t *testing.T) {
 	}
 }
 
+func TestExecutionReceiptAcceptsStructuredConvergenceOutcome(t *testing.T) {
+	receipt := &ExecutionReceiptData{
+		Goal: "write a guide",
+		Completion: &CompletionDeclaration{
+			Status:         "incomplete",
+			Summary:        "The guide is partially complete.",
+			PendingActions: []string{"Continue the remaining sections."},
+			Rejection:      "convergence_blocked",
+		},
+		Convergence: &TurnConvergence{
+			Cause:          "output_limit",
+			Used:           3,
+			Limit:          3,
+			Summary:        "The guide is partially complete.",
+			PendingActions: []string{"Continue the remaining sections."},
+		},
+	}
+	if err := receipt.validate(); err != nil {
+		t.Fatal(err)
+	}
+	receipt.Completion.PendingActions = []string{"Different work."}
+	if err := receipt.validate(); err == nil {
+		t.Fatal("receipt accepted mismatched convergence pending actions")
+	}
+}
+
 func TestExecutionReceiptValidatesSkillSelection(t *testing.T) {
 	valid := ReceiptSkillSelection{
 		Method: "weighted_lexical_v1", CatalogSize: 1024,

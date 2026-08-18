@@ -181,6 +181,90 @@ func TestRepairBudgetResetsOnlyOnStructuredProgress(t *testing.T) {
 	}
 }
 
+func TestRepairExhaustionRequestsKernelConvergence(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentWorkspaceChange)
+	state.Policy.WorkspaceRepairLimit = 1
+	state.ProvisionalOutput = []string{"no changes yet"}
+	first := apply(t, state, EvaluateTurnStep{ProgressKey: "mutation=0"})
+	if first.State.NextAction != StepActionRepairWorkspace {
+		t.Fatalf("first action = %q", first.State.NextAction)
+	}
+	second, err := (Reducer{}).Apply(
+		first.State,
+		EvaluateTurnStep{ProgressKey: "mutation=0"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.State.NextAction != StepActionFinalize ||
+		second.State.Convergence == nil ||
+		second.State.Convergence.Cause != ConvergenceRepairBudget ||
+		second.State.Convergence.RepairKind != RepairWorkspace {
+		t.Fatalf("repair convergence = %+v", second.State)
+	}
+}
+
+func TestConvergenceFinalizationPreservesCapturedOutput(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state.ProvisionalOutput = []string{"captured answer"}
+	state = apply(t, state, ConvergenceRequested{
+		Cause: ConvergenceOutputLimit,
+		Used:  3,
+		Limit: 3,
+	}).State
+	state = apply(t, state, ConvergenceFinalizationStarted{}).State
+	state = apply(t, state, CompletionEvaluated{
+		Candidate: CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "complete",
+			Summary:          "Done.",
+			OutputMode:       "preserve_provisional",
+			CompletionCall:   "complete-1",
+			BatchSize:        1,
+		},
+	}).State
+	if state.Completion == nil || !state.Completion.Accepted ||
+		len(state.ProvisionalOutput) != 2 ||
+		state.ProvisionalOutput[0] != "captured answer" ||
+		state.ProvisionalOutput[1] != "\n\nDone." {
+		t.Fatalf("preserved completion = %+v", state)
+	}
+	evaluated := apply(t, state, EvaluateTurnStep{ProgressKey: "finalized"})
+	if evaluated.State.NextAction != StepActionComplete {
+		t.Fatalf("finalized action = %q", evaluated.State.NextAction)
+	}
+}
+
+func TestIncompleteConvergenceDeclarationBecomesBlockedOutcome(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state = apply(t, state, ConvergenceRequested{
+		Cause: ConvergenceStepLimit,
+		Used:  64,
+		Limit: 64,
+	}).State
+	state = apply(t, state, ConvergenceFinalizationStarted{}).State
+	state = apply(t, state, CompletionEvaluated{
+		Candidate: CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "incomplete",
+			Summary:          "Implementation is partially complete.",
+			PendingActions:   []string{"Run the remaining verification."},
+			CompletionCall:   "incomplete-1",
+			BatchSize:        1,
+		},
+	}).State
+	if state.Completion == nil ||
+		state.Completion.Reason != "convergence_blocked" ||
+		state.Convergence.Summary == "" ||
+		len(state.Convergence.PendingActions) != 1 {
+		t.Fatalf("blocked declaration = %+v", state)
+	}
+	evaluated := apply(t, state, EvaluateTurnStep{ProgressKey: "blocked"})
+	if evaluated.State.NextAction != StepActionBlock {
+		t.Fatalf("blocked action = %q", evaluated.State.NextAction)
+	}
+}
+
 func TestMutationOutputCannotReleaseBeforeCompletionAndVerification(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
 	state = apply(t, state, ToolCallsProposed{
@@ -496,7 +580,7 @@ func TestResearchProgressLeavesTotalSampleCapAfterMutation(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
 	state = apply(t, state, ObserveProgress{
 		Signature:        "mutation=0",
-		CompletedSamples: researchFinishOnlySamples,
+		CompletedSamples: state.Policy.Convergence.ResearchFinishOnly,
 	}).State
 	if state.Progress.Stage != ProgressStageFinishOnly {
 		t.Fatalf("pre-mutation progress = %+v", state.Progress)
@@ -516,7 +600,7 @@ func TestResearchProgressLeavesTotalSampleCapAfterMutation(t *testing.T) {
 	}).State
 	state = apply(t, state, ObserveProgress{
 		Signature:        "mutation=1",
-		CompletedSamples: researchExhaustedSamples,
+		CompletedSamples: state.Policy.Convergence.ResearchLimit,
 	}).State
 	if state.Progress.Stage != ProgressStageNone ||
 		state.Progress.NoProgressSamples != 0 {

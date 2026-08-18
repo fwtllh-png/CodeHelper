@@ -1,10 +1,61 @@
 package acp
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
+
+func TestConvergenceFailureReturnsRecoverablePromptResult(t *testing.T) {
+	var output bytes.Buffer
+	active := &activeTurn{
+		sessionID: "session-1",
+		turnID:    "turn-1",
+		requestID: json.RawMessage(`"prompt-1"`),
+		done:      make(chan struct{}),
+	}
+	server := &Server{
+		output: &frameWriter{buffer: bufio.NewWriter(&output)},
+		active: map[string]*activeTurn{active.sessionID: active},
+	}
+	server.advance(active, protocol.Event{
+		Kind: protocol.EventTurnFailed,
+		Data: &protocol.TurnFailedData{
+			Code:    protocol.CodeConflict,
+			Message: "convergence budget exhausted",
+			Convergence: &protocol.TurnConvergence{
+				Cause:          "output_limit",
+				Used:           3,
+				Limit:          3,
+				Summary:        "The answer is partially complete.",
+				PendingActions: []string{"Continue the answer."},
+			},
+		},
+	})
+	var frame struct {
+		Result struct {
+			StopReason string `json:"stopReason"`
+			Output     string `json:"output"`
+		} `json:"result"`
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(output.Bytes()), &frame); err != nil {
+		t.Fatal(err)
+	}
+	if len(frame.Error) != 0 ||
+		frame.Result.StopReason != "max_tokens" ||
+		frame.Result.Output != "The answer is partially complete." {
+		t.Fatalf("ACP convergence frame = %+v", frame)
+	}
+	select {
+	case <-active.done:
+	default:
+		t.Fatal("convergence result did not settle the active prompt")
+	}
+}
 
 func TestPreparedStartTurnPreservesIntent(t *testing.T) {
 	request := preparedStartTurn(

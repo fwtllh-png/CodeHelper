@@ -45,9 +45,10 @@ const DefaultPosture = "auto"
 
 // Terminal outcomes a task may require.
 const (
-	TerminalCompleted = "completed"
-	TerminalFailed    = "failed"
-	TerminalCanceled  = "canceled"
+	TerminalCompleted  = "completed"
+	TerminalFailed     = "failed"
+	TerminalCanceled   = "canceled"
+	TerminalIncomplete = "incomplete"
 )
 
 // Task is one benchmark scenario.
@@ -980,6 +981,10 @@ func runTurn(
 				switch data.Status {
 				case "completed":
 					observed.terminal = TerminalCompleted
+					return nil
+				case "incomplete":
+					observed.terminal = TerminalIncomplete
+					observed.terminalDetail = data.Message
 					return nil
 				case "failed":
 					observed.terminal = TerminalFailed

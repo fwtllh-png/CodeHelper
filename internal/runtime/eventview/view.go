@@ -76,6 +76,7 @@ type TerminalUpdate struct {
 	Base
 	Status, Message string
 	Code            protocol.ErrorCode
+	Convergence     *protocol.TurnConvergence
 }
 type IgnoredUpdate struct{ Base }
 
@@ -156,7 +157,14 @@ func Project(event protocol.Event) (Update, error) {
 	case *protocol.TurnCompletedData:
 		return TerminalUpdate{Base: base, Status: "completed", Message: data.Text}, nil
 	case *protocol.TurnFailedData:
-		return TerminalUpdate{Base: base, Status: "failed", Code: data.Code, Message: data.Message}, nil
+		status := "failed"
+		if data.Convergence != nil {
+			status = "incomplete"
+		}
+		return TerminalUpdate{
+			Base: base, Status: status, Code: data.Code,
+			Message: data.Message, Convergence: data.Convergence,
+		}, nil
 	case *protocol.TurnCanceledData:
 		return TerminalUpdate{Base: base, Status: "canceled", Code: protocol.CodeCanceled, Message: data.Reason}, nil
 	case *protocol.OperationRejectedData:

@@ -7,6 +7,8 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -73,8 +75,8 @@ func TestFinishOnlyAllowsMutationAndQualityTools(t *testing.T) {
 	}
 }
 
-func TestWorkspaceTurnStopsAfterFortyEightNoProgressSamples(t *testing.T) {
-	streams := make([]provider.Stream, 0, 48)
+func TestWorkspaceTurnFinalizesAfterNoProgressBudget(t *testing.T) {
+	streams := make([]provider.Stream, 0, 49)
 	for index := range 48 {
 		streams = append(streams, toolCallStream(
 			fmt.Sprintf("call-%d", index),
@@ -82,29 +84,45 @@ func TestWorkspaceTurnStopsAfterFortyEightNoProgressSamples(t *testing.T) {
 			fmt.Sprintf(`{"text":"read-%d"}`, index),
 		))
 	}
+	streams = append(streams, toolCallStream(
+		"incomplete-1",
+		completiontool.Name,
+		`{"status":"incomplete","summary":"No workspace change was produced.","pending_actions":["Apply the requested workspace change."]}`,
+	))
 	runtime := &scriptedProvider{streams: streams}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
-		t.Fatal(err)
+	for _, executor := range []tool.Executor{
+		&echoTool{}, &completiontool.Tool{},
+	} {
+		if err := registry.Register(executor, nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 	engine := newEngine(t, runtime, registry)
 	engine.options.MaxSteps = 64
 
+	var terminal Event
 	_, err := engine.RunForTurnWithIntentAndAttachments(
 		t.Context(),
 		"no-progress-turn",
 		"modify the workspace",
 		protocol.TurnIntentWorkspaceChange,
 		nil,
-		func(Event) error { return nil },
+		func(event Event) error {
+			if event.State == Failed {
+				terminal = event
+			}
+			return nil
+		},
 	)
 	if err == nil ||
-		protocol.CodeOf(err) != protocol.CodeResourceExhausted ||
-		!strings.Contains(err.Error(), "no structured progress for 48") {
+		protocol.CodeOf(err) != protocol.CodeConflict ||
+		terminal.Convergence == nil ||
+		terminal.Convergence.Cause != string(turnkernel.ConvergenceNoProgress) {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if len(runtime.requests) != 48 {
-		t.Fatalf("provider requests = %d, want 48", len(runtime.requests))
+	if len(runtime.requests) != 49 {
+		t.Fatalf("provider requests = %d, want 49", len(runtime.requests))
 	}
 	assertProgressFeedback := func(requestIndex int, stage string) {
 		t.Helper()
@@ -123,24 +141,6 @@ func TestWorkspaceTurnStopsAfterFortyEightNoProgressSamples(t *testing.T) {
 	}
 	assertProgressFeedback(16, "converge")
 	assertProgressFeedback(32, "finish_only")
-}
-
-func TestNoProgressProblemDistinguishesResearchAndStalledWork(t *testing.T) {
-	research := noProgressProblem(progressObservation{
-		observedSamples:   16,
-		noProgressSamples: 1,
-		readOnlyResearch:  true,
-	})
-	if !strings.Contains(research.Error(), "bounded total of 16") {
-		t.Fatalf("research error = %v", research)
-	}
-	stalled := noProgressProblem(progressObservation{
-		observedSamples:   16,
-		noProgressSamples: 1,
-	})
-	if !strings.Contains(stalled.Error(), "no structured progress for 1") {
-		t.Fatalf("stalled error = %v", stalled)
-	}
 }
 
 func TestReadOnlyTurnStopsAfterSixteenTotalSamples(t *testing.T) {

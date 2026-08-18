@@ -965,20 +965,18 @@ func TestChildAgentReadOnlyOverrideRunsWritingStance(t *testing.T) {
 	}
 }
 
-func TestChildAgentStepQuotaEndsTurn(t *testing.T) {
-	// The child's step quota is its own, not the parent's: one step is enough to
-	// ask for a tool call and not enough to act on the answer, so the turn must
-	// end as errored instead of looping on the parent's larger quota.
+func TestChildAgentStepQuotaUsesReservedFinalization(t *testing.T) {
+	// The child's work-step quota is its own, not the parent's. Exhausting it
+	// reserves one finalization Sample so the child can close structurally
+	// without continuing the normal work loop.
 	session := openChildSession(t, "subagent-steps", func(overrides *config.Overrides) {
 		steps := 1
 		overrides.SubagentMaxSteps = &steps
 	})
 	result := runChild(t, session, subagent.RoleExplore)
-	if result.Status != subagent.StatusErrored {
-		t.Fatalf("status = %q, want errored: %+v", result.Status, result)
-	}
-	if !unresolvedContains(result, "exceeded 1 steps") {
-		t.Fatalf("unresolved = %v", result.Unresolved)
+	if result.Status != subagent.StatusCompleted ||
+		!strings.Contains(result.Summary, "work-step budget ended") {
+		t.Fatalf("result = %+v", result)
 	}
 }
 

@@ -199,16 +199,21 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
     Wait，Tool Call 继续同一个 Turn，被接受的 `turn_complete` 才结束 Turn。
     Provider `message_stop` 只结束一次 Sample；普通模型正文保持 Provisional，不能完成
     Turn。对于 `status=complete`，声明中的 `summary` 是精确的用户可见 Final Output，
-    Runtime 无需额外 Model Sample 即可发布。Runtime 不根据正文措辞推断必需输入或完成
-    状态。Child Executor 没有 Input Host，不能等待用户输入，但仍必须通过 Tool Call
-    继续或通过 `turn_complete` 完成。
-11. `EvaluateTurnStep` 由 Reducer 选择 Repair、Verification 或 Complete。
+    Runtime 无需额外 Model Sample 即可发布。Convergence Finalization 也可以使用
+    `output_mode=preserve_provisional` 保留已捕获正文并追加简短收尾。Runtime 不根据
+    正文措辞推断必需输入或完成状态。Child Executor 没有 Input Host，不能等待用户
+    输入，但仍必须通过 Tool Call 继续或通过 `turn_complete` 完成。
+11. `EvaluateTurnStep` 由 Reducer 选择 Repair、Verification、Finalize、Block 或
+    Complete。Output Continuation、Repair、No-progress 与普通 Work Step Limit 只会
+    请求类型化 Kernel Convergence，不会由 Engine 或 Provider 局部循环直接决定终态
+    错误。Kernel 允许一次只保留 Terminal/Input 能力的 Finalization Sample。Complete
+    进入正常 Commit；Incomplete 记录用于恢复的摘要与 Pending Actions。
 12. Verification Executor 通过 `VerificationFinished` 返回证据；Reducer 选择 Passed、
     Repair、Reported、Blocked、Failed 或 Reverted，并独占 Repair Budget。
 13. Engine 提交 `TerminalRequested`；Reducer 选择 Completed、Failed 或 Canceled。
     随后 Journal Commit/Suspend/Rollback 作为 Durable Effect 执行，并返回
     `JournalResultReceived`。Suspend 会为结构化绑定的 Continue Turn 保留
-    Verification-blocked Draft。
+    Verification-blocked 或 Convergence-blocked 修改。
 14. Scope 准备带 Revision 与 Digest 的 `SessionDelta`，包含 History、Usage、Cost、
     Working Set、Evidence、Failures 与 Compaction State。
 15. Runtime 为 Usage 与 Latency 冻结同一份带 Digest 的

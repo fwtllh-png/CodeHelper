@@ -19,7 +19,8 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 4. [知识文档体系建设方案](./knowledge-base-plan.md)
 5. [架构设计](./architecture.md)
 6. [安全模型](./security.md)
-7. [本地开发与脚本](./development.md)
+7. [源码阅读路线指南](./reading-guide.md)
+8. [本地开发与脚本](./development.md)
 
 ### 我要使用 CodeHelper
 
@@ -44,8 +45,9 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 1. [架构设计](./architecture.md)
 2. [安全模型](./security.md)
 3. [本地开发与脚本](./development.md)
-4. [Agent 指南](./agent-guide.md)
-5. [TUI 与 VS Code 体验契约](./experience.md)
+4. [源码阅读路线指南](./reading-guide.md)
+5. [Agent 指南](./agent-guide.md)
+6. [TUI 与 VS Code 体验契约](./experience.md)
 6. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
 7. [文档治理](./documentation-governance.md)
 8. [后续规划](./roadmap.md)

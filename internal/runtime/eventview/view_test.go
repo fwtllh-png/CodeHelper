@@ -25,6 +25,33 @@ func TestProjectUsesProtocolTraitsAndTerminalSemantics(t *testing.T) {
 	}
 }
 
+func TestProjectTreatsConvergenceAsStructuredIncomplete(t *testing.T) {
+	event, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &protocol.TurnFailedData{
+		Code: protocol.CodeConflict, Message: "turn needs continuation",
+		Convergence: &protocol.TurnConvergence{
+			Cause: "step_limit", Used: 4, Limit: 4,
+			Summary:        "Progress retained.",
+			PendingActions: []string{"Continue the remaining work."},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	update, err := Project(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal, ok := update.(TerminalUpdate)
+	if !ok || terminal.Status != "incomplete" ||
+		terminal.Convergence == nil ||
+		terminal.Convergence.Cause != "step_limit" {
+		t.Fatalf("update = %+v", update)
+	}
+}
+
 func TestProjectFailsClosedForUnknownEvent(t *testing.T) {
 	_, err := Project(protocol.Event{Kind: "future.event"})
 	if err == nil {

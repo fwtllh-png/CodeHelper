@@ -180,8 +180,15 @@ func TestWorkspaceChangeReceiptMatchesTerminalOutcome(t *testing.T) {
 		}
 		if receipt.Outcome != "" || len(receipt.Changes) != 0 ||
 			receipt.WorkspaceOutcome == nil ||
-			receipt.WorkspaceOutcome.Status != "unchanged" {
+			receipt.WorkspaceOutcome.Status != "unchanged" ||
+			receipt.Convergence == nil ||
+			receipt.Convergence.Cause != string(turnkernel.ConvergenceRepairBudget) {
 			t.Fatalf("failed receipt = %+v", receipt)
+		}
+		failed, _ := terminal.Data.(*protocol.TurnFailedData)
+		if failed == nil || failed.Convergence == nil ||
+			failed.Convergence.Cause != receipt.Convergence.Cause {
+			t.Fatalf("failed terminal = %+v", terminal.Data)
 		}
 	})
 
@@ -257,10 +264,15 @@ func runWorkspaceChangeTurn(
 		t.Fatal(err)
 	}
 	var receipt *protocol.ExecutionReceiptData
+	var observed []protocol.Event
 	deadline := time.After(3 * time.Second)
 	for {
 		select {
 		case event := <-events:
+			observed = append(observed, event)
+			if data, ok := event.Data.(*protocol.OperationRejectedData); ok {
+				t.Fatalf("turn operation rejected: %+v", data)
+			}
 			if data, ok := event.Data.(*protocol.ExecutionReceiptData); ok {
 				receipt = data
 			}
@@ -271,7 +283,7 @@ func runWorkspaceChangeTurn(
 				return receipt, event
 			}
 		case <-deadline:
-			t.Fatal("turn did not reach a terminal event")
+			t.Fatalf("turn did not reach a terminal event: %+v", observed)
 		}
 	}
 }

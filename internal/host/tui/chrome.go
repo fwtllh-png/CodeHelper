@@ -137,6 +137,10 @@ func (m Model) renderPhaseStrip() string {
 		label = "approval needed"
 		style = stylePhaseWait
 		prefix = "!"
+	case PhaseIncomplete:
+		label = "incomplete"
+		style = stylePhaseWait
+		prefix = "!"
 	case PhaseFailed:
 		label = "failed"
 		style = stylePhaseFail
@@ -224,7 +228,7 @@ func (m Model) recomputePhase() Model {
 		m.phase = PhaseTyping
 		return m
 	}
-	if m.phase == PhaseFailed {
+	if m.phase == PhaseFailed || m.phase == PhaseIncomplete {
 		return m
 	}
 	m.phase = PhaseIdle

@@ -226,11 +226,12 @@ Usage events persist request byte counts plus SHA-256 logical and transport
 digests, never prompt content. Request-byte savings are transport evidence and
 are not reported as token savings.
 
-`execution.max_steps` is a hard safety and cost bound, not a target. The
+`execution.max_steps` bounds normal work, not structured finalization. The
 default is 256 for coding Turns and the supported range is 1-1000. For budgets
 of at least 64 steps, Runtime injects one convergence warning with 16-32 steps
-remaining so the model can finish a coherent result or declare concrete
-`pending_actions` instead of being terminated without notice.
+remaining. Exhausting normal work requests one Kernel-owned finalization Sample
+outside that budget; it can only request required input or declare complete or
+incomplete state. It cannot continue exploration or mutations.
 
 The Agent also tracks consecutive samples without structured progress. This is
 not a 16-step execution limit for active workspace work. At 16 no-progress
@@ -240,14 +241,21 @@ completion (`exec_command` /
 `write_stdin`), required user input, quality checks, plan updates, and
 completion. The Provider projection and Tool executor share this allowlist, so
 a tool advertised for the current batch cannot be rejected as terminal-only.
-At 48 Runtime stops the Turn with an explicit no-progress error. Any mutation,
-completed plan step, verification, or completion resets the counter
-immediately. Answer and Plan Turns additionally count newly read paths and new
-evidence; Operation Turns count successful business Tool results. The progress
-state is durable across Runtime recovery. A still-read-only Answer or Plan Turn
-uses a tighter 8/12/16 total-sample research guard. That guard stops applying
-as soon as Runtime observes a workspace mutation, even if the original intent
-was classified as Answer.
+At 48 the Kernel enters the same structured finalization path instead of
+raising a local no-progress error. A complete declaration commits normally; an
+incomplete declaration records a recoverable summary and concrete pending
+actions. Any mutation, completed plan step, verification, or completion resets
+the counter immediately. Answer and Plan Turns additionally count newly read
+paths and new evidence; Operation Turns count successful business Tool results.
+The progress and convergence states are durable across Runtime recovery. A
+still-read-only Answer or Plan Turn uses a tighter 8/12/16 total-sample
+research guard. That guard stops applying as soon as Runtime observes a
+workspace mutation, even if the original intent was classified as Answer.
+
+These convergence budgets are different from physical or user-configured hard
+boundaries. Runtime does not spend beyond Token/Cost ceilings, infer a partial
+Tool Call, bypass a content filter, or sample a request that cannot fit after
+safe compaction.
 
 Unknown TOML fields are rejected. This is intentional: a misspelled safety or
 budget field must not look configured while having no effect.

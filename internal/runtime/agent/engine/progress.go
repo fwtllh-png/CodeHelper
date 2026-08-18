@@ -85,33 +85,6 @@ func noProgressFeedback(
 	return message
 }
 
-func noProgressProblem(
-	observation progressObservation,
-) error {
-	if observation.readOnlyResearch {
-		return protocol.NewProblem(
-			protocol.CodeResourceExhausted,
-			fmt.Sprintf(
-				"research turn reached the bounded total of %d model steps "+
-					"without completing",
-				observation.observedSamples,
-			),
-			false,
-			nil,
-		)
-	}
-	return protocol.NewProblem(
-		protocol.CodeResourceExhausted,
-		fmt.Sprintf(
-			"agent made no structured progress for %d model steps; "+
-				"stopped before exhausting the hard step budget",
-			observation.noProgressSamples,
-		),
-		false,
-		nil,
-	)
-}
-
 func withFinishOnly(ctx context.Context) context.Context {
 	return context.WithValue(ctx, finishOnlyContextKey{}, true)
 }
@@ -140,6 +113,15 @@ func finishOnlyToolAllowed(name string, descriptor tool.Descriptor) bool {
 		"quality_diagnostics",
 		"quality_review",
 		"quality_verify":
+		return true
+	default:
+		return false
+	}
+}
+
+func convergenceDefinitionAllowed(definition provider.ToolDefinition) bool {
+	switch definition.Name {
+	case "turn_complete", "request_user_input":
 		return true
 	default:
 		return false

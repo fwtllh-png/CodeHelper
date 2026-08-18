@@ -610,7 +610,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			provider.ProducedAssistant(spec.Route, blocks, e.turn, nil),
 		)
 		toolCtx := ctx
-		if progress.stage == turnkernel.ProgressStageFinishOnly {
+		if progress.stage == turnkernel.ProgressStageFinishOnly ||
+			kernel.convergence() != nil {
 			toolCtx = withFinishOnly(ctx)
 		}
 		results, err := e.runToolsWithCache(
@@ -654,6 +655,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		kernel: kernel,
 	}
 	sampleReason := promptcontext.SampleNormal
+	convergenceFinalization := false
 	invalidateCompletion := func(reason string) error {
 		current := kernel.completion()
 		if current == nil || !current.Accepted {
@@ -726,6 +728,74 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			return err
 		}
 		return nil
+	}
+	blockTurn := func() error {
+		convergence := kernel.convergence()
+		if convergence == nil {
+			return protocol.NewProblem(
+				protocol.CodeInternal,
+				"kernel requested blocked finalization without convergence state",
+				false,
+				nil,
+			)
+		}
+		message := fmt.Sprintf(
+			"turn blocked after %s convergence budget was exhausted (%d/%d)",
+			convergence.Cause,
+			convergence.Used,
+			convergence.Limit,
+		)
+		blocked := protocol.NewProblem(
+			protocol.CodeConflict,
+			message,
+			true,
+			nil,
+		)
+		pricing := e.activeRoute().Model().Pricing
+		cost := estimateCost(pricing, sampled) + toolSpent.cost
+		costKnown := pricingKnown(pricing, sampled) &&
+			(toolSpent.samples == 0 || toolSpent.known)
+		result.CostUSD = cost
+		terminal.setPrimary(blocked)
+		snapshot, err := e.finalizeTerminalContext(
+			transaction,
+			true,
+			false,
+			result.Usage,
+			cost,
+			send,
+		)
+		if err != nil {
+			return errors.Join(blocked, err)
+		}
+		contextFinalized = true
+		terminal.setContextBudget(snapshot)
+		if err := finalizeKernel(
+			turnkernel.TerminalRequested{
+				FailureCode:    string(protocol.CodeConflict),
+				FailureMessage: message,
+				Convergence:    convergence,
+			},
+			nil,
+		); err != nil {
+			return errors.Join(blocked, err)
+		}
+		convergence = kernel.convergence()
+		result.State = Failed
+		if err := send(Failed, Event{
+			ErrorCode:    protocol.CodeConflict,
+			Error:        message,
+			Convergence:  turnkernel.ProtocolConvergence(convergence),
+			Usage:        &result.Usage,
+			CostUSD:      cost,
+			CostKnown:    costKnown,
+			Verification: result.Verification,
+			Completion:   kernel.blockedCompletionDeclaration(),
+		}); err != nil {
+			contextFinalized = false
+			return errors.Join(blocked, err)
+		}
+		return blocked
 	}
 	advanceTurn := func() (bool, error) {
 		var outcome verifyOutcome
@@ -817,6 +887,23 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					nil,
 				)
 			}
+		case turnkernel.StepActionFinalize:
+			if err := kernel.beginConvergenceFinalization(); err != nil {
+				return false, err
+			}
+			transaction = append(
+				transaction,
+				convergenceFeedback(
+					e.turn,
+					kernel.convergence(),
+					kernel.hasProvisionalOutput(),
+				),
+			)
+			sampleReason = promptcontext.SampleConvergence
+			convergenceFinalization = true
+			return false, nil
+		case turnkernel.StepActionBlock:
+			return true, blockTurn()
 		case turnkernel.StepActionComplete:
 		default:
 			return false, protocol.NewProblem(
@@ -834,8 +921,28 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		return true, nil
 	}
-	for step := 0; step <
-		spec.Limits.MaxSteps+kernel.repairStepTotal(); step++ {
+	for step := 0; ; step++ {
+		if kernel.convergence() == nil &&
+			step >= spec.Limits.MaxSteps+kernel.repairStepTotal() {
+			limit := uint32(spec.Limits.MaxSteps + kernel.repairStepTotal())
+			if err := kernel.requestConvergence(
+				turnkernel.ConvergenceRequested{
+					Cause: turnkernel.ConvergenceStepLimit,
+					Used:  uint32(step),
+					Limit: limit,
+				},
+			); err != nil {
+				return result, err
+			}
+			completed, err := advanceTurn()
+			if err != nil {
+				return result, err
+			}
+			if completed {
+				return result, nil
+			}
+			continue
+		}
 		if e.appendSteering(&transaction) && kernel.completion() != nil {
 			if err := invalidateCompletion("turn_steered"); err != nil {
 				return result, err
@@ -858,15 +965,22 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if err != nil {
 			return result, err
 		}
-		if progress.stage == turnkernel.ProgressStageExhausted {
-			return result, noProgressProblem(progress)
-		}
 		if progress.stageChanged &&
 			progress.stage != turnkernel.ProgressStageNone {
 			transaction = append(
 				transaction,
 				noProgressFeedback(e.turn, progress),
 			)
+		}
+		if kernel.convergence() != nil && !convergenceFinalization {
+			completed, err := advanceTurn()
+			if err != nil {
+				return result, err
+			}
+			if completed {
+				return result, nil
+			}
+			continue
 		}
 		sampleID := kernel.pendingSampleID()
 		if sampleID == "" {
@@ -889,6 +1003,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		var modelOutputContinued bool
 		var pendingInputInjected bool
 		var modelReplay *provider.ReplayState
+		var modelConvergence turnkernel.ConvergenceRequested
 		modelSend := func(state State, event Event) error {
 			if event.ProviderRetry != nil {
 				if err := kernel.providerRetry(
@@ -917,11 +1032,14 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			kernel.providerRetries(sampleID),
 			progress.stage == turnkernel.ProgressStageFinishOnly &&
 				turnkernel.IsResearchIntent(kernel.intent()),
+			convergenceFinalization,
 			&modelOutputContinued,
 			&pendingInputInjected,
 			&modelReplay,
+			&modelConvergence,
 			modelSend,
 		)
+		convergenceFinalization = false
 		sampleReason = promptcontext.SampleNormal
 		sampleCost := estimateCost(spec.Route.Model().Pricing, usage)
 		sampleCostKnown := pricingKnown(
@@ -942,6 +1060,11 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		if err != nil {
 			return result, err
+		}
+		if modelConvergence.Cause != "" {
+			if err := kernel.requestConvergence(modelConvergence); err != nil {
+				return result, err
+			}
 		}
 		if pendingInputInjected && kernel.completion() != nil {
 			if err := invalidateCompletion("input_injected"); err != nil {
@@ -1071,20 +1194,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			}
 		}
 	}
-	return result, protocol.NewProblem(
-		protocol.CodeResourceExhausted,
-		fmt.Sprintf(
-			"engine exceeded %d steps (raise execution.max_steps, CODEHELPER_MAX_STEPS, or --max-steps)",
-			spec.Limits.MaxSteps,
-		),
-		false,
-		nil,
-	)
 }
-
-const maxCompletionRepairs = 2
-const maxWorkspaceChangeRepairs = 1
-const maxDeclarationRepairs = 2
 
 func stepBudgetWarningRemaining(maxSteps, step int) int {
 	if maxSteps < 64 {
@@ -1117,6 +1227,46 @@ func contextWindowFeedback(turn uint64) provider.Message {
 	message := provider.TextMessage(provider.RoleUser,
 		"[context_window]\nStop broad exploration. Complete the smallest coherent "+
 			"verified result and declare any concrete remaining work.")
+	message.Turn = turn
+	return message
+}
+
+func convergenceFeedback(
+	turn uint64,
+	convergence *turnkernel.ConvergenceState,
+	hasProvisionalOutput bool,
+) provider.Message {
+	cause, used, limit := "unknown", uint32(0), uint32(0)
+	repairKind := ""
+	if convergence != nil {
+		cause = string(convergence.Cause)
+		used = convergence.Used
+		limit = convergence.Limit
+		repairKind = string(convergence.RepairKind)
+	}
+	message := provider.TextMessage(
+		provider.RoleUser,
+		fmt.Sprintf(
+			"[convergence_finalization]\n"+
+				"cause=%s\nused=%d\nlimit=%d\nrepair_kind=%s\n"+
+				"captured_output=%t\nrequired_action=choose_structured_turn_state\n"+
+				"This is the single reserved finalization sample outside the normal "+
+				"work budget. Do not continue exploration, implementation, or a long "+
+				"user-facing body. Call turn_complete now. If all requested work is "+
+				"complete and captured_output=true, use status=complete, "+
+				"output_mode=preserve_provisional, a concise closing summary, and "+
+				"pending_actions=[]. If the captured output is unavailable, use "+
+				"output_mode=exact with the complete concise answer in summary. If any "+
+				"work remains, use status=incomplete with a concrete progress summary "+
+				"and pending_actions; Runtime will record a resumable blocked outcome. "+
+				"Use request_user_input only when completion genuinely depends on the user.",
+			cause,
+			used,
+			limit,
+			repairKind,
+			hasProvisionalOutput,
+		),
+	)
 	message.Turn = turn
 	return message
 }

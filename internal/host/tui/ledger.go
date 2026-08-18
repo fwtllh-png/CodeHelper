@@ -9,13 +9,14 @@ import (
 type ShellPhase string
 
 const (
-	PhaseIdle     ShellPhase = "idle"
-	PhaseTyping   ShellPhase = "typing"
-	PhaseWorking  ShellPhase = "working"
-	PhaseWaiting  ShellPhase = "waiting"
-	PhaseApproval ShellPhase = "approval"
-	PhaseDone     ShellPhase = "done"
-	PhaseFailed   ShellPhase = "failed"
+	PhaseIdle       ShellPhase = "idle"
+	PhaseTyping     ShellPhase = "typing"
+	PhaseWorking    ShellPhase = "working"
+	PhaseWaiting    ShellPhase = "waiting"
+	PhaseApproval   ShellPhase = "approval"
+	PhaseIncomplete ShellPhase = "incomplete"
+	PhaseDone       ShellPhase = "done"
+	PhaseFailed     ShellPhase = "failed"
 )
 
 // ToolFamily maps tool names to a short verb for receipt grammar.

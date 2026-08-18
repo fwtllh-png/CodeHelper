@@ -22,17 +22,7 @@ func newEngineTurnKernel(
 	metrics *telemetry.Metrics,
 	policies ...turnkernel.Policy,
 ) *engineTurnKernel {
-	policy := turnkernel.Policy{
-		CompletionRequired:      true,
-		VerificationRequired:    true,
-		VerificationMustPass:    true,
-		VerificationMode:        VerifyModeHard,
-		VerificationOnFailure:   VerifyOnFailureFail,
-		CompletionRepairLimit:   maxCompletionRepairs,
-		WorkspaceRepairLimit:    maxWorkspaceChangeRepairs,
-		DeclarationRepairLimit:  maxDeclarationRepairs,
-		VerificationRepairLimit: 1,
-	}
+	policy := turnkernel.DefaultPolicy()
 	if len(policies) != 0 {
 		policy = policies[0]
 	}

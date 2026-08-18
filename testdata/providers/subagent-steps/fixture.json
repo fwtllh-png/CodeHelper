@@ -2,8 +2,9 @@
   "protocol": "openai_chat",
   "path": "/chat/completions",
   "model": "fixture-model",
-  "streams": ["tool-call.sse"],
+  "streams": ["tool-call.sse", "finalize.sse"],
   "expected_request_fragments": [
-    ["count the packages"]
+    ["count the packages"],
+    ["convergence_finalization", "\"name\":\"turn_complete\""]
   ]
 }

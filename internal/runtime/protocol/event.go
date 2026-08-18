@@ -337,6 +337,7 @@ type ToolResultData struct {
 type CompletionDeclaration struct {
 	Status              string   `json:"status"`
 	Summary             string   `json:"summary"`
+	OutputMode          string   `json:"output_mode,omitempty"`
 	ChangedPaths        []string `json:"changed_paths"`
 	VerificationCallIDs []string `json:"verification_call_ids"`
 	PendingActions      []string `json:"pending_actions"`
@@ -589,6 +590,11 @@ func (d *CompletionDeclaration) validate() error {
 	if strings.TrimSpace(d.Summary) == "" {
 		return errors.New("completion declaration is incomplete")
 	}
+	switch d.OutputMode {
+	case "", "exact", "preserve_provisional":
+	default:
+		return errors.New("completion declaration output mode is invalid")
+	}
 	switch d.Status {
 	case "complete":
 		if len(d.PendingActions) != 0 {
@@ -597,6 +603,9 @@ func (d *CompletionDeclaration) validate() error {
 	case "incomplete":
 		if len(d.PendingActions) == 0 || d.Accepted {
 			return errors.New("incomplete declaration is inconsistent")
+		}
+		if d.OutputMode == "preserve_provisional" {
+			return errors.New("incomplete declaration cannot preserve provisional output")
 		}
 		for _, action := range d.PendingActions {
 			if strings.TrimSpace(action) == "" {
@@ -719,9 +728,10 @@ func (d *TurnCompletedData) validate() error {
 }
 
 type TurnFailedData struct {
-	Code            ErrorCode       `json:"code"`
-	Message         string          `json:"message"`
-	SecondaryIssues []TerminalIssue `json:"secondary_issues,omitempty"`
+	Code            ErrorCode        `json:"code"`
+	Message         string           `json:"message"`
+	Convergence     *TurnConvergence `json:"convergence,omitempty"`
+	SecondaryIssues []TerminalIssue  `json:"secondary_issues,omitempty"`
 }
 
 func (*TurnFailedData) eventKind() EventKind { return EventTurnFailed }
@@ -733,6 +743,42 @@ func (d *TurnFailedData) validate() error {
 	for _, issue := range d.SecondaryIssues {
 		if issue.Phase == "" || issue.Code == "" || issue.Message == "" {
 			return errors.New("turn failure secondary issue requires phase, code, and message")
+		}
+	}
+	if d.Convergence != nil {
+		if err := d.Convergence.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type TurnConvergence struct {
+	Cause          string   `json:"cause"`
+	Used           uint32   `json:"used"`
+	Limit          uint32   `json:"limit"`
+	RepairKind     string   `json:"repair_kind,omitempty"`
+	Summary        string   `json:"summary"`
+	PendingActions []string `json:"pending_actions"`
+}
+
+func (c TurnConvergence) validate() error {
+	switch c.Cause {
+	case "output_limit", "no_progress", "repair_budget", "step_limit":
+	default:
+		return errors.New("turn convergence cause is invalid")
+	}
+	if c.Used == 0 || c.Limit == 0 || c.Used < c.Limit ||
+		strings.TrimSpace(c.Summary) == "" ||
+		len(c.PendingActions) == 0 {
+		return errors.New("turn convergence outcome is incomplete")
+	}
+	if (c.Cause == "repair_budget") != (c.RepairKind != "") {
+		return errors.New("turn convergence repair kind is inconsistent")
+	}
+	for _, action := range c.PendingActions {
+		if strings.TrimSpace(action) == "" {
+			return errors.New("turn convergence pending action is empty")
 		}
 	}
 	return nil

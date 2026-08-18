@@ -111,6 +111,16 @@ func Validate(state State) error {
 	if state.Usage.Frozen != state.Context.Frozen {
 		return errors.New("usage and context freeze state disagree")
 	}
+	convergence := state.Policy.Convergence
+	if convergence.OutputContinuations == 0 ||
+		convergence.ProgressConverge == 0 ||
+		convergence.ProgressConverge >= convergence.ProgressFinishOnly ||
+		convergence.ProgressFinishOnly >= convergence.ProgressLimit ||
+		convergence.ResearchConverge == 0 ||
+		convergence.ResearchConverge >= convergence.ResearchFinishOnly ||
+		convergence.ResearchFinishOnly >= convergence.ResearchLimit {
+		return errors.New("convergence policy is invalid")
+	}
 	for kind, budget := range state.RepairBudgets {
 		if !validRepairKind(kind) ||
 			strings.TrimSpace(budget.ProgressKey) == "" ||
@@ -138,6 +148,36 @@ func Validate(state State) error {
 	if state.Progress.NoProgressSamples > state.Progress.ObservedSamples {
 		return errors.New("no-progress samples exceed observed samples")
 	}
+	if state.Convergence != nil {
+		if state.Convergence.Used == 0 ||
+			state.Convergence.Limit == 0 ||
+			state.Convergence.Used < state.Convergence.Limit {
+			return errors.New("convergence budget is invalid")
+		}
+		switch state.Convergence.Cause {
+		case ConvergenceOutputLimit,
+			ConvergenceNoProgress,
+			ConvergenceStepLimit:
+			if state.Convergence.RepairKind != "" {
+				return errors.New("non-repair convergence has repair kind")
+			}
+		case ConvergenceRepairBudget:
+			if !validRepairKind(state.Convergence.RepairKind) {
+				return errors.New("repair convergence kind is invalid")
+			}
+		default:
+			return errors.New("convergence cause is invalid")
+		}
+		if (strings.TrimSpace(state.Convergence.Summary) == "") !=
+			(len(state.Convergence.PendingActions) == 0) {
+			return errors.New("convergence blocked outcome is incomplete")
+		}
+		for _, action := range state.Convergence.PendingActions {
+			if strings.TrimSpace(action) == "" {
+				return errors.New("convergence pending action is empty")
+			}
+		}
+	}
 	switch state.NextAction {
 	case StepActionNone,
 		StepActionRepairToolFailure,
@@ -145,6 +185,8 @@ func Validate(state State) error {
 		StepActionRepairWorkspace,
 		StepActionRepairDeclaration,
 		StepActionVerify,
+		StepActionFinalize,
+		StepActionBlock,
 		StepActionComplete:
 	default:
 		return fmt.Errorf("invalid next action %q", state.NextAction)
@@ -224,6 +266,16 @@ func Validate(state State) error {
 		}
 	}
 	if state.Completion != nil {
+		if state.Completion.OutputMode != "" &&
+			state.Completion.OutputMode != "exact" &&
+			state.Completion.OutputMode != "preserve_provisional" {
+			return errors.New("completion output mode is invalid")
+		}
+		for _, action := range state.Completion.PendingActions {
+			if strings.TrimSpace(action) == "" {
+				return errors.New("completion pending action is empty")
+			}
+		}
 		if state.Completion.Accepted {
 			if state.Completion.Mutation != state.MutationRevision {
 				return errors.New("accepted completion is not bound to current mutation")
@@ -454,16 +506,23 @@ func cloneState(state State) State {
 	}
 	if state.Completion != nil {
 		value := *state.Completion
+		value.PendingActions = append(
+			[]string(nil),
+			state.Completion.PendingActions...,
+		)
 		value.ChangedPaths = append([]string(nil), state.Completion.ChangedPaths...)
 		value.QualityCalls = append([]string(nil), state.Completion.QualityCalls...)
 		cloned.Completion = &value
 	}
+	cloned.Convergence = cloneConvergence(state.Convergence)
 	if state.PendingTerminal != nil {
 		value := *state.PendingTerminal
+		value.Convergence = cloneConvergence(state.PendingTerminal.Convergence)
 		cloned.PendingTerminal = &value
 	}
 	if state.Terminal != nil {
 		value := *state.Terminal
+		value.Convergence = cloneConvergence(state.Terminal.Convergence)
 		cloned.Terminal = &value
 	}
 	if state.RecoveryRelation != nil {
@@ -471,6 +530,18 @@ func cloneState(state State) State {
 		cloned.RecoveryRelation = &value
 	}
 	return cloned
+}
+
+func cloneConvergence(source *ConvergenceState) *ConvergenceState {
+	if source == nil {
+		return nil
+	}
+	value := *source
+	value.PendingActions = append(
+		[]string(nil),
+		source.PendingActions...,
+	)
+	return &value
 }
 
 func validateEffect(effectID string, effect Effect, completed bool) error {

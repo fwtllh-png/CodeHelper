@@ -215,7 +215,8 @@ export class BackgroundProjector {
           `turn:${event.turn_id}:${state}`,
           `CodeHelper turn ${state}`,
           event.turn_id,
-          event.kind === "turn.failed",
+          event.kind === "turn.failed" &&
+            event.data.convergence === undefined,
         );
         return notice === undefined ? [] : [notice];
       }

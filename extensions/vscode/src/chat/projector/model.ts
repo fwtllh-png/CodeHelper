@@ -1,5 +1,5 @@
 import type {
-  DiagnosticsResultData, TurnReceiptData, TurnStartedData,
+  DiagnosticsResultData, TurnFailedData, TurnReceiptData, TurnStartedData,
 } from "../../protocol/generated.js";
 import type { EditPlanCard } from "../../edits/model.js";
 import type { MarkdownNode } from "../markdown.js";
@@ -9,7 +9,8 @@ export const maxCardText = 64 << 10;
 export const maxChatTurns = 200;
 export const expandedContextMarker = "\n\nExplicit editor context follows as JSON.";
 export type TurnStatus = "running" | "awaiting_approval" | "awaiting_input" |
-  "completed" | "failed" | "canceled";
+  "completed" | "incomplete" | "failed" | "canceled";
+export type TurnConvergence = NonNullable<TurnFailedData["convergence"]>;
 export interface ToolCard {
   readonly callId: string; readonly tool: string; readonly status: "running" | "completed" | "failed";
   readonly changes: readonly FileChangeCard[]; readonly arguments?: string; readonly output: string;
@@ -85,6 +86,7 @@ export interface ChatTurn {
   readonly plan?: PlanCard; readonly contextReceipts: readonly ContextReceiptCard[];
   readonly contextSelections: readonly ContextSelectionCard[]; readonly diagnostics: readonly string[];
   readonly verification?: string; readonly verificationBlocked?: boolean;
+  readonly convergence?: TurnConvergence;
   readonly verificationUncoveredPaths: readonly string[];
   readonly receipt?: string; readonly error?: string;
   readonly workspaceChange?: WorkspaceChangeCard;
@@ -118,6 +120,7 @@ export interface MutableTurn {
   workspace?: string; workspaceIsolation?: string;
   workspaceChange?: WorkspaceChangeCard; lastSequence: number;
   verification?: string; verificationBlocked?: boolean;
+  convergence?: TurnConvergence;
   verificationUncoveredPaths: string[];
   receipt?: string; error?: string; unknownEvents: string[];
 }

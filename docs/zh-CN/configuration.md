@@ -212,22 +212,28 @@ Incremental Transport 固定使用 `store=false`。Response State 只保留在�
 以及 Logical/Transport 的 SHA-256 Digest，不保存 Prompt 内容。Request Byte
 下降只属于传输证据，不会被报告为 Token 降幅。
 
-`execution.max_steps` 是安全与成本的硬上限，不是目标值。代码 Turn 默认值为 256，
-支持范围为 1-1000。当预算不少于 64 步时，Runtime 会在剩余 16-32 步时注入一次
-收敛提醒，使模型优先完成一个完整、已验证的结果；若无法在预算内完成，则通过
-`pending_actions` 明确声明未完成工作，而不是毫无预警地被强制终止。
+`execution.max_steps` 限制普通工作，不限制结构化 Finalization。代码 Turn 默认值为
+256，支持范围为 1-1000。当预算不少于 64 步时，Runtime 会在剩余 16-32 步时注入
+一次收敛提醒。普通工作预算耗尽后，Kernel 会在预算之外保留一次 Finalization
+Sample；它只能请求必需输入，或声明 Complete/Incomplete 状态，不能继续探索或修改。
 
 Agent 还会跟踪连续没有结构化进展的 Sample；对于正在执行 Workspace 工作的 Turn，
 这不是新的 16 步执行上限。连续 16 步无进展时要求模型收敛，32 步时限制继续扩散式
 探索，但仍允许精确文件读取、工作区修改、有界 Process 收尾（`exec_command` /
 `write_stdin`）、必需用户输入、质量检查、Plan 更新和 Completion。Provider 投影与
 Tool Executor 共享同一 Allowlist，因此当前批次已广告的 Tool 不会再被误判为
-Terminal-only 而拒绝。48 步时以明确的无进展错误终止 Turn。任何 Mutation、Plan
-步骤完成、Verification 或 Completion 推进都会立即清零计数。Answer 和 Plan Turn
-还会把首次读取的新路径与新 Evidence 计为进展；Operation Turn 会把成功的业务 Tool
-结果计为进展。该进展状态会持久化，并在 Runtime 恢复后延续。仍保持只读的 Answer
-或 Plan Turn 使用更紧的 8/12/16 总 Sample 研究门禁；即使初始 Intent 被分类为
-Answer，只要 Runtime 观察到 Workspace Mutation，该门禁就会立即停止生效。
+Terminal-only 而拒绝。48 步时 Kernel 进入同一条结构化 Finalization 路径，不再抛出
+局部 No-progress 错误。Complete 声明照常提交；Incomplete 声明记录可恢复的摘要与
+具体 Pending Actions。任何 Mutation、Plan 步骤完成、Verification 或 Completion
+推进都会立即清零计数。Answer 和 Plan Turn 还会把首次读取的新路径与新 Evidence
+计为进展；Operation Turn 会把成功的业务 Tool 结果计为进展。Progress 与
+Convergence 状态都会持久化并在 Runtime 恢复后延续。仍保持只读的 Answer 或 Plan
+Turn 使用更紧的 8/12/16 总 Sample 研究门禁；即使初始 Intent 被分类为 Answer，
+只要 Runtime 观察到 Workspace Mutation，该门禁就会立即停止生效。
+
+这些 Convergence Budget 不等于物理边界或用户配置的硬上限。Runtime 不会越过
+Token/Cost Ceiling，不会猜测半截 Tool Call，不会绕过 Content Filter，也不会在安全
+Compaction 后请求仍无法放入 Context 的 Sample。
 
 未知 TOML 字段会被拒绝。这是有意设计：拼错的安全或预算字段不能“看起来已配置但
 实际没有生效”。

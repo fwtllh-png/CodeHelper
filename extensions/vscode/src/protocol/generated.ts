@@ -1251,6 +1251,7 @@ export type ToolResultData = {
       readonly "call_id": string;
       readonly "changed_paths": ReadonlyArray<string>;
       readonly "mutation_revision": number;
+      readonly "output_mode"?: string;
       readonly "pending_actions": ReadonlyArray<string>;
       readonly "rejection"?: string;
       readonly "status": string;
@@ -1389,6 +1390,14 @@ export type TurnCompletedData = {
 
 export type TurnFailedData = {
   readonly "code": string;
+  readonly "convergence"?: {
+      readonly "cause": string;
+      readonly "limit": number;
+      readonly "pending_actions": ReadonlyArray<string>;
+      readonly "repair_kind"?: string;
+      readonly "summary": string;
+      readonly "used": number;
+    };
   readonly "message": string;
   readonly "secondary_issues"?: ReadonlyArray<{
       readonly "code": string;
@@ -1428,6 +1437,7 @@ export type TurnReceiptData = {
       readonly "call_id": string;
       readonly "changed_paths": ReadonlyArray<string>;
       readonly "mutation_revision": number;
+      readonly "output_mode"?: string;
       readonly "pending_actions": ReadonlyArray<string>;
       readonly "rejection"?: string;
       readonly "status": string;
@@ -1479,6 +1489,14 @@ export type TurnReceiptData = {
       readonly "truncated"?: boolean;
       readonly "truncation_reason"?: string;
     }>;
+  readonly "convergence"?: {
+      readonly "cause": string;
+      readonly "limit": number;
+      readonly "pending_actions": ReadonlyArray<string>;
+      readonly "repair_kind"?: string;
+      readonly "summary": string;
+      readonly "used": number;
+    };
   readonly "cost_known": boolean;
   readonly "cost_microunits": number;
   readonly "diagnostic_count": number;

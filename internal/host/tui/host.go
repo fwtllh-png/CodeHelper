@@ -319,6 +319,18 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 		switch data.Status {
 		case "completed":
 			return streamMsg{text: "— turn.completed —"}
+		case "incomplete":
+			summary := data.Message
+			var pending []string
+			if data.Convergence != nil {
+				summary = data.Convergence.Summary
+				pending = data.Convergence.PendingActions
+			}
+			lines := []string{"turn.incomplete: " + summary}
+			for _, action := range pending {
+				lines = append(lines, "pending: "+action)
+			}
+			return streamMsg{text: strings.Join(lines, "\n")}
 		case "failed":
 			return streamMsg{text: fmt.Sprintf("turn.failed: %s", data.Message)}
 		case "canceled":
