@@ -15,7 +15,10 @@ import (
 	"strings"
 )
 
-const H2SchemaVersion = 1
+const (
+	H2SchemaVersion         = 1
+	H2EvidenceSchemaVersion = 2
+)
 
 type H2Catalog struct {
 	SchemaVersion int          `json:"schema_version"`
@@ -47,6 +50,8 @@ type H2Scenario struct {
 type H2LiveEvidence struct {
 	SchemaVersion      int    `json:"schema_version"`
 	Stage              string `json:"stage"`
+	Status             string `json:"status"`
+	FailureReason      string `json:"failure_reason"`
 	QualificationID    string `json:"qualification_id"`
 	ScenarioID         string `json:"scenario_id"`
 	SampleIndex        int    `json:"sample_index"`
@@ -205,15 +210,31 @@ func (e H2LiveEvidence) Validate() error {
 			return fmt.Errorf("H2 evidence %s is invalid", name)
 		}
 	}
-	if e.SchemaVersion != H2SchemaVersion || e.Stage != "h2_live" ||
+	if e.SchemaVersion != H2EvidenceSchemaVersion || e.Stage != "h2_live" ||
+		!slices.Contains([]string{"passed", "failed"}, e.Status) ||
+		!slices.Contains(h2FailureReasons, e.FailureReason) ||
 		!validID(e.QualificationID) || !validID(e.ScenarioID) ||
 		e.SampleIndex < 1 || !validID(e.Provider) || !validID(e.Model) ||
 		!slices.Contains([]string{"openai_chat", "openai_responses"}, e.Protocol) ||
 		!slices.Contains([]string{"peak", "off_peak"}, e.PricingWindow) ||
+		!slices.Contains(
+			[]string{"missing", "turn.completed", "turn.failed", "turn.canceled"},
+			e.TerminalEvent,
+		) ||
+		e.DurationMS < 1 {
+		return errors.New("H2 live evidence is incomplete")
+	}
+	if e.Status == "failed" {
+		if e.FailureReason == "none" {
+			return errors.New("failed H2 evidence has no failure reason")
+		}
+		return nil
+	}
+	if e.FailureReason != "none" ||
 		e.TerminalEvent != "turn.completed" || e.TerminalCount != 1 ||
 		e.UsageSamples < 1 || e.InputTokens == 0 || e.OutputTokens == 0 ||
-		e.DurationMS < 1 || !e.CostKnown {
-		return errors.New("H2 live evidence is incomplete")
+		!e.CostKnown {
+		return errors.New("passed H2 live evidence is incomplete")
 	}
 	if e.MultiAgent &&
 		(e.AgentSpawnCount != 2 ||
@@ -259,10 +280,21 @@ func AggregateH2(
 				evidence.Protocol != catalog.Protocol ||
 				evidence.SourceDigest != sourceDigest ||
 				evidence.LockIdentity != lockIdentity ||
-				evidence.MultiAgent != (scenario.Mode == "multi_agent") ||
-				evidence.TextAssertionSHA != scenario.ExpectedTextSHA256 {
+				evidence.MultiAgent != (scenario.Mode == "multi_agent") {
 				return summary, fmt.Errorf(
 					"H2 evidence identity drifted for %s sample %d",
+					scenario.ID, sample,
+				)
+			}
+			if evidence.Status != "passed" {
+				return summary, fmt.Errorf(
+					"H2 evidence %s sample %d failed: %s",
+					scenario.ID, sample, evidence.FailureReason,
+				)
+			}
+			if evidence.TextAssertionSHA != scenario.ExpectedTextSHA256 {
+				return summary, fmt.Errorf(
+					"H2 output drifted for %s sample %d",
 					scenario.ID, sample,
 				)
 			}
@@ -441,4 +473,17 @@ func digestValidH2(value string) bool {
 	}
 	_, err := hex.DecodeString(strings.TrimPrefix(value, "sha256:"))
 	return err == nil
+}
+
+var h2FailureReasons = []string{
+	"runtime_command_failed",
+	"event_parse_failed",
+	"terminal_contract_mismatch",
+	"spawn_count_mismatch",
+	"agent_terminal_count_mismatch",
+	"agent_not_completed",
+	"final_text_mismatch",
+	"usage_missing",
+	"cost_unknown",
+	"none",
 }

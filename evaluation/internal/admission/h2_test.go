@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -131,6 +132,38 @@ func TestAggregateH2RejectsPartitionDrift(t *testing.T) {
 	}
 }
 
+func TestAggregateH2PreservesStructuredFailureReason(t *testing.T) {
+	output := t.TempDir()
+	catalog := testH2Catalog()
+	for _, scenario := range catalog.Scenarios {
+		for sample := 1; sample <= scenario.Repetitions; sample++ {
+			evidence := testH2Evidence(scenario, sample)
+			if scenario.ID == "multi-agent" && sample == 3 {
+				evidence.Status = "failed"
+				evidence.FailureReason = "spawn_count_mismatch"
+				evidence.AgentSpawnCount = 1
+			}
+			if err := writePrivateJSON(
+				H2EvidencePath(output, scenario.ID, sample),
+				evidence,
+			); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	_, err := AggregateH2(
+		output,
+		catalog,
+		"h2-test",
+		digestH2("source"),
+		digestH2("lock"),
+	)
+	if err == nil ||
+		!strings.Contains(err.Error(), "failed: spawn_count_mismatch") {
+		t.Fatalf("AggregateH2 error = %v", err)
+	}
+}
+
 func testH2Catalog() H2Catalog {
 	return H2Catalog{
 		SchemaVersion: H2SchemaVersion,
@@ -167,9 +200,10 @@ func testH2Catalog() H2Catalog {
 
 func testH2Evidence(scenario H2Scenario, sample int) H2LiveEvidence {
 	return H2LiveEvidence{
-		SchemaVersion: H2SchemaVersion,
-		Stage:         "h2_live", QualificationID: "h2-test",
-		ScenarioID: scenario.ID, SampleIndex: sample,
+		SchemaVersion: H2EvidenceSchemaVersion,
+		Stage:         "h2_live", Status: "passed", FailureReason: "none",
+		QualificationID: "h2-test",
+		ScenarioID:      scenario.ID, SampleIndex: sample,
 		SourceDigest: digestH2("source"), LockIdentity: digestH2("lock"),
 		EndpointHostSHA256: digestH2("endpoint"),
 		Provider:           "deepseek-v4-flash", Model: "deepseek-v4-flash",

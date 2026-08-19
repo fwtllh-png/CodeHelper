@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h2-reentry-global-assessment-01",
+  "phase": "production_admission_h2",
+  "status": "closed_formal_reentry_authorized",
+  "closed_on": "2026-08-20",
+  "predecessor": "h2-production-admission-global-assessment-02",
+  "harness": {
+    "failure_evidence_schema": 2,
+    "q1_qualification": "foundation-v2-q1-09",
+    "lock_identity": "sha256:b2f944b85f8a5b2a713af06eb635c2d093e92ca7d5cc3be9f85d76dff23aabbb"
+  },
+  "fixed_diagnostic_matrix": {
+    "id": "h2-multi-agent-diagnostic-01",
+    "scheduled": 12,
+    "settled": 12,
+    "passed": 11,
+    "failed": 1,
+    "replacement_attempts": 0,
+    "failure_reason": "terminal_contract_mismatch",
+    "failure_terminal": "turn.failed",
+    "failure_runtime_error": "deepseek_http_400_reasoning_text_required",
+    "failed_sample_agent_spawns": 2,
+    "failed_sample_agent_terminals": 2,
+    "failed_sample_agent_completions": 2,
+    "failed_sample_cost_known": true
+  },
+  "runtime_debug_reproduction": {
+    "instrumented_samples": 36,
+    "passed": 36,
+    "failed": 0,
+    "prepared_responses_requests": 190,
+    "requests_with_function_calls": 78,
+    "orphan_function_calls": 0,
+    "assistant_reasoning_messages": 130,
+    "reasoning_messages_with_replay": 130,
+    "prepared_reasoning_items": 164,
+    "business_logic_changed": false,
+    "debug_artifacts_cleaned": true
+  },
+  "hypothesis_disposition": {
+    "responses_stream_did_not_capture_replay": "rejected",
+    "engine_lost_reasoning_before_continuation": "rejected",
+    "adapter_generated_a_stably_invalid_shape": "not_observed",
+    "second_tool_call_lost_reasoning_group": "rejected",
+    "provider_intermittently_rejected_a_structurally_valid_request": "supported"
+  },
+  "finding": {
+    "id": "H2E-0001",
+    "classification": "live_provider_protocol_intermittency",
+    "status": "accepted_not_reproduced_after_instrumentation",
+    "product_candidate": false,
+    "harness_candidate": false,
+    "reason": "runtime_and_adapter_preserved_reasoning_replay_in_all_observed_requests_and_no_minimal_product_fix_is_evidence_supported"
+  },
+  "decision": {
+    "product_remediation_authorized": false,
+    "prompt_change_authorized": false,
+    "threshold_change_authorized": false,
+    "formal_h2_reentry_rounds_authorized": 1,
+    "formal_round_id": "production-admission-h2-03",
+    "formal_lock_identity": "sha256:b2f944b85f8a5b2a713af06eb635c2d093e92ca7d5cc3be9f85d76dff23aabbb",
+    "failure_stop_condition": "any_failed_invalid_unavailable_or_not_evaluated_task",
+    "h3_h4_authorized": false,
+    "next_gate": "production_admission_h2_03"
+  }
+}

@@ -2,9 +2,9 @@
 
 简体中文 | [English](../en/production-evaluation-implementation-plan.md)
 
-> 状态：F1-F3 与具备 H2 能力的 Harness 已通过 Q1 Round 08 验收。D1 已 56/56
-> 通过，H1 已 21/21 通过。H2 正式 Round 01 与 02 因重复出现 Multi-Agent Live
-> 质量失败而均为 14/16。H3-H4 继续被阻断。
+> 状态：F1-F3 与具备失败证据能力的 H2 Harness 已通过 Q1 Round 09 验收。D1
+> 已 56/56 通过，H1 已 21/21 通过，治理化 H2 Re-entry Round 03 已 16/16
+> 通过。H3-H4 仍分别保留独立门禁。
 
 | Stage | 状态 |
 | --- | --- |
@@ -15,7 +15,7 @@
 | Q1 Qualification 与 Freeze | 具备 H1 能力的后继已由 Round 07 完成；`frozen_qualified` |
 | D1 Collect-all Product Discovery | 已完成 56/56；无 Product Candidate |
 | H1 VS Code 与 Process Chaos | 已完成 21/21；无 Product Candidate |
-| H2 Live Model 与 Drift | 两次 14/16 失败；未准入 |
+| H2 Live Model 与 Drift | 治理化 Re-entry 后 Round 03 已 16/16 通过 |
 
 Development Validation 记录在
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`，不能替代 Q1 Epoch，
@@ -39,13 +39,17 @@ Task 与三次 7/7 Integration Run，正式 H1 又以 21/21 通过。决策记�
 `evaluation/assessments/h1-preflight-global-assessment-26.json`、
 `evaluation/assessments/q1-qualification-global-assessment-07.json` 与
 `evaluation/assessments/h1-production-admission-global-assessment-01.json`。
-H2 Preflight 在一次分离的 Remediation Cycle 后关闭，Q1 Round 08 冻结具备 H2
-能力的后继。正式 H2 Round 01 与 02 每轮均通过 11/12 个 Live Sample，但各有一个
-Multi-Agent Sample 失败，因此 Aggregate 与 H2 Gate 均失败。不可变决策位于
+H2 Preflight 在一次分离的 Remediation Cycle 后关闭，Q1 Round 08 冻结首个具备
+H2 能力的后继。正式 Round 01 与 02 每轮均通过 11/12 个 Live Sample。Schema v2
+失败证据随后进入 Q1 Round 09。固定 12 样本诊断矩阵和 36 样本 Evidence-driven
+Investigation 授权一次 Policy 不变的 Re-entry；Round 03 已 16/16 通过。不可变
+决策位于
 `evaluation/assessments/h2-preflight-global-assessment-01.json` 至 `-03.json`、
-`evaluation/assessments/q1-qualification-global-assessment-08.json` 以及
+`evaluation/assessments/q1-qualification-global-assessment-08.json` 至 `-09.json`、
+`evaluation/assessments/h2-reentry-decision-01.json`、
+`evaluation/assessments/h2-reentry-global-assessment-01.json` 以及
 `evaluation/assessments/h2-production-admission-global-assessment-01.json` 至
-`-02.json`。
+`-03.json`。
 
 ## 1. 执行模型
 
@@ -372,12 +376,11 @@ D1 不修改代码。
 | Stage | Deliverable | 预计工作量 |
 | --- | --- | ---: |
 | H1 VS Code 与 Process Chaos | 已完成：五条 Lane 共 21/21 | 已完成 |
-| H2 Live Model 与 Drift | 已实现；两次正式 14/16 失败，未准入 | 已阻断 |
+| H2 Live Model 与 Drift | 已完成：治理化 Round 03 已 16/16 通过 | 已完成 |
 | H3 Endurance 与 Release | 四小时 Workload、Slope、RC Evidence Aggregator、Release Gate | 2 工程周 |
 | H4 Canary 与 Incident Closure | Controlled Inventory、Rollout Stop、Rollback、Incident-to-Corpus | 1 至 1.5 工程周 |
 
-H2 通过前，H3 Evidence 不能参与 Release Admission。当前重复 Live-quality 失败
-阻断 H3-H4。
+H2 已完成。H3 Evidence 在参与 Release Admission 前仍需显式授权。
 
 ## 11. 修订后的工期与关键路径
 
@@ -414,7 +417,7 @@ Qualification Epoch 和 Harness Freeze 位于关键路径。Contract 稳定后�
 
 ## 13. 批准边界
 
-本计划下的批准已推进至 H2 执行，但 H2 未通过。
+本计划下的批准已推进至 H2 完成。
 
 已完成批准与剩余显式边界如下：
 
@@ -422,6 +425,6 @@ Qualification Epoch 和 Harness Freeze 位于关键路径。Contract 稳定后�
 2. Qualification 与 Harness Freeze Q1；
 3. Product Discovery D1；
 4. Approved Product Remediation R1；
-5. Production Admission H1 已完成；H2 已执行并失败；H3-H4 未获授权。
+5. Production Admission H1 与 H2 已完成；H3-H4 未获授权。
 
 前一批准不隐含后一批准。

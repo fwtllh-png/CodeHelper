@@ -2,9 +2,9 @@
 
 简体中文 | [English](../en/production-evaluation-findings.md)
 
-> 状态：具备 H2 能力的 Harness 已通过 Q1 Round 08 验收。D1 已 56/56 通过，H1
-> 已 21/21 通过。H2 正式 Round 01 与 02 均为 14/16 失败；H2 与完整 Release
-> Admission 均未准入。
+> 状态：具备失败证据能力的 H2 Harness 已通过 Q1 Round 09 验收。D1 已 56/56
+> 通过，H1 已 21/21 通过，治理化 H2 Re-entry Round 03 已 16/16 通过。H3-H4
+> 与完整 Release Admission 均未准入。
 
 本台账遵循[技术规格](./production-evaluation.md)和
 [实施计划](./production-evaluation-implementation-plan.md)。Discovery、Global
@@ -18,17 +18,17 @@ Assessment、Remediation 和 Verification 必须分 Round。
 | Evaluation 17.1 | 已作为 Foundation v2 输入验收 |
 | Evaluation 17.2 | 已作为 Foundation v2 输入验收 |
 | Evaluation 17.3 | 已失效 |
-| Foundation v2 F1-F3 与 H2 Harness | 已验收；v3 Harness 已冻结 |
-| Evaluation 17.4 | H1 已通过；H2 已失败；H3-H4 未开始 |
+| Foundation v2 F1-F3 与 H2 Harness | 已验收；v3 Harness 已由 Q1 Round 09 冻结 |
+| Evaluation 17.4 | H1 与 H2 已通过；H3-H4 未开始 |
 | 正式 Product Finding | H2C-0001 已修复并验证 |
 | 历史 Product Hypothesis | 4 |
-| 可信 17.4 Pass | H1 Round 01 |
+| 可信 17.4 Pass | H1 Round 01；H2 Round 03 |
 | 可信 17.4 Repair | 0 |
 | Open Systemic Harness Root | 0 |
-| Q1 Qualification | Round 08 已通过；H2 Harness `frozen_qualified` |
+| Q1 Qualification | Round 09 已通过；H2 Harness `frozen_qualified` |
 | D1 Product Discovery | 56/56 通过；无 Product Candidate |
 | H1 Production Admission | 21/21 通过；无 Product Candidate |
-| H2 Production Admission | 两次 14/16 失败；未准入 |
+| H2 Production Admission | 治理化 Re-entry 后 Round 03 已 16/16 通过 |
 
 机器决策：
 
@@ -53,6 +53,10 @@ evaluation/assessments/h2-preflight-global-assessment-03.json
 evaluation/assessments/q1-qualification-global-assessment-08.json
 evaluation/assessments/h2-production-admission-global-assessment-01.json
 evaluation/assessments/h2-production-admission-global-assessment-02.json
+evaluation/assessments/h2-reentry-decision-01.json
+evaluation/assessments/q1-qualification-global-assessment-09.json
+evaluation/assessments/h2-reentry-global-assessment-01.json
+evaluation/assessments/h2-production-admission-global-assessment-03.json
 ```
 
 Q1 Round 06 已在 8/8 Foundation Task 与连续三次 7/7 Integration Run 后验收具备
@@ -70,6 +74,14 @@ Contract 过期的 H2C-0001，Q1 Round 08 随后验收后继 Harness。正式 Ro
 3 个。两个正式 Round 合计 6/8，Wilson 95% 下界为 40.92%，低于 50% 政策阈值。
 两轮 Lock Identity 均稳定、私有 Cost Evidence 均为 Known、Outstanding Resource
 均为零。因此 H2 结论是 Failed，而不是 Unavailable。
+
+上述失败保持不可变。显式 Re-entry 增加 Schema v2 结构化失败证据，没有修改
+Prompt、Denominator 或 Threshold，Q1 Round 09 随后验收该 Harness。固定 12 样本
+诊断矩阵在两个 Child Agent 完成后捕获一次 Provider HTTP 400；后续 36 次插桩复现
+全部通过，并证明 130/130 个 Reasoning Message 保留 Replay State、Orphan Tool
+Call 为零。因此未授权 Product Logic 修复。唯一获批的正式 Re-entry Round 03 已
+16/16 通过，包含 12/12 个 Private、Known-cost Live Sample 和稳定的前后 Identity。
+H2 已准入。
 
 ## 2. 产品假设
 
@@ -166,8 +178,8 @@ D1H-0003 已关闭。
 
 ## 6. 重新准入规则
 
-Q1、D1、H1 与 H2 执行均已关闭。H2 未通过重复 Live-quality Threshold。没有新的
-显式 Model 或 Policy 重新准入决策前，禁止 H3-H4 和继续重跑 H2。
+Q1、D1、H1 与 H2 均已关闭。H2 已通过唯一显式授权的 Re-entry Round。H3-H4
+仍需独立显式授权。
 
 当前顺序：
 
@@ -179,13 +191,15 @@ Q1、D1、H1 与 H2 执行均已关闭。H2 未通过重复 Live-quality Thresho
 5. H1 已在五条 Lane 上完成全部 21 项任务；
 6. Q1 Round 08 已冻结具备 H2 能力的后继；
 7. H2 Round 01 与 02 均因 Multi-Agent 质量而 14/16 失败；
-8. H2 与 H3-H4 均未获准入。
+8. 显式 Re-entry 后，Q1 Round 09 冻结 Schema v2 失败证据；
+9. H2 Round 03 未修改 Prompt、Threshold 或 Product Logic，已 16/16 通过；
+10. H3-H4 未获准入。
 
 Frozen Harness 只有在 v3 Input Identity 不变时才具权威性。
 
 ## 7. 禁止操作
 
-H2 失败后、显式重新准入前：
+H2 完成后、H3 显式授权前：
 
 - 不确认或修复 PEC-0001 至 PEC-0004；
 - 不恢复已删除的 17.4 Code；
@@ -193,5 +207,4 @@ H2 失败后、显式重新准入前：
 - Systemic Epoch 仍 Open 时不逐个关闭 Micro-incident；
 - Discovery 内不修改 Product Code；
 - 不通过削减 Denominator、Status 或 Assertion 获得绿色。
-- 不得在相同 Policy 与 Model Identity 下执行第三次 H2 Round；
 - 不得开始 H3 或 H4。

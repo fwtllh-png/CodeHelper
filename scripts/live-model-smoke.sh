@@ -109,6 +109,7 @@ ruby -rjson -e '
 	"$model_max_output_tokens" "$input_price" "$cached_input_price" \
 	"$output_price" "$pricing_currency"
 started_ms=$(ruby -e 'puts((Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000).to_i)')
+command_status=0
 
 if [ "$multi_agent" = "1" ]; then
 	config="$smoke_dir/multi-agent.toml"
@@ -123,7 +124,7 @@ max_steps = 12
 wall_time = "5m"
 workspace = "read_only"
 EOF
-	if ! "$binary" exec \
+	if "$binary" exec \
 		--config "$config" \
 		--data-dir "$smoke_dir/state" \
 		--provider "$model_name" \
@@ -142,24 +143,12 @@ EOF
 		--max-output-tokens 16384 \
 		--budget-tokens 500000 \
 		"In one model step, call spawn_agent exactly twice with context_mode=fresh and never call it again. task_name=live_alpha with role=explore has objective: without using tools or delegating, return alpha-live-ok. task_name=live_beta with role=explore has objective: without using tools or delegating, return beta-live-ok. Then call wait_agent for both terminal results and end with exactly codehelper-multi-agent-live-ok." >"$output"; then
-		ruby -rjson -e '
-			kinds = Hash.new(0)
-			spawns = []
-			File.foreach(ARGV[0]) do |line|
-				event = JSON.parse(line)
-				kinds[event["kind"]] += 1
-				data = event.fetch("data", {})
-				next unless data["tool"] == "spawn_agent"
-				arguments = data["arguments"].is_a?(Hash) ? data["arguments"] : {}
-				spawns << arguments["task_name"]
-			end
-			warn "live Multi-Agent event counts: #{kinds.sort.to_h.inspect}"
-			warn "live Multi-Agent spawn calls: #{spawns.inspect}"
-		' "$output"
-		exit 1
+		command_status=0
+	else
+		command_status=$?
 	fi
 else
-	"$binary" exec \
+	if "$binary" exec \
 		--provider "$model_name" \
 		--model "$wire_model" \
 		--base-url "$base_url" \
@@ -169,10 +158,15 @@ else
 		--output-format stream-json \
 		--max-output-tokens 64 \
 		--budget-tokens 4096 \
-		"Reply with exactly: codehelper-live-ok" >"$output"
+		"Reply with exactly: codehelper-live-ok" >"$output"; then
+		command_status=0
+	else
+		command_status=$?
+	fi
 fi
 ended_ms=$(ruby -e 'puts((Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000).to_i)')
 duration_ms=$((ended_ms - started_ms))
+[ "$duration_ms" -ge 1 ] || duration_ms=1
 
 ruby -rjson -rdigest -ruri -e '
 	text = +""
@@ -181,8 +175,14 @@ ruby -rjson -rdigest -ruri -e '
 	agent_terminal = {}
 	kinds = Hash.new(0)
 	usage_by_sample = {}
+	parse_failed = false
 	File.foreach(ARGV[0]) do |line|
-		event = JSON.parse(line)
+		begin
+			event = JSON.parse(line)
+		rescue JSON::ParserError
+			parse_failed = true
+			next
+		end
 		kinds[event["kind"]] += 1
 		text << event.fetch("data", {}).fetch("text", "") if event["kind"] == "output.delta"
 		terminal << event["kind"] if %w[turn.completed turn.failed turn.canceled].include?(event["kind"])
@@ -206,15 +206,34 @@ ruby -rjson -rdigest -ruri -e '
 		end
 	end
 	multi_agent = ENV["LIVE_MODEL_MULTI_AGENT"] == "1"
-	if multi_agent
-		abort "live model spawned #{spawned.uniq.length} agents, want 2" unless spawned.uniq.length == 2
-		abort "live model terminal agents = #{agent_terminal.inspect}" unless agent_terminal.length == 2 &&
-			agent_terminal.values.all? { |item| item.fetch(:status) == "completed" }
-		abort "unexpected Multi-Agent live model text: #{text.inspect}" unless text.strip == "codehelper-multi-agent-live-ok"
-	else
-		abort "unexpected live model text: #{text.inspect}" unless text.strip == "codehelper-live-ok"
-	end
-	abort "live model did not produce one completed terminal: #{terminal.inspect}" unless terminal == ["turn.completed"]
+	command_status = Integer(ARGV[14], 10)
+	failure_reason =
+		if parse_failed
+			"event_parse_failed"
+		elsif command_status != 0 && terminal.empty?
+			"runtime_command_failed"
+		elsif terminal != ["turn.completed"]
+			"terminal_contract_mismatch"
+		elsif multi_agent && spawned.uniq.length != 2
+			"spawn_count_mismatch"
+		elsif multi_agent && agent_terminal.length != 2
+			"agent_terminal_count_mismatch"
+		elsif multi_agent && !agent_terminal.values.all? { |item| item.fetch(:status) == "completed" }
+			"agent_not_completed"
+		elsif multi_agent && text.strip != "codehelper-multi-agent-live-ok"
+			"final_text_mismatch"
+		elsif !multi_agent && text.strip != "codehelper-live-ok"
+			"final_text_mismatch"
+		elsif command_status != 0
+			"runtime_command_failed"
+		elsif usage_by_sample.empty?
+			"usage_missing"
+		elsif !usage_by_sample.values.all? { |sample| sample["cost_known"] == true }
+			"cost_unknown"
+		else
+			"none"
+		end
+	status = failure_reason == "none" ? "passed" : "failed"
 	if (path = ENV["CODEHELPER_STAGE_EVIDENCE_PATH"]) && !path.empty?
 		stage = ENV.fetch("CODEHELPER_STAGE")
 		run_id = ENV.fetch("CODEHELPER_STAGE_RUN_ID")
@@ -239,8 +258,10 @@ ruby -rjson -rdigest -ruri -e '
 				ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12]
 			]
 			evidence = {
-				schema_version: 1,
+				schema_version: 2,
 				stage: stage,
+				status: status,
+				failure_reason: failure_reason,
 				qualification_id: run_id,
 				scenario_id: ENV.fetch("CODEHELPER_H2_SCENARIO_ID"),
 				sample_index: Integer(ENV.fetch("CODEHELPER_H2_SAMPLE_INDEX"), 10),
@@ -253,7 +274,7 @@ ruby -rjson -rdigest -ruri -e '
 				pricing_window: ARGV[12],
 				config_sha256: "sha256:" + Digest::SHA256.hexdigest(JSON.generate(config)),
 				multi_agent: multi_agent,
-				terminal_event: terminal.fetch(0),
+				terminal_event: terminal.first || "missing",
 				terminal_count: terminal.length,
 				text_assertion_sha256: "sha256:" + Digest::SHA256.hexdigest(text.strip),
 				event_shape_sha256: "sha256:" + Digest::SHA256.hexdigest(JSON.generate(kinds.keys.sort)),
@@ -273,6 +294,8 @@ ruby -rjson -rdigest -ruri -e '
 			evidence = {
 				schema_version: 1,
 				stage: stage,
+				status: status,
+				failure_reason: failure_reason,
 				run_id: run_id,
 				source_digest: source_digest,
 				kind: "live-model",
@@ -284,7 +307,7 @@ ruby -rjson -rdigest -ruri -e '
 				agent_spawn_count: spawned.uniq.length,
 				agent_terminal_count: agent_terminal.length,
 				agent_completed_count: agent_terminal.values.count { |item| item.fetch(:status) == "completed" },
-				terminal_event: terminal.fetch(0),
+				terminal_event: terminal.first || "missing",
 				terminal_count: terminal.length,
 				text_assertion_sha256: Digest::SHA256.hexdigest(text.strip)
 			}
@@ -294,9 +317,11 @@ ruby -rjson -rdigest -ruri -e '
 			file.write("\n")
 		end
 	end
+		warn "live model failure_reason=#{failure_reason}" unless failure_reason == "none"
+		exit 1 unless failure_reason == "none"
 ' "$output" "$base_url" "$wire_model" "$model_name" "$protocol" \
 	"$context_tokens" "$model_max_output_tokens" "$model_capabilities" \
 	"$input_price" "$cached_input_price" "$output_price" "$pricing_currency" \
-	"$pricing_window" "$duration_ms"
+		"$pricing_window" "$duration_ms" "$command_status"
 
 cat "$output"

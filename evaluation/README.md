@@ -38,10 +38,10 @@ must not import `evaluation/`.
 ## Candidate Capability
 
 The implementation below is not release-authoritative. Foundation v2 and the
-H2-capable Harness are qualified under Q1 Round 08. D1 passed 56/56 and H1
-passed 21/21. H2 did not pass: both formal Rounds settled 16 tasks but passed
-only 14 because one of four Multi-Agent live samples failed in each Round.
-H3-H4 and full release admission remain unauthorized.
+failure-evidence-capable H2 Harness are qualified under Q1 Round 09. D1 passed
+56/56, H1 passed 21/21, and H2 re-entry Round 03 passed 16/16. Rounds 01 and
+02 remain immutable 14/16 failures. H3-H4 and full release admission remain
+unauthorized.
 
 The corrected target contracts and execution order are defined by:
 
@@ -67,11 +67,13 @@ H1 preflight closure, the H1-capable successor Lock, and formal H1 closure are
 recorded in `assessments/h1-preflight-global-assessment-26.json`,
 `assessments/q1-qualification-global-assessment-07.json`, and
 `assessments/h1-production-admission-global-assessment-01.json`.
-H2 preflight, requalification, and both immutable formal decisions are recorded
+H2 preflight, requalification, and the immutable formal decisions are recorded
 in `assessments/h2-preflight-global-assessment-01.json` through `-03.json`,
-`assessments/q1-qualification-global-assessment-08.json`, and
+`assessments/q1-qualification-global-assessment-08.json` through `-09.json`,
+`assessments/h2-reentry-decision-01.json`,
+`assessments/h2-reentry-global-assessment-01.json`, and
 `assessments/h2-production-admission-global-assessment-01.json` through
-`-02.json`.
+`-03.json`.
 
 The F1 implementation now provides:
 
@@ -116,8 +118,10 @@ The F3 implementation now contains:
 Q1 Rounds 01, 02, and 04 remain immutable failure and governance history. The
 D1-capable successor passed Q1 Round 06, and D1 settled all 56 tasks. The
 H1-capable successor passed Q1 Round 07 and H1 settled all 21 tasks. The
-H2-capable successor passed Q1 Round 08 under Lock `sha256:7455074e...`.
-Formal H2 Rounds 01 and 02 each settled 16 tasks at 14/16; H2 is not admitted.
+H2-capable successor passed Q1 Round 08. After Rounds 01 and 02 each settled
+14/16, schema-v2 failure evidence entered Q1 Round 09 under Lock
+`sha256:b2f944b8...`. The fixed diagnostic matrix and evidence-driven
+investigation authorized one re-entry; formal H2 Round 03 passed 16/16.
 
 The previous Phase 17.4 implementation was reset and removed. The current H1
 implementation was rebuilt and requalified under the successor process. The

@@ -35,10 +35,10 @@ evaluation/
 
 ## 候选能力
 
-以下实现当前不具发布权威性。Foundation v2 与具备 H2 能力的 Harness 已通过 Q1
-Round 08 验收。D1 已 56/56 通过，H1 已 21/21 通过。H2 未通过：两次正式 Round
-均完成 16 项 Settlement，但每轮 4 个 Multi-Agent Live Sample 中各有 1 个失败，
-因此均只有 14/16。H3-H4 与完整 Release Admission 仍未获授权。
+以下实现当前不具发布权威性。Foundation v2 与具备失败证据能力的 H2 Harness 已通过
+Q1 Round 09 验收。D1 已 56/56 通过，H1 已 21/21 通过，H2 Re-entry Round 03
+已 16/16 通过。Round 01 与 02 的 14/16 失败结论保持不可变。H3-H4 与完整 Release
+Admission 仍未获授权。
 
 修正后的目标契约和执行顺序见：
 
@@ -64,10 +64,12 @@ H1 Preflight 关闭、具备 H1 能力的后继 Lock 与正式 H1 关闭决策�
 `assessments/h1-preflight-global-assessment-26.json`、
 `assessments/q1-qualification-global-assessment-07.json` 与
 `assessments/h1-production-admission-global-assessment-01.json`。
-H2 Preflight、重新验收与两次不可变正式决策记录在
+H2 Preflight、重新验收与不可变正式决策记录在
 `assessments/h2-preflight-global-assessment-01.json` 至 `-03.json`、
-`assessments/q1-qualification-global-assessment-08.json` 以及
-`assessments/h2-production-admission-global-assessment-01.json` 至 `-02.json`。
+`assessments/q1-qualification-global-assessment-08.json` 至 `-09.json`、
+`assessments/h2-reentry-decision-01.json`、
+`assessments/h2-reentry-global-assessment-01.json` 以及
+`assessments/h2-production-admission-global-assessment-01.json` 至 `-03.json`。
 
 F1 实现当前包含：
 
@@ -106,9 +108,10 @@ F3 实现当前包含：
 
 Q1 Round 01、02 与 04 保留为不可变失败和治理历史。具备 D1 能力的后继 Harness
 通过 Q1 Round 06，D1 随后完成全部 56 项任务。具备 H1 能力的后继 Harness 通过 Q1
-Round 07，H1 完成全部 21 项任务。具备 H2 能力的后继 Harness 又通过 Q1 Round 08，
-Lock 为 `sha256:7455074e...`。正式 H2 Round 01 与 02 均完成 16 项 Settlement，
-结果均为 14/16，因此 H2 未准入。
+Round 07，H1 完成全部 21 项任务。具备 H2 能力的后继 Harness 通过 Q1 Round 08。
+Round 01 与 02 各自 14/16 后，Schema v2 失败证据进入 Q1 Round 09，Lock 为
+`sha256:b2f944b8...`。固定诊断矩阵和 Evidence-driven Investigation 授权一次
+Re-entry；正式 H2 Round 03 已 16/16 通过。
 
 旧 17.4 实现已重置并删除；当前 H1 已按后继流程重建并重新验收。原重置决策仍位于
 `assessments/17.4-convergence-review-reset-01.json`。
