@@ -132,6 +132,8 @@ make brand-check
 | `make multi-agent-performance` | bounded Agent Event projection budget |
 | `make live-model-smoke` | explicit, non-hermetic provider smoke |
 | `make live-multi-agent-smoke` | credentialed real-provider Agent spawn/wait/completion smoke |
+| `make deepseek-live-smoke` | local Keychain-backed DeepSeek single-turn smoke |
+| `make deepseek-multi-agent-smoke` | local Keychain-backed DeepSeek Multi-Agent smoke |
 | `make package VERSION=x.y.z` | multi-platform CLI package and SBOM |
 
 ## Repository Scripts
@@ -170,6 +172,11 @@ Every script must:
 - never print or read secrets from tracked repository documentation;
 - treat the explicitly ignored local DeepSeek runbook as credential input only;
 - document generated output and cleanup behavior.
+
+DeepSeek V4 uses peak/off-peak pricing. Live smoke evidence selects the
+effective UTC window and supplies cache-hit, cache-miss, and output prices as
+one private model-metadata partition. The bundled route reports dynamic
+pricing as unknown instead of persisting a stale static amount.
 
 ## Generated Files
 

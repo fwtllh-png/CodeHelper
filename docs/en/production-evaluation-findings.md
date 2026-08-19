@@ -2,9 +2,9 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation-findings.md) | English
 
-> Status: the H1-capable Harness is qualified; D1 Round 01 completed 56/56 and
-> H1 Round 01 completed 21/21. No Product Candidate, full release pass, or
-> Product Remediation is currently admitted.
+> Status: the H2-capable Harness is qualified under Q1 Round 08. D1 passed
+> 56/56 and H1 passed 21/21. H2 formal Rounds 01 and 02 both failed 14/16;
+> H2 and full release admission are not admitted.
 
 This register follows the
 [Technical Specification](./production-evaluation.md) and
@@ -20,16 +20,17 @@ Rounds.
 | Evaluation 17.1 | qualified as Foundation v2 input |
 | Evaluation 17.2 | qualified as Foundation v2 input |
 | Evaluation 17.3 | invalidated |
-| Foundation v2 F1-F3 and H1 Harness | qualified; v3 Harness frozen |
-| Evaluation 17.4 | H1 passed; H2-H4 not started |
-| Formal product findings | 0 |
+| Foundation v2 F1-F3 and H2 Harness | qualified; v3 Harness frozen |
+| Evaluation 17.4 | H1 passed; H2 failed; H3-H4 not started |
+| Formal product findings | H2C-0001 remediated and verified |
 | Historical product hypotheses | 4 |
 | Trusted 17.4 passes | H1 Round 01 |
 | Trusted 17.4 repairs | 0 |
 | Open systemic Harness roots | 0 |
-| Q1 Qualification | Round 07 passed; H1 Harness `frozen_qualified` |
+| Q1 Qualification | Round 08 passed; H2 Harness `frozen_qualified` |
 | D1 Product Discovery | 56/56 passed; no Product Candidate |
 | H1 Production Admission | 21/21 passed; no Product Candidate |
+| H2 Production Admission | two 14/16 failures; not admitted |
 
 Machine decisions:
 
@@ -48,6 +49,12 @@ evaluation/assessments/d1-product-discovery-global-assessment-01.json
 evaluation/assessments/h1-preflight-global-assessment-26.json
 evaluation/assessments/q1-qualification-global-assessment-07.json
 evaluation/assessments/h1-production-admission-global-assessment-01.json
+evaluation/assessments/h2-preflight-global-assessment-01.json
+evaluation/assessments/h2-preflight-global-assessment-02.json
+evaluation/assessments/h2-preflight-global-assessment-03.json
+evaluation/assessments/q1-qualification-global-assessment-08.json
+evaluation/assessments/h2-production-admission-global-assessment-01.json
+evaluation/assessments/h2-production-admission-global-assessment-02.json
 ```
 
 Q1 Round 06 qualified the D1-capable Harness after 8/8 Foundation tasks and
@@ -59,6 +66,14 @@ three 7/7 Integration runs. H1 then settled all 21 tasks across Extension
 Host, process, provider, persistence, and filesystem lanes. Both identity
 checks and the owned-resource cleanup check passed; no Product Candidate was
 admitted.
+
+H2 preflight found and closed four Harness findings plus H2C-0001, the stale
+DeepSeek V4 Flash metadata contract. Q1 Round 08 qualified the successor.
+Formal Rounds 01 and 02 each passed all eight exact-response samples but only
+three of four Multi-Agent samples. Across formal Rounds, Multi-Agent quality
+was 6/8 with a 40.92% Wilson 95% lower bound, below the 50% policy threshold.
+Both Rounds retained identical Lock identity, private known-cost evidence, and
+zero outstanding resources. H2 is therefore failed, not unavailable.
 
 ## 2. Product Hypotheses
 
@@ -160,9 +175,9 @@ Must be replaced or redesigned:
 
 ## 6. Re-entry Rule
 
-Q1, D1, and H1 are closed. No Product Candidate was admitted, so Product
-Remediation remains prohibited. The next specification gate is explicit H2
-admission authorization.
+Q1, D1, H1, and H2 execution are closed. H2 failed its recurrent Live-quality
+threshold. H3-H4 and further H2 reruns are prohibited without a new explicit
+model or policy re-entry decision.
 
 Current sequence:
 
@@ -172,14 +187,16 @@ Current sequence:
    checks.
 4. Q1 Round 07 froze the H1-capable successor Lock.
 5. H1 settled all 21 tasks across five lanes.
-6. No Product Candidate or Product Remediation was admitted.
+6. Q1 Round 08 froze the H2-capable successor.
+7. H2 Rounds 01 and 02 both failed 14/16 on Multi-Agent quality.
+8. H2 and H3-H4 admission were not granted.
 
 The frozen Harness is authoritative only while its v3 input identity remains
 unchanged.
 
 ## 7. Prohibited Actions
 
-After H1 and before H2 admission:
+After failed H2 and before explicit re-entry:
 
 - do not confirm or repair PEC-0001 through PEC-0004;
 - do not restore removed 17.4 code;
@@ -187,3 +204,5 @@ After H1 and before H2 admission:
 - do not close one micro-incident while a systemic Epoch remains open;
 - do not change product code during Discovery;
 - do not weaken a denominator, status, or assertion to obtain green.
+- do not run a third H2 Round under the same policy and model identity.
+- do not start H3 or H4.

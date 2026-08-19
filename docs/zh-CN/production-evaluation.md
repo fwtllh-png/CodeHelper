@@ -2,10 +2,10 @@
 
 简体中文 | [English](../en/production-evaluation.md)
 
-> 状态：Foundation v2 与具备 H1 能力的 Harness 已通过 Q1 Round 07 验收。D1
-> Round 01 已完成全部 56 项 Settlement，H1 Round 01 已完成全部 21 项 VS Code 与
-> 进程 Chaos 任务，均未发现 Product Candidate。Product Remediation 与 H2-H4
-> Release Admission 仍被禁止。
+> 状态：Foundation v2 与具备 H2 能力的 Harness 已通过 Q1 Round 08 验收。D1 已
+> 56/56 通过，H1 已 21/21 通过。H2 正式 Round 01 与 02 均完成 16 项 Settlement，
+> 但因 Multi-Agent Live 质量未达到政策而均为 14/16。H2、H3-H4 与完整 Release
+> Admission 仍被禁止。
 >
 > 执行顺序和工期见[生产测评实施计划](./production-evaluation-implementation-plan.md)。
 > 当前可信状态和缺陷见[异常与缺陷台账](./production-evaluation-findings.md)。
@@ -23,6 +23,8 @@
 | D1 Product Discovery | 56/56 通过；无 Product Candidate | 不进入 Product Remediation |
 | 具备 H1 能力的 Harness | 已通过 Q1 Round 07 验收 | Frozen Harness 权威 |
 | 17.4 VS Code 与进程 Chaos | H1 已 21/21 通过 | 仅具 H1 证据；无 H2-H4 权威 |
+| 具备 H2 能力的 Harness | 已通过 Q1 Round 08 验收 | Frozen Harness 权威 |
+| Live Model 与 Drift | 两次正式 Round 均 14/16 失败 | 阻断 H2 与 H3-H4 |
 | 产品假设 PEC-0001 至 PEC-0004 | D1 未重新发现 | 仅保留历史状态 |
 
 `make eval-contract-check`、`make eval-replay` 和 `make eval-oracle` 仍是诊断命令。
@@ -503,5 +505,5 @@ Invariant。
 5. Reset Assessment 和 Findings Register 与本文可信状态一致；
 6. `make docs-check`、`make book-check` 和 `git diff --check` 通过。
 
-D1 与 H1 完成不授权 Product Remediation 或完整 Release Admission。H2 至 H4 仍保留
-各自治理门禁。
+D1 与 H1 完成不授权完整 Release Admission。H2 未通过版本化 Live Threshold，因此
+H3-H4 在显式 H2 重新准入前继续被阻断。

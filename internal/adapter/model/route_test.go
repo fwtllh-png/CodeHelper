@@ -136,6 +136,14 @@ func TestDeepSeekV4FlashKeepsResponsesProtocol(t *testing.T) {
 	if route.Model().Capabilities.IncrementalResponses {
 		t.Fatal("DeepSeek Responses must keep complete HTTP/SSE transport")
 	}
+	if route.Model().Limits.ContextTokens != 1_048_576 ||
+		route.Model().Limits.MaxOutputTokens != 393_216 ||
+		!route.Model().Capabilities.PromptCache {
+		t.Fatalf("DeepSeek V4 Flash metadata = %+v", route.Model())
+	}
+	if route.Model().Pricing.Known {
+		t.Fatal("time-varying DeepSeek pricing must fail closed without an effective window")
+	}
 }
 
 func TestCatalogRejectsAdapterProtocolMismatch(t *testing.T) {

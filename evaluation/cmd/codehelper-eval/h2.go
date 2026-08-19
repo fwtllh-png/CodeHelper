@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,25 +20,46 @@ import (
 	"github.com/fwtllh-png/CodeHelper/evaluation/internal/spec"
 )
 
-func runH1Admission(
+func runAdmission(
 	ctx context.Context,
 	args []string,
 	stdout io.Writer,
 	stderr io.Writer,
 ) int {
-	if len(args) == 0 || args[0] != "h1" {
-		fmt.Fprintln(stderr, "codehelper-eval: expected admission h1")
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "codehelper-eval: admission requires h1 or h2")
 		return 2
 	}
-	flags := flag.NewFlagSet("admission h1", flag.ContinueOnError)
+	switch args[0] {
+	case "h1":
+		return runH1Admission(ctx, args, stdout, stderr)
+	case "h2":
+		return runH2Admission(ctx, args, stdout, stderr)
+	default:
+		fmt.Fprintln(stderr, "codehelper-eval: admission requires h1 or h2")
+		return 2
+	}
+}
+
+func runH2Admission(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+) int {
+	if len(args) == 0 || args[0] != "h2" {
+		fmt.Fprintln(stderr, "codehelper-eval: expected admission h2")
+		return 2
+	}
+	flags := flag.NewFlagSet("admission h2", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	root := flags.String("root", ".", "repository root")
-	id := flags.String("id", "", "immutable H1 admission round id")
+	id := flags.String("id", "", "immutable H2 admission round id")
 	lockPath := flags.String("lock", "", "frozen Harness Lock")
 	catalogPath := flags.String(
 		"catalog",
-		"evaluation/spec/h1-execution.json",
-		"H1 execution catalog",
+		"evaluation/spec/h2-execution.json",
+		"H2 execution catalog",
 	)
 	evaluationBinary := flags.String(
 		"evaluation-binary",
@@ -54,7 +76,7 @@ func runH1Admission(
 		"extensions/vscode/dist/codehelper-vscode-0.0.1.vsix",
 		"frozen VSIX",
 	)
-	output := flags.String("output", "", "private H1 output directory")
+	output := flags.String("output", "", "private H2 output directory")
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -63,7 +85,7 @@ func runH1Admission(
 		strings.TrimSpace(*output) == "" {
 		fmt.Fprintln(
 			stderr,
-			"codehelper-eval: admission h1 requires --id, --lock, and --output",
+			"codehelper-eval: admission h2 requires --id, --lock, and --output",
 		)
 		return 2
 	}
@@ -77,13 +99,20 @@ func runH1Admission(
 	}
 	outputPath := resolve(*output)
 	if _, err := os.Stat(outputPath); err == nil {
-		fmt.Fprintln(stderr, "codehelper-eval: H1 output already exists")
+		fmt.Fprintln(stderr, "codehelper-eval: H2 output already exists")
 		return 1
 	} else if !os.IsNotExist(err) {
 		fmt.Fprintln(stderr, "codehelper-eval:", err)
 		return 1
 	}
 	if err := os.MkdirAll(outputPath, 0o700); err != nil {
+		fmt.Fprintln(stderr, "codehelper-eval:", err)
+		return 1
+	}
+	if err := os.MkdirAll(
+		filepath.Join(outputPath, "live-evidence"),
+		0o700,
+	); err != nil {
 		fmt.Fprintln(stderr, "codehelper-eval:", err)
 		return 1
 	}
@@ -105,7 +134,7 @@ func runH1Admission(
 		fmt.Fprintln(stderr, "codehelper-eval:", err)
 		return 1
 	}
-	catalog, err := admission.LoadH1(absoluteRoot, *catalogPath)
+	catalog, err := admission.LoadH2(absoluteRoot, *catalogPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "codehelper-eval:", err)
 		return 1
@@ -140,18 +169,33 @@ func runH1Admission(
 	tasks := []qualification.Task{{
 		ID: "identity-before", Check: identityCheck,
 	}}
-	for _, item := range catalog.Cases {
-		task := h1Task(
-			absoluteRoot,
-			outputPath,
-			*id,
-			item,
-			evaluationPath,
-			runtimePath,
-		)
-		tasks = append(tasks, task)
+	for _, scenario := range catalog.Scenarios {
+		for sample := 1; sample <= scenario.Repetitions; sample++ {
+			tasks = append(tasks, h2LiveTask(
+				absoluteRoot,
+				outputPath,
+				*id,
+				lock,
+				scenario,
+				sample,
+				runtimePath,
+			))
+		}
 	}
 	tasks = append(tasks,
+		qualification.Task{
+			ID: "aggregate-live-evidence",
+			Check: func(context.Context) (string, error) {
+				summary, aggregateErr := admission.AggregateH2(
+					outputPath,
+					catalog,
+					*id,
+					lock.SourceDigest,
+					lock.LockIdentity,
+				)
+				return summary.EvidenceDigest, aggregateErr
+			},
+		},
 		qualification.Task{
 			ID: "owned-resource-cleanup",
 			Check: func(checkContext context.Context) (string, error) {
@@ -170,7 +214,7 @@ func runH1Admission(
 	)
 	report, err := qualification.Run(ctx, qualification.Request{
 		ID:               *id,
-		Kind:             "chaos",
+		Kind:             "live",
 		Root:             absoluteRoot,
 		FoundationDigest: lock.FoundationDigest,
 		SourceDigest:     lock.SourceDigest,
@@ -201,84 +245,35 @@ func runH1Admission(
 		Failed: report.Failed, Invalid: report.Invalid,
 		Output: outputPath,
 	})
-	fmt.Fprintln(stdout, "H1_RESULT="+string(summary))
+	fmt.Fprintln(stdout, "H2_RESULT="+string(summary))
 	if report.Status != spec.StatusPassed {
 		return 1
 	}
 	return 0
 }
 
-func h1Task(
+func h2LiveTask(
 	root, output, qualificationID string,
-	item admission.H1Case,
-	evaluationBinary, runtimeBinary string,
+	lock freeze.Lock,
+	scenario admission.H2Scenario,
+	sample int,
+	runtimeBinary string,
 ) qualification.Task {
-	command := append([]string(nil), item.Command...)
-	if item.Kind == "go_test" {
-		command = proofGoTestCommand(
-			evaluationBinary,
-			max(1, item.MinimumTests),
-			command,
-		)
-	}
-	task := qualification.Task{
-		ID:        item.ID,
+	return qualification.Task{
+		ID:        fmt.Sprintf("%s-%02d", scenario.ID, sample),
 		Directory: root,
-		Timeout:   15 * time.Minute,
-		Command:   command,
-		Env:       append([]string(nil), item.Environment...),
+		Timeout:   10 * time.Minute,
+		Command:   append([]string(nil), scenario.Command...),
+		Env: []string{
+			"CODEHELPER_STAGE=h2_live",
+			"CODEHELPER_STAGE_RUN_ID=" + qualificationID,
+			"CODEHELPER_STAGE_SOURCE_DIGEST=" + lock.SourceDigest,
+			"CODEHELPER_STAGE_LOCK_IDENTITY=" + lock.LockIdentity,
+			"CODEHELPER_H2_SCENARIO_ID=" + scenario.ID,
+			"CODEHELPER_H2_SAMPLE_INDEX=" + strconv.Itoa(sample),
+			"CODEHELPER_STAGE_EVIDENCE_PATH=" +
+				admission.H2EvidencePath(output, scenario.ID, sample),
+			"CODEHELPER_LIVE_BINARY=" + runtimeBinary,
+		},
 	}
-	switch item.Kind {
-	case "electron":
-		task.Timeout = 60 * time.Minute
-		task.Env = append(task.Env,
-			"CODEHELPER_VSCODE_BINARY="+runtimeBinary,
-			"CODEHELPER_VSCODE_SELECTION_FIXTURE="+filepath.Join(
-				root,
-				"testdata/providers/selection-commands",
-			),
-			"CODEHELPER_VSCODE_APPROVAL_FIXTURE="+filepath.Join(
-				root,
-				"testdata/providers/vscode-approval-focus",
-			),
-			"CODEHELPER_VSCODE_SUBAGENT_FIXTURE="+filepath.Join(
-				root,
-				"testdata/providers/vscode-subagent",
-			),
-			"CODEHELPER_APPROVAL_EVIDENCE_DIR="+filepath.Join(
-				output,
-				"approval-evidence",
-			),
-			"CODEHELPER_ELECTRON_SCENARIOS="+strings.Join([]string{
-				"empty",
-				"workspace",
-				"accessibility",
-				"approval",
-				"native",
-				"multi",
-				"subagent",
-			}, ","),
-		)
-	case "vscode_runtime":
-		task.Timeout = 20 * time.Minute
-		task.CleanupReport = filepath.Join(
-			output,
-			"vscode-runtime-cleanup.json",
-		)
-		task.Env = append(task.Env,
-			"CODEHELPER_VSCODE_BINARY="+runtimeBinary,
-			"CODEHELPER_VSCODE_FIXTURE="+filepath.Join(
-				root,
-				"testdata/providers/tools",
-			),
-			"CODEHELPER_VSCODE_CONTEXT_FIXTURE="+filepath.Join(
-				root,
-				"testdata/providers/editor-context",
-			),
-			"CODEHELPER_Q1_CLEANUP_REPORT="+task.CleanupReport,
-			"CODEHELPER_Q1_QUALIFICATION_ID="+qualificationID,
-			"CODEHELPER_Q1_TASK_ID="+task.ID,
-		)
-	}
-	return task
 }

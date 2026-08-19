@@ -148,7 +148,8 @@ func (r Report) Validate() error {
 		(r.Kind != "foundation_epoch" &&
 			r.Kind != "integration" &&
 			r.Kind != "discovery" &&
-			r.Kind != "chaos") ||
+			r.Kind != "chaos" &&
+			r.Kind != "live") ||
 		!r.Status.Valid() ||
 		r.StartedAt.IsZero() || r.EndedAt.Before(r.StartedAt) ||
 		r.Scheduled < 1 || r.Settled != r.Scheduled ||
@@ -374,7 +375,8 @@ func validateRequest(request Request) error {
 		(request.Kind != "foundation_epoch" &&
 			request.Kind != "integration" &&
 			request.Kind != "discovery" &&
-			request.Kind != "chaos") ||
+			request.Kind != "chaos" &&
+			request.Kind != "live") ||
 		!digestValid(request.FoundationDigest) ||
 		!digestValid(request.SourceDigest) ||
 		!digestValid(request.RuntimeDigest) ||

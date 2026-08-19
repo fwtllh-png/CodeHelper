@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-qualification-global-assessment-08",
+  "phase": "h2_harness_requalification",
+  "status": "closed_passed_harness_frozen",
+  "closed_on": "2026-08-20",
+  "qualification_id": "foundation-v2-q1-08",
+  "candidate_lock": {
+    "schema_version": 3,
+    "status": "frozen_qualified",
+    "source_commit": "64ea82bfd88b7cdfbbb17d2e1085f87eb4d8ae8b",
+    "source_digest": "sha256:78fcb6a1ce6e37c04076f2c4b7f6ff950acc3acdb2cfe57173e005f28a62e629",
+    "foundation_digest": "sha256:dfc39e337adbce4aaab25c346bcc32e9f6015e60c8df3a53a7fa7f61c8721e5d",
+    "runtime_digest": "sha256:df43235490830cc18ab213ea60d52bf288f90e94a491c5207b25a7e4be63c6ec",
+    "vsix_digest": "sha256:47cb9a9948d8dde50ae576718342a9fb6d6f2f6b75b17274b5ea1eff9d4c6c96",
+    "lock_identity": "sha256:7455074ed5c91bdc3c2de64f24068dd078cd08890d0a732e58e3db3f55f9c0d5"
+  },
+  "foundation_epoch": {
+    "status": "passed",
+    "passed": 8,
+    "failed": 0,
+    "invalid": 0,
+    "evidence_digest": "sha256:042a5f72af1d2bf8649793775f6397bfb20875617f8220781144c2e028a43909"
+  },
+  "integration_runs": {
+    "count": 3,
+    "all_passed": true,
+    "tasks_per_run": 7,
+    "cleanup_resources_per_run": 9,
+    "cleanup_outstanding": 0,
+    "evidence_digests": [
+      "sha256:11cdf01959c628d32727b0b2578e04adcd46113bfbad2a1b98779fc5ff2e9001",
+      "sha256:4c36d82bec5fee6c222c7a687985dd64832794726c225bfcc4f1ec38da58d9bf",
+      "sha256:bf0f2a51875d2a3dc7dd887e2eba345ce863d1566a303c0a5ec41bd7508e7ff4"
+    ]
+  },
+  "finding_disposition": {
+    "H2H-0001": "closed_verified",
+    "H2H-0002": "closed_verified",
+    "H2H-0003": "closed_verified",
+    "H2H-0004": "closed_verified",
+    "H2C-0001": "closed_verified"
+  },
+  "decision": {
+    "harness_frozen": true,
+    "h2_authorized": true,
+    "additional_product_remediation_authorized": false,
+    "next_gate": "production_admission_h2_01"
+  }
+}

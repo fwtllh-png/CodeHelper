@@ -2,10 +2,9 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation-implementation-plan.md) | English
 
-> Status: F1-F3 and the H1-capable Harness are qualified by Q1 Round 07. D1
-> Round 01 passed 56/56, and H1 Round 01 passed 21/21, with no Product
-> Candidate. Product Remediation is not authorized. H2-H4 admission work
-> remains.
+> Status: F1-F3 and the H2-capable Harness are qualified by Q1 Round 08. D1
+> passed 56/56 and H1 passed 21/21. H2 formal Rounds 01 and 02 both failed
+> 14/16 on recurrent Multi-Agent live quality. H3-H4 remain blocked.
 
 | Stage | Status |
 | --- | --- |
@@ -16,6 +15,7 @@
 | Q1 Qualification and Freeze | H1-capable successor completed by Round 07; `frozen_qualified` |
 | D1 Collect-all Product Discovery | completed 56/56; no Product Candidate |
 | H1 VS Code and Process Chaos | completed 21/21; no Product Candidate |
+| H2 Live Model and Drift | failed twice at 14/16; not admitted |
 
 Development validation is recorded in
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`. It does not
@@ -42,6 +42,14 @@ H1 preflight then closed at 18/18, and the successor Harness passed Q1 Round
 `evaluation/assessments/h1-preflight-global-assessment-26.json`,
 `evaluation/assessments/q1-qualification-global-assessment-07.json`, and
 `evaluation/assessments/h1-production-admission-global-assessment-01.json`.
+H2 preflight closed after one separated remediation cycle, and Q1 Round 08
+froze the H2-capable successor. Formal H2 Rounds 01 and 02 each passed 11/12
+Live samples but failed one Multi-Agent sample, so the aggregate and H2 gate
+failed. The immutable decisions are in
+`evaluation/assessments/h2-preflight-global-assessment-01.json` through
+`-03.json`, `evaluation/assessments/q1-qualification-global-assessment-08.json`,
+and `evaluation/assessments/h2-production-admission-global-assessment-01.json`
+through `-02.json`.
 
 ## 1. Execution Model
 
@@ -379,12 +387,12 @@ effort.
 | Stage | Deliverable | Estimate |
 | --- | --- | ---: |
 | H1 VS Code and Process Chaos | completed: 21/21 across five lanes | completed |
-| H2 Live Model and Drift | repeated DeepSeek matrix, identity partition, confidence, cost and drift | 2 engineer-weeks |
+| H2 Live Model and Drift | implemented; two formal 14/16 failures, not admitted | blocked |
 | H3 Endurance and Release | four-hour workload, slopes, RC evidence aggregator, release gate | 2 engineer-weeks |
 | H4 Canary and Incident Closure | controlled inventory, rollout stop, rollback, incident-to-Corpus | 1 to 1.5 engineer-weeks |
 
-H1 must complete before H2 evidence can contribute to release admission.
-Preparation may overlap, but authority does not.
+H2 must pass before H3 evidence can contribute to release admission. Its
+current recurrent Live-quality failure blocks H3-H4.
 
 ## 11. Revised Estimate and Critical Path
 
@@ -424,7 +432,7 @@ Stopping is a control action, not a failure to make progress.
 
 ## 13. Approval Boundaries
 
-Approvals under this plan have progressed through H1 completion.
+Approvals under this plan progressed through H2 execution, but H2 did not pass.
 
 Completed approvals and remaining explicit boundaries are:
 
@@ -432,7 +440,7 @@ Completed approvals and remaining explicit boundaries are:
 2. Qualification and Harness Freeze Q1;
 3. Product Discovery D1;
 4. approved Product Remediation R1;
-5. production admission H1 is complete; H2 through H4 each remain separately
-   gated.
+5. production admission H1 is complete; H2 was executed and failed; H3-H4 are
+   not authorized.
 
 No later approval is implied by an earlier one.

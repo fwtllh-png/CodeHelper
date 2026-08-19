@@ -17,7 +17,7 @@ LDFLAGS := -s -w \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
 	eval-contract-check eval-foundation-check eval-replay eval-oracle \
-	eval-q1-artifacts eval-q1 eval-d1 eval-h1 \
+	eval-q1-artifacts eval-q1 eval-d1 eval-h1 eval-h2 \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-performance \
 	observation-traits observation-traits-check \
@@ -38,7 +38,8 @@ LDFLAGS := -s -w \
 	vscode-approval-integration vscode-multiroot-integration \
 	vscode-subagent-integration vscode-update-integration \
 	vscode-distribution vscode-local-setup vscode-matrix-report vscode-rc \
-	deepseek-init deepseek-tui deepseek-vscode deepseek-multi-agent-smoke \
+	deepseek-init deepseek-tui deepseek-vscode deepseek-live-smoke \
+	deepseek-multi-agent-smoke \
 	bench catalog-bench package clean
 
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
@@ -57,6 +58,9 @@ D1_OUTPUT ?= .tmp/evaluation/d1/$(D1_ID)
 H1_ID ?= production-admission-h1-01
 H1_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
 H1_OUTPUT ?= .tmp/evaluation/h1/$(H1_ID)
+H2_ID ?= production-admission-h2-01
+H2_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
+H2_OUTPUT ?= .tmp/evaluation/h2/$(H2_ID)
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
@@ -143,6 +147,16 @@ eval-h1:
 		--runtime '$(BINARY)' \
 		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
 		--output '$(H1_OUTPUT)'
+
+eval-h2:
+	'$(EVALUATION_BINARY)' admission h2 \
+		--root . \
+		--id '$(H2_ID)' \
+		--lock '$(H2_LOCK)' \
+		--evaluation-binary '$(EVALUATION_BINARY)' \
+		--runtime '$(BINARY)' \
+		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
+		--output '$(H2_OUTPUT)'
 
 eval-replay:
 	$(GO) run ./evaluation/cmd/codehelper-eval replay check \
@@ -533,6 +547,9 @@ deepseek-tui:
 
 deepseek-vscode:
 	./scripts/deepseek-local.sh vscode
+
+deepseek-live-smoke:
+	./scripts/deepseek-local.sh live-smoke
 
 deepseek-multi-agent-smoke:
 	./scripts/deepseek-local.sh multi-agent-smoke

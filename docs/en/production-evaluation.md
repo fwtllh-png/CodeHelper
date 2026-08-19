@@ -2,10 +2,10 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation.md) | English
 
-> Status: Foundation v2 and the H1-capable Harness are qualified under Q1
-> Round 07. D1 Round 01 settled all 56 tasks, and H1 Round 01 settled all 21
-> VS Code and process-chaos tasks, without a Product Candidate. Product
-> Remediation and H2-H4 release admission remain prohibited.
+> Status: Foundation v2 and the H2-capable Harness are qualified under Q1
+> Round 08. D1 passed 56/56 and H1 passed 21/21. H2 formal Rounds 01 and 02
+> each settled 16 tasks at 14/16 because Multi-Agent live quality did not meet
+> policy. H2, H3-H4, and full release admission remain prohibited.
 >
 > Execution order and estimates are maintained in the
 > [Production Evaluation Implementation Plan](./production-evaluation-implementation-plan.md).
@@ -26,6 +26,8 @@ implementation is not release-authoritative:
 | D1 Product Discovery | passed 56/56; no Product Candidate | no Product Remediation |
 | H1-capable Harness | qualified by Q1 Round 07 | frozen Harness authority |
 | 17.4 VS Code and Process Chaos | H1 passed 21/21 | H1 evidence only; no H2-H4 authority |
+| H2-capable Harness | qualified by Q1 Round 08 | frozen Harness authority |
+| Live Model and Drift | two formal Rounds failed 14/16 | blocks H2 and H3-H4 |
 | Product hypotheses PEC-0001 to PEC-0004 | not rediscovered in D1 | remain historical only |
 
 `make eval-contract-check`, `make eval-replay`, and `make eval-oracle` remain
@@ -541,5 +543,5 @@ This specification is ready for implementation approval only when:
 5. the reset assessment and Findings Register agree with this trust state;
 6. `make docs-check`, `make book-check`, and `git diff --check` pass.
 
-D1 and H1 completion do not authorize Product Remediation or full release
-admission. H2 through H4 retain their own governance gates.
+D1 and H1 completion do not authorize full release admission. H2 failed its
+versioned Live threshold, so H3-H4 remain blocked until explicit H2 re-entry.

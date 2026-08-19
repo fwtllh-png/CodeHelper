@@ -131,6 +131,8 @@ make brand-check
 | `make multi-agent-performance` | 有界 Agent Event 投影性能预算 |
 | `make live-model-smoke` | 显式、非 Hermetic 的真实模型冒烟 |
 | `make live-multi-agent-smoke` | 需要凭据的真实 Provider Agent Spawn/Wait/Completion 冒烟 |
+| `make deepseek-live-smoke` | 使用本机 Keychain 的 DeepSeek 单 Turn 冒烟 |
+| `make deepseek-multi-agent-smoke` | 使用本机 Keychain 的 DeepSeek Multi-Agent 冒烟 |
 | `make package VERSION=x.y.z` | 多平台 CLI Package 与 SBOM |
 
 ## 仓库脚本
@@ -168,6 +170,10 @@ RC Report。
 - 不打印 Secret，也不从受 Git 跟踪的仓库文档读取 Secret；
 - Git 忽略的本机 DeepSeek Runbook 只能作为凭证输入；
 - 说明生成目录与清理行为。
+
+DeepSeek V4 使用峰谷价格。Live Smoke Evidence 按执行时 UTC Window 选择生效价格，
+并把 Cache Hit、Cache Miss 和 Output Price 作为同一个私有 Model-metadata
+Partition。Bundled Route 对动态价格报告 Unknown，不持久化过期的静态金额。
 
 ## 生成文件
 

@@ -6,11 +6,27 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 binary=${1:-"$root/bin/codehelper"}
 model_name=${LIVE_MODEL_NAME:-dola-seed-lite}
 protocol=${LIVE_MODEL_PROTOCOL:-openai_chat}
-context_tokens=${LIVE_MODEL_CONTEXT_TOKENS:-262144}
-model_max_output_tokens=${LIVE_MODEL_MAX_OUTPUT_TOKENS:-131072}
+context_tokens=${LIVE_MODEL_CONTEXT_TOKENS:-1048576}
+model_max_output_tokens=${LIVE_MODEL_MAX_OUTPUT_TOKENS:-393216}
 model_capabilities=${LIVE_MODEL_CAPABILITIES:-streaming,reasoning,tool_calls}
-input_price=${LIVE_MODEL_INPUT_PRICE_PER_MILLION:-0.25}
-output_price=${LIVE_MODEL_OUTPUT_PRICE_PER_MILLION:-2.0}
+utc_hour=$(date -u +%H)
+case "$utc_hour" in
+	01|02|03|06|07|08|09)
+		pricing_window=peak
+		default_input_price=0.44
+		default_cached_input_price=0.014
+		default_output_price=1.32
+		;;
+	*)
+		pricing_window=off_peak
+		default_input_price=0.22
+		default_cached_input_price=0.007
+		default_output_price=0.66
+		;;
+esac
+input_price=${LIVE_MODEL_INPUT_PRICE_PER_MILLION:-$default_input_price}
+cached_input_price=${LIVE_MODEL_CACHED_INPUT_PRICE_PER_MILLION:-$default_cached_input_price}
+output_price=${LIVE_MODEL_OUTPUT_PRICE_PER_MILLION:-$default_output_price}
 pricing_currency=${LIVE_MODEL_PRICING_CURRENCY:-USD}
 multi_agent=${LIVE_MODEL_MULTI_AGENT:-0}
 
@@ -63,7 +79,36 @@ export CODEHELPER_LIVE_API_KEY
 
 smoke_dir=$(mktemp -d "${TMPDIR:-/tmp}/codehelper-live-model.XXXXXX")
 output="$smoke_dir/events.ndjson"
+model_metadata="$smoke_dir/model-metadata.json"
 trap 'rm -rf "$smoke_dir"; unset CODEHELPER_LIVE_API_KEY' EXIT HUP INT TERM
+ruby -rjson -e '
+	value = {
+		canonical_id: ARGV[1],
+		wire_id: ARGV[1],
+		context_tokens: Integer(ARGV[2], 10),
+		max_output_tokens: Integer(ARGV[3], 10),
+		capabilities: {
+			streaming: true,
+			reasoning: true,
+			reasoning_efforts: %w[off low medium high max],
+			tool_calls: true,
+			native_search: false,
+			vision: false,
+			image_input: false,
+			prompt_cache: true
+		},
+		pricing: {
+			input_per_million: Float(ARGV[4]),
+			cached_input_per_million: Float(ARGV[5]),
+			output_per_million: Float(ARGV[6]),
+			currency: ARGV[7]
+		}
+	}
+	File.write(ARGV[0], JSON.generate(value), mode: "w", perm: 0o600)
+' "$model_metadata" "$wire_model" "$context_tokens" \
+	"$model_max_output_tokens" "$input_price" "$cached_input_price" \
+	"$output_price" "$pricing_currency"
+started_ms=$(ruby -e 'puts((Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000).to_i)')
 
 if [ "$multi_agent" = "1" ]; then
 	config="$smoke_dir/multi-agent.toml"
@@ -86,12 +131,7 @@ EOF
 		--base-url "$base_url" \
 		--protocol "$protocol" \
 		--api-key-env CODEHELPER_LIVE_API_KEY \
-		--context-tokens "$context_tokens" \
-		--model-max-output-tokens "$model_max_output_tokens" \
-		--model-capabilities "$model_capabilities" \
-		--input-price-per-million "$input_price" \
-		--output-price-per-million "$output_price" \
-		--pricing-currency "$pricing_currency" \
+		--model-metadata "$model_metadata" \
 		--output-format stream-json \
 		--enable-tools \
 		--workspace "$root" \
@@ -125,27 +165,31 @@ else
 		--base-url "$base_url" \
 		--protocol "$protocol" \
 		--api-key-env CODEHELPER_LIVE_API_KEY \
-		--context-tokens "$context_tokens" \
-		--model-max-output-tokens "$model_max_output_tokens" \
-		--model-capabilities "$model_capabilities" \
-		--input-price-per-million "$input_price" \
-		--output-price-per-million "$output_price" \
-		--pricing-currency "$pricing_currency" \
+		--model-metadata "$model_metadata" \
 		--output-format stream-json \
 		--max-output-tokens 64 \
-		--budget-tokens 1000 \
+		--budget-tokens 4096 \
 		"Reply with exactly: codehelper-live-ok" >"$output"
 fi
+ended_ms=$(ruby -e 'puts((Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000).to_i)')
+duration_ms=$((ended_ms - started_ms))
 
 ruby -rjson -rdigest -ruri -e '
 	text = +""
 	terminal = []
 	spawned = []
 	agent_terminal = {}
+	kinds = Hash.new(0)
+	usage_by_sample = {}
 	File.foreach(ARGV[0]) do |line|
 		event = JSON.parse(line)
+		kinds[event["kind"]] += 1
 		text << event.fetch("data", {}).fetch("text", "") if event["kind"] == "output.delta"
 		terminal << event["kind"] if %w[turn.completed turn.failed turn.canceled].include?(event["kind"])
+		if event["kind"] == "usage"
+			data = event.fetch("data")
+			usage_by_sample[data.fetch("sample", 0)] = data
+		end
 		if event["kind"] == "agent.spawned"
 			spawned << event.fetch("data").fetch("agent_id")
 		elsif event["kind"] == "agent.status"
@@ -166,7 +210,7 @@ ruby -rjson -rdigest -ruri -e '
 		abort "live model spawned #{spawned.uniq.length} agents, want 2" unless spawned.uniq.length == 2
 		abort "live model terminal agents = #{agent_terminal.inspect}" unless agent_terminal.length == 2 &&
 			agent_terminal.values.all? { |item| item.fetch(:status) == "completed" }
-		abort "unexpected Multi-Agent live model text: #{text.inspect}" unless text.strip.end_with?("codehelper-multi-agent-live-ok")
+		abort "unexpected Multi-Agent live model text: #{text.inspect}" unless text.strip == "codehelper-multi-agent-live-ok"
 	else
 		abort "unexpected live model text: #{text.inspect}" unless text.strip == "codehelper-live-ok"
 	end
@@ -178,29 +222,81 @@ ruby -rjson -rdigest -ruri -e '
 		uri = URI.parse(ARGV[1])
 		host = uri.host
 		abort "live model base URL has no host" if host.nil? || host.empty?
-		evidence = {
-			schema_version: 1,
-			stage: stage,
-			run_id: run_id,
-			source_digest: source_digest,
-			kind: "live-model",
-			endpoint_host_sha256: Digest::SHA256.hexdigest(host.downcase),
-			model: ARGV[2],
-			model_sha256: Digest::SHA256.hexdigest(ARGV[2]),
-			provider: ARGV[3],
-			multi_agent: multi_agent,
-			agent_spawn_count: spawned.uniq.length,
-			agent_terminal_count: agent_terminal.length,
-			agent_completed_count: agent_terminal.values.count { |item| item.fetch(:status) == "completed" },
-			terminal_event: terminal.fetch(0),
-			terminal_count: terminal.length,
-			text_assertion_sha256: Digest::SHA256.hexdigest(text.strip)
-		}
+		if stage == "h2_live"
+			usage = usage_by_sample.values.each_with_object({
+				input_tokens: 0,
+				output_tokens: 0,
+				reasoning_tokens: 0,
+				cached_tokens: 0,
+				cost_microunits: 0
+			}) do |sample, total|
+				total.keys.each { |key| total[key] += sample.fetch(key.to_s, 0).to_i }
+			end
+			cost_known = !usage_by_sample.empty? &&
+				usage_by_sample.values.all? { |sample| sample["cost_known"] == true }
+			config = [
+				ARGV[3], ARGV[2], ARGV[4], ARGV[5], ARGV[6], ARGV[7],
+				ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12]
+			]
+			evidence = {
+				schema_version: 1,
+				stage: stage,
+				qualification_id: run_id,
+				scenario_id: ENV.fetch("CODEHELPER_H2_SCENARIO_ID"),
+				sample_index: Integer(ENV.fetch("CODEHELPER_H2_SAMPLE_INDEX"), 10),
+				source_digest: source_digest,
+				lock_identity: ENV.fetch("CODEHELPER_STAGE_LOCK_IDENTITY"),
+				endpoint_host_sha256: "sha256:" + Digest::SHA256.hexdigest(host.downcase),
+				provider: ARGV[3],
+				model: ARGV[2],
+				protocol: ARGV[4],
+				pricing_window: ARGV[12],
+				config_sha256: "sha256:" + Digest::SHA256.hexdigest(JSON.generate(config)),
+				multi_agent: multi_agent,
+				terminal_event: terminal.fetch(0),
+				terminal_count: terminal.length,
+				text_assertion_sha256: "sha256:" + Digest::SHA256.hexdigest(text.strip),
+				event_shape_sha256: "sha256:" + Digest::SHA256.hexdigest(JSON.generate(kinds.keys.sort)),
+				usage_samples: usage_by_sample.length,
+				input_tokens: usage.fetch(:input_tokens),
+				output_tokens: usage.fetch(:output_tokens),
+				reasoning_tokens: usage.fetch(:reasoning_tokens),
+				cached_tokens: usage.fetch(:cached_tokens),
+				cost_microunits: usage.fetch(:cost_microunits),
+				cost_known: cost_known,
+				duration_ms: Integer(ARGV[13], 10),
+				agent_spawn_count: spawned.uniq.length,
+				agent_terminal_count: agent_terminal.length,
+				agent_completed_count: agent_terminal.values.count { |item| item.fetch(:status) == "completed" }
+			}
+		else
+			evidence = {
+				schema_version: 1,
+				stage: stage,
+				run_id: run_id,
+				source_digest: source_digest,
+				kind: "live-model",
+				endpoint_host_sha256: Digest::SHA256.hexdigest(host.downcase),
+				model: ARGV[2],
+				model_sha256: Digest::SHA256.hexdigest(ARGV[2]),
+				provider: ARGV[3],
+				multi_agent: multi_agent,
+				agent_spawn_count: spawned.uniq.length,
+				agent_terminal_count: agent_terminal.length,
+				agent_completed_count: agent_terminal.values.count { |item| item.fetch(:status) == "completed" },
+				terminal_event: terminal.fetch(0),
+				terminal_count: terminal.length,
+				text_assertion_sha256: Digest::SHA256.hexdigest(text.strip)
+			}
+		end
 		File.open(path, File::WRONLY | File::CREAT | File::TRUNC, 0o600) do |file|
 			file.write(JSON.generate(evidence))
 			file.write("\n")
 		end
 	end
-' "$output" "$base_url" "$wire_model" "$model_name"
+' "$output" "$base_url" "$wire_model" "$model_name" "$protocol" \
+	"$context_tokens" "$model_max_output_tokens" "$model_capabilities" \
+	"$input_price" "$cached_input_price" "$output_price" "$pricing_currency" \
+	"$pricing_window" "$duration_ms"
 
 cat "$output"
