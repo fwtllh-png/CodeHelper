@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-24",
+  "phase": "production_admission_h1",
+  "status": "closed_harness_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "native_runtime_restart": "passed",
+    "native_post_restart_session_count": 4,
+    "native_cross_turn_item_reuse": 0,
+    "multi_runtime_configuration": "default_vscode",
+    "multi_force_edit_plan_approval": false,
+    "multi_file_apply": "succeeded",
+    "multi_quality_verification": "passed",
+    "multi_approvals_requested": 0,
+    "multi_terminal": "turn.completed"
+  },
+  "findings": [
+    {
+      "id": "H1C-0010",
+      "severity": "P1",
+      "status": "remediated",
+      "title": "lifecycle_projection_reuses_item_identity_across_turns",
+      "resolution_evidence": [
+        "item_ownership_cache_is_scoped_by_turn_id_and_local_id",
+        "focused_cross_turn_regression_passes",
+        "official_native_runtime_restart_returns_ready",
+        "all_four_sessions_restore",
+        "durable_tool_results_have_no_cross_turn_item_reuse"
+      ],
+      "classification": "product"
+    },
+    {
+      "id": "H1C-0006",
+      "severity": "P1",
+      "status": "rejected",
+      "title": "multi_root_edit_plan_turn_emits_no_qualified_approval",
+      "reason": "forced_edit_plan_approval_is_an_explicit_optional_mode_and_the_default_vscode_runtime_intentionally_does_not_enable_it",
+      "classification": "product_candidate_rejected"
+    },
+    {
+      "id": "H1H-0019",
+      "severity": "P1",
+      "status": "confirmed",
+      "title": "multi_root_journey_requires_optional_edit_plan_approval_in_default_mode",
+      "evidence": [
+        "runtime_arguments_contract_omits_edit_plan_approvals",
+        "vscode_documentation_describes_forced_edit_plan_as_optional",
+        "file_apply_executes_under_the_default_managed_write_grant",
+        "turn_receipt_reports_approvals_requested_zero",
+        "harness_rejects_the_successful_turn_only_because_no_edit_plan_approval_was_emitted"
+      ],
+      "impact": "the_official_multi_root_scenario_fails_against_the_intended_default_vscode_runtime_contract",
+      "classification": "harness"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": false,
+    "harness_remediation_authorized": true,
+    "authorized_scope": "replace_the_stale_default_mode_edit_plan_approval_assertion_with_root_scoped_multi_file_mutation_and_verification_evidence_while_retaining_forced_mode_coverage_in_integration_tests",
+    "formal_h1_authorized": false,
+    "next_gate": "remediate_the_multi_root_journey_and_retest_multi_only"
+  }
+}

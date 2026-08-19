@@ -603,9 +603,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 11593,
+        "production_lines": 11621,
         "options_fields": 60,
         "mutex_fields": 8
+      },
+      "relaxations": {
+        "production_lines": "H1 reconstructs forked Engines through the guarded constructor and preserves explicitly required Agent control tools"
       }
     },
     {
@@ -614,9 +617,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 21,
-        "production_lines": 8676,
+        "production_lines": 8700,
         "options_fields": 18,
         "mutex_fields": 7
+      },
+      "relaxations": {
+        "production_lines": "H1 scopes durable item ownership by Turn and propagates guarded Engine fork construction failures"
       }
     },
     {

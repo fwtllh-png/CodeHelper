@@ -177,6 +177,12 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 	if !hasGitProcess {
 		t.Fatal("integrate_agent does not declare its internal git process")
 	}
+	if integrateDescriptor.SandboxRequirement != tool.SandboxStrong {
+		t.Fatalf(
+			"integrate_agent sandbox = %q, want strong",
+			integrateDescriptor.SandboxRequirement,
+		)
+	}
 	properties := spawnDescriptor.InputSchema["properties"].(map[string]any)
 	for _, field := range []string{"context_mode", "context_turns"} {
 		if _, ok := properties[field]; !ok {

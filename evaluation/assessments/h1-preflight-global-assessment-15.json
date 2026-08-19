@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-15",
+  "phase": "production_admission_h1",
+  "status": "closed_harness_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "runtime_debug_session": "electron-stream-cancel",
+    "pre_fix_log": ".dbg/trae-debug-log-electron-stream-cancel.ndjson",
+    "recovery_output_delta_text": "completed_the_requested_electron_journey",
+    "terminal_before_cancel": "turn.completed",
+    "cancel_identity": "matched_source_session_and_turn",
+    "output_delta_durability": "terminal_projection",
+    "reasoning_delta_durability": "transient"
+  },
+  "findings": [
+    {
+      "id": "H1H-0012",
+      "severity": "P1",
+      "status": "confirmed_root_cause_revised",
+      "title": "streaming_cancel_fixture_waits_on_terminal_projection",
+      "evidence": [
+        "pre_fix_log_line_17_is_the_turn_complete_final_summary",
+        "pre_fix_log_line_18_projects_turn_completed",
+        "pre_fix_log_line_19_shows_terminal_completed_before_cancel",
+        "pre_fix_log_line_20_shows_matching_session_and_turn_identity",
+        "output_delta_is_emitted_from_terminal_outbox",
+        "reasoning_delta_is_a_transient_live_stream_event"
+      ],
+      "impact": "the_test_submits_cancel_only_after_the_turn_is_terminal",
+      "classification": "harness"
+    },
+    {
+      "id": "H1H-0013",
+      "severity": "P2",
+      "status": "rejected",
+      "title": "recovery_stream_window_is_too_short",
+      "reason": "extending_the_stream_window_does_not_help_because_output_delta_is_not_a_live_provider_barrier"
+    },
+    {
+      "id": "H1C-0007",
+      "severity": "P1",
+      "status": "rejected",
+      "title": "runtime_ignores_cancel_for_an_active_stream",
+      "reason": "the_observed_cancel_is_submitted_after_terminal_commit"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": false,
+    "harness_remediation_authorized": true,
+    "authorized_scope": "synchronize_streaming_cancel_on_a_transient_reasoning_delta_and_remove_the_failed_delay_expansion",
+    "formal_h1_authorized": false,
+    "next_gate": "collect_post_fix_logs_proving_cancel_precedes_turn_canceled"
+  }
+}

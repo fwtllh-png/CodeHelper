@@ -666,6 +666,50 @@ func TestToolSelectionKeepsCoreAndBoundedRelevantDefinitions(t *testing.T) {
 	}
 }
 
+func TestToolSelectionKeepsRequiredAgentTools(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"close_agent",
+		"integrate_agent",
+		"list_agents",
+		"send_input",
+		"send_message",
+		"spawn_agent",
+		"wait_agent",
+	} {
+		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, advertised, err := engine.toolDefinitionsFromSnapshot(
+		snapshot,
+		TurnRequest{
+			Prompt: "Explicitly spawn one implementer child, wait for that " +
+				"child, then use integrate_agent to apply its result.",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"spawn_agent",
+		"wait_agent",
+		"integrate_agent",
+	} {
+		if !advertised[name] {
+			t.Fatalf("required Agent tool %q omitted from %v", name, advertised)
+		}
+	}
+}
+
 func TestCatalogReceiptUsesLastProviderToolDefinitions(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	for _, name := range []string{

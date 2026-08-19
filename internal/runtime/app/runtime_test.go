@@ -659,6 +659,48 @@ func TestRuntimeToolAndApprovalGetOwnedItemIDs(t *testing.T) {
 	}
 }
 
+func TestRuntimeToolItemIDsAreScopedToTurn(t *testing.T) {
+	runtime := NewRuntime(Options{
+		Engine: &testEngine{}, SubscriberBuffer: 16,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, turnID := range []protocol.TurnID{"turn-a", "turn-b", "turn-a"} {
+		if err := runtime.publish(
+			"operation-"+protocol.OperationID(turnID),
+			"thread",
+			turnID,
+			"fallback-"+protocol.ItemID(turnID),
+			&protocol.ToolResultData{
+				Tool: "turn_complete", CallID: "shared-call", Output: "ok",
+			},
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := receiveEvent(t, events)
+	second := receiveEvent(t, events)
+	repeated := receiveEvent(t, events)
+	if first.ItemID == second.ItemID {
+		t.Fatalf(
+			"tool ItemID reused across turns: %q for %s and %s",
+			first.ItemID,
+			first.TurnID,
+			second.TurnID,
+		)
+	}
+	if repeated.ItemID != first.ItemID {
+		t.Fatalf(
+			"tool ItemID changed within turn: first %q repeated %q",
+			first.ItemID,
+			repeated.ItemID,
+		)
+	}
+}
+
 type itemOwningEngine struct{}
 
 func (*itemOwningEngine) StartTurn(
@@ -740,22 +782,26 @@ func TestRuntimeRestoreBackfillsOwnedItemMaps(t *testing.T) {
 	t.Cleanup(func() { closeRuntime(t, runtime) })
 	runtime.restore(RecoveryState{
 		PendingApprovals: map[string]PendingApproval{
-			"req-a": {RequestID: "req-a", ItemID: "item-approval"},
+			"req-a": {
+				RequestID: "req-a", TurnID: "turn-a", ItemID: "item-approval",
+			},
 		},
 		PendingInputs: map[string]PendingInput{
-			"req-i": {RequestID: "req-i", ItemID: "item-input"},
+			"req-i": {
+				RequestID: "req-i", TurnID: "turn-i", ItemID: "item-input",
+			},
 		},
-		ToolItems: map[string]protocol.ItemID{
-			"call-1": "item-tool",
+		ToolItems: map[EventItemOwner]protocol.ItemID{
+			{TurnID: "turn-t", LocalID: "call-1"}: "item-tool",
 		},
 	})
-	if got := runtime.approvalItems["req-a"]; got != "item-approval" {
+	if got := runtime.approvalItems[eventItemOwner("turn-a", "req-a")]; got != "item-approval" {
 		t.Fatalf("approvalItems = %q", got)
 	}
-	if got := runtime.inputItems["req-i"]; got != "item-input" {
+	if got := runtime.inputItems[eventItemOwner("turn-i", "req-i")]; got != "item-input" {
 		t.Fatalf("inputItems = %q", got)
 	}
-	if got := runtime.toolItems["call-1"]; got != "item-tool" {
+	if got := runtime.toolItems[eventItemOwner("turn-t", "call-1")]; got != "item-tool" {
 		t.Fatalf("toolItems = %q", got)
 	}
 }

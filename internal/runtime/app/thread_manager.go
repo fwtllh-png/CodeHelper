@@ -431,7 +431,11 @@ func (m *ThreadManager) ForkThread(
 	if err != nil {
 		return err
 	}
-	child := AdaptEngineWithWorkspaceIdentity(engine.Fork(), parent.workspaceIdentity)
+	forked, err := engine.Fork()
+	if err != nil {
+		return err
+	}
+	child := AdaptEngineWithWorkspaceIdentity(forked, parent.workspaceIdentity)
 	childWindowID, childWindowNumber := "", uint64(0)
 	if childEngine := child.Underlying(); childEngine != nil {
 		childWindowID, childWindowNumber = childEngine.TokenWindowIdentity()
@@ -493,7 +497,10 @@ func (m *ThreadManager) ForkCheckpoint(
 	if engine == nil {
 		return errors.New("checkpoint parent engine is unavailable")
 	}
-	childEngine := engine.Fork()
+	childEngine, err := engine.Fork()
+	if err != nil {
+		return err
+	}
 	childEngine.ReplaceHistory(history)
 	child := AdaptEngineWithWorkspaceIdentity(
 		childEngine,

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-qualification-global-assessment-07",
+  "phase": "h1_harness_requalification",
+  "status": "closed_passed_harness_frozen",
+  "closed_on": "2026-08-20",
+  "qualification_id": "foundation-v2-q1-07",
+  "candidate_lock": {
+    "schema_version": 3,
+    "status": "frozen_qualified",
+    "source_commit": "3e0dd9894f13ab6a6bb2e159b5f6aac45a44b13d",
+    "source_digest": "sha256:19eaa377ef0cc56b14c587492d82c85190d025dd4ab64bfd4a2d04eeeeadb354",
+    "foundation_digest": "sha256:fc9cf48ec79262736bc860883be13ff5a78aca492f994690538551ada10ed505",
+    "runtime_digest": "sha256:1f3593f216db3132d42e5ac16a848039c85c054052cabee188010aa0f2330a41",
+    "vsix_digest": "sha256:6e2de23bbff96b82e2927c311c67217b15848b07b422df32f536e6c2ef01580a",
+    "lock_identity": "sha256:7fa16a5ba9a596e36c61b0c5ac47a4ce45ab6a8506334a8cb6ce8d4c90099589"
+  },
+  "foundation_epoch": {
+    "status": "passed",
+    "passed": 8,
+    "failed": 0,
+    "invalid": 0,
+    "evidence_digest": "sha256:6bec0c99a72741392040f2ffcaf765e1681ded41d0325f26dff469996c0f59d8"
+  },
+  "integration_runs": {
+    "count": 3,
+    "all_passed": true,
+    "tasks_per_run": 7,
+    "cleanup_resources_per_run": 9,
+    "cleanup_processes_per_run": 5,
+    "cleanup_temporary_directories_per_run": 4,
+    "cleanup_outstanding": 0,
+    "evidence_digests": [
+      "sha256:932743c3520adcaa8df3ff344e7100ec9a7af51f10edf859ae9e09fe4e6b675d",
+      "sha256:f559f2084c4505f0e8d2e42d8b2b6992478cba27606288d3d4a90c0e8b1e4711",
+      "sha256:0d9ed6535fae334c099e31c688234b023ea1bcb4cfd54db9c03e2d15b31f8023"
+    ]
+  },
+  "finding_disposition": {
+    "H1C-0001": "closed_verified",
+    "H1C-0002": "closed_verified",
+    "H1C-0003": "closed_verified",
+    "H1C-0004": "closed_verified",
+    "H1C-0005": "rejected",
+    "H1C-0006": "rejected",
+    "H1C-0007": "rejected",
+    "H1C-0008": "rejected",
+    "H1C-0009": "closed_verified",
+    "H1C-0010": "closed_verified",
+    "H1H-0001_through_H1H-0020": "closed_or_rejected_by_h1_preflight_global_assessment_26"
+  },
+  "decision": {
+    "harness_frozen": true,
+    "h1_authorized": true,
+    "product_remediation_authorized": false,
+    "next_gate": "production_admission_h1_01"
+  }
+}

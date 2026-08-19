@@ -229,20 +229,23 @@ func TestCommandRunnerRunsFromTheResolvedRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var directory string
+	var observed process.Options
 	runner := &CommandRunner{
 		Root:     link,
 		Commands: []Command{{Name: "unit", Command: "true"}},
 		Run: func(_ context.Context, options process.Options) (process.Result, error) {
-			directory = options.Dir
+			observed = options
 			return process.Result{}, nil
 		},
 	}
 	if _, err := runner.Verify(context.Background(), Request{Scope: ScopeRepository}); err != nil {
 		t.Fatal(err)
 	}
-	if directory != resolved {
-		t.Fatalf("ran in %q, want the resolved root %q", directory, resolved)
+	if observed.Dir != resolved {
+		t.Fatalf("ran in %q, want the resolved root %q", observed.Dir, resolved)
+	}
+	if !observed.RequireStrongSandbox || !observed.WorkspaceReadOnly {
+		t.Fatalf("verification process authority = %+v", observed)
 	}
 }
 

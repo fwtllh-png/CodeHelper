@@ -609,13 +609,19 @@ func (e *Engine) ReplaceHistory(messages []provider.Message) {
 	}
 }
 
-func (e *Engine) Fork() *Engine {
+func (e *Engine) Fork() (*Engine, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.scopeMu.Lock()
 	defer e.scopeMu.Unlock()
 	e.planMu.Lock()
 	defer e.planMu.Unlock()
+	options := e.options
+	options.Guard = nil
+	forked, err := New(options)
+	if err != nil {
+		return nil, fmt.Errorf("construct forked engine: %w", err)
+	}
 	forkWindow, err := createWindowLedger(1)
 	if err != nil {
 		forkWindow = fallbackWindowLedger(
@@ -623,20 +629,17 @@ func (e *Engine) Fork() *Engine {
 			fmt.Sprintf("%s:fork:%d", e.options.SessionID, e.turn),
 		)
 	}
-	forked := &Engine{
-		options: e.options, history: cloneMessages(e.history),
-		mailboxHold:  append([]PendingInput(nil), e.mailboxHold...),
-		turn:         e.turn,
-		working:      e.working.Clone(),
-		evidence:     e.evidence.Clone(),
-		failures:     e.failures.Clone(),
-		world:        contextstore.CloneWorldBaseline(e.world),
-		window:       forkWindow,
-		historyTurns: cloneHistoryTurns(e.historyTurns),
-
-		planText: e.planText,
-		plan:     e.plan.Clone(),
-	}
+	forked.history = cloneMessages(e.history)
+	forked.mailboxHold = append([]PendingInput(nil), e.mailboxHold...)
+	forked.turn = e.turn
+	forked.working = e.working.Clone()
+	forked.evidence = e.evidence.Clone()
+	forked.failures = e.failures.Clone()
+	forked.world = contextstore.CloneWorldBaseline(e.world)
+	forked.window = forkWindow
+	forked.historyTurns = cloneHistoryTurns(e.historyTurns)
+	forked.planText = e.planText
+	forked.plan = e.plan.Clone()
 	forked.lastScope = &Scope{
 		engine: forked,
 		state:  newScopeState(e),
@@ -645,7 +648,7 @@ func (e *Engine) Fork() *Engine {
 		receipt := *e.planReceipt
 		forked.planReceipt = &receipt
 	}
-	return forked
+	return forked, nil
 }
 
 // LastTurnID returns the workspace journal turn id with the highest turn number.

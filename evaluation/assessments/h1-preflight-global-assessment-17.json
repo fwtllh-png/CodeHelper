@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-17",
+  "phase": "production_admission_h1",
+  "status": "closed_harness_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "preserved_runtime_database": "inspected",
+    "preserved_event_log": "inspected",
+    "duplicated_chat_mutation_revision": 0,
+    "completion_declaration": "rejected_no_observed_changes",
+    "fixture_after_rejection": "consumes_subsequent_plan_streams",
+    "terminal_envelope_present": false,
+    "turn_status": "active"
+  },
+  "findings": [
+    {
+      "id": "H1H-0015",
+      "severity": "P1",
+      "status": "confirmed",
+      "title": "plan_implementation_fixtures_do_not_execute_or_verify_workspace_changes",
+      "evidence": [
+        "plan_implement_streams_contain_only_prose",
+        "completion_contract_rejects_no_observed_changes",
+        "event_log_records_mutation_revision_zero",
+        "turn_continues_into_subsequent_fixture_streams"
+      ],
+      "impact": "new_session_fork_and_current_session_plan_destinations_cannot_complete_authoritatively",
+      "classification": "harness"
+    },
+    {
+      "id": "H1C-0008",
+      "severity": "P1",
+      "status": "candidate",
+      "title": "provider_exhaustion_failure_terminal_does_not_commit",
+      "evidence": [
+        "fixture_exhaustion_follows_rejected_completion",
+        "operation_rejected_reports_persistence_retry",
+        "turn_remains_active",
+        "terminal_envelope_is_absent"
+      ],
+      "classification": "pending_independent_negative_path_reproduction"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": false,
+    "harness_remediation_authorized": true,
+    "authorized_scope": "make_each_plan_implementation_execute_verify_and_declare_a_real_workspace_change",
+    "formal_h1_authorized": false,
+    "next_gate": "retest_all_native_plan_destinations_then_assess_the_independent_negative_path"
+  }
+}

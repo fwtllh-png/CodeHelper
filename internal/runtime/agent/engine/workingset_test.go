@@ -176,7 +176,10 @@ func TestForkInheritsTheWorkingSetWithoutSharingIt(t *testing.T) {
 	parent.turn = 1
 	parent.observePath(workingset.SourceEdited, "shared.go")
 
-	child := parent.Fork()
+	child, err := parent.Fork()
+	if err != nil {
+		t.Fatal(err)
+	}
 	child.turn = 2
 	child.observePath(workingset.SourceRead, "child.go")
 	parent.observePath(workingset.SourceRead, "parent.go")

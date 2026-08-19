@@ -2,9 +2,9 @@
 
 简体中文 | [English](../en/production-evaluation-implementation-plan.md)
 
-> 状态：F1-F3 与 D1 Harness 已通过 Q1 Round 06 验收。D1 Round 01 已 56/56
-> 通过，未发现 Product Candidate。Product Remediation 未获授权；H1-H4 Admission
-> Work 尚待实施。
+> 状态：F1-F3 与具备 H1 能力的 Harness 已通过 Q1 Round 07 验收。D1 Round 01
+> 已 56/56 通过，H1 Round 01 已 21/21 通过，均未发现 Product Candidate。
+> Product Remediation 未获授权；H2-H4 Admission Work 尚待实施。
 
 | Stage | 状态 |
 | --- | --- |
@@ -12,8 +12,9 @@
 | F1 Contract、Identity、Admission、Runner | 已验收 |
 | F2 Privacy、Promotion、Replay | 已验收 |
 | F3 Oracle、Core Pack、Impact | 已验收 |
-| Q1 Qualification 与 Freeze | 已由 Round 06 完成；`frozen_qualified` |
+| Q1 Qualification 与 Freeze | 具备 H1 能力的后继已由 Round 07 完成；`frozen_qualified` |
 | D1 Collect-all Product Discovery | 已完成 56/56；无 Product Candidate |
+| H1 VS Code 与 Process Chaos | 已完成 21/21；无 Product Candidate |
 
 Development Validation 记录在
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`，不能替代 Q1 Epoch，
@@ -32,6 +33,11 @@ Validation 不能追加到已失败 Lock；全部变化输入进入不可变后�
 Integration Run，随后 D1 56/56 通过。关闭决策记录在
 `evaluation/assessments/q1-qualification-global-assessment-06.json` 与
 `evaluation/assessments/d1-product-discovery-global-assessment-01.json`。
+H1 Preflight 随后以 18/18 关闭，后继 Harness 在 Q1 Round 07 通过 8/8 Foundation
+Task 与三次 7/7 Integration Run，正式 H1 又以 21/21 通过。决策记录在
+`evaluation/assessments/h1-preflight-global-assessment-26.json`、
+`evaluation/assessments/q1-qualification-global-assessment-07.json` 与
+`evaluation/assessments/h1-production-admission-global-assessment-01.json`。
 
 ## 1. 执行模型
 
@@ -357,7 +363,7 @@ D1 不修改代码。
 
 | Stage | Deliverable | 预计工作量 |
 | --- | --- | ---: |
-| H1 VS Code 与 Process Chaos | Official Extension Host、Reload、Kill Point、Fault Proxy、Test FS | 3 工程周 |
+| H1 VS Code 与 Process Chaos | 已完成：五条 Lane 共 21/21 | 已完成 |
 | H2 Live Model 与 Drift | 重复 DeepSeek Matrix、Identity Partition、Confidence、Cost、Drift | 2 工程周 |
 | H3 Endurance 与 Release | 四小时 Workload、Slope、RC Evidence Aggregator、Release Gate | 2 工程周 |
 | H4 Canary 与 Incident Closure | Controlled Inventory、Rollout Stop、Rollback、Incident-to-Corpus | 1 至 1.5 工程周 |
@@ -400,14 +406,14 @@ Qualification Epoch 和 Harness Freeze 位于关键路径。Contract 稳定后�
 
 ## 13. 批准边界
 
-批准本计划只授权完成 S0。
+本计划下的批准已推进至 H1 完成。
 
-以下阶段分别需要显式批准：
+已完成批准与剩余显式边界如下：
 
 1. Foundation Implementation F1 至 F3；
 2. Qualification 与 Harness Freeze Q1；
 3. Product Discovery D1；
 4. Approved Product Remediation R1；
-5. Production Admission H1 至 H4。
+5. Production Admission H1 已完成；H2 至 H4 仍分别保留独立门禁。
 
 前一批准不隐含后一批准。

@@ -96,9 +96,9 @@ func prepareRuntime(
 		committed:         make(map[protocol.OperationID]PendingOperation),
 		active:            NewActiveTurnRegistry(),
 		observers:         make(map[uint64]func(protocol.Event)),
-		toolItems:         make(map[string]protocol.ItemID),
-		approvalItems:     make(map[string]protocol.ItemID),
-		inputItems:        make(map[string]protocol.ItemID),
+		toolItems:         make(map[EventItemOwner]protocol.ItemID),
+		approvalItems:     make(map[EventItemOwner]protocol.ItemID),
+		inputItems:        make(map[EventItemOwner]protocol.ItemID),
 		durable:           recoverDurable,
 	}
 	runtime.hub = newEventHub(runtimeContext, runtime)

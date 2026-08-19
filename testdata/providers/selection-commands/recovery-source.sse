@@ -1,12 +1,4 @@
-data: {"choices":[{"delta":{"content":"recovery source started "},"finish_reason":null}]}
-
-data: {"choices":[{"delta":{"content":"still running "},"finish_reason":null}]}
-
-data: {"choices":[{"delta":{"content":"still running "},"finish_reason":null}]}
-
-data: {"choices":[{"delta":{"content":"still running "},"finish_reason":null}]}
-
-data: {"choices":[{"delta":{"content":"still running "},"finish_reason":null}]}
+data: {"choices":[{"delta":{"reasoning_content":"recovery source started "},"finish_reason":null}]}
 
 data: {"choices":[{"delta":{"content":"still running "},"finish_reason":null}]}
 

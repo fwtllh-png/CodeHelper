@@ -2922,7 +2922,13 @@ func TestEngineUndoRemovesCompleteToolTurnAndForkIsIndependent(t *testing.T) {
 	if _, err := engine.Run(t.Context(), "work", nil); err != nil {
 		t.Fatal(err)
 	}
-	fork := engine.Fork()
+	fork, err := engine.Fork()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.guard == nil || fork.guard == engine.guard {
+		t.Fatal("Fork() did not construct an independent Guard")
+	}
 	var forkCall, engineCall *provider.ToolCall
 	for messageIndex := range fork.history {
 		for blockIndex := range fork.history[messageIndex].Blocks {

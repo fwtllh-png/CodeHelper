@@ -38,8 +38,9 @@ must not import `evaluation/`.
 ## Candidate Capability
 
 The implementation below is not release-authoritative. Foundation v2 and the
-D1 Harness are qualified under Q1 Round 06. D1 Round 01 passed all 56 tasks
-without admitting a Product Candidate. Product Remediation, Chaos, and release
+H1-capable Harness are qualified under Q1 Round 07. D1 Round 01 passed all 56
+tasks, and H1 Round 01 passed all 21 VS Code and process-chaos admission tasks,
+without admitting a Product Candidate. Product Remediation and H2-H4 release
 admission remain unauthorized.
 
 The corrected target contracts and execution order are defined by:
@@ -62,6 +63,10 @@ Q1 Round 03 and the successful Freeze decision are recorded in
 The D1-capable successor and Discovery closure are recorded in
 `assessments/q1-qualification-global-assessment-06.json` and
 `assessments/d1-product-discovery-global-assessment-01.json`.
+H1 preflight closure, the H1-capable successor Lock, and formal H1 closure are
+recorded in `assessments/h1-preflight-global-assessment-26.json`,
+`assessments/q1-qualification-global-assessment-07.json`, and
+`assessments/h1-production-admission-global-assessment-01.json`.
 
 The F1 implementation now provides:
 
@@ -104,13 +109,15 @@ The F3 implementation now contains:
 - a 500-run Replay command over 12 Corpus entries.
 
 Q1 Rounds 01, 02, and 04 remain immutable failure and governance history. The
-D1-capable successor passed Q1 Round 06 with 8/8 Foundation tasks and three
-consecutive 7/7 Integration runs. Harness Lock `sha256:caf72bae...` is
-`frozen_qualified`. D1 then settled 36 Scenarios, 13 Fault Cases, five Host
-Cases, and two identity checks with no failure or outstanding resource.
+D1-capable successor passed Q1 Round 06, and D1 settled all 56 tasks. The
+H1-capable successor then passed Q1 Round 07 with 8/8 Foundation tasks and
+three consecutive 7/7 Integration runs. Harness Lock `sha256:7fa16a5b...` is
+`frozen_qualified`. H1 settled its complete 21-task denominator across five
+lanes with no failure, invalid result, or outstanding resource.
 
-Phase 17.4 was reset and its implementation removed. The machine-readable
-decision is `assessments/17.4-convergence-review-reset-01.json`.
+The previous Phase 17.4 implementation was reset and removed. The current H1
+implementation was rebuilt and requalified under the successor process. The
+reset decision remains in `assessments/17.4-convergence-review-reset-01.json`.
 
 Run candidate diagnostics:
 

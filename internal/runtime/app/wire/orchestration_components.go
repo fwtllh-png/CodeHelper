@@ -145,7 +145,7 @@ func buildChildOrchestration(
 			state.options.PersistentStore, execution.Workspace, state.config.hookSessionID,
 		),
 		Files: output.parentFiles, Workspace: execution.Workspace, Verify: state.security.verify,
-		OnRelease: output.children.release,
+		Sandbox: state.platform.backend, OnRelease: output.children.release,
 	}); err != nil {
 		return fmt.Errorf("agent tool: %w", err)
 	}

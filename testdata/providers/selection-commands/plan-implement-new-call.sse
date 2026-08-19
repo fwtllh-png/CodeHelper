@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_plan_new","function":{"name":"file_write","arguments":"{\"path\":\"plan-new-session.txt\",\"content\":\"implemented approved plan in new session\\n\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

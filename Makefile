@@ -17,7 +17,7 @@ LDFLAGS := -s -w \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
 	eval-contract-check eval-foundation-check eval-replay eval-oracle \
-	eval-q1-artifacts eval-q1 eval-d1 \
+	eval-q1-artifacts eval-q1 eval-d1 eval-h1 \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-performance \
 	observation-traits observation-traits-check \
@@ -49,10 +49,14 @@ EVALUATION_BINARY := bin/codehelper-eval
 Q1_ID ?= foundation-v2-q1
 Q1_BUILD_DATE ?= 2026-08-19T00:00:00Z
 Q1_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || printf unknown)
+Q1_VERSION ?= 0.0.1
 Q1_OUTPUT ?= .tmp/evaluation/q1/$(Q1_ID)
 D1_ID ?= product-discovery-d1-01
 D1_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
 D1_OUTPUT ?= .tmp/evaluation/d1/$(D1_ID)
+H1_ID ?= production-admission-h1-01
+H1_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
+H1_OUTPUT ?= .tmp/evaluation/h1/$(H1_ID)
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
@@ -104,7 +108,7 @@ eval-foundation-check:
 		--root . --manifest evaluation/spec/foundation.json
 
 eval-q1-artifacts:
-	$(MAKE) build VERSION=q1 COMMIT='$(Q1_COMMIT)' BUILD_DATE='$(Q1_BUILD_DATE)'
+	$(MAKE) build VERSION='$(Q1_VERSION)' COMMIT='$(Q1_COMMIT)' BUILD_DATE='$(Q1_BUILD_DATE)'
 	@mkdir -p bin
 	$(GO) build -trimpath -o '$(EVALUATION_BINARY)' ./evaluation/cmd/codehelper-eval
 	$(MAKE) vscode-package-universal
@@ -116,6 +120,7 @@ eval-q1: eval-q1-artifacts
 		--evaluation-binary '$(EVALUATION_BINARY)' \
 		--runtime '$(BINARY)' \
 		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
+		--runtime-version '$(Q1_VERSION)' \
 		--build-date '$(Q1_BUILD_DATE)' \
 		--output '$(Q1_OUTPUT)'
 
@@ -128,6 +133,16 @@ eval-d1:
 		--runtime '$(BINARY)' \
 		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
 		--output '$(D1_OUTPUT)'
+
+eval-h1:
+	'$(EVALUATION_BINARY)' admission h1 \
+		--root . \
+		--id '$(H1_ID)' \
+		--lock '$(H1_LOCK)' \
+		--evaluation-binary '$(EVALUATION_BINARY)' \
+		--runtime '$(BINARY)' \
+		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
+		--output '$(H1_OUTPUT)'
 
 eval-replay:
 	$(GO) run ./evaluation/cmd/codehelper-eval replay check \

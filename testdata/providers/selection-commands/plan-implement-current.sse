@@ -1,5 +1,0 @@
-data: {"choices":[{"delta":{"content":"current Session implementation completed"},"finish_reason":null}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":30,"completion_tokens":5}}
-
-data: [DONE]

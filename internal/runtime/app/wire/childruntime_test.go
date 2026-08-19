@@ -505,11 +505,20 @@ func TestPersistentSessionPublishesAgentSpawnLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	resolvedWorkspace, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.HasPrefix(
 		child.Worktree,
-		filepath.Join(store.Root(), "orchestration")+string(filepath.Separator),
-	) {
-		t.Fatalf("persistent child worktree = %q, state root = %q", child.Worktree, store.Root())
+		filepath.Join(resolvedWorkspace, ".codehelper")+string(filepath.Separator),
+	) || strings.HasPrefix(child.Worktree, store.Root()+string(filepath.Separator)) {
+		t.Fatalf(
+			"persistent child worktree = %q, workspace = %q, state root = %q",
+			child.Worktree,
+			resolvedWorkspace,
+			store.Root(),
+		)
 	}
 	select {
 	case event := <-events:

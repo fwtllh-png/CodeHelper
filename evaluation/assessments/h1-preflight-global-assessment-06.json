@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-06",
+  "phase": "production_admission_h1",
+  "status": "closed_product_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "explicit_spawn_agent_retest": "passed",
+    "explorer_agents_spawned": 2,
+    "explorer_agents_completed": 2,
+    "writer_agent_spawned": 0,
+    "writer_parent_terminal": "turn.failed"
+  },
+  "findings": [
+    {
+      "id": "H1C-0001",
+      "severity": "P0",
+      "status": "partially_remediated",
+      "title": "official_extension_host_omits_spawn_agent_from_sampled_catalog",
+      "resolution_evidence": [
+        "exact_spawn_agent_prompt_advertises_tool",
+        "two_explorer_agents_spawned",
+        "two_explorer_agents_completed"
+      ]
+    },
+    {
+      "id": "H1C-0002",
+      "severity": "P0",
+      "status": "confirmed",
+      "title": "natural_language_agent_intent_does_not_require_control_tools",
+      "evidence": [
+        "writer_prompt_says_spawn_one_implementer",
+        "writer_prompt_says_wait_for_child",
+        "writer_prompt_names_integrate_agent",
+        "writer_agent_not_spawned",
+        "downstream_preview_digest_placeholder_has_no_value"
+      ],
+      "impact": "natural_explicit_delegation_can_emit_unadvertised_agent_calls",
+      "classification": "product"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": true,
+    "formal_h1_authorized": false,
+    "next_gate": "bind_finite_agent_intents_to_required_tool_definitions_then_retest_subagent"
+  }
+}

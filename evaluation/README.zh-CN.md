@@ -35,9 +35,10 @@ evaluation/
 
 ## 候选能力
 
-以下实现当前不具发布权威性。Foundation v2 与 D1 Harness 已通过 Q1 Round 06
-验收。D1 Round 01 已 56/56 通过，未准入 Product Candidate。Product Remediation、
-Chaos 与 Release Admission 仍未获授权。
+以下实现当前不具发布权威性。Foundation v2 与具备 H1 能力的 Harness 已通过 Q1
+Round 07 验收。D1 Round 01 已 56/56 通过，H1 Round 01 已完成全部 21 项 VS Code
+与进程 Chaos 准入任务，均未准入 Product Candidate。Product Remediation 与 H2-H4
+Release Admission 仍未获授权。
 
 修正后的目标契约和执行顺序见：
 
@@ -59,6 +60,10 @@ Q1 Round 03 与成功 Freeze 决策记录在
 具备 D1 能力的后继 Harness 与 Discovery 关闭决策记录在
 `assessments/q1-qualification-global-assessment-06.json` 与
 `assessments/d1-product-discovery-global-assessment-01.json`。
+H1 Preflight 关闭、具备 H1 能力的后继 Lock 与正式 H1 关闭决策记录在
+`assessments/h1-preflight-global-assessment-26.json`、
+`assessments/q1-qualification-global-assessment-07.json` 与
+`assessments/h1-production-admission-global-assessment-01.json`。
 
 F1 实现当前包含：
 
@@ -96,12 +101,12 @@ F3 实现当前包含：
 - 12 条 Corpus 上的 500 次 Replay 命令。
 
 Q1 Round 01、02 与 04 保留为不可变失败和治理历史。具备 D1 能力的后继 Harness
-已在 Q1 Round 06 通过 8/8 Foundation Task 与连续三次 7/7 Integration Run。
-Harness Lock `sha256:caf72bae...` 状态为 `frozen_qualified`。D1 随后完成 36 个
-Scenario、13 个 Fault Case、5 个 Host Case 与 2 次 Identity Check，无失败或
-Outstanding Resource。
+通过 Q1 Round 06，D1 随后完成全部 56 项任务。具备 H1 能力的后继 Harness 又在 Q1
+Round 07 通过 8/8 Foundation Task 与连续三次 7/7 Integration Run。Harness Lock
+`sha256:7fa16a5b...` 状态为 `frozen_qualified`。H1 在五条 Lane 上完成全部 21 项
+Settlement，无失败、Invalid Result 或 Outstanding Resource。
 
-17.4 已重置且实现已删除，机器决策位于
+旧 17.4 实现已重置并删除；当前 H1 已按后继流程重建并重新验收。原重置决策仍位于
 `assessments/17.4-convergence-review-reset-01.json`。
 
 运行候选诊断：

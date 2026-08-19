@@ -2,9 +2,9 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation-findings.md) | English
 
-> Status: Foundation and D1 Harness qualified; D1 Round 01 completed 56/56.
-> No Product Candidate, trusted 17.4 release pass, or Product Remediation is
-> currently admitted.
+> Status: the H1-capable Harness is qualified; D1 Round 01 completed 56/56 and
+> H1 Round 01 completed 21/21. No Product Candidate, full release pass, or
+> Product Remediation is currently admitted.
 
 This register follows the
 [Technical Specification](./production-evaluation.md) and
@@ -20,15 +20,16 @@ Rounds.
 | Evaluation 17.1 | qualified as Foundation v2 input |
 | Evaluation 17.2 | qualified as Foundation v2 input |
 | Evaluation 17.3 | invalidated |
-| Foundation v2 F1-F3 and D1 Harness | qualified; v3 Harness frozen |
-| Evaluation 17.4 | reset, not started |
+| Foundation v2 F1-F3 and H1 Harness | qualified; v3 Harness frozen |
+| Evaluation 17.4 | H1 passed; H2-H4 not started |
 | Formal product findings | 0 |
 | Historical product hypotheses | 4 |
-| Trusted 17.4 passes | 0 |
+| Trusted 17.4 passes | H1 Round 01 |
 | Trusted 17.4 repairs | 0 |
 | Open systemic Harness roots | 0 |
-| Q1 Qualification | Round 06 passed; Harness `frozen_qualified` |
+| Q1 Qualification | Round 07 passed; H1 Harness `frozen_qualified` |
 | D1 Product Discovery | 56/56 passed; no Product Candidate |
+| H1 Production Admission | 21/21 passed; no Product Candidate |
 
 Machine decisions:
 
@@ -44,11 +45,20 @@ evaluation/assessments/d1-preflight-global-assessment-01.json
 evaluation/assessments/d1-harness-remediation-01.json
 evaluation/assessments/q1-qualification-global-assessment-06.json
 evaluation/assessments/d1-product-discovery-global-assessment-01.json
+evaluation/assessments/h1-preflight-global-assessment-26.json
+evaluation/assessments/q1-qualification-global-assessment-07.json
+evaluation/assessments/h1-production-admission-global-assessment-01.json
 ```
 
 Q1 Round 06 qualified the D1-capable Harness after 8/8 Foundation tasks and
 three 7/7 Integration runs. D1 then settled all 56 tasks, closing PEH-0025 and
 the D1H-0001 through D1H-0003 Harness findings.
+
+Q1 Round 07 qualified the H1-capable successor with 8/8 Foundation tasks and
+three 7/7 Integration runs. H1 then settled all 21 tasks across Extension
+Host, process, provider, persistence, and filesystem lanes. Both identity
+checks and the owned-resource cleanup check passed; no Product Candidate was
+admitted.
 
 ## 2. Product Hypotheses
 
@@ -150,9 +160,9 @@ Must be replaced or redesigned:
 
 ## 6. Re-entry Rule
 
-Q1 and D1 are closed. No Product Candidate was admitted, so Product
-Remediation remains prohibited. The next specification gate is H1-H4
-admission work.
+Q1, D1, and H1 are closed. No Product Candidate was admitted, so Product
+Remediation remains prohibited. The next specification gate is explicit H2
+admission authorization.
 
 Current sequence:
 
@@ -160,14 +170,16 @@ Current sequence:
 2. Q1 Round 06 froze the D1-capable v3 Candidate Lock.
 3. D1 settled 36 Scenarios, 13 Fault Cases, five Host Cases, and two identity
    checks.
-4. No Product Candidate or Product Remediation was admitted.
+4. Q1 Round 07 froze the H1-capable successor Lock.
+5. H1 settled all 21 tasks across five lanes.
+6. No Product Candidate or Product Remediation was admitted.
 
 The frozen Harness is authoritative only while its v3 input identity remains
 unchanged.
 
 ## 7. Prohibited Actions
 
-After D1 and before H1-H4 admission:
+After H1 and before H2 admission:
 
 - do not confirm or repair PEC-0001 through PEC-0004;
 - do not restore removed 17.4 code;

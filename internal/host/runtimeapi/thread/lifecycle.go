@@ -40,7 +40,7 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 		PendingApprovals:  make(map[string]app.PendingApproval),
 		PendingInputs:     make(map[string]app.PendingInput),
 		PendingOperations: make(map[protocol.OperationID]app.PendingOperation),
-		ToolItems:         make(map[string]protocol.ItemID),
+		ToolItems:         make(map[app.EventItemOwner]protocol.ItemID),
 	}
 	confirmed := make(map[protocol.OperationID]app.CommitReceipt)
 	for _, event := range events {
@@ -90,7 +90,10 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 			delete(recovery.PendingInputs, data.RequestID)
 		case *protocol.ToolResultData:
 			if data.CallID != "" && event.ItemID != "" {
-				recovery.ToolItems[data.CallID] = event.ItemID
+				recovery.ToolItems[app.EventItemOwner{
+					TurnID:  event.TurnID,
+					LocalID: data.CallID,
+				}] = event.ItemID
 			}
 		}
 		if confirmsOperation(event.Kind) {

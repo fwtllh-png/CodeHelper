@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-21",
+  "phase": "production_admission_h1",
+  "status": "closed_product_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "panic": "nil_pointer_dereference",
+    "panic_boundary": "guard_execute_bound",
+    "guard_value": "nil",
+    "fork_constructor": "manual_partial_engine_literal",
+    "guard_factory_invoked_on_fork": false
+  },
+  "findings": [
+    {
+      "id": "H1C-0009",
+      "severity": "P1",
+      "status": "confirmed",
+      "title": "engine_fork_omits_stateful_guard_construction",
+      "evidence": [
+        "panic_stack_calls_guard_execute_bound_on_nil_receiver",
+        "checkpoint_fork_uses_engine_fork",
+        "engine_fork_copies_options_but_not_guard",
+        "engine_fork_bypasses_new_and_guard_factory"
+      ],
+      "impact": "the_first_tool_call_on_a_forked_thread_panics_before_guard_policy_or_execution",
+      "classification": "product"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": true,
+    "authorized_scope": "construct_forked_engines_through_new_with_an_independent_guard_and_propagate_construction_errors",
+    "harness_remediation_authorized": false,
+    "formal_h1_authorized": false,
+    "next_gate": "add_fork_guard_regression_and_retest_checkpoint_fork_plan_implementation"
+  }
+}

@@ -43,6 +43,8 @@ func run(
 		return runQualification(ctx, args[1:], stdout, stderr)
 	case "discovery":
 		return runDiscovery(ctx, args[1:], stdout, stderr)
+	case "admission":
+		return runAdmission(ctx, args[1:], stdout, stderr)
 	case "proof":
 		return runProof(ctx, args[1:], stdout, stderr)
 	case "run":
@@ -297,6 +299,10 @@ func printUsage(writer io.Writer) {
 	_, _ = fmt.Fprintln(
 		writer,
 		"  codehelper-eval discovery d1 --id ID --lock FILE --output DIR [options]",
+	)
+	_, _ = fmt.Fprintln(
+		writer,
+		"  codehelper-eval admission h1 --id ID --lock FILE --output DIR [options]",
 	)
 	_, _ = fmt.Fprintln(
 		writer,

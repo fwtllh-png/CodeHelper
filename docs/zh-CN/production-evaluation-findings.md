@@ -2,8 +2,9 @@
 
 简体中文 | [English](../en/production-evaluation-findings.md)
 
-> 状态：Foundation 与 D1 Harness 已验收；D1 Round 01 已完成 56/56。当前没有准入
-> 的 Product Candidate、可信 17.4 Release Pass 或 Product Remediation。
+> 状态：具备 H1 能力的 Harness 已验收；D1 Round 01 已完成 56/56，H1 Round 01
+> 已完成 21/21。当前没有准入的 Product Candidate、完整 Release Pass 或 Product
+> Remediation。
 
 本台账遵循[技术规格](./production-evaluation.md)和
 [实施计划](./production-evaluation-implementation-plan.md)。Discovery、Global
@@ -17,15 +18,16 @@ Assessment、Remediation 和 Verification 必须分 Round。
 | Evaluation 17.1 | 已作为 Foundation v2 输入验收 |
 | Evaluation 17.2 | 已作为 Foundation v2 输入验收 |
 | Evaluation 17.3 | 已失效 |
-| Foundation v2 F1-F3 与 D1 Harness | 已验收；v3 Harness 已冻结 |
-| Evaluation 17.4 | 已重置，未开始 |
+| Foundation v2 F1-F3 与 H1 Harness | 已验收；v3 Harness 已冻结 |
+| Evaluation 17.4 | H1 已通过；H2-H4 未开始 |
 | 正式 Product Finding | 0 |
 | 历史 Product Hypothesis | 4 |
-| 可信 17.4 Pass | 0 |
+| 可信 17.4 Pass | H1 Round 01 |
 | 可信 17.4 Repair | 0 |
 | Open Systemic Harness Root | 0 |
-| Q1 Qualification | Round 06 已通过；Harness `frozen_qualified` |
+| Q1 Qualification | Round 07 已通过；H1 Harness `frozen_qualified` |
 | D1 Product Discovery | 56/56 通过；无 Product Candidate |
+| H1 Production Admission | 21/21 通过；无 Product Candidate |
 
 机器决策：
 
@@ -41,11 +43,19 @@ evaluation/assessments/d1-preflight-global-assessment-01.json
 evaluation/assessments/d1-harness-remediation-01.json
 evaluation/assessments/q1-qualification-global-assessment-06.json
 evaluation/assessments/d1-product-discovery-global-assessment-01.json
+evaluation/assessments/h1-preflight-global-assessment-26.json
+evaluation/assessments/q1-qualification-global-assessment-07.json
+evaluation/assessments/h1-production-admission-global-assessment-01.json
 ```
 
 Q1 Round 06 已在 8/8 Foundation Task 与连续三次 7/7 Integration Run 后验收具备
 D1 能力的 Harness。D1 随后完成全部 56 项 Settlement，关闭 PEH-0025 以及
 D1H-0001 至 D1H-0003。
+
+Q1 Round 07 又通过 8/8 Foundation Task 与连续三次 7/7 Integration Run，验收具备
+H1 能力的后继 Harness。H1 随后在 Extension Host、Process、Provider、Persistence
+与 Filesystem 五条 Lane 上完成全部 21 项 Settlement。两次 Identity Check 与
+Owned-resource Cleanup Check 均通过，未准入 Product Candidate。
 
 ## 2. 产品假设
 
@@ -142,8 +152,8 @@ D1H-0003 已关闭。
 
 ## 6. 重新准入规则
 
-Q1 与 D1 均已关闭。未准入 Product Candidate，因此 Product Remediation 仍被禁止。
-下一规格门禁为 H1-H4 Admission Work。
+Q1、D1 与 H1 均已关闭。未准入 Product Candidate，因此 Product Remediation 仍被
+禁止。下一规格门禁为显式 H2 Admission 授权。
 
 当前顺序：
 
@@ -151,13 +161,15 @@ Q1 与 D1 均已关闭。未准入 Product Candidate，因此 Product Remediatio
 2. Q1 Round 06 已冻结具备 D1 能力的 v3 Candidate Lock；
 3. D1 已完成 36 个 Scenario、13 个 Fault Case、5 个 Host Case 与 2 次 Identity
    Check；
-4. 未准入 Product Candidate 或 Product Remediation。
+4. Q1 Round 07 已冻结具备 H1 能力的后继 Lock；
+5. H1 已在五条 Lane 上完成全部 21 项任务；
+6. 未准入 Product Candidate 或 Product Remediation。
 
 Frozen Harness 只有在 v3 Input Identity 不变时才具权威性。
 
 ## 7. 禁止操作
 
-D1 完成后、H1-H4 Admission 前：
+H1 完成后、H2 Admission 前：
 
 - 不确认或修复 PEC-0001 至 PEC-0004；
 - 不恢复已删除的 17.4 Code；

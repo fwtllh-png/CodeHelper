@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 type Options struct {
@@ -39,6 +40,8 @@ type Options struct {
 	Workspace string
 	// Verify runs affected parent tests after a candidate has been applied.
 	Verify verify.Runner
+	// Sandbox runs internal merge fingerprinting under the guarded authority.
+	Sandbox sandbox.Backend
 }
 
 type Tool struct {
@@ -49,6 +52,7 @@ type Tool struct {
 	files     *filetool.Tools
 	workspace string
 	verify    verify.Runner
+	sandbox   sandbox.Backend
 }
 
 // ArtifactRef is a compact pointer to a child-produced artifact.
@@ -144,12 +148,21 @@ func Register(registry *tool.Registry, options Options) error {
 			return fmt.Errorf("attach agent graph: %w", err)
 		}
 	}
+	workspace := strings.TrimSpace(options.Workspace)
+	if workspace != "" {
+		canonical, err := sandbox.NewWorkspace(workspace)
+		if err != nil {
+			return fmt.Errorf("agent parent workspace: %w", err)
+		}
+		workspace = canonical.Root()
+	}
 	shared := &Tool{
 		control: control, handles: options.Handles, sessionID: sessionID,
 		onRelease: options.OnRelease,
 		files:     options.Files,
-		workspace: strings.TrimSpace(options.Workspace),
+		workspace: workspace,
 		verify:    options.Verify,
+		sandbox:   options.Sandbox,
 	}
 	for _, kind := range []string{
 		"spawn_agent", "send_message", "wait_agent", "list_agents",

@@ -42,7 +42,7 @@
   "expected_request_fragments": [
     [
       "Explicitly delegate two read-only explorers",
-      "\"name\":\"spawn_agent\""
+      "Use two spawn_agent calls now"
     ]
   ]
 }

@@ -83,6 +83,34 @@ func TestDiscoveryRequestUsesCollectAllSettlement(t *testing.T) {
 	}
 }
 
+func TestChaosRequestUsesCollectAllSettlement(t *testing.T) {
+	secondExecuted := false
+	request := testRequest([]Task{
+		{
+			ID: "kill-point-fails",
+			Check: func(context.Context) (string, error) {
+				return "", errors.New("injected crash failure")
+			},
+		},
+		{
+			ID: "later-kill-point-passes",
+			Check: func(context.Context) (string, error) {
+				secondExecuted = true
+				return spec.DigestString("later chaos evidence"), nil
+			},
+		},
+	})
+	request.Kind = "chaos"
+	report, err := Run(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !secondExecuted || report.Settled != 2 ||
+		report.Failed != 1 || report.Passed != 1 {
+		t.Fatalf("Chaos collect-all report = %+v", report)
+	}
+}
+
 func TestQualificationRejectsForwardDependency(t *testing.T) {
 	request := testRequest([]Task{
 		{ID: "first", DependsOn: []string{"second"}},

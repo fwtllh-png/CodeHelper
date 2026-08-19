@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-11",
+  "phase": "production_admission_h1",
+  "status": "closed_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "vscode_runtime_posture": "suggest",
+    "native_high_risk_approval": "not_observed",
+    "multi_edit_plan_approval": "not_observed",
+    "subagent_matrix": "passed"
+  },
+  "findings": [
+    {
+      "id": "H1H-0006",
+      "severity": "P1",
+      "status": "rejected",
+      "title": "electron_native_wrapper_does_not_freeze_approval_posture",
+      "reason": "trusted_vscode_controller_already_launches_runtime_with_suggest"
+    },
+    {
+      "id": "H1C-0005",
+      "severity": "P1",
+      "status": "candidate",
+      "title": "high_risk_shell_turn_emits_no_approval",
+      "classification": "pending_runtime_capture"
+    },
+    {
+      "id": "H1C-0006",
+      "severity": "P1",
+      "status": "candidate",
+      "title": "multi_root_edit_plan_turn_emits_no_qualified_approval",
+      "classification": "pending_event_shape_and_terminal_evidence"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": false,
+    "harness_remediation_authorized": false,
+    "formal_h1_authorized": false,
+    "next_gate": "capture_native_high_risk_terminal_and_approval_events_then_classify"
+  }
+}

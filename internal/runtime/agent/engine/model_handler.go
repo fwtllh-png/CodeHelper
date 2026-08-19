@@ -984,6 +984,7 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 			continue
 		}
 		if coreTool(request.Intent, entry.Name) || entry.State == tool.CatalogEntryMaterialized ||
+			requiredAgentTool(request.Prompt, entry.Name) ||
 			entry.Name == "image_analyze" && strings.Contains(strings.ToLower(request.Prompt), "screenshot") {
 			selected[entry.Name] = true
 			continue
@@ -1037,7 +1038,8 @@ func (e *Engine) toolDefinitionsFromSnapshot(
 			continue
 		}
 		required := coreTool(request.Intent, entry.Name) ||
-			entry.State == tool.CatalogEntryMaterialized
+			entry.State == tool.CatalogEntryMaterialized ||
+			requiredAgentTool(request.Prompt, entry.Name)
 		if err := add(entry, required); err != nil {
 			return nil, nil, err
 		}
@@ -1073,6 +1075,29 @@ func coreTool(intent protocol.TurnIntent, name string) bool {
 		return in(writeToolSet)
 	case protocol.TurnIntentOperation:
 		return in(writeToolSet)
+	default:
+		return false
+	}
+}
+
+func requiredAgentTool(prompt, name string) bool {
+	lower := strings.ToLower(prompt)
+	if strings.Contains(lower, name) {
+		return true
+	}
+	hasAgentSubject := strings.Contains(lower, "agent") ||
+		strings.Contains(lower, "child") ||
+		strings.Contains(lower, "explorer") ||
+		strings.Contains(lower, "implementer")
+	switch name {
+	case "spawn_agent":
+		return hasAgentSubject &&
+			(strings.Contains(lower, "spawn ") ||
+				strings.Contains(lower, "delegat"))
+	case "wait_agent":
+		return hasAgentSubject && strings.Contains(lower, "wait for")
+	case "integrate_agent":
+		return hasAgentSubject && strings.Contains(lower, "integrat")
 	default:
 		return false
 	}

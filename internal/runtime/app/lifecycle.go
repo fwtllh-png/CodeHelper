@@ -57,6 +57,15 @@ type PendingOperation struct {
 	Canonical      json.RawMessage
 }
 
+type EventItemOwner struct {
+	TurnID  protocol.TurnID
+	LocalID string
+}
+
+func eventItemOwner(turnID protocol.TurnID, localID string) EventItemOwner {
+	return EventItemOwner{TurnID: turnID, LocalID: localID}
+}
+
 // RecoveryState is explicit input to Runtime's state machine. It contains only
 // state required to continue allocating events and reject unsafe replays.
 type RecoveryState struct {
@@ -65,9 +74,9 @@ type RecoveryState struct {
 	PendingApprovals  map[string]PendingApproval
 	PendingInputs     map[string]PendingInput
 	PendingOperations map[protocol.OperationID]PendingOperation
-	// ToolItems remaps call_id → ItemID so post-recovery tool.result events
-	// keep a stable item identity (F5).
-	ToolItems map[string]protocol.ItemID
+	// ToolItems remaps Turn-owned call IDs to ItemIDs so post-recovery
+	// tool.result events keep a stable item identity (F5).
+	ToolItems map[EventItemOwner]protocol.ItemID
 }
 
 // PendingApproval returns the authoritative identity for one unresolved

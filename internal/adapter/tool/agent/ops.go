@@ -159,11 +159,12 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"Requires an open isolated child; do not close_agent first.",
 			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessTree, ParallelPolicy: tool.ParallelSerial,
-			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
+			SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{
 				Templates: []tool.ResourceTemplate{
 					{Kind: "agent", Field: "agent_id", Access: tool.AccessWrite},
 					{Kind: "process", ID: "git", Access: tool.AccessRead},
+					{Kind: "directory", Field: "worktree", Access: tool.AccessRead},
 				},
 				ChangesField: "changes",
 			},

@@ -4,39 +4,45 @@
   "model": "fixture-model",
   "streams": [
     "explain.sse",
+    "complete-declare.sse",
     "edit.sse",
     "edit-quality.sse",
     "edit-declare.sse",
-    "edit-complete.sse",
     "refactor.sse",
     "refactor-quality.sse",
     "refactor-declare.sse",
-    "refactor-complete.sse",
     "tests.sse",
     "tests-quality.sse",
     "tests-declare.sse",
-    "tests-complete.sse",
     "diagnostic-explain.sse",
+    "complete-declare.sse",
     "diagnostic-fix.sse",
     "diagnostic-fix-quality.sse",
     "diagnostic-fix-declare.sse",
-    "diagnostic-fix-complete.sse",
     "changes-call.sse",
     "changes-quality.sse",
     "changes-declare.sse",
-    "changes-complete.sse",
     "high-risk-call.sse",
     "high-risk-quality.sse",
     "high-risk-declare.sse",
-    "high-risk-complete.sse",
     "recovery-source.sse",
     "recovery-retry.sse",
+    "complete-declare.sse",
     "recovery-continue.sse",
+    "complete-declare.sse",
     "plan-a.sse",
-    "plan-implement-new.sse",
-    "plan-implement-fork.sse",
+    "complete-declare.sse",
+    "plan-implement-new-call.sse",
+    "plan-implement-new-quality.sse",
+    "plan-implement-new-declare.sse",
+    "plan-implement-fork-call.sse",
+    "plan-implement-fork-quality.sse",
+    "plan-implement-fork-declare.sse",
     "plan-b.sse",
-    "plan-implement-current.sse"
+    "complete-declare.sse",
+    "plan-implement-current-call.sse",
+    "plan-implement-current-quality.sse",
+    "plan-implement-current-declare.sse"
   ],
   "stream_delay_ms": 20,
   "expected_request_fragments": [
@@ -45,6 +51,9 @@
       "selection_command",
       "selection",
       "return value;"
+    ],
+    [
+      "selection explained"
     ],
     [
       "Edit the selected code",
@@ -62,10 +71,6 @@
       "\"tool_call_id\":\"call_selection_edit_quality\""
     ],
     [
-      "\"role\":\"tool\"",
-      "\"tool_call_id\":\"call_selection_edit_complete\""
-    ],
-    [
       "Refactor the selected code",
       "extract a helper",
       "selection_command",
@@ -79,10 +84,6 @@
     [
       "\"role\":\"tool\"",
       "\"tool_call_id\":\"call_selection_refactor_quality\""
-    ],
-    [
-      "\"role\":\"tool\"",
-      "\"tool_call_id\":\"call_selection_refactor_complete\""
     ],
     [
       "Generate focused tests",
@@ -99,13 +100,12 @@
       "\"tool_call_id\":\"call_selection_tests_quality\""
     ],
     [
-      "\"role\":\"tool\"",
-      "\"tool_call_id\":\"call_selection_tests_complete\""
-    ],
-    [
       "Explain the attached editor diagnostic",
       "code_action",
       "fixture code action diagnostic"
+    ],
+    [
+      "diagnostic explained"
     ],
     [
       "Fix the attached editor diagnostic",
@@ -120,10 +120,6 @@
     [
       "\"role\":\"tool\"",
       "\"tool_call_id\":\"call_diagnostic_fix_quality\""
-    ],
-    [
-      "\"role\":\"tool\"",
-      "\"tool_call_id\":\"call_diagnostic_fix_complete\""
     ],
     [
       "Generate focused tests",
@@ -141,10 +137,6 @@
       "\"tool_call_id\":\"call_changes_quality\""
     ],
     [
-      "\"role\":\"tool\"",
-      "\"tool_call_id\":\"call_changes_complete\""
-    ],
-    [
       "Run the declared high risk workspace mutation"
     ],
     [
@@ -157,36 +149,73 @@
       "\"tool_call_id\":\"call_high_risk_quality\""
     ],
     [
-      "\"role\":\"tool\"",
-      "\"tool_call_id\":\"call_high_risk_complete\""
-    ],
-    [
       "Electron recovery source"
     ],
     [
       "Electron recovery source"
+    ],
+    [
+      "retry completed from the original request"
     ],
     [
       "Continue the exact source Turn identified below",
       "Inspect the current parser state"
     ],
     [
+      "continue completed with current workspace state"
+    ],
+    [
       "Electron plan destination A"
     ],
     [
-      "Implement the approved structured Plan below",
-      "Update parser from destination A"
+      "Update parser from destination A",
+      "Run focused tests"
     ],
     [
       "Implement the approved structured Plan below",
       "Update parser from destination A"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_plan_new\"",
+      "plan-new-session.txt"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_plan_new_quality\""
+    ],
+    [
+      "Implement the approved structured Plan below",
+      "Update parser from destination A"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_plan_fork\"",
+      "plan-checkpoint-fork.txt"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_plan_fork_quality\""
     ],
     [
       "Electron plan destination B"
     ],
     [
+      "Update parser from destination B",
+      "Verify the current Session"
+    ],
+    [
       "Implement the approved structured Plan below",
       "Update parser from destination B"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_plan_current\"",
+      "plan-current-session.txt"
+    ],
+    [
+      "\"role\":\"tool\"",
+      "\"tool_call_id\":\"call_plan_current_quality\""
     ]
   ]
 }

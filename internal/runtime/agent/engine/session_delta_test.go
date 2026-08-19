@@ -248,7 +248,10 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 		restored.Provenance.Adapter != route.Adapter() {
 		t.Fatalf("restored replay provenance = %+v", restored.Provenance)
 	}
-	fork := target.Fork()
+	fork, err := target.Fork()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(fork.planText, "step one") ||
 		len(fork.WorkingSetEntries(5, 10)) != 2 ||
 		len(fork.EvidenceSnapshot().Risks) != 1 ||

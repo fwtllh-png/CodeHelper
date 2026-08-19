@@ -33,6 +33,8 @@ const expectedHostArch = process.env["CODEHELPER_EXPECTED_HOST_ARCH"];
 const disableGPU = process.env["CODEHELPER_VSCODE_DISABLE_GPU"] === "1";
 const keepTemp = process.env["CODEHELPER_ELECTRON_KEEP_TEMP"] === "1";
 const approvalEvidenceDir = process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"];
+delete process.env["CODEHELPER_APPROVAL_EVIDENCE_DIR"];
+delete process.env["CODEHELPER_APPROVAL_DEBUG_PORT"];
 const approvalDebugPort = "9333";
 const matrixTarget = process.env["CODEHELPER_MATRIX_TARGET"] ??
   `${process.platform}-${process.arch}`;

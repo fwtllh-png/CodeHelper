@@ -2,9 +2,10 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation-implementation-plan.md) | English
 
-> Status: F1-F3 and the D1 Harness are qualified by Q1 Round 06. D1 Round 01
-> passed 56/56 with no Product Candidate. Product Remediation is not
-> authorized. H1-H4 admission work remains.
+> Status: F1-F3 and the H1-capable Harness are qualified by Q1 Round 07. D1
+> Round 01 passed 56/56, and H1 Round 01 passed 21/21, with no Product
+> Candidate. Product Remediation is not authorized. H2-H4 admission work
+> remains.
 
 | Stage | Status |
 | --- | --- |
@@ -12,8 +13,9 @@
 | F1 Contract, identity, admission, Runner | qualified |
 | F2 privacy, promotion, Replay | qualified |
 | F3 Oracles, Core Pack, Impact | qualified |
-| Q1 Qualification and Freeze | completed by Round 06; `frozen_qualified` |
+| Q1 Qualification and Freeze | H1-capable successor completed by Round 07; `frozen_qualified` |
 | D1 Collect-all Product Discovery | completed 56/56; no Product Candidate |
+| H1 VS Code and Process Chaos | completed 21/21; no Product Candidate |
 
 Development validation is recorded in
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`. It does not
@@ -34,6 +36,12 @@ entered immutable successor Epochs. The D1-capable successor passed Q1 Round
 56/56. Closure decisions are recorded in
 `evaluation/assessments/q1-qualification-global-assessment-06.json` and
 `evaluation/assessments/d1-product-discovery-global-assessment-01.json`.
+H1 preflight then closed at 18/18, and the successor Harness passed Q1 Round
+07 with 8/8 Foundation tasks and three 7/7 Integration runs. Formal H1 passed
+21/21. These decisions are recorded in
+`evaluation/assessments/h1-preflight-global-assessment-26.json`,
+`evaluation/assessments/q1-qualification-global-assessment-07.json`, and
+`evaluation/assessments/h1-production-admission-global-assessment-01.json`.
 
 ## 1. Execution Model
 
@@ -370,7 +378,7 @@ effort.
 
 | Stage | Deliverable | Estimate |
 | --- | --- | ---: |
-| H1 VS Code and Process Chaos | official Extension Host, reload, kill points, Fault Proxy, test filesystem | 3 engineer-weeks |
+| H1 VS Code and Process Chaos | completed: 21/21 across five lanes | completed |
 | H2 Live Model and Drift | repeated DeepSeek matrix, identity partition, confidence, cost and drift | 2 engineer-weeks |
 | H3 Endurance and Release | four-hour workload, slopes, RC evidence aggregator, release gate | 2 engineer-weeks |
 | H4 Canary and Incident Closure | controlled inventory, rollout stop, rollback, incident-to-Corpus | 1 to 1.5 engineer-weeks |
@@ -416,14 +424,15 @@ Stopping is a control action, not a failure to make progress.
 
 ## 13. Approval Boundaries
 
-Approval of this plan authorizes only S0 completion.
+Approvals under this plan have progressed through H1 completion.
 
-Separate explicit approvals are required for:
+Completed approvals and remaining explicit boundaries are:
 
 1. Foundation implementation F1 through F3;
 2. Qualification and Harness Freeze Q1;
 3. Product Discovery D1;
 4. approved Product Remediation R1;
-5. production admission stages H1 through H4.
+5. production admission H1 is complete; H2 through H4 each remain separately
+   gated.
 
 No later approval is implied by an earlier one.

@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_plan_fork","function":{"name":"file_write","arguments":"{\"path\":\"plan-checkpoint-fork.txt\",\"content\":\"implemented approved plan in checkpoint fork\\n\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

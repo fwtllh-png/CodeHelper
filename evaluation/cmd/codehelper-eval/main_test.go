@@ -162,6 +162,22 @@ func TestQ1VSCodeTaskRequiresIdentityBoundCleanupEvidence(t *testing.T) {
 	t.Fatal("vscode-runtime task is missing")
 }
 
+func TestQ1BuildArgsKeepRuntimeVersionExtensionCompatible(t *testing.T) {
+	arguments := q1BuildArgs(
+		"2026-08-19T00:00:00Z",
+		"0.0.1",
+		"candidate-commit",
+	)
+	if !slices.Contains(arguments, "VERSION=0.0.1") {
+		t.Fatalf("Q1 build arguments = %v", arguments)
+	}
+	for _, invalid := range []string{"VERSION=q1", "VERSION=dev"} {
+		if slices.Contains(arguments, invalid) {
+			t.Fatalf("Q1 build arguments contain %q", invalid)
+		}
+	}
+}
+
 func TestQ1InputRootsCoverExecutableInputsAndExcludeGovernanceOutputs(
 	t *testing.T,
 ) {

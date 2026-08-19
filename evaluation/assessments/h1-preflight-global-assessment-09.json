@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-09",
+  "phase": "production_admission_h1",
+  "status": "closed_product_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "seatbelt_backend": "available",
+    "integrate_agent_sandbox_requirement": "none",
+    "guard_execution_authority": "none",
+    "parent_verifier_requirement": "strong",
+    "denial_reason": "enforcement_mismatch"
+  },
+  "findings": [
+    {
+      "id": "H1H-0009",
+      "severity": "P0",
+      "status": "rejected",
+      "title": "h1_electron_lane_does_not_enable_strong_sandbox_stage",
+      "reason": "sandbox_stage_is_a_test_gate_and_does_not_select_the_runtime_backend"
+    },
+    {
+      "id": "H1C-0003",
+      "severity": "P1",
+      "status": "confirmed",
+      "title": "integrate_agent_declares_none_but_invokes_strong_parent_verification",
+      "evidence": [
+        "integrate_agent_descriptor_sandbox_none",
+        "guard_binds_none_execution_authority",
+        "verify_command_runner_requires_strong_sandbox",
+        "anti_escalation_gate_denies_nested_process"
+      ],
+      "impact": "successful_child_integration_cannot_produce_authoritative_parent_verification",
+      "classification": "product"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": true,
+    "harness_remediation_authorized": false,
+    "formal_h1_authorized": false,
+    "next_gate": "require_strong_sandbox_for_integrate_agent_then_retest_subagent"
+  }
+}

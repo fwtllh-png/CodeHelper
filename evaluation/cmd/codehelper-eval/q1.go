@@ -52,10 +52,15 @@ func runQualification(
 		"2026-08-19T00:00:00Z",
 		"reproducible Runtime build date",
 	)
+	runtimeVersion := flags.String(
+		"runtime-version",
+		"0.0.1",
+		"Extension-compatible Runtime artifact version",
+	)
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
-	if flags.NArg() != 0 || *id == "" {
+	if flags.NArg() != 0 || *id == "" || *runtimeVersion == "" {
 		fmt.Fprintln(stderr, "codehelper-eval: qualification q1 requires --id")
 		return 2
 	}
@@ -117,11 +122,7 @@ func runQualification(
 		return 1
 	}
 
-	makeArgs := []string{
-		"BUILD_DATE=" + *buildDate,
-		"VERSION=q1",
-		"COMMIT=" + sourceIdentity.Commit,
-	}
+	makeArgs := q1BuildArgs(*buildDate, *runtimeVersion, sourceIdentity.Commit)
 	epoch, err := qualification.Run(ctx, qualification.Request{
 		ID:               *id + "-epoch",
 		Kind:             "foundation_epoch",
@@ -225,6 +226,14 @@ func runQualification(
 	raw, _ := json.Marshal(summary)
 	fmt.Fprintln(stdout, "Q1_RESULT="+string(raw))
 	return 0
+}
+
+func q1BuildArgs(buildDate, runtimeVersion, commit string) []string {
+	return []string{
+		"BUILD_DATE=" + buildDate,
+		"VERSION=" + runtimeVersion,
+		"COMMIT=" + commit,
+	}
 }
 
 func q1EpochTasks(root, scanDigest string) []qualification.Task {

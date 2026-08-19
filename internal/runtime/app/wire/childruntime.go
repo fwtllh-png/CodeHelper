@@ -112,13 +112,13 @@ func newChildGovernor(limits config.Subagent) *rlm.Governor {
 }
 
 func childOrchestrationRoot(state *buildState) string {
-	if state.options.PersistentStore != nil {
-		return filepath.Join(
-			state.options.PersistentStore.Root(),
-			"orchestration",
-		)
+	// Worktrees must remain inside the guarded workspace so their paths can be
+	// represented by the resource resolver and enforced by the OS sandbox.
+	root := filepath.Clean(state.config.execution.Workspace)
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
 	}
-	return filepath.Join(state.config.execution.Workspace, ".codehelper")
+	return filepath.Join(root, ".codehelper")
 }
 
 // bind attaches the pieces that only exist once the Runtime is constructed.

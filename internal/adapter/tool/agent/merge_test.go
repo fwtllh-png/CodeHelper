@@ -45,6 +45,9 @@ func newMergeFixture(t *testing.T) (workspace, worktree, baseRev string) {
 		t.Skip("git unavailable")
 	}
 	workspace = t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		workspace = resolved
+	}
 	if err := os.WriteFile(filepath.Join(workspace, "README.md"), []byte("seed\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +58,7 @@ func newMergeFixture(t *testing.T) (workspace, worktree, baseRev string) {
 	runGit(t, workspace, "add", "README.md")
 	runGit(t, workspace, "commit", "--quiet", "-m", "seed")
 	baseRev = strings.TrimSpace(runGitOutput(t, workspace, "rev-parse", "HEAD"))
-	worktree = filepath.Join(t.TempDir(), "child")
+	worktree = filepath.Join(workspace, ".codehelper", "child")
 	runGit(t, workspace, "worktree", "add", "--detach", worktree, "HEAD")
 	if err := os.WriteFile(filepath.Join(worktree, "child-note.txt"), []byte("from-child\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -94,7 +97,15 @@ func openMergeHarnessWithVerifier(
 ) (*tool.Registry, *toolguard.Guard, *subagent.Manager, string, string) {
 	t.Helper()
 	workspace, worktree, baseRev := newMergeFixture(t)
-	backend := mergeTestBackend{}
+	sandboxPolicy, err := sandbox.BuildPolicy(sandbox.Options{
+		WorkspaceRoot: workspace,
+		HostReadRoots: []string{worktree},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(sandboxPolicy.PrivateTemp) })
+	backend := mergeTestBackend{policy: sandboxPolicy}
 	files, err := filetool.NewWithBackend(workspace, backend)
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +127,7 @@ func openMergeHarnessWithVerifier(
 		Manager: manager, Handles: handles, SessionID: "merge-session",
 		Root: t.TempDir(), Gate: gate, Files: files, Workspace: workspace,
 		Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
-		Verify: verifier,
+		Verify: verifier, Sandbox: backend,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +148,9 @@ func openMergeHarnessWithVerifier(
 	return registry, guard, manager, workspace, worktree
 }
 
-type mergeTestBackend struct{}
+type mergeTestBackend struct {
+	policy sandbox.Policy
+}
 
 type fixedVerifier struct {
 	status string
@@ -157,7 +170,26 @@ func (mergeTestBackend) Capability() sandbox.Capability {
 	}
 }
 
-func (mergeTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
+func (b mergeTestBackend) Policy() sandbox.Policy { return b.policy }
+
+func (b mergeTestBackend) Prepare(
+	_ context.Context,
+	command sandbox.Command,
+) (sandbox.Command, error) {
+	command.PreparedPolicyID = b.policy.ID
+	command.PreparedAuthorityDigest = command.AuthorityDigest
+	command.PreparedStrength = sandbox.StrengthStrong
+	command.PreparedReadOnly = command.WorkspaceReadOnly
+	command.PreparedReadPaths = append(
+		[]string(nil),
+		command.AdditionalReadPaths...,
+	)
+	command.PreparedWritePaths = append(
+		[]string(nil),
+		command.WorkspaceWritePaths...,
+	)
+	command.PreparedNetworkDenied = command.DenyNetwork
+	command.PreparedLoopbackAllowed = command.AllowLoopback
 	return command, nil
 }
 

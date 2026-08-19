@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-08",
+  "phase": "production_admission_h1",
+  "status": "closed_harness_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "integration_verification": "unavailable",
+    "verification_message": "sandbox_denied_process_on_unsandboxed_enforcement_mismatch",
+    "host_capability": "seatbelt_available"
+  },
+  "findings": [
+    {
+      "id": "H1C-0003",
+      "severity": "P1",
+      "status": "rejected",
+      "title": "parent_integration_verification_is_unavailable",
+      "reason": "h1_electron_lane_did_not_enable_the_available_strong_sandbox"
+    },
+    {
+      "id": "H1H-0008",
+      "severity": "P1",
+      "status": "closed",
+      "title": "integration_assertion_omits_verification_message",
+      "resolution": "assertion_now_reports_the_structured_integration_receipt"
+    },
+    {
+      "id": "H1H-0009",
+      "severity": "P0",
+      "status": "open",
+      "title": "h1_electron_lane_does_not_enable_strong_sandbox_stage",
+      "evidence": [
+        "seatbelt_capability_available",
+        "runtime_backend_unsandboxed",
+        "parent_verifier_requires_strong_sandbox",
+        "formal_h1_task_has_no_sandbox_stage_environment"
+      ],
+      "risk": "security_and_verification_journeys_run_under_the_wrong_authority",
+      "classification": "harness"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": false,
+    "harness_remediation_authorized": true,
+    "formal_h1_authorized": false,
+    "next_gate": "enable_strong_sandbox_stage_for_electron_then_retest"
+  }
+}

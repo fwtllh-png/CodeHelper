@@ -312,7 +312,8 @@ func (r *CommandRunner) runProcess(ctx context.Context, command string) (process
 	}
 	root := workspace.Root()
 	options := process.Options{
-		Command: command, Dir: root, Sandbox: r.Sandbox, RequireStrongSandbox: true,
+		Command: command, Dir: root, Sandbox: r.Sandbox,
+		RequireStrongSandbox: true, WorkspaceReadOnly: true,
 	}
 	if r.Run != nil {
 		return r.Run(ctx, options)

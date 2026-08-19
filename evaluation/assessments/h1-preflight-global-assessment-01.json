@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-01",
+  "phase": "production_admission_h1",
+  "status": "closed_remediation_required",
+  "observed_on": "2026-08-20",
+  "frozen_lock_identity": "sha256:caf72bae5de0ce01051fd20952f08e1bb7280bbce56a980080931377399a03a2",
+  "capabilities": {
+    "official_vscode_electron": "available",
+    "strong_sandbox": "seatbelt",
+    "process_fault_tests": "available",
+    "provider_disconnect_tests": "available",
+    "test_filesystem_faults": "available"
+  },
+  "findings": [
+    {
+      "id": "H1H-0001",
+      "severity": "P0",
+      "status": "open",
+      "title": "h1_has_no_identity_bound_execution_inventory_or_coordinator",
+      "evidence": [
+        "no_h1_catalog",
+        "no_h1_cli_entrypoint",
+        "no_collect_all_h1_report",
+        "no_h1_global_assessment"
+      ],
+      "risk": "existing_green_commands_cannot_form_h1_admission"
+    },
+    {
+      "id": "H1H-0002",
+      "severity": "P1",
+      "status": "open",
+      "title": "official_extension_host_and_chaos_evidence_are_not_joined",
+      "evidence": [
+        "electron_tests_exist_outside_evaluation_authority",
+        "kill_point_tests_exist_without_h1_inventory",
+        "fault_proxy_and_filesystem_tests_have_no_shared_identity_partition"
+      ],
+      "risk": "partial_lanes_can_be_mistaken_for_complete_h1"
+    }
+  ],
+  "h2_preflight": {
+    "live_credentials": "unavailable",
+    "authority": "none",
+    "note": "H2 cannot begin until explicit live credentials and a versioned drift policy are available"
+  },
+  "decision": {
+    "h1_started": false,
+    "release_admission_authorized": false,
+    "next_gate": "implement_h1_harness_then_requalify_q1"
+  }
+}

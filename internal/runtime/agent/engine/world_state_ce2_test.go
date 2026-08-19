@@ -56,7 +56,10 @@ func TestWorldBaselineSurvivesSessionDeltaRestart(t *testing.T) {
 	if _, err := source.Run(t.Context(), "first", nil); err != nil {
 		t.Fatal(err)
 	}
-	fork := source.Fork()
+	fork, err := source.Fork()
+	if err != nil {
+		t.Fatal(err)
+	}
 	fork.ReplaceHistory(source.History())
 	if !contextstore.WorldBaselineValid(fork.History(), fork.world) {
 		t.Fatalf("fork baseline=%+v history=%+v", fork.world, fork.History())

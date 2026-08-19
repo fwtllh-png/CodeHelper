@@ -21,6 +21,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 const (
@@ -38,6 +39,7 @@ type mergeInput struct {
 	PreviewDigest string            `json:"preview_digest,omitempty"`
 	Paths         []string          `json:"paths,omitempty"`
 	Changes       []filetool.Change `json:"changes,omitempty"`
+	Worktree      string            `json:"worktree,omitempty"`
 }
 
 func (o *operation) ExpandArguments(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
@@ -72,6 +74,7 @@ func (t *Tool) expandMerge(ctx context.Context, raw json.RawMessage) (json.RawMe
 			return nil, planErr
 		}
 		input.Paths, input.Changes = plan.paths, plan.changes
+		input.Worktree = plan.agent.Worktree
 	case mergeRetry:
 		candidate, candidateErr := t.loadMergeCandidate(
 			agentID, input.PreviewDigest, subagent.IntegrationFailed,
@@ -84,6 +87,7 @@ func (t *Tool) expandMerge(ctx context.Context, raw json.RawMessage) (json.RawMe
 			return nil, planErr
 		}
 		input.Paths, input.Changes = plan.paths, plan.changes
+		input.Worktree = plan.agent.Worktree
 	case mergeApply:
 		candidate, candidateErr := t.loadMergeCandidate(
 			agentID, input.PreviewDigest, subagent.IntegrationPreviewed,
@@ -99,13 +103,14 @@ func (t *Tool) expandMerge(ctx context.Context, raw json.RawMessage) (json.RawMe
 			return nil, err
 		}
 		input.Paths, input.Changes = plan.paths, plan.changes
+		input.Worktree = plan.agent.Worktree
 	case mergeDiscard:
 		if _, candidateErr := t.loadMergeCandidate(
 			agentID, input.PreviewDigest, subagent.IntegrationPreviewed,
 		); candidateErr != nil {
 			return nil, candidateErr
 		}
-		input.Paths, input.Changes = nil, nil
+		input.Paths, input.Changes, input.Worktree = nil, nil, ""
 	}
 	return json.Marshal(input)
 }
@@ -197,7 +202,14 @@ func (t *Tool) planMerge(ctx context.Context, agentID string, filter []string) (
 				"merge conflict on %s: also claimed by %s", path, owner,
 			))
 		}
-		if err := checkBaseline(ctx, workspace, agent.Worktree, agent.BaseRev, path); err != nil {
+		if err := checkBaseline(
+			ctx,
+			t.sandbox,
+			workspace,
+			agent.Worktree,
+			agent.BaseRev,
+			path,
+		); err != nil {
 			conflicts = append(conflicts, err.Error())
 		}
 		kind := kinds[path]
@@ -645,13 +657,24 @@ func validateMergePath(path string) error {
 
 // checkBaseline compares the parent workspace file to the child's spawn-time
 // revision. Content equality (Exists + SHA256) is the D8 level-2 gate.
-func checkBaseline(ctx context.Context, workspace, worktree, baseRev, relPath string) error {
+func checkBaseline(
+	ctx context.Context,
+	backend sandbox.Backend,
+	workspace, worktree, baseRev, relPath string,
+) error {
 	parentPath := filepath.Join(workspace, filepath.FromSlash(relPath))
 	parent, _, _, err := workspacejournal.Snapshot(parentPath)
 	if err != nil {
 		return fmt.Errorf("fingerprint parent %s: %w", relPath, err)
 	}
-	baselineExists, baselineHash, err := gitBlobHash(ctx, worktree, baseRev, relPath)
+	baselineExists, baselineHash, err := gitBlobHash(
+		ctx,
+		backend,
+		workspace,
+		worktree,
+		baseRev,
+		relPath,
+	)
 	if err != nil {
 		return err
 	}
@@ -670,19 +693,34 @@ func checkBaseline(ctx context.Context, workspace, worktree, baseRev, relPath st
 	return nil
 }
 
-func gitBlobHash(ctx context.Context, worktree, baseRev, relPath string) (bool, string, error) {
+func gitBlobHash(
+	ctx context.Context,
+	backend sandbox.Backend,
+	workspace, worktree, baseRev, relPath string,
+) (bool, string, error) {
 	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 30*time.Second {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 	}
 	revision := strings.TrimSpace(baseRev)
+	directory, err := process.OpenPinnedDirectory(backend, workspace)
+	if err != nil {
+		return false, "", err
+	}
+	defer directory.Close()
+	run := func(arguments ...string) (process.Result, error) {
+		return process.Run(ctx, process.Options{
+			Path: gitMergeExecutable(),
+			Args: append([]string{"-C", worktree}, arguments...),
+			Dir:  workspace, DirFile: directory,
+			Sandbox: backend, RequireStrongSandbox: true,
+			WorkspaceReadOnly:   true,
+			AdditionalReadPaths: []string{worktree},
+		})
+	}
 	baseSpec := revision + "^{commit}"
-	base, err := process.Run(ctx, process.Options{
-		Path: gitMergeExecutable(),
-		Args: []string{"cat-file", "-e", baseSpec},
-		Dir:  worktree,
-	})
+	base, err := run("cat-file", "-e", baseSpec)
 	if err != nil {
 		return false, "", fmt.Errorf("git cat-file %s: %w", baseSpec, err)
 	}
@@ -690,22 +728,14 @@ func gitBlobHash(ctx context.Context, worktree, baseRev, relPath string) (bool, 
 		return false, "", gitCommandError("cat-file", baseSpec, base)
 	}
 	spec := revision + ":" + filepath.ToSlash(relPath)
-	exists, err := process.Run(ctx, process.Options{
-		Path: gitMergeExecutable(),
-		Args: []string{"cat-file", "-e", spec},
-		Dir:  worktree,
-	})
+	exists, err := run("cat-file", "-e", spec)
 	if err != nil {
 		return false, "", fmt.Errorf("git cat-file %s: %w", spec, err)
 	}
 	if exists.ExitCode != 0 {
 		return false, "", nil
 	}
-	result, err := process.Run(ctx, process.Options{
-		Path: gitMergeExecutable(),
-		Args: []string{"show", spec},
-		Dir:  worktree,
-	})
+	result, err := run("show", spec)
 	if err != nil {
 		return false, "", fmt.Errorf("git show %s: %w", spec, err)
 	}

@@ -496,7 +496,7 @@ func (c *childToolsets) open(
 		if err := agenttool.Register(registry, agenttool.Options{
 			Control: c.agents, Handles: handles, SessionID: c.agentSession,
 			Files: files, Workspace: root, OnRelease: c.agentRelease,
-			Verify: runner,
+			Verify: runner, Sandbox: backend,
 		}); err != nil {
 			_ = journal.Close(context.Background())
 			processes.CloseAll()

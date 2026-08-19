@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-25",
+  "phase": "production_admission_h1",
+  "status": "closed_harness_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "multi_root_retest": "passed",
+    "full_matrix_scenarios_before_failure": [
+      "empty",
+      "workspace",
+      "accessibility",
+      "approval"
+    ],
+    "failure_scenario": "native",
+    "inherited_evidence_directory": true,
+    "inherited_debug_port": false,
+    "native_high_risk_approval": "observed_before_harness_assertion"
+  },
+  "findings": [
+    {
+      "id": "H1H-0019",
+      "severity": "P1",
+      "status": "remediated",
+      "title": "multi_root_journey_requires_optional_edit_plan_approval_in_default_mode",
+      "resolution_evidence": [
+        "multi_root_retest_passes",
+        "each_root_completes_the_multi_file_mutation",
+        "each_root_contains_the_expected_alpha_and_nested_beta_files"
+      ],
+      "classification": "harness"
+    },
+    {
+      "id": "H1H-0020",
+      "severity": "P1",
+      "status": "confirmed",
+      "title": "approval_evidence_environment_leaks_into_later_electron_scenarios",
+      "evidence": [
+        "h1_sets_approval_evidence_directory_for_the_electron_runner",
+        "test_electron_inherits_the_runner_process_environment",
+        "approval_debug_port_is_only_injected_for_the_approval_scenario",
+        "native_screenshot_helper_observes_the_directory_without_a_port",
+        "native_fails_after_its_high_risk_approval_is_observed"
+      ],
+      "impact": "the_seven_scenario_matrix_fails_in_native_after_a_successful_approval_scenario",
+      "classification": "harness"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": false,
+    "harness_remediation_authorized": true,
+    "authorized_scope": "remove_approval_evidence_variables_from_the_runner_base_environment_and_inject_them_only_into_the_approval_scenario",
+    "formal_h1_authorized": false,
+    "next_gate": "retest_the_complete_seven_scenario_electron_matrix"
+  }
+}

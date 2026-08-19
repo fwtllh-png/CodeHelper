@@ -166,7 +166,10 @@ func TestRereadingAnUnchangedFileReminds(t *testing.T) {
 func TestForkInheritsTheEvidenceWithoutSharingIt(t *testing.T) {
 	parent := evidenceEngine(t)
 	parent.observeChangeEvidence(tool.WorkspaceChange{Path: "a.go", Kind: tool.WorkspaceModified})
-	child := parent.Fork()
+	child, err := parent.Fork()
+	if err != nil {
+		t.Fatal(err)
+	}
 	parent.observeVerifiedEvidence([]string{"a.go"})
 
 	if !hasRisk(child, evidence.RiskUnverifiedChange) {

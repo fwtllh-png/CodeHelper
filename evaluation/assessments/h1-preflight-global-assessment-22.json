@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-22",
+  "phase": "production_admission_h1",
+  "status": "closed_harness_remediation_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "checkpoint_fork_guard": "constructed",
+    "checkpoint_fork_panic": "not_observed",
+    "checkpoint_fork_tool_results": "replayed_from_prior_destination",
+    "shared_call_ids": true,
+    "current_destination_failure": "provider_expected_fragment_mismatch"
+  },
+  "findings": [
+    {
+      "id": "H1C-0009",
+      "severity": "P1",
+      "status": "remediated_pending_clean_native_matrix",
+      "title": "engine_fork_omits_stateful_guard_construction"
+    },
+    {
+      "id": "H1H-0018",
+      "severity": "P1",
+      "status": "confirmed",
+      "title": "plan_destinations_reuse_idempotency_call_ids",
+      "evidence": [
+        "new_session_destination_uses_call_plan_implement",
+        "fork_history_contains_the_same_completed_call_id",
+        "fork_replays_cached_results_without_consuming_fixture_streams",
+        "later_provider_streams_shift_and_current_destination_fails"
+      ],
+      "impact": "the_matrix_does_not_execute_each_destination_independently",
+      "classification": "harness"
+    },
+    {
+      "id": "H1C-0010",
+      "severity": "P1",
+      "status": "candidate",
+      "title": "checkpoint_fork_event_projection_reuses_persisted_item_identity",
+      "evidence": [
+        "fork_terminal_contains_unique_constraint_failed_items_id",
+        "secondary_issue_repeats_during_fork_projection"
+      ],
+      "classification": "pending_unique_call_id_reproduction"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": false,
+    "harness_remediation_authorized": true,
+    "authorized_scope": "assign_unique_tool_quality_and_completion_call_ids_to_each_plan_destination",
+    "formal_h1_authorized": false,
+    "next_gate": "retest_native_and_classify_the_item_identity_candidate"
+  }
+}

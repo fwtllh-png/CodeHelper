@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-preflight-global-assessment-20",
+  "phase": "production_admission_h1",
+  "status": "closed_product_evidence_required",
+  "observed_on": "2026-08-20",
+  "basis": {
+    "new_session_plan_destination": "passed",
+    "fork_plan_destination_unique_path": "plan-checkpoint-fork.txt",
+    "fork_tool": "file_write",
+    "fork_failure": "tool_execution_stopped_unexpectedly",
+    "failure_source": "panic_recovery"
+  },
+  "findings": [
+    {
+      "id": "H1H-0017",
+      "severity": "P2",
+      "status": "remediated",
+      "title": "plan_destination_fixtures_reuse_one_mutation_path",
+      "resolution_evidence": [
+        "new_fork_and_current_destinations_use_unique_paths"
+      ]
+    },
+    {
+      "id": "H1C-0009",
+      "severity": "P1",
+      "status": "confirmed_pending_panic_value",
+      "title": "checkpoint_fork_file_write_panics",
+      "evidence": [
+        "fork_turn_starts_in_act_mode",
+        "fixture_requests_a_unique_new_file",
+        "no_approval_or_tool_result_is_emitted",
+        "operation_rejected_uses_the_exclusive_tool_panic_recovery_message"
+      ],
+      "impact": "checkpoint_fork_plan_implementation_cannot_execute_its_first_workspace_mutation",
+      "classification": "product"
+    }
+  ],
+  "decision": {
+    "product_remediation_authorized": false,
+    "harness_remediation_authorized": false,
+    "formal_h1_authorized": false,
+    "next_gate": "capture_the_recovered_panic_value_and_stack_boundary_then_authorize_a_minimal_product_fix"
+  }
+}

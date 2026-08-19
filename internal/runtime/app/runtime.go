@@ -283,9 +283,9 @@ type Runtime struct {
 
 	// Event-owned items (F5): tool/approval/input get stable ItemIDs distinct
 	// from the turn.start operation item.
-	toolItems     map[string]protocol.ItemID // call_id -> item
-	approvalItems map[string]protocol.ItemID // request_id -> item
-	inputItems    map[string]protocol.ItemID // request_id -> item
+	toolItems     map[EventItemOwner]protocol.ItemID
+	approvalItems map[EventItemOwner]protocol.ItemID
+	inputItems    map[EventItemOwner]protocol.ItemID
 }
 
 // ObserveEvents registers an in-process projection observer. Observers run
@@ -1798,7 +1798,7 @@ func (r *Runtime) publishWithIdentity(
 ) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	itemID = r.eventOwnedItemID(data, itemID)
+	itemID = r.eventOwnedItemID(turnID, data, itemID)
 	if plan, ok := data.(*protocol.PlanDeltaData); ok && plan.Done {
 		if err := r.ArtifactService.decoratePlanArtifact(
 			context.Background(),
@@ -1840,7 +1840,7 @@ func (r *Runtime) publishWithIdentity(
 			}
 		case *protocol.ApprovalResolvedData:
 			delete(r.approvals, value.RequestID)
-			delete(r.approvalItems, value.RequestID)
+			delete(r.approvalItems, eventItemOwner(turnID, value.RequestID))
 		case *protocol.InputRequiredData:
 			r.inputs[value.RequestID] = PendingInput{
 				RequestID: value.RequestID, ThreadID: threadID,
@@ -1848,7 +1848,7 @@ func (r *Runtime) publishWithIdentity(
 			}
 		case *protocol.InputResolvedData:
 			delete(r.inputs, value.RequestID)
-			delete(r.inputItems, value.RequestID)
+			delete(r.inputItems, eventItemOwner(turnID, value.RequestID))
 		}
 		if protocol.IsTerminalEvent(kind) {
 			r.clearPendingTurn(turnID)
@@ -1873,49 +1873,55 @@ func (r *Runtime) clearPendingTurn(turnID protocol.TurnID) {
 	for requestID, approval := range r.approvals {
 		if approval.TurnID == turnID {
 			delete(r.approvals, requestID)
-			delete(r.approvalItems, requestID)
+			delete(r.approvalItems, eventItemOwner(turnID, requestID))
 		}
 	}
 	for requestID, input := range r.inputs {
 		if input.TurnID == turnID {
 			delete(r.inputs, requestID)
-			delete(r.inputItems, requestID)
+			delete(r.inputItems, eventItemOwner(turnID, requestID))
 		}
 	}
 }
 
 // eventOwnedItemID assigns stable ItemIDs for tool/approval/input events so
 // lifecycle can project them as first-class items (F5). Caller must hold r.mu.
-func (r *Runtime) eventOwnedItemID(data protocol.EventData, fallback protocol.ItemID) protocol.ItemID {
+func (r *Runtime) eventOwnedItemID(
+	turnID protocol.TurnID,
+	data protocol.EventData,
+	fallback protocol.ItemID,
+) protocol.ItemID {
 	switch value := data.(type) {
 	case *protocol.ToolResultData:
 		if value.CallID == "" {
 			return fallback
 		}
-		if id, ok := r.toolItems[value.CallID]; ok {
+		owner := eventItemOwner(turnID, value.CallID)
+		if id, ok := r.toolItems[owner]; ok {
 			return id
 		}
 		id, err := protocol.NewItemID()
 		if err != nil {
 			return fallback
 		}
-		r.toolItems[value.CallID] = id
+		r.toolItems[owner] = id
 		return id
 	case *protocol.ApprovalRequiredData:
 		if value.RequestID == "" {
 			return fallback
 		}
-		if id, ok := r.approvalItems[value.RequestID]; ok {
+		owner := eventItemOwner(turnID, value.RequestID)
+		if id, ok := r.approvalItems[owner]; ok {
 			return id
 		}
 		id, err := protocol.NewItemID()
 		if err != nil {
 			return fallback
 		}
-		r.approvalItems[value.RequestID] = id
+		r.approvalItems[owner] = id
 		return id
 	case *protocol.ApprovalResolvedData:
-		if id, ok := r.approvalItems[value.RequestID]; ok {
+		if id, ok := r.approvalItems[eventItemOwner(turnID, value.RequestID)]; ok {
 			return id
 		}
 		return fallback
@@ -1923,17 +1929,18 @@ func (r *Runtime) eventOwnedItemID(data protocol.EventData, fallback protocol.It
 		if value.RequestID == "" {
 			return fallback
 		}
-		if id, ok := r.inputItems[value.RequestID]; ok {
+		owner := eventItemOwner(turnID, value.RequestID)
+		if id, ok := r.inputItems[owner]; ok {
 			return id
 		}
 		id, err := protocol.NewItemID()
 		if err != nil {
 			return fallback
 		}
-		r.inputItems[value.RequestID] = id
+		r.inputItems[owner] = id
 		return id
 	case *protocol.InputResolvedData:
-		if id, ok := r.inputItems[value.RequestID]; ok {
+		if id, ok := r.inputItems[eventItemOwner(turnID, value.RequestID)]; ok {
 			return id
 		}
 		return fallback
@@ -1941,6 +1948,7 @@ func (r *Runtime) eventOwnedItemID(data protocol.EventData, fallback protocol.It
 		return fallback
 	}
 }
+
 func eventKind(data protocol.EventData) protocol.EventKind {
 	switch data.(type) {
 	case *protocol.TurnStartedData:
@@ -2030,18 +2038,18 @@ func (r *Runtime) restore(recovery RecoveryState) {
 	for requestID, approval := range recovery.PendingApprovals {
 		r.approvals[requestID] = approval
 		if approval.ItemID != "" {
-			r.approvalItems[requestID] = approval.ItemID
+			r.approvalItems[eventItemOwner(approval.TurnID, requestID)] = approval.ItemID
 		}
 	}
 	for requestID, input := range recovery.PendingInputs {
 		r.inputs[requestID] = input
 		if input.ItemID != "" {
-			r.inputItems[requestID] = input.ItemID
+			r.inputItems[eventItemOwner(input.TurnID, requestID)] = input.ItemID
 		}
 	}
-	for callID, itemID := range recovery.ToolItems {
-		if callID != "" && itemID != "" {
-			r.toolItems[callID] = itemID
+	for owner, itemID := range recovery.ToolItems {
+		if owner.TurnID != "" && owner.LocalID != "" && itemID != "" {
+			r.toolItems[owner] = itemID
 		}
 	}
 	for operationID, pending := range recovery.PendingOperations {

@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h1-production-admission-global-assessment-01",
+  "phase": "production_admission_h1",
+  "round": "production-admission-h1-01",
+  "status": "closed_passed",
+  "closed_on": "2026-08-20",
+  "identity": {
+    "lock_identity": "sha256:7fa16a5ba9a596e36c61b0c5ac47a4ce45ab6a8506334a8cb6ce8d4c90099589",
+    "foundation_digest": "sha256:fc9cf48ec79262736bc860883be13ff5a78aca492f994690538551ada10ed505",
+    "source_digest": "sha256:19eaa377ef0cc56b14c587492d82c85190d025dd4ab64bfd4a2d04eeeeadb354",
+    "runtime_digest": "sha256:1f3593f216db3132d42e5ac16a848039c85c054052cabee188010aa0f2330a41",
+    "vsix_digest": "sha256:6e2de23bbff96b82e2927c311c67217b15848b07b422df32f536e6c2ef01580a",
+    "identity_before": "passed",
+    "identity_after": "passed",
+    "before_after_evidence_equal": true
+  },
+  "inventory": {
+    "scheduled": 21,
+    "settled": 21,
+    "passed": 21,
+    "failed": 0,
+    "unavailable": 0,
+    "not_evaluated": 0,
+    "invalid": 0,
+    "catalog_cases": 18,
+    "identity_checks": 2,
+    "owned_resource_cleanup_checks": 1,
+    "evidence_digest": "sha256:2b2b7b0bbe80d7cbbe23711d0853cd2ab0b4b5bd0f36cdf24408af913bb538cb"
+  },
+  "coverage": {
+    "lanes": {
+      "extension_host": "passed",
+      "process": "passed",
+      "provider": "passed",
+      "persistence": "passed",
+      "filesystem": "passed"
+    },
+    "official_electron_scenarios": {
+      "empty": "passed",
+      "workspace": "passed",
+      "accessibility": "passed",
+      "approval": "passed",
+      "native": "passed",
+      "multi": "passed",
+      "subagent": "passed"
+    }
+  },
+  "cleanup": {
+    "vscode_runtime_owned_resources": 9,
+    "vscode_runtime_processes": 5,
+    "vscode_runtime_temporary_directories": 4,
+    "all_cleanup_attempted": true,
+    "all_cleanup_succeeded": true,
+    "outstanding": 0,
+    "round_owned_resource_delta": 0
+  },
+  "classification": {
+    "product_findings": [],
+    "harness_incidents": [],
+    "environment_failures": []
+  },
+  "finding_disposition": {
+    "h1_preflight_findings": "closed_or_rejected_by_h1_preflight_global_assessment_26",
+    "q1_h1_harness": "qualified_by_q1_qualification_global_assessment_07"
+  },
+  "decision": {
+    "h1_status": "passed",
+    "product_candidate_count": 0,
+    "product_remediation_authorized": false,
+    "release_admission_authorized": false,
+    "h2_h4_authorized": false,
+    "next_gate": "explicit_h2_admission_authorization",
+    "post_publication_lock_verification": "passed",
+    "post_publication_evidence_digest": "sha256:93b6caf92cb71f1caace938b31c65dacac211a657b3cfd39bfc6030c0946c885"
+  }
+}

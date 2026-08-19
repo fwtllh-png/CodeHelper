@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { promisify } from "node:util";
@@ -500,10 +500,6 @@ async function verifyMultiRootFlows(api: ExtensionAPI): Promise<void> {
   const terminals = new Map<string, string>();
   const turnRoots = new Map<string, string>();
   const turnPaths = new Map<string, string>();
-  const approvals = new Map<string, {
-    readonly rootId: string;
-    readonly requestId: string;
-  }>();
   const subscription = api.onRootRuntimeEvent((rootId, event, replayed) => {
     if (replayed || isUnknownEvent(event)) return;
     if (event.kind === "turn.started") {
@@ -512,12 +508,6 @@ async function verifyMultiRootFlows(api: ExtensionAPI): Promise<void> {
       if (context !== undefined && context[0] !== undefined) {
         turnPaths.set(event.turn_id, context[0].path);
       }
-    } else if (event.kind === "approval.required" &&
-      event.data.edit_plan !== undefined) {
-      approvals.set(event.turn_id, {
-        rootId,
-        requestId: event.data.request_id,
-      });
     }
     if (event.kind === "turn.completed" ||
       event.kind === "turn.failed" ||
@@ -612,44 +602,23 @@ async function verifyMultiRootFlows(api: ExtensionAPI): Promise<void> {
       const document = await vscode.workspace.openTextDocument(
         vscode.Uri.joinPath(folder.uri, "context.ts"),
       );
-      const editor = await vscode.window.showTextDocument(document);
-      editor.selection = new vscode.Selection(2, 4, 2, 17);
-      const raw = await vscode.commands.executeCommand(
-        "codehelper.generateTestsForSelection",
-      );
-      assert.ok(typeof raw === "object" && raw !== null);
-      const turnId = (raw as Record<string, unknown>)["turnId"];
-      assert.ok(typeof turnId === "string" && turnId.length > 0);
-      await waitFor(
-        () => approvals.has(turnId) || turnRoots.has(turnId) &&
-          terminals.has(`${turnRoots.get(turnId) ?? ""}:${turnId}`),
-        `multi-root turn ${turnId} did not request approval`,
-      );
-      const approval = approvals.get(turnId);
-      assert.ok(
-        approval,
-        `multi-root approval turn terminated as ${
-          terminals.get(`${turnRoots.get(turnId) ?? ""}:${turnId}`) ?? "unknown"
-        }`,
+      await submitMultiRootSelection(
+        folder,
+        document,
+        ["codehelper.generateTestsForSelection"],
+        turnRoots,
+        terminals,
       );
       assert.equal(
-        approval.rootId,
-        createHash("sha256")
-          .update(canonicalEditorURI(folder.uri))
-          .digest("hex"),
+        await readFile(vscode.Uri.joinPath(folder.uri, "alpha.txt").fsPath, "utf8"),
+        "alpha\n",
       );
-      assert.equal(await vscode.commands.executeCommand(
-        "codehelper.denyPlan",
-        {
-          rootId: approval.rootId,
-          requestId: approval.requestId,
-          decision: "deny",
-        },
-      ), true);
-      await waitFor(
-        () => terminals.get(`${approval.rootId}:${turnId}`) ===
-          "turn.completed",
-        `multi-root approval ${approval.requestId} did not resume`,
+      assert.equal(
+        await readFile(
+          vscode.Uri.joinPath(folder.uri, "nested", "beta.txt").fsPath,
+          "utf8",
+        ),
+        "beta\n",
       );
     }
     const removed = folders[1];
@@ -862,7 +831,7 @@ async function verifyNativeFlows(
   const started = new Map<string, unknown>();
   const receipts = new Map<string, unknown>();
   const terminals = new Map<string, string>();
-  const outputTurns = new Set<string>();
+  const streamingTurns = new Set<string>();
   const waiters = new Map<string, (kind: string) => void>();
   const approvals = new Map<string, {
     readonly requestId: string;
@@ -898,8 +867,8 @@ async function verifyNativeFlows(
     }
     if (event.kind === "turn.started") {
       started.set(event.turn_id, event.data.editor_context);
-    } else if (event.kind === "output.delta") {
-      outputTurns.add(event.turn_id);
+    } else if (event.kind === "reasoning.delta") {
+      streamingTurns.add(event.turn_id);
     } else if (event.kind === "turn.receipt") {
       receipts.set(event.turn_id, event.data.editor_context);
     } else if (event.kind === "approval.required") {
@@ -979,7 +948,7 @@ async function verifyNativeFlows(
       api, workspace, approvals, resolvedApprovals, terminals,
     );
     if (extended) {
-      await verifyTurnRecovery(api, terminals, waiters, outputTurns);
+      await verifyTurnRecovery(api, terminals, waiters, streamingTurns);
       await verifyPlanDestinations(api, terminals, waiters);
     }
   } finally {
@@ -1014,7 +983,7 @@ async function verifyTurnRecovery(
   api: ExtensionAPI,
   terminals: ReadonlyMap<string, string>,
   waiters: Map<string, (kind: string) => void>,
-  outputTurns: ReadonlySet<string>,
+  streamingTurns: ReadonlySet<string>,
 ): Promise<void> {
   assert.ok(api.chatSessions);
   assert.ok(api.testSubmitPrompt);
@@ -1028,10 +997,13 @@ async function verifyTurnRecovery(
     "Electron recovery source",
   );
   await waitFor(
-    () => outputTurns.has(source.turnId),
+    () => streamingTurns.has(source.turnId),
     "recovery source did not begin streaming",
   );
-  await api.testCancelTurn(selected.sessionId, source.turnId);
+  await api.testCancelTurn(
+    selected.sessionId,
+    source.turnId,
+  );
   assert.equal(
     await waitForTerminal(source.turnId, terminals, waiters),
     "turn.canceled",
@@ -1437,7 +1409,11 @@ async function verifyExplicitSubagent(api: ExtensionAPI): Promise<void> {
     assert.equal(integration.parentPath, "/root");
     assert.deepEqual(integration.paths, ["child-note.txt"]);
     assert.deepEqual(integration.changedPaths, ["child-note.txt"]);
-    assert.equal(integration.verification, "passed");
+    assert.equal(
+      integration.verification,
+      "passed",
+      JSON.stringify(integration),
+    );
     assert.equal(statuses.get(writerID), "integrated");
     const integratedBody = await vscode.workspace.fs.readFile(
       vscode.Uri.joinPath(workspace.uri, "child-note.txt"),
@@ -1943,7 +1919,7 @@ async function verifyHighRiskApproval(
   );
   const approval = approvals.get(turn.turnId);
   assert.ok(approval);
-  assert.deepEqual(approval.scopes, ["once", "session"]);
+  assert.deepEqual(approval.scopes, ["once", "session", "always"]);
   assert.equal(approval.effect, "process.mutating");
   assert.equal(approval.risk, "high");
   assert.equal(approval.reasonCode, "approval_required");
