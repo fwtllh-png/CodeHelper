@@ -2,10 +2,10 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation.md) | English
 
-> Status: Foundation v2 is qualified. Q1 Round 03 passed one immutable
-> Foundation Epoch and three clean Integration runs. Harness Lock v3 is
-> `frozen_qualified`. Product Discovery still requires a separate start;
-> Product Remediation and release admission remain prohibited.
+> Status: Foundation v2 and the D1 Harness are qualified under Q1 Round 06.
+> D1 Round 01 settled all 56 tasks and found no Product Candidate. Product
+> Remediation and release admission remain prohibited; H1-H4 admission work is
+> not implemented.
 >
 > Execution order and estimates are maintained in the
 > [Production Evaluation Implementation Plan](./production-evaluation-implementation-plan.md).
@@ -22,9 +22,10 @@ implementation is not release-authoritative:
 | 17.1 Contract and command Runner | qualified as Foundation v2 input | frozen Harness use |
 | 17.2 Capture and structural Replay | qualified as Foundation v2 input | frozen Harness use |
 | 17.3 Oracle and Core Pack | invalidated | no admission evidence |
-| Foundation v2 F1-F3 | qualified by Q1 Round 03 | frozen Harness authority |
+| Foundation v2 F1-F3 and D1 Harness | qualified by Q1 Round 06 | frozen Harness authority |
+| D1 Product Discovery | passed 56/56; no Product Candidate | no Product Remediation |
 | 17.4 VS Code and Process Chaos | reset, not started | no product conclusion |
-| Product hypotheses PEC-0001 to PEC-0004 | unconfirmed | rediscovery only in D1 |
+| Product hypotheses PEC-0001 to PEC-0004 | not rediscovered in D1 | remain historical only |
 
 `make eval-contract-check`, `make eval-replay`, and `make eval-oracle` remain
 diagnostic commands. A green result from them cannot approve a product change,
@@ -539,6 +540,5 @@ This specification is ready for implementation approval only when:
 5. the reset assessment and Findings Register agree with this trust state;
 6. `make docs-check`, `make book-check`, and `git diff --check` pass.
 
-Q1 Harness Freeze does not itself start Product Discovery or Product
-Remediation. D1 and every later remediation or admission stage retain their
-own governance gate.
+D1 completion does not authorize Product Remediation or release admission.
+H1 through H4 retain their own governance gates.

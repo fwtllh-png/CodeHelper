@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d1-harness-remediation-01",
+  "phase": "d1_harness_remediation",
+  "status": "closed_verified_by_q1_06_and_d1_01",
+  "implemented_on": "2026-08-19",
+  "work_units": [
+    {
+      "finding": "D1H-0001",
+      "status": "implemented",
+      "changes": [
+        "versioned_d1_execution_catalog",
+        "36_distinct_core_scenario_bindings",
+        "13_oracle_fault_signature_checks",
+        "5_supported_host_cases",
+        "identity_bound_collect_all_discovery_coordinator"
+      ]
+    },
+    {
+      "finding": "D1H-0002",
+      "status": "implemented",
+      "changes": [
+        "go_test_json_event_proof",
+        "missing_test_negative_control",
+        "independent_child_stdout_and_stderr_capture",
+        "sequential_output_forwarding"
+      ]
+    },
+    {
+      "finding": "D1H-0003",
+      "status": "implemented",
+      "changes": [
+        "discovery_request_kind_admission",
+        "discovery_collect_all_negative_control"
+      ]
+    }
+  ],
+  "focused_validation": {
+    "scenario_proofs_executed": 36,
+    "scenario_proofs_failed": 0,
+    "host_cases_executed": 5,
+    "host_cases_failed": 0,
+    "acp_binary_tests": 9,
+    "vscode_tests": 244,
+    "vscode_cleanup_resources": 9,
+    "vscode_cleanup_outstanding": 0,
+    "proof_race_runs": 10,
+    "proof_race_failures": 0,
+    "evaluation_packages_passed": true
+  },
+  "decision": {
+    "d1_started": true,
+    "product_findings_admitted": false,
+    "next_gate": "d1_global_assessment_closed"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-qualification-global-assessment-06",
+  "phase": "d1_harness_requalification",
+  "status": "closed_passed_harness_frozen",
+  "closed_on": "2026-08-19",
+  "qualification_id": "foundation-v2-q1-06",
+  "candidate_lock": {
+    "schema_version": 3,
+    "status": "frozen_qualified",
+    "source_commit": "79f587f8a1632afb32d0894caf0ccfcfdcc848a3",
+    "source_digest": "sha256:f4706e19cc28280036b006394cd533c33e3ab1c34cc660ead20a65f616a7701d",
+    "foundation_digest": "sha256:da9013d3ce865a553a5c94d530a4f3e55027d5cf85c45c9228794f5eef21e60c",
+    "runtime_digest": "sha256:9fb277c4116207a6844bec5f523e5d1423604bc68efe610c4fc7c47477f16187",
+    "vsix_digest": "sha256:8ea782b8ed3349929b587e636e97a231dcd1ddc3431f13de04b1920161f08d98",
+    "lock_identity": "sha256:caf72bae5de0ce01051fd20952f08e1bb7280bbce56a980080931377399a03a2"
+  },
+  "foundation_epoch": {
+    "status": "passed",
+    "passed": 8,
+    "failed": 0,
+    "invalid": 0
+  },
+  "integration_runs": {
+    "count": 3,
+    "all_passed": true,
+    "tasks_per_run": 7,
+    "cleanup_resources_per_run": 9,
+    "cleanup_outstanding": 0
+  },
+  "finding_disposition": {
+    "D1H-0001": "closed_verified",
+    "D1H-0002": "closed_verified",
+    "D1H-0003": "closed_verified"
+  },
+  "decision": {
+    "harness_frozen": true,
+    "d1_authorized": true,
+    "product_remediation_authorized": false,
+    "next_gate": "product_discovery_d1_01"
+  }
+}

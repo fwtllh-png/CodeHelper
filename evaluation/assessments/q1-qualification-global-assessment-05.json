@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-qualification-global-assessment-05",
+  "phase": "d1_harness_requalification",
+  "status": "closed_passed_harness_frozen",
+  "closed_on": "2026-08-19",
+  "qualification_id": "foundation-v2-q1-05",
+  "candidate_lock": {
+    "schema_version": 3,
+    "status": "frozen_qualified",
+    "source_commit": "79f587f8a1632afb32d0894caf0ccfcfdcc848a3",
+    "source_digest": "sha256:447ffd8d55974af0cf2766eadc57eace26962c6c6966e11198d29e5838d36156",
+    "foundation_digest": "sha256:0bb0743e2907b71b82af7eb652e3067d7e0dfd4dc1b80296e55f70025c205326",
+    "harness_digest": "sha256:846897d2be7908df1c1f6b60c88f71ce67683b134feedc78725b46f9b260abe6",
+    "evaluation_digest": "sha256:524535e37710712bda32057a2aeee6c72039fb57ef70c8db74a7a49bd49323f7",
+    "runtime_digest": "sha256:9fb277c4116207a6844bec5f523e5d1423604bc68efe610c4fc7c47477f16187",
+    "vsix_digest": "sha256:64a2db1f2aaac76a0d13d4a0797fcc8e4e6317e0bc385b8b21ab05e6c6c511cc",
+    "lock_identity": "sha256:9fe68c15a0451d143381183caaab9b919d0ec241bfa30df564edbd492409f0c8",
+    "input_roots": 21,
+    "inputs": 1732
+  },
+  "foundation_epoch": {
+    "status": "passed",
+    "passed": 8,
+    "failed": 0,
+    "invalid": 0,
+    "evidence_digest": "sha256:963c4fedc5d354fa805364d178cf08788769ebf66200b089300da9dac79c8f71"
+  },
+  "integration_runs": {
+    "count": 3,
+    "all_passed": true,
+    "tasks_per_run": 7,
+    "cleanup_resources_per_run": 9,
+    "cleanup_outstanding": 0
+  },
+  "finding_disposition": {
+    "D1H-0001": "closed_verified",
+    "D1H-0002": "closed_verified"
+  },
+  "decision": {
+    "harness_frozen": true,
+    "d1_authorized": true,
+    "product_remediation_authorized": false,
+    "next_gate": "product_discovery_d1_01"
+  }
+}

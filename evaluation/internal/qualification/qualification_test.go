@@ -55,6 +55,34 @@ func TestCollectAllContinuesIndependentWorkAndBlocksDependents(t *testing.T) {
 	}
 }
 
+func TestDiscoveryRequestUsesCollectAllSettlement(t *testing.T) {
+	secondExecuted := false
+	request := testRequest([]Task{
+		{
+			ID: "scenario-fails",
+			Check: func(context.Context) (string, error) {
+				return "", errors.New("product failure")
+			},
+		},
+		{
+			ID: "later-scenario-passes",
+			Check: func(context.Context) (string, error) {
+				secondExecuted = true
+				return spec.DigestString("later evidence"), nil
+			},
+		},
+	})
+	request.Kind = "discovery"
+	report, err := Run(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !secondExecuted || report.Settled != 2 ||
+		report.Failed != 1 || report.Passed != 1 {
+		t.Fatalf("Discovery collect-all report = %+v", report)
+	}
+}
+
 func TestQualificationRejectsForwardDependency(t *testing.T) {
 	request := testRequest([]Task{
 		{ID: "first", DependsOn: []string{"second"}},

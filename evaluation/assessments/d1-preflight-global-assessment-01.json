@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d1-preflight-global-assessment-01",
+  "phase": "product_discovery",
+  "status": "closed_remediation_required",
+  "observed_on": "2026-08-19",
+  "frozen_lock_identity": "sha256:177f9cd2339d676c5078841d9d7d0d4cd773782baf7f3aeee7ed583645c00f1e",
+  "inventory": {
+    "core_scenarios": 36,
+    "fault_cases": 13,
+    "manifest_suites": 3,
+    "executable_product_scenarios": 0,
+    "installed_runner_drivers": [
+      "command"
+    ],
+    "d1_coordinator": false
+  },
+  "findings": [
+    {
+      "id": "D1H-0001",
+      "severity": "P0",
+      "status": "open",
+      "title": "frozen_harness_has_contract_inventory_without_d1_execution_inventory",
+      "evidence": [
+        "core_pack_declares_36_scenarios_and_13_fault_cases",
+        "evaluation_manifest_contains_only_three_foundation_command_suites",
+        "runner_rejects_acp_vscode_tui_and_worker_drivers",
+        "cli_has_no_collect_all_d1_coordinator"
+      ],
+      "risk": "running_existing_eval_commands_would_create_false_d1_assurance",
+      "required_remediation": [
+        "bind_every_core_scenario_to_a_distinct_executable_verification",
+        "execute_every_fault_case_with_expected_signature_validation",
+        "produce_one_identity_bound_collect_all_discovery_report",
+        "separate_product_harness_and_environment_findings",
+        "requalify_the_changed_harness_before_product_discovery"
+      ]
+    }
+  ],
+  "decision": {
+    "d1_started": false,
+    "product_findings_admitted": false,
+    "product_repair_authorized": false,
+    "next_gate": "implement_d1_harness_then_run_new_q1"
+  }
+}

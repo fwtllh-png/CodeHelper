@@ -37,11 +37,10 @@ must not import `evaluation/`.
 
 ## Candidate Capability
 
-The implementation below is not release-authoritative. The Phase 17.4
-Convergence Review invalidated the previous completion claims. Foundation v2
-is now qualified under one frozen v3 Harness, but no Product Discovery,
-Product Remediation, VS Code E2E, Chaos, or release claim follows
-automatically.
+The implementation below is not release-authoritative. Foundation v2 and the
+D1 Harness are qualified under Q1 Round 06. D1 Round 01 passed all 56 tasks
+without admitting a Product Candidate. Product Remediation, Chaos, and release
+admission remain unauthorized.
 
 The corrected target contracts and execution order are defined by:
 
@@ -60,6 +59,9 @@ Q1 remediation attribution and candidate implementation are recorded in
 `assessments/q1-remediation-implementation-01.json`.
 Q1 Round 03 and the successful Freeze decision are recorded in
 `assessments/q1-qualification-global-assessment-03.json`.
+The D1-capable successor and Discovery closure are recorded in
+`assessments/q1-qualification-global-assessment-06.json` and
+`assessments/d1-product-discovery-global-assessment-01.json`.
 
 The F1 implementation now provides:
 
@@ -101,13 +103,11 @@ The F3 implementation now contains:
 - 22 changed-path Impact Rules with full-P0 fallback;
 - a 500-run Replay command over 12 Corpus entries.
 
-Q1 Rounds 01 and 02 remain immutable failure and governance history. Q1 Round
-03 qualified the remediated inputs with 8/8 Foundation tasks and three
-consecutive 7/7 Integration runs under identical v3 input, Runtime, VSIX, and
-Lock identity. Each run cleaned five Runtime processes and four temporary
-directories with zero outstanding resources. Harness Lock
-`sha256:177f9cd2...` is `frozen_qualified`. D1 Collect-all Product Discovery
-is the next stage.
+Q1 Rounds 01, 02, and 04 remain immutable failure and governance history. The
+D1-capable successor passed Q1 Round 06 with 8/8 Foundation tasks and three
+consecutive 7/7 Integration runs. Harness Lock `sha256:caf72bae...` is
+`frozen_qualified`. D1 then settled 36 Scenarios, 13 Fault Cases, five Host
+Cases, and two identity checks with no failure or outstanding resource.
 
 Phase 17.4 was reset and its implementation removed. The machine-readable
 decision is `assessments/17.4-convergence-review-reset-01.json`.

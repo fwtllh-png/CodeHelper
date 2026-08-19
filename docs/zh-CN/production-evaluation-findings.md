@@ -2,8 +2,8 @@
 
 简体中文 | [English](../en/production-evaluation-findings.md)
 
-> 状态：Foundation 已验收，v3 Harness 已冻结；下一阶段为 D1 Product Discovery。
-> 当前没有准入的正式 Product Finding、可信 17.4 Pass 或可信 17.4 Product Repair。
+> 状态：Foundation 与 D1 Harness 已验收；D1 Round 01 已完成 56/56。当前没有准入
+> 的 Product Candidate、可信 17.4 Release Pass 或 Product Remediation。
 
 本台账遵循[技术规格](./production-evaluation.md)和
 [实施计划](./production-evaluation-implementation-plan.md)。Discovery、Global
@@ -17,15 +17,15 @@ Assessment、Remediation 和 Verification 必须分 Round。
 | Evaluation 17.1 | 已作为 Foundation v2 输入验收 |
 | Evaluation 17.2 | 已作为 Foundation v2 输入验收 |
 | Evaluation 17.3 | 已失效 |
-| Foundation v2 F1-F3 | 已验收；v3 Harness 已冻结 |
+| Foundation v2 F1-F3 与 D1 Harness | 已验收；v3 Harness 已冻结 |
 | Evaluation 17.4 | 已重置，未开始 |
 | 正式 Product Finding | 0 |
 | 历史 Product Hypothesis | 4 |
 | 可信 17.4 Pass | 0 |
 | 可信 17.4 Repair | 0 |
-| Open Systemic Harness Root | 1，等待 D1 Collect-all Evidence |
-| Q1 Qualification | Round 03 已通过；Harness `frozen_qualified` |
-| Q1 Remediation | 已由 Round 03 验证并关闭 |
+| Open Systemic Harness Root | 0 |
+| Q1 Qualification | Round 06 已通过；Harness `frozen_qualified` |
+| D1 Product Discovery | 56/56 通过；无 Product Candidate |
 
 机器决策：
 
@@ -37,23 +37,26 @@ evaluation/assessments/q1-qualification-global-assessment-01.json
 evaluation/assessments/q1-remediation-attribution-01.json
 evaluation/assessments/q1-remediation-implementation-01.json
 evaluation/assessments/q1-qualification-global-assessment-03.json
+evaluation/assessments/d1-preflight-global-assessment-01.json
+evaluation/assessments/d1-harness-remediation-01.json
+evaluation/assessments/q1-qualification-global-assessment-06.json
+evaluation/assessments/d1-product-discovery-global-assessment-01.json
 ```
 
-Q1 Round 03 已验收 F1 至 F3，并在 8/8 Foundation Task 与连续三次 7/7 Integration
-Run 后冻结一个 Identity-bound v3 Harness。除仍需 D1 验证 Discovery-specific
-Collect-all 行为的 PEH-0025 外，其余 Foundation Root 均已关闭。
+Q1 Round 06 已在 8/8 Foundation Task 与连续三次 7/7 Integration Run 后验收具备
+D1 能力的 Harness。D1 随后完成全部 56 项 Settlement，关闭 PEH-0025 以及
+D1H-0001 至 D1H-0003。
 
 ## 2. 产品假设
 
-以下 ID 只保留历史连续性。在 Frozen Collect-all Product Discovery Round 中重新发现
-前，不能确认或修复。
+以下 ID 只保留历史连续性。D1 Round 01 未重新发现它们，因此仍不能确认或修复。
 
 | ID | 历史严重度 | 历史现象 | 当前状态 |
 | --- | --- | --- | --- |
-| PEC-0001 | P1 | Extension Host Reload 后 Reconstructed Binding 未持久化 | candidate |
-| PEC-0002 | P0 | 快速 Runtime Restart 后 Accepted Turn 仍 Active | candidate |
-| PEC-0003 | P1 | Fork 后第一个 Tool 进入 Recovery | candidate |
-| PEC-0004 | P1 | 显式命名 Tool Definition 被遗漏 | candidate |
+| PEC-0001 | P1 | Extension Host Reload 后 Reconstructed Binding 未持久化 | 未重新发现 |
+| PEC-0002 | P0 | 快速 Runtime Restart 后 Accepted Turn 仍 Active | 未重新发现 |
+| PEC-0003 | P1 | Fork 后第一个 Tool 进入 Recovery | 未重新发现 |
+| PEC-0004 | P1 | 显式命名 Tool Definition 被遗漏 | 未重新发现 |
 
 历史修复均不保留为产品证据。
 
@@ -111,9 +114,10 @@ Q1 Round 01 以一个 Passed Foundation Epoch 和一个 Invalid Integration Run 
 | PEH-0031 | Harness Lifecycle | Node Timeout 不执行异步 Cleanup，且 Q1 没有 Owned-resource Result | Bounded Wait 与 Identity-bound Cleanup Evidence |
 
 以上是 Q1 Qualification Finding，不是正式 17.4 Product Discovery Finding。Q1
-Round 03 已通过连续三次 Clean Integration Run 验证这些 Finding。每次 Run 均通过
+Round 06 已通过连续三次 Clean Integration Run 验证当前 Harness。每次 Run 均通过
 7 项 Task，并清理 5 个 Runtime Process 与 4 个临时目录，Outstanding 为零。
-Q1C-0001a/b、Q1C-0002a/b、PEH-0031、Q1G-0001 与 Q1G-0002 已关闭。
+Q1C-0001a/b、Q1C-0002a/b、PEH-0031、Q1G-0001/0002 与 D1H-0001 至
+D1H-0003 已关闭。
 
 通过 Negative Requalification 后可保留：
 
@@ -138,22 +142,22 @@ Q1C-0001a/b、Q1C-0002a/b、PEH-0031、Q1G-0001 与 Q1G-0002 已关闭。
 
 ## 6. 重新准入规则
 
-Q1 已关闭，v3 Harness 已 Frozen Qualified。下一阶段为 D1 Collect-all Product
-Discovery。Product Remediation 仍被禁止。
+Q1 与 D1 均已关闭。未准入 Product Candidate，因此 Product Remediation 仍被禁止。
+下一规格门禁为 H1-H4 Admission Work。
 
 当前顺序：
 
-1. Identity-bound 归因与 Remediation 已完成；
-2. Q1 Round 03 已通过一个不可变 Foundation Qualification Epoch；
-3. v3 Candidate Lock 已在相同 Identity 下连续完成三次 Clean Integration Run，并
-   成为 `frozen_qualified`；
-4. D1 使用 Frozen Lock 并执行 Collect-all。
+1. Identity-bound 归因与 Harness Remediation 已完成；
+2. Q1 Round 06 已冻结具备 D1 能力的 v3 Candidate Lock；
+3. D1 已完成 36 个 Scenario、13 个 Fault Case、5 个 Host Case 与 2 次 Identity
+   Check；
+4. 未准入 Product Candidate 或 Product Remediation。
 
 Frozen Harness 只有在 v3 Input Identity 不变时才具权威性。
 
 ## 7. 禁止操作
 
-整个 Product Discovery 期间：
+D1 完成后、H1-H4 Admission 前：
 
 - 不确认或修复 PEC-0001 至 PEC-0004；
 - 不恢复已删除的 17.4 Code；

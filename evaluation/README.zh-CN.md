@@ -35,9 +35,9 @@ evaluation/
 
 ## 候选能力
 
-以下实现当前不具发布权威性。阶段 17.4 Convergence Review 已撤销此前完成结论。
-Foundation v2 目前已在一个 Frozen v3 Harness 下验收，但这不会自动形成 Product
-Discovery、Product Remediation、VS Code E2E、Chaos 或 Release 结论。
+以下实现当前不具发布权威性。Foundation v2 与 D1 Harness 已通过 Q1 Round 06
+验收。D1 Round 01 已 56/56 通过，未准入 Product Candidate。Product Remediation、
+Chaos 与 Release Admission 仍未获授权。
 
 修正后的目标契约和执行顺序见：
 
@@ -56,6 +56,9 @@ Q1 Remediation 归因和候选实现记录在
 `assessments/q1-remediation-implementation-01.json`。
 Q1 Round 03 与成功 Freeze 决策记录在
 `assessments/q1-qualification-global-assessment-03.json`。
+具备 D1 能力的后继 Harness 与 Discovery 关闭决策记录在
+`assessments/q1-qualification-global-assessment-06.json` 与
+`assessments/d1-product-discovery-global-assessment-01.json`。
 
 F1 实现当前包含：
 
@@ -92,11 +95,11 @@ F3 实现当前包含：
 - 22 条 Changed-path Impact Rule 和 Full-P0 Fallback；
 - 12 条 Corpus 上的 500 次 Replay 命令。
 
-Q1 Round 01 与 Round 02 保留为不可变失败和治理历史。Q1 Round 03 已在相同 v3
-Input、Runtime、VSIX 与 Lock Identity 下，以 8/8 Foundation Task 和连续三次 7/7
-Integration Run 验收 Remediation 输入。每次 Run 均清理 5 个 Runtime Process 与
-4 个临时目录，Outstanding 为零。Harness Lock `sha256:177f9cd2...` 状态为
-`frozen_qualified`。下一阶段为 D1 Collect-all Product Discovery。
+Q1 Round 01、02 与 04 保留为不可变失败和治理历史。具备 D1 能力的后继 Harness
+已在 Q1 Round 06 通过 8/8 Foundation Task 与连续三次 7/7 Integration Run。
+Harness Lock `sha256:caf72bae...` 状态为 `frozen_qualified`。D1 随后完成 36 个
+Scenario、13 个 Fault Case、5 个 Host Case 与 2 次 Identity Check，无失败或
+Outstanding Resource。
 
 17.4 已重置且实现已删除，机器决策位于
 `assessments/17.4-convergence-review-reset-01.json`。

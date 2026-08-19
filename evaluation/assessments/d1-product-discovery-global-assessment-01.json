@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d1-product-discovery-global-assessment-01",
+  "phase": "product_discovery",
+  "round": "product-discovery-d1-01",
+  "status": "closed_passed_no_product_candidates",
+  "closed_on": "2026-08-19",
+  "product_code_repair_performed": false,
+  "identity": {
+    "lock_identity": "sha256:caf72bae5de0ce01051fd20952f08e1bb7280bbce56a980080931377399a03a2",
+    "foundation_digest": "sha256:da9013d3ce865a553a5c94d530a4f3e55027d5cf85c45c9228794f5eef21e60c",
+    "runtime_digest": "sha256:9fb277c4116207a6844bec5f523e5d1423604bc68efe610c4fc7c47477f16187",
+    "vsix_digest": "sha256:8ea782b8ed3349929b587e636e97a231dcd1ddc3431f13de04b1920161f08d98",
+    "before_after_equal": true
+  },
+  "inventory": {
+    "scheduled": 56,
+    "settled": 56,
+    "passed": 56,
+    "failed": 0,
+    "unavailable": 0,
+    "not_evaluated": 0,
+    "invalid": 0,
+    "core_scenarios": 36,
+    "fault_cases": 13,
+    "host_cases": 5,
+    "identity_checks": 2,
+    "evidence_digest": "sha256:ec739094da8bb815b885ec9aee7cbdf9482a15fcaecb574e1e3ec214aed39146"
+  },
+  "host_coverage": {
+    "cli": "passed",
+    "tui": "passed",
+    "acp": "passed",
+    "vscode": "passed",
+    "worker": "passed"
+  },
+  "cleanup": {
+    "owned_resources": 9,
+    "processes": 5,
+    "temporary_directories": 4,
+    "all_cleanup_attempted": true,
+    "all_cleanup_succeeded": true,
+    "outstanding": 0,
+    "live_runtime_processes_after_round": 0
+  },
+  "classification": {
+    "product_findings": [],
+    "harness_incidents": [],
+    "environment_failures": [],
+    "historical_product_hypotheses_rediscovered": []
+  },
+  "finding_disposition": {
+    "PEH-0025": "closed_by_complete_collect_all_settlement",
+    "D1H-0001": "closed_by_q1_06_and_d1_01",
+    "D1H-0002": "closed_by_q1_06_and_d1_01",
+    "D1H-0003": "closed_by_q1_06_and_d1_01"
+  },
+  "decision": {
+    "d1_status": "passed",
+    "product_candidate_count": 0,
+    "product_remediation_authorized": false,
+    "trusted_17_4_product_pass": false,
+    "release_admission_authorized": false,
+    "next_gate": "define_and_authorize_h1_h4_admission_work",
+    "post_publication_lock_verification": "passed",
+    "post_publication_evidence_digest": "sha256:a356faff26eb33c9b5f75d3fff1e88467c0765927fe54cfbedafe3fc0eb314f0"
+  }
+}

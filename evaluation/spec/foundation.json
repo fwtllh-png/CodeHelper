@@ -76,6 +76,15 @@
       "absence_status": "invalid"
     },
     {
+      "id": "d1-execution",
+      "kind": "schema",
+      "path": "evaluation/schema/d1-execution.schema.json",
+      "owner": "evaluation",
+      "producer": "discovery-loader",
+      "consumer": "discovery-coordinator",
+      "absence_status": "invalid"
+    },
+    {
       "id": "impact-policy",
       "kind": "schema",
       "path": "evaluation/schema/impact-map.schema.json",

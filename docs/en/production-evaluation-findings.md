@@ -2,9 +2,9 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation-findings.md) | English
 
-> Status: Foundation qualified and v3 Harness frozen. D1 Product Discovery is
-> the next stage. No formal product finding, trusted 17.4 pass, or trusted
-> 17.4 product repair is currently admitted.
+> Status: Foundation and D1 Harness qualified; D1 Round 01 completed 56/56.
+> No Product Candidate, trusted 17.4 release pass, or Product Remediation is
+> currently admitted.
 
 This register follows the
 [Technical Specification](./production-evaluation.md) and
@@ -20,15 +20,15 @@ Rounds.
 | Evaluation 17.1 | qualified as Foundation v2 input |
 | Evaluation 17.2 | qualified as Foundation v2 input |
 | Evaluation 17.3 | invalidated |
-| Foundation v2 F1-F3 | qualified; v3 Harness frozen |
+| Foundation v2 F1-F3 and D1 Harness | qualified; v3 Harness frozen |
 | Evaluation 17.4 | reset, not started |
 | Formal product findings | 0 |
 | Historical product hypotheses | 4 |
 | Trusted 17.4 passes | 0 |
 | Trusted 17.4 repairs | 0 |
-| Open systemic Harness roots | 1, pending D1 collect-all evidence |
-| Q1 Qualification | Round 03 passed; Harness `frozen_qualified` |
-| Q1 Remediation | verified and closed by Round 03 |
+| Open systemic Harness roots | 0 |
+| Q1 Qualification | Round 06 passed; Harness `frozen_qualified` |
+| D1 Product Discovery | 56/56 passed; no Product Candidate |
 
 Machine decisions:
 
@@ -40,24 +40,27 @@ evaluation/assessments/q1-qualification-global-assessment-01.json
 evaluation/assessments/q1-remediation-attribution-01.json
 evaluation/assessments/q1-remediation-implementation-01.json
 evaluation/assessments/q1-qualification-global-assessment-03.json
+evaluation/assessments/d1-preflight-global-assessment-01.json
+evaluation/assessments/d1-harness-remediation-01.json
+evaluation/assessments/q1-qualification-global-assessment-06.json
+evaluation/assessments/d1-product-discovery-global-assessment-01.json
 ```
 
-Q1 Round 03 qualified F1 through F3 and froze one identity-bound v3 Harness
-after 8/8 Foundation tasks and three 7/7 Integration runs. It closes all
-Foundation roots except PEH-0025, whose Discovery-specific collect-all
-behavior still requires D1 evidence.
+Q1 Round 06 qualified the D1-capable Harness after 8/8 Foundation tasks and
+three 7/7 Integration runs. D1 then settled all 56 tasks, closing PEH-0025 and
+the D1H-0001 through D1H-0003 Harness findings.
 
 ## 2. Product Hypotheses
 
-These IDs preserve history only. They must be rediscovered under one frozen
-Collect-all Product Discovery Round before confirmation or repair.
+These IDs preserve history only. D1 Round 01 did not rediscover them, so they
+remain inadmissible for confirmation or repair.
 
 | ID | Historical severity | Historical symptom | Current status |
 | --- | --- | --- | --- |
-| PEC-0001 | P1 | reconstructed Binding was not persisted after Extension Host reload | candidate |
-| PEC-0002 | P0 | accepted Turn remained active after fast Runtime restart | candidate |
-| PEC-0003 | P1 | first Tool after Fork entered recovery | candidate |
-| PEC-0004 | P1 | explicitly named Tool definition was omitted | candidate |
+| PEC-0001 | P1 | reconstructed Binding was not persisted after Extension Host reload | not rediscovered |
+| PEC-0002 | P0 | accepted Turn remained active after fast Runtime restart | not rediscovered |
+| PEC-0003 | P1 | first Tool after Fork entered recovery | not rediscovered |
+| PEC-0004 | P1 | explicitly named Tool definition was omitted | not rediscovered |
 
 No historical repair is retained as product evidence.
 
@@ -117,10 +120,12 @@ Integration Run. The approved remediation attribution separated its symptoms:
 | PEH-0031 | Harness lifecycle | Node timeout did not execute async cleanup and Q1 had no owned-resource result | bound waits plus identity-bound cleanup evidence |
 
 These are Q1 qualification findings, not formal 17.4 Product Discovery
-findings. Q1 Round 03 verified them across three clean Integration runs. Each
+findings. Q1 Round 06 verified the current Harness across three clean
+Integration runs. Each
 run passed all seven tasks and cleaned five Runtime processes plus four
 temporary directories with zero outstanding resources. Q1C-0001a/b,
-Q1C-0002a/b, PEH-0031, Q1G-0001, and Q1G-0002 are closed.
+Q1C-0002a/b, PEH-0031, Q1G-0001/0002, and D1H-0001 through D1H-0003
+are closed.
 
 May be retained after negative requalification:
 
@@ -145,23 +150,24 @@ Must be replaced or redesigned:
 
 ## 6. Re-entry Rule
 
-Q1 is closed and the v3 Harness is frozen qualified. The next stage is D1
-Collect-all Product Discovery. Product Remediation remains prohibited.
+Q1 and D1 are closed. No Product Candidate was admitted, so Product
+Remediation remains prohibited. The next specification gate is H1-H4
+admission work.
 
 Current sequence:
 
-1. Identity-bound attribution and remediation are complete.
-2. Q1 Round 03 passed one immutable Foundation Qualification Epoch.
-3. The v3 Candidate Lock completed three clean Integration runs with identical
-   identity and became `frozen_qualified`.
-4. D1 starts with the frozen Lock and collect-all semantics.
+1. Identity-bound attribution and Harness remediation are complete.
+2. Q1 Round 06 froze the D1-capable v3 Candidate Lock.
+3. D1 settled 36 Scenarios, 13 Fault Cases, five Host Cases, and two identity
+   checks.
+4. No Product Candidate or Product Remediation was admitted.
 
 The frozen Harness is authoritative only while its v3 input identity remains
 unchanged.
 
 ## 7. Prohibited Actions
 
-Throughout Product Discovery:
+After D1 and before H1-H4 admission:
 
 - do not confirm or repair PEC-0001 through PEC-0004;
 - do not restore removed 17.4 code;

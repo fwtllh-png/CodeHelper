@@ -2,9 +2,9 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation-implementation-plan.md) | English
 
-> Status: F1-F3 are qualified Foundation inputs. Q1 Round 03 passed one
-> immutable Foundation Epoch and three clean Integration runs. Harness Lock v3
-> `sha256:177f9cd2...` is frozen qualified. D1 is the next stage.
+> Status: F1-F3 and the D1 Harness are qualified by Q1 Round 06. D1 Round 01
+> passed 56/56 with no Product Candidate. Product Remediation is not
+> authorized. H1-H4 admission work remains.
 
 | Stage | Status |
 | --- | --- |
@@ -12,7 +12,8 @@
 | F1 Contract, identity, admission, Runner | qualified |
 | F2 privacy, promotion, Replay | qualified |
 | F3 Oracles, Core Pack, Impact | qualified |
-| Q1 Qualification and Freeze | completed; `frozen_qualified` |
+| Q1 Qualification and Freeze | completed by Round 06; `frozen_qualified` |
+| D1 Collect-all Product Discovery | completed 56/56; no Product Candidate |
 
 Development validation is recorded in
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`. It does not
@@ -28,10 +29,11 @@ Q1 remediation attribution and implementation are recorded in
 `evaluation/assessments/q1-remediation-attribution-01.json` and
 `evaluation/assessments/q1-remediation-implementation-01.json`. Focused
 post-fix validation cannot be appended to the failed Lock; all changed inputs
-entered Q1 Round 03. Its 8/8 Foundation tasks and three 7/7 Integration runs
-passed with identical v3 input identity and zero outstanding resources. The
-closure decision is
-`evaluation/assessments/q1-qualification-global-assessment-03.json`.
+entered immutable successor Epochs. The D1-capable successor passed Q1 Round
+06 with 8/8 Foundation tasks and three 7/7 Integration runs. D1 then passed
+56/56. Closure decisions are recorded in
+`evaluation/assessments/q1-qualification-global-assessment-06.json` and
+`evaluation/assessments/d1-product-discovery-global-assessment-01.json`.
 
 ## 1. Execution Model
 
@@ -328,6 +330,10 @@ Estimated effort: 1.5 to 2 engineer-weeks.
 ## 8. Stage D1: Collect-All Product Discovery
 
 Precondition: frozen qualified Harness.
+
+Status: completed by `product-discovery-d1-01`. The Round settled 36 Core
+Scenarios, 13 Fault Cases, five Host Cases, and two identity checks. All 56
+passed; no Product Candidate was admitted.
 
 Run Stream, Approval, Input, Cancel, Resume, Multi-Agent, Session Lifecycle,
 Reload, reconnect, and supported Host variants. Execute every required Attempt

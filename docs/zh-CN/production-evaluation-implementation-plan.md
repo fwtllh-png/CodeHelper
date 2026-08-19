@@ -2,9 +2,9 @@
 
 简体中文 | [English](../en/production-evaluation-implementation-plan.md)
 
-> 状态：F1-F3 已作为 Foundation 输入验收。Q1 Round 03 已通过一个不可变 Foundation
-> Epoch 和连续三次 Clean Integration Run。Harness Lock v3 `sha256:177f9cd2...`
-> 已 Frozen Qualified。下一阶段为 D1。
+> 状态：F1-F3 与 D1 Harness 已通过 Q1 Round 06 验收。D1 Round 01 已 56/56
+> 通过，未发现 Product Candidate。Product Remediation 未获授权；H1-H4 Admission
+> Work 尚待实施。
 
 | Stage | 状态 |
 | --- | --- |
@@ -12,7 +12,8 @@
 | F1 Contract、Identity、Admission、Runner | 已验收 |
 | F2 Privacy、Promotion、Replay | 已验收 |
 | F3 Oracle、Core Pack、Impact | 已验收 |
-| Q1 Qualification 与 Freeze | 已完成；`frozen_qualified` |
+| Q1 Qualification 与 Freeze | 已由 Round 06 完成；`frozen_qualified` |
+| D1 Collect-all Product Discovery | 已完成 56/56；无 Product Candidate |
 
 Development Validation 记录在
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`，不能替代 Q1 Epoch，
@@ -26,10 +27,11 @@ Epoch 8/8 通过，但 Integration-01 的 ACP Interop 失败，VS Code Runtime I
 Q1 Remediation 归因和实现记录在
 `evaluation/assessments/q1-remediation-attribution-01.json` 与
 `evaluation/assessments/q1-remediation-implementation-01.json`。Focused Post-fix
-Validation 不能追加到已失败 Lock；全部变化输入已进入 Q1 Round 03。该轮 8/8
-Foundation Task 与三次 7/7 Integration Run 在相同 v3 Input Identity 下通过，
-Outstanding Resource 为零。关闭决策记录在
-`evaluation/assessments/q1-qualification-global-assessment-03.json`。
+Validation 不能追加到已失败 Lock；全部变化输入进入不可变后继 Epoch。具备 D1
+能力的后继 Harness 已在 Q1 Round 06 通过 8/8 Foundation Task 与三次 7/7
+Integration Run，随后 D1 56/56 通过。关闭决策记录在
+`evaluation/assessments/q1-qualification-global-assessment-06.json` 与
+`evaluation/assessments/d1-product-discovery-global-assessment-01.json`。
 
 ## 1. 执行模型
 
@@ -318,6 +320,10 @@ Incomplete Inventory。
 ## 8. D1：Collect-All Product Discovery
 
 前置条件：Frozen Qualified Harness。
+
+状态：已由 `product-discovery-d1-01` 完成。该 Round Settlement 包含 36 个 Core
+Scenario、13 个 Fault Case、5 个 Host Case 与 2 次 Identity Check，56 项全部通过，
+未准入 Product Candidate。
 
 运行 Stream、Approval、Input、Cancel、Resume、Multi-Agent、Session Lifecycle、
 Reload、Reconnect 和全部受支持 Host Variant。即使已有失败，也执行每个 Required

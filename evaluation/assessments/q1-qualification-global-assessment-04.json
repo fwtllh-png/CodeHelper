@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-qualification-global-assessment-04",
+  "phase": "d1_harness_requalification",
+  "round": "q1_collect_all_qualification_04",
+  "status": "closed_failed_remediation_authorized",
+  "closed_on": "2026-08-19",
+  "qualification_id": "foundation-v2-q1-04",
+  "foundation_epoch": {
+    "status": "failed",
+    "scheduled": 8,
+    "settled": 8,
+    "passed": 7,
+    "failed": 1,
+    "invalid": 0,
+    "failed_task": "evaluation-race",
+    "evidence_digest": "sha256:c1795d50af28dc5cf1bc9c3bc3f099ce75c08ce093763ce2463a3642e049df6"
+  },
+  "integration_runs": 0,
+  "harness_frozen": false,
+  "findings": [
+    {
+      "id": "D1H-0002",
+      "severity": "P1",
+      "status": "open",
+      "title": "proof_command_concurrently_writes_shared_test_writer",
+      "attribution": "evaluation_harness",
+      "evidence": [
+        "race_between_stdout_multiwriter_and_stderr_writer",
+        "both_writers_reference_the_same_bytes_buffer_in_negative_control",
+        "all_other_foundation_tasks_passed",
+        "focused_race_reproduced"
+      ],
+      "remediation": "capture_child_stdout_and_stderr_separately_then_forward_sequentially"
+    }
+  ],
+  "decision": {
+    "d1_started": false,
+    "product_findings_admitted": false,
+    "repair_scope": "proof_output_capture_only",
+    "next_gate": "new_immutable_q1_epoch"
+  }
+}
