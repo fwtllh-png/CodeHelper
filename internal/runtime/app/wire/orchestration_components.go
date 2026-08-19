@@ -211,19 +211,23 @@ func buildInteractionOrchestration(
 		}
 	}
 	session := state.session
+	applyPlan := func(plan interacttool.Plan) error {
+		if session.applyPlan != nil {
+			session.applyPlan(plan)
+		}
+		return nil
+	}
 	if err := interacttool.Register(state.tools.registry, interacttool.Options{
 		Host: host, Workspace: execution.Workspace, Backend: state.platform.backend,
 		RLM: session.rlmStore, Governor: output.sharedGovernor, Vision: vision,
-		OnPlan: func(plan interacttool.Plan) error {
-			if session.applyPlan != nil {
-				session.applyPlan(plan)
-			}
-			return nil
-		},
+		OnPlan: applyPlan,
 	}); err != nil {
 		return fmt.Errorf("interact tools: %w", err)
 	}
 	session.inputHost = host
+	if tools := session.childTools; tools != nil {
+		tools.bindInteractions(session.rlmStore, output.sharedGovernor, vision, applyPlan)
+	}
 	return nil
 }
 

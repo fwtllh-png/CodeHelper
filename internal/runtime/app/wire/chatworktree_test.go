@@ -155,7 +155,7 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	toolset, err := session.childTools.open(isolated.Root)
+	toolset, err := session.childTools.open(isolated.Root, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,6 +210,174 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 	if _, err := os.Stat(escaped); !os.IsNotExist(err) {
 		t.Fatalf("main workspace escape exists: %v", err)
 	}
+}
+
+func TestIsolatedChatInteractionToolsPauseAndResume(t *testing.T) {
+	workspace := newGitWorkspace(t)
+	fixture := isolatedChatInputFixture(t)
+	tools := true
+	session, err := NewExec(t.Context(), ExecOptions{
+		FixturePath: fixture,
+		Permission:  "bypass",
+		ConfigOverrides: config.Overrides{
+			Tools: &tools, Workspace: &workspace,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		discardChatWorkspaces(t, session)
+		closeSession(t, session)
+	})
+	const sessionID = "session-chat-input"
+	const threadID = protocol.ThreadID("thread-chat-input")
+	isolated, err := session.SessionWorkspaces().Provision(
+		t.Context(), sessionID, threadID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolset, err := session.childTools.open(isolated.Root, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := toolset.registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"request_user_input", "update_plan", "project_map",
+	} {
+		if _, ok := snapshot.Lookup(name); !ok {
+			t.Fatalf("isolated Chat toolset has no %s", name)
+		}
+	}
+	if toolset.inputHost == nil || toolset.inputHost == session.inputHost {
+		t.Fatal("isolated Chat does not own a dedicated input host")
+	}
+
+	events, err := session.Runtime.Events(
+		t.Context(), session.Runtime.Snapshot(t.Context()).LastSequence,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turnID, err := protocol.NewTurnID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	itemID, err := protocol.NewItemID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: threadID, TurnID: turnID, ItemID: itemID,
+		Prompt: "confirm isolated chat",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = session.Runtime.Submit(t.Context(), start); err != nil {
+		t.Fatal(err)
+	}
+
+	var requestID string
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for requestID == "" {
+		select {
+		case event := <-events:
+			if event.ThreadID != threadID {
+				continue
+			}
+			switch data := event.Data.(type) {
+			case *protocol.InputRequiredData:
+				requestID = data.RequestID
+			case *protocol.TurnFailedData:
+				t.Fatalf("isolated Chat failed before input: %+v", data)
+			}
+		case <-deadline.C:
+			t.Fatal("isolated Chat did not request input")
+		}
+	}
+	replyItemID, err := protocol.NewItemID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, err := protocol.NewOperation(&protocol.InputReplyPayload{
+		ThreadID: threadID, TurnID: turnID, ItemID: replyItemID,
+		RequestID: requestID, Answer: "yes",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = session.Runtime.Submit(t.Context(), reply); err != nil {
+		t.Fatal(err)
+	}
+
+	var resolved, completed int
+	deadline.Reset(5 * time.Second)
+	for completed == 0 {
+		select {
+		case event := <-events:
+			if event.ThreadID != threadID {
+				continue
+			}
+			switch data := event.Data.(type) {
+			case *protocol.InputResolvedData:
+				resolved++
+			case *protocol.TurnCompletedData:
+				completed++
+			case *protocol.TurnFailedData:
+				t.Fatalf("isolated Chat failed after input: %+v", data)
+			}
+		case <-deadline.C:
+			t.Fatal("isolated Chat did not complete after input")
+		}
+	}
+	if resolved != 1 || completed != 1 {
+		t.Fatalf("input lifecycle resolved=%d completed=%d", resolved, completed)
+	}
+}
+
+func isolatedChatInputFixture(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	files := map[string]string{
+		"fixture.json": `{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "confirm isolated chat",
+  "streams": ["input.sse", "complete.sse"],
+  "expected_request_fragments": [
+    ["\"name\":\"request_user_input\""],
+    ["\"tool_call_id\":\"call_input\""]
+  ]
+}
+`,
+		"input.sse": `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_input","function":{"name":"request_user_input","arguments":"{\"prompt\":\"May I continue?\",\"options\":[\"yes\",\"no\"]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":5}}
+
+data: [DONE]
+`,
+		"complete.sse": `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"isolated input resumed\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":13,"completion_tokens":6}}
+
+data: [DONE]
+`,
+	}
+	for name, body := range files {
+		if err := os.WriteFile(
+			filepath.Join(root, name), []byte(body), 0o600,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
 }
 
 func TestChatWorkspaceMergeRejectsParentDrift(t *testing.T) {

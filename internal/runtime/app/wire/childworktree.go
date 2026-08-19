@@ -14,6 +14,7 @@ import (
 	agenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/agent"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/builtin"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
+	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
@@ -23,6 +24,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -296,6 +298,7 @@ type childToolset struct {
 	processes   *process.SessionManager
 	journal     *workspacejournal.Manager
 	jobLogs     *joblog.Store
+	inputHost   *interacttool.Host
 	diagnostics diagnostics.Runner
 	verify      verify.Runner
 	files       *filetool.Tools
@@ -332,6 +335,11 @@ type childToolsets struct {
 	agents              *subagent.AgentControl
 	agentSession        string
 	agentRelease        func(string)
+	interactionsBound   bool
+	interactionRLM      *rlm.Store
+	interactionGovernor *rlm.Governor
+	interactionVision   interacttool.VisionClient
+	interactionPlan     func(interacttool.Plan) error
 
 	mu    sync.Mutex
 	built map[string]*childToolset
@@ -344,6 +352,19 @@ func (c *childToolsets) bindAgents(
 ) {
 	c.mu.Lock()
 	c.agents, c.agentSession, c.agentRelease = control, sessionID, onRelease
+	c.mu.Unlock()
+}
+
+func (c *childToolsets) bindInteractions(
+	store *rlm.Store,
+	governor *rlm.Governor,
+	vision interacttool.VisionClient,
+	onPlan func(interacttool.Plan) error,
+) {
+	c.mu.Lock()
+	c.interactionsBound, c.interactionRLM = true, store
+	c.interactionGovernor, c.interactionVision = governor, vision
+	c.interactionPlan = onPlan
 	c.mu.Unlock()
 }
 
@@ -369,11 +390,20 @@ func newChildToolsets(
 // open returns the toolset for a child root, building it on first use. Reuse
 // matters: a follow-up turn on the same child must see the same journal, or its
 // second turn could not roll back what its first turn wrote.
-func (c *childToolsets) open(root string) (*childToolset, error) {
+func (c *childToolsets) open(
+	root string,
+	interactive bool,
+) (*childToolset, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if existing, ok := c.built[root]; ok {
+		if (existing.inputHost != nil) != interactive {
+			return nil, errors.New("child toolset interaction mode changed")
+		}
 		return existing, nil
+	}
+	if interactive && !c.interactionsBound {
+		return nil, errors.New("child interaction tools are not configured")
 	}
 	hostReadRoots := append([]string(nil), c.diagnosticReadRoots...)
 	gitRoots, err := worktreeGitReadRoots(root, c.gitCommonDir)
@@ -406,6 +436,23 @@ func (c *childToolsets) open(root string) (*childToolset, error) {
 		_ = sandbox.CloseBackend(backend)
 		return nil, fmt.Errorf("child tools: %w", err)
 	}
+	var inputHost *interacttool.Host
+	if interactive {
+		inputHost = interacttool.NewHost(0)
+		registerErr := interacttool.Register(registry, interacttool.Options{
+			Host: inputHost, Workspace: root, Backend: backend,
+			RLM: c.interactionRLM, Governor: c.interactionGovernor,
+			Vision: c.interactionVision, OnPlan: c.interactionPlan,
+		})
+		if registerErr != nil {
+			if jobs != nil {
+				_ = jobs.Close()
+			}
+			processes.CloseAll()
+			_ = sandbox.CloseBackend(backend)
+			return nil, fmt.Errorf("child interact tools: %w", registerErr)
+		}
+	}
 	journal, err := c.openJournal(root)
 	if err != nil {
 		processes.CloseAll()
@@ -437,7 +484,7 @@ func (c *childToolsets) open(root string) (*childToolset, error) {
 	}
 	toolset := &childToolset{
 		registry: registry, backend: backend, processes: processes, journal: journal,
-		jobLogs:     jobs,
+		jobLogs: jobs, inputHost: inputHost,
 		diagnostics: diagnostics.NewCommandRunner(root, backend, c.diagnosticCommands),
 		verify:      runner, files: files,
 	}

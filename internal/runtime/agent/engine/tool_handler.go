@@ -85,6 +85,10 @@ func (e *Engine) runToolsWithCache(
 	alreadyExecuted := make([]bool, len(calls))
 	fingerprints := make([]string, len(calls))
 	cacheSources := make([]string, len(calls))
+	parallelPolicies := make([]tool.ParallelPolicy, len(calls))
+	for index := range parallelPolicies {
+		parallelPolicies[index] = tool.ParallelSerial
+	}
 	batchOwners := make(map[string]int)
 	duplicateOwners := make(map[int]int)
 	if cache.entries == nil {
@@ -99,7 +103,11 @@ func (e *Engine) runToolsWithCache(
 		}
 		binding := bindingForCall(call)
 		_, descriptor, _, err := e.options.Tools.ResolveBound(call.Name, binding)
-		if err != nil || descriptor.RepeatPolicy != tool.RepeatReplaySameTurn {
+		if err != nil {
+			continue
+		}
+		parallelPolicies[index] = descriptor.ParallelPolicy
+		if descriptor.RepeatPolicy != tool.RepeatReplaySameTurn {
 			continue
 		}
 		fingerprint, err := resultCacheFingerprint(call, binding, cache.revision)
@@ -178,92 +186,100 @@ func (e *Engine) runToolsWithCache(
 		}
 		publishedCalls = append(publishedCalls, call)
 	}
+	executeCall := func(index int, call provider.ToolCall) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				errorsByIndex[index] = protocol.NewFault(
+					protocol.CodeConflict,
+					"tool execution stopped unexpectedly",
+					true,
+					protocol.FaultMetadata{
+						Origin:         protocol.FaultOriginTool,
+						Disposition:    protocol.FaultResumeTurn,
+						SideEffects:    protocol.SideEffectUnknown,
+						RecoveryAction: "inspect side effects and continue the retained draft",
+					},
+					fmt.Errorf("tool %s panic: %v", call.Name, recovered),
+				)
+			}
+		}()
+		binding := bindingForCall(call)
+		if finishOnlyEnabled(toolCtx) {
+			canonical, descriptor, _, resolveErr :=
+				e.options.Tools.ResolveBound(call.Name, binding)
+			if resolveErr == nil &&
+				!finishOnlyToolAllowed(canonical, descriptor) {
+				results[index] = tool.Result{
+					Content: "read-only exploration is disabled after 32 " +
+						"model steps without structured progress; apply a " +
+						"workspace change, run a quality tool, update the " +
+						"plan, or call turn_complete",
+					IsError: true,
+					Metadata: map[string]any{
+						"error_category":  "no_progress_finish_only",
+						"required_action": "finish_current_batch",
+						"retry_original":  false,
+					},
+				}
+				return
+			}
+		}
+		if !e.toolCallEnabled(call.Name, binding) {
+			results[index] = tool.Result{
+				Content: "tool disabled by Session Profile: " + call.Name,
+				IsError: true,
+				Metadata: map[string]any{
+					"error_category": "tool_disabled",
+				},
+			}
+			return
+		}
+		span := e.beginToolSpan(call)
+
+		callCtx := tool.WithOutputObserver(toolCtx, stream.observe(call))
+		callCtx = tool.WithExecutionAdmission(callCtx, sched.Admit)
+		callCtx = e.tracer().Context(callCtx, span.ID())
+		result, err := e.executeToolBound(
+			callCtx, call.ID, call.Name, json.RawMessage(call.Arguments), binding,
+		)
+		e.endToolSpan(call, span, result, err)
+		if err != nil {
+			if recovered, recoverable := e.recoverableToolResult(
+				call,
+				result,
+				err,
+			); recoverable {
+				results[index] = recovered
+				return
+			}
+			if errors.Is(err, context.Canceled) || errors.Is(toolCtx.Err(), context.Canceled) {
+				result.Content = "tool aborted: context canceled"
+				result.IsError = true
+				if result.Outcome == nil {
+					result.Outcome = &tool.Outcome{Status: tool.OutcomeCanceled}
+				}
+				results[index] = result
+				return
+			}
+			results[index], errorsByIndex[index] = result, err
+			return
+		}
+		results[index], errorsByIndex[index] = result, err
+	}
 	var group sync.WaitGroup
 	for index, call := range calls {
 		if skipExecution[index] {
 			continue
 		}
+		if parallelPolicies[index] == tool.ParallelSerial {
+			group.Wait()
+			executeCall(index, call)
+			continue
+		}
 		group.Add(1)
 		go func(index int, call provider.ToolCall) {
 			defer group.Done()
-			defer func() {
-				if recovered := recover(); recovered != nil {
-					errorsByIndex[index] = protocol.NewFault(
-						protocol.CodeConflict,
-						"tool execution stopped unexpectedly",
-						true,
-						protocol.FaultMetadata{
-							Origin:         protocol.FaultOriginTool,
-							Disposition:    protocol.FaultResumeTurn,
-							SideEffects:    protocol.SideEffectUnknown,
-							RecoveryAction: "inspect side effects and continue the retained draft",
-						},
-						fmt.Errorf("tool %s panic: %v", call.Name, recovered),
-					)
-				}
-			}()
-			binding := bindingForCall(call)
-			if finishOnlyEnabled(toolCtx) {
-				canonical, descriptor, _, resolveErr :=
-					e.options.Tools.ResolveBound(call.Name, binding)
-				if resolveErr == nil &&
-					!finishOnlyToolAllowed(canonical, descriptor) {
-					results[index] = tool.Result{
-						Content: "read-only exploration is disabled after 32 " +
-							"model steps without structured progress; apply a " +
-							"workspace change, run a quality tool, update the " +
-							"plan, or call turn_complete",
-						IsError: true,
-						Metadata: map[string]any{
-							"error_category":  "no_progress_finish_only",
-							"required_action": "finish_current_batch",
-							"retry_original":  false,
-						},
-					}
-					return
-				}
-			}
-			if !e.toolCallEnabled(call.Name, binding) {
-				results[index] = tool.Result{
-					Content: "tool disabled by Session Profile: " + call.Name,
-					IsError: true,
-					Metadata: map[string]any{
-						"error_category": "tool_disabled",
-					},
-				}
-				return
-			}
-			span := e.beginToolSpan(call)
-
-			callCtx := tool.WithOutputObserver(toolCtx, stream.observe(call))
-			callCtx = tool.WithExecutionAdmission(callCtx, sched.Admit)
-			callCtx = e.tracer().Context(callCtx, span.ID())
-			result, err := e.executeToolBound(
-				callCtx, call.ID, call.Name, json.RawMessage(call.Arguments), binding,
-			)
-			e.endToolSpan(call, span, result, err)
-			if err != nil {
-				if recovered, recoverable := e.recoverableToolResult(
-					call,
-					result,
-					err,
-				); recoverable {
-					results[index] = recovered
-					return
-				}
-				if errors.Is(err, context.Canceled) || errors.Is(toolCtx.Err(), context.Canceled) {
-					result.Content = "tool aborted: context canceled"
-					result.IsError = true
-					if result.Outcome == nil {
-						result.Outcome = &tool.Outcome{Status: tool.OutcomeCanceled}
-					}
-					results[index] = result
-					return
-				}
-				results[index], errorsByIndex[index] = result, err
-				return
-			}
-			results[index], errorsByIndex[index] = result, err
+			executeCall(index, call)
 		}(index, call)
 	}
 	group.Wait()

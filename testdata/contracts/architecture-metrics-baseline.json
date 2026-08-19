@@ -341,9 +341,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 75,
-        "production_lines": 8835,
+        "production_lines": 8886,
         "options_fields": 70,
         "mutex_fields": 6
+      },
+      "relaxations": {
+        "production_lines": "R6-R11 live validation gives every host-seeded isolated Chat dedicated interaction tools and an InputHost while child agents remain non-interactive"
       }
     },
     {
@@ -476,9 +479,6 @@
         "production_lines": 1964,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "R10 reconstructs failed turns from bounded terminal outcomes, attempts, recovery decisions, and stable correlation identities"
       }
     },
     {
@@ -501,9 +501,6 @@
         "production_lines": 1141,
         "options_fields": 5,
         "mutex_fields": 4
-      },
-      "relaxations": {
-        "production_lines": "R10 projects typed terminal outcomes into low-cardinality status and error-category metrics"
       }
     },
     {
@@ -609,9 +606,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 11548,
+        "production_lines": 11564,
         "options_fields": 60,
         "mutex_fields": 8
+      },
+      "relaxations": {
+        "production_lines": "R6-R11 live validation enforces ParallelSerial descriptors across one model tool batch to prevent approval and input phase overlap"
       }
     },
     {
@@ -623,9 +623,6 @@
         "production_lines": 8676,
         "options_fields": 18,
         "mutex_fields": 7
-      },
-      "relaxations": {
-        "production_lines": "R10 records bounded terminal outcome and resume correlation at the Runtime-owned terminal and recovery boundaries"
       }
     },
     {

@@ -244,12 +244,12 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 				securityRuntime,
 			)
 			if !spec.Serialized && (!spec.ReadOnly || spec.Workspace != spec.HostWorkspace) {
-				toolset, openErr := childToolsets.open(spec.Workspace)
+				toolset, openErr := childToolsets.open(spec.Workspace, spec.HostSeeded)
 				if openErr != nil {
 					return nil, openErr
 				}
 				options.Tools = toolset.registry
-				options.Journal = toolset.journal
+				options.Journal, options.InputHost = toolset.journal, toolset.inputHost
 				options.ReadTracker = workspacejournal.NewReadTracker()
 				options.Diagnostics = toolset.diagnostics
 				options.Verify.Runner = toolset.verify
