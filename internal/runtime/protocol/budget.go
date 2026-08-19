@@ -18,11 +18,13 @@ const (
 // BudgetExhaustion is the shared resumable contract for explicit Token and
 // Cost limits. Used and Limit use Tokens or USD microunits according to
 // Resource, avoiding floating-point drift across Runtime and Orchestration.
+// Projected distinguishes admission demand from already committed spend.
 type BudgetExhaustion struct {
 	Resource    BudgetResource
 	Scope       string
 	Used        uint64
 	Limit       uint64
+	Projected   bool
 	SideEffects SideEffectState
 }
 
@@ -49,8 +51,13 @@ func NewBudgetExhausted(
 		sideEffects = SideEffectDraft
 	}
 	reason := ProblemReasonTokenBudgetExhausted
+	usageLabel := "used"
+	if exhaustion.Projected {
+		usageLabel = "projected"
+	}
 	message := fmt.Sprintf(
-		"token budget exhausted: used %d, limit %d",
+		"token budget exhausted: %s %d, limit %d",
+		usageLabel,
 		exhaustion.Used,
 		exhaustion.Limit,
 	)
@@ -60,7 +67,8 @@ func NewBudgetExhausted(
 	case BudgetResourceCostMicrounits:
 		reason = ProblemReasonCostBudgetExhausted
 		message = fmt.Sprintf(
-			"cost budget exhausted: used $%.6f, limit $%.6f",
+			"cost budget exhausted: %s $%.6f, limit $%.6f",
+			usageLabel,
 			float64(exhaustion.Used)/1e6,
 			float64(exhaustion.Limit)/1e6,
 		)

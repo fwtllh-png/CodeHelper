@@ -102,6 +102,7 @@ type AuthoritySnapshot struct {
 }
 
 type CapsuleLimits struct {
+	MaxSteps    int     `json:"max_steps,omitempty"`
 	MaxTokens   uint64  `json:"max_tokens,omitempty"`
 	MaxCostUSD  float64 `json:"max_cost_usd,omitempty"`
 	MaxDepth    int     `json:"max_depth"`
@@ -265,6 +266,16 @@ func (f *ContextForker) Fork(
 			Kind: "task_name", Reason: "truncated to the task contract budget",
 		})
 	}
+	budget := request.Role.DefaultBudget.WithDefaults()
+	if request.Agent.Budget.MaxSteps > 0 {
+		budget.MaxSteps = request.Agent.Budget.MaxSteps
+	}
+	if request.Agent.Budget.MaxTokens > 0 {
+		budget.MaxTokens = request.Agent.Budget.MaxTokens
+	}
+	if request.Agent.Budget.MaxCostUSD > 0 {
+		budget.MaxCostUSD = request.Agent.Budget.MaxCostUSD
+	}
 	capsule := TaskCapsule{
 		Version: TaskCapsuleVersion, Mode: mode,
 		TaskName: taskName, Objective: objective,
@@ -281,10 +292,9 @@ func (f *ContextForker) Fork(
 			CanDelegate:  request.Role.CanDelegate,
 		},
 		Limits: CapsuleLimits{
-			MaxTokens:   request.Role.DefaultBudget.MaxTokens,
-			MaxCostUSD:  request.Role.DefaultBudget.MaxCostUSD,
-			MaxDepth:    request.Role.DefaultBudget.WithDefaults().MaxDepth,
-			MaxParallel: request.Role.DefaultBudget.WithDefaults().MaxParallel,
+			MaxSteps: budget.MaxSteps, MaxTokens: budget.MaxTokens,
+			MaxCostUSD: budget.MaxCostUSD, MaxDepth: budget.MaxDepth,
+			MaxParallel: budget.MaxParallel,
 		},
 		OwnedPaths: append([]string(nil), request.Agent.OwnedPaths...),
 		Exclusions: []string{

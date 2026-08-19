@@ -104,6 +104,8 @@ func finishOnlyToolAllowed(name string, descriptor tool.Descriptor) bool {
 	case "turn_complete",
 		"update_plan",
 		"request_user_input",
+		"wait_agent",
+		"list_agents",
 		"file_read",
 		"exec_command",
 		"write_stdin",

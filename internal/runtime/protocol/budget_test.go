@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -46,6 +47,20 @@ func TestBudgetExhaustionIsStructuredAndResumable(t *testing.T) {
 				t.Fatalf("budget problem = %+v", problem)
 			}
 		})
+	}
+}
+
+func TestProjectedBudgetExhaustionIsNotReportedAsSpent(t *testing.T) {
+	problem := NewBudgetExhausted(BudgetExhaustion{
+		Resource:  BudgetResourceTokens,
+		Scope:     "agent:fixture",
+		Used:      244_985,
+		Limit:     200_000,
+		Projected: true,
+	}, nil)
+	if !strings.Contains(problem.Message, "projected 244985") ||
+		strings.Contains(problem.Message, "used 244985") {
+		t.Fatalf("projected budget message = %q", problem.Message)
 	}
 }
 

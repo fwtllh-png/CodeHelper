@@ -193,6 +193,8 @@ type Agent struct {
 	RoleInstructions  string
 	Context           *ContextReceipt
 	Budget            AgentBudget
+	SpentTokens       uint64
+	SpentMicros       uint64
 	ReservedTokens    uint64
 	ReservedMicros    uint64
 	Resident          bool
@@ -412,13 +414,17 @@ func (m *Manager) normalizeAgentBudgetLocked(
 		requested.MaxTokens = role.MaxTokens
 	}
 	if requested.MaxTokens == 0 {
-		requested.MaxTokens = m.budget.MaxTokens
+		requested.MaxTokens = parallelBudgetShare(
+			m.budget.MaxTokens,
+			m.budget.MaxParallel,
+		)
 	}
 	if requested.MaxCostUSD == 0 {
 		requested.MaxCostUSD = role.MaxCostUSD
 	}
 	if requested.MaxCostUSD == 0 {
-		requested.MaxCostUSD = m.budget.MaxCostUSD
+		requested.MaxCostUSD = m.budget.MaxCostUSD /
+			float64(max(1, m.budget.MaxParallel))
 	}
 	if m.budget.MaxSteps > 0 && requested.MaxSteps > m.budget.MaxSteps {
 		return AgentBudget{}, errors.New("child step budget exceeds tree ceiling")
@@ -438,6 +444,13 @@ func (m *Manager) normalizeAgentBudgetLocked(
 		}
 	}
 	return requested, nil
+}
+
+func parallelBudgetShare(total uint64, parallel int) uint64 {
+	if total == 0 {
+		return 0
+	}
+	return max(uint64(1), total/uint64(max(1, parallel)))
 }
 
 func (m *Manager) residentLocked(sessionID string) int {

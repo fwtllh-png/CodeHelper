@@ -30,8 +30,20 @@ func (m *Manager) transitionLocked(
 	}
 	var reserveTokens, reserveMicros uint64
 	if reserve {
-		reserveTokens = agent.Budget.MaxTokens
-		reserveMicros = uint64(agent.Budget.MaxCostUSD * 1e6)
+		tokenLimit := agent.Budget.MaxTokens
+		if tokenLimit > 0 {
+			if agent.SpentTokens >= tokenLimit {
+				return errors.New("subagent token lifecycle budget exhausted")
+			}
+			reserveTokens = tokenLimit - agent.SpentTokens
+		}
+		microLimit := uint64(agent.Budget.MaxCostUSD * 1e6)
+		if microLimit > 0 {
+			if agent.SpentMicros >= microLimit {
+				return errors.New("subagent cost lifecycle budget exhausted")
+			}
+			reserveMicros = microLimit - agent.SpentMicros
+		}
 		if m.budget.MaxTokens > 0 &&
 			ledger.SpentTokens+ledger.ReservedTokens+reserveTokens >
 				m.budget.MaxTokens {
@@ -97,6 +109,8 @@ func (m *Manager) transitionLocked(
 		}
 		ledger.SpentTokens += stored.Usage.Tokens()
 		ledger.SpentMicros += stored.Usage.CostMicrounits
+		agent.SpentTokens += stored.Usage.Tokens()
+		agent.SpentMicros += stored.Usage.CostMicrounits
 		m.mailbox.Accept(*transition.CompletionMessage)
 	}
 	switch {

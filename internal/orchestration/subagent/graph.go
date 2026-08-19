@@ -32,6 +32,8 @@ type GraphEdge struct {
 	OwnedPaths     []string    `json:"owned_paths,omitempty"`
 	LastMessage    string      `json:"last_message,omitempty"`
 	Budget         AgentBudget `json:"budget,omitempty"`
+	SpentTokens    uint64      `json:"spent_tokens,omitempty"`
+	SpentMicros    uint64      `json:"spent_microunits,omitempty"`
 	ReservedTokens uint64      `json:"reserved_tokens,omitempty"`
 	ReservedMicros uint64      `json:"reserved_microunits,omitempty"`
 }
@@ -214,7 +216,8 @@ func agentFromEdge(edge GraphEdge) *Agent {
 		TaskName: edge.TaskName, Closed: edge.Status == StatusClosed, Status: edge.Status,
 		LastMessage: edge.LastMessage,
 		OwnedPaths:  append([]string(nil), edge.OwnedPaths...),
-		Budget:      edge.Budget, ReservedTokens: edge.ReservedTokens,
+		Budget:      edge.Budget, SpentTokens: edge.SpentTokens,
+		SpentMicros: edge.SpentMicros, ReservedTokens: edge.ReservedTokens,
 		ReservedMicros: edge.ReservedMicros,
 	}
 }
@@ -234,7 +237,8 @@ func (m *Manager) recordSpawnLocked(agent *Agent) error {
 		Isolated: agent.Isolated, Serialized: agent.Serialized, BaseRev: agent.BaseRev,
 		TaskName:   agent.TaskName,
 		OwnedPaths: append([]string(nil), agent.OwnedPaths...),
-		Budget:     agent.Budget, ReservedTokens: agent.ReservedTokens,
+		Budget:     agent.Budget, SpentTokens: agent.SpentTokens,
+		SpentMicros: agent.SpentMicros, ReservedTokens: agent.ReservedTokens,
 		ReservedMicros: agent.ReservedMicros,
 	})
 }

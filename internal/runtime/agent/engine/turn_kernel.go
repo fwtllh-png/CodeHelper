@@ -755,20 +755,25 @@ func (s *engineTurnKernel) progressSignature(
 	completionCall := ""
 	completionAccepted := false
 	operationCalls := 0
+	lifecycleCalls := 0
 	if s.state.Completion != nil {
 		completionCall = s.state.Completion.CompletionCall
 		completionAccepted = s.state.Completion.Accepted
 	}
-	if s.state.Intent == protocol.TurnIntentOperation {
-		for _, result := range s.state.ClosedCalls {
-			if !result.IsError {
-				operationCalls++
-			}
+	for _, result := range s.state.ClosedCalls {
+		if result.IsError {
+			continue
+		}
+		if s.state.Intent == protocol.TurnIntentOperation {
+			operationCalls++
+		}
+		if agentLifecycleProgressTool(result.Name) {
+			lifecycleCalls++
 		}
 	}
 	return fmt.Sprintf(
 		"intent=%s;mutation=%d;plan_done=%d;verification=%s/%s/%d;"+
-			"completion=%t/%s;operation_calls=%d;evidence=%s",
+			"completion=%t/%s;operation_calls=%d;lifecycle_calls=%d;evidence=%s",
 		s.state.Intent,
 		s.state.MutationRevision,
 		planDone,
@@ -778,8 +783,25 @@ func (s *engineTurnKernel) progressSignature(
 		completionAccepted,
 		completionCall,
 		operationCalls,
+		lifecycleCalls,
 		evidenceDigest,
 	)
+}
+
+func agentLifecycleProgressTool(name string) bool {
+	switch name {
+	case "spawn_agent",
+		"send_message",
+		"wait_agent",
+		"followup_task",
+		"interrupt_agent",
+		"close_agent",
+		"integrate_agent",
+		"request_user_input":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *engineTurnKernel) observeProgress(

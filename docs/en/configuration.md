@@ -286,12 +286,21 @@ safe compaction.
 
 When an explicit `budget_tokens`, `budget_usd`, Subagent, or Workflow Token/Cost
 budget is exhausted, Runtime returns a structured `resource_exhausted` Fault
-with Scope, resource kind, and Used/Limit facts, while `resume_turn` preserves
-the continuation entry. Main Turns retain recoverable state, Workflow and
-background Tasks enter durable `blocked`/`waiting`, and Child admission refuses
-the new Turn before submission. Runtime does not automatically retry until the
-budget changes; recovery does not replay completed WorkGraph Nodes or closed
-Tool Effects.
+with Scope, resource kind, and Used/Limit facts. Admission checks report
+Projected/Limit instead, so reserved capacity is not mislabeled as committed
+spend. `resume_turn` preserves the continuation entry. Main Turns retain
+recoverable state, Workflow and background Tasks enter durable
+`blocked`/`waiting`, and Child admission refuses the new Turn before submission.
+Runtime does not automatically retry until the budget changes; recovery does
+not replay completed WorkGraph Nodes or closed Tool Effects.
+
+`execution.subagent.max_tokens` and `max_cost_usd` are shared Tree ceilings.
+A `spawn_agent` `max_tokens` or `max_cost_usd` value is that resident Agent's
+lifecycle ceiling across its initial Turn and follow-ups. Each follow-up
+reserves only the Agent's remaining capacity. When a child omits its own
+Token/Cost ceiling, Runtime assigns one parallel share of the Tree ceiling
+(`Tree / max_parallel`) rather than letting the first child reserve the entire
+Tree.
 
 Unknown TOML fields are rejected. This is intentional: a misspelled safety or
 budget field must not look configured while having no effect.

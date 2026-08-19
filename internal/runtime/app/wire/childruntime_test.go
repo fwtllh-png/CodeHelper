@@ -42,6 +42,28 @@ type flakyWorkGraphController struct {
 	settleCalls    int
 }
 
+type blockingWorkGraphController struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (c *blockingWorkGraphController) Execute(
+	context.Context,
+	kernel.Command,
+) (kernel.Result, error) {
+	return kernel.Result{}, nil
+}
+
+func (c *blockingWorkGraphController) Load(
+	_ context.Context,
+	runID protocol.RunID,
+) (model.Graph, error) {
+	c.once.Do(func() { close(c.entered) })
+	<-c.release
+	return model.Graph{Run: model.Run{ID: runID, Revision: 1}}, nil
+}
+
 func (c *flakyWorkGraphController) Execute(
 	_ context.Context,
 	command kernel.Command,
@@ -199,6 +221,56 @@ func TestChildTerminalSettlementRetriesUntilDurable(t *testing.T) {
 	}
 }
 
+func TestChildTerminalObserverDoesNotBlockOnSettlement(t *testing.T) {
+	controller := &blockingWorkGraphController{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	children := newChildRuntime(
+		config.Subagent{}, t.TempDir(), nil, nil, controller,
+	)
+	t.Cleanup(children.close)
+	threadID := protocol.ThreadID("thread-agent-blocked")
+	turnID := protocol.TurnID("turn-agent-blocked")
+	terminal := make(chan struct{})
+	children.turns[threadID] = &childTurn{
+		agentID: "agent-blocked", turnID: turnID,
+		workAttempt: subagent.WorkAttempt{
+			Correlation: protocol.OrchestrationCorrelation{
+				RunID: "run-agent-blocked",
+			},
+		},
+		terminalSignal: terminal,
+		leaseRenewal:   make(chan struct{}, 1),
+	}
+	returned := make(chan struct{})
+	go func() {
+		children.observe(protocol.Event{
+			ThreadID: threadID, TurnID: turnID,
+			Data: &protocol.TurnCompletedData{Text: "done"},
+		})
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		close(controller.release)
+		t.Fatal("terminal observer blocked on child settlement")
+	}
+	select {
+	case <-controller.entered:
+	case <-time.After(time.Second):
+		close(controller.release)
+		t.Fatal("background child settlement did not start")
+	}
+	close(controller.release)
+	select {
+	case <-terminal:
+	case <-time.After(time.Second):
+		t.Fatal("background child settlement did not finish")
+	}
+}
+
 func TestBindRestoresActiveChildObservation(t *testing.T) {
 	control, err := subagent.OpenControl(subagent.Options{
 		Root: t.TempDir(), Gate: recoveryToolGate{},
@@ -268,6 +340,11 @@ func TestBindRestoresActiveChildObservation(t *testing.T) {
 		ThreadID: threadID, TurnID: protocol.TurnID(child.TurnID),
 		Data: &protocol.TurnCompletedData{Text: "recovered completion"},
 	})
+	select {
+	case <-recovered.terminalSignal:
+	case <-time.After(time.Second):
+		t.Fatal("recovered child settlement did not finish")
+	}
 	result, ok := control.Result(child.ID)
 	if !ok || result.Status != subagent.StatusCompleted ||
 		result.Summary != "recovered completion" {
@@ -717,6 +794,47 @@ func TestChildFollowUpCreatesSecondDurableWorkGraphAttempt(t *testing.T) {
 	}
 }
 
+func TestChildFollowUpReservesOnlyRemainingAgentBudget(t *testing.T) {
+	budget := uint64(20_000)
+	session := openChildSession(t, "subagent-followup", func(overrides *config.Overrides) {
+		overrides.SubagentMaxTokens = &budget
+	})
+	manager := session.subagents
+	child, err := manager.SpawnIntent(subagent.DelegationIntent{
+		TaskName: "remaining_budget", Role: subagent.RoleExplore,
+		Objective: "count the packages", ExpectedOutput: "count",
+		Trigger: subagent.TriggerUser,
+		Budget:  subagent.AgentBudget{MaxTokens: budget},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Takeover(
+		t.Context(), child.ID, "count the packages",
+	); err != nil {
+		t.Fatal(err)
+	}
+	waitForAgentStatus(t, manager, child.ID, subagent.StatusCompleted)
+
+	if _, err := manager.FollowUp(
+		t.Context(), child.ID, "count the packages again",
+	); err != nil {
+		t.Fatalf("FollowUp with remaining lifecycle budget: %v", err)
+	}
+	waitForAgentStatus(t, manager, child.ID, subagent.StatusCompleted)
+
+	scope := "workspace:" + session.children.root +
+		"/session:" + child.SessionID + "/agents/agent:" + child.ID
+	snapshot, err := session.children.budget.Snapshot(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Spent.Tokens != 34 ||
+		snapshot.Reserved != (workbudget.Usage{}) {
+		t.Fatalf("follow-up Agent budget = %+v", snapshot)
+	}
+}
+
 func TestChildResidencyLRUUnloadAndOnDemandRestore(t *testing.T) {
 	session := openChildSession(t, "subagent", func(overrides *config.Overrides) {
 		parallel, resident, total := 1, 1, 3
@@ -1132,6 +1250,12 @@ func TestReleaseCompletesFromRunningChildTerminalEvent(t *testing.T) {
 	if _, ok := session.threads.ChildSpecFor(threadID); !ok {
 		t.Fatal("child spec was not registered")
 	}
+	session.children.mu.Lock()
+	running := session.children.turns[threadID]
+	session.children.mu.Unlock()
+	if running == nil {
+		t.Fatal("running child turn was not tracked")
+	}
 	events, err := session.Runtime.Events(
 		t.Context(),
 		session.Runtime.Snapshot(t.Context()).LastSequence,
@@ -1147,6 +1271,11 @@ func TestReleaseCompletesFromRunningChildTerminalEvent(t *testing.T) {
 			if event.TurnID != protocol.TurnID(turnID) ||
 				event.Kind != protocol.EventTurnCanceled {
 				continue
+			}
+			select {
+			case <-running.terminalSignal:
+			case <-time.After(time.Second):
+				t.Fatal("canceled child settlement did not finish")
 			}
 			if _, ok := session.threads.ChildSpecFor(threadID); ok {
 				t.Fatal("child spec remained after cancellation reached terminal")

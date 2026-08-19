@@ -89,10 +89,11 @@ func (e *Engine) checkBudget(
 		if usedTokens >= limit {
 			return 0, protocol.NewBudgetExhausted(
 				protocol.BudgetExhaustion{
-					Resource: protocol.BudgetResourceTokens,
-					Scope:    e.turnBudgetScope(),
-					Used:     usedTokens,
-					Limit:    limit,
+					Resource:  protocol.BudgetResourceTokens,
+					Scope:     e.turnBudgetScope(),
+					Used:      usedTokens,
+					Limit:     limit,
+					Projected: true,
 				},
 				nil,
 			)
@@ -113,10 +114,11 @@ func (e *Engine) checkBudget(
 		if spent >= limit {
 			return 0, protocol.NewBudgetExhausted(
 				protocol.BudgetExhaustion{
-					Resource: protocol.BudgetResourceCostMicrounits,
-					Scope:    e.turnBudgetScope(),
-					Used:     uint64(math.Ceil(spent * 1e6)),
-					Limit:    max(uint64(1), uint64(math.Ceil(limit*1e6))),
+					Resource:  protocol.BudgetResourceCostMicrounits,
+					Scope:     e.turnBudgetScope(),
+					Used:      uint64(math.Ceil(spent * 1e6)),
+					Limit:     max(uint64(1), uint64(math.Ceil(limit*1e6))),
+					Projected: true,
 				},
 				nil,
 			)
@@ -129,10 +131,11 @@ func (e *Engine) checkBudget(
 			if outputReserve == 0 {
 				return 0, protocol.NewBudgetExhausted(
 					protocol.BudgetExhaustion{
-						Resource: protocol.BudgetResourceCostMicrounits,
-						Scope:    e.turnBudgetScope(),
-						Used:     uint64(math.Ceil(spent * 1e6)),
-						Limit:    max(uint64(1), uint64(math.Ceil(limit*1e6))),
+						Resource:  protocol.BudgetResourceCostMicrounits,
+						Scope:     e.turnBudgetScope(),
+						Used:      uint64(math.Ceil(spent * 1e6)),
+						Limit:     max(uint64(1), uint64(math.Ceil(limit*1e6))),
+						Projected: true,
 					},
 					nil,
 				)

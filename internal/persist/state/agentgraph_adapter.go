@@ -143,6 +143,8 @@ func NewAgentGraph(
 						MaxSteps: edge.MaxSteps, MaxTokens: edge.MaxTokens,
 						MaxCostUSD: float64(edge.MaxCostMicros) / 1e6,
 					},
+					SpentTokens:    edge.SpentTokens,
+					SpentMicros:    edge.SpentMicros,
 					ReservedTokens: edge.ReservedTokens,
 					ReservedMicros: edge.ReservedMicros,
 				})

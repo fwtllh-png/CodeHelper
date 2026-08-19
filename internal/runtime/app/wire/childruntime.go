@@ -45,6 +45,7 @@ type childRuntime struct {
 	manager          *subagent.AgentControl
 	turns            map[protocol.ThreadID]*childTurn
 	bound            bool
+	closing          bool
 	settlementErrors map[protocol.TurnID]error
 
 	removeObserver func()
@@ -209,6 +210,7 @@ func (c *childRuntime) bind(
 
 func (c *childRuntime) close() {
 	c.mu.Lock()
+	c.closing = true
 	removeObserver := c.removeObserver
 	c.removeObserver = nil
 	for _, turn := range c.turns {
@@ -612,12 +614,47 @@ func (c *childRuntime) reserveChildBudget(
 			return "", err
 		}
 	}
+	agentBudget, err := ledger.Snapshot(agentScope)
+	if err != nil {
+		return "", err
+	}
+	usedTokens := agentBudget.Spent.Tokens + agentBudget.Reserved.Tokens
+	reserveTokens := uint64(0)
+	if limit := agent.Budget.MaxTokens; limit > 0 {
+		if usedTokens >= limit {
+			return "", childBudgetExhausted(
+				protocol.BudgetResourceTokens,
+				agentScope,
+				usedTokens,
+				limit,
+				false,
+				workbudget.ErrExhausted,
+			)
+		}
+		reserveTokens = limit - usedTokens
+	}
+	usedMicros := agentBudget.Spent.CostMicros +
+		agentBudget.Reserved.CostMicros
+	reserveMicros := uint64(0)
+	if limit := childBudgetMicrounits(agent.Budget.MaxCostUSD); limit > 0 {
+		if usedMicros >= limit {
+			return "", childBudgetExhausted(
+				protocol.BudgetResourceCostMicrounits,
+				agentScope,
+				usedMicros,
+				limit,
+				false,
+				workbudget.ErrExhausted,
+			)
+		}
+		reserveMicros = limit - usedMicros
+	}
 	reservationID := "agent:budget:" + string(turnID)
-	err := ledger.Reserve(workbudget.Reservation{
+	err = ledger.Reserve(workbudget.Reservation{
 		ID: reservationID, ScopeID: agentScope,
 		Amount: workbudget.Usage{
-			Tokens:     agent.Budget.MaxTokens,
-			CostMicros: childBudgetMicrounits(agent.Budget.MaxCostUSD),
+			Tokens:     reserveTokens,
+			CostMicros: reserveMicros,
 			Slots:      1,
 		},
 	})
@@ -641,6 +678,7 @@ func (c *childRuntime) admit(depth int) (rlm.Lease, error) {
 			"child_tree:"+c.root,
 			spent.SpentTokens,
 			limits.MaxTokens,
+			false,
 			rlm.ErrTokenBudget,
 		)
 	}
@@ -650,6 +688,7 @@ func (c *childRuntime) admit(depth int) (rlm.Lease, error) {
 			"child_tree:"+c.root,
 			childBudgetMicrounits(spent.SpentCostUSD),
 			childBudgetMicrounits(limits.MaxCostUSD),
+			false,
 			rlm.ErrCostBudget,
 		)
 	}
@@ -843,11 +882,29 @@ func (c *childRuntime) observe(event protocol.Event) {
 	manager := c.manager
 	releasePending := turn.releasePending
 	delete(c.turns, event.ThreadID)
+	if c.closing {
+		c.mu.Unlock()
+		return
+	}
+	c.settlers.Add(1)
 	c.mu.Unlock()
 
+	go c.settleChild(
+		event.ThreadID, turn, result, manager, releasePending,
+	)
+}
+
+func (c *childRuntime) settleChild(
+	threadID protocol.ThreadID,
+	turn *childTurn,
+	result subagent.Result,
+	manager *subagent.AgentControl,
+	releasePending bool,
+) {
+	defer c.settlers.Done()
 	if err := c.settleChildAttempt(turn, result, manager); err == nil {
 		c.completeChildSettlement(
-			event.ThreadID,
+			threadID,
 			turn,
 			manager,
 			releasePending,
@@ -856,9 +913,8 @@ func (c *childRuntime) observe(event protocol.Event) {
 	} else {
 		c.recordSettlementError(turn, err)
 	}
-	c.settlers.Add(1)
-	go c.retryChildSettlement(
-		event.ThreadID, turn, result, manager, releasePending,
+	c.retryChildSettlement(
+		threadID, turn, result, manager, releasePending,
 	)
 }
 
@@ -921,7 +977,6 @@ func (c *childRuntime) retryChildSettlement(
 	manager *subagent.AgentControl,
 	releasePending bool,
 ) {
-	defer c.settlers.Done()
 	delay := 25 * time.Millisecond
 	for {
 		timer := time.NewTimer(delay)

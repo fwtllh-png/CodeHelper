@@ -111,7 +111,7 @@ func (c *childWorktrees) Provision(
 	if err := os.RemoveAll(path); err != nil {
 		return subagent.Worktree{}, err
 	}
-	if _, err := c.git(ctx, "worktree", "add", "--detach", path, "HEAD"); err != nil {
+	if err := c.addDetachedWorktree(ctx, path); err != nil {
 		return subagent.Worktree{}, protocol.NewProblem(
 			protocol.CodeUnavailable,
 			fmt.Sprintf("cannot create a git worktree for child agent %s: %s", agentID, err),
@@ -131,6 +131,28 @@ func (c *childWorktrees) Provision(
 		ID: agentID, Path: path, Isolated: true,
 		BaseRev: strings.TrimSpace(baseRev),
 	}, nil
+}
+
+func (c *childWorktrees) addDetachedWorktree(
+	ctx context.Context,
+	path string,
+) error {
+	_, firstErr := c.git(ctx, "worktree", "add", "--detach", path, "HEAD")
+	if firstErr == nil {
+		return nil
+	}
+	// A killed host can leave an exact-path Git registration after its managed
+	// directory disappears. Remove only that registration, then retry once.
+	if _, cleanupErr := c.git(
+		ctx, "worktree", "remove", "--force", path,
+	); cleanupErr != nil {
+		return firstErr
+	}
+	_, retryErr := c.git(ctx, "worktree", "add", "--detach", path, "HEAD")
+	if retryErr != nil {
+		return errors.Join(firstErr, fmt.Errorf("retry worktree add: %w", retryErr))
+	}
+	return nil
 }
 
 func (c *childWorktrees) Discard(worktree subagent.Worktree) error {

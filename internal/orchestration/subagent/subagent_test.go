@@ -282,3 +282,28 @@ func TestNestedAgentBudgetCanOnlyNarrowParentCeiling(t *testing.T) {
 		t.Fatalf("nested budget = %+v", child)
 	}
 }
+
+func TestDefaultAgentBudgetPartitionsTreeAcrossParallelSlots(t *testing.T) {
+	control, err := subagent.OpenControl(subagent.Options{
+		Root: t.TempDir(), Gate: &fakeGate{},
+		Budget: subagent.Budget{
+			MaxTokens: 1000, MaxCostUSD: 10,
+			MaxParallel: 4, MaxResident: 4, MaxTotal: 4,
+		},
+	}, subagent.DelegationExplicit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := control.SpawnIntent(subagent.DelegationIntent{
+		TaskName: "default_share", Role: subagent.RoleExplore,
+		Objective: "inspect", ExpectedOutput: "report",
+		Trigger: subagent.TriggerUser,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Budget.MaxTokens != 250 ||
+		child.Budget.MaxCostUSD != 2.5 {
+		t.Fatalf("default child budget = %+v", child.Budget)
+	}
+}

@@ -260,6 +260,7 @@ func (e *graphExecution) reserveAttempt(id string) error {
 				e.budgetScope,
 				used,
 				e.budget.MaxTokens,
+				false,
 				ErrBudgetExhausted,
 			)
 		}
@@ -277,6 +278,7 @@ func (e *graphExecution) reserveAttempt(id string) error {
 				e.budgetScope,
 				used,
 				maxCost,
+				false,
 				ErrBudgetExhausted,
 			)
 		}

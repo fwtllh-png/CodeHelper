@@ -9,6 +9,7 @@ import (
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -50,6 +51,10 @@ func Recoverable(err error) (string, bool) {
 				strings.Join(hint.CandidatePaths, ",")
 		}
 		return content, true
+	}
+	if _, ok := budgetExhaustionCategory(err); ok {
+		return err.Error() +
+			"; required_action=report_budget_exhaustion; retry_original=false", true
 	}
 	var decision *policy.DecisionError
 	if errors.As(err, &decision) {
@@ -115,6 +120,13 @@ func Metadata(err error) map[string]any {
 		}
 		return metadata
 	}
+	if category, ok := budgetExhaustionCategory(err); ok {
+		return map[string]any{
+			"error_category":  category,
+			"required_action": "report_budget_exhaustion",
+			"retry_original":  false,
+		}
+	}
 	var decision *policy.DecisionError
 	if errors.As(err, &decision) &&
 		decision.Code == "edit_plan_stale" {
@@ -149,4 +161,20 @@ func Category(err error) string {
 		return category
 	}
 	return skillruntime.ErrorCategory(err)
+}
+
+func budgetExhaustionCategory(err error) (string, bool) {
+	var problem *protocol.Problem
+	if !errors.As(err, &problem) ||
+		problem.Code != protocol.CodeResourceExhausted ||
+		problem.Details == nil {
+		return "", false
+	}
+	switch problem.Details.Reason {
+	case protocol.ProblemReasonTokenBudgetExhausted,
+		protocol.ProblemReasonCostBudgetExhausted:
+		return problem.Details.Reason, true
+	default:
+		return "", false
+	}
 }

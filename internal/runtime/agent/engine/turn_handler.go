@@ -992,7 +992,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if remaining := stepBudgetWarningRemaining(spec.Limits.MaxSteps, step); remaining > 0 {
 			transaction = append(transaction, stepBudgetFeedback(e.turn, remaining))
 		}
-		progress, err = kernel.observeProgress(e.progressSignature(kernel))
+		progressSignature := e.progressSignature(kernel)
+		progress, err = kernel.observeProgress(progressSignature)
 		if err != nil {
 			return result, err
 		}
@@ -1362,9 +1363,10 @@ summary; ordinary assistant text cannot complete this Turn.`)
 func toolFailureCompletionFeedback(turn uint64) provider.Message {
 	message := provider.TextMessage(provider.RoleUser, `[tool_failure_resolution_required]
 The latest tool batch contained an explicit failure. Do not stop after
-describing a future retry. Either call the required tool now to resolve the
-failure, or provide a concise final answer that clearly reports the unresolved
-failure and its impact.`)
+describing a future retry. Follow required_action and retry_original from the
+failed Tool Result. Never repeat the same call when retry_original=false.
+Otherwise call the required tool now to resolve the failure, or provide a
+concise final answer that clearly reports the unresolved failure and its impact.`)
 	message.Turn = turn
 	return message
 }

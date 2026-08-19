@@ -74,3 +74,35 @@ func TestHandleReadRejectsSHAMismatch(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestHandleReadCompactFormAllowsNamespacedName(t *testing.T) {
+	store := handle.NewStore()
+	if _, err := store.PutText(
+		"sess-1",
+		"agent-agent-1/transcript",
+		"ParallelPolicy",
+	); err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := handle.Register(registry, store); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(map[string]any{
+		"handle": "sess-1/agent-agent-1/transcript",
+		"mode":   "query",
+		"query":  "ParallelPolicy",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := registry.Execute(context.Background(), tool.Call{
+		Name: "handle_read", Arguments: raw, Authorized: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "ParallelPolicy" {
+		t.Fatalf("namespaced handle content = %q", result.Content)
+	}
+}

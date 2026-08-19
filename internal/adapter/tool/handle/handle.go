@@ -196,7 +196,8 @@ func (*ReadTool) Descriptor() tool.Descriptor {
 			"type": "object",
 			"properties": map[string]any{
 				"handle": map[string]any{
-					"description": "A var_handle object, or compact session_id/name string",
+					"description": "A var_handle object (preferred), or compact session_id/name string; " +
+						"name may contain additional '/' path separators",
 				},
 				"mode": map[string]any{
 					"type": "string",
@@ -304,7 +305,7 @@ func parseHandle(raw json.RawMessage) (VarHandle, error) {
 			return VarHandle{}, err
 		}
 		sessionID, name, ok := strings.Cut(compact, "/")
-		if !ok || sessionID == "" || name == "" || strings.Contains(name, "/") {
+		if !ok || sessionID == "" || name == "" {
 			return VarHandle{}, errors.New("handle string must be session_id/name")
 		}
 		return VarHandle{Kind: KindVarHandle, SessionID: sessionID, Name: name}, nil

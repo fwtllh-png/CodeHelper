@@ -317,7 +317,9 @@ func TestAgentTerminalCommitIsAtomicAndCASGuarded(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(rows) != 1 || rows[0].Status != string(subagent.StatusCompleted) ||
-		rows[0].Revision != 2 {
+		rows[0].Revision != 2 ||
+		rows[0].SpentTokens != 21 ||
+		rows[0].SpentMicros != 5 {
 		t.Fatalf("terminal node = %+v", rows)
 	}
 	if result, ok, err := store.LoadAgentResult(
@@ -364,6 +366,10 @@ func TestAgentTerminalCommitIsAtomicAndCASGuarded(t *testing.T) {
 	}
 	if err := restarted.AttachGraph(graph); err != nil {
 		t.Fatal(err)
+	}
+	recovered, ok := restarted.Agent(agent.ID)
+	if !ok || recovered.SpentTokens != 21 || recovered.SpentMicros != 5 {
+		t.Fatalf("recovered Agent lifecycle spend = %+v, ok=%v", recovered, ok)
 	}
 	if _, err := restarted.SpawnSystem(
 		"still over budget", "", subagent.RoleExplore, "inspect", "report",

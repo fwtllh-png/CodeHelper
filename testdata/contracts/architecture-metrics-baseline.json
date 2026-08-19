@@ -74,9 +74,12 @@
       "path": "internal/orchestration/workflow",
       "limits": {
         "internal_fanout": 5,
-        "production_lines": 1971,
+        "production_lines": 1976,
         "options_fields": 13,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Budget admission faults distinguish projected reservations from committed Workflow spend"
       }
     },
     {
@@ -85,9 +88,12 @@
       "path": "internal/orchestration/subagent",
       "limits": {
         "internal_fanout": 7,
-        "production_lines": 4300,
+        "production_lines": 4341,
         "options_fields": 8,
         "mutex_fields": 3
+      },
+      "relaxations": {
+        "production_lines": "Multi-agent live validation reports normalized Capsule limits, partitions omitted child budgets, and persists resident Agent lifecycle spend"
       }
     },
     {
@@ -341,12 +347,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 75,
-        "production_lines": 8886,
+        "production_lines": 8966,
         "options_fields": 70,
         "mutex_fields": 6
       },
       "relaxations": {
-        "production_lines": "R6-R11 live validation gives every host-seeded isolated Chat dedicated interaction tools and an InputHost while child agents remain non-interactive"
+        "production_lines": "Multi-agent live recovery handles stale worktrees, nonblocking child settlement, and remaining resident Agent budget reservations"
       }
     },
     {
@@ -606,12 +612,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 11564,
+        "production_lines": 11593,
         "options_fields": 60,
         "mutex_fields": 8
       },
       "relaxations": {
-        "production_lines": "R6-R11 live validation enforces ParallelSerial descriptors across one model tool batch to prevent approval and input phase overlap"
+        "production_lines": "Agent lifecycle tools advance structured progress and budget failure repair forbids unchanged retries"
       }
     },
     {
@@ -717,9 +723,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6247,
+        "production_lines": 6255,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Structured budget faults distinguish projected admission demand from committed usage"
       }
     },
     {

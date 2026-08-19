@@ -171,6 +171,48 @@ func removeGitWorkspace(t *testing.T, workspace string) {
 	}
 }
 
+func TestChildWorktreeProvisionRecoversMissingRegisteredPath(t *testing.T) {
+	workspace := newGitWorkspace(t)
+	root := t.TempDir()
+	trees, err := newChildWorktrees(
+		workspace, root, config.SubagentWorkspaceWorktree, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "worktrees", "agent-stale")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(
+		"git", "worktree", "add", "--detach", path, "HEAD",
+	)
+	command.Dir = workspace
+	command.Env = append(
+		os.Environ(), "GIT_CONFIG_GLOBAL=", "GIT_CONFIG_SYSTEM=",
+	)
+	if output, commandErr := command.CombinedOutput(); commandErr != nil {
+		t.Fatalf("create stale worktree: %v: %s", commandErr, output)
+	}
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatal(err)
+	}
+
+	worktree, err := trees.Provision("agent-stale", subagent.StanceWrite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !worktree.Isolated || worktree.Path != path || worktree.BaseRev == "" {
+		t.Fatalf("recovered worktree = %+v", worktree)
+	}
+	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
+		t.Fatalf("recovered worktree .git: %v", err)
+	}
+	if err := trees.Discard(worktree); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func openWritingChildSession(t *testing.T, workspace string) *Session {
 	t.Helper()
 	tools := true

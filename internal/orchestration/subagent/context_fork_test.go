@@ -63,6 +63,29 @@ func TestTaskCapsuleRedactsAndExcludesParentTranscript(t *testing.T) {
 	}
 }
 
+func TestTaskCapsuleReportsNormalizedAgentBudget(t *testing.T) {
+	request := contextRequest(subagent.ContextFresh)
+	request.Agent.Budget = subagent.AgentBudget{
+		MaxSteps: 8, MaxTokens: 40_000, MaxCostUSD: 0.25,
+	}
+	request.Role.DefaultBudget = subagent.Budget{
+		MaxSteps: 12, MaxTokens: 200_000, MaxCostUSD: 1,
+		MaxDepth: 2, MaxParallel: 4,
+	}
+	fork, err := subagent.NewContextForker(
+		subagent.DefaultContextPolicy(),
+	).Fork(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := fork.Capsule.Limits
+	if limits.MaxSteps != 8 || limits.MaxTokens != 40_000 ||
+		limits.MaxCostUSD != 0.25 ||
+		limits.MaxDepth != 2 || limits.MaxParallel != 4 {
+		t.Fatalf("task capsule limits = %+v", limits)
+	}
+}
+
 func TestLastNTurnsKeepsOnlyCompleteToolPairs(t *testing.T) {
 	forker := subagent.NewContextForker(subagent.DefaultContextPolicy())
 	forker.BindSource(contextFixtureSource{

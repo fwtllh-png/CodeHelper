@@ -47,6 +47,25 @@ func TestProgressSignatureCountsResearchReadsOnlyForResearchTurns(
 	}
 }
 
+func TestProgressSignatureCountsSuccessfulAgentLifecycleCalls(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	before := engine.progressSignature(kernel)
+	kernel.state.ClosedCalls["spawn"] = turnkernel.ToolResultState{
+		ID: "spawn", Name: "spawn_agent",
+	}
+	if after := engine.progressSignature(kernel); after == before {
+		t.Fatal("successful Agent lifecycle transition did not advance progress")
+	}
+}
+
 func TestFinishOnlyAllowsMutationAndQualityTools(t *testing.T) {
 	for _, test := range []struct {
 		name       string
@@ -59,6 +78,8 @@ func TestFinishOnlyAllowsMutationAndQualityTools(t *testing.T) {
 		{name: "exec_command", capability: tool.CapabilityProcess, want: true},
 		{name: "write_stdin", capability: tool.CapabilityProcess, want: true},
 		{name: "request_user_input", capability: tool.CapabilityRead, want: true},
+		{name: "wait_agent", capability: tool.CapabilityRead, want: true},
+		{name: "list_agents", capability: tool.CapabilityRead, want: true},
 		{name: "shell_read", capability: tool.CapabilityRead, want: false},
 		{name: "search_text", capability: tool.CapabilityRead, want: false},
 	} {

@@ -41,6 +41,7 @@ func resumableChildBudgetError(err error) error {
 		exhausted.ScopeID,
 		exhausted.Used,
 		exhausted.Limit,
+		true,
 		err,
 	)
 }
@@ -50,14 +51,16 @@ func childBudgetExhausted(
 	scope string,
 	used uint64,
 	limit uint64,
+	projected bool,
 	cause error,
 ) error {
 	return protocol.NewBudgetExhausted(
 		protocol.BudgetExhaustion{
-			Resource: resource,
-			Scope:    scope,
-			Used:     used,
-			Limit:    limit,
+			Resource:  resource,
+			Scope:     scope,
+			Used:      used,
+			Limit:     limit,
+			Projected: projected,
 		},
 		cause,
 	)

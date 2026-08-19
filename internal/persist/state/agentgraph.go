@@ -37,6 +37,8 @@ type AgentSpawnEdge struct {
 	MaxSteps       int
 	MaxTokens      uint64
 	MaxCostMicros  uint64
+	SpentTokens    uint64
+	SpentMicros    uint64
 	ReservedTokens uint64
 	ReservedMicros uint64
 	SourceSequence protocol.Cursor
@@ -90,7 +92,16 @@ func (s *Store) ListAgentChildrenSession(
 		       agent_id, path, execution_root, thread_id, turn_id, status, revision,
 		       role, profile, stance, depth, worktree, isolated, serialized, base_revision,
 		       task_name, owned_paths_json, last_message, max_steps, max_tokens,
-		       max_cost_microunits, reserved_tokens, reserved_microunits,
+		       max_cost_microunits,
+		       COALESCE((SELECT spent_tokens FROM agent_budget_ledger
+		         WHERE workspace_root = agent_nodes.workspace_root
+		           AND session_id = agent_nodes.session_id
+		           AND agent_id = agent_nodes.agent_id), 0),
+		       COALESCE((SELECT spent_microunits FROM agent_budget_ledger
+		         WHERE workspace_root = agent_nodes.workspace_root
+		           AND session_id = agent_nodes.session_id
+		           AND agent_id = agent_nodes.agent_id), 0),
+		       reserved_tokens, reserved_microunits,
 		       source_sequence, updated_at
 		FROM agent_nodes
 		WHERE workspace_root = ? AND session_id = ? AND parent_agent_id = ?
@@ -112,7 +123,8 @@ func (s *Store) ListAgentChildrenSession(
 			&edge.Stance, &edge.Depth, &edge.Worktree,
 			&edge.Isolated, &edge.Serialized, &edge.BaseRevision,
 			&edge.TaskName, &ownedPaths, &edge.LastMessage, &edge.MaxSteps, &edge.MaxTokens,
-			&edge.MaxCostMicros, &edge.ReservedTokens, &edge.ReservedMicros,
+			&edge.MaxCostMicros, &edge.SpentTokens, &edge.SpentMicros,
+			&edge.ReservedTokens, &edge.ReservedMicros,
 			&seq, &updated,
 		); err != nil {
 			return nil, err

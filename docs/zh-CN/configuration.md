@@ -257,10 +257,17 @@ Token/Cost Ceiling，不会猜测半截 Tool Call，不会绕过 Content Filter�
 Compaction 后请求仍无法放入 Context 的 Sample。
 
 显式 `budget_tokens`、`budget_usd`、Subagent 或 Workflow Token/Cost Budget 耗尽时，
-Runtime 返回包含 Scope、资源类型和 Used/Limit 的结构化 `resource_exhausted` Fault，
-并使用 `resume_turn` 保留继续入口。Main Turn 保留可恢复状态，Workflow/后台 Task
-进入 Durable `blocked`/`waiting`，Child 在提交新 Turn 前拒绝准入。预算未提高或补充
-前不会自动重试；恢复后不会重跑已完成的 WorkGraph Node 或已闭合 Tool Effect。
+Runtime 返回包含 Scope、资源类型和 Used/Limit 的结构化 `resource_exhausted` Fault。
+准入检查改用 Projected/Limit，避免把预留容量误报为已提交消耗。`resume_turn` 保留
+继续入口。Main Turn 保留可恢复状态，Workflow/后台 Task 进入 Durable
+`blocked`/`waiting`，Child 在提交新 Turn 前拒绝准入。预算未提高或补充前不会自动
+重试；恢复后不会重跑已完成的 WorkGraph Node 或已闭合 Tool Effect。
+
+`execution.subagent.max_tokens` 与 `max_cost_usd` 是整棵 Agent Tree 的共享上限。
+`spawn_agent` 中的 `max_tokens` 或 `max_cost_usd` 是 resident Agent 跨初始 Turn 与
+follow-up 的生命周期上限；每次 follow-up 只预留该 Agent 的剩余额度。child 未显式
+填写 Token/Cost 上限时，Runtime 按并发度分配一份 Tree 额度
+（`Tree / max_parallel`），不会再让第一个 child 预留整棵 Tree。
 
 未知 TOML 字段会被拒绝。这是有意设计：拼错的安全或预算字段不能“看起来已配置但
 实际没有生效”。
