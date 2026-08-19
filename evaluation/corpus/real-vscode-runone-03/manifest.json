@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "real-vscode-runone-03",
+  "source_format": "vscode_runtime_capture_v1",
+  "source_class": "real_private_capture",
+  "source_digest": "sha256:5e4cd02cc412f2c4f56150d176dae02ec9e5000f5de387e15b6b11ff30c7d82c",
+  "selector": {
+    "kind": "operation",
+    "index": 2
+  },
+  "source_event_count": 3,
+  "event_count": 3,
+  "trace_digest": "sha256:88356f4bb30066c19539baee9360e7fb690488a6b46eb42f0c89d5dc68cc3a4b",
+  "first_digest": "sha256:d01ebb3697d372db5ae564a5b0dd8ad8306f98eb24ff17af5089e92b90fad8ee",
+  "last_digest": "sha256:2db9b2f19900a5a693d9ffdec655fded709c6f299400fb9a117b1665dfd28d8d",
+  "failure_signature": "partial_trace",
+  "content_mode": "metadata_only",
+  "secret_scan": "passed"
+}

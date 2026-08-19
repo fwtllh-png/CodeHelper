@@ -50,6 +50,7 @@ tasks/workflows/subagents internal/orchestration
 durable state             internal/persist
 usage/traces/verification internal/observability
 VS Code                    extensions/vscode
+production evaluation     evaluation
 ```
 
 ## Standard Validation

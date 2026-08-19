@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "assessment_id": "production-evaluation-independent-audit-01",
+  "phase": "foundation_reentry",
+  "round": "independent_zero_base_audit",
+  "status": "closed_plan_and_foundation_require_revision",
+  "closed_on": "2026-08-19",
+  "reviewed_source": {
+    "branch": "evaluation",
+    "commit": "673c3d781fece86febd39e0c8e4304e9f2285ca5",
+    "dirty": true,
+    "dirty_digest": "sha256:99ec5c34d16ccea8ca6c5942e915e14547ab5465852fbcb3de69dfa8514f4908"
+  },
+  "cross_validation": {
+    "validators": 2,
+    "candidates": 12,
+    "confirmed_by_both": 12
+  },
+  "findings": [
+    {
+      "id": "C1",
+      "root": "PEH-0028",
+      "severity": "P1",
+      "title": "command_status_self_certifies_oracles"
+    },
+    {
+      "id": "C2",
+      "root": "PEH-0028",
+      "severity": "P1",
+      "title": "suite_admission_contracts_are_not_executed"
+    },
+    {
+      "id": "C3",
+      "root": "PEH-0030",
+      "severity": "P1",
+      "title": "raw_command_output_enters_reports"
+    },
+    {
+      "id": "C4",
+      "root": "PEH-0030",
+      "severity": "P1",
+      "title": "privacy_and_corpus_validation_fail_open"
+    },
+    {
+      "id": "C5",
+      "root": "PEH-0030",
+      "severity": "P1",
+      "title": "corpus_promotion_lacks_provenance_and_batch_atomicity"
+    },
+    {
+      "id": "C6",
+      "root": "PEH-0029",
+      "severity": "P1",
+      "title": "runner_process_and_evidence_ownership_are_incomplete"
+    },
+    {
+      "id": "C7",
+      "root": "PEH-0023",
+      "severity": "P1",
+      "title": "structural_replay_is_not_production_replay"
+    },
+    {
+      "id": "C8",
+      "root": "PEH-0023",
+      "severity": "P1",
+      "title": "core_scenarios_self_check_one_shared_fixture"
+    },
+    {
+      "id": "C9",
+      "root": "PEH-0023",
+      "severity": "P1",
+      "title": "impact_selection_fails_open_empty"
+    },
+    {
+      "id": "C10",
+      "root": "PEH-0029",
+      "severity": "P1",
+      "title": "report_identity_and_artifact_names_are_not_unique"
+    },
+    {
+      "id": "C11",
+      "root": "PEH-0026",
+      "severity": "P2",
+      "title": "implementation_batch_and_estimate_are_inconsistent"
+    },
+    {
+      "id": "C12",
+      "root": "PEH-0026",
+      "severity": "P1",
+      "title": "documentation_gate_has_missing_assessment_links"
+    }
+  ],
+  "validation": {
+    "passed": [
+      "eval_contract_check",
+      "eval_replay_diagnostic",
+      "eval_oracle_diagnostic",
+      "evaluation_race",
+      "evaluation_vet",
+      "architecture_ratchet_112_of_112",
+      "book_check",
+      "git_diff_check"
+    ],
+    "failed": [
+      "docs_check_missing_assessment_links"
+    ],
+    "negative_probes": [
+      "p0_oracle_passed_without_evidence",
+      "critical_impact_path_selected_zero_scenarios",
+      "credential_shaped_manifest_value_passed_corpus_check",
+      "suite_requirement_and_release_policy_were_ignored"
+    ]
+  },
+  "decision": {
+    "target_architecture": "directionally_correct",
+    "current_foundation": "not_qualified",
+    "phase_17_3": "invalidated",
+    "phase_17_4": "reset_not_started",
+    "product_discovery_allowed": false,
+    "product_remediation_allowed": false,
+    "foundation_implementation_allowed": false,
+    "next_gate": "approve_corrected_technical_specification_and_implementation_plan"
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeHelper canonical evaluation evidence envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "sequence",
+    "offset_ms",
+    "source",
+    "kind",
+    "identity",
+    "causality",
+    "policy",
+    "data",
+    "digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "offset_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "source": {
+      "enum": [
+        "host",
+        "acp",
+        "runtime",
+        "provider",
+        "observation",
+        "harness"
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "identity": {
+      "$ref": "#/$defs/identity"
+    },
+    "causality": {
+      "$ref": "#/$defs/causality"
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "data": {},
+    "previous_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "digest": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "$defs": {
+    "canonical_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*-[0-9]{3}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capture": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "session": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "thread": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "turn": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "operation": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "item": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "event": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "effect": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "attempt": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "request": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "run": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "node": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "resume": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "call": {
+          "$ref": "#/$defs/canonical_id"
+        },
+        "sample": {
+          "$ref": "#/$defs/canonical_id"
+        }
+      }
+    },
+    "causality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parent_sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "links": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "class",
+        "redaction"
+      ],
+      "properties": {
+        "class": {
+          "enum": [
+            "public_metadata",
+            "operational",
+            "workspace_content",
+            "conversation_content",
+            "credential",
+            "restricted"
+          ]
+        },
+        "redaction": {
+          "enum": [
+            "not_required",
+            "applied",
+            "dropped"
+          ]
+        }
+      }
+    }
+  }
+}

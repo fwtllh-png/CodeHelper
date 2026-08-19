@@ -1,0 +1,119 @@
+{
+  "schema_version": 2,
+  "fallback": "all_p0",
+  "exclusions": [
+    "docs/**"
+  ],
+  "rules": [
+    {
+      "id": "command-entry",
+      "pattern": "cmd/**",
+      "tags": ["runtime", "host", "provider", "security"]
+    },
+    {
+      "id": "runtime-agent",
+      "pattern": "internal/runtime/agent/**",
+      "tags": ["runtime", "interaction", "resource"]
+    },
+    {
+      "id": "runtime-app",
+      "pattern": "internal/runtime/app/**",
+      "tags": ["runtime", "host", "persistence", "resource"]
+    },
+    {
+      "id": "runtime-protocol",
+      "pattern": "internal/runtime/protocol/**",
+      "tags": ["runtime", "provider", "host", "persistence", "interaction"]
+    },
+    {
+      "id": "provider-adapter",
+      "pattern": "internal/adapter/provider/**",
+      "tags": ["provider", "runtime", "security"]
+    },
+    {
+      "id": "mcp-adapter",
+      "pattern": "internal/adapter/mcp/**",
+      "tags": ["tool", "security", "provider", "resource"]
+    },
+    {
+      "id": "tool-adapter",
+      "pattern": "internal/adapter/tool/**",
+      "tags": ["tool", "workspace", "verification", "interaction", "security"]
+    },
+    {
+      "id": "security-boundary",
+      "pattern": "internal/security/**",
+      "tags": ["security", "tool", "workspace", "platform"]
+    },
+    {
+      "id": "persistence-boundary",
+      "pattern": "internal/persist/**",
+      "tags": ["persistence", "runtime", "resource"]
+    },
+    {
+      "id": "observability-boundary",
+      "pattern": "internal/observability/**",
+      "tags": ["verification", "persistence", "resource", "security"]
+    },
+    {
+      "id": "orchestration-boundary",
+      "pattern": "internal/orchestration/**",
+      "tags": ["orchestration", "runtime", "tool", "persistence", "resource"]
+    },
+    {
+      "id": "platform-boundary",
+      "pattern": "internal/platform/**",
+      "tags": ["platform", "resource", "workspace", "security"]
+    },
+    {
+      "id": "go-hosts",
+      "pattern": "internal/host/**",
+      "tags": ["host", "runtime", "interaction", "verification"]
+    },
+    {
+      "id": "vscode-host",
+      "pattern": "extensions/vscode/**",
+      "tags": ["host", "runtime", "interaction", "workspace"]
+    },
+    {
+      "id": "evaluation-system",
+      "pattern": "evaluation/**",
+      "tags": ["runtime", "provider", "tool", "workspace", "verification", "persistence", "security", "resource", "host", "interaction", "orchestration", "platform"]
+    },
+    {
+      "id": "configuration",
+      "pattern": "internal/config/**",
+      "tags": ["runtime", "provider", "security", "platform"]
+    },
+    {
+      "id": "makefile",
+      "pattern": "Makefile",
+      "tags": ["verification", "resource", "platform"]
+    },
+    {
+      "id": "scripts",
+      "pattern": "scripts/**",
+      "tags": ["verification", "security", "platform"]
+    },
+    {
+      "id": "module-contract",
+      "pattern": "go.mod",
+      "tags": ["runtime", "provider", "security", "platform"]
+    },
+    {
+      "id": "module-lock",
+      "pattern": "go.sum",
+      "tags": ["runtime", "provider", "security", "platform"]
+    },
+    {
+      "id": "release-workflows",
+      "pattern": ".github/workflows/**",
+      "tags": ["verification", "security", "host", "platform"]
+    },
+    {
+      "id": "test-assets",
+      "pattern": "testdata/**",
+      "tags": ["provider", "runtime", "verification", "security"]
+    }
+  ]
+}

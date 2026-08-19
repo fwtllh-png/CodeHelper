@@ -3,12 +3,15 @@
   "path": "/chat/completions",
   "model": "fixture-model",
   "expected_prompt": "context-sentinel-4821",
-  "streams": ["stream.sse"],
+  "streams": ["stream.sse", "complete.sse"],
   "expected_request_fragments": [
     [
       "inspect active file",
       "Explicit editor context follows as JSON",
       "context-sentinel-4821"
+    ],
+    [
+      "\"name\":\"turn_complete\""
     ]
   ]
 }

@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "assessment_id": "pe-17.4-convergence-review-reset-01",
+  "phase": "17.4",
+  "round": "independent_convergence_review_and_cleanup",
+  "status": "closed_prior_implementation_invalidated_and_removed",
+  "closed_on": "2026-08-19",
+  "product_code_repair_performed": false,
+  "reviewed_source": {
+    "commit": "673c3d781fece86febd39e0c8e4304e9f2285ca5",
+    "dirty": true,
+    "dirty_digest": "sha256:406e00202bd787264744cd580895caa5821f22840f5f9079ff85e725dd7a63ce"
+  },
+  "root_findings": [
+    {
+      "id": "PEH-0023",
+      "title": "core_scenario_and_oracle_false_assurance",
+      "severity": "P1",
+      "status": "candidate_assessed"
+    },
+    {
+      "id": "PEH-0024",
+      "title": "incomplete_fixture_request_contracts",
+      "severity": "P1",
+      "status": "candidate_assessed"
+    },
+    {
+      "id": "PEH-0025",
+      "title": "fail_fast_discovery_and_incomplete_recovery_proof",
+      "severity": "P1",
+      "status": "candidate_assessed"
+    },
+    {
+      "id": "PEH-0026",
+      "title": "missing_machine_harness_freeze_and_evidence_consistency",
+      "severity": "P1",
+      "status": "candidate_assessed"
+    },
+    {
+      "id": "PEH-0027",
+      "title": "evaluation_controls_cross_production_boundaries",
+      "severity": "P1",
+      "status": "candidate_assessed"
+    }
+  ],
+  "cleanup": {
+    "tracked_product_and_host_changes_restored_to_head": true,
+    "evaluation_vscode_removed": true,
+    "evaluation_crash_hooks_removed": true,
+    "phase_17_4_fixtures_removed": true,
+    "prior_phase_17_4_assessments_removed": true,
+    "prior_transient_rounds_removed": true,
+    "convergence_review_retained": true,
+    "architecture_ratchet_cleanup_retained": true
+  },
+  "decision": {
+    "phase_17_3_status": "invalidated_pending_holistic_redesign_and_requalification",
+    "phase_17_4_status": "reset_not_started",
+    "pec_0001_status": "candidate",
+    "pec_0002_status": "candidate",
+    "pec_0003_status": "candidate",
+    "pec_0004_status": "candidate",
+    "trusted_phase_17_4_product_repairs": 0,
+    "product_discovery_allowed": false,
+    "product_remediation_allowed": false,
+    "harness_remediation_allowed": false,
+    "next_gate": "documentation_only_foundation_and_harness_specification_revision",
+    "same_round_repair": false
+  }
+}

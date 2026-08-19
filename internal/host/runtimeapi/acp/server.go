@@ -1128,6 +1128,9 @@ func (s *Server) sessionNew(request rpcRequest) {
 		s.invalidParams(request, err)
 		return
 	}
+	if strings.TrimSpace(params.Title) == "" {
+		params.Title = "New Chat"
+	}
 	if (params.Provider != "" && params.Provider != s.options.ProviderID) ||
 		(params.Model != "" && params.Model != s.options.ModelID) {
 		s.invalidParams(request, errors.New("requested provider or model is unavailable"))

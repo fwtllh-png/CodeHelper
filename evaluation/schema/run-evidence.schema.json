@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeHelper Run-bound Evaluation Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_partition",
+    "run_id",
+    "scenario_id",
+    "attempt",
+    "producer",
+    "kind",
+    "digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "run_partition": {
+      "$ref": "#/$defs/digest"
+    },
+    "run_id": {
+      "$ref": "#/$defs/id"
+    },
+    "scenario_id": {
+      "$ref": "#/$defs/id"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "producer": {
+      "$ref": "#/$defs/id"
+    },
+    "kind": {
+      "$ref": "#/$defs/id"
+    },
+    "digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "ref": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

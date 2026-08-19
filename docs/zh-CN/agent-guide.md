@@ -37,6 +37,7 @@
 | Durable Data | `internal/persist` |
 | Observation/Usage/Trace | `internal/observability` |
 | VS Code | `extensions/vscode` |
+| 生产测评 | `evaluation` |
 
 ## 不可破坏的约束
 

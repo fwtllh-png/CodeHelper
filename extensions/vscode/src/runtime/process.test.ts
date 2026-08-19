@@ -100,6 +100,17 @@ void test("runtimeArguments omits MCP config when it is not configured", () => {
   );
 });
 
+void test("runtimeArguments forwards repository policy rules", () => {
+  const repositoryRulesPath = "/workspace/repository-rules.json";
+  const args = runtimeArguments({
+    ...runtimeOptions(),
+    repositoryRulesPath,
+  });
+  const index = args.indexOf("--repository-rules");
+  assert.notEqual(index, -1);
+  assert.equal(args[index + 1], repositoryRulesPath);
+});
+
 void test("resolveMCPConfigPath resolves workspace paths and rejects escape", () => {
   assert.equal(
     resolveMCPConfigPath("/workspace", ".codehelper/mcp.json"),

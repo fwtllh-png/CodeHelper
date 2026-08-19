@@ -16,6 +16,8 @@ LDFLAGS := -s -w \
 	test-release integration-gate release-gate race build cross-build smoke \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
+	eval-contract-check eval-foundation-check eval-replay eval-oracle \
+	eval-q1-artifacts eval-q1 \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-performance \
 	observation-traits observation-traits-check \
@@ -42,6 +44,12 @@ LDFLAGS := -s -w \
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
 ARCHITECTURE_METRICS_BASELINE := testdata/contracts/architecture-metrics-baseline.json
 RELIABILITY_MATRIX := testdata/contracts/reliability-matrix.json
+EVALUATION_MANIFEST := evaluation/manifest.json
+EVALUATION_BINARY := bin/codehelper-eval
+Q1_ID ?= foundation-v2-q1
+Q1_BUILD_DATE ?= 2026-08-19T00:00:00Z
+Q1_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || printf unknown)
+Q1_OUTPUT ?= .tmp/evaluation/q1/$(Q1_ID)
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
@@ -72,6 +80,8 @@ endif
 fmt:
 	$(GO) fmt ./...
 
+# Evaluation gates remain diagnostic until the Convergence Review re-entry
+# contract is satisfied; do not make them release-authoritative by dependency.
 verify: architecture-ratchet docs-check book-check brand-check \
 	vscode-check vscode-test multi-agent-performance reliability-gate
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
@@ -80,6 +90,44 @@ verify: architecture-ratchet docs-check book-check brand-check \
 	$(GO) test -race -p 1 ./...
 
 test: test-hermetic
+
+eval-contract-check:
+	$(GO) test -count=1 ./evaluation/...
+	$(GO) run ./evaluation/cmd/codehelper-eval contract check \
+		--root . --manifest '$(EVALUATION_MANIFEST)'
+
+eval-foundation-check:
+	$(GO) run ./evaluation/cmd/codehelper-eval foundation check \
+		--root . --manifest evaluation/spec/foundation.json
+
+eval-q1-artifacts:
+	$(MAKE) build VERSION=q1 COMMIT='$(Q1_COMMIT)' BUILD_DATE='$(Q1_BUILD_DATE)'
+	@mkdir -p bin
+	$(GO) build -trimpath -o '$(EVALUATION_BINARY)' ./evaluation/cmd/codehelper-eval
+	$(MAKE) vscode-package-universal
+
+eval-q1: eval-q1-artifacts
+	'$(EVALUATION_BINARY)' qualification q1 \
+		--root . \
+		--id '$(Q1_ID)' \
+		--evaluation-binary '$(EVALUATION_BINARY)' \
+		--runtime '$(BINARY)' \
+		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
+		--build-date '$(Q1_BUILD_DATE)' \
+		--output '$(Q1_OUTPUT)'
+
+eval-replay:
+	$(GO) run ./evaluation/cmd/codehelper-eval replay check \
+		--corpus evaluation/corpus --minimum 12
+
+eval-oracle:
+	$(GO) run ./evaluation/cmd/codehelper-eval oracle check \
+		--root . \
+		--pack evaluation/scenarios/core/pack.json \
+		--impact-map evaluation/impact-map.json \
+		--corpus evaluation/corpus \
+		--minimum 30 \
+		--replay-runs 500
 
 hotspot-baseline:
 	$(GO) test -count=1 ./scripts -run 'Test(RepositoryHotspotBaseline|CheckHotspot)'

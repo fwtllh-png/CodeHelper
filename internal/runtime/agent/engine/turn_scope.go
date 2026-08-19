@@ -259,13 +259,13 @@ func (s *Scope) Control() ControlPort {
 func (e *Engine) Control() (ControlPort, error) {
 	scope := e.runningScope()
 	if scope == nil {
-		return nil, errors.New("turn scope is not active")
+		return nil, ErrTurnCoordinatorNotActive
 	}
 	return scope.Control(), nil
 }
 func (s *Scope) Cancel(reason string) error {
 	if s == nil || s.engine.runningScope() != s {
-		return errors.New("turn scope is not active")
+		return ErrTurnCoordinatorNotActive
 	}
 	kernel, err := s.kernel()
 	if err != nil {

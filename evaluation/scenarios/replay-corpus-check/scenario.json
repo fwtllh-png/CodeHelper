@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "id": "replay-corpus-check",
+  "title": "Capture-to-Replay corpus integrity and mutation check",
+  "family": "foundation-replay",
+  "owner": "evaluation",
+  "risk": "P0",
+  "driver": "command",
+  "provider_mode": "recorded",
+  "workspace": ".",
+  "fixture_id": "replay-corpus-check-v2",
+  "expected_facts": [
+    "corpus_integrity_checked",
+    "structural_replay_labeled"
+  ],
+  "turns": [],
+  "faults": [],
+  "oracles": [
+    "command_verification"
+  ],
+  "required_evidence": [
+    "command_result"
+  ],
+  "required_mutations": [],
+  "cleanup_contract": "command-process-tree-v2",
+  "run_plan": {
+    "attempts": 1,
+    "collect_all_group": "foundation-replay"
+  },
+  "budgets": {
+    "wall_time_ms": 300000,
+    "max_attempts": 1,
+    "max_output_bytes": 1048576
+  },
+  "requirements": {
+    "commands": [
+      "git",
+      "go"
+    ],
+    "platforms": [
+      "darwin",
+      "linux",
+      "windows"
+    ],
+    "capabilities": []
+  },
+  "execution": {
+    "command": [
+      "go",
+      "run",
+      "./evaluation/cmd/codehelper-eval",
+      "replay",
+      "check",
+      "--corpus",
+      "evaluation/corpus",
+      "--minimum",
+      "12"
+    ],
+    "working_directory": "."
+  },
+  "tags": [
+    "capture",
+    "replay",
+    "corpus",
+    "hermetic"
+  ]
+}

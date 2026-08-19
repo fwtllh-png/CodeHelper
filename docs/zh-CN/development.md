@@ -79,6 +79,10 @@ make brand-check
 | `make test-platform-capability` | 执行真实宿主机 Sandbox 能力测试 |
 | `make test-integration` | 用真实 Binary 执行 ACP 与 VS Code 集成测试 |
 | `make test-release` | 执行 Race、打包、脱敏与发布 Dry-run 门禁 |
+| `make eval-contract-check` | 执行候选 Evaluation Contract 和 Runner 诊断；不构成 Release Evidence |
+| `make eval-foundation-check` | 校验 F1-F3 Contract、九类 Oracle、七类 Mutation 和 Production Provider/Runtime/Host Replay；不构成 Qualification Evidence |
+| `make eval-replay` | 执行候选 Structural Replay 和 Corpus 诊断；不构成 Runtime/Host Replay Evidence |
+| `make eval-oracle` | 执行 F3 候选 Core Pack、Oracle、Impact 和 Structural Flake 诊断；不构成 Qualification Evidence |
 | `make hotspot-baseline` | 校验 IMP-006 职责、依赖、体积与测试资产契约 |
 | `make architecture-freeze` | 执行四热点 Characterization、Golden、Schema 与聚焦 Race 门禁 |
 | `make race` | 串行 Race Go 测试 |

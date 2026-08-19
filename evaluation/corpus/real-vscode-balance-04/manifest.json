@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "real-vscode-balance-04",
+  "source_format": "vscode_runtime_capture_v1",
+  "source_class": "real_private_capture",
+  "source_digest": "sha256:636603fe2377a8e994fde9edb53748b6df2eb8417f83e72e0ed6465c04540f81",
+  "selector": {
+    "kind": "operation",
+    "index": 3
+  },
+  "source_event_count": 3,
+  "event_count": 3,
+  "trace_digest": "sha256:6fb9a425f00f40b7efdae2185bc13ca228c7d2cae1bebd51be7345ff0a89d642",
+  "first_digest": "sha256:d01ebb3697d372db5ae564a5b0dd8ad8306f98eb24ff17af5089e92b90fad8ee",
+  "last_digest": "sha256:f1fc8a43fd877cd192b3cb7ff546f23273b2b3fc1f794179d6598f5903636a1a",
+  "failure_signature": "partial_trace",
+  "content_mode": "metadata_only",
+  "secret_scan": "passed"
+}

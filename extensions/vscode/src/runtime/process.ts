@@ -47,6 +47,7 @@ export interface RuntimeLaunchOptions {
   readonly dataDirectory: string;
   readonly configPath?: string;
   readonly mcpConfigPath?: string;
+  readonly repositoryRulesPath?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly posture: RuntimePosture;
   readonly maxSteps: number;
@@ -234,6 +235,9 @@ export function runtimeArguments(options: RuntimeLaunchOptions): readonly string
     ...(options.mcpConfigPath === undefined
       ? []
       : ["--mcp-config", options.mcpConfigPath]),
+    ...(options.repositoryRulesPath === undefined
+      ? []
+      : ["--repository-rules", options.repositoryRulesPath]),
     "--workspace", options.workspaceRoot,
     "--workspace-uri", options.workspaceIdentity.editor_uri,
     "--workspace-root-id", options.workspaceIdentity.root_id,

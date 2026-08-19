@@ -48,14 +48,18 @@ architecture and delivery stages are defined in the
 
 1. [Architecture](./architecture.md)
 2. [Runtime reliability hardening](./reliability-hardening.md)
-3. [Security model](./security.md)
-4. [Local development and scripts](./development.md)
-5. [Source code reading guide](./reading-guide.md)
-6. [Agent guide](./agent-guide.md)
-7. [TUI and VS Code experience contract](./experience.md)
-8. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-9. [Documentation governance](./documentation-governance.md)
-10. [Roadmap](./roadmap.md)
+3. [Production evaluation technical specification](./production-evaluation.md)
+4. [Production evaluation implementation plan](./production-evaluation-implementation-plan.md)
+5. [Production evaluation findings register](./production-evaluation-findings.md)
+6. [17.4 Convergence Review reset](./production-evaluation-17.4-assessment.md)
+7. [Security model](./security.md)
+8. [Local development and scripts](./development.md)
+9. [Source code reading guide](./reading-guide.md)
+10. [Agent guide](./agent-guide.md)
+11. [TUI and VS Code experience contract](./experience.md)
+12. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+13. [Documentation governance](./documentation-governance.md)
+14. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 
@@ -72,6 +76,11 @@ architecture and delivery stages are defined in the
 | Book catalog and chapter status | `docs/book/catalog.json` |
 | Book ownership, freshness, and release facts | `docs/book/governance.json` |
 | Reliability program status | evidenced workstream status in `reliability-hardening.md` |
+| Production evaluation candidate implementation | `evaluation/manifest.json`, `evaluation/schema`, and `evaluation/scenarios` |
+| Production evaluation target contracts | normative requirements in `production-evaluation.md` |
+| Production evaluation execution order | work units, gates, estimates, and stop conditions in `production-evaluation-implementation-plan.md` |
+| Production evaluation findings | evidence-admitted formal entries in `production-evaluation-findings.md` |
+| Production evaluation decisions | `evaluation/assessments`, the Findings Register, and the corresponding assessment documents |
 | Roadmap | desired outcomes, never a claim of shipped behavior |
 
 When implementation and documentation disagree, verify the implementation,

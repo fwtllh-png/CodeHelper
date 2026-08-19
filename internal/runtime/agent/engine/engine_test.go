@@ -3112,6 +3112,13 @@ func mustControl(t *testing.T, engine *Engine) ControlPort {
 	return control
 }
 
+func TestControlBeforeScopeUsesCoordinatorNotActiveSentinel(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	if _, err := engine.Control(); !errors.Is(err, ErrTurnCoordinatorNotActive) {
+		t.Fatalf("Control() error = %v, want %v", err, ErrTurnCoordinatorNotActive)
+	}
+}
+
 func testToolDefinitions(t *testing.T, engine *Engine) []provider.ToolDefinition {
 	t.Helper()
 	snapshot, err := engine.options.Tools.Snapshot()

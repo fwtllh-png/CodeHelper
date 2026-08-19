@@ -38,6 +38,11 @@ A developer should be able to give CodeHelper a real repository task and obtain:
 - establish a reproducible CLI and VS Code release pipeline;
 - publish checksums, SBOM, provenance, compatibility, and rollback instructions;
 - validate clean installs across supported targets;
+- requalify the candidate evaluation Contract/Runner, Capture-to-Replay
+  Corpus, and Multi-Oracle Core Pack before establishing live-model,
+  real-VS-Code, Chaos, endurance, and canary release gates, as defined by the
+  [Production Evaluation Technical Specification](./production-evaluation.md)
+  and [Implementation Plan](./production-evaluation-implementation-plan.md);
 - define public compatibility policy before persisting a second schema version.
 
 ## Medium-Term: Coding Intelligence
@@ -99,7 +104,6 @@ the detailed audit workstreams, priorities, status, and acceptance evidence.
 - documented extension SDKs after contracts stabilize;
 - reusable templates for MCP, skills, hooks, and workflow specs;
 - signed registry operations and offline mirrors;
-- evaluation packs for repository tasks and safety behavior;
 - optional enterprise controls without forking the core runtime.
 
 ## Explicit Non-Goals

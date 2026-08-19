@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-remediation-implementation-01",
+  "phase": "foundation_reentry",
+  "round": "q1_remediation_implementation_01",
+  "status": "implemented_pending_q1_requalification",
+  "closed_on": "2026-08-19",
+  "attribution_assessment": "q1-remediation-attribution-01",
+  "same_round_discovery_and_repair": false,
+  "full_q1_rerun_performed": false,
+  "product_discovery_performed": false,
+  "work_units": [
+    {
+      "id": "Q1R-0001",
+      "findings": [
+        "Q1C-0001a",
+        "Q1C-0001b"
+      ],
+      "domain": "product_acp_runtime_contract",
+      "changes": [
+        "default_optional_empty_session_title_before_lifecycle_persistence",
+        "map_pre_scope_control_to_coordinator_not_active_sentinel",
+        "retain_runtime_active_registry_cancellation_authority"
+      ]
+    },
+    {
+      "id": "Q1R-0002",
+      "findings": [
+        "Q1C-0002a",
+        "Q1C-0002b"
+      ],
+      "domain": "integration_fixture_contract",
+      "changes": [
+        "bind_file_apply_and_quality_verify_ask_rules_through_typed_runtime_arguments",
+        "replace_stale_file_write_approval_rule",
+        "add_structured_editor_context_completion_stream",
+        "bound_deferred_waits_before_node_test_timeout"
+      ]
+    },
+    {
+      "id": "Q1R-0003",
+      "findings": [
+        "PEH-0031"
+      ],
+      "domain": "qualification_cleanup_evidence",
+      "changes": [
+        "record_identity_bound_runtime_pid_and_temporary_directory_ownership",
+        "record_cleanup_attempt_and_result_before_qualification_settlement",
+        "reject_missing_stale_invalid_or_outstanding_cleanup_evidence",
+        "bind_cleanup_digest_and_counts_into_qualification_report"
+      ]
+    }
+  ],
+  "post_fix_evidence": {
+    "runtime_digest": "sha256:8d2cb627169dd4eb09eeb35eb81910949a684fb7f59800bd929025f5721c9176",
+    "debug_log_digest": "sha256:60288cd5d500a2801397b66cf0b178c5bd6cbd55b831d122ee76b9ac683d6ec2",
+    "cleanup_report_digest": "sha256:8e66719270998bc0cc7eb3d37de19337a8ee421d8756fd45de491983c1cb8326",
+    "acp_binary_interop": {
+      "status": "passed",
+      "tests": 9,
+      "titleless_session_new_passed": true,
+      "pre_scope_cancel_terminal": "turn.canceled"
+    },
+    "vscode_runtime_integration": {
+      "status": "passed",
+      "tests": 60,
+      "real_runtime_scenarios": 4,
+      "duration_ms": 7242
+    },
+    "cleanup": {
+      "owned_resources": 9,
+      "processes": 5,
+      "temporary_directories": 4,
+      "outstanding": 0,
+      "live_runtime_processes_after_test": 0,
+      "new_temporary_directories_after_test": 0
+    }
+  },
+  "validation": [
+    {
+      "command": "go test -count=1 ./evaluation/...",
+      "status": "passed"
+    },
+    {
+      "command": "make test-hermetic",
+      "status": "passed",
+      "duration_ms": 246623
+    },
+    {
+      "command": "go test -race -count=1 -p 1 ./...",
+      "status": "passed"
+    },
+    {
+      "command": "go test -race -count=1 -p 1 ./internal/host/runtimeapi/acp/... ./internal/runtime/agent/engine",
+      "status": "passed"
+    },
+    {
+      "command": "go test -race -count=1 ./evaluation/internal/freeze ./evaluation/internal/qualification ./evaluation/cmd/codehelper-eval",
+      "status": "passed"
+    },
+    {
+      "command": "npm run check",
+      "directory": "extensions/vscode",
+      "status": "passed"
+    },
+    {
+      "command": "npm test",
+      "directory": "extensions/vscode",
+      "status": "passed",
+      "tests": 244
+    },
+    {
+      "command": "npm test -- runtime",
+      "directory": "extensions/vscode",
+      "status": "passed",
+      "tests": 60
+    },
+    {
+      "command": "make architecture-ratchet",
+      "status": "passed",
+      "targets": 112
+    },
+    {
+      "command": "make docs-check",
+      "status": "passed"
+    },
+    {
+      "command": "make book-check",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "debug_session": {
+    "id": "q1-integration-remediation",
+    "status": "confirmed_and_cleaned",
+    "instrumentation_cleanup_pending": false
+  },
+  "decision": {
+    "remediation_candidate_implemented": true,
+    "findings_closed": false,
+    "harness_frozen": false,
+    "product_discovery_allowed": false,
+    "next_gate": "new_immutable_q1_qualification_epoch"
+  }
+}

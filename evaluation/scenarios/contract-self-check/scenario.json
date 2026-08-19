@@ -1,0 +1,59 @@
+{
+  "schema_version": 2,
+  "id": "contract-self-check",
+  "title": "Evaluation contract and report self-check",
+  "family": "foundation-contract",
+  "owner": "evaluation",
+  "risk": "P0",
+  "driver": "command",
+  "provider_mode": "none",
+  "workspace": ".",
+  "fixture_id": "contract-self-check-v2",
+  "expected_facts": [
+    "contract_schema_valid",
+    "report_identity_bound"
+  ],
+  "turns": [],
+  "faults": [],
+  "oracles": [
+    "command_verification"
+  ],
+  "required_evidence": [
+    "command_result"
+  ],
+  "required_mutations": [],
+  "cleanup_contract": "command-process-tree-v2",
+  "run_plan": {
+    "attempts": 1,
+    "collect_all_group": "foundation-contract"
+  },
+  "budgets": {
+    "wall_time_ms": 300000,
+    "max_attempts": 1,
+    "max_output_bytes": 1048576
+  },
+  "requirements": {
+    "commands": [
+      "git",
+      "go"
+    ],
+    "platforms": [
+      "darwin",
+      "linux",
+      "windows"
+    ],
+    "capabilities": []
+  },
+  "execution": {
+    "command": [
+      "go",
+      "test",
+      "./evaluation/..."
+    ],
+    "working_directory": "."
+  },
+  "tags": [
+    "contract",
+    "hermetic"
+  ]
+}

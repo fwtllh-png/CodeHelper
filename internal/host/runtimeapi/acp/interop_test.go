@@ -352,7 +352,7 @@ func TestBinaryInteropApprovalRoundTripThroughSubmit(t *testing.T) {
 	workspace := t.TempDir()
 	rules := filepath.Join(workspace, "repository-rules.json")
 	if err := os.WriteFile(
-		rules, []byte(`[{"tool":"file_write","action":"ask"}]`), 0o600,
+		rules, []byte(`[{"tool":"file_apply","action":"ask"}]`), 0o600,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestBinaryInteropApprovalRoundTripThroughSubmit(t *testing.T) {
 		t.Fatalf("approval.required data type %T", required.Data)
 	}
 	if approval.EditPlan == nil {
-		t.Fatal("file_write approval did not include an edit plan")
+		t.Fatal("file_apply approval did not include an edit plan")
 	}
 	// The decision arrives while the turn is parked, which is only reachable
 	// because the event subscription outlives a single prompt.

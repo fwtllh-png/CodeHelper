@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-qualification-global-assessment-03",
+  "phase": "foundation_reentry",
+  "round": "q1_collect_all_qualification_03",
+  "status": "closed_passed_harness_frozen",
+  "closed_on": "2026-08-19",
+  "product_code_repair_performed": false,
+  "qualification_id": "foundation-v2-q1-03",
+  "candidate_lock": {
+    "schema_version": 3,
+    "status": "frozen_qualified",
+    "source_commit": "673c3d781fece86febd39e0c8e4304e9f2285ca5",
+    "source_digest": "sha256:ced728739bf7ce3ebf49aea5b73fb71deba392cf0c48cfce3fd1d7266cad9043",
+    "foundation_digest": "sha256:1f3f6083049e2a831fdc1b6d095a59c86599321a57d5d3801c5246dabd4d815e",
+    "harness_digest": "sha256:3f4589c276b98d5e834f6b1960d3d64e862e50535159a5b44e3319eab1b8411c",
+    "evaluation_digest": "sha256:85e438656f8d569fecd9e1872b34ecd712b3380363c533887a570c70e1a609e8",
+    "runtime_digest": "sha256:8d2cb627169dd4eb09eeb35eb81910949a684fb7f59800bd929025f5721c9176",
+    "vsix_digest": "sha256:fb0ec1a102a89de0323720d6d0ea0ff5a8769ae8078bd56ceef6bdc804cb7c8c",
+    "production_scan_digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "lock_identity": "sha256:177f9cd2339d676c5078841d9d7d0d4cd773782baf7f3aeee7ed583645c00f1e",
+    "input_roots": 21,
+    "inputs": 1724,
+    "clean_integration_runs": 3
+  },
+  "foundation_epoch": {
+    "status": "passed",
+    "scheduled": 8,
+    "settled": 8,
+    "passed": 8,
+    "failed": 0,
+    "invalid": 0,
+    "evidence_digest": "sha256:77de1aff3d90e296c40b42e5019b2babf85831a97c264af95a575302032e062e"
+  },
+  "integration_runs": [
+    {
+      "id": "foundation-v2-q1-03-integration-01",
+      "status": "passed",
+      "passed": 7,
+      "failed": 0,
+      "invalid": 0,
+      "evidence_digest": "sha256:2ff3c88b1cbe4891081af8c32f8904d0854a0e688891759e0da565b934ecee98",
+      "cleanup_evidence_digest": "sha256:cc3679e8abe2049f22b8f9973385d38444e7f0d4da5f85fe690d9630636955f7"
+    },
+    {
+      "id": "foundation-v2-q1-03-integration-02",
+      "status": "passed",
+      "passed": 7,
+      "failed": 0,
+      "invalid": 0,
+      "evidence_digest": "sha256:83150edd0b37d76e3b7ed47e6bc4b7408eb280e57aa989ab4e3d50c3751a3407",
+      "cleanup_evidence_digest": "sha256:dc42c8d760d9a8d9c7c289cc04c9eb756d4a7832d7347b87b807b288d05b715d"
+    },
+    {
+      "id": "foundation-v2-q1-03-integration-03",
+      "status": "passed",
+      "passed": 7,
+      "failed": 0,
+      "invalid": 0,
+      "evidence_digest": "sha256:f493fd4f309ab398f921d29803cf192c1b594cedd4fc17691edd4a5b300d3c94",
+      "cleanup_evidence_digest": "sha256:d3d2dbf6446d1b82c5122af68aedacbcedd228c3a0f5d52572dfaa6d1bb14b66"
+    }
+  ],
+  "cleanup": {
+    "runs": 3,
+    "owned_resources_per_run": 9,
+    "processes_per_run": 5,
+    "temporary_directories_per_run": 4,
+    "all_cleanup_attempted": true,
+    "all_cleanup_succeeded": true,
+    "outstanding": 0,
+    "live_runtime_processes_after_epoch": 0
+  },
+  "governance_remediation": {
+    "Q1G-0001": "closed_by_v3_input_root_identity",
+    "Q1G-0002": "closed_by_process_group_quiescence_and_q1_race",
+    "post_publication_identity_verification": "passed",
+    "post_publication_evidence_digest": "sha256:9441dd80d050bfda2e28751aaa5de0d1a424eb1398cb9f923822f1d214bc680b"
+  },
+  "finding_disposition": {
+    "qualification_findings": "closed",
+    "foundation_roots_closed": [
+      "PEH-0023",
+      "PEH-0024",
+      "PEH-0026",
+      "PEH-0027",
+      "PEH-0028",
+      "PEH-0029",
+      "PEH-0030",
+      "PEH-0031"
+    ],
+    "pending_d1_evidence": [
+      "PEH-0025"
+    ]
+  },
+  "decision": {
+    "q1_status": "passed",
+    "harness_frozen": true,
+    "foundation_qualified": true,
+    "product_discovery_authorized": false,
+    "product_remediation_authorized": false,
+    "next_gate": "explicit_start_of_d1_collect_all_product_discovery"
+  }
+}

@@ -37,6 +37,10 @@
 - 建立可重复的 CLI 与 VS Code Release Pipeline；
 - 发布 Checksum、SBOM、Provenance、Compatibility 与 Rollback 指南；
 - 验证支持 Target 的 Clean Install；
+- 先重新验收候选评测 Contract/Runner、Capture-to-Replay Corpus 与 Multi-Oracle
+  Core Pack，再按[生产测评技术规格](./production-evaluation.md)与
+  [实施计划](./production-evaluation-implementation-plan.md)建立真实模型、真实
+  VS Code、Chaos、耐久和 Canary 发布门禁；
 - 在第二个公开 Schema 出现前定义兼容策略。
 
 ## 中期：Coding Intelligence
@@ -97,7 +101,6 @@
 - 契约稳定后提供 Extension SDK；
 - MCP、Skill、Hook 与 Workflow Spec 模板；
 - Signed Registry Operation 与 Offline Mirror；
-- 仓库任务和安全行为 Evaluation Pack；
 - 不分叉 Core Runtime 的可选企业治理能力。
 
 ## 明确不做

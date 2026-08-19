@@ -7,10 +7,11 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
@@ -35,6 +36,21 @@ import type { RuntimePosture } from "../security/trust.js";
 const integrationBinary = process.env["CODEHELPER_VSCODE_BINARY"];
 const integrationFixture = process.env["CODEHELPER_VSCODE_FIXTURE"];
 const contextFixture = process.env["CODEHELPER_VSCODE_CONTEXT_FIXTURE"];
+const cleanupReportPath = process.env["CODEHELPER_Q1_CLEANUP_REPORT"];
+const cleanupQualificationID = process.env["CODEHELPER_Q1_QUALIFICATION_ID"];
+const cleanupTaskID = process.env["CODEHELPER_Q1_TASK_ID"];
+
+interface OwnedResource {
+  readonly kind: "process" | "temporary_directory";
+  readonly owner: string;
+  readonly identity: string;
+  readonly pid?: number;
+  cleanup_attempted: boolean;
+  cleanup_succeeded: boolean;
+}
+
+const ownedResources = new Map<string, OwnedResource>();
+let cleanupWrite = Promise.resolve();
 
 void test(
   "real Runtime restarts, replays its cursor, and denies writes when untrusted",
@@ -46,6 +62,7 @@ void test(
     assert.ok(integrationBinary);
     assert.ok(integrationFixture);
     const root = await mkdtemp(join(tmpdir(), "codehelper-vscode-runtime-"));
+    await registerTemporaryRoot("restart", root);
     const workspace = join(root, "workspace");
     const dataDirectory = join(root, "state");
     await mkdir(workspace);
@@ -60,6 +77,7 @@ void test(
     try {
       assert.equal((await verifyBinary(wrapper)).name, "codehelper");
       first = await start(wrapper, workspace, dataDirectory);
+      await registerRuntime("restart-first", first);
       await negotiateRuntime(first.client);
       firstSession = await connectSession(
         first.client,
@@ -80,10 +98,11 @@ void test(
       const consumedSeq = store.load(workspace)?.lastSeq ?? 0;
       assert.ok(consumedSeq > 0);
       firstSession.dispose();
-      await first.stop();
+      await stopOwnedRuntime("restart-first", first);
       first = undefined;
 
       second = await start(wrapper, workspace, dataDirectory);
+      await registerRuntime("restart-second", second);
       await negotiateRuntime(second.client);
       const hydrated: number[] = [];
       secondSession = await connectSession(
@@ -115,11 +134,15 @@ void test(
       assert.equal((await background.tasks(originalSessionID)).length, 0);
       assert.equal((await background.usage(originalSessionID)).turns, 0);
     } finally {
-      firstSession?.dispose();
-      secondSession?.dispose();
-      await first?.stop();
-      await second?.stop();
-      await rm(root, { recursive: true, force: true });
+      await cleanupIntegrationResources(
+        [firstSession, secondSession],
+        [
+          ["restart-first", first],
+          ["restart-second", second],
+        ],
+        "restart",
+        root,
+      );
     }
   },
 );
@@ -134,14 +157,24 @@ void test(
     assert.ok(integrationBinary);
     assert.ok(integrationFixture);
     const root = await mkdtemp(join(tmpdir(), "codehelper-vscode-approval-"));
+    await registerTemporaryRoot("approval", root);
     const workspace = join(root, "workspace");
     const dataDirectory = join(root, "state");
     await mkdir(workspace);
     await mkdir(dataDirectory);
+    const rules = await approvalRules(root);
     const wrapper = await fixtureWrapper(root, integrationBinary, integrationFixture);
     // This fixture exercises write, declaration repair, quality,
     // final declaration, and final answer as five distinct samples.
-    const runtime = await start(wrapper, workspace, dataDirectory, "suggest", 5);
+    const runtime = await start(
+      wrapper,
+      workspace,
+      dataDirectory,
+      "suggest",
+      5,
+      rules,
+    );
+    await registerRuntime("approval", runtime);
     const store = new BindingStore(new MemoryMemento());
     const projector = new ChatProjector();
     const approval = deferred<ApprovalCard>();
@@ -178,7 +211,7 @@ void test(
         () => true,
       );
       await commands.submitPrompt("create result", [], "workspace_change");
-      const request = await approval.promise;
+      const request = await settleWithin(approval.promise, "file_apply approval");
       assert.ok(request.editPlan);
       assert.deepEqual(request.allowedScopes, ["once"]);
       const plannedFile = request.editPlan.files[0];
@@ -194,7 +227,10 @@ void test(
         request.expiresAt,
         request.editPlan.id,
       );
-      const qualityRequest = await qualityApproval.promise;
+      const qualityRequest = await settleWithin(
+        qualityApproval.promise,
+        "quality_verify approval",
+      );
       assert.equal(qualityRequest.editPlan, undefined);
       assert.deepEqual(qualityRequest.allowedScopes, ["once", "session", "always"]);
       await commands.decideApproval(
@@ -204,17 +240,20 @@ void test(
         "once",
         qualityRequest.expiresAt,
       );
-      await completed.promise;
-      await session.settled();
+      await settleWithin(completed.promise, "approval turn completion");
+      await settleWithin(session.settled(), "approval event projection");
       assert.equal(projector.pendingApprovals().length, 0);
       assert.match(
         await readFile(join(workspace, "result.txt"), "utf8"),
         /created by engine/,
       );
     } finally {
-      session?.dispose();
-      await runtime.stop();
-      await rm(root, { recursive: true, force: true });
+      await cleanupIntegrationResources(
+        [session],
+        [["approval", runtime]],
+        "approval",
+        root,
+      );
     }
   },
 );
@@ -229,6 +268,7 @@ void test(
     assert.ok(integrationBinary);
     assert.ok(contextFixture);
     const root = await mkdtemp(join(tmpdir(), "codehelper-vscode-context-"));
+    await registerTemporaryRoot("context", root);
     const workspace = join(root, "workspace");
     const dataDirectory = join(root, "state");
     await mkdir(workspace);
@@ -238,6 +278,7 @@ void test(
     await writeFile(contextPath, content);
     const wrapper = await fixtureWrapper(root, integrationBinary, contextFixture);
     const runtime = await start(wrapper, workspace, dataDirectory, "suggest");
+    await registerRuntime("context", runtime);
     const projector = new ChatProjector();
     const completed = deferred<true>();
     let startedContext: unknown;
@@ -279,8 +320,8 @@ void test(
         digest: createHash("sha256").update(content).digest("hex"),
         explicit: true,
       }]);
-      await completed.promise;
-      await session.settled();
+      await settleWithin(completed.promise, "editor-context turn completion");
+      await settleWithin(session.settled(), "editor-context event projection");
       const turn = projector.snapshot().turns[0];
       assert.ok(turn);
       assert.equal(turn.user, "inspect active file");
@@ -295,9 +336,12 @@ void test(
       }]);
       assert.deepEqual(receiptContext, startedContext);
     } finally {
-      session?.dispose();
-      await runtime.stop();
-      await rm(root, { recursive: true, force: true });
+      await cleanupIntegrationResources(
+        [session],
+        [["context", runtime]],
+        "context",
+        root,
+      );
     }
   },
 );
@@ -312,15 +356,26 @@ void test(
     assert.ok(integrationBinary);
     assert.ok(integrationFixture);
     const root = await mkdtemp(join(tmpdir(), "codehelper-vscode-plan-drift-"));
+    await registerTemporaryRoot("plan-drift", root);
     const workspace = join(root, "workspace");
     const dataDirectory = join(root, "state");
     await mkdir(workspace);
     await mkdir(dataDirectory);
+    const rules = await approvalRules(root);
     const wrapper = await fixtureWrapper(root, integrationBinary, integrationFixture);
-    const runtime = await start(wrapper, workspace, dataDirectory, "suggest");
+    const runtime = await start(
+      wrapper,
+      workspace,
+      dataDirectory,
+      "suggest",
+      2,
+      rules,
+    );
+    await registerRuntime("plan-drift", runtime);
     const projector = new ChatProjector();
     const approval = deferred<ApprovalCard>();
     const terminal = deferred<true>();
+    let projectionError: Error | undefined;
     let session: ConnectedSession | undefined;
     try {
       await negotiateRuntime(runtime.client);
@@ -329,20 +384,23 @@ void test(
         new BindingStore(new MemoryMemento()),
         workspace,
         (event) => {
+          traceIntegrationEvent(event);
+          if (!isUnknownEvent(event) && (
+            event.kind === "turn.completed" ||
+            event.kind === "turn.failed" ||
+            event.kind === "turn.canceled"
+          )) {
+            terminal.resolve(true);
+          }
           projector.apply(event);
           const pending = projector.pendingApprovals()[0];
           if (pending !== undefined) {
             approval.resolve(pending);
           }
-          if (projector.snapshot().turns.some(
-            (turn) => turn.status === "completed" || turn.status === "failed",
-          )) {
-            terminal.resolve(true);
-          }
           return Promise.resolve();
         },
         (error) => {
-          throw error;
+          projectionError = error;
         },
       );
       const commands = new SessionCommands(
@@ -351,7 +409,7 @@ void test(
         () => true,
       );
       await commands.submitPrompt("create result", [], "workspace_change");
-      const request = await approval.promise;
+      const request = await settleWithin(approval.promise, "plan-drift approval");
       assert.ok(request.editPlan);
       await writeFile(join(workspace, "result.txt"), "external change\n");
       await commands.decideApproval(
@@ -362,16 +420,20 @@ void test(
         request.expiresAt,
         request.editPlan.id,
       );
-      await terminal.promise;
-      await session.settled();
+      await settleWithin(terminal.promise, "plan-drift terminal");
+      await settleWithin(session.settled(), "plan-drift event projection");
+      assert.equal(projectionError, undefined);
       assert.equal(
         await readFile(join(workspace, "result.txt"), "utf8"),
         "external change\n",
       );
     } finally {
-      session?.dispose();
-      await runtime.stop();
-      await rm(root, { recursive: true, force: true });
+      await cleanupIntegrationResources(
+        [session],
+        [["plan-drift", runtime]],
+        "plan-drift",
+        root,
+      );
     }
   },
 );
@@ -382,6 +444,7 @@ async function start(
   dataDirectory: string,
   posture: RuntimePosture = "never",
   maxSteps = 2,
+  repositoryRulesPath?: string,
 ): Promise<RuntimeProcess> {
   return launchRuntime({
     binaryPath,
@@ -389,6 +452,7 @@ async function start(
     dataDirectory,
     posture,
     maxSteps,
+    ...(repositoryRulesPath === undefined ? {} : { repositoryRulesPath }),
     workspaceIdentity: createWorkspaceIdentity(
       pathToFileURL(workspaceRoot).toString(),
       workspaceRoot,
@@ -415,6 +479,160 @@ async function fixtureWrapper(
   );
   await chmod(wrapper, 0o700);
   return wrapper;
+}
+
+async function approvalRules(root: string): Promise<string> {
+  const path = join(root, "repository-rules.json");
+  await writeFile(path, JSON.stringify([
+    { tool: "file_apply", action: "ask" },
+    { tool: "quality_verify", action: "ask" },
+  ]), { mode: 0o600 });
+  return path;
+}
+
+async function registerTemporaryRoot(owner: string, path: string): Promise<void> {
+  if (cleanupReportPath === undefined) return;
+  const identity = digestIdentity(path);
+  ownedResources.set(`temporary_directory:${identity}`, {
+    kind: "temporary_directory",
+    owner,
+    identity,
+    cleanup_attempted: false,
+    cleanup_succeeded: false,
+  });
+  await writeCleanupEvidence();
+}
+
+async function registerRuntime(
+  owner: string,
+  runtime: RuntimeProcess,
+): Promise<void> {
+  if (cleanupReportPath === undefined) return;
+  assert.notEqual(runtime.pid, undefined, "tracked Runtime must have a PID");
+  const pid = runtime.pid as number;
+  const identity = digestIdentity(`pid:${String(pid)}:${owner}`);
+  ownedResources.set(`process:${identity}`, {
+    kind: "process",
+    owner,
+    identity,
+    pid,
+    cleanup_attempted: false,
+    cleanup_succeeded: false,
+  });
+  await writeCleanupEvidence();
+}
+
+async function cleanupIntegrationResources(
+  sessions: readonly (ConnectedSession | undefined)[],
+  runtimes: readonly (readonly [string, RuntimeProcess | undefined])[],
+  rootOwner: string,
+  root: string,
+): Promise<void> {
+  for (const session of sessions) {
+    session?.dispose();
+  }
+  const errors: unknown[] = [];
+  for (const [owner, runtime] of runtimes) {
+    if (runtime === undefined) continue;
+    try {
+      await stopOwnedRuntime(owner, runtime);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  try {
+    await removeOwnedRoot(rootOwner, root);
+  } catch (error) {
+    errors.push(error);
+  }
+  if (errors.length !== 0) {
+    throw new AggregateError(errors, "integration resource cleanup failed");
+  }
+}
+
+async function stopOwnedRuntime(
+  owner: string,
+  runtime: RuntimeProcess,
+): Promise<void> {
+  const resource = ownedRuntime(owner, runtime);
+  if (resource !== undefined) {
+    resource.cleanup_attempted = true;
+    await writeCleanupEvidence();
+  }
+  try {
+    await runtime.stop();
+    if (resource !== undefined) {
+      resource.cleanup_succeeded = true;
+    }
+  } finally {
+    await writeCleanupEvidence();
+  }
+}
+
+async function removeOwnedRoot(owner: string, path: string): Promise<void> {
+  const resource = ownedTemporaryRoot(owner, path);
+  if (resource !== undefined) {
+    resource.cleanup_attempted = true;
+    await writeCleanupEvidence();
+  }
+  try {
+    await rm(path, { recursive: true, force: true });
+    if (resource !== undefined) {
+      resource.cleanup_succeeded = true;
+    }
+  } finally {
+    await writeCleanupEvidence();
+  }
+}
+
+function ownedRuntime(
+  owner: string,
+  runtime: RuntimeProcess,
+): OwnedResource | undefined {
+  if (runtime.pid === undefined) return undefined;
+  const identity = digestIdentity(`pid:${String(runtime.pid)}:${owner}`);
+  return ownedResources.get(`process:${identity}`);
+}
+
+function ownedTemporaryRoot(
+  owner: string,
+  path: string,
+): OwnedResource | undefined {
+  const identity = digestIdentity(path);
+  const resource = ownedResources.get(`temporary_directory:${identity}`);
+  return resource?.owner === owner ? resource : undefined;
+}
+
+function digestIdentity(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+async function writeCleanupEvidence(): Promise<void> {
+  if (cleanupReportPath === undefined) return;
+  if (cleanupQualificationID === undefined || cleanupTaskID === undefined) {
+    throw new Error("Q1 cleanup evidence identity is incomplete");
+  }
+  cleanupWrite = cleanupWrite.then(async () => {
+    const resources = [...ownedResources.values()].sort((left, right) =>
+      `${left.kind}:${left.identity}`.localeCompare(`${right.kind}:${right.identity}`)
+    );
+    const report = {
+      schema_version: 1,
+      qualification_id: cleanupQualificationID,
+      task_id: cleanupTaskID,
+      resources,
+      outstanding: resources.filter((resource) =>
+        !resource.cleanup_attempted || !resource.cleanup_succeeded
+      ).length,
+    };
+    const temporary = `${cleanupReportPath}.tmp-${String(process.pid)}`;
+    await mkdir(dirname(cleanupReportPath), { recursive: true, mode: 0o700 });
+    await writeFile(temporary, `${JSON.stringify(report, null, 2)}\n`, {
+      mode: 0o600,
+    });
+    await rename(temporary, cleanupReportPath);
+  });
+  await cleanupWrite;
 }
 
 class MemoryMemento implements Memento {
@@ -456,4 +674,24 @@ function deferred<T>(): {
     throw new Error("failed to initialize deferred promise");
   }
   return { promise, resolve: resolvePromise };
+}
+
+async function settleWithin<T>(
+  promise: Promise<T>,
+  label: string,
+  milliseconds = 10_000,
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} did not settle within ${String(milliseconds)}ms`));
+    }, milliseconds);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
 }

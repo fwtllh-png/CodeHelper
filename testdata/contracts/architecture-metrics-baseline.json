@@ -77,9 +77,6 @@
         "production_lines": 1976,
         "options_fields": 13,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "Budget admission faults distinguish projected reservations from committed Workflow spend"
       }
     },
     {
@@ -91,9 +88,6 @@
         "production_lines": 4341,
         "options_fields": 8,
         "mutex_fields": 3
-      },
-      "relaxations": {
-        "production_lines": "Multi-agent live validation reports normalized Capsule limits, partitions omitted child budgets, and persists resident Agent lifecycle spend"
       }
     },
     {
@@ -350,9 +344,6 @@
         "production_lines": 8966,
         "options_fields": 70,
         "mutex_fields": 6
-      },
-      "relaxations": {
-        "production_lines": "Multi-agent live recovery handles stale worktrees, nonblocking child settlement, and remaining resident Agent budget reservations"
       }
     },
     {
@@ -615,9 +606,6 @@
         "production_lines": 11593,
         "options_fields": 60,
         "mutex_fields": 8
-      },
-      "relaxations": {
-        "production_lines": "Agent lifecycle tools advance structured progress and budget failure repair forbids unchanged retries"
       }
     },
     {
@@ -726,9 +714,6 @@
         "production_lines": 6255,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Structured budget faults distinguish projected admission demand from committed usage"
       }
     },
     {
