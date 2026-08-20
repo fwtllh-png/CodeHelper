@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-qualification-global-assessment-11",
+  "phase": "qualification_q1",
+  "status": "closed_not_frozen_runtime_commit_override_mismatch",
+  "observed_on": "2026-08-20",
+  "qualification_id": "foundation-v2-q1-11",
+  "inventory": {
+    "foundation_epoch": "passed_8_of_8",
+    "integration_01": "failed_6_of_7",
+    "failed_task": "identity_after",
+    "cleanup_outstanding": 0,
+    "lock_status": "candidate",
+    "clean_integration_runs": 0
+  },
+  "root_cause": "the_operator_supplied_Q1_COMMIT_did_not_equal_HEAD_so_integration_rebuilt_the_runtime_with_the_lock_source_commit_and_identity_after_detected_the_digest_change",
+  "decision": {
+    "lock_frozen": false,
+    "evidence_reusable": false,
+    "product_failure": false,
+    "thresholds_changed": false,
+    "next_gate": "start_q1_round_12_from_a_clean_worktree_using_git_rev_parse_HEAD"
+  }
+}
