@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "canary": {
+    "phase_slots": [1, 2, 3],
+    "turns_per_slot": 20,
+    "turn_interval_ms": 250,
+    "turn_timeout_seconds": 20,
+    "prompt": "say hello",
+    "max_p95_latency_ms": 5000,
+    "max_rss_growth_bytes": 67108864,
+    "max_fd_growth": 8
+  },
+  "rollback": {
+    "command": ["npm", "test", "--", "binary"]
+  },
+  "incident": {
+    "batch_id": "h4-canary-incident",
+    "entry_prefix": "canary-incident",
+    "reviewer": "h4-reviewer",
+    "reviewed_on": "2026-08-20"
+  }
+}

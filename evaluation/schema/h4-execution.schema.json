@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeHelper H4 Canary and Incident Closure Execution Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "canary", "rollback", "incident"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "canary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase_slots",
+        "turns_per_slot",
+        "turn_interval_ms",
+        "turn_timeout_seconds",
+        "prompt",
+        "max_p95_latency_ms",
+        "max_rss_growth_bytes",
+        "max_fd_growth"
+      ],
+      "properties": {
+        "phase_slots": {
+          "type": "array",
+          "prefixItems": [
+            {"const": 1},
+            {"const": 2},
+            {"const": 3}
+          ],
+          "items": false,
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "turns_per_slot": {"type": "integer", "minimum": 10},
+        "turn_interval_ms": {"type": "integer", "minimum": 1},
+        "turn_timeout_seconds": {"type": "integer", "minimum": 1},
+        "prompt": {"type": "string", "minLength": 1, "maxLength": 256},
+        "max_p95_latency_ms": {"type": "integer", "minimum": 1},
+        "max_rss_growth_bytes": {"type": "integer", "minimum": 0},
+        "max_fd_growth": {"type": "integer", "minimum": 0}
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command"],
+      "properties": {
+        "command": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "incident": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["batch_id", "entry_prefix", "reviewer", "reviewed_on"],
+      "properties": {
+        "batch_id": {"$ref": "#/$defs/id"},
+        "entry_prefix": {"$ref": "#/$defs/id"},
+        "reviewer": {"$ref": "#/$defs/id"},
+        "reviewed_on": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+    },
+    "strings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

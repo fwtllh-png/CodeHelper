@@ -112,6 +112,24 @@
       "absence_status": "invalid"
     },
     {
+      "id": "h4-execution",
+      "kind": "schema",
+      "path": "evaluation/schema/h4-execution.schema.json",
+      "owner": "evaluation",
+      "producer": "admission-loader",
+      "consumer": "admission-coordinator",
+      "absence_status": "invalid"
+    },
+    {
+      "id": "h4-admission-evidence",
+      "kind": "schema",
+      "path": "evaluation/schema/h4-admission-evidence.schema.json",
+      "owner": "evaluation",
+      "producer": "admission-coordinator",
+      "consumer": "global-assessment",
+      "absence_status": "invalid"
+    },
+    {
       "id": "impact-policy",
       "kind": "schema",
       "path": "evaluation/schema/impact-map.schema.json",

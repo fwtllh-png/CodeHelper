@@ -314,6 +314,10 @@ func printUsage(writer io.Writer) {
 	)
 	_, _ = fmt.Fprintln(
 		writer,
+		"  codehelper-eval admission h4 --id ID --lock FILE --h3-report FILE --h3-release FILE --h3-package DIR --output DIR [options]",
+	)
+	_, _ = fmt.Fprintln(
+		writer,
 		"  codehelper-eval run --suite ID --scenario ID [options]",
 	)
 	_, _ = fmt.Fprintln(

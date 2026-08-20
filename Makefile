@@ -17,7 +17,7 @@ LDFLAGS := -s -w \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
 	eval-contract-check eval-foundation-check eval-replay eval-oracle \
-	eval-q1-artifacts eval-q1 eval-d1 eval-h1 eval-h2 eval-h3 \
+	eval-q1-artifacts eval-q1 eval-d1 eval-h1 eval-h2 eval-h3 eval-h4 \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-performance \
 	observation-traits observation-traits-check \
@@ -66,6 +66,12 @@ H3_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
 H3_H1_REPORT ?= .tmp/evaluation/h1/$(H1_ID)/qualification.json
 H3_H2_REPORT ?= .tmp/evaluation/h2/$(H2_ID)/qualification.json
 H3_OUTPUT ?= .tmp/evaluation/h3/$(H3_ID)
+H4_ID ?= production-admission-h4-01
+H4_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
+H4_H3_REPORT ?= $(H3_OUTPUT)/qualification.json
+H4_H3_RELEASE ?= $(H3_OUTPUT)/release-evidence.json
+H4_H3_PACKAGE ?= $(H3_OUTPUT)/package
+H4_OUTPUT ?= .tmp/evaluation/h4/$(H4_ID)
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
@@ -176,6 +182,19 @@ eval-h3:
 		--runtime-version '$(Q1_VERSION)' \
 		--build-date '$(Q1_BUILD_DATE)' \
 		--output '$(H3_OUTPUT)'
+
+eval-h4:
+	'$(EVALUATION_BINARY)' admission h4 \
+		--root . \
+		--id '$(H4_ID)' \
+		--lock '$(H4_LOCK)' \
+		--h3-report '$(H4_H3_REPORT)' \
+		--h3-release '$(H4_H3_RELEASE)' \
+		--h3-package '$(H4_H3_PACKAGE)' \
+		--evaluation-binary '$(EVALUATION_BINARY)' \
+		--runtime '$(BINARY)' \
+		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
+		--output '$(H4_OUTPUT)'
 
 eval-replay:
 	$(GO) run ./evaluation/cmd/codehelper-eval replay check \

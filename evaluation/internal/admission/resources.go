@@ -25,15 +25,42 @@ func SnapshotOwnedResources(
 	ctx context.Context,
 	temporaryRoot, runtimePath string,
 ) (ResourceSnapshot, error) {
-	directories, err := filepath.Glob(filepath.Join(temporaryRoot, "cdt-*"))
-	if err != nil {
-		return ResourceSnapshot{}, err
-	}
-	for index := range directories {
-		directories[index] = filepath.Clean(directories[index])
+	return snapshotOwnedResources(
+		ctx,
+		temporaryRoot,
+		runtimePath,
+		[]string{"cdt-*"},
+	)
+}
+
+func SnapshotH4Resources(
+	ctx context.Context,
+	temporaryRoot, packageBinary string,
+) (ResourceSnapshot, error) {
+	return snapshotOwnedResources(
+		ctx,
+		temporaryRoot,
+		packageBinary,
+		[]string{"codehelper-h4-canary-*"},
+	)
+}
+
+func snapshotOwnedResources(
+	ctx context.Context,
+	temporaryRoot, runtimePath string,
+	patterns []string,
+) (ResourceSnapshot, error) {
+	var directories []string
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(filepath.Join(temporaryRoot, pattern))
+		if err != nil {
+			return ResourceSnapshot{}, err
+		}
+		for _, match := range matches {
+			directories = append(directories, filepath.Clean(match))
+		}
 	}
 	sort.Strings(directories)
-
 	absoluteRuntime, err := filepath.Abs(runtimePath)
 	if err != nil {
 		return ResourceSnapshot{}, err
@@ -45,7 +72,7 @@ func SnapshotOwnedResources(
 		"pid=,command=",
 	).Output()
 	if err != nil {
-		return ResourceSnapshot{}, fmt.Errorf("list H1 processes: %w", err)
+		return ResourceSnapshot{}, fmt.Errorf("list owned processes: %w", err)
 	}
 	var processes []int
 	for _, line := range bytes.Split(output, []byte{'\n'}) {
@@ -55,7 +82,7 @@ func SnapshotOwnedResources(
 		}
 		pid, parseErr := strconv.Atoi(fields[0])
 		if parseErr != nil || pid < 1 {
-			return ResourceSnapshot{}, errors.New("parse H1 process inventory")
+			return ResourceSnapshot{}, errors.New("parse owned process inventory")
 		}
 		processes = append(processes, pid)
 	}
@@ -94,7 +121,7 @@ func VerifyResourceCleanup(
 	digest := spec.DigestString(string(raw))
 	if len(remainingDirectories) != 0 || len(remainingProcesses) != 0 {
 		return digest, fmt.Errorf(
-			"H1 left %d temporary directories and %d Runtime processes",
+			"admission left %d temporary directories and %d Runtime processes",
 			len(remainingDirectories),
 			len(remainingProcesses),
 		)
