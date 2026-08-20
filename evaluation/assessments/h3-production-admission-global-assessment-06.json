@@ -3,7 +3,7 @@
   "assessment_id": "h3-production-admission-global-assessment-06",
   "phase": "production_admission_h3",
   "round": "production-admission-h3-02",
-  "status": "passed_pending_post_publication_lock_verification",
+  "status": "closed_passed_h3_rc_admitted",
   "closed_on": "2026-08-20",
   "predecessor_rounds": {
     "production-admission-h3-01": "failed_persistence_slope",
@@ -137,7 +137,9 @@
     "release_evidence_decision": "admit",
     "h4_authorized": false,
     "canary_expansion_authorized": false,
-    "post_publication_lock_verification": "pending",
-    "next_gate": "publish_governance_artifacts_then_verify_lock"
+    "post_publication_commit": "99f252d",
+    "post_publication_lock_verification": "passed",
+    "post_publication_evidence_digest": "sha256:3cc20ed07a5be5cf83cf0093dadce2a0f48ad66bd6925053373eb4c628b4bf45",
+    "next_gate": "explicit_h4_authorization"
   }
 }
