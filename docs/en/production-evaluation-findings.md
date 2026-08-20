@@ -2,9 +2,11 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation-findings.md) | English
 
-> Status: the failure-evidence-capable H2 Harness is qualified under Q1 Round
-> 09. D1 passed 56/56, H1 passed 21/21, and governed H2 re-entry Round 03
-> passed 16/16. H3-H4 and full release admission are not admitted.
+> Status: the H3-capable Harness is frozen under Q1 Round 13. Same-Lock H1
+> Round 03 passed 21/21, H2 Round 05 passed 16/16, and formal H3 Round 02
+> passed 14/14 with all eight RC lanes admitted. H3 admits a local
+> `validated-dry-run` candidate only; H4 Canary and rollout expansion are not
+> admitted.
 
 This register follows the
 [Technical Specification](./production-evaluation.md) and
@@ -20,17 +22,19 @@ Rounds.
 | Evaluation 17.1 | qualified as Foundation v2 input |
 | Evaluation 17.2 | qualified as Foundation v2 input |
 | Evaluation 17.3 | invalidated |
-| Foundation v2 F1-F3 and H2 Harness | qualified; v3 Harness frozen by Q1 Round 09 |
-| Evaluation 17.4 | H1 and H2 passed; H3-H4 not started |
-| Formal product findings | H2C-0001 remediated and verified |
+| Foundation v2 F1-F3 and H3 Harness | qualified; v3 Harness frozen by Q1 Round 13 |
+| Evaluation 17.4 | H1, H2, and H3 passed; H4 not started |
+| Formal product findings | H2C-0001, H3P-0003, and H3P-0004 remediated and verified |
 | Historical product hypotheses | 4 |
-| Trusted 17.4 passes | H1 Round 01; H2 Round 03 |
-| Trusted 17.4 repairs | 0 |
+| Trusted 17.4 passes | same-Lock H1 Round 03; H2 Round 05; H3 Round 02 |
+| Trusted 17.4 repairs | 2 |
 | Open systemic Harness roots | 0 |
-| Q1 Qualification | Round 09 passed; H2 Harness `frozen_qualified` |
+| Q1 Qualification | Round 13 passed; H3 Harness `frozen_qualified` |
 | D1 Product Discovery | 56/56 passed; no Product Candidate |
-| H1 Production Admission | 21/21 passed; no Product Candidate |
-| H2 Production Admission | Round 03 passed 16/16 after governed re-entry |
+| H1 Production Admission | same-Lock Round 03 passed 21/21 |
+| H2 Production Admission | same-Lock Round 05 passed 16/16 |
+| H3 Production Admission | Round 02 passed 14/14; eight of eight RC lanes admitted |
+| H4 Canary Admission | not authorized |
 
 Machine decisions:
 
@@ -59,6 +63,16 @@ evaluation/assessments/h2-reentry-decision-01.json
 evaluation/assessments/q1-qualification-global-assessment-09.json
 evaluation/assessments/h2-reentry-global-assessment-01.json
 evaluation/assessments/h2-production-admission-global-assessment-03.json
+evaluation/assessments/h3-preflight-global-assessment-06.json
+evaluation/assessments/h3-production-admission-global-assessment-01.json
+evaluation/assessments/h3-production-admission-global-assessment-02.json
+evaluation/assessments/h3-production-admission-global-assessment-03.json
+evaluation/assessments/h3-production-admission-global-assessment-04.json
+evaluation/assessments/h3-production-admission-global-assessment-05.json
+evaluation/assessments/q1-qualification-global-assessment-11.json
+evaluation/assessments/q1-qualification-global-assessment-12.json
+evaluation/assessments/q1-qualification-global-assessment-13.json
+evaluation/assessments/h3-production-admission-global-assessment-06.json
 ```
 
 Q1 Round 06 qualified the D1-capable Harness after 8/8 Foundation tasks and
@@ -87,6 +101,34 @@ reproductions then passed and showed 130/130 reasoning messages retaining
 replay state with zero orphan Tool Calls. No product-logic fix was authorized.
 The one authorized formal re-entry, Round 03, passed 16/16 with 12/12 private,
 known-cost Live samples and stable before/after identity. H2 is admitted.
+
+### H3 Finding Closure
+
+Formal H3 Round 01 completed 480/480 Turns with zero failed or canceled
+Terminals, but failed the fixed persistence policy at 498,233 bytes/Turn.
+Assessment separated the symptoms before remediation:
+
+| ID | Domain | Root cause | Closure |
+| --- | --- | --- | --- |
+| H3P-0003 | Product persistence | every Terminal Envelope repeated the cumulative Session Delta history | deterministic bounded Session Delta encoding; verified |
+| H3P-0004 | Product persistence | every automatic Checkpoint stored cumulative uncompressed history in CAS | deterministic bounded Checkpoint content encoding; verified |
+| H3H-0009 | Harness sampling | dynamic CAS temporary refs could disappear during directory enumeration | ignore only transient `os.ErrNotExist`; verified |
+
+The combined 480-Turn verification reduced persistence slope to 133,391
+bytes/Turn without changing the 262,144 bytes/Turn threshold, duration,
+denominator, Prompt, or retry policy. Because product inputs changed, Q1
+restarted. Round 11 remains invalid runtime-identity history; Round 12 remains
+a non-reusable single `evaluation-race` command failure that did not reproduce
+in three exact confirmations. Q1 Round 13 then passed 8/8 Foundation tasks and
+three consecutive 7/7 Integration runs.
+
+On the Round 13 Lock, H1 Round 03 passed 21/21 and H2 Round 05 passed 16/16.
+Formal H3 Round 02 passed all 14 coordinator tasks and the four-hour Endurance
+workload completed 480/480 Turns. Persistence slope was 133,421 bytes/Turn,
+P95 latency was 93 ms, RSS slope was 7,383 bytes/Turn, FD growth was zero, and
+process restarts were zero. Foundation, Integration, Chaos, Live, Endurance,
+Release, VS Code RC, and Package lanes all passed. Release Evidence v3 decided
+`admit` for the local RC candidate; the VS Code candidate was not uploaded.
 
 ## 2. Product Hypotheses
 
@@ -188,8 +230,9 @@ Must be replaced or redesigned:
 
 ## 6. Re-entry Rule
 
-Q1, D1, H1, and H2 are closed. H2 passed the one explicitly authorized
-re-entry Round. H3-H4 require separate explicit authorization.
+Q1, D1, H1, H2, and H3 are closed. H2 passed the one explicitly authorized
+re-entry Round, and H3 passed after separately assessed product remediation
+and requalification. H4 requires separate explicit authorization.
 
 Current sequence:
 
@@ -203,19 +246,26 @@ Current sequence:
 7. H2 Rounds 01 and 02 both failed 14/16 on Multi-Agent quality.
 8. Q1 Round 09 froze schema-v2 failure evidence after explicit re-entry.
 9. H2 Round 03 passed 16/16 without Prompt, threshold, or product changes.
-10. H3-H4 admission was not granted.
+10. H3 Round 01 failed the fixed persistence slope policy.
+11. H3P-0003, H3P-0004, and H3H-0009 were remediated and verified separately.
+12. Q1 Round 13 froze the H3-capable Lock after Rounds 11 and 12 remained
+    immutable non-reusable history.
+13. Same-Lock H1 Round 03 and H2 Round 05 passed.
+14. H3 Round 02 passed 14/14 and admitted all eight RC lanes.
+15. H4 admission was not granted.
 
 The frozen Harness is authoritative only while its v3 input identity remains
 unchanged.
 
 ## 7. Prohibited Actions
 
-After H2 completion and before explicit H3 authorization:
+After H3 completion and before explicit H4 authorization:
 
 - do not confirm or repair PEC-0001 through PEC-0004;
 - do not restore removed 17.4 code;
-- do not use current green counts as release evidence;
+- do not treat the non-uploaded `validated-dry-run` candidate as a public
+  release, Canary, or rollout expansion;
 - do not close one micro-incident while a systemic Epoch remains open;
 - do not change product code during Discovery;
 - do not weaken a denominator, status, or assertion to obtain green.
-- do not start H3 or H4.
+- do not start H4.

@@ -2,10 +2,12 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation.md) | English
 
-> Status: Foundation v2 and the failure-evidence-capable H2 Harness are
-> qualified under Q1 Round 09. D1 passed 56/56, H1 passed 21/21, and H2
-> re-entry Round 03 passed 16/16. Rounds 01 and 02 remain immutable 14/16
-> failures. H3-H4 and full release admission remain prohibited.
+> Status: the H3-capable Harness is frozen under Q1 Round 13. On that exact
+> Lock, H1 Round 03 passed 21/21, H2 Round 05 passed 16/16, and formal H3
+> Round 02 passed 14/14 with all eight RC lanes admitted. H2 Rounds 01/02 and
+> H3 Round 01 remain immutable failures. The admitted artifact is a local
+> `validated-dry-run` RC candidate; H4 Canary and rollout expansion remain
+> unauthorized.
 >
 > Execution order and estimates are maintained in the
 > [Production Evaluation Implementation Plan](./production-evaluation-implementation-plan.md).
@@ -14,20 +16,21 @@
 
 ## 1. Decision and Trust State
 
-The target quality model remains valid, but the current Evaluation
-implementation is not release-authoritative:
+The target quality model remains valid. The current Evaluation implementation
+is release-authoritative for the identity-bound H3 RC candidate partition, but
+not for H4 Canary or rollout expansion:
 
 | Area | Current status | Permitted use |
 | --- | --- | --- |
 | 17.1 Contract and command Runner | qualified as Foundation v2 input | frozen Harness use |
 | 17.2 Capture and structural Replay | qualified as Foundation v2 input | frozen Harness use |
 | 17.3 Oracle and Core Pack | invalidated | no admission evidence |
-| Foundation v2 F1-F3 and D1 Harness | qualified by Q1 Round 06 | frozen Harness authority |
+| Foundation v2 F1-F3 and H3 Harness | qualified by Q1 Round 13 | frozen Harness authority |
 | D1 Product Discovery | passed 56/56; no Product Candidate | no Product Remediation |
-| H1-capable Harness | qualified by Q1 Round 07 | frozen Harness authority |
-| 17.4 VS Code and Process Chaos | H1 passed 21/21 | H1 evidence only; no H2-H4 authority |
-| H2-capable Harness | qualified by Q1 Round 09 | frozen Harness authority |
-| Live Model and Drift | Round 03 passed 16/16 after governed re-entry | H2 evidence only; no H3-H4 authority |
+| 17.4 VS Code and Process Chaos | same-Lock H1 Round 03 passed 21/21 | H3 prerequisite evidence |
+| Live Model and Drift | same-Lock H2 Round 05 passed 16/16 | H3 prerequisite evidence |
+| Endurance and Release | H3 Round 02 passed 14/14; eight of eight RC lanes admitted | local RC candidate admission |
+| Canary and Incident Closure | not started and not authorized | no rollout or expansion authority |
 | Product hypotheses PEC-0001 to PEC-0004 | not rediscovered in D1 | remain historical only |
 
 `make eval-contract-check`, `make eval-replay`, and `make eval-oracle` remain
@@ -503,6 +506,18 @@ Release admission requires:
 Statistical Live thresholds, cost budgets, and Endurance slopes are versioned
 policy. They cannot offset a hard invariant.
 
+The current admitted H3 partition is
+`production-admission-h3-02` under Lock
+`sha256:49d737d00c42f66f29476a4b678ca3f7b3c3256d306a9cd95b5c3eaf4fdf9657`.
+Its four-hour production ACP workload completed 480/480 Turns with zero
+failed or canceled Terminals and zero process restarts. The measured slopes
+were 7,383 RSS bytes/Turn, -2 FD milli/Turn, 133,421 persistence bytes/Turn,
+and 78 latency milli-ms/Turn; P95 latency was 93 ms. Foundation, Integration,
+Chaos, Live, Endurance, Release, VS Code RC, and Package evidence all passed.
+The Package evidence binds five platform targets, checksums, a manifest, and a
+CycloneDX SBOM. The VS Code artifact remains a non-uploaded
+`validated-dry-run`; this admission does not authorize H4.
+
 ## 13. Disposition of Current Assets
 
 The following implementation ideas may be retained only after negative
@@ -528,7 +543,7 @@ The following behavior MUST be replaced:
 - metadata-only 500-run Replay as a flake gate;
 - report filenames keyed only by Attempt.
 
-Current green counts remain historical diagnostics and are not migration
+Pre-reset green counts remain historical diagnostics and are not migration
 baselines.
 
 ## 14. Specification Acceptance
@@ -543,5 +558,6 @@ This specification is ready for implementation approval only when:
 5. the reset assessment and Findings Register agree with this trust state;
 6. `make docs-check`, `make book-check`, and `git diff --check` pass.
 
-D1, H1, and H2 completion do not authorize full release admission. H3-H4
-retain separate explicit authorization and admission gates.
+D1, H1, and H2 completion did not authorize H3. H3 is now complete and admits
+the identity-bound local RC candidate only. H4 retains a separate explicit
+authorization and admission gate before Canary or rollout expansion.

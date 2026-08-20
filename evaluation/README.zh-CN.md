@@ -35,10 +35,11 @@ evaluation/
 
 ## 候选能力
 
-以下实现当前不具发布权威性。Foundation v2 与具备失败证据能力的 H2 Harness 已通过
-Q1 Round 09 验收。D1 已 56/56 通过，H1 已 21/21 通过，H2 Re-entry Round 03
-已 16/16 通过。Round 01 与 02 的 14/16 失败结论保持不可变。H3-H4 与完整 Release
-Admission 仍未获授权。
+具备 H3 能力的 Harness 已由 Q1 Round 13 冻结。在该精确 Lock 上，同 Lock H1
+Round 03 已 21/21 通过，H2 Round 05 已 16/16 通过，正式 H3 Round 02 已 14/14
+通过并准入全部 8 条 RC Lane。当前实现只对该本地 `validated-dry-run` RC Candidate
+Partition 具备发布权威。H2 Round 01/02 与 H3 Round 01 保持不可变失败历史；H4
+Canary 与 Rollout Expansion 仍未授权。
 
 修正后的目标契约和执行顺序见：
 
@@ -70,6 +71,9 @@ H2 Preflight、重新验收与不可变正式决策记录在
 `assessments/h2-reentry-decision-01.json`、
 `assessments/h2-reentry-global-assessment-01.json` 以及
 `assessments/h2-production-admission-global-assessment-01.json` 至 `-03.json`。
+H3 失败、Remediation、重新验收与最终准入记录在
+`assessments/h3-production-admission-global-assessment-01.json` 至 `-06.json`，
+以及 `assessments/q1-qualification-global-assessment-11.json` 至 `-13.json`。
 
 F1 实现当前包含：
 
@@ -112,6 +116,13 @@ Round 07，H1 完成全部 21 项任务。具备 H2 能力的后继 Harness 通�
 Round 01 与 02 各自 14/16 后，Schema v2 失败证据进入 Q1 Round 09，Lock 为
 `sha256:b2f944b8...`。固定诊断矩阵和 Evidence-driven Investigation 授权一次
 Re-entry；正式 H2 Round 03 已 16/16 通过。
+
+正式 H3 Round 01 完成 480/480 个 Turn，但未通过保持不变的 Persistence Slope
+上限。分离的 Remediation 对累计 Session Delta 与 Checkpoint Content 做有界编码；
+随后 Q1 Round 13 通过 8/8 Foundation Task 与连续三次 7/7 Integration Run。
+同 Lock H1 Round 03 与 H2 Round 05 通过后，正式 H3 Round 02 完成 480/480 个
+Endurance Turn，并准入 Foundation、Integration、Chaos、Live、Endurance、Release、
+VS Code RC 与 Package Evidence。该 RC Candidate 未上传，也不授权 H4。
 
 旧 17.4 实现已重置并删除；当前 H1 已按后继流程重建并重新验收。原重置决策仍位于
 `assessments/17.4-convergence-review-reset-01.json`。

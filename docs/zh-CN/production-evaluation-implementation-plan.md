@@ -2,9 +2,9 @@
 
 简体中文 | [English](../en/production-evaluation-implementation-plan.md)
 
-> 状态：F1-F3 与具备失败证据能力的 H2 Harness 已通过 Q1 Round 09 验收。D1
-> 已 56/56 通过，H1 已 21/21 通过，治理化 H2 Re-entry Round 03 已 16/16
-> 通过。H3-H4 仍分别保留独立门禁。
+> 状态：修复后的 H3 Harness 已由 Q1 Round 13 冻结。同 Lock H1 Round 03 已
+> 21/21 通过，H2 Round 05 已 16/16 通过，正式 H3 Round 02 已 14/14 通过并得到
+> `admit` RC 决策。H4 仍保留独立门禁且未获授权。
 
 | Stage | 状态 |
 | --- | --- |
@@ -12,10 +12,12 @@
 | F1 Contract、Identity、Admission、Runner | 已验收 |
 | F2 Privacy、Promotion、Replay | 已验收 |
 | F3 Oracle、Core Pack、Impact | 已验收 |
-| Q1 Qualification 与 Freeze | 具备 H1 能力的后继已由 Round 07 完成；`frozen_qualified` |
+| Q1 Qualification 与 Freeze | 具备 H3 能力的后继已由 Round 13 完成；`frozen_qualified` |
 | D1 Collect-all Product Discovery | 已完成 56/56；无 Product Candidate |
-| H1 VS Code 与 Process Chaos | 已完成 21/21；无 Product Candidate |
-| H2 Live Model 与 Drift | 治理化 Re-entry 后 Round 03 已 16/16 通过 |
+| H1 VS Code 与 Process Chaos | 同 Lock Round 03 已完成 21/21 |
+| H2 Live Model 与 Drift | 同 Lock Round 05 已完成 16/16 |
+| H3 Endurance 与 Release | Round 02 已完成 14/14；RC Candidate 已准入 |
+| H4 Canary 与 Incident Closure | 未授权 |
 
 Development Validation 记录在
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`，不能替代 Q1 Epoch，
@@ -50,6 +52,25 @@ Investigation 授权一次 Policy 不变的 Re-entry；Round 03 已 16/16 通过
 `evaluation/assessments/h2-reentry-global-assessment-01.json` 以及
 `evaluation/assessments/h2-production-admission-global-assessment-01.json` 至
 `-03.json`。
+
+H3 Preflight 随后交付四小时 Endurance Driver、固定 Resource Slope、Release/VS
+Code RC/Package Lane 与八 Lane RC Aggregator。正式 Round 01 完成 480/480 个 Turn，
+但在未改变的 Persistence Slope 上限下以 498,233 bytes/Turn 失败。分离的 Assessment
+与 Remediation 将增长归因到 Terminal Envelope 中累计的 Session Delta Payload
+（H3P-0003）、CAS 中累计的自动 Checkpoint Content（H3P-0004），以及 Sampler 的
+瞬时 `ENOENT` 竞争（H3H-0009）。Deterministic Bounded Gzip Encoding 与窄范围
+Sampler 修复将 480-Turn Verification Slope 降至 133,391 bytes/Turn，未修改
+Threshold 或 Denominator。
+
+由于产品修复改变了 Frozen Input，Q1 重新开始。Round 11 作为不可变的 Invalid
+Identity 历史保留；Round 12 的一次 `evaluation-race` Command 失败在三次精确确认中
+均未复现，因此该 Round 未被复用。Round 13 通过 8/8 Foundation Task 与连续三次
+7/7 Integration Run。在该 Lock 上，H1 Round 03 已 21/21 通过，H2 Round 05 已
+16/16 通过。正式 H3 Round 02 随后通过全部 14 个 Coordinator Task，完成 480/480
+个 Endurance Turn，并准入全部 8 条 Required RC Lane。决策记录在
+`evaluation/assessments/h3-production-admission-global-assessment-01.json` 至
+`-06.json`、`evaluation/assessments/q1-qualification-global-assessment-11.json`
+至 `-13.json`，以及同 Lock H1/H2/H3 Machine Report 中。
 
 ## 1. 执行模型
 
@@ -375,12 +396,13 @@ D1 不修改代码。
 
 | Stage | Deliverable | 预计工作量 |
 | --- | --- | ---: |
-| H1 VS Code 与 Process Chaos | 已完成：五条 Lane 共 21/21 | 已完成 |
-| H2 Live Model 与 Drift | 已完成：治理化 Round 03 已 16/16 通过 | 已完成 |
-| H3 Endurance 与 Release | 四小时 Workload、Slope、RC Evidence Aggregator、Release Gate | 2 工程周 |
+| H1 VS Code 与 Process Chaos | 已在 H3 Lock 上再次完成：Round 03 已 21/21 通过 | 已完成 |
+| H2 Live Model 与 Drift | 已在 H3 Lock 上再次完成：Round 05 已 16/16 通过 | 已完成 |
+| H3 Endurance 与 Release | 已完成：Round 02 已 14/14 通过并准入 8/8 RC Lane | 已完成 |
 | H4 Canary 与 Incident Closure | Controlled Inventory、Rollout Stop、Rollback、Incident-to-Corpus | 1 至 1.5 工程周 |
 
-H2 已完成。H3 Evidence 在参与 Release Admission 前仍需显式授权。
+H3 已完成。其 `validated-dry-run` Candidate 未上传且不可发布，也不授权 H4
+Canary 或 Rollout Expansion。
 
 ## 11. 修订后的工期与关键路径
 
@@ -417,7 +439,7 @@ Qualification Epoch 和 Harness Freeze 位于关键路径。Contract 稳定后�
 
 ## 13. 批准边界
 
-本计划下的批准已推进至 H2 完成。
+本计划下的批准已推进至 H3 完成。
 
 已完成批准与剩余显式边界如下：
 
@@ -425,6 +447,7 @@ Qualification Epoch 和 Harness Freeze 位于关键路径。Contract 稳定后�
 2. Qualification 与 Harness Freeze Q1；
 3. Product Discovery D1；
 4. Approved Product Remediation R1；
-5. Production Admission H1 与 H2 已完成；H3-H4 未获授权。
+5. Production Admission H1、H2 与 H3 已完成；
+6. H4 Canary 与 Incident Closure 未获授权。
 
 前一批准不隐含后一批准。

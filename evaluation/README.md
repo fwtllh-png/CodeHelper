@@ -37,11 +37,12 @@ must not import `evaluation/`.
 
 ## Candidate Capability
 
-The implementation below is not release-authoritative. Foundation v2 and the
-failure-evidence-capable H2 Harness are qualified under Q1 Round 09. D1 passed
-56/56, H1 passed 21/21, and H2 re-entry Round 03 passed 16/16. Rounds 01 and
-02 remain immutable 14/16 failures. H3-H4 and full release admission remain
-unauthorized.
+The H3-capable Harness is frozen under Q1 Round 13. On that exact Lock,
+same-Lock H1 Round 03 passed 21/21, H2 Round 05 passed 16/16, and formal H3
+Round 02 passed 14/14 with all eight RC lanes admitted. The implementation is
+release-authoritative for that local `validated-dry-run` RC candidate
+partition only. H2 Rounds 01/02 and H3 Round 01 remain immutable failures; H4
+Canary and rollout expansion remain unauthorized.
 
 The corrected target contracts and execution order are defined by:
 
@@ -74,6 +75,10 @@ in `assessments/h2-preflight-global-assessment-01.json` through `-03.json`,
 `assessments/h2-reentry-global-assessment-01.json`, and
 `assessments/h2-production-admission-global-assessment-01.json` through
 `-03.json`.
+H3 failure, remediation, requalification, and final admission are recorded in
+`assessments/h3-production-admission-global-assessment-01.json` through
+`-06.json` and `assessments/q1-qualification-global-assessment-11.json`
+through `-13.json`.
 
 The F1 implementation now provides:
 
@@ -122,6 +127,15 @@ H2-capable successor passed Q1 Round 08. After Rounds 01 and 02 each settled
 14/16, schema-v2 failure evidence entered Q1 Round 09 under Lock
 `sha256:b2f944b8...`. The fixed diagnostic matrix and evidence-driven
 investigation authorized one re-entry; formal H2 Round 03 passed 16/16.
+
+Formal H3 Round 01 completed 480/480 Turns but failed the unchanged
+persistence slope limit. Separate remediation bounded cumulative Session
+Delta and Checkpoint content, then Q1 Round 13 passed 8/8 Foundation tasks and
+three consecutive 7/7 Integration runs. Same-Lock H1 Round 03 and H2 Round 05
+passed before formal H3 Round 02 completed 480/480 Endurance Turns and
+admitted Foundation, Integration, Chaos, Live, Endurance, Release, VS Code RC,
+and Package evidence. The RC candidate is not uploaded and does not authorize
+H4.
 
 The previous Phase 17.4 implementation was reset and removed. The current H1
 implementation was rebuilt and requalified under the successor process. The

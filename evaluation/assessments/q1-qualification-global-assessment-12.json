@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-qualification-global-assessment-12",
+  "phase": "qualification_q1",
+  "status": "closed_not_frozen_evaluation_race_command_not_reproduced",
+  "observed_on": "2026-08-20",
+  "qualification_id": "foundation-v2-q1-12",
+  "inventory": {
+    "foundation_epoch": "failed_7_of_8",
+    "failed_task": "evaluation_race",
+    "lock_status": "candidate",
+    "clean_integration_runs": 0,
+    "exact_race_confirmation_runs": 3,
+    "exact_race_confirmation_passed": 3
+  },
+  "decision": {
+    "lock_frozen": false,
+    "evidence_reusable": false,
+    "product_remediation": "none",
+    "thresholds_changed": false,
+    "next_gate": "start_q1_round_13_from_the_same_clean_source_inputs"
+  }
+}

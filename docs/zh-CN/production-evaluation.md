@@ -2,29 +2,31 @@
 
 简体中文 | [English](../en/production-evaluation.md)
 
-> 状态：Foundation v2 与具备失败证据能力的 H2 Harness 已通过 Q1 Round 09
-> 验收。D1 已 56/56 通过，H1 已 21/21 通过，H2 Re-entry Round 03 已 16/16
-> 通过。Round 01 与 02 的 14/16 失败结论保持不可变。H3-H4 与完整 Release
-> Admission 仍被禁止。
+> 状态：具备 H3 能力的 Harness 已由 Q1 Round 13 冻结。在同一个精确 Lock 上，
+> H1 Round 03 已 21/21 通过，H2 Round 05 已 16/16 通过，正式 H3 Round 02 已
+> 14/14 通过并准入全部 8 条 RC Lane。H2 Round 01/02 与 H3 Round 01 的失败结论
+> 保持不可变。当前准入产物是本地 `validated-dry-run` RC Candidate；H4 Canary
+> 与 Rollout Expansion 仍未授权。
 >
 > 执行顺序和工期见[生产测评实施计划](./production-evaluation-implementation-plan.md)。
 > 当前可信状态和缺陷见[异常与缺陷台账](./production-evaluation-findings.md)。
 
 ## 1. 决策与可信状态
 
-目标质量模型仍然成立，但当前 Evaluation 实现不具备发布权威性：
+目标质量模型仍然成立。当前 Evaluation 实现对绑定精确 Identity 的 H3 RC Candidate
+Partition 具备发布权威，但不具备 H4 Canary 或 Rollout Expansion 权威：
 
 | 范围 | 当前状态 | 允许用途 |
 | --- | --- | --- |
 | 17.1 Contract 与 Command Runner | 已作为 Foundation v2 输入验收 | Frozen Harness 使用 |
 | 17.2 Capture 与结构 Replay | 已作为 Foundation v2 输入验收 | Frozen Harness 使用 |
 | 17.3 Oracle 与 Core Pack | 已失效 | 不能作为准入证据 |
-| Foundation v2 F1-F3 与 D1 Harness | 已通过 Q1 Round 06 验收 | Frozen Harness 权威 |
+| Foundation v2 F1-F3 与 H3 Harness | 已通过 Q1 Round 13 验收 | Frozen Harness 权威 |
 | D1 Product Discovery | 56/56 通过；无 Product Candidate | 不进入 Product Remediation |
-| 具备 H1 能力的 Harness | 已通过 Q1 Round 07 验收 | Frozen Harness 权威 |
-| 17.4 VS Code 与进程 Chaos | H1 已 21/21 通过 | 仅具 H1 证据；无 H2-H4 权威 |
-| 具备 H2 能力的 Harness | 已通过 Q1 Round 09 验收 | Frozen Harness 权威 |
-| Live Model 与 Drift | 治理化 Re-entry 后 Round 03 已 16/16 通过 | 仅具 H2 证据；无 H3-H4 权威 |
+| 17.4 VS Code 与进程 Chaos | 同 Lock H1 Round 03 已 21/21 通过 | H3 前置证据 |
+| Live Model 与 Drift | 同 Lock H2 Round 05 已 16/16 通过 | H3 前置证据 |
+| Endurance 与 Release | H3 Round 02 已 14/14 通过；8/8 RC Lane 已准入 | 本地 RC Candidate Admission |
+| Canary 与 Incident Closure | 未开始且未授权 | 无 Rollout 或 Expansion 权威 |
 | 产品假设 PEC-0001 至 PEC-0004 | D1 未重新发现 | 仅保留历史状态 |
 
 `make eval-contract-check`、`make eval-replay` 和 `make eval-oracle` 仍是诊断命令。
@@ -468,6 +470,15 @@ Release Admission 要求：
 统计 Live Threshold、Cost Budget 和 Endurance Slope 是版本化 Policy，不能抵消 Hard
 Invariant。
 
+当前准入的 H3 Partition 是 `production-admission-h3-02`，其 Lock 为
+`sha256:49d737d00c42f66f29476a4b678ca3f7b3c3256d306a9cd95b5c3eaf4fdf9657`。
+四小时生产 ACP Workload 完成 480/480 个 Turn，Failed/Canceled Terminal 与 Process
+Restart 均为零。实测 Slope 为 RSS 7,383 bytes/Turn、FD -2 milli/Turn、Persistence
+133,421 bytes/Turn、Latency 78 milli-ms/Turn，P95 Latency 为 93 ms。Foundation、
+Integration、Chaos、Live、Endurance、Release、VS Code RC 与 Package Evidence
+全部通过。Package Evidence 绑定 5 个平台 Target、Checksum、Manifest 与 CycloneDX
+SBOM。VS Code 产物仍是未上传的 `validated-dry-run`，本次准入不授权 H4。
+
 ## 13. 当前资产处置
 
 以下实现思路只有通过 Negative Requalification 后才能保留：
@@ -492,7 +503,7 @@ Invariant。
 - 用 Metadata-only 500-run Replay 充当 Flake Gate；
 - Report Filename 只按 Attempt 命名。
 
-当前绿色计数只是历史诊断，不是 Migration Baseline。
+重置前的绿色计数只是历史诊断，不是 Migration Baseline。
 
 ## 14. 规格验收
 
@@ -505,5 +516,6 @@ Invariant。
 5. Reset Assessment 和 Findings Register 与本文可信状态一致；
 6. `make docs-check`、`make book-check` 和 `git diff --check` 通过。
 
-D1、H1 与 H2 完成不授权完整 Release Admission。H3-H4 仍分别保留显式授权和
-Admission Gate。
+D1、H1 与 H2 完成没有隐含授权 H3。H3 现已完成，但只准入绑定精确 Identity 的本地
+RC Candidate。H4 在 Canary 或 Rollout Expansion 前仍保留独立显式授权与 Admission
+Gate。

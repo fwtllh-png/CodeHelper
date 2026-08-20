@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "assessment_id": "q1-qualification-global-assessment-13",
+  "phase": "qualification_q1",
+  "status": "closed_frozen_qualified",
+  "observed_on": "2026-08-20",
+  "qualification_id": "foundation-v2-q1-13",
+  "predecessor_rounds": {
+    "foundation-v2-q1-11": "invalid_runtime_identity",
+    "foundation-v2-q1-12": "failed_evaluation_race_command_not_reproduced",
+    "disposition": "preserved_as_immutable_non_reusable_history"
+  },
+  "identity": {
+    "source_commit": "d98a9b18c05c10f769b4b12dc534bc6ebdac0049",
+    "lock_identity": "sha256:49d737d00c42f66f29476a4b678ca3f7b3c3256d306a9cd95b5c3eaf4fdf9657",
+    "foundation_digest": "sha256:f164d9b45c3298b60b3d32a334d03313af4d55875d199d0a6c5de57ef2e1796d",
+    "source_digest": "sha256:c8d4d4998269fe5fba72a5ab77b26dba42636c174d9521d4589415a29f9c54f5",
+    "harness_digest": "sha256:835809a4a372d8d1ce02a3c4c33cb7bf68e4dd083589c4062e254e63df86ec79",
+    "evaluation_digest": "sha256:c12ff1130737b84aebc319d1e2f3a671c84c24e33ec594008a2fe7a0a8e37b46",
+    "runtime_digest": "sha256:24d8edff1991f3222c9e8e2e3af749b6aefbcb823673742d1d2725aad00a4536",
+    "vsix_digest": "sha256:9f34c40cc80cd9cc0954897ba594d6ae8d64ae5d601a127d8c7abd5f55974b6c"
+  },
+  "inventory": {
+    "foundation": "passed_8_of_8",
+    "foundation_evidence_digest": "sha256:7687f96bff0b720ea2e102bcc908030ddf4f73847dbb5abee8b116d8382cd656",
+    "integration_runs": [
+      {
+        "id": "foundation-v2-q1-13-integration-01",
+        "status": "passed_7_of_7",
+        "evidence_digest": "sha256:d8fcce77f40ba4c137177c14895a8d62e0df1c016edc30947857e0c72272995f"
+      },
+      {
+        "id": "foundation-v2-q1-13-integration-02",
+        "status": "passed_7_of_7",
+        "evidence_digest": "sha256:023d7b47797354ca30864a4df3e8056eea3d1a120168f34e328b35338a2c8904"
+      },
+      {
+        "id": "foundation-v2-q1-13-integration-03",
+        "status": "passed_7_of_7",
+        "evidence_digest": "sha256:d0648c163d3372dbc8edbbe4eb3f07b6edd98fb557276043fe3d607690178b14"
+      }
+    ],
+    "cleanup_resources": 27,
+    "cleanup_processes": 15,
+    "cleanup_temporary_directories": 12,
+    "cleanup_outstanding": 0
+  },
+  "decision": {
+    "lock_status": "frozen_qualified",
+    "lock_frozen": true,
+    "evidence_reusable": true,
+    "thresholds_changed": false,
+    "next_gate": "same_lock_h1_h2_and_formal_h3"
+  }
+}

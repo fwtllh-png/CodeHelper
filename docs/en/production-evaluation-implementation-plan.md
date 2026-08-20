@@ -2,9 +2,10 @@
 
 [Simplified Chinese](../zh-CN/production-evaluation-implementation-plan.md) | English
 
-> Status: F1-F3 and the failure-evidence-capable H2 Harness are qualified by
-> Q1 Round 09. D1 passed 56/56, H1 passed 21/21, and governed H2 re-entry
-> Round 03 passed 16/16. H3-H4 remain separately gated.
+> Status: the remediated H3 Harness is frozen by Q1 Round 13. Same-Lock H1
+> Round 03 passed 21/21, H2 Round 05 passed 16/16, and formal H3 Round 02
+> passed 14/14 with an `admit` RC decision. H4 remains separately gated and
+> unauthorized.
 
 | Stage | Status |
 | --- | --- |
@@ -12,10 +13,12 @@
 | F1 Contract, identity, admission, Runner | qualified |
 | F2 privacy, promotion, Replay | qualified |
 | F3 Oracles, Core Pack, Impact | qualified |
-| Q1 Qualification and Freeze | H1-capable successor completed by Round 07; `frozen_qualified` |
+| Q1 Qualification and Freeze | H3-capable successor completed by Round 13; `frozen_qualified` |
 | D1 Collect-all Product Discovery | completed 56/56; no Product Candidate |
-| H1 VS Code and Process Chaos | completed 21/21; no Product Candidate |
-| H2 Live Model and Drift | Round 03 passed 16/16 after governed re-entry |
+| H1 VS Code and Process Chaos | same-Lock Round 03 completed 21/21 |
+| H2 Live Model and Drift | same-Lock Round 05 completed 16/16 |
+| H3 Endurance and Release | Round 02 completed 14/14; RC candidate admitted |
+| H4 Canary and Incident Closure | not authorized |
 
 Development validation is recorded in
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`. It does not
@@ -54,6 +57,28 @@ through `-09.json`, `evaluation/assessments/h2-reentry-decision-01.json`,
 `evaluation/assessments/h2-reentry-global-assessment-01.json`,
 and `evaluation/assessments/h2-production-admission-global-assessment-01.json`
 through `-03.json`.
+
+H3 preflight then delivered the four-hour Endurance driver, fixed resource
+slopes, Release/VS Code RC/Package lanes, and the eight-lane RC aggregator.
+Formal Round 01 completed 480/480 Turns but failed the unchanged persistence
+slope limit at 498,233 bytes/Turn. Separate assessment and remediation traced
+the growth to cumulative Session Delta payloads in Terminal Envelopes
+(H3P-0003), cumulative automatic Checkpoint content in CAS (H3P-0004), and a
+transient sampler `ENOENT` race (H3H-0009). Deterministic bounded gzip
+encoding and the narrow sampler repair reduced the 480-Turn verification slope
+to 133,391 bytes/Turn without changing the threshold or denominator.
+
+Because the product repair changed frozen inputs, Q1 restarted. Round 11 is
+immutable invalid identity history; Round 12 failed one `evaluation-race`
+command that passed three exact confirmations and was not reused. Round 13
+passed 8/8 Foundation tasks and three consecutive 7/7 Integration runs. On
+that Lock, H1 Round 03 passed 21/21 and H2 Round 05 passed 16/16. Formal H3
+Round 02 then passed all 14 coordinator tasks, completed 480/480 Endurance
+Turns, and admitted all eight required RC lanes. Decisions are recorded in
+`evaluation/assessments/h3-production-admission-global-assessment-01.json`
+through `-06.json`,
+`evaluation/assessments/q1-qualification-global-assessment-11.json` through
+`-13.json`, and the same-Lock H1/H2/H3 machine reports.
 
 ## 1. Execution Model
 
@@ -390,13 +415,13 @@ effort.
 
 | Stage | Deliverable | Estimate |
 | --- | --- | ---: |
-| H1 VS Code and Process Chaos | completed: 21/21 across five lanes | completed |
-| H2 Live Model and Drift | completed: governed Round 03 passed 16/16 | completed |
-| H3 Endurance and Release | four-hour workload, slopes, RC evidence aggregator, release gate | 2 engineer-weeks |
+| H1 VS Code and Process Chaos | completed again on the H3 Lock: Round 03 passed 21/21 | completed |
+| H2 Live Model and Drift | completed again on the H3 Lock: Round 05 passed 16/16 | completed |
+| H3 Endurance and Release | completed: Round 02 passed 14/14 and admitted eight of eight RC lanes | completed |
 | H4 Canary and Incident Closure | controlled inventory, rollout stop, rollback, incident-to-Corpus | 1 to 1.5 engineer-weeks |
 
-H2 is complete. H3 evidence still requires explicit authorization before it
-can contribute to release admission.
+H3 is complete. Its `validated-dry-run` candidate is not uploaded or
+publishable and does not authorize H4 Canary or rollout expansion.
 
 ## 11. Revised Estimate and Critical Path
 
@@ -436,7 +461,7 @@ Stopping is a control action, not a failure to make progress.
 
 ## 13. Approval Boundaries
 
-Approvals under this plan progressed through H2 completion.
+Approvals under this plan progressed through H3 completion.
 
 Completed approvals and remaining explicit boundaries are:
 
@@ -444,6 +469,7 @@ Completed approvals and remaining explicit boundaries are:
 2. Qualification and Harness Freeze Q1;
 3. Product Discovery D1;
 4. approved Product Remediation R1;
-5. production admission H1 and H2 are complete; H3-H4 are not authorized.
+5. production admission H1, H2, and H3 are complete;
+6. H4 Canary and Incident Closure is not authorized.
 
 No later approval is implied by an earlier one.
