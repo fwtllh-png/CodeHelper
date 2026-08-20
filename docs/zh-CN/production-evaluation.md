@@ -6,7 +6,10 @@
 > H1 Round 03 已 21/21 通过，H2 Round 05 已 16/16 通过，正式 H3 Round 02 已
 > 14/14 通过并准入全部 8 条 RC Lane。H2 Round 01/02 与 H3 Round 01 的失败结论
 > 保持不可变。当前准入产物是本地 `validated-dry-run` RC Candidate；H4 Canary
-> 与 Rollout Expansion 仍未授权。
+> 与 Rollout Expansion 仍未授权。H4 Harness 与 120-Turn Controlled Preflight
+> 已完成。Q1 Round 14、同 Lock H1 Round 04 与 H2 Round 06 已通过，但同 Lock
+> H3 Round 03 因 Operator Time Budget 在 96/480 Turn 时停止。该轮不可复用，正式
+> H4 未启动。
 >
 > 执行顺序和工期见[生产测评实施计划](./production-evaluation-implementation-plan.md)。
 > 当前可信状态和缺陷见[异常与缺陷台账](./production-evaluation-findings.md)。

@@ -5,7 +5,10 @@
 > Status: the remediated H3 Harness is frozen by Q1 Round 13. Same-Lock H1
 > Round 03 passed 21/21, H2 Round 05 passed 16/16, and formal H3 Round 02
 > passed 14/14 with an `admit` RC decision. H4 remains separately gated and
-> unauthorized.
+> unauthorized. H4 implementation and controlled preflight are complete.
+> Requalification reached Q1 Round 14, H1 Round 04, and H2 Round 06; the
+> required four-hour same-Lock H3 Round 03 was stopped at 96/480 Turns for the
+> operator time budget, so formal H4 remains deferred.
 
 | Stage | Status |
 | --- | --- |
@@ -18,7 +21,7 @@
 | H1 VS Code and Process Chaos | same-Lock Round 03 completed 21/21 |
 | H2 Live Model and Drift | same-Lock Round 05 completed 16/16 |
 | H3 Endurance and Release | Round 02 completed 14/14; RC candidate admitted |
-| H4 Canary and Incident Closure | not authorized |
+| H4 Canary and Incident Closure | implementation/preflight complete; formal admission deferred |
 
 Development validation is recorded in
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`. It does not

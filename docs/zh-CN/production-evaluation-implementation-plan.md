@@ -4,7 +4,10 @@
 
 > 状态：修复后的 H3 Harness 已由 Q1 Round 13 冻结。同 Lock H1 Round 03 已
 > 21/21 通过，H2 Round 05 已 16/16 通过，正式 H3 Round 02 已 14/14 通过并得到
-> `admit` RC 决策。H4 仍保留独立门禁且未获授权。
+> `admit` RC 决策。H4 仍保留独立门禁且未获授权。H4 Implementation 与 Controlled
+> Preflight 已完成。重新验收已完成 Q1 Round 14、H1 Round 04 与 H2 Round 06；
+> 所需的四小时同 Lock H3 Round 03 因 Operator Time Budget 在 96/480 Turn 时停止，
+> 因此正式 H4 继续延期。
 
 | Stage | 状态 |
 | --- | --- |
@@ -17,7 +20,7 @@
 | H1 VS Code 与 Process Chaos | 同 Lock Round 03 已完成 21/21 |
 | H2 Live Model 与 Drift | 同 Lock Round 05 已完成 16/16 |
 | H3 Endurance 与 Release | Round 02 已完成 14/14；RC Candidate 已准入 |
-| H4 Canary 与 Incident Closure | 未授权 |
+| H4 Canary 与 Incident Closure | Implementation/Preflight 已完成；正式准入延期 |
 
 Development Validation 记录在
 `evaluation/assessments/foundation-f1-f3-implementation-01.json`，不能替代 Q1 Epoch，

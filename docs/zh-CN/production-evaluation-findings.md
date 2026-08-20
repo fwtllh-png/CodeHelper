@@ -5,7 +5,9 @@
 > 状态：具备 H3 能力的 Harness 已由 Q1 Round 13 冻结。同 Lock H1 Round 03 已
 > 21/21 通过，H2 Round 05 已 16/16 通过，正式 H3 Round 02 已 14/14 通过并准入
 > 全部 8 条 RC Lane。H3 只准入本地 `validated-dry-run` Candidate；H4 Canary 与
-> Rollout Expansion 均未准入。
+> Rollout Expansion 均未准入。H4 Implementation 与 120-Turn Controlled Preflight
+> 已通过。Q1 Round 14、H1 Round 04 与 H2 Round 06 已通过；同 Lock H3 Round 03
+> 在 96/480 Turn 时由 Operator 停止且不可复用。正式 H4 未启动。
 
 本台账遵循[技术规格](./production-evaluation.md)和
 [实施计划](./production-evaluation-implementation-plan.md)。Discovery、Global
@@ -70,6 +72,8 @@ evaluation/assessments/q1-qualification-global-assessment-11.json
 evaluation/assessments/q1-qualification-global-assessment-12.json
 evaluation/assessments/q1-qualification-global-assessment-13.json
 evaluation/assessments/h3-production-admission-global-assessment-06.json
+evaluation/assessments/h4-preflight-global-assessment-01.json
+evaluation/assessments/h4-closeout-global-assessment-01.json
 ```
 
 Q1 Round 06 已在 8/8 Foundation Task 与连续三次 7/7 Integration Run 后验收具备

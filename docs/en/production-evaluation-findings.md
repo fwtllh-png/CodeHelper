@@ -6,7 +6,10 @@
 > Round 03 passed 21/21, H2 Round 05 passed 16/16, and formal H3 Round 02
 > passed 14/14 with all eight RC lanes admitted. H3 admits a local
 > `validated-dry-run` candidate only; H4 Canary and rollout expansion are not
-> admitted.
+> admitted. H4 implementation and its 120-Turn controlled preflight passed.
+> Q1 Round 14, H1 Round 04, and H2 Round 06 passed, while same-Lock H3 Round
+> 03 was operator-stopped at 96/480 Turns and is non-reusable. Formal H4 was
+> not started.
 
 This register follows the
 [Technical Specification](./production-evaluation.md) and
@@ -73,6 +76,8 @@ evaluation/assessments/q1-qualification-global-assessment-11.json
 evaluation/assessments/q1-qualification-global-assessment-12.json
 evaluation/assessments/q1-qualification-global-assessment-13.json
 evaluation/assessments/h3-production-admission-global-assessment-06.json
+evaluation/assessments/h4-preflight-global-assessment-01.json
+evaluation/assessments/h4-closeout-global-assessment-01.json
 ```
 
 Q1 Round 06 qualified the D1-capable Harness after 8/8 Foundation tasks and

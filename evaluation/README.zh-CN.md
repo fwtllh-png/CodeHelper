@@ -39,7 +39,9 @@ evaluation/
 Round 03 已 21/21 通过，H2 Round 05 已 16/16 通过，正式 H3 Round 02 已 14/14
 通过并准入全部 8 条 RC Lane。当前实现只对该本地 `validated-dry-run` RC Candidate
 Partition 具备发布权威。H2 Round 01/02 与 H3 Round 01 保持不可变失败历史；H4
-Canary 与 Rollout Expansion 仍未授权。
+Canary 与 Rollout Expansion 仍未授权。H4 Harness 与 Controlled 120-Turn Preflight
+已完成。Q1 Round 14、同 Lock H1 Round 04 与 H2 Round 06 已通过；所需 H3 Round
+03 由 Operator 在 96/480 Turn 时停止且不可复用，因此正式 H4 未启动。
 
 修正后的目标契约和执行顺序见：
 

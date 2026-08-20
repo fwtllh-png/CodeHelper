@@ -7,7 +7,10 @@
 > Round 02 passed 14/14 with all eight RC lanes admitted. H2 Rounds 01/02 and
 > H3 Round 01 remain immutable failures. The admitted artifact is a local
 > `validated-dry-run` RC candidate; H4 Canary and rollout expansion remain
-> unauthorized.
+> unauthorized. The H4 Harness and a 120-Turn controlled preflight are
+> complete. Q1 Round 14, same-Lock H1 Round 04, and H2 Round 06 passed, but
+> same-Lock H3 Round 03 was stopped at 96/480 Turns by the operator time
+> budget. It is non-reusable, and formal H4 was not started.
 >
 > Execution order and estimates are maintained in the
 > [Production Evaluation Implementation Plan](./production-evaluation-implementation-plan.md).

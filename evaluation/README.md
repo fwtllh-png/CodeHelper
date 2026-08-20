@@ -42,7 +42,10 @@ same-Lock H1 Round 03 passed 21/21, H2 Round 05 passed 16/16, and formal H3
 Round 02 passed 14/14 with all eight RC lanes admitted. The implementation is
 release-authoritative for that local `validated-dry-run` RC candidate
 partition only. H2 Rounds 01/02 and H3 Round 01 remain immutable failures; H4
-Canary and rollout expansion remain unauthorized.
+Canary and rollout expansion remain unauthorized. The H4 Harness and
+controlled 120-Turn preflight are complete. Q1 Round 14, same-Lock H1 Round
+04, and H2 Round 06 passed; required H3 Round 03 was operator-stopped at
+96/480 Turns and is non-reusable, so formal H4 was not started.
 
 The corrected target contracts and execution order are defined by:
 
