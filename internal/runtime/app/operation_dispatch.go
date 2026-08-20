@@ -81,11 +81,26 @@ func (d operationDispatcher) Dispatch(accepted acceptedOperation) OperationOutco
 	case *protocol.InputReplyPayload:
 		return InputHandler{d.runtime}.Handle(operation, payload)
 	case *protocol.CompactThreadPayload:
-		return CompactThreadHandler{d.runtime}.Handle(operation, payload)
+		if _, active := d.runtime.active.LookupThread(payload.ThreadID); active {
+			return finishOutcome(ErrActiveTurn)
+		}
+		return finishOutcome(d.runtime.invoke(operation, func(sink EngineSink) error {
+			return d.runtime.engine.CompactThread(d.runtime.ctx, payload, sink)
+		}))
 	case *protocol.ForkThreadPayload:
-		return ForkThreadHandler{d.runtime}.Handle(operation, payload)
+		if _, active := d.runtime.active.LookupThread(payload.ThreadID); active {
+			return finishOutcome(ErrActiveTurn)
+		}
+		return finishOutcome(d.runtime.invoke(operation, func(sink EngineSink) error {
+			return d.runtime.engine.ForkThread(d.runtime.ctx, payload, sink)
+		}))
 	case *protocol.RevertTurnPayload:
-		return RevertTurnHandler{d.runtime}.Handle(operation, payload)
+		if _, active := d.runtime.active.LookupThread(payload.ThreadID); active {
+			return finishOutcome(ErrActiveTurn)
+		}
+		return finishOutcome(d.runtime.invoke(operation, func(sink EngineSink) error {
+			return d.runtime.engine.RevertTurn(d.runtime.ctx, payload, sink)
+		}))
 	default:
 		return finishOutcome(errors.New("operation payload is not supported"))
 	}
@@ -96,9 +111,6 @@ type CancelTurnHandler struct{ *Runtime }
 type SteerTurnHandler struct{ *Runtime }
 type ApprovalHandler struct{ *Runtime }
 type InputHandler struct{ *Runtime }
-type CompactThreadHandler struct{ *Runtime }
-type ForkThreadHandler struct{ *Runtime }
-type RevertTurnHandler struct{ *Runtime }
 
 func (h SteerTurnHandler) Handle(operation protocol.Operation, payload *protocol.SteerTurnPayload) OperationOutcome {
 	started, err := h.run(operation, payload)
@@ -109,21 +121,6 @@ func (h SteerTurnHandler) Handle(operation protocol.Operation, payload *protocol
 		return OperationOutcome{Kind: OutcomeAsync, Async: started, CommitMode: CommitDeferred}
 	}
 	return OperationOutcome{Kind: OutcomeCommitted, CommitMode: CommitNow}
-}
-func (h CompactThreadHandler) Handle(operation protocol.Operation, payload *protocol.CompactThreadPayload) OperationOutcome {
-	return finishOutcome(h.invoke(operation, func(sink EngineSink) error {
-		return h.engine.CompactThread(h.ctx, payload, sink)
-	}))
-}
-func (h ForkThreadHandler) Handle(operation protocol.Operation, payload *protocol.ForkThreadPayload) OperationOutcome {
-	return finishOutcome(h.invoke(operation, func(sink EngineSink) error {
-		return h.engine.ForkThread(h.ctx, payload, sink)
-	}))
-}
-func (h RevertTurnHandler) Handle(operation protocol.Operation, payload *protocol.RevertTurnPayload) OperationOutcome {
-	return finishOutcome(h.invoke(operation, func(sink EngineSink) error {
-		return h.engine.RevertTurn(h.ctx, payload, sink)
-	}))
 }
 func finishOutcome(err error) OperationOutcome {
 	if err != nil {

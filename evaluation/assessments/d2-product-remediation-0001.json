@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-product-remediation-0001",
+  "phase": "complex_scenario_discovery_product_remediation",
+  "status": "implemented_verified",
+  "observed_on": "2026-08-21",
+  "source_candidates": [
+    "d2-product-candidate-0001",
+    "d2-product-candidate-0002",
+    "d2-product-candidate-0003"
+  ],
+  "root_cause_group": "d2-systemic-thread-mutation-deadlock-01",
+  "production_scope": [
+    "internal/runtime/app/operation_dispatch.go",
+    "internal/runtime/app/runtime_test.go"
+  ],
+  "repair": {
+    "strategy": "fail_fast_active_thread_mutations_before_engine_dispatch",
+    "operations": [
+      "thread.compact",
+      "thread.fork",
+      "turn.revert"
+    ],
+    "problem": "ErrActiveTurn",
+    "idle_thread_behavior_preserved": true,
+    "architecture_ratchet_increased": false
+  },
+  "validation": {
+    "passed": [
+      "go_test_internal_runtime_app",
+      "go_test_internal_runtime_all",
+      "go_test_race_internal_runtime_app",
+      "go_vet_internal_runtime_app",
+      "architecture_ratchet_112_of_112",
+      "git_diff_check"
+    ],
+    "pending": [
+      "rebuilt_runtime_identity",
+      "successor_discovery_lock",
+      "semantic_campaign_regression"
+    ],
+    "environment_limited": []
+  },
+  "decision": {
+    "product_repair_complete": true,
+    "discovery_reentry_complete": false,
+    "release_authority": false
+  }
+}

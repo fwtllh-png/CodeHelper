@@ -19,6 +19,10 @@ type testEngine struct {
 	cancelReason string
 	approvalMu   sync.Mutex
 	approval     *protocol.ApprovalDecisionPayload
+	mutationMu   sync.Mutex
+	compactCalls int
+	forkCalls    int
+	revertCalls  int
 }
 
 func (e *testEngine) StartTurn(
@@ -66,13 +70,22 @@ func (e *testEngine) DecideApproval(_ context.Context, payload *protocol.Approva
 func (*testEngine) ReplyInput(_ context.Context, payload *protocol.InputReplyPayload, sink EngineSink) error {
 	return sink.Emit(&protocol.InputResolvedData{RequestID: payload.RequestID, Answer: payload.Answer})
 }
-func (*testEngine) CompactThread(context.Context, *protocol.CompactThreadPayload, EngineSink) error {
+func (e *testEngine) CompactThread(context.Context, *protocol.CompactThreadPayload, EngineSink) error {
+	e.mutationMu.Lock()
+	e.compactCalls++
+	e.mutationMu.Unlock()
 	return errors.New("compact unsupported")
 }
-func (*testEngine) ForkThread(_ context.Context, payload *protocol.ForkThreadPayload, sink EngineSink) error {
+func (e *testEngine) ForkThread(_ context.Context, payload *protocol.ForkThreadPayload, sink EngineSink) error {
+	e.mutationMu.Lock()
+	e.forkCalls++
+	e.mutationMu.Unlock()
 	return sink.Emit(&protocol.ThreadForkedData{NewThreadID: payload.NewThreadID})
 }
-func (*testEngine) RevertTurn(_ context.Context, payload *protocol.RevertTurnPayload, sink EngineSink) error {
+func (e *testEngine) RevertTurn(_ context.Context, payload *protocol.RevertTurnPayload, sink EngineSink) error {
+	e.mutationMu.Lock()
+	e.revertCalls++
+	e.mutationMu.Unlock()
 	return sink.Emit(&protocol.TurnRevertedData{TargetTurnID: payload.TargetTurnID})
 }
 
@@ -274,18 +287,6 @@ func TestRuntimeDispatchesControlOperations(t *testing.T) {
 			},
 			event: protocol.EventApprovalResolved,
 		},
-		{
-			payload: &protocol.ForkThreadPayload{
-				ThreadID: "thread", TurnID: "turn", ItemID: "fork", NewThreadID: "forked",
-			},
-			event: protocol.EventThreadForked,
-		},
-		{
-			payload: &protocol.RevertTurnPayload{
-				ThreadID: "thread", TurnID: "turn", ItemID: "revert", TargetTurnID: "previous",
-			},
-			event: protocol.EventTurnReverted,
-		},
 	}
 	for _, test := range operations {
 		operation, createErr := protocol.NewOperation(test.payload)
@@ -297,6 +298,103 @@ func TestRuntimeDispatchesControlOperations(t *testing.T) {
 		}
 		event := receiveEvent(t, events)
 		if event.Kind != test.event {
+			t.Fatalf("event = %s, want %s", event.Kind, test.event)
+		}
+	}
+}
+
+func TestRuntimeRejectsThreadMutationWhileTurnIsActive(t *testing.T) {
+	engine := &testEngine{}
+	runtime := NewRuntime(Options{Engine: engine, SubscriberBuffer: 8})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := runtime.active.Reserve("thread", "turn", "op", "item")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.active.Release(lease) })
+	payloads := []protocol.OperationPayload{
+		&protocol.CompactThreadPayload{
+			ThreadID: "thread", TurnID: "turn", ItemID: "compact",
+		},
+		&protocol.ForkThreadPayload{
+			ThreadID: "thread", TurnID: "turn", ItemID: "fork",
+			NewThreadID: "forked",
+		},
+		&protocol.RevertTurnPayload{
+			ThreadID: "thread", TurnID: "turn", ItemID: "revert",
+			TargetTurnID: "previous",
+		},
+	}
+	for _, payload := range payloads {
+		operation, err := protocol.NewOperation(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runtime.Submit(t.Context(), operation); err != nil {
+			t.Fatal(err)
+		}
+		event := receiveEvent(t, events)
+		if event.Kind != protocol.EventOperationRejected {
+			t.Fatalf("event = %s, want %s", event.Kind, protocol.EventOperationRejected)
+		}
+		rejected, ok := event.Data.(*protocol.OperationRejectedData)
+		if !ok || rejected.Code != protocol.CodeConflict {
+			t.Fatalf("rejection = %#v", event.Data)
+		}
+	}
+	engine.mutationMu.Lock()
+	defer engine.mutationMu.Unlock()
+	if engine.compactCalls != 0 || engine.forkCalls != 0 ||
+		engine.revertCalls != 0 {
+		t.Fatalf(
+			"active mutation reached Engine: compact=%d fork=%d revert=%d",
+			engine.compactCalls,
+			engine.forkCalls,
+			engine.revertCalls,
+		)
+	}
+}
+
+func TestRuntimeDispatchesIdleThreadMutations(t *testing.T) {
+	engine := &testEngine{}
+	runtime := NewRuntime(Options{Engine: engine, SubscriberBuffer: 8})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		payload protocol.OperationPayload
+		event   protocol.EventKind
+	}{
+		{
+			payload: &protocol.ForkThreadPayload{
+				ThreadID: "thread", TurnID: "turn", ItemID: "fork",
+				NewThreadID: "forked",
+			},
+			event: protocol.EventThreadForked,
+		},
+		{
+			payload: &protocol.RevertTurnPayload{
+				ThreadID: "thread", TurnID: "turn", ItemID: "revert",
+				TargetTurnID: "previous",
+			},
+			event: protocol.EventTurnReverted,
+		},
+	}
+	for _, test := range tests {
+		operation, err := protocol.NewOperation(test.payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runtime.Submit(t.Context(), operation); err != nil {
+			t.Fatal(err)
+		}
+		if event := receiveEvent(t, events); event.Kind != test.event {
 			t.Fatalf("event = %s, want %s", event.Kind, test.event)
 		}
 	}
