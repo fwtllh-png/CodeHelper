@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-semantic-round-15-assessment",
+  "phase": "complex_scenario_discovery_semantic_depth",
+  "status": "closed_product_candidates_confirmed",
+  "observed_on": "2026-08-21",
+  "round_id": "complex-discovery-d2-semantic-15",
+  "scheduled": 25,
+  "settled": 25,
+  "passed": 23,
+  "product_candidates": 2,
+  "harness_incidents": 0,
+  "artifact_published": true,
+  "successor_lock": {
+    "id": "complex-discovery-d2-drivers-42",
+    "lock_identity": "sha256:bbe392641d9fc30af16cb073964b692f898dc4d9dc6157820204fd536ca9fc9c",
+    "qualification_checks": 19,
+    "qualification_passed": 19
+  },
+  "candidate_cases": [
+    "semantic-cancel-late-input-001",
+    "semantic-crash-pending-input-001"
+  ],
+  "candidate_assessments": [
+    "d2-product-candidate-0004",
+    "d2-product-candidate-0005"
+  ],
+  "evidence_digest": "sha256:5eecd3304c5f28d223b2c684539df10d9036a9f1cab2da926e41e04014915924",
+  "product_remediation_authorized": false
+}

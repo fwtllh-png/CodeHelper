@@ -32,18 +32,17 @@
       "go_test_race_internal_runtime_app",
       "go_vet_internal_runtime_app",
       "architecture_ratchet_112_of_112",
-      "git_diff_check"
-    ],
-    "pending": [
+      "git_diff_check",
       "rebuilt_runtime_identity",
       "successor_discovery_lock",
-      "semantic_campaign_regression"
+      "semantic_campaign_regression_20_of_20"
     ],
+    "pending": [],
     "environment_limited": []
   },
   "decision": {
     "product_repair_complete": true,
-    "discovery_reentry_complete": false,
+    "discovery_reentry_complete": true,
     "release_authority": false
   }
 }

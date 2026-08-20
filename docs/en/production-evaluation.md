@@ -27,8 +27,12 @@
 > Exact-seed Product Candidates, and zero Harness Incidents. `thread.compact`,
 > `thread.fork`, and `turn.revert` can each block the serial Runtime operation
 > loop while a Turn is parked on approval, preventing a later Cancel from
-> dispatching. Product Remediation and D2.4 re-entry remain unauthorized. D2
-> carries no release authority.
+> dispatching. That defect is repaired and passed Q1 Round 15 plus the 20/20
+> Semantic Round 11 regression. Input-state depth then closed Semantic Round
+> 15 at 25/25 settled, 23 passed, two Exact-seed Product Candidates, and zero
+> Harness Incidents: parked input cancellation lacks a terminal, and a
+> recovered input reply resolves without a later Turn terminal. Their
+> remediation remains unauthorized. D2 carries no release authority.
 >
 > Execution order and estimates are maintained in the
 > [Production Evaluation Implementation Plan](./production-evaluation-implementation-plan.md).
@@ -48,7 +52,7 @@ not for H4 Canary or rollout expansion:
 | 17.3 Oracle and Core Pack | invalidated | no admission evidence |
 | Foundation v2 F1-F3 and H3 Harness | qualified by Q1 Round 13 | frozen Harness authority |
 | D1 Product Discovery | passed 56/56; no Product Candidate | no Product Remediation |
-| D2 Complex-scenario Discovery | Semantic Round 10 closed 20/20; 17 passed, 3 Exact-seed Product Candidates | Product Remediation required; no release authority |
+| D2 Complex-scenario Discovery | old candidates remediated; Semantic Round 15 closed 25/25 with 23 passed and 2 new Exact-seed Product Candidates | Product Remediation required; no release authority |
 | 17.4 VS Code and Process Chaos | same-Lock H1 Round 03 passed 21/21 | H3 prerequisite evidence |
 | Live Model and Drift | same-Lock H2 Round 05 passed 16/16 | H3 prerequisite evidence |
 | Endurance and Release | H3 Round 02 passed 14/14; eight of eight RC lanes admitted | local RC candidate admission |

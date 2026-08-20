@@ -22,8 +22,11 @@
 > `complex-discovery-d2-semantic-10`：20/20 Settled、17 Passed、3 个 Exact-seed
 > Product Candidate、0 Harness Incident。`thread.compact`、`thread.fork` 与
 > `turn.revert` 均可在 Turn Parked on Approval 时阻塞串行 Runtime Operation
-> Loop，使后续 Cancel 无法 Dispatch。Product Remediation 与 D2.4 Re-entry 仍未
-> 授权，且 D2 不具备发布权威。
+> Loop，使后续 Cancel 无法 Dispatch。该缺陷已修复，并通过 Q1 Round 15 与 20/20
+> 的 Semantic Round 11 回归。Input State 深度随后在 Semantic Round 15 关闭为
+> 25/25 Settled、23 Passed、2 个 Exact-seed Product Candidate、0 Harness
+> Incident：Parked Input Cancel 缺失 Terminal，恢复后的 Input Reply 已 Resolved
+> 但 Turn 缺失后续 Terminal。其 Remediation 尚未授权，且 D2 不具备发布权威。
 >
 > 执行顺序和工期见[生产测评实施计划](./production-evaluation-implementation-plan.md)。
 > 当前可信状态和缺陷见[异常与缺陷台账](./production-evaluation-findings.md)。
@@ -40,7 +43,7 @@ Partition 具备发布权威，但不具备 H4 Canary 或 Rollout Expansion 权�
 | 17.3 Oracle 与 Core Pack | 已失效 | 不能作为准入证据 |
 | Foundation v2 F1-F3 与 H3 Harness | 已通过 Q1 Round 13 验收 | Frozen Harness 权威 |
 | D1 Product Discovery | 56/56 通过；无 Product Candidate | 不进入 Product Remediation |
-| D2 复杂场景 Discovery | Semantic Round 10 已关闭 20/20；17 Passed、3 个 Exact-seed Product Candidate | 需要 Product Remediation；无发布权威 |
+| D2 复杂场景 Discovery | 旧 Candidate 已修复；Semantic Round 15 已关闭 25/25，23 Passed、2 个新 Exact-seed Product Candidate | 需要 Product Remediation；无发布权威 |
 | 17.4 VS Code 与进程 Chaos | 同 Lock H1 Round 03 已 21/21 通过 | H3 前置证据 |
 | Live Model 与 Drift | 同 Lock H2 Round 05 已 16/16 通过 | H3 前置证据 |
 | Endurance 与 Release | H3 Round 02 已 14/14 通过；8/8 RC Lane 已准入 | 本地 RC Candidate Admission |

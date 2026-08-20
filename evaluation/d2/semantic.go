@@ -187,11 +187,41 @@ var semanticCases = []semanticCase{
 		seed:   829, invariant: "Revert cannot block cancellation of a parked active Turn",
 		run: probeRevertDuringApproval,
 	},
+	{
+		id:     "semantic-input-reply-001",
+		family: "input_reply_resume",
+		seed:   839, invariant: "a valid input reply resumes and completes its parked Turn exactly once",
+		run: probeInputReply,
+	},
+	{
+		id:     "semantic-duplicate-input-001",
+		family: "input_reply_idempotency",
+		seed:   853, invariant: "a resolved input request cannot be answered twice",
+		run: probeDuplicateInputReply,
+	},
+	{
+		id:     "semantic-wrong-session-input-001",
+		family: "input_session_isolation",
+		seed:   857, invariant: "a Session cannot answer another Session input request",
+		run: probeWrongSessionInputReply,
+	},
+	{
+		id:     "semantic-cancel-late-input-001",
+		family: "cancel_late_input",
+		seed:   859, invariant: "a late input reply cannot revive a canceled Turn",
+		run: probeCancelLateInputReply,
+	},
+	{
+		id:     "semantic-crash-pending-input-001",
+		family: "crash_pending_input_recovery",
+		seed:   863, invariant: "restart preserves a pending input request and resumes it exactly once",
+		run: probeCrashPendingInput,
+	},
 }
 
 func validateSemanticCatalog() error {
-	if len(semanticCases) != 20 {
-		return errors.New("D2 Semantic catalog must contain twenty Cases")
+	if len(semanticCases) != 25 {
+		return errors.New("D2 Semantic catalog must contain twenty-five Cases")
 	}
 	seenIDs := make(map[string]struct{}, len(semanticCases))
 	seenFamilies := make(map[string]struct{}, len(semanticCases))

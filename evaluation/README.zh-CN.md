@@ -52,8 +52,12 @@ Interaction 与 18/18 Check，包括有序 Journey Execution、Live CLI Routing 
 Topology-to-Driver Routing；该浅层 Round 未准入 Product Candidate。Semantic/In-path
 循环随后关闭 Round 10：20/20 Settled、17 Passed、3 个 Exact-seed Product
 Candidate、0 Harness Incident。`thread.compact`、`thread.fork` 与 `turn.revert`
-均可在 Turn Parked on Approval 时阻塞后续 Cancel。Product Remediation 与 D2.4
-Re-entry 仍未授权。
+均可在 Turn Parked on Approval 时阻塞后续 Cancel。该缺陷已修复，由 Q1 Round 15
+冻结，并在 Semantic Round 11 以 20/20 Passed 完成回归。下一层 Input State 深度在
+Semantic Round 15 关闭为 25/25 Settled、23 Passed、2 个 Exact-seed Product
+Candidate、0 Harness Incident：取消 Parked on `input.required` 的 Turn 不产生
+Terminal；恢复后的 Input Reply 已 Resolved，但 Turn 不产生后续 Terminal。这两个
+新 Candidate 的修复尚未授权。
 
 修正后的目标契约和执行顺序见：
 
@@ -91,9 +95,11 @@ H3 失败、Remediation、重新验收与最终准入记录在
 D2.3 关闭与 Driver Remediation 决策记录在
 `assessments/d2-campaign-global-assessment-01.json` 与
 `assessments/d2-driver-remediation-global-assessment-01.json`。
-Semantic 收敛与三个 Product Candidate 记录在
+原 Semantic 收敛与三个已修复 Product Candidate 记录在
 `assessments/d2-semantic-global-assessment-01.json` 以及
-`assessments/d2-product-candidate-0001.json` 至 `-0003.json`。
+`assessments/d2-product-candidate-0001.json` 至 `-0003.json`。Round 15 与两个新
+Candidate 记录在 `assessments/d2-semantic-round-15-assessment.json` 以及
+`assessments/d2-product-candidate-0004.json` 至 `-0005.json`。
 
 F1 实现当前包含：
 

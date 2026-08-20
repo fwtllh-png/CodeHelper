@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-product-candidate-0005",
+  "phase": "complex_scenario_discovery_semantic_depth",
+  "status": "confirmed_product_candidate",
+  "observed_on": "2026-08-21",
+  "source_round": "complex-discovery-d2-semantic-15",
+  "case_id": "semantic-crash-pending-input-001",
+  "summary_code": "recovered_input_terminal_missing",
+  "severity": "p1",
+  "reproducibility": "exact_seed",
+  "attempts": 2,
+  "product_boundary": "runtime_pending_input_recovery",
+  "trigger": {
+    "turn_state": "parked_on_input_required",
+    "fault": "runtime_process_crash",
+    "followup": "session_load_and_input_reply"
+  },
+  "observed_behavior": {
+    "input_reply_resolved_after_restart": true,
+    "turn_terminal_within_3000_ms": false
+  },
+  "evidence": {
+    "round_evidence_digest": "sha256:5eecd3304c5f28d223b2c684539df10d9036a9f1cab2da926e41e04014915924",
+    "case_evidence_digest": "sha256:d228a1a7b8720c7a873cd643fc59f9f2735b13c6f2bc4b920ed914c6b51f7671",
+    "lock_identity": "sha256:bbe392641d9fc30af16cb073964b692f898dc4d9dc6157820204fd536ca9fc9c"
+  },
+  "disposition": {
+    "product_repair_performed": false,
+    "product_remediation_authorized": false
+  }
+}

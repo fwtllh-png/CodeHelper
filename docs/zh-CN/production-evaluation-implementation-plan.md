@@ -16,7 +16,11 @@
 > Semantic/In-path 循环在 Round 10 收敛为 20/20 Settled、17 Passed、3 个
 > Exact-seed Product Candidate、0 Harness Incident。受影响操作为
 > `thread.compact`、`thread.fork` 与 `turn.revert`；它们都能在 Turn Parked on
-> Approval 时阻塞后续 Cancel。Product Remediation 仍由独立门禁控制且未授权。
+> Approval 时阻塞后续 Cancel。该修复已通过 Q1 Round 15 与 20/20 的 Semantic
+> Round 11 回归。Input State 深度随后在 Semantic Round 15 关闭为 25/25 Settled、
+> 23 Passed 和 2 个新 Exact-seed Product Candidate：Parked Input Cancel 缺失
+> Terminal，以及恢复后的 Input Reply 缺失 Turn Terminal。其 Remediation 仍由
+> 独立门禁控制且未授权。
 
 | Stage | 状态 |
 | --- | --- |
@@ -26,7 +30,7 @@
 | F3 Oracle、Core Pack、Impact | 已验收 |
 | Q1 Qualification 与 Freeze | 具备 H3 能力的后继已由 Round 13 完成；`frozen_qualified` |
 | D1 Collect-all Product Discovery | 已完成 56/56；无 Product Candidate |
-| D2 复杂场景 Discovery | Semantic Round 10 已关闭；3 个 Exact-seed Product Candidate |
+| D2 复杂场景 Discovery | 原 Candidate 已修复；Semantic Round 15 已关闭并确认 2 个新 Exact-seed Product Candidate |
 | H1 VS Code 与 Process Chaos | 同 Lock Round 03 已完成 21/21 |
 | H2 Live Model 与 Drift | 同 Lock Round 05 已完成 16/16 |
 | H3 Endurance 与 Release | Round 02 已完成 14/14；RC Candidate 已准入 |

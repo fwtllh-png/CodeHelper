@@ -18,7 +18,11 @@
 > loop converged at Round 10 with 20/20 settled, 17 passed, three Exact-seed
 > Product Candidates, and zero Harness Incidents. The three affected operations
 > are `thread.compact`, `thread.fork`, and `turn.revert`; each can block later
-> cancellation while a Turn is parked on approval. Product Remediation remains
+> cancellation while a Turn is parked on approval. That repair passed Q1 Round
+> 15 and the 20/20 Semantic Round 11 regression. Input-state depth then closed
+> Semantic Round 15 at 25/25 settled with 23 passed and two new Exact-seed
+> Product Candidates: missing cancellation terminal while parked on input, and
+> missing Turn terminal after a recovered input reply. Their remediation is
 > separately gated and unauthorized.
 
 | Stage | Status |
@@ -29,7 +33,7 @@
 | F3 Oracles, Core Pack, Impact | qualified |
 | Q1 Qualification and Freeze | H3-capable successor completed by Round 13; `frozen_qualified` |
 | D1 Collect-all Product Discovery | completed 56/56; no Product Candidate |
-| D2 Complex-scenario Discovery | Semantic Round 10 closed; 3 Exact-seed Product Candidates |
+| D2 Complex-scenario Discovery | original candidates remediated; Semantic Round 15 closed with 2 new Exact-seed Product Candidates |
 | H1 VS Code and Process Chaos | same-Lock Round 03 completed 21/21 |
 | H2 Live Model and Drift | same-Lock Round 05 completed 16/16 |
 | H3 Endurance and Release | Round 02 completed 14/14; RC candidate admitted |

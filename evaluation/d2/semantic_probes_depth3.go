@@ -483,12 +483,16 @@ func submitApprovalAndObserve(
 }
 
 func cancelSemanticPrompt(harness *semanticHarness, promptID string) error {
+	beforeCanceled := harness.client.events["turn.canceled"]
 	if _, err := harness.client.call("session/cancel", map[string]any{
 		"sessionId": harness.session.SessionID,
 	}); err != nil {
 		return err
 	}
-	if err := harness.client.waitEvent("turn.canceled"); err != nil {
+	if _, err := harness.client.waitEventAfter(
+		"turn.canceled",
+		beforeCanceled,
+	); err != nil {
 		return err
 	}
 	_, _ = harness.client.waitID(promptID)

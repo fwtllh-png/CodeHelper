@@ -59,7 +59,12 @@ Candidate was admitted by that shallow round. The Semantic/In-path loop then
 closed Round 10 with 20/20 settled, 17 passed, three Exact-seed Product
 Candidates, and zero Harness Incidents. `thread.compact`, `thread.fork`, and
 `turn.revert` can each block later cancellation while a Turn is parked on
-approval. Product Remediation and D2.4 re-entry remain unauthorized.
+approval. That defect was repaired, frozen by Q1 Round 15, and regressed by
+Semantic Round 11 at 20/20 passed. The next input-state depth closed Semantic
+Round 15 at 25/25 settled, 23 passed, two Exact-seed Product Candidates, and
+zero Harness Incidents. Canceling a Turn parked on `input.required` produces
+no terminal, and a recovered input reply resolves without a later Turn
+terminal. Repair of these two new candidates remains unauthorized.
 
 The corrected target contracts and execution order are defined by:
 
@@ -99,9 +104,12 @@ through `-13.json`.
 The D2.3 closure and Driver remediation decision are recorded in
 `assessments/d2-campaign-global-assessment-01.json` and
 `assessments/d2-driver-remediation-global-assessment-01.json`.
-Semantic convergence and the three Product Candidates are recorded in
+The original Semantic convergence and three remediated Product Candidates are recorded in
 `assessments/d2-semantic-global-assessment-01.json` and
-`assessments/d2-product-candidate-0001.json` through `-0003.json`.
+`assessments/d2-product-candidate-0001.json` through `-0003.json`. Round 15
+and its two new candidates are recorded in
+`assessments/d2-semantic-round-15-assessment.json` and
+`assessments/d2-product-candidate-0004.json` through `-0005.json`.
 
 The F1 implementation now provides:
 
