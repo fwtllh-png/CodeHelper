@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-semantic-round-01-assessment",
+  "phase": "complex_scenario_discovery_semantic_depth",
+  "status": "closed_reclassification_required",
+  "observed_on": "2026-08-21",
+  "round_id": "complex-discovery-d2-semantic-01",
+  "scheduled": 8,
+  "settled": 8,
+  "passed": 4,
+  "provisional_product_candidates": 4,
+  "harness_incidents": 0,
+  "artifact_published": true,
+  "reusable_for_product_claims": false,
+  "candidate_review": [
+    {
+      "case_id": "semantic-workspace-drift-001",
+      "summary_code": "workspace_drift_accepted",
+      "decision": "oracle_conflates_turn_success_with_workspace_mutation"
+    },
+    {
+      "case_id": "semantic-cancel-late-decision-001",
+      "summary_code": "late_approval_accepted",
+      "decision": "oracle_does_not_decode_operation_accepted_receipt"
+    },
+    {
+      "case_id": "semantic-readonly-atomicity-001",
+      "summary_code": "readonly_workspace_write_completed",
+      "decision": "oracle_conflates_turn_success_with_partial_write"
+    },
+    {
+      "case_id": "semantic-crash-pending-approval-001",
+      "summary_code": "pending_approval_recovery_incomplete",
+      "decision": "oracle_combines_cancel_running_and_mutation_failures"
+    }
+  ],
+  "required_remediation": {
+    "workspace_authority": "file_content_and_digest",
+    "approval_authority": "operation_accepted_receipt",
+    "filesystem_authority": "partial_or_committed_workspace_content",
+    "crash_recovery_authority": "separate_cancel_active_turn_and_effect_replay_invariants",
+    "successor_round_required": true,
+    "product_remediation_authorized": false
+  }
+}

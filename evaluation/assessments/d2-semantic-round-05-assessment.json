@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-semantic-round-05-assessment",
+  "phase": "complex_scenario_discovery_semantic_depth",
+  "status": "closed_reclassification_required",
+  "observed_on": "2026-08-21",
+  "round_id": "complex-discovery-d2-semantic-05",
+  "scheduled": 18,
+  "settled": 18,
+  "passed": 15,
+  "provisional_product_candidates": 3,
+  "harness_incidents": 0,
+  "artifact_published": true,
+  "reusable_for_product_claims": false,
+  "candidate_review": [
+    {
+      "case_id": "semantic-expired-approval-001",
+      "summary_code": "expired_approval_accepted",
+      "decision": "submit_receipt_is_not_approval_resolution"
+    },
+    {
+      "case_id": "semantic-plan-mismatch-001",
+      "summary_code": "mismatched_plan_approval_accepted",
+      "decision": "submit_receipt_is_not_approval_resolution"
+    },
+    {
+      "case_id": "semantic-compact-active-001",
+      "summary_code": "compaction_active_turn_unsettled",
+      "decision": "oracle_did_not_drain_async_operation_event"
+    }
+  ],
+  "required_successor": {
+    "approval_authority": "approval_resolved_or_operation_rejected_event",
+    "compaction_authority": "thread_compacted_or_operation_rejected_event",
+    "bounded_event_wait": true,
+    "product_remediation_authorized": false
+  }
+}

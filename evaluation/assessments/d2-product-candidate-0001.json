@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-product-candidate-0001",
+  "phase": "complex_scenario_discovery_semantic_depth",
+  "status": "confirmed_product_candidate",
+  "observed_on": "2026-08-21",
+  "source_round": "complex-discovery-d2-semantic-08",
+  "final_confirmation_round": "complex-discovery-d2-semantic-10",
+  "case_id": "semantic-compact-active-001",
+  "summary_code": "active_compaction_cancel_deadlock",
+  "severity": "p1",
+  "reproducibility": "exact_seed",
+  "attempts": 2,
+  "product_boundary": "runtime_operation_dispatch",
+  "trigger": {
+    "thread_state": "active_turn_parked_on_approval",
+    "operation": "thread.compact",
+    "followup": "session.cancel"
+  },
+  "observed_behavior": {
+    "compact_submit_accepted": true,
+    "compact_terminal_within_ms": false,
+    "cancel_submit_returned": true,
+    "cancel_terminal_within_2000_ms": false,
+    "workspace_effect_executed": false
+  },
+  "static_attribution": {
+    "runtime_loop": "single_serial_dispatch",
+    "compact_handler": "synchronous_engine_compact",
+    "blocking_condition": "active_engine_turn_owns_state_needed_by_compaction",
+    "cancel_condition": "cancel_operation_queued_behind_blocked_compaction"
+  },
+  "evidence": {
+    "round_evidence_digest": "sha256:5c59bb71227d9526bb461b7b64e6151078d72b75fbec7c45b0bd64c62a16f119",
+    "case_evidence_digest": "sha256:09b3f0a21b0776128f78dc6f01677aef5fc2d3a16ae54f28648e662358aabc0e",
+    "lock_identity": "sha256:53e943ca534342e7852589b61ccd34d2ffd73c94991aa8ffcbeb5603ccde4eab"
+  },
+  "disposition": {
+    "product_repair_performed": false,
+    "product_remediation_authorized": false,
+    "continue_discovery": true,
+    "required_followup": "test_fork_and_revert_active_turn_exclusion"
+  }
+}

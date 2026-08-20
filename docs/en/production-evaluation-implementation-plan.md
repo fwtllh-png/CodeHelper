@@ -14,7 +14,12 @@
 > admitted 93 Harness Incidents and one Unattributed Live observation. Driver
 > execution remediation is now qualified by `complex-discovery-d2-drivers-26`:
 > 18/18 checks passed over 105 Cases with 376/376 pairwise coverage. No Product
-> Candidate was admitted, and no successor Campaign is authorized yet.
+> Candidate was admitted by that shallow round. The authorized Semantic/In-path
+> loop converged at Round 10 with 20/20 settled, 17 passed, three Exact-seed
+> Product Candidates, and zero Harness Incidents. The three affected operations
+> are `thread.compact`, `thread.fork`, and `turn.revert`; each can block later
+> cancellation while a Turn is parked on approval. Product Remediation remains
+> separately gated and unauthorized.
 
 | Stage | Status |
 | --- | --- |
@@ -24,7 +29,7 @@
 | F3 Oracles, Core Pack, Impact | qualified |
 | Q1 Qualification and Freeze | H3-capable successor completed by Round 13; `frozen_qualified` |
 | D1 Collect-all Product Discovery | completed 56/56; no Product Candidate |
-| D2 Complex-scenario Discovery | Driver remediation successor qualified 18/18; next Campaign not authorized |
+| D2 Complex-scenario Discovery | Semantic Round 10 closed; 3 Exact-seed Product Candidates |
 | H1 VS Code and Process Chaos | same-Lock Round 03 completed 21/21 |
 | H2 Live Model and Drift | same-Lock Round 05 completed 16/16 |
 | H3 Endurance and Release | Round 02 completed 14/14; RC candidate admitted |
@@ -532,8 +537,17 @@ reconnect probes. Qualification also fail-closes Host routing. The successor
 contract contains 105 Cases and closes 376/376 pairwise interactions. Live
 model variability is isolated to the authoritative single-Turn CLI smoke.
 `subagent_worker` is excluded until a dedicated Driver executes and attests
-`spawn_agent`; ACP reachability cannot stand in for that topology. These
-changes do not authorize a new Campaign or D2.4 re-entry.
+`spawn_agent`; ACP reachability cannot stand in for that topology.
+
+The separately authorized Semantic/In-path loop used successor Lock
+`complex-discovery-d2-drivers-36` and increased the catalog from eight to
+twenty real production-path Cases. It exercised approvals and workspace
+effects, Checkpoint and compaction recovery, concurrent Sessions, same-Session
+reentry, MCP cancellation, multi-Host workspace conflicts, and active-thread
+mutation exclusion. Round 10 closed with 17 passed, three Exact-seed Product
+Candidates, and zero Harness Incidents. The three Candidates share one
+systemic Runtime dispatch root cause across `thread.compact`, `thread.fork`,
+and `turn.revert`.
 
 The first immutable Round runs at least these independent Campaign families:
 
@@ -663,8 +677,9 @@ Completed approvals and remaining explicit boundaries are:
 5. production admission H1, H2, and H3 are complete;
 6. H4 Canary and Incident Closure is deferred and not authorized;
 7. D2.1 and D2.2 implementation and Qualification are complete;
-8. D2.3 Round 05 is closed and Driver remediation is qualified by
-   `complex-discovery-d2-drivers-26`; a successor Campaign is not authorized;
-9. D2.4 re-entry and any Product Remediation require separate approval.
+8. D2.3 Round 05 and Semantic Round 10 are closed; Driver/Semantic
+   Qualification is bound to `complex-discovery-d2-drivers-36`;
+9. three D2 Product Candidates are confirmed, but D2.4 re-entry and Product
+   Remediation require separate approval.
 
 No later approval is implied by an earlier one.

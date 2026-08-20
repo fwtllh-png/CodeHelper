@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-product-candidate-0002",
+  "phase": "complex_scenario_discovery_semantic_depth",
+  "status": "confirmed_product_candidate",
+  "observed_on": "2026-08-21",
+  "source_round": "complex-discovery-d2-semantic-10",
+  "case_id": "semantic-fork-active-001",
+  "summary_code": "active_fork_cancel_deadlock",
+  "severity": "p1",
+  "reproducibility": "exact_seed",
+  "attempts": 2,
+  "product_boundary": "runtime_operation_dispatch",
+  "trigger": {
+    "thread_state": "active_turn_parked_on_approval",
+    "operation": "thread.fork",
+    "followup": "session.cancel"
+  },
+  "observed_behavior": {
+    "fork_submit_accepted": true,
+    "fork_terminal_within_ms": false,
+    "cancel_submit_returned": true,
+    "cancel_terminal_within_2000_ms": false
+  },
+  "root_cause_group": "d2-systemic-thread-mutation-deadlock-01",
+  "evidence": {
+    "round_evidence_digest": "sha256:f75a5e12979cec3041b17133b8a32ccad0c022fa71fc9d9c50cafe5c2aaa3ab6",
+    "case_evidence_digest": "sha256:c3ec8f754ae4af3302bf740e7994188e1c736cb204483f03db3338cc5106b573",
+    "lock_identity": "sha256:e0c46d740cb6e9c6f8cf538cadff0a9a1ce94596f3e9804c588d6eb2807a2a93"
+  },
+  "disposition": {
+    "product_repair_performed": false,
+    "product_remediation_authorized": false
+  }
+}

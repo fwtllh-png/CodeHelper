@@ -12,8 +12,11 @@
 > 05 已完成 129/129 Case 结算，并准入 93 个 Harness Incident 与 1 个
 > Unattributed Live Observation。Driver Execution Remediation 现已由
 > `complex-discovery-d2-drivers-26` 验收：基于 105 个 Case 与 376/376 Pairwise
-> Coverage 的 18/18 Check 已通过。未准入 Product Candidate，也尚未授权后继
-> Campaign。
+> Coverage 的 18/18 Check 已通过；该浅层 Round 未准入 Product Candidate。已授权的
+> Semantic/In-path 循环在 Round 10 收敛为 20/20 Settled、17 Passed、3 个
+> Exact-seed Product Candidate、0 Harness Incident。受影响操作为
+> `thread.compact`、`thread.fork` 与 `turn.revert`；它们都能在 Turn Parked on
+> Approval 时阻塞后续 Cancel。Product Remediation 仍由独立门禁控制且未授权。
 
 | Stage | 状态 |
 | --- | --- |
@@ -23,7 +26,7 @@
 | F3 Oracle、Core Pack、Impact | 已验收 |
 | Q1 Qualification 与 Freeze | 具备 H3 能力的后继已由 Round 13 完成；`frozen_qualified` |
 | D1 Collect-all Product Discovery | 已完成 56/56；无 Product Candidate |
-| D2 复杂场景 Discovery | Driver Remediation 后继已 18/18 验收；下一 Campaign 未授权 |
+| D2 复杂场景 Discovery | Semantic Round 10 已关闭；3 个 Exact-seed Product Candidate |
 | H1 VS Code 与 Process Chaos | 同 Lock Round 03 已完成 21/21 |
 | H2 Live Model 与 Drift | 同 Lock Round 05 已完成 16/16 |
 | H3 Endurance 与 Release | Round 02 已完成 14/14；RC Candidate 已准入 |
@@ -502,7 +505,16 @@ Replacement、Rollback 与 Reconnect Probe。Qualification 还会对 Host Routin
 Fail Closed。后继 Contract 包含 105 个 Case，并关闭 376/376 Pairwise Interaction。
 Live Model Variability 被隔离到权威的 CLI Single-Turn Smoke。`subagent_worker`
 在 Dedicated Driver 能执行并证明 `spawn_agent` 前被排除，ACP Reachability 不能
-替代该 Topology。这些变更不授权新 Campaign 或 D2.4 Re-entry。
+替代该 Topology。
+
+独立授权的 Semantic/In-path 循环使用后继 Lock
+`complex-discovery-d2-drivers-36`，将 Catalog 从 8 个增加到 20 个真实生产路径
+Case，覆盖 Approval 与 Workspace Effect、Checkpoint/Compaction Recovery、
+Concurrent Session、Same-session Reentry、MCP Cancellation、Multi-host Workspace
+Conflict 与 Active-thread Mutation Exclusion。Round 10 关闭为 17 Passed、3 个
+Exact-seed Product Candidate、0 Harness Incident。三个 Candidate 在
+`thread.compact`、`thread.fork` 与 `turn.revert` 上共享同一个系统性 Runtime
+Dispatch 根因。
 
 首个不可变 Round 至少运行以下独立 Campaign Family：
 
@@ -625,8 +637,9 @@ Contract、首轮 Qualification Epoch、Harness Freeze 和 D2 Contract Qualifica
 5. Production Admission H1、H2 与 H3 已完成；
 6. H4 Canary 与 Incident Closure 已延期且未获授权；
 7. D2.1 与 D2.2 Implementation/Qualification 已完成；
-8. D2.3 Round 05 已关闭，Driver Remediation 已由
-   `complex-discovery-d2-drivers-26` 验收；后继 Campaign 未授权；
-9. D2.4 Re-entry 与任何 Product Remediation 需要独立批准。
+8. D2.3 Round 05 与 Semantic Round 10 已关闭；Driver/Semantic Qualification
+   绑定 `complex-discovery-d2-drivers-36`；
+9. 已确认 3 个 D2 Product Candidate，但 D2.4 Re-entry 与 Product Remediation
+   需要独立批准。
 
 前一批准不隐含后一批准。

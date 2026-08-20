@@ -250,6 +250,64 @@ func TestD2CampaignRoundSchemaAndIdentityAreStrict(t *testing.T) {
 	}
 }
 
+func TestD2SemanticCatalogAndRoundSchemaAreStrict(t *testing.T) {
+	if err := validateSemanticCatalog(); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 21, 3, 0, 0, 0, time.UTC)
+	round := SemanticRound{
+		SchemaVersion:         SchemaVersion,
+		ID:                    "semantic-round-test",
+		DiscoveryLockIdentity: spec.DigestString("semantic-lock"),
+		Status:                "closed",
+		Scheduled:             len(semanticCases),
+		Settled:               len(semanticCases),
+		Passed:                len(semanticCases),
+		StartedAt:             now,
+		FinishedAt:            now.Add(time.Second),
+		Observations:          []Observation{},
+		ResourceClosure:       spec.DigestString("semantic-resources"),
+		PrivacyClosure:        spec.DigestString("semantic-privacy"),
+	}
+	for _, item := range semanticCases {
+		result := SemanticResult{
+			ID: item.id, FamilyID: item.family, Seed: item.seed,
+			Status: "passed", Classification: "expected_variance",
+			Reproducibility: "controlled_matrix", Attempts: 1,
+			SummaryCode:     "semantic_invariant_passed",
+			ExecutionDigest: spec.DigestString(item.id),
+		}
+		result.EvidenceDigest = digestSemanticResult(result)
+		round.Cases = append(round.Cases, result)
+	}
+	round.EvidenceDigest = digestSemanticRound(round)
+	if err := round.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(round)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Clean(filepath.Join("..", ".."))
+	if err := validateSchemaFile(
+		root,
+		"evaluation/schema/discovery-semantic-round.schema.json",
+		raw,
+	); err != nil {
+		t.Fatal(err)
+	}
+	round.Cases[0].Status = "failed"
+	round.Cases[0].Classification = "product_candidate"
+	round.Cases[0].Reproducibility = "unreproduced"
+	round.Cases[0].EvidenceDigest = digestSemanticResult(round.Cases[0])
+	round.Passed--
+	round.Failed++
+	round.EvidenceDigest = digestSemanticRound(round)
+	if err := round.Validate(); err == nil {
+		t.Fatal("D2 Semantic Round accepted an unreproduced Product Candidate")
+	}
+}
+
 func TestD2DriverQualificationBindsCandidateLock(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", ".."))
 	bundle, err := LoadCampaign(root, "evaluation/spec/d2-campaign.json")

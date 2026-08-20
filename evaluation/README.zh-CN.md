@@ -49,7 +49,10 @@ D2.1 至 D2.3 已实现为独立且不具备发布权威的控制面。历史 Ro
 Observation。Driver Execution Remediation 现已由
 `complex-discovery-d2-drivers-26` 验收：其 105-Case 后继关闭 376/376 Pairwise
 Interaction 与 18/18 Check，包括有序 Journey Execution、Live CLI Routing 和精确
-Topology-to-Driver Routing。未准入 Product Candidate。后继 Campaign 与 D2.4
+Topology-to-Driver Routing；该浅层 Round 未准入 Product Candidate。Semantic/In-path
+循环随后关闭 Round 10：20/20 Settled、17 Passed、3 个 Exact-seed Product
+Candidate、0 Harness Incident。`thread.compact`、`thread.fork` 与 `turn.revert`
+均可在 Turn Parked on Approval 时阻塞后续 Cancel。Product Remediation 与 D2.4
 Re-entry 仍未授权。
 
 修正后的目标契约和执行顺序见：
@@ -88,6 +91,9 @@ H3 失败、Remediation、重新验收与最终准入记录在
 D2.3 关闭与 Driver Remediation 决策记录在
 `assessments/d2-campaign-global-assessment-01.json` 与
 `assessments/d2-driver-remediation-global-assessment-01.json`。
+Semantic 收敛与三个 Product Candidate 记录在
+`assessments/d2-semantic-global-assessment-01.json` 以及
+`assessments/d2-product-candidate-0001.json` 至 `-0003.json`。
 
 F1 实现当前包含：
 
@@ -171,11 +177,22 @@ go run ./evaluation/d2/cmd/codehelper-discovery qualify \
 ```bash
 go run ./evaluation/d2/cmd/codehelper-discovery qualify-drivers \
   --root . \
-  --id complex-discovery-d2-drivers-26 \
+  --id complex-discovery-d2-drivers-36 \
   --base-lock .tmp/evaluation/q1/foundation-v2-q1-14/harness-lock.json \
   --runtime bin/codehelper \
   --vsix extensions/vscode/dist/codehelper-vscode-0.0.1.vsix \
-  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-26
+  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-36
+```
+
+最终关闭的 Semantic Campaign 只能在其精确 Lock 上复现：
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery semantic-campaign \
+  --root . \
+  --id complex-discovery-d2-semantic-10 \
+  --discovery-lock .tmp/evaluation/d2/complex-discovery-d2-drivers-36/discovery-lock.json \
+  --runtime bin/codehelper \
+  --output .tmp/evaluation/d2/complex-discovery-d2-semantic-10
 ```
 
 下列命令仅用于说明历史 Round 05 Evidence。未获明确授权前，不得替换为后继 Lock

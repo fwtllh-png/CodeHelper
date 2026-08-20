@@ -38,6 +38,7 @@ var requiredDriverQualificationChecks = []string{
 	"privacy-closure",
 	"scale-bounds",
 	"schedule-replay",
+	"semantic-contract",
 	"synthetic-repository-replay",
 	"topology-driver-routing",
 	"vscode-boundary-negative",
@@ -182,6 +183,9 @@ func RunDriverQualification(
 				}
 			}
 			return nil
+		}},
+		{"semantic-contract", func(context.Context) error {
+			return validateSemanticCatalog()
 		}},
 		{"cleanup-ownership", func(context.Context) error {
 			for _, generated := range options.Inventory.Cases {

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-semantic-round-07-invalid-assessment",
+  "phase": "complex_scenario_discovery_semantic_depth",
+  "status": "invalid",
+  "observed_on": "2026-08-21",
+  "round_id": "complex-discovery-d2-semantic-07",
+  "artifact_published": false,
+  "reusable": false,
+  "classification": "harness_incident",
+  "reason": "semantic_compaction_case_blocked_collect_all",
+  "evidence": {
+    "elapsed_before_abort_ms": 90000,
+    "remaining_runtime_case": "semantic-compact-active-001",
+    "resource_cleanup_after_abort": "closed"
+  },
+  "required_remediation": {
+    "per_case_timeout": true,
+    "bounded_cancel_terminal_wait": true,
+    "successor_epoch_required": true,
+    "product_remediation_authorized": false
+  }
+}

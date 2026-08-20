@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codehelper.dev/schemas/discovery-semantic-round.schema.json",
+  "title": "CodeHelper D2 Semantic Campaign Round",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "discovery_lock_identity",
+    "status",
+    "scheduled",
+    "settled",
+    "passed",
+    "failed",
+    "invalid",
+    "started_at",
+    "finished_at",
+    "cases",
+    "observations",
+    "resource_closure",
+    "privacy_closure",
+    "evidence_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/id" },
+    "discovery_lock_identity": { "$ref": "#/$defs/digest" },
+    "status": { "const": "closed" },
+    "scheduled": { "const": 20 },
+    "settled": { "const": 20 },
+    "passed": { "type": "integer", "minimum": 0, "maximum": 20 },
+    "failed": { "type": "integer", "minimum": 0, "maximum": 20 },
+    "invalid": { "type": "integer", "minimum": 0, "maximum": 20 },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "cases": {
+      "type": "array",
+      "minItems": 20,
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/case" }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "$ref": "https://codehelper.dev/schemas/discovery-observation.schema.json"
+      }
+    },
+    "resource_closure": { "$ref": "#/$defs/digest" },
+    "privacy_closure": { "$ref": "#/$defs/digest" },
+    "evidence_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "family_id",
+        "seed",
+        "status",
+        "classification",
+        "reproducibility",
+        "attempts",
+        "summary_code",
+        "execution_digest",
+        "evidence_digest"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "family_id": { "$ref": "#/$defs/id" },
+        "seed": { "type": "integer", "minimum": 1 },
+        "status": { "enum": ["passed", "failed", "invalid"] },
+        "classification": {
+          "enum": [
+            "expected_variance",
+            "product_candidate",
+            "harness_incident",
+            "unattributed"
+          ]
+        },
+        "reproducibility": {
+          "enum": ["controlled_matrix", "exact_seed", "unreproduced"]
+        },
+        "attempts": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "summary_code": { "$ref": "#/$defs/id" },
+        "execution_digest": { "$ref": "#/$defs/digest" },
+        "evidence_digest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

@@ -92,3 +92,24 @@ func TestCampaignRequiresQualifiedInputsAndArtifacts(t *testing.T) {
 		t.Fatalf("campaign code=%d stderr=%s", code, stderr.String())
 	}
 }
+
+func TestSemanticCampaignRequiresQualifiedRuntime(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := run(
+		context.Background(),
+		[]string{"semantic-campaign", "--id", "d2-semantic-test"},
+		&stdout,
+		&stderr,
+	)
+	if code != 2 ||
+		!strings.Contains(stderr.String(), "--discovery-lock") ||
+		!strings.Contains(stderr.String(), "--runtime") ||
+		!strings.Contains(stderr.String(), "--output") {
+		t.Fatalf(
+			"semantic-campaign code=%d stderr=%s",
+			code,
+			stderr.String(),
+		)
+	}
+}

@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-semantic-global-assessment-01",
+  "phase": "complex_scenario_discovery_semantic_depth",
+  "status": "closed_product_candidates_confirmed",
+  "observed_on": "2026-08-21",
+  "branch": "evaluation",
+  "implementation_base": "791825d",
+  "product_code_repair_performed": false,
+  "product_remediation_authorized": false,
+  "rounds_executed": [
+    "complex-discovery-d2-semantic-01",
+    "complex-discovery-d2-semantic-02",
+    "complex-discovery-d2-semantic-03",
+    "complex-discovery-d2-semantic-04",
+    "complex-discovery-d2-semantic-05",
+    "complex-discovery-d2-semantic-06",
+    "complex-discovery-d2-semantic-07",
+    "complex-discovery-d2-semantic-08",
+    "complex-discovery-d2-semantic-09",
+    "complex-discovery-d2-semantic-10"
+  ],
+  "final_round": {
+    "id": "complex-discovery-d2-semantic-10",
+    "scheduled": 20,
+    "settled": 20,
+    "passed": 17,
+    "product_candidates": 3,
+    "harness_incidents": 0,
+    "evidence_digest": "sha256:f75a5e12979cec3041b17133b8a32ccad0c022fa71fc9d9c50cafe5c2aaa3ab6"
+  },
+  "successor_lock": {
+    "id": "complex-discovery-d2-drivers-36",
+    "status": "qualified",
+    "lock_identity": "sha256:e0c46d740cb6e9c6f8cf538cadff0a9a1ce94596f3e9804c588d6eb2807a2a93",
+    "qualification_checks": 19,
+    "qualification_passed": 19,
+    "inputs": 35
+  },
+  "semantic_depth": {
+    "real_approved_workspace_edit": true,
+    "checkpoint_external_side_effect_oracle": true,
+    "workspace_drift_oracle": true,
+    "cancel_late_decision": true,
+    "filesystem_atomicity": true,
+    "malformed_provider": true,
+    "crash_pending_approval_recovery": true,
+    "compaction_restart": true,
+    "concurrent_sessions": true,
+    "same_session_reentry": true,
+    "mcp_inflight_cancel": true,
+    "multi_host_workspace_conflict": true,
+    "approval_state_machine": true,
+    "active_thread_mutation_exclusion": true
+  },
+  "confirmed_product_candidates": [
+    {
+      "assessment_id": "d2-product-candidate-0001",
+      "operation": "thread.compact",
+      "summary_code": "active_compaction_cancel_deadlock"
+    },
+    {
+      "assessment_id": "d2-product-candidate-0002",
+      "operation": "thread.fork",
+      "summary_code": "active_fork_cancel_deadlock"
+    },
+    {
+      "assessment_id": "d2-product-candidate-0003",
+      "operation": "turn.revert",
+      "summary_code": "active_revert_cancel_deadlock"
+    }
+  ],
+  "systemic_root_cause": {
+    "id": "d2-systemic-thread-mutation-deadlock-01",
+    "boundary": "internal/runtime/app",
+    "runtime_loop": "serial_operation_dispatch",
+    "mutation_handlers": "synchronous_engine_calls",
+    "active_turn_state": "parked_on_approval",
+    "impact": "later_cancel_operation_cannot_dispatch"
+  },
+  "decision": {
+    "semantic_discovery_goal_achieved": true,
+    "continue_campaign_without_remediation": false,
+    "product_remediation_required": true,
+    "product_remediation_authorized": false,
+    "admission_authority": false
+  },
+  "validation": {
+    "passed": [
+      "semantic_round_20_of_20_settled",
+      "exact_seed_reproduction_2_of_2_per_candidate",
+      "resource_closure",
+      "privacy_closure",
+      "artifact_mode_0600",
+      "go_test_evaluation",
+      "go_test_race_evaluation",
+      "go_vet_d2",
+      "architecture_ratchet",
+      "docs_check",
+      "book_check",
+      "git_diff_check",
+      "successor_lock_input_verification",
+      "resource_cleanup"
+    ],
+    "pending": [],
+    "environment_limited": []
+  }
+}

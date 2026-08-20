@@ -26,15 +26,15 @@
     "foundation_qualification_digest": { "$ref": "#/$defs/digest" },
     "driver_inventory_digest": { "$ref": "#/$defs/digest" },
     "status": { "enum": ["passed", "failed", "invalid"] },
-    "scheduled": { "const": 18 },
-    "settled": { "const": 18 },
-    "passed": { "type": "integer", "minimum": 0, "maximum": 18 },
-    "failed": { "type": "integer", "minimum": 0, "maximum": 18 },
-    "invalid": { "type": "integer", "minimum": 0, "maximum": 18 },
+    "scheduled": { "const": 19 },
+    "settled": { "const": 19 },
+    "passed": { "type": "integer", "minimum": 0, "maximum": 19 },
+    "failed": { "type": "integer", "minimum": 0, "maximum": 19 },
+    "invalid": { "type": "integer", "minimum": 0, "maximum": 19 },
     "checks": {
       "type": "array",
-      "minItems": 18,
-      "maxItems": 18,
+      "minItems": 19,
+      "maxItems": 19,
       "items": { "$ref": "#/$defs/check" }
     },
     "evidence_digest": { "$ref": "#/$defs/digest" }

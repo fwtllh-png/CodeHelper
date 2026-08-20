@@ -37,6 +37,8 @@ func run(
 		return runQualifyDrivers(ctx, args[1:], stdout, stderr)
 	case "campaign":
 		return runCampaign(ctx, args[1:], stdout, stderr)
+	case "semantic-campaign":
+		return runSemanticCampaign(ctx, args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return 0
@@ -45,6 +47,92 @@ func run(
 		printUsage(stderr)
 		return 2
 	}
+}
+
+func runSemanticCampaign(
+	ctx context.Context,
+	args []string,
+	stdout, stderr io.Writer,
+) int {
+	flags := flag.NewFlagSet("semantic-campaign", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	root := flags.String("root", ".", "repository root")
+	id := flags.String("id", "", "immutable D2 Semantic Campaign ID")
+	lockPath := flags.String("discovery-lock", "", "qualified D2 Discovery Lock")
+	runtimePath := flags.String("runtime", "", "frozen production Runtime binary")
+	output := flags.String("output", "", "private immutable Semantic output")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 ||
+		strings.TrimSpace(*id) == "" ||
+		strings.TrimSpace(*lockPath) == "" ||
+		strings.TrimSpace(*runtimePath) == "" ||
+		strings.TrimSpace(*output) == "" {
+		fmt.Fprintln(
+			stderr,
+			"codehelper-discovery: semantic-campaign requires --id, --discovery-lock, --runtime, and --output",
+		)
+		return 2
+	}
+	absoluteRoot, err := filepath.Abs(*root)
+	if err != nil {
+		fmt.Fprintln(stderr, "codehelper-discovery:", err)
+		return 1
+	}
+	resolve := func(path string) string {
+		if filepath.IsAbs(path) {
+			return filepath.Clean(path)
+		}
+		return filepath.Join(absoluteRoot, filepath.FromSlash(path))
+	}
+	lock, err := d2.ReadDiscoveryLock(resolve(*lockPath))
+	if err != nil {
+		fmt.Fprintln(stderr, "codehelper-discovery:", err)
+		return 1
+	}
+	round, err := d2.RunSemanticCampaign(ctx, d2.SemanticCampaignOptions{
+		Root: absoluteRoot, ID: *id, Runtime: resolve(*runtimePath),
+		Output: resolve(*output), Lock: lock,
+	})
+	if err != nil {
+		fmt.Fprintln(stderr, "codehelper-discovery:", err)
+		return 1
+	}
+	raw, err := json.Marshal(round)
+	if err != nil {
+		fmt.Fprintln(stderr, "codehelper-discovery:", err)
+		return 1
+	}
+	if err := d2.ValidateSchema(
+		absoluteRoot,
+		"evaluation/schema/discovery-semantic-round.schema.json",
+		raw,
+	); err != nil {
+		fmt.Fprintln(stderr, "codehelper-discovery:", err)
+		return 1
+	}
+	if err := d2.WriteSemanticBundle(resolve(*output), round, lock); err != nil {
+		fmt.Fprintln(stderr, "codehelper-discovery:", err)
+		return 1
+	}
+	writeSummary(stdout, struct {
+		ID           string `json:"id"`
+		Status       string `json:"status"`
+		Scheduled    int    `json:"scheduled"`
+		Settled      int    `json:"settled"`
+		Passed       int    `json:"passed"`
+		Failed       int    `json:"failed"`
+		Invalid      int    `json:"invalid"`
+		Observations int    `json:"observations"`
+		Output       string `json:"output"`
+	}{
+		ID: round.ID, Status: round.Status,
+		Scheduled: round.Scheduled, Settled: round.Settled,
+		Passed: round.Passed, Failed: round.Failed, Invalid: round.Invalid,
+		Observations: len(round.Observations), Output: resolve(*output),
+	})
+	return 0
 }
 
 func runCampaign(
@@ -513,6 +601,6 @@ func writeSummary(output io.Writer, value any) {
 func printUsage(output io.Writer) {
 	fmt.Fprintln(
 		output,
-		"usage: codehelper-discovery <check|qualify|qualify-drivers|campaign> [flags]",
+		"usage: codehelper-discovery <check|qualify|qualify-drivers|campaign|semantic-campaign> [flags]",
 	)
 }

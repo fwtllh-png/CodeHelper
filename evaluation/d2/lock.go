@@ -60,6 +60,7 @@ func DefaultInputRoots() []string {
 		"evaluation/schema/discovery-plan.schema.json",
 		"evaluation/schema/discovery-qualification.schema.json",
 		"evaluation/schema/discovery-round.schema.json",
+		"evaluation/schema/discovery-semantic-round.schema.json",
 		"evaluation/spec/d2-campaign.json",
 	}
 }

@@ -55,8 +55,11 @@ observation remained Unattributed. Driver execution remediation is now
 qualified by `complex-discovery-d2-drivers-26`: its 105-Case successor closes
 376/376 pairwise interactions and 18/18 checks, including ordered Journey
 execution, Live CLI routing, and exact topology-to-Driver routing. No Product
-Candidate was admitted. A successor Campaign and D2.4 re-entry remain
-unauthorized.
+Candidate was admitted by that shallow round. The Semantic/In-path loop then
+closed Round 10 with 20/20 settled, 17 passed, three Exact-seed Product
+Candidates, and zero Harness Incidents. `thread.compact`, `thread.fork`, and
+`turn.revert` can each block later cancellation while a Turn is parked on
+approval. Product Remediation and D2.4 re-entry remain unauthorized.
 
 The corrected target contracts and execution order are defined by:
 
@@ -96,6 +99,9 @@ through `-13.json`.
 The D2.3 closure and Driver remediation decision are recorded in
 `assessments/d2-campaign-global-assessment-01.json` and
 `assessments/d2-driver-remediation-global-assessment-01.json`.
+Semantic convergence and the three Product Candidates are recorded in
+`assessments/d2-semantic-global-assessment-01.json` and
+`assessments/d2-product-candidate-0001.json` through `-0003.json`.
 
 The F1 implementation now provides:
 
@@ -190,11 +196,22 @@ artifacts:
 ```bash
 go run ./evaluation/d2/cmd/codehelper-discovery qualify-drivers \
   --root . \
-  --id complex-discovery-d2-drivers-26 \
+  --id complex-discovery-d2-drivers-36 \
   --base-lock .tmp/evaluation/q1/foundation-v2-q1-14/harness-lock.json \
   --runtime bin/codehelper \
   --vsix extensions/vscode/dist/codehelper-vscode-0.0.1.vsix \
-  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-26
+  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-36
+```
+
+The final closed Semantic Campaign is reproduced only against its exact Lock:
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery semantic-campaign \
+  --root . \
+  --id complex-discovery-d2-semantic-10 \
+  --discovery-lock .tmp/evaluation/d2/complex-discovery-d2-drivers-36/discovery-lock.json \
+  --runtime bin/codehelper \
+  --output .tmp/evaluation/d2/complex-discovery-d2-semantic-10
 ```
 
 The command below is historical Round 05 evidence. Do not substitute the

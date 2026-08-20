@@ -38,6 +38,8 @@ type campaignACPClient struct {
 	readErr    chan error
 	stderr     bytes.Buffer
 	events     map[string]int
+	eventData  map[string][]json.RawMessage
+	pending    map[string]campaignACPFrame
 	nextID     int
 	closed     bool
 	transcript strings.Builder
@@ -46,6 +48,13 @@ type campaignACPClient struct {
 type campaignSession struct {
 	SessionID string `json:"sessionId"`
 	ThreadID  string `json:"threadId"`
+}
+
+type campaignACPStartOptions struct {
+	Posture         string
+	RepositoryRules string
+	MCPConfig       string
+	MaxSteps        int
 }
 
 type campaignCheckpointList struct {
@@ -59,16 +68,50 @@ func startCampaignACP(
 	ctx context.Context,
 	runtimePath, fixture, workspace, stateDir string,
 ) (*campaignACPClient, error) {
-	command := exec.CommandContext(
+	return startCampaignACPWithOptions(
 		ctx,
 		runtimePath,
+		fixture,
+		workspace,
+		stateDir,
+		campaignACPStartOptions{Posture: "never"},
+	)
+}
+
+func startCampaignACPWithOptions(
+	ctx context.Context,
+	runtimePath, fixture, workspace, stateDir string,
+	options campaignACPStartOptions,
+) (*campaignACPClient, error) {
+	if options.Posture == "" {
+		options.Posture = "never"
+	}
+	arguments := []string{
 		"host", "--adapter", "acp",
 		"--data-dir", stateDir,
 		"--provider-fixture", fixture,
 		"--workspace", workspace,
-		"--posture", "never",
+		"--posture", options.Posture,
 		"--enable-tools",
-	)
+	}
+	if options.RepositoryRules != "" {
+		arguments = append(
+			arguments,
+			"--repository-rules",
+			options.RepositoryRules,
+		)
+	}
+	if options.MCPConfig != "" {
+		arguments = append(arguments, "--mcp-config", options.MCPConfig)
+	}
+	if options.MaxSteps > 0 {
+		arguments = append(
+			arguments,
+			"--max-steps",
+			fmt.Sprintf("%d", options.MaxSteps),
+		)
+	}
+	command := exec.CommandContext(ctx, runtimePath, arguments...)
 	stdin, err := command.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -78,12 +121,14 @@ func startCampaignACP(
 		return nil, err
 	}
 	client := &campaignACPClient{
-		ctx:     ctx,
-		command: command,
-		stdin:   stdin,
-		frames:  make(chan campaignACPFrame, 256),
-		readErr: make(chan error, 1),
-		events:  make(map[string]int),
+		ctx:       ctx,
+		command:   command,
+		stdin:     stdin,
+		frames:    make(chan campaignACPFrame, 256),
+		readErr:   make(chan error, 1),
+		events:    make(map[string]int),
+		eventData: make(map[string][]json.RawMessage),
+		pending:   make(map[string]campaignACPFrame),
 	}
 	command.Stderr = &client.stderr
 	if err := command.Start(); err != nil {
@@ -133,6 +178,13 @@ func (c *campaignACPClient) send(id, method string, params any) error {
 }
 
 func (c *campaignACPClient) waitID(id string) (campaignACPFrame, error) {
+	if frame, ok := c.pending[id]; ok {
+		delete(c.pending, id)
+		if frame.Error != nil {
+			return frame, errors.New(frame.Error.Message)
+		}
+		return frame, nil
+	}
 	for {
 		frame, err := c.nextFrame()
 		if err != nil {
@@ -142,6 +194,9 @@ func (c *campaignACPClient) waitID(id string) (campaignACPFrame, error) {
 		var frameID string
 		_ = json.Unmarshal(frame.ID, &frameID)
 		if frameID != id {
+			if frameID != "" {
+				c.pending[frameID] = frame
+			}
 			continue
 		}
 		if frame.Error != nil {
@@ -154,17 +209,70 @@ func (c *campaignACPClient) waitID(id string) (campaignACPFrame, error) {
 }
 
 func (c *campaignACPClient) waitEvent(kind string) error {
-	if c.events[kind] > 0 {
-		return nil
+	_, err := c.waitEventAfter(kind, 0)
+	return err
+}
+
+func (c *campaignACPClient) waitEventAfter(
+	kind string,
+	after int,
+) (json.RawMessage, error) {
+	if c.events[kind] > after {
+		return c.eventData[kind][after], nil
 	}
 	for {
 		frame, err := c.nextFrame()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		c.observe(frame)
-		if c.events[kind] > 0 {
-			return nil
+		var frameID string
+		_ = json.Unmarshal(frame.ID, &frameID)
+		if frameID != "" {
+			c.pending[frameID] = frame
+		}
+		if c.events[kind] > after {
+			return c.eventData[kind][after], nil
+		}
+	}
+}
+
+func (c *campaignACPClient) waitAnyEvent(
+	baselines map[string]int,
+	timeout time.Duration,
+) (string, error) {
+	check := func() string {
+		for kind, baseline := range baselines {
+			if c.events[kind] > baseline {
+				return kind
+			}
+		}
+		return ""
+	}
+	if kind := check(); kind != "" {
+		return kind, nil
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case <-c.ctx.Done():
+			return "", c.ctx.Err()
+		case <-timer.C:
+			return "", errors.New("ACP semantic event wait timed out")
+		case frame, ok := <-c.frames:
+			if !ok {
+				return "", errors.New("ACP stdout closed")
+			}
+			c.observe(frame)
+			var frameID string
+			_ = json.Unmarshal(frame.ID, &frameID)
+			if frameID != "" {
+				c.pending[frameID] = frame
+			}
+			if kind := check(); kind != "" {
+				return kind, nil
+			}
 		}
 	}
 }
@@ -193,12 +301,19 @@ func (c *campaignACPClient) observe(frame campaignACPFrame) {
 		return
 	}
 	var update struct {
-		Event struct {
-			Kind string `json:"kind"`
-		} `json:"event"`
+		Event json.RawMessage `json:"event"`
 	}
-	if json.Unmarshal(frame.Params, &update) == nil && update.Event.Kind != "" {
-		c.events[update.Event.Kind]++
+	var event struct {
+		Kind string `json:"kind"`
+	}
+	if json.Unmarshal(frame.Params, &update) == nil &&
+		json.Unmarshal(update.Event, &event) == nil &&
+		event.Kind != "" {
+		c.events[event.Kind]++
+		c.eventData[event.Kind] = append(
+			c.eventData[event.Kind],
+			append(json.RawMessage(nil), update.Event...),
+		)
 		c.transcript.Write(frame.Params)
 		c.transcript.WriteByte('\n')
 	}
