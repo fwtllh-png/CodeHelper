@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codehelper.dev/schemas/discovery-driver-qualification.schema.json",
+  "title": "CodeHelper D2 Driver Qualification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "discovery_lock_identity",
+    "foundation_qualification_digest",
+    "driver_inventory_digest",
+    "status",
+    "scheduled",
+    "settled",
+    "passed",
+    "failed",
+    "invalid",
+    "checks",
+    "evidence_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/id" },
+    "discovery_lock_identity": { "$ref": "#/$defs/digest" },
+    "foundation_qualification_digest": { "$ref": "#/$defs/digest" },
+    "driver_inventory_digest": { "$ref": "#/$defs/digest" },
+    "status": { "enum": ["passed", "failed", "invalid"] },
+    "scheduled": { "const": 15 },
+    "settled": { "const": 15 },
+    "passed": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "failed": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "invalid": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "checks": {
+      "type": "array",
+      "minItems": 15,
+      "maxItems": 15,
+      "items": { "$ref": "#/$defs/check" }
+    },
+    "evidence_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "evidence_digest"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "status": { "enum": ["passed", "failed", "invalid"] },
+        "evidence_digest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

@@ -8,7 +8,11 @@
 > unauthorized. H4 implementation and controlled preflight are complete.
 > Requalification reached Q1 Round 14, H1 Round 04, and H2 Round 06; the
 > required four-hour same-Lock H3 Round 03 was stopped at 96/480 Turns for the
-> operator time budget, so formal H4 remains deferred.
+> operator time budget, so formal H4 remains deferred. Repeating that unchanged
+> chain is not the next priority. D2.1 and D2.2 are implemented and qualified
+> under an independent Discovery Lock. D2.3 Round 05 closed 129/129 Cases, but
+> re-entry is blocked by 93 Harness Incidents and one Unattributed Live
+> observation. No Product Candidate was admitted.
 
 | Stage | Status |
 | --- | --- |
@@ -18,6 +22,7 @@
 | F3 Oracles, Core Pack, Impact | qualified |
 | Q1 Qualification and Freeze | H3-capable successor completed by Round 13; `frozen_qualified` |
 | D1 Collect-all Product Discovery | completed 56/56; no Product Candidate |
+| D2 Complex-scenario Discovery | D2.3 Round 05 closed; Driver remediation required before re-entry |
 | H1 VS Code and Process Chaos | same-Lock Round 03 completed 21/21 |
 | H2 Live Model and Drift | same-Lock Round 05 completed 16/16 |
 | H3 Endurance and Release | Round 02 completed 14/14; RC candidate admitted |
@@ -106,6 +111,9 @@ Rules:
 6. Product Discovery starts only after one Harness Lock completes three clean
    Integration qualification runs.
 7. Product edits never occur in a Discovery Round.
+8. D2 Campaign definitions may evolve between Rounds, but every started Round
+   is immutable and closes with an assessment before repair.
+9. D2 evidence cannot satisfy or waive H1-H4 Admission evidence.
 
 ## 2. Audit-to-Work Mapping
 
@@ -399,7 +407,168 @@ No code repair occurs in D1.
 
 Estimated effort: 1 engineer-week per complete Discovery and assessment cycle.
 
-## 9. Stage R1: Product Remediation and Verification
+## 9. Stage D2: Complex-scenario Discovery
+
+Preconditions:
+
+- the production Runtime path and existing Harness primitives remain
+  qualified;
+- D2 has a separate versioned Discovery Lock, campaign identity, input roots,
+  and output root;
+- no formal H4 completion is required, and D2 creates no release authority;
+- the implementation budget and first Campaign portfolio are approved before
+  execution.
+
+### D2.1 Campaign Contracts and Portfolio
+
+Status: completed by `complex-discovery-d2-foundation-01`. All 12
+Qualification checks passed. The deterministic plan contains 129 Cases across
+seven independent Campaign families, with 539/539 pairwise interactions, 7/7
+required combinations, 12/12 boundary values, and 5/5 fault triggers covered.
+The qualified Discovery Lock references Q1 Round 14 without changing or
+replacing its Admission evidence.
+
+Deliver:
+
+- strict Campaign, Observation, Plan, Discovery Lock, and D2 Qualification
+  schemas;
+- a Discovery Lock that references the qualified base Harness/Runtime/Host
+  partition and hashes separately enumerated `discovery_input_roots`;
+- canonical Campaign, Case, seed, selection, environment, and artifact
+  identities;
+- a declared axis catalog for workload, state, topology, dependency behavior,
+  lifecycle, and model variability;
+- budget, stop, cleanup, and privacy policy;
+- a coverage planner that reports selected, unselected, pairwise, required
+  higher-order, boundary, and fault-trigger combinations;
+- an explicit distinction between deterministic, timing-sensitive, and live
+  statistical campaigns.
+
+Acceptance:
+
+- unknown fields, empty axes, zero-case selection, mixed identities, undeclared
+  adaptive choices, missing cleanup, and unbounded budgets are rejected;
+- D2 contract, planner, generator, fault-control, privacy, identity, and
+  cleanup negative controls pass as one D2 Qualification Epoch;
+- D2-only drift invalidates the Discovery Lock without claiming that the
+  unchanged H1-H4 evidence is stale;
+- generated Cases cannot claim to be independent Campaign families;
+- the same Campaign and seed set produce the same planned inventory.
+
+Estimate: 0.5 to 0.75 engineer-week.
+
+### D2.2 Production Drivers and Generators
+
+Status: completed initially by `complex-discovery-d2-drivers-03`; the D2.3
+implementation successor is `complex-discovery-d2-drivers-09`. All 15 Driver
+Qualification checks passed against the frozen Q1 Round 14 Runtime and VSIX.
+The generated inventory preserves all 129 planned Cases and contains 75 ACP,
+26 CLI, and 28 official VS Code-path Cases. Provider, process, persistence,
+filesystem, MCP, and guarded-Tool fault controls all have nonzero trigger
+evidence and each control triggered once during Qualification. Same-seed
+inventory, schedule, and 1,200-file synthetic-repository Replay, bounded scale,
+exact resource cleanup, privacy closure, and three production-boundary
+negative controls passed. No Campaign Case was executed and no Product
+Candidate was assessed.
+
+Deliver:
+
+- stateful repository Journey generation through supported CLI, ACP, and
+  official VS Code paths;
+- long-session, checkpoint, resume, cancellation, compaction, and interrupted
+  Effect state generation;
+- controlled concurrency and schedule recording;
+- composable Provider, process, persistence, filesystem, MCP, and Tool fault
+  controls;
+- scale and long-tail repository, context, output, and durable-state inputs;
+- upgrade, rollback, reconnect, and crash-recovery journeys;
+- differential and metamorphic assertions across Hosts, restart boundaries,
+  and equivalent task forms;
+- resource ownership and exact cleanup evidence for every generated Case.
+
+Implementation constraints:
+
+- use production Host/Runtime entry points and existing guarded Tools;
+- keep generation and fault authority in `evaluation`;
+- do not introduce a second business loop or production-only test switches;
+- use bounded synthetic repositories and reviewed private fixtures; do not
+  persist user content in reports or tracked Corpus.
+
+Acceptance:
+
+- every Driver has one negative control proving it enters the intended
+  production boundary;
+- every declared fault has nonzero trigger evidence;
+- same-seed deterministic Replay reproduces the planned inputs and schedule;
+- cancellation and timeout leave no owned process, lock, port, temporary path,
+  subscription, or durable test state.
+
+Estimate: 1.5 to 2 engineer-weeks.
+
+### D2.3 First Collect-All Campaign Round
+
+Status: executed and closed by `complex-discovery-d2-campaign-05`. The final
+immutable Round settled 129/129 Cases with 35 passed, zero budget skips, 93
+exact-seed Harness Incidents, and one Unattributed Live observation. All 70
+fault-bearing Cases closed their declared trigger evidence and all 129
+synthetic Workspaces had distinct digests. No Product Candidate was admitted.
+
+The Harness Incidents prove that D2.2 generated Journeys beyond its executable
+Driver coverage. The largest missing Step clusters are compaction observation
+(33), Runtime restart and reconnect (29 each), session extension and Checkpoint
+restore (28 each), upgrade (20), crash recovery (19), and rollback (19).
+`differential_host-009` remains Unattributed because two Live attempts differed
+and the existing Live smoke did not prove its declared ACP path. Repeating the
+Campaign is not authorized until Driver execution remediation and a successor
+Qualification Epoch close these gaps.
+
+The first immutable Round runs at least these independent Campaign families:
+
+1. stateful edit/verify/checkpoint/resume journeys;
+2. concurrency and cancellation interleavings;
+3. composed dependency and persistence faults;
+4. scale and long-tail state;
+5. differential and metamorphic Host behavior;
+6. upgrade, rollback, reconnect, and recovery;
+7. separately budgeted live model variability.
+
+Before execution, the Round fixes maximum Runs, wall-clock, model cost,
+parallelism, seeds, and stop policy. It schedules all independent Cases before
+aggregate judgment and records budget-skipped work without reducing the
+declared denominator.
+
+Outputs:
+
+- complete inventory and coverage ledger;
+- admitted observations with causal Evidence;
+- exact reruns for deterministic failures and bounded reproduction matrices
+  for timing-sensitive failures;
+- classification as Product Candidate, Harness Incident, Environment Failure,
+  Expected Variance, or Unattributed;
+- resource and privacy closure.
+
+Estimate: 1 engineer-week for the first bounded Round.
+
+### D2.4 Global Assessment and Re-entry
+
+Close the Round before changing product or Harness code. Group symptoms by the
+earliest proven boundary, preserve first-attempt history, and decide:
+
+- which Product Candidates are authorized for separate remediation;
+- which Harness Incidents require a new Qualification Epoch;
+- which Environment Failures may be retried under an unchanged matrix;
+- which unattributed P0/P1 observations block re-entry;
+- which minimal redacted assets may enter Corpus promotion review.
+
+Focused diagnosis may follow closure, but it cannot rewrite the Round.
+Remediation and verification then use the R1 process.
+
+Estimate: 0.5 to 0.75 engineer-week.
+
+Total initial D2 estimate: 3.5 to 4.5 engineer-weeks, excluding unknown product
+repairs.
+
+## 10. Stage R1: Product Remediation and Verification
 
 Each approved Product Candidate receives:
 
@@ -414,7 +583,7 @@ to Q1 before product conclusions resume.
 Estimate depends on rediscovered Candidates and is not included in Foundation
 effort.
 
-## 10. Stages H1 to H4: Production Admission
+## 11. Stages H1 to H4: Production Admission
 
 | Stage | Deliverable | Estimate |
 | --- | --- | ---: |
@@ -426,7 +595,7 @@ effort.
 H3 is complete. Its `validated-dry-run` candidate is not uploaded or
 publishable and does not authorize H4 Canary or rollout expansion.
 
-## 11. Revised Estimate and Critical Path
+## 12. Revised Estimate and Critical Path
 
 The previous "8 to 9 engineer-weeks remaining" estimate is withdrawn because
 17.3 was invalidated and 17.1/17.2 require requalification.
@@ -439,14 +608,16 @@ The previous "8 to 9 engineer-weeks remaining" estimate is withdrawn because
 | F3 Oracles and Core Pack | 2.5 to 3 |
 | Q1 qualification and Freeze | 1.5 to 2 |
 | D1 first Product Discovery | 1 |
+| D2 initial complex-scenario Discovery | 3.5 to 4.5 |
 | H1 to H4 admission system | 8 to 8.5 |
-| Total excluding unknown product repairs | 18.5 to 21.5 |
+| Total excluding unknown product repairs | 22 to 26 |
 
-With two engineers, elapsed time is approximately 13 to 16 weeks because S0,
-core identity contracts, the first Qualification Epoch, and Harness Freeze are
-critical-path work. Parallelism begins only where contracts are stable.
+Including D2, two engineers need approximately 15 to 19 elapsed weeks because
+S0, core identity contracts, the first Qualification Epoch, Harness Freeze,
+and D2 contract qualification are critical-path work. Parallelism begins only
+where contracts are stable.
 
-## 12. Global Stop Conditions
+## 13. Global Stop Conditions
 
 Stop implementation and perform a Global Assessment when:
 
@@ -459,10 +630,14 @@ Stop implementation and perform a Global Assessment when:
 - cleanup, privacy, or production isolation cannot be proved;
 - Source, Harness, Runtime, or VSIX identity drifts during a Round;
 - current estimates no longer match observed throughput.
+- a D2 Campaign produces correlated systemic symptoms that require portfolio
+  review before more Cases run;
+- D2 exploration repeatedly shifts failures among Driver, fault injection,
+  environment, and product without converging attribution.
 
 Stopping is a control action, not a failure to make progress.
 
-## 13. Approval Boundaries
+## 14. Approval Boundaries
 
 Approvals under this plan progressed through H3 completion.
 
@@ -473,6 +648,9 @@ Completed approvals and remaining explicit boundaries are:
 3. Product Discovery D1;
 4. approved Product Remediation R1;
 5. production admission H1, H2, and H3 are complete;
-6. H4 Canary and Incident Closure is not authorized.
+6. H4 Canary and Incident Closure is deferred and not authorized;
+7. D2.1 and D2.2 implementation and Qualification are complete;
+8. D2.3 Round 05 is closed, with re-entry blocked on Driver remediation;
+9. D2.4 re-entry and any Product Remediation require separate approval.
 
 No later approval is implied by an earlier one.

@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codehelper.dev/schemas/discovery-round.schema.json",
+  "title": "CodeHelper D2 Campaign Round",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "campaign_id",
+    "discovery_lock_identity",
+    "driver_inventory_digest",
+    "status",
+    "scheduled",
+    "settled",
+    "passed",
+    "failed",
+    "unavailable",
+    "invalid",
+    "budget_skipped",
+    "started_at",
+    "finished_at",
+    "max_parallelism",
+    "wall_time_ms",
+    "model_cost_microunits",
+    "cases",
+    "observations",
+    "resource_closure",
+    "privacy_closure",
+    "evidence_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/id" },
+    "campaign_id": { "$ref": "#/$defs/id" },
+    "discovery_lock_identity": { "$ref": "#/$defs/digest" },
+    "driver_inventory_digest": { "$ref": "#/$defs/digest" },
+    "status": { "const": "closed" },
+    "scheduled": { "type": "integer", "minimum": 1, "maximum": 10000 },
+    "settled": { "type": "integer", "minimum": 1, "maximum": 10000 },
+    "passed": { "type": "integer", "minimum": 0 },
+    "failed": { "type": "integer", "minimum": 0 },
+    "unavailable": { "type": "integer", "minimum": 0 },
+    "invalid": { "type": "integer", "minimum": 0 },
+    "budget_skipped": { "type": "integer", "minimum": 0 },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "max_parallelism": { "type": "integer", "minimum": 1, "maximum": 64 },
+    "wall_time_ms": { "type": "integer", "minimum": 0, "maximum": 86400000 },
+    "model_cost_microunits": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/case" }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "$ref": "discovery-observation.schema.json"
+      }
+    },
+    "resource_closure": { "$ref": "#/$defs/digest" },
+    "privacy_closure": { "$ref": "#/$defs/digest" },
+    "evidence_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "family_id",
+        "driver_id",
+        "seed",
+        "status",
+        "attempts",
+        "duration_ms",
+        "live",
+        "faults_planned",
+        "faults_triggered",
+        "steps_planned",
+        "steps_executed",
+        "schedule_digest",
+        "workspace_digest",
+        "execution_digest",
+        "cleanup_digest",
+        "summary_code",
+        "evidence_digest"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "family_id": { "$ref": "#/$defs/id" },
+        "driver_id": { "enum": ["acp", "cli", "vscode"] },
+        "seed": { "type": "integer", "minimum": 1 },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "unavailable",
+            "invalid",
+            "budget_skipped"
+          ]
+        },
+        "attempts": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "live": { "type": "boolean" },
+        "faults_planned": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "faults_triggered": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "steps_planned": {
+          "type": "array",
+          "minItems": 4,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "steps_executed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "schedule_digest": { "$ref": "#/$defs/digest" },
+        "workspace_digest": { "$ref": "#/$defs/digest" },
+        "execution_digest": { "$ref": "#/$defs/digest" },
+        "cleanup_digest": { "$ref": "#/$defs/digest" },
+        "summary_code": { "$ref": "#/$defs/id" },
+        "evidence_digest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

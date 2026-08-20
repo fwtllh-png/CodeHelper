@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codehelper.dev/schemas/discovery-driver-inventory.schema.json",
+  "title": "CodeHelper D2 Driver Inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "campaign_id",
+    "plan_digest",
+    "drivers",
+    "faults",
+    "cases",
+    "evidence_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "campaign_id": { "$ref": "#/$defs/id" },
+    "plan_digest": { "$ref": "#/$defs/digest" },
+    "drivers": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/driver" }
+    },
+    "faults": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": { "$ref": "#/$defs/fault_definition" }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/case" }
+    },
+    "evidence_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "driver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "entry_point", "production_path", "negative_control"],
+      "properties": {
+        "id": { "enum": ["acp", "cli", "vscode"] },
+        "entry_point": { "enum": ["acp", "cli", "vscode"] },
+        "production_path": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "negative_control": { "$ref": "#/$defs/id" }
+      }
+    },
+    "fault_definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "boundary", "mode"],
+      "properties": {
+        "id": {
+          "enum": [
+            "filesystem_pressure",
+            "mcp_disconnect",
+            "persistence_contention",
+            "process_crash",
+            "provider_disconnect",
+            "tool_timeout"
+          ]
+        },
+        "boundary": { "$ref": "#/$defs/id" },
+        "mode": { "$ref": "#/$defs/id" }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "family_id",
+        "seed",
+        "driver_id",
+        "values",
+        "workload",
+        "steps",
+        "schedule",
+        "faults",
+        "assertions",
+        "owned_resources",
+        "cleanup",
+        "evidence_digest"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "family_id": { "$ref": "#/$defs/id" },
+        "seed": { "type": "integer", "minimum": 1 },
+        "driver_id": { "enum": ["acp", "cli", "vscode"] },
+        "values": {
+          "type": "object",
+          "minProperties": 2,
+          "maxProperties": 6,
+          "additionalProperties": { "$ref": "#/$defs/id" }
+        },
+        "workload": { "$ref": "#/$defs/workload" },
+        "steps": {
+          "type": "array",
+          "minItems": 4,
+          "items": { "$ref": "#/$defs/step" }
+        },
+        "schedule": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/schedule" }
+        },
+        "faults": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fault_control" }
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "owned_resources": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/resource" }
+        },
+        "cleanup": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/cleanup" }
+        },
+        "evidence_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "context_bytes", "output_bytes", "durable_records"],
+      "properties": {
+        "files": { "type": "integer", "minimum": 1, "maximum": 2000 },
+        "context_bytes": { "type": "integer", "minimum": 1, "maximum": 4194304 },
+        "output_bytes": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+        "durable_records": { "type": "integer", "minimum": 1, "maximum": 10000 }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "action", "boundary"],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "action": { "$ref": "#/$defs/id" },
+        "boundary": { "$ref": "#/$defs/id" }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tick", "actor", "action"],
+      "properties": {
+        "tick": { "type": "integer", "minimum": 0 },
+        "actor": { "$ref": "#/$defs/id" },
+        "action": { "$ref": "#/$defs/id" }
+      }
+    },
+    "fault_control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "trigger_step", "expected_hit"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "trigger_step": { "type": "integer", "minimum": 1 },
+        "expected_hit": { "const": 1 }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "owner", "id"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/id" },
+        "owner": { "$ref": "#/$defs/id" },
+        "id": { "$ref": "#/$defs/id" }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "kind", "id"],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "kind": { "$ref": "#/$defs/id" },
+        "id": { "$ref": "#/$defs/id" }
+      }
+    }
+  }
+}

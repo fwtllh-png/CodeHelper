@@ -10,7 +10,15 @@
 > unauthorized. The H4 Harness and a 120-Turn controlled preflight are
 > complete. Q1 Round 14, same-Lock H1 Round 04, and H2 Round 06 passed, but
 > same-Lock H3 Round 03 was stopped at 96/480 Turns by the operator time
-> budget. It is non-reusable, and formal H4 was not started.
+> budget. It is non-reusable, and formal H4 was not started. Repeating the
+> unchanged admission chain is deferred. D2 Complex-scenario Discovery is now
+> the next engineering stage. D2.1 contracts and deterministic planning are
+> complete. D2.2 production Drivers and Generators were qualified, and the
+> first valid D2.3 Campaign closed as `complex-discovery-d2-campaign-05`.
+> It settled 129/129 Cases: 35 passed, 93 were admitted as Harness Incidents,
+> and one remains Unattributed. No Product Candidate was admitted. D2 re-entry
+> is blocked on Driver execution remediation and D2 carries no release
+> authority.
 >
 > Execution order and estimates are maintained in the
 > [Production Evaluation Implementation Plan](./production-evaluation-implementation-plan.md).
@@ -30,6 +38,7 @@ not for H4 Canary or rollout expansion:
 | 17.3 Oracle and Core Pack | invalidated | no admission evidence |
 | Foundation v2 F1-F3 and H3 Harness | qualified by Q1 Round 13 | frozen Harness authority |
 | D1 Product Discovery | passed 56/56; no Product Candidate | no Product Remediation |
+| D2 Complex-scenario Discovery | D2.3 Round 05 closed 129/129; 93 Harness Incidents, one Unattributed, no Product Candidate | re-entry blocked; no release authority |
 | 17.4 VS Code and Process Chaos | same-Lock H1 Round 03 passed 21/21 | H3 prerequisite evidence |
 | Live Model and Drift | same-Lock H2 Round 05 passed 16/16 | H3 prerequisite evidence |
 | Endurance and Release | H3 Round 02 passed 14/14; eight of eight RC lanes admitted | local RC candidate admission |
@@ -45,7 +54,8 @@ The current re-entry decision is:
 ```text
 Specification -> Foundation Work Units -> one Qualification Epoch
               -> Global Assessment -> Harness Freeze
-              -> Collect-all Product Discovery -> Global Assessment
+              -> Admission Track: fixed H1-H4 release gates
+              -> Discovery Track: evolving D2 campaigns -> Global Assessment
               -> approved Product Remediation -> Chaos/Live/RC admission
 ```
 
@@ -192,6 +202,14 @@ artifacts. Unknown fields are rejected.
 | `qualification.json` | complete Epoch inventory, identities, results, and decision |
 | `promotion-review.json` | privacy and correctness approval for Corpus promotion |
 | `release-evidence.json` | Source-bound lane evidence consumed by release admission |
+| `discovery-campaign.json` | one D2 campaign's axes, generators, budgets, seeds, and stop policy |
+| `discovery-observation.json` | admitted anomaly observations and reproducibility evidence |
+| `campaign-plan.json` | deterministic Case inventory and explicit coverage ledger |
+| `driver-inventory.json` | generated Journey, schedule, fault, assertion, ownership, and cleanup inventory |
+| `driver-qualification.json` | D2.2 production-boundary and deterministic-generation Qualification |
+| `campaign-round.json` | immutable D2 Case settlement, Step attestation, cost, cleanup, and Observation inventory |
+| `discovery-lock.json` | qualified base identity plus separately hashed D2 input roots |
+| `discovery-qualification.json` | D2 contract, planner, privacy, identity, and negative-control Epoch |
 
 ### 5.1 Scenario Contract
 
@@ -465,19 +483,120 @@ Only then may the Harness status become `frozen_qualified`.
 
 ## 11. Product Discovery and Remediation
 
-After Freeze:
+### 11.1 Two Independent Tracks
 
-1. run every required Host, Scenario, Attempt, and fault case;
-2. retain all results, including later failures after the first failure;
-3. close the Round without product edits;
-4. perform one Global Assessment and group symptoms by systemic root;
-5. approve or reject Product Candidates;
-6. repair approved Candidates in separate product Work Units;
-7. add a minimal regression tied to the frozen Scenario contract;
-8. run a new Verification Round with the same Harness Lock or an explicitly
-   requalified successor.
+After Freeze, Evaluation separates two purposes:
 
-Historical PEC IDs are hypotheses until rediscovered under this process.
+| Track | Inputs | Change policy | Authority |
+| --- | --- | --- | --- |
+| Admission | fixed scenarios, fixtures, thresholds, and Lock | immutable within an admission generation | may block or admit a release |
+| Discovery | versioned campaigns, generated combinations, and exploration budgets | may evolve only between immutable Rounds | may create Product Candidates only |
+
+A Discovery result MUST NOT satisfy, waive, or replace an Admission lane.
+Admission repetition is not a substitute for Discovery, and a D2 pass is not a
+release claim.
+
+D2 control inputs live under separately enumerated `discovery_input_roots`.
+A Discovery Lock references an already qualified base Harness, Runtime, and
+Host artifact partition, then binds only the D2 contracts, generators,
+fixtures, fault controls, and Campaign portfolio. D2-only changes require D2
+negative qualification and a successor Discovery Lock; they do not require an
+unchanged H1-H4 chain to repeat. A change to shared Foundation, production
+source, Runtime, Host artifacts, Guard, or Persistence invalidates the
+corresponding base identity and follows the normal Qualification and Admission
+impact policy.
+
+### 11.2 D2 Complex-scenario Model
+
+D2 searches for unknown failures by composing declared values across these
+axes:
+
+- workload: repository size, language mix, dirty state, multi-file edits,
+  verification, and tool depth;
+- session state: long history, compaction, checkpoint, resume, cancellation,
+  concurrent Threads, and interrupted Effects;
+- topology: CLI, ACP, official VS Code, subagents, multi-root workspaces, and
+  worker execution;
+- dependency behavior: Provider frame defects, latency, disconnects, rate
+  limits, MCP/tool failure, filesystem pressure, and SQLite contention;
+- lifecycle: clean start, crash recovery, version upgrade, rollback, stale
+  client reconnect, and partial durable state;
+- model variability: Provider, model, route, context pressure, tool proposal
+  shape, and cost/latency regime.
+
+Every `discovery-campaign.json` MUST declare its axes, selection strategy,
+production entry point, deterministic seed set, maximum Runs, wall-clock and
+cost budgets, concurrency, required observations, cleanup contract, and stop
+policy. Random or adaptive selection is allowed only when the selected values
+and seed are recorded before execution. Generated case counts do not inflate
+the number of independent campaign families.
+
+The initial portfolio includes:
+
+1. stateful repository journeys with edit, verify, checkpoint, resume, and
+   follow-up turns;
+2. controlled concurrency and cancellation interleavings;
+3. composed Provider, process, persistence, filesystem, and tool faults;
+4. scale and long-tail context, workspace, output, and durable-state cases;
+5. differential and metamorphic checks across Hosts, restart boundaries, and
+   equivalent task formulations;
+6. upgrade, rollback, reconnect, and recovery journeys;
+7. live model variability campaigns separated from deterministic fault
+   campaigns.
+
+D2 drives supported production Host and Runtime contracts. It MUST NOT add a
+second agent loop, bypass Guard or Sandbox, or place test authority in a
+production artifact.
+
+### 11.3 Coverage and Reproducibility
+
+Each Round publishes a coverage ledger containing:
+
+- selected and unselected values for every declared axis;
+- pairwise interaction coverage and explicitly required higher-order
+  combinations;
+- boundary-value, fault-trigger, Host, lifecycle, and cleanup coverage;
+- attempted, completed, failed, invalid, unavailable, and budget-skipped Runs;
+- first-attempt outcomes without retry masking;
+- wall-clock, model cost, and resource consumption.
+
+Deterministic failures require an exact same-seed Replay. Timing-sensitive
+failures require a controlled schedule or a bounded repetition matrix. Live
+model anomalies require repeated evidence and statistical attribution; one
+subjective output cannot become a Product Candidate. Failure to reproduce does
+not erase the original observation.
+
+### 11.4 Round Closure and Classification
+
+D2 is collect-all within the approved budget. A Round closes before any code
+repair and classifies each observation as one of:
+
+- `product_candidate`: production behavior violated an admitted invariant;
+- `harness_incident`: Driver, Oracle, injection, identity, or cleanup failed;
+- `environment_failure`: an external capability failed without proving a
+  product violation;
+- `expected_variance`: observed behavior remained within the declared
+  contract;
+- `unattributed`: evidence is sufficient to preserve the anomaly but not to
+  assign an owner.
+
+The Global Assessment groups correlated symptoms by the earliest proven
+boundary, preserves all unattributed P0/P1 observations, and decides which
+Product Candidates may enter remediation. A systemic pattern, evidence
+contamination, identity drift, cleanup uncertainty, or non-converging campaign
+stops the Round; it does not trigger an in-Round repair.
+
+### 11.5 Remediation and Corpus Feedback
+
+Approved Product Candidates are repaired only in separate product Work Units.
+Each repair adds the smallest deterministic regression that preserves the
+failure mechanism. Private Capture enters the tracked Corpus only through the
+existing redaction, review, and atomic promotion transaction.
+
+A product-only repair is verified against the original campaign partition and
+the required Admission impact set. A Harness input change requires a successor
+Qualification Epoch before further product conclusions. Historical PEC IDs
+remain hypotheses until rediscovered under this process.
 
 ## 12. Release Lanes and Admission
 
@@ -563,4 +682,6 @@ This specification is ready for implementation approval only when:
 
 D1, H1, and H2 completion did not authorize H3. H3 is now complete and admits
 the identity-bound local RC candidate only. H4 retains a separate explicit
-authorization and admission gate before Canary or rollout expansion.
+authorization and admission gate before Canary or rollout expansion. D2 is a
+separate non-release-authoritative Discovery Track and does not require or
+imply H4 completion.

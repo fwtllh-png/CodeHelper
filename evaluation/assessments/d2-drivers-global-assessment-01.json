@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-drivers-global-assessment-01",
+  "phase": "complex_scenario_discovery_d2_2",
+  "status": "qualified",
+  "observed_on": "2026-08-20",
+  "branch": "evaluation",
+  "implementation_head": "c2fbdf2",
+  "product_code_repair_performed": false,
+  "campaign_executed": false,
+  "release_authority": false,
+  "base_harness": {
+    "id": "foundation-v2-q1-14",
+    "status": "frozen_qualified",
+    "lock_identity": "sha256:46316523ee29eb3c4cd58991576f949abaa9350ec2c8323a073a9298d65a2541",
+    "runtime_digest": "sha256:b236bba0804c19e16a782047c8225c49fbcb233e25bb37c7a4778f1bfe6bd15c",
+    "vsix_digest": "sha256:558d826dd84d59317e4246f739e8a1cccb14f628abb3a67603c309941ade2d01",
+    "clean_integration_runs": 3
+  },
+  "discovery_lock": {
+    "id": "complex-discovery-d2-drivers-03",
+    "status": "qualified",
+    "lock_identity": "sha256:b7ff5ad3ba1d2cefe317435676a7656b82866ab063e20856eca78c314f12c91a",
+    "campaign_digest": "sha256:fc824ca6164f9773b932338b2000f34d8856679ae303de27b6bf9863c58fc7c3",
+    "planner_digest": "sha256:f58e8762e01f5f82aa3c48eba00ea75d59332ccd475895fe970d696db6f0b69f",
+    "driver_inventory_digest": "sha256:8df4e37a042eb5200c0a3256afcabd484aaf57c1c59dfd09ae09e8de02617afa",
+    "discovery_digest": "sha256:78842c47d37b4292f210c6b6ba67aef03b39e2e9905fef1b67c5013e191cf471",
+    "qualification_digest": "sha256:da5750c05c2388a438b052bf452bf60b6fa6a832562b259a1f534c2087063ac6",
+    "inputs": 19
+  },
+  "inventory": {
+    "planned_cases": 129,
+    "generated_cases": 129,
+    "drivers": {
+      "acp": 75,
+      "cli": 26,
+      "vscode": 28
+    },
+    "fault_triggers": {
+      "filesystem_pressure": 19,
+      "mcp_disconnect": 11,
+      "persistence_contention": 13,
+      "process_crash": 19,
+      "provider_disconnect": 14,
+      "tool_timeout": 36
+    },
+    "fault_controls_observed_once": true,
+    "synthetic_repository_replay_files": 1200,
+    "same_seed_replay": true,
+    "bounded_scale": true,
+    "exact_cleanup": true,
+    "private_content_persisted": false
+  },
+  "qualification": {
+    "scheduled": 15,
+    "settled": 15,
+    "passed": 15,
+    "failed": 0,
+    "invalid": 0,
+    "production_boundary_negative_controls": [
+      "cli_exec_invalid_output_format",
+      "acp_unsupported_protocol",
+      "official_vscode_untrusted_write_denial"
+    ]
+  },
+  "validation": {
+    "passed": [
+      "d2_focused_tests",
+      "driver_inventory_schema",
+      "driver_qualification_schema",
+      "runtime_and_vsix_identity",
+      "atomic_private_epoch",
+      "go_test_evaluation",
+      "go_test_race_evaluation",
+      "go_vet_d2",
+      "architecture_ratchet_112_of_112",
+      "docs_check_247_markdown_files",
+      "book_check_82_bilingual_pairs",
+      "full_repository_hermetic_244998_ms",
+      "git_diff_check",
+      "discovery_lock_input_verification_19_of_19",
+      "resource_cleanup"
+    ],
+    "pending": [],
+    "environment_limited": []
+  },
+  "decision": {
+    "d2_2_status": "qualified",
+    "first_campaign_authorized": false,
+    "first_campaign_executed": false,
+    "product_candidates_assessed": 0,
+    "product_remediation_authorized": false,
+    "release_authority_changed": false,
+    "h4_status_changed": false,
+    "next_gate": "explicit_d2_3_first_campaign_approval"
+  }
+}

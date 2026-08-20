@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "id": "complex-scenario-discovery-v1",
+  "selection_strategy": "pairwise",
+  "adaptive": false,
+  "production_entry_points": ["cli", "acp", "vscode"],
+  "axes": [
+    {
+      "id": "workload",
+      "values": [
+        {"id": "small_go", "boundary": true, "fault_trigger": false},
+        {"id": "dirty_multifile", "boundary": false, "fault_trigger": false},
+        {"id": "polyglot_large", "boundary": true, "fault_trigger": false}
+      ]
+    },
+    {
+      "id": "session_state",
+      "values": [
+        {"id": "clean_session", "boundary": true, "fault_trigger": false},
+        {"id": "long_compacted", "boundary": true, "fault_trigger": false},
+        {"id": "checkpoint_resume", "boundary": false, "fault_trigger": false},
+        {"id": "canceled_effect", "boundary": false, "fault_trigger": true}
+      ]
+    },
+    {
+      "id": "topology",
+      "values": [
+        {"id": "cli", "boundary": true, "fault_trigger": false},
+        {"id": "acp", "boundary": false, "fault_trigger": false},
+        {"id": "vscode", "boundary": true, "fault_trigger": false},
+        {"id": "subagent_worker", "boundary": false, "fault_trigger": false}
+      ]
+    },
+    {
+      "id": "dependency_behavior",
+      "values": [
+        {"id": "healthy", "boundary": true, "fault_trigger": false},
+        {"id": "provider_disconnect", "boundary": false, "fault_trigger": true},
+        {"id": "sqlite_contention", "boundary": false, "fault_trigger": true},
+        {"id": "filesystem_pressure", "boundary": true, "fault_trigger": true}
+      ]
+    },
+    {
+      "id": "lifecycle",
+      "values": [
+        {"id": "clean_start", "boundary": true, "fault_trigger": false},
+        {"id": "crash_recovery", "boundary": false, "fault_trigger": true},
+        {"id": "version_upgrade", "boundary": false, "fault_trigger": false},
+        {"id": "rollback_reconnect", "boundary": true, "fault_trigger": false}
+      ]
+    },
+    {
+      "id": "model_variability",
+      "values": [
+        {"id": "fixture_deterministic", "boundary": true, "fault_trigger": false},
+        {"id": "live_primary", "boundary": false, "fault_trigger": false},
+        {"id": "context_pressure", "boundary": true, "fault_trigger": false}
+      ]
+    }
+  ],
+  "families": [
+    {
+      "id": "stateful_journey",
+      "axes": ["workload", "session_state", "topology", "lifecycle"],
+      "required_combinations": [
+        {
+          "values": {
+            "workload": "dirty_multifile",
+            "session_state": "checkpoint_resume",
+            "topology": "acp",
+            "lifecycle": "crash_recovery"
+          }
+        }
+      ]
+    },
+    {
+      "id": "concurrency_cancellation",
+      "axes": ["session_state", "topology", "dependency_behavior", "lifecycle"],
+      "required_combinations": [
+        {
+          "values": {
+            "session_state": "canceled_effect",
+            "topology": "subagent_worker",
+            "dependency_behavior": "sqlite_contention",
+            "lifecycle": "crash_recovery"
+          }
+        }
+      ]
+    },
+    {
+      "id": "composed_faults",
+      "axes": ["dependency_behavior", "session_state", "lifecycle", "workload"],
+      "required_combinations": [
+        {
+          "values": {
+            "dependency_behavior": "provider_disconnect",
+            "session_state": "checkpoint_resume",
+            "lifecycle": "rollback_reconnect",
+            "workload": "dirty_multifile"
+          }
+        }
+      ]
+    },
+    {
+      "id": "scale_long_tail",
+      "axes": ["workload", "session_state", "model_variability", "topology"],
+      "required_combinations": [
+        {
+          "values": {
+            "workload": "polyglot_large",
+            "session_state": "long_compacted",
+            "model_variability": "context_pressure",
+            "topology": "vscode"
+          }
+        }
+      ]
+    },
+    {
+      "id": "differential_host",
+      "axes": ["workload", "topology", "model_variability"],
+      "required_combinations": [
+        {
+          "values": {
+            "workload": "small_go",
+            "topology": "cli",
+            "model_variability": "fixture_deterministic"
+          }
+        }
+      ]
+    },
+    {
+      "id": "upgrade_recovery",
+      "axes": ["session_state", "topology", "dependency_behavior", "lifecycle"],
+      "required_combinations": [
+        {
+          "values": {
+            "session_state": "checkpoint_resume",
+            "topology": "acp",
+            "dependency_behavior": "filesystem_pressure",
+            "lifecycle": "version_upgrade"
+          }
+        }
+      ]
+    },
+    {
+      "id": "live_model_variability",
+      "axes": ["workload", "session_state", "model_variability", "topology"],
+      "required_combinations": [
+        {
+          "values": {
+            "workload": "dirty_multifile",
+            "session_state": "long_compacted",
+            "model_variability": "live_primary",
+            "topology": "acp"
+          }
+        }
+      ]
+    }
+  ],
+  "seeds": [101, 211, 307, 401, 503],
+  "budgets": {
+    "max_runs": 256,
+    "wall_time_ms": 14400000,
+    "max_model_cost_microunits": 100000000,
+    "max_parallelism": 4
+  },
+  "cleanup": {
+    "owner": "d2-coordinator",
+    "resources": [
+      "process",
+      "port",
+      "temporary_path",
+      "subscription",
+      "durable_state"
+    ],
+    "timeout_ms": 30000
+  },
+  "privacy": {
+    "capture_retention_hours": 24,
+    "persist_user_content": false,
+    "promotion_review_required": true
+  },
+  "stop_policy": {
+    "max_invalid": 0,
+    "max_cleanup_outstanding": 0,
+    "stop_on_identity_drift": true,
+    "stop_on_systemic_pattern": true
+  }
+}

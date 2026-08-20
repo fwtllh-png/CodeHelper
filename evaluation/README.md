@@ -11,6 +11,7 @@ source assets.
 ```text
 evaluation/
   cmd/codehelper-eval/   Evaluation CLI
+  d2/                    Independent D2 contracts, planner, Lock, and CLI
   internal/spec/         Manifest, Scenario, Run, and Policy contracts
   internal/source/       Source commit and dirty digest
   internal/runner/       Process-tree-owned execution, Attempts, and bound evidence
@@ -46,6 +47,14 @@ Canary and rollout expansion remain unauthorized. The H4 Harness and
 controlled 120-Turn preflight are complete. Q1 Round 14, same-Lock H1 Round
 04, and H2 Round 06 passed; required H3 Round 03 was operator-stopped at
 96/480 Turns and is non-reusable, so formal H4 was not started.
+
+D2.1 and D2.2 are implemented as an independent non-release-authoritative
+control plane. The qualified Driver inventory preserves all 129 planned Cases,
+binds CLI, ACP, and official VS Code paths, and gives all six fault classes
+nonzero trigger evidence. D2.3 Round 05 settled 129/129 Cases: 35 passed, 93
+were classified as Harness Incidents, and one Live observation remains
+Unattributed. No Product Candidate was admitted and re-entry is blocked on
+Driver execution remediation.
 
 The corrected target contracts and execution order are defined by:
 
@@ -151,6 +160,50 @@ make eval-contract-check
 make eval-foundation-check
 make eval-replay
 make eval-oracle
+```
+
+Check the D2.1 Campaign and deterministic inventory:
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery check --root .
+```
+
+Create one immutable D2 Qualification Epoch against an existing frozen base
+Lock:
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery qualify \
+  --root . \
+  --id complex-discovery-d2-foundation-01 \
+  --base-lock .tmp/evaluation/q1/foundation-v2-q1-14/harness-lock.json \
+  --output .tmp/evaluation/d2/complex-discovery-d2-foundation-01
+```
+
+Qualify D2.2 Drivers and Generators against the frozen production artifacts:
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery qualify-drivers \
+  --root . \
+  --id complex-discovery-d2-drivers-09 \
+  --base-lock .tmp/evaluation/q1/foundation-v2-q1-14/harness-lock.json \
+  --runtime bin/codehelper \
+  --vsix extensions/vscode/dist/codehelper-vscode-0.0.1.vsix \
+  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-09
+```
+
+Execute an approved immutable D2.3 Campaign:
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery campaign \
+  --root . \
+  --id complex-discovery-d2-campaign-05 \
+  --discovery-lock .tmp/evaluation/d2/complex-discovery-d2-drivers-09/discovery-lock.json \
+  --plan .tmp/evaluation/d2/complex-discovery-d2-drivers-09/campaign-plan.json \
+  --inventory .tmp/evaluation/d2/complex-discovery-d2-drivers-09/driver-inventory.json \
+  --runtime bin/codehelper \
+  --vsix extensions/vscode/dist/codehelper-vscode-0.0.1.vsix \
+  --live \
+  --output .tmp/evaluation/d2/complex-discovery-d2-campaign-05
 ```
 
 Run the first-milestone self-check Scenario:

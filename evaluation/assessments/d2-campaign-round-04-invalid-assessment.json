@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-campaign-round-04-invalid-assessment",
+  "phase": "complex_scenario_discovery_d2_3",
+  "status": "invalid",
+  "observed_on": "2026-08-21",
+  "branch": "evaluation",
+  "implementation_head": "c2fbdf2",
+  "round_id": "complex-discovery-d2-campaign-04",
+  "discovery_lock_identity": "sha256:cbf0d7ffc0bffe8e0b8cb51f22169f91762bde4ca57a4f99788a2d284ee7f6b6",
+  "scheduled_cases": 129,
+  "settled_cases": 129,
+  "passed_cases": 36,
+  "invalid_cases": 93,
+  "artifact_published": true,
+  "classification": "harness_incident",
+  "summary_code": "live_retry_cost_and_reproducibility_misclassified",
+  "failure_boundary": "round_aggregate_evidence",
+  "cause": {
+    "reported_model_cost_microunits": 400000,
+    "bounded_model_cost_microunits": 800000,
+    "live_cases_once": 8,
+    "live_cases_retried": 4,
+    "reproduced_harness_incidents_marked_unreproduced": 93
+  },
+  "reusable": false,
+  "product_conclusions_allowed": false,
+  "product_repair_performed": false,
+  "decision": {
+    "charge_each_live_attempt": true,
+    "mark_same_seed_harness_reproduction_exact": true,
+    "new_driver_qualification_required": true,
+    "new_campaign_round_required": true,
+    "first_attempt_history_preserved": true
+  }
+}

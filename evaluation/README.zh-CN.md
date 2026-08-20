@@ -10,6 +10,7 @@
 ```text
 evaluation/
   cmd/codehelper-eval/   测评 CLI
+  d2/                    独立 D2 Contract、Planner、Lock 与 CLI
   internal/spec/         Manifest、Scenario、Run、Policy 契约与校验
   internal/source/       Source Commit 与 Dirty Digest
   internal/runner/       拥有 Process Tree 的执行、Attempt 与绑定 Evidence
@@ -42,6 +43,12 @@ Partition 具备发布权威。H2 Round 01/02 与 H3 Round 01 保持不可变失
 Canary 与 Rollout Expansion 仍未授权。H4 Harness 与 Controlled 120-Turn Preflight
 已完成。Q1 Round 14、同 Lock H1 Round 04 与 H2 Round 06 已通过；所需 H3 Round
 03 由 Operator 在 96/480 Turn 时停止且不可复用，因此正式 H4 未启动。
+
+D2.1 与 D2.2 已实现为独立且不具备发布权威的控制面。已验收 Driver Inventory
+保持全部 129 个 Planned Case，绑定 CLI、ACP 与 Official VS Code Path，并使六类
+Fault 均有非零 Trigger Evidence。D2.3 Round 05 已完成 129/129 Case 结算：35 个
+Passed、93 个 Harness Incident、1 个 Unattributed Live Observation。未准入 Product
+Candidate，Re-entry 被 Driver Execution Remediation 阻断。
 
 修正后的目标契约和执行顺序见：
 
@@ -136,6 +143,49 @@ make eval-contract-check
 make eval-foundation-check
 make eval-replay
 make eval-oracle
+```
+
+检查 D2.1 Campaign 与确定性 Inventory：
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery check --root .
+```
+
+基于现有 Frozen Base Lock 创建一个不可变 D2 Qualification Epoch：
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery qualify \
+  --root . \
+  --id complex-discovery-d2-foundation-01 \
+  --base-lock .tmp/evaluation/q1/foundation-v2-q1-14/harness-lock.json \
+  --output .tmp/evaluation/d2/complex-discovery-d2-foundation-01
+```
+
+基于冻结的 Production Artifact 验收 D2.2 Driver 与 Generator：
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery qualify-drivers \
+  --root . \
+  --id complex-discovery-d2-drivers-09 \
+  --base-lock .tmp/evaluation/q1/foundation-v2-q1-14/harness-lock.json \
+  --runtime bin/codehelper \
+  --vsix extensions/vscode/dist/codehelper-vscode-0.0.1.vsix \
+  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-09
+```
+
+执行已获批准的不可变 D2.3 Campaign：
+
+```bash
+go run ./evaluation/d2/cmd/codehelper-discovery campaign \
+  --root . \
+  --id complex-discovery-d2-campaign-05 \
+  --discovery-lock .tmp/evaluation/d2/complex-discovery-d2-drivers-09/discovery-lock.json \
+  --plan .tmp/evaluation/d2/complex-discovery-d2-drivers-09/campaign-plan.json \
+  --inventory .tmp/evaluation/d2/complex-discovery-d2-drivers-09/driver-inventory.json \
+  --runtime bin/codehelper \
+  --vsix extensions/vscode/dist/codehelper-vscode-0.0.1.vsix \
+  --live \
+  --output .tmp/evaluation/d2/complex-discovery-d2-campaign-05
 ```
 
 运行第一阶段自检 Scenario：

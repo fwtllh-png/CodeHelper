@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-campaign-round-02-invalid-assessment",
+  "phase": "complex_scenario_discovery_d2_3",
+  "status": "invalid",
+  "observed_on": "2026-08-21",
+  "branch": "evaluation",
+  "implementation_head": "c2fbdf2",
+  "round_id": "complex-discovery-d2-campaign-02",
+  "discovery_lock_identity": "sha256:ed2ea2d418103c74067dcf3d80dcd239a99ff4a909108ff7aabfab68486f9a00",
+  "scheduled_cases": 129,
+  "settled_cases": 129,
+  "reported_passed_cases": 129,
+  "live_cases": 12,
+  "wall_time_ms": 79056,
+  "artifact_published": true,
+  "classification": "harness_incident",
+  "summary_code": "generated_journey_step_attestation_missing",
+  "failure_boundary": "case_evidence_admission",
+  "cause": {
+    "planned_steps_bound": false,
+    "executed_steps_bound": false,
+    "entry_point_reached": true,
+    "schedule_workspace_and_execution_digests_bound": true
+  },
+  "reusable": false,
+  "product_conclusions_allowed": false,
+  "product_repair_performed": false,
+  "decision": {
+    "add_step_attestation": true,
+    "passed_requires_exact_step_closure": true,
+    "new_driver_qualification_required": true,
+    "new_campaign_round_required": true,
+    "first_attempt_history_preserved": true
+  }
+}

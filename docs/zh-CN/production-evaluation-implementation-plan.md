@@ -7,7 +7,10 @@
 > `admit` RC 决策。H4 仍保留独立门禁且未获授权。H4 Implementation 与 Controlled
 > Preflight 已完成。重新验收已完成 Q1 Round 14、H1 Round 04 与 H2 Round 06；
 > 所需的四小时同 Lock H3 Round 03 因 Operator Time Budget 在 96/480 Turn 时停止，
-> 因此正式 H4 继续延期。
+> 因此正式 H4 继续延期。重复这条未变化的 Chain 不再是下一优先级。D2 复杂场景
+> Discovery 的 D2.1 与 D2.2 已在独立 Discovery Lock 下实现并验收。D2.3 Round
+> 05 已完成 129/129 Case 结算，但 Re-entry 被 93 个 Harness Incident 与 1 个
+> Unattributed Live Observation 阻断。未准入 Product Candidate。
 
 | Stage | 状态 |
 | --- | --- |
@@ -17,6 +20,7 @@
 | F3 Oracle、Core Pack、Impact | 已验收 |
 | Q1 Qualification 与 Freeze | 具备 H3 能力的后继已由 Round 13 完成；`frozen_qualified` |
 | D1 Collect-all Product Discovery | 已完成 56/56；无 Product Candidate |
+| D2 复杂场景 Discovery | D2.3 Round 05 已关闭；Re-entry 前必须修复 Driver |
 | H1 VS Code 与 Process Chaos | 同 Lock Round 03 已完成 21/21 |
 | H2 Live Model 与 Drift | 同 Lock Round 05 已完成 16/16 |
 | H3 Endurance 与 Release | Round 02 已完成 14/14；RC Candidate 已准入 |
@@ -97,6 +101,9 @@ Identity 历史保留；Round 12 的一次 `evaluation-race` Command 失败在�
 6. 同一个 Harness Lock 连续三次完整 Integration Qualification 通过后，才能开始
    Product Discovery；
 7. Discovery Round 内禁止产品修改。
+8. D2 Campaign Definition 可以在 Round 之间演进，但每个已开始 Round 都不可变，
+   且必须在修复前完成 Assessment 并关闭；
+9. D2 Evidence 不能满足或豁免 H1-H4 Admission Evidence。
 
 ## 2. 审计问题到 Work Unit 的映射
 
@@ -382,7 +389,154 @@ D1 不修改代码。
 
 预计工作量：每个完整 Discovery/Assessment Cycle 1 工程周。
 
-## 9. R1：Product Remediation 与 Verification
+## 9. D2：复杂场景 Discovery
+
+前置条件：
+
+- Production Runtime Path 和现有 Harness Primitive 保持已验收状态；
+- D2 使用独立的版本化 Discovery Lock、Campaign Identity、Input Root 和 Output
+  Root；
+- D2 不要求正式 H4 完成，也不产生发布权威；
+- 实现 Budget 与首轮 Campaign Portfolio 必须在执行前获批。
+
+### D2.1 Campaign Contract 与 Portfolio
+
+状态：已由 `complex-discovery-d2-foundation-01` 完成。12 项 Qualification Check
+全部通过。确定性 Plan 包含 7 个独立 Campaign Family 的 129 个 Case，覆盖 539/539
+个 Pairwise Interaction、7/7 个 Required Combination、12/12 个 Boundary Value 和
+5/5 个 Fault Trigger。Qualified Discovery Lock 引用 Q1 Round 14，但不改变或替代其
+Admission Evidence。
+
+交付：
+
+- 严格的 Campaign、Observation、Plan、Discovery Lock 和 D2 Qualification
+  Schema；
+- 引用已验收 Base Harness/Runtime/Host Partition，并对单独枚举的
+  `discovery_input_roots` 求 Hash 的 Discovery Lock；
+- Canonical Campaign、Case、Seed、Selection、Environment 和 Artifact Identity；
+- 覆盖 Workload、State、Topology、Dependency Behavior、Lifecycle 和 Model
+  Variability 的 Declared Axis Catalog；
+- Budget、Stop、Cleanup 和 Privacy Policy；
+- 报告 Selected、Unselected、Pairwise、Required Higher-order、Boundary 和
+  Fault-trigger Combination 的 Coverage Planner；
+- 显式区分 Deterministic、Timing-sensitive 和 Live Statistical Campaign。
+
+验收：
+
+- Unknown Field、Empty Axis、Zero-case Selection、Mixed Identity、Undeclared
+  Adaptive Choice、Missing Cleanup 和 Unbounded Budget 均被拒绝；
+- D2 Contract、Planner、Generator、Fault Control、Privacy、Identity 和 Cleanup
+  Negative Control 作为一个 D2 Qualification Epoch 通过；
+- 仅 D2 的 Drift 使 Discovery Lock 失效，但不声称未变化的 H1-H4 Evidence 过期；
+- Generated Case 不能声称为独立 Campaign Family；
+- 相同 Campaign 和 Seed Set 生成相同 Planned Inventory。
+
+预计工作量：0.5 至 0.75 工程周。
+
+### D2.2 Production Driver 与 Generator
+
+状态：最初由 `complex-discovery-d2-drivers-03` 完成；D2.3 Implementation 的后继
+为 `complex-discovery-d2-drivers-09`。15 项 Driver Qualification Check 全部基于
+冻结的 Q1 Round 14 Runtime 与 VSIX 通过。生成的 Inventory 保持全部
+129 个 Planned Case，其中 ACP 75 个、CLI 26 个、Official VS Code Path 28 个。
+Provider、Process、Persistence、Filesystem、MCP 与 Guarded Tool Fault Control
+均有非零 Trigger Evidence，并在 Qualification 中各实际触发一次。Same-seed
+Inventory、Schedule 与 1200 文件 Synthetic Repository Replay、Bounded Scale、
+精确 Resource Cleanup、Privacy Closure 与三项 Production Boundary Negative
+Control 均通过。没有执行 Campaign Case，也没有评估 Product Candidate。
+
+交付：
+
+- 通过受支持 CLI、ACP 和 Official VS Code Path 生成 Stateful Repository Journey；
+- 生成 Long Session、Checkpoint、Resume、Cancellation、Compaction 和 Interrupted
+  Effect State；
+- Controlled Concurrency 和 Schedule Recording；
+- 可组合 Provider、Process、Persistence、Filesystem、MCP 和 Tool Fault Control；
+- Scale/Long-tail Repository、Context、Output 和 Durable-state Input；
+- Upgrade、Rollback、Reconnect 和 Crash-recovery Journey；
+- 跨 Host、Restart Boundary 和等价 Task Form 的 Differential/Metamorphic
+  Assertion；
+- 每个 Generated Case 的 Resource Ownership 和精确 Cleanup Evidence。
+
+实现约束：
+
+- 使用 Production Host/Runtime Entry Point 和现有 Guarded Tool；
+- Generation 和 Fault Authority 保留在 `evaluation`；
+- 禁止引入第二条 Business Loop 或 Production-only Test Switch；
+- 使用有界 Synthetic Repository 和已评审 Private Fixture；禁止把 User Content
+  写入 Report 或 Tracked Corpus。
+
+验收：
+
+- 每个 Driver 都有一个 Negative Control，证明它进入预期 Production Boundary；
+- 每个 Declared Fault 都有非零 Trigger Evidence；
+- Same-seed Deterministic Replay 可复现 Planned Input 和 Schedule；
+- Cancellation/Timeout 后不残留 Owned Process、Lock、Port、Temporary Path、
+  Subscription 或 Durable Test State。
+
+预计工作量：1.5 至 2 工程周。
+
+### D2.3 首轮 Collect-All Campaign
+
+状态：已由 `complex-discovery-d2-campaign-05` 执行并关闭。最终不可变 Round 完成
+129/129 Case 结算，其中 35 个 Passed、0 个 Budget Skip、93 个 Exact-seed Harness
+Incident、1 个 Unattributed Live Observation。70 个 Fault-bearing Case 均关闭其
+声明的 Trigger Evidence，129 个 Synthetic Workspace 均有不同 Digest。未准入
+Product Candidate。
+
+这些 Harness Incident 证明 D2.2 生成的 Journey 超出了 Driver 的可执行覆盖。最大
+Missing Step Cluster 为 Compaction Observation（33）、Runtime Restart/Reconnect
+（各 29）、Session Extension/Checkpoint Restore（各 28）、Upgrade（20）、Crash
+Recovery（19）与 Rollback（19）。`differential_host-009` 保持 Unattributed，因为
+两次 Live Attempt 结果不同，且现有 Live Smoke 未证明其声明的 ACP Path。Driver
+Execution Remediation 与后继 Qualification Epoch 关闭这些缺口前，不授权重复
+Campaign。
+
+首个不可变 Round 至少运行以下独立 Campaign Family：
+
+1. Stateful Edit/Verify/Checkpoint/Resume Journey；
+2. Concurrency 与 Cancellation Interleaving；
+3. 组合 Dependency 与 Persistence Fault；
+4. Scale 与 Long-tail State；
+5. Differential/Metamorphic Host Behavior；
+6. Upgrade、Rollback、Reconnect 与 Recovery；
+7. 单独设置 Budget 的 Live Model Variability。
+
+执行前固定最大 Run 数、Wall-clock、Model Cost、Parallelism、Seed 和 Stop Policy。
+在 Aggregate Judgment 前调度全部独立 Case，并记录 Budget-skipped Work，禁止减少
+Declared Denominator。
+
+输出：
+
+- 完整 Inventory 与 Coverage Ledger；
+- 带 Causal Evidence 的 Admitted Observation；
+- Deterministic Failure 的精确 Rerun，以及 Timing-sensitive Failure 的 Bounded
+  Reproduction Matrix；
+- Product Candidate、Harness Incident、Environment Failure、Expected Variance
+  或 Unattributed 分类；
+- Resource 与 Privacy Closure。
+
+预计工作量：首轮有界 Round 为 1 工程周。
+
+### D2.4 Global Assessment 与 Re-entry
+
+修改 Product 或 Harness Code 前先关闭 Round。按最早已证明 Boundary 聚类症状，保留
+First-attempt History，并决定：
+
+- 哪些 Product Candidate 获准进入独立 Remediation；
+- 哪些 Harness Incident 要求新 Qualification Epoch；
+- 哪些 Environment Failure 可以在 Matrix 不变时重试；
+- 哪些 Unattributed P0/P1 Observation 阻断 Re-entry；
+- 哪些 Minimal Redacted Asset 可以进入 Corpus Promotion Review。
+
+Focused Diagnosis 可以在关闭后执行，但不能重写该 Round。Remediation 与 Verification
+随后使用 R1 流程。
+
+预计工作量：0.5 至 0.75 工程周。
+
+D2 首次实现总估算：3.5 至 4.5 工程周，不含未知产品修复。
+
+## 10. R1：Product Remediation 与 Verification
 
 每个 Approved Product Candidate 需要：
 
@@ -395,7 +549,7 @@ D1 不修改代码。
 
 工期取决于重新发现的 Candidate，不计入 Foundation 工作量。
 
-## 10. H1 至 H4：Production Admission
+## 11. H1 至 H4：Production Admission
 
 | Stage | Deliverable | 预计工作量 |
 | --- | --- | ---: |
@@ -407,7 +561,7 @@ D1 不修改代码。
 H3 已完成。其 `validated-dry-run` Candidate 未上传且不可发布，也不授权 H4
 Canary 或 Rollout Expansion。
 
-## 11. 修订后的工期与关键路径
+## 12. 修订后的工期与关键路径
 
 原“剩余 8 至 9 工程周”估算撤销，因为 17.3 已失效，17.1/17.2 也必须重新验收。
 
@@ -419,13 +573,15 @@ Canary 或 Rollout Expansion。
 | F3 Oracle 与 Core Pack | 2.5 至 3 |
 | Q1 Qualification 与 Freeze | 1.5 至 2 |
 | D1 First Product Discovery | 1 |
+| D2 Initial Complex-scenario Discovery | 3.5 至 4.5 |
 | H1 至 H4 Admission System | 8 至 8.5 |
-| 合计，不含未知 Product Repair | 18.5 至 21.5 |
+| 合计，不含未知 Product Repair | 22 至 26 |
 
-两名工程师的预计自然时间为 13 至 16 周，因为 S0、Core Identity Contract、首轮
-Qualification Epoch 和 Harness Freeze 位于关键路径。Contract 稳定后才开始并行。
+包含 D2 后，两名工程师的预计自然时间为 15 至 19 周，因为 S0、Core Identity
+Contract、首轮 Qualification Epoch、Harness Freeze 和 D2 Contract Qualification
+位于关键路径。Contract 稳定后才开始并行。
 
-## 12. 全局停止条件
+## 13. 全局停止条件
 
 出现以下情况时停止实现并执行 Global Assessment：
 
@@ -437,10 +593,14 @@ Qualification Epoch 和 Harness Freeze 位于关键路径。Contract 稳定后�
 - Cleanup、Privacy 或 Production Isolation 无法证明；
 - Round 内 Source、Harness、Runtime 或 VSIX Identity Drift；
 - 当前估算不再符合实际吞吐。
+- D2 Campaign 产生相关的 Systemic Symptom，需要先 Review Portfolio 再运行更多
+  Case；
+- D2 Exploration 反复在 Driver、Fault Injection、Environment 与 Product 之间迁移
+  Failure，且归因不收敛。
 
 停止是控制动作，不是停止推进。
 
-## 13. 批准边界
+## 14. 批准边界
 
 本计划下的批准已推进至 H3 完成。
 
@@ -451,6 +611,9 @@ Qualification Epoch 和 Harness Freeze 位于关键路径。Contract 稳定后�
 3. Product Discovery D1；
 4. Approved Product Remediation R1；
 5. Production Admission H1、H2 与 H3 已完成；
-6. H4 Canary 与 Incident Closure 未获授权。
+6. H4 Canary 与 Incident Closure 已延期且未获授权；
+7. D2.1 与 D2.2 Implementation/Qualification 已完成；
+8. D2.3 Round 05 已关闭，Re-entry 被 Driver Remediation 阻断；
+9. D2.4 Re-entry 与任何 Product Remediation 需要独立批准。
 
 前一批准不隐含后一批准。

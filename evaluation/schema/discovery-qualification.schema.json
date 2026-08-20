@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeHelper D2 qualification epoch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "discovery_lock_identity",
+    "status",
+    "scheduled",
+    "settled",
+    "passed",
+    "failed",
+    "invalid",
+    "checks",
+    "evidence_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"$ref": "#/$defs/id"},
+    "discovery_lock_identity": {"$ref": "#/$defs/digest"},
+    "status": {"enum": ["passed", "failed", "invalid"]},
+    "scheduled": {"$ref": "#/$defs/nonnegative"},
+    "settled": {"$ref": "#/$defs/nonnegative"},
+    "passed": {"$ref": "#/$defs/nonnegative"},
+    "failed": {"$ref": "#/$defs/nonnegative"},
+    "invalid": {"$ref": "#/$defs/nonnegative"},
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "evidence_digest"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "status": {"enum": ["passed", "failed", "invalid"]},
+          "evidence_digest": {"$ref": "#/$defs/digest"}
+        }
+      }
+    },
+    "evidence_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,95}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "nonnegative": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

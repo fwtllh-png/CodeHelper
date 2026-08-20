@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-campaign-round-03-invalid-assessment",
+  "phase": "complex_scenario_discovery_d2_3",
+  "status": "invalid",
+  "observed_on": "2026-08-21",
+  "branch": "evaluation",
+  "implementation_head": "c2fbdf2",
+  "round_id": "complex-discovery-d2-campaign-03",
+  "discovery_lock_identity": "sha256:5a2a8892a7c20c7cc0d362c21542160d11ad38a563a49ec51c44c3230fd9e30d",
+  "scheduled_cases": 129,
+  "execution_reached_settlement": true,
+  "artifact_published": false,
+  "classification": "harness_incident",
+  "summary_code": "retry_empty_fault_merge_serialized_null",
+  "failure_boundary": "post_settlement_schema_admission",
+  "cause": {
+    "field": "cases[].faults_triggered",
+    "invalid_value": "null",
+    "required_shape": "array",
+    "path": "same_seed_retry_merge",
+    "affected_cases": 37
+  },
+  "reusable": false,
+  "product_conclusions_allowed": false,
+  "product_repair_performed": false,
+  "decision": {
+    "repair_harness_authorized": true,
+    "add_retry_empty_set_negative_control": true,
+    "new_driver_qualification_required": true,
+    "new_campaign_round_required": true,
+    "first_attempt_history_preserved": true
+  }
+}

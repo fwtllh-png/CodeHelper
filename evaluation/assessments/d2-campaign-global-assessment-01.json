@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-campaign-global-assessment-01",
+  "phase": "complex_scenario_discovery_d2_3",
+  "status": "closed_blocked",
+  "observed_on": "2026-08-21",
+  "branch": "evaluation",
+  "implementation_head": "c2fbdf2",
+  "product_code_repair_performed": false,
+  "product_remediation_authorized": false,
+  "release_authority": false,
+  "base_harness": {
+    "id": "foundation-v2-q1-14",
+    "lock_identity": "sha256:46316523ee29eb3c4cd58991576f949abaa9350ec2c8323a073a9298d65a2541",
+    "runtime_digest": "sha256:b236bba0804c19e16a782047c8225c49fbcb233e25bb37c7a4778f1bfe6bd15c",
+    "vsix_digest": "sha256:558d826dd84d59317e4246f739e8a1cccb14f628abb3a67603c309941ade2d01"
+  },
+  "discovery_lock": {
+    "id": "complex-discovery-d2-drivers-09",
+    "status": "qualified",
+    "lock_identity": "sha256:5e650b4ccd80abecdff3df4c7989f0818e0100df36f95a6ab0a9fd55e5e8a78c",
+    "driver_inventory_digest": "sha256:8df4e37a042eb5200c0a3256afcabd484aaf57c1c59dfd09ae09e8de02617afa",
+    "inputs": 21
+  },
+  "round_history": [
+    {
+      "id": "complex-discovery-d2-campaign-01",
+      "status": "invalid",
+      "reason": "round_schema_null_fault_evidence",
+      "reusable": false
+    },
+    {
+      "id": "complex-discovery-d2-campaign-02",
+      "status": "invalid",
+      "reason": "generated_journey_step_attestation_missing",
+      "reusable": false
+    },
+    {
+      "id": "complex-discovery-d2-campaign-03",
+      "status": "invalid",
+      "reason": "retry_empty_fault_merge_serialized_null",
+      "reusable": false
+    },
+    {
+      "id": "complex-discovery-d2-campaign-04",
+      "status": "invalid",
+      "reason": "live_retry_cost_and_reproducibility_misclassified",
+      "reusable": false
+    },
+    {
+      "id": "complex-discovery-d2-campaign-05",
+      "status": "closed",
+      "reusable": true
+    }
+  ],
+  "final_round": {
+    "scheduled": 129,
+    "settled": 129,
+    "passed": 35,
+    "failed": 1,
+    "unavailable": 0,
+    "invalid": 93,
+    "budget_skipped": 0,
+    "wall_time_ms": 120098,
+    "model_cost_microunits": 850000,
+    "fault_cases": 70,
+    "fault_trigger_mismatches": 0,
+    "unique_workspace_digests": 129,
+    "observations": {
+      "product_candidate": 0,
+      "harness_incident": 93,
+      "environment_failure": 0,
+      "expected_variance": 0,
+      "unattributed": 1
+    }
+  },
+  "family_results": {
+    "composed_faults": {"passed": 3, "invalid": 18},
+    "concurrency_cancellation": {"passed": 2, "invalid": 18},
+    "differential_host": {"passed": 11, "failed": 1},
+    "live_model_variability": {"passed": 7, "invalid": 10},
+    "scale_long_tail": {"passed": 7, "invalid": 11},
+    "stateful_journey": {"passed": 3, "invalid": 18},
+    "upgrade_recovery": {"passed": 2, "invalid": 18}
+  },
+  "driver_results": {
+    "acp": {"passed": 20, "failed": 1, "invalid": 54},
+    "cli": {"passed": 9, "invalid": 17},
+    "vscode": {"passed": 6, "invalid": 22}
+  },
+  "missing_step_clusters": {
+    "observe_compaction": 33,
+    "restart_runtime": 29,
+    "reconnect_session": 29,
+    "extend_session": 28,
+    "restore_checkpoint": 28,
+    "stop_runtime": 26,
+    "resume_session": 22,
+    "upgrade_runtime": 20,
+    "crash_runtime": 19,
+    "rollback_runtime": 19,
+    "cancel_turn": 5,
+    "list_checkpoint": 5,
+    "start_effect": 5
+  },
+  "unattributed_observation": {
+    "id": "observation-differential_host-009",
+    "case_id": "differential_host-009",
+    "driver": "acp",
+    "live": true,
+    "attempts": 2,
+    "reproducibility": "unreproduced",
+    "reason": "live execution used the existing CLI smoke and did not prove the declared ACP path",
+    "product_candidate": false
+  },
+  "decision": {
+    "d2_3_round_closed": true,
+    "d2_3_discovery_converged": false,
+    "systemic_harness_gap": true,
+    "another_campaign_authorized": false,
+    "product_remediation_authorized": false,
+    "required_next_stage": "d2_driver_execution_remediation_and_requalification",
+    "d2_4_reentry_authorized": false,
+    "h4_status_changed": false
+  },
+  "validation": {
+    "passed": [
+      "go_test_evaluation",
+      "go_test_race_evaluation",
+      "go_vet_d2",
+      "architecture_ratchet",
+      "docs_check",
+      "book_check",
+      "full_repository_hermetic",
+      "git_diff_check",
+      "discovery_lock_input_verification",
+      "resource_cleanup"
+    ],
+    "pending": [],
+    "full_repository_hermetic_duration_ms": 250389,
+    "discovery_lock_inputs_verified": 21,
+    "environment_limited": []
+  }
+}

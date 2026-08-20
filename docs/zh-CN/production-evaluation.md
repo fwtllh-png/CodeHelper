@@ -9,7 +9,12 @@
 > 与 Rollout Expansion 仍未授权。H4 Harness 与 120-Turn Controlled Preflight
 > 已完成。Q1 Round 14、同 Lock H1 Round 04 与 H2 Round 06 已通过，但同 Lock
 > H3 Round 03 因 Operator Time Budget 在 96/480 Turn 时停止。该轮不可复用，正式
-> H4 未启动。
+> H4 未启动。不再优先重复未变化的 Admission Chain。D2 复杂场景 Discovery 现已
+> 成为下一工程阶段。D2.1 Contract 与确定性 Planning 已完成，D2.2 Production
+> Driver 与 Generator 已验收，首个有效 D2.3 Campaign 已由
+> `complex-discovery-d2-campaign-05` 关闭。该轮完成 129/129 Case 结算：35 个
+> Passed、93 个 Harness Incident、1 个 Unattributed，未准入 Product Candidate。
+> D2 Re-entry 因 Driver Execution Remediation 被阻断，且 D2 不具备发布权威。
 >
 > 执行顺序和工期见[生产测评实施计划](./production-evaluation-implementation-plan.md)。
 > 当前可信状态和缺陷见[异常与缺陷台账](./production-evaluation-findings.md)。
@@ -26,6 +31,7 @@ Partition 具备发布权威，但不具备 H4 Canary 或 Rollout Expansion 权�
 | 17.3 Oracle 与 Core Pack | 已失效 | 不能作为准入证据 |
 | Foundation v2 F1-F3 与 H3 Harness | 已通过 Q1 Round 13 验收 | Frozen Harness 权威 |
 | D1 Product Discovery | 56/56 通过；无 Product Candidate | 不进入 Product Remediation |
+| D2 复杂场景 Discovery | D2.3 Round 05 已关闭 129/129；93 个 Harness Incident、1 个 Unattributed、无 Product Candidate | Re-entry 阻断；无发布权威 |
 | 17.4 VS Code 与进程 Chaos | 同 Lock H1 Round 03 已 21/21 通过 | H3 前置证据 |
 | Live Model 与 Drift | 同 Lock H2 Round 05 已 16/16 通过 | H3 前置证据 |
 | Endurance 与 Release | H3 Round 02 已 14/14 通过；8/8 RC Lane 已准入 | 本地 RC Candidate Admission |
@@ -40,7 +46,8 @@ Partition 具备发布权威，但不具备 H4 Canary 或 Rollout Expansion 权�
 ```text
 Specification -> Foundation Work Unit -> 一次 Qualification Epoch
               -> Global Assessment -> Harness Freeze
-              -> Collect-all Product Discovery -> Global Assessment
+              -> Admission Track：固定 H1-H4 发布门禁
+              -> Discovery Track：演进的 D2 Campaign -> Global Assessment
               -> 已批准 Product Remediation -> Chaos/Live/RC Admission
 ```
 
@@ -174,6 +181,14 @@ Versioned Foundation Specification
 | `qualification.json` | 完整 Epoch Inventory、Identity、Result 和 Decision |
 | `promotion-review.json` | Corpus Promotion 的隐私和正确性批准 |
 | `release-evidence.json` | 发布准入消费的 Source-bound Lane Evidence |
+| `discovery-campaign.json` | 单个 D2 Campaign 的 Axis、Generator、Budget、Seed 和 Stop Policy |
+| `discovery-observation.json` | 已准入的异常观察与可复现性证据 |
+| `campaign-plan.json` | 确定性 Case Inventory 与显式 Coverage Ledger |
+| `driver-inventory.json` | 生成的 Journey、Schedule、Fault、Assertion、Ownership 与 Cleanup Inventory |
+| `driver-qualification.json` | D2.2 Production Boundary 与确定性生成 Qualification |
+| `campaign-round.json` | 不可变 D2 Case 结算、Step Attestation、Cost、Cleanup 与 Observation Inventory |
+| `discovery-lock.json` | 已验收 Base Identity 与单独哈希的 D2 Input Root |
+| `discovery-qualification.json` | D2 Contract、Planner、Privacy、Identity 与 Negative-control Epoch |
 
 ### 5.1 Scenario Contract
 
@@ -431,18 +446,105 @@ Code、Runtime Source、Fixture、Test、Schema 或 Build Input，否则 Lock �
 
 ## 11. Product Discovery 与 Remediation
 
-Harness Freeze 后：
+### 11.1 两条相互独立的 Track
 
-1. 运行全部 Required Host、Scenario、Attempt 和 Fault Case；
-2. 保留全部结果，包括 First Failure 之后的失败；
-3. 不修改产品地关闭 Round；
-4. 完成一次 Global Assessment，并按 Systemic Root 聚类症状；
-5. 批准或拒绝 Product Candidate；
-6. 在独立 Product Work Unit 中修复已批准 Candidate；
-7. 增加绑定 Frozen Scenario Contract 的 Minimal Regression；
-8. 使用同一个 Harness Lock 或显式重新验收的后继 Lock 执行新 Verification Round。
+Harness Freeze 后，Evaluation 将两种目的分开：
 
-历史 PEC ID 在此流程下重新发现前都只是 Hypothesis。
+| Track | 输入 | 变更策略 | 权威 |
+| --- | --- | --- | --- |
+| Admission | 固定 Scenario、Fixture、Threshold 和 Lock | 同一 Admission Generation 内不可变 | 可以阻断或准入发布 |
+| Discovery | 版本化 Campaign、生成组合和探索 Budget | 只能在不可变 Round 之间演进 | 只能产生 Product Candidate |
+
+Discovery 结果禁止满足、豁免或替代 Admission Lane。重复 Admission 不能替代
+Discovery，D2 通过也不构成发布结论。
+
+D2 Control Input 位于单独枚举的 `discovery_input_roots`。Discovery Lock 引用已验收
+的 Base Harness、Runtime 和 Host Artifact Partition，再只绑定 D2 Contract、
+Generator、Fixture、Fault Control 和 Campaign Portfolio。仅 D2 的变化要求 D2
+Negative Qualification 和后继 Discovery Lock，不要求重复未变化的 H1-H4 Chain。
+Shared Foundation、Production Source、Runtime、Host Artifact、Guard 或 Persistence
+变化会使对应 Base Identity 失效，并遵循正常 Qualification 与 Admission Impact
+Policy。
+
+### 11.2 D2 复杂场景模型
+
+D2 通过组合以下 Axis 的声明值搜索未知失败：
+
+- Workload：仓库规模、语言组合、Dirty State、多文件编辑、Verification 和 Tool
+  Depth；
+- Session State：长 History、Compaction、Checkpoint、Resume、Cancellation、
+  并发 Thread 和中断的 Effect；
+- Topology：CLI、ACP、Official VS Code、Subagent、Multi-root Workspace 和 Worker
+  Execution；
+- Dependency Behavior：Provider Frame 缺陷、Latency、Disconnect、Rate Limit、
+  MCP/Tool Failure、Filesystem Pressure 和 SQLite Contention；
+- Lifecycle：Clean Start、Crash Recovery、Version Upgrade、Rollback、Stale Client
+  Reconnect 和 Partial Durable State；
+- Model Variability：Provider、Model、Route、Context Pressure、Tool Proposal Shape
+  和 Cost/Latency Regime。
+
+每个 `discovery-campaign.json` 必须声明 Axis、Selection Strategy、Production Entry
+Point、Deterministic Seed Set、最大 Run 数、Wall-clock/Cost Budget、Concurrency、
+Required Observation、Cleanup Contract 和 Stop Policy。只有在执行前记录所选值和
+Seed 时，才允许 Random 或 Adaptive Selection。Generated Case 数量不能虚增独立
+Campaign Family 数量。
+
+首批 Portfolio 包含：
+
+1. 包含 Edit、Verify、Checkpoint、Resume 和 Follow-up Turn 的 Stateful Repository
+   Journey；
+2. 受控 Concurrency 与 Cancellation Interleaving；
+3. Provider、Process、Persistence、Filesystem 和 Tool 的组合 Fault；
+4. Context、Workspace、Output 和 Durable State 的 Scale/Long-tail Case；
+5. 跨 Host、Restart Boundary 和等价 Task Formulation 的 Differential/Metamorphic
+   Check；
+6. Upgrade、Rollback、Reconnect 和 Recovery Journey；
+7. 与确定性 Fault Campaign 分离的 Live Model Variability Campaign。
+
+D2 驱动受支持的生产 Host 和 Runtime Contract。禁止增加第二条 Agent Loop、绕过
+Guard/Sandbox，或把 Test Authority 放入 Production Artifact。
+
+### 11.3 Coverage 与可复现性
+
+每轮发布一份 Coverage Ledger，包含：
+
+- 每个 Declared Axis 已选和未选值；
+- Pairwise Interaction Coverage 和显式要求的 Higher-order Combination；
+- Boundary-value、Fault-trigger、Host、Lifecycle 和 Cleanup Coverage；
+- Attempted、Completed、Failed、Invalid、Unavailable 和 Budget-skipped Run；
+- 不允许 Retry 掩盖的 First-attempt Outcome；
+- Wall-clock、Model Cost 和 Resource Consumption。
+
+确定性失败必须执行精确 Same-seed Replay。Timing-sensitive Failure 必须使用
+Controlled Schedule 或 Bounded Repetition Matrix。Live Model Anomaly 必须具备重复
+证据和 Statistical Attribution；单次主观输出不能成为 Product Candidate。无法复现
+不会抹除原始 Observation。
+
+### 11.4 Round 关闭与分类
+
+D2 在获批 Budget 内 Collect All。任何代码修复前先关闭 Round，并将每条 Observation
+分类为：
+
+- `product_candidate`：生产行为违反已准入 Invariant；
+- `harness_incident`：Driver、Oracle、Injection、Identity 或 Cleanup 失败；
+- `environment_failure`：外部 Capability 失败，但未证明产品违约；
+- `expected_variance`：观察行为仍在声明 Contract 内；
+- `unattributed`：Evidence 足以保留异常，但不足以确定 Owner。
+
+Global Assessment 按最早已证明 Boundary 聚类相关症状，保留全部未归因 P0/P1
+Observation，并决定哪些 Product Candidate 可以进入 Remediation。出现系统性模式、
+Evidence Contamination、Identity Drift、Cleanup Uncertainty 或不收敛 Campaign 时停止
+本轮；禁止因此在 Round 内修复。
+
+### 11.5 Remediation 与 Corpus 反馈
+
+已批准 Product Candidate 只能在独立 Product Work Unit 中修复。每个修复增加能够
+保留失败机制的最小确定性 Regression。Private Capture 只能经过现有 Redaction、
+Review 和 Atomic Promotion Transaction 进入 Tracked Corpus。
+
+仅产品修复使用原 Campaign Partition 和必需 Admission Impact Set 验证。Harness
+Input 变化后必须进入后继 Qualification Epoch，才能继续得出产品结论。历史 PEC ID
+在此流程中重新发现前仍只是假设。
 
 ## 12. Release Lane 与 Admission
 
@@ -521,4 +623,4 @@ SBOM。VS Code 产物仍是未上传的 `validated-dry-run`，本次准入不授
 
 D1、H1 与 H2 完成没有隐含授权 H3。H3 现已完成，但只准入绑定精确 Identity 的本地
 RC Candidate。H4 在 Canary 或 Rollout Expansion 前仍保留独立显式授权与 Admission
-Gate。
+Gate。D2 是独立且不具备发布权威的 Discovery Track，不要求也不隐含 H4 完成。
