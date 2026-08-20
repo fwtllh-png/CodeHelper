@@ -350,6 +350,10 @@ func generateCase(planned PlannedCase) GeneratedCase {
 }
 
 func driverFor(planned PlannedCase) string {
+	if planned.FamilyID == "live_model_variability" &&
+		planned.Values["model_variability"] == "live_primary" {
+		return "cli"
+	}
 	switch planned.Values["topology"] {
 	case "cli":
 		return "cli"

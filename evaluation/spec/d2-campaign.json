@@ -27,8 +27,7 @@
       "values": [
         {"id": "cli", "boundary": true, "fault_trigger": false},
         {"id": "acp", "boundary": false, "fault_trigger": false},
-        {"id": "vscode", "boundary": true, "fault_trigger": false},
-        {"id": "subagent_worker", "boundary": false, "fault_trigger": false}
+        {"id": "vscode", "boundary": true, "fault_trigger": false}
       ]
     },
     {
@@ -80,7 +79,7 @@
         {
           "values": {
             "session_state": "canceled_effect",
-            "topology": "subagent_worker",
+            "topology": "acp",
             "dependency_behavior": "sqlite_contention",
             "lifecycle": "crash_recovery"
           }
@@ -103,13 +102,12 @@
     },
     {
       "id": "scale_long_tail",
-      "axes": ["workload", "session_state", "model_variability", "topology"],
+      "axes": ["workload", "session_state", "topology"],
       "required_combinations": [
         {
           "values": {
             "workload": "polyglot_large",
             "session_state": "long_compacted",
-            "model_variability": "context_pressure",
             "topology": "vscode"
           }
         }
@@ -117,13 +115,12 @@
     },
     {
       "id": "differential_host",
-      "axes": ["workload", "topology", "model_variability"],
+      "axes": ["workload", "topology"],
       "required_combinations": [
         {
           "values": {
             "workload": "small_go",
-            "topology": "cli",
-            "model_variability": "fixture_deterministic"
+            "topology": "cli"
           }
         }
       ]
@@ -144,14 +141,12 @@
     },
     {
       "id": "live_model_variability",
-      "axes": ["workload", "session_state", "model_variability", "topology"],
+      "axes": ["workload", "model_variability"],
       "required_combinations": [
         {
           "values": {
             "workload": "dirty_multifile",
-            "session_state": "long_compacted",
-            "model_variability": "live_primary",
-            "topology": "acp"
+            "model_variability": "live_primary"
           }
         }
       ]

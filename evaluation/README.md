@@ -48,13 +48,15 @@ controlled 120-Turn preflight are complete. Q1 Round 14, same-Lock H1 Round
 04, and H2 Round 06 passed; required H3 Round 03 was operator-stopped at
 96/480 Turns and is non-reusable, so formal H4 was not started.
 
-D2.1 and D2.2 are implemented as an independent non-release-authoritative
-control plane. The qualified Driver inventory preserves all 129 planned Cases,
-binds CLI, ACP, and official VS Code paths, and gives all six fault classes
-nonzero trigger evidence. D2.3 Round 05 settled 129/129 Cases: 35 passed, 93
-were classified as Harness Incidents, and one Live observation remains
-Unattributed. No Product Candidate was admitted and re-entry is blocked on
-Driver execution remediation.
+D2.1 through D2.3 are implemented as an independent
+non-release-authoritative control plane. Historical Round 05 settled 129/129
+Cases: 35 passed, 93 were classified as Harness Incidents, and one Live
+observation remained Unattributed. Driver execution remediation is now
+qualified by `complex-discovery-d2-drivers-26`: its 105-Case successor closes
+376/376 pairwise interactions and 18/18 checks, including ordered Journey
+execution, Live CLI routing, and exact topology-to-Driver routing. No Product
+Candidate was admitted. A successor Campaign and D2.4 re-entry remain
+unauthorized.
 
 The corrected target contracts and execution order are defined by:
 
@@ -91,6 +93,9 @@ H3 failure, remediation, requalification, and final admission are recorded in
 `assessments/h3-production-admission-global-assessment-01.json` through
 `-06.json` and `assessments/q1-qualification-global-assessment-11.json`
 through `-13.json`.
+The D2.3 closure and Driver remediation decision are recorded in
+`assessments/d2-campaign-global-assessment-01.json` and
+`assessments/d2-driver-remediation-global-assessment-01.json`.
 
 The F1 implementation now provides:
 
@@ -179,19 +184,21 @@ go run ./evaluation/d2/cmd/codehelper-discovery qualify \
   --output .tmp/evaluation/d2/complex-discovery-d2-foundation-01
 ```
 
-Qualify D2.2 Drivers and Generators against the frozen production artifacts:
+Qualify the remediated D2 Drivers and Generators against the frozen production
+artifacts:
 
 ```bash
 go run ./evaluation/d2/cmd/codehelper-discovery qualify-drivers \
   --root . \
-  --id complex-discovery-d2-drivers-09 \
+  --id complex-discovery-d2-drivers-26 \
   --base-lock .tmp/evaluation/q1/foundation-v2-q1-14/harness-lock.json \
   --runtime bin/codehelper \
   --vsix extensions/vscode/dist/codehelper-vscode-0.0.1.vsix \
-  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-09
+  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-26
 ```
 
-Execute an approved immutable D2.3 Campaign:
+The command below is historical Round 05 evidence. Do not substitute the
+successor Lock or execute another Campaign without explicit approval:
 
 ```bash
 go run ./evaluation/d2/cmd/codehelper-discovery campaign \

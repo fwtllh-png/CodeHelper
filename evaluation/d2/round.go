@@ -1,14 +1,11 @@
 package d2
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -307,12 +304,12 @@ func runCampaignCase(
 	caseContext, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	result := baseCaseResult(generated)
-	status, summary, executionDigest, workspaceDigest, faults := executeCase(
-		caseContext,
-		options,
-		generated,
-	)
-	executed := attestedSteps(generated, status == "passed")
+	status, summary, executionDigest, workspaceDigest, faults, executed, _ :=
+		executeCase(
+			caseContext,
+			options,
+			generated,
+		)
 	if status == "passed" && !slices.Equal(
 		plannedSteps(generated),
 		executed,
@@ -322,9 +319,9 @@ func runCampaignCase(
 	}
 	result.Attempts = 1
 	if status == "failed" || status == "invalid" {
-		secondStatus, secondSummary, secondDigest, secondWorkspace, secondFaults :=
+		secondStatus, secondSummary, secondDigest, secondWorkspace,
+			secondFaults, secondExecuted, _ :=
 			executeCase(caseContext, options, generated)
-		secondExecuted := attestedSteps(generated, secondStatus == "passed")
 		if secondStatus == "passed" && !slices.Equal(
 			plannedSteps(generated),
 			secondExecuted,
@@ -368,8 +365,13 @@ func executeCase(
 	ctx context.Context,
 	options CampaignOptions,
 	generated GeneratedCase,
-) (status, summary, executionDigest, workspaceDigest string, faults []string) {
+) (
+	status, summary, executionDigest, workspaceDigest string,
+	faults, executed []string,
+	executionErr error,
+) {
 	faults = []string{}
+	executed = []string{}
 	temporary, err := os.MkdirTemp("", "codehelper-d2-case-"+generated.ID+"-")
 	if err != nil {
 		return failedExecution("invalid", "workspace_create_failed", err)
@@ -380,6 +382,7 @@ func executeCase(
 	if err := os.MkdirAll(workspace, 0o700); err != nil {
 		return failedExecution("invalid", "workspace_create_failed", err)
 	}
+	executed = append(executed, "prepare_workspace")
 	repository, err := MaterializeSyntheticRepository(workspace, generated)
 	if err != nil {
 		return failedExecution("invalid", "workspace_generation_failed", err)
@@ -406,7 +409,7 @@ func executeCase(
 	if live && !options.Live {
 		return "unavailable", "live_provider_not_authorized",
 			spec.DigestString(generated.ID + "\x00live-unavailable"),
-			workspaceDigest, faults
+			workspaceDigest, faults, executed, nil
 	}
 	var execution runner.OwnedCommandResult
 	switch {
@@ -425,15 +428,47 @@ func executeCase(
 			},
 			8<<20,
 		)
+		if err == nil {
+			executed = append(
+				executed,
+				"start_runtime",
+				"submit_prompt",
+				"observe_terminal",
+			)
+		}
 	case generated.DriverID == "cli":
-		execution, err = runCLICase(ctx, options, generated, workspace, stateDir)
+		var driverSteps []string
+		execution, driverSteps, err = runCLICase(
+			ctx,
+			options,
+			generated,
+			workspace,
+			stateDir,
+		)
+		executed = append(executed, driverSteps...)
 	case generated.DriverID == "acp":
 		var digest string
-		digest, err = runACPCase(ctx, options, generated, workspace, stateDir)
+		var driverSteps []string
+		digest, driverSteps, err = runACPCase(
+			ctx,
+			options,
+			generated,
+			workspace,
+			stateDir,
+		)
 		execution.StdoutDigest = digest
 		execution.StderrDigest = spec.DigestString("")
+		executed = append(executed, driverSteps...)
 	case generated.DriverID == "vscode":
-		execution, err = runVSCodeCase(ctx, options, generated)
+		var driverSteps []string
+		execution, driverSteps, err = runVSCodeCase(
+			ctx,
+			options,
+			generated,
+			workspace,
+			stateDir,
+		)
+		executed = append(executed, driverSteps...)
 	default:
 		err = errors.New("unsupported D2 Driver")
 	}
@@ -445,16 +480,18 @@ func executeCase(
 	}, "\x00"))
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || execution.TimedOut {
-			return "failed", "execution_timeout", executionDigest, workspaceDigest, faults
+			return "failed", "execution_timeout", executionDigest,
+				workspaceDigest, faults, executed, err
 		}
 		if live && strings.Contains(err.Error(), "credential") {
 			return "unavailable", "live_credential_unavailable",
-				executionDigest, workspaceDigest, faults
+				executionDigest, workspaceDigest, faults, executed, err
 		}
 		return "failed", "production_boundary_failed",
-			executionDigest, workspaceDigest, faults
+			executionDigest, workspaceDigest, faults, executed, err
 	}
-	return "passed", "completed", executionDigest, workspaceDigest, faults
+	return "passed", "completed", executionDigest, workspaceDigest,
+		faults, executed, nil
 }
 
 func runCLICase(
@@ -462,11 +499,11 @@ func runCLICase(
 	options CampaignOptions,
 	generated GeneratedCase,
 	workspace, stateDir string,
-) (runner.OwnedCommandResult, error) {
+) (runner.OwnedCommandResult, []string, error) {
 	args := []string{
 		options.Runtime,
 		"exec",
-		"--provider-fixture", filepath.Join(options.Root, "testdata", "providers", "openai"),
+		"--provider-fixture", journeyFixture(options.Root),
 		"--provider", "openai",
 		"--model", "gpt-fixture",
 		"--workspace", workspace,
@@ -474,31 +511,82 @@ func runCLICase(
 		"--session-id", generated.ID,
 		"--thread-id", generated.ID,
 		"--posture", "never",
+		"--enable-tools",
 		"say hello",
 	}
 	if generated.Values["session_state"] == "canceled_effect" {
-		cancelContext, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-		defer cancel()
-		args[3] = filepath.Join(options.Root, "testdata", "providers", "slow")
-		args[len(args)-1] = "wait for interrupt"
 		result, err := runner.RunOwnedCommand(
-			cancelContext,
+			ctx,
 			options.Root,
 			args,
 			nil,
 			8<<20,
 		)
-		if result.TimedOut && errors.Is(err, context.DeadlineExceeded) {
+		if err != nil {
+			return result, []string{"start_runtime"}, err
+		}
+		cancelContext, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		defer cancel()
+		canceled, cancelErr := runner.RunOwnedCommand(
+			cancelContext,
+			options.Root,
+			[]string{
+				options.Runtime,
+				"exec",
+				"--provider-fixture", filepath.Join(
+					options.Root,
+					"testdata",
+					"providers",
+					"slow",
+				),
+				"--workspace", workspace,
+				"--data-dir", stateDir,
+				"--session-id", generated.ID,
+				"--resume",
+				"--enable-tools",
+				"wait for interrupt",
+			},
+			nil,
+			8<<20,
+		)
+		result.StdoutDigest = spec.DigestString(
+			result.StdoutDigest + "\x00" + canceled.StdoutDigest,
+		)
+		result.StderrDigest = spec.DigestString(
+			result.StderrDigest + "\x00" + canceled.StderrDigest,
+		)
+		if canceled.TimedOut && errors.Is(cancelErr, context.DeadlineExceeded) {
 			result.TimedOut = false
 			result.ExitCode = 0
-			return result, nil
+			steps := []string{
+				"start_runtime",
+				"submit_prompt",
+				"start_effect",
+				"cancel_turn",
+			}
+			result, steps, err = completeCLILifecycle(
+				ctx,
+				options,
+				generated,
+				workspace,
+				stateDir,
+				result,
+				steps,
+			)
+			if err != nil {
+				return result, steps, err
+			}
+			steps = append(steps, "observe_terminal")
+			return result, steps, nil
 		}
-		return result, errors.New("CLI cancellation control did not interrupt the Turn")
+		return result, []string{"start_runtime", "submit_prompt", "start_effect"},
+			errors.New("CLI cancellation control did not interrupt the Turn")
 	}
 	result, err := runner.RunOwnedCommand(ctx, options.Root, args, nil, 8<<20)
 	if err != nil {
-		return result, err
+		return result, []string{"start_runtime"}, err
 	}
+	steps := []string{"start_runtime", "submit_prompt"}
 	if generated.Values["session_state"] == "checkpoint_resume" ||
 		generated.Values["session_state"] == "long_compacted" ||
 		generated.Values["lifecycle"] == "version_upgrade" ||
@@ -508,11 +596,12 @@ func runCLICase(
 			options.Root,
 			[]string{
 				options.Runtime, "exec",
-				"--provider-fixture", filepath.Join(options.Root, "testdata", "providers", "openai"),
+				"--provider-fixture", journeyFixture(options.Root),
 				"--workspace", workspace,
 				"--data-dir", stateDir,
 				"--session-id", generated.ID,
 				"--resume",
+				"--enable-tools",
 				"say hello",
 			},
 			nil,
@@ -524,31 +613,49 @@ func runCLICase(
 		result.StderrDigest = spec.DigestString(
 			result.StderrDigest + "\x00" + resumed.StderrDigest,
 		)
-		return result, resumeErr
+		switch generated.Values["session_state"] {
+		case "checkpoint_resume":
+			steps = append(
+				steps,
+				"list_checkpoint",
+				"restore_checkpoint",
+				"resume_session",
+			)
+		case "long_compacted":
+			steps = append(steps, "extend_session")
+		}
+		if resumeErr != nil {
+			return result, steps, resumeErr
+		}
 	}
-	return result, nil
+	result, steps, err = completeCLILifecycle(
+		ctx,
+		options,
+		generated,
+		workspace,
+		stateDir,
+		result,
+		steps,
+	)
+	if err != nil {
+		return result, steps, err
+	}
+	steps = append(steps, "observe_terminal")
+	return result, steps, nil
 }
 
 func runVSCodeCase(
 	ctx context.Context,
 	options CampaignOptions,
 	generated GeneratedCase,
-) (runner.OwnedCommandResult, error) {
-	return runner.RunOwnedCommand(
+	workspace, stateDir string,
+) (runner.OwnedCommandResult, []string, error) {
+	return runOfficialVSCodeJourney(
 		ctx,
-		options.Extension,
-		[]string{options.NPM, "test", "--", "runtime"},
-		[]string{
-			"CODEHELPER_VSCODE_BINARY=" + options.Runtime,
-			"CODEHELPER_VSCODE_FIXTURE=" + filepath.Join(
-				options.Root, "testdata", "providers", "tools",
-			),
-			"CODEHELPER_VSCODE_CONTEXT_FIXTURE=" + filepath.Join(
-				options.Root, "testdata", "providers", "editor-context",
-			),
-			"CODEHELPER_D2_CASE_ID=" + generated.ID,
-		},
-		16<<20,
+		options,
+		generated,
+		workspace,
+		stateDir,
 	)
 }
 
@@ -653,9 +760,10 @@ func WriteCampaignBundle(
 func failedExecution(
 	status, summary string,
 	err error,
-) (string, string, string, string, []string) {
+) (string, string, string, string, []string, []string, error) {
 	digest := spec.DigestString(summary + "\x00" + sanitizeError(err))
-	return status, summary, digest, spec.DigestString("workspace-unavailable"), []string{}
+	return status, summary, digest, spec.DigestString("workspace-unavailable"),
+		[]string{}, []string{}, err
 }
 
 func mergeStrings(left, right []string) []string {
@@ -685,56 +793,6 @@ func plannedSteps(generated GeneratedCase) []string {
 	return steps
 }
 
-func attestedSteps(generated GeneratedCase, boundaryPassed bool) []string {
-	if !boundaryPassed {
-		return []string{"prepare_workspace"}
-	}
-	covered := map[string]bool{
-		"prepare_workspace": true,
-		"start_runtime":     true,
-		"submit_prompt":     true,
-		"observe_terminal":  true,
-	}
-	switch generated.DriverID {
-	case "cli":
-		switch generated.Values["session_state"] {
-		case "checkpoint_resume":
-			covered["list_checkpoint"] = true
-			covered["resume_session"] = true
-		case "long_compacted":
-			covered["extend_session"] = true
-		case "canceled_effect":
-			covered["start_effect"] = true
-			covered["cancel_turn"] = true
-		}
-		if generated.Values["lifecycle"] == "version_upgrade" ||
-			generated.Values["lifecycle"] == "rollback_reconnect" {
-			covered["stop_runtime"] = true
-			covered["restart_runtime"] = true
-			covered["reconnect_session"] = true
-		}
-	case "acp":
-		if generated.Values["session_state"] == "checkpoint_resume" {
-			covered["list_checkpoint"] = true
-		}
-		if generated.Values["session_state"] == "canceled_effect" {
-			covered["start_effect"] = true
-			covered["cancel_turn"] = true
-		}
-	case "vscode":
-		covered["stop_runtime"] = true
-		covered["restart_runtime"] = true
-		covered["reconnect_session"] = true
-	}
-	var executed []string
-	for _, step := range generated.Steps {
-		if covered[step.Action] {
-			executed = append(executed, step.Action)
-		}
-	}
-	return executed
-}
-
 func digestCaseResult(result CaseResult) string {
 	result.EvidenceDigest = ""
 	raw, _ := json.Marshal(result)
@@ -745,180 +803,4 @@ func digestCampaignRound(round CampaignRound) string {
 	round.EvidenceDigest = ""
 	raw, _ := json.Marshal(round)
 	return spec.DigestString(string(raw))
-}
-
-type campaignACPFrame struct {
-	ID     json.RawMessage `json:"id"`
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params"`
-	Result json.RawMessage `json:"result"`
-	Error  *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-func runACPCase(
-	ctx context.Context,
-	options CampaignOptions,
-	generated GeneratedCase,
-	workspace, stateDir string,
-) (string, error) {
-	fixture := filepath.Join(options.Root, "testdata", "providers", "openai")
-	prompt := "say hello"
-	if generated.Values["session_state"] == "canceled_effect" {
-		fixture = filepath.Join(options.Root, "testdata", "providers", "slow")
-		prompt = "wait for interrupt"
-	}
-	command := exec.CommandContext(
-		ctx,
-		options.Runtime,
-		"host", "--adapter", "acp",
-		"--data-dir", stateDir,
-		"--provider-fixture", fixture,
-		"--workspace", workspace,
-		"--posture", "never",
-	)
-	stdin, err := command.StdinPipe()
-	if err != nil {
-		return "", err
-	}
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		return "", err
-	}
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	if err := command.Start(); err != nil {
-		return "", err
-	}
-	defer func() {
-		_ = stdin.Close()
-		if command.ProcessState == nil {
-			_ = command.Process.Kill()
-			_ = command.Wait()
-		}
-	}()
-	frames := make(chan campaignACPFrame, 256)
-	readErr := make(chan error, 1)
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 4096), 4<<20)
-		for scanner.Scan() {
-			var frame campaignACPFrame
-			if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil {
-				readErr <- err
-				close(frames)
-				return
-			}
-			frames <- frame
-		}
-		readErr <- scanner.Err()
-		close(frames)
-	}()
-	send := func(id, method string, params any) error {
-		raw, err := json.Marshal(map[string]any{
-			"jsonrpc": "2.0", "id": id, "method": method, "params": params,
-		})
-		if err != nil {
-			return err
-		}
-		_, err = stdin.Write(append(raw, '\n'))
-		return err
-	}
-	waitID := func(id string) (campaignACPFrame, error) {
-		for {
-			select {
-			case <-ctx.Done():
-				return campaignACPFrame{}, ctx.Err()
-			case frame, ok := <-frames:
-				if !ok {
-					select {
-					case err := <-readErr:
-						if err != nil {
-							return campaignACPFrame{}, err
-						}
-					default:
-					}
-					return campaignACPFrame{}, errors.New("ACP stdout closed")
-				}
-				var frameID string
-				_ = json.Unmarshal(frame.ID, &frameID)
-				if frameID == id {
-					if frame.Error != nil {
-						return frame, errors.New(frame.Error.Message)
-					}
-					return frame, nil
-				}
-			}
-		}
-	}
-	if err := send("initialize", "initialize", map[string]any{
-		"protocolVersion": 2,
-	}); err != nil {
-		return "", err
-	}
-	if _, err := waitID("initialize"); err != nil {
-		return "", err
-	}
-	if err := send("session", "session/new", map[string]any{
-		"title": generated.ID,
-	}); err != nil {
-		return "", err
-	}
-	sessionFrame, err := waitID("session")
-	if err != nil {
-		return "", err
-	}
-	var session struct {
-		SessionID string `json:"sessionId"`
-	}
-	if err := json.Unmarshal(sessionFrame.Result, &session); err != nil ||
-		session.SessionID == "" {
-		return "", errors.New("ACP session identity is invalid")
-	}
-	if err := send("prompt", "session/prompt", map[string]any{
-		"sessionId": session.SessionID,
-		"prompt":    prompt,
-	}); err != nil {
-		return "", err
-	}
-	if generated.Values["session_state"] == "canceled_effect" {
-		if err := send("cancel", "session/cancel", map[string]any{
-			"sessionId": session.SessionID,
-		}); err != nil {
-			return "", err
-		}
-		if _, err := waitID("cancel"); err != nil {
-			return "", err
-		}
-	}
-	promptFrame, err := waitID("prompt")
-	if err != nil {
-		return "", err
-	}
-	if generated.Values["session_state"] == "checkpoint_resume" {
-		if err := send("checkpoints", "checkpoint/list", map[string]any{
-			"sessionId": session.SessionID,
-		}); err != nil {
-			return "", err
-		}
-		if _, err := waitID("checkpoints"); err != nil {
-			return "", err
-		}
-	}
-	if err := send("shutdown", "shutdown", map[string]any{}); err != nil {
-		return "", err
-	}
-	if _, err := waitID("shutdown"); err != nil {
-		return "", err
-	}
-	_ = stdin.Close()
-	if err := command.Wait(); err != nil {
-		return "", fmt.Errorf("ACP shutdown: %w: %s", err, stderr.String())
-	}
-	if strings.TrimSpace(stderr.String()) != "" {
-		return "", errors.New("ACP Runtime wrote stderr")
-	}
-	return spec.DigestString(string(promptFrame.Result)), nil
 }

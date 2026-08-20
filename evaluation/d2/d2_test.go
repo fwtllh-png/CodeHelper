@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"testing"
 	"time"
 
@@ -29,8 +28,8 @@ func TestRepositoryD2CampaignClosesDeclaredCoverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(bundle.Campaign.Families) != 7 ||
-		len(plan.Cases) != 129 ||
-		plan.Coverage.PairwiseCovered != 539 ||
+		len(plan.Cases) != 105 ||
+		plan.Coverage.PairwiseCovered != 376 ||
 		plan.Coverage.PairwiseCovered != plan.Coverage.PairwiseTotal ||
 		plan.Coverage.RequiredCombinationCovered !=
 			plan.Coverage.RequiredCombinationTotal ||
@@ -61,7 +60,7 @@ func TestD2DriverInventoryIsDeterministicAndClosesDeclaredControls(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(inventory.Cases) != 129 ||
+	if len(inventory.Cases) != 105 ||
 		len(inventory.Drivers) != 3 ||
 		len(inventory.Faults) != 6 {
 		t.Fatalf(
@@ -77,6 +76,25 @@ func TestD2DriverInventoryIsDeterministicAndClosesDeclaredControls(t *testing.T)
 	}
 	if !reflect.DeepEqual(inventory, repeated) {
 		t.Fatal("D2 Driver inventory changed for the same plan and seeds")
+	}
+	for _, generated := range inventory.Cases {
+		if topology := generated.Values["topology"]; topology != "" &&
+			topology != generated.DriverID {
+			t.Fatalf("D2 topology Driver routing = %+v", generated)
+		}
+		if generated.Values["model_variability"] != "live_primary" {
+			continue
+		}
+		if generated.FamilyID != "live_model_variability" ||
+			generated.DriverID != "cli" ||
+			!reflect.DeepEqual(plannedSteps(generated), []string{
+				"prepare_workspace",
+				"start_runtime",
+				"submit_prompt",
+				"observe_terminal",
+			}) {
+			t.Fatalf("D2 Live Driver routing = %+v", generated)
+		}
 	}
 	raw, err := json.Marshal(inventory)
 	if err != nil {
@@ -213,35 +231,16 @@ func TestD2CampaignRoundSchemaAndIdentityAreStrict(t *testing.T) {
 	if err := round.Validate(); err == nil {
 		t.Fatal("D2 Campaign Round accepted an unsettled denominator")
 	}
-	_, _, _, _, faults := failedExecution(
+	_, _, _, _, faults, steps, _ := failedExecution(
 		"failed",
 		"production_boundary_failed",
 		errors.New("injected"),
 	)
-	if faults == nil {
-		t.Fatal("D2 failed execution emitted null fault evidence")
+	if faults == nil || steps == nil {
+		t.Fatal("D2 failed execution emitted null evidence")
 	}
 	if merged := mergeStrings([]string{}, []string{}); merged == nil {
 		t.Fatal("D2 retry evidence merged empty faults into null")
-	}
-	generated := GeneratedCase{
-		DriverID: "acp",
-		Values: map[string]string{
-			"session_state": "clean_session",
-			"lifecycle":     "crash_recovery",
-		},
-		Steps: []JourneyStep{
-			{Action: "prepare_workspace"},
-			{Action: "start_runtime"},
-			{Action: "submit_prompt"},
-			{Action: "crash_runtime"},
-			{Action: "restart_runtime"},
-			{Action: "reconnect_session"},
-			{Action: "observe_terminal"},
-		},
-	}
-	if slices.Equal(plannedSteps(generated), attestedSteps(generated, true)) {
-		t.Fatal("D2 step attestation claimed an unexecuted crash-recovery Journey")
 	}
 	if got := caseModelCost(CaseResult{
 		Live: true, Status: "invalid", Attempts: 2,

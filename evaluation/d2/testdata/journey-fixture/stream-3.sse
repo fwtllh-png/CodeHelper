@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete_3","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"resumed successfully\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":14,"completion_tokens":3}}
+
+data: [DONE]

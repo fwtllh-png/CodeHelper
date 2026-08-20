@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-driver-remediation-global-assessment-01",
+  "phase": "complex_scenario_discovery_driver_remediation",
+  "status": "closed_qualified",
+  "observed_on": "2026-08-21",
+  "branch": "evaluation",
+  "implementation_base": "3e0ebd3",
+  "product_code_repair_performed": false,
+  "product_remediation_authorized": false,
+  "campaign_executed": false,
+  "release_authority": false,
+  "source_round": {
+    "id": "complex-discovery-d2-campaign-05",
+    "harness_incidents": 93,
+    "unattributed": 1,
+    "product_candidates": 0
+  },
+  "remediation": {
+    "static_step_attestation_removed": true,
+    "ordered_driver_step_receipts": true,
+    "checkpoint_event_synchronization": true,
+    "cli_durable_cancellation_baseline": true,
+    "acp_compaction_restore_and_reconnect": true,
+    "official_vscode_runtime_client_journey": true,
+    "controlled_runtime_artifact_replacement": true,
+    "live_cli_routing_enforced": true,
+    "topology_driver_routing_enforced": true,
+    "d2_private_multiturn_fixture": true
+  },
+  "campaign_contract_successor": {
+    "cases": 105,
+    "pairwise_covered": 376,
+    "pairwise_total": 376,
+    "required_combinations": 7,
+    "live_policy": "single_turn_cli_only",
+    "removed_unproved_topology": "subagent_worker",
+    "subagent_driver_status": "deferred_until_dedicated_execution_exists"
+  },
+  "epoch_history": [
+    {
+      "ids": ["complex-discovery-d2-drivers-10"],
+      "status": "invalid",
+      "reason": "qualification_schema_retained_15_item_limits",
+      "artifact_published": false
+    },
+    {
+      "ids": [
+        "complex-discovery-d2-drivers-11",
+        "complex-discovery-d2-drivers-12",
+        "complex-discovery-d2-drivers-13",
+        "complex-discovery-d2-drivers-14",
+        "complex-discovery-d2-drivers-15",
+        "complex-discovery-d2-drivers-16",
+        "complex-discovery-d2-drivers-17",
+        "complex-discovery-d2-drivers-18",
+        "complex-discovery-d2-drivers-19",
+        "complex-discovery-d2-drivers-20",
+        "complex-discovery-d2-drivers-21",
+        "complex-discovery-d2-drivers-22"
+      ],
+      "status": "invalid",
+      "reason": "journey_execution_probe_exposed_driver_or_fixture_gap",
+      "artifact_published": false
+    },
+    {
+      "ids": ["complex-discovery-d2-drivers-23"],
+      "status": "qualified_superseded",
+      "reason": "live_host_routing_not_yet_bound",
+      "artifact_published": true
+    },
+    {
+      "ids": ["complex-discovery-d2-drivers-24"],
+      "status": "qualified_superseded",
+      "reason": "subagent_worker_topology_not_yet_executable",
+      "artifact_published": true
+    },
+    {
+      "ids": ["complex-discovery-d2-drivers-25"],
+      "status": "qualified_superseded",
+      "reason": "fixture_eof_format_cleanup_changed_discovery_input",
+      "artifact_published": true
+    },
+    {
+      "ids": ["complex-discovery-d2-drivers-26"],
+      "status": "qualified",
+      "artifact_published": true
+    }
+  ],
+  "successor_lock": {
+    "id": "complex-discovery-d2-drivers-26",
+    "status": "qualified",
+    "lock_identity": "sha256:258cc15ddfc9e90f4ff18b8aca46ced46da8dc9303c3b8bba2e776fa794abbc3",
+    "driver_inventory_digest": "sha256:0c51a5bbecfb498f21eaa0c895df4a035c4f5b72c16b360d4746ee0c259e3d6c",
+    "qualification_checks": 18,
+    "qualification_passed": 18,
+    "inputs": 28
+  },
+  "decision": {
+    "driver_execution_remediation_complete": true,
+    "successor_qualification_complete": true,
+    "another_campaign_authorized": false,
+    "d2_4_reentry_authorized": false,
+    "product_remediation_authorized": false,
+    "required_next_stage": "explicit_approval_for_successor_campaign"
+  },
+  "validation": {
+    "passed": [
+      "d2_unit_tests",
+      "d2_typescript_typecheck",
+      "d2_typescript_bundle",
+      "driver_qualification_18_of_18",
+      "go_test_evaluation",
+      "go_test_race_evaluation",
+      "go_vet_d2",
+      "architecture_ratchet",
+      "docs_check",
+      "book_check",
+      "git_diff_check",
+      "successor_lock_input_verification",
+      "resource_cleanup"
+    ],
+    "pending": [],
+    "environment_limited": []
+  }
+}

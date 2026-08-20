@@ -297,6 +297,20 @@ func runQualifyDrivers(
 		fmt.Fprintln(stderr, "codehelper-discovery:", err)
 		return 1
 	}
+	if report.Status != "passed" {
+		var failed []string
+		for _, check := range report.Checks {
+			if check.Status != "passed" {
+				failed = append(failed, check.ID+":"+check.Status)
+			}
+		}
+		fmt.Fprintln(
+			stderr,
+			"codehelper-discovery: Driver qualification failed:",
+			strings.Join(failed, ","),
+		)
+		return 1
+	}
 	qualified, err := d2.QualifyDriverLock(candidate, report)
 	if err != nil {
 		fmt.Fprintln(stderr, "codehelper-discovery:", err)

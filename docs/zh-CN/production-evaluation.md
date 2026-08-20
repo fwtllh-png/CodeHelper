@@ -14,7 +14,11 @@
 > Driver 与 Generator 已验收，首个有效 D2.3 Campaign 已由
 > `complex-discovery-d2-campaign-05` 关闭。该轮完成 129/129 Case 结算：35 个
 > Passed、93 个 Harness Incident、1 个 Unattributed，未准入 Product Candidate。
-> D2 Re-entry 因 Driver Execution Remediation 被阻断，且 D2 不具备发布权威。
+> Driver Execution Remediation 现已由后继 Lock
+> `complex-discovery-d2-drivers-26` 关闭：基于 105 个 Case、376/376 Pairwise
+> Contract 的 18/18 Qualification Check 已通过。Live Execution 仅保留权威的
+> CLI Single-Turn Smoke；未实现的 `subagent_worker` Topology 不再由 ACP 冒充。
+> 新 Campaign 与 D2.4 Re-entry 仍未授权，且 D2 不具备发布权威。
 >
 > 执行顺序和工期见[生产测评实施计划](./production-evaluation-implementation-plan.md)。
 > 当前可信状态和缺陷见[异常与缺陷台账](./production-evaluation-findings.md)。
@@ -31,7 +35,7 @@ Partition 具备发布权威，但不具备 H4 Canary 或 Rollout Expansion 权�
 | 17.3 Oracle 与 Core Pack | 已失效 | 不能作为准入证据 |
 | Foundation v2 F1-F3 与 H3 Harness | 已通过 Q1 Round 13 验收 | Frozen Harness 权威 |
 | D1 Product Discovery | 56/56 通过；无 Product Candidate | 不进入 Product Remediation |
-| D2 复杂场景 Discovery | D2.3 Round 05 已关闭 129/129；93 个 Harness Incident、1 个 Unattributed、无 Product Candidate | Re-entry 阻断；无发布权威 |
+| D2 复杂场景 Discovery | D2.3 Round 05 已关闭 129/129；Driver Remediation 后继基于 105 Case 通过 18/18 | 后继 Campaign 需另行授权；无发布权威 |
 | 17.4 VS Code 与进程 Chaos | 同 Lock H1 Round 03 已 21/21 通过 | H3 前置证据 |
 | Live Model 与 Drift | 同 Lock H2 Round 05 已 16/16 通过 | H3 前置证据 |
 | Endurance 与 Release | H3 Round 02 已 14/14 通过；8/8 RC Lane 已准入 | 本地 RC Candidate Admission |

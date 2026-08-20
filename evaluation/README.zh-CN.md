@@ -44,11 +44,13 @@ Canary 与 Rollout Expansion 仍未授权。H4 Harness 与 Controlled 120-Turn P
 已完成。Q1 Round 14、同 Lock H1 Round 04 与 H2 Round 06 已通过；所需 H3 Round
 03 由 Operator 在 96/480 Turn 时停止且不可复用，因此正式 H4 未启动。
 
-D2.1 与 D2.2 已实现为独立且不具备发布权威的控制面。已验收 Driver Inventory
-保持全部 129 个 Planned Case，绑定 CLI、ACP 与 Official VS Code Path，并使六类
-Fault 均有非零 Trigger Evidence。D2.3 Round 05 已完成 129/129 Case 结算：35 个
-Passed、93 个 Harness Incident、1 个 Unattributed Live Observation。未准入 Product
-Candidate，Re-entry 被 Driver Execution Remediation 阻断。
+D2.1 至 D2.3 已实现为独立且不具备发布权威的控制面。历史 Round 05 已完成
+129/129 Case 结算：35 个 Passed、93 个 Harness Incident、1 个 Unattributed Live
+Observation。Driver Execution Remediation 现已由
+`complex-discovery-d2-drivers-26` 验收：其 105-Case 后继关闭 376/376 Pairwise
+Interaction 与 18/18 Check，包括有序 Journey Execution、Live CLI Routing 和精确
+Topology-to-Driver Routing。未准入 Product Candidate。后继 Campaign 与 D2.4
+Re-entry 仍未授权。
 
 修正后的目标契约和执行顺序见：
 
@@ -83,6 +85,9 @@ H2 Preflight、重新验收与不可变正式决策记录在
 H3 失败、Remediation、重新验收与最终准入记录在
 `assessments/h3-production-admission-global-assessment-01.json` 至 `-06.json`，
 以及 `assessments/q1-qualification-global-assessment-11.json` 至 `-13.json`。
+D2.3 关闭与 Driver Remediation 决策记录在
+`assessments/d2-campaign-global-assessment-01.json` 与
+`assessments/d2-driver-remediation-global-assessment-01.json`。
 
 F1 实现当前包含：
 
@@ -161,19 +166,20 @@ go run ./evaluation/d2/cmd/codehelper-discovery qualify \
   --output .tmp/evaluation/d2/complex-discovery-d2-foundation-01
 ```
 
-基于冻结的 Production Artifact 验收 D2.2 Driver 与 Generator：
+基于冻结的 Production Artifact 验收修复后的 D2 Driver 与 Generator：
 
 ```bash
 go run ./evaluation/d2/cmd/codehelper-discovery qualify-drivers \
   --root . \
-  --id complex-discovery-d2-drivers-09 \
+  --id complex-discovery-d2-drivers-26 \
   --base-lock .tmp/evaluation/q1/foundation-v2-q1-14/harness-lock.json \
   --runtime bin/codehelper \
   --vsix extensions/vscode/dist/codehelper-vscode-0.0.1.vsix \
-  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-09
+  --output .tmp/evaluation/d2/complex-discovery-d2-drivers-26
 ```
 
-执行已获批准的不可变 D2.3 Campaign：
+下列命令仅用于说明历史 Round 05 Evidence。未获明确授权前，不得替换为后继 Lock
+或执行新 Campaign：
 
 ```bash
 go run ./evaluation/d2/cmd/codehelper-discovery campaign \

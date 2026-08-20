@@ -32,11 +32,14 @@ var requiredDriverQualificationChecks = []string{
 	"input-identity",
 	"inventory-determinism",
 	"journey-coverage",
+	"journey-execution",
+	"live-driver-routing",
 	"plan-parity",
 	"privacy-closure",
 	"scale-bounds",
 	"schedule-replay",
 	"synthetic-repository-replay",
+	"topology-driver-routing",
 	"vscode-boundary-negative",
 }
 
@@ -283,6 +286,52 @@ func RunDriverQualification(
 			}
 			return nil
 		}},
+		{"journey-execution", func(checkCtx context.Context) error {
+			return qualifyJourneyExecution(checkCtx, options)
+		}},
+		{"live-driver-routing", func(context.Context) error {
+			liveCases := 0
+			expectedSteps := []string{
+				"prepare_workspace",
+				"start_runtime",
+				"submit_prompt",
+				"observe_terminal",
+			}
+			for _, generated := range options.Inventory.Cases {
+				if generated.Values["model_variability"] != "live_primary" {
+					continue
+				}
+				liveCases++
+				if generated.FamilyID != "live_model_variability" ||
+					generated.DriverID != "cli" ||
+					!slices.Equal(plannedSteps(generated), expectedSteps) {
+					return fmt.Errorf(
+						"D2 Live Case %q does not use the authoritative CLI path",
+						generated.ID,
+					)
+				}
+			}
+			if liveCases == 0 {
+				return errors.New("D2 Live Driver routing has no Case")
+			}
+			return nil
+		}},
+		{"topology-driver-routing", func(context.Context) error {
+			for _, generated := range options.Inventory.Cases {
+				topology := generated.Values["topology"]
+				if topology == "" {
+					continue
+				}
+				if topology != generated.DriverID {
+					return fmt.Errorf(
+						"D2 topology %q is not executed by Driver %q",
+						topology,
+						generated.DriverID,
+					)
+				}
+			}
+			return nil
+		}},
 		{"artifact-identity", func(context.Context) error {
 			runtimeDigest, err := digestArtifact(options.Runtime)
 			if err != nil {
@@ -316,6 +365,7 @@ func RunDriverQualification(
 		Status:                        "passed",
 		Scheduled:                     len(checks),
 	}
+	var failureDetails []string
 	for _, item := range checks {
 		checkCtx, cancel := context.WithTimeout(ctx, options.Timeout)
 		err := item.run(checkCtx)
@@ -325,6 +375,10 @@ func RunDriverQualification(
 			result.Status = "failed"
 			report.Status = "failed"
 			report.Failed++
+			failureDetails = append(
+				failureDetails,
+				item.id+": "+sanitizeError(err),
+			)
 			result.EvidenceDigest = spec.DigestString(
 				item.id + "\x00failed\x00" + sanitizeError(err),
 			)
@@ -357,6 +411,9 @@ func RunDriverQualification(
 		raw,
 	); err != nil {
 		return report, err
+	}
+	if len(failureDetails) != 0 {
+		return report, errors.New(strings.Join(failureDetails, "; "))
 	}
 	return report, nil
 }

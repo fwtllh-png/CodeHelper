@@ -11,8 +11,10 @@
 > operator time budget, so formal H4 remains deferred. Repeating that unchanged
 > chain is not the next priority. D2.1 and D2.2 are implemented and qualified
 > under an independent Discovery Lock. D2.3 Round 05 closed 129/129 Cases, but
-> re-entry is blocked by 93 Harness Incidents and one Unattributed Live
-> observation. No Product Candidate was admitted.
+> admitted 93 Harness Incidents and one Unattributed Live observation. Driver
+> execution remediation is now qualified by `complex-discovery-d2-drivers-26`:
+> 18/18 checks passed over 105 Cases with 376/376 pairwise coverage. No Product
+> Candidate was admitted, and no successor Campaign is authorized yet.
 
 | Stage | Status |
 | --- | --- |
@@ -22,7 +24,7 @@
 | F3 Oracles, Core Pack, Impact | qualified |
 | Q1 Qualification and Freeze | H3-capable successor completed by Round 13; `frozen_qualified` |
 | D1 Collect-all Product Discovery | completed 56/56; no Product Candidate |
-| D2 Complex-scenario Discovery | D2.3 Round 05 closed; Driver remediation required before re-entry |
+| D2 Complex-scenario Discovery | Driver remediation successor qualified 18/18; next Campaign not authorized |
 | H1 VS Code and Process Chaos | same-Lock Round 03 completed 21/21 |
 | H2 Live Model and Drift | same-Lock Round 05 completed 16/16 |
 | H3 Endurance and Release | Round 02 completed 14/14; RC candidate admitted |
@@ -522,6 +524,17 @@ and the existing Live smoke did not prove its declared ACP path. Repeating the
 Campaign is not authorized until Driver execution remediation and a successor
 Qualification Epoch close these gaps.
 
+That remediation is closed by `complex-discovery-d2-drivers-26`. Static Step
+inference was replaced by ordered Driver receipts; CLI, ACP, and the official
+VS Code Runtime client now execute deterministic compaction, Checkpoint,
+cancellation, restart, controlled artifact replacement, rollback, and
+reconnect probes. Qualification also fail-closes Host routing. The successor
+contract contains 105 Cases and closes 376/376 pairwise interactions. Live
+model variability is isolated to the authoritative single-Turn CLI smoke.
+`subagent_worker` is excluded until a dedicated Driver executes and attests
+`spawn_agent`; ACP reachability cannot stand in for that topology. These
+changes do not authorize a new Campaign or D2.4 re-entry.
+
 The first immutable Round runs at least these independent Campaign families:
 
 1. stateful edit/verify/checkpoint/resume journeys;
@@ -650,7 +663,8 @@ Completed approvals and remaining explicit boundaries are:
 5. production admission H1, H2, and H3 are complete;
 6. H4 Canary and Incident Closure is deferred and not authorized;
 7. D2.1 and D2.2 implementation and Qualification are complete;
-8. D2.3 Round 05 is closed, with re-entry blocked on Driver remediation;
+8. D2.3 Round 05 is closed and Driver remediation is qualified by
+   `complex-discovery-d2-drivers-26`; a successor Campaign is not authorized;
 9. D2.4 re-entry and any Product Remediation require separate approval.
 
 No later approval is implied by an earlier one.

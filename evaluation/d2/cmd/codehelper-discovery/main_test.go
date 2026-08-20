@@ -32,8 +32,8 @@ func TestCheckReportsDeterministicRepositoryInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if summary.Families != 7 ||
-		summary.Cases != 129 ||
-		summary.PairwiseCovered != 539 ||
+		summary.Cases != 105 ||
+		summary.PairwiseCovered != 376 ||
 		summary.PairwiseCovered != summary.PairwiseTotal {
 		t.Fatalf("check summary = %+v", summary)
 	}
