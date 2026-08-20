@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-drivers-37-invalid-assessment",
+  "phase": "complex_scenario_discovery_product_remediation",
+  "status": "invalid",
+  "observed_on": "2026-08-21",
+  "qualification_id": "complex-discovery-d2-drivers-37",
+  "artifact_published": false,
+  "reusable": false,
+  "classification": "harness_identity_guard",
+  "reason": "remediated_runtime_does_not_match_frozen_base_lock",
+  "evidence": {
+    "base_runtime_digest": "sha256:b236bba0804c19e16a782047c8225c49fbcb233e25bb37c7a4778f1bfe6bd15c",
+    "remediated_runtime_digest": "sha256:ee586d2cf5c4749f3e9cc14a7910cbb49cc473b67e036ab1096a46e2940c509b",
+    "failed_check": "artifact-identity"
+  },
+  "decision": {
+    "bypass_identity_guard": false,
+    "required_next_stage": "new_q1_base_lock",
+    "product_repair_reverted": false
+  }
+}
