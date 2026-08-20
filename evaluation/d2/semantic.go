@@ -58,6 +58,7 @@ type semanticCase struct {
 	id        string
 	family    string
 	seed      uint64
+	timeout   time.Duration
 	invariant string
 	run       func(context.Context, SemanticCampaignOptions) (string, error)
 }
@@ -215,7 +216,8 @@ var semanticCases = []semanticCase{
 		id:     "semantic-crash-pending-input-001",
 		family: "crash_pending_input_recovery",
 		seed:   863, invariant: "restart preserves a pending input request and resumes it exactly once",
-		run: probeCrashPendingInput,
+		timeout: 45 * time.Second,
+		run:     probeCrashPendingInput,
 	},
 }
 
@@ -300,9 +302,13 @@ func RunSemanticCampaign(
 				)
 				return
 			}
+			caseTimeout := item.timeout
+			if caseTimeout <= 0 {
+				caseTimeout = 30 * time.Second
+			}
 			caseContext, caseCancel := context.WithTimeout(
 				campaignContext,
-				30*time.Second,
+				caseTimeout,
 			)
 			defer caseCancel()
 			round.Cases[index] = runSemanticCase(

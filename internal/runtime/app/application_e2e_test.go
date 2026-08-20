@@ -481,6 +481,120 @@ func TestRuntimeApprovalPauseResumeE2E(t *testing.T) {
 }
 
 func TestRuntimeInputPauseResumeE2E(t *testing.T) {
+	runtime, events, terminalStore := newRuntimeInputFixture(t)
+	startRuntimeInputTurn(t, runtime)
+	required := waitRuntimeInputRequired(t, events)
+	facts, err := terminalStore.LoadDomainFacts(t.Context(), "turn-input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var running bool
+	for _, effect := range facts[len(facts)-1].State.PendingEffects {
+		running = running ||
+			(effect.Kind == turnkernel.EffectAwaitInput &&
+				effect.Status == turnkernel.EffectRunning &&
+				effect.Attempt == 1)
+	}
+	if !running {
+		t.Fatalf("input wait was not durably running: %+v", facts[len(facts)-1])
+	}
+	reply, err := protocol.NewOperation(&protocol.InputReplyPayload{
+		ThreadID:  "thread-input",
+		TurnID:    "turn-input",
+		ItemID:    "item-input-reply",
+		RequestID: required.RequestID,
+		Answer:    "yes",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), reply); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(3 * time.Second)
+	var resolved, completed int
+	for completed == 0 {
+		select {
+		case event := <-events:
+			if event.Kind == protocol.EventInputResolved {
+				resolved++
+			}
+			if event.Kind == protocol.EventTurnCompleted {
+				completed++
+			}
+		case <-deadline:
+			t.Fatal("input turn did not resume to completion")
+		}
+	}
+	if resolved != 1 || completed != 1 {
+		t.Fatalf("input projections resolved=%d completed=%d", resolved, completed)
+	}
+	facts, err = terminalStore.LoadDomainFacts(t.Context(), "turn-input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := facts[len(facts)-1].State
+	var closed int
+	for _, effect := range state.CompletedEffects {
+		if effect.Kind == turnkernel.EffectAwaitInput &&
+			effect.Status == turnkernel.EffectSucceeded {
+			closed++
+		}
+	}
+	if closed != 1 || state.Phase != turnkernel.PhaseCompleted {
+		t.Fatalf("input terminal state = %+v", state)
+	}
+}
+
+func TestRuntimeCancelPendingInputHasOneCanceledTerminal(t *testing.T) {
+	runtime, events, terminalStore := newRuntimeInputFixture(t)
+	startRuntimeInputTurn(t, runtime)
+	_ = waitRuntimeInputRequired(t, events)
+	cancel, err := protocol.NewOperation(&protocol.CancelTurnPayload{
+		ThreadID: "thread-input", TurnID: "turn-input",
+		ItemID: "item-input-cancel", Reason: protocol.CancelReasonUserInterrupted,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), cancel); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(3 * time.Second)
+	terminals := 0
+	var observed []protocol.EventKind
+	for terminals == 0 {
+		select {
+		case event := <-events:
+			observed = append(observed, event.Kind)
+			if !protocol.IsTerminalEvent(event.Kind) {
+				continue
+			}
+			if event.Kind != protocol.EventTurnCanceled {
+				t.Fatalf("input cancel terminal = %s", event.Kind)
+			}
+			terminals++
+		case <-deadline:
+			t.Fatalf(
+				"input cancel terminal was not emitted; events=%v",
+				observed,
+			)
+		}
+	}
+	facts, err := terminalStore.LoadDomainFacts(t.Context(), "turn-input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := facts[len(facts)-1].State
+	if state.Phase != turnkernel.PhaseCanceled || state.PendingInput != nil {
+		t.Fatalf("input cancel state = %+v", state)
+	}
+}
+
+func newRuntimeInputFixture(
+	t *testing.T,
+) (*Runtime, <-chan protocol.Event, *turnkernel.MemoryTerminalEnvelopeStore) {
+	t.Helper()
 	host := interacttool.NewHost(time.Minute)
 	registry := tool.NewRegistry(nil, nil)
 	if err := interacttool.Register(registry, interacttool.Options{
@@ -515,6 +629,11 @@ func TestRuntimeInputPauseResumeE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return runtime, events, terminalStore
+}
+
+func startRuntimeInputTurn(t *testing.T, runtime *Runtime) {
+	t.Helper()
 	start, err := protocol.NewOperation(&protocol.StartTurnPayload{
 		ThreadID: "thread-input",
 		TurnID:   "turn-input",
@@ -527,6 +646,13 @@ func TestRuntimeInputPauseResumeE2E(t *testing.T) {
 	if err := runtime.Submit(t.Context(), start); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func waitRuntimeInputRequired(
+	t *testing.T,
+	events <-chan protocol.Event,
+) *protocol.InputRequiredData {
+	t.Helper()
 	var required *protocol.InputRequiredData
 	deadline := time.After(3 * time.Second)
 	for required == nil {
@@ -539,65 +665,7 @@ func TestRuntimeInputPauseResumeE2E(t *testing.T) {
 			t.Fatal("input.required was not emitted")
 		}
 	}
-	facts, err := terminalStore.LoadDomainFacts(t.Context(), "turn-input")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var running bool
-	for _, effect := range facts[len(facts)-1].State.PendingEffects {
-		running = running ||
-			(effect.Kind == turnkernel.EffectAwaitInput &&
-				effect.Status == turnkernel.EffectRunning &&
-				effect.Attempt == 1)
-	}
-	if !running {
-		t.Fatalf("input wait was not durably running: %+v", facts[len(facts)-1])
-	}
-	reply, err := protocol.NewOperation(&protocol.InputReplyPayload{
-		ThreadID:  "thread-input",
-		TurnID:    "turn-input",
-		ItemID:    "item-input-reply",
-		RequestID: required.RequestID,
-		Answer:    "yes",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := runtime.Submit(t.Context(), reply); err != nil {
-		t.Fatal(err)
-	}
-	var resolved, completed int
-	for completed == 0 {
-		select {
-		case event := <-events:
-			if event.Kind == protocol.EventInputResolved {
-				resolved++
-			}
-			if event.Kind == protocol.EventTurnCompleted {
-				completed++
-			}
-		case <-deadline:
-			t.Fatal("input turn did not resume to completion")
-		}
-	}
-	if resolved != 1 || completed != 1 {
-		t.Fatalf("input projections resolved=%d completed=%d", resolved, completed)
-	}
-	facts, err = terminalStore.LoadDomainFacts(t.Context(), "turn-input")
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := facts[len(facts)-1].State
-	var closed int
-	for _, effect := range state.CompletedEffects {
-		if effect.Kind == turnkernel.EffectAwaitInput &&
-			effect.Status == turnkernel.EffectSucceeded {
-			closed++
-		}
-	}
-	if closed != 1 || state.Phase != turnkernel.PhaseCompleted {
-		t.Fatalf("input terminal state = %+v", state)
-	}
+	return required
 }
 
 func TestRuntimeCancelDuringProviderAndToolHasOneCanceledTerminal(

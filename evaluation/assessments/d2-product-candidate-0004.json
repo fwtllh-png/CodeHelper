@@ -2,7 +2,7 @@
   "schema_version": 1,
   "assessment_id": "d2-product-candidate-0004",
   "phase": "complex_scenario_discovery_semantic_depth",
-  "status": "confirmed_product_candidate",
+  "status": "product_repair_implemented",
   "observed_on": "2026-08-21",
   "source_round": "complex-discovery-d2-semantic-15",
   "case_id": "semantic-cancel-late-input-001",
@@ -26,7 +26,8 @@
     "lock_identity": "sha256:bbe392641d9fc30af16cb073964b692f898dc4d9dc6157820204fd536ca9fc9c"
   },
   "disposition": {
-    "product_repair_performed": false,
-    "product_remediation_authorized": false
+    "product_repair_performed": true,
+    "product_remediation_authorized": true,
+    "remediation_assessment": "d2-product-remediation-0002"
   }
 }

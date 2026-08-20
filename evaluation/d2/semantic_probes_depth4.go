@@ -180,13 +180,20 @@ func probeCrashPendingInput(ctx context.Context, options SemanticCampaignOptions
 			evidence: sanitizeError(err),
 		}
 	}
-	if _, err := client.waitAnyEvent(map[string]int{
+	terminal, err := client.waitAnyEvent(map[string]int{
 		"turn.completed": client.events["turn.completed"],
 		"turn.failed":    client.events["turn.failed"],
-	}, 3*time.Second); err != nil {
+	}, 40*time.Second)
+	if err != nil {
 		return "", semanticViolation{
 			code:     "recovered_input_terminal_missing",
 			evidence: sanitizeError(err),
+		}
+	}
+	if terminal != "turn.completed" {
+		return "", semanticViolation{
+			code:     "recovered_input_failed",
+			evidence: terminal,
 		}
 	}
 	return spec.DigestString("pending-input-recovered"), nil

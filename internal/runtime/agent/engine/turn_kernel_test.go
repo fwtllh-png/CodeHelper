@@ -6,9 +6,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -143,6 +147,136 @@ func TestEngineRecoveryFinalizesAcceptedCancellationWithoutProvider(t *testing.T
 			result,
 			err,
 		)
+	}
+}
+
+func TestEngineRecoveryResumesRunningInputToolWithEarlyReply(t *testing.T) {
+	store := turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
+	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := interact.NewHost(time.Minute)
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: host, Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, ok := snapshot.Binding("request_user_input")
+	if !ok {
+		t.Fatal("request_user_input binding is unavailable")
+	}
+	handle, err := coordinators.Open(
+		t.Context(),
+		"input-recovery",
+		turnkernel.NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []turnkernel.Command{
+		turnkernel.StartTurn{},
+		turnkernel.PreparationFinished{},
+	} {
+		if err := handle.Coordinator.Submit(t.Context(), command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	kernel := &engineTurnKernel{
+		state:       handle.Coordinator.Snapshot(),
+		coordinator: handle.Coordinator,
+		dispatcher:  handle.Dispatcher,
+		recorder:    trace.NewRecorder(time.Now),
+		metrics:     noopMetrics{},
+	}
+	call := provider.ToolCall{
+		ID: "call-input", Name: "request_user_input",
+		Arguments:         `{"prompt":"continue?","options":["yes","no"]}`,
+		CatalogID:         binding.CatalogID,
+		CatalogGeneration: binding.Generation,
+		CatalogRevision:   binding.Revision,
+		CatalogAuthority:  binding.Authority,
+	}
+	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.startTool(call.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.requireInput("input-recovery-request"); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinators.Release(t.Context(), "input-recovery"); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventMessageStart},
+			{Type: provider.EventTextDelta, Text: "done"},
+			{Type: provider.EventMessageStop},
+		}},
+	}}
+	engine := newEngine(t, runtime, registry)
+	engine.options.InputHost = host
+	engine.options.TurnCoordinatorRuntime = coordinators
+	if err := engine.RestoreInputRequest(interact.Request{
+		RequestID: "input-recovery-request",
+		CallID:    "tool",
+		Tool:      call.Name,
+		Prompt:    "continue?",
+		Options:   []string{"yes", "no"},
+		ExpiresAt: time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	type outcome struct {
+		result Result
+		err    error
+	}
+	if !engine.queueRecoveredInput(interact.Reply{
+		RequestID: "input-recovery-request",
+		Answer:    "yes",
+	}) {
+		t.Fatal("recovered input reply was not queued")
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, runErr := engine.RunForTurnWithIntentAndAttachments(
+			t.Context(),
+			"input-recovery",
+			"must resume",
+			protocol.TurnIntentAnswer,
+			nil,
+			func(Event) error { return nil },
+		)
+		done <- outcome{result: result, err: runErr}
+	}()
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if got.result.State != Completed || got.result.Text != "done" {
+			t.Fatalf("recovered result = %+v", got.result)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("recovered input turn did not complete")
+	}
+	facts, err := store.LoadDomainFacts(t.Context(), "input-recovery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := facts[len(facts)-1].State
+	if state.Phase != turnkernel.PhaseCompleted ||
+		state.PendingInput != nil ||
+		len(state.PendingEffects) != 0 {
+		t.Fatalf("recovered input state = %+v", state)
 	}
 }
 

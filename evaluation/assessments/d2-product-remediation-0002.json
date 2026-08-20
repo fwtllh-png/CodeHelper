@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "assessment_id": "d2-product-remediation-0002",
+  "phase": "complex_scenario_discovery_product_remediation",
+  "status": "implemented_prelock_verified",
+  "observed_on": "2026-08-21",
+  "source_candidates": [
+    "d2-product-candidate-0004",
+    "d2-product-candidate-0005"
+  ],
+  "attribution": {
+    "d2-product-candidate-0004": "confirmed_product_bug",
+    "d2-product-candidate-0005": "harness_timeout_misclassification"
+  },
+  "root_cause": {
+    "product": "accepted cancellation was checked after a canceled tool batch error, so the Engine returned before terminalizing the parked Turn",
+    "harness": "the crash recovery oracle allowed 3 seconds although the durable coordinator lease fences takeover for 30 seconds"
+  },
+  "production_scope": [
+    "internal/runtime/agent/engine/turn_handler.go",
+    "internal/runtime/app/application_e2e_test.go"
+  ],
+  "harness_scope": [
+    "evaluation/d2/semantic.go",
+    "evaluation/d2/semantic_probes_depth4.go",
+    "internal/runtime/agent/engine/turn_kernel_test.go"
+  ],
+  "repair": {
+    "product_strategy": "terminalize accepted cancellation before returning a tool batch error",
+    "harness_strategy": "use a case-specific 45 second budget and require turn.completed after lease-aware recovery",
+    "runtime_terminal_fallback_expanded": false,
+    "architecture_ratchet_increased": false
+  },
+  "validation": {
+    "passed": [
+      "go_test_internal_runtime_all",
+      "go_test_evaluation_d2",
+      "go_test_race_internal_runtime_app_and_engine",
+      "go_vet_internal_runtime_all",
+      "architecture_ratchet_112_of_112",
+      "git_diff_check",
+      "focused_pending_input_cancel_terminal",
+      "focused_early_input_recovery"
+    ],
+    "pending": [
+      "rebuilt_runtime_identity",
+      "successor_discovery_lock",
+      "semantic_campaign_regression_25_of_25"
+    ],
+    "environment_limited": []
+  },
+  "decision": {
+    "product_repair_complete": true,
+    "discovery_reentry_complete": false,
+    "release_authority": false
+  }
+}

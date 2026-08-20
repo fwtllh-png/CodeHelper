@@ -2,15 +2,15 @@
   "schema_version": 1,
   "assessment_id": "d2-product-candidate-0005",
   "phase": "complex_scenario_discovery_semantic_depth",
-  "status": "confirmed_product_candidate",
+  "status": "reclassified_harness_timeout",
   "observed_on": "2026-08-21",
   "source_round": "complex-discovery-d2-semantic-15",
   "case_id": "semantic-crash-pending-input-001",
   "summary_code": "recovered_input_terminal_missing",
-  "severity": "p1",
+  "severity": "not_applicable",
   "reproducibility": "exact_seed",
   "attempts": 2,
-  "product_boundary": "runtime_pending_input_recovery",
+  "product_boundary": "semantic_recovery_oracle",
   "trigger": {
     "turn_state": "parked_on_input_required",
     "fault": "runtime_process_crash",
@@ -18,7 +18,9 @@
   },
   "observed_behavior": {
     "input_reply_resolved_after_restart": true,
-    "turn_terminal_within_3000_ms": false
+    "turn_terminal_within_3000_ms": false,
+    "coordinator_lease_ms": 30000,
+    "turn_completed_after_lease_expiry": true
   },
   "evidence": {
     "round_evidence_digest": "sha256:5eecd3304c5f28d223b2c684539df10d9036a9f1cab2da926e41e04014915924",
@@ -27,6 +29,9 @@
   },
   "disposition": {
     "product_repair_performed": false,
-    "product_remediation_authorized": false
+    "product_remediation_authorized": true,
+    "harness_repair_performed": true,
+    "replacement_oracle": "lease_aware_45s_budget_requires_turn_completed",
+    "remediation_assessment": "d2-product-remediation-0002"
   }
 }

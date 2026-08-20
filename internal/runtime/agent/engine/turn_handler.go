@@ -540,6 +540,22 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		kernelTerminalFinalized = true
 		return nil
 	}
+	finishAcceptedCancellation := func() (bool, error) {
+		reason := kernel.cancellationReason()
+		if reason == "" {
+			return false, nil
+		}
+		contextFinalized = true
+		terminal.setContextBudget(ContextBudgetSnapshot{})
+		if err := finalizeKernel(
+			turnkernel.TerminalRequested{CancelReason: reason},
+			nil,
+		); err != nil {
+			return true, err
+		}
+		result.State = Canceled
+		return true, send(Canceled, Event{CancelReason: reason})
+	}
 	defer func() {
 		if kernelTerminalFinalized || kernelTerminalStarted {
 			return
@@ -665,6 +681,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			kernel,
 			send,
 		)
+		if canceled, cancelErr := finishAcceptedCancellation(); canceled {
+			return result, cancelErr
+		}
 		if err != nil {
 			return result, err
 		}
@@ -1199,6 +1218,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			); usageErr != nil {
 				return result, errors.Join(err, usageErr)
 			}
+		}
+		if canceled, cancelErr := finishAcceptedCancellation(); canceled {
+			return result, cancelErr
 		}
 		if err != nil {
 			return result, err
