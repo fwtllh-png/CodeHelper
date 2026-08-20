@@ -12,7 +12,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
@@ -306,7 +305,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		for _, summary := range spec.Skills {
 			skills[summary.Name] = summary.Handle
 		}
-		ctx = skilltool.WithAllowedSkills(ctx, skills)
+		ctx = tool.WithAllowedSkills(ctx, skills)
 	}
 	if e.guard != nil && spec.Policy != nil {
 		sessionPolicy := e.guard.SwapPolicy(spec.Policy)

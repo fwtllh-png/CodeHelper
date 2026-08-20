@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h3-production-admission-global-assessment-01",
+  "phase": "production_admission_h3",
+  "status": "closed_product_attribution_required",
+  "observed_on": "2026-08-20",
+  "round": "production-admission-h3-01",
+  "identity": {
+    "q1_qualification": "foundation-v2-q1-10",
+    "lock_identity": "sha256:a2d4c216561cab59520711255dde2761247f562b9a11200dbff465b961a43a5f",
+    "same_lock_h1": "production-admission-h1-02",
+    "same_lock_h2": "production-admission-h2-04"
+  },
+  "inventory": {
+    "scheduled": 14,
+    "settled": 14,
+    "passed": 12,
+    "failed": 1,
+    "not_evaluated": 1,
+    "invalid": 0,
+    "endurance": {
+      "configured_duration_seconds": 14400,
+      "observed_duration_ms": 14370175,
+      "turns_completed": 480,
+      "turns_failed": 0,
+      "terminal_completed": 480,
+      "process_restarts": 0,
+      "p95_latency_ms": 99,
+      "rss_growth_bytes": 35799040,
+      "fd_growth": 0,
+      "rss_slope_bytes_per_turn": 36477,
+      "fd_slope_milli_per_turn": -2,
+      "persistence_slope_bytes_per_turn": 498233,
+      "latency_slope_milli_ms_per_turn": 86
+    },
+    "release_lane": "passed",
+    "vscode_rc": "passed_7_of_7",
+    "package": "passed_5_targets",
+    "owned_resource_cleanup": "passed",
+    "identity_after": "passed",
+    "rc_aggregate": "not_evaluated_endurance_dependency_failed"
+  },
+  "finding": {
+    "id": "H3P-0003",
+    "severity": "P0",
+    "classification": "product_candidate",
+    "status": "confirmed_needs_attribution",
+    "title": "persistent_state_growth_accelerates_across_repeated_turns",
+    "evidence": [
+      "turn_40_persistence_bytes_8936667",
+      "turn_120_persistence_bytes_25897123",
+      "turn_240_persistence_bytes_71018506",
+      "turn_360_persistence_bytes_141608672",
+      "turn_480_persistence_bytes_234906348",
+      "ols_slope_498233_exceeds_limit_262144"
+    ],
+    "root_cause": "not_yet_attributed",
+    "product_candidate": true
+  },
+  "decision": {
+    "h3_admitted": false,
+    "failed_history_immutable": true,
+    "thresholds_lowered": false,
+    "formal_round_retried": false,
+    "product_remediation_authorized": false,
+    "next_gate": "attribute_persistence_growth_by_durable_owner_before_any_fix"
+  }
+}

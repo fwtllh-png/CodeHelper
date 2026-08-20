@@ -112,7 +112,6 @@
         "internal/adapter/tool",
         "internal/adapter/tool/guard",
         "internal/adapter/tool/interact",
-        "internal/adapter/tool/skill",
         "internal/adapter/tool/toolsearch",
         "internal/observability/diagnostics",
         "internal/observability/telemetry",
@@ -123,6 +122,7 @@
         "internal/runtime/agent/contextstore",
         "internal/runtime/agent/evidence",
         "internal/runtime/agent/promptcontext",
+        "internal/runtime/agent/sessiondelta",
         "internal/runtime/agent/toolfailure",
         "internal/runtime/agent/turnexec",
         "internal/runtime/agent/turnkernel",
@@ -145,7 +145,8 @@
         "internal/runtime/agent/engine/workspace_turn_gate_test.go",
         "internal/runtime/agent/engine/verify_gate_test.go",
         "internal/runtime/agent/engine/toolstream_test.go",
-        "internal/runtime/agent/engine/turn_kernel_test.go"
+        "internal/runtime/agent/engine/turn_kernel_test.go",
+        "internal/runtime/agent/sessiondelta/delta_test.go"
       ]
     },
     {

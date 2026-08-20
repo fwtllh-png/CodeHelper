@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h3-production-admission-global-assessment-03",
+  "phase": "production_admission_h3",
+  "status": "closed_harness_remediation_authorized",
+  "observed_on": "2026-08-20",
+  "round": "h3-compression-remediation-preflight-03",
+  "finding": {
+    "id": "H3H-0009",
+    "severity": "P1",
+    "classification": "harness",
+    "status": "confirmed",
+    "title": "persistence_sampler_failed_on_atomically_removed_cas_temp_file",
+    "evidence": [
+      "directory_walk_observed_cas_ref_temp_file",
+      "direntry_info_returned_enoent_after_atomic_cleanup",
+      "runtime_process_and_turn_contract_remained_healthy"
+    ],
+    "root_cause": "the_sampler_treated_a_file_that_disappeared_between_directory_enumeration_and_stat_as_a_persistent_io_failure",
+    "product_candidate": false,
+    "remediation": "ignore_only_os_not_exist_for_entries_that_vanish_during_the_sample_and_keep_all_other_errors_fatal"
+  },
+  "decision": {
+    "harness_remediation_authorized": true,
+    "product_remediation_scope_changed": false,
+    "formal_h3_authorized": false,
+    "next_gate": "repeat_480_turn_accelerated_persistence_preflight"
+  }
+}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/durablecodec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -82,7 +83,7 @@ func (r *Repository) SaveCheckpoint(
 	if err := checkpoint.Validate(); err != nil {
 		return protocol.SessionCheckpoint{}, err
 	}
-	content, err := json.Marshal(checkpointContent{
+	content, err := encodeCheckpointContent(checkpointContent{
 		History: append([]protocol.CompactedMessage(nil), history...),
 		Profile: profile,
 	})
@@ -143,7 +144,7 @@ func (r *Repository) GetCheckpoint(
 		return protocol.SessionCheckpoint{}, nil, protocol.SessionProfile{}, err
 	}
 	var content checkpointContent
-	if err := decodeStrict(value.Content, &content); err != nil {
+	if err := decodeCheckpointContent(value.Content, &content); err != nil {
 		return protocol.SessionCheckpoint{}, nil, protocol.SessionProfile{},
 			&IntegrityError{ID: id, Err: err}
 	}
@@ -163,6 +164,25 @@ func (r *Repository) GetCheckpoint(
 		append([]protocol.CompactedMessage(nil), content.History...),
 		content.Profile,
 		nil
+}
+
+func encodeCheckpointContent(value checkpointContent) ([]byte, error) {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	return durablecodec.Compress(raw)
+}
+
+func decodeCheckpointContent(raw []byte, target *checkpointContent) error {
+	if !durablecodec.IsCompressed(raw) {
+		return decodeStrict(raw, target)
+	}
+	decoded, err := durablecodec.Decompress(raw)
+	if err != nil {
+		return err
+	}
+	return decodeStrict(decoded, target)
 }
 
 func (r *Repository) ListCheckpoints(

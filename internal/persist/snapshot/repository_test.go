@@ -109,6 +109,65 @@ func TestSessionCheckpointAndPlanArtifactsAreImmutableAndVerified(t *testing.T) 
 	}
 }
 
+func TestCheckpointContentCompressesRepeatedHistoryAndReadsLegacyJSON(
+	t *testing.T,
+) {
+	history := make([]protocol.CompactedMessage, 0, 960)
+	for turn := uint64(1); turn <= 480; turn++ {
+		history = append(history,
+			protocol.CompactedMessage{
+				Role: "user", Content: json.RawMessage(`["say hello"]`),
+				Turn: turn,
+			},
+			protocol.CompactedMessage{
+				Role: "assistant", Content: json.RawMessage(`["hello"]`),
+				Turn: turn,
+			},
+		)
+	}
+	content := checkpointContent{
+		History: history,
+		Profile: artifactProfile(),
+	}
+	compressed, err := encodeCheckpointContent(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := json.Marshal(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compressed)*5 >= len(legacy) {
+		t.Fatalf(
+			"compressed checkpoint = %d bytes, legacy = %d bytes",
+			len(compressed),
+			len(legacy),
+		)
+	}
+	t.Logf(
+		"checkpoint storage: compressed=%d legacy=%d",
+		len(compressed),
+		len(legacy),
+	)
+	for name, raw := range map[string][]byte{
+		"compressed": compressed,
+		"legacy":     legacy,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var restored checkpointContent
+			if err := decodeCheckpointContent(raw, &restored); err != nil {
+				t.Fatal(err)
+			}
+			if len(restored.History) != len(history) ||
+				restored.History[0].Turn != 1 ||
+				restored.History[len(restored.History)-1].Turn != 480 ||
+				restored.Profile.Revision != content.Profile.Revision {
+				t.Fatalf("restored checkpoint = %+v", restored)
+			}
+		})
+	}
+}
+
 func artifactProfile() protocol.SessionProfile {
 	return protocol.SessionProfile{
 		Version:             protocol.SessionProfileVersion,

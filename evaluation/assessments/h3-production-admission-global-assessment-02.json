@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h3-production-admission-global-assessment-02",
+  "phase": "production_admission_h3",
+  "status": "closed_product_remediation_authorized",
+  "observed_on": "2026-08-20",
+  "round": "h3-persistence-attribution-01",
+  "finding": {
+    "id": "H3P-0003",
+    "severity": "P0",
+    "classification": "product",
+    "status": "root_cause_confirmed",
+    "title": "terminal_envelopes_repeat_full_cumulative_session_history",
+    "evidence": [
+      "prepareSessionDelta_clones_the_full_model_visible_history",
+      "TerminalPublisher_embeds_the_full_session_delta_in_every_immutable_terminal_envelope",
+      "LatestSessionDelta_reads_only_the_latest_terminal_snapshot_for_recovery",
+      "persisted_bytes_accelerated_from_8936667_at_turn_40_to_234906348_at_turn_480"
+    ],
+    "root_cause": "each_terminal_repeats_an_uncompressed_full_session_snapshot_whose_history_grows_with_every_turn",
+    "product_candidate": true
+  },
+  "decision": {
+    "product_remediation_authorized": true,
+    "authorized_scope": [
+      "internal_runtime_agent_engine_session_delta_wire_encoding",
+      "focused_round_trip_size_and_decode_budget_tests"
+    ],
+    "forbidden_scope": [
+      "threshold_changes",
+      "endurance_duration_changes",
+      "history_or_evidence_deletion",
+      "terminal_envelope_mutation",
+      "release_gate_weakening"
+    ],
+    "required_properties": [
+      "deterministic_encoding",
+      "bounded_decompression",
+      "legacy_raw_json_decode",
+      "unchanged_session_delta_digest_validation",
+      "unchanged_latest_snapshot_recovery_semantics"
+    ],
+    "next_gate": "focused_storage_regression_then_new_q1_h1_h2_and_formal_h3_round"
+  }
+}

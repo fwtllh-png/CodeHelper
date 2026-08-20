@@ -1,21 +1,16 @@
 package skill
 
-import "context"
+import (
+	"context"
 
-type allowedSkillsKey struct{}
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+)
 
 // WithAllowedSkills freezes name-to-handle bindings for one Turn.
 func WithAllowedSkills(ctx context.Context, skills map[string]string) context.Context {
-	copy := make(map[string]string, len(skills))
-	for name, handle := range skills {
-		if name != "" && handle != "" {
-			copy[name] = handle
-		}
-	}
-	return context.WithValue(ctx, allowedSkillsKey{}, copy)
+	return tool.WithAllowedSkills(ctx, skills)
 }
 
 func AllowedSkillsFrom(ctx context.Context) map[string]string {
-	set, _ := ctx.Value(allowedSkillsKey{}).(map[string]string)
-	return set
+	return tool.AllowedSkillsFrom(ctx)
 }

@@ -605,11 +605,17 @@ func directoryBytes(root string) (int64, error) {
 		err error,
 	) error {
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
 			return err
 		}
 		if entry.Type().IsRegular() {
 			info, infoErr := entry.Info()
 			if infoErr != nil {
+				if errors.Is(infoErr, os.ErrNotExist) {
+					return nil
+				}
 				return infoErr
 			}
 			total += info.Size()
