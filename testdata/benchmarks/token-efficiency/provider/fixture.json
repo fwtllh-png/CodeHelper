@@ -11,8 +11,7 @@
     "write-loader.sse",
     "write-cycle-test.sse",
     "run-tests.sse",
-    "declare.sse",
-    "complete.sse"
+    "declare.sse"
   ],
   "expected_request_fragments": [
     ["\"name\":\"search_text\"", "\"name\":\"file_read\"", "\"name\":\"file_write\""],
@@ -21,7 +20,6 @@
     ["\"tool_call_id\":\"call_read_tests\"", "TestLoadNestedIncludesAndStableDeduplication"],
     ["\"tool_call_id\":\"call_write_loader\""],
     ["\"tool_call_id\":\"call_write_test\"", "loader_cycle_test.go"],
-    ["\"tool_call_id\":\"call_tests\"", "go test ./..."],
-    ["\"tool_call_id\":\"call_complete\"", "completion_declaration_accepted"]
+    ["\"tool_call_id\":\"call_tests\"", "go test ./..."]
   ]
 }

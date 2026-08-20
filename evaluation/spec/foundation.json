@@ -103,6 +103,15 @@
       "absence_status": "invalid"
     },
     {
+      "id": "h3-execution",
+      "kind": "schema",
+      "path": "evaluation/schema/h3-execution.schema.json",
+      "owner": "evaluation",
+      "producer": "admission-loader",
+      "consumer": "admission-coordinator",
+      "absence_status": "invalid"
+    },
+    {
       "id": "impact-policy",
       "kind": "schema",
       "path": "evaluation/schema/impact-map.schema.json",

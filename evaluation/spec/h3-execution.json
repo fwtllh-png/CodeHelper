@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "endurance": {
+    "duration_seconds": 14400,
+    "turn_interval_seconds": 30,
+    "turn_timeout_seconds": 20,
+    "warmup_turns": 20,
+    "min_completed_turns": 400,
+    "prompt": "say hello",
+    "max_rss_slope_bytes_per_turn": 131072,
+    "max_rss_growth_bytes": 67108864,
+    "max_fd_slope_milli_per_turn": 10,
+    "max_fd_growth": 8,
+    "max_persistence_slope_bytes_per_turn": 262144,
+    "max_latency_slope_milli_ms_per_turn": 1000,
+    "max_p95_latency_ms": 5000,
+    "max_late_early_latency_ratio_basis_points": 20000
+  },
+  "release": {
+    "required_lanes": [
+      "foundation",
+      "integration",
+      "chaos",
+      "live",
+      "endurance",
+      "release",
+      "vscode_rc",
+      "package"
+    ],
+    "release_command": ["make", "test-release"],
+    "vscode_rc_command": ["make", "vscode-rc"],
+    "package_command": ["./scripts/package-release.sh"],
+    "package_targets": [
+      "linux/amd64",
+      "linux/arm64",
+      "darwin/amd64",
+      "darwin/arm64",
+      "windows/amd64"
+    ]
+  }
+}

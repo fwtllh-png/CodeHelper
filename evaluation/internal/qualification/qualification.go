@@ -149,7 +149,8 @@ func (r Report) Validate() error {
 			r.Kind != "integration" &&
 			r.Kind != "discovery" &&
 			r.Kind != "chaos" &&
-			r.Kind != "live") ||
+			r.Kind != "live" &&
+			r.Kind != "endurance") ||
 		!r.Status.Valid() ||
 		r.StartedAt.IsZero() || r.EndedAt.Before(r.StartedAt) ||
 		r.Scheduled < 1 || r.Settled != r.Scheduled ||
@@ -376,7 +377,8 @@ func validateRequest(request Request) error {
 			request.Kind != "integration" &&
 			request.Kind != "discovery" &&
 			request.Kind != "chaos" &&
-			request.Kind != "live") ||
+			request.Kind != "live" &&
+			request.Kind != "endurance") ||
 		!digestValid(request.FoundationDigest) ||
 		!digestValid(request.SourceDigest) ||
 		!digestValid(request.RuntimeDigest) ||

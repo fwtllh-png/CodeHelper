@@ -1,6 +1,5 @@
-data: {"choices":[{"delta":{"content":"normalize is defined in util.py at line 1"},"finish_reason":"stop"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"normalize is defined in util.py at line 1\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":52,"completion_tokens":9,"prompt_tokens_details":{"cached_tokens":24}}}
 
 data: [DONE]
-

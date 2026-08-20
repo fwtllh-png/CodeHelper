@@ -17,7 +17,7 @@ LDFLAGS := -s -w \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
 	eval-contract-check eval-foundation-check eval-replay eval-oracle \
-	eval-q1-artifacts eval-q1 eval-d1 eval-h1 eval-h2 \
+	eval-q1-artifacts eval-q1 eval-d1 eval-h1 eval-h2 eval-h3 \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-performance \
 	observation-traits observation-traits-check \
@@ -61,6 +61,11 @@ H1_OUTPUT ?= .tmp/evaluation/h1/$(H1_ID)
 H2_ID ?= production-admission-h2-01
 H2_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
 H2_OUTPUT ?= .tmp/evaluation/h2/$(H2_ID)
+H3_ID ?= production-admission-h3-01
+H3_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
+H3_H1_REPORT ?= .tmp/evaluation/h1/$(H1_ID)/qualification.json
+H3_H2_REPORT ?= .tmp/evaluation/h2/$(H2_ID)/qualification.json
+H3_OUTPUT ?= .tmp/evaluation/h3/$(H3_ID)
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
@@ -157,6 +162,20 @@ eval-h2:
 		--runtime '$(BINARY)' \
 		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
 		--output '$(H2_OUTPUT)'
+
+eval-h3:
+	'$(EVALUATION_BINARY)' admission h3 \
+		--root . \
+		--id '$(H3_ID)' \
+		--lock '$(H3_LOCK)' \
+		--h1-report '$(H3_H1_REPORT)' \
+		--h2-report '$(H3_H2_REPORT)' \
+		--evaluation-binary '$(EVALUATION_BINARY)' \
+		--runtime '$(BINARY)' \
+		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
+		--runtime-version '$(Q1_VERSION)' \
+		--build-date '$(Q1_BUILD_DATE)' \
+		--output '$(H3_OUTPUT)'
 
 eval-replay:
 	$(GO) run ./evaluation/cmd/codehelper-eval replay check \
@@ -472,6 +491,7 @@ vscode-integration: build vscode-install
 	cd $(VSCODE_DIR) && \
 		CODEHELPER_VSCODE_BINARY='$(CURDIR)/$(BINARY)' \
 		CODEHELPER_VSCODE_SELECTION_FIXTURE='$(CURDIR)/testdata/providers/selection-commands' \
+		CODEHELPER_VSCODE_APPROVAL_FIXTURE='$(CURDIR)/testdata/providers/vscode-approval-focus' \
 		$(NPM) run test:electron
 
 # Runs the x64 VS Code and Runtime under Rosetta on an Apple Silicon release

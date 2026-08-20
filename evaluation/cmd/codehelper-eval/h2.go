@@ -27,7 +27,7 @@ func runAdmission(
 	stderr io.Writer,
 ) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "codehelper-eval: admission requires h1 or h2")
+		fmt.Fprintln(stderr, "codehelper-eval: admission requires h1, h2, or h3")
 		return 2
 	}
 	switch args[0] {
@@ -35,8 +35,10 @@ func runAdmission(
 		return runH1Admission(ctx, args, stdout, stderr)
 	case "h2":
 		return runH2Admission(ctx, args, stdout, stderr)
+	case "h3":
+		return runH3Admission(ctx, args, stdout, stderr)
 	default:
-		fmt.Fprintln(stderr, "codehelper-eval: admission requires h1 or h2")
+		fmt.Fprintln(stderr, "codehelper-eval: admission requires h1, h2, or h3")
 		return 2
 	}
 }

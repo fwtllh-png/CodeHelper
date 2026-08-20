@@ -33,7 +33,7 @@
       "$ref": "#/$defs/id"
     },
     "kind": {
-      "enum": ["foundation_epoch", "integration", "discovery", "chaos", "live"]
+      "enum": ["foundation_epoch", "integration", "discovery", "chaos", "live", "endurance"]
     },
     "foundation_digest": {
       "$ref": "#/$defs/digest"

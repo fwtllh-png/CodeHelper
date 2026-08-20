@@ -1,4 +1,4 @@
-data: {"choices":[{"delta":{"content":"The auth code lives in internal/auth, and the program starts at cmd/app/main.go."},"finish_reason":"stop"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"The auth code lives in internal/auth, and the program starts at cmd/app/main.go.\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":74,"completion_tokens":18}}
 

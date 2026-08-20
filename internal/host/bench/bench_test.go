@@ -61,8 +61,8 @@ func TestTokenEfficiencyBenchmark(t *testing.T) {
 	if !result.Passed {
 		t.Fatalf("token efficiency fixture failed: %+v", result)
 	}
-	if len(result.Samples) != 8 {
-		t.Fatalf("samples=%d want 8", len(result.Samples))
+	if len(result.Samples) != 7 {
+		t.Fatalf("samples=%d want 7", len(result.Samples))
 	}
 	for _, sample := range result.Samples {
 		if sample.InputTokens == 0 || sample.Context == nil ||

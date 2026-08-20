@@ -5,27 +5,40 @@
   "additionalProperties": false,
   "required": [
     "schema_version",
+    "qualification_id",
     "source_digest",
-    "harness_digest",
+    "lock_identity",
+    "foundation_digest",
     "runtime_digest",
+    "vsix_digest",
     "host_digest",
     "provider_digest",
     "model_digest",
     "config_digest",
     "required_lanes",
+    "package",
     "decision"
   ],
   "properties": {
     "schema_version": {
-      "const": 2
+      "const": 3
+    },
+    "qualification_id": {
+      "$ref": "#/$defs/id"
     },
     "source_digest": {
       "$ref": "#/$defs/digest"
     },
-    "harness_digest": {
+    "lock_identity": {
+      "$ref": "#/$defs/digest"
+    },
+    "foundation_digest": {
       "$ref": "#/$defs/digest"
     },
     "runtime_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "vsix_digest": {
       "$ref": "#/$defs/digest"
     },
     "host_digest": {
@@ -42,7 +55,7 @@
     },
     "required_lanes": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 8,
       "uniqueItems": true,
       "items": {
         "type": "object",
@@ -57,6 +70,30 @@
           },
           "evidence_digest": {
             "$ref": "#/$defs/digest"
+          }
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_digest",
+        "checksums_digest",
+        "sbom_digest",
+        "targets"
+      ],
+      "properties": {
+        "manifest_digest": {"$ref": "#/$defs/digest"},
+        "checksums_digest": {"$ref": "#/$defs/digest"},
+        "sbom_digest": {"$ref": "#/$defs/digest"},
+        "targets": {
+          "type": "array",
+          "minItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]+/[a-z0-9_-]+$"
           }
         }
       }

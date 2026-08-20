@@ -1,4 +1,4 @@
-data: {"choices":[{"delta":{"content":"config.py sets TIMEOUT_SECONDS to 30."},"finish_reason":"stop"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"config.py sets TIMEOUT_SECONDS to 30.\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":91,"completion_tokens":12}}
 

@@ -1,4 +1,4 @@
-data: {"choices":[{"delta":{"content":"Verify is declared in auth/token.go and called from api/handler.go"},"finish_reason":"stop"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"Verify is declared in auth/token.go and called from api/handler.go.\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":96,"completion_tokens":15}}
 

@@ -1,6 +1,5 @@
-data: {"choices":[{"delta":{"content":"Total is called from report.go and main.go; the declaration in calc.go is excluded"},"finish_reason":"stop"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"Total is called from report.go and main.go; the declaration in calc.go is excluded\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":72,"completion_tokens":14}}
 
 data: [DONE]
-

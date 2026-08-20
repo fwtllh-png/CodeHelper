@@ -1,4 +1,4 @@
-data: {"choices":[{"delta":{"content":"retries is set in app.py and settings.yaml"},"finish_reason":"stop"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"retries is set in app.py and settings.yaml\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":58,"completion_tokens":10}}
 

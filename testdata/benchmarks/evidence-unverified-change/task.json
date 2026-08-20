@@ -1,14 +1,16 @@
 {
   "name": "evidence-unverified-change",
   "category": "context_assembly",
-  "note": "With the gate off nothing proves the edit, so the retained draft must not publish as a completed workspace change. The risk remains visible in the next sample and receipt while the fixture workspace returns to its seed.",
+  "note": "With the gate off nothing proves the edit, so the retained draft must not publish as a completed workspace change. The failed Turn keeps the unverified draft resumable while the receipt exposes the risk.",
   "prompt": "raise the timeout in server.py to 30",
   "tools": true,
   "max_steps": 6,
   "timeout_ms": 60000,
   "expect": {
     "terminal": "failed",
-    "unchanged": ["server.py"],
+    "files": {
+      "server.py": "TIMEOUT = 30\n\n\ndef timeout():\n    return TIMEOUT\n"
+    },
     "tools_used": ["file_read", "file_edit"],
     "receipt_changes": ["server.py"],
     "verify_status": "unavailable",

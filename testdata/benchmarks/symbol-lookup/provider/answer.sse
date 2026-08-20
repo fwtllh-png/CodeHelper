@@ -1,6 +1,5 @@
-data: {"choices":[{"delta":{"content":"NewStore is declared in pkg/store.go at line 7"},"finish_reason":"stop"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"NewStore is declared in pkg/store.go at line 7\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
 
 data: {"choices":[],"usage":{"prompt_tokens":58,"completion_tokens":11}}
 
 data: [DONE]
-

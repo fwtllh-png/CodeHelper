@@ -10,7 +10,7 @@
   "timeout_ms": 60000,
   "expect": {
     "terminal": "failed",
-    "terminal_contains": ["token budget exceeded"],
+    "terminal_contains": ["token budget exhausted"],
     "approvals": 0
   }
 }

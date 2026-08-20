@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "assessment_id": "h3-preflight-global-assessment-04",
+  "phase": "production_admission_h3",
+  "status": "closed_product_attribution_required",
+  "observed_on": "2026-08-20",
+  "round": "h3-release-preflight-remediation-01",
+  "inventory": {
+    "benchmark_before": {
+      "passed": 2,
+      "total": 22
+    },
+    "benchmark_after_harness_remediation": {
+      "passed": 20,
+      "total": 22
+    },
+    "harness_assertion_self_test": "passed",
+    "token_efficiency": "passed"
+  },
+  "findings": [
+    {
+      "id": "H3H-0007",
+      "severity": "P0",
+      "classification": "harness",
+      "status": "remediated_verified",
+      "title": "release_benchmark_fixtures_predate_exact_completion_contract",
+      "evidence": [
+        "eighteen_previously_failed_contract_checks_now_pass",
+        "behavioral_output_assertions_remain_enabled",
+        "benchmark_harness_negative_self_test_passed"
+      ],
+      "product_candidate": false
+    },
+    {
+      "id": "H3P-0001",
+      "severity": "P0",
+      "classification": "product_candidate",
+      "status": "confirmed_needs_attribution",
+      "title": "failed_unverified_benchmark_turn_retained_workspace_change",
+      "evidence": [
+        "terminal_failed",
+        "verification_status_unavailable",
+        "verification_action_repair",
+        "server_py_retained_timeout_30_instead_of_seed_timeout_5"
+      ],
+      "root_cause": "not_yet_attributed",
+      "product_candidate": true
+    },
+    {
+      "id": "H3P-0002",
+      "severity": "P0",
+      "classification": "product_candidate",
+      "status": "open_unattributed",
+      "title": "verification_repair_did_not_reach_the_pinned_repair_sample",
+      "evidence": [
+        "terminal_failed",
+        "provider_expected_required_action_turn_complete_fragment",
+        "verification_event_missing",
+        "version_txt_retained_intermediate_1_0"
+      ],
+      "root_cause": "not_yet_attributed",
+      "product_candidate": true
+    }
+  ],
+  "decision": {
+    "harness_remediation_closed": [
+      "H3H-0007"
+    ],
+    "product_remediation_authorized": false,
+    "formal_h3_authorized": false,
+    "next_gate": "separate_static_and_runtime_attribution_for_H3P_0001_and_H3P_0002"
+  }
+}
