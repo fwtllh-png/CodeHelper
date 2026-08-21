@@ -48,14 +48,15 @@ architecture and delivery stages are defined in the
 
 1. [Architecture](./architecture.md)
 2. [Runtime reliability hardening](./reliability-hardening.md)
-3. [Security model](./security.md)
-4. [Local development and scripts](./development.md)
-5. [Source code reading guide](./reading-guide.md)
-6. [Agent guide](./agent-guide.md)
-7. [TUI and VS Code experience contract](./experience.md)
-8. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-9. [Documentation governance](./documentation-governance.md)
-10. [Roadmap](./roadmap.md)
+3. [Session context memory optimization](./session-context-optimization.md)
+4. [Security model](./security.md)
+5. [Local development and scripts](./development.md)
+6. [Source code reading guide](./reading-guide.md)
+7. [Agent guide](./agent-guide.md)
+8. [TUI and VS Code experience contract](./experience.md)
+9. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+10. [Documentation governance](./documentation-governance.md)
+11. [Roadmap](./roadmap.md)
 
 ## Document Ownership
 

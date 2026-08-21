@@ -4665,6 +4665,12 @@
         "narrative_included": {
           "type": "boolean"
         },
+        "omitted_facts": {
+          "type": "integer"
+        },
+        "omitted_handles": {
+          "type": "integer"
+        },
         "previous_window_id": {
           "type": "string"
         },
@@ -4693,10 +4699,25 @@
         "summary": {
           "type": "string"
         },
+        "truth_candidates": {
+          "type": "integer"
+        },
         "truth_entities": {
           "type": "integer"
         },
         "truth_generation": {
+          "type": "integer"
+        },
+        "truth_mandatory": {
+          "type": "integer"
+        },
+        "truth_omitted": {
+          "type": "integer"
+        },
+        "truth_protected": {
+          "type": "integer"
+        },
+        "truth_refreshable": {
           "type": "integer"
         },
         "window_id": {
@@ -5371,6 +5392,12 @@
         "narrative_included": {
           "type": "boolean"
         },
+        "omitted_facts": {
+          "type": "integer"
+        },
+        "omitted_handles": {
+          "type": "integer"
+        },
         "original_bytes": {
           "type": "integer"
         },
@@ -5407,10 +5434,25 @@
         "summary_truncated": {
           "type": "boolean"
         },
+        "truth_candidates": {
+          "type": "integer"
+        },
         "truth_entities": {
           "type": "integer"
         },
         "truth_generation": {
+          "type": "integer"
+        },
+        "truth_mandatory": {
+          "type": "integer"
+        },
+        "truth_omitted": {
+          "type": "integer"
+        },
+        "truth_protected": {
+          "type": "integer"
+        },
+        "truth_refreshable": {
           "type": "integer"
         }
       },

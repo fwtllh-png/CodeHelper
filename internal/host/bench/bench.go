@@ -98,7 +98,25 @@ type Task struct {
 	// Subagent enables Multi-Agent evaluation through the production control
 	// plane. Nil preserves the ordinary single-Agent benchmark defaults.
 	Subagent *TaskSubagent `json:"subagent,omitempty"`
-	Expect   Expectation   `json:"expect"`
+	// FaultProfile injects a typed fault at a specific stage during the
+	// benchmark run. When set, the fixture provider is wrapped with a fault
+	// injector that triggers the fault at the configured probability. Nil
+	// means no fault injection — the benchmark runs normally.
+	FaultProfile *FaultProfile `json:"fault_profile,omitempty"`
+	Expect       Expectation   `json:"expect"`
+}
+
+// FaultProfile describes a fault to inject during benchmark execution.
+type FaultProfile struct {
+	// InjectAt names the stage where the fault should be injected
+	// (e.g. "model_sample", "tool_exec", "guard_check").
+	InjectAt string `json:"inject_at"`
+	// FaultCode is the fault.Code to inject (e.g. "unavailable").
+	FaultCode string `json:"fault_code"`
+	// Probability is the chance (0.0–1.0) that the fault fires.
+	Probability float64 `json:"probability"`
+	// Retryable indicates whether the injected fault is retryable.
+	Retryable bool `json:"retryable"`
 }
 
 type TaskSubagent struct {
@@ -405,6 +423,19 @@ func RunSuite(ctx context.Context, root string) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	// CODEHELPER_BENCH_TASK filters to a single task for adversarial testing.
+	if name := os.Getenv("CODEHELPER_BENCH_TASK"); name != "" {
+		filtered := make([]Task, 0, 1)
+		for _, t := range tasks {
+			if t.Name == name || filepath.Base(t.Dir) == name {
+				filtered = append(filtered, t)
+			}
+		}
+		if len(filtered) == 0 {
+			return Report{}, fmt.Errorf("benchmark task %q not found", name)
+		}
+		tasks = filtered
+	}
 	report := Report{
 		SchemaVersion: 1,
 		Platform:      runtime.GOOS + "/" + runtime.GOARCH,
@@ -591,6 +622,14 @@ func executeTask(ctx context.Context, task Task) (observation, error) {
 	posture := task.Posture
 	if posture == "" {
 		posture = DefaultPosture
+	}
+	// CODEHELPER_BENCH_POSTURE and CODEHELPER_BENCH_MODE override task
+	// settings for adversarial differential testing.
+	if p := os.Getenv("CODEHELPER_BENCH_POSTURE"); p != "" {
+		posture = p
+	}
+	if m := os.Getenv("CODEHELPER_BENCH_MODE"); m != "" {
+		overrides.Mode = &m
 	}
 	applyVerifyOverrides(task.Verify, &overrides)
 	applyIndexOverrides(task.Index, &overrides)

@@ -164,7 +164,7 @@ type Guard struct {
 
 	mu           sync.Mutex
 	pending      map[string]*pending
-	completed    map[string]struct{}
+	completed    map[string]time.Time
 	recovered    map[string]ApprovalRequest
 	restoreWait  func(ApprovalRequest) error
 	approvalWait func(ApprovalWait)
@@ -243,7 +243,7 @@ func New(options Options) (*Guard, error) {
 		readTracker: options.ReadTracker, journal: options.Journal, diagnostics: options.Diagnostics,
 		escalation:            escalation,
 		forceEditPlanApproval: options.ForceEditPlanApproval,
-		pending:               make(map[string]*pending), completed: make(map[string]struct{}),
+		pending:               make(map[string]*pending), completed: make(map[string]time.Time),
 		recovered: make(map[string]ApprovalRequest),
 	}, nil
 }
@@ -1177,7 +1177,8 @@ func (g *Guard) Resume(requestID string) error {
 	}
 	close(entry.resume)
 	delete(g.pending, requestID)
-	g.completed[requestID] = struct{}{}
+	g.completed[requestID] = g.now()
+	g.pruneCompletedLocked()
 	return nil
 }
 
@@ -1185,9 +1186,40 @@ func (g *Guard) finishPending(requestID string) {
 	g.mu.Lock()
 	if _, exists := g.pending[requestID]; exists {
 		delete(g.pending, requestID)
-		g.completed[requestID] = struct{}{}
+		g.completed[requestID] = g.now()
 	}
+	g.pruneCompletedLocked()
 	g.mu.Unlock()
+}
+
+// pruneCompletedLocked removes completed entries older than the approval TTL.
+// Once the TTL has passed, no one can submit a decision for that request, so
+// the entry is safe to remove. The caller must hold g.mu.
+func (g *Guard) pruneCompletedLocked() {
+	cutoff := g.now().Add(-g.approvalTTL)
+	for id, completedAt := range g.completed {
+		if completedAt.Before(cutoff) {
+			delete(g.completed, id)
+		}
+	}
+	if len(g.completed) > 1000 {
+		// Aggressive fallback: if the map is still large, remove the oldest
+		// half. This handles cases where the TTL is very long or now() is
+		// not monotonic.
+		type entry struct {
+			id string
+			at time.Time
+		}
+		entries := make([]entry, 0, len(g.completed))
+		for id, at := range g.completed {
+			entries = append(entries, entry{id, at})
+		}
+		// Sort oldest first and remove the oldest half.
+		sort.Slice(entries, func(i, j int) bool { return entries[i].at.Before(entries[j].at) })
+		for i := 0; i < len(entries)/2; i++ {
+			delete(g.completed, entries[i].id)
+		}
+	}
 }
 
 func (g *Guard) Pending() int {

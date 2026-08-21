@@ -68,6 +68,8 @@ type Pool struct {
 	nextSubscriberID   uint64
 }
 
+var errPoolNil = errors.New("MCP pool is nil")
+
 func NewPool(factory TransportFactory) *Pool {
 	if factory == nil {
 		factory = NewDefaultTransport
@@ -95,6 +97,9 @@ func (p *Pool) Invalidate() {
 }
 
 func (p *Pool) Reload(ctx context.Context, config Config) (bool, error) {
+	if p == nil {
+		return false, errPoolNil
+	}
 	p.lifecycle.Lock()
 	defer p.lifecycle.Unlock()
 	if err := config.Validate(); err != nil {
@@ -504,6 +509,9 @@ func aggregateServerRuntimes(
 }
 
 func (p *Pool) Catalog() []CatalogEntry {
+	if p == nil {
+		return nil
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	result := make([]CatalogEntry, 0, len(p.catalog))
@@ -516,6 +524,9 @@ func (p *Pool) Catalog() []CatalogEntry {
 }
 
 func (p *Pool) ResourceCatalog() []ResourceCatalogEntry {
+	if p == nil {
+		return nil
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	result := make([]ResourceCatalogEntry, 0, len(p.resources))
@@ -528,6 +539,9 @@ func (p *Pool) ResourceCatalog() []ResourceCatalogEntry {
 }
 
 func (p *Pool) ResourceTemplateCatalog() []ResourceTemplateCatalogEntry {
+	if p == nil {
+		return nil
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	result := make([]ResourceTemplateCatalogEntry, 0, len(p.resourceTemplates))
@@ -540,6 +554,9 @@ func (p *Pool) ResourceTemplateCatalog() []ResourceTemplateCatalogEntry {
 }
 
 func (p *Pool) PromptCatalog() []PromptCatalogEntry {
+	if p == nil {
+		return nil
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	result := make([]PromptCatalogEntry, 0, len(p.prompts))
@@ -565,6 +582,9 @@ func (p *Pool) serverCatalogVisibleLocked(server string) bool {
 }
 
 func (p *Pool) ServerNames() []string {
+	if p == nil {
+		return nil
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	names := make([]string, 0, len(p.servers))
@@ -618,6 +638,9 @@ func (p *Pool) RemoveServerPrefix(
 }
 
 func (p *Pool) HealthSnapshots() []HealthSnapshot {
+	if p == nil {
+		return nil
+	}
 	p.mu.RLock()
 	trackers := make([]*healthTracker, 0, len(p.servers))
 	for _, runtime := range p.servers {
@@ -717,6 +740,9 @@ func (p *Pool) emitCatalog() {
 }
 
 func (p *Pool) Connection(name string) (*Connection, bool) {
+	if p == nil {
+		return nil, false
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	connection, ok := p.connections[name]
@@ -724,12 +750,18 @@ func (p *Pool) Connection(name string) (*Connection, bool) {
 }
 
 func (p *Pool) Hash() string {
+	if p == nil {
+		return ""
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.hash
 }
 
 func (p *Pool) ShutdownAll(ctx context.Context) error {
+	if p == nil {
+		return nil
+	}
 	p.lifecycle.Lock()
 	defer p.lifecycle.Unlock()
 	p.mu.Lock()

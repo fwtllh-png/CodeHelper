@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -156,6 +157,12 @@ func Start(directory string) (*Server, error) {
 			http.Error(writer, expandErr.Error(), http.StatusConflict)
 			return
 		}
+
+			// Adversarial fault injection: when CODEHELPER_FAULT_INJECT is set,
+			// mutate a percentage of SSE events to test system resilience.
+			if faultSpec := os.Getenv("CODEHELPER_FAULT_INJECT"); faultSpec != "" {
+				stream = applyFaultInjection(stream, faultSpec, index)
+			}
 		writer.Header().Set("Content-Type", "text/event-stream")
 		writer.WriteHeader(http.StatusOK)
 		for _, line := range strings.SplitAfter(string(stream), "\n") {
@@ -281,4 +288,72 @@ func (s *Server) Close(ctx context.Context) error {
 	default:
 	}
 	return shutdownErr
+}
+
+// applyFaultInjection mutates SSE stream data to test system resilience
+// against adversarial inputs. The faultSpec is a comma-separated list of
+// mutation types, optionally with a probability (e.g. "truncate:0.3").
+// Supported mutations:
+//   - truncate:N  — cut SSE data at approximately N% position
+//   - error       — replace with an error response
+//   - empty       — return empty data
+//   - malform     — corrupt the JSON structure
+//   - missing     — remove required fields
+func applyFaultInjection(stream []byte, faultSpec string, index int) []byte {
+	specs := strings.Split(faultSpec, ",")
+	for _, spec := range specs {
+		parts := strings.SplitN(spec, ":", 2)
+		mutation := parts[0]
+		probability := 1.0
+		if len(parts) > 1 {
+			if p, err := fmt.Sscanf(parts[1], "%f", &probability); err != nil || p != 1 {
+				probability = 1.0
+			}
+		}
+		// Only apply to every Nth request (index-based) to avoid
+		// breaking all turns simultaneously.
+		if index%3 != 0 {
+			continue
+		}
+		if rand.Float64() > probability {
+			continue
+		}
+		switch mutation {
+		case "truncate":
+			// Cut the stream at approximately the given percentage.
+			cutPct := 0.5
+			if len(parts) > 1 {
+				fmt.Sscanf(parts[1], "%f", &cutPct)
+			}
+			cutPos := int(float64(len(stream)) * cutPct)
+			if cutPos > 0 && cutPos < len(stream) {
+				return stream[:cutPos]
+			}
+		case "error":
+			return []byte(`data: {"error":{"message":"adversarial fault injection","type":"api_error"}}` + "\n\ndata: [DONE]\n")
+		case "empty":
+			return []byte("data: [DONE]\n")
+		case "malform":
+			// Corrupt JSON by inserting garbage.
+			lines := strings.SplitAfter(string(stream), "\n")
+			for i, line := range lines {
+				if strings.HasPrefix(line, "data: {") {
+					lines[i] = line[:len(line)/2] + "{{{MALFORMED}}}\n"
+					break
+				}
+			}
+			return []byte(strings.Join(lines, ""))
+		case "missing":
+			// Remove the "choices" key from JSON.
+			lines := strings.SplitAfter(string(stream), "\n")
+			for i, line := range lines {
+				if strings.HasPrefix(line, "data: {") {
+					lines[i] = strings.Replace(line, `"choices":[{`, `"choices_missing":[{`, 1)
+					break
+				}
+			}
+			return []byte(strings.Join(lines, ""))
+		}
+	}
+	return stream
 }

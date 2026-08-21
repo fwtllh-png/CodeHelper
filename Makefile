@@ -28,6 +28,9 @@ LDFLAGS := -s -w \
 	doc-external-links release-fact-check brand-check \
 	security-test sandbox-attack-test secret-leak-test live-model-smoke \
 	live-multi-agent-smoke \
+	stress stress-nightly \
+	canary canary-nightly \
+		canary-adversarial canary-adversarial-quick \
 	cli-smoke tui-smoke acp-interop protocol-contract protocol-schema \
 	vscode-install vscode-protocol-check vscode-compatibility vscode-check vscode-test \
 	vscode-security vscode-performance vscode-runtime-integration \
@@ -39,6 +42,51 @@ LDFLAGS := -s -w \
 	deepseek-init deepseek-tui deepseek-vscode deepseek-live-smoke \
 	deepseek-multi-agent-smoke \
 	bench catalog-bench package clean
+
+# Stress tests run concurrent pressure tests to catch deadlocks,
+# goroutine leaks, and channel blocking under high concurrency.
+# Run with: make stress
+stress:
+	$(GO) test -tags=stress -race -count=1 -timeout 5m -run '^TestStress' \
+		./internal/runtime/agent/turnexec/... \
+		./internal/runtime/agent/engine/... \
+		./internal/adapter/mcp/... \
+		./internal/runtime/app/eventhub/... \
+		./internal/host/tui/...
+
+# stress-nightly runs extended stress tests for nightly CI.
+stress-nightly:
+	$(GO) test -tags=stress -race -count=3 -timeout 15m -run '^TestStress' \
+		./internal/runtime/agent/turnexec/... \
+		./internal/runtime/agent/engine/... \
+		./internal/adapter/mcp/... \
+		./internal/runtime/app/eventhub/... \
+		./internal/host/tui/...
+
+# canary runs behavioral replay and performance regression checks against
+# the hermetic benchmark suite. Fails on any regression.
+# Run after: make build
+# Baseline: scripts/canary-replay.py record && scripts/canary-perf.py baseline
+canary:
+	python3 scripts/canary-replay.py check
+	python3 scripts/canary-perf.py check
+
+# canary-nightly runs extended canary checks with tighter thresholds for
+# nightly CI. Uses a lower performance regression threshold (20% vs 30%).
+canary-nightly:
+	python3 scripts/canary-replay.py check
+	CANARY_PERF_THRESHOLD=0.20 python3 scripts/canary-perf.py check
+
+# canary-adversarial runs active bug-finding tests: fault injection,
+# differential config, and fixture mutation. Use this to discover
+# real bugs, not just regressions.
+canary-adversarial:
+	python3 scripts/canary-adversarial.py full
+
+# canary-adversarial-quick runs a faster subset of adversarial tests
+# suitable for pre-commit or PR checks.
+canary-adversarial-quick:
+	python3 scripts/canary-adversarial.py fault-inject --timeout 60
 
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
 ARCHITECTURE_METRICS_BASELINE := testdata/contracts/architecture-metrics-baseline.json

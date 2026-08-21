@@ -23,6 +23,7 @@ type Factory[S, O, P any] interface {
 }
 
 type Scope[S, O, P any] struct {
+	mu       sync.Mutex
 	spec     S
 	run      func(context.Context) (O, error)
 	control  ControlPort
@@ -53,26 +54,43 @@ func (s *Scope[S, O, P]) Spec() S {
 }
 
 func (s *Scope[S, O, P]) Run(ctx context.Context) (O, error) {
-	if s == nil || s.run == nil {
+	if s == nil {
 		var zero O
 		return zero, ErrClosed
 	}
-	return s.run(ctx)
+	s.mu.Lock()
+	r := s.run
+	s.mu.Unlock()
+	if r == nil {
+		var zero O
+		return zero, ErrClosed
+	}
+	return r(ctx)
 }
 
 func (s *Scope[S, O, P]) Control() ControlPort {
 	if s == nil {
 		return nil
 	}
-	return s.control
+	s.mu.Lock()
+	c := s.control
+	s.mu.Unlock()
+	return c
 }
 
 func (s *Scope[S, O, P]) Snapshot() P {
-	if s == nil || s.snapshot == nil {
+	if s == nil {
 		var zero P
 		return zero
 	}
-	return s.snapshot()
+	s.mu.Lock()
+	snap := s.snapshot
+	s.mu.Unlock()
+	if snap == nil {
+		var zero P
+		return zero
+	}
+	return snap()
 }
 
 func (s *Scope[S, O, P]) Close(ctx context.Context) error {
@@ -81,7 +99,9 @@ func (s *Scope[S, O, P]) Close(ctx context.Context) error {
 	}
 	s.once.Do(func() {
 		s.closeErr = s.close(ctx)
+		s.mu.Lock()
 		s.run, s.control, s.snapshot, s.close = nil, nil, nil, nil
+		s.mu.Unlock()
 	})
 	return s.closeErr
 }

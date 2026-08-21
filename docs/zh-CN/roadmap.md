@@ -56,7 +56,8 @@
 - 确定性的 Task Recovery 与 Lease 可观测性；
 - Workflow Cancel、Retry 和 Checkpoint 保证；
 - 更清晰的 Subagent Merge/Conflict 语义；
-- 可评估质量的有界长会话 Compact；
+- 按照 [Session Context Memory 优化设计与实施方案](./session-context-optimization.md)
+  建设可评估质量的有界长会话 Compact；
 - 并发 Provider、Tool 与 Worker 的资源隔离。
 
 具体扫描工作流、优先级、状态和验收证据统一记录在

@@ -44,14 +44,15 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 
 1. [架构设计](./architecture.md)
 2. [运行时可靠性系统治理](./reliability-hardening.md)
-3. [安全模型](./security.md)
-4. [本地开发与脚本](./development.md)
-5. [源码阅读路线指南](./reading-guide.md)
-6. [Agent 指南](./agent-guide.md)
-7. [TUI 与 VS Code 体验契约](./experience.md)
-8. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
-9. [文档治理](./documentation-governance.md)
-10. [后续规划](./roadmap.md)
+3. [Session Context Memory 优化设计与实施方案](./session-context-optimization.md)
+4. [安全模型](./security.md)
+5. [本地开发与脚本](./development.md)
+6. [源码阅读路线指南](./reading-guide.md)
+7. [Agent 指南](./agent-guide.md)
+8. [TUI 与 VS Code 体验契约](./experience.md)
+9. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
+10. [文档治理](./documentation-governance.md)
+11. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 

@@ -58,7 +58,8 @@ context window.
 - deterministic task recovery and lease observability;
 - workflow cancellation, retry, and checkpoint guarantees;
 - clearer subagent merge/conflict semantics;
-- bounded long-session compaction with quality evaluation;
+- bounded long-session compaction with quality evaluation, following the
+  [Session Context Memory Optimization Plan](./session-context-optimization.md);
 - resource isolation for concurrent providers, tools, and workers.
 
 The [Runtime Reliability Hardening](./reliability-hardening.md) program tracks

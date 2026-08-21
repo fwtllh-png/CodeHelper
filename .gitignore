@@ -4,6 +4,7 @@ extensions/vscode/.vscode-test/
 extensions/vscode/.tmp-electron/
 extensions/vscode/dist/*.vsix
 /.tmp/
+/testdata/canary/
 /.codehelper/
 # Machine-local provider runbooks may contain real credentials.
 /docs/ARK-LIVE.zh-CN.md
@@ -16,3 +17,10 @@ extensions/vscode/dist/*.vsix
 coverage.out
 /.dbg/
 debug*.md
+.ttadk/
+specs/doc_export/
+.claude/
+.cursor/
+.mcp.json
+ai-plugin-lock.json
+ai-plugin.json

@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -26,6 +28,7 @@ type deltaCoalescingStream struct {
 	closeErr  error
 	observe   func()
 	reading   bool
+	dead      atomic.Bool // set to true when the read goroutine exits
 	pending   []streamResult
 	buffered  *provider.StreamEvent
 	timer     *time.Timer
@@ -53,6 +56,11 @@ func newDeltaCoalescingStream(
 func (s *deltaCoalescingStream) Recv() (provider.StreamEvent, error) {
 	for {
 		if s.buffered == nil {
+			// If the read goroutine is dead and there are no pending
+			// results, the stream is exhausted.
+			if s.dead.Load() && len(s.pending) == 0 {
+				return provider.StreamEvent{}, io.EOF
+			}
 			result := s.next()
 			if result.err != nil || !coalescibleDelta(result.event) {
 				return result.event, result.err
@@ -97,6 +105,7 @@ func (s *deltaCoalescingStream) Close() error {
 }
 
 func (s *deltaCoalescingStream) read() {
+	defer func() { s.dead.Store(true) }()
 	for {
 		select {
 		case <-s.requests:
@@ -124,6 +133,9 @@ func (s *deltaCoalescingStream) next() streamResult {
 		s.pending = s.pending[1:]
 		return result
 	}
+	if s.dead.Load() {
+		return streamResult{err: io.EOF}
+	}
 	s.request()
 	result := <-s.results
 	s.reading = false
@@ -131,10 +143,14 @@ func (s *deltaCoalescingStream) next() streamResult {
 }
 
 func (s *deltaCoalescingStream) request() {
-	if s.reading {
+	if s.reading || s.dead.Load() {
 		return
 	}
-	s.requests <- struct{}{}
+	select {
+	case s.requests <- struct{}{}:
+	case <-s.done:
+		return
+	}
 	s.reading = true
 }
 
